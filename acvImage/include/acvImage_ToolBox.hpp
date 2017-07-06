@@ -17,6 +17,7 @@
 #include <math.h>
 #include "acvImage.hpp"
 #include "acvImage_BasicTool.hpp"
+#include "acvImage_ComponentLabelingTool.hpp"
 
 #define MathPI           3.141592654
 
@@ -885,7 +886,7 @@ void acvContourSignature2(acvImage  *LabeledPic,int *Centroid,int *StartPos,int 
         CVector[NowPos[1]][NowPos[0]*3]=OriginVar;
 }
 
-
+/*
 void acvLabeledSignatureByContour(acvImage  *LabeledPic,
                         DyArray<int> * LabelInfo,DyArray<int> * SignInfo)
 {
@@ -911,7 +912,7 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 
 }
-
+*/
 
 
 void acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir)
@@ -1645,129 +1646,6 @@ int SignatureFindPolygonWPA(int* VertexPosition,int* Signature,int *PresciseAngl
 
         return VertexNum;
 
-}
-
-
-
-int acvDirectFindPolygon(acvImage *Pic,int *ParallelogramData)
-{
-        int Pic_H=Pic->GetROIOffsetY()+Pic->GetHeight()-1,
-            Pic_W=Pic->GetROIOffsetX()+Pic->GetWidth()-1;
-        int Signature[SignInfoAngleNum],TmpParallelogramData[SignInfoAngleNum];
-        int PresciseAngle[SignInfoAngleNum];
-        int Pos[2],Centroid[2];
-        int Tmp=0,FindCounter=0;
-        BYTE PriDot,NowDot;
-        //int Shell=0;
-        //Centroid[0]=Centroid[1]=0;
-        acvDeletFrame(Pic);
-        int i,j;
-        BYTE *PicLine;
-        for(i=Pic->GetROIOffsetY()+1;i<Pic_H;i++)
-        {
-                PicLine=Pic->CVector[i];
-                j=Pic->GetROIOffsetX();
-                NowDot=PicLine[3*j];
-                //Shell=0;
-                while(1)
-                {
-                        PriDot=NowDot;
-                        if(++j>=Pic_W)break;
-                        NowDot=PicLine[3*j];
-                        if(NowDot==PriDot)continue;//Same Label
-                        //Shell++;
-
-                        if((NowDot==0&&PriDot==255))
-                        {
-                                        Centroid[0]=Pos[0]=j;
-                                        Centroid[1]=Pos[1]=i;
-                                        NowDot=DFP_CCWFlag;
-                                        Tmp=acvFindContourCentroid(Pic,Centroid,DFP_CCWFlag,5);
-
-                                        Centroid[0]/=Tmp;
-                                        Centroid[1]/=Tmp;
-                                        ParallelogramData[0]=Centroid[0];
-                                        ParallelogramData[1]=Centroid[1];
-
-
-                                        for(int k=0;k<SignInfoAngleNum;k++)
-                                        {
-                                                Signature[k]=0;
-                                                PresciseAngle[k]=-1;
-                                        }
-                                        if(!acvContourCircleSignatureWPA(Pic,Centroid,Pos,Signature,PresciseAngle))
-                                                continue;
-
-                                        acvRingDataDeZero(Signature,Signature,
-                                        SignInfoAngleNum);
-                                        for(int k=0;k<SignInfoAngleNum;k++)
-                                        {
-                                                if(PresciseAngle[k]==-1)
-                                                PresciseAngle[k]=k*SignInfoDistanceMuti;
-                                        }
-                                        Tmp=SignatureFindPolygonWPA(TmpParallelogramData,Signature,PresciseAngle);
-                                        for(int k=0;k<Tmp;k++)
-                                        {
-                                                ParallelogramData[2+2*k+0]=
-                                                TmpParallelogramData[FindPolygonVertexS+2*k+0];
-                                                ParallelogramData[2+2*k+1]=
-                                                TmpParallelogramData[FindPolygonVertexS+2*k+1];
-                                        }
-                                        ParallelogramData[2+2*Tmp]=0;
-
-                                        FindCounter++;
-                                        ParallelogramData+=(Tmp+1)*2+1;
-
-
-
-                        }
-                        else if((NowDot==255&&PriDot==0))
-                        {
-                                        Centroid[0]=Pos[0]=j;
-                                        Centroid[1]=Pos[1]=i;
-                                        NowDot=DFP_CCWFlag;
-                                        Tmp=acvFindContourCentroid(Pic,Centroid,DFP_CCWFlag,1);
-
-                                        Centroid[0]/=Tmp;
-                                        Centroid[1]/=Tmp;
-                                        ParallelogramData[0]=Centroid[0];
-                                        ParallelogramData[1]=Centroid[1];
-
-
-                                        for(int k=0;k<SignInfoAngleNum;k++)
-                                        {
-                                                Signature[k]=0;
-                                                PresciseAngle[k]=-1;
-                                        }
-                                        acvContourSignatureWPA(Pic,Centroid,Pos,Signature,PresciseAngle,1);
-
-                                        acvRingDataDeZero(Signature,Signature,
-                                        SignInfoAngleNum);
-                                        for(int k=0;k<SignInfoAngleNum;k++)
-                                        {
-                                                if(PresciseAngle[k]==-1)
-                                                PresciseAngle[k]=k*SignInfoDistanceMuti;
-                                        }
-                                        Tmp=SignatureFindPolygonWPA(TmpParallelogramData,Signature,PresciseAngle);
-                                        for(int k=0;k<Tmp;k++)
-                                        {
-                                                ParallelogramData[2+2*k+0]=
-                                                TmpParallelogramData[FindPolygonVertexS+2*k+0];
-                                                ParallelogramData[2+2*k+1]=
-                                                TmpParallelogramData[FindPolygonVertexS+2*k+1];
-                                        }
-                                        ParallelogramData[2+2*Tmp]=0;
-
-                                        FindCounter++;
-                                        ParallelogramData+=(Tmp+1)*2+1;
-
-
-
-                        }
-
-                }
-        }
-        return FindCounter;
 }
 
 #endif

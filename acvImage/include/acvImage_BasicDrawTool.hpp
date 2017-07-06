@@ -1,7 +1,10 @@
-#ifndef  acvImage_HeaderIncludeFlag
-        #include "acvImage_BasicTool.cpp"
-#endif
-#include "math.h"
+#ifndef ACV_IMG_BASIC_DRAW_TOOL_H
+#define ACV_IMG_BASIC_DRAW_TOOL_H
+#include <math.h>
+#include <vector>
+#include "acvImage_BasicTool.hpp"
+
+
 
 int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE LineR,BYTE LineG,BYTE LineB)
 {
@@ -305,77 +308,6 @@ void acvDrawDots(acvImage *Pic,int* Dots,int XMin,int XMax,double YMin,double YM
 
 
 
-void acvDrawDots(acvImage *Pic,DyArray<int>* Dots,int XMin,int XMax,double YMin,double YMax,BYTE LineR,BYTE LineG,BYTE LineB)
-{
-        int     i,PicWidth,PicHeight,SampleDots;
-        int     PriX,NowX;
-        double  PriY,NowY;
-        double  XRatio,YRatio;
-        if(XMax<=XMin||YMax<=YMin)goto Exit;
-        //Dots+=XMin;
-        XMax-=XMin;
-
-
-
-        SampleDots=XMax+1;
-        PicWidth=Pic->GetWidth();
-        PicHeight=Pic->GetHeight();
-        YRatio=(double)PicHeight/(YMax-YMin);
-        if(SampleDots<PicWidth)
-        {
-                PriX=0; PriY=PicHeight-YRatio*(*(int*)Dots->GetPointer(XMin)-YMin);
-                for(i=1;i<SampleDots;i++)
-                {
-                         
-                        NowX=i*PicWidth/(SampleDots-1);
-                        NowY=PicHeight-YRatio*(*(int*)Dots->GetPointer(i+XMin)-YMin);
-                        if(PriY<0)
-                        {
-                                if(NowY!=PriY&&NowY>-1)
-                                        acvDrawLine(Pic,PriX+(NowX-PriX)*(PriY)/(PriY-NowY),0,NowX,NowY,LineR,LineG,LineB);
-                        }
-                        else if(PriY>=PicHeight)
-                        {
-                                if(NowY!=PriY&&NowY<PicHeight)
-                                        acvDrawLine(Pic,PriX+(NowX-PriX)*(PicHeight-PriY)/(NowY-PriY),PicHeight-1,NowX,NowY,LineR,LineG,LineB);
-                        }
-                        else    acvDrawLine(Pic,PriX,PriY,NowX,NowY,LineR,LineG,LineB);
-                        PriX=NowX;
-                        PriY=NowY;
-                }
-        }
-        else
-        {
-                PriY=PicHeight-YRatio*(*(int*)Dots->GetPointer(XMin)-YMin);
-                for(i=1;i<PicWidth;i++)
-                {
-                        NowY=PicHeight-YRatio*(*(int*)Dots->GetPointer(i*SampleDots/PicWidth+XMin)-YMin);
-                        if(PriY<0)
-                        {
-                                if(NowY>-1)
-                                if(-PriY>NowY)acvDrawLine(Pic,i  ,0,i,NowY,LineR,LineG,LineB);
-                                else          acvDrawLine(Pic,i-1,0,i,NowY,LineR,LineG,LineB);
-                        }
-                        else if(PriY>=PicHeight)
-                        {
-                                if(NowY<PicHeight)
-                                if(PriY-PicHeight>PicHeight-NowY)
-                                             acvDrawLine(Pic,i-1,PicHeight-1,i-1,NowY,LineR,LineG,LineB);
-                                else         acvDrawLine(Pic,i-1,PicHeight-1,i  ,NowY,LineR,LineG,LineB);
-                        }
-                        else    acvDrawLine(Pic,i-1,PriY,i,NowY,LineR,LineG,LineB);
-                        PriY=NowY;
-                }
-                NowY=PicHeight-YRatio*(*(int*)Dots->GetPointer(i*SampleDots/PicWidth+XMin)-YMin);
-                if(PriY<0)PriY=0;
-                else if(PriY>=PicHeight)PriY=PicHeight-1;
-                acvDrawLine(Pic,i-1,PriY,i,NowY,LineR,LineG,LineB);
-        }
-        Exit:;
-}
-
-
-
 
 int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2)
 {
@@ -475,7 +407,7 @@ void acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2,int LineWidth)
                 YVi=-(X2-X1)*i/DotNum;
                 if(YVi!=PriYVi&&XVi!=PriXVi)
                 {
-                            
+
                         acvDrawLine(Pic,X1+PriXVi,Y1+YVi,
                         X2+PriXVi,Y2+YVi);
                         acvDrawLine(Pic,X1-PriXVi,Y1-YVi,
@@ -515,7 +447,7 @@ void acvDrawDots(acvImage *Pic,const double* Dots,int XMin,int XMax,double YMin,
                 PriX=0; PriY=PicHeight-YRatio*(Dots[0]-YMin);
                 for(i=1;i<SampleDots;i++)
                 {
-                         
+
                         NowX=i*PicWidth/(SampleDots);
                         NowY=PicHeight-YRatio*(Dots[i]-YMin);
 
@@ -558,74 +490,6 @@ void acvDrawDots(acvImage *Pic,const double* Dots,int XMin,int XMax,double YMin,
                         PriY=NowY;
                 }
                 NowY=PicHeight-YRatio*(Dots[i*SampleDots/PicWidth]-YMin);
-                if(PriY<0)PriY=0;
-                else if(PriY>=PicHeight)PriY=PicHeight-1;
-                acvDrawLine(Pic,i-1,PriY,i,NowY);
-        }
-        Exit:;
-}
-void acvDrawDots(acvImage *Pic,DyArray<int>* Dots,int XMin,int XMax,double YMin,double YMax)
-{
-        int     i,PicWidth,PicHeight,SampleDots;
-        int     PriX,NowX;
-        double  PriY,NowY;
-        double  XRatio,YRatio;
-        if(XMax<=XMin||YMax<=YMin)goto Exit;
-        //Dots+=XMin;
-        XMax-=XMin;
-
-
-
-        SampleDots=XMax+1;
-        PicWidth=Pic->GetWidth();
-        PicHeight=Pic->GetHeight();
-        YRatio=(double)PicHeight/(YMax-YMin);
-        if(SampleDots<PicWidth)
-        {
-                PriX=0; PriY=PicHeight-YRatio*(*(int*)Dots->GetPointer(XMin)-YMin);
-                for(i=1;i<SampleDots;i++)
-                {
-                         
-                        NowX=i*PicWidth/(SampleDots);
-                        NowY=PicHeight-YRatio*(*(int*)Dots->GetPointer(i+XMin)-YMin);
-                        if(PriY<0)
-                        {
-                                if(NowY!=PriY&&NowY>-1)
-                                        acvDrawLine(Pic,PriX+(NowX-PriX)*(PriY)/(PriY-NowY),0,NowX,NowY);
-                        }
-                        else if(PriY>=PicHeight)
-                        {
-                                if(NowY!=PriY&&NowY<PicHeight)
-                                        acvDrawLine(Pic,PriX+(NowX-PriX)*(PicHeight-PriY)/(NowY-PriY),PicHeight-1,NowX,NowY);
-                        }
-                        else    acvDrawLine(Pic,PriX,PriY,NowX,NowY);
-                        PriX=NowX;
-                        PriY=NowY;
-                }
-        }
-        else
-        {
-                PriY=PicHeight-YRatio*(*(int*)Dots->GetPointer(XMin)-YMin);
-                for(i=1;i<PicWidth;i++)
-                {
-                        NowY=PicHeight-YRatio*( *(int*)Dots->GetPointer(i*SampleDots/PicWidth+XMin)-YMin);
-                        if(PriY<0)
-                        {
-                                if(NowY>-1)
-                                if(-PriY>NowY)acvDrawLine(Pic,i,0,i,NowY);
-                                else          acvDrawLine(Pic,i-1,0,i,NowY);
-                        }
-                        else if(PriY>=PicHeight)
-                        {
-                                if(NowY<PicHeight)
-                                if(PriY-PicHeight>PicHeight-NowY)
-                                              acvDrawLine(Pic,i-1,PicHeight-1,i-1,NowY);
-                                else          acvDrawLine(Pic,i-1,PicHeight-1,i,NowY);
-                        }
-                        else    acvDrawLine(Pic,i-1,PriY,i,NowY);
-                        PriY=NowY;
-                }
-                NowY=PicHeight-YRatio*( *(int*)Dots->GetPointer(i*SampleDots/PicWidth+XMin)-YMin);
                 if(PriY<0)PriY=0;
                 else if(PriY>=PicHeight)PriY=PicHeight-1;
                 acvDrawLine(Pic,i-1,PriY,i,NowY);
@@ -702,7 +566,4 @@ void acvDrawReverseFillBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2)
         DrawLine(Pic,X1,Y2,X2,Y2);*/
 }
 
-
-
-
-
+#endif

@@ -100,6 +100,10 @@ class acvImage
                         CVector=NULL;
                 }
         }
+        ~acvImage()
+        {
+          FreeImage();
+        }
         private:
 
         void RESIZE(int SetWidth,int SetHeight)

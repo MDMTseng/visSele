@@ -447,4 +447,113 @@ void bubblesortTopGroup(SORTType *Data,int GroupL,int GroupKey,int TopNum,SORTTy
     }
 }
 
+
+#pragma pack(push, 1)
+
+typedef struct tagBITMAPFILEHEADER
+{
+    __int16_t bfType;  //specifies the file type
+    __int32_t bfSize;  //specifies the size in bytes of the bitmap file
+    __int32_t bfReserved;  //reserved; must be 0
+    __int32_t bOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
+}BITMAPFILEHEADER;
+typedef struct tagBITMAPINFOHEADER
+{
+    __int32_t biSize;  //specifies the number of bytes required by the struct
+    __int32_t biWidth;  //specifies width in pixels
+    __int32_t biHeight;  //species height in pixels
+    __int16_t biPlanes; //specifies the number of color planes, must be 1
+    __int16_t biBitCount; //specifies the number of bit per pixel
+    __int32_t biCompression;//spcifies the type of compression
+    __int32_t biSizeImage;  //size of image in bytes
+    __int32_t biXPelsPerMeter;  //number of pixels per meter in x axis
+    __int32_t biYPelsPerMeter;  //number of pixels per meter in y axis
+    __int32_t biClrUsed;  //number of colors used by th ebitmap
+    __int32_t biClrImportant;  //number of colors that are important
+}BITMAPINFOHEADER;
+
+#pragma pack(pop)
+
+
+unsigned int LoadBitmapFile(acvImage *img,char *filename, BITMAPINFOHEADER *bitmapInfoHeader)
+{
+    FILE *filePtr; //our file pointer
+    BITMAPFILEHEADER bitmapFileHeader; //our bitmap file header
+    int imageIdx=0;  //image index counter
+    unsigned char tempRGB;  //our swap variable
+
+    //open filename in read binary mode
+    filePtr = fopen(filename,"rb");
+    if (filePtr == NULL)
+        return -1;
+
+    //read the bitmap file header
+    fread(&bitmapFileHeader, sizeof(BITMAPFILEHEADER),1,filePtr);
+
+    //verify that this is a bmp file by check bitmap id
+    if (bitmapFileHeader.bfType !=0x4D42)
+    {
+        fclose(filePtr);
+        return -1;
+    }
+
+    //read the bitmap info header
+    fread(bitmapInfoHeader, sizeof(BITMAPINFOHEADER),1,filePtr); // small edit. forgot to add the closing bracket at sizeof
+
+    //move file point to the begging of bitmap data
+    fseek(filePtr, bitmapFileHeader.bOffBits, SEEK_SET);
+
+
+    img->ReSize(bitmapInfoHeader->biWidth,bitmapInfoHeader->biHeight);
+    //read in the bitmap image data
+    fread(img->ImageData,bitmapInfoHeader->biSizeImage,1,filePtr);
+
+
+
+    //close file and return bitmap iamge data
+    fclose(filePtr);
+    return 0;
+}
+
+/*
+unsigned char *LoadBitmapFile(acvImage *img, char *filename, )
+{
+    FILE *filePtr; //our file pointer
+    BITMAPFILEHEADER bitmapFileHeader; //our bitmap file header
+    BITMAPINFOHEADER bitmapInfoHeader;
+    int imageIdx=0;  //image index counter
+    unsigned char tempRGB;  //our swap variable
+
+    //open filename in read binary mode
+    filePtr = fopen(filename,"rb");
+    if (filePtr == NULL)
+        return NULL;
+
+    //read the bitmap file header
+    fread(&bitmapFileHeader, sizeof(BITMAPFILEHEADER),1,filePtr);
+
+    //verify that this is a bmp file by check bitmap id
+    if (bitmapFileHeader.bfType !=0x4D42)
+    {
+        fclose(filePtr);
+        return NULL;
+    }
+
+    //read the bitmap info header
+    fread(&bitmapInfoHeader, sizeof(BITMAPINFOHEADER),1,filePtr); // small edit. forgot to add the closing bracket at sizeof
+
+    img->ReSize(bitmapInfoHeader.biWidth,bitmapInfoHeader.biHeight);
+    //move file point to the begging of bitmap data
+    fseek(filePtr, bitmapFileHeader.bfOffBits, SEEK_SET);
+
+
+
+    //read in the bitmap image data
+    fread(img->ImageData,bitmapInfoHeader->biSizeImage,filePtr);
+
+    //close file and return bitmap iamge data
+    fclose(filePtr);
+    return bitmapImage;
+}*/
+
 #endif

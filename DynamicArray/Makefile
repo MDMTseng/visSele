@@ -1,6 +1,6 @@
 OBJECTS = hw.o
 LIB=
-INC=-IacvImage/include/ -IDynamicArray/include
+INC=-IacvImage/include/
 default: doCompile
 
 FLAGs=-w

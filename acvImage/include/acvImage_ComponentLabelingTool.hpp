@@ -23,6 +23,7 @@ typedef union _24BitUnion
 //Num  0000_0000       0000_0000       0000_0000
 //Num0 0000_0000  Num1 0000_0000  Num2 0000_0000
 
+/*
 #ifndef LabelingBy4OrM_
 #define LabelingBy4OrM_ 1          //1 ->  4-adjacency      0->  m-adjacency
 #endif
@@ -945,3 +946,7 @@ int acvThresholdArea(acvImage *LabeledPic,DyArray<int> * Information,int Valve) 
 
         return Num;
 }
+*/
+
+
+#endif
