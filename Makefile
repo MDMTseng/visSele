@@ -1,12 +1,10 @@
-OBJECTS = hw.o
-LIB=
-INC=-IacvImage/include/ -IDynamicArray/include
-default: doCompile
 
-FLAGs=-w
+target_bin=visSele
+ODIR=obj
+IDIR=acvImage/include/ ./
+_OBJ = hw.o
+EXT_OBJS= $(shell find acvImage/obj/*)
+SUB_MAKEFILES = acvImage
+MakeTemplate:= $(shell pwd)/MakeFile.in
 
-%.o: %.c
-	g++  -Wall $(FLAGs) $(LIB) $(INC) -c $< -o $@
-
-doCompile: $(OBJECTS)
-	g++  -Wall $(FLAGs) $(LIB) $(INC) $(OBJECTS) -o $@
+include $(MakeTemplate)

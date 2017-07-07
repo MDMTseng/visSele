@@ -1,6 +1,6 @@
-#ifndef  acvImage_HeaderIncludeFlag
-        #include "acvImage_BasicTool.cpp"
-#endif
+
+#include "acvImage.hpp"
+#include <math.h>
 
 
 
@@ -58,7 +58,7 @@ void acvbEdgeDetect(acvImage *OutPic,acvImage *OriPic)
 
 }
 
-void acvSmooth(acvImage *BuffPic,acvImage *Pic,int Size) 
+void acvSmooth(acvImage *BuffPic,acvImage *Pic,int Size)
 {
     int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
 
@@ -236,7 +236,7 @@ void acvSFilter_De(acvImage *Pic,BYTE Valve)
          TmpPixel=(Pic->CVector[i][3*(j-1)]+Pic->CVector[i][3*(j+1)]
                 +Pic->CVector[i-1][3*j]+Pic->CVector[i+1][3*j]);
 
-        if(abs(Pic->CVector[i][3*(j)]*4-TmpPixel)>Valve)
+        if(fabs(Pic->CVector[i][3*(j)]*4-TmpPixel)>Valve)
                 Pic->CVector[i][3*j]=TmpPixel/4;
     }
 
@@ -255,7 +255,7 @@ void acvDEGFilter_Separate(acvImage *BuffPic,acvImage *Pic,BYTE Valve,int Channe
                 //TmpPixel=a=0;
 
                 for(k=-DEGDim;k<DEGDim+1;k++)   if(i+k<0||i+k>=Pic->GetHeight())        continue;
-                //if(abs(Pic->CVector[i][3*(j)]-Pic->CVector[i+k][3*(j+l)])<=Valve)
+                //if(fabs(Pic->CVector[i][3*(j)]-Pic->CVector[i+k][3*(j+l)])<=Valve)
                 else if(Pic->CVector[i][3*(j)+ Channel]-Pic->CVector[i+k][3*j+ Channel]>=-Valve
                        &&Pic->CVector[i][3*j+ Channel]-Pic->CVector[i+k][3*j+ Channel]<=Valve)
                 {
@@ -277,7 +277,7 @@ void acvDEGFilter_Separate(acvImage *BuffPic,acvImage *Pic,BYTE Valve,int Channe
                 //TmpPixel=a=0;
 
                 for(l=-DEGDim;l<DEGDim+1;l++)   if(j+l<0||j+l>=Pic->GetWidth())        continue;
-                //if(abs(Pic->CVector[i][3*(j)]-Pic->CVector[i+k][3*(j+l)])<=Valve)
+                //if(fabs(Pic->CVector[i][3*(j)]-Pic->CVector[i+k][3*(j+l)])<=Valve)
                 else if(Pic->CVector[i][3*(j)+ Channel]-BuffPic->CVector[i][3*(j+l)+ Channel]>=-Valve
                        &&Pic->CVector[i][3*(j)+ Channel]-BuffPic->CVector[i][3*(j+l)+ Channel]<=Valve)
                 {
@@ -593,7 +593,7 @@ void acvDeSingularFilter(acvImage *OutPic,acvImage *OriPic,BYTE Valve)
                                 }
                         }
                         else
-                        {  
+                        {
                                 if(MinErr>TmpErr)
                                 {
                                         MinErr=TmpErr;
@@ -604,7 +604,7 @@ void acvDeSingularFilter(acvImage *OutPic,acvImage *OriPic,BYTE Valve)
                 if(MinErr>Valve)
                         OutPic->CVector[i][3*j]=MinErrPixel;
                 else
-                        
+
                         OutPic->CVector[i][3*j]=OriPic->CVector[i][3*j];
 
 
@@ -620,7 +620,7 @@ void acvErrorFilter(acvImage *OutPic,acvImage *OriPic,BYTE Valve)
     {
                 ErrorNum=0;
                 for(k=-ErDim;k<ErDim+1;k++)for(l=-ErDim;l<ErDim+1;l++)
-                if(abs(OriPic->CVector[i][3*(j)]-OriPic->CVector[i+k][3*(j+l)])>Valve)
+                if(fabs(OriPic->CVector[i][3*(j)]-OriPic->CVector[i+k][3*(j+l)])>Valve)
                 {ErrorNum++;
                         if(ErrorNum>MaskDim-ErDim-5)
                         goto Out2Loops;
@@ -725,7 +725,7 @@ void acvGEdgeDetect(acvImage *OutPic,acvImage *OriPic)
 
     for(i=0;i<OriPic->GetHeight()-1;i++)for(j=0;j<OriPic->GetWidth()-1;j++)
     {
-        
+
         TmpSub1=OriPic->CVector[i][3*j]-OriPic->CVector[i][3*(j+1)];
 
         TmpSub2=OriPic->CVector[i][3*j]-OriPic->CVector[i+1][3*j  ];
@@ -951,11 +951,10 @@ void acvHEdgeDetect(acvImage *OutPic,acvImage *OriPic)    //Hue 000~126 127~251
         Sub=OriPic->CVector[i][3*j+2]-OriPic->CVector[i+1][3*(j)+2];
         if(Sub<0)Sub=-Sub;
         if(Sub>127)Sub=251-Sub;
-        if(Sub>MaxSub) 
+        if(Sub>MaxSub)
                 MaxSub=Sub;
 
         OutPic->CVector[i][3*j]=MaxSub;
     }
 
 }
-
