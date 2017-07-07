@@ -7,4 +7,4 @@ _OBJ = acvImage.opp acvImage_BasicTool.opp acvImage_BasicDrawTool.opp\
  acvImage_SpDomainTool.opp
 
 
-include $(MakeTemplate)
+include ../MakeFile.in

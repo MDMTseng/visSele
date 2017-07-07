@@ -3,29 +3,29 @@
 #include "acvImage.hpp"
 
 
-
+#pragma pack(push,1)
 typedef struct __attribute__((__packed__)) tagBITMAPFILEHEADER
 {
-    __int16_t bfType;  //specifies the file type
-    __int32_t bfSize;  //specifies the size in bytes of the bitmap file
-    __int32_t bfReserved;  //reserved; must be 0
-    __int32_t bOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
+    int16_t bfType;  //specifies the file type
+    int32_t bfSize;  //specifies the size in bytes of the bitmap file
+    int32_t bfReserved;  //reserved; must be 0
+    int32_t bOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
 }BITMAPFILEHEADER;
 typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
 {
-    __int32_t biSize;  //specifies the number of bytes required by the struct
-    __int32_t biWidth;  //specifies width in pixels
-    __int32_t biHeight;  //species height in pixels
-    __int16_t biPlanes; //specifies the number of color planes, must be 1
-    __int16_t biBitCount; //specifies the number of bit per pixel
-    __int32_t biCompression;//spcifies the type of compression
-    __int32_t biSizeImage;  //size of image in bytes
-    __int32_t biXPelsPerMeter;  //number of pixels per meter in x axis
-    __int32_t biYPelsPerMeter;  //number of pixels per meter in y axis
-    __int32_t biClrUsed;  //number of colors used by th ebitmap
-    __int32_t biClrImportant;  //number of colors that are important
+    int32_t biSize;  //specifies the number of bytes required by the struct
+    int32_t biWidth;  //specifies width in pixels
+    int32_t biHeight;  //species height in pixels
+    int16_t biPlanes; //specifies the number of color planes, must be 1
+    int16_t biBitCount; //specifies the number of bit per pixel
+    int32_t biCompression;//spcifies the type of compression
+    int32_t biSizeImage;  //size of image in bytes
+    int32_t biXPelsPerMeter;  //number of pixels per meter in x axis
+    int32_t biYPelsPerMeter;  //number of pixels per meter in y axis
+    int32_t biClrUsed;  //number of colors used by th ebitmap
+    int32_t biClrImportant;  //number of colors that are important
 }BITMAPINFOHEADER;
-
+#pragma pack(pop)
 
 
 void acvThreshold(acvImage *Pic,BYTE Var);

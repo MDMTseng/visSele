@@ -29,7 +29,7 @@ void printImgAscii(acvImage *img,int printwidth)
 
 int main()
 {
-
+  printf(">>>");
   acvImage *ss = new acvImage();
   acvImage *buff = new acvImage();
   int ret=0;

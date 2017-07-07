@@ -7,4 +7,4 @@ EXT_OBJS= $(shell find acvImage/obj/*)
 SUB_MAKEFILES = acvImage
 MakeTemplate:= $(shell pwd)/MakeFile.in
 
-include $(MakeTemplate)
+include MakeFile.in
