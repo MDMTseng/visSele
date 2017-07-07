@@ -1072,10 +1072,12 @@ void acvComponentLabelingX(acvImage *Pic)//,DyArray<int> * Information)
                                 {
                                         NowLable._3Byte.Num++;
                                         if(acvDrawContourP(Pic,j,i,
-                                        NowLable.Byte3.Num0,
-                                        NowLable.Byte3.Num1,
-                                        NowLable.Byte3.Num2,5)==-1)
-                                        NowLable._3Byte.Num--;
+                                          NowLable.Byte3.Num0,
+                                          NowLable.Byte3.Num1,
+                                          NowLable.Byte3.Num2,5)==-1)
+                                        {
+                                          NowLable._3Byte.Num--;
+                                        }
 
                                 }
                         }
@@ -1115,21 +1117,21 @@ void acvComponentLabelingSim(acvImage *Pic)//,DyArray<int> * Information)
                         Pic->CVector[i][3*j+1]||
                         Pic->CVector[i][3*j+2]))
                         {
-                                if(Pic->CVector[i-1][3*j]!=255)
-                                {
-                                        acvDrawContour(Pic,j,i,
-                                        Pic->CVector[i-1][3*j],
-                                        Pic->CVector[i-1][3*j+1],
-                                        Pic->CVector[i-1][3*j+2],5);
-                                }
-                                else
-                                {
+                                if(Pic->CVector[i-1][3*j]==255)
+                                {//outer contour
                                         NowLable._3Byte.Num++;
                                         acvDrawContour(Pic,j,i,
                                         NowLable.Byte3.Num0,
                                         NowLable.Byte3.Num1,
                                         NowLable.Byte3.Num2,5);
 
+                                }
+                                else
+                                {//inner contour
+                                        acvDrawContour(Pic,j,i,
+                                        Pic->CVector[i-1][3*j],
+                                        Pic->CVector[i-1][3*j+1],
+                                        Pic->CVector[i-1][3*j+2],5);
                                 }
                         }
                 }
