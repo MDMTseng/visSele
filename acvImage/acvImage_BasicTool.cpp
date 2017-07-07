@@ -30,33 +30,38 @@ void acvThreshold(acvImage *Pic,BYTE Var)
 }
 
 
-void acvDeletFrame(acvImage *Pic)
+void acvDeletFrame(acvImage *Pic,int line_width)
 {
     int Xoffset=Pic->GetROIOffsetX(),
         Yoffset=Pic->GetROIOffsetY(),
         Height=Yoffset+ Pic->GetHeight(),
         Width =Xoffset+Pic->GetWidth() ;
-
-    for(int i=Yoffset;i<Height;i++)
+    for(int k=0;k<line_width;k++)
     {
-         Pic->CVector[i][3*Xoffset+0]=
-         Pic->CVector[i][3*Xoffset+1]=
-         Pic->CVector[i][3*Xoffset+2]=
-         Pic->CVector[i][3*Width-1]=
-         Pic->CVector[i][3*Width-2]=
-         Pic->CVector[i][3*Width-3]=255;
-    }
-    for(int i=Xoffset;i<Width;i++)
-    {
-         Pic->CVector[Yoffset][3*i+1]=
-         Pic->CVector[Yoffset][3*i+0]=
-         Pic->CVector[Yoffset][3*i+2]=
-         Pic->CVector[Height-1][3*i+1]=
-         Pic->CVector[Height-1][3*i+0]=
-         Pic->CVector[Height-1][3*i+2]=255;
+      for(int i=Yoffset;i<Height;i++)
+      {
+           Pic->CVector[i][3*(Xoffset+k)+0]=
+           Pic->CVector[i][3*(Xoffset+k)+1]=
+           Pic->CVector[i][3*(Xoffset+k)+2]=
+           Pic->CVector[i][3*(Width-k)-1]=
+           Pic->CVector[i][3*(Width-k)-2]=
+           Pic->CVector[i][3*(Width-k)-3]=255;
+      }
+      for(int i=Xoffset+line_width;i<Width-line_width;i++)
+      {
+           Pic->CVector[Yoffset+k][3*i+1]=
+           Pic->CVector[Yoffset+k][3*i+0]=
+           Pic->CVector[Yoffset+k][3*i+2]=
+           Pic->CVector[Height-k-1][3*i+1]=
+           Pic->CVector[Height-k-1][3*i+0]=
+           Pic->CVector[Height-k-1][3*i+2]=255;
+      }
     }
 }
-
+void acvDeletFrame(acvImage *Pic)
+{
+    acvDeletFrame(Pic,1);
+}
 
 void acvClear(acvImage *Pic,BYTE Var)
 {

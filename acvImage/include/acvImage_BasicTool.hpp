@@ -29,6 +29,7 @@ typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
 
 
 void acvThreshold(acvImage *Pic,BYTE Var);
+void acvDeletFrame(acvImage *Pic,int width);
 void acvDeletFrame(acvImage *Pic);
 void acvClear(acvImage *Pic,BYTE Var);
 void acvTurn(acvImage *Pic);

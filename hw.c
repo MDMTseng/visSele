@@ -38,7 +38,6 @@ int main()
   ret=LoadBitmapFile(ss,"data/test1.bmp");
   ss->RGBToGray();
 
-  ret=SaveBitmapFile("data/uu_gray.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
   buff->ReSize(ss->GetWidth(),ss->GetHeight());
   //printf("%s\n",PrintHexArr((char*)ss->CVector[0], 10*4));
   //printf("%s\n",PrintHexArr((char*)ss->CVector[1], 10*4));
@@ -47,13 +46,16 @@ int main()
   acvSmooth(buff,ss,4);
   //printImgAscii(ss,30);
   acvThreshold(ss,200);
+  acvDrawCrossX(ss,200,200,12,0,0,0,7);
+  acvbErosion(buff,ss,3);
+  acvbDilation(buff,ss,3);
+  acvCloneImage(ss,ss,0);
 
-  //acvbErosion(buff,ss,10);
-  //acvbDilation(buff,ss,10);
-  //acvCloneImage(ss,ss,0);
+  ret=SaveBitmapFile("data/uu_pre_X.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
+  acvDeletFrame(ss,5);
   acvComponentLabelingSim(ss);
-  acvLabeledColorDispersion(ss,ss,55);
+  acvLabeledColorDispersion(ss,ss,15);
   ret=SaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
   delete(ss);
