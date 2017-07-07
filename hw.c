@@ -19,8 +19,8 @@ void printImgAscii(acvImage *img,int printwidth)
           {
             int tmp = (255-ImLine[3*j])*(sizeof(grayAscii)-2)/255;
             char c = grayAscii[tmp];
-            printf("%02x ",ImLine[3*j+2]);
-            //putchar(c);putchar(' ');
+            //printf("%02x ",ImLine[3*j+2]);
+            putchar(c);putchar(' ');
           }
           putchar('\n');
   }
@@ -36,26 +36,28 @@ int main()
   ss->SetROI(0,0,5,5);
   BITMAPINFOHEADER bitmapInfoHeader;
   ret=LoadBitmapFile(ss,"data/test1.bmp");
+  ss->RGBToGray();
+
+  ret=SaveBitmapFile("data/uu_gray.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
   buff->ReSize(ss->GetWidth(),ss->GetHeight());
   //printf("%s\n",PrintHexArr((char*)ss->CVector[0], 10*4));
   //printf("%s\n",PrintHexArr((char*)ss->CVector[1], 10*4));
 
   acvThreshold(ss,200);
   acvSmooth(buff,ss,4);
-  acvThreshold(ss,128);
+  //printImgAscii(ss,30);
+  acvThreshold(ss,200);
 
   //acvbErosion(buff,ss,10);
   //acvbDilation(buff,ss,10);
-  acvCloneImage(ss,ss,0);
+  //acvCloneImage(ss,ss,0);
 
   acvComponentLabelingSim(ss);
-  printImgAscii(ss,30);
-  acvLabeledColorDispersion(ss,ss,5);
+  acvLabeledColorDispersion(ss,ss,55);
   ret=SaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
-
-
   delete(ss);
+  delete(buff);
   // printf() displays the string inside quotation
   printf("Hello, World! %d",ret);
   return 0;

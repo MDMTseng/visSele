@@ -340,7 +340,6 @@ unsigned int LoadBitmapFile(acvImage *img,char *filename)
     unsigned char * bmp_ptr = bitmap;
     int BpP = biBitCount/8;
     int padding4Skip=(4-((img->GetWidth()*BpP)%4))%4;
-    printf("padding4Skip:%d\n",padding4Skip);
 
     for(int i=img->GetROIOffsetY();i<img->GetHeight();i++)
     {unsigned char *ImLine;

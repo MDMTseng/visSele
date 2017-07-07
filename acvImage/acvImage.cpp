@@ -219,7 +219,7 @@ void acvImage::RGBToGray()
                 {
 
                        ImLine[0]=ImLine[1]=ImLine[2]=
-                                (ImLine[0]+6*ImLine[1]+3*ImLine[2])/10;
+                                (ImLine[0]+2*ImLine[1]+ImLine[2])/4;
                        ImLine+=3;
                 }
         }
