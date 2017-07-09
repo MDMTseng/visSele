@@ -28,14 +28,14 @@ void acvThreshold(acvImage *Pic,BYTE Var)
 
     }
 }
-double acvFATan(double x)
+double acvFAtan(double x)
 {
   double absx = fabs(x);
   return x*(M_PI_4-(absx - 1)*(0.2447 + 0.0663*absx));
 }
 
 
-double acvFATan2( double y, double x )
+double acvFAtan2( double y, double x )
 {
 
   /*if(x==0)return y < 0 ? -M_PI_2 : M_PI_2;
@@ -43,7 +43,7 @@ double acvFATan2( double y, double x )
 	double atan;
 	if ( fabs(x)>fabs(y) )
 	{
-		atan = acvFATan(y/x);
+		atan = acvFAtan(y/x);
 		if ( x < 0.0f )
 		{
 			if ( y < 0.0f ) return atan - M_PI;
@@ -53,7 +53,7 @@ double acvFATan2( double y, double x )
 	}
 	else
 	{
-		atan = M_PI_2 - acvFATan(x/y);
+		atan = M_PI_2 - acvFAtan(x/y);
 		if ( y < 0.0f ) return atan - M_PI;
     return atan;
 	}

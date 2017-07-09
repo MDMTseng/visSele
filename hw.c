@@ -33,10 +33,10 @@ int main()
   clock_t t;
   t = clock();
 
-      for(int i=0;i<10000000;i++)
-      {
-        acvFATan2(i,5);
-      }
+  for(int i=0;i<10000000;i++)
+  {
+    acvFAtan2(i,5);
+  }
   t = clock() - t;
   double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds
 
