@@ -41,23 +41,27 @@ double acvFAtan2( double y, double x )
   /*if(x==0)return y < 0 ? -M_PI_2 : M_PI_2;
   if(y==0)return 0;*/
 	double atan;
-	if ( fabs(x)>fabs(y) )
-	{
+	if ( fabs(x)>fabs(y) ){
 		atan = acvFAtan(y/x);
-		if ( x < 0.0f )
-		{
-			if ( y < 0.0f ) return atan - M_PI;
-			return atan + M_PI;
+		if ( x < 0.0f ){
+			if ( y < 0.0f ){
+        return atan - M_PI;
+      }
+      else{
+			  return atan + M_PI;
+      }
 		}
     return atan;
 	}
-	else
-	{
-		atan = M_PI_2 - acvFAtan(x/y);
-		if ( y < 0.0f ) return atan - M_PI;
-    return atan;
+	else{
+		atan =  acvFAtan(x/y);
+		if ( y < 0.0f ){
+      return -M_PI_2-atan;
+    }
+    else{
+      return M_PI_2-atan;
+    }
 	}
-	return atan;
 }
 
 void acvDeletFrame(acvImage *Pic,int line_width)

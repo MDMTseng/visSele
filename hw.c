@@ -30,17 +30,15 @@ void printImgAscii(acvImage *img,int printwidth)
 
 int main()
 {
-  clock_t t;
-  t = clock();
+  clock_t t= clock();
 
+  printf(">%f %f \n", atan2(-20,-5),acvFAtan2(-20,-5));
   for(int i=0;i<10000000;i++)
   {
     acvFAtan2(i,5);
   }
   t = clock() - t;
-  double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds
-
-  printf("fun() took %f seconds to execute \n", time_taken);
+  printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
 
 
 
