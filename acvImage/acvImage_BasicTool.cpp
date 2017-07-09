@@ -28,26 +28,22 @@ void acvThreshold(acvImage *Pic,BYTE Var)
 
     }
 }
-float acvFastArcTan(float x)
+double acvFATan(double x)
 {
-  float absx = fabs(x);
+  double absx = fabs(x);
   return x*(M_PI_4-(absx - 1)*(0.2447 + 0.0663*absx));
 }
 
 
-float acvFastArcTan2( float y, float x )
+double acvFATan2( double y, double x )
 {
 
-  if(x==0)return y < 0 ? -M_PI_2 : M_PI_2;
-  if(y==0)return 0;
-	float atan;
-  float absx, absy;
-  absy = y < 0 ? -y : y;
-  absx = x < 0 ? -x : x;
-  float val;
-	if ( absx>absy )
+  /*if(x==0)return y < 0 ? -M_PI_2 : M_PI_2;
+  if(y==0)return 0;*/
+	double atan;
+	if ( fabs(x)>fabs(y) )
 	{
-		atan = acvFastArcTan(y/x);
+		atan = acvFATan(y/x);
 		if ( x < 0.0f )
 		{
 			if ( y < 0.0f ) return atan - M_PI;
@@ -57,7 +53,7 @@ float acvFastArcTan2( float y, float x )
 	}
 	else
 	{
-		atan = M_PI_2 - acvFastArcTan(x/y);
+		atan = M_PI_2 - acvFATan(x/y);
 		if ( y < 0.0f ) return atan - M_PI;
     return atan;
 	}

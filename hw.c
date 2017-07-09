@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 
@@ -29,6 +30,20 @@ void printImgAscii(acvImage *img,int printwidth)
 
 int main()
 {
+  clock_t t;
+  t = clock();
+
+      for(int i=0;i<10000000;i++)
+      {
+        acvFATan2(i,5);
+      }
+  t = clock() - t;
+  double time_taken = ((double)t)/CLOCKS_PER_SEC; // in seconds
+
+  printf("fun() took %f seconds to execute \n", time_taken);
+
+
+
   acvImage *ss = new acvImage();
   acvImage *buff = new acvImage();
   int ret=0;
