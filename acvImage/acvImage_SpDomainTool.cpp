@@ -823,43 +823,48 @@ void acvCLaplace(acvImage *OutPic,acvImage *OriPic)
     }
 
 }
-void acvSobel(acvImage *OutPic,acvImage *OriPic)
+
+void acvSobelFilterY(acvImage *res,acvImage *src)
 {
     static int i,j;
     static int TmpPixelH,TmpPixelV;
-
-    for(i=1;i<OriPic->GetHeight()-1;i++)for(j=1;j<OriPic->GetWidth()-1;j++)
+    BYTE *L1,*L2,*L3;
+    for(i=1;i<src->GetHeight()-1;i++)
     {
+      L1=&(src->CVector[i-1][3]);
+      L2=&(src->CVector[i+0][3]);
+      L3=&(src->CVector[i+1][3]);
+      for(j=1;j<src->GetWidth()-1;j++,L1+=3,L2+=3,L3+=3)
+      {
 
 
-        TmpPixelH=2*OriPic->CVector[i-1][3*j]
-                   +OriPic->CVector[i-1][3*(j-1)]
-                   +OriPic->CVector[i-1][3*(j+1)]
-                 -2*OriPic->CVector[i+1][3*j]
-                   -OriPic->CVector[i+1][3*(j-1)]
-                   -OriPic->CVector[i+1][3*(j+1)];
-        TmpPixelV=2*OriPic->CVector[i][3*(j-1)]
-                   +OriPic->CVector[i-1][3*(j-1)]
-                   +OriPic->CVector[i+1][3*(j-1)]
-                 -2*OriPic->CVector[i][3*(j+1)]
-                   -OriPic->CVector[i-1][3*(j+1)]
-                   -OriPic->CVector[i+1][3*(j+1)];
-
-        TmpPixelH=(TmpPixelH<0)?  0:TmpPixelH;
-        TmpPixelV=(TmpPixelV<0)?  0:TmpPixelV;
-        //TmpPixelH=(TmpPixelH>TmpPixelV)?   TmpPixelH:TmpPixelV;
-
-        //TmpPixelH+=TmpPixelV;
-        //if(TmpPixelH>255)TmpPixelH=255;
-
-
-        TmpPixelH=(TmpPixelV+TmpPixelH)/2;
-
-
-
-        OutPic->CVector[i][3*j]=TmpPixelH;
+          TmpPixelH=(L1[-3]+2*L1[0]+L1[+3])-
+                    (L3[-3]+2*L3[0]+L3[+3]);
+          TmpPixelH/=8;
+          res->CVector[i][3*j]=(char)TmpPixelH+128;
+      }
     }
+}
+void acvSobelFilterX(acvImage *res,acvImage *src)
+{
+    static int i,j;
+    static int TmpPixelH,TmpPixelV;
+    BYTE *L1,*L2,*L3;
+    for(i=1;i<src->GetHeight()-1;i++)
+    {
+      L1=&(src->CVector[i-1][3]);
+      L2=&(src->CVector[i+0][3]);
+      L3=&(src->CVector[i+1][3]);
+      for(j=1;j<src->GetWidth()-1;j++,L1+=3,L2+=3,L3+=3)
+      {
 
+
+          TmpPixelV=(L1[-3]+2*L2[-3]+L3[-3])-
+                    (L1[3]+2*L2[3]+L3[+3]);
+          TmpPixelV/=8;
+          res->CVector[i][3*j]=(char)TmpPixelV+128;
+      }
+    }
 }
 
 void acvSGEdgeDetect(acvImage *OutPic,acvImage *OriPic)
