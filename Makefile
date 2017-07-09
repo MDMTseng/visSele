@@ -6,5 +6,5 @@ _OBJ = hw.o
 EXT_OBJS= $(shell find acvImage/obj/*)
 SUB_MAKEFILES = acvImage
 MakeTemplate:= $(shell pwd)/MakeFile.in
-export FLAGS= -w
+export FLAGS= -w -O
 include MakeFile.in

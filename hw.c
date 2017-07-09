@@ -29,7 +29,6 @@ void printImgAscii(acvImage *img,int printwidth)
 
 int main()
 {
-  printf(">>>");
   acvImage *ss = new acvImage();
   acvImage *buff = new acvImage();
   int ret=0;
@@ -45,15 +44,12 @@ int main()
   printImgAscii(ss,70);
   acvThreshold(ss,200);
   acvBoxFilter(buff,ss,2);
-  acvSobelFilterX(buff,ss);
-  acvCloneImage(buff,buff,0);
-  ret=SaveBitmapFile("data/uu_pre_X.bmp",buff->ImageData,ss->GetWidth(),ss->GetHeight());
-  acvThreshold(ss,200);
-  acvDrawCrossX(ss,200,200,12,255,0,0,7);
-  acvbErosion(buff,ss,3);
-  acvbDilation(buff,ss,3);
+  acvHarrisCornorResponse(buff,ss);
   acvCloneImage(ss,ss,0);
-
+  ret=SaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+  acvThreshold(ss,100);
+  //acvDrawCrossX(ss,200,200,12,255,0,0,7);
+  acvTurn(ss);
 
   acvDeletFrame(ss,5);
   acvComponentLabelingSim(ss);

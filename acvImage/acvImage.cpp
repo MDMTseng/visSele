@@ -74,10 +74,17 @@ void acvImage::RESIZE(int SetWidth,int SetHeight)
         FreeImage();
         ImageData=new BYTE[SetWidth*SetHeight*Channel];
         CVector=new BYTE* [SetHeight];
+        ChannelOffset(0);
+
+}
+
+void acvImage::ChannelOffset(int offset)
+{
+        ImageData+=offset;
         CVector[0]=ImageData;
-        for(int i=1;i<SetHeight;i++)
+        for(int i=1;i<RealHeight;i++)
         {
-                CVector[i]=CVector[i-1]+SetWidth*Channel;
+                CVector[i]=CVector[i-1]+RealWidth*Channel;
         }
 
 }

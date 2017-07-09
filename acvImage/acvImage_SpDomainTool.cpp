@@ -57,6 +57,11 @@ void acvbEdgeDetect(acvImage *OutPic,acvImage *OriPic)
 
 }
 
+inline int div_round(int dividend, int divisor)
+{
+    return (dividend + (divisor >>1)) / divisor;
+}
+
 void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
 {
   int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
@@ -77,22 +82,23 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
       for(i=0;i<SizeP1;i++,srcfront+=wx3,resfront+=wx3)
       {
             TmpSum+=*srcfront;
-            *resfront=TmpSum/(j+SizeP1);
+            *resfront=div_round(TmpSum,(j+SizeP1));
       }
       for(;i<height-Size;i++,srcfront+=wx3,resfront+=wx3)
       {
               TmpSum-=*(srcfront-SizeX2Add1*wx3);
               TmpSum+=*srcfront;
-              *resfront=TmpSum/SizeX2Add1;
+              *resfront=div_round(TmpSum,SizeX2Add1);
       }
       for(;i<height;i++,srcfront+=wx3,resfront+=wx3)
       {
             TmpSum-=*(srcfront-SizeX2Add1*wx3);
-            *resfront=TmpSum/(Size+width+j);
+            *resfront=div_round(TmpSum,(Size+width+j));
       }
 
     }
 }
+
 
 void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
 {
@@ -115,19 +121,20 @@ void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
       for(j=0;j<SizeP1;j++,srcfront+=3,resfront+=3)
       {
             TmpSum+=*srcfront;
-            *resfront=TmpSum/(j+SizeP1);
+
+            *resfront=div_round(TmpSum,(j+SizeP1));
       }
       for(;j<width-Size;j++,srcfront+=3,resfront+=3)
       {
 
             TmpSum-=*(srcfront-SizeX2Add1*3);
             TmpSum+=*srcfront;
-            *resfront=TmpSum/SizeX2Add1;
+            *resfront=div_round(TmpSum,SizeX2Add1);
       }
       for(;j<width;j++,srcfront+=3,resfront+=3)
       {
             TmpSum-=*(srcfront-SizeX2Add1*3);
-            *resfront=TmpSum/(Size+width+j);
+            *resfront=div_round(TmpSum,(Size+width+j));
       }
   }
 }
@@ -824,7 +831,7 @@ void acvCLaplace(acvImage *OutPic,acvImage *OriPic)
 
 }
 
-void acvSobelFilterY(acvImage *res,acvImage *src)
+void acvSobelFilter(acvImage *res,acvImage *src)
 {
     static int i,j;
     static int TmpPixelH,TmpPixelV;
@@ -840,11 +847,67 @@ void acvSobelFilterY(acvImage *res,acvImage *src)
 
           TmpPixelH=(L1[-3]+2*L1[0]+L1[+3])-
                     (L3[-3]+2*L3[0]+L3[+3]);
-          TmpPixelH/=8;
-          res->CVector[i][3*j]=(char)TmpPixelH+128;
+          TmpPixelH=TmpPixelH>>3+(TmpPixelH&0x4?1:0);
+          res->CVector[i][3*j]=(char)TmpPixelH;
+
+          TmpPixelV=(L1[-3]+2*L2[-3]+L3[-3])-
+                    (L1[3]+2*L2[3]+L3[+3]);
+          TmpPixelV=TmpPixelV>>3+(TmpPixelV&0x4?1:0);
+          res->CVector[i][3*j+1]=(char)TmpPixelV;
       }
     }
 }
+
+void acvHarrisCornorResponse(acvImage *buff,acvImage *src)
+{
+  acvImage *sobelXY=buff;
+  acvSobelFilter(sobelXY,src);
+  for(int i=0;i<sobelXY->GetHeight();i++)
+  {
+    for(int j=0;j<sobelXY->GetWidth();j++)
+    {
+      int Ix=(char)sobelXY->CVector[i][j*3+0];
+      int Iy=(char)sobelXY->CVector[i][j*3+1];
+      //Ix max = 127  => Ixx=127*127 =adj> Ixx=Ixx/128
+      int tmp;
+      sobelXY->CVector[i][j*3+0]=128+div_round(Ix*Ix,128);//128+(0~126)
+      sobelXY->CVector[i][j*3+1]=128+div_round(Iy*Iy,128);//128+(0~126)
+      sobelXY->CVector[i][j*3+2]=128+div_round(Ix*Iy,128);//128+(-126~126)
+    }
+  }
+
+  acvBoxFilter(src,sobelXY,2);
+  acvBoxFilter(src,sobelXY,2);
+  sobelXY->ChannelOffset(1);
+  acvBoxFilter(src,sobelXY,2);
+  acvBoxFilter(src,sobelXY,2);
+  sobelXY->ChannelOffset(1);
+  acvBoxFilter(src,sobelXY,2);
+  acvBoxFilter(src,sobelXY,2);
+  sobelXY->ChannelOffset(-2);
+  //cim = (Ix2.*Iy2 - Ixy.^2)./(Ix2 + Iy2 + eps);
+  for(int i=0;i<sobelXY->GetHeight();i++)
+  {
+    for(int j=0;j<sobelXY->GetWidth();j++)
+    {
+      float GoIxx=(float)sobelXY->CVector[i][j*3+0]-128;
+      float GoIyy=(float)sobelXY->CVector[i][j*3+1]-128;
+      float GoIxy=(float)sobelXY->CVector[i][j*3+2]-128;
+
+      //cim = (Ix2.*Iy2 - Ixy.^2)./(Ix2 + Iy2 + eps); % Harris corner measure
+      //cim = (Ix2.*Iy2 - Ixy.^2) - k*(Ix2 + Iy2).^2;
+      //float Cim=(float)(GoIxx*GoIyy-GoIxy*GoIxy)/(GoIxx+GoIyy+0.01);
+      float Cim=(float)(GoIxx*GoIyy-GoIxy*GoIxy)-0.1*(GoIxx+GoIyy)*(GoIxx+GoIyy);
+      Cim=Cim*10;
+      if(Cim<0)Cim=0;
+      if(Cim>255)Cim=255;
+      src->CVector[i][j*3+0]=(src->CVector[i][j*3+0]+(BYTE)Cim*7)/8;
+    }
+  }
+
+}
+
+
 void acvSobelFilterX(acvImage *res,acvImage *src)
 {
     static int i,j;

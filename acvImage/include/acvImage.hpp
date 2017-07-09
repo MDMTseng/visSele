@@ -52,6 +52,7 @@ class acvImage
         void SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight);
         void ReSetROI();
 
+        void ChannelOffset(int offset);
         void FreeImage();
         ~acvImage();
         private:
