@@ -28,7 +28,41 @@ void acvThreshold(acvImage *Pic,BYTE Var)
 
     }
 }
+float acvFastArcTan(float x)
+{
+  float absx = fabs(x);
+  return x*(M_PI_4-(absx - 1)*(0.2447 + 0.0663*absx));
+}
 
+
+float acvFastArcTan2( float y, float x )
+{
+
+  if(x==0)return y < 0 ? -M_PI_2 : M_PI_2;
+  if(y==0)return 0;
+	float atan;
+  float absx, absy;
+  absy = y < 0 ? -y : y;
+  absx = x < 0 ? -x : x;
+  float val;
+	if ( absx>absy )
+	{
+		atan = acvFastArcTan(y/x);
+		if ( x < 0.0f )
+		{
+			if ( y < 0.0f ) return atan - M_PI;
+			return atan + M_PI;
+		}
+    return atan;
+	}
+	else
+	{
+		atan = M_PI_2 - acvFastArcTan(x/y);
+		if ( y < 0.0f ) return atan - M_PI;
+    return atan;
+	}
+	return atan;
+}
 
 void acvDeletFrame(acvImage *Pic,int line_width)
 {
@@ -216,8 +250,7 @@ void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode)
 
 int DoubleRoundInt(double Num)
 {
-
-        return (Num>0)? ((Num-(int)Num)<0.5? Num:Num+1):(((int)Num-Num)>0.5? Num-1:Num);
+        return (int)round((float)Num);
 }
 
 

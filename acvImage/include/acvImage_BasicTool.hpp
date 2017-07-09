@@ -33,6 +33,8 @@ void acvDeletFrame(acvImage *Pic,int width);
 void acvDeletFrame(acvImage *Pic);
 void acvClear(acvImage *Pic,BYTE Var);
 void acvTurn(acvImage *Pic);
+float acvFastArcTan2( float y, float x );
+float acvFastArcTan(float x);
 void acvFullB2W(acvImage *OriPic,acvImage *OutPic);
 void acvClone_B2Gray(acvImage *OriPic,acvImage *OutPic);
 void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode);
