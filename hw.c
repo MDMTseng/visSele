@@ -20,7 +20,7 @@ void printImgAscii(acvImage *img,int printwidth)
             int tmp = (255-ImLine[3*j])*(sizeof(grayAscii)-2)/255;
             char c = grayAscii[tmp];
             //printf("%02x ",ImLine[3*j+2]);
-            putchar(c);putchar(' ');
+            putchar(c);
           }
           putchar('\n');
   }
@@ -42,16 +42,21 @@ int main()
   //printf("%s\n",PrintHexArr((char*)ss->CVector[0], 10*4));
   //printf("%s\n",PrintHexArr((char*)ss->CVector[1], 10*4));
 
+  printImgAscii(ss,70);
   acvThreshold(ss,200);
-  acvSmooth(buff,ss,4);
-  //printImgAscii(ss,30);
+  acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,2);
+  acvCloneImage(buff,buff,0);
+  ret=SaveBitmapFile("data/uu_pre_X.bmp",buff->ImageData,ss->GetWidth(),ss->GetHeight());
   acvThreshold(ss,200);
-  acvDrawCrossX(ss,200,200,12,0,0,0,7);
+  acvDrawCrossX(ss,200,200,12,255,0,0,7);
   acvbErosion(buff,ss,3);
   acvbDilation(buff,ss,3);
   acvCloneImage(ss,ss,0);
 
-  ret=SaveBitmapFile("data/uu_pre_X.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
   acvDeletFrame(ss,5);
   acvComponentLabelingSim(ss);

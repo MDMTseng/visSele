@@ -38,7 +38,6 @@ void acvbBottomEdge(acvImage *OutPic,acvImage *OriPic)
 }
 
 
-
 void acvbEdgeDetect(acvImage *OutPic,acvImage *OriPic)
 {
     int i,j;
@@ -58,49 +57,84 @@ void acvbEdgeDetect(acvImage *OutPic,acvImage *OriPic)
 
 }
 
-void acvSmooth(acvImage *BuffPic,acvImage *Pic,int Size)
+void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
 {
-    int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int SizeP1=Size+1;
+  int width = src->GetWidth();
+  int height = src->GetHeight();
+  int wx3 = width*3;
+  BYTE *srcfront;
+  BYTE *resfront;
+  for(j=0;j<width;j++)
+  {
+      TmpSum=0;
+      srcfront=&(src->CVector[0][3*j]);
+      resfront=&(res->CVector[0][3*j]);
+      for(k=0;k<Size;k++,srcfront+=wx3)
+         TmpSum+=*srcfront;
 
+      for(i=0;i<SizeP1;i++,srcfront+=wx3,resfront+=wx3)
+      {
+            TmpSum+=*srcfront;
+            *resfront=TmpSum/(j+SizeP1);
+      }
+      for(;i<height-Size;i++,srcfront+=wx3,resfront+=wx3)
+      {
+              TmpSum-=*(srcfront-SizeX2Add1*wx3);
+              TmpSum+=*srcfront;
+              *resfront=TmpSum/SizeX2Add1;
+      }
+      for(;i<height;i++,srcfront+=wx3,resfront+=wx3)
+      {
+            TmpSum-=*(srcfront-SizeX2Add1*wx3);
+            *resfront=TmpSum/(Size+width+j);
+      }
 
-    for(j=0;j<Pic->GetWidth();j++)
-    {
-        TmpSum=0;
-        for(k=1;k<Size;k++)
-           TmpSum+=Pic->CVector[k][3*j];
-
-        for(i=0;i<Pic->GetHeight();i++)
-        {
-
-
-                if(i>Size+1)
-                    TmpSum-=Pic->CVector[i-Size-1][3*j];
-                if(i+Size<Pic->GetHeight())
-                    TmpSum+=Pic->CVector[i+Size][3*j];
-
-
-                BuffPic->CVector[i][3*j]=TmpSum/SizeX2Add1;
-        }
     }
+}
 
-    for(i=0;i<Pic->GetHeight();i++)
-    {
-        TmpSum=0;
-        for(k=1;k<Size;k++)
-           TmpSum+=BuffPic->CVector[i][3*(k)];
-        for(j=0;j<Pic->GetWidth();j++)
-        {
+void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
+{
+  int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int SizeP1=Size+1;
 
+  int width = src->GetWidth();
+  int height = src->GetHeight();
+  BYTE *srcfront;
+  BYTE *resfront;
+  for(i=0;i<height;i++)
+  {
+      TmpSum=0;
+      srcfront=&(src->CVector[i][0]);
+      resfront=&(res->CVector[i][0]);
+      for(k=0;k<Size;k++,srcfront+=3)
+      {
+         TmpSum+=*srcfront;
+      }
+      for(j=0;j<SizeP1;j++,srcfront+=3,resfront+=3)
+      {
+            TmpSum+=*srcfront;
+            *resfront=TmpSum/(j+SizeP1);
+      }
+      for(;j<width-Size;j++,srcfront+=3,resfront+=3)
+      {
 
-                if(j>Size+1)
-                    TmpSum-=BuffPic->CVector[i][3*(j-Size-1)];
-                if(j+Size<Pic->GetWidth())
-                    TmpSum+=BuffPic->CVector[i][3*(j+Size)];
-
-
-                Pic->CVector[i][3*j]=TmpSum/SizeX2Add1;
-        }
-    }
+            TmpSum-=*(srcfront-SizeX2Add1*3);
+            TmpSum+=*srcfront;
+            *resfront=TmpSum/SizeX2Add1;
+      }
+      for(;j<width;j++,srcfront+=3,resfront+=3)
+      {
+            TmpSum-=*(srcfront-SizeX2Add1*3);
+            *resfront=TmpSum/(Size+width+j);
+      }
+  }
+}
+void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size)
+{
+    acvBoxFilterX(BuffPic,Pic,Size);
+    acvBoxFilterY(Pic,BuffPic,Size);
 }
 
 

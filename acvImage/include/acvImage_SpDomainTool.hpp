@@ -7,7 +7,9 @@
 void acvbBottomEdge(acvImage *Pic);
 void acvbBottomEdge(acvImage *OutPic,acvImage *OriPic);
 void acvbEdgeDetect(acvImage *OutPic,acvImage *OriPic);
-void acvSmooth(acvImage *BuffPic,acvImage *Pic,int Size);
+void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size);
+void acvBoxFilterX(acvImage *res,acvImage *src,int Size);
+void acvBoxFilterY(acvImage *res,acvImage *src,int Size);
 void acvMasking(acvImage *OutPic,acvImage *OriPic,unsigned char size,char** Mask);
 void acvSharp(acvImage *OutPic,acvImage *OriPic,float SharpLevel);
 void acvGSharp(acvImage *OutPic,acvImage *OriPic,float SharpLevel);
