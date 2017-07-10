@@ -898,62 +898,87 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 }
 */
+BYTE* acvContourWalk(acvImage  *Pic,int *X_io,int *Y_io,int *dir_io,int dirinc)
+{
+  if(*dir_io>8||*dir_io<0)return NULL;
+  BYTE **CVector=Pic->CVector;
+  int dir=*dir_io;
+  int x,y;
+  for(int i=0;i<8;i++)
+  {
+    y=*Y_io+ContourWalkV[dir][0];
+    x=*X_io+ContourWalkV[dir][1];
+    if(CVector[y][x*3]!=255)
+    {
+      *Y_io=y;
+      *X_io=x;
+      *dir_io=dir;
+      return &CVector[y][x*3];
+    }
 
-
-void acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir)
+    dir=(dir+dirinc)&0x7;
+  }
+  return NULL;
+}
+#include<unistd.h>
+int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir)
 {
         int NowPos[2]={FromX,FromY};
 
         int NowWalkDir;//=5;//CounterClockWise
-        int *WalkDirV;
-        BYTE PointSymbol;
         BYTE **CVector=Pic->CVector;
+
 
         CVector[FromY][FromX*3]=254;//StartSymbol
         CVector[FromY][FromX*3+1]=G;
         CVector[FromY][FromX*3+2]=R;
 
-        NowWalkDir=-1;
-        for(int i=7;i>=0;i--)
-        {
-             if(CVector[FromY+ContourWalkV[i][0]   ]
-                             [(FromX+ContourWalkV[i][1])*3]!=255)
-             {
-                NowWalkDir=i;
-                break;
-             }
+        NowWalkDir=7;
+        BYTE *next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,1);
+
+        if(next == NULL)
+        {CVector[FromY][FromX*3]=B;
+          return 0;
         }
-        if(NowWalkDir==-1)
+        next[0]=B;
+        next[1]=G;
+        next[2]=R;
+
+        int hitLabel=0;
+        int searchDir=1;
+        //NowWalkDir=InitDir;
+        while(1)
         {
-                CVector[FromY][FromX*3]=B;
-                return;
+                NowWalkDir=(NowWalkDir-2*searchDir)&0x7;//%8
 
-        }
-        NowWalkDir=InitDir;
-        do
-        {
-                NowWalkDir+=2;
-                if(NowWalkDir>7)NowWalkDir-=8;
-
-                PointSymbol=CVector[ NowPos[1]+ContourWalkV[NowWalkDir][0]   ]
-                             [(NowPos[0]+ContourWalkV[NowWalkDir][1])*3];
-
-                while(PointSymbol==255)
+                //printf(">>:%d %d X:%d wDir:%d\n",NowPos[0],NowPos[1],next[2],NowWalkDir);
+                //sleep(1);
+                next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
+                if(*next==254)
                 {
-
-                        if(NowWalkDir==0)NowWalkDir=7;
-                        else            NowWalkDir--;
-                        PointSymbol=CVector[ NowPos[1]+ContourWalkV[NowWalkDir][0]   ]
-                             [(NowPos[0]+ContourWalkV[NowWalkDir][1])*3];
+                  break;
                 }
-                NowPos[1]+=ContourWalkV[NowWalkDir][0];
-                NowPos[0]+=ContourWalkV[NowWalkDir][1];
-                CVector[NowPos[1]][NowPos[0]*3  ]=B;//StartSymbol
-                CVector[NowPos[1]][NowPos[0]*3+1]=G;
-                CVector[NowPos[1]][NowPos[0]*3+2]=R;
-        }while(PointSymbol!=254);
+                if(hitLabel||(next[0]==0&&next[1]==0&&next[2]==0))
+                {
+                  next[0]=B;
+                  next[1]=G;
+                  next[2]=R;
+                }
+                else if(next[0]!=B || next[1]!=G || next[2]!=R )
+                {
+                  hitLabel=1;
+                  CVector[FromY][FromX*3]=B;
+                  B=next[0];
+                  G=next[1];
+                  R=next[2];
+                  next[0]=254;
+                  searchDir=-1;
+                  NowWalkDir=NowWalkDir-2+4;
+                }
+        }
+        next[0]=B;
 
-        CVector[FromY][FromX*3]=B;
+        return hitLabel?-1:0;
 }
 int acvDrawContourP(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir)
 {
@@ -1100,7 +1125,7 @@ void acvComponentLabelingSim(acvImage *Pic)//,DyArray<int> * Information)
         _24BitUnion NowLable;
         acvDeletFrame(Pic);
 
-
+        int ccstop=0;
         NowLable._3Byte.Num=0;
         for(int i=Pic->GetROIOffsetY()+1;i<Pic_H;i++,State=0)
                 for(int j=Pic->GetROIOffsetX()+1;j<Pic_W;j++)
@@ -1113,26 +1138,20 @@ void acvComponentLabelingSim(acvImage *Pic)//,DyArray<int> * Information)
                 if(State==0)
                 {
                         State=1;
-                        if(!(Pic->CVector[i][3*j]||
-                        Pic->CVector[i][3*j+1]||
-                        Pic->CVector[i][3*j+2]))
+                        if((Pic->CVector[i][3*j]==0&&
+                        Pic->CVector[i][3*j+1]==0&&
+                        Pic->CVector[i][3*j+2]==0))
                         {
-                                if(Pic->CVector[i-1][3*j]==255)
-                                {//outer contour
-                                        NowLable._3Byte.Num++;
-                                        acvDrawContour(Pic,j,i,
-                                        NowLable.Byte3.Num0,
-                                        NowLable.Byte3.Num1,
-                                        NowLable.Byte3.Num2,5);
-
-                                }
-                                else
-                                {//inner contour
-                                        acvDrawContour(Pic,j,i,
-                                        Pic->CVector[i-1][3*j],
-                                        Pic->CVector[i-1][3*j+1],
-                                        Pic->CVector[i-1][3*j+2],5);
-                                }
+                              NowLable._3Byte.Num++;
+                              int isOldContour=acvDrawContour(Pic,j,i,
+                              NowLable.Byte3.Num0,
+                              NowLable.Byte3.Num1,
+                              NowLable.Byte3.Num2,5);
+                              if(isOldContour)
+                              {
+                                NowLable._3Byte.Num--;
+                              }
+                              //if(ccstop++>0)return;
                         }
                 }
                 else

@@ -56,17 +56,19 @@ int main()
 
   printImgAscii(ss,70);
   acvThreshold(ss,200);
-  acvBoxFilter(buff,ss,2);
-  acvHarrisCornorResponse(buff,ss);
-  acvCloneImage(ss,ss,0);
-  ret=SaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+  //acvBoxFilter(buff,ss,2);
+  //acvHarrisCornorResponse(buff,ss);
+  //acvCloneImage(ss,ss,0);
+  //ret=SaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
   acvThreshold(ss,100);
   //acvDrawCrossX(ss,200,200,12,255,0,0,7);
-  acvTurn(ss);
+  //acvTurn(ss);
+  ret=SaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
   acvDeletFrame(ss,5);
+
   acvComponentLabelingSim(ss);
-  acvLabeledColorDispersion(ss,ss,15);
+  acvLabeledColorDispersion(ss,ss,5);
   ret=SaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
   delete(ss);
