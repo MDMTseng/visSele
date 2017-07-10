@@ -934,39 +934,36 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
         CVector[FromY][FromX*3+2]=R;
 
         NowWalkDir=7;
-        BYTE *next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,1);
+        //012
+        //7 3
+        //654
+
+        int searchDir=1;//clockwise
+        BYTE *next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
 
         if(next == NULL)
-        {CVector[FromY][FromX*3]=B;
+        {
+          CVector[FromY][FromX*3]=B;
           return 0;
         }
-        next[0]=B;
-        next[1]=G;
-        next[2]=R;
 
-        int hitLabel=0;
-        int searchDir=1;
+        int hitExistedLabel=0;
         //NowWalkDir=InitDir;
         while(1)
         {
-                NowWalkDir=(NowWalkDir-2*searchDir)&0x7;//%8
-
-                //printf(">>:%d %d X:%d wDir:%d\n",NowPos[0],NowPos[1],next[2],NowWalkDir);
-                //sleep(1);
-                next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
                 if(*next==254)
                 {
                   break;
                 }
-                if(hitLabel||(next[0]==0&&next[1]==0&&next[2]==0))
+                if(hitExistedLabel||(next[0]==0&&next[1]==0&&next[2]==0))
                 {
                   next[0]=B;
                   next[1]=G;
                   next[2]=R;
                 }
                 else if(next[0]!=B || next[1]!=G || next[2]!=R )
-                {
-                  hitLabel=1;
+                {//There is an existed label, set the old label as
+                  hitExistedLabel=1;
                   CVector[FromY][FromX*3]=B;
                   B=next[0];
                   G=next[1];
@@ -975,145 +972,16 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
                   searchDir=-1;
                   NowWalkDir=NowWalkDir-2+4;
                 }
+
+                NowWalkDir=(NowWalkDir-2*searchDir)&0x7;//%8
+
+                //printf(">>:%d %d X:%d wDir:%d\n",NowPos[0],NowPos[1],next[2],NowWalkDir);
+                //sleep(1);
+                next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
         }
         next[0]=B;
 
-        return hitLabel?-1:0;
-}
-int acvDrawContourP(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir)
-{
-        int NowPos[2]={FromX,FromY};
-
-        int NowWalkDir;//=5;//CounterClockWise
-        int *WalkDirV;
-        BYTE DelR,DelG,DelB;
-        BYTE PointSymbol;
-        BYTE **CVector=Pic->CVector;
-
-
-        NowWalkDir=-1;
-        for(int i=7;i>=0;i--)
-        {
-             if(CVector[FromY+ContourWalkV[i][0]   ]
-                             [(FromX+ContourWalkV[i][1])*3]!=255)
-             {
-                NowWalkDir=i;
-                break;
-             }
-        }
-        if(NowWalkDir==-1)
-        {
-                return 0;
-
-        }
-        CVector[FromY][FromX*3]=254;//StartSymbol
-        CVector[FromY][FromX*3+1]=G;
-        CVector[FromY][FromX*3+2]=R;
-        NowWalkDir=InitDir;
-        /*FromX= NowWalkDir;
-        if(FromX== NowWalkDir)return;*/
-        while(1)
-        {
-                NowWalkDir+=2;
-                if(NowWalkDir>7)NowWalkDir-=8;
-
-                PointSymbol=CVector[ NowPos[1]+ContourWalkV[NowWalkDir][0]   ]
-                             [(NowPos[0]+ContourWalkV[NowWalkDir][1])*3];
-
-                while(PointSymbol==255)
-                {
-
-                        if(NowWalkDir==0)NowWalkDir=7;
-                        else            NowWalkDir--;
-                        PointSymbol=CVector[ NowPos[1]+ContourWalkV[NowWalkDir][0]   ]
-                             [(NowPos[0]+ContourWalkV[NowWalkDir][1])*3];
-                }
-                if(PointSymbol==254)break;
-                NowPos[1]+=ContourWalkV[NowWalkDir][0];
-                NowPos[0]+=ContourWalkV[NowWalkDir][1];
-                if(!(PointSymbol
-                ||CVector[NowPos[1]][NowPos[0]*3+1]
-                ||CVector[NowPos[1]][NowPos[0]*3+2])
-                )
-                {
-                     CVector[NowPos[1]][NowPos[0]*3  ]=B;//StartSymbol
-                     CVector[NowPos[1]][NowPos[0]*3+1]=G;
-                     CVector[NowPos[1]][NowPos[0]*3+2]=R;
-                }
-                else if(PointSymbol!=B
-                ||CVector[NowPos[1]][NowPos[0]*3+1]!=G
-                ||CVector[NowPos[1]][NowPos[0]*3+2]!=R)
-                {
-                     CVector[NowPos[1]][NowPos[0]*3]=254;
-
-                     acvDrawContour(Pic,FromX,FromY,
-                     PointSymbol,CVector[NowPos[1]][NowPos[0]*3+1],
-                     CVector[NowPos[1]][NowPos[0]*3+2],5);
-
-                     CVector[NowPos[1]][NowPos[0]*3]=PointSymbol;
-                     return -1;
-                }
-                /*else
-                        break;*/
-        }
-
-        CVector[FromY][FromX*3]=B;
-        return 1;
-}
-void acvComponentLabelingX(acvImage *Pic)//,DyArray<int> * Information)
-{
-        int Pic_H=Pic->GetROIOffsetY()+Pic->GetHeight()-1,
-            Pic_W=Pic->GetROIOffsetX()+Pic->GetWidth()-1;
-        char State=0;
-        int Tmp=0;
-        _24BitUnion NowLable;
-        acvDeletFrame(Pic);
-
-
-        NowLable._3Byte.Num=0;
-        for(int i=Pic->GetROIOffsetY()+1;i<Pic_H;i++,State=0)
-                for(int j=Pic->GetROIOffsetX()+1;j<Pic_W;j++)
-        {
-                if(Pic->CVector[i][3*j]==255)
-                {
-                        State=0;
-                        continue;
-                }
-                if(State==0)
-                {
-                        State=1;
-                        if(!(Pic->CVector[i][3*j]||
-                        Pic->CVector[i][3*j+1]||
-                        Pic->CVector[i][3*j+2]))
-                        {
-                                if(Pic->CVector[i-1][3*j]!=255)
-                                {
-                                        acvDrawContour(Pic,j,i,
-                                        Pic->CVector[i-1][3*j],
-                                        Pic->CVector[i-1][3*j+1],
-                                        Pic->CVector[i-1][3*j+2],5);
-                                }
-                                else
-                                {
-                                        NowLable._3Byte.Num++;
-                                        if(acvDrawContourP(Pic,j,i,
-                                          NowLable.Byte3.Num0,
-                                          NowLable.Byte3.Num1,
-                                          NowLable.Byte3.Num2,5)==-1)
-                                        {
-                                          NowLable._3Byte.Num--;
-                                        }
-
-                                }
-                        }
-                }
-                else
-                {
-                        Pic->CVector[i][3*j]=Pic->CVector[i][3*(j-1)];
-                        Pic->CVector[i][3*j+1]=Pic->CVector[i][3*(j-1)+1];
-                        Pic->CVector[i][3*j+2]=Pic->CVector[i][3*(j-1)+2];
-                }
-        }
+        return hitExistedLabel?-1:0;
 }
 
 void acvComponentLabelingSim(acvImage *Pic)//,DyArray<int> * Information)

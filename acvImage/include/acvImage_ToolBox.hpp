@@ -36,8 +36,6 @@ void acvContourSignature(acvImage  *LabeledPic,int *Centroid,int *StartPos,int *
 void acvContourSignatureWPA(acvImage  *LabeledPic,int *Centroid,int *StartPos,int *Signature,int *PresciseAngle,int InitDir);
 void acvContourSignature2(acvImage  *LabeledPic,int *Centroid,int *StartPos,int *Signature);
 void acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir);
-int acvDrawContourP(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir);
-void acvComponentLabelingX(acvImage *Pic);//,DyArray<int> * Information);
 void acvComponentLabelingSim(acvImage *Pic);
 int acvFindContourCentroid(acvImage  *Pic,int Pos[2],BYTE RecordVar,int InitDir);
 void acvCornerMap(acvImage *OutPic,acvImage *OriPic);    //Hue 000~126 127~251
