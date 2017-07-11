@@ -55,15 +55,16 @@ int main()
   //printf("%s\n",PrintHexArr((char*)ss->CVector[1], 10*4));
 
   printImgAscii(ss,70);
-  acvThreshold(ss,200);
-  //acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,1);
+  acvThreshold(ss,128);
+  acvBoxFilter(buff,ss,1);
   //acvHarrisCornorResponse(buff,ss);
   //acvCloneImage(ss,ss,0);
   //ret=SaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
-  acvThreshold(ss,100);
   //acvDrawCrossX(ss,200,200,12,255,0,0,7);
   //acvTurn(ss);
   ret=SaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+  acvThreshold(ss,128);
 
   acvDeletFrame(ss,5);
 

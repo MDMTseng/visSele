@@ -898,6 +898,13 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 }
 */
+//Displacement, Scale, Aangle
+BYTE* acvParamEstimation(acvImage  *Pic,)
+{
+  
+}
+
+
 BYTE* acvContourWalk(acvImage  *Pic,int *X_io,int *Y_io,int *dir_io,int dirinc)
 {
   if(*dir_io>8||*dir_io<0)return NULL;
