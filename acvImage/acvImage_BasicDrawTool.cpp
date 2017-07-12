@@ -2,6 +2,7 @@
 #include <math.h>
 #include <vector>
 #include "acvImage_BasicTool.hpp"
+#include "acvImage_BasicDrawTool.hpp"
 
 
 
@@ -540,12 +541,17 @@ void acvDrawCross(acvImage *Pic,int X,int Y,int CrossSize,BYTE R,BYTE G,BYTE B,i
         acvDrawLine(Pic,X,Y+CrossSize,X,Y-CrossSize,R,G,B,LineWidth);
         acvDrawLine(Pic,X-CrossSize,Y,X+CrossSize,Y,R,G,B,LineWidth);
 }
+
+void acvDrawBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE R,BYTE G,BYTE B,int LineWidth)
+{
+        acvDrawLine(Pic,X1,Y1,X1,Y2,R,G,B,LineWidth);
+        acvDrawLine(Pic,X2,Y1,X2,Y2,R,G,B,LineWidth);
+        acvDrawLine(Pic,X1,Y1,X2,Y1,R,G,B,LineWidth);
+        acvDrawLine(Pic,X1,Y2,X2,Y2,R,G,B,LineWidth);
+}
 void acvDrawBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2)
 {
-        acvDrawLine(Pic,X1,Y1,X1,Y2);
-        acvDrawLine(Pic,X2,Y1,X2,Y2);
-        acvDrawLine(Pic,X1,Y1,X2,Y1);
-        acvDrawLine(Pic,X1,Y2,X2,Y2);
+        acvDrawBlock(Pic, X1,Y1,X2,Y2,0,0,0,1);
 }
 void acvDrawReverseFillBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2)
 {
