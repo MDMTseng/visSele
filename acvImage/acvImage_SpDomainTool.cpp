@@ -846,12 +846,12 @@ void acvSobelFilter(acvImage *res,acvImage *src)
 
 
           TmpPixelH=(L1[-3]+2*L1[0]+L1[+3])-
-                    (L3[-3]+2*L3[0]+L3[+3]);
+                    (L3[-3]+2*L3[0]+L3[+3]);//Get gradient in direction ^
           TmpPixelH=TmpPixelH>>3+(TmpPixelH&0x4?1:0);
           res->CVector[i][3*j]=(char)TmpPixelH;
 
           TmpPixelV=(L1[-3]+2*L2[-3]+L3[-3])-
-                    (L1[3]+2*L2[3]+L3[+3]);
+                    (L1[3]+2*L2[3]+L3[+3]);//Get gradient in direction <
           TmpPixelV=TmpPixelV>>3+(TmpPixelV&0x4?1:0);
           res->CVector[i][3*j+1]=(char)TmpPixelV;
       }

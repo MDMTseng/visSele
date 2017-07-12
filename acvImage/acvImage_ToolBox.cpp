@@ -898,10 +898,60 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 }
 */
+
 //Displacement, Scale, Aangle
-BYTE* acvParamEstimation(acvImage  *Pic,)
+uint32_t acvSpatialMatchingGradient(acvImage  *Pic,int *PicPtList[2],
+  acvImage *targetMap,acvImage *targetSobel,int *TarPtList[2],
+  int *ErrorGradientList[2],int ListL)
 {
-  
+  uint32_t errorSum=0;
+
+  BYTE **PicCVec=Pic->CVector;
+  BYTE **TarCVec=targetMap->CVector;
+  BYTE **TarSobelCVec=targetSobel->CVector;
+  //  []
+  //[][][]
+  //  []
+  for(int i=0;i<ListL;i++)
+  {
+    int tpX=TarPtList[i][0];
+    int tpY=TarPtList[i][1];
+
+    int error=( PicCVec[PicPtList[i][1]][PicPtList[i][0]*3]-TarCVec[tpY][tpX*3] );
+    //Sobel [0] ^  [1] <
+    ErrorGradientList[i][0]=error*TarSobelCVec[tpY][tpX*3+0];
+    ErrorGradientList[i][1]=error*TarSobelCVec[tpY][tpX*3+1];
+    error*=error;
+    errorSum+=error;
+  }
+  return errorSum;
+}
+
+//Displacement, Scale, Aangle
+uint32_t acvSqMatchingError(acvImage  *Pic,int *PicPtList[2],acvImage *targetMap,int *TarPtList[2],int ListL)
+{
+  uint32_t errorSum=0;
+  BYTE **PicCVec=Pic->CVector;
+  BYTE **TarCVec=targetMap->CVector;
+  for(int i=0;i<ListL;i++)
+  {
+    int error=(
+      PicCVec[PicPtList[i][1]][PicPtList[i][0]*3]-
+      TarCVec[TarPtList[i][1]][TarPtList[i][0]*3]
+    );
+    error*=error;
+    errorSum+=error;
+  }
+  return errorSum;
+}
+
+//Displacement, Scale, Aangle
+BYTE* acvParamEstimation(acvImage  *Pic,acvImage *targetMap,int *pointList[2],int *mapList[2],int ListL)
+{
+  for(int i=0;i<ListL;i++)
+  {
+
+  }
 }
 
 

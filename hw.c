@@ -27,8 +27,7 @@ void printImgAscii(acvImage *img,int printwidth)
   }
 }
 
-
-int main()
+void test1()
 {
   clock_t t= clock();
 
@@ -75,6 +74,19 @@ int main()
   delete(ss);
   delete(buff);
   // printf() displays the string inside quotation
-  printf("Hello, World! %d",ret);
+}
+
+
+int testEstXY()
+{
+  acvImage *ss = new acvImage();
+
   return 0;
+}
+
+int main()
+{
+  int ret = 0;
+  printf("Hello, World! %d",ret);
+  return ret;
 }
