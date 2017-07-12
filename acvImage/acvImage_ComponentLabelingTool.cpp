@@ -882,7 +882,7 @@ void acvLabeledColorDispersion(acvImage *ColorDispersionPic,acvImage *LabeledPic
 
                  for(j=Xoffset;j<Width;j++)
                 {
-                        if(*LabeledLine==255)
+                        if(LabeledLine[2]==255)
                         {
                                LabeledLine+=3;
                                 *CDPLine++=255;
