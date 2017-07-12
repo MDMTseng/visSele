@@ -1,6 +1,7 @@
 
 #include <math.h>
 #include "acvImage.hpp"
+#include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicTool.hpp"
 #include "acvImage_ComponentLabelingTool.hpp"
 
@@ -900,9 +901,9 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 */
 
 //Displacement, Scale, Aangle
-uint32_t acvSpatialMatchingGradient(acvImage  *Pic,int *PicPtList[2],
-  acvImage *targetMap,acvImage *targetSobel,int *TarPtList[2],
-  int *ErrorGradientList[2],int ListL)
+uint32_t acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
+  acvImage *targetMap,acvImage *targetSobel,acv_XY *TarPtList,
+  acv_XY *ErrorGradientList,int ListL)
 {
   uint32_t errorSum=0;
 
@@ -914,13 +915,13 @@ uint32_t acvSpatialMatchingGradient(acvImage  *Pic,int *PicPtList[2],
   //  []
   for(int i=0;i<ListL;i++)
   {
-    int tpX=TarPtList[i][0];
-    int tpY=TarPtList[i][1];
+    acv_XY tarpt=TarPtList[i];
+    acv_XY picpt=TarPtList[i];
 
-    int error=( PicCVec[PicPtList[i][1]][PicPtList[i][0]*3]-TarCVec[tpY][tpX*3] );
+    int error=( PicCVec[(int)picpt.Y][(int)picpt.X*3]-TarCVec[(int)tarpt.Y][(int)tarpt.X*3] );
     //Sobel [0] ^  [1] <
-    ErrorGradientList[i][0]=error*TarSobelCVec[tpY][tpX*3+0];
-    ErrorGradientList[i][1]=error*TarSobelCVec[tpY][tpX*3+1];
+    ErrorGradientList[i].X=error*TarSobelCVec[(int)tarpt.Y][(int)tarpt.X*3];
+    ErrorGradientList[i].Y=error*TarSobelCVec[(int)tarpt.Y][(int)tarpt.X*3+1];
     error*=error;
     errorSum+=error;
   }
@@ -928,7 +929,7 @@ uint32_t acvSpatialMatchingGradient(acvImage  *Pic,int *PicPtList[2],
 }
 
 //Displacement, Scale, Aangle
-uint32_t acvSqMatchingError(acvImage  *Pic,int *PicPtList[2],acvImage *targetMap,int *TarPtList[2],int ListL)
+uint32_t acvSqMatchingError(acvImage  *Pic,acv_XY *PicPtList,acvImage *targetMap,acv_XY *TarPtList,int ListL)
 {
   uint32_t errorSum=0;
   BYTE **PicCVec=Pic->CVector;
@@ -936,8 +937,8 @@ uint32_t acvSqMatchingError(acvImage  *Pic,int *PicPtList[2],acvImage *targetMap
   for(int i=0;i<ListL;i++)
   {
     int error=(
-      PicCVec[PicPtList[i][1]][PicPtList[i][0]*3]-
-      TarCVec[TarPtList[i][1]][TarPtList[i][0]*3]
+      PicCVec[(int)PicPtList[i].Y][(int)PicPtList[i].X*3]-
+      TarCVec[(int)TarPtList[i].Y][(int)TarPtList[i].X*3]
     );
     error*=error;
     errorSum+=error;
