@@ -871,35 +871,10 @@ void acvLabeledColorDispersion(acvImage *ColorDispersionPic,acvImage *LabeledPic
                 Height=LabeledPic->GetHeight()-1+Yoffset
 
                 ;
-        _24BitUnion NumTranse;
+        _24BitUnion *NumTranse;
         BYTE* LabeledLine,*CDPLine;
         BYTE    Color[3];
 
-        if(ColorNum==-1)
-        {
-                for(i=Yoffset;i<Height;i++)
-                {
-                        LabeledLine=LabeledPic->CVector[i]+Xoffset*3;;
-
-                        for(j=Xoffset;j<Width;j++)
-                        {
-                                if(*LabeledLine==255)
-                                {
-                                        LabeledLine+=3;
-                                        continue;
-                                }
-                                NumTranse.Byte3.Num0=*LabeledLine++;
-                                NumTranse.Byte3.Num1=*LabeledLine++;
-                                NumTranse.Byte3.Num2=*LabeledLine++;
-
-                                if(ColorNum<(int)NumTranse._3Byte.Num)
-                                        ColorNum=NumTranse._3Byte.Num;
-                        }
-                }
-
-
-        }
-        else if(!ColorNum)ColorNum=1;
         for(i=Yoffset;i<Height;i++)
         {
                 LabeledLine=LabeledPic->CVector[i]+Xoffset*3;;
@@ -915,11 +890,10 @@ void acvLabeledColorDispersion(acvImage *ColorDispersionPic,acvImage *LabeledPic
                                 *CDPLine++=255;
                                 continue;
                         }
-                        NumTranse.Byte3.Num0=*LabeledLine++;
-                        NumTranse.Byte3.Num1=*LabeledLine++;
-                        NumTranse.Byte3.Num2=*LabeledLine++;
+                        NumTranse=(_24BitUnion*)LabeledLine;
+                        LabeledLine+=3;
 
-                        Color[2]=((NumTranse._3Byte.Num)*HSV_HMax/ColorNum);
+                        Color[2]=((NumTranse->_3Byte.Num)*HSV_HMax/ColorNum);
                         Color[1]=
                         Color[0]=HSV_VMax;
                         LabeledPic->RGBFromHSV(Color,Color);

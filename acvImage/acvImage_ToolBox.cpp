@@ -900,6 +900,86 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 }
 */
 
+int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *list,int threshold)
+{
+  int Pic_H=LabeledPic->GetROIOffsetY()+LabeledPic->GetHeight()-1,
+      Pic_W=LabeledPic->GetROIOffsetX()+LabeledPic->GetWidth()-1;
+
+  BYTE **LPCVec=LabeledPic->CVector;
+
+  for (int i=0;i<list->size();i++)
+  {
+    acv_LabeledData *ld=&((*list)[i]);
+    if(ld->area<threshold)ld->area=0;
+  }
+  _24BitUnion *lableConv;
+  for(int i=LabeledPic->GetROIOffsetY()+1;i<Pic_H;i++)
+          for(int j=LabeledPic->GetROIOffsetX()+1;j<Pic_W;j++)
+  {
+    if(LPCVec[i][j*3+2]==255)continue;
+    lableConv = (_24BitUnion *)&(LPCVec[i][j*3]);
+    int label=lableConv->_3Byte.Num;
+    acv_LabeledData *ld=&((*list)[label]);
+    if(ld->area==0)
+    {
+      LPCVec[i][j*3]=
+      LPCVec[i][j*3+1]=
+      LPCVec[i][j*3+2]=255;
+    }
+  }
+
+}
+
+
+int acvLabeledRegionExtraction(acvImage  *LabeledPic,std::vector<acv_LabeledData> *ret_list)
+{
+  ret_list->clear();
+  std::vector<acv_LabeledData> *list=ret_list;
+  int Pic_H=LabeledPic->GetROIOffsetY()+LabeledPic->GetHeight()-1,
+      Pic_W=LabeledPic->GetROIOffsetX()+LabeledPic->GetWidth()-1;
+
+  BYTE **LPCVec=LabeledPic->CVector;
+
+  _24BitUnion *lableConv;
+  for(int i=LabeledPic->GetROIOffsetY()+1;i<Pic_H;i++)
+          for(int j=LabeledPic->GetROIOffsetX()+1;j<Pic_W;j++)
+  {
+    if(LPCVec[i][j*3+2]==255)continue;
+    lableConv = (_24BitUnion *)&(LPCVec[i][j*3]);
+    int label=lableConv->_3Byte.Num;
+    if(list->size()<=label)
+      list->resize(label+1);
+    acv_LabeledData *ld=&((*list)[label]);
+    if(ld->area==0)
+    {
+      ld->LTBound.X=j;
+      ld->LTBound.Y=i;
+      ld->RBBound.X=j;
+      ld->RBBound.Y=i;
+    }
+    else
+    {
+      if(ld->LTBound.X>j)ld->LTBound.X=j;
+      else if(ld->RBBound.X<j)ld->RBBound.X=j;
+      if(ld->LTBound.Y>i)ld->LTBound.Y=i;
+      else if(ld->RBBound.Y<i)ld->RBBound.Y=i;
+
+    }
+    ld->area++;
+    ld->Center.X+=j;
+    ld->Center.Y+=i;
+
+  }
+
+  for (int i=0;i<list->size();i++)
+  {
+    acv_LabeledData *ld=&((*list)[i]);
+    ld->Center.X/=ld->area;
+    ld->Center.Y/=ld->area;
+  }
+}
+
+
 //Displacement, Scale, Aangle
 uint32_t acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
   acvImage *targetMap,acvImage *targetSobel,acv_XY *TarPtList,
@@ -966,7 +1046,7 @@ BYTE* acvContourWalk(acvImage  *Pic,int *X_io,int *Y_io,int *dir_io,int dirinc)
   {
     y=*Y_io+ContourWalkV[dir][0];
     x=*X_io+ContourWalkV[dir][1];
-    if(CVector[y][x*3]!=255)
+    if(CVector[y][x*3+2]!=255)
     {
       *Y_io=y;
       *X_io=x;
@@ -987,9 +1067,9 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
         BYTE **CVector=Pic->CVector;
 
 
-        CVector[FromY][FromX*3]=254;//StartSymbol
+        CVector[FromY][FromX*3]=B;//StartSymbol
         CVector[FromY][FromX*3+1]=G;
-        CVector[FromY][FromX*3+2]=R;
+        CVector[FromY][FromX*3+2]=254;
 
         NowWalkDir=7;
         //012
@@ -1001,7 +1081,7 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
 
         if(next == NULL)
         {
-          CVector[FromY][FromX*3]=B;
+          CVector[FromY][FromX*3+2]=R;
           return 0;
         }
 
@@ -1009,7 +1089,7 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
         //NowWalkDir=InitDir;
         while(1)
         {
-                if(*next==254)
+                if(next[2]==254)
                 {
                   break;
                 }
@@ -1022,11 +1102,11 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
                 else if(next[0]!=B || next[1]!=G || next[2]!=R )
                 {//There is an existed label, set the old label as
                   hitExistedLabel=1;
-                  CVector[FromY][FromX*3]=B;
+                  CVector[FromY][FromX*3+2]=R;
                   B=next[0];
                   G=next[1];
                   R=next[2];
-                  next[0]=254;
+                  next[2]=254;
                   searchDir=-1;
                   NowWalkDir=NowWalkDir-2+4;
                 }
@@ -1037,7 +1117,7 @@ int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char 
                 //sleep(1);
                 next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
         }
-        next[0]=B;
+        next[2]=R;
 
         return hitExistedLabel?-1:0;
 }
@@ -1056,7 +1136,7 @@ void acvComponentLabelingSim(acvImage *Pic)//,DyArray<int> * Information)
         for(int i=Pic->GetROIOffsetY()+1;i<Pic_H;i++,State=0)
                 for(int j=Pic->GetROIOffsetX()+1;j<Pic_W;j++)
         {
-                if(Pic->CVector[i][3*j]==255)
+                if(Pic->CVector[i][3*j+2]==255)
                 {
                         State=0;
                         continue;
@@ -1070,14 +1150,13 @@ void acvComponentLabelingSim(acvImage *Pic)//,DyArray<int> * Information)
                         {
                               NowLable._3Byte.Num++;
                               int isOldContour=acvDrawContour(Pic,j,i,
-                              NowLable.Byte3.Num0,
+                              NowLable.Byte3.Num2,
                               NowLable.Byte3.Num1,
-                              NowLable.Byte3.Num2,5);
+                              NowLable.Byte3.Num0,5);
                               if(isOldContour)
                               {
                                 NowLable._3Byte.Num--;
                               }
-                              //if(ccstop++>0)return;
                         }
                 }
                 else
