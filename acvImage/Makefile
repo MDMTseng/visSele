@@ -1,5 +1,6 @@
 
 
+ESS_TRACK= $(shell find include/*)
 IDIR=./include/
 ODIR=obj
 _OBJ = acvImage.opp acvImage_BasicTool.opp acvImage_BasicDrawTool.opp\

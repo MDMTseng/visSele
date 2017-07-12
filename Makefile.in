@@ -1,4 +1,4 @@
-
+ESS_TRACK?=
 target_bin?=
 ODIR?=
 
@@ -21,9 +21,9 @@ CFLAGS=$(addprefix -I,$(IDIR)) $(FLAGS)
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 
-$(ODIR)/%.opp: %.cpp
+$(ODIR)/%.opp: %.cpp   $(ESS_TRACK)
 	$(CXX) -c $< $(CFLAGS) -o $@
-$(ODIR)/%.o: %.c
+$(ODIR)/%.o: %.c  $(ESS_TRACK)
 	$(CXX) -c $< $(CFLAGS) -o $@
 
 
