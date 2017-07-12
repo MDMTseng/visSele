@@ -907,10 +907,13 @@ int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *
 
   BYTE **LPCVec=LabeledPic->CVector;
 
-  for (int i=0;i<list->size();i++)
+  if(threshold>0)
   {
-    acv_LabeledData *ld=&((*list)[i]);
-    if(ld->area<threshold)ld->area=0;
+    for (int i=0;i<list->size();i++)
+    {
+      acv_LabeledData *ld=&((*list)[i]);
+      if(ld->area<threshold)ld->area=0;
+    }
   }
   _24BitUnion *lableConv;
   for(int i=LabeledPic->GetROIOffsetY()+1;i<Pic_H;i++)
