@@ -75,7 +75,31 @@ void test1()
   delete(buff);
   // printf() displays the string inside quotation
 }
+void test2()
+{
+  acvImage *ss = new acvImage();
+  acvImage *buff = new acvImage();
 
+  LoadBitmapFile(ss,"data/test1.bmp");
+  ss->RGBToGray();
+  acvThreshold(ss,128);
+  acvDeletFrame(ss,5);
+  acvComponentLabelingSim(ss);
+  std::vector<acv_LabeledData> ldData;
+  acvLabeledRegionExtraction(ss,&ldData);
+  acvLabeledColorDispersion(ss,ss,ldData.size());
+
+  for (int i=1;i<ldData.size();i++)
+  {
+    if(ldData[i].area<10)continue;
+    printf("%03d %f %f\n",ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
+    acvDrawCross(ss,(int)ldData[i].Center.X,(int)ldData[i].Center.Y,5,0,0,0,2);
+
+    acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
+  }
+
+  SaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+}
 
 int testEstXY()
 {
@@ -84,8 +108,10 @@ int testEstXY()
   return 0;
 }
 
+#include <vector>
 int main()
 {
+  test2();
   int ret = 0;
   printf("Hello, World! %d",ret);
   return ret;
