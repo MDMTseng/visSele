@@ -82,7 +82,7 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
       for(i=0;i<SizeP1;i++,srcfront+=wx3,resfront+=wx3)
       {
             TmpSum+=*srcfront;
-            *resfront=div_round(TmpSum,(j+SizeP1));
+            *resfront=div_round(TmpSum,(i+SizeP1));
       }
       for(;i<height-Size;i++,srcfront+=wx3,resfront+=wx3)
       {
@@ -93,7 +93,7 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
       for(;i<height;i++,srcfront+=wx3,resfront+=wx3)
       {
             TmpSum-=*(srcfront-SizeX2Add1*wx3);
-            *resfront=div_round(TmpSum,(Size+width+j));
+            *resfront=div_round(TmpSum,(Size+height-i));
       }
 
     }
@@ -134,7 +134,7 @@ void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
       for(;j<width;j++,srcfront+=3,resfront+=3)
       {
             TmpSum-=*(srcfront-SizeX2Add1*3);
-            *resfront=div_round(TmpSum,(Size+width+j));
+            *resfront=div_round(TmpSum,(Size+width-j));
       }
   }
 }
