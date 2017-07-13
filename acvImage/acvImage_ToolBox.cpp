@@ -907,14 +907,28 @@ int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *
 
   BYTE **LPCVec=LabeledPic->CVector;
 
+  int topLabel=1;//Label starts from 1
   if(threshold>0)
   {
-    for (int i=0;i<list->size();i++)
+    //Label starts from 1
+    for (int i=topLabel;i<list->size();i++)
     {
       acv_LabeledData *ld=&((*list)[i]);
-      if(ld->area<threshold)ld->area=0;
+      if(ld->area<threshold)
+      {
+        ld->area=0;
+        ld->misc=0;
+      }
+      else
+      {
+        ld->misc=topLabel;
+        topLabel++;
+      }
     }
   }
+  topLabel-=1;//rm last ++
+
+  if(topLabel+1==list->size())return topLabel;
   _24BitUnion *lableConv;
   for(int i=LabeledPic->GetROIOffsetY()+1;i<Pic_H;i++)
           for(int j=LabeledPic->GetROIOffsetX()+1;j<Pic_W;j++)
@@ -929,8 +943,22 @@ int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *
       LPCVec[i][j*3+1]=
       LPCVec[i][j*3+2]=255;
     }
+    else
+    {
+      lableConv->_3Byte.Num=ld->misc;//Assign to new label
+    }
   }
+  for (int i=1;i<list->size();i++)//collapse the list
+  {
+    acv_LabeledData *ld=&((*list)[i]);
+    if(ld->misc!=0)
+    {
+      acv_LabeledData *nld=&((*list)[ld->misc]);
+      *nld=*ld;
+    }
 
+  }
+  list->resize(topLabel+1);
 }
 
 

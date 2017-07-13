@@ -31,6 +31,7 @@ typedef struct acv_LabeledData
   acv_XY RBBound;
   acv_XY Center;
   int area;
+  int misc;
 }acv_LabeledData;
 
 void acvComponentLabelingSim(acvImage *Pic);
