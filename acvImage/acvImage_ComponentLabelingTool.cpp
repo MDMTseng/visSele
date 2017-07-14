@@ -3,865 +3,9 @@
 #include "acvImage_ComponentLabelingTool.hpp"
 
 
-/*
-//Num  0000_0000       0000_0000       0000_0000
-//Num0 0000_0000  Num1 0000_0000  Num2 0000_0000
 
 
-#ifndef LabelingBy4OrM_
-#define LabelingBy4OrM_ 1          //1 ->  4-adjacency      0->  m-adjacency
-#endif
-
-
-#define LabelingInfoColumn              10
-#define LabelingArea                     0
-#define LabelingDotsXSum                1
-#define LabelingDotsYSum                2
-#define LabelingCentroidX                1
-#define LabelingCentroidY                2
-
-
-#define LabelingAmendCentroidX          3
-#define LabelingAmendCentroidY          4
-
-
-#define LabelingOtherInfo1          8
-#define LabelingOtherInfo2          9
-#define LabelingStartPosX           8
-#define LabelingStartPosY           9
-
-#define LabelingNoComponentExist       -1
-
-void acvLabeledInfoAdjust(DyArray<int> * LabelInfo);//
-//Lebeled Number Write in B G R .Exp Num=300 B=0  G=1 R=44
-//        MaxNum=(256*256*256-1)>>ColorDispersion=16777215>>ColorDispersion=> B=254 G=255 B=255
-void acvRecordLabel(BYTE *BGR,_24BitUnion NowLable,int X,int Y,int *TableData)
-{
-        TableData[0]=X;
-        TableData[1]=Y;
-
-        BGR[0]=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        BGR[1]=NowLable.Byte3.Num1;
-        BGR[2]=NowLable.Byte3.Num2;
-
-}
-
-
-void acvCheck4Connect2(acvImage *Pic,_24BitUnion NowLable,int X,int Y,DyArray<int> * CoorTable)
-{
-
-      int NowInfoLength= CoorTable->Length();
-      int *TableData;
-      BYTE* BGR;
-      X++;
-      if(Pic->CVector[Y][3*(X)]==0)//Y   X+1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-
-        NowInfoLength+=2;
-      }
-      X-=2;
-      if(Pic->CVector[Y][3*(X)]==0)//Y   X-1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      X++;
-      Y++;
-      if(Pic->CVector[Y][3*(X)]==0)//Y+1   X
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      Y-=2;
-
-      if(Pic->CVector[Y][3*(X)]==0)//Y-1   X
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      CoorTable->ReLength(NowInfoLength);
-}
-void acvCheck8Connect2(acvImage *Pic,_24BitUnion NowLable,int X,int Y,DyArray<int> * CoorTable)
-{
-
-      int NowInfoLength= CoorTable->Length();
-      int *TableData;
-      BYTE* BGR;
-      if(Pic->CVector[Y][3*(++X)]==0)//Y   X+1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[++Y][3*(X)]==0)//Y+1   X+1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[Y][3*(--X)]==0)//Y+1   X
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[Y][3*(--X)]==0)//Y+1   X-1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[--Y][3*(X)]==0)//Y   X-1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[--Y][3*(X)]==0)//Y-1   X-1
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[Y][3*(++X)]==0)//Y-1   X
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      if(Pic->CVector[Y][3*(++X)]==0)//Y-1   X
-      {
-        TableData=(int*)CoorTable->GetPointer(NowInfoLength);
-        BGR=&(Pic->CVector[Y][3*X]);
-        acvRecordLabel(BGR,NowLable,X,Y,TableData);
-        NowInfoLength+=2;
-      }
-      CoorTable->ReLength(NowInfoLength);
-}
-
-void acvComponentFilling2(acvImage *Pic,_24BitUnion NowLable
-                        ,DyArray<int> * ProcTable,DyArray<int> * BackTable
-                        ,DyArray<int> * Information)
-{
-      int NowTableLength=ProcTable->Length(),x,y,SumX=0,SumY=0,ToTalDotNum=0;
-
-      BackTable->ReLength(0);
-      while(NowTableLength)
-      {
-        for(int k=0;k<NowTableLength;k+=2)
-        {
-                x=DAData_Var(ProcTable,(k)  );
-                y=DAData_Var(ProcTable,(k+1)  );
-                SumX+=x;
-                SumY+=y;
-                ToTalDotNum++;
-                #if LabelingBy4OrM_
-                acvCheck4Connect2(Pic,NowLable,x,y,BackTable);
-                #else
-                acvCheck8Connect2(Pic,NowLable,x,y,BackTable);
-
-                #endif
-        }
-        NowTableLength=(int)ProcTable;
-        ProcTable=BackTable;
-        BackTable=(DyArray<int>*)NowTableLength;
-        BackTable->ReLength(0);
-        NowTableLength=ProcTable->Length();
-      }
-      NowTableLength=NowLable._3Byte.Num*LabelingInfoColumn;
-      Information->ReLength(NowTableLength+LabelingInfoColumn);
-      DAData_Var(Information,NowTableLength+LabelingArea)=ToTalDotNum;
-      DAData_Var(Information,NowTableLength+LabelingCentroidX)=SumX/ToTalDotNum;
-      DAData_Var(Information,NowTableLength+LabelingCentroidY)=SumY/ToTalDotNum;
-
-
-}
-void acvComponentFilling2(acvImage *Pic,_24BitUnion NowLable
-                        ,DyArray<int>* ProcTable,DyArray<int> * BackTable)
-{
-      int NowTableLength=ProcTable->Length();
-
-      BackTable->ReLength(0);
-      while(NowTableLength)
-      {
-        for(int k=0;k<NowTableLength;k+=2)
-        {
-                #if LabelingBy4OrM_
-                acvCheck4Connect2(Pic,NowLable,DAData_Var(ProcTable,(k)  ),DAData_Var(ProcTable,(k)+1),BackTable);
-                #else
-                acvCheck8Connect2(Pic,NowLable,DAData_Var(ProcTable,(k)  ),DAData_Var(ProcTable,(k)+1),BackTable);
-
-                #endif
-        }
-        NowTableLength=(int)ProcTable;
-        ProcTable=BackTable;
-        BackTable=(DyArray<int>*)NowTableLength;
-        BackTable->ReLength(0);
-        NowTableLength=ProcTable->Length();
-      }
-}
-
-void acvComponentLabeling2(acvImage *Pic,DyArray<int>* Information)
-{
-
-       int      i,j,
-                Width=Pic->GetWidth()-1,
-                Height=Pic->GetHeight()-1;
-
-       static DyArray<int>*ProcTable=new DyArray<int>(128);
-       static DyArray<int>*BackTable=new DyArray<int>(128);
-       Information->ReLength(0);
-       _24BitUnion NowLable;
-
-       acvDeletFrame(Pic);
-
-       NowLable._3Byte.Num=0;
-
-       for(i=1;i<Height;i++)for(j=1;j<Width;j++)
-       {
-             if(Pic->CVector[i][3*j])continue;
-
-             DAData_Var(ProcTable,0)=j;    //X
-             DAData_Var(ProcTable,1)=i;    //Y
-
-             ProcTable->ReLength(2);
-             acvComponentFilling2(Pic,NowLable,ProcTable,BackTable,Information);
-             NowLable._3Byte.Num++;
-       }
-       for(i=1;i<Height;i++)for(j=1;j<Width;j++)
-             if(Pic->CVector[i][3*j]!=255)Pic->CVector[i][3*j]-=1;
-}
-void acvCheck4Connect(acvImage *Pic,_24BitUnion NowLable,int X,int Y,DyArray<int> * ProcTable)
-{
-
-      int *Coordinate;
-      BYTE* BGR;
-
-      X++;
-      if(Pic->CVector[Y][3*(X)]==0)//Y   X+1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      X-=2;
-      if(Pic->CVector[Y][3*(X)]==0)//Y   X-1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      X++;
-      Y++;
-      if(Pic->CVector[Y][3*(X)]==0)//Y+1   X
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      Y-=2;
-
-      if(Pic->CVector[Y][3*(X)]==0)//Y-1   X
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-}
-
-
-
-void acvCheck8Connect(acvImage *Pic,_24BitUnion NowLable,int X,int Y,DyArray<int>* ProcTable)
-{
-
-      BYTE* BGR;
-      int *Coordinate;
-
-
-      if(Pic->CVector[Y][3*(++X)]==0)//Y   X+1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[++Y][3*(X)]==0)//Y+1   X+1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[Y][3*(--X)]==0)//Y+1   X
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[Y][3*(--X)]==0)//Y+1   X-1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[--Y][3*(X)]==0)//Y   X-1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[--Y][3*(X)]==0)//Y-1   X-1
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[Y][3*(++X)]==0)//Y-1   X
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-      if(Pic->CVector[Y][3*(++X)]==0)//Y-1   X
-      {
-        Coordinate=(int*)ProcTable->Push();
-        Coordinate[0]=X;
-        Coordinate[1]=Y;
-        BGR=Pic->CVector[Y]+3*X;
-        *BGR++=NowLable.Byte3.Num0+1;// 1 Be a Mark of labeled
-        *BGR++=NowLable.Byte3.Num1;
-        *BGR++=NowLable.Byte3.Num2;
-      }
-}
-
-void acvComponentFilling(acvImage *Pic,_24BitUnion NowLable
-                        ,DyArray<int> * ProcTable
-                        ,DyArray<int> * Information)
-{
-      int SumX=0,SumY=0,ToTalDotNum=0,*Coordinate,*Info;
-      int Tmp=0;
-      Coordinate=(int*)ProcTable->Front();
-      Tmp=NowLable._3Byte.Num*LabelingInfoColumn;
-      Information->ReLength(Tmp+LabelingInfoColumn);
-
-      Info=Information->GetPointer(Tmp);
-      Info[LabelingStartPosX]=Coordinate[0];
-      Info[LabelingStartPosY]=Coordinate[1];
-      while(ProcTable->Length())
-      {
-        Coordinate=(int*)ProcTable->Front();
-        Tmp++;
-        ProcTable->QueuePop();
-        SumX+=Coordinate[0];
-        SumY+=Coordinate[1];
-        ToTalDotNum++;
-
-        #if LabelingBy4OrM_
-        acvCheck4Connect(Pic,NowLable,Coordinate[0],Coordinate[1],ProcTable);
-        #else
-        acvCheck8Connect(Pic,NowLable,Coordinate[0],Coordinate[1],ProcTable);
-        #endif
-      }
-
-      Info[LabelingArea]=ToTalDotNum;
-      Info[LabelingCentroidX]=SumX/ToTalDotNum;
-      Info[LabelingCentroidY]=SumY/ToTalDotNum;
-      //Coordinate[LabelingArea]=ToTalDotNum;
-
-
-}
-
-void acvComponentLabeling(acvImage *Pic,DyArray<int> * Information) //0
-{
-
-       int      i,j,*QueueArray,
-                Xoffset=Pic->GetROIOffsetX(),
-                Yoffset=Pic->GetROIOffsetY(),
-                Width=Pic->GetWidth()+Xoffset,
-                Height=Pic->GetHeight()+Yoffset
-
-                ;
-       static DyArray<int> *ProcTable=new DyArray<int>(2);
-
-       Information->ReLength(0);
-       _24BitUnion NowLable;
-
-       acvDeletFrame(Pic);
-
-       NowLable._3Byte.Num=0;
-
-
-       Xoffset++;
-       Yoffset++;
-       Height--;
-       Width--;
-       for(i=Yoffset;i<Height;i++)for(j=Xoffset;j<Width;j++)
-       {
-             if(Pic->CVector[i][3*j])
-             {
-                if(Pic->CVector[i][3*j]!=255)
-                        Pic->CVector[i][3*j]--;
-                continue;
-             }
-
-             ProcTable->ClearLinearContainer();
-             QueueArray=(int*)ProcTable->Push();
-             QueueArray[0]=j;    //X
-             QueueArray[1]=i;    //Y
-
-             acvComponentFilling(Pic,NowLable,ProcTable,Information);
-             Pic->CVector[i][3*j]--;
-             NowLable._3Byte.Num++;
-
-       }
-}
-
-#define CentroidMutiNum  10
-void acvComponentFilling_CentroidMuti(acvImage *Pic,_24BitUnion NowLable
-                        ,DyArray<int> * ProcTable
-                        ,DyArray<int> * Information)
-{
-      int SumX=0,SumY=0,ToTalDotNum=0,*Coordinate;
-      int Tmp=0;
-      while(ProcTable->Length())
-      {
-        Coordinate=(int*)ProcTable->Front();
-        Tmp++;
-        ProcTable->QueuePop();
-        SumX+=Coordinate[0];
-        SumY+=Coordinate[1];
-        ToTalDotNum++;
-
-        #if LabelingBy4OrM_
-        acvCheck4Connect(Pic,NowLable,Coordinate[0],Coordinate[1],ProcTable);
-        #else
-        acvCheck8Connect(Pic,NowLable,Coordinate[0],Coordinate[1],ProcTable);
-        #endif
-      }
-
-      Tmp=NowLable._3Byte.Num*LabelingInfoColumn;
-      Information->ReLength(Tmp+LabelingInfoColumn);
-
-      DAData_Var(Information,Tmp+LabelingArea)=ToTalDotNum;
-      DAData_Var(Information,Tmp+LabelingCentroidX)=CentroidMutiNum*SumX/ToTalDotNum;
-      DAData_Var(Information,Tmp+LabelingCentroidY)=CentroidMutiNum*SumY/ToTalDotNum;
-
-
-}
-
-void acvComponentLabeling_CentroidMuti(acvImage *Pic,DyArray<int> * Information) //0
-{
-
-       int      i,j,*QueueArray,
-                Xoffset=Pic->GetROIOffsetX(),
-                Yoffset=Pic->GetROIOffsetY(),
-                Width=Pic->GetWidth()+Xoffset,
-                Height=Pic->GetHeight()+Yoffset
-
-                ;
-       static DyArray<int> *ProcTable=new DyArray<int>(2);
-
-       Information->ReLength(0);
-       _24BitUnion NowLable;
-
-       acvDeletFrame(Pic);
-
-       NowLable._3Byte.Num=0;
-
-
-       Xoffset++;
-       Yoffset++;
-       Height--;
-       Width--;
-       for(i=Yoffset;i<Height;i++)for(j=Xoffset;j<Width;j++)
-       {
-             if(Pic->CVector[i][3*j])
-             {
-                if(Pic->CVector[i][3*j]!=255)
-                        Pic->CVector[i][3*j]--;
-                continue;
-             }
-
-             ProcTable->ClearLinearContainer();
-             QueueArray=(int*)ProcTable->Push();
-             QueueArray[0]=j;    //X
-             QueueArray[1]=i;    //Y
-             acvComponentFilling_CentroidMuti(Pic,NowLable,ProcTable,Information);
-             Pic->CVector[i][3*j]--;
-             NowLable._3Byte.Num++;
-
-       }
-}
-
-
-
-
-
-
-
-#define MathPI           3.141592654
-
-#define SignInfoAngleNum 30
-#define Radian2Degree    (SignInfoAngleNum)/MathPI/2
-#define Degree2Radian    MathPI*2/SignInfoAngleNum
-
-#define SignInfoDistanceMuti 10000
-
-
-void acvLabeledSignature(acvImage *LabeledPic,DyArray<int> * LabelInfo,DyArray<int> * SignInfo)
-{
-        BYTE *LabeledLine;
-        _24BitUnion NumTranse;
-        double  Degree;
-        int *DataArray,XSub,YSub,*MaxDistance,Distance;
-        SignInfo->ReLength(SignInfoAngleNum*LabelInfo->Length()/LabelingInfoColumn);
-        for(int i=0;i<SignInfo->Length();i++)
-                *(int*)SignInfo->GetPointer(i)=0;
-        for(int i=0;i<LabeledPic->GetHeight();i++)
-        {
-                LabeledLine=LabeledPic->CVector[i];
-                for(int j=0;j<LabeledPic->GetWidth();j++)
-                {
-                        if(*LabeledLine==255)
-                        {
-                                LabeledLine+=3;
-                                continue;
-                        }
-                        NumTranse.Byte3.Num0=*LabeledLine++;
-                        NumTranse.Byte3.Num1=*LabeledLine++;
-                        NumTranse.Byte3.Num2=*LabeledLine++;
-
-                        DataArray=(int*)LabelInfo->GetPointer(NumTranse._3Byte.Num*LabelingInfoColumn);
-                        if(!DataArray[LabelingArea ])continue;
-
-                        XSub=j-DataArray[LabelingAmendCentroidX];
-                        YSub=DataArray[LabelingAmendCentroidY]-i;
-                        if(!XSub&&!YSub)
-                                Degree=0;
-                        else
-                        {
-                                Degree=Radian2Degree*atan2(YSub,XSub);
-                                Degree=DoubleRoundInt(Degree);
-                                if(Degree<0)Degree+=SignInfoAngleNum;
-                                //if(Degree>=SignInfoAngleNum)Degree-=SignInfoAngleNum;
-
-                        }
-                        MaxDistance=(int*)SignInfo->GetPointer(SignInfoAngleNum*NumTranse._3Byte.Num+(int)Degree);
-
-                        Distance=SignInfoDistanceMuti*hypot(XSub,YSub);
-                        if(*MaxDistance<Distance)*MaxDistance=Distance ;
-                        //(*MaxDistance)=1000;
-                }
-        }
-
-}
-
-#define HistoGenInfoNum (256*3/HistoGenDataCompress)
-#define HistoGenNormalizeNum 10000   //the sum of Histo is NormalizeNum
-
-#define HistoGenDataCompress  30
-
-
-void acvLabeledHistoGenerater(acvImage *LabeledPic,acvImage *RefPic,DyArray<int> * LabelInfo,DyArray<int> * HistoInfo)
-{
-        BYTE *LabeledLine,*RefLine;
-        _24BitUnion NumTranse;
-        int Area,*HistoData,i,j;
-
-        HistoInfo->ReLength(HistoGenInfoNum*LabelInfo->Length()/LabelingInfoColumn);
-        for(i=0;i<HistoInfo->Length();i++)
-                DAData_Var(HistoInfo,i)=0;
-
-        for(i=0;i<LabeledPic->GetHeight();i++)
-        {
-                LabeledLine=LabeledPic->CVector[i];
-                RefLine =RefPic ->CVector[i];
-
-                for(j=0;j<LabeledPic->GetWidth();j++)
-                {
-                        if(*LabeledLine==255)
-                        {
-                                LabeledLine+=3;
-                                RefLine+=3;
-                                continue;
-                        }
-
-                        NumTranse.Byte3.Num0=*LabeledLine++;
-                        NumTranse.Byte3.Num1=*LabeledLine++;
-                        NumTranse.Byte3.Num2=*LabeledLine++;
-                        if(! LabelInfo->GetPointer(NumTranse._3Byte.Num+LabelingArea))continue;
-
-                        HistoData=(int*)HistoInfo->GetPointer(HistoGenInfoNum*NumTranse._3Byte.Num);
-
-
-                        HistoData[(RefLine[2]/HistoGenDataCompress)*3+2]++;
-                        HistoData[(RefLine[1]/HistoGenDataCompress)*3+1]++;
-                        HistoData[(RefLine[0]/HistoGenDataCompress)*3+0]++;
-
-                        RefLine+=3;
-                }
-        }
-        for(i=0;i<HistoInfo->Length();i+=HistoGenInfoNum)
-        {
-                Area=DAData_Var(LabelInfo,(i/HistoGenInfoNum)*LabelingInfoColumn+LabelingArea);
-                if(!Area)continue;
-                HistoData=(int*)HistoInfo->GetPointer(i);
-                for(j=0;j<HistoGenInfoNum;j++)
-                        HistoData[j]=HistoData[j]*HistoGenNormalizeNum/Area;
-
-        }
-}
-
-
-void acvWeightedCentroid(acvImage *LabeledPic,DyArray<int> * Information,acvImage *WeightPic)
-{
-        int Weight,i,j;
-        _24BitUnion NumTranse;
-        BYTE* LabeledLine,*WeightLine;
-        int *DataArray;
-
-        for(i=0;i<Information->Length();i++)
-                *(int*)Information->GetPointer(i)=0;
-
-        for(i=0;i<LabeledPic->GetHeight();i++)
-        {
-                LabeledLine=LabeledPic->CVector[i];
-                WeightLine=WeightPic->CVector[i];
-
-                for(j=0;j<LabeledPic->GetWidth();j++)
-                {
-                        if(*LabeledLine==255)
-                        {
-                               LabeledLine+=3;
-                                continue;
-                        }
-                        NumTranse.Byte3.Num0=*LabeledLine++;
-                        NumTranse.Byte3.Num1=*LabeledLine++;
-                        NumTranse.Byte3.Num2=*LabeledLine++;
-                        DataArray=(int*)Information->GetPointer(NumTranse._3Byte.Num*LabelingInfoColumn);
-                        //To Reach this Function the  UIA of Information Must be  Multiples of InformationColumn
-                        //Or Will be Bugged
-                        Weight=WeightLine[0];
-                        WeightLine+=LabelingInfoColumn;
-
-                        DataArray[LabelingArea]+=Weight;
-                        DataArray[LabelingDotsXSum]+=j*Weight;
-                        DataArray[LabelingDotsYSum]+=i*Weight;
-
-
-                }
-        }
-       acvLabeledInfoAdjust(Information);
-
-}
-
-int acvThresholdArea2(acvImage *LabeledPic,DyArray<int> * Information,int Valve)
-{
-        int i,j,Tmp,Num=-1;
-        _24BitUnion NumTranse;
-        BYTE* BMPLine;
-
-        if(*(int*)Information->GetPointer(0)==LabelingNoComponentExist){goto Exit;}
-
-        if(Valve==-1)for(i=LabelingArea;i<Information->Length();i+=LabelingInfoColumn)
-                if(DAData_Var(Information,i)>Valve)
-                        Valve=DAData_Var(Information,i);
-
-
-        for(i=LabelingArea;i<Information->Length();i+=LabelingInfoColumn)
-                if(DAData_Var(Information,i)<Valve)
-                        DAData_Var(Information,i)=0;
-
-
-        for(i=0;i<LabeledPic->GetHeight();i++)
-        {
-                BMPLine=LabeledPic->CVector[i];
-                for(j=0;j<LabeledPic->GetWidth();j++)
-                {
-                        if(*BMPLine==255)
-                        {
-                                BMPLine+=3;
-                                continue;
-                        }
-                        NumTranse.Byte3.Num0=*BMPLine++;
-                        NumTranse.Byte3.Num1=*BMPLine++;
-                        NumTranse.Byte3.Num2=*BMPLine++;
-                        Num=NumTranse._3Byte.Num;
-                        Tmp=DAData_Var(Information,(Num)*LabelingInfoColumn);
-
-                        if(!Tmp)
-                        {
-                                *(BMPLine-3)=255;
-                        }
-                }
-        }
-        Exit:;
-
-        return Num;
-}
-
-
-int acvThresholdArea(acvImage *LabeledPic,DyArray<int> * Information,int Valve) //0
-{
-        int i,j,Tmp,Num=-1,*TmpPointer,NowDataLocate,NowLength,
-                Xoffset=LabeledPic->GetROIOffsetX(),
-                Yoffset=LabeledPic->GetROIOffsetY(),
-                Width=LabeledPic->GetWidth()-1+Xoffset,
-                Height=LabeledPic->GetHeight()-1+Yoffset
-
-                ;
-        _24BitUnion NumTranse;
-        BYTE* BMPLine;
-        static DyArray<int> *NewTable=new DyArray<int> (127);
-
-        if(Information->Length()==0){goto Exit;}
-
-        if(Valve==-1)for(Valve=1,i=LabelingArea;i<Information->Length();i+=LabelingInfoColumn)
-                if(DAData_Var(Information,i)>Valve)
-                        Valve=DAData_Var(Information,i);   //Find the max Area
-
-        for(Tmp=j=0,i=LabelingArea;i<Information->Length();i+=LabelingInfoColumn,j++)//
-        {
-                if(DAData_Var(Information,i)>=Valve)
-                {
-                        DAData_Var(NewTable,j)=Tmp++;//Mark the New Labeling Number
-
-                }
-                else
-                {
-                        DAData_Var(Information,i)=0;//Area to Zero
-                        DAData_Var(NewTable,j)=-1;//Set the Deleting Mark
-                }
-        }
-        NowLength=Tmp*LabelingInfoColumn;
-
-
-        //first ,Process the Image
-        for(i=Yoffset;i<Height;i++)
-        {
-                BMPLine=LabeledPic->CVector[i]+3*Xoffset;
-                for(j=Xoffset;j<Width;j++)
-                {
-                        if(*BMPLine==255)
-                        {
-                                BMPLine+=3;
-                                continue;
-                        }
-
-                        ///Getting the old Labeling Number to Find the New Labeling Number
-                        NumTranse.Byte3.Num0=BMPLine[0];
-                        NumTranse.Byte3.Num1=BMPLine[1];
-                        NumTranse.Byte3.Num2=BMPLine[2];
-                        Num=NumTranse._3Byte.Num;
-                        Tmp=DAData_Var(NewTable,Num);
-                        ///
-
-
-                        if(Tmp==-1)//-1 is the mark to Delete
-                        {
-                                BMPLine[0]=255;
-                        }
-                        else
-                        {
-                                NumTranse._3Byte.Num=Tmp;
-                                BMPLine[0]=NumTranse.Byte3.Num0;
-                                BMPLine[1]=NumTranse.Byte3.Num1;
-                                BMPLine[2]=NumTranse.Byte3.Num2;
-                        }
-                        BMPLine+=3;
-                        //Tmp=DIAData(Information,NumTranse._3Byte.Num*LabelingInfoColumn);
-
-                }
-        }
-
-        NowDataLocate=0;
-        //Second ,Process the Informateion
-        Num=0;
-        for(Num=Tmp=i=0;i<Information->Length();i+=LabelingInfoColumn,Tmp++)
-        {
-                if(DAData_Var(NewTable,Tmp)!=-1)
-                {
-                        TmpPointer=(int*)Information->GetPointer(Num);
-                        for(j=0;j<LabelingInfoColumn;j++)
-                        {
-                                TmpPointer[j]
-                                =DAData_Var(Information,i+j);
-
-                        }
-                        Num+=LabelingInfoColumn;
-                }
-
-        }
-        Information->ReLength(NowLength);
-
-        Exit:;
-
-        return Num;
-}*/
-
-
-
-
-
+const int ContourWalkV[8][2]={{-1,-1},{-1,0},{-1,1},{0,1},{1,1},{1,0},{1,-1},{0,-1}};
 void acvLabeledColorDispersion(acvImage *ColorDispersionPic,acvImage *LabeledPic,int ColorNum)//0
 {
         int     i,j,
@@ -906,4 +50,249 @@ void acvLabeledColorDispersion(acvImage *ColorDispersionPic,acvImage *LabeledPic
 
                 }
         }
+}
+
+
+
+BYTE* acvContourWalk(acvImage  *Pic,int *X_io,int *Y_io,int *dir_io,int dirinc)
+{
+  if(*dir_io>8||*dir_io<0)return NULL;
+  BYTE **CVector=Pic->CVector;
+  int dir=*dir_io;
+  int x,y;
+  for(int i=0;i<8;i++)
+  {
+    y=*Y_io+ContourWalkV[dir][0];
+    x=*X_io+ContourWalkV[dir][1];
+    if(CVector[y][x*3+2]!=255)
+    {
+      *Y_io=y;
+      *X_io=x;
+      *dir_io=dir;
+      return &CVector[y][x*3];
+    }
+
+    dir=(dir+dirinc)&0x7;
+  }
+  return NULL;
+}
+#include<unistd.h>
+int acvDrawContour(acvImage  *Pic,int FromX,int FromY,BYTE B,BYTE G,BYTE R,char InitDir)
+{
+        int NowPos[2]={FromX,FromY};
+
+        int NowWalkDir;//=5;//CounterClockWise
+        BYTE **CVector=Pic->CVector;
+
+
+        CVector[FromY][FromX*3]=B;//StartSymbol
+        CVector[FromY][FromX*3+1]=G;
+        CVector[FromY][FromX*3+2]=254;
+
+        NowWalkDir=7;
+        //012
+        //7 3
+        //654
+
+        int searchDir=1;//clockwise
+        BYTE *next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
+
+        if(next == NULL)
+        {
+          CVector[FromY][FromX*3+2]=R;
+          return 0;
+        }
+
+        int hitExistedLabel=0;
+        //NowWalkDir=InitDir;
+        while(1)
+        {
+                if(next[2]==254)
+                {
+                  break;
+                }
+                if(hitExistedLabel||(next[0]==0&&next[1]==0&&next[2]==0))
+                {
+                  next[0]=B;
+                  next[1]=G;
+                  next[2]=R;
+                }
+                else if(next[0]!=B || next[1]!=G || next[2]!=R )
+                {//There is an existed label, set the old label as
+                  hitExistedLabel=1;
+                  CVector[FromY][FromX*3+2]=R;
+                  B=next[0];
+                  G=next[1];
+                  R=next[2];
+                  next[2]=254;
+                  searchDir=-1;
+                  NowWalkDir=NowWalkDir-2+4;
+                }
+
+                NowWalkDir=(NowWalkDir-2*searchDir)&0x7;//%8
+
+                //printf(">>:%d %d X:%d wDir:%d\n",NowPos[0],NowPos[1],next[2],NowWalkDir);
+                //sleep(1);
+                next=acvContourWalk(Pic,&NowPos[0],&NowPos[1],&NowWalkDir,searchDir);
+        }
+        next[2]=R;
+
+        return hitExistedLabel?-1:0;
+}
+
+void acvComponentLabeling(acvImage *Pic)//,DyArray<int> * Information)
+{
+        int Pic_H=Pic->GetROIOffsetY()+Pic->GetHeight()-1,
+            Pic_W=Pic->GetROIOffsetX()+Pic->GetWidth()-1;
+        char State=0;
+        int Tmp=0;
+        _24BitUnion NowLable;
+        acvDeletFrame(Pic);
+
+        int ccstop=0;
+        NowLable._3Byte.Num=0;
+        for(int i=Pic->GetROIOffsetY()+1;i<Pic_H;i++,State=0)
+                for(int j=Pic->GetROIOffsetX()+1;j<Pic_W;j++)
+        {
+                if(Pic->CVector[i][3*j+2]==255)
+                {
+                        State=0;
+                        continue;
+                }
+                if(State==0)
+                {
+                        State=1;
+                        if((Pic->CVector[i][3*j]==0&&
+                        Pic->CVector[i][3*j+1]==0&&
+                        Pic->CVector[i][3*j+2]==0))
+                        {
+                              NowLable._3Byte.Num++;
+                              int isOldContour=acvDrawContour(Pic,j,i,
+                              NowLable.Byte3.Num2,
+                              NowLable.Byte3.Num1,
+                              NowLable.Byte3.Num0,5);
+                              if(isOldContour)
+                              {
+                                NowLable._3Byte.Num--;
+                              }
+                        }
+                }
+                else
+                {
+                        Pic->CVector[i][3*j]=Pic->CVector[i][3*(j-1)];
+                        Pic->CVector[i][3*j+1]=Pic->CVector[i][3*(j-1)+1];
+                        Pic->CVector[i][3*j+2]=Pic->CVector[i][3*(j-1)+2];
+                }
+        }
+}
+
+
+int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *list,int threshold)
+{
+  int Pic_H=LabeledPic->GetROIOffsetY()+LabeledPic->GetHeight()-1,
+      Pic_W=LabeledPic->GetROIOffsetX()+LabeledPic->GetWidth()-1;
+
+  BYTE **LPCVec=LabeledPic->CVector;
+
+  int topLabel=1;//Label starts from 1
+  if(threshold>0)
+  {
+    //Label starts from 1
+    for (int i=topLabel;i<list->size();i++)
+    {
+      acv_LabeledData *ld=&((*list)[i]);
+      if(ld->area<threshold)
+      {
+        ld->area=0;
+        ld->misc=0;
+      }
+      else
+      {
+        ld->misc=topLabel;
+        topLabel++;
+      }
+    }
+  }
+  topLabel-=1;//rm last ++
+
+  if(topLabel+1==list->size())return topLabel;
+  _24BitUnion *lableConv;
+  for(int i=LabeledPic->GetROIOffsetY()+1;i<Pic_H;i++)
+          for(int j=LabeledPic->GetROIOffsetX()+1;j<Pic_W;j++)
+  {
+    if(LPCVec[i][j*3+2]==255)continue;
+    lableConv = (_24BitUnion *)&(LPCVec[i][j*3]);
+    int label=lableConv->_3Byte.Num;
+    acv_LabeledData *ld=&((*list)[label]);
+    if(ld->area==0)
+    {
+      LPCVec[i][j*3]=
+      LPCVec[i][j*3+1]=
+      LPCVec[i][j*3+2]=255;
+    }
+    else
+    {
+      lableConv->_3Byte.Num=ld->misc;//Assign to new label
+    }
+  }
+  for (int i=1;i<list->size();i++)//collapse the list
+  {
+    acv_LabeledData *ld=&((*list)[i]);
+    if(ld->misc!=0)
+    {
+      acv_LabeledData *nld=&((*list)[ld->misc]);
+      *nld=*ld;
+    }
+
+  }
+  list->resize(topLabel+1);
+}
+
+
+int acvLabeledRegionExtraction(acvImage  *LabeledPic,std::vector<acv_LabeledData> *ret_list)
+{
+  ret_list->clear();
+  std::vector<acv_LabeledData> *list=ret_list;
+  int Pic_H=LabeledPic->GetROIOffsetY()+LabeledPic->GetHeight()-1,
+      Pic_W=LabeledPic->GetROIOffsetX()+LabeledPic->GetWidth()-1;
+
+  BYTE **LPCVec=LabeledPic->CVector;
+
+  _24BitUnion *lableConv;
+  for(int i=LabeledPic->GetROIOffsetY()+1;i<Pic_H;i++)
+          for(int j=LabeledPic->GetROIOffsetX()+1;j<Pic_W;j++)
+  {
+    if(LPCVec[i][j*3+2]==255)continue;
+    lableConv = (_24BitUnion *)&(LPCVec[i][j*3]);
+    int label=lableConv->_3Byte.Num;
+    if(list->size()<=label)
+      list->resize(label+1);
+    acv_LabeledData *ld=&((*list)[label]);
+    if(ld->area==0)
+    {
+      ld->LTBound.X=j;
+      ld->LTBound.Y=i;
+      ld->RBBound.X=j;
+      ld->RBBound.Y=i;
+    }
+    else
+    {
+      if(ld->LTBound.X>j)ld->LTBound.X=j;
+      else if(ld->RBBound.X<j)ld->RBBound.X=j;
+      if(ld->LTBound.Y>i)ld->LTBound.Y=i;
+      else if(ld->RBBound.Y<i)ld->RBBound.Y=i;
+
+    }
+    ld->area++;
+    ld->Center.X+=j;
+    ld->Center.Y+=i;
+
+  }
+
+  for (int i=0;i<list->size();i++)
+  {
+    acv_LabeledData *ld=&((*list)[i]);
+    ld->Center.X/=ld->area;
+    ld->Center.Y/=ld->area;
+  }
 }

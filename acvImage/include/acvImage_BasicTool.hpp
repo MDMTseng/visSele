@@ -27,6 +27,27 @@ typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
 }BITMAPINFOHEADER;
 #pragma pack(pop)
 
+typedef struct _3BYTE
+{
+        unsigned Num:24;
+}_3BYTE;
+typedef struct _2BYTE
+{
+        uint16_t Num;
+        uint8_t Empty;
+}_2BYTE;
+typedef struct BYTE3
+{
+        uint8_t Num2;
+        uint8_t Num1;
+        uint8_t Num0;
+}BYTE3;
+typedef union _24BitUnion
+{
+        BYTE3 Byte3;
+        _3BYTE _3Byte;
+        _2BYTE _2Byte;
+}_24BitUnion;
 
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvDeletFrame(acvImage *Pic,int width);
@@ -38,10 +59,14 @@ double acvFAtan(double x);
 void acvFullB2W(acvImage *OriPic,acvImage *OutPic);
 void acvClone_B2Gray(acvImage *OriPic,acvImage *OutPic);
 void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode);
-int DoubleRoundInt(double Num);
+
 char *PrintHexArr_buff(char *strBuff,int strBuffL,char *data, int dataL);
 char *PrintHexArr(char *data, int dataL);
-unsigned char *LoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
-unsigned int LoadBitmapFile(acvImage *img,char *filename);
-int SaveBitmapFile(char *filename,unsigned char* pixData,int width,int height);
+unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
+unsigned int acvLoadBitmapFile(acvImage *img,char *filename);
+int acvSaveBitmapFile(char *filename,unsigned char* pixData,int width,int height);
+int div_round(int dividend, int divisor);
+#define div_round(dividend, divisor) (((int)(dividend) + ((int)(divisor) >>1)) / (int)(divisor))
+void acvImageAdd(acvImage *src,int num);
+#define DoubleRoundInt(Num) ((int)round(Num))
 #endif

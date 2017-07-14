@@ -247,17 +247,6 @@ void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode)
 }
 
 
-
-int DoubleRoundInt(double Num)
-{
-        return (int)round((float)Num);
-}
-
-
-
-
-
-
 char *PrintHexArr_buff(char *strBuff,int strBuffL,char *data, int dataL)
 {
     char *buffptr = strBuff;
@@ -299,7 +288,7 @@ char *PrintHexArr(char *data, int dataL)
     return PrintHexArr_buff(bufferStr,sizeof(bufferStr),data, dataL);
 }
 
-unsigned char *LoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader)
+unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader)
 {
     FILE *filePtr; //our file pointer
     BITMAPFILEHEADER bitmapFileHeader; //our bitmap file header
@@ -354,11 +343,11 @@ unsigned char *LoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader
     return bitmapImage;
 }
 
-unsigned int LoadBitmapFile(acvImage *img,char *filename)
+unsigned int acvLoadBitmapFile(acvImage *img,char *filename)
 {
 
     BITMAPINFOHEADER bitmapInfoHeader;
-    unsigned char * bitmap=LoadBitmapFile(filename,&bitmapInfoHeader);
+    unsigned char * bitmap=acvLoadBitmapFile(filename,&bitmapInfoHeader);
     if(bitmap == NULL)
     {
       return -1;
@@ -402,7 +391,7 @@ unsigned int LoadBitmapFile(acvImage *img,char *filename)
     return 0;
 }
 
-int SaveBitmapFile(char *filename,unsigned char* pixData,int width,int height)
+int acvSaveBitmapFile(char *filename,unsigned char* pixData,int width,int height)
 {
   FILE *f;
   f = fopen(filename,"wb");
@@ -433,4 +422,19 @@ int SaveBitmapFile(char *filename,unsigned char* pixData,int width,int height)
   }
   fclose(f);
   return 0;
+}
+
+void acvImageAdd(acvImage *src,int num)
+{
+  int i,j;
+  int TmpPixelH,TmpPixelV;
+  BYTE *L;
+  for(i=0;i<src->GetHeight();i++)
+  {
+    L=&(src->CVector[i][0]);
+    for(j=0;j<src->GetWidth();j++,L+=3)
+    {
+      L[0]+=num;
+    }
+  }
 }
