@@ -159,32 +159,41 @@ void test2()
   acvImageAdd(distGradient,-128);
   distGradient->ChannelOffset(-1);
 
-  acvClear(distGradient,2,255);
-  for(int k=0;k<40;k++)
-  {
 
-    acv_XY XY={k*20,k*20};
+  acvClear(ss,128);
+  int lineN=10;
+  for(int k=0;k<lineN;k++)
+  {
+    BYTE    Color[3]={HSV_VMax,HSV_VMax,(k)*(HSV_HMax-50)/lineN};
+    distGradient->RGBFromHSV(Color,Color);
+
+    acv_XY preXY={
+      0*distGradient->GetWidth()/lineN,
+      0*distGradient->GetHeight()/lineN};
+    acv_XY XY;
     acv_XY Force={0};
-    acv_XY speed={0};
-    distGradient->CVector[(int)round(XY.Y)][(int)round(XY.X)*3+2]=255;
-    for(int i=0;i<100;i++)
+    acv_XY speed={0,25};
+    for(int i=0;i<1000;i++)
     {
 
-      DistGradientTest(distGradient,&XY,&Force);
-      speed.X+=Force.X/1000;
-      speed.Y+=Force.Y/1000;
-      speed.X/=1.01;
-      speed.Y/=1.01;
-      XY.X+=speed.X;
-      XY.Y+=speed.Y;
+      DistGradientTest(distGradient,&preXY,&Force);
+      speed.X+=Force.X/100;
+      speed.Y+=Force.Y/100;
+      speed.X/=1.01+0.05*k/lineN;
+      speed.Y/=1.01+0.05*k/lineN;
+      XY.X=preXY.X+speed.X;
+      XY.Y=preXY.Y+speed.Y;
       if(XY.X<0)XY.X=0;
       if(XY.X>distGradient->GetWidth()-1)XY.X=distGradient->GetWidth()-1;
       if(XY.Y<0)XY.Y=0;
       if(XY.Y>distGradient->GetWidth()-1)XY.Y=distGradient->GetWidth()-1;
-      distGradient->CVector[(int)round(XY.Y)][(int)round(XY.X)*3+2]=0;
+      acvDrawLine(ss,(int)XY.X,(int)XY.Y,(int)preXY.X,(int)preXY.Y,Color[2],Color[1],Color[0],1);
+      preXY=XY;
       //printf(">%f %f\n",XY.X,XY.Y);
     }
   }
+  acvSaveBitmapFile("data/target_ss.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+
 
   acvImageAdd(distGradient,128);
   distGradient->ChannelOffset(1);
@@ -274,10 +283,15 @@ int testEstXY()
 #include <vector>
 int main()
 {
+  //clock_t t= clock();
+
+  test2();
+
+  //t = clock() - t;
+  //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
   //testEstXY();
   //testEstXY();
   //TargetPrep();
-  test2();
   int ret = 0;
   printf("Hello, World! %d",ret);
   return ret;
