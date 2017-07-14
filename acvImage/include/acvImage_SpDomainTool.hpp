@@ -20,6 +20,7 @@ void acvSobelFilter(acvImage *res,acvImage *src);
 void acvSobelFilterX(acvImage *res,acvImage *src);
 void acvHarrisCornorResponse(acvImage *buff,acvImage *src);
 void acvDistanceTransform_Chamfer(acvImage *src,int dist,int distX);
+void acvDistanceTransform_ChamferX(acvImage *src);
 void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int distListL);
 void acvDistanceTransform_Sobel(acvImage *res,acvImage *src);
 #endif

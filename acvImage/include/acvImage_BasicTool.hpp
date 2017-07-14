@@ -50,9 +50,10 @@ typedef union _24BitUnion
 }_24BitUnion;
 
 void acvThreshold(acvImage *Pic,BYTE Var);
-void acvDeletFrame(acvImage *Pic,int width);
-void acvDeletFrame(acvImage *Pic);
+void acvDeleteFrame(acvImage *Pic,int width);
+void acvDeleteFrame(acvImage *Pic);
 void acvClear(acvImage *Pic,BYTE Var);
+void acvClear(acvImage *Pic,int channel,BYTE Var);
 void acvTurn(acvImage *Pic);
 double acvFAtan2( double y, double x );
 double acvFAtan(double x);
@@ -69,4 +70,5 @@ int div_round(int dividend, int divisor);
 #define div_round(dividend, divisor) (((int)(dividend) + ((int)(divisor) >>1)) / (int)(divisor))
 void acvImageAdd(acvImage *src,int num);
 #define DoubleRoundInt(Num) ((int)round(Num))
+void acvInnerFramePixCopy(acvImage *Pic,int FrameX);
 #endif

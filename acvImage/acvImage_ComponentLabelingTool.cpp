@@ -147,7 +147,7 @@ void acvComponentLabeling(acvImage *Pic)//,DyArray<int> * Information)
         char State=0;
         int Tmp=0;
         _24BitUnion NowLable;
-        acvDeletFrame(Pic);
+        acvDeleteFrame(Pic);
 
         int ccstop=0;
         NowLable._3Byte.Num=0;

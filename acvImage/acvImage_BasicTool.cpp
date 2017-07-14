@@ -64,7 +64,9 @@ double acvFAtan2( double y, double x )
 	}
 }
 
-void acvDeletFrame(acvImage *Pic,int line_width)
+
+
+void acvDeleteFrame(acvImage *Pic,int line_width)
 {
     int Xoffset=Pic->GetROIOffsetX(),
         Yoffset=Pic->GetROIOffsetY(),
@@ -92,10 +94,58 @@ void acvDeletFrame(acvImage *Pic,int line_width)
       }
     }
 }
-void acvDeletFrame(acvImage *Pic)
+void acvDeleteFrame(acvImage *Pic)
 {
-    acvDeletFrame(Pic,1);
+    acvDeleteFrame(Pic,1);
 }
+
+void acvInnerFramePixCopy(acvImage *Pic,int FrameX)
+{
+  if(FrameX<0)return;
+  int FrameX3=FrameX*3;
+  int WX3=3*(Pic->GetWidth());
+  //Fill the edge
+  for(int i=FrameX;i<Pic->GetHeight()-FrameX;i++)
+  {
+    Pic->CVector[i][FrameX3-3+0]=Pic->CVector[i][FrameX3+0];
+    Pic->CVector[i][FrameX3-3+1]=Pic->CVector[i][FrameX3+1];
+    Pic->CVector[i][FrameX3-3+2]=Pic->CVector[i][FrameX3+2];
+    Pic->CVector[i][WX3-FrameX3+0]=Pic->CVector[i][WX3-FrameX3-3+0];
+    Pic->CVector[i][WX3-FrameX3+1]=Pic->CVector[i][WX3-FrameX3-3+1];
+    Pic->CVector[i][WX3-FrameX3+2]=Pic->CVector[i][WX3-FrameX3-3+2];
+  }
+
+  int HX=Pic->GetHeight()-FrameX;
+  for(int j=FrameX;j<Pic->GetWidth()-FrameX;j++)
+  {
+    Pic->CVector[FrameX-1][j*3+0]=Pic->CVector[FrameX][j*3+0];
+    Pic->CVector[FrameX-1][j*3+1]=Pic->CVector[FrameX][j*3+1];
+    Pic->CVector[FrameX-1][j*3+2]=Pic->CVector[FrameX][j*3+2];
+    Pic->CVector[HX][j*3+0]=Pic->CVector[HX-1][j*3+0];
+    Pic->CVector[HX][j*3+1]=Pic->CVector[HX-1][j*3+1];
+    Pic->CVector[HX][j*3+2]=Pic->CVector[HX-1][j*3+2];
+  }
+
+  //Copy cornor
+  //^<
+  Pic->CVector[FrameX-1][FrameX3-3+0]=Pic->CVector[FrameX][FrameX3+0];
+  Pic->CVector[FrameX-1][FrameX3-3+1]=Pic->CVector[FrameX][FrameX3+1];
+  Pic->CVector[FrameX-1][FrameX3-3+2]=Pic->CVector[FrameX][FrameX3+2];
+  //^>
+  Pic->CVector[FrameX-1][WX3-FrameX3+0]=Pic->CVector[FrameX][WX3-FrameX3-3+0];
+  Pic->CVector[FrameX-1][WX3-FrameX3+1]=Pic->CVector[FrameX][WX3-FrameX3-3+1];
+  Pic->CVector[FrameX-1][WX3-FrameX3+2]=Pic->CVector[FrameX][WX3-FrameX3-3+2];
+  //V<
+  Pic->CVector[HX][FrameX3-3+0]=Pic->CVector[HX-1][FrameX3+0];
+  Pic->CVector[HX][FrameX3-3+1]=Pic->CVector[HX-1][FrameX3+1];
+  Pic->CVector[HX][FrameX3-3+2]=Pic->CVector[HX-1][FrameX3+2];
+  //V>
+  Pic->CVector[HX][WX3-FrameX3+0]=Pic->CVector[HX-1][WX3-FrameX3-3+0];
+  Pic->CVector[HX][WX3-FrameX3+1]=Pic->CVector[HX-1][WX3-FrameX3-3+1];
+  Pic->CVector[HX][WX3-FrameX3+2]=Pic->CVector[HX-1][WX3-FrameX3-3+2];
+
+}
+
 
 void acvClear(acvImage *Pic,BYTE Var)
 {
@@ -115,6 +165,24 @@ void acvClear(acvImage *Pic,BYTE Var)
         }
     }
 }
+void acvClear(acvImage *Pic,int channel,BYTE Var)
+{
+    BYTE* BMPLine;
+    int Xoffset=Pic->GetROIOffsetX(),
+        Yoffset=Pic->GetROIOffsetY(),
+        Height=Yoffset+ Pic->GetHeight(),
+        Width =Xoffset+Pic->GetWidth() ;
+    for(int i=Yoffset;i< Height;i++)
+    {
+        BMPLine=Pic->CVector[i]+Xoffset*3+channel;
+        for(int j=Xoffset;j<Width;j++)
+        {
+               *BMPLine=Var;
+               BMPLine+=3;
+        }
+    }
+}
+
 void acvTurn(acvImage *Pic)
 {
     BYTE* BMPLine;

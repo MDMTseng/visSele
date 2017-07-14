@@ -329,7 +329,7 @@ void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int d
   BYTE *L;
   int distRotate=0;
 
-  acvDeletFrame(src);
+  acvDeleteFrame(src);
   for(i=1;i<src->GetHeight()-1;i++)
   {
     preL=&(src->CVector[i-1][3]);
@@ -390,9 +390,19 @@ void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int d
       if(pe->_2Byte.Num>a)pe->_2Byte.Num=a;
     }
   }
+
+
 }
 
 void acvDistanceTransform_Chamfer(acvImage *src,int dist,int distX)
+{
+  acvDT_distRotate dists[5];
+  dists[0].dist=dist;
+  dists[0].distX=distX;
+  acvDistanceTransform_Chamfer(src,dists,1);
+}
+
+void acvDistanceTransform_ChamferX(acvImage *src)
 {
   acvDT_distRotate dists[5];
   dists[0].dist=5;

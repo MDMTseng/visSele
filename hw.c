@@ -65,7 +65,7 @@ void test1()
   ret=acvSaveBitmapFile("data/uu_harris.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
   acvThreshold(ss,128);
 
-  acvDeletFrame(ss,5);
+  acvDeleteFrame(ss,5);
 
   acvComponentLabeling(ss);
   acvLabeledColorDispersion(ss,ss,5);
@@ -120,6 +120,14 @@ void acvScalingSobelResult(acvImage *src)
   }
 }
 
+void DistGradientTest(acvImage *distSobelMap,acv_XY *XY,acv_XY *Force)
+{
+  int rX=round(XY->X);
+  int rY=round(XY->Y);
+
+  Force->Y=(char)distSobelMap->CVector[rY][rX*3];
+  Force->X=(char)distSobelMap->CVector[rY][rX*3+1];
+}
 
 void test2()
 {
@@ -130,18 +138,60 @@ void test2()
   distGradient->ReSize(ss->GetWidth(),ss->GetHeight());
   acvThreshold(ss,128);
   int mul=1;
-  acvDistanceTransform_Chamfer(ss,5*mul,7*mul);
+  //acvDistanceTransform_Chamfer(ss,3*mul,4*mul);
+  acvDistanceTransform_ChamferX(ss);
+  acvInnerFramePixCopy(ss,1);
   acvSaveBitmapFile("data/target_s_dist.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
   acvDistanceTransform_Sobel(distGradient,ss);
+  acvInnerFramePixCopy(distGradient,1);
 
+
+  acvScalingSobelResult(distGradient);
   acvImageAdd(distGradient,128);
-  acvBoxFilter(ss,distGradient,1);
+  acvBoxFilter(ss,distGradient,25);
+  //acvBoxFilter(ss,distGradient,15);
+  acvImageAdd(distGradient,-128);
   distGradient->ChannelOffset(1);
   acvImageAdd(distGradient,128);
-  acvBoxFilter(ss,distGradient,1);
+  acvBoxFilter(ss,distGradient,25);
+  //acvBoxFilter(ss,distGradient,15);
+  acvImageAdd(distGradient,-128);
   distGradient->ChannelOffset(-1);
-  //acvCloneImage(distGradient,distGradient,0);
+
+  acvClear(distGradient,2,255);
+  for(int k=0;k<40;k++)
+  {
+
+    acv_XY XY={k*20,k*20};
+    acv_XY Force={0};
+    acv_XY speed={0};
+    distGradient->CVector[(int)round(XY.Y)][(int)round(XY.X)*3+2]=255;
+    for(int i=0;i<100;i++)
+    {
+
+      DistGradientTest(distGradient,&XY,&Force);
+      speed.X+=Force.X/1000;
+      speed.Y+=Force.Y/1000;
+      speed.X/=1.01;
+      speed.Y/=1.01;
+      XY.X+=speed.X;
+      XY.Y+=speed.Y;
+      if(XY.X<0)XY.X=0;
+      if(XY.X>distGradient->GetWidth()-1)XY.X=distGradient->GetWidth()-1;
+      if(XY.Y<0)XY.Y=0;
+      if(XY.Y>distGradient->GetWidth()-1)XY.Y=distGradient->GetWidth()-1;
+      distGradient->CVector[(int)round(XY.Y)][(int)round(XY.X)*3+2]=0;
+      //printf(">%f %f\n",XY.X,XY.Y);
+    }
+  }
+
+  acvImageAdd(distGradient,128);
+  distGradient->ChannelOffset(1);
+  acvImageAdd(distGradient,128);
+  distGradient->ChannelOffset(-1);
+
+  //acvCloneImage(distGradient,distGradient,2);
   acvSaveBitmapFile("data/target_s_dist_grad.bmp",distGradient->ImageData,ss->GetWidth(),ss->GetHeight());
 }
 void TargetPrep()
@@ -204,7 +254,7 @@ int testEstXY()
   acvSaveBitmapFile("data/uu_oXX.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
 
-  //acvDeletFrame(ss,5);
+  //acvDeleteFrame(ss,5);
   acvComponentLabeling(ss);
   acvLabeledRegionExtraction(ss,&ldData);
   acvRemoveRegionLessThan(ss,&ldData,120);
