@@ -1,6 +1,8 @@
 
 #include "acvImage.hpp"
 #include <math.h>
+#include "acvImage_BasicTool.hpp"
+#include "acvImage_SpDomainTool.hpp"
 
 
 
@@ -838,22 +840,26 @@ void acvSobelFilter(acvImage *res,acvImage *src)
     BYTE *L1,*L2,*L3;
     for(i=1;i<src->GetHeight()-1;i++)
     {
-      L1=&(src->CVector[i-1][3]);
-      L2=&(src->CVector[i+0][3]);
-      L3=&(src->CVector[i+1][3]);
+      L1=&(src->CVector[i-1][0]);
+      L2=&(src->CVector[i+0][0]);
+      L3=&(src->CVector[i+1][0]);
+      L1+=3,L2+=3,L3+=3;
       for(j=1;j<src->GetWidth()-1;j++,L1+=3,L2+=3,L3+=3)
       {
 
 
           TmpPixelH=(L1[-3]+2*L1[0]+L1[+3])-
                     (L3[-3]+2*L3[0]+L3[+3]);//Get gradient in direction ^
-          TmpPixelH=TmpPixelH>>3+(TmpPixelH&0x4?1:0);
+          TmpPixelH=div_round(TmpPixelH,8);//TmpPixelH>>3;
+          if(TmpPixelH==128)TmpPixelH=127;
           res->CVector[i][3*j]=(char)TmpPixelH;
 
           TmpPixelV=(L1[-3]+2*L2[-3]+L3[-3])-
                     (L1[3]+2*L2[3]+L3[+3]);//Get gradient in direction <
-          TmpPixelV=TmpPixelV>>3+(TmpPixelV&0x4?1:0);
+          TmpPixelV=div_round(TmpPixelV,8);
+          if(TmpPixelV==128)TmpPixelV=127;
           res->CVector[i][3*j+1]=(char)TmpPixelV;
+          res->CVector[i][3*j+2]=L2[0];
       }
     }
 }
