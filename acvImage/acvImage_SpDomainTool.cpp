@@ -92,9 +92,9 @@ void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size)
 
 void acvMasking(acvImage *OutPic,acvImage *OriPic,unsigned char size,char** Mask)
 {
-    static char k,l,Mod,MidSize;
-    static int i,j;
-    static int TmpPixelR,TmpPixelG,TmpPixelB;
+    char k,l,Mod,MidSize;
+    int i,j;
+    int TmpPixelR,TmpPixelG,TmpPixelB;
 
     MidSize=size/2;
     Mod=0;
@@ -217,8 +217,8 @@ void acvVMidianFilter(acvImage *OutPic,acvImage *OriPic)
 
 void acvSobelFilter(acvImage *res,acvImage *src)
 {
-    static int i,j;
-    static int TmpPixelH,TmpPixelV;
+    int i,j;
+    int TmpPixelH,TmpPixelV;
     BYTE *L1,*L2,*L3;
     for(i=1;i<src->GetHeight()-1;i++)
     {
@@ -298,8 +298,8 @@ void acvHarrisCornorResponse(acvImage *buff,acvImage *src)
 
 void acvSobelFilterX(acvImage *res,acvImage *src)
 {
-    static int i,j;
-    static int TmpPixelH,TmpPixelV;
+    int i,j;
+    int TmpPixelH,TmpPixelV;
     BYTE *L1,*L2,*L3;
     for(i=1;i<src->GetHeight()-1;i++)
     {
@@ -394,8 +394,49 @@ void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int d
 
 void acvDistanceTransform_Chamfer(acvImage *src,int dist,int distX)
 {
-  acvDT_distRotate dists[1];
-  dists[0].dist=dist;
-  dists[0].distX=distX;
-  acvDistanceTransform_Chamfer(src,dists,1);
+  acvDT_distRotate dists[5];
+  dists[0].dist=5;
+  dists[0].distX=7;
+  dists[1].dist=4;
+  dists[1].distX=8;
+  dists[2].dist=6;
+  dists[2].distX=6;
+
+  dists[3].dist=4;
+  dists[3].distX=8;
+
+  dists[4].dist=6;
+  dists[4].distX=6;
+
+
+  acvDistanceTransform_Chamfer(src,dists,5);
+}
+
+#define pix16b(pixB_ptr)  ( ((_24BitUnion*)&(pixB_ptr))->_2Byte.Num )
+void acvDistanceTransform_Sobel(acvImage *res,acvImage *src)
+{
+    int i,j;
+    int TmpPixelH,TmpPixelV;
+    BYTE *L1,*L2,*L3;
+    for(i=1;i<src->GetHeight()-1;i++)
+    {
+      L1=&(src->CVector[i-1][0]);
+      L2=&(src->CVector[i+0][0]);
+      L3=&(src->CVector[i+1][0]);
+      L1+=3,L2+=3,L3+=3;
+      for(j=1;j<src->GetWidth()-1;j++,L1+=3,L2+=3,L3+=3)
+      {
+
+
+          TmpPixelH=(pix16b(L1[-3])+2*pix16b(L1[0])+pix16b(L1[3]))-
+                    (pix16b(L3[-3])+2*pix16b(L3[0])+pix16b(L3[3]));//Get gradient in direction ^
+          res->CVector[i][3*j]=(char)TmpPixelH;
+
+
+          TmpPixelV=(pix16b(L1[-3])+2*pix16b(L2[-3])+pix16b(L3[-3]))-
+                    (pix16b(L1[ 3])+2*pix16b(L2[ 3])+pix16b(L3[ 3]));//Get gradient in direction <
+          res->CVector[i][3*j+1]=(char)TmpPixelV;
+          res->CVector[i][3*j+2]=L2[2];
+      }
+    }
 }

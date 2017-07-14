@@ -124,14 +124,25 @@ void acvScalingSobelResult(acvImage *src)
 void test2()
 {
   acvImage *ss = new acvImage();
+  acvImage *distGradient = new acvImage();
 
   acvLoadBitmapFile(ss,"data/target_s.bmp");
+  distGradient->ReSize(ss->GetWidth(),ss->GetHeight());
   acvThreshold(ss,128);
   int mul=1;
   acvDistanceTransform_Chamfer(ss,5*mul,7*mul);
+  acvSaveBitmapFile("data/target_s_dist.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
-  //acvCloneImage(ss,ss,1);
-  acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+  acvDistanceTransform_Sobel(distGradient,ss);
+
+  acvImageAdd(distGradient,128);
+  acvBoxFilter(ss,distGradient,1);
+  distGradient->ChannelOffset(1);
+  acvImageAdd(distGradient,128);
+  acvBoxFilter(ss,distGradient,1);
+  distGradient->ChannelOffset(-1);
+  //acvCloneImage(distGradient,distGradient,0);
+  acvSaveBitmapFile("data/target_s_dist_grad.bmp",distGradient->ImageData,ss->GetWidth(),ss->GetHeight());
 }
 void TargetPrep()
 {
