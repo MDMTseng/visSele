@@ -83,10 +83,10 @@ void acvScalingSobelResult(acvImage *src)
   int i,j;
   int TmpPixelH,TmpPixelV;
   BYTE *L;
-  for(i=1;i<src->GetHeight()-1;i++)
+  for(i=0;i<src->GetHeight();i++)
   {
-    L=&(src->CVector[i][1*3]);
-    for(j=1;j<src->GetWidth()-1;j++,L+=3)
+    L=&(src->CVector[i][0]);
+    for(j=0;j<src->GetWidth();j++,L+=3)
     {
       char Lp0,Lp1;
       Lp0=L[0];
@@ -103,10 +103,10 @@ void acvScalingSobelResult(acvImage *src)
   if(-m1>M1)M1=-m1;
   printf("M1:%d %d\n",M1,m1);
 
-  for(i=1;i<src->GetHeight()-1;i++)
+  for(i=0;i<src->GetHeight();i++)
   {
     L=&(src->CVector[i][0]);
-    for(j=1;j<src->GetWidth()-1;j++,L+=3)
+    for(j=0;j<src->GetWidth();j++,L+=3)
     {
       char Lp0,Lp1;
       Lp0=L[0];
@@ -120,13 +120,60 @@ void acvScalingSobelResult(acvImage *src)
   }
 }
 
+
+void acvScalingSobelResult_n(acvImage *src)
+{
+  int i,j;
+  BYTE *L;
+
+  for(i=0;i<src->GetHeight();i++)
+  {
+    L=&(src->CVector[i][0]);
+    for(j=0;j<src->GetWidth();j++,L+=3)
+    {
+      char Lp0,Lp1;
+      Lp0=L[0];
+      Lp1=L[1];
+      if(Lp0!=0||Lp1!=0)
+      {
+        float length = sqrt(Lp0 * Lp0 + Lp1 * Lp1);
+        L[0]=(int)round((int)Lp0*127/length);
+        L[1]=(int)round((int)Lp1*127/length);
+      }
+
+
+    }
+  }
+}
 void DistGradientTest(acvImage *distSobelMap,acv_XY *XY,acv_XY *Force)
 {
-  int rX=round(XY->X);
-  int rY=round(XY->Y);
+  float XX=XY->X;
+  float YY=XY->Y;
+  int rX=(int)(XX);
+  int rY=(int)(YY);
+  float resX=XX-rX;
+  float resY=YY-rY;
 
-  Force->Y=(char)distSobelMap->CVector[rY][rX*3];
-  Force->X=(char)distSobelMap->CVector[rY][rX*3+1];
+  float c00,c10,c11,c01;
+  c00 = (char)distSobelMap->CVector[rY][rX*3];
+  c01 = (char)distSobelMap->CVector[rY][(rX+1)*3];
+  c10 = (char)distSobelMap->CVector[rY+1][rX*3];
+  c11 = (char)distSobelMap->CVector[rY+1][(rX+1)*3];
+  c00+=resX*(c01-c00);
+  c10+=resX*(c11-c10);
+  c00+=resY*(c10-c00);
+  Force->X=(c00);
+
+
+  c00 = (char)distSobelMap->CVector[rY][rX*3+1];
+  c01 = (char)distSobelMap->CVector[rY][(rX+1)*3+1];
+  c10 = (char)distSobelMap->CVector[rY+1][rX*3+1];
+  c11 = (char)distSobelMap->CVector[rY+1][(rX+1)*3+1];
+
+  c00+=resX*(c01-c00);
+  c10+=resX*(c11-c10);
+  c00+=resY*(c10-c00);
+  Force->Y=(c00);
 }
 
 void test2()
@@ -138,49 +185,55 @@ void test2()
   distGradient->ReSize(ss->GetWidth(),ss->GetHeight());
   acvThreshold(ss,128);
   int mul=1;
-  //acvDistanceTransform_Chamfer(ss,3*mul,4*mul);
-  acvDistanceTransform_ChamferX(ss);
+  acvDistanceTransform_Chamfer(ss,5*mul,7*mul);
+  //acvDistanceTransform_ChamferX(ss);
   acvInnerFramePixCopy(ss,1);
   acvSaveBitmapFile("data/target_s_dist.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
   acvDistanceTransform_Sobel(distGradient,ss);
+  acvInnerFramePixCopy(distGradient,2);
   acvInnerFramePixCopy(distGradient,1);
+  acvScalingSobelResult_n(distGradient);
 
-
-  acvScalingSobelResult(distGradient);
-  acvImageAdd(distGradient,128);
-  acvBoxFilter(ss,distGradient,25);
+  /*acvImageAdd(distGradient,128);
+  acvBoxFilter(ss,distGradient,15);
   //acvBoxFilter(ss,distGradient,15);
   acvImageAdd(distGradient,-128);
   distGradient->ChannelOffset(1);
   acvImageAdd(distGradient,128);
-  acvBoxFilter(ss,distGradient,25);
+  acvBoxFilter(ss,distGradient,15);
   //acvBoxFilter(ss,distGradient,15);
   acvImageAdd(distGradient,-128);
   distGradient->ChannelOffset(-1);
-
+  acvScalingSobelResult_n(distGradient);*/
 
   acvClear(ss,128);
-  int lineN=10;
+  int lineN=4;
+  acv_XY sumXY={0};
   for(int k=0;k<lineN;k++)
   {
     BYTE    Color[3]={HSV_VMax,HSV_VMax,(k)*(HSV_HMax-50)/lineN};
     distGradient->RGBFromHSV(Color,Color);
 
     acv_XY preXY={
-      0*distGradient->GetWidth()/lineN,
-      0*distGradient->GetHeight()/lineN};
+      k/2.0*distGradient->GetWidth()/lineN,
+      k/2.0*distGradient->GetHeight()/lineN};
     acv_XY XY;
+    acv_XY preForce={0};
     acv_XY Force={0};
-    acv_XY speed={0,25};
-    for(int i=0;i<1000;i++)
+    acv_XY speed={0,20};
+    for(int i=0;i<100;i++)
     {
 
       DistGradientTest(distGradient,&preXY,&Force);
-      speed.X+=Force.X/100;
-      speed.Y+=Force.Y/100;
-      speed.X/=1.01+0.05*k/lineN;
-      speed.Y/=1.01+0.05*k/lineN;
+      //printf(">%f %f\n",Force.X,Force.Y);
+      speed.X+=Force.X/128;
+      speed.Y+=Force.Y/128;
+
+      if(preForce.X*Force.X<0)speed.X=0;
+      if(preForce.Y*Force.Y<0)speed.Y=0;
+      speed.X*=0.95;
+      speed.Y*=0.95;
       XY.X=preXY.X+speed.X;
       XY.Y=preXY.Y+speed.Y;
       if(XY.X<0)XY.X=0;
@@ -189,9 +242,14 @@ void test2()
       if(XY.Y>distGradient->GetWidth()-1)XY.Y=distGradient->GetWidth()-1;
       acvDrawLine(ss,(int)XY.X,(int)XY.Y,(int)preXY.X,(int)preXY.Y,Color[2],Color[1],Color[0],1);
       preXY=XY;
-      //printf(">%f %f\n",XY.X,XY.Y);
+      preForce=Force;
     }
+    sumXY.X+=XY.X;
+    sumXY.Y+=XY.Y;
+    printf(">%f %f\n",XY.X,XY.Y);
   }
+  printf(">%f %f\n",(sumXY.X/lineN),(sumXY.Y/lineN));
+
   acvSaveBitmapFile("data/target_ss.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
 
 

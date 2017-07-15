@@ -438,14 +438,14 @@ void acvDistanceTransform_Sobel(acvImage *res,acvImage *src)
       {
 
 
-          TmpPixelH=(pix16b(L1[-3])+2*pix16b(L1[0])+pix16b(L1[3]))-
-                    (pix16b(L3[-3])+2*pix16b(L3[0])+pix16b(L3[3]));//Get gradient in direction ^
-          res->CVector[i][3*j]=(char)TmpPixelH;
-
-
           TmpPixelV=(pix16b(L1[-3])+2*pix16b(L2[-3])+pix16b(L3[-3]))-
                     (pix16b(L1[ 3])+2*pix16b(L2[ 3])+pix16b(L3[ 3]));//Get gradient in direction <
-          res->CVector[i][3*j+1]=(char)TmpPixelV;
+          res->CVector[i][3*j]=(char)(TmpPixelV);
+          TmpPixelH=(pix16b(L1[-3])+2*pix16b(L1[0])+pix16b(L1[3]))-
+                    (pix16b(L3[-3])+2*pix16b(L3[0])+pix16b(L3[3]));//Get gradient in direction ^
+          res->CVector[i][3*j+1]=(char)(TmpPixelH);
+
+
           res->CVector[i][3*j+2]=L2[2];
       }
     }
