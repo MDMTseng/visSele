@@ -1,98 +1,64 @@
 #include "MLNN.hpp"
 
 using namespace std;
-template<typename DataType>
-DataType** New2D_(int d1,int d2)
+MLNN::MLNN(int batchSize,int netDim[],int dimL)
 {
-  DataType* data=new DataType[d1*d2];
-  DataType** arr=new DataType*[d1];
-  for(int i=0;i<d1;i++)
+  layers.resize(dimL-1);
+  layers[0].init(&nu,batchSize,netDim[0],netDim[1]);
+
+  for(int i=1;i<layers.size();i++)
   {
-    arr[i]=data[i*d2];
+    layers[i].init(&nu,layers[i-1],netDim[i+1]);
   }
-  return arr;
-}
-
-template<typename DataType>
-void Init2DVec(vector<vector<DataType> > &vec,int d1,int d2)
-{
-  vec.clear();
-  vec.resize(d1);
-  for(int i=0;i<d1;i++)
-  {
-    vec[i].clear();
-    vec[i].resize(d2);
-  }
-
-}
-
-MLNN::MLNN(NeuralUtil* nu,int batchSize,int inDim,int ouDim)
-{
-  Init2DVec(InArr,batchSize,inDim+1);
-  Init2DVec(pred_preY,batchSize,ouDim);
-  Init2DVec(pred_Y,batchSize,ouDim);
-  Init2DVec(error_gradient,batchSize,ouDim);
-  Init2DVec(W,inDim,ouDim);
-  Init2DVec(dW,inDim,ouDim);
-  nu->randWMat(W);
-  nu->randWMat(dW);
-  for(int i=0;i<InArr.size();i++)
-  {
-    InArr[i][InArr[i].size()-1]=1;
-  }
-  this->nu=nu;
-}
-
-MLNN::~MLNN()
-{
+  //layers[layers.size()-1].nu=new NeuralUtil_Sigmoid();
 }
 
 void MLNN::ForwardPass(const vector<vector<float> > &in)
 {
-  for(int i=0;i<in.size();i++)
-    for(int j=0;j<in[i].size();j++)
+  layers[0].ForwardPass(in);
+  for(int i=1;i<layers.size();i++)
   {
-    InArr[i][j]=in[i][j];
+    layers[i].ForwardPass(layers[i-1].get_Pred_Y());
   }
-  nu->matMul(pred_preY,InArr,W);
+  pred_Y = layers[layers.size()-1].get_Pred_Y();
+}
 
-  nu->actvationF(pred_Y,pred_preY);
+void MLNN::backProp(vector<vector<float> > &back_gradient,const vector<vector<float> > &error_gradient)
+{
+  if(layers.size()>1)
+  {
+    layers[layers.size()-1].backProp(layers[layers.size()-2].get_Pred_Y(),error_gradient);
+    for(int i=layers.size()-2;i!=0;i--)
+    {
+        layers[i].backProp(layers[i-1].get_Pred_Y(),layers[i].get_Pred_Y());
+    }
+    layers[0].backProp(back_gradient,layers[0].get_Pred_Y());
+  }
+  else
+    layers[0].backProp(back_gradient,error_gradient);
 }
 
 void MLNN::reset_deltaW()
 {
-  nu->matZero(dW);
+  for(int i=0;i<layers.size();i++)
+  {
+    layers[i].reset_deltaW();
+
+  }
 }
+
 void MLNN::updateW(float learningRate)
 {
-  nu->matAdd(W,W,dW,learningRate/pred_Y.size());
-}
-void MLNN::backProp(vector<vector<float> > error_gradient)
-{
-  backProp(NULL,error_gradient);
-}
-void MLNN::backProp(
-  vector<vector<float> > *back_gradient,
-  vector<vector<float> > error_gradient)
-{
-  //println("==="+error_gradient[0].size());
-  //println(">>" +this->error_gradient[0].size());
-  nu->gradient_actvationF(this->error_gradient,pred_preY);//get sigmoid gradient
-
-
-  for(int i=0;i<error_gradient.size();i++)//Multiply error gradient with sigmoid gradient
-    for(int j=0;j<error_gradient[0].size();j++)
+  for(int i=0;i<layers.size();i++)
   {
-    this->error_gradient[i][j]*=error_gradient[i][j];
+      layers[i].updateW(learningRate);
   }
-
-  nu->deltaW_accumulate(dW,InArr,this->error_gradient);
-  if(back_gradient!=NULL)
-    nu->backgradient(*back_gradient,W,this->error_gradient);
 }
-
 
 void MLNN::WDecay(float rate)
 {
-  nu->matMul(W,W,rate);
+  for(int i=0;i<layers.size();i++)
+  {
+      layers[i].WDecay(rate);
+  }
 }

@@ -321,8 +321,6 @@ void DotsTransform(std::vector<acv_XY> &XY,std::vector<acv_XY> &tXY,float x,floa
 }
 int testEstXY()
 {
-  NeuralUtil nu;
-  MLNN nn(&nu,1,2,2);
 
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
@@ -355,7 +353,7 @@ int testEstXY()
   //acvDeleteFrame(ss,5);
   acvComponentLabeling(ss);
   acvLabeledRegionInfo(ss,&ldData);
-  acvRemoveRegionLessThan(ss,&ldData,1200);
+  acvRemoveRegionLessThan(ss,&ldData,120);
   acvImage *labelImg=ss;
 
 
@@ -414,13 +412,19 @@ int testEstXY()
   return 0;
 }
 
+
+void NNTest()
+{
+    int NNDim[]={2,4,2};
+    MLNN NN(1,NNDim,3);
+}
 #include <vector>
 int main()
 {
   //clock_t t= clock();
 
-  testEstXY();
-
+  //testEstXY();
+  NNTest();
   //t = clock() - t;
   //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
   //testEstXY();
