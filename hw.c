@@ -6,6 +6,7 @@
 
 #include "acvImage_MophologyTool.hpp"
 #include "acvImage_SpDomainTool.hpp"
+#include "MLNN.hpp"
 
 
 
@@ -320,6 +321,8 @@ void DotsTransform(std::vector<acv_XY> &XY,std::vector<acv_XY> &tXY,float x,floa
 }
 int testEstXY()
 {
+  NeuralUtil nu;
+  MLNN nn(&nu,1,2,2);
 
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
@@ -352,7 +355,7 @@ int testEstXY()
   //acvDeleteFrame(ss,5);
   acvComponentLabeling(ss);
   acvLabeledRegionInfo(ss,&ldData);
-  acvRemoveRegionLessThan(ss,&ldData,120);
+  acvRemoveRegionLessThan(ss,&ldData,1200);
   acvImage *labelImg=ss;
 
 
@@ -373,7 +376,7 @@ int testEstXY()
     acvLabeledPixelExtraction(labelImg,&ldData[i],i,&regionXY);
 
 
-    float alpha=40.0;
+    float alpha=70.0;
     for(int j=0;j<20;j++)
     {
       DotsTransform(regionXY,mappedXY,adjXY.X,adjXY.Y);
@@ -395,7 +398,7 @@ int testEstXY()
       deltaXY.Y/=errorXY.size()*256*128;
 
 
-      alpha*=0.9;
+      alpha*=0.95;
       adjXY.X+=-deltaXY.X*alpha;
       adjXY.Y+=-deltaXY.Y*alpha;
       printf("d:%+02.2f %+02.2f,a:%+02.2f %+02.2f,m:%+02.2f %+02.2f\n",
@@ -422,7 +425,6 @@ int main()
   //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
   //testEstXY();
   //testEstXY();
-  //TargetPrep();
   int ret = 0;
   printf("Hello, World! %d",ret);
   return ret;
