@@ -249,7 +249,7 @@ int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *
 }
 
 
-int acvLabeledRegionExtraction(acvImage  *LabeledPic,std::vector<acv_LabeledData> *ret_list)
+int acvLabeledRegionInfo(acvImage  *LabeledPic,std::vector<acv_LabeledData> *ret_list)
 {
   ret_list->clear();
   std::vector<acv_LabeledData> *list=ret_list;

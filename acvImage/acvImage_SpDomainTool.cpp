@@ -3,7 +3,7 @@
 #include <math.h>
 #include "acvImage_BasicTool.hpp"
 #include "acvImage_SpDomainTool.hpp"
-
+#include "acvImage_ComponentLabelingTool.hpp"
 
 void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
 {
@@ -449,4 +449,56 @@ void acvDistanceTransform_Sobel(acvImage *res,acvImage *src)
           res->CVector[i][3*j+2]=L2[2];
       }
     }
+}
+
+acv_XY acvSignedMap2Sampling(acvImage *signedMap2,const acv_XY &XY)
+{
+  acv_XY sample;
+  int rX=(int)(XY.X);
+  int rY=(int)(XY.Y);
+  float resX=XY.X-rX;
+  float resY=XY.Y-rY;
+
+  float c00,c10,c11,c01;
+  c00 = (char)signedMap2->CVector[rY][rX*3];
+  c01 = (char)signedMap2->CVector[rY][(rX+1)*3];
+  c10 = (char)signedMap2->CVector[rY+1][rX*3];
+  c11 = (char)signedMap2->CVector[rY+1][(rX+1)*3];
+  c00+=resX*(c01-c00);
+  c10+=resX*(c11-c10);
+  c00+=resY*(c10-c00);
+  sample.X=(c00);
+
+
+  c00 = (char)signedMap2->CVector[rY][rX*3+1];
+  c01 = (char)signedMap2->CVector[rY][(rX+1)*3+1];
+  c10 = (char)signedMap2->CVector[rY+1][rX*3+1];
+  c11 = (char)signedMap2->CVector[rY+1][(rX+1)*3+1];
+
+  c00+=resX*(c01-c00);
+  c10+=resX*(c11-c10);
+  c00+=resY*(c10-c00);
+  sample.Y=(c00);
+
+  return sample;
+}
+
+
+float acvUnsignedMap1Sampling(acvImage *unsignedMap1,const acv_XY &XY)
+{
+  int rX=(int)(XY.X);
+  int rY=(int)(XY.Y);
+  float resX=XY.X-rX;
+  float resY=XY.Y-rY;
+
+  float c00,c10,c11,c01;
+  c00 = unsignedMap1->CVector[rY][rX*3];
+  c01 = unsignedMap1->CVector[rY][(rX+1)*3];
+  c10 = unsignedMap1->CVector[rY+1][rX*3];
+  c11 = unsignedMap1->CVector[rY+1][(rX+1)*3];
+  c00+=resX*(c01-c00);
+  c10+=resX*(c11-c10);
+  c00+=resY*(c10-c00);
+
+  return c00;
 }

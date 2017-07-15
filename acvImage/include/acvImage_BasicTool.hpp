@@ -27,27 +27,10 @@ typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
 }BITMAPINFOHEADER;
 #pragma pack(pop)
 
-typedef struct _3BYTE
+typedef struct acv_XY
 {
-        unsigned Num:24;
-}_3BYTE;
-typedef struct _2BYTE
-{
-        uint16_t Num;
-        uint8_t Empty;
-}_2BYTE;
-typedef struct BYTE3
-{
-        uint8_t Num2;
-        uint8_t Num1;
-        uint8_t Num0;
-}BYTE3;
-typedef union _24BitUnion
-{
-        BYTE3 Byte3;
-        _3BYTE _3Byte;
-        _2BYTE _2Byte;
-}_24BitUnion;
+  float X,Y;
+}acv_XY;
 
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvDeleteFrame(acvImage *Pic,int width);

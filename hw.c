@@ -145,36 +145,6 @@ void acvScalingSobelResult_n(acvImage *src)
     }
   }
 }
-void DistGradientTest(acvImage *distSobelMap,acv_XY *XY,acv_XY *Force)
-{
-  float XX=XY->X;
-  float YY=XY->Y;
-  int rX=(int)(XX);
-  int rY=(int)(YY);
-  float resX=XX-rX;
-  float resY=YY-rY;
-
-  float c00,c10,c11,c01;
-  c00 = (char)distSobelMap->CVector[rY][rX*3];
-  c01 = (char)distSobelMap->CVector[rY][(rX+1)*3];
-  c10 = (char)distSobelMap->CVector[rY+1][rX*3];
-  c11 = (char)distSobelMap->CVector[rY+1][(rX+1)*3];
-  c00+=resX*(c01-c00);
-  c10+=resX*(c11-c10);
-  c00+=resY*(c10-c00);
-  Force->X=(c00);
-
-
-  c00 = (char)distSobelMap->CVector[rY][rX*3+1];
-  c01 = (char)distSobelMap->CVector[rY][(rX+1)*3+1];
-  c10 = (char)distSobelMap->CVector[rY+1][rX*3+1];
-  c11 = (char)distSobelMap->CVector[rY+1][(rX+1)*3+1];
-
-  c00+=resX*(c01-c00);
-  c10+=resX*(c11-c10);
-  c00+=resY*(c10-c00);
-  Force->Y=(c00);
-}
 
 void test2()
 {
@@ -225,7 +195,7 @@ void test2()
     for(int i=0;i<100;i++)
     {
 
-      DistGradientTest(distGradient,&preXY,&Force);
+      Force=acvSignedMap2Sampling(distGradient,preXY);
       //printf(">%f %f\n",Force.X,Force.Y);
       speed.X+=Force.X/128;
       speed.Y+=Force.Y/128;
@@ -286,54 +256,157 @@ void TargetPrep()
   acvSaveBitmapFile("data/target_sobel.bmp",buff->ImageData,buff->GetWidth(),buff->GetHeight());
 
 }
+
+
+
+
+//Displacement, Scale, Aangle
+void acvLabeledPixelExtraction(acvImage  *LabelPic,acv_LabeledData *target_info,int target_idx,std::vector<acv_XY> *retData)
+{
+  retData->clear();
+  int i,j;
+  BYTE *L;
+
+  for(i=target_info->LTBound.Y;i<target_info->RBBound.Y+1;i++)
+  {
+    L=&(LabelPic->CVector[i][(int)target_info->LTBound.X*3]);
+    for(j=target_info->LTBound.X;j<target_info->RBBound.X+1;j++,L+=3)
+    {
+      _24BitUnion *lebel=(_24BitUnion *)L;
+
+      if(lebel->_3Byte.Num==target_idx)
+      {
+        acv_XY XY={.X=j,.Y=i};
+        retData->push_back(XY);
+      }
+    }
+  }
+}
+
+void Target_prep(acvImage *target,acvImage *target_DistGradient)
+{
+  acvLoadBitmapFile(target,"data/target.bmp");
+  acvImage *tmp = new acvImage();
+  target_DistGradient->ReSize(target->GetWidth(),target->GetHeight());
+  tmp->ReSize(target->GetWidth(),target->GetHeight());
+
+  acvThreshold(target,128);
+  acvBoxFilter(tmp,target,1);
+  acvBoxFilter(tmp,target,1);
+  acvCloneImage(target,tmp,1);
+  acvCloneImage(target,target,0);
+
+
+  int mul=1;
+  acvDistanceTransform_Chamfer(tmp,5*mul,7*mul);
+  //acvDistanceTransform_ChamferX(ss);
+  acvInnerFramePixCopy(tmp,1);
+
+  acvDistanceTransform_Sobel(target_DistGradient,tmp);
+  acvInnerFramePixCopy(target_DistGradient,2);
+  acvInnerFramePixCopy(target_DistGradient,1);
+  acvScalingSobelResult_n(target_DistGradient);
+  delete(tmp);
+  return;
+}
+void DotsTransform(std::vector<acv_XY> &XY,std::vector<acv_XY> &tXY,float x,float y)
+{
+  tXY.resize(XY.size());
+  for (int i=0;i<tXY.size();i++)
+  {
+    tXY[i].X=XY[i].X+x;
+    tXY[i].Y=XY[i].Y+y;
+  }
+}
 int testEstXY()
 {
+
+  acvImage *target = new acvImage();
+  acvImage *target_DistGradient = new acvImage();
+  Target_prep(target,target_DistGradient);
+
+  acvImage *image = new acvImage();
   acvImage *ss = new acvImage();
   acvImage *buff = new acvImage();
   std::vector<acv_LabeledData> ldData;
 
-  acvLoadBitmapFile(ss,"data/test1.bmp");
-  buff->ReSize(ss->GetWidth(),ss->GetHeight());
-  ss->RGBToGray();
+  acvLoadBitmapFile(image,"data/test1.bmp");
+  image->RGBToGray();
+  buff->ReSize(image->GetWidth(),image->GetHeight());
+  ss->ReSize(image->GetWidth(),image->GetHeight());
+
+  acvCloneImage(image,ss,0);
+  /*acvBoxFilter(buff,image,1);
+  acvCloneImage(image,image,0);*/
+
   acvThreshold(ss,200);
-  acvBoxFilter(buff,ss,3);
-  acvThreshold(ss,80);
-  acvBoxFilter(buff,ss,3);
-  acvThreshold(ss,255-5);
-
-
-
-  /*acvBoxFilter(buff,ss,1);
-  acvThreshold(ss,200);
-  acvTurn(ss);
-  acvComponentLabeling(ss);
-  acvLabeledRegionExtraction(ss,&ldData);
-  acvRemoveRegionLessThan(ss,&ldData,2500);
-
-  acvCloneImage(ss,ss,2);
-  acvThreshold(ss,254);
-  acvTurn(ss);
+  acvBoxFilter(buff,ss,1);
   acvBoxFilter(buff,ss,1);
 
-  acvCloneImage(ss,ss,0);
-  acvThreshold(ss,255-200);*/
-
-  acvSaveBitmapFile("data/uu_oXX.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
-
+  acvCloneImage(ss,image,0);
+  acvThreshold(ss,80);
+  acvBoxFilter(buff,ss,5);
+  acvBoxFilter(buff,ss,5);
+  acvThreshold(ss,255-5);
 
   //acvDeleteFrame(ss,5);
   acvComponentLabeling(ss);
-  acvLabeledRegionExtraction(ss,&ldData);
+  acvLabeledRegionInfo(ss,&ldData);
   acvRemoveRegionLessThan(ss,&ldData,120);
+  acvImage *labelImg=ss;
 
-  acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
 
+  acvSaveBitmapFile("data/imageX.bmp",image->ImageData,ss->GetWidth(),ss->GetHeight());
+  acvSaveBitmapFile("data/targetX.bmp",target->ImageData,ss->GetWidth(),ss->GetHeight());
+
+  std::vector<acv_XY> regionXY;
+  std::vector<acv_XY> mappedXY;
+  std::vector<acv_XY> errorXY;
+
+  acv_XY adjXY={0};
+  acv_XY deltaXY={0};
   for (int i=1;i<ldData.size();i++)
   {
     printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
     acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
+
+    acvLabeledPixelExtraction(labelImg,&ldData[i],i,&regionXY);
+
+
+    float alpha=40.0;
+    for(int j=0;j<20;j++)
+    {
+      DotsTransform(regionXY,mappedXY,adjXY.X,adjXY.Y);
+      errorXY.resize(regionXY.size());
+
+      acvSpatialMatchingGradient(image,&(regionXY[0]),
+      target,target_DistGradient,&(mappedXY[0]),
+      &(errorXY[0]),regionXY.size());
+
+
+      deltaXY.X=0;
+      deltaXY.Y=0;
+      for (int j=0;j<errorXY.size();j+=1)
+      {
+        deltaXY.X+=errorXY[j].X;
+        deltaXY.Y+=errorXY[j].Y;
+      }
+      deltaXY.X/=errorXY.size()*256*128;
+      deltaXY.Y/=errorXY.size()*256*128;
+
+
+      alpha*=0.9;
+      adjXY.X+=-deltaXY.X*alpha;
+      adjXY.Y+=-deltaXY.Y*alpha;
+      printf("d:%+02.2f %+02.2f,a:%+02.2f %+02.2f,m:%+02.2f %+02.2f\n",
+      deltaXY.X,deltaXY.Y,adjXY.X,adjXY.Y,mappedXY[0].X,mappedXY[0].Y);
+    }
+
+
+
   }
 
+  acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
   acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
   return 0;
 }
@@ -343,7 +416,7 @@ int main()
 {
   //clock_t t= clock();
 
-  test2();
+  testEstXY();
 
   //t = clock() - t;
   //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);

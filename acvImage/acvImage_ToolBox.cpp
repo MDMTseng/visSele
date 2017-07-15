@@ -3,6 +3,7 @@
 #include "acvImage.hpp"
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicTool.hpp"
+#include "acvImage_SpDomainTool.hpp"
 #include "acvImage_ComponentLabelingTool.hpp"
 
 #define MathPI           3.141592654
@@ -903,26 +904,30 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 //Displacement, Scale, Aangle
 uint32_t acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
-  acvImage *targetMap,acvImage *targetSobel,acv_XY *TarPtList,
+  acvImage *targetMap,acvImage *targetGradient,acv_XY *TarPtList,
   acv_XY *ErrorGradientList,int ListL)
 {
   uint32_t errorSum=0;
 
-  BYTE **PicCVec=Pic->CVector;
-  BYTE **TarCVec=targetMap->CVector;
-  BYTE **TarSobelCVec=targetSobel->CVector;
   //  []
   //[][][]
   //  []
   for(int i=0;i<ListL;i++)
   {
     acv_XY tarpt=TarPtList[i];
-    acv_XY picpt=TarPtList[i];
+    acv_XY picpt=PicPtList[i];
+    int error=(
+      acvUnsignedMap1Sampling(Pic,picpt)-
+      acvUnsignedMap1Sampling(targetMap,tarpt));
 
-    int error=( PicCVec[(int)picpt.Y][(int)picpt.X*3]-TarCVec[(int)tarpt.Y][(int)tarpt.X*3] );
+    acv_XY gradient=acvSignedMap2Sampling(targetGradient,tarpt);
+
+    //printf(">%f %d\n",gradient.X,(char)targetGradient->CVector[(int)tarpt.Y][(int)tarpt.X*3]);
     //Sobel [0] ^  [1] <
-    ErrorGradientList[i].X=error*TarSobelCVec[(int)tarpt.Y][(int)tarpt.X*3];
-    ErrorGradientList[i].Y=error*TarSobelCVec[(int)tarpt.Y][(int)tarpt.X*3+1];
+    ErrorGradientList[i].X=error*gradient.X;
+    ErrorGradientList[i].Y=error*gradient.Y;
+
+
     error*=error;
     errorSum+=error;
   }
