@@ -434,11 +434,22 @@ int testEstXY()
   acvCloneImage(image,image,0);*/
 
   acvThreshold(ss,200);
-  acvBoxFilter(buff,ss,2);
-  acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
 
-  acvCloneImage(ss,image,0);
   acvThreshold(ss,100);
+
+    acvCloneImage(ss,image,0);
+    acvBoxFilter(buff,image,1);
+    acvBoxFilter(buff,image,1);
+    acvThreshold(image,170);
+    acvBoxFilter(buff,image,1);
+    acvBoxFilter(buff,image,1);
+    acvBoxFilter(buff,image,1);
+    acvBoxFilter(buff,image,1);
+
   acvBoxFilter(buff,ss,5);
   acvBoxFilter(buff,ss,5);
   acvThreshold(ss,255-15);
@@ -482,15 +493,15 @@ int testEstXY()
       MLNN NN(batchSize,NNDim,sizeof(NNDim)/sizeof(*NNDim));
 
 
-      float theta=30*M_PI/180;
-      float scale=0.4;
+      float theta=10*M_PI/180;
+      float scale=1;
       NN.layers[0].W[0][0]=cos(theta)*scale;
       NN.layers[0].W[1][1]=cos(theta)*scale;
       NN.layers[0].W[0][1]=-sin(theta)*scale;
       NN.layers[0].W[1][0]=sin(theta)*scale;
 
-      NN.layers[0].W[2][0]=10/50;
-      NN.layers[0].W[2][1]=10/50;
+      NN.layers[0].W[2][0]=1/50;
+      NN.layers[0].W[2][1]=1/50;
 
   //******************************************
 
@@ -498,7 +509,7 @@ int testEstXY()
     for(int j=0;j<50;j++)
     {
       sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
-printf("***********%d***********\n",j);
+      printf("***********%d***********\n",j);
       NN.layers[0].printW();
       DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
       /*for (int k=0;k<batchSize;k+=1)
@@ -518,7 +529,7 @@ printf("***********%d***********\n",j);
         error_gradient[k][1]=-errorXY[k].Y/(errorXY.size()*256*128);
           //printf("%f %f\n",error_gradient[k][0],error_gradient[k][1]);
       }
-      alpha*=0.99;
+      alpha*=0.92;
       NN.backProp(error_gradient);
       NN.updateW(alpha);
       //nu.printMat(NN.layers[0].dW);printf("\n");
