@@ -1,5 +1,10 @@
 #include "MLNN.hpp"
 
+void MLNNUtil::initWMat(vector<vector<float> > &WMat)
+{
+  //randWMat(WMat);
+  identityWMat(WMat,0.001);
+}
 void MLNNUtil::randWMat(vector<vector<float> > &WMat){
   srand (static_cast <unsigned> (time(0)));
   for (int i = 0; i < WMat.size(); i++) { // aRow
@@ -9,6 +14,21 @@ void MLNNUtil::randWMat(vector<vector<float> > &WMat){
     }
 }
 
+float MLNNUtil::random(float m,float M)
+{
+  float ran=static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+  return ran*(M-m)+m;
+}
+
+void MLNNUtil::identityWMat(vector<vector<float> > &WMat,float noise){
+  srand (static_cast <unsigned> (time(0)));
+  for (int i = 0; i < WMat.size(); i++) { // aRow
+      for (int j = 0; j < WMat[1].size(); j++) { // bColumn
+        if(i==j)WMat[i][j]=1;
+        else WMat[i][j]=random(-noise,noise);//random(-1,1);
+      }
+    }
+}
 //AB  EF
 //CD  GH
 //AE+BG , AF+BH
@@ -92,13 +112,17 @@ void MLNNUtil::gradient_actvationF(vector<vector<float> > &out,const vector<vect
         }
     }//gradient = 1
 }
-/*
-  void MLNNUtil::printMat(float [][]C)
-  {
-      for (int i = 0; i < C.size(); i++) { // aRow
-          for (int j = 0; j < C[0].size(); j++) { // bColumn
-            print(C[i][j]+",");
-          }
-          println();
-      }
-  }*/
+
+
+
+#include<stdio.h>
+
+void MLNNUtil::printMat(vector<vector<float> > &C)
+{
+    for (int i = 0; i < C.size(); i++) { // aRow
+        for (int j = 0; j < C[0].size(); j++) { // bColumn
+          printf("%+4.3f,",C[i][j]);
+        }
+        printf("\n");
+    }
+}

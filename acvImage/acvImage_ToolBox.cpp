@@ -903,11 +903,11 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 
 //Displacement, Scale, Aangle
-uint32_t acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
+float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
   acvImage *targetMap,acvImage *targetGradient,acv_XY *TarPtList,
   acv_XY *ErrorGradientList,int ListL)
 {
-  uint32_t errorSum=0;
+  float errorSum=0;
 
   //  []
   //[][][]
@@ -916,7 +916,7 @@ uint32_t acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
   {
     acv_XY tarpt=TarPtList[i];
     acv_XY picpt=PicPtList[i];
-    int error=(
+    float error=(
       acvUnsignedMap1Sampling(Pic,picpt)-
       acvUnsignedMap1Sampling(targetMap,tarpt));
 

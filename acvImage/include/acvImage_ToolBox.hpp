@@ -20,7 +20,7 @@
 #include "acvImage_ComponentLabelingTool.hpp"
 
 
-uint32_t acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
+float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
   acvImage *targetMap,acvImage *targetSobel,acv_XY *TarPtList,
   acv_XY *ErrorGradientList,int ListL);
 

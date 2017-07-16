@@ -307,18 +307,57 @@ void Target_prep(acvImage *target,acvImage *target_DistGradient)
   acvInnerFramePixCopy(target_DistGradient,2);
   acvInnerFramePixCopy(target_DistGradient,1);
   acvScalingSobelResult_n(target_DistGradient);
+
+
+
+  acvImageAdd(target_DistGradient,128);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  acvImageAdd(target_DistGradient,-128);
+  target_DistGradient->ChannelOffset(1);
+  acvImageAdd(target_DistGradient,128);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  //acvBoxFilter(ss,distGradient,15);
+  acvImageAdd(target_DistGradient,-128);
+  target_DistGradient->ChannelOffset(-1);
+  acvScalingSobelResult_n(target_DistGradient);
+
+
+
+
   delete(tmp);
   return;
 }
-void DotsTransform(std::vector<acv_XY> &XY,std::vector<acv_XY> &tXY,float x,float y)
+void DotsTransform(std::vector<acv_XY> &XY,std::vector<acv_XY> &tXY,MLNN &NN,acv_XY transOffset,float scale)
 {
+  vector<vector<float> > &in_vec=NN.get_input_vec();
   tXY.resize(XY.size());
-  for (int i=0;i<tXY.size();i++)
+  for(int j=0;j<in_vec.size();j++)
   {
-    tXY[i].X=XY[i].X+x;
-    tXY[i].Y=XY[i].Y+y;
+    in_vec[j][0]=(XY[j].X-transOffset.X)*scale;
+    in_vec[j][1]=(XY[j].Y-transOffset.Y)*scale;
+  }
+
+  NN.ForwardPass();
+  for(int j=0;j<NN.p_pred_Y->size();j++)
+  {
+      tXY[j].X=(*NN.p_pred_Y)[j][0]/scale+transOffset.X;
+      tXY[j].Y=(*NN.p_pred_Y)[j][1]/scale+transOffset.Y;
+  }
+
+}
+
+void sampleXYFromRegion(vector<acv_XY> &sampleXY,const vector<acv_XY> &regionXY,int sampleCount)
+{
+  sampleXY.clear();
+  for(int i=0;i<sampleCount;i++)
+  {
+    int randIdx=rand()%regionXY.size();
+    sampleXY.push_back(regionXY[randIdx]);
   }
 }
+
 int testEstXY()
 {
 
@@ -360,47 +399,79 @@ int testEstXY()
   acvSaveBitmapFile("data/imageX.bmp",image->ImageData,ss->GetWidth(),ss->GetHeight());
   acvSaveBitmapFile("data/targetX.bmp",target->ImageData,ss->GetWidth(),ss->GetHeight());
 
-  std::vector<acv_XY> regionXY;
+
+  std::vector<acv_XY> regionXY_;
+
+  std::vector<acv_XY> regionSampleXY;
   std::vector<acv_XY> mappedXY;
   std::vector<acv_XY> errorXY;
 
-  acv_XY adjXY={0};
-  acv_XY deltaXY={0};
   for (int i=1;i<ldData.size();i++)
   {
     printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
     acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
 
-    acvLabeledPixelExtraction(labelImg,&ldData[i],i,&regionXY);
+    acvLabeledPixelExtraction(labelImg,&ldData[i],i,&regionXY_);
+
+    //******************************************
 
 
-    float alpha=70.0;
-    for(int j=0;j<20;j++)
+      MLNNUtil nu;
+      int dim_in=2;
+      int dim_out=2;
+      int batchSize=100;
+      vector<vector<float> > error_gradient;
+      nu.Init2DVec(error_gradient,batchSize,dim_out);
+
+      int NNDim[]={dim_in,dim_out};
+      MLNN NN(batchSize,NNDim,sizeof(NNDim)/sizeof(*NNDim));
+
+
+  //******************************************
+
+
+    float alpha=200.0;
+    for(int j=0;j<300;j++)
     {
-      DotsTransform(regionXY,mappedXY,adjXY.X,adjXY.Y);
-      errorXY.resize(regionXY.size());
+      sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
 
-      acvSpatialMatchingGradient(image,&(regionXY[0]),
+      NN.layers[0].printW();
+      DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
+      /*for (int k=0;k<batchSize;k+=1)
+      {
+        printf("%f %f\n",mappedXY[k].X,mappedXY[k].Y);
+      }*/
+
+      errorXY.resize(regionSampleXY.size());
+
+
+      float error=acvSpatialMatchingGradient(image,&(regionSampleXY[0]),
       target,target_DistGradient,&(mappedXY[0]),
-      &(errorXY[0]),regionXY.size());
-
-
-      deltaXY.X=0;
-      deltaXY.Y=0;
+      &(errorXY[0]),regionSampleXY.size());
+      printf("%f, %f %f %f %f \n\n",error,mappedXY[50].X,mappedXY[50].Y,regionSampleXY[50].X-mappedXY[50].X,regionSampleXY[50].Y-mappedXY[50].Y);
       for (int j=0;j<errorXY.size();j+=1)
       {
-        deltaXY.X+=errorXY[j].X;
-        deltaXY.Y+=errorXY[j].Y;
+        error_gradient[j][0]=-errorXY[j].X/(errorXY.size()*256*128);
+        error_gradient[j][1]=-errorXY[j].Y/(errorXY.size()*256*128);
       }
-      deltaXY.X/=errorXY.size()*256*128;
-      deltaXY.Y/=errorXY.size()*256*128;
+      alpha*=0.999;
+      NN.backProp(error_gradient);
+      NN.updateW(alpha);
+      NN.reset_deltaW();
 
+      float dd=0.5;
 
-      alpha*=0.95;
-      adjXY.X+=-deltaXY.X*alpha;
-      adjXY.Y+=-deltaXY.Y*alpha;
-      printf("d:%+02.2f %+02.2f,a:%+02.2f %+02.2f,m:%+02.2f %+02.2f\n",
-      deltaXY.X,deltaXY.Y,adjXY.X,adjXY.Y,mappedXY[0].X,mappedXY[0].Y);
+      float a00=NN.layers[0].W[0][0]+NN.layers[0].W[1][1];
+      float a10=NN.layers[0].W[1][0]-NN.layers[0].W[0][1];
+      float LL=hypot(a00, a10);
+      a00/=LL;
+      a10/=LL;
+      NN.layers[0].W[0][0]=1;
+      NN.layers[0].W[0][1]=0;
+      NN.layers[0].W[1][0]=0;
+      NN.layers[0].W[1][1]=1;
+
+      //return 0;
     }
 
 
@@ -415,16 +486,52 @@ int testEstXY()
 
 void NNTest()
 {
-    int NNDim[]={2,4,2};
-    MLNN NN(1,NNDim,3);
+    MLNNUtil nu;
+    int dim_in=2;
+    int dim_out=2;
+    vector<vector<float> > data;
+    nu.Init2DVec(data,10,dim_in);
+
+    vector<vector<float> > target;
+    nu.Init2DVec(target,data.size(),dim_out);
+
+    vector<vector<float> > error_gradient;
+    nu.Init2DVec(error_gradient,target.size(),target[0].size());
+
+    int NNDim[]={dim_in,dim_out};
+    MLNN NN(data.size(),NNDim,sizeof(NNDim)/sizeof(*NNDim));
+
+    for(int j=0;j<data.size();j++)
+    {
+      data[j][0]=0;
+      data[j][1]=j;
+      target[j][0]=j;
+      target[j][1]=j/2.0;
+    }
+    for(int i=0;i<100;i++)
+    {
+      NN.ForwardPass(data);
+
+      for(int j=0;j<NN.p_pred_Y->size();j++)
+      {
+        printf("%f %f\n",(*NN.p_pred_Y)[j][0],(*NN.p_pred_Y)[j][1]);
+      }
+
+      //Train
+      nu.matAdd(error_gradient,target,*NN.p_pred_Y,-1);
+      NN.backProp(error_gradient);
+      NN.updateW(0.01);
+      NN.reset_deltaW();
+      printf("\n");
+    }
 }
 #include <vector>
 int main()
 {
   //clock_t t= clock();
 
-  //testEstXY();
-  NNTest();
+  testEstXY();
+  //NNTest();
   //t = clock() - t;
   //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
   //testEstXY();
