@@ -284,7 +284,7 @@ void acvLabeledPixelExtraction(acvImage  *LabelPic,acv_LabeledData *target_info,
   }
 }
 
-void Target_prep(acvImage *target,acvImage *target_DistGradient)
+void Target_prep_dist(acvImage *target,acvImage *target_DistGradient)
 {
   acvLoadBitmapFile(target,"data/target.bmp");
   acvImage *tmp = new acvImage();
@@ -308,7 +308,7 @@ void Target_prep(acvImage *target,acvImage *target_DistGradient)
   acvInnerFramePixCopy(target_DistGradient,1);
   acvScalingSobelResult_n(target_DistGradient);
 
-
+/*
 
   acvImageAdd(target_DistGradient,128);
   acvBoxFilter(tmp,target_DistGradient,15);
@@ -323,9 +323,52 @@ void Target_prep(acvImage *target,acvImage *target_DistGradient)
   target_DistGradient->ChannelOffset(-1);
   acvScalingSobelResult_n(target_DistGradient);
 
+*/
+  delete(tmp);
+  return;
+}
 
 
+void Target_prep_sobel(acvImage *target,acvImage *target_DistGradient)
+{
+  acvLoadBitmapFile(target,"data/target.bmp");
+  acvImage *tmp = new acvImage();
+  target_DistGradient->ReSize(target->GetWidth(),target->GetHeight());
+  tmp->ReSize(target->GetWidth(),target->GetHeight());
 
+  acvThreshold(target,128);
+  acvBoxFilter(tmp,target,1);
+  acvBoxFilter(tmp,target,1);
+  acvCloneImage(target,tmp,1);
+  acvCloneImage(target,target,0);
+
+
+  int mul=1;
+  acvDistanceTransform_Chamfer(tmp,5*mul,7*mul);
+  //acvDistanceTransform_ChamferX(ss);
+  acvInnerFramePixCopy(tmp,1);
+
+  acvDistanceTransform_Sobel(target_DistGradient,tmp);
+  acvInnerFramePixCopy(target_DistGradient,2);
+  acvInnerFramePixCopy(target_DistGradient,1);
+  acvScalingSobelResult_n(target_DistGradient);
+
+/*
+
+  acvImageAdd(target_DistGradient,128);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  acvImageAdd(target_DistGradient,-128);
+  target_DistGradient->ChannelOffset(1);
+  acvImageAdd(target_DistGradient,128);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  acvBoxFilter(tmp,target_DistGradient,15);
+  //acvBoxFilter(ss,distGradient,15);
+  acvImageAdd(target_DistGradient,-128);
+  target_DistGradient->ChannelOffset(-1);
+  acvScalingSobelResult_n(target_DistGradient);
+
+*/
   delete(tmp);
   return;
 }
@@ -358,12 +401,23 @@ void sampleXYFromRegion(vector<acv_XY> &sampleXY,const vector<acv_XY> &regionXY,
   }
 }
 
+
+void sampleXYFromRegion_Seq(vector<acv_XY> &sampleXY,const vector<acv_XY> &regionXY,int from,int sampleCount)
+{
+  sampleXY.clear();
+  for(int i=0;i<sampleCount;i++)
+  {
+    sampleXY.push_back(regionXY[from+i]);
+  }
+}
+
+
 int testEstXY()
 {
 
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
-  Target_prep(target,target_DistGradient);
+  Target_prep_dist (target,target_DistGradient);
 
   acvImage *image = new acvImage();
   acvImage *ss = new acvImage();
@@ -406,6 +460,7 @@ int testEstXY()
   std::vector<acv_XY> mappedXY;
   std::vector<acv_XY> errorXY;
 
+  printf("**********************\n");
   for (int i=1;i<ldData.size();i++)
   {
     printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
@@ -416,10 +471,10 @@ int testEstXY()
     //******************************************
 
 
-      MLNNUtil nu;
       int dim_in=2;
       int dim_out=2;
       int batchSize=100;
+      MLNNUtil nu;
       vector<vector<float> > error_gradient;
       nu.Init2DVec(error_gradient,batchSize,dim_out);
 
@@ -429,12 +484,11 @@ int testEstXY()
 
   //******************************************
 
-
-    float alpha=200.0;
-    for(int j=0;j<300;j++)
+    float alpha=0.5;
+    for(int j=0;j<1000;j++)
     {
       sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
-
+printf("**********************\n");
       NN.layers[0].printW();
       DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
       /*for (int k=0;k<batchSize;k+=1)
@@ -448,35 +502,38 @@ int testEstXY()
       float error=acvSpatialMatchingGradient(image,&(regionSampleXY[0]),
       target,target_DistGradient,&(mappedXY[0]),
       &(errorXY[0]),regionSampleXY.size());
-      printf("%f, %f %f %f %f \n\n",error,mappedXY[50].X,mappedXY[50].Y,regionSampleXY[50].X-mappedXY[50].X,regionSampleXY[50].Y-mappedXY[50].Y);
-      for (int j=0;j<errorXY.size();j+=1)
+      for (int k=0;k<errorXY.size();k+=1)
       {
-        error_gradient[j][0]=-errorXY[j].X/(errorXY.size()*256*128);
-        error_gradient[j][1]=-errorXY[j].Y/(errorXY.size()*256*128);
+        error_gradient[k][0]=-errorXY[k].X/(errorXY.size()*256*128);
+        error_gradient[k][1]=-errorXY[k].Y/(errorXY.size()*256*128);
+          //printf("%f %f\n",error_gradient[k][0],error_gradient[k][1]);
       }
       alpha*=0.999;
       NN.backProp(error_gradient);
       NN.updateW(alpha);
+      //nu.printMat(NN.layers[0].dW);printf("\n");
       NN.reset_deltaW();
-
-      float dd=0.5;
-
-      float a00=NN.layers[0].W[0][0]+NN.layers[0].W[1][1];
-      float a10=NN.layers[0].W[1][0]-NN.layers[0].W[0][1];
-      float LL=hypot(a00, a10);
-      a00/=LL;
-      a10/=LL;
-      NN.layers[0].W[0][0]=1;
-      NN.layers[0].W[0][1]=0;
-      NN.layers[0].W[1][0]=0;
-      NN.layers[0].W[1][1]=1;
-
+      printf("%f  %f %f %f\n",error,
+      NN.layers[0].W[2][0]*100,NN.layers[0].W[2][1]*100,
+      180/M_PI*atan2(NN.layers[0].W[1][0]-NN.layers[0].W[0][1],NN.layers[0].W[0][0]+NN.layers[0].W[1][1]));
+          //  NN.layers[0].printW();
       //return 0;
     }
+    for(int j=0;j<regionXY_.size()/batchSize;j++)
+    {
+        sampleXYFromRegion_Seq(regionSampleXY,regionXY_,j*batchSize,batchSize);
+        DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
+        for(int k=0;k<regionSampleXY.size();k++)
+        {
+          target->CVector[(int)round(mappedXY[k].Y)][(int)round(mappedXY[k].X)*3+2]=
+          255-image->CVector[(int)round(regionSampleXY[k].Y)][(int)round(regionSampleXY[k].X)*3];
+        }
 
-
-
+    }
   }
+
+  acvSaveBitmapFile("data/target_test_cover.bmp",target->ImageData,target->GetWidth(),target->GetHeight());
+
 
   acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
   acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
@@ -529,7 +586,7 @@ void NNTest()
 int main()
 {
   //clock_t t= clock();
-
+//TargetPrep();
   testEstXY();
   //NNTest();
   //t = clock() - t;

@@ -32,7 +32,7 @@ void MLNL::init(MLNNUtil* nu,int batchSize,int inDim,int ouDim)
   nu->initWMat(W);
   for(int i=0;i<InArr.size();i++)
   {
-    InArr[i][InArr[i].size()-1]=1;
+    InArr[i][InArr[i].size()-1]=120;
   }
   this->nu=nu;
 }
