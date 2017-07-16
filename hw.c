@@ -308,22 +308,21 @@ void Target_prep_dist(acvImage *target,acvImage *target_DistGradient)
   acvInnerFramePixCopy(target_DistGradient,1);
   acvScalingSobelResult_n(target_DistGradient);
 
-/*
 
   acvImageAdd(target_DistGradient,128);
-  acvBoxFilter(tmp,target_DistGradient,15);
-  acvBoxFilter(tmp,target_DistGradient,15);
+  acvBoxFilter(tmp,target_DistGradient,5);
+  acvBoxFilter(tmp,target_DistGradient,5);
   acvImageAdd(target_DistGradient,-128);
   target_DistGradient->ChannelOffset(1);
   acvImageAdd(target_DistGradient,128);
-  acvBoxFilter(tmp,target_DistGradient,15);
-  acvBoxFilter(tmp,target_DistGradient,15);
+  acvBoxFilter(tmp,target_DistGradient,5);
+  acvBoxFilter(tmp,target_DistGradient,5);
   //acvBoxFilter(ss,distGradient,15);
   acvImageAdd(target_DistGradient,-128);
   target_DistGradient->ChannelOffset(-1);
-  acvScalingSobelResult_n(target_DistGradient);
+  //acvScalingSobelResult_n(target_DistGradient);
 
-*/
+
   delete(tmp);
   return;
 }
@@ -411,6 +410,7 @@ void sampleXYFromRegion_Seq(vector<acv_XY> &sampleXY,const vector<acv_XY> &regio
   }
 }
 
+#include<unistd.h>
 
 int testEstXY()
 {
@@ -434,14 +434,14 @@ int testEstXY()
   acvCloneImage(image,image,0);*/
 
   acvThreshold(ss,200);
-  acvBoxFilter(buff,ss,1);
-  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,2);
+  acvBoxFilter(buff,ss,2);
 
   acvCloneImage(ss,image,0);
-  acvThreshold(ss,80);
+  acvThreshold(ss,100);
   acvBoxFilter(buff,ss,5);
   acvBoxFilter(buff,ss,5);
-  acvThreshold(ss,255-5);
+  acvThreshold(ss,255-15);
 
   //acvDeleteFrame(ss,5);
   acvComponentLabeling(ss);
@@ -473,7 +473,7 @@ int testEstXY()
 
       int dim_in=2;
       int dim_out=2;
-      int batchSize=100;
+      int batchSize=300;
       MLNNUtil nu;
       vector<vector<float> > error_gradient;
       nu.Init2DVec(error_gradient,batchSize,dim_out);
@@ -482,13 +482,23 @@ int testEstXY()
       MLNN NN(batchSize,NNDim,sizeof(NNDim)/sizeof(*NNDim));
 
 
+      float theta=30*M_PI/180;
+      float scale=0.4;
+      NN.layers[0].W[0][0]=cos(theta)*scale;
+      NN.layers[0].W[1][1]=cos(theta)*scale;
+      NN.layers[0].W[0][1]=-sin(theta)*scale;
+      NN.layers[0].W[1][0]=sin(theta)*scale;
+
+      NN.layers[0].W[2][0]=10/50;
+      NN.layers[0].W[2][1]=10/50;
+
   //******************************************
 
-    float alpha=0.5;
-    for(int j=0;j<1000;j++)
+    float alpha=10;
+    for(int j=0;j<50;j++)
     {
       sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
-printf("**********************\n");
+printf("***********%d***********\n",j);
       NN.layers[0].printW();
       DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
       /*for (int k=0;k<batchSize;k+=1)
@@ -508,7 +518,7 @@ printf("**********************\n");
         error_gradient[k][1]=-errorXY[k].Y/(errorXY.size()*256*128);
           //printf("%f %f\n",error_gradient[k][0],error_gradient[k][1]);
       }
-      alpha*=0.999;
+      alpha*=0.99;
       NN.backProp(error_gradient);
       NN.updateW(alpha);
       //nu.printMat(NN.layers[0].dW);printf("\n");
@@ -516,23 +526,30 @@ printf("**********************\n");
       printf("%f  %f %f %f\n",error,
       NN.layers[0].W[2][0]*100,NN.layers[0].W[2][1]*100,
       180/M_PI*atan2(NN.layers[0].W[1][0]-NN.layers[0].W[0][1],NN.layers[0].W[0][0]+NN.layers[0].W[1][1]));
+
+      if(j%10!=0)continue;
+
+      sleep(1);
+
+      acvCloneImage(target,buff,0);
+      for(int j=0;j<regionXY_.size()/batchSize;j++)
+      {
+          sampleXYFromRegion_Seq(regionSampleXY,regionXY_,j*batchSize,batchSize);
+          DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
+          for(int k=0;k<regionSampleXY.size();k++)
+          {
+            buff->CVector[(int)round(mappedXY[k].Y)][(int)round(mappedXY[k].X)*3+2]=
+            255-image->CVector[(int)round(regionSampleXY[k].Y)][(int)round(regionSampleXY[k].X)*3];
+          }
+
+      }
+
+      acvSaveBitmapFile("data/target_test_cover.bmp",buff->ImageData,buff->GetWidth(),buff->GetHeight());
           //  NN.layers[0].printW();
       //return 0;
     }
-    for(int j=0;j<regionXY_.size()/batchSize;j++)
-    {
-        sampleXYFromRegion_Seq(regionSampleXY,regionXY_,j*batchSize,batchSize);
-        DotsTransform(regionSampleXY,mappedXY,NN,ldData[i].Center,1);
-        for(int k=0;k<regionSampleXY.size();k++)
-        {
-          target->CVector[(int)round(mappedXY[k].Y)][(int)round(mappedXY[k].X)*3+2]=
-          255-image->CVector[(int)round(regionSampleXY[k].Y)][(int)round(regionSampleXY[k].X)*3];
-        }
 
-    }
   }
-
-  acvSaveBitmapFile("data/target_test_cover.bmp",target->ImageData,target->GetWidth(),target->GetHeight());
 
 
   acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
