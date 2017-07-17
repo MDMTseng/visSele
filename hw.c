@@ -492,21 +492,21 @@ int testEstXY()
       int NNDim[]={dim_in,dim_out};
       MLNN NN(batchSize,NNDim,sizeof(NNDim)/sizeof(*NNDim));
 
-
-      float theta=10*M_PI/180;
+      MLOpt mo(NN.layers[0]);
+      float theta=2*M_PI/180;
       float scale=1;
       NN.layers[0].W[0][0]=cos(theta)*scale;
       NN.layers[0].W[1][1]=cos(theta)*scale;
       NN.layers[0].W[0][1]=-sin(theta)*scale;
       NN.layers[0].W[1][0]=sin(theta)*scale;
 
-      NN.layers[0].W[2][0]=1/50;
+      NN.layers[0].W[2][0]=5/50;
       NN.layers[0].W[2][1]=1/50;
 
   //******************************************
 
-    float alpha=10;
-    for(int j=0;j<50;j++)
+    float alpha=1;
+    for(int j=0;j<20+1;j++)
     {
       sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
       printf("***********%d***********\n",j);
@@ -529,14 +529,26 @@ int testEstXY()
         error_gradient[k][1]=-errorXY[k].Y/(errorXY.size()*256*128);
           //printf("%f %f\n",error_gradient[k][0],error_gradient[k][1]);
       }
-      alpha*=0.92;
+      //alpha*=0.995;
       NN.backProp(error_gradient);
+      mo.update_dW();
       NN.updateW(alpha);
       //nu.printMat(NN.layers[0].dW);printf("\n");
       NN.reset_deltaW();
       printf("%f  %f %f %f\n",error,
       NN.layers[0].W[2][0]*100,NN.layers[0].W[2][1]*100,
       180/M_PI*atan2(NN.layers[0].W[1][0]-NN.layers[0].W[0][1],NN.layers[0].W[0][0]+NN.layers[0].W[1][1]));
+      float dd=0.5;
+
+      float a00=(NN.layers[0].W[0][0]+NN.layers[0].W[1][1])/2;
+      float a10=(NN.layers[0].W[1][0]-NN.layers[0].W[0][1])/2;
+      float LL=hypot(a00, a10);
+      a00/=LL;
+      a10/=LL;
+      NN.layers[0].W[0][0]=a00;
+      NN.layers[0].W[0][1]=-a10;
+      NN.layers[0].W[1][0]=a10;
+      NN.layers[0].W[1][1]=a00;
 
       if(j%10!=0)continue;
 
@@ -561,6 +573,7 @@ int testEstXY()
     }
 
   }
+
 
 
   acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);

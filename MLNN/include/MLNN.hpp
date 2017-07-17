@@ -86,7 +86,14 @@ public:
 
 };
 
-
+class MLOpt{
+  MLNNUtil nu;
+  MLNL *layer;
+  vector<vector<float> > speed;
+public:
+  MLOpt(MLNL &layer);
+  void update_dW();
+};
 
 
 
