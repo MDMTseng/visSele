@@ -25,4 +25,7 @@ void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int d
 void acvDistanceTransform_Sobel(acvImage *res,acvImage *src);
 acv_XY acvSignedMap2Sampling(acvImage *signedMap2,const acv_XY &XY);
 float acvUnsignedMap1Sampling(acvImage *unsignedMap1,const acv_XY &XY);
+acv_XY acvSignedMap2Sampling_Nearest(acvImage *signedMap2,const acv_XY &XY);
+float acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1,const acv_XY &XY);
+
 #endif

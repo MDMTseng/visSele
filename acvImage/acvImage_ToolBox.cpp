@@ -920,7 +920,7 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
       acvUnsignedMap1Sampling(Pic,picpt)-
       acvUnsignedMap1Sampling(targetMap,tarpt));
 
-    acv_XY gradient=acvSignedMap2Sampling(targetGradient,tarpt);
+    acv_XY gradient=acvSignedMap2Sampling_Nearest(targetGradient,tarpt);
 
     //printf(">%f %d\n",gradient.X,(char)targetGradient->CVector[(int)tarpt.Y][(int)tarpt.X*3]);
     //Sobel [0] ^  [1] <

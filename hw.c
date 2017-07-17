@@ -506,7 +506,7 @@ int testEstXY()
   //******************************************
 
     float alpha=1;
-    for(int j=0;j<20+1;j++)
+    for(int j=0;j<50+1;j++)
     {
       sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
       printf("***********%d***********\n",j);
@@ -538,7 +538,7 @@ int testEstXY()
       printf("%f  %f %f %f\n",error,
       NN.layers[0].W[2][0]*100,NN.layers[0].W[2][1]*100,
       180/M_PI*atan2(NN.layers[0].W[1][0]-NN.layers[0].W[0][1],NN.layers[0].W[0][0]+NN.layers[0].W[1][1]));
-      float dd=0.5;
+
 
       float a00=(NN.layers[0].W[0][0]+NN.layers[0].W[1][1])/2;
       float a10=(NN.layers[0].W[1][0]-NN.layers[0].W[0][1])/2;

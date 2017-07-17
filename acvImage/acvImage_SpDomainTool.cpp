@@ -502,3 +502,25 @@ float acvUnsignedMap1Sampling(acvImage *unsignedMap1,const acv_XY &XY)
 
   return c00;
 }
+
+
+acv_XY acvSignedMap2Sampling_Nearest(acvImage *signedMap2,const acv_XY &XY)
+{
+
+  acv_XY sample;
+  int rX=(int)round(XY.X);
+  int rY=(int)round(XY.Y);
+  sample.X = (char)signedMap2->CVector[rY][rX*3];
+  sample.Y = (char)signedMap2->CVector[rY][rX*3+1];
+  return sample;
+
+}
+
+
+float acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1,const acv_XY &XY)
+{
+
+  int rX=(int)round(XY.X);
+  int rY=(int)round(XY.Y);
+  return unsignedMap1->CVector[rY][rX*3];
+}
