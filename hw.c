@@ -292,8 +292,8 @@ void Target_prep_dist(acvImage *target,acvImage *target_DistGradient)
   tmp->ReSize(target->GetWidth(),target->GetHeight());
 
   acvThreshold(target,128);
-  acvBoxFilter(tmp,target,1);
-  acvBoxFilter(tmp,target,1);
+  acvBoxFilter(tmp,target,3);
+  acvBoxFilter(tmp,target,3);
   acvCloneImage(target,tmp,1);
   acvCloneImage(target,target,0);
 
@@ -393,9 +393,12 @@ void DotsTransform(std::vector<acv_XY> &XY,std::vector<acv_XY> &tXY,MLNN &NN,acv
 void sampleXYFromRegion(vector<acv_XY> &sampleXY,const vector<acv_XY> &regionXY,int sampleCount)
 {
   sampleXY.clear();
+  static int offset = rand()%(regionXY.size()/sampleCount);
   for(int i=0;i<sampleCount;i++)
   {
-    int randIdx=rand()%regionXY.size();
+
+    int randIdx=i*regionXY.size()/sampleCount+offset;
+    randIdx=randIdx%regionXY.size();
     sampleXY.push_back(regionXY[randIdx]);
   }
 }
@@ -446,8 +449,8 @@ int testEstXY()
     acvBoxFilter(buff,image,1);
     acvThreshold(image,170);
     acvBoxFilter(buff,image,1);
-    acvBoxFilter(buff,image,1);
-    acvBoxFilter(buff,image,1);
+    acvBoxFilter(buff,image,2);
+    acvBoxFilter(buff,image,2);
     acvBoxFilter(buff,image,1);
 
   acvBoxFilter(buff,ss,5);
@@ -461,8 +464,8 @@ int testEstXY()
   acvImage *labelImg=ss;
 
 
-  acvSaveBitmapFile("data/imageX.bmp",image->ImageData,ss->GetWidth(),ss->GetHeight());
-  acvSaveBitmapFile("data/targetX.bmp",target->ImageData,ss->GetWidth(),ss->GetHeight());
+  //acvSaveBitmapFile("data/imageX.bmp",image->ImageData,ss->GetWidth(),ss->GetHeight());
+  //acvSaveBitmapFile("data/targetX.bmp",target->ImageData,ss->GetWidth(),ss->GetHeight());
 
 
   std::vector<acv_XY> regionXY_;
@@ -493,20 +496,20 @@ int testEstXY()
       MLNN NN(batchSize,NNDim,sizeof(NNDim)/sizeof(*NNDim));
 
       MLOpt mo(NN.layers[0]);
-      float theta=2*M_PI/180;
+      float theta=20*M_PI/180;
       float scale=1;
       NN.layers[0].W[0][0]=cos(theta)*scale;
       NN.layers[0].W[1][1]=cos(theta)*scale;
       NN.layers[0].W[0][1]=-sin(theta)*scale;
       NN.layers[0].W[1][0]=sin(theta)*scale;
 
-      NN.layers[0].W[2][0]=5/50;
+      NN.layers[0].W[2][0]=50/50;
       NN.layers[0].W[2][1]=1/50;
 
   //******************************************
 
-    float alpha=1;
-    for(int j=0;j<50+1;j++)
+    float alpha=5;
+    for(int j=0;j<20+1;j++)
     {
       sampleXYFromRegion(regionSampleXY,regionXY_,batchSize);
       printf("***********%d***********\n",j);
@@ -529,7 +532,7 @@ int testEstXY()
         error_gradient[k][1]=-errorXY[k].Y/(errorXY.size()*256*128);
           //printf("%f %f\n",error_gradient[k][0],error_gradient[k][1]);
       }
-      //alpha*=0.995;
+      //alpha*=0.95;
       NN.backProp(error_gradient);
       mo.update_dW();
       NN.updateW(alpha);
@@ -550,8 +553,8 @@ int testEstXY()
       NN.layers[0].W[1][0]=a10;
       NN.layers[0].W[1][1]=a00;
 
-      if(j%10!=0)continue;
-
+      if(j%1!=0)continue;
+      //continue;
       sleep(1);
 
       acvCloneImage(target,buff,0);
@@ -576,8 +579,8 @@ int testEstXY()
 
 
 
-  acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
-  acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+  //acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
+  //acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
   return 0;
 }
 
