@@ -25,5 +25,5 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
   acv_XY *ErrorGradientList,int ListL);
 
 uint32_t acvSqMatchingError(acvImage  *Pic,acv_XY *PicPtList,acvImage *targetMap,acv_XY *TarPtList,int ListL);
-
+bool acvContourCircleSignature(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature);
 #endif

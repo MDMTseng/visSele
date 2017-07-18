@@ -937,34 +937,51 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
 
 
 bool acvContourCircleSignature
-(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx)
+(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature)
 {
   char State=0;
   int ret=-1;
+  memset((void*)&(signature[0]),0,signature.size()*sizeof(signature[0]));
 
   int X,Y;
-  int dir =3;
-  //0|1|2
-  //7|X|3
-  //6|5|4
-  int startX,startY
+  int startX,startY;
   X=(int)ldata.LTBound.X;
   Y=(int)ldata.LTBound.Y;
-  for(int j=X;i<(int)ldata.RBBound.X;i++)
+  for(int j=X;j<(int)ldata.RBBound.X;j++)
   {
-    _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][i*3]);
+    _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
     if(pix->_3Byte.Num==labelIdx)
     {
       X=j;
       startX=j;
       startY=Y;
       ret=0;
+      break;
     }
   }
+  if(ret!=0)return false;
 
+
+  int CC=0;
+  //0|1|2
+  //7|X|3
+  //6|5|4
+  int dir =3;//>
   do {
+      BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
+      dir-=2;
+      float diffX=Y-ldata.Center.Y;
+      float diffY=X-ldata.Center.X;
+      float theta=acvFAtan2(diffY,diffX);//-pi ~pi
+      if(theta<0)theta+=2*M_PI;
+      int idx=(int)(signature.size()*theta/(2*M_PI));
+      float R=hypot(diffX,diffY);
+      if(signature[idx].X<R)
+      {
+        signature[idx].X=R;
+        signature[idx].Y=theta;
+      }
 
-      BYTE* pix=acvContourWalk(LabeledPic,&X,Y,&dir,1);
     /* code */
   } while(X!=startX||Y!=startY);
 

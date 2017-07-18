@@ -56,9 +56,9 @@ void acvLabeledColorDispersion(acvImage *ColorDispersionPic,acvImage *LabeledPic
 
 BYTE* acvContourWalk(acvImage  *Pic,int *X_io,int *Y_io,int *dir_io,int dirinc)
 {
-  if(*dir_io>8||*dir_io<0)return NULL;
+  //if(*dir_io>8||*dir_io<0)return NULL;
   BYTE **CVector=Pic->CVector;
-  int dir=*dir_io;
+  int dir=(*dir_io)&0x7;
   int x,y;
   for(int i=0;i<8;i++)
   {

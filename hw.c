@@ -115,7 +115,7 @@ void TargetPrep()
   acvSaveBitmapFile("data/target_soft.bmp",tar->ImageData,buff->GetWidth(),buff->GetHeight());
 
   acvSobelFilter(buff,tar);
-  acvScalingSobelResult(buff);
+  acvScalingSobelResult_n(buff);
   acvImageAdd(buff,128);
 
   acvBoxFilter(tar,buff,5);
@@ -454,9 +454,62 @@ int testEstXY()
   return 0;
 }
 
+int testSignature()
+{
+  acvImage *image = new acvImage();
+  acvImage *ss = new acvImage();
+  acvImage *buff = new acvImage();
+  std::vector<acv_LabeledData> ldData;
+
+  acvLoadBitmapFile(image,"data/test1.bmp");
+  image->RGBToGray();
+  buff->ReSize(image->GetWidth(),image->GetHeight());
+  ss->ReSize(image->GetWidth(),image->GetHeight());
+
+  acvCloneImage(image,ss,0);
+
+  acvThreshold(ss,200);
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
+
+  acvThreshold(ss,100);
+
+  acvBoxFilter(buff,ss,1);
+  acvBoxFilter(buff,ss,1);
+  acvThreshold(ss,255-50);
+
+  //acvDeleteFrame(ss,5);
+  acvComponentLabeling(ss);
+  acvLabeledRegionInfo(ss,&ldData);
+  acvRemoveRegionLessThan(ss,&ldData,120);
+  acvImage *labelImg=ss;
+  vector<acv_XY> signature(1000);
+  for (int i=1;i<ldData.size();i++)
+  {
+    printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
+    acvContourCircleSignature(ss,ldData[i],i,signature);
+    acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
+    acv_XY preXY;
+    for (int j=0;j<signature.size();j++)
+    {
+      acv_XY nowXY;
+      nowXY.Y=signature[j].X*cos(signature[j].Y)+ldData[i].Center.Y;
+      nowXY.X=signature[j].X*sin(signature[j].Y)+ldData[i].Center.X;
+      acvDrawLine(ss,round(preXY.X),round(preXY.Y),
+        round(nowXY.X),round(nowXY.Y),0,255,0,2);
+      preXY=nowXY;
+    }
+  }
+  acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
+  acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+}
+
 #include <vector>
 int main()
 {
+  testSignature();
   //clock_t t= clock();
 //TargetPrep();
   //testEstXY();
