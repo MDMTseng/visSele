@@ -40,6 +40,7 @@ typedef union _24BitUnion
         _2BYTE _2Byte;
 }_24BitUnion;
 
+BYTE* acvContourWalk(acvImage  *Pic,int *X_io,int *Y_io,int *dir_io,int dirinc);
 void acvComponentLabeling(acvImage *Pic);
 int acvLabeledRegionInfo(acvImage  *LabeledPic,std::vector<acv_LabeledData> *list);
 int acvRemoveRegionLessThan(acvImage  *LabeledPic,std::vector<acv_LabeledData> *list,int threshold);

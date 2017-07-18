@@ -935,138 +935,42 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
   return errorSum;
 }
 
-//Displacement, Scale, Aangle
-uint32_t acvSqMatchingError(acvImage  *Pic,acv_XY *PicPtList,acvImage *targetMap,acv_XY *TarPtList,int ListL)
+
+bool acvContourCircleSignature
+(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx)
 {
-  uint32_t errorSum=0;
-  BYTE **PicCVec=Pic->CVector;
-  BYTE **TarCVec=targetMap->CVector;
-  for(int i=0;i<ListL;i++)
+  char State=0;
+  int ret=-1;
+
+  int X,Y;
+  int dir =3;
+  //0|1|2
+  //7|X|3
+  //6|5|4
+  int startX,startY
+  X=(int)ldata.LTBound.X;
+  Y=(int)ldata.LTBound.Y;
+  for(int j=X;i<(int)ldata.RBBound.X;i++)
   {
-    int error=(
-      PicCVec[(int)PicPtList[i].Y][(int)PicPtList[i].X*3]-
-      TarCVec[(int)TarPtList[i].Y][(int)TarPtList[i].X*3]
-    );
-    error*=error;
-    errorSum+=error;
+    _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][i*3]);
+    if(pix->_3Byte.Num==labelIdx)
+    {
+      X=j;
+      startX=j;
+      startY=Y;
+      ret=0;
+    }
   }
-  return errorSum;
+
+  do {
+
+      BYTE* pix=acvContourWalk(LabeledPic,&X,Y,&dir,1);
+    /* code */
+  } while(X!=startX||Y!=startY);
+
+
 }
 
-//Displacement, Scale, Aangle
-BYTE* acvParamEstimation(acvImage  *Pic,acvImage *targetMap,int *pointList[2],int *mapList[2],int ListL)
-{
-  for(int i=0;i<ListL;i++)
-  {
-
-  }
-}
-
-
-int acvFindContourCentroid(acvImage  *Pic,int Pos[2],BYTE RecordVar,int InitDir)
-{
-        int NowPos[2]={Pos[0],Pos[1]};
-
-        int i,j,NowWalkDir;//=5;//CounterClockWise
-        int *WalkDirV;
-        BYTE PointSymbol;
-        BYTE **CVector=Pic->CVector;
-        int TotalL=1;
-        CVector[Pos[1]][Pos[0]*3]=254;//StartSymbol
-        NowWalkDir=-1;
-        for(i=7;i>=0;i--)
-        {
-             if(CVector[Pos[1]+ContourWalkV[i][0]   ]
-                             [(Pos[0]+ContourWalkV[i][1])*3]!=255)
-             {
-                NowWalkDir=i;
-                break;
-             }
-        }
-        if(NowWalkDir==-1)
-        {
-                CVector[Pos[1]][Pos[0]*3]=RecordVar;
-                Pos[0]=-1;
-                return 1;
-
-        }
-
-        NowWalkDir=InitDir;
-        InitDir=i;
-        do
-        {
-                NowWalkDir+=2;
-                if(NowWalkDir>7)NowWalkDir-=8;
-
-                PointSymbol=CVector[ NowPos[1]+ContourWalkV[NowWalkDir][0]   ]
-                             [(NowPos[0]+ContourWalkV[NowWalkDir][1])*3];
-
-                while(PointSymbol==255)
-                {
-
-                        if(NowWalkDir==0)NowWalkDir=7;
-                        else            NowWalkDir--;
-                        PointSymbol=CVector[ NowPos[1]+ContourWalkV[NowWalkDir][0]   ]
-                             [(NowPos[0]+ContourWalkV[NowWalkDir][1])*3];
-                }
-                NowPos[1]+=ContourWalkV[NowWalkDir][0];
-                NowPos[0]+=ContourWalkV[NowWalkDir][1];
-                /*/////////////////////////////////////////////////////////////////////////// /
-                if(InitDir==1)
-                {
-                        CVector[NowPos[1]][NowPos[0]*3+1]=255;
-                        CVector[NowPos[1]][NowPos[0]*3+2]=0;
-                }
-                else
-                {
-                        CVector[NowPos[1]][NowPos[0]*3+1]=0;
-                        CVector[NowPos[1]][NowPos[0]*3+2]=255;
-                } */
-
-                TotalL++;
-                Pos[0]+=NowPos[0];
-                Pos[1]+=NowPos[1];
-                if(PointSymbol==254)
-                {
-                        break;
-                        InitDir-=2;
-                        if(InitDir<0)InitDir+=8;
-                        for(i=6;i>=0;i--,InitDir--)
-                        {
-                                if(InitDir<0)InitDir+=8;
-                                NowWalkDir=CVector[NowPos[1]+ContourWalkV[InitDir][0]   ]
-                                [(NowPos[0]+ContourWalkV[InitDir][1])*3];
-                                if(NowWalkDir!=255&&NowWalkDir!=RecordVar)for(;i;--i,--InitDir)
-                                {
-                                        if(InitDir<0)InitDir+=8;
-                                       NowWalkDir=CVector[NowPos[1]+ContourWalkV[InitDir][0]   ]
-                                       [(NowPos[0]+ContourWalkV[InitDir][1])*3];
-                                       if(NowWalkDir==255)
-                                       {
-                                                NowWalkDir=InitDir-1;
-                                                goto OutCheckNei;
-                                       }
-                                       else if(NowWalkDir==RecordVar)
-                                       {
-                                                i=1;
-                                                break;
-                                       }
-                                }
-                        }
-
-                        break;
-                        OutCheckNei:;
-                }
-                else
-                        CVector[NowPos[1]][NowPos[0]*3  ]=RecordVar;
-        }while(1);
-        //Pos[0]=Pos[0]*SignInfoDistanceMuti/TotalL;
-        //Pos[1]=Pos[1]*SignInfoDistanceMuti/TotalL;
-        //Pos[0]/=TotalL;
-        //Pos[1]/=TotalL;
-        CVector[NowPos[1]][NowPos[0]*3]=RecordVar;
-        return TotalL;
-}
 
 /*0 1 2
   7 X 3
