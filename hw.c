@@ -77,51 +77,6 @@ void test1()
   // printf() displays the string inside quotation
 }
 
-void acvScalingSobelResult(acvImage *src)
-{
-  int m1=255;
-  int M1=0;
-  int i,j;
-  int TmpPixelH,TmpPixelV;
-  BYTE *L;
-  for(i=0;i<src->GetHeight();i++)
-  {
-    L=&(src->CVector[i][0]);
-    for(j=0;j<src->GetWidth();j++,L+=3)
-    {
-      char Lp0,Lp1;
-      Lp0=L[0];
-      Lp1=L[1];
-
-      if(m1>Lp0)m1=Lp0;
-      if(M1<Lp0)M1=Lp0;
-      if(m1>Lp1)m1=Lp1;
-      if(M1<Lp1)M1=Lp1;
-
-    }
-  }
-
-  if(-m1>M1)M1=-m1;
-  printf("M1:%d %d\n",M1,m1);
-
-  for(i=0;i<src->GetHeight();i++)
-  {
-    L=&(src->CVector[i][0]);
-    for(j=0;j<src->GetWidth();j++,L+=3)
-    {
-      char Lp0,Lp1;
-      Lp0=L[0];
-      Lp1=L[1];
-
-      L[0]=div_round((int)Lp0*127,M1);
-      L[1]=div_round((int)Lp1*127,M1);
-
-
-    }
-  }
-}
-
-
 void acvScalingSobelResult_n(acvImage *src)
 {
   int i,j;
@@ -147,91 +102,6 @@ void acvScalingSobelResult_n(acvImage *src)
   }
 }
 
-void test2()
-{
-  acvImage *ss = new acvImage();
-  acvImage *distGradient = new acvImage();
-
-  acvLoadBitmapFile(ss,"data/target_s.bmp");
-  distGradient->ReSize(ss->GetWidth(),ss->GetHeight());
-  acvThreshold(ss,128);
-  int mul=1;
-  acvDistanceTransform_Chamfer(ss,5*mul,7*mul);
-  //acvDistanceTransform_ChamferX(ss);
-  acvInnerFramePixCopy(ss,1);
-  acvSaveBitmapFile("data/target_s_dist.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
-
-  acvDistanceTransform_Sobel(distGradient,ss);
-  acvInnerFramePixCopy(distGradient,2);
-  acvInnerFramePixCopy(distGradient,1);
-  acvScalingSobelResult_n(distGradient);
-
-  /*acvImageAdd(distGradient,128);
-  acvBoxFilter(ss,distGradient,15);
-  //acvBoxFilter(ss,distGradient,15);
-  acvImageAdd(distGradient,-128);
-  distGradient->ChannelOffset(1);
-  acvImageAdd(distGradient,128);
-  acvBoxFilter(ss,distGradient,15);
-  //acvBoxFilter(ss,distGradient,15);
-  acvImageAdd(distGradient,-128);
-  distGradient->ChannelOffset(-1);
-  acvScalingSobelResult_n(distGradient);*/
-
-  acvClear(ss,128);
-  int lineN=4;
-  acv_XY sumXY={0};
-  for(int k=0;k<lineN;k++)
-  {
-    BYTE    Color[3]={HSV_VMax,HSV_VMax,(k)*(HSV_HMax-50)/lineN};
-    distGradient->RGBFromHSV(Color,Color);
-
-    acv_XY preXY={
-      k/2.0*distGradient->GetWidth()/lineN,
-      k/2.0*distGradient->GetHeight()/lineN};
-    acv_XY XY;
-    acv_XY preForce={0};
-    acv_XY Force={0};
-    acv_XY speed={0,20};
-    for(int i=0;i<100;i++)
-    {
-
-      Force=acvSignedMap2Sampling(distGradient,preXY);
-      //printf(">%f %f\n",Force.X,Force.Y);
-      speed.X+=Force.X/128;
-      speed.Y+=Force.Y/128;
-
-      if(preForce.X*Force.X<0)speed.X=0;
-      if(preForce.Y*Force.Y<0)speed.Y=0;
-      speed.X*=0.95;
-      speed.Y*=0.95;
-      XY.X=preXY.X+speed.X;
-      XY.Y=preXY.Y+speed.Y;
-      if(XY.X<0)XY.X=0;
-      if(XY.X>distGradient->GetWidth()-1)XY.X=distGradient->GetWidth()-1;
-      if(XY.Y<0)XY.Y=0;
-      if(XY.Y>distGradient->GetWidth()-1)XY.Y=distGradient->GetWidth()-1;
-      acvDrawLine(ss,(int)XY.X,(int)XY.Y,(int)preXY.X,(int)preXY.Y,Color[2],Color[1],Color[0],1);
-      preXY=XY;
-      preForce=Force;
-    }
-    sumXY.X+=XY.X;
-    sumXY.Y+=XY.Y;
-    printf(">%f %f\n",XY.X,XY.Y);
-  }
-  printf(">%f %f\n",(sumXY.X/lineN),(sumXY.Y/lineN));
-
-  acvSaveBitmapFile("data/target_ss.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
-
-
-  acvImageAdd(distGradient,128);
-  distGradient->ChannelOffset(1);
-  acvImageAdd(distGradient,128);
-  distGradient->ChannelOffset(-1);
-
-  //acvCloneImage(distGradient,distGradient,2);
-  acvSaveBitmapFile("data/target_s_dist_grad.bmp",distGradient->ImageData,ss->GetWidth(),ss->GetHeight());
-}
 void TargetPrep()
 {
   acvImage *tar = new acvImage();
@@ -584,54 +454,12 @@ int testEstXY()
   return 0;
 }
 
-
-void NNTest()
-{
-    MLNNUtil nu;
-    int dim_in=2;
-    int dim_out=2;
-    vector<vector<float> > data;
-    nu.Init2DVec(data,10,dim_in);
-
-    vector<vector<float> > target;
-    nu.Init2DVec(target,data.size(),dim_out);
-
-    vector<vector<float> > error_gradient;
-    nu.Init2DVec(error_gradient,target.size(),target[0].size());
-
-    int NNDim[]={dim_in,dim_out};
-    MLNN NN(data.size(),NNDim,sizeof(NNDim)/sizeof(*NNDim));
-
-    for(int j=0;j<data.size();j++)
-    {
-      data[j][0]=0;
-      data[j][1]=j;
-      target[j][0]=j;
-      target[j][1]=j/2.0;
-    }
-    for(int i=0;i<100;i++)
-    {
-      NN.ForwardPass(data);
-
-      for(int j=0;j<NN.p_pred_Y->size();j++)
-      {
-        printf("%f %f\n",(*NN.p_pred_Y)[j][0],(*NN.p_pred_Y)[j][1]);
-      }
-
-      //Train
-      nu.matAdd(error_gradient,target,*NN.p_pred_Y,-1);
-      NN.backProp(error_gradient);
-      NN.updateW(0.01);
-      NN.reset_deltaW();
-      printf("\n");
-    }
-}
 #include <vector>
 int main()
 {
   //clock_t t= clock();
 //TargetPrep();
-  testEstXY();
+  //testEstXY();
   //NNTest();
   //t = clock() - t;
   //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
