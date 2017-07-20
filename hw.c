@@ -485,25 +485,30 @@ int testSignature()
   acvLabeledRegionInfo(ss,&ldData);
   acvRemoveRegionLessThan(ss,&ldData,120);
   acvImage *labelImg=ss;
-  vector<acv_XY> signature(1000);
+  vector<acv_XY> signature(300);
+
+  acvCloneImage(ss,image,-1);
   for (int i=1;i<ldData.size();i++)
   {
     printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
     acvContourCircleSignature(ss,ldData[i],i,signature);
-    acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
+    //acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
     acv_XY preXY;
     for (int j=0;j<signature.size();j++)
     {
       acv_XY nowXY;
       nowXY.Y=signature[j].X*cos(signature[j].Y)+ldData[i].Center.Y;
       nowXY.X=signature[j].X*sin(signature[j].Y)+ldData[i].Center.X;
-      acvDrawLine(ss,round(preXY.X),round(preXY.Y),
-        round(nowXY.X),round(nowXY.Y),0,255,0,2);
+      if(j==0)preXY=nowXY;
+      acvDrawLine(image,round(preXY.X),round(preXY.Y),
+        round(nowXY.X),round(nowXY.Y),i+3,0,0,5);
       preXY=nowXY;
+      signature[j].X=0;
+      signature[j].Y=0;
     }
   }
-  acvLabeledColorDispersion(ss,ss,ldData.size()/20+5);
-  acvSaveBitmapFile("data/uu_o.bmp",ss->ImageData,ss->GetWidth(),ss->GetHeight());
+  acvLabeledColorDispersion(image,image,ldData.size()/20+5);
+  acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,ss->GetWidth(),ss->GetHeight());
 }
 
 #include <vector>
