@@ -325,15 +325,15 @@ bool acvContourCircleSignature
 
 
   int preIdx=-1;
-  int _1stIdx=0;
+  int _1stIdx=-1;
   //0|1|2
   //7|X|3
   //6|5|4
   int dir =3;//>
   do {
 
-      float diffX=Y-ldata.Center.Y;
-      float diffY=X-ldata.Center.X;
+      float diffY=Y-ldata.Center.Y;
+      float diffX=X-ldata.Center.X;
       float theta=acvFAtan2(diffY,diffX);//-pi ~pi
       if(theta<0)theta+=2*M_PI;
       int idx=(int)(signature.size()*theta/(2*M_PI));
@@ -346,11 +346,6 @@ bool acvContourCircleSignature
       float R=hypot(diffX,diffY);
       if(signature[idx].X<R)
       {
-
-        if(labelIdx==2)
-        {
-          printf("%d %d\n",X,Y);
-        }
         signature[idx].X=R;
         signature[idx].Y=theta;
         interpolateSignData(signature,preIdx,idx);
@@ -362,10 +357,6 @@ bool acvContourCircleSignature
     /* code */
   } while(X!=startX||Y!=startY);
 
-  //Seal the gap between last and first
-  if(preIdx-_1stIdx>=2)
-  {
-    interpolateSignData(signature,_1stIdx,preIdx);
-  }
+  interpolateSignData(signature,_1stIdx,preIdx);
 
 }
