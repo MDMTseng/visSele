@@ -336,7 +336,7 @@ bool acvContourCircleSignature
       float diffX=X-ldata.Center.X;
       float theta=acvFAtan2(diffY,diffX);//-pi ~pi
       if(theta<0)theta+=2*M_PI;
-      int idx=(int)(signature.size()*theta/(2*M_PI));
+      int idx=round(signature.size()*theta/(2*M_PI));
 
       if(preIdx==-1)
       {
