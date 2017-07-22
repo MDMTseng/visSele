@@ -526,7 +526,8 @@ int SignareIdxOffsetMatching
 (const vector<acv_XY> &signature,
   const vector<acv_XY> &tar_signature,int roughSearchSampleRate,float *min_error)
 {
-  int fineSreachRadious=roughSearchSampleRate;
+  if(roughSearchSampleRate<1)return -1;
+  int fineSreachRadious=roughSearchSampleRate-1;
   int minErrOffset=0;
   float minErr=FLT_MAX;//rough search
   for (int j=0;j<tar_signature.size();j+=roughSearchSampleRate)
@@ -611,7 +612,7 @@ int testSignature()
 {
 
 
-  vector<acv_XY> tar_signature(500);
+  vector<acv_XY> tar_signature(561);
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
   Target_prep_dist (target,target_DistGradient,tar_signature);
@@ -627,7 +628,7 @@ int testSignature()
   buff->ReSize(image->GetWidth(),image->GetHeight());
   ss->ReSize(image->GetWidth(),image->GetHeight());
 
-  vector<acv_XY> signature(500);
+  vector<acv_XY> signature(561);
 
   clock_t t= clock();
 
