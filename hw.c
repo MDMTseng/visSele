@@ -497,18 +497,16 @@ float SignatureMatchingError
   int size=(arrsize-signIdx);
   int i=0;
 
-  for(;i<size;i+=stride)
+  for(;i<size;i+=stride,signIdx+=stride)
   {
     float error=signature[(signIdx)].X-tar_signature[i].X;
-    signIdx+=stride;
     errorSum+=error*error;
   }
   signIdx-=arrsize;
   size=arrsize;
-  for(;i<size;i+=stride)
+  for(;i<size;i+=stride,signIdx+=stride)
   {
     float error=signature[(signIdx)].X-tar_signature[i].X;
-    signIdx+=stride;
     errorSum+=error*error;
   }
   return errorSum;
@@ -612,7 +610,7 @@ int testSignature()
 {
 
 
-  vector<acv_XY> tar_signature(561);
+  vector<acv_XY> tar_signature(360);
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
   Target_prep_dist (target,target_DistGradient,tar_signature);
@@ -628,7 +626,7 @@ int testSignature()
   buff->ReSize(image->GetWidth(),image->GetHeight());
   ss->ReSize(image->GetWidth(),image->GetHeight());
 
-  vector<acv_XY> signature(561);
+  vector<acv_XY> signature(tar_signature.size());
 
   clock_t t= clock();
 
