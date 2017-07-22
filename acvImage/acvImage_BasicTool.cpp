@@ -271,29 +271,22 @@ void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode)
         switch(Mode)
         {
                 case -1:
-                for(int i=0;i<OriPic->GetHeight();i++)
-                {
-                        OutLine=OutPic->CVector[i];OriLine=OriPic->CVector[i];
-                        for(int j=0;j<OriPic->GetWidth();j++)
-                        {
-                                *OutLine++=*OriLine++;
-                                *OutLine++=*OriLine++;
-                                *OutLine++=*OriLine++;
-                        }
-                }break;
+
+                memcpy(OutPic->ImageData,OriPic->ImageData,OriPic->GetHeight()*OriPic->GetWidth()*3);
+                break;
                 case 0:
                 case 1:
                 case 2:
                 for(int i=0;i<OriPic->GetHeight();i++)
                 {
-                        OutLine=OutPic->CVector[i];OriLine=OriPic->CVector[i];
+                        OutLine=OutPic->CVector[i];OriLine=OriPic->CVector[i]+Mode;
                         for(int j=0;j<OriPic->GetWidth();j++)
                         {
-                            BYTE tmp = OriLine[Mode];
-                                *OutLine++=tmp;
-                                *OutLine++=tmp;
-                                *OutLine++=tmp;
-                                OriLine+=3;
+                            BYTE tmp = *OriLine;
+                            *OutLine++=tmp;
+                            *OutLine++=tmp;
+                            *OutLine++=tmp;
+                            OriLine+=3;
                         }
                 }break;
 

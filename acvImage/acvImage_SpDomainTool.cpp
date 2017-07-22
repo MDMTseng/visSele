@@ -25,6 +25,88 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
       for(i=0;i<SizeP1;i++,srcfront+=wx3,resfront+=wx3)
       {
             TmpSum+=*srcfront;
+            *resfront=(TmpSum/(i+SizeP1));
+      }
+      for(;i<height-Size;i++,srcfront+=wx3,resfront+=wx3)
+      {
+              TmpSum-=*(srcfront-SizeX2Add1*wx3);
+              TmpSum+=*srcfront;
+              *resfront=(TmpSum/SizeX2Add1);
+      }
+      for(;i<height;i++,srcfront+=wx3,resfront+=wx3)
+      {
+            TmpSum-=*(srcfront-SizeX2Add1*wx3);
+            *resfront=(TmpSum/(Size+height-i));
+      }
+
+    }
+}
+
+
+void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
+{
+  int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int SizeP1=Size+1;
+
+  int width = src->GetWidth();
+  int height = src->GetHeight();
+  BYTE *srcfront;
+  BYTE *resfront;
+  for(i=0;i<height;i++)
+  {
+      TmpSum=0;
+      srcfront=&(src->CVector[i][0]);
+      resfront=&(res->CVector[i][0]);
+      for(k=0;k<Size;k++,srcfront+=3)
+      {
+         TmpSum+=*srcfront;
+      }
+      for(j=0;j<SizeP1;j++,srcfront+=3,resfront+=3)
+      {
+            TmpSum+=*srcfront;
+
+            *resfront=(TmpSum/(j+SizeP1));
+      }
+      for(;j<width-Size;j++,srcfront+=3,resfront+=3)
+      {
+
+            TmpSum-=*(srcfront-SizeX2Add1*3);
+            TmpSum+=*srcfront;
+            *resfront=(TmpSum/SizeX2Add1);
+      }
+      for(;j<width;j++,srcfront+=3,resfront+=3)
+      {
+            TmpSum-=*(srcfront-SizeX2Add1*3);
+            *resfront=(TmpSum/(Size+width-j));
+      }
+  }
+}
+void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size)
+{
+    acvBoxFilterX(BuffPic,Pic,Size);
+    acvBoxFilterY(Pic,BuffPic,Size);
+}
+
+void acvBoxFilterY_round(acvImage *res,acvImage *src,int Size)
+{
+  int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int SizeP1=Size+1;
+  int width = src->GetWidth();
+  int height = src->GetHeight();
+  int wx3 = width*3;
+  BYTE *srcfront;
+  BYTE *resfront;
+  for(j=0;j<width;j++)
+  {
+      TmpSum=0;
+      srcfront=&(src->CVector[0][3*j]);
+      resfront=&(res->CVector[0][3*j]);
+      for(k=0;k<Size;k++,srcfront+=wx3)
+         TmpSum+=*srcfront;
+
+      for(i=0;i<SizeP1;i++,srcfront+=wx3,resfront+=wx3)
+      {
+            TmpSum+=*srcfront;
             *resfront=div_round(TmpSum,(i+SizeP1));
       }
       for(;i<height-Size;i++,srcfront+=wx3,resfront+=wx3)
@@ -43,7 +125,7 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
 }
 
 
-void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
+void acvBoxFilterX_round(acvImage *res,acvImage *src,int Size)
 {
   int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
   int SizeP1=Size+1;
@@ -81,13 +163,11 @@ void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
       }
   }
 }
-void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size)
+void acvBoxFilter_round(acvImage *BuffPic,acvImage *Pic,int Size)
 {
-    acvBoxFilterX(BuffPic,Pic,Size);
-    acvBoxFilterY(Pic,BuffPic,Size);
+    acvBoxFilterX_round(BuffPic,Pic,Size);
+    acvBoxFilterY_round(Pic,BuffPic,Size);
 }
-
-
 
 
 void acvMasking(acvImage *OutPic,acvImage *OriPic,unsigned char size,char** Mask)

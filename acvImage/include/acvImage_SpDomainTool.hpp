@@ -15,6 +15,9 @@ typedef struct acvDT_distRotate
 void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size);
 void acvBoxFilterX(acvImage *res,acvImage *src,int Size);
 void acvBoxFilterY(acvImage *res,acvImage *src,int Size);
+void acvBoxFilter_round(acvImage *BuffPic,acvImage *Pic,int Size);
+void acvBoxFilterX_round(acvImage *res,acvImage *src,int Size);
+void acvBoxFilterY_round(acvImage *res,acvImage *src,int Size);
 void acvMasking(acvImage *OutPic,acvImage *OriPic,unsigned char size,char** Mask);
 void acvSobelFilter(acvImage *res,acvImage *src);
 void acvSobelFilterX(acvImage *res,acvImage *src);

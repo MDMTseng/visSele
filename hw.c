@@ -154,7 +154,7 @@ void acvLabeledPixelExtraction(acvImage  *LabelPic,acv_LabeledData *target_info,
   }
 }
 
-void Target_prep_dist(acvImage *target,acvImage *target_DistGradient, vector<acv_XY> &signature)
+void Target_prep_dist(acvImage *target,acvImage *target_DistGradient, vector<acv_XY> &signature,acv_LabeledData &signInfo)
 {
   acvLoadBitmapFile(target,"data/target.bmp");
   acvImage *sign = new acvImage();
@@ -212,7 +212,7 @@ void Target_prep_dist(acvImage *target,acvImage *target_DistGradient, vector<acv
   {
     //printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
     acvContourCircleSignature(sign,ldData[i],i,signature);
-
+    signInfo=ldData[i];
   }
 
   delete(sign);
@@ -315,7 +315,8 @@ int testEstXY()
   vector<acv_XY> tar_signature(100);
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
-  Target_prep_dist (target,target_DistGradient,tar_signature);
+  acv_LabeledData tar_ldData;
+  Target_prep_dist (target,target_DistGradient,tar_signature,tar_ldData);
 
   acvImage *image = new acvImage();
   acvImage *ss = new acvImage();
@@ -606,65 +607,91 @@ float SignatureAngleMatching
   return diffAngle;*/
 }
 
+
+void preprocess(acvImage *img,acvImage *buff)
+{
+    acvBoxFilter(buff,img,4);
+    acvThreshold(img,100);
+
+    acvBoxFilter(buff,img,5);
+    acvThreshold(img,255-15);
+}
+
+void drawSignatureInfo(acvImage *img,
+  const acv_LabeledData &ldData,const vector<acv_XY> &signature,
+  const acv_LabeledData &tar_ldData,const vector<acv_XY> &tar_signature, float angleDiff)
+{
+
+  //printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
+    //acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
+  acv_XY preXY;
+  for (int j=0;j<signature.size();j++)
+  {
+    acv_XY nowXY;
+    nowXY.Y=tar_signature[j].X*sin(tar_signature[j].Y+angleDiff)+ldData.Center.Y;
+    nowXY.X=tar_signature[j].X*cos(tar_signature[j].Y+angleDiff)+ldData.Center.X;
+    if(j==0)preXY=nowXY;
+    acvDrawLine(img,round(preXY.X),round(preXY.Y),
+      round(nowXY.X),round(nowXY.Y),2,1,0,5);
+    preXY=nowXY;
+
+/*
+    int R=image->GetHeight()-signature[j].X;
+    acvDrawLine(image,(j-1)*image->GetWidth()/signature.size(),preR,
+      j*image->GetWidth()/signature.size(),R,i+3,0,0,1);
+
+
+    int tar_R=image->GetHeight()-tar_signature[j].X;
+    acvDrawLine(image,(j-1)*image->GetWidth()/tar_signature.size(),pretar_R,
+      j*image->GetWidth()/tar_signature.size(),tar_R,i+5,0,0,1);
+    preR=R;
+    pretar_R=tar_R;*/
+  }
+}
+
 int testSignature()
 {
 
 
   vector<acv_XY> tar_signature(360);
+  acv_LabeledData tar_ldData;
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
-  Target_prep_dist (target,target_DistGradient,tar_signature);
+  Target_prep_dist (target,target_DistGradient,tar_signature,tar_ldData);
 
 
   acvImage *image = new acvImage();
-  acvImage *ss = new acvImage();
+  acvImage *labelImg = new acvImage();
   acvImage *buff = new acvImage();
   std::vector<acv_LabeledData> ldData;
-
   acvLoadBitmapFile(image,"data/test1.bmp");
-  image->RGBToGray();
   buff->ReSize(image->GetWidth(),image->GetHeight());
-  ss->ReSize(image->GetWidth(),image->GetHeight());
-
+  labelImg->ReSize(image->GetWidth(),image->GetHeight());
   vector<acv_XY> signature(tar_signature.size());
 
   clock_t t= clock();
 
-    acvCloneImage(image,ss,0);
-    /*acvBoxFilter(buff,image,1);
-    acvCloneImage(image,image,0);*/
+  image->RGBToGray();
+  acvCloneImage(image,labelImg,0);
+  t = clock() - t;
+  printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
+  t = clock();
+  preprocess(labelImg,buff);
+  t = clock() - t;
+  printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
+  t = clock();
+  acvComponentLabeling(labelImg);
+  acvLabeledRegionInfo(labelImg,&ldData);
+  acvRemoveRegionLessThan(labelImg,&ldData,120);
 
-    acvBoxFilter(buff,ss,4);
-    acvThreshold(ss,100);
-
-      t = clock() - t;
-      printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
-      t = clock();
-
-    acvBoxFilter(buff,ss,5);
-    acvThreshold(ss,255-15);
-  //acvDeleteFrame(ss,5);
-  acvComponentLabeling(ss);
-
-
-  acvLabeledRegionInfo(ss,&ldData);
-  acvRemoveRegionLessThan(ss,&ldData,120);
-  acvImage *labelImg=ss;
-
-  acvCloneImage(ss,image,-1);
-
+  acvCloneImage(labelImg,image,-1);
   t = clock() - t;
   printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
   t = clock();
   for (int i=1;i<ldData.size();i++)
   {
-    //printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
-    acvContourCircleSignature(ss,ldData[i],i,signature);
+    acvContourCircleSignature(labelImg,ldData[i],i,signature);
 
-    //acvDrawBlock(ss,ldData[i].LTBound.X-1,ldData[i].LTBound.Y-1,ldData[i].RBBound.X+1,ldData[i].RBBound.Y+1);
-    acv_XY preXY;
-    int preR=0;
-    int pretar_R=0;
     float error;
     float AngleDiff=SignatureAngleMatching(signature,tar_signature,&error);
 
@@ -672,35 +699,16 @@ int testSignature()
     t = clock() - t;
     printf("%fms .Match. AngleDiff:%f,er:%f\n", ((double)t)/CLOCKS_PER_SEC*1000,
       AngleDiff*180/M_PI,error);
+    printf("translate:%f %f\n",tar_ldData.Center.X-ldData[i].Center.X,tar_ldData.Center.Y-ldData[i].Center.Y );
+
+    drawSignatureInfo(image,
+      ldData[i],signature,
+      tar_ldData,tar_signature,AngleDiff);
     t = clock();
-
-    if(1)for (int j=0;j<signature.size();j++)
-    {
-      if(signature[j].X==0)printf(">(%d)",j);
-      acv_XY nowXY;
-      nowXY.Y=signature[j].X*sin(signature[j].Y)+ldData[i].Center.Y;
-      nowXY.X=signature[j].X*cos(signature[j].Y)+ldData[i].Center.X;
-      if(j==0)preXY=nowXY;
-      acvDrawLine(image,round(preXY.X),round(preXY.Y),
-        round(nowXY.X),round(nowXY.Y),i+2,0,0,5);
-      preXY=nowXY;
-
-
-      int R=image->GetHeight()-signature[j].X;
-      acvDrawLine(image,(j-1)*image->GetWidth()/signature.size(),preR,
-        j*image->GetWidth()/signature.size(),R,i+3,0,0,1);
-
-
-      int tar_R=image->GetHeight()-tar_signature[j].X;
-      acvDrawLine(image,(j-1)*image->GetWidth()/tar_signature.size(),pretar_R,
-        j*image->GetWidth()/tar_signature.size(),tar_R,i+5,0,0,1);
-      preR=R;
-      pretar_R=tar_R;
-    }
   }
 
   acvLabeledColorDispersion(image,image,ldData.size()/20+5);
-  acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,ss->GetWidth(),ss->GetHeight());
+  acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
 }
 
 #include <vector>
