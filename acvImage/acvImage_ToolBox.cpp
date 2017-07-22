@@ -279,15 +279,15 @@ int interpolateSignData(std::vector<acv_XY> &signature,int start,int end)
     start=tmp;
   }
   if(distance<2)return distance;
-  int head=start;
+
+  int head=start+1;
   int i;
   float sf=signature[start].X;
   float se_diff=(signature[end].X-sf)/distance;
 
-  for(i=1;i<distance;i++)
+  for(i=1;i<distance;i++,head++)
   {
-
-    head=(head+1)%signature.size();
+    if(head>=signature.size())head-=signature.size();
     float X=sf+i*(se_diff);
     if(signature[head].X<X)
     {
