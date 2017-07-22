@@ -4,61 +4,82 @@
 #include "acvImage_BasicTool.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 
+int LineSegClipper(int &X1,int &Y1,int &X2,int &Y2,int W,int H)
+{
+  //Clip
+  if((X1<=0&&X2<=0)||(Y1<=0&&Y2<=0)
+  ||(X1>=W&&X2>=W)
+  ||(Y1>=H&&Y2>=H))
+  return -1;
 
+  if(X1<0)
+  {
+           Y1=Y1-(Y2-Y1)*X1/(X2-X1);
+           X1=0;
+  }
+  if(X2<0)
+  {
+           Y2=Y2-(Y1-Y2)*X2/(X1-X2);
+           X2=0;
+  }
+  if(Y1<0)
+  {
+           X1=X1-(X2-X1)*Y1/(Y2-Y1);
+           Y1=0;
+  }
+  if(Y2<0)
+  {
+           X2=X2-(X1-X2)*Y2/(Y1-Y2);
+           Y2=0;
+  }
+
+
+  if(X1>=W)
+  {
+
+           Y1=Y1+(Y2-Y1)*(X1-W)/(X1-X2);
+           X1=W-1;
+  }
+  if(X2>=W)
+  {
+           Y2=Y2+(Y1-Y2)*(X2-W)/(X2-X1);
+           X2=W-1;
+  }
+  if(Y1>=H)
+  {
+           X1=X1+(X2-X1)*(Y1-W)/(Y1-Y2);
+           Y1=H-1;
+  }
+  if(Y2>=H)
+  {
+           X2=X2+(X1-X2)*(Y2-H)/(Y2-Y1);
+           Y2=H-1;
+  }
+
+  if(X1<0)X1=0;//Hack out some residue
+  else if(X1>=W)X1=W-1;
+  if(X2<0)X2=0;
+  else if(X2>=W)X2=W-1;
+
+  if(Y1<0)Y1=0;
+  else if(Y1>=H)Y1=H-1;
+  if(Y2<0)Y2=0;
+  else if(Y2>=H)Y2=H-1;
+
+  return 0;
+}
 
 int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE LineR,BYTE LineG,BYTE LineB)
 {
        int XVi,YVi,DotNum,i;
        BYTE* Dot;
+
+       if(LineSegClipper(X1,Y1,X2,Y2,Pic->GetWidth(),Pic->GetHeight())!=0)
+       {
+         return -1;
+       }
+
        //Clip
-       if((X1<=0&&X2<=0)||(Y1<=0&&Y2<=0)
-       ||(X1>=Pic->GetWidth()&&X2>=Pic->GetWidth())
-       ||(Y1>=Pic->GetHeight()&&Y2>=Pic->GetHeight()))
-       return 0;
-
-       if(X1<0)
-       {
-                Y1=Y1-(Y2-Y1)*X1/(X2-X1);
-                X1=0;
-       }
-       if(X2<0)
-       {
-                Y2=Y2-(Y1-Y2)*X2/(X1-X2);
-                X2=0;
-       }
-       if(Y1<0)
-       {
-                X1=X1-(X2-X1)*Y1/(Y2-Y1);
-                Y1=0;
-       }
-       if(Y2<0)
-       {
-                X2=X2-(X1-X2)*Y2/(Y1-Y2);
-                Y2=0;
-       }
-
-
-       if(X1>=Pic->GetWidth())
-       {
-
-                Y1=Y1+(Y2-Y1)*(X1-Pic->GetWidth())/(X1-X2);
-                X1=Pic->GetWidth()-1;
-       }
-       if(X2>=Pic->GetWidth())
-       {
-                Y2=Y2+(Y1-Y2)*(X2-Pic->GetWidth())/(X2-X1);
-                X2=Pic->GetWidth()-1;
-       }
-       if(Y1>=Pic->GetHeight())
-       {
-                X1=X1+(X2-X1)*(Y1-Pic->GetHeight())/(Y1-Y2);
-                Y1=Pic->GetHeight()-1;
-       }
-       if(Y2>=Pic->GetHeight())
-       {
-                X2=X2+(X1-X2)*(Y2-Pic->GetHeight())/(Y2-Y1);
-                Y2=Pic->GetHeight()-1;
-       }
 
        XVi=(X2-X1);
        YVi=(Y2-Y1);
@@ -73,7 +94,10 @@ int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE LineR,BYTE LineG,
        {
                 XVi=(X2-X1)*i/DotNum+X1;
                 YVi=(Y2-Y1)*i/DotNum+Y1;
-
+                if(YVi<0||XVi<0)
+                {
+                  return -1;
+                }
                 Dot=(Pic->CVector[YVi]+3*XVi);
                 Dot[0]=LineB;
                 Dot[1]=LineG;
@@ -313,55 +337,12 @@ int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2)
 {
        int XVi,YVi,DotNum,i;
        BYTE* Dot;
-       //Clip
-       if((X1<=0&&X2<=0)||(Y1<=0&&Y2<=0)
-       ||(X1>=Pic->GetWidth()&&X2>=Pic->GetWidth())
-       ||(Y1>=Pic->GetHeight()&&Y2>=Pic->GetHeight()))
-       return 0;
 
-       if(X1<0)
-       {
-                Y1=Y1-(Y2-Y1)*X1/(X2-X1);
-                X1=0;
-       }
-       if(X2<0)
-       {
-                Y2=Y2-(Y1-Y2)*X2/(X1-X2);
-                X2=0;
-       }
-       if(Y1<0)
-       {
-                X1=X1-(X2-X1)*Y1/(Y2-Y1);
-                Y1=0;
-       }
-       if(Y2<0)
-       {
-                X2=X2-(X1-X2)*Y2/(Y1-Y2);
-                Y2=0;
-       }
-
-
-       if(X1>=Pic->GetWidth())
-       {
-
-                Y1=Y1+(Y2-Y1)*(X1-Pic->GetWidth())/(X1-X2);
-                X1=Pic->GetWidth()-1;
-       }
-       if(X2>=Pic->GetWidth())
-       {
-                Y2=Y2+(Y1-Y2)*(X2-Pic->GetWidth())/(X2-X1);
-                X2=Pic->GetWidth()-1;
-       }
-       if(Y1>=Pic->GetHeight())
-       {
-                X1=X1+(X2-X1)*(Y1-Pic->GetHeight())/(Y1-Y2);
-                Y1=Pic->GetHeight()-1;
-       }
-       if(Y2>=Pic->GetHeight())
-       {
-                X2=X2+(X1-X2)*(Y2-Pic->GetHeight())/(Y2-Y1);
-                Y2=Pic->GetHeight()-1;
-       }
+        if(LineSegClipper(X1,Y1,X2,Y2,Pic->GetWidth(),Pic->GetHeight())!=0)
+        {
+          return -1;
+        }
+        
        XVi=(X2-X1);
        YVi=(Y2-Y1);
        if(XVi<0)XVi=-XVi;

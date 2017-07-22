@@ -688,13 +688,13 @@ int testSignature()
       preXY=nowXY;
 
 
-      int R=image->GetHeight()-(signature[j].Y+M_PI)*50;
-      if(j>0)acvDrawLine(image,(j-1)*image->GetWidth()/signature.size(),preR,
+      int R=image->GetHeight()-signature[j].X;
+      acvDrawLine(image,(j-1)*image->GetWidth()/signature.size(),preR,
         j*image->GetWidth()/signature.size(),R,i+3,0,0,1);
 
 
-      int tar_R=image->GetHeight()-(tar_signature[j].Y+M_PI)*50;
-      if(j>0)acvDrawLine(image,(j-1)*image->GetWidth()/tar_signature.size(),pretar_R,
+      int tar_R=image->GetHeight()-tar_signature[j].X;
+      acvDrawLine(image,(j-1)*image->GetWidth()/tar_signature.size(),pretar_R,
         j*image->GetWidth()/tar_signature.size(),tar_R,i+5,0,0,1);
       preR=R;
       pretar_R=tar_R;
