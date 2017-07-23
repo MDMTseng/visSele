@@ -20,7 +20,7 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
   int wx3 = width*3;
   BYTE *srcfront;
   BYTE *resfront;
-  printf("DIV_APPROX_BASE_SHIFT:%d   %d\n",DIV_APPROX_BASE_SHIFT, sizeof(TmpSum));
+  //printf("DIV_APPROX_BASE_SHIFT:%d   %d\n",DIV_APPROX_BASE_SHIFT, sizeof(TmpSum));
   typeof(TmpSum) XMul=(  (typeof(TmpSum))1<<DIV_APPROX_BASE_SHIFT)/SizeX2Add1;
   for(j=0;j<width;j++)
   {
