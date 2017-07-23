@@ -170,7 +170,7 @@ void preprocess_IIR(acvImage *img,acvImage *buff)
 void preprocess(acvImage *img,acvImage *buff)
 {
     acvBoxFilter(buff,img,4);
-    acvThreshold(img,100,0);
+    acvThreshold_single(img,100,0);
     acvBoxFilter(buff,img,5);
     acvThreshold(img,255-15,0);
 }
@@ -660,7 +660,7 @@ int testSignature()
 {
 
 
-  vector<acv_XY> tar_signature(360*10);
+  vector<acv_XY> tar_signature(360);
   acv_LabeledData tar_ldData;
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
@@ -678,7 +678,7 @@ int testSignature()
 
   clock_t t= clock();
 
-  image->RGBToGray();
+  //image->RGBToGray();
   acvCloneImage(image,labelImg,0);
   t = clock() - t;
   printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);

@@ -28,6 +28,27 @@ void acvThreshold(acvImage *Pic,BYTE Var,int channel)
 
     }
 }
+void acvThreshold_single(acvImage *Pic,BYTE Var,int channel)
+{
+    BYTE* BMPLine;
+    int Height=Pic->GetROIOffsetY()+ Pic->GetHeight(),
+        Width =Pic->GetROIOffsetX()+Pic->GetWidth() ;
+    for(int i=Pic->GetROIOffsetY();i<Height;i++)
+    {
+        BMPLine=Pic->CVector[i]+Pic->GetROIOffsetX()*3+channel;
+        for(int j=Pic->GetROIOffsetX();j<Width;j++,BMPLine+=3)
+
+           if(*BMPLine>Var)
+           {
+               *BMPLine=255;
+           }
+           else
+           {
+               *BMPLine=0;
+           }
+
+    }
+}
 void acvThreshold(acvImage *Pic,BYTE Var)
 {
   acvThreshold(Pic,Var,0);

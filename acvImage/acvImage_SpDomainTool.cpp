@@ -5,15 +5,23 @@
 #include "acvImage_SpDomainTool.hpp"
 #include "acvImage_ComponentLabelingTool.hpp"
 
+//Assume that the sum within the box window will be less than (1<<(8*2)),
+//that is window less than 255(size=127)
+#define DIV_APPROX_BASE_TYPE int
+#define DIV_APPROX_BASE_SHIFT (sizeof(TmpSum)*8-1-8*2)
+
 void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
 {
-  int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int i,j,k,SizeX2Add1=Size*2+1;
+  DIV_APPROX_BASE_TYPE TmpSum;
   int SizeP1=Size+1;
   int width = src->GetWidth();
   int height = src->GetHeight();
   int wx3 = width*3;
   BYTE *srcfront;
   BYTE *resfront;
+  printf("DIV_APPROX_BASE_SHIFT:%d   %d\n",DIV_APPROX_BASE_SHIFT, sizeof(TmpSum));
+  typeof(TmpSum) XMul=(  (typeof(TmpSum))1<<DIV_APPROX_BASE_SHIFT)/SizeX2Add1;
   for(j=0;j<width;j++)
   {
       TmpSum=0;
@@ -31,7 +39,7 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
       {
               TmpSum-=*(srcfront-SizeX2Add1*wx3);
               TmpSum+=*srcfront;
-              *resfront=(TmpSum/SizeX2Add1);
+              *resfront=(TmpSum*XMul)>>DIV_APPROX_BASE_SHIFT;//Approximate (X/SizeX2Add1) => X*(1024/SizeX2Add1)>>10
       }
       for(;i<height;i++,srcfront+=wx3,resfront+=wx3)
       {
@@ -45,13 +53,15 @@ void acvBoxFilterY(acvImage *res,acvImage *src,int Size)
 
 void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
 {
-  int i,j,k,TmpSum,SizeX2Add1=Size*2+1;
+  int i,j,k,SizeX2Add1=Size*2+1;
+  DIV_APPROX_BASE_TYPE TmpSum;
   int SizeP1=Size+1;
 
   int width = src->GetWidth();
   int height = src->GetHeight();
   BYTE *srcfront;
   BYTE *resfront;
+  typeof(TmpSum) XMul=((typeof(TmpSum)) 1<<DIV_APPROX_BASE_SHIFT)/SizeX2Add1;
   for(i=0;i<height;i++)
   {
       TmpSum=0;
@@ -72,7 +82,7 @@ void acvBoxFilterX(acvImage *res,acvImage *src,int Size)
 
             TmpSum-=*(srcfront-SizeX2Add1*3);
             TmpSum+=*srcfront;
-            *resfront=(TmpSum/SizeX2Add1);
+            *resfront=(TmpSum*XMul)>>DIV_APPROX_BASE_SHIFT;//Approximate (X/SizeX2Add1) => X*(1024/SizeX2Add1)>>10
       }
       for(;j<width;j++,srcfront+=3,resfront+=3)
       {
