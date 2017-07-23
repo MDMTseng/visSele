@@ -679,13 +679,13 @@ int testSignature()
   clock_t t= clock();
 
   //image->RGBToGray();
-  acvCloneImage(image,labelImg,0);
+  acvCloneImage(image,labelImg,-1);
   t = clock() - t;
-  printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
+  printf("%fms .acvCloneImage.\n", ((double)t)/CLOCKS_PER_SEC*1000);
   t = clock();
   preprocess(labelImg,buff);
   t = clock() - t;
-  printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
+  printf("%fms .preprocess.\n", ((double)t)/CLOCKS_PER_SEC*1000);
   t = clock();
   acvComponentLabeling(labelImg);
   acvLabeledRegionInfo(labelImg,&ldData);

@@ -271,7 +271,7 @@ int acvLabeledRegionInfo(acvImage  *LabeledPic,std::vector<acv_LabeledData> *ret
     if(ld->area==0)
     {
       ld->LTBound.X=j;
-      ld->LTBound.Y=i;
+      ld->LTBound.Y=i;//This is fixed
       ld->RBBound.X=j;
       ld->RBBound.Y=i;
     }
@@ -279,9 +279,7 @@ int acvLabeledRegionInfo(acvImage  *LabeledPic,std::vector<acv_LabeledData> *ret
     {
       if(ld->LTBound.X>j)ld->LTBound.X=j;
       else if(ld->RBBound.X<j)ld->RBBound.X=j;
-      if(ld->LTBound.Y>i)ld->LTBound.Y=i;
-      else if(ld->RBBound.Y<i)ld->RBBound.Y=i;
-
+      if(ld->RBBound.Y<i)ld->RBBound.Y=i;
     }
     ld->area++;
     ld->Center.X+=j;
