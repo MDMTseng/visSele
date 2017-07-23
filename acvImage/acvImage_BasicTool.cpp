@@ -3,7 +3,7 @@
 #include "acvImage.hpp"
 #include "acvImage_BasicTool.hpp"
 
-void acvThreshold(acvImage *Pic,BYTE Var)
+void acvThreshold(acvImage *Pic,BYTE Var,int channel)
 {
     BYTE* BMPLine;
     int Height=Pic->GetROIOffsetY()+ Pic->GetHeight(),
@@ -13,7 +13,7 @@ void acvThreshold(acvImage *Pic,BYTE Var)
         BMPLine=Pic->CVector[i]+Pic->GetROIOffsetX()*3;
         for(int j=Pic->GetROIOffsetX();j<Width;j++)
 
-           if(*BMPLine>Var)
+           if(BMPLine[channel]>Var)
            {
                *BMPLine++=255;
                *BMPLine++=255;
@@ -27,6 +27,10 @@ void acvThreshold(acvImage *Pic,BYTE Var)
            }
 
     }
+}
+void acvThreshold(acvImage *Pic,BYTE Var)
+{
+  acvThreshold(Pic,Var,0);
 }
 double acvFAtan(double x)
 {

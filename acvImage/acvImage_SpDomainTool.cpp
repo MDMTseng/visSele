@@ -87,6 +87,87 @@ void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size)
     acvBoxFilterY(Pic,BuffPic,Size);
 }
 
+
+void acvIIROrder1FilterX(acvImage *res,acvImage *src,int shifter)
+{
+
+  int width = src->GetWidth();
+  int height = src->GetHeight();
+  BYTE *srcfront;
+  BYTE *resfront;
+  for(int i=0;i<height;i++)
+  {
+      srcfront=&(src->CVector[i][0]);
+      resfront=&(res->CVector[i][0]);
+      int Y=*(uint16_t *)srcfront;
+      for(int k=0;k<width;k++,srcfront+=3,resfront+=3)
+      {
+        uint16_t *srcHead=(uint16_t *)srcfront;
+        uint16_t *resHead=(uint16_t *)resfront;
+        Y+=(((int)*srcHead-Y))>>shifter;
+        *resHead=Y;
+      }
+  }
+  for(int i=0;i<height;i++)
+  {
+      srcfront=&(src->CVector[i][(width-1)*3]);
+      resfront=&(res->CVector[i][(width-1)*3]);
+      int Y=*(uint16_t *)srcfront;
+      for(int k=0;k<width;k++,srcfront-=3,resfront-=3)
+      {
+        uint16_t *srcHead=(uint16_t *)srcfront;
+        uint16_t *resHead=(uint16_t *)resfront;
+        Y+=(((int)*srcHead-Y))>>shifter;
+        *resHead=(*resHead+Y)>>1;
+      }
+  }
+}
+
+
+void acvIIROrder1FilterY(acvImage *res,acvImage *src,int shifter)
+{
+
+  int width = src->GetWidth();
+  int height = src->GetHeight();
+  int wx3 = width*3;
+  BYTE *srcfront;
+  BYTE *resfront;
+  for(int i=0;i<width;i++)
+  {
+      srcfront=&(src->CVector[0][3*i]);
+      resfront=&(res->CVector[0][3*i]);
+      int Y=*(uint16_t *)srcfront;
+      for(int k=0;k<height;k++,srcfront+=wx3,resfront+=wx3)
+      {
+        uint16_t *srcHead=(uint16_t *)srcfront;
+        uint16_t *resHead=(uint16_t *)resfront;
+        Y+=(((int)*srcHead-Y))>>shifter;
+        *resHead=Y;
+      }
+  }
+  for(int i=0;i<width;i++)
+  {
+      srcfront=&(src->CVector[height-1][3*i]);
+      resfront=&(res->CVector[height-1][3*i]);
+      int Y=*(uint16_t *)srcfront;
+      for(int k=0;k<height;k++,srcfront-=wx3,resfront-=wx3)
+      {
+        uint16_t *srcHead=(uint16_t *)srcfront;
+        uint16_t *resHead=(uint16_t *)resfront;
+        Y+=(((int)*srcHead-Y))>>shifter;
+        *resHead=(*resHead+Y)>>1;
+
+      }
+  }
+}
+
+void acvIIROrder1Filter(acvImage *BuffPic,acvImage *Pic,int shifter)
+{
+    acvIIROrder1FilterX(BuffPic,Pic,shifter);
+    acvIIROrder1FilterY(Pic,BuffPic,shifter);
+    //acvIIROrder1FilterY(Pic,BuffPic,coeff);
+}
+
 void acvBoxFilterY_round(acvImage *res,acvImage *src,int Size)
 {
   int i,j,k,TmpSum,SizeX2Add1=Size*2+1;

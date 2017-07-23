@@ -154,6 +154,26 @@ void acvLabeledPixelExtraction(acvImage  *LabelPic,acv_LabeledData *target_info,
   }
 }
 
+void preprocess_IIR(acvImage *img,acvImage *buff)
+{
+    //acvBoxFilter(buff,img,4);
+
+    acvIIROrder1Filter(buff,img,2);
+    acvThreshold(img,100,1);
+
+    acvIIROrder1Filter(buff,img,2);
+    //acvBoxFilter(buff,img,5);
+    acvThreshold(img,255-15,1);
+}
+
+
+void preprocess(acvImage *img,acvImage *buff)
+{
+    acvBoxFilter(buff,img,4);
+    acvThreshold(img,100,0);
+    acvBoxFilter(buff,img,5);
+    acvThreshold(img,255-15,0);
+}
 void Target_prep_dist(acvImage *target,acvImage *target_DistGradient, vector<acv_XY> &signature,acv_LabeledData &signInfo)
 {
   acvLoadBitmapFile(target,"data/target.bmp");
@@ -198,12 +218,7 @@ void Target_prep_dist(acvImage *target,acvImage *target_DistGradient, vector<acv
 
 
   //Generate signature
-
-  acvBoxFilter(tmp,sign,4);
-  acvThreshold(sign,100);
-
-    acvBoxFilter(tmp,sign,5);
-    acvThreshold(sign,255-15);
+  preprocess(sign,tmp);
   acvComponentLabeling(sign);
 
   std::vector<acv_LabeledData> ldData;
@@ -608,14 +623,6 @@ float SignatureAngleMatching
 }
 
 
-void preprocess(acvImage *img,acvImage *buff)
-{
-    acvBoxFilter(buff,img,4);
-    acvThreshold(img,100);
-
-    acvBoxFilter(buff,img,5);
-    acvThreshold(img,255-15);
-}
 
 void drawSignatureInfo(acvImage *img,
   const acv_LabeledData &ldData,const vector<acv_XY> &signature,
@@ -653,7 +660,7 @@ int testSignature()
 {
 
 
-  vector<acv_XY> tar_signature(360);
+  vector<acv_XY> tar_signature(360*10);
   acv_LabeledData tar_ldData;
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
@@ -711,17 +718,44 @@ int testSignature()
   acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
 }
 
+
+
+int testSmooth()
+{
+  acvImage *image = new acvImage();
+  acvImage *labelImg = new acvImage();
+  acvImage *buff = new acvImage();
+  std::vector<acv_LabeledData> ldData;
+  acvLoadBitmapFile(image,"data/testS.bmp");
+  buff->ReSize(image->GetWidth(),image->GetHeight());
+  labelImg->ReSize(image->GetWidth(),image->GetHeight());
+
+  clock_t t= clock();
+  for(int i=0;i<2;i++)
+    //preprocess(image,buff);
+    acvIIROrder1Filter(buff,image,2);
+    //acvBoxFilter(buff,image,15);
+  //acvIIROrder1Filter(buff,image,64,1);
+  t = clock() - t;
+  printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
+  t = clock();
+  acvCloneImage(image,image,1);
+
+  acvThreshold(image,254);
+
+  acvSaveBitmapFile("data/uu_s.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
+
+}
+
+
+
 #include <vector>
 int main()
 {
   testSignature();
-  //clock_t t= clock();
-//TargetPrep();
-  //testEstXY();
-  //NNTest();
-  //t = clock() - t;
-  //printf("fun() took %f seconds to execute \n", ((double)t)/CLOCKS_PER_SEC);
-  //testEstXY();
+
+  //testSmooth();
+
   //testEstXY();
   int ret = 0;
   printf("Hello, World! %d",ret);

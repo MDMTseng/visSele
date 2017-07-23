@@ -33,6 +33,7 @@ typedef struct acv_XY
 }acv_XY;
 
 void acvThreshold(acvImage *Pic,BYTE Var);
+void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvDeleteFrame(acvImage *Pic,int width);
 void acvDeleteFrame(acvImage *Pic);
 void acvClear(acvImage *Pic,BYTE Var);
