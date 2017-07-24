@@ -73,6 +73,8 @@ public:
   vector<MLNL> layers;
   vector<vector<float> > *p_pred_Y;
   MLNN(int batchSize,int netDim[],int dimL);
+  void init(int batchSize,int netDim[],int dimL);
+  MLNN();
   vector<vector<float> > &get_input_vec();
   void ForwardPass(const vector<vector<float> > &in);
   void ForwardPass();
@@ -91,7 +93,9 @@ class MLOpt{
   MLNL *layer;
   vector<vector<float> > speed;
 public:
+  MLOpt();
   MLOpt(MLNL &layer);
+  void init (MLNL &layer);
   void update_dW();
 };
 
