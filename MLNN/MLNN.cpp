@@ -3,6 +3,13 @@
 using namespace std;
 MLNN::MLNN(int batchSize,int netDim[],int dimL)
 {
+  init(batchSize,netDim,dimL);
+}
+MLNN::MLNN()
+{
+}
+void MLNN::init(int batchSize,int netDim[],int dimL)
+{
   layers.resize(dimL-1);
 
   layers[0].init(&nu,batchSize,netDim[0],netDim[1]);
@@ -13,7 +20,6 @@ MLNN::MLNN(int batchSize,int netDim[],int dimL)
   }
   //layers[layers.size()-1].nu=new NeuralUtil_Sigmoid();
 }
-
 vector<vector<float> >& MLNN::get_input_vec()
 {
   return layers[0].InArr;
