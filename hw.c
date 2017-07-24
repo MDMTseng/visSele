@@ -127,7 +127,7 @@ void preprocess(acvImage *img,
     acvThreshold_single(img,100,0);
     acvCloneImage(img,img_thin_blur,-1);
     acvBoxFilter(buff,img_thin_blur,3);
-    acvCloneImage(img_thin_blur,img_thin_blur,0);
+    //acvCloneImage(img_thin_blur,img_thin_blur,0);
 
     acvBoxFilter(buff,img,5);
     acvThreshold(img,255-15,0);
@@ -578,10 +578,10 @@ int testSignature()
 
   //The first(the idx 0 is not avaliable) ldData must be the trap, set area to zero
   ldData[1].area=0;
-  
+
   //Delete the object that has less than certain amount of area on ldData
   acvRemoveRegionLessThan(labelImg,&ldData,120);
-  acvSaveBitmapFile("data/uu_o.bmp",labelImg->ImageData,labelImg->GetWidth(),labelImg->GetHeight());
+
   t = clock() - t;
   printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
   t = clock();
