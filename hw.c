@@ -505,7 +505,7 @@ void find_subpixel_params(SPPARAMX &spp,
     continue;*/
     if(j!=iterCount-1)continue;
     printf(">%f %f %f\n",
-    NN.layers[0].W[2][0]*100,NN.layers[0].W[2][1]*100,
+    NN.layers[0].W[2][0],NN.layers[0].W[2][1],
     180/M_PI*atan2(NN.layers[0].W[1][0]-NN.layers[0].W[0][1],NN.layers[0].W[0][0]+NN.layers[0].W[1][1]));
 
     continue;
@@ -578,6 +578,7 @@ int testSignature()
 
   for (int i=1;i<ldData.size();i++)
   {
+    printf("%s:=====%d=======\n",__func__,i);
     acvContourCircleSignature(labelImg,ldData[i],i,signature);
 
     float error;
@@ -609,43 +610,11 @@ int testSignature()
 
 
 
-int testSmooth()
-{
-  acvImage *image = new acvImage();
-  acvImage *labelImg = new acvImage();
-  acvImage *buff = new acvImage();
-  std::vector<acv_LabeledData> ldData;
-  acvLoadBitmapFile(image,"data/testS.bmp");
-  buff->ReSize(image->GetWidth(),image->GetHeight());
-  labelImg->ReSize(image->GetWidth(),image->GetHeight());
-
-  clock_t t= clock();
-  for(int i=0;i<2;i++)
-    //preprocess(image,buff);
-    acvIIROrder1Filter(buff,image,2);
-    //acvBoxFilter(buff,image,15);
-  //acvIIROrder1Filter(buff,image,64,1);
-  t = clock() - t;
-  printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
-  t = clock();
-  acvCloneImage(image,image,1);
-
-  acvThreshold(image,254);
-
-  acvSaveBitmapFile("data/uu_s.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
-
-}
-
-
-
 #include <vector>
 int main()
 {
   testSignature();
 
-  //testSmooth();
-
-  //testEstXY();
   int ret = 0;
   printf("Hello, World! %d",ret);
   return ret;
