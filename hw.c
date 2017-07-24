@@ -395,7 +395,6 @@ int testEstXY()
 
     //******************************************
 
-
       int dim_in=2;
       int dim_out=2;
       int batchSize=300;
@@ -586,40 +585,7 @@ float SignatureAngleMatching
   else if(angle>M_PI)
     angle-=2*M_PI;
   return angle;
-/*
-  float signAngle=0;
-  float tar_signAngle=0;
-  float addWeight=0;
-  float aveWeight=0;
-  float tar_addWeight=0;
-  float tar_aveWeight=0;
 
-  for(int i=0;i<signature.size();i++)
-  {
-    aveWeight+=(signature[i].X);
-    tar_aveWeight+=(tar_signature[i].X);
-  }
-  aveWeight/=signature.size();
-  tar_aveWeight/=signature.size();
-
-
-  int signOffsetIdx=matchingIdx;
-  for(int i=0;i<signature.size();i++,signOffsetIdx++)
-  {
-    if(signOffsetIdx>=signature.size())signOffsetIdx-=signature.size();
-    if(signature[signOffsetIdx].X<aveWeight)continue;
-    float diff=signature[signOffsetIdx].Y-tar_signature[i].Y;
-    if(diff<-M_PI)
-      diff+=2*M_PI;
-    else if(diff>M_PI)
-      diff-=2*M_PI;
-    printf("%.3f>>%.3f\n",signature[signOffsetIdx].X,diff*180/M_PI);
-    signAngle+=diff*(signature[signOffsetIdx].X-aveWeight);
-    addWeight+=(signature[signOffsetIdx].X-aveWeight);
-  }
-  float diffAngle=signAngle/addWeight;
-
-  return diffAngle;*/
 }
 
 
@@ -656,6 +622,79 @@ void drawSignatureInfo(acvImage *img,
   }
 }
 
+typedef struct
+{
+  MLNN NN;
+  MLOpt MO;
+  vector<vector<float> > error_gradient;
+  vector<acv_XY> regionSampleXY;
+
+  vector<acv_XY> mappedXY;
+  vector<acv_XY> errorXY;
+
+  acv_LabeledData tar_ldData;
+  acv_LabeledData src_ldData;
+
+  acvImage *tarImg;
+  acvImage *srcImg;
+  acvImage *tarDistGradient;
+}SPPARAM;
+
+
+
+void find_subpixel_params(SPPARAM &spp,
+  vector<acv_XY> &tracking_region,
+  vector<acv_XY> &sample_region,
+  float AngleDiff,int iterCount)
+{
+  MLNN &NN=spp.NN;
+  float scale=1;
+  //init W params
+  NN.layers[0].W[0][0]=cos(AngleDiff)*scale;//Rough angle from signature
+  NN.layers[0].W[1][0]=sin(AngleDiff)*scale;
+  NN.layers[0].W[1][1]=NN.layers[0].W[0][0];
+  NN.layers[0].W[0][1]=-NN.layers[0].W[1][0];
+
+  NN.layers[0].W[2][0]=spp.tar_ldData.Center.X-spp.src_ldData.Center.X;//rough offset from lebeling
+  NN.layers[0].W[2][1]=spp.tar_ldData.Center.Y-spp.src_ldData.Center.Y;
+
+
+
+  float alpha=5;
+  for(int j=0;j<iterCount;j++)//Iteration
+  {
+    sampleXYFromRegion(sample_region,tracking_region,sample_region.size());
+    DotsTransform(sample_region,spp.mappedXY,NN,spp.src_ldData.Center,1);
+    spp.errorXY.resize(sample_region.size());
+
+    float error=acvSpatialMatchingGradient(spp.srcImg,&(sample_region[0]),
+    spp.tarImg,spp.tarDistGradient,&(spp.mappedXY[0]),
+    &(spp.errorXY[0]),sample_region.size());
+    for (int k=0;k<spp.errorXY.size();k+=1)
+    {
+      spp.error_gradient[k][0]=-spp.errorXY[k].X/(spp.errorXY.size()*256*128);
+      spp.error_gradient[k][1]=-spp.errorXY[k].Y/(spp.errorXY.size()*256*128);
+    }
+    NN.backProp(spp.error_gradient);
+    spp.MO.update_dW();
+    NN.updateW(alpha);
+    //nu.printMat(NN.layers[0].dW);printf("\n");
+    NN.reset_deltaW();
+
+    //Limit transform to be only rotate and translate
+    float a00=(NN.layers[0].W[0][0]+NN.layers[0].W[1][1])/2;
+    float a10=(NN.layers[0].W[1][0]-NN.layers[0].W[0][1])/2;
+    float LL=hypot(a00, a10);
+    a00/=LL;
+    a10/=LL;
+    NN.layers[0].W[0][0]=a00;
+    NN.layers[0].W[0][1]=-a10;
+    NN.layers[0].W[1][0]=a10;
+    NN.layers[0].W[1][1]=a00;
+
+  }
+}
+
 int testSignature()
 {
 
@@ -675,6 +714,28 @@ int testSignature()
   buff->ReSize(image->GetWidth(),image->GetHeight());
   labelImg->ReSize(image->GetWidth(),image->GetHeight());
   vector<acv_XY> signature(tar_signature.size());
+
+//*******************************************
+  int dim_in=2;
+  int dim_out=2;
+  int batchSize=300;
+  int NNDim[]={dim_in,dim_out};
+  MLNNUtil nu;
+  SPPARAM spp;
+  nu.Init2DVec(spp.error_gradient,batchSize,dim_out);
+  spp.NN(batchSize,NNDim,sizeof(NNDim)/sizeof(*NNDim));
+
+  MLOpt mo(spp.NN.layers[0]);
+  spp.MO=mo;
+  spp.tar_ldData=tar_ldData;
+  spp.tarImg=target;
+  spp.srcImg=image;
+  spp.tarDistGradient=target_DistGradient;
+  std::vector<acv_XY> regionXY_;
+//****************************************
+
+
+
 
   clock_t t= clock();
 
@@ -701,6 +762,14 @@ int testSignature()
 
     float error;
     float AngleDiff=SignatureAngleMatching(signature,tar_signature,&error);
+
+    //******************Sub-pixel leel refinment
+    spp.src_ldData=ldData[i];
+    acvLabeledPixelExtraction(labelImg,&ldData[i],i,&regionXY_);
+
+    find_subpixel_params(spp,regionXY_,AngleDiff,regionXY_,100);
+
+    //END ********************Sub-pixel leel refinment
 
 
     t = clock() - t;
