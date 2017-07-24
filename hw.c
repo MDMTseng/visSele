@@ -569,9 +569,19 @@ int testSignature()
   t = clock() - t;
   printf("%fms .preprocess.\n", ((double)t)/CLOCKS_PER_SEC*1000);
   t = clock();
+
+  //Create a trap to capture/link boundery object
+  acvDrawBlock(labelImg,1,1,labelImg->GetWidth()-2,labelImg->GetHeight()-2);
+
   acvComponentLabeling(labelImg);
   acvLabeledRegionInfo(labelImg,&ldData);
+
+  //The first(the idx 0 is not avaliable) ldData must be the trap, set area to zero
+  ldData[1].area=0;
+  
+  //Delete the object that has less than certain amount of area on ldData
   acvRemoveRegionLessThan(labelImg,&ldData,120);
+  acvSaveBitmapFile("data/uu_o.bmp",labelImg->ImageData,labelImg->GetWidth(),labelImg->GetHeight());
   t = clock() - t;
   printf("%fms ..\n", ((double)t)/CLOCKS_PER_SEC*1000);
   t = clock();
