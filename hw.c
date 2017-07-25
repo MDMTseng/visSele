@@ -155,14 +155,24 @@ void Target_prep_dist(acvImage *target,acvImage *target_DistGradient, vector<acv
 
 
   acvImageAdd(target_DistGradient,128);
-  acvBoxFilter(tmp,target_DistGradient,5);
-  acvBoxFilter(tmp,target_DistGradient,5);
-  acvImageAdd(target_DistGradient,-128);
+  acvBoxFilter(tmp,target_DistGradient,1);
+  acvBoxFilter(tmp,target_DistGradient,1);
+  acvBoxFilter(tmp,target_DistGradient,1);
+  acvBoxFilter(tmp,target_DistGradient,1);
   target_DistGradient->ChannelOffset(1);
   acvImageAdd(target_DistGradient,128);
-  acvBoxFilter(tmp,target_DistGradient,5);
-  acvBoxFilter(tmp,target_DistGradient,5);
+  acvBoxFilter(tmp,target_DistGradient,1);
+  acvBoxFilter(tmp,target_DistGradient,1);
+  acvBoxFilter(tmp,target_DistGradient,1);
+  acvBoxFilter(tmp,target_DistGradient,1);
   //acvBoxFilter(ss,distGradient,15);
+  target_DistGradient->ChannelOffset(-1);
+  //acvSaveBitmapFile("data/target_DistGradient.bmp",tmp->ImageData,tmp->GetWidth(),tmp->GetHeight());
+
+
+
+  acvImageAdd(target_DistGradient,-128);
+  target_DistGradient->ChannelOffset(1);
   acvImageAdd(target_DistGradient,-128);
   target_DistGradient->ChannelOffset(-1);
   //acvScalingSobelResult_n(target_DistGradient);
@@ -465,8 +475,8 @@ void find_subpixel_params(SPPARAMX &spp,
 
   spp.errorXY.resize(spp.regionSampleXY.size());
   spp.mappedXY.resize(spp.regionSampleXY.size());
-  float alpha=7;
-  float alphaDown=(alpha-0.5)/iterCount;
+  float alpha=2;
+  float alphaDown=(alpha-0.2)/iterCount;
   for(int j=0;j<iterCount;j++)//Iteration
   {
     sampleXYFromRegion(spp.regionSampleXY,tracking_region,spp.regionSampleXY.size());
@@ -540,7 +550,7 @@ int testSignature()
   acvImage *target = new acvImage();
   acvImage *target_DistGradient = new acvImage();
   Target_prep_dist (target,target_DistGradient,tar_signature,tar_ldData);
-
+  //return 0;
 
   acvImage *image = new acvImage();
   acvImage *labelImg = new acvImage();
@@ -599,7 +609,7 @@ int testSignature()
     acvLabeledPixelExtraction(labelImg,&ldData[i],i,&regionXY_);
 
     find_subpixel_params(spp,regionXY_,AngleDiff,10);
-
+    spp.NN.layers[0].printW();
     //END ********************Sub-pixel leel refinment
 
 

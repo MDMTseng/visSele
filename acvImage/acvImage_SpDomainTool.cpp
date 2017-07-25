@@ -490,6 +490,53 @@ void acvSobelFilterX(acvImage *res,acvImage *src)
 }
 
 
+void acvBinaryImageEdge(acvImage *res,acvImage *src)
+{
+  int i,j;
+  int TmpPixelH,TmpPixelV;
+  BYTE *L1,*L2;
+  for(i=0;i<src->GetHeight();i++)
+  {
+    L1=&(src->CVector[i][1*3]);
+    L2=&(res->CVector[i][1*3]);
+    BYTE prePix=src->CVector[i][0];
+    for(j=1;j<src->GetWidth();j++,L1+=3,L2+=3)
+    {
+      if( prePix && !L1[0] )
+      {
+        L2[0]=0;
+      }
+      else if( !prePix && L1[0] )
+      {
+        L2[-3]=0;
+      }
+      //L2[1]=L1[1];
+      prePix=L1[0];
+    }
+  }
+
+  for(j=0;j<src->GetWidth();j++)
+  {
+    L1=&(src->CVector[1][j*3]);
+    L2=&(res->CVector[1][j*3]);
+    BYTE prePix=src->CVector[0][j*3];
+    for(i=1;i<src->GetHeight();i++,L1+=3*src->GetWidth(),L2+=3*src->GetWidth())
+    {
+      if( prePix && !L1[0] )
+      {
+        L2[0]=0;
+      }
+      else if( !prePix && L1[0] )
+      {
+        L2[-3*src->GetWidth()]=0;
+      }
+      //L2[1]=L1[1];
+      prePix=L1[0];
+    }
+  }
+
+
+}
 
 
 void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int distListL)

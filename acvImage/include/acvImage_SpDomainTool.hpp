@@ -33,5 +33,5 @@ acv_XY acvSignedMap2Sampling(acvImage *signedMap2,const acv_XY &XY);
 float acvUnsignedMap1Sampling(acvImage *unsignedMap1,const acv_XY &XY);
 acv_XY acvSignedMap2Sampling_Nearest(acvImage *signedMap2,const acv_XY &XY);
 float acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1,const acv_XY &XY);
-
+void acvBinaryImageEdge(acvImage *res,acvImage *src);
 #endif
