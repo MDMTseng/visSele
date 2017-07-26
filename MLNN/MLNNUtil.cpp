@@ -2,31 +2,31 @@
 
 void MLNNUtil::initWMat(vector<vector<float> > &WMat)
 {
-  //randWMat(WMat);
-  identityWMat(WMat,0.001);
+    //randWMat(WMat);
+    identityWMat(WMat,0.001);
 }
-void MLNNUtil::randWMat(vector<vector<float> > &WMat){
-  srand (static_cast <unsigned> (time(0)));
-  for (int i = 0; i < WMat.size(); i++) { // aRow
-      for (int j = 0; j < WMat[1].size(); j++) { // bColumn
-        WMat[i][j]=-1+2*static_cast <float> (rand()) / static_cast <float> (RAND_MAX);//random(-1,1);
-      }
+void MLNNUtil::randWMat(vector<vector<float> > &WMat) {
+    srand (static_cast <unsigned> (time(0)));
+    for (int i = 0; i < WMat.size(); i++) { // aRow
+        for (int j = 0; j < WMat[1].size(); j++) { // bColumn
+            WMat[i][j]=-1+2*static_cast <float> (rand()) / static_cast <float> (RAND_MAX);//random(-1,1);
+        }
     }
 }
 
 float MLNNUtil::random(float m,float M)
 {
-  float ran=static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
-  return ran*(M-m)+m;
+    float ran=static_cast <float> (rand()) / static_cast <float> (RAND_MAX);
+    return ran*(M-m)+m;
 }
 
-void MLNNUtil::identityWMat(vector<vector<float> > &WMat,float noise){
-  srand (static_cast <unsigned> (time(0)));
-  for (int i = 0; i < WMat.size(); i++) { // aRow
-      for (int j = 0; j < WMat[1].size(); j++) { // bColumn
-        if(i==j)WMat[i][j]=1;
-        else WMat[i][j]=random(-noise,noise);//random(-1,1);
-      }
+void MLNNUtil::identityWMat(vector<vector<float> > &WMat,float noise) {
+    srand (static_cast <unsigned> (time(0)));
+    for (int i = 0; i < WMat.size(); i++) { // aRow
+        for (int j = 0; j < WMat[1].size(); j++) { // bColumn
+            if(i==j)WMat[i][j]=1;
+            else WMat[i][j]=random(-noise,noise);//random(-1,1);
+        }
     }
 }
 //AB  EF
@@ -61,54 +61,54 @@ void MLNNUtil::matMul(vector<vector<float> > &C,const vector<vector<float> > &A,
             C[i][j] = A[i][j]*B;
         }
     }
-  }
+}
 
 void MLNNUtil::matAdd(vector<vector<float> > &C,const vector<vector<float> > &A,const vector<vector<float> > &B,float B_coeff) {
     for (int i = 0; i < A.size(); i++) { // aRow
         for (int j = 0; j < A[0].size(); j++) { // bColumn
-          C[i][j]=A[i][j]+B_coeff*B[i][j];
+            C[i][j]=A[i][j]+B_coeff*B[i][j];
         }
     }
 }
 
 void MLNNUtil::deltaW_accumulate(vector<vector<float> > &deltaW,vector<vector<float> > &in, vector<vector<float> > &error_gradient) {
 
-  for(int k=0;k<in.size();k++)//Iterate each data points
-    for (int i = 0; i < deltaW.size(); i++) { // aRow
-        for (int j = 0; j < deltaW[0].size(); j++) { // bColumn
-            deltaW[i][j]+=error_gradient[k][j] * in[k][i];
+    for(int k=0; k<in.size(); k++) //Iterate each data points
+        for (int i = 0; i < deltaW.size(); i++) { // aRow
+            for (int j = 0; j < deltaW[0].size(); j++) { // bColumn
+                deltaW[i][j]+=error_gradient[k][j] * in[k][i];
+            }
         }
-    }
 }
 void MLNNUtil::backgradient(vector<vector<float> > &backg,vector<vector<float> > &W, vector<vector<float> > &error_gradient) {
 
-  for (int i = 0; i < backg.size(); i++) {
-      for (int j = 0; j < backg[0].size(); j++) {
-          backg[i][j]=0;
-      }
-  }
-  for (int k = 0; k < backg.size(); k++) {
-      for (int i = 0; i < backg[0].size(); i++) {
-        for(int j=0;j<W[0].size();j++)
-          backg[k][i]+=error_gradient[k][j] * W[i][j];
+    for (int i = 0; i < backg.size(); i++) {
+        for (int j = 0; j < backg[0].size(); j++) {
+            backg[i][j]=0;
+        }
+    }
+    for (int k = 0; k < backg.size(); k++) {
+        for (int i = 0; i < backg[0].size(); i++) {
+            for(int j=0; j<W[0].size(); j++)
+                backg[k][i]+=error_gradient[k][j] * W[i][j];
 
-      }
-  }
+        }
+    }
 }
 
 void MLNNUtil::actvationF(vector<vector<float> > &out,const vector<vector<float> > &in)
 {
     for (int i = 0; i < out.size(); i++) { // aRow
         for (int j = 0; j < out[0].size(); j++) { // bColumn
-          out[i][j]=in[i][j];
+            out[i][j]=in[i][j];
         }
     }//out = in
 }
 
-void MLNNUtil::gradient_actvationF(vector<vector<float> > &out,const vector<vector<float> > &in){
+void MLNNUtil::gradient_actvationF(vector<vector<float> > &out,const vector<vector<float> > &in) {
     for (int i = 0; i < out.size(); i++) { // aRow
         for (int j = 0; j < out[0].size(); j++) { // bColumn
-          out[i][j]=1;
+            out[i][j]=1;
         }
     }//gradient = 1
 }
@@ -121,7 +121,7 @@ void MLNNUtil::printMat(vector<vector<float> > &C)
 {
     for (int i = 0; i < C.size(); i++) { // aRow
         for (int j = 0; j < C[0].size(); j++) { // bColumn
-          printf("%+4.3f,",C[i][j]);
+            printf("%+4.3f,",C[i][j]);
         }
         printf("\n");
     }

@@ -10,7 +10,7 @@ typedef struct __attribute__((__packed__)) tagBITMAPFILEHEADER
     int32_t bfSize;  //specifies the size in bytes of the bitmap file
     int32_t bfReserved;  //reserved; must be 0
     int32_t bOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
-}BITMAPFILEHEADER;
+} BITMAPFILEHEADER;
 typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
 {
     int32_t biSize;  //specifies the number of bytes required by the struct
@@ -24,13 +24,13 @@ typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
     int32_t biYPelsPerMeter;  //number of pixels per meter in y axis
     int32_t biClrUsed;  //number of colors used by th ebitmap
     int32_t biClrImportant;  //number of colors that are important
-}BITMAPINFOHEADER;
+} BITMAPINFOHEADER;
 #pragma pack(pop)
 
 typedef struct acv_XY
 {
-  float X,Y;
-}acv_XY;
+    float X,Y;
+} acv_XY;
 
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);

@@ -3,247 +3,247 @@
 #include <stddef.h>
 acvImage::acvImage()
 {
-        VarInit();
+    VarInit();
 }
 acvImage::acvImage(int SetWidth,int SetHeight,int SetChannel)
 {
-        VarInit();
-        Channel=SetChannel;
-        RESIZE(SetWidth,SetHeight);
+    VarInit();
+    Channel=SetChannel;
+    RESIZE(SetWidth,SetHeight);
 }
 void acvImage::VarInit(void)
 {
-        CVector=NULL;
-        ImageData=0;
-        ColorType=S_RGB;
-        ROIWidth=ROIHeight
-        =RealWidth=RealHeight=
-        ROIOffsetX=ROIOffsetY=0;
-        Channel=3;
+    CVector=NULL;
+    ImageData=0;
+    ColorType=S_RGB;
+    ROIWidth=ROIHeight
+             =RealWidth=RealHeight=
+                            ROIOffsetX=ROIOffsetY=0;
+    Channel=3;
 }
 
 void acvImage::ReSize(int SetWidth,int SetHeight)
 {
-        RESIZE(SetWidth,SetHeight);
+    RESIZE(SetWidth,SetHeight);
 }
 void acvImage::SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight)
 {
-        //if(!Bitmap)Bitmap->FreeImage();
-        //RESIZE(SetWidth,SetHeight);
-        if(SetOffsetX+SetWidth>RealWidth||SetOffsetY+SetHeight>RealHeight)
-        {
-             //ReSize(ROIOffsetX+SetWidth,ROIOffsetY+SetHeight);
-        }
+    //if(!Bitmap)Bitmap->FreeImage();
+    //RESIZE(SetWidth,SetHeight);
+    if(SetOffsetX+SetWidth>RealWidth||SetOffsetY+SetHeight>RealHeight)
+    {
+        //ReSize(ROIOffsetX+SetWidth,ROIOffsetY+SetHeight);
+    }
 
-        ROIWidth=SetWidth;
-        ROIHeight=SetHeight;
-        ROIOffsetX=SetOffsetX;
-        ROIOffsetY=SetOffsetY;
+    ROIWidth=SetWidth;
+    ROIHeight=SetHeight;
+    ROIOffsetX=SetOffsetX;
+    ROIOffsetY=SetOffsetY;
 
 
 }
 void acvImage::ReSetROI()
 {
-        ROIWidth=RealWidth;
-        ROIHeight=RealHeight;
-        ROIOffsetX=0;
-        ROIOffsetY=0;
+    ROIWidth=RealWidth;
+    ROIHeight=RealHeight;
+    ROIOffsetX=0;
+    ROIOffsetY=0;
 
 
 }
 
 void acvImage::FreeImage()
 {
-        if(ImageData)
-        {
-                delete(ImageData);
-                delete(CVector);
+    if(ImageData)
+    {
+        delete(ImageData);
+        delete(CVector);
 
-                ImageData=NULL;
-                CVector=NULL;
-        }
+        ImageData=NULL;
+        CVector=NULL;
+    }
 }
 acvImage::~acvImage()
 {
-  FreeImage();
+    FreeImage();
 }
 void acvImage::RESIZE(int SetWidth,int SetHeight)
 {
-        RealWidth=ROIWidth=SetWidth;
-        RealHeight=ROIHeight=SetHeight;
-        FreeImage();
-        ImageData=new BYTE[SetWidth*SetHeight*Channel];
-        CVector=new BYTE* [SetHeight];
-        ChannelOffset(0);
+    RealWidth=ROIWidth=SetWidth;
+    RealHeight=ROIHeight=SetHeight;
+    FreeImage();
+    ImageData=new BYTE[SetWidth*SetHeight*Channel];
+    CVector=new BYTE* [SetHeight];
+    ChannelOffset(0);
 
 }
 
 void acvImage::ChannelOffset(int offset)
 {
-        ImageData+=offset;
-        CVector[0]=ImageData;
-        for(int i=1;i<RealHeight;i++)
-        {
-                CVector[i]=CVector[i-1]+RealWidth*Channel;
-        }
+    ImageData+=offset;
+    CVector[0]=ImageData;
+    for(int i=1; i<RealHeight; i++)
+    {
+        CVector[i]=CVector[i-1]+RealWidth*Channel;
+    }
 
 }
 
 void acvImage::YUY2ToYUV()
 {
-        int i,j;
-        int hWidth=ROIWidth>>1;
+    int i,j;
+    int hWidth=ROIWidth>>1;
 
-        for(i=ROIOffsetY;i<ROIHeight;i++)
+    for(i=ROIOffsetY; i<ROIHeight; i++)
+    {
+        ImLine=CVector[i];
+        for(j=ROIOffsetX; j<hWidth; j++)
         {
-                ImLine=CVector[i];
-                for(j=ROIOffsetX;j<hWidth;j++)
-                {
-                     ImLine[5]=ImLine[1];
-                     ImLine[2]=ImLine[4];
-                     ImLine+=6;
+            ImLine[5]=ImLine[1];
+            ImLine[2]=ImLine[4];
+            ImLine+=6;
 
-                }
         }
+    }
 
 }
 void acvImage::YUY2ToRGB()
 {
-        int i,j,RUV,GUV,BUV,TmpR,TmpG,TmpB;
-        BYTE Y1,Y2;
-        int U,V;
-        int hWidth=ROIHeight>>1;
+    int i,j,RUV,GUV,BUV,TmpR,TmpG,TmpB;
+    BYTE Y1,Y2;
+    int U,V;
+    int hWidth=ROIHeight>>1;
 
-        for(i=ROIOffsetY;i<ROIHeight;i++)
+    for(i=ROIOffsetY; i<ROIHeight; i++)
+    {
+        ImLine=CVector[i];
+        for(j=ROIOffsetX; j<hWidth; j++)
         {
-                ImLine=CVector[i];
-                for(j=ROIOffsetX;j<hWidth;j++)
-                {
-                     Y1=ImLine[0];
+            Y1=ImLine[0];
 
-                     U =(int)ImLine[1]-128;
+            U =(int)ImLine[1]-128;
 
-                     Y2=ImLine[3];
+            Y2=ImLine[3];
 
-                     V =(int)ImLine[4]-128;
+            V =(int)ImLine[4]-128;
 
-                     /*
-                     RUV=V*13/10;
-                     GUV=-(U*3+V*7)/10;
-                     BUV=U*17/10; */
-                     RUV=V*1.370705;
-                     GUV=-(U*0.337633+V*0.698);
-                     BUV=U*1.732446;
+            /*
+            RUV=V*13/10;
+            GUV=-(U*3+V*7)/10;
+            BUV=U*17/10; */
+            RUV=V*1.370705;
+            GUV=-(U*0.337633+V*0.698);
+            BUV=U*1.732446;
 
 
-                     TmpR=Y1+RUV;
-                     TmpG=Y1+GUV;
-                     TmpB=Y1+BUV;
+            TmpR=Y1+RUV;
+            TmpG=Y1+GUV;
+            TmpB=Y1+BUV;
 
-                     if(TmpR&0x800)TmpR=0;
-                     else if(TmpR&0x300)TmpR=0xff;
+            if(TmpR&0x800)TmpR=0;
+            else if(TmpR&0x300)TmpR=0xff;
 
-                     if(TmpG&0x800)TmpG=0;
-                     else if(TmpG&0x300)TmpG=0xff;
+            if(TmpG&0x800)TmpG=0;
+            else if(TmpG&0x300)TmpG=0xff;
 
-                     if(TmpB&0x800)TmpB=0;
-                     else if(TmpB&0x300)TmpB=0xff;
+            if(TmpB&0x800)TmpB=0;
+            else if(TmpB&0x300)TmpB=0xff;
 
 
 
-                     *(ImLine++)=TmpB;
-                     *(ImLine++)=TmpG;
-                     *(ImLine++)=TmpR;
+            *(ImLine++)=TmpB;
+            *(ImLine++)=TmpG;
+            *(ImLine++)=TmpR;
 
-                     TmpR=Y2+RUV;
-                     TmpG=Y2+GUV;
-                     TmpB=Y2+BUV;
+            TmpR=Y2+RUV;
+            TmpG=Y2+GUV;
+            TmpB=Y2+BUV;
 
-                     if(TmpR&0x800)TmpR=0;
-                     else if(TmpR&0x300)TmpR=0xff;
+            if(TmpR&0x800)TmpR=0;
+            else if(TmpR&0x300)TmpR=0xff;
 
-                     if(TmpG&0x800)TmpG=0;
-                     else if(TmpG&0x300)TmpG=0xff;
+            if(TmpG&0x800)TmpG=0;
+            else if(TmpG&0x300)TmpG=0xff;
 
-                     if(TmpB&0x800)TmpB=0;
-                     else if(TmpB&0x300)TmpB=0xff;
+            if(TmpB&0x800)TmpB=0;
+            else if(TmpB&0x300)TmpB=0xff;
 
 
-                     *(ImLine++)=TmpB;
-                     *(ImLine++)=TmpG;
-                     *(ImLine++)=TmpR;
-                }
+            *(ImLine++)=TmpB;
+            *(ImLine++)=TmpG;
+            *(ImLine++)=TmpR;
         }
+    }
 }
 void acvImage::YUY2ToGray()
 {
-        for(int i=ROIOffsetY;i<ROIHeight;i++)
-        {ImLine=CVector[i];
-                for(int j=ROIOffsetX;j<ROIWidth;j++)
-                {
-                       ImLine[1]=ImLine[2]=ImLine[0];
-                       ImLine+=3;
-                }
+    for(int i=ROIOffsetY; i<ROIHeight; i++)
+    {   ImLine=CVector[i];
+        for(int j=ROIOffsetX; j<ROIWidth; j++)
+        {
+            ImLine[1]=ImLine[2]=ImLine[0];
+            ImLine+=3;
         }
+    }
 }
 
 
 
 void acvImage::RGBToHSV()
 {
-        ColorType=S_HSV;
-        for(int i=ROIOffsetY;i<ROIHeight;i++)
+    ColorType=S_HSV;
+    for(int i=ROIOffsetY; i<ROIHeight; i++)
+    {
+        ImLine=CVector[i];
+        for(int j=ROIOffsetX; j<ROIWidth; j++)
         {
-                ImLine=CVector[i];
-                for(int j=ROIOffsetX;j<ROIWidth;j++)
-                {
-                        HSVFromRGB(ImLine,ImLine);
-                        ImLine+=3;
-                }
+            HSVFromRGB(ImLine,ImLine);
+            ImLine+=3;
         }
+    }
 }
 
 void acvImage::HSVToRGB()
 {
-        ColorType=S_RGB;
-        for(int i=ROIOffsetY;i<ROIHeight;i++)
+    ColorType=S_RGB;
+    for(int i=ROIOffsetY; i<ROIHeight; i++)
+    {
+        ImLine=CVector[i];
+        for(int j=ROIOffsetX; j<ROIWidth; j++)
         {
-                ImLine=CVector[i];
-                for(int j=ROIOffsetX;j<ROIWidth;j++)
-                {
-                        RGBFromHSV(ImLine,ImLine);
-                        ImLine+=3;
-                }
+            RGBFromHSV(ImLine,ImLine);
+            ImLine+=3;
         }
+    }
 }
 
 void acvImage::RGBToGray()
 {
-        for(int i=ROIOffsetY;i<ROIHeight;i++)
+    for(int i=ROIOffsetY; i<ROIHeight; i++)
+    {
+        ImLine=CVector[i];
+        for(int j=ROIOffsetX; j<ROIWidth; j++)
         {
-                ImLine=CVector[i];
-                for(int j=ROIOffsetX;j<ROIWidth;j++)
-                {
 
-                       ImLine[0]=ImLine[1]=ImLine[2]=
-                                (ImLine[0]+2*ImLine[1]+ImLine[2])/4;
-                       ImLine+=3;
-                }
+            ImLine[0]=ImLine[1]=ImLine[2]=
+                                    (ImLine[0]+2*ImLine[1]+ImLine[2])/4;
+            ImLine+=3;
         }
+    }
 }
 
 void acvImage::RGBToEvenGray()
 {
-        for(int i=ROIOffsetY;i<ROIHeight;i++)
+    for(int i=ROIOffsetY; i<ROIHeight; i++)
+    {
+        ImLine=CVector[i];
+        for(int j=ROIOffsetX; j<ROIWidth; j++)
         {
-                ImLine=CVector[i];
-                for(int j=ROIOffsetX;j<ROIWidth;j++)
-                {
-                       ImLine[0]=ImLine[1]=ImLine[2]=
-                                (ImLine[0]+ImLine[1]+ImLine[2])/3;
-                       ImLine+=3;
-                }
+            ImLine[0]=ImLine[1]=ImLine[2]=
+                                    (ImLine[0]+ImLine[1]+ImLine[2])/3;
+            ImLine+=3;
         }
+    }
 }
 
 
@@ -253,53 +253,59 @@ void acvImage::RGBToEvenGray()
 
 void acvImage::HSVFromRGB(BYTE* OutData,BYTE* InData)
 {
-        //0 V ~255
-        //1 S ~255
-        //2 H ~251
-        BYTE Mod,Max,Min,D1,D2;
-        Max=Min=InDataR;
-        D1=InDataG;D2=InDataB;
-        Mod=6;
-        if(InDataG>Max)
-        {
-                Max=InDataG;Mod=2;       //
-                D1=InDataB;D2=InDataR;
-        }
-        else
-        {
-                Min=InDataG;
+    //0 V ~255
+    //1 S ~255
+    //2 H ~251
+    BYTE Mod,Max,Min,D1,D2;
+    Max=Min=InDataR;
+    D1=InDataG;
+    D2=InDataB;
+    Mod=6;
+    if(InDataG>Max)
+    {
+        Max=InDataG;
+        Mod=2;       //
+        D1=InDataB;
+        D2=InDataR;
+    }
+    else
+    {
+        Min=InDataG;
 
-        }
+    }
 
-        if(InDataB>Max)
-        {
-                Max=InDataB;Mod=4;
-                D1=InDataR;D2=InDataG;
-        }
-        else if(InDataB<Min)
-        {
-                Min=InDataB;
+    if(InDataB>Max)
+    {
+        Max=InDataB;
+        Mod=4;
+        D1=InDataR;
+        D2=InDataG;
+    }
+    else if(InDataB<Min)
+    {
+        Min=InDataB;
 
-        }
+    }
 
-        OutData[0]=Max;
-        if(Max==0)
-        {
-                OutData[1]=
-                OutData[2]=0;
-                goto Exit;
-        }
-        else
-                OutData[1]=255-Min*255/Max;
-        Max-=Min;
-        if(Max)
-        {
-                OutData[2]=(Mod*(Max)+D1-D2)*42/(Max);
-                if(OutData[2]<42||OutData[2]>=252)OutData[2]+=4;
-        }
-        else
-                OutData[2]=0;
-        Exit:;
+    OutData[0]=Max;
+    if(Max==0)
+    {
+        OutData[1]=
+            OutData[2]=0;
+        goto Exit;
+    }
+    else
+        OutData[1]=255-Min*255/Max;
+    Max-=Min;
+    if(Max)
+    {
+        OutData[2]=(Mod*(Max)+D1-D2)*42/(Max);
+        if(OutData[2]<42||OutData[2]>=252)OutData[2]+=4;
+    }
+    else
+        OutData[2]=0;
+Exit:
+    ;
 }
 
 /*
@@ -365,72 +371,86 @@ void acvImage::HSVFromRGB(BYTE* OutData,BYTE* InData)
  t=V*(255*42-S*(42-f))  /255/42*/
 void acvImage::RGBFromHSV(BYTE* OutData,BYTE* InData)
 {
-        int i,f,R,G,B;
-        i=InDataH /42;
-        f=InDataH -i*42;
+    int i,f,R,G,B;
+    i=InDataH /42;
+    f=InDataH -i*42;
 
-        /*
-                p=InDataV *(255-InDataS )/255
-                q=InDataV *(10710-InDataS *f)/10710
-                t=InDataV *(10710-InDataS *(42-f))/10710
-        */
-        switch( i )
-        {
-                case 1:
-                        B = InDataV *(255-InDataS )/255;
-                        G = InDataV ;
-                        R = InDataV *(10710-InDataS *f)/10710;
-                break;
-                case 2:
-                        B = InDataV *(10710-InDataS *(42-f))/10710;
-                        G = InDataV ;
-                        R = InDataV *(255-InDataS )/255;
-                break;
-                case 3:
-                        B = InDataV ;
-                        G = InDataV *(10710-InDataS *f)/10710;
-                        R = InDataV *(255-InDataS )/255;
-                break;
-                case 4:
-                        B = InDataV ;
-                        G = InDataV *(255-InDataS )/255;
-                        R = InDataV *(6120-InDataS *(42-f))/6120;
-                break;
-                case 5:
-                        B = InDataV *(6120-InDataS *f)/6120;
-                        G = InDataV *(255-InDataS )/255;
-                        R = InDataV ;
-                break;
-                default: // case 0||6:
-                        B = InDataV *(255-InDataS )/255;
-                        G = InDataV *(6120-InDataS *(42-f))/6120;
-                        R = InDataV ;
-                break;
-        }
+    /*
+            p=InDataV *(255-InDataS )/255
+            q=InDataV *(10710-InDataS *f)/10710
+            t=InDataV *(10710-InDataS *(42-f))/10710
+    */
+    switch( i )
+    {
+    case 1:
+        B = InDataV *(255-InDataS )/255;
+        G = InDataV ;
+        R = InDataV *(10710-InDataS *f)/10710;
+        break;
+    case 2:
+        B = InDataV *(10710-InDataS *(42-f))/10710;
+        G = InDataV ;
+        R = InDataV *(255-InDataS )/255;
+        break;
+    case 3:
+        B = InDataV ;
+        G = InDataV *(10710-InDataS *f)/10710;
+        R = InDataV *(255-InDataS )/255;
+        break;
+    case 4:
+        B = InDataV ;
+        G = InDataV *(255-InDataS )/255;
+        R = InDataV *(6120-InDataS *(42-f))/6120;
+        break;
+    case 5:
+        B = InDataV *(6120-InDataS *f)/6120;
+        G = InDataV *(255-InDataS )/255;
+        R = InDataV ;
+        break;
+    default: // case 0||6:
+        B = InDataV *(255-InDataS )/255;
+        G = InDataV *(6120-InDataS *(42-f))/6120;
+        R = InDataV ;
+        break;
+    }
 
-        if(R&0x800)R=0;
-        else if(R&0x300)R=0xff;
+    if(R&0x800)R=0;
+    else if(R&0x300)R=0xff;
 
-        if(G&0x800)G=0;
-        else if(G&0x300)G=0xff;
+    if(G&0x800)G=0;
+    else if(G&0x300)G=0xff;
 
-        if(B&0x800)B=0;
-        else if(B&0x300)B=0xff;
+    if(B&0x800)B=0;
+    else if(B&0x300)B=0xff;
 
-        *OutData++ = B;
-        *OutData++ = G;
-        *OutData++ = R;
+    *OutData++ = B;
+    *OutData++ = G;
+    *OutData++ = R;
 
 }
 
 
-int acvImage::GetWidth(){return ROIWidth;}
-int acvImage::GetHeight(){return ROIHeight;}
+int acvImage::GetWidth() {
+    return ROIWidth;
+}
+int acvImage::GetHeight() {
+    return ROIHeight;
+}
 
-int acvImage::GetROIOffsetX(){return ROIOffsetX;}
-int acvImage::GetROIOffsetY(){return ROIOffsetY;}
-int acvImage::GetRealWidth(){return RealWidth;}
-int acvImage::GetRealHeight(){return RealHeight;}
+int acvImage::GetROIOffsetX() {
+    return ROIOffsetX;
+}
+int acvImage::GetROIOffsetY() {
+    return ROIOffsetY;
+}
+int acvImage::GetRealWidth() {
+    return RealWidth;
+}
+int acvImage::GetRealHeight() {
+    return RealHeight;
+}
 
 
-unsigned char acvImage::GetColorType(){return ColorType;}
+unsigned char acvImage::GetColorType() {
+    return ColorType;
+}

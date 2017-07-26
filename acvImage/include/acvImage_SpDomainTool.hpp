@@ -8,9 +8,9 @@
 
 typedef struct acvDT_distRotate
 {
-  int dist;
-  int distX;
-}acvDT_distRotate;
+    int dist;
+    int distX;
+} acvDT_distRotate;
 
 void acvBoxFilter(acvImage *BuffPic,acvImage *Pic,int Size);
 void acvBoxFilterX(acvImage *res,acvImage *src,int Size);

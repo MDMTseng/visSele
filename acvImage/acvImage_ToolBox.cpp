@@ -18,11 +18,11 @@ double GetRMSE(acvImage *Pic1,acvImage *Pic2)
 {
     double MSE=0;
     int    i,j,Tmp;
-    for(i=0;i<Pic1->GetHeight();i++)for(j=0;j<Pic2->GetWidth();j++)
-    {
-          Tmp=Pic1->CVector[i][3*j]-Pic2->CVector[i][3*j];
-          MSE+=Tmp*Tmp;
-    }
+    for(i=0; i<Pic1->GetHeight(); i++)for(j=0; j<Pic2->GetWidth(); j++)
+        {
+            Tmp=Pic1->CVector[i][3*j]-Pic2->CVector[i][3*j];
+            MSE+=Tmp*Tmp;
+        }
     return sqrt(MSE/Pic1->GetHeight()/Pic2->GetWidth());
 }
 
@@ -35,17 +35,17 @@ double GetRMSE(acvImage *Pic1,acvImage *Pic2)
   7 X 3
   6 5 4
 */
-const int SearchTable[][2]={{0,0},{7,1},{1,7},{6,2},{2,6},{5,3},{3,5}};
-const int WalkV[8][2]={{-1,-1},{-1,0},{-1,1},{0,1},{1,1},{1,0},{1,-1},{0,-1}};
+const int SearchTable[][2]= {{0,0},{7,1},{1,7},{6,2},{2,6},{5,3},{3,5}};
+const int WalkV[8][2]= {{-1,-1},{-1,0},{-1,1},{0,1},{1,1},{1,0},{1,-1},{0,-1}};
 int RoundTypeChoose(float Num,char *SearchType)
 {
-        if(Num-(int)Num<0.5)
-        {
-                *SearchType=0;
-                return Num;
-        }
-        *SearchType=1;
-        return Num+1;
+    if(Num-(int)Num<0.5)
+    {
+        *SearchType=0;
+        return Num;
+    }
+    *SearchType=1;
+    return Num+1;
 
 
 }
@@ -70,44 +70,44 @@ int RoundTypeChoose(float Num,char *SearchType)
 #define RingCounter(X,size)   (X<0)? (X+size):((X>=size)? X-size:X)
 
 void acvRingDataMeanFilter(int * OutRingArray,int * InRingArray
-                                ,int RingSize,int Size)
+                           ,int RingSize,int Size)
 {
-        int Sum,TmpNum,j,k;
+    int Sum,TmpNum,j,k;
 
-        Sum=InRingArray[0];
-
-
-        for(j=0;j<Size;j++)
-        {
-                Sum+=(InRingArray[j+1]+InRingArray[RingSize-j-1]);
-        }
-        OutRingArray[0]=Sum/(Size*2+1);
-        for(j=1;j<=Size;j++)
-        {
-                Sum-= InRingArray[RingSize+j-Size-1];
-                Sum+= InRingArray[j+Size];
-
-                OutRingArray[j]=Sum/(Size*2+1);
-        }
+    Sum=InRingArray[0];
 
 
-        for(j=Size+1;j<RingSize-Size;j++)
-        {
+    for(j=0; j<Size; j++)
+    {
+        Sum+=(InRingArray[j+1]+InRingArray[RingSize-j-1]);
+    }
+    OutRingArray[0]=Sum/(Size*2+1);
+    for(j=1; j<=Size; j++)
+    {
+        Sum-= InRingArray[RingSize+j-Size-1];
+        Sum+= InRingArray[j+Size];
 
-                Sum-= InRingArray[j-Size-1];
-                Sum+= InRingArray[j+Size];
+        OutRingArray[j]=Sum/(Size*2+1);
+    }
 
-                OutRingArray[j]=Sum/(Size*2+1);
-                //OutRingArray[j]=0;
-        }
-        for(j=RingSize-Size;j<RingSize;j++)
-        {
 
-                Sum-= InRingArray[j-Size-1];
-                Sum+= InRingArray[j+Size-RingSize];
+    for(j=Size+1; j<RingSize-Size; j++)
+    {
 
-                OutRingArray[j]=Sum/(Size*2+1);
-        }
+        Sum-= InRingArray[j-Size-1];
+        Sum+= InRingArray[j+Size];
+
+        OutRingArray[j]=Sum/(Size*2+1);
+        //OutRingArray[j]=0;
+    }
+    for(j=RingSize-Size; j<RingSize; j++)
+    {
+
+        Sum-= InRingArray[j-Size-1];
+        Sum+= InRingArray[j+Size-RingSize];
+
+        OutRingArray[j]=Sum/(Size*2+1);
+    }
 
 
 }
@@ -115,83 +115,83 @@ void acvRingDataMeanFilter(int * OutRingArray,int * InRingArray
 
 void acvRingDataDiffFilter(int * OutRingArray,int * InRingArray,int RingSize)
 {
-        int j;
+    int j;
 
-        OutRingArray[0]=InRingArray[0]-InRingArray[RingSize-1];
+    OutRingArray[0]=InRingArray[0]-InRingArray[RingSize-1];
 
-        for(j=1;j<RingSize;j++)
-        {
-                OutRingArray[j]=InRingArray[j]-InRingArray[j-1];
-        }
+    for(j=1; j<RingSize; j++)
+    {
+        OutRingArray[j]=InRingArray[j]-InRingArray[j-1];
+    }
 
 }
 
 void acvRingDataDeZero(int * OutRingArray,int * InRingArray,int RingSize)
 {
-        int ZeroStart=0,i,j;
+    int ZeroStart=0,i,j;
 
-        int DataLPos=RingSize,DataRPos=0;
-        int ZeroL=0,NewL=0;
-        if(!InRingArray[0]||!InRingArray[RingSize-1])
+    int DataLPos=RingSize,DataRPos=0;
+    int ZeroL=0,NewL=0;
+    if(!InRingArray[0]||!InRingArray[RingSize-1])
+    {
+        for(i=0; i<RingSize; i++)if(InRingArray[i])
+            {
+                DataRPos=i;
+                break;
+            }
+        if(i==RingSize-1)return;
+        for(i=RingSize-1; i>=0; i--)if(InRingArray[i])
+            {
+                DataLPos=i;
+                break;
+            }
+        ZeroL=RingSize-DataLPos+DataRPos+1;
+        for(j=0,i=DataLPos-1; j<ZeroL; i++,j++)
         {
-                for(i=0;i<RingSize;i++)if(InRingArray[i])
+            if(i==RingSize)i=0;
+            OutRingArray[i]=
+                InRingArray[DataLPos]+
+                j*(InRingArray[DataRPos]-InRingArray[DataLPos])/ZeroL;
+        }
+
+    }
+    NewL=DataLPos;
+    for(i=DataRPos; i<NewL; i++)
+    {
+        if(ZeroStart)
+        {
+            ZeroL++;
+            if(InRingArray[i])
+            {
+                ZeroStart=0;
+                for(j=1; j<ZeroL; j++)
                 {
-                        DataRPos=i;
-                        break;
-                }
-                if(i==RingSize-1)return;
-                for(i=RingSize-1;i>=0;i--)if(InRingArray[i])
-                {
-                        DataLPos=i;
-                        break;
-                }
-                ZeroL=RingSize-DataLPos+DataRPos+1;
-                for(j=0,i=DataLPos-1;j<ZeroL;i++,j++)
-                {
-                        if(i==RingSize)i=0;
-                        OutRingArray[i]=
+                    OutRingArray[DataLPos+j]=
+
                         InRingArray[DataLPos]+
-                        j*(InRingArray[DataRPos]-InRingArray[DataLPos])/ZeroL;
+                        j*(InRingArray[i]-InRingArray[DataLPos])/ZeroL;
+
                 }
 
+            }
         }
-        NewL=DataLPos;
-        for(i=DataRPos;i<NewL;i++)
+        else
         {
-                if(ZeroStart)
-                {
-                        ZeroL++;
-                        if(InRingArray[i])
-                        {
-                             ZeroStart=0;
-                             for(j=1;j<ZeroL;j++)
-                             {
-                                   OutRingArray[DataLPos+j]=
-
-                                   InRingArray[DataLPos]+
-                                j*(InRingArray[i]-InRingArray[DataLPos])/ZeroL;
-
-                             }
-
-                        }
-                }
-                else
-                {
-                        if(!InRingArray[i])
-                        {
-                             ZeroL=1;
-                             ZeroStart=1;
-                             DataLPos=i-1;
-                        }
-                        else
-                             OutRingArray[i]=InRingArray[i];
-                }
-                //OutArrayData[i]=InArrayData[i];
+            if(!InRingArray[i])
+            {
+                ZeroL=1;
+                ZeroStart=1;
+                DataLPos=i-1;
+            }
+            else
+                OutRingArray[i]=InRingArray[i];
         }
+        //OutArrayData[i]=InArrayData[i];
+    }
 }
 
 
-const int ContourWalkV[8][2]={{-1,-1},{-1,0},{-1,1},{0,1},{1,1},{1,0},{1,-1},{0,-1}};
+const int ContourWalkV[8][2]= {{-1,-1},{-1,0},{-1,1},{0,1},{1,1},{1,0},{1,-1},{0,-1}};
 
 /*
 void acvLabeledSignatureByContour(acvImage  *LabeledPic,
@@ -224,140 +224,140 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 
 //Displacement, Scale, Aangle
 float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
-  acvImage *targetMap,acvImage *targetGradient,acv_XY *TarPtList,
-  acv_XY *ErrorGradientList,int ListL)
+                                 acvImage *targetMap,acvImage *targetGradient,acv_XY *TarPtList,
+                                 acv_XY *ErrorGradientList,int ListL)
 {
-  float errorSum=0;
+    float errorSum=0;
 
-  //  []
-  //[][][]
-  //  []
-  for(int i=0;i<ListL;i++)
-  {
-    acv_XY tarpt=TarPtList[i];
-    acv_XY picpt=PicPtList[i];
-    float error=(
-      acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
-      acvUnsignedMap1Sampling(targetMap,tarpt));
+    //  []
+    //[][][]
+    //  []
+    for(int i=0; i<ListL; i++)
+    {
+        acv_XY tarpt=TarPtList[i];
+        acv_XY picpt=PicPtList[i];
+        float error=(
+                        acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
+                        acvUnsignedMap1Sampling(targetMap,tarpt));
 
-    acv_XY gradient=acvSignedMap2Sampling_Nearest(targetGradient,tarpt);
-    //error=(error<0)?-128:128;
+        acv_XY gradient=acvSignedMap2Sampling_Nearest(targetGradient,tarpt);
+        //error=(error<0)?-128:128;
 
-    //printf(">%f %d\n",gradient.X,(char)targetGradient->CVector[(int)tarpt.Y][(int)tarpt.X*3]);
-    //Sobel [0] ^  [1] <
-    ErrorGradientList[i].X=error*gradient.X;
-    ErrorGradientList[i].Y=error*gradient.Y;
+        //printf(">%f %d\n",gradient.X,(char)targetGradient->CVector[(int)tarpt.Y][(int)tarpt.X*3]);
+        //Sobel [0] ^  [1] <
+        ErrorGradientList[i].X=error*gradient.X;
+        ErrorGradientList[i].Y=error*gradient.Y;
 
 
-    error*=error;
-    errorSum+=error;
-  }
-  return errorSum;
+        error*=error;
+        errorSum+=error;
+    }
+    return errorSum;
 }
 
 int interpolateSignData(std::vector<acv_XY> &signature,int start,int end)
-{//Always from start to end increase
+{   //Always from start to end increase
 
-  int tmp;
-  //0~2 => dist 2 abs(2-0)
-  //199~2 (signature.size()==200) => dist 3 (signature.size()+(2-199))
+    int tmp;
+    //0~2 => dist 2 abs(2-0)
+    //199~2 (signature.size()==200) => dist 3 (signature.size()+(2-199))
 
-  //2~0
-  //2~199
+    //2~0
+    //2~199
 
-  int distance=(end-start);
-  if(distance<0)
-  {
-    distance=signature.size()+distance;
-  }
-
-  if(distance>signature.size()/2)
-  {
-    distance=signature.size()-distance;
-    int tmp=end;
-    end=start;
-    start=tmp;
-  }
-  if(distance<2)return distance;
-
-  int head=start+1;
-  int i;
-  float sf=signature[start].X;
-  float se_diff=(signature[end].X-sf)/distance;
-
-  for(i=1;i<distance;i++,head++)
-  {
-    if(head>=signature.size())head-=signature.size();
-    float X=sf+i*(se_diff);
-    if(signature[head].X<X)
+    int distance=(end-start);
+    if(distance<0)
     {
-      signature[head].X=X;
-      signature[head].Y=signature[start].Y;
+        distance=signature.size()+distance;
     }
 
-  }
-  return distance;
+    if(distance>signature.size()/2)
+    {
+        distance=signature.size()-distance;
+        int tmp=end;
+        end=start;
+        start=tmp;
+    }
+    if(distance<2)return distance;
+
+    int head=start+1;
+    int i;
+    float sf=signature[start].X;
+    float se_diff=(signature[end].X-sf)/distance;
+
+    for(i=1; i<distance; i++,head++)
+    {
+        if(head>=signature.size())head-=signature.size();
+        float X=sf+i*(se_diff);
+        if(signature[head].X<X)
+        {
+            signature[head].X=X;
+            signature[head].Y=signature[start].Y;
+        }
+
+    }
+    return distance;
 }
 
 bool acvContourCircleSignature
 (acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature)
 {
-  int ret=-1;
-  memset((void*)&(signature[0]),0,signature.size()*sizeof(signature[0]));
+    int ret=-1;
+    memset((void*)&(signature[0]),0,signature.size()*sizeof(signature[0]));
 
-  int X,Y;
-  int startX,startY;
-  X=(int)ldata.LTBound.X;
-  Y=(int)ldata.LTBound.Y;
-  for(int j=X;j<(int)ldata.RBBound.X;j++)
-  {
-    _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
-    if(pix->_3Byte.Num==labelIdx)
+    int X,Y;
+    int startX,startY;
+    X=(int)ldata.LTBound.X;
+    Y=(int)ldata.LTBound.Y;
+    for(int j=X; j<(int)ldata.RBBound.X; j++)
     {
-      X=j;
-      startX=j;
-      startY=Y;
-      ret=0;
-      break;
+        _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
+        if(pix->_3Byte.Num==labelIdx)
+        {
+            X=j;
+            startX=j;
+            startY=Y;
+            ret=0;
+            break;
+        }
     }
-  }
-  if(ret!=0)return false;
+    if(ret!=0)return false;
 
 
-  int preIdx=-1;
-  int _1stIdx=-1;
-  //0|1|2
-  //7|X|3
-  //6|5|4
-  int dir =3;//>
-  do {
+    int preIdx=-1;
+    int _1stIdx=-1;
+    //0|1|2
+    //7|X|3
+    //6|5|4
+    int dir =3;//>
+    do {
 
-      float diffY=Y-ldata.Center.Y;
-      float diffX=X-ldata.Center.X;
-      float theta=acvFAtan2(diffY,diffX);//-pi ~pi
-      //if(theta<0)theta+=2*M_PI;
-      int idx=round(signature.size()*theta/(2*M_PI));
-      if(idx<0)idx+=signature.size();
-      //if(idx>=signature.size())idx-=signature.size();
-      if(preIdx==-1)
-      {
-        _1stIdx=idx;
+        float diffY=Y-ldata.Center.Y;
+        float diffX=X-ldata.Center.X;
+        float theta=acvFAtan2(diffY,diffX);//-pi ~pi
+        //if(theta<0)theta+=2*M_PI;
+        int idx=round(signature.size()*theta/(2*M_PI));
+        if(idx<0)idx+=signature.size();
+        //if(idx>=signature.size())idx-=signature.size();
+        if(preIdx==-1)
+        {
+            _1stIdx=idx;
+            preIdx=idx;
+        }
+        float R=hypot(diffX,diffY);
+        if(signature[idx].X<R)
+        {
+            signature[idx].X=R;
+            signature[idx].Y=theta;
+            interpolateSignData(signature,preIdx,idx);
+        }
         preIdx=idx;
-      }
-      float R=hypot(diffX,diffY);
-      if(signature[idx].X<R)
-      {
-        signature[idx].X=R;
-        signature[idx].Y=theta;
-        interpolateSignData(signature,preIdx,idx);
-      }
-      preIdx=idx;
-      BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
-      dir-=2;
+        BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
+        dir-=2;
 
-    /* code */
-  } while(X!=startX||Y!=startY);
+        /* code */
+    } while(X!=startX||Y!=startY);
 
-  interpolateSignData(signature,_1stIdx,preIdx);
+    interpolateSignData(signature,_1stIdx,preIdx);
 
 }
