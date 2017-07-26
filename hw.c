@@ -492,6 +492,8 @@ void find_subpixel_params(SPPARAMX &spp,
     }
     NN.backProp(spp.error_gradient);
     spp.MO.update_dW();
+    NN.layers[0].dW[2][0]*=2500;//Special treat
+    NN.layers[0].dW[2][1]*=2500;
     NN.updateW(alpha);
     alpha-=alphaDown;
     //nu.printMat(NN.layers[0].dW);printf("\n");
