@@ -51,6 +51,7 @@ char *PrintHexArr(char *data, int dataL);
 unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
 unsigned int acvLoadBitmapFile(acvImage *img,char *filename);
 int acvSaveBitmapFile(char *filename,unsigned char* pixData,int width,int height);
+int acvSaveBitmapFile(char *filename,acvImage *img);
 int div_round(int dividend, int divisor);
 #define div_round(dividend, divisor) (((int)(dividend) + ((int)(divisor) >>1)) / (int)(divisor))
 void acvImageAdd(acvImage *src,int num);

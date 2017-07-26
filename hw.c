@@ -458,6 +458,7 @@ void find_subpixel_params(SPPARAMX &spp,
   vector<acv_XY> &tracking_region,
   float AngleDiff,int iterCount)
 {
+  static int idx_c=0;
   MLNN &NN=spp.NN;
   float scale=1;
   //init W params
@@ -469,13 +470,9 @@ void find_subpixel_params(SPPARAMX &spp,
   NN.layers[0].W[2][0]=(spp.tar_ldData.Center.X-spp.src_ldData.Center.X);//rough offset from lebeling
   NN.layers[0].W[2][1]=(spp.tar_ldData.Center.Y-spp.src_ldData.Center.Y);
 
-
-  acvImage *buff = new acvImage();
-  buff->ReSize(spp.tarImg->GetWidth(),spp.tarImg->GetHeight());
-
   spp.errorXY.resize(spp.regionSampleXY.size());
   spp.mappedXY.resize(spp.regionSampleXY.size());
-  float alpha=2;
+  float alpha=6;
   float alphaDown=(alpha-0.2)/iterCount;
   for(int j=0;j<iterCount;j++)//Iteration
   {
@@ -518,10 +515,16 @@ void find_subpixel_params(SPPARAMX &spp,
     NN.layers[0].W[2][0],NN.layers[0].W[2][1],
     180/M_PI*atan2(NN.layers[0].W[1][0]-NN.layers[0].W[0][1],NN.layers[0].W[0][0]+NN.layers[0].W[1][1]));
 
-    continue;
+    //continue;
     sleep(1);
 
-    acvCloneImage(spp.tarImg,buff,-1);
+
+    acvImage buff;
+    buff.ReSize(spp.tarImg->GetWidth(),spp.tarImg->GetHeight());
+
+
+    acvCloneImage(spp.tarImg,&buff,2);
+
     for(int k=0;k<tracking_region.size()/spp.regionSampleXY.size();k++)
     {
       sampleXYFromRegion_Seq(spp.regionSampleXY,tracking_region,
@@ -529,13 +532,14 @@ void find_subpixel_params(SPPARAMX &spp,
       DotsTransform(spp.regionSampleXY,spp.mappedXY,NN,spp.src_ldData.Center,1);
       for(int m=0;m<spp.mappedXY.size();m++)
       {
-        buff->CVector[(int)round(spp.mappedXY[m].Y)][(int)round(spp.mappedXY[m].X)*3+2]=
-        255-spp.srcImg->CVector[(int)round(spp.regionSampleXY[m].Y)][(int)round(spp.regionSampleXY[m].X)*3]/2;
+        buff.CVector[(int)round(spp.mappedXY[m].Y)][(int)round(spp.mappedXY[m].X)*3+2]=
+        255-spp.srcImg->CVector[(int)round(spp.regionSampleXY[m].Y)][(int)round(spp.regionSampleXY[m].X)*3+2];
       }
-
     }
-
-    acvSaveBitmapFile("data/target_test_cover.bmp",buff->ImageData,buff->GetWidth(),buff->GetHeight());
+    //acvClear(&buff,128,1);
+    char name[100];
+    sprintf(name,"data/target_test_cover_%3d.bmp",idx_c++);
+    acvSaveBitmapFile(name,&buff);
 
   }
 

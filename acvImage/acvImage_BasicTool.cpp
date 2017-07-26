@@ -510,6 +510,10 @@ int acvSaveBitmapFile(char *filename,unsigned char* pixData,int width,int height
   return 0;
 }
 
+int acvSaveBitmapFile(char *filename,acvImage *img)
+{
+    return acvSaveBitmapFile(filename,img->ImageData,img->GetWidth(),img->GetHeight());
+}
 void acvImageAdd(acvImage *src,int num)
 {
   int i,j;
