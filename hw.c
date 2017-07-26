@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <unistd.h>
 #include <time.h>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
@@ -271,94 +272,6 @@ void sampleXYFromRegion_Seq(vector<acv_XY> &sampleXY, const vector<acv_XY> &regi
     }
 }
 
-#include <unistd.h>
-
-float SignatureMatchingError(const acv_XY *signature, int offset,
-                             const acv_XY *tar_signature, int arrsize, int stride)
-{
-    if (stride == 0)
-        return -1;
-    float errorSum = 0;
-    int signIdx = offset % arrsize;
-    if (signIdx < 0)
-        signIdx += arrsize;
-    int size = (arrsize - signIdx);
-    int i = 0;
-
-    for (; i < size; i += stride, signIdx += stride)
-    {
-        float error = signature[(signIdx)].X - tar_signature[i].X;
-        errorSum += error * error;
-    }
-    signIdx -= arrsize;
-    size = arrsize;
-    for (; i < size; i += stride, signIdx += stride)
-    {
-        float error = signature[(signIdx)].X - tar_signature[i].X;
-        errorSum += error * error;
-    }
-    return errorSum;
-}
-
-float SignatureMatchingError(const vector<acv_XY> &signature, int offset,
-                             const vector<acv_XY> &tar_signature, int stride)
-{
-    return SignatureMatchingError(&(signature[0]), offset, &(tar_signature[0]), signature.size(), stride);
-}
-#include <float.h>
-int SignareIdxOffsetMatching(const vector<acv_XY> &signature,
-                             const vector<acv_XY> &tar_signature, int roughSearchSampleRate, float *min_error)
-{
-    if (roughSearchSampleRate < 1)
-        return -1;
-    int fineSreachRadious = roughSearchSampleRate - 1;
-    int minErrOffset = 0;
-    float minErr = FLT_MAX; //rough search
-    for (int j = 0; j < tar_signature.size(); j += roughSearchSampleRate)
-    {
-        float error = SignatureMatchingError(signature, j, tar_signature, roughSearchSampleRate);
-        if (minErr > error)
-        {
-            minErr = error;
-            minErrOffset = j;
-        }
-    }
-    minErr = FLT_MAX;
-    int searchHead = minErrOffset - fineSreachRadious;
-    minErrOffset = -1;
-
-    float error;
-    //fine search
-    for (int i = 0; i < 2 * fineSreachRadious + 1; i++, searchHead++)
-    {
-
-        error = SignatureMatchingError(signature, searchHead, tar_signature, 1);
-        if (minErr > error)
-        {
-            minErr = error;
-            minErrOffset = searchHead;
-        }
-    }
-    if (minErrOffset < 0)
-        minErrOffset += tar_signature.size();
-    else if (minErrOffset >= tar_signature.size())
-        minErrOffset -= tar_signature.size();
-    if (min_error)
-        *min_error = minErr;
-    return minErrOffset;
-}
-
-float SignatureAngleMatching(const vector<acv_XY> &signature,
-                             const vector<acv_XY> &tar_signature, float *min_error)
-{
-    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, signature.size() / 160, min_error); //magic number
-    float angle = matchingIdx * 2 * M_PI / signature.size();
-    if (angle < -M_PI)
-        angle += 2 * M_PI;
-    else if (angle > M_PI)
-        angle -= 2 * M_PI;
-    return angle;
-}
 
 void drawSignatureInfo(acvImage *img,
                        const acv_LabeledData &ldData, const vector<acv_XY> &signature,
@@ -496,12 +409,16 @@ void find_subpixel_params(SPPARAMX &spp,
         continue;*/
         if (j != iterCount - 1)
             continue;
-        printf(">%f %f %f\n",
+        printf(">er:%f %f %f %f\n",error,
                NN.layers[0].W[2][0], NN.layers[0].W[2][1],
                180 / M_PI * atan2(NN.layers[0].W[1][0] - NN.layers[0].W[0][1], NN.layers[0].W[0][0] + NN.layers[0].W[1][1]));
 
-        //continue;
-        sleep(1);
+        if(error>75000)
+        {
+          printf("BAD!!!!!\n");
+        }
+        continue;
+        //sleep(1);
 
         acvImage buff;
         buff.ReSize(spp.tarImg->GetWidth(), spp.tarImg->GetHeight());
@@ -517,11 +434,16 @@ void find_subpixel_params(SPPARAMX &spp,
             {
                 buff.CVector[(int)round(spp.mappedXY[m].Y)][(int)round(spp.mappedXY[m].X) * 3 + 2] =
                     255 - spp.srcImg->CVector[(int)round(spp.regionSampleXY[m].Y)][(int)round(spp.regionSampleXY[m].X) * 3 + 2];
+
             }
+        }
+        if(error>75000)
+        {
+          acvDrawCrossX(&buff, 20, 20, 10,255,0,0,5);
         }
         //acvClear(&buff,128,1);
         char name[100];
-        sprintf(name, "data/target_test_cover_%3d.bmp", idx_c++);
+        sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
         acvSaveBitmapFile(name, &buff);
     }
 }
@@ -547,6 +469,7 @@ int testSignature()
 
     SPPARAMX spp;
     init_SPPARAMX(spp, tar_ldData, target, image, target_DistGradient);
+
     std::vector<acv_XY> regionXY_;
 
     clock_t t = clock();
@@ -554,6 +477,8 @@ int testSignature()
     //image->RGBToGray();
     acvCloneImage(image, labelImg, -1);
     preprocess(labelImg, image, buff);
+    acvCloneImage(image, image, 0);
+        acvSaveBitmapFile("data/image.bmp",image);
 
     t = clock() - t;
     printf("%fms .preprocess.\n", ((double)t) / CLOCKS_PER_SEC * 1000);
@@ -588,13 +513,12 @@ int testSignature()
         acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
 
         find_subpixel_params(spp, regionXY_, AngleDiff, 10);
-        spp.NN.layers[0].printW();
+        //spp.NN.layers[0].printW();
         //END ********************Sub-pixel leel refinment
 
         t = clock() - t;
-        printf("%fms .Match. AngleDiff:%f,er:%f\n", ((double)t) / CLOCKS_PER_SEC * 1000,
-               AngleDiff * 180 / M_PI, error);
-        printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
+        printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
+        //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
         /*
         drawSignatureInfo(image,
           ldData[i],signature,

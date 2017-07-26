@@ -14,19 +14,6 @@
 
 #define SignInfoDistanceMuti 1000
 
-double GetRMSE(acvImage *Pic1,acvImage *Pic2)
-{
-    double MSE=0;
-    int    i,j,Tmp;
-    for(i=0; i<Pic1->GetHeight(); i++)for(j=0; j<Pic2->GetWidth(); j++)
-        {
-            Tmp=Pic1->CVector[i][3*j]-Pic2->CVector[i][3*j];
-            MSE+=Tmp*Tmp;
-        }
-    return sqrt(MSE/Pic1->GetHeight()/Pic2->GetWidth());
-}
-
-
 
 //const char SearchTable[SearchWay]={0,7,1,6,2,5,3};
 
@@ -125,71 +112,6 @@ void acvRingDataDiffFilter(int * OutRingArray,int * InRingArray,int RingSize)
     }
 
 }
-
-void acvRingDataDeZero(int * OutRingArray,int * InRingArray,int RingSize)
-{
-    int ZeroStart=0,i,j;
-
-    int DataLPos=RingSize,DataRPos=0;
-    int ZeroL=0,NewL=0;
-    if(!InRingArray[0]||!InRingArray[RingSize-1])
-    {
-        for(i=0; i<RingSize; i++)if(InRingArray[i])
-            {
-                DataRPos=i;
-                break;
-            }
-        if(i==RingSize-1)return;
-        for(i=RingSize-1; i>=0; i--)if(InRingArray[i])
-            {
-                DataLPos=i;
-                break;
-            }
-        ZeroL=RingSize-DataLPos+DataRPos+1;
-        for(j=0,i=DataLPos-1; j<ZeroL; i++,j++)
-        {
-            if(i==RingSize)i=0;
-            OutRingArray[i]=
-                InRingArray[DataLPos]+
-                j*(InRingArray[DataRPos]-InRingArray[DataLPos])/ZeroL;
-        }
-
-    }
-    NewL=DataLPos;
-    for(i=DataRPos; i<NewL; i++)
-    {
-        if(ZeroStart)
-        {
-            ZeroL++;
-            if(InRingArray[i])
-            {
-                ZeroStart=0;
-                for(j=1; j<ZeroL; j++)
-                {
-                    OutRingArray[DataLPos+j]=
-
-                        InRingArray[DataLPos]+
-                        j*(InRingArray[i]-InRingArray[DataLPos])/ZeroL;
-
-                }
-
-            }
-        }
-        else
-        {
-            if(!InRingArray[i])
-            {
-                ZeroL=1;
-                ZeroStart=1;
-                DataLPos=i-1;
-            }
-            else
-                OutRingArray[i]=InRingArray[i];
-        }
-        //OutArrayData[i]=InArrayData[i];
-    }
-}
-
 
 const int ContourWalkV[8][2]= {{-1,-1},{-1,0},{-1,1},{0,1},{1,1},{1,0},{1,-1},{0,-1}};
 
@@ -360,4 +282,91 @@ bool acvContourCircleSignature
 
     interpolateSignData(signature,_1stIdx,preIdx);
 
+}
+
+float SignatureMatchingError(const acv_XY *signature, int offset,
+                             const acv_XY *tar_signature, int arrsize, int stride)
+{
+    if (stride == 0)
+        return -1;
+    float errorSum = 0;
+    int signIdx = offset % arrsize;
+    if (signIdx < 0)
+        signIdx += arrsize;
+    int size = (arrsize - signIdx);
+    int i = 0;
+
+    for (; i < size; i += stride, signIdx += stride)
+    {
+        float error = signature[(signIdx)].X - tar_signature[i].X;
+        errorSum += error * error;
+    }
+    signIdx -= arrsize;
+    size = arrsize;
+    for (; i < size; i += stride, signIdx += stride)
+    {
+        float error = signature[(signIdx)].X - tar_signature[i].X;
+        errorSum += error * error;
+    }
+    return errorSum;
+}
+
+float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
+                             const std::vector<acv_XY> &tar_signature, int stride)
+{
+    return SignatureMatchingError(&(signature[0]), offset, &(tar_signature[0]), signature.size(), stride);
+}
+#include <float.h>
+int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
+                             const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate, float *min_error)
+{
+    if (roughSearchSampleRate < 1)
+        return -1;
+    int fineSreachRadious = roughSearchSampleRate - 1;
+    int minErrOffset = 0;
+    float minErr = FLT_MAX; //rough search
+    for (int j = 0; j < tar_signature.size(); j += roughSearchSampleRate)
+    {
+        float error = SignatureMatchingError(signature, j, tar_signature, roughSearchSampleRate);
+        if (minErr > error)
+        {
+            minErr = error;
+            minErrOffset = j;
+        }
+    }
+    minErr = FLT_MAX;
+    int searchHead = minErrOffset - fineSreachRadious;
+    minErrOffset = -1;
+
+    float error;
+    //fine search
+    for (int i = 0; i < 2 * fineSreachRadious + 1; i++, searchHead++)
+    { 
+
+        error = SignatureMatchingError(signature, searchHead, tar_signature, 1);
+        if (minErr > error)
+        {
+            minErr = error;
+            minErrOffset = searchHead;
+        }
+    }
+    if (minErrOffset < 0)
+        minErrOffset += tar_signature.size();
+    else if (minErrOffset >= tar_signature.size())
+        minErrOffset -= tar_signature.size();
+    if (min_error)
+        *min_error = minErr;
+    return minErrOffset;
+}
+
+float SignatureAngleMatching(const std::vector<acv_XY> &signature,
+                             const std::vector<acv_XY> &tar_signature, float *min_error)
+{
+    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, signature.size() / 160, min_error); //magic number
+    float angle = matchingIdx * 2 * M_PI / signature.size();
+    if (angle < -M_PI)
+        angle += 2 * M_PI;
+    else if (angle > M_PI)
+        angle -= 2 * M_PI;
+    return angle;
 }
