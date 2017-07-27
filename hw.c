@@ -45,61 +45,17 @@ void acvScalingSobelResult_n(acvImage *src)
             Lp1 = L[1];
             if (Lp0 != 0 || Lp1 != 0)
             {
-                float length = sqrt(Lp0 * Lp0 + Lp1 * Lp1);
-                L[0] = (int)round((int)Lp0 * 127 / length);
-                L[1] = (int)round((int)Lp1 * 127 / length);
+                float length = hypot(Lp0,Lp1);
+                if(length!=0)
+                {
+                  L[0] = (int)round((int)Lp0 * 127 / length);
+                  L[1] = (int)round((int)Lp1 * 127 / length);
+                }
             }
         }
     }
 }
 
-void TargetPrep()
-{
-    acvImage *tar = new acvImage();
-    acvImage *buff = new acvImage();
-    acvLoadBitmapFile(tar, "data/target.bmp");
-    buff->ReSize(tar->GetWidth(), tar->GetHeight());
-
-    acvBoxFilter(buff, tar, 5);
-    acvBoxFilter(buff, tar, 10);
-    acvCloneImage(tar, tar, 0);
-    acvSaveBitmapFile("data/target_soft.bmp", tar->ImageData, buff->GetWidth(), buff->GetHeight());
-
-    acvSobelFilter(buff, tar);
-    acvScalingSobelResult_n(buff);
-    acvImageAdd(buff, 128);
-
-    acvBoxFilter(tar, buff, 5);
-    buff->ChannelOffset(1);
-    acvImageAdd(buff, 128);
-    acvBoxFilter(tar, buff, 5);
-    buff->ChannelOffset(-1);
-    //acvCloneImage(buff,buff,0);
-    acvSaveBitmapFile("data/target_sobel.bmp", buff->ImageData, buff->GetWidth(), buff->GetHeight());
-}
-
-//Displacement, Scale, Aangle
-void acvLabeledPixelExtraction(acvImage *LabelPic, acv_LabeledData *target_info, int target_idx, std::vector<acv_XY> *retData)
-{
-    retData->clear();
-    int i, j;
-    BYTE *L;
-
-    for (i = target_info->LTBound.Y; i < target_info->RBBound.Y + 1; i++)
-    {
-        L = &(LabelPic->CVector[i][(int)target_info->LTBound.X * 3]);
-        for (j = target_info->LTBound.X; j < target_info->RBBound.X + 1; j++, L += 3)
-        {
-            _24BitUnion *lebel = (_24BitUnion *)L;
-
-            if (lebel->_3Byte.Num == target_idx)
-            {
-                acv_XY XY = {.X = j, .Y = i};
-                retData->push_back(XY);
-            }
-        }
-    }
-}
 
 void preprocess_IIR(acvImage *img, acvImage *buff)
 {
@@ -293,9 +249,6 @@ int testSignature()
     //image->RGBToGray();
     acvCloneImage(image, labelImg, -1);
     preprocess(labelImg, image, buff);
-    acvCloneImage(image, image, 0);
-    acvSaveBitmapFile("data/image.bmp",image);
-
     t = clock() - t;
     printf("%fms .preprocess.\n", ((double)t) / CLOCKS_PER_SEC * 1000);
     t = clock();
@@ -325,7 +278,7 @@ int testSignature()
         float AngleDiff = SignatureAngleMatching(signature, tar_signature, &error);
 
         //******************Sub-pixel leel refinment
-        acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
+        bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
         bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);
         //spp.NN.layers[0].printW();
         //END ********************Sub-pixel leel refinment

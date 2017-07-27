@@ -143,6 +143,26 @@ void acvLabeledSignatureByContour(acvImage  *LabeledPic,
 }
 */
 
+float acvSpatialMatchingError(acvImage  *Pic,acv_XY *PicPtList,
+                                 acvImage *targetMap,acv_XY *TarPtList,int ListL)
+{
+    float errorSum=0;
+
+    //  []
+    //[][][]
+    //  []
+    for(int i=0; i<ListL; i++)
+    {
+        acv_XY tarpt=TarPtList[i];
+        acv_XY picpt=PicPtList[i];
+        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
+                        acvUnsignedMap1Sampling(targetMap,tarpt));
+
+        error*=error;
+        errorSum+=error;
+    }
+    return errorSum;
+}
 
 //Displacement, Scale, Aangle
 float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
@@ -158,8 +178,7 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
     {
         acv_XY tarpt=TarPtList[i];
         acv_XY picpt=PicPtList[i];
-        float error=(
-                        acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
+        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
                         acvUnsignedMap1Sampling(targetMap,tarpt));
 
         acv_XY gradient=acvSignedMap2Sampling_Nearest(targetGradient,tarpt);
@@ -341,8 +360,7 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
     float error;
     //fine search
     for (int i = 0; i < 2 * fineSreachRadious + 1; i++, searchHead++)
-    { 
-
+    {
         error = SignatureMatchingError(signature, searchHead, tar_signature, 1);
         if (minErr > error)
         {

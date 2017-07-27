@@ -19,7 +19,8 @@
 #include "acvImage_BasicTool.hpp"
 #include "acvImage_ComponentLabelingTool.hpp"
 
-
+float acvSpatialMatchingError(acvImage  *Pic,acv_XY *PicPtList,
+                                 acvImage *targetMap,acv_XY *TarPtList,int ListL);
 float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
                                  acvImage *targetMap,acvImage *targetSobel,acv_XY *TarPtList,
                                  acv_XY *ErrorGradientList,int ListL);

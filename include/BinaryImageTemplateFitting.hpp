@@ -7,6 +7,7 @@
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 #include "acvImage_BasicTool.hpp"
+#include <float.h>
 
 #include "acvImage_MophologyTool.hpp"
 #include "acvImage_SpDomainTool.hpp"
@@ -71,8 +72,9 @@ public:
 
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());
-      float alpha = 6;
-      float alphaDown = (alpha - 0.2) / iterCount;
+      float alpha = 7;
+      float alphaDown = (alpha - 0.3) / iterCount;
+      float minErr=FLT_MAX;
       for (int j = 0; j < iterCount; j++) //Iteration
       {
 
@@ -85,6 +87,7 @@ public:
                         tarImg, tarDistGradient, &(mappedXY[0]),
                         &(errorXY[0]), regionSampleXY.size());
 
+          error/=regionSampleXY.size();
           for (int k = 0; k < errorXY.size(); k += 1)
           {
               error_gradient[k][0] = -errorXY[k].X / (errorXY.size() * 256 * 128);
@@ -110,15 +113,16 @@ public:
           NN.layers[0].W[1][0] = a10;
           NN.layers[0].W[1][1] = a00;
 
+          if(minErr>error)minErr=error;
           /*if(j%1!=0)continue;
           continue;*/
           if (j != iterCount - 1)
               continue;
-          printf(">er:%f %f %f %f\n",error,
+          printf(">er:%f, mer:%f, %f %f %f\n",error,minErr,
                  NN.layers[0].W[2][0], NN.layers[0].W[2][1],
                  180 / M_PI * atan2(NN.layers[0].W[1][0] - NN.layers[0].W[0][1], NN.layers[0].W[0][0] + NN.layers[0].W[1][1]));
 
-          if(error>75000)
+          if(minErr>75)
           {
             printf("BAD!!!!!\n");
           }
@@ -142,7 +146,7 @@ public:
 
               }
           }
-          if(error>75000)
+          if(minErr>75)
           {
             acvDrawCrossX(&buff, 20, 20, 10,255,0,0,5);
           }
@@ -195,6 +199,28 @@ public:
       }
   }
 
+  //Displacement, Scale, Aangle
+  void acvLabeledPixelExtraction(acvImage *LabelPic, acv_LabeledData *target_info, int target_idx, std::vector<acv_XY> *retData)
+  {
+      retData->clear();
+      int i, j;
+      BYTE *L;
+
+      for (i = target_info->LTBound.Y; i < target_info->RBBound.Y + 1; i++)
+      {
+          L = &(LabelPic->CVector[i][(int)target_info->LTBound.X * 3]);
+          for (j = target_info->LTBound.X; j < target_info->RBBound.X + 1; j++, L += 3)
+          {
+              _24BitUnion *lebel = (_24BitUnion *)L;
+
+              if (lebel->_3Byte.Num == target_idx)
+              {
+                  acv_XY XY = {.X = j, .Y = i};
+                  retData->push_back(XY);
+              }
+          }
+      }
+  }
 
 };
 
