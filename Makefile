@@ -1,10 +1,10 @@
 
 target_bin=visSele
 ODIR=obj
-IDIR=acvImage/include/ MLNN/include/ ./
+IDIR=acvImage/include/ MLNN/include/ include/
 _OBJ = hw.o
 EXT_OBJS= $(shell find acvImage/obj/*) $(shell find MLNN/obj/*)
-ESS_TRACK= $(shell find acvImage/include/*) $(shell find MLNN/include/*)
+ESS_TRACK= $(shell find acvImage/include/*) $(shell find MLNN/include/*) $(shell find include/*)
 SUB_MAKEFILES = acvImage MLNN
 MakeTemplate:= $(shell pwd)/Makefile.in
 export FLAGS= -w -O3
