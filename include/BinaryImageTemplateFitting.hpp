@@ -56,19 +56,19 @@ public:
       //****************************************
   }
 
-  void find_subpixel_params(vector<acv_XY> &tracking_region,acv_LabeledData &src_ldData,
+  void find_subpixel_params(vector<acv_XY> &tar_region,acv_LabeledData &src_ldData,
                             float AngleDiff, int iterCount)
   {
       static int idx_c = 0;
       float scale = 1;
       //init W params
-      NN.layers[0].W[0][0] = cos(AngleDiff) * scale; //Rough angle from signature
-      NN.layers[0].W[1][0] = sin(AngleDiff) * scale;
+      NN.layers[0].W[0][0] = cos(-AngleDiff) * scale; //Rough angle from signature
+      NN.layers[0].W[1][0] = sin(-AngleDiff) * scale;
       NN.layers[0].W[1][1] = NN.layers[0].W[0][0];
       NN.layers[0].W[0][1] = -NN.layers[0].W[1][0];
 
-      NN.layers[0].W[2][0] = (tar_ldData.Center.X - src_ldData.Center.X); //rough offset from lebeling
-      NN.layers[0].W[2][1] = (tar_ldData.Center.Y - src_ldData.Center.Y);
+      NN.layers[0].W[2][0] = -(tar_ldData.Center.X - src_ldData.Center.X); //rough offset from lebeling
+      NN.layers[0].W[2][1] = -(tar_ldData.Center.Y - src_ldData.Center.Y);
 
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());

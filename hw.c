@@ -82,16 +82,14 @@ void preprocess(acvImage *img,
     acvBoxFilter(buff, img, 5);
     acvThreshold(img, 255 - 15, 0);
 }
-void Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv_XY> &signature, acv_LabeledData &signInfo)
+void Target_prep_dist(acvImage *soft_target, acvImage *label_target, acvImage *target_DistGradient, vector<acv_XY> &signature, acv_LabeledData &signInfo)
 {
-    acvLoadBitmapFile(target, "data/target.bmp");
-    acvImage *sign = new acvImage();
+    acvLoadBitmapFile(soft_target, "data/target.bmp");
     acvImage *tmp = new acvImage();
-    target_DistGradient->ReSize(target->GetWidth(), target->GetHeight());
-    tmp->ReSize(target->GetWidth(), target->GetHeight());
-    sign->ReSize(target->GetWidth(), target->GetHeight());
+    target_DistGradient->ReSize(soft_target->GetWidth(), soft_target->GetHeight());
+    tmp->ReSize(soft_target->GetWidth(), soft_target->GetHeight());
 
-    acvCloneImage(target, tmp, -1);
+    acvCloneImage(soft_target, tmp, -1);
 
     int mul = 1;
     acvDistanceTransform_Chamfer(tmp, 5 * mul, 7 * mul);
@@ -124,22 +122,21 @@ void Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<ac
     target_DistGradient->ChannelOffset(-1);
     //acvScalingSobelResult_n(target_DistGradient);
 
-    acvCloneImage(target, sign, -1);
+    label_target->ReSize(soft_target->GetWidth(), soft_target->GetHeight());
+    acvCloneImage(soft_target, label_target, -1);
     //Generate signature
-    preprocess(sign, target, tmp);
+    preprocess(label_target, soft_target, tmp);
 
-    acvComponentLabeling(sign);
+    acvComponentLabeling(label_target);
 
     std::vector<acv_LabeledData> ldData;
-    acvLabeledRegionInfo(sign, &ldData);
+    acvLabeledRegionInfo(label_target, &ldData);
     for (int i = 1; i < ldData.size(); i++)
     {
         //printf("%d:%03d %f %f\n",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y) ;
-        acvContourCircleSignature(sign, ldData[i], i, signature);
+        acvContourCircleSignature(label_target, ldData[i], i, signature);
         signInfo = ldData[i];
     }
-
-    delete (sign);
     delete (tmp);
     return;
 }
@@ -227,10 +224,12 @@ int testSignature()
 
     vector<acv_XY> tar_signature(360);
     acv_LabeledData tar_ldData;
-    acvImage *target = new acvImage();
+    acvImage *target_soft = new acvImage();
+    acvImage *target_label = new acvImage();
     acvImage *target_DistGradient = new acvImage();
-    Target_prep_dist(target, target_DistGradient, tar_signature, tar_ldData);
-    //return 0;
+
+    Target_prep_dist(target_soft,target_label, target_DistGradient, tar_signature, tar_ldData);
+
 
     acvImage *image = new acvImage();
     acvImage *labelImg = new acvImage();
@@ -240,7 +239,7 @@ int testSignature()
     buff->ReSize(image->GetWidth(), image->GetHeight());
     labelImg->ReSize(image->GetWidth(), image->GetHeight());
     vector<acv_XY> signature(tar_signature.size());
-    BinaryImageTemplateFitting bitf(tar_ldData, target, image, target_DistGradient);
+    BinaryImageTemplateFitting bitf(tar_ldData, target_soft, image, target_DistGradient);
 
     std::vector<acv_XY> regionXY_;
 
@@ -278,7 +277,7 @@ int testSignature()
         float AngleDiff = SignatureAngleMatching(signature, tar_signature, &error);
 
         //******************Sub-pixel leel refinment
-        bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
+        bitf.acvLabeledPixelExtraction(target_label, &tar_ldData, 1, &regionXY_);
         bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);
         //spp.NN.layers[0].printW();
         //END ********************Sub-pixel leel refinment
