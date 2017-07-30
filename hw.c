@@ -72,7 +72,12 @@ void preprocess(acvImage *img,
 int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv_XY> &signature, acv_LabeledData &signInfo)
 {
     int ret=0;
-    acvLoadBitmapFile(target, "data/target.bmp");
+    ret=acvLoadBitmapFile(target, "data/target.bmp");
+    if(ret!=0)
+    {
+      printf("%s:Cannot find data/target.bmp....\n",__func__);
+      return ret;
+    }
     acvImage *sign = new acvImage();
     acvImage *tmp = new acvImage();
     target_DistGradient->ReSize(target->GetWidth(), target->GetHeight());
@@ -115,8 +120,16 @@ int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv
     acvCloneImage(target, sign, -1);
     //Generate signature
     preprocess(sign, target, tmp);
-    acvLoadBitmapFile(tmp, "data/target_area.bmp");
-    acvCloneImage_single(tmp,1,target,1);
+    ret=acvLoadBitmapFile(tmp, "data/target_area.bmp");
+    if(ret!=0)
+    {
+      printf("%s:Cannot find data/target_area.bmp, Use global matching instead!!\n",__func__);
+      acvClear(target,1,255);
+    }
+    else
+    {
+      acvCloneImage_single(tmp,1,target,1);
+    }
     acvSaveBitmapFile("data/target_soft.bmp", target);
     acvComponentLabeling(sign);
 
@@ -131,7 +144,7 @@ int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv
 
     delete (sign);
     delete (tmp);
-    return;
+    return 0;
 }
 
 void Target_prep_sobel(acvImage *target, acvImage *target_DistGradient)
@@ -219,14 +232,25 @@ int testSignature()
     acv_LabeledData tar_ldData;
     acvImage *target = new acvImage();
     acvImage *target_DistGradient = new acvImage();
-    Target_prep_dist(target, target_DistGradient, tar_signature, tar_ldData);
+    int ret=0;
+    ret=Target_prep_dist(target, target_DistGradient, tar_signature, tar_ldData);
+    if(ret!=0)
+    {
+      printf("%s:Cannot init target....\n",__func__);
+      return ret;
+    }
     //return 0;
 
     acvImage *image = new acvImage();
     acvImage *labelImg = new acvImage();
     acvImage *buff = new acvImage();
     std::vector<acv_LabeledData> ldData;
-    acvLoadBitmapFile(image, "data/test1.bmp");
+    ret=acvLoadBitmapFile(image, "data/test1.bmp");
+    if(ret!=0)
+    {
+      printf("%s:Cannot find data/test1.bmp....\n",__func__);
+      return ret;
+    }
     buff->ReSize(image->GetWidth(), image->GetHeight());
     labelImg->ReSize(image->GetWidth(), image->GetHeight());
     vector<acv_XY> signature(tar_signature.size());
@@ -287,9 +311,9 @@ int testSignature()
 #include <vector>
 int main()
 {
-    testSignature();
-
     int ret = 0;
+    ret = testSignature();
+
     printf("Hello, World! %d", ret);
     return ret;
 }
