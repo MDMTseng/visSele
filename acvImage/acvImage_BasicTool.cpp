@@ -323,7 +323,21 @@ defalut:
         }
     }
 }
+void acvCloneImage_single(acvImage *OriPic, int layer_ori, acvImage *OutPic, int layer_out)
+{
 
+    BYTE *OutLine, *OriLine;
+
+    for (int i = 0; i < OriPic->GetHeight(); i++)
+    {
+        OutLine = OutPic->CVector[i] + layer_out;
+        OriLine = OriPic->CVector[i] + layer_ori;
+        for (int j = 0; j < OriPic->GetWidth(); j++,OutLine+=3,OriLine+=3)
+        {
+            OutLine[0]=OriLine[0];
+        }
+    }
+}
 char *PrintHexArr_buff(char *strBuff, int strBuffL, char *data, int dataL)
 {
     char *buffptr = strBuff;
@@ -420,7 +434,7 @@ unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHea
     return bitmapImage;
 }
 
-unsigned int acvLoadBitmapFile(acvImage *img, char *filename)
+int acvLoadBitmapFile(acvImage *img, char *filename)
 {
 
     BITMAPINFOHEADER bitmapInfoHeader;

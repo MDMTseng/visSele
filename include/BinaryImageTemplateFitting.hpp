@@ -87,7 +87,6 @@ public:
                         tarImg, tarDistGradient, &(mappedXY[0]),
                         &(errorXY[0]), regionSampleXY.size());
 
-          error/=regionSampleXY.size();
           for (int k = 0; k < errorXY.size(); k += 1)
           {
               error_gradient[k][0] = -errorXY[k].X / (errorXY.size() * 256 * 128);

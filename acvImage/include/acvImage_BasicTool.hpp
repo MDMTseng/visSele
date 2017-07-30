@@ -45,11 +45,12 @@ double acvFAtan(double x);
 void acvFullB2W(acvImage *OriPic,acvImage *OutPic);
 void acvClone_B2Gray(acvImage *OriPic,acvImage *OutPic);
 void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode);
+void acvCloneImage_single(acvImage *OriPic, int layer_ori, acvImage *OutPic, int layer_out);
 
 char *PrintHexArr_buff(char *strBuff,int strBuffL,char *data, int dataL);
 char *PrintHexArr(char *data, int dataL);
 unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
-unsigned int acvLoadBitmapFile(acvImage *img,char *filename);
+int acvLoadBitmapFile(acvImage *img,char *filename);
 int acvSaveBitmapFile(char *filename,unsigned char* pixData,int width,int height);
 int acvSaveBitmapFile(char *filename,acvImage *img);
 #define div_round(dividend, divisor) (((int)(dividend) + ((int)(divisor) >>1)) / (int)(divisor))

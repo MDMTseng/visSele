@@ -56,19 +56,6 @@ void acvScalingSobelResult_n(acvImage *src)
     }
 }
 
-
-void preprocess_IIR(acvImage *img, acvImage *buff)
-{
-    //acvBoxFilter(buff,img,4);
-
-    acvIIROrder1Filter(buff, img, 2);
-    acvThreshold(img, 100, 1);
-
-    acvIIROrder1Filter(buff, img, 2);
-    //acvBoxFilter(buff,img,5);
-    acvThreshold(img, 255 - 15, 1);
-}
-
 void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
@@ -82,8 +69,9 @@ void preprocess(acvImage *img,
     acvBoxFilter(buff, img, 5);
     acvThreshold(img, 255 - 15, 0);
 }
-void Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv_XY> &signature, acv_LabeledData &signInfo)
+int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv_XY> &signature, acv_LabeledData &signInfo)
 {
+    int ret=0;
     acvLoadBitmapFile(target, "data/target.bmp");
     acvImage *sign = new acvImage();
     acvImage *tmp = new acvImage();
@@ -127,7 +115,9 @@ void Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<ac
     acvCloneImage(target, sign, -1);
     //Generate signature
     preprocess(sign, target, tmp);
-
+    acvLoadBitmapFile(tmp, "data/target_area.bmp");
+    acvCloneImage_single(tmp,1,target,1);
+    acvSaveBitmapFile("data/target_soft.bmp", target);
     acvComponentLabeling(sign);
 
     std::vector<acv_LabeledData> ldData;
@@ -271,28 +261,25 @@ int testSignature()
 
     for (int i = 1; i < ldData.size(); i++)
     {
-        printf("%s:=====%d=======\n", __func__, i);
+        //printf("%s:=====%d=======\n", __func__, i);
         acvContourCircleSignature(labelImg, ldData[i], i, signature);
 
         float error;
         float AngleDiff = SignatureAngleMatching(signature, tar_signature, &error);
 
-        //******************Sub-pixel leel refinment
         bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);
+        bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);//Global fitting
         //spp.NN.layers[0].printW();
-        //END ********************Sub-pixel leel refinment
 
-        t = clock() - t;
-        printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
         //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
         /*
         drawSignatureInfo(image,
           ldData[i],signature,
           tar_ldData,tar_signature,AngleDiff);*/
-        t = clock();
     }
 
+    t = clock() - t;
+    printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
     //acvLabeledColorDispersion(image,image,ldData.size()/20+5);
     //acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
 }

@@ -155,11 +155,11 @@ float acvSpatialMatchingError(acvImage  *Pic,acv_XY *PicPtList,
     {
         acv_XY tarpt=TarPtList[i];
         acv_XY picpt=PicPtList[i];
-        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
-                        acvUnsignedMap1Sampling(targetMap,tarpt));
+        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt,0)-
+                        acvUnsignedMap1Sampling(targetMap,tarpt,0));
 
         error*=error;
-        errorSum+=error;
+        errorSum+=error*acvUnsignedMap1Sampling_Nearest(targetMap,tarpt,1);
     }
     return errorSum;
 }
@@ -174,12 +174,16 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
     //  []
     //[][][]
     //  []
+    float normalFactor=0;
     for(int i=0; i<ListL; i++)
     {
         acv_XY tarpt=TarPtList[i];
         acv_XY picpt=PicPtList[i];
-        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt)-
-                        acvUnsignedMap1Sampling(targetMap,tarpt));
+        float weight=acvUnsignedMap1Sampling_Nearest(targetMap,tarpt,1)/255;
+        normalFactor+=weight;
+        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt,0)-
+                        acvUnsignedMap1Sampling(targetMap,tarpt,0))
+                        *weight;
 
         acv_XY gradient=acvSignedMap2Sampling_Nearest(targetGradient,tarpt);
         //error=(error<0)?-128:128;
@@ -193,7 +197,7 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
         error*=error;
         errorSum+=error;
     }
-    return errorSum;
+    return errorSum/normalFactor;
 }
 
 int interpolateSignData(std::vector<acv_XY> &signature,int start,int end)
