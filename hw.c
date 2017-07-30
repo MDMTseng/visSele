@@ -60,7 +60,8 @@ void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
 {
-    acvBoxFilter(buff, img, 4);
+    acvBoxFilter(buff, img, 2);
+    acvBoxFilter(buff, img, 2);
     acvThreshold_single(img, 100, 0);
     acvCloneImage(img, img_thin_blur, -1);
     acvBoxFilter(buff, img_thin_blur, 3);
@@ -87,6 +88,7 @@ int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv
     acvCloneImage(target, tmp, -1);
 
     int mul = 1;
+    acvThreshold(tmp,128);
     acvDistanceTransform_Chamfer(tmp, 5 * mul, 7 * mul);
     //acvDistanceTransform_ChamferX(ss);
     acvInnerFramePixCopy(tmp, 1);

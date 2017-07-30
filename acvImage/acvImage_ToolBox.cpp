@@ -181,7 +181,7 @@ float acvSpatialMatchingGradient(acvImage  *Pic,acv_XY *PicPtList,
         acv_XY picpt=PicPtList[i];
         float weight=acvUnsignedMap1Sampling_Nearest(targetMap,tarpt,1)/255;
         normalFactor+=weight;
-        float error=(   acvUnsignedMap1Sampling_Nearest(Pic,picpt,0)-
+        float error=(   acvUnsignedMap1Sampling(Pic,picpt,0)-
                         acvUnsignedMap1Sampling(targetMap,tarpt,0))
                         *weight;
 

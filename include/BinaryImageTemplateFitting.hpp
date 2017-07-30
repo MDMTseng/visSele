@@ -121,18 +121,19 @@ public:
                  NN.layers[0].W[2][0], NN.layers[0].W[2][1],
                  180 / M_PI * atan2(NN.layers[0].W[1][0] - NN.layers[0].W[0][1], NN.layers[0].W[0][0] + NN.layers[0].W[1][1]));
 
-          if(minErr>75)
+          /*if(minErr>75)
           {
             printf("BAD!!!!!\n");
-          }
-          continue;
+          }*/
+          //if(true)continue;
           //sleep(1);
 
           acvImage buff;
           buff.ReSize(tarImg->GetWidth(), tarImg->GetHeight());
 
-          acvCloneImage(tarImg, &buff, 2);
-
+          //acvCloneImage(tarImg, &buff, 2);
+          acvClear(&buff,0);
+          error=0;
           for (int k = 0; k < tracking_region.size() / regionSampleXY.size(); k++)
           {
               sampleXYFromRegion_Seq(regionSampleXY, tracking_region,
@@ -140,13 +141,25 @@ public:
               DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center, 1);
               for (int m = 0; m < mappedXY.size(); m++)
               {
-                  buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 2] =
-                      255 - srcImg->CVector[(int)round(regionSampleXY[m].Y)][(int)round(regionSampleXY[m].X) * 3 + 2];
-
+                    int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
+                    int s=(int)acvUnsignedMap1Sampling(srcImg, regionSampleXY[m], 0);
+                    t-=s;
+                    if(t<0)
+                    {
+                      t=-t;
+                      buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 1] =t;
+                    }
+                    else
+                    {
+                      buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 2] =t;
+                    }
+                    error+=t;
               }
           }
-          if(minErr>75)
+            printf("ferror::%f\n",error);
+          if(error>100000)
           {
+            printf("BAD!!!!!\n");
             acvDrawCrossX(&buff, 20, 20, 10,255,0,0,5);
           }
           //acvClear(&buff,128,1);
