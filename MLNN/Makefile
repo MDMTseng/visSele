@@ -1,6 +1,6 @@
 
 
-ESS_TRACK= $(shell find include/*)
+ESS_TRACK= $(wildcard include/*)
 IDIR=./include/
 ODIR=obj
 _OBJ = MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
