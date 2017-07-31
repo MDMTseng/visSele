@@ -56,7 +56,7 @@ public:
       //****************************************
   }
 
-  void find_subpixel_params(vector<acv_XY> &tracking_region,acv_LabeledData &src_ldData,
+  float find_subpixel_params(vector<acv_XY> &tracking_region,acv_LabeledData &src_ldData,
                             float AngleDiff, int iterCount)
   {
       static int idx_c = 0;
@@ -75,6 +75,7 @@ public:
       float alpha = 12;
       float alphaDown = (alpha - 0.5) / iterCount;
       float minErr=FLT_MAX;
+      float error;
       for (int j = 0; j < iterCount; j++) //Iteration
       {
 
@@ -83,7 +84,7 @@ public:
           DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center, 1);
 
           //return;
-          float error = acvSpatialMatchingGradient(srcImg, &(regionSampleXY[0]),
+          error = acvSpatialMatchingGradient(srcImg, &(regionSampleXY[0]),
                         tarImg, tarDistGradient, &(mappedXY[0]),
                         &(errorXY[0]), regionSampleXY.size());
 
@@ -112,14 +113,17 @@ public:
           NN.layers[0].W[1][0] = a10;
           NN.layers[0].W[1][1] = a00;
 
-          if(minErr>error)minErr=error;
+          //if(minErr>error)minErr=error;
+          if(minErr==FLT_MAX)
+            minErr=error;
+          else
+            minErr+=0.5*(error-minErr);
           /*if(j%1!=0)continue;
           continue;*/
-          if (j != iterCount - 1)
-              continue;
-          printf(">er:%f, mer:%f, %f %f %f\n",error,minErr,
+
+          /*printf(">er:%f, mer:%f, %f %f %f\n",error,minErr,
                  NN.layers[0].W[2][0], NN.layers[0].W[2][1],
-                 180 / M_PI * atan2(NN.layers[0].W[1][0] - NN.layers[0].W[0][1], NN.layers[0].W[0][0] + NN.layers[0].W[1][1]));
+                 180 / M_PI * atan2(NN.layers[0].W[1][0] - NN.layers[0].W[0][1], NN.layers[0].W[0][0] + NN.layers[0].W[1][1]));*/
 
           /*if(minErr>75)
           {
@@ -128,48 +132,46 @@ public:
           //if(true)continue;
           //sleep(1);
 
-          acvImage buff;
-          buff.ReSize(tarImg->GetWidth(), tarImg->GetHeight());
-
-          //acvCloneImage(tarImg, &buff, 2);
-          acvClear(&buff,0);
-          error=0;
-          for (int k = 0; k < tracking_region.size() / regionSampleXY.size(); k++)
-          {
-              sampleXYFromRegion_Seq(regionSampleXY, tracking_region,
-                                     k * regionSampleXY.size(), regionSampleXY.size());
-              DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center, 1);
-              for (int m = 0; m < mappedXY.size(); m++)
-              {
-                    int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
-                    int s=(int)acvUnsignedMap1Sampling(srcImg, regionSampleXY[m], 0);
-                    t-=s;
-                    if(t<0)
-                    {
-                      t=-t;
-                      buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 1] =t;
-                    }
-                    else
-                    {
-                      buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 2] =t;
-                    }
-                    error+=t;
-              }
-          }
-            printf("ferror::%f\n",error);
-          if(error>100000)
-          {
-            printf("BAD!!!!!\n");
-            acvDrawCrossX(&buff, 20, 20, 10,255,0,0,5);
-          }
-          //acvClear(&buff,128,1);
-
-          acvContrast(&buff,&buff,0,1,1);
-          acvContrast(&buff,&buff,0,1,2);
-          char name[100];
-          sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
-          acvSaveBitmapFile(name, &buff);
       }
+
+
+      /*acvImage buff;
+      buff.ReSize(tarImg->GetWidth(), tarImg->GetHeight());
+
+      acvCloneImage(tarImg, &buff, 2);
+      acvClear(&buff,0);*/
+      error=0;
+      for (int k = 0; k < tracking_region.size() / regionSampleXY.size(); k++)
+      {
+          sampleXYFromRegion_Seq(regionSampleXY, tracking_region,
+                                 k * regionSampleXY.size(), regionSampleXY.size());
+          DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center, 1);
+          for (int m = 0; m < mappedXY.size(); m++)
+          {
+                int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
+                int s=(int)acvUnsignedMap1Sampling(srcImg, regionSampleXY[m], 0);
+                t-=s;
+                /*if(t<0)
+                {
+                  t=-t;
+                  buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 1] =t;
+                }
+                else
+                {
+                  buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 2] =t;
+                }*/
+                error+=t*t;
+          }
+      }
+
+      //acvClear(&buff,128,1);
+      /*
+      acvContrast(&buff,&buff,0,1,1);
+      acvContrast(&buff,&buff,0,1,2);
+      char name[100];
+      sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
+      acvSaveBitmapFile(name, &buff);*/
+      return error;
   }
 
   void sampleXYFromRegion(vector<acv_XY> &sampleXY, const vector<acv_XY> &regionXY, int sampleCount)

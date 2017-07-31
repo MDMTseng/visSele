@@ -151,49 +151,6 @@ int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv
     return 0;
 }
 
-void Target_prep_sobel(acvImage *target, acvImage *target_DistGradient)
-{
-    acvLoadBitmapFile(target, "data/target.bmp");
-    acvImage *tmp = new acvImage();
-    target_DistGradient->ReSize(target->GetWidth(), target->GetHeight());
-    tmp->ReSize(target->GetWidth(), target->GetHeight());
-
-    acvThreshold(target, 128);
-    acvBoxFilter(tmp, target, 1);
-    acvBoxFilter(tmp, target, 1);
-    acvCloneImage(target, tmp, 1);
-    acvCloneImage(target, target, 0);
-
-    int mul = 1;
-    acvDistanceTransform_Chamfer(tmp, 5 * mul, 7 * mul);
-    //acvDistanceTransform_ChamferX(ss);
-    acvInnerFramePixCopy(tmp, 1);
-
-    acvDistanceTransform_Sobel(target_DistGradient, tmp);
-    acvInnerFramePixCopy(target_DistGradient, 2);
-    acvInnerFramePixCopy(target_DistGradient, 1);
-    acvScalingSobelResult_n(target_DistGradient);
-
-    /*
-
-    acvImageAdd(target_DistGradient,128);
-    acvBoxFilter(tmp,target_DistGradient,15);
-    acvBoxFilter(tmp,target_DistGradient,15);
-    acvImageAdd(target_DistGradient,-128);
-    target_DistGradient->ChannelOffset(1);
-    acvImageAdd(target_DistGradient,128);
-    acvBoxFilter(tmp,target_DistGradient,15);
-    acvBoxFilter(tmp,target_DistGradient,15);
-    //acvBoxFilter(ss,distGradient,15);
-    acvImageAdd(target_DistGradient,-128);
-    target_DistGradient->ChannelOffset(-1);
-    acvScalingSobelResult_n(target_DistGradient);
-
-    */
-    delete (tmp);
-    return;
-}
-
 
 void drawSignatureInfo(acvImage *img,
                        const acv_LabeledData &ldData, const vector<acv_XY> &signature,
@@ -292,11 +249,21 @@ int testSignature()
         //printf("%s:=====%d=======\n", __func__, i);
         acvContourCircleSignature(labelImg, ldData[i], i, signature);
 
-        float error;
-        float AngleDiff = SignatureAngleMatching(signature, tar_signature, &error);
+        float sign_error;
+        float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
 
         bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 20);//Global fitting
+        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);//Global fitting
+
+        printf(">%d>sign error:%f\n",i,sign_error);
+        if(refine_error>200000)
+        {
+          printf("refine error:%f  BAD..\n\n",refine_error);
+        }
+        else
+        {
+          printf("refine error:%f\n\n",refine_error);
+        }
         //spp.NN.layers[0].printW();
 
         //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
