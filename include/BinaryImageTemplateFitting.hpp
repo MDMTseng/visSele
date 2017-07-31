@@ -134,12 +134,14 @@ public:
 
       }
 
-
-      /*acvImage buff;
-      buff.ReSize(tarImg->GetWidth(), tarImg->GetHeight());
-
-      acvCloneImage(tarImg, &buff, 2);
-      acvClear(&buff,0);*/
+      bool ifOutputImg=false;
+      acvImage buff;
+      if(ifOutputImg)
+      {
+        buff.ReSize(tarImg->GetWidth(), tarImg->GetHeight());
+        acvCloneImage(tarImg, &buff, 2);
+        acvClear(&buff,0);
+      }
       error=0;
       for (int k = 0; k < tracking_region.size() / regionSampleXY.size(); k++)
       {
@@ -151,26 +153,34 @@ public:
                 int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
                 int s=(int)acvUnsignedMap1Sampling(srcImg, regionSampleXY[m], 0);
                 t-=s;
-                /*if(t<0)
+
+
+                if(ifOutputImg)
                 {
-                  t=-t;
-                  buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 1] =t;
+                  if(t<0)
+                  {
+                    t=-t;
+                    buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 1] =t;
+                  }
+                  else
+                  {
+                    buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 2] =t;
+                  }
                 }
-                else
-                {
-                  buff.CVector[(int)round(mappedXY[m].Y)][(int)round(mappedXY[m].X) * 3 + 2] =t;
-                }*/
                 error+=t*t;
           }
       }
+      error/=(tracking_region.size() / regionSampleXY.size())* regionSampleXY.size();
 
       //acvClear(&buff,128,1);
-      /*
-      acvContrast(&buff,&buff,0,1,1);
-      acvContrast(&buff,&buff,0,1,2);
-      char name[100];
-      sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
-      acvSaveBitmapFile(name, &buff);*/
+      if(ifOutputImg)
+      {
+        acvContrast(&buff,&buff,0,1,1);
+        acvContrast(&buff,&buff,0,1,2);
+        char name[100];
+        sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
+        acvSaveBitmapFile(name, &buff);
+      }
       return error;
   }
 

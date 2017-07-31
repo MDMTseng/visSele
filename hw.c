@@ -256,7 +256,7 @@ int testSignature()
         float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);//Global fitting
 
         printf(">%d>sign error:%f\n",i,sign_error);
-        if(refine_error>200000)
+        if(refine_error>20)
         {
           printf("refine error:%f  BAD..\n\n",refine_error);
         }
