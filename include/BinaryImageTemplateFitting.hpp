@@ -72,8 +72,8 @@ public:
 
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());
-      float alpha = 7;
-      float alphaDown = (alpha - 0.3) / iterCount;
+      float alpha = 12;
+      float alphaDown = (alpha - 0.5) / iterCount;
       float minErr=FLT_MAX;
       for (int j = 0; j < iterCount; j++) //Iteration
       {
@@ -163,6 +163,9 @@ public:
             acvDrawCrossX(&buff, 20, 20, 10,255,0,0,5);
           }
           //acvClear(&buff,128,1);
+
+          acvContrast(&buff,&buff,0,1,1);
+          acvContrast(&buff,&buff,0,1,2);
           char name[100];
           sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
           acvSaveBitmapFile(name, &buff);

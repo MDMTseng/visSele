@@ -47,6 +47,33 @@ void acvThreshold_single(acvImage *Pic, BYTE Var, int channel)
             }
     }
 }
+
+void acvContrast(acvImage *dst, acvImage *src, int offset, int shift,int channel)
+{
+    BYTE *srcLine,*dstLine;
+    int Height = src->GetROIOffsetY() + src->GetHeight(),
+        Width = src->GetROIOffsetX() + src->GetWidth();
+    for (int i = src->GetROIOffsetY(); i < Height; i++)
+    {
+        srcLine = src->CVector[i] + src->GetROIOffsetX() * 3+channel;
+        dstLine = dst->CVector[i] + dst->GetROIOffsetX() * 3+channel;
+        for (int j = src->GetROIOffsetX(); j < Width; j++,srcLine+=3,dstLine+=3)
+        {
+          int level = (srcLine[0]+offset);
+          if(level<0)
+          {
+            dstLine[0]=0;
+            continue;
+          }
+          level<<=shift;
+          if(level&(~0xFF))level=0xFF;
+          dstLine[0]=level;
+        }
+    }
+}
+
+
+
 void acvThreshold(acvImage *Pic, BYTE Var)
 {
     acvThreshold(Pic, Var, 0);

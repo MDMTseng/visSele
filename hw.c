@@ -60,15 +60,17 @@ void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
 {
-    acvBoxFilter(buff, img, 2);
-    acvBoxFilter(buff, img, 2);
-    acvThreshold_single(img, 100, 0);
-    acvCloneImage(img, img_thin_blur, -1);
-    acvBoxFilter(buff, img_thin_blur, 3);
-    //acvCloneImage(img_thin_blur,img_thin_blur,0);
+    acvBoxFilter(buff, img, 3);
+    acvBoxFilter(buff, img, 3);
 
-    acvBoxFilter(buff, img, 5);
-    acvThreshold(img, 255 - 15, 0);
+    //acvThreshold_single(img, 30, 0);
+    acvContrast(img,img,0,1,0);
+    acvCloneImage(img, img_thin_blur, 0);
+    //acvSaveBitmapFile("data/preprocess_1st.bmp", img_thin_blur);
+
+    acvBoxFilter(buff, img, 3);
+    acvThreshold(img, 250, 0);
+    //acvSaveBitmapFile("data/preprocess_2st.bmp", img);
 }
 int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv_XY> &signature, acv_LabeledData &signInfo)
 {
@@ -132,7 +134,7 @@ int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv
     {
       acvCloneImage_single(tmp,1,target,1);
     }
-    acvSaveBitmapFile("data/target_soft.bmp", target);
+    //return -1;
     acvComponentLabeling(sign);
 
     std::vector<acv_LabeledData> ldData;
@@ -294,7 +296,7 @@ int testSignature()
         float AngleDiff = SignatureAngleMatching(signature, tar_signature, &error);
 
         bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);//Global fitting
+        bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 20);//Global fitting
         //spp.NN.layers[0].printW();
 
         //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);

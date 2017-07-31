@@ -96,7 +96,7 @@ inline acv_XY acvSignedMap2Sampling_Nearest(acvImage *signedMap2, const acv_XY &
     return sample;
 }
 
-inline float acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1, const acv_XY &XY, int channel)
+inline BYTE acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1, const acv_XY &XY, int channel)
 {
 
     int rX = (int)round(XY.X);
