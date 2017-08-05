@@ -27,12 +27,14 @@ vector<vector<float> >& MLNN::get_input_vec()
 
 void MLNN::ForwardPass(const vector<vector<float> > &in)
 {
-
-    for(int i=0; i<in.size(); i++)
-        for(int j=0; j<in[i].size(); j++)
-        {
-            layers[0].InArr[i][j]=in[i][j];
-        }
+    if( &layers[0].InArr !=  &in)
+    {
+      for(int i=0; i<in.size(); i++)
+          for(int j=0; j<in[i].size(); j++)
+          {
+              layers[0].InArr[i][j]=in[i][j];
+          }
+    }
     ForwardPass();
 }
 void MLNN::ForwardPass()
