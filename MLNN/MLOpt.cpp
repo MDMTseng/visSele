@@ -16,7 +16,16 @@ MLOpt::MLOpt(MLNL &layer)
 MLOpt::MLOpt()
 {
 }
-
+void MLOpt::reset()
+{
+    for(int i=0; i<speed.size(); i++)
+    {
+        for(int j=0; j<speed[0].size(); j++)
+        {
+          speed[i][j]=0;
+        }
+    }
+}
 #include<stdio.h>
 void MLOpt::update_dW()
 {
@@ -32,5 +41,4 @@ void MLOpt::update_dW()
             speed[i][j]*=0.8;
         }
     }
-    //printf("\n");
 }

@@ -69,7 +69,7 @@ public:
 
       NN.layers[0].W[2][0] = (tar_ldData.Center.X - src_ldData.Center.X); //rough offset from lebeling
       NN.layers[0].W[2][1] = (tar_ldData.Center.Y - src_ldData.Center.Y);
-
+      MO.reset();
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());
       float alpha = 12;
@@ -81,7 +81,7 @@ public:
 
           sampleXYFromRegion(regionSampleXY, tracking_region, regionSampleXY.size());
 
-          DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center, 1);
+          DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center);
 
           //return;
           error = acvSpatialMatchingGradient(srcImg, &(regionSampleXY[0]),
@@ -147,7 +147,7 @@ public:
       {
           sampleXYFromRegion_Seq(regionSampleXY, tracking_region,
                                  k * regionSampleXY.size(), regionSampleXY.size());
-          DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center, 1);
+          DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center);
           for (int m = 0; m < mappedXY.size(); m++)
           {
                 int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
@@ -175,8 +175,8 @@ public:
       //acvClear(&buff,128,1);
       if(ifOutputImg)
       {
-        acvContrast(&buff,&buff,0,1,1);
-        acvContrast(&buff,&buff,0,1,2);
+        acvContrast(&buff,&buff,0,3,1);
+        acvContrast(&buff,&buff,0,3,2);
         char name[100];
         sprintf(name, "data/target_test_cover_%03d.bmp", idx_c++);
         acvSaveBitmapFile(name, &buff);
@@ -191,8 +191,8 @@ public:
       for (int i = 0; i < sampleCount; i++)
       {
 
-          int randIdx = i * regionXY.size() / sampleCount + offset + rand() % 50;
-          randIdx = randIdx % regionXY.size();
+          int randIdx = i * regionXY.size() / sampleCount + offset + (rand()&64 );
+          if(randIdx>=regionXY.size())randIdx-=regionXY.size();
           sampleXY.push_back(regionXY[randIdx]);
       }
   }
@@ -205,14 +205,14 @@ public:
           sampleXY.push_back(regionXY[from + i]);
       }
   }
-  void DotsTransform(std::vector<acv_XY> &XY, std::vector<acv_XY> &tXY, MLNN &NN, acv_XY transOffset, float scale)
+  void DotsTransform(std::vector<acv_XY> &XY, std::vector<acv_XY> &tXY, MLNN &NN, acv_XY transOffset)
   {
       vector<vector<float> > &in_vec = NN.get_input_vec();
       tXY.resize(XY.size());
       for (int j = 0; j < in_vec.size(); j++)
       {
-          in_vec[j][0] = (XY[j].X - transOffset.X) * scale;
-          in_vec[j][1] = (XY[j].Y - transOffset.Y) * scale;
+          in_vec[j][0] = (XY[j].X - transOffset.X);
+          in_vec[j][1] = (XY[j].Y - transOffset.Y);
       }
 
       MLNNUtil nu;
@@ -220,8 +220,8 @@ public:
       NN.ForwardPass();
       for (int j = 0; j < NN.p_pred_Y->size(); j++)
       {
-          tXY[j].X = (*NN.p_pred_Y)[j][0] / scale + transOffset.X;
-          tXY[j].Y = (*NN.p_pred_Y)[j][1] / scale + transOffset.Y;
+          tXY[j].X = (*NN.p_pred_Y)[j][0] + transOffset.X;
+          tXY[j].Y = (*NN.p_pred_Y)[j][1] + transOffset.Y;
           //printf(">>%f %f %f\n",(*NN.p_pred_Y)[j][1],tXY[j].X,tXY[j].Y);
       }
   }

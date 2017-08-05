@@ -96,6 +96,7 @@ public:
     MLOpt();
     MLOpt(MLNL &layer);
     void init (MLNL &layer);
+    void reset();
     void update_dW();
 };
 
