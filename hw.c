@@ -60,6 +60,7 @@ void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
 {
+    acvContrast(img,img,-100,1,0);
     acvBoxFilter(buff, img, 4);
     acvBoxFilter(buff, img, 4);
 
