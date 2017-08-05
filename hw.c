@@ -60,8 +60,8 @@ void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
 {
-    acvBoxFilter(buff, img, 3);
-    acvBoxFilter(buff, img, 3);
+    acvBoxFilter(buff, img, 4);
+    acvBoxFilter(buff, img, 4);
 
     //acvThreshold_single(img, 30, 0);
     acvContrast(img,img,0,1,0);
@@ -251,9 +251,22 @@ int testSignature()
 
         float sign_error;
         float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
+        float sign_error_rev;
+        SignatureReverse(signature,signature);
+        float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
+
+
+                printf(">sign_error:%f  sign_error_rev:%f\n",sign_error,sign_error_rev);
+        bool isInv=false;
+        if(sign_error>sign_error_rev)
+        {
+            isInv=true;
+            sign_error=sign_error_rev;
+            AngleDiff=-AngleDiff_rev;
+        }
 
         bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff, 10);//Global fitting
+        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv , 10);//Global fitting
 
         printf(">%d>sign error:%f\n",i,sign_error);
         if(refine_error>20)

@@ -57,15 +57,16 @@ public:
   }
 
   float find_subpixel_params(vector<acv_XY> &tracking_region,acv_LabeledData &src_ldData,
-                            float AngleDiff, int iterCount)
+                            float AngleDiff, bool Y_inv, int iterCount)
   {
       static int idx_c = 0;
       float scale = 1;
+      int inv_factor=Y_inv? -1:1;
       //init W params
       NN.layers[0].W[0][0] = cos(AngleDiff) * scale; //Rough angle from signature
       NN.layers[0].W[1][0] = sin(AngleDiff) * scale;
-      NN.layers[0].W[1][1] = NN.layers[0].W[0][0];
-      NN.layers[0].W[0][1] = -NN.layers[0].W[1][0];
+      NN.layers[0].W[1][1] = inv_factor*NN.layers[0].W[0][0];
+      NN.layers[0].W[0][1] = -inv_factor*NN.layers[0].W[1][0];
 
       NN.layers[0].W[2][0] = (tar_ldData.Center.X - src_ldData.Center.X); //rough offset from lebeling
       NN.layers[0].W[2][1] = (tar_ldData.Center.Y - src_ldData.Center.Y);
@@ -103,15 +104,15 @@ public:
           NN.reset_deltaW();
 
           //Limit transform to be only rotate and translate
-          float a00 = (NN.layers[0].W[0][0] + NN.layers[0].W[1][1]) / 2;
-          float a10 = (NN.layers[0].W[1][0] - NN.layers[0].W[0][1]) / 2;
+          float a00 = (NN.layers[0].W[0][0] + inv_factor*NN.layers[0].W[1][1]) / 2;
+          float a10 = (NN.layers[0].W[1][0] - inv_factor*NN.layers[0].W[0][1]) / 2;
           float LL = hypot(a00, a10);
           a00 /= LL;
           a10 /= LL;
           NN.layers[0].W[0][0] = a00;
-          NN.layers[0].W[0][1] = -a10;
           NN.layers[0].W[1][0] = a10;
-          NN.layers[0].W[1][1] = a00;
+          NN.layers[0].W[1][1] = inv_factor*a00;
+          NN.layers[0].W[0][1] = -inv_factor*a10;
 
           //if(minErr>error)minErr=error;
           if(minErr==FLT_MAX)

@@ -400,3 +400,37 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
         angle -= 2 * M_PI;
     return angle;
 }
+
+void SignatureReverse_SWAP(std::vector<acv_XY> &sign)
+{
+    acv_XY* arr=&(sign[0]);
+    int iterL=(sign.size()+1)/2; //3-4(iter 2),5-6 (iter 3)
+    int inv_i;
+    for(int i=1,inv_i=sign.size()-1;i<iterL;i++,inv_i--)
+    {
+      acv_XY tmp = arr[i];
+      arr[i]=arr[inv_i];
+      arr[inv_i]=tmp;
+    }
+}
+void SignatureReverse_ASSIGN(std::vector<acv_XY> &dst,std::vector<acv_XY> &src)
+{
+    dst.resize(src.size());
+    acv_XY* arr_dst=&(dst[0]);
+    acv_XY* arr_src=&(src[0]);
+    int inv_i;
+    arr_dst[0]=arr_src[0];
+    for(int i=1,inv_i=src.size()-1;i<src.size();i++,inv_i--)
+    {
+      arr_dst[i]=arr_src[inv_i];
+    }
+}
+void SignatureReverse(std::vector<acv_XY> &dst, std::vector<acv_XY> &src)
+{
+  if(&dst == &src){
+    SignatureReverse_SWAP(dst);
+  }
+  else{
+    SignatureReverse_ASSIGN(dst,src);
+  }
+}
