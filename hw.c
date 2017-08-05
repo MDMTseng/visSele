@@ -60,7 +60,6 @@ void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
 {
-    acvContrast(img,img,-100,1,0);
     acvBoxFilter(buff, img, 4);
     acvBoxFilter(buff, img, 4);
 
@@ -91,7 +90,13 @@ int Target_prep_dist(acvImage *target, acvImage *target_DistGradient, vector<acv
     acvCloneImage(target, tmp, -1);
 
     int mul = 1;
-    acvThreshold(tmp,128);
+
+    acvBoxFilter(sign,tmp, 1);
+    acvBoxFilter(sign,tmp, 1);
+    acvBoxFilter(sign,tmp, 1);
+    acvBoxFilter(sign,tmp, 1);
+    acvBoxFilter(sign,tmp, 1);
+    acvThreshold(tmp,30);
     acvDistanceTransform_Chamfer(tmp, 5 * mul, 7 * mul);
     //acvDistanceTransform_ChamferX(ss);
     acvInnerFramePixCopy(tmp, 1);
@@ -267,7 +272,7 @@ int testSignature()
         }
 
         bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv , 10);//Global fitting
+        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv , 5, 12, 1);//Global fitting
 
         printf(">%d>sign error:%f\n",i,sign_error);
         if(refine_error>20)

@@ -57,7 +57,7 @@ public:
   }
 
   float find_subpixel_params(vector<acv_XY> &tracking_region,acv_LabeledData &src_ldData,
-                            float AngleDiff, bool Y_inv, int iterCount)
+                            float AngleDiff, bool Y_inv, int iterCount, float alphaMax, float alphaMin)
   {
       static int idx_c = 0;
       float scale = 1;
@@ -73,8 +73,8 @@ public:
       MO.reset();
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());
-      float alpha = 12;
-      float alphaDown = (alpha - 0.5) / iterCount;
+      float alpha = alphaMax;
+      float alphaDown = (alpha - alphaMin) / iterCount;
       float minErr=FLT_MAX;
       float error;
       for (int j = 0; j < iterCount; j++) //Iteration
