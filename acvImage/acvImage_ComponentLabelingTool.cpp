@@ -69,7 +69,7 @@ BYTE *acvContourWalk(acvImage *Pic, int *X_io, int *Y_io, int *dir_io, int dirin
     }
     return NULL;
 }
-#include <unistd.h>
+//#include <unistd.h>
 int acvDrawContour(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char InitDir)
 {
     int NowPos[2] = {FromX, FromY};
@@ -287,4 +287,5 @@ int acvLabeledRegionInfo(acvImage *LabeledPic, std::vector<acv_LabeledData> *ret
         ld->Center.X /= ld->area;
         ld->Center.Y /= ld->area;
     }
+	return 0;
 }

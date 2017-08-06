@@ -2,7 +2,7 @@
 #define B_IMAGE_TEMPLATE_FITTING_HPP
 
 #include <stdio.h>
-#include <unistd.h>
+//#include <unistd.h>
 #include <time.h>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
@@ -243,7 +243,9 @@ public:
 
               if (lebel->_3Byte.Num == target_idx)
               {
-                  acv_XY XY = {.X = j, .Y = i};
+				  acv_XY XY;
+				  XY.X = j;
+				  XY.Y = i;
                   retData->push_back(XY);
               }
           }

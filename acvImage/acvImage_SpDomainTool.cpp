@@ -21,7 +21,7 @@ void acvBoxFilterY(acvImage *res, acvImage *src, int Size)
     BYTE *srcfront;
     BYTE *resfront;
     //printf("DIV_APPROX_BASE_SHIFT:%d   %d\n",DIV_APPROX_BASE_SHIFT, sizeof(TmpSum));
-    typeof(TmpSum) XMul = ((typeof(TmpSum))1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
+	DIV_APPROX_BASE_TYPE XMul = ((DIV_APPROX_BASE_TYPE)1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
     for (j = 0; j < width; j++)
     {
         TmpSum = 0;
@@ -59,7 +59,7 @@ void acvBoxFilterX(acvImage *res, acvImage *src, int Size)
     int height = src->GetHeight();
     BYTE *srcfront;
     BYTE *resfront;
-    typeof(TmpSum) XMul = ((typeof(TmpSum))1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
+	DIV_APPROX_BASE_TYPE XMul = ((DIV_APPROX_BASE_TYPE)1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
     for (i = 0; i < height; i++)
     {
         TmpSum = 0;

@@ -1,6 +1,8 @@
 #ifndef ACV_IMG_H
 #define ACV_IMG_H
 
+#define _USE_MATH_DEFINES
+#include <cmath> 
 
 #include <stddef.h>
 #include <stdio.h>
