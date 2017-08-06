@@ -195,7 +195,7 @@ void drawSignatureInfo(acvImage *img,
 int testSignature()
 {
 
-    vector<acv_XY> tar_signature(360);
+    vector<acv_XY> tar_signature(240);
     acv_LabeledData tar_ldData;
     acvImage *target = new acvImage();
     acvImage *target_DistGradient = new acvImage();

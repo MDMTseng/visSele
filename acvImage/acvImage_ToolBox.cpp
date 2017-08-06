@@ -392,7 +392,8 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
 float SignatureAngleMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, float *min_error)
 {
-    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, signature.size() / 160, min_error); //magic number
+    int roughSearchSampleRate=6;//magic number// signature.size() / 160;
+    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate, min_error);
     float angle = matchingIdx * 2 * M_PI / signature.size();
     if (angle < -M_PI)
         angle += 2 * M_PI;
