@@ -60,12 +60,26 @@ void preprocess(acvImage *img,
                 acvImage *img_thin_blur,
                 acvImage *buff)
 {
-    acvBoxFilter(buff, img, 4);
-    acvBoxFilter(buff, img, 4);
+    //acvIIROrder1Filter(buff, img, 1);
+        /*acvBoxFilter(buff, img, 2);
+        acvBoxFilter(buff, img, 2);
+        acvBoxFilter(buff, img, 2);
+        acvBoxFilter(buff, img, 2);
+        acvBoxFilter(buff, img, 2);
+        acvBoxFilter(buff, img, 2);
+        acvBoxFilter(buff, img, 2);*/
 
-    //acvThreshold_single(img, 30, 0);
+
+    acvBoxFilter(buff, img, 4);
+    acvBoxFilter(buff, img, 4);
     acvContrast(img,img,0,1,0);
     acvCloneImage(img, img_thin_blur, 0);
+
+
+/*
+    acvIIROrder1Filter(buff, img, 1);
+    acvContrast(img,img,0,1,0);
+    acvCloneImage(img, img_thin_blur, 1);*/
     //acvSaveBitmapFile("data/preprocess_1st.bmp", img_thin_blur);
 
     acvBoxFilter(buff, img, 3);
