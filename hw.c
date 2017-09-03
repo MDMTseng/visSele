@@ -263,7 +263,7 @@ int testSignature()
     t = clock() - t;
     printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
     t = clock();
-
+    float errorSum=0;
     for (int i = 1; i < ldData.size(); i++)
     {
         //printf("%s:=====%d=======\n", __func__, i);
@@ -286,8 +286,8 @@ int testSignature()
         }
 
         bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv , 5, 12, 1);//Global fitting
-
+        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv ,10, 7, 1);//Global fitting
+        errorSum+=refine_error;
         printf(">%d>sign error:%f\n",i,sign_error);
         if(refine_error>20)
         {
@@ -305,6 +305,7 @@ int testSignature()
           ldData[i],signature,
           tar_ldData,tar_signature,AngleDiff);*/
     }
+    printf("errorSum:%f ................\n\n",errorSum);
 
     t = clock() - t;
     printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);

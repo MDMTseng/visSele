@@ -22,6 +22,7 @@ class BinaryImageTemplateFitting
 
   vector<acv_XY> mappedXY;
   vector<acv_XY> errorXY;
+  vector<acv_XY> reduced_tracking_region;
 
   acv_LabeledData tar_ldData;
 
@@ -73,6 +74,22 @@ public:
       MO.reset();
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());
+
+      printf("tracking_region.size:%d\n",tracking_region.size());
+      float adjAlpha=1;
+      if(1)
+      {
+          adjAlpha = rmUneffectiveSampleRegion(reduced_tracking_region,tracking_region,regionSampleXY,tarImg,src_ldData);
+          adjAlpha+=(1-adjAlpha)*0.5;
+      }
+      else
+      {
+          reduced_tracking_region=tracking_region;
+      }
+      printf("--->tracking_region.size:%d  adjAlpha:%f\n",reduced_tracking_region.size(),adjAlpha);
+
+      adjAlpha/=adjAlpha;
+      alphaMin/=adjAlpha;
       float alpha = alphaMax;
       float alphaDown = (alpha - alphaMin) / iterCount;
       float minErr=FLT_MAX;
@@ -80,7 +97,7 @@ public:
       for (int j = 0; j < iterCount; j++) //Iteration
       {
 
-          sampleXYFromRegion(regionSampleXY, tracking_region, regionSampleXY.size());
+          sampleXYFromRegion(regionSampleXY, reduced_tracking_region, regionSampleXY.size());
 
           DotsTransform(regionSampleXY, mappedXY, NN, src_ldData.Center);
 
@@ -135,7 +152,7 @@ public:
 
       }
 
-      bool ifOutputImg=false;
+      bool ifOutputImg=true;
       acvImage buff;
       if(ifOutputImg)
       {
@@ -185,6 +202,47 @@ public:
       return error;
   }
 
+  float rmUneffectiveSampleRegion(vector<acv_XY> &reduced_tracking_region,const vector<acv_XY> &tracking_region,
+    vector<acv_XY> &buff_region,acvImage *tarImg,acv_LabeledData &src_ldData)
+  {
+      reduced_tracking_region =tracking_region;
+      float weightSum=0;
+      for (int k = 0; k < reduced_tracking_region.size() / buff_region.size(); k++)
+      {
+          int sampleStart=k * buff_region.size();
+          int sampleL=buff_region.size();
+          if(sampleStart+sampleL>=reduced_tracking_region.size())
+          {
+            sampleL=reduced_tracking_region.size()-sampleStart;
+          }
+
+          sampleXYFromRegion_Seq(buff_region, reduced_tracking_region,
+                                 sampleStart, sampleL);
+          DotsTransform(buff_region, mappedXY, NN, src_ldData.Center);
+          for (int m = 0; m < sampleL; m++)
+          {
+                BYTE var=acvUnsignedMap1Sampling_Nearest(tarImg, mappedXY[m], 1);
+                if(var == 0)
+                {
+                    reduced_tracking_region[sampleStart+m].X=NAN;
+                }
+                weightSum+=var;
+          }
+      }
+
+      int Write_idx=0;
+      for (int i = 0; i < reduced_tracking_region.size();i++)
+      {
+        if(isnan(reduced_tracking_region[i].X))continue;
+        if(Write_idx!=i)
+          reduced_tracking_region[Write_idx]=reduced_tracking_region[i];
+        Write_idx++;
+      }
+      reduced_tracking_region.resize(Write_idx);
+      return weightSum/Write_idx/255;
+
+  }
+
   void sampleXYFromRegion(vector<acv_XY> &sampleXY, const vector<acv_XY> &regionXY, int sampleCount)
   {
       sampleXY.clear();
@@ -208,9 +266,14 @@ public:
   }
   void DotsTransform(std::vector<acv_XY> &XY, std::vector<acv_XY> &tXY, MLNN &NN, acv_XY transOffset)
   {
+      DotsTransform(XY, tXY, XY.size(), NN, transOffset);
+  }
+
+  void DotsTransform(std::vector<acv_XY> &XY, std::vector<acv_XY> &tXY, int dataL, MLNN &NN, acv_XY transOffset)
+  {
       vector<vector<float> > &in_vec = NN.get_input_vec();
       tXY.resize(XY.size());
-      for (int j = 0; j < in_vec.size(); j++)
+      for (int j = 0; j < dataL; j++)
       {
           in_vec[j][0] = (XY[j].X - transOffset.X);
           in_vec[j][1] = (XY[j].Y - transOffset.Y);
@@ -219,7 +282,7 @@ public:
       MLNNUtil nu;
       //  nu.printMat(NN.layers[0].W);
       NN.ForwardPass();
-      for (int j = 0; j < NN.p_pred_Y->size(); j++)
+      for (int j = 0; j < dataL; j++)
       {
           tXY[j].X = (*NN.p_pred_Y)[j][0] + transOffset.X;
           tXY[j].Y = (*NN.p_pred_Y)[j][1] + transOffset.Y;
