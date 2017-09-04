@@ -12,7 +12,7 @@ MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
 EXT_OBJS= $(addprefix acvImage/obj/,$(acvImage_OBJS)) $(addprefix MLNN/obj/,$(MLNN_OBJS))
 ESS_TRACK= $(wildcard include/* acvImage/include/* include/*)
-SUB_MAKEFILES = acvImage MLNN
-MakeTemplate:= $(shell pwd)/Makefile.in
+SUB_MAKEFILES = jpeglib acvImage MLNN
+export MakeTemplate:= Makefile.in
 export FLAGS= -w -O3
-include ./Makefile.in
+include $(MakeTemplate)
