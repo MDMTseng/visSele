@@ -13,10 +13,6 @@ _OBJ ?=
 LDIR?=
 LIBS?=
 
-
-
-
-
 #Creat a
 CFLAGS=$(addprefix -I,$(IDIR)) $(FLAGS)
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
