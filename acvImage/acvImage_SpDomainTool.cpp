@@ -10,6 +10,7 @@
 #define DIV_APPROX_BASE_TYPE int
 #define DIV_APPROX_BASE_SHIFT (sizeof(TmpSum) * 8 - 1 - 8 * 2)
 
+#define DEPTH_X 3
 void acvBoxFilterY(acvImage *res, acvImage *src, int Size)
 {
     int i, j, k, SizeX2Add1 = Size * 2 + 1;
@@ -17,7 +18,7 @@ void acvBoxFilterY(acvImage *res, acvImage *src, int Size)
     int SizeP1 = Size + 1;
     int width = src->GetWidth();
     int height = src->GetHeight();
-    int wx3 = width * 3;
+    int wx3 = width * DEPTH_X;
     BYTE *srcfront;
     BYTE *resfront;
     //printf("DIV_APPROX_BASE_SHIFT:%d   %d\n",DIV_APPROX_BASE_SHIFT, sizeof(TmpSum));
@@ -25,8 +26,8 @@ void acvBoxFilterY(acvImage *res, acvImage *src, int Size)
     for (j = 0; j < width; j++)
     {
         TmpSum = 0;
-        srcfront = &(src->CVector[0][3 * j]);
-        resfront = &(res->CVector[0][3 * j]);
+        srcfront = &(src->CVector[0][DEPTH_X * j]);
+        resfront = &(res->CVector[0][DEPTH_X * j]);
         for (k = 0; k < Size; k++, srcfront += wx3)
             TmpSum += *srcfront;
 
@@ -65,26 +66,26 @@ void acvBoxFilterX(acvImage *res, acvImage *src, int Size)
         TmpSum = 0;
         srcfront = &(src->CVector[i][0]);
         resfront = &(res->CVector[i][0]);
-        for (k = 0; k < Size; k++, srcfront += 3)
+        for (k = 0; k < Size; k++, srcfront += DEPTH_X)
         {
             TmpSum += *srcfront;
         }
-        for (j = 0; j < SizeP1; j++, srcfront += 3, resfront += 3)
+        for (j = 0; j < SizeP1; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
             TmpSum += *srcfront;
 
             *resfront = (TmpSum / (j + SizeP1));
         }
-        for (; j < width - Size; j++, srcfront += 3, resfront += 3)
+        for (; j < width - Size; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
 
-            TmpSum -= *(srcfront - SizeX2Add1 * 3);
+            TmpSum -= *(srcfront - SizeX2Add1 * DEPTH_X);
             TmpSum += *srcfront;
             *resfront = (TmpSum * XMul) >> DIV_APPROX_BASE_SHIFT; //Approximate (X/SizeX2Add1) => X*(1024/SizeX2Add1)>>10
         }
-        for (; j < width; j++, srcfront += 3, resfront += 3)
+        for (; j < width; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
-            TmpSum -= *(srcfront - SizeX2Add1 * 3);
+            TmpSum -= *(srcfront - SizeX2Add1 * DEPTH_X);
             *resfront = (TmpSum / (Size + width - j));
         }
     }
@@ -107,7 +108,7 @@ void acvIIROrder1FilterX(acvImage *res, acvImage *src, int shifter)
         srcfront = &(src->CVector[i][0]);
         resfront = &(res->CVector[i][0]);
         int Y = *(uint16_t *)srcfront;
-        for (int k = 0; k < width; k++, srcfront += 3, resfront += 3)
+        for (int k = 0; k < width; k++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
             uint16_t *srcHead = (uint16_t *)srcfront;
             uint16_t *resHead = (uint16_t *)resfront;
@@ -117,10 +118,10 @@ void acvIIROrder1FilterX(acvImage *res, acvImage *src, int shifter)
     }
     for (int i = 0; i < height; i++)
     {
-        srcfront = &(src->CVector[i][(width - 1) * 3]);
-        resfront = &(res->CVector[i][(width - 1) * 3]);
+        srcfront = &(src->CVector[i][(width - 1) * DEPTH_X]);
+        resfront = &(res->CVector[i][(width - 1) * DEPTH_X]);
         int Y = *(uint16_t *)srcfront;
-        for (int k = 0; k < width; k++, srcfront -= 3, resfront -= 3)
+        for (int k = 0; k < width; k++, srcfront -= DEPTH_X, resfront -= DEPTH_X)
         {
             uint16_t *srcHead = (uint16_t *)srcfront;
             uint16_t *resHead = (uint16_t *)resfront;
@@ -135,13 +136,13 @@ void acvIIROrder1FilterY(acvImage *res, acvImage *src, int shifter)
 
     int width = src->GetWidth();
     int height = src->GetHeight();
-    int wx3 = width * 3;
+    int wx3 = width * DEPTH_X;
     BYTE *srcfront;
     BYTE *resfront;
     for (int i = 0; i < width; i++)
     {
-        srcfront = &(src->CVector[0][3 * i]);
-        resfront = &(res->CVector[0][3 * i]);
+        srcfront = &(src->CVector[0][DEPTH_X * i]);
+        resfront = &(res->CVector[0][DEPTH_X * i]);
         int Y = *(uint16_t *)srcfront;
         for (int k = 0; k < height; k++, srcfront += wx3, resfront += wx3)
         {
@@ -153,8 +154,8 @@ void acvIIROrder1FilterY(acvImage *res, acvImage *src, int shifter)
     }
     for (int i = 0; i < width; i++)
     {
-        srcfront = &(src->CVector[height - 1][3 * i]);
-        resfront = &(res->CVector[height - 1][3 * i]);
+        srcfront = &(src->CVector[height - 1][DEPTH_X * i]);
+        resfront = &(res->CVector[height - 1][DEPTH_X * i]);
         int Y = *(uint16_t *)srcfront;
         for (int k = 0; k < height; k++, srcfront -= wx3, resfront -= wx3)
         {
@@ -179,14 +180,14 @@ void acvBoxFilterY_round(acvImage *res, acvImage *src, int Size)
     int SizeP1 = Size + 1;
     int width = src->GetWidth();
     int height = src->GetHeight();
-    int wx3 = width * 3;
+    int wx3 = width * DEPTH_X;
     BYTE *srcfront;
     BYTE *resfront;
     for (j = 0; j < width; j++)
     {
         TmpSum = 0;
-        srcfront = &(src->CVector[0][3 * j]);
-        resfront = &(res->CVector[0][3 * j]);
+        srcfront = &(src->CVector[0][DEPTH_X * j]);
+        resfront = &(res->CVector[0][DEPTH_X * j]);
         for (k = 0; k < Size; k++, srcfront += wx3)
             TmpSum += *srcfront;
 
@@ -223,26 +224,26 @@ void acvBoxFilterX_round(acvImage *res, acvImage *src, int Size)
         TmpSum = 0;
         srcfront = &(src->CVector[i][0]);
         resfront = &(res->CVector[i][0]);
-        for (k = 0; k < Size; k++, srcfront += 3)
+        for (k = 0; k < Size; k++, srcfront += DEPTH_X)
         {
             TmpSum += *srcfront;
         }
-        for (j = 0; j < SizeP1; j++, srcfront += 3, resfront += 3)
+        for (j = 0; j < SizeP1; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
             TmpSum += *srcfront;
 
             *resfront = div_round(TmpSum, (j + SizeP1));
         }
-        for (; j < width - Size; j++, srcfront += 3, resfront += 3)
+        for (; j < width - Size; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
 
-            TmpSum -= *(srcfront - SizeX2Add1 * 3);
+            TmpSum -= *(srcfront - SizeX2Add1 * DEPTH_X);
             TmpSum += *srcfront;
             *resfront = div_round(TmpSum, SizeX2Add1);
         }
-        for (; j < width; j++, srcfront += 3, resfront += 3)
+        for (; j < width; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
         {
-            TmpSum -= *(srcfront - SizeX2Add1 * 3);
+            TmpSum -= *(srcfront - SizeX2Add1 * DEPTH_X);
             *resfront = div_round(TmpSum, (Size + width - j));
         }
     }
