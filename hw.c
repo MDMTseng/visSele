@@ -313,11 +313,39 @@ int testSignature()
     //acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
 }
 
+
+int testX()
+{
+  acvImage *target = new acvImage();
+
+  int ret=acvLoadBitmapFile(target, "data/target.bmp");
+  acvImage *target_buff = new acvImage();
+
+  target_buff->ReSize(target->GetWidth(), target->GetHeight());
+
+
+  clock_t t = clock();
+
+  for(int i=0;i<1;i++)
+  {
+    acvBoxFilter(target_buff,target,10);
+  //acvBoxFilterY(target_buff,target,1);
+  }
+
+  t = clock() - t;
+  printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
+  t = clock();
+  acvCloneImage(target,target,0);
+  acvSaveBitmapFile("data/target_buff.bmp", target);
+  return 0;
+}
+
 #include <vector>
 int main()
 {
     int ret = 0;
     ret = testSignature();
+    //ret = testX();
 
     printf("Hello, World! %d", ret);
     return ret;

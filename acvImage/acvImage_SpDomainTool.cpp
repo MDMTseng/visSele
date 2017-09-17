@@ -50,6 +50,85 @@ void acvBoxFilterY(acvImage *res, acvImage *src, int Size)
     }
 }
 
+
+void acvBoxFilterY_BL(acvImage *res, acvImage *src, int Size,int *LineBuff,int LineBuffL)
+{
+
+
+    int i, j, k, SizeX2Add1 = Size * 2 + 1;
+    DIV_APPROX_BASE_TYPE TmpSum;
+    int SizeP1 = Size + 1;
+    int width = src->GetWidth();
+
+    if(width > LineBuffL)
+    {//Line buff is not enough
+      return;
+    }
+    memset(LineBuff,0,sizeof(*LineBuff)*width);
+
+    DIV_APPROX_BASE_TYPE XMul = ((DIV_APPROX_BASE_TYPE)1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
+    int height = src->GetHeight();
+    int wx3 = width * DEPTH_X;
+    BYTE *srcfront,*srctail;
+    BYTE *resfront;
+
+
+
+    //exp:Size=1
+    //LineBuff+=src[0]
+    for (i = 0; i < Size; i++)
+    {
+      srcfront = &(src->CVector[i][0]);
+      for (j=0 ; j < width; j++ ,srcfront+=DEPTH_X)
+      {
+        LineBuff[j]+=*srcfront;
+      }
+    }
+
+
+    //Size=1
+    //i=0 => LineBuff=src[0] + src[1] => res[0]=LineBuff/(0+ Size +1)
+    //i=1 => LineBuff=src[0] + src[1]+src[2] => res[1]=LineBuff/(1+ Size +1)
+    for (i = 0; i < Size+1; i++)
+    {
+      srcfront = &(src->CVector[i+Size][0]);
+      resfront = &(res->CVector[i][0]);
+      for (j=0 ; j < width; j++ ,srcfront+=DEPTH_X,resfront+=DEPTH_X)
+      {
+        LineBuff[j]+=*srcfront;
+        *resfront = (LineBuff[j] / (i + Size+1));
+      }
+    }
+
+    //Size=1
+    //i=2 => LineBuff=src[0]+[1]+[2]+[3] - src[0] => res=LineBuff/(Size * 2 + 1)
+    //i=n => LineBuff=
+    //        src[n-Size-1]+[n-Size]+[n-Size+1]+[n+Size] - src[n-Size-1] => res=LineBuff/(Size * 2 + 1)
+
+    for (i = Size+1; i < height - Size; i++)
+    {
+      srctail =  &(src->CVector[i-Size-1][0]);
+      srcfront = &(src->CVector[i+Size][0]);
+      resfront = &(res->CVector[i][0]);
+      for (j=0 ; j < width; j++ ,srcfront+=DEPTH_X,srctail+=DEPTH_X,resfront+=DEPTH_X)
+      {
+        LineBuff[j]=LineBuff[j]+ *srcfront - *srctail;
+        *resfront = (LineBuff[j] * XMul) >> DIV_APPROX_BASE_SHIFT;
+      }
+    }
+
+    for (i = height - Size; i < height; i++)
+    {
+      srctail =  &(src->CVector[i-Size-1][0]);
+      resfront = &(res->CVector[i][0]);
+      for (j=0 ; j < width; j++ ,srctail+=DEPTH_X,resfront+=DEPTH_X)
+      {
+        LineBuff[j]=LineBuff[j] - *srctail;
+        *resfront = (LineBuff[j] / (Size + height - i));
+      }
+    }
+}
+
 void acvBoxFilterX(acvImage *res, acvImage *src, int Size)
 {
     int i, j, k, SizeX2Add1 = Size * 2 + 1;
@@ -92,8 +171,14 @@ void acvBoxFilterX(acvImage *res, acvImage *src, int Size)
 }
 void acvBoxFilter(acvImage *BuffPic, acvImage *Pic, int Size)
 {
-    acvBoxFilterX(BuffPic, Pic, Size);
-    acvBoxFilterY(Pic, BuffPic, Size);
+    int BUFFX[2000];
+    acvBoxFilterY_BL(BuffPic, Pic, Size,BUFFX,sizeof(BUFFX));
+    acvBoxFilterX(Pic, BuffPic, Size);
+}
+void acvBoxFilter_naive(acvImage *BuffPic, acvImage *Pic, int Size)
+{
+    acvBoxFilterY(BuffPic, Pic, Size);
+    acvBoxFilterX(Pic, BuffPic, Size);
 }
 
 void acvIIROrder1FilterX(acvImage *res, acvImage *src, int shifter)

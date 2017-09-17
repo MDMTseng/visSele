@@ -31,7 +31,8 @@ void acvDistanceTransform_Chamfer(acvImage *src,acvDT_distRotate *distList,int d
 void acvDistanceTransform_Sobel(acvImage *res,acvImage *src);
 void acvBinaryImageEdge(acvImage *res,acvImage *src);
 
-
+void acvBoxFilterY_BL(acvImage *res, acvImage *src, int Size,int *LineBuff,int LineBuffL);
+void acvBoxFilter_naive(acvImage *BuffPic, acvImage *Pic, int Size);
 
 inline acv_XY acvSignedMap2Sampling(acvImage *signedMap2, const acv_XY &XY)
 {
@@ -47,7 +48,7 @@ inline acv_XY acvSignedMap2Sampling(acvImage *signedMap2, const acv_XY &XY)
       sample.Y=0;
       return sample;
     }
-    
+
     float c00, c10, c11, c01;
     BYTE *cvL1=signedMap2->CVector[rY]+rX*3;
     BYTE *cvL2=signedMap2->CVector[rY+1]+rX*3;
