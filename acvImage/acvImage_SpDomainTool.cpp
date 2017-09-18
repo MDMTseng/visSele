@@ -172,7 +172,7 @@ void acvBoxFilterX(acvImage *res, acvImage *src, int Size)
 void acvBoxFilter(acvImage *BuffPic, acvImage *Pic, int Size)
 {
     int BUFFX[2000];
-    acvBoxFilterY_BL(BuffPic, Pic, Size,BUFFX,sizeof(BUFFX));
+    acvBoxFilterY_BL(BuffPic, Pic, Size,BUFFX,sizeof(BUFFX)/sizeof(*BUFFX));
     acvBoxFilterX(Pic, BuffPic, Size);
 }
 void acvBoxFilter_naive(acvImage *BuffPic, acvImage *Pic, int Size)
