@@ -250,106 +250,119 @@ void acvDDDD(acvImage *res, acvImage *Img,int r)
           }
           int S=0;
 
-          S=(Max*5+Min*4)/9;
-          if(S>*imgFront)
-          {
-            *resFront=255;
-          }
-          else
-          {
-            *resFront=0;
-          }
-          /*if(S<30)
-          {
-            *resFront=255;
-            continue;
-          }
-
-
-          S=0;
-          for(k=0;k<(2*r+1);k++)for(m=0;m<(2*r+1);m++)
-          {
-            int swin=imgLEdge[(k*Img->GetWidth()+m)*3];
-
-            int diff_Max=swin-Max;
-            if(diff_Max<0)diff_Max=-diff_Max;
-            int diff_Min=swin-Min;
-            if(diff_Min<0)diff_Min=-diff_Min;
-
-            S+=(diff_Max<diff_Max)?diff_Max:diff_Min;
-          }
-
-          *resFront=S/((2*r+1)*(2*r+1));*/
-
+          S=(Max+Min)/2;
+          S=*imgFront-S+128;
+          if(S<0)S=0;
+          if(S>255)S=255;
+          *resFront=S;
         }
     }
 }
 
 
+void acvMax(acvImage *res, acvImage *Img,int r)
+{
+    int i, j,k,m;
+    BYTE *resFront;
+    BYTE *imgLEdge;
+    BYTE *imgFront;
+    for (i = r; i < Img->GetHeight()-r; i++)
+    {
+        resFront = &(res->CVector[i][r*3]);
+        imgFront = &(Img->CVector[i][r*3]);
+        imgLEdge = &(Img->CVector[i-r][0]);
+        for (j = r; j < Img->GetWidth()-r; j++, resFront += 3, imgFront+=3, imgLEdge+=3)
+        {
+          int Max=imgLEdge[0];
+          for(k=0;k<(2*r+1);k++)for(m=0;m<(2*r+1);m++)
+          {
+            int swin=imgLEdge[(k*Img->GetWidth()+m)*3];
+            if(Max<swin)Max=swin;
+          }
+          *resFront=Max;
+        }
+    }
+}
+void acvMin(acvImage *res, acvImage *Img,int r)
+{
+    int i, j,k,m;
+    BYTE *resFront;
+    BYTE *imgLEdge;
+    BYTE *imgFront;
+    for (i = r; i < Img->GetHeight()-r; i++)
+    {
+        resFront = &(res->CVector[i][r*3]);
+        imgFront = &(Img->CVector[i][r*3]);
+        imgLEdge = &(Img->CVector[i-r][0]);
+        for (j = r; j < Img->GetWidth()-r; j++, resFront += 3, imgFront+=3, imgLEdge+=3)
+        {
+          int Min=imgLEdge[0];
+          for(k=0;k<(2*r+1);k++)for(m=0;m<(2*r+1);m++)
+          {
+            int swin=imgLEdge[(k*Img->GetWidth()+m)*3];
+            if(Min>swin)Min=swin;
+          }
+          *resFront=Min;
+        }
+    }
+}
+
+void acvDiff(acvImage *res, acvImage *Img1, acvImage *Img2)
+{
+    int i, j,k,m;
+    BYTE *resFront;
+    BYTE *Img1Front;
+    BYTE *Img2Front;
+    for (i = 0; i < res->GetHeight(); i++)
+    {
+        resFront = &(res->CVector[i][0]);
+        Img1Front = &(Img1->CVector[i][0]);
+        Img2Front = &(Img2->CVector[i][0]);
+        for (j = 0; j < res->GetWidth(); j++, resFront += 3, Img1Front+=3, Img2Front+=3)
+        {
+          int diff=(int)*Img1Front-*Img2Front;
+          if(diff<0)diff=-diff;
+          *resFront=diff;
+        }
+    }
+}
 int testX()
 {
   acvImage *target = new acvImage();
 
   int ret=acvLoadBitmapFile(target, "data/test1.bmp");
+  acvImage *opening = new acvImage();
+  acvImage *closing = new acvImage();
   acvImage *target_buff = new acvImage();
 
+  opening->ReSize(target->GetWidth(), target->GetHeight());
+  closing->ReSize(target->GetWidth(), target->GetHeight());
   target_buff->ReSize(target->GetWidth(), target->GetHeight());
-  acvClear(target_buff,0);
 
   clock_t t = clock();
-  //acvBiliteralX(target_buff,target,5,40);
-  acvDDDD(target_buff,target,5);
-  //SimpleXDiff(target, target_buff);
-  //acvThreshold(target,20,0);
-
-  //acvContrast(target,target,-20,6,0);
-  //acvBiliteralX(target,target_buff,3,20);
+  acvDDDD(target_buff, target,5);
   acvCloneImage(target_buff,target,0);
 
-  std::vector<acv_LabeledData> ldData;
-  if(0)
-  {
 
-            int BUFFX[2000];
-  acvBoxFilterX(target_buff, target, 1);
-  acvBoxFilterX(target, target_buff, 2);
-  acvTurnX(target);
-  acvThreshold(target,250,0);
+  acvMin(target_buff, target,5);
+  acvCloneImage(target_buff,target_buff,0);
+  acvSaveBitmapFile("data/min.bmp", target_buff);
+  acvMax(opening, target_buff,5);
+  acvCloneImage(opening,opening,0);
 
-  acvDrawBlock(target, 1, 1, target->GetWidth() - 2, target->GetHeight() - 2);
-  acvComponentLabeling(target);
-  acvLabeledRegionInfo(target, &ldData);
-  ldData[1].area = 0;
-  acvRemoveRegionLessThan(target, &ldData, 100);
-  acvLabeledColorDispersion(target,target,ldData.size()/20+5);
-  }
-  else
-  {
-
-    acvBoxFilter(target_buff, target, 2);
-    acvBoxFilter(target_buff, target, 2);
-    acvCloneImage(target,target,0);
-    acvThreshold(target,150,0);
-/*    acvDrawBlock(target, 1, 1, target->GetWidth() - 2, target->GetHeight() - 2);
-
-    acvComponentLabeling(target);
-
-    acvLabeledRegionInfo(target, &ldData);
-    ldData[1].area = 0;
-    acvRemoveRegionLessThan(target, &ldData, 100);
-
-    acvLabeledColorDispersion(target,target,100);*/
-    //acvCloneImage(target,target,0);
-  }
-
-  /*acvContrast(target,target,-15,5,0);
-  acvBoxFilter(target_buff, target, 5);
-  acvContrast(target,target,0,5,0);*/
+  acvMax(target_buff, target,5);
+  acvMin(closing, target_buff,5);
+  acvCloneImage(closing,closing,0);
+  acvDiff(target_buff, opening, closing);
+  acvCloneImage(target_buff,target_buff,0);
+  //acvThreshold(target_buff,50);
 
   t = clock() - t;
   printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
   t = clock();
-  acvSaveBitmapFile("data/target_buff.bmp", target);
+  //acvSaveBitmapFile("data/closing.bmp", closing);
+  //acvSaveBitmapFile("data/opening.bmp", opening);
+  acvSaveBitmapFile("data/target_buff.bmp", target_buff);
   return 0;
 }
 
