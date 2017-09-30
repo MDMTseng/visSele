@@ -160,6 +160,28 @@ void XDiffDetect(acvImage *res, acvImage *src, int Size,int *LineBuff,int LineBu
     }
 }
 
+
+void SimpleXDiff(acvImage *res, acvImage *src)
+{
+
+    int width = src->GetWidth();
+    int height = src->GetHeight();
+
+    BYTE *srcfront;
+    BYTE *resfront;
+    for (int i = 0; i < height; i++)
+    {
+        srcfront = &(src->CVector[i][0]);
+        resfront = &(res->CVector[i][0]);
+        for (int k = 1; k < width; k++)
+        {
+            int diff=(int)srcfront[k*3]-srcfront[k*3-3];
+            if(diff<0)diff=-diff;
+            resfront[k*3]=diff;
+        }
+    }
+}
+
 void acvTurnX(acvImage *Pic)
 {
     BYTE *BMPLine;
@@ -205,6 +227,65 @@ void acvBiliteralX(acvImage *res, acvImage *Img,int r,int tolerate)
     }
 }
 
+void acvDDDD(acvImage *res, acvImage *Img,int r)
+{
+    int i, j,k,m;
+    BYTE *resFront;
+    BYTE *imgLEdge;
+    BYTE *imgFront;
+    for (i = r; i < Img->GetHeight()-r; i++)
+    {
+        resFront = &(res->CVector[i][r*3]);
+        imgFront = &(Img->CVector[i][r*3]);
+        imgLEdge = &(Img->CVector[i-r][0]);
+        for (j = r; j < Img->GetWidth()-r; j++, resFront += 3, imgFront+=3, imgLEdge+=3)
+        {
+          int Max=imgLEdge[0];
+          int Min=Max;
+          for(k=0;k<(2*r+1);k++)for(m=0;m<(2*r+1);m++)
+          {
+            int swin=imgLEdge[(k*Img->GetWidth()+m)*3];
+            if(Min>swin)Min=swin;
+            else if(Max<swin)Max=swin;
+          }
+          int S=0;
+
+          S=(Max*5+Min*4)/9;
+          if(S>*imgFront)
+          {
+            *resFront=255;
+          }
+          else
+          {
+            *resFront=0;
+          }
+          /*if(S<30)
+          {
+            *resFront=255;
+            continue;
+          }
+
+
+          S=0;
+          for(k=0;k<(2*r+1);k++)for(m=0;m<(2*r+1);m++)
+          {
+            int swin=imgLEdge[(k*Img->GetWidth()+m)*3];
+
+            int diff_Max=swin-Max;
+            if(diff_Max<0)diff_Max=-diff_Max;
+            int diff_Min=swin-Min;
+            if(diff_Min<0)diff_Min=-diff_Min;
+
+            S+=(diff_Max<diff_Max)?diff_Max:diff_Min;
+          }
+
+          *resFront=S/((2*r+1)*(2*r+1));*/
+
+        }
+    }
+}
+
+
 int testX()
 {
   acvImage *target = new acvImage();
@@ -216,19 +297,20 @@ int testX()
   acvClear(target_buff,0);
 
   clock_t t = clock();
-  acvBiliteralX(target_buff,target,3,40);
+  //acvBiliteralX(target_buff,target,5,40);
+  acvDDDD(target_buff,target,5);
+  //SimpleXDiff(target, target_buff);
+  //acvThreshold(target,20,0);
+
+  //acvContrast(target,target,-20,6,0);
+  //acvBiliteralX(target,target_buff,3,20);
   acvCloneImage(target_buff,target,0);
 
-
+  std::vector<acv_LabeledData> ldData;
   if(0)
   {
 
-      int BUFFX[2000];
-      acvBoxFilterY_BL(target_buff, target, 1,BUFFX,sizeof(BUFFX)/sizeof(*BUFFX));
-      XDiffDetect(target, target_buff, 3,BUFFX,sizeof(BUFFX)/sizeof(*BUFFX));
-
-
-  acvContrast(target,target,-20,4,0);
+            int BUFFX[2000];
   acvBoxFilterX(target_buff, target, 1);
   acvBoxFilterX(target, target_buff, 2);
   acvTurnX(target);
@@ -236,16 +318,28 @@ int testX()
 
   acvDrawBlock(target, 1, 1, target->GetWidth() - 2, target->GetHeight() - 2);
   acvComponentLabeling(target);
-  std::vector<acv_LabeledData> ldData;
   acvLabeledRegionInfo(target, &ldData);
   ldData[1].area = 0;
-  acvRemoveRegionLessThan(target, &ldData, 1000);
+  acvRemoveRegionLessThan(target, &ldData, 100);
   acvLabeledColorDispersion(target,target,ldData.size()/20+5);
   }
   else
   {
 
+    acvBoxFilter(target_buff, target, 2);
+    acvBoxFilter(target_buff, target, 2);
     acvCloneImage(target,target,0);
+    acvThreshold(target,150,0);
+/*    acvDrawBlock(target, 1, 1, target->GetWidth() - 2, target->GetHeight() - 2);
+
+    acvComponentLabeling(target);
+
+    acvLabeledRegionInfo(target, &ldData);
+    ldData[1].area = 0;
+    acvRemoveRegionLessThan(target, &ldData, 100);
+
+    acvLabeledColorDispersion(target,target,100);*/
+    //acvCloneImage(target,target,0);
   }
 
   /*acvContrast(target,target,-15,5,0);
