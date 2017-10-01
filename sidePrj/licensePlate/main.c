@@ -334,9 +334,11 @@ int testX()
   acvImage *opening = new acvImage();
   acvImage *closing = new acvImage();
   acvImage *target_buff = new acvImage();
+  acvImage *result = new acvImage();
 
   opening->ReSize(target->GetWidth(), target->GetHeight());
   closing->ReSize(target->GetWidth(), target->GetHeight());
+  result->ReSize(target->GetWidth(), target->GetHeight());
   target_buff->ReSize(target->GetWidth(), target->GetHeight());
 
   clock_t t = clock();
@@ -344,17 +346,32 @@ int testX()
   acvCloneImage(target_buff,target,0);
 
 
-  acvMin(target_buff, target,5);
-  acvCloneImage(target_buff,target_buff,0);
-  acvSaveBitmapFile("data/min.bmp", target_buff);
-  acvMax(opening, target_buff,5);
+  acvMin(target_buff, target,1);
+  acvMax(opening, target_buff,1);
   acvCloneImage(opening,opening,0);
 
-  acvMax(target_buff, target,5);
-  acvMin(closing, target_buff,5);
+  acvMax(target_buff, target,1);
+  acvMin(closing, target_buff,1);
   acvCloneImage(closing,closing,0);
   acvDiff(target_buff, opening, closing);
-  acvCloneImage(target_buff,target_buff,0);
+  acvCloneImage(target_buff,result,0);
+
+    acvMin(opening, target_buff,1);
+    acvMax(closing, opening,1);
+
+  acvCloneImage(closing,closing,0);
+  acvSaveBitmapFile("data/closing.bmp", closing);
+
+
+  SimpleXDiff(target_buff,result);
+  acvContrast(target_buff,target_buff,-20,2,0);
+  acvBoxFilterY(result, target_buff, 1);
+  acvMax(target_buff, result,1);
+  acvBoxFilterX(result, target_buff, 8);
+  acvContrast(result,result,-5,8,0);
+
+  acvCloneImage(result,result,0);
+
   //acvThreshold(target_buff,50);
 
   t = clock() - t;
@@ -362,7 +379,7 @@ int testX()
   t = clock();
   //acvSaveBitmapFile("data/closing.bmp", closing);
   //acvSaveBitmapFile("data/opening.bmp", opening);
-  acvSaveBitmapFile("data/target_buff.bmp", target_buff);
+  acvSaveBitmapFile("data/result.bmp", result);
   return 0;
 }
 

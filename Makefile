@@ -15,7 +15,7 @@ MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
 EXT_OBJS= $(addprefix acvImage/obj/,$(acvImage_OBJS)) $(addprefix MLNN/obj/,$(MLNN_OBJS))
 ESS_TRACK= $(wildcard include/* acvImage/include/* include/*)
-SUB_MAKEFILES = $(MODULE_acvImage) $(MODULE_MLNN) sidePrj
+SUB_MAKEFILES = $(MODULE_acvImage) $(MODULE_MLNN)
 export MakeTemplate:= $(abspath Makefile.in)
 export FLAGS= -w -O3
 include $(MakeTemplate)
