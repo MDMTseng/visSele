@@ -50,21 +50,21 @@ inline acv_XY acvSignedMap2Sampling(acvImage *signedMap2, const acv_XY &XY)
     }
 
     float c00, c10, c11, c01;
-    BYTE *cvL1=signedMap2->CVector[rY]+rX*3;
-    BYTE *cvL2=signedMap2->CVector[rY+1]+rX*3;
-    c00 = (char)cvL1[0];
-    c01 = (char)cvL1[3];
-    c10 = (char)cvL2[0];
-    c11 = (char)cvL2[3];
+    int8_t *cvL1=(int8_t *)(signedMap2->CVector[rY]+rX*3);
+    int8_t *cvL2=(int8_t *)(signedMap2->CVector[rY+1]+rX*3);
+    c00 = cvL1[0];
+    c01 = cvL1[3];
+    c10 = cvL2[0];
+    c11 = cvL2[3];
     c00 += resX * (c01 - c00);
     c10 += resX * (c11 - c10);
     c00 += resY * (c10 - c00);
     sample.X = (c00);
 
-    c00 = (char)cvL1[0+1];
-    c01 = (char)cvL1[3+1];
-    c10 = (char)cvL2[0+1];
-    c11 = (char)cvL2[3+1];
+    c00 = cvL1[0+1];
+    c01 = cvL1[3+1];
+    c10 = cvL2[0+1];
+    c11 = cvL2[3+1];
 
     c00 += resX * (c01 - c00);
     c10 += resX * (c11 - c10);
@@ -107,8 +107,8 @@ inline acv_XY acvSignedMap2Sampling_Nearest(acvImage *signedMap2, const acv_XY &
       sample.Y=0;
       return sample;
     }
-    sample.X = (char)signedMap2->CVector[rY][rX * 3];
-    sample.Y = (char)signedMap2->CVector[rY][rX * 3 + 1];
+    sample.X = (int8_t)signedMap2->CVector[rY][rX * 3];
+    sample.Y = (int8_t)signedMap2->CVector[rY][rX * 3 + 1];
     return sample;
 }
 

@@ -33,14 +33,14 @@ void printImgAscii(acvImage *img, int printwidth)
 void acvScalingSobelResult_n(acvImage *src)
 {
     int i, j;
-    BYTE *L;
+    int8_t *L;
 
     for (i = 0; i < src->GetHeight(); i++)
     {
-        L = &(src->CVector[i][0]);
+        L = (int8_t*)&(src->CVector[i][0]);
         for (j = 0; j < src->GetWidth(); j++, L += 3)
         {
-            char Lp0, Lp1;
+            int8_t Lp0, Lp1;
             Lp0 = L[0];
             Lp1 = L[1];
             if (Lp0 != 0 || Lp1 != 0)
