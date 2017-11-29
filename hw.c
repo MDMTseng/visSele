@@ -70,8 +70,8 @@ void preprocess(acvImage *img,
         acvBoxFilter(buff, img, 2);*/
 
 
-    acvBoxFilter(buff, img, 4);
-    acvBoxFilter(buff, img, 4);
+    acvBoxFilter(buff, img, 2);
+    acvBoxFilter(buff, img, 2);
     acvContrast(img,img,0,1,0);
     acvCloneImage(img, img_thin_blur, 0);
 
@@ -82,7 +82,6 @@ void preprocess(acvImage *img,
     acvCloneImage(img, img_thin_blur, 1);*/
     //acvSaveBitmapFile("data/preprocess_1st.bmp", img_thin_blur);
 
-    acvBoxFilter(buff, img, 3);
     acvThreshold(img, 250, 0);
     //acvSaveBitmapFile("data/preprocess_2st.bmp", img);
 }

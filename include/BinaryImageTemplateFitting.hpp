@@ -152,7 +152,7 @@ public:
 
       }
 
-      bool ifOutputImg=true;
+      bool ifOutputImg=false;
       acvImage buff;
       if(ifOutputImg)
       {
