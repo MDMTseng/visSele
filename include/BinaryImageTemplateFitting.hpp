@@ -15,6 +15,7 @@
 
 class BinaryImageTemplateFitting
 {
+public:
   MLNN NN;
   MLOpt MO;
   vector<vector<float> > error_gradient;
@@ -113,8 +114,8 @@ public:
           }
           NN.backProp(error_gradient);
           MO.update_dW();
-          NN.layers[0].dW[2][0] *= 2500; //Special treat
-          NN.layers[0].dW[2][1] *= 2500;
+          NN.layers[0].dW[2][0] *= 1500; //Special treat
+          NN.layers[0].dW[2][1] *= 1500;
           NN.updateW(alpha);
           alpha -= alphaDown;
           //nu.printMat(NN.layers[0].dW);printf("\n");
@@ -138,10 +139,6 @@ public:
             minErr+=0.5*(error-minErr);
           /*if(j%1!=0)continue;
           continue;*/
-
-          /*printf(">er:%f, mer:%f, %f %f %f\n",error,minErr,
-                 NN.layers[0].W[2][0], NN.layers[0].W[2][1],
-                 180 / M_PI * atan2(NN.layers[0].W[1][0] - NN.layers[0].W[0][1], NN.layers[0].W[0][0] + NN.layers[0].W[1][1]));*/
 
           /*if(minErr>75)
           {

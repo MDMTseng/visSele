@@ -71,7 +71,7 @@ void preprocess(acvImage *img,
 
 
     acvBoxFilter(buff, img, 4);
-    acvContrast(img,img,0,1,0);
+    //acvContrast(img,img,0,1,0);
     acvCloneImage(img, img_thin_blur, 0);
 
 
@@ -203,10 +203,9 @@ void drawSignatureInfo(acvImage *img,
     }
 }
 
-
-int testSignature()
+int testSignature(int repeatNum)
 {
-
+    float data[1000]={0};
     vector<acv_XY> tar_signature(240);
     acv_LabeledData tar_ldData;
     acvImage *target = new acvImage();
@@ -239,7 +238,7 @@ int testSignature()
 
 
     clock_t t = clock();
-    for(int iterX=0;iterX<1000;iterX++)
+    for(int iterX=0;iterX<repeatNum;iterX++)
     {
       ret=acvLoadBitmapFile(image, "data/test1.bmp");
 
@@ -289,6 +288,11 @@ int testSignature()
 
           bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
           float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv ,10, 7, 1);//Global fitting
+          data[iterX]=
+          180 / M_PI * atan2(bitf.NN.layers[0].W[1][0] - bitf.NN.layers[0].W[0][1], bitf.NN.layers[0].W[0][0] + bitf.NN.layers[0].W[1][1]);
+          //printf(">  %f %f > %f\n",bitf.NN.layers[0].W[2][0], bitf.NN.layers[0].W[2][1],data[iterX]);
+
+
           errorSum+=refine_error;
           /*printf(">%d>sign error:%f\n",i,sign_error);
           if(refine_error>20)
@@ -311,6 +315,27 @@ int testSignature()
     //printf("errorSum:%f ................\n\n",errorSum);
     t = clock() - t;
     printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
+
+
+    float avg_data=0;
+    for(int iterX=0;iterX<repeatNum;iterX++)
+    {
+      avg_data+=data[iterX];
+    }
+    avg_data/=repeatNum;
+
+    float dev_data=0;
+    float dev_data_MAX=0;
+    for(int iterX=0;iterX<repeatNum;iterX++)
+    {
+      float tmp=avg_data-data[iterX];
+      tmp*=tmp;
+      if(dev_data_MAX<tmp)dev_data_MAX=tmp;
+      dev_data+=tmp;
+    }
+    dev_data/=repeatNum;
+    printf("avg:%f  dev:%f M:%f",avg_data,sqrt(dev_data),sqrt(dev_data_MAX) );
+
     //acvLabeledColorDispersion(image,image,ldData.size()/20+5);
     //acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
 }
@@ -342,13 +367,35 @@ int testX()
   return 0;
 }
 
-#include <vector>
-int main()
+
+int simpP(char* strNum)
 {
-    int ret = 0;
-    ret = testSignature();
+  int Num =0;
+  char c;
+  while( (c = *strNum) )
+  {
+    if( c>'9' || c<'0' )
+      return 0;
+    Num=(Num*10)+(c-'0');
+    strNum++;
+  }
+
+  return Num;
+}
+
+#include <vector>
+int main(int argc, char** argv)
+{
+    int ret = 0, repeatNum=1;
+
+    if(argc>=2)
+    {
+      repeatNum=simpP(argv[1]);
+    }
+    printf("execute %d times\r\n", repeatNum);
+
+    ret = testSignature(repeatNum);
     //ret = testX();
 
-    printf("Hello, World! %d", ret);
     return ret;
 }
