@@ -70,8 +70,7 @@ void preprocess(acvImage *img,
         acvBoxFilter(buff, img, 2);*/
 
 
-    acvBoxFilter(buff, img, 2);
-    acvBoxFilter(buff, img, 2);
+    acvBoxFilter(buff, img, 4);
     acvContrast(img,img,0,1,0);
     acvCloneImage(img, img_thin_blur, 0);
 
@@ -238,74 +237,78 @@ int testSignature()
 
     std::vector<acv_XY> regionXY_;
 
+
     clock_t t = clock();
-
-    //image->RGBToGray();
-    acvCloneImage(image, labelImg, -1);
-    preprocess(labelImg, image, buff);
-    t = clock() - t;
-    printf("%fms .preprocess.\n", ((double)t) / CLOCKS_PER_SEC * 1000);
-    t = clock();
-
-    //Create a trap to capture/link boundery object
-    acvDrawBlock(labelImg, 1, 1, labelImg->GetWidth() - 2, labelImg->GetHeight() - 2);
-
-    acvComponentLabeling(labelImg);
-    acvLabeledRegionInfo(labelImg, &ldData);
-
-    //The first(the idx 0 is not avaliable) ldData must be the trap, set area to zero
-    ldData[1].area = 0;
-
-    //Delete the object that has less than certain amount of area on ldData
-    acvRemoveRegionLessThan(labelImg, &ldData, 120);
-
-    t = clock() - t;
-    printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
-    t = clock();
-    float errorSum=0;
-    for (int i = 1; i < ldData.size(); i++)
+    for(int iterX=0;iterX<1000;iterX++)
     {
-        //printf("%s:=====%d=======\n", __func__, i);
-        acvContourCircleSignature(labelImg, ldData[i], i, signature);
+      ret=acvLoadBitmapFile(image, "data/test1.bmp");
 
-        float sign_error;
-        float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
-        float sign_error_rev;
-        SignatureReverse(signature,signature);
-        float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
+      //image->RGBToGray();
+      acvCloneImage(image, labelImg, -1);
+      preprocess(labelImg, image, buff);
+      /*t = clock() - t;
+      printf("%fms .preprocess.\n", ((double)t) / CLOCKS_PER_SEC * 1000);
+      t = clock();*/
+
+      //Create a trap to capture/link boundery object
+      acvDrawBlock(labelImg, 1, 1, labelImg->GetWidth() - 2, labelImg->GetHeight() - 2);
+
+      acvComponentLabeling(labelImg);
+      acvLabeledRegionInfo(labelImg, &ldData);
+
+      //The first(the idx 0 is not avaliable) ldData must be the trap, set area to zero
+      ldData[1].area = 0;
+
+      //Delete the object that has less than certain amount of area on ldData
+      acvRemoveRegionLessThan(labelImg, &ldData, 120);
+
+      /*t = clock() - t;
+      printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
+      t = clock();*/
+      float errorSum=0;
+      for (int i = 1; i < ldData.size(); i++)
+      {
+          //printf("%s:=====%d=======\n", __func__, i);
+          acvContourCircleSignature(labelImg, ldData[i], i, signature);
+
+          float sign_error;
+          float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
+          float sign_error_rev;
+          SignatureReverse(signature,signature);
+          float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
 
 
-                printf(">sign_error:%f  sign_error_rev:%f\n",sign_error,sign_error_rev);
-        bool isInv=false;
-        if(sign_error>sign_error_rev)
-        {
-            isInv=true;
-            sign_error=sign_error_rev;
-            AngleDiff=-AngleDiff_rev;
-        }
+          //printf(">sign_error:%f  sign_error_rev:%f\n",sign_error,sign_error_rev);
+          bool isInv=false;
+          if(sign_error>sign_error_rev)
+          {
+              isInv=true;
+              sign_error=sign_error_rev;
+              AngleDiff=-AngleDiff_rev;
+          }
 
-        bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-        float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv ,10, 7, 1);//Global fitting
-        errorSum+=refine_error;
-        printf(">%d>sign error:%f\n",i,sign_error);
-        if(refine_error>20)
-        {
-          printf("refine error:%f  BAD..\n\n",refine_error);
-        }
-        else
-        {
-          printf("refine error:%f\n\n",refine_error);
-        }
-        //spp.NN.layers[0].printW();
+          bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
+          float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv ,10, 7, 1);//Global fitting
+          errorSum+=refine_error;
+          /*printf(">%d>sign error:%f\n",i,sign_error);
+          if(refine_error>20)
+          {
+            printf("refine error:%f  BAD..\n\n",refine_error);
+          }
+          else
+          {
+            printf("refine error:%f\n\n",refine_error);
+          }*/
+          //spp.NN.layers[0].printW();
 
-        //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
-        /*
-        drawSignatureInfo(image,
-          ldData[i],signature,
-          tar_ldData,tar_signature,AngleDiff);*/
+          //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
+          /*
+          drawSignatureInfo(image,
+            ldData[i],signature,
+            tar_ldData,tar_signature,AngleDiff);*/
+      }
     }
-    printf("errorSum:%f ................\n\n",errorSum);
-
+    //printf("errorSum:%f ................\n\n",errorSum);
     t = clock() - t;
     printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
     //acvLabeledColorDispersion(image,image,ldData.size()/20+5);

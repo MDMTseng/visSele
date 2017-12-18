@@ -75,7 +75,7 @@ public:
       errorXY.resize(regionSampleXY.size());
       mappedXY.resize(regionSampleXY.size());
 
-      printf("tracking_region.size:%d\n",tracking_region.size());
+      //printf("tracking_region.size:%d\n",tracking_region.size());
       float adjAlpha=1;
       if(1)
       {
@@ -86,7 +86,7 @@ public:
       {
           reduced_tracking_region=tracking_region;
       }
-      printf("--->tracking_region.size:%d  adjAlpha:%f\n",reduced_tracking_region.size(),adjAlpha);
+      //printf("--->tracking_region.size:%d  adjAlpha:%f\n",reduced_tracking_region.size(),adjAlpha);
 
       adjAlpha/=adjAlpha;
       alphaMin/=adjAlpha;
@@ -151,7 +151,7 @@ public:
           //sleep(1);
 
       }
-
+      return 0;
       bool ifOutputImg=false;
       acvImage buff;
       if(ifOutputImg)
