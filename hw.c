@@ -205,7 +205,7 @@ void drawSignatureInfo(acvImage *img,
 
 int testSignature(int repeatNum)
 {
-    float data[1000]={0};
+    vector<float> data(repeatNum);
     vector<acv_XY> tar_signature(240);
     acv_LabeledData tar_ldData;
     acvImage *target = new acvImage();
@@ -237,6 +237,7 @@ int testSignature(int repeatNum)
     std::vector<acv_XY> regionXY_;
 
 
+      printf("%s:Preprocess done...\n",__func__);
     clock_t t = clock();
     for(int iterX=0;iterX<repeatNum;iterX++)
     {
@@ -334,7 +335,7 @@ int testSignature(int repeatNum)
       dev_data+=tmp;
     }
     dev_data/=repeatNum;
-    printf("avg:%f  dev:%f M:%f",avg_data,sqrt(dev_data),sqrt(dev_data_MAX) );
+    printf("avg:%f  dev:%f M:%f\n",avg_data,sqrt(dev_data),sqrt(dev_data_MAX) );
 
     //acvLabeledColorDispersion(image,image,ldData.size()/20+5);
     //acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
