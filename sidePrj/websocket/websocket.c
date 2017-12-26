@@ -79,7 +79,7 @@ static int ws_service_callback(
             {
 	            lws_send_pipe_choked(wsi);
 	            //* echo back to client*/
-	            websocket_write_back(wsi ,(char *)in, -1);
+	            websocket_write_back(wsi ,(char *)in, len);
             }
 
             break;
