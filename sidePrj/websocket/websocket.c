@@ -46,7 +46,7 @@ int websocket_write_back(struct lws *wsi_in, char *str, int str_size_in)
     //* write out*/
     n = lws_write(wsi_in, (unsigned char*)(out + LWS_SEND_BUFFER_PRE_PADDING), len, LWS_WRITE_TEXT);
 
-    printf(KBLU"[websocket_write_back] %s\n"RESET, str);
+    //printf(KBLU"[websocket_write_back] %s\n"RESET, str);
     //* free the buffer*/
     free(out);
 
@@ -74,7 +74,7 @@ static int ws_service_callback(
         case LWS_CALLBACK_RECEIVE:
 
 						info = ws_conn_pool.find(user);
-            printf(KCYN_L"[Main Service] Server recvived:%s size:%d\n"RESET,(char *)in,ws_conn_pool.size());
+            //printf(KCYN_L"[Main Service] Server recvived:%s size:%d\n"RESET,(char *)in,ws_conn_pool.size());
             //if(websocket_write_back(wsi ,(char *)in, -1)<0)
             {
 	            lws_send_pipe_choked(wsi);
