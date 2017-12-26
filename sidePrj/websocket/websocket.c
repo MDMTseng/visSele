@@ -66,10 +66,12 @@ static int ws_service_callback(
         //* If receive a data from client*/
         case LWS_CALLBACK_RECEIVE:
             printf(KCYN_L"[Main Service] Server recvived:%s\n"RESET,(char *)in);
-            lws_send_pipe_choked(wsi);
-            //* echo back to client*/
-            websocket_write_back(wsi ,(char *)in, -1);
-
+            //if(websocket_write_back(wsi ,(char *)in, -1)<0)
+            {
+	            lws_send_pipe_choked(wsi);
+	            //* echo back to client*/
+	            websocket_write_back(wsi ,(char *)in, -1);
+            }
             break;
     case LWS_CALLBACK_CLOSED:
             printf(KYEL"[Main Service] Client close.\n"RESET);
