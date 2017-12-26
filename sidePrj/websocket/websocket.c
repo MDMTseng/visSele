@@ -3,6 +3,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <util.h>
+#include <vector>
 #include <libwebsockets.h>
 
 #define KGRN "\033[0;32;32m"
@@ -15,6 +17,7 @@
 #define RESET "\033[0m"
 
 static int destroy_flag = 0;
+ws_conn_entity_pool ws_conn_pool;
 
 static void INT_HANDLER(int signo) {
     destroy_flag = 1;
@@ -56,25 +59,33 @@ static int ws_service_callback(
                          enum lws_callback_reasons reason, void *user,
                          void *in, size_t len)
 {
-
+		ws_conn_info tmp = {.user=user, .wsi=wsi};
+		ws_conn_info *info = NULL;
+		printf("[Main Service] reason:%d user:%p \n",reason,user);
     switch (reason) {
 
         case LWS_CALLBACK_ESTABLISHED:
-            printf(KYEL"[Main Service] Connection established\n"RESET);
+
+						ws_conn_pool.add(tmp);
+            printf(KYEL"[Main Service] Connection established size:%d\n"RESET,ws_conn_pool.size());
             break;
 
         //* If receive a data from client*/
         case LWS_CALLBACK_RECEIVE:
-            printf(KCYN_L"[Main Service] Server recvived:%s\n"RESET,(char *)in);
+
+						info = ws_conn_pool.find(user);
+            printf(KCYN_L"[Main Service] Server recvived:%s size:%d\n"RESET,(char *)in,ws_conn_pool.size());
             //if(websocket_write_back(wsi ,(char *)in, -1)<0)
             {
 	            lws_send_pipe_choked(wsi);
 	            //* echo back to client*/
 	            websocket_write_back(wsi ,(char *)in, -1);
             }
+
             break;
     case LWS_CALLBACK_CLOSED:
-            printf(KYEL"[Main Service] Client close.\n"RESET);
+						ws_conn_pool.remove(user);
+            printf(KYEL"[Main Service] Client close. size:%d\n"RESET,ws_conn_pool.size());
         break;
 
     default:
