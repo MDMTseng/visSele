@@ -66,7 +66,7 @@ static int ws_service_callback(
         //* If receive a data from client*/
         case LWS_CALLBACK_RECEIVE:
             printf(KCYN_L"[Main Service] Server recvived:%s\n"RESET,(char *)in);
-
+            lws_send_pipe_choked(wsi);
             //* echo back to client*/
             websocket_write_back(wsi ,(char *)in, -1);
 
@@ -136,7 +136,7 @@ int main(void) {
 
     //* websocket service */
     while ( !destroy_flag ) {
-        lws_service(context, 50);
+        lws_service(context, 500000);
     }
     usleep(10);
     lws_context_destroy(context);
