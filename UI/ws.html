@@ -16,6 +16,7 @@
   function testWebSocket()
   {
     websocket = new WebSocket(wsUri);
+    websocket.binaryType = 'arraybuffer';
     websocket.onopen = function(evt) { onOpen(evt) };
     websocket.onclose = function(evt) { onClose(evt) };
     websocket.onmessage = function(evt) { onMessage(evt) };
@@ -26,8 +27,11 @@
   {
     writeToScreen("CONNECTED");
     
-    var test = new Array(1000);
-    // for(var i=0;i<1000;i++)
+    var test = new Uint8Array(1000);
+    for(var i=0;i<test.length;i++)
+    {
+      test[i]=61;
+    }
     doSend(test);
     doSend(test);
   }
@@ -45,7 +49,7 @@
     var now=new Date().valueOf()
     if(pre==0)pre=now;
     console.log("len:",evt.data.length," diff T:",now-pre);
-    //console.log(evt.data);
+    console.log(typeof (evt.data)) ;
 
   }
 
