@@ -76,7 +76,6 @@ class ws_conn_entity_pool{
         {
           if(ws_conn_set[i].user)
           {
-        printf("fff\n");
             len++;
           }
         }
