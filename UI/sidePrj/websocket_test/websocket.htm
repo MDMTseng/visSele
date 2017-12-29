@@ -4,7 +4,7 @@
         <title>Test</title>
         <script type="text/javascript" src="jquery.js"></script>
         <script type="text/javascript">
-            var imageWidth = 10, imageHeight = 10; 
+            var imageWidth = 100, imageHeight = 100; 
             var noSupportMessage = "Your browser cannot support WebSocket!";
             var ws;
 
@@ -23,18 +23,20 @@
                 appendMessage("* Connecting to server ..<br/>");
                 // create a new websocket and connect
                 ws = new window[support]('ws://localhost:5000/');
-                // ws.binaryType = "arraybuffer";
+                ws.binaryType = "arraybuffer";
 
                 // when data is comming from the server, this metod is called
-                ws.onmessage2 = function (evt) {
+                ws.onmessage = function (evt) {
                     if (evt.data) {
                         drawImage(evt.data);
                     }
                 };
-                ws.onmessage = function(evt){
+                ws.onmessage2 = function(evt){
                     console.log(evt);
+                    console.log(evt.data.split(''));
                         if (evt.data) {
                             var dataview = new DataView(evt.data);
+                            console.log(dataview);
                             drawX(dataview, evt);
                         }
                     };
@@ -66,11 +68,12 @@
             }
             function sendMessage2() {
                 if (ws) {
-                    var datax=new ArrayBuffer(imageWidth*imageHeight);
+                    var datax=new Uint8Array(imageWidth*imageHeight);
                     for(var i=0;i<imageWidth*imageHeight;i++){
-                        datax[i]=1;
+                        datax[i]=0xff;
                     }
                     console.log(datax);
+
                     ws.send(datax);
                 }
             }
@@ -101,7 +104,7 @@
                 //         // data[i]=128;
 
                 // }
-                console.log(data);
+                console.log("drawImage="+data);
                 
                 var byteArray = new Uint8Array(data);
 

@@ -44,7 +44,7 @@ int websocket_write_back(struct lws *wsi_in, char *str, int str_size_in)
     //* setup the buffer*/
     memcpy (out + LWS_SEND_BUFFER_PRE_PADDING, str, len );
     //* write out*/
-    n = lws_write(wsi_in, (unsigned char*)(out + LWS_SEND_BUFFER_PRE_PADDING), len, LWS_WRITE_TEXT);
+    n = lws_write(wsi_in, (unsigned char*)(out + LWS_SEND_BUFFER_PRE_PADDING), len, LWS_WRITE_BINARY);
 
     //printf(KBLU"[websocket_write_back] %s\n"RESET, str);
     //* free the buffer*/
