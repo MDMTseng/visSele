@@ -26,12 +26,10 @@
   {
     writeToScreen("CONNECTED");
     
-    var test = new Array(640*480);
-  var now=new Date().valueOf()
-    writeToScreen("1MILLIS="+now);
+    var test = new Array(1000);
     // for(var i=0;i<1000;i++)
     doSend(test);
-  writeToScreen("2MILLIS="+(new Date().valueOf()-now));
+    doSend(test);
   }
 
   function onClose(evt)
@@ -39,10 +37,16 @@
     writeToScreen("DISCONNECTED");
   }
 
+
+
+  var pre=0;//new Date().valueOf()
   function onMessage(evt)
   {
-    writeToScreen('<span style="color: blue;">RESPONSE: ' + evt.data+'</span>');
-    // websocket.close();
+    var now=new Date().valueOf()
+    if(pre==0)pre=now;
+    console.log("len:",evt.data.length," diff T:",now-pre);
+    //console.log(evt.data);
+
   }
 
   function onError(evt)
