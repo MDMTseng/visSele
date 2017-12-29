@@ -61,19 +61,25 @@ static int ws_service_callback(
 {
 		ws_conn_info tmp = {.user=user, .wsi=wsi};
 		ws_conn_info *info = NULL;
-		printf("[Main Service] reason:%d user:%p \n",reason,user);
+		//printf("[Main Service] reason:%d user:%p \n",reason,user);
     switch (reason) {
 
         case LWS_CALLBACK_ESTABLISHED:
 
-						ws_conn_pool.add(tmp);
+			ws_conn_pool.add(tmp);
             printf(KYEL"[Main Service] Connection established size:%d\n"RESET,ws_conn_pool.size());
             break;
 
         //* If receive a data from client*/
         case LWS_CALLBACK_RECEIVE:
 
-						info = ws_conn_pool.find(user);
+            printf("%d\n",len );
+            for(int i=0;i<len;i++){
+            printf("%02x ",((char*)in)[i] );
+            }
+            printf("\n");
+
+			info = ws_conn_pool.find(user);
             //printf(KCYN_L"[Main Service] Server recvived:%s size:%d\n"RESET,(char *)in,ws_conn_pool.size());
             //if(websocket_write_back(wsi ,(char *)in, -1)<0)
             {
@@ -83,10 +89,14 @@ static int ws_service_callback(
             }
 
             break;
-    case LWS_CALLBACK_CLOSED:
-						ws_conn_pool.remove(user);
+        case LWS_CALLBACK_CLOSED:
+			ws_conn_pool.remove(user);
             printf(KYEL"[Main Service] Client close. size:%d\n"RESET,ws_conn_pool.size());
-        break;
+            break;
+
+        case LWS_CALLBACK_WS_PEER_INITIATED_CLOSE:
+            //return -1;
+            break;
 
     default:
             break;
@@ -151,6 +161,7 @@ int main(void) {
     while ( !destroy_flag ) {
         lws_service(context, 500000);
     }
+printf("TO END....\n");
     usleep(10);
     lws_context_destroy(context);
 
