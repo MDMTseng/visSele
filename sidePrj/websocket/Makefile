@@ -1,14 +1,10 @@
 
-MakeTemplate?=../../Makefile.in
+target_bin = main
+IDIR = $(MODULE_cwebsocket)/lib/
+VPATH = $(MODULE_cwebsocket)/lib/
+_OBJ = main.o websocket.o
 
-PATH_libwebsockets=$(MODULE_contrib)/libwebsockets
-#FLAGS+=-DLWS_WITH_ESP32
-target_bin=websocket
-ODIR=obj
-IDIR=$(PATH_libwebsockets)/win32port/ $(PATH_libwebsockets)/build/include include
-_OBJ = websocket.o
-
-EXT_OBJS= $(PATH_libwebsockets)/build/lib/libwebsockets.a
-$(info $(EXT_OBJS))
-
+ESS_TRACK=
+export MakeTemplate:= $(abspath Makefile.in)
+export FLAGS= -w -O3
 include $(MakeTemplate)
