@@ -61,7 +61,7 @@ static int ws_service_callback(
 {
 		ws_conn_info tmp = {.user=user, .wsi=wsi};
 		ws_conn_info *info = NULL;
-		//printf("[Main Service] reason:%d user:%p \n",reason,user);
+		printf("[Main Service] reason:%d user:%p \n",reason,user);
     switch (reason) {
 
         case LWS_CALLBACK_ESTABLISHED:
@@ -109,12 +109,24 @@ struct per_session_data {
     int fd;
 };
 
+
+static struct lws_protocols protocols[] = {
+/* first protocol must always be HTTP handler */
+    {
+        "my-echo-protocol", // protocol name - very important!
+        ws_service_callback,   // callback
+        0                          // we don't use any per session data
+    },
+    {
+        NULL, NULL, 0   /* End of list */
+    }
+};
+
 int main(void) {
     // server url will usd port 5000
     int port = 5000;
     const char *interface = NULL;
     struct lws_context_creation_info info;
-    struct lws_protocols protocol;
     struct lws_context *context;
     // Not using ssl
     const char *cert_path = NULL;
@@ -130,17 +142,12 @@ int main(void) {
     sigemptyset(&act.sa_mask);
     sigaction( SIGINT, &act, 0);
 
-    //* setup websocket protocol */
-    protocol.name = "my-echo-protocol";
-    protocol.callback = ws_service_callback;
-    protocol.per_session_data_size=sizeof(struct per_session_data);
-    protocol.rx_buffer_size = 0;
 
     //* setup websocket context info*/
     memset(&info, 0, sizeof info);
     info.port = port;
     info.iface = interface;
-    info.protocols = &protocol;
+    info.protocols = protocols;
     //info.extensions = lws_get_internal_extensions();
     info.ssl_cert_filepath = cert_path;
     info.ssl_private_key_filepath = key_path;
@@ -159,7 +166,7 @@ int main(void) {
 
     //* websocket service */
     while ( !destroy_flag ) {
-        lws_service(context, 500000);
+        lws_service(context, 50);
     }
 printf("TO END....\n");
     usleep(10);
