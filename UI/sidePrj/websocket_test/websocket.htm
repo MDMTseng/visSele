@@ -1,0 +1,156 @@
+﻿<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+    <head>
+        <title>Test</title>
+        <script type="text/javascript" src="jquery.js"></script>
+        <script type="text/javascript">
+            var imageWidth = 100, imageHeight = 100; 
+            var noSupportMessage = "Your browser cannot support WebSocket!";
+            var ws;
+
+            function appendMessage(message) {
+                $('body').append(message);
+            }
+
+            function connectSocketServer() {
+                var support = "MozWebSocket" in window ? 'MozWebSocket' : ("WebSocket" in window ? 'WebSocket' : null);
+
+                if (support == null) {
+                    appendMessage("* " + noSupportMessage + "<br/>");
+                    return;
+                }
+
+                appendMessage("* Connecting to server ..<br/>");
+                // create a new websocket and connect
+                ws = new window[support]('ws://localhost:5000/');
+                ws.binaryType = "arraybuffer";
+
+                // when data is comming from the server, this metod is called
+                ws.onmessage = function (evt) {
+                    if (evt.data) {
+                        drawImage(evt.data);
+                    }
+                };
+                ws.onmessage2 = function(evt){
+                    console.log(evt);
+                    console.log(evt.data.split(''));
+                        if (evt.data) {
+                            var dataview = new DataView(evt.data);
+                            console.log(dataview);
+                            drawX(dataview, evt);
+                        }
+                    };
+                // when the connection is established, this method is called
+                ws.onopen = function () {
+                    appendMessage('* Connection open<br/>');
+                    $('#messageInput').attr("disabled", "");
+                    $('#sendButton').attr("disabled", "");
+                    $('#connectButton').attr("disabled", "disabled");
+                    $('#disconnectButton').attr("disabled", "");
+                };
+
+                // when the connection is closed, this method is called
+                ws.onclose = function () {
+                    appendMessage('* Connection closed<br/>');
+                    $('#messageInput').attr("disabled", "disabled");
+                    $('#sendButton').attr("disabled", "disabled");
+                    $('#connectButton').attr("disabled", "");
+                    $('#disconnectButton').attr("disabled", "disabled");
+                }
+            }
+
+            function sendMessage() {
+                if (ws) {
+                    var messageBox = document.getElementById('messageInput');
+                    ws.send(messageBox.value);
+                    messageBox.value = "";
+                }
+            }
+            function sendMessage2() {
+                if (ws) {
+                    var datax=new Uint8Array(imageWidth*imageHeight);
+                    for(var i=0;i<imageWidth*imageHeight;i++){
+                        datax[i]=0xff;
+                    }
+                    console.log(datax);
+
+                    ws.send(datax);
+                }
+            }
+            function disconnectWebSocket() {
+                if (ws) {
+                    ws.close();
+                }
+            }
+
+            function connectWebSocket() {
+                connectSocketServer();
+            }
+
+            window.onload = function () {
+                $('#messageInput').attr("disabled", "disabled");
+                $('#sendButton').attr("disabled", "disabled");
+                $('#disconnectButton').attr("disabled", "disabled");
+            }
+
+            function drawImage(data) {
+                
+                // var data=new Array(100);
+
+                // for(var i=0;i<imageWidth*imageHeight;i++){
+                //     // if((i%imageWidth==1))
+                //         data[i]=i%255;
+                //     // else
+                //         // data[i]=128;
+
+                // }
+                console.log("drawImage="+data);
+                
+                var byteArray = new Uint8Array(data);
+
+                var canvas = document.createElement('canvas');
+                canvas.width = imageWidth;
+                canvas.height = imageHeight;
+                var ctx = canvas.getContext('2d');
+
+                var imageData = ctx.getImageData(0, 0, imageWidth, imageHeight); // total size: imageWidth * imageHeight * 4; color format BGRA
+                var dataLen = imageData.data.length;
+                for (var i = 0; i < dataLen; i++)
+                {
+                    imageData.data[i] = byteArray[i];
+                }
+                ctx.putImageData(imageData, 0, 0);
+
+                // create a new element and add it to div
+                var image = document.createElement('img');
+                image.width = imageWidth;
+                image.height = imageHeight;
+                image.src = canvas.toDataURL();
+
+                var div = document.getElementById('img');
+                div.appendChild(image);
+
+            }
+
+            function drawX(dataview, evt) {
+                var sequence = dataview.getUint32(1, true);
+                var timestamp = dataview.getUint32(5, true);
+                var jpegArrayBuffer = evt.data.slice(9, evt.data.byteLength, true);
+                var jpgBlob = new Blob([jpegArrayBuffer], { type:"image/jpeg" });
+
+                image.src = window.URL.createObjectURL(jpgBlob);
+                 var div = document.getElementById('img');
+                            div.appendChild(image);
+            }
+    </script>
+    </head>
+    <body>
+        <input type="button" id="sendfakeButton" value="sendfakeButton" onclick="drawImage(new Array(100*100))"/> 
+        <input type="button" id="connectButton" value="Connect" onclick="connectWebSocket()"/> 
+        <input type="button" id="disconnectButton" value="Disconnect" onclick="disconnectWebSocket()"/> 
+        <input type="text" id="messageInput" /> 
+        <input type="button" id="sendButton" value="send text" onclick="sendMessage()"/> <br />
+        <input type="button" id="sendButton2" value="sendButton2" onclick="sendMessage2()"/> <br />
+        <div id="img"></br></div>
+    </body>
+</html>

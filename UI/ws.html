@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+  <meta charset="utf-8" />
+  <title>WebSocket Test</title>
+  <script language="javascript" type="text/javascript">
+
+  var wsUri = "ws://localhost:5000";
+  var output;
+
+  function init()
+  {
+    output = document.getElementById("output");
+    
+    testWebSocket();
+  }
+
+  function testWebSocket()
+  {
+    websocket = new WebSocket(wsUri);
+    websocket.binaryType = 'arraybuffer';
+    websocket.onopen = function(evt) { onOpen(evt) };
+    websocket.onclose = function(evt) { onClose(evt) };
+    websocket.onmessage = function(evt) { onMessage(evt) };
+    websocket.onerror = function(evt) { onError(evt) };
+  }
+
+  function onOpen(evt)
+  {
+    writeToScreen("CONNECTED");
+    
+    var test = new Uint8Array(1000);
+    for(var i=0;i<test.length;i++)
+    {
+      test[i]=61;
+    }
+    doSend(test);
+    doSend(test);
+  }
+
+  function onClose(evt)
+  {
+    writeToScreen("DISCONNECTED");
+  }
+
+
+
+  var pre=0;//new Date().valueOf()
+  function onMessage(evt)
+  {
+    var now=new Date().valueOf()
+    if(pre==0)pre=now;
+    console.log("len:",evt.data.length," diff T:",now-pre);
+    console.log(typeof (evt.data)) ;
+
+  }
+
+  function onError(evt)
+  {
+    writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+  }
+
+  function doSend(message)
+  {
+    // writeToScreen("SENT: " + message);
+    websocket.send(message);
+  }
+
+  function writeToScreen(message)
+  {
+    var pre = document.createElement("p");
+    pre.style.wordWrap = "break-word";
+    pre.innerHTML = message;
+    output.appendChild(pre);
+  }
+
+  window.addEventListener("load", init, false);
+
+  </script>
+
+  <h2>WebSocket Test</h2>
+
+  <div id="output"></div>
