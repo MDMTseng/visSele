@@ -29,6 +29,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <util.h>
 
 #include "websocket.h"
 
@@ -38,6 +39,8 @@
 
 uint8_t gBuffer[BUF_LEN];
 uint8_t goBuffer[BUF_LEN];
+ws_conn_entity_pool ws_conn;
+
 
 void error(const char *msg)
 {
@@ -45,161 +48,13 @@ void error(const char *msg)
     exit(EXIT_FAILURE);
 }
 
-int safeSend(int clientSocket, const uint8_t *buffer, size_t bufferSize)
+
+void clientWorker(ws_conn_info* conn)
 {
-    #ifdef PACKET_DUMP
-    printf("out packet:\n");
-    fwrite(buffer, 1, bufferSize, stdout);
-    printf("\n");
-    #endif
-    ssize_t written = send(clientSocket, buffer, bufferSize, 0);
-    if (written == -1) {
-        close(clientSocket);
-        perror("send failed");
-        return EXIT_FAILURE;
+    while(conn->sock) 
+    {
+        conn->runLoop();
     }
-    if (written != bufferSize) {
-        close(clientSocket);
-        perror("written not all bytes");
-        return EXIT_FAILURE;
-    }
-    
-    return EXIT_SUCCESS;
-}
-
-void clientWorker(int clientSocket)
-{
-    memset(gBuffer, 0, BUF_LEN);
-    size_t readedLength = 0;
-    size_t frameSize = BUF_LEN;
-    enum wsState state = WS_STATE_OPENING;
-    uint8_t *data = NULL;
-    size_t dataSize = 0;
-    enum wsFrameType frameType = WS_INCOMPLETE_FRAME;
-    struct handshake hs;
-    nullHandshake(&hs);
-    
-    #define prepareBuffer frameSize = BUF_LEN; memset(gBuffer, 0, BUF_LEN);
-    #define initNewFrame frameType = WS_INCOMPLETE_FRAME; readedLength = 0; memset(gBuffer, 0, BUF_LEN);
-    
-    while (frameType == WS_INCOMPLETE_FRAME) {
-        ssize_t readed = recv(clientSocket, gBuffer+readedLength, BUF_LEN-readedLength, 0);
-        if (!readed) {
-            close(clientSocket);
-            printf("recv failed");
-            return;
-        }
-        #ifdef PACKET_DUMP
-        printf("in packet:\n");
-        fwrite(gBuffer, 1, readed, stdout);
-        printf("\n");
-        #endif
-        readedLength+= readed;
-        assert(readedLength <= BUF_LEN);
-        
-
-        ssize_t h_padding=0;
-
-        while( readedLength >  h_padding )
-        {
-
-
-            if (state == WS_STATE_OPENING) {
-            printf("in WS_STATE_OPENING:\n");
-                frameType = wsParseHandshake(gBuffer, readedLength, &hs);
-            } else {
-                size_t curPktLen;
-                //printf("\n\nin ELSE: readedLength:%d h_padding:%d\n",readedLength,h_padding);
-                frameType = wsParseInputFrame2(gBuffer+h_padding, readedLength-h_padding, &data, &dataSize, &curPktLen);
-
-                //printf("in ELSE: curPktLen:%d frameType:%d\n",curPktLen,frameType);
-                if(curPktLen>readedLength)
-                {
-                    //TODO:ERROR
-                }
-                else
-                {
-                    h_padding+=curPktLen;
-                }
-            }
-            
-            if ((frameType == WS_INCOMPLETE_FRAME && readedLength == BUF_LEN) || frameType == WS_ERROR_FRAME) {
-                if (frameType == WS_INCOMPLETE_FRAME)
-                {
-                    printf("buffer too small");
-                    continue;
-                }
-                else
-                    printf("error in incoming frame %d %d frameType:%d \n",readedLength,BUF_LEN,frameType);
-                
-                if (state == WS_STATE_OPENING) {
-                    prepareBuffer;
-                    frameSize = sprintf((char *)gBuffer,
-                                        "HTTP/1.1 400 Bad Request\r\n"
-                                        "%s%s\r\n\r\n",
-                                        versionField,
-                                        version);
-                    safeSend(clientSocket, gBuffer, frameSize);
-                    break;
-                } else {
-                    prepareBuffer;
-                    wsMakeFrame(NULL, 0, gBuffer, &frameSize, WS_CLOSING_FRAME);
-                    if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
-                        break;
-                    state = WS_STATE_CLOSING;
-                    initNewFrame;
-                }
-            }
-
-            if (state == WS_STATE_OPENING) {
-                assert(frameType == WS_OPENING_FRAME);
-                if (frameType == WS_OPENING_FRAME) {
-                    // if resource is right, generate answer handshake and send it
-
-                    
-                    prepareBuffer;
-                    wsGetHandshakeAnswer(&hs, gBuffer, &frameSize);
-                    freeHandshake(&hs);
-                    if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
-                        break;
-                    state = WS_STATE_NORMAL;
-                    initNewFrame;
-                }
-            } else {
-                if (frameType == WS_CLOSING_FRAME) {
-                    if (state == WS_STATE_CLOSING) {
-                        break;
-                    } else {
-                        prepareBuffer;
-                        wsMakeFrame(NULL, 0, gBuffer, &frameSize, WS_CLOSING_FRAME);
-                        safeSend(clientSocket, gBuffer, frameSize);
-                        break;
-                    }
-                } else if (frameType == WS_TEXT_FRAME || frameType == WS_BINARY_FRAME ) {
-                    uint8_t *recievedString = NULL;
-                    recievedString = (uint8_t *)malloc(dataSize+1);
-                    assert(recievedString);
-                    memcpy(recievedString, data, dataSize);
-                    recievedString[ dataSize ] = 0;
-
-                    //printf(">>>dataSize:%d frameType:%d\n",dataSize,frameType);
-
-
-                    
-                    //prepareBuffer;
-                    wsMakeFrame(recievedString, dataSize, goBuffer, &frameSize, frameType);
-                    free(recievedString);
-                    if (safeSend(clientSocket, goBuffer, frameSize) == EXIT_FAILURE)
-                        break;
-
-                    //initNewFrame;
-                }
-            }
-        }
-        initNewFrame;
-    } // read/write cycle
-    
-    close(clientSocket);
 } 
 
 int main(int argc, char** argv)
@@ -226,13 +81,17 @@ int main(int argc, char** argv)
     while (TRUE) {
         struct sockaddr_in remote;
         socklen_t sockaddrLen = sizeof(remote);
-        int clientSocket = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
-        if (clientSocket == -1) {
+        int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
+        if (NewSock == -1) {
             error("accept failed");
         }
-        
-        printf("connected %s:%d\n", inet_ntoa(remote.sin_addr), ntohs(remote.sin_port));
-        clientWorker(clientSocket);
+        ws_conn_info* conn = ws_conn.find_avaliable_conn_info_slot();
+        conn->sock=NewSock;
+        conn->addr=remote;
+
+
+        printf("connected %s:%d\n", inet_ntoa(conn->addr.sin_addr), ntohs(conn->addr.sin_port));
+        clientWorker(conn);
         printf("disconnected\n");
     }
     

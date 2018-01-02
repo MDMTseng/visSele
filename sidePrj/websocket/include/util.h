@@ -1,37 +1,239 @@
 
 
-#include <libwebsockets.h>
 #include <vector>
+#include <netinet/in.h>
+#include "websocket.h"
 
-typedef struct ws_conn_info{
-  void* user;
-  struct lws *wsi;
-}ws_conn_info;
+class ws_conn_info{
+
+  const int recvBufSizeInc=1024;
+  int ws_state;
+  std::vector <uint8_t> recvBuf;
+  std::vector <uint8_t> sendBuf;
+  size_t accBufDataLen;
+
+  static int safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
+  {
+      #ifdef PACKET_DUMP
+      printf("out packet:\n");
+      fwrite(buffer, 1, bufferSize, stdout);
+      printf("\n");
+      #endif
+      ssize_t written = send(sock, buffer, bufferSize, 0);
+      if (written == -1) {
+          close(sock);
+          perror("send failed");
+          return EXIT_FAILURE;
+      }
+      if (written != bufferSize) {
+          close(sock);
+          perror("written not all bytes");
+          return EXIT_FAILURE;
+      }
+      
+      return EXIT_SUCCESS;
+  }
+  public:
+  int sock;
+  struct sockaddr_in addr;
+  ws_conn_info(){
+    RESET();
+  }
+
+  void RESET()
+  {
+    sock=0;
+    ws_state = WS_STATE_OPENING;
+    memset(&addr,0,sizeof(addr));
+    accBufDataLen = 0;
+    if(recvBuf.size()<recvBufSizeInc)
+      recvBuf.resize(recvBufSizeInc);
+    if(sendBuf.size()<recvBufSizeInc)
+      sendBuf.resize(recvBufSizeInc);
+  }
+
+
+  void COPY_property(ws_conn_info *from)
+  {
+    sock = from->sock;
+    ws_state = from->ws_state;
+    addr = from->addr;
+    accBufDataLen = from->accBufDataLen;
+  }
+
+  int doHandShake(void *buff, ssize_t buffLen)
+  {
+    printf("%s:%s\n",__func__,buff); 
+    struct handshake hs;
+    nullHandshake(&hs);
+
+    enum wsFrameType frameType = wsParseHandshake((unsigned char *)buff, buffLen, &hs);
+
+    if (frameType != WS_OPENING_FRAME) {
+      return -1;
+    }
+
+    // if resource is right, generate answer handshake and send it
+    size_t frameSize=sendBuf.size();
+
+    wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
+    freeHandshake(&hs);
+    if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+    {
+      return -1;
+    }
+    return 0;
+  }
+
+  int doClosing()
+  {
+        close(sock);
+        RESET();
+        printf("%s\n",__func__);
+        return 0;
+  }
+
+  int doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen)
+  {
+      int h_padding = 0;
+      enum wsFrameType frameType = WS_INCOMPLETE_FRAME;
+      while( buffLen >  h_padding )
+      {
+        size_t curPktLen;
+
+        uint8_t *data = NULL;
+        size_t dataSize = 0;
+        frameType = wsParseInputFrame2((uint8_t*)buff+h_padding, buffLen-h_padding, 
+          &data, &dataSize, &curPktLen);
+        printf("frameType:%d\n",frameType);
+
+        if(frameType == WS_TEXT_FRAME || frameType == WS_BINARY_FRAME )
+        {
+          h_padding+=curPktLen;
+          /*for(int i=0;i<dataSize;i++)
+          {
+            printf("%02x ",data[i]);
+          }*/
+          printf("dataSize:%d\n",dataSize);
+
+          size_t frameSize=sendBuf.size();
+          wsMakeFrame(data, dataSize, &(sendBuf[0]), &frameSize, frameType);
+          if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+          {
+            return -1;
+          }
+
+        }
+        else if( frameType == WS_INCOMPLETE_FRAME )
+        {
+          //The packet is not finished, wait for receiving more
+          break;
+        }
+        else if( frameType == WS_CLOSING_FRAME )
+        {
+          h_padding+=curPktLen;
+          ws_state=WS_STATE_CLOSING;
+          *ret_restLen=0;
+          return doClosing();
+        }
+      }
+
+      //The packet is incomplete, remove finished packets
+      //|finished|finished|incomplete| => |incomplete|
+      //_______h_padding__^
+      if( frameType == WS_INCOMPLETE_FRAME )
+      {
+        ssize_t newLen=buffLen - h_padding;
+
+        if(h_padding != 0)
+        {
+          memcpy(buff,(uint8_t*)buff+h_padding,newLen);
+        }
+        *ret_restLen = newLen;
+      }
+      else
+      {
+        *ret_restLen =0;
+      }
+  }
+  int runLoop()
+  {
+    if( sock == 0 )
+    {
+      return -1;
+    }
+    //printf("sock:%d size:%d\n",sock,recvBuf.size());
+
+    if(recvBuf.size() == accBufDataLen)
+    {
+      //printf("Buffer size(%d) is not enough, expend to %d\n",recvBuf.size(),recvBuf.size()+recvBufSizeInc);
+      recvBuf.resize(recvBuf.size()+recvBufSizeInc);
+    }
+    ssize_t readed = recv(sock, &(recvBuf[0])+accBufDataLen, recvBuf.size()-accBufDataLen, 0);
+    if (!readed) {
+      ws_state=WS_STATE_CLOSING;
+      doClosing();
+      return -1;
+    }
+    accBufDataLen+=readed;
+
+    //printf("readed:%d\n",readed);
+    
+    /*if(accBufDataLen==recvBuf.size())
+    {
+      recvBuf.reserve(recvBuf.size()+recvBufSizeInc);
+    }*/
+
+    if(ws_state == WS_STATE_NORMAL)
+    {
+      if(doNormalRecv(&(recvBuf[0]), accBufDataLen, &accBufDataLen) ==0 )
+      {
+      }
+
+      if(accBufDataLen == recvBuf.size())
+      {
+
+      }
+      return 0;
+    }
+
+    accBufDataLen = 0;//accBufDataLen is for receving accumulation, only useful in normal mode
+    if(ws_state == WS_STATE_OPENING)
+    {
+      if(doHandShake(&(recvBuf[0]), readed) !=0 )
+      {
+        printf("Error:Hand shake failed...");
+        ws_state=WS_STATE_CLOSING;
+        doClosing();
+      }
+      else
+      {
+        ws_state = WS_STATE_NORMAL;
+      }
+      return 0;
+    }
+
+    if(ws_state == WS_STATE_CLOSING)
+    {
+        doClosing();
+    }
+
+  }
+
+
+};
 
 
 class ws_conn_entity_pool{
 
     std::vector <ws_conn_info> ws_conn_set;
 
-
-    ws_conn_info *find_avaliable_conn_info_slot()
-    {
-      	for(int i=0;i<ws_conn_set.size();i++)
-      	{
-      		if(ws_conn_set[i].user == NULL)
-      			return &(ws_conn_set[i]);
-      	}
-      	ws_conn_info empty={0};
-      	ws_conn_set.push_back(empty);
-
-      	return &(ws_conn_set[ws_conn_set.size()-1]);
-    }
     public:
-    ws_conn_info *find(void* user)
+    ws_conn_info *find(int sock)
     {
       	for(int i=0;i<ws_conn_set.size();i++)
       	{
-      		if(ws_conn_set[i].user == user)
+      		if(ws_conn_set[i].sock == sock)
       			return &(ws_conn_set[i]);
       	}
       	return NULL;
@@ -39,33 +241,42 @@ class ws_conn_entity_pool{
 
 
 
-    int remove(void* user)
+    int remove(int sock)
     {
-        for(int i=0;i<ws_conn_set.size();i++)
-        {
-        	if(ws_conn_set[i].user == user)
-          {
-            ws_conn_info empty={0};
-            ws_conn_set[i]=empty;
-            return 0;
-          }
-        }
-        return -1;
+        ws_conn_info * torm = find(sock);
+        if(torm == NULL)
+          return -1;
+
+        torm->sock = 0;
+        return 0;
     }
 
 
-    ws_conn_info* add(ws_conn_info info)
+    ws_conn_info *find_avaliable_conn_info_slot()
     {
-        if(info.user == NULL || info.wsi == NULL )
+        for(int i=0;i<ws_conn_set.size();i++)
+        {
+          if(ws_conn_set[i].sock == 0)
+            return &(ws_conn_set[i]);
+        }
+        ws_conn_info empty;
+        ws_conn_set.push_back(empty);
+
+        return &(ws_conn_set[ws_conn_set.size()-1]);
+    }
+
+    ws_conn_info* add(ws_conn_info *info)
+    {
+        if(info == NULL)return NULL;
+        if(info->sock == 0)
           return NULL;
 
-        if(find(info.user)!=NULL)
+        if(find(info->sock)!=NULL)
         {
           return NULL;
         }
         ws_conn_info* tmp = find_avaliable_conn_info_slot();
-        *tmp = info;
-
+        tmp->COPY_property(info);
       	return tmp;
     }
 
@@ -74,7 +285,7 @@ class ws_conn_entity_pool{
         int len=0;
         for(int i=0;i<ws_conn_set.size();i++)
         {
-          if(ws_conn_set[i].user)
+          if(ws_conn_set[i].sock)
           {
             len++;
           }
