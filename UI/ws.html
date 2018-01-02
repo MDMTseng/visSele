@@ -10,7 +10,7 @@
   {
     output = document.getElementById("output");
     
-    testWebSocket();
+    setTimeout(function(){ testWebSocket(); }, 1000);
   }
 
   function testWebSocket()
@@ -27,13 +27,17 @@
   {
     writeToScreen("CONNECTED");
     
-    var test = new Uint8Array(1000);
+    var test = new Uint8Array(10000);
     for(var i=0;i<test.length;i++)
     {
       test[i]=61;
     }
-    doSend(test);
-    doSend(test);
+
+
+    for(var i=0;i<10;i++)
+    {
+      doSend(test);
+    }
   }
 
   function onClose(evt)

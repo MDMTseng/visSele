@@ -235,7 +235,7 @@ void wsMakeFrame(const uint8_t *data, size_t dataLength,
     *outLength+= dataLength;
 }
 
-static size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
+size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
                                uint8_t *payloadFieldExtraBytes, enum wsFrameType *frameType) 
 {
     size_t payloadLength = inputFrame[1] & 0x7F;
@@ -276,6 +276,14 @@ static size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
 enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                                    uint8_t **dataPtr, size_t *dataLength)
 {
+    size_t curPktLen;
+    return wsParseInputFrame2(inputFrame, inputLength,dataPtr, dataLength, &curPktLen);
+
+}
+
+enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
+                                   uint8_t **dataPtr, size_t *dataLength, size_t *curPktLen)
+{
     assert(inputFrame && inputLength);
 
     if (inputLength < 2)
@@ -305,7 +313,8 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                 return WS_INCOMPLETE_FRAME;
             uint8_t *maskingKey = &inputFrame[2 + payloadFieldExtraBytes];
 
-            assert(payloadLength == inputLength - 6 - payloadFieldExtraBytes);
+            *curPktLen = payloadLength + 6 + payloadFieldExtraBytes;
+            //assert(payloadLength == inputLength - 6 - payloadFieldExtraBytes);
 
             *dataPtr = &inputFrame[2 + payloadFieldExtraBytes + 4];
             *dataLength = payloadLength;

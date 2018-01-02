@@ -37,6 +37,7 @@
 //#define PACKET_DUMP
 
 uint8_t gBuffer[BUF_LEN];
+uint8_t goBuffer[BUF_LEN];
 
 void error(const char *msg)
 {
@@ -85,7 +86,7 @@ void clientWorker(int clientSocket)
         ssize_t readed = recv(clientSocket, gBuffer+readedLength, BUF_LEN-readedLength, 0);
         if (!readed) {
             close(clientSocket);
-            perror("recv failed");
+            printf("recv failed");
             return;
         }
         #ifdef PACKET_DUMP
@@ -96,76 +97,106 @@ void clientWorker(int clientSocket)
         readedLength+= readed;
         assert(readedLength <= BUF_LEN);
         
-        if (state == WS_STATE_OPENING) {
-            frameType = wsParseHandshake(gBuffer, readedLength, &hs);
-        } else {
-            frameType = wsParseInputFrame(gBuffer, readedLength, &data, &dataSize);
-        }
-        
-        if ((frameType == WS_INCOMPLETE_FRAME && readedLength == BUF_LEN) || frameType == WS_ERROR_FRAME) {
-            if (frameType == WS_INCOMPLETE_FRAME)
-                printf("buffer too small");
-            else
-                printf("error in incoming frame\n");
-            
+
+        ssize_t h_padding=0;
+
+        while( readedLength >  h_padding )
+        {
+
+
             if (state == WS_STATE_OPENING) {
-                prepareBuffer;
-                frameSize = sprintf((char *)gBuffer,
-                                    "HTTP/1.1 400 Bad Request\r\n"
-                                    "%s%s\r\n\r\n",
-                                    versionField,
-                                    version);
-                safeSend(clientSocket, gBuffer, frameSize);
-                break;
+            printf("in WS_STATE_OPENING:\n");
+                frameType = wsParseHandshake(gBuffer, readedLength, &hs);
             } else {
-                prepareBuffer;
-                wsMakeFrame(NULL, 0, gBuffer, &frameSize, WS_CLOSING_FRAME);
-                if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
-                    break;
-                state = WS_STATE_CLOSING;
-                initNewFrame;
+                size_t curPktLen;
+                //printf("\n\nin ELSE: readedLength:%d h_padding:%d\n",readedLength,h_padding);
+                frameType = wsParseInputFrame2(gBuffer+h_padding, readedLength-h_padding, &data, &dataSize, &curPktLen);
+
+                //printf("in ELSE: curPktLen:%d frameType:%d\n",curPktLen,frameType);
+                if(curPktLen>readedLength)
+                {
+                    //TODO:ERROR
+                }
+                else
+                {
+                    h_padding+=curPktLen;
+                }
             }
-        }
-
-        if (state == WS_STATE_OPENING) {
-            assert(frameType == WS_OPENING_FRAME);
-            if (frameType == WS_OPENING_FRAME) {
-                // if resource is right, generate answer handshake and send it
-
+            
+            if ((frameType == WS_INCOMPLETE_FRAME && readedLength == BUF_LEN) || frameType == WS_ERROR_FRAME) {
+                if (frameType == WS_INCOMPLETE_FRAME)
+                {
+                    printf("buffer too small");
+                    continue;
+                }
+                else
+                    printf("error in incoming frame %d %d frameType:%d \n",readedLength,BUF_LEN,frameType);
                 
-                prepareBuffer;
-                wsGetHandshakeAnswer(&hs, gBuffer, &frameSize);
-                freeHandshake(&hs);
-                if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
-                    break;
-                state = WS_STATE_NORMAL;
-                initNewFrame;
-            }
-        } else {
-            if (frameType == WS_CLOSING_FRAME) {
-                if (state == WS_STATE_CLOSING) {
+                if (state == WS_STATE_OPENING) {
+                    prepareBuffer;
+                    frameSize = sprintf((char *)gBuffer,
+                                        "HTTP/1.1 400 Bad Request\r\n"
+                                        "%s%s\r\n\r\n",
+                                        versionField,
+                                        version);
+                    safeSend(clientSocket, gBuffer, frameSize);
                     break;
                 } else {
                     prepareBuffer;
                     wsMakeFrame(NULL, 0, gBuffer, &frameSize, WS_CLOSING_FRAME);
-                    safeSend(clientSocket, gBuffer, frameSize);
-                    break;
+                    if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
+                        break;
+                    state = WS_STATE_CLOSING;
+                    initNewFrame;
                 }
-            } else if (frameType == WS_TEXT_FRAME || frameType == WS_BINARY_FRAME ) {
-                uint8_t *recievedString = NULL;
-                recievedString = (uint8_t *)malloc(dataSize+1);
-                assert(recievedString);
-                memcpy(recievedString, data, dataSize);
-                recievedString[ dataSize ] = 0;
-                
-                prepareBuffer;
-                wsMakeFrame(recievedString, dataSize, gBuffer, &frameSize, frameType);
-                free(recievedString);
-                if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
-                    break;
-                initNewFrame;
+            }
+
+            if (state == WS_STATE_OPENING) {
+                assert(frameType == WS_OPENING_FRAME);
+                if (frameType == WS_OPENING_FRAME) {
+                    // if resource is right, generate answer handshake and send it
+
+                    
+                    prepareBuffer;
+                    wsGetHandshakeAnswer(&hs, gBuffer, &frameSize);
+                    freeHandshake(&hs);
+                    if (safeSend(clientSocket, gBuffer, frameSize) == EXIT_FAILURE)
+                        break;
+                    state = WS_STATE_NORMAL;
+                    initNewFrame;
+                }
+            } else {
+                if (frameType == WS_CLOSING_FRAME) {
+                    if (state == WS_STATE_CLOSING) {
+                        break;
+                    } else {
+                        prepareBuffer;
+                        wsMakeFrame(NULL, 0, gBuffer, &frameSize, WS_CLOSING_FRAME);
+                        safeSend(clientSocket, gBuffer, frameSize);
+                        break;
+                    }
+                } else if (frameType == WS_TEXT_FRAME || frameType == WS_BINARY_FRAME ) {
+                    uint8_t *recievedString = NULL;
+                    recievedString = (uint8_t *)malloc(dataSize+1);
+                    assert(recievedString);
+                    memcpy(recievedString, data, dataSize);
+                    recievedString[ dataSize ] = 0;
+
+                    //printf(">>>dataSize:%d frameType:%d\n",dataSize,frameType);
+
+
+                    
+                    //prepareBuffer;
+                    wsMakeFrame(recievedString, dataSize, goBuffer, &frameSize, frameType);
+                    free(recievedString);
+                    if (safeSend(clientSocket, goBuffer, frameSize) == EXIT_FAILURE)
+                        break;
+
+                    //initNewFrame;
+                }
             }
         }
+        initNewFrame;
     } // read/write cycle
     
     close(clientSocket);

@@ -135,6 +135,9 @@ struct handshake {
     enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                                        uint8_t **dataPtr, size_t *dataLength);
 
+    enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
+                                       uint8_t **dataPtr, size_t *dataLength, size_t *curPktLen);
+
     /**
      * @param hs NULL handshake structure
      */
