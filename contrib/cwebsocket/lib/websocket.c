@@ -203,15 +203,35 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     *outLength = written;
 }
 
+int lengthFieldByteCount(size_t totalSize)
+{
+    if (totalSize <= 125) {
+        return 2;
+    } else if (totalSize <= 0xFFFF) {
+        return 4;
+    } else {
+        return 10;
+    }
+}
+
 int wsMakeFrame(const uint8_t *data, size_t dataLength,
                  uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType)
+{
+
+    return wsMakeFrame2(data, dataLength,
+                 outFrame, outLength, frameType, true);
+}
+
+
+int wsMakeFrame2(const uint8_t *data, size_t dataLength,
+                 uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal)
 {
     assert(outFrame && *outLength);
     assert(frameType < 0x10);
     if (dataLength > 0)
         assert(data);
-	
-    outFrame[0] = 0x80 | frameType;
+    
+    outFrame[0] = (isFinal?0x80:0x0) | frameType;
     
     size_t headerLen =0;
 
@@ -235,7 +255,8 @@ int wsMakeFrame(const uint8_t *data, size_t dataLength,
         //Over the sizeof buffer
         return -1;
     }
-    memcpy(&outFrame[headerLen], data, dataLength);
+    if(&outFrame[headerLen] != data)
+        memcpy(&outFrame[headerLen], data, dataLength);
 
     *outLength = headerLen+dataLength;
 

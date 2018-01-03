@@ -125,6 +125,9 @@ struct handshake {
     int wsMakeFrame(const uint8_t *data, size_t dataLength,
                      uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType);
 
+
+    int wsMakeFrame2(const uint8_t *data, size_t dataLength,
+                 uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal);
     /**
      *
      * @param inputFrame Pointer to input frame. Frame will be modified.

@@ -122,7 +122,7 @@ class ws_conn_info{
 
           printf("dataSize:%d isFinal:%d\n",dataSize,isFinal);
           size_t frameSize=sendBuf.size();
-          int ret = wsMakeFrame(data, dataSize, &(sendBuf[0]), &frameSize, frameType);
+          int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType,isFinal);
           if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
           {
             return -1;
@@ -138,6 +138,12 @@ class ws_conn_info{
           }*/
           printf("CONT dataSize:%d\n",dataSize);
 
+          size_t frameSize=sendBuf.size();
+          int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType,isFinal);
+          if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+          {
+            return -1;
+          }
         }
         else if( frameType == WS_INCOMPLETE_FRAME )
         {
