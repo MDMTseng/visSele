@@ -4,7 +4,7 @@
 #include <netinet/in.h>
 #include "websocket.h"
 
-class ws_conn_info{
+class ws_server{
 
   const int recvBufSizeInc=1024;
   int ws_state;
@@ -36,7 +36,7 @@ class ws_conn_info{
   public:
   int sock;
   struct sockaddr_in addr;
-  ws_conn_info(){
+  ws_server(){
     RESET();
   }
 
@@ -49,11 +49,11 @@ class ws_conn_info{
     if(recvBuf.size()<recvBufSizeInc)
       recvBuf.resize(recvBufSizeInc);
     
-    sendBuf.resize(100000);
+    sendBuf.resize(recvBufSizeInc);
   }
 
 
-  void COPY_property(ws_conn_info *from)
+  void COPY_property(ws_server *from)
   {
     sock = from->sock;
     ws_state = from->ws_state;
@@ -94,6 +94,25 @@ class ws_conn_info{
         return 0;
   }
 
+  int event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frameType, bool isFinal)
+  {
+    //BY default, echo
+    size_t frameSize=sendBuf.size();
+    int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType,isFinal);
+    if(ret)
+    {
+      printf("wsMakeFrame2 error:%d\n",ret);
+      //return -1;
+    }
+    else if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+    {
+      printf("safeSend error\n");
+      //return -1;
+    }
+
+    return 0;
+  }
+
   int doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen, enum wsFrameType *ret_lastFrameType)
   {
       int h_padding = 0;
@@ -121,12 +140,7 @@ class ws_conn_info{
           }*/
 
           printf("dataSize:%d isFinal:%d\n",dataSize,isFinal);
-          size_t frameSize=sendBuf.size();
-          int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType,isFinal);
-          if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
-          {
-            return -1;
-          }
+          event_WsRECV( data, dataSize, frameType, isFinal);
 
         }        
         else if(frameType == WS_CONT_FRAME )
@@ -138,12 +152,7 @@ class ws_conn_info{
           }*/
           printf("CONT dataSize:%d\n",dataSize);
 
-          size_t frameSize=sendBuf.size();
-          int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType,isFinal);
-          if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
-          {
-            return -1;
-          }
+          event_WsRECV( data, dataSize, frameType, isFinal);
         }
         else if( frameType == WS_INCOMPLETE_FRAME )
         {
@@ -254,10 +263,10 @@ class ws_conn_info{
 
 class ws_conn_entity_pool{
 
-    std::vector <ws_conn_info> ws_conn_set;
+    std::vector <ws_server> ws_conn_set;
 
     public:
-    ws_conn_info *find(int sock)
+    ws_server *find(int sock)
     {
       	for(int i=0;i<ws_conn_set.size();i++)
       	{
@@ -271,7 +280,7 @@ class ws_conn_entity_pool{
 
     int remove(int sock)
     {
-        ws_conn_info * torm = find(sock);
+        ws_server * torm = find(sock);
         if(torm == NULL)
           return -1;
 
@@ -280,20 +289,20 @@ class ws_conn_entity_pool{
     }
 
 
-    ws_conn_info *find_avaliable_conn_info_slot()
+    ws_server *find_avaliable_conn_info_slot()
     {
         for(int i=0;i<ws_conn_set.size();i++)
         {
           if(ws_conn_set[i].sock == 0)
             return &(ws_conn_set[i]);
         }
-        ws_conn_info empty;
+        ws_server empty;
         ws_conn_set.push_back(empty);
 
         return &(ws_conn_set[ws_conn_set.size()-1]);
     }
 
-    ws_conn_info* add(ws_conn_info *info)
+    ws_server* add(ws_server *info)
     {
         if(info == NULL)return NULL;
         if(info->sock == 0)
@@ -303,7 +312,7 @@ class ws_conn_entity_pool{
         {
           return NULL;
         }
-        ws_conn_info* tmp = find_avaliable_conn_info_slot();
+        ws_server* tmp = find_avaliable_conn_info_slot();
         tmp->COPY_property(info);
       	return tmp;
     }

@@ -29,7 +29,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <util.h>
+#include <ws_server_util.h>
 
 #include "websocket.h"
 
@@ -49,7 +49,7 @@ void error(const char *msg)
 }
 
 
-void clientWorker(ws_conn_info* conn)
+void clientWorker(ws_server* conn)
 {
     while(conn->sock) 
     {
@@ -85,7 +85,7 @@ int main(int argc, char** argv)
         if (NewSock == -1) {
             error("accept failed");
         }
-        ws_conn_info* conn = ws_conn.find_avaliable_conn_info_slot();
+        ws_server* conn = ws_conn.find_avaliable_conn_info_slot();
         conn->sock=NewSock;
         conn->addr=remote;
 
