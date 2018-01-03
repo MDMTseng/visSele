@@ -203,7 +203,7 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     *outLength = written;
 }
 
-void wsMakeFrame(const uint8_t *data, size_t dataLength,
+int wsMakeFrame(const uint8_t *data, size_t dataLength,
                  uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType)
 {
     assert(outFrame && *outLength);
@@ -213,26 +213,34 @@ void wsMakeFrame(const uint8_t *data, size_t dataLength,
 	
     outFrame[0] = 0x80 | frameType;
     
+    size_t headerLen =0;
+
     if (dataLength <= 125) {
         outFrame[1] = dataLength;
-        *outLength = 2;
+        headerLen = 2;
     } else if (dataLength <= 0xFFFF) {
         outFrame[1] = 126;
         uint16_t payloadLength16b = htons(dataLength);
         memcpy(&outFrame[2], &payloadLength16b, 2);
-        *outLength = 4;
+        headerLen = 4;
     } else {
-        assert(dataLength <= 0xFFFF);
-        
-        /* implementation for 64bit systems
+        //implementation for 64bit systems
         outFrame[1] = 127;
         dataLength = htonll(dataLength);
         memcpy(&outFrame[2], &dataLength, 8);
-        *outLength = 10;
-        */
+        headerLen = 10;
     }
-    memcpy(&outFrame[*outLength], data, dataLength);
-    *outLength+= dataLength;
+    if(headerLen + dataLength > *outLength)
+    {
+        //Over the sizeof buffer
+        return -1;
+    }
+    memcpy(&outFrame[headerLen], data, dataLength);
+
+    *outLength = headerLen+dataLength;
+
+
+    return 0;
 }
 
 size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
@@ -255,10 +263,10 @@ size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
         memcpy(&payloadLength16b, &inputFrame[2], *payloadFieldExtraBytes);
         payloadLength = ntohs(payloadLength16b);
     } else if (payloadLength == 0x7F) {
-        *frameType = WS_ERROR_FRAME;
-        return 0;
+        /**frameType = WS_ERROR_FRAME;
+        return 0;*/
         
-        /* // implementation for 64bit systems
+        // implementation for 64bit systems
         uint64_t payloadLength64b = 0;
         *payloadFieldExtraBytes = 8;
         memcpy(&payloadLength64b, &inputFrame[2], *payloadFieldExtraBytes);
@@ -267,7 +275,7 @@ size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
             return 0;
         }
         payloadLength = (size_t)ntohll(payloadLength64b);
-        */
+        
     }
 
     return payloadLength;
@@ -277,12 +285,13 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                                    uint8_t **dataPtr, size_t *dataLength)
 {
     size_t curPktLen;
-    return wsParseInputFrame2(inputFrame, inputLength,dataPtr, dataLength, &curPktLen);
+    bool isFinal;
+    return wsParseInputFrame2(inputFrame, inputLength,dataPtr, dataLength, &curPktLen, &isFinal);
 
 }
 
 enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
-                                   uint8_t **dataPtr, size_t *dataLength, size_t *curPktLen)
+                                    uint8_t **dataPtr, size_t *dataLength, size_t *curPktLen, bool *isFinal)
 {
     assert(inputFrame && inputLength);
 
@@ -291,8 +300,16 @@ enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
 	
     if ((inputFrame[0] & 0x70) != 0x0) // checks extensions off
         return WS_ERROR_FRAME;
+
     if ((inputFrame[0] & 0x80) != 0x80) // we haven't continuation frames support
-        return WS_ERROR_FRAME; // so, fin flag must be set
+    {
+        *isFinal = false;
+        //return WS_ERROR_FRAME; // so, fin flag must be set
+    }
+    else
+    {
+        *isFinal = true;
+    }
     if ((inputFrame[1] & 0x80) != 0x80) // checks masking bit
         return WS_ERROR_FRAME;
 
@@ -301,7 +318,8 @@ enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
             opcode == WS_BINARY_FRAME ||
             opcode == WS_CLOSING_FRAME ||
             opcode == WS_PING_FRAME ||
-            opcode == WS_PONG_FRAME
+            opcode == WS_PONG_FRAME ||
+            opcode == WS_CONT_FRAME
     ){
         enum wsFrameType frameType = (enum wsFrameType)opcode;
 

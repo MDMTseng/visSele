@@ -48,8 +48,8 @@ class ws_conn_info{
     accBufDataLen = 0;
     if(recvBuf.size()<recvBufSizeInc)
       recvBuf.resize(recvBufSizeInc);
-    if(sendBuf.size()<recvBufSizeInc)
-      sendBuf.resize(recvBufSizeInc);
+    
+    sendBuf.resize(100000);
   }
 
 
@@ -63,6 +63,7 @@ class ws_conn_info{
 
   int doHandShake(void *buff, ssize_t buffLen)
   {
+    ((char*)buff)[buffLen]='\0';
     printf("%s:%s\n",__func__,buff); 
     struct handshake hs;
     nullHandshake(&hs);
@@ -93,19 +94,23 @@ class ws_conn_info{
         return 0;
   }
 
-  int doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen)
+  int doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen, enum wsFrameType *ret_lastFrameType)
   {
       int h_padding = 0;
       enum wsFrameType frameType = WS_INCOMPLETE_FRAME;
       while( buffLen >  h_padding )
       {
         size_t curPktLen;
+        bool isFinal;
 
         uint8_t *data = NULL;
         size_t dataSize = 0;
-        frameType = wsParseInputFrame2((uint8_t*)buff+h_padding, buffLen-h_padding, 
-          &data, &dataSize, &curPktLen);
-        printf("frameType:%d\n",frameType);
+
+        uint8_t* tmpD=(uint8_t*)buff+h_padding;
+        frameType = wsParseInputFrame2(tmpD, buffLen-h_padding, 
+          &data, &dataSize, &curPktLen, &isFinal);
+        //printf("frameType:%d    %02x %02x %02x\n",frameType,tmpD[0],tmpD[1],tmpD[2]);
+        *ret_lastFrameType = frameType;
 
         if(frameType == WS_TEXT_FRAME || frameType == WS_BINARY_FRAME )
         {
@@ -114,14 +119,24 @@ class ws_conn_info{
           {
             printf("%02x ",data[i]);
           }*/
-          printf("dataSize:%d\n",dataSize);
 
+          printf("dataSize:%d isFinal:%d\n",dataSize,isFinal);
           size_t frameSize=sendBuf.size();
-          wsMakeFrame(data, dataSize, &(sendBuf[0]), &frameSize, frameType);
+          int ret = wsMakeFrame(data, dataSize, &(sendBuf[0]), &frameSize, frameType);
           if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
           {
             return -1;
           }
+
+        }        
+        else if(frameType == WS_CONT_FRAME )
+        {
+          h_padding+=curPktLen;
+          /*for(int i=0;i<dataSize;i++)
+          {
+            printf("%02x ",data[i]);
+          }*/
+          printf("CONT dataSize:%d\n",dataSize);
 
         }
         else if( frameType == WS_INCOMPLETE_FRAME )
@@ -136,12 +151,16 @@ class ws_conn_info{
           *ret_restLen=0;
           return doClosing();
         }
+        else if( frameType == WS_ERROR_FRAME )
+        {
+          break;
+        }
       }
 
-      //The packet is incomplete, remove finished packets
+      //The packet is incomplete/or error, remove finished packets
       //|finished|finished|incomplete| => |incomplete|
       //_______h_padding__^
-      if( frameType == WS_INCOMPLETE_FRAME )
+      if( frameType == WS_INCOMPLETE_FRAME || frameType == WS_ERROR_FRAME )
       {
         ssize_t newLen=buffLen - h_padding;
 
@@ -155,7 +174,10 @@ class ws_conn_info{
       {
         *ret_restLen =0;
       }
+      return 0;
   }
+
+  enum wsFrameType lastPktType;
   int runLoop()
   {
     if( sock == 0 )
@@ -166,7 +188,7 @@ class ws_conn_info{
 
     if(recvBuf.size() == accBufDataLen)
     {
-      //printf("Buffer size(%d) is not enough, expend to %d\n",recvBuf.size(),recvBuf.size()+recvBufSizeInc);
+      printf("Buffer size(%d) is not enough, expend to %d\n",recvBuf.size(),recvBuf.size()+recvBufSizeInc);
       recvBuf.resize(recvBuf.size()+recvBufSizeInc);
     }
     ssize_t readed = recv(sock, &(recvBuf[0])+accBufDataLen, recvBuf.size()-accBufDataLen, 0);
@@ -186,13 +208,13 @@ class ws_conn_info{
 
     if(ws_state == WS_STATE_NORMAL)
     {
-      if(doNormalRecv(&(recvBuf[0]), accBufDataLen, &accBufDataLen) ==0 )
+      if(doNormalRecv(&(recvBuf[0]), accBufDataLen, &accBufDataLen, &lastPktType) ==0 )
       {
       }
 
-      if(accBufDataLen == recvBuf.size())
+      if(lastPktType == WS_ERROR_FRAME && accBufDataLen == recvBuf.size())
       {
-
+        printf(">>>>>ERROR QUIT\n");
       }
       return 0;
     }
