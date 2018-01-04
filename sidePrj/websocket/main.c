@@ -76,23 +76,71 @@ int main(int argc, char** argv)
     if (listen(listenSocket, 1) == -1) {
         error("listen failed");
     }
+
+    fd_set evtSet,read_fds;
+    int fdmax;
+    FD_ZERO(&evtSet);
+    FD_SET(listenSocket, &evtSet);
+    fdmax=listenSocket;
+
+
+
     printf("opened %s:%d\n", inet_ntoa(local.sin_addr), ntohs(local.sin_port));
     
     while (TRUE) {
-        struct sockaddr_in remote;
-        socklen_t sockaddrLen = sizeof(remote);
-        int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
-        if (NewSock == -1) {
-            error("accept failed");
+
+        read_fds = evtSet;
+
+
+        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+          perror("select");
+          exit(4);
         }
-        ws_server* conn = ws_conn.find_avaliable_conn_info_slot();
-        conn->sock=NewSock;
-        conn->addr=remote;
 
 
-        printf("connected %s:%d\n", inet_ntoa(conn->addr.sin_addr), ntohs(conn->addr.sin_port));
-        clientWorker(conn);
-        printf("disconnected\n");
+        if(FD_ISSET(listenSocket, &read_fds))
+        {
+            struct sockaddr_in remote;
+            socklen_t sockaddrLen = sizeof(remote);
+            int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
+            if (NewSock == -1) {
+                error("accept failed");
+            }
+            ws_server* conn = ws_conn.find_avaliable_conn_info_slot();
+            conn->sock=NewSock;
+            conn->addr=remote;
+            printf("connected %s:%d\n", 
+            inet_ntoa(conn->addr.sin_addr), ntohs(conn->addr.sin_port));
+
+
+            FD_SET(NewSock, &evtSet); // 新增到 master set
+            if (NewSock > fdmax) { // 持續追蹤最大的 fd
+              fdmax = NewSock;
+            }
+
+
+            printf("List size %d\n", ws_conn.size());
+            
+        }
+        else
+        {
+            std::vector <ws_server>* servers = ws_conn.getServers();
+            for(int i=0;i<(*servers).size();i++)
+            {
+
+                if((*servers)[i].sock && FD_ISSET((*servers)[i].sock, &read_fds))
+                {
+                    int fd = (*servers)[i].sock;
+                    (*servers)[i].runLoop();
+                    if((*servers)[i].sock == 0)
+                    {
+                        printf("List size %d\n", ws_conn.size());
+                        FD_CLR(fd, &evtSet);
+                    }
+                }
+            }
+        }
+
     }
     
     close(listenSocket);

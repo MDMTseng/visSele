@@ -36,6 +36,7 @@ class ws_server{
   public:
   int sock;
   struct sockaddr_in addr;
+  char resource[128];
   ws_server(){
     RESET();
   }
@@ -61,10 +62,22 @@ class ws_server{
     accBufDataLen = from->accBufDataLen;
   }
 
+  static int strcpy_m(char *dst, int dstMaxSize, char *src)
+  {
+    if( dstMaxSize<0 || src == NULL)return -1;
+    dstMaxSize--;
+    dst[dstMaxSize]='\0';
+    int i;
+    for(i=0 ; i<dstMaxSize && *src; i++)
+    {
+      dst[i]=src[i];
+    }
+    return i;
+  }
+
   int doHandShake(void *buff, ssize_t buffLen)
   {
     ((char*)buff)[buffLen]='\0';
-    printf("%s:%s\n",__func__,buff); 
     struct handshake hs;
     nullHandshake(&hs);
 
@@ -73,6 +86,8 @@ class ws_server{
     if (frameType != WS_OPENING_FRAME) {
       return -1;
     }
+    strcpy_m(resource, sizeof(resource), hs.resource);
+    printf("%s:%s\n",__func__,resource); 
 
     // if resource is right, generate answer handshake and send it
     size_t frameSize=sendBuf.size();
@@ -276,7 +291,10 @@ class ws_conn_entity_pool{
       	return NULL;
     }
 
-
+    std::vector <ws_server>* getServers()
+    {
+      return &ws_conn_set;
+    }
 
     int remove(int sock)
     {
