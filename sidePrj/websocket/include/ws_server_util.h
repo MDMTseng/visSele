@@ -4,13 +4,23 @@
 #include <netinet/in.h>
 #include "websocket.h"
 
-class ws_server{
+
+
+
+class ws_conn;
+
+class ws_protocol_callback{
+};
+
+
+class ws_conn{
 
   const int recvBufSizeInc=1024;
   int ws_state;
   std::vector <uint8_t> recvBuf;
   std::vector <uint8_t> sendBuf;
   size_t accBufDataLen;
+  ws_protocol_callback *cb;
 
   static int safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
   {
@@ -21,29 +31,30 @@ class ws_server{
       #endif
       ssize_t written = send(sock, buffer, bufferSize, 0);
       if (written == -1) {
-          close(sock);
           perror("send failed");
-          return EXIT_FAILURE;
+          return -1;
       }
       if (written != bufferSize) {
-          close(sock);
           perror("written not all bytes");
-          return EXIT_FAILURE;
+          return -1;
       }
       
-      return EXIT_SUCCESS;
+      return 0;
   }
-  public:
   int sock;
   struct sockaddr_in addr;
   char resource[128];
-  ws_server(){
+  public:
+
+
+  ws_conn(){
     RESET();
   }
 
   void RESET()
   {
-    sock=0;
+    cb=NULL;
+    sock=-1;
     ws_state = WS_STATE_OPENING;
     memset(&addr,0,sizeof(addr));
     accBufDataLen = 0;
@@ -54,7 +65,32 @@ class ws_server{
   }
 
 
-  void COPY_property(ws_server *from)
+  int setSocket(int socket)
+  {
+    sock=socket;
+  }
+
+  int getSocket()
+  {
+    return sock;
+  }
+
+
+  int setAddr(struct sockaddr_in address)
+  {
+    addr=address;
+  }
+  struct sockaddr_in getAddr()
+  {
+    return addr;
+  }
+
+  bool isOccupied()
+  {
+    return sock!=-1;
+  }
+
+  void COPY_property(ws_conn *from)
   {
     sock = from->sock;
     ws_state = from->ws_state;
@@ -68,10 +104,11 @@ class ws_server{
     dstMaxSize--;
     dst[dstMaxSize]='\0';
     int i;
-    for(i=0 ; i<dstMaxSize && *src; i++)
+    for(i=0 ; i<dstMaxSize && src[i]; i++)
     {
       dst[i]=src[i];
     }
+    dst[i]=src[i];
     return i;
   }
 
@@ -96,6 +133,7 @@ class ws_server{
     freeHandshake(&hs);
     if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
     {
+      doClosing();
       return -1;
     }
     return 0;
@@ -103,10 +141,11 @@ class ws_server{
 
   int doClosing()
   {
-        close(sock);
-        RESET();
-        printf("%s\n",__func__);
-        return 0;
+    if(isOccupied())  
+      close(sock);
+    RESET();
+    printf("%s\n",__func__);
+    return 0;
   }
 
   int event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frameType, bool isFinal)
@@ -122,6 +161,7 @@ class ws_server{
     else if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
     {
       printf("safeSend error\n");
+      doClosing();
       //return -1;
     }
 
@@ -210,7 +250,7 @@ class ws_server{
   enum wsFrameType lastPktType;
   int runLoop()
   {
-    if( sock == 0 )
+    if( !isOccupied() )
     {
       return -1;
     }
@@ -278,59 +318,59 @@ class ws_server{
 
 class ws_conn_entity_pool{
 
-    std::vector <ws_server> ws_conn_set;
+    std::vector <ws_conn> ws_conn_set;
 
     public:
-    ws_server *find(int sock)
+    ws_conn *find(int sock)
     {
       	for(int i=0;i<ws_conn_set.size();i++)
       	{
-      		if(ws_conn_set[i].sock == sock)
+      		if(ws_conn_set[i].getSocket() == sock)
       			return &(ws_conn_set[i]);
       	}
       	return NULL;
     }
 
-    std::vector <ws_server>* getServers()
+    std::vector <ws_conn>* getServers()
     {
       return &ws_conn_set;
     }
 
     int remove(int sock)
     {
-        ws_server * torm = find(sock);
+        ws_conn * torm = find(sock);
         if(torm == NULL)
           return -1;
 
-        torm->sock = 0;
+        torm->doClosing();
         return 0;
     }
 
 
-    ws_server *find_avaliable_conn_info_slot()
+    ws_conn *find_avaliable_conn_info_slot()
     {
         for(int i=0;i<ws_conn_set.size();i++)
         {
-          if(ws_conn_set[i].sock == 0)
+          if(!ws_conn_set[i].isOccupied())
             return &(ws_conn_set[i]);
         }
-        ws_server empty;
+        ws_conn empty;
         ws_conn_set.push_back(empty);
 
         return &(ws_conn_set[ws_conn_set.size()-1]);
     }
 
-    ws_server* add(ws_server *info)
+    ws_conn* add(ws_conn *info)
     {
         if(info == NULL)return NULL;
-        if(info->sock == 0)
+        if( !info->isOccupied())
           return NULL;
 
-        if(find(info->sock)!=NULL)
+        if(find(info->getSocket())!=NULL)
         {
           return NULL;
         }
-        ws_server* tmp = find_avaliable_conn_info_slot();
+        ws_conn* tmp = find_avaliable_conn_info_slot();
         tmp->COPY_property(info);
       	return tmp;
     }
@@ -340,11 +380,145 @@ class ws_conn_entity_pool{
         int len=0;
         for(int i=0;i<ws_conn_set.size();i++)
         {
-          if(ws_conn_set[i].sock)
+          if(ws_conn_set[i].isOccupied())
           {
             len++;
           }
         }
         return len;
     }
+};
+
+
+
+
+class ws_server{
+
+  int listenSocket;
+  fd_set evtSet;
+  int fdmax;
+public:
+  ws_server(int port)
+  {
+    listenSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (listenSocket == -1) {
+        printf("Error:create socket failed\n");
+        return;
+    }
+    
+    struct sockaddr_in local;
+    memset(&local, 0, sizeof(local));
+    local.sin_family = AF_INET;
+    local.sin_addr.s_addr = INADDR_ANY;
+    local.sin_port = htons(port);
+    if (bind(listenSocket, (struct sockaddr *) &local, sizeof(local)) == -1) {
+        printf("bind failed\n");
+        close(listenSocket);
+        listenSocket=-1;
+        return;
+    }
+    
+    if (listen(listenSocket, 1) == -1) {
+        printf("listen failed\n");
+        close(listenSocket);
+        listenSocket=-1;
+        return;
+    }
+
+    FD_ZERO(&evtSet);
+    FD_SET(listenSocket, &evtSet);
+    fdmax=listenSocket;
+
+
+
+    printf("opened %s:%d  listenSocket:%d\n", inet_ntoa(local.sin_addr), ntohs(local.sin_port),listenSocket);
+    
+  }
+  ws_conn_entity_pool ws_conn_pool;
+
+  int findMaxFd()
+  {
+    int max=listenSocket;
+
+    std::vector <ws_conn>* servers = ws_conn_pool.getServers();
+    for(int i=0;i<(*servers).size();i++)
+    {
+      if((*servers)[i].isOccupied() && (*servers)[i].getSocket() > max)
+      {
+        max = (*servers)[i].getSocket();
+      }
+    }
+
+    return max;
+  }
+
+  int runLoop(struct timeval *tv)
+  {
+    if(listenSocket == -1)
+    {
+      return -1;
+    }
+    fd_set read_fds = evtSet;
+
+    
+    if (select(fdmax+1, &read_fds, NULL, NULL, tv) == -1) {
+      perror("select");
+      exit(4);
+    }
+
+
+    if(FD_ISSET(listenSocket, &read_fds))
+    {
+        struct sockaddr_in remote;
+        socklen_t sockaddrLen = sizeof(remote);
+        int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
+        if (NewSock == -1) {
+            printf("accept failed");
+        }
+        ws_conn* conn = ws_conn_pool.find_avaliable_conn_info_slot();
+        conn->setSocket(NewSock);
+        conn->setAddr(remote);
+        printf("connected %s:%d\n", 
+        inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port));
+
+
+        FD_SET(NewSock, &evtSet);
+        if (NewSock > fdmax) {
+          fdmax = NewSock;
+        }
+
+        printf("List size %d\n", ws_conn_pool.size());
+        
+    }
+    else
+    {
+        std::vector <ws_conn>* servers = ws_conn_pool.getServers();
+        bool evt_trigger=false;
+        for(int i=0;i<(*servers).size();i++)
+        {
+            if((*servers)[i].isOccupied() && FD_ISSET((*servers)[i].getSocket(), &read_fds))
+            {
+              evt_trigger = true;
+              int fd = (*servers)[i].getSocket();
+              (*servers)[i].runLoop();
+              if(!(*servers)[i].isOccupied())
+              {
+                  printf("List size %d\n", ws_conn_pool.size());
+                  FD_CLR(fd, &evtSet);
+                  fdmax = findMaxFd();
+              }
+              break;
+            }
+        }
+
+
+        if(!evt_trigger)
+        {
+          printf("No matching event\n");
+          return -2;
+        }
+    }
+    return 0;
+    
+  }
 };
