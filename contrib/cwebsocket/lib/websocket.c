@@ -246,7 +246,7 @@ int wsMakeFrame2(const uint8_t *data, size_t dataLength,
     } else {
         //implementation for 64bit systems
         outFrame[1] = 127;
-        dataLength = htonll(dataLength);
+        //dataLength = htonll(dataLength);
         memcpy(&outFrame[2], &dataLength, 8);
         headerLen = 10;
     }
@@ -286,17 +286,25 @@ size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
     } else if (payloadLength == 0x7F) {
         /**frameType = WS_ERROR_FRAME;
         return 0;*/
-        
+
         // implementation for 64bit systems
         uint64_t payloadLength64b = 0;
         *payloadFieldExtraBytes = 8;
-        memcpy(&payloadLength64b, &inputFrame[2], *payloadFieldExtraBytes);
+
+        //memcpy(&payloadLength64b, &inputFrame[2], *payloadFieldExtraBytes);
+        for(int i=0;i<*payloadFieldExtraBytes;i++)
+        {
+          payloadLength64b<<=8;
+          payloadLength64b|=inputFrame[2+i];
+        }
+
+
         if (payloadLength64b > SIZE_MAX) {
             *frameType = WS_ERROR_FRAME;
             return 0;
         }
-        payloadLength = (size_t)ntohll(payloadLength64b);
-        
+        payloadLength = (size_t)(payloadLength64b);
+
     }
 
     return payloadLength;
