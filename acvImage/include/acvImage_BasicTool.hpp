@@ -84,4 +84,6 @@ int acvSaveBitmapFile(char *filename,acvImage *img);
 void acvImageAdd(acvImage *src,int num);
 #define DoubleRoundInt(Num) ((int)round(Num))
 void acvInnerFramePixCopy(acvImage *Pic,int FrameX);
+acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4);
+acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3);
 #endif

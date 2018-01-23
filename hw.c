@@ -395,8 +395,24 @@ int main(int argc, char** argv)
     }
     printf("execute %d times\r\n", repeatNum);
 
-    ret = testSignature(repeatNum);
+    //ret = testSignature(repeatNum);
     //ret = testX();
+    {//Test intersect function
+      acv_XY p1={.X=-1,.Y=1.1};
+      acv_XY p2={.X= 0,.Y=1};
+      acv_XY p3={.X= 1,.Y=0};
+      acv_XY p4={.X= 1,.Y=-1};
+      acv_XY ip = acvIntersectPoint(p1, p2, p3, p4);
 
+      printf("acvIntersectPoint:X:%f Y:%f\r\n", ip.X,ip.Y);
+    }
+
+    {
+      acv_XY p1={.X=1,.Y=0};
+      acv_XY p2={.X= 0,.Y=0};
+      acv_XY p3={.X=0,.Y=1};
+      acv_XY cc = acvCircumcenter(p1,p2,p3);
+      printf("acvCircumcenter:X:%f Y:%f\r\n", cc.X,cc.Y);
+    }
     return ret;
 }

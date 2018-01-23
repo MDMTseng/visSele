@@ -560,3 +560,51 @@ void acvImageAdd(acvImage *src, int num)
         }
     }
 }
+
+
+
+
+acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4)
+{
+  acv_XY intersec;
+  float denominator;
+
+  float V1 = (p1.X-p2.X);
+  float V2 = (p3.X-p4.X);
+  float V3 = (p1.Y-p2.Y);
+  float V4 = (p3.Y-p4.Y);
+
+  denominator = V1* V4 - V3* V2;
+
+  float V12 = (p1.X*p2.Y-p1.Y*p2.X);
+  float V34 = (p3.X*p4.Y-p3.Y*p4.X);
+  intersec.X=( V12 * V2 - V1 * V34 )/denominator;
+  intersec.Y=( V12 * V4 - V3 * V34 )/denominator;
+
+  printf("%f %f %f %f\r\n", V1,V2,V3,V4);
+  printf("%f %f %f\r\n", V12,V34,denominator);
+  return intersec;
+}
+
+
+acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
+{
+  acv_XY c12;
+  c12.X=(p1.X+p2.X)/2; c12.Y=(p1.Y+p2.Y)/2;
+  acv_XY c23;
+  c23.X=(p2.X+p3.X)/2; c23.Y=(p2.Y+p3.Y)/2;
+
+  acv_XY N12;
+  N12.Y=(p1.X-p2.X); N12.X=(p1.Y-p2.Y);
+  acv_XY N23;
+  N23.Y=(p2.X-p3.X); N23.X=(p2.Y-p3.Y);
+
+
+  acv_XY c12_;
+  c12_.X=c12.X+N12.X; c12_.Y=c12.Y+N12.Y;
+  acv_XY C23_;
+  C23_.X=c23.X+N23.X; C23_.Y=c23.Y+N23.Y;
+
+  return acvIntersectPoint(c12,c12_,c23,C23_);
+
+}
