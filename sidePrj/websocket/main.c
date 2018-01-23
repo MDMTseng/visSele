@@ -25,9 +25,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
+
+#ifdef __WIN32__
+# include <winsock2.h>
+#else
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#endif
+
 #include <unistd.h>
 #include <ws_server_util.h>
 
@@ -47,6 +53,21 @@ void error(const char *msg)
 
 int main(int argc, char** argv)
 {
+
+#ifdef __WIN32__
+{
+    WSADATA wsaData;
+    int iResult;
+    // Initialize Winsock
+    iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+    if (iResult != 0) {
+        printf("WSAStartup failed with error: %d\n", iResult);
+        return 1;
+    }
+}
+#endif
+
+
     ws_server websocket(PORT);
 
     while(1)

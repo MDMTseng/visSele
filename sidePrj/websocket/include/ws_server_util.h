@@ -1,9 +1,13 @@
 
 
 #include <vector>
-#include <netinet/in.h>
 #include "websocket.h"
 
+#ifdef __WIN32__
+#include <winsock2.h>
+#else
+#include <netinet/in.h>
+#endif
 
 
 
@@ -29,7 +33,7 @@ class ws_conn{
       fwrite(buffer, 1, bufferSize, stdout);
       printf("\n");
       #endif
-      ssize_t written = send(sock, buffer, bufferSize, 0);
+      ssize_t written = send(sock, (const char*)buffer, bufferSize, 0);
       if (written == -1) {
           perror("send failed");
           return -1;
@@ -261,7 +265,7 @@ class ws_conn{
       printf("Buffer size(%d) is not enough, expend to %d\n",recvBuf.size(),recvBuf.size()+recvBufSizeInc);
       recvBuf.resize(recvBuf.size()+recvBufSizeInc);
     }
-    ssize_t readed = recv(sock, &(recvBuf[0])+accBufDataLen, recvBuf.size()-accBufDataLen, 0);
+    ssize_t readed = recv(sock,(char*) (&(recvBuf[0])+accBufDataLen), recvBuf.size()-accBufDataLen, 0);
     if (!readed) {
       ws_state=WS_STATE_CLOSING;
       doClosing();
@@ -470,7 +474,7 @@ public:
     if(FD_ISSET(listenSocket, &read_fds))
     {
         struct sockaddr_in remote;
-        socklen_t sockaddrLen = sizeof(remote);
+        int sockaddrLen = sizeof(remote);
         int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
         if (NewSock == -1) {
             printf("accept failed");

@@ -31,7 +31,13 @@ extern "C" {
 #include <assert.h>
 #include <stdint.h> /* uint8_t */
 #include <stdlib.h> /* strtoul */
+
+#ifdef __WIN32__
+#include <winsock2.h>
+#else
 #include <netinet/in.h> /*htons*/
+#endif
+
 #include <string.h>
 #include <stdio.h> /* sscanf */
 #include <ctype.h> /* isdigit */
