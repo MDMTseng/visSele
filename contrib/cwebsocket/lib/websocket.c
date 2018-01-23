@@ -203,39 +203,68 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     *outLength = written;
 }
 
-void wsMakeFrame(const uint8_t *data, size_t dataLength,
+int lengthFieldByteCount(size_t totalSize)
+{
+    if (totalSize <= 125) {
+        return 2;
+    } else if (totalSize <= 0xFFFF) {
+        return 4;
+    } else {
+        return 10;
+    }
+}
+
+int wsMakeFrame(const uint8_t *data, size_t dataLength,
                  uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType)
+{
+
+    return wsMakeFrame2(data, dataLength,
+                 outFrame, outLength, frameType, true);
+}
+
+
+int wsMakeFrame2(const uint8_t *data, size_t dataLength,
+                 uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal)
 {
     assert(outFrame && *outLength);
     assert(frameType < 0x10);
     if (dataLength > 0)
         assert(data);
-	
-    outFrame[0] = 0x80 | frameType;
     
+    outFrame[0] = (isFinal?0x80:0x0) | frameType;
+    
+    size_t headerLen =0;
+
     if (dataLength <= 125) {
         outFrame[1] = dataLength;
-        *outLength = 2;
+        headerLen = 2;
     } else if (dataLength <= 0xFFFF) {
         outFrame[1] = 126;
         uint16_t payloadLength16b = htons(dataLength);
         memcpy(&outFrame[2], &payloadLength16b, 2);
-        *outLength = 4;
+        headerLen = 4;
     } else {
-        assert(dataLength <= 0xFFFF);
-        
-        /* implementation for 64bit systems
+        //implementation for 64bit systems
         outFrame[1] = 127;
-        dataLength = htonll(dataLength);
+        //dataLength = htonll(dataLength);
         memcpy(&outFrame[2], &dataLength, 8);
-        *outLength = 10;
-        */
+        headerLen = 10;
     }
-    memcpy(&outFrame[*outLength], data, dataLength);
-    *outLength+= dataLength;
+    if(headerLen + dataLength > *outLength)
+    {
+        //Over the sizeof buffer
+        return -1;
+    }
+    if(&outFrame[headerLen] != data)
+        memcpy(&outFrame[headerLen], data, dataLength);
+
+    *outLength = headerLen+dataLength;
+
+
+    return 0;
 }
 
-static size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
+size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
                                uint8_t *payloadFieldExtraBytes, enum wsFrameType *frameType) 
 {
     size_t payloadLength = inputFrame[1] & 0x7F;
@@ -255,19 +284,27 @@ static size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
         memcpy(&payloadLength16b, &inputFrame[2], *payloadFieldExtraBytes);
         payloadLength = ntohs(payloadLength16b);
     } else if (payloadLength == 0x7F) {
-        *frameType = WS_ERROR_FRAME;
-        return 0;
-        
-        /* // implementation for 64bit systems
+        /**frameType = WS_ERROR_FRAME;
+        return 0;*/
+
+        // implementation for 64bit systems
         uint64_t payloadLength64b = 0;
         *payloadFieldExtraBytes = 8;
-        memcpy(&payloadLength64b, &inputFrame[2], *payloadFieldExtraBytes);
+
+        //memcpy(&payloadLength64b, &inputFrame[2], *payloadFieldExtraBytes);
+        for(int i=0;i<*payloadFieldExtraBytes;i++)
+        {
+          payloadLength64b<<=8;
+          payloadLength64b|=inputFrame[2+i];
+        }
+
+
         if (payloadLength64b > SIZE_MAX) {
             *frameType = WS_ERROR_FRAME;
             return 0;
         }
-        payloadLength = (size_t)ntohll(payloadLength64b);
-        */
+        payloadLength = (size_t)(payloadLength64b);
+
     }
 
     return payloadLength;
@@ -276,6 +313,15 @@ static size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
 enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                                    uint8_t **dataPtr, size_t *dataLength)
 {
+    size_t curPktLen;
+    bool isFinal;
+    return wsParseInputFrame2(inputFrame, inputLength,dataPtr, dataLength, &curPktLen, &isFinal);
+
+}
+
+enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
+                                    uint8_t **dataPtr, size_t *dataLength, size_t *curPktLen, bool *isFinal)
+{
     assert(inputFrame && inputLength);
 
     if (inputLength < 2)
@@ -283,8 +329,16 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
 	
     if ((inputFrame[0] & 0x70) != 0x0) // checks extensions off
         return WS_ERROR_FRAME;
+
     if ((inputFrame[0] & 0x80) != 0x80) // we haven't continuation frames support
-        return WS_ERROR_FRAME; // so, fin flag must be set
+    {
+        *isFinal = false;
+        //return WS_ERROR_FRAME; // so, fin flag must be set
+    }
+    else
+    {
+        *isFinal = true;
+    }
     if ((inputFrame[1] & 0x80) != 0x80) // checks masking bit
         return WS_ERROR_FRAME;
 
@@ -293,7 +347,8 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
             opcode == WS_BINARY_FRAME ||
             opcode == WS_CLOSING_FRAME ||
             opcode == WS_PING_FRAME ||
-            opcode == WS_PONG_FRAME
+            opcode == WS_PONG_FRAME ||
+            opcode == WS_CONT_FRAME
     ){
         enum wsFrameType frameType = (enum wsFrameType)opcode;
 
@@ -305,7 +360,8 @@ enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                 return WS_INCOMPLETE_FRAME;
             uint8_t *maskingKey = &inputFrame[2 + payloadFieldExtraBytes];
 
-            assert(payloadLength == inputLength - 6 - payloadFieldExtraBytes);
+            *curPktLen = payloadLength + 6 + payloadFieldExtraBytes;
+            //assert(payloadLength == inputLength - 6 - payloadFieldExtraBytes);
 
             *dataPtr = &inputFrame[2 + payloadFieldExtraBytes + 4];
             *dataLength = payloadLength;

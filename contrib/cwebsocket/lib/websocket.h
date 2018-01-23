@@ -31,7 +31,13 @@ extern "C" {
 #include <assert.h>
 #include <stdint.h> /* uint8_t */
 #include <stdlib.h> /* strtoul */
+
+#ifdef __WIN32__
+#include <winsock2.h>
+#else
 #include <netinet/in.h> /*htons*/
+#endif
+
 #include <string.h>
 #include <stdio.h> /* sscanf */
 #include <ctype.h> /* isdigit */
@@ -75,6 +81,7 @@ enum wsFrameType { // errors starting from 0xF0
     WS_EMPTY_FRAME = 0xF0,
     WS_ERROR_FRAME = 0xF1,
     WS_INCOMPLETE_FRAME = 0xF2,
+    WS_CONT_FRAME = 0x00,
     WS_TEXT_FRAME = 0x01,
     WS_BINARY_FRAME = 0x02,
     WS_PING_FRAME = 0x09,
@@ -121,9 +128,12 @@ struct handshake {
      * @param outLength Length of out frame buffer. Return length of out frame
      * @param frameType [WS_TEXT_FRAME] frame type to build
      */
-    void wsMakeFrame(const uint8_t *data, size_t dataLength,
+    int wsMakeFrame(const uint8_t *data, size_t dataLength,
                      uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType);
 
+
+    int wsMakeFrame2(const uint8_t *data, size_t dataLength,
+                 uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal);
     /**
      *
      * @param inputFrame Pointer to input frame. Frame will be modified.
@@ -134,6 +144,9 @@ struct handshake {
      */
     enum wsFrameType wsParseInputFrame(uint8_t *inputFrame, size_t inputLength,
                                        uint8_t **dataPtr, size_t *dataLength);
+
+    enum wsFrameType wsParseInputFrame2(uint8_t *inputFrame, size_t inputLength,
+                                       uint8_t **dataPtr, size_t *dataLength, size_t *curPktLen, bool *isFinal);
 
     /**
      * @param hs NULL handshake structure
