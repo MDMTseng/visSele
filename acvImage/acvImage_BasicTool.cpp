@@ -581,8 +581,8 @@ acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4)
   intersec.X=( V12 * V2 - V1 * V34 )/denominator;
   intersec.Y=( V12 * V4 - V3 * V34 )/denominator;
 
-  printf("%f %f %f %f\r\n", V1,V2,V3,V4);
-  printf("%f %f %f\r\n", V12,V34,denominator);
+  /*printf("%f %f %f %f\r\n", V1,V2,V3,V4);
+  printf("%f %f %f\r\n", V12,V34,denominator);*/
   return intersec;
 }
 
@@ -595,9 +595,9 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
   c23.X=(p2.X+p3.X)/2; c23.Y=(p2.Y+p3.Y)/2;
 
   acv_XY N12;
-  N12.Y=(p1.X-p2.X); N12.X=(p1.Y-p2.Y);
+  N12.Y=(p1.X-p2.X); N12.X=-(p1.Y-p2.Y);
   acv_XY N23;
-  N23.Y=(p2.X-p3.X); N23.X=(p2.Y-p3.Y);
+  N23.Y=(p2.X-p3.X); N23.X=-(p2.Y-p3.Y);
 
 
   acv_XY c12_;

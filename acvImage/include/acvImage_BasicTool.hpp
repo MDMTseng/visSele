@@ -2,7 +2,7 @@
 #define ACV_IMG_BASIC_TOOL_H
 #include "acvImage.hpp"
 
-#ifdef _MSC_VER 
+#ifdef _MSC_VER
 #pragma pack(push,1)
 typedef struct tagBITMAPFILEHEADER
 {

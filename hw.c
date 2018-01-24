@@ -9,6 +9,7 @@
 #include "acvImage_SpDomainTool.hpp"
 #include "BinaryImageTemplateFitting.hpp"
 #include "MLNN.hpp"
+#include "experiment.h"
 
 void printImgAscii(acvImage *img, int printwidth)
 {
@@ -354,17 +355,10 @@ int testX()
 
   clock_t t = clock();
 
-  for(int i=0;i<1;i++)
-  {
-    acvBoxFilter(target_buff,target,10);
-  //acvBoxFilterY(target_buff,target,1);
-  }
 
-  t = clock() - t;
-  printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
-  t = clock();
-  acvCloneImage(target,target,0);
-  acvSaveBitmapFile("data/target_buff.bmp", target);
+  acvThreshold(target, 250, 0);
+  CircleDetect(target,target_buff);
+  acvSaveBitmapFile("data/target_buff.bmp",target_buff);
   return 0;
 }
 
@@ -384,6 +378,7 @@ int simpP(char* strNum)
   return Num;
 }
 
+
 #include <vector>
 int main(int argc, char** argv)
 {
@@ -396,7 +391,7 @@ int main(int argc, char** argv)
     printf("execute %d times\r\n", repeatNum);
 
     //ret = testSignature(repeatNum);
-    //ret = testX();
+    ret = testX();
     {//Test intersect function
       acv_XY p1={.X=-1,.Y=1.1};
       acv_XY p2={.X= 0,.Y=1};
@@ -409,7 +404,7 @@ int main(int argc, char** argv)
 
     {
       acv_XY p1={.X=1,.Y=0};
-      acv_XY p2={.X= 0,.Y=0};
+      acv_XY p2={.X= 20,.Y=0};
       acv_XY p3={.X=0,.Y=1};
       acv_XY cc = acvCircumcenter(p1,p2,p3);
       printf("acvCircumcenter:X:%f Y:%f\r\n", cc.X,cc.Y);
