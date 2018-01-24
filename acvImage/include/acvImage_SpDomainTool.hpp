@@ -128,4 +128,7 @@ inline float acvLinearInterpolation( float v1, float v2, float alpha)
     v1 += alpha * (v2 - v1);
     return v1;
 }
+
+
+void acvBiliteral_Simple(acvImage *BuffPic, acvImage *Pic, int Size, int margin);
 #endif

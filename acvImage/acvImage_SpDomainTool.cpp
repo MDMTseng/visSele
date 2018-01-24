@@ -181,6 +181,116 @@ void acvBoxFilter_naive(acvImage *BuffPic, acvImage *Pic, int Size)
     acvBoxFilterX(Pic, BuffPic, Size);
 }
 
+
+
+
+void acvBiliteral_SimpleY(acvImage *res, acvImage *src, int Size, int margin)
+{
+    int i, j, k, SizeX2Add1 = Size * 2 + 1;
+    DIV_APPROX_BASE_TYPE TmpSum;
+    int SizeP1 = Size + 1;
+    int width = src->GetWidth();
+    int height = src->GetHeight();
+    int wx3 = width * DEPTH_X;
+    BYTE *srcfront;
+    BYTE *resfront;
+
+    for (j = Size; j < width-Size; j++)
+    {
+        i=Size;
+        srcfront = &(src->CVector[i][DEPTH_X * j]);
+        resfront = &(res->CVector[i][DEPTH_X * j]);
+        for (; i < height-Size; i++)
+        {
+            int sum=*srcfront;
+            int count=1;
+            for (int k=-Size; k < 0; k++)
+            {
+                int diff = srcfront[wx3*k]-*srcfront;
+                if(diff<0)diff=-diff;
+                if(diff<margin)
+                {
+                    sum+=srcfront[wx3*k];
+                    count++;
+                }
+            }
+
+
+            for (int k=1; k < Size+1; k++)
+            {
+                int diff = srcfront[wx3*k]-*srcfront;
+                if(diff<0)diff=-diff;
+                if(diff<margin)
+                {
+                    sum+=srcfront[wx3*k];
+                    count++;
+                }
+            }
+            *resfront=sum/count;
+            srcfront += wx3;
+            resfront += wx3;
+        }
+    }
+}
+
+
+void acvBiliteral_SimpleX(acvImage *res, acvImage *src, int Size, int margin)
+{
+    int i, j, k, SizeX2Add1 = Size * 2 + 1;
+    DIV_APPROX_BASE_TYPE TmpSum;
+    int SizeP1 = Size + 1;
+    int width = src->GetWidth();
+    int height = src->GetHeight();
+    int wx3 = width * DEPTH_X;
+    BYTE *srcfront;
+    BYTE *resfront;
+
+    for (i=Size; i < height-Size; i++)
+    {
+        j = Size;
+        srcfront = &(src->CVector[i][DEPTH_X * j]);
+        resfront = &(res->CVector[i][DEPTH_X * j]);
+        for (; j < width-Size; j++)
+        {
+            int sum=*srcfront;
+            int count=1;
+            for (int k=-Size; k < 0; k++)
+            {
+                int diff = srcfront[DEPTH_X*k]-*srcfront;
+                if(diff<0)diff=-diff;
+                if(diff<margin)
+                {
+                    sum+=srcfront[DEPTH_X*k];
+                    count++;
+                }
+            }
+
+
+            for (int k=1; k < Size+1; k++)
+            {
+                int diff = srcfront[DEPTH_X*k]-*srcfront;
+                if(diff<0)diff=-diff;
+                if(diff<margin)
+                {
+                    sum+=srcfront[DEPTH_X*k];
+                    count++;
+                }
+            }
+            *resfront=sum/count;
+            srcfront += DEPTH_X;
+            resfront += DEPTH_X;
+        }
+    }
+}
+
+void acvBiliteral_Simple(acvImage *BuffPic, acvImage *Pic, int Size, int margin)
+{
+    acvBiliteral_SimpleY(BuffPic, Pic, Size,margin);
+    acvBiliteral_SimpleX(Pic, BuffPic, Size,margin);
+}
+
+
+
 void acvIIROrder1FilterX(acvImage *res, acvImage *src, int shifter)
 {
 
