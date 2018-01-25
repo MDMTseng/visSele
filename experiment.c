@@ -63,34 +63,42 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
     next[2] = R;
 
 
-    int L = contour.size();
+    const int L = contour.size();
+    int DisconnectC=99999;
+    const int DiscCThres=8;
 
-    int Dist=60;
-    int offset=30;
+    const int Dist=40;
+    const int offset=20;
     for(int i=0;i<L;i++)
     {
 
       acv_XY cc = acvCircumcenter(contour[i-offset],contour[(i-offset+Dist)%L],contour[(i-offset-Dist)%L]);
       acv_XY cc2 = acvCircumcenter(contour[i+offset],contour[(i+offset+Dist)%L],contour[(i+offset-Dist)%L]);
-      if(isnormal(cc.X) && isnormal(cc.Y) && isnormal(cc2.X) && isnormal(cc2.Y))
+      if(isnormal(cc.X) || isnormal(cc.Y) || isnormal(cc2.X) || isnormal(cc2.Y))
       {
-        cc2.X-=cc.X;
-        cc2.Y-=cc.Y;
-        if(cc2.X*cc2.X+cc2.Y*cc2.Y>60)continue;
-
-        cc.X+=cc2.X/2;
-        cc.Y+=cc2.Y/2;
-
-        int X = round(cc.X);
-        int Y = round(cc.Y);
-        if(X>=0 && X < buff->GetWidth()  &&
-        Y>=0 && Y<buff->GetHeight())
-        {
-          //buff->CVector[Y][X*3]=128;
-          if(buff->CVector[Y][X*3+1])buff->CVector[Y][X*3+1]--;
-          buff->CVector[Y][X*3+2]=128;
-        }
+        continue;
       }
+
+      cc2.X-=cc.X;
+      cc2.Y-=cc.Y;
+      if(cc2.X*cc2.X+cc2.Y*cc2.Y>60)
+      {
+        continue;
+      }
+
+      cc.X+=cc2.X/2;
+      cc.Y+=cc2.Y/2;
+
+      int X = round(cc.X);
+      int Y = round(cc.Y);
+      if(X>=0 && X < buff->GetWidth()  &&
+      Y>=0 && Y<buff->GetHeight())
+      {
+        //buff->CVector[Y][X*3]=128;
+        if(buff->CVector[Y][X*3+1])buff->CVector[Y][X*3+1]--;
+        buff->CVector[Y][X*3+2]=128;
+      }
+      
     }
 
     printf("SIZE::%d\n", contour.size());

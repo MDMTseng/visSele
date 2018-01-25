@@ -5,6 +5,7 @@
 
 #ifdef __WIN32__
 #include <winsock2.h>
+typedef socklen_t unsigned int
 #else
 #include <netinet/in.h>
 #endif
@@ -474,7 +475,7 @@ public:
     if(FD_ISSET(listenSocket, &read_fds))
     {
         struct sockaddr_in remote;
-        int sockaddrLen = sizeof(remote);
+        socklen_t sockaddrLen = sizeof(remote);
         int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
         if (NewSock == -1) {
             printf("accept failed");
