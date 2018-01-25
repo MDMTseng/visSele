@@ -1,5 +1,8 @@
 
 #include "experiment.h"
+#include <cstdlib>
+#include <unistd.h>
+#include <time.h>
 
 enum searchType_C
 {
@@ -64,55 +67,54 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
 
 
     const int L = contour.size();
-    int DisconnectC=99999;
-    const int DiscCThres=8;
 
-    const int Dist=20;
-    for(int i=0;i<L;i++)
+    const int Dist=120;
+    const int SamplingNum=20;
+    for(int i=0;i<L;i+=Dist/2)
     {
-      int tmp = (i-Dist*3);
-      if(tmp<0)tmp+=L;
-      acv_XY p1 = contour[tmp];
-      tmp=(tmp+Dist*2)%L;
-      acv_XY p2 = contour[tmp];
-      tmp=(tmp+Dist*2)%L;
-      acv_XY p3 = contour[tmp];
-
-
-      if(acvVectorOrder(p1,p2,p3)>0)continue;
-
-
-      tmp=(tmp+Dist*2)%L;
-      acv_XY p4 = contour[tmp];
-
-
-      acv_XY cc = acvCircumcenter(p1,p2,p4);
-      acv_XY cc2 = acvCircumcenter(p1,p3,p4);
-
-      if(!isnormal(cc.X) || !isnormal(cc.Y) || !isnormal(cc2.X) || !isnormal(cc2.Y))
+      acv_XY meancc={0};
+      int meancc_count=0;
+      for(int j=0;j<SamplingNum;j++)
       {
-        continue;
-      }
+        int v1 = rand() % Dist;
+        int v2 = rand() % Dist;
+        int v3 = rand() % Dist;
+        v1=v1-Dist/2+i;
+        v2=v2-Dist/2+i;
+        v3=v3-Dist/2+i;
+        if(v1<0)v1+=L;
+        if(v2<0)v2+=L;
+        if(v2<0)v2+=L;
+        v1%=L;
+        v2%=L;
+        v3%=L;
+        acv_XY p1 = contour[v1];
+        acv_XY p2 = contour[v2];
+        acv_XY p3 = contour[v3];
 
-      cc2.X-=cc.X;
-      cc2.Y-=cc.Y;
-      if(cc2.X*cc2.X+cc2.Y*cc2.Y>30)
-      {
-        continue;
-      }
-      cc.X+=cc2.X/2;
-      cc.Y+=cc2.Y/2;
+        acv_XY cc = acvCircumcenter(p1,p2,p3);
 
-      int X = round(cc.X);
-      int Y = round(cc.Y);
+        if(!isnormal(cc.X) || !isnormal(cc.Y))continue;
+
+        meancc.X+=cc.X;
+        meancc.Y+=cc.Y;
+        meancc_count++;
+
+      }
+      meancc.X/=meancc_count;
+      meancc.Y/=meancc_count;
+      int X = round(meancc.X);
+      int Y = round(meancc.Y);
+      printf("%f  %f\n",meancc.X,meancc.Y);
+
       if(X>=0 && X < buff->GetWidth()  &&
       Y>=0 && Y<buff->GetHeight())
       {
-        //buff->CVector[Y][X*3]=128;
-        if(buff->CVector[Y][X*3+1])buff->CVector[Y][X*3+1]--;
-        buff->CVector[Y][X*3+2]=128;
-        buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
+            buff->CVector[Y][X*3]=255;
+            buff->CVector[Y][X*3+1]=0;
+            buff->CVector[Y][X*3+2]=0;
       }
+
 
     }
 
