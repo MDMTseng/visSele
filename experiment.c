@@ -67,25 +67,39 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
     int DisconnectC=99999;
     const int DiscCThres=8;
 
-    const int Dist=40;
-    const int offset=20;
+    const int Dist=20;
     for(int i=0;i<L;i++)
     {
+      int tmp = (i-Dist*3);
+      if(tmp<0)tmp+=L;
+      acv_XY p1 = contour[tmp];
+      tmp=(tmp+Dist*2)%L;
+      acv_XY p2 = contour[tmp];
+      tmp=(tmp+Dist*2)%L;
+      acv_XY p3 = contour[tmp];
 
-      acv_XY cc = acvCircumcenter(contour[i-offset],contour[(i-offset+Dist)%L],contour[(i-offset-Dist)%L]);
-      acv_XY cc2 = acvCircumcenter(contour[i+offset],contour[(i+offset+Dist)%L],contour[(i+offset-Dist)%L]);
-      if(isnormal(cc.X) || isnormal(cc.Y) || isnormal(cc2.X) || isnormal(cc2.Y))
+
+      if(acvVectorOrder(p1,p2,p3)>0)continue;
+
+
+      tmp=(tmp+Dist*2)%L;
+      acv_XY p4 = contour[tmp];
+
+
+      acv_XY cc = acvCircumcenter(p1,p2,p4);
+      acv_XY cc2 = acvCircumcenter(p1,p3,p4);
+
+      if(!isnormal(cc.X) || !isnormal(cc.Y) || !isnormal(cc2.X) || !isnormal(cc2.Y))
       {
         continue;
       }
 
       cc2.X-=cc.X;
       cc2.Y-=cc.Y;
-      if(cc2.X*cc2.X+cc2.Y*cc2.Y>60)
+      if(cc2.X*cc2.X+cc2.Y*cc2.Y>30)
       {
         continue;
       }
-
       cc.X+=cc2.X/2;
       cc.Y+=cc2.Y/2;
 
@@ -97,8 +111,9 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
         //buff->CVector[Y][X*3]=128;
         if(buff->CVector[Y][X*3+1])buff->CVector[Y][X*3+1]--;
         buff->CVector[Y][X*3+2]=128;
+        buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
       }
-      
+
     }
 
     printf("SIZE::%d\n", contour.size());

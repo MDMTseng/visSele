@@ -5,7 +5,7 @@
 
 #ifdef __WIN32__
 #include <winsock2.h>
-typedef socklen_t unsigned int
+#define socklen_t int
 #else
 #include <netinet/in.h>
 #endif
@@ -43,7 +43,7 @@ class ws_conn{
           perror("written not all bytes");
           return -1;
       }
-      
+
       return 0;
   }
   int sock;
@@ -65,7 +65,7 @@ class ws_conn{
     accBufDataLen = 0;
     if(recvBuf.size()<recvBufSizeInc)
       recvBuf.resize(recvBufSizeInc);
-    
+
     sendBuf.resize(recvBufSizeInc);
   }
 
@@ -129,7 +129,7 @@ class ws_conn{
       return -1;
     }
     strcpy_m(resource, sizeof(resource), hs.resource);
-    printf("%s:%s\n",__func__,resource); 
+    printf("%s:%s\n",__func__,resource);
 
     // if resource is right, generate answer handshake and send it
     size_t frameSize=sendBuf.size();
@@ -146,7 +146,7 @@ class ws_conn{
 
   int doClosing()
   {
-    if(isOccupied())  
+    if(isOccupied())
       close(sock);
     RESET();
     printf("%s\n",__func__);
@@ -186,7 +186,7 @@ class ws_conn{
         size_t dataSize = 0;
 
         uint8_t* tmpD=(uint8_t*)buff+h_padding;
-        frameType = wsParseInputFrame2(tmpD, buffLen-h_padding, 
+        frameType = wsParseInputFrame2(tmpD, buffLen-h_padding,
           &data, &dataSize, &curPktLen, &isFinal);
         //printf("frameType:%d    %02x %02x %02x\n",frameType,tmpD[0],tmpD[1],tmpD[2]);
         *ret_lastFrameType = frameType;
@@ -202,7 +202,7 @@ class ws_conn{
           printf("dataSize:%d isFinal:%d\n",dataSize,isFinal);
           event_WsRECV( data, dataSize, frameType, isFinal);
 
-        }        
+        }
         else if(frameType == WS_CONT_FRAME )
         {
           h_padding+=curPktLen;
@@ -275,7 +275,7 @@ class ws_conn{
     accBufDataLen+=readed;
 
     //printf("readed:%d\n",readed);
-    
+
     /*if(accBufDataLen==recvBuf.size())
     {
       recvBuf.reserve(recvBuf.size()+recvBufSizeInc);
@@ -410,7 +410,7 @@ public:
         printf("Error:create socket failed\n");
         return;
     }
-    
+
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));
     local.sin_family = AF_INET;
@@ -422,7 +422,7 @@ public:
         listenSocket=-1;
         return;
     }
-    
+
     if (listen(listenSocket, 1) == -1) {
         printf("listen failed\n");
         close(listenSocket);
@@ -437,7 +437,7 @@ public:
 
 
     printf("opened %s:%d  listenSocket:%d\n", inet_ntoa(local.sin_addr), ntohs(local.sin_port),listenSocket);
-    
+
   }
   ws_conn_entity_pool ws_conn_pool;
 
@@ -465,7 +465,7 @@ public:
     }
     fd_set read_fds = evtSet;
 
-    
+
     if (select(fdmax+1, &read_fds, NULL, NULL, tv) == -1) {
       perror("select");
       exit(4);
@@ -483,7 +483,7 @@ public:
         ws_conn* conn = ws_conn_pool.find_avaliable_conn_info_slot();
         conn->setSocket(NewSock);
         conn->setAddr(remote);
-        printf("connected %s:%d\n", 
+        printf("connected %s:%d\n",
         inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port));
 
 
@@ -493,7 +493,7 @@ public:
         }
 
         printf("List size %d\n", ws_conn_pool.size());
-        
+
     }
     else
     {
@@ -524,6 +524,6 @@ public:
         }
     }
     return 0;
-    
+
   }
 };

@@ -608,3 +608,16 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
   return acvIntersectPoint(c12,c12_,c23,C23_);
 
 }
+
+float acv2DCrossProduct(acv_XY v1,acv_XY v2)
+{
+	return v1.X*v2.Y - v2.X*v1.Y;
+}
+
+
+float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3)
+{
+  acv_XY v1={.X=p2.X-p1.X,.Y=p2.Y-p1.Y};
+  acv_XY v2={.X=p3.X-p2.X,.Y=p3.Y-p2.Y};
+  return acv2DCrossProduct(v1,v2);
+}
