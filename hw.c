@@ -382,6 +382,8 @@ int simpP(char* strNum)
 #include <vector>
 int main(int argc, char** argv)
 {
+    int seed = time(NULL);
+    srand(seed);
     int ret = 0, repeatNum=1;
 
     if(argc>=2)

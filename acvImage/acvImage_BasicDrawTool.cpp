@@ -576,3 +576,22 @@ void acvDrawReverseFillBlock(acvImage *Pic, int X1, int Y1, int X2, int Y2)
     DrawLine(Pic,X1,Y1,X2,Y1);
     DrawLine(Pic,X1,Y2,X2,Y2);*/
 }
+
+
+void acvDrawCircle(acvImage *Pic, float X, float Y, float radius,int section, BYTE R, BYTE G, BYTE B)
+{
+
+    float preX,preY;
+    preX = X+radius;
+    preY = Y;
+    for(int i=0;i<section;i++)
+    {
+      float theta = (i+1)*2*M_PI/section;
+      float curX=X+radius*cos(theta);
+      float curY=Y+radius*sin(theta);
+      acvDrawLine(Pic, (int)preX, (int)preY,
+                  (int)curX, (int)curY, R,G,B);
+      preX=curX;
+      preY=curY;
+    }
+}

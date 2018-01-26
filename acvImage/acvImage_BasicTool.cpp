@@ -609,6 +609,14 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
 
 }
 
+
+float acvDistance(acv_XY p1,acv_XY p2)
+{
+  acv_XY v1={.X=p2.X-p1.X,.Y=p2.Y-p1.Y};
+  return sqrt(v1.X*v1.X+v1.Y*v1.Y);
+}
+
+
 float acv2DCrossProduct(acv_XY v1,acv_XY v2)
 {
 	return v1.X*v2.Y - v2.X*v1.Y;
