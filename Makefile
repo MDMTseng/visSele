@@ -6,7 +6,7 @@ export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
 target_bin=visSele
 ODIR=obj
 IDIR=acvImage/include/ MLNN/include/ include/
-_OBJ = hw.o experiment.o
+_OBJ = hw.o experiment.opp
 
 acvImage_OBJS= acvImage.opp acvImage_BasicTool.opp acvImage_BasicDrawTool.opp\
  acvImage_MophologyTool.opp acvImage_ToolBox.opp acvImage_ComponentLabelingTool.opp\
