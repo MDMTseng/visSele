@@ -17,12 +17,13 @@ inline int valueWarping(int v,int ringSize)
 }
 
 class contour_grid{
-    vector<vector<acv_XY>> contourSections;
-    vector<int> intersectTestNodes;
+    vector< vector <acv_XY> > contourSections;
+    vector< int > intersectTestNodes;
+    int gridSize;
+    int dataNumber=0;
     int sectionCol;
     int sectionRow;
     public:
-    int gridSize;
     contour_grid(int grid_size,int img_width,int img_height)
     {
       RESET(grid_size,img_width,img_height);
@@ -30,6 +31,9 @@ class contour_grid{
 
     void RESET(int grid_size,int img_width,int img_height)
     {
+      dataNumber = 0;
+      if(grid_size==-1)
+        grid_size = gridSize;
       gridSize = grid_size;
       sectionCol=ceil((float)img_width/grid_size);
       sectionRow=ceil((float)img_height/grid_size);
@@ -39,6 +43,17 @@ class contour_grid{
         contourSections[i].resize(0);
       }
     }
+
+    int getColumSize()
+    {
+      return sectionCol;
+    }
+
+    int getRowSize()
+    {
+      return sectionRow;
+    }
+
 
     int getSecIdx(int X,int Y)
     {
@@ -56,6 +71,29 @@ class contour_grid{
     void push(acv_XY data)
     {
       fetchBelongingSection(data).push_back(data);
+      dataNumber++;
+    }
+
+    int dataSize()
+    {
+      return dataNumber;
+    }
+
+    const acv_XY* get(int idx)
+    {
+      int idx_count_down=idx;
+      for(int i=0;i<contourSections.size();i++)
+      {
+        if(idx_count_down<contourSections[i].size())
+        {
+          return &(contourSections[i][idx_count_down]);
+        }
+        else
+        {
+          idx_count_down-=contourSections[i].size();
+        }
+      }
+      return NULL;
     }
 
     enum intersectTestType
@@ -128,10 +166,16 @@ class contour_grid{
           )
           {
             //If any nodes are different from each other there must be the contour in between
-            intersectIdxs.push_back(idx1);
+            intersectIdxs.push_back(i*sectionCol + j);
             continue;
           }
-          //All Test nodes are in same type, pass
+          if(intersectTestNodes[idx1]==intersectTestType_middle)
+          {
+            //All in the middle
+            intersectIdxs.push_back(i*sectionCol + j);
+            continue;
+          }
+          //All Test nodes are in same type in/out, pass
         }
       }
     }
@@ -175,7 +219,6 @@ class contour_grid{
 
 int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType,acvImage *buff,contour_grid &contourGrid)
 {
-    contourGrid.RESET(contourGrid.gridSize,Pic->GetWidth(),Pic->GetHeight());
     static std::vector<acv_XY> contour;
     //static std::vector<acv_XY> contour;
     contour.resize(0);
@@ -231,10 +274,10 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
 
     const int L = contour.size();
 
-    const int Dist=10;
+    const int Dist=20;
 
     float crossP_LF=0;
-    float epsilon=1;
+    float epsilon=0.2;
     for(int i=0;i<L;i++)
     {
       //Filter out Non-inward contour
@@ -250,7 +293,7 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
       if(crossP_LF>0||crossP>-epsilon)continue;
       contourGrid.push(contour[i]);
-      buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
+      //buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
 
     }
     printf("SIZE::%d\n", contour.size());
@@ -260,12 +303,11 @@ void CircleDetect(acvImage *img,acvImage *buff)
 {
     BYTE *OutLine, *OriLine;
 
-    static vector<acv_XY> meancc_list;
-    meancc_list.resize(0);
 
     int grid_size = 20;
-    static contour_grid contourSections(grid_size,img->GetWidth(),img->GetHeight());
+    static contour_grid contourGrid(grid_size,img->GetWidth(),img->GetHeight());
 
+    contourGrid.RESET(-1,img->GetWidth(),img->GetHeight());
     acvCloneImage(img, buff, -1);
     for (int i = 0; i < img->GetHeight(); i++)
     {
@@ -276,30 +318,55 @@ void CircleDetect(acvImage *img,acvImage *buff)
         {
           if(pre_pix==255 && OriLine[0] == 0)//White to black
           {
-            acvDrawContourX(img, j, i, 1, 128, 1, searchType_C_W2B,buff,contourSections);
+            acvDrawContourX(img, j, i, 1, 128, 1, searchType_C_W2B,buff,contourGrid);
           }
           else if(pre_pix==0 && OriLine[0] == 255)//black to white
           {
-            acvDrawContourX(img, j-1, i, 1, 128, 1, searchType_C_B2W,buff,contourSections);
+            acvDrawContourX(img, j-1, i, 1, 128, 1, searchType_C_B2W,buff,contourGrid);
           }
           pre_pix= OriLine[0];
         }
     }
 
-/*
-
-    for(int i=0;i<meancc_list.size();i++)
+    /*for(int i=0;i<contourGrid.dataSize();i++)
     {
-      int X = round(meancc_list[i].X);
-      int Y = round(meancc_list[i].Y);
-      if(X>=0 && X < buff->GetWidth()  &&
-      Y>=0 && Y<buff->GetHeight())
+      const acv_XY *data = contourGrid.get(i);
+
+      int X = round(data->X);
+      int Y = round(data->Y);
+
       {
             buff->CVector[Y][X*3]=255;
             if(buff->CVector[Y][X*3+1])
               buff->CVector[Y][X*3+1]--;
-            buff->CVector[Y][X*3+2]=0;
+            buff->CVector[Y][X*3+2]=255;
+      }
+
+
+    }*/
+
+    vector<int> intersectIdxs;
+    vector<acv_XY> points;
+
+    int cX=250;
+    int cY=200;
+    int r=150;
+    int e=10;
+
+    //acvClear(buff,128);
+    contourGrid.getContourPointsWithInCircleContour(cX,cY,r,e,intersectIdxs,points);
+    acvDrawCircle(buff, cX, cY, r-e,20,255, 0, 0);
+    acvDrawCircle(buff, cX, cY, r+e,20,255, 0, 0);
+
+    for(int i=0;i<points.size();i++)
+    {
+      int X = round(points[i].X);
+      int Y = round(points[i].Y);
+      {
+            buff->CVector[Y][X*3]=0;
+            buff->CVector[Y][X*3+2]=255;
       }
     }
-*/
+
+
 }
