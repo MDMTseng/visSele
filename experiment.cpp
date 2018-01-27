@@ -98,12 +98,13 @@ class contour_grid{
 
     enum intersectTestType
     {
-      intersectTestType_outer,
+      intersectTestType_outer=0,
       intersectTestType_middle,
-      intersectTestType_inner
+      intersectTestType_inner,
+      intersectTestType_skip,
     };
 
-    void GetSectionsWithInCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs)
+    void GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs)
     {
       intersectIdxs.resize(0);
 
@@ -119,6 +120,20 @@ class contour_grid{
       epsilon/=gridSize;
 
       float outerDist_sq=radius+epsilon;
+
+      int ROI_X1 = (int)(X-radius-epsilon);
+      int ROI_Y1 = (int)(Y-radius-epsilon);
+      int ROI_X2 = ceil(X+radius+epsilon);
+      int ROI_Y2 = ceil(Y+radius+epsilon);
+
+      if(ROI_X2<0 || ROI_Y2<0 || ROI_X1>=gridNodeW || ROI_Y1>=gridNodeH)
+      {
+        return;
+      }
+      if(ROI_X1<0)ROI_X1=0;
+      if(ROI_Y1<0)ROI_Y1=0;
+      if(ROI_X2>=gridNodeW)ROI_X2=gridNodeW-1;
+      if(ROI_Y2>=gridNodeH)ROI_Y2=gridNodeH-1;
       outerDist_sq*=outerDist_sq;
 
       float innerDist_sq=radius-epsilon;
@@ -131,27 +146,77 @@ class contour_grid{
       //when circle fit in the grid completely, every node is outer node
       int idCircleCrossGrid=0;
 
-      for(int i=0;i<intersectTestNodes.size();i++)
+      //The outer most rect is always outer side
+      for(int i=ROI_Y1;i<=ROI_Y2;i++)
       {
-        int nodeX=i%gridNodeW;
-        int nodeY=i/gridNodeW;
-        float dX = X-nodeX;
-        float dY = Y-nodeY;
-        float dist_sq = dX*dX + dY*dY;
+        int idx = i*gridNodeW+ROI_X1;
+        intersectTestNodes[idx]=intersectTestType_outer;
+        idx = i*gridNodeW+ROI_X2;
+        intersectTestNodes[idx]=intersectTestType_outer;
+      }
+      for(int j=ROI_X1;j<=ROI_X2;j++)
+      {
+        int idx = ROI_Y1*gridNodeW+j;
+        intersectTestNodes[idx]=intersectTestType_outer;
+        idx = ROI_Y2*gridNodeW+j;
+        intersectTestNodes[idx]=intersectTestType_outer;
+      }
 
-        if(dist_sq<innerDist_sq)
+      /*
+      P indicates ROI that is possible to contain circle
+      X indicates RONI that is impossible to contain circle
+
+      PPPPPPPPPPP
+      PPPPPPPPPPP
+      PPPXXXXXPPP
+      PPPXXXXXPPP
+      PPPXXXXXPPP
+      PPPPPPPPPPP
+      PPPPPPPPPPP
+      PPPPPPPPPPP
+
+      */
+
+      float innerBoundOffset=(radius-epsilon)/1.414;//sqrt(2)
+      int RONI_X1 = ceil(X-innerBoundOffset);
+      int RONI_Y1 = ceil(Y-innerBoundOffset);
+      int RONI_X2 = (int)(X+innerBoundOffset);
+      int RONI_Y2 = (int)(Y+innerBoundOffset);
+      //printf("%d %d %d %d\n",RONI_X1,RONI_Y1,RONI_X2,RONI_Y2);
+      //Skip the outer most rect
+      for(int i=ROI_Y1+1;i<=ROI_Y2-1;i++)
+      {
+        for(int j=ROI_X1+1;j<=ROI_X2-1;j++)
         {
-          idCircleCrossGrid=1;
-          intersectTestNodes[i]=intersectTestType_inner;
-        }
-        else if(dist_sq<outerDist_sq)
-        {
-          idCircleCrossGrid=1;
-          intersectTestNodes[i]=intersectTestType_middle;
-        }
-        else
-        {
-          intersectTestNodes[i]=intersectTestType_outer;
+          int idx = i*gridNodeW+j;
+          if(i>=RONI_Y1&&i<RONI_Y2)
+          {
+            if(j>=RONI_X1 && j<RONI_X2)
+            {
+              intersectTestNodes[idx]=intersectTestType_skip;
+              continue;
+            }
+          }
+
+
+          float dX = j-X;
+          float dY = i-Y;
+          float dist_sq = dX*dX + dY*dY;
+
+          if(dist_sq<innerDist_sq)
+          {
+            idCircleCrossGrid=1;
+            intersectTestNodes[idx]=intersectTestType_inner;
+          }
+          else if(dist_sq<outerDist_sq)
+          {
+            idCircleCrossGrid=1;
+            intersectTestNodes[idx]=intersectTestType_middle;
+          }
+          else
+          {
+            intersectTestNodes[idx]=intersectTestType_outer;
+          }
         }
       }
 
@@ -173,15 +238,18 @@ class contour_grid{
       }
       else
       {
-        for(int i=0;i<gridNodeH-1;i++)
+        for(int i=ROI_Y1;i<=ROI_Y2-1;i++)
         {
-          for(int j=0;j<gridNodeW-1;j++)
+          for(int j=ROI_X1;j<=ROI_X2-1;j++)
           {
             int idx1 = i*gridNodeW + j;
             int idx2 = idx1+1;
             int idx3 = idx1 + gridNodeW;
             int idx4 = idx2 + gridNodeW;
-
+            if(intersectTestNodes[idx1] == intersectTestType_skip)
+            {
+              continue;
+            }
             if(
               intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
               intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
@@ -210,7 +278,7 @@ class contour_grid{
     void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs,vector<acv_XY> &points)
     {
       points.resize(0);
-      GetSectionsWithInCircleContour(X,Y,radius,epsilon,intersectIdxs);
+      GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
 
       float outerDist_sq=radius+epsilon;
       outerDist_sq*=outerDist_sq;
@@ -467,7 +535,7 @@ void CircleDetect(acvImage *img,acvImage *buff)
     int grid_size = 20;
     static contour_grid contourGrid(grid_size,img->GetWidth(),img->GetHeight());
 
-    contourGrid.RESET(-1,img->GetWidth(),img->GetHeight());
+    contourGrid.RESET(grid_size,img->GetWidth(),img->GetHeight());
     acvCloneImage(img, buff, -1);
     for (int i = 0; i < img->GetHeight(); i++)
     {
@@ -488,32 +556,23 @@ void CircleDetect(acvImage *img,acvImage *buff)
         }
     }
 
-    /*for(int i=0;i<contourGrid.dataSize();i++)
-    {
-      const acv_XY *data = contourGrid.get(i);
 
-      int X = round(data->X);
-      int Y = round(data->Y);
-
-      {
-            buff->CVector[Y][X*3]=255;
-            if(buff->CVector[Y][X*3+1])
-              buff->CVector[Y][X*3+1]--;
-            buff->CVector[Y][X*3+2]=255;
-      }
-
-
-    }*/
-
-    /*vector<int> intersectIdxs;
+/*
+    vector<int> intersectIdxs;
     vector<acv_XY> points;
 
-    int cX=80;
+    int cX=150;
     int cY=150;
-    int r=40;
+    int r=70;
     int e=7;
 
     contourGrid.getContourPointsWithInCircleContour(cX,cY,r,e,intersectIdxs,points);
+
+    for(int i=0;i<15;i++)for(int j=0;j<15;j++)
+    {
+      acvDrawBlock(buff, j*grid_size,i*grid_size,(j+1)*grid_size,(i+1)*grid_size);
+    }
+
     acvDrawCircle(buff, cX, cY, r-e,20,255, 0, 0);
     acvDrawCircle(buff, cX, cY, r+e,20,255, 0, 0);
 
