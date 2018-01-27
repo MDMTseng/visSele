@@ -127,6 +127,10 @@ class contour_grid{
       else
         innerDist_sq*=innerDist_sq;
 
+      //one exception for grid node detection method is
+      //when circle fit in the grid completely, every node is outer node
+      int idCircleCrossGrid=0;
+
       for(int i=0;i<intersectTestNodes.size();i++)
       {
         int nodeX=i%gridNodeW;
@@ -137,10 +141,12 @@ class contour_grid{
 
         if(dist_sq<innerDist_sq)
         {
+          idCircleCrossGrid=1;
           intersectTestNodes[i]=intersectTestType_inner;
         }
         else if(dist_sq<outerDist_sq)
         {
+          idCircleCrossGrid=1;
           intersectTestNodes[i]=intersectTestType_middle;
         }
         else
@@ -149,35 +155,55 @@ class contour_grid{
         }
       }
 
-
-      for(int i=0;i<gridNodeH-1;i++)
+      if(!idCircleCrossGrid)
       {
-        for(int j=0;j<gridNodeW-1;j++)
+        //If we detect there is no circle cross the boundery. ie, circle in grid or totally out of grid group
+        //We do single detection
+        if(X>0 && Y>0)
         {
-          int idx1 = i*gridNodeW + j;
-          int idx2 = idx1+1;
-          int idx3 = idx1 + gridNodeW;
-          int idx4 = idx2 + gridNodeW;
-
-          if(
-            intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
-            intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
-            intersectTestNodes[idx1]!=intersectTestNodes[idx3]
-          )
+          int gX = (int)X;
+          int gY = (int)Y;
+          if(gX<sectionCol && gY<sectionRow)
           {
-            //If any nodes are different from each other there must be the contour in between
-            intersectIdxs.push_back(i*sectionCol + j);
-            continue;
+            printf(">>>>\n");
+            int idx = gX+gY*sectionCol;
+            intersectIdxs.push_back(idx);
+            //intersectTestNodes[idx]=intersectTestType_outer_exclude;
           }
-          if(intersectTestNodes[idx1]==intersectTestType_middle)
-          {
-            //All in the middle
-            intersectIdxs.push_back(i*sectionCol + j);
-            continue;
-          }
-          //All Test nodes are in same type in/out, pass
         }
       }
+      else
+      {
+        for(int i=0;i<gridNodeH-1;i++)
+        {
+          for(int j=0;j<gridNodeW-1;j++)
+          {
+            int idx1 = i*gridNodeW + j;
+            int idx2 = idx1+1;
+            int idx3 = idx1 + gridNodeW;
+            int idx4 = idx2 + gridNodeW;
+
+            if(
+              intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
+              intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
+              intersectTestNodes[idx1]!=intersectTestNodes[idx3]
+            )
+            {
+              //If any nodes are different from each other there must be the contour in between
+              intersectIdxs.push_back(i*sectionCol + j);
+              continue;
+            }
+            if(intersectTestNodes[idx1]==intersectTestType_middle)
+            {
+              //All in the middle
+              intersectIdxs.push_back(i*sectionCol + j);
+              continue;
+            }
+            //All Test nodes are in same type in/out, pass
+          }
+        }
+      }
+
     }
 
 
@@ -304,7 +330,7 @@ void CircleDetect(acvImage *img,acvImage *buff)
     BYTE *OutLine, *OriLine;
 
 
-    int grid_size = 20;
+    int grid_size = 120;
     static contour_grid contourGrid(grid_size,img->GetWidth(),img->GetHeight());
 
     contourGrid.RESET(-1,img->GetWidth(),img->GetHeight());
@@ -348,12 +374,11 @@ void CircleDetect(acvImage *img,acvImage *buff)
     vector<int> intersectIdxs;
     vector<acv_XY> points;
 
-    int cX=250;
-    int cY=200;
-    int r=150;
-    int e=10;
+    int cX=100;
+    int cY=150;
+    int r=10;
+    int e=7;
 
-    //acvClear(buff,128);
     contourGrid.getContourPointsWithInCircleContour(cX,cY,r,e,intersectIdxs,points);
     acvDrawCircle(buff, cX, cY, r-e,20,255, 0, 0);
     acvDrawCircle(buff, cX, cY, r+e,20,255, 0, 0);
