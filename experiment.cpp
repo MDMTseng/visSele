@@ -273,8 +273,6 @@ class contour_grid{
 
     }
 
-
-
     void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs,vector<acv_XY> &points)
     {
       points.resize(0);
@@ -473,14 +471,14 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
 
 
 
-float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH, int dataSizeMinThre, int sampleSize,acvImage *buff)
+float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH, int dataSizeMinThre, float sampleRate,acvImage *buff)
 {
   static vector<int> s_intersectIdxs;
   static vector<acv_XY> s_points;
   int SecRSize = contourGrid.getGetSectionRegionDataSize(secX,secY,secW,secH);
 
   if(SecRSize<dataSizeMinThre)return 0;
-  int SampleNumber = sampleSize;
+  int SampleNumber = sampleRate*SecRSize*SecRSize;
   float maxMatchingScore=0;
   for(int i=0;i<SampleNumber;i++)
   {
@@ -532,7 +530,7 @@ void CircleDetect(acvImage *img,acvImage *buff)
     BYTE *OutLine, *OriLine;
 
 
-    int grid_size = 20;
+    int grid_size = 50;
     static contour_grid contourGrid(grid_size,img->GetWidth(),img->GetHeight());
 
     contourGrid.RESET(grid_size,img->GetWidth(),img->GetHeight());
@@ -561,10 +559,10 @@ void CircleDetect(acvImage *img,acvImage *buff)
     vector<int> intersectIdxs;
     vector<acv_XY> points;
 
-    int cX=150;
-    int cY=150;
-    int r=70;
-    int e=7;
+    int cX=278;
+    int cY=61;
+    int r=90;
+    int e=90;
 
     contourGrid.getContourPointsWithInCircleContour(cX,cY,r,e,intersectIdxs,points);
 
@@ -586,15 +584,23 @@ void CircleDetect(acvImage *img,acvImage *buff)
       }
     }*/
 
-    int gridG_W = 5;
-    int gridG_H = 5;
-
-    for(int i=0;i<contourGrid.getRowSize()-gridG_H;i++)
+    for(int i=0;i<15;i++)for(int j=0;j<15;j++)
     {
-      for(int j=0;j<contourGrid.getColumSize()-gridG_W;j++)
-      {
-        SecRegionCircleFit(contourGrid, j,i,gridG_W,gridG_H,40,100,buff);
-      }
+      acvDrawBlock(buff, j*grid_size,i*grid_size,(j+1)*grid_size,(i+1)*grid_size);
     }
 
+    int gridG_W = 2;
+    int gridG_H = 2;
+
+    /*
+    for(int i=0;i<contourGrid.getRowSize()-gridG_H;i++)
+    {
+      for(int j=0;j<contourGrid.getColumSize()-gridG_W;j++)*/
+    for(int i=-gridG_H;i<contourGrid.getRowSize();i++)
+    {
+      for(int j=-gridG_H;j<contourGrid.getColumSize();j++)
+      {
+        SecRegionCircleFit(contourGrid, j,i,gridG_W,gridG_H,40,0.01,buff);
+      }
+    }
 }
