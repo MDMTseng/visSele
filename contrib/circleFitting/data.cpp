@@ -6,7 +6,6 @@
 // Constructor with assignment of the field N
 Data::Data(int N)
 {
-  printf("%s:%d\n",__func__,N);
   X=NULL;
   Y=NULL;
   reset();
@@ -14,9 +13,12 @@ Data::Data(int N)
 }
 
 // Constructor with assignment of each field
-Data::Data(int N, reals dataX[], reals dataY[]):Data(N)
+Data::Data(int N, reals dataX[], reals dataY[])
 {
-  printf("%s:%d\n",__func__,N);
+  X=NULL;
+  Y=NULL;
+  reset();
+  resize(N);
 	for (int i=0; i<n; i++)
 	{
 		X[i]=dataX[i];
