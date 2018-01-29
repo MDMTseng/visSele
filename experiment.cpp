@@ -443,7 +443,7 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
     const int Dist=10;
 
     float crossP_LF=0;
-    float epsilon=0.2;
+    float epsilon=3;
     for(int i=0;i<L;i++)
     {
       //Filter out Non-inward contour
@@ -454,10 +454,10 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
         contour[valueWarping(i+Dist,L)]);
 
       if(i==0)crossP_LF=crossP;
-      crossP_LF+=0.5*(crossP-crossP_LF);
+      crossP_LF+=0.1*(crossP-crossP_LF);
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
-      if(crossP_LF>0||crossP>-epsilon)continue;
+      if(crossP_LF>-epsilon||crossP>-epsilon)continue;
       contourGrid.push(contour[i]);
       //buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
 
@@ -560,22 +560,21 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
 
     acv_XY cc2 = acvCircumcenter(*p6,*p4,*p5);
 
-    cc2.X-=cc.X;
-    cc2.Y-=cc.Y;
-    if(!isnormal(cc2.X) || !isnormal(cc2.Y) )continue;
+    acv_XY cc_diff={.X=cc2.X-cc.X,.Y=cc2.Y-cc.Y};
+    if(!isnormal(cc_diff.X) || !isnormal(cc_diff.Y) )continue;
 
-    if(cc2.X*cc2.X+cc2.Y*cc2.Y>1)
+    if(cc_diff.X*cc_diff.X+cc_diff.Y*cc_diff.Y>1)
     {
       continue;
     }
 
-    cc.X+=cc2.X/2;
-    cc.Y+=cc2.Y/2;
     float radius = acvDistance(cc,*p1);
-    radius += acvDistance(cc,*p2);
-    radius += acvDistance(cc,*p4);
-    radius += acvDistance(cc,*p5);
-    radius/=4;
+    radius += acvDistance(cc2,*p5);
+    radius/=2;
+
+
+    cc.X=(cc.X+cc2.X)/2;
+    cc.Y=(cc.Y+cc2.Y)/2;
 
     acv_Circle c = {.circumcenter=cc, .radius=radius};
     float similarity = 0;
@@ -592,6 +591,8 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
     if(maxMatchingScore<matchingScore)maxMatchingScore=matchingScore;
     if(matchingScore>circle_data_ratio)
     {
+      circleRefine(s_points,&cc, &radius);
+      contourGrid.getContourPointsWithInCircleContour(cc.X,cc.Y,radius,1.5,s_intersectIdxs,s_points);
       circleRefine(s_points,&cc, &radius);
       acv_Circle c = {.circumcenter=cc, .radius=radius};
       detectedCircles.push_back(c);
