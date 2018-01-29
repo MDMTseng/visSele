@@ -564,7 +564,7 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
     cc2.Y-=cc.Y;
     if(!isnormal(cc2.X) || !isnormal(cc2.Y) )continue;
 
-    if(cc2.X*cc2.X+cc2.Y*cc2.Y>0.5)
+    if(cc2.X*cc2.X+cc2.Y*cc2.Y>1)
     {
       continue;
     }
@@ -607,6 +607,7 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
 void CircleDetect(acvImage *img,acvImage *buff)
 {
 
+    clock_t t = clock();
     BYTE *OutLine, *OriLine;
 
     static vector<acv_Circle> detectedCircles;
@@ -665,24 +666,28 @@ void CircleDetect(acvImage *img,acvImage *buff)
       }
     }*/
 
+    int gridG_W = 3;
+    int gridG_H = 3;
+
+    /*for(int i=-gridG_H;i<contourGrid.getRowSize();i++)
+    {
+      for(int j=-gridG_H;j<contourGrid.getColumSize();j++)
+      {*/
+    for(int i=0;i<contourGrid.getRowSize()-gridG_H;i++)
+    {
+      for(int j=0;j<contourGrid.getColumSize()-gridG_W;j++)
+      {
+        SecRegionCircleFit(contourGrid, j,i,gridG_W,gridG_H,40,0.3,0.005,detectedCircles);
+      }
+    }
+
+
+    t = clock() - t;
+    printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
+
     for(int i=0;i<15;i++)for(int j=0;j<15;j++)
     {
       acvDrawBlock(buff, j*grid_size,i*grid_size,(j+1)*grid_size,(i+1)*grid_size);
-    }
-
-    int gridG_W = 2;
-    int gridG_H = 2;
-
-    /*
-    for(int i=0;i<contourGrid.getRowSize()-gridG_H;i++)
-    {
-      for(int j=0;j<contourGrid.getColumSize()-gridG_W;j++)*/
-    for(int i=-gridG_H;i<contourGrid.getRowSize();i++)
-    {
-      for(int j=-gridG_H;j<contourGrid.getColumSize();j++)
-      {
-        SecRegionCircleFit(contourGrid, j,i,gridG_W,gridG_H,40,0.3,0.05,detectedCircles);
-      }
     }
 
     for(int i=0;i<detectedCircles.size();i++)
@@ -693,4 +698,15 @@ void CircleDetect(acvImage *img,acvImage *buff)
           20,255, 0, 0);
     }
 
+    for(int i=0;i<contourGrid.dataSize();i++)
+    {
+
+      const acv_XY* p = contourGrid.get(i);
+      int X = round(p->X);
+      int Y = round(p->Y);
+      {
+            buff->CVector[Y][X*3]=255;
+            buff->CVector[Y][X*3+1]=255;
+      }
+    }
 }
