@@ -76,11 +76,11 @@ enum wsFrameType wsParseHandshake(const uint8_t *inputFrame, size_t inputLength,
     if (memcmp_P(inputFrame, PSTR("GET "), 4) != 0)
         return WS_ERROR_FRAME;
     // measure resource size
-    char *first = strchr((const char *)inputFrame, ' ');
+    const char *first = strchr((const char *)inputFrame, ' ');
     if (!first)
         return WS_ERROR_FRAME;
     first++;
-    char *second = strchr(first, ' ');
+    const char *second = strchr(first, ' ');
     if (!second)
         return WS_ERROR_FRAME;
 
