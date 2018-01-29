@@ -2,6 +2,7 @@
 export MODULE_acvImage=$(abspath acvImage)
 export MODULE_MLNN=$(abspath MLNN)
 export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
+export MODULE_circleFitting=$(abspath contrib/circleFitting)
 
 target_bin=visSele
 ODIR=obj
@@ -16,7 +17,7 @@ MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
 EXT_OBJS= $(addprefix acvImage/obj/,$(acvImage_OBJS)) $(addprefix MLNN/obj/,$(MLNN_OBJS))
 ESS_TRACK= $(wildcard include/* acvImage/include/* include/*)
-SUB_MAKEFILES = $(MODULE_acvImage) $(MODULE_MLNN) sidePrj
+SUB_MAKEFILES = $(MODULE_acvImage) $(MODULE_MLNN) $(MODULE_circleFitting) sidePrj
 export MakeTemplate:= $(abspath Makefile.in)
 export FLAGS= -w
 include $(MakeTemplate)

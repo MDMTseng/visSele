@@ -1,0 +1,56 @@
+ESS_TRACK?=
+target_bin?=
+target_a?=
+ODIR?=obj
+
+IDIR?=
+
+EXT_OBJS?=
+#List obj that we want to compile
+_OBJ ?=
+
+#Gives lib dir and lib name for the target
+LDIR?=
+LIBS?=
+
+
+
+
+
+#Creat a
+CFLAGS=$(addprefix -I,$(IDIR)) $(FLAGS)
+OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
+
+
+$(ODIR)/%.opp: %.cpp   $(ESS_TRACK)
+	$(CXX) -c $< $(CFLAGS) -o $@
+$(ODIR)/%.o: %.c  $(ESS_TRACK)
+	$(CXX) -c $< $(CFLAGS) -o $@
+
+
+.PHONY: clean prepare $(SUB_MAKEFILES) build_objs domake
+
+
+domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a)
+	@echo Done GOAL:\"$(MAKECMDGOALS)\" `pwd`
+
+$(target_bin):$(OBJ) $(EXT_OBJS)
+	$(CXX) $(OBJ) $(EXT_OBJS)  $(CFLAGS) $(LIBS)  -o $@
+
+$(target_a):$(OBJ) $(EXT_OBJS)
+	$(AR) rvs $@ $(OBJ) $(EXT_OBJS)
+
+
+$(SUB_MAKEFILES):
+	make -C $@ MakeTemplate=$(MakeTemplate) $(MAKECMDGOALS)
+
+
+#VARS_LIST := $(.VARIABLES)
+
+prepare:
+	-@[ ! -z "$(ODIR)" ]&&mkdir -p $(ODIR) || true
+
+build_objs:$(OBJ)
+
+clean:$(SUB_MAKEFILES)
+	rm -rf $(ODIR) $(target_bin) $(target_a)

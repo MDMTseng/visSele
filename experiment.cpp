@@ -101,7 +101,6 @@ class contour_grid{
       intersectTestType_outer=0,
       intersectTestType_middle,
       intersectTestType_inner,
-      intersectTestType_skip,
     };
 
     void GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs)
@@ -173,8 +172,6 @@ class contour_grid{
       PPPXXXXXPPP
       PPPPPPPPPPP
       PPPPPPPPPPP
-      PPPPPPPPPPP
-
       */
 
       float innerBoundOffset=(radius-epsilon)/1.414;//sqrt(2)
@@ -189,14 +186,11 @@ class contour_grid{
         for(int j=ROI_X1+1;j<=ROI_X2-1;j++)
         {
           int idx = i*gridNodeW+j;
-          if(i>=RONI_Y1&&i<RONI_Y2)
+          /*if(i>=RONI_Y1&&i<RONI_Y2 && j>=RONI_X1 && j<RONI_X2)
           {
-            if(j>=RONI_X1 && j<RONI_X2)
-            {
-              intersectTestNodes[idx]=intersectTestType_skip;
+              intersectTestNodes[idx]=intersectTestType_inner;
               continue;
-            }
-          }
+          }*/
 
 
           float dX = j-X;
@@ -246,10 +240,7 @@ class contour_grid{
             int idx2 = idx1+1;
             int idx3 = idx1 + gridNodeW;
             int idx4 = idx2 + gridNodeW;
-            if(intersectTestNodes[idx1] == intersectTestType_skip)
-            {
-              continue;
-            }
+
             if(
               intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
               intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
@@ -489,17 +480,18 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
 
     const acv_XY* p4 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
     const acv_XY* p5 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
+    const acv_XY* p6 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
 
 
     acv_XY cc = acvCircumcenter(*p1,*p2,*p3);
 
-    acv_XY cc2 = acvCircumcenter(*p1,*p4,*p5);
+    acv_XY cc2 = acvCircumcenter(*p6,*p4,*p5);
 
     cc2.X-=cc.X;
     cc2.Y-=cc.Y;
     if(!isnormal(cc2.X) || !isnormal(cc2.Y) )continue;
 
-    if(cc2.X*cc2.X+cc2.Y*cc2.Y>2)
+    if(cc2.X*cc2.X+cc2.Y*cc2.Y>4)
     {
       continue;
     }
@@ -508,8 +500,9 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
     cc.Y+=cc2.Y/2;
     float radius = acvDistance(cc,*p1);
     radius += acvDistance(cc,*p2);
-    radius += acvDistance(cc,*p3);
-    radius/=3;
+    radius += acvDistance(cc,*p4);
+    radius += acvDistance(cc,*p5);
+    radius/=4;
 
     contourGrid.getContourPointsWithInCircleContour(cc.X,cc.Y,radius,2,s_intersectIdxs,s_points);
 
