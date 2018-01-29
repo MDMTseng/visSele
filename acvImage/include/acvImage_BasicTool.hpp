@@ -58,6 +58,13 @@ typedef struct acv_XY
     float X,Y;
 } acv_XY;
 
+
+typedef struct acv_Circle
+{
+    acv_XY circumcenter;
+		float radius;
+} acv_Circle;
+
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);

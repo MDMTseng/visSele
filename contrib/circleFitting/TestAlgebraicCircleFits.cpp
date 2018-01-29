@@ -3,6 +3,34 @@
 
 #include <time.h>
 
+int testFit(Data &data)
+{
+
+    Circle circle;
+    circle = CircleFitByKasa (data);
+    cout << "\nTest One:\n  Kasa   fit:  center ("
+         << circle.a <<","<< circle.b <<")  radius "
+         << circle.r << "  sigma " << circle.s << endl;
+
+    circle = CircleFitByPratt (data);
+    cout << "\n  Pratt  fit:  center ("
+         << circle.a <<","<< circle.b <<")  radius "
+         << circle.r << "  sigma " << circle.s << endl;
+
+    circle = CircleFitByTaubin (data);
+    cout << "\n  Taubin fit:  center ("
+         << circle.a <<","<< circle.b <<")  radius "
+         << circle.r << "  sigma " << circle.s << endl;
+
+    circle = CircleFitByHyper (data);
+    cout << "\n  Hyper  fit:  center ("
+         << circle.a <<","<< circle.b <<")  radius "
+         << circle.r << "  sigma " << circle.s << endl;
+
+}
+
+
+
 int main()
 //             this code tests algebraic circle fits
 {
@@ -10,8 +38,8 @@ int main()
     reals BenchmarkExampleDataY[6] {7.,6.,8.,7.,5.,7.};
 
     Data data1(6,BenchmarkExampleDataX,BenchmarkExampleDataY);
-    Circle circle;
     cout.precision(7);
+    cout << "\n  Hyper  fit:  center (";
 /*
        Test One:  benchmark example from the journal paper
 
@@ -29,25 +57,8 @@ int main()
 
   Hyper  fit:  center (4.615482,2.807354)  radius 4.827575  sigma 0.4571757
 */
-    circle = CircleFitByKasa (data1);
-    cout << "\nTest One:\n  Kasa   fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
+    testFit(data1);
 
-    circle = CircleFitByPratt (data1);
-    cout << "\n  Pratt  fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
-
-    circle = CircleFitByTaubin (data1);
-    cout << "\n  Taubin fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
-
-    circle = CircleFitByHyper (data1);
-    cout << "\n  Hyper  fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
 
 //            Test Two:  a randomly generated data set
 
@@ -58,25 +69,7 @@ int main()
     srand ( (unsigned)time(NULL) );  //  seed the random generator
     SimulateRandom (data2,1.0);       //  this function is in Utilities.cpp
 
-    circle = CircleFitByKasa (data2);
-    cout << "\nTest Two:\n  Kasa   fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
-
-    circle = CircleFitByPratt (data2);
-    cout << "\n  Pratt  fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
-
-    circle = CircleFitByTaubin (data2);
-    cout << "\n  Taubin fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
-
-    circle = CircleFitByHyper (data2);
-    cout << "\n  Hyper  fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
+    testFit(data2);
 /*
        Test Thee:  benchmark example from the journal paper
 
@@ -101,23 +94,11 @@ int main()
 
     Data data3(4,BenchmarkExample2DataX,BenchmarkExample2DataY);
 
-    circle = CircleFitByKasa (data3);
-    cout << "\nTest Three:\n  Kasa   fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
+    testFit(data3);
 
-    circle = CircleFitByPratt (data3);
-    cout << "\n  Pratt  fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
+    //Arc test
+    Data data4(20);
 
-    circle = CircleFitByTaubin (data3);
-    cout << "\n  Taubin fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
-
-    circle = CircleFitByHyper (data3);
-    cout << "\n  Hyper  fit:  center ("
-         << circle.a <<","<< circle.b <<")  radius "
-         << circle.r << "  sigma " << circle.s << endl;
+    SimulateArc(data4, 100, 200, 50, 0, 0.5, 0.01);
+    testFit(data4);
 }

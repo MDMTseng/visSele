@@ -1,5 +1,5 @@
 
-target_bin=TestAlgebraicCircleFits
+target_a=CircleFits.a
 ODIR=obj
 IDIR=
 _OBJ = circle.opp data.opp \
@@ -7,8 +7,12 @@ _OBJ = circle.opp data.opp \
        CircleFitByKasa.opp \
        CircleFitByPratt.opp \
        CircleFitByTaubin.opp \
-       Utilities.opp \
-       TestAlgebraicCircleFits.opp
+       Utilities.opp
+
+
+#_OBJ += TestAlgebraicCircleFits.opp
+#target_bin=TestAlgebraicCircleFits
+target_a=CircleFitting.a
 
 export FLAGS= -w
 include $(MakeTemplate)

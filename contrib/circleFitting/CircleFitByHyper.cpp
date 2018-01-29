@@ -59,7 +59,6 @@ Circle CircleFitByHyper (Data& data)
 //     computing moments
 
     Mxx=Myy=Mxy=Mxz=Myz=Mzz=0.;
-
     for (i=0; i<data.n; i++)
     {
         Xi = data.X[i] - data.meanX;   //  centered x-coordinates

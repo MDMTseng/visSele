@@ -16,6 +16,8 @@
 #include "DEFINES.h"
 class Data
 {
+
+	int real_n;
 public:
 
 	int n;
@@ -24,10 +26,14 @@ public:
 	reals meanX, meanY;
 
 	// constructors
-	Data();
 	Data(int N);
 	Data(int N, reals X[], reals Y[]);
 
+	void reset();
+	void resize(int new_size);
+	void resize_force(int new_size);
+	int real_size(void);
+	int size(void);
 	// routines
 	void means(void);
 	void center(void);

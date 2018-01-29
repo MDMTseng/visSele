@@ -2,40 +2,21 @@
 /************************************************************************
 			BODY OF THE MEMBER ROUTINES
 ************************************************************************/
-// Default constructor
-Data::Data()
-{
-	n=0;
-	X = new reals[n];
-	Y = new reals[n];
-	for (int i=0; i<n; i++)
-	{
-		X[i]=0.;
-		Y[i]=0.;
-	}
-}
 
 // Constructor with assignment of the field N
 Data::Data(int N)
 {
-	n=N;
-	X = new reals[n];
-	Y = new reals[n];
-
-	for (int i=0; i<n; i++)
-	{
-		X[i]=0.;
-		Y[i]=0.;
-	}
+  printf("%s:%d\n",__func__,N);
+  X=NULL;
+  Y=NULL;
+  reset();
+  resize(N);
 }
 
 // Constructor with assignment of each field
-Data::Data(int N, reals dataX[], reals dataY[])
+Data::Data(int N, reals dataX[], reals dataY[]):Data(N)
 {
-	n=N;
-	X = new reals[n];
-	Y = new reals[n];
-
+  printf("%s:%d\n",__func__,N);
 	for (int i=0; i<n; i++)
 	{
 		X[i]=dataX[i];
@@ -57,6 +38,54 @@ void Data::means(void)
 	meanX /= n;
 	meanY /= n;
 }
+
+void Data::resize(int new_size)
+{
+  if(real_n < new_size)
+  {
+    resize_force(new_size);
+  }
+  else
+  {
+    n=new_size;
+  }
+}
+
+
+int Data::real_size(void)
+{
+  return real_n;
+}
+int Data::size(void)
+{
+  return n;
+}
+
+void Data::reset()
+{
+  //printf("%s\n",__func__);
+  if(X != NULL)
+	 delete[] X;
+  if(Y != NULL)
+   delete[] Y;
+
+  X=NULL;
+  Y=NULL;
+  n=0;
+  real_n=0;
+}
+
+void Data::resize_force(int new_size)
+{
+  //printf("%s:%d\n",__func__,new_size);
+  reset();
+  n=new_size;
+  real_n=new_size;
+  X = new reals[n];
+  Y = new reals[n];
+}
+
+
 
 // Routine that centers the data set (shifts the coordinates to the centeroid)
 
@@ -118,5 +147,5 @@ void Data::print(void)
 Data::~Data()
 {
 	delete[] X;
-        delete[] Y;
+  delete[] Y;
 }

@@ -6,7 +6,7 @@ export MODULE_circleFitting=$(abspath contrib/circleFitting)
 
 target_bin=visSele
 ODIR=obj
-IDIR=acvImage/include/ MLNN/include/ include/
+IDIR=acvImage/include/ MLNN/include/ include/ $(MODULE_circleFitting)
 _OBJ = hw.o experiment.opp
 
 acvImage_OBJS= acvImage.opp acvImage_BasicTool.opp acvImage_BasicDrawTool.opp\
@@ -15,7 +15,7 @@ acvImage_OBJS= acvImage.opp acvImage_BasicTool.opp acvImage_BasicDrawTool.opp\
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= $(addprefix acvImage/obj/,$(acvImage_OBJS)) $(addprefix MLNN/obj/,$(MLNN_OBJS))
+EXT_OBJS= $(addprefix acvImage/obj/,$(acvImage_OBJS)) $(addprefix MLNN/obj/,$(MLNN_OBJS)) $(MODULE_circleFitting)/circleFitting.a
 ESS_TRACK= $(wildcard include/* acvImage/include/* include/*)
 SUB_MAKEFILES = $(MODULE_acvImage) $(MODULE_MLNN) $(MODULE_circleFitting) sidePrj
 export MakeTemplate:= $(abspath Makefile.in)
