@@ -383,11 +383,8 @@ class contour_grid{
 
 
 
-int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType,acvImage *buff,contour_grid &contourGrid)
+int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType, vector<acv_XY> &contour)
 {
-    static std::vector<acv_XY> contour;
-    //static std::vector<acv_XY> contour;
-    contour.resize(0);
     int NowPos[2] = {FromX, FromY};
 
     int NowWalkDir; //=5;//CounterClockWise
@@ -437,11 +434,15 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
     }
     next[2] = R;
 
+    return 0;
+}
 
+void ContourFilter(vector<acv_XY> &contour,contour_grid &innerCurvGrid,contour_grid &straightLineGrid)
+{
     const int L = contour.size();
 
     float crossP_LF_sum=0;
-    const int Dist=5;
+    const int Dist=10;
     float crossPHist[Dist*2];
     int crossPHist_head=0;
 
@@ -456,7 +457,7 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
     }
     crossPHist_head=0;
 
-    float epsilon=1.5;
+    float epsilon=3;
     for(int i=0;i<L;i++)
     {
 
@@ -476,14 +477,16 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
 
-      if(crossP_LF>-epsilon)continue;//Inner curve
-      //if(crossP_LF>epsilon || crossP_LF<-epsilon )continue;//straight
+      if(crossP_LF<-epsilon){
+        innerCurvGrid.push(contour[i]);
+      }//Inner curve
 
-      contourGrid.push(contour[i]);
-      //buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
+
+      if(crossP_LF<epsilon && crossP_LF>-epsilon ){
+        straightLineGrid.push(contour[i]);
+      }//Inner curve
 
     }
-    return 0;
 }
 
 void circleRefine(vector<acv_XY> &pointsInRange,acv_XY *circumcenter, float *radius)
@@ -698,13 +701,14 @@ void CircleDetect(acvImage *img,acvImage *buff)
     clock_t t = clock();
     BYTE *OutLine, *OriLine;
 
-    static vector<acv_Circle> detectedCircles;
-    detectedCircles.resize(0);
+    static vector<acv_XY> extractedContour;
+    extractedContour.resize(0);
     int grid_size = 50;
     static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
-    static contour_grid straight_contour_grid(grid_size,img->GetWidth(),img->GetHeight());
+    static contour_grid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
 
     inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+    straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
     acvCloneImage(img, buff, -1);
     for (int i = 0; i < img->GetHeight(); i++)
     {
@@ -715,12 +719,17 @@ void CircleDetect(acvImage *img,acvImage *buff)
         {
           if(pre_pix==255 && OriLine[0] == 0)//White to black
           {
-            acvDrawContourX(img, j, i, 1, 128, 1, searchType_C_W2B,buff,inward_curve_grid);
+            acvContourExtraction(img, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
+            ContourFilter(extractedContour,inward_curve_grid,straight_line_grid);
+            extractedContour.resize(0);
           }
           else if(pre_pix==0 && OriLine[0] == 255)//black to white
           {
-            acvDrawContourX(img, j-1, i, 1, 128, 1, searchType_C_B2W,buff,inward_curve_grid);
+            acvContourExtraction(img, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
+            ContourFilter(extractedContour,inward_curve_grid,straight_line_grid);
+            extractedContour.resize(0);
           }
+
           pre_pix= OriLine[0];
         }
     }
@@ -758,6 +767,8 @@ void CircleDetect(acvImage *img,acvImage *buff)
     int gridG_W = 2;
     int gridG_H = 2;
 
+    static vector<acv_Circle> detectedCircles;
+    detectedCircles.resize(0);
     /*for(int i=-gridG_H;i<contourGrid.getRowSize();i++)
     {
       for(int j=-gridG_H;j<contourGrid.getColumSize();j++)
@@ -797,5 +808,20 @@ void CircleDetect(acvImage *img,acvImage *buff)
             buff->CVector[Y][X*3]=255;
             buff->CVector[Y][X*3+1]=255;
       }
+
+
+    }
+
+
+    for(int i=0;i<straight_line_grid.dataSize();i++)
+    {
+        const acv_XY* p2 = straight_line_grid.get(i);
+        int X = round(p2->X);
+        int Y = round(p2->Y);
+        {
+              buff->CVector[Y][X*3]=0;
+              buff->CVector[Y][X*3+2]=255;
+              buff->CVector[Y][X*3+1]=255;
+        }
     }
 }
