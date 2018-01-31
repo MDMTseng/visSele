@@ -603,7 +603,7 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
     acv_Circle c = {.circumcenter=cc, .radius=radius};
     float similarity = 0;
     int sim_idx=findTheMostSimilarCircleIdx(c,detectedCircles,&similarity);
-    if(similarity>0.8)
+    if(similarity>0.95)
     {
       continue;
     }
@@ -777,7 +777,7 @@ void CircleDetect(acvImage *img,acvImage *buff)
     {
       for(int j=0;j<inward_curve_grid.getColumSize()-gridG_W;j++)
       {
-        SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.6,0.01,detectedCircles);
+        SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.2,0.01,detectedCircles);
       }
     }
 
