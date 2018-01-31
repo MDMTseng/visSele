@@ -440,24 +440,45 @@ int acvDrawContourX(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R,
 
     const int L = contour.size();
 
-    const int Dist=10;
+    float crossP_LF_sum=0;
+    const int Dist=5;
+    float crossPHist[Dist*2];
+    int crossPHist_head=0;
 
-    float crossP_LF=0;
-    float epsilon=3;
+    for(int i=-Dist ;i<Dist;i++)
+    {
+      float crossP=acvVectorOrder(
+        contour[valueWarping(i-Dist,L)],
+        contour[valueWarping(i     ,L)],
+        contour[                i+Dist]);
+      crossPHist[i+Dist] =crossP;
+      crossP_LF_sum+=crossP;
+    }
+    crossPHist_head=0;
+
+    float epsilon=1.5;
     for(int i=0;i<L;i++)
     {
+
       //Filter out Non-inward contour
       //Cross product
       float crossP=acvVectorOrder(
-        contour[valueWarping(i-Dist,L)],
-        contour[                     i],
-        contour[valueWarping(i+Dist,L)]);
+        contour[                       i],
+        contour[valueWarping(i+  Dist,L)],
+        contour[valueWarping(i+2*Dist,L)]);
 
-      if(i==0)crossP_LF=crossP;
-      crossP_LF+=0.1*(crossP-crossP_LF);
+      crossP_LF_sum=crossP_LF_sum+crossP-crossPHist[crossPHist_head];
+
+      float crossP_LF=crossP_LF_sum/(Dist*2+1);
+      crossPHist[crossPHist_head] = crossP;
+      crossPHist_head = valueWarping(crossPHist_head+1,Dist*2);
+
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
-      if(crossP_LF>-epsilon||crossP>-epsilon)continue;
+
+      if(crossP_LF>-epsilon)continue;//Inner curve
+      //if(crossP_LF>epsilon || crossP_LF<-epsilon )continue;//straight
+
       contourGrid.push(contour[i]);
       //buff->CVector[(int)contour[i].Y][(int)contour[i].X*3+2]=255;
 
@@ -603,6 +624,72 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
 }
 
 
+class acv_Line {
+protected:
+  acv_XY line_vec;
+  acv_XY line_anchor;
+public:
+
+  float Distance(acv_XY point)
+  {
+    // P1=(x1,y1)=line_anchor
+    // P2=(x2,y2)=P1+line_vec then the distance of
+    // point = (x0,y0)
+    float denominator = hypot(line_vec.X,line_vec.Y);
+    float XX = +line_vec.Y*point.X
+               -line_vec.X*point.Y
+               +(line_vec.X+line_anchor.X)*line_anchor.Y
+               -(line_vec.Y+line_anchor.Y)*line_anchor.X ;
+
+    if (XX < 0)XX=-XX;
+    return XX/denominator;
+  }
+  float Angle(acv_Line &line2)
+  {
+    return acos(line_vec.X*line2.line_vec.X+line_vec.Y*line2.line_vec.Y);
+  }
+  // Construct line from points
+
+  bool fitPoints(const std::vector<acv_XY> &pts) {
+    return fitPoints(&pts[0], pts.size());
+  }
+  bool fitPoints(const acv_XY *pts, int ptsL) {
+    int nPoints = ptsL;
+    if( nPoints < 2 ) {
+      // Fail: infinitely many lines passing through this single point
+      return false;
+    }
+    float sumX=0, sumY=0, sumXY=0, sumX2=0;
+    for(int i=0; i<nPoints; i++) {
+      sumX += pts[i].X;
+      sumY += pts[i].Y;
+      sumXY += pts[i].X * pts[i].Y;
+      sumX2 += pts[i].X * pts[i].X;
+    }
+    float xMean = sumX / nPoints;
+    float yMean = sumY / nPoints;
+    float denominator = sumX2 - sumX * xMean;
+
+    line_vec.Y =  (sumXY - sumX * yMean);
+    line_vec.X =  denominator;
+    denominator = hypot(line_vec.X,line_vec.Y);
+    line_vec.X /=denominator;
+    line_vec.Y /=denominator;
+
+    line_anchor.X = xMean;
+    line_anchor.Y = yMean;
+
+    /*
+    a/b = (sumXY - sumX * yMean) / denominator;
+    a*X/b+C = Y
+    => (0,c)+n*(1,a/b)
+    => (0,c)+n*(b,a)
+    line_vec = (b,a)
+    line_anchor = (0,c)+n*(b,a)
+    */
+    return true;
+  }
+};
 
 
 void CircleDetect(acvImage *img,acvImage *buff)
@@ -614,9 +701,10 @@ void CircleDetect(acvImage *img,acvImage *buff)
     static vector<acv_Circle> detectedCircles;
     detectedCircles.resize(0);
     int grid_size = 50;
-    static contour_grid contourGrid(grid_size,img->GetWidth(),img->GetHeight());
+    static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
+    static contour_grid straight_contour_grid(grid_size,img->GetWidth(),img->GetHeight());
 
-    contourGrid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+    inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
     acvCloneImage(img, buff, -1);
     for (int i = 0; i < img->GetHeight(); i++)
     {
@@ -627,11 +715,11 @@ void CircleDetect(acvImage *img,acvImage *buff)
         {
           if(pre_pix==255 && OriLine[0] == 0)//White to black
           {
-            acvDrawContourX(img, j, i, 1, 128, 1, searchType_C_W2B,buff,contourGrid);
+            acvDrawContourX(img, j, i, 1, 128, 1, searchType_C_W2B,buff,inward_curve_grid);
           }
           else if(pre_pix==0 && OriLine[0] == 255)//black to white
           {
-            acvDrawContourX(img, j-1, i, 1, 128, 1, searchType_C_B2W,buff,contourGrid);
+            acvDrawContourX(img, j-1, i, 1, 128, 1, searchType_C_B2W,buff,inward_curve_grid);
           }
           pre_pix= OriLine[0];
         }
@@ -674,11 +762,11 @@ void CircleDetect(acvImage *img,acvImage *buff)
     {
       for(int j=-gridG_H;j<contourGrid.getColumSize();j++)
       {*/
-    for(int i=0;i<contourGrid.getRowSize()-gridG_H;i++)
+    for(int i=0;i<inward_curve_grid.getRowSize()-gridG_H;i++)
     {
-      for(int j=0;j<contourGrid.getColumSize()-gridG_W;j++)
+      for(int j=0;j<inward_curve_grid.getColumSize()-gridG_W;j++)
       {
-        SecRegionCircleFit(contourGrid, j,i,gridG_W,gridG_H,40,0.3,0.01,detectedCircles);
+        SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.6,0.01,detectedCircles);
       }
     }
 
@@ -699,10 +787,10 @@ void CircleDetect(acvImage *img,acvImage *buff)
           20,255, 0, 0);
     }
 
-    for(int i=0;i<contourGrid.dataSize();i++)
+    for(int i=0;i<inward_curve_grid.dataSize();i++)
     {
 
-      const acv_XY* p = contourGrid.get(i);
+      const acv_XY* p = inward_curve_grid.get(i);
       int X = round(p->X);
       int Y = round(p->Y);
       {
