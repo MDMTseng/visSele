@@ -612,8 +612,7 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
 
 float acvDistance(acv_XY p1,acv_XY p2)
 {
-  acv_XY v1={.X=p2.X-p1.X,.Y=p2.Y-p1.Y};
-  return sqrt(v1.X*v1.X+v1.Y*v1.Y);
+  return hypot(p2.X-p1.X,p2.Y-p1.Y);
 }
 
 
@@ -628,4 +627,72 @@ float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3)
   acv_XY v1={.X=p2.X-p1.X,.Y=p2.Y-p1.Y};
   acv_XY v2={.X=p3.X-p2.X,.Y=p3.Y-p2.Y};
   return acv2DCrossProduct(v1,v2);
+}
+
+
+float acvDistance_Signed(acv_Line line, acv_XY point)
+{
+  // P1=(x1,y1)=line_anchor
+  // P2=(x2,y2)=P1+line_vec then the distance of
+  // point = (x0,y0)
+  float denominator = hypot(line.line_vec.X,line.line_vec.Y);
+  float XX = +line.line_vec.Y*point.X
+             -line.line_vec.X*point.Y
+             +(line.line_vec.X+line.line_anchor.X)*line.line_anchor.Y
+             -(line.line_vec.Y+line.line_anchor.Y)*line.line_anchor.X ;
+
+  return XX/denominator;
+}
+
+float acvDistance(acv_Line line, acv_XY point)
+{
+
+  float dist_signed = acvDistance_Signed(line, point);
+
+  if (dist_signed < 0)dist_signed=-dist_signed;
+  return dist_signed;
+}
+
+
+float acvLineAngle(acv_Line line1,acv_Line line2)
+{//acos range 0~pi
+  return acos(line1.line_vec.X*line2.line_vec.X+line1.line_vec.Y*line2.line_vec.Y);
+}
+// Construct line from points
+
+bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line) {
+  int nPoints = ptsL;
+  if( nPoints < 2 ) {
+    // Fail: infinitely many lines passing through this single point
+    return false;
+  }
+  float sumX=0, sumY=0, sumXY=0, sumX2=0;
+  for(int i=0; i<nPoints; i++) {
+    sumX += pts[i].X;
+    sumY += pts[i].Y;
+    sumXY += pts[i].X * pts[i].Y;
+    sumX2 += pts[i].X * pts[i].X;
+  }
+  float xMean = sumX / nPoints;
+  float yMean = sumY / nPoints;
+  float denominator = sumX2 - sumX * xMean;
+
+  line->line_vec.Y =  (sumXY - sumX * yMean);
+  line->line_vec.X =  denominator;
+  denominator = hypot(line->line_vec.X,line->line_vec.Y);
+  line->line_vec.X /=denominator;
+  line->line_vec.Y /=denominator;
+
+  line->line_anchor.X = xMean;
+  line->line_anchor.Y = yMean;
+
+  /*
+  a/b = (sumXY - sumX * yMean) / denominator;
+  a*X/b+C = Y
+  => (0,c)+n*(1,a/b)
+  => (0,c)+n*(b,a)
+  line_vec = (b,a)
+  line_anchor = (0,c)+n*(b,a)
+  */
+  return true;
 }

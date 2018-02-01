@@ -65,6 +65,29 @@ typedef struct acv_Circle
 		float radius;
 } acv_Circle;
 
+typedef struct acv_Line {
+  acv_XY line_vec;
+  acv_XY line_anchor;
+} acv_Line;
+
+
+typedef struct acv_CircleFit
+{
+  acv_Circle circle;
+  int matching_pts;
+  float s;//sigma
+}acv_CircleFit;
+
+typedef struct acv_LineFit
+{
+  acv_Line line;
+  int matching_pts;
+  float s;//sigma
+}acv_LineFit;
+
+
+
+
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);
@@ -96,4 +119,9 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3);
 float acv2DCrossProduct(acv_XY v1,acv_XY v2);
 float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
 float acvDistance(acv_XY p1,acv_XY p2);
+
+float acvDistance_Signed(acv_Line line, acv_XY point);
+float acvDistance(acv_Line line, acv_XY point);
+float acvLineAngle(acv_Line line1,acv_Line line2);
+bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line);
 #endif
