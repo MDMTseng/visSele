@@ -558,7 +558,7 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
     return 0;
 }
 
-void ContourFilter(vector<acv_XY> &contour,contour_grid &innerCurvGrid,contour_grid &straightLineGrid)
+void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,vector<acv_XY> &lineContour)
 {
     const int L = contour.size();
 
@@ -599,13 +599,13 @@ void ContourFilter(vector<acv_XY> &contour,contour_grid &innerCurvGrid,contour_g
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
 
       if(crossP_LF<-epsilon){
-        innerCurvGrid.push(contour[i]);
+        innerCornorContour.push_back(contour[i]);
       }//Inner curve
 
 
       if(crossP_LF<epsilon && crossP_LF>-epsilon ){
-        straightLineGrid.push(contour[i]);
-      }//Inner curve
+        lineContour.push_back(contour[i]);
+      }//Line
 
     }
 }
@@ -706,7 +706,7 @@ int refineMatchedCircle(vector<acv_CircleFit> &circleList,int simThres)
   int idx=-1;
   float max_sim=0;
 
-  for(int i=0;i<circleList.size()-1;i++)
+  for(int i=0;i<((int)circleList.size()-1);i++)
   {
     if(circleList[i].matching_pts==0)continue;
     float matchingScore1 = circleList[i].matching_pts/(circleList[i].s+0.3);
@@ -741,44 +741,24 @@ int refineMatchedCircle(vector<acv_CircleFit> &circleList,int simThres)
 }
 
 
-float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH,
-  int dataSizeMinThre, float circle_data_ratio,
-  float sampleRate, vector<acv_CircleFit> &detectedCircles)
+int CircleFitTest(contour_grid &contourGrid,
+    const acv_XY* dataArr6,
+    float circle_data_ratio, vector<acv_CircleFit> &detectedCircles)
 {
-  static vector<int> s_intersectIdxs;
-  static vector<acv_XY> s_points;
-
-  int SecRSize = contourGrid.getGetSectionRegionDataSize(secX,secY,secW,secH);
-
-  if(SecRSize<dataSizeMinThre)return 0;
-  int SampleNumber = sampleRate*SecRSize*SecRSize;
-  float maxMatchingScore=0;
-  for(int i=0;i<SampleNumber;i++)
-  {
-    const acv_XY* p1 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
-
-    const acv_XY* p2 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
-    const acv_XY* p3 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
-
-    const acv_XY* p4 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
-    const acv_XY* p5 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
-    const acv_XY* p6 = contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
-
-
-    acv_XY cc = acvCircumcenter(*p1,*p2,*p3);
-
-    acv_XY cc2 = acvCircumcenter(*p6,*p4,*p5);
-
+    static vector<int> s_intersectIdxs;
+    static vector<acv_XY> s_points;
+    acv_XY cc = acvCircumcenter(dataArr6[0],dataArr6[1],dataArr6[2]);
+    acv_XY cc2 = acvCircumcenter(dataArr6[3],dataArr6[4],dataArr6[5]);
     acv_XY cc_diff={.X=cc2.X-cc.X,.Y=cc2.Y-cc.Y};
-    if(!isnormal(cc_diff.X) || !isnormal(cc_diff.Y) )continue;
+    if(!isnormal(cc_diff.X) || !isnormal(cc_diff.Y) )return -1;
 
     if(cc_diff.X*cc_diff.X+cc_diff.Y*cc_diff.Y>0.5)
     {
-      continue;
+      return -1;
     }
 
-    float radius = acvDistance(cc,*p1);
-    radius += acvDistance(cc2,*p5);
+    float radius = acvDistance(cc,dataArr6[1]);
+    radius += acvDistance(cc2,dataArr6[4]);
     radius/=2;
 
 
@@ -790,30 +770,68 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
     int sim_idx=findTheMostSimilarCircleIdx(c,detectedCircles,&similarity);
     if(similarity>0.95)
     {
-      continue;
+      return -1;
     }
 
-    contourGrid.getContourPointsWithInCircleContour(cc.X,cc.Y,radius,4,s_intersectIdxs,s_points);
+    contourGrid.getContourPointsWithInCircleContour(cc.X,cc.Y,radius,5,s_intersectIdxs,s_points);
 
     float matchingScore =(float)s_points.size() / radius/((float)(2*M_PI));//Around 2PI
 
-    if(maxMatchingScore<matchingScore)maxMatchingScore=matchingScore;
     if(matchingScore>circle_data_ratio)
     {
       acv_CircleFit cf ;
 
       circleRefine(s_points,&cf);
-      contourGrid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,2.5,s_intersectIdxs,s_points);
+      contourGrid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,1.2,s_intersectIdxs,s_points);
       matchingScore =(float)s_points.size() / radius/((float)(2*M_PI));//Around 2PI
-      if(maxMatchingScore<matchingScore)maxMatchingScore=matchingScore;
       circleRefine(s_points,&cf);
       cf.matching_pts=s_points.size();
       detectedCircles.push_back(cf);
-      //exit(0);
     }
-  }
-  return maxMatchingScore;
+    return 0;
 }
+
+float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH,
+  int dataSizeMinThre, float circle_data_ratio,
+  float sampleRate, vector<acv_CircleFit> &detectedCircles)
+{
+
+  int SecRSize = contourGrid.getGetSectionRegionDataSize(secX,secY,secW,secH);
+
+  if(SecRSize<dataSizeMinThre)return 0;
+  int SampleNumber = sampleRate*SecRSize*SecRSize;
+
+  acv_XY sampleC[6];
+  for(int i=0;i<SampleNumber;i++)
+  {
+    for(int j=0;j<6;j++)
+    {
+      sampleC[j]=*contourGrid.getGetSectionRegionData(secX,secY,secW,secH,valueWarping(rand(),SecRSize));
+    }
+
+    CircleFitTest(contourGrid,sampleC,circle_data_ratio,detectedCircles);
+  }
+  return 0;
+}
+
+
+float ContourDataCircleFit(contour_grid &contourGrid, acv_XY *innerCornorContour, int conL,
+  int SampleNumber, float circle_data_ratio, vector<acv_CircleFit> &detectedCircles)
+{
+  acv_XY sampleC[6];
+  for(int i=0;i<SampleNumber;i++)
+  {
+
+    for(int j=0;j<6;j++)
+    {
+      sampleC[j]=innerCornorContour[valueWarping(rand(),conL)];
+    }
+
+    CircleFitTest(contourGrid,sampleC,circle_data_ratio,detectedCircles);
+  }
+  return 0;
+}
+
 
 float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH,
   int dataSizeMinThre,float simThres, float sampleRate, vector<acv_LineFit> &detectedLines)
@@ -874,7 +892,11 @@ void CircleDetect(acvImage *img,acvImage *buff)
     BYTE *OutLine, *OriLine;
 
     static vector<acv_XY> extractedContour;
+    static vector<acv_XY> innerCornorContour;
+    static vector<acv_XY> lineContour;
     extractedContour.resize(0);
+    innerCornorContour.resize(0);
+    lineContour.resize(0);
     int grid_size = 50;
     static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
     static contour_grid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
@@ -891,21 +913,33 @@ void CircleDetect(acvImage *img,acvImage *buff)
         {
           if(pre_pix==255 && OriLine[0] == 0)//White to black
           {
-            acvContourExtraction(img, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
-            ContourFilter(extractedContour,inward_curve_grid,straight_line_grid);
             extractedContour.resize(0);
+            acvContourExtraction(img, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
+            ContourFilter(extractedContour,innerCornorContour,lineContour);
           }
           else if(pre_pix==0 && OriLine[0] == 255)//black to white
           {
-            acvContourExtraction(img, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
-            ContourFilter(extractedContour,inward_curve_grid,straight_line_grid);
             extractedContour.resize(0);
+            acvContourExtraction(img, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
+            ContourFilter(extractedContour,innerCornorContour,lineContour);
           }
 
           pre_pix= OriLine[0];
         }
     }
 
+    for (int i = 0; i < innerCornorContour.size(); i++)
+    {
+      inward_curve_grid.push(innerCornorContour[i]);
+    }
+    for (int i = 0; i < lineContour.size(); i++)
+    {
+      straight_line_grid.push(lineContour[i]);
+    }
+
+
+
+//inward_curve_grid  straight_line_grid
     int gridG_W = 2;
     int gridG_H = 2;
 
@@ -913,19 +947,33 @@ void CircleDetect(acvImage *img,acvImage *buff)
     static vector<acv_CircleFit> detectedCircles;
     static vector<acv_LineFit> detectedLines;
     detectedCircles.resize(0);
-    /*for(int i=-gridG_H;i<contourGrid.getRowSize();i++)
+
+
+    /*
+    int X_Size=30;
+    int idx_step=5;
+    for(int i=0;i<(int)innerCornorContour.size()-X_Size;i+=idx_step)
     {
-      for(int j=-gridG_H;j<contourGrid.getColumSize();j++)
-      {*/
+      ContourDataCircleFit(inward_curve_grid, &(innerCornorContour[i]), X_Size,
+      X_Size/idx_step, 0.2, detectedCircles);
+    }*/
+
+
+
+
+    detectedLines.resize(0);
+
     for(int i=0;i<inward_curve_grid.getRowSize()-gridG_H;i++)
     {
       for(int j=0;j<inward_curve_grid.getColumSize()-gridG_W;j++)
       {
-        SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.2,0.02,detectedCircles);
-        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.8,0.01,detectedLines);
+        SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.2,0.01,detectedCircles);
+        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.8,0.002,detectedLines);
       }
     }
 
+
+    refineMatchedCircle(detectedCircles,0.8);
 
     t = clock() - t;
     printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
@@ -934,18 +982,9 @@ void CircleDetect(acvImage *img,acvImage *buff)
     {
       acvDrawBlock(buff, j*grid_size,i*grid_size,(j+1)*grid_size,(i+1)*grid_size);
     }
-
-    refineMatchedCircle(detectedCircles,0.8);
     for(int i=0;i<detectedCircles.size();i++)
     {
-        /*printf(">>%f %f %f %d %f\n",
-          detectedCircles[i].circle.circumcenter.X,
-          detectedCircles[i].circle.circumcenter.Y,
-          detectedCircles[i].circle.radius,
-          detectedCircles[i].matching_pts,
-          detectedCircles[i].s
-        );*/
-        if(detectedCircles[i].s>0.7)
+        if(detectedCircles[i].s>0.9)
         {
           printf(">>SKIP...\n");
           continue;
