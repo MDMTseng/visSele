@@ -110,9 +110,18 @@ class contour_grid{
 
     void GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs)
     {
+      GetSectionsWithinCircleContour(X,Y,radius,epsilon,
+        0,0,sectionCol,sectionRow,
+        intersectIdxs);
+    }
+    void GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,
+      int secROI_X,int secROI_Y,int secROI_W,int secROI_H,
+      vector<int> &intersectIdxs)
+    {
       intersectIdxs.resize(0);
 
-
+      secROI_W+=1;
+      secROI_H+=1;//The internal decesion node is always one node more than grid itself
       int gridNodeW=sectionCol+1;
       int gridNodeH=sectionRow+1;
       intersectTestNodes.resize(gridNodeW*gridNodeH);
@@ -125,19 +134,26 @@ class contour_grid{
 
       float outerDist_sq=radius+epsilon;
 
-      int ROI_X1 = (int)(X-radius-epsilon);
-      int ROI_Y1 = (int)(Y-radius-epsilon);
-      int ROI_X2 = ceil(X+radius+epsilon);
-      int ROI_Y2 = ceil(Y+radius+epsilon);
+      int secROI_X1 = (int)(X-radius-epsilon);
+      int secROI_Y1 = (int)(Y-radius-epsilon);
+      int secROI_X2 = ceil(X+radius+epsilon);
+      int secROI_Y2 = ceil(Y+radius+epsilon);
 
-      if(ROI_X2<0 || ROI_Y2<0 || ROI_X1>=gridNodeW || ROI_Y1>=gridNodeH)
+
+      if(secROI_X2<0 || secROI_Y2<0 || secROI_X1>=gridNodeW || secROI_Y1>=gridNodeH)
       {
         return;
       }
-      if(ROI_X1<0)ROI_X1=0;
-      if(ROI_Y1<0)ROI_Y1=0;
-      if(ROI_X2>=gridNodeW)ROI_X2=gridNodeW-1;
-      if(ROI_Y2>=gridNodeH)ROI_Y2=gridNodeH-1;
+      if(secROI_X1<0)secROI_X1=0;
+      if(secROI_Y1<0)secROI_Y1=0;
+      if(secROI_X2>=gridNodeW)secROI_X2=gridNodeW-1;
+      if(secROI_Y2>=gridNodeH)secROI_Y2=gridNodeH-1;
+
+      if(secROI_X1<secROI_X)secROI_X1=secROI_X;
+      if(secROI_Y1<secROI_Y)secROI_Y1=secROI_Y;
+      if(secROI_X2>secROI_X+secROI_W)secROI_X2 = secROI_X+secROI_W;
+      if(secROI_Y2>secROI_Y+secROI_H)secROI_Y2 = secROI_Y+secROI_H;
+
       outerDist_sq*=outerDist_sq;
 
       float innerDist_sq=radius-epsilon;
@@ -151,23 +167,23 @@ class contour_grid{
       int idCircleCrossGrid=0;
 
       //The outer most rect is always outer side
-      for(int i=ROI_Y1;i<=ROI_Y2;i++)
+      for(int i=secROI_Y1;i<=secROI_Y2;i++)
       {
-        int idx = i*gridNodeW+ROI_X1;
+        int idx = i*gridNodeW+secROI_X1;
         intersectTestNodes[idx]=intersectTestType_outer;
-        idx = i*gridNodeW+ROI_X2;
+        idx = i*gridNodeW+secROI_X2;
         intersectTestNodes[idx]=intersectTestType_outer;
       }
-      for(int j=ROI_X1;j<=ROI_X2;j++)
+      for(int j=secROI_X1;j<=secROI_X2;j++)
       {
-        int idx = ROI_Y1*gridNodeW+j;
+        int idx = secROI_Y1*gridNodeW+j;
         intersectTestNodes[idx]=intersectTestType_outer;
-        idx = ROI_Y2*gridNodeW+j;
+        idx = secROI_Y2*gridNodeW+j;
         intersectTestNodes[idx]=intersectTestType_outer;
       }
 
       /*
-      P indicates ROI that is possible to contain circle
+      P indicates secROI that is possible to contain circle
       X indicates RONI that is impossible to contain circle
 
       PPPPPPPPPPP
@@ -186,9 +202,9 @@ class contour_grid{
       int RONI_Y2 = (int)(Y+innerBoundOffset);
       //printf("%d %d %d %d\n",RONI_X1,RONI_Y1,RONI_X2,RONI_Y2);
       //Skip the outer most rect
-      for(int i=ROI_Y1+1;i<=ROI_Y2-1;i++)
+      for(int i=secROI_Y1+1;i<=secROI_Y2-1;i++)
       {
-        for(int j=ROI_X1+1;j<=ROI_X2-1;j++)
+        for(int j=secROI_X1+1;j<=secROI_X2-1;j++)
         {
           int idx = i*gridNodeW+j;
           /*if(i>=RONI_Y1&&i<RONI_Y2 && j>=RONI_X1 && j<RONI_X2)
@@ -237,9 +253,9 @@ class contour_grid{
       }
       else
       {
-        for(int i=ROI_Y1;i<=ROI_Y2-1;i++)
+        for(int i=secROI_Y1;i<=secROI_Y2-1;i++)
         {
-          for(int j=ROI_X1;j<=ROI_X2-1;j++)
+          for(int j=secROI_X1;j<=secROI_X2-1;j++)
           {
             int idx1 = i*gridNodeW + j;
             int idx2 = idx1+1;
@@ -278,8 +294,15 @@ class contour_grid{
 
     void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,vector<int> &intersectIdxs,vector<acv_XY> &points)
     {
+      getContourPointsWithInCircleContour(X,Y,radius,epsilon,0,0,sectionCol,sectionRow,intersectIdxs,points);
+    }
+
+    void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,
+      int secROI_X,int secROI_Y,int secROI_W,int secROI_H,
+      vector<int> &intersectIdxs,vector<acv_XY> &points)
+    {
       points.resize(0);
-      GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
+      GetSectionsWithinCircleContour(X,Y,radius,epsilon,secROI_X,secROI_Y,secROI_W,secROI_H,intersectIdxs);
 
       float outerDist_sq=radius+epsilon;
       outerDist_sq*=outerDist_sq;
@@ -766,14 +789,9 @@ int CircleFitTest(contour_grid &contourGrid,
     cc.Y=(cc.Y+cc2.Y)/2;
 
     acv_Circle c = {.circumcenter=cc, .radius=radius};
-    float similarity = 0;
-    int sim_idx=findTheMostSimilarCircleIdx(c,detectedCircles,&similarity);
-    if(similarity>0.95)
-    {
-      return -1;
-    }
 
-    contourGrid.getContourPointsWithInCircleContour(cc.X,cc.Y,radius,5,s_intersectIdxs,s_points);
+
+    contourGrid.getContourPointsWithInCircleContour(cc.X,cc.Y,radius,3,s_intersectIdxs,s_points);
 
     float matchingScore =(float)s_points.size() / radius/((float)(2*M_PI));//Around 2PI
 
@@ -782,7 +800,7 @@ int CircleFitTest(contour_grid &contourGrid,
       acv_CircleFit cf ;
 
       circleRefine(s_points,&cf);
-      contourGrid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,1.2,s_intersectIdxs,s_points);
+      contourGrid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,1.5,s_intersectIdxs,s_points);
       matchingScore =(float)s_points.size() / radius/((float)(2*M_PI));//Around 2PI
       circleRefine(s_points,&cf);
       cf.matching_pts=s_points.size();
