@@ -997,32 +997,33 @@ for(int XXXX=0;XXXX<1;XXXX++){
     detectedLines.resize(0);
 
     {
-      acv_Circle init_guess;
-      init_guess.circumcenter.X=125;
-      init_guess.circumcenter.Y=141;
-      init_guess.radius=72;
-
-      acv_CircleFit result;
-      if(CircleFitTest(inward_curve_grid,init_guess,&result,5,1.5,0.3) == true)
       {
-        detectedCircles.push_back(result);
+        acv_Circle init_guess;
+        init_guess.circumcenter.X=125;
+        init_guess.circumcenter.Y=141;
+        init_guess.radius=72;
+
+        acv_CircleFit result;
+        if(CircleFitTest(inward_curve_grid,init_guess,&result,5,1.5,0.3) == true)
+        {
+          detectedCircles.push_back(result);
+        }
+      }
+
+      {
+        straight_line_grid.setSecROI(2,1,5,1);
+        acv_XY p1={.X=157,.Y=55};
+        acv_XY p2={.X=330,.Y=59};
+        acv_XY ps[]={p1,p2};
+        acv_Line init_guess;
+        acvFitLine(ps, 2, &init_guess);
+        acv_LineFit result;
+        if(LineFitTest(straight_line_grid,init_guess,&result,4,1,50) == true)
+        {
+          detectedLines.push_back(result);
+        }
       }
     }
-
-    {
-      straight_line_grid.setSecROI(2,1,5,1);
-      acv_XY p1={.X=157,.Y=55};
-      acv_XY p2={.X=330,.Y=59};
-      acv_XY ps[]={p1,p2};
-      acv_Line init_guess;
-      acvFitLine(ps, 2, &init_guess);
-      acv_LineFit result;
-      if(LineFitTest(straight_line_grid,init_guess,&result,4,1,50) == true)
-      {
-        detectedLines.push_back(result);
-      }
-    }
-
 
 
 
