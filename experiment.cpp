@@ -940,21 +940,40 @@ void CircleDetect(acvImage *img,acvImage *buff)
     static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
     static contour_grid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
 
-    BYTE *OutLine, *OriLine;
-
-
-    acvCloneImage(img, buff, -1);
-    clock_t t = clock();
-
-for(int XXXX=0;XXXX<1;XXXX++){
-
-
-    acvCloneImage( buff,img, -1);
     extractedContour.resize(0);
     innerCornorContour.resize(0);
     lineContour.resize(0);
     inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
     straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+
+
+    acvCloneImage(img, buff, -1);
+
+
+
+    std::vector<acv_LabeledData> ldData;
+
+
+    clock_t t = clock();
+
+
+
+    acvCloneImage( buff,img, -1);
+
+
+    acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
+
+    acvComponentLabeling(img);
+    acvLabeledRegionInfo(img, &ldData);
+    ldData[1].area = 0;
+
+    //Delete the object that has less than certain amount of area on ldData
+    acvRemoveRegionLessThan(img, &ldData, 120);
+
+
+    acvCloneImage( buff,img, -1);
+
+    BYTE *OutLine, *OriLine;
     for (int i = 0; i < img->GetHeight(); i++)
     {
         OriLine = img->CVector[i];
@@ -1070,7 +1089,8 @@ for(int XXXX=0;XXXX<1;XXXX++){
 
 
     refineMatchedCircle(detectedCircles,0.8);
-}
+
+
     t = clock() - t;
     printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
 
