@@ -971,29 +971,31 @@ void CircleDetect(acvImage *img,acvImage *buff)
     acvRemoveRegionLessThan(img, &ldData, 120);
 
 
-    acvCloneImage( buff,img, -1);
+    acvCloneImage( img,buff, -1);
 
     BYTE *OutLine, *OriLine;
-    for (int i = 0; i < img->GetHeight(); i++)
+    //ldData[i].
+    for (int i = 0; i < buff->GetHeight(); i++)
     {
-        OriLine = img->CVector[i];
+        OriLine = buff->CVector[i];
         uint8_t pre_pix = 255;
         for (int j = 0; j < buff->GetWidth(); j++,OriLine+=3)
         {
-          if(pre_pix==255 && OriLine[0] == 0)//White to black
+          if(pre_pix==255 && OriLine[2] == 0)//White to black
           {
+            printf("..\n");
             extractedContour.resize(0);
-            acvContourExtraction(img, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
+            acvContourExtraction(buff, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
             ContourFilter(extractedContour,innerCornorContour,lineContour);
           }
-          else if(pre_pix==0 && OriLine[0] == 255)//black to white
+          else if(pre_pix==0 && OriLine[2] == 255)//black to white
           {
             extractedContour.resize(0);
-            acvContourExtraction(img, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
+            acvContourExtraction(buff, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
             ContourFilter(extractedContour,innerCornorContour,lineContour);
           }
 
-          pre_pix= OriLine[0];
+          pre_pix= OriLine[2];
         }
     }
 
@@ -1005,6 +1007,7 @@ void CircleDetect(acvImage *img,acvImage *buff)
     {
       straight_line_grid.push(lineContour[i]);
     }
+
 
 
 
