@@ -997,6 +997,7 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
         }
     }
 
+
     for (int i = 0; i < innerCornorContour.size(); i++)
     {
       inward_curve_grid.push(innerCornorContour[i]);
@@ -1022,7 +1023,7 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
 
 
         printf("%s:=====%d=======%f,%f\n", __func__, i,sign_error,sign_error_rev);
-        printf("%s:%f,%f\n", __func__,AngleDiff,AngleDiff_rev);
+        printf("%s:%f,%f\n", __func__,AngleDiff*180/M_PI,AngleDiff_rev*180/M_PI);
 
 
         bool isInv=false;
