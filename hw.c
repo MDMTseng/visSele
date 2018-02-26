@@ -345,20 +345,35 @@ int testSignature(int repeatNum)
 
 int testX()
 {
-  acvImage *target = new acvImage();
+  vector<acv_XY> tar_signature(360);
 
-  int ret=acvLoadBitmapFile(target, "data/target.bmp");
-  acvImage *target_buff = new acvImage();
+  //Just to get target signature
+  {
+    acvImage *target = new acvImage();
 
-  target_buff->ReSize(target->GetWidth(), target->GetHeight());
+    int ret=acvLoadBitmapFile(target, "data/target.bmp");
+
+    std::vector<acv_LabeledData> ldData;
+    acvThreshold(target, 250, 0);
+    acvComponentLabeling(target);
+    acvLabeledRegionInfo(target, &ldData);
+    acvContourCircleSignature(target, ldData[1], 1, tar_signature);
+    delete(target);
+  }
+
+  acvImage *test1 = new acvImage();
+  int ret=acvLoadBitmapFile(test1, "data/test1.bmp");
+  acvImage *test1_buff = new acvImage();
+
+  test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
 
   clock_t t = clock();
 
 
-  acvThreshold(target, 250, 0);
-  CircleDetect(target,target_buff);
-  acvSaveBitmapFile("data/target_buff.bmp",target_buff);
+  acvThreshold(test1, 250, 0);
+  ContourFeatureDetect(test1,test1_buff,tar_signature);
+  acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
   return 0;
 }
 

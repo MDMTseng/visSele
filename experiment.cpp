@@ -1,7 +1,5 @@
 
 #include "experiment.h"
-#include <cstdlib>
-#include <unistd.h>
 #include <time.h>
 
 #include "circleFitting.h"
@@ -927,7 +925,7 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
 }
 
 
-void CircleDetect(acvImage *img,acvImage *buff)
+void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar_signature)
 {
 
     static vector<acv_XY> extractedContour;
@@ -1006,6 +1004,35 @@ void CircleDetect(acvImage *img,acvImage *buff)
     for (int i = 0; i < lineContour.size(); i++)
     {
       straight_line_grid.push(lineContour[i]);
+    }
+
+
+    static vector<acv_XY> signature;
+    signature.resize(tar_signature.size());
+    acvCloneImage( img,buff, -1);
+    for (int i = 1; i < ldData.size(); i++)
+    {
+        acvContourCircleSignature(buff, ldData[i], i, signature);
+
+        float sign_error;
+        float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
+        float sign_error_rev;
+        SignatureReverse(signature,signature);
+        float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
+
+
+        printf("%s:=====%d=======%f,%f\n", __func__, i,sign_error,sign_error_rev);
+        printf("%s:%f,%f\n", __func__,AngleDiff,AngleDiff_rev);
+
+
+        bool isInv=false;
+        if(sign_error>sign_error_rev)
+        {
+            isInv=true;
+            sign_error=sign_error_rev;
+            AngleDiff=-AngleDiff_rev;
+        }
+
     }
 
 

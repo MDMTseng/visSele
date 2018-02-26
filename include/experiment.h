@@ -3,4 +3,6 @@
 #include "acvImage_ToolBox.hpp"
 
 #include "acvImage_BasicDrawTool.hpp"
-void CircleDetect(acvImage *img,acvImage *buff);
+#include <cstdlib>
+#include <unistd.h>
+void ContourFeatureDetect(acvImage *img,acvImage *buff,const std::vector<acv_XY> &tar_signature);
