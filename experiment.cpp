@@ -981,7 +981,6 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
         {
           if(pre_pix==255 && OriLine[2] == 0)//White to black
           {
-            printf("..\n");
             extractedContour.resize(0);
             acvContourExtraction(buff, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
             ContourFilter(extractedContour,innerCornorContour,lineContour);

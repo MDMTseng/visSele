@@ -10,6 +10,7 @@
 #include "BinaryImageTemplateFitting.hpp"
 #include "MLNN.hpp"
 #include "experiment.h"
+#include "cJSON.h"
 
 void printImgAscii(acvImage *img, int printwidth)
 {
@@ -394,9 +395,26 @@ int simpP(char* strNum)
 }
 
 
+void cJSON_TEST()
+{
+  printf("%s:===========\n",__func__);
+  cJSON *root = NULL;
+  root = cJSON_CreateObject();
+  cJSON_AddItemToObject(root, "name", cJSON_CreateString("Jack (\"Bee\") Nimble"));
+  cJSON_AddNumberToObject(root, "age", 50);
+  char *json_str = cJSON_Print(root);
+  printf("%s\n",json_str);
+  const char *name = cJSON_GetObjectItem(root,"name")->valuestring;
+  printf("%s:name:%s\n",__func__,name);
+  free(json_str);
+  cJSON_Delete(root);
+  printf("\n===================\n");
+}
+
 #include <vector>
 int main(int argc, char** argv)
 {
+    cJSON_TEST();
     int seed = time(NULL);
     srand(seed);
     int ret = 0, repeatNum=1;
