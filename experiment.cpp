@@ -580,7 +580,7 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
 void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,vector<acv_XY> &lineContour)
 {
     const int L = contour.size();
-
+    if(L==0)return;
     float crossP_LF_sum=0;
     const int Dist=10;
     float crossPHist[Dist*2];
