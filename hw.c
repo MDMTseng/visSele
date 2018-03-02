@@ -395,25 +395,80 @@ int simpP(char* strNum)
 }
 
 
+char* ReadFile(char *filename)
+{
+   char *buffer = NULL;
+   int string_size, read_size;
+   FILE *handler = fopen(filename, "r");
+
+   if (handler)
+   {
+       // Seek the last byte of the file
+       fseek(handler, 0, SEEK_END);
+       // Offset from the first to the last byte, or in other words, filesize
+       string_size = ftell(handler);
+       // go back to the start of the file
+       rewind(handler);
+
+       // Allocate a string that can hold it all
+       buffer = (char*) malloc(sizeof(char) * (string_size + 1) );
+
+       // Read it all in one operation
+       read_size = fread(buffer, sizeof(char), string_size, handler);
+
+       // fread doesn't set it so put a \0 in the last position
+       // and buffer is now officially a string
+       buffer[string_size] = '\0';
+
+       if (string_size != read_size)
+       {
+           // Something went wrong, throw away the memory and set
+           // the buffer to NULL
+           free(buffer);
+           buffer = NULL;
+       }
+
+       // Always remember to close the file.
+       fclose(handler);
+    }
+
+    return buffer;
+}
+
+
 void cJSON_TEST()
 {
+
   printf("%s:===========\n",__func__);
-  cJSON *root = NULL;
-  root = cJSON_CreateObject();
-  cJSON_AddItemToObject(root, "name", cJSON_CreateString("Jack (\"Bee\") Nimble"));
-  cJSON_AddNumberToObject(root, "age", 50);
-  char *json_str = cJSON_Print(root);
-  printf("%s\n",json_str);
-  const char *name = cJSON_GetObjectItem(root,"name")->valuestring;
-  printf("%s:name:%s\n",__func__,name);
-  free(json_str);
-  cJSON_Delete(root);
+
+  do{
+    char *string = ReadFile("data/target.json");
+    if (string)
+    {
+        cJSON *root = cJSON_Parse(string);
+        free(string);
+        if(root == NULL)
+        {
+          printf("parsing error\n");
+          break;
+        }
+        printf("%s:img_hash:%s>>\n",__func__,cJSON_GetObjectItem(root,"img_hash")->valuestring);
+
+
+        char *json_str = cJSON_Print(root);
+        puts(json_str);
+        free(json_str);
+        cJSON_Delete(root);
+    }
+  }while(0);
+
   printf("\n===================\n");
 }
 
 #include <vector>
 int main(int argc, char** argv)
 {
+
     cJSON_TEST();
     int seed = time(NULL);
     srand(seed);

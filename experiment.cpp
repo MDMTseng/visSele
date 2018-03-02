@@ -963,6 +963,10 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
 
     acvComponentLabeling(img);
     acvLabeledRegionInfo(img, &ldData);
+    if(ldData.size()-1<1)
+    {
+      return;
+    }
     ldData[1].area = 0;
 
     //Delete the object that has less than certain amount of area on ldData
