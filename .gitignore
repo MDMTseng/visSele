@@ -1,4 +1,5 @@
 *.o
+*.opp
 *.exe
 data
 obj

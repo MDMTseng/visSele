@@ -11,6 +11,8 @@
 #include "MLNN.hpp"
 #include "experiment.h"
 #include "cJSON.h"
+#include "logctrl.h"
+#include "visSeleDefineDocParser.h"
 
 void printImgAscii(acvImage *img, int printwidth)
 {
@@ -239,7 +241,7 @@ int testSignature(int repeatNum)
     std::vector<acv_XY> regionXY_;
 
 
-      printf("%s:Preprocess done...\n",__func__);
+    logv("%s:Preprocess done...\n",__func__);
     clock_t t = clock();
     for(int iterX=0;iterX<repeatNum;iterX++)
     {
@@ -317,7 +319,7 @@ int testSignature(int repeatNum)
     }
     //printf("errorSum:%f ................\n\n",errorSum);
     t = clock() - t;
-    printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
+    logv("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
 
 
     float avg_data=0;
@@ -337,7 +339,7 @@ int testSignature(int repeatNum)
       dev_data+=tmp;
     }
     dev_data/=repeatNum;
-    printf("avg:%f  dev:%f M:%f\n",avg_data,sqrt(dev_data),sqrt(dev_data_MAX) );
+    logv("avg:%f  dev:%f M:%f\n",avg_data,sqrt(dev_data),sqrt(dev_data_MAX) );
 
     //acvLabeledColorDispersion(image,image,ldData.size()/20+5);
     //acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
@@ -439,7 +441,7 @@ char* ReadFile(char *filename)
 void cJSON_TEST()
 {
 
-  printf("%s:===========\n",__func__);
+  logv("%s:===========\n",__func__);
 
   do{
     char *string = ReadFile("data/target.json");
@@ -449,10 +451,10 @@ void cJSON_TEST()
         free(string);
         if(root == NULL)
         {
-          printf("parsing error\n");
+          logv("parsing error\n");
           break;
         }
-        printf("%s:img_hash:%s>>\n",__func__,cJSON_GetObjectItem(root,"img_hash")->valuestring);
+        logv("%s:img_hash:%s>>\n",__func__,cJSON_GetObjectItem(root,"img_hash")->valuestring);
 
 
         char *json_str = cJSON_Print(root);
@@ -462,7 +464,7 @@ void cJSON_TEST()
     }
   }while(0);
 
-  printf("\n===================\n");
+  logv("\n===================\n");
 }
 
 #include <vector>
@@ -478,7 +480,7 @@ int main(int argc, char** argv)
     {
       repeatNum=simpP(argv[1]);
     }
-    printf("execute %d times\r\n", repeatNum);
+    logi("execute %d times\r\n", repeatNum);
 
     //ret = testSignature(repeatNum);
     ret = testX();
@@ -489,7 +491,7 @@ int main(int argc, char** argv)
       acv_XY p4={.X= 1,.Y=-1};
       acv_XY ip = acvIntersectPoint(p1, p2, p3, p4);
 
-      printf("acvIntersectPoint:X:%f Y:%f\r\n", ip.X,ip.Y);
+      logi("acvIntersectPoint:X:%f Y:%f\r\n", ip.X,ip.Y);
     }
 
     {
@@ -497,7 +499,7 @@ int main(int argc, char** argv)
       acv_XY p2={.X= 20,.Y=0};
       acv_XY p3={.X=0,.Y=1};
       acv_XY cc = acvCircumcenter(p1,p2,p3);
-      printf("acvCircumcenter:X:%f Y:%f\r\n", cc.X,cc.Y);
+      logi("acvCircumcenter:X:%f Y:%f\r\n", cc.X,cc.Y);
     }
     return ret;
 }

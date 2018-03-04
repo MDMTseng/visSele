@@ -2,6 +2,7 @@
 #include "experiment.h"
 #include <time.h>
 
+#include "logctrl.h"
 #include "circleFitting.h"
 
 using namespace std;
@@ -972,7 +973,6 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
     //Delete the object that has less than certain amount of area on ldData
     acvRemoveRegionLessThan(img, &ldData, 120);
 
-
     acvCloneImage( img,buff, -1);
 
     BYTE *OutLine, *OriLine;
@@ -981,25 +981,26 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
     {
         OriLine = buff->CVector[i];
         uint8_t pre_pix = 255;
+        uint8_t cur_pix;
         for (int j = 0; j < buff->GetWidth(); j++,OriLine+=3)
         {
-          if(pre_pix==255 && OriLine[2] == 0)//White to black
+          cur_pix = OriLine[2];
+          if(pre_pix==255 && cur_pix == 0)//White to black
           {
             extractedContour.resize(0);
             acvContourExtraction(buff, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
             ContourFilter(extractedContour,innerCornorContour,lineContour);
           }
-          else if(pre_pix==0 && OriLine[2] == 255)//black to white
+          else if(pre_pix==0 && cur_pix == 255)//black to white
           {
             extractedContour.resize(0);
             acvContourExtraction(buff, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
             ContourFilter(extractedContour,innerCornorContour,lineContour);
           }
 
-          pre_pix= OriLine[2];
+          pre_pix= cur_pix;
         }
     }
-
 
     for (int i = 0; i < innerCornorContour.size(); i++)
     {
@@ -1010,14 +1011,13 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
       straight_line_grid.push(lineContour[i]);
     }
 
-
     static vector<acv_XY> signature;
     signature.resize(tar_signature.size());
     acvCloneImage( img,buff, -1);
     for (int i = 1; i < ldData.size(); i++)
     {
-        acvContourCircleSignature(buff, ldData[i], i, signature);
 
+        acvContourCircleSignature(buff, ldData[i], i, signature);
         float sign_error;
         float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
         float sign_error_rev;
@@ -1025,8 +1025,8 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
         float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
 
 
-        printf("%s:=====%d=======%f,%f\n", __func__, i,sign_error,sign_error_rev);
-        printf("%s:%f,%f\n", __func__,AngleDiff*180/M_PI,AngleDiff_rev*180/M_PI);
+        logv("%s:=====%d=======%f,%f\n", __func__, i,sign_error,sign_error_rev);
+        logv("%s:%f,%f\n", __func__,AngleDiff*180/M_PI,AngleDiff_rev*180/M_PI);
 
 
         bool isInv=false;
@@ -1038,10 +1038,6 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
         }
 
     }
-
-
-
-
 //inward_curve_grid  straight_line_grid
     int gridG_W = 2;
     int gridG_H = 2;
@@ -1126,7 +1122,7 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
 
 
     t = clock() - t;
-    printf("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
+    logv("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
 
     for(int i=0;i<15;i++)for(int j=0;j<15;j++)
     {
@@ -1166,7 +1162,7 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
     {
         if(detectedCircles[i].s>0.9)
         {
-          printf(">>SKIP...\n");
+          logv(">>SKIP...\n");
           continue;
         }
         acvDrawCircle(buff,
