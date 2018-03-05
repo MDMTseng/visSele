@@ -1048,8 +1048,8 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
     {
       {
         acv_Circle init_guess;
-        init_guess.circumcenter.X=125;
-        init_guess.circumcenter.Y=141;
+        init_guess.circumcenter.X=157;
+        init_guess.circumcenter.Y=134;
         init_guess.radius=72;
 
         acv_CircleFit result;
@@ -1061,7 +1061,7 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
 
       {
         straight_line_grid.setSecROI(2,1,5,1);
-        acv_XY p1={.X=157,.Y=55};
+        acv_XY p1={.X=157,.Y=60};
         acv_XY p2={.X=330,.Y=59};
         acv_XY ps[]={p1,p2};
         acv_Line init_guess;

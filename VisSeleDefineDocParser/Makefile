@@ -4,7 +4,8 @@
 
 IDIR=./include/ \
 			$(MODULE_cJSON) \
-			$(MODULE_acvImage)/include
+			$(MODULE_acvImage)/include \
+			$(MODULE_LOGCTRL)/include
 
 ODIR=obj
 _OBJ = VisSeleDefineDocParser.opp
