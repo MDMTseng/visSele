@@ -441,7 +441,7 @@ char* ReadFile(char *filename)
 void cJSON_TEST()
 {
 
-  logv("%s:===========\n",__func__);
+  LOGV("===========");
 
   do{
     char *string = ReadFile("data/target.json");
@@ -451,10 +451,10 @@ void cJSON_TEST()
         free(string);
         if(root == NULL)
         {
-          logv("parsing error\n");
+          LOGV("parsing error");
           break;
         }
-        logv("%s:img_hash:%s>>\n",__func__,cJSON_GetObjectItem(root,"img_hash")->valuestring);
+        LOGV("img_hash:%s>>",cJSON_GetObjectItem(root,"img_hash")->valuestring);
 
 
         char *json_str = cJSON_Print(root);
@@ -464,7 +464,7 @@ void cJSON_TEST()
     }
   }while(0);
 
-  logv("\n===================\n");
+  LOGV("\n===================");
 }
 
 #include <vector>
