@@ -9,25 +9,27 @@ using namespace std;
 
 
 
-class visSeleDefineDocParser {
-  class featureDef_circle{
+class VisSeleDefineDocParser {
+  typedef struct featureDef_circle{
     acv_Circle circleTar;
     float initMatchingMargin;
-  };
-  class featureDef_line{
+  }featureDef_circle;
+  typedef struct featureDef_line{
     acv_Circle circleTar;
     float initMatchingMargin;
-  };
+  }featureDef_line;
 
 
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
   cJSON *root;
 public :
-  visSeleDefineDocParser(const char *json_str);
+  VisSeleDefineDocParser(const char *json_str);
   int reload(const char *json_str);
 
 protected:
+  int parse_circleData(cJSON * circle_obj);
+  int parse_lineData(cJSON * line_obj);
   int parse_jobj();
 
 

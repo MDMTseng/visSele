@@ -7,7 +7,6 @@
 
 #include "acvImage_MophologyTool.hpp"
 #include "acvImage_SpDomainTool.hpp"
-#include "BinaryImageTemplateFitting.hpp"
 #include "MLNN.hpp"
 #include "experiment.h"
 #include "cJSON.h"
@@ -207,145 +206,6 @@ void drawSignatureInfo(acvImage *img,
     }
 }
 
-int testSignature(int repeatNum)
-{
-    vector<float> data(repeatNum);
-    vector<acv_XY> tar_signature(240);
-    acv_LabeledData tar_ldData;
-    acvImage *target = new acvImage();
-    acvImage *target_DistGradient = new acvImage();
-    int ret=0;
-    ret=Target_prep_dist(target, target_DistGradient, tar_signature, tar_ldData);
-    if(ret!=0)
-    {
-      printf("%s:Cannot init target....\n",__func__);
-      return ret;
-    }
-    //return 0;
-
-    acvImage *image = new acvImage();
-    acvImage *labelImg = new acvImage();
-    acvImage *buff = new acvImage();
-    std::vector<acv_LabeledData> ldData;
-    ret=acvLoadBitmapFile(image, "data/test1.bmp");
-    if(ret!=0)
-    {
-      printf("%s:Cannot find data/test1.bmp....\n",__func__);
-      return ret;
-    }
-    buff->ReSize(image->GetWidth(), image->GetHeight());
-    labelImg->ReSize(image->GetWidth(), image->GetHeight());
-    vector<acv_XY> signature(tar_signature.size());
-    BinaryImageTemplateFitting bitf(tar_ldData, target, image, target_DistGradient);
-
-    std::vector<acv_XY> regionXY_;
-
-
-    logv("%s:Preprocess done...\n",__func__);
-    clock_t t = clock();
-    for(int iterX=0;iterX<repeatNum;iterX++)
-    {
-      ret=acvLoadBitmapFile(image, "data/test1.bmp");
-
-      //image->RGBToGray();
-      acvCloneImage(image, labelImg, -1);
-      preprocess(labelImg, image, buff);
-      /*t = clock() - t;
-      printf("%fms .preprocess.\n", ((double)t) / CLOCKS_PER_SEC * 1000);
-      t = clock();*/
-
-      //Create a trap to capture/link boundery object
-      acvDrawBlock(labelImg, 1, 1, labelImg->GetWidth() - 2, labelImg->GetHeight() - 2);
-
-      acvComponentLabeling(labelImg);
-      acvLabeledRegionInfo(labelImg, &ldData);
-
-      //The first(the idx 0 is not avaliable) ldData must be the trap, set area to zero
-      ldData[1].area = 0;
-
-      //Delete the object that has less than certain amount of area on ldData
-      acvRemoveRegionLessThan(labelImg, &ldData, 120);
-
-      /*t = clock() - t;
-      printf("%fms ..\n", ((double)t) / CLOCKS_PER_SEC * 1000);
-      t = clock();*/
-      float errorSum=0;
-      for (int i = 1; i < ldData.size(); i++)
-      {
-          //printf("%s:=====%d=======\n", __func__, i);
-          acvContourCircleSignature(labelImg, ldData[i], i, signature);
-
-          float sign_error;
-          float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
-          float sign_error_rev;
-          SignatureReverse(signature,signature);
-          float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
-
-
-          //printf(">sign_error:%f  sign_error_rev:%f\n",sign_error,sign_error_rev);
-          bool isInv=false;
-          if(sign_error>sign_error_rev)
-          {
-              isInv=true;
-              sign_error=sign_error_rev;
-              AngleDiff=-AngleDiff_rev;
-          }
-
-          bitf.acvLabeledPixelExtraction(labelImg, &ldData[i], i, &regionXY_);
-          float refine_error=bitf.find_subpixel_params( regionXY_,ldData[i], AngleDiff,isInv ,10, 7, 1);//Global fitting
-          data[iterX]=
-          180 / M_PI * atan2(bitf.NN.layers[0].W[1][0] - bitf.NN.layers[0].W[0][1], bitf.NN.layers[0].W[0][0] + bitf.NN.layers[0].W[1][1]);
-          //printf(">  %f %f > %f\n",bitf.NN.layers[0].W[2][0], bitf.NN.layers[0].W[2][1],data[iterX]);
-
-
-          errorSum+=refine_error;
-          /*printf(">%d>sign error:%f\n",i,sign_error);
-          if(refine_error>20)
-          {
-            printf("refine error:%f  BAD..\n\n",refine_error);
-          }
-          else
-          {
-            printf("refine error:%f\n\n",refine_error);
-          }*/
-          //spp.NN.layers[0].printW();
-
-          //printf("translate:%f %f\n", tar_ldData.Center.X - ldData[i].Center.X, tar_ldData.Center.Y - ldData[i].Center.Y);
-          /*
-          drawSignatureInfo(image,
-            ldData[i],signature,
-            tar_ldData,tar_signature,AngleDiff);*/
-      }
-    }
-    //printf("errorSum:%f ................\n\n",errorSum);
-    t = clock() - t;
-    logv("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
-
-
-    float avg_data=0;
-    for(int iterX=0;iterX<repeatNum;iterX++)
-    {
-      avg_data+=data[iterX];
-    }
-    avg_data/=repeatNum;
-
-    float dev_data=0;
-    float dev_data_MAX=0;
-    for(int iterX=0;iterX<repeatNum;iterX++)
-    {
-      float tmp=avg_data-data[iterX];
-      tmp*=tmp;
-      if(dev_data_MAX<tmp)dev_data_MAX=tmp;
-      dev_data+=tmp;
-    }
-    dev_data/=repeatNum;
-    logv("avg:%f  dev:%f M:%f\n",avg_data,sqrt(dev_data),sqrt(dev_data_MAX) );
-
-    //acvLabeledColorDispersion(image,image,ldData.size()/20+5);
-    //acvSaveBitmapFile("data/uu_o.bmp",image->ImageData,image->GetWidth(),image->GetHeight());
-}
-
-
 int testX()
 {
   vector<acv_XY> tar_signature(360);
@@ -440,31 +300,13 @@ char* ReadFile(char *filename)
 
 void cJSON_TEST()
 {
-
-  LOGV("===========");
-
-  do{
+  {
+    LOGV("\n===================");
     char *string = ReadFile("data/target.json");
-    if (string)
-    {
-        cJSON *root = cJSON_Parse(string);
-        free(string);
-        if(root == NULL)
-        {
-          LOGV("parsing error");
-          break;
-        }
-        LOGV("img_hash:%s>>",cJSON_GetObjectItem(root,"img_hash")->valuestring);
-
-
-        char *json_str = cJSON_Print(root);
-        puts(json_str);
-        free(json_str);
-        cJSON_Delete(root);
-    }
-  }while(0);
-
-  LOGV("\n===================");
+    VisSeleDefineDocParser docP(string);
+    free(string);
+    LOGV("\n===================");
+  }
 }
 
 #include <vector>

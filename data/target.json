@@ -1,0 +1,20 @@
+{
+  "type":"target descriptor",
+  "ver":"0.0.0.0",
+  "unit":"mm",
+  "features":
+  [
+    {
+      "type":"circle",
+      "param":{"x":1,"y":2,"r":3},
+      "MatchingMargin":5
+    },
+
+    {
+      "type":"line",
+      "param":{"x0":0,"y0":0,"x1":1,"y1":1},
+      "MatchingMargin":5
+    }
+  ]
+
+}

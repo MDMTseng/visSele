@@ -7,10 +7,13 @@
 
 void logv(const char *fmt, ...);
 //#define logv
-#define LOGV(fmt,...) logv("%s:" fmt "\n",__func__ VA_ARGS(__VA_ARGS__))
 void logd(const char *fmt, ...);
 void logi(const char *fmt, ...);
 void loge(const char *fmt, ...);
 
+#define LOGV(fmt,...) logv("%s:v " fmt "\n",__func__ VA_ARGS(__VA_ARGS__))
+#define LOGD(fmt,...) logd("%s:d " fmt "\n",__func__ VA_ARGS(__VA_ARGS__))
+#define LOGI(fmt,...) logi("%s:i " fmt "\n",__func__ VA_ARGS(__VA_ARGS__))
+#define LOGE(fmt,...) loge("%s:e " fmt "\n",__func__ VA_ARGS(__VA_ARGS__))
 
 #endif
