@@ -7,7 +7,7 @@
 
 void logv(const char *fmt, ...);
 //#define logv
-#define LOGV(fmt,...) logv("%s:"fmt"\n",__func__ VA_ARGS(__VA_ARGS__))
+#define LOGV(fmt,...) logv("%s:" fmt "\n",__func__ VA_ARGS(__VA_ARGS__))
 void logd(const char *fmt, ...);
 void logi(const char *fmt, ...);
 void loge(const char *fmt, ...);
