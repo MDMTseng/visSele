@@ -15,7 +15,7 @@ class VisSeleDefineDocParser {
     float initMatchingMargin;
   }featureDef_circle;
   typedef struct featureDef_line{
-    acv_Circle circleTar;
+    acv_Line lineTar;
     float initMatchingMargin;
   }featureDef_line;
 

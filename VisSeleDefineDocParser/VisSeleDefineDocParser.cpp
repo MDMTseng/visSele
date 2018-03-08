@@ -10,15 +10,96 @@ VisSeleDefineDocParser::VisSeleDefineDocParser(const char *json_str)
   if(ret)
     throw std::invalid_argument( "Error:DefineDocParser failed... " );
 }
+static int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
+{
 
+  cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
+  if(tmpObj==NULL)
+  {
+    return cJSON_Invalid;
+  }
+
+  if(tmpObj->type & cJSON_Number)
+  {
+    *ret_ptr=&tmpObj->valuedouble;
+    return cJSON_Number;
+  }
+
+  if(tmpObj->type & cJSON_String)
+  {
+    *ret_ptr=&tmpObj->valuestring;
+    return tmpObj->type;
+  }
+
+  if(tmpObj->type & cJSON_Array)
+  {
+    *ret_ptr=tmpObj;
+    return tmpObj->type;
+  }
+
+  if(tmpObj->type & cJSON_Object)
+  {
+    *ret_ptr=tmpObj;
+    return tmpObj->type;
+  }
+
+  return cJSON_Invalid;
+}
 int VisSeleDefineDocParser::parse_circleData(cJSON * circle_obj)
 {
+  featureDef_circle cir;
+  /*char* str = cJSON_Print(circle_obj);
+  LOGV("feature is a circle\n%s",str);
+  free(str);*/
+
+  double *pnum;
+  if(!(getDataFromJsonObj(circle_obj,"MatchingMargin",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  cir.initMatchingMargin=*pnum;
+
+  cJSON *param;
+  if(!(getDataFromJsonObj(circle_obj,"param",(void**)&param)&cJSON_Object))
+  {
+    return -1;
+  }
+  else
+  {
+    if(!(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
+    {
+      return -1;
+    }
+    cir.circleTar.circumcenter.X=*pnum;
+
+
+    if(!(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
+    {
+      return -1;
+    }
+    cir.circleTar.circumcenter.Y=*pnum;
+
+    if(!(getDataFromJsonObj(param,"r",(void**)&pnum)&cJSON_Number))
+    {
+      return -1;
+    }
+    cir.circleTar.radius=*pnum;
+
+  }
   LOGV("feature is a circle");
+  LOGV("x:%f y:%f r:%f margin:%f",
+  cir.circleTar.circumcenter.X,
+  cir.circleTar.circumcenter.Y,
+  cir.circleTar.radius,
+  cir.initMatchingMargin);
+  featureCircleList.push_back(cir);
   return 0;
 }
 int VisSeleDefineDocParser::parse_lineData(cJSON * line_obj)
 {
-  LOGV("feature is a line");
+  char* str = cJSON_Print(line_obj);
+  LOGV("feature is a line\n%s",str);
+  free(str);
   return 0;
 }
 
