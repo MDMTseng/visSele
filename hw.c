@@ -11,7 +11,7 @@
 #include "experiment.h"
 #include "cJSON.h"
 #include "logctrl.h"
-#include "visSeleDefineDocParser.h"
+#include "VisSeleFeatureManager.h"
 
 void printImgAscii(acvImage *img, int printwidth)
 {
@@ -303,7 +303,7 @@ void cJSON_TEST()
   {
     LOGV("\n===================");
     char *string = ReadFile("data/target.json");
-    VisSeleDefineDocParser docP(string);
+    VisSeleFeatureManager docP(string);
     free(string);
     LOGV("\n===================");
   }

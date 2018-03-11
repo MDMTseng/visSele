@@ -1,5 +1,5 @@
-#ifndef VISSELEDEFINEDOCPARSER_HPP
-#define VISSELEDEFINEDOCPARSER_HPP
+#ifndef VisSeleFeatureManager_HPP
+#define VisSeleFeatureManager_HPP
 using namespace std;
 #include <vector>
 #include <cstdlib>
@@ -9,7 +9,7 @@ using namespace std;
 
 
 
-class VisSeleDefineDocParser {
+class VisSeleFeatureManager {
   typedef struct featureDef_circle{
     acv_Circle circleTar;
     float initMatchingMargin;
@@ -24,7 +24,7 @@ class VisSeleDefineDocParser {
   vector<float> contour_signature;
   cJSON *root;
 public :
-  VisSeleDefineDocParser(const char *json_str);
+  VisSeleFeatureManager(const char *json_str);
   int reload(const char *json_str);
 
 protected:

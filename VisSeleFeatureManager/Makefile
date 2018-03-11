@@ -8,9 +8,9 @@ IDIR=./include/ \
 			$(MODULE_LOGCTRL)/include
 
 ODIR=obj
-_OBJ = VisSeleDefineDocParser.opp
+_OBJ = VisSeleFeatureManager.opp
 
-target_a= VisSeleDefineDocParser.a \
+target_a= VisSeleFeatureManager.a \
 					$(MODULE_cJSON)/cJSON.a \
 
 include ../Makefile.in

@@ -1,9 +1,9 @@
-#include "VisSeleDefineDocParser.h"
+#include "VisSeleFeatureManager.h"
 #include "logctrl.h"
 #include <stdexcept>
 
 
-VisSeleDefineDocParser::VisSeleDefineDocParser(const char *json_str)
+VisSeleFeatureManager::VisSeleFeatureManager(const char *json_str)
 {
   root= NULL;
   int ret = reload(json_str);
@@ -56,7 +56,7 @@ static int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
   cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
   return getDataFromJsonObj(tmpObj,ret_ptr);
 }
-int VisSeleDefineDocParser::parse_circleData(cJSON * circle_obj)
+int VisSeleFeatureManager::parse_circleData(cJSON * circle_obj)
 {
   featureDef_circle cir;
   /*char* str = cJSON_Print(circle_obj);
@@ -105,7 +105,7 @@ int VisSeleDefineDocParser::parse_circleData(cJSON * circle_obj)
   featureCircleList.push_back(cir);
   return 0;
 }
-int VisSeleDefineDocParser::parse_lineData(cJSON * line_obj)
+int VisSeleFeatureManager::parse_lineData(cJSON * line_obj)
 {
   featureDef_line line;
 
@@ -169,7 +169,7 @@ int VisSeleDefineDocParser::parse_lineData(cJSON * line_obj)
   return 0;
 }
 
-int VisSeleDefineDocParser::parse_signatureData(cJSON * signature_obj)
+int VisSeleFeatureManager::parse_signatureData(cJSON * signature_obj)
 {
 
   if( contour_signature.size()!=0 )
@@ -208,7 +208,7 @@ int VisSeleDefineDocParser::parse_signatureData(cJSON * signature_obj)
 
   return 0;
 }
-int VisSeleDefineDocParser::parse_jobj()
+int VisSeleFeatureManager::parse_jobj()
 {
   cJSON *subObj = cJSON_GetObjectItem(root,"type");
   const char *type_str = subObj?subObj->valuestring:NULL;
@@ -283,7 +283,7 @@ int VisSeleDefineDocParser::parse_jobj()
 }
 
 
-int VisSeleDefineDocParser::reload(const char *json_str)
+int VisSeleFeatureManager::reload(const char *json_str)
 {
   if(root)
   {
