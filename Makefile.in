@@ -18,9 +18,13 @@ LIBS?=
 
 
 #Creat a
-CFLAGS=$(addprefix -I,$(IDIR)) $(FLAGS)
+CFLAGS=$(addprefix -I,$(IDIR)) $(addprefix -L,$(LDIR)) $(FLAGS)
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
+
+ifdef target_lib
+CFLAGS+= -fpic
+endif
 
 $(ODIR)/%.opp: %.cpp   $(ESS_TRACK)
 	$(CXX) -c $< $(CFLAGS) -o $@
@@ -31,7 +35,7 @@ $(ODIR)/%.o: %.c  $(ESS_TRACK)
 .PHONY: clean prepare $(SUB_MAKEFILES) build_objs domake
 
 
-domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a)
+domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a) $(target_lib)
 	@echo Done GOAL:\"$(MAKECMDGOALS)\" `pwd`
 
 $(target_bin):$(OBJ) $(EXT_OBJS)
@@ -40,6 +44,8 @@ $(target_bin):$(OBJ) $(EXT_OBJS)
 $(target_a):$(OBJ) $(EXT_OBJS)
 	$(AR) rvs $@ $(OBJ) $(EXT_OBJS)
 
+$(target_lib):$(OBJ) $(EXT_OBJS)
+	$(CXX) -shared -o $@ $(OBJ) $(EXT_OBJS)
 
 $(SUB_MAKEFILES):
 	make -C $@ MakeTemplate=$(MakeTemplate) $(MAKECMDGOALS)
@@ -53,4 +59,4 @@ prepare:
 build_objs:$(OBJ)
 
 clean:$(SUB_MAKEFILES)
-	rm -rf $(ODIR) $(target_bin) $(target_a)
+	rm -rf $(ODIR) $(target_bin) $(target_a) $(target_lib)
