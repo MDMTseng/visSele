@@ -610,6 +610,16 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
 }
 
 
+acv_XY acvVecNormalize(acv_XY vec)
+{
+  acv_XY nvec={vec.X,vec.Y};
+  float dist = hypot(vec.X,vec.Y);
+  if(dist==0)return nvec;
+  nvec.X/=dist;
+  nvec.Y/=dist;
+  return nvec;
+}
+
 float acvDistance(acv_XY p1,acv_XY p2)
 {
   return hypot(p2.X-p1.X,p2.Y-p1.Y);

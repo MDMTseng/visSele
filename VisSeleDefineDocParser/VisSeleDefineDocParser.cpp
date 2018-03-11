@@ -64,28 +64,27 @@ int VisSeleDefineDocParser::parse_circleData(cJSON * circle_obj)
   {
     return -1;
   }
-  else
+
+  if(!(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
   {
-    if(!(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
-    {
-      return -1;
-    }
-    cir.circleTar.circumcenter.X=*pnum;
-
-
-    if(!(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
-    {
-      return -1;
-    }
-    cir.circleTar.circumcenter.Y=*pnum;
-
-    if(!(getDataFromJsonObj(param,"r",(void**)&pnum)&cJSON_Number))
-    {
-      return -1;
-    }
-    cir.circleTar.radius=*pnum;
-
+    return -1;
   }
+  cir.circleTar.circumcenter.X=*pnum;
+
+
+  if(!(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  cir.circleTar.circumcenter.Y=*pnum;
+
+  if(!(getDataFromJsonObj(param,"r",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  cir.circleTar.radius=*pnum;
+
+
   LOGV("feature is a circle");
   LOGV("x:%f y:%f r:%f margin:%f",
   cir.circleTar.circumcenter.X,
@@ -97,9 +96,65 @@ int VisSeleDefineDocParser::parse_circleData(cJSON * circle_obj)
 }
 int VisSeleDefineDocParser::parse_lineData(cJSON * line_obj)
 {
-  char* str = cJSON_Print(line_obj);
-  LOGV("feature is a line\n%s",str);
-  free(str);
+  featureDef_line line;
+
+  double *pnum;
+  if(!(getDataFromJsonObj(line_obj,"MatchingMargin",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  line.initMatchingMargin=*pnum;
+
+
+  cJSON *param;
+  if(!(getDataFromJsonObj(line_obj,"param",(void**)&param)&cJSON_Object))
+  {
+    return -1;
+  }
+
+  acv_XY p0,p1;
+  if(!(getDataFromJsonObj(param,"x0",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  p0.X=*pnum;
+
+  if(!(getDataFromJsonObj(param,"y0",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  p0.Y=*pnum;
+
+
+  if(!(getDataFromJsonObj(param,"x1",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  p1.X=*pnum;
+
+  if(!(getDataFromJsonObj(param,"y1",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  p1.Y=*pnum;
+
+  line.lineTar.line_anchor.X=(p0.X+p1.X)/2;
+  line.lineTar.line_anchor.Y=(p0.Y+p1.Y)/2;
+  line.lineTar.line_vec.X=(p0.X-p1.X);
+  line.lineTar.line_vec.Y=(p0.Y-p1.Y);
+  line.lineTar.line_vec = acvVecNormalize(line.lineTar.line_vec);
+
+  LOGV("feature is a line");
+  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f margin:%f",
+  line.lineTar.line_anchor.X,
+  line.lineTar.line_anchor.Y,
+  line.lineTar.line_vec.X,
+  line.lineTar.line_vec.Y,
+  line.initMatchingMargin);
+  featureLineList.push_back(line);
+
+
+
   return 0;
 }
 
