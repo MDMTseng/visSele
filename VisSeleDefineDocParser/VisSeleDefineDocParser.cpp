@@ -10,40 +10,51 @@ VisSeleDefineDocParser::VisSeleDefineDocParser(const char *json_str)
   if(ret)
     throw std::invalid_argument( "Error:DefineDocParser failed... " );
 }
-static int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
-{
 
-  cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
-  if(tmpObj==NULL)
+
+static int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
+{
+  if(obj==NULL)
   {
     return cJSON_Invalid;
   }
 
-  if(tmpObj->type & cJSON_Number)
+  if(obj->type & cJSON_Number)
   {
-    *ret_ptr=&tmpObj->valuedouble;
+    *ret_ptr=&obj->valuedouble;
     return cJSON_Number;
   }
 
-  if(tmpObj->type & cJSON_String)
+  if(obj->type & cJSON_String)
   {
-    *ret_ptr=&tmpObj->valuestring;
-    return tmpObj->type;
+    *ret_ptr=&obj->valuestring;
+    return obj->type;
   }
 
-  if(tmpObj->type & cJSON_Array)
+  if(obj->type & cJSON_Array)
   {
-    *ret_ptr=tmpObj;
-    return tmpObj->type;
+    *ret_ptr=obj;
+    return obj->type;
   }
 
-  if(tmpObj->type & cJSON_Object)
+  if(obj->type & cJSON_Object)
   {
-    *ret_ptr=tmpObj;
-    return tmpObj->type;
+    *ret_ptr=obj;
+    return obj->type;
   }
 
   return cJSON_Invalid;
+}
+static int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr)
+{
+  cJSON *tmpObj = cJSON_GetArrayItem(obj,idx);
+  return getDataFromJsonObj(tmpObj,ret_ptr);
+}
+static int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
+{
+
+  cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
+  return getDataFromJsonObj(tmpObj,ret_ptr);
 }
 int VisSeleDefineDocParser::parse_circleData(cJSON * circle_obj)
 {
@@ -158,11 +169,47 @@ int VisSeleDefineDocParser::parse_lineData(cJSON * line_obj)
   return 0;
 }
 
+int VisSeleDefineDocParser::parse_signatureData(cJSON * signature_obj)
+{
+
+  if( contour_signature.size()!=0 )
+  {
+    LOGE("contour_signature:size()=%d is set already. There can only be one signature feature.",contour_signature.size());
+    return -1;
+  }
+
+  cJSON *param;
+  if(!(getDataFromJsonObj(signature_obj,"param",(void**)&param)&cJSON_Object))
+  {
+    return -1;
+  }
+
+  cJSON *signature;
+  if(!(getDataFromJsonObj(param,"signature",(void**)&signature)&cJSON_Array))
+  {
+    LOGE("The signature is not an cJSON_Array");
+    return -1;
+  }
+
+  for (int i = 0 ; i < cJSON_GetArraySize(signature) ; i++)
+  {
+    double *pnum;
+    if(!(getDataFromJsonObj(signature,i,(void**)&pnum)&cJSON_Number))
+    {
+      return -1;
+    }
+    contour_signature.push_back(*pnum);
+    /*cJSON * feature = cJSON_GetArrayItem(signature, i);
+    LOGI(" %f",type_str,ver_str,unit_str);*/
+  }
+
+  LOGV("feature is a signature");
+
+
+  return 0;
+}
 int VisSeleDefineDocParser::parse_jobj()
 {
-  featureCircleList.resize(0);
-  featureLineList.resize(0);
-
   cJSON *subObj = cJSON_GetObjectItem(root,"type");
   const char *type_str = subObj?subObj->valuestring:NULL;
   subObj = cJSON_GetObjectItem(root,"ver");
@@ -217,6 +264,14 @@ int VisSeleDefineDocParser::parse_jobj()
          return -1;
        }
      }
+     else if(strcmp(feature_type, "contour signature")==0)
+     {
+       if(parse_signatureData(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
+     }
      else
      {
        LOGE("feature[%d] has unknown type:[%s]",i,feature_type);
@@ -236,6 +291,7 @@ int VisSeleDefineDocParser::reload(const char *json_str)
   }
   featureCircleList.resize(0);
   featureLineList.resize(0);
+  contour_signature.resize(0);
 
   root = cJSON_Parse(json_str);
   if(root==NULL)
@@ -246,6 +302,10 @@ int VisSeleDefineDocParser::reload(const char *json_str)
   int ret_err = parse_jobj();
   if(ret_err!=0)
   {
+
+    featureCircleList.resize(0);
+    featureLineList.resize(0);
+    contour_signature.resize(0);
     reload("");
     return -2;
   }

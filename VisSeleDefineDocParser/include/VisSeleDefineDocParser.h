@@ -19,9 +19,9 @@ class VisSeleDefineDocParser {
     float initMatchingMargin;
   }featureDef_line;
 
-
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
+  vector<float> contour_signature;
   cJSON *root;
 public :
   VisSeleDefineDocParser(const char *json_str);
@@ -30,6 +30,7 @@ public :
 protected:
   int parse_circleData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
+  int parse_signatureData(cJSON * signature_obj);
   int parse_jobj();
 
 
