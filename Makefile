@@ -7,6 +7,9 @@ export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_LOGCTRL=$(abspath logctrl)
 export MODULE_VisSeleFeatureManager=$(abspath VisSeleFeatureManager)
 
+export SO_EXPORT_PATH=$(abspath .)
+
+
 target_bin=visSele
 ODIR=obj
 IDIR=acvImage/include/ MLNN/include/ include/ \
@@ -15,21 +18,19 @@ IDIR=acvImage/include/ MLNN/include/ include/ \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_VisSeleFeatureManager)/include \
 
+LDIR=./ $(MODULE_acvImage)
+LIBS=-lacvImage
+
 
 _OBJ = hw.o experiment.opp
 
-acvImage_OBJS= acvImage.opp acvImage_BasicTool.opp acvImage_BasicDrawTool.opp\
- acvImage_MophologyTool.opp acvImage_ToolBox.opp acvImage_ComponentLabelingTool.opp\
- acvImage_SpDomainTool.opp
-
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= $(addprefix acvImage/obj/,$(acvImage_OBJS)) \
- 					$(addprefix MLNN/obj/,$(MLNN_OBJS)) \
+EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_circleFitting)/circleFitting.a \
+					$(MODULE_VisSeleFeatureManager)/VisSeleFeatureManager.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_LOGCTRL)/logctrl.a \
-					$(MODULE_VisSeleFeatureManager)/VisSeleFeatureManager.a
 
 
 ESS_TRACK= $(wildcard include/* acvImage/include/* include/*  $(MODULE_LOGCTRL)/include/*)

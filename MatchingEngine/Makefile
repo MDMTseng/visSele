@@ -1,6 +1,6 @@
 
 
-CUR_MODULE_NAME=$(shell basename $(CURDIR))
+$(shell basename $(CURDIR))
 
 IDIR=./include/ \
 			$(MODULE_cJSON) \
@@ -8,7 +8,9 @@ IDIR=./include/ \
 			$(MODULE_LOGCTRL)/include
 
 ODIR=obj
-_OBJ = $(CUR_MODULE_NAME).opp
-target_a= VisSeleFeatureManager.a
+_OBJ = MatchingEngine.opp
+
+target_a= MatchingEngine.a \
+					$(MODULE_cJSON)/cJSON.a \
 
 include ../Makefile.in
