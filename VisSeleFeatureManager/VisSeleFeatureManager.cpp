@@ -109,15 +109,8 @@ int VisSeleFeatureManager::parse_lineData(cJSON * line_obj)
 {
   featureDef_line line;
 
-  double *pnum;
-  if(!(getDataFromJsonObj(line_obj,"MatchingMargin",(void**)&pnum)&cJSON_Number))
-  {
-    return -1;
-  }
-  line.initMatchingMargin=*pnum;
-
-
   cJSON *param;
+  double *pnum;
   if(!(getDataFromJsonObj(line_obj,"param",(void**)&param)&cJSON_Object))
   {
     return -1;
@@ -155,13 +148,41 @@ int VisSeleFeatureManager::parse_lineData(cJSON * line_obj)
   line.lineTar.line_vec.Y=(p0.Y-p1.Y);
   line.lineTar.line_vec = acvVecNormalize(line.lineTar.line_vec);
 
+
+
+  if(!(getDataFromJsonObj(line_obj,"searchVec",(void**)&param)&cJSON_Object))
+  {
+    return -1;
+  }
+
+
+
+  if(!(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  line.searchVec.X=*pnum;
+
+  if(!(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  line.searchVec.Y=*pnum;
+
+
+
+
+
+
+
   LOGV("feature is a line");
-  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f margin:%f",
+  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f",
   line.lineTar.line_anchor.X,
   line.lineTar.line_anchor.Y,
   line.lineTar.line_vec.X,
   line.lineTar.line_vec.Y,
-  line.initMatchingMargin);
+  line.searchVec.X,
+  line.searchVec.Y);
   featureLineList.push_back(line);
 
 

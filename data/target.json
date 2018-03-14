@@ -13,7 +13,7 @@
     {
       "type":"line",
       "param":{"x0":0,"y0":100,"x1":12,"y1":1},
-      "MatchingMargin":15
+      "searchVec":{"x":-5,"y":5}
     },
 
     {

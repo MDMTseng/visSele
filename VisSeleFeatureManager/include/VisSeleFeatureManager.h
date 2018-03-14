@@ -16,7 +16,7 @@ class VisSeleFeatureManager {
   }featureDef_circle;
   typedef struct featureDef_line{
     acv_Line lineTar;
-    float initMatchingMargin;
+    acv_XY searchVec;//The vector to searching the contour edge
   }featureDef_line;
 
   vector<featureDef_circle> featureCircleList;
