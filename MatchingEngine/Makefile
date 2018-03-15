@@ -1,16 +1,16 @@
 
 
-$(shell basename $(CURDIR))
+MODULE_NAME=$(notdir $(basename $(CURDIR)))
 
 IDIR=./include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_acvImage)/include \
+			$(MODULE_VisSeleFeatureManager)/include \
 			$(MODULE_LOGCTRL)/include
 
 ODIR=obj
 _OBJ = MatchingEngine.opp
-
-target_a= MatchingEngine.a \
-					$(MODULE_cJSON)/cJSON.a \
+ESS_TRACK=$(addsuffix /* ,$(IDIR))
+target_a= $(addsuffix .a ,$(MODULE_NAME))
 
 include ../Makefile.in

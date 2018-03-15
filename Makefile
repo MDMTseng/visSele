@@ -6,6 +6,7 @@ export MODULE_circleFitting=$(abspath contrib/circleFitting)
 export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_LOGCTRL=$(abspath logctrl)
 export MODULE_VisSeleFeatureManager=$(abspath VisSeleFeatureManager)
+export MODULE_MatchingEngine=$(abspath MatchingEngine)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -33,8 +34,16 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_LOGCTRL)/logctrl.a \
 
 
-ESS_TRACK= $(wildcard include/* acvImage/include/* include/*  $(MODULE_LOGCTRL)/include/*)
-SUB_MAKEFILES = $(MODULE_acvImage) $(MODULE_MLNN) $(MODULE_circleFitting) $(MODULE_cJSON) $(MODULE_LOGCTRL) $(MODULE_VisSeleFeatureManager) sidePrj
+ESS_TRACK= $(addsuffix /* ,$(IDIR))
+SUB_MAKEFILES = $(MODULE_acvImage) \
+								$(MODULE_MLNN) \
+								$(MODULE_circleFitting) \
+								$(MODULE_cJSON) \
+								$(MODULE_LOGCTRL) \
+								$(MODULE_VisSeleFeatureManager) \
+								$(MODULE_MatchingEngine) \
+								sidePrj
+
 export MakeTemplate:= $(abspath Makefile.in)
 export FLAGS= -w
 include $(MakeTemplate)
