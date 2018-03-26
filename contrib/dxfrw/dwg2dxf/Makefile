@@ -8,5 +8,5 @@ target_bin = dwg2dxf
 
 SUB_MAKEFILES= $(MODULE_LIBDXFRW)
 EXT_OBJS=$(MODULE_LIBDXFRW)/libdxfrw.a
-export FLAGS= -w -L$(LIBICONV_ROOT)/lib/ -liconv
+export FLAGS+= -L$(LIBICONV_ROOT)/lib/ -liconv
 include $(MakeTemplate)

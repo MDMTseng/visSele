@@ -252,6 +252,8 @@ int interpolateSignData(std::vector<acv_XY> &signature,int start,int end)
     return distance;
 }
 
+
+//signature X: magnitude Y:angle
 bool acvContourCircleSignature
 (acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature)
 {
@@ -347,6 +349,38 @@ float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
 {
     return SignatureMatchingError(&(signature[0]), offset, &(tar_signature[0]), signature.size(), stride);
 }
+
+
+
+
+float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature,
+  bool *ret_isInv, float *ret_angle)
+{
+
+    float sign_error;
+    float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
+    float sign_error_rev=10000;
+    SignatureReverse(signature,signature);
+    float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
+    SignatureReverse(signature,signature);
+    bool isInv=false;
+    if(sign_error>sign_error_rev)
+    {
+        isInv=true;
+        sign_error=sign_error_rev;
+        AngleDiff=-AngleDiff_rev;
+    }
+
+    if(ret_isInv)*ret_isInv=isInv;
+    if(ret_angle)*ret_angle=AngleDiff;
+
+    return sign_error;
+}
+
+
+
+
+
 #include <float.h>
 int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate, float *min_error)

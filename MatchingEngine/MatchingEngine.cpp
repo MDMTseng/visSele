@@ -22,7 +22,7 @@ int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
-    printf(">>>>>>>\n");
+    featureBundle[i]->FeatureMatching(img,buff,dbg);
   }
   return 0;
 }

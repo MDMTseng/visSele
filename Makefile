@@ -43,5 +43,5 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 								sidePrj
 
 export MakeTemplate:= $(abspath Makefile.in)
-export FLAGS= -w
+export FLAGS= -w -O3
 include $(MakeTemplate)

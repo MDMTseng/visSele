@@ -38,4 +38,6 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
 
 void SignatureReverse(std::vector<acv_XY> &dst, std::vector<acv_XY> &src);
 
+float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature,
+                            bool *ret_isInv, float *ret_angle);
 #endif

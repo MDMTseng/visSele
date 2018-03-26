@@ -21,19 +21,17 @@ class FeatureManager {
 
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
-  vector<float> contour_signature;
+  vector<acv_XY> contour_signature;
   cJSON *root;
 public :
   FeatureManager(const char *json_str);
   int reload(const char *json_str);
-
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg);
 protected:
   int parse_circleData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_signatureData(cJSON * signature_obj);
   int parse_jobj();
-
-
 };
 
 #endif

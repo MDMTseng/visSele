@@ -6,7 +6,7 @@
 #include "acvImage_BasicDrawTool.hpp"
 #include <cstdlib>
 #include <unistd.h>
-void ContourFeatureDetect(acvImage *img,acvImage *buff,const std::vector<acv_XY> &tar_signature);
 
+void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature);
 
 #endif

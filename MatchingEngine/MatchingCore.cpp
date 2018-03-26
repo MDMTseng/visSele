@@ -926,9 +926,11 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
 }
 
 
-void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar_signature)
+
+void ffff(acvImage *img,acvImage *buff)
 {
 
+    clock_t t = clock();
     static vector<acv_XY> extractedContour;
     static vector<acv_XY> innerCornorContour;
     static vector<acv_XY> lineContour;
@@ -944,34 +946,6 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
     lineContour.resize(0);
     inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
     straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
-
-
-    acvCloneImage(img, buff, -1);
-
-
-
-    std::vector<acv_LabeledData> ldData;
-
-
-    clock_t t = clock();
-
-
-
-    acvCloneImage( buff,img, -1);
-
-
-    acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
-
-    acvComponentLabeling(img);
-    acvLabeledRegionInfo(img, &ldData);
-    if(ldData.size()-1<1)
-    {
-      return;
-    }
-    ldData[1].area = 0;
-
-    //Delete the object that has less than certain amount of area on ldData
-    acvRemoveRegionLessThan(img, &ldData, 120);
 
     acvCloneImage( img,buff, -1);
 
@@ -1011,33 +985,8 @@ void ContourFeatureDetect(acvImage *img,acvImage *buff,const vector<acv_XY> &tar
       straight_line_grid.push(lineContour[i]);
     }
 
-    static vector<acv_XY> signature;
-    signature.resize(tar_signature.size());
-    acvCloneImage( img,buff, -1);
-    for (int i = 1; i < ldData.size(); i++)
-    {
-
-        acvContourCircleSignature(buff, ldData[i], i, signature);
-        float sign_error;
-        float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
-        float sign_error_rev;
-        SignatureReverse(signature,signature);
-        float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
 
 
-        logv("%s:=====%d=======%f,%f\n", __func__, i,sign_error,sign_error_rev);
-        logv("%s:%f,%f\n", __func__,AngleDiff*180/M_PI,AngleDiff_rev*180/M_PI);
-
-
-        bool isInv=false;
-        if(sign_error>sign_error_rev)
-        {
-            isInv=true;
-            sign_error=sign_error_rev;
-            AngleDiff=-AngleDiff_rev;
-        }
-
-    }
 //inward_curve_grid  straight_line_grid
     int gridG_W = 2;
     int gridG_H = 2;

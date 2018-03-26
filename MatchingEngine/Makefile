@@ -11,5 +11,5 @@ IDIR= ./ \
 ODIR=obj
 _OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp
 target_a= $(addsuffix .a ,$(MODULE_NAME))
-
+ESS_TRACK=$(addsuffix /* ,$(IDIR))
 include ../Makefile.in

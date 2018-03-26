@@ -239,9 +239,20 @@ int testX()
 
   test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
-  clock_t t = clock();
+/*
+  printf("\"magnitude\":[");
+  for(int i=0;i<tar_signature.size();i++)
+  {
+    printf("%f,",tar_signature[i].X);
+  }printf("],\n");
 
-  acvThreshold(test1, 250, 0);
+
+  printf("\"angle\":[");
+  for(int i=0;i<tar_signature.size();i++)
+  {
+    printf("%f,",tar_signature[i].Y);
+  }printf("]\n");*/
+
 
   me.FeatureMatching(test1,test1_buff,NULL);
   //ContourFeatureDetect(test1,test1_buff,tar_signature);

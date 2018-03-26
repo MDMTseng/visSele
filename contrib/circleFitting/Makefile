@@ -14,5 +14,4 @@ _OBJ = circle.opp data.opp \
 #target_bin=TestAlgebraicCircleFits
 target_a=CircleFitting.a
 
-export FLAGS= -w
 include $(MakeTemplate)

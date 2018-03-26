@@ -1,6 +1,7 @@
 #include "FeatureManager.h"
 #include "logctrl.h"
 #include <stdexcept>
+#include <include_priv/MatchingCore.h>
 
 
 FeatureManager::FeatureManager(const char *json_str)
@@ -205,21 +206,43 @@ int FeatureManager::parse_signatureData(cJSON * signature_obj)
     return -1;
   }
 
-  cJSON *signature;
-  if(!(getDataFromJsonObj(param,"signature",(void**)&signature)&cJSON_Array))
+  cJSON *signature_magnitude;
+  cJSON *signature_angle;
+  if(!(getDataFromJsonObj(param,"magnitude",(void**)&signature_magnitude)&cJSON_Array))
   {
-    LOGE("The signature is not an cJSON_Array");
+    LOGE("The signature_magnitude is not an cJSON_Array");
     return -1;
   }
 
-  for (int i = 0 ; i < cJSON_GetArraySize(signature) ; i++)
+  if(!(getDataFromJsonObj(param,"angle",(void**)&signature_angle)&cJSON_Array))
   {
-    double *pnum;
-    if(!(getDataFromJsonObj(signature,i,(void**)&pnum)&cJSON_Number))
+    LOGE("The signature_angle is not an cJSON_Array");
+    return -1;
+  }
+
+
+  if( cJSON_GetArraySize(signature_magnitude) != cJSON_GetArraySize(signature_angle) )
+  {
+    LOGE("The signature_angle and signature_magnitude doesn't have same length");
+    return -1;
+  }
+
+  for (int i = 0 ; i < cJSON_GetArraySize(signature_magnitude) ; i++)
+  {
+    double *pnum_mag;
+    if(!(getDataFromJsonObj(signature_magnitude,i,(void**)&pnum_mag)&cJSON_Number))
     {
       return -1;
     }
-    contour_signature.push_back(*pnum);
+
+    double *pnum_ang;
+    if(!(getDataFromJsonObj(signature_angle,i,(void**)&pnum_ang)&cJSON_Number))
+    {
+      return -1;
+    }
+    acv_XY dat={.X=*pnum_mag,.Y=*pnum_ang};
+
+    contour_signature.push_back(dat);
     /*cJSON * feature = cJSON_GetArrayItem(signature, i);
     LOGI(" %f",type_str,ver_str,unit_str);*/
   }
@@ -323,11 +346,81 @@ int FeatureManager::reload(const char *json_str)
   int ret_err = parse_jobj();
   if(ret_err!=0)
   {
-
     featureCircleList.resize(0);
     featureLineList.resize(0);
     contour_signature.resize(0);
     reload("");
     return -2;
   }
+  return 0;
+}
+
+
+int FeatureManager::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+{
+  /*buff->ReSize(img->GetWidth(), img->GetHeight());
+  acvCloneImage(img, buff, -1);
+  acvThreshold(buff, 250, 0);
+
+  static std::vector<acv_LabeledData> ldData;
+
+  acvDrawBlock(buff, 1, 1, buff->GetWidth() - 2, buff->GetHeight() - 2);
+  acvComponentLabeling(buff);
+  acvLabeledRegionInfo(buff, &ldData);
+  if(ldData.size()-1<1)
+  {
+    return ;
+  }
+  ldData[1].area = 0;
+  acvRemoveRegionLessThan(img, &ldData, 120);
+*/
+
+  clock_t t = clock();
+
+  std::vector<acv_LabeledData> ldData;
+
+
+
+  acvThreshold(img, 250, 0);
+  acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
+
+  acvComponentLabeling(img);
+  acvLabeledRegionInfo(img, &ldData);
+  if(ldData.size()-1<1)
+  {
+    return 0;
+  }
+  ldData[1].area = 0;
+
+  //Delete the object that has less than certain amount of area on ldData
+  //acvRemoveRegionLessThan(img, &ldData, 120);
+
+
+  acvCloneImage( img,buff, -1);
+
+
+  static vector<acv_XY> signature;
+  signature.resize(contour_signature.size());
+
+  for (int i = 1; i < ldData.size(); i++)
+  {
+      if(ldData[i].area<120)continue;
+      acvContourCircleSignature(img, ldData[i], i, signature);
+
+      bool isInv;
+      float angle;
+      float error = SignatureMinMatching( signature,contour_signature,
+        &isInv, &angle);
+
+      if(error<500)
+      {
+          LOGV("======%d===%f,%d,%f",i,error,isInv,angle*180/3.14159);
+      }
+  }
+
+
+  LOGV("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  t = clock();
+  LOGI(">>>>>>>>");
+  return 0;
 }
