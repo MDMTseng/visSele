@@ -8,11 +8,14 @@
 #include "acvImage_MophologyTool.hpp"
 #include "acvImage_SpDomainTool.hpp"
 #include "MLNN.hpp"
-#include "experiment.h"
 #include "cJSON.h"
 #include "logctrl.h"
-#include "VisSeleFeatureManager.h"
+#include "FeatureManager.h"
 #include "MatchingEngine.h"
+
+
+
+char* ReadFile(char *filename);
 
 void printImgAscii(acvImage *img, int printwidth)
 {
@@ -209,8 +212,13 @@ void drawSignatureInfo(acvImage *img,
 
 int testX()
 {
-  vector<acv_XY> tar_signature(360);
 
+  MatchingEngine me;
+  char *string = ReadFile("data/target.json");
+  me.AddMatchingFeature(string);
+  free(string);
+
+  vector<acv_XY> tar_signature(360);
   //Just to get target signature
   {
     acvImage *target = new acvImage();
@@ -231,13 +239,14 @@ int testX()
 
   test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
-
   clock_t t = clock();
 
-
   acvThreshold(test1, 250, 0);
-  ContourFeatureDetect(test1,test1_buff,tar_signature);
+
+  me.FeatureMatching(test1,test1_buff,NULL);
+  //ContourFeatureDetect(test1,test1_buff,tar_signature);
   acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
+
   return 0;
 }
 
@@ -298,22 +307,9 @@ char* ReadFile(char *filename)
     return buffer;
 }
 
-
-void cJSON_TEST()
-{
-  char *string = ReadFile("data/target.json");
-  {
-    MatchingEngine me;
-    me.AddMatchingFeature(string);
-  }
-  free(string);
-}
-
 #include <vector>
 int main(int argc, char** argv)
 {
-
-    cJSON_TEST();
     int seed = time(NULL);
     srand(seed);
     int ret = 0, repeatNum=1;

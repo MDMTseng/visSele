@@ -5,15 +5,16 @@ using namespace std;
 #include <cstdlib>
 #include <ctime>
 #include "acvImage_BasicTool.hpp"
-#include "VisSeleFeatureManager.h"
+#include "FeatureManager.h"
 
 
 
 class MatchingEngine {
-  vector<VisSeleFeatureManager*> featureBundle;
+  vector<FeatureManager*> featureBundle;
 public:
   int AddMatchingFeature(const char *json_str);
-  int AddMatchingFeature(VisSeleFeatureManager *featureSet);
+  int AddMatchingFeature(FeatureManager *featureSet);
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg);
   ~MatchingEngine();
 };
 
