@@ -18,12 +18,13 @@ IDIR=acvImage/include/ MLNN/include/ include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_VisSeleFeatureManager)/include \
+			$(MODULE_MatchingEngine)/include \
 
 LDIR=./ $(MODULE_acvImage)
 LIBS=-lacvImage
 
 
-_OBJ = hw.o experiment.opp
+_OBJ = hw.o
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
@@ -32,6 +33,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_VisSeleFeatureManager)/VisSeleFeatureManager.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_LOGCTRL)/logctrl.a \
+					$(MODULE_MatchingEngine)/MatchingEngine.a \
 
 
 ESS_TRACK= $(addsuffix /* ,$(IDIR))

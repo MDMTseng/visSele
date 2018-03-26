@@ -12,6 +12,7 @@
 #include "cJSON.h"
 #include "logctrl.h"
 #include "VisSeleFeatureManager.h"
+#include "MatchingEngine.h"
 
 void printImgAscii(acvImage *img, int printwidth)
 {
@@ -300,13 +301,12 @@ char* ReadFile(char *filename)
 
 void cJSON_TEST()
 {
+  char *string = ReadFile("data/target.json");
   {
-    LOGV("\n===================");
-    char *string = ReadFile("data/target.json");
-    VisSeleFeatureManager docP(string);
-    free(string);
-    LOGV("\n===================");
+    MatchingEngine me;
+    me.AddMatchingFeature(string);
   }
+  free(string);
 }
 
 #include <vector>

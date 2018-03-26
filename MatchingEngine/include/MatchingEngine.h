@@ -11,8 +11,10 @@ using namespace std;
 
 class MatchingEngine {
   vector<VisSeleFeatureManager*> featureBundle;
+public:
   int AddMatchingFeature(const char *json_str);
   int AddMatchingFeature(VisSeleFeatureManager *featureSet);
+  ~MatchingEngine();
 };
 
 #endif

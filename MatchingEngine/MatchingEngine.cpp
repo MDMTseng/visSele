@@ -15,3 +15,12 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
   VisSeleFeatureManager *featureSet = new VisSeleFeatureManager(json_str);
   return AddMatchingFeature(featureSet);
 }
+
+MatchingEngine::~MatchingEngine()
+{
+  for(int i=0;i<featureBundle.size() ;i++)
+  {
+    free(featureBundle[i]);
+  }
+  featureBundle.resize(0);
+}
