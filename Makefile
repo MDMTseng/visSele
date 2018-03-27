@@ -28,9 +28,9 @@ MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
 EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_circleFitting)/circleFitting.a \
+					$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_LOGCTRL)/logctrl.a \
-					$(MODULE_MatchingEngine)/MatchingEngine.a \
 
 
 ESS_TRACK= $(addsuffix /* ,$(IDIR))

@@ -1,7 +1,7 @@
 
 MODULE_NAME=$(notdir $(basename $(CURDIR)))
 
-IDIR= ./ \
+IDIR= ./include_priv/ \
 			./include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_acvImage)/include \

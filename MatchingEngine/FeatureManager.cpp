@@ -1,7 +1,7 @@
 #include "FeatureManager.h"
 #include "logctrl.h"
 #include <stdexcept>
-#include <include_priv/MatchingCore.h>
+#include <MatchingCore.h>
 
 
 FeatureManager::FeatureManager(const char *json_str)
