@@ -5,11 +5,21 @@ using namespace std;
 #include <cstdlib>
 #include <ctime>
 #include "cJSON.h"
-#include "acvImage_BasicTool.hpp"
-
-
+#include "acvImage_ComponentLabelingTool.hpp"
 
 class FeatureManager {
+  protected:
+  cJSON *root;
+  int parse_jobj();
+public :
+  static bool check(cJSON *root);
+  FeatureManager(const char *json_str);
+  int reload(const char *json_str);
+  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg);
+};
+
+
+class FeatureManager_sig360_circle_line:public FeatureManager {
   typedef struct featureDef_circle{
     acv_Circle circleTar;
     float initMatchingMargin;
@@ -22,11 +32,11 @@ class FeatureManager {
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
   vector<acv_XY> contour_signature;
-  cJSON *root;
 public :
-  FeatureManager(const char *json_str);
+  FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg);
+  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg);
+  static bool check(cJSON *root);
 protected:
   int parse_circleData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);

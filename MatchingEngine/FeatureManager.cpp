@@ -4,15 +4,6 @@
 #include <MatchingCore.h>
 
 
-FeatureManager::FeatureManager(const char *json_str)
-{
-  root= NULL;
-  int ret = reload(json_str);
-  if(ret)
-    throw std::invalid_argument( "Error:DefineDocParser failed... " );
-}
-
-
 static int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
 {
   if(obj==NULL)
@@ -28,7 +19,7 @@ static int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
 
   if(obj->type & cJSON_String)
   {
-    *ret_ptr=&obj->valuestring;
+    *ret_ptr=obj->valuestring;
     return obj->type;
   }
 
@@ -57,7 +48,53 @@ static int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
   cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
   return getDataFromJsonObj(tmpObj,ret_ptr);
 }
-int FeatureManager::parse_circleData(cJSON * circle_obj)
+
+
+FeatureManager::FeatureManager(const char *json_str)
+{
+}
+
+bool FeatureManager::check(cJSON *root)
+{
+  return false;
+}
+
+int FeatureManager::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
+{
+  return 0;
+}
+
+int FeatureManager::parse_jobj()
+{
+  return 0;
+}
+
+
+FeatureManager_sig360_circle_line::FeatureManager_sig360_circle_line(const char *json_str): FeatureManager(json_str)
+{
+  root= NULL;
+  int ret = reload(json_str);
+  if(ret)
+    throw std::invalid_argument( "Error:FeatureManager_sig360_circle_line failed... " );
+}
+
+
+
+bool FeatureManager_sig360_circle_line::check(cJSON *root)
+{
+  char *str;
+  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
+  {
+    return -1;
+  }
+  if (strcmp("sig360_circle_line",str) == 0)
+  {
+    return true;
+  }
+  return false;
+}
+
+int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 {
   featureDef_circle cir;
   /*char* str = cJSON_Print(circle_obj);
@@ -106,7 +143,7 @@ int FeatureManager::parse_circleData(cJSON * circle_obj)
   featureCircleList.push_back(cir);
   return 0;
 }
-int FeatureManager::parse_lineData(cJSON * line_obj)
+int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 {
   featureDef_line line;
 
@@ -191,7 +228,7 @@ int FeatureManager::parse_lineData(cJSON * line_obj)
   return 0;
 }
 
-int FeatureManager::parse_signatureData(cJSON * signature_obj)
+int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj)
 {
 
   if( contour_signature.size()!=0 )
@@ -252,7 +289,7 @@ int FeatureManager::parse_signatureData(cJSON * signature_obj)
 
   return 0;
 }
-int FeatureManager::parse_jobj()
+int FeatureManager_sig360_circle_line::parse_jobj()
 {
   cJSON *subObj = cJSON_GetObjectItem(root,"type");
   const char *type_str = subObj?subObj->valuestring:NULL;
@@ -327,7 +364,7 @@ int FeatureManager::parse_jobj()
 }
 
 
-int FeatureManager::reload(const char *json_str)
+int FeatureManager_sig360_circle_line::reload(const char *json_str)
 {
   if(root)
   {
@@ -355,47 +392,8 @@ int FeatureManager::reload(const char *json_str)
   return 0;
 }
 
-
-int FeatureManager::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
-  /*buff->ReSize(img->GetWidth(), img->GetHeight());
-  acvCloneImage(img, buff, -1);
-  acvThreshold(buff, 250, 0);
-
-  static std::vector<acv_LabeledData> ldData;
-
-  acvDrawBlock(buff, 1, 1, buff->GetWidth() - 2, buff->GetHeight() - 2);
-  acvComponentLabeling(buff);
-  acvLabeledRegionInfo(buff, &ldData);
-  if(ldData.size()-1<1)
-  {
-    return ;
-  }
-  ldData[1].area = 0;
-  acvRemoveRegionLessThan(img, &ldData, 120);
-*/
-
-  std::vector<acv_LabeledData> ldData;
-
-
-
-  acvThreshold(img, 250, 0);
-  acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
-
-  acvComponentLabeling(img);
-  acvLabeledRegionInfo(img, &ldData);
-  if(ldData.size()-1<1)
-  {
-    return 0;
-  }
-  ldData[1].area = 0;
-
-  //Delete the object that has less than certain amount of area on ldData
-  //acvRemoveRegionLessThan(img, &ldData, 120);
-
-
-  acvCloneImage( img,buff, -1);
-
 
   static vector<acv_XY> signature;
   signature.resize(contour_signature.size());
