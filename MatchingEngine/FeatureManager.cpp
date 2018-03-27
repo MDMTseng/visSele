@@ -59,6 +59,11 @@ bool FeatureManager::check(cJSON *root)
   return false;
 }
 
+int FeatureManager::reload(const char *json_str)
+{
+  return -1;
+}
+
 int FeatureManager::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
   return 0;
