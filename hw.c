@@ -252,9 +252,14 @@ int testX()
   {
     printf("%f,",tar_signature[i].Y);
   }printf("]\n");*/
-
+  
+  clock_t t = clock();
 
   me.FeatureMatching(test1,test1_buff,NULL);
+
+  LOGV("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  t = clock();
+
   //ContourFeatureDetect(test1,test1_buff,tar_signature);
   acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
 

@@ -375,8 +375,6 @@ int FeatureManager::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
   acvRemoveRegionLessThan(img, &ldData, 120);
 */
 
-  clock_t t = clock();
-
   std::vector<acv_LabeledData> ldData;
 
 
@@ -419,8 +417,6 @@ int FeatureManager::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
   }
 
 
-  LOGV("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-  t = clock();
   LOGI(">>>>>>>>");
   return 0;
 }
