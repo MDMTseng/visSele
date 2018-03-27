@@ -301,16 +301,16 @@ char* ReadFile(char *filename)
 
        // fread doesn't set it so put a \0 in the last position
        // and buffer is now officially a string
-       buffer[string_size] = '\0';
+       buffer[read_size] = '\0';
 
-       if (string_size != read_size)
+       /*if (string_size != read_size)
        {
            // Something went wrong, throw away the memory and set
            // the buffer to NULL
            free(buffer);
            buffer = NULL;
        }
-
+       */
        // Always remember to close the file.
        fclose(handler);
     }
