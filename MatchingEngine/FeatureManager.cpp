@@ -262,12 +262,18 @@ int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj
     return -1;
   }
 
-
   if( cJSON_GetArraySize(signature_magnitude) != cJSON_GetArraySize(signature_angle) )
   {
     LOGE("The signature_angle and signature_magnitude doesn't have same length");
     return -1;
   }
+
+  if( cJSON_GetArraySize(signature_magnitude) != 360 )
+  {
+    LOGE("The signature size(%d) is not equal to 360",cJSON_GetArraySize(signature_magnitude));
+    return -1;
+  }
+
 
   for (int i = 0 ; i < cJSON_GetArraySize(signature_magnitude) ; i++)
   {
@@ -397,6 +403,16 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   return 0;
 }
 
+
+static acv_XY rotation(float sine,float cosine,float flip_f,acv_XY input)
+{
+  acv_XY output;
+  output.X = input.X*cosine-flip_f*input.Y*sine;
+  output.Y = input.X*sine  +flip_f*input.Y*cosine;
+  return output;
+}
+
+
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
 
@@ -413,10 +429,48 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       float error = SignatureMinMatching( signature,contour_signature,
         &isInv, &angle);
 
-      if(error<500)
+      LOGV("======%d===%f,%d,%f",i,error,isInv,angle*180/3.14159);
+
+      float cached_cos,cached_sin;
+      cached_cos=cos(-angle);
+      cached_sin=sin(-angle);
+      float flip_f=1;
+      if(isInv)
       {
-          LOGV("======%d===%f,%d,%f",i,error,isInv,angle*180/3.14159);
+        flip_f=-1;
       }
+
+      /*
+      acv_XY preXY={0};
+      for (int j = 0; j < signature.size(); j++)
+      {
+        acv_XY curXY={
+          .X=contour_signature[j].X*cos(contour_signature[j].Y),
+          .Y=contour_signature[j].X*sin(contour_signature[j].Y)
+        };
+        curXY = rotation(cached_sin,cached_cos,flip_f,curXY);
+        curXY.X+=ldData[i].Center.X;
+        curXY.Y+=ldData[i].Center.Y;
+        if(j!=0)
+        acvDrawLine(buff,
+          preXY.X,preXY.Y,
+          curXY.X,curXY.Y,
+          255,60,48);
+        preXY=curXY;
+      }*/
+      for (int j = 0; j < featureCircleList.size(); j++)
+      {
+        acv_XY center = rotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
+        LOGV("=%d===%f,%f   => %f,%f",j,featureCircleList[j].circleTar.circumcenter.X,featureCircleList[j].circleTar.circumcenter.Y,center.X,center.Y);
+
+        center.X+=ldData[i].Center.X;
+        center.Y+=ldData[i].Center.Y;
+        acvDrawCrossX(buff,
+          center.X,center.Y,
+          5,3);
+      }
+
+
   }
 
 

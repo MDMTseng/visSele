@@ -33,6 +33,9 @@ float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
                              const std::vector<acv_XY> &tar_signature, int stride);
 int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate, float *min_error);
+
+//The return is the angle from signature to tar_signature
+//signature o rotate(angle) = tar_signature
 float SignatureAngleMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, float *min_error);
 

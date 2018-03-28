@@ -428,7 +428,10 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
 {
     int roughSearchSampleRate=6;//magic number// signature.size() / 160;
     int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate, min_error);
-    float angle = matchingIdx * 2 * M_PI / signature.size();
+
+    //The offset apply to signature (array) means negative rotation.
+    // f(x+5) means offset the graph negative (to left) 
+    float angle = -matchingIdx * 2 * M_PI / signature.size();
     if (angle < -M_PI)
         angle += 2 * M_PI;
     else if (angle > M_PI)
