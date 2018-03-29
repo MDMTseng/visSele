@@ -8,5 +8,7 @@
 #include <unistd.h>
 
 void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature);
+void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,
+  std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines);
 
 #endif

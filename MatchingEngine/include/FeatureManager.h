@@ -52,9 +52,6 @@ public :
   static bool check(cJSON *root);
   cJSON *jobj;
 protected:
-  int extract_circleData(cJSON * circle_obj);
-  int extract_lineData(cJSON * line_obj);
-  int extract_signatureData(cJSON * signature_obj);
   int parse_jobj() override;
 };
 #endif

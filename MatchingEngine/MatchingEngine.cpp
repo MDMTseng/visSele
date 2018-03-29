@@ -1,5 +1,6 @@
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
+#include "logctrl.h"  
 
 int MatchingEngine::AddMatchingFeature(FeatureManager *featureSet)
 {
@@ -22,12 +23,20 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     return -1;
   }
 
-  if(FeatureManager::check(root))
+  if(FeatureManager_sig360_circle_line::check(root))
   {
-  }
-  else if(FeatureManager_sig360_circle_line::check(root))
-  {
+
+    LOGI("FeatureManager_sig360_circle_line is the type...");
     featureSet = new FeatureManager_sig360_circle_line(json_str);
+  }
+  else if(FeatureManager_sig360_extractor::check(root))
+  {
+    LOGI("FeatureManager_sig360_extractor is the type...");
+    featureSet = new FeatureManager_sig360_extractor(json_str);
+  }
+  else
+  {
+    LOGE("Cannot find a corresponding type...");
   }
   cJSON_Delete(root);
   return AddMatchingFeature(featureSet);

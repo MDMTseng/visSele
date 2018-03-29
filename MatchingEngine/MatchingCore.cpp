@@ -669,14 +669,21 @@ float CircleSimilarity(acv_Circle c1,acv_Circle c2)
 
 float LineSimilarity(acv_Line line1,acv_Line line2,float epsilon)
 {
+
   float ang= acvLineAngle(line1,line2);
   if(ang>M_PI_2)ang=M_PI-ang;
-  if(ang>0.2)return 0;//around 0.4deg
-
-
-  if( !isnormal(ang) )return 0;
+  if(ang<0)ang=-ang;
+  if(ang>0.4)return 0.0001;//around 0.4deg
+  if( !isnormal(ang) )
+  {
+    return 0.0002;
+  }
   float sim = (M_PI_2-ang)/M_PI_2;
   float dist = acvDistance(line1, line2.line_anchor);
+  if(dist>epsilon)
+  {
+    return 0.0003;
+  }
   return sim*(epsilon-dist)/epsilon;
 }
 int findTheMostSimilarLineIdx(acv_Line line,const vector<acv_LineFit> &lineList,float epsilon, float *similarity)
@@ -721,7 +728,7 @@ int findTheMostSimilarCircleIdx(acv_Circle circle,const vector<acv_CircleFit> &c
   return idx;
 }
 
-int refineMatchedCircle(vector<acv_CircleFit> &circleList,int simThres)
+int refineMatchedCircle(vector<acv_CircleFit> &circleList,float simThres)
 {
   int idx=-1;
   float max_sim=0;
@@ -758,6 +765,44 @@ int refineMatchedCircle(vector<acv_CircleFit> &circleList,int simThres)
     w_h++;
   }
   circleList.resize(w_h);
+}
+int refineMatchedLine(vector<acv_LineFit> &LineList,float simThres)
+{
+  int idx=-1;
+  float max_sim=0;
+
+  for(int i=0;i<(LineList.size()-1);i++)
+  {
+    if(LineList[i].matching_pts==0)continue;
+    float matchingScore1 = LineList[i].matching_pts;
+    for(int j=i+1;j<LineList.size();j++)
+    {
+      if(LineList[j].matching_pts==0)continue;
+      float sim= LineSimilarity(LineList[i].line,LineList[j].line,3);
+      if(sim<simThres)continue;
+
+      float matchingScore2 = LineList[j].matching_pts;
+      if(matchingScore2>matchingScore1)
+      {
+        LineList[i].matching_pts = 0;
+        break;
+      }
+      else
+      {
+        LineList[j].matching_pts = 0;
+      }
+    }
+  }
+
+  int w_h=0;
+  for(int i=0;i<LineList.size();i++)
+  {
+    if(LineList[i].matching_pts==0)continue;
+    if(w_h!=i)
+      LineList[w_h]=LineList[i];
+    w_h++;
+  }
+  LineList.resize(w_h);
 }
 
 bool CircleFitTest(contour_grid &contourGrid,
@@ -910,7 +955,7 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
     acvFitLine(pts, 4,&line1);
     float similarity=0;
     int sim_idx=findTheMostSimilarLineIdx(line1,detectedLines,epsilon,&similarity);
-    if(similarity>simThres/5)
+    if(similarity>simThres)
     {
       continue;
     }
@@ -927,7 +972,8 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
 
 
 
-void ffff(acvImage *img,acvImage *buff)
+void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,
+  std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines)
 {
 
     clock_t t = clock();
@@ -935,8 +981,6 @@ void ffff(acvImage *img,acvImage *buff)
     static vector<acv_XY> innerCornorContour;
     static vector<acv_XY> lineContour;
 
-    static vector<acv_CircleFit> detectedCircles;
-    static vector<acv_LineFit> detectedLines;
     int grid_size = 50;
     static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
     static contour_grid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
@@ -988,87 +1032,29 @@ void ffff(acvImage *img,acvImage *buff)
 
 
 //inward_curve_grid  straight_line_grid
-    int gridG_W = 2;
-    int gridG_H = 2;
+    int gridG_W = 4;
+    int gridG_H = 4;
 
     detectedCircles.resize(0);
     detectedLines.resize(0);
 
-    {
-      {
-        acv_Circle init_guess;
-        init_guess.circumcenter.X=157;
-        init_guess.circumcenter.Y=134;
-        init_guess.radius=72;
-
-        acv_CircleFit result;
-        if(CircleFitTest(inward_curve_grid,init_guess,&result,5,1.5,0.3) == true)
-        {
-          detectedCircles.push_back(result);
-        }
-      }
-
-      {
-        straight_line_grid.setSecROI(2,1,5,1);
-        acv_XY p1={.X=157,.Y=60};
-        acv_XY p2={.X=330,.Y=59};
-        acv_XY ps[]={p1,p2};
-        acv_Line init_guess;
-        acvFitLine(ps, 2, &init_guess);
-        acv_LineFit result;
-        if(LineFitTest(straight_line_grid,init_guess,&result,4,1,50) == true)
-        {
-          detectedLines.push_back(result);
-        }
-      }
-    }
-
-
-
-    /*for(int i=0;i<sizeof(circleRegion)/sizeof(circleRegion[0]);i++)
-    {
-      SecRegionCircleFit(inward_curve_grid,
-        circleRegion[i].X,circleRegion[i].Y,
-        circleRegion[i].W,circleRegion[i].H,
-        40,0.2,0.01,detectedCircles);
-
-    }*/
-
-
-
-
-    /*
-    struct XXXX lineRegion[]={
-      {3,0,5,2},
-    };
-
-    for(int i=0;i<sizeof(lineRegion)/sizeof(lineRegion[0]);i++)
-    {
-
-      SecRegionLineFit(straight_line_grid,
-        lineRegion[i].X,lineRegion[i].Y,
-        lineRegion[i].W,lineRegion[i].H,
-        40,0.8,0.005,detectedLines);
-    }*/
-
-
-
-
-
-    /*for(int i=0;i<inward_curve_grid.getRowSize()-gridG_H;i++)
+    for(int i=0;i<inward_curve_grid.getRowSize()-gridG_H;i++)
     {
       for(int j=0;j<inward_curve_grid.getColumSize()-gridG_W;j++)
       {
         //inward_curve_grid.setSecROI(j,i,gridG_W,gridG_H);
         //straight_line_grid.setSecROI(j,i,gridG_W,gridG_H);
         SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.2,0.01,detectedCircles);
-        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.8,0.005,detectedLines);
+        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.8,0.01,detectedLines);
       }
-    }*/
+    }
 
 
     refineMatchedCircle(detectedCircles,0.8);
 
+    LOGV("detectedLines.size()=%d \n", detectedLines.size());
+    refineMatchedLine(detectedLines,0.9);
+    LOGV("detectedLines.size()=%d \n", detectedLines.size());
 
     t = clock() - t;
     logv("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);

@@ -666,7 +666,8 @@ float acvDistance(acv_Line line, acv_XY point)
 
 float acvLineAngle(acv_Line line1,acv_Line line2)
 {//acos range 0~pi
-  return acos(line1.line_vec.X*line2.line_vec.X+line1.line_vec.Y*line2.line_vec.Y);
+  float reg=hypot(line1.line_vec.X,line1.line_vec.Y)*hypot(line2.line_vec.X,line2.line_vec.Y);
+  return acos((line1.line_vec.X*line2.line_vec.X+line1.line_vec.Y*line2.line_vec.Y)/reg);
 }
 // Construct line from points
 

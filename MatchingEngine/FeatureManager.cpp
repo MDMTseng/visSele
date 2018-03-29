@@ -44,9 +44,10 @@ FeatureManager_sig360_circle_line::FeatureManager_sig360_circle_line(const char 
 bool FeatureManager_sig360_circle_line::check(cJSON *root)
 {
   char *str;
+  LOGI("FeatureManager_sig360_circle_line>>>");
   if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
   {
-    return -1;
+    return false;
   }
   if (strcmp("sig360_circle_line",str) == 0)
   {
