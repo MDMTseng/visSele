@@ -44,4 +44,17 @@ protected:
   int parse_jobj() override;
 };
 
+class FeatureManager_sig360_extractor:public FeatureManager {
+public :
+  FeatureManager_sig360_extractor(const char *json_str);
+  int reload(const char *json_str) override;
+  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
+  static bool check(cJSON *root);
+  cJSON *jobj;
+protected:
+  int extract_circleData(cJSON * circle_obj);
+  int extract_lineData(cJSON * line_obj);
+  int extract_signatureData(cJSON * signature_obj);
+  int parse_jobj() override;
+};
 #endif

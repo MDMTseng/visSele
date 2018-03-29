@@ -2,52 +2,8 @@
 #include "logctrl.h"
 #include <stdexcept>
 #include <MatchingCore.h>
+#include <common_lib.h>
 
-
-static int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
-{
-  if(obj==NULL)
-  {
-    return cJSON_Invalid;
-  }
-
-  if(obj->type & cJSON_Number)
-  {
-    *ret_ptr=&obj->valuedouble;
-    return cJSON_Number;
-  }
-
-  if(obj->type & cJSON_String)
-  {
-    *ret_ptr=obj->valuestring;
-    return obj->type;
-  }
-
-  if(obj->type & cJSON_Array)
-  {
-    *ret_ptr=obj;
-    return obj->type;
-  }
-
-  if(obj->type & cJSON_Object)
-  {
-    *ret_ptr=obj;
-    return obj->type;
-  }
-
-  return cJSON_Invalid;
-}
-static int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr)
-{
-  cJSON *tmpObj = cJSON_GetArrayItem(obj,idx);
-  return getDataFromJsonObj(tmpObj,ret_ptr);
-}
-static int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
-{
-
-  cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
-  return getDataFromJsonObj(tmpObj,ret_ptr);
-}
 
 
 FeatureManager::FeatureManager(const char *json_str)
@@ -403,16 +359,6 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   return 0;
 }
 
-
-static acv_XY rotation(float sine,float cosine,float flip_f,acv_XY input)
-{
-  acv_XY output;
-  output.X = input.X*cosine-flip_f*input.Y*sine;
-  output.Y = input.X*sine  +flip_f*input.Y*cosine;
-  return output;
-}
-
-
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
 
@@ -448,7 +394,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           .X=contour_signature[j].X*cos(contour_signature[j].Y),
           .Y=contour_signature[j].X*sin(contour_signature[j].Y)
         };
-        curXY = rotation(cached_sin,cached_cos,flip_f,curXY);
+        curXY = XY_rotation(cached_sin,cached_cos,flip_f,curXY);
         curXY.X+=ldData[i].Center.X;
         curXY.Y+=ldData[i].Center.Y;
         if(j!=0)
@@ -460,7 +406,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       }*/
       for (int j = 0; j < featureCircleList.size(); j++)
       {
-        acv_XY center = rotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
+        acv_XY center = XY_rotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
         LOGV("=%d===%f,%f   => %f,%f",j,featureCircleList[j].circleTar.circumcenter.X,featureCircleList[j].circleTar.circumcenter.Y,center.X,center.Y);
 
         center.X+=ldData[i].Center.X;

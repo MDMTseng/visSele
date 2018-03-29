@@ -6,14 +6,18 @@ export MODULE_circleFitting=$(abspath contrib/circleFitting)
 export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_LOGCTRL=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
+export MODULE_common_lib=$(abspath common_lib)
 
 export SO_EXPORT_PATH=$(abspath .)
 
 
 target_bin=visSele
 ODIR=obj
-IDIR=acvImage/include/ MLNN/include/ include/ \
+IDIR=	include/ \
+			$(MODULE_acvImage)/include/ \
+			$(MODULE_MLNN)/include/  \
 			$(MODULE_circleFitting) \
+			$(MODULE_common_lib)/include \
 			$(MODULE_cJSON) \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
@@ -31,10 +35,12 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_LOGCTRL)/logctrl.a \
+					$(MODULE_common_lib)/common_lib.a \
 
 
 ESS_TRACK= $(addsuffix /* ,$(IDIR))
 SUB_MAKEFILES = $(MODULE_acvImage) \
+								$(MODULE_common_lib) \
 								$(MODULE_MLNN) \
 								$(MODULE_circleFitting) \
 								$(MODULE_cJSON) \
