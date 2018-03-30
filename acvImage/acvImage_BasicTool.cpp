@@ -664,6 +664,22 @@ float acvDistance(acv_Line line, acv_XY point)
 }
 
 
+float acvVectorAngle(acv_XY v1,acv_XY v2)
+{//acos range 0~pi
+
+  float ang=atan2(v1.X,v1.Y);
+  ang-=atan2(v2.X,v2.Y);
+  if(ang>M_PI)
+  {
+    ang-=2*M_PI;
+  }
+  else if(ang<=-M_PI)
+  {
+    ang+=2*M_PI;
+  }
+
+  return ang;//-pi~pi
+}
 float acvLineAngle(acv_Line line1,acv_Line line2)
 {//acos range 0~pi
   float reg=hypot(line1.line_vec.X,line1.line_vec.Y)*hypot(line2.line_vec.X,line2.line_vec.Y);

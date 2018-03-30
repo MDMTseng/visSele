@@ -578,6 +578,13 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
     return 0;
 }
 
+float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
+{
+  acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};
+  acv_XY v2={.X=pc.X-p2.X,.Y=pc.Y-p2.Y};
+  return acvVectorAngle(v1,v2);
+}
+
 void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,vector<acv_XY> &lineContour)
 {
     const int L = contour.size();
@@ -585,43 +592,46 @@ void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,ve
     float crossP_LF_sum=0;
 
     const int Dist=10;
-    float epsilon=Dist*Dist/33.3f;
+    float epsilon=0.04;
 
     float crossPHist[Dist*2];
     int crossPHist_head=0;
 
     for(int i=-Dist ;i<Dist;i++)
     {
-      float crossP=acvVectorOrder(
+
+      float angle=acvPoint3Angle(
         contour[valueWarping(i-Dist,L)],
         contour[valueWarping(i     ,L)],
         contour[                i+Dist]);
 
-      crossPHist[i+Dist] =crossP;
-      crossP_LF_sum+=crossP;
+      crossPHist[i+Dist] =angle;
+      crossP_LF_sum+=angle;
     }
     crossPHist_head=0;
 
-    printf("\n");
     for(int i=0;i<L;i++)
     {
 
       //Filter out Non-inward contour
       //Cross product
-      float crossP=acvVectorOrder(
+
+      float angle=acvPoint3Angle(
         contour[                       i],
         contour[valueWarping(i+  Dist,L)],
         contour[valueWarping(i+2*Dist,L)]);
-
-      crossP_LF_sum=crossP_LF_sum+crossP-crossPHist[crossPHist_head];
+      crossP_LF_sum=crossP_LF_sum+angle-crossPHist[crossPHist_head];
 
       float crossP_LF=crossP_LF_sum/(Dist*2+1);
-      crossPHist[crossPHist_head] = crossP;
+      crossPHist[crossPHist_head] = angle;
       crossPHist_head = valueWarping(crossPHist_head+1,Dist*2);
 
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
 
+      if(crossP_LF<-7*epsilon){
+        continue;
+      }//Inner curve
       if(crossP_LF<-epsilon){
         innerCornorContour.push_back(contour[i]);
       }//Inner curve
@@ -671,7 +681,6 @@ float CircleSimilarity(acv_Circle c1,acv_Circle c2)
   return sim*cc_sim;
 }
 
-bool start_logging=false;
 float LineSimilarity(acv_Line line1,acv_Line line2,float epsilon)
 {
 
@@ -770,7 +779,7 @@ int refineMatchedCircle(vector<acv_CircleFit> &circleList,float simThres,float s
   {
     if(circleList[i].matching_pts==0)
     {
-      printf(">>>>%d\n",w_h);
+      //printf(">>>>%d\n",w_h);
       continue;
     }
     if(w_h!=i)
@@ -985,10 +994,10 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
     }
     //printf("%f\n",similarity);
     acv_LineFit lf;
-    if(LineFitTest(contourGrid,line1,&lf,3,3,80) == true)
+    if(LineFitTest(contourGrid,line1,&lf,3,3,40) == true)
     {
       findTheMostSimilarLineIdx(lf.line,detectedLines,epsilon, &similarity);
-      if(similarity<0.95)
+      if(similarity<0.90)
         detectedLines.push_back(lf);
     }
 
@@ -1066,7 +1075,6 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
     detectedCircles.resize(0);
     detectedLines.resize(0);
 
-        start_logging=true;
     for(int i=0;i<inward_curve_grid.getRowSize()-gridG_H;i++)
     {
       for(int j=0;j<inward_curve_grid.getColumSize()-gridG_W;j++)
@@ -1074,7 +1082,7 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
         //inward_curve_grid.setSecROI(j,i,gridG_W,gridG_H);
         //straight_line_grid.setSecROI(j,i,gridG_W,gridG_H);
         SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.2,0.01,detectedCircles);
-        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,10,0.8,0.05,detectedLines);
+        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.9,0.05,detectedLines);
       }
     }
 
@@ -1083,10 +1091,10 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
 
     for(int i=0;i<detectedCircles.size();i++)
     {
-      LOGV("~[%d]~%f, matching_pts:%d,%f",i,detectedCircles[i].s,detectedCircles[i].matching_pts);
+      LOGV("~[%d]~%f, matching_pts:%d",i,detectedCircles[i].s,detectedCircles[i].matching_pts);
     }
     LOGV("detectedLines.size()=%d \n", detectedLines.size());
-    refineMatchedLine(detectedLines,0.9,1.2);
+    refineMatchedLine(detectedLines,0.9,0.8);
     LOGV("detectedLines.size()=%d \n", detectedLines.size());
 
     for(int i=0;i<detectedLines.size();i++)
@@ -1130,7 +1138,7 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
               buff->CVector[Y][X*3+1]=255;
         }
     }
-    //return ;
+
     for(int i=0;i<detectedCircles.size();i++)
     {
         if(detectedCircles[i].s>0.9)
