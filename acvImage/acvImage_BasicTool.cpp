@@ -671,7 +671,7 @@ float acvLineAngle(acv_Line line1,acv_Line line2)
 }
 // Construct line from points
 
-bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line) {
+bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
   int nPoints = ptsL;
   if( nPoints < 2 ) {
     // Fail: infinitely many lines passing through this single point
@@ -687,12 +687,17 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line) {
   float xMean = sumX / nPoints;
   float yMean = sumY / nPoints;
   float denominator = sumX2 - sumX * xMean;
+  if(denominator==0)
+  {
+    return false;
+  }
 
   line->line_vec.Y =  (sumXY - sumX * yMean);
   line->line_vec.X =  denominator;
   denominator = hypot(line->line_vec.X,line->line_vec.Y);
   line->line_vec.X /=denominator;
   line->line_vec.Y /=denominator;
+
 
   line->line_anchor.X = xMean;
   line->line_anchor.Y = yMean;
@@ -705,5 +710,14 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line) {
   line_vec = (b,a)
   line_anchor = (0,c)+n*(b,a)
   */
+  if(ret_sigma)
+  {
+    float sigma=0;
+    for(int i=0; i<nPoints; i++) {
+      float dist=acvDistance_Signed(*line, pts[i]);
+      sigma+=dist*dist;
+    }
+    *ret_sigma=sqrt(sigma/nPoints);
+  }
   return true;
 }

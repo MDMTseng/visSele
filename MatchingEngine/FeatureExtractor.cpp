@@ -101,7 +101,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   vector<acv_CircleFit> detectedCircles;
   vector<acv_LineFit> detectedLines;
   acvContourCircleSignature(img, ldData[idx], idx, signature);
-  MatchingCore_CircleLineExtraction(img,buff,detectedCircles,detectedLines);
+  MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
 
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
