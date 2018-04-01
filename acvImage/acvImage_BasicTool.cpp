@@ -687,7 +687,7 @@ float acvLineAngle(acv_Line line1,acv_Line line2)
 }
 // Construct line from points
 
-bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
+bool acvFitLineX(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
   int nPoints = ptsL;
   if( nPoints < 2 ) {
     // Fail: infinitely many lines passing through this single point
@@ -703,14 +703,14 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
   float xMean = sumX / nPoints;
   float yMean = sumY / nPoints;
   float denominator = sumX2 - sumX * xMean;
-  if(denominator==0)
-  {
-    return false;
-  }
 
   line->line_vec.Y =  (sumXY - sumX * yMean);
   line->line_vec.X =  denominator;
   denominator = hypot(line->line_vec.X,line->line_vec.Y);
+  if(denominator==0)
+  {
+    return false;
+  }
   line->line_vec.X /=denominator;
   line->line_vec.Y /=denominator;
 
@@ -736,4 +736,85 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
     *ret_sigma=sqrt(sigma/nPoints);
   }
   return true;
+}
+
+
+bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
+{
+  int nPoints = ptsL;
+  if( nPoints < 2 || pts==NULL || line==NULL) {
+    // Fail: infinitely many lines passing through this single point
+    return false;
+  }
+    // some variable declarations
+  long int sumx=0, sumy=0, sumxx=0, sumyy=0, sumxy=0,npix=0;
+  float xbar, ybar, varx, vary, covxy, sumvars, diffvars;
+  float discriminant, sqrtdiscr, lambdaplus, lambdaminus;
+  float aplus, bplus, aminus, bminus;
+
+  for(int i=0; i<nPoints; i++) {
+
+    sumx+=pts[i].X;
+    sumy+=pts[i].Y;
+    sumxx+=pts[i].X * pts[i].X;
+    sumyy+=pts[i].Y * pts[i].Y;
+    sumxy+=pts[i].X * pts[i].Y;
+  }
+  npix=nPoints;
+
+  // baricenter
+  xbar = ((float)sumx)/npix;
+  ybar = ((float)sumy)/npix;
+  // variances and covariance
+  varx = sumxx/npix - xbar*xbar;
+  vary = sumyy/npix - ybar*ybar;
+  covxy = sumxy/npix - xbar*ybar;
+  sumvars = varx + vary;
+  diffvars = varx - vary;
+  discriminant = diffvars*diffvars + 4*covxy*covxy;
+  sqrtdiscr = sqrt(discriminant);
+
+  // eigenvalues
+  lambdaplus = (sumvars + sqrtdiscr)/2;
+  lambdaminus = (sumvars - sqrtdiscr)/2;
+  //eigenvectors - these are the components of the two vectors
+  aplus = varx + covxy - lambdaminus;
+  bplus = vary + covxy - lambdaminus;
+  //aminus = varx + covxy - lambdaplus;
+  //bminus = vary + covxy - lambdaplus;
+
+  float denominator = hypot(aplus,bplus);
+  if( denominator < 1e-7) {
+    return false;
+  }
+  line->line_vec.Y =  bplus/denominator;
+  line->line_vec.X =  aplus/denominator;
+
+  line->line_anchor.X = xbar;
+  line->line_anchor.Y = ybar;
+  if(ret_sigma)
+  {
+    float sigma=0;
+    for(int i=0; i<nPoints; i++) {
+      float dist=acvDistance_Signed(*line, pts[i]);
+      sigma+=dist*dist;
+    }
+    *ret_sigma=sqrt(sigma/nPoints);
+  }
+  return true;
+
+  /*// normalizing the vectors
+  float aParallel; float bParallel;
+  float aNormal; float bNormal;
+  float denomPlus = sqrtf(aplus*aplus + bplus*bplus);
+  float denomMinus= sqrtf(aminus*aminus + bminus*bminus);
+  aParallel = aplus/denomPlus;
+  bParallel = bplus/denomPlus;
+  aNormal = aminus/denomMinus;
+  bNormal = bminus/denomMinus;
+  // semi axes
+  float k = 2; // scale factor
+  float majoraxis = k*sqrtf(lambdaplus);
+  float nimoraxis = k*sqrtf(lambdaminus);*/
+
 }
