@@ -406,24 +406,36 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       {
         acv_XY center = XY_rotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
 
+        int matching_tor=2;
         center.X+=ldData[i].Center.X;
         center.Y+=ldData[i].Center.Y;
-        inward_curve_grid.getContourPointsWithInCircleContour(center.X,center.Y,featureCircleList[j].circleTar.radius,4,
+        inward_curve_grid.getContourPointsWithInCircleContour(center.X,center.Y,featureCircleList[j].circleTar.radius,matching_tor*2,
           s_intersectIdxs,s_points);
-
-
-        LOGV("=%d===%f,%f   => %f,%f, matching_pts:%d",
-        j,featureCircleList[j].circleTar.circumcenter.X,featureCircleList[j].circleTar.circumcenter.Y,center.X,center.Y,s_points.size());
 
         acv_CircleFit cf;
         circleRefine(s_points,&cf);
+
+
+        inward_curve_grid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,matching_tor,
+          s_intersectIdxs,s_points);
+        circleRefine(s_points,&cf);
+
+
         acvDrawCrossX(buff,
           center.X,center.Y,
           5,3);
+
         acvDrawCircle(buff,
         cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
         cf.circle.radius,
         20,255, 0, 0);
+
+        LOGV("=%d===%f,%f   => %f,%f, dist:%f matching_pts:%d",
+        j,featureCircleList[j].circleTar.circumcenter.X,featureCircleList[j].circleTar.circumcenter.Y,center.X,center.Y,
+        hypot(cf.circle.circumcenter.X-center.X,cf.circle.circumcenter.Y-center.Y),
+        s_points.size());
+
+
 
       }
 
