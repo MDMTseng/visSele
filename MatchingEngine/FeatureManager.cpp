@@ -313,7 +313,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
          return -1;
        }
      }
-     else if(strcmp(feature_type, "contour signature")==0)
+     else if(strcmp(feature_type, "contour_signature")==0)
      {
        if(parse_signatureData(feature)!=0)
        {
@@ -326,6 +326,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
        LOGE("feature[%d] has unknown type:[%s]",i,feature_type);
        return -1;
      }
+  }
+
+  if(contour_signature.size()==0)
+  {
+    LOGE("No signature data");
+    return -1;
   }
 
   return 0;
@@ -387,24 +393,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         flip_f=-1;
       }
 
-      /*
-      acv_XY preXY={0};
-      for (int j = 0; j < signature.size(); j++)
-      {
-        acv_XY curXY={
-          .X=contour_signature[j].X*cos(contour_signature[j].Y),
-          .Y=contour_signature[j].X*sin(contour_signature[j].Y)
-        };
-        curXY = XY_rotation(cached_sin,cached_cos,flip_f,curXY);
-        curXY.X+=ldData[i].Center.X;
-        curXY.Y+=ldData[i].Center.Y;
-        if(j!=0)
-        acvDrawLine(buff,
-          preXY.X,preXY.Y,
-          curXY.X,curXY.Y,
-          255,60,48);
-        preXY=curXY;
-      }*/
       for (int j = 0; j < featureCircleList.size(); j++)
       {
         acv_XY center = XY_rotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);

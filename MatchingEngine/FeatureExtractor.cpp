@@ -93,7 +93,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
     LOGE("Cannot find one component for extractor");
     return -1;
   }
-
+  acv_XY center=ldData[idx].Center;
   LOGI("Find the component => idx:%d",idx);
   LOGI(">>>Center X:%f Y:%f...",ldData[idx].Center.X,ldData[idx].Center.Y);
   LOGI(">>>LTBound X:%f Y:%f...",ldData[idx].LTBound.X,ldData[idx].LTBound.Y);
@@ -106,6 +106,56 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
 
+  for(int i=0;i<detectedCircles.size();i++)
+  {
+      if(detectedCircles[i].s>0.9)
+      {
+        logv(">>SKIP...\n");
+        continue;
+      }
+      LOGV(">>cc.X:%f cc.Y:%f r:%f;   s:%f pts:%d",
+        detectedCircles[i].circle.circumcenter.X-center.X,detectedCircles[i].circle.circumcenter.Y-center.Y,
+        detectedCircles[i].circle.radius,
+        detectedCircles[i].s,detectedCircles[i].matching_pts
+      );
+      /*acvDrawCircle(buff,
+        detectedCircles[i].circle.circumcenter.X, detectedCircles[i].circle.circumcenter.Y,
+        detectedCircles[i].circle.radius,
+        20,255, 0, 0);*/
+
+  }
+
+  for(int i=0;i<detectedLines.size();i++)
+  {
+    acv_Line line = detectedLines[i].line;
+    LOGV(">>anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f;  s:%f pts:%d",
+      line.line_anchor.X-center.X,line.line_anchor.Y-center.Y,
+      line.line_vec.X,line.line_vec.Y,
+      detectedLines[i].s,detectedLines[i].matching_pts
+    );
+    /*float mult=100;
+      acvDrawLine(buff,
+        line.line_anchor.X-mult*line.line_vec.X,
+        line.line_anchor.Y-mult*line.line_vec.Y,
+        line.line_anchor.X+mult*line.line_vec.X,
+        line.line_anchor.Y+mult*line.line_vec.Y,
+        20,255,128);*/
+
+  }
+
+
+  logv("\"magnitude\":[");
+  for(int i=0;i<signature.size();i++)
+  {
+    logv("%f,",signature[i].X);
+  }logv("],\n");
+
+
+  logv("\"angle\":[");
+  for(int i=0;i<signature.size();i++)
+  {
+    logv("%f,",signature[i].Y);
+  }logv("]\n");
 
   return 0;
 }

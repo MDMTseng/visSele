@@ -1089,18 +1089,7 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
 
     refineMatchedCircle(detectedCircles,0.8,1.2);
 
-    for(int i=0;i<detectedCircles.size();i++)
-    {
-      LOGV("~[%d]~%f, matching_pts:%d",i,detectedCircles[i].s,detectedCircles[i].matching_pts);
-    }
-    LOGV("detectedLines.size()=%d \n", detectedLines.size());
     refineMatchedLine(detectedLines,0.9,0.8);
-    LOGV("detectedLines.size()=%d \n", detectedLines.size());
-
-    for(int i=0;i<detectedLines.size();i++)
-    {
-      LOGV("~[%d]~%f, matching_pts:%d",i,detectedLines[i].s,detectedLines[i].matching_pts);
-    }
     t = clock() - t;
     logv("%fms \n", ((double)t) / CLOCKS_PER_SEC * 1000);
 
@@ -1137,37 +1126,6 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
               buff->CVector[Y][X*3+2]=255;
               buff->CVector[Y][X*3+1]=255;
         }
-    }
-
-    for(int i=0;i<detectedCircles.size();i++)
-    {
-        if(detectedCircles[i].s>0.9)
-        {
-          logv(">>SKIP...\n");
-          continue;
-        }
-        acvDrawCircle(buff,
-          detectedCircles[i].circle.circumcenter.X, detectedCircles[i].circle.circumcenter.Y,
-          detectedCircles[i].circle.radius,
-          20,255, 0, 0);
-
-    }
-
-    for(int i=0;i<detectedLines.size();i++)
-    {
-      acv_Line line = detectedLines[i].line;
-      /*printf(">>%f %f %f %f\n",
-        line.line_anchor.X,line.line_anchor.Y,
-        line.line_vec.X,line.line_vec.Y
-      );*/
-      float mult=100;
-        acvDrawLine(buff,
-          line.line_anchor.X-mult*line.line_vec.X,
-          line.line_anchor.Y-mult*line.line_vec.Y,
-          line.line_anchor.X+mult*line.line_vec.X,
-          line.line_anchor.Y+mult*line.line_vec.Y,
-          20,255,128);
-
     }
 
 }
