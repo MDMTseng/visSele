@@ -13,4 +13,5 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
 
 void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourGrid &inward_curve_grid, ContourGrid &straight_line_grid,int scanline_skip);
 
+void circleRefine(std::vector<acv_XY> &pointsInRange,acv_CircleFit *circleF);
 #endif
