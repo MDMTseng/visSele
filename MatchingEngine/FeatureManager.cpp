@@ -193,9 +193,9 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj)
 {
 
-  if( contour_signature.size()!=0 )
+  if( feature_signature.size()!=0 )
   {
-    LOGE("contour_signature:size()=%d is set already. There can only be one signature feature.",contour_signature.size());
+    LOGE("feature_signature:size()=%d is set already. There can only be one signature feature.",feature_signature.size());
     return -1;
   }
 
@@ -247,7 +247,7 @@ int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj
     }
     acv_XY dat={.X=*pnum_mag,.Y=*pnum_ang};
 
-    contour_signature.push_back(dat);
+    feature_signature.push_back(dat);
     /*cJSON * feature = cJSON_GetArrayItem(signature, i);
     LOGI(" %f",type_str,ver_str,unit_str);*/
   }
@@ -313,7 +313,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
          return -1;
        }
      }
-     else if(strcmp(feature_type, "contour_signature")==0)
+     else if(strcmp(feature_type, "feature_signature")==0)
      {
        if(parse_signatureData(feature)!=0)
        {
@@ -328,7 +328,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
   }
 
-  if(contour_signature.size()==0)
+  if(feature_signature.size()==0)
   {
     LOGE("No signature data");
     return -1;
@@ -346,7 +346,7 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   }
   featureCircleList.resize(0);
   featureLineList.resize(0);
-  contour_signature.resize(0);
+  feature_signature.resize(0);
 
   root = cJSON_Parse(json_str);
   if(root==NULL)
@@ -359,7 +359,7 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   {
     featureCircleList.resize(0);
     featureLineList.resize(0);
-    contour_signature.resize(0);
+    feature_signature.resize(0);
     reload("");
     return -2;
   }
@@ -369,17 +369,16 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
 
-  static vector<acv_XY> signature;
-  signature.resize(contour_signature.size());
+  tmp_signature.resize(feature_signature.size());
 
   for (int i = 1; i < ldData.size(); i++)
   {
       if(ldData[i].area<120)continue;
-      acvContourCircleSignature(img, ldData[i], i, signature);
+      acvContourCircleSignature(img, ldData[i], i, tmp_signature);
 
       bool isInv;
       float angle;
-      float error = SignatureMinMatching( signature,contour_signature,
+      float error = SignatureMinMatching( tmp_signature,feature_signature,
         &isInv, &angle);
 
       LOGV("======%d===%f,%d,%f",i,error,isInv,angle*180/3.14159);

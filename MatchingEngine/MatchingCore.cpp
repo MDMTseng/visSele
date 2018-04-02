@@ -1005,69 +1005,76 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
   return maxMatchingScore;
 }
 
+void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,contour_grid &inward_curve_grid, contour_grid &straight_line_grid)
+{
 
+  inward_curve_grid.RESET(grid_size,labeledImg->GetWidth(),labeledImg->GetHeight());
+  straight_line_grid.RESET(grid_size,labeledImg->GetWidth(),labeledImg->GetHeight());
+
+  static vector<acv_XY> extractedContour;
+  static vector<acv_XY> innerCornorContour;
+  static vector<acv_XY> lineContour;
+
+
+  extractedContour.resize(0);
+  innerCornorContour.resize(0);
+  lineContour.resize(0);
+
+
+
+  BYTE *OutLine, *OriLine;
+  //ldData[i].
+  for (int i = 3; i < labeledImg->GetHeight()-3; i++)
+  {
+      OriLine = labeledImg->CVector[i]+3*3;
+
+      uint8_t pre_pix = 255;
+      uint8_t cur_pix;
+      for (int j = 3; j < labeledImg->GetWidth()-3; j++,OriLine+=3)
+      {
+        cur_pix = OriLine[2];
+        if(pre_pix==255 && cur_pix == 0)//White to black
+        {
+
+          extractedContour.resize(0);
+          acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
+          ContourFilter(extractedContour,innerCornorContour,lineContour);
+        }
+        else if(pre_pix==0 && cur_pix == 255)//black to white
+        {
+          extractedContour.resize(0);
+          acvContourExtraction(labeledImg, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
+          ContourFilter(extractedContour,innerCornorContour,lineContour);
+        }
+
+        pre_pix= cur_pix;
+      }
+  }
+
+  for (int i = 0; i < innerCornorContour.size(); i++)
+  {
+    inward_curve_grid.push(innerCornorContour[i]);
+  }
+  for (int i = 0; i < lineContour.size(); i++)
+  {
+    straight_line_grid.push(lineContour[i]);
+  }
+
+
+}
 
 void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
   std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines)
 {
 
     clock_t t = clock();
-    static vector<acv_XY> extractedContour;
-    static vector<acv_XY> innerCornorContour;
-    static vector<acv_XY> lineContour;
-
     int grid_size = 50;
     static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
     static contour_grid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
 
-    extractedContour.resize(0);
-    innerCornorContour.resize(0);
-    lineContour.resize(0);
-    inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
-    straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
-
     acvCloneImage( img,buff, -1);
 
-    BYTE *OutLine, *OriLine;
-    //ldData[i].
-    for (int i = 3; i < buff->GetHeight()-3; i++)
-    {
-        OriLine = buff->CVector[i]+3*3;
-
-        uint8_t pre_pix = 255;
-        uint8_t cur_pix;
-        for (int j = 3; j < buff->GetWidth()-3; j++,OriLine+=3)
-        {
-          cur_pix = OriLine[2];
-          if(pre_pix==255 && cur_pix == 0)//White to black
-          {
-
-            extractedContour.resize(0);
-            acvContourExtraction(buff, j, i, 1, 128, 1, searchType_C_W2B,extractedContour);
-            ContourFilter(extractedContour,innerCornorContour,lineContour);
-          }
-          else if(pre_pix==0 && cur_pix == 255)//black to white
-          {
-            extractedContour.resize(0);
-            acvContourExtraction(buff, j-1, i, 1, 128, 1, searchType_C_B2W,extractedContour);
-            ContourFilter(extractedContour,innerCornorContour,lineContour);
-          }
-
-          pre_pix= cur_pix;
-        }
-    }
-
-    for (int i = 0; i < innerCornorContour.size(); i++)
-    {
-      inward_curve_grid.push(innerCornorContour[i]);
-    }
-    for (int i = 0; i < lineContour.size(); i++)
-    {
-      straight_line_grid.push(lineContour[i]);
-    }
-
-
-
+    extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid);
 //inward_curve_grid  straight_line_grid
     int gridG_W = 3;
     int gridG_H = 3;

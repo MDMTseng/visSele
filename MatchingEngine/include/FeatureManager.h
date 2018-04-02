@@ -31,7 +31,8 @@ class FeatureManager_sig360_circle_line:public FeatureManager {
 
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
-  vector<acv_XY> contour_signature;
+  vector<acv_XY> feature_signature;
+  vector<acv_XY> tmp_signature;
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;
