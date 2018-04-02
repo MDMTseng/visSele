@@ -2,6 +2,7 @@
 #include "logctrl.h"
 #include <stdexcept>
 #include <common_lib.h>
+#include <MatchingCore.h>
 
 
 
@@ -373,6 +374,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
   tmp_signature.resize(feature_signature.size());
+
+  int scanline_skip=15;
+  extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid,scanline_skip);
+
 
   for (int i = 1; i < ldData.size(); i++)
   {

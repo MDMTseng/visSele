@@ -498,7 +498,7 @@ float SecRegionLineFit(ContourGrid &contourGrid, int secX,int secY,int secW,int 
   return maxMatchingScore;
 }
 
-void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourGrid &inward_curve_grid, ContourGrid &straight_line_grid)
+void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourGrid &inward_curve_grid, ContourGrid &straight_line_grid, int scanline_skip)
 {
 
   inward_curve_grid.RESET(grid_size,labeledImg->GetWidth(),labeledImg->GetHeight());
@@ -513,11 +513,11 @@ void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourG
   innerCornorContour.resize(0);
   lineContour.resize(0);
 
-
+  if(scanline_skip<0)return;
 
   BYTE *OutLine, *OriLine;
   //ldData[i].
-  for (int i = 3; i < labeledImg->GetHeight()-3; i++)
+  for (int i = 3; i < labeledImg->GetHeight()-3; i+=scanline_skip)
   {
       OriLine = labeledImg->CVector[i]+3*3;
 
@@ -567,7 +567,8 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
 
     acvCloneImage( img,buff, -1);
 
-    extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid);
+    int scanline_skip=1;
+    extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid,scanline_skip);
 //inward_curve_grid  straight_line_grid
     int gridG_W = 3;
     int gridG_H = 3;
