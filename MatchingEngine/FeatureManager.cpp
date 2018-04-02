@@ -1,7 +1,6 @@
 #include "FeatureManager.h"
 #include "logctrl.h"
 #include <stdexcept>
-#include <MatchingCore.h>
 #include <common_lib.h>
 
 
@@ -368,6 +367,10 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
 
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
+
+  int grid_size = 50;
+  inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+  straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
   tmp_signature.resize(feature_signature.size());
 

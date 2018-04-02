@@ -6,6 +6,7 @@ using namespace std;
 #include <ctime>
 #include "cJSON.h"
 #include "acvImage_ComponentLabelingTool.hpp"
+#include <ContourGrid.h>
 
 class FeatureManager {
   protected:
@@ -33,6 +34,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager {
   vector<featureDef_line> featureLineList;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
+  ContourGrid inward_curve_grid;
+  ContourGrid straight_line_grid;
+
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;

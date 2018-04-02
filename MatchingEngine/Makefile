@@ -10,7 +10,7 @@ IDIR= ./include_priv/ \
 			$(MODULE_LOGCTRL)/include
 
 ODIR=obj
-_OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.opp
+_OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.opp ContourGrid.opp
 target_a= $(addsuffix .a ,$(MODULE_NAME))
 ESS_TRACK=$(addsuffix /* ,$(IDIR))
 include ../Makefile.in

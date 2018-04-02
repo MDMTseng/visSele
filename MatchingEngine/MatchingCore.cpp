@@ -17,513 +17,6 @@ inline int valueWarping(int v,int ringSize)
   return (v<0)?v+ringSize:v;
 }
 
-
-
-
-class contour_grid{
-    vector< vector <acv_XY> > contourSections;
-    vector< int > intersectTestNodes;
-    int gridSize;
-    int dataNumber=0;
-    int sectionCol;
-    int sectionRow;
-    int secROI_X, secROI_Y, secROI_W, secROI_H;
-    public:
-    contour_grid(int grid_size,int img_width,int img_height)
-    {
-      RESET(grid_size,img_width,img_height);
-    }
-
-    void RESET(int grid_size,int img_width,int img_height)
-    {
-      dataNumber = 0;
-      if(grid_size==-1)
-        grid_size = gridSize;
-      gridSize = grid_size;
-      sectionCol=ceil((float)img_width/grid_size);
-      sectionRow=ceil((float)img_height/grid_size);
-      secROI_X=0;
-      secROI_Y=0;
-      secROI_W=sectionCol;
-      secROI_H=sectionRow;
-      contourSections.resize(sectionCol*sectionRow);
-      for(int i=0;i<contourSections.size();i++)
-      {
-        contourSections[i].resize(0);
-      }
-    }
-
-
-    void setSecROI(int secROI_X,int secROI_Y,int secROI_W,int secROI_H)
-    {
-      this->secROI_X=secROI_X;
-      this->secROI_Y=secROI_Y;
-      this->secROI_W=secROI_W;
-      this->secROI_H=secROI_H;
-    }
-    void resetSecROI()
-    {
-      setSecROI(0,0,sectionCol,sectionRow);
-    }
-
-    int getColumSize()
-    {
-      return sectionCol;
-    }
-
-    int getRowSize()
-    {
-      return sectionRow;
-    }
-
-
-    int getSecIdx(int X,int Y)
-    {
-      int gridX=X/gridSize;
-      int gridY=Y/gridSize;
-      return sectionCol*gridY+gridX;
-    }
-
-    vector<acv_XY> &fetchBelongingSection(acv_XY data)
-    {
-      int gridIdx=getSecIdx(data.X,data.Y);
-      return contourSections[gridIdx];
-    }
-
-    void push(acv_XY data)
-    {
-      fetchBelongingSection(data).push_back(data);
-      dataNumber++;
-    }
-
-    int dataSize()
-    {
-      return dataNumber;
-    }
-
-    const acv_XY* get(int idx)
-    {
-      int idx_count_down=idx;
-      for(int i=0;i<contourSections.size();i++)
-      {
-        if(idx_count_down<contourSections[i].size())
-        {
-          return &(contourSections[i][idx_count_down]);
-        }
-        else
-        {
-          idx_count_down-=contourSections[i].size();
-        }
-      }
-      return NULL;
-    }
-
-    enum intersectTestType
-    {
-      intersectTestType_outer=0,
-      intersectTestType_middle,
-      intersectTestType_inner,
-    };
-
-    void GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,
-      vector<int> &intersectIdxs)
-    {
-      intersectIdxs.resize(0);
-      int gridNodeW=sectionCol+1;
-      int gridNodeH=sectionRow+1;
-      intersectTestNodes.resize(gridNodeW*gridNodeH);
-
-      //resize the world down gridSize times
-      X/=gridSize;
-      Y/=gridSize;
-      radius/=gridSize;
-      epsilon/=gridSize;
-
-      float outerDist_sq=radius+epsilon;
-
-      int secROI_X1 = (int)(X-radius-epsilon);
-      int secROI_Y1 = (int)(Y-radius-epsilon);
-      int secROI_X2 = ceil(X+radius+epsilon);
-      int secROI_Y2 = ceil(Y+radius+epsilon);
-
-
-      if(secROI_X2<0 || secROI_Y2<0 || secROI_X1>=gridNodeW || secROI_Y1>=gridNodeH)
-      {
-        return;
-      }
-      if(secROI_X1<0)secROI_X1=0;
-      if(secROI_Y1<0)secROI_Y1=0;
-      if(secROI_X2>=gridNodeW)secROI_X2=gridNodeW-1;
-      if(secROI_Y2>=gridNodeH)secROI_Y2=gridNodeH-1;
-
-      if(secROI_X1<secROI_X)secROI_X1=secROI_X;
-      if(secROI_Y1<secROI_Y)secROI_Y1=secROI_Y;
-      if(secROI_X2>secROI_X+secROI_W)secROI_X2 = secROI_X+secROI_W;
-      if(secROI_Y2>secROI_Y+secROI_H)secROI_Y2 = secROI_Y+secROI_H;
-
-      outerDist_sq*=outerDist_sq;
-
-      float innerDist_sq=radius-epsilon;
-      if(innerDist_sq<0)
-        innerDist_sq=0;
-      else
-        innerDist_sq*=innerDist_sq;
-
-      //one exception for grid node detection method is
-      //when circle fit in the grid completely, every node is outer node
-      int idCircleCrossGrid=0;
-
-      //The outer most rect is always outer side
-      for(int i=secROI_Y1;i<=secROI_Y2;i++)
-      {
-        int idx = i*gridNodeW+secROI_X1;
-        intersectTestNodes[idx]=intersectTestType_outer;
-        idx = i*gridNodeW+secROI_X2;
-        intersectTestNodes[idx]=intersectTestType_outer;
-      }
-      for(int j=secROI_X1;j<=secROI_X2;j++)
-      {
-        int idx = secROI_Y1*gridNodeW+j;
-        intersectTestNodes[idx]=intersectTestType_outer;
-        idx = secROI_Y2*gridNodeW+j;
-        intersectTestNodes[idx]=intersectTestType_outer;
-      }
-
-      /*
-      P indicates secROI that is possible to contain circle
-      X indicates RONI that is impossible to contain circle
-
-      PPPPPPPPPPP
-      PPPPPPPPPPP
-      PPPXXXXXPPP
-      PPPXXXXXPPP
-      PPPXXXXXPPP
-      PPPPPPPPPPP
-      PPPPPPPPPPP
-      */
-
-      float innerBoundOffset=(radius-epsilon)/1.414;//sqrt(2)
-      int RONI_X1 = ceil(X-innerBoundOffset);
-      int RONI_Y1 = ceil(Y-innerBoundOffset);
-      int RONI_X2 = (int)(X+innerBoundOffset);
-      int RONI_Y2 = (int)(Y+innerBoundOffset);
-      //printf("%d %d %d %d\n",RONI_X1,RONI_Y1,RONI_X2,RONI_Y2);
-      //Skip the outer most rect
-      for(int i=secROI_Y1+1;i<=secROI_Y2-1;i++)
-      {
-        for(int j=secROI_X1+1;j<=secROI_X2-1;j++)
-        {
-          int idx = i*gridNodeW+j;
-          /*if(i>=RONI_Y1&&i<RONI_Y2 && j>=RONI_X1 && j<RONI_X2)
-          {
-              intersectTestNodes[idx]=intersectTestType_inner;
-              continue;
-          }*/
-
-
-          float dX = j-X;
-          float dY = i-Y;
-          float dist_sq = dX*dX + dY*dY;
-
-          if(dist_sq<innerDist_sq)
-          {
-            idCircleCrossGrid=1;
-            intersectTestNodes[idx]=intersectTestType_inner;
-          }
-          else if(dist_sq<outerDist_sq)
-          {
-            idCircleCrossGrid=1;
-            intersectTestNodes[idx]=intersectTestType_middle;
-          }
-          else
-          {
-            intersectTestNodes[idx]=intersectTestType_outer;
-          }
-        }
-      }
-
-      if(!idCircleCrossGrid)
-      {
-        //If we detect there is no circle cross the boundery. ie, circle in grid or totally out of grid group
-        //We do single detection
-        if(X>0 && Y>0)
-        {
-          int gX = (int)X;
-          int gY = (int)Y;
-          if(gX<sectionCol && gY<sectionRow)
-          {
-            int idx = gX+gY*sectionCol;
-            intersectIdxs.push_back(idx);
-            //intersectTestNodes[idx]=intersectTestType_outer_exclude;
-          }
-        }
-      }
-      else
-      {
-        for(int i=secROI_Y1;i<=secROI_Y2-1;i++)
-        {
-          for(int j=secROI_X1;j<=secROI_X2-1;j++)
-          {
-            int idx1 = i*gridNodeW + j;
-            int idx2 = idx1+1;
-            int idx3 = idx1 + gridNodeW;
-            int idx4 = idx2 + gridNodeW;
-
-            if(
-              intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
-              intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
-              intersectTestNodes[idx1]!=intersectTestNodes[idx3]
-            )
-            {
-              //If any nodes are different from each other there must be the contour in between
-              intersectIdxs.push_back(i*sectionCol + j);
-              continue;
-            }
-            if(intersectTestNodes[idx1]==intersectTestType_middle)
-            {
-              //All in the middle
-              intersectIdxs.push_back(i*sectionCol + j);
-              continue;
-            }
-            //All Test nodes are in same type in/out, pass
-          }
-        }
-      }
-
-    }
-
-    void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,
-      vector<int> &intersectIdxs,vector<acv_XY> &points)
-    {
-      points.resize(0);
-      GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
-      float outerDist_sq=radius+epsilon;
-      outerDist_sq*=outerDist_sq;
-
-      float innerDist_sq=radius-epsilon;
-      if(innerDist_sq<0)
-        innerDist_sq=0;
-      else
-        innerDist_sq*=innerDist_sq;
-
-      int count=0;
-      for(int i=0;i<intersectIdxs.size();i++)
-      {
-        int idx = intersectIdxs[i];
-        for(int j=0;j<contourSections[idx].size();j++)
-        {
-          float dX = X-contourSections[idx][j].X;
-          float dY = Y-contourSections[idx][j].Y;
-          float dist_sq = dX*dX + dY*dY;
-
-          if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
-          {
-            points.push_back(contourSections[idx][j]);
-          }
-        }
-      }
-    }
-
-
-
-    void GetSectionsWithinLineContour(acv_Line line,float epsilon,vector<int> &intersectIdxs)
-    {
-      intersectIdxs.resize(0);
-
-      int secROI_X1 = secROI_X;
-      int secROI_Y1 = secROI_Y;
-      int secROI_X2 = secROI_X+secROI_W;
-      int secROI_Y2 = secROI_Y+secROI_H;
-
-      int gridNodeW=sectionCol+1;
-      int gridNodeH=sectionRow+1;
-      intersectTestNodes.resize(gridNodeW*gridNodeH);
-
-      //resize the world down gridSize times
-      line.line_anchor.X/=gridSize;
-      line.line_anchor.Y/=gridSize;
-      epsilon/=gridSize;
-
-      //printf("%d %d %d %d\n",RONI_X1,RONI_Y1,RONI_X2,RONI_Y2);
-      //Skip the outer most rect
-      for(int i=secROI_Y1;i<=secROI_Y2;i++)
-      {
-        for(int j=secROI_X1;j<=secROI_X2;j++)
-        {
-          int idx = i*gridNodeW+j;
-          acv_XY pt={.X=j,.Y=i};
-
-          int dist_signed = acvDistance_Signed(line, pt);
-          int dist =(dist_signed>0)?dist_signed:-dist_signed;
-
-          if(dist < epsilon)
-          {
-            intersectTestNodes[idx]=intersectTestType_middle;
-          }
-          else if(dist_signed<0)
-          {
-            intersectTestNodes[idx]=intersectTestType_inner;
-          }
-          else
-          {
-            intersectTestNodes[idx]=intersectTestType_outer;
-          }
-        }
-      }
-
-      for(int i=secROI_Y1;i<=secROI_Y2-1;i++)
-      {
-        for(int j=secROI_X1;j<=secROI_X2-1;j++)
-        {
-          int idx1 = i*gridNodeW + j;
-          int idx2 = idx1+1;
-          int idx3 = idx1 + gridNodeW;
-          int idx4 = idx2 + gridNodeW;
-
-          if(
-            intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
-            intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
-            intersectTestNodes[idx1]!=intersectTestNodes[idx3]
-          )
-          {
-            //If any nodes are different from each other there must be the contour in between
-            intersectIdxs.push_back(i*sectionCol + j);
-            continue;
-          }
-          if(intersectTestNodes[idx1]==intersectTestType_middle)
-          {
-            //All in the middle
-            intersectIdxs.push_back(i*sectionCol + j);
-            continue;
-          }
-          //All Test nodes are in same type in/out, pass
-        }
-      }
-    }
-
-    void getContourPointsWithInLineContour(acv_Line line,float epsilon,vector<int> &intersectIdxs,vector<acv_XY> &points)
-    {
-      points.resize(0);
-      GetSectionsWithinLineContour(line,epsilon,intersectIdxs);
-      //exit(0);
-      int count=0;
-      for(int i=0;i<intersectIdxs.size();i++)
-      {
-        int idx = intersectIdxs[i];
-        for(int j=0;j<contourSections[idx].size();j++)
-        {
-
-          int dist = acvDistance(line, contourSections[idx][j]);
-          if(dist<epsilon)//The point is in the epsilon region
-          {
-            points.push_back(contourSections[idx][j]);
-          }
-        }
-
-      }
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    int getGetSectionRegionDataSize(int secX,int secY,int secW,int secH)
-    {
-
-      int count=0;
-
-
-      if(secX>=sectionCol || secY>=sectionRow || secW<0 || secH<0)return 0;
-
-      if(secX<0)
-      {
-        secW+=secX;
-        secX = 0;
-      }
-
-      if(secY<0)
-      {
-        secH+=secY;
-        secY = 0;
-      }
-
-      int secX2=secX+secW;
-      int secY2=secY+secH;
-
-      if(secX2>sectionCol)secX2 = sectionCol;
-      if(secY2>sectionRow)secY2 = sectionRow;
-
-      for(int i=secY;i<secY2;i++)
-      {
-        for(int j=secX;j<secX2;j++)
-        {
-          int idx = i*sectionCol+j;
-          count+=contourSections[idx].size();
-        }
-      }
-      return count;
-    }
-    const acv_XY* getGetSectionRegionData(int secX,int secY,int secW,int secH,int dataIdx)
-    {
-      int count=0;
-
-
-      if(secX>=sectionCol || secY>=sectionRow || secW<0 || secH<0)return 0;
-
-      if(secX<0)
-      {
-        secW+=secX;
-        secX = 0;
-      }
-
-      if(secY<0)
-      {
-        secH+=secY;
-        secY = 0;
-      }
-
-      int secX2=secX+secW;
-      int secY2=secY+secH;
-
-      if(secX2>sectionCol)secX2 = sectionCol;
-      if(secY2>sectionRow)secY2 = sectionRow;
-
-      for(int i=secY;i<secY2;i++)
-      {
-        for(int j=secX;j<secX2;j++)
-        {
-          int idx = i*sectionCol+j;
-          int curSecSize = contourSections[idx].size();
-
-          if(curSecSize+count > dataIdx)
-          {
-            return &(contourSections[idx][dataIdx-count]);
-          }
-          count+=curSecSize;
-        }
-      }
-      return NULL;
-    }
-};
-
-
-
 int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType, vector<acv_XY> &contour)
 {
     int NowPos[2] = {FromX, FromY};
@@ -832,7 +325,7 @@ int refineMatchedLine(vector<acv_LineFit> &LineList,float simThres,float sigmaTh
   LineList.resize(w_h);
 }
 
-bool CircleFitTest(contour_grid &contourGrid,
+bool CircleFitTest(ContourGrid &contourGrid,
     acv_Circle c,acv_CircleFit *ret_cf,float epsilon1,float epsilon2,
     float circle_data_ratio)
 {
@@ -860,7 +353,7 @@ bool CircleFitTest(contour_grid &contourGrid,
     return false;
 }
 
-int CircleFitTest(contour_grid &contourGrid,
+int CircleFitTest(ContourGrid &contourGrid,
     const acv_XY* dataArr6,
     float circle_data_ratio, vector<acv_CircleFit> &detectedCircles)
 {
@@ -893,7 +386,7 @@ int CircleFitTest(contour_grid &contourGrid,
     return 0;
 }
 
-float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH,
+float SecRegionCircleFit(ContourGrid &contourGrid, int secX,int secY,int secW,int secH,
   int dataSizeMinThre, float circle_data_ratio,
   float sampleRate, vector<acv_CircleFit> &detectedCircles)
 {
@@ -917,7 +410,7 @@ float SecRegionCircleFit(contour_grid &contourGrid, int secX,int secY,int secW,i
 }
 
 
-float ContourDataCircleFit(contour_grid &contourGrid, acv_XY *innerCornorContour, int conL,
+float ContourDataCircleFit(ContourGrid &contourGrid, acv_XY *innerCornorContour, int conL,
   int SampleNumber, float circle_data_ratio, vector<acv_CircleFit> &detectedCircles)
 {
   acv_XY sampleC[6];
@@ -934,7 +427,7 @@ float ContourDataCircleFit(contour_grid &contourGrid, acv_XY *innerCornorContour
   return 0;
 }
 
-bool LineFitTest(contour_grid &contourGrid,
+bool LineFitTest(ContourGrid &contourGrid,
     acv_Line line,acv_LineFit *ret_lf,float epsilon1,float epsilon2,
     float minInBoundPoints)
 {
@@ -960,7 +453,7 @@ bool LineFitTest(contour_grid &contourGrid,
   return false;
 }
 
-float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int secH,
+float SecRegionLineFit(ContourGrid &contourGrid, int secX,int secY,int secW,int secH,
   int dataSizeMinThre,float simThres, float sampleRate, vector<acv_LineFit> &detectedLines)
 {
   int SecRSize = contourGrid.getGetSectionRegionDataSize(secX,secY,secW,secH);
@@ -1005,7 +498,7 @@ float SecRegionLineFit(contour_grid &contourGrid, int secX,int secY,int secW,int
   return maxMatchingScore;
 }
 
-void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,contour_grid &inward_curve_grid, contour_grid &straight_line_grid)
+void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourGrid &inward_curve_grid, ContourGrid &straight_line_grid)
 {
 
   inward_curve_grid.RESET(grid_size,labeledImg->GetWidth(),labeledImg->GetHeight());
@@ -1069,8 +562,8 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
 
     clock_t t = clock();
     int grid_size = 50;
-    static contour_grid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
-    static contour_grid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
+    static ContourGrid inward_curve_grid(grid_size,img->GetWidth(),img->GetHeight());
+    static ContourGrid straight_line_grid(grid_size,img->GetWidth(),img->GetHeight());
 
     acvCloneImage( img,buff, -1);
 

@@ -2,7 +2,7 @@
 #define MATCHING_CORE_HPP
 
 #include "acvImage_ToolBox.hpp"
-
+#include "ContourGrid.h"
 #include "acvImage_BasicDrawTool.hpp"
 #include <cstdlib>
 #include <unistd.h>
