@@ -47,13 +47,3 @@ int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
   cJSON *tmpObj = cJSON_GetObjectItem(obj,name);
   return getDataFromJsonObj(tmpObj,ret_ptr);
 }
-
-
-
-acv_XY XY_rotation(float sine,float cosine,float flip_f,acv_XY input)
-{
-  acv_XY output;
-  output.X = input.X*cosine-flip_f*input.Y*sine;
-  output.Y = input.X*sine  +flip_f*input.Y*cosine;
-  return output;
-}

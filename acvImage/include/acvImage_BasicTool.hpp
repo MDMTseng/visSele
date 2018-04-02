@@ -120,6 +120,7 @@ float acv2DCrossProduct(acv_XY v1,acv_XY v2);
 float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
 float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormalize(acv_XY vec);
+acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
 
 float acvDistance_Signed(acv_Line line, acv_XY point);
 float acvDistance(acv_Line line, acv_XY point);

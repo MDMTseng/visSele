@@ -252,12 +252,12 @@ int testX()
   {
     printf("%f,",tar_signature[i].Y);
   }printf("]\n");*/
-  
+
   clock_t t = clock();
+  for(int i=0;i<1;i++)
+    me.FeatureMatching(test1,test1_buff,NULL);
 
-  me.FeatureMatching(test1,test1_buff,NULL);
-
-  LOGV("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
   //ContourFeatureDetect(test1,test1_buff,tar_signature);

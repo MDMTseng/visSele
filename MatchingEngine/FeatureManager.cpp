@@ -404,7 +404,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       for (int j = 0; j < featureCircleList.size(); j++)
       {
-        acv_XY center = XY_rotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
+        acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
 
         int matching_tor=2;
         center.X+=ldData[i].Center.X;
