@@ -344,6 +344,43 @@ float SignatureMatchingError(const acv_XY *signature, int offset,
     return errorSum;
 }
 
+inline int valueWarping(int v,int ringSize)
+{
+  v%=ringSize;
+  return (v<0)?v+ringSize:v;
+}
+
+float SignatureMatchingErrorX(const acv_XY *signature, int offset,
+                             const acv_XY *tar_signature, int arrsize)
+{
+    float errorSum = 0;
+
+    for (int i=0; i < arrsize; i += 1)
+    {
+        int oid0 = valueWarping(offset+i-1,arrsize);
+        int oid1 = valueWarping(offset+i+0,arrsize);
+        int oid2 = valueWarping(offset+i+1,arrsize);
+
+        float error0 = signature[(oid0)].X - tar_signature[i].X;
+        float error1 = signature[(oid1)].X - tar_signature[i].X;
+        float error2 = signature[(oid2)].X - tar_signature[i].X;
+        error0*=error0;
+        error1*=error1;
+        error2*=error2;
+
+        //Find the smallest error
+        if(error0<error1)
+        {
+          errorSum += (error0<error2)?error0:error2;
+        }
+        else
+        {
+          errorSum += (error1<error2)?error1:error2;
+        }
+    }
+    return errorSum;
+}
+
 float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
                              const std::vector<acv_XY> &tar_signature, int stride)
 {
@@ -414,6 +451,9 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
             minErrOffset = searchHead;
         }
     }
+
+
+
     if (minErrOffset < 0)
         minErrOffset += tar_signature.size();
     else if (minErrOffset >= tar_signature.size())
@@ -427,10 +467,16 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, float *min_error)
 {
     int roughSearchSampleRate=6;//magic number// signature.size() / 160;
-    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate, min_error);
 
+    float error;
+    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate, &error);
+
+    error = SignatureMatchingErrorX(&(signature[0]), matchingIdx,
+                                 &(tar_signature[0]), signature.size());
+
+    if(min_error)*min_error=error;
     //The offset apply to signature (array) means negative rotation.
-    // f(x+5) means offset the graph negative (to left) 
+    // f(x+5) means offset the graph negative (to left)
     float angle = -matchingIdx * 2 * M_PI / signature.size();
     if (angle < -M_PI)
         angle += 2 * M_PI;
