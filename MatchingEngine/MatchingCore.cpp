@@ -85,20 +85,22 @@ void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,ve
     float crossP_LF_sum=0;
 
     const int Dist=10;
+    const int LP_hWindow=Dist*2;
+
     float epsilon=0.04;
 
-    float crossPHist[Dist*2];
+    float crossPHist[LP_hWindow*2];
     int crossPHist_head=0;
 
-    for(int i=-Dist ;i<Dist;i++)
+    for(int i=-LP_hWindow ;i<LP_hWindow;i++)
     {
 
       float angle=acvPoint3Angle(
         contour[valueWarping(i-Dist,L)],
         contour[valueWarping(i     ,L)],
-        contour[                i+Dist]);
+        contour[valueWarping(i+Dist,L)]);
 
-      crossPHist[i+Dist] =angle;
+      crossPHist[i+LP_hWindow] =angle;
       crossP_LF_sum+=angle;
     }
     crossPHist_head=0;
@@ -110,14 +112,15 @@ void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,ve
       //Cross product
 
       float angle=acvPoint3Angle(
-        contour[                       i],
-        contour[valueWarping(i+  Dist,L)],
-        contour[valueWarping(i+2*Dist,L)]);
-      crossP_LF_sum=crossP_LF_sum+angle-crossPHist[crossPHist_head];
+        contour[valueWarping(i+LP_hWindow-Dist,L)],
+        contour[valueWarping(i+LP_hWindow,L)],
+        contour[valueWarping(i+LP_hWindow+Dist,L)]);
+      crossP_LF_sum=crossP_LF_sum+angle;
 
-      float crossP_LF=crossP_LF_sum/(Dist*2+1);
+      float crossP_LF=crossP_LF_sum/(LP_hWindow*2+1);
+      crossP_LF_sum-=crossPHist[crossPHist_head];
       crossPHist[crossPHist_head] = angle;
-      crossPHist_head = valueWarping(crossPHist_head+1,Dist*2);
+      crossPHist_head = valueWarping(crossPHist_head+1,LP_hWindow*2);
 
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
