@@ -317,7 +317,7 @@ bool acvContourCircleSignature
 
 }
 
-float SignatureMatchingError(const acv_XY *signature, int offset,
+float SignatureMatchingErrorX(const acv_XY *signature, int offset,
                              const acv_XY *tar_signature, int arrsize, int stride)
 {
     if (stride == 0)
@@ -350,12 +350,12 @@ inline int valueWarping(int v,int ringSize)
   return (v<0)?v+ringSize:v;
 }
 
-float SignatureMatchingErrorX(const acv_XY *signature, int offset,
-                             const acv_XY *tar_signature, int arrsize)
+float SignatureMatchingError(const acv_XY *signature, int offset,
+                             const acv_XY *tar_signature, int arrsize, int stride)
 {
     float errorSum = 0;
 
-    for (int i=0; i < arrsize; i += 1)
+    for (int i=0; i < arrsize; i += stride)
     {
         int oid0 = valueWarping(offset+i-1,arrsize);
         int oid1 = valueWarping(offset+i+0,arrsize);
@@ -471,8 +471,6 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
     float error;
     int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate, &error);
 
-    error = SignatureMatchingErrorX(&(signature[0]), matchingIdx,
-                                 &(tar_signature[0]), signature.size());
 
     if(min_error)*min_error=error;
     //The offset apply to signature (array) means negative rotation.
