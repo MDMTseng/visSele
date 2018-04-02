@@ -355,6 +355,7 @@ float SignatureMatchingError(const acv_XY *signature, int offset,
 {
     float errorSum = 0;
 
+    float epsilon=0.01;
     for (int i=0; i < arrsize; i += stride)
     {
         int oid0 = valueWarping(offset+i-1,arrsize);
@@ -367,7 +368,8 @@ float SignatureMatchingError(const acv_XY *signature, int offset,
         error0*=error0;
         error1*=error1;
         error2*=error2;
-
+        error0+=epsilon;
+        error2+=epsilon;
         //Find the smallest error
         if(error0<error1)
         {
