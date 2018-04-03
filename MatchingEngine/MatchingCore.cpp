@@ -87,7 +87,7 @@ void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,ve
     const int Dist=10;
     const int LP_hWindow=Dist*2;
 
-    float epsilon=0.04;
+    float epsilon=0.05;
 
     float crossPHist[LP_hWindow*2];
     int crossPHist_head=0;
@@ -457,7 +457,7 @@ bool LineFitTest(ContourGrid &contourGrid,
 }
 
 float SecRegionLineFit(ContourGrid &contourGrid, int secX,int secY,int secW,int secH,
-  int dataSizeMinThre,float simThres, float sampleRate, vector<acv_LineFit> &detectedLines)
+  int dataSizeMinThre,float simThres, float sampleRate, float matching_margin, vector<acv_LineFit> &detectedLines)
 {
   int SecRSize = contourGrid.getGetSectionRegionDataSize(secX,secY,secW,secH);
 
@@ -490,7 +490,7 @@ float SecRegionLineFit(ContourGrid &contourGrid, int secX,int secY,int secW,int 
     }
     //printf("%f\n",similarity);
     acv_LineFit lf;
-    if(LineFitTest(contourGrid,line1,&lf,3,3,40) == true)
+    if(LineFitTest(contourGrid,line1,&lf,matching_margin*2,matching_margin,40) == true)
     {
       findTheMostSimilarLineIdx(lf.line,detectedLines,epsilon, &similarity);
       if(similarity<0.90)
@@ -585,8 +585,9 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
       {
         //inward_curve_grid.setSecROI(j,i,gridG_W,gridG_H);
         //straight_line_grid.setSecROI(j,i,gridG_W,gridG_H);
+        float matching_margin=2;
         SecRegionCircleFit(inward_curve_grid, j,i,gridG_W,gridG_H,40,0.2,0.01,detectedCircles);
-        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.9,0.05,detectedLines);
+        SecRegionLineFit(straight_line_grid, j,i,gridG_W,gridG_H,40,0.9,0.05,matching_margin,detectedLines);
       }
     }
 

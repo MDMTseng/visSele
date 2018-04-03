@@ -322,16 +322,11 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilon,std::
       int idx = i*gridNodeW+j;
       acv_XY pt={.X=j,.Y=i};
 
-      int dist_signed = acvDistance_Signed(line, pt);
-      int dist =(dist_signed>0)?dist_signed:-dist_signed;
-
+      int dist = acvDistance(line, pt);
+      
       if(dist < epsilon)
       {
         intersectTestNodes[idx]=intersectTestType_middle;
-      }
-      else if(dist_signed<0)
-      {
-        intersectTestNodes[idx]=intersectTestType_inner;
       }
       else
       {
