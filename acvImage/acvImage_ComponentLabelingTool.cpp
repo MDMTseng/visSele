@@ -132,6 +132,63 @@ int acvDrawContour(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, 
     return hitExistedLabel ? -1 : 0;
 }
 
+
+
+//#include <unistd.h>
+int acvDrawContour_2(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char InitDir, int SearchDir)
+{
+    int NowWalkDir; //=5;//CounterClockWise
+    NowWalkDir = InitDir;
+    //012
+    //7 3
+    //654
+
+    int lastStepDir=NowWalkDir;//Get the last contour step direction
+    {
+        int searchDir = -SearchDir;//Find previous step
+        int XPos[2] = {FromX, FromY};
+        BYTE *next = acvContourWalk(Pic, &XPos[0], &XPos[1], &lastStepDir, searchDir);
+
+        if (next == NULL)
+        {
+            return 0;
+        }
+
+        lastStepDir-=4;
+        //Because we find it backward, so the real direction is opposite to the current direction.
+        if(lastStepDir<0)lastStepDir+=8;
+        //warp around
+    }
+
+    int NowPos[2] = {FromX, FromY};
+
+    int searchDir = SearchDir;
+    BYTE *next = acvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, searchDir);
+
+    while (1)
+    {
+        if (NowPos[0] == FromX && NowPos[1] == FromY && lastStepDir == NowWalkDir)
+        {
+            break;
+        }
+        next[0] = B;
+        next[1] = G;
+        next[2] = R;
+
+        NowWalkDir = (NowWalkDir - 2 * searchDir) & 0x7; //%8
+
+        //printf(">>:%d %d X:%d wDir:%d\n",NowPos[0],NowPos[1],next[2],NowWalkDir);
+        //sleep(1);
+        next = acvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, searchDir);
+    }
+
+    next[0] = B;
+    next[1] = G;
+    next[2] = R;
+    return 0;
+}
+
+
 void acvComponentLabeling(acvImage *Pic) //,DyArray<int> * Information)
 {
     int Pic_H = Pic->GetROIOffsetY() + Pic->GetHeight() - 1,
