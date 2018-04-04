@@ -321,18 +321,40 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
     for(int j=secROI_X1;j<=secROI_X2;j++)
     {
       int idx = i*gridNodeW+j;
-      acv_XY pt={.X=j,.Y=i};
 
-      int dist = acvDistance(line, pt);
-      
-      if(dist < epsilon)
-      {
-        intersectTestNodes[idx]=intersectTestType_middle;
+      acv_XY pt={.X=j-line.line_anchor.X,.Y=i-line.line_anchor.Y};
+
+      pt = acvRotation(line.line_vec.Y,line.line_vec.X,-1,pt);
+
+      //By default, the current dot is in middle(0)
+      intersectTestNodes[idx]=0;
+      float abspt;
+
+      abspt=pt.Y;
+      if(abspt<0)abspt=-abspt;
+      if(abspt > epsilonY)
+      {//If Y distance is bigger than epsilonY
+        //Set region type, in(1) or out(2)
+        intersectTestNodes[idx]|=(pt.Y>0)?(0x01):(0x02);
+
+        //negative (XX02)
+        //--------
+        //middle
+        //--------
+        //positive (XX01)
       }
-      else
-      {
-        intersectTestNodes[idx]=intersectTestType_outer;
+
+
+      abspt=pt.X;
+      if(abspt<0)abspt=-abspt;
+      if(abspt > epsilonX)
+      {//If X distance is bigger than epsilonX
+        //Set region type, x_in(0x10) or x_out(0x20)
+        intersectTestNodes[idx]|=(pt.X>0)?(0x10):(0x20);
+
+        //negative (02XX) |middle| positive (01XX)
       }
+
     }
   }
 
@@ -345,23 +367,22 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
       int idx3 = idx1 + gridNodeW;
       int idx4 = idx2 + gridNodeW;
 
-      if(
-        intersectTestNodes[idx1]!=intersectTestNodes[idx2] ||
-        intersectTestNodes[idx3]!=intersectTestNodes[idx4] ||
-        intersectTestNodes[idx1]!=intersectTestNodes[idx3]
-      )
+      int V1=intersectTestNodes[idx1];
+      int V2=intersectTestNodes[idx2];
+      int V3=intersectTestNodes[idx3];
+      int V4=intersectTestNodes[idx4];
+
+      //Check any changes or just in the region(hit the box)
+      bool YDetection = (V1&0x0F)!=(V2&0x0F) ||(V3&0x0F)!=(V4&0x0F)||(V1&0x0F)!=(V3&0x0F)|| ((V1&0x0F)==0);
+      bool XDetection = (V1&0xF0)!=(V2&0xF0) ||(V3&0xF0)!=(V4&0xF0)||(V1&0xF0)!=(V3&0xF0)|| ((V1&0xF0)==0);
+
+      //Check X Y border type changes, if so, the current box is in the target region
+      if( (YDetection && XDetection) )
       {
         //If any nodes are different from each other there must be the contour in between
         intersectIdxs.push_back(i*sectionCol + j);
         continue;
       }
-      if(intersectTestNodes[idx1]==intersectTestType_middle)
-      {
-        //All in the middle
-        intersectIdxs.push_back(i*sectionCol + j);
-        continue;
-      }
-      //All Test nodes are in same type in/out, pass
     }
   }
 }
@@ -378,7 +399,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
     for(int j=0;j<contourSections[idx].size();j++)
     {
 
-      /*
+
       acv_XY pt=contourSections[idx][j];
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
@@ -387,10 +408,6 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       if(pt.X<0)pt.X=-pt.X;
       if(pt.Y<0)pt.Y=-pt.Y;
       if(pt.X < epsilonX && pt.Y < epsilonY)
-*/
-
-      int dist = acvDistance(line, contourSections[idx][j]);
-      if(dist<epsilonY)//The point is in the epsilon region
       {
         points.push_back(contourSections[idx][j]);
       }
