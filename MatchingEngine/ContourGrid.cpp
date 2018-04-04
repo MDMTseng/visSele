@@ -295,7 +295,7 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
 
 
 
-void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilon,std::vector<int> &intersectIdxs)
+void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, float epsilonY, std::vector<int> &intersectIdxs)
 {
   intersectIdxs.resize(0);
 
@@ -311,7 +311,8 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilon,std::
   //resize the world down gridSize times
   line.line_anchor.X/=gridSize;
   line.line_anchor.Y/=gridSize;
-  epsilon/=gridSize;
+  epsilonX/=gridSize;
+  epsilonY/=gridSize;
 
   //printf("%d %d %d %d\n",RONI_X1,RONI_Y1,RONI_X2,RONI_Y2);
   //Skip the outer most rect
@@ -365,10 +366,10 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilon,std::
   }
 }
 
-void ContourGrid::getContourPointsWithInLineContour(acv_Line line,float epsilon,std::vector<int> &intersectIdxs,std::vector<acv_XY> &points)
+void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY, std::vector<int> &intersectIdxs,std::vector<acv_XY> &points)
 {
   points.resize(0);
-  GetSectionsWithinLineContour(line,epsilon,intersectIdxs);
+  GetSectionsWithinLineContour(line,epsilonX,epsilonY,intersectIdxs);
   //exit(0);
   int count=0;
   for(int i=0;i<intersectIdxs.size();i++)
@@ -377,8 +378,19 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line,float epsilon,
     for(int j=0;j<contourSections[idx].size();j++)
     {
 
+      /*
+      acv_XY pt=contourSections[idx][j];
+      pt.X-=line.line_anchor.X;
+      pt.Y-=line.line_anchor.Y;
+
+      pt = acvRotation(line.line_vec.Y,line.line_vec.X,1,pt);
+      if(pt.X<0)pt.X=-pt.X;
+      if(pt.Y<0)pt.Y=-pt.Y;
+      if(pt.X < epsilonX && pt.Y < epsilonY)
+*/
+
       int dist = acvDistance(line, contourSections[idx][j]);
-      if(dist<epsilon)//The point is in the epsilon region
+      if(dist<epsilonY)//The point is in the epsilon region
       {
         points.push_back(contourSections[idx][j]);
       }

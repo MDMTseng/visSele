@@ -118,10 +118,10 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
         detectedCircles[i].circle.radius,
         detectedCircles[i].s,detectedCircles[i].matching_pts
       );
-      /*acvDrawCircle(buff,
+      acvDrawCircle(buff,
         detectedCircles[i].circle.circumcenter.X, detectedCircles[i].circle.circumcenter.Y,
         detectedCircles[i].circle.radius,
-        20,255, 0, 0);*/
+        20,255, 0, 0);
 
   }
 
@@ -133,13 +133,13 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
       line.line_vec.X,line.line_vec.Y,
       detectedLines[i].s,detectedLines[i].matching_pts
     );
-    /*float mult=100;
+    float mult=100;
       acvDrawLine(buff,
         line.line_anchor.X-mult*line.line_vec.X,
         line.line_anchor.Y-mult*line.line_vec.Y,
         line.line_anchor.X+mult*line.line_vec.X,
         line.line_anchor.Y+mult*line.line_vec.Y,
-        20,255,128);*/
+        20,255,128);
 
   }
 

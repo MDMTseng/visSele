@@ -111,6 +111,14 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
   cJSON *param;
   double *pnum;
+
+  if(!(getDataFromJsonObj(line_obj,"MatchingMargin",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  line.initMatchingMargin=*pnum;
+
+
   if(!(getDataFromJsonObj(line_obj,"param",(void**)&param)&cJSON_Object))
   {
     return -1;
@@ -176,13 +184,14 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
   LOGV("feature is a line");
-  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f",
+  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f,MatchingMargin:%f",
   line.lineTar.line_anchor.X,
   line.lineTar.line_anchor.Y,
   line.lineTar.line_vec.X,
   line.lineTar.line_vec.Y,
   line.searchVec.X,
-  line.searchVec.Y);
+  line.searchVec.Y,
+  line.initMatchingMargin);
   featureLineList.push_back(line);
 
 
@@ -402,11 +411,26 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         flip_f=-1;
       }
 
+      for (int j = 0; j < featureLineList.size(); j++)
+      {
+        featureDef_line line = featureLineList[j];
+        LOGV("feature is a line");
+        LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f,MatchingMargin:%f",
+        line.lineTar.line_anchor.X,
+        line.lineTar.line_anchor.Y,
+        line.lineTar.line_vec.X,
+        line.lineTar.line_vec.Y,
+        line.searchVec.X,
+        line.searchVec.Y,
+        line.initMatchingMargin);
+
+      }
+
       for (int j = 0; j < featureCircleList.size(); j++)
       {
         acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
 
-        int matching_tor=2;
+        int matching_tor=featureCircleList[j].initMatchingMargin;
         center.X+=ldData[i].Center.X;
         center.Y+=ldData[i].Center.Y;
         inward_curve_grid.getContourPointsWithInCircleContour(center.X,center.Y,featureCircleList[j].circleTar.radius,matching_tor*2,
