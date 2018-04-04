@@ -403,8 +403,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       LOGV("======%d===%f,%d,%f",i,error,isInv,angle*180/3.14159);
 
       float cached_cos,cached_sin;
-      cached_cos=cos(-angle);
-      cached_sin=sin(-angle);
+      //The angle we get from matching is current object rotates 'angle' to match target
+      //But now, we want to rotate feature set to match current object, so opposite direction
+      angle=-angle;
+      cached_cos=cos(angle);
+      cached_sin=sin(angle);
       float flip_f=1;
       if(isInv)
       {
@@ -414,6 +417,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       for (int j = 0; j < featureLineList.size(); j++)
       {
         featureDef_line line = featureLineList[j];
+        line.lineTar.line_anchor.X+=ldData[i].Center.X;
+        line.lineTar.line_anchor.Y+=ldData[i].Center.Y;
+        acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
+
         LOGV("feature is a line");
         LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f,MatchingMargin:%f",
         line.lineTar.line_anchor.X,
@@ -423,6 +430,26 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         line.searchVec.X,
         line.searchVec.Y,
         line.initMatchingMargin);
+
+        acvDrawCrossX(buff,
+          center.X,center.Y,
+          4,4);
+
+
+        straight_line_grid.getContourPointsWithInLineContour(line.lineTar,100, line.initMatchingMargin, s_intersectIdxs,s_points);
+
+
+        acv_Line line_fit;
+        float sigma;
+        acvFitLine(&s_points[0], s_points.size(),&line_fit,&sigma);
+        //LOGV("Matched points:%d",s_points.size());
+        int mult=100;
+        acvDrawLine(buff,
+          line_fit.line_anchor.X-mult*line_fit.line_vec.X,
+          line_fit.line_anchor.Y-mult*line_fit.line_vec.Y,
+          line_fit.line_anchor.X+mult*line_fit.line_vec.X,
+          line_fit.line_anchor.Y+mult*line_fit.line_vec.Y,
+          20,255,128);
 
       }
 
