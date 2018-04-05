@@ -150,6 +150,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   }
   p1.Y=*pnum;
 
+  line.MatchingMarginX=hypot(p0.X-p1.X,p0.Y-p1.Y)/2+line.initMatchingMargin;
   line.lineTar.line_anchor.X=(p0.X+p1.X)/2;
   line.lineTar.line_anchor.Y=(p0.Y+p1.Y)/2;
   line.lineTar.line_vec.X=(p0.X-p1.X);
@@ -176,8 +177,6 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
     return -1;
   }
   line.searchVec.Y=*pnum;
-
-
 
 
 
@@ -417,10 +416,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       for (int j = 0; j < featureLineList.size(); j++)
       {
         featureDef_line line = featureLineList[j];
+        line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
+        line.lineTar.line_vec = acvRotation(-cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
+
         line.lineTar.line_anchor.X+=ldData[i].Center.X;
         line.lineTar.line_anchor.Y+=ldData[i].Center.Y;
-        acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
-
         LOGV("feature is a line");
         LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f,MatchingMargin:%f",
         line.lineTar.line_anchor.X,
@@ -432,11 +432,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         line.initMatchingMargin);
 
         acvDrawCrossX(buff,
-          center.X,center.Y,
+          line.lineTar.line_anchor.X,line.lineTar.line_anchor.Y,
           4,4);
 
 
-        straight_line_grid.getContourPointsWithInLineContour(line.lineTar,100, line.initMatchingMargin, s_intersectIdxs,s_points);
+        straight_line_grid.getContourPointsWithInLineContour(line.lineTar,line.MatchingMarginX, line.initMatchingMargin, s_intersectIdxs,s_points);
 
 
         acv_Line line_fit;
