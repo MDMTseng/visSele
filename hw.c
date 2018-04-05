@@ -226,7 +226,7 @@ int testX()
     int ret=acvLoadBitmapFile(target, "data/target.bmp");
 
     std::vector<acv_LabeledData> ldData;
-    acvThreshold(target, 250, 0);
+    acvThreshold(target, 128, 0);
     acvComponentLabeling(target);
     acvLabeledRegionInfo(target, &ldData);
     acvContourCircleSignature(target, ldData[1], 1, tar_signature);

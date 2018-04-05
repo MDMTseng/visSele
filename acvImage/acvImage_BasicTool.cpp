@@ -746,34 +746,34 @@ bool acvFitLineX(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
 
 bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
 {
-  int nPoints = ptsL;
-  if( nPoints < 2 || pts==NULL || line==NULL) {
+  if( ptsL < 2 || pts==NULL || line==NULL) {
     // Fail: infinitely many lines passing through this single point
     return false;
   }
     // some variable declarations
-  long int sumx=0, sumy=0, sumxx=0, sumyy=0, sumxy=0,npix=0;
+  long int sumx=0, sumy=0, sumxx=0, sumyy=0, sumxy=0;
   float xbar, ybar, varx, vary, covxy, sumvars, diffvars;
   float discriminant, sqrtdiscr, lambdaplus, lambdaminus;
   float aplus, bplus, aminus, bminus;
 
-  for(int i=0; i<nPoints; i++) {
+  float wsum=0;
+  for(int i=0; i<ptsL; i++) {
 
     sumx+=pts[i].X;
     sumy+=pts[i].Y;
     sumxx+=pts[i].X * pts[i].X;
     sumyy+=pts[i].Y * pts[i].Y;
     sumxy+=pts[i].X * pts[i].Y;
+    wsum+=1;//Can be modified for weighted data
   }
-  npix=nPoints;
 
   // baricenter
-  xbar = ((float)sumx)/npix;
-  ybar = ((float)sumy)/npix;
+  xbar = ((float)sumx)/wsum;
+  ybar = ((float)sumy)/wsum;
   // variances and covariance
-  varx = sumxx/npix - xbar*xbar;
-  vary = sumyy/npix - ybar*ybar;
-  covxy = sumxy/npix - xbar*ybar;
+  varx = sumxx/wsum - xbar*xbar;
+  vary = sumyy/wsum - ybar*ybar;
+  covxy = sumxy/wsum - xbar*ybar;
   sumvars = varx + vary;
   diffvars = varx - vary;
   discriminant = diffvars*diffvars + 4*covxy*covxy;
@@ -800,11 +800,11 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
   if(ret_sigma)
   {
     float sigma=0;
-    for(int i=0; i<nPoints; i++) {
+    for(int i=0; i<ptsL; i++) {
       float dist=acvDistance_Signed(*line, pts[i]);
       sigma+=dist*dist;
     }
-    *ret_sigma=sqrt(sigma/nPoints);
+    *ret_sigma=sqrt(sigma/ptsL);
   }
   return true;
 

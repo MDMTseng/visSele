@@ -50,7 +50,7 @@ int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 
 
 
-  acvThreshold(img, 250, 0);
+  acvThreshold(img, 128, 0);
   acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
 
   acvComponentLabeling(img);
