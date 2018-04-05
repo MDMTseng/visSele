@@ -127,4 +127,6 @@ float acvDistance(acv_Line line, acv_XY point);
 float acvLineAngle(acv_Line line1,acv_Line line2);
 float acvVectorAngle(acv_XY v1,acv_XY v2);
 bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma);
+bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma);
+
 #endif

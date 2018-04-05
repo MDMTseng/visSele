@@ -743,8 +743,12 @@ bool acvFitLineX(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
   return true;
 }
 
-
 bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
+{
+  return acvFitLine(pts, NULL, ptsL,line, ret_sigma);
+}
+
+bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma)
 {
   if( ptsL < 2 || pts==NULL || line==NULL) {
     // Fail: infinitely many lines passing through this single point
@@ -758,13 +762,13 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
 
   float wsum=0;
   for(int i=0; i<ptsL; i++) {
-
-    sumx+=pts[i].X;
-    sumy+=pts[i].Y;
-    sumxx+=pts[i].X * pts[i].X;
-    sumyy+=pts[i].Y * pts[i].Y;
-    sumxy+=pts[i].X * pts[i].Y;
-    wsum+=1;//Can be modified for weighted data
+    float w = (ptsw)?ptsw[i]:1;
+    sumx+=pts[i].X * w;
+    sumy+=pts[i].Y * w;
+    sumxx+=pts[i].X * pts[i].X * w;
+    sumyy+=pts[i].Y * pts[i].Y * w;
+    sumxy+=pts[i].X * pts[i].Y * w;
+    wsum+=w;//Can be modified for weighted data
   }
 
   // baricenter
@@ -800,11 +804,14 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
   if(ret_sigma)
   {
     float sigma=0;
+    float wsum=0;
     for(int i=0; i<ptsL; i++) {
+      float w = (ptsw)?ptsw[i]:1;
       float dist=acvDistance_Signed(*line, pts[i]);
-      sigma+=dist*dist;
+      sigma+=dist*dist*w;
+      wsum+=w;
     }
-    *ret_sigma=sqrt(sigma/ptsL);
+    *ret_sigma=sqrt(sigma/wsum);
   }
   return true;
 
