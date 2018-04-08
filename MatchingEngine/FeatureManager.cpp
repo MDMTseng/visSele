@@ -178,6 +178,12 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   }
   line.searchVec.Y=*pnum;
 
+  if(!(getDataFromJsonObj(param,"searchDist",(void**)&pnum)&cJSON_Number))
+  {
+    return -1;
+  }
+  line.searchDist=*pnum;
+
 
 
 
@@ -374,6 +380,63 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   return 0;
 }
 
+int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist)
+{
+  if(img ==NULL || pos==NULL )return -1;
+  int X=(int)round(pos->X);
+  int Y=(int)round(pos->Y);
+  if(X<0 || Y<0 || X>=img->GetWidth() || Y>=img->GetHeight())
+  {
+    return -1;
+  }
+
+  searchVec = acvVecNormalize(searchVec);
+
+  int tarX=0;
+  if(img->CVector[Y][3*X]==255)
+  {
+    tarX=0;//Looking for non-255
+  }
+  else
+  {
+    tarX=255;//Looking for 255
+    searchVec.X*=-1;//reverse search vector
+    searchVec.Y*=-1;
+  }
+
+  for(int i=0;i<maxSearchDist;i++)
+  {
+    X=(int)round(pos->X+searchVec.X*i);
+    Y=(int)round(pos->Y+searchVec.Y*i);
+    if(X<0 || Y<0 || X>=img->GetWidth() || Y>=img->GetHeight())
+    {
+      return -1;
+    }
+
+    if(img->CVector[Y][3*X]==255)
+    {
+      if(tarX == 255)
+      {
+        pos->X=pos->X+searchVec.X*(i-1);//Get previous non-255
+        pos->Y=pos->Y+searchVec.Y*(i-1);
+        return 0;
+      }
+    }
+    else
+    {
+      if(tarX != 255)
+      {
+        pos->X=pos->X+searchVec.X*(i);
+        pos->Y=pos->Y+searchVec.Y*(i);
+        return 0;
+      }
+    }
+
+  }
+
+  return -1;
+}
+
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
 
@@ -417,11 +480,25 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       {
         featureDef_line line = featureLineList[j];
         line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
+
+        //TODO:Find out why it has to be negative
         line.lineTar.line_vec = acvRotation(-cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
+        line.searchVec = acvRotation(cached_sin,cached_cos,flip_f,line.searchVec);
 
-        line.lineTar.line_anchor.X+=ldData[i].Center.X;
-        line.lineTar.line_anchor.Y+=ldData[i].Center.Y;
+        //Offet to real image and backoff searchDist distance along with the searchVec as start
+        line.lineTar.line_anchor.X+=ldData[i].Center.X-
+                                    line.searchDist*line.searchVec.X;
+        line.lineTar.line_anchor.Y+=ldData[i].Center.Y-
+                                    line.searchDist*line.searchVec.Y;
 
+        acvDrawCrossX(buff,
+          line.lineTar.line_anchor.X,line.lineTar.line_anchor.Y,
+          2,2);
+        //Search distance a 2*searchDist(since you go back off initMatchingMargin)
+        if(searchP(img, &line.lineTar.line_anchor , line.searchVec, 2*line.searchDist)!=0)
+        {
+          continue;
+        }
 
         acvDrawCrossX(buff,
           line.lineTar.line_anchor.X,line.lineTar.line_anchor.Y,

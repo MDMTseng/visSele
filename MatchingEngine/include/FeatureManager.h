@@ -30,6 +30,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager {
     acv_XY searchVec;//The vector to searching the contour edge
     float initMatchingMargin;
     float MatchingMarginX;
+    float searchDist;
   }featureDef_line;
 
   vector<featureDef_circle> featureCircleList;
