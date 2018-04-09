@@ -324,7 +324,7 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
 
       acv_XY pt={.X=j-line.line_anchor.X,.Y=i-line.line_anchor.Y};
 
-      pt = acvRotation(line.line_vec.Y,line.line_vec.X,-1,pt);
+      pt = acvRotation(-line.line_vec.Y,line.line_vec.X,-1,pt);
 
       //By default, the current dot is in middle(0)
       intersectTestNodes[idx]=0;
@@ -404,7 +404,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
 
-      pt = acvRotation(line.line_vec.Y,line.line_vec.X,1,pt);
+      pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
       if(pt.X<0)pt.X=-pt.X;
       if(pt.Y<0)pt.Y=-pt.Y;
       if(pt.X < epsilonX && pt.Y < epsilonY)

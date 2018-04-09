@@ -481,8 +481,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         featureDef_line line = featureLineList[j];
         line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
 
-        //TODO:Find out why it has to be negative
-        line.lineTar.line_vec = acvRotation(-cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
+        line.lineTar.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
         line.searchVec = acvRotation(cached_sin,cached_cos,flip_f,line.searchVec);
 
         //Offet to real image and backoff searchDist distance along with the searchVec as start
