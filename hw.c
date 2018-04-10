@@ -210,7 +210,7 @@ void drawSignatureInfo(acvImage *img,
     }
 }
 
-int testX()
+int testX(int repeatTime)
 {
 
   MatchingEngine me;
@@ -254,7 +254,7 @@ int testX()
   }printf("]\n");*/
 
   clock_t t = clock();
-  for(int i=0;i<1;i++)
+  for(int i=0;i<repeatTime;i++)
     me.FeatureMatching(test1,test1_buff,NULL);
 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -337,7 +337,7 @@ int main(int argc, char** argv)
     logi("execute %d times\r\n", repeatNum);
 
     //ret = testSignature(repeatNum);
-    ret = testX();
+    ret = testX(repeatNum);
     {//Test intersect function
       acv_XY p1={.X=-1,.Y=1.1};
       acv_XY p2={.X= 0,.Y=1};
