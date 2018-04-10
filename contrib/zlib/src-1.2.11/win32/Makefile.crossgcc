@@ -41,7 +41,7 @@ SHARED_MODE=0
 #LOC = -DASMV
 #LOC = -DZLIB_DEBUG -g
 $(info $(PREFIX))
-CC ?= $(PREFIX)gcc
+CC = $(PREFIX)gcc
 CFLAGS = $(LOC) -O3 -Wall
 
 AS = $(CC)
