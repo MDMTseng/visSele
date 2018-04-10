@@ -32,7 +32,7 @@ MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
 EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_MatchingEngine)/MatchingEngine.a \
-					$(MODULE_circleFitting)/circleFitting.a \
+					$(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_LOGCTRL)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
