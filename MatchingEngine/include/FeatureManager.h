@@ -28,7 +28,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager {
   typedef struct featureDef_line{
     acv_Line lineTar;
     acv_XY searchVec;//The vector to searching the contour edge
-    acv_XY searchStartVec;//The vector to searching the contour edge
+    acv_XY searchEstAnchor;//The vector to searching the contour edge
     float initMatchingMargin;
     float MatchingMarginX;
     float searchDist;

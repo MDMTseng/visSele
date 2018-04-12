@@ -174,54 +174,97 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
 
-  line.searchStartVec = line.lineTar.line_anchor;
+  line.searchEstAnchor = line.lineTar.line_anchor;
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.x")) == NULL )
   {
-    LOGE("no (opt)searchVec.x use line_anchor by default");
+    return -1;
   }
-  else
-  {
-    line.searchStartVec.X=*pnum;
-  }
+  line.searchEstAnchor.X=*pnum;
 
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.y")) == NULL )
   {
-    LOGE("no (opt)searchVec.y use line_anchor by default");
+    return -1;
+  }
+  line.searchEstAnchor.Y=*pnum;
+
+
+
+  line.searchVec=acvClosestPointOnLine(line.searchEstAnchor, line.lineTar);
+  line.searchVec.X-=line.searchEstAnchor.X;
+  line.searchVec.Y-=line.searchEstAnchor.Y;
+  float dist = hypot(line.searchVec.X,line.searchVec.Y);
+  if(dist>1)
+  {
+
+    line.searchVec.X/=dist;
+    line.searchVec.Y/=dist;
+    line.searchDist=dist*2;
   }
   else
   {
-    line.searchStartVec.Y=*pnum;
+    dist=-1;
+    LOGE("The start pt(%f,%f) to closest pt(%f,%f) is too close to find search vector",
+      line.searchEstAnchor.X,line.searchEstAnchor.Y,
+      line.searchVec.X + line.searchEstAnchor.X,
+      line.searchVec.Y + line.searchEstAnchor.Y
+    );
   }
 
 
   //Get param for searchVec start direction/vector
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.vx")) == NULL )
   {
-    return -1;
+    if(dist<0)
+    {
+      LOGE("The search start pt is not enough to establish search vec, thus, the vx is required..");
+      return -1;
+    }
   }
-  line.searchVec.X=*pnum;
+  else
+  {
+    line.searchVec.X=*pnum;
+  }
 
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.vy")) == NULL )
   {
-    return -1;
+    if(dist<0)
+    {
+      LOGE("The search start pt is not enough to establish search vec, thus, the vy is required..");
+      return -1;
+    }
   }
-  line.searchVec.Y=*pnum;
+  else
+  {
+    line.searchVec.Y=*pnum;
+  }
 
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.searchDist")) == NULL )
   {
-    return -1;
+    if(dist<0)
+    {
+      LOGE("The search start pt is not enough to establish search vec, thus, the searchDist is required..");
+      return -1;
+    }
   }
-  line.searchDist=*pnum;
+  else
+  {
+    line.searchDist=*pnum;
+  }
+
 
   LOGV("feature is a line");
-  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f,MatchingMargin:%f",
+  LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f ,MatchingMargin:%f",
   line.lineTar.line_anchor.X,
   line.lineTar.line_anchor.Y,
   line.lineTar.line_vec.X,
   line.lineTar.line_vec.Y,
+  line.initMatchingMargin);
+  LOGV("searchVec X:%f Y:%f vX:%f vY:%f sVX:%f sVY:%f,searchDist:%f",
+  line.searchEstAnchor.X,
+  line.searchEstAnchor.Y,
   line.searchVec.X,
   line.searchVec.Y,
-  line.initMatchingMargin);
+  line.searchDist);
   featureLineList.push_back(line);
 
 
@@ -505,23 +548,25 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
         line.lineTar.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
 
-        line.lineTar.line_anchor=acvRotation(cached_sin,cached_cos,flip_f,line.searchStartVec);
+        line.searchEstAnchor=acvRotation(cached_sin,cached_cos,flip_f,line.searchEstAnchor);
         line.searchVec = acvRotation(cached_sin,cached_cos,flip_f,line.searchVec);
 
         //Offet to real image and backoff searchDist distance along with the searchVec as start
-        line.lineTar.line_anchor.X+=ldData[i].Center.X-
-                                    line.searchDist*line.searchVec.X;
-        line.lineTar.line_anchor.Y+=ldData[i].Center.Y-
-                                    line.searchDist*line.searchVec.Y;
+        line.searchEstAnchor.X+=ldData[i].Center.X;
+                                  //-line.searchDist*line.searchVec.X;
+        line.searchEstAnchor.Y+=ldData[i].Center.Y;
+                                  //-line.searchDist*line.searchVec.Y;
 
         acvDrawCrossX(buff,
-          line.lineTar.line_anchor.X,line.lineTar.line_anchor.Y,
+          line.searchEstAnchor.X,line.searchEstAnchor.Y,
           2,2);
         //Search distance a 2*searchDist(since you go back off initMatchingMargin)
-        if(searchP(img, &line.lineTar.line_anchor , line.searchVec, 2*line.searchDist)!=0)
+        if(searchP(img, &line.searchEstAnchor , line.searchVec, 2*line.searchDist)!=0)
         {
           continue;
         }
+
+        line.lineTar.line_anchor = line.searchEstAnchor;
 
         acvDrawCrossX(buff,
           line.lineTar.line_anchor.X,line.lineTar.line_anchor.Y,

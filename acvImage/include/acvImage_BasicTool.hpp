@@ -82,6 +82,9 @@ typedef struct acv_LineFit
 {
   acv_Line line;
   int matching_pts;
+
+  acv_XY end_pos;
+  acv_XY end_neg;
   float s;//sigma
 }acv_LineFit;
 
@@ -122,6 +125,7 @@ float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormalize(acv_XY vec);
 acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
 
+acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line);
 float acvDistance_Signed(acv_Line line, acv_XY point);
 float acvDistance(acv_Line line, acv_XY point);
 float acvLineAngle(acv_Line line1,acv_Line line2);

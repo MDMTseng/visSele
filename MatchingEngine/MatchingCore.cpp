@@ -430,6 +430,31 @@ float ContourDataCircleFit(ContourGrid &contourGrid, acv_XY *innerCornorContour,
   return 0;
 }
 
+acv_XY* findEndPoint(acv_Line line, int signees, vector<acv_XY> &points)
+{
+  signees=(signees>0)?1:-1;
+  int maxi=-1;
+  float max_dist=0;
+
+  //Find normal vector
+  {
+    float tmp=line.line_vec.X;
+    line.line_vec.X=line.line_vec.Y;
+    line.line_vec.Y=-tmp;
+  }
+
+  for(int i=0;i<points.size();i++)
+  {
+    float dist = signees*acvDistance_Signed(line, points[i]);
+    if(max_dist<dist)
+    {
+      max_dist=dist;
+      maxi=i;
+    }
+  }
+  return (maxi>=0)?&points[maxi]:NULL;
+}
+
 bool LineFitTest(ContourGrid &contourGrid,
     acv_Line line,acv_LineFit *ret_lf,float epsilon1,float epsilon2,
     float minInBoundPoints)
@@ -448,7 +473,12 @@ bool LineFitTest(ContourGrid &contourGrid,
       float sigma;
       acvFitLine(&s_points[0], s_points.size(),&line,&sigma);
 
+      acv_XY *end_pos=findEndPoint(line, 1, s_points);
+      acv_XY *end_neg=findEndPoint(line, -1, s_points);
+
       acv_LineFit lf ={.line = line,.matching_pts = s_points.size(),.s=sigma};
+      if(end_pos)lf.end_pos=*end_pos;
+      if(end_neg)lf.end_neg=*end_neg;
       *ret_lf = lf;
       return true;
     }

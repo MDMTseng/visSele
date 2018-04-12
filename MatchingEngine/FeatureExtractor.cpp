@@ -128,18 +128,27 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   for(int i=0;i<detectedLines.size();i++)
   {
     acv_Line line = detectedLines[i].line;
+    line.line_anchor.X-=center.X;
+    line.line_anchor.Y-=center.Y;
     LOGV(">>anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f;  s:%f pts:%d",
-      line.line_anchor.X-center.X,line.line_anchor.Y-center.Y,
+      line.line_anchor.X,line.line_anchor.Y,
       line.line_vec.X,line.line_vec.Y,
       detectedLines[i].s,detectedLines[i].matching_pts
     );
     float mult=100;
-      acvDrawLine(buff,
-        line.line_anchor.X-mult*line.line_vec.X,
-        line.line_anchor.Y-mult*line.line_vec.Y,
-        line.line_anchor.X+mult*line.line_vec.X,
-        line.line_anchor.Y+mult*line.line_vec.Y,
-        20,255,128);
+    acvDrawLine(buff,
+      detectedLines[i].end_pos.X,detectedLines[i].end_pos.Y,
+      detectedLines[i].end_neg.X,detectedLines[i].end_neg.Y,
+      20,255,128);
+    detectedLines[i].end_pos.X-=center.X;
+    detectedLines[i].end_pos.Y-=center.Y;
+    detectedLines[i].end_neg.X-=center.X;
+    detectedLines[i].end_neg.Y-=center.Y;
+    LOGV(">>end_pos.X:%f end_pos.Y:%f end_neg.X:%f end_neg.Y:%f\n",
+      detectedLines[i].end_pos.X,detectedLines[i].end_pos.Y,
+      detectedLines[i].end_neg.X,detectedLines[i].end_neg.Y
+    );
+
 
   }
 

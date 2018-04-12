@@ -644,6 +644,16 @@ float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3)
   return acv2DCrossProduct(v1,v2);
 }
 
+acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line)
+{
+  line.line_vec=acvVecNormalize(line.line_vec);
+  point.X-=line.line_anchor.X;
+  point.Y-=line.line_anchor.Y;
+  float dist = line.line_vec.X * point.X + line.line_vec.Y * point.Y;
+  line.line_anchor.X+=dist*line.line_vec.X;
+  line.line_anchor.Y+=dist*line.line_vec.Y;
+  return line.line_anchor;
+}
 
 float acvDistance_Signed(acv_Line line, acv_XY point)
 {
