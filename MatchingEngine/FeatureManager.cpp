@@ -67,6 +67,7 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 
   if((pnum=(double *)JFetch(circle_obj,"MatchingMargin",cJSON_Number)) == NULL )
   {
+    LOGE("MatchingMargin is wrong");
     return -1;
   }
   cir.initMatchingMargin=*pnum;
@@ -74,6 +75,7 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 
   if((pnum=(double *)JFetch(circle_obj,"param.x",cJSON_Number)) == NULL )
   {
+    LOGE("param.x is wrong");
     return -1;
   }
   cir.circleTar.circumcenter.X=*pnum;
@@ -81,6 +83,7 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 
   if((pnum=(double *)JFetch(circle_obj,"param.y",cJSON_Number)) == NULL )
   {
+    LOGE("param.y is wrong");
     return -1;
   }
   cir.circleTar.circumcenter.Y=*pnum;
@@ -88,6 +91,7 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 
   if((pnum=(double *)JFetch(circle_obj,"param.r",cJSON_Number)) == NULL )
   {
+    LOGE("param.r is wrong");
     return -1;
   }
   cir.circleTar.radius=*pnum;
@@ -110,6 +114,8 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
   if((pnum=(double *)JFetch(line_obj,"MatchingMargin",cJSON_Number)) == NULL )
   {
+
+    LOGE("MatchingMargin is wrong");
     return -1;
   }
   line.initMatchingMargin=*pnum;
@@ -117,24 +123,28 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   acv_XY p0,p1;
   if((pnum=(double *)JFetch(line_obj,"param.x0",cJSON_Number)) == NULL )
   {
+    LOGE("param.x0 is wrong");
     return -1;
   }
   p0.X=*pnum;
 
   if((pnum=(double *)JFetch(line_obj,"param.y0",cJSON_Number)) == NULL )
   {
+    LOGE("param.y0 is wrong");
     return -1;
   }
   p0.Y=*pnum;
 
   if((pnum=(double *)JFetch(line_obj,"param.x1",cJSON_Number)) == NULL )
   {
+    LOGE("param.x1 is wrong");
     return -1;
   }
   p1.X=*pnum;
 
   if((pnum=(double *)JFetch(line_obj,"param.y1",cJSON_Number)) == NULL )
   {
+    LOGE("param.y1 is wrong");
     return -1;
   }
   p1.Y=*pnum;
@@ -149,13 +159,18 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
   line.searchStartVec = line.lineTar.line_anchor;
-  if((pnum=(double *)JFetch(line_obj,"searchVec.x",cJSON_Number)) != NULL )
+  if((pnum=(double *)JFetch(line_obj,"searchVec.x",cJSON_Number)) == NULL )
+  {
+    LOGE("no (opt)searchVec.x use line_anchor by default");
+  }
+  else
   {
     line.searchStartVec.X=*pnum;
   }
 
   if((pnum=(double *)JFetch(line_obj,"searchVec.y",cJSON_Number)) != NULL )
   {
+    LOGE("no (opt)searchVec.y use line_anchor by default");
     line.searchStartVec.Y=*pnum;
   }
 
@@ -163,18 +178,21 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   //Get param for searchVec start direction/vector
   if((pnum=(double *)JFetch(line_obj,"searchVec.vx",cJSON_Number)) == NULL )
   {
+    LOGE("searchVec.vx is wrong");
     return -1;
   }
   line.searchVec.X=*pnum;
 
   if((pnum=(double *)JFetch(line_obj,"searchVec.vy",cJSON_Number)) == NULL )
   {
+    LOGE("searchVec.vy is wrong");
     return -1;
   }
   line.searchVec.Y=*pnum;
 
   if((pnum=(double *)JFetch(line_obj,"searchVec.searchDist",cJSON_Number)) == NULL )
   {
+    LOGE("searchVec.searchDist is wrong");
     return -1;
   }
   line.searchDist=*pnum;
