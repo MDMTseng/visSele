@@ -56,6 +56,32 @@ bool FeatureManager_sig360_circle_line::check(cJSON *root)
   return false;
 }
 
+
+double* json_get_num(cJSON *root,char* path, char* dbg_str)
+{
+  double *pnum;
+  if((pnum=(double *)JFetch(root,path,cJSON_Number)) == NULL )
+  {
+    if(dbg_str)
+    {
+      LOGE("%s: Cannot get Number In path: %s",dbg_str,path);
+    }
+    else
+    {
+      LOGE("Cannot get Number In path: %s",path);
+    }
+    return NULL;
+  }
+  return pnum;
+}
+
+double* json_get_num(cJSON *root,char* path)
+{
+  return json_get_num(root,path,NULL);
+}
+
+#define JSON_GET_NUM(JROOT,PATH) json_get_num(JROOT,PATH,(char*)__func__)
+
 int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 {
   featureDef_circle cir;
@@ -65,33 +91,29 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 
   double *pnum;
 
-  if((pnum=(double *)JFetch(circle_obj,"MatchingMargin",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(circle_obj,"MatchingMargin")) == NULL )
   {
-    LOGE("MatchingMargin is wrong");
     return -1;
   }
   cir.initMatchingMargin=*pnum;
 
 
-  if((pnum=(double *)JFetch(circle_obj,"param.x",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(circle_obj,"param.x")) == NULL )
   {
-    LOGE("param.x is wrong");
     return -1;
   }
   cir.circleTar.circumcenter.X=*pnum;
 
 
-  if((pnum=(double *)JFetch(circle_obj,"param.y",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(circle_obj,"param.y")) == NULL )
   {
-    LOGE("param.y is wrong");
     return -1;
   }
   cir.circleTar.circumcenter.Y=*pnum;
 
 
-  if((pnum=(double *)JFetch(circle_obj,"param.r",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(circle_obj,"param.r")) == NULL )
   {
-    LOGE("param.r is wrong");
     return -1;
   }
   cir.circleTar.radius=*pnum;
@@ -112,39 +134,33 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
   double *pnum;
 
-  if((pnum=(double *)JFetch(line_obj,"MatchingMargin",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"MatchingMargin")) == NULL )
   {
-
-    LOGE("MatchingMargin is wrong");
     return -1;
   }
   line.initMatchingMargin=*pnum;
 
   acv_XY p0,p1;
-  if((pnum=(double *)JFetch(line_obj,"param.x0",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"param.x0")) == NULL )
   {
-    LOGE("param.x0 is wrong");
     return -1;
   }
   p0.X=*pnum;
 
-  if((pnum=(double *)JFetch(line_obj,"param.y0",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"param.y0")) == NULL )
   {
-    LOGE("param.y0 is wrong");
     return -1;
   }
   p0.Y=*pnum;
 
-  if((pnum=(double *)JFetch(line_obj,"param.x1",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"param.x1")) == NULL )
   {
-    LOGE("param.x1 is wrong");
     return -1;
   }
   p1.X=*pnum;
 
-  if((pnum=(double *)JFetch(line_obj,"param.y1",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"param.y1")) == NULL )
   {
-    LOGE("param.y1 is wrong");
     return -1;
   }
   p1.Y=*pnum;
@@ -159,7 +175,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
   line.searchStartVec = line.lineTar.line_anchor;
-  if((pnum=(double *)JFetch(line_obj,"searchVec.x",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"searchVec.x")) == NULL )
   {
     LOGE("no (opt)searchVec.x use line_anchor by default");
   }
@@ -168,38 +184,34 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
     line.searchStartVec.X=*pnum;
   }
 
-  if((pnum=(double *)JFetch(line_obj,"searchVec.y",cJSON_Number)) != NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"searchVec.y")) == NULL )
   {
     LOGE("no (opt)searchVec.y use line_anchor by default");
+  }
+  else
+  {
     line.searchStartVec.Y=*pnum;
   }
 
 
   //Get param for searchVec start direction/vector
-  if((pnum=(double *)JFetch(line_obj,"searchVec.vx",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"searchVec.vx")) == NULL )
   {
-    LOGE("searchVec.vx is wrong");
     return -1;
   }
   line.searchVec.X=*pnum;
 
-  if((pnum=(double *)JFetch(line_obj,"searchVec.vy",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"searchVec.vy")) == NULL )
   {
-    LOGE("searchVec.vy is wrong");
     return -1;
   }
   line.searchVec.Y=*pnum;
 
-  if((pnum=(double *)JFetch(line_obj,"searchVec.searchDist",cJSON_Number)) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"searchVec.searchDist")) == NULL )
   {
-    LOGE("searchVec.searchDist is wrong");
     return -1;
   }
   line.searchDist=*pnum;
-
-
-
-
 
   LOGV("feature is a line");
   LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f sVX:%f sVY:%f,MatchingMargin:%f",
