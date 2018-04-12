@@ -7,4 +7,5 @@ int getDataFromJsonObj(cJSON * obj,void **ret_ptr);
 int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr);
 int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr);
 int getDataFromJson(cJSON * obj,char *path,void **ret_ptr);
+void* JFetch(cJSON * obj,char *path,int type);
 #endif

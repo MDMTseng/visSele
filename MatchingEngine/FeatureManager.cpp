@@ -64,32 +64,29 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
   free(str);*/
 
   double *pnum;
-  if(!(getDataFromJsonObj(circle_obj,"MatchingMargin",(void**)&pnum)&cJSON_Number))
+
+  if((pnum=(double *)JFetch(circle_obj,"MatchingMargin",cJSON_Number)) == NULL )
   {
     return -1;
   }
   cir.initMatchingMargin=*pnum;
 
-  cJSON *param;
-  if(!(getDataFromJsonObj(circle_obj,"param",(void**)&param)&cJSON_Object))
-  {
-    return -1;
-  }
 
-  if(!(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(circle_obj,"param.x",cJSON_Number)) == NULL )
   {
     return -1;
   }
   cir.circleTar.circumcenter.X=*pnum;
 
 
-  if(!(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(circle_obj,"param.y",cJSON_Number)) == NULL )
   {
     return -1;
   }
   cir.circleTar.circumcenter.Y=*pnum;
 
-  if(!(getDataFromJsonObj(param,"r",(void**)&pnum)&cJSON_Number))
+
+  if((pnum=(double *)JFetch(circle_obj,"param.r",cJSON_Number)) == NULL )
   {
     return -1;
   }
@@ -109,42 +106,34 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 {
   featureDef_line line;
 
-  cJSON *param;
   double *pnum;
 
-  if(!(getDataFromJsonObj(line_obj,"MatchingMargin",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"MatchingMargin",cJSON_Number)) == NULL )
   {
     return -1;
   }
   line.initMatchingMargin=*pnum;
 
-
-  if(!(getDataFromJsonObj(line_obj,"param",(void**)&param)&cJSON_Object))
-  {
-    return -1;
-  }
-
   acv_XY p0,p1;
-  if(!(getDataFromJsonObj(param,"x0",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"param.x0",cJSON_Number)) == NULL )
   {
     return -1;
   }
   p0.X=*pnum;
 
-  if(!(getDataFromJsonObj(param,"y0",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"param.y0",cJSON_Number)) == NULL )
   {
     return -1;
   }
   p0.Y=*pnum;
 
-
-  if(!(getDataFromJsonObj(param,"x1",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"param.x1",cJSON_Number)) == NULL )
   {
     return -1;
   }
   p1.X=*pnum;
 
-  if(!(getDataFromJsonObj(param,"y1",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"param.y1",cJSON_Number)) == NULL )
   {
     return -1;
   }
@@ -159,40 +148,32 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
 
-  if(!(getDataFromJsonObj(line_obj,"searchVec",(void**)&param)&cJSON_Object))
-  {
-    return -1;
-  }
-
-  //Find param for searchVec start point(optional)
-  if(0!=(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
+  line.searchStartVec = line.lineTar.line_anchor;
+  if((pnum=(double *)JFetch(line_obj,"searchVec.x",cJSON_Number)) != NULL )
   {
     line.searchStartVec.X=*pnum;
-    if(0!=(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
-    {
-      line.searchStartVec.Y=*pnum;
-    }
   }
-  else
+
+  if((pnum=(double *)JFetch(line_obj,"searchVec.y",cJSON_Number)) != NULL )
   {
-    line.searchStartVec = line.lineTar.line_anchor;
+    line.searchStartVec.Y=*pnum;
   }
 
 
   //Get param for searchVec start direction/vector
-  if(!(getDataFromJsonObj(param,"vx",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"searchVec.vx",cJSON_Number)) == NULL )
   {
     return -1;
   }
   line.searchVec.X=*pnum;
 
-  if(!(getDataFromJsonObj(param,"vy",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"searchVec.vy",cJSON_Number)) == NULL )
   {
     return -1;
   }
   line.searchVec.Y=*pnum;
 
-  if(!(getDataFromJsonObj(param,"searchDist",(void**)&pnum)&cJSON_Number))
+  if((pnum=(double *)JFetch(line_obj,"searchVec.searchDist",cJSON_Number)) == NULL )
   {
     return -1;
   }
@@ -287,12 +268,9 @@ int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj
 }
 int FeatureManager_sig360_circle_line::parse_jobj()
 {
-  cJSON *subObj = cJSON_GetObjectItem(root,"type");
-  const char *type_str = subObj?subObj->valuestring:NULL;
-  subObj = cJSON_GetObjectItem(root,"ver");
-  const char *ver_str = subObj?subObj->valuestring:NULL;
-  subObj = cJSON_GetObjectItem(root,"unit");
-  const char *unit_str = subObj?subObj->valuestring:NULL;
+  const char *type_str= (char *)JFetch(root,"type",cJSON_String);
+  const char *ver_str = (char *)JFetch(root,"ver",cJSON_String);
+  const char *unit_str =(char *)JFetch(root,"unit",cJSON_String);
   if(type_str==NULL||ver_str==NULL||unit_str==NULL)
   {
     LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>",type_str,ver_str,unit_str);

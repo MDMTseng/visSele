@@ -85,3 +85,14 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
     }
   }
 }
+
+
+void* JFetch(cJSON * obj,char *path,int type)
+{
+  void* tmp_ptr=NULL;
+  if(0!=(getDataFromJson(obj,path,&tmp_ptr)&type))
+  {
+    return tmp_ptr;
+  }
+  return NULL;
+}
