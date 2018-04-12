@@ -164,15 +164,29 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
     return -1;
   }
 
+  //Find param for searchVec start point(optional)
+  if(0!=(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
+  {
+    line.searchStartVec.X=*pnum;
+    if(0!=(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
+    {
+      line.searchStartVec.Y=*pnum;
+    }
+  }
+  else
+  {
+    line.searchStartVec = line.lineTar.line_anchor;
+  }
 
 
-  if(!(getDataFromJsonObj(param,"x",(void**)&pnum)&cJSON_Number))
+  //Get param for searchVec start direction/vector
+  if(!(getDataFromJsonObj(param,"vx",(void**)&pnum)&cJSON_Number))
   {
     return -1;
   }
   line.searchVec.X=*pnum;
 
-  if(!(getDataFromJsonObj(param,"y",(void**)&pnum)&cJSON_Number))
+  if(!(getDataFromJsonObj(param,"vy",(void**)&pnum)&cJSON_Number))
   {
     return -1;
   }
@@ -479,9 +493,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       for (int j = 0; j < featureLineList.size(); j++)
       {
         featureDef_line line = featureLineList[j];
-        line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
+        //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
 
         line.lineTar.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
+
+        line.lineTar.line_anchor=acvRotation(cached_sin,cached_cos,flip_f,line.searchStartVec);
         line.searchVec = acvRotation(cached_sin,cached_cos,flip_f,line.searchVec);
 
         //Offet to real image and backoff searchDist distance along with the searchVec as start
