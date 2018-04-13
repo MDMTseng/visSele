@@ -702,30 +702,50 @@ float acvLineAngle(acv_Line line1,acv_Line line2)
 }
 // Construct line from points
 
-bool acvFitLineX(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
-  int nPoints = ptsL;
-  if( nPoints < 2 ) {
+bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma) {
+  if( ptsL < 2 || pts==NULL || line==NULL) {
     // Fail: infinitely many lines passing through this single point
     return false;
   }
-  float sumX=0, sumY=0, sumXY=0, sumX2=0;
-  for(int i=0; i<nPoints; i++) {
-    sumX += pts[i].X;
-    sumY += pts[i].Y;
-    sumXY += pts[i].X * pts[i].Y;
-    sumX2 += pts[i].X * pts[i].X;
-  }
-  float xMean = sumX / nPoints;
-  float yMean = sumY / nPoints;
-  float denominator = sumX2 - sumX * xMean;
 
-  line->line_vec.Y =  (sumXY - sumX * yMean);
-  line->line_vec.X =  denominator;
-  denominator = hypot(line->line_vec.X,line->line_vec.Y);
-  if(denominator==0)
+  float sumX=0, sumY=0, sumXY=0, sumX2=0, sumY2=0;
+  float wsum=0;
+  for(int i=0; i<ptsL; i++) {
+    float w = (ptsw)?ptsw[i]:1;
+    sumX += pts[i].X*w;
+    sumY += pts[i].Y*w;
+    sumXY += pts[i].X * pts[i].Y*w;
+    sumX2 += pts[i].X * pts[i].X*w;
+    sumY2 += pts[i].Y * pts[i].Y*w;
+    wsum+=w;
+  }
+
+
+  float xMean = sumX / wsum;
+  float yMean = sumY / wsum;
+  float denominatorX = sumX2 - sumX * xMean;
+  float denominatorY = sumY2 - sumY * yMean;
+
+  float denominator=0;
+  if( fabs( denominatorX ) > fabs( denominatorY ) )
+  {
+      line->line_vec.Y =  (sumXY - sumX * yMean);
+      line->line_vec.X =  denominatorX;
+      denominator = hypot(line->line_vec.X,line->line_vec.Y);
+  }
+  else
+  {
+      line->line_vec.Y =  denominatorY;
+      line->line_vec.X =  (sumXY - sumY * xMean);
+      denominator = hypot(line->line_vec.X,line->line_vec.Y);
+  }
+
+
+  if(denominator< 1e-7)
   {
     return false;
   }
+
   line->line_vec.X /=denominator;
   line->line_vec.Y /=denominator;
 
@@ -744,77 +764,7 @@ bool acvFitLineX(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma) {
   if(ret_sigma)
   {
     float sigma=0;
-    for(int i=0; i<nPoints; i++) {
-      float dist=acvDistance_Signed(*line, pts[i]);
-      sigma+=dist*dist;
-    }
-    *ret_sigma=sqrt(sigma/nPoints);
-  }
-  return true;
-}
-
-bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
-{
-  return acvFitLine(pts, NULL, ptsL,line, ret_sigma);
-}
-
-bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma)
-{
-  if( ptsL < 2 || pts==NULL || line==NULL) {
-    // Fail: infinitely many lines passing through this single point
-    return false;
-  }
-    // some variable declarations
-  long int sumx=0, sumy=0, sumxx=0, sumyy=0, sumxy=0;
-  float xbar, ybar, varx, vary, covxy, sumvars, diffvars;
-  float discriminant, sqrtdiscr, lambdaplus, lambdaminus;
-  float aplus, bplus, aminus, bminus;
-
-  float wsum=0;
-  for(int i=0; i<ptsL; i++) {
-    float w = (ptsw)?ptsw[i]:1;
-    sumx+=pts[i].X * w;
-    sumy+=pts[i].Y * w;
-    sumxx+=pts[i].X * pts[i].X * w;
-    sumyy+=pts[i].Y * pts[i].Y * w;
-    sumxy+=pts[i].X * pts[i].Y * w;
-    wsum+=w;//Can be modified for weighted data
-  }
-
-  // baricenter
-  xbar = ((float)sumx)/wsum;
-  ybar = ((float)sumy)/wsum;
-  // variances and covariance
-  varx = sumxx/wsum - xbar*xbar;
-  vary = sumyy/wsum - ybar*ybar;
-  covxy = sumxy/wsum - xbar*ybar;
-  sumvars = varx + vary;
-  diffvars = varx - vary;
-  discriminant = diffvars*diffvars + 4*covxy*covxy;
-  sqrtdiscr = sqrt(discriminant);
-
-  // eigenvalues
-  lambdaplus = (sumvars + sqrtdiscr)/2;
-  lambdaminus = (sumvars - sqrtdiscr)/2;
-  //eigenvectors - these are the components of the two vectors
-  aplus = varx + covxy - lambdaminus;
-  bplus = vary + covxy - lambdaminus;
-  //aminus = varx + covxy - lambdaplus;
-  //bminus = vary + covxy - lambdaplus;
-
-  float denominator = hypot(aplus,bplus);
-  if( denominator < 1e-7) {
-    return false;
-  }
-  line->line_vec.Y =  bplus/denominator;
-  line->line_vec.X =  aplus/denominator;
-
-  line->line_anchor.X = xbar;
-  line->line_anchor.Y = ybar;
-  if(ret_sigma)
-  {
-    float sigma=0;
-    float wsum=0;
+    wsum=0;
     for(int i=0; i<ptsL; i++) {
       float w = (ptsw)?ptsw[i]:1;
       float dist=acvDistance_Signed(*line, pts[i]);
@@ -824,19 +774,9 @@ bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, f
     *ret_sigma=sqrt(sigma/wsum);
   }
   return true;
+}
 
-  /*// normalizing the vectors
-  float aParallel; float bParallel;
-  float aNormal; float bNormal;
-  float denomPlus = sqrtf(aplus*aplus + bplus*bplus);
-  float denomMinus= sqrtf(aminus*aminus + bminus*bminus);
-  aParallel = aplus/denomPlus;
-  bParallel = bplus/denomPlus;
-  aNormal = aminus/denomMinus;
-  bNormal = bminus/denomMinus;
-  // semi axes
-  float k = 2; // scale factor
-  float majoraxis = k*sqrtf(lambdaplus);
-  float nimoraxis = k*sqrtf(lambdaminus);*/
-
+bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
+{
+  return acvFitLine(pts, NULL, ptsL,line, ret_sigma);
 }
