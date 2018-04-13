@@ -128,10 +128,84 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
   featureCircleList.push_back(cir);
   return 0;
 }
+
+float FeatureManager_sig360_circle_line::find_search_key_points_longest_distance(vector<searchKeyPoint> &skpsList)
+{
+  float maxDist=0;
+  for(int i=0;i<skpsList.size()-1;i++)
+  {
+    for(int j=i+1;j<skpsList.size();j++)
+    {
+      float dist=acvDistance(skpsList[i].searchStart,skpsList[j].searchStart);
+      if(maxDist<dist)
+        maxDist=dist;
+    }
+  }
+  return maxDist;
+}
+int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList)
+{
+  LOGI("It's key point search data");
+  skpsList.resize(0);
+
+  for (int i = 0 ; i < cJSON_GetArraySize(kspArr_obj) ; i++)
+  {
+    searchKeyPoint skp;
+    cJSON *jobj;
+    if(!(getDataFromJsonObj(kspArr_obj,i,(void**)&jobj)&cJSON_Object))
+    {
+      return -1;
+    }
+
+
+    double *pnum;
+    if((pnum=JSON_GET_NUM(jobj,"x")) == NULL )
+    {
+      return -1;
+    }
+    skp.searchStart.X=*pnum;
+
+    if((pnum=JSON_GET_NUM(jobj,"y")) == NULL )
+    {
+      return -1;
+    }
+    skp.searchStart.Y=*pnum;
+
+    if((pnum=JSON_GET_NUM(jobj,"vx")) == NULL )
+    {
+      return -1;
+    }
+    skp.searchVec.X=*pnum;
+
+    if((pnum=JSON_GET_NUM(jobj,"vy")) == NULL )
+    {
+      return -1;
+    }
+    skp.searchVec.Y=*pnum;
+    skp.searchVec=acvVecNormalize(skp.searchVec);
+
+    if((pnum=JSON_GET_NUM(jobj,"searchDist")) == NULL )
+    {
+      return -1;
+    }
+    skp.searchDist=*pnum;
+
+
+    LOGV("[%d]={x:%f,y:%f,vx:%f,vy:%f,sdist:%f}",
+      i,
+      skp.searchStart.X,skp.searchStart.Y,
+      skp.searchVec.X,skp.searchVec.Y,
+      skp.searchDist
+    );
+    skpsList.push_back(skp);
+  }
+
+
+}
 int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 {
   featureDef_line line;
-
+  line.MatchingMarginX=0;
   double *pnum;
 
   if((pnum=JSON_GET_NUM(line_obj,"MatchingMargin")) == NULL )
@@ -139,6 +213,29 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
     return -1;
   }
   line.initMatchingMargin=*pnum;
+
+
+  if((pnum=JSON_GET_NUM(line_obj,"MatchingMarginX")) == NULL )
+  {
+    LOGI("The MatchingMarginX isn't there will be generated later on...");
+  }
+  else
+  {
+    line.MatchingMarginX=*pnum;
+  }
+
+  cJSON *kspArr_obj=(cJSON *)JFetch(line_obj,"searchKeyPoints",cJSON_Array);
+  if(kspArr_obj)
+  {
+    int ret = parse_search_key_points_Data(kspArr_obj,line.skpsList);
+    line.MatchingMarginX=find_search_key_points_longest_distance(line.skpsList)/2;
+
+    featureLineList.push_back(line);
+    return 0;
+  }
+
+
+
 
   acv_XY p0,p1;
   if((pnum=JSON_GET_NUM(line_obj,"param.x0")) == NULL )
@@ -165,7 +262,10 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   }
   p1.Y=*pnum;
 
-  line.MatchingMarginX=hypot(p0.X-p1.X,p0.Y-p1.Y)/2;
+  if(line.MatchingMarginX==0)
+  {
+    line.MatchingMarginX=hypot(p0.X-p1.X,p0.Y-p1.Y)/2;
+  }
   line.lineTar.line_anchor.X=(p0.X+p1.X)/2;
   line.lineTar.line_anchor.Y=(p0.Y+p1.Y)/2;
   line.lineTar.line_vec.X=(p0.X-p1.X);
@@ -517,6 +617,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
   static vector<int> s_intersectIdxs;
   static vector<acv_XY> s_points;
+  float sigma;
   for (int i = 1; i < ldData.size(); i++)
   {
       if(ldData[i].area<120)continue;
@@ -543,47 +644,88 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       for (int j = 0; j < featureLineList.size(); j++)
       {
-        featureDef_line line = featureLineList[j];
-        //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
-
-        line.lineTar.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_vec);
-
-        line.searchEstAnchor=acvRotation(cached_sin,cached_cos,flip_f,line.searchEstAnchor);
-        line.searchVec = acvRotation(cached_sin,cached_cos,flip_f,line.searchVec);
-
-        //Offet to real image and backoff searchDist distance along with the searchVec as start
-        line.searchEstAnchor.X+=ldData[i].Center.X;
-                                  //-line.searchDist*line.searchVec.X;
-        line.searchEstAnchor.Y+=ldData[i].Center.Y;
-                                  //-line.searchDist*line.searchVec.Y;
-
-        acvDrawCrossX(buff,
-          line.searchEstAnchor.X,line.searchEstAnchor.Y,
-          2,2);
-        //Search distance a 2*searchDist(since you go back off initMatchingMargin)
-        if(searchP(img, &line.searchEstAnchor , line.searchVec, 2*line.searchDist)!=0)
-        {
-          continue;
-        }
-
-        line.lineTar.line_anchor = line.searchEstAnchor;
-
-        acvDrawCrossX(buff,
-          line.lineTar.line_anchor.X,line.lineTar.line_anchor.Y,
-          4,4);
-
-
-        straight_line_grid.getContourPointsWithInLineContour(line.lineTar,
-          line.MatchingMarginX+line.initMatchingMargin,
-          line.initMatchingMargin,
-          s_intersectIdxs,s_points);
-
+        int mult=100;
+        const featureDef_line *line = &featureLineList[j];
 
         acv_Line line_fit;
-        float sigma;
+        if(line->skpsList.size()!=0)
+        {
+          if(line->skpsList.size()<2)
+          {
+            LOGE("skpListSize:%d <2 not enough",line->skpsList.size());
+            continue;
+            //Error
+          }
+          s_points.resize(0);
+          for(int k=0;k<line->skpsList.size();k++)
+          {
+            searchKeyPoint skp= line->skpsList[k];
+
+            skp.searchStart= acvRotation(cached_sin,cached_cos,flip_f,skp.searchStart);
+            skp.searchVec= acvRotation(cached_sin,cached_cos,flip_f,skp.searchVec);
+            skp.searchStart.X+=ldData[i].Center.X;
+            skp.searchStart.Y+=ldData[i].Center.Y;
+            acvDrawCrossX(buff,
+              skp.searchStart.X,skp.searchStart.Y,
+              2,2);
+            if(searchP(img, &skp.searchStart , skp.searchVec, 2*skp.searchDist)!=0)
+            {
+              continue;
+            }
+            acvDrawCrossX(buff,
+              skp.searchStart.X,skp.searchStart.Y,
+              4,4);
+            s_points.push_back(skp.searchStart);
+          }
+          acvFitLine(&s_points[0], s_points.size(),&line_fit,&sigma);
+
+          acvDrawLine(buff,
+            line_fit.line_anchor.X-mult*line_fit.line_vec.X,
+            line_fit.line_anchor.Y-mult*line_fit.line_vec.Y,
+            line_fit.line_anchor.X+mult*line_fit.line_vec.X,
+            line_fit.line_anchor.Y+mult*line_fit.line_vec.Y,
+            20,0,128);
+          //  line.MatchingMarginX=30
+        }
+        else
+        {
+          //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
+          line_fit.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
+          line_fit.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
+          acv_XY searchVec;
+          searchVec = acvRotation(cached_sin,cached_cos,flip_f,line->searchVec);
+
+          //Offet to real image and backoff searchDist distance along with the searchVec as start
+          line_fit.line_anchor.X+=ldData[i].Center.X;
+                                    //-line->searchDist*line->searchVec.X;
+          line_fit.line_anchor.Y+=ldData[i].Center.Y;
+                                    //-line->searchDist*line->searchVec.Y;
+
+          acvDrawCrossX(buff,
+            line_fit.line_anchor.X,line_fit.line_anchor.Y,
+            2,2);
+          //Search distance a 2*searchDist(since you go back off initMatchingMargin)
+          if(searchP(img, &line_fit.line_anchor , searchVec, 2*line->searchDist)!=0)
+          {
+            continue;
+          }
+
+          acvDrawCrossX(buff,
+            line_fit.line_anchor.X,line_fit.line_anchor.Y,
+            4,4);
+
+        }
+
+        s_points.resize(0);
+        straight_line_grid.getContourPointsWithInLineContour(line_fit,
+          line->MatchingMarginX+line->initMatchingMargin,
+          line->initMatchingMargin,
+          s_intersectIdxs,s_points);
+
         acvFitLine(&s_points[0], s_points.size(),&line_fit,&sigma);
+
+
         //LOGV("Matched points:%d",s_points.size());
-        int mult=100;
         acvDrawLine(buff,
           line_fit.line_anchor.X-mult*line_fit.line_vec.X,
           line_fit.line_anchor.Y-mult*line_fit.line_vec.Y,

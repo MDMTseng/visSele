@@ -25,6 +25,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager {
     acv_Circle circleTar;
     float initMatchingMargin;
   }featureDef_circle;
+  typedef struct searchKeyPoint{
+    acv_XY searchStart;
+    acv_XY searchVec;
+    float searchDist;
+  }searchKeyPoint;
   typedef struct featureDef_line{
     acv_Line lineTar;
     acv_XY searchVec;//The vector to searching the contour edge
@@ -32,6 +37,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager {
     float initMatchingMargin;
     float MatchingMarginX;
     float searchDist;
+    vector<searchKeyPoint> skpsList;
   }featureDef_line;
 
   vector<featureDef_circle> featureCircleList;
@@ -47,6 +53,9 @@ public :
   int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
   static bool check(cJSON *root);
 protected:
+
+  int parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList);
+  float find_search_key_points_longest_distance(vector<searchKeyPoint> &skpsList);
   int parse_circleData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_signatureData(cJSON * signature_obj);
