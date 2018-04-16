@@ -1,3 +1,5 @@
 include
 lib
 src-1.2.11
+pref
+staticlib
