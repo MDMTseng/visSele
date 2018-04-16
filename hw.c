@@ -12,6 +12,7 @@
 #include "logctrl.h"
 #include "FeatureManager.h"
 #include "MatchingEngine.h"
+#include "common_lib.h"
 
 
 
@@ -210,6 +211,45 @@ void drawSignatureInfo(acvImage *img,
     }
 }
 
+typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst,size_t dstLen,uint8_t *src,size_t srcLen);
+
+void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_func, IMG_COMPRESS_FUNC uncollapse_func)
+{
+
+
+  int tLen=img->GetHeight()*img->GetWidth();
+  int imgc_Len=3*img->GetHeight()*img->GetWidth();
+
+  if(collapse_func)
+  {
+    imgc_Len= collapse_func(img->CVector[0],3*img->GetHeight()*img->GetWidth(),
+    img->CVector[0],3*img->GetHeight()*img->GetWidth());
+  }
+
+
+  size_t compresSize = 3*buff->GetHeight()*buff->GetWidth();
+
+    compresSize = zlibDeflate(buff->CVector[0],3*buff->GetHeight()*buff->GetWidth(),
+                img->CVector[0], imgc_Len,5);
+
+  printf("Compressed size is: %lu/%lu:%.5f\n",  compresSize,imgc_Len,(float)compresSize/(imgc_Len));
+
+  size_t unCompresSize = zlibInflate(img->CVector[0],3*img->GetHeight()*img->GetWidth(),
+                buff->CVector[0], compresSize);
+  printf("Uncompressed size is: %lu\n",  unCompresSize);
+
+
+  imgc_Len = unCompresSize;
+  if(uncollapse_func)
+  {
+    imgc_Len= uncollapse_func(img->CVector[0],3*img->GetHeight()*img->GetWidth(),
+    img->CVector[0],unCompresSize);
+  }
+
+  printf("imgc_Len size is: %lu\n",  imgc_Len);
+
+}
+
 int testX(int repeatTime)
 {
 
@@ -217,41 +257,60 @@ int testX(int repeatTime)
   char *string = ReadFile("data/target.json");
   me.AddMatchingFeature(string);
   free(string);
+  acvImage *test1_buff = new acvImage();
 
   vector<acv_XY> tar_signature(360);
   //Just to get target signature
   {
     acvImage *target = new acvImage();
-
     int ret=acvLoadBitmapFile(target, "data/target.bmp");
+    acvThreshold(target, 128, 0);
+    test1_buff->ReSize(target->GetWidth(), target->GetHeight());
+
+    //acvThreshold(target, 128, 0);
 
     std::vector<acv_LabeledData> ldData;
-    acvThreshold(target, 128, 0);
     acvComponentLabeling(target);
     acvLabeledRegionInfo(target, &ldData);
     acvContourCircleSignature(target, ldData[1], 1, tar_signature);
+
+    acvLoadBitmapFile(target, "data/target.bmp");
+
+    clock_t t = clock();
+
+    //zlibDeflate_testX(target,test1_buff,NULL,NULL);
+    //zlibDeflate_testX(target,test1_buff,RGB2Gray_collapse,Gray2RGB_uncollapse);
+    acvThreshold(target, 128, 0);
+    zlibDeflate_testX(target,test1_buff,RGB2BW_collapse,BW2RGB_uncollapse);
+
+    LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+
+    acvSaveBitmapFile("data/zlib_test.bmp",target);
+    exit(0);
+
     delete(target);
+
+
+    /*
+      printf("\"magnitude\":[");
+      for(int i=0;i<tar_signature.size();i++)
+      {
+        printf("%f,",tar_signature[i].X);
+      }printf("],\n");
+
+
+      printf("\"angle\":[");
+      for(int i=0;i<tar_signature.size();i++)
+      {
+        printf("%f,",tar_signature[i].Y);
+      }printf("]\n");*/
   }
 
   acvImage *test1 = new acvImage();
   int ret=acvLoadBitmapFile(test1, "data/test1.bmp");
-  acvImage *test1_buff = new acvImage();
 
   test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
-/*
-  printf("\"magnitude\":[");
-  for(int i=0;i<tar_signature.size();i++)
-  {
-    printf("%f,",tar_signature[i].X);
-  }printf("],\n");
-
-
-  printf("\"angle\":[");
-  for(int i=0;i<tar_signature.size();i++)
-  {
-    printf("%f,",tar_signature[i].Y);
-  }printf("]\n");*/
 
   clock_t t = clock();
   for(int i=0;i<repeatTime;i++)

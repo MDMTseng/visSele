@@ -7,6 +7,7 @@ export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_LOGCTRL=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
 export MODULE_common_lib=$(abspath common_lib)
+export MODULE_zlib=$(abspath contrib/zlib)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -21,9 +22,10 @@ IDIR=	include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
+			$(MODULE_zlib)/include \
 
 LDIR=./ $(MODULE_acvImage)
-LIBS=-lacvImage
+LIBS=-lacvImage -lz
 
 
 _OBJ = hw.o
@@ -46,6 +48,7 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 								$(MODULE_cJSON) \
 								$(MODULE_LOGCTRL) \
 								$(MODULE_MatchingEngine) \
+								$(MODULE_zlib) \
 								sidePrj
 
 export MakeTemplate:= $(abspath Makefile.in)
