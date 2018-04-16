@@ -6,7 +6,7 @@ domake:
 	#cd src-1.2.11 ; make -fwin32/Makefile.crossgcc
 	ls $(curPath)/lib  $(curPath)/include  || \
 	(cd src-1.2.11 &&( \
-		sh ./configure --sharedlibdir=$(curPath)/lib --includedir==$(curPath)/include && \
+		sh ./configure --sharedlibdir=$(curPath)/lib --libdir=$(curPath)/staticlib --includedir=$(curPath)/include --prefix=$(curPath)/pref && \
 		make && \
 		make install\
 	))
