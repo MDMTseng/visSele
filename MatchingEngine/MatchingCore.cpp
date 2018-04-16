@@ -476,7 +476,10 @@ bool LineFitTest(ContourGrid &contourGrid,
       acv_XY *end_pos=findEndPoint(line, 1, s_points);
       acv_XY *end_neg=findEndPoint(line, -1, s_points);
 
-      acv_LineFit lf ={.line = line,.matching_pts = s_points.size(),.s=sigma};
+      acv_LineFit lf;
+      lf.line=line;
+      lf.matching_pts=s_points.size();
+      lf.s=sigma;
       if(end_pos)lf.end_pos=*end_pos;
       if(end_neg)lf.end_neg=*end_neg;
       *ret_lf = lf;
