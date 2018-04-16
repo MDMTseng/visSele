@@ -286,7 +286,6 @@ int testX(int repeatTime)
     LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
     acvSaveBitmapFile("data/zlib_test.bmp",target);
-    exit(0);
 
     delete(target);
 
