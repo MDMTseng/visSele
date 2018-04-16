@@ -22,9 +22,10 @@ IDIR=	include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
+			$(MODULE_zlib)/include \
 
 LDIR=./ $(MODULE_acvImage)
-LIBS=-lacvImage
+LIBS=-lacvImage -lz
 
 
 _OBJ = hw.o

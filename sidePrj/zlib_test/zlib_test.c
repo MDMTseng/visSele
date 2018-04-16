@@ -42,7 +42,7 @@ int main(int argc, char* argv[])
     deflateEnd(&defstream);
 
     // This is one way of getting the size of the output
-    printf("Compressed size is: %lu\n", strlen(b));
+    printf("Compressed size is: %lu\n", (unsigned long)defstream.next_out - (unsigned long)b);
     printf("Compressed string is: %s\n", b);
 
 
