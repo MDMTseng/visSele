@@ -1,7 +1,7 @@
 #include "common_lib.h"
 #include "logctrl.h"
 #include <stdexcept>
-
+#include <stdlib.h>
 
 int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
 {
