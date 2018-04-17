@@ -7,7 +7,7 @@ _OBJ = main.o websocket.o
 ESS_TRACK=include/*
 export MakeTemplate:= $(abspath Makefile.in)
 export FLAGS= -w -O3
-ifeq ($(OS),Windows_NT)
+ifeq ($(OS)$(CC),Windows_NTcc)
     export FLAGS+= -lws2_32
 endif
 include $(MakeTemplate)
