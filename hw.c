@@ -254,7 +254,7 @@ int testX(int repeatTime)
 {
 
   MatchingEngine me;
-  char *string = ReadFile("data/target.json");
+  char *string = ReadText("data/target.json");
   me.AddMatchingFeature(string);
   free(string);
   acvImage *test1_buff = new acvImage();
@@ -340,47 +340,6 @@ int simpP(char* strNum)
   return Num;
 }
 
-
-char* ReadFile(char *filename)
-{
-   char *buffer = NULL;
-   int string_size, read_size;
-   FILE *handler = fopen(filename, "r");
-
-   if (handler)
-   {
-       // Seek the last byte of the file
-       fseek(handler, 0, SEEK_END);
-       // Offset from the first to the last byte, or in other words, filesize
-       string_size = ftell(handler);
-       // go back to the start of the file
-       rewind(handler);
-
-       // Allocate a string that can hold it all
-       buffer = (char*) malloc(sizeof(char) * (string_size + 1) );
-
-       // Read it all in one operation
-       read_size = fread(buffer, sizeof(char), string_size, handler);
-
-       // fread doesn't set it so put a \0 in the last position
-       // and buffer is now officially a string
-       buffer[read_size] = '\0';
-
-       /*if (string_size != read_size)
-       {
-           // Something went wrong, throw away the memory and set
-           // the buffer to NULL
-           free(buffer);
-           buffer = NULL;
-       }
-       */
-       // Always remember to close the file.
-       fclose(handler);
-    }
-
-    return buffer;
-}
-
 #include <vector>
 int main(int argc, char** argv)
 {
@@ -391,27 +350,9 @@ int main(int argc, char** argv)
     if(argc>=2)
     {
       repeatNum=simpP(argv[1]);
-    }
+    }    
+    ret = testX(repeatNum);
     logi("execute %d times\r\n", repeatNum);
 
-    //ret = testSignature(repeatNum);
-    ret = testX(repeatNum);
-    {//Test intersect function
-      acv_XY p1={.X=-1,.Y=1.1};
-      acv_XY p2={.X= 0,.Y=1};
-      acv_XY p3={.X= 1,.Y=0};
-      acv_XY p4={.X= 1,.Y=-1};
-      acv_XY ip = acvIntersectPoint(p1, p2, p3, p4);
-
-      logi("acvIntersectPoint:X:%f Y:%f\r\n", ip.X,ip.Y);
-    }
-
-    {
-      acv_XY p1={.X=1,.Y=0};
-      acv_XY p2={.X= 20,.Y=0};
-      acv_XY p3={.X=0,.Y=1};
-      acv_XY cc = acvCircumcenter(p1,p2,p3);
-      logi("acvCircumcenter:X:%f Y:%f\r\n", cc.X,cc.Y);
-    }
     return ret;
 }
