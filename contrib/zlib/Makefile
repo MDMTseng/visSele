@@ -22,7 +22,7 @@ MinGW_build:
 		make -fwin32/Makefile.gcc all SHARED_MODE=1 &&\
 		make -fwin32/Makefile.gcc install SHARED_MODE=1 LIBRARY_PATH=$(curPath)/staticlib INCLUDE_PATH=$(curPath)/include BINARY_PATH=$(curPath)/lib \
 	))
-	cp lib/zlib1.dll lib/zlib.dll
+
 
 NonMinGW_build:
 	#cd src-1.2.11 ; make -fwin32/Makefile.crossgcc
