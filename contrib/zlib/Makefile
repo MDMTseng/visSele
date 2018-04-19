@@ -39,5 +39,5 @@ NonMinGW_clean:
 	cd src-1.2.11 && make clean
 	-rm -r lib include staticlib pref
 MinGW_clean:
-	cd src-1.2.11 && make -fwin32/Makefile.gcc clean SHARED_MODE=1 
+	cd src-1.2.11 && make -fwin32/Makefile.gcc clean SHARED_MODE=1
 	-rm -r lib include staticlib pref
