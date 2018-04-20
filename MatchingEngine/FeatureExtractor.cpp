@@ -6,7 +6,7 @@
 
 
 
-FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *json_str): FeatureManager(json_str)
+FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *json_str): FeatureManager_binary_processing(json_str)
 {
   root= NULL;
   int ret = reload(json_str);

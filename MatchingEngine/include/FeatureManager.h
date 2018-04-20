@@ -11,16 +11,54 @@ using namespace std;
 class FeatureManager {
   protected:
   cJSON *root;
-  virtual int parse_jobj();
+  virtual int parse_jobj()=0;
 public :
-  static bool check(cJSON *root);
-  FeatureManager(const char *json_str);
-  virtual int reload(const char *json_str);
-  virtual int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg);
+  static bool check(cJSON *root){return false;};
+  FeatureManager(const char *json_str){};
+  virtual int reload(const char *json_str)=0;
+  virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)=0;
+};
+
+class FeatureManager_group_proto:public FeatureManager {
+public :
+
+  FeatureManager_group_proto(const char *json_str): FeatureManager(json_str){};
+  int reload(const char *json_str) override;
+protected:
+  virtual int addSubFeature(cJSON * subFeature)=0;
+  virtual int clearFeatureGroup()=0;
+  int parse_jobj() override;
 };
 
 
-class FeatureManager_sig360_circle_line:public FeatureManager {
+
+class FeatureManager_binary_processing:public FeatureManager {
+
+protected:
+  virtual int parse_jobj()=0;
+public :
+  FeatureManager_binary_processing(const char *json_str):FeatureManager(json_str){};
+  virtual int reload(const char *json_str)=0;
+  virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg){return -1;};
+  virtual int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)=0;
+};
+
+
+class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
+  vector<FeatureManager_binary_processing*> binaryFeatureBundle;
+
+public :
+  FeatureManager_binary_processing_group(const char *json_str);
+  static bool check(cJSON *root);
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+protected:
+  int addSubFeature(cJSON * subFeature) override;
+  int clearFeatureGroup() override;
+  ~FeatureManager_binary_processing_group(){clearFeatureGroup();};
+};
+
+
+class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
   typedef struct featureDef_circle{
     acv_Circle circleTar;
     float initMatchingMargin;
@@ -62,7 +100,7 @@ protected:
   int parse_jobj() override;
 };
 
-class FeatureManager_sig360_extractor:public FeatureManager {
+class FeatureManager_sig360_extractor:public FeatureManager_binary_processing {
 public :
   FeatureManager_sig360_extractor(const char *json_str);
   int reload(const char *json_str) override;

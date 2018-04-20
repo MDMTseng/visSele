@@ -1,6 +1,6 @@
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
-#include "logctrl.h"  
+#include "logctrl.h"
 
 int MatchingEngine::AddMatchingFeature(FeatureManager *featureSet)
 {
@@ -23,16 +23,11 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     return -1;
   }
 
-  if(FeatureManager_sig360_circle_line::check(root))
+  if(FeatureManager_binary_processing_group::check(root))
   {
 
-    LOGI("FeatureManager_sig360_circle_line is the type...");
-    featureSet = new FeatureManager_sig360_circle_line(json_str);
-  }
-  else if(FeatureManager_sig360_extractor::check(root))
-  {
-    LOGI("FeatureManager_sig360_extractor is the type...");
-    featureSet = new FeatureManager_sig360_extractor(json_str);
+    LOGI("FeatureManager_binary_processing_group is the type...");
+    featureSet = new FeatureManager_binary_processing_group(json_str);
   }
   else
   {
@@ -45,32 +40,9 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 
 int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
-
-  std::vector<acv_LabeledData> ldData;
-
-
-
-  acvThreshold(img, 128, 0);
-  acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
-
-  acvComponentLabeling(img);
-  acvLabeledRegionInfo(img, &ldData);
-  if(ldData.size()-1<1)
-  {
-    return 0;
-  }
-  ldData[1].area = 0;
-
-  //Delete the object that has less than certain amount of area on ldData
-  //acvRemoveRegionLessThan(img, &ldData, 120);
-
-
-  acvCloneImage( img,buff, -1);
-
-
   for(int i=0;i<featureBundle.size();i++)
   {
-    featureBundle[i]->FeatureMatching(img,buff,ldData,dbg);
+    featureBundle[i]->FeatureMatching(img,buff,dbg);
   }
   return 0;
 }
