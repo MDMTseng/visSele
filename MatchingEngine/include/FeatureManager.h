@@ -30,8 +30,6 @@ protected:
   int parse_jobj() override;
 };
 
-
-
 class FeatureManager_binary_processing:public FeatureManager {
 
 protected:
@@ -55,6 +53,19 @@ protected:
   int addSubFeature(cJSON * subFeature) override;
   int clearFeatureGroup() override;
   ~FeatureManager_binary_processing_group(){clearFeatureGroup();};
+};
+
+class FeatureManager_group:public FeatureManager_group_proto {
+  vector<FeatureManager*> featureBundle;
+
+public :
+  FeatureManager_group(const char *json_str);
+  static bool check(cJSON *root);
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+protected:
+  int addSubFeature(cJSON * subFeature) override;
+  int clearFeatureGroup() override;
+  ~FeatureManager_group(){clearFeatureGroup();};
 };
 
 

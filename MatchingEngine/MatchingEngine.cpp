@@ -23,7 +23,13 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     return -1;
   }
 
-  if(FeatureManager_binary_processing_group::check(root))
+  if(FeatureManager_group::check(root))
+  {
+
+    LOGI("FeatureManager_group is the type...");
+    featureSet = new FeatureManager_group(json_str);
+  }
+  else if(FeatureManager_binary_processing_group::check(root))
   {
 
     LOGI("FeatureManager_binary_processing_group is the type...");

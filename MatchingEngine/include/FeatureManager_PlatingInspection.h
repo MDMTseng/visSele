@@ -1,5 +1,5 @@
-#ifndef FeatureManager_HPP
-#define FeatureManager_HPP
+#ifndef FeatureManager_PLATING_INSPECTION_HPP
+#define FeatureManager_PLATING_INSPECTION_HPP
 
 #include "FeatureManager.h"
 
