@@ -10,7 +10,7 @@
 FeatureManager_sig360_circle_line::FeatureManager_sig360_circle_line(const char *json_str): FeatureManager_binary_processing(json_str)
 {
 
-  LOGI(">>>>%s>>>>",json_str);
+  //LOGI(">>>>%s>>>>",json_str);
   root= NULL;
   int ret = reload(json_str);
   if(ret)

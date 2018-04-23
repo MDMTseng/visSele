@@ -95,7 +95,7 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   if(FeatureManager_sig360_circle_line::check(subFeature))
   {
 
-    LOGI("FeatureManager_sig360_circle_line is the type...:%s",cJSON_Print(subFeature));
+    LOGI("FeatureManager_sig360_circle_line is the type...");
     newFeature = new FeatureManager_sig360_circle_line(cJSON_Print(subFeature));
   }
   else if(FeatureManager_sig360_extractor::check(subFeature))
