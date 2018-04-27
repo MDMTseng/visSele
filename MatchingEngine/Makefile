@@ -13,5 +13,5 @@ IDIR= ./include_priv/ \
 ODIR=obj
 _OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.opp ContourGrid.opp FeatureManager_group.opp FeatureManager_platingCheck.opp
 target_a= $(addsuffix .a ,$(MODULE_NAME))
-ESS_TRACK=$(addsuffix /* ,$(IDIR))
+ESS_TRACK=$(wildcard $(addsuffix /* ,$(IDIR)))
 include ../Makefile.in
