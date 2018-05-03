@@ -1,5 +1,6 @@
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
+#include "FeatureManager_platingCheck.h"
 #include "logctrl.h"
 
 int MatchingEngine::AddMatchingFeature(FeatureManager *featureSet)
@@ -34,6 +35,12 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 
     LOGI("FeatureManager_binary_processing_group is the type...");
     featureSet = new FeatureManager_binary_processing_group(json_str);
+  }
+  else if(FeatureManager_platingCheck::check(root))
+  {
+
+    LOGI("FeatureManager_platingCheck is the type...");
+    featureSet = new FeatureManager_platingCheck(json_str);
   }
   else
   {

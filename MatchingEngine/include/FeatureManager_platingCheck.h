@@ -4,6 +4,11 @@
 #include "FeatureManager.h"
 
 class FeatureManager_platingCheck:public FeatureManager {
+  typedef struct stdMapData_{
+    acvImage* rgb;
+    acvImage* sobel;
+  }stdMapData;
+  vector<stdMapData> stdMap;
 public :
   FeatureManager_platingCheck(const char *json_str);
   int reload(const char *json_str) override;
@@ -11,6 +16,7 @@ public :
   static bool check(cJSON *root);
   cJSON *jobj;
 protected:
+  int creat_stdMapDat(FeatureManager_platingCheck::stdMapData *dat,char* f_path);
   int parse_jobj() override;
 };
 

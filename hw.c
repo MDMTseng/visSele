@@ -261,7 +261,7 @@ int testX(int repeatTime)
 
   vector<acv_XY> tar_signature(360);
   //Just to get target signature
-  {
+  if(0){
     acvImage *target = new acvImage();
     int ret=acvLoadBitmapFile(target, "data/target.bmp");
     acvThreshold(target, 128, 0);
@@ -283,7 +283,7 @@ int testX(int repeatTime)
     acvThreshold(target, 128, 0);
     zlibDeflate_testX(target,test1_buff,RGB2BW_collapse,BW2RGB_uncollapse);
 
-    LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+    LOGI("compress:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
     acvSaveBitmapFile("data/zlib_test.bmp",target);
 
@@ -350,7 +350,7 @@ int main(int argc, char** argv)
     if(argc>=2)
     {
       repeatNum=simpP(argv[1]);
-    }    
+    }
     ret = testX(repeatNum);
     logi("execute %d times\r\n", repeatNum);
 
