@@ -3,6 +3,7 @@ MODULE_NAME=$(notdir $(basename $(CURDIR)))
 
 IDIR= ./include_priv/ \
 			./include/ \
+			./MorphEngine/include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_acvImage)/include \
 			$(MODULE_common_lib)/include \
@@ -10,8 +11,11 @@ IDIR= ./include_priv/ \
 			$(MODULE_LOGCTRL)/include\
 			$(MODULE_zlib)/include
 
+VPATH = ./ ./MorphEngine
 ODIR=obj
-_OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.opp ContourGrid.opp FeatureManager_group.opp FeatureManager_platingCheck.opp
+_OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.opp ContourGrid.opp \
+			 FeatureManager_group.opp FeatureManager_platingCheck.opp \
+			 MorphEngine.opp
 target_a= $(addsuffix .a ,$(MODULE_NAME))
 ESS_TRACK=$(wildcard $(addsuffix /* ,$(IDIR)))
 include ../Makefile.in
