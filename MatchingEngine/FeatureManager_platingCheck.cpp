@@ -259,9 +259,12 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
       uint8_t *cur_pix = &(buff->CVector[i][j*3]);
       uint8_t *input_pix = &(img->CVector[i][j*3]);
 
-      cur_pix[0]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2)-
-        cur_pix[0]+128;
-      cur_pix[1]=0;
+      int diff = (int)acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2)-cur_pix[0];
+      diff=diff*4+128;
+      if(diff<0)diff=0;
+      if(diff>255)diff=255;
+      cur_pix[0]=diff;
+      cur_pix[1]=cur_pix[0];
       cur_pix[2]=cur_pix[0];
 
       //int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
@@ -276,7 +279,7 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
 
     acvDrawCrossX(buff,
       ctrlPt.X,ctrlPt.Y,
-      2,2);
+      2,255,0,0,1);
   }
   return 0;
 }
