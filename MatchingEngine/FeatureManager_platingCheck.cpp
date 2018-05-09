@@ -179,42 +179,90 @@ int FeatureManager_platingCheck::reload(const char *json_str)
 
 int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
+  acvImage *tarImg = stdMap[0].rgb;
+  moEng.RESET(10,tarImg->GetWidth(),tarImg->GetHeight());
 
   acvCloneImage(img,buff, -1);
   buff->RGBToGray();
-  for(int i=0;i<img->GetHeight();i++)
+  for(int iter=0;iter<10;iter++)
   {
-    for(int j=0;j<img->GetWidth();j++)
+    for(int i=0;i<buff->GetHeight();i++)
     {
-      uint8_t *stdMap_sobel_pix = &(stdMap[0].sobel->CVector[i][j*3]);
-      uint8_t *stdMap_rgb_pix = &(stdMap[0].rgb->CVector[i][j*3]);
-      uint8_t *cur_pix = &(buff->CVector[i][j*3]);
-
-      if(1)
+      for(int j=0;j<buff->GetWidth();j++)
       {
-        int diff = (int)cur_pix[0]-stdMap_sobel_pix[2];
-        int8_t sobelX= stdMap_sobel_pix[0];
-        int diffX = diff*sobelX;
-        diffX/=256;
-        int8_t sobelY= stdMap_sobel_pix[1];
-        int diffY = diff*sobelY;
-        diffY/=256;
+        acv_XY from={.X=j,.Y=i};
+        acv_XY mapPt={0};
 
-        cur_pix[0]=diffX+128;
-        cur_pix[1]=diffY+128;
-        //cur_pix[0]=cur_pix[1]=cur_pix[2]=diff/2+128;
-        cur_pix[2]=128;
-      }
-      else
-      {
-        /*cur_pix[0]=stdMap_sobel_pix[0]+128;
-        cur_pix[1]=stdMap_sobel_pix[1]+128;
-        cur_pix[2]=128;*/
 
-        cur_pix[1]=stdMap_rgb_pix[1];
+        moEng.Mapping(from,&mapPt);
+        int mapX=round(mapPt.X);
+        int mapY=round(mapPt.Y);
+
+
+        uint8_t *stdMap_sobel_pix = &(stdMap[0].sobel->CVector[mapY][mapX*3]);
+        uint8_t *stdMap_rgb_pix = &(stdMap[0].rgb->CVector[mapY][mapX*3]);
+        uint8_t *cur_pix = &(buff->CVector[i][j*3]);
+
+        if(0)
+        {
+          cur_pix[0]=stdMap_sobel_pix[1]+128;
+          cur_pix[1]=stdMap_sobel_pix[1]+128;
+          cur_pix[2]=stdMap_sobel_pix[1]+128;
+        }
+        else
+        {
+          int diff = (int)cur_pix[0]-stdMap_sobel_pix[2];
+          int8_t sobelX= stdMap_sobel_pix[1];
+          int8_t sobelY= stdMap_sobel_pix[0];
+
+          float traningRate=0.5;
+          float diffX = -traningRate*diff*sobelX/256/128;
+          float diffY = -traningRate*diff*sobelY/256/128;
+
+          {
+            acv_XY adjposition={.X=j,.Y=i};
+            acv_XY adjVec={.X=diffX,.Y=diffY};
+            moEng.Mapping_adjust(adjposition,adjVec);
+          }
+
+        }
+
       }
 
     }
+    moEng.regularization(0.8);
+  }
+  int drawMargin=50;
+
+  if(1)for(int i=drawMargin;i<buff->GetHeight()-drawMargin;i++)
+  {
+    for(int j=drawMargin;j<buff->GetWidth()-drawMargin;j++)
+    {
+      acv_XY from={.X=j,.Y=i};
+      acv_XY mapPt={0};
+
+
+      moEng.Mapping(from,&mapPt);
+      int mapX=round(mapPt.X);
+      int mapY=round(mapPt.Y);
+
+
+      uint8_t *stdMap_rgb_pix = &(stdMap[0].rgb->CVector[mapY][mapX*3]);
+      uint8_t *cur_pix = &(buff->CVector[i][j*3]);
+      uint8_t *input_pix = &(img->CVector[i][j*3]);
+      cur_pix[0]=stdMap_rgb_pix[0]-input_pix[0]+128;
+      cur_pix[1]=cur_pix[0];
+      cur_pix[2]=0;
+
+    }
+  }
+  for(int i=0;i<moEng.morphSections.size();i++)
+  {
+    acv_XY ctrlPt= moEng.morphSections[i];
+
+    acvDrawCrossX(buff,
+      ctrlPt.X,ctrlPt.Y,
+      2,2);
   }
   return 0;
 }

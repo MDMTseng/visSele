@@ -9,7 +9,7 @@ void MorphEngine::RESET(int grid_size,int img_width,int img_height)
   sectionCol=(img_width/grid_size)+1;//Always one more colum&Row to make interpolation boundery case easier
   sectionRow=(img_height/grid_size)+1;
   morphSections.resize(sectionCol*sectionRow);
-
+  morphSections_buf.resize(sectionCol*sectionRow);
   for(int i=0;i<sectionRow;i++)
   {
     for(int j=0;j<sectionCol;j++)
@@ -106,6 +106,32 @@ int MorphEngine::Mapping_adjust(acv_XY pt, acv_XY vec, float *distGainTbl,const 
       float weight=distGainTbl[idx];
       acv_XY wvec={.X=vec.X*weight,.Y=vec.Y*weight};
       grid_adjust(j, i, wvec);
+    }
+  }
+}
+
+int MorphEngine::regularization(float alpha)
+{
+  for(int i=1;i<sectionRow-1;i++)
+  {
+    for(int j=1;j<sectionCol-1;j++)
+    {
+      acv_XY *R = &(morphSections[sectionCol*i+(j-1)]);
+      acv_XY *L = &(morphSections[sectionCol*i+(j+1)]);
+      acv_XY *T = &(morphSections[sectionCol*(i-1)+j]);
+      acv_XY *B = &(morphSections[sectionCol*(i+1)+j]);
+      acv_XY *C = &(morphSections[sectionCol*i+j]);
+      acv_XY *bC = &(morphSections_buf[sectionCol*i+j]);
+      bC->X=(R->X+L->X+T->X+B->X)/4*(1-alpha)+C->X*alpha;
+      bC->Y=(R->Y+L->Y+T->Y+B->Y)/4*(1-alpha)+C->Y*alpha;
+    }
+  }
+
+  for(int i=1;i<sectionRow-1;i++)
+  {
+    for(int j=1;j<sectionCol-1;j++)
+    {
+      morphSections[sectionCol*i+j] = morphSections_buf[sectionCol*i+j];
     }
   }
 }
