@@ -82,6 +82,7 @@ static int sobelSpread(acvImage *sobel,acvImage *buff,int radius)
 
   acvInnerFramePixCopy(sobel, 1);
   acvScalingSobelResult_max(sobel);
+
   return 0;
 }
 
@@ -106,6 +107,12 @@ int FeatureManager_platingCheck::creat_stdMapDat(FeatureManager_platingCheck::st
   sobelSpread(dat->sobel,&tmp_img,3);
   sobelSpread(dat->sobel,&tmp_img,3);
   sobelSpread(dat->sobel,&tmp_img,3);
+
+
+  dat->sobel->ChannelOffset(2);
+  acvBoxFilter(&tmp_img, dat->sobel, 3);
+  acvBoxFilter(&tmp_img, dat->sobel, 3);
+  dat->sobel->ChannelOffset(-2);
   return 0;
 }
 
@@ -180,15 +187,24 @@ int FeatureManager_platingCheck::reload(const char *json_str)
 int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
   acvImage *tarImg = stdMap[0].rgb;
-  moEng.RESET(10,tarImg->GetWidth(),tarImg->GetHeight());
+  int XFactor=4;
+  moEng.RESET(10*XFactor,tarImg->GetWidth(),tarImg->GetHeight());
 
   acvCloneImage(img,buff, -1);
   buff->RGBToGray();
-  for(int iter=0;iter<10;iter++)
+
+
+  acvBoxFilter(img,buff,  3);
+  acvBoxFilter(img,buff,  3);
+
+  int drawMargin=50;
+
+  for(int iter=0;iter<50;iter++)
   {
-    for(int i=0;i<buff->GetHeight();i++)
+    if(iter%2==0)moEng.regularization(0.2);
+    for(int i=drawMargin;i<buff->GetHeight()-drawMargin;i++)
     {
-      for(int j=0;j<buff->GetWidth();j++)
+      for(int j=drawMargin;j<buff->GetWidth()-drawMargin;j++)
       {
         acv_XY from={.X=j,.Y=i};
         acv_XY mapPt={0};
@@ -203,19 +219,12 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
         uint8_t *stdMap_rgb_pix = &(stdMap[0].rgb->CVector[mapY][mapX*3]);
         uint8_t *cur_pix = &(buff->CVector[i][j*3]);
 
-        if(0)
-        {
-          cur_pix[0]=stdMap_sobel_pix[1]+128;
-          cur_pix[1]=stdMap_sobel_pix[1]+128;
-          cur_pix[2]=stdMap_sobel_pix[1]+128;
-        }
-        else
         {
           int diff = (int)cur_pix[0]-stdMap_sobel_pix[2];
           int8_t sobelX= stdMap_sobel_pix[1];
           int8_t sobelY= stdMap_sobel_pix[0];
 
-          float traningRate=0.5;
+          float traningRate=1.0/sqrt(XFactor)*pow(0.99,iter);
           float diffX = -traningRate*diff*sobelX/256/128;
           float diffY = -traningRate*diff*sobelY/256/128;
 
@@ -230,9 +239,7 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
       }
 
     }
-    moEng.regularization(0.8);
   }
-  int drawMargin=50;
 
   if(1)for(int i=drawMargin;i<buff->GetHeight()-drawMargin;i++)
   {
@@ -248,15 +255,22 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
 
 
       uint8_t *stdMap_rgb_pix = &(stdMap[0].rgb->CVector[mapY][mapX*3]);
+      uint8_t *stdMap_sobel_pix = &(stdMap[0].sobel->CVector[mapY][mapX*3]);
       uint8_t *cur_pix = &(buff->CVector[i][j*3]);
       uint8_t *input_pix = &(img->CVector[i][j*3]);
-      cur_pix[0]=stdMap_rgb_pix[0]-input_pix[0]+128;
-      cur_pix[1]=cur_pix[0];
-      cur_pix[2]=0;
 
+      cur_pix[0]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2)-
+        cur_pix[0]+128;
+      cur_pix[1]=0;
+      cur_pix[2]=cur_pix[0];
+
+      //int t=(int)acvUnsignedMap1Sampling(tarImg, mappedXY[m], 0);
+      /*cur_pix[0]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 0);
+      cur_pix[1]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 1);
+      cur_pix[2]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 2);*/
     }
   }
-  for(int i=0;i<moEng.morphSections.size();i++)
+  if(1)for(int i=0;i<moEng.morphSections.size();i++)
   {
     acv_XY ctrlPt= moEng.morphSections[i];
 

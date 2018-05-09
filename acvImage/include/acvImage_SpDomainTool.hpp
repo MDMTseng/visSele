@@ -74,7 +74,7 @@ inline acv_XY acvSignedMap2Sampling(acvImage *signedMap2, const acv_XY &XY)
     return sample;
 }
 
-inline float acvUnsignedMap1Sampling(acvImage *unsignedMap1, const acv_XY &XY, int channel)
+inline float acvUnsignedMap1Sampling(acvImage *unsignedMap1, acv_XY XY, int channel)
 {
     int rX = (int)(XY.X);
     int rY = (int)(XY.Y);
