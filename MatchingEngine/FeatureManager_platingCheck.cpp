@@ -110,8 +110,8 @@ int FeatureManager_platingCheck::creat_stdMapDat(FeatureManager_platingCheck::st
 
 
   dat->sobel->ChannelOffset(2);
-  acvBoxFilter(&tmp_img, dat->sobel, 3);
-  acvBoxFilter(&tmp_img, dat->sobel, 3);
+  acvBoxFilter(&tmp_img, dat->sobel, 5);
+  acvBoxFilter(&tmp_img, dat->sobel, 5);
   dat->sobel->ChannelOffset(-2);
   return 0;
 }
@@ -187,21 +187,25 @@ int FeatureManager_platingCheck::reload(const char *json_str)
 int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
   acvImage *tarImg = stdMap[0].rgb;
-  int XFactor=4;
+  int XFactor=3;
   moEng.RESET(10*XFactor,tarImg->GetWidth(),tarImg->GetHeight());
 
   acvCloneImage(img,buff, -1);
   buff->RGBToGray();
 
 
-  acvBoxFilter(img,buff,  3);
-  acvBoxFilter(img,buff,  3);
+  acvBoxFilter(img,buff,  5);
+  acvBoxFilter(img,buff,  5);
 
-  int drawMargin=50;
-
-  for(int iter=0;iter<50;iter++)
+  int drawMargin=80;
+  int iterCount=40;
+  float lRate_start=1;
+  float lRate_end=0.2;
+  for(int iter=0;iter<iterCount;iter++)
   {
-    if(iter%2==0)moEng.regularization(0.2);
+    if(iter%2==0)moEng.regularization(0.5);
+
+    float traningRate=lRate_start+(lRate_end-lRate_start)*iter/iterCount;
     for(int i=drawMargin;i<buff->GetHeight()-drawMargin;i++)
     {
       for(int j=drawMargin;j<buff->GetWidth()-drawMargin;j++)
@@ -216,15 +220,16 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
 
 
         uint8_t *stdMap_sobel_pix = &(stdMap[0].sobel->CVector[mapY][mapX*3]);
+
         uint8_t *stdMap_rgb_pix = &(stdMap[0].rgb->CVector[mapY][mapX*3]);
         uint8_t *cur_pix = &(buff->CVector[i][j*3]);
 
         {
-          int diff = (int)cur_pix[0]-stdMap_sobel_pix[2];
+
+          float diff = (int)cur_pix[0]-acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2);
           int8_t sobelX= stdMap_sobel_pix[1];
           int8_t sobelY= stdMap_sobel_pix[0];
 
-          float traningRate=1.0/sqrt(XFactor)*pow(0.99,iter);
           float diffX = -traningRate*diff*sobelX/256/128;
           float diffY = -traningRate*diff*sobelY/256/128;
 
@@ -259,11 +264,11 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
       uint8_t *cur_pix = &(buff->CVector[i][j*3]);
       uint8_t *input_pix = &(img->CVector[i][j*3]);
 
-      int diff = (int)acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2)-cur_pix[0];
+      float diff = acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2)-cur_pix[0];
       diff=diff*4+128;
       if(diff<0)diff=0;
       if(diff>255)diff=255;
-      cur_pix[0]=diff;
+      cur_pix[0]=round(diff);
       cur_pix[1]=cur_pix[0];
       cur_pix[2]=cur_pix[0];
 
@@ -273,7 +278,7 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
       cur_pix[2]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 2);*/
     }
   }
-  if(1)for(int i=0;i<moEng.morphSections.size();i++)
+  if(0)for(int i=0;i<moEng.morphSections.size();i++)
   {
     acv_XY ctrlPt= moEng.morphSections[i];
 
