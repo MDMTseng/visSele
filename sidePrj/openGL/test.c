@@ -2,7 +2,7 @@
 #define GLEW_STATIC
 #include <GL/glew.h>
 #include <GL/glut.h>
-#include <GL/freeglut.h> 
+#include <GL/freeglut.h>
 #include <stdio.h>
 
 
@@ -51,9 +51,7 @@ void consoleMessage() {
     cout << "OpenGL version: " << versionGL << endl << endl;
     cout << "FreeGLUT version: " << versionFreeGlutString << endl << endl;
 
-    cout << "GLEW version: " <<
-        GLEW_VERSION << "." << GLEW_VERSION_MAJOR << "." <<
-        GLEW_VERSION_MINOR << "." << GLEW_VERSION_MICRO << endl;
+    cout << "GLEW version: " << glewGetString(GLEW_VERSION) << endl;
 }
 
 /**
