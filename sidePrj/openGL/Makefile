@@ -7,7 +7,7 @@ ODIR=obj
 StaticFreeGLutDir=$(abspath ../../../freeglut)
 GLEWSRCDir=$(abspath ../../../glew-2.1.0)
 VPATH+=$(GLEWSRCDir)/src
-_OBJ = test.o shaderPlay.o glew.o
+_OBJ = test.opp shaderPlay.o glew.o
 
 IDIR+= ./include $(StaticFreeGLutDir)/include $(GLEWSRCDir)/include
 FLAGS+=-D FREEGLUT_STATIC
