@@ -1,9 +1,11 @@
 
 #define GLEW_STATIC
 #include <GL/glew.h>
-#include <GL/glut.h>
-#include <GL/freeglut.h>
+// GLFW
+#include <GLFW/glfw3.h>
+
 #include <stdio.h>
+#include "Shader.h"
 
 
 #include <iostream>
@@ -39,18 +41,12 @@ void formatMe(string *text) {
 */
 void consoleMessage() {
     char *versionGL = "\0";
-    GLint versionFreeGlutInt = 0;
 
     versionGL = (char *)(glGetString(GL_VERSION));
-    versionFreeGlutInt = (glutGet(GLUT_VERSION));
 
-    string versionFreeGlutString = makeMeString(versionFreeGlutInt);
-    formatMe(&versionFreeGlutString);
 
     cout << endl;
     cout << "OpenGL version: " << versionGL << endl << endl;
-    cout << "FreeGLUT version: " << versionFreeGlutString << endl << endl;
-
     cout << "GLEW version: " << glewGetString(GLEW_VERSION) << endl;
 
 
@@ -77,25 +73,27 @@ void managerError() {
 void managerDisplay(void)
 {
     glClear(GL_COLOR_BUFFER_BIT);                // clear the screen
-    glutSwapBuffers();
+    //glutSwapBuffers();
 }
 
 
 /**
 * Initialize FREEGLUT
 */
-void initFreeGlut(int ac, char *av[]) {
-    // A. init
-    glutInit(&ac, av);                                // 1. inits glut with arguments from the shell
-    glutInitDisplayString("");                        // 2a. sets display parameters with a string (obsolete)
-    glutInitDisplayMode(GLUT_SINGLE);                // 2b. sets display parameters with defines
-    glutInitWindowSize(600, 600);                    // 3. window size
-    glutInitContextVersion(3, 3);                    // 4. sets the version 3.3 as current version (so some functions of 1.x and 2.x could not work properly)
-    glutInitContextProfile(GLUT_CORE_PROFILE);        // 5. sets the version 3.3 for the profile core
-    glutInitWindowPosition(500, 500);                // 6. distance from the top-left screen
+GLFWwindow* initGLFW(int width,int height) {
+  // Init GLFW
+  glfwInit( );
 
-                                                    // B. create window
-    glutCreateWindow("BadproG - Hello world :D");    // 7. message displayed on top bar window
+  // Set all the required options for GLFW
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
+  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 3 );
+  glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+  glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE );
+
+  glfwWindowHint( GLFW_RESIZABLE, GL_FALSE );
+
+  // Create a GLFWwindow object that we can use for GLFW's functions
+  return glfwCreateWindow( width, height, "LearnOpenGL", nullptr, nullptr );
 
 }
 
@@ -142,7 +140,7 @@ GLuint initGraphicBuffer(int texture_target,GLint internal_format,GLenum texture
   return texID;
 }
 
-void initCalcBuffer(int texSizeX,int texSizeY, bool singleChannel)
+GLuint initCalcBuffer(int texSizeX,int texSizeY, bool singleChannel)
 {
     int texture_target = GL_TEXTURE_RECTANGLE_ARB;
     int internal_format = GL_RGBA32F;
@@ -158,13 +156,15 @@ void initCalcBuffer(int texSizeX,int texSizeY, bool singleChannel)
 
     float* dataX = new float[texSizeX*texSizeY*channelNum];
     for (int i=0; i<texSizeX*texSizeY*channelNum; i++)
-        dataX[i] = i;
+    {
+        if(i%4==0)
+          dataX[i] = 0.01*i+0.0f;
+    }
     float* dataY = new float[texSizeX*texSizeY*channelNum];
     for (int i=0; i<texSizeX*texSizeY*channelNum; i++)
         dataY[i] = 0;
     float alpha;
 
-    GLuint fb = initFBO();
     GLuint texID = initGraphicBuffer(texture_target,internal_format,texture_format,texSizeX,texSizeY);
     glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,
                               GL_COLOR_ATTACHMENT0_EXT,
@@ -187,37 +187,92 @@ void initCalcBuffer(int texSizeX,int texSizeY, bool singleChannel)
     delete(dataY);
     delete(dataX);
 
-    glDeleteFramebuffersEXT (1,&fb);
-    glDeleteTextures (1,&texID);
+    //glDeleteTextures (1,&texID);
+
+    return texID;
 }
 
-void InitProjection(int texSizeX,int texSizeY)
+void initBaseVertex(GLuint *pVBO,GLuint *pVAO)
 {
-    // viewport for 1:1 pixel=texel=geometry mapping
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glOrtho(0.0, texSizeX, 0.0, texSizeY,-1,1);
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glViewport(0, 0, texSizeX, texSizeY);
+    GLfloat vertices[] =
+    {
+        // Positions         // Colors
+        -1.0f, -1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
+        -1.0f, 1.0f, 0.0f,   0.0f, 1.0f, 0.0f,
+        1.0f, -1.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+        1.0f, 1.0f, 0.0f,   1.0f, 1.0f, 1.0f
+    };
+    glGenVertexArrays( 1, pVAO );
+    glGenBuffers( 1, pVBO );
+    // Bind the Vertex Array Object first, then bind and set vertex buffer(s) and attribute pointer(s).
+    glBindVertexArray( *pVAO );
+
+    glBindBuffer( GL_ARRAY_BUFFER, *pVBO );
+    glBufferData( GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW );
+
+    // Position attribute
+    glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * ) 0 );
+    glEnableVertexAttribArray( 0 );
+    // Color attribute
+    glVertexAttribPointer( 1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * )( 3 * sizeof( GLfloat ) ) );
+    glEnableVertexAttribArray( 1 );
+
+    glBindVertexArray( 0 ); // Unbind VAO
 }
 /**
 * Main, what else?
 */
 int main(int argc, char** argv) {
-    initFreeGlut(argc, argv);    // inits freeglut
+    int width=800, height=800;
+    //Init window
+    GLFWwindow* window = initGLFW( width, height);
+    if ( nullptr == window )
+    {
+        std::cout << "Failed to create GLFW window" << std::endl;
+        glfwTerminate( );
+
+        return EXIT_FAILURE;
+    }
+    glfwMakeContextCurrent( window );
+
+    int screenWidth, screenHeight;
+    glfwGetFramebufferSize( window, &screenWidth, &screenHeight );
+
+
+    //LOGOSOGO
     managerError();                // manages errors
     consoleMessage();            // displays message on the console
 
-
+    //Establish buffers
     int texSizeX=3,texSizeY=3;
-    InitProjection(texSizeX,texSizeY);
-    initCalcBuffer(texSizeX,texSizeY,false);
+    GLuint VBO;
+    GLuint VAO;
+    initBaseVertex(&VBO,&VAO);
+    GLuint TexID = initCalcBuffer(texSizeX,texSizeY,false);
 
-    // C. register the display callback function
-    glutDisplayFunc(managerDisplay);                        // 8. callback function
-    glutKeyboardFunc(managerKeyboard);
-    // D. main loop
-    glutMainLoop();                                    // 9. infinite loop
+    GLuint fb = initFBO();
+    glDeleteFramebuffersEXT (1,&fb);
+    Shader ourShader( "shader/core.vs", "shader/core.frag" );
+    // Game loop
+    while (!glfwWindowShouldClose( window ) )
+    {
+        // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
+        glfwPollEvents( );
+
+        // Render
+        // Clear the colorbuffer
+        glClearColor( 1.0f, 0.0f, 1.0f, 1.0f );
+        glClear( GL_COLOR_BUFFER_BIT );
+
+        // Draw the triangle
+        ourShader.Use( );
+        //ourShader.SetTex2Shader("baseTexture",TexID);
+        glBindVertexArray( VAO );
+        glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
+        glBindVertexArray(0);
+
+        // Swap the screen buffers
+        glfwSwapBuffers( window );
+    }
     return 0;
 }
