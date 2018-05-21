@@ -12,6 +12,7 @@
 #include <string>
 #include <sstream>
 
+#include "GLAcc.h"
 using namespace std;
 
 /**
@@ -117,80 +118,34 @@ GLuint initFBO(void) {
     return fb;
 }
 
-GLuint initGraphicBuffer(int texture_target,GLint internal_format,GLenum texture_format,int texSizeX,int texSizeY)
+GLuint initCalcBuffer(int texSizeX,int texSizeY, int ChannelCount)
 {
-  GLuint texID;
-    // create a new texture name
-  glEnable( GL_TEXTURE_2D );
-  glGenTextures (1, &texID);
-  // bind the texture name to a texture target
-  glBindTexture(texture_target,texID);
-  // turn off filtering and set proper wrap mode
-  // (obligatory for float textures atm)
-  glTexParameteri(texture_target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(texture_target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(texture_target, GL_TEXTURE_WRAP_S, GL_CLAMP);
-  glTexParameteri(texture_target, GL_TEXTURE_WRAP_T, GL_CLAMP);
-  // set texenv to replace instead of the default modulate
-  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-  // and allocate graphics memory
-  glTexImage2D(texture_target, 0, internal_format,
-               texSizeX, texSizeY, 0, texture_format, GL_FLOAT, 0);
-
-  return texID;
-}
-
-GLuint initCalcBuffer(int texSizeX,int texSizeY, bool singleChannel)
-{
-    int texture_target = GL_TEXTURE_RECTANGLE_ARB;
-    int internal_format = GL_RGBA32F;
-    int texture_format = GL_RGBA;
-    int channelNum=4;
-
-    if(singleChannel)//Select single channel
-    {
-      internal_format=GL_R32F;
-      texture_format=GL_RED;
-      channelNum=1;
-    }
-
-    float* dataX = new float[texSizeX*texSizeY*channelNum];
-    for (int i=0; i<texSizeX*texSizeY*channelNum; i++)
+    float* dataX = new float[texSizeX*texSizeY*ChannelCount];
+    for (int i=0; i<texSizeX*texSizeY*ChannelCount; i++)
     {
         if(i%4==0)
           dataX[i] = 0.01*i+0.0f;
     }
-    float* dataY = new float[texSizeX*texSizeY*channelNum];
-    for (int i=0; i<texSizeX*texSizeY*channelNum; i++)
-        dataY[i] = 0;
-    float alpha;
-
-    GLuint texID = initGraphicBuffer(texture_target,internal_format,texture_format,texSizeX,texSizeY);
-    glFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT,
-                              GL_COLOR_ATTACHMENT0_EXT,
-                              texture_target, texID, 0);
-    printf("New BufferID:%d\n",texID);
-    glBindTexture(texture_target, texID);
-    glTexSubImage2D(texture_target,0,0,0,texSizeX,texSizeY,
-                    texture_format,GL_FLOAT,dataX);//data CPU to GPU
+    float* dataY = new float[texSizeX*texSizeY*ChannelCount];
 
 //Do what ever
 
-    glBindTexture(texture_target,texID);
-    glGetTexImage(texture_target,0,texture_format,GL_FLOAT,dataY);//data GPU to CPU
-    /*glReadBuffer(GL_COLOR_ATTACHMENT0_EXT);
-    glReadPixels(0,0,texSizeX,texSizeY,texture_format,GL_FLOAT,dataY);*/
+    GLAcc_GPU_Buffer tex(ChannelCount,texSizeX,texSizeY);
+    printf("New BufferID:%d\n",tex.texID);
+    tex.CPU2GPU(dataX, texSizeX*texSizeY*ChannelCount);
 
+    tex.GPU2CPU(dataY, texSizeX*texSizeY*ChannelCount);
 
-    for (int i=0; i<texSizeX*texSizeY*channelNum; i++)
+    for (int i=0; i<texSizeX*texSizeY*ChannelCount; i++)
         printf("%f ",dataY[i]);
     delete(dataY);
     delete(dataX);
 
     //glDeleteTextures (1,&texID);
-
-    return texID;
+    return tex.texID;
 }
+
+
 
 void initBaseVertex(GLuint *pVBO,GLuint *pVAO)
 {
@@ -248,11 +203,12 @@ int main(int argc, char** argv) {
     GLuint VBO;
     GLuint VAO;
     initBaseVertex(&VBO,&VAO);
-    GLuint TexID = initCalcBuffer(texSizeX,texSizeY,false);
+    GLuint TexID = initCalcBuffer(texSizeX,texSizeY,4);
 
     GLuint fb = initFBO();
     glDeleteFramebuffersEXT (1,&fb);
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
+    ourShader.SetTex2Shader("baseTexture2",TexID);
     // Game loop
     while (!glfwWindowShouldClose( window ) )
     {
@@ -266,7 +222,7 @@ int main(int argc, char** argv) {
 
         // Draw the triangle
         ourShader.Use( );
-        //ourShader.SetTex2Shader("baseTexture",TexID);
+        //
         glBindVertexArray( VAO );
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);

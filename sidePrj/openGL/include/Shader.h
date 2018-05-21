@@ -98,6 +98,14 @@ public:
     {
         glUniform1i(glGetUniformLocation(this->Program, name), texID);
     }
+    void SetFloat2Shader( char* name, float  data)
+    {
+      GLint loc = glGetUniformLocation(this->Program, name);
+      if (loc != -1)
+      {
+         glUniform1f(loc, data);
+      }
+    }
 };
 
 #endif
