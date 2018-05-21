@@ -93,10 +93,27 @@ public:
     {
         glUseProgram( this->Program );
     }
-    // Uses the current shader
-    void SetTex2Shader( char* name, GLuint  texID)
+
+    int GetAttribLocation ( char* name)
     {
-        glUniform1i(glGetUniformLocation(this->Program, name), texID);
+        int tex_location = glGetAttribLocation (this->Program, name);
+        printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
+        return tex_location;
+    }
+
+    int GetUniformLocation( char* name)
+    {
+        int tex_location = glGetUniformLocation(this->Program, name);
+        printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
+        return tex_location;
+    }
+    // Uses the current shader
+    void SetTex2Shader( char* name, int idx)
+    {
+        int tex_location=GetUniformLocation(name);
+        printf("%s: idx:%d \n",__func__,idx);
+        glUniform1i(glGetUniformLocation(this->Program, name), idx);
+        glActiveTexture(GL_TEXTURE0+idx);
     }
     void SetFloat2Shader( char* name, float  data)
     {

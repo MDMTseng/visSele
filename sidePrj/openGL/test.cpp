@@ -118,36 +118,51 @@ GLuint initFBO(void) {
     return fb;
 }
 
-GLuint initCalcBuffer(int texSizeX,int texSizeY, int ChannelCount)
+void WriteBuffer(GLAcc_GPU_Buffer &tex)
 {
-    float* dataX = new float[texSizeX*texSizeY*ChannelCount];
-    for (int i=0; i<texSizeX*texSizeY*ChannelCount; i++)
+    int totolLength=tex.GetBuffSizeX()*tex.GetBuffSizeY()*tex.GetChannelCount();
+    float* dataX = new float[totolLength];
+    for (int i=0; i<totolLength; i++)
     {
-        if(i%4==0)
+        if(i%tex.GetChannelCount()==0)
           dataX[i] = 0.01*i+0.0f;
+        else
+        {
+          dataX[i] = 0;
+        }
     }
-    float* dataY = new float[texSizeX*texSizeY*ChannelCount];
-
-//Do what ever
-
-    GLAcc_GPU_Buffer tex(ChannelCount,texSizeX,texSizeY);
-    printf("New BufferID:%d\n",tex.texID);
-    tex.CPU2GPU(dataX, texSizeX*texSizeY*ChannelCount);
-
-    tex.GPU2CPU(dataY, texSizeX*texSizeY*ChannelCount);
-
-    for (int i=0; i<texSizeX*texSizeY*ChannelCount; i++)
-        printf("%f ",dataY[i]);
-    delete(dataY);
+    tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
+}
 
-    //glDeleteTextures (1,&texID);
-    return tex.texID;
+void WriteBuffer2(GLAcc_GPU_Buffer &tex)
+{
+    int totolLength=tex.GetBuffSizeX()*tex.GetBuffSizeY()*tex.GetChannelCount();
+    float* dataX = new float[totolLength];
+    for (int i=0; i<totolLength; i++)
+    {
+        dataX[i] = i*1.0f/totolLength;
+    }
+    tex.CPU2GPU(dataX, totolLength);
+    delete(dataX);
 }
 
 
+void ReadBuffer(GLAcc_GPU_Buffer &tex)
+{
+    int totolLength=tex.GetBuffSizeX()*tex.GetBuffSizeY()*tex.GetChannelCount();
+    float* dataY = new float[totolLength];
 
-void initBaseVertex(GLuint *pVBO,GLuint *pVAO)
+    tex.GPU2CPU(dataY, totolLength);
+    printf("%s: TexID:%d\n",__func__,tex.GetTexID());
+    printf("X:%d Y:%d CH:%d totolLength:%d \n",tex.GetBuffSizeX(),tex.GetBuffSizeY(),tex.GetChannelCount(),totolLength);
+    for (int i=0; i<totolLength; i++)
+        printf("%f ",dataY[i]);
+    delete(dataY);
+    printf("\n");
+}
+
+void initBaseVertex(Shader &shader,GLuint *pVBO,GLuint *pVAO)
 {
     GLfloat vertices[] =
     {
@@ -166,11 +181,13 @@ void initBaseVertex(GLuint *pVBO,GLuint *pVAO)
     glBufferData( GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW );
 
     // Position attribute
-    glVertexAttribPointer( 0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * ) 0 );
-    glEnableVertexAttribArray( 0 );
+    int loc = shader.GetAttribLocation("position");
+    glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * ) 0 );
+    glEnableVertexAttribArray( loc);
     // Color attribute
-    glVertexAttribPointer( 1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * )( 3 * sizeof( GLfloat ) ) );
-    glEnableVertexAttribArray( 1 );
+    loc = shader.GetAttribLocation("color");
+    glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * )( 3 * sizeof( GLfloat ) ) );
+    glEnableVertexAttribArray( loc );
 
     glBindVertexArray( 0 ); // Unbind VAO
 }
@@ -198,17 +215,37 @@ int main(int argc, char** argv) {
     managerError();                // manages errors
     consoleMessage();            // displays message on the console
 
+    Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
     int texSizeX=3,texSizeY=3;
     GLuint VBO;
     GLuint VAO;
-    initBaseVertex(&VBO,&VAO);
-    GLuint TexID = initCalcBuffer(texSizeX,texSizeY,4);
+    GLAcc_GPU_Buffer tex1(4,texSizeX,texSizeY);
+    GLAcc_GPU_Buffer tex2(4,texSizeX,texSizeY);
+    printf("tex ID:%d\n",tex1.GetTexID());
+    printf("tex2 ID:%d\n",tex2.GetTexID());
+
+
+    WriteBuffer(tex1);
+    WriteBuffer2(tex2);
+    ReadBuffer(tex1);
+    ReadBuffer(tex2);
 
     GLuint fb = initFBO();
     glDeleteFramebuffersEXT (1,&fb);
-    Shader ourShader( "shader/core.vs", "shader/core.frag" );
-    ourShader.SetTex2Shader("baseTexture2",TexID);
+
+    ourShader.Use( );
+    //Setup polygon(square) vertices
+    initBaseVertex(ourShader,&VBO,&VAO);
+
+
+    ourShader.SetTex2Shader("baseTexture1",0);
+    tex1.BindTexture();
+
+    ourShader.SetTex2Shader("baseTexture2",1);
+    tex2.BindTexture();
+
+
     // Game loop
     while (!glfwWindowShouldClose( window ) )
     {
@@ -220,8 +257,6 @@ int main(int argc, char** argv) {
         glClearColor( 1.0f, 0.0f, 1.0f, 1.0f );
         glClear( GL_COLOR_BUFFER_BIT );
 
-        // Draw the triangle
-        ourShader.Use( );
         //
         glBindVertexArray( VAO );
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);

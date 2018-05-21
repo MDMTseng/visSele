@@ -16,7 +16,6 @@
 
 class GLAcc_GPU_Buffer
 {
-public:
     GLuint texID;
     int channelCount;
     GLenum texture_target_;
@@ -24,6 +23,7 @@ public:
     GLenum texture_format_;
     int buffSizeX_;
     int buffSizeY_;
+public:
     GLAcc_GPU_Buffer(int channelCount1_4,int buffSizeX,int buffSizeY)
     {
       int ret = BufferProperty(channelCount1_4,
@@ -63,6 +63,35 @@ public:
       BufferCopy_GPU2CPU(texID, data, buffSizeX_, buffSizeY_,
         texture_target_,texture_format_);
       return 0;
+    }
+    ~GLAcc_GPU_Buffer()
+    {
+      glDeleteTextures(1, &texID);
+    }
+
+    GLuint GetTexID()
+    {
+      return texID;
+    }
+
+    GLuint GetBuffSizeX()
+    {
+      return buffSizeX_;
+    }
+
+    GLuint GetBuffSizeY()
+    {
+      return buffSizeY_;
+    }
+
+    GLuint GetChannelCount()
+    {
+      return channelCount;
+    }
+
+    void BindTexture()
+    {
+      glBindTexture(texture_target_, texID);
     }
 
     static GLuint newBuffer(GLenum texture_target,GLint internal_format,GLenum texture_format,int texSizeX,int texSizeY)
@@ -107,7 +136,7 @@ public:
       if(channelCount1_4<1 || channelCount1_4>4)return -1;
       if(!ret_texture_target || !ret_internal_format || !ret_texture_format)return -1;
 
-      GLenum _texture_target = GL_TEXTURE_RECTANGLE_ARB;
+      GLenum _texture_target = GL_TEXTURE_RECTANGLE;
       GLint _internal_format = GL_RGBA32F;
       GLenum _texture_format = GL_RGBA;
 
