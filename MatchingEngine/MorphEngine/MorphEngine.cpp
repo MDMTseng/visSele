@@ -8,16 +8,17 @@ void MorphEngine::RESET(int grid_size,int img_width,int img_height)
   gridSize = grid_size;
   sectionCol=(img_width/grid_size)+1;//Always one more colum&Row to make interpolation boundery case easier
   sectionRow=(img_height/grid_size)+1;
-  morphSections.resize(sectionCol*sectionRow);
-  morphSections_buf.resize(sectionCol*sectionRow);
+  morphNodes.resize(sectionCol*sectionRow);
+  morphNodes_optimizer.resize(sectionCol*sectionRow);
   for(int i=0;i<sectionRow;i++)
   {
     for(int j=0;j<sectionCol;j++)
     {
       acv_XY c={.X=grid_size*j,.Y=grid_size*i};
-      morphSections[sectionCol*i+j]=c;
+      morphNodes[sectionCol*i+j]=c;
     }
   }
+  reset_optimization();
 }
 
 int MorphEngine::getSecIdx(acv_XY from)
@@ -33,7 +34,7 @@ int MorphEngine::grid_adjust(int X,int Y, acv_XY vec)
 {
   if(X<0 || X>=sectionCol)return -1;
   if(Y<0 || Y>=sectionRow)return -1;
-  acv_XY *c = &(morphSections[sectionCol*Y+X]);
+  acv_XY *c = &(morphNodes[sectionCol*Y+X]);
   c->X+=vec.X;
   c->Y+=vec.Y;
   return 0;
@@ -116,12 +117,12 @@ int MorphEngine::regularization(float alpha)
   {
     for(int j=1;j<sectionCol-1;j++)
     {
-      acv_XY *R = &(morphSections[sectionCol*i+(j-1)]);
-      acv_XY *L = &(morphSections[sectionCol*i+(j+1)]);
-      acv_XY *T = &(morphSections[sectionCol*(i-1)+j]);
-      acv_XY *B = &(morphSections[sectionCol*(i+1)+j]);
-      acv_XY *C = &(morphSections[sectionCol*i+j]);
-      acv_XY *bC = &(morphSections_buf[sectionCol*i+j]);
+      acv_XY *R = &(morphNodes[sectionCol*i+(j-1)]);
+      acv_XY *L = &(morphNodes[sectionCol*i+(j+1)]);
+      acv_XY *T = &(morphNodes[sectionCol*(i-1)+j]);
+      acv_XY *B = &(morphNodes[sectionCol*(i+1)+j]);
+      acv_XY *C = &(morphNodes[sectionCol*i+j]);
+      acv_XY *bC = &(morphNodes_optimizer[sectionCol*i+j].buf_node);
       bC->X=(R->X+L->X+T->X+B->X)/4*(1-alpha)+C->X*alpha;
       bC->Y=(R->Y+L->Y+T->Y+B->Y)/4*(1-alpha)+C->Y*alpha;
     }
@@ -131,9 +132,42 @@ int MorphEngine::regularization(float alpha)
   {
     for(int j=1;j<sectionCol-1;j++)
     {
-      morphSections[sectionCol*i+j] = morphSections_buf[sectionCol*i+j];
+      morphNodes[sectionCol*i+j] = morphNodes_optimizer[sectionCol*i+j].buf_node;
     }
   }
+}
+
+int MorphEngine::reset_optimization()
+{
+  acv_XY zero_vec={0};
+  for(int i=1;i<sectionRow-1;i++)
+  {
+    for(int j=1;j<sectionCol-1;j++)
+    {
+      morphNodes_optimizer[sectionCol*i+j].buf_node=morphNodes[sectionCol*i+j];
+      morphNodes_optimizer[sectionCol*i+j].v=zero_vec;
+    }
+  }
+  return 0;
+}
+int MorphEngine::optimization(float alpha)
+{
+  for(int i=1;i<sectionRow-1;i++)
+  {
+    for(int j=1;j<sectionCol-1;j++)
+    {
+      morphOptimizer *nodeOpt = &morphNodes_optimizer[sectionCol*i+j];
+      acv_XY *node = &morphNodes[sectionCol*i+j];
+      nodeOpt->v.X+=(node->X-nodeOpt->buf_node.X)*alpha;
+      nodeOpt->v.Y+=(node->Y-nodeOpt->buf_node.Y)*alpha;
+      nodeOpt->v.X*=0.8;
+      nodeOpt->v.Y*=0.8;
+      node->X=nodeOpt->buf_node.X+nodeOpt->v.X;
+      node->X=nodeOpt->buf_node.X+nodeOpt->v.X;
+      nodeOpt->buf_node=*node;
+    }
+  }
+  return 0;
 }
 
 int MorphEngine::Mapping(acv_XY from,acv_XY *ret_to)
@@ -150,10 +184,10 @@ int MorphEngine::Mapping(acv_XY from,acv_XY *ret_to)
   //m11 -- m12
   // |     |    -ratioY(0~1)
   //m21 -- m22
-  acv_XY m11 = morphSections[gridY*sectionCol+gridX];
-  acv_XY m12 = morphSections[gridY*sectionCol+gridX+1];
-  acv_XY m21 = morphSections[(gridY+1)*sectionCol+gridX];
-  acv_XY m22 = morphSections[(gridY+1)*sectionCol+gridX+1];
+  acv_XY m11 = morphNodes[gridY*sectionCol+gridX];
+  acv_XY m12 = morphNodes[gridY*sectionCol+gridX+1];
+  acv_XY m21 = morphNodes[(gridY+1)*sectionCol+gridX];
+  acv_XY m22 = morphNodes[(gridY+1)*sectionCol+gridX+1];
 
   //          |ratioX
   //m11 ----m1_1----------- m12

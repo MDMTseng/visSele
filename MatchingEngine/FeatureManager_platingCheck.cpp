@@ -66,6 +66,31 @@ static void acvScalingSobelResult_max(acvImage *src)
     }
 }
 
+static void acvScalingSobelResult_normalize(acvImage *src)
+{
+  int i, j;
+  int8_t *L;
+
+  for (i = 0; i < src->GetHeight(); i++)
+  {
+      L = (int8_t*)&(src->CVector[i][0]);
+      for (j = 0; j < src->GetWidth(); j++, L += 3)
+      {
+          int8_t Lp0, Lp1;
+          Lp0 = L[0];
+          Lp1 = L[1];
+          if (Lp0 != 0 || Lp1 != 0)
+          {
+              float length = hypot(Lp0,Lp1);
+              if(length!=0)
+              {
+                L[0] = (int)round((int)Lp0 * 127 / length);
+                L[1] = (int)round((int)Lp1 * 127 / length);
+              }
+          }
+      }
+  }
+}
 
 static int sobelSpread(acvImage *sobel,acvImage *buff,int radius)
 {
@@ -110,8 +135,8 @@ int FeatureManager_platingCheck::creat_stdMapDat(FeatureManager_platingCheck::st
 
 
   dat->sobel->ChannelOffset(2);
-  acvBoxFilter(&tmp_img, dat->sobel, 5);
-  acvBoxFilter(&tmp_img, dat->sobel, 5);
+  acvBoxFilter(&tmp_img, dat->sobel, 3);
+  acvBoxFilter(&tmp_img, dat->sobel, 3);
   dat->sobel->ChannelOffset(-2);
   return 0;
 }
@@ -194,21 +219,23 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
   buff->RGBToGray();
 
 
-  acvBoxFilter(img,buff,  5);
-  acvBoxFilter(img,buff,  5);
+  acvBoxFilter(img,buff,  3);
+  acvBoxFilter(img,buff,  3);
 
   int drawMargin=80;
-  int iterCount=40;
-  float lRate_start=1;
-  float lRate_end=0.2;
+  int iterCount=10;
+  int skipF=6;
+  float lRate_start=1*skipF*skipF;
+  float lRate_end=0.7*skipF*skipF;
   for(int iter=0;iter<iterCount;iter++)
   {
-    if(iter%2==0)moEng.regularization(0.5);
-
+    if(iter%1==0)moEng.regularization(0.4);
+    int offsetX=iter%skipF;
+    int offsetY=(iter/skipF)%skipF;
     float traningRate=lRate_start+(lRate_end-lRate_start)*iter/iterCount;
-    for(int i=drawMargin;i<buff->GetHeight()-drawMargin;i++)
+    for(int i=drawMargin+offsetY;i<buff->GetHeight()-drawMargin;i+=skipF)
     {
-      for(int j=drawMargin;j<buff->GetWidth()-drawMargin;j++)
+      for(int j=drawMargin+offsetX;j<buff->GetWidth()-drawMargin;j+=skipF)
       {
         acv_XY from={.X=j,.Y=i};
         acv_XY mapPt={0};
@@ -242,8 +269,9 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
         }
 
       }
-
     }
+
+    moEng.optimization(0.7);
   }
 
   if(1)for(int i=drawMargin;i<buff->GetHeight()-drawMargin;i++)
@@ -264,8 +292,9 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
       uint8_t *cur_pix = &(buff->CVector[i][j*3]);
       uint8_t *input_pix = &(img->CVector[i][j*3]);
 
-      float diff = acvUnsignedMap1Sampling(stdMap[0].sobel, mapPt, 2)-cur_pix[0];
-      diff=diff*4+128;
+      float diff =input_pix[2] - acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 2);
+      //acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 1)-input_pix[1];
+      diff=diff*1+128;
       if(diff<0)diff=0;
       if(diff>255)diff=255;
       cur_pix[0]=round(diff);
@@ -278,9 +307,9 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
       cur_pix[2]=(uint8_t)acvUnsignedMap1Sampling(stdMap[0].rgb, mapPt, 2);*/
     }
   }
-  if(0)for(int i=0;i<moEng.morphSections.size();i++)
+  if(1)for(int i=0;i<moEng.morphNodes.size();i++)
   {
-    acv_XY ctrlPt= moEng.morphSections[i];
+    acv_XY ctrlPt= moEng.morphNodes[i];
 
     acvDrawCrossX(buff,
       ctrlPt.X,ctrlPt.Y,
