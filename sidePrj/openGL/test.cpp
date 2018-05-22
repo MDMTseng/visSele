@@ -1,18 +1,16 @@
 
 #define GLEW_STATIC
+#include "GLAcc.h"
 #include <GL/glew.h>
 // GLFW
 #include <GLFW/glfw3.h>
 
-#include <stdio.h>
 #include "Shader.h"
 
-
+#include <stdio.h>
 #include <iostream>
 #include <string>
 #include <sstream>
-
-#include "GLAcc.h"
 using namespace std;
 
 /**
@@ -27,15 +25,6 @@ string makeMeString(GLint versionRaw) {
     return str;
 }
 
-/**
-* Format the string as expected
-*/
-void formatMe(string *text) {
-    string dot = ".";
-
-    text->insert(1, dot); // transforms 30000 into 3.0000
-    text->insert(4, dot); // transforms 3.0000 into 3.00.00
-}
 
 /**
 * Message
@@ -69,16 +58,6 @@ void managerError() {
 }
 
 /**
-* Manage display (to be implemented)
-*/
-void managerDisplay(void)
-{
-    glClear(GL_COLOR_BUFFER_BIT);                // clear the screen
-    //glutSwapBuffers();
-}
-
-
-/**
 * Initialize FREEGLUT
 */
 GLFWwindow* initGLFW(int width,int height) {
@@ -96,15 +75,6 @@ GLFWwindow* initGLFW(int width,int height) {
   // Create a GLFWwindow object that we can use for GLFW's functions
   return glfwCreateWindow( width, height, "LearnOpenGL", nullptr, nullptr );
 
-}
-
-/**
-* Manage keyboard
-*/
-void managerKeyboard(unsigned char key, int x, int y) {
-    if (key == 27) { // 27 = ESC key
-        exit(0);
-    }
 }
 
 void deleteFBO(GLuint fbo)

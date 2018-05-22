@@ -7,8 +7,7 @@ ODIR=obj
 GLEWSRCDir=$(abspath ../../../glew-2.1.0)
 GLFWSRCDir=$(abspath ../../../glfw-3.2.1)
 VPATH+=$(GLEWSRCDir)/src
-_OBJ = test.opp glew.o
-
+_OBJ = test.opp glew.o GLAcc_GPU_Buffer.opp
 
 
 ifeq ($(OS),Windows_NT)
