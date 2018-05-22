@@ -9,8 +9,18 @@ GLFWSRCDir=$(abspath ../../../glfw-3.2.1)
 VPATH+=$(GLEWSRCDir)/src
 _OBJ = test.opp glew.o
 
-EXT_OBJS=$(GLFWSRCDir)/lib-mingw-w64/libglfw3.a
-IDIR+= ./include $(GLEWSRCDir)/include  $(GLFWSRCDir)/include
-LIBS+=-lopengl32 -lwinmm -lgdi32
+
+
+ifeq ($(OS),Windows_NT)
+	EXT_OBJS=$(GLFWSRCDir)/lib-mingw-w64/libglfw3.a
+	IDIR+= ./include $(GLEWSRCDir)/include  $(GLFWSRCDir)/include
+	LIBS+=-lopengl32 -lwinmm -lgdi32
+else
+	EXT_OBJS=
+	IDIR+= ./include $(GLEWSRCDir)/include
+	LIBS+= -lglfw3 -framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo
+endif
+
+
 SUB_MAKEFILES = $(MODULE_acvImage)
 include $(MakeTemplate)
