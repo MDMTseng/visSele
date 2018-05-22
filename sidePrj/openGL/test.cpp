@@ -150,7 +150,7 @@ void WriteBuffer2(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        dataX[i] = i*1.0f/totolLength;
+        dataX[i] = i;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
