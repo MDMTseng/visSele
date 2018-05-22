@@ -73,6 +73,10 @@ public:
     {
       return texID;
     }
+    GLenum GetTextureTarget()
+    {
+      return texture_target_;
+    }
 
     GLuint GetBuffSizeX()
     {
@@ -92,6 +96,11 @@ public:
     void BindTexture()
     {
       glBindTexture(texture_target_, texID);
+    }
+
+    void SetViewPort()
+    {
+      glViewport(0,0,buffSizeX_,buffSizeY_);
     }
 
     static GLuint newBuffer(GLenum texture_target,GLint internal_format,GLenum texture_format,int texSizeX,int texSizeY)

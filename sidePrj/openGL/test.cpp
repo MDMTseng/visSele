@@ -107,15 +107,24 @@ void managerKeyboard(unsigned char key, int x, int y) {
     }
 }
 
+void deleteFBO(GLuint fbo)
+{
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &fbo);
+}
+GLuint initFBO(GLAcc_GPU_Buffer &gbuf) {
+    unsigned int fbo;
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
-GLuint initFBO(void) {
-    GLuint fb;
-    // create FBO (off-screen framebuffer)
-    glGenFramebuffersEXT(1, &fb);
-    // bind offscreen buffer
-    glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, fb);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, gbuf.GetTextureTarget(), gbuf.GetTexID(), 0);
 
-    return fb;
+    int ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if( ret == GL_FRAMEBUFFER_COMPLETE)
+    {
+
+    }
+    return fbo;
 }
 
 void WriteBuffer(GLAcc_GPU_Buffer &tex)
@@ -218,6 +227,7 @@ int main(int argc, char** argv) {
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
     int texSizeX=3,texSizeY=3;
+    glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
     GLAcc_GPU_Buffer tex1(4,texSizeX,texSizeY);
@@ -231,8 +241,8 @@ int main(int argc, char** argv) {
     ReadBuffer(tex1);
     ReadBuffer(tex2);
 
-    GLuint fb = initFBO();
-    glDeleteFramebuffersEXT (1,&fb);
+    GLuint fbo = initFBO(tex2);
+    //glDeleteFramebuffersEXT (1,&fb);
 
     ourShader.Use( );
     //Setup polygon(square) vertices
@@ -247,23 +257,27 @@ int main(int argc, char** argv) {
 
 
     // Game loop
-    while (!glfwWindowShouldClose( window ) )
+    //while (!glfwWindowShouldClose( window ) )
+    for(int i=0;i<2;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
-        glfwPollEvents( );
+        //glfwPollEvents( );
 
         // Render
         // Clear the colorbuffer
-        glClearColor( 1.0f, 0.0f, 1.0f, 1.0f );
-        glClear( GL_COLOR_BUFFER_BIT );
+        //glClearColor( 1.0f, 0.0f, 1.0f, 1.0f );
+        //glClear( GL_COLOR_BUFFER_BIT );
 
         //
         glBindVertexArray( VAO );
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
+        ReadBuffer(tex2);
 
         // Swap the screen buffers
         glfwSwapBuffers( window );
     }
+    deleteFBO(fbo);
+
     return 0;
 }
