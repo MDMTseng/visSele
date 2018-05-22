@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=3,texSizeY=3;
+    int texSizeX=1000,texSizeY=1000;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -208,8 +208,8 @@ int main(int argc, char** argv) {
 
     WriteBuffer(tex1);
     WriteBuffer2(tex2);
-    ReadBuffer(tex1);
-    ReadBuffer(tex2);
+    //ReadBuffer(tex1);
+    //ReadBuffer(tex2);
 
     GLuint fbo = initFBO(tex2);
     //glDeleteFramebuffersEXT (1,&fb);
@@ -226,9 +226,10 @@ int main(int argc, char** argv) {
     tex2.BindTexture();
 
 
+    clock_t t = clock();
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<2;i++)
+    for(int i=0;i<100;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -242,11 +243,14 @@ int main(int argc, char** argv) {
         glBindVertexArray( VAO );
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
-        ReadBuffer(tex2);
+        //
 
         // Swap the screen buffers
-        glfwSwapBuffers( window );
+        //glfwSwapBuffers( window );
+        glFinish();
     }
+    printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+    //ReadBuffer(tex2);
     deleteFBO(fbo);
 
     return 0;
