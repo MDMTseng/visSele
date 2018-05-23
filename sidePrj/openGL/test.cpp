@@ -112,7 +112,7 @@ void WriteBuffer(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        dataX[i] = -1000;
+        dataX[i] = 000;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=200,texSizeY=200;
+    int texSizeX=2,texSizeY=2;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -217,6 +217,8 @@ int main(int argc, char** argv) {
 
     WriteBuffer(tex1);
     WriteBuffer2(tex2);
+    ReadBuffer(tex1,0,10);
+    ReadBuffer(tex2,0,10);
     //ReadBuffer(tex1);
     //ReadBuffer(tex2);
 
@@ -228,11 +230,12 @@ int main(int argc, char** argv) {
     initBaseVertex(ourShader,&VBO,&VAO);
 
 
-    ourShader.SetTex2Shader("baseTexture1",0);
     tex1.BindTexture();
+    ourShader.SetTex2Shader("baseTexture1",0);
 
 
 
+    tex2.BindTexture();
     ourShader.SetTex2Shader("baseTexture2",1);
     glBindVertexArray( VAO );
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -244,7 +247,7 @@ int main(int argc, char** argv) {
     clock_t t = clock();
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<20;i++)
+    for(int i=0;i<100;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -268,15 +271,15 @@ int main(int argc, char** argv) {
 
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         //
-
+        glFlush();
         // Swap the screen buffers
         //glfwSwapBuffers( window );
     }
     glFinish();
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
     glBindVertexArray(0);
-    ReadBuffer(tex1,-1,10);
-    ReadBuffer(tex2,-1,10);
+    ReadBuffer(tex1,0,10);
+    ReadBuffer(tex2,0,10);
     deleteFBO(fbo);
 
     return 0;

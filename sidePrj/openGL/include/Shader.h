@@ -104,7 +104,7 @@ public:
     int GetUniformLocation( char* name)
     {
         int tex_location = glGetUniformLocation(this->Program, name);
-        //printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
+        printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
         return tex_location;
     }
     // Uses the current shader
