@@ -131,7 +131,7 @@ void WriteBuffer2(GLAcc_GPU_Buffer &tex)
 }
 
 
-void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int idxEnd)
+void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int readL)
 {
     int totolLength=tex.GetBuffSizeX()*tex.GetBuffSizeY()*tex.GetChannelCount();
     float* dataY = new float[totolLength];
@@ -139,6 +139,10 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int idxEnd)
     tex.GPU2CPU(dataY, totolLength);
     printf("%s: TexID:%d\n",__func__,tex.GetTexID());
     printf("X:%d Y:%d CH:%d totolLength:%d \n",tex.GetBuffSizeX(),tex.GetBuffSizeY(),tex.GetChannelCount(),totolLength);
+
+    if(idxStart<0)idxStart+=totolLength;
+
+    int idxEnd=idxStart+readL;
     for (int i=idxStart; i<totolLength && i< idxEnd; i++)
         printf("%f ",dataY[i]);
     delete(dataY);
@@ -147,13 +151,14 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int idxEnd)
 
 void initBaseVertex(Shader &shader,GLuint *pVBO,GLuint *pVAO)
 {
+    float mult=1;
     GLfloat vertices[] =
     {
         // Positions         // Colors
-        -1.0f, -1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
-        -1.0f, 1.0f, 0.0f,   0.0f, 1.0f, 0.0f,
-        1.0f, -1.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-        1.0f, 1.0f, 0.0f,   1.0f, 1.0f, 1.0f
+        -mult, -mult, 0.0f,   mult, 0.0f, 0.0f,
+        -mult, mult, 0.0f,   0.0f, mult, 0.0f,
+        mult, -mult, 0.0f,   0.0f, 0.0f, mult,
+        mult, mult, 0.0f,   mult, mult, mult
     };
     glGenVertexArrays( 1, pVAO );
     glGenBuffers( 1, pVBO );
@@ -200,7 +205,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=2048,texSizeY=512;
+    int texSizeX=1204,texSizeY=1204;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -258,12 +263,13 @@ int main(int argc, char** argv) {
 
         // Swap the screen buffers
         //glfwSwapBuffers( window );
-        //glFinish();
+        if(i%10==0)glFlush();
     }
+    glFinish();
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
     glBindVertexArray(0);
-    ReadBuffer(tex1,0,10);
-    ReadBuffer(tex2,0,10);
+    ReadBuffer(tex1,-1,10);
+    ReadBuffer(tex2,-1,10);
     deleteFBO(fbo);
 
     return 0;
