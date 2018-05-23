@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <time.h>
 #include <unistd.h>
 using namespace std;
 
@@ -199,7 +200,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=1000,texSizeY=1000;
+    int texSizeX=2048,texSizeY=512;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -231,12 +232,13 @@ int main(int argc, char** argv) {
     glBindVertexArray( VAO );
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
-    clock_t t = clock();
     printf("Test start.... \n");
 
     tex1.BindTexture();
     attachTex2FBO(fbo,tex1);
-    sleep(1);
+    tex1.BindTexture();
+    int ret = attachTex2FBO(fbo,tex1);
+    clock_t t = clock();
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
     for(int i=0;i<1000;i++)
@@ -250,19 +252,6 @@ int main(int argc, char** argv) {
         //glClear( GL_COLOR_BUFFER_BIT );
 
         //
-
-        if(i%2==0)
-        {
-          tex1.BindTexture();
-          int ret = attachTex2FBO(fbo,tex2);
-          //printf("attachTex2FBO ret:%d\n",ret);
-        }
-        else
-        {
-          tex2.BindTexture();
-          int ret = attachTex2FBO(fbo,tex1);
-          //printf("attachTex2FBO ret:%d\n",ret);
-        }
 
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         //
