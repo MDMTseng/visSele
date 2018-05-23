@@ -271,7 +271,8 @@ int main(int argc, char** argv) {
 
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         //
-        glFlush();
+        if(i%1==0)glFinish();
+
         // Swap the screen buffers
         //glfwSwapBuffers( window );
     }
