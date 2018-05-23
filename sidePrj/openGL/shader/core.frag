@@ -7,11 +7,11 @@ void main()
 {
 	vec2 coor=floor(gl_FragCoord.xy);
 	uint _x=uint(coor.x);
-	vec4 ddddd=vec4(_x,_x,_x,_x);
+	vec4 incV=vec4(_x,_x,_x,_x);
 	color = texture(baseTexture2, coor);
-	for(int i=0;i<100;++i)
+	for(int i=0;i<1;++i)
 	{
-	  color += ddddd;
+	  color += incV;
 	}
 	/*float alpha = 1-rectPos.x;
 	color = texture2DRect(baseTexture1, rectPos*3);

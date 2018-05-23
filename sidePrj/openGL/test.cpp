@@ -11,6 +11,7 @@
 #include <iostream>
 #include <string>
 #include <sstream>
+#include <unistd.h>
 using namespace std;
 
 /**
@@ -82,20 +83,27 @@ void deleteFBO(GLuint fbo)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteFramebuffers(1, &fbo);
 }
-GLuint initFBO(GLAcc_GPU_Buffer &gbuf) {
+GLuint initFBO() {
     unsigned int fbo;
     glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    return fbo;
+}
 
+
+int attachTex2FBO(GLuint fbo,GLAcc_GPU_Buffer &gbuf)
+{
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, gbuf.GetTextureTarget(), gbuf.GetTexID(), 0);
 
     int ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if( ret == GL_FRAMEBUFFER_COMPLETE)
     {
-
+      return 0;
     }
-    return fbo;
+
+    return -1;
 }
+
+
 
 void WriteBuffer(GLAcc_GPU_Buffer &tex)
 {
@@ -103,12 +111,7 @@ void WriteBuffer(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        if(i%tex.GetChannelCount()==0)
-          dataX[i] = 0.01*i+0.0f;
-        else
-        {
-          dataX[i] = 0;
-        }
+        dataX[i] = -1000;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -127,7 +130,7 @@ void WriteBuffer2(GLAcc_GPU_Buffer &tex)
 }
 
 
-void ReadBuffer(GLAcc_GPU_Buffer &tex)
+void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int idxEnd)
 {
     int totolLength=tex.GetBuffSizeX()*tex.GetBuffSizeY()*tex.GetChannelCount();
     float* dataY = new float[totolLength];
@@ -135,7 +138,7 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex)
     tex.GPU2CPU(dataY, totolLength);
     printf("%s: TexID:%d\n",__func__,tex.GetTexID());
     printf("X:%d Y:%d CH:%d totolLength:%d \n",tex.GetBuffSizeX(),tex.GetBuffSizeY(),tex.GetChannelCount(),totolLength);
-    for (int i=0; i<totolLength; i++)
+    for (int i=idxStart; i<totolLength && i< idxEnd; i++)
         printf("%f ",dataY[i]);
     delete(dataY);
     printf("\n");
@@ -211,7 +214,7 @@ int main(int argc, char** argv) {
     //ReadBuffer(tex1);
     //ReadBuffer(tex2);
 
-    GLuint fbo = initFBO(tex2);
+    GLuint fbo = initFBO();
     //glDeleteFramebuffersEXT (1,&fb);
 
     ourShader.Use( );
@@ -222,14 +225,21 @@ int main(int argc, char** argv) {
     ourShader.SetTex2Shader("baseTexture1",0);
     tex1.BindTexture();
 
-    ourShader.SetTex2Shader("baseTexture2",1);
-    tex2.BindTexture();
 
+
+    ourShader.SetTex2Shader("baseTexture2",1);
+    glBindVertexArray( VAO );
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     clock_t t = clock();
+    printf("Test start.... \n");
+
+    tex1.BindTexture();
+    attachTex2FBO(fbo,tex1);
+    sleep(1);
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<100;i++)
+    for(int i=0;i<1000;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -240,17 +250,31 @@ int main(int argc, char** argv) {
         //glClear( GL_COLOR_BUFFER_BIT );
 
         //
-        glBindVertexArray( VAO );
+
+        if(i%2==0)
+        {
+          tex1.BindTexture();
+          int ret = attachTex2FBO(fbo,tex2);
+          //printf("attachTex2FBO ret:%d\n",ret);
+        }
+        else
+        {
+          tex2.BindTexture();
+          int ret = attachTex2FBO(fbo,tex1);
+          //printf("attachTex2FBO ret:%d\n",ret);
+        }
+
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
-        glBindVertexArray(0);
         //
 
         // Swap the screen buffers
         //glfwSwapBuffers( window );
-        glFinish();
+        //glFinish();
     }
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-    //ReadBuffer(tex2);
+    glBindVertexArray(0);
+    ReadBuffer(tex1,0,10);
+    ReadBuffer(tex2,0,10);
     deleteFBO(fbo);
 
     return 0;

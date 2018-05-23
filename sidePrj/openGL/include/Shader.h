@@ -104,15 +104,16 @@ public:
     int GetUniformLocation( char* name)
     {
         int tex_location = glGetUniformLocation(this->Program, name);
-        printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
+        //printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
         return tex_location;
     }
     // Uses the current shader
-    void SetTex2Shader( char* name, int idx)
+    int SetTex2Shader( char* name, int idx)
     {
         int tex_location=GetUniformLocation(name);
-        printf("%s: idx:%d \n",__func__,idx);
-        glUniform1i(glGetUniformLocation(this->Program, name), idx);
+        if(tex_location<0)return tex_location;
+        //printf("%s: idx:%d \n",__func__,idx);
+        glUniform1i(tex_location, idx);
         glActiveTexture(GL_TEXTURE0+idx);
     }
     void SetFloat2Shader( char* name, float  data)
