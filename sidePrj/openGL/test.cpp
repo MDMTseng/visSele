@@ -245,9 +245,10 @@ int main(int argc, char** argv) {
     tex1.BindTexture();
     attachTex2FBO(fbo,tex1);
     clock_t t = clock();
+
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<100;i++)
+    for(int i=0;i<10;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -270,13 +271,28 @@ int main(int argc, char** argv) {
         }*/
 
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
-        //
-        if(i%1==0)glFinish();
-
+        glFinish();
         // Swap the screen buffers
         //glfwSwapBuffers( window );
     }
-    glFinish();
+
+    GLsync fence= glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+    glFlush();
+    while (true)
+    {
+        GLenum syncRes = glClientWaitSync(fence, 0, 1000*000*000);
+        switch (syncRes)
+        {
+          case GL_ALREADY_SIGNALED: cout << "ALREADY" << std::endl; break;
+          case GL_CONDITION_SATISFIED: cout << "EXECUTED"  << std::endl; break;
+          case GL_TIMEOUT_EXPIRED: cout << "TIMEOUT" << std::endl; break;
+          case GL_WAIT_FAILED: cout << "FAIL" << std::endl; break;
+        }
+        if (syncRes == GL_CONDITION_SATISFIED || syncRes == GL_ALREADY_SIGNALED) break;
+    }
+    glDeleteSync(fence);
+    //
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
     glBindVertexArray(0);
     ReadBuffer(tex1,0,10);
