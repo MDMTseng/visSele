@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=1024,texSizeY=1024;
+    int texSizeX=200,texSizeY=200;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
     clock_t t = clock();
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<4000;i++)
+    for(int i=0;i<20;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -271,7 +271,6 @@ int main(int argc, char** argv) {
 
         // Swap the screen buffers
         //glfwSwapBuffers( window );
-        if(i%10==0)glFlush();
     }
     glFinish();
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);

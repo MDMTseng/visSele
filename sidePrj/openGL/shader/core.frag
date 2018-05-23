@@ -7,9 +7,8 @@ void main()
 {
 	vec2 coor=floor(gl_FragCoord.xy);
 	uint _x=uint(coor.x);
-	vec4 incV=vec4(_x,_x,_x,_x);
 	color = texture(baseTexture2, coor);
-	for(int i=0;i<8;++i)
+	for(int i=0;i<80;++i)
 	{
 	  color +=  texture(baseTexture2, coor+i*0.001)/1000000;
 	}
