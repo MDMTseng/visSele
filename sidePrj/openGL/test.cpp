@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=1204,texSizeY=1204;
+    int texSizeX=1024,texSizeY=1024;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -241,12 +241,10 @@ int main(int argc, char** argv) {
 
     tex1.BindTexture();
     attachTex2FBO(fbo,tex1);
-    tex1.BindTexture();
-    int ret = attachTex2FBO(fbo,tex1);
     clock_t t = clock();
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<1000;i++)
+    for(int i=0;i<4000;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -257,6 +255,16 @@ int main(int argc, char** argv) {
         //glClear( GL_COLOR_BUFFER_BIT );
 
         //
+        /*if(i%2==0)
+        {
+          tex1.BindTexture();
+          attachTex2FBO(fbo,tex2);
+        }
+        else
+        {
+          tex2.BindTexture();
+          attachTex2FBO(fbo,tex1);
+        }*/
 
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
         //
