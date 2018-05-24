@@ -182,8 +182,8 @@ int main(int argc, char** argv) {
 
     //Setup Input(Texture/Variables)
     {
-        ourShader.TextureActivate(55,tex1.GetTextureTarget(),1);
-        ourShader.TextureActivate(66,tex2.GetTextureTarget(),2);
+        ourShader.TextureActivate(ourShader.GetUniformLocation("x1"),tex1.GetTextureTarget(),1);
+        ourShader.TextureActivate(ourShader.GetUniformLocation("x2"),tex2.GetTextureTarget(),2);
         glUniform3ui(ourShader.GetUniformLocation("outputDim"), texSizeX,texSizeY,targetDepth);
     }
 

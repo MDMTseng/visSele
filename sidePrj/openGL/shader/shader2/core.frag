@@ -1,9 +1,9 @@
 #version 330 core
-#extension GL_ARB_explicit_uniform_location : require
+//#extension GL_ARB_explicit_uniform_location : require
 
-layout(location = 55) uniform sampler2DRect x1;
-layout(location = 66) uniform sampler2DRect x2;
-layout(location = 3) uniform uvec3 outputDim;
+uniform sampler2DRect x1;
+uniform sampler2DRect x2;
+uniform uvec3 outputDim;
 layout(location=0) out vec4 y1;
 layout(location=1) out vec4 y2;
 
