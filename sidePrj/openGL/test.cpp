@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
     Shader ourShader( "shader/shader2/core.vs", "shader/shader2/core.frag" );
     //Establish buffers
     int texSizeX=1024,texSizeY=1024;
-    int targetDepth=4;
+    int targetDepth=1;
     GLAcc_Framework GLAcc_f;
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
@@ -212,7 +212,7 @@ int main(int argc, char** argv) {
     clock_t t = clock();
     GLAcc_f.Begin();
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<100;i++)
+    for(int i=0;i<2500;i++)
     {
         GLAcc_f.Compute();//Draw screen
         glFlush();
@@ -242,8 +242,8 @@ int main(int argc, char** argv) {
     GLAcc_f.End();
     //
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-    ReadBuffer(tex1,0,30);
-    ReadBuffer(tex2,0,30);
+    ReadBuffer(tex1,0,4);
+    //ReadBuffer(tex2,0,30);
     deleteFBO(fbo);
 
     return 0;
