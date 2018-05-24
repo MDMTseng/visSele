@@ -94,6 +94,12 @@ public:
         glUseProgram( this->Program );
     }
 
+
+    int GetID( )
+    {
+        return this->Program;
+    }
+
     int GetAttribLocation ( char* name)
     {
         int tex_location = glGetAttribLocation (this->Program, name);
@@ -108,14 +114,26 @@ public:
         return tex_location;
     }
     // Uses the current shader
-    int SetTex2Shader( char* name, int idx)
+    int ActivateTexture( char* name,int target, int idx)
     {
         int tex_location=GetUniformLocation(name);
         if(tex_location<0)return tex_location;
-        //printf("%s: idx:%d \n",__func__,idx);
-        glUniform1i(tex_location, idx);
-        glActiveTexture(GL_TEXTURE0+idx);
+        ActivateTexture(tex_location,target, idx);
     }
+    int ActivateTexture( int location,int target,int idx)
+    {
+        //printf("%s: idx:%d \n",__func__,idx);
+        glUniform1i(location, idx);
+        glActiveTexture(GL_TEXTURE0+idx);
+        glEnable(target);
+    }
+
+    int DeactivateTexture( int target, int idx)
+    {
+        glActiveTexture(GL_TEXTURE0+idx);
+        glDisable(target);
+    }
+
     void SetFloat2Shader( char* name, float  data)
     {
       GLint loc = glGetUniformLocation(this->Program, name);
@@ -123,6 +141,10 @@ public:
       {
          glUniform1f(loc, data);
       }
+    }
+    void SetFragData( char* name, int idx)
+    {
+      glBindFragDataLocation(this->Program, idx, name);
     }
 };
 

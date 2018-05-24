@@ -91,9 +91,9 @@ GLuint initFBO() {
 }
 
 
-int attachTex2FBO(GLuint fbo,GLAcc_GPU_Buffer &gbuf)
+int attachTex2FBO(GLuint fbo,GLenum attachment,GLAcc_GPU_Buffer &gbuf)
 {
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, gbuf.GetTextureTarget(), gbuf.GetTexID(), 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, gbuf.GetTextureTarget(), gbuf.GetTexID(), 0);
 
     int ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if( ret == GL_FRAMEBUFFER_COMPLETE)
@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
 
     Shader ourShader( "shader/core.vs", "shader/core.frag" );
     //Establish buffers
-    int texSizeX=2,texSizeY=2;
+    int texSizeX=1024,texSizeY=1024;
     glViewport(0,0,texSizeX,texSizeY);
     GLuint VBO;
     GLuint VAO;
@@ -230,27 +230,31 @@ int main(int argc, char** argv) {
     initBaseVertex(ourShader,&VBO,&VAO);
 
 
-    ourShader.SetTex2Shader("baseTexture1",0);
+    ourShader.ActivateTexture(55,tex1.GetTextureTarget(),0);
     tex1.BindTexture();
 
-    ourShader.SetTex2Shader("baseTexture2",1);
+    ourShader.ActivateTexture(66,tex2.GetTextureTarget(),1);
     tex2.BindTexture();
-
-
 
     glBindVertexArray( VAO );
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-
-    printf("Test start.... \n");
+    GLint maxAtt = 0;
+    glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
+    printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);
 
     //tex3.BindTexture();
 
-    attachTex2FBO(fbo,tex1);
+    attachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,tex1);
+    attachTex2FBO(fbo,GL_COLOR_ATTACHMENT1,tex2);
+
+    GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
+    glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
+
     clock_t t = clock();
 
     // Game loop
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<10;i++)
+    for(int i=0;i<99;i++)
     {
         // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
         //glfwPollEvents( );
@@ -273,10 +277,11 @@ int main(int argc, char** argv) {
         }*/
 
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
-        glFinish();
+        glFlush();
         // Swap the screen buffers
         //glfwSwapBuffers( window );
     }
+    glFinish();
     if(0)
     {
         GLsync fence= glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
