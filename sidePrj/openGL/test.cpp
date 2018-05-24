@@ -91,18 +91,6 @@ GLuint initFBO() {
 }
 
 
-int attachTex2FBO(GLuint fbo,GLenum attachment,GLAcc_GPU_Buffer &gbuf)
-{
-    glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, gbuf.GetTextureTarget(), gbuf.GetTexID(), 0);
-
-    int ret = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if( ret == GL_FRAMEBUFFER_COMPLETE)
-    {
-      return 0;
-    }
-
-    return -1;
-}
 
 
 
@@ -149,36 +137,6 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int readL)
     printf("\n");
 }
 
-void initBaseVertex(Shader &shader,GLuint *pVBO,GLuint *pVAO)
-{
-    float mult=1;
-    GLfloat vertices[] =
-    {
-        // Positions         // Colors
-        -mult, -mult, 0.0f,   mult, 0.0f, 0.0f,
-        -mult, mult, 0.0f,   0.0f, mult, 0.0f,
-        mult, -mult, 0.0f,   0.0f, 0.0f, mult,
-        mult, mult, 0.0f,   mult, mult, mult
-    };
-    glGenVertexArrays( 1, pVAO );
-    glGenBuffers( 1, pVBO );
-    // Bind the Vertex Array Object first, then bind and set vertex buffer(s) and attribute pointer(s).
-    glBindVertexArray( *pVAO );
-
-    glBindBuffer( GL_ARRAY_BUFFER, *pVBO );
-    glBufferData( GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW );
-
-    // Position attribute
-    int loc = shader.GetAttribLocation("position");
-    glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * ) 0 );
-    glEnableVertexAttribArray( loc);
-    // Color attribute
-    loc = shader.GetAttribLocation("color");
-    glVertexAttribPointer( loc, 3, GL_FLOAT, GL_FALSE, 6 * sizeof( GLfloat ), ( GLvoid * )( 3 * sizeof( GLfloat ) ) );
-    glEnableVertexAttribArray( loc );
-
-    glBindVertexArray( 0 ); // Unbind VAO
-}
 /**
 * Main, what else?
 */
@@ -203,85 +161,64 @@ int main(int argc, char** argv) {
     managerError();                // manages errors
     consoleMessage();            // displays message on the console
 
-    Shader ourShader( "shader/core.vs", "shader/core.frag" );
+    Shader ourShader( "shader/shader2/core.vs", "shader/shader2/core.frag" );
     //Establish buffers
     int texSizeX=1024,texSizeY=1024;
-    glViewport(0,0,texSizeX,texSizeY);
-    GLuint VBO;
-    GLuint VAO;
-    GLAcc_GPU_Buffer tex1(4,texSizeX,texSizeY);
-    GLAcc_GPU_Buffer tex2(4,texSizeX,texSizeY);
+    int targetDepth=4;
+    GLAcc_Framework GLAcc_f;
+
+    GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
     printf("tex ID:%d\n",tex1.GetTexID());
-    printf("tex2 ID:%d\n",tex2.GetTexID());
-
-
     WriteBuffer(tex1);
+
+    GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY);
+    printf("tex2 ID:%d\n",tex2.GetTexID());
     WriteBuffer2(tex2);
-    ReadBuffer(tex1,0,10);
-    ReadBuffer(tex2,0,10);
     //ReadBuffer(tex1);
     //ReadBuffer(tex2);
+    GLAcc_f.Setup();
+    GLAcc_f.SetupShader(ourShader);//actually load vertices(a simple square fill output with depth 0) and use it
+    GLAcc_f.SetupViewPort(texSizeX,texSizeY);//Actually setup viewport
 
-    GLuint fbo = initFBO();
-    //glDeleteFramebuffersEXT (1,&fb);
+    //Setup Input(Texture/Variables)
+    {
+        ourShader.TextureActivate(55,tex1.GetTextureTarget(),1);
+        ourShader.TextureActivate(66,tex2.GetTextureTarget(),2);
+        glUniform3ui(ourShader.GetUniformLocation("outputDim"), texSizeX,texSizeY,targetDepth);
+    }
 
-    ourShader.Use( );
-    //Setup polygon(square) vertices
-    initBaseVertex(ourShader,&VBO,&VAO);
+    GLuint fbo;
+    //Setup Output(Multi Render Target (MRT) with FBO)
+    {
+        GLint maxAtt = 0;
+        glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
+        printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);
+        fbo = initFBO();
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
+        glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
+    }
 
-
-    ourShader.ActivateTexture(55,tex1.GetTextureTarget(),0);
-    tex1.BindTexture();
-
-    ourShader.ActivateTexture(66,tex2.GetTextureTarget(),1);
-    tex2.BindTexture();
-
-    glBindVertexArray( VAO );
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    GLint maxAtt = 0;
-    glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
-    printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);
-
-    //tex3.BindTexture();
-
-    attachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,tex1);
-    attachTex2FBO(fbo,GL_COLOR_ATTACHMENT1,tex2);
-
-    GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
-    glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
+    //Bind texture to input and output
+    {
+        GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,tex1);
+        GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT1,tex2);
+        ourShader.TextureActivate(1);
+        tex1.BindTexture();
+        ourShader.TextureActivate(2);
+        tex2.BindTexture();
+    }
 
     clock_t t = clock();
-
-    // Game loop
+    GLAcc_f.Begin();
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<99;i++)
+    for(int i=0;i<100;i++)
     {
-        // Check if any events have been activiated (key pressed, mouse moved etc.) and call corresponding response functions
-        //glfwPollEvents( );
-
-        // Render
-        // Clear the colorbuffer
-        //glClearColor( 1.0f, 0.0f, 1.0f, 1.0f );
-        //glClear( GL_COLOR_BUFFER_BIT );
-
-        //
-        /*if(i%2==0)
-        {
-          tex1.BindTexture();
-          attachTex2FBO(fbo,tex2);
-        }
-        else
-        {
-          tex2.BindTexture();
-          attachTex2FBO(fbo,tex1);
-        }*/
-
-        glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
+        GLAcc_f.Compute();//Draw screen
         glFlush();
-        // Swap the screen buffers
-        //glfwSwapBuffers( window );
     }
     glFinish();
+
     if(0)
     {
         GLsync fence= glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -302,11 +239,11 @@ int main(int argc, char** argv) {
         }
         glDeleteSync(fence);
     }
+    GLAcc_f.End();
     //
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-    glBindVertexArray(0);
-    ReadBuffer(tex1,0,10);
-    ReadBuffer(tex2,0,10);
+    ReadBuffer(tex1,0,30);
+    ReadBuffer(tex2,0,30);
     deleteFBO(fbo);
 
     return 0;

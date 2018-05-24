@@ -114,21 +114,28 @@ public:
         return tex_location;
     }
     // Uses the current shader
-    int ActivateTexture( char* name,int target, int idx)
+    int TextureActivate( char* name,int target, int idx)
     {
         int tex_location=GetUniformLocation(name);
         if(tex_location<0)return tex_location;
-        ActivateTexture(tex_location,target, idx);
+        TextureActivate(tex_location,target, idx);
+        return 0;
     }
-    int ActivateTexture( int location,int target,int idx)
+    int TextureActivate( int location,int target,int idx)
     {
         //printf("%s: idx:%d \n",__func__,idx);
         glUniform1i(location, idx);
-        glActiveTexture(GL_TEXTURE0+idx);
+        TextureActivate(idx);
         glEnable(target);
+        return 0;
+    }
+    int TextureActivate(int idx)
+    {
+        glActiveTexture(GL_TEXTURE0+idx);
+        return 0;
     }
 
-    int DeactivateTexture( int target, int idx)
+    void DeactivateTexture( int target, int idx)
     {
         glActiveTexture(GL_TEXTURE0+idx);
         glDisable(target);
