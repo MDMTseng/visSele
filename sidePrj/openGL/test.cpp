@@ -112,7 +112,7 @@ void WriteBuffer(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        dataX[i] = 000;
+        dataX[i] = 0;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -124,7 +124,7 @@ void WriteBuffer2(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        dataX[i] = i;
+        dataX[i] = 100;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -230,19 +230,21 @@ int main(int argc, char** argv) {
     initBaseVertex(ourShader,&VBO,&VAO);
 
 
-    tex1.BindTexture();
     ourShader.SetTex2Shader("baseTexture1",0);
+    tex1.BindTexture();
 
-
-
-    tex2.BindTexture();
     ourShader.SetTex2Shader("baseTexture2",1);
+    tex2.BindTexture();
+
+
+
     glBindVertexArray( VAO );
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     printf("Test start.... \n");
 
-    tex1.BindTexture();
+    //tex3.BindTexture();
+
     attachTex2FBO(fbo,tex1);
     clock_t t = clock();
 
@@ -275,23 +277,26 @@ int main(int argc, char** argv) {
         // Swap the screen buffers
         //glfwSwapBuffers( window );
     }
-
-    GLsync fence= glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-
-    glFlush();
-    while (true)
+    if(0)
     {
-        GLenum syncRes = glClientWaitSync(fence, 0, 1000*000*000);
-        switch (syncRes)
+        GLsync fence= glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+        glFlush();
+        glFinish();
+        while (true)
         {
-          case GL_ALREADY_SIGNALED: cout << "ALREADY" << std::endl; break;
-          case GL_CONDITION_SATISFIED: cout << "EXECUTED"  << std::endl; break;
-          case GL_TIMEOUT_EXPIRED: cout << "TIMEOUT" << std::endl; break;
-          case GL_WAIT_FAILED: cout << "FAIL" << std::endl; break;
+            GLenum syncRes = glClientWaitSync(fence, 0, 1000*000*000);
+            switch (syncRes)
+            {
+              case GL_ALREADY_SIGNALED: cout << "ALREADY" << std::endl; break;
+              case GL_CONDITION_SATISFIED: cout << "EXECUTED"  << std::endl; break;
+              case GL_TIMEOUT_EXPIRED: cout << "TIMEOUT" << std::endl; break;
+              case GL_WAIT_FAILED: cout << "FAIL" << std::endl; break;
+            }
+            if (syncRes == GL_CONDITION_SATISFIED || syncRes == GL_ALREADY_SIGNALED) break;
         }
-        if (syncRes == GL_CONDITION_SATISFIED || syncRes == GL_ALREADY_SIGNALED) break;
+        glDeleteSync(fence);
     }
-    glDeleteSync(fence);
     //
     printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
     glBindVertexArray(0);
