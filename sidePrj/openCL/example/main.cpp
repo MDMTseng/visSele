@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <time.h>
 
 #define __CL_ENABLE_EXCEPTIONS
 #include <OpenCL/cl.hpp>
