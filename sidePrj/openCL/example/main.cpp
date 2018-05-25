@@ -42,18 +42,19 @@ int main() {
 	    std::vector<cl::Device> pldev;
 
 	    try {
-		p->getDevices(CL_DEVICE_TYPE_GPU, &pldev);
+    		p->getDevices(CL_DEVICE_TYPE_GPU, &pldev);
 
-		for(auto d = pldev.begin(); device.empty() && d != pldev.end(); d++) {
-		    if (!d->getInfo<CL_DEVICE_AVAILABLE>()) continue;
+    		for(auto d = pldev.begin(); device.empty() && d != pldev.end(); d++) {
+    		    if (!d->getInfo<CL_DEVICE_AVAILABLE>()) continue;
 
-		    std::string ext = d->getInfo<CL_DEVICE_EXTENSIONS>();
+    		    std::string ext = d->getInfo<CL_DEVICE_EXTENSIONS>();
 
-		    device.push_back(*d);
-		    context = cl::Context(device);
-		}
+          	std::cout<< ">>>" <<ext << std::endl;
+    		    device.push_back(*d);
+    		    context = cl::Context(device);
+    		}
 	    } catch(...) {
-		device.clear();
+		      device.clear();
 	    }
 	}
 
