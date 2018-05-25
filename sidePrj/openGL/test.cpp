@@ -184,7 +184,6 @@ int main(int argc, char** argv) {
     {
         ourShader.TextureActivate(ourShader.GetUniformLocation("x1"),tex1.GetTextureTarget(),1);
         ourShader.TextureActivate(ourShader.GetUniformLocation("x2"),tex2.GetTextureTarget(),2);
-        glUniform3ui(ourShader.GetUniformLocation("outputDim"), texSizeX,texSizeY,targetDepth);
     }
 
     GLuint fbo;
@@ -202,7 +201,6 @@ int main(int argc, char** argv) {
     //Bind texture to input and output
     {
         GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,tex1);
-        GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT1,tex2);
         ourShader.TextureActivate(1);
         tex1.BindTexture();
         ourShader.TextureActivate(2);
@@ -212,7 +210,7 @@ int main(int argc, char** argv) {
     clock_t t = clock();
     GLAcc_f.Begin();
     //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<2500;i++)
+    for(int i=0;i<10000;i++)
     {
         GLAcc_f.Compute();//Draw screen
         glFlush();

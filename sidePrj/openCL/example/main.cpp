@@ -8,18 +8,12 @@
 
 // Compute c = a + b.
 static const char source[] =
-    "#if defined(cl_khr_fp64)\n"
-    "#  pragma OPENCL EXTENSION cl_khr_fp64: enable\n"
-    "#elif defined(cl_amd_fp64)\n"
-    "#  pragma OPENCL EXTENSION cl_amd_fp64: enable\n"
-    "#else\n"
-    "#  error double precision is not supported\n"
-    "#endif\n"
+
     "kernel void add(\n"
     "       ulong n,\n"
-    "       global const double *a,\n"
-    "       global const double *b,\n"
-    "       global double *c\n"
+    "       global const float *a,\n"
+    "       global const float *b,\n"
+    "       global float *c\n"
     "       )\n"
     "{\n"
     "    size_t i = get_global_id(0);\n"
@@ -54,11 +48,6 @@ int main() {
 		    if (!d->getInfo<CL_DEVICE_AVAILABLE>()) continue;
 
 		    std::string ext = d->getInfo<CL_DEVICE_EXTENSIONS>();
-
-		    if (
-			    ext.find("cl_khr_fp64") == std::string::npos &&
-			    ext.find("cl_amd_fp64") == std::string::npos
-		       ) continue;
 
 		    device.push_back(*d);
 		    context = cl::Context(device);
@@ -96,19 +85,19 @@ int main() {
 	cl::Kernel add(program, "add");
 
 	// Prepare input data.
-	std::vector<double> a(N, 1);
-	std::vector<double> b(N, 2);
-	std::vector<double> c(N);
+	std::vector<float> a(N, 1);
+	std::vector<float> b(N, 2);
+	std::vector<float> c(N);
 
 	// Allocate device buffers and transfer input data to device.
 	cl::Buffer A(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-		a.size() * sizeof(double), a.data());
+		a.size() * sizeof(float), a.data());
 
 	cl::Buffer B(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-		b.size() * sizeof(double), b.data());
+		b.size() * sizeof(float), b.data());
 
 	cl::Buffer C(context, CL_MEM_READ_WRITE,
-		c.size() * sizeof(double));
+		c.size() * sizeof(float));
 
 	// Set kernel parameters.
 	add.setArg(0, static_cast<cl_ulong>(N));
@@ -120,16 +109,16 @@ int main() {
   clock_t t = clock();
   printf("START.....\n");
 	// Launch kernel on the compute device.
-  for(int i=0;i<2500;i++)
+  for(int i=0;i<10000;i++)
   {
   	queue.enqueueNDRangeKernel(add, cl::NullRange, N, cl::NullRange);
   }
   queue.finish();
 
-  printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  printf("elapse:%fms \n", ((float)clock() - t) / CLOCKS_PER_SEC * 1000);
 
 	// Get result back to host.
-	queue.enqueueReadBuffer(B, CL_TRUE, 0, c.size() * sizeof(double), c.data());
+	queue.enqueueReadBuffer(B, CL_TRUE, 0, c.size() * sizeof(float), c.data());
 
 	// Should get '3' here.
 	std::cout << c[1] << std::endl;
