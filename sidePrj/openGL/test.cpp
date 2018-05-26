@@ -1,10 +1,8 @@
 
 #define GLEW_STATIC
 #include "GLAcc.h"
-#include <GL/glew.h>
-// GLFW
-#include <GLFW/glfw3.h>
 
+#include <GL/glew.h>
 #include "Shader.h"
 
 #include <stdio.h>
@@ -14,71 +12,9 @@
 #include <time.h>
 #include <unistd.h>
 using namespace std;
-
-/**
-* analyse the version
-*/
-string makeMeString(GLint versionRaw) {
-    stringstream ss;
-    string str = "\0";
-
-    ss << versionRaw;    // transfers versionRaw value into "ss"
-    str = ss.str();        // sets the "str" string as the "ss" value
-    return str;
-}
-
-
-/**
+/*
 * Message
 */
-void consoleMessage() {
-    char *versionGL = "\0";
-
-    versionGL = (char *)(glGetString(GL_VERSION));
-
-
-    cout << endl;
-    cout << "OpenGL version: " << versionGL << endl << endl;
-    cout << "GLEW version: " << glewGetString(GLEW_VERSION) << endl;
-
-
-    int maxtexsize;
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE,&maxtexsize);
-    printf("GL_MAX_TEXTURE_SIZE, %d\n",maxtexsize);
-}
-
-/**
-* Manager error
-*/
-void managerError() {
-    if (glewInit()) { // checks if glewInit() is activated
-        cerr << "Unable to initialize GLEW." << endl;
-        while (1); // let's use this infinite loop to check the error message before closing the window
-        exit(EXIT_FAILURE);
-    }
-    // FreeConsole();
-}
-
-/**
-* Initialize FREEGLUT
-*/
-GLFWwindow* initGLFW(int width,int height) {
-  // Init GLFW
-  glfwInit( );
-
-  // Set all the required options for GLFW
-  glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 3 );
-  glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 3 );
-  glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
-  glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE );
-
-  glfwWindowHint( GLFW_RESIZABLE, GL_FALSE );
-
-  // Create a GLFWwindow object that we can use for GLFW's functions
-  return glfwCreateWindow( width, height, "LearnOpenGL", nullptr, nullptr );
-
-}
-
 void deleteFBO(GLuint fbo)
 {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -143,29 +79,15 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int readL)
 int main(int argc, char** argv) {
     int width=800, height=800;
     //Init window
-    GLFWwindow* window = initGLFW( width, height);
-    if ( nullptr == window )
-    {
-        std::cout << "Failed to create GLFW window" << std::endl;
-        glfwTerminate( );
 
-        return EXIT_FAILURE;
-    }
-    glfwMakeContextCurrent( window );
-
-    int screenWidth, screenHeight;
-    glfwGetFramebufferSize( window, &screenWidth, &screenHeight );
-
-
+    GLAcc_Framework GLAcc_f;
+    GLAcc_f.INIT(width,height);
     //LOGOSOGO
-    managerError();                // manages errors
-    consoleMessage();            // displays message on the console
-
+    return 0;
     Shader ourShader( "shader/shader2/core.vs", "shader/shader2/core.frag" );
     //Establish buffers
     int texSizeX=1024,texSizeY=1024;
     int targetDepth=1;
-    GLAcc_Framework GLAcc_f;
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
     printf("tex ID:%d\n",tex1.GetTexID());
