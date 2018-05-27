@@ -112,17 +112,16 @@ void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
       x2.BindTexture();
   }
 
-  clock_t t = clock();
+  //clock_t t = clock();
   GLAcc_f.Begin();
   for(int i=0;i<loopCount;i++)
   {
       GLAcc_f.Compute();//Draw screen
       glFlush();
   }
-  glFinish();
   GLAcc_f.End();
   //
-  printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  //printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 }
 /**
 * Main, what else?
@@ -153,6 +152,7 @@ int main(int argc, char** argv) {
       WriteBuffer2(tex2);
       clock_t t = clock();
       runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,10000);
+      glFinish();
       printf("runShader>>elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
       ReadBuffer(tex1,0,4);
     }
@@ -164,7 +164,12 @@ int main(int argc, char** argv) {
       WriteBuffer(tex1);
       WriteBuffer2(tex2);
       clock_t t = clock();
-      runShader(GLAcc_f,ourShader2,fbo,tex1,tex1,tex2,10000);
+      for(int i=0;i<5000;i++)
+      {
+        runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,1);
+        runShader(GLAcc_f,ourShader2,fbo,tex1,tex1,tex2,1);
+      }
+      glFinish();
       printf("runShader>>elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
       ReadBuffer(tex1,0,4);
     }
