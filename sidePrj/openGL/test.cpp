@@ -48,7 +48,7 @@ void WriteBuffer2(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        dataX[i] = 100;
+        dataX[i] = 0.1;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
 
     GLAcc_Framework GLAcc_f(width,height);
 
-    int texSizeX=1024,texSizeY=1024,targetDepth=1;
+    int texSizeX=1024/1,texSizeY=1024/1,targetDepth=1;
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
     GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY);
