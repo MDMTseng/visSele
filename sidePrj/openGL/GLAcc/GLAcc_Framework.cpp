@@ -24,8 +24,6 @@ void GLAcc_Framework::INIT_ERROR()
         while (1); // let's use this infinite loop to check the error message before closing the window
         exit(EXIT_FAILURE);
     }
-
-
 }
 void GLAcc_Framework::INIT_MSG()
 {

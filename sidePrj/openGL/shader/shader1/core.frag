@@ -13,7 +13,7 @@ void main()
 	uvec2 coorui=uvec2(coorf);
 	uint idx = (coorui.x+coorui.y*outputDim.y)*outputDim.z;
 
-	y1=(texture(x1, coorf)+texture(x2, coorf))+idx;
+	y1=(texture(x1, coorf)+texture(x2, coorf));
 
 
 

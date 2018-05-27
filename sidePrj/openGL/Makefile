@@ -12,14 +12,13 @@ target_bin=test
 
 
 
+IDIR+= ./include $(MODULE_GLACC)/include  $(GLEWSRCDir)/include
 
 ifeq ($(OS),Windows_NT)
 	EXT_OBJS += $(GLFWSRCDir)/lib-mingw-w64/libglfw3.a
-	IDIR+= ./include $(MODULE_GLACC)/include  $(GLEWSRCDir)/include
 	LIBS+=-lopengl32 -lwinmm -lgdi32
 else
-	IDIR+= ./include $(MODULE_GLACC)/include  $(GLEWSRCDir)/include
 	LIBS+= -lglfw3 -framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo
 endif
-
+FLAGS=-w
 include $(MakeTemplate)

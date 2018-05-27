@@ -73,6 +73,57 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int readL)
     printf("\n");
 }
 
+void runShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
+  GLAcc_GPU_Buffer &y1,
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2)
+{
+
+  GLAcc_f.SetupShader(shader);//actually load vertices(a simple square fill output with depth 0) and use it
+  GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
+
+  //Setup Input(Texture/Variables)
+  {
+      shader.TextureActivate(shader.GetUniformLocation("x1"),x1.GetTextureTarget(),1);
+      shader.TextureActivate(shader.GetUniformLocation("x2"),x2.GetTextureTarget(),2);
+      glUniform3ui(shader.GetUniformLocation("outputDim"), y1.GetBuffSizeX(),y1.GetBuffSizeY(),y1.GetChannelCount());
+
+  }
+
+  //Setup Output(Multi Render Target (MRT) with FBO)
+  {
+      /**/
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+      GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
+      glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
+  }
+
+}
+void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
+  GLAcc_GPU_Buffer &y1,
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,int loopCount)
+{
+  shader.Use( );
+  //Bind texture to input and output
+  {
+      GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,y1);
+      shader.TextureActivate(1);
+      x1.BindTexture();
+      shader.TextureActivate(2);
+      x2.BindTexture();
+  }
+
+  clock_t t = clock();
+  GLAcc_f.Begin();
+  for(int i=0;i<loopCount;i++)
+  {
+      GLAcc_f.Compute();//Draw screen
+      glFlush();
+  }
+  glFinish();
+  GLAcc_f.End();
+  //
+  printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+}
 /**
 * Main, what else?
 */
@@ -81,86 +132,45 @@ int main(int argc, char** argv) {
     //Init window
 
     GLAcc_Framework GLAcc_f(width,height);
-    //LOGOSOGO
-    Shader ourShader( "shader/shader2/core.vs", "shader/shader2/core.frag" );
-    //Establish buffers
-    int texSizeX=1024,texSizeY=1024;
-    int targetDepth=1;
+
+    int texSizeX=1024,texSizeY=1024,targetDepth=1;
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
-    printf("tex ID:%d\n",tex1.GetTexID());
-    WriteBuffer(tex1);
-
     GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY);
-    printf("tex2 ID:%d\n",tex2.GetTexID());
-    WriteBuffer2(tex2);
     //ReadBuffer(tex1);
     //ReadBuffer(tex2);
     GLAcc_f.Setup();
-    GLAcc_f.SetupShader(ourShader);//actually load vertices(a simple square fill output with depth 0) and use it
-    GLAcc_f.SetupViewPort(texSizeX,texSizeY);//Actually setup viewport
+    GLuint fbo= initFBO();
 
-    //Setup Input(Texture/Variables)
+    /*GLint maxAtt = 0;
+    glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
+    printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);*/
+
+    Shader ourShader1( "shader/shader1/core.vs", "shader/shader1/core.frag" );
+    runShaderSetup(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2);
     {
-        ourShader.TextureActivate(ourShader.GetUniformLocation("x1"),tex1.GetTextureTarget(),1);
-        ourShader.TextureActivate(ourShader.GetUniformLocation("x2"),tex2.GetTextureTarget(),2);
+      WriteBuffer(tex1);
+      WriteBuffer2(tex2);
+      clock_t t = clock();
+      runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,10000);
+      printf("runShader>>elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+      ReadBuffer(tex1,0,4);
     }
 
-    GLuint fbo;
-    //Setup Output(Multi Render Target (MRT) with FBO)
+
+    Shader ourShader2( "shader/shader2/core.vs", "shader/shader2/core.frag" );
+    runShaderSetup(GLAcc_f,ourShader2,fbo,tex1,tex1,tex2);
     {
-        GLint maxAtt = 0;
-        glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
-        printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);
-        fbo = initFBO();
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
-        glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
+      WriteBuffer(tex1);
+      WriteBuffer2(tex2);
+      clock_t t = clock();
+      runShader(GLAcc_f,ourShader2,fbo,tex1,tex1,tex2,10000);
+      printf("runShader>>elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+      ReadBuffer(tex1,0,4);
     }
 
-    //Bind texture to input and output
-    {
-        GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,tex1);
-        ourShader.TextureActivate(1);
-        tex1.BindTexture();
-        ourShader.TextureActivate(2);
-        tex2.BindTexture();
-    }
 
-    clock_t t = clock();
-    GLAcc_f.Begin();
-    //while (!glfwWindowShouldClose( window ) )
-    for(int i=0;i<10000;i++)
-    {
-        GLAcc_f.Compute();//Draw screen
-        glFlush();
-    }
-    glFinish();
 
-    if(0)
-    {
-        GLsync fence= glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-
-        glFlush();
-        glFinish();
-        while (true)
-        {
-            GLenum syncRes = glClientWaitSync(fence, 0, 1000*000*000);
-            switch (syncRes)
-            {
-              case GL_ALREADY_SIGNALED: cout << "ALREADY" << std::endl; break;
-              case GL_CONDITION_SATISFIED: cout << "EXECUTED"  << std::endl; break;
-              case GL_TIMEOUT_EXPIRED: cout << "TIMEOUT" << std::endl; break;
-              case GL_WAIT_FAILED: cout << "FAIL" << std::endl; break;
-            }
-            if (syncRes == GL_CONDITION_SATISFIED || syncRes == GL_ALREADY_SIGNALED) break;
-        }
-        glDeleteSync(fence);
-    }
-    GLAcc_f.End();
-    //
-    printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-    ReadBuffer(tex1,0,4);
     //ReadBuffer(tex2,0,30);
     deleteFBO(fbo);
 
