@@ -4,8 +4,9 @@
 #include <GLFW/glfw3.h>
 #include <GLAcc.h>
 
-GLAcc_Framework::GLAcc_Framework()
+GLAcc_Framework::GLAcc_Framework(int width,int height)
 {
+    INIT( width, height);
     glGenVertexArrays( 1, &VAO );
     glGenBuffers( 1, &VBO );
 }

@@ -49,7 +49,7 @@ class GLAcc_Framework
 public:
     GLuint VBO;
     GLuint VAO;
-    GLAcc_Framework();
+    GLAcc_Framework(int width,int height);
     ~GLAcc_Framework();
 
     void INIT_ERROR();

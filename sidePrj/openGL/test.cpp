@@ -80,10 +80,8 @@ int main(int argc, char** argv) {
     int width=800, height=800;
     //Init window
 
-    GLAcc_Framework GLAcc_f;
-    GLAcc_f.INIT(width,height);
+    GLAcc_Framework GLAcc_f(width,height);
     //LOGOSOGO
-    return 0;
     Shader ourShader( "shader/shader2/core.vs", "shader/shader2/core.frag" );
     //Establish buffers
     int texSizeX=1024,texSizeY=1024;
