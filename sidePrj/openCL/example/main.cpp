@@ -11,15 +11,13 @@ static const char source[] =
 
     "kernel void add(\n"
     "       ulong n,\n"
-    "       global const float *a,\n"
-    "       global const float *b,\n"
-    "       global float *c\n"
+    "       global const float *x1,\n"
+    "       global const float *x2,\n"
+    "       global float *y1\n"
     "       )\n"
     "{\n"
     "    size_t i = get_global_id(0);\n"
-    "    if (i < n) {\n"
-    "       c[i] = a[i] + b[i];\n"
-    "    }\n"
+    "    y1[i] = sin((((((x1[i]+ x2[i]) + i))))) + x1[i] + x2[i];\n"
     "}\n";
 
 int main() {
@@ -85,8 +83,8 @@ int main() {
 	cl::Kernel add(program, "add");
 
 	// Prepare input data.
-	std::vector<float> a(N, 1);
-	std::vector<float> b(N, 2);
+	std::vector<float> a(N, 0);
+	std::vector<float> b(N, 0.1);
 	std::vector<float> c(N);
 
 	// Allocate device buffers and transfer input data to device.
@@ -103,7 +101,7 @@ int main() {
 	add.setArg(0, static_cast<cl_ulong>(N));
 	add.setArg(1, A);
 	add.setArg(2, B);
-	add.setArg(3, B);
+	add.setArg(3, A);
 
 
   clock_t t = clock();
@@ -118,10 +116,14 @@ int main() {
   printf("elapse:%fms \n", ((float)clock() - t) / CLOCKS_PER_SEC * 1000);
 
 	// Get result back to host.
-	queue.enqueueReadBuffer(B, CL_TRUE, 0, c.size() * sizeof(float), c.data());
+	queue.enqueueReadBuffer(A, CL_TRUE, 0, c.size() * sizeof(float), c.data());
 
 	// Should get '3' here.
-	std::cout << c[1] << std::endl;
+  for (int i = 0; i < 10; ++i)
+  {
+    fprintf(stderr, ">>>>%f\n", c[i]);
+
+  }
     } catch (const cl::Error &err) {
 	std::cerr
 	    << "OpenCL error: "
