@@ -1,5 +1,5 @@
 
-MakeTemplate?=../../Makefile.in
+MakeTemplate?=../Makefile.in
 
 export GLEWSRCDir?=$(abspath ../../../glew-2.1.0)
 export GLFWSRCDir?=$(abspath ../../../glfw-3.2.1)

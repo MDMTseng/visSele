@@ -12,6 +12,13 @@ export MODULE_zlib=$(abspath contrib/zlib)
 export SO_EXPORT_PATH=$(abspath .)
 
 
+
+export GLEWSRCDir=$(abspath ../glew-2.1.0)
+export GLFWSRCDir=$(abspath ../glfw-3.2.1)
+export MODULE_GLACC=$(abspath GLAcc)
+
+
+
 target_bin=visSele
 ODIR=obj
 IDIR=	include/ \
@@ -49,6 +56,7 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 								$(MODULE_LOGCTRL) \
 								$(MODULE_MatchingEngine) \
 								$(MODULE_zlib) \
+								$(MODULE_GLACC) \
 								sidePrj
 
 export MakeTemplate:= $(abspath Makefile.in)
