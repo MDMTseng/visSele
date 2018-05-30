@@ -146,6 +146,9 @@ int main(int argc, char** argv) {
     printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);*/
 
     Shader ourShader1( "shader/shader1/core.vs", "shader/shader1/core.frag" );
+    /*ourShader1.LoadShader(
+      Shader::LOADFILE("shader/shader1/core.vs").c_str( ),
+      Shader::LOADFILE("shader/shader1/core.frag").c_str( ));*/
     runShaderSetup(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2);
     {
       WriteBuffer(tex1);

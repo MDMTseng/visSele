@@ -9,7 +9,7 @@ SUB_MAKEFILES = $(MODULE_GLACC)
 EXT_OBJS = $(MODULE_GLACC)/GLAcc.a
 _OBJ = test.opp
 target_bin=test
-
+ESS_TRACK=$(MODULE_GLACC)/include/*
 
 
 IDIR+= ./include $(MODULE_GLACC)/include  $(GLEWSRCDir)/include
