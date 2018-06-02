@@ -135,7 +135,8 @@ int main(int argc, char** argv) {
     int texSizeX=1024/1,texSizeY=1024/1,targetDepth=1;
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
-    GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY);
+    GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_NEAREST,GL_CLAMP);
+    //GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
     //ReadBuffer(tex1);
     //ReadBuffer(tex2);
     GLAcc_f.Setup();

@@ -1,7 +1,18 @@
 #include <iostream>
 #include <GLAcc.h>
 
+GLAcc_GPU_Buffer::GLAcc_GPU_Buffer(int channelCount1_4,int buffSizeX,int buffSizeY,int filter_type, int warp_type)
+{
+  INIT(channelCount1_4, buffSizeX, buffSizeY,GL_FLOAT,filter_type,warp_type);
+}
+
 GLAcc_GPU_Buffer::GLAcc_GPU_Buffer(int channelCount1_4,int buffSizeX,int buffSizeY)
+{
+  INIT(channelCount1_4, buffSizeX, buffSizeY,GL_FLOAT,GL_NEAREST,GL_CLAMP);
+}
+
+//private
+void GLAcc_GPU_Buffer::INIT(int channelCount1_4,int buffSizeX,int buffSizeY,int format_type,int filter_type, int warp_type)
 {
   int ret = BufferProperty(channelCount1_4,
     &texture_target_,
@@ -13,7 +24,8 @@ GLAcc_GPU_Buffer::GLAcc_GPU_Buffer(int channelCount1_4,int buffSizeX,int buffSiz
     throw std::invalid_argument( "Error: GLAcc_GPU_Buffer constructor error, most likely the channelCount1_4 problem" );
   }
   channelCount = channelCount1_4;
-  texID = newBuffer( texture_target_, internal_format_, texture_format_, buffSizeX, buffSizeY);
+  texID = newBuffer( texture_target_, internal_format_, texture_format_, buffSizeX, buffSizeY,
+    format_type,filter_type,warp_type);
 
   buffSizeX_=buffSizeX;
   buffSizeY_=buffSizeY;
@@ -22,22 +34,30 @@ GLAcc_GPU_Buffer::GLAcc_GPU_Buffer(int channelCount1_4,int buffSizeX,int buffSiz
 
 int GLAcc_GPU_Buffer::CPU2GPU(float *data, int dataL)
 {
+  return CPU2GPU(GL_FLOAT, data, dataL);
+}
+int GLAcc_GPU_Buffer::CPU2GPU(int glDataType,void *data, int dataL)
+{
   if(dataL!=buffSizeX_*buffSizeY_*channelCount)
   {
     return -1;
   }
-  BufferCopy_CPU2GPU(texID, data, buffSizeX_, buffSizeY_,
+  BufferCopy_CPU2GPU(texID, glDataType, data, buffSizeX_, buffSizeY_,
     texture_target_,texture_format_);
   return 0;
 }
 
 int GLAcc_GPU_Buffer::GPU2CPU(float *data, int dataL)
 {
+  return GPU2CPU(GL_FLOAT, data, dataL);
+}
+int GLAcc_GPU_Buffer::GPU2CPU(int glDataType,void *data, int dataL)
+{
   if(dataL!=buffSizeX_*buffSizeY_*channelCount)
   {
     return -1;
   }
-  BufferCopy_GPU2CPU(texID, data, buffSizeX_, buffSizeY_,
+  BufferCopy_GPU2CPU(texID,glDataType, data, buffSizeX_, buffSizeY_,
     texture_target_,texture_format_);
   return 0;
 }
@@ -80,7 +100,8 @@ void GLAcc_GPU_Buffer::SetViewPort()
   glViewport(0,0,buffSizeX_,buffSizeY_);
 }
 
-GLuint GLAcc_GPU_Buffer::newBuffer(GLenum texture_target,GLint internal_format,GLenum texture_format,int texSizeX,int texSizeY)
+GLuint GLAcc_GPU_Buffer::newBuffer(GLenum texture_target,GLint internal_format,GLenum texture_format,int texSizeX,int texSizeY,
+  int format_type,int filter_type, int warp_type)
 {
   GLuint texID;
     // create a new texture name
@@ -90,15 +111,15 @@ GLuint GLAcc_GPU_Buffer::newBuffer(GLenum texture_target,GLint internal_format,G
   glBindTexture(texture_target,texID);
   // turn off filtering and set proper wrap mode
   // (obligatory for float textures atm)
-  glTexParameteri(texture_target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(texture_target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(texture_target, GL_TEXTURE_WRAP_S, GL_CLAMP);
-  glTexParameteri(texture_target, GL_TEXTURE_WRAP_T, GL_CLAMP);
+  glTexParameteri(texture_target, GL_TEXTURE_MIN_FILTER, filter_type);
+  glTexParameteri(texture_target, GL_TEXTURE_MAG_FILTER, filter_type);
+  glTexParameteri(texture_target, GL_TEXTURE_WRAP_S, warp_type);
+  glTexParameteri(texture_target, GL_TEXTURE_WRAP_T, warp_type);
   // set texenv to replace instead of the default modulate
   glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
   // and allocate graphics memory
   glTexImage2D(texture_target, 0, internal_format,
-               texSizeX, texSizeY, 0, texture_format, GL_FLOAT, 0);
+               texSizeX, texSizeY, 0, texture_format, format_type, 0);
 
   return texID;
 }
@@ -106,16 +127,27 @@ GLuint GLAcc_GPU_Buffer::newBuffer(GLenum texture_target,GLint internal_format,G
 void GLAcc_GPU_Buffer::BufferCopy_CPU2GPU(GLuint texID, float *data, int texSizeX, int texSizeY,
   GLenum texture_target,GLenum texture_format)
 {
+  BufferCopy_CPU2GPU(texID,GL_FLOAT,data,texSizeX,texSizeY,texture_target,texture_format);
+}
+
+void GLAcc_GPU_Buffer::BufferCopy_CPU2GPU(GLuint texID, GLenum data_type, void *data, int texSizeX, int texSizeY,
+  GLenum texture_target,GLenum texture_format)
+{
   glBindTexture(texture_target, texID);
   glTexSubImage2D(texture_target,0,0,0,texSizeX,texSizeY,
-                  texture_format,GL_FLOAT,data);//data CPU to GPU
+                  texture_format,data_type,data);//data CPU to GPU
 }
 
 void GLAcc_GPU_Buffer::BufferCopy_GPU2CPU(GLuint texID, float *data, int texSizeX, int texSizeY,
   GLenum texture_target,GLenum texture_format)
 {
+  BufferCopy_GPU2CPU(texID,GL_FLOAT,data,texSizeX,texSizeY,texture_target,texture_format);
+}
+void GLAcc_GPU_Buffer::BufferCopy_GPU2CPU(GLuint texID, GLenum data_type, void *data, int texSizeX, int texSizeY,
+  GLenum texture_target,GLenum texture_format)
+{
   glBindTexture(texture_target,texID);
-  glGetTexImage(texture_target,0,texture_format,GL_FLOAT,data);//data GPU to CPU
+  glGetTexImage(texture_target,0,texture_format,data_type,data);//data GPU to CPU
 }
 int GLAcc_GPU_Buffer::BufferProperty(int channelCount1_4,GLenum *ret_texture_target,GLint *ret_internal_format,GLenum *ret_texture_format)
 {
