@@ -120,6 +120,10 @@ void GLAcc_Framework::SetupViewPort(int W,int H)
 {
     glViewport(0,0,W,H);
 }
+void GLAcc_Framework::SetupViewPort(int X, int Y,int W,int H)
+{
+    glViewport(X,Y,W,H);
+}
 
 void GLAcc_Framework::Begin()
 {

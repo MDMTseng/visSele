@@ -46,11 +46,15 @@ int initOffsetMeshBuffer(GLAcc_GPU_Buffer &mesh,float distortionF)
         //dataX[idx+0] = (float)j/(mesh.GetBuffSizeX()-1);//From 0~1
         //dataX[idx+1] = (float)i/(mesh.GetBuffSizeY()-1);//From 0~1
         dataX[idx+0] = dataX[idx+1] =0;
-        dataX[idx+0] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeX()*distortionF;
-        dataX[idx+1] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeY()*distortionF;
+        if(distortionF!=0 && i>1 && j>1 && i<mesh.GetBuffSizeY()-1 && j<mesh.GetBuffSizeX()-1)
+        {
+          dataX[idx+0] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeX()*distortionF;
+          dataX[idx+1] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeY()*distortionF;
+        }
+
     }
 
-    //dataX[(2*mesh.GetBuffSizeX()+2)*mesh.GetChannelCount()]+=1;
+    dataX[(2*mesh.GetBuffSizeX()+2)*mesh.GetChannelCount()]+=1;
     mesh.CPU2GPU(dataX, totalLength);
     delete(dataX);
 
@@ -166,7 +170,7 @@ void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
       x2.BindTexture();
       shader.TextureActivate(3);
       offset_mesh.BindTexture();
-      GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
+      //GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
   }
 
   //clock_t t = clock();
@@ -214,6 +218,7 @@ int main(int argc, char** argv) {
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
     GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
+    InitInputImage(tex2,40);
     GLAcc_f.Setup();
     GLuint fbo= initFBO();
 
@@ -227,16 +232,19 @@ int main(int argc, char** argv) {
     Shader morphRegularizerShader( "shader/morphRegularizer/core.vs", "shader/morphRegularizer/core.frag" );
     Shader ourShader1( "shader/morph/core.vs", "shader/morph/core.frag" );
     Shader ourDisplayShader( "shader/display/core.vs", "shader/display/core.frag" );
-    InitInputImage(tex2,20);
     runShaderSetup(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh);
     runShaderSetup(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,offset_mesh);
     runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
     getchar();
-    for(int i=0;i<2000;i++)
+    for(int i=0;i<200;i++)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         {
+
+          //Use viewport(1,1,W-2,H-2) to avoid changing morph edge
+          GLAcc_f.SetupViewPort(1,1,offset_mesh.GetBuffSizeX()-2,offset_mesh.GetBuffSizeY()-2);
           runShader(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh,1);
+          GLAcc_f.SetupViewPort(tex1.GetBuffSizeX(),tex1.GetBuffSizeY());//Actually setup viewport
           runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,offset_mesh,1);
         }
         //glFinish();
