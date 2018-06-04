@@ -50,7 +50,7 @@ int initOffsetMeshBuffer(GLAcc_GPU_Buffer &mesh,float distortionF)
         dataX[idx+1] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeY()*distortionF;
     }
 
-    //dataX[(2*mesh.GetBuffSizeX()+2)*mesh.GetChannelCount()]+=0.1;
+    //dataX[(2*mesh.GetBuffSizeX()+2)*mesh.GetChannelCount()]+=1;
     mesh.CPU2GPU(dataX, totalLength);
     delete(dataX);
 
@@ -130,7 +130,6 @@ void runShaderSetupOut(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo, GLAcc
           GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
           glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
       }
-      GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
 
   }
 void runShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
@@ -150,7 +149,6 @@ GLAcc_GPU_Buffer &x1)
   glUniform3ui(shader.GetUniformLocation("outputDim"),outputWidth,outputHeight,4);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   glDrawBuffer(GL_BACK);
-  GLAcc_f.SetupViewPort(outputWidth,outputHeight);//Actually setup viewport
 
 }
 void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
@@ -168,6 +166,7 @@ void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
       x2.BindTexture();
       shader.TextureActivate(3);
       offset_mesh.BindTexture();
+      GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
   }
 
   //clock_t t = clock();
@@ -181,9 +180,10 @@ void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
   //
   //printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 }
-void runDisplayShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLAcc_GPU_Buffer &x1)
+void runDisplayShader(GLAcc_Framework &GLAcc_f,Shader &shader,int outputWidth,int outputHeight,GLAcc_GPU_Buffer &x1)
 {
   shader.Use( );
+  GLAcc_f.SetupViewPort(outputWidth,outputHeight);//Actually setup viewport
   //Bind texture to input and output
   {
       shader.TextureActivate(1);
@@ -209,46 +209,44 @@ int main(int argc, char** argv) {
 
     int texSizeX=800/1,texSizeY=800/1,targetDepth=1;
 
-    GLAcc_GPU_Buffer offset_mesh(2,texSizeX/100,texSizeY/100,GL_LINEAR,GL_MIRRORED_REPEAT);
-    initOffsetMeshBuffer(offset_mesh,0.5);
+    GLAcc_GPU_Buffer offset_mesh(2,texSizeX/10,texSizeY/10,GL_LINEAR,GL_MIRRORED_REPEAT);
+    initOffsetMeshBuffer(offset_mesh,5);
 
-    GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
+    GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
     GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
     GLAcc_f.Setup();
     GLuint fbo= initFBO();
+
+    int screenWidth, screenHeight;
+    glfwGetFramebufferSize( (GLFWwindow*)GLAcc_f.getWindow(), &screenWidth, &screenHeight );
 
     /*GLint maxAtt = 0;
     glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
     printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);*/
 
+    Shader morphRegularizerShader( "shader/morphRegularizer/core.vs", "shader/morphRegularizer/core.frag" );
     Shader ourShader1( "shader/morph/core.vs", "shader/morph/core.frag" );
-    /*ourShader1.LoadShader(
-      Shader::LOADFILE("shader/shader1/core.vs").c_str( ),
-      Shader::LOADFILE("shader/shader1/core.frag").c_str( ));*/
+    Shader ourDisplayShader( "shader/display/core.vs", "shader/display/core.frag" );
+    InitInputImage(tex2,20);
+    runShaderSetup(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh);
     runShaderSetup(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,offset_mesh);
+    runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
+    getchar();
+    for(int i=0;i<2000;i++)
     {
-      //WriteBuffer(tex1);
-      InitInputImage(tex2,80);
-      clock_t t = clock();
-      runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,offset_mesh,1);
-      glFinish();
-      printf("runShader>>elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-      ReadBuffer(tex1,0,40);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        {
+          runShader(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh,1);
+          runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,offset_mesh,1);
+        }
+        //glFinish();
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        {
+          glfwPollEvents( );
+          runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
+          glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
+        }
     }
     deleteFBO(fbo);
-
-    {
-      Shader ourDisplayShader( "shader/display/core.vs", "shader/display/core.frag" );
-
-      int screenWidth, screenHeight;
-      glfwGetFramebufferSize( (GLFWwindow*)GLAcc_f.getWindow(), &screenWidth, &screenHeight );
-
-      //InitInputImage(tex1);
-      runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
-      glfwPollEvents( );
-      runDisplayShader(GLAcc_f,ourDisplayShader,tex1);
-      glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
-    }
-    getchar();
     return 0;
 }
