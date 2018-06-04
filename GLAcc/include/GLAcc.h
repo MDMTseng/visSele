@@ -70,7 +70,7 @@ public:
 
     void SetupShader(Shader &shader);
     void SetupViewPort(int W,int H);
-
+    void *getWindow();
     void Begin();
     void Compute();
     void End();

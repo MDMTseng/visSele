@@ -56,7 +56,7 @@ static GLFWwindow* initGLFW(int width,int height) {
   glfwWindowHint( GLFW_RESIZABLE, GL_FALSE );
 
   // Create a GLFWwindow object that we can use for GLFW's functions
-  return glfwCreateWindow( width, height, "LearnOpenGL", nullptr, nullptr );
+  return glfwCreateWindow( width, height, "GLACC", nullptr, nullptr );
 
 }
 
@@ -145,4 +145,10 @@ int GLAcc_Framework::AttachTex2FBO(GLuint fbo,GLenum attachment,GLAcc_GPU_Buffer
     }
 
     return -1;
+}
+
+
+void *GLAcc_Framework::getWindow()
+{
+  return window_GLFW;
 }
