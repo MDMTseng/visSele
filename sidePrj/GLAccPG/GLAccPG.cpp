@@ -106,7 +106,7 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int readL)
 }
 
 void runShaderSetupInput(GLAcc_Framework &GLAcc_f,Shader &shader,
-  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &mesh)
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &offset_mesh)
   {
     GLAcc_f.SetupShader(shader);//actually load vertices(a simple square fill output with depth 0) and use it
 
@@ -114,7 +114,7 @@ void runShaderSetupInput(GLAcc_Framework &GLAcc_f,Shader &shader,
     {
         shader.TextureActivate(shader.GetUniformLocation("x1"),x1.GetTextureTarget(),1);
         shader.TextureActivate(shader.GetUniformLocation("x2"),x2.GetTextureTarget(),2);
-        shader.TextureActivate(shader.GetUniformLocation("mesh"),x2.GetTextureTarget(),3);
+        shader.TextureActivate(shader.GetUniformLocation("offset_mesh"),offset_mesh.GetTextureTarget(),3);
     }
 
   }
@@ -135,9 +135,9 @@ void runShaderSetupOut(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo, GLAcc
   }
 void runShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
   GLAcc_GPU_Buffer &y1,
-  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &mesh)
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &offset_mesh)
 {
-  runShaderSetupInput(GLAcc_f,shader,x1, x2,mesh);
+  runShaderSetupInput(GLAcc_f,shader,x1, x2,offset_mesh);
   runShaderSetupOut(GLAcc_f,shader,fbo,y1);
 }
 
@@ -155,7 +155,7 @@ GLAcc_GPU_Buffer &x1)
 }
 void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
   GLAcc_GPU_Buffer &y1,
-  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &mesh,
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &offset_mesh,
   int loopCount)
 {
   shader.Use( );
@@ -167,7 +167,7 @@ void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
       shader.TextureActivate(2);
       x2.BindTexture();
       shader.TextureActivate(3);
-      mesh.BindTexture();
+      offset_mesh.BindTexture();
   }
 
   //clock_t t = clock();
@@ -214,9 +214,6 @@ int main(int argc, char** argv) {
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
     GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
-    //GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
-    //ReadBuffer(tex1);
-    //ReadBuffer(tex2);
     GLAcc_f.Setup();
     GLuint fbo= initFBO();
 
@@ -224,7 +221,7 @@ int main(int argc, char** argv) {
     glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
     printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);*/
 
-    Shader ourShader1( "shader/shader1/core.vs", "shader/shader1/core.frag" );
+    Shader ourShader1( "shader/morph/core.vs", "shader/morph/core.frag" );
     /*ourShader1.LoadShader(
       Shader::LOADFILE("shader/shader1/core.vs").c_str( ),
       Shader::LOADFILE("shader/shader1/core.frag").c_str( ));*/

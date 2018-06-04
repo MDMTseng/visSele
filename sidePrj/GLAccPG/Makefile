@@ -12,7 +12,7 @@ target_bin=GLAccPG
 ESS_TRACK=$(MODULE_GLACC)/include/*
 
 
-IDIR+= ./include $(MODULE_GLACC)/include  $(GLEWSRCDir)/include
+IDIR+= ./include $(MODULE_GLACC)/include  $(GLEWSRCDir)/include $(GLFWSRCDir)/include
 
 ifeq ($(OS),Windows_NT)
 	EXT_OBJS += $(GLFWSRCDir)/lib-mingw-w64/libglfw3.a
