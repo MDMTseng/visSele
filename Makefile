@@ -9,6 +9,7 @@ export MODULE_MatchingEngine=$(abspath MatchingEngine)
 export MODULE_common_lib=$(abspath common_lib)
 export MODULE_zlib=$(abspath contrib/zlib)
 export MODULE_SOIL=$(abspath contrib/SOIL)
+export MODULE_lodepng=$(abspath contrib/lodepng)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -59,6 +60,7 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 								$(MODULE_zlib) \
 								$(MODULE_GLACC) \
 								$(MODULE_SOIL) \
+								$(MODULE_lodepng) \
 								sidePrj
 
 export MakeTemplate:= $(abspath Makefile.in)
