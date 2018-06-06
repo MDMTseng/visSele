@@ -13,6 +13,7 @@
 #include <sstream>
 #include <time.h>
 #include <unistd.h>
+#include <lodepng.h>
 using namespace std;
 /*
 * Message
@@ -202,10 +203,79 @@ void runDisplayShader(GLAcc_Framework &GLAcc_f,Shader &shader,int outputWidth,in
   //
   //printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 }
-/**
-* Main, what else?
-*/
+
+int Save2PNG(uint8_t *data, int width, int height,int channelCount, char* filePath)
+{
+    // we're going to encode with a state rather than a convenient function, because enforcing a color type requires setting options
+    lodepng::State state;
+    // input color type
+    state.info_raw.colortype = LCT_GREY;
+    switch(channelCount)
+    {
+      case 1:state.info_raw.colortype = LCT_GREY;break;
+      case 2:state.info_raw.colortype = LCT_GREY_ALPHA;break;//Weird but what ever
+      case 3:state.info_raw.colortype = LCT_RGB;break;
+      case 4:state.info_raw.colortype = LCT_RGBA;break;
+      default:return -1;
+    }
+    state.info_raw.bitdepth = 8;
+    // output color type
+    state.info_png.color.colortype = LCT_RGBA;
+    state.info_png.color.bitdepth = 8;
+    state.encoder.auto_convert = 1; // without this, it would ignore the output color type specified above and choose an optimal one instead
+
+    std::vector<unsigned char> buffer;
+    unsigned error = lodepng::encode(buffer, data, width, height,state);
+    if(error)
+    {
+      std::cout << "encoder error " << error << ": "<< lodepng_error_text(error) << std::endl;
+      return -1;
+    }
+
+
+    return lodepng::save_file(buffer,filePath);
+}
+
+void ImageLoaderTest()
+{
+    /*int width,height,channel;
+    unsigned char *image = SOIL_load_image("test_data/img_test.png", &width, &height, &channel, SOIL_LOAD_L);
+
+    printf("%s: pixAddr = %p>> %d,%d,%d\n",__func__,image,width,height,channel);
+    SOIL_save_image
+    ("test_data/img_test_save.tga",
+      SOIL_SAVE_TYPE_TGA,
+       width,  height,  channel,image);
+    SOIL_free_image_data(image);*/
+
+
+    std::vector<unsigned char> image;
+    unsigned width, height;
+    unsigned error = lodepng::decode(image, width, height, "test_data/img_test.png");
+    printf("%s: size= %d, pixDepth:%d>> %d,%d\n",__func__,image.size(),image.size()/width/height,width,height);
+
+    Save2PNG(&image[0],  width,  height,4, "test_data/img_test_save2.png");
+}
+
+
+void ReadBufferToFile(GLAcc_GPU_Buffer &tex,char* path)
+{
+    int totolLength=tex.GetBuffSizeX()*tex.GetBuffSizeY()*tex.GetChannelCount();
+
+    uint8_t* dataY = new uint8_t[totolLength];
+    tex.GPU2CPU(GL_UNSIGNED_BYTE,dataY, totolLength);
+    printf("%s: TexID:%d\n",__func__,tex.GetTexID());
+    printf("X:%d Y:%d CH:%d totolLength:%d \n",tex.GetBuffSizeX(),tex.GetBuffSizeY(),tex.GetChannelCount(),totolLength);
+
+    Save2PNG(dataY,tex.GetBuffSizeX(), tex.GetBuffSizeY(),tex.GetChannelCount(), path);
+
+    delete[] dataY;
+}
+
+
 int main(int argc, char** argv) {
+    //ImageLoaderTest();
+
     int width=800, height=800;
     //Init window
 
@@ -255,6 +325,7 @@ int main(int argc, char** argv) {
           glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
         }
     }
+    ReadBufferToFile(tex1,"test_data/output.png");
     deleteFBO(fbo);
     return 0;
 }

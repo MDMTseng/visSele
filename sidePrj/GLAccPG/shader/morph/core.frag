@@ -10,7 +10,8 @@ in vec2 frag_position_0_5;//-0.5~0.5
 
 layout(location=0) out vec4 y1;
 
-vec2 getTexCoord(sampler2DRect tex,vec2 fragPos)
+//To avoid texture boundary interpolation skipping(the interpolation starts with 0.5~1.5)
+vec2 getEdgeInterpTexCoord(sampler2DRect tex,vec2 fragPos)
 {
 	vec2 coorScale=textureSize(tex);
 	coorScale=(coorScale-1)/coorScale;
@@ -26,6 +27,7 @@ void main()
 	vec4 id_v= vec4(0,1,2,3)+idx;
 	vec4 x1_v=texture(x1, coorf);
 	vec4 x2_v=texture(x2, coorf);
-	vec2 mesh_offset = texture(offset_mesh, textureSize(offset_mesh)*FragCoord_scaled).xy;
+
+	vec2 mesh_offset = texture(offset_mesh, getEdgeInterpTexCoord(offset_mesh,frag_position_0_5)).xy;
 	y1=texture(x2, textureSize(x2)*(FragCoord_scaled+mesh_offset));
 }
