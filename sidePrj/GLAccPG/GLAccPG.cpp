@@ -110,46 +110,36 @@ void ReadBuffer(GLAcc_GPU_Buffer &tex,int idxStart,int readL)
     printf("\n");
 }
 
-void runShaderSetupInput(GLAcc_Framework &GLAcc_f,Shader &shader,
-  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &offset_mesh)
+void runShaderSetupInput(GLAcc_Framework &GLAcc_f,Shader &shader)
   {
     GLAcc_f.SetupShader(shader);//actually load vertices(a simple square fill output with depth 0) and use it
 
     //Setup Input(Texture/Variables)
     {
-        shader.TextureActivate(shader.GetUniformLocation("x1"),x1.GetTextureTarget(),1);
-        shader.TextureActivate(shader.GetUniformLocation("x2"),x2.GetTextureTarget(),2);
-        shader.TextureActivate(shader.GetUniformLocation("offset_mesh"),offset_mesh.GetTextureTarget(),3);
+        shader.TextureActivate(shader.GetUniformLocation("x1"),0,1);
+        shader.TextureActivate(shader.GetUniformLocation("x2"),0,2);
+        shader.TextureActivate(shader.GetUniformLocation("offset_mesh"),0,3);
     }
 
   }
 
-void runShaderSetupOut(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo, GLAcc_GPU_Buffer &y1)
-  {
-      glUniform3ui(shader.GetUniformLocation("outputDim"), y1.GetBuffSizeX(),y1.GetBuffSizeY(),y1.GetChannelCount());
-
-      //Setup Output(Multi Render Target (MRT) with FBO)
-      {
-          /**/
-          glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-          GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
-          glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
-      }
-
-  }
-void runShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
-  GLAcc_GPU_Buffer &y1,
-  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &offset_mesh)
+void runShaderSetupOut(GLAcc_Framework &GLAcc_f,Shader &shader, GLAcc_GPU_Buffer &y1)
 {
-  runShaderSetupInput(GLAcc_f,shader,x1, x2,offset_mesh);
-  runShaderSetupOut(GLAcc_f,shader,fbo,y1);
+    glUniform3ui(shader.GetUniformLocation("outputDim"), y1.GetBuffSizeX(),y1.GetBuffSizeY(),y1.GetChannelCount());
+
+
+}
+void runShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,
+  GLAcc_GPU_Buffer &y1)
+{
+  runShaderSetupInput(GLAcc_f,shader);
+  runShaderSetupOut(GLAcc_f,shader,y1);
 }
 
 
-void runDisplayShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,int outputWidth,int outputHeight,
-GLAcc_GPU_Buffer &x1)
+void runDisplayShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,int outputWidth,int outputHeight)
 {
-  runShaderSetupInput(GLAcc_f,shader,x1, x1,x1);
+  runShaderSetupInput(GLAcc_f,shader);
 
   glUniform3ui(shader.GetUniformLocation("outputDim"),outputWidth,outputHeight,4);
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -295,6 +285,15 @@ int main(int argc, char** argv) {
     GLAcc_f.Setup();
     GLuint fbo= initFBO();
 
+    //Setup Output(Multi Render Target (MRT) with FBO)
+    {
+        /**/
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        GLenum bufs[] = {GL_COLOR_ATTACHMENT0,GL_COLOR_ATTACHMENT1};
+        glDrawBuffers(sizeof(bufs)/sizeof(GLenum), bufs);
+    }
+
+
     int screenWidth, screenHeight;
     glfwGetFramebufferSize( (GLFWwindow*)GLAcc_f.getWindow(), &screenWidth, &screenHeight );
 
@@ -309,16 +308,16 @@ int main(int argc, char** argv) {
     Shader uniBlurShaderH( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
     Shader uniBlurShaderV( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
     Shader uniDownSum( "shader/spfilters/core.vs", "shader/spfilters/downSum.frag" );
-    runShaderSetup(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh);
-    runShaderSetup(GLAcc_f,morphingShader,fbo,tex1,tex1,tex2,offset_mesh);
-    runShaderSetup(GLAcc_f,uniBlurShaderH,fbo,tex1,tex1,tex2,offset_mesh);
+    runShaderSetup(GLAcc_f,morphRegularizerShader,offset_mesh);
+    runShaderSetup(GLAcc_f,morphingShader,tex1);
+    runShaderSetup(GLAcc_f,uniBlurShaderH,tex1);
     glUniform1i(uniBlurShaderH.GetUniformLocation("blur_size"),3);
-    runShaderSetup(GLAcc_f,uniBlurShaderV,fbo,tex1,tex1,tex2,offset_mesh);
+    runShaderSetup(GLAcc_f,uniBlurShaderV,tex1);
     glUniform1i(uniBlurShaderV.GetUniformLocation("blur_size"),-3);
-    runShaderSetup(GLAcc_f,sobelShader,fbo,sobel_edge,tex2,tex2,offset_mesh);
-    runShaderSetup(GLAcc_f,uniDownSum,fbo,offset_mesh_gradient,tex2,tex2,offset_mesh);
+    runShaderSetup(GLAcc_f,sobelShader,sobel_edge);
+    runShaderSetup(GLAcc_f,uniDownSum,offset_mesh_gradient);
 
-    runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex);
+    runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight);
 
     for(int i=0;i<0;i++)
     {//Pre processing, soften image and create it's sobel gradient field
@@ -343,7 +342,7 @@ int main(int argc, char** argv) {
 
         }
         //glFinish();
-        if(0){
+        if(1){
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
           runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
