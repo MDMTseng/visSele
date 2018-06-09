@@ -4,7 +4,7 @@
 
 #include <GL/glew.h>
 #include "Shader.h"
-
+#include <cmath>
 // GLFW
 #include <GLFW/glfw3.h>
 #include <stdio.h>
@@ -46,11 +46,17 @@ int initOffsetMeshBuffer(GLAcc_GPU_Buffer &mesh,float distortionF)
         int idx = (i*mesh.GetBuffSizeX()+j)*mesh.GetChannelCount();
         //dataX[idx+0] = (float)j/(mesh.GetBuffSizeX()-1);//From 0~1
         //dataX[idx+1] = (float)i/(mesh.GetBuffSizeY()-1);//From 0~1
-        dataX[idx+0] = dataX[idx+1] =0;
+        dataX[idx+0] = dataX[idx+1] =0;//0.01*distortionF;
         if(distortionF!=0 && i>1 && j>1 && i<mesh.GetBuffSizeY()-1 && j<mesh.GetBuffSizeX()-1)
         {
-          dataX[idx+0] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeX()*distortionF;
-          dataX[idx+1] +=((rand()%1000)/1000.0-0.5)/mesh.GetBuffSizeY()*distortionF;
+          float diffX=((float)j-mesh.GetBuffSizeX()/2);
+          float diffY=((float)i-mesh.GetBuffSizeY()/2);
+          float dist=hypot(diffX,diffY)/hypot(mesh.GetBuffSizeX()/2,mesh.GetBuffSizeY()/2);
+          float theta=atan2(diffX,diffY);
+          float offset=sin(dist*M_PI);
+          dataX[idx+0] +=sin(theta+dist*M_PI)*offset*0.3*distortionF;
+          dataX[idx+1] +=cos(theta+dist*M_PI)*offset*0.3*distortionF;
+
         }
 
     }
@@ -85,7 +91,8 @@ void InitInputImage(GLAcc_GPU_Buffer &tex,int gridSize)
         int idx = (i*tex.GetBuffSizeX()+j)*tex.GetChannelCount();
         bool ygrid = i%gridSize <gridSize/2;
         bool xgrid = j%gridSize <gridSize/2;
-        dataX[idx] =((i*j)%gridSize <gridSize/2)?0: (float)1;
+        //dataX[idx] =((i*j)%gridSize <gridSize/2)?0: (float)1;
+        dataX[idx] =(ygrid^xgrid)?0: (float)1;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -118,7 +125,8 @@ void runShaderSetupInput(GLAcc_Framework &GLAcc_f,Shader &shader)
     {
         shader.TextureActivate(shader.GetUniformLocation("x1"),0,1);
         shader.TextureActivate(shader.GetUniformLocation("x2"),0,2);
-        shader.TextureActivate(shader.GetUniformLocation("offset_mesh"),0,3);
+        shader.TextureActivate(shader.GetUniformLocation("x3"),0,3);
+        shader.TextureActivate(shader.GetUniformLocation("offset_mesh"),0,13);
     }
 
   }
@@ -146,20 +154,24 @@ void runDisplayShaderSetup(GLAcc_Framework &GLAcc_f,Shader &shader,int outputWid
   glDrawBuffer(GL_BACK);
 
 }
-void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
-  GLAcc_GPU_Buffer &y1,
-  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &offset_mesh,
+
+void runShader2(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
+  GLAcc_GPU_Buffer &y1,GLAcc_GPU_Buffer &y2,
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &x3,GLAcc_GPU_Buffer &offset_mesh,
   int loopCount)
 {
   shader.Use( );
   //Bind texture to input and output
   {
       GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,y1);
+      GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT1,y2);
       shader.TextureActivate(1);
       x1.BindTexture();
       shader.TextureActivate(2);
       x2.BindTexture();
       shader.TextureActivate(3);
+      x3.BindTexture();
+      shader.TextureActivate(13);
       offset_mesh.BindTexture();
       //GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
   }
@@ -175,6 +187,13 @@ void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
   //
   //printf("elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 }
+void runShader(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
+  GLAcc_GPU_Buffer &y1,
+  GLAcc_GPU_Buffer &x1,GLAcc_GPU_Buffer &x2,GLAcc_GPU_Buffer &x3,GLAcc_GPU_Buffer &offset_mesh,
+  int loopCount)
+  {
+    runShader2(GLAcc_f,shader,fbo,y1,y1,x1,x2,x3,offset_mesh,loopCount);
+  }
 void runDisplayShader(GLAcc_Framework &GLAcc_f,Shader &shader,int outputWidth,int outputHeight,GLAcc_GPU_Buffer &x1)
 {
   shader.Use( );
@@ -273,15 +292,18 @@ int main(int argc, char** argv) {
 
     int texSizeX=800/1,texSizeY=800/1,targetDepth=1;
 
-    GLAcc_GPU_Buffer offset_mesh(2,texSizeX/10,texSizeY/10,GL_LINEAR,GL_MIRRORED_REPEAT);
-    initOffsetMeshBuffer(offset_mesh,10);
-    GLAcc_GPU_Buffer offset_mesh_gradient(targetDepth,offset_mesh.GetBuffSizeX(),
+    GLAcc_GPU_Buffer offset_mesh(2,texSizeX/5,texSizeY/5,GL_LINEAR,GL_MIRRORED_REPEAT);
+    GLAcc_GPU_Buffer offset_mesh_gradient(2,offset_mesh.GetBuffSizeX(),
     offset_mesh.GetBuffSizeY(),GL_LINEAR,GL_CLAMP);
 
-    GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
-    GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
+    GLAcc_GPU_Buffer _NTex(1,1,1,GL_LINEAR,GL_CLAMP);
+    GLAcc_GPU_Buffer inputImg(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
+    GLAcc_GPU_Buffer inputMorphImg(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
+    GLAcc_GPU_Buffer ref_img(targetDepth,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
     GLAcc_GPU_Buffer sobel_edge(3,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
-    InitInputImage(tex2,40);
+    GLAcc_GPU_Buffer gradient(3,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
+    GLAcc_GPU_Buffer gradOptV(3,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
+    InitInputImage(ref_img,150);
     GLAcc_f.Setup();
     GLuint fbo= initFBO();
 
@@ -307,53 +329,77 @@ int main(int argc, char** argv) {
     Shader sobelShader( "shader/spfilters/core.vs", "shader/spfilters/sobel.frag" );
     Shader uniBlurShaderH( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
     Shader uniBlurShaderV( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
-    Shader uniDownSum( "shader/spfilters/core.vs", "shader/spfilters/downSum.frag" );
+    Shader downSumShader( "shader/spfilters/core.vs", "shader/spfilters/downSum.frag" );
+    Shader subMulShader( "shader/spfilters/core.vs", "shader/spfilters/subMul.frag" );
+    Shader gradOptShader( "shader/spfilters/core.vs", "shader/spfilters/gradOpt.frag" );
     runShaderSetup(GLAcc_f,morphRegularizerShader,offset_mesh);
-    runShaderSetup(GLAcc_f,morphingShader,tex1);
-    runShaderSetup(GLAcc_f,uniBlurShaderH,tex1);
-    glUniform1i(uniBlurShaderH.GetUniformLocation("blur_size"),3);
-    runShaderSetup(GLAcc_f,uniBlurShaderV,tex1);
-    glUniform1i(uniBlurShaderV.GetUniformLocation("blur_size"),-3);
+    runShaderSetup(GLAcc_f,morphingShader,inputMorphImg);
+    runShaderSetup(GLAcc_f,uniBlurShaderH,ref_img);
+    glUniform1i(uniBlurShaderH.GetUniformLocation("blur_size"),10);
+    runShaderSetup(GLAcc_f,uniBlurShaderV,ref_img);
+    glUniform1i(uniBlurShaderV.GetUniformLocation("blur_size"),-10);
     runShaderSetup(GLAcc_f,sobelShader,sobel_edge);
-    runShaderSetup(GLAcc_f,uniDownSum,offset_mesh_gradient);
+    runShaderSetup(GLAcc_f,downSumShader,offset_mesh_gradient);
+    runShaderSetup(GLAcc_f,subMulShader,gradient);
+    runShaderSetup(GLAcc_f,gradOptShader,offset_mesh);
 
     runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight);
 
-    for(int i=0;i<0;i++)
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    if(1)
     {//Pre processing, soften image and create it's sobel gradient field
-        GLAcc_f.SetupViewPort(tex2.GetBuffSizeX(),tex2.GetBuffSizeY());//Actually setup viewport
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        runShader(GLAcc_f,uniBlurShaderH,fbo,tex2,tex2,tex2,offset_mesh,1);
-        runShader(GLAcc_f,uniBlurShaderV,fbo,tex2,tex2,tex2,offset_mesh,1);
+        GLAcc_f.SetupViewPort(ref_img.GetBuffSizeX(),ref_img.GetBuffSizeY());//Actually setup viewport
+        runShader(GLAcc_f,uniBlurShaderH,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,uniBlurShaderV,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,uniBlurShaderH,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,uniBlurShaderV,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,sobelShader,fbo,sobel_edge,ref_img,_NTex,_NTex,_NTex,1);
+
     }
-    for(int i=0;i<100;i++)
+
+    initOffsetMeshBuffer(offset_mesh,0.05);
+    GLAcc_f.SetupViewPort(inputImg.GetBuffSizeX(),inputImg.GetBuffSizeY());//Actually setup viewport
+    runShader(GLAcc_f,morphingShader,fbo,inputImg,ref_img,_NTex,_NTex,offset_mesh,1);//Fake a input image by morph refrence image
+
+    initOffsetMeshBuffer(offset_mesh,0);
+
+    int loopTotal=20;
+    int iterC=loopTotal;
+    loopTotal=(loopTotal/iterC)*iterC;
+    for(int i=0;i<iterC;i++)
     {
+        for(int j=0;j<loopTotal/iterC;j++)
         {
           glBindFramebuffer(GL_FRAMEBUFFER, fbo);
           //Use viewport(1,1,W-2,H-2) to avoid changing morph edge
           GLAcc_f.SetupViewPort(1,1,offset_mesh.GetBuffSizeX()-2,offset_mesh.GetBuffSizeY()-2);
-          runShader(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh,1);
-          GLAcc_f.SetupViewPort(tex1.GetBuffSizeX(),tex1.GetBuffSizeY());//Actually setup viewport
-          runShader(GLAcc_f,morphingShader,fbo,tex1,tex1,tex2,offset_mesh,1);
+          runShader(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,offset_mesh,_NTex,_NTex,_NTex,1);
+          GLAcc_f.SetupViewPort(inputMorphImg.GetBuffSizeX(),inputMorphImg.GetBuffSizeY());//Actually setup viewport
+          runShader(GLAcc_f,morphingShader,fbo,inputMorphImg,inputImg,_NTex,_NTex,offset_mesh,1);
+          runShader(GLAcc_f,subMulShader,fbo,gradient,ref_img,inputMorphImg,sobel_edge,_NTex,1);
+
+
 
           GLAcc_f.SetupViewPort(1,1,offset_mesh_gradient.GetBuffSizeX()-2,offset_mesh_gradient.GetBuffSizeY()-2);
-          runShader(GLAcc_f,uniDownSum,fbo,offset_mesh_gradient,tex1,tex2,offset_mesh,1);
-
-
+          runShader(GLAcc_f,downSumShader,fbo,offset_mesh_gradient,gradient,_NTex,_NTex,_NTex,1);
+          runShader2(GLAcc_f,gradOptShader,fbo,offset_mesh,gradOptV,offset_mesh,offset_mesh_gradient,gradOptV,_NTex,1);
         }
         //glFinish();
         if(1){
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
-          runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
+          runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,gradient);
           glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
         }
     }
+    glFinish();
 
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    runShader(GLAcc_f,sobelShader,fbo,sobel_edge,tex1,tex1,offset_mesh,1);
 
-    ReadBufferToFile(offset_mesh_gradient,"test_data/output.png");
+    ReadBufferToFile(inputMorphImg,"test_data/inputMorphImg.png");
+    ReadBufferToFile(inputImg,"test_data/inputImg.png");
+    ReadBufferToFile(ref_img,"test_data/ref_img.png");
     deleteFBO(fbo);
     return 0;
 }

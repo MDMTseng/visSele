@@ -10,16 +10,18 @@ void main()
 	vec2 mapCoord = gl_FragCoord.xy*XYHalfRegion;
 
 	vec4 sum=vec4(0);
+	float ratioSum=0;
 	for(float i=-(XYHalfRegion.y-1);i<XYHalfRegion.y;i++)
 	{
 		for(float j=-(XYHalfRegion.x-1);j<XYHalfRegion.x;j++)
 		{
 			vec2 relCoor = vec2(j,i);
 			vec2 distance_ratio = 1 - abs(relCoor)/XYHalfRegion;
-			sum+=texture(x1, mapCoord.xy+relCoor)*
-								(distance_ratio.x * distance_ratio.y);
+			float ratio =(distance_ratio.x * distance_ratio.y);
+			ratioSum+=ratio;
+			sum+=texture(x1, mapCoord.xy+relCoor)*ratio;
 		}
 	}
-	y1 =sum/30;
+	y1 =sum/ratioSum;
 
 }
