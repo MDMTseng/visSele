@@ -55,7 +55,7 @@ int initOffsetMeshBuffer(GLAcc_GPU_Buffer &mesh,float distortionF)
 
     }
 
-    dataX[(2*mesh.GetBuffSizeX()+2)*mesh.GetChannelCount()]+=1;
+    //dataX[(2*mesh.GetBuffSizeX()+2)*mesh.GetChannelCount()]+=1;
     mesh.CPU2GPU(dataX, totalLength);
     delete(dataX);
 
@@ -312,23 +312,21 @@ int main(int argc, char** argv) {
     glUniform1i(uniBlurShaderH.GetUniformLocation("blur_size"),3);
     runShaderSetup(GLAcc_f,uniBlurShaderV,fbo,tex1,tex1,tex2,offset_mesh);
     glUniform1i(uniBlurShaderV.GetUniformLocation("blur_size"),-3);
+    runShaderSetup(GLAcc_f,sobelShader,fbo,sobel_edge,tex2,tex2,offset_mesh);
 
     runDisplayShaderSetup(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
 
-
+    for(int i=0;i<0;i++)
     {//Pre processing, soften image and create it's sobel gradient field
         GLAcc_f.SetupViewPort(tex2.GetBuffSizeX(),tex2.GetBuffSizeY());//Actually setup viewport
         glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         runShader(GLAcc_f,uniBlurShaderH,fbo,tex2,tex2,tex2,offset_mesh,1);
         runShader(GLAcc_f,uniBlurShaderV,fbo,tex2,tex2,tex2,offset_mesh,1);
-        runShaderSetup(GLAcc_f,sobelShader,fbo,sobel_edge,tex2,tex2,offset_mesh);
-        runShader(GLAcc_f,sobelShader,fbo,sobel_edge,tex2,tex2,offset_mesh,1);
     }
-    for(int i=0;i<100;i++)
+    for(int i=0;i<10;i++)
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
         {
-
+          glBindFramebuffer(GL_FRAMEBUFFER, fbo);
           //Use viewport(1,1,W-2,H-2) to avoid changing morph edge
           GLAcc_f.SetupViewPort(1,1,offset_mesh.GetBuffSizeX()-2,offset_mesh.GetBuffSizeY()-2);
           runShader(GLAcc_f,morphRegularizerShader,fbo,offset_mesh,tex1,tex2,offset_mesh,1);
@@ -338,15 +336,18 @@ int main(int argc, char** argv) {
 
         }
         //glFinish();
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        {
+        if(0){
+          glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
           runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,tex1);
           glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
         }
     }
 
-    ReadBufferToFile(sobel_edge,"test_data/output.png");
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    runShader(GLAcc_f,sobelShader,fbo,sobel_edge,tex1,tex1,offset_mesh,1);
+
+    ReadBufferToFile(tex1,"test_data/output.png");
     deleteFBO(fbo);
     return 0;
 }

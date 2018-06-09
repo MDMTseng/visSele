@@ -27,7 +27,6 @@ void main()
 	float p7=texture(x1, coorf+vec2(-1,0)).x;
 	y1.x=(p2+2*p3+p4)-(p0+2*p7+p6);
 	y1.y=(p0+2*p1+p2)-(p6+2*p5+p4);
-	/*y1.x=y1.x/2+0.5;
-	y1.y=y1.y/2+0.5;*/
+	//y1=y1/2+0.5;
 
 }
