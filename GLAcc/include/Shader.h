@@ -7,9 +7,18 @@
 #include <iostream>
 
 #include <GL/glew.h>
+#include <map>
+#include <string>
 
 class Shader
 {
+private:
+    struct UniformInfo{
+      int shaderLoc;
+      int shaderTexID;
+    };
+    std::map<std::string,struct UniformInfo> *uniformMap;
+    std::map<std::string,int> *attrMap;
 public:
     int Program;
     // Constructor generates the shader on the fly
@@ -35,8 +44,22 @@ public:
 
     Shader( const GLchar *vertexPath, const GLchar *fragmentPath )
     {
+        uniformMap=new std::map<std::string,struct UniformInfo>();
+        attrMap=new std::map<std::string,int>();
+
         LoadShader(LOADFILE(vertexPath).c_str( ), LOADFILE(fragmentPath).c_str( ));
     }
+    ~Shader()
+    {
+        if(Program!=-1)
+        {
+          glDeleteProgram(Program);
+        }
+        Program=-1;
+        delete uniformMap;
+        delete attrMap;
+    }
+
     void LoadShader(const char* vcode, const char* fcode)
     {
         if(Program!=-1)
@@ -44,6 +67,9 @@ public:
           glDeleteProgram(Program);
         }
         Program=-1;
+        uniformMap->erase(uniformMap->begin(), uniformMap->end());
+        attrMap->erase(attrMap->begin(), attrMap->end());
+
         // 1. Retrieve the vertex/fragment source code from filePath
 
 
@@ -104,24 +130,47 @@ public:
         return this->Program;
     }
 
-    int GetAttribLocation ( char* name)
+
+    int GetAttr (const std::string &name)
     {
-        int tex_location = glGetAttribLocation (this->Program, name);
-        printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
+      return GetAttribLocation (name);
+    }
+    int GetAttribLocation (const std::string &name)
+    {
+        auto ele = attrMap->find(name);
+        if( ele != attrMap->end() )
+        {
+          return ele->second;
+        }
+        int tex_location = glGetAttribLocation (this->Program, name.c_str());
+        printf("%s:LOC:%d :%s\n",__func__,tex_location,name.c_str());
+        (*attrMap)[name] = tex_location;
         return tex_location;
     }
 
-    int GetUniformLocation( char* name)
+    int GetUnif (const std::string &name)
     {
-        int tex_location = glGetUniformLocation(this->Program, name);
-        printf("%s:LOC:%d :%s\n",__func__,tex_location,name);
+      return GetUniformLocation (name);
+    }
+    int GetUniformLocation(const std::string &name)
+    {
+        auto ele = uniformMap->find(name);
+        if( ele != uniformMap->end() )
+        {
+          return ele->second.shaderLoc;
+        }
+        int tex_location = glGetUniformLocation(this->Program, name.c_str());
+        printf("%s:LOC:%d :%s\n",__func__,tex_location,name.c_str());
+        (*uniformMap)[name].shaderLoc = tex_location;
+        (*uniformMap)[name].shaderTexID = -1;
         return tex_location;
     }
     // Uses the current shader
-    int TextureActivate( char* name,int target, int idx)
+    int TextureActivate(const std::string name,int target, int idx)
     {
         int tex_location=GetUniformLocation(name);
         if(tex_location<0)return tex_location;
+        (*uniformMap)[name].shaderTexID = idx;
         TextureActivate(tex_location,target, idx);
         return 0;
     }
@@ -138,6 +187,16 @@ public:
         glActiveTexture(GL_TEXTURE0+idx);
         return 0;
     }
+    int TextureActivate(const std::string name)
+    {
+        auto ele = uniformMap->find(name);
+        if( ele == uniformMap->end() || ele->second.shaderTexID==-1)
+        {
+          return -1;
+        }
+        TextureActivate(ele->second.shaderTexID);
+        return 0;
+    }
 
     void DeactivateTexture( int target, int idx)
     {
@@ -145,17 +204,17 @@ public:
         glDisable(target);
     }
 
-    void SetFloat2Shader( char* name, float  data)
+    void SetFloat2Shader( std::string name, float  data)
     {
-      GLint loc = glGetUniformLocation(this->Program, name);
+      GLint loc = GetUniformLocation (name);
       if (loc != -1)
       {
          glUniform1f(loc, data);
       }
     }
-    void SetFragData( char* name, int idx)
+    void SetFragData( std::string name, int idx)
     {
-      glBindFragDataLocation(this->Program, idx, name);
+      glBindFragDataLocation(this->Program, idx, name.c_str());
     }
 };
 

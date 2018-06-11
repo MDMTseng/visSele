@@ -8,7 +8,7 @@ layout(location=0) out vec4 y1;
 
 void main()
 {
-	float W=0.5;
+	float W=0.4;
 	vec2 meshCoord=textureSize(x1)*gl_FragCoord.xy/outputDim.xy;
 
 	//Avoid changing edge

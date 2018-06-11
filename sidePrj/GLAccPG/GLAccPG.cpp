@@ -123,17 +123,17 @@ void runShaderSetupInput(GLAcc_Framework &GLAcc_f,Shader &shader)
 
     //Setup Input(Texture/Variables)
     {
-        shader.TextureActivate(shader.GetUniformLocation("x1"),0,1);
-        shader.TextureActivate(shader.GetUniformLocation("x2"),0,2);
-        shader.TextureActivate(shader.GetUniformLocation("x3"),0,3);
-        shader.TextureActivate(shader.GetUniformLocation("offset_mesh"),0,13);
+        shader.TextureActivate("x1",0,1);
+        shader.TextureActivate("x2",0,2);
+        shader.TextureActivate("x3",0,3);
+        shader.TextureActivate("offset_mesh",0,13);
     }
 
   }
 
 void runShaderSetupOut(GLAcc_Framework &GLAcc_f,Shader &shader, GLAcc_GPU_Buffer &y1)
 {
-    glUniform3ui(shader.GetUniformLocation("outputDim"), y1.GetBuffSizeX(),y1.GetBuffSizeY(),y1.GetChannelCount());
+    glUniform3ui(shader.GetUnif("outputDim"), y1.GetBuffSizeX(),y1.GetBuffSizeY(),y1.GetChannelCount());
 
 
 }
@@ -165,14 +165,14 @@ void runShader2(GLAcc_Framework &GLAcc_f,Shader &shader,GLuint fbo,
   {
       GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT0,y1);
       GLAcc_f.AttachTex2FBO(fbo,GL_COLOR_ATTACHMENT1,y2);
-      shader.TextureActivate(1);
-      x1.BindTexture();
-      shader.TextureActivate(2);
-      x2.BindTexture();
-      shader.TextureActivate(3);
-      x3.BindTexture();
-      shader.TextureActivate(13);
-      offset_mesh.BindTexture();
+      if(0 == shader.TextureActivate("x1"))
+        x1.BindTexture();
+      if(0 == shader.TextureActivate("x2"))
+        x2.BindTexture();
+      if(0 == shader.TextureActivate("x3"))
+        x3.BindTexture();
+      if(0 == shader.TextureActivate("offset_mesh"))
+        offset_mesh.BindTexture();
       //GLAcc_f.SetupViewPort(y1.GetBuffSizeX(),y1.GetBuffSizeY());//Actually setup viewport
   }
 
@@ -324,20 +324,19 @@ int main(int argc, char** argv) {
     printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);*/
 
     Shader morphRegularizerShader( "shader/morphRegularizer/core.vs", "shader/morphRegularizer/core.frag" );
+    morphRegularizerShader.GetUniformLocation("x1");
+    morphRegularizerShader.GetUniformLocation("x1");
+
     Shader morphingShader( "shader/morph/core.vs", "shader/morph/core.frag" );
     Shader ourDisplayShader( "shader/display/core.vs", "shader/display/core.frag" );
     Shader sobelShader( "shader/spfilters/core.vs", "shader/spfilters/sobel.frag" );
-    Shader uniBlurShaderH( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
-    Shader uniBlurShaderV( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
+    Shader uniBlurShader( "shader/spfilters/core.vs", "shader/spfilters/uniblur.frag" );
     Shader downSumShader( "shader/spfilters/core.vs", "shader/spfilters/downSum.frag" );
     Shader subMulShader( "shader/spfilters/core.vs", "shader/spfilters/subMul.frag" );
     Shader gradOptShader( "shader/spfilters/core.vs", "shader/spfilters/gradOpt.frag" );
     runShaderSetup(GLAcc_f,morphRegularizerShader,offset_mesh);
     runShaderSetup(GLAcc_f,morphingShader,inputMorphImg);
-    runShaderSetup(GLAcc_f,uniBlurShaderH,ref_img);
-    glUniform1i(uniBlurShaderH.GetUniformLocation("blur_size"),10);
-    runShaderSetup(GLAcc_f,uniBlurShaderV,ref_img);
-    glUniform1i(uniBlurShaderV.GetUniformLocation("blur_size"),-10);
+    runShaderSetup(GLAcc_f,uniBlurShader,ref_img);
     runShaderSetup(GLAcc_f,sobelShader,sobel_edge);
     runShaderSetup(GLAcc_f,downSumShader,offset_mesh_gradient);
     runShaderSetup(GLAcc_f,subMulShader,gradient);
@@ -350,21 +349,26 @@ int main(int argc, char** argv) {
     if(1)
     {//Pre processing, soften image and create it's sobel gradient field
         GLAcc_f.SetupViewPort(ref_img.GetBuffSizeX(),ref_img.GetBuffSizeY());//Actually setup viewport
-        runShader(GLAcc_f,uniBlurShaderH,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
-        runShader(GLAcc_f,uniBlurShaderV,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
-        runShader(GLAcc_f,uniBlurShaderH,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
-        runShader(GLAcc_f,uniBlurShaderV,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+        uniBlurShader.Use( );
+        for(int i=0;i<8;i++)
+        {
+            glUniform1i(uniBlurShader.GetUnif("blur_size"),5);
+            runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+            glUniform1i(uniBlurShader.GetUnif("blur_size"),-5);
+            runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+        }
+
         runShader(GLAcc_f,sobelShader,fbo,sobel_edge,ref_img,_NTex,_NTex,_NTex,1);
 
     }
 
-    initOffsetMeshBuffer(offset_mesh,0.05);
+    initOffsetMeshBuffer(offset_mesh,0.1);
     GLAcc_f.SetupViewPort(inputImg.GetBuffSizeX(),inputImg.GetBuffSizeY());//Actually setup viewport
     runShader(GLAcc_f,morphingShader,fbo,inputImg,ref_img,_NTex,_NTex,offset_mesh,1);//Fake a input image by morph refrence image
 
     initOffsetMeshBuffer(offset_mesh,0);
 
-    int loopTotal=20;
+    int loopTotal=5000;
     int iterC=loopTotal;
     loopTotal=(loopTotal/iterC)*iterC;
     for(int i=0;i<iterC;i++)
@@ -386,7 +390,7 @@ int main(int argc, char** argv) {
           runShader2(GLAcc_f,gradOptShader,fbo,offset_mesh,gradOptV,offset_mesh,offset_mesh_gradient,gradOptV,_NTex,1);
         }
         //glFinish();
-        if(1){
+        if(0){
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
           runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,gradient);
