@@ -3,6 +3,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <GLAcc.h>
+#include <iostream>
 
 GLAcc_Framework::GLAcc_Framework(int width,int height)
 {
