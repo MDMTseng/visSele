@@ -1,3 +1,6 @@
+
+#define GLEW_STATIC
+
 #include <Shader.h>
 
 #include <string>

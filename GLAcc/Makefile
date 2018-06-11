@@ -18,8 +18,8 @@ else
 	EXT_OBJS=
 	IDIR+= ./include $(GLEWSRCDir)/include
 	LIBS+= -lglfw3 -framework Cocoa -framework OpenGL -framework IOKit -framework CoreVideo
+	FLAGS+=-Wc++11-extensions
 endif
-FLAGS+=-Wc++11-extensions
 
 SUB_MAKEFILES = $(MODULE_acvImage)
 include $(MakeTemplate)
