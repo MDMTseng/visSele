@@ -394,8 +394,8 @@ int main(int argc, char** argv)
         runShader(GLAcc_f,uniBlurShader,fbo,inputImg,inputImg,_NTex,_NTex,_NTex,1);
     }
 
-    runShader(GLAcc_f,w1Shader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
-    runShader(GLAcc_f,w1Shader,fbo,inputImg,inputImg,_NTex,_NTex,_NTex,1);
+    //runShader(GLAcc_f,w1Shader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+    //runShader(GLAcc_f,w1Shader,fbo,inputImg,inputImg,_NTex,_NTex,_NTex,1);
 
     int loopTotal=120;
     int iterC=20;
