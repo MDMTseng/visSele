@@ -11,7 +11,7 @@ void main()
 	vec2 coorf=floor(gl_FragCoord.xy);
 	uvec2 coorui=uvec2(coorf);
 	vec2 texRect = coorf /outputDim.xy* textureSize(x1);
-	y1=(texture(x1, texRect)/2+0.5);
+	y1=(texture(x1, texRect)*2);
 
 
 

@@ -9,10 +9,10 @@ uniform uvec3 outputDim;
 layout(location=0) out vec4 y1;//shiftMap
 layout(location=1) out vec4 y2;//shiftMap
 
-uniform int searchSteps=4;
-uniform float lrate=8;
-uniform float regRate=0.6;
-uniform int surPixR=2;
+uniform int searchSteps=5;
+uniform float lrate=120;
+uniform float regRate=0.5;
+uniform int surPixR=10;
 
 vec2 getSurPixAve(vec2 coorf,int surR)
 {
@@ -34,10 +34,10 @@ void main()
     float reference_=texture(x3, coorf).x;
     vec2 ref_sobel_=texture(x4, coorf).xy;
     vec2 offset_=texture(x1, coorf).xy;//load
-    /*{
+    {
       vec2 surPix=getSurPixAve(coorf,surPixR);
       offset_ =surPix+(offset_-surPix)*regRate;
-    }*/
+    }
     float input_offset;
     for(int i=0;i<searchSteps;i++)//advance
     {
@@ -54,6 +54,6 @@ void main()
     }
 
     y1.xy=offset_;//save
-    y2.x=((input_offset-reference_)/2);
-    y2.y=input_offset-reference_+0.5;
+    //y2.xy=offset_*0.1+0.5;
+    y2.x=(reference_-input_offset)*6+0.5;
 }
