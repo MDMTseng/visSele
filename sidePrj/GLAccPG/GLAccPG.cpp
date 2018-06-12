@@ -292,6 +292,18 @@ void ReadBufferToFile(GLAcc_GPU_Buffer &tex,char* path)
     delete[] dataY;
 }
 
+GLAcc_GPU_Buffer* ReadFileToBuffer(char* path)
+{
+    std::vector<unsigned char> image;
+    unsigned width, height;
+    unsigned error = lodepng::decode(image, width, height,path);
+    int channels = image.size()/width/height;//
+
+    GLAcc_GPU_Buffer *tex = new GLAcc_GPU_Buffer(channels,width,height,GL_LINEAR,GL_MIRRORED_REPEAT);
+    tex->CPU2GPU(GL_UNSIGNED_BYTE,&(image[0]), image.size());
+    return tex;
+}
+
 int test1(int argc, char** argv);
 int main(int argc, char** argv)
 {
@@ -364,7 +376,7 @@ int main(int argc, char** argv)
     {//Pre processing, soften image and create it's sobel gradient field
         GLAcc_f.SetupViewPort(ref_img.GetBuffSizeX(),ref_img.GetBuffSizeY());//Actually setup viewport
         uniBlurShader.Use( );
-        for(int i=0;i<18;i++)
+        for(int i=0;i<7;i++)
         {
             glUniform1i(uniBlurShader.GetUnif("blur_size"),1);
             runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,5);
@@ -373,15 +385,19 @@ int main(int argc, char** argv)
         }
         runShader(GLAcc_f,sobelShader,fbo,sobel_edge,ref_img,_NTex,_NTex,_NTex,1);
         runShader(GLAcc_f,sobelNormShader,fbo,sobel_edge,sobel_edge,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,crossBlurShader,fbo,sobel_edge,sobel_edge,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,crossBlurShader,fbo,sobel_edge,sobel_edge,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,crossBlurShader,fbo,sobel_edge,sobel_edge,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,crossBlurShader,fbo,sobel_edge,sobel_edge,_NTex,_NTex,_NTex,1);
 
     }
 
-    initOffsetMeshBuffer(offset_mesh,0.1);
+    initOffsetMeshBuffer(offset_mesh,0.05);
     GLAcc_f.SetupViewPort(inputImg.GetBuffSizeX(),inputImg.GetBuffSizeY());//Actually setup viewport
     runShader(GLAcc_f,morphingShader,fbo,inputImg,ref_img,_NTex,_NTex,offset_mesh,1);//Fake a input image by morph refrence image
     initOffsetMeshBuffer(offset_mesh,0);
 
-    int loopTotal=10000;
+    int loopTotal=5;
     int iterC=loopTotal;
     loopTotal=(loopTotal/iterC)*iterC;
     for(int i=0;i<iterC;i++)
@@ -400,11 +416,11 @@ int main(int argc, char** argv)
             _NTex,
             1);
 
-          if(iterC%2==0){
+          if(0){
             runShader(GLAcc_f,crossBlurShader,fbo,offsetMap,offsetMap,_NTex,_NTex,_NTex,1);
           }
         }
-        if(0){
+        if(1){
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
           runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,offsetMap);
