@@ -397,10 +397,8 @@ int main(int argc, char** argv)
     runShader(GLAcc_f,w1Shader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
     runShader(GLAcc_f,w1Shader,fbo,inputImg,inputImg,_NTex,_NTex,_NTex,1);
 
-    uniBlurShader.Use( );
-    glUniform1i(uniBlurShader.GetUnif("skipP"),3);
-    int loopTotal=20;
-    int iterC=loopTotal;
+    int loopTotal=120;
+    int iterC=20;
     int skipB=70;
     loopTotal=(loopTotal/iterC)*iterC;
     for(int i=0;i<loopTotal/iterC;i++)
@@ -412,7 +410,8 @@ int main(int argc, char** argv)
           GLAcc_f.SetupViewPort(skipB,skipB,offsetMap.GetBuffSizeX()-2*skipB,offsetMap.GetBuffSizeY()-2*skipB);
 
           minSearchShader.Use( );
-          glUniform1f(minSearchShader.GetUnif("lrate"),120*(1));
+          glUniform1f(minSearchShader.GetUnif("lrate"),140*(1));
+          glUniform1i(minSearchShader.GetUnif("searchSteps"),5);
           runShader3(GLAcc_f,minSearchShader,fbo,
             offsetMap,offsetMap2,
             offsetMap,
@@ -422,9 +421,9 @@ int main(int argc, char** argv)
             _NTex,
             1);
 
-          if(1){
+          if(j%4==0|| j>iterC-5){
             crossBlurShader.Use( );
-            glUniform1i(crossBlurShader.GetUnif("blur_size"),3);
+            glUniform1i(crossBlurShader.GetUnif("blur_size"),5);
             glUniform1i(crossBlurShader.GetUnif("skipP"),3);
             runShader(GLAcc_f,crossBlurShader,fbo,offsetMap,offsetMap,_NTex,_NTex,_NTex,1);
           }
@@ -443,8 +442,8 @@ int main(int argc, char** argv)
     glFinish();
     glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     ReadBufferToFile(offsetMap2,"test_data/offsetMap2.png");
-    ReadBufferToFile(inputImg,"test_data/inputImg.png");
-    ReadBufferToFile(ref_img,"test_data/ref_img.png");
+    //ReadBufferToFile(inputImg,"test_data/inputImg.png");
+    //ReadBufferToFile(ref_img,"test_data/ref_img.png");
     ReadBufferToFile(offsetMap,"test_data/offsetMap.png");
     ReadBufferToFile(sobel_edge,"test_data/sobel_edge.png");
     deleteFBO(fbo);
