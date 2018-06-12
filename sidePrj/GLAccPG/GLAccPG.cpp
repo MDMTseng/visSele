@@ -341,12 +341,14 @@ int main(int argc, char** argv)
     Shader morphRegularizerShader( "shader/morphRegularizer/core.vs", "shader/morphRegularizer/core.frag" );
     Shader morphingShader( "shader/morph/core.vs", "shader/morph/core.frag" );
     Shader ourDisplayShader( "shader/display/core.vs", "shader/display/core.frag" );
+    Shader sobelNormShader( "shader/spfilters/core.vs", "shader/spfilters/sobelNorm.frag" );
     Shader sobelShader( "shader/spfilters/core.vs", "shader/spfilters/sobel.frag" );
     Shader uniBlurShader( "shader/spfilters/core.vs", "shader/spfilters/uniblurAll.frag" );
     Shader minSearchShader( "shader/exp/core.vs", "shader/exp/minSearch.frag" );
     runShaderSetup(GLAcc_f,morphingShader,inputMorphImg);
     runShaderSetup(GLAcc_f,uniBlurShader,ref_img);
     runShaderSetup(GLAcc_f,sobelShader,sobel_edge);
+    runShaderSetup(GLAcc_f,sobelNormShader,sobel_edge);
 
     printf(">>>>\n");
     runShaderSetup(GLAcc_f,minSearchShader,ref_img);
@@ -360,14 +362,15 @@ int main(int argc, char** argv)
     {//Pre processing, soften image and create it's sobel gradient field
         GLAcc_f.SetupViewPort(ref_img.GetBuffSizeX(),ref_img.GetBuffSizeY());//Actually setup viewport
         uniBlurShader.Use( );
-        for(int i=0;i<8;i++)
+        for(int i=0;i<15;i++)
         {
-            glUniform1i(uniBlurShader.GetUnif("blur_size"),5);
-            runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
-            glUniform1i(uniBlurShader.GetUnif("blur_size"),-5);
-            runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
+            glUniform1i(uniBlurShader.GetUnif("blur_size"),1);
+            runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,5);
+            glUniform1i(uniBlurShader.GetUnif("blur_size"),-1);
+            runShader(GLAcc_f,uniBlurShader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,5);
         }
         runShader(GLAcc_f,sobelShader,fbo,sobel_edge,ref_img,_NTex,_NTex,_NTex,1);
+        runShader(GLAcc_f,sobelNormShader,fbo,sobel_edge,sobel_edge,_NTex,_NTex,_NTex,1);
     }
 
     initOffsetMeshBuffer(offset_mesh,0.05);
@@ -375,7 +378,7 @@ int main(int argc, char** argv)
     runShader(GLAcc_f,morphingShader,fbo,inputImg,ref_img,_NTex,_NTex,offset_mesh,1);//Fake a input image by morph refrence image
     initOffsetMeshBuffer(offset_mesh,0);
 
-    int loopTotal=10;
+    int loopTotal=10000;
     int iterC=loopTotal;
     loopTotal=(loopTotal/iterC)*iterC;
     for(int i=0;i<iterC;i++)
@@ -403,7 +406,7 @@ int main(int argc, char** argv)
         if(0){
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
-          runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,offsetMap2);
+          runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,sobel_edge);
           glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
         }
     }
@@ -416,6 +419,7 @@ int main(int argc, char** argv)
     ReadBufferToFile(offsetMap2,"test_data/offsetMap2.png");
     ReadBufferToFile(inputImg,"test_data/inputImg.png");
     ReadBufferToFile(offsetMap,"test_data/offsetMap.png");
+    ReadBufferToFile(sobel_edge,"test_data/sobel_edge.png");
     deleteFBO(fbo);
     return 0;
 }

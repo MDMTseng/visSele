@@ -9,8 +9,8 @@ uniform uvec3 outputDim;
 layout(location=0) out vec4 y1;//shiftMap
 layout(location=1) out vec4 y2;//shiftMap
 
-uniform int searchSteps=10;
-uniform float lrate=40;
+uniform int searchSteps=40;
+uniform float lrate=0.5;
 void main()
 {
     vec2 coorf=gl_FragCoord.xy;
