@@ -305,9 +305,15 @@ GLAcc_GPU_Buffer* ReadFileToBuffer(char* path)
 }
 
 int test1(int argc, char** argv);
+
+int test2(int argc, char** argv);
+
 int main(int argc, char** argv)
 {
+  return 0;
+}
 
+int test2(int argc, char** argv){
     //return test1( argc, argv);
     int width=800, height=800;
     //Init window

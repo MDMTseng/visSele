@@ -48,7 +48,7 @@ void WriteBuffer2(GLAcc_GPU_Buffer &tex)
     float* dataX = new float[totolLength];
     for (int i=0; i<totolLength; i++)
     {
-        dataX[i] = 0.1;
+        dataX[i] = i;
     }
     tex.CPU2GPU(dataX, totolLength);
     delete(dataX);
@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
 
     GLAcc_Framework GLAcc_f(width,height);
 
-    int texSizeX=1024/1,texSizeY=1024/1,targetDepth=1;
+    int texSizeX=10/1,texSizeY=10/1,targetDepth=1;
 
     GLAcc_GPU_Buffer tex1(targetDepth,texSizeX,texSizeY);
     GLAcc_GPU_Buffer tex2(targetDepth,texSizeX,texSizeY,GL_NEAREST,GL_CLAMP);
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
     glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &maxAtt);
     printf("Test start.... GL_MAX_COLOR_ATTACHMENTS:%d\n",maxAtt);*/
 
-    Shader ourShader1( "shader/shader1/core.vs", "shader/shader1/core.frag" );
+    Shader ourShader1( "shader/std/core.vs", "shader/std/core.frag" );
     /*ourShader1.LoadShader(
       Shader::LOADFILE("shader/shader1/core.vs").c_str( ),
       Shader::LOADFILE("shader/shader1/core.frag").c_str( ));*/
@@ -155,12 +155,12 @@ int main(int argc, char** argv) {
       WriteBuffer(tex1);
       WriteBuffer2(tex2);
       clock_t t = clock();
-      runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,10000);
+      runShader(GLAcc_f,ourShader1,fbo,tex1,tex1,tex2,1);
       glFinish();
       printf("runShader>>elapse:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-      ReadBuffer(tex1,0,4);
+      ReadBuffer(tex1,0,1000000);
     }
-
+    return 0;
 
     Shader ourShader2( "shader/shader2/core.vs", "shader/shader2/core.frag" );
     runShaderSetup(GLAcc_f,ourShader2,fbo,tex1,tex1,tex2);
