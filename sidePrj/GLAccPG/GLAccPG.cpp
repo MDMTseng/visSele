@@ -324,7 +324,7 @@ int main(int argc, char** argv)
 
     GLAcc_GPU_Buffer _NTex(1,1,1,GL_LINEAR,GL_CLAMP);
     GLAcc_GPU_Buffer &inputImg = *P2;
-    GLAcc_GPU_Buffer offsetMap(3,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
+    GLAcc_GPU_Buffer offsetMap(4,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
     GLAcc_GPU_Buffer offsetMap2(3,texSizeX,texSizeY,GL_LINEAR,GL_CLAMP);
     GLAcc_GPU_Buffer &ref_img = *P1;
     GLAcc_GPU_Buffer sobel_edge(3,texSizeX,texSizeY,GL_LINEAR,GL_MIRRORED_REPEAT);
@@ -397,8 +397,8 @@ int main(int argc, char** argv)
     runShader(GLAcc_f,w1Shader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
     runShader(GLAcc_f,w1Shader,fbo,inputImg,inputImg,_NTex,_NTex,_NTex,1);
 
-    int loopTotal=120;
-    int iterC=20;
+    int loopTotal=10;
+    int iterC=1;
     int skipB=70;
     loopTotal=(loopTotal/iterC)*iterC;
     for(int i=0;i<loopTotal/iterC;i++)
@@ -411,7 +411,7 @@ int main(int argc, char** argv)
 
           minSearchShader.Use( );
           glUniform1f(minSearchShader.GetUnif("lrate"),140*(1));
-          glUniform1i(minSearchShader.GetUnif("searchSteps"),5);
+          glUniform1i(minSearchShader.GetUnif("searchSteps"),3);
           runShader3(GLAcc_f,minSearchShader,fbo,
             offsetMap,offsetMap2,
             offsetMap,

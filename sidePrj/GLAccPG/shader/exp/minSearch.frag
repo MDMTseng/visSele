@@ -30,10 +30,13 @@ vec2 getSurPixAve(vec2 coorf,int surR)
 
 void main()
 {
+float beta = 0.5;
+float alpha = 0.8;
     vec2 coorf=gl_FragCoord.xy;
     float reference_=texture(x3, coorf).x;
     vec2 ref_sobel_=texture(x4, coorf).xy;
-    vec2 offset_=texture(x1, coorf).xy;//load
+    vec4 offset_ori=texture(x1, coorf);
+    vec2 offset_=offset_ori.xy+alpha*beta*offset_ori.zw;//load
     {
       vec2 surPix=getSurPixAve(coorf,surPixR);
       offset_ =surPix+(offset_-surPix)*regRate;
@@ -52,8 +55,8 @@ void main()
       /**/
       /**/
     }
-
-    y1.xy=offset_;//save
+    y1.xy=offset_ori.xy+alpha*offset_ori.zw;//Update/Save param
+    y1.zw=beta*offset_ori.zw + (offset_-offset_ori.xy);//Momentum
     //y2.xy=offset_*0.1+0.5;
     y2.x=(reference_-input_offset)*6+0.5;
 }

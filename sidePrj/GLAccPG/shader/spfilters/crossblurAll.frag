@@ -11,16 +11,17 @@ void main()
 {
 	vec2 coorf=gl_FragCoord.xy;
 	//
-	vec2 pSum=vec2(0);
+	vec4 pSum=vec4(0);
 	int _size=blur_size*skipP;
 	for(int j = -_size; j <= _size; j+=skipP)
 	{
-		pSum+=texture(x1, coorf+vec2(0,j)).xy;
+		pSum+=texture(x1, coorf+vec2(0,j));
 	}
 	for(int j = -_size; j <= _size; j+=skipP)
 	{
-		pSum+=texture(x1, coorf+vec2(j,0)).xy;
+		pSum+=texture(x1, coorf+vec2(j,0));
 	}
 	_size/=skipP;
-	y1.xy = pSum/(_size*2+1)/2;
+	y1 = pSum/(_size*2+1)/2;
+	//y1.zw = texture(x1, coorf).zw;
 }
