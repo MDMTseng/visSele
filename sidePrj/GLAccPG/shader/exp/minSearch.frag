@@ -30,8 +30,8 @@ vec2 getSurPixAve(vec2 coorf,int surR)
 
 void main()
 {
-float beta = 0.45;
-float alpha = 0.6;
+float beta = 0.4;
+float alpha = 1.0;
     vec2 coorf=gl_FragCoord.xy;
     float reference_=texture(x3, coorf).x;
     vec2 ref_sobel_=texture(x4, coorf).xy;
@@ -53,15 +53,15 @@ float alpha = 0.6;
 
 
 
-    {
+    if(true){
       float grad_l = length(grad);
       if(grad_l>0.01)
         grad=grad/grad_l*pow(grad_l,0.8);
     }
 
-    /*vec2 dirtest = pre_moment*grad;
+    vec2 dirtest = pre_moment*grad;
     if(dirtest.x<0)pre_moment.x=grad.x;
-    if(dirtest.y<0)pre_moment.y=grad.y;*/
+    if(dirtest.y<0)pre_moment.y=grad.y;
 
 
     y1.xy=offset_+alpha*pre_moment;//Update/Save param
@@ -73,7 +73,7 @@ float alpha = 0.6;
     y2.r=(reference_-input_offset)*30;
     if(y2.r<0)y2.r*=-1;
 
-
+    //y2.gb = ref_sobel_.xy/1+0.5;
     //y2.gb = y1.xy/150+0.5;
 
 
