@@ -397,9 +397,9 @@ int main(int argc, char** argv)
     runShader(GLAcc_f,w1Shader,fbo,ref_img,ref_img,_NTex,_NTex,_NTex,1);
     runShader(GLAcc_f,w1Shader,fbo,inputImg,inputImg,_NTex,_NTex,_NTex,1);
 
-    int loopTotal=10;
+    int loopTotal=30;
     int iterC=1;
-    int skipB=70;
+    int skipB=0;
     loopTotal=(loopTotal/iterC)*iterC;
     for(int i=0;i<loopTotal/iterC;i++)
     {
@@ -421,18 +421,19 @@ int main(int argc, char** argv)
             _NTex,
             1);
 
-          if(j%4==0|| j>iterC-5){
+          if(1){
             crossBlurShader.Use( );
-            glUniform1i(crossBlurShader.GetUnif("blur_size"),5);
-            glUniform1i(crossBlurShader.GetUnif("skipP"),3);
+            glUniform1i(crossBlurShader.GetUnif("blur_size"),4);
+            glUniform1i(crossBlurShader.GetUnif("skipP"),(i%2==0)?2:3);
             runShader(GLAcc_f,crossBlurShader,fbo,offsetMap,offsetMap,_NTex,_NTex,_NTex,1);
           }
         }
-        if(0){
+        if(1){
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
           glfwPollEvents( );
           runDisplayShader(GLAcc_f,ourDisplayShader,screenWidth,screenHeight,offsetMap2);
           glfwSwapBuffers( (GLFWwindow*)GLAcc_f.getWindow() );
+          if(i==0)sleep(1);
         }
     }
 

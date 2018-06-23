@@ -30,33 +30,51 @@ vec2 getSurPixAve(vec2 coorf,int surR)
 
 void main()
 {
-float beta = 0.5;
-float alpha = 0.8;
+float beta = 0.45;
+float alpha = 0.6;
     vec2 coorf=gl_FragCoord.xy;
     float reference_=texture(x3, coorf).x;
     vec2 ref_sobel_=texture(x4, coorf).xy;
     vec4 offset_ori=texture(x1, coorf);
-    vec2 offset_=offset_ori.xy+alpha*beta*offset_ori.zw;//load
-    {
-      vec2 surPix=getSurPixAve(coorf,surPixR);
-      offset_ =surPix+(offset_-surPix)*regRate;
-    }
+
+    vec2 offset_=offset_ori.xy;//loads
+    vec2 pre_moment = offset_ori.zw;
+
+    offset_+=alpha*beta*pre_moment;//Nesterov
     float input_offset;
     for(int i=0;i<searchSteps;i++)//advance
     {
       input_offset=texture(x2, offset_+coorf).x;
-
-
-
       vec2 gradient=(lrate*(reference_-input_offset))*ref_sobel_;
       offset_+=gradient;
 
-      /**/
-      /**/
-      /**/
     }
-    y1.xy=offset_ori.xy+alpha*offset_ori.zw;//Update/Save param
-    y1.zw=beta*offset_ori.zw + (offset_-offset_ori.xy);//Momentum
-    //y2.xy=offset_*0.1+0.5;
-    y2.x=(reference_-input_offset)*6+0.5;
+    vec2 grad = (offset_-offset_ori.xy);
+
+
+
+    {
+      float grad_l = length(grad);
+      if(grad_l>0.01)
+        grad=grad/grad_l*pow(grad_l,0.8);
+    }
+
+    /*vec2 dirtest = pre_moment*grad;
+    if(dirtest.x<0)pre_moment.x=grad.x;
+    if(dirtest.y<0)pre_moment.y=grad.y;*/
+
+
+    y1.xy=offset_+alpha*pre_moment;//Update/Save param
+
+    vec2 moment=beta*pre_moment + grad;//Momentum
+    y1.zw =moment;
+
+
+    y2.r=(reference_-input_offset)*30;
+    if(y2.r<0)y2.r*=-1;
+
+
+    //y2.gb = y1.xy/150+0.5;
+
+
 }
