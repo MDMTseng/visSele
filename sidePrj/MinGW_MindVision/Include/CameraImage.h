@@ -6,56 +6,56 @@
 
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_Create
-// ¹¦ÄÜÃèÊö	: ´´½¨Ò»¸öĞÂµÄImage
-// ²ÎÊı		: Image
-//			  pFrameBuffer Ö¡Êı¾İ»º³åÇø
-//			  pFrameHead Ö¡Í·
-//			  bCopy TRUE: ¸´ÖÆ³öÒ»·İĞÂµÄÖ¡Êı¾İ  FALSE: ²»¸´ÖÆ£¬Ö±½ÓÊ¹ÓÃpFrameBufferÖ¸ÏòµÄ»º³åÇø
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_Create
+// åŠŸèƒ½æè¿°	: åˆ›å»ºä¸€ä¸ªæ–°çš„Image
+// å‚æ•°		: Image
+//			  pFrameBuffer å¸§æ•°æ®ç¼“å†²åŒº
+//			  pFrameHead å¸§å¤´
+//			  bCopy TRUE: å¤åˆ¶å‡ºä¸€ä»½æ–°çš„å¸§æ•°æ®  FALSE: ä¸å¤åˆ¶ï¼Œç›´æ¥ä½¿ç”¨pFrameBufferæŒ‡å‘çš„ç¼“å†²åŒº
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_Create(
 	void** Image,
-	BYTE *pFrameBuffer, 
+	BYTE *pFrameBuffer,
 	tSdkFrameHead* pFrameHead,
 	BOOL bCopy
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_CreateEmpty
-// ¹¦ÄÜÃèÊö	: ´´½¨Ò»¸ö¿ÕµÄImage
-// ²ÎÊı		: Image
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_CreateEmpty
+// åŠŸèƒ½æè¿°	: åˆ›å»ºä¸€ä¸ªç©ºçš„Image
+// å‚æ•°		: Image
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_CreateEmpty(
 	void** Image
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_Destroy
-// ¹¦ÄÜÃèÊö	: Ïú»ÙImage
-// ²ÎÊı		: Image
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_Destroy
+// åŠŸèƒ½æè¿°	: é”€æ¯Image
+// å‚æ•°		: Image
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_Destroy(
 	void* Image
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_GetData
-// ¹¦ÄÜÃèÊö	: »ñÈ¡ImageÊı¾İ
-// ²ÎÊı		: Image
-//			  DataBuffer Í¼ÏñÊı¾İ
-//			  Head Í¼ÏñĞÅÏ¢
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_GetData
+// åŠŸèƒ½æè¿°	: è·å–Imageæ•°æ®
+// å‚æ•°		: Image
+//			  DataBuffer å›¾åƒæ•°æ®
+//			  Head å›¾åƒä¿¡æ¯
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_GetData(
 	void* Image,
@@ -64,13 +64,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_GetData(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_GetUserData
-// ¹¦ÄÜÃèÊö	: »ñÈ¡ImageµÄÓÃ»§×Ô¶¨ÒåÊı¾İ
-// ²ÎÊı		: Image
-//			  UserData ·µ»ØÓÃ»§×Ô¶¨ÒåÊı¾İ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_GetUserData
+// åŠŸèƒ½æè¿°	: è·å–Imageçš„ç”¨æˆ·è‡ªå®šä¹‰æ•°æ®
+// å‚æ•°		: Image
+//			  UserData è¿”å›ç”¨æˆ·è‡ªå®šä¹‰æ•°æ®
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_GetUserData(
 	void* Image,
@@ -78,13 +78,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_GetUserData(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_SetUserData
-// ¹¦ÄÜÃèÊö	: ÉèÖÃImageµÄÓÃ»§×Ô¶¨ÒåÊı¾İ
-// ²ÎÊı		: Image
-//			  UserData ÓÃ»§×Ô¶¨ÒåÊı¾İ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_SetUserData
+// åŠŸèƒ½æè¿°	: è®¾ç½®Imageçš„ç”¨æˆ·è‡ªå®šä¹‰æ•°æ®
+// å‚æ•°		: Image
+//			  UserData ç”¨æˆ·è‡ªå®šä¹‰æ•°æ®
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SetUserData(
 	void* Image,
@@ -92,13 +92,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SetUserData(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_IsEmpty
-// ¹¦ÄÜÃèÊö	: ÅĞ¶ÏÒ»¸öImageÊÇ·ñÎª¿Õ
-// ²ÎÊı		: Image
-//			  IsEmpty Îª¿Õ·µ»Ø:TRUE(1)  ·ñÔò·µ»Ø:FALSE(0)
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_IsEmpty
+// åŠŸèƒ½æè¿°	: åˆ¤æ–­ä¸€ä¸ªImageæ˜¯å¦ä¸ºç©º
+// å‚æ•°		: Image
+//			  IsEmpty ä¸ºç©ºè¿”å›:TRUE(1)  å¦åˆ™è¿”å›:FALSE(0)
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_IsEmpty(
 	void* Image,
@@ -106,14 +106,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_IsEmpty(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_Draw
-// ¹¦ÄÜÃèÊö	: »æÖÆImageµ½Ö¸¶¨´°¿Ú
-// ²ÎÊı		: Image
-//			  hWnd Ä¿µÄ´°¿Ú
-//			  Algorithm Ëõ·ÅËã·¨  0£º¿ìËÙµ«ÖÊÁ¿ÉÔ²î  1£ºËÙ¶ÈÂıµ«ÖÊÁ¿ºÃ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_Draw
+// åŠŸèƒ½æè¿°	: ç»˜åˆ¶Imageåˆ°æŒ‡å®šçª—å£
+// å‚æ•°		: Image
+//			  hWnd ç›®çš„çª—å£
+//			  Algorithm ç¼©æ”¾ç®—æ³•  0ï¼šå¿«é€Ÿä½†è´¨é‡ç¨å·®  1ï¼šé€Ÿåº¦æ…¢ä½†è´¨é‡å¥½
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_Draw(
 	void* Image,
@@ -122,14 +122,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_Draw(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_DrawFit
-// ¹¦ÄÜÃèÊö	: À­Éı»æÖÆImageµ½Ö¸¶¨´°¿Ú
-// ²ÎÊı		: Image
-//			  hWnd Ä¿µÄ´°¿Ú
-//			  Algorithm Ëõ·ÅËã·¨  0£º¿ìËÙµ«ÖÊÁ¿ÉÔ²î  1£ºËÙ¶ÈÂıµ«ÖÊÁ¿ºÃ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_DrawFit
+// åŠŸèƒ½æè¿°	: æ‹‰å‡ç»˜åˆ¶Imageåˆ°æŒ‡å®šçª—å£
+// å‚æ•°		: Image
+//			  hWnd ç›®çš„çª—å£
+//			  Algorithm ç¼©æ”¾ç®—æ³•  0ï¼šå¿«é€Ÿä½†è´¨é‡ç¨å·®  1ï¼šé€Ÿåº¦æ…¢ä½†è´¨é‡å¥½
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawFit(
 	void* Image,
@@ -138,16 +138,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawFit(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_DrawToDC
-// ¹¦ÄÜÃèÊö	: »æÖÆImageµ½Ö¸¶¨DC
-// ²ÎÊı		: Image
-//			  hDC Ä¿µÄDC
-//			  Algorithm Ëõ·ÅËã·¨  0£º¿ìËÙµ«ÖÊÁ¿ÉÔ²î  1£ºËÙ¶ÈÂıµ«ÖÊÁ¿ºÃ
-//			  xDst,yDst: Ä¿±ê¾ØĞÎµÄ×óÉÏ½Ç×ø±ê
-//			  cxDst,cyDst: Ä¿±ê¾ØĞÎµÄ¿í¸ß
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_DrawToDC
+// åŠŸèƒ½æè¿°	: ç»˜åˆ¶Imageåˆ°æŒ‡å®šDC
+// å‚æ•°		: Image
+//			  hDC ç›®çš„DC
+//			  Algorithm ç¼©æ”¾ç®—æ³•  0ï¼šå¿«é€Ÿä½†è´¨é‡ç¨å·®  1ï¼šé€Ÿåº¦æ…¢ä½†è´¨é‡å¥½
+//			  xDst,yDst: ç›®æ ‡çŸ©å½¢çš„å·¦ä¸Šè§’åæ ‡
+//			  cxDst,cyDst: ç›®æ ‡çŸ©å½¢çš„å®½é«˜
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDC(
 	void* Image,
@@ -160,16 +160,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDC(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_DrawToDCFit
-// ¹¦ÄÜÃèÊö	: À­Éı»æÖÆImageµ½Ö¸¶¨DC
-// ²ÎÊı		: Image
-//			  hDC Ä¿µÄDC
-//			  Algorithm Ëõ·ÅËã·¨  0£º¿ìËÙµ«ÖÊÁ¿ÉÔ²î  1£ºËÙ¶ÈÂıµ«ÖÊÁ¿ºÃ
-//			  xDst,yDst: Ä¿±ê¾ØĞÎµÄ×óÉÏ½Ç×ø±ê
-//			  cxDst,cyDst: Ä¿±ê¾ØĞÎµÄ¿í¸ß
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_DrawToDCFit
+// åŠŸèƒ½æè¿°	: æ‹‰å‡ç»˜åˆ¶Imageåˆ°æŒ‡å®šDC
+// å‚æ•°		: Image
+//			  hDC ç›®çš„DC
+//			  Algorithm ç¼©æ”¾ç®—æ³•  0ï¼šå¿«é€Ÿä½†è´¨é‡ç¨å·®  1ï¼šé€Ÿåº¦æ…¢ä½†è´¨é‡å¥½
+//			  xDst,yDst: ç›®æ ‡çŸ©å½¢çš„å·¦ä¸Šè§’åæ ‡
+//			  cxDst,cyDst: ç›®æ ‡çŸ©å½¢çš„å®½é«˜
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDCFit(
 	void* Image,
@@ -182,16 +182,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDCFit(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_BitBlt
-// ¹¦ÄÜÃèÊö	: »æÖÆImageµ½Ö¸¶¨´°¿Ú£¨²»Ëõ·Å£©
-// ²ÎÊı		: Image
-//			  hWnd Ä¿µÄ´°¿Ú
-//			  xDst,yDst: Ä¿±ê¾ØĞÎµÄ×óÉÏ½Ç×ø±ê
-//			  cxDst,cyDst: Ä¿±ê¾ØĞÎµÄ¿í¸ß
-//			  xSrc,ySrc: Í¼Ïñ¾ØĞÎµÄ×óÉÏ½Ç×ø±ê
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_BitBlt
+// åŠŸèƒ½æè¿°	: ç»˜åˆ¶Imageåˆ°æŒ‡å®šçª—å£ï¼ˆä¸ç¼©æ”¾ï¼‰
+// å‚æ•°		: Image
+//			  hWnd ç›®çš„çª—å£
+//			  xDst,yDst: ç›®æ ‡çŸ©å½¢çš„å·¦ä¸Šè§’åæ ‡
+//			  cxDst,cyDst: ç›®æ ‡çŸ©å½¢çš„å®½é«˜
+//			  xSrc,ySrc: å›¾åƒçŸ©å½¢çš„å·¦ä¸Šè§’åæ ‡
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBlt(
 	void* Image,
@@ -205,16 +205,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBlt(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_BitBltToDC
-// ¹¦ÄÜÃèÊö	: »æÖÆImageµ½Ö¸¶¨DC£¨²»Ëõ·Å£©
-// ²ÎÊı		: Image
-//			  hDC Ä¿µÄDC
-//			  xDst,yDst: Ä¿±ê¾ØĞÎµÄ×óÉÏ½Ç×ø±ê
-//			  cxDst,cyDst: Ä¿±ê¾ØĞÎµÄ¿í¸ß
-//			  xSrc,ySrc: Í¼Ïñ¾ØĞÎµÄ×óÉÏ½Ç×ø±ê
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_BitBltToDC
+// åŠŸèƒ½æè¿°	: ç»˜åˆ¶Imageåˆ°æŒ‡å®šDCï¼ˆä¸ç¼©æ”¾ï¼‰
+// å‚æ•°		: Image
+//			  hDC ç›®çš„DC
+//			  xDst,yDst: ç›®æ ‡çŸ©å½¢çš„å·¦ä¸Šè§’åæ ‡
+//			  cxDst,cyDst: ç›®æ ‡çŸ©å½¢çš„å®½é«˜
+//			  xSrc,ySrc: å›¾åƒçŸ©å½¢çš„å·¦ä¸Šè§’åæ ‡
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBltToDC(
 	void* Image,
@@ -228,13 +228,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBltToDC(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_SaveAsBmp
-// ¹¦ÄÜÃèÊö	: ÒÔbmp¸ñÊ½±£´æImage
-// ²ÎÊı		: Image
-//			  FileName ÎÄ¼şÃû
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_SaveAsBmp
+// åŠŸèƒ½æè¿°	: ä»¥bmpæ ¼å¼ä¿å­˜Image
+// å‚æ•°		: Image
+//			  FileName æ–‡ä»¶å
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsBmp(
 	void* Image,
@@ -242,14 +242,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsBmp(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_SaveAsJpeg
-// ¹¦ÄÜÃèÊö	: ÒÔjpg¸ñÊ½±£´æImage
-// ²ÎÊı		: Image
-//			  FileName ÎÄ¼şÃû
-//			  Quality ±£´æÖÊÁ¿(1-100)£¬100ÎªÖÊÁ¿×î¼Ñµ«ÎÄ¼şÒ²×î´ó
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_SaveAsJpeg
+// åŠŸèƒ½æè¿°	: ä»¥jpgæ ¼å¼ä¿å­˜Image
+// å‚æ•°		: Image
+//			  FileName æ–‡ä»¶å
+//			  Quality ä¿å­˜è´¨é‡(1-100)ï¼Œ100ä¸ºè´¨é‡æœ€ä½³ä½†æ–‡ä»¶ä¹Ÿæœ€å¤§
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsJpeg(
 	void* Image,
@@ -258,13 +258,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsJpeg(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_SaveAsPng
-// ¹¦ÄÜÃèÊö	: ÒÔpng¸ñÊ½±£´æImage
-// ²ÎÊı		: Image
-//			  FileName ÎÄ¼şÃû
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_SaveAsPng
+// åŠŸèƒ½æè¿°	: ä»¥pngæ ¼å¼ä¿å­˜Image
+// å‚æ•°		: Image
+//			  FileName æ–‡ä»¶å
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsPng(
 	void* Image,
@@ -272,14 +272,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsPng(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_SaveAsRaw
-// ¹¦ÄÜÃèÊö	: ±£´æraw Image
-// ²ÎÊı		: Image
-//			  FileName ÎÄ¼şÃû
+// å‡½æ•°å	: CameraImage_SaveAsRaw
+// åŠŸèƒ½æè¿°	: ä¿å­˜raw Image
+// å‚æ•°		: Image
+//			  FileName æ–‡ä»¶å
 //			  Format 0: 8Bit Raw     1: 16Bit Raw
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsRaw(
 	void* Image,
@@ -288,13 +288,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsRaw(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraImage_IPicture
-// ¹¦ÄÜÃèÊö	: ´ÓImage´´½¨Ò»¸öIPicture
-// ²ÎÊı		: Image
-//			  Picture ĞÂ´´½¨µÄIPicture
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraImage_IPicture
+// åŠŸèƒ½æè¿°	: ä»Imageåˆ›å»ºä¸€ä¸ªIPicture
+// å‚æ•°		: Image
+//			  Picture æ–°åˆ›å»ºçš„IPicture
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_IPicture(
 	void* Image,

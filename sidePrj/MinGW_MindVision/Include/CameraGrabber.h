@@ -6,25 +6,25 @@
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGrabber_CreateFromDevicePage
-// ¹¦ÄÜÃèÊö : µ¯³öÏà»úÁĞ±íÈÃÓÃ»§Ñ¡ÔñÒª´ò¿ªµÄÏà»ú
-// ²ÎÊı     : Èç¹ûº¯ÊıÖ´ĞĞ³É¹¦·µ»Øº¯Êı´´½¨µÄGrabber
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGrabber_CreateFromDevicePage
+// åŠŸèƒ½æè¿° : å¼¹å‡ºç›¸æœºåˆ—è¡¨è®©ç”¨æˆ·é€‰æ‹©è¦æ‰“å¼€çš„ç›¸æœº
+// å‚æ•°     : å¦‚æœå‡½æ•°æ‰§è¡ŒæˆåŠŸè¿”å›å‡½æ•°åˆ›å»ºçš„Grabber
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_CreateFromDevicePage(
 	void** Grabber
 	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGrabber_Create
-// ¹¦ÄÜÃèÊö : ´ÓÉè±¸ÃèÊöĞÅÏ¢´´½¨Grabber
-// ²ÎÊı     : Grabber    Èç¹ûº¯ÊıÖ´ĞĞ³É¹¦·µ»Øº¯Êı´´½¨µÄGrabber¶ÔÏó
-//			  pDevInfo	¸ÃÏà»úµÄÉè±¸ÃèÊöĞÅÏ¢£¬ÓÉCameraEnumerateDeviceº¯Êı»ñµÃ¡£ 
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGrabber_Create
+// åŠŸèƒ½æè¿° : ä»è®¾å¤‡æè¿°ä¿¡æ¯åˆ›å»ºGrabber
+// å‚æ•°     : Grabber    å¦‚æœå‡½æ•°æ‰§è¡ŒæˆåŠŸè¿”å›å‡½æ•°åˆ›å»ºçš„Grabberå¯¹è±¡
+//			  pDevInfo	è¯¥ç›¸æœºçš„è®¾å¤‡æè¿°ä¿¡æ¯ï¼Œç”±CameraEnumerateDeviceå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_Create(
 	void** Grabber,
@@ -32,25 +32,25 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_Create(
 	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGrabber_Destroy
-// ¹¦ÄÜÃèÊö : Ïú»ÙGrabber
-// ²ÎÊı     : Grabber
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGrabber_Destroy
+// åŠŸèƒ½æè¿° : é”€æ¯Grabber
+// å‚æ•°     : Grabber
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_Destroy(
 	void* Grabber
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SetHWnd
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÔ¤ÀÀÊÓÆµµÄÏÔÊ¾´°¿Ú
-// ²ÎÊı		: Grabber
-//			  hWnd  ´°¿Ú¾ä±ú
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SetHWnd
+// åŠŸèƒ½æè¿°	: è®¾ç½®é¢„è§ˆè§†é¢‘çš„æ˜¾ç¤ºçª—å£
+// å‚æ•°		: Grabber
+//			  hWnd  çª—å£å¥æŸ„
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetHWnd(
 	void* Grabber,
@@ -58,38 +58,38 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetHWnd(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_StartLive
-// ¹¦ÄÜÃèÊö	: Æô¶¯Ô¤ÀÀ
-// ²ÎÊı		: Grabber
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_StartLive
+// åŠŸèƒ½æè¿°	: å¯åŠ¨é¢„è§ˆ
+// å‚æ•°		: Grabber
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_StartLive(
 	void* Grabber
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_StopLive
-// ¹¦ÄÜÃèÊö	: Í£Ö¹Ô¤ÀÀ
-// ²ÎÊı		: Grabber
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_StopLive
+// åŠŸèƒ½æè¿°	: åœæ­¢é¢„è§ˆ
+// å‚æ•°		: Grabber
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_StopLive(
 	void* Grabber
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SaveImage
-// ¹¦ÄÜÃèÊö	: ×¥Í¼
-// ²ÎÊı		: Grabber
-//			  Image ·µ»Ø×¥È¡µ½µÄÍ¼Ïñ£¨ĞèÒªµ÷ÓÃCameraImage_DestroyÊÍ·Å£©
-//			  TimeOut ³¬Ê±Ê±¼ä£¨ºÁÃë£©
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SaveImage
+// åŠŸèƒ½æè¿°	: æŠ“å›¾
+// å‚æ•°		: Grabber
+//			  Image è¿”å›æŠ“å–åˆ°çš„å›¾åƒï¼ˆéœ€è¦è°ƒç”¨CameraImage_Destroyé‡Šæ”¾ï¼‰
+//			  TimeOut è¶…æ—¶æ—¶é—´ï¼ˆæ¯«ç§’ï¼‰
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SaveImage(
 	void* Grabber,
@@ -98,25 +98,25 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SaveImage(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SaveImageAsync
-// ¹¦ÄÜÃèÊö	: Ìá½»Ò»¸öÒì²½µÄ×¥Í¼ÇëÇó£¬Ìá½»³É¹¦ºó´ı×¥Í¼Íê³É»á»Øµ÷ÓÃ»§ÉèÖÃµÄÍê³Éº¯Êı
-// ²ÎÊı		: Grabber
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SaveImageAsync
+// åŠŸèƒ½æè¿°	: æäº¤ä¸€ä¸ªå¼‚æ­¥çš„æŠ“å›¾è¯·æ±‚ï¼Œæäº¤æˆåŠŸåå¾…æŠ“å›¾å®Œæˆä¼šå›è°ƒç”¨æˆ·è®¾ç½®çš„å®Œæˆå‡½æ•°
+// å‚æ•°		: Grabber
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SaveImageAsync(
 	void* Grabber
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SaveImageAsyncEx
-// ¹¦ÄÜÃèÊö	: Ìá½»Ò»¸öÒì²½µÄ×¥Í¼ÇëÇó£¬Ìá½»³É¹¦ºó´ı×¥Í¼Íê³É»á»Øµ÷ÓÃ»§ÉèÖÃµÄÍê³Éº¯Êı
-// ²ÎÊı		: Grabber
-//			  UserData ¿ÉÊ¹ÓÃCameraImage_GetUserData´ÓImage»ñÈ¡´ËÖµ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SaveImageAsyncEx
+// åŠŸèƒ½æè¿°	: æäº¤ä¸€ä¸ªå¼‚æ­¥çš„æŠ“å›¾è¯·æ±‚ï¼Œæäº¤æˆåŠŸåå¾…æŠ“å›¾å®Œæˆä¼šå›è°ƒç”¨æˆ·è®¾ç½®çš„å®Œæˆå‡½æ•°
+// å‚æ•°		: Grabber
+//			  UserData å¯ä½¿ç”¨CameraImage_GetUserDataä»Imageè·å–æ­¤å€¼
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SaveImageAsyncEx(
 	void* Grabber,
@@ -124,14 +124,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SaveImageAsyncEx(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SetSaveImageCompleteCallback
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÒì²½·½Ê½×¥Í¼µÄÍê³Éº¯Êı
-// ²ÎÊı		: Grabber
-//			  Callback µ±ÓĞ×¥Í¼ÈÎÎñÍê³ÉÊ±±»µ÷ÓÃ
-//			  Context µ±Callback±»µ÷ÓÃÊ±£¬×÷Îª²ÎÊı´«ÈëCallback
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SetSaveImageCompleteCallback
+// åŠŸèƒ½æè¿°	: è®¾ç½®å¼‚æ­¥æ–¹å¼æŠ“å›¾çš„å®Œæˆå‡½æ•°
+// å‚æ•°		: Grabber
+//			  Callback å½“æœ‰æŠ“å›¾ä»»åŠ¡å®Œæˆæ—¶è¢«è°ƒç”¨
+//			  Context å½“Callbackè¢«è°ƒç”¨æ—¶ï¼Œä½œä¸ºå‚æ•°ä¼ å…¥Callback
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetSaveImageCompleteCallback(
 	void* Grabber,
@@ -140,14 +140,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetSaveImageCompleteCallback(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SetFrameListener
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÖ¡¼àÌıº¯Êı
-// ²ÎÊı		: Grabber
-//			  Listener ¼àÌıº¯Êı£¬´Ëº¯Êı·µ»Ø0±íÊ¾¶ªÆúµ±Ç°Ö¡
-//			  Context µ±Listener±»µ÷ÓÃÊ±£¬×÷Îª²ÎÊı´«ÈëListener
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SetFrameListener
+// åŠŸèƒ½æè¿°	: è®¾ç½®å¸§ç›‘å¬å‡½æ•°
+// å‚æ•°		: Grabber
+//			  Listener ç›‘å¬å‡½æ•°ï¼Œæ­¤å‡½æ•°è¿”å›0è¡¨ç¤ºä¸¢å¼ƒå½“å‰å¸§
+//			  Context å½“Listenerè¢«è°ƒç”¨æ—¶ï¼Œä½œä¸ºå‚æ•°ä¼ å…¥Listener
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetFrameListener(
 	void* Grabber,
@@ -156,14 +156,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetFrameListener(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SetRawCallback
-// ¹¦ÄÜÃèÊö	: ÉèÖÃRAW»Øµ÷º¯Êı
-// ²ÎÊı		: Grabber
-//			  Callback Raw»Øµ÷º¯Êı
-//			  Context µ±Callback±»µ÷ÓÃÊ±£¬×÷Îª²ÎÊı´«ÈëCallback
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SetRawCallback
+// åŠŸèƒ½æè¿°	: è®¾ç½®RAWå›è°ƒå‡½æ•°
+// å‚æ•°		: Grabber
+//			  Callback Rawå›è°ƒå‡½æ•°
+//			  Context å½“Callbackè¢«è°ƒç”¨æ—¶ï¼Œä½œä¸ºå‚æ•°ä¼ å…¥Callback
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetRawCallback(
 	void* Grabber,
@@ -172,14 +172,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetRawCallback(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_SetRGBCallback
-// ¹¦ÄÜÃèÊö	: ÉèÖÃRGB»Øµ÷º¯Êı
-// ²ÎÊı		: Grabber
-//			  Callback RGB»Øµ÷º¯Êı
-//			  Context µ±Callback±»µ÷ÓÃÊ±£¬×÷Îª²ÎÊı´«ÈëCallback
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_SetRGBCallback
+// åŠŸèƒ½æè¿°	: è®¾ç½®RGBå›è°ƒå‡½æ•°
+// å‚æ•°		: Grabber
+//			  Callback RGBå›è°ƒå‡½æ•°
+//			  Context å½“Callbackè¢«è°ƒç”¨æ—¶ï¼Œä½œä¸ºå‚æ•°ä¼ å…¥Callback
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetRGBCallback(
 	void* Grabber,
@@ -188,13 +188,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_SetRGBCallback(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_GetCameraHandle
-// ¹¦ÄÜÃèÊö	: »ñÈ¡Ïà»ú¾ä±ú
-// ²ÎÊı		: Grabber
-//			  hCamera ·µ»ØµÄÏà»ú¾ä±ú
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_GetCameraHandle
+// åŠŸèƒ½æè¿°	: è·å–ç›¸æœºå¥æŸ„
+// å‚æ•°		: Grabber
+//			  hCamera è¿”å›çš„ç›¸æœºå¥æŸ„
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_GetCameraHandle(
 	void* Grabber,
@@ -202,13 +202,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_GetCameraHandle(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_GetStat
-// ¹¦ÄÜÃèÊö	: »ñÈ¡Ö¡Í³¼ÆĞÅÏ¢
-// ²ÎÊı		: Grabber
-//			  stat ·µ»ØµÄÍ³¼ÆĞÅÏ¢
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_GetStat
+// åŠŸèƒ½æè¿°	: è·å–å¸§ç»Ÿè®¡ä¿¡æ¯
+// å‚æ•°		: Grabber
+//			  stat è¿”å›çš„ç»Ÿè®¡ä¿¡æ¯
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_GetStat(
 	void* Grabber,
@@ -216,13 +216,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraGrabber_GetStat(
 	);
 
 /******************************************************/
-// º¯ÊıÃû	: CameraGrabber_GetCameraDevInfo
-// ¹¦ÄÜÃèÊö	: »ñÈ¡Ïà»úDevInfo
-// ²ÎÊı		: Grabber
-//			  DevInfo ·µ»ØµÄÏà»úDevInfo
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å	: CameraGrabber_GetCameraDevInfo
+// åŠŸèƒ½æè¿°	: è·å–ç›¸æœºDevInfo
+// å‚æ•°		: Grabber
+//			  DevInfo è¿”å›çš„ç›¸æœºDevInfo
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraGrabber_GetCameraDevInfo(
 	void* Grabber,
