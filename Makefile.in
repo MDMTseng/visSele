@@ -54,7 +54,7 @@ $(SUB_MAKEFILES):
 #VARS_LIST := $(.VARIABLES)
 
 prepare:
-	-@[ ! -z "$(ODIR)" ]&&mkdir -p $(ODIR) || true
+	-@[ ! -z "$(ODIR)" ]&&mkdir $(ODIR) || true
 
 build_objs:$(OBJ)
 

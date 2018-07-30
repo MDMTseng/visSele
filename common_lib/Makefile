@@ -5,7 +5,7 @@ IDIR=	./include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_acvImage)/include\
 			$(MODULE_LOGCTRL)/include\
-			$(MODULE_zlib)/include
+			$(MODULE_zlib)/src
 
 ODIR=obj
 _OBJ = Util.o
