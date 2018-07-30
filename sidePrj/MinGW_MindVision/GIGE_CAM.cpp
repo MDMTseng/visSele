@@ -7,25 +7,66 @@
 #include <assert.h>
 
 BOOL InitCamera();
-BOOL DDD();
+BOOL FetchImage();
 BOOL UnInitCamera();
+void printImgAscii(unsigned char *img,int width,int height, int printwidth);
 
+
+CameraHandle    m_hCamera;	//������豸���|the handle of the camera we use
+BYTE*           m_pFrameBuffer=NULL;
+BYTE*           extFrameBuffer=NULL;
 int main()
 {
 	InitCamera();
 
 	for (int i=0;i<100;i++)
 	{
-		DDD();
+		//FetchImage(); //Directly get image from camera
+		Sleep(200);
+		CameraSoftTrigger(m_hCamera);//SoftTrigger
 	}
 	UnInitCamera();
 	system("pause");
     return 0;
 }
 
-CameraHandle    m_hCamera;	//������豸���|the handle of the camera we use
-BYTE*           m_pFrameBuffer=NULL;
+void ImgDecodeAndRun(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext)
+{
+		static int cccccc=0;
+		//printf("%s:\n",__func__);
+		CameraSdkStatus status =
+		CameraImageProcess(hCamera, frameBuffer, extFrameBuffer, frameInfo);
+		if(cccccc++%1==0)
+		{
+			if(1)
+			{
+				printf("uiTimeStamp:%d\n", frameInfo->uiTimeStamp);
+				printf("fAnalogGain:%f\n", frameInfo->fAnalogGain);
+				printf("iContrast:%d\n", frameInfo->iContrast);
+				printf("iGamma:%d\n", frameInfo->iGamma);
+				printf("iHeight:%d\n", frameInfo->iHeight);
+				printf("iWidth:%d\n", frameInfo->iWidth);
+				printf("get image Buffer\n");
+			}
+			//memcpy(extFrameBuffer,m_pFrameBuffer,frameInfo->iWidth*frameInfo->iHeight*3);
+			printImgAscii(extFrameBuffer, frameInfo->iWidth, frameInfo->iHeight, 10);
+		}
+}
 
+//It will be called when it's triggered or when there is a new image(in continuous mode)
+void _stdcall  GrabImageCallback(CameraHandle hCamera, BYTE *pFrameBuffer, tSdkFrameHead* pFrameHead,PVOID pContext)
+{
+	ImgDecodeAndRun(hCamera,pFrameBuffer,pFrameHead,pContext);
+	/*CameraSdkStatus status;
+	CBasicDlg *pThis = (CBasicDlg*)pContext;
+	status = CameraImageProcess(pThis->m_hCamera, pFrameBuffer, pThis->m_pFrameBuffer,pFrameHead);
+	if (pThis->m_sFrInfo.iWidth != pFrameHead->iWidth || pThis->m_sFrInfo.iHeight != pFrameHead->iHeight)
+	{
+		pThis->m_sFrInfo.iWidth = pFrameHead->iWidth;
+		pThis->m_sFrInfo.iHeight = pFrameHead->iHeight;
+		pThis->InvalidateRect(NULL);
+	}*/
+}
 
 BOOL InitCamera()
 {
@@ -63,11 +104,21 @@ BOOL InitCamera()
 		return FALSE;
 	}
 
-
+	{
+		CameraSetTriggerMode(m_hCamera,1);
+		//0 for continuous, 1 for soft trigger, 2 for HW trigger
+		CameraSetTriggerCount(m_hCamera,1);
+		CameraSetCallbackFunction(m_hCamera,GrabImageCallback,(PVOID)NULL,NULL);
+	}
 	//Get properties description for this camera.
 	CameraGetCapability(m_hCamera, &sCameraInfo);
+	printf(">>W:%d H:%d>>\n",
+		sCameraInfo.sResolutionRange.iWidthMax,
+		sCameraInfo.sResolutionRange.iHeightMax
+	);
 
-	m_pFrameBuffer = (BYTE *)CameraAlignMalloc(sCameraInfo.sResolutionRange.iWidthMax*sCameraInfo.sResolutionRange.iHeightMax * 4, 16);
+	m_pFrameBuffer = (BYTE *)CameraAlignMalloc(sCameraInfo.sResolutionRange.iWidthMax*sCameraInfo.sResolutionRange.iHeightMax * 3, 16);
+	extFrameBuffer  = (BYTE *)CameraAlignMalloc(sCameraInfo.sResolutionRange.iWidthMax*sCameraInfo.sResolutionRange.iHeightMax * 3, 16);
 
 
 	CameraPlay(m_hCamera);
@@ -97,26 +148,15 @@ void printImgAscii(unsigned char *img,int width,int height, int printwidth)
 }
 
 
-BOOL DDD()
+BOOL FetchImage()
 {
 	tSdkFrameHead 	sFrameInfo;
 	BYTE*			pbyBuffer;
 	if (CameraGetImageBuffer(m_hCamera, &sFrameInfo, &pbyBuffer, 10000) == CAMERA_STATUS_SUCCESS)
 	{
-		CameraSdkStatus status =
-			CameraImageProcess(m_hCamera, pbyBuffer, m_pFrameBuffer, &sFrameInfo);//����ģʽ
 
-		printf("uiTimeStamp:%d\n", sFrameInfo.uiTimeStamp);
-		printf("fAnalogGain:%f\n", sFrameInfo.fAnalogGain);
-		printf("iContrast:%d\n", sFrameInfo.iContrast);
-		printf("iGamma:%d\n", sFrameInfo.iGamma);
-		printf("iHeight:%d\n", sFrameInfo.iHeight);
-		printf("iWidth:%d\n", sFrameInfo.iWidth);
-
-		printf("get image Buffer\n");
-
+		ImgDecodeAndRun(m_hCamera,pbyBuffer,&sFrameInfo,NULL);
 		CameraReleaseImageBuffer(m_hCamera, pbyBuffer);
-		printImgAscii(m_pFrameBuffer, sFrameInfo.iWidth, sFrameInfo.iHeight, 10);
 	}
 	else
 	{
