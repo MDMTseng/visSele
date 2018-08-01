@@ -8,7 +8,7 @@ IDIR= ./include_priv/ \
 			$(MODULE_common_lib)/include \
 			$(MODULE_circleFitting) \
 			$(MODULE_LOGCTRL)/include\
-			$(MODULE_zlib)/include
+			$(MODULE_zlib)/src
 
 ODIR=obj
 _OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.opp ContourGrid.opp FeatureManager_group.opp FeatureManager_platingCheck.opp

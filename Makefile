@@ -7,7 +7,7 @@ export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_LOGCTRL=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
 export MODULE_common_lib=$(abspath common_lib)
-export MODULE_zlib=$(abspath contrib/zlib)
+export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath contrib/SOIL)
 export MODULE_lodepng=$(abspath contrib/lodepng)
 
@@ -31,7 +31,7 @@ IDIR=	include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
-			$(MODULE_zlib)/include \
+			$(MODULE_zlib)/src \
 
 LDIR=./ $(MODULE_acvImage)
 LIBS=-lacvImage -lz

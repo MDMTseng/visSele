@@ -1,5 +1,5 @@
 
-IDIR = $(MODULE_zlib)/include
+IDIR = $(MODULE_zlib)/src
 _OBJ = zlib_test.o
 
 target_bin = zlib_test

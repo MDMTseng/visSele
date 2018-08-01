@@ -9,7 +9,7 @@ IDIR= ./include_priv/ \
 			$(MODULE_common_lib)/include \
 			$(MODULE_circleFitting) \
 			$(MODULE_LOGCTRL)/include\
-			$(MODULE_zlib)/include
+			$(MODULE_zlib)/src
 
 VPATH = ./ ./MorphEngine
 ODIR=obj
