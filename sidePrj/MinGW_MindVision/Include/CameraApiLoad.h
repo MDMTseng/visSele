@@ -11,71 +11,89 @@
 //BIG5 TRANS ALLOWED
 
 
-/******************************************************/
-// 函数名   : CameraSdkInit
-// 功能描述 : 相机SDK初始化，在调用任何SDK其他接口前，必须
-//        先调用该接口进行初始化。该函数在整个进程运行
-//        期间只需要调用一次。
-// 参数     : iLanguageSel 用于选择SDK内部提示信息和界面的语种,
-//               0:表示英文,1:表示中文。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSdkInit
+// Function Description: Camera SDK initialization, before calling any other SDK interface, must be
+// First call the interface for initialization. This function runs throughout the process
+// Only need to be called once.
+// parameters: iLanguageSel used to select the language and interface of the SDK internal tips,
+// 0: English, 1: Chinese.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSdkInit)(
 	int     iLanguageSel
 	);
 
-/******************************************************/
-// 函数名   : CameraEnumerateDevice
-// 功能描述 : 枚举设备，并建立设备列表。在调用CameraInit
-//        之前，必须调用该函数来获得设备的信息。
-// 参数     : pCameraList   设备列表数组指针。
-//            piNums        设备的个数指针，调用时传入pCameraList
-//                            数组的元素个数，函数返回时，保存实际找到的设备个数。
-//              注意，piNums指向的值必须初始化，且不超过pCameraList数组元素个数，
-//              否则有可能造成内存溢出。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraEnumerateDevice
+// Function Description: Enumerate the device and create a device list. Call CameraInit
+// Before, you must call this function to get the device's information.
+// Parameters: pCameraList Device list array pointer.
+// The number of piNums device pointers passed to pCameraList when called
+// The number of elements of the array, the function returns, save the actual number of devices found.
+// Note that the value pointed to by piNums must be initialized and does not exceed the number of pCameraList array elements,
+// Otherwise it may cause memory overflow.
+// Special Note: CameraEnumerateDevice camera information list will be sorted according to acFriendlyName,
+// For example, you could change the two cameras to "Camera1" and "Camera2" respectively,
+// CameraEnumerateDevice returns a list of cameras named "Camera1" in front of the camera row named "Camera2"
+// This method is relatively simple and effective, the code can be initialized in order, without special binding.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraEnumerateDevice)(
-	tSdkCameraDevInfo* pCameraList,
+	tSdkCameraDevInfo* pCameraList, 
 	INT*               piNums
 	);
 
-/******************************************************/
-// 函数名   : CameraIsOpened
-// 功能描述 : 检测设备是否已经被其他应用程序打开。在调用CameraInit
-//        之前，可以使用该函数进行检测，如果已经被打开，调用
-//        CameraInit会返回设备已经被打开的错误码。
-// 参数     : pCameraList 设备的枚举信息结构体指针，由CameraEnumerateDevice获得。
-//            pOpened       设备的状态指针，返回设备是否被打开的状态，TRUE为打开，FALSE为空闲。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraEnumerateDeviceEx
+// Function Description: Enumerate the device and create a device list. Call CameraInitEx
+// You must call this function before enumerating the device.
+// parameters:
+// Return value: return the number of devices, 0 means no.
+/***************************************************** *****/
+typedef INT (__stdcall *_CameraEnumerateDeviceEx)(
+	);
+
+/***************************************************** *****/
+// function name: CameraIsOpened
+// Function Description: Check whether the device has been opened by other applications. Call CameraInit
+// Before, you can use this function to detect, if it has been opened, called
+// CameraInit will return the device has been opened error code.
+// Parameters: pCameraList Device enumeration information structure pointer, obtained by the CameraEnumerateDevice.
+// pOpened The device's status pointer that returns whether the device is open, TRUE is open, and FALSE is idle.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraIsOpened)(
-	tSdkCameraDevInfo*  pCameraList,
+	tSdkCameraDevInfo*  pCameraList, 
 	BOOL*       pOpened
 	);
 
-/******************************************************/
-// 函数名   : CameraInit
-// 功能描述 : 相机初始化。初始化成功后，才能调用任何其他
-//        相机相关的操作接口。
-// 参数     : pCameraInfo    该相机的设备描述信息，由CameraEnumerateDevice
-//               函数获得。
-//            iParamLoadMode  相机初始化时使用的参数加载方式。-1表示使用上次退出时的参数加载方式。
-//            emTeam         初始化时使用的参数组。-1表示加载上次退出时的参数组。
-//            pCameraHandle  相机的句柄指针，初始化成功后，该指针
-//               返回该相机的有效句柄，在调用其他相机
-//               相关的操作接口时，都需要传入该句柄，主要
-//               用于多相机之间的区分。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraInit
+// Function Description: Camera initialization. After initialization is successful, anything else can be called
+// camera-related interface.
+// Parameters: pCameraInfo The camera's device description information, by CameraEnumerateDevice
+// function to get.
+// iParamLoadMode The parameter loading method used when the camera initializes. -1 indicates the parameter loading method when using last exit.
+// PARAM_MODE_BY_MODEL means loaded by model
+// PARAM_MODE_BY_SN means loading by serial number
+// PARAM_MODE_BY_NAME means that it is loaded by nickname
+// For details, please refer to the definition of emSdkParameterMode in CameraDefine.h.
+// The parameter group used when emTeam is initialized. -1 indicates the parameter group when the last exit was loaded.
+// pCameraHandle The handle of the camera handle, after the initialization is successful, the pointer
+// returns a valid handle to this camera, calling another camera
+// related to the operating interface, you need to pass in the handle, mainly
+// Used for the distinction between multiple cameras.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraInit)(
 	tSdkCameraDevInfo*  pCameraInfo,
 	int         emParamLoadMode,
@@ -83,20 +101,64 @@ typedef    CameraSdkStatus (__stdcall *_CameraInit)(
 	CameraHandle*   pCameraHandle
 	);
 
-/******************************************************/
-// 函数名   : CameraSetCallbackFunction
-// 功能描述 : 设置图像捕获的回调函数。当捕获到新的图像数据帧时，
-//        pCallBack所指向的回调函数就会被调用。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pCallBack 回调函数指针。
-//            pContext  回调函数的附加参数，在回调函数被调用时
-//            该附加参数会被传入，可以为NULL。多用于
-//            多个相机时携带附加信息。
-//            pCallbackOld  用于保存当前的回调函数。可以为NULL。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraInitEx
+// Function Description: Camera initialization. After initialization is successful, anything else can be called
+// camera-related interface.
+// Parameters: iDeviceIndex The camera index number, CameraEnumerateDeviceEx returns the number of cameras.
+// iParamLoadMode The parameter loading method used when the camera initializes. -1 indicates the parameter loading method when using last exit.
+// PARAM_MODE_BY_MODEL means loaded by model
+// PARAM_MODE_BY_SN means loading by serial number
+// PARAM_MODE_BY_NAME means that it is loaded by nickname
+// For details, please refer to the definition of emSdkParameterMode in CameraDefine.h.
+// The parameter group used when emTeam is initialized. -1 indicates the parameter group when the last exit was loaded.
+// pCameraHandle The handle of the camera handle, after the initialization is successful, the pointer
+// returns a valid handle to this camera, calling another camera
+// related to the operating interface, you need to pass in the handle, mainly
+// Used for the distinction between multiple cameras.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraInitEx)(
+	int             iDeviceIndex,
+	int             iParamLoadMode,
+	int             emTeam,
+	CameraHandle*   pCameraHandle
+	);
+
+/***************************************************** *****/
+// function name: CameraInitEx2
+// Function Description: Camera initialization. After initialization is successful, anything else can be called
+// camera-related interface. Note that you need to call CameraEnumerateDeviceEx to enumerate the camera first
+// parameter: CameraName camera name
+// pCameraHandle The handle of the camera handle, after the initialization is successful, the pointer
+// returns a valid handle to this camera, calling another camera
+// related to the operating interface, you need to pass in the handle, mainly
+// Used for the distinction between multiple cameras.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraInitEx2)(
+	char* CameraName,
+	CameraHandle   *pCameraHandle
+	);
+
+/***************************************************** *****/
+// function name: CameraSetCallbackFunction
+// Function Description: Set the image capture callback function. When a new image data frame is captured,
+// The callback function pointed to by pCallBack will be called.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pCallBack callback function pointer.
+// pContext callback function additional parameters, when the callback function is called
+// This additional parameter will be passed in, can be NULL. Used more
+// Multiple cameras carry additional information.
+// pCallbackOld is used to save the current callback function. Can be NULL.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetCallbackFunction)(
 	CameraHandle        hCamera,
 	CAMERA_SNAP_PROC    pCallBack,
@@ -104,72 +166,73 @@ typedef    CameraSdkStatus (__stdcall *_CameraSetCallbackFunction)(
 	CAMERA_SNAP_PROC*   pCallbackOld
 	);
 
-/******************************************************/
-// 函数名   : CameraUnInit
-// 功能描述 : 相机反初始化。释放资源。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraUnInit
+// Function Description: Camera anti-initialization. Release resources.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraUnInit)(
 	CameraHandle hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraGetInformation
-// 功能描述 : 获得相机的描述信息
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pbuffer 指向相机描述信息指针的指针。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetInformation
+// Function Description: Get the description of the camera
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbuffer Pointer to the camera description information pointer.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetInformation)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	char**          pbuffer
 	);
 
-/******************************************************/
-// 函数名   : CameraImageProcess
-// 功能描述 : 将获得的相机原始输出图像数据进行处理，叠加饱和度、
-//        颜色增益和校正、降噪等处理效果，最后得到RGB888
-//        格式的图像数据。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbyIn    输入图像数据的缓冲区地址，不能为NULL。
-//            pbyOut   处理后图像输出的缓冲区地址，不能为NULL。
-//            pFrInfo  输入图像的帧头信息，处理完成后，帧头信息
-//             中的图像格式uiMediaType会随之改变。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraImageProcess
+// Function Description: Will be obtained by the original camera output image data processing, superimposed saturation,
+// Color gain and correction, noise reduction and other effects, and finally get RGB888
+// format the image data.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbyIn Input buffer address for image data, can not be NULL.
+// pbyOut Buffer address for image output after processing, can not be NULL.
+// pFrInfo Input image frame header information, processing is completed, the header information
+// The image format uiMediaType will change accordingly.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraImageProcess)(
-	CameraHandle        hCamera,
-	BYTE*               pbyIn,
+	CameraHandle        hCamera, 
+	BYTE*               pbyIn, 
 	BYTE*               pbyOut,
 	tSdkFrameHead*      pFrInfo
 	);
 
-/******************************************************/
-// 函数名 	: CameraImageProcessEx
-// 功能描述	: 将获得的相机原始输出图像数据进行处理，叠加饱和度、
-//			  颜色增益和校正、降噪等处理效果，最后得到RGB888
-//			  格式的图像数据。
-// 参数	    : hCamera      相机的句柄，由CameraInit函数获得。
-//            pbyIn	     输入图像数据的缓冲区地址，不能为NULL。
-//            pbyOut        处理后图像输出的缓冲区地址，不能为NULL。
-//            pFrInfo       输入图像的帧头信息，处理完成后，帧头信息
-//            uOutFormat    处理完后图像的输出格式
-//            uReserved     预留参数，必须设置为0
-//					   中的图像格式uiMediaType会随之改变。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraImageProcessEx
+// Function Description: Will be obtained by the original camera output image data processing, superimposed saturation,
+// Color gain and correction, noise reduction and other effects, and finally get RGB888
+// format the image data.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbyIn Input buffer address for image data, can not be NULL.
+// pbyOut Buffer address for image output after processing, can not be NULL.
+// pFrInfo Input image frame header information, processing is completed, the header information
+// The output format of the image processed by uOutFormat can be one of CAMERA_MEDIA_TYPE_MONO8 CAMERA_MEDIA_TYPE_RGB CAMERA_MEDIA_TYPE_RGBA8.
+// pbyIn The corresponding buffer size, which must match the format specified by uOutFormat.
+// uReserved Reserved parameter, must be set to 0
+// The image format uiMediaType will change accordingly.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraImageProcessEx)(
-	CameraHandle        hCamera,
-	BYTE*               pbyIn,
+	CameraHandle        hCamera, 
+	BYTE*               pbyIn, 
 	BYTE*               pbyOut,
 	tSdkFrameHead*      pFrInfo,
 	UINT                uOutFormat,
@@ -177,157 +240,158 @@ typedef CameraSdkStatus (__stdcall *_CameraImageProcessEx)(
 	);
 
 
-/******************************************************/
-// 函数名   : CameraDisplayInit
-// 功能描述 : 初始化SDK内部的显示模块。在调用CameraDisplayRGB24
-//        前必须先调用该函数初始化。如果您在二次开发中，
-//        使用自己的方式进行图像显示(不调用CameraDisplayRGB24)，
-//        则不需要调用本函数。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            hWndDisplay 显示窗口的句柄，一般为窗口的m_hWnd成员。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraDisplayInit
+// Function Description: Initialize the display module inside the SDK. Call CameraDisplayRGB24
+// must be called before the function is initialized. If you are in the secondary development,
+// use your own way for image display (do not call CameraDisplayRGB24),
+// You do not need to call this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// hWndDisplay display window handle, the window is generally m_hWnd members.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraDisplayInit)(
 	CameraHandle    hCamera,
 	HWND            hWndDisplay
 	);
 
-/******************************************************/
-// 函数名   : CameraDisplayInitEx
-// 功能描述 : 初始化SDK内部的显示模块。在调用CameraDisplayRGB24
-//        前必须先调用该函数初始化。如果您在二次开发中，
-//        使用自己的方式进行图像显示(不调用CameraDisplayRGB24)，
-//        则不需要调用本函数。 该函数和 CameraDisplayInit的区别是
-//        该函数时为图像文件创建一个SDK句柄，以使用其内部ISP、显示接口
-// 参数     : pCameraHandle   返回相机的句柄。
-//            hWndDisplay 显示窗口的句柄，一般为窗口的m_hWnd成员。
-//            szFileName  图像文件名。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
-typedef    CameraSdkStatus (__stdcall *_CameraDisplayInitEx)(
-	CameraHandle*   pCameraHandle,
-	HWND            hWndDisplay,
-	char*           szFileName
-	);
-
-/******************************************************/
-// 函数名   : CameraDisplayRGB24
-// 功能描述 : 显示图像。必须调用过CameraDisplayInit进行
-//        初始化才能调用本函数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbyRGB24 图像的数据缓冲区，RGB888格式。
-//            pFrInfo  图像的帧头信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraDisplayRGB24
+// Function Description: Display image. CameraDisplayInit must be called
+// Initialize to call this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbyRGB24 image data buffer, RGB888 format.
+// The header of the pFrInfo image.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraDisplayRGB24)(
 	CameraHandle        hCamera,
-	BYTE*               pbyRGB24,
+	BYTE*               pbyRGB24, 
 	tSdkFrameHead*      pFrInfo
 	);
 
-/******************************************************/
-// 函数名   : CameraSetDisplayMode
-// 功能描述 : 设置显示的模式。必须调用过CameraDisplayInit
-//        进行初始化才能调用本函数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iMode    显示模式，DISPLAYMODE_SCALE或者
-//             DISPLAYMODE_REAL,具体参见CameraDefine.h
-//             中emSdkDisplayMode的定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetDisplayMode
+// Function Description: Set the display mode. CameraDisplayInit must be called
+// Initialize to call this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iMode display mode, DISPLAYMODE_SCALE or
+// DISPLAYMODE_REAL, see CameraDefine.h for details
+// The definition of emSdkDisplayMode.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetDisplayMode)(
 	CameraHandle    hCamera,
 	INT             iMode
 	);
 
-/******************************************************/
-// 函数名   : CameraSetDisplayOffset
-// 功能描述 : 设置显示的起始偏移值。仅当显示模式为DISPLAYMODE_REAL
-//        时有效。例如显示控件的大小为320X240，而图像的
-//        的尺寸为640X480，那么当iOffsetX = 160,iOffsetY = 120时
-//        显示的区域就是图像的居中320X240的位置。必须调用过
-//        CameraDisplayInit进行初始化才能调用本函数。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            iOffsetX  偏移的X坐标。
-//            iOffsetY  偏移的Y坐标。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetDisplayOffset
+// Function Description: Set the displayed starting offset value. Only if the display mode is DISPLAYMODE_REAL
+// effective. For example, the size of the display control is 320X240, while the image is
+// size 640X480, then when iOffsetX = 160, iOffsetY = 120
+// The area shown is the center of the image at 320x240. Must be called before
+// CameraDisplayInit to initialize this function can be called.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// X coordinate of iOffsetX offset.
+// iOffsetY Offset Y coordinate.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetDisplayOffset)(
 	CameraHandle    hCamera,
-	int             iOffsetX,
+	int             iOffsetX, 
 	int             iOffsetY
 	);
 
-/******************************************************/
-// 函数名   : CameraSetDisplaySize
-// 功能描述 : 设置显示控件的尺寸。必须调用过
-//        CameraDisplayInit进行初始化才能调用本函数。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            iWidth    宽度
-//            iHeight   高度
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetDisplaySize
+// Function Description: Set the size of the display control. Must be called before
+// CameraDisplayInit to initialize this function can be called.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iWidth width
+// iHeight height
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetDisplaySize)(
-	CameraHandle    hCamera,
-	INT             iWidth,
+	CameraHandle    hCamera, 
+	INT             iWidth, 
 	INT             iHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraGetImageBuffer
-// 功能描述 : 获得一帧图像数据。为了提高效率，SDK在图像抓取时采用了零拷贝机制，
-//        CameraGetImageBuffer实际获得是内核中的一个缓冲区地址，
-//        该函数成功调用后，必须调用CameraReleaseImageBuffer释放由
-//        CameraGetImageBuffer得到的缓冲区,以便让内核继续使用
-//        该缓冲区。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            pFrameInfo  图像的帧头信息指针。
-//            pbyBuffer   指向图像的数据的缓冲区指针。由于
-//              采用了零拷贝机制来提高效率，因此
-//              这里使用了一个指向指针的指针。
-//            UINT wTimes 抓取图像的超时时间。单位毫秒。在
-//              wTimes时间内还未获得图像，则该函数
-//              会返回超时信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBuffer
+// Function Description: Get a frame of image data. In order to improve efficiency, SDK uses a zero-copy mechanism for image capture,
+// CameraGetImageBuffer actually gets a buffer address in the kernel,
+// After the function is successfully called, you must call CameraReleaseImageBuffer to release by
+// CameraGetImageBuffer Get the buffer for the kernel to continue using
+// This buffer.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The header information pointer of the pFrameInfo image.
+// pbyBuffer Buffer pointer to the image's data. due to
+// A zero-copy mechanism is used to improve efficiency, so
+// Here is a pointer to the pointer.
+// UINT wTimes The time-out period for grabbing the image. Milliseconds. in
+// wTimes time has not yet been the image, then the function
+// will return the timeout message.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetImageBuffer)(
-	CameraHandle        hCamera,
-	tSdkFrameHead*      pFrameInfo,
+	CameraHandle        hCamera, 
+	tSdkFrameHead*      pFrameInfo, 
 	BYTE**              pbyBuffer,
 	UINT                wTimes
 	);
 
-/******************************************************/
-// 函数名   : CameraSnapToBuffer
-// 功能描述 : 抓拍一张图像到缓冲区中。相机会进入抓拍模式，并且
-//        自动切换到抓拍模式的分辨率进行图像捕获。然后将
-//        捕获到的数据保存到缓冲区中。
-//        该函数成功调用后，必须调用CameraReleaseImageBuffer
-//        释放由CameraSnapToBuffer得到的缓冲区。具体请参考
-//        CameraGetImageBuffer函数的功能描述部分。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            pFrameInfo  指针，返回图像的帧头信息。
-//            pbyBuffer   指向指针的指针，用来返回图像缓冲区的地址。
-//            uWaitTimeMs 超时时间，单位毫秒。在该时间内，如果仍然没有
-//              成功捕获的数据，则返回超时信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferEx
+// Function Description: Get a frame of image data. The image obtained by this interface is processed RGB format. After the function is called,
+// Do not need to call CameraReleaseImageBuffer release, do not call free release of such functions
+// to free the image data buffer returned by this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piWidth plastic pointer, returns the width of the image
+// piHeight plastic pointer, returns the height of the image
+// UINT wTimes The time-out period for grabbing the image. Milliseconds. in
+// wTimes time has not yet been the image, then the function
+// will return the timeout message.
+// Return Value: Returns the first address of the RGB data buffer on success;
+// otherwise 0
+/***************************************************** *****/
+typedef unsigned char* (__stdcall *_CameraGetImageBufferEx)(
+	CameraHandle        hCamera, 
+	INT*                piWidth,
+	INT*                piHeight,
+	UINT                wTimes
+	);
+
+/***************************************************** *****/
+// function name: CameraSnapToBuffer
+// Function Description: Snap an image into the buffer. Camera will enter snap mode, and
+// Automatically switch to the capture mode resolution for image capture. Then
+// The captured data is saved in the buffer.
+// After the function is successfully called, CameraReleaseImageBuffer must be called
+// Free the buffer from CameraSnapToBuffer. Specific reference
+// CameraGetImageBuffer function description section.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pFrameInfo pointer returns the header information of the image.
+// pbyBuffer Pointer to the pointer to return the address of the image buffer.
+// uWaitTimeMs timeout, in milliseconds. In that time, if still not
+// The data that was successfully captured returns the time-out information.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSnapToBuffer)(
 	CameraHandle        hCamera,
 	tSdkFrameHead*      pFrameInfo,
@@ -335,76 +399,76 @@ typedef    CameraSdkStatus (__stdcall *_CameraSnapToBuffer)(
 	UINT                uWaitTimeMs
 	);
 
-/******************************************************/
-// 函数名   : CameraReleaseImageBuffer
-// 功能描述 : 释放由CameraGetImageBuffer获得的缓冲区。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            pbyBuffer   由CameraGetImageBuffer获得的缓冲区地址。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraReleaseImageBuffer
+// Function Description: Free up the buffer obtained by CameraGetImageBuffer.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbyBuffer The buffer address obtained by CameraGetImageBuffer.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraReleaseImageBuffer)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BYTE*           pbyBuffer
 	);
 
-/******************************************************/
-// 函数名   : CameraPlay
-// 功能描述 : 让SDK进入工作模式，开始接收来自相机发送的图像
-//        数据。如果当前相机是触发模式，则需要接收到
-//        触发帧以后才会更新图像。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraPlay
+// Function Description: Let SDK into working mode, began to receive images sent from the camera
+// data. If the current camera is in trigger mode, it needs to be received
+// The frame will be updated before updating the image.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraPlay)(
 	CameraHandle hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraPause
-// 功能描述 : 让SDK进入暂停模式，不接收来自相机的图像数据，
-//        同时也会发送命令让相机暂停输出，释放传输带宽。
-//        暂停模式下，可以对相机的参数进行配置，并立即生效。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraPause
+// Function Description: Let SDK into suspend mode, do not receive the image data from the camera,
+// Also send a command to the camera to pause the output, release the transmission bandwidth.
+// Pause mode, camera parameters can be configured and take effect immediately.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraPause)(
 	CameraHandle hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraStop
-// 功能描述 : 让SDK进入停止状态，一般是反初始化时调用该函数，
-//        该函数被调用，不能再对相机的参数进行配置。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraStop
+// Function Description: Let the SDK into the stop state, the call is usually called when the initialization function,
+// This function is called and can no longer be configured on the camera's parameters.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraStop)(
 	CameraHandle hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraInitRecord
-// 功能描述 : 初始化一次录像。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            iFormat   录像的格式，当前只支持不压缩和MSCV两种方式。
-//              0:不压缩；1:MSCV方式压缩。
-//            pcSavePath  录像文件保存的路径。
-//            b2GLimit    如果为TRUE,则文件大于2G时自动分割。
-//            dwQuality   录像的质量因子，越大，则质量越好。范围1到100.
-//            iFrameRate  录像的帧率。建议设定的比实际采集帧率大，
-//              这样就不会漏帧。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraInitRecord
+// Function Description: Initialize a video.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iFormat video format, currently only supports non-compressed and MSCV two ways.
+// 0: no compression; 1: MSCV compression.
+// pcSavePath save the path to the video file.
+// b2GLimit If TRUE, the file is automatically split when it is larger than 2G.
+// dwQuality video quality factor, the greater the better quality. The range is from 1 to 100.
+// iFrameRate video frame rate. Proposed setting than the actual acquisition frame rate,
+// This will not miss the frame.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraInitRecord)(
 	CameraHandle    hCamera,
 	int             iFormat,
@@ -414,63 +478,63 @@ typedef    CameraSdkStatus (__stdcall *_CameraInitRecord)(
 	int             iFrameRate
 	);
 
-/******************************************************/
-// 函数名   : CameraStopRecord
-// 功能描述 : 结束本次录像。当CameraInitRecord后，可以通过该函数
-//        来结束一次录像，并完成文件保存操作。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraStopRecord
+// Function Description: End this video. After CameraInitRecord, you can pass this function
+// to end a video, and complete the file save operation.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraStopRecord)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraPushFrame
-// 功能描述 : 将一帧数据存入录像流中。必须调用CameraInitRecord
-//        才能调用该函数。CameraStopRecord调用后，不能再调用
-//        该函数。由于我们的帧头信息中携带了图像采集的时间戳
-//        信息，因此录像可以精准的时间同步，而不受帧率不稳定
-//        的影响。
-// 参数     : hCamera     相机的句柄，由CameraInit函数获得。
-//            pbyImageBuffer    图像的数据缓冲区，必须是RGB格式。
-//            pFrInfo           图像的帧头信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraPushFrame
+// Function Description: Save a frame of data into the video stream. CameraInitRecord must be called
+// to call this function. After CameraStopRecord is called, it can not be called again
+// This function. Since our frame header carries the timestamp of the image capture
+// information, so recording can be precise time synchronization, and not subject to instability frame rate
+// Impact.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbyImageBuffer Image data buffer must be in RGB format.
+// The header of the pFrInfo image.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraPushFrame)(
 	CameraHandle    hCamera,
 	BYTE*           pbyImageBuffer,
 	tSdkFrameHead*  pFrInfo
 	);
 
-/******************************************************/
-// 函数名   : CameraSaveImage
-// 功能描述 : 将图像缓冲区的数据保存成图片文件。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            lpszFileName   图片保存文件完整路径。
-//            pbyImageBuffer 图像的数据缓冲区。
-//            pFrInfo        图像的帧头信息。
-//            byFileType     图像保存的格式。取值范围参见CameraDefine.h
-//               中emSdkFileType的类型定义。目前支持
-//               BMP、JPG、PNG、RAW四种格式。其中RAW表示
-//               相机输出的原始数据，保存RAW格式文件要求
-//               pbyImageBuffer和pFrInfo是由CameraGetImageBuffer
-//               获得的数据，而且未经CameraImageProcess转换
-//               成BMP格式；反之，如果要保存成BMP、JPG或者
-//               PNG格式，则pbyImageBuffer和pFrInfo是由
-//               CameraImageProcess处理后的RGB格式数据。
-//                 具体用法可以参考Advanced的例程。
-//            byQuality      图像保存的质量因子，仅当保存为JPG格式
-//                 时该参数有效，范围1到100。其余格式
-//                           可以写成0。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSaveImage
+// Function Description: The image buffer data saved as a picture file.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// lpszFileName save the file the full path to the picture.
+// pbyImageBuffer image data buffer.
+// The header of the pFrInfo image.
+// byFileType The format for saving the image. See CameraDefine.h for the range of values
+// The type definition of emSdkFileType. Currently supported
+// BMP, JPG, PNG, RAW four formats. One of the RAW said
+// Raw data output by the camera, save the RAW format file requirements
+// pbyImageBuffer and pFrInfo are CameraGetImageBuffer
+// Get the data, and without CameraImageProcess conversion
+// Into BMP format; the other hand, if you want to save into BMP, JPG or
+// PNG format, then pbyImageBuffer and pFrInfo are
+// CameraImageProcess processed RGB format data.
+// Specific usage can refer to Advanced routines.
+// byQuality The image quality factor saved, only when saved as JPG
+// This parameter is valid from 1 to 100. The rest of the format
+// can be written as 0
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSaveImage)(
 	CameraHandle    hCamera,
 	char*           lpszFileName,
@@ -480,37 +544,37 @@ typedef    CameraSdkStatus (__stdcall *_CameraSaveImage)(
 	BYTE            byQuality
 	);
 
-/******************************************************/
-// 函数名   : CameraGetImageResolution
-// 功能描述 : 获得当前预览的分辨率。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            psCurVideoSize 结构体指针，用于返回当前的分辨率。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageResolution
+// Function Description: Get the current preview resolution.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// psCurVideoSize structure pointer, used to return the current resolution.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetImageResolution)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	tSdkImageResolution*    psCurVideoSize
 	);
 
-/******************************************************/
-// 函数名   : CameraGetImageResolutionEx
-// 功能描述 : 获取相机的分辨率。
-// 参数     : hCamera      相机的句柄，由CameraInit函数获得。
-//            iIndex	   索引号，[0,N]表示预设的分辨率(N 为预设分辨率的最大个数，一般不超过20),OXFF 表示自定义分辨率(ROI)
-//			  acDescription 该分辨率的描述信息。仅预设分辨率时该信息有效。自定义分辨率可忽略该信息
-//			  Mode		   0: 普通模式     1：Sum       2：Average        3：Skip        4：Resample
-//			  ModeSize	   普通模式下忽略，第1位表示2X2 第二位表示3X3 ...
-//			  x, y		   水平、垂直偏移
-//			  width, height 宽高
-//			  ZoomWidth,ZoomHeight 最终输出时缩放为多大，0表示不缩放
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageResolutionEx
+// Function Description: Get the resolution of the camera.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iIndex index number, [0, N] indicates the default resolution (N is the maximum number of the default resolution, generally not more than 20), OXFF means the custom resolution (ROI)
+// acDescription Description of the resolution. This message is valid only for preset resolution. Custom resolution can ignore this information
+// Mode 0: Normal mode 1: Sum 2: Average 3: Skip 4: Resample
+// ModeSize ignored in normal mode, the first one said 2X2 second said 3X3 ...
+// x, y horizontal and vertical offset
+// width, height width and height
+// ZoomWidth, ZoomHeight When the final output zoom to what, 0 does not scale
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetImageResolutionEx)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	int*					iIndex,
 	char					acDescription[32],
 	int*					Mode,
@@ -523,36 +587,36 @@ typedef CameraSdkStatus (__stdcall *_CameraGetImageResolutionEx)(
 	int*					ZoomHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraSetImageResolution
-// 功能描述 : 设置预览的分辨率。
-// 参数     : hCamera      相机的句柄，由CameraInit函数获得。
-//            pImageResolution 结构体指针，用于返回当前的分辨率。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetImageResolution
+// Function Description: Set the preview resolution.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageResolution struct Pointer to return the current resolution.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetImageResolution)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	tSdkImageResolution*    pImageResolution
 	);
 
-/******************************************************/
-// 函数名   : CameraSetImageResolutionEx
-// 功能描述 : 设置相机的分辨率。
-// 参数     : hCamera      相机的句柄，由CameraInit函数获得。
-//            iIndex	   索引号，[0,N]表示预设的分辨率(N 为预设分辨率的最大个数，一般不超过20),OXFF 表示自定义分辨率(ROI)
-//			  Mode		   0: 普通模式     1：Sum       2：Average        3：Skip        4：Resample
-//			  ModeSize	   普通模式下忽略，第1位表示2X2 第二位表示3X3 ...
-//			  x, y		   水平、垂直偏移
-//			  width, height 宽高
-//			  ZoomWidth,ZoomHeight 最终输出时缩放为多大，0表示不缩放
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetImageResolutionEx
+// Function Description: Set the camera's resolution.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iIndex index number, [0, N] indicates the default resolution (N is the maximum number of the default resolution, generally not more than 20), OXFF means the custom resolution (ROI)
+// Mode 0: Normal mode 1: Sum 2: Average 3: Skip 4: Resample
+// ModeSize ignored in normal mode, the first one said 2X2 second said 3X3 ...
+// x, y horizontal and vertical offset
+// width, height width and height
+// ZoomWidth, ZoomHeight When the final output zoom to what, 0 does not scale
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetImageResolutionEx)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	int						iIndex,
 	int						Mode,
 	UINT					ModeSize,
@@ -564,293 +628,293 @@ typedef CameraSdkStatus (__stdcall *_CameraSetImageResolutionEx)(
 	int						ZoomHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraGetMediaType
-// 功能描述 : 获得相机当前输出原始数据的格式索引号。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            piMediaType   指针，用于返回当前格式类型的索引号。
-//              由CameraGetCapability获得相机的属性，
-//              在tSdkCameraCapbility结构体中的pMediaTypeDesc
-//              成员中，以数组的形式保存了相机支持的格式，
-//              piMediaType所指向的索引号，就是该数组的索引号。
-//              pMediaTypeDesc[*piMediaType].iMediaType则表示当前格式的
-//              编码。该编码请参见CameraDefine.h中[图像格式定义]部分。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetMediaType
+// Function Description: Get the current format of the camera output format index number.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The piMediaType pointer, used to return the index number of the current format type.
+// CameraGetCapability get the camera's properties,
+// pMediaTypeDesc in tSdkCameraCapbility structure
+// Members, the form of an array to save the camera supports the format,
+// The index number pointed to by piMediaType is the index number of this array.
+// pMediaTypeDesc [* piMediaType] .iMediaType indicates the current format
+// encoding This encoding can be found in the [Image Format Definition] section of CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetMediaType)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            piMediaType
 	);
 
-/******************************************************/
-// 函数名   : CameraSetMediaType
-// 功能描述 : 设置相机的输出原始数据格式。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            iMediaType  由CameraGetCapability获得相机的属性，
-//              在tSdkCameraCapbility结构体中的pMediaTypeDesc
-//              成员中，以数组的形式保存了相机支持的格式，
-//              iMediaType就是该数组的索引号。
-//              pMediaTypeDesc[iMediaType].iMediaType则表示当前格式的
-//              编码。该编码请参见CameraDefine.h中[图像格式定义]部分。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetMediaType
+// Function Description: Set the camera's output raw data format.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iMediaType gets the camera's properties from CameraGetCapability,
+// pMediaTypeDesc in tSdkCameraCapbility structure
+// Members, the form of an array to save the camera supports the format,
+// iMediaType is the index number of this array.
+// pMediaTypeDesc [iMediaType] .iMediaType indicates the current format
+// encoding This encoding can be found in the [Image Format Definition] section of CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetMediaType)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iMediaType
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAeState
-// 功能描述 : 设置相机曝光的模式。自动或者手动。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            bAeState    TRUE，使能自动曝光；FALSE，停止自动曝光。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeState
+// Function Description: Set the camera exposure mode. Automatic or manual.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bAeState TRUE, enable auto exposure; FALSE, stop auto exposure.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetAeState)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL            bAeState
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAeState
-// 功能描述 : 获得相机当前的曝光模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pAeState   指针，用于返回自动曝光的使能状态。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAeState
+// Function Description: Get the camera's current exposure mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pAeState Pointer to return the auto exposure enable status.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetAeState)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL*           pAeState
 	);
 
-/******************************************************/
-// 函数名   : CameraSetSharpness
-// 功能描述 : 设置图像的处理的锐化参数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iSharpness 锐化参数。范围由CameraGetCapability
-//               获得，一般是[0,100]，0表示关闭锐化处理。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetSharpness
+// Function Description: Set the sharpening parameter of the image processing.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iSharpness sharpening parameter. Range by CameraGetCapability
+// Get, usually [0,100], 0 means the sharpening is off.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetSharpness)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iSharpness
 	);
 
-/******************************************************/
-// 函数名   : CameraGetSharpness
-// 功能描述 : 获取当前锐化设定值。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            piSharpness 指针，返回当前设定的锐化的设定值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetSharpness
+// Function Description: Get the current sharpening setting.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The piSharpness pointer returns the current sharpened setting.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetSharpness)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piSharpness
 	);
 
-/******************************************************/
-// 函数名   : CameraSetLutMode
-// 功能描述 : 设置相机的查表变换模式LUT模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            emLutMode  LUTMODE_PARAM_GEN 表示由伽马和对比度参数动态生成LUT表。
-//             LUTMODE_PRESET    表示使用预设的LUT表。
-//             LUTMODE_USER_DEF  表示使用用户自定的LUT表。
-//             LUTMODE_PARAM_GEN的定义参考CameraDefine.h中emSdkLutMode类型。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetLutMode
+// Function Description: Set the camera's look-up table conversion mode LUT mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// emLutMode LUTMODE_PARAM_GEN means that LUT tables are generated dynamically by gamma and contrast parameters.
+// LUTMODE_PRESET means that the default LUT table is used.
+// LUTMODE_USER_DEF said the use of user-defined LUT table.
+// The definition of LUTMODE_PARAM_GEN refers to the emSdkLutMode type in CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetLutMode)(
 	CameraHandle    hCamera,
 	int             emLutMode
 	);
 
-/******************************************************/
-// 函数名   : CameraGetLutMode
-// 功能描述 : 获得相机的查表变换模式LUT模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pemLutMode 指针，返回当前LUT模式。意义与CameraSetLutMode
-//             中emLutMode参数相同。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLutMode
+// Function Description: Get the camera's look-up table transform mode LUT mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pemLutMode pointer, return the current LUT mode. Meaning and CameraSetLutMode
+// The same emLutMode parameters.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetLutMode)(
 	CameraHandle    hCamera,
 	int*            pemLutMode
 	);
 
-/******************************************************/
-// 函数名   : CameraSelectLutPreset
-// 功能描述 : 选择预设LUT模式下的LUT表。必须先使用CameraSetLutMode
-//        将LUT模式设置为预设模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iSel     表的索引号。表的个数由CameraGetCapability
-//             获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSelectLutPreset
+// Function Description: Select the LUT table in the default LUT mode. You must use CameraSetLutMode first
+// Set LUT mode to default mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The index number of the iSel table. The number of tables by CameraGetCapability
+// Get it.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSelectLutPreset)(
 	CameraHandle    hCamera,
 	int             iSel
 	);
 
-/******************************************************/
-// 函数名   : CameraGetLutPresetSel
-// 功能描述 : 获得预设LUT模式下的LUT表索引号。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piSel      指针，返回表的索引号。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLutPresetSel
+// Function Description: Get LUT table index in default LUT mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piSel pointer, return the index number of the table.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetLutPresetSel)(
 	CameraHandle    hCamera,
 	int*            piSel
 	);
 
-/******************************************************/
-// 函数名   : CameraSetCustomLut
-// 功能描述 : 设置自定义的LUT表。必须先使用CameraSetLutMode
-//        将LUT模式设置为自定义模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//             iChannel 指定要设定的LUT颜色通道，当为LUT_CHANNEL_ALL时，
-//                      三个通道的LUT将被同时替换。
-//                      参考CameraDefine.h中emSdkLutChannel定义。
-//            pLut     指针，指向LUT表的地址。LUT表为无符号短整形数组，数组大小为
-//           4096，分别代码颜色通道从0到4096(12bit颜色精度)对应的映射值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetCustomLut
+// Function Description: Set a custom LUT table. You must use CameraSetLutMode first
+// Set LUT mode to custom mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iChannel specifies the LUT color channel to be set, when LUT_CHANNEL_ALL,
+// Three channels of LUT will be replaced at the same time.
+// Refer to the definition of emSdkLutChannel in CameraDefine.h.
+// pLut pointer to the address of the LUT table. LUT table unsigned short array, array size
+// 4096, respectively, the code color channel from 0 to 4096 (12bit color precision) corresponding to the mapping value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetCustomLut)(
 	CameraHandle    hCamera,
 	int       iChannel,
 	USHORT*         pLut
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCustomLut
-// 功能描述 : 获得当前使用的自定义LUT表。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//             iChannel 指定要获得的LUT颜色通道。当为LUT_CHANNEL_ALL时，
-//                      返回红色通道的LUT表。
-//                      参考CameraDefine.h中emSdkLutChannel定义。
-//            pLut       指针，指向LUT表的地址。LUT表为无符号短整形数组，数组大小为
-//           4096，分别代码颜色通道从0到4096(12bit颜色精度)对应的映射值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCustomLut
+// Function Description: Get the current custom LUT table.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iChannel Specifies the LUT color channel to get. When LUT_CHANNEL_ALL,
+// returns the red channel's LUT table.
+// Refer to the definition of emSdkLutChannel in CameraDefine.h.
+// pLut pointer to the address of the LUT table. LUT table unsigned short array, array size
+// 4096, respectively, the code color channel from 0 to 4096 (12bit color precision) corresponding to the mapping value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetCustomLut)(
 	CameraHandle    hCamera,
 	int       iChannel,
 	USHORT*         pLut
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCurrentLut
-// 功能描述 : 获得相机当前的LUT表，在任何LUT模式下都可以调用,
-//        用来直观的观察LUT曲线的变化。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//             iChannel 指定要获得的LUT颜色通道。当为LUT_CHANNEL_ALL时，
-//                      返回红色通道的LUT表。
-//                      参考CameraDefine.h中emSdkLutChannel定义。
-//            pLut       指针，指向LUT表的地址。LUT表为无符号短整形数组，数组大小为
-//           4096，分别代码颜色通道从0到4096(12bit颜色精度)对应的映射值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCurrentLut
+// Function Description: Get the camera's current LUT table, can be called in any LUT mode,
+// Used to visually observe changes in the LUT curve.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iChannel Specifies the LUT color channel to get. When LUT_CHANNEL_ALL,
+// returns the red channel's LUT table.
+// Refer to the definition of emSdkLutChannel in CameraDefine.h.
+// pLut pointer to the address of the LUT table. LUT table unsigned short array, array size
+// 4096, respectively, the code color channel from 0 to 4096 (12bit color precision) corresponding to the mapping value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetCurrentLut)(
 	CameraHandle    hCamera,
 	int       iChannel,
 	USHORT*         pLut
 	);
 
-/******************************************************/
-// 函数名   : CameraSetWbMode
-// 功能描述 : 设置相机白平衡模式。分为手动和自动两种方式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            bAuto      TRUE，则表示使能自动模式。
-//             FALSE，则表示使用手动模式，通过调用
-//                 CameraSetOnceWB来进行一次白平衡。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetWbMode
+// Function Description: Set the camera white balance mode. Divided into manual and automatic two ways.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bAuto TRUE, then the automatic mode is enabled.
+// FALSE, then use manual mode, by calling
+// CameraSetOnceWB to do a white balance.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetWbMode)(
 	CameraHandle    hCamera,
 	BOOL            bAuto
 	);
 
-/******************************************************/
-// 函数名   : CameraGetWbMode
-// 功能描述 : 获得当前的白平衡模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbAuto   指针，返回TRUE表示自动模式，FALSE
-//             为手动模式。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetWbMode
+// Function Description: Get the current white balance mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbAuto pointer, returns TRUE for automatic mode, FALSE
+// is manual mode.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetWbMode)(
 	CameraHandle    hCamera,
 	BOOL*           pbAuto
 	);
 
-/******************************************************/
-// 函数名   : CameraSetPresetClrTemp
-// 功能描述 : 选择指定预设色温模式
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iSel 预设色温的模式索引号，从0开始
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetPresetClrTemp
+// Function Description: Select to specify the preset color temperature mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iSel Preset color temperature mode index number, starting from 0
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetPresetClrTemp)(
 	CameraHandle    hCamera,
 	int             iSel
 	);
 
-/******************************************************/
-// 函数名   : CameraGetPresetClrTemp
-// 功能描述 : 获得当前选择的预设色温模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piSel  指针，返回选择的预设色温索引号
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetPresetClrTemp
+// Function Description: Get the currently selected preset color temperature mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piSel pointer, return to the selected default color temperature index
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetPresetClrTemp)(
 	CameraHandle    hCamera,
 	int*            piSel
 	);
 
-/******************************************************/
-// 函数名   : CameraSetUserClrTempGain
-// 功能描述 : 设置自定义色温模式下的数字增益
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iRgain  红色增益，范围0到400，表示0到4倍
-//            iGgain  绿色增益，范围0到400，表示0到4倍
-//            iBgain  蓝色增益，范围0到400，表示0到4倍
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetUserClrTempGain
+// Function Description: Set the digital gain in custom color temperature mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iRgain Red Gain, ranging from 0 to 400, representing 0 to 4 times
+// iGgain green gain, ranging from 0 to 400, representing 0 to 4 times
+// iBgain Blue gain, range 0 to 400, representing 0 to 4 times
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetUserClrTempGain)(
 	CameraHandle  hCamera,
 	int       iRgain,
@@ -859,17 +923,17 @@ typedef    CameraSdkStatus (__stdcall *_CameraSetUserClrTempGain)(
 	);
 
 
-/******************************************************/
-// 函数名   : CameraGetUserClrTempGain
-// 功能描述 : 获得自定义色温模式下的数字增益
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piRgain  指针，返回红色增益，范围0到400，表示0到4倍
-//            piGgain  指针，返回绿色增益，范围0到400，表示0到4倍
-//            piBgain  指针，返回蓝色增益，范围0到400，表示0到4倍
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetUserClrTempGain
+// Function Description: Get the digital gain in custom color temperature mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piRgain pointer returns the red gain, ranging from 0 to 400, representing 0 to 4 times
+// piGgain pointer, returns the green gain, range 0 to 400, that 0 to 4 times
+// The piBgain pointer returns the blue gain, ranging from 0 to 400, representing 0 to 4 times
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetUserClrTempGain)(
 	CameraHandle  hCamera,
 	int*      piRgain,
@@ -877,968 +941,985 @@ typedef    CameraSdkStatus (__stdcall *_CameraGetUserClrTempGain)(
 	int*      piBgain
 	);
 
-/******************************************************/
-// 函数名   : CameraSetUserClrTempMatrix
-// 功能描述 : 设置自定义色温模式下的颜色矩阵
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pMatrix 指向一个float[3][3]数组的首地址
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetUserClrTempMatrix
+// Function Description: Set the color matrix in custom color temperature mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pMatrix points to the first address of an array of float [3] [3]
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetUserClrTempMatrix)(
 	CameraHandle  hCamera,
 	float*      pMatrix
 	);
 
 
-/******************************************************/
-// 函数名   : CameraGetUserClrTempMatrix
-// 功能描述 : 获得自定义色温模式下的颜色矩阵
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pMatrix 指向一个float[3][3]数组的首地址
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetUserClrTempMatrix
+// Function Description: Get the color matrix in custom color temperature mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pMatrix points to the first address of an array of float [3] [3]
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetUserClrTempMatrix)(
 	CameraHandle  hCamera,
 	float*      pMatrix
 	);
 
-/******************************************************/
-// 函数名   : CameraSetClrTempMode
-// 功能描述 : 设置白平衡时使用的色温模式，
-//              支持的模式有三种，分别是自动，预设和自定义。
-//              自动模式下，会自动选择合适的色温模式
-//              预设模式下，会使用用户指定的色温模式
-//              自定义模式下，使用用户自定义的色温数字增益和矩阵
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iMode 模式，只能是emSdkClrTmpMode中定义的一种
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetClrTempMode
+// Function Description: Set the color temperature mode used when the white balance,
+// There are three supported modes, Auto, Preset, and Custom.
+// Auto mode, will automatically select the appropriate color temperature mode
+// Preset mode, user-specified color temperature mode will be used
+// Custom mode with user-defined color temperature digital gain and matrix
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iMode mode, only one that is defined in emSdkClrTmpMode
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetClrTempMode)(
 	CameraHandle  hCamera,
 	int       iMode
 	);
 
-/******************************************************/
-// 函数名   : CameraGetClrTempMode
-// 功能描述 : 获得白平衡时使用的色温模式。参考CameraSetClrTempMode
-//              中功能描述部分。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pimode 指针，返回模式选择，参考emSdkClrTmpMode类型定义
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetClrTempMode
+// Function Description: Color temperature mode used to get white balance. Reference CameraSetClrTempMode
+// Function description section.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pimode pointer, return mode selection, refer to the definition of type emSdkClrTmpMode
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetClrTempMode)(
 	CameraHandle  hCamera,
 	int*      pimode
 	);
 
 
-/******************************************************/
-// 函数名   : CameraSetOnceWB
-// 功能描述 : 在手动白平衡模式下，调用该函数会进行一次白平衡。
-//        生效的时间为接收到下一帧图像数据时。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetOnceWB
+// Function description: In manual white balance mode, calling this function will make a white balance.
+// The effective time is when the next frame of image data is received.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetOnceWB)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraSetOnceBB
-// 功能描述 : 执行一次黑平衡操作。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetOnceBB
+// Function Description: Perform a black balance operation.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetOnceBB)(
 	CameraHandle    hCamera
 	);
 
 
-/******************************************************/
-// 函数名   : CameraSetAeTarget
-// 功能描述 : 设定自动曝光的亮度目标值。设定范围由CameraGetCapability
-//        函数获得。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iAeTarget  亮度目标值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeTarget
+// Function Description: Set the brightness of the automatic exposure target value. The setting range is CameraGetCapability
+// function to get.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iAeTarget Brightness target value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetAeTarget)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iAeTarget
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAeTarget
-// 功能描述 : 获得自动曝光的亮度目标值。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            *piAeTarget 指针，返回目标值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAeTarget
+// Function Description: Get the target brightness value for auto exposure.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//* piAeTarget pointer, return the target value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetAeTarget)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piAeTarget
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAeExposureRange
-// 功能描述 : 设定自动曝光模式的曝光时间调节范围
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//           fMinExposureTime 最小曝光时间（微秒）
-//			 fMaxExposureTime 最大曝光时间（微秒）
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeExposureRange
+// Function Description: Set the exposure time adjustment range of auto exposure mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// fMinExposureTime Minimum exposure time (microseconds)
+// fMaxExposureTime Maximum exposure time (microseconds)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetAeExposureRange)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	double          fMinExposureTime,
 	double			fMaxExposureTime
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAeExposureRange
-// 功能描述 : 获得自动曝光模式的曝光时间调节范围
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//           fMinExposureTime 最小曝光时间（微秒）
-//			 fMaxExposureTime 最大曝光时间（微秒）
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAeExposureRange
+// Function description: Get exposure time adjustment range of auto exposure mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// fMinExposureTime Minimum exposure time (microseconds)
+// fMaxExposureTime Maximum exposure time (microseconds)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetAeExposureRange)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	double*         fMinExposureTime,
 	double*			fMaxExposureTime
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAeAnalogGainRange
-// 功能描述 : 设定自动曝光模式的增益调节范围
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//           iMinAnalogGain 最小增益
-//			 iMaxAnalogGain 最大增益
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeAnalogGainRange
+// Function Description: Set the gain adjustment range of auto exposure mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iMinAnalogGain minimum gain
+// iMaxAnalogGain Maximum gain
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetAeAnalogGainRange)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int				iMinAnalogGain,
 	int				iMaxAnalogGain
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAeAnalogGainRange
-// 功能描述 : 获得自动曝光模式的增益调节范围
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//           iMinAnalogGain 最小增益
-//			 iMaxAnalogGain 最大增益
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAeAnalogGainRange
+// Function Description: Get gain adjustment range of auto exposure mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iMinAnalogGain minimum gain
+// iMaxAnalogGain Maximum gain
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetAeAnalogGainRange)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*			iMinAnalogGain,
 	int*			iMaxAnalogGain
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAeThreshold
-// 功能描述 : 设置自动曝光模式的调节阈值
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//           iThreshold   如果 abs(目标亮度-图像亮度) < iThreshold 则停止自动调节
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeThreshold
+// Function Description: Set the adjustment threshold for auto exposure mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iThreshold If abs (target brightness - image brightness) <iThreshold then stop automatic adjustment
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetAeThreshold)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int				iThreshold
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAeThreshold
-// 功能描述 : 获取自动曝光模式的调节阈值
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//           iThreshold   读取到的调节阈值
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAeThreshold
+// Function Description: Get the adjustment threshold for auto exposure mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iThreshold Read the adjustment threshold
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetAeThreshold)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*			iThreshold
 	);
 
-/******************************************************/
-// 函数名   : CameraSetExposureTime
-// 功能描述 : 设置曝光时间。单位为微秒。对于CMOS传感器，其曝光
-//        的单位是按照行来计算的，因此，曝光时间并不能在微秒
-//        级别连续可调。而是会按照整行来取舍。在调用
-//        本函数设定曝光时间后，建议再调用CameraGetExposureTime
-//        来获得实际设定的值。
-// 参数     : hCamera      相机的句柄，由CameraInit函数获得。
-//            fExposureTime 曝光时间，单位微秒。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetExposureTime
+// Function Description: Set the exposure time. The unit is microseconds. For CMOS sensors, they are exposed the unit of 
+// is calculated by line, therefore, the exposure time can not be in microseconds
+// level continuously adjustable. But will follow the entire line to choose. Calling
+// This function is to set the exposure time, it is recommended to call CameraGetExposureTime again
+// to get the actual set value.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// fExposureTime exposure time, in microseconds.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetExposureTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	double          fExposureTime
 	);
 
-//******************************************************/
-// 函数名   : CameraGetExposureLineTime
-// 功能描述 : 获得一行的曝光时间。对于CMOS传感器，其曝光
-//        的单位是按照行来计算的，因此，曝光时间并不能在微秒
-//        级别连续可调。而是会按照整行来取舍。这个函数的
-//          作用就是返回CMOS相机曝光一行对应的时间。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            double *pfLineTime 指针，返回一行的曝光时间，单位为微秒。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
-
+/***************************************************** *****/
+// function name: CameraGetExposureLineTime
+// Function Description: Get a line of exposure time. For CMOS sensors, they are exposed the unit of 
+// is calculated by line, therefore, the exposure time can not be in microseconds
+// level continuously adjustable. But will follow the entire line to choose. This function
+// The role is to return the CMOS camera exposure line corresponding time.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pfLineTime pointer, return the exposure time of his party, in microseconds.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExposureLineTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	double*         pfLineTime
 	);
 
-/******************************************************/
-// 函数名   : CameraGetExposureTime
-// 功能描述 : 获得相机的曝光时间。请参见CameraSetExposureTime
-//        的功能描述。
-// 参数     : hCamera        相机的句柄，由CameraInit函数获得。
-//            pfExposureTime  指针，返回当前的曝光时间，单位微秒。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetExposureTime
+// Function Description: Get the camera's exposure time. See CameraSetExposureTime
+// function description.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pfExposureTime pointer to return the current exposure time in microseconds.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExposureTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	double*         pfExposureTime
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAnalogGain
-// 功能描述 : 设置相机的图像模拟增益值。该值乘以CameraGetCapability获得
-//        的相机属性结构体中sExposeDesc.fAnalogGainStep，就
-//        得到实际的图像信号放大倍数。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            iAnalogGain 设定的模拟增益值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetExposureTimeRange
+// Function Description: Get the camera exposure time range
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pfMin pointer, returns the minimum exposure time in microseconds.
+// pfMax pointer, returns the maximum exposure time in microseconds.
+// pfStep pointer, returns the exposure time step, in microseconds.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
+typedef    CameraSdkStatus (__stdcall *_CameraGetExposureTimeRange)(
+	CameraHandle    hCamera, 
+	double*         pfMin,
+	double*			pfMax,
+	double*			pfStep
+	);
+
+/***************************************************** *****/
+// function name: CameraSetAnalogGain
+// Function Description: Set the camera's image analog gain value. This value is multiplied by CameraGetCapability
+// camera attribute structure sExposeDesc.fAnalogGainStep, on
+// Get the actual image signal magnification.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Analog gain value set by iAnalogGain.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetAnalogGain)(
 	CameraHandle    hCamera,
 	INT             iAnalogGain
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAnalogGain
-// 功能描述 : 获得图像信号的模拟增益值。参见CameraSetAnalogGain
-//        详细说明。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            piAnalogGain 指针，返回当前的模拟增益值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAnalogGain
+// Function Description: Get the analog gain value of the image signal. See CameraSetAnalogGain
+// Detailed description.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piAnalogGain pointer, returns the current analog gain value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetAnalogGain)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            piAnalogGain
 	);
 
-/******************************************************/
-// 函数名   : CameraSetGain
-// 功能描述 : 设置图像的数字增益。设定范围由CameraGetCapability
-//        获得的相机属性结构体中sRgbGainRange成员表述。
-//        实际的放大倍数是设定值/100。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iRGain   红色通道的增益值。
-//            iGGain   绿色通道的增益值。
-//            iBGain   蓝色通道的增益值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetGain
+// Function Description: Set the digital gain of the image. The setting range is CameraGetCapability
+// get the sRgbGainRange member representation in the camera's attribute structure.
+// The actual magnification is the set value / 100.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iRGain The gain of the red channel.
+// iGGain green channel gain value.
+// iBGain Blue channel gain value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetGain)(
-	CameraHandle    hCamera,
-	int             iRGain,
-	int             iGGain,
+	CameraHandle    hCamera, 
+	int             iRGain, 
+	int             iGGain, 
 	int             iBGain
 	);
 
 
-/******************************************************/
-// 函数名   : CameraGetGain
-// 功能描述 : 获得图像处理的数字增益。具体请参见CameraSetGain
-//        的功能描述部分。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piRGain  指针，返回红色通道的数字增益值。
-//            piGGain    指针，返回绿色通道的数字增益值。
-//            piBGain    指针，返回蓝色通道的数字增益值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetGain
+// Function Description: Get the digital gain of image processing. For details, see CameraSetGain
+// function description section.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piRGain pointer returns the digital gain value of the red channel.
+// piGGain pointer, returns the green channel's digital gain value.
+// piBGain pointer returns the digital gain value of the blue channel.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetGain)(
-	CameraHandle    hCamera,
-	int*            piRGain,
-	int*            piGGain,
+	CameraHandle    hCamera, 
+	int*            piRGain, 
+	int*            piGGain, 
 	int*            piBGain
 	);
 
 
-/******************************************************/
-// 函数名   : CameraSetGamma
-// 功能描述 : 设定LUT动态生成模式下的Gamma值。设定的值会
-//        马上保存在SDK内部，但是只有当相机处于动态
-//        参数生成的LUT模式时，才会生效。请参考CameraSetLutMode
-//        的函数说明部分。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iGamma     要设定的Gamma值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetGamma
+// Function Description: Set the Gamma value in LUT dynamic generation mode. The set value will be
+// Save it inside the SDK right away, but only when the camera is in motion
+// LUT mode generated by the parameter will not take effect. Please refer to CameraSetLutMode
+// Function Description section.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Gamma to be set by iGamma.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetGamma)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iGamma
 	);
 
-/******************************************************/
-// 函数名   : CameraGetGamma
-// 功能描述 : 获得LUT动态生成模式下的Gamma值。请参考CameraSetGamma
-//        函数的功能描述。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piGamma    指针，返回当前的Gamma值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetGamma
+// Function Description: Get Gamma value in LUT dynamic generation mode. Please refer to CameraSetGamma
+// function description of the function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piGamma pointer, return the current Gamma value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetGamma)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piGamma
 	);
 
-/******************************************************/
-// 函数名   : CameraSetContrast
-// 功能描述 : 设定LUT动态生成模式下的对比度值。设定的值会
-//        马上保存在SDK内部，但是只有当相机处于动态
-//        参数生成的LUT模式时，才会生效。请参考CameraSetLutMode
-//        的函数说明部分。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iContrast  设定的对比度值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetContrast
+// Function Description: Set the LUT dynamic generation mode of the contrast value. The set value will be
+// Save it inside the SDK right away, but only when the camera is in motion
+// LUT mode generated by the parameter will not take effect. Please refer to CameraSetLutMode
+// Function Description section.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Contrast value set by iContrast.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetContrast)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iContrast
 	);
 
-/******************************************************/
-// 函数名   : CameraGetContrast
-// 功能描述 : 获得LUT动态生成模式下的对比度值。请参考
-//        CameraSetContrast函数的功能描述。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piContrast 指针，返回当前的对比度值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetContrast
+// Function Description: Obtain the LUT dynamic generation mode of the contrast value. Please refer to
+// Description of the function of CameraSetContrast function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piContrast pointer, return the current contrast value.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetContrast)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piContrast
 	);
 
-/******************************************************/
-// 函数名   : CameraSetSaturation
-// 功能描述 : 设定图像处理的饱和度。对黑白相机无效。
-//        设定范围由CameraGetCapability获得。100表示
-//        表示原始色度，不增强。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            iSaturation  设定的饱和度值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetSaturation
+// Function Description: Set the saturation of image processing. Not valid for black and white cameras.
+// The setting range is obtained by CameraGetCapability. 100 said
+// said the original color, not enhanced.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Saturation value set by iSaturation.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetSaturation)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iSaturation
 	);
 
-/******************************************************/
-// 函数名   : CameraGetSaturation
-// 功能描述 : 获得图像处理的饱和度。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            piSaturation 指针，返回当前图像处理的饱和度值。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetSaturation
+// Function Description: Get the saturation of image processing.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piSaturation pointer, returns the saturation value of the current image processing.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetSaturation)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piSaturation
 	);
 
-/******************************************************/
-// 函数名   : CameraSetMonochrome
-// 功能描述 : 设置彩色转为黑白功能的使能。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            bEnable   TRUE，表示将彩色图像转为黑白。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetMonochrome
+// Function Description: Set the color to black and white function enabled.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable TRUE, said the color image is converted to black and white.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetMonochrome)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL            bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetMonochrome
-// 功能描述 : 获得彩色转换黑白功能的使能状况。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbEnable   指针。返回TRUE表示开启了彩色图像
-//             转换为黑白图像的功能。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetMonochrome
+// Function Description: Get color conversion black and white function enabled.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbEnable pointer. Returning TRUE means that the color image is on
+// Convert to black and white image function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetMonochrome)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL*           pbEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraSetInverse
-// 功能描述 : 设置彩图像颜色翻转功能的使能。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            bEnable    TRUE，表示开启图像颜色翻转功能，
-//             可以获得类似胶卷底片的效果。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetInverse
+// Function Description: Set color image color flip function enable.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable TRUE, that open the image color flip function,
+// Can get similar film negative effects.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetInverse)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL            bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetInverse
-// 功能描述 : 获得图像颜色反转功能的使能状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbEnable   指针，返回该功能使能状态。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetInverse
+// Function Description: Enables the image color reversal function to be enabled.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbEnable pointer to return the function enable status.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetInverse)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL*           pbEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAntiFlick
-// 功能描述 : 设置自动曝光时抗频闪功能的使能状态。对于手动
-//        曝光模式下无效。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            bEnable    TRUE，开启抗频闪功能;FALSE，关闭该功能。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAntiFlick
+// Function Description: Set the anti-strobe function enabled when auto exposure. For manual
+// Invalid exposure mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable TRUE, turn on anti-strobe function; FALSE, turn off this function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetAntiFlick)(
 	CameraHandle    hCamera,
 	BOOL            bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAntiFlick
-// 功能描述 : 获得自动曝光时抗频闪功能的使能状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbEnable   指针，返回该功能的使能状态。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAntiFlick
+// Function Description: Enable anti-strobe function when auto exposure is enabled.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbEnable pointer to return the enable status of this function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetAntiFlick)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL*           pbEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetLightFrequency
-// 功能描述 : 获得自动曝光时，消频闪的频率选择。
-// 参数     : hCamera      相机的句柄，由CameraInit函数获得。
-//            piFrequencySel 指针，返回选择的索引号。0:50HZ 1:60HZ
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLightFrequency
+// Function Description: When auto-exposure is obtained, the frequency of the flicker is selected.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piFrequencySel pointer, return the selected index number. 0: 50HZ 1: 60HZ
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetLightFrequency)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piFrequencySel
 	);
 
-/******************************************************/
-// 函数名   : CameraSetLightFrequency
-// 功能描述 : 设置自动曝光时消频闪的频率。
-// 参数     : hCamera     相机的句柄，由CameraInit函数获得。
-//            iFrequencySel 0:50HZ , 1:60HZ
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetLightFrequency
+// Function Description: Set the frequency of auto-flashing.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iFrequencySel 0: 50HZ, 1: 60HZ
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetLightFrequency)(
 	CameraHandle    hCamera,
 	int             iFrequencySel
 	);
 
-/******************************************************/
-// 函数名   : CameraSetFrameSpeed
-// 功能描述 : 设定相机输出图像的帧率。相机可供选择的帧率模式由
-//        CameraGetCapability获得的信息结构体中iFrameSpeedDesc
-//        表示最大帧率选择模式个数。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            iFrameSpeed 选择的帧率模式索引号，范围从0到
-//              CameraGetCapability获得的信息结构体中iFrameSpeedDesc - 1
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetFrameSpeed
+// Function Description: Set the camera output image frame rate. The frame rate mode the camera can choose from
+// CameraFrameSpeedDesc in the info structure obtained by CameraGetCapability
+// Indicates the maximum frame rate selection mode number.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             iFrameSpeed The selected frame rate mode index, ranging from 0 to
+//             iFrameSpeedDesc - 1 in the info structure obtained by CameraGetCapability
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetFrameSpeed)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iFrameSpeed
 	);
 
-/******************************************************/
-// 函数名   : CameraGetFrameSpeed
-// 功能描述 : 获得相机输出图像的帧率选择索引号。具体用法参考
-//        CameraSetFrameSpeed函数的功能描述部分。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            piFrameSpeed 指针，返回选择的帧率模式索引号。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetFrameSpeed
+// Function Description: Get the frame rate of the camera output image Select the index number. Specific usage reference
+// Function Description section of CameraSetFrameSpeed function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piFrameSpeed pointer, return the selected frame rate mode index number.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetFrameSpeed)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piFrameSpeed
 	);
 
 
-/******************************************************/
-// 函数名   : CameraSetParameterMode
-// 功能描述 : 设定参数存取的目标对象。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iMode  参数存取的对象。参考CameraDefine.h
-//          中emSdkParameterMode的类型定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetParameterMode
+// Function Description: Set the target of access to parameters.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The object accessed by the iMode parameter. Reference CameraDefine.h
+// The type definition of emSdkParameterMode.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetParameterMode)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iTarget
 	);
 
-/******************************************************/
-// 函数名   : CameraGetParameterMode
-// 功能描述 :
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            int* piTarget
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetParameterMode
+// Function Description:
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// int * piTarget
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetParameterMode)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piTarget
 	);
 
-/******************************************************/
-// 函数名   : CameraSetParameterMask
-// 功能描述 : 设置参数存取的掩码。参数加载和保存时会根据该
-//        掩码来决定各个模块参数的是否加载或者保存。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            uMask     掩码。参考CameraDefine.h中PROP_SHEET_INDEX
-//            类型定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetParameterMask
+// Function Description: Set the parameter access mask. The parameters are loaded and saved according to that
+// Mask to determine whether the parameters of each module is loaded or saved.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uMask mask. Reference PROP_SHEET_INDEX in CameraDefine.h
+// type definition.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetParameterMask)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT            uMask
 	);
 
-/******************************************************/
-// 函数名   : CameraSaveParameter
-// 功能描述 : 保存当前相机参数到指定的参数组中。相机提供了A,B,C,D
-//        A,B,C,D四组空间来进行参数的保存。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iTeam      PARAMETER_TEAM_A 保存到A组中,
-//             PARAMETER_TEAM_B 保存到B组中,
-//             PARAMETER_TEAM_C 保存到C组中,
-//             PARAMETER_TEAM_D 保存到D组中
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSaveParameter
+// Function Description: Save the current camera parameters to the specified parameter group. The camera provides A, B, C, D.
+// A, B, C, D four groups of space to save the parameters.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iTeam PARAMETER_TEAM_A save to group A,
+// PARAMETER_TEAM_B save to group B,
+// PARAMETER_TEAM_C to C group,
+// PARAMETER_TEAM_D is saved in group D
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSaveParameter)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iTeam
 	);
 
-/******************************************************/
-// 函数名   : CameraReadParameterFromFile
-// 功能描述 : 从PC上指定的参数文件中加载参数。我公司相机参数
-//        保存在PC上为.config后缀的文件，位于安装下的
-//        Camera\Configs文件夹中。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            *sFileName 参数文件的完整路径。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraReadParameterFromFile
+// Function Description: Load parameters from the specified parameter file on the PC. My company camera parameters
+// save the .config suffix file on your PC, under installation
+// Camera \ Configs folder.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//* sFileName The full path to the parameter file.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraReadParameterFromFile)(
 	CameraHandle    hCamera,
 	char*           sFileName
 	);
 
-/******************************************************/
-// 函数名   : CameraLoadParameter
-// 功能描述 : 加载指定组的参数到相机中。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iTeam    PARAMETER_TEAM_A 加载A组参数,
-//             PARAMETER_TEAM_B 加载B组参数,
-//             PARAMETER_TEAM_C 加载C组参数,
-//             PARAMETER_TEAM_D 加载D组参数,
-//             PARAMETER_TEAM_DEFAULT 加载默认参数。
-//             类型定义参考CameraDefine.h中emSdkParameterTeam类型
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraLoadParameter
+// Function Description: Load the parameters of the specified group into the camera.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iTeam PARAMETER_TEAM_A Load group A parameters,
+// PARAMETER_TEAM_B Load group B parameters,
+// PARAMETER_TEAM_C Load C group parameters,
+// PARAMETER_TEAM_D Load group D parameters,
+// PARAMETER_TEAM_DEFAULT loads the default parameters.
+// The type definition references the emSdkParameterTeam type in CameraDefine.h
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraLoadParameter)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iTeam
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCurrentParameterGroup
-// 功能描述 : 获得当前选择的参数组。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piTeam     指针，返回当前选择的参数组。返回值
-//             参考CameraLoadParameter中iTeam参数。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCurrentParameterGroup
+// Function Description: Get the currently selected parameter group.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piTeam pointer, return the currently selected parameter group. return value
+// Reference iTeam parameters in CameraLoadParameter.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetCurrentParameterGroup)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int*            piTeam
 	);
 
-/******************************************************/
-// 函数名   : CameraSetTransPackLen
-// 功能描述 : 设置相机传输图像数据的分包大小。
-//        目前的SDK版本中，该接口仅对GIGE接口相机有效，
-//        用来控制网络传输的分包大小。对于支持巨帧的网卡，
-//        我们建议选择8K的分包大小，可以有效的降低传输
-//        所占用的CPU处理时间。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iPackSel   分包长度选择的索引号。分包长度可由
-//             获得相机属性结构体中pPackLenDesc成员表述，
-//             iPackLenDesc成员则表示最大可选的分包模式个数。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetTransPackLen
+// Function Description: Set the sub-size of the image data transmitted by the camera.
+// In the current SDK version, this interface is only valid for GIGE interface cameras,
+// Used to control the subcontracting size of the network transmission. For support jumbo frame card,
+// We suggest to choose 8K sub-size, which can effectively reduce the transmission
+// Occupied CPU processing time.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Index number for iPackSel subcontract length selection. Subcontracting length can be
+// Get the pPackLenDesc member representation in the camera attribute structure,
+// iPackLenDesc members indicate the maximum number of optional subcontracting modes.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetTransPackLen)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iPackSel
 	);
 
-/******************************************************/
-// 函数名   : CameraGetTransPackLen
-// 功能描述 : 获得相机当前传输分包大小的选择索引号。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piPackSel  指针，返回当前选择的分包大小索引号。
-//             参见CameraSetTransPackLen中iPackSel的
-//             说明。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetTransPackLen
+// Function Description: Obtain the selection index of the camera's current transmission subcontract size.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piPackSel pointer, returns the index number of the currently selected subcontract size.
+// See iPackSel in CameraSetTransPackLen
+// Description.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetTransPackLen)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            piPackSel
 	);
 
-/******************************************************/
-// 函数名   : CameraIsAeWinVisible
-// 功能描述 : 获得自动曝光参考窗口的显示状态。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            pbIsVisible  指针，返回TRUE，则表示当前窗口会
-//               被叠加在图像内容上。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraIsAeWinVisible
+// Function Description: Get the auto exposure reference window display status.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbIsVisible pointer, return TRUE, then the current window will be
+// is superimposed on the image content.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraIsAeWinVisible)(
 	CameraHandle    hCamera,
 	BOOL*           pbIsVisible
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAeWinVisible
-// 功能描述 : 设置自动曝光参考窗口的显示状态。当设置窗口状态
-//        为显示，调用CameraImageOverlay后，能够将窗口位置
-//        以矩形的方式叠加在图像上。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            bIsVisible  TRUE，设置为显示；FALSE，不显示。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeWinVisible
+// Function Description: Set the display status of the auto exposure reference window. When setting the window status
+// To show, after calling CameraImageOverlay, it is possible to position the window
+// superimposed on the image as a rectangle
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bIsVisible TRUE, set to display; FALSE, do not show.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetAeWinVisible)(
 	CameraHandle    hCamera,
 	BOOL            bIsVisible
 	);
 
-/******************************************************/
-// 函数名   : CameraGetAeWindow
-// 功能描述 : 获得自动曝光参考窗口的位置。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piHOff     指针，返回窗口位置左上角横坐标值。
-//            piVOff     指针，返回窗口位置左上角纵坐标值。
-//            piWidth    指针，返回窗口的宽度。
-//            piHeight   指针，返回窗口的高度。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAeWindow
+// Function Description: Get the position of the auto exposure reference window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piHOff pointer, return to the upper left corner of the window position abscissa value.
+// piVOff pointer, return to the upper left corner of the window position ordinate value.
+// piWidth pointer, return the width of the window.
+// piHeight pointer, return the height of the window.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetAeWindow)(
-	CameraHandle    hCamera,
-	INT*            piHOff,
-	INT*            piVOff,
-	INT*            piWidth,
+	CameraHandle    hCamera, 
+	INT*            piHOff, 
+	INT*            piVOff, 
+	INT*            piWidth, 
 	INT*            piHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraSetAeWindow
-// 功能描述 : 设置自动曝光的参考窗口。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iHOff    窗口左上角的横坐标
-//            iVOff      窗口左上角的纵坐标
-//            iWidth     窗口的宽度
-//            iHeight    窗口的高度
-//        如果iHOff、iVOff、iWidth、iHeight全部为0，则
-//        窗口设置为每个分辨率下的居中1/2大小。可以随着
-//        分辨率的变化而跟随变化；如果iHOff、iVOff、iWidth、iHeight
-//        所决定的窗口位置范围超出了当前分辨率范围内，
-//          则自动使用居中1/2大小窗口。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAeWindow
+// Function Description: Set the reference window for auto exposure.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iHOff abscissa in the upper left corner of the window
+// iVOff window in the upper left corner of the vertical axis
+// iWidth The width of the window
+// iHeight the height of the window
+// If iHOff, iVOff, iWidth, iHeight are all 0, then
+// Set the window to center 1/2 size at each resolution. Can follow
+// changes in resolution to follow changes; if iHOff, iVOff, iWidth, iHeight
+// The determined window position range is outside the current resolution range,
+// The center 1/2 size window is automatically used.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetAeWindow)(
-	CameraHandle    hCamera,
-	int             iHOff,
-	int             iVOff,
-	int             iWidth,
+	CameraHandle    hCamera, 
+	int             iHOff, 
+	int             iVOff, 
+	int             iWidth, 
 	int             iHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraSetMirror
-// 功能描述 : 设置图像镜像操作。镜像操作分为水平和垂直两个方向。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iDir     表示镜像的方向。0，表示水平方向；1，表示垂直方向。
-//            bEnable  TRUE，使能镜像;FALSE，禁止镜像
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetMirror
+// Function Description: Set the image mirroring operation. Mirror operation is divided into horizontal and vertical directions.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iDir indicates the direction of the image. 0, said the horizontal direction; 1, said the vertical direction.
+// bEnable TRUE, mirroring enabled; FALSE, mirroring disabled
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetMirror)(
-	CameraHandle    hCamera,
-	int             iDir,
+	CameraHandle    hCamera, 
+	int             iDir, 
 	BOOL            bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetMirror
-// 功能描述 : 获得图像的镜像状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iDir     表示要获得的镜像方向。
-//             0，表示水平方向；1，表示垂直方向。
-//            pbEnable   指针，返回TRUE，则表示iDir所指的方向
-//             镜像被使能。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetMirror
+// Function Description: Get the image status of the image.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iDir indicates the mirror direction to be obtained.
+// 0, said the horizontal direction; 1, said the vertical direction.
+// pbEnable pointer, returns TRUE, then iDir refers to the direction
+// image is enabled.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetMirror)(
-	CameraHandle    hCamera,
-	int             iDir,
+	CameraHandle    hCamera, 
+	int             iDir, 
 	BOOL*           pbEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetWbWindow
-// 功能描述 : 获得白平衡参考窗口的位置。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            PiHOff   指针，返回参考窗口的左上角横坐标 。
-//            PiVOff     指针，返回参考窗口的左上角纵坐标 。
-//            PiWidth    指针，返回参考窗口的宽度。
-//            PiHeight   指针，返回参考窗口的高度。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetWbWindow
+// Function Description: Get the location of the white balance reference window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// PiHOff pointer, return to the upper left corner of the reference window abscissa.
+// PiVOff pointer returns the ordinate of the upper left corner of the reference window.
+// PiWidth pointer, returns the width of the reference window.
+// PiHeight pointer, return the reference window height.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetWbWindow)(
-	CameraHandle    hCamera,
-	INT*            PiHOff,
-	INT*            PiVOff,
-	INT*            PiWidth,
+	CameraHandle    hCamera, 
+	INT*            PiHOff, 
+	INT*            PiVOff, 
+	INT*            PiWidth, 
 	INT*            PiHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraSetWbWindow
-// 功能描述 : 设置白平衡参考窗口的位置。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iHOff   参考窗口的左上角横坐标。
-//            iVOff     参考窗口的左上角纵坐标。
-//            iWidth    参考窗口的宽度。
-//            iHeight   参考窗口的高度。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetWbWindow
+// Function Description: Set the position of the white balance reference window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iHOff reference window in the upper left corner of the horizontal axis.
+// iVOff reference window in the upper left corner of the vertical axis.
+// iWidth The width of the reference window.
+// iHeight reference window height.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetWbWindow)(
-	CameraHandle    hCamera,
-	INT             iHOff,
-	INT             iVOff,
-	INT             iWidth,
+	CameraHandle    hCamera, 
+	INT             iHOff, 
+	INT             iVOff, 
+	INT             iWidth, 
 	INT             iHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraIsWbWinVisible
-// 功能描述 : 获得白平衡窗口的显示状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbShow   指针，返回TRUE，则表示窗口是可见的。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraIsWbWinVisible
+// Function Description: Get the display status of the white balance window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbShow pointer, returns TRUE, then the window is visible.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraIsWbWinVisible)(
 	CameraHandle    hCamera,
 	BOOL*           pbShow
 	);
 
-/******************************************************/
-// 函数名   : CameraSetWbWinVisible
-// 功能描述 : 设置白平衡窗口的显示状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            bShow      TRUE，则表示设置为可见。在调用
-//             CameraImageOverlay后，图像内容上将以矩形
-//             的方式叠加白平衡参考窗口的位置。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetWbWinVisible
+// Function Description: Set the display state of the white balance window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bShow TRUE, then set to visible. Calling
+// CameraImageOverlay, the image content will be a rectangle
+// superimposes the position of the white balance reference window.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetWbWinVisible)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL            bShow
 	);
 
-/******************************************************/
-// 函数名   : CameraImageOverlay
-// 功能描述 : 将输入的图像数据上叠加十字线、白平衡参考窗口、
-//        自动曝光参考窗口等图形。只有设置为可见状态的
-//        十字线和参考窗口才能被叠加上。
-//        注意，该函数的输入图像必须是RGB格式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pRgbBuffer 图像数据缓冲区。
-//            pFrInfo    图像的帧头信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraImageOverlay
+// Function Description: The input image data superimposed cross line, white balance reference window,
+// Automatic exposure reference window and other graphics. Only set to visible state
+// Crosshair and reference window can be superimposed.
+// Note that the function's input image must be in RGB format.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pRgbBuffer image data buffer.
+// The header of the pFrInfo image.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraImageOverlay)(
 	CameraHandle    hCamera,
 	BYTE*           pRgbBuffer,
 	tSdkFrameHead*  pFrInfo
 	);
 
-/******************************************************/
-// 函数名   : CameraSetCrossLine
-// 功能描述 : 设置指定十字线的参数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iLine    表示要设置第几条十字线的状态。范围为[0,8]，共9条。
-//            x          十字线中心位置的横坐标值。
-//            y      十字线中心位置的纵坐标值。
-//            uColor     十字线的颜色，格式为(R|(G<<8)|(B<<16))
-//            bVisible   十字线的显示状态。TRUE，表示显示。
-//             只有设置为显示状态的十字线，在调用
-//             CameraImageOverlay后才会被叠加到图像上。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetCrossLine
+// Function Description: Set the parameters of the specified crosshair.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iLine said to set the state of the first few crosshairs. The range is [0,8], a total of nine.
+// x abscissa center position of the abscissa value.
+// Y axis position of the vertical axis value.
+// uColor crosshair color in the format (R | (G << 8) | (B << 16))
+// bVisible Crosshair display status. TRUE, that shows.
+// Only crosshairs set to show status are called
+// CameraImageOverlay will be superimposed on the image.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetCrossLine)(
-	CameraHandle    hCamera,
-	int             iLine,
+	CameraHandle    hCamera, 
+	int             iLine, 
 	INT             x,
 	INT             y,
 	UINT            uColor,
 	BOOL            bVisible
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCrossLine
-// 功能描述 : 获得指定十字线的状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iLine    表示要获取的第几条十字线的状态。范围为[0,8]，共9条。
-//            px     指针，返回该十字线中心位置的横坐标。
-//            py     指针，返回该十字线中心位置的横坐标。
-//            pcolor     指针，返回该十字线的颜色，格式为(R|(G<<8)|(B<<16))。
-//            pbVisible  指针，返回TRUE，则表示该十字线可见。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCrossLine
+// Function Description: Get the status of the specified crosshair.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iLine said to get the first few crosshair status. The range is [0,8], a total of nine.
+// px pointer to return the center of the crosshair abscissa.
+// py pointer returns the abscissa of the center of the crosshair.
+// The pcolor pointer returns the color of the crosshair in the format (R | (G << 8) | (B << 16)).
+// pbVisible pointer, return TRUE, then the crosshair visible.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetCrossLine)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iLine,
 	INT*            px,
 	INT*            py,
@@ -1846,529 +1927,531 @@ typedef    CameraSdkStatus (__stdcall *_CameraGetCrossLine)(
 	BOOL*           pbVisible
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCapability
-// 功能描述 : 获得相机的特性描述结构体。该结构体中包含了相机
-//        可设置的各种参数的范围信息。决定了相关函数的参数
-//        返回，也可用于动态创建相机的配置界面。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            pCameraInfo 指针，返回该相机特性描述的结构体。
-//                        tSdkCameraCapbility在CameraDefine.h中定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCapability
+// Function Description: Get the camera's characterization structure. The structure contains the camera
+// Range of various parameters that can be set. Determine the parameters of the relevant function
+// return, can also be used to dynamically create the camera's configuration interface.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The pCameraInfo pointer returns the structure of the camera's characterization.
+// tSdkCameraCapbility is defined in CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetCapability)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	tSdkCameraCapbility*    pCameraInfo
 	);
 
-/******************************************************/
-// 函数名   : CameraWriteSN
-// 功能描述 : 设置相机的序列号。我公司相机序列号分为3级。
-//        0级的是我公司自定义的相机序列号，出厂时已经
-//        设定好，1级和2级留给二次开发使用。每级序列
-//        号长度都是32个字节。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbySN    序列号的缓冲区。
-//            iLevel   要设定的序列号级别，只能是1或者2。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraWriteSN
+// Function Description: Set the camera's serial number. My company camera serial number is divided into three levels.
+// 0 level is my company custom camera serial number, the factory has been
+// Set, 1 and 2 left for secondary development. Each level of sequence
+// length is 32 bytes.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbySN serial number of the buffer zone.
+// iLevel to set the serial number level, only 1 or 2.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraWriteSN)(
-	CameraHandle    hCamera,
-	BYTE*           pbySN,
+	CameraHandle    hCamera, 
+	BYTE*           pbySN, 
 	INT             iLevel
 	);
 
-/******************************************************/
-// 函数名   : CameraReadSN
-// 功能描述 : 读取相机指定级别的序列号。序列号的定义请参考
-//          CameraWriteSN函数的功能描述部分。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            pbySN    序列号的缓冲区。
-//            iLevel     要读取的序列号级别。只能是1和2。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraReadSN
+// Function Description: Read the camera specified level serial number. Please refer to the definition of serial number
+// CameraWriteSN function description section.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbySN serial number of the buffer zone.
+// iLevel The sequence number level to read. Only 1 and 2.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraReadSN)(
-	CameraHandle        hCamera,
-	BYTE*               pbySN,
+	CameraHandle        hCamera, 
+	BYTE*               pbySN, 
 	INT                 iLevel
 	);
-/******************************************************/
-// 函数名   : CameraSetTriggerDelayTime
-// 功能描述 : 设置硬件触发模式下的触发延时时间，单位微秒。
-//        当硬触发信号来临后，经过指定的延时，再开始采集
-//        图像。仅部分型号的相机支持该功能。具体请查看
-//        产品说明书。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            uDelayTimeUs 硬触发延时。单位微秒。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetTriggerDelayTime
+// Function Description: Set the trigger delay time in hardware trigger mode, in microseconds.
+// When the hard trigger signal arrives, after the specified delay, and then start collecting
+// image. Only some models of the camera support this feature. Please check
+// Product Manual.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uDelayTimeUs Hard trigger delay. Unit microseconds.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetTriggerDelayTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT            uDelayTimeUs
 	);
 
-/******************************************************/
-// 函数名   : CameraGetTriggerDelayTime
-// 功能描述 : 获得当前设定的硬触发延时时间。
-// 参数     : hCamera     相机的句柄，由CameraInit函数获得。
-//            puDelayTimeUs 指针，返回延时时间，单位微秒。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetTriggerDelayTime
+// Function Description: Get the currently set hard trigger delay time.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// puDelayTimeUs pointer, the return delay time, in microseconds.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetTriggerDelayTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT*           puDelayTimeUs
 	);
 
-/******************************************************/
-// 函数名   : CameraSetTriggerCount
-// 功能描述 : 设置触发模式下的触发帧数。对软件触发和硬件触发
-//        模式都有效。默认为1帧，即一次触发信号采集一帧图像。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iCount    一次触发采集的帧数。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetTriggerCount
+// Function Description: Set the number of trigger frames in trigger mode. On software trigger and hardware trigger
+// mode is valid. The default is 1 frame, that is, a trigger signal acquisition of a frame image.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iCount The number of frames triggered at a time.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetTriggerCount)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iCount
 	);
 
-/******************************************************/
-// 函数名   : CameraGetTriggerCount
-// 功能描述 : 获得一次触发的帧数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            INT* piCount
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetTriggerCount
+// Function Description: Get the number of frames to trigger once.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// INT * piCount
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetTriggerCount)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            piCount
 	);
 
-/******************************************************/
-// 函数名   : CameraSoftTrigger
-// 功能描述 : 执行一次软触发。执行后，会触发由CameraSetTriggerCount
-//          指定的帧数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSoftTrigger
+// Function description: Execute soft trigger once. After execution, triggered by CameraSetTriggerCount
+// The specified number of frames.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSoftTrigger)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraSetTriggerMode
-// 功能描述 : 设置相机的触发模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iModeSel   模式选择索引号。可设定的模式由
-//             CameraGetCapability函数获取。请参考
-//               CameraDefine.h中tSdkCameraCapbility的定义。
-//             一般情况，0表示连续采集模式；1表示
-//             软件触发模式；2表示硬件触发模式。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetTriggerMode
+// Function Description: Set the camera's trigger mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iModeSel mode select index number. Can be set by the mode
+// CameraGetCapability function to get. Please refer to
+// Definition of tSdkCameraCapbility in CameraDefine.h.
+// In general, 0 means continuous acquisition mode; 1 means
+// software trigger mode; 2 hardware trigger mode.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetTriggerMode)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	int             iModeSel
 	);
 
-/******************************************************/
-// 函数名   : CameraGetTriggerMode
-// 功能描述 : 获得相机的触发模式。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            piModeSel  指针，返回当前选择的相机触发模式的索引号。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetTriggerMode
+// Function Description: Get the camera's trigger mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The piModeSel pointer returns the index number of the currently selected camera triggering mode.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetTriggerMode)(
 	CameraHandle    hCamera,
 	INT*            piModeSel
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetStrobeMode
-// 功能描述	: 设置IO引脚端子上的STROBE信号。该信号可以做闪光灯控制，也可以做外部机械快门控制。
-// 参数	    : hCamera 相机的句柄，由CameraInit函数获得。
-//             iMode   当为STROBE_SYNC_WITH_TRIG_AUTO      和触发信号同步，触发后，相机进行曝光时，自动生成STROBE信号。
-//                                                         此时，有效极性可设置(CameraSetStrobePolarity)。
-//                     当为STROBE_SYNC_WITH_TRIG_MANUAL时，和触发信号同步，触发后，STROBE延时指定的时间后(CameraSetStrobeDelayTime)，
-//                                                         再持续指定时间的脉冲(CameraSetStrobePulseWidth)，
-//                                                         有效极性可设置(CameraSetStrobePolarity)。
-//                     当为STROBE_ALWAYS_HIGH时，STROBE信号恒为高,忽略其他设置
-//                     当为STROBE_ALWAYS_LOW时，STROBE信号恒为低,忽略其他设置
+/***************************************************** *****/
+// function name: CameraSetStrobeMode
+// Function Description: Set the STROBE signal on the IO pin. The signal can be flash control, you can also do external mechanical shutter control.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iMode When STROBE_SYNC_WITH_TRIG_AUTO is synchronized with the trigger, the STROBE signal is automatically generated when the camera is exposed.
+// At this point, the effective polarity can be set (CameraSetStrobePolarity).
+// When STROBE_SYNC_WITH_TRIG_MANUAL, and the trigger signal synchronization, after the trigger, STROBE delay after the specified time (CameraSetStrobeDelayTime),
+// Continue pulse of the specified time (CameraSetStrobePulseWidth)
+// Effective polarity can be set (CameraSetStrobePolarity).
+// STROBE signal is always high when STROBE_ALWAYS_HIGH, ignoring other settings
+// When STROBE_ALWAYS_LOW, STROBE signal is always low, ignore other settings
 //
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetStrobeMode)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iMode
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetStrobeMode
-// 功能描述	: 或者当前STROBE信号设置的模式。
-// 参数	    : hCamera 相机的句柄，由CameraInit函数获得。
-//             piMode  指针，返回STROBE_SYNC_WITH_TRIG_AUTO,STROBE_SYNC_WITH_TRIG_MANUAL、STROBE_ALWAYS_HIGH或者STROBE_ALWAYS_LOW。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetStrobeMode
+// Function Description: or the mode set by the current STROBE signal.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piMode pointer, return STROBE_SYNC_WITH_TRIG_AUTO, STROBE_SYNC_WITH_TRIG_MANUAL, STROBE_ALWAYS_HIGH or STROBE_ALWAYS_LOW.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetStrobeMode)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            piMode
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetStrobeDelayTime
-// 功能描述	: 当STROBE信号处于STROBE_SYNC_WITH_TRIG时，通过该函数设置其相对触发信号延时时间。
-// 参数	    : hCamera       相机的句柄，由CameraInit函数获得。
-//             uDelayTimeUs  相对触发信号的延时时间，单位为us。可以为0，但不能为负数。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetStrobeDelayTime
+// Function description: When STROBE signal is in STROBE_SYNC_WITH_TRIG, set the relative trigger signal delay time by this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Delay time relative to the trigger signal uDelayTimeUs, in units of us. Can be 0, but not negative.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetStrobeDelayTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT            uDelayTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetStrobeDelayTime
-// 功能描述	: 当STROBE信号处于STROBE_SYNC_WITH_TRIG时，通过该函数获得其相对触发信号延时时间。
-// 参数	    : hCamera           相机的句柄，由CameraInit函数获得。
-//             upDelayTimeUs     指针，返回延时时间，单位us。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetStrobeDelayTime
+// Function description: When STROBE signal is in STROBE_SYNC_WITH_TRIG, get the relative trigger signal delay time by this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// upDelayTimeUs pointer, return delay time, unit us.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetStrobeDelayTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT*           upDelayTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetStrobePulseWidth
-// 功能描述	: 当STROBE信号处于STROBE_SYNC_WITH_TRIG时，通过该函数设置其脉冲宽度。
-// 参数	    : hCamera       相机的句柄，由CameraInit函数获得。
-//             uTimeUs       脉冲的宽度，单位为时间us。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetStrobePulseWidth
+// Function description: This function sets the pulse width when STROBE signal is in STROBE_SYNC_WITH_TRIG.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uTimeUs pulse width, in units of time us.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetStrobePulseWidth)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT            uTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetStrobePulseWidth
-// 功能描述	: 当STROBE信号处于STROBE_SYNC_WITH_TRIG时，通过该函数获得其脉冲宽度。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//             upTimeUs  指针，返回脉冲宽度。单位为时间us。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetStrobePulseWidth
+// Function Description: The pulse width is obtained from this function when the STROBE signal is at STROBE_SYNC_WITH_TRIG.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// upTimeUs pointer, return pulse width. The unit is time us.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetStrobePulseWidth)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT*           upTimeUs
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraSetStrobePolarity
-// 功能描述	: 当STROBE信号处于STROBE_SYNC_WITH_TRIG时，通过该函数设置其有效电平的极性。默认为高有效，当触发信号到来时，STROBE信号被拉高。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//             iPolarity STROBE信号的极性，0为低电平有效，1为高电平有效。默认为高电平有效。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetStrobePolarity
+// Function description: This function sets the polarity of its active level when the STROBE signal is in STROBE_SYNC_WITH_TRIG. The default is high active, when the trigger signal comes, STROBE signal is pulled high.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Polarity STROBE signal polarity, 0 is active low, 1 is active high. The default is active high.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetStrobePolarity)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iPolarity
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetStrobePolarity
-// 功能描述	: 获得相机当前STROBE信号的有效极性。默认为高电平有效。
-// 参数	    : hCamera       相机的句柄，由CameraInit函数获得。
-//             ipPolarity    指针，返回STROBE信号当前的有效极性。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetStrobePolarity
+// Function Description: Get the effective polarity of the camera's current STROBE signal. The default is active high.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// ipPolarity pointer returns the current valid polarity of the STROBE signal.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetStrobePolarity)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            ipPolarity
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetExtTrigSignalType
-// 功能描述	: 设置相机外触发信号的种类。上边沿、下边沿、或者高、低电平方式。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//             iType     外触发信号种类，返回值参考CameraDefine.h中
-//                       emExtTrigSignal类型定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetExtTrigSignalType
+// Function Description: Set the type of trigger signal outside the camera. Upper edge, lower edge, or high and low level.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iType external trigger signal type, the return value reference CameraDefine.h
+// emExtTrigSignal type definition.
+
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetExtTrigSignalType)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iType
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetExtTrigSignalType
-// 功能描述	: 获得相机当前外触发信号的种类。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//             ipType    指针，返回外触发信号种类，返回值参考CameraDefine.h中
-//                       emExtTrigSignal类型定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetExtTrigSignalType
+// Function Description: Get the type of the camera's current external trigger signal.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// ipType pointer, return the type of external trigger signal, the return value reference CameraDefine.h
+// emExtTrigSignal type definition.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExtTrigSignalType)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            ipType
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetExtTrigShutterType
-// 功能描述	: 设置外触发模式下，相机快门的方式，默认为标准快门方式。
-//              部分滚动快门的CMOS相机支持GRR方式。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//             iType     外触发快门方式。参考CameraDefine.h中emExtTrigShutterMode类型。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetExtTrigShutterType
+// Function Description: Set the mode of the camera shutter in the external trigger mode, the default is the standard shutter mode.
+// The partially rolled shutter CMOS camera supports GRR mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iType external trigger shutter mode. Refer to the emExtTrigShutterMode type in CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetExtTrigShutterType)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT             iType
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetExtTrigShutterType
-// 功能描述	: 获得外触发模式下，相机快门的方式，默认为标准快门方式。
-//              部分滚动快门的CMOS相机支持GRR方式。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//             ipType    指针，返回当前设定的外触发快门方式。返回值参考
-//                       CameraDefine.h中emExtTrigShutterMode类型。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetExtTrigShutterType
+// Function Description: Get the external trigger mode, the camera shutter mode, the default is the standard shutter mode.
+// The partially rolled shutter CMOS camera supports GRR mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// ipType pointer, return the current set of external trigger shutter mode. Return value reference
+// emExtTrigShutterMode type in CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExtTrigShutterType)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	INT*            ipType
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetExtTrigDelayTime
-// 功能描述	: 设置外触发信号延时时间，默认为0，单位为微秒。
-//              当设置的值uDelayTimeUs不为0时，相机接收到外触发信号后，将延时uDelayTimeUs个微秒后再进行图像捕获。
-// 参数	    : hCamera       相机的句柄，由CameraInit函数获得。
-//             uDelayTimeUs  延时时间，单位为微秒，默认为0.
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetExtTrigDelayTime
+// Function Description: Set the delay time of external trigger signal, the default is 0, the unit is microsecond.
+// When the set value uDelayTimeUs is not 0, the camera receives the external trigger signal, the delay uDelayTimeUs microseconds before the image capture.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uDelayTimeUs Delay time, in microseconds, defaults to 0.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetExtTrigDelayTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT            uDelayTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetExtTrigDelayTime
-// 功能描述	: 获得设置的外触发信号延时时间，默认为0，单位为微秒。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//            UINT* upDelayTimeUs
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetExtTrigDelayTime
+// Function description: Get the set delay time of external trigger signal, the default is 0, the unit is microsecond.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// UINT * upDelayTimeUs
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExtTrigDelayTime)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	UINT*           upDelayTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetExtTrigJitterTime
-// 功能描述	: 设置相机外触发信号的消抖时间。默认为0，单位为微秒。
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//            UINT uTimeUs
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetExtTrigJitterTime
+// Function description: Set the out-shaking time of the external trigger signal of the camera, only when the external trigger signal mode is selected to be high level or low level,
+// debounce time will take effect. The default is 0, the unit is microseconds, the maximum 150 milliseconds
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// UINT uTimeUs
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetExtTrigJitterTime)(
 	CameraHandle    hCamera,
 	UINT            uTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetExtTrigJitterTime
-// 功能描述	: 获得设置的相机外触发消抖时间，默认为0.单位为微妙
-// 参数	    : hCamera   相机的句柄，由CameraInit函数获得。
-//            UINT* upTimeUs
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetExtTrigJitterTime
+// Function Description: Get set the camera outside the trigger dithering time, the default is 0. The unit is microseconds.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// UINT * upTimeUs
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExtTrigJitterTime)(
 	CameraHandle    hCamera,
 	UINT*           upTimeUs
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetExtTrigCapability
-// 功能描述	: 获得相机外触发的属性掩码
-// 参数	    : hCamera           相机的句柄，由CameraInit函数获得。
-//             puCapabilityMask  指针，返回该相机外触发特性掩码，掩码参考CameraDefine.h中
-//                               EXT_TRIG_MASK_ 开头的宏定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetExtTrigCapability
+// Function Description: Get the attribute mask of the camera triggering
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// puCapabilityMask pointer, returns the camera's external trigger mask, mask reference CameraDefine.h
+// Macro definition beginning with EXT_TRIG_MASK_.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetExtTrigCapability)(
 	CameraHandle    hCamera,
 	UINT*           puCapabilityMask
 	);
 
-/******************************************************/
-// 函数名   : CameraGetResolutionForSnap
-// 功能描述 : 获得抓拍模式下的分辨率选择索引号。
-// 参数     : hCamera        相机的句柄，由CameraInit函数获得。
-//            pImageResolution 指针，返回抓拍模式的分辨率。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetResolutionForSnap
+// Function Description: Get the capture mode resolution select index number.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageResolution pointer, returns the capture mode resolution.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetResolutionForSnap)(
 	CameraHandle            hCamera,
 	tSdkImageResolution*    pImageResolution
 	);
 
-/******************************************************/
-// 函数名   : CameraSetResolutionForSnap
-// 功能描述 : 设置抓拍模式下相机输出图像的分辨率。
-// 参数     : hCamera       相机的句柄，由CameraInit函数获得。
-//            pImageResolution 如果pImageResolution->iWidth
-//                 和 pImageResolution->iHeight都为0，
-//                         则表示设定为跟随当前预览分辨率。抓
-//                         怕到的图像的分辨率会和当前设定的
-//                 预览分辨率一样。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetResolutionForSnap
+// Function Description: Set the resolution of the camera's output image in Snapshot mode.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             pImageResolution if pImageResolution-> iWidth
+//             and pImageResolution-> iHeight are both 0,
+//             Set to follow the current preview resolution. Grab
+//             of the resolution of the image and the current settings
+//             same preview resolution.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetResolutionForSnap)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	tSdkImageResolution*    pImageResolution
 	);
 
-/******************************************************/
-// 函数名   : CameraCustomizeResolution
-// 功能描述 : 打开分辨率自定义面板，并通过可视化的方式
-//        来配置一个自定义分辨率。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            pImageCustom 指针，返回自定义的分辨率。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraCustomizeResolution
+// Function Description: Open the resolution custom panel, and through the visual way
+// to configure a custom resolution.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageCustom pointer, return to the definition of the resolution.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraCustomizeResolution)(
 	CameraHandle            hCamera,
 	tSdkImageResolution*    pImageCustom
 	);
 
-/******************************************************/
-// 函数名   : CameraCustomizeReferWin
-// 功能描述 : 打开参考窗口自定义面板。并通过可视化的方式来
-//        获得一个自定义窗口的位置。一般是用自定义白平衡
-//        和自动曝光的参考窗口。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            iWinType   要生成的参考窗口的用途。0,自动曝光参考窗口；
-//             1,白平衡参考窗口。
-//            hParent    调用该函数的窗口的句柄。可以为NULL。
-//            piHOff     指针，返回自定义窗口的左上角横坐标。
-//            piVOff     指针，返回自定义窗口的左上角纵坐标。
-//            piWidth    指针，返回自定义窗口的宽度。
-//            piHeight   指针，返回自定义窗口的高度。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraCustomizeReferWin
+// Function Description: Opens the reference window custom panel. And through the visual way
+// Get a custom window location. Generally use a custom white balance
+// and automatic exposure reference window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iWinType The purpose of the reference window to be generated. 0, automatic exposure reference window
+// 1, white balance reference window.
+// hParent handle of the function that called the window. Can be NULL.
+// piHOff pointer, back to the upper left corner of the custom window abscissa.
+// piVOff pointer, return to the upper left corner of the custom window ordinate.
+// piWidth pointer, returns the width of the custom window.
+// piHeight pointer, returns the height of the custom window.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraCustomizeReferWin)(
 	CameraHandle    hCamera,
 	INT             iWinType,
-	HWND            hParent,
+	HWND            hParent, 
 	INT*            piHOff,
 	INT*            piVOff,
 	INT*            piWidth,
 	INT*            piHeight
 	);
 
-/******************************************************/
-// 函数名   : CameraShowSettingPage
-// 功能描述 : 设置相机属性配置窗口显示状态。必须先调用CameraCreateSettingPage
-//        成功创建相机属性配置窗口后，才能调用本函数进行
-//        显示。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            bShow    TRUE，显示;FALSE，隐藏。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraShowSettingPage
+// Function Description: Set the camera properties configuration window display status. CameraCreateSettingPage must be called first
+// After successful creation of the camera properties configuration window, this function can be called
+// display.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bShow TRUE, display; FALSE, hide.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraShowSettingPage)(
 	CameraHandle    hCamera,
 	BOOL            bShow
 	);
 
-/******************************************************/
-// 函数名   : CameraCreateSettingPage
-// 功能描述 : 创建该相机的属性配置窗口。调用该函数，SDK内部会
-//        帮您创建好相机的配置窗口，省去了您重新开发相机
-//        配置界面的时间。强烈建议使用您使用该函数让
-//        SDK为您创建好配置窗口。
-// 参数     : hCamera     相机的句柄，由CameraInit函数获得。
-//            hParent       应用程序主窗口的句柄。可以为NULL。
-//            pWinText      字符串指针，窗口显示的标题栏。
-//            pCallbackFunc 窗口消息的回调函数，当相应的事件发生时，
-//              pCallbackFunc所指向的函数会被调用，
-//              例如切换了参数之类的操作时，pCallbackFunc
-//              被回调时，在入口参数处指明了消息类型。
-//              这样可以方便您自己开发的界面和我们生成的UI
-//              之间进行同步。该参数可以为NULL。
-//            pCallbackCtx  回调函数的附加参数。可以为NULL。pCallbackCtx
-//              会在pCallbackFunc被回调时，做为参数之一传入。
-//              您可以使用该参数来做一些灵活的判断。
-//            uReserved     预留。必须设置为0。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraCreateSettingPage
+// Function Description: Create the camera's property configuration window. Call this function, SDK internal will
+// Help you create a good camera configuration window, eliminating the need for you to re-develop the camera
+// Configure the interface time. It is strongly recommended that you use this function to make
+// SDK for you to create a good configuration window.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// hParent application main window handle. Can be NULL.
+// pWinText string pointer, the title bar displayed in the window.
+// pCallbackFunc window message callback function, when the corresponding event occurs,
+// The function pointed to by pCallbackFunc will be called,
+// For example, pCallbackFunc is used when operations such as switching parameters
+// is called back, indicating the type of message at the entry parameter.
+// This will make it easy to develop your own interface and the UI we generate
+// Synchronize. This parameter can be NULL.
+// additional parameter to the pCallbackCtx callback function. Can be NULL. pCallbackCtx
+// will be passed in as one of the arguments when pCallbackFunc is called back.
+// You can use this parameter to make some flexible judgments.
+// uReserved Reserved. Must be set to 0.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraCreateSettingPage)(
 	CameraHandle            hCamera,
 	HWND                    hParent,
@@ -2378,148 +2461,129 @@ typedef    CameraSdkStatus (__stdcall *_CameraCreateSettingPage)(
 	UINT                    uReserved
 	);
 
-/******************************************************/
-// 函数名   : CameraSetActiveSettingSubPage
-// 功能描述 : 设置相机配置窗口的激活页面。相机配置窗口有多个
-//        子页面构成，该函数可以设定当前哪一个子页面
-//        为激活状态，显示在最前端。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            index      子页面的索引号。参考CameraDefine.h中
-//             PROP_SHEET_INDEX的定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetActiveSettingSubPage
+// Function Description: Set the camera configuration window activation page. There are multiple camera configuration windows
+// sub-page structure, the function can be set which sub-page
+// is active, displayed at the forefront.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index of the subpage. Reference CameraDefine.h
+// The definition of PROP_SHEET_INDEX.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetActiveSettingSubPage)(
 	CameraHandle    hCamera,
 	INT             index
 	);
 
-/******************************************************/
-// 函数名   : CameraSpecialControl
-// 功能描述 : 相机一些特殊配置所调用的接口，二次开发时一般不需要
-//        调用。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            dwCtrlCode 控制码。
-//            dwParam    控制子码，不同的dwCtrlCode时，意义不同。
-//            lpData     附加参数。不同的dwCtrlCode时，意义不同。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSpecialControl
+// Function Description: Some special camera interface called, secondary development generally do not need
+// transfer.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// dwCtrlCode control code.
+// dwParam control sub-code, different dwCtrlCode, meaning different.
+// lpData Additional parameters. Different dwCtrlCode, meaning different.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSpecialControl)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	DWORD           dwCtrlCode,
 	DWORD           dwParam,
 	LPVOID          lpData
 	);
 
-/******************************************************/
-// 函数名   : CameraGetFrameStatistic
-// 功能描述 : 获得相机接收帧率的统计信息，包括错误帧和丢帧的情况。
-// 参数     : hCamera        相机的句柄，由CameraInit函数获得。
-//            psFrameStatistic 指针，返回统计信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetFrameStatistic
+// Function Description: Get the statistics of the frame rate received by the camera, including the error frame and frame loss.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// psFrameStatistic pointer, return statistics.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetFrameStatistic)(
-	CameraHandle            hCamera,
+	CameraHandle            hCamera, 
 	tSdkFrameStatistic*     psFrameStatistic
 	);
 
-/******************************************************/
-// 函数名   : CameraSetNoiseFilter
-// 功能描述 : 设置图像降噪模块的使能状态。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            bEnable   TRUE，使能；FALSE，禁止。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetNoiseFilter
+// Function Description: Set the image noise reduction module enable status.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable TRUE, enabled; FALSE, disabled.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraSetNoiseFilter)(
 	CameraHandle    hCamera,
 	BOOL            bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetNoiseFilterState
-// 功能描述 : 获得图像降噪模块的使能状态。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//            *pEnable   指针，返回状态。TRUE，为使能。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetNoiseFilterState
+// Function Description: Get the image noise reduction module enabled.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//* pEnable pointer, return status. TRUE, to be enabled.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraGetNoiseFilterState)(
 	CameraHandle    hCamera,
 	BOOL*           pEnable
 	);
 
 
-/******************************************************/
-// 函数名   : CameraRstTimeStamp
-// 功能描述 : 复位图像采集的时间戳，从0开始。
-// 参数     : CameraHandle hCamera
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraRstTimeStamp
+// Function Description: Reset the time stamp of the image acquisition, starting from 0.
+// Parameters: CameraHandle hCamera
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef    CameraSdkStatus (__stdcall *_CameraRstTimeStamp)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCapabilityEx
-// 功能描述 : 获得相机的特性描述结构体。该结构体中包含了相机
-//        可设置的各种参数的范围信息。决定了相关函数的参数
-//        返回，也可用于动态创建相机的配置界面。
-// 参数     : sDeviceModel    相机的型号，由扫描列表中获取
-//             pCameraInfo   指针，返回该相机特性描述的结构体。
-//             PVOID         hCameraHandle
-//            tSdkCameraCapbility在CameraDefine.h中定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCapabilityEx
+// Function Description: Get the camera's characterization structure. The structure contains the camera
+// Range of various parameters that can be set. Determine the parameters of the relevant function
+// return, can also be used to dynamically create the camera's configuration interface.
+// Parameters: sDeviceModel The camera model, obtained from the scan list
+// The pCameraInfo pointer returns the structure of the camera's characterization.
+// tSdkCameraCapbility is defined in CameraDefine.h.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetCapabilityEx)(
-	char*                   sDeviceModel,
+	char*                   sDeviceModel, 
 	tSdkCameraCapbility*    pCameraInfo,
 	PVOID                   hCameraHandle
 	);
 
-/******************************************************/
-// 函数名   : CameraFreeCapabilityEx
-// 功能描述 :
-//        返回，也可用于动态创建相机的配置界面。
-// 参数     : sDeviceModel    相机的型号，由扫描列表中获取
-//            hCameraHandle  指针
-//                        tSdkCameraCapbility在CameraDefine.h中定义。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
-typedef CameraSdkStatus (__stdcall *_CameraFreeCapabilityEx)(
-	char*                   sDeviceModel,
-	PVOID                   hCameraHandle
-	);
-
-
-
-/******************************************************/
-// 函数名   : CameraSaveUserData
-// 功能描述 : 将用户自定义的数据保存到相机的非易性存储器中。
-//              每个型号的相机可能支持的用户数据区最大长度不一样。
-//              可以从设备的特性描述中获取该长度信息。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            uStartAddr  起始地址，从0开始。
-//            pbData      数据缓冲区指针
-//            ilen        写入数据的长度，ilen + uStartAddr必须
-//                        小于用户区最大长度
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSaveUserData
+// Function Description: Save the user-defined data to the camera's non-volatile memory.
+// The maximum length of user data area that each camera model may support is different.
+// This length information can be obtained from the device's characterization.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             uStartAddr starting address, starting from 0.
+//             pbData data buffer pointer
+//             ilen write the length of the data, ilen + uStartAddr must
+//                              less than the maximum length of the user area
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSaveUserData)(
 	CameraHandle    hCamera,
 	UINT            uStartAddr,
@@ -2527,20 +2591,20 @@ typedef CameraSdkStatus (__stdcall *_CameraSaveUserData)(
 	int             ilen
 	);
 
-/******************************************************/
-// 函数名   : CameraLoadUserData
-// 功能描述 : 从相机的非易性存储器中读取用户自定义的数据。
-//              每个型号的相机可能支持的用户数据区最大长度不一样。
-//              可以从设备的特性描述中获取该长度信息。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            uStartAddr  起始地址，从0开始。
-//            pbData      数据缓冲区指针，返回读到的数据。
-//            ilen        读取数据的长度，ilen + uStartAddr必须
-//                        小于用户区最大长度
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraLoadUserData
+// Function Description: Read user-defined data from the camera's non-volatile memory.
+// The maximum length of user data area that each camera model may support is different.
+// This length information can be obtained from the device's characterization.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//              uStartAddr starting address, starting from 0.
+//              pbData data buffer pointer, to read the data back.
+//              ilen read the length of the data, ilen + uStartAddr must
+//              less than the maximum length of the user area
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraLoadUserData)(
 	CameraHandle    hCamera,
 	UINT            uStartAddr,
@@ -2550,196 +2614,196 @@ typedef CameraSdkStatus (__stdcall *_CameraLoadUserData)(
 
 
 
-/******************************************************/
-// 函数名   : CameraGetFriendlyName
-// 功能描述 : 读取用户自定义的设备昵称。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            pName      指针，返回指向0结尾的字符串，
-//             设备昵称不超过32个字节，因此该指针
-//             指向的缓冲区必须大于等于32个字节空间。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetFriendlyName
+// Function Description: Read user-defined device nickname.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pName pointer, return to the end of the string 0,
+// The device nickname does not exceed 32 bytes, so the pointer
+// point to the buffer must be greater than or equal to 32 bytes of space.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetFriendlyName)(
 	CameraHandle  hCamera,
 	char*     pName
 	);
 
 
-/******************************************************/
-// 函数名   : CameraSetFriendlyName
-// 功能描述 : 设置用户自定义的设备昵称。
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            pName      指针，指向0结尾的字符串，
-//             设备昵称不超过32个字节，因此该指针
-//             指向字符串必须小于等于32个字节空间。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetFriendlyName
+// Function Description: Set user-defined device nickname.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pName pointer, a string ending in 0,
+// The device nickname does not exceed 32 bytes, so the pointer
+// point to the string must be less than or equal to 32 bytes of space.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetFriendlyName)(
 	CameraHandle  hCamera,
 	char*       pName
 	);
 
 
-/******************************************************/
-// 函数名   : CameraSdkGetVersionString
-// 功能描述 :
-// 参数     : pVersionString 指针，返回SDK版本字符串。
-//                            该指针指向的缓冲区大小必须大于
-//                            32个字节
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSdkGetVersionString
+// Function Description:
+// Parameters: pVersionString pointer, returns the SDK version string.
+// The pointer to the buffer size must be greater than
+// 32 bytes
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSdkGetVersionString)(
 	char*       pVersionString
 	);
 
-/******************************************************/
-// 函数名   : CameraCheckFwUpdate
-// 功能描述 : 检测固件版本，是否需要升级。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pNeedUpdate 指针，返回固件检测状态，TRUE表示需要更新
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraCheckFwUpdate
+// Function Description: Check the firmware version, whether you need to upgrade.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pNeedUpdate pointer, return firmware detection status, TRUE that needs to be updated
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraCheckFwUpdate)(
 	CameraHandle  hCamera,
 	BOOL*     pNeedUpdate
 	);
 
-/******************************************************/
-// 函数名   : CameraGetFirmwareVision
-// 功能描述 : 获得固件版本的字符串
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pVersion 必须指向一个大于32字节的缓冲区，
-//                      返回固件的版本字符串。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetFirmwareVision
+// Function Description: Get the firmware version of the string
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pVersion must point to a buffer greater than 32 bytes,
+// Returns the firmware version string.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetFirmwareVision)(
 	CameraHandle  hCamera,
 	char*     pVersion
 	);
 
-/******************************************************/
-// 函数名   : CameraGetEnumInfo
-// 功能描述 : 获得指定设备的枚举信息
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pCameraInfo 指针，返回设备的枚举信息。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetEnumInfo
+// Function Description: Get the enumeration information of the specified device
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pCameraInfo pointer, return the device enumeration information.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetEnumInfo)(
 	CameraHandle    hCamera,
 	tSdkCameraDevInfo*  pCameraInfo
 	);
 
-/******************************************************/
-// 函数名   : CameraGetInerfaceVersion
-// 功能描述 : 获得指定设备接口的版本
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            pVersion 指向一个大于32字节的缓冲区，返回接口版本字符串。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetInerfaceVersion
+// Function Description: Get the specified device interface version
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pVersion points to a buffer greater than 32 bytes and returns the interface version string.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetInerfaceVersion)(
 	CameraHandle    hCamera,
 	char*       pVersion
 	);
 
-/******************************************************/
-// 函数名   : CameraSetIOState
-// 功能描述 : 设置指定IO的电平状态，IO为输出型IO，相机
-//              预留可编程输出IO的个数由tSdkCameraCapbility中
-//              iOutputIoCounts决定。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iOutputIOIndex IO的索引号，从0开始。
-//            uState 要设定的状态，1为高，0为低
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetIOState
+// Function Description: Set the level of the specified IO state, IO for the output IO, camera
+// Reserved The number of programmable output IO by tSdkCameraCapbility
+// iOutputIoCounts decision.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iOutputIOIndex The index number of IO, starting from 0.
+// uState The state to set, 1 is high and 0 is low
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetIOState)(
 	CameraHandle    hCamera,
 	INT         iOutputIOIndex,
 	UINT        uState
 	);
 
-/******************************************************/
-// 函数名   : CameraGetIOState
-// 功能描述 : 设置指定IO的电平状态，IO为输入型IO，相机
-//              预留可编程输出IO的个数由tSdkCameraCapbility中
-//              iInputIoCounts决定。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iInputIOIndex IO的索引号，从0开始。
-//            puState 指针，返回IO状态,1为高，0为低
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetIOState
+// Function Description: Set the level of the specified IO state, IO input type IO, the camera
+// Reserved The number of programmable output IO by tSdkCameraCapbility
+// iInputIoCounts decision.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iInputIOIndex The index number of IO, starting from 0.
+// puState pointer returns IO state, 1 is high, 0 is low
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetIOState)(
 	CameraHandle      hCamera,
 	INT               iInputIOIndex,
 	UINT*             puState
 	);
 
-/******************************************************/
-// 函数名   : CameraSetInPutIOMode
-// 功能描述 : 设置输入IO的模式，相机
-//              预留可编程输出IO的个数由tSdkCameraCapbility中
-//              iInputIoCounts决定。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iInputIOIndex IO的索引号，从0开始。
-//            iMode IO模式,参考CameraDefine.h中emCameraGPIOMode
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetInPutIOMode
+// Function Description: Set the input IO mode, the camera
+// Reserved The number of programmable output IO by tSdkCameraCapbility
+// iInputIoCounts decision.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iInputIOIndex The index number of IO, starting from 0.
+// iMode IO mode, reference emCameraGPIOMode in CameraDefine.h
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetInPutIOMode)(
 	CameraHandle    hCamera,
 	INT         iInputIOIndex,
 	INT			iMode
 	);
 
-/******************************************************/
-// 函数名   : CameraSetOutPutIOMode
-// 功能描述 : 设置输出IO的模式，相机
-//              预留可编程输出IO的个数由tSdkCameraCapbility中
-//              iOutputIoCounts决定。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iOutputIOIndex IO的索引号，从0开始。
-//            iMode IO模式,参考CameraDefine.h中emCameraGPIOMode
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetOutPutIOMode
+// Function Description: Set the mode of output IO, camera
+// Reserved The number of programmable output IO by tSdkCameraCapbility
+// iOutputIoCounts decision.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iOutputIOIndex The index number of IO, starting from 0.
+// iMode IO mode, reference emCameraGPIOMode in CameraDefine.h
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetOutPutIOMode)(
 	CameraHandle    hCamera,
 	INT         iOutputIOIndex,
 	INT			iMode
 	);
 
-/******************************************************/
-// 函数名   : CameraSetOutPutPWM
-// 功能描述 : 设置PWM型输出的参数，相机
-//              预留可编程输出IO的个数由tSdkCameraCapbility中
-//              iOutputIoCounts决定。
-// 参数     : hCamera 相机的句柄，由CameraInit函数获得。
-//            iOutputIOIndex IO的索引号，从0开始。
-//            iCycle PWM的周期，单位(us)
-//			  uDuty  占用比，取值1%~99%
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetOutPutPWM
+// Function Description: Set the parameter of PWM type output, camera
+// Reserved The number of programmable output IO by tSdkCameraCapbility
+// iOutputIoCounts decision.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iOutputIOIndex The index number of IO, starting from 0.
+// iCycle PWM period, unit (us)
+// uDuty occupancy ratio, the value of 1% to 99%
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetOutPutPWM)(
 	CameraHandle    hCamera,
 	INT         iOutputIOIndex,
@@ -2747,30 +2811,66 @@ typedef CameraSdkStatus (__stdcall *_CameraSetOutPutPWM)(
 	UINT		uDuty
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetBlackLevel
-// 功能描述	: 设置图像的黑电平基准，默认值为0
-// 参数	    : hCamera	  相机的句柄，由CameraInit函数获得。
-//            iBlackLevel 要设定的电平值。范围为0到128。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetBayerDecAlgorithm
+// Function Description: Set Bayer data to color algorithm.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iIspProcessor Select the object that executes the algorithm, refer to CameraDefine.h
+// emSdkIspProcessor definition
+// iAlgorithmSel The algorithm number to select. Starting from 0, the maximum value is given by tSdkCameraCapbility
+// iBayerDecAlmSwDesc and iBayerDecAlmHdDesc decisions.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraSetBayerDecAlgorithm)(
+	CameraHandle    hCamera,
+	INT             iIspProcessor,
+	INT             iAlgorithmSel
+	);
+
+/***************************************************** *****/
+// function name: CameraGetBayerDecAlgorithm
+// Function Description: The algorithm for getting Bayer data to color.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iIspProcessor Select the object that executes the algorithm, refer to CameraDefine.h
+// emSdkIspProcessor definition
+// piAlgorithmSel returns the currently selected algorithm number. Starting from 0, the maximum value is given by tSdkCameraCapbility
+// iBayerDecAlmSwDesc and iBayerDecAlmHdDesc decisions.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraGetBayerDecAlgorithm)(
+	CameraHandle    hCamera,
+	INT             iIspProcessor,
+	INT*            piAlgorithmSel
+	);
+
+/***************************************************** *****/
+// function name: CameraSetBlackLevel
+// Function Description: Set the black level of image reference, the default value is 0
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iBlackLevel The level to be set. The range is 0 to 255.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetBlackLevel)
 	(
 	CameraHandle    hCamera,
 	INT             iBlackLevel
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetBlackLevel
-// 功能描述	: 获得图像的黑电平基准，默认值为0
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//            piBlackLevel 返回当前的黑电平值。范围为0到128。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetBlackLevel
+// Function Description: get the black level of the image benchmark, the default value is 0
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piBlackLevel returns the current black level value. The range is 0 to 255.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetBlackLevel)
 	(
 	CameraHandle    hCamera,
@@ -2778,15 +2878,15 @@ typedef CameraSdkStatus (__stdcall *_CameraGetBlackLevel)
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraSetWhiteLevel
-// 功能描述	: 设置图像的白电平基准，默认值为255
-// 参数	    : hCamera		相机的句柄，由CameraInit函数获得。
-//            iWhiteLevel	要设定的电平值。范围为128到255。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetWhiteLevel
+// Function Description: Set the white level of the image. The default value is 255
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// iWhiteLevel The level to be set. The range is 0 to 255.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetWhiteLevel)
 	(
 	CameraHandle    hCamera,
@@ -2795,15 +2895,15 @@ typedef CameraSdkStatus (__stdcall *_CameraSetWhiteLevel)
 
 
 
-/******************************************************/
-// 函数名 	: CameraGetWhiteLevel
-// 功能描述	: 获得图像的白电平基准，默认值为255
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//            piWhiteLevel 返回当前的白电平值。范围为128到255。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetWhiteLevel
+// Function Description: Gets the white level of the image. The default value is 255
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piWhiteLevel returns the current white level value. The range is 0 to 255.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetWhiteLevel)
 	(
 	CameraHandle    hCamera,
@@ -2811,68 +2911,72 @@ typedef CameraSdkStatus (__stdcall *_CameraGetWhiteLevel)
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraSetIspOutFormat
-// 功能描述	: 设置CameraGetImageBuffer函数的图像处理的输出格式，支持
-//              CAMERA_MEDIA_TYPE_MONO8和CAMERA_MEDIA_TYPE_RGB8和CAMERA_MEDIA_TYPE_RGBA8
-//              (在CameraDefine.h中定义)三种，分别对应8位灰度图像和24、32位彩色图像。
-// 参数	    : hCamera		相机的句柄，由CameraInit函数获得。
-//             uFormat	     要设定格式。CAMERA_MEDIA_TYPE_MONO8或者CAMERA_MEDIA_TYPE_RGB8、CAMERA_MEDIA_TYPE_RGBA8
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetIspOutFormat
+// Function Description: Set the output format of image processing of CameraImageProcess function, support
+// CAMERA_MEDIA_TYPE_MONO8 and CAMERA_MEDIA_TYPE_RGB8 and CAMERA_MEDIA_TYPE_RGBA8
+// and CAMERA_MEDIA_TYPE_BGR8, CAMERA_MEDIA_TYPE_BGRA8
+// (defined in CameraDefine.h) 5 types corresponding to 8-bit grayscale image and 24RGB, 32-bit RGB, 24-bit BGR, 32-bit BGR color image.
+// The default output is CAMERA_MEDIA_TYPE_BGR8 format.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uFormat to format. CAMERA_MEDIA_TYPE_MONO8 or CAMERA_MEDIA_TYPE_RGB8, CAMERA_MEDIA_TYPE_RGBA8, CAMERA_MEDIA_TYPE_BGR8, CAMERA_MEDIA_TYPE_BGRA8
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetIspOutFormat)
 	(
 	CameraHandle    hCamera,
 	UINT            uFormat
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetIspOutFormat
-// 功能描述	: 获得CameraGetImageBuffer函数图像处理的输出格式，支持
-//              CAMERA_MEDIA_TYPE_MONO8和CAMERA_MEDIA_TYPE_RGB8和CAMERA_MEDIA_TYPE_RGBA8
-//              (在CameraDefine.h中定义)三种，分别对应8位灰度图像和24、32位彩色图像。
-// 参数	    : hCamera		相机的句柄，由CameraInit函数获得。
-//             puFormat	返回当前设定的格式。CAMERA_MEDIA_TYPE_MONO8或者CAMERA_MEDIA_TYPE_RGB8、CAMERA_MEDIA_TYPE_RGBA8
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetIspOutFormat
+// Function Description: Get CameraGetImageBuffer function image output format, support
+// CAMERA_MEDIA_TYPE_MONO8 and CAMERA_MEDIA_TYPE_RGB8 and CAMERA_MEDIA_TYPE_RGBA8
+// and CAMERA_MEDIA_TYPE_BGR8, CAMERA_MEDIA_TYPE_BGRA8
+// (defined in CameraDefine.h) 5 types corresponding to 8-bit grayscale image and 24RGB, 32-bit RGB, 24-bit BGR, 32-bit BGR color image.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// puFormat returns the format of the current setting. ?C AERA_MEDIA_TYPE_MONO8 or CAMERA_MEDIA_TYPE_RGB8, CAMERA_MEDIA_TYPE_RGBA8, CAMERA_MEDIA_TYPE_BGR8, CAMERA_MEDIA_TYPE_BGRA8
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetIspOutFormat)
 	(
 	CameraHandle    hCamera,
 	UINT*           puFormat
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetErrorString
-// 功能描述	: 获得错误码对应的描述字符串
-// 参数	    : iStatusCode		错误码。(定义于CameraStatus.h中)
-// 返回值   : 成功时，返回错误码对应的字符串首地址;
-//            否则返回NULL。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetErrorString
+// Function Description: Obtain the description string corresponding to the error code
+// Parameters: iStatusCode error code. (Defined in CameraStatus.h)
+// Return value: When successful, return the first address of the string corresponding to the error code.
+// otherwise return NULL.
+/***************************************************** *****/
+
 typedef char* (__stdcall *_CameraGetErrorString)(
 	CameraSdkStatus     iStatusCode
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetImageBufferEx2
-// 功能描述	: 获得一帧图像数据。该接口获得的图像是经过处理后的RGB格式。该函数调用后，
-//			  不需要调用 CameraReleaseImageBuffer 释放，也不要调用free之类的函数释放
-//              来释放该函数返回的图像数据缓冲区。
-// 参数	    : hCamera	    相机的句柄，由CameraInit函数获得。
-//             pImageData  接收图像数据的缓冲区，大小必须和uOutFormat指定的格式相匹配，否则数据会溢出
-//             piWidth     整形指针，返回图像的宽度
-//             piHeight    整形指针，返回图像的高度
-//             wTimes      抓取图像的超时时间。单位毫秒。在
-//						wTimes时间内还未获得图像，则该函数
-//						会返回超时信息。
-// 返回值   : 成功时，返回RGB数据缓冲区的首地址;
-//            否则返回0。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferEx2
+// Function Description: Get a frame of image data. The image obtained by this interface is processed RGB format. After the function is called,
+// Do not need to call CameraReleaseImageBuffer release, do not call free release of such functions
+// to free the image data buffer returned by this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageData Buffer to receive image data, the size must match the format specified by uOutFormat, otherwise the data will overflow
+// piWidth plastic pointer, returns the width of the image
+// piHeight plastic pointer, returns the height of the image
+// wTimes capture image timeout. Milliseconds. in
+// wTimes time has not yet been the image, then the function
+// will return the timeout message.
+// Return Value: Returns the first address of the RGB data buffer on success;
+// otherwise 0
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferEx2)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BYTE*           pImageData,
 	UINT            uOutFormat,
 	int*            piWidth,
@@ -2880,17 +2984,42 @@ typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferEx2)(
 	UINT            wTimes
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetCapabilityEx2
-// 功能描述	: 获得该相机的一些特性。
-// 参数	    : hCamera		    相机的句柄，由CameraInit函数获得。
-//             pMaxWidth	    返回该相机最大分辨率的宽度
-//             pMaxHeight      返回该相机最大分辨率的高度
-//             pbColorCamera    返回该相机是否是彩色相机。1表示彩色相机，0表示黑白相机
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferEx3
+// Function Description: Get a frame of image data. The image obtained by this interface is processed RGB format. After the function is called,
+// Do not need to call CameraReleaseImageBuffer release.
+// uOutFormat 0: 8 BIT gray 1: rgb24 2: rgba32 3: bgr24 4: bgra32
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageData Buffer to receive image data, the size must match the format specified by uOutFormat, otherwise the data will overflow
+// piWidth plastic pointer, returns the width of the image
+// piHeight plastic pointer, returns the height of the image
+// puTimeStamp unsigned plastic, returns the image timestamp
+// UINT wTimes The time-out period for grabbing the image. Milliseconds. in
+// The image has not been acquired within the wTimes time, the function returns the time-out information.
+// Return Value: Returns the first address of the RGB data buffer on success;
+// otherwise 0
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferEx3)(
+	CameraHandle hCamera, 
+	BYTE*pImageData,
+	UINT uOutFormat,
+	int *piWidth,
+	int *piHeight,
+	UINT* puTimeStamp,
+	UINT wTimes
+	);
+
+/***************************************************** *****/
+// function name: CameraGetCapabilityEx2
+// Function Description: Get some features of the camera.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pMaxWidth returns the width of the camera's maximum resolution
+// pMaxHeight returns the height of the camera's maximum resolution
+// pbColorCamera Returns whether the camera is a color camera. 1 for color camera, 0 for black and white camera
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetCapabilityEx2)(
 	CameraHandle    hCamera,
 	int*            pMaxWidth,
@@ -2899,145 +3028,145 @@ typedef CameraSdkStatus (__stdcall *_CameraGetCapabilityEx2)(
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraReConnect
-// 功能描述	: 重新连接设备，用于USB设备意外掉线后重连
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraReConnect
+// Function Description: Reconnect the device for USB device accidental disconnection after reconnection
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraReConnect)(
 	CameraHandle    hCamera
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraConnectTest
-// 功能描述	: 测试相机的连接状态，用于检测相机是否掉线
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraConnectTest
+// Function Description: Test the camera's connection status, used to detect whether the camera dropped
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraConnectTest)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetLedEnable
-// 功能描述	: 设置相机的LED使能状态，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index       LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             enable      使能状态
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetLedEnable
+// Function Description: Set the camera's LED enable status, without the LED model, this function returns an error code that does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+//             enable enable status
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetLedEnable)(
 	CameraHandle    hCamera,
 	int             index,
 	BOOL            enable
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetLedEnable
-// 功能描述	: 获得相机的LED使能状态，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index       LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             enable      指针，返回LED使能状态
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLedEnable
+// Function Description: Get the LED status of the camera, without the LED model, this function returns an error code that does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// enable pointer to return the LED enable status
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetLedEnable)(
 	CameraHandle    hCamera,
 	int             index,
 	BOOL*           enable
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetLedOnOff
-// 功能描述	: 设置相机的LED开关状态，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index       LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             onoff	   LED开关状态
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetLedOnOff
+// Function Description: Set the camera's LED switch status, without LED model, this function returns an error code that does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// onoff LED switch status
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetLedOnOff)(
 	CameraHandle    hCamera,
 	int             index,
 	BOOL            onoff
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetLedOnOff
-// 功能描述	: 获得相机的LED开关状态，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index       LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             onoff	   指针，返回LED开关状态
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLedOnOff
+// Function Description: Get the camera's LED on / off status, without LED model, this function returns an error code that does not support it.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// onoff pointer, return LED switch status
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetLedOnOff)(
 	CameraHandle    hCamera,
 	int             index,
 	BOOL*           onoff
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetLedDuration
-// 功能描述	: 设置相机的LED持续时间，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	    相机的句柄，由CameraInit函数获得。
-//             index        LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             duration		LED持续时间，单位毫秒
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetLedDuration
+// Function Description: Set the LED duration of the camera, the model without LED, this function returns an error code, which means it is not supported.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// duration of the LED in milliseconds
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetLedDuration)(
 	CameraHandle    hCamera,
 	int             index,
 	UINT            duration
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetLedDuration
-// 功能描述	: 获得相机的LED持续时间，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	    相机的句柄，由CameraInit函数获得。
-//             index        LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             duration		指针，返回LED持续时间，单位毫秒
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLedDuration
+// Function Description: Obtain the LED duration of the camera, without the LED model, this function returns an error code that does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// duration pointer to return LED duration in milliseconds
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetLedDuration)(
 	CameraHandle    hCamera,
 	int             index,
 	UINT*           duration
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetLedLightless
-// 功能描述	: 设置相机的LED亮度，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index      LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             uLightless LED亮度值，范围0到255. 0表示关闭，255最亮。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetLedBrightness
+// Function Description: Set the camera's LED brightness, without the LED model, this function returns the error code, it does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// uBrightness LED brightness value, range 0 to 255. 0 means off, 255 is the brightest.
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetLedBrightness)(
 	CameraHandle    hCamera,
 	int             index,
 	UINT            uLightless
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetLedLightless
-// 功能描述	: 获得相机的LED亮度，不带LED的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index      LED灯的索引号，从0开始。如果只有一个可控制亮度的LED，则该参数为0 。
-//             uLightless 指针，返回LED亮度值，范围0到255. 0表示关闭，255最亮。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetLedBrightness
+// Function Description: Get the camera's LED brightness, without the LED model, this function returns the error code, it does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// index The index number of the LED light, starting from 0. This parameter is 0 if there is only one LED with controllable brightness.
+// uBrightness pointer, returns the LED brightness value, ranging from 0 to 255. 0 means off, 255 is the brightest.
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetLedBrightness)(
 	CameraHandle    hCamera,
 	int             index,
@@ -3045,35 +3174,34 @@ typedef CameraSdkStatus (__stdcall *_CameraGetLedBrightness)(
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraEnableTransferRoi
-// 功能描述	: 使能或者禁止相机的多区域传输功能，不带该功能的型号，此函数返回错误代码，表示不支持。
-//              该功能主要用于在相机端将采集的整幅画面切分，只传输指定的多个区域，以提高传输帧率。
-//              多个区域传输到PC上后，会自动拼接成整幅画面，没有被传输的部分，会用黑色填充。
-// 参数	    : hCamera	    相机的句柄，由CameraInit函数获得。
-//             index       ROI区域的索引号，从0开始。
-//             uEnableMask 区域使能状态掩码，对应的比特位为1表示使能。0为禁止。目前SDK支持4个可编辑区域，index范围为0到3，即bit0 ，bit1，bit2，bit3控制4个区域的使能状态。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            对于不支持多区域ROI传输的型号，该函数会返回 CAMERA_STATUS_NOT_SUPPORTED(-4) 表示不支持
-//            其它非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraEnableTransferRoi
+// Function Description: Enable or disable the camera's multi-zone transfer function, without this model, this function returns an error code that does not support.
+// This function is mainly used in the camera side will capture the entire picture segmentation, only the transfer of designated multiple regions, in order to improve the transmission frame rate.
+// When multiple areas are transferred to the PC, they will be automatically spliced into the whole picture. The parts that have not been transferred will be filled with black.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uEnableMask Area enable status mask. The corresponding bit is 1 to enable. 0 is prohibited. Currently, the SDK supports 4 editable areas and the index range is 0 to 3, that is, bit0, bit1, bit2 and bit3 control the enabled state of the four areas.
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for models that do not support multisite ROI transport that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraEnableTransferRoi)(
 	CameraHandle    hCamera,
 	UINT            uEnableMask
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraSetTransferRoi
-// 功能描述	: 设置相机传输的裁剪区域。在相机端，图像从传感器上被采集后，将会被裁剪成指定的区域来传送，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index      ROI区域的索引号，从0开始。
-//             X1,Y1      ROI区域的左上角坐标
-//             X2,Y2      ROI区域的右上角坐标
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            对于不支持多区域ROI传输的型号，该函数会返回 CAMERA_STATUS_NOT_SUPPORTED(-4) 表示不支持
-//            其它非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetTransferRoi
+// Function Description: Set the cropping area transmitted by the camera. On the camera side, after the image is captured from the sensor, it will be cropped to the specified area for transmission. This function returns an error code indicating that it is not supported.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             index number of index ROI area, starting from 0.
+//             X1, Y1 coordinates of the upper left corner of the ROI area
+//             X2, Y2 The coordinates of the upper right corner of the ROI area
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for models that do not support multisite ROI transport that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetTransferRoi)(
 	CameraHandle    hCamera,
 	int             index,
@@ -3084,17 +3212,17 @@ typedef CameraSdkStatus (__stdcall *_CameraSetTransferRoi)(
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraGetTransferRoi
-// 功能描述	: 设置相机传输的裁剪区域。在相机端，图像从传感器上被采集后，将会被裁剪成指定的区域来传送，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//             index      ROI区域的索引号，从0开始。
-//             pX1,pY1      ROI区域的左上角坐标
-//             pX2,pY2      ROI区域的右上角坐标
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            对于不支持多区域ROI传输的型号，该函数会返回 CAMERA_STATUS_NOT_SUPPORTED(-4) 表示不支持
-//            其它非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetTransferRoi
+// Function Description: Set the cropping area transmitted by the camera. On the camera side, after the image is captured from the sensor, it will be cropped to the specified area for transmission. This function returns an error code indicating that it is not supported.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             index number of index ROI area, starting from 0.
+//             pX1, pY1 The coordinates of the upper left corner of the ROI area
+//             pX2, pY2 The upper-right corner of the ROI area
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for models that do not support multisite ROI transport that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetTransferRoi)(
 	CameraHandle    hCamera,
 	int             index,
@@ -3104,93 +3232,126 @@ typedef CameraSdkStatus (__stdcall *_CameraGetTransferRoi)(
 	UINT*           pY2
 	);
 
-/******************************************************/
-// 函数名 	: CameraAlignMalloc
-// 功能描述	: 申请一段对齐的内存空间。功能和malloc类似，但
-//						是返回的内存是以align指定的字节数对齐的。
-// 参数	    : size	   空间的大小。
-//            align    地址对齐的字节数。
-// 返回值   : 成功时，返回非0值，表示内存首地址。失败返回NULL。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraAlignMalloc
+// Function Description: Apply for a period of aligned memory space. Function and malloc similar, but
+// The returned memory is aligned with the number of bytes specified by align.
+// Parameters: size space size.
+//             align align the number of bytes.
+// Return value: on success, returns a non-zero value, said the memory address. Failed to return NULL.
+/***************************************************** *****/
 
 typedef BYTE* (__stdcall *_CameraAlignMalloc)(
 	int             size,
 	int             align
 	);
 
-/******************************************************/
-// 函数名 	: CameraAlignFree
-// 功能描述	: 释放由CameraAlignMalloc函数申请的内存空间。
-// 参数	    : membuffer	   由CameraAlignMalloc返回的内存首地址。
-// 返回值   : 无。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraAlignFree
+// Function Description: Free up memory space requested by CameraAlignMalloc function.
+// Parameters: membuffer The first memory address returned by CameraAlignMalloc.
+// Return value: None.
+/***************************************************** *****/
+
 typedef void (__stdcall *_CameraAlignFree)(
 	BYTE*           membuffer
 	);
 
 
-/******************************************************/
-// 函数名 	: CameraSetAutoConnect
-// 功能描述	: 设置自动使能重连
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//			  bEnable	   使能相机重连，当位TRUE时，SDK内部自动检测相机是否掉线，掉线后自己重连。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            对于不支持的型号，该函数会返回 CAMERA_STATUS_NOT_SUPPORTED(-4) 表示不支持
-//            其它非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetAutoConnect
+// Function Description: Set to automatically reconnect
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable Enables the camera to reconnect. When the bit TRUE, the SDK automatically detects whether the camera is disconnected or not, disconnects itself and reconnects.
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for unsupported models that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetAutoConnect)(
 	CameraHandle hCamera,
 	BOOL bEnable
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetAutoConnect
-// 功能描述	: 获取自动重连使能
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//			  pbEnable	   返回相机重连使能
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            对于不支持的型号，该函数会返回 CAMERA_STATUS_NOT_SUPPORTED(-4) 表示不支持
-//            其它非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetAutoConnect
+// Function Description: Get auto-reconnect enabled
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbEnable returns camera reconnect enabled
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for unsupported models that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetAutoConnect)(CameraHandle hCamera,BOOL *pbEnable);
 
-/******************************************************/
-// 函数名 	: CameraGetReConnectCounts
-// 功能描述	: 获得相机自动重连的次数，前提是CameraSetAutoConnect 使能相机自动重连功能。默认是使能的。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//			 puCounts	   返回掉线自动重连的次数
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            对于不支持的型号，该函数会返回 CAMERA_STATUS_NOT_SUPPORTED(-4) 表示不支持
-//            其它非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetReConnectCounts
+// Function Description: Get the number of times the camera automatically reconnects if CameraSetAutoConnect enables the camera to reconnect automatically. The default is enabled.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// puCounts returns the number of automatic reconnection dropped calls
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for unsupported models that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetReConnectCounts)(
 	CameraHandle hCamera,
 	UINT* puCounts
 	);
 
-/******************************************************/
-// 函数名   : CameraDrawText
-// 功能描述 : 在输入的图像数据中绘制文字
-// 参数     : pRgbBuffer 图像数据缓冲区
-//			  pFrInfo 图像的帧头信息
-//			  pFontFileName 字体文件名
-//			  FontWidth 字体宽度
-//			  FontHeight 字体高度
-//			  pText 要输出的文字
-//			  (Left, Top, Width, Height) 文字的输出矩形
-//			  TextColor 文字颜色RGB
-//			  uFlags 输出标志,详见emCameraDrawTextFlags中的定义
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetSingleGrabMode
+// Function Description: Enable single-frame capture mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable Enables single-frame fetch mode
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for unsupported models that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraSetSingleGrabMode)(CameraHandle hCamera, BOOL bEnable);
+
+/***************************************************** *****/
+// function name: CameraGetSingleGrabMode
+// Function Description: Get the camera's single-frame capture mode
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pbEnable returns the camera's single frame grabbing mode
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for unsupported models that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraGetSingleGrabMode)(CameraHandle hCamera, BOOL* pbEnable);
+
+/***************************************************** *****/
+// function name: CameraRestartGrab
+// Function Description: When the camera is in single-frame capture mode, the SDK will enter the pause status every time a frame is successfully fetched. Calling this function causes the SDK to exit the paused state and begin to capture the next frame
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// This function returns CAMERA_STATUS_NOT_SUPPORTED (-4) for unsupported models that does not support
+// Other non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraRestartGrab)(CameraHandle hCamera);
+
+/***************************************************** *****/
+// function name: CameraDrawText
+// Function Description: draw text in the input image data
+// Parameters: pRgbBuffer image data buffer
+// The header of the pFrInfo image
+// pFontFileName font file name
+// FontWidth font width
+// FontHeight font height
+// pText The text to be output
+// (Left, Top, Width, Height) The text output rectangle
+// TextColor text color RGB
+// uFlags Output flags, as defined in emCameraDrawTextFlags
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraDrawText)(
 	BYTE*           pRgbBuffer,
 	tSdkFrameHead*  pFrInfo,
-	char const*		pFontFileName,
+	char const*		pFontFileName, 
 	UINT			FontWidth,
 	UINT			FontHeight,
-	char const*		pText,
+	char const*		pText, 
 	INT				Left,
 	INT				Top,
 	UINT			Width,
@@ -3199,20 +3360,20 @@ typedef CameraSdkStatus (__stdcall *_CameraDrawText)(
 	UINT			uFlags
 	);
 
-/******************************************************/
-// 函数名   : CameraGigeGetIp
-// 功能描述 : 获取GIGE相机的IP地址
-// 参数     : pCameraInfo 相机的设备描述信息，可由CameraEnumerateDevice函数获得。
-//			  CamIp 相机IP(注意：必须保证传入的缓冲区大于等于16字节)
-//			  CamMask 相机子网掩码(注意：必须保证传入的缓冲区大于等于16字节)
-//			  CamGateWay 相机网关(注意：必须保证传入的缓冲区大于等于16字节)
-//			  EtIp 网卡IP(注意：必须保证传入的缓冲区大于等于16字节)
-//			  EtMask 网卡子网掩码(注意：必须保证传入的缓冲区大于等于16字节)
-//			  EtGateWay 网卡网关(注意：必须保证传入的缓冲区大于等于16字节)
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGigeGetIp
+// Function Description: Get the IP address of GIGE camera
+// Parameters: pCameraInfo The device description of the camera, available from the CameraEnumerateDevice function.
+// CamIp camera IP (Note: you must ensure that the incoming buffer is greater than or equal to 16 bytes)
+// CamMask camera subnet mask (Note: you must ensure that the incoming buffer is greater than or equal to 16 bytes)
+// CamGateWay Camera Gateway (Note: The incoming buffer must be guaranteed to be greater than or equal to 16 bytes)
+// EtIp network card IP (Note: you must ensure that the incoming buffer is greater than or equal to 16 bytes)
+// EtMask NIC subnet mask (Note: you must ensure that the incoming buffer is greater than or equal to 16 bytes)
+// EtGateWay network card gateway (Note: you must ensure that the incoming buffer is greater than or equal to 16 bytes)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGigeGetIp)(
 	tSdkCameraDevInfo* pCameraInfo,
 	char* CamIp,
@@ -3223,18 +3384,18 @@ typedef CameraSdkStatus (__stdcall *_CameraGigeGetIp)(
 	char* EtGateWay
 	);
 
-/******************************************************/
-// 函数名   : CameraGigeSetIp
-// 功能描述 : 设置GIGE相机的IP地址
-// 参数     : pCameraInfo 相机的设备描述信息，可由CameraEnumerateDevice函数获得。
-//			  Ip 相机IP(如：192.168.1.100)
-//			  SubMask 相机子网掩码(如：255.255.255.0)
-//			  GateWay 相机网关(如：192.168.1.1)
-//			  bPersistent TRUE: 设置相机为固定IP，FALSE：设置相机自动分配IP（忽略参数Ip, SubMask, GateWay）
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGigeSetIp
+// Function Description: Set the IP address of GIGE camera
+// Parameters: pCameraInfo The device description of the camera, available from the CameraEnumerateDevice function.
+// Ip camera IP (eg: 192.168.1.100)
+// SubMask camera subnet mask (eg: 255.255.255.0)
+// GateWay camera gateway (eg: 192.168.1.1)
+// bPersistent TRUE: set the camera to a fixed IP, FALSE: set the camera automatically assigned IP (ignoring the parameters Ip, SubMask, GateWay)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGigeSetIp)(
 	tSdkCameraDevInfo* pCameraInfo,
 	char const* Ip,
@@ -3243,100 +3404,100 @@ typedef CameraSdkStatus (__stdcall *_CameraGigeSetIp)(
 	BOOL bPersistent
 	);
 
-/******************************************************/
-// 函数名   : CameraGigeGetMac
-// 功能描述 : 获取GIGE相机的MAC地址
-// 参数     : pCameraInfo 相机的设备描述信息，可由CameraEnumerateDevice函数获得。
-//			  CamMac 相机MAC(注意：必须保证传入的缓冲区大于等于18字节)
-//			  EtMac 网卡MAC(注意：必须保证传入的缓冲区大于等于18字节)
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGigeGetMac
+// Function Description: Get the GIGE camera's MAC address
+// Parameters: pCameraInfo The device description of the camera, available from the CameraEnumerateDevice function.
+// CamMac camera MAC (Note: you must ensure that the incoming buffer is greater than or equal to 18 bytes)
+// EtMac NIC MAC (Note: you must ensure that the incoming buffer is greater than or equal to 18 bytes)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGigeGetMac)(
 	tSdkCameraDevInfo* pCameraInfo,
 	char* CamMac,
 	char* EtMac
 	);
 
-/******************************************************/
-// 函数名   : CameraEnableFastResponse
-// 功能描述 : 使能快速响应
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraEnableFastResponse
+// Function Description: Enable quick response
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraEnableFastResponse)(
 	CameraHandle hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraSetCorrectDeadPixel
-// 功能描述 : 使能坏点修正
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//				bEnable     TRUE: 使能坏点修正   FALSE: 关闭坏点修正
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetCorrectDeadPixel
+// Function Description: Enable dead pixel correction
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable TRUE: enable dead pixel correction FALSE: disable dead pixel correction
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetCorrectDeadPixel)(
 	CameraHandle hCamera,
 	BOOL bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraGetCorrectDeadPixel
-// 功能描述 : 获取坏点修正使能状态
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetCorrectDeadPixel
+// Function Description: Get dead pixel correction enabled state
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetCorrectDeadPixel)(
 	CameraHandle hCamera,
 	BOOL* pbEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraFlatFieldingCorrectSetEnable
-// 功能描述 : 使能平场校正
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//				bEnable     TRUE: 使能平场校正   FALSE: 关闭平场校正
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraFlatFieldingCorrectSetEnable
+// Function Description: Enables flat field correction
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable TRUE: Enable leveling correction FALSE: Turn off leveling correction
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraFlatFieldingCorrectSetEnable)(
 	CameraHandle hCamera,
 	BOOL bEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraFlatFieldingCorrectGetEnable
-// 功能描述 : 获取平场校正使能状态
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraFlatFieldingCorrectGetEnable
+// Function Description: Get leveling enable status
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraFlatFieldingCorrectGetEnable)(
 	CameraHandle hCamera,
 	BOOL* pbEnable
 	);
 
-/******************************************************/
-// 函数名   : CameraFlatFieldingCorrectSetParameter
-// 功能描述 : 设置平场校正参数
-// 参数     :	hCamera  相机的句柄，由CameraInit函数获得。
-//				pDarkFieldingImage 暗场图片
-//				pDarkFieldingFrInfo 暗场图片信息
-//				pLightFieldingImage 明场图片
-//				pLightFieldingFrInfo 明场图片信息
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraFlatFieldingCorrectSetParameter
+// Function Description: Set the leveling correction parameters
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// dark field picture pDarkFieldingImage
+// pDarkFieldingFrInfo dark field picture information
+// pLightFieldingImage Bright field image
+// pLightFieldingFrInfo Bright field image information
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraFlatFieldingCorrectSetParameter)(
 	CameraHandle hCamera,
 	BYTE const* pDarkFieldingImage,
@@ -3345,107 +3506,107 @@ typedef CameraSdkStatus (__stdcall *_CameraFlatFieldingCorrectSetParameter)(
 	tSdkFrameHead const* pLightFieldingFrInfo
 	);
 
-/******************************************************/
-// 函数名   : CameraFlatFieldingCorrectSaveParameterToFile
-// 功能描述 : 保存平场校正参数到文件
-// 参数     :	hCamera  相机的句柄，由CameraInit函数获得。
-//				pszFileName 文件路径
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraFlatFieldingCorrectSaveParameterToFile
+// Function Description: Save the flat field correction parameters to the file
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pszFileName file path
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraFlatFieldingCorrectSaveParameterToFile)(
 	CameraHandle hCamera,
 	char const* pszFileName
 	);
 
-/******************************************************/
-// 函数名   : CameraFlatFieldingCorrectLoadParameterFromFile
-// 功能描述 : 从文件中加载平场校正参数
-// 参数     :	hCamera  相机的句柄，由CameraInit函数获得。
-//				pszFileName 文件路径
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraFlatFieldingCorrectLoadParameterFromFile
+// Function Description: Load flat field correction parameters from the file
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pszFileName file path
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraFlatFieldingCorrectLoadParameterFromFile)(
 	CameraHandle hCamera,
 	char const* pszFileName
 	);
 
-/******************************************************/
-// 函数名   : CameraCommonCall
-// 功能描述 : 相机的一些特殊功能调用，二次开发时一般不需要调用。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            pszCall   功能及参数
-//            pszResult 调用结果，不同的pszCall时，意义不同。
-//            uResultBufSize pszResult指向的缓冲区的字节大小
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraCommonCall
+// Function Description: Some special camera functions called, the second development generally do not need to call.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pszCall function and parameters
+// pszResult call results, different pszCall, meaning different.
+// uResultBufSize The size of the buffer pointed to by pszResult
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraCommonCall)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	char const*		pszCall,
 	char*			pszResult,
 	UINT			uResultBufSize
 	);
 
-/******************************************************/
-// 函数名   : CameraSetDenoise3DParams
-// 功能描述 : 设置3D降噪参数
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            bEnable  启用或禁用
-//            nCount   使用几张图片进行降噪(2-8张)
-//            Weights  降噪权重
-//					   如当使用3张图片进行降噪则这个参数可以传入3个浮点(0.3,0.3,0.4)，最后一张图片的权重大于前2张
-//					   如果不需要使用权重，则把这个参数传入0，表示所有图片的权重相同(0.33,0.33,0.33)
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetDenoise3DParams
+// Function Description: Set 3D noise reduction parameters
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable is enabled or disabled
+// nCount use a few pictures for noise reduction (2-8 photos)
+// Weights noise reduction weight
+// When using 3 pictures for noise reduction This parameter can be passed into the three floating point (0.3,0.3,0.4), the last picture weight is greater than the previous 2
+// If you do not need to use the weight, then this parameter is passed to 0, that all images have the same weight (0.33,0.33,0.33)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetDenoise3DParams)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL			bEnable,
 	int				nCount,
 	float			*Weights
 	);
 
-/******************************************************/
-// 函数名   : CameraGetDenoise3DParams
-// 功能描述 : 获取当前的3D降噪参数
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            bEnable  启用或禁用
-//            nCount   使用了几张图片进行降噪
-//			  bUseWeight 是否使用了降噪权重
-//            Weights  降噪权重
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetDenoise3DParams
+// Function Description: Get the current 3D noise reduction parameters
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// bEnable is enabled or disabled
+// nCount used a few pictures for noise reduction
+// bUseWeight uses the noise reduction weight
+// Weights noise reduction weight
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetDenoise3DParams)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BOOL			*bEnable,
 	int				*nCount,
 	BOOL			*bUseWeight,
 	float			*Weights
 	);
 
-/******************************************************/
-// 函数名   : CameraManualDenoise3D
-// 功能描述 : 对一组帧进行一次降噪处理
-// 参数     : InFramesHead  输入帧头
-//			  InFramesData  输入帧数据
-//            nCount   输入帧的数量
-//            Weights  降噪权重
-//					   如当使用3张图片进行降噪则这个参数可以传入3个浮点(0.3,0.3,0.4)，最后一张图片的权重大于前2张
-//					   如果不需要使用权重，则把这个参数传入0，表示所有图片的权重相同(0.33,0.33,0.33)
-//			  OutFrameHead 输出帧头
-//			  OutFrameData 输出帧数据
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraManualDenoise3D
+// Function description: Perform a noise reduction on a group of frames
+// Parameters: InFramesHead Input frame header
+// InFramesData Input frame data
+// nCount Number of input frames
+// Weights noise reduction weight
+// When using 3 pictures for noise reduction This parameter can be passed into the three floating point (0.3,0.3,0.4), the last picture weight is greater than the previous 2
+// If you do not need to use the weight, then this parameter is passed to 0, that all images have the same weight (0.33,0.33,0.33)
+// OutFrameHead prints the frame header
+// OutFrameData Output frame data
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraManualDenoise3D)(
 	tSdkFrameHead	*InFramesHead,
 	BYTE			**InFramesData,
@@ -3455,32 +3616,32 @@ typedef CameraSdkStatus (__stdcall *_CameraManualDenoise3D)(
 	BYTE			*OutFrameData
 	);
 
-/******************************************************/
-// 函数名   : CameraCustomizeDeadPixels
-// 功能描述 : 打开坏点编辑面板
-// 参数     : hCamera    相机的句柄，由CameraInit函数获得。
-//            hParent    调用该函数的窗口的句柄。可以为NULL。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraCustomizeDeadPixels
+// Function Description: Open the dead pixel editing panel
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// hParent handle of the function that called the window. Can be NULL.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraCustomizeDeadPixels)(
 	CameraHandle	hCamera,
 	HWND			hParent
 	);
 
-/******************************************************/
-// 函数名   : CameraReadDeadPixels
-// 功能描述 : 读取相机坏点
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//			  pRows 坏点y坐标
-//			  pCols 坏点x坐标
-//			  pNumPixel 输入时表示行列缓冲区的大小，返回时表示行列缓冲区中返回的坏点数量。
-//			  当pRows或者pCols为NULL时函数会把相机当前的坏点个数通过pNumPixel返回
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraReadDeadPixels
+// Function Description: read the camera dead pixels
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pRows bad point y coordinate
+// pCols Dots x coordinates
+// When pNumPixel is input, it indicates the size of the buffer in the rank and column and returns the number of bad pixels returned in the rank and file buffer.
+// When pRows or pCols is NULL, the function returns the current number of dead pixels in the camera via pNumPixel
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraReadDeadPixels)(
 	CameraHandle    hCamera,
 	USHORT*			pRows,
@@ -3488,17 +3649,17 @@ typedef CameraSdkStatus (__stdcall *_CameraReadDeadPixels)(
 	UINT*			pNumPixel
 	);
 
-/******************************************************/
-// 函数名   : CameraAddDeadPixels
-// 功能描述 : 添加相机坏点
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//			  pRows 坏点y坐标
-//			  pCols 坏点x坐标
-//			  NumPixel 行列缓冲区中的坏点个数
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraAddDeadPixels
+// Function Description: Add camera dead pixels
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pRows bad point y coordinate
+// pCols Dots x coordinates
+// NumPixel ranks the number of pixels in the buffer
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraAddDeadPixels)(
 	CameraHandle    hCamera,
 	USHORT*			pRows,
@@ -3506,17 +3667,17 @@ typedef CameraSdkStatus (__stdcall *_CameraAddDeadPixels)(
 	UINT			NumPixel
 	);
 
-/******************************************************/
-// 函数名   : CameraRemoveDeadPixels
-// 功能描述 : 删除相机指定坏点
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//			  pRows 坏点y坐标
-//			  pCols 坏点x坐标
-//			  NumPixel 行列缓冲区中的坏点个数
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraRemoveDeadPixels
+// Function Description: Remove the camera specified dead pixels
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pRows bad point y coordinate
+// pCols Dots x coordinates
+// NumPixel ranks the number of pixels in the buffer
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraRemoveDeadPixels)(
 	CameraHandle    hCamera,
 	USHORT*			pRows,
@@ -3524,127 +3685,128 @@ typedef CameraSdkStatus (__stdcall *_CameraRemoveDeadPixels)(
 	UINT			NumPixel
 	);
 
-/******************************************************/
-// 函数名   : CameraRemoveAllDeadPixels
-// 功能描述 : 删除相机的所有坏点
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraRemoveAllDeadPixels
+// Function Description: Remove all camera dead pixels
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraRemoveAllDeadPixels)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraSaveDeadPixels
-// 功能描述 : 保存相机坏点到相机存储中
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSaveDeadPixels
+// Function Description: Save the camera dead pixels to the camera memory
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSaveDeadPixels)(
 	CameraHandle    hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraSaveDeadPixelsToFile
-// 功能描述 : 保存相机坏点到文件中
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//			  sFileName  坏点文件的完整路径。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSaveDeadPixelsToFile
+// Function Description: Save the camera dead pixels to the file
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// sFileName Full path of the bad point file.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSaveDeadPixelsToFile)(
 	CameraHandle    hCamera,
 	char const*		sFileName
 	);
 
-/******************************************************/
-// 函数名   : CameraLoadDeadPixelsFromFile
-// 功能描述 : 从文件加载相机坏点
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//			  sFileName  坏点文件的完整路径。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraLoadDeadPixelsFromFile
+// Function Description: Load camera dead pixels from file
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// sFileName Full path of the bad point file.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraLoadDeadPixelsFromFile)(
 	CameraHandle    hCamera,
 	char const*		sFileName
 	);
 
-/******************************************************/
-// 函数名   : CameraGetImageBufferPriority
-// 功能描述 : 获得一帧图像数据。为了提高效率，SDK在图像抓取时采用了零拷贝机制，
-//        CameraGetImageBuffer实际获得是内核中的一个缓冲区地址，
-//        该函数成功调用后，必须调用CameraReleaseImageBuffer释放由
-//        CameraGetImageBuffer得到的缓冲区,以便让内核继续使用
-//        该缓冲区。
-// 参数     : hCamera   相机的句柄，由CameraInit函数获得。
-//            pFrameInfo  图像的帧头信息指针。
-//            pbyBuffer   指向图像的数据的缓冲区指针。由于
-//              采用了零拷贝机制来提高效率，因此
-//              这里使用了一个指向指针的指针。
-//            wTimes 抓取图像的超时时间。单位毫秒。在
-//              wTimes时间内还未获得图像，则该函数
-//              会返回超时信息。
-//			  Priority 取图优先级 详见：emCameraGetImagePriority
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferPriority
+// Function Description: Get a frame of image data. In order to improve efficiency, SDK uses a zero-copy mechanism for image capture,
+// CameraGetImageBuffer actually gets a buffer address in the kernel,
+// After the function is successfully called, you must call CameraReleaseImageBuffer to release by
+// CameraGetImageBuffer Get the buffer for the kernel to continue using
+// This buffer.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// The header information pointer of the pFrameInfo image.
+// pbyBuffer Buffer pointer to the image's data. due to
+// A zero-copy mechanism is used to improve efficiency, so
+// Here is a pointer to the pointer.
+// wTimes capture image timeout. Milliseconds. in
+// wTimes time has not yet been the image, then the function
+// will return the timeout message.
+// Priority drawing priority see: emCameraGetImagePriority
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferPriority)(
-	CameraHandle        hCamera,
-	tSdkFrameHead*      pFrameInfo,
+	CameraHandle        hCamera, 
+	tSdkFrameHead*      pFrameInfo, 
 	BYTE**              pbyBuffer,
 	UINT                wTimes,
 	UINT				Priority
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetImageBufferPriorityEx
-// 功能描述	: 获得一帧图像数据。该接口获得的图像是经过处理后的RGB格式。该函数调用后，
-//			  不需要调用 CameraReleaseImageBuffer 释放，也不要调用free之类的函数释放
-//              来释放该函数返回的图像数据缓冲区。
-// 参数	    : hCamera	  相机的句柄，由CameraInit函数获得。
-//            piWidth    整形指针，返回图像的宽度
-//            piHeight   整形指针，返回图像的高度
-//            UINT wTimes 抓取图像的超时时间。单位毫秒。在
-//						  wTimes时间内还未获得图像，则该函数
-//						  会返回超时信息。
-//			  Priority   取图优先级 详见：emCameraGetImagePriority
-// 返回值   : 成功时，返回RGB数据缓冲区的首地址;
-//            否则返回0。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferPriorityEx
+// Function Description: Get a frame of image data. The image obtained by this interface is processed RGB format. After the function is called,
+// Do not need to call CameraReleaseImageBuffer release, do not call free release of such functions
+// to free the image data buffer returned by this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// piWidth plastic pointer, returns the width of the image
+// piHeight plastic pointer, returns the height of the image
+// UINT wTimes The time-out period for grabbing the image. Milliseconds. in
+// wTimes time has not yet been the image, then the function
+// will return the timeout message.
+// Priority drawing priority see: emCameraGetImagePriority
+// Return Value: Returns the first address of the RGB data buffer on success;
+// otherwise 0
+/***************************************************** *****/
+
 typedef unsigned char* (__stdcall *_CameraGetImageBufferPriorityEx)(
-	CameraHandle        hCamera,
+	CameraHandle        hCamera, 
 	INT*                piWidth,
 	INT*                piHeight,
 	UINT                wTimes,
 	UINT				Priority
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetImageBufferPriorityEx2
-// 功能描述	: 获得一帧图像数据。该接口获得的图像是经过处理后的RGB格式。该函数调用后，
-//			  不需要调用 CameraReleaseImageBuffer 释放，也不要调用free之类的函数释放
-//              来释放该函数返回的图像数据缓冲区。
-// 参数	    : hCamera	    相机的句柄，由CameraInit函数获得。
-//             pImageData  接收图像数据的缓冲区，大小必须和uOutFormat指定的格式相匹配，否则数据会溢出
-//             piWidth     整形指针，返回图像的宽度
-//             piHeight    整形指针，返回图像的高度
-//             wTimes      抓取图像的超时时间。单位毫秒。在
-//						wTimes时间内还未获得图像，则该函数
-//						会返回超时信息。
-//			  Priority	   取图优先级 详见：emCameraGetImagePriority
-// 返回值   : 成功时，返回RGB数据缓冲区的首地址;
-//            否则返回0。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferPriorityEx2
+// Function Description: Get a frame of image data. The image obtained by this interface is processed RGB format. After the function is called,
+// Do not need to call CameraReleaseImageBuffer release, do not call free release of such functions
+// to free the image data buffer returned by this function.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageData Buffer to receive image data, the size must match the format specified by uOutFormat, otherwise the data will overflow
+// piWidth plastic pointer, returns the width of the image
+// piHeight plastic pointer, returns the height of the image
+// wTimes capture image timeout. Milliseconds. in
+// wTimes time has not yet been the image, then the function
+// will return the timeout message.
+// Priority drawing priority see: emCameraGetImagePriority
+// Return Value: Returns the first address of the RGB data buffer on success;
+// otherwise 0
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferPriorityEx2)(
-	CameraHandle    hCamera,
+	CameraHandle    hCamera, 
 	BYTE*           pImageData,
 	UINT            uOutFormat,
 	int*            piWidth,
@@ -3653,24 +3815,24 @@ typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferPriorityEx2)(
 	UINT			Priority
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetImageBufferPriorityEx3
-// 功能描述	: 获得一帧图像数据。该接口获得的图像是经过处理后的RGB格式。该函数调用后，
-//			  不需要调用 CameraReleaseImageBuffer 释放.
-//              uOutFormat 0 : 8 BIT gray 1:rgb24 2:rgba32 3:bgr24 4:bgra32
-// 参数	    : hCamera	    相机的句柄，由CameraInit函数获得。
-//             pImageData  接收图像数据的缓冲区，大小必须和uOutFormat指定的格式相匹配，否则数据会溢出
-//            piWidth      整形指针，返回图像的宽度
-//            piHeight     整形指针，返回图像的高度
-//            puTimeStamp  无符号整形，返回图像时间戳
-//            UINT wTimes  抓取图像的超时时间。单位毫秒。在
-//			  wTimes       时间内还未获得图像，则该函数会返回超时信息。
-//			  Priority	   取图优先级 详见：emCameraGetImagePriority
-// 返回值   : 成功时，返回RGB数据缓冲区的首地址;
-//            否则返回0。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetImageBufferPriorityEx3
+// Function Description: Get a frame of image data. The image obtained by this interface is processed RGB format. After the function is called,
+// Do not need to call CameraReleaseImageBuffer release.
+// uOutFormat 0: 8 BIT gray 1: rgb24 2: rgba32 3: bgr24 4: bgra32
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// pImageData Buffer to receive image data, the size must match the format specified by uOutFormat, otherwise the data will overflow
+// piWidth plastic pointer, returns the width of the image
+// piHeight plastic pointer, returns the height of the image
+// puTimeStamp unsigned plastic, returns the image timestamp
+// UINT wTimes The time-out period for grabbing the image. Milliseconds. in
+// The image has not been acquired within the wTimes time, the function returns the time-out information.
+// Priority drawing priority see: emCameraGetImagePriority
+// Return Value: Returns the first address of the RGB data buffer on success;
+// otherwise 0
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferPriorityEx3)(
-	CameraHandle hCamera,
+	CameraHandle hCamera, 
 	BYTE*pImageData,
 	UINT uOutFormat,
 	int *piWidth,
@@ -3680,92 +3842,135 @@ typedef CameraSdkStatus (__stdcall *_CameraGetImageBufferPriorityEx3)(
 	UINT Priority
 	);
 
-/******************************************************/
-// 函数名   : CameraClearBuffer
-// 功能描述 : 清空相机内已缓存的所有帧
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraClearBuffer
+// Function Description: Empty all frames that have been cached in the camera
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraClearBuffer)(
 	CameraHandle hCamera
 	);
 
-/******************************************************/
-// 函数名   : CameraSoftTriggerEx
-// 功能描述 : 执行一次软触发。执行后，会触发由CameraSetTriggerCount
-//          指定的帧数。
-// 参数     : hCamera  相机的句柄，由CameraInit函数获得。
-//			  uFlags 功能标志,详见emCameraSoftTriggerExFlags中的定义
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSoftTriggerEx
+// Function description: Execute soft trigger once. After execution, triggered by CameraSetTriggerCount
+// The specified number of frames.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// uFlags function flag, as defined in emCameraSoftTriggerExFlags
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSoftTriggerEx)(
 	CameraHandle hCamera,
 	UINT uFlags
 	);
 
-/******************************************************/
-// 函数名 	: CameraSetHDR
-// 功能描述	: 设置相机的HDR，需要相机支持，不带HDR功能的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//            value		   HDR系数，范围0.0到1.0
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraSetHDR
+// Function Description: Set the camera's HDR, camera support, models without HDR function, this function returns an error code that does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// value HDR coefficient in the range of 0.0 to 1.0
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraSetHDR)(
 	CameraHandle    hCamera,
 	float           value
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetHDR
-// 功能描述	: 获取相机的HDR，需要相机支持，不带HDR功能的型号，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//            value		   HDR系数，范围0.0到1.0
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetHDR
+// Function Description: To get the HDR of the camera, you need the camera support, the model without HDR function, this function returns the error code, which means it is not supported.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// value HDR coefficient in the range of 0.0 to 1.0
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetHDR)(
 	CameraHandle    hCamera,
 	float*          value
 	);
 
-/******************************************************/
-// 函数名 	: CameraGetFrameID
-// 功能描述	: 获取当前帧的ID，需相机支持(网口全系列支持)，此函数返回错误代码，表示不支持。
-// 参数	    : hCamera	   相机的句柄，由CameraInit函数获得。
-//            id		   帧ID
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0)，表示相机连接状态正常;
-//            否则返回 非0值，参考CameraStatus.h中错误码的定义。
-/******************************************************/
+/***************************************************** *****/
+// function name: CameraGetFrameID
+// Function Description: Get the ID of the current frame, camera support (network interface full range of support), this function returns an error code that does not support.
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+//             id frame ID
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
 typedef CameraSdkStatus (__stdcall *_CameraGetFrameID)(
 	CameraHandle    hCamera,
 	UINT*			id
 	);
 
+/***************************************************** *****/
+// function name: CameraGetFrameTimeStamp
+// Function Description: Get the current frame time stamp (in microseconds)
+// parameters: hCamera camera handle, obtained by the CameraInit function.
+// TimeStampL timestamp low 32 bits
+// TimeStampH timestamp high 32 bits
+// Return Value: Upon successful, return CAMERA_STATUS_SUCCESS (0), said the camera connection status is normal;
+// otherwise it returns non-zero value, refer to the definition of error code in CameraStatus.h.
+/***************************************************** *****/
+typedef CameraSdkStatus (__stdcall *_CameraGetFrameTimeStamp)(
+	CameraHandle    hCamera,
+	UINT*           TimeStampL,
+	UINT*			TimeStampH
+	);
+
 /******************************************************/
-// 函数名   : CameraGrabber_CreateFromDevicePage
-// 功能描述 : 弹出相机列表让用户选择要打开的相机
-// 参数     : 如果函数执行成功返回函数创建的Grabber
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_CreateFromDevicePage
+// Function Description: Pop-up camera list allows the user to select the camera to be opened
+// Parameters: Grabber created by the function if the function succeeded
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_CreateFromDevicePage)(
 	void** Grabber
 	);
 
 /******************************************************/
-// 函数名   : CameraGrabber_Create
-// 功能描述 : 从设备描述信息创建Grabber
-// 参数     : Grabber    如果函数执行成功返回函数创建的Grabber对象
-//			  pDevInfo	该相机的设备描述信息，由CameraEnumerateDevice函数获得。
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_CreateByIndex
+// Function Description: Create Grabber using camera list index
+// Parameters: Grabber Grabber created by the function if function succeeded
+// Index camera index
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraGrabber_CreateByIndex)(
+	void** Grabber,
+	int Index
+	);
+
+/******************************************************/
+// function name: CameraGrabber_CreateByName
+// Feature Description: Create Grabber with camera name
+// Parameters: Grabber Grabber created by the function if function succeeded
+// Name camera name
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraGrabber_CreateByName)(
+	void** Grabber,
+	char* Name
+	);
+
+/******************************************************/
+// function name: CameraGrabber_Create
+// Function Description: Create Grabber from device description
+// Arguments: Grabber Returns the Grabber object created by the function if the function succeeds
+// pDevInfo The device description of the camera, obtained by the CameraEnumerateDevice function.
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_Create)(
 	void** Grabber,
@@ -3773,25 +3978,25 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_Create)(
 	);
 
 /******************************************************/
-// 函数名   : CameraGrabber_Destroy
-// 功能描述 : 销毁Grabber
-// 参数     : Grabber
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_Destroy
+// Function Description: Destroy Grabber
+// parameter: Grabber
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_Destroy)(
 	void* Grabber
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SetHWnd
-// 功能描述	: 设置预览视频的显示窗口
-// 参数		: Grabber
-//			  hWnd  窗口句柄
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SetHWnd
+// Function Description: Set the preview video display window
+// parameter: Grabber
+// hWnd window handle
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetHWnd)(
 	void* Grabber,
@@ -3799,38 +4004,52 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetHWnd)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_StartLive
-// 功能描述	: 启动预览
-// 参数		: Grabber
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SetPriority
+// Function Description: Set the priority of drawing
+// parameter: Grabber
+// Priority Priority map see: emCameraGetImagePriority
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetPriority)(
+	void* Grabber,
+	UINT Priority
+	);
+
+/******************************************************/
+// function name: CameraGrabber_StartLive
+// Function Description: Start the preview
+// parameter: Grabber
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_StartLive)(
 	void* Grabber
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_StopLive
-// 功能描述	: 停止预览
-// 参数		: Grabber
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_StopLive
+// Function Description: Stop the preview
+// parameter: Grabber
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_StopLive)(
 	void* Grabber
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SaveImage
-// 功能描述	: 抓图
-// 参数		: Grabber
-//			  Image 返回抓取到的图像（需要调用CameraImage_Destroy释放）
-//			  TimeOut 超时时间（毫秒）
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SaveImage
+// Function Description: capture
+// parameter: Grabber
+// Image returns the captured image (need to call CameraImage_Destroy release)
+// TimeOut timeout (milliseconds)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SaveImage)(
 	void* Grabber,
@@ -3839,26 +4058,40 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_SaveImage)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SaveImageAsync
-// 功能描述	: 提交一个异步的抓图请求，提交成功后待抓图完成会回调用户设置的完成函数
-// 参数		: Grabber
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SaveImageAsync
+// Function Description: Submit an asynchronous screenshot request, submit the successful completion of the capture will be completed callback function set by the completion of the function
+// parameter: Grabber
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SaveImageAsync)(
 	void* Grabber
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SetSaveImageCompleteCallback
-// 功能描述	: 设置异步方式抓图的完成函数
-// 参数		: Grabber
-//			  Callback 当有抓图任务完成时被调用
-//			  Context 当Callback被调用时，作为参数传入Callback
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SaveImageAsyncEx
+// Function Description: Submit an asynchronous screenshot request, submit the successful completion of the capture will be completed callback function set by the completion of the function
+// parameter: Grabber
+// UserData You can get this value from Image using CameraImage_GetUserData
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraGrabber_SaveImageAsyncEx)(
+	void* Grabber,
+	void* UserData
+	);
+
+/******************************************************/
+// function name: CameraGrabber_SetSaveImageCompleteCallback
+// Function Description: Set the asynchronous function to complete the capture
+// parameter: Grabber
+// Callback is called when a capture task is completed
+// Context When Callback is called, it is passed as a parameter to the Callback
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetSaveImageCompleteCallback)(
 	void* Grabber,
@@ -3867,14 +4100,14 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetSaveImageCompleteCallback)
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SetFrameListener
-// 功能描述	: 设置帧监听函数
-// 参数		: Grabber
-//			  Listener 监听函数，此函数返回0表示丢弃当前帧
-//			  Context 当Listener被调用时，作为参数传入Listener
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SetFrameListener
+// Function Description: Set the frame monitoring function
+// parameter: Grabber
+// Listener monitor function, this function returns 0 means to discard the current frame
+// Context Listener is passed as a parameter when Listener is called
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetFrameListener)(
 	void* Grabber,
@@ -3883,14 +4116,14 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetFrameListener)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SetRawCallback
-// 功能描述	: 设置RAW回调函数
-// 参数		: Grabber
-//			  Callback Raw回调函数
-//			  Context 当Callback被调用时，作为参数传入Callback
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SetRawCallback
+// Function Description: Set the RAW callback function
+// parameter: Grabber
+// Callback Raw callback function
+// Context When Callback is called, it is passed as a parameter to the Callback
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetRawCallback)(
 	void* Grabber,
@@ -3899,14 +4132,14 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetRawCallback)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_SetRGBCallback
-// 功能描述	: 设置RGB回调函数
-// 参数		: Grabber
-//			  Callback RGB回调函数
-//			  Context 当Callback被调用时，作为参数传入Callback
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_SetRGBCallback
+// Function Description: Set RGB callback function
+// parameter: Grabber
+// Callback RGB callback function
+// Context When Callback is called, it is passed as a parameter to the Callback
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetRGBCallback)(
 	void* Grabber,
@@ -3915,13 +4148,13 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_SetRGBCallback)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_GetCameraHandle
-// 功能描述	: 获取相机句柄
-// 参数		: Grabber
-//			  hCamera 返回的相机句柄
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_GetCameraHandle
+// Function Description: Get the camera handle
+// parameter: Grabber
+// Camera handle returned by hCamera
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_GetCameraHandle)(
 	void* Grabber,
@@ -3929,13 +4162,13 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_GetCameraHandle)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_GetStat
-// 功能描述	: 获取帧统计信息
-// 参数		: Grabber
-//			  stat 返回的统计信息
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_GetStat
+// Function Description: Get frame statistics
+// parameter: Grabber
+// statistics returned by stat
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_GetStat)(
 	void* Grabber,
@@ -3943,58 +4176,58 @@ typedef CameraSdkStatus (__stdcall *_CameraGrabber_GetStat)(
 	);
 
 /******************************************************/
-// 函数名	: CameraGrabber_GetCameraDevInfo
-// 功能描述	: 获取相机DevInfo
-// 参数		: Grabber
-//			  DevInfo 返回的相机DevInfo
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraGrabber_GetCameraDevInfo
+// Function Description: Get the camera DevInfo
+// parameter: Grabber
+// Camera DevInfo returned by DevInfo
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraGrabber_GetCameraDevInfo)(
 	void* Grabber,
 	tSdkCameraDevInfo *DevInfo
 	);
 
-/******************************************************/
-// 函数名	: CameraImage_Create
-// 功能描述	: 创建一个新的Image
-// 参数		: Image
-//			  pFrameBuffer 帧数据缓冲区
-//			  pFrameHead 帧头
-//			  bCopy TRUE: 复制出一份新的帧数据  FALSE: 不复制，直接使用pFrameBuffer指向的缓冲区
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/**********************************************************/
+// function name: CameraImage_Create
+// Function Description: Create a new Image
+// parameter: Image
+// pFrameBuffer frame data buffer
+// pFrameHead frame header
+// bCopy TRUE: copy a new frame of data FALSE: do not copy directly to the buffer pointed to by pFrameBuffer
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/**********************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_Create)(
 	void** Image,
-	BYTE *pFrameBuffer,
+	BYTE *pFrameBuffer, 
 	tSdkFrameHead* pFrameHead,
 	BOOL bCopy
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_Destroy
-// 功能描述	: 销毁Image
-// 参数		: Image
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_Destroy
+// Function Description: Destroy Image
+// parameter: Image
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_Destroy)(
 	void* Image
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_GetData
-// 功能描述	: 获取Image数据
-// 参数		: Image
-//			  DataBuffer 图像数据
-//			  Head 图像信息
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_GetData
+// Function Description: Get Image data
+// parameter: Image
+// DataBuffer image data
+// Head image information
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_GetData)(
 	void* Image,
@@ -4003,14 +4236,56 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_GetData)(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_Draw
-// 功能描述	: 绘制Image到指定窗口
-// 参数		: Image
-//			  hWnd 目的窗口
-//			  Algorithm 缩放算法  0：快速但质量稍差  1：速度慢但质量好
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_GetUserData
+// Function Description: Get Image user-defined data
+// parameter: Image
+// UserData returns user-defined data
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraImage_GetUserData)(
+	void* Image,
+	void** UserData
+	);
+
+/******************************************************/
+// function name: CameraImage_SetUserData
+// Function Description: Set Image's user-defined data
+// parameter: Image
+// UserData user-defined data
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraImage_SetUserData)(
+	void* Image,
+	void* UserData
+	);
+
+/******************************************************/
+// function name: CameraImage_IsEmpty
+// Function Description: to determine whether an Image is empty
+// parameter: Image
+// IsEmpty is empty Returns: TRUE (1) otherwise returns: FALSE (0)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/******************************************************/
+typedef CameraSdkStatus (__stdcall *_CameraImage_IsEmpty)(
+	void* Image,
+	BOOL* IsEmpty
+	);
+
+/******************************************************/
+// function name: CameraImage_Draw
+// Function Description: Draw Image to the specified window
+// parameter: Image
+// hWnd destination window
+// Algorithm scaling algorithm 0: fast but less quality 1: slow but good quality
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_Draw)(
 	void* Image,
@@ -4019,16 +4294,16 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_Draw)(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_BitBlt
-// 功能描述	: 绘制Image到指定窗口（不缩放）
-// 参数		: Image
-//			  hWnd 目的窗口
-//			  xDst,yDst: 目标矩形的左上角坐标
-//			  cxDst,cyDst: 目标矩形的宽高
-//			  xSrc,ySrc: 图像矩形的左上角坐标
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_BitBlt
+// Function Description: Draw Image to the specified window (no zoom)
+// parameter: Image
+// hWnd destination window
+// xDst, yDst: the coordinates of the upper left corner of the target rectangle
+// cxDst, cyDst: The width and height of the target rectangle
+// xSrc, ySrc: the coordinates of the upper left corner of the image rectangle
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_BitBlt)(
 	void* Image,
@@ -4042,13 +4317,13 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_BitBlt)(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsBmp
-// 功能描述	: 以bmp格式保存Image
-// 参数		: Image
-//			  FileName 文件名
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsBmp
+// Function Description: Save Image in bmp format
+// parameter: Image
+// FileName file name
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsBmp)(
 	void* Image,
@@ -4056,14 +4331,14 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsBmp)(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsJpeg
-// 功能描述	: 以jpg格式保存Image
-// 参数		: Image
-//			  FileName 文件名
-//			  Quality 保存质量(1-100)，100为质量最佳但文件也最大
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsJpeg
+// Function Description: Save Image in jpg format
+// parameter: Image
+// FileName file name
+// Quality saves the quality (1-100), 100 is the best quality but the largest file
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsJpeg)(
 	void* Image,
@@ -4072,13 +4347,13 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsJpeg)(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsPng
-// 功能描述	: 以png格式保存Image
-// 参数		: Image
-//			  FileName 文件名
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsPng
+// Function Description: Save Image in png format
+// parameter: Image
+// FileName file name
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsPng)(
 	void* Image,
@@ -4086,14 +4361,14 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsPng)(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsRaw
-// 功能描述	: 保存raw Image
-// 参数		: Image
-//			  FileName 文件名
-//			  Format 0: 8Bit Raw     1: 16Bit Raw
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsRaw
+// Function Description: Save the raw Image
+// parameter: Image
+// FileName file name
+// Format 0: 8Bit Raw 1: 16Bit Raw
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsRaw)(
 	void* Image,
@@ -4103,7 +4378,7 @@ typedef CameraSdkStatus (__stdcall *_CameraImage_SaveAsRaw)(
 
 
 #ifdef API_LOAD_MAIN
-#define EXTERN
+#define EXTERN 
 #else
 #define EXTERN extern
 #endif
@@ -4132,6 +4407,10 @@ EXTERN _CameraIsOpened CameraIsOpened;
 
 EXTERN _CameraInit CameraInit;
 
+EXTERN _CameraInitEx CameraInitEx;
+
+EXTERN _CameraInitEx2 CameraInitEx2;
+
 EXTERN _CameraUnInit CameraUnInit;
 
 EXTERN _CameraPlay CameraPlay;
@@ -4150,11 +4429,11 @@ EXTERN _CameraImageOverlay CameraImageOverlay;
 
 EXTERN _CameraDisplayInit CameraDisplayInit;
 
-EXTERN _CameraDisplayInitEx CameraDisplayInitEx;
-
 EXTERN _CameraSetDisplaySize CameraSetDisplaySize;
 
 EXTERN _CameraGetImageBuffer CameraGetImageBuffer;
+
+EXTERN _CameraGetImageBufferEx CameraGetImageBufferEx;
 
 EXTERN _CameraReleaseImageBuffer CameraReleaseImageBuffer;
 
@@ -4211,6 +4490,8 @@ EXTERN _CameraGetAeThreshold CameraGetAeThreshold;
 EXTERN _CameraSetExposureTime CameraSetExposureTime;
 
 EXTERN _CameraGetExposureTime CameraGetExposureTime;
+
+EXTERN _CameraGetExposureTimeRange CameraGetExposureTimeRange;
 
 EXTERN _CameraGetExposureLineTime CameraGetExposureLineTime;
 
@@ -4305,6 +4586,8 @@ EXTERN _CameraLoadParameter CameraLoadParameter;
 EXTERN _CameraGetCurrentParameterGroup CameraGetCurrentParameterGroup;
 
 EXTERN _CameraEnumerateDevice CameraEnumerateDevice;
+
+EXTERN _CameraEnumerateDeviceEx CameraEnumerateDeviceEx;
 
 EXTERN _CameraGetCapability CameraGetCapability;
 
@@ -4408,7 +4691,7 @@ EXTERN _CameraGetFriendlyName CameraGetFriendlyName;
 
 EXTERN _CameraSetFriendlyName CameraSetFriendlyName;
 
-EXTERN _CameraSdkGetVersionString CameraSdkGetVersionString;
+EXTERN _CameraSdkGetVersionString CameraSdkGetVersionString; 
 
 EXTERN _CameraCheckFwUpdate CameraCheckFwUpdate;
 
@@ -4428,6 +4711,10 @@ EXTERN _CameraSetOutPutIOMode CameraSetOutPutIOMode;
 
 EXTERN _CameraSetOutPutPWM CameraSetOutPutPWM;
 
+EXTERN _CameraSetBayerDecAlgorithm CameraSetBayerDecAlgorithm;
+
+EXTERN _CameraGetBayerDecAlgorithm CameraGetBayerDecAlgorithm;
+
 EXTERN _CameraSetBlackLevel CameraSetBlackLevel;
 
 EXTERN _CameraGetBlackLevel CameraGetBlackLevel;
@@ -4445,6 +4732,8 @@ EXTERN _CameraGetErrorString CameraGetErrorString;
 EXTERN _CameraGetCapabilityEx2 CameraGetCapabilityEx2;
 
 EXTERN _CameraGetImageBufferEx2 CameraGetImageBufferEx2;
+
+EXTERN _CameraGetImageBufferEx3 CameraGetImageBufferEx3;
 
 EXTERN _CameraReConnect CameraReConnect;
 
@@ -4481,6 +4770,12 @@ EXTERN _CameraSetAutoConnect CameraSetAutoConnect;
 EXTERN _CameraGetAutoConnect CameraGetAutoConnect;
 
 EXTERN _CameraGetReConnectCounts CameraGetReConnectCounts;
+
+EXTERN _CameraSetSingleGrabMode CameraSetSingleGrabMode;
+
+EXTERN _CameraGetSingleGrabMode CameraGetSingleGrabMode;
+
+EXTERN _CameraRestartGrab CameraRestartGrab;
 
 EXTERN _CameraDrawText CameraDrawText;
 
@@ -4548,13 +4843,21 @@ EXTERN _CameraGetHDR CameraGetHDR;
 
 EXTERN _CameraGetFrameID CameraGetFrameID;
 
+EXTERN _CameraGetFrameTimeStamp CameraGetFrameTimeStamp;
+
 EXTERN _CameraGrabber_CreateFromDevicePage CameraGrabber_CreateFromDevicePage;
+
+EXTERN _CameraGrabber_CreateByIndex CameraGrabber_CreateByIndex;
+
+EXTERN _CameraGrabber_CreateByName CameraGrabber_CreateByName;
 
 EXTERN _CameraGrabber_Create CameraGrabber_Create;
 
 EXTERN _CameraGrabber_Destroy CameraGrabber_Destroy;
 
 EXTERN _CameraGrabber_SetHWnd CameraGrabber_SetHWnd;
+
+EXTERN _CameraGrabber_SetPriority CameraGrabber_SetPriority;
 
 EXTERN _CameraGrabber_StartLive CameraGrabber_StartLive;
 
@@ -4563,6 +4866,8 @@ EXTERN _CameraGrabber_StopLive CameraGrabber_StopLive;
 EXTERN _CameraGrabber_SaveImage CameraGrabber_SaveImage;
 
 EXTERN _CameraGrabber_SaveImageAsync CameraGrabber_SaveImageAsync;
+
+EXTERN _CameraGrabber_SaveImageAsyncEx CameraGrabber_SaveImageAsyncEx;
 
 EXTERN _CameraGrabber_SetSaveImageCompleteCallback CameraGrabber_SetSaveImageCompleteCallback;
 
@@ -4583,6 +4888,12 @@ EXTERN _CameraImage_Create CameraImage_Create;
 EXTERN _CameraImage_Destroy CameraImage_Destroy;
 
 EXTERN _CameraImage_GetData CameraImage_GetData;
+
+EXTERN _CameraImage_GetUserData CameraImage_GetUserData;
+
+EXTERN _CameraImage_SetUserData CameraImage_SetUserData;
+
+EXTERN _CameraImage_IsEmpty CameraImage_IsEmpty;
 
 EXTERN _CameraImage_Draw CameraImage_Draw;
 
@@ -4605,18 +4916,18 @@ CameraSdkStatus UnloadCameraSdk();
 #undef API_LOAD_MAIN
 
 
-//如果SDK版本不匹配，可能出现某些函数加载失败。
+// Some functions may fail to load if the SDK version does not match.
 
-#define CHCEK_API_LOAD 0 // 1:加载API函数后检测，如果加载失败，弹出提示框。 0:不检测(可以通过SDK版本号进行对比)。
+#define CHCEK_API_LOAD 0 // 1: test after loading API function, if the loading fails, a prompt box will pop up. 0: Do not detect (can be compared by SDK version number).
 
 #if CHCEK_API_LOAD
 #define CHECK_API(API) if(API == NULL)\
 {\
-	MessageBox(NULL,#API,gSdkLanguageSel?"函数加载失败":"Function load failed!",0);\
+	MessageBoxA(NULL,#API,gSdkLanguageSel?"Function load failed!":"Function load failed!",0);\
 	return CAMERA_STATUS_FAILED;\
 }
 #else
-#define CHECK_API(API)
+#define CHECK_API(API) 
 #endif
 
 HMODULE ghSDK = NULL;
@@ -4634,22 +4945,22 @@ CameraSdkStatus LoadSdkApi()
 
 	gSdkLanguageSel = 0;
 
-	if (ERROR_SUCCESS != RegOpenKeyEx(HKEY_LOCAL_MACHINE, "Software\\Industry Camera", 0, KEY_READ, &hkey))
+	if (ERROR_SUCCESS != RegOpenKeyExA(HKEY_LOCAL_MACHINE, "Software\\Industry Camera", 0, KEY_READ, &hkey))
 		return CAMERA_STATUS_NOT_INITIALIZED;
 	dwSize = sizeof(szCompany);
-	status = RegQueryValueEx(hkey, "Company", NULL, &dwType, (LPBYTE)szCompany, &dwSize);
+	status = RegQueryValueExA(hkey, "Company", NULL, &dwType, (LPBYTE)szCompany, &dwSize);
 	RegCloseKey(hkey);
 	hkey = NULL;
 	if (status != ERROR_SUCCESS)
 		return CAMERA_STATUS_NOT_INITIALIZED;
 
 #ifdef _WIN64
-	sprintf(strPath, "Software\\%s\\Settings_X64", szCompany);
+	sprintf_s(strPath, sizeof(strPath), "Software\\%s\\Settings_X64", szCompany);
 #else
-	sprintf(strPath, "Software\\%s\\Settings", szCompany);
+	sprintf_s(strPath, sizeof(strPath), "Software\\%s\\Settings", szCompany);
 #endif
 	hkey = NULL;
-	RegCreateKeyEx(HKEY_LOCAL_MACHINE, strPath, 0, NULL, 0, KEY_READ, NULL, &hkey, NULL);
+	RegCreateKeyExA(HKEY_LOCAL_MACHINE, strPath, 0, NULL, 0, KEY_READ, NULL, &hkey, NULL);
 
 	do
 	{
@@ -4658,7 +4969,7 @@ CameraSdkStatus LoadSdkApi()
 			memset(abyValue, 0x00, MAX_PATH);
 			dwType = REG_SZ;
 			dwSize = MAX_PATH;
-			status = RegQueryValueEx(hkey, "Language", NULL, &dwType, abyValue, &dwSize);
+			status = RegQueryValueExA(hkey, "Language", NULL, &dwType, abyValue, &dwSize);
 			if (ERROR_SUCCESS == status)
 			{
 				abyValue[MAX_PATH-1] = '\0';
@@ -4674,7 +4985,7 @@ CameraSdkStatus LoadSdkApi()
 
 			dwType = REG_SZ;
 			dwSize = MAX_PATH;
-			status = RegQueryValueEx(hkey, "SdkPath", NULL, &dwType, abyValue, &dwSize);
+			status = RegQueryValueExA(hkey, "SdkPath", NULL, &dwType, abyValue, &dwSize);
 			if (ERROR_SUCCESS == status)
 			{
 				abyValue[MAX_PATH-1] = '\0';
@@ -4683,7 +4994,7 @@ CameraSdkStatus LoadSdkApi()
 			}
 		}
 
-		MessageBox(NULL, "Failed to access registry", "Error", 0);
+		MessageBoxA(NULL, "Failed to access registry", "Error", 0);
 		return CAMERA_STATUS_FAILED;
 	} while(0);
 
@@ -4694,28 +5005,28 @@ CameraSdkStatus LoadSdkApi()
 	}
 
 #ifndef _WIN64
-	sprintf(strDir,"%s%s",strPath,"\\MVCAMSDK.dll");
+	sprintf_s(strDir,sizeof(strDir),"%s%s",strPath,"\\MVCAMSDK.dll");
 #else
-	sprintf(strDir,"%s%s",strPath,"\\MVCAMSDK_X64.dll");
+	sprintf_s(strDir,sizeof(strDir),"%s%s",strPath,"\\MVCAMSDK_X64.dll");
 #endif
-	ghSDK = ::LoadLibrary(strDir);
+	ghSDK = ::LoadLibraryA(strDir);
 
 
 	if (NULL == ghSDK)
 	{
 		if (gSdkLanguageSel == 1)
 		{
-			sprintf(strPath,"文件[%s]加载失败 ,请确认该路径存在该文件或者重新进行安装!",strDir);
-			MessageBox(NULL, strPath, "错误", 0);
+			sprintf_s(strPath,sizeof(strPath),"Failed to load file[%s] ,put the file on the directory or re-install the platform and try again!",strDir);
+			MessageBoxA(NULL, strPath, "Error", 0);
 		}
 		else
 		{
-			sprintf(strPath,"Failed to load file[%s] ,put the file on the directory or re-install the platform and try again!",strDir);
-			MessageBox(NULL, strPath, "Error", 0);
-		}
+			sprintf_s(strPath,sizeof(strPath),"Failed to load file[%s] ,put the file on the directory or re-install the platform and try again!",strDir);
+			MessageBoxA(NULL, strPath, "Error", 0);
+		} 
 		return CAMERA_STATUS_FAILED;
 	}
-
+	
 #define GET_MVSDK_API(name)			\
 	name = (_##name)GetProcAddress(ghSDK, #name);\
 	CHECK_API(name)
@@ -4724,6 +5035,8 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraSetCallbackFunction);
 	GET_MVSDK_API(CameraGetInformation);
 	GET_MVSDK_API(CameraInit);
+	GET_MVSDK_API(CameraInitEx);
+	GET_MVSDK_API(CameraInitEx2);
 	GET_MVSDK_API(CameraUnInit);
 	GET_MVSDK_API(CameraImageProcess);
 	GET_MVSDK_API(CameraImageProcessEx);
@@ -4734,7 +5047,6 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraSetDisplayMode);
 	GET_MVSDK_API(CameraImageOverlay);
 	GET_MVSDK_API(CameraDisplayInit);
-	GET_MVSDK_API(CameraDisplayInitEx);
 	GET_MVSDK_API(CameraSetDisplaySize);
 	GET_MVSDK_API(CameraSetDisplayOffset);
 	GET_MVSDK_API(CameraInitRecord);
@@ -4743,6 +5055,7 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraSpecialControl);
 	GET_MVSDK_API(CameraSnapToBuffer);
 	GET_MVSDK_API(CameraGetImageBuffer);
+	GET_MVSDK_API(CameraGetImageBufferEx);
 	GET_MVSDK_API(CameraReleaseImageBuffer);
 	GET_MVSDK_API(CameraCreateSettingPage);
 	GET_MVSDK_API(CameraSetActiveSettingSubPage);
@@ -4772,6 +5085,7 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraIsAeWinVisible);
 	GET_MVSDK_API(CameraSetExposureTime);
 	GET_MVSDK_API(CameraGetExposureTime);
+	GET_MVSDK_API(CameraGetExposureTimeRange);
 	GET_MVSDK_API(CameraGetExposureLineTime);
 	GET_MVSDK_API(CameraSetAnalogGain);
 	GET_MVSDK_API(CameraGetAnalogGain);
@@ -4782,7 +5096,7 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraGetLutMode);
 	GET_MVSDK_API(CameraSelectLutPreset);
 	GET_MVSDK_API(CameraGetLutPresetSel);
-	GET_MVSDK_API(CameraSetCustomLut);
+	GET_MVSDK_API(CameraSetCustomLut);  
 	GET_MVSDK_API(CameraGetCustomLut);
 	GET_MVSDK_API(CameraGetCurrentLut);
 	GET_MVSDK_API(CameraSetWbMode);
@@ -4814,6 +5128,7 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraLoadParameter);
 	GET_MVSDK_API(CameraGetCurrentParameterGroup);
 	GET_MVSDK_API(CameraEnumerateDevice);
+	GET_MVSDK_API(CameraEnumerateDeviceEx);
 	GET_MVSDK_API(CameraGetCapability);
 	GET_MVSDK_API(CameraSoftTrigger);
 	GET_MVSDK_API(CameraSetTriggerMode);
@@ -4861,6 +5176,9 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraSetInPutIOMode);
 	GET_MVSDK_API(CameraSetOutPutIOMode);
 	GET_MVSDK_API(CameraSetOutPutPWM);
+	CameraSetBayerDecAlgorithm = (_CameraSetBayerDecAlgorithm)GetProcAddress(ghSDK, "_CameraSetBayerDecAlgorithm@12");
+	CHECK_API(CameraSetBayerDecAlgorithm);
+	GET_MVSDK_API(CameraGetBayerDecAlgorithm);
 	GET_MVSDK_API(CameraSetBlackLevel);
 	GET_MVSDK_API(CameraGetBlackLevel);
 	GET_MVSDK_API(CameraSetWhiteLevel);
@@ -4887,6 +5205,7 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraGetErrorString);
 	GET_MVSDK_API(CameraGetCapabilityEx2);
 	GET_MVSDK_API(CameraGetImageBufferEx2);
+	GET_MVSDK_API(CameraGetImageBufferEx3);
 	GET_MVSDK_API(CameraReConnect);
 	GET_MVSDK_API(CameraConnectTest);
 	GET_MVSDK_API(CameraSetLedEnable);
@@ -4905,6 +5224,9 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraSetAutoConnect);
 	GET_MVSDK_API(CameraGetAutoConnect);
 	GET_MVSDK_API(CameraGetReConnectCounts);
+	GET_MVSDK_API(CameraSetSingleGrabMode);
+	GET_MVSDK_API(CameraGetSingleGrabMode);
+	GET_MVSDK_API(CameraRestartGrab);
 	GET_MVSDK_API(CameraDrawText);
 	GET_MVSDK_API(CameraGigeGetIp);
 	GET_MVSDK_API(CameraGigeSetIp);
@@ -4938,15 +5260,20 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraSetHDR);
 	GET_MVSDK_API(CameraGetHDR);
 	GET_MVSDK_API(CameraGetFrameID);
+	GET_MVSDK_API(CameraGetFrameTimeStamp);
 
 	GET_MVSDK_API(CameraGrabber_CreateFromDevicePage);
+	GET_MVSDK_API(CameraGrabber_CreateByIndex);
+	GET_MVSDK_API(CameraGrabber_CreateByName);
 	GET_MVSDK_API(CameraGrabber_Create);
 	GET_MVSDK_API(CameraGrabber_Destroy);
 	GET_MVSDK_API(CameraGrabber_SetHWnd);
+	GET_MVSDK_API(CameraGrabber_SetPriority);
 	GET_MVSDK_API(CameraGrabber_StartLive);
 	GET_MVSDK_API(CameraGrabber_StopLive);
 	GET_MVSDK_API(CameraGrabber_SaveImage);
 	GET_MVSDK_API(CameraGrabber_SaveImageAsync);
+	GET_MVSDK_API(CameraGrabber_SaveImageAsyncEx);
 	GET_MVSDK_API(CameraGrabber_SetSaveImageCompleteCallback);
 	GET_MVSDK_API(CameraGrabber_SetFrameListener);
 	GET_MVSDK_API(CameraGrabber_SetRawCallback);
@@ -4958,6 +5285,9 @@ CameraSdkStatus LoadSdkApi()
 	GET_MVSDK_API(CameraImage_Create);
 	GET_MVSDK_API(CameraImage_Destroy);
 	GET_MVSDK_API(CameraImage_GetData);
+	GET_MVSDK_API(CameraImage_GetUserData);
+	GET_MVSDK_API(CameraImage_SetUserData);
+	GET_MVSDK_API(CameraImage_IsEmpty);
 	GET_MVSDK_API(CameraImage_Draw);
 	GET_MVSDK_API(CameraImage_BitBlt);
 	GET_MVSDK_API(CameraImage_SaveAsBmp);
@@ -4974,8 +5304,8 @@ CameraSdkStatus UnloadCameraSdk()
 {
 	if (ghSDK)
 	{
-		FreeLibrary(ghSDK);
-	}
+		FreeLibrary(ghSDK); 
+	} 
 	return CAMERA_STATUS_SUCCESS;
 }
 #endif

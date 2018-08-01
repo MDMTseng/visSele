@@ -5,57 +5,57 @@
 #include "CameraStatus.h"
 
 
-/******************************************************/
-// 函数名	: CameraImage_Create
-// 功能描述	: 创建一个新的Image
-// 参数		: Image
-//			  pFrameBuffer 帧数据缓冲区
-//			  pFrameHead 帧头
-//			  bCopy TRUE: 复制出一份新的帧数据  FALSE: 不复制，直接使用pFrameBuffer指向的缓冲区
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
-/******************************************************/
+/**********************************************************/
+// function name: CameraImage_Create
+// Function Description: Create a new Image
+// parameter: Image
+// pFrameBuffer frame data buffer
+// pFrameHead frame header
+// bCopy TRUE: copy a new frame of data FALSE: do not copy directly to the buffer pointed to by pFrameBuffer
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
+/**********************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_Create(
 	void** Image,
-	BYTE *pFrameBuffer,
+	BYTE *pFrameBuffer, 
 	tSdkFrameHead* pFrameHead,
 	BOOL bCopy
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_CreateEmpty
-// 功能描述	: 创建一个空的Image
-// 参数		: Image
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_CreateEmpty
+// Function Description: Create an empty Image
+// parameter: Image
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_CreateEmpty(
 	void** Image
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_Destroy
-// 功能描述	: 销毁Image
-// 参数		: Image
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_Destroy
+// Function Description: Destroy Image
+// parameter: Image
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_Destroy(
 	void* Image
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_GetData
-// 功能描述	: 获取Image数据
-// 参数		: Image
-//			  DataBuffer 图像数据
-//			  Head 图像信息
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_GetData
+// Function Description: Get Image data
+// parameter: Image
+// DataBuffer image data
+// Head image information
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_GetData(
 	void* Image,
@@ -64,13 +64,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_GetData(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_GetUserData
-// 功能描述	: 获取Image的用户自定义数据
-// 参数		: Image
-//			  UserData 返回用户自定义数据
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_GetUserData
+// Function Description: Get Image user-defined data
+// parameter: Image
+// UserData returns user-defined data
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_GetUserData(
 	void* Image,
@@ -78,13 +78,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_GetUserData(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SetUserData
-// 功能描述	: 设置Image的用户自定义数据
-// 参数		: Image
-//			  UserData 用户自定义数据
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SetUserData
+// Function Description: Set Image's user-defined data
+// parameter: Image
+// UserData user-defined data
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SetUserData(
 	void* Image,
@@ -92,13 +92,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SetUserData(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_IsEmpty
-// 功能描述	: 判断一个Image是否为空
-// 参数		: Image
-//			  IsEmpty 为空返回:TRUE(1)  否则返回:FALSE(0)
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_IsEmpty
+// Function Description: to determine whether an Image is empty
+// parameter: Image
+// IsEmpty is empty Returns: TRUE (1) otherwise returns: FALSE (0)
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_IsEmpty(
 	void* Image,
@@ -106,14 +106,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_IsEmpty(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_Draw
-// 功能描述	: 绘制Image到指定窗口
-// 参数		: Image
-//			  hWnd 目的窗口
-//			  Algorithm 缩放算法  0：快速但质量稍差  1：速度慢但质量好
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_Draw
+// Function Description: Draw Image to the specified window
+// parameter: Image
+// hWnd destination window
+// Algorithm scaling algorithm 0: fast but less quality 1: slow but good quality
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_Draw(
 	void* Image,
@@ -122,14 +122,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_Draw(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_DrawFit
-// 功能描述	: 拉升绘制Image到指定窗口
-// 参数		: Image
-//			  hWnd 目的窗口
-//			  Algorithm 缩放算法  0：快速但质量稍差  1：速度慢但质量好
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_DrawFit
+// Function Description: Pull to draw Image to the specified window
+// parameter: Image
+// hWnd destination window
+// Algorithm scaling algorithm 0: fast but less quality 1: slow but good quality
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawFit(
 	void* Image,
@@ -138,16 +138,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawFit(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_DrawToDC
-// 功能描述	: 绘制Image到指定DC
-// 参数		: Image
-//			  hDC 目的DC
-//			  Algorithm 缩放算法  0：快速但质量稍差  1：速度慢但质量好
-//			  xDst,yDst: 目标矩形的左上角坐标
-//			  cxDst,cyDst: 目标矩形的宽高
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_DrawToDC
+// Function Description: Draw Image to specified DC
+// parameter: Image
+// hDC destination DC
+// Algorithm scaling algorithm 0: fast but less quality 1: slow but good quality
+// xDst, yDst: the coordinates of the upper left corner of the target rectangle
+// cxDst, cyDst: The width and height of the target rectangle
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDC(
 	void* Image,
@@ -160,16 +160,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDC(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_DrawToDCFit
-// 功能描述	: 拉升绘制Image到指定DC
-// 参数		: Image
-//			  hDC 目的DC
-//			  Algorithm 缩放算法  0：快速但质量稍差  1：速度慢但质量好
-//			  xDst,yDst: 目标矩形的左上角坐标
-//			  cxDst,cyDst: 目标矩形的宽高
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_DrawToDCFit
+// Function Description: Pull up and draw Image to the specified DC
+// parameter: Image
+// hDC destination DC
+// Algorithm scaling algorithm 0: fast but less quality 1: slow but good quality
+// xDst, yDst: the coordinates of the upper left corner of the target rectangle
+// cxDst, cyDst: The width and height of the target rectangle
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDCFit(
 	void* Image,
@@ -182,16 +182,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_DrawToDCFit(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_BitBlt
-// 功能描述	: 绘制Image到指定窗口（不缩放）
-// 参数		: Image
-//			  hWnd 目的窗口
-//			  xDst,yDst: 目标矩形的左上角坐标
-//			  cxDst,cyDst: 目标矩形的宽高
-//			  xSrc,ySrc: 图像矩形的左上角坐标
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_BitBlt
+// Function Description: Draw Image to the specified window (no zoom)
+// parameter: Image
+// hWnd destination window
+// xDst, yDst: the coordinates of the upper left corner of the target rectangle
+// cxDst, cyDst: The width and height of the target rectangle
+// xSrc, ySrc: the coordinates of the upper left corner of the image rectangle
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBlt(
 	void* Image,
@@ -205,16 +205,16 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBlt(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_BitBltToDC
-// 功能描述	: 绘制Image到指定DC（不缩放）
-// 参数		: Image
-//			  hDC 目的DC
-//			  xDst,yDst: 目标矩形的左上角坐标
-//			  cxDst,cyDst: 目标矩形的宽高
-//			  xSrc,ySrc: 图像矩形的左上角坐标
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_BitBltToDC
+// Function Description: Draw Image to specified DC (no zoom)
+// parameter: Image
+// hDC destination DC
+// xDst, yDst: the coordinates of the upper left corner of the target rectangle
+// cxDst, cyDst: The width and height of the target rectangle
+// xSrc, ySrc: the coordinates of the upper left corner of the image rectangle
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBltToDC(
 	void* Image,
@@ -228,13 +228,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_BitBltToDC(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsBmp
-// 功能描述	: 以bmp格式保存Image
-// 参数		: Image
-//			  FileName 文件名
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsBmp
+// Function Description: Save Image in bmp format
+// parameter: Image
+// FileName file name
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsBmp(
 	void* Image,
@@ -242,14 +242,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsBmp(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsJpeg
-// 功能描述	: 以jpg格式保存Image
-// 参数		: Image
-//			  FileName 文件名
-//			  Quality 保存质量(1-100)，100为质量最佳但文件也最大
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsJpeg
+// Function Description: Save Image in jpg format
+// parameter: Image
+// FileName file name
+// Quality saves the quality (1-100), 100 is the best quality but the largest file
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsJpeg(
 	void* Image,
@@ -258,13 +258,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsJpeg(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsPng
-// 功能描述	: 以png格式保存Image
-// 参数		: Image
-//			  FileName 文件名
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsPng
+// Function Description: Save Image in png format
+// parameter: Image
+// FileName file name
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsPng(
 	void* Image,
@@ -272,14 +272,14 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsPng(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_SaveAsRaw
-// 功能描述	: 保存raw Image
-// 参数		: Image
-//			  FileName 文件名
-//			  Format 0: 8Bit Raw     1: 16Bit Raw
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_SaveAsRaw
+// Function Description: Save the raw Image
+// parameter: Image
+// FileName file name
+// Format 0: 8Bit Raw 1: 16Bit Raw
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsRaw(
 	void* Image,
@@ -288,13 +288,13 @@ MVSDK_API CameraSdkStatus __stdcall CameraImage_SaveAsRaw(
 	);
 
 /******************************************************/
-// 函数名	: CameraImage_IPicture
-// 功能描述	: 从Image创建一个IPicture
-// 参数		: Image
-//			  Picture 新创建的IPicture
-// 返回值   : 成功时，返回CAMERA_STATUS_SUCCESS (0);
-//            否则返回非0值的错误码,请参考CameraStatus.h
-//            中错误码的定义。
+// function name: CameraImage_IPicture
+// Function Description: Create an IPicture from Image
+// parameter: Image
+// Picture The newly created IPicture
+// Return Value: On success, CAMERA_STATUS_SUCCESS (0) is returned;
+// Otherwise, return a non-zero error code, please refer to CameraStatus.h
+// The definition of the error code.
 /******************************************************/
 MVSDK_API CameraSdkStatus __stdcall CameraImage_IPicture(
 	void* Image,
