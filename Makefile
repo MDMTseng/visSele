@@ -34,7 +34,7 @@ IDIR=	include/ \
 			$(MODULE_zlib)/src \
 
 LDIR=./ $(MODULE_acvImage)
-LIBS=-lacvImage -lz
+LIBS=-lacvImage
 
 
 _OBJ = hw.o
@@ -48,8 +48,14 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_LOGCTRL)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
 
+ifeq ($(OS)$(CC),Windows_NTcc)
+	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a
+else
+	LIBS+= -lz
+endif
 
-ESS_TRACK= $(addsuffix /* ,$(IDIR))
+
+ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
 SUB_MAKEFILES = $(MODULE_acvImage) \
 								$(MODULE_common_lib) \
 								$(MODULE_MLNN) \

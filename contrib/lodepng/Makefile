@@ -8,4 +8,8 @@ _OBJ =lodepng_util.opp lodepng.opp pngdetail.opp
 target_a=lodepng.a
 FLAGS=  -ansi -pedantic -Wall -Wextra -o pngdetail -O3
 
+ifeq ($(OS)$(CC),Windows_NTcc)
+FLAGS+= -std=gnu++11
+endif
+
 include $(MakeTemplate)

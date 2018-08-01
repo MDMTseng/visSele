@@ -17,5 +17,5 @@ _OBJ = MatchingEngine.opp MatchingCore.opp FeatureManager.opp FeatureExtractor.o
 			 FeatureManager_group.opp FeatureManager_platingCheck.opp \
 			 MorphEngine.opp
 target_a= $(addsuffix .a ,$(MODULE_NAME))
-ESS_TRACK=$(wildcard $(addsuffix /* ,$(IDIR)))
+ESS_TRACK=$(wildcard $(addsuffix /*.h* ,$(IDIR)))
 include ../Makefile.in

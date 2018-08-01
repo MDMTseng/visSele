@@ -10,5 +10,5 @@ IDIR=	./include/ \
 ODIR=obj
 _OBJ = Util.o
 target_a= $(addsuffix .a ,$(MODULE_NAME))
-ESS_TRACK=$(wildcard $(addsuffix /* ,$(IDIR)))
+ESS_TRACK=$(wildcard $(addsuffix /*.h* ,$(IDIR)))
 include ../Makefile.in
