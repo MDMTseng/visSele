@@ -590,6 +590,37 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid,scanline_skip);
 
 
+  if(1)//Draw debug image(curve and straight line)
+  {
+    for(int i=0;i<inward_curve_grid.dataSize();i++)
+    {
+
+      const acv_XY* p = inward_curve_grid.get(i);
+      int X = round(p->X);
+      int Y = round(p->Y);
+      {
+            buff->CVector[Y][X*3]=0;
+            buff->CVector[Y][X*3+1]=100;
+            buff->CVector[Y][X*3+2]=255;
+      }
+
+
+    }
+
+
+    for(int i=0;i<straight_line_grid.dataSize();i++)
+    {
+        const acv_XY* p2 = straight_line_grid.get(i);
+        int X = round(p2->X);
+        int Y = round(p2->Y);
+        {
+              buff->CVector[Y][X*3]=0;
+              buff->CVector[Y][X*3+1]=255;
+              buff->CVector[Y][X*3+2]=100;
+        }
+    }
+  }
+
   static vector<int> s_intersectIdxs;
   static vector<acv_XY> s_points;
   float sigma;
@@ -654,12 +685,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           }
           acvFitLine(&s_points[0], s_points.size(),&line_fit,&sigma);
 
-          acvDrawLine(buff,
-            line_fit.line_anchor.X-mult*line_fit.line_vec.X,
-            line_fit.line_anchor.Y-mult*line_fit.line_vec.Y,
-            line_fit.line_anchor.X+mult*line_fit.line_vec.X,
-            line_fit.line_anchor.Y+mult*line_fit.line_vec.Y,
-            20,0,128);
           //  line.MatchingMarginX=30
         }
         else
