@@ -220,7 +220,7 @@ function drawZoomArea(C1, C2) {
 	// var ctx1 = C1.getContext("2d");
 	var context = C2.getContext("2d");
 	context.clearRect(0, 0, C2.width, C2.height);
-	context.save();
+	context.save(); 
 	// context.translate(translatePos.x, translatePos.y);
 	// context.translate(-(C2.width/2*scale),-(C2.height/2*scale) );
 	context.translate(translatePos.x*scale,translatePos.y*scale);
