@@ -12,7 +12,9 @@ var canvas3;
 var mouseDown = false;
 var scale = 1.0;
 var scaleMultiplier = 0.8;
-var startDragOffset = {};
+var translateStep = 8;
+var startDragPos = {x:0,Y:0};
+var translateDragOffset = {x:0,Y:0};
 var translatePos = {
 		x: 0,
 		y: 0
@@ -53,31 +55,35 @@ $(function() {
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-up").addEventListener("click", function() {
-		translatePos.y-=1/scale;
+		translatePos.y-=translateStep/scale;
 		// draw(scale, translatePos);
 	}, false);
 
 	document.getElementById("zoomArea-down").addEventListener("click", function() {
-		translatePos.y+=1/scale;
+		translatePos.y+=translateStep/scale;
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-left").addEventListener("click", function() {
-		translatePos.x-=1/scale;
+		translatePos.x-=translateStep/scale;
 		// draw(scale, translatePos);
 	}, false);
 
 	document.getElementById("zoomArea-right").addEventListener("click", function() {
-		translatePos.x+=1/scale;
+		translatePos.x+=translateStep/scale;
 		// draw(scale, translatePos);
 	}, false);
 	canvas3.addEventListener("mousedown", function(evt) {
 		mouseDown = true;
-		startDragOffset.x = evt.clientX - translatePos.x;
-		startDragOffset.y = evt.clientY - translatePos.y;
+		startDragPos.x = evt.clientX ;
+		startDragPos.y = evt.clientY ;
 	});
 
 	canvas3.addEventListener("mouseup", function(evt) {
 		mouseDown = false;
+		translatePos.x += translateDragOffset.x;
+		translatePos.y += translateDragOffset.y;
+		translateDragOffset.x=0;
+		translateDragOffset.y=0;
 	});
 
 	canvas3.addEventListener("mouseover", function(evt) {
@@ -111,8 +117,8 @@ function mouseMove3(evt) {
 	mouseMove3_evt = evt;
 	$('#checkAreaTitle2').html('mX=' + evt.offsetX + ',mY=' + evt.offsetY);
 	if (mouseDown) {
-		translatePos.x = evt.clientX - startDragOffset.x;
-		translatePos.y = evt.clientY - startDragOffset.y;
+		translateDragOffset.x = (evt.clientX - startDragPos.x)/scale;
+		translateDragOffset.y = (evt.clientY - startDragPos.y)/scale;
 		// draw(scale, translatePos);
 	}
 }
@@ -221,10 +227,10 @@ function drawZoomArea(C1, C2) {
 	var context = C2.getContext("2d");
 	context.clearRect(0, 0, C2.width, C2.height);
 	context.save();
-	// context.translate(translatePos.x, translatePos.y);
-	// context.translate(-(C2.width/2*scale),-(C2.height/2*scale) );
-	context.translate(translatePos.x*scale,translatePos.y*scale);
+    context.translate((C2.width/2),(C2.height/2) );
 	context.scale(scale, scale);
+	context.translate(translatePos.x+translateDragOffset.x, translatePos.y+translateDragOffset.y);
+	context.translate(-(C2.width/2),-(C2.height/2) );
 	context.drawImage(C1, 0, 0);
 
 	context.restore();
