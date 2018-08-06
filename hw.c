@@ -305,22 +305,38 @@ int ImgInspection(acvImage *test1,int repeatTime)
 int ImageSource_callback(ImageSource_Interface *interface, ImageSource_Data data, void* callback_param)
 {
   LOGI("%s_______type:%d________", __func__,data.type);
-  acvImage *test1 = data.data.BMP_Read.img;
 
-  ImgInspection(test1,1);
+  switch(data.type)
+  {
+    case ImageSource_DataType_BMP_Read:
+    {
+      
+      acvImage *test1 = data.data.BMP_Read.img;
+
+      ImgInspection(test1,1);
+    }
+    break;
+    default:
+
+      LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+  }
 }
 
 int testX(int repeatTime)
 {
-
+  bool doCallbackStyle=false;
 
   acvImage *test1 = new acvImage();
   ImageSource_BMP imgSrc1(test1);
-  imgSrc1.SetEventCallBack(ImageSource_callback,NULL);
+  if(doCallbackStyle)
+    imgSrc1.SetEventCallBack(ImageSource_callback,NULL);
   imgSrc1.SetFileName("data/test1.bmp");
-  ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
-  imgSrc_g->GetAcvImage();
-  //ImgInspection(test1,repeatTime);
+  if(!doCallbackStyle)
+  {
+    ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
+    imgSrc_g->GetAcvImage();
+    ImgInspection(test1,repeatTime);
+  }
 
   return 0;
 }
