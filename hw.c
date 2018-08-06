@@ -250,83 +250,42 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 
 }
 
-
-
-
-int ImageSource_callback(ImageSource_Interface *interface, ImageSource_Data data, void* callback_param)
+int SignatureGenerator()
 {
-  LOGI("%s_______type:%d________", __func__,data.type);
-  acvImage *test1 = data.data.BMP_Read.img;
+  //Just to get target signature
+  if(0){
+    vector<acv_XY> tar_signature(360);
+    acvImage *target = new acvImage();
+    int ret=acvLoadBitmapFile(target, "data/target.bmp");
+    acvThreshold(target, 128, 0);
+    std::vector<acv_LabeledData> ldData;
+    acvComponentLabeling(target);
+    acvLabeledRegionInfo(target, &ldData);
+    acvContourCircleSignature(target, ldData[1], 1, tar_signature);
+    delete(target);
+  }
+  return 0;
 
+  // clock_t t = clock();
+  //acvLoadBitmapFile(target, "data/target.bmp");
+  // acvThreshold(target, 128, 0);
+  // zlibDeflate_testX(target,test1_buff,RGB2BW_collapse,BW2RGB_uncollapse);
+
+  // LOGI("compress:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+
+  // acvSaveBitmapFile("data/zlib_test.bmp",target);
 
 }
 
-int testX(int repeatTime)
+int ImgInspection(acvImage *test1,int repeatTime)
 {
-
-
-  acvImage *test1 = new acvImage();
-  ImageSource_BMP imgSrc1(test1);
-  imgSrc1.SetEventCallBack(ImageSource_callback,NULL);
-  imgSrc1.SetFileName("data/test1.bmp");
-  ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
-  imgSrc_g->GetAcvImage();
-
-
-
-
-
   MatchingEngine me;
   char *string = ReadText("data/target.json");
   me.AddMatchingFeature(string);
   free(string);
   acvImage *test1_buff = new acvImage();
 
-  vector<acv_XY> tar_signature(360);
-  //Just to get target signature
-  if(0){
-    acvImage *target = new acvImage();
-    int ret=acvLoadBitmapFile(target, "data/target.bmp");
-    acvThreshold(target, 128, 0);
-    test1_buff->ReSize(target->GetWidth(), target->GetHeight());
 
-    //acvThreshold(target, 128, 0);
-
-    std::vector<acv_LabeledData> ldData;
-    acvComponentLabeling(target);
-    acvLabeledRegionInfo(target, &ldData);
-    acvContourCircleSignature(target, ldData[1], 1, tar_signature);
-
-    acvLoadBitmapFile(target, "data/target.bmp");
-
-    clock_t t = clock();
-
-    //zlibDeflate_testX(target,test1_buff,NULL,NULL);
-    //zlibDeflate_testX(target,test1_buff,RGB2Gray_collapse,Gray2RGB_uncollapse);
-    acvThreshold(target, 128, 0);
-    zlibDeflate_testX(target,test1_buff,RGB2BW_collapse,BW2RGB_uncollapse);
-
-    LOGI("compress:%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-
-    acvSaveBitmapFile("data/zlib_test.bmp",target);
-
-    delete(target);
-
-
-    /*
-      printf("\"magnitude\":[");
-      for(int i=0;i<tar_signature.size();i++)
-      {
-        printf("%f,",tar_signature[i].X);
-      }printf("],\n");
-
-
-      printf("\"angle\":[");
-      for(int i=0;i<tar_signature.size();i++)
-      {
-        printf("%f,",tar_signature[i].Y);
-      }printf("]\n");*/
-  }
 
   test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
@@ -340,6 +299,28 @@ int testX(int repeatTime)
 
   //ContourFeatureDetect(test1,test1_buff,tar_signature);
   acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
+
+}
+
+int ImageSource_callback(ImageSource_Interface *interface, ImageSource_Data data, void* callback_param)
+{
+  LOGI("%s_______type:%d________", __func__,data.type);
+  acvImage *test1 = data.data.BMP_Read.img;
+
+  ImgInspection(test1,1);
+}
+
+int testX(int repeatTime)
+{
+
+
+  acvImage *test1 = new acvImage();
+  ImageSource_BMP imgSrc1(test1);
+  imgSrc1.SetEventCallBack(ImageSource_callback,NULL);
+  imgSrc1.SetFileName("data/test1.bmp");
+  ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
+  imgSrc_g->GetAcvImage();
+  //ImgInspection(test1,repeatTime);
 
   return 0;
 }
