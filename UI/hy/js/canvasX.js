@@ -234,5 +234,8 @@ function drawZoomArea(C1, C2) {
 	context.drawImage(C1, 0, 0);
 
 	context.restore();
+
+
+	console
 	
 }
