@@ -250,8 +250,31 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 
 }
 
+
+
+
+int ImageSource_callback(ImageSource_Interface *interface, ImageSource_Data data, void* callback_param)
+{
+  LOGI("%s_______type:%d________", __func__,data.type);
+  acvImage *test1 = data.data.BMP_Read.img;
+
+
+}
+
 int testX(int repeatTime)
 {
+
+
+  acvImage *test1 = new acvImage();
+  ImageSource_BMP imgSrc1(test1);
+  imgSrc1.SetEventCallBack(ImageSource_callback,NULL);
+  imgSrc1.SetFileName("data/test1.bmp");
+  ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
+  imgSrc_g->GetAcvImage();
+
+
+
+
 
   MatchingEngine me;
   char *string = ReadText("data/target.json");
@@ -304,9 +327,6 @@ int testX(int repeatTime)
         printf("%f,",tar_signature[i].Y);
       }printf("]\n");*/
   }
-
-  acvImage *test1 = new acvImage();
-  int ret=acvLoadBitmapFile(test1, "data/test1.bmp");
 
   test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
