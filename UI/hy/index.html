@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>--全檢機 控制中心--</title>
     <LINK REL=StyleSheet HREF="css/style.css" TYPE="text/css" MEDIA=screen>
-    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.1.0/css/all.css" integrity="sha384-lKuwvrZot6UHsBSfcMvOkWwlCMgc0TaWr+30HWe3a4ltaBwTZhyTEggF5tJv8tbt" crossorigin="anonymous">  
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.1.0/css/all.css" integrity="sha384-lKuwvrZot6UHsBSfcMvOkWwlCMgc0TaWr+30HWe3a4ltaBwTZhyTEggF5tJv8tbt" crossorigin="anonymous">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.6.15.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
@@ -37,15 +37,16 @@
           <div class="ui-grid-b">
             <!-- <div class="ui-block-a"><input type="button" id="plus" value="+"></div> -->
             <div class="ui-block-a"><button id="plus" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-plus">放大</button></div>
-
             <div class="ui-block-b"><button id="zoomArea-up" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-u">UP</button></div>
-              
+            
             <div class="ui-block-c"><button id="minus" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-minus">MINUS</button></div>
             
             <div class="ui-block-a"><button id="zoomArea-left" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-l">L</button></div>
-
             <div class="ui-block-b"><button id="zoomArea-down" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-d">D</button></div>
             <div class="ui-block-c"><button id="zoomArea-right" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-r">R</button></div>
+            <div class="ui-block-c"><button id="zoomArea-spinLeft" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-back">Rotate-L</button></div>
+            <div class="ui-block-c"><button id="zoomArea-spinAuto" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-recycle">AutoSpin</button></div>
+            <div class="ui-block-c"><button id="zoomArea-spinRight" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-forward">Rotate-R</button></div>
             </div><!-- /grid-b -->
           </div>
         </div>
@@ -132,7 +133,7 @@
           </ul>
           
           <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
-            <h4>Cue走勢圖</h4>
+            <h4>走勢圖</h4>
             <canvas id="myChart" width="400" height="200"></canvas>
           </div>
           <hr><hr>

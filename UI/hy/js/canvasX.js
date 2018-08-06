@@ -13,24 +13,32 @@ var mouseDown = false;
 var scale = 1.0;
 var scaleMultiplier = 0.8;
 var translateStep = 8;
-var startDragPos = {x:0,Y:0};
-var translateDragOffset = {x:0,Y:0};
+var startDragPos = {
+	x: 0,
+	y: 0
+};
+var translateDragOffset = {
+	x: 0,
+	y: 0
+};
+var autoSpint = true;
+var startSpinPos = 0.1;
 var translatePos = {
-		x: 0,
-		y: 0
-	};
+	x: 0,
+	y: 0
+};
 $(function() {
 
 	console.log("[cancasX.js][window.onload]1");
 	canvas1 = document.getElementById("canvas1");
 	canvas2 = document.getElementById("canvas2");
 	canvas3 = document.getElementById("canvas3");
-	canvas1.width  = 400;
-	canvas1.height  = 400;
-	canvas2.width  = 400;
-	canvas2.height  = 400;
-	canvas3.width  = 400;
-	canvas3.height  = 400;
+	canvas1.width = 400;
+	canvas1.height = 400;
+	canvas2.width = 400;
+	canvas2.height = 400;
+	canvas3.width = 400;
+	canvas3.height = 400;
 	// canvas1.style.width = "401px";
 	// canvas1.style.height = "401px";
 	// canvas2.style.width = "400px";
@@ -45,6 +53,21 @@ $(function() {
 
 
 
+	document.getElementById("zoomArea-spinAuto").addEventListener("click", function() {
+		autoSpint = !autoSpint;
+		// draw(scale, translatePos);
+	}, false);
+
+	document.getElementById("zoomArea-spinLeft").addEventListener("click", function() {
+		startSpinPos -= scaleMultiplier;
+		// draw(scale, translatePos);
+	}, false);
+
+	document.getElementById("zoomArea-spinRight").addEventListener("click", function() {
+		startSpinPos += scaleMultiplier;
+		// draw(scale, translatePos);
+	}, false);
+
 	document.getElementById("plus").addEventListener("click", function() {
 		scale /= scaleMultiplier;
 		// draw(scale, translatePos);
@@ -55,35 +78,35 @@ $(function() {
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-up").addEventListener("click", function() {
-		translatePos.y-=translateStep/scale;
+		translatePos.y -= translateStep / scale;
 		// draw(scale, translatePos);
 	}, false);
 
 	document.getElementById("zoomArea-down").addEventListener("click", function() {
-		translatePos.y+=translateStep/scale;
+		translatePos.y += translateStep / scale;
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-left").addEventListener("click", function() {
-		translatePos.x-=translateStep/scale;
+		translatePos.x -= translateStep / scale;
 		// draw(scale, translatePos);
 	}, false);
 
 	document.getElementById("zoomArea-right").addEventListener("click", function() {
-		translatePos.x+=translateStep/scale;
+		translatePos.x += translateStep / scale;
 		// draw(scale, translatePos);
 	}, false);
 	canvas3.addEventListener("mousedown", function(evt) {
 		mouseDown = true;
-		startDragPos.x = evt.clientX ;
-		startDragPos.y = evt.clientY ;
+		startDragPos.x = evt.clientX;
+		startDragPos.y = evt.clientY;
 	});
 
 	canvas3.addEventListener("mouseup", function(evt) {
 		mouseDown = false;
 		translatePos.x += translateDragOffset.x;
 		translatePos.y += translateDragOffset.y;
-		translateDragOffset.x=0;
-		translateDragOffset.y=0;
+		translateDragOffset.x = 0;
+		translateDragOffset.y = 0;
 	});
 
 	canvas3.addEventListener("mouseover", function(evt) {
@@ -117,8 +140,8 @@ function mouseMove3(evt) {
 	mouseMove3_evt = evt;
 	$('#checkAreaTitle2').html('mX=' + evt.offsetX + ',mY=' + evt.offsetY);
 	if (mouseDown) {
-		translateDragOffset.x = (evt.clientX - startDragPos.x)/scale;
-		translateDragOffset.y = (evt.clientY - startDragPos.y)/scale;
+		translateDragOffset.x = (evt.clientX - startDragPos.x) / scale;
+		translateDragOffset.y = (evt.clientY - startDragPos.y) / scale;
 		// draw(scale, translatePos);
 	}
 }
@@ -140,6 +163,7 @@ function drawX() {
 
 	// console.log("FPS" + ((performance.now()) - t0) + " milliseconds.");
 
+
 }
 var recWH = 50;
 
@@ -153,8 +177,8 @@ function drawCheckArea(C) {
 	var ctx = C.getContext("2d");
 	ctx.fillStyle = 'rgb(' + gg + ',0,0)';
 
-	var C_Hight=parseInt(C.height);
-	var C_Width=C.width;
+	var C_Hight = parseInt(C.height);
+	var C_Width = C.width;
 
 	// ctx.fillStyle = 'rgb(111,0,0)';
 	ctx.fillRect(0, 0, C.width, C.height);
@@ -180,16 +204,16 @@ function drawRAWArea(C1) {
 
 	var context = C1.getContext("2d");
 
-	
+
 	// clear canvas
 	context.clearRect(0, 0, C1.width, C1.height);
 
 	context.save();
-	context.translate(C1.width>>1,C1.height>>1);
+	context.translate(C1.width >> 1, C1.height >> 1);
 	// context.scale(scale, scale);
 	context.beginPath(); // begin custom shape
-	context.moveTo(0,0);
-	context.lineTo(111,111);
+	context.moveTo(0, 0);
+	context.lineTo(111, 111);
 
 	context.moveTo(-119, -20);
 
@@ -211,28 +235,67 @@ function drawRAWArea(C1) {
 	context.stroke();
 	context.restore();
 }
+
 function drawZoomAreaX(C1, C2) {
 	// var ctx1 = C1.getContext("2d");
 	var context = C2.getContext("2d");
 	context.clearRect(0, 0, C2.width, C2.height);
 	context.save();
 	context.translate(translatePos.x, translatePos.y);
-	context.translate(-(C2.width/2*scale),-(C2.height/2*scale) );
+	context.translate(-(C2.width / 2 * scale), -(C2.height / 2 * scale));
 	context.scale(scale, scale);
 	context.drawImage(C1, 0, 0);
 	context.restore();
 }
+
+function getRAWbackgroundImageData(C) {
+	var ctx = C.getContext("2d");
+	var imageData = ctx.getImageData(0, 0, C.width, C.height);
+
+	var buf = new ArrayBuffer(imageData.data.length);
+	var buf8 = new Uint8ClampedArray(buf);
+	var data = new Uint32Array(buf);
+
+	for (var y = 0; y < C.height; ++y) {
+		for (var x = 0; x < C.width; ++x) {
+			var value = x * y & 0xff;
+
+			data[y * C.width + x] =
+				(255 << 24) | // alpha
+				(value << 16) | // blue
+				(value << 8) | // green
+				value; // red
+		}
+	}
+
+	imageData.data.set(buf8);
+	return imageData;
+
+
+}
+
 function drawZoomArea(C1, C2) {
 	// var ctx1 = C1.getContext("2d");
+	// console.log(startSpinPos);
+	//var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 	var context = C2.getContext("2d");
 	context.clearRect(0, 0, C2.width, C2.height);
+
+
+	
+
 	context.save();
-    context.translate((C2.width/2),(C2.height/2) );
+	context.translate((C1.width / 2), (C1.height / 2));
 	context.scale(scale, scale);
-	context.translate(translatePos.x+translateDragOffset.x, translatePos.y+translateDragOffset.y);
-	context.translate(-(C2.width/2),-(C2.height/2) );
+	if (autoSpint)
+		startSpinPos += 0.01;
+	context.rotate(startSpinPos);
+
+	context.translate(translatePos.x + translateDragOffset.x, translatePos.y + translateDragOffset.y);
+	context.translate(-(C2.width / 2), -(C2.height / 2));
+	context.putImageData(getRAWbackgroundImageData(C2), 0, 0);
 	context.drawImage(C1, 0, 0);
 
 	context.restore();
-	
+
 }
