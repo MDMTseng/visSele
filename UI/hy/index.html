@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>--全檢機 控制中心--</title>
+    <LINK REL=StyleSheet HREF="css/style.css" TYPE="text/css" MEDIA=screen>
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.1.0/css/all.css" integrity="sha384-lKuwvrZot6UHsBSfcMvOkWwlCMgc0TaWr+30HWe3a4ltaBwTZhyTEggF5tJv8tbt" crossorigin="anonymous">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.6.15.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.bundle.min.js"></script>
+    <!-- <script defer src="https://use.fontawesome.com/releases/v5.1.0/js/all.js"></script> -->
+    <script type="text/javascript" src="js/ws.js"></script>
+    <script type="text/javascript" src="js/xlinx.js"></script>
+    <script type="text/javascript" src="js/canvasX.js"></script>
+    <!-- <script src="sketch2.js" type="text/javascript"></script> -->
+  </head>
+  <body onload="drawX();">
+    <div data-role="page" id="index" data-theme="b">
+      <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="false" data-icon="cloud">
+        <h4>檢測區域 <div style="display:inline;" id="checkAreaTitle"></div></h4>
+        <div style="text-align: center;" id="idnameofdiv">
+          <canvas style="border: 1px solid white;" id="canvas1" ></canvas>
+        </div>
+      </div>
+      <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="false" data-icon="cloud">
+        <h4>放大檢視區 <div style="display:inline;" id="checkAreaTitle2"></div></h4>
+        <div style="text-align: center;" id="idnameofdiv">
+          <canvas style="border: 1px solid white;" id="canvas2" ></canvas>
+          <canvas style="border: 1px solid white;" id="canvas3" ></canvas>
+        </div>
+        <div id="buttonWrapper" style="text-align: center;">
+          
+          
+          <div class="ui-grid-b">
+            <!-- <div class="ui-block-a"><input type="button" id="plus" value="+"></div> -->
+            <div class="ui-block-a"><button id="plus" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-plus">放大</button></div>
+
+            <div class="ui-block-b"><button id="zoomArea-up" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-u">UP</button></div>
+              
+            <div class="ui-block-c"><button id="minus" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-minus">MINUS</button></div>
+            
+            <div class="ui-block-a"><button id="zoomArea-left" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-l">L</button></div>
+
+            <div class="ui-block-b"><button id="zoomArea-down" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-d">D</button></div>
+            <div class="ui-block-c"><button id="zoomArea-right" class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-r">R</button></div>
+            </div><!-- /grid-b -->
+          </div>
+        </div>
+        <div data-role="header">
+          <h1 id="titleX">--全檢機 控制中心 v20180730--</h1>
+        </div>
+        <div data-role="content">
+          <ul data-role="listview" data-inset="true" data-filter="false">
+            
+            <li id="drums" class="button">
+              <a class="ui-btn" href="#instrumentSystemStatus">
+                <!-- <i class="fas fa-spin fa-cloud"></i> -->
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <i class="fas fa-angle-double-right"></i>
+                <div class="typeGreen type_square"></div>
+                <font color="#fff"> WEB |  </font>
+                <div class="typeGreen type_square"></div>
+                <font color="#fff"> DB |  </font>
+                <div class="typeYellow type_square"></div>
+                <font color="#fff"> DB2 |  </font>
+                <div class="typeGREEN2RED_infinite type_square"></div>
+                <font color="#fff"> 時間同步主機</font>
+              </a>
+            </li>
+            <li id="drums" class="button">
+              <a class="ui-btn" href="#instrumentSystemStatus">
+                <!-- <i class="fas fa-spin fa-cloud"></i> -->
+                <i class="fas fa-circle-notch fa-spin"></i>
+                <i class="fas fa-angle-double-right"></i>
+                <div class="typeGREEN2RED_infinite type_square"></div>
+                <font color="#fff"> TIMECODE = <b style='font-color:blue; display: inline;' id="TIMECODE"></b></font>
+                
+              </a>
+            </li>
+            <li id="drums" class="button">
+              <a class="ui-btn" href="#instrument0">
+                <!-- <i class="fas fa-ambulance"></i> -->
+                <i class="fas fa-cloud"></i>
+                <i class="fas fa-angle-double-right"></i>
+                <font color="#fff"> WS: </font>
+                <div id="statusLEDAll" class="typeGREEN2RED"></div>
+                <font color="#fff"> | <i class="fab fa-apple"></i> 主機_TX:</font>
+                <div id="statusLEDRF" class="typeGREEN2RED"></div>
+                
+              </a>
+            </li>
+            <li id="drums" class="button">
+              <a class="ui-btn" href="#instrument0">
+                <!-- <i class="fas fa-ambulance"></i> -->
+                <i class="fas fa-child fa-spin"></i>
+                <i class="fas fa-angle-double-right"></i>
+                <font color="#fff"> [ACK]VisSel </font>
+                <div id="VHB_statusLED_A" class="typeGREEN2RED"></div>
+                <div id="VHB_statusLED_D" class="typeGREEN2RED"></div>
+                <font color="#fff"> Check1 </font>
+                <div id="VHB_statusLED_B" class="typeGREEN2RED"></div>
+                <font color="#fff"> Check2 </font>
+                <div id="VHB_statusLED_C" class="typeGREEN2RED"></div>
+              </a>
+            </li>
+            
+            <li id="drums" class="button">
+              <a class="ui-btn" href="#instrument0">
+                <i class="fas fa-play-circle"></i>
+                <i class="fas fa-angle-double-right"></i>
+                
+                <font color="#fff"> CHECK </font>
+                <div id="AAA" class="typeBlack typeWhite type_square_big"></div>
+                
+                <div id="BBB" class="typeBlack typeWhite type_square_big"></div>
+                <font color="#fff"> CHECK1 </font>
+                <div id="CCC" class="typeBlack typeWhite type_square_big"></div>
+                <font color="#fff"> CHECK2 </font>
+                <div id="DDD" class="typePink typeWhite type_square_big"></div>
+              </a>
+            </li>
+            <hr>
+            <hr>
+            <hr>
+            <div class="ui-field-contain">
+              <label for="slider-2">Blink Time Slider:</label>
+              <input type="range" onchange="valueChanged()" name="slider" class="sliders" id="cue/sliderX" value="1" min="0" max="255">
+            </div>
+          </ul>
+          
+          <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
+            <h4>Cue走勢圖</h4>
+            <canvas id="myChart" width="400" height="200"></canvas>
+          </div>
+          <hr><hr>
+          <!-- <a href="#" id="cue/Q/go" class="ui-btn ui-btn-inline ui-icon-carat-r ui-btn-icon-bottom">Q Go</a>
+          <a href="#" id="cue/Q/pause" class="ui-btn ui-btn-inline ui-icon-bars ui-btn-icon-bottom">Q Pause</a>
+          <a href="#" id="cue/Q/blinkall" class="ui-btn ui-btn-inline ui-icon-star ui-btn-icon-bottom">Blink All</a>
+          <a href="#" id="cue/Q/stopall" class="ui-btn ui-btn-inline ui-icon-delete ui-btn-icon-bottom">Stop All</a>
+          <a href="#" id="cue/Q/happyhour" class="ui-btn ui-btn-inline ui-icon-heart ui-btn-icon-bottom">*HappyHour*</a> -->
+          <a>Engineering Mode: <font color="green">ON</font></a>
+          <a>Supervisor Mode: <font color="green">ON</font></a>
+          <a>Debug Mode: <font color="red">OFF</font></a>
+          <ul data-role="listview" data-inset="true" data-filter="false">
+            <li id="reboot" class="button">
+              <a href="#instrument5">軟體更新｜重新開機</a>
+            </li>
+          </ul>
+          
+          <div data-role="collapsible" data-theme="b" data-content-theme="b">
+            <h4>Server Log</h4>
+            <p>
+              <div id="output">DECADE.TW</div>
+            </p>
+          </div>
+        </div>
+        <!-- /content -->
+        <div data-role="footer">
+          <table>
+            <tr>
+              <td>
+                <a href="about.html" data-rel="dialog" data-transition="flip">說明！</a>
+              </td>
+              
+            </tr>
+          </table>
+        </div>
+        <div id="fb-root"></div>
+      </div>
+      <!-- buttons -->
+      <!-- /content -->
+    </div>
+  </body>
+</html>
