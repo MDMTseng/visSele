@@ -406,7 +406,7 @@ char *PrintHexArr(char *data, int dataL)
     return PrintHexArr_buff(bufferStr, sizeof(bufferStr), data, dataL);
 }
 
-unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader)
+unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapInfoHeader)
 {
     FILE *filePtr;                     //our file pointer
     BITMAPFILEHEADER bitmapFileHeader; //our bitmap file header
@@ -461,7 +461,7 @@ unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHea
     return bitmapImage;
 }
 
-int acvLoadBitmapFile(acvImage *img, char *filename)
+int acvLoadBitmapFile(acvImage *img,const  char *filename)
 {
 
     BITMAPINFOHEADER bitmapInfoHeader;
@@ -509,7 +509,7 @@ int acvLoadBitmapFile(acvImage *img, char *filename)
     return 0;
 }
 
-int acvSaveBitmapFile(char *filename, unsigned char *pixData, int width, int height)
+int acvSaveBitmapFile(const char *filename, unsigned char *pixData, int width, int height)
 {
     FILE *f;
     f = fopen(filename, "wb");
@@ -542,7 +542,7 @@ int acvSaveBitmapFile(char *filename, unsigned char *pixData, int width, int hei
     return 0;
 }
 
-int acvSaveBitmapFile(char *filename, acvImage *img)
+int acvSaveBitmapFile(const char *filename, acvImage *img)
 {
     return acvSaveBitmapFile(filename, img->ImageData, img->GetWidth(), img->GetHeight());
 }

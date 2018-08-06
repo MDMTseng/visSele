@@ -13,7 +13,7 @@
 #include "FeatureManager.h"
 #include "MatchingEngine.h"
 #include "common_lib.h"
-
+#include "ImageSource.hpp"
 
 
 char* ReadFile(char *filename);

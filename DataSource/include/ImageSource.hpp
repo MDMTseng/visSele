@@ -3,7 +3,7 @@
 
 #include <string>
 #include <acvImage_BasicTool.hpp>
-
+class ImageSource_Interface;
 typedef int (*ImageSource_Event_callback)(ImageSource_Interface *interface, void* data, void* callback_param);
 class ImageSource_Interface
 {
@@ -30,29 +30,43 @@ public:
   }
 };
 
-class ImageSource_BMP: public ImageSource_Interface
+class ImageSource_acvImageInterface: public ImageSource_Interface
 {
-  string fileName;
+protected:
   acvImage *buffer;
 public:
-  ImageSource_BMP(acvImage *buffer): ImageSource_Interface()
+  ImageSource_acvImageInterface(acvImage *buffer): ImageSource_Interface()
   {
     this->buffer = buffer;
+  }
+
+  acvImage* GetAcvImage()
+  {
+    return buffer;
+  }
+};
+class ImageSource_BMP: public ImageSource_acvImageInterface
+{
+  string fileName;
+public:
+  ImageSource_BMP(acvImage *buffer): ImageSource_acvImageInterface(buffer)
+  {
     fileName = "";
   }
 
-  void SetFileName(string fileName);
+  void SetFileName(string fileName)
   {
     this->fileName=fileName;
   }
 
   void* GetImage()
   {
-    if(buffer==NULL || str1.empty() )return NULL;
-
-
-
-    int ret=acvLoadBitmapFile(buffer, fileName);
+    return GetAcvImage();
+  }
+  acvImage* GetAcvImage()
+  {
+    if(buffer==NULL || fileName.empty() )return NULL;
+    int ret=acvLoadBitmapFile(buffer, fileName.c_str());
     if(ret<0)return NULL;
     return buffer;
   }

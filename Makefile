@@ -10,6 +10,7 @@ export MODULE_common_lib=$(abspath common_lib)
 export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath contrib/SOIL)
 export MODULE_lodepng=$(abspath contrib/lodepng)
+export MODULE_DataSource=$(abspath DataSource)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -32,6 +33,7 @@ IDIR=	include/ \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_zlib)/src \
+			$(MODULE_DataSource)/include
 
 LDIR=./ $(MODULE_acvImage)
 LIBS=-lacvImage

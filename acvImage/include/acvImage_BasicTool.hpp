@@ -109,10 +109,10 @@ void acvCloneImage_single(acvImage *OriPic, int layer_ori, acvImage *OutPic, int
 
 char *PrintHexArr_buff(char *strBuff,int strBuffL,char *data, int dataL);
 char *PrintHexArr(char *data, int dataL);
-unsigned char *acvLoadBitmapFile(char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
-int acvLoadBitmapFile(acvImage *img,char *filename);
-int acvSaveBitmapFile(char *filename,unsigned char* pixData,int width,int height);
-int acvSaveBitmapFile(char *filename,acvImage *img);
+unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
+int acvLoadBitmapFile(acvImage *img,const char *filename);
+int acvSaveBitmapFile(const char *filename,unsigned char* pixData,int width,int height);
+int acvSaveBitmapFile(const char *filename,acvImage *img);
 #define div_round(dividend, divisor) (((int)(dividend) + ((int)(divisor) >>1)) / (int)(divisor))
 void acvImageAdd(acvImage *src,int num);
 #define DoubleRoundInt(Num) ((int)round(Num))
