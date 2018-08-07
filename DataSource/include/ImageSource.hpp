@@ -5,9 +5,21 @@
 #include <acvImage_BasicTool.hpp>
 class ImageSource_Interface;
 
+typedef struct ImageSource_Data_error
+{
+
+  enum error_enum
+  {
+    NO_ENOUGH_BUFFER,
+    FILE_READ_FAILED,
+    UNKNOWN_FILE_NAME
+  } code;
+
+};
+
 enum ImageSource_DataType
 {
-  ImageSource_DataType_errorCode,
+  ImageSource_DataType_error,
   ImageSource_DataType_BMP_Read,
   ImageSource_DataType_raw,
   ImageSource_DataType_END,
@@ -23,7 +35,7 @@ typedef struct ImageSource_Data
   enum ImageSource_DataType type;
   union data    
   {
-    uint16_t errorCode;
+    ImageSource_Data_error error;
     ImageSource_Data_BMP_Read BMP_Read;
     char*     raw;
   }data;
@@ -85,14 +97,7 @@ public:
 
     if(callback!=NULL)
     {
-      acvImage* img = GetAcvImage();
-      if(img!=NULL)
-      {
-        ImageSource_Data img_data;
-        img_data.type = ImageSource_DataType_BMP_Read;
-        img_data.data.BMP_Read.img=img;
-        callback(this, img_data, callback_param);
-      }
+      GetAcvImage();
     }
   }
 
@@ -100,12 +105,41 @@ public:
   {
     return GetAcvImage();
   }
+  ImageSource_Data GenErrorMsg(ImageSource_Data_error::error_enum code)
+  {
+      ImageSource_Data error_data;
+      error_data.type = ImageSource_DataType_error;
+      error_data.data.error.code=code;
+      return error_data;
+  }
 
   acvImage* GetAcvImage()
   {
-    if(buffer==NULL || fileName.empty() )return NULL;
+    if(buffer==NULL)
+    {
+      callback(this, GenErrorMsg(ImageSource_Data_error::error_enum::NO_ENOUGH_BUFFER), callback_param);
+      return NULL;
+    }
+
+    if(fileName.empty() )
+    {
+      callback(this, GenErrorMsg(ImageSource_Data_error::error_enum::UNKNOWN_FILE_NAME), callback_param);
+      return NULL;
+    }
     int ret=acvLoadBitmapFile(buffer, fileName.c_str());
-    if(ret<0)return NULL;
+    if(ret<0)
+    {
+      callback(this, GenErrorMsg(ImageSource_Data_error::error_enum::FILE_READ_FAILED), callback_param);
+      return NULL;
+    }
+
+    if(callback!=NULL)
+    {
+      ImageSource_Data img_data;
+      img_data.type = ImageSource_DataType_BMP_Read;
+      img_data.data.BMP_Read.img=buffer;
+      callback(this, img_data, callback_param);
+    }
     return buffer;
   }
 };

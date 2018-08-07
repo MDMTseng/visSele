@@ -277,18 +277,14 @@ int SignatureGenerator()
 
 }
 
-int ImgInspection(acvImage *test1,int repeatTime)
+int ImgInspection(acvImage *test1,int repeatTime,char *defFilename)
 {
   MatchingEngine me;
-  char *string = ReadText("data/target.json");
+  char *string = ReadText(defFilename);
   me.AddMatchingFeature(string);
   free(string);
   acvImage *test1_buff = new acvImage();
-
-
-
   test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
-
 
   clock_t t = clock();
   for(int i=0;i<repeatTime;i++)
@@ -308,12 +304,17 @@ int ImageSource_callback(ImageSource_Interface *interface, ImageSource_Data data
 
   switch(data.type)
   {
+    case ImageSource_DataType_error:
+    {
+      LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+    }
+    break;
     case ImageSource_DataType_BMP_Read:
     {
       
       acvImage *test1 = data.data.BMP_Read.img;
 
-      ImgInspection(test1,1);
+      ImgInspection(test1,1,"data/target.json");
     }
     break;
     default:
@@ -335,12 +336,24 @@ int testX(int repeatTime)
   {
     ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
     imgSrc_g->GetAcvImage();
-    ImgInspection(test1,repeatTime);
+    ImgInspection(test1,repeatTime,"data/target.json");
   }
 
   return 0;
 }
 
+
+
+
+int test_featureDetect()
+{
+  acvImage *test1 = new acvImage();
+  ImageSource_BMP imgSrc1(test1);
+  imgSrc1.SetFileName("data/target.bmp");
+  ImgInspection(imgSrc1.GetAcvImage(),1,"data/featureDetect.json");
+
+  return 0;
+}
 
 int simpP(char* strNum)
 {
