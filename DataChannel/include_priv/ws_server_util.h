@@ -8,7 +8,6 @@
 
 #include "websocket_conn.hpp"
 
-
 class ws_conn_entity_pool;
 
 class ws_server;
@@ -17,7 +16,7 @@ class ws_conn: public ws_conn_data {
 
     std::vector <uint8_t> recvBuf;
     std::vector <uint8_t> sendBuf;
-
+    ws_protocol_callback *cb;
     static int safeSend(int sock, const uint8_t *buffer, size_t bufferSize);
 public:
 
@@ -26,10 +25,13 @@ public:
 
     void RESET();
 
+    websock_data genCallbackData(websock_data::eventType type);
 
     int setSocket(int socket);
 
     int setAddr(struct sockaddr_in address);
+
+    void setCallBack(ws_protocol_callback* cb);
 
     void COPY_property(ws_conn *from);
 
@@ -73,16 +75,18 @@ public:
 
 
 
-class ws_server {
+class ws_server: public ws_protocol_callback {
 
     int listenSocket;
     fd_set evtSet;
     int fdmax;
+    ws_protocol_callback *cb;
 public:
-    ws_server(int port);
+    ws_server(int port,ws_protocol_callback *cb);
     ws_conn_entity_pool ws_conn_pool;
 
     int findMaxFd();
     int runLoop(struct timeval *tv);
+    int ws_callback(websock_data data, void* param);
 };
 

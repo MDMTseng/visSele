@@ -26,12 +26,12 @@ typedef struct websock_data
     } type;
 
     ws_conn_data* peer;
-    typedef union content
+    union content
     {
-        typedef struct _DATA_FRAME
+        struct _DATA_FRAME
         {
-            enum FrameType
-            {
+            int type;
+            /*{
                 EMPTY_FRAME = 0xF0,
                 ERROR_FRAME = 0xF1,
                 INCOMPLETE_FRAME = 0xF2,
@@ -42,8 +42,9 @@ typedef struct websock_data
                 PONG_FRAME = 0x0A,
                 OPENING_FRAME = 0xF3,
                 CLOSING_FRAME = 0x08
-            } type;
+            } type;*/
             uint8_t *raw;
+            size_t rawL;
         } data_frame;
 
         typedef struct _ERROR
@@ -55,6 +56,22 @@ typedef struct websock_data
 };
 
 
+class ws_protocol_callback{
+public:
+    void* param;
+    ws_protocol_callback(void* param)
+    {
+        this->param=param;
+    }
+    virtual int ws_callback(websock_data data, void* param)
+    {
+        return 0;
+    }
+    virtual int ws_callback(websock_data data)
+    {
+        return ws_callback(data,param);
+    }
+};
 
 class ws_conn_data {
 
@@ -65,6 +82,7 @@ protected:
     int sock;
     struct sockaddr_in addr;
     char resource[128];
+    ws_protocol_callback *cb;
 
 public:
 
@@ -81,6 +99,10 @@ public:
     bool isOccupied()
     {
         return sock != -1;
+    }
+    const char* getResource()
+    {
+        return resource;
     }
 };
 

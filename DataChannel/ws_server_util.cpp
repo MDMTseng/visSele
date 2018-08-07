@@ -3,9 +3,9 @@
 
 //////////////////////////////ws_server/////////////////////////////////////
 
-
-ws_server::ws_server(int port)
+ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(this)
 {
+    this->cb = cb;
     listenSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (listenSocket == -1) {
         printf("Error:create socket failed\n");
@@ -56,7 +56,22 @@ int ws_server::findMaxFd()
 
     return max;
 }
+int ws_server::ws_callback(websock_data data, void* param)
+{
+  if(cb)
+  {
+    cb->ws_callback(data);
+  }
+  else
+  {
+    printf("%s: type:%d sock:%d\n",__func__,data.type,data.peer->getSocket());
 
+    printf("peer %s:%d\n",
+           inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
+    
+  }
+  return 0;
+}
 int ws_server::runLoop(struct timeval *tv)
 {
     if (listenSocket == -1)
@@ -83,6 +98,8 @@ int ws_server::runLoop(struct timeval *tv)
         ws_conn* conn = ws_conn_pool.find_avaliable_conn_info_slot();
         conn->setSocket(NewSock);
         conn->setAddr(remote);
+        conn->setCallBack(this);
+
         printf("connected %s:%d\n",
                inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port));
 
@@ -227,9 +244,16 @@ ws_conn::ws_conn() {
     RESET();
 }
 
+
+void ws_conn::setCallBack(ws_protocol_callback* cb)
+{
+  this->cb = cb;
+}
+
+
 void ws_conn::RESET()
 {
-    //cb = NULL;
+    cb = NULL;
     sock = -1;
     ws_state = WS_STATE_OPENING;
     memset(&addr, 0, sizeof(addr));
@@ -307,11 +331,23 @@ int ws_conn::doClosing()
 {
     if (isOccupied())
         close(sock);
+
+    if(cb!=NULL)
+    {
+      cb->ws_callback(genCallbackData(websock_data::eventType::CLOSING));
+    }
     RESET();
     printf("%s\n", __func__);
     return 0;
 }
 
+websock_data ws_conn::genCallbackData(websock_data::eventType type)
+{
+    websock_data data;
+    data.peer=this;
+    data.type =type;
+    return data;
+}
 int ws_conn::event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frameType, bool isFinal)
 {
     //BY default, echo
@@ -322,11 +358,16 @@ int ws_conn::event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frame
         printf("wsMakeFrame2 error:%d\n", ret);
         //return -1;
     }
-    else if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+    else 
     {
-        printf("safeSend error\n");
-        doClosing();
-        //return -1;
+      if(cb!=NULL)
+      {
+        websock_data data=genCallbackData(websock_data::eventType::DATA_FRAME);
+        data.data.data_frame.type = frameType;
+        data.data.data_frame.raw = &sendBuf[0];
+        data.data.data_frame.rawL = frameSize;
+        cb->ws_callback(data);
+      }
     }
 
     return 0;
@@ -455,6 +496,11 @@ int ws_conn::runLoop()
     accBufDataLen = 0;//accBufDataLen is for receving accumulation, only useful in normal mode
     if (ws_state == WS_STATE_OPENING)
     {
+
+        if(cb!=NULL)
+        {
+          cb->ws_callback(genCallbackData(websock_data::eventType::OPENING));
+        }
         if (doHandShake(&(recvBuf[0]), readed) != 0 )
         {
             printf("Error:Hand shake failed...");

@@ -374,7 +374,13 @@ int simpP(char* strNum)
 #include <vector>
 int main(int argc, char** argv)
 {
-    DatCH_WebSocket ws(409);
+    DatCH_WebSocket websocket(4090);
+
+    while(1)
+    {
+        websocket.runLoop(NULL);
+    }
+
     int seed = time(NULL);
     srand(seed);
     int ret = 0, repeatNum=1;
