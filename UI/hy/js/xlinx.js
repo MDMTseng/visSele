@@ -1,27 +1,3 @@
-
-
-function initConfig(configx) {
-
-    for (var i = 0; i < 29; i++) {
-        configx.data.labels.push("3/" + (i + 1));
-
-    }
-    for (var dsIndex = 0; dsIndex <= 2; dsIndex++) {
-        for (var i = 0; i < 29; i++) {
-            if (configx.data.datasets[dsIndex].data[i] == null) {
-                configx.data.datasets[dsIndex].data.push(0);
-
-            }
-        }
-    }
-    console.log(configx);
-    return configx;
-}
-
-function doStuff(data) {
-    console.log(data);
-}
-
 function parseData(url, callBack) {
     Papa.parse(url, {
         download: true,
@@ -45,9 +21,16 @@ function timeInterval33() {
     drawX();
 
 }
+function degreesToRadians (degrees) {
+   return degrees * (Math.PI/180);     
+}
 
+function radiansToDegrees (radians) {
+   return radians * (180/Math.PI);
+}
 function timeInterval1000() {
-    console.log("[INFO][timeInterval1000XXX]");
+    console.log("[INFO][TimerInterval][1000][IP]"+clientIP);
+    doSendWS("test","mmmsssggg");
     // $('#checkAreaTitle').html(new Date());
     // var text=$("#textareaX").val();
     // console.log("[DEBUG] textareaX="+ text);

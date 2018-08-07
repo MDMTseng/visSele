@@ -27,18 +27,19 @@ var translatePos = {
 	x: 0,
 	y: 0
 };
-$(function() {
 
-	console.log("[cancasX.js][window.onload]1");
+function init_CanvasX() {
+	console.log("[cancasX.js][init]");
 	canvas1 = document.getElementById("canvas1");
 	canvas2 = document.getElementById("canvas2");
 	canvas3 = document.getElementById("canvas3");
-	canvas1.width = 400;
-	canvas1.height = 400;
-	canvas2.width = 400;
-	canvas2.height = 400;
-	canvas3.width = 400;
-	canvas3.height = 400;
+	var allW = 300;
+	canvas1.width = allW;
+	canvas1.height = allW;
+	canvas2.width = allW;
+	canvas2.height = allW;
+	canvas3.width = allW;
+	canvas3.height = allW;
 	// canvas1.style.width = "401px";
 	// canvas1.style.height = "401px";
 	// canvas2.style.width = "400px";
@@ -49,7 +50,6 @@ $(function() {
 	canvas1.addEventListener("mousemove", mouseMove1);
 	canvas2.addEventListener("mousemove", mouseMove2);
 	canvas3.addEventListener("mousemove", mouseMove3);
-	console.log("[cancasX.js][window.onload]2");
 
 
 
@@ -118,10 +118,9 @@ $(function() {
 	});
 
 
-	console.log("[xlinx.js]4$(document).ready]");
 	window.setInterval(timeInterval1000, 1000);
 	window.setInterval(timeInterval33, 33);
-});
+}
 
 function mouseMove1(evt) {
 	// console.log(evt);
@@ -145,6 +144,7 @@ function mouseMove3(evt) {
 		// draw(scale, translatePos);
 	}
 }
+var reDraw_C2 = true;
 
 function drawX() {
 	// console.log("[INFO][drawX()]");
@@ -152,8 +152,14 @@ function drawX() {
 	if (canvas1.getContext) {
 		drawCheckArea(canvas1);
 	}
-	if (canvas2.getContext)
+	if (reDraw_C2 && canvas2.getContext) {
+		// console.log("asf0");
+		reDraw_C2=false;
+		// console.log("asf1");
 		drawRAWArea(canvas2);
+		// console.log("asf2");
+
+	}
 	if (canvas3.getContext)
 		drawZoomArea(canvas2, canvas3);
 
@@ -166,10 +172,11 @@ function drawX() {
 
 }
 var recWH = 50;
+var millisX = 0;
 
 function drawCheckArea(C) {
 
-	var millisX = performance.now();
+	millisX = performance.now();
 	// var d=new Date();
 	// 	var millisX = d.getMilliseconds();
 	var gg = 127 * (1 + Math.sin(dx * millisX));
@@ -198,9 +205,56 @@ function drawCheckArea(C) {
 	ctx.lineTo(C.width, C.height >> 1);
 	ctx.stroke();
 }
+function drawLine(context,RXJS,i){
+	context.moveTo(RXJS.SETS[i].XY[0].x, RXJS.SETS[i].XY[0].y);
+	for(var nextPointIndex=1;nextPointIndex<RXJS.SETS[i].XY.length;nextPointIndex++){
+		context.lineTo(RXJS.SETS[i].XY[nextPointIndex].x, RXJS.SETS[i].XY[nextPointIndex].y);	
+	}
+	if(RXJS.SETS[i].CLOSE_PATH)
+		context.closePath();	
 
-
+}
 function drawRAWArea(C1) {
+
+	var context = C1.getContext("2d");
+	context.clearRect(0, 0, C1.width, C1.height);
+	context.putImageData(getRAWbackgroundImageData(C1), 0, 0);
+	// context.drawImage(C1, 0, 0);
+	context.save();
+	// context.translate(C1.width / 2, C1.height / 2);
+	// console.log(RXMSG_temp1);
+	var RXJS = JSON.parse(RXMSG_temp1_json);
+	if (RXJS.TYPE != "FetureSets") return;
+	
+	for (var i = 0; i < RXJS.SETS.length; i++) {
+		context.lineWidth = RXJS.SETS[i].STROKE_WIDTH;
+		context.strokeStyle = RXJS.SETS[i].COLOR;
+		context.beginPath();
+		if (RXJS.SETS[i].type == 'line') {
+			drawLine(context,RXJS,i);	
+		}else if (RXJS.SETS[i].type == 'shape') {
+			drawLine(context,RXJS,i);
+		}else if (RXJS.SETS[i].type == 'rect') {
+			context.strokeRect(RXJS.SETS[i].XY[0].x, RXJS.SETS[i].XY[0].y,RXJS.SETS[i].XY[1].w, RXJS.SETS[i].XY[1].h);
+		}else if (RXJS.SETS[i].type == 'arc') {
+			context.arc(80, 80, 50, degreesToRadians(RXJS.SETS[i].DEGREE_START_END.start), degreesToRadians(RXJS.SETS[i].DEGREE_START_END.end), false);
+
+// context.arc(80, 80, 50, degreesToRadians(0), degreesToRadians(180), false);
+			// context.arc(RXJS.SETS[i].CENTER_XY.x,RXJS.SETS[i].CENTER_XY.y, 
+			// 	RXJS.SETS[i].RADIUS, degreesToRadians(0), degreesToRadians(180), false);
+			// context.stroke();
+		}
+		    context.stroke();
+		
+		
+	context.stroke();	
+	}
+	
+
+	context.restore();
+}
+
+function drawRAWAreaX(C1) {
 
 	var context = C1.getContext("2d");
 
@@ -248,6 +302,15 @@ function drawZoomAreaX(C1, C2) {
 	context.restore();
 }
 
+function drawRotatedImage(C, image, x, y, angle) {
+	var context = C.getContext("2d");
+	context.save();
+	context.translate(x, y);
+	context.rotate(angle * Math.PI / 180);
+	context.drawImage(image, -(image.width / 2), -(image.height / 2));
+	context.restore();
+}
+
 function getRAWbackgroundImageData(C) {
 	var ctx = C.getContext("2d");
 	var imageData = ctx.getImageData(0, 0, C.width, C.height);
@@ -258,16 +321,16 @@ function getRAWbackgroundImageData(C) {
 
 	for (var y = 0; y < C.height; ++y) {
 		for (var x = 0; x < C.width; ++x) {
-			var value = x * y & 0xff;
+			var value = 0.0001 * millisX * x * y & 0xff;
 
 			data[y * C.width + x] =
-				(255 << 24) | // alpha
+				(value << 24) | // alpha
 				(value << 16) | // blue
 				(value << 8) | // green
 				value; // red
 		}
 	}
-
+	console.log();
 	imageData.data.set(buf8);
 	return imageData;
 
@@ -275,25 +338,22 @@ function getRAWbackgroundImageData(C) {
 }
 
 function drawZoomArea(C1, C2) {
+
 	// var ctx1 = C1.getContext("2d");
 	// console.log(startSpinPos);
 	//var imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 	var context = C2.getContext("2d");
 	context.clearRect(0, 0, C2.width, C2.height);
-
-
-	
-
 	context.save();
+
 	context.translate((C1.width / 2), (C1.height / 2));
 	context.scale(scale, scale);
 	if (autoSpint)
 		startSpinPos += 0.01;
 	context.rotate(startSpinPos);
-
 	context.translate(translatePos.x + translateDragOffset.x, translatePos.y + translateDragOffset.y);
 	context.translate(-(C2.width / 2), -(C2.height / 2));
-	context.putImageData(getRAWbackgroundImageData(C2), 0, 0);
+	// context.putImageData(getRAWbackgroundImageData(C1), 0, 0);
 	context.drawImage(C1, 0, 0);
 
 	context.restore();

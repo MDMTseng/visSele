@@ -1,30 +1,24 @@
 // var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-var peopleA = 512;
-var peopleB = 0;
-var peopleC = 1522;
-var wsUri = "ws://scube.decade.tw:7777/tnua_class_decade_tw";
+var WS_URI = "ws://scube.decade.tw:7777/tnua_class_decade_tw";
 var output;
 var clientIP = "x.x.x.x";
-
+var TX_SERIAL=0;
 $(document).ready(function() {
-    console.log("ws.js doc ready");
-    $.getJSON('http://api.ipify.org?format=jsonp&callback=?', function(data) {
-        // clientIP=JSON.stringify(data, null, 2);
-
-        console.log("clientIP1=" + clientIP);
-    }).done(function(data) {
-        console.log("second success");
+    console.log("[ws.js][init]");
+    var APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
+    $.getJSON(APIurl).done(function(data) {
         clientIP = data.ip;
+        // console.log("clientIP1=" + clientIP);
     });
-    console.log("clientIP2=" + clientIP);
-
-
+    init_WSocket();
+    init_CanvasX();
+    init_drawCanvas();
 });
 
-function init() {
+function init_WSocket() {
 
     output = document.getElementById("output");
-    websocket = new WebSocket(wsUri);
+    websocket = new WebSocket(WS_URI);
     websocket.onopen = function(evt) {
         onOpen(evt)
     };
@@ -41,42 +35,25 @@ function init() {
 
 function onOpen(evt) {
     writeToScreen("CONNECTED");
-    doSendInfo("WebSocket rocks");
+    doSendWS("info","ws_on_open");
 }
 
 function onClose(evt) {
-    writeToScreen("DISCONNECTED");
-    init();
-    writeToScreen("...RE-CONNECTED");
+    writeToScreen("[info]DISCONNECTED");
+    init_WSocket();
+    writeToScreen("[info]...RE-CONNECTED");
 }
 
 function onMessage(evt) {
-
     var data = $.parseJSON(evt.data);
-    // console.log("[O][onMsg]JSONDATA",data);
     $("#TIMECODE").html(data.TIME_CODE);
-
-
 }
 
 function onError(evt) {
     writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
 }
 
-
-
-// function doSendWS_chgFont(message) {
-
-//     doSendWS("chgFont", message);
-// }
-
-function doSendInfo(message) {
-
-    doSendWS("info", message);
-}
-
-function doSendWS(type, message) {
-
+function doSendWS(t, m) {
     var date = new Date().toLocaleDateString("en-US", {
         "year": "numeric",
         "month": "numeric",
@@ -84,14 +61,14 @@ function doSendWS(type, message) {
         "hour": "numeric",
         "minute": "numeric",
         "second": "numeric"
-
     });
     var msg = {
-        id: 7213,
-        ip: clientIP,
-        type: type,
-        text: message,
-        date: date
+        SERIAL: TX_SERIAL++,
+        IP: clientIP,
+        TYPE: t,
+        ALL_TYPE:"info,line,rect,angle,circle",
+        MSG: m,
+        TIMESTAMP: date
     };
     // writeToScreen(JSON.stringify(msg));
     websocket.send(JSON.stringify(msg));
@@ -104,13 +81,10 @@ function writeToScreen(message) {
     document.getElementById("output").appendChild(pre);
 }
 
-
 function valueChanged() {
-    // var SliderValue = $('.sliders').val();
-    // // alert("Slider value = " + SliderValue);
-
+    var SliderValue = $('.sliders').val();
     // var msg = "/" + $(this).attr("id")+"/"+SliderValue;
     // doSendWS("ws_cue",msg);
-    // console.log("SliderValue--->" +SliderValue);
+    console.log("SliderValue--->" + SliderValue);
 }
-window.addEventListener("load", init, false);
+// window.addEventListener("load", init, false);
