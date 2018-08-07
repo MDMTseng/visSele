@@ -13,7 +13,8 @@
 #include "FeatureManager.h"
 #include "MatchingEngine.h"
 #include "common_lib.h"
-#include "ImageSource.hpp"
+#include "DatCH_Image.hpp"
+#include "DatCH_WebSocket.hpp"
 
 
 char* ReadFile(char *filename);
@@ -298,18 +299,18 @@ int ImgInspection(acvImage *test1,int repeatTime,char *defFilename)
 
 }
 
-int ImageSource_callback(ImageSource_Interface *interface, ImageSource_Data data, void* callback_param)
+int DatCH_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
 {
   LOGI("%s_______type:%d________", __func__,data.type);
 
   switch(data.type)
   {
-    case ImageSource_DataType_error:
+    case DatCH_DataType_error:
     {
       LOGE("%s: error code:%d..........", __func__,data.data.error.code);
     }
     break;
-    case ImageSource_DataType_BMP_Read:
+    case DatCH_DataType_BMP_Read:
     {
       
       acvImage *test1 = data.data.BMP_Read.img;
@@ -328,13 +329,13 @@ int testX(int repeatTime)
   bool doCallbackStyle=false;
 
   acvImage *test1 = new acvImage();
-  ImageSource_BMP imgSrc1(test1);
+  DatCH_BMP imgSrc1(test1);
   if(doCallbackStyle)
-    imgSrc1.SetEventCallBack(ImageSource_callback,NULL);
+    imgSrc1.SetEventCallBack(DatCH_callback,NULL);
   imgSrc1.SetFileName("data/test1.bmp");
   if(!doCallbackStyle)
   {
-    ImageSource_acvImageInterface *imgSrc_g = &imgSrc1;
+    DatCH_acvImageInterface *imgSrc_g = &imgSrc1;
     imgSrc_g->GetAcvImage();
     ImgInspection(test1,repeatTime,"data/target.json");
   }
@@ -348,7 +349,7 @@ int testX(int repeatTime)
 int test_featureDetect()
 {
   acvImage *test1 = new acvImage();
-  ImageSource_BMP imgSrc1(test1);
+  DatCH_BMP imgSrc1(test1);
   imgSrc1.SetFileName("data/target.bmp");
   ImgInspection(imgSrc1.GetAcvImage(),1,"data/featureDetect.json");
 
@@ -373,6 +374,7 @@ int simpP(char* strNum)
 #include <vector>
 int main(int argc, char** argv)
 {
+    DatCH_WebSocket ws(409);
     int seed = time(NULL);
     srand(seed);
     int ret = 0, repeatNum=1;
@@ -381,6 +383,7 @@ int main(int argc, char** argv)
     {
       repeatNum=simpP(argv[1]);
     }
+    //test_featureDetect();
     ret = testX(repeatNum);
     logi("execute %d times\r\n", repeatNum);
 

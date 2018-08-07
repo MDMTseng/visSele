@@ -10,7 +10,7 @@ export MODULE_common_lib=$(abspath common_lib)
 export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath contrib/SOIL)
 export MODULE_lodepng=$(abspath contrib/lodepng)
-export MODULE_DataSource=$(abspath DataSource)
+export MODULE_DataChannel=$(abspath DataChannel)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -33,7 +33,7 @@ IDIR=	include/ \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_zlib)/src \
-			$(MODULE_DataSource)/include
+			$(MODULE_DataChannel)/include
 
 LDIR=./ $(MODULE_acvImage)
 LIBS=-lacvImage
@@ -49,6 +49,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_LOGCTRL)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
+					$(MODULE_DataChannel)/DataChannel.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a
@@ -69,6 +70,7 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 								$(MODULE_GLACC) \
 								$(MODULE_SOIL) \
 								$(MODULE_lodepng) \
+								$(MODULE_DataChannel) \
 								sidePrj
 
 export MakeTemplate:= $(abspath Makefile.in)
