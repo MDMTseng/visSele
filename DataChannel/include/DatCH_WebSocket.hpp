@@ -3,16 +3,17 @@
 
 #include <DatCH.hpp>
 
+#include "websocket_conn.hpp"
 
-class ws_server;
 
 class DatCH_WebSocket: public DatCH_Interface
 {
 protected:
 public:
-	ws_server *server;
-	DatCH_WebSocket(int port);
-	int runLoop(struct timeval *tv);
+    ws_server *server;
+    websock_data tmp_ws_data;
+    DatCH_WebSocket(int port);
+    int runLoop(struct timeval *tv);
 };
 
 

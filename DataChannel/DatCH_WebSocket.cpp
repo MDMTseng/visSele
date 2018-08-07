@@ -5,13 +5,12 @@
 
 DatCH_WebSocket::DatCH_WebSocket(int port): DatCH_Interface()
 {
-    server=new ws_server(port);
+    server = new ws_server(port);
 }
-
 
 
 int DatCH_WebSocket::runLoop(struct timeval *tv)
 {
-	server->runLoop(tv);
-	return 0;
+    server->runLoop(tv);
+    return 0;
 }

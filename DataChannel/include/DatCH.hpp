@@ -6,26 +6,26 @@
 class DatCH_Interface
 {
 protected:
-  DatCH_Event_callback callback;
-  void* callback_param;
+    DatCH_Event_callback callback;
+    void* callback_param;
 public:
-  DatCH_Interface()
-  {
-    callback=NULL;
-    callback_param = NULL;
-  }
+    DatCH_Interface()
+    {
+        callback = NULL;
+        callback_param = NULL;
+    }
 
 
-  void SetEventCallBack(DatCH_Event_callback callback, void* callback_param)
-  {
-    this->callback = callback;
-    this->callback_param = callback_param;
-  }
+    void SetEventCallBack(DatCH_Event_callback callback, void* callback_param)
+    {
+        this->callback = callback;
+        this->callback_param = callback_param;
+    }
 
-  virtual void* GetData()
-  {
-    return NULL;
-  }
+    virtual void* GetData()
+    {
+        return NULL;
+    }
 };
 
 

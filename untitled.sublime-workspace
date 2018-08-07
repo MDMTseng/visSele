@@ -1,0 +1,356 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "DataChannel/DatCH_WebSocket.cpp",
+			"settings":
+			{
+				"buffer_size": 255,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "DataChannel/ws_server_util.cpp",
+			"settings":
+			{
+				"buffer_size": 10117,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "DataChannel/include_priv/ws_server_util.h",
+			"settings":
+			{
+				"buffer_size": 7064,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "Makefile.in",
+			"settings":
+			{
+				"buffer_size": 1126,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+			[
+				"Install",
+				"Package Control: Install Package"
+			]
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/Users/mdm/visSele",
+		"/Users/mdm/visSele/DataChannel",
+		"/Users/mdm/visSele/DataChannel/include_priv"
+	],
+	"file_history":
+	[
+		"/Users/mdm/visSele/DataChannel/include/DatCH_structs.hpp",
+		"/Users/mdm/visSele/DataChannel/include/DatCH_WebSocket.hpp",
+		"/Users/mdm/visSele/hw.c",
+		"/Users/mdm/visSele/Makefile",
+		"/Users/mdm/visSele/DataSource/include/DataChannel.cpp",
+		"/Users/mdm/visSele/DataSource/DatCH_WebSocket.cpp",
+		"/Users/mdm/visSele/DataSource/include/ws_server_util.h",
+		"/Users/mdm/visSele/DataSource/Makefile",
+		"/Users/mdm/visSele/DataSource/include/DatCH_WebSocket.hpp",
+		"/Users/mdm/visSele/DataChannel/Makefile",
+		"/Users/mdm/visSele/DataSource/include/DatCH_structs.hpp",
+		"/Users/mdm/visSele/DataSource/include/DatCH_Image.hpp",
+		"/Users/mdm/visSele/MatchingEngine/FeatureExtractor.cpp",
+		"/Users/mdm/visSele/DataSource/include/DatCH.hpp",
+		"/Users/mdm/visSele/MatchingEngine/FeatureManager_group.cpp",
+		"/Users/mdm/visSele/data/featureDetect.json",
+		"/Users/mdm/visSele/UI/hy/index.html",
+		"/Users/mdm/visSele/UI/hy/js/canvasX.js",
+		"/Users/mdm/visSele/DataSource/include/ImageSource.hpp",
+		"/Users/mdm/visSele/MatchingEngine/MatchingCore.cpp",
+		"/Users/mdm/visSele/MatchingEngine/FeatureManager.cpp",
+		"/Users/mdm/visSele/acvImage/include/acvImage_BasicTool.hpp",
+		"/Users/mdm/visSele/acvImage/acvImage_BasicTool.cpp",
+		"/Users/mdm/visSele/data/target.json",
+		"/Users/mdm/visSele/contrib/zlib-1.2.11/.gitignore"
+	],
+	"find":
+	{
+		"height": 27.0
+	},
+	"find_in_files":
+	{
+		"height": 101.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": true,
+		"find_history":
+		[
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 3,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "DataChannel/DatCH_WebSocket.cpp",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 255,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								255
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax",
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 3,
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "DataChannel/ws_server_util.cpp",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 10117,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								248,
+								248
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 2,
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"file": "DataChannel/include_priv/ws_server_util.h",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 7064,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								236,
+								236
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/C++/C++.sublime-syntax",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 209.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 1,
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "Makefile.in",
+					"semi_transient": true,
+					"settings":
+					{
+						"buffer_size": 1126,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Text/Plain text.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 27.0
+	},
+	"input":
+	{
+		"height": 39.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.astyle_error_message":
+	{
+		"height": 0.0
+	},
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"pinned_build_system": "",
+	"project": "untitled.sublime-project",
+	"replace":
+	{
+		"height": 50.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 290.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}
