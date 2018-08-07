@@ -351,23 +351,16 @@ websock_data ws_conn::genCallbackData(websock_data::eventType type)
 int ws_conn::event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frameType, bool isFinal)
 {
     //BY default, echo
-    size_t frameSize = sendBuf.size();
-    int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType, isFinal);
-    if (ret)
+    //size_t frameSize = sendBuf.size();
+    //int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType, isFinal);
+
+    if(cb!=NULL)
     {
-        printf("wsMakeFrame2 error:%d\n", ret);
-        //return -1;
-    }
-    else 
-    {
-      if(cb!=NULL)
-      {
-        websock_data data=genCallbackData(websock_data::eventType::DATA_FRAME);
-        data.data.data_frame.type = frameType;
-        data.data.data_frame.raw = &sendBuf[0];
-        data.data.data_frame.rawL = frameSize;
-        cb->ws_callback(data);
-      }
+      websock_data cb_data=genCallbackData(websock_data::eventType::DATA_FRAME);
+      cb_data.data.data_frame.type = frameType;
+      cb_data.data.data_frame.raw = data;
+      cb_data.data.data_frame.rawL = dataSize;
+      cb->ws_callback(cb_data);
     }
 
     return 0;
