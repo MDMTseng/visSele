@@ -16,6 +16,13 @@ public:
     }
 
 
+    DatCH_Data GenErrorMsg(DatCH_Data_error::error_enum code)
+    {
+        DatCH_Data error_data;
+        error_data.type = DatCH_DataType_error;
+        error_data.data.error.code = code;
+        return error_data;
+    }
     void SetEventCallBack(DatCH_Event_callback callback, void* callback_param)
     {
         this->callback = callback;

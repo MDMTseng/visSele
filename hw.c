@@ -298,6 +298,43 @@ int ImgInspection(acvImage *test1,int repeatTime,char *defFilename)
   acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
 
 }
+int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
+{
+  if(data.type!=DatCH_DataType_websock_data)return -1;
+
+  websock_data ws_data = *data.data.p_websocket;
+  switch(ws_data.type)
+  {
+      case websock_data::eventType::OPENING:
+
+          printf("OPENING peer %s:%d\n",
+             inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
+  
+      break;
+      case websock_data::eventType::DATA_FRAME:
+          printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
+              ws_data.data.data_frame.type,
+              ws_data.data.data_frame.rawL,
+              ws_data.data.data_frame.raw
+              );
+          if(ws_data.data.data_frame.raw)
+          {
+              ws_data.data.data_frame.raw[ws_data.data.data_frame.rawL]='\0';
+              printf(">>>>>%s\n",
+                  ws_data.data.data_frame.raw
+                  );
+          }
+
+      break;
+      case websock_data::eventType::CLOSING:
+
+          printf("CLOSING peer %s:%d\n",
+             inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
+  
+      break;
+  }
+    
+}
 
 int DatCH_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
 {
@@ -376,6 +413,7 @@ int main(int argc, char** argv)
 {
     DatCH_WebSocket websocket(4090);
 
+    websocket.SetEventCallBack(DatCH_WS_callback,NULL);
     while(1)
     {
         websocket.runLoop(NULL);
