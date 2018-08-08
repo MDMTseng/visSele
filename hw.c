@@ -301,7 +301,8 @@ int ImgInspection(acvImage *test1,int repeatTime,char *defFilename)
 int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
 {
   if(data.type!=DatCH_DataType_websock_data)return -1;
-
+  DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
+  LOGI(">>>>%p\n",ws);
   websock_data ws_data = *data.data.p_websocket;
   switch(ws_data.type)
   {
@@ -323,6 +324,13 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
               printf(">>>>>%s\n",
                   ws_data.data.data_frame.raw
                   );
+          }
+
+          {
+            char *ddd="dfdfsdf";
+            ws_data.data.data_frame.raw=(uint8_t*)ddd;
+            ws_data.data.data_frame.rawL=strlen(ddd);
+            ws->send(&ws_data);
           }
 
       break;
@@ -413,7 +421,7 @@ int main(int argc, char** argv)
 {
     DatCH_WebSocket websocket(4090);
 
-    websocket.SetEventCallBack(DatCH_WS_callback,NULL);
+    websocket.SetEventCallBack(DatCH_WS_callback,&websocket);
     while(1)
     {
         websocket.runLoop(NULL);

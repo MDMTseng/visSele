@@ -19,14 +19,22 @@ int DatCH_WebSocket::runLoop(struct timeval *tv)
 int DatCH_WebSocket::ws_callback(websock_data data, void* param)
 {    
     //printf("%s:DatCH_WebSocket type:%d sock:%d\n",__func__,data.type,data.peer->getSocket());
-
     if(callback)
     {
-
         DatCH_Data ws_data;
         ws_data.type = DatCH_DataType_websock_data;
         ws_data.data.p_websocket = &data;
         callback(this, ws_data, callback_param);
     }
     return 0;
+}
+
+DatCH_WebSocket::~DatCH_WebSocket()
+{
+    delete server;
+}
+
+int DatCH_WebSocket::send(websock_data *packet)
+{
+    return server->send_pkt(packet);
 }

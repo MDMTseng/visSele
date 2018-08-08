@@ -13,9 +13,11 @@ public:
     ws_server *server;
     websock_data tmp_ws_data;
     DatCH_WebSocket(int port);
+    ~DatCH_WebSocket();
     int runLoop(struct timeval *tv);
 
     int ws_callback(websock_data data, void* param);
+    int send(websock_data *packet);
 };
 
 

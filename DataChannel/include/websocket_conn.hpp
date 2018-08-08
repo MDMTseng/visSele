@@ -31,20 +31,9 @@ typedef struct websock_data
         struct _DATA_FRAME
         {
             int type;
-            /*{
-                EMPTY_FRAME = 0xF0,
-                ERROR_FRAME = 0xF1,
-                INCOMPLETE_FRAME = 0xF2,
-                CONT_FRAME = 0x00,
-                TEXT_FRAME = 0x01,
-                BINARY_FRAME = 0x02,
-                PING_FRAME = 0x09,
-                PONG_FRAME = 0x0A,
-                OPENING_FRAME = 0xF3,
-                CLOSING_FRAME = 0x08
-            } type;*/
             uint8_t *raw;
             size_t rawL;
+            bool isFinal;
         } data_frame;
 
         typedef struct _ERROR

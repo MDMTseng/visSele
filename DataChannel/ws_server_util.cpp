@@ -1,6 +1,7 @@
 
 #include "ws_server_util.h"
 
+#include "websocket.h"
 //////////////////////////////ws_server/////////////////////////////////////
 
 ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(this)
@@ -145,6 +146,13 @@ int ws_server::runLoop(struct timeval *tv)
 }
 
 
+int ws_server::send_pkt(websock_data *packet)
+{
+    if(packet == NULL || packet->peer==NULL)return -1;
+    ws_conn *client = ws_conn_pool.find(packet->peer->getSocket());
+    if(client!=packet->peer)return -20;
+    return client->send_pkt(packet);
+}
 //////////////////////////////ws_conn_entity_pool/////////////////////////////////////
 
 ws_conn *ws_conn_entity_pool::find(int sock)
@@ -360,6 +368,7 @@ int ws_conn::event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frame
       cb_data.data.data_frame.type = frameType;
       cb_data.data.data_frame.raw = data;
       cb_data.data.data_frame.rawL = dataSize;
+      cb_data.data.data_frame.isFinal = isFinal;
       cb->ws_callback(cb_data);
     }
 
@@ -514,3 +523,37 @@ int ws_conn::runLoop()
 
 }
 
+int ws_conn::send_pkt(websock_data *packet)
+{
+    if(packet == NULL || packet->peer==NULL)return -1;
+
+    if(this!=packet->peer)return -20;
+    enum wsFrameType frameType = (enum wsFrameType)packet->data.data_frame.type;
+
+    if(frameType==WS_CLOSING_FRAME)
+    {
+        doClosing();
+        return 0;
+    }
+
+    if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME 
+        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME )
+        return -3;
+
+    size_t frameSize=sendBuf.size();
+    int ret = wsMakeFrame2(packet->data.data_frame.raw, packet->data.data_frame.rawL, 
+        &(sendBuf[0]), &frameSize, frameType,packet->data.data_frame.isFinal);
+    if(ret)
+    {
+      printf("wsMakeFrame2 error:%d\n",ret);
+      //return -1;
+    }
+    else if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+    {
+      printf("safeSend error\n");
+      doClosing();
+      //return -1;
+    }
+
+    return 0;
+}

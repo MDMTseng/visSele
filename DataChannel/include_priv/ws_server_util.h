@@ -50,6 +50,7 @@ public:
     enum wsFrameType lastPktType;
     int runLoop();
 
+    int send_pkt(websock_data *packet);
 };
 
 
@@ -88,5 +89,6 @@ public:
     int findMaxFd();
     int runLoop(struct timeval *tv);
     int ws_callback(websock_data data, void* param);
+    int send_pkt(websock_data *packet);
 };
 
