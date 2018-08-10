@@ -17,6 +17,8 @@
 #include "DatCH_WebSocket.hpp"
 
 
+acvImage *test1_buff;
+DatCH_BMP *imgSrc_X;
 char* ReadFile(char *filename);
 
 void printImgAscii(acvImage *img, int printwidth)
@@ -278,26 +280,26 @@ int SignatureGenerator()
 
 }
 
-int ImgInspection(acvImage *test1,int repeatTime,char *defFilename)
+int ImgInspection(acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
 {
   MatchingEngine me;
   char *string = ReadText(defFilename);
   me.AddMatchingFeature(string);
   free(string);
-  acvImage *test1_buff = new acvImage();
-  test1_buff->ReSize(test1->GetWidth(), test1->GetHeight());
+  buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
   clock_t t = clock();
   for(int i=0;i<repeatTime;i++)
-    me.FeatureMatching(test1,test1_buff,NULL);
+    me.FeatureMatching(test1,buff,NULL);
 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
   //ContourFeatureDetect(test1,test1_buff,tar_signature);
-  acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
+  //acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
 
 }
+
 int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
 {
   if(data.type!=DatCH_DataType_websock_data)return -1;
@@ -318,20 +320,72 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
               ws_data.data.data_frame.rawL,
               ws_data.data.data_frame.raw
               );
-          if(ws_data.data.data_frame.raw)
+
+          if(ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
           {
-              ws_data.data.data_frame.raw[ws_data.data.data_frame.rawL]='\0';
-              printf(">>>>>%s\n",
-                  ws_data.data.data_frame.raw
-                  );
+
+            imgSrc_X->SetFileName("data/target.bmp");
+
+            ImgInspection(imgSrc_X->GetAcvImage(),test1_buff,1,"data/featureDetect.json");
+
+            const int default_buffL=900;
+            uint8_t *arrbuf=new uint8_t[default_buffL];
+     
+
+            {
+
+              size_t pix_total = test1_buff->GetHeight()*test1_buff->GetWidth();
+
+              *((uint16_t*)(arrbuf))=1;
+              *((uint32_t*)(arrbuf+2))=pix_total+5;
+
+              arrbuf[6]=0;
+              *((uint16_t*)(arrbuf+7))=test1_buff->GetWidth();
+              *((uint16_t*)(arrbuf+9))=test1_buff->GetHeight();
+
+              ws_data.data.data_frame.type=WS_DFT_BINARY_FRAME;
+              ws_data.data.data_frame.raw=arrbuf;
+              ws_data.data.data_frame.rawL=11;
+              ws_data.data.data_frame.isFinal=false;
+              ws->send(&ws_data);
+
+              uint8_t *test1_buff_ptr=test1_buff->CVector[0];
+
+              ws_data.data.data_frame.rawL=default_buffL;
+              ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
+              ws_data.data.data_frame.isFinal=false;
+
+              for(bool isKeepGoing=true;isKeepGoing && pix_total;)
+              {              
+                for(int i=0;i<default_buffL;i++,test1_buff_ptr+=3)
+                {
+                  arrbuf[i]=test1_buff_ptr[0];
+                  pix_total--;
+                  if(pix_total==0)
+                  {
+                    ws_data.data.data_frame.rawL=i+1;
+                    isKeepGoing=false;
+                    ws_data.data.data_frame.isFinal=true;
+                    break;
+                  }
+                }
+                //printf("L:%d\n",ws_data.data.data_frame.rawL);
+                ws->send(&ws_data);
+              }
+              //acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
+
+
+
+
+
+            }
+            delete arrbuf;
+          }
+          else
+          {
+
           }
 
-          {
-            char *ddd="dfdfsdf";
-            ws_data.data.data_frame.raw=(uint8_t*)ddd;
-            ws_data.data.data_frame.rawL=strlen(ddd);
-            ws->send(&ws_data);
-          }
 
       break;
       case websock_data::eventType::CLOSING:
@@ -360,7 +414,7 @@ int DatCH_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_p
       
       acvImage *test1 = data.data.BMP_Read.img;
 
-      ImgInspection(test1,1,"data/target.json");
+      ImgInspection(test1,test1_buff,1,"data/target.json");
     }
     break;
     default:
@@ -382,8 +436,9 @@ int testX(int repeatTime)
   {
     DatCH_acvImageInterface *imgSrc_g = &imgSrc1;
     imgSrc_g->GetAcvImage();
-    ImgInspection(test1,repeatTime,"data/target.json");
+    ImgInspection(test1,test1_buff,repeatTime,"data/target.json");
   }
+  delete test1_buff;
 
   return 0;
 }
@@ -396,8 +451,8 @@ int test_featureDetect()
   acvImage *test1 = new acvImage();
   DatCH_BMP imgSrc1(test1);
   imgSrc1.SetFileName("data/target.bmp");
-  ImgInspection(imgSrc1.GetAcvImage(),1,"data/featureDetect.json");
-
+  ImgInspection(imgSrc1.GetAcvImage(),test1_buff,1,"data/featureDetect.json");
+  delete test1;
   return 0;
 }
 
@@ -416,28 +471,42 @@ int simpP(char* strNum)
   return Num;
 }
 
+
+int mainLoop()
+{
+  acvImage *test1 = new acvImage();
+  DatCH_WebSocket websocket(4090);
+
+  websocket.SetEventCallBack(DatCH_WS_callback,&websocket);
+  while(1)
+  {
+      websocket.runLoop(NULL);
+  }
+  delete test1; 
+  return 0;
+}
+
+
+
 #include <vector>
 int main(int argc, char** argv)
-{
-    DatCH_WebSocket websocket(4090);
+{ 
 
-    websocket.SetEventCallBack(DatCH_WS_callback,&websocket);
-    while(1)
-    {
-        websocket.runLoop(NULL);
-    }
+  test1_buff = new acvImage();
+  imgSrc_X = new DatCH_BMP(new acvImage());
+  return mainLoop(); 
+  delete test1_buff; 
+  int seed = time(NULL);
+  srand(seed);
+  int ret = 0, repeatNum=1;
 
-    int seed = time(NULL);
-    srand(seed);
-    int ret = 0, repeatNum=1;
+  if(argc>=2)
+  {
+    repeatNum=simpP(argv[1]);
+  }
+  //test_featureDetect();
+  ret = testX(repeatNum);
+  logi("execute %d times\r\n", repeatNum);
 
-    if(argc>=2)
-    {
-      repeatNum=simpP(argv[1]);
-    }
-    //test_featureDetect();
-    ret = testX(repeatNum);
-    logi("execute %d times\r\n", repeatNum);
-
-    return ret;
+  return ret;
 }
