@@ -44,13 +44,14 @@ function init_WSocket() {
 
 function onOpen(evt) {
     writeToScreen("CONNECTED");
+    $('#checkAreaTitle').html("[WS]OnOpen"+",Status="+websocket.readyState);
     doSendWS("PING", "ON_CONNECTED_HIHI");
 
 }
 
 function onClose(evt) {
     writeToScreen("[info]DISCONNECTED");
-    // init_WSocket();
+    $('#checkAreaTitle').html("[WS]OnClose"+",Status="+websocket.readyState);
     writeToScreen("[info]...RE-CONNECTED");
 }
 
@@ -63,21 +64,25 @@ var requireNewRAW=true;
 function onMessage(evt) {
     // var Gray = (R*38 + G*75 + B*15) >> 7;
     // console.log(evt);
+    $('#checkAreaTitle').html("[WS]OnMessage"+",Status="+websocket.readyState);
     if (evt.data instanceof ArrayBuffer) {
         // var aDataArray = new Float64Array(evt.data);
         // var aDataArray = new Uint8Array(evt.data);
-        var headerArray = new Uint8ClampedArray(evt.data,0,6);
+        var headerArray = new Uint8ClampedArray(evt.data,0,5);
         
         
 
-        var contentArray = new Uint8ClampedArray(evt.data,6,11);
+        var contentArray = new Uint8ClampedArray(evt.data,5,10);
         var RAW_WIDTH=contentArray[1]|(contentArray[2]<<8);
         var RAW_HEIGHT=contentArray[3]|(contentArray[4]<<8);
         // console.log(RAW_WIDTH);
         // console.log(RAW_HEIGHT);
 
 
-        var dataArray = new Uint8ClampedArray(evt.data,11,4*RAW_WIDTH*RAW_HEIGHT);
+        var dataArray = new Uint8ClampedArray(evt.data,10,4*RAW_WIDTH*RAW_HEIGHT);
+        // for(var i=0;i<dataArray.length;i++){
+        //     dataArray^= 0xff;
+        // }
         RAW_I_DATA = new ImageData(dataArray, RAW_WIDTH);
         doSendWS("PING","haha");
         // var dataArray = new Uint8ClampedArray(evt.data,11,600*150*4);
@@ -116,6 +121,7 @@ function onMessage(evt) {
 }
 
 function onError(evt) {
+    $('#checkAreaTitle').html("[WS]OnError"+",Status="+websocket.readyState);
     writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
     init_WSocket();
 }
@@ -137,11 +143,14 @@ function doSendWS(t, m) {
         MSG: m
     };
     // writeToScreen(JSON.stringify(msg));
-    console.log(websocket);
+    // console.log(websocket);
     if (websocket.readyState == 1)
         websocket.send(JSON.stringify(msg));
     else if (websocket.readyState == 3)
         init_WSocket();
+    else
+        init_WSocket();
+    $('#checkAreaTitle').html("[WS]doSend"+",Status="+websocket.readyState);
 }
 
 function writeToScreen(message) {

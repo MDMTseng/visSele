@@ -175,13 +175,13 @@ function drawX() {
 }
 var recWH = 50;
 var millisX = 0;
-
+var gg;
 function drawCheckArea(C) {
 
 	millisX = performance.now();
 	// var d=new Date();
 	// 	var millisX = d.getMilliseconds();
-	var gg = 127 * (1 + Math.sin(dx * millisX));
+	gg = 127 * (1 + Math.sin(dx * millisX));
 	gg = Math.round(gg);
 	var ctx = C.getContext("2d");
 	ctx.fillStyle = 'rgb(' + gg + ',0,0)';
@@ -220,7 +220,8 @@ function drawLine(context, RXJS, i) {
 	scale = scaleOri;
 
 }
-
+var indexColor=0;
+var lerpC=0.001;
 function drawJSON(C) {
 	var context = C.getContext("2d");
 	context.save();
@@ -230,15 +231,23 @@ function drawJSON(C) {
 	if (RXJS.TYPE != "FetureSets") return;
 	for (var i = 0; i < RXJS.SETS.length; i++) {
 		context.lineWidth = RXJS.SETS[i].STROKE_WIDTH;
-		context.strokeStyle = RXJS.SETS[i].COLOR;
+		
+		// context.strokeStyle = (indexColor++)%10==0?(RXJS.SETS[i].COLOR):("#FFFF00");
+		
+
+		
 		context.beginPath();
 		if (RXJS.SETS[i].type == 'line') {
+			context.strokeStyle = lerpColor('#ff0000', '#00ff00', gg/255);
 			drawLine(context, RXJS, i);
 		} else if (RXJS.SETS[i].type == 'shape') {
+			context.strokeStyle = lerpColor('#00ff00', '#0000ff', gg/255);
 			drawLine(context, RXJS, i);
 		} else if (RXJS.SETS[i].type == 'rect') {
+			context.strokeStyle = lerpColor('#0000ff', '#ff0000', gg/255);
 			context.strokeRect(scale * RXJS.SETS[i].XY[0].x, scale * RXJS.SETS[i].XY[0].y, RXJS.SETS[i].XY[1].w, RXJS.SETS[i].XY[1].h);
 		} else if (RXJS.SETS[i].type == 'arc') {
+			context.strokeStyle = lerpColor('#0f0f0f', '#ff0000', gg/255);
 			context.arc(scale * RXJS.SETS[i].CENTER_XY.x, scale * RXJS.SETS[i].CENTER_XY.y, scale * RXJS.SETS[i].RADIUS, degreesToRadians(RXJS.SETS[i].DEGREE_START_END.start), degreesToRadians(RXJS.SETS[i].DEGREE_START_END.end), false);
 		}
 		context.stroke();
