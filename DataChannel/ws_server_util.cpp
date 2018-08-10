@@ -42,6 +42,13 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
 
 }
 
+
+ws_server::~ws_server()
+{
+    //shutdown(listenSocket);
+    close(listenSocket);
+}
+
 int ws_server::findMaxFd()
 {
     int max = listenSocket;
@@ -542,6 +549,16 @@ int ws_conn::send_pkt(websock_data *packet)
         return -3;
 
     size_t frameSize=sendBuf.size();
+
+    int saveSpaceMargin=150;
+    if(frameSize < packet->data.data_frame.rawL+saveSpaceMargin)
+    {
+        int tmp = (packet->data.data_frame.rawL+saveSpaceMargin - frameSize)/recvBufSizeInc;
+        
+        sendBuf.resize(frameSize + (tmp+1)*recvBufSizeInc);
+        frameSize=sendBuf.size();
+    }
+
     int ret = wsMakeFrame2(packet->data.data_frame.raw, packet->data.data_frame.rawL, 
         &(sendBuf[0]), &frameSize, frameType,packet->data.data_frame.isFinal);
     if(ret)
@@ -549,12 +566,5 @@ int ws_conn::send_pkt(websock_data *packet)
       printf("wsMakeFrame2 error:%d\n",ret);
       //return -1;
     }
-    else if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
-    {
-      printf("safeSend error\n");
-      doClosing();
-      //return -1;
-    }
-
-    return 0;
+    return safeSend(sock, &sendBuf[0], frameSize);
 }

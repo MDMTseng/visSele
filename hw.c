@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <time.h>
+#include <signal.h>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 #include "acvImage_BasicTool.hpp"
@@ -328,26 +329,31 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 
             ImgInspection(imgSrc_X->GetAcvImage(),test1_buff,1,"data/featureDetect.json");
 
-            const int default_buffL=900;
+            const int default_buffL=10000;
             uint8_t *arrbuf=new uint8_t[default_buffL];
      
 
-            {
+            printf("Start to send....\n");
+
+            do{
 
               size_t pix_total = test1_buff->GetHeight()*test1_buff->GetWidth();
 
-              *((uint16_t*)(arrbuf))=1;
-              *((uint32_t*)(arrbuf+2))=pix_total+5;
+              arrbuf[0]=1;
+              *((uint32_t*)(arrbuf+1))=pix_total+5;
 
-              arrbuf[6]=0;
-              *((uint16_t*)(arrbuf+7))=test1_buff->GetWidth();
-              *((uint16_t*)(arrbuf+9))=test1_buff->GetHeight();
+              arrbuf[5]=0;
+              *((uint16_t*)(arrbuf+6))=test1_buff->GetWidth();
+              *((uint16_t*)(arrbuf+8))=test1_buff->GetHeight();
 
               ws_data.data.data_frame.type=WS_DFT_BINARY_FRAME;
               ws_data.data.data_frame.raw=arrbuf;
-              ws_data.data.data_frame.rawL=11;
+              ws_data.data.data_frame.rawL=10;
               ws_data.data.data_frame.isFinal=false;
-              ws->send(&ws_data);
+              if(ws->send(&ws_data)!=0)
+              {
+                break;
+              }
 
               uint8_t *test1_buff_ptr=test1_buff->CVector[0];
 
@@ -356,21 +362,29 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
               ws_data.data.data_frame.isFinal=false;
 
               for(bool isKeepGoing=true;isKeepGoing && pix_total;)
-              {              
-                for(int i=0;i<default_buffL;i++,test1_buff_ptr+=3)
+              {        
+                int sendL = 0;      
+                for(int i=0;i<default_buffL;i+=4,test1_buff_ptr+=3)
                 {
                   arrbuf[i]=test1_buff_ptr[0];
+                  arrbuf[i+1]=test1_buff_ptr[1];
+                  arrbuf[i+2]=test1_buff_ptr[2];
+                  arrbuf[i+3]=255;
+                  sendL+=4;
                   pix_total--;
                   if(pix_total==0)
                   {
-                    ws_data.data.data_frame.rawL=i+1;
                     isKeepGoing=false;
                     ws_data.data.data_frame.isFinal=true;
                     break;
                   }
                 }
+                ws_data.data.data_frame.rawL=sendL;
                 //printf("L:%d\n",ws_data.data.data_frame.rawL);
-                ws->send(&ws_data);
+                if(ws->send(&ws_data)!=0)
+                {
+                  break;
+                }
               }
               //acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
 
@@ -378,7 +392,7 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 
 
 
-            }
+            }while(0);
             delete arrbuf;
           }
           else
@@ -471,26 +485,42 @@ int simpP(char* strNum)
   return Num;
 }
 
+DatCH_WebSocket *websocket=NULL;
 
 int mainLoop()
 {
+  websocket =new DatCH_WebSocket(4090);
   acvImage *test1 = new acvImage();
-  DatCH_WebSocket websocket(4090);
 
-  websocket.SetEventCallBack(DatCH_WS_callback,&websocket);
+  websocket->SetEventCallBack(DatCH_WS_callback,websocket);
   while(1)
   {
-      websocket.runLoop(NULL);
+      websocket->runLoop(NULL);
   }
   delete test1; 
   return 0;
 }
 
+void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信號的值 */
+  switch (dunno) {
+    case SIGINT:
+      LOGE("Get a signal -- SIGINT \n");
+      LOGE("Tear down websocket.... \n");
+      delete websocket;
+    break;
+    case SIGPIPE:
+      LOGE("Get a signal -- SIGPIPE \n");
+    break;
 
+  }
+  return;
+}
 
 #include <vector>
 int main(int argc, char** argv)
 { 
+  signal(SIGINT, sigroutine);
+  signal(SIGPIPE, sigroutine);
 
   test1_buff = new acvImage();
   imgSrc_X = new DatCH_BMP(new acvImage());

@@ -82,13 +82,14 @@ class ws_server: public ws_protocol_callback {
     fd_set evtSet;
     int fdmax;
     ws_protocol_callback *cb;
+    ws_conn_entity_pool ws_conn_pool;
 public:
     ws_server(int port,ws_protocol_callback *cb);
-    ws_conn_entity_pool ws_conn_pool;
 
     int findMaxFd();
     int runLoop(struct timeval *tv);
     int ws_callback(websock_data data, void* param);
     int send_pkt(websock_data *packet);
+    ~ws_server();
 };
 
