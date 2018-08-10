@@ -41,8 +41,9 @@ var RXMSG_temp1=
   },
   {
     "ID_NAME":"rect-1","type":"arc",
+    "XY":[{"x":150,"y":150}],
     "CENTER_XY":{"x":150,"y":150},
-    "RADIUS":20,
+    "RADIUS":60,
     "DEGREE_START_END":{"start":0,"end":180},
     "CounterClockWise":false,
     "COLOR":"#ffff00",

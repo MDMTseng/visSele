@@ -1,8 +1,8 @@
 // var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-var WS_URI = "ws://scube.decade.tw:7777/tnua_class_decade_tw";
+var WS_URI = "ws://192.168.60.102:4090/xlinx";
 var output;
 var clientIP = "x.x.x.x";
-var TX_SERIAL=0;
+var TX_SERIAL = 0;
 $(document).ready(function() {
     console.log("[ws.js][init]");
     var APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
@@ -17,8 +17,15 @@ $(document).ready(function() {
 
 function init_WSocket() {
 
-    output = document.getElementById("output");
-    websocket = new WebSocket(WS_URI);
+
+    try {
+        websocket = new WebSocket(WS_URI);
+        websocket.binaryType = "arraybuffer";
+    } catch (err) {
+        document.getElementById("output").innerHTML = err.message;
+    }
+
+
     websocket.onopen = function(evt) {
         onOpen(evt)
     };
@@ -33,45 +40,108 @@ function init_WSocket() {
     };
 }
 
+
+
 function onOpen(evt) {
     writeToScreen("CONNECTED");
-    doSendWS("info","ws_on_open");
+    doSendWS("PING", "ON_CONNECTED_HIHI");
+
 }
 
 function onClose(evt) {
     writeToScreen("[info]DISCONNECTED");
-    init_WSocket();
+    // init_WSocket();
     writeToScreen("[info]...RE-CONNECTED");
 }
 
+// const arrayBuffer = new ArrayBuffer(32);
+// console.log(arrayBuffer);
+// const blob = new Blob([arrayBuffer]);
+// console.log(blob);
+var RAW_I_DATA;
+var requireNewRAW=true;
 function onMessage(evt) {
-    var data = $.parseJSON(evt.data);
-    $("#TIMECODE").html(data.TIME_CODE);
+    // var Gray = (R*38 + G*75 + B*15) >> 7;
+    // console.log(evt);
+    if (evt.data instanceof ArrayBuffer) {
+        // var aDataArray = new Float64Array(evt.data);
+        // var aDataArray = new Uint8Array(evt.data);
+        var headerArray = new Uint8ClampedArray(evt.data,0,6);
+        
+        
+
+        var contentArray = new Uint8ClampedArray(evt.data,6,11);
+        var RAW_WIDTH=contentArray[1]|(contentArray[2]<<8);
+        var RAW_HEIGHT=contentArray[3]|(contentArray[4]<<8);
+        // console.log(RAW_WIDTH);
+        // console.log(RAW_HEIGHT);
+
+
+        var dataArray = new Uint8ClampedArray(evt.data,11,4*RAW_WIDTH*RAW_HEIGHT);
+        RAW_I_DATA = new ImageData(dataArray, RAW_WIDTH);
+        doSendWS("PING","haha");
+        // var dataArray = new Uint8ClampedArray(evt.data,11,600*150*4);
+        // RAW_I_DATA = new ImageData(dataArray,150);
+
+        
+    }
+    // if (evt.data instanceof Blob) {
+    //     console.log("BBBB");
+    //     console.log(event);
+    //     console.log(event.data);
+
+    //     var result_U8CA = new Uint8ClampedArray([event.data]);
+    //     var result_U8A = new Uint8Array([event.data]);
+    //     var result_I8A = new Int8Array([event.data]);
+
+    //     console.log(result_U8CA[0]);
+    //     console.log(result_U8A[8]);
+    //     console.log(result_I8A[8]);
+    //     // result.forEach(function(element) {
+    //     //     console.log(element);
+    //     // });
+    //     // var gg=Array.from(result);
+
+
+    // } else {
+    //     console.log("!BBBB");
+    //     try {
+    //         var data = $.parseJSON(evt.data);
+    //         console.log(data);
+
+    //     } catch (err) {
+    //         document.getElementById("output").innerHTML = err.message;
+    //     }
+    // }
 }
 
 function onError(evt) {
     writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+    init_WSocket();
 }
 
 function doSendWS(t, m) {
-    var date = new Date().toLocaleDateString("en-US", {
-        "year": "numeric",
-        "month": "numeric",
-        "day": "numeric",
-        "hour": "numeric",
-        "minute": "numeric",
-        "second": "numeric"
-    });
+    var T;
+    if (t == "PING")
+        T = "PING";
+    else if (t == "PONG")
+        T = "PONG";
+    else if (t == "REQUIRE_RAW")
+        T = "REQUIRE_RAW";
+
+    var date = performance.now();
     var msg = {
-        SERIAL: TX_SERIAL++,
-        IP: clientIP,
-        TYPE: t,
-        ALL_TYPE:"info,line,rect,angle,circle",
-        MSG: m,
-        TIMESTAMP: date
+        TYPE: T,
+        DATA: date,
+        TIMESTAMP: date,
+        MSG: m
     };
     // writeToScreen(JSON.stringify(msg));
-    websocket.send(JSON.stringify(msg));
+    console.log(websocket);
+    if (websocket.readyState == 1)
+        websocket.send(JSON.stringify(msg));
+    else if (websocket.readyState == 3)
+        init_WSocket();
 }
 
 function writeToScreen(message) {
