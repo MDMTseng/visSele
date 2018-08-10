@@ -537,7 +537,8 @@ int ws_conn::send_pkt(websock_data *packet)
     }
 
     if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME 
-        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME )
+        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME 
+        && frameType!=WS_CONT_FRAME )
         return -3;
 
     size_t frameSize=sendBuf.size();

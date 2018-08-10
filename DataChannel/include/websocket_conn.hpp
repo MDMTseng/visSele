@@ -14,6 +14,18 @@
 class ws_server;
 class ws_conn_data;
 
+enum wsDataFrameType { // errors starting from 0xF0
+    WS_DFT_EMPTY_FRAME = 0xF0,
+    WS_DFT_ERROR_FRAME = 0xF1,
+    WS_DFT_INCOMPLETE_FRAME = 0xF2,
+    WS_DFT_CONT_FRAME = 0x00,
+    WS_DFT_TEXT_FRAME = 0x01,
+    WS_DFT_BINARY_FRAME = 0x02,
+    WS_DFT_PING_FRAME = 0x09,
+    WS_DFT_PONG_FRAME = 0x0A,
+    WS_DFT_OPENING_FRAME = 0xF3,
+    WS_DFT_CLOSING_FRAME = 0x08
+};
 typedef struct websock_data
 {
     enum eventType
