@@ -29,6 +29,15 @@ var translatePos = {
 	y: 0
 };
 
+function rotate2dtransform(coord_dst,coord_src,theta)
+{
+	var sin_v = Math.sin(theta);
+	var cos_v = Math.cos(theta);
+
+	coord_dst.x = coord_src.x*cos_v - coord_src.y*sin_v;
+	coord_dst.y = coord_src.x*sin_v + coord_src.y*cos_v;
+}
+
 function init_CanvasX() {
 	console.log("[cancasX.js][init]");
 	canvas1 = document.getElementById("canvas1");
@@ -79,21 +88,43 @@ function init_CanvasX() {
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-up").addEventListener("click", function() {
-		translatePos.y -= translateStep / scale;
+
+		var vec_move = {x:0,y:-translateStep / scale};
+		var vec_tmove = {};
+		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+
+		translatePos.x += vec_tmove.x;
+		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
 
 	document.getElementById("zoomArea-down").addEventListener("click", function() {
-		translatePos.y += translateStep / scale;
+
+		var vec_move = {x:0,y:translateStep / scale};
+		var vec_tmove = {};
+		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+
+		translatePos.x += vec_tmove.x;
+		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-left").addEventListener("click", function() {
-		translatePos.x -= translateStep / scale;
+		var vec_move = {x:-translateStep / scale,y:0};
+		var vec_tmove = {};
+		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+
+		translatePos.x += vec_tmove.x;
+		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
 
 	document.getElementById("zoomArea-right").addEventListener("click", function() {
-		translatePos.x += translateStep / scale;
+		var vec_move = {x:translateStep / scale,y:0};
+		var vec_tmove = {};
+		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+
+		translatePos.x += vec_tmove.x;
+		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
 	canvas3.addEventListener("mousedown", function(evt) {
@@ -141,8 +172,10 @@ function mouseMove3(evt) {
 	mouseMove3_evt = evt;
 	$('#checkAreaTitle2').html('mX=' + evt.offsetX + ',mY=' + evt.offsetY);
 	if (mouseDown) {
-		translateDragOffset.x = (evt.clientX - startDragPos.x) / scale;
-		translateDragOffset.y = (evt.clientY - startDragPos.y) / scale;
+		var vec_tmp = {
+			x:(evt.clientX - startDragPos.x) / scale,
+			y:(evt.clientY - startDragPos.y) / scale};
+		rotate2dtransform(translateDragOffset,vec_tmp,-startSpinPos);
 		// draw(scale, translatePos);
 	}
 }
@@ -329,13 +362,13 @@ function drawZoomArea(C1, C2) {
 	var context = C2.getContext("2d");
 	context.clearRect(0, 0, C2.width, C2.height);
 	context.save();
-	context.scale(scale, scale);
 	if (autoSpint)
 		startSpinPos += 0.01;
+	context.translate((C2.width / 2), (C2.height / 2));
 	
-	context.translate(translatePos.x + translateDragOffset.x, translatePos.y + translateDragOffset.y);
-	context.translate((C1.width / 2), (C1.height / 2));
+	context.scale(scale, scale);
 	context.rotate(startSpinPos);
+	context.translate(translatePos.x + translateDragOffset.x, translatePos.y + translateDragOffset.y);
 	context.translate(-(C1.width / 2), -(C1.height / 2));
 	// context.translate(-(C2.width / 2), -(C2.height / 2));
 	// context.putImageData(getRAWbackgroundImageData(C1), 0, 0);
