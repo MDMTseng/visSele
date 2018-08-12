@@ -278,10 +278,11 @@ function drawJSON(C) {
 			drawLine(context, RXJS, i);
 		} else if (RXJS.SETS[i].type == 'rect') {
 			context.strokeStyle = lerpColor('#0000ff', '#ff0000', gg/255);
-			context.strokeRect(scale * RXJS.SETS[i].XY[0].x, scale * RXJS.SETS[i].XY[0].y, RXJS.SETS[i].XY[1].w, RXJS.SETS[i].XY[1].h);
+			context.strokeRect(RXJS.SETS[i].XY[0].x, RXJS.SETS[i].XY[0].y, RXJS.SETS[i].XY[1].w, RXJS.SETS[i].XY[1].h);
 		} else if (RXJS.SETS[i].type == 'arc') {
 			context.strokeStyle = lerpColor('#0f0f0f', '#ff0000', gg/255);
-			context.arc(scale * RXJS.SETS[i].CENTER_XY.x, scale * RXJS.SETS[i].CENTER_XY.y, scale * RXJS.SETS[i].RADIUS, degreesToRadians(RXJS.SETS[i].DEGREE_START_END.start), degreesToRadians(RXJS.SETS[i].DEGREE_START_END.end), false);
+			context.arc(RXJS.SETS[i].CENTER_XY.x, RXJS.SETS[i].CENTER_XY.y, RXJS.SETS[i].RADIUS, 
+				degreesToRadians(RXJS.SETS[i].DEGREE_START_END.start), degreesToRadians(RXJS.SETS[i].DEGREE_START_END.end), false);
 		}
 		context.stroke();
 		

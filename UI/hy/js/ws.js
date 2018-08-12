@@ -1,5 +1,5 @@
 // var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-var WS_URI = "ws://192.168.60.102:4090/xlinx";
+var WS_URI = "ws://LOCALHOST:4090/xlinx";
 var output;
 var clientIP = "x.x.x.x";
 var TX_SERIAL = 0;
