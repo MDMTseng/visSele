@@ -312,6 +312,12 @@ function drawRAWArea(C1) {
 	var context = C1.getContext("2d");
 	context.clearRect(0, 0, C1.width, C1.height);
 	if(typeof RAW_I_DATA  != 'undefined'){
+		if(context.canvas.width!=RAW_I_DATA.width || 
+			context.canvas.height!=RAW_I_DATA.height )
+		{		
+			context.canvas.width=RAW_I_DATA.width;
+			context.canvas.height=RAW_I_DATA.height;
+		}
 		context.putImageData(RAW_I_DATA, 0, 0);
 	}
 	// console.log(RAW_I_DATA);
