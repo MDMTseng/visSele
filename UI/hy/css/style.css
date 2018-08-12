@@ -1,0 +1,279 @@
+#quote {
+    font-size: 1em;
+    text-align: center;
+    padding: 20px;
+}
+
+.button {}
+
+.normalText {
+    color: white;
+}
+
+.circleBase {
+    /*display:inline;*/
+    border-radius: 50%;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 1px solid white;
+    background-color: red;
+    /*behavior: url(PIE.htc);  remove if you don't care about IE8 */
+}
+
+@keyframes example2 {
+    0% {
+        color: green;
+    }
+    50% {
+        color: yellow;
+    }
+    100% {
+        color: red;
+    }
+}
+
+@keyframes G2R_keyframe {
+    0% {
+        background-color: #0f0;
+    }
+    25% {
+        background-color: #840;
+    }
+    50% {
+        background-color: #a40;
+    }
+    75% {
+        background-color: #c00;
+    }
+    100% {
+        background-color: #f00;
+    }
+}
+
+@keyframes G2R_keyframe2 {
+    0% {
+        background-color: #0f0;
+    }
+    25% {
+        background-color: #840;
+    }
+    50% {
+        background-color: #a40;
+    }
+    75% {
+        background-color: #c00;
+    }
+    100% {
+        background-color: #f00;
+    }
+}
+
+@keyframes blinker {
+    0% {
+        opacity: 1.0;
+    }
+    50% {
+        opacity: 0.7;
+    }
+    100% {
+        opacity: 1.0;
+    }
+}
+
+.elementx:hover {
+    animation: animate-color 3s forwards;
+}
+
+.typeRED2 {
+    width: 10px;
+    height: 10px;
+    background: #f00;
+    border: 2px solid white;
+    transition-duration: 3s;
+    transition-delay: 1s;
+}
+
+.typeGREEN3RED {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid white;
+    background-color: red;
+    animation-name: example;
+    animation-duration: 4500ms;
+    /*    animation-iteration-count: infinite;*/
+}
+
+.typeGREEN2RED {
+    border-radius: 50%;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid white;
+    background-color: red;
+    animation-name: G2R_keyframe;
+    animation-duration: 4500ms;
+    /*    animation-iteration-count: infinite;*/
+}
+
+.typeGREEN2RED_infinite {
+    border-radius: 50%;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid white;
+    background-color: red;
+    animation-name: G2R_keyframe;
+    animation-duration: 999ms;
+    animation-iteration-count: infinite;
+}
+
+.typeGREEN2RED_square {
+    border-radius: 0%;
+    width: 5px;
+    height: 10px;
+}
+
+.inverted {
+    filter: invert(100%);
+}
+
+.typeYellow {
+    border-radius: 50%;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 0, 1);
+    /*
+    animation-name: blinker;
+animation-duration: 4500ms;
+animation-iteration-count: infinite;
+*/
+}
+.typeRed {
+    border-radius: 50%;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 0, 0, 1);
+    /*
+    animation-name: blinker;
+animation-duration: 4500ms;
+animation-iteration-count: infinite;
+*/
+}
+.typeWhite {
+    border-radius: 50%;
+    display: inline-block;
+    
+    border: 2px solid;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.85);
+    /*
+    animation-name: blinker;
+animation-duration: 4500ms;
+animation-iteration-count: infinite;
+*/
+}
+
+.typePink {
+    border-radius: 50%;
+    display: inline-block;
+    border: 2px solid;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255,20,147, 1);
+}
+
+.typeBlack {
+    border-radius: 50%;
+    display: inline-block;
+    
+    border: 2px solid;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.2);
+    /*
+    animation-name: blinker;
+animation-duration: 4500ms;
+animation-iteration-count: infinite;
+*/
+}
+.typeGreen {
+    border-radius: 50%;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid;
+    border-color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(0, 255, 0, 1);
+    /*
+    animation-name: blinker;
+animation-duration: 4500ms;
+animation-iteration-count: infinite;
+*/
+}
+.type_square_big {
+    border-radius: 0%;
+    width: 20px;
+    height: 20px;
+}
+
+.type_square {
+    border-radius: 0%;
+    width: 5px;
+    height: 10px;
+}
+
+.typeGREEN2RED#GRAY {
+    background: gray;
+}
+
+a {
+    text-decoration: none;
+}
+
+body {
+    font-family: verdana;
+    font-size: 1em;
+}
+
+.liveBulbsBG {}
+
+.bulb_td {
+    /*    line-height: 1px;*/
+    width: 4px;
+    text-align: center;
+}
+
+.bulbsTable {
+    font-size: 0px;
+    border-spacing:initial;
+    /*
+    width: 80vw;
+height: 80vw;
+*/
+    background-size: 100%;
+    background-image: url("solarLayoutBLACK.png");
+    opacity: 1;
+    position: relative;
+    background-repeat: no-repeat;
+}
+
+.bulbsTable td {
+    /*    border: 1px solid black;*/
+}
+
+.solarLiveClass {
+    /*
+    height: 100%;
+    background-size: 100%;
+    background-image: url("http://decade.tw/solar/solarLayoutBLACK.png");
+    position: relative;
+    background-repeat: no-repeat;
+*/
+}
+
