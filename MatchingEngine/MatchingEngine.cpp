@@ -53,10 +53,15 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 
 int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
+  cJSON *report_root = cJSON_CreateArray();
+
   for(int i=0;i<featureBundle.size();i++)
   {
-    featureBundle[i]->FeatureMatching(img,buff,dbg);
+    featureBundle[i]->FeatureMatching(img,buff,dbg,report_root);
   }
+
+  LOGE(">>>>>>>>>>>>>\n\n%s\n",cJSON_Print(report_root));
+  cJSON_Delete(report_root);
   return 0;
 }
 

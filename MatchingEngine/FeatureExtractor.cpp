@@ -73,8 +73,9 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
+int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg,cJSON *report)
 {
+  if (report==NULL)return -1;
   vector<acv_XY> signature(360);
   int idx=-1;
   for(int i=1;i<ldData.size();i++)

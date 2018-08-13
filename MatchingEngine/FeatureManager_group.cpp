@@ -127,16 +127,19 @@ bool FeatureManager_binary_processing_group::check(cJSON *root)
     return false;
 }
 
-int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report)
 {
+    if (report==NULL)return -1;
+
+    cJSON *report_obj = cJSON_CreateObject();
+    if(report_obj == NULL)return -2;
+    cJSON_AddItemToArray(report, report_obj );
+
+
 
     std::vector<acv_LabeledData> ldData;
-
-
-
     acvThreshold(img, 128, 0);
     acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
-
     acvComponentLabeling(img);
     acvLabeledRegionInfo(img, &ldData);
     if(ldData.size()-1<1)
@@ -149,11 +152,20 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
     //acvRemoveRegionLessThan(img, &ldData, 120);
 
 
+    cJSON_AddItemToObject(report_obj, "type", cJSON_CreateString("binary_processing_group"));
+    cJSON *labeling_report = cJSON_CreateArray();
+    cJSON_AddItemToObject(report_obj, "Label_data", labeling_report);
+    for(int i=0;i<ldData.size();i++)
+    {
+      cJSON *obj = cJSON_CreateObject();
+      //jobj
+    }
+
     acvCloneImage( img,buff, -1);
 
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {
-      binaryFeatureBundle[i]->FeatureMatching(img,buff,ldData,dbg);
+      binaryFeatureBundle[i]->FeatureMatching(img,buff,ldData,dbg,report);
     }
   return 0;
 }
@@ -221,11 +233,12 @@ bool FeatureManager_group::check(cJSON *root)
   return false;
 }
 
-int FeatureManager_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report)
 {
+  if (report==NULL)return -1;
   for(int i=0;i<featureBundle.size();i++)
   {
-    featureBundle[i]->FeatureMatching(img,buff,dbg);
+    featureBundle[i]->FeatureMatching(img,buff,dbg,report);
   }
   return 0;
 }

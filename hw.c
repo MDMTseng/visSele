@@ -524,7 +524,7 @@ int main(int argc, char** argv)
 
   test1_buff = new acvImage();
   imgSrc_X = new DatCH_BMP(new acvImage());
-  return mainLoop(); 
+  //return mainLoop(); 
   delete test1_buff; 
   int seed = time(NULL);
   srand(seed);
@@ -534,8 +534,8 @@ int main(int argc, char** argv)
   {
     repeatNum=simpP(argv[1]);
   }
-  //test_featureDetect();
-  ret = testX(repeatNum);
+  test_featureDetect();
+  //ret = testX(repeatNum);
   logi("execute %d times\r\n", repeatNum);
 
   return ret;

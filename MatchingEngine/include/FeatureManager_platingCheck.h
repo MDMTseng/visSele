@@ -14,7 +14,7 @@ class FeatureManager_platingCheck:public FeatureManager {
 public :
   FeatureManager_platingCheck(const char *json_str);
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report) override;
   static bool check(cJSON *root);
   cJSON *jobj;
 protected:

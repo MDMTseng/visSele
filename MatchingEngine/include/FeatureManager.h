@@ -8,6 +8,9 @@ using namespace std;
 #include "acvImage_ComponentLabelingTool.hpp"
 #include <ContourGrid.h>
 
+
+
+
 class FeatureManager {
   protected:
   cJSON *root;
@@ -16,7 +19,8 @@ public :
   static bool check(cJSON *root){return false;};
   FeatureManager(const char *json_str){};
   virtual int reload(const char *json_str)=0;
-  virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)=0;
+  virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report)=0;
+
 };
 
 class FeatureManager_group_proto:public FeatureManager {
@@ -37,8 +41,8 @@ protected:
 public :
   FeatureManager_binary_processing(const char *json_str):FeatureManager(json_str){};
   virtual int reload(const char *json_str)=0;
-  virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg){return -1;};
-  virtual int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)=0;
+  virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report){return -1;};
+  virtual int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg,cJSON *report)=0;
 };
 
 
@@ -48,7 +52,7 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
 public :
   FeatureManager_binary_processing_group(const char *json_str);
   static bool check(cJSON *root);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report) override;
 protected:
   int addSubFeature(cJSON * subFeature) override;
   int clearFeatureGroup() override;
@@ -61,7 +65,7 @@ class FeatureManager_group:public FeatureManager_group_proto {
 public :
   FeatureManager_group(const char *json_str);
   static bool check(cJSON *root);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report) override;
 protected:
   int addSubFeature(cJSON * subFeature) override;
   int clearFeatureGroup() override;
@@ -99,7 +103,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg,cJSON *report) override;
   static bool check(cJSON *root);
 protected:
 
@@ -115,7 +119,7 @@ class FeatureManager_sig360_extractor:public FeatureManager_binary_processing {
 public :
   FeatureManager_sig360_extractor(const char *json_str);
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg,cJSON *report) override;
   static bool check(cJSON *root);
   cJSON *jobj;
 protected:

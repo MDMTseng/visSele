@@ -577,9 +577,10 @@ int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist)
   return -1;
 }
 
-int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
+int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg,cJSON *report)
 {
 
+  if (report==NULL)return -1;
   int grid_size = 50;
   inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
   straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());

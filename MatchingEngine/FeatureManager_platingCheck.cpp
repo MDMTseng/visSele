@@ -209,7 +209,7 @@ int FeatureManager_platingCheck::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg,cJSON *report)
 {
   acvImage *tarImg = stdMap[0].rgb;
   int XFactor=3;
