@@ -177,6 +177,22 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   return &report;
 }
 
+const cJSON* FeatureManager_binary_processing_group::GetJsonReport(){
+  FeatureReport* report = GetReport();
+  if(!cJSON_HasObjectItem(report_obj, "type"))
+  {
+    cJSON_AddItemToObject(report_obj, "type", 
+      cJSON_CreateString("binary_processing_group"));
+  }
+
+  report.data.binary_processing_group.labeledData = &ldData;
+
+
+
+  return &report_jobj;
+
+}
+
 /*
   FeatureManager_binary_processing_group Section
 */

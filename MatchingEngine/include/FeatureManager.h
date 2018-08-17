@@ -55,13 +55,18 @@ class FeatureManager {
   protected:
   FeatureReport report;
   cJSON *root;
+  cJSON *report_jobj;
   virtual int parse_jobj()=0;
 public :
   static bool check(cJSON *root){return false;};
-  FeatureManager(const char *json_str){};
+  FeatureManager(const char *json_str)
+  {
+    report_jobj = cJSON_CreateObject();
+  };
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)=0;
   virtual const FeatureReport* GetReport(){return NULL;};
+  virtual const cJSON* GetJsonReport(){return NULL;};
 
 };
 
@@ -152,6 +157,7 @@ public :
   int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
   static bool check(cJSON *root);
   virtual const FeatureReport* GetReport() override;
+  virtual const cJSON* GetJsonReport() override;
 protected:
 
   int parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList);
@@ -174,6 +180,7 @@ public :
   static bool check(cJSON *root);
   cJSON *jobj;
   virtual const FeatureReport* GetReport() override;
+  virtual const cJSON* GetJsonReport() override;
 protected:
   int parse_jobj() override;
 };
