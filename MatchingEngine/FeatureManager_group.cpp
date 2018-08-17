@@ -73,6 +73,8 @@ int FeatureManager_group_proto::parse_jobj()
 FeatureManager_binary_processing_group::FeatureManager_binary_processing_group(const char *json_str):
   FeatureManager_group_proto(json_str)
 {
+  sub_reports.resize(0);
+  report.data.binary_processing_group.reports = &sub_reports;
   root= NULL;
   int ret = reload(json_str);
   if(ret)
@@ -109,6 +111,10 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
     return -1;
   }
   binaryFeatureBundle.push_back(newFeature);
+
+  sub_reports.resize(binaryFeatureBundle.size());
+  report.data.binary_processing_group.reports = &sub_reports;
+  report.type = FeatureReport::binary_processing_group;
   return 0;
 }
 
@@ -129,11 +135,7 @@ bool FeatureManager_binary_processing_group::check(cJSON *root)
 
 int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
-
-    std::vector<acv_LabeledData> ldData;
-
-
-
+    ldData.resize(0);
     acvThreshold(img, 128, 0);
     acvDrawBlock(img, 1, 1, img->GetWidth() - 2, img->GetHeight() - 2);
 
@@ -159,6 +161,21 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
 }
 
 
+const FeatureReport* FeatureManager_binary_processing_group::GetReport()
+{
+  if(binaryFeatureBundle.size()!=sub_reports.size())
+  {
+    sub_reports.resize(binaryFeatureBundle.size());
+  }
+  for(int i=0;i<binaryFeatureBundle.size();i++)
+  {
+    sub_reports[i] = binaryFeatureBundle[i]->GetReport();
+  }
+  report.type = FeatureReport::binary_processing_group;
+  report.data.binary_processing_group.reports = &sub_reports;
+  report.data.binary_processing_group.labeledData = &ldData;
+  return &report;
+}
 
 /*
   FeatureManager_binary_processing_group Section

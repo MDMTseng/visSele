@@ -75,7 +75,9 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
 
 int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
-  vector<acv_XY> signature(360);
+  signature.resize(360);
+  detectedCircles.resize(0);
+  detectedLines.resize(0);
   int idx=-1;
   for(int i=1;i<ldData.size();i++)
   {
@@ -84,6 +86,8 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
     if(idx!=-1)
     {
       LOGE("Only one component is allowed for extractor");
+      report.data.sig360_extractor.error = 
+      FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
       return -1;
     }
     idx=i;
@@ -91,6 +95,8 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   if(idx==-1)
   {
     LOGE("Cannot find one component for extractor");
+    report.data.sig360_extractor.error = 
+    FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
     return -1;
   }
   acv_XY center=ldData[idx].Center;
@@ -98,14 +104,12 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   LOGI(">>>Center X:%f Y:%f...",ldData[idx].Center.X,ldData[idx].Center.Y);
   LOGI(">>>LTBound X:%f Y:%f...",ldData[idx].LTBound.X,ldData[idx].LTBound.Y);
   LOGI(">>>RBBound X:%f Y:%f...",ldData[idx].RBBound.X,ldData[idx].RBBound.Y);
-  vector<acv_CircleFit> detectedCircles;
-  vector<acv_LineFit> detectedLines;
   acvContourCircleSignature(img, ldData[idx], idx, signature);
   MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
 
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
-
+#if 0
   for(int i=0;i<detectedCircles.size();i++)
   {
       if(detectedCircles[i].s>0.9)
@@ -148,10 +152,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
       detectedLines[i].end_pos.X,detectedLines[i].end_pos.Y,
       detectedLines[i].end_neg.X,detectedLines[i].end_neg.Y
     );
-
-
   }
-
 
   logv("\"magnitude\":[");
   for(int i=0;i<signature.size();i++)
@@ -166,5 +167,16 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
     logv("%f,",signature[i].Y);
   }logv("]\n");
 
+#endif
   return 0;
+}
+
+const FeatureReport* FeatureManager_sig360_extractor::GetReport()
+{
+  report.type = FeatureReport::sig360_extractor;
+
+  report.data.sig360_extractor.signature = &signature;
+  report.data.sig360_extractor.detectedCircles = &detectedCircles;
+  report.data.sig360_extractor.detectedLines = &detectedLines;
+  return &report;
 }

@@ -577,6 +577,14 @@ int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist)
   return -1;
 }
 
+
+const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
+{
+  report.type = FeatureReport::sig360_circle_line;
+  //report.data.sig360_circle_line.s = 4;
+  return &report;
+}
+
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
 

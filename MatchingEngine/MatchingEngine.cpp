@@ -56,7 +56,24 @@ int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
   for(int i=0;i<featureBundle.size();i++)
   {
     featureBundle[i]->FeatureMatching(img,buff,dbg);
+    const FeatureReport *report = featureBundle[i]->GetReport();
+    if(report==NULL)
+    {
+      continue;
+    }
+
+
+    if(report->type == FeatureReport::binary_processing_group)
+    {
+      const vector<acv_LabeledData> *ldata = 
+      report->data.binary_processing_group.labeledData;
+      for(int j=0;j<ldata->size();j++)
+      {
+        LOGE("iTem[%d]: area:%d",j,(*ldata)[j].area);
+      }
+    }
   }
+
   return 0;
 }
 
