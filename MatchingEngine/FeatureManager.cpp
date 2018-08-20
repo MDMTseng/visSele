@@ -581,12 +581,9 @@ int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist)
 const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
 {
   report.type = FeatureReport::sig360_circle_line;
-  //report.data.sig360_circle_line.s = 4;
-
-
-  //report.data.sig360_extractor.signature = &signature;
-  //report.data.sig360_extractor.detectedCircles = &detectedCircles;
-  report.data.sig360_extractor.detectedLines = &detectedLines;
+  //report.error = FeatureReport_sig360_circle_line::NONE;
+  report.data.sig360_circle_line.detectedCircles = &detectedCircles;
+  report.data.sig360_circle_line.detectedLines = &detectedLines;
   return &report;
 }
 
@@ -804,10 +801,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         cf.circle.radius,
         20,255, 0, 0);
 
+
         LOGV("C=%d===%f,%f   => %f,%f, dist:%f matching_pts:%d",
         j,featureCircleList[j].circleTar.circumcenter.X,featureCircleList[j].circleTar.circumcenter.Y,center.X,center.Y,
         hypot(cf.circle.circumcenter.X-center.X,cf.circle.circumcenter.Y-center.Y),
-        s_points.size());
+        cf.matching_pts);
 
 
 

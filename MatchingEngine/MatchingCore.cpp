@@ -157,6 +157,7 @@ void circleRefine(vector<acv_XY> &pointsInRange,acv_CircleFit *circleF)
   circleF->circle.circumcenter.X = circle.a;
   circleF->circle.circumcenter.Y = circle.b;
   circleF->circle.radius = circle.r;
+  circleF->matching_pts = pointsInRange.size();
   circleF->s = circle.s;
 }
 

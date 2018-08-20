@@ -51,6 +51,57 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 }
 
 
+cJSON* acv_LineFit2JSON(const acv_LineFit line )
+{
+  cJSON* Line_jobj = cJSON_CreateObject();
+  cJSON_AddNumberToObject(Line_jobj, "matching_pts", line.matching_pts);
+  cJSON_AddNumberToObject(Line_jobj, "s", line.s);
+  cJSON_AddNumberToObject(Line_jobj, "x0", line.end_pos.X);
+  cJSON_AddNumberToObject(Line_jobj, "y0", line.end_pos.Y);
+  cJSON_AddNumberToObject(Line_jobj, "x1", line.end_neg.X);
+  cJSON_AddNumberToObject(Line_jobj, "y1", line.end_neg.Y);
+  return Line_jobj;
+}
+
+
+cJSON* acv_LineFitVector2JSON(const vector< acv_LineFit> &vec)
+{
+  
+  cJSON* detectedLines_jarr = cJSON_CreateArray();
+
+  for(int j=0;j<vec.size();j++)
+  {
+    cJSON_AddItemToArray(detectedLines_jarr, acv_LineFit2JSON(vec[j]) );
+  }
+  return detectedLines_jarr;
+}
+
+cJSON* acv_CircleFit2JSON(const acv_CircleFit cir )
+{
+  cJSON* Circle_jobj = cJSON_CreateObject();
+  cJSON_AddNumberToObject(Circle_jobj, "matching_pts", cir.matching_pts);
+  cJSON_AddNumberToObject(Circle_jobj, "s", cir.s);
+  cJSON_AddNumberToObject(Circle_jobj, "x", cir.circle.circumcenter.X);
+  cJSON_AddNumberToObject(Circle_jobj, "y", cir.circle.circumcenter.Y);
+  cJSON_AddNumberToObject(Circle_jobj, "r", cir.circle.radius);
+  return Circle_jobj;
+}
+
+
+
+cJSON* acv_CircleFitVector2JSON(const vector< acv_CircleFit> &vec)
+{
+  
+  cJSON* detectedCircles_jarr = cJSON_CreateArray();
+
+  for(int j=0;j<vec.size();j++)
+  {
+    cJSON_AddItemToArray(detectedCircles_jarr, acv_CircleFit2JSON(vec[j]) );
+  }
+  return detectedCircles_jarr;
+}
+
+
 cJSON* MatchingReport2JSON(const FeatureReport *report )
 {    
 
@@ -66,6 +117,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
   {
     case FeatureReport::binary_processing_group:
     {
+      cJSON_AddStringToObject(report_jobj, "type", FeatureManager_binary_processing_group::GetFeatureTypeName());
       cJSON* label_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"labeledData",label_jarr);
       cJSON* reports_jarr = cJSON_CreateArray();
@@ -99,41 +151,34 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     {
       const vector<acv_CircleFit> *detectedCircle = 
       report->data.sig360_extractor.detectedCircles;
+      cJSON_AddStringToObject(report_jobj, "type", FeatureManager_sig360_extractor::GetFeatureTypeName());
 
-      cJSON* detectedCircles_jarr = cJSON_CreateArray();
-      cJSON_AddItemToObject(report_jobj,"detectedCircles",detectedCircles_jarr);
-
-      for(int j=0;j<detectedCircle->size();j++)
-      {
-        acv_CircleFit cir = (*detectedCircle)[j];
-        cJSON* Circle_jobj = cJSON_CreateObject();
-        cJSON_AddItemToArray(detectedCircles_jarr, Circle_jobj );
-        cJSON_AddNumberToObject(Circle_jobj, "matching_pts", cir.matching_pts);
-        cJSON_AddNumberToObject(Circle_jobj, "s", cir.s);
-        cJSON_AddNumberToObject(Circle_jobj, "x", cir.circle.circumcenter.X);
-        cJSON_AddNumberToObject(Circle_jobj, "y", cir.circle.circumcenter.Y);
-        cJSON_AddNumberToObject(Circle_jobj, "r", cir.circle.radius);
-      }
-
+      cJSON_AddItemToObject(report_jobj,"detectedCircles",
+        acv_CircleFitVector2JSON(*detectedCircle));
 
       const vector<acv_LineFit> *detectedLines = 
       report->data.sig360_extractor.detectedLines;
-      cJSON* detectedLine_jarr = cJSON_CreateArray();
-      cJSON_AddItemToObject(report_jobj,"detectedLines",detectedLine_jarr);
 
-      for(int j=0;j<detectedLines->size();j++)
-      {
-        acv_LineFit line = (*detectedLines)[j];
-        cJSON* Line_jobj = cJSON_CreateObject();
-        cJSON_AddItemToArray(detectedLine_jarr, Line_jobj );
-        cJSON_AddNumberToObject(Line_jobj, "matching_pts", line.matching_pts);
-        cJSON_AddNumberToObject(Line_jobj, "s", line.s);
-        cJSON_AddNumberToObject(Line_jobj, "x0", line.end_pos.X);
-        cJSON_AddNumberToObject(Line_jobj, "y0", line.end_pos.Y);
-        cJSON_AddNumberToObject(Line_jobj, "x1", line.end_neg.X);
-        cJSON_AddNumberToObject(Line_jobj, "y1", line.end_neg.Y);
-      }
+      cJSON_AddItemToObject(report_jobj,"detectedLines",
+        acv_LineFitVector2JSON(*detectedLines));
 
+    }
+    break;
+
+    case FeatureReport::sig360_circle_line:
+    {
+      cJSON_AddStringToObject(report_jobj, "type", FeatureManager_sig360_circle_line::GetFeatureTypeName());
+      const vector<acv_CircleFit> *detectedCircle = 
+      report->data.sig360_circle_line.detectedCircles;
+
+      cJSON_AddItemToObject(report_jobj,"detectedCircles",
+        acv_CircleFitVector2JSON(*detectedCircle));
+
+      const vector<acv_LineFit> *detectedLines = 
+      report->data.sig360_circle_line.detectedLines;
+
+      cJSON_AddItemToObject(report_jobj,"detectedLines",
+        acv_LineFitVector2JSON(*detectedLines));
 
     }
     break;

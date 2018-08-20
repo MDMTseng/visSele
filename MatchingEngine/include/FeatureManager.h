@@ -28,7 +28,13 @@ typedef struct FeatureReport_sig360_extractor{
   } error;
 };
 typedef struct FeatureReport_sig360_circle_line{
-
+  vector<acv_CircleFit> *detectedCircles;
+  vector<acv_LineFit> *detectedLines;
+  enum{
+    NONE,
+    ONLY_ONE_COMPONENT_IS_ALLOWED,
+    END
+  } error;
 };
 
 typedef struct FeatureReport
@@ -62,6 +68,7 @@ public :
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)=0;
   virtual const FeatureReport* GetReport(){return NULL;};
+  static const char* GetFeatureTypeName(){return NULL;};
 
 };
 
@@ -97,6 +104,7 @@ public :
   static bool check(cJSON *root);
   int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
   virtual const FeatureReport* GetReport() override;
+  static const char* GetFeatureTypeName(){return "binary_processing_group";};
 
 protected:
   int addSubFeature(cJSON * subFeature) override;
@@ -146,7 +154,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   ContourGrid inward_curve_grid;
   ContourGrid straight_line_grid;
 
-  
+
   vector<acv_CircleFit> detectedCircles;
   vector<acv_LineFit> detectedLines;
 
@@ -156,6 +164,7 @@ public :
   int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
   static bool check(cJSON *root);
   virtual const FeatureReport* GetReport() override;
+  static const char* GetFeatureTypeName(){return "sig360_circle_line";};
 protected:
 
   int parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList);
@@ -178,6 +187,7 @@ public :
   static bool check(cJSON *root);
   cJSON *jobj;
   virtual const FeatureReport* GetReport() override;
+  static const char* GetFeatureTypeName(){return "sig360_extractor";};
 protected:
   int parse_jobj() override;
 };
