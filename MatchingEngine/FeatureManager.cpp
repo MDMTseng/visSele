@@ -582,6 +582,11 @@ const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
 {
   report.type = FeatureReport::sig360_circle_line;
   //report.data.sig360_circle_line.s = 4;
+
+
+  //report.data.sig360_extractor.signature = &signature;
+  //report.data.sig360_extractor.detectedCircles = &detectedCircles;
+  report.data.sig360_extractor.detectedLines = &detectedLines;
   return &report;
 }
 
@@ -593,6 +598,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
   tmp_signature.resize(feature_signature.size());
+
+  detectedCircles.resize(0);
+  detectedLines.resize(0);
 
   int scanline_skip=15;
   extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid,scanline_skip);
@@ -661,7 +669,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         int mult=100;
         const featureDef_line *line = &featureLineList[j];
 
-        acv_Line line_fit;
+        acv_Line line_cand;
         if(line->skpsList.size()!=0)
         {
           if(line->skpsList.size()<2)
@@ -691,63 +699,81 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
               4,4);
             s_points.push_back(skp.searchStart);
           }
-          acvFitLine(&s_points[0], s_points.size(),&line_fit,&sigma);
+          acvFitLine(&s_points[0], s_points.size(),&line_cand,&sigma);
 
           //  line.MatchingMarginX=30
         }
         else
         {
           //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
-          line_fit.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
-          line_fit.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
+          line_cand.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
+          line_cand.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
           acv_XY searchVec;
           searchVec = acvRotation(cached_sin,cached_cos,flip_f,line->searchVec);
 
           //Offet to real image and backoff searchDist distance along with the searchVec as start
-          line_fit.line_anchor.X+=ldData[i].Center.X;
+          line_cand.line_anchor.X+=ldData[i].Center.X;
                                     //-line->searchDist*line->searchVec.X;
-          line_fit.line_anchor.Y+=ldData[i].Center.Y;
+          line_cand.line_anchor.Y+=ldData[i].Center.Y;
                                     //-line->searchDist*line->searchVec.Y;
 
           acvDrawCrossX(buff,
-            line_fit.line_anchor.X,line_fit.line_anchor.Y,
+            line_cand.line_anchor.X,line_cand.line_anchor.Y,
             2,2);
           //Search distance a 2*searchDist(since you go back off initMatchingMargin)
-          if(searchP(img, &line_fit.line_anchor , searchVec, 2*line->searchDist)!=0)
+          if(searchP(img, &line_cand.line_anchor , searchVec, 2*line->searchDist)!=0)
           {
             continue;
           }
 
           acvDrawCrossX(buff,
-            line_fit.line_anchor.X,line_fit.line_anchor.Y,
+            line_cand.line_anchor.X,line_cand.line_anchor.Y,
             4,4);
 
         }
 
         s_points.resize(0);
-        straight_line_grid.getContourPointsWithInLineContour(line_fit,
+        straight_line_grid.getContourPointsWithInLineContour(line_cand,
           line->MatchingMarginX+line->initMatchingMargin,
           line->initMatchingMargin,
           s_intersectIdxs,s_points);
 
-        acvFitLine(&s_points[0], s_points.size(),&line_fit,&sigma);
+        acvFitLine(&s_points[0], s_points.size(),&line_cand,&sigma);
 
 
         //LOGV("Matched points:%d",s_points.size());
         acvDrawLine(buff,
-          line_fit.line_anchor.X-mult*line_fit.line_vec.X,
-          line_fit.line_anchor.Y-mult*line_fit.line_vec.Y,
-          line_fit.line_anchor.X+mult*line_fit.line_vec.X,
-          line_fit.line_anchor.Y+mult*line_fit.line_vec.Y,
+          line_cand.line_anchor.X-mult*line_cand.line_vec.X,
+          line_cand.line_anchor.Y-mult*line_cand.line_vec.Y,
+          line_cand.line_anchor.X+mult*line_cand.line_vec.X,
+          line_cand.line_anchor.Y+mult*line_cand.line_vec.Y,
           20,255,128);
 
         LOGV("L=%d===anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f ,sigma:%f",j,
-        line_fit.line_anchor.X,
-        line_fit.line_anchor.Y,
-        line_fit.line_vec.X,
-        line_fit.line_vec.Y,
+        line_cand.line_anchor.X,
+        line_cand.line_anchor.Y,
+        line_cand.line_vec.X,
+        line_cand.line_vec.Y,
         sigma);
 
+
+        acv_XY *end_pos=findEndPoint(line_cand, 1, s_points);
+        acv_XY *end_neg=findEndPoint(line_cand, -1, s_points);
+
+        acv_LineFit lf;
+        lf.line=line_cand;
+        lf.matching_pts=s_points.size();
+        lf.s=sigma;
+        if(end_pos)lf.end_pos=*end_pos;
+        if(end_neg)lf.end_neg=*end_neg;
+
+
+        LOGV("end_pos.X:%f end_pos.Y:%f end_neg.X:%f end_neg.Y:%f",
+          lf.end_pos.X,
+          lf.end_pos.Y,
+          lf.end_neg.X,
+          lf.end_neg.Y);
+        detectedLines.push_back(lf);
       }
 
       for (int j = 0; j < featureCircleList.size(); j++)

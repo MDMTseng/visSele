@@ -146,6 +146,10 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   ContourGrid inward_curve_grid;
   ContourGrid straight_line_grid;
 
+  
+  vector<acv_CircleFit> detectedCircles;
+  vector<acv_LineFit> detectedLines;
+
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;
