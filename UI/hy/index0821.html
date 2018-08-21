@@ -2,26 +2,20 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <title>--全檢機 控制中心--</title>
-    <LINK rel=StyleSheet href="css/style.css" TYPE="text/css" MEDIA=screen>
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
-    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css">
+    <LINK rel=StyleSheet href="css/style.css" TYPE="text/css" MEDIA=screen>
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.1.0/css/all.css" integrity="sha384-lKuwvrZot6UHsBSfcMvOkWwlCMgc0TaWr+30HWe3a4ltaBwTZhyTEggF5tJv8tbt" crossorigin="anonymous">
-    
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.6.15.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
-    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
-    <script src="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.js"></script>
-
-    
+    <link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.css">
     <!-- datatable start -->
     <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
     <!-- <link href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/3.5.3/css/tabulator.min.css" rel="stylesheet"> -->
     <!-- data table end -->
-    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.js"></script>
     <script type="text/javascript" src="js/fabric.mtouch.min.js"></script>
     <!-- <script defer src="https://use.fontawesome.com/releases/v5.1.0/js/all.js"></script> -->
     <script type="text/javascript" src="js/xlinx.js"></script>
@@ -42,39 +36,45 @@
   <!-- <body onload="initWSocket();"> -->
   <body>
     <div data-role="page" id="index" data-theme="b">
-      <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="false" data-icon="cloud">
+      <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
         <h4>檢測區域 <div style="display:inline;" id="checkAreaTitle"></div></h4>
         <div style="text-align: center;" id="idnameofdiv">
           <canvas style="border: 1px solid white;" id="canvas1" ></canvas>
-          <canvas style="display: none; border: 1px solid white;" id="canvas2" ></canvas>
         </div>
       </div>
       <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="false" data-icon="cloud">
         <h4>放大檢視區 <div style="display:inline;" id="checkAreaTitle2"></div></h4>
         <div style="text-align: center;" id="idnameofdiv">
-          <div data-theme="b" class="ui-grid-a">
+          <div class="ui-grid-a">
             <!-- <div class="ui-block-a"><input type="button" id="plus" value="+"></div> -->
-            <div class="ui-block-a" style=" ">
-              
+            <div class="ui-block-a">
+              <canvas style="display: none; border: 1px solid white;" id="canvas2" ></canvas>
               <canvas style="border: 1px solid white;" id="canvas3" ></canvas>
             </div>
-            <div class="ui-block-b" style="">
-              <div id="tabs">
-  <ul>
-    <li><a href="#tabs-1">Nunc tincidunt</a></li>
-    <li><a href="#tabs-2">Proin dolor</a></li>
-    <li><a href="#tabs-3">Aenean lacinia</a></li>
-  </ul>
-  <div id="tabs-1">
-    <table style="color:#555; border: 1px solid white;" id="table_id" class="display"></table>
-  </div>
-  <div id="tabs-2">
-    <table style="color:#555; border: 1px solid white;" id="table_id" class="display"></table>
-  </div>
-  <div id="tabs-3">
-    <table style="color:#555; border: 1px solid white;" id="table_id" class="display"></table>
-  </div>
-</div>
+            <div class="ui-block-b">
+              <div data-role="tabs" id="tabs">
+                <div data-role="navbar">
+                  <ul>
+                    <li><a href="#one" data-ajax="false">FetureSets</a></li>
+                    <li><a href="#two" data-ajax="false">ListAll</a></li>
+                  </ul>
+                </div>
+                <div id="one" class="ui-body-d ui-content">
+                  <h1>First tab contents</h1>
+                  <!-- <div id="example-table"></div> -->
+                  <!-- <table style="color:#555; border: 1px solid white;" id="table_id" class="display"></table> -->
+                </div>
+                <div id="two">
+                  <ul data-role="listview" data-inset="true">
+                    <li><a href="#">Acura</a></li>
+                    <li><a href="#">Audi</a></li>
+                    <li><a href="#">BMW</a></li>
+                    <li><a href="#">Cadillac</a></li>
+                    <li><a href="#">Ferrari</a></li>
+                  </ul>
+                </div>
+              </div>
+              
             </div>
           </div>
           <div class="ui-grid-solo">

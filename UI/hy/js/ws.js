@@ -4,18 +4,9 @@ var output;
 var clientIP = "x.x.x.x";
 var TX_SERIAL = 0;
 var reconnectTimes=3;
-$(document).ready(function() {
-    console.log("[ws.js][init]");
-    var APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
-    $.getJSON(APIurl).done(function(data) {
-        clientIP = data.ip;
-        // console.log("clientIP1=" + clientIP);
-    });
-    init_WSocket();
-    // init_CanvasF();
-    init_CanvasX();
-    init_FETURE_JSON_TEMP();
-});
+var RAW_I_DATA;
+var requireNewRAW=true;
+
 function setWSaddress(ip){
     WS_URI = "ws://"+ip+":4090/xlinx";
 }
@@ -66,8 +57,7 @@ function onClose(evt) {
 // console.log(arrayBuffer);
 // const blob = new Blob([arrayBuffer]);
 // console.log(blob);
-var RAW_I_DATA;
-var requireNewRAW=true;
+
 function onMessage(evt) {
     // var Gray = (R*38 + G*75 + B*15) >> 7;
     // console.log(evt);
@@ -91,7 +81,7 @@ function onMessage(evt) {
         //     dataArray^= 0xff;
         // }
         RAW_I_DATA = new ImageData(dataArray, RAW_WIDTH);
-        doSendWS("PING","haha");
+        // doSendWS("PING","haha");
         // var dataArray = new Uint8ClampedArray(evt.data,11,600*150*4);
         // RAW_I_DATA = new ImageData(dataArray,150);
 

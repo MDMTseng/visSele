@@ -45,215 +45,19 @@ function init_CanvasX() {
 	canvas2 = document.getElementById("canvas2");
 	canvas3 = document.getElementById("canvas3");
 	
-	canvas1.width = allW;
-	canvas1.height = allW;
+	canvas1.width = 1000;
+	canvas1.height = 500;
 	canvas2.width = allW;
 	canvas2.height = allW;
 	canvas3.width = allW;
 	canvas3.height = allW;
-
-	// canvas1.style.width = "401px";
-	// canvas1.style.height = "401px";
-	// canvas2.style.width = "400px";
-	// canvas2.style.height = "400px";
-	// canvas3.style.width = "400px";
-	// canvas3.style.height = "400px";
-
-	canvas1.addEventListener("mousemove", mouseMove1);
-	canvas2.addEventListener("mousemove", mouseMove2);
-	canvas3.addEventListener("mousemove", mouseMove3);
-
-
-	document.getElementById("reset_ip").addEventListener("click", function() {
-		setWSaddress(document.getElementById("coreIP").value);
-
-	}, false);
-
-	document.getElementById("zoomArea-spinAuto").addEventListener("click", function() {
-		autoSpint = !autoSpint;
-		// draw(scale, translatePos);
-	}, false);
-
-	document.getElementById("zoomArea-spinLeft").addEventListener("click", function() {
-		startSpinPos += scaleMultiplier;
-		// draw(scale, translatePos);
-	}, false);
-
-	document.getElementById("zoomArea-spinRight").addEventListener("click", function() {
-		startSpinPos -= scaleMultiplier;
-		// draw(scale, translatePos);
-	}, false);
-
-	document.getElementById("plus").addEventListener("click", function() {
-		scale /= 0.9;
-		// draw(scale, translatePos);
-	}, false);
-
-	document.getElementById("minus").addEventListener("click", function() {
-		scale *= 0.9;
-		// draw(scale, translatePos);
-	}, false);
-	document.getElementById("zoomArea-up").addEventListener("click", function() {
-
-		var vec_move = {
-			x: 0,
-			y: -translateStep / scale
-		};
-		var vec_tmove = {};
-		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
-
-		translatePos.x += vec_tmove.x;
-		translatePos.y += vec_tmove.y;
-		// draw(scale, translatePos);
-	}, false);
-
-	document.getElementById("zoomArea-down").addEventListener("click", function() {
-
-		var vec_move = {
-			x: 0,
-			y: translateStep / scale
-		};
-		var vec_tmove = {};
-		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
-
-		translatePos.x += vec_tmove.x;
-		translatePos.y += vec_tmove.y;
-		// draw(scale, translatePos);
-	}, false);
-	document.getElementById("zoomArea-left").addEventListener("click", function() {
-		var vec_move = {
-			x: -translateStep / scale,
-			y: 0
-		};
-		var vec_tmove = {};
-		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
-
-		translatePos.x += vec_tmove.x;
-		translatePos.y += vec_tmove.y;
-		// draw(scale, translatePos);
-	}, false);
-
-	document.getElementById("zoomArea-right").addEventListener("click", function() {
-		var vec_move = {
-			x: translateStep / scale,
-			y: 0
-		};
-		var vec_tmove = {};
-		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
-
-		translatePos.x += vec_tmove.x;
-		translatePos.y += vec_tmove.y;
-		// draw(scale, translatePos);
-	}, false);
-	// canvas3.addEventListener("mousedown", function(evt) {
-	// 	mouseDown = true;
-	// 	startDragPos.x = evt.clientX;
-	// 	startDragPos.y = evt.clientY;
-	// });
-
-	// canvas3.addEventListener("mouseup", function(evt) {
-	// 	mouseDown = false;
-	// 	translatePos.x += translateDragOffset.x;
-	// 	translatePos.y += translateDragOffset.y;
-	// 	translateDragOffset.x = 0;
-	// 	translateDragOffset.y = 0;
-	// });
-
-	// canvas3.addEventListener("mouseover", function(evt) {
-	// 	mouseDown = false;
-	// });
-
-	// canvas3.addEventListener("mouseout", function(evt) {
-	// 	mouseDown = false;
-	// });
-
-
-	window.setInterval(timeInterval1000, 1000);
-	window.setInterval(timeInterval33, 33);
+	
+	
 	console.log(RXJS);
-
-	initTable();
+	
 }
 
-function initTable() {
-	var printIcon = function(cell, formatterParams) { //plain text value
-		return "<i class='fa fa-print'></i>";
-	};
 
-	//Build Tabulator
-	$("#example-table").tabulator({
-		height: "311px",
-		layout: "fitColumns",
-		rowFormatter: function(row) {
-			if (row.getData().col == "blue") {
-				row.getElement().css({
-					"background-color": "#A6A6DF"
-				});
-			}
-		},
-		columns: [{
-			formatter: "rownum",
-			align: "center",
-			width: 40
-		}, {
-			formatter: printIcon,
-			width: 40,
-			align: "center",
-			cellClick: function(e, cell) {
-				alert("Printing row data for: " + cell.getRow().getData().name)
-			}
-		}, {
-			title: "Name",
-			field: "name",
-			width: 150,
-			formatter: function(cell, formatterParams) {
-				var value = cell.getValue();
-				if (value.indexOf("o") > 0) {
-					return "<span style='color:red; font-weight:bold;'>" + value + "</span>";
-				} else {
-					return value;
-				}
-			}
-		}, {
-			title: "Progress",
-			field: "progress",
-			formatter: "progress",
-			formatterParams: {
-				color: ["#00dd00", "orange", "rgb(255,0,0)"]
-			},
-			sorter: "number",
-			width: 100
-		}, {
-			title: "Rating",
-			field: "rating",
-			formatter: "star",
-			formatterParams: {
-				stars: 6
-			},
-			align: "center",
-			width: 120
-		}, {
-			title: "Driver",
-			field: "car",
-			align: "center",
-			formatter: "tickCross",
-			width: 50
-		}, {
-			title: "Col",
-			field: "col",
-			formatter: "color",
-			width: 50
-		}, {
-			title: "Line Wraping",
-			field: "lorem",
-			formatter: "textarea"
-		}, {
-			formatter: "buttonCross",
-			width: 30,
-			align: "center"
-		}],
-	});
-}
 
 function mouseMove1(evt) {
 	// console.log(evt);
@@ -281,12 +85,13 @@ function mouseMove3(evt) {
 	}
 }
 var reDraw_C2 = true;
-
+var reDraw_C1 = true;
 
 function drawX() {
 	// console.log("[INFO][drawX()]");
-
-	if (canvas1.getContext) {
+	millisX = performance.now();
+	if (reDraw_C1&&canvas1.getContext) {
+		// reDraw_C1=false;
 		drawCheckArea(canvas1);
 	}
 	if (reDraw_C2 && canvas2.getContext) {
@@ -314,35 +119,13 @@ var millisX = 0;
 var gg;
 
 function drawCheckArea(C) {
-
-	millisX = performance.now();
-	// var d=new Date();
-	// 	var millisX = d.getMilliseconds();
-	gg = 127 * (1 + Math.sin(dx * millisX));
+	gg = 55 * (1 + Math.sin(dx * millisX));
 	gg = Math.round(gg);
 	var ctx = C.getContext("2d");
 	ctx.fillStyle = 'rgb(' + gg + ',0,0)';
-
-	var C_Hight = parseInt(C.height);
-	var C_Width = C.width;
-
-	// ctx.fillStyle = 'rgb(111,0,0)';
 	ctx.fillRect(0, 0, C.width, C.height);
-
-	// ctx.fillStyle = 'rgb(0,' +(255-gg)+ ',0)';
-	ctx.fillStyle = 'rgb(0,222,0)';
-	// ctx.fillStyle = "rgb(255,255,255)";
-	ctx.fillRect(25, 25, C.width - 50, C.height - 50);
-	// ctx.clearRect(45,45,60,60);
-	ctx.strokeRect((C.width >> 1) - (recWH / 2), (C.height >> 1) - (recWH / 2), recWH, recWH);
-	ctx.lineWidth = 1;
-	ctx.lineCap = 'round';
-	ctx.beginPath();
-	ctx.moveTo(C.width >> 1, 0);
-	ctx.lineTo(C.width >> 1, C.height);
-	ctx.moveTo(0, C.height >> 1);
-	ctx.lineTo(C.width, C.height >> 1);
-	ctx.stroke();
+	ctx.fillStyle = "rgb(255,255,255)";
+	ctx.fillRect(10,10, C.width - 20, C.height - 20);
 }
 
 function drawLine(context, RXJS, i) {
