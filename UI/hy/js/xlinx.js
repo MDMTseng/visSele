@@ -29,16 +29,16 @@ function VA(currt, newV, speed) {
     return speed * newV + (currt * (1 - speed));
 }
 
-function timeInterval33() {
-    drawX();
 
-}
 function degreesToRadians (degrees) {
    return degrees * (Math.PI/180);     
 }
 
 function radiansToDegrees (radians) {
    return radians * (180/Math.PI);
+}
+function timeInterval33() {
+    drawX();
 }
 function timeInterval1000() {
     console.log("[INFO][HB][1000ms][IP]="+clientIP+"[WS]="+WS_URI);

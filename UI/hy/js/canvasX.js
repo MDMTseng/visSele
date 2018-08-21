@@ -14,6 +14,7 @@ var scale = 1.0;
 var scaleMultiplier = 0.1;
 var translateStep = 8;
 var RXJS;
+var allW = 500;
 var startDragPos = {
 	x: 0,
 	y: 0
@@ -29,27 +30,28 @@ var translatePos = {
 	y: 0
 };
 
-function rotate2dtransform(coord_dst,coord_src,theta)
-{
+function rotate2dtransform(coord_dst, coord_src, theta) {
 	var sin_v = Math.sin(theta);
 	var cos_v = Math.cos(theta);
 
-	coord_dst.x = coord_src.x*cos_v - coord_src.y*sin_v;
-	coord_dst.y = coord_src.x*sin_v + coord_src.y*cos_v;
+	coord_dst.x = coord_src.x * cos_v - coord_src.y * sin_v;
+	coord_dst.y = coord_src.x * sin_v + coord_src.y * cos_v;
 }
 
 function init_CanvasX() {
 	console.log("[cancasX.js][init]");
+	
 	canvas1 = document.getElementById("canvas1");
 	canvas2 = document.getElementById("canvas2");
 	canvas3 = document.getElementById("canvas3");
-	var allW = 500;
+	
 	canvas1.width = allW;
 	canvas1.height = allW;
 	canvas2.width = allW;
 	canvas2.height = allW;
 	canvas3.width = allW;
 	canvas3.height = allW;
+
 	// canvas1.style.width = "401px";
 	// canvas1.style.height = "401px";
 	// canvas2.style.width = "400px";
@@ -62,6 +64,10 @@ function init_CanvasX() {
 	canvas3.addEventListener("mousemove", mouseMove3);
 
 
+	document.getElementById("reset_ip").addEventListener("click", function() {
+		setWSaddress(document.getElementById("coreIP").value);
+
+	}, false);
 
 	document.getElementById("zoomArea-spinAuto").addEventListener("click", function() {
 		autoSpint = !autoSpint;
@@ -84,14 +90,17 @@ function init_CanvasX() {
 	}, false);
 
 	document.getElementById("minus").addEventListener("click", function() {
-		scale *= 0.9 ;
+		scale *= 0.9;
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-up").addEventListener("click", function() {
 
-		var vec_move = {x:0,y:-translateStep / scale};
+		var vec_move = {
+			x: 0,
+			y: -translateStep / scale
+		};
 		var vec_tmove = {};
-		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
 		translatePos.y += vec_tmove.y;
@@ -100,18 +109,24 @@ function init_CanvasX() {
 
 	document.getElementById("zoomArea-down").addEventListener("click", function() {
 
-		var vec_move = {x:0,y:translateStep / scale};
+		var vec_move = {
+			x: 0,
+			y: translateStep / scale
+		};
 		var vec_tmove = {};
-		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
 		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-left").addEventListener("click", function() {
-		var vec_move = {x:-translateStep / scale,y:0};
+		var vec_move = {
+			x: -translateStep / scale,
+			y: 0
+		};
 		var vec_tmove = {};
-		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
 		translatePos.y += vec_tmove.y;
@@ -119,40 +134,125 @@ function init_CanvasX() {
 	}, false);
 
 	document.getElementById("zoomArea-right").addEventListener("click", function() {
-		var vec_move = {x:translateStep / scale,y:0};
+		var vec_move = {
+			x: translateStep / scale,
+			y: 0
+		};
 		var vec_tmove = {};
-		rotate2dtransform(vec_tmove,vec_move,-startSpinPos);
+		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
 		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
-	canvas3.addEventListener("mousedown", function(evt) {
-		mouseDown = true;
-		startDragPos.x = evt.clientX;
-		startDragPos.y = evt.clientY;
-	});
+	// canvas3.addEventListener("mousedown", function(evt) {
+	// 	mouseDown = true;
+	// 	startDragPos.x = evt.clientX;
+	// 	startDragPos.y = evt.clientY;
+	// });
 
-	canvas3.addEventListener("mouseup", function(evt) {
-		mouseDown = false;
-		translatePos.x += translateDragOffset.x;
-		translatePos.y += translateDragOffset.y;
-		translateDragOffset.x = 0;
-		translateDragOffset.y = 0;
-	});
+	// canvas3.addEventListener("mouseup", function(evt) {
+	// 	mouseDown = false;
+	// 	translatePos.x += translateDragOffset.x;
+	// 	translatePos.y += translateDragOffset.y;
+	// 	translateDragOffset.x = 0;
+	// 	translateDragOffset.y = 0;
+	// });
 
-	canvas3.addEventListener("mouseover", function(evt) {
-		mouseDown = false;
-	});
+	// canvas3.addEventListener("mouseover", function(evt) {
+	// 	mouseDown = false;
+	// });
 
-	canvas3.addEventListener("mouseout", function(evt) {
-		mouseDown = false;
-	});
+	// canvas3.addEventListener("mouseout", function(evt) {
+	// 	mouseDown = false;
+	// });
 
 
 	window.setInterval(timeInterval1000, 1000);
 	window.setInterval(timeInterval33, 33);
 	console.log(RXJS);
+
+	initTable();
+}
+
+function initTable() {
+	var printIcon = function(cell, formatterParams) { //plain text value
+		return "<i class='fa fa-print'></i>";
+	};
+
+	//Build Tabulator
+	$("#example-table").tabulator({
+		height: "311px",
+		layout: "fitColumns",
+		rowFormatter: function(row) {
+			if (row.getData().col == "blue") {
+				row.getElement().css({
+					"background-color": "#A6A6DF"
+				});
+			}
+		},
+		columns: [{
+			formatter: "rownum",
+			align: "center",
+			width: 40
+		}, {
+			formatter: printIcon,
+			width: 40,
+			align: "center",
+			cellClick: function(e, cell) {
+				alert("Printing row data for: " + cell.getRow().getData().name)
+			}
+		}, {
+			title: "Name",
+			field: "name",
+			width: 150,
+			formatter: function(cell, formatterParams) {
+				var value = cell.getValue();
+				if (value.indexOf("o") > 0) {
+					return "<span style='color:red; font-weight:bold;'>" + value + "</span>";
+				} else {
+					return value;
+				}
+			}
+		}, {
+			title: "Progress",
+			field: "progress",
+			formatter: "progress",
+			formatterParams: {
+				color: ["#00dd00", "orange", "rgb(255,0,0)"]
+			},
+			sorter: "number",
+			width: 100
+		}, {
+			title: "Rating",
+			field: "rating",
+			formatter: "star",
+			formatterParams: {
+				stars: 6
+			},
+			align: "center",
+			width: 120
+		}, {
+			title: "Driver",
+			field: "car",
+			align: "center",
+			formatter: "tickCross",
+			width: 50
+		}, {
+			title: "Col",
+			field: "col",
+			formatter: "color",
+			width: 50
+		}, {
+			title: "Line Wraping",
+			field: "lorem",
+			formatter: "textarea"
+		}, {
+			formatter: "buttonCross",
+			width: 30,
+			align: "center"
+		}],
+	});
 }
 
 function mouseMove1(evt) {
@@ -173,13 +273,15 @@ function mouseMove3(evt) {
 	$('#checkAreaTitle2').html('mX=' + evt.offsetX + ',mY=' + evt.offsetY);
 	if (mouseDown) {
 		var vec_tmp = {
-			x:(evt.clientX - startDragPos.x) / scale,
-			y:(evt.clientY - startDragPos.y) / scale};
-		rotate2dtransform(translateDragOffset,vec_tmp,-startSpinPos);
+			x: (evt.clientX - startDragPos.x) / scale,
+			y: (evt.clientY - startDragPos.y) / scale
+		};
+		rotate2dtransform(translateDragOffset, vec_tmp, -startSpinPos);
 		// draw(scale, translatePos);
 	}
 }
 var reDraw_C2 = true;
+
 
 function drawX() {
 	// console.log("[INFO][drawX()]");
@@ -195,6 +297,7 @@ function drawX() {
 		// console.log("asf2");
 
 	}
+	
 	if (canvas3.getContext)
 		drawZoomArea(canvas2, canvas3);
 
@@ -209,6 +312,7 @@ function drawX() {
 var recWH = 50;
 var millisX = 0;
 var gg;
+
 function drawCheckArea(C) {
 
 	millisX = performance.now();
@@ -253,8 +357,9 @@ function drawLine(context, RXJS, i) {
 	scale = scaleOri;
 
 }
-var indexColor=0;
-var lerpC=0.001;
+var indexColor = 0;
+var lerpC = 0.001;
+
 function drawJSON(C) {
 	var context = C.getContext("2d");
 	context.save();
@@ -264,45 +369,45 @@ function drawJSON(C) {
 	if (RXJS.TYPE != "FetureSets") return;
 	for (var i = 0; i < RXJS.SETS.length; i++) {
 		context.lineWidth = RXJS.SETS[i].STROKE_WIDTH;
-		
-		// context.strokeStyle = (indexColor++)%10==0?(RXJS.SETS[i].COLOR):("#FFFF00");
-		
 
-		
+		// context.strokeStyle = (indexColor++)%10==0?(RXJS.SETS[i].COLOR):("#FFFF00");
+
+
+
 		context.beginPath();
 		if (RXJS.SETS[i].type == 'line') {
-			context.strokeStyle = lerpColor('#ff0000', '#00ff00', gg/255);
+			context.strokeStyle = lerpColor('#ff0000', '#00ff00', gg / 255);
 			drawLine(context, RXJS, i);
 		} else if (RXJS.SETS[i].type == 'shape') {
-			context.strokeStyle = lerpColor('#00ff00', '#0000ff', gg/255);
+			context.strokeStyle = lerpColor('#00ff00', '#0000ff', gg / 255);
 			drawLine(context, RXJS, i);
 		} else if (RXJS.SETS[i].type == 'rect') {
-			context.strokeStyle = lerpColor('#0000ff', '#ff0000', gg/255);
+			context.strokeStyle = lerpColor('#0000ff', '#ff0000', gg / 255);
 			context.strokeRect(RXJS.SETS[i].XY[0].x, RXJS.SETS[i].XY[0].y, RXJS.SETS[i].XY[1].w, RXJS.SETS[i].XY[1].h);
 		} else if (RXJS.SETS[i].type == 'arc') {
-			context.strokeStyle = lerpColor('#0f0f0f', '#ff0000', gg/255);
-			context.arc(RXJS.SETS[i].CENTER_XY.x, RXJS.SETS[i].CENTER_XY.y, RXJS.SETS[i].RADIUS, 
+			context.strokeStyle = lerpColor('#0f0f0f', '#ff0000', gg / 255);
+			context.arc(RXJS.SETS[i].CENTER_XY.x, RXJS.SETS[i].CENTER_XY.y, RXJS.SETS[i].RADIUS,
 				degreesToRadians(RXJS.SETS[i].DEGREE_START_END.start), degreesToRadians(RXJS.SETS[i].DEGREE_START_END.end), false);
 		}
 		context.stroke();
-		
+
 		// Rect bounds = new Rect();
-  //       paint.getTextBounds(text, 0, text.length(), bounds);
+		//       paint.getTextBounds(text, 0, text.length(), bounds);
 		// Bitmap bitmap = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888);
-  //       Canvas canvas = new Canvas(bitmap);
-  //       Paint.FontMetrics fontMetrics = paint.getFontMetrics();
-  //       float yPos = -fontMetrics.top;
-  //       canvas.drawText(text, 0, yPos, paint);
+		//       Canvas canvas = new Canvas(bitmap);
+		//       Paint.FontMetrics fontMetrics = paint.getFontMetrics();
+		//       float yPos = -fontMetrics.top;
+		//       canvas.drawText(text, 0, yPos, paint);
 
 		context.textAlign = "center";
 		context.textBaseline = "middle";
 		// context.strokeStyle= "red";
 		// context.fillStyle = "white";
 		context.font = "" + (18 / scale) + "px serif";
-		context.lineWidth = 1/ scale;
+		context.lineWidth = 1 / scale;
 		context.strokeStyle = 'white';
 		// context.strokeStyle='gradient';
-      	context.strokeText(RXJS.SETS[i].ID_NAME,RXJS.SETS[i].XY[0].x,RXJS.SETS[i].XY[0].y-(10/ scale));
+		context.strokeText(RXJS.SETS[i].ID_NAME, RXJS.SETS[i].XY[0].x, RXJS.SETS[i].XY[0].y - (10 / scale));
 		// context.fillText(RXJS.SETS[i].ID_NAME,RXJS.SETS[i].XY[0].x,RXJS.SETS[i].XY[0].y-(10/ scale));
 	}
 	context.restore();
@@ -311,19 +416,18 @@ function drawJSON(C) {
 function drawRAWArea(C1) {
 	var context = C1.getContext("2d");
 	context.clearRect(0, 0, C1.width, C1.height);
-	if(typeof RAW_I_DATA  != 'undefined'){
-		if(context.canvas.width!=RAW_I_DATA.width || 
-			context.canvas.height!=RAW_I_DATA.height )
-		{		
-			context.canvas.width=RAW_I_DATA.width;
-			context.canvas.height=RAW_I_DATA.height;
+	if (typeof RAW_I_DATA != 'undefined') {
+		if (context.canvas.width != RAW_I_DATA.width ||
+			context.canvas.height != RAW_I_DATA.height) {
+			context.canvas.width = RAW_I_DATA.width;
+			context.canvas.height = RAW_I_DATA.height;
 		}
 		context.putImageData(RAW_I_DATA, 0, 0);
 	}
 	// console.log(RAW_I_DATA);
 	// else
 	// 	context.putImageData(getRAWbackgroundImageData(C1), 0, 0);
-	
+
 	// context.drawImage(C1, 0, 0);
 }
 
@@ -372,7 +476,7 @@ function drawZoomArea(C1, C2) {
 	if (autoSpint)
 		startSpinPos += 0.01;
 	context.translate((C2.width / 2), (C2.height / 2));
-	
+
 	context.scale(scale, scale);
 	context.rotate(startSpinPos);
 	context.translate(translatePos.x + translateDragOffset.x, translatePos.y + translateDragOffset.y);

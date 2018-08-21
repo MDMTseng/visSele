@@ -1,8 +1,9 @@
 // var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-var WS_URI = "ws://LOCALHOST:4090/xlinx";
+var WS_URI = "ws://192.168.168.249:4090/xlinx";
 var output;
 var clientIP = "x.x.x.x";
 var TX_SERIAL = 0;
+var reconnectTimes=3;
 $(document).ready(function() {
     console.log("[ws.js][init]");
     var APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
@@ -11,18 +12,24 @@ $(document).ready(function() {
         // console.log("clientIP1=" + clientIP);
     });
     init_WSocket();
+    // init_CanvasF();
     init_CanvasX();
-    init_drawCanvas();
+    init_FETURE_JSON_TEMP();
 });
-
+function setWSaddress(ip){
+    WS_URI = "ws://"+ip+":4090/xlinx";
+}
 function init_WSocket() {
-
+    console.log("Trying Re-Connect w/times="+reconnectTimes);
+    reconnectTimes--;
+    if(reconnectTimes<=0)return;
 
     try {
         websocket = new WebSocket(WS_URI);
         websocket.binaryType = "arraybuffer";
     } catch (err) {
         document.getElementById("output").innerHTML = err.message;
+
     }
 
 

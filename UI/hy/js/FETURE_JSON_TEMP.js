@@ -1,3 +1,66 @@
+var RXMSG_temp2=
+{
+ "labeledData": [{
+   "area": 12198
+  }],
+ "reports": [{
+   "detectedCircles": [{
+     "matching_pts": 204,
+     "s": 0.26877525448799133,
+     "x": 400.5,
+     "y": 289.5,
+     "r": 36.477802276611328
+    }, {
+     "matching_pts": 716,
+     "s": 0.2803465723991394,
+     "x": 277.4781494140625,
+     "y": 310.50238037109375,
+     "r": 150.52250671386719
+    }, {
+     "matching_pts": 99,
+     "s": 0.29968306422233582,
+     "x": 298.531005859375,
+     "y": 329.639892578125,
+     "r": 43.3808708190918
+    }],
+   "detectedLines": [{
+     "matching_pts": 106,
+     "s": 0.37967479228973389,
+     "x0": 284,
+     "y0": 245,
+     "x1": 421,
+     "y1": 245
+    }, {
+     "matching_pts": 42,
+     "s": 0.28663668036460876,
+     "x0": 255,
+     "y0": 271,
+     "x1": 250,
+     "y1": 312
+    }, {
+     "matching_pts": 66,
+     "s": 0.4979780912399292,
+     "x0": 290,
+     "y0": 252,
+     "x1": 424,
+     "y1": 253
+    }, {
+     "matching_pts": 75,
+     "s": 0.2722010612487793,
+     "x0": 322,
+     "y0": 375,
+     "x1": 396,
+     "y1": 354
+    }, {
+     "matching_pts": 85,
+     "s": 0.31419235467910767,
+     "x0": 321,
+     "y0": 368,
+     "x1": 405,
+     "y1": 344
+    }]
+  }]
+};
 var RXMSG_temp1=
 {
   "TYPE":"FetureSets",
@@ -55,7 +118,8 @@ var RXMSG_temp1=
 }
 ;
 var RXMSG_temp1_json = JSON.stringify(RXMSG_temp1);
-function init_drawCanvas() {
+var RXMSG_temp2_json = JSON.stringify(RXMSG_temp2);
+function init_FETURE_JSON_TEMP() {
     console.log("[drawCanvas.js][init]");
     console.log(RXMSG_temp1);
     
