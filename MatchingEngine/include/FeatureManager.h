@@ -69,6 +69,7 @@ public :
   virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)=0;
   virtual const FeatureReport* GetReport(){return NULL;};
   static const char* GetFeatureTypeName(){return NULL;};
+  virtual ~FeatureManager(){};
 
 };
 
