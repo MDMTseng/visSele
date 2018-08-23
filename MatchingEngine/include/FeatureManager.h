@@ -27,9 +27,24 @@ typedef struct FeatureReport_sig360_extractor{
     END
   } error;
 };
-typedef struct FeatureReport_sig360_circle_line{
+
+
+typedef struct FeatureReport_sig360_circle_line_single{
   vector<acv_CircleFit> *detectedCircles;
   vector<acv_LineFit> *detectedLines;
+
+  acv_XY LTBound;
+  acv_XY RBBound;
+  acv_XY Center;
+  int area;
+  float rotate;
+  bool  isFlipped;
+  float scale;
+  char *targetName;
+};
+
+typedef struct FeatureReport_sig360_circle_line{
+  vector<FeatureReport_sig360_circle_line_single> *reports;
   enum{
     NONE,
     ONLY_ONE_COMPONENT_IS_ALLOWED,
@@ -155,10 +170,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   ContourGrid inward_curve_grid;
   ContourGrid straight_line_grid;
 
-
-  vector<acv_CircleFit> detectedCircles;
-  vector<acv_LineFit> detectedLines;
-
+  vector<vector<acv_LineFit>*> detectedLinesPool;
+  vector<vector<acv_CircleFit>*> detectedCirclesPool;
+  vector<FeatureReport_sig360_circle_line_single> reports;
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;

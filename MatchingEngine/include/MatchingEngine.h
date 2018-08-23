@@ -12,9 +12,12 @@ using namespace std;
 class MatchingEngine {
   vector<FeatureManager*> featureBundle;
 public:
+  int ResetFeature();
   int AddMatchingFeature(const char *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
   int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg);
+  const FeatureReport *GetReport();
+  cJSON*FeatureReport2Json(const FeatureReport *report);
   ~MatchingEngine();
 };
 

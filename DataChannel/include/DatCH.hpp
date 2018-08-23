@@ -19,7 +19,7 @@ public:
     DatCH_Data GenErrorMsg(DatCH_Data_error::error_enum code)
     {
         DatCH_Data error_data;
-        error_data.type = DatCH_DataType_error;
+        error_data.type = DatCH_Data::DataType_error;
         error_data.data.error.code = code;
         return error_data;
     }
@@ -29,9 +29,15 @@ public:
         this->callback_param = callback_param;
     }
 
-    virtual void* GetData()
+    virtual DatCH_Data GetData()
     {
-        return NULL;
+        return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
+    }
+
+
+    virtual DatCH_Data SendData(DatCH_Data)
+    {
+        return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
     }
 };
 

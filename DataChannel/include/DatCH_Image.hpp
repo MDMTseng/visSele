@@ -40,9 +40,13 @@ public:
         }
     }
 
-    void* GetData()
+    DatCH_Data GetData()
     {
-        return GetAcvImage();
+
+        DatCH_Data img_data;
+        img_data.type = DatCH_Data::DataType_BMP_Read;
+        img_data.data.BMP_Read.img = buffer;
+        return img_data;
     }
 
     acvImage* GetAcvImage()
@@ -67,10 +71,7 @@ public:
 
         if (callback != NULL)
         {
-            DatCH_Data img_data;
-            img_data.type = DatCH_DataType_BMP_Read;
-            img_data.data.BMP_Read.img = buffer;
-            callback(this, img_data, callback_param);
+            callback(this, GetData(), callback_param);
         }
         return buffer;
     }

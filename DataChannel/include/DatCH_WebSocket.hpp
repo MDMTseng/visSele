@@ -17,7 +17,8 @@ public:
     int runLoop(struct timeval *tv);
 
     int ws_callback(websock_data data, void* param);
-    int send(websock_data *packet);
+
+    DatCH_Data SendData(DatCH_Data) override;
 };
 
 

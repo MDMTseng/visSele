@@ -582,8 +582,7 @@ const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
 {
   report.type = FeatureReport::sig360_circle_line;
   //report.error = FeatureReport_sig360_circle_line::NONE;
-  report.data.sig360_circle_line.detectedCircles = &detectedCircles;
-  report.data.sig360_circle_line.detectedLines = &detectedLines;
+  report.data.sig360_circle_line.reports = &reports;
   return &report;
 }
 
@@ -594,11 +593,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
   straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
+
+
   tmp_signature.resize(feature_signature.size());
-
-  detectedCircles.resize(0);
-  detectedLines.resize(0);
-
+  reports.resize(0);
   int scanline_skip=15;
   extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid,scanline_skip);
 
@@ -637,9 +635,31 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   static vector<int> s_intersectIdxs;
   static vector<acv_XY> s_points;
   float sigma;
-  for (int i = 1; i < ldData.size(); i++)
+  int count = 0;
+
+  {
+      if(detectedCirclesPool.size()<ldData.size())
+      {
+        int oriSize = detectedCirclesPool.size();
+        detectedCirclesPool.resize(ldData.size());
+        detectedLinesPool.resize(ldData.size());
+
+        for(int i=oriSize;i<detectedCirclesPool.size();i++)
+        {
+          detectedLinesPool[i] = new vector<acv_LineFit>(0);
+          detectedCirclesPool[i] = new vector<acv_CircleFit>(0);
+        }
+
+
+      }
+  }
+
+
+  for (int i = 1; i < ldData.size(); i++,count++)
   {
       if(ldData[i].area<120)continue;
+
+
       acvContourCircleSignature(img, ldData[i], i, tmp_signature);
 
       bool isInv;
@@ -648,6 +668,29 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         &isInv, &angle);
 
       LOGV("======%d===er:%f,inv:%d,ang:%f",i,error,isInv,angle*180/3.14159);
+
+      FeatureReport_sig360_circle_line_single singleReport=
+      {
+          .detectedCircles=detectedCirclesPool[count],
+          .detectedLines=detectedLinesPool[count],
+          .LTBound=ldData[i].LTBound,
+          .RBBound=ldData[i].RBBound,
+          .Center=ldData[i].Center,
+          .area=ldData[i].area,
+          .rotate=angle,
+          .isFlipped=isInv,
+          .scale=1,
+          .targetName=NULL,
+      };
+      reports.push_back(singleReport);
+
+      vector<acv_CircleFit> &detectedCircles = *singleReport.detectedCircles;
+      vector<acv_LineFit> &detectedLines = *singleReport.detectedLines;
+
+
+      detectedCircles.resize(0);
+      detectedLines.resize(0);
+
 
       float cached_cos,cached_sin;
       //The angle we get from matching is current object rotates 'angle' to match target
@@ -737,7 +780,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
         acvFitLine(&s_points[0], s_points.size(),&line_cand,&sigma);
 
-
         //LOGV("Matched points:%d",s_points.size());
         acvDrawLine(buff,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
@@ -807,6 +849,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         hypot(cf.circle.circumcenter.X-center.X,cf.circle.circumcenter.Y-center.Y),
         cf.matching_pts);
 
+        detectedCircles.push_back(cf);
 
 
       }

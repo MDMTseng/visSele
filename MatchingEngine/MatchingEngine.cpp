@@ -3,6 +3,17 @@
 #include "FeatureManager_platingCheck.h"
 #include "logctrl.h"
 
+int MatchingEngine::ResetFeature()
+{
+  for(int i=0;i<featureBundle.size() ;i++)
+  {
+    delete(featureBundle[i]);
+  }
+  featureBundle.resize(0);
+  return 0;
+}
+
+
 int MatchingEngine::AddMatchingFeature(FeatureManager *featureSet)
 {
   if(featureSet!=NULL)
@@ -102,8 +113,31 @@ cJSON* acv_CircleFitVector2JSON(const vector< acv_CircleFit> &vec)
 }
 
 
+cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig360_circle_line_single report )
+{
+  cJSON* report_jobj = cJSON_CreateObject();
+  cJSON_AddNumberToObject(report_jobj, "area", report.area);
+  cJSON_AddNumberToObject(report_jobj, "scale", report.scale);
+  cJSON_AddStringToObject(report_jobj, "targetName", report.targetName);
+  cJSON_AddNumberToObject(report_jobj, "cx", report.Center.X);
+  cJSON_AddNumberToObject(report_jobj, "cy", report.Center.Y);
+  cJSON_AddNumberToObject(report_jobj, "rotate", report.rotate);
+  cJSON_AddBoolToObject(report_jobj, "isFlipped", report.isFlipped);
+
+
+  const vector<acv_CircleFit> &detectedCircle = *report.detectedCircles;
+  cJSON_AddItemToObject(report_jobj,"detectedCircles",
+    acv_CircleFitVector2JSON(detectedCircle));
+
+  const vector<acv_LineFit> &detectedLines =*report.detectedLines;
+  cJSON_AddItemToObject(report_jobj,"detectedLines",
+    acv_LineFitVector2JSON(detectedLines));
+
+  return report_jobj;
+}
+
 cJSON* MatchingReport2JSON(const FeatureReport *report )
-{    
+{
 
   if(report==NULL)
   {
@@ -168,17 +202,19 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     case FeatureReport::sig360_circle_line:
     {
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_sig360_circle_line::GetFeatureTypeName());
-      const vector<acv_CircleFit> *detectedCircle = 
-      report->data.sig360_circle_line.detectedCircles;
 
-      cJSON_AddItemToObject(report_jobj,"detectedCircles",
-        acv_CircleFitVector2JSON(*detectedCircle));
+      vector<FeatureReport_sig360_circle_line_single> &scl_reports =
+        *report->data.sig360_circle_line.reports;
 
-      const vector<acv_LineFit> *detectedLines = 
-      report->data.sig360_circle_line.detectedLines;
+      cJSON* reports_jarr = cJSON_CreateArray();
+      cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
+      for(int i=0;i<scl_reports.size();i++)
+      {
 
-      cJSON_AddItemToObject(report_jobj,"detectedLines",
-        acv_LineFitVector2JSON(*detectedLines));
+        cJSON_AddItemToArray(reports_jarr,
+            acv_FeatureReport_sig360_circle_line_single2JSON(scl_reports[i]));
+
+      }
 
     }
     break;
@@ -197,38 +233,25 @@ int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
   for(int i=0;i<featureBundle.size();i++)
   {
     featureBundle[i]->FeatureMatching(img,buff,dbg);
-    const FeatureReport *report = featureBundle[i]->GetReport();
-    if(report==NULL)
-    {
-      continue;
-    }
-
-    cJSON* jobj = MatchingReport2JSON(report);
-    char * jstr  = cJSON_Print(jobj);
-
-    LOGI("...\n%s\n...",jstr);
-    cJSON_Delete(jobj);
-    delete jstr;
-
-    /*if(report->type == FeatureReport::binary_processing_group)
-    {
-      const vector<acv_LabeledData> *ldata = 
-      report->data.binary_processing_group.labeledData;
-      for(int j=0;j<ldata->size();j++)
-      {
-        LOGE("iTem[%d]: area:%d",j,(*ldata)[j].area);
-      }
-    }*/
   }
 
   return 0;
 }
 
+
+const FeatureReport * MatchingEngine::GetReport()
+{
+  //TODO: ONLY one report wil be generated...
+  return featureBundle[0]->GetReport();
+
+}
+
+cJSON *MatchingEngine::FeatureReport2Json(const FeatureReport *report)
+{
+  return MatchingReport2JSON(report);
+}
+
 MatchingEngine::~MatchingEngine()
 {
-  for(int i=0;i<featureBundle.size() ;i++)
-  {
-    delete(featureBundle[i]);
-  }
-  featureBundle.resize(0);
+  ResetFeature();
 }
