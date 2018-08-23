@@ -13,6 +13,7 @@ typedef struct DatCH_Data_error
         FILE_READ_FAILED,
         UNKNOWN_FILE_NAME,
         NOT_SUPPORTED,
+        SEND_ERROR,
     } code;
 
 };
@@ -26,7 +27,7 @@ typedef struct BPG_data;
 
 typedef struct DatCH_Data
 {
-    enum{
+    enum TYPE{
       DataType_NULL,
       DataType_ACK,
       DataType_NAK,
@@ -34,6 +35,7 @@ typedef struct DatCH_Data
       DataType_raw,
       DataType_BMP_Read,
       DataType_websock_data,
+      DataType_BPG,
       DataType_END,
     } type;
     union data
@@ -42,6 +44,7 @@ typedef struct DatCH_Data
         DatCH_Data_error error;
         DatCH_Data_BMP_Read BMP_Read;
         websock_data* p_websocket;
+        BPG_data* p_BPG_data;
     } data;
 } DatCH_Data;
 

@@ -76,7 +76,7 @@ int ws_server::ws_callback(websock_data data, void* param)
 
     printf("peer %s:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
-    
+
   }
   return 0;
 }
@@ -543,24 +543,31 @@ int ws_conn::send_pkt(websock_data *packet)
         return 0;
     }
 
-    if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME 
-        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME 
+    if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME
+        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME
         && frameType!=WS_CONT_FRAME )
         return -3;
 
+    return send_pkt(packet->data.data_frame.raw, packet->data.data_frame.rawL
+      ,frameType,packet->data.data_frame.isFinal);
+}
+
+int ws_conn::send_pkt(const uint8_t *packet, size_t pkt_size,int type,bool isFinal)
+{
     size_t frameSize=sendBuf.size();
 
     int saveSpaceMargin=150;
-    if(frameSize < packet->data.data_frame.rawL+saveSpaceMargin)
+    if(frameSize < pkt_size+saveSpaceMargin)
     {
-        int tmp = (packet->data.data_frame.rawL+saveSpaceMargin - frameSize)/recvBufSizeInc;
-        
+        int tmp = (pkt_size+saveSpaceMargin - frameSize)/recvBufSizeInc;
+
         sendBuf.resize(frameSize + (tmp+1)*recvBufSizeInc);
         frameSize=sendBuf.size();
     }
 
-    int ret = wsMakeFrame2(packet->data.data_frame.raw, packet->data.data_frame.rawL, 
-        &(sendBuf[0]), &frameSize, frameType,packet->data.data_frame.isFinal);
+
+    int ret = wsMakeFrame2(packet, pkt_size,
+        &(sendBuf[0]), &frameSize, (enum wsFrameType)type,isFinal);
     if(ret)
     {
       printf("wsMakeFrame2 error:%d\n",ret);

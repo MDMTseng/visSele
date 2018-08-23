@@ -312,7 +312,9 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
   switch(ws_data.type)
   {
       case websock_data::eventType::OPENING:
-
+          if(ws->default_peer == NULL){
+            ws->default_peer = ws_data.peer;
+          }
           printf("OPENING peer %s:%d\n",
              inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
 
@@ -338,10 +340,21 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
             {
               cJSON* jobj = matchingEng.FeatureReport2Json(report);
               char * jstr  = cJSON_Print(jobj);
-              LOGI("...\n%s\n...",jstr);
               cJSON_Delete(jobj);
+              LOGI("...\n%s\n...",jstr);
+              DatCH_Data ret = ws->SendData(jstr,strlen(jstr));
               delete jstr;
+              if(ret.type!=DatCH_Data::DataType_ACK)
+              {
+                if(ret.type==DatCH_Data::DataType_error)
+                {
+                  LOGI("...\nERROR:%d....\n...",ret.data.error.code);
+                }
+                break;
+              }
             }
+            break;
+
 
 
 

@@ -37,6 +37,7 @@ typedef struct websock_data
         ERROR,
     } type;
 
+    int sock;
     ws_conn_data* peer;
     union content
     {

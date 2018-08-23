@@ -23,6 +23,16 @@ public:
         error_data.data.error.code = code;
         return error_data;
     }
+
+
+    DatCH_Data GenMsgType(DatCH_Data::TYPE type)
+    {
+        DatCH_Data data;
+        data.type = type;
+        data.data.raw = NULL;
+        return data;
+    }
+
     void SetEventCallBack(DatCH_Event_callback callback, void* callback_param)
     {
         this->callback = callback;
@@ -33,7 +43,11 @@ public:
     {
         return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
     }
-
+    
+    virtual DatCH_Data SendData(void* data, size_t dataL)
+    {
+        return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
+    }
 
     virtual DatCH_Data SendData(DatCH_Data)
     {
