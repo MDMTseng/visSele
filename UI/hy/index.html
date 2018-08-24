@@ -58,13 +58,15 @@
       <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="false" data-icon="cloud">
         <h4>放大檢視區 <div style="display:inline;" id="checkAreaTitle2"></div></h4>
         
-        <div class="ui-grid-a">
-          <!-- <div class="ui-block-a"><input type="button" id="plus" value="+"></div> -->
-          <div class="ui-block-a" style="float: left; min-width:500px; max-width:500px; border: 1px solid white;" >
+
+
+        <div style="clear: both;">
+          <div data-inline="true" style="float: left; min-width:500px; max-width:500px; border: 1px solid white;" >
             <canvas id="canvas3" ></canvas>
           </div>
-          <div class="ui-block-b" style="float: left;  " >
-            <div data-role="tabs" id="tabs">
+
+          <div data-inline="true" style="float: left; width: calc(100% - 550px); margin-left: 10px;border: 0px solid darkgray;" >
+            <div data-role="tabs" id="tabs" >
               <div data-role="navbar">
                 <ul>
                   <li><a href="#tabs-1">特徵關係</a></li>
@@ -73,25 +75,29 @@
                   
                 </ul>
               </div>
-              <div id="tabs-1" >
+              <div id="tabs-1" style="background-color: white; color:black; text-shadow: none;">
               <table id="table_id1" class="display" ></table>
             </div>
             
             <div id="tabs-2">
               <div id="jstreeX"></div>
             </div>
-            <div id="tabs-3" style="background-color: white;"><div id="json"></div>
+            <div id="tabs-3" style="background-color: white; "><div id="json"></div>
           </div>
           <div id="tabs-4">
           </div>
         </div>
-        </div><!-- b -->
-      </div>
-      <div class="ui-grid-solo">
-        <div class="ui-block-a">
-          <button type="v" data-theme="b">重新檢查(ReCheck)</button>
+          </div>
+
         </div>
-      </div>
+        
+
+
+
+      
+          <button type="v" data-theme="b">重新檢查(ReCheck)</button>
+        
+    
       <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
         <h4>位移 旋轉 控制 <div style="display:inline;" id="controlAreaTitle"></div></h4>
         <div id="buttonWrapper" style="text-align: center;">

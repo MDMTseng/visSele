@@ -1,25 +1,37 @@
 var dataSet = [
-	["1", "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
-	["1", "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
-	["1", "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
-	["1", "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"]
+	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
+	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
+	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
+	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"]
 ];
 
 function initDataTables() {
-	console.log(RXMSG_temp3.reports[0]);
+
+	// dataSet = JSON.parse(RXMSG_temp3_json);
+	// // rx_array.dataSet
+	// // var dataSet = Object.values(RXMSG_temp3.reports[0].reports[0]);
+
+	
+	
+	
+	// dataSet=dataSet.reports[0].reports[0];
+	console.log(dataSet);
 	$('#table_id1').DataTable({
-		"data": dataSet,
-		"searching": false,
+		
+		"searching": true,
 		"ordering": true,
-		"paging": false,
+		"paging": true,
 		"data":dataSet,
 		"hover":"#f00",
-		 columns: [
-            { title: "Name" },
-            { title: "Position" },
-            { title: "CXY" },
-            { title: "Extn." }
-            
+		 "columns": [
+            { title: "area" },
+            { title: "scale" },
+            { title: "cx" },
+            { title: "cy" },
+            { title: "detectedCircles" },
+            { title: "detectedLines" },
+            { title: "isFlipped" },
+            { title: "rotate" }            
            ]
 
 		// "data": RXMSG_temp3.reports[0],

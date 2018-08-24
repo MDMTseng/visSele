@@ -47,7 +47,7 @@ function initTreejs(){
     ]
 } });
     console.log('initTreejs(2)');
-    console.log(RXMSG_temp3_json);
+    // console.log(RXMSG_temp3_json);
     
 }
 function timeInterval33() {

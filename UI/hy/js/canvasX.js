@@ -53,7 +53,7 @@ function init_CanvasX() {
 	canvas3.height = allW;
 	
 	
-	console.log(RXJS);
+	// console.log(RXJS);
 	
 }
 

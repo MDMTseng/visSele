@@ -280,42 +280,54 @@ height: 80vw;
 
 /*  datatable   */
 
-.ex_highlight #table_id1 tbody tr.even:hover, #table_id1 tbody tr.even td.highlighted {
+
+
+/*table.display{
+    color: black;
+    text-shadow: none;
+
+}
+table.display{
+    color: black;
+    text-shadow: none;
+}*/
+
+table.display tbody tr.even:hover, #table_id1 tbody tr.even td.highlighted {
     background-color: #ECFFB3;
 }
 
-.ex_highlight #table_id1 tbody tr.odd:hover, #table_id1 tbody tr.odd td.highlighted {
+table.display tbody tr.odd:hover, #table_id1 tbody tr.odd td.highlighted {
     background-color: #E6FF99;
 }
 
-.ex_highlight_row #table_id1 tr.even:hover {
+table.display tr.even:hover {
     background-color: #ECFFB3;
 }
 
-.ex_highlight_row #table_id1 tr.even:hover td.sorting_1 {
+table.display tr.even:hover td.sorting_1 {
     background-color: #DDFF75;
 }
 
-.ex_highlight_row #table_id1 tr.even:hover td.sorting_2 {
+table.display tr.even:hover td.sorting_2 {
     background-color: #E7FF9E;
 }
 
-.ex_highlight_row #table_id1 tr.even:hover td.sorting_3 {
+table.display tr.even:hover td.sorting_3 {
     background-color: #E2FF89;
 }
 
-.ex_highlight_row #table_id1 tr.odd:hover {
+table.display tr.odd:hover {
     background-color: #E6FF99;
 }
 
-.ex_highlight_row #table_id1 tr.odd:hover td.sorting_1 {
+table.display tr.odd:hover td.sorting_1 {
     background-color: #D6FF5C;
 }
 
-.ex_highlight_row #table_id1 tr.odd:hover td.sorting_2 {
+table.display tr.odd:hover td.sorting_2 {
     background-color: #E0FF84;
 }
 
-.ex_highlight_row #table_id1 tr.odd:hover td.sorting_3 {
+table.display tr.odd:hover td.sorting_3 {
     background-color: #DBFF70;
 }
