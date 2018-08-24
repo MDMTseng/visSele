@@ -278,66 +278,44 @@ height: 80vw;
 }
 
 
-/*after is for table*/
-.th-groups th {
-    text-align: center;
-    background-color: rgba(0,0,0,.1);
-    border-right: 1px solid #fff;
+/*  datatable   */
+
+.ex_highlight #table_id1 tbody tr.even:hover, #table_id1 tbody tr.even td.highlighted {
+    background-color: #ECFFB3;
 }
-.th-groups th.totals {
-    background-color: rgba(0,0,0,.5);
-    color: #fff;
-    text-shadow: none;
+
+.ex_highlight #table_id1 tbody tr.odd:hover, #table_id1 tbody tr.odd td.highlighted {
+    background-color: #E6FF99;
 }
-/* Show priority 1 at 320px (20em x 16px) */
-@media screen and (min-width: 20em) {
-    th.ui-table-priority-1,
-    td.ui-table-priority-1 {
-        display: table-cell;
-    }
+
+.ex_highlight_row #table_id1 tr.even:hover {
+    background-color: #ECFFB3;
 }
-/* Show priority 2 at 480px (30em x 16px) */
-@media screen and (min-width: 30em) {
-    th.ui-table-priority-2,
-    td.ui-table-priority-2 {
-        display: table-cell;
-    }
+
+.ex_highlight_row #table_id1 tr.even:hover td.sorting_1 {
+    background-color: #DDFF75;
 }
-/* Show priority 3 at 640px (40em x 16px) */
-@media screen and (min-width: 40em) {
-    th.ui-table-priority-3,
-    td.ui-table-priority-3 {
-        display: table-cell;
-    }
+
+.ex_highlight_row #table_id1 tr.even:hover td.sorting_2 {
+    background-color: #E7FF9E;
 }
-/* Show priority 4 at 800px (50em x 16px) */
-@media screen and (min-width: 50em) {
-    th.ui-table-priority-4,
-    td.ui-table-priority-4 {
-        display: table-cell;
-    }
+
+.ex_highlight_row #table_id1 tr.even:hover td.sorting_3 {
+    background-color: #E2FF89;
 }
-/* Show priority 5 at 960px (60em x 16px) */
-@media screen and (min-width: 60em) {
-    th.ui-table-priority-5,
-    td.ui-table-priority-5 {
-        display: table-cell;
-    }
+
+.ex_highlight_row #table_id1 tr.odd:hover {
+    background-color: #E6FF99;
 }
-/* Show priority 6 at 1200 (75em x 16px) */
-@media screen and (min-width: 75em) {
-    th.ui-table-priority-6,
-    td.ui-table-priority-6 {
-        display: table-cell;
-    }
+
+.ex_highlight_row #table_id1 tr.odd:hover td.sorting_1 {
+    background-color: #D6FF5C;
 }
-/* Manually hidden */
-th.ui-table-cell-hidden,
-td.ui-table-cell-hidden {
-    display: none;
+
+.ex_highlight_row #table_id1 tr.odd:hover td.sorting_2 {
+    background-color: #E0FF84;
 }
-/* Manually shown */
-th.ui-table-cell-visible,
-td.ui-table-cell-visible {
-    display: table-cell;
+
+.ex_highlight_row #table_id1 tr.odd:hover td.sorting_3 {
+    background-color: #DBFF70;
 }
