@@ -14,6 +14,7 @@ typedef struct DatCH_Data_error
         UNKNOWN_FILE_NAME,
         NOT_SUPPORTED,
         SEND_ERROR,
+        NO_CALLBACK_ERROR,
     } code;
 
 };

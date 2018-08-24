@@ -53,12 +53,12 @@ int ws_server::findMaxFd()
 {
     int max = listenSocket;
 
-    std::vector <ws_conn>* servers = ws_conn_pool.getServers();
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
     for (int i = 0; i < (*servers).size(); i++)
     {
-        if ((*servers)[i].isOccupied() && (*servers)[i].getSocket() > max)
+        if ((*servers)[i]->isOccupied() && (*servers)[i]->getSocket() > max)
         {
-            max = (*servers)[i].getSocket();
+            max = (*servers)[i]->getSocket();
         }
     }
 
@@ -122,16 +122,16 @@ int ws_server::runLoop(struct timeval *tv)
     }
     else
     {
-        std::vector <ws_conn>* servers = ws_conn_pool.getServers();
+        std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
         bool evt_trigger = false;
         for (int i = 0; i < (*servers).size(); i++)
         {
-            if ((*servers)[i].isOccupied() && FD_ISSET((*servers)[i].getSocket(), &read_fds))
+            if ((*servers)[i]->isOccupied() && FD_ISSET((*servers)[i]->getSocket(), &read_fds))
             {
                 evt_trigger = true;
-                int fd = (*servers)[i].getSocket();
-                (*servers)[i].runLoop();
-                if (!(*servers)[i].isOccupied())
+                int fd = (*servers)[i]->getSocket();
+                (*servers)[i]->runLoop();
+                if (!(*servers)[i]->isOccupied())
                 {
                     printf("List size %d\n", ws_conn_pool.size());
                     FD_CLR(fd, &evtSet);
@@ -166,13 +166,13 @@ ws_conn *ws_conn_entity_pool::find(int sock)
 {
     for (int i = 0; i < ws_conn_set.size(); i++)
     {
-        if (ws_conn_set[i].getSocket() == sock)
-            return &(ws_conn_set[i]);
+        if (ws_conn_set[i]->getSocket() == sock)
+            return (ws_conn_set[i]);
     }
     return NULL;
 }
 
-std::vector <ws_conn>* ws_conn_entity_pool::getServers()
+std::vector <ws_conn*>* ws_conn_entity_pool::getServers()
 {
     return &ws_conn_set;
 }
@@ -192,13 +192,12 @@ ws_conn *ws_conn_entity_pool::find_avaliable_conn_info_slot()
 {
     for (int i = 0; i < ws_conn_set.size(); i++)
     {
-        if (!ws_conn_set[i].isOccupied())
-            return &(ws_conn_set[i]);
+        if (!ws_conn_set[i]->isOccupied())
+            return (ws_conn_set[i]);
     }
-    ws_conn empty;
-    ws_conn_set.push_back(empty);
+    ws_conn_set.push_back(new ws_conn());
 
-    return &(ws_conn_set[ws_conn_set.size() - 1]);
+    return (ws_conn_set[ws_conn_set.size() - 1]);
 }
 
 ws_conn* ws_conn_entity_pool::add(ws_conn *info)
@@ -221,7 +220,7 @@ int ws_conn_entity_pool::size()
     int len = 0;
     for (int i = 0; i < ws_conn_set.size(); i++)
     {
-        if (ws_conn_set[i].isOccupied())
+        if (ws_conn_set[i]->isOccupied())
         {
             len++;
         }

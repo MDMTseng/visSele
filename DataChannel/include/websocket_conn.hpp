@@ -37,7 +37,6 @@ typedef struct websock_data
         ERROR,
     } type;
 
-    int sock;
     ws_conn_data* peer;
     union content
     {
@@ -93,16 +92,16 @@ public:
         return sock;
     }
 
-    struct sockaddr_in getAddr()
+    struct sockaddr_in getAddr () const
     {
         return addr;
     }
 
-    bool isOccupied()
+    bool isOccupied () const
     {
         return sock != -1;
     }
-    const char* getResource()
+    const char* getResource () const
     {
         return resource;
     }

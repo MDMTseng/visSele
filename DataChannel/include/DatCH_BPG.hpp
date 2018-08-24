@@ -8,7 +8,7 @@
 
 typedef struct BPG_data
 {
-    char type[2];//Two letter
+    char tl[2];//Two letter
     uint8_t prop;
     uint32_t size;//32bit
     uint8_t*     raw;
@@ -32,6 +32,8 @@ public:
     }
     //DatCH_Data SendData(DatCH_Data) override;
     virtual DatCH_Data SendHR()=0;
+    virtual int MatchPeer(const ws_conn_data* ext_peer)=0;
+    virtual DatCH_Data Process_websock_data(websock_data* p_websocket)=0;
 };
 
 
@@ -43,7 +45,7 @@ class DatCH_BPG1_0: public DatCH_BPG
       BPG_OPERATIONAL,
       BPG_END,
     }state;
-    ws_conn_data *conn;
+    ws_conn_data *peer;
 protected:
     void RESET(ws_conn_data *conn);
 public:
@@ -51,7 +53,9 @@ public:
     ~DatCH_BPG1_0();
     //DatCH_Data SendData(DatCH_Data) override;
     DatCH_Data SendHR();
-
+    DatCH_Data SendData(DatCH_Data);
+    int MatchPeer(const ws_conn_data* ext_peer);
+    DatCH_Data Process_websock_data(websock_data* p_websocket);
 };
 
 

@@ -58,15 +58,14 @@ public:
 
 class ws_conn_entity_pool {
 
-    std::vector <ws_conn> ws_conn_set;
+    std::vector <ws_conn*> ws_conn_set;
 
 public:
     ws_conn *find(int sock);
 
-    std::vector <ws_conn>* getServers();
+    std::vector <ws_conn*>* getServers();
 
     int remove(int sock);
-
 
     ws_conn *find_avaliable_conn_info_slot();
 

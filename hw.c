@@ -16,10 +16,12 @@
 #include "common_lib.h"
 #include "DatCH_Image.hpp"
 #include "DatCH_WebSocket.hpp"
+#include "DatCH_BPG.hpp"
 
 
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
+DatCH_BPG1_0 *BPG_protocol;
 MatchingEngine matchingEng;
 char* ReadFile(char *filename);
 
@@ -310,6 +312,17 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
   DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
   LOGI(">>>>%p\n",ws);
   websock_data ws_data = *data.data.p_websocket;
+  if(BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer))
+  {
+    BPG_protocol->Process_websock_data(&ws_data);
+  }
+  else
+  {
+    LOGI("No available slot....\n");
+  }
+
+  return 0;
+
   switch(ws_data.type)
   {
       case websock_data::eventType::OPENING:
@@ -469,6 +482,11 @@ public:
         case DatCH_Data::DataType_websock_data:
           return DatCH_WS_callback(from, data, callback_param);
         break;
+
+
+        case DatCH_Data::DataType_BPG:
+          LOGI("%s:DataType_BPG>>>>>>>>>", __func__);
+        break;
         default:
 
           LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
@@ -566,6 +584,8 @@ int main(int argc, char** argv)
 
   test1_buff = new acvImage();
   imgSrc_X = new DatCH_BMP(new acvImage());
+  BPG_protocol = new DatCH_BPG1_0(NULL);
+  BPG_protocol->SetEventCallBack(&callbk_obj,NULL);
   return mainLoop();
   int seed = time(NULL);
   srand(seed);
