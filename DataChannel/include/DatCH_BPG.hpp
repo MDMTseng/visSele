@@ -4,6 +4,8 @@
 #include <DatCH.hpp>
 #include <string>
 
+#include "DatCH_WebSocket.hpp"
+
 typedef struct BPG_data
 {
     char type[2];//Two letter
@@ -27,30 +29,29 @@ public:
     }
     ~DatCH_BPG()
     {
-
     }
     //DatCH_Data SendData(DatCH_Data) override;
-    DatCH_Data SendHR()
-    {
-        /*data.type = DatCH_Data::DataType_BPG;
-        data.data.p_BPG_data =
-        if (callback != NULL)
-        {
-            callback(this, data, callback_param);
-        }
-        return data;*/
-    }
+    virtual DatCH_Data SendHR()=0;
 };
 
 
 class DatCH_BPG1_0: public DatCH_BPG
 {
+    enum{
+      BPG_INIT,
+      BPG_HANDSHAKE,
+      BPG_OPERATIONAL,
+      BPG_END,
+    }state;
+    ws_conn_data *conn;
 protected:
+    void RESET(ws_conn_data *conn);
 public:
-    DatCH_BPG1_0();
+    DatCH_BPG1_0(ws_conn_data *conn);
     ~DatCH_BPG1_0();
     //DatCH_Data SendData(DatCH_Data) override;
     DatCH_Data SendHR();
+
 };
 
 

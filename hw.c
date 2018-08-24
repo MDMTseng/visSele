@@ -303,6 +303,7 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 
 }
 
+
 int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
 {
   if(data.type!=DatCH_Data::DataType_websock_data)return -1;
@@ -336,7 +337,7 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 
             const FeatureReport * report = matchingEng.GetReport();
 
-            if(report!=NULL)
+            if(false && report!=NULL)
             {
               cJSON* jobj = matchingEng.FeatureReport2Json(report);
               char * jstr  = cJSON_Print(jobj);
@@ -353,7 +354,6 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
                 break;
               }
             }
-            break;
 
 
 
@@ -436,34 +436,47 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
              inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
 
       break;
+      default:
+        return -1;
   }
+  return 0;
 
 }
 
-int DatCH_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
+class DatCH_CallBack_T : public DatCH_CallBack
 {
-  LOGI("%s_______type:%d________", __func__,data.type);
-
-  switch(data.type)
+public:
+  int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
-    case DatCH_Data::DataType_error:
-    {
-      LOGE("%s: error code:%d..........", __func__,data.data.error.code);
-    }
-    break;
-    case DatCH_Data::DataType_BMP_Read:
-    {
 
-      acvImage *test1 = data.data.BMP_Read.img;
+      LOGI("%s_______type:%d________", __func__,data.type);
+      switch(data.type)
+      {
+        case DatCH_Data::DataType_error:
+        {
+          LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+        }
+        break;
+        case DatCH_Data::DataType_BMP_Read:
+        {
 
-      ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
-    }
-    break;
-    default:
+          acvImage *test1 = data.data.BMP_Read.img;
 
-      LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+          ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
+        }
+        break;
+
+        case DatCH_Data::DataType_websock_data:
+          return DatCH_WS_callback(from, data, callback_param);
+        break;
+        default:
+
+          LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+      }
+      return 0;
   }
-}
+};
+DatCH_CallBack_T callbk_obj;
 
 int testX(int repeatTime)
 {
@@ -472,7 +485,7 @@ int testX(int repeatTime)
   acvImage *test1 = new acvImage();
   DatCH_BMP imgSrc1(test1);
   if(doCallbackStyle)
-    imgSrc1.SetEventCallBack(DatCH_callback,NULL);
+    imgSrc1.SetEventCallBack(&callbk_obj,NULL);
   imgSrc1.SetFileName("data/test1.bmp");
   if(!doCallbackStyle)
   {
@@ -521,7 +534,7 @@ int mainLoop()
   websocket =new DatCH_WebSocket(4090);
   acvImage *test1 = new acvImage();
 
-  websocket->SetEventCallBack(DatCH_WS_callback,websocket);
+  websocket->SetEventCallBack(&callbk_obj,websocket);
   while(1)
   {
       websocket->runLoop(NULL);

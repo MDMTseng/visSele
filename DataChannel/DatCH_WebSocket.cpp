@@ -27,12 +27,12 @@ int DatCH_WebSocket::ws_callback(websock_data data, void* param)
     }
 
 
-    if(callback)
+    if(cb_obj)
     {
         DatCH_Data ws_data;
         ws_data.type = DatCH_Data::DataType_websock_data;
         ws_data.data.p_websocket = &data;
-        callback(this, ws_data, callback_param);
+        cb_obj->callback(this, ws_data, callback_param);
     }
     return 0;
 }

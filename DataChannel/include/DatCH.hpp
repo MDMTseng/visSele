@@ -3,15 +3,24 @@
 
 #include <DatCH_structs.hpp>
 
-class DatCH_Interface
+class DatCH_CallBack
+{
+public:
+  virtual int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
+  {
+      return 0;
+  }
+};
+
+class DatCH_Interface: public DatCH_CallBack
 {
 protected:
-    DatCH_Event_callback callback;
+    DatCH_CallBack* cb_obj;
     void* callback_param;
 public:
     DatCH_Interface()
     {
-        callback = NULL;
+        cb_obj = NULL;
         callback_param = NULL;
     }
 
@@ -33,9 +42,9 @@ public:
         return data;
     }
 
-    void SetEventCallBack(DatCH_Event_callback callback, void* callback_param)
+    void SetEventCallBack(DatCH_CallBack *callback_obj, void* callback_param)
     {
-        this->callback = callback;
+        this->cb_obj = callback_obj;
         this->callback_param = callback_param;
     }
 
@@ -43,7 +52,7 @@ public:
     {
         return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
     }
-    
+
     virtual DatCH_Data SendData(void* data, size_t dataL)
     {
         return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
