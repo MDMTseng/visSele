@@ -1,50 +1,60 @@
-var dataSet = [
+var dataSet2 = [
 	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
 	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
 	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
 	[1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"]
 ];
-
+var rirle=['a','a','a','a','a','a'];
+function preprocData(dataIn){
+   var dataOut = [];
+   for(id in dataIn){
+      if(dataIn.hasOwnProperty(id)){         
+         dataOut.push(dataIn[id]);
+         dataOut[dataOut.length - 1].Id = id;
+      }
+   }
+   return dataOut;
+}
 function initDataTables() {
 
-	// dataSet = JSON.parse(RXMSG_temp3_json);
+	dataSet = JSON.parse(RXMSG_temp3_json);
 	// // rx_array.dataSet
 	// // var dataSet = Object.values(RXMSG_temp3.reports[0].reports[0]);
 
 	
 	
 	
-	// dataSet=dataSet.reports[0].reports[0];
+	dataSet=dataSet.reports[0].reports;
 	console.log(dataSet);
-	$('#table_id1').DataTable({
-		
+	// dataSet= preprocData(dataSet);
+	// console.log(dataSet);
+	
+
+
+	
+	var dTables=$('#table_id1').DataTable({
+		"scrollX": "200px",
+  "scrollCollapse": true,
+		"autoWidth": true,
 		"searching": true,
 		"ordering": true,
 		"paging": true,
 		"data":dataSet,
-		"hover":"#f00",
-		 "columns": [
-            { title: "area" },
-            { title: "scale" },
-            { title: "cx" },
-            { title: "cy" },
-            { title: "detectedCircles" },
-            { title: "detectedLines" },
-            { title: "isFlipped" },
-            { title: "rotate" }            
-           ]
+		columns: [
+            // { data: "Id", title: "Id" },
+            { data: "area", title: "area" },
+            { data: "scale", title: "scale" },
+            { data: "cx", title: "cx" },
+            { data: "cy", title: "cy" },
+        
 
-		// "data": RXMSG_temp3.reports[0],
-		// "columns": [{
-		// 	data: "area"
-		// }, {
-		// 	data: "cx"
-		// }, {
-		// 	data: "cy"
-		// }, {
-		// 	data: "scale"
-		// }]
+            { data: "isFlipped", title: "isFlipped" },
+            { data: "rotate", title: "rotate" }
+
+        ]
+		 
 	});
+	console.log(dTables);
 }
 
 function initTabulator() {
