@@ -1,28 +1,26 @@
 // var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-var WS_URI = "ws://LOCALHOST:4090/xlinx";
+var WS_URI = "ws://192.168.168.249:40901/xlinx";
 var output;
 var clientIP = "x.x.x.x";
 var TX_SERIAL = 0;
-$(document).ready(function() {
-    console.log("[ws.js][init]");
-    var APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
-    $.getJSON(APIurl).done(function(data) {
-        clientIP = data.ip;
-        // console.log("clientIP1=" + clientIP);
-    });
-    init_WSocket();
-    init_CanvasX();
-    init_drawCanvas();
-});
+var reconnectTimes=3;
+var RAW_I_DATA;
+var requireNewRAW=true;
 
+function setWSaddress(ip){
+    WS_URI = "ws://"+ip+":4090/xlinx";
+}
 function init_WSocket() {
-
+    console.log("Trying Re-Connect w/times="+reconnectTimes);
+    reconnectTimes--;
+    if(reconnectTimes<=0)return;
 
     try {
         websocket = new WebSocket(WS_URI);
         websocket.binaryType = "arraybuffer";
     } catch (err) {
         document.getElementById("output").innerHTML = err.message;
+
     }
 
 
@@ -59,8 +57,7 @@ function onClose(evt) {
 // console.log(arrayBuffer);
 // const blob = new Blob([arrayBuffer]);
 // console.log(blob);
-var RAW_I_DATA;
-var requireNewRAW=true;
+
 function onMessage(evt) {
     // var Gray = (R*38 + G*75 + B*15) >> 7;
     // console.log(evt);
@@ -84,7 +81,7 @@ function onMessage(evt) {
         //     dataArray^= 0xff;
         // }
         RAW_I_DATA = new ImageData(dataArray, RAW_WIDTH);
-        doSendWS("PING","haha");
+        // doSendWS("PING","haha");
         // var dataArray = new Uint8ClampedArray(evt.data,11,600*150*4);
         // RAW_I_DATA = new ImageData(dataArray,150);
 

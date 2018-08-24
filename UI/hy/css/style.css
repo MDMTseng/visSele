@@ -277,3 +277,57 @@ height: 80vw;
 */
 }
 
+
+/*  datatable   */
+
+
+
+/*table.display{
+    color: black;
+    text-shadow: none;
+
+}
+table.display{
+    color: black;
+    text-shadow: none;
+}*/
+
+table.display tbody tr.even:hover, #table_id1 tbody tr.even td.highlighted {
+    background-color: #ECFFB3;
+}
+
+table.display tbody tr.odd:hover, #table_id1 tbody tr.odd td.highlighted {
+    background-color: #E6FF99;
+}
+
+table.display tr.even:hover {
+    background-color: #ECFFB3;
+}
+
+table.display tr.even:hover td.sorting_1 {
+    background-color: #DDFF75;
+}
+
+table.display tr.even:hover td.sorting_2 {
+    background-color: #E7FF9E;
+}
+
+table.display tr.even:hover td.sorting_3 {
+    background-color: #E2FF89;
+}
+
+table.display tr.odd:hover {
+    background-color: #E6FF99;
+}
+
+table.display tr.odd:hover td.sorting_1 {
+    background-color: #D6FF5C;
+}
+
+table.display tr.odd:hover td.sorting_2 {
+    background-color: #E0FF84;
+}
+
+table.display tr.odd:hover td.sorting_3 {
+    background-color: #DBFF70;
+}

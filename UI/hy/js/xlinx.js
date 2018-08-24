@@ -29,10 +29,7 @@ function VA(currt, newV, speed) {
     return speed * newV + (currt * (1 - speed));
 }
 
-function timeInterval33() {
-    drawX();
 
-}
 function degreesToRadians (degrees) {
    return degrees * (Math.PI/180);     
 }
@@ -40,18 +37,7 @@ function degreesToRadians (degrees) {
 function radiansToDegrees (radians) {
    return radians * (180/Math.PI);
 }
-function timeInterval1000() {
-    console.log("[INFO][HB][1000ms][IP]="+clientIP+"[WS]="+WS_URI);
-    // doSendWS("test","mmmsssggg");
-    // $('#checkAreaTitle').html(new Date());
-    // var text=$("#textareaX").val();
-    // console.log("[DEBUG] textareaX="+ text);
-    // doSendWS("from_mobile",text);
-    // $("#output").append(" [T]"+new Date().getMilliseconds());
-    // window.ctx.update();
-    // $("#sync1").css("animation-name") == "G2R_keyframe";
-    // $("#sync1").toggle();
-}
+
 
 
 
