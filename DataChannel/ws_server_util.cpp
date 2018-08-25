@@ -46,6 +46,14 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
 ws_server::~ws_server()
 {
     //shutdown(listenSocket);
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
+    for (int i = 0; i < (*servers).size(); i++)
+    {
+        if ((*servers)[i]->isOccupied())
+        {
+            (*servers)[i]->doClosing();
+        }
+    }
     close(listenSocket);
 }
 
@@ -240,6 +248,7 @@ int ws_conn::safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
     fwrite(buffer, 1, bufferSize, stdout);
     printf("\n");
 #endif
+    if(sock<0)return -1;
     ssize_t written = send(sock, (const char*)buffer, bufferSize, 0);
     if (written == -1) {
         perror("send failed");
@@ -346,6 +355,8 @@ int ws_conn::doClosing()
     if (isOccupied())
         close(sock);
 
+    sock=-1;
+    printf("%s:cb:%p\n",__func__,cb);
     if(cb!=NULL)
     {
       cb->ws_callback(genCallbackData(websock_data::eventType::CLOSING));
@@ -517,6 +528,7 @@ int ws_conn::runLoop()
         }
         else
         {
+            cb->ws_callback(genCallbackData(websock_data::eventType::HAND_SHAKING_FINISHED));
             ws_state = WS_STATE_NORMAL;
         }
         return 0;
@@ -534,10 +546,17 @@ int ws_conn::send_pkt(websock_data *packet)
     if(packet == NULL || packet->peer==NULL)return -1;
 
     if(this!=packet->peer)return -20;
+    if(packet->type == websock_data::CLOSING)
+    {
+        doClosing();
+        return 0;
+    }
+
     enum wsFrameType frameType = (enum wsFrameType)packet->data.data_frame.type;
 
     if(frameType==WS_CLOSING_FRAME)
     {
+
         doClosing();
         return 0;
     }

@@ -32,6 +32,7 @@ typedef struct websock_data
     {
         OPENING,
         HAND_SHAKING,
+        HAND_SHAKING_FINISHED,
         DATA_FRAME,
         CLOSING,
         ERROR,

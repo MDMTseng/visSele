@@ -22,6 +22,7 @@
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
 DatCH_BPG1_0 *BPG_protocol;
+DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 char* ReadFile(char *filename);
 
@@ -310,18 +311,15 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 {
   if(data.type!=DatCH_Data::DataType_websock_data)return -1;
   DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
-  LOGI(">>>>%p\n",ws);
   websock_data ws_data = *data.data.p_websocket;
-  if(BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer))
+  LOGI("SEND>>>>>>..websock_data..\n");
+  if( (BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
   {
+  LOGI("SEND>>>>>>..MatchPeer..\n");
     BPG_protocol->Process_websock_data(&ws_data);
-  }
-  else
-  {
-    LOGI("No available slot....\n");
+
   }
 
-  return 0;
 
   switch(ws_data.type)
   {
@@ -330,8 +328,31 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
             ws->default_peer = ws_data.peer;
           }
           printf("OPENING peer %s:%d\n",
-             inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
+             inet_ntoa(ws_data.peer->getAddr().sin_addr),
+             ntohs(ws_data.peer->getAddr().sin_port));
 
+      break;
+      case websock_data::eventType::HAND_SHAKING_FINISHED:
+
+          if(1)
+          {
+
+
+            LOGI("SEND>>>>>>..Process_websock_data..\n");
+            DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+            LOGI("SEND>>>>>>..GenMsgType..\n");
+            //ws_data->
+            BPG_data BPG_dat;
+            datCH_BPG.data.p_BPG_data=&BPG_dat;
+            BPG_dat.tl[0]='H';
+            BPG_dat.tl[1]='R';
+            char tmp[]="{\"AA\":5}";
+            BPG_dat.size=sizeof(tmp);
+            BPG_dat.dat_raw =(uint8_t*) tmp;
+            BPG_protocol->SendData(datCH_BPG);
+          }
       break;
       case websock_data::eventType::DATA_FRAME:
           printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
@@ -367,74 +388,8 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
                 break;
               }
             }
-
-
-
-
-            const int default_buffL=10000;
-            uint8_t *arrbuf=new uint8_t[default_buffL];
-
-
             printf("Start to send....\n");
 
-            do{
-
-              size_t pix_total = test1_buff->GetHeight()*test1_buff->GetWidth();
-
-              arrbuf[0]=1;
-              *((uint32_t*)(arrbuf+1))=pix_total+5;
-
-              arrbuf[5]=0;
-              *((uint16_t*)(arrbuf+6))=test1_buff->GetWidth();
-              *((uint16_t*)(arrbuf+8))=test1_buff->GetHeight();
-
-              ws_data.data.data_frame.type=WS_DFT_BINARY_FRAME;
-              ws_data.data.data_frame.raw=arrbuf;
-              ws_data.data.data_frame.rawL=10;
-              ws_data.data.data_frame.isFinal=false;
-              data.data.p_websocket = &ws_data;
-              if(ws->SendData(data).type!=DatCH_Data::DataType_ACK)
-              {
-                break;
-              }
-
-              uint8_t *test1_buff_ptr=test1_buff->CVector[0];
-
-              ws_data.data.data_frame.rawL=default_buffL;
-              ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
-              ws_data.data.data_frame.isFinal=false;
-
-              for(bool isKeepGoing=true;isKeepGoing && pix_total;)
-              {
-                int sendL = 0;
-                for(int i=0;i<default_buffL;i+=4,test1_buff_ptr+=3)
-                {
-                  arrbuf[i]=test1_buff_ptr[0];
-                  arrbuf[i+1]=test1_buff_ptr[1];
-                  arrbuf[i+2]=test1_buff_ptr[2];
-                  arrbuf[i+3]=255;
-                  sendL+=4;
-                  pix_total--;
-                  if(pix_total==0)
-                  {
-                    isKeepGoing=false;
-                    ws_data.data.data_frame.isFinal=true;
-                    break;
-                  }
-                }
-                ws_data.data.data_frame.rawL=sendL;
-                //printf("L:%d\n",ws_data.data.data_frame.rawL);
-
-                data.data.p_websocket = &ws_data;
-                if(ws->SendData(data).type!=DatCH_Data::DataType_ACK)
-                {
-                  break;
-                }
-              }
-              //acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
-
-            }while(0);
-            delete arrbuf;
           }
           else
           {
@@ -462,7 +417,7 @@ public:
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
 
-      LOGI("%s_______type:%d________", __func__,data.type);
+      LOGI("DatCH_CallBack_T:%s_______type:%d________", __func__,data.type);
       switch(data.type)
       {
         case DatCH_Data::DataType_error:
@@ -480,13 +435,10 @@ public:
         break;
 
         case DatCH_Data::DataType_websock_data:
+          LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
           return DatCH_WS_callback(from, data, callback_param);
         break;
 
-
-        case DatCH_Data::DataType_BPG:
-          LOGI("%s:DataType_BPG>>>>>>>>>", __func__);
-        break;
         default:
 
           LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
@@ -495,6 +447,49 @@ public:
   }
 };
 DatCH_CallBack_T callbk_obj;
+
+
+class DatCH_CallBack_BPG : public DatCH_CallBack
+{
+public:
+  int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
+  {
+
+      LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
+      switch(data.type)
+      {
+        case DatCH_Data::DataType_error:
+        {
+          LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+        }
+        break;
+
+        case DatCH_Data::DataType_websock_data:
+        {
+          LOGI("DatCH_Data::DataType_websock_data, %p",websocket);
+          DatCH_Data ret = websocket->SendData(data);
+          LOGI("DatCH_Data::DataType_websock_data");
+        }
+        break;
+
+
+        case DatCH_Data::DataType_BPG:
+        {
+          BPG_data *dat = data.data.p_BPG_data;
+
+          LOGI("%s:DataType_BPG>>>>%c%c>", __func__,dat->tl[0],dat->tl[1]);
+          //LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
+        }
+        break;
+        default:
+          LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+      }
+      return 0;
+  }
+};
+
+DatCH_CallBack_BPG callbk_BPG_obj;
+
 
 int testX(int repeatTime)
 {
@@ -545,7 +540,6 @@ int simpP(char* strNum)
   return Num;
 }
 
-DatCH_WebSocket *websocket=NULL;
 
 int mainLoop()
 {
@@ -582,10 +576,11 @@ int main(int argc, char** argv)
   signal(SIGINT, sigroutine);
   signal(SIGPIPE, sigroutine);
 
+  printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   test1_buff = new acvImage();
   imgSrc_X = new DatCH_BMP(new acvImage());
   BPG_protocol = new DatCH_BPG1_0(NULL);
-  BPG_protocol->SetEventCallBack(&callbk_obj,NULL);
+  BPG_protocol->SetEventCallBack(&callbk_BPG_obj,NULL);
   return mainLoop();
   int seed = time(NULL);
   srand(seed);

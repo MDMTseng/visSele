@@ -25,7 +25,6 @@ class ws_conn{
   std::vector <uint8_t> recvBuf;
   std::vector <uint8_t> sendBuf;
   size_t accBufDataLen;
-  ws_protocol_callback *cb;
 
   static int safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
   {
@@ -34,6 +33,7 @@ class ws_conn{
       fwrite(buffer, 1, bufferSize, stdout);
       printf("\n");
       #endif
+      if(sock<0)return -1;
       ssize_t written = send(sock, (const char*)buffer, bufferSize, 0);
       if (written == -1) {
           perror("send failed");
@@ -141,6 +141,7 @@ class ws_conn{
       doClosing();
       return -1;
     }
+
     return 0;
   }
 
