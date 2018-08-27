@@ -10,3 +10,5 @@ visSele*
 *.jpg
 licensePlate
 sidePrj/websocket/main
+UI/hy/js/jquery-tree
+UI/hy/js/jstree
