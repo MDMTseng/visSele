@@ -36,35 +36,35 @@ public:
     void COPY_property(ws_conn *from);
 
     static int strcpy_m(char *dst, int dstMaxSize, char *src);
-
-    int doHandShake(void *buff, ssize_t buffLen);
-
+    int doHandShake(void *buff, ssize_t buffLen,struct handshake *p_hs);
+    
     int doClosing();
 
-    int event_WsRECV(uint8_t *data, size_t dataSize, 
+    int event_WsRECV(uint8_t *data, size_t dataSize,
       enum wsFrameType frameType, bool isFinal);
 
-    int doNormalRecv(void *buff, size_t buffLen, 
+    int doNormalRecv(void *buff, size_t buffLen,
       size_t *ret_restLen, enum wsFrameType *ret_lastFrameType);
 
     enum wsFrameType lastPktType;
     int runLoop();
 
     int send_pkt(websock_data *packet);
+    int send_pkt(const uint8_t *packet, size_t pkt_size,int type,bool isFinal);
+
 };
 
 
 class ws_conn_entity_pool {
 
-    std::vector <ws_conn> ws_conn_set;
+    std::vector <ws_conn*> ws_conn_set;
 
 public:
     ws_conn *find(int sock);
 
-    std::vector <ws_conn>* getServers();
+    std::vector <ws_conn*>* getServers();
 
     int remove(int sock);
-
 
     ws_conn *find_avaliable_conn_info_slot();
 
@@ -90,6 +90,6 @@ public:
     int runLoop(struct timeval *tv);
     int ws_callback(websock_data data, void* param);
     int send_pkt(websock_data *packet);
+    int send_pkt(void *packet, size_t pkt_size);
     ~ws_server();
 };
-

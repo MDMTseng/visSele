@@ -12,17 +12,11 @@ typedef struct DatCH_Data_error
         NO_ENOUGH_BUFFER,
         FILE_READ_FAILED,
         UNKNOWN_FILE_NAME,
+        NOT_SUPPORTED,
+        SEND_ERROR,
+        NO_CALLBACK_ERROR,
     } code;
 
-};
-
-enum DatCH_DataType
-{
-    DatCH_DataType_error,
-    DatCH_DataType_raw,
-    DatCH_DataType_BMP_Read,
-    DatCH_DataType_websock_data,
-    DatCH_DataType_END,
 };
 
 typedef struct DatCH_Data_BMP_Read
@@ -30,15 +24,28 @@ typedef struct DatCH_Data_BMP_Read
     acvImage* img;
 };
 typedef struct websock_data;
+typedef struct BPG_data;
+
 typedef struct DatCH_Data
 {
-    enum DatCH_DataType type;
+    enum TYPE{
+      DataType_NULL,
+      DataType_ACK,
+      DataType_NAK,
+      DataType_error,
+      DataType_raw,
+      DataType_BMP_Read,
+      DataType_websock_data,
+      DataType_BPG,
+      DataType_END,
+    } type;
     union data
     {
-        uint8_t*     raw;
+        void*     raw;
         DatCH_Data_error error;
         DatCH_Data_BMP_Read BMP_Read;
         websock_data* p_websocket;
+        BPG_data* p_BPG_data;
     } data;
 } DatCH_Data;
 

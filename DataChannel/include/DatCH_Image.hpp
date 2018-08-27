@@ -34,43 +34,44 @@ public:
     {
         this->fileName = fileName;
 
-        if (callback != NULL)
+        if (cb_obj != NULL)
         {
             GetAcvImage();
         }
     }
 
-    void* GetData()
+    DatCH_Data GetData()
     {
-        return GetAcvImage();
+
+        DatCH_Data img_data;
+        img_data.type = DatCH_Data::DataType_BMP_Read;
+        img_data.data.BMP_Read.img = buffer;
+        return img_data;
     }
 
     acvImage* GetAcvImage()
     {
-        if (buffer == NULL)
+        if (buffer == NULL && cb_obj)
         {
-            callback(this, GenErrorMsg(DatCH_Data_error::error_enum::NO_ENOUGH_BUFFER), callback_param);
+            cb_obj->callback(this, GenErrorMsg(DatCH_Data_error::error_enum::NO_ENOUGH_BUFFER), callback_param);
             return NULL;
         }
 
-        if (fileName.empty() )
+        if (fileName.empty() && cb_obj)
         {
-            callback(this, GenErrorMsg(DatCH_Data_error::error_enum::UNKNOWN_FILE_NAME), callback_param);
+            cb_obj->callback(this, GenErrorMsg(DatCH_Data_error::error_enum::UNKNOWN_FILE_NAME), callback_param);
             return NULL;
         }
         int ret = acvLoadBitmapFile(buffer, fileName.c_str());
-        if (ret < 0)
+        if (ret < 0 && cb_obj)
         {
-            callback(this, GenErrorMsg(DatCH_Data_error::error_enum::FILE_READ_FAILED), callback_param);
+            cb_obj->callback(this, GenErrorMsg(DatCH_Data_error::error_enum::FILE_READ_FAILED), callback_param);
             return NULL;
         }
 
-        if (callback != NULL)
+        if (cb_obj)
         {
-            DatCH_Data img_data;
-            img_data.type = DatCH_DataType_BMP_Read;
-            img_data.data.BMP_Read.img = buffer;
-            callback(this, img_data, callback_param);
+            cb_obj->callback(this, GetData(), callback_param);
         }
         return buffer;
     }

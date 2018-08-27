@@ -46,6 +46,14 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
 ws_server::~ws_server()
 {
     //shutdown(listenSocket);
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
+    for (int i = 0; i < (*servers).size(); i++)
+    {
+        if ((*servers)[i]->isOccupied())
+        {
+            (*servers)[i]->doClosing();
+        }
+    }
     close(listenSocket);
 }
 
@@ -53,12 +61,12 @@ int ws_server::findMaxFd()
 {
     int max = listenSocket;
 
-    std::vector <ws_conn>* servers = ws_conn_pool.getServers();
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
     for (int i = 0; i < (*servers).size(); i++)
     {
-        if ((*servers)[i].isOccupied() && (*servers)[i].getSocket() > max)
+        if ((*servers)[i]->isOccupied() && (*servers)[i]->getSocket() > max)
         {
-            max = (*servers)[i].getSocket();
+            max = (*servers)[i]->getSocket();
         }
     }
 
@@ -76,7 +84,7 @@ int ws_server::ws_callback(websock_data data, void* param)
 
     printf("peer %s:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
-    
+
   }
   return 0;
 }
@@ -122,16 +130,16 @@ int ws_server::runLoop(struct timeval *tv)
     }
     else
     {
-        std::vector <ws_conn>* servers = ws_conn_pool.getServers();
+        std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
         bool evt_trigger = false;
         for (int i = 0; i < (*servers).size(); i++)
         {
-            if ((*servers)[i].isOccupied() && FD_ISSET((*servers)[i].getSocket(), &read_fds))
+            if ((*servers)[i]->isOccupied() && FD_ISSET((*servers)[i]->getSocket(), &read_fds))
             {
                 evt_trigger = true;
-                int fd = (*servers)[i].getSocket();
-                (*servers)[i].runLoop();
-                if (!(*servers)[i].isOccupied())
+                int fd = (*servers)[i]->getSocket();
+                (*servers)[i]->runLoop();
+                if (!(*servers)[i]->isOccupied())
                 {
                     printf("List size %d\n", ws_conn_pool.size());
                     FD_CLR(fd, &evtSet);
@@ -166,13 +174,13 @@ ws_conn *ws_conn_entity_pool::find(int sock)
 {
     for (int i = 0; i < ws_conn_set.size(); i++)
     {
-        if (ws_conn_set[i].getSocket() == sock)
-            return &(ws_conn_set[i]);
+        if (ws_conn_set[i]->getSocket() == sock)
+            return (ws_conn_set[i]);
     }
     return NULL;
 }
 
-std::vector <ws_conn>* ws_conn_entity_pool::getServers()
+std::vector <ws_conn*>* ws_conn_entity_pool::getServers()
 {
     return &ws_conn_set;
 }
@@ -192,13 +200,12 @@ ws_conn *ws_conn_entity_pool::find_avaliable_conn_info_slot()
 {
     for (int i = 0; i < ws_conn_set.size(); i++)
     {
-        if (!ws_conn_set[i].isOccupied())
-            return &(ws_conn_set[i]);
+        if (!ws_conn_set[i]->isOccupied())
+            return (ws_conn_set[i]);
     }
-    ws_conn empty;
-    ws_conn_set.push_back(empty);
+    ws_conn_set.push_back(new ws_conn());
 
-    return &(ws_conn_set[ws_conn_set.size() - 1]);
+    return (ws_conn_set[ws_conn_set.size() - 1]);
 }
 
 ws_conn* ws_conn_entity_pool::add(ws_conn *info)
@@ -221,7 +228,7 @@ int ws_conn_entity_pool::size()
     int len = 0;
     for (int i = 0; i < ws_conn_set.size(); i++)
     {
-        if (ws_conn_set[i].isOccupied())
+        if (ws_conn_set[i]->isOccupied())
         {
             len++;
         }
@@ -241,6 +248,7 @@ int ws_conn::safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
     fwrite(buffer, 1, bufferSize, stdout);
     printf("\n");
 #endif
+    if(sock<0)return -1;
     ssize_t written = send(sock, (const char*)buffer, bufferSize, 0);
     if (written == -1) {
         perror("send failed");
@@ -315,10 +323,10 @@ int ws_conn::strcpy_m(char *dst, int dstMaxSize, char *src)
     return i;
 }
 
-int ws_conn::doHandShake(void *buff, ssize_t buffLen)
+int ws_conn::doHandShake(void *buff, ssize_t buffLen,struct handshake *p_hs)
 {
     ((char*)buff)[buffLen] = '\0';
-    struct handshake hs;
+    struct handshake &hs = *p_hs;
     nullHandshake(&hs);
 
     enum wsFrameType frameType = wsParseHandshake((unsigned char *)buff, buffLen, &hs);
@@ -327,13 +335,13 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen)
         return -1;
     }
     strcpy_m(resource, sizeof(resource), hs.resource);
-    printf("%s:%s\n", __func__, resource);
+    //printf("%s:%s\n", __func__, resource);
 
     // if resource is right, generate answer handshake and send it
     size_t frameSize = sendBuf.size();
 
     wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
-    freeHandshake(&hs);
+    //freeHandshake(&hs);
     if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
     {
         doClosing();
@@ -347,6 +355,8 @@ int ws_conn::doClosing()
     if (isOccupied())
         close(sock);
 
+    sock=-1;
+    printf("%s:cb:%p\n",__func__,cb);
     if(cb!=NULL)
     {
       cb->ws_callback(genCallbackData(websock_data::eventType::CLOSING));
@@ -510,7 +520,8 @@ int ws_conn::runLoop()
         {
           cb->ws_callback(genCallbackData(websock_data::eventType::OPENING));
         }
-        if (doHandShake(&(recvBuf[0]), readed) != 0 )
+        struct handshake hs;
+        if (doHandShake(&(recvBuf[0]), readed, &hs) != 0 )
         {
             printf("Error:Hand shake failed...");
             ws_state = WS_STATE_CLOSING;
@@ -518,8 +529,15 @@ int ws_conn::runLoop()
         }
         else
         {
+            websock_data ws_dat = genCallbackData(websock_data::eventType::HAND_SHAKING_FINISHED);
+            ws_dat.data.hs_frame.host = hs.host;
+            ws_dat.data.hs_frame.origin = hs.origin;
+            ws_dat.data.hs_frame.key = hs.key;
+            ws_dat.data.hs_frame.resource = hs.resource;
+            cb->ws_callback(ws_dat);
             ws_state = WS_STATE_NORMAL;
         }
+        freeHandshake(&hs);
         return 0;
     }
 
@@ -535,32 +553,46 @@ int ws_conn::send_pkt(websock_data *packet)
     if(packet == NULL || packet->peer==NULL)return -1;
 
     if(this!=packet->peer)return -20;
-    enum wsFrameType frameType = (enum wsFrameType)packet->data.data_frame.type;
-
-    if(frameType==WS_CLOSING_FRAME)
+    if(packet->type == websock_data::CLOSING)
     {
         doClosing();
         return 0;
     }
 
-    if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME 
-        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME 
+    enum wsFrameType frameType = (enum wsFrameType)packet->data.data_frame.type;
+
+    if(frameType==WS_CLOSING_FRAME)
+    {
+
+        doClosing();
+        return 0;
+    }
+
+    if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME
+        && frameType!=WS_PING_FRAME&& frameType!=WS_PONG_FRAME
         && frameType!=WS_CONT_FRAME )
         return -3;
 
+    return send_pkt(packet->data.data_frame.raw, packet->data.data_frame.rawL
+      ,frameType,packet->data.data_frame.isFinal);
+}
+
+int ws_conn::send_pkt(const uint8_t *packet, size_t pkt_size,int type,bool isFinal)
+{
     size_t frameSize=sendBuf.size();
 
     int saveSpaceMargin=150;
-    if(frameSize < packet->data.data_frame.rawL+saveSpaceMargin)
+    if(frameSize < pkt_size+saveSpaceMargin)
     {
-        int tmp = (packet->data.data_frame.rawL+saveSpaceMargin - frameSize)/recvBufSizeInc;
-        
+        int tmp = (pkt_size+saveSpaceMargin - frameSize)/recvBufSizeInc;
+
         sendBuf.resize(frameSize + (tmp+1)*recvBufSizeInc);
         frameSize=sendBuf.size();
     }
 
-    int ret = wsMakeFrame2(packet->data.data_frame.raw, packet->data.data_frame.rawL, 
-        &(sendBuf[0]), &frameSize, frameType,packet->data.data_frame.isFinal);
+
+    int ret = wsMakeFrame2(packet, pkt_size,
+        &(sendBuf[0]), &frameSize, (enum wsFrameType)type,isFinal);
     if(ret)
     {
       printf("wsMakeFrame2 error:%d\n",ret);

@@ -16,10 +16,14 @@
 #include "common_lib.h"
 #include "DatCH_Image.hpp"
 #include "DatCH_WebSocket.hpp"
+#include "DatCH_BPG.hpp"
 
 
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
+DatCH_BPG1_0 *BPG_protocol;
+DatCH_WebSocket *websocket=NULL;
+MatchingEngine matchingEng;
 char* ReadFile(char *filename);
 
 void printImgAscii(acvImage *img, int printwidth)
@@ -281,9 +285,9 @@ int SignatureGenerator()
 
 }
 
-int ImgInspection(acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
+int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
 {
-  MatchingEngine me;
+  me.ResetFeature();
   char *string = ReadText(defFilename);
   me.AddMatchingFeature(string);
   free(string);
@@ -296,24 +300,63 @@ int ImgInspection(acvImage *test1,acvImage *buff,int repeatTime,char *defFilenam
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
+  return 0;
   //ContourFeatureDetect(test1,test1_buff,tar_signature);
   //acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
 
 }
 
+
 int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
 {
-  if(data.type!=DatCH_DataType_websock_data)return -1;
+  if(data.type!=DatCH_Data::DataType_websock_data)return -1;
   DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
-  LOGI(">>>>%p\n",ws);
   websock_data ws_data = *data.data.p_websocket;
+  LOGI("SEND>>>>>>..websock_data..\n");
+  if( (BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
+  {
+    LOGI("SEND>>>>>>..MatchPeer..\n");
+    BPG_protocol->SendData(data);// WS [here]-(prot)> App
+  }
+
+
   switch(ws_data.type)
   {
       case websock_data::eventType::OPENING:
-
+          if(ws->default_peer == NULL){
+            ws->default_peer = ws_data.peer;
+          }
           printf("OPENING peer %s:%d\n",
-             inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
-  
+             inet_ntoa(ws_data.peer->getAddr().sin_addr),
+             ntohs(ws_data.peer->getAddr().sin_port));
+
+      break;
+
+      case websock_data::eventType::HAND_SHAKING_FINISHED:
+
+          LOGI("HAND_SHAKING: host:%s orig:%s key:%s res:%s\n",
+            ws_data.data.hs_frame.host,
+            ws_data.data.hs_frame.origin,
+            ws_data.data.hs_frame.key,
+            ws_data.data.hs_frame.resource);
+
+          if(1)
+          {
+            LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
+            DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+            LOGI("SEND>>>>>>..GenMsgType..\n");
+            BPG_data BPG_dat;
+            datCH_BPG.data.p_BPG_data=&BPG_dat;
+            BPG_dat.tl[0]='H';
+            BPG_dat.tl[1]='R';
+            char tmp[]="{\"AA\":5}";
+            BPG_dat.size=sizeof(tmp)-1;
+            BPG_dat.dat_raw =(uint8_t*) tmp;
+            //App [here]-(prot)> WS
+            BPG_protocol->SendData(datCH_BPG);
+          }
       break;
       case websock_data::eventType::DATA_FRAME:
           printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
@@ -322,78 +365,35 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
               ws_data.data.data_frame.raw
               );
 
-          if(ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
+          if(false&&ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
           {
 
-            imgSrc_X->SetFileName("data/target.bmp");
+            imgSrc_X->SetFileName("data/test1.bmp");
 
-            ImgInspection(imgSrc_X->GetAcvImage(),test1_buff,1,"data/featureDetect.json");
+            ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
 
-            const int default_buffL=10000;
-            uint8_t *arrbuf=new uint8_t[default_buffL];
-     
 
-            printf("Start to send....\n");
+            const FeatureReport * report = matchingEng.GetReport();
 
-            do{
-
-              size_t pix_total = test1_buff->GetHeight()*test1_buff->GetWidth();
-
-              arrbuf[0]=1;
-              *((uint32_t*)(arrbuf+1))=pix_total+5;
-
-              arrbuf[5]=0;
-              *((uint16_t*)(arrbuf+6))=test1_buff->GetWidth();
-              *((uint16_t*)(arrbuf+8))=test1_buff->GetHeight();
-
-              ws_data.data.data_frame.type=WS_DFT_BINARY_FRAME;
-              ws_data.data.data_frame.raw=arrbuf;
-              ws_data.data.data_frame.rawL=10;
-              ws_data.data.data_frame.isFinal=false;
-              if(ws->send(&ws_data)!=0)
+            if(false && report!=NULL)
+            {
+              cJSON* jobj = matchingEng.FeatureReport2Json(report);
+              char * jstr  = cJSON_Print(jobj);
+              cJSON_Delete(jobj);
+              LOGI("...\n%s\n...",jstr);
+              DatCH_Data ret = ws->SendData(jstr,strlen(jstr));
+              delete jstr;
+              if(ret.type!=DatCH_Data::DataType_ACK)
               {
+                if(ret.type==DatCH_Data::DataType_error)
+                {
+                  LOGI("...\nERROR:%d....\n...",ret.data.error.code);
+                }
                 break;
               }
+            }
+            printf("Start to send....\n");
 
-              uint8_t *test1_buff_ptr=test1_buff->CVector[0];
-
-              ws_data.data.data_frame.rawL=default_buffL;
-              ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
-              ws_data.data.data_frame.isFinal=false;
-
-              for(bool isKeepGoing=true;isKeepGoing && pix_total;)
-              {        
-                int sendL = 0;      
-                for(int i=0;i<default_buffL;i+=4,test1_buff_ptr+=3)
-                {
-                  arrbuf[i]=test1_buff_ptr[0];
-                  arrbuf[i+1]=test1_buff_ptr[1];
-                  arrbuf[i+2]=test1_buff_ptr[2];
-                  arrbuf[i+3]=255;
-                  sendL+=4;
-                  pix_total--;
-                  if(pix_total==0)
-                  {
-                    isKeepGoing=false;
-                    ws_data.data.data_frame.isFinal=true;
-                    break;
-                  }
-                }
-                ws_data.data.data_frame.rawL=sendL;
-                //printf("L:%d\n",ws_data.data.data_frame.rawL);
-                if(ws->send(&ws_data)!=0)
-                {
-                  break;
-                }
-              }
-              //acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
-
-
-
-
-
-            }while(0);
-            delete arrbuf;
           }
           else
           {
@@ -406,36 +406,163 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 
           printf("CLOSING peer %s:%d\n",
              inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
-  
+
       break;
+      default:
+        return -1;
   }
-    
+  return 0;
+
 }
 
-int DatCH_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
+class DatCH_CallBack_T : public DatCH_CallBack
 {
-  LOGI("%s_______type:%d________", __func__,data.type);
-
-  switch(data.type)
+public:
+  int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
-    case DatCH_DataType_error:
-    {
-      LOGE("%s: error code:%d..........", __func__,data.data.error.code);
-    }
-    break;
-    case DatCH_DataType_BMP_Read:
-    {
-      
-      acvImage *test1 = data.data.BMP_Read.img;
 
-      ImgInspection(test1,test1_buff,1,"data/target.json");
-    }
-    break;
-    default:
+      LOGI("DatCH_CallBack_T:%s_______type:%d________", __func__,data.type);
+      switch(data.type)
+      {
+        case DatCH_Data::DataType_error:
+        {
+          LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+        }
+        break;
+        case DatCH_Data::DataType_BMP_Read:
+        {
 
-      LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+          acvImage *test1 = data.data.BMP_Read.img;
+
+          ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
+        }
+        break;
+
+        case DatCH_Data::DataType_websock_data:
+          LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
+          return DatCH_WS_callback(from, data, callback_param);
+        break;
+
+        default:
+
+          LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+      }
+      return 0;
   }
-}
+};
+DatCH_CallBack_T callbk_obj;
+
+
+class DatCH_CallBack_BPG : public DatCH_CallBack
+{
+  DatCH_BPG1_0 *self;
+  bool checkTL(const char *TL,const BPG_data *dat)
+  {
+    if(TL==NULL)return false;
+    return (TL[0] == dat->tl[0] && TL[1] == dat->tl[1]);
+  }
+  uint16_t TLCode(const char *TL)
+  {
+    return (((uint16_t)TL[0]<<8) |  TL[1]);
+  }
+public:
+  DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
+  {
+      this->self = self;
+  }
+
+  BPG_data GenStrBPGData(char *TL, char* jsonStr)
+  {
+    BPG_data BPG_dat;
+    BPG_dat.tl[0]=TL[0];
+    BPG_dat.tl[1]=TL[1];
+    if(jsonStr ==NULL)
+    {
+      BPG_dat.size=0;
+    }
+    else
+    {
+      BPG_dat.size=strlen(jsonStr);
+    }
+    BPG_dat.dat_raw =(uint8_t*) jsonStr;
+
+    return BPG_dat;
+  }
+  int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
+  {
+
+      LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
+      switch(data.type)
+      {
+        case DatCH_Data::DataType_error:
+        {
+          LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+        }
+        break;
+
+        case DatCH_Data::DataType_websock_data://App -(prot)>[here] WS
+        {
+          LOGI("DatCH_Data::DataType_websock_data, %p",websocket);
+          DatCH_Data ret = websocket->SendData(data);
+          LOGI("DatCH_Data::DataType_websock_data");
+        }
+        break;
+
+        case DatCH_Data::DataType_BPG:// WS -(prot)>[here] App
+        {
+          BPG_data *dat = data.data.p_BPG_data;
+
+          LOGI("%s:DataType_BPG>>>>%c%c>", __func__,dat->tl[0],dat->tl[1]);
+          dat->dat_raw[dat->size]='\0';
+          LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
+
+          if(checkTL("HR",dat))
+          {
+            LOGI("%s:Hello ready.......", __func__);
+          }
+          else if(checkTL("TG",dat))
+          {
+            LOGI("%s:Trigger.......", __func__);
+
+            {
+              DatCH_Data datCH_BPG=
+                BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+              char tmp[100];
+              int session_id = rand();
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              BPG_data bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+              bpg_dat=GenStrBPGData("IM", NULL);
+              bpg_dat.dat_img=test1_buff;
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+
+
+
+
+              sprintf(tmp,"{\"session_id\":%d, \"start\":false}",session_id);
+              bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+            }
+
+
+          }
+
+        }
+        break;
+        default:
+          LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+      }
+      return 0;
+  }
+};
+
+
 
 int testX(int repeatTime)
 {
@@ -444,15 +571,16 @@ int testX(int repeatTime)
   acvImage *test1 = new acvImage();
   DatCH_BMP imgSrc1(test1);
   if(doCallbackStyle)
-    imgSrc1.SetEventCallBack(DatCH_callback,NULL);
+    imgSrc1.SetEventCallBack(&callbk_obj,NULL);
   imgSrc1.SetFileName("data/test1.bmp");
   if(!doCallbackStyle)
   {
     DatCH_acvImageInterface *imgSrc_g = &imgSrc1;
     imgSrc_g->GetAcvImage();
-    ImgInspection(test1,test1_buff,repeatTime,"data/target.json");
+    ImgInspection(matchingEng,test1,test1_buff,repeatTime,"data/target.json");
+    acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
   }
-  delete test1_buff;
+  delete test1;
 
   return 0;
 }
@@ -465,7 +593,7 @@ int test_featureDetect()
   acvImage *test1 = new acvImage();
   DatCH_BMP imgSrc1(test1);
   imgSrc1.SetFileName("data/target.bmp");
-  ImgInspection(imgSrc1.GetAcvImage(),test1_buff,1,"data/featureDetect.json");
+  ImgInspection(matchingEng,imgSrc1.GetAcvImage(),test1_buff,1,"data/featureDetect.json");
   delete test1;
   return 0;
 }
@@ -485,19 +613,18 @@ int simpP(char* strNum)
   return Num;
 }
 
-DatCH_WebSocket *websocket=NULL;
 
 int mainLoop()
 {
   websocket =new DatCH_WebSocket(4090);
   acvImage *test1 = new acvImage();
 
-  websocket->SetEventCallBack(DatCH_WS_callback,websocket);
+  websocket->SetEventCallBack(&callbk_obj,websocket);
   while(1)
   {
       websocket->runLoop(NULL);
   }
-  delete test1; 
+  delete test1;
   return 0;
 }
 
@@ -518,14 +645,17 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
 
 #include <vector>
 int main(int argc, char** argv)
-{ 
+{
   signal(SIGINT, sigroutine);
   signal(SIGPIPE, sigroutine);
 
+  //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   test1_buff = new acvImage();
+  test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
-  return mainLoop(); 
-  delete test1_buff; 
+  BPG_protocol = new DatCH_BPG1_0(NULL);
+  BPG_protocol->SetEventCallBack(new DatCH_CallBack_BPG(BPG_protocol),NULL);
+  return mainLoop();
   int seed = time(NULL);
   srand(seed);
   int ret = 0, repeatNum=1;

@@ -157,6 +157,7 @@ void circleRefine(vector<acv_XY> &pointsInRange,acv_CircleFit *circleF)
   circleF->circle.circumcenter.X = circle.a;
   circleF->circle.circumcenter.Y = circle.b;
   circleF->circle.radius = circle.r;
+  circleF->matching_pts = pointsInRange.size();
   circleF->s = circle.s;
 }
 
@@ -430,9 +431,9 @@ float ContourDataCircleFit(ContourGrid &contourGrid, acv_XY *innerCornorContour,
   return 0;
 }
 
-acv_XY* findEndPoint(acv_Line line, int signees, vector<acv_XY> &points)
+acv_XY* findEndPoint(acv_Line line, int signedness, vector<acv_XY> &points)
 {
-  signees=(signees>0)?1:-1;
+  signedness=(signedness>0)?1:-1;
   int maxi=-1;
   float max_dist=0;
 
@@ -445,7 +446,7 @@ acv_XY* findEndPoint(acv_Line line, int signees, vector<acv_XY> &points)
 
   for(int i=0;i<points.size();i++)
   {
-    float dist = signees*acvDistance_Signed(line, points[i]);
+    float dist = signedness*acvDistance_Signed(line, points[i]);
     if(max_dist<dist)
     {
       max_dist=dist;

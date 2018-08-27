@@ -9,15 +9,18 @@
 class DatCH_WebSocket: public DatCH_Interface, public ws_protocol_callback
 {
 protected:
-public:
     ws_server *server;
     websock_data tmp_ws_data;
+
+public:
+    ws_conn_data *default_peer;
     DatCH_WebSocket(int port);
     ~DatCH_WebSocket();
     int runLoop(struct timeval *tv);
 
     int ws_callback(websock_data data, void* param);
-    int send(websock_data *packet);
+    DatCH_Data SendData(void* data, size_t dataL) override;
+    DatCH_Data SendData(DatCH_Data) override;
 };
 
 

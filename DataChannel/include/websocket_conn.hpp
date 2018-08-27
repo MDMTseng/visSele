@@ -32,6 +32,7 @@ typedef struct websock_data
     {
         OPENING,
         HAND_SHAKING,
+        HAND_SHAKING_FINISHED,
         DATA_FRAME,
         CLOSING,
         ERROR,
@@ -48,6 +49,13 @@ typedef struct websock_data
             bool isFinal;
         } data_frame;
 
+        struct _HS_FRAME {
+            char *host;
+            char *origin;
+            char *key;
+            char *resource;
+        }hs_frame;
+        
         typedef struct _ERROR
         {
             int code;
@@ -92,16 +100,16 @@ public:
         return sock;
     }
 
-    struct sockaddr_in getAddr()
+    struct sockaddr_in getAddr () const
     {
         return addr;
     }
 
-    bool isOccupied()
+    bool isOccupied () const
     {
         return sock != -1;
     }
-    const char* getResource()
+    const char* getResource () const
     {
         return resource;
     }

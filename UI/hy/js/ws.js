@@ -1,11 +1,13 @@
-// let wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-let WS_URI = "ws://192.168.168.249:40901/xlinx";
-let output;
-let clientIP = "x.x.x.x";
-let TX_SERIAL = 0;
-let reconnectTimes=3;
-let RAW_I_DATA;
-let requireNewRAW=true;
+
+// var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
+var WS_URI = "ws://localhost:4090/xlinx";
+var output;
+var clientIP = "x.x.x.x";
+var TX_SERIAL = 0;
+var reconnectTimes=3;
+var RAW_I_DATA;
+var requireNewRAW=true;
+
 
 function setWSaddress(ip){
     WS_URI = "ws://"+ip+":4090/xlinx";
@@ -59,62 +61,46 @@ function onClose(evt) {
 // console.log(blob);
 
 function onMessage(evt) {
-    // let Gray = (R*38 + G*75 + B*15) >> 7;
-    // console.log(evt);
+
+    // var Gray = (R*38 + G*75 + B*15) >> 7;
+    console.log("onMessage:::");
+    console.log(evt);
+
     $('#checkAreaTitle').html("[WS]OnMessage"+",Status="+websocket.readyState);
     if (evt.data instanceof ArrayBuffer) {
-        // let aDataArray = new Float64Array(evt.data);
-        // let aDataArray = new Uint8Array(evt.data);
-        let headerArray = new Uint8ClampedArray(evt.data,0,5);
-        
-        
-
-        let contentArray = new Uint8ClampedArray(evt.data,5,10);
-        let RAW_WIDTH=contentArray[1]|(contentArray[2]<<8);
-        let RAW_HEIGHT=contentArray[3]|(contentArray[4]<<8);
-        // console.log(RAW_WIDTH);
-        // console.log(RAW_HEIGHT);
 
 
-        let dataArray = new Uint8ClampedArray(evt.data,10,4*RAW_WIDTH*RAW_HEIGHT);
-        // for(let i=0;i<dataArray.length;i++){
-        //     dataArray^= 0xff;
-        // }
-        RAW_I_DATA = new ImageData(dataArray, RAW_WIDTH);
-        // doSendWS("PING","haha");
-        // let dataArray = new Uint8ClampedArray(evt.data,11,600*150*4);
-        // RAW_I_DATA = new ImageData(dataArray,150);
+        let header = BPG_Protocol.raw2header(evt);
 
-        
+        console.log("onMessage:["+header.type+"]");
+        if(header.type == "HR")
+        {
+            let header = BPG_Protocol.raw2obj(evt);
+            console.log(header);
+            console.log("Hello I am ready.");
+            websocket.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
+            websocket.send(BPG_Protocol.obj2raw("TG",{}));
+        }
+
+
+        if(header.type == "SS")
+        {
+            let header = BPG_Protocol.raw2obj(evt);
+            console.log(header);
+            console.log("Session start:");
+        }
+
+        if(header.type == "IM")
+        {
+            let pkg = BPG_Protocol.raw2Obj_IM(evt);
+            console.log(pkg);
+
+
+        }
+
+
     }
-    // if (evt.data instanceof Blob) {
-    //     console.log("BBBB");
-    //     console.log(event);
-    //     console.log(event.data);
 
-    //     let result_U8CA = new Uint8ClampedArray([event.data]);
-    //     let result_U8A = new Uint8Array([event.data]);
-    //     let result_I8A = new Int8Array([event.data]);
-
-    //     console.log(result_U8CA[0]);
-    //     console.log(result_U8A[8]);
-    //     console.log(result_I8A[8]);
-    //     // result.forEach(function(element) {
-    //     //     console.log(element);
-    //     // });
-    //     // let gg=Array.from(result);
-
-
-    // } else {
-    //     console.log("!BBBB");
-    //     try {
-    //         let data = $.parseJSON(evt.data);
-    //         console.log(data);
-
-    //     } catch (err) {
-    //         document.getElementById("output").innerHTML = err.message;
-    //     }
-    // }
 }
 
 function onError(evt) {
@@ -142,7 +128,9 @@ function doSendWS(t, m) {
     // writeToScreen(JSON.stringify(msg));
     // console.log(websocket);
     if (websocket.readyState == 1)
-        websocket.send(JSON.stringify(msg));
+    {
+      //    websocket.send(BPG_Protocol.obj2raw("TC",msg));
+    }
     else if (websocket.readyState == 3)
         init_WSocket();
     else
