@@ -49,6 +49,13 @@ typedef struct websock_data
             bool isFinal;
         } data_frame;
 
+        struct _HS_FRAME {
+            char *host;
+            char *origin;
+            char *key;
+            char *resource;
+        }hs_frame;
+        
         typedef struct _ERROR
         {
             int code;

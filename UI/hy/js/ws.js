@@ -73,11 +73,28 @@ function onMessage(evt) {
         if(header.type == "HR")
         {
             let header = BPG_Protocol.raw2obj(evt);
-
             console.log(header);
             console.log("Hello I am ready.");
-            websocket.send(BPG_Protocol.obj2raw("HR",{}));
+            websocket.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
+            websocket.send(BPG_Protocol.obj2raw("TG",{}));
         }
+
+
+        if(header.type == "SS")
+        {
+            let header = BPG_Protocol.raw2obj(evt);
+            console.log(header);
+            console.log("Session start:");
+        }
+
+        if(header.type == "IM")
+        {
+            let pkg = BPG_Protocol.raw2Obj_IM(evt);
+            console.log(pkg);
+
+
+        }
+
         //var dataArray = new Uint8ClampedArray(evt.data,10,4*RAW_WIDTH*RAW_HEIGHT);
         // for(var i=0;i<dataArray.length;i++){
         //     dataArray^= 0xff;

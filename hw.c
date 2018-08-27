@@ -315,9 +315,8 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
   LOGI("SEND>>>>>>..websock_data..\n");
   if( (BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
   {
-  LOGI("SEND>>>>>>..MatchPeer..\n");
-    BPG_protocol->Process_websock_data(&ws_data);
-
+    LOGI("SEND>>>>>>..MatchPeer..\n");
+    BPG_protocol->SendData(data);// WS [here]-(prot)> App
   }
 
 
@@ -332,25 +331,30 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
              ntohs(ws_data.peer->getAddr().sin_port));
 
       break;
+
       case websock_data::eventType::HAND_SHAKING_FINISHED:
+
+          LOGI("HAND_SHAKING: host:%s orig:%s key:%s res:%s\n",
+            ws_data.data.hs_frame.host,
+            ws_data.data.hs_frame.origin,
+            ws_data.data.hs_frame.key,
+            ws_data.data.hs_frame.resource);
 
           if(1)
           {
-
-
-            LOGI("SEND>>>>>>..Process_websock_data..\n");
+            LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
             LOGI("SEND>>>>>>..GenMsgType..\n");
-            //ws_data->
             BPG_data BPG_dat;
             datCH_BPG.data.p_BPG_data=&BPG_dat;
             BPG_dat.tl[0]='H';
             BPG_dat.tl[1]='R';
             char tmp[]="{\"AA\":5}";
-            BPG_dat.size=sizeof(tmp);
+            BPG_dat.size=sizeof(tmp)-1;
             BPG_dat.dat_raw =(uint8_t*) tmp;
+            //App [here]-(prot)> WS
             BPG_protocol->SendData(datCH_BPG);
           }
       break;
@@ -361,7 +365,7 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
               ws_data.data.data_frame.raw
               );
 
-          if(ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
+          if(false&&ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
           {
 
             imgSrc_X->SetFileName("data/test1.bmp");
@@ -451,7 +455,39 @@ DatCH_CallBack_T callbk_obj;
 
 class DatCH_CallBack_BPG : public DatCH_CallBack
 {
+  DatCH_BPG1_0 *self;
+  bool checkTL(const char *TL,const BPG_data *dat)
+  {
+    if(TL==NULL)return false;
+    return (TL[0] == dat->tl[0] && TL[1] == dat->tl[1]);
+  }
+  uint16_t TLCode(const char *TL)
+  {
+    return (((uint16_t)TL[0]<<8) |  TL[1]);
+  }
 public:
+  DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
+  {
+      this->self = self;
+  }
+
+  BPG_data GenStrBPGData(char *TL, char* jsonStr)
+  {
+    BPG_data BPG_dat;
+    BPG_dat.tl[0]=TL[0];
+    BPG_dat.tl[1]=TL[1];
+    if(jsonStr ==NULL)
+    {
+      BPG_dat.size=0;
+    }
+    else
+    {
+      BPG_dat.size=strlen(jsonStr);
+    }
+    BPG_dat.dat_raw =(uint8_t*) jsonStr;
+
+    return BPG_dat;
+  }
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
 
@@ -464,7 +500,7 @@ public:
         }
         break;
 
-        case DatCH_Data::DataType_websock_data:
+        case DatCH_Data::DataType_websock_data://App -(prot)>[here] WS
         {
           LOGI("DatCH_Data::DataType_websock_data, %p",websocket);
           DatCH_Data ret = websocket->SendData(data);
@@ -472,13 +508,51 @@ public:
         }
         break;
 
-
-        case DatCH_Data::DataType_BPG:
+        case DatCH_Data::DataType_BPG:// WS -(prot)>[here] App
         {
           BPG_data *dat = data.data.p_BPG_data;
 
           LOGI("%s:DataType_BPG>>>>%c%c>", __func__,dat->tl[0],dat->tl[1]);
-          //LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
+          dat->dat_raw[dat->size]='\0';
+          LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
+
+          if(checkTL("HR",dat))
+          {
+            LOGI("%s:Hello ready.......", __func__);
+          }
+          else if(checkTL("TG",dat))
+          {
+            LOGI("%s:Trigger.......", __func__);
+
+            {
+              DatCH_Data datCH_BPG=
+                BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+              char tmp[100];
+              int session_id = rand();
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              BPG_data bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+              bpg_dat=GenStrBPGData("IM", NULL);
+              bpg_dat.dat_img=test1_buff;
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+
+
+
+
+              sprintf(tmp,"{\"session_id\":%d, \"start\":false}",session_id);
+              bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+            }
+
+
+          }
+
         }
         break;
         default:
@@ -488,7 +562,6 @@ public:
   }
 };
 
-DatCH_CallBack_BPG callbk_BPG_obj;
 
 
 int testX(int repeatTime)
@@ -576,11 +649,12 @@ int main(int argc, char** argv)
   signal(SIGINT, sigroutine);
   signal(SIGPIPE, sigroutine);
 
-  printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
+  //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   test1_buff = new acvImage();
+  test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
   BPG_protocol = new DatCH_BPG1_0(NULL);
-  BPG_protocol->SetEventCallBack(&callbk_BPG_obj,NULL);
+  BPG_protocol->SetEventCallBack(new DatCH_CallBack_BPG(BPG_protocol),NULL);
   return mainLoop();
   int seed = time(NULL);
   srand(seed);

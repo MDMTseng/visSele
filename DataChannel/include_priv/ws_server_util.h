@@ -36,9 +36,8 @@ public:
     void COPY_property(ws_conn *from);
 
     static int strcpy_m(char *dst, int dstMaxSize, char *src);
-
-    int doHandShake(void *buff, ssize_t buffLen);
-
+    int doHandShake(void *buff, ssize_t buffLen,struct handshake *p_hs);
+    
     int doClosing();
 
     int event_WsRECV(uint8_t *data, size_t dataSize,

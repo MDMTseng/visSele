@@ -1,14 +1,12 @@
 var BPG_Protocol = {
 
     raw2header:(ws_evt, offset = 0)=>{
-
-    let str_end_padding = true;
     let BPG_header_L = 7;
     if (( ws_evt.data instanceof ArrayBuffer) && ws_evt.data.byteLength>=BPG_header_L) {
         // var aDataArray = new Float64Array(evt.data);
         // var aDataArray = new Uint8Array(evt.data);
         var headerArray = new Uint8ClampedArray(
-          ws_evt.data,offset,offset+BPG_header_L);
+          ws_evt.data,offset,BPG_header_L);
         let ret_obj={};
 
 
@@ -38,17 +36,43 @@ var BPG_Protocol = {
       if(ret_obj==null)return null;
 
       ret_obj.rawdata = new Uint8ClampedArray(ws_evt.data,
-        offset+BPG_header_L,ret_obj.length-1
+        offset+BPG_header_L,ret_obj.length
       );
       let  enc = new TextDecoder("utf-8");
       let str = enc.decode(ret_obj.rawdata);
       ret_obj.data = JSON.parse(str);
       return ret_obj;
     },
+    raw2Obj_IM:(ws_evt, offset = 0)=>{
+      let BPG_header_L = 7;
+      let ret_obj = BPG_Protocol.raw2header(ws_evt, offset);
+      if(ret_obj==null)return null;
+
+      let headerArray = new Uint8ClampedArray(ws_evt.data,
+        offset+BPG_header_L,6);
+      ret_obj.camera_id=headerArray[0];
+      ret_obj.session_id=headerArray[1];
+      ret_obj.width=(headerArray[2]<<8)|headerArray[3];
+      ret_obj.height=(headerArray[4]<<8)|headerArray[5];
+      let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
+
+      if(RGBA_pix_Num == (ret_obj.length-6))
+      {
+        ret_obj.image=new Uint8ClampedArray(ws_evt.data,
+          offset+BPG_header_L+6,4*ret_obj.width*ret_obj.height);
+      }
+      else
+      {
+        ret_obj.image=null;
+      }
+
+
+      return ret_obj;
+    },
 
     obj2raw:(type,data)=>{
       let str = JSON.stringify(data);
-      let str_end_padding = true;
+      let str_end_padding = false;
       let BPG_header_L = 7;
       let bbuf = new Uint8Array(BPG_header_L+str.length+((str_end_padding)?1:0));
 

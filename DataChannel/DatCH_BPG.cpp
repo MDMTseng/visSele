@@ -138,8 +138,11 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
     {
       header[0] = 0;//camera id
       header[1] = 0;//sessionID
-      *((uint16_t*)(header+2))=data.dat_img->GetWidth();
-      *((uint16_t*)(header+4))=data.dat_img->GetHeight();
+      header[2] = data.dat_img->GetWidth()>>8;
+      header[3] = data.dat_img->GetWidth();
+      header[4] = data.dat_img->GetHeight()>>8;
+      header[5] = data.dat_img->GetHeight();
+
       ws_data.data.data_frame.raw=header;
       ws_data.data.data_frame.rawL=6;
       cb_obj->callback(this, ret_data, callback_param);
@@ -195,7 +198,7 @@ DatCH_Data DatCH_BPG1_0::SendData(DatCH_Data data)
 {
     if(cb_obj == NULL)
     {
-        return GenErrorMsg(DatCH_Data_error::NO_CALLBACK_ERROR);
+      return GenErrorMsg(DatCH_Data_error::NO_CALLBACK_ERROR);
     }
     if(data.type==DatCH_Data::DataType_websock_data)//From websocket
     {

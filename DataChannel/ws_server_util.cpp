@@ -323,10 +323,10 @@ int ws_conn::strcpy_m(char *dst, int dstMaxSize, char *src)
     return i;
 }
 
-int ws_conn::doHandShake(void *buff, ssize_t buffLen)
+int ws_conn::doHandShake(void *buff, ssize_t buffLen,struct handshake *p_hs)
 {
     ((char*)buff)[buffLen] = '\0';
-    struct handshake hs;
+    struct handshake &hs = *p_hs;
     nullHandshake(&hs);
 
     enum wsFrameType frameType = wsParseHandshake((unsigned char *)buff, buffLen, &hs);
@@ -335,13 +335,13 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen)
         return -1;
     }
     strcpy_m(resource, sizeof(resource), hs.resource);
-    printf("%s:%s\n", __func__, resource);
+    //printf("%s:%s\n", __func__, resource);
 
     // if resource is right, generate answer handshake and send it
     size_t frameSize = sendBuf.size();
 
     wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
-    freeHandshake(&hs);
+    //freeHandshake(&hs);
     if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
     {
         doClosing();
@@ -520,7 +520,8 @@ int ws_conn::runLoop()
         {
           cb->ws_callback(genCallbackData(websock_data::eventType::OPENING));
         }
-        if (doHandShake(&(recvBuf[0]), readed) != 0 )
+        struct handshake hs;
+        if (doHandShake(&(recvBuf[0]), readed, &hs) != 0 )
         {
             printf("Error:Hand shake failed...");
             ws_state = WS_STATE_CLOSING;
@@ -528,9 +529,15 @@ int ws_conn::runLoop()
         }
         else
         {
-            cb->ws_callback(genCallbackData(websock_data::eventType::HAND_SHAKING_FINISHED));
+            websock_data ws_dat = genCallbackData(websock_data::eventType::HAND_SHAKING_FINISHED);
+            ws_dat.data.hs_frame.host = hs.host;
+            ws_dat.data.hs_frame.origin = hs.origin;
+            ws_dat.data.hs_frame.key = hs.key;
+            ws_dat.data.hs_frame.resource = hs.resource;
+            cb->ws_callback(ws_dat);
             ws_state = WS_STATE_NORMAL;
         }
+        freeHandshake(&hs);
         return 0;
     }
 
