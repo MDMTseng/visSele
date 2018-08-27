@@ -35,11 +35,11 @@ canvas1.addEventListener("mousemove", mouseMove1);
 	}, false);
 	document.getElementById("zoomArea-up").addEventListener("click", function() {
 
-		var vec_move = {
+		let vec_move = {
 			x: 0,
 			y: -translateStep / scale
 		};
-		var vec_tmove = {};
+		let vec_tmove = {};
 		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
@@ -49,11 +49,11 @@ canvas1.addEventListener("mousemove", mouseMove1);
 
 	document.getElementById("zoomArea-down").addEventListener("click", function() {
 
-		var vec_move = {
+		let vec_move = {
 			x: 0,
 			y: translateStep / scale
 		};
-		var vec_tmove = {};
+		let vec_tmove = {};
 		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
@@ -61,11 +61,11 @@ canvas1.addEventListener("mousemove", mouseMove1);
 		// draw(scale, translatePos);
 	}, false);
 	document.getElementById("zoomArea-left").addEventListener("click", function() {
-		var vec_move = {
+		let vec_move = {
 			x: -translateStep / scale,
 			y: 0
 		};
-		var vec_tmove = {};
+		let vec_tmove = {};
 		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
@@ -74,11 +74,11 @@ canvas1.addEventListener("mousemove", mouseMove1);
 	}, false);
 
 	document.getElementById("zoomArea-right").addEventListener("click", function() {
-		var vec_move = {
+		let vec_move = {
 			x: translateStep / scale,
 			y: 0
 		};
-		var vec_tmove = {};
+		let vec_tmove = {};
 		rotate2dtransform(vec_tmove, vec_move, -startSpinPos);
 
 		translatePos.x += vec_tmove.x;
@@ -126,7 +126,7 @@ function mouseMove3(evt) {
 	mouseMove3_evt = evt;
 	$('#checkAreaTitle2').html('mX=' + evt.offsetX + ',mY=' + evt.offsetY);
 	if (mouseDown) {
-		var vec_tmp = {
+		let vec_tmp = {
 			x: (evt.clientX - startDragPos.x) / scale,
 			y: (evt.clientY - startDragPos.y) / scale
 		};

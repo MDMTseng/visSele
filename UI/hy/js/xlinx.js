@@ -9,7 +9,7 @@ function parseData(url, callBack) {
 }
 function lerpColor(a, b, amount) { 
 
-    var ah = parseInt(a.replace(/#/g, ''), 16),
+    let ah = parseInt(a.replace(/#/g, ''), 16),
         ar = ah >> 16, ag = ah >> 8 & 0xff, ab = ah & 0xff,
         bh = parseInt(b.replace(/#/g, ''), 16),
         br = bh >> 16, bg = bh >> 8 & 0xff, bb = bh & 0xff,
@@ -19,7 +19,16 @@ function lerpColor(a, b, amount) {
 
     return '#' + ((1 << 24) + (rr << 16) + (rg << 8) + rb | 0).toString(16).slice(1);
 }
-
+Number.prototype.numberFormat = function(c, d, t){
+    var n = this,
+        c = isNaN(c = Math.abs(c)) ? 2 : c,
+        d = d == undefined ? "." : d,
+        t = t == undefined ? "," : t,
+        s = n < 0 ? "-" : "",
+        i = String(parseInt(n = Math.abs(Number(n) || 0).toFixed(c))),
+        j = (j = i.length) > 3 ? j % 3 : 0;
+    return s + (j ? i.substr(0, j) + t : "") + i.substr(j).replace(/(\d{3})(?=\d)/g, "$1" + t) + (c ? d + Math.abs(n - i).toFixed(c).slice(2) : "");
+};
 function VA2(currt, newV, speed) {
     return speed * (newV - currt) + currt;
 
@@ -43,8 +52,8 @@ function radiansToDegrees (radians) {
 
 //=============for later use
 function drawZoomAreaX(C1, C2) {
-    // var ctx1 = C1.getContext("2d");
-    var context = C2.getContext("2d");
+    // let ctx1 = C1.getContext("2d");
+    let context = C2.getContext("2d");
     context.clearRect(0, 0, C2.width, C2.height);
     context.save();
     context.translate(translatePos.x, translatePos.y);
@@ -57,7 +66,7 @@ function drawZoomAreaX(C1, C2) {
 
 function drawRAWAreaX(C1) {
 
-    var context = C1.getContext("2d");
+    let context = C1.getContext("2d");
 
 
     // clear canvas
@@ -79,7 +88,7 @@ function drawRAWAreaX(C1) {
     context.bezierCurveTo(31, -95, -39, -80, -39, -50);
     context.bezierCurveTo(-89, -95, -139, -80, -119, -20);
     context.closePath(); // complete custom shape
-    var grd = context.createLinearGradient(-59, -100, 81, 100);
+    let grd = context.createLinearGradient(-59, -100, 81, 100);
     grd.addColorStop(0, "#8ED6FF"); // light blue
     grd.addColorStop(1, "#004CB3"); // dark blue
     context.fillStyle = grd;

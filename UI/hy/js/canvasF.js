@@ -1,38 +1,38 @@
-var centerCenter = new Path2D("M10 10 h 80 v 80 h -80 Z");
-var theta = 0.01;
-var dx = 6.28 / 1000;
-var lastFR = 0;
-var t0 = performance.now();
-var mouseMove1_evt;
-var mouseMove2_evt;
-var mouseMove3_evt;
-var canvas1;
-var canvas2;
-var canvas3;
-var canvasF;
-var mouseDown = false;
-var scale = 1.0;
-var scaleMultiplier = 0.1;
-var translateStep = 8;
-var RXJS;
-var allW = 500;
-var startDragPos = {
+let centerCenter = new Path2D("M10 10 h 80 v 80 h -80 Z");
+let theta = 0.01;
+let dx = 6.28 / 1000;
+let lastFR = 0;
+let t0 = performance.now();
+let mouseMove1_evt;
+let mouseMove2_evt;
+let mouseMove3_evt;
+let canvas1;
+let canvas2;
+let canvas3;
+let canvasF;
+let mouseDown = false;
+let scale = 1.0;
+let scaleMultiplier = 0.1;
+let translateStep = 8;
+let RXJS;
+let allW = 500;
+let startDragPos = {
 	x: 0,
 	y: 0
 };
-var translateDragOffset = {
+let translateDragOffset = {
 	x: 0,
 	y: 0
 };
-var autoSpint = false;
-var startSpinPos = 0;
-var translatePos = {
+let autoSpint = false;
+let startSpinPos = 0;
+let translatePos = {
 	x: 0,
 	y: 0
 };
-var recWH = 50;
-var millisX = 0;
-var gg;
+let recWH = 50;
+let millisX = 0;
+let gg;
 
 
 function init_CanvasF() {
@@ -60,8 +60,8 @@ function initFabRic() {
 	canvasF.setWidth(allW);
 	canvasF.setHeight(allW);
 	canvasF.backgroundColor = "#f00";
-	var RAW_IMG = getRAWbackgroundImageData(canvas3);
-	var f_img = new fabric.Image(RAW_IMG);
+	let RAW_IMG = getRAWbackgroundImageData(canvas3);
+	let f_img = new fabric.Image(RAW_IMG);
 
 	// canvasF.add(f_img).renderAll().setActiveObject(f_img);
 	// canvasF.setBackgroundColor({source: 'http://fabricjs.com/assets/escheresque_ste.png'}, canvasF.renderAll.bind(canvasF));
@@ -74,7 +74,7 @@ function initFabRic() {
 
 	// canvasF.add(f_img);
 
-	// var imgF = fabric.Image.fromURL(f_img, function (i) {
+	// let imgF = fabric.Image.fromURL(f_img, function (i) {
  //    canvasF.clear();
  //    canvasF.add(i);
  //    canvasF.renderAll();
@@ -88,30 +88,30 @@ function initFabRic() {
 	//    	backgroundImageStretch: false
 	// });
 	// canvasF.renderAll();
-	var text = 'this is\na multiline\ntext\naligned right!';
-	var alignedRightText = new fabric.Text(text, {
+	let text = 'this is\na multiline\ntext\naligned right!';
+	let alignedRightText = new fabric.Text(text, {
 		textAlign: 'right'
 	});
 
-	var textWithStroke = new fabric.Text("Text with a stroke", {
+	let textWithStroke = new fabric.Text("Text with a stroke", {
 		stroke: '#ff1318',
 		strokeWidth: 1
 	});
-	var loremIpsumDolor = new fabric.Text("Lorem ipsum dolor", {
+	let loremIpsumDolor = new fabric.Text("Lorem ipsum dolor", {
 		fontFamily: 'Impact',
 		stroke: '#c3bfbf',
 		strokeWidth: 3
 	});
-	var comicSansText = new fabric.Text("I'm in Comic Sans", {
+	let comicSansText = new fabric.Text("I'm in Comic Sans", {
 		fontFamily: 'Comic Sans',
 		fontSize: 40
 	});
-	var text = new fabric.Text('hello world', {
+	let text = new fabric.Text('hello world', {
 		left: 100,
 		top: 100
 	});
 	canvasF.add(text);
-	var rect = new fabric.Rect({
+	let rect = new fabric.Rect({
 		left: 100,
 		top: 50,
 		width: 100,
@@ -120,20 +120,20 @@ function initFabRic() {
 		angle: 20,
 		padding: 10
 	});
-	var circle1 = new fabric.Circle({
+	let circle1 = new fabric.Circle({
 		radius: 65,
 		fill: '#039BE5',
 		left: 0
 	});
 
-	var circle2 = new fabric.Circle({
+	let circle2 = new fabric.Circle({
 		radius: 65,
 		fill: '#4FC3F7',
 		left: 110,
 		opacity: 0.7
 	});
 
-	var group = new fabric.Group([circle1, circle2, ], {
+	let group = new fabric.Group([circle1, circle2, ], {
 		left: 40,
 		top: 250
 	});
@@ -144,7 +144,7 @@ function initFabRic() {
 		canvasF.contextContainer.strokeStyle = '#555';
 
 		canvasF.forEachObject(function(obj) {
-			var bound = obj.getBoundingRect();
+			let bound = obj.getBoundingRect();
 
 			canvasF.contextContainer.strokeRect(
 				bound.left + 0.5,
@@ -167,7 +167,7 @@ function drawX() {
 
 
 
-	var now = performance.now();
+	let now = performance.now();
 	FPS = now - t0;
 	t0 = now;
 
@@ -175,7 +175,7 @@ function drawX() {
 }
 
 function drawRAWArea(C1) {
-	var context = C1.getContext("2d");
+	let context = C1.getContext("2d");
 	context.clearRect(0, 0, C1.width, C1.height);
 	if (typeof RAW_I_DATA != 'undefined') {
 		if (context.canvas.width != RAW_I_DATA.width ||
@@ -189,14 +189,14 @@ function drawRAWArea(C1) {
 }
 
 function getRAWbackgroundImageData(C) {
-	var ctx = C.getContext("2d");
-	var imageData = ctx.getImageData(0, 0, C.width, C.height);
-	var buf = new ArrayBuffer(imageData.data.length);
-	var buf8 = new Uint8ClampedArray(buf);
-	var data = new Uint32Array(buf);
-	for (var y = 0; y < C.height; ++y) {
-		for (var x = 0; x < C.width; ++x) {
-			var value = 0.0001 * millisX * x * y & 0xff;
+	let ctx = C.getContext("2d");
+	let imageData = ctx.getImageData(0, 0, C.width, C.height);
+	let buf = new ArrayBuffer(imageData.data.length);
+	let buf8 = new Uint8ClampedArray(buf);
+	let data = new Uint32Array(buf);
+	for (let y = 0; y < C.height; ++y) {
+		for (let x = 0; x < C.width; ++x) {
+			let value = 0.0001 * millisX * x * y & 0xff;
 
 			data[y * C.width + x] =
 				(value << 24) | // alpha
@@ -218,7 +218,7 @@ function timeInterval1000() {
 	console.log("[INFO][HB][1000ms][IP]=" + clientIP + "[WS]=" + WS_URI);
 	// doSendWS("test","mmmsssggg");
 	// $('#checkAreaTitle').html(new Date());
-	// var text=$("#textareaX").val();
+	// let text=$("#textareaX").val();
 	// console.log("[DEBUG] textareaX="+ text);
 	// doSendWS("from_mobile",text);
 	// $("#output").append(" [T]"+new Date().getMilliseconds());

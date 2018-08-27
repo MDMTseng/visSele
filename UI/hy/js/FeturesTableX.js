@@ -1,5 +1,5 @@
 function initTable() {
-	var printIcon = function(cell, formatterParams) { //plain text value
+	let printIcon = function(cell, formatterParams) { //plain text value
 		return "<i class='fa fa-print'></i>";
 	};
 
@@ -30,7 +30,7 @@ function initTable() {
 			field: "name",
 			width: 150,
 			formatter: function(cell, formatterParams) {
-				var value = cell.getValue();
+				let value = cell.getValue();
 				if (value.indexOf("o") > 0) {
 					return "<span style='color:red; font-weight:bold;'>" + value + "</span>";
 				} else {

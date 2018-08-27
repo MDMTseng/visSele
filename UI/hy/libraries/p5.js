@@ -1,5 +1,5 @@
 /*! p5.js v0.5.0 May 02, 2016 */
-(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.p5 = f()}})(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{let g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.p5 = f()}})(function(){let define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){let a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);let f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}let l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){let n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}let i=typeof require=="function"&&require;for(let o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
 
 },{}],2:[function(_dereq_,module,exports){
 // Run-time checking of preconditions.
@@ -38,7 +38,7 @@ exports.line = line;
 
 'use strict';
 
-var cffStandardStrings = [
+let cffStandardStrings = [
     '.notdef', 'space', 'exclam', 'quotedbl', 'numbersign', 'dollar', 'percent', 'ampersand', 'quoteright',
     'parenleft', 'parenright', 'asterisk', 'plus', 'comma', 'hyphen', 'period', 'slash', 'zero', 'one', 'two',
     'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'colon', 'semicolon', 'less', 'equal', 'greater',
@@ -83,7 +83,7 @@ var cffStandardStrings = [
     'Uacutesmall', 'Ucircumflexsmall', 'Udieresissmall', 'Yacutesmall', 'Thornsmall', 'Ydieresissmall', '001.000',
     '001.001', '001.002', '001.003', 'Black', 'Bold', 'Book', 'Light', 'Medium', 'Regular', 'Roman', 'Semibold'];
 
-var cffStandardEncoding = [
+let cffStandardEncoding = [
     '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
     '', '', '', '', 'space', 'exclam', 'quotedbl', 'numbersign', 'dollar', 'percent', 'ampersand', 'quoteright',
     'parenleft', 'parenright', 'asterisk', 'plus', 'comma', 'hyphen', 'period', 'slash', 'zero', 'one', 'two',
@@ -102,7 +102,7 @@ var cffStandardEncoding = [
     '', 'Lslash', 'Oslash', 'OE', 'ordmasculine', '', '', '', '', '', 'ae', '', '', '', 'dotlessi', '', '',
     'lslash', 'oslash', 'oe', 'germandbls'];
 
-var cffExpertEncoding = [
+let cffExpertEncoding = [
     '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
     '', '', '', '', 'space', 'exclamsmall', 'Hungarumlautsmall', '', 'dollaroldstyle', 'dollarsuperior',
     'ampersandsmall', 'Acutesmall', 'parenleftsuperior', 'parenrightsuperior', 'twodotenleader', 'onedotenleader',
@@ -130,7 +130,7 @@ var cffExpertEncoding = [
     'Ocircumflexsmall', 'Otildesmall', 'Odieresissmall', 'OEsmall', 'Oslashsmall', 'Ugravesmall', 'Uacutesmall',
     'Ucircumflexsmall', 'Udieresissmall', 'Yacutesmall', 'Thornsmall', 'Ydieresissmall'];
 
-var standardNames = [
+let standardNames = [
     '.notdef', '.null', 'nonmarkingreturn', 'space', 'exclam', 'quotedbl', 'numbersign', 'dollar', 'percent',
     'ampersand', 'quotesingle', 'parenleft', 'parenright', 'asterisk', 'plus', 'comma', 'hyphen', 'period', 'slash',
     'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'colon', 'semicolon', 'less',
@@ -165,12 +165,12 @@ function DefaultEncoding(font) {
 }
 
 DefaultEncoding.prototype.charToGlyphIndex = function(c) {
-    var code = c.charCodeAt(0);
-    var glyphs = this.font.glyphs;
+    let code = c.charCodeAt(0);
+    let glyphs = this.font.glyphs;
     if (glyphs) {
-        for (var i = 0; i < glyphs.length; i += 1) {
-            var glyph = glyphs.get(i);
-            for (var j = 0; j < glyph.unicodes.length; j += 1) {
+        for (let i = 0; i < glyphs.length; i += 1) {
+            let glyph = glyphs.get(i);
+            for (let j = 0; j < glyph.unicodes.length; j += 1) {
                 if (glyph.unicodes[j] === code) {
                     return i;
                 }
@@ -195,13 +195,13 @@ function CffEncoding(encoding, charset) {
 }
 
 CffEncoding.prototype.charToGlyphIndex = function(s) {
-    var code = s.charCodeAt(0);
-    var charName = this.encoding[code];
+    let code = s.charCodeAt(0);
+    let charName = this.encoding[code];
     return this.charset.indexOf(charName);
 };
 
 function GlyphNames(post) {
-    var i;
+    let i;
     switch (post.version) {
     case 1:
         this.names = exports.standardNames.slice();
@@ -239,13 +239,13 @@ GlyphNames.prototype.glyphIndexToName = function(gid) {
 };
 
 function addGlyphNames(font) {
-    var glyph;
-    var glyphIndexMap = font.tables.cmap.glyphIndexMap;
-    var charCodes = Object.keys(glyphIndexMap);
+    let glyph;
+    let glyphIndexMap = font.tables.cmap.glyphIndexMap;
+    let charCodes = Object.keys(glyphIndexMap);
 
-    for (var i = 0; i < charCodes.length; i += 1) {
-        var c = charCodes[i];
-        var glyphIndex = glyphIndexMap[c];
+    for (let i = 0; i < charCodes.length; i += 1) {
+        let c = charCodes[i];
+        let glyphIndex = glyphIndexMap[c];
         glyph = font.glyphs.get(glyphIndex);
         glyph.addUnicode(parseInt(c));
     }
@@ -275,10 +275,10 @@ exports.addGlyphNames = addGlyphNames;
 
 'use strict';
 
-var path = _dereq_('./path');
-var sfnt = _dereq_('./tables/sfnt');
-var encoding = _dereq_('./encoding');
-var glyphset = _dereq_('./glyphset');
+let path = _dereq_('./path');
+let sfnt = _dereq_('./tables/sfnt');
+let encoding = _dereq_('./encoding');
+let glyphset = _dereq_('./glyphset');
 
 // A Font represents a loaded OpenType font file.
 // It contains a set of glyphs and methods to draw text on a drawing context,
@@ -324,8 +324,8 @@ Font.prototype.charToGlyphIndex = function(s) {
 // Note that this function assumes that there is a one-to-one mapping between
 // the given character and a glyph; for complex scripts this might not be the case.
 Font.prototype.charToGlyph = function(c) {
-    var glyphIndex = this.charToGlyphIndex(c);
-    var glyph = this.glyphs.get(glyphIndex);
+    let glyphIndex = this.charToGlyphIndex(c);
+    let glyph = this.glyphs.get(glyphIndex);
     if (!glyph) {
         // .notdef
         glyph = this.glyphs.get(0);
@@ -339,9 +339,9 @@ Font.prototype.charToGlyph = function(c) {
 // glyphs, so the list of returned glyphs can be larger or smaller than the
 // length of the given string.
 Font.prototype.stringToGlyphs = function(s) {
-    var glyphs = [];
-    for (var i = 0; i < s.length; i += 1) {
-        var c = s[i];
+    let glyphs = [];
+    for (let i = 0; i < s.length; i += 1) {
+        let c = s[i];
         glyphs.push(this.charToGlyph(c));
     }
 
@@ -353,8 +353,8 @@ Font.prototype.nameToGlyphIndex = function(name) {
 };
 
 Font.prototype.nameToGlyph = function(name) {
-    var glyphIndex = this.nametoGlyphIndex(name);
-    var glyph = this.glyphs.get(glyphIndex);
+    let glyphIndex = this.nametoGlyphIndex(name);
+    let glyph = this.glyphs.get(glyphIndex);
     if (!glyph) {
         // .notdef
         glyph = this.glyphs.get(0);
@@ -378,7 +378,7 @@ Font.prototype.glyphIndexToName = function(gid) {
 Font.prototype.getKerningValue = function(leftGlyph, rightGlyph) {
     leftGlyph = leftGlyph.index || leftGlyph;
     rightGlyph = rightGlyph.index || rightGlyph;
-    var gposKerning = this.getGposKerningValue;
+    let gposKerning = this.getGposKerningValue;
     return gposKerning ? gposKerning(leftGlyph, rightGlyph) :
         (this.kerningPairs[leftGlyph + ',' + rightGlyph] || 0);
 };
@@ -394,18 +394,18 @@ Font.prototype.forEachGlyph = function(text, x, y, fontSize, options, callback) 
     y = y !== undefined ? y : 0;
     fontSize = fontSize !== undefined ? fontSize : 72;
     options = options || {};
-    var kerning = options.kerning === undefined ? true : options.kerning;
-    var fontScale = 1 / this.unitsPerEm * fontSize;
-    var glyphs = this.stringToGlyphs(text);
-    for (var i = 0; i < glyphs.length; i += 1) {
-        var glyph = glyphs[i];
+    let kerning = options.kerning === undefined ? true : options.kerning;
+    let fontScale = 1 / this.unitsPerEm * fontSize;
+    let glyphs = this.stringToGlyphs(text);
+    for (let i = 0; i < glyphs.length; i += 1) {
+        let glyph = glyphs[i];
         callback(glyph, x, y, fontSize, options);
         if (glyph.advanceWidth) {
             x += glyph.advanceWidth * fontScale;
         }
 
         if (kerning && i < glyphs.length - 1) {
-            var kerningValue = this.getKerningValue(glyph, glyphs[i + 1]);
+            let kerningValue = this.getKerningValue(glyph, glyphs[i + 1]);
             x += kerningValue * fontScale;
         }
     }
@@ -422,9 +422,9 @@ Font.prototype.forEachGlyph = function(text, x, y, fontSize, options, callback) 
 //
 // Returns a Path object.
 Font.prototype.getPath = function(text, x, y, fontSize, options) {
-    var fullPath = new path.Path();
+    let fullPath = new path.Path();
     this.forEachGlyph(text, x, y, fontSize, options, function(glyph, gX, gY, gFontSize) {
-        var glyphPath = glyph.getPath(gX, gY, gFontSize);
+        let glyphPath = glyph.getPath(gX, gY, gFontSize);
         fullPath.extend(glyphPath);
     });
 
@@ -480,8 +480,8 @@ Font.prototype.drawMetrics = function(ctx, text, x, y, fontSize, options) {
 
 // Validate
 Font.prototype.validate = function() {
-    var warnings = [];
-    var _this = this;
+    let warnings = [];
+    let _this = this;
 
     function assert(predicate, message) {
         if (!predicate) {
@@ -511,11 +511,11 @@ Font.prototype.toTables = function() {
 };
 
 Font.prototype.toBuffer = function() {
-    var sfntTable = this.toTables();
-    var bytes = sfntTable.encode();
-    var buffer = new ArrayBuffer(bytes.length);
-    var intArray = new Uint8Array(buffer);
-    for (var i = 0; i < bytes.length; i++) {
+    let sfntTable = this.toTables();
+    let bytes = sfntTable.encode();
+    let buffer = new ArrayBuffer(bytes.length);
+    let intArray = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.length; i++) {
         intArray[i] = bytes[i];
     }
 
@@ -524,15 +524,15 @@ Font.prototype.toBuffer = function() {
 
 // Initiate a download of the OpenType font.
 Font.prototype.download = function() {
-    var fileName = this.familyName.replace(/\s/g, '') + '-' + this.styleName + '.otf';
-    var buffer = this.toBuffer();
+    let fileName = this.familyName.replace(/\s/g, '') + '-' + this.styleName + '.otf';
+    let buffer = this.toBuffer();
 
     window.requestFileSystem = window.requestFileSystem || window.webkitRequestFileSystem;
     window.requestFileSystem(window.TEMPORARY, buffer.byteLength, function(fs) {
         fs.root.getFile(fileName, {create: true}, function(fileEntry) {
             fileEntry.createWriter(function(writer) {
-                var dataView = new DataView(buffer);
-                var blob = new Blob([dataView], {type: 'font/opentype'});
+                let dataView = new DataView(buffer);
+                let blob = new Blob([dataView], {type: 'font/opentype'});
                 writer.write(blob);
 
                 writer.addEventListener('writeend', function() {
@@ -555,12 +555,12 @@ exports.Font = Font;
 
 'use strict';
 
-var check = _dereq_('./check');
-var draw = _dereq_('./draw');
-var path = _dereq_('./path');
+let check = _dereq_('./check');
+let draw = _dereq_('./draw');
+let path = _dereq_('./path');
 
 function getPathDefinition(glyph, path) {
-    var _path = path || { commands: [] };
+    let _path = path || { commands: [] };
     return {
         configurable: true,
 
@@ -642,11 +642,11 @@ Glyph.prototype.getPath = function(x, y, fontSize) {
     x = x !== undefined ? x : 0;
     y = y !== undefined ? y : 0;
     fontSize = fontSize !== undefined ? fontSize : 72;
-    var scale = 1 / this.path.unitsPerEm * fontSize;
-    var p = new path.Path();
-    var commands = this.path.commands;
-    for (var i = 0; i < commands.length; i += 1) {
-        var cmd = commands[i];
+    let scale = 1 / this.path.unitsPerEm * fontSize;
+    let p = new path.Path();
+    let commands = this.path.commands;
+    for (let i = 0; i < commands.length; i += 1) {
+        let cmd = commands[i];
         if (cmd.type === 'M') {
             p.moveTo(x + (cmd.x * scale), y + (-cmd.y * scale));
         } else if (cmd.type === 'L') {
@@ -674,10 +674,10 @@ Glyph.prototype.getContours = function() {
         return [];
     }
 
-    var contours = [];
-    var currentContour = [];
-    for (var i = 0; i < this.points.length; i += 1) {
-        var pt = this.points[i];
+    let contours = [];
+    let currentContour = [];
+    for (let i = 0; i < this.points.length; i += 1) {
+        let pt = this.points[i];
         currentContour.push(pt);
         if (pt.lastPointOfContour) {
             contours.push(currentContour);
@@ -691,11 +691,11 @@ Glyph.prototype.getContours = function() {
 
 // Calculate the xMin/yMin/xMax/yMax/lsb/rsb for a Glyph.
 Glyph.prototype.getMetrics = function() {
-    var commands = this.path.commands;
-    var xCoords = [];
-    var yCoords = [];
-    for (var i = 0; i < commands.length; i += 1) {
-        var cmd = commands[i];
+    let commands = this.path.commands;
+    let xCoords = [];
+    let yCoords = [];
+    for (let i = 0; i < commands.length; i += 1) {
+        let cmd = commands[i];
         if (cmd.type !== 'Z') {
             xCoords.push(cmd.x);
             yCoords.push(cmd.y);
@@ -712,7 +712,7 @@ Glyph.prototype.getMetrics = function() {
         }
     }
 
-    var metrics = {
+    let metrics = {
         xMin: Math.min.apply(null, xCoords),
         yMin: Math.min.apply(null, yCoords),
         xMax: Math.max.apply(null, xCoords),
@@ -743,9 +743,9 @@ Glyph.prototype.draw = function(ctx, x, y, fontSize) {
 Glyph.prototype.drawPoints = function(ctx, x, y, fontSize) {
 
     function drawCircles(l, x, y, scale) {
-        var PI_SQ = Math.PI * 2;
+        let PI_SQ = Math.PI * 2;
         ctx.beginPath();
-        for (var j = 0; j < l.length; j += 1) {
+        for (let j = 0; j < l.length; j += 1) {
             ctx.moveTo(x + (l[j].x * scale), y + (l[j].y * scale));
             ctx.arc(x + (l[j].x * scale), y + (l[j].y * scale), 2, 0, PI_SQ, false);
         }
@@ -757,13 +757,13 @@ Glyph.prototype.drawPoints = function(ctx, x, y, fontSize) {
     x = x !== undefined ? x : 0;
     y = y !== undefined ? y : 0;
     fontSize = fontSize !== undefined ? fontSize : 24;
-    var scale = 1 / this.path.unitsPerEm * fontSize;
+    let scale = 1 / this.path.unitsPerEm * fontSize;
 
-    var blueCircles = [];
-    var redCircles = [];
-    var path = this.path;
-    for (var i = 0; i < path.commands.length; i += 1) {
-        var cmd = path.commands[i];
+    let blueCircles = [];
+    let redCircles = [];
+    let path = this.path;
+    for (let i = 0; i < path.commands.length; i += 1) {
+        let cmd = path.commands[i];
         if (cmd.x !== undefined) {
             blueCircles.push({x: cmd.x, y: -cmd.y});
         }
@@ -793,7 +793,7 @@ Glyph.prototype.drawPoints = function(ctx, x, y, fontSize) {
 // y - Vertical position of the *baseline* of the glyph. (default: 0)
 // fontSize - Font size, in pixels (default: 72).
 Glyph.prototype.drawMetrics = function(ctx, x, y, fontSize) {
-    var scale;
+    let scale;
     x = x !== undefined ? x : 0;
     y = y !== undefined ? y : 0;
     fontSize = fontSize !== undefined ? fontSize : 24;
@@ -807,11 +807,11 @@ Glyph.prototype.drawMetrics = function(ctx, x, y, fontSize) {
 
     // This code is here due to memory optimization: by not using
     // defaults in the constructor, we save a notable amount of memory.
-    var xMin = this.xMin || 0;
-    var yMin = this.yMin || 0;
-    var xMax = this.xMax || 0;
-    var yMax = this.yMax || 0;
-    var advanceWidth = this.advanceWidth || 0;
+    let xMin = this.xMin || 0;
+    let yMin = this.yMin || 0;
+    let xMax = this.xMax || 0;
+    let yMax = this.yMax || 0;
+    let advanceWidth = this.advanceWidth || 0;
 
     // Draw the glyph box
     ctx.strokeStyle = 'blue';
@@ -832,7 +832,7 @@ exports.Glyph = Glyph;
 
 'use strict';
 
-var _glyph = _dereq_('./glyph');
+let _glyph = _dereq_('./glyph');
 
 // A GlyphSet represents all glyphs available in the font, but modelled using
 // a deferred glyph loader, for retrieving glyphs only once they are absolutely
@@ -841,7 +841,7 @@ function GlyphSet(font, glyphs) {
     this.font = font;
     this.glyphs = {};
     if (Array.isArray(glyphs)) {
-        for (var i = 0; i < glyphs.length; i++) {
+        for (let i = 0; i < glyphs.length; i++) {
             this.glyphs[i] = glyphs[i];
         }
     }
@@ -874,11 +874,11 @@ function glyphLoader(font, index) {
 
 function ttfGlyphLoader(font, index, parseGlyph, data, position, buildPath) {
     return function() {
-        var glyph = new _glyph.Glyph({index: index, font: font});
+        let glyph = new _glyph.Glyph({index: index, font: font});
 
         glyph.path = function() {
             parseGlyph(glyph, data, position);
-            var path = buildPath(font.glyphs, glyph);
+            let path = buildPath(font.glyphs, glyph);
             path.unitsPerEm = font.unitsPerEm;
             return path;
         };
@@ -889,10 +889,10 @@ function ttfGlyphLoader(font, index, parseGlyph, data, position, buildPath) {
 
 function cffGlyphLoader(font, index, parseCFFCharstring, charstring) {
     return function() {
-        var glyph = new _glyph.Glyph({index: index, font: font});
+        let glyph = new _glyph.Glyph({index: index, font: font});
 
         glyph.path = function() {
-            var path = parseCFFCharstring(font, glyph, charstring);
+            let path = parseCFFCharstring(font, glyph, charstring);
             path.unitsPerEm = font.unitsPerEm;
             return path;
         };
@@ -916,33 +916,33 @@ exports.cffGlyphLoader = cffGlyphLoader;
 
 'use strict';
 
-var encoding = _dereq_('./encoding');
-var _font = _dereq_('./font');
-var glyph = _dereq_('./glyph');
-var parse = _dereq_('./parse');
-var path = _dereq_('./path');
+let encoding = _dereq_('./encoding');
+let _font = _dereq_('./font');
+let glyph = _dereq_('./glyph');
+let parse = _dereq_('./parse');
+let path = _dereq_('./path');
 
-var cmap = _dereq_('./tables/cmap');
-var cff = _dereq_('./tables/cff');
-var glyf = _dereq_('./tables/glyf');
-var gpos = _dereq_('./tables/gpos');
-var head = _dereq_('./tables/head');
-var hhea = _dereq_('./tables/hhea');
-var hmtx = _dereq_('./tables/hmtx');
-var kern = _dereq_('./tables/kern');
-var loca = _dereq_('./tables/loca');
-var maxp = _dereq_('./tables/maxp');
-var _name = _dereq_('./tables/name');
-var os2 = _dereq_('./tables/os2');
-var post = _dereq_('./tables/post');
+let cmap = _dereq_('./tables/cmap');
+let cff = _dereq_('./tables/cff');
+let glyf = _dereq_('./tables/glyf');
+let gpos = _dereq_('./tables/gpos');
+let head = _dereq_('./tables/head');
+let hhea = _dereq_('./tables/hhea');
+let hmtx = _dereq_('./tables/hmtx');
+let kern = _dereq_('./tables/kern');
+let loca = _dereq_('./tables/loca');
+let maxp = _dereq_('./tables/maxp');
+let _name = _dereq_('./tables/name');
+let os2 = _dereq_('./tables/os2');
+let post = _dereq_('./tables/post');
 
 // File loaders /////////////////////////////////////////////////////////
 
 // Convert a Node.js Buffer to an ArrayBuffer
 function toArrayBuffer(buffer) {
-    var arrayBuffer = new ArrayBuffer(buffer.length);
-    var data = new Uint8Array(arrayBuffer);
-    for (var i = 0; i < buffer.length; i += 1) {
+    let arrayBuffer = new ArrayBuffer(buffer.length);
+    let data = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < buffer.length; i += 1) {
         data[i] = buffer[i];
     }
 
@@ -950,7 +950,7 @@ function toArrayBuffer(buffer) {
 }
 
 function loadFromFile(path, callback) {
-    var fs = _dereq_('fs');
+    let fs = _dereq_('fs');
     fs.readFile(path, function(err, buffer) {
         if (err) {
             return callback(err.message);
@@ -961,7 +961,7 @@ function loadFromFile(path, callback) {
 }
 
 function loadFromUrl(url, callback) {
-    var request = new XMLHttpRequest();
+    let request = new XMLHttpRequest();
     request.open('get', url, true);
     request.responseType = 'arraybuffer';
     request.onload = function() {
@@ -981,22 +981,22 @@ function loadFromUrl(url, callback) {
 // If the file could not be parsed (most likely because it contains Postscript outlines)
 // we return an empty Font object with the `supported` flag set to `false`.
 function parseBuffer(buffer) {
-    var indexToLocFormat;
-    var hmtxOffset;
-    var glyfOffset;
-    var locaOffset;
-    var cffOffset;
-    var kernOffset;
-    var gposOffset;
+    let indexToLocFormat;
+    let hmtxOffset;
+    let glyfOffset;
+    let locaOffset;
+    let cffOffset;
+    let kernOffset;
+    let gposOffset;
 
     // OpenType fonts use big endian byte ordering.
     // We can't rely on typed array view types, because they operate with the endianness of the host computer.
     // Instead we use DataViews where we can specify endianness.
 
-    var font = new _font.Font();
-    var data = new DataView(buffer, 0);
+    let font = new _font.Font();
+    let data = new DataView(buffer, 0);
 
-    var version = parse.getFixed(data, 0);
+    let version = parse.getFixed(data, 0);
     if (version === 1.0) {
         font.outlinesFormat = 'truetype';
     } else {
@@ -1008,13 +1008,13 @@ function parseBuffer(buffer) {
         }
     }
 
-    var numTables = parse.getUShort(data, 4);
+    let numTables = parse.getUShort(data, 4);
 
     // Offset into the table records.
-    var p = 12;
-    for (var i = 0; i < numTables; i += 1) {
-        var tag = parse.getTag(data, p);
-        var offset = parse.getULong(data, p + 8);
+    let p = 12;
+    for (let i = 0; i < numTables; i += 1) {
+        let tag = parse.getTag(data, p);
+        let offset = parse.getULong(data, p + 8);
         switch (tag) {
         case 'cmap':
             font.tables.cmap = cmap.parse(data, offset);
@@ -1074,8 +1074,8 @@ function parseBuffer(buffer) {
     }
 
     if (glyfOffset && locaOffset) {
-        var shortVersion = indexToLocFormat === 0;
-        var locaTable = loca.parse(data, locaOffset, font.numGlyphs, shortVersion);
+        let shortVersion = indexToLocFormat === 0;
+        let locaTable = loca.parse(data, locaOffset, font.numGlyphs, shortVersion);
         font.glyphs = glyf.parse(data, glyfOffset, locaTable, font);
         hmtx.parse(data, hmtxOffset, font.numberOfHMetrics, font.numGlyphs, font.glyphs);
         encoding.addGlyphNames(font);
@@ -1108,14 +1108,14 @@ function parseBuffer(buffer) {
 // We use the node.js callback convention so that
 // opentype.js can integrate with frameworks like async.js.
 function load(url, callback) {
-    var isNode = typeof window === 'undefined';
-    var loadFn = isNode ? loadFromFile : loadFromUrl;
+    let isNode = typeof window === 'undefined';
+    let loadFn = isNode ? loadFromFile : loadFromUrl;
     loadFn(url, function(err, arrayBuffer) {
         if (err) {
             return callback(err);
         }
 
-        var font = parseBuffer(arrayBuffer);
+        let font = parseBuffer(arrayBuffer);
         if (!font.supported) {
             return callback('Font is not supported (is this a Postscript font?)');
         }
@@ -1166,16 +1166,16 @@ exports.getULong = function(dataView, offset) {
 // Retrieve a 32-bit signed fixed-point number (16.16) from the DataView.
 // The value is stored in big endian.
 exports.getFixed = function(dataView, offset) {
-    var decimal = dataView.getInt16(offset, false);
-    var fraction = dataView.getUint16(offset + 2, false);
+    let decimal = dataView.getInt16(offset, false);
+    let fraction = dataView.getUint16(offset + 2, false);
     return decimal + fraction / 65535;
 };
 
 // Retrieve a 4-character tag from the DataView.
 // Tags are used to identify tables.
 exports.getTag = function(dataView, offset) {
-    var tag = '';
-    for (var i = offset; i < offset + 4; i += 1) {
+    let tag = '';
+    for (let i = offset; i < offset + 4; i += 1) {
         tag += String.fromCharCode(dataView.getInt8(i));
     }
 
@@ -1185,8 +1185,8 @@ exports.getTag = function(dataView, offset) {
 // Retrieve an offset from the DataView.
 // Offsets are 1 to 4 bytes in length, depending on the offSize argument.
 exports.getOffset = function(dataView, offset, offSize) {
-    var v = 0;
-    for (var i = 0; i < offSize; i += 1) {
+    let v = 0;
+    for (let i = 0; i < offSize; i += 1) {
         v <<= 8;
         v += dataView.getUint8(offset + i);
     }
@@ -1196,8 +1196,8 @@ exports.getOffset = function(dataView, offset, offSize) {
 
 // Retrieve a number of bytes from start offset to the end offset from the DataView.
 exports.getBytes = function(dataView, startOffset, endOffset) {
-    var bytes = [];
-    for (var i = startOffset; i < endOffset; i += 1) {
+    let bytes = [];
+    for (let i = startOffset; i < endOffset; i += 1) {
         bytes.push(dataView.getUint8(i));
     }
 
@@ -1206,15 +1206,15 @@ exports.getBytes = function(dataView, startOffset, endOffset) {
 
 // Convert the list of bytes to a string.
 exports.bytesToString = function(bytes) {
-    var s = '';
-    for (var i = 0; i < bytes.length; i += 1) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 1) {
         s += String.fromCharCode(bytes[i]);
     }
 
     return s;
 };
 
-var typeOffsets = {
+let typeOffsets = {
     byte: 1,
     uShort: 2,
     short: 2,
@@ -1233,13 +1233,13 @@ function Parser(data, offset) {
 }
 
 Parser.prototype.parseByte = function() {
-    var v = this.data.getUint8(this.offset + this.relativeOffset);
+    let v = this.data.getUint8(this.offset + this.relativeOffset);
     this.relativeOffset += 1;
     return v;
 };
 
 Parser.prototype.parseChar = function() {
-    var v = this.data.getInt8(this.offset + this.relativeOffset);
+    let v = this.data.getInt8(this.offset + this.relativeOffset);
     this.relativeOffset += 1;
     return v;
 };
@@ -1247,7 +1247,7 @@ Parser.prototype.parseChar = function() {
 Parser.prototype.parseCard8 = Parser.prototype.parseByte;
 
 Parser.prototype.parseUShort = function() {
-    var v = this.data.getUint16(this.offset + this.relativeOffset);
+    let v = this.data.getUint16(this.offset + this.relativeOffset);
     this.relativeOffset += 2;
     return v;
 };
@@ -1257,35 +1257,35 @@ Parser.prototype.parseSID = Parser.prototype.parseUShort;
 Parser.prototype.parseOffset16 = Parser.prototype.parseUShort;
 
 Parser.prototype.parseShort = function() {
-    var v = this.data.getInt16(this.offset + this.relativeOffset);
+    let v = this.data.getInt16(this.offset + this.relativeOffset);
     this.relativeOffset += 2;
     return v;
 };
 
 Parser.prototype.parseF2Dot14 = function() {
-    var v = this.data.getInt16(this.offset + this.relativeOffset) / 16384;
+    let v = this.data.getInt16(this.offset + this.relativeOffset) / 16384;
     this.relativeOffset += 2;
     return v;
 };
 
 Parser.prototype.parseULong = function() {
-    var v = exports.getULong(this.data, this.offset + this.relativeOffset);
+    let v = exports.getULong(this.data, this.offset + this.relativeOffset);
     this.relativeOffset += 4;
     return v;
 };
 
 Parser.prototype.parseFixed = function() {
-    var v = exports.getFixed(this.data, this.offset + this.relativeOffset);
+    let v = exports.getFixed(this.data, this.offset + this.relativeOffset);
     this.relativeOffset += 4;
     return v;
 };
 
 Parser.prototype.parseOffset16List =
 Parser.prototype.parseUShortList = function(count) {
-    var offsets = new Array(count);
-    var dataView = this.data;
-    var offset = this.offset + this.relativeOffset;
-    for (var i = 0; i < count; i++) {
+    let offsets = new Array(count);
+    let dataView = this.data;
+    let offset = this.offset + this.relativeOffset;
+    for (let i = 0; i < count; i++) {
         offsets[i] = exports.getUShort(dataView, offset);
         offset += 2;
     }
@@ -1295,11 +1295,11 @@ Parser.prototype.parseUShortList = function(count) {
 };
 
 Parser.prototype.parseString = function(length) {
-    var dataView = this.data;
-    var offset = this.offset + this.relativeOffset;
-    var string = '';
+    let dataView = this.data;
+    let offset = this.offset + this.relativeOffset;
+    let string = '';
     this.relativeOffset += length;
-    for (var i = 0; i < length; i++) {
+    for (let i = 0; i < length; i++) {
         string += String.fromCharCode(dataView.getUint8(offset + i));
     }
 
@@ -1314,23 +1314,23 @@ Parser.prototype.parseTag = function() {
 // JavaScript and unix timestamps traditionally use 32 bits, so we
 // only take the last 32 bits.
 Parser.prototype.parseLongDateTime = function() {
-    var v = exports.getULong(this.data, this.offset + this.relativeOffset + 4);
+    let v = exports.getULong(this.data, this.offset + this.relativeOffset + 4);
     this.relativeOffset += 8;
     return v;
 };
 
 Parser.prototype.parseFixed = function() {
-    var v = exports.getULong(this.data, this.offset + this.relativeOffset);
+    let v = exports.getULong(this.data, this.offset + this.relativeOffset);
     this.relativeOffset += 4;
     return v / 65536;
 };
 
 Parser.prototype.parseVersion = function() {
-    var major = exports.getUShort(this.data, this.offset + this.relativeOffset);
+    let major = exports.getUShort(this.data, this.offset + this.relativeOffset);
 
     // How to interpret the minor version is very vague in the spec. 0x5000 is 5, 0x1000 is 1
     // This returns the correct number if minor = 0xN000 where N is 0-9
-    var minor = exports.getUShort(this.data, this.offset + this.relativeOffset + 2);
+    let minor = exports.getUShort(this.data, this.offset + this.relativeOffset + 2);
     this.relativeOffset += 4;
     return major + minor / 0x1000 / 10;
 };
@@ -1415,8 +1415,8 @@ Path.prototype.extend = function(pathOrCommands) {
 // Draw the path to a 2D context.
 Path.prototype.draw = function(ctx) {
     ctx.beginPath();
-    for (var i = 0; i < this.commands.length; i += 1) {
-        var cmd = this.commands[i];
+    for (let i = 0; i < this.commands.length; i += 1) {
+        let cmd = this.commands[i];
         if (cmd.type === 'M') {
             ctx.moveTo(cmd.x, cmd.y);
         } else if (cmd.type === 'L') {
@@ -1458,9 +1458,9 @@ Path.prototype.toPathData = function(decimalPlaces) {
     }
 
     function packValues() {
-        var s = '';
-        for (var i = 0; i < arguments.length; i += 1) {
-            var v = arguments[i];
+        let s = '';
+        for (let i = 0; i < arguments.length; i += 1) {
+            let v = arguments[i];
             if (v >= 0 && i > 0) {
                 s += ' ';
             }
@@ -1471,9 +1471,9 @@ Path.prototype.toPathData = function(decimalPlaces) {
         return s;
     }
 
-    var d = '';
-    for (var i = 0; i < this.commands.length; i += 1) {
-        var cmd = this.commands[i];
+    let d = '';
+    for (let i = 0; i < this.commands.length; i += 1) {
+        let cmd = this.commands[i];
         if (cmd.type === 'M') {
             d += 'M' + packValues(cmd.x, cmd.y);
         } else if (cmd.type === 'L') {
@@ -1494,7 +1494,7 @@ Path.prototype.toPathData = function(decimalPlaces) {
 // Parameters:
 // - decimalPlaces: The amount of decimal places for floating-point values (default: 2)
 Path.prototype.toSVG = function(decimalPlaces) {
-    var svg = '<path d="';
+    let svg = '<path d="';
     svg += this.toPathData(decimalPlaces);
     svg += '"';
     if (this.fill & this.fill !== 'black') {
@@ -1520,24 +1520,24 @@ exports.Path = Path;
 
 'use strict';
 
-var check = _dereq_('./check');
-var encode = _dereq_('./types').encode;
-var sizeOf = _dereq_('./types').sizeOf;
+let check = _dereq_('./check');
+let encode = _dereq_('./types').encode;
+let sizeOf = _dereq_('./types').sizeOf;
 
 function Table(tableName, fields, options) {
-    var i;
+    let i;
     for (i = 0; i < fields.length; i += 1) {
-        var field = fields[i];
+        let field = fields[i];
         this[field.name] = field.value;
     }
 
     this.tableName = tableName;
     this.fields = fields;
     if (options) {
-        var optionKeys = Object.keys(options);
+        let optionKeys = Object.keys(options);
         for (i = 0; i < optionKeys.length; i += 1) {
-            var k = optionKeys[i];
-            var v = options[k];
+            let k = optionKeys[i];
+            let v = options[k];
             if (this[k] !== undefined) {
                 this[k] = v;
             }
@@ -1546,10 +1546,10 @@ function Table(tableName, fields, options) {
 }
 
 Table.prototype.sizeOf = function() {
-    var v = 0;
-    for (var i = 0; i < this.fields.length; i += 1) {
-        var field = this.fields[i];
-        var value = this[field.name];
+    let v = 0;
+    for (let i = 0; i < this.fields.length; i += 1) {
+        let field = this.fields[i];
+        let value = this[field.name];
         if (value === undefined) {
             value = field.value;
         }
@@ -1557,7 +1557,7 @@ Table.prototype.sizeOf = function() {
         if (typeof value.sizeOf === 'function') {
             v += value.sizeOf();
         } else {
-            var sizeOfFunction = sizeOf[field.type];
+            let sizeOfFunction = sizeOf[field.type];
             check.assert(typeof sizeOfFunction === 'function', 'Could not find sizeOf function for field' + field.name);
             v += sizeOfFunction(value);
         }
@@ -1580,11 +1580,11 @@ exports.Table = Table;
 
 'use strict';
 
-var encoding = _dereq_('../encoding');
-var glyphset = _dereq_('../glyphset');
-var parse = _dereq_('../parse');
-var path = _dereq_('../path');
-var table = _dereq_('../table');
+let encoding = _dereq_('../encoding');
+let glyphset = _dereq_('../glyphset');
+let parse = _dereq_('../parse');
+let path = _dereq_('../path');
+let table = _dereq_('../table');
 
 // Custom equals function that can also check lists.
 function equals(a, b) {
@@ -1595,7 +1595,7 @@ function equals(a, b) {
             return false;
         }
 
-        for (var i = 0; i < a.length; i += 1) {
+        for (let i = 0; i < a.length; i += 1) {
             if (!equals(a[i], b[i])) {
                 return false;
             }
@@ -1610,17 +1610,17 @@ function equals(a, b) {
 // Parse a `CFF` INDEX array.
 // An index array consists of a list of offsets, then a list of objects at those offsets.
 function parseCFFIndex(data, start, conversionFn) {
-    //var i, objectOffset, endOffset;
-    var offsets = [];
-    var objects = [];
-    var count = parse.getCard16(data, start);
-    var i;
-    var objectOffset;
-    var endOffset;
+    //let i, objectOffset, endOffset;
+    let offsets = [];
+    let objects = [];
+    let count = parse.getCard16(data, start);
+    let i;
+    let objectOffset;
+    let endOffset;
     if (count !== 0) {
-        var offsetSize = parse.getByte(data, start + 2);
+        let offsetSize = parse.getByte(data, start + 2);
         objectOffset = start + ((count + 1) * offsetSize) + 2;
-        var pos = start + 3;
+        let pos = start + 3;
         for (i = 0; i < count + 1; i += 1) {
             offsets.push(parse.getOffset(data, pos, offsetSize));
             pos += offsetSize;
@@ -1633,7 +1633,7 @@ function parseCFFIndex(data, start, conversionFn) {
     }
 
     for (i = 0; i < offsets.length - 1; i += 1) {
-        var value = parse.getBytes(data, objectOffset + offsets[i], objectOffset + offsets[i + 1]);
+        let value = parse.getBytes(data, objectOffset + offsets[i], objectOffset + offsets[i + 1]);
         if (conversionFn) {
             value = conversionFn(value);
         }
@@ -1646,13 +1646,13 @@ function parseCFFIndex(data, start, conversionFn) {
 
 // Parse a `CFF` DICT real value.
 function parseFloatOperand(parser) {
-    var s = '';
-    var eof = 15;
-    var lookup = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'E', 'E-', null, '-'];
+    let s = '';
+    let eof = 15;
+    let lookup = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', 'E', 'E-', null, '-'];
     while (true) {
-        var b = parser.parseByte();
-        var n1 = b >> 4;
-        var n2 = b & 15;
+        let b = parser.parseByte();
+        let n1 = b >> 4;
+        let n2 = b & 15;
 
         if (n1 === eof) {
             break;
@@ -1672,10 +1672,10 @@ function parseFloatOperand(parser) {
 
 // Parse a `CFF` DICT operand.
 function parseOperand(parser, b0) {
-    var b1;
-    var b2;
-    var b3;
-    var b4;
+    let b1;
+    let b2;
+    let b3;
+    let b4;
     if (b0 === 28) {
         b1 = parser.parseByte();
         b2 = parser.parseByte();
@@ -1714,10 +1714,10 @@ function parseOperand(parser, b0) {
 // Convert the entries returned by `parseDict` to a proper dictionary.
 // If a value is a list of one, it is unpacked.
 function entriesToObject(entries) {
-    var o = {};
-    for (var i = 0; i < entries.length; i += 1) {
-        var key = entries[i][0];
-        var values = entries[i][1];
+    let o = {};
+    for (let i = 0; i < entries.length; i += 1) {
+        let key = entries[i][0];
+        let values = entries[i][1];
         var value;
         if (values.length === 1) {
             value = values[0];

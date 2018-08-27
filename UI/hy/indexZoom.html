@@ -31,8 +31,8 @@
         </style>
         <script>
             function draw(scale, translatePos){
-                var canvas = document.getElementById("myCanvas");
-                var context = canvas.getContext("2d");
+                let canvas = document.getElementById("myCanvas");
+                let context = canvas.getContext("2d");
 
                 // clear canvas
                 context.clearRect(0, 0, canvas.width, canvas.height);
@@ -49,7 +49,7 @@
                 context.bezierCurveTo(31, -95, -39, -80, -39, -50);
                 context.bezierCurveTo(-89, -95, -139, -80, -119, -20);
                 context.closePath(); // complete custom shape
-                var grd = context.createLinearGradient(-59, -100, 81, 100);
+                let grd = context.createLinearGradient(-59, -100, 81, 100);
                 grd.addColorStop(0, "#8ED6FF"); // light blue
                 grd.addColorStop(1, "#004CB3"); // dark blue
                 context.fillStyle = grd;
@@ -62,17 +62,17 @@
             }
 
             window.onload = function(){
-                var canvas = document.getElementById("myCanvas");
+                let canvas = document.getElementById("myCanvas");
 
-                var translatePos = {
+                let translatePos = {
                     x: canvas.width / 2,
                     y: canvas.height / 2
                 };
 
-                var scale = 1.0;
-                var scaleMultiplier = 0.8;
-                var startDragOffset = {};
-                var mouseDown = false;
+                let scale = 1.0;
+                let scaleMultiplier = 0.8;
+                let startDragOffset = {};
+                let mouseDown = false;
 
                 // add button event listeners
                 document.getElementById("plus").addEventListener("click", function(){

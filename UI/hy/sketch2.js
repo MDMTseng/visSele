@@ -10,62 +10,62 @@
 
 
 // seed color and alpha
-var seedColor = '#ff00dd';
-var bgColor = [0, 110, 0];
+let seedColor = '#ff00dd';
+let bgColor = [0, 110, 0];
 
 // inital number of seeds
-var seeds = 500;
+let seeds = 500;
 
 // angle (phi)
-var angle = 360 * (Math.sqrt(5) - 1) / 2;
+let angle = 360 * (Math.sqrt(5) - 1) / 2;
 
 // radius of the seed
-var radius = 3;
+let radius = 3;
 
 // scale
-var zoom = 15;
+let zoom = 15;
 
 // seed opacity
-var opacity = 150;
+let opacity = 150;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // This is where the magic happens ...
 
 // set slider range with magic variables
-var seedsMin = 1;
-var seedsMax = 2000;
+let seedsMin = 1;
+let seedsMax = 2000;
 
 // set angle range and step with magic variables
-var angleMax = 360;
-var angleStep = 0.1;
+let angleMax = 360;
+let angleStep = 0.1;
 
 // set radius range and step with magic variables
-var radiusMin = 0.5;
-var radiusMax = 5;
-var radiusStep = 0.1;
+let radiusMin = 0.5;
+let radiusMax = 5;
+let radiusStep = 0.1;
 
 // set step range with magic variables
-var zoomMax = 50;
-var zoomStep = 0.1;
+let zoomMax = 50;
+let zoomStep = 0.1;
 
 // set opacity range with magic variables
-var opacityMax = 255;
+let opacityMax = 255;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // the gui object
-var gui;
+let gui;
 
 function setup() {
 
   // all angles in degrees (0 .. 360)
   // angleMode(DEGREES);
-  // var myCanvas = createCanvas(500,500);
-  var myCanvas = createCanvas(500,400);
+  // let myCanvas = createCanvas(500,500);
+  let myCanvas = createCanvas(500,400);
   myCanvas.class('R');
     myCanvas.parent("idnameofdiv_RIGHT");
-// var myCanvas2 = createCanvas(400,400);
+// let myCanvas2 = createCanvas(400,400);
 //     myCanvas2.parent("idnameofdiv_RIGHT");
     noStroke();
   rectMode(CENTER);
@@ -81,9 +81,9 @@ function setup() {
   // noLoop();
 
 }
-var theta=0.01;
-var dx=6.28/1000;
-var lastFR=0;
+let theta=0.01;
+let dx=6.28/1000;
+let lastFR=0;
 function VA2(currt,newV,speed){
   return speed*(newV-currt)+currt ;
 
@@ -98,29 +98,29 @@ function VA_FR(){
 }
 
 function draw() {
-  var gg=127*(1+sin(dx*millis()));
+  let gg=127*(1+sin(dx*millis()));
   bgColor = [ 0,gg, 110];
   background(bgColor);
   draw2();
   
   text("FR="+nf(VA_FR(),2,2),10,10);
 }
-var angle1=0;
-var angle2=0;
-var scalar = 70;
+let angle1=0;
+let angle2=0;
+let scalar = 70;
 
-var sliderV=0;
+let sliderV=0;
 function draw2() {
   
 
-  var ang1 = radians(angle1);
-  var ang2 = radians(angle2);
+  let ang1 = radians(angle1);
+  let ang2 = radians(angle2);
 
-  var x1 = width/2 + (scalar * cos(ang1));
-  var x2 = width/2 + (scalar * cos(ang2));
+  let x1 = width/2 + (scalar * cos(ang1));
+  let x2 = width/2 + (scalar * cos(ang2));
   
-  var y1 = height/2 + (scalar * sin(ang1));
-  var y2 = height/2 + (scalar * sin(ang2));
+  let y1 = height/2 + (scalar * sin(ang1));
+  let y2 = height/2 + (scalar * sin(ang2));
   
   fill(255);
   rect(width*0.5, height*0.5, 140, 140);
@@ -145,12 +145,12 @@ theta+=0.01;
   // background(127*sin(theta*period));
 
   // let the seeds be filleth
-  var c = color(seedColor);
+  let c = color(seedColor);
   fill(red(c), green(c), blue(c), opacity);
   stroke(0, opacity);
 
   // absolute radius
-  var r = radius * zoom;
+  let r = radius * zoom;
 
   push();
 
@@ -158,11 +158,11 @@ theta+=0.01;
   translate(width/2, height/2);
 
   // rotate around the center while going outwards
-  for(var i = 0; i < seeds; i++) {
+  for(let i = 0; i < seeds; i++) {
     push();
     rotate(i * angle);
     // distance to the center of the sunflower
-    var d = sqrt(i + 0.5) * zoom;
+    let d = sqrt(i + 0.5) * zoom;
     ellipse(d, 0, r, r);
     pop();
   }

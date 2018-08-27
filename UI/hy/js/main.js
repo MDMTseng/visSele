@@ -1,7 +1,8 @@
-$(document).ready(function() {
+
+$(document).ready(function () {
     console.log("[ws.js][init]");
-    var APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
-    $.getJSON(APIurl).done(function(data) {
+    const APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
+    $.getJSON(APIurl).done(function (data) {
         clientIP = data.ip;
         // console.log("clientIP1=" + clientIP);
     });
@@ -11,53 +12,52 @@ $(document).ready(function() {
     initCanvasEvents();
     initDataTables();
     // initTabulator();
-    $( "#tabs" ).tabs();
+    // $("#tabs").tabs();
     window.setInterval(timeInterval1000, 1000);
     window.setInterval(timeInterval33, 33);
 
-initJsonPainter();
+    initJsonPainter();
     initTreejs();
-    $( "[data-role='header'], [data-role='footer']" ).toolbar();
+    $("[data-role='header'], [data-role='footer']").toolbar();
 });
-function initJsonPainter(){
-    $('#json').css('text-shadow','none');
-    $('#json').jsonPainter();
 
-    // Show painted JSON from a atring
-    var str = '{ node: "value", list: [ 1, 3, 4 ] }';
-    $('#json').jsonPainter(str);
-
-    // Show painter JSON from an object
-    // var obj = { node: "value", list: [ 1, 3, 4 ] };
-    $('#json').jsonPainter(RXMSG_temp3_json);
+function initJsonPainter() {
+    let JP=$('#json');
+    JP.jsonPainter();
+    JP.jsonPainter(RXMSG_temp3_json);
 }
-function initTreejs(){
-    console.log('initTreejs(1)');
-    $("#jstreeX").jstree();  
+
+function initTreejs() {
+    let ID_jstreeX=$("#jstree");
+    $.jstree.defaults.core.themes.variant = "large";
+
+    ID_jstreeX.jstree({ 'core' : {
+            'data' : [
+                { "id" : "ajson1", "parent" : "#", "text" : "Simple root node" },
+                { "id" : "ajson2", "parent" : "#", "text" : "Root node 2" },
+                { "id" : "ajson3", "parent" : "ajson2", "text" : "Child 1" },
+                { "id" : "ajson4", "parent" : "ajson2", "text" : "Child 2" },
+            ]
+        } });
     // 7 bind to events triggered on the tree
-    $("#jstreeX").on("changed.jstree", function (e, data) {
-      console.log(data.selected);
+    ID_jstreeX.on("changed.jstree", function (e, data) {
+        console.log(data.selected);
     });
-    $('#jstreeX').jstree({ 'core' : {
-    'data' : [
-       { "id" : "ajson1", "parent" : "#", "text" : "Simple root node" },
-       { "id" : "ajson2", "parent" : "#", "text" : "Root node 2" },
-       { "id" : "ajson3", "parent" : "ajson2", "text" : "Child 1" },
-       { "id" : "ajson4", "parent" : "ajson2", "text" : "Child 2" },
-    ]
-} });
-    console.log('initTreejs(2)');
-    // console.log(RXMSG_temp3_json);
-    
+
+    ID_jstreeX.jstree(true).select_node('mn1');
+
+
 }
+
 function timeInterval33() {
     drawX();
 }
+
 function timeInterval1000() {
-    console.log("[INFO][HB][1000ms][IP]="+clientIP+"[WS]="+WS_URI);
+    console.log("[INFO][HB][1000ms][IP]=" + clientIP + "[WS]=" + WS_URI);
     // doSendWS("test","mmmsssggg");
     // $('#checkAreaTitle').html(new Date());
-    // var text=$("#textareaX").val();
+    // let text=$("#textareaX").val();
     // console.log("[DEBUG] textareaX="+ text);
     // doSendWS("from_mobile",text);
     // $("#output").append(" [T]"+new Date().getMilliseconds());
