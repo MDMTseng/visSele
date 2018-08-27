@@ -535,12 +535,38 @@ public:
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
+
+
+              imgSrc_X->SetFileName("data/test1.bmp");
+              ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+              const FeatureReport * report = matchingEng.GetReport();
+
+              if(report!=NULL)
+              {
+                cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                cJSON_AddNumberToObject(jobj, "session_id", session_id);
+                char * jstr  = cJSON_Print(jobj);
+                cJSON_Delete(jobj);
+
+                BPG_data bpg_dat=GenStrBPGData("IR", jstr);
+                datCH_BPG.data.p_BPG_data=&bpg_dat;
+                self->SendData(datCH_BPG);
+
+                delete jstr;
+              }
+              else
+              {
+                sprintf(tmp,"{\"session_id\":%d}",session_id);
+                BPG_data bpg_dat=GenStrBPGData("IR", tmp);
+                datCH_BPG.data.p_BPG_data=&bpg_dat;
+                self->SendData(datCH_BPG);
+              }
+
+
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.dat_img=test1_buff;
+              bpg_dat.dat_img=imgSrc_X->GetAcvImage();
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
-
-
 
 
 
