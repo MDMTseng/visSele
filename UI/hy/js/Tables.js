@@ -10,7 +10,7 @@ let rirle = ['a', 'a', 'a', 'a', 'a', 'a'];
 
 
 function initDataTables() {
-
+    if(RXMSG_temp3_json===null)return;
     dataSet = JSON.parse(RXMSG_temp3_json);
     // // rx_array.dataSet
     // // let dataSet = Object.values(RXMSG_temp3.reports[0].reports[0]);

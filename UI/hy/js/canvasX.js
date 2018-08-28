@@ -137,7 +137,10 @@ function drawJSON(C) {
 	context.save();
 	// context.translate(C1.width / 2, C1.height / 2);
 	// RXJS = JSON.parse(RXMSG_temp1_json);
+	if(RXMSG_temp3===null)return;
 	RXJS = RXMSG_temp3;
+    // adjustGlobaAlpha(context);
+
 	if (RXJS.type != "binary_processing_group") return;
     for (let j = 0; j < RXJS.reports.length; j++)
 	for (let i = 0; i < RXJS.reports[j].reports.length; i++) {
@@ -145,25 +148,36 @@ function drawJSON(C) {
 		// context.lineWidth = RXJS.SETS[i].STROKE_WIDTH;
         // context.strokeStyle="#ff0000";
 		// context.strokeStyle = (i)%10==0?(RXJS.SETS[i].COLOR):("#FFFF00");
-		context.beginPath();
+
         // for(let i=0;i<RXJS.reports.reports.detectedCircles;i++){
         //     context.arc(RXJS.SETS[i].CENTER_XY.x, RXJS.SETS[i].CENTER_XY.y, RXJS.SETS[i].RADIUS,0,6.28, false);
 		// }
-        context.lineWidth = 2;
-        	context.strokeStyle = lerpColor('#ff0000', '#00ff00', 0.5);
+
+
         drawJSONText(context,RXJS.reports[j].reports[i].area,RXJS.reports[j].reports[i].cx,RXJS.reports[j].reports[i].cy);
+
+        context.lineWidth = 2;
+        // context.strokeStyle="rgba(255,0,0,0.5)";
+        context.strokeStyle = lerpColor('#ff0000', '#0fff00', i/RXJS.reports[j].reports.length);
+
         for(let whichLine=0;whichLine<RXJS.reports[j].reports[i].detectedLines.length;whichLine++){
             let LINEs=RXJS.reports[j].reports[i].detectedLines;
+            
+            context.beginPath();
             context.moveTo(LINEs[whichLine].x0,LINEs[whichLine].y0);
             context.lineTo(LINEs[whichLine].x1,LINEs[whichLine].y1);
             context.closePath();
+            context.stroke();
 		}
         for(let whichLine=0;whichLine<RXJS.reports[j].reports[i].detectedCircles.length;whichLine++){
             let LINEs=RXJS.reports[j].reports[i].detectedCircles;
+            context.beginPath();
             context.arc(LINEs[whichLine].x,LINEs[whichLine].y,LINEs[whichLine].r,0,Math.PI*2, false);
-            // context.closePath();
+            context.closePath();
+            context.stroke();
         }
-
+        // context.fillStyle = "rgba(255,0,0,0.5)";
+        // context.fill();
 
 		// if (RXJS.SETS[i].type === 'line') {
 		// 	context.strokeStyle = lerpColor('#ff0000', '#00ff00', gg / 255);
@@ -179,7 +193,7 @@ function drawJSON(C) {
 		// 	context.arc(RXJS.SETS[i].CENTER_XY.x, RXJS.SETS[i].CENTER_XY.y, RXJS.SETS[i].RADIUS,
 		// 		degreesToRadians(RXJS.SETS[i].DEGREE_START_END.start), degreesToRadians(RXJS.SETS[i].DEGREE_START_END.end), false);
 		// }
-		context.stroke();
+
 
 		// Rect bounds = new Rect();
 		//       paint.getTextBounds(text, 0, text.length(), bounds);
@@ -195,26 +209,35 @@ function drawJSON(C) {
 	context.restore();
 }
 function drawJSONText(context,labeledData,x,y){
+    context.save();
     context.textAlign = "center";
     context.textBaseline = "middle";
     // context.strokeStyle= "red";
     // context.fillStyle = "white";
     context.font = "" + (18 / scale) + "px serif";
     context.lineWidth = 1 / scale;
-    context.strokeStyle = 'white';
+    context.strokeStyle = 'gray';
     // context.strokeStyle='gradient';
+    // context.translate(translatePos.x,translatePos.y);
+    // context.rotate(-startSpinPos);
     context.strokeText(labeledData, x,y);
+    // context.rotate(startSpinPos);
+    context.restore();
 }
 function drawRAWArea(C1) {
 	let context = C1.getContext("2d");
 	context.clearRect(0, 0, C1.width, C1.height);
+
 	if (typeof RAW_I_DATA != 'undefined') {
 		if (context.canvas.width !== RAW_I_DATA.width ||
 			context.canvas.height !== RAW_I_DATA.height) {
 			context.canvas.width = RAW_I_DATA.width;
 			context.canvas.height = RAW_I_DATA.height;
 		}
-		context.putImageData(RAW_I_DATA, 0, 0);
+        RAW_I_DATA=Filters.grayscale(RAW_I_DATA,0.7);
+		 context.putImageData(RAW_I_DATA, 0, 0);
+
+
 	}
 	// console.log(RAW_I_DATA);
 	// else
@@ -222,7 +245,23 @@ function drawRAWArea(C1) {
 
 	// context.drawImage(C1, 0, 0);
 }
-
+function drawAlphaOnRAWImage(ctx){
+    console.log("drawAlphaOnRAWImage");
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = "rgba(255, 1, 255, 0.5)";
+    ctx.beginPath();
+    ctx.fillRect(0, 0, ctx.width, ctx.height);
+    ctx.fill();
+// Set the default mode.
+    ctx.globalCompositeOperation = 'source-over';
+}
+var aimg = new Image();
+function adjustGlobaAlpha(ctx){
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.drawImage(aimg, 0,0,500,500);
+    ctx.restore();
+}
 function drawRotatedImage(C, image, x, y, angle) {
 	let context = C.getContext("2d");
 	context.save();
@@ -231,32 +270,31 @@ function drawRotatedImage(C, image, x, y, angle) {
 	context.drawImage(image, -(image.width / 2), -(image.height / 2));
 	context.restore();
 }
-
-function getRAWbackgroundImageData(C) {
-	let ctx = C.getContext("2d");
-	let imageData = ctx.getImageData(0, 0, C.width, C.height);
-
-	let buf = new ArrayBuffer(imageData.data.length);
-	let buf8 = new Uint8ClampedArray(buf);
-	let data = new Uint32Array(buf);
-
-	for (let y = 0; y < C.height; ++y) {
-		for (let x = 0; x < C.width; ++x) {
-			let value = 0.0001 * millisX * x * y & 0xff;
-
-			data[y * C.width + x] =
-				(value << 24) | // alpha
-				(value << 16) | // blue
-				(value << 8) | // green
-				value; // red
-		}
-	}
-	console.log();
-	imageData.data.set(buf8);
-	return imageData;
-
-
-}
+//
+// function getRAWbackgroundImageData(C) {
+// 	let ctx = C.getContext("2d");
+// 	let imageData = ctx.getImageData(0, 0, C.width, C.height);
+//
+// 	let buf = new ArrayBuffer(imageData.data.length);
+// 	let buf8 = new Uint8ClampedArray(buf);
+// 	let data = new Uint32Array(buf);
+//
+// 	for (let y = 0; y < C.height; ++y) {
+// 		for (let x = 0; x < C.width; ++x) {
+// 			let value = 0.0001 * millisX * x * y & 0xff;
+//
+// 			data[y * C.width + x] =
+// 				(value << 24) | // alpha
+// 				(value << 16) | // blue
+// 				(value << 8) | // green
+// 				value; // red
+// 		}
+// 	}
+// 	imageData.data.set(buf8);
+// 	return imageData;
+//
+//
+// }
 
 function drawZoomArea(C1, C2) {
 	// let ctx1 = C1.getContext("2d");
@@ -276,6 +314,8 @@ function drawZoomArea(C1, C2) {
 	// context.translate(-(C2.width / 2), -(C2.height / 2));
 	// context.putImageData(getRAWbackgroundImageData(C1), 0, 0);
 	context.drawImage(C1, 0, 0);
+    // drawAlphaOnRAWImage(context);
+    // adjustGlobaAlpha(context);
 	drawJSON(C2);
 
 

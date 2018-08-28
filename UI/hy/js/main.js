@@ -1,6 +1,7 @@
 
 $(document).ready(function () {
     console.log("[ws.js][init]");
+    $( ".selector" ).on( "slidechange", function( event, ui ) {} );
     const APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
     $.getJSON(APIurl).done(function (data) {
         clientIP = data.ip;
@@ -10,6 +11,7 @@ $(document).ready(function () {
     init_FETURE_JSON_TEMP();
     init_CanvasX();
     initCanvasEvents();
+    
     initDataTables();
     // initTabulator();
     // $("#tabs").tabs();

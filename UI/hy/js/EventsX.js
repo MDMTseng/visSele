@@ -85,27 +85,27 @@ canvas1.addEventListener("mousemove", mouseMove1);
 		translatePos.y += vec_tmove.y;
 		// draw(scale, translatePos);
 	}, false);
-	// canvas3.addEventListener("mousedown", function(evt) {
-	// 	mouseDown = true;
-	// 	startDragPos.x = evt.clientX;
-	// 	startDragPos.y = evt.clientY;
-	// });
+	canvas3.addEventListener("mousedown", function(evt) {
+		mouseDown = true;
+		startDragPos.x = evt.clientX;
+		startDragPos.y = evt.clientY;
+	});
 
-	// canvas3.addEventListener("mouseup", function(evt) {
-	// 	mouseDown = false;
-	// 	translatePos.x += translateDragOffset.x;
-	// 	translatePos.y += translateDragOffset.y;
-	// 	translateDragOffset.x = 0;
-	// 	translateDragOffset.y = 0;
-	// });
+	canvas3.addEventListener("mouseup", function(evt) {
+		mouseDown = false;
+		translatePos.x += translateDragOffset.x;
+		translatePos.y += translateDragOffset.y;
+		translateDragOffset.x = 0;
+		translateDragOffset.y = 0;
+	});
 
-	// canvas3.addEventListener("mouseover", function(evt) {
-	// 	mouseDown = false;
-	// });
+	canvas3.addEventListener("mouseover", function(evt) {
+		mouseDown = false;
+	});
 
-	// canvas3.addEventListener("mouseout", function(evt) {
-	// 	mouseDown = false;
-	// });
+	canvas3.addEventListener("mouseout", function(evt) {
+		mouseDown = false;
+	});
 
 }
 
@@ -133,4 +133,12 @@ function mouseMove3(evt) {
 		rotate2dtransform(translateDragOffset, vec_tmp, -startSpinPos);
 		// draw(scale, translatePos);
 	}
+}
+function RAWBriSlider(event,ui) {
+	console.log(event);
+    console.log(ui);
+    // let SliderValue = $('.sliders').val();
+    // let msg = "/" + $(this).attr("id")+"/"+SliderValue;
+    // doSendWS("ws_cue",msg);
+    // console.log("SliderValue--->" + SliderValue);
 }

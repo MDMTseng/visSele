@@ -1,6 +1,6 @@
 
 // var wsUri22 = "ws://127.0.0.1:8000/solar_wss";
-var WS_URI = "ws://localhost:4090/xlinx";
+var WS_URI = "ws://127.0.0.1:4090/xlinx";
 var output;
 var clientIP = "x.x.x.x";
 var TX_SERIAL = 0;
@@ -73,29 +73,41 @@ function onMessage(evt) {
         let header = BPG_Protocol.raw2header(evt);
 
         console.log("onMessage:["+header.type+"]");
-        if(header.type == "HR")
+        if(header.type === "HR")
         {
             let header = BPG_Protocol.raw2obj(evt);
             console.log(header);
             console.log("Hello I am ready.");
             websocket.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
-            websocket.send(BPG_Protocol.obj2raw("TG",{}));
+
+            // websocket.send(BPG_Protocol.obj2raw("TG",{}));
+            setTimeout(()=>{
+
+                websocket.send(BPG_Protocol.obj2raw("TG",{}));
+            },0);
         }
 
 
-        if(header.type == "SS")
+        else if(header.type === "SS")
         {
             let header = BPG_Protocol.raw2obj(evt);
             console.log(header);
             console.log("Session start:");
         }
 
-        if(header.type == "IM")
+        else if(header.type === "IM")
         {
             let pkg = BPG_Protocol.raw2Obj_IM(evt);
+            RAW_I_DATA = new ImageData(pkg.image, pkg.width);
+
             console.log(pkg);
 
 
+        }else if(header.type === "IR")
+        {
+            RXMSG_temp3 = BPG_Protocol.raw2obj(evt).data;
+            console.log(header);
+            console.log("Session start:");
         }
 
 
@@ -145,10 +157,5 @@ function writeToScreen(message) {
     document.getElementById("output").appendChild(pre);
 }
 
-function valueChanged() {
-    let SliderValue = $('.sliders').val();
-    // let msg = "/" + $(this).attr("id")+"/"+SliderValue;
-    // doSendWS("ws_cue",msg);
-    console.log("SliderValue--->" + SliderValue);
-}
+
 // window.addEventListener("load", init, false);
