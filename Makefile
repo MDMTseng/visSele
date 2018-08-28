@@ -35,8 +35,6 @@ IDIR=	include/ \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include
 
-LDIR=./ $(MODULE_acvImage)
-LIBS=-lacvImage
 
 
 _OBJ = hw.o
@@ -50,6 +48,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_LOGCTRL)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
 					$(MODULE_DataChannel)/DataChannel.a \
+					$(MODULE_acvImage)/acvImage.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a
