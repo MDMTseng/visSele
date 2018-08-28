@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
+#include "FeatureManager_sig360_circle_line.h"
 /*
   FeatureManager_group_proto Section
 */

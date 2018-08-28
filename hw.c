@@ -275,7 +275,7 @@ int SignatureGenerator()
   return 0;
 
   // clock_t t = clock();
-  //acvLoadBitmapFile(target, "data/target.bmp");
+  // acvLoadBitmapFile(target, "data/target.bmp");
   // acvThreshold(target, 128, 0);
   // zlibDeflate_testX(target,test1_buff,RGB2BW_collapse,BW2RGB_uncollapse);
 
@@ -370,8 +370,12 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 
             imgSrc_X->SetFileName("data/test1.bmp");
 
-            ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-
+            try {
+                ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+            }
+            catch (std::invalid_argument iaex) {
+                LOGE( "Caught an error!");
+            }
 
             const FeatureReport * report = matchingEng.GetReport();
 
@@ -439,7 +443,7 @@ public:
         break;
 
         case DatCH_Data::DataType_websock_data:
-          LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
+          //LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
           return DatCH_WS_callback(from, data, callback_param);
         break;
 
@@ -491,7 +495,7 @@ public:
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
 
-      LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
+      //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
       switch(data.type)
       {
         case DatCH_Data::DataType_error:
@@ -502,9 +506,7 @@ public:
 
         case DatCH_Data::DataType_websock_data://App -(prot)>[here] WS
         {
-          LOGI("DatCH_Data::DataType_websock_data, %p",websocket);
           DatCH_Data ret = websocket->SendData(data);
-          LOGI("DatCH_Data::DataType_websock_data");
         }
         break;
 
@@ -538,29 +540,38 @@ public:
 
 
               imgSrc_X->SetFileName("data/test1.bmp");
-              ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-              const FeatureReport * report = matchingEng.GetReport();
 
-              if(report!=NULL)
-              {
-                cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                cJSON_AddNumberToObject(jobj, "session_id", session_id);
-                char * jstr  = cJSON_Print(jobj);
-                cJSON_Delete(jobj);
 
-                BPG_data bpg_dat=GenStrBPGData("IR", jstr);
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+              try {
+                  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+                  const FeatureReport * report = matchingEng.GetReport();
 
-                delete jstr;
+                  if(report!=NULL)
+                  {
+                    cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                    cJSON_AddNumberToObject(jobj, "session_id", session_id);
+                    char * jstr  = cJSON_Print(jobj);
+                    cJSON_Delete(jobj);
+
+                    //LOGI("__\n %s  \n___",jstr);
+                    BPG_data bpg_dat=GenStrBPGData("IR", jstr);
+                    datCH_BPG.data.p_BPG_data=&bpg_dat;
+                    self->SendData(datCH_BPG);
+
+                    delete jstr;
+                  }
+                  else
+                  {
+                    sprintf(tmp,"{\"session_id\":%d}",session_id);
+                    BPG_data bpg_dat=GenStrBPGData("IR", tmp);
+                    datCH_BPG.data.p_BPG_data=&bpg_dat;
+                    self->SendData(datCH_BPG);
+                  }
               }
-              else
-              {
-                sprintf(tmp,"{\"session_id\":%d}",session_id);
-                BPG_data bpg_dat=GenStrBPGData("IR", tmp);
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+              catch (std::invalid_argument iaex) {
+                  LOGE( "Caught an error!");
               }
+
 
 
               bpg_dat=GenStrBPGData("IM", NULL);

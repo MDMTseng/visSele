@@ -66,9 +66,6 @@ DatCH_Data DatCH_WebSocket::SendData(void* data, size_t dataL)
 
 DatCH_Data DatCH_WebSocket::SendData(DatCH_Data ws_data)
 {
-    printf("DatCH_WebSocket::%s:>>>>>type:%d>>\n",__func__,1);
-
-
     if(ws_data.type!=DatCH_Data::DataType_websock_data )
     {
         return GenErrorMsg(DatCH_Data_error::NOT_SUPPORTED);
