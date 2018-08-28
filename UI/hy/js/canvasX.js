@@ -137,8 +137,8 @@ function drawJSON(C) {
 	context.save();
 	// context.translate(C1.width / 2, C1.height / 2);
 	// RXJS = JSON.parse(RXMSG_temp1_json);
-	if(RXMSG_temp3===null)return;
-	RXJS = RXMSG_temp3;
+	if(RXMSG.IR===null)return;
+	RXJS = RXMSG.IR;
     // adjustGlobaAlpha(context);
 
 	if (RXJS.type != "binary_processing_group") return;
@@ -228,14 +228,14 @@ function drawRAWArea(C1) {
 	let context = C1.getContext("2d");
 	context.clearRect(0, 0, C1.width, C1.height);
 
-	if (typeof RAW_I_DATA != 'undefined') {
-		if (context.canvas.width !== RAW_I_DATA.width ||
-			context.canvas.height !== RAW_I_DATA.height) {
-			context.canvas.width = RAW_I_DATA.width;
-			context.canvas.height = RAW_I_DATA.height;
+	if ( RXMSG.RAWIMAGE !== null) {
+		if (context.canvas.width !== RXMSG.RAWIMAGE.width ||
+			context.canvas.height !== RXMSG.RAWIMAGE.height) {
+			context.canvas.width = RXMSG.RAWIMAGE.width;
+			context.canvas.height = RXMSG.RAWIMAGE.height;
 		}
-        RAW_I_DATA=Filters.grayscale(RAW_I_DATA,0.7);
-		 context.putImageData(RAW_I_DATA, 0, 0);
+
+		 context.putImageData(RXMSG.RAWIMAGE, 0, 0);
 
 
 	}
@@ -245,23 +245,7 @@ function drawRAWArea(C1) {
 
 	// context.drawImage(C1, 0, 0);
 }
-function drawAlphaOnRAWImage(ctx){
-    console.log("drawAlphaOnRAWImage");
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = "rgba(255, 1, 255, 0.5)";
-    ctx.beginPath();
-    ctx.fillRect(0, 0, ctx.width, ctx.height);
-    ctx.fill();
-// Set the default mode.
-    ctx.globalCompositeOperation = 'source-over';
-}
-var aimg = new Image();
-function adjustGlobaAlpha(ctx){
-    ctx.save();
-    ctx.globalAlpha = 0.4;
-    ctx.drawImage(aimg, 0,0,500,500);
-    ctx.restore();
-}
+
 function drawRotatedImage(C, image, x, y, angle) {
 	let context = C.getContext("2d");
 	context.save();
@@ -313,9 +297,15 @@ function drawZoomArea(C1, C2) {
 	context.translate(-(C1.width / 2), -(C1.height / 2));
 	// context.translate(-(C2.width / 2), -(C2.height / 2));
 	// context.putImageData(getRAWbackgroundImageData(C1), 0, 0);
+
+    // RAW_I_DATA=Filters.grayscale(RAW_I_DATA,FV.getGrayLevelVal());
+    context.filter ="invert("+FV.getGrayLevelVal()+")";
+    // context.filter = "brightness("+FV.getGrayLevelVal()+")";
+    // context.drawImage(image,0,0);
 	context.drawImage(C1, 0, 0);
     // drawAlphaOnRAWImage(context);
     // adjustGlobaAlpha(context);
+    context.filter = "brightness(100%)";
 	drawJSON(C2);
 
 

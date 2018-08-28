@@ -1,5 +1,5 @@
-
-let RXMSG_temp3={
+// let RXMSG_temp3=null;
+let RXMSG_temp33={
  "type": "binary_processing_group",
  "labeledData": [{
    "area": 12184
@@ -258,7 +258,7 @@ let RXMSG_temp1=
 ;
 let RXMSG_temp1_json = JSON.stringify(RXMSG_temp1);
 let RXMSG_temp2_json = JSON.stringify(RXMSG_temp2);
-let RXMSG_temp3_json = JSON.stringify(RXMSG_temp3);
+// let RXMSG_temp3_json = JSON.stringify(RXMSG_temp3);
 
 function init_FETURE_JSON_TEMP() {
     console.log("[drawCanvas.js][init]");

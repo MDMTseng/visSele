@@ -1,3 +1,4 @@
+
 Filters = {};
 Filters.getPixels = function(img) {
   var c = this.getCanvas(img.width, img.height);
@@ -25,8 +26,6 @@ Filters.grayscale = function(pixels, args) {
     var r = d[i];
     var g = d[i+1];
     var b = d[i+2];
-    // CIE luminance for the RGB
-    // The human eye is bad at seeing red and blue, so we de-emphasize them.
       var v =   args*r +   args*g +   args*b;
     // var v = 0.2126*r + 0.7152*g + 0.0722*b;
     d[i] = d[i+1] = d[i+2] = v
@@ -53,3 +52,20 @@ Filters.threshold = function(pixels, threshold) {
   }
   return pixels;
 };
+
+function adjustGlobaAlpha2(ctx){
+    console.log("drawAlphaOnRAWImage");
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = "rgba(255, 1, 255, 0.5)";
+    ctx.beginPath();
+    ctx.fillRect(0, 0, ctx.width, ctx.height);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+}
+function adjustGlobaAlpha(ctx){
+    var aimg = new Image();
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.drawImage(aimg, 0,0,500,500);
+    ctx.restore();
+}

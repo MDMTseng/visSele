@@ -135,8 +135,8 @@ function mouseMove3(evt) {
 	}
 }
 function RAWBriSlider(event,ui) {
-	console.log(event);
-    console.log(ui);
+    FV.updateGrayLevelVal(event.value);
+    // console.log(FV.getGrayLevelVal());
     // let SliderValue = $('.sliders').val();
     // let msg = "/" + $(this).attr("id")+"/"+SliderValue;
     // doSendWS("ws_cue",msg);

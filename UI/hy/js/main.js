@@ -1,7 +1,7 @@
 
 $(document).ready(function () {
     console.log("[ws.js][init]");
-    $( ".selector" ).on( "slidechange", function( event, ui ) {} );
+
     const APIurl = 'http://api.ipify.org?format=jsonp&callback=?';
     $.getJSON(APIurl).done(function (data) {
         clientIP = data.ip;
@@ -26,7 +26,8 @@ $(document).ready(function () {
 function initJsonPainter() {
     let JP=$('#json');
     JP.jsonPainter();
-    JP.jsonPainter(RXMSG_temp3_json);
+    if(RXMSG.IR===null)return;
+    JP.jsonPainter(RXMSG.IR);
 }
 
 function initTreejs() {

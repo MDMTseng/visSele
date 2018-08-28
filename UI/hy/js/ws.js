@@ -61,23 +61,18 @@ function onClose(evt) {
 // console.log(blob);
 
 function onMessage(evt) {
-
-    // var Gray = (R*38 + G*75 + B*15) >> 7;
     console.log("onMessage:::");
     console.log(evt);
-
     $('#checkAreaTitle').html("[WS]OnMessage"+",Status="+websocket.readyState);
     if (evt.data instanceof ArrayBuffer) {
-
-
         let header = BPG_Protocol.raw2header(evt);
-
         console.log("onMessage:["+header.type+"]");
         if(header.type === "HR")
         {
-            let header = BPG_Protocol.raw2obj(evt);
-            console.log(header);
-            console.log("Hello I am ready.");
+
+            RXMSG.HR=BPG_Protocol.raw2obj(evt);
+            // console.log(header);
+            // console.log("Hello I am ready.");
             websocket.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
 
             // websocket.send(BPG_Protocol.obj2raw("TG",{}));
@@ -90,29 +85,34 @@ function onMessage(evt) {
 
         else if(header.type === "SS")
         {
-            let header = BPG_Protocol.raw2obj(evt);
-            console.log(header);
-            console.log("Session start:");
+
+            RXMSG.SS=BPG_Protocol.raw2obj(evt);
+            // console.log(header);
+            // console.log("Session start:");
         }
 
         else if(header.type === "IM")
         {
             let pkg = BPG_Protocol.raw2Obj_IM(evt);
-            RAW_I_DATA = new ImageData(pkg.image, pkg.width);
+            RXMSG.IM=pkg;
+            RXMSG.RAWIMAGE= new ImageData(pkg.image, pkg.width);
+            // RAW_I_DATA = new ImageData(pkg.image, pkg.width);
 
-            console.log(pkg);
+            // console.log(pkg);
 
 
         }else if(header.type === "IR")
         {
-            RXMSG_temp3 = BPG_Protocol.raw2obj(evt).data;
-            console.log(header);
-            console.log("Session start:");
+
+            RXMSG.IR=BPG_Protocol.raw2obj(evt).data;
+            RXMSG.after_IR();
+            // console.log(header);
+            // console.log("Session start:");
         }
 
 
     }
-
+RXMSG.listAll();
 }
 
 function onError(evt) {
