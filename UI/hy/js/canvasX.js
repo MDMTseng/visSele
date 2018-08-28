@@ -160,19 +160,20 @@ function drawJSON(C) {
         // context.strokeStyle="rgba(255,0,0,0.5)";
         context.strokeStyle = lerpColor('#ff0000', '#0fff00', i/RXJS.reports[j].reports.length);
 
+				let offset = 0.5;
         for(let whichLine=0;whichLine<RXJS.reports[j].reports[i].detectedLines.length;whichLine++){
             let LINEs=RXJS.reports[j].reports[i].detectedLines;
             
             context.beginPath();
-            context.moveTo(LINEs[whichLine].x0,LINEs[whichLine].y0);
-            context.lineTo(LINEs[whichLine].x1,LINEs[whichLine].y1);
+            context.moveTo(LINEs[whichLine].x0+offset,LINEs[whichLine].y0+offset);
+            context.lineTo(LINEs[whichLine].x1+offset,LINEs[whichLine].y1+offset);
             context.closePath();
             context.stroke();
 		}
         for(let whichLine=0;whichLine<RXJS.reports[j].reports[i].detectedCircles.length;whichLine++){
             let LINEs=RXJS.reports[j].reports[i].detectedCircles;
             context.beginPath();
-            context.arc(LINEs[whichLine].x,LINEs[whichLine].y,LINEs[whichLine].r,0,Math.PI*2, false);
+            context.arc(LINEs[whichLine].x+offset,LINEs[whichLine].y+offset,LINEs[whichLine].r,0,Math.PI*2, false);
             context.closePath();
             context.stroke();
         }
