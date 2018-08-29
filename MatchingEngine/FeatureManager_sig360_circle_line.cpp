@@ -153,7 +153,6 @@ int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_cir
   if(!name)return -1;
   for(int i=0;i<list.size();i++)
   {
-
     if(strcmp(list[i].name, name)==0)
     {
       return i;
@@ -177,30 +176,123 @@ int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_lin
 
 
 
-int FeatureManager_sig360_circle_line::measure_process_L2L(struct judgeDef &judge)
+int FeatureManager_sig360_circle_line::measure_process_L2L(FeatureReport_sig360_circle_line_single &report,struct judgeDef &judge)
 {
-  LOGV("judge:%s  OBJ1:%s, OBJ2:%s type:%d",judge.name,judge.OBJ1,judge.OBJ2,judge.measure_type);
+
+  LOGV("judge:%s  OBJ1:%s, OBJ2:%s type:%d, swapped:%d ",judge.name,judge.OBJ1,judge.OBJ2,judge.measure_type,judge.swap);
+  LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judge.OBJ1_type,judge.OBJ1_idx,judge.OBJ2_type,judge.OBJ2_idx);
   LOGV("-val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
 
 
+  if(judge.OBJ1_type == judgeDef::LINE)
   {
-    for(int i=0;i<featureLineList.size();i++)
+    acv_LineFit OBJ1 = (*report.detectedLines)[judge.OBJ1_idx];
+    if(judge.OBJ2_type == judgeDef::NONE)
     {
-      LOGV("featureLineList[%d]:%s",i,featureLineList[i].name);
+      switch(judge.measure_type)
+      {
+        case judgeDef::AREA:
+          LOGI("AREA:%d",OBJ1.matching_pts);
+        break;
+        case judgeDef::SIGMA:
+          LOGI("SIGMA:%f",OBJ1.s);
+        break;
+        default:
+          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
+      }
     }
-    for(int i=0;i<featureCircleList.size();i++)
+    else if(judge.OBJ2_type == judgeDef::LINE)
     {
-      LOGV("featureCircleList[%d]:%s",i,featureCircleList[i].name);
+      acv_LineFit OBJ2 = (*report.detectedLines)[judge.OBJ2_idx];
+      switch(judge.measure_type)
+      {
+        case judgeDef::ANGLE:
+        {
+          float angle = acvLineAngle(OBJ1.line,OBJ2.line);
+          LOGI("angle:%f",angle*180/M_PI);
+        }
+        break;
+        case judgeDef::DISTANCE:
+        {
+          acv_XY vec= OBJ1.end_pos;
+          vec = acvVecAdd(vec,OBJ1.end_neg);
+          vec = acvVecAdd(vec,OBJ1.end_pos);
+          vec = acvVecMult(vec,-1);
+          vec = acvVecAdd(vec,OBJ2.end_neg);
+          vec = acvVecAdd(vec,OBJ2.end_neg);
+          float distance = hypot(vec.X,vec.Y)/2;
+          LOGI("distance:%f",distance);
+        }
+        break;
+        default:
+          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
+      }
     }
-    for(int i=0;i<judgeList.size();i++)
+    else if(judge.OBJ2_type == judgeDef::CIRCLE)
     {
-      LOGV("judgeList[%d]:%s  OBJ1:%s, OBJ2:%s type:%d",i,judgeList[i].name,judgeList[i].OBJ1,judgeList[i].OBJ2,judgeList[i].measure_type);
-      LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judgeList[i].OBJ1_type,judgeList[i].priv_OBJ1_idx,judgeList[i].OBJ2_type,judgeList[i].priv_OBJ2_idx);
-      LOGV("-val:%f  margin:%f",judgeList[i].targetVal,judgeList[i].targetVal_margin);
-
-
+      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx];
+      switch(judge.measure_type)
+      {
+        case judgeDef::DISTANCE:
+        {
+          acv_XY vec= OBJ1.end_pos;
+          vec = acvVecAdd(vec,OBJ1.end_neg);
+          vec = acvVecAdd(vec,OBJ1.end_pos);
+          vec = acvVecMult(vec,-0.5);
+          vec = acvVecAdd(vec,OBJ2.circle.circumcenter);
+          float distance = hypot(vec.X,vec.Y);
+          LOGI("distance:%f",distance);
+        }
+        break;
+        default:
+          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
+      }
     }
   }
+  else if(judge.OBJ1_type == judgeDef::CIRCLE)
+  {
+    acv_CircleFit OBJ1 = (*report.detectedCircles)[judge.OBJ1_idx];
+    if(judge.OBJ2_type == judgeDef::NONE)
+    {
+      switch(judge.measure_type)
+      {
+        case judgeDef::AREA:
+          LOGI("AREA:%d",OBJ1.matching_pts);
+        break;
+        case judgeDef::SIGMA:
+          LOGI("SIGMA:%f",OBJ1.s);
+        break;
+        default:
+          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
+      }
+    }
+    else if(judge.OBJ2_type == judgeDef::CIRCLE)
+    {
+      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx];
+      switch(judge.measure_type)
+      {
+        case judgeDef::DISTANCE:
+        {
+          float distance = acvDistance(OBJ1.circle.circumcenter,OBJ2.circle.circumcenter);
+          LOGI("distance:%f",distance);
+        }
+        break;
+        default:
+          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
+      }
+    }
+
+
+
+  }
+
+
+
+
+
+
+  LOGV("===================");
+
   return 0;
 }
 
@@ -556,7 +648,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
     LOGE("OBJ1:Cannot find the feature that has name:%s",judge.OBJ1);
     return -1;
   }
-  judge.priv_OBJ1_idx = idx1;
+  judge.OBJ1_idx = idx1;
 
 
 
@@ -586,7 +678,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
     LOGE("OBJ2:Cannot find the feature that has name:%s",judge.OBJ2);
     return -1;
   }
-  judge.priv_OBJ2_idx = idx2;
+  judge.OBJ2_idx = idx2;
 
 
   double * measure_val =NULL;
@@ -626,6 +718,22 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   else
   {
     return -1;
+  }
+
+
+
+  if( judge.OBJ2_type!= judgeDef::NONE && judge.OBJ1_type>judge.OBJ2_type )
+  {//Make sure the OBJ1_type is always less than OBJ2_type, so that we don't need to do reverse compatiable judgement: like line2circle and circle2line
+    judgeDef tmp_judge=judge;
+    judge.swap=true;
+    judge.OBJ1_type = tmp_judge.OBJ2_type;
+    judge.OBJ2_type = tmp_judge.OBJ1_type;
+
+    judge.OBJ1_idx = tmp_judge.OBJ2_idx;
+    judge.OBJ2_idx = tmp_judge.OBJ1_idx;
+
+    strcpy(judge.OBJ1,tmp_judge.OBJ2);
+    strcpy(judge.OBJ2,tmp_judge.OBJ1);
   }
 
   judgeList.push_back(judge);
@@ -1139,7 +1247,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       for(int i=0;i<judgeList.size();i++)
       {
-        measure_process_L2L(judgeList[i]);
+        measure_process_L2L(singleReport,judgeList[i]);
       }
 
   }

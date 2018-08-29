@@ -168,8 +168,14 @@
         },
         {
           "type":"judge",
-          "OBJ1":"LINE_1",
-          "OBJ2":"baseLine",
+          "OBJ1":"@LINE_3",
+          "sigma":0.1,
+          "sigma_margin":0.01
+        },
+        {
+          "type":"judge",
+          "OBJ2":"@CIRCLE_1",
+          "OBJ1":"@CIRCLE_2",
           "distance":5,
           "distance_margin":1
         },
@@ -185,8 +191,6 @@
           "sigma":0,
           "sigma_margin":1
         }
-
-
       ]
     }
   ]

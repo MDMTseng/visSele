@@ -47,10 +47,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
       AUX_CIRCLE,
       AUX_POINT
     } OBJ1_type,OBJ2_type;
-    int priv_OBJ1_idx;
-    int priv_OBJ2_idx;
+    int OBJ1_idx;
+    int OBJ2_idx;
     char OBJ1[FeatureManager_NAME_LENGTH];
     char OBJ2[FeatureManager_NAME_LENGTH];
+    bool swap;
 
 
     float targetVal;
@@ -85,7 +86,7 @@ protected:
   int parse_jobj() override;
 
 
-  int measure_process_L2L(struct judgeDef &judge);
+  int measure_process_L2L(FeatureReport_sig360_circle_line_single &report,struct judgeDef &judge);
 
 
   int FindFeatureDefIndex(vector<featureDef_line> &list, char* name);

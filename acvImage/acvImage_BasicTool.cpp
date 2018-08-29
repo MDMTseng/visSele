@@ -625,6 +625,21 @@ acv_XY acvVecNormalize(acv_XY vec)
   return nvec;
 }
 
+
+acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2)
+{
+  vec1.X+=vec2.X;
+  vec1.Y+=vec2.Y;
+  return vec1;
+}
+
+acv_XY acvVecMult(acv_XY vec1,float mult)
+{
+  vec1.X*=mult;
+  vec1.Y*=mult;
+  return vec1;
+}
+
 float acvDistance(acv_XY p1,acv_XY p2)
 {
   return hypot(p2.X-p1.X,p2.Y-p1.Y);
