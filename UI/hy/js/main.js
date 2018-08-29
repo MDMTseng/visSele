@@ -11,8 +11,10 @@ $(document).ready(function () {
     init_FETURE_JSON_TEMP();
     init_CanvasX();
     initCanvasEvents();
-    
+
+
     initDataTables();
+    inlineEditor();
     // initTabulator();
     // $("#tabs").tabs();
     window.setInterval(timeInterval1000, 1000);

@@ -11,16 +11,27 @@
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.1.0/css/all.css"
           integrity="sha384-lKuwvrZot6UHsBSfcMvOkWwlCMgc0TaWr+30HWe3a4ltaBwTZhyTEggF5tJv8tbt" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/jquery.dataTables.min.css">
+
     <LINK rel=StyleSheet href="css/style.css" TYPE="text/css" MEDIA=screen>
+
 
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/jquerymobile/1.4.5/jquery.mobile.min.js"></script>
 
+    <!--editorTable-->
+    <!-- <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/dt/jqc-1.12.3/dt-1.10.17/b-1.5.2/sl-1.2.6/datatables.min.css"/> -->
+    <link rel="stylesheet" type="text/css" href="Editor174/css/editor.dataTables.css">
+
+    <!-- <script type="text/javascript" src="https://cdn.datatables.net/v/dt/jqc-1.12.3/dt-1.10.17/b-1.5.2/sl-1.2.6/datatables.min.js"></script> -->
+    <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+    <script type="text/javascript" src="Editor174/js/dataTables.editor.js"></script>
+    <!--editorTable-->
+
     <!-- datatable start -->
 
     <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/jcanvas/21.0.1/min/jcanvas.min.js"></script>-->
-    <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+    
     <!-- <link href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/3.5.3/css/tabulator.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/3.5.3/js/tabulator.min.js"></script> -->
     <!-- data table end -->
@@ -29,12 +40,14 @@
     <!-- <script defer src="https://use.fontawesome.com/releases/v5.1.0/js/all.js"></script> -->
     <script type="text/javascript" src="js/GlobalParamater.js"></script>
     <script type="text/javascript" src="js/xlinx.js"></script>
+    <script type="text/javascript" src="js/TransformX.js"></script>
+
     <!-- <script type="text/javascript" src="js/pako_inflate.min.js"></script> -->
     <script type="text/javascript" src="js/EventsX.js"></script>
     <script type="text/javascript" src="js/BPG_Protocol.js"></script>
     <script type="text/javascript" src="js/ws.js"></script>
     
-    <!-- <script type="text/javascript" src="js/canvasF.js"></script> -->
+    <!-- <script type="text/javascript" src="js/CanvasF.js"></script> -->
     <script type="text/javascript" src="js/Tables.js"></script>
     <script type="text/javascript" src="js/IMGFilter.js"></script>
     <script type="text/javascript" src="js/canvasX.js"></script>
@@ -60,7 +73,7 @@
 <div data-role="page" id="index" data-theme="b">
     <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
         <h4>檢測區域
-            <div style="display:inline;" id="checkAreaTitle"></div>
+            <span style="display:inline;" id="checkAreaTitle"></span>
         </h4>
         <div style="text-align: center;" id="idnameofdiv">
             <canvas style="border: 1px solid white;" id="canvas1"></canvas>
@@ -69,7 +82,7 @@
     </div>
     <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="false" data-icon="cloud">
         <h4>放大檢視區
-            <div style="display:inline;" id="checkAreaTitle2"></div>
+            <span style="display:inline;" id="checkAreaTitle2"></span>
         </h4>
 
 
@@ -79,7 +92,7 @@
             </div>
 
             <div data-inline="true"
-                 style="float: left; width: calc(100% - 550px); margin-left: 10px;border: 0px solid darkgray;">
+                 style="float: left;  min-width: 600px; margin-left: 10px;border: 0px solid darkgray;">
                 <div data-role="tabs" id="tabs">
                     <div data-role="navbar">
                         <ul>
@@ -93,7 +106,7 @@
                         <table id="table_id1" class="display"></table>
                     </div>
 
-                    <div id="tabs-2">
+                    <div id="tabs-2" style="background-color: lightgray; color:black; text-shadow: none;">
                         <div id="jstree"></div>
                     </div>
                     <div id="tabs-3" style="background-color: white; ">
@@ -143,7 +156,7 @@
                     </div>
                     <div class="ui-block-b">
                         <button id="zoomArea-down"
-                                class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-d">D</butto n>
+                                class="ui-btn ui-shadow ui-corner-all ui-btn-icon-top ui-icon-arrow-d">D</butto>
                     </div>
                     <div class="ui-block-c">
                         <button id="zoomArea-right"
@@ -175,7 +188,7 @@
     <div data-role="content">
         <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
             <h4>機台設定
-                <div style="display:inline;" id="checkAreaTitle"></div>
+                <span style="display:inline;" id="setpupArea"></span>
             </h4>
             <ul data-role="listview" data-inset="true" data-filter="false">
 
