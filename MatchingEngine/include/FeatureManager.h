@@ -32,6 +32,8 @@ typedef struct FeatureReport_sig360_extractor{
 typedef struct FeatureReport_sig360_circle_line_single{
   vector<acv_CircleFit> *detectedCircles;
   vector<acv_LineFit> *detectedLines;
+  vector<acv_Line> *detectedAuxLines;
+  vector<acv_XY> *detectedAuxPoints;
 
   acv_XY LTBound;
   acv_XY RBBound;
@@ -51,6 +53,7 @@ typedef struct FeatureReport_sig360_circle_line{
     END
   } error;
 };
+
 
 typedef struct FeatureReport
 {

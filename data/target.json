@@ -10,6 +10,7 @@
 
         {
           "type":"line",
+          "name":"baseLine",
           "MatchingMargin":3,
           "MatchingMarginX":35,
           "comment":"Another method to find line. Using search beam to find >=2 keyPoints",
@@ -29,6 +30,7 @@
         },
         {
           "type":"line",
+          "name":"LINE_1",
           "MatchingMargin":3,
           "param":
           {
@@ -133,19 +135,19 @@
           "type":"aux-line",
           "method":"base",
           "name":"BL1",
-          "ref":"@L0"
+          "ref":"@LINE_0"
         },
         {
           "type":"aux-line",
           "method":"base-left-edge",
-          "ref":"@L0"
+          "ref":"@LINE_0"
         },
         {
           "type":"aux-point",
           "method":"line-line",
           "name":"PT1",
           "L1":"@AL0",
-          "L2":"@L0"
+          "L2":"@LINE_0"
 
         },
         {
@@ -153,41 +155,37 @@
           "method":"line-line",
           "name":"PT1",
           "L1":"@AL0",
-          "L2":"@L0"
+          "L2":"@LINE_0"
 
         },
         {
           "type":"judge",
-          "relationship":"line2line",
-          "L1":"@L0",
-          "L2":1,
+
+          "OBJ1":"@LINE_3",
+          "OBJ2":"baseLine",
           "angle":0.1,
           "angle_margin":0.01
         },
         {
           "type":"judge",
-          "relationship":"circle2line",
-          "C1":0,
-          "L2":1,
+          "OBJ1":"LINE_1",
+          "OBJ2":"baseLine",
           "distance":5,
           "distance_margin":1
         },
         {
           "type":"judge",
-          "relationship":"circle",
-          "C1":0,
-          "radius":5,
-          "radius_margin":1,
+          "OBJ1":"@CIRCLE_0",
           "sigma":0,
           "sigma_margin":1
         },
         {
           "type":"judge",
-          "relationship":"line",
-          "L1":0,
+          "OBJ1":"LINE_1",
           "sigma":0,
           "sigma_margin":1
         }
+
 
       ]
     }

@@ -692,7 +692,7 @@ int main(int argc, char** argv)
   imgSrc_X = new DatCH_BMP(new acvImage());
   BPG_protocol = new DatCH_BPG1_0(NULL);
   BPG_protocol->SetEventCallBack(new DatCH_CallBack_BPG(BPG_protocol),NULL);
-  return mainLoop();
+  //return mainLoop();
   int seed = time(NULL);
   srand(seed);
   int ret = 0, repeatNum=1;

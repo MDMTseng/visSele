@@ -38,14 +38,14 @@ double* json_get_num(cJSON *root,char* path, char* dbg_str)
   double *pnum;
   if((pnum=(double *)JFetch(root,path,cJSON_Number)) == NULL )
   {
-    if(dbg_str)
+    /*if(dbg_str)
     {
       LOGE("%s: Cannot get Number In path: %s",dbg_str,path);
     }
     else
     {
       LOGE("Cannot get Number In path: %s",path);
-    }
+    }*/
     return NULL;
   }
   return pnum;
@@ -146,6 +146,64 @@ float FeatureManager_sig360_circle_line::find_search_key_points_longest_distance
   }
   return maxDist;
 }
+
+
+int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_circle> &list, char* name)
+{
+  if(!name)return -1;
+  for(int i=0;i<list.size();i++)
+  {
+
+    if(strcmp(list[i].name, name)==0)
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
+int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_line> &list, char* name)
+{
+  if(!name)return -1;
+  for(int i=0;i<list.size();i++)
+  {
+    if(strcmp(list[i].name, name)==0)
+    {
+      return i;
+    }
+  }
+  return -1;
+}
+
+
+
+int FeatureManager_sig360_circle_line::measure_process_L2L(struct judgeDef &judge)
+{
+  LOGV("judge:%s  OBJ1:%s, OBJ2:%s type:%d",judge.name,judge.OBJ1,judge.OBJ2,judge.measure_type);
+  LOGV("-val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
+
+
+  {
+    for(int i=0;i<featureLineList.size();i++)
+    {
+      LOGV("featureLineList[%d]:%s",i,featureLineList[i].name);
+    }
+    for(int i=0;i<featureCircleList.size();i++)
+    {
+      LOGV("featureCircleList[%d]:%s",i,featureCircleList[i].name);
+    }
+    for(int i=0;i<judgeList.size();i++)
+    {
+      LOGV("judgeList[%d]:%s  OBJ1:%s, OBJ2:%s type:%d",i,judgeList[i].name,judgeList[i].OBJ1,judgeList[i].OBJ2,judgeList[i].measure_type);
+      LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judgeList[i].OBJ1_type,judgeList[i].priv_OBJ1_idx,judgeList[i].OBJ2_type,judgeList[i].priv_OBJ2_idx);
+      LOGV("-val:%f  margin:%f",judgeList[i].targetVal,judgeList[i].targetVal_margin);
+
+
+    }
+  }
+  return 0;
+}
+
 int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList)
 {
   LOGI("It's key point search data");
@@ -456,6 +514,125 @@ int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj
   return 0;
 }
 
+int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
+{
+
+  judgeDef judge={0};
+
+  {
+    char *tmpstr;
+    judge.name[0] = '\0';
+    if(tmpstr = json_find_name(judge_obj))
+    {
+      strcpy(judge.name,tmpstr);
+    }
+  }
+
+  if(judge.name[0]=='\0')
+  {
+    sprintf(judge.name,"@JUDGE_%d",judgeList.size());
+  }
+
+  char * OBJ1_name = json_find_str(judge_obj, "OBJ1");
+  if(OBJ1_name == NULL)
+  {
+    LOGE("OBJ1:Cannot find the name of it");
+    return -1;
+  }
+  strcpy(judge.OBJ1,OBJ1_name);
+
+  judge.OBJ1_type = judgeDef::NONE;
+  int idx1;
+  if((idx1 = FindFeatureDefIndex(featureLineList, judge.OBJ1)) >= 0)
+  {
+    judge.OBJ1_type = judgeDef::LINE;
+  }
+  else if((idx1 = FindFeatureDefIndex(featureCircleList, judge.OBJ1)) >= 0 )
+  {
+    judge.OBJ1_type = judgeDef::CIRCLE;
+  }
+  else
+  {
+    LOGE("OBJ1:Cannot find the feature that has name:%s",judge.OBJ1);
+    return -1;
+  }
+  judge.priv_OBJ1_idx = idx1;
+
+
+
+  char * OBJ2_name = json_find_str(judge_obj, "OBJ2");
+  if(OBJ2_name)
+  {
+    strcpy(judge.OBJ2,OBJ2_name);
+  }
+
+  int idx2;
+  judge.OBJ2_type = judgeDef::NONE;
+  if(judge.OBJ2[0]=='\0')
+  {
+    idx2 = -1;
+    LOGI("OBJ2:Is NULL");
+  }
+  else if((idx2 = FindFeatureDefIndex(featureLineList, judge.OBJ2)) >=0)
+  {
+    judge.OBJ2_type = judgeDef::LINE;
+  }
+  else if((idx2 = FindFeatureDefIndex(featureCircleList, judge.OBJ2)) >=0)
+  {
+    judge.OBJ2_type = judgeDef::CIRCLE;
+  }
+  else
+  {
+    LOGE("OBJ2:Cannot find the feature that has name:%s",judge.OBJ2);
+    return -1;
+  }
+  judge.priv_OBJ2_idx = idx2;
+
+
+  double * measure_val =NULL;
+
+  if( measure_val = json_get_num(judge_obj,"sigma"))
+  {
+    judge.measure_type = judgeDef::SIGMA;
+    judge.targetVal = *measure_val;
+    measure_val = json_get_num(judge_obj,"sigma_margin");
+    if(measure_val == NULL)return -1;
+    judge.targetVal_margin = *measure_val;
+  }else
+  if( measure_val = json_get_num(judge_obj,"angle"))
+  {
+    judge.measure_type = judgeDef::ANGLE;
+    judge.targetVal = *measure_val;
+    measure_val = json_get_num(judge_obj,"angle_margin");
+    if(measure_val == NULL)return -1;
+    judge.targetVal_margin = *measure_val;
+  }else
+  if( measure_val = json_get_num(judge_obj,"distance"))
+  {
+    judge.measure_type = judgeDef::DISTANCE;
+    judge.targetVal = *measure_val;
+    measure_val = json_get_num(judge_obj,"distance_margin");
+    if(measure_val == NULL)return -1;
+    judge.targetVal_margin = *measure_val;
+  }else
+  if( measure_val = json_get_num(judge_obj,"area"))
+  {
+    judge.measure_type = judgeDef::AREA;
+    judge.targetVal = *measure_val;
+    measure_val = json_get_num(judge_obj,"area_margin");
+    if(measure_val == NULL)return -1;
+    judge.targetVal_margin = *measure_val;
+  }
+  else
+  {
+    return -1;
+  }
+
+  judgeList.push_back(judge);
+  return 0;
+}
+
+
 
 int FeatureManager_sig360_circle_line::parse_jobj()
 {
@@ -526,6 +703,27 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
      else if(strcmp(feature_type, "judge")==0)
      {
+     }
+     else
+     {
+       LOGE("feature[%d] has unknown type:[%s]",i,feature_type);
+       return -1;
+     }
+  }
+
+
+  for (int i = 0 ; i < cJSON_GetArraySize(featureList) ; i++)
+  {
+     cJSON * feature = cJSON_GetArrayItem(featureList, i);
+     cJSON * tmp_obj = cJSON_GetObjectItem(feature, "type");
+     if(tmp_obj == NULL)
+     {
+       LOGE("feature[%d] has no type...",i);
+       continue;
+     }
+     const char *feature_type =tmp_obj->valuestring;
+     if(strcmp(feature_type, "judge")==0)
+     {
        if(parse_judgeData(feature)!=0)
        {
          LOGE("feature[%d] has error %s format",i,feature_type);
@@ -534,10 +732,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
      else
      {
-       LOGE("feature[%d] has unknown type:[%s]",i,feature_type);
-       return -1;
+       continue;
      }
   }
+
 
   {
     for(int i=0;i<featureLineList.size();i++)
@@ -547,6 +745,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     for(int i=0;i<featureCircleList.size();i++)
     {
       LOGV("featureCircleList[%d]:%s",i,featureCircleList[i].name);
+    }
+    for(int i=0;i<judgeList.size();i++)
+    {
+      LOGV("judgeList[%d]:%s  OBJ1:%s, OBJ2:%s type:%d",i,judgeList[i].name,judgeList[i].OBJ1,judgeList[i].OBJ2,judgeList[i].measure_type);
+      LOGV("-val:%f  margin:%f",judgeList[i].targetVal,judgeList[i].targetVal_margin);
     }
   }
 
@@ -707,19 +910,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   int count = 0;
 
   {
-      if(detectedCirclesPool.size()<ldData.size())
+      if(reportDataPool.size()<ldData.size())
       {
-        int oriSize = detectedCirclesPool.size();
-        detectedCirclesPool.resize(ldData.size());
-        detectedLinesPool.resize(ldData.size());
+        int oriSize = reportDataPool.size();
+        reportDataPool.resize(ldData.size());
 
-        for(int i=oriSize;i<detectedCirclesPool.size();i++)
+        for(int i=oriSize;i<reportDataPool.size();i++)
         {
-          detectedLinesPool[i] = new vector<acv_LineFit>(0);
-          detectedCirclesPool[i] = new vector<acv_CircleFit>(0);
+          reportDataPool[i].detectedCircles = new vector<acv_CircleFit>(0);
+          reportDataPool[i].detectedLines = new vector<acv_LineFit>(0);
+          reportDataPool[i].detectedAuxLines = new vector<acv_Line>(0);
+          reportDataPool[i].detectedAuxPoints = new vector<acv_XY>(0);
         }
-
-
       }
   }
 
@@ -740,8 +942,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       FeatureReport_sig360_circle_line_single singleReport=
       {
-          .detectedCircles=detectedCirclesPool[count],
-          .detectedLines=detectedLinesPool[count],
+          .detectedCircles=reportDataPool[count].detectedCircles,
+          .detectedLines=reportDataPool[count].detectedLines,
+          .detectedAuxLines=reportDataPool[count].detectedAuxLines,
+          .detectedAuxPoints=reportDataPool[count].detectedAuxPoints,
           .LTBound=ldData[i].LTBound,
           .RBBound=ldData[i].RBBound,
           .Center=ldData[i].Center,
@@ -756,9 +960,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       vector<acv_CircleFit> &detectedCircles = *singleReport.detectedCircles;
       vector<acv_LineFit> &detectedLines = *singleReport.detectedLines;
 
+      vector<acv_Line> &detectedAuxLines = *singleReport.detectedAuxLines;
+      vector<acv_XY> &detectedAuxPoints = *singleReport.detectedAuxPoints;
 
       detectedCircles.resize(0);
       detectedLines.resize(0);
+      detectedAuxLines.resize(0);
+      detectedAuxPoints.resize(0);
 
 
       float cached_cos,cached_sin;
@@ -773,6 +981,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         flip_f=-1;
       }
 
+
+      acv_LineFit lf_zero = {0};
       for (int j = 0; j < featureLineList.size(); j++)
       {
         int mult=100;
@@ -784,6 +994,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           if(line->skpsList.size()<2)
           {
             LOGE("skpListSize:%d <2 not enough",line->skpsList.size());
+            detectedLines.push_back(lf_zero);
             continue;
             //Error
           }
@@ -832,6 +1043,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           //Search distance a 2*searchDist(since you go back off initMatchingMargin)
           if(searchP(img, &line_cand.line_anchor , searchVec, 2*line->searchDist)!=0)
           {
+            detectedLines.push_back(lf_zero);
             continue;
           }
 
@@ -884,6 +1096,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         detectedLines.push_back(lf);
       }
 
+      acv_CircleFit cf_zero= {0};
       for (int j = 0; j < featureCircleList.size(); j++)
       {
         acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
@@ -923,6 +1136,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       }
 
+
+      for(int i=0;i<judgeList.size();i++)
+      {
+        measure_process_L2L(judgeList[i]);
+      }
 
   }
 
