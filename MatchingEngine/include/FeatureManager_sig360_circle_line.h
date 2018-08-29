@@ -4,7 +4,10 @@
 #include "FeatureManager.h"
 
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
+
+  #define FeatureManager_NAME_LENGTH 32
   typedef struct featureDef_circle{
+    char name[FeatureManager_NAME_LENGTH];
     acv_Circle circleTar;
     float initMatchingMargin;
   }featureDef_circle;
@@ -14,6 +17,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
     float searchDist;
   }searchKeyPoint;
   typedef struct featureDef_line{
+    char name[FeatureManager_NAME_LENGTH];
     acv_Line lineTar;
     acv_XY searchVec;//The vector to searching the contour edge
     acv_XY searchEstAnchor;//The vector to searching the contour edge

@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <common_lib.h>
 #include <MatchingCore.h>
+#include <stdio.h>
 
 /*
   FeatureManager_sig360_circle_line Section
@@ -57,12 +58,35 @@ double* json_get_num(cJSON *root,char* path)
 
 #define JSON_GET_NUM(JROOT,PATH) json_get_num(JROOT,PATH,(char*)__func__)
 
+
+char* json_find_str(cJSON *root, const char* key)
+{
+  char *str;
+  if(!(getDataFromJsonObj(root,key,(void**)&str)&cJSON_String))
+  {
+    return NULL;
+  }
+  return str;
+}
+
+char* json_find_name(cJSON *root)
+{
+  return json_find_str(root,"name");;
+}
+
+
 int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 {
   featureDef_circle cir;
-  /*char* str = cJSON_Print(circle_obj);
-  LOGV("feature is a circle\n%s",str);
-  free(str);*/
+
+  {
+    char *tmpstr;
+    cir.name[0] = '\0';
+    if(tmpstr = json_find_name(circle_obj))
+    {
+      strcpy(cir.name,tmpstr);
+    }
+  }
 
   double *pnum;
 
@@ -100,6 +124,10 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
   cir.circleTar.circumcenter.Y,
   cir.circleTar.radius,
   cir.initMatchingMargin);
+  if(cir.name[0]=='\0')
+  {
+    sprintf(cir.name,"@CIRCLE_%d",featureCircleList.size());
+  }
   featureCircleList.push_back(cir);
   return 0;
 }
@@ -183,6 +211,14 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   line.MatchingMarginX=0;
   double *pnum;
 
+  {
+    char *tmpstr;
+    line.name[0] = '\0';
+    if(tmpstr = json_find_name(line_obj))
+    {
+      strcpy(line.name,tmpstr);
+    }
+  }
   if((pnum=JSON_GET_NUM(line_obj,"MatchingMargin")) == NULL )
   {
     return -1;
@@ -340,9 +376,14 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   line.searchVec.X,
   line.searchVec.Y,
   line.searchDist);
+
+  if(line.name[0]=='\0')
+  {
+    sprintf(line.name,"@LINE_%d",featureLineList.size());
+  }
+
+
   featureLineList.push_back(line);
-
-
 
   return 0;
 }
@@ -414,6 +455,8 @@ int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj
 
   return 0;
 }
+
+
 int FeatureManager_sig360_circle_line::parse_jobj()
 {
   const char *type_str= (char *)JFetch(root,"type",cJSON_String);
@@ -483,6 +526,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
      else if(strcmp(feature_type, "judge")==0)
      {
+       if(parse_judgeData(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
      }
      else
      {
@@ -490,6 +538,18 @@ int FeatureManager_sig360_circle_line::parse_jobj()
        return -1;
      }
   }
+
+  {
+    for(int i=0;i<featureLineList.size();i++)
+    {
+      LOGV("featureLineList[%d]:%s",i,featureLineList[i].name);
+    }
+    for(int i=0;i<featureCircleList.size();i++)
+    {
+      LOGV("featureCircleList[%d]:%s",i,featureCircleList[i].name);
+    }
+  }
+
 
   if(feature_signature.size()==0)
   {
