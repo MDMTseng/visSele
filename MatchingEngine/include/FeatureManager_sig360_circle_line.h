@@ -2,12 +2,15 @@
 #define FeatureManagerSIG360_CIRCLE_LINE__HPP
 
 #include "FeatureManager.h"
+#include "FeatureReport.h"
+
+#include "FeatureManager_binary_processing.h"
+#include <ContourGrid.h>
 
 
 
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
 
-  #define FeatureManager_NAME_LENGTH 32
   typedef struct featureDef_circle{
     char name[FeatureManager_NAME_LENGTH];
     acv_Circle circleTar;
@@ -29,38 +32,10 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
     vector<searchKeyPoint> skpsList;
   }featureDef_line;
 
-  typedef struct judgeDef{
-
-    char name[FeatureManager_NAME_LENGTH];
-
-    enum{
-      AREA,
-      SIGMA,
-      ANGLE,
-      DISTANCE,
-    } measure_type;
-    enum{
-      NONE,
-      LINE,
-      CIRCLE,
-      AUX_LINE,
-      AUX_CIRCLE,
-      AUX_POINT
-    } OBJ1_type,OBJ2_type;
-    int OBJ1_idx;
-    int OBJ2_idx;
-    char OBJ1[FeatureManager_NAME_LENGTH];
-    char OBJ2[FeatureManager_NAME_LENGTH];
-    bool swap;
-
-
-    float targetVal;
-    float targetVal_margin;
-  }judgeDef;
 
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
-  vector<judgeDef> judgeList;
+  vector<FeatureReport_judgeDef> judgeList;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
   ContourGrid inward_curve_grid;
@@ -86,7 +61,7 @@ protected:
   int parse_jobj() override;
 
 
-  int measure_process_L2L(FeatureReport_sig360_circle_line_single &report,struct judgeDef &judge);
+  int measure_process_L2L(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge);
 
 
   int FindFeatureDefIndex(vector<featureDef_line> &list, char* name);

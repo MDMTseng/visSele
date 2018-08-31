@@ -4,6 +4,7 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include "FeatureManager_sig360_circle_line.h"
+#include "FeatureManager_group.h"
 /*
   FeatureManager_group_proto Section
 */

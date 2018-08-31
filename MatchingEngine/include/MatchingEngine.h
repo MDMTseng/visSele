@@ -6,6 +6,7 @@ using namespace std;
 #include <ctime>
 #include "acvImage_BasicTool.hpp"
 #include "FeatureManager.h"
+#include "FeatureManager_group.h"
 
 
 
