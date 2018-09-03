@@ -61,7 +61,7 @@ protected:
   int parse_jobj() override;
 
 
-  int measure_process_L2L(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge);
+  FeatureReport_judgeReport measure_process(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge);
 
 
   int FindFeatureDefIndex(vector<featureDef_line> &list, char* name);

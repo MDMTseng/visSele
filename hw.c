@@ -616,9 +616,18 @@ int testX(int repeatTime)
     imgSrc_g->GetAcvImage();
     ImgInspection(matchingEng,test1,test1_buff,repeatTime,"data/target.json");
     acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
-  }
-  delete test1;
 
+    const FeatureReport * report = matchingEng.GetReport();
+    if(report!=NULL)
+    {
+      cJSON* jobj = matchingEng.FeatureReport2Json(report);
+      char * jstr  = cJSON_Print(jobj);
+      cJSON_Delete(jobj);
+      LOGI("...\n%s\n...",jstr);
+      delete jstr;
+    }
+
+  }
   return 0;
 }
 

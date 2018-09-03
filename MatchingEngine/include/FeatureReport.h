@@ -62,7 +62,9 @@ typedef struct FeatureReport_judgeDef{
 
 typedef struct FeatureReport_judgeReport{
 
-  FeatureReport_judgeDef def;
+  FeatureReport_judgeDef *def;
+  float measured_val;
+
 }FeatureReport_judgeReport;
 
 
