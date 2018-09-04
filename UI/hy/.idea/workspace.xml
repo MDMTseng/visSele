@@ -2,14 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="bf9cb1db-b225-4602-8d47-b91863bcbd44" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/jsLibraryMappings.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/hy.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/hy.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/EventsX.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/EventsX.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/GlobalParamater.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/GlobalParamater.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/canvasX.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/canvasX.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/main.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/main.js" afterDir="false" />
     </list>
     <list id="760a7d64-5479-4f60-90a1-fe05150550e2" name="Extract FeatureManager_sig360_circle_line out of FeatureManager file, and some log and exception handle" comment="Extract FeatureManager_sig360_circle_line out of FeatureManager file, and some log and exception handle">
       <changelist_data name="Chia-Pin Tseng" email="chiapintseng@gmail.com" date="1535453533000">
@@ -51,7 +45,7 @@
       <usages-collector id="statistics.file.extensions.open">
         <counts>
           <entry key="html" value="2" />
-          <entry key="js" value="31" />
+          <entry key="js" value="32" />
           <entry key="json" value="1" />
           <entry key="ts" value="2" />
         </counts>
@@ -60,21 +54,21 @@
         <counts>
           <entry key="HTML" value="2" />
           <entry key="JSON" value="1" />
-          <entry key="JavaScript" value="31" />
+          <entry key="JavaScript" value="32" />
           <entry key="TypeScript" value="2" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
           <entry key="html" value="244" />
-          <entry key="js" value="2880" />
+          <entry key="js" value="2927" />
           <entry key="txt" value="90" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
           <entry key="HTML" value="244" />
-          <entry key="JavaScript" value="2880" />
+          <entry key="JavaScript" value="2927" />
           <entry key="PLAIN_TEXT" value="90" />
         </counts>
       </usages-collector>
@@ -136,8 +130,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/js/EventsX.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="402">
-              <caret line="118" column="44" selection-start-line="118" selection-start-column="44" selection-end-line="118" selection-end-column="44" />
+            <state relative-caret-position="567">
+              <caret line="122" column="9" selection-start-line="122" selection-start-column="9" selection-end-line="122" selection-end-column="9" />
             </state>
           </provider>
         </entry>
@@ -154,8 +148,8 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/js/GlobalParamater.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="128">
-              <caret line="54" column="8" selection-start-line="54" selection-start-column="8" selection-end-line="54" selection-end-column="8" />
+            <state relative-caret-position="274">
+              <caret line="53" column="27" selection-start-line="53" selection-start-column="13" selection-end-line="53" selection-end-column="27" />
             </state>
           </provider>
         </entry>
@@ -163,8 +157,8 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/js/canvasX.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="136">
-              <caret line="85" column="46" selection-start-line="85" selection-start-column="46" selection-end-line="85" selection-end-column="46" />
+            <state relative-caret-position="441">
+              <caret line="209" column="34" selection-start-line="209" selection-start-column="22" selection-end-line="209" selection-end-column="34" />
             </state>
           </provider>
         </entry>
@@ -174,6 +168,18 @@
           <provider selected="true" editor-type-id="text-editor">
             <state>
               <caret column="18" selection-start-column="9" selection-end-column="18" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/js/ws.js">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-1593">
+              <caret line="63" column="4" selection-start-line="63" selection-start-column="4" selection-end-line="63" selection-end-column="4" />
+              <folding>
+                <element signature="n#style#0;n#span#0;n#!!top" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -189,9 +195,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>draw</find>
-      <find>child</find>
-      <find>initChildRow</find>
       <find>tab</find>
       <find>table</find>
       <find>for</find>
@@ -219,6 +222,9 @@
       <find>mousemo</find>
       <find>mouse</find>
       <find>check</find>
+      <find>offsetX</find>
+      <find>trans</find>
+      <find>translatePos</find>
     </findStrings>
     <replaceStrings>
       <replace>let</replace>
@@ -339,12 +345,12 @@
       <workItem from="1535211081806" duration="395000" />
       <workItem from="1535211499401" duration="436000" />
       <workItem from="1535217833928" duration="30363000" />
-      <workItem from="1535519580428" duration="16494000" />
+      <workItem from="1535519580428" duration="17646000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="57829000" />
+    <option name="totallyTimeSpent" value="58981000" />
   </component>
   <component name="TodoView" selected-index="2">
     <todo-panel id="selected-file">
@@ -504,16 +510,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/js/ws.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="105">
-          <caret line="63" column="4" selection-start-line="63" selection-start-column="4" selection-end-line="63" selection-end-column="4" />
-          <folding>
-            <element signature="n#style#0;n#span#0;n#!!top" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/js/xlinx.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="283">
@@ -525,13 +521,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="131">
           <caret line="179" column="42" selection-start-line="179" selection-start-column="42" selection-end-line="179" selection-end-column="42" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/js/canvasX.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="136">
-          <caret line="85" column="46" selection-start-line="85" selection-start-column="46" selection-end-line="85" selection-end-column="46" />
         </state>
       </provider>
     </entry>
@@ -563,13 +552,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="124">
           <caret line="80" column="9" selection-start-line="80" selection-start-column="9" selection-end-line="80" selection-end-column="9" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/js/GlobalParamater.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="128">
-          <caret line="54" column="8" selection-start-line="54" selection-start-column="8" selection-end-line="54" selection-end-column="8" />
         </state>
       </provider>
     </entry>
@@ -610,10 +592,34 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/js/ws.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1593">
+          <caret line="63" column="4" selection-start-line="63" selection-start-column="4" selection-end-line="63" selection-end-column="4" />
+          <folding>
+            <element signature="n#style#0;n#span#0;n#!!top" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/js/GlobalParamater.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="274">
+          <caret line="53" column="27" selection-start-line="53" selection-start-column="13" selection-end-line="53" selection-end-column="27" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/js/canvasX.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="441">
+          <caret line="209" column="34" selection-start-line="209" selection-start-column="22" selection-end-line="209" selection-end-column="34" />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/js/EventsX.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="402">
-          <caret line="118" column="44" selection-start-line="118" selection-start-column="44" selection-end-line="118" selection-end-column="44" />
+        <state relative-caret-position="567">
+          <caret line="122" column="9" selection-start-line="122" selection-start-column="9" selection-end-line="122" selection-end-column="9" />
         </state>
       </provider>
     </entry>

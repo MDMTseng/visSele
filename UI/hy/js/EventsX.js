@@ -89,7 +89,6 @@ function initCanvasEvents() {
         mouseDown = true;
         startDragPos.x = evt.clientX;
         startDragPos.y = evt.clientY;
-
     });
 
     canvas3.addEventListener("mouseup", function (evt) {
@@ -114,6 +113,14 @@ function mouseMove(evt) {
     if(evt.path[0].id==="canvas3"){
         MOUSE_VARs.updateMouseEvt(evt,2);
         $('#checkAreaTitle2').html('3mX=' + evt.offsetX + ',3mY=' + evt.offsetY);
+        if (mouseDown) {
+            let vec_tmp = {
+                x: (evt.clientX - startDragPos.x) / scale,
+                y: (evt.clientY - startDragPos.y) / scale
+            };
+            rotate2dtransform(translateDragOffset, vec_tmp, -startSpinPos);
+            // draw(scale, translatePos);
+        }
     }else if(evt.path[0].id==="canvas1"){
         MOUSE_VARs.updateMouseEvt(evt,0);
         $('#checkAreaTitle').html('1mX=' + evt.offsetX + ',1mY=' + evt.offsetY);
