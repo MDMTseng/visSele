@@ -110,6 +110,20 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
 
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
+
+  {
+    report.data.sig360_extractor.LTBound=ldData[idx].LTBound;
+    report.data.sig360_extractor.RBBound=ldData[idx].RBBound;
+    report.data.sig360_extractor.Center=ldData[idx].Center;
+    report.data.sig360_extractor.area=ldData[idx].area;
+
+    report.type = FeatureReport::sig360_extractor;
+    report.data.sig360_extractor.signature = &signature;
+    report.data.sig360_extractor.detectedCircles = &detectedCircles;
+    report.data.sig360_extractor.detectedLines = &detectedLines;
+  }
+
+
 #if 0
   for(int i=0;i<detectedCircles.size();i++)
   {

@@ -124,6 +124,15 @@ typedef struct FeatureReport_sig360_extractor{
   vector<acv_XY> *signature;
   vector<acv_CircleFit> *detectedCircles;
   vector<acv_LineFit> *detectedLines;
+
+  acv_XY LTBound;
+  acv_XY RBBound;
+  acv_XY Center;
+  int area;
+  float rotate;
+  bool  isFlipped;
+  float scale;
+  
   enum{
     NONE,
     ONLY_ONE_COMPONENT_IS_ALLOWED,

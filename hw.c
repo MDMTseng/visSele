@@ -609,12 +609,12 @@ int testX(int repeatTime)
   DatCH_BMP imgSrc1(test1);
   if(doCallbackStyle)
     imgSrc1.SetEventCallBack(&callbk_obj,NULL);
-  imgSrc1.SetFileName("data/test1.bmp");
+  imgSrc1.SetFileName("data/target.bmp");
   if(!doCallbackStyle)
   {
     DatCH_acvImageInterface *imgSrc_g = &imgSrc1;
     imgSrc_g->GetAcvImage();
-    ImgInspection(matchingEng,test1,test1_buff,repeatTime,"data/target.json");
+    ImgInspection(matchingEng,test1,test1_buff,repeatTime,"data/featureDetect.json");
     acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
 
     const FeatureReport * report = matchingEng.GetReport();
