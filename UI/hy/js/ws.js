@@ -112,7 +112,7 @@ function onMessage(evt) {
 
 
     }
-RXMSG.listAll();
+// RXMSG.listAll();
 }
 
 function onError(evt) {

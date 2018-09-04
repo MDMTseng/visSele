@@ -19,23 +19,14 @@ function lerpColor(a, b, amount) {
 
     return '#' + ((1 << 24) + (rr << 16) + (rg << 8) + rb | 0).toString(16).slice(1);
 }
-Number.prototype.numberFormat = function(c, d, t){
-    var n = this,
-        c = isNaN(c = Math.abs(c)) ? 2 : c,
-        d = d == undefined ? "." : d,
-        t = t == undefined ? "," : t,
-        s = n < 0 ? "-" : "",
-        i = String(parseInt(n = Math.abs(Number(n) || 0).toFixed(c))),
-        j = (j = i.length) > 3 ? j % 3 : 0;
-    return s + (j ? i.substr(0, j) + t : "") + i.substr(j).replace(/(\d{3})(?=\d)/g, "$1" + t) + (c ? d + Math.abs(n - i).toFixed(c).slice(2) : "");
-};
+
 function VA2(currt, newV, speed) {
-    return speed * (newV - currt) + currt;
+    return (speed * (newV - currt) + currt);
 
 }
 
 function VA(currt, newV, speed) {
-    return speed * newV + (currt * (1 - speed));
+    return (speed * newV + (currt * (1 - speed)));
 }
 
 
@@ -45,6 +36,17 @@ function degreesToRadians (degrees) {
 
 function radiansToDegrees (radians) {
    return radians * (180/Math.PI);
+}
+
+function preprocData(dataIn) {
+    let dataOut = [];
+    for (id in dataIn) {
+        if (dataIn.hasOwnProperty(id)) {
+            dataOut.push(dataIn[id]);
+            dataOut[dataOut.length - 1].Id = id;
+        }
+    }
+    return dataOut;
 }
 
 

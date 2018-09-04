@@ -1,5 +1,5 @@
 // let fetureListTable=$('#table_id1');
-
+var editor;
 let dataSet2 = [
     [1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
     [1, "x:198.827,y:181.296", "Edinburgh", "5421", "2011/04/25", "$320,800"],
@@ -21,22 +21,36 @@ function initDataTables() {
     // // rx_array.dataSet
     // // let dataSet = Object.values(RXMSG_temp3.reports[0].reports[0]);
     dataSet = dataSet.reports[0].reports;
-    console.log(dataSet);
+    // console.log(dataSet);
     for (let i = 0; i < dataSet.length; i++) {
         dataSet[i].cx = Math.round(dataSet[i].cx * 100) / 100;
         dataSet[i].cy = Math.round(dataSet[i].cy * 100) / 100;
         dataSet[i].rotate = Math.round(dataSet[i].rotate * 100) / 100;
     }
+    console.log("d1");
+    console.log(dataSet);
+    dataSet=preprocData(dataSet);
+    console.log("d2");
+    console.log(dataSet);
     // dataSet= preprocData(dataSet);
     // console.log(dataSet);
     let dTables = $('#table_id1').DataTable({
         "scrollX": "200px",
         "scrollCollapse": true,
         "autoWidth": true,
-        "searching": true,
+        "searching": false,
         "ordering": true,
         "paging": false,
         "data": dataSet,
+        "select": {
+            style:    'os',
+            selector: 'td:first-child'
+        },
+        buttons: [
+            { extend: 'create', editor: editor },
+            { extend: 'edit',   editor: editor },
+            { extend: 'remove', editor: editor }
+        ],
         columns: [
             {
                 "className": 'details-control',
@@ -58,14 +72,51 @@ function initDataTables() {
         ]
 
     });
-    console.log(dTables);
+    // console.log(dTables);
     initChildRow(dTables);
-
+    }
+function inlineEditor2() {
+    editor = new $.fn.dataTable.Editor({});
 }
-
+function inlineEditor(){
+    editor =new $.fn.dataTable.Editor( {
+        // ajax: "../php/staff.php",
+        "table": "#table_id1",
+        "idsrc":"area",
+        "fields": [ {
+            label: "area",
+            name: "area"
+        }, {
+            label: "scale",
+            name: "scale"
+        }, {
+            label: "cx",
+            name: "cx"
+        }, {
+            label: "cy",
+            name: "cy"
+        }, {
+            label: "isFlipped",
+            name: "isFlipped"
+        }
+        ],
+        select: {
+            style:    'os',
+            selector: 'td:first-child'
+        },
+        buttons: [
+            { extend: "create", editor: editor },
+            { extend: "edit",   editor: editor },
+            { extend: "remove", editor: editor }
+        ]
+    } );
+    $('#table_id1').on( 'click', 'tbody td:not(:first-child)', function (e) {
+        editor.inline( this );
+    } );
+}
 function format(d) {
     // `d` is the original data object for the row
-    return '<table cellpadding="5" cellspacing="0" border="0" style="padding-left:50px;">' +
+    return '<table cellpadding="5" cellspacing="0" border="0" style="float: left; padding-left:50px;">' +
         '<tr>' +
         '<td>detected Circles:</td>' +
         '<td>' + d.detectedCircles + '</td>' +
@@ -83,8 +134,7 @@ function format(d) {
 }
 
 function initChildRow(table) {
-    //todo
-    $('#table_id1').on('click', 'td.details-control', function () {
+    table.on('click', 'td.details-control', function () {
         let tr = $(this).closest('tr');
         let row = table.row(tr);
 
@@ -98,96 +148,5 @@ function initChildRow(table) {
             row.child(format(row.data())).show();
             tr.addClass('shown');
         }
-    });
-}
-
-function preprocData(dataIn) {
-    let dataOut = [];
-    for (id in dataIn) {
-        if (dataIn.hasOwnProperty(id)) {
-            dataOut.push(dataIn[id]);
-            dataOut[dataOut.length - 1].Id = id;
-        }
-    }
-    return dataOut;
-}
-
-function initTabulator() {
-    let printIcon = function (cell, formatterParams) { //plain text value
-        return "<i class='fa fa-print'></i>";
-    };
-
-    //Build Tabulator
-    $("#example-table").tabulator({
-        height: "311px",
-        layout: "fitColumns",
-        rowFormatter: function (row) {
-            if (row.getData().col == "blue") {
-                row.getElement().css({
-                    "background-color": "#A6A6DF"
-                });
-            }
-        },
-        columns: [{
-            formatter: "rownum",
-            align: "center",
-            width: 40
-        }, {
-            formatter: printIcon,
-            width: 40,
-            align: "center",
-            cellClick: function (e, cell) {
-                alert("Printing row data for: " + cell.getRow().getData().name)
-            }
-        }, {
-            title: "Name",
-            field: "name",
-            width: 150,
-            formatter: function (cell, formatterParams) {
-                let value = cell.getValue();
-                if (value.indexOf("o") > 0) {
-                    return "<span style='color:red; font-weight:bold;'>" + value + "</span>";
-                } else {
-                    return value;
-                }
-            }
-        }, {
-            title: "Progress",
-            field: "progress",
-            formatter: "progress",
-            formatterParams: {
-                color: ["#00dd00", "orange", "rgb(255,0,0)"]
-            },
-            sorter: "number",
-            width: 100
-        }, {
-            title: "Rating",
-            field: "rating",
-            formatter: "star",
-            formatterParams: {
-                stars: 6
-            },
-            align: "center",
-            width: 120
-        }, {
-            title: "Driver",
-            field: "car",
-            align: "center",
-            formatter: "tickCross",
-            width: 50
-        }, {
-            title: "Col",
-            field: "col",
-            formatter: "color",
-            width: 50
-        }, {
-            title: "Line Wraping",
-            field: "lorem",
-            formatter: "textarea"
-        }, {
-            formatter: "buttonCross",
-            width: 30,
-            align: "center"
-        }],
     });
 }
