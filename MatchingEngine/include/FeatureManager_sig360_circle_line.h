@@ -11,28 +11,6 @@
 
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
 
-  typedef struct featureDef_circle{
-    char name[FeatureManager_NAME_LENGTH];
-    acv_Circle circleTar;
-    float initMatchingMargin;
-  }featureDef_circle;
-  typedef struct searchKeyPoint{
-    acv_XY searchStart;
-    acv_XY searchVec;
-    float searchDist;
-  }searchKeyPoint;
-  typedef struct featureDef_line{
-    char name[FeatureManager_NAME_LENGTH];
-    acv_Line lineTar;
-    acv_XY searchVec;//The vector to searching the contour edge
-    acv_XY searchEstAnchor;//The vector to searching the contour edge
-    float initMatchingMargin;
-    float MatchingMarginX;
-    float searchDist;
-    vector<searchKeyPoint> skpsList;
-  }featureDef_line;
-
-
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
   vector<FeatureReport_judgeDef> judgeList;
@@ -52,8 +30,8 @@ public :
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
 protected:
 
-  int parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList);
-  float find_search_key_points_longest_distance(vector<searchKeyPoint> &skpsList);
+  int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
+  float find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList);
   int parse_circleData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_signatureData(cJSON * signature_obj);

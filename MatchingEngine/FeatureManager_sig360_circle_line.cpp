@@ -132,7 +132,7 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
   return 0;
 }
 
-float FeatureManager_sig360_circle_line::find_search_key_points_longest_distance(vector<searchKeyPoint> &skpsList)
+float FeatureManager_sig360_circle_line::find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList)
 {
   float maxDist=0;
   for(int i=0;i<skpsList.size()-1;i++)
@@ -188,7 +188,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
 
   if(judge.OBJ1_type == FeatureReport_judgeDef::LINE)
   {
-    acv_LineFit OBJ1 = (*report.detectedLines)[judge.OBJ1_idx];
+    acv_LineFit OBJ1 = (*report.detectedLines)[judge.OBJ1_idx].line;
     if(judge.OBJ2_type == FeatureReport_judgeDef::NONE)
     {
       switch(judge.measure_type)
@@ -207,7 +207,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     }
     else if(judge.OBJ2_type == FeatureReport_judgeDef::LINE)
     {
-      acv_LineFit OBJ2 = (*report.detectedLines)[judge.OBJ2_idx];
+      acv_LineFit OBJ2 = (*report.detectedLines)[judge.OBJ2_idx].line;
       switch(judge.measure_type)
       {
         case FeatureReport_judgeDef::ANGLE:
@@ -236,7 +236,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     }
     else if(judge.OBJ2_type == FeatureReport_judgeDef::CIRCLE)
     {
-      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx];
+      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx].circle;
       switch(judge.measure_type)
       {
         case FeatureReport_judgeDef::DISTANCE:
@@ -258,7 +258,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   }
   else if(judge.OBJ1_type == FeatureReport_judgeDef::CIRCLE)
   {
-    acv_CircleFit OBJ1 = (*report.detectedCircles)[judge.OBJ1_idx];
+    acv_CircleFit OBJ1 = (*report.detectedCircles)[judge.OBJ1_idx].circle;
     if(judge.OBJ2_type == FeatureReport_judgeDef::NONE)
     {
       switch(judge.measure_type)
@@ -277,7 +277,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     }
     else if(judge.OBJ2_type == FeatureReport_judgeDef::CIRCLE)
     {
-      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx];
+      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx].circle;
       switch(judge.measure_type)
       {
         case FeatureReport_judgeDef::DISTANCE:
@@ -303,14 +303,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   return judgeReport;
 }
 
-int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspArr_obj,vector<searchKeyPoint> &skpsList)
+int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList)
 {
   LOGI("It's key point search data");
   skpsList.resize(0);
 
   for (int i = 0 ; i < cJSON_GetArraySize(kspArr_obj) ; i++)
   {
-    searchKeyPoint skp;
+    featureDef_line::searchKeyPoint skp;
     cJSON *jobj;
     if(!(getDataFromJsonObj(kspArr_obj,i,(void**)&jobj)&cJSON_Object))
     {
@@ -378,6 +378,8 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   }
   if((pnum=JSON_GET_NUM(line_obj,"MatchingMargin")) == NULL )
   {
+    LOGE("No MatchingMargin");
+
     return -1;
   }
   line.initMatchingMargin=*pnum;
@@ -408,24 +410,28 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   acv_XY p0,p1;
   if((pnum=JSON_GET_NUM(line_obj,"param.x0")) == NULL )
   {
+    LOGE("No param.x0");
     return -1;
   }
   p0.X=*pnum;
 
   if((pnum=JSON_GET_NUM(line_obj,"param.y0")) == NULL )
   {
+    LOGE("No param.y0");
     return -1;
   }
   p0.Y=*pnum;
 
   if((pnum=JSON_GET_NUM(line_obj,"param.x1")) == NULL )
   {
+    LOGE("No param.x1");
     return -1;
   }
   p1.X=*pnum;
 
   if((pnum=JSON_GET_NUM(line_obj,"param.y1")) == NULL )
   {
+    LOGE("No param.y1");
     return -1;
   }
   p1.Y=*pnum;
@@ -445,12 +451,14 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   line.searchEstAnchor = line.lineTar.line_anchor;
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.x")) == NULL )
   {
+    LOGE("No searchVec.x");
     return -1;
   }
   line.searchEstAnchor.X=*pnum;
 
   if((pnum=JSON_GET_NUM(line_obj,"searchVec.y")) == NULL )
   {
+    LOGE("No searchVec.y");
     return -1;
   }
   line.searchEstAnchor.Y=*pnum;
@@ -1032,8 +1040,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
         for(int i=oriSize;i<reportDataPool.size();i++)
         {
-          reportDataPool[i].detectedCircles = new vector<acv_CircleFit>(0);
-          reportDataPool[i].detectedLines = new vector<acv_LineFit>(0);
+          reportDataPool[i].detectedCircles = new vector<FeatureReport_circleReport>(0);
+          reportDataPool[i].detectedLines = new vector<FeatureReport_lineReport>(0);
           reportDataPool[i].detectedAuxLines = new vector<acv_Line>(0);
           reportDataPool[i].detectedAuxPoints = new vector<acv_XY>(0);
           reportDataPool[i].judgeReports = new vector<FeatureReport_judgeReport>(0);
@@ -1074,8 +1082,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       };
       reports.push_back(singleReport);
 
-      vector<acv_CircleFit> &detectedCircles = *singleReport.detectedCircles;
-      vector<acv_LineFit> &detectedLines = *singleReport.detectedLines;
+      vector<FeatureReport_circleReport> &detectedCircles = *singleReport.detectedCircles;
+      vector<FeatureReport_lineReport> &detectedLines = *singleReport.detectedLines;
 
       vector<acv_Line> &detectedAuxLines = *singleReport.detectedAuxLines;
       vector<acv_XY> &detectedAuxPoints = *singleReport.detectedAuxPoints;
@@ -1104,7 +1112,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       for (int j = 0; j < featureLineList.size(); j++)
       {
         int mult=100;
-        const featureDef_line *line = &featureLineList[j];
+        featureDef_line *line = &featureLineList[j];
 
         acv_Line line_cand;
         if(line->skpsList.size()!=0)
@@ -1112,14 +1120,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           if(line->skpsList.size()<2)
           {
             LOGE("skpListSize:%d <2 not enough",line->skpsList.size());
-            detectedLines.push_back(lf_zero);
+            const FeatureReport_lineReport lr={
+              .line=lf_zero,
+              .def = line
+            };
+            detectedLines.push_back(lr);
             continue;
             //Error
           }
           s_points.resize(0);
           for(int k=0;k<line->skpsList.size();k++)
           {
-            searchKeyPoint skp= line->skpsList[k];
+            featureDef_line::searchKeyPoint skp= line->skpsList[k];
 
             skp.searchStart= acvRotation(cached_sin,cached_cos,flip_f,skp.searchStart);
             skp.searchVec= acvRotation(cached_sin,cached_cos,flip_f,skp.searchVec);
@@ -1161,7 +1173,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           //Search distance a 2*searchDist(since you go back off initMatchingMargin)
           if(searchP(img, &line_cand.line_anchor , searchVec, 2*line->searchDist)!=0)
           {
-            detectedLines.push_back(lf_zero);
+            const FeatureReport_lineReport lr={
+              .line=lf_zero,
+              .def = line
+            };
+            detectedLines.push_back(lr);
             continue;
           }
 
@@ -1211,18 +1227,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           lf.end_pos.Y,
           lf.end_neg.X,
           lf.end_neg.Y);
-        detectedLines.push_back(lf);
+
+        const FeatureReport_lineReport lr={
+          .line=lf,.def = line
+        };
+        detectedLines.push_back(lr);
       }
 
       acv_CircleFit cf_zero= {0};
       for (int j = 0; j < featureCircleList.size(); j++)
       {
-        acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,featureCircleList[j].circleTar.circumcenter);
+        featureDef_circle &cdef= featureCircleList[j];
+        acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,cdef.circleTar.circumcenter);
 
-        int matching_tor=featureCircleList[j].initMatchingMargin;
+        int matching_tor=cdef.initMatchingMargin;
         center.X+=ldData[i].Center.X;
         center.Y+=ldData[i].Center.Y;
-        inward_curve_grid.getContourPointsWithInCircleContour(center.X,center.Y,featureCircleList[j].circleTar.radius,matching_tor*2,
+        inward_curve_grid.getContourPointsWithInCircleContour(center.X,center.Y,cdef.circleTar.radius,matching_tor*2,
           s_intersectIdxs,s_points);
 
         acv_CircleFit cf;
@@ -1245,12 +1266,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
 
         LOGV("C=%d===%f,%f   => %f,%f, dist:%f matching_pts:%d",
-        j,featureCircleList[j].circleTar.circumcenter.X,featureCircleList[j].circleTar.circumcenter.Y,center.X,center.Y,
+        j,cdef.circleTar.circumcenter.X,cdef.circleTar.circumcenter.Y,center.X,center.Y,
         hypot(cf.circle.circumcenter.X-center.X,cf.circle.circumcenter.Y-center.Y),
         cf.matching_pts);
 
-        detectedCircles.push_back(cf);
-
+        const FeatureReport_circleReport cr={
+          .circle=cf,.def = &cdef
+        };
+        detectedCircles.push_back(cr);
 
       }
 

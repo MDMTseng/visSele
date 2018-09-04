@@ -88,18 +88,6 @@ cJSON* acv_LineFit2JSON(const acv_LineFit line )
 }
 
 
-cJSON* acv_LineFitVector2JSON(const vector< acv_LineFit> &vec)
-{
-
-  cJSON* detectedLines_jarr = cJSON_CreateArray();
-
-  for(int j=0;j<vec.size();j++)
-  {
-    cJSON_AddItemToArray(detectedLines_jarr, acv_LineFit2JSON(vec[j]) );
-  }
-  return detectedLines_jarr;
-}
-
 cJSON* acv_CircleFit2JSON(const acv_CircleFit cir )
 {
   cJSON* Circle_jobj = cJSON_CreateObject();
@@ -114,7 +102,6 @@ cJSON* acv_CircleFit2JSON(const acv_CircleFit cir )
 cJSON* JudgeReport2JSON(const FeatureReport_judgeReport judge )
 {
   cJSON* judge_jobj = cJSON_CreateObject();
-  cJSON_AddNumberToObject(judge_jobj, "measured_val", judge.measured_val);
   if(judge.def->swap)
   {
     cJSON_AddStringToObject(judge_jobj, "OBJ1", judge.def->OBJ2);
@@ -122,6 +109,7 @@ cJSON* JudgeReport2JSON(const FeatureReport_judgeReport judge )
   }
   else
   {
+    cJSON_AddNumberToObject(judge_jobj, "measured_val", judge.measured_val);
     cJSON_AddStringToObject(judge_jobj, "OBJ1", judge.def->OBJ1);
     if(judge.def->OBJ2 && judge.def->OBJ2[0])
       cJSON_AddStringToObject(judge_jobj, "OBJ2", judge.def->OBJ2);
@@ -148,17 +136,62 @@ cJSON* JudgeReportVector2JSON(const vector< FeatureReport_judgeReport> &judges)
 
 
 
-cJSON* acv_CircleFitVector2JSON(const vector< acv_CircleFit> &vec)
+cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec)
 {
 
   cJSON* detectedCircles_jarr = cJSON_CreateArray();
 
   for(int j=0;j<vec.size();j++)
   {
+    cJSON* cfj = acv_CircleFit2JSON(vec[j].circle);
+    cJSON_AddStringToObject(cfj, "name", vec[j].def->name);
+    cJSON_AddItemToArray(detectedCircles_jarr, cfj );
+  }
+  return detectedCircles_jarr;
+}
+
+cJSON* acv_CircleFitVector2JSON(const vector< acv_CircleFit> &vec)
+{
+  cJSON* detectedCircles_jarr = cJSON_CreateArray();
+  for(int j=0;j<vec.size();j++)
+  {
     cJSON_AddItemToArray(detectedCircles_jarr, acv_CircleFit2JSON(vec[j]) );
   }
   return detectedCircles_jarr;
 }
+
+
+
+cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec)
+{
+
+  cJSON* detectedLines_jarr = cJSON_CreateArray();
+
+  for(int j=0;j<vec.size();j++)
+  {
+
+    cJSON* lfj = acv_LineFit2JSON(vec[j].line);
+    cJSON_AddStringToObject(lfj, "name", vec[j].def->name);
+    cJSON_AddItemToArray(detectedLines_jarr, lfj );
+  }
+  return detectedLines_jarr;
+}
+
+
+
+cJSON* acv_LineFitVector2JSON(const vector< acv_LineFit> &vec)
+{
+
+  cJSON* detectedLines_jarr = cJSON_CreateArray();
+
+  for(int j=0;j<vec.size();j++)
+  {
+    cJSON_AddItemToArray(detectedLines_jarr, acv_LineFit2JSON(vec[j]) );
+  }
+  return detectedLines_jarr;
+}
+
+
 
 
 cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig360_circle_line_single report )
@@ -173,11 +206,11 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   cJSON_AddBoolToObject(report_jobj, "isFlipped", report.isFlipped);
 
 
-  const vector<acv_CircleFit> &detectedCircle = *report.detectedCircles;
+  const vector<FeatureReport_circleReport> &detectedCircle = *report.detectedCircles;
   cJSON_AddItemToObject(report_jobj,"detectedCircles",
     acv_CircleFitVector2JSON(detectedCircle));
 
-  const vector<acv_LineFit> &detectedLines =*report.detectedLines;
+  const vector<FeatureReport_lineReport> &detectedLines =*report.detectedLines;
   cJSON_AddItemToObject(report_jobj,"detectedLines",
     acv_LineFitVector2JSON(detectedLines));
 
