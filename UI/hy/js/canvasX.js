@@ -1,12 +1,6 @@
 let centerCenter = new Path2D("M10 10 h 80 v 80 h -80 Z");
 let theta = 0.01;
-let dx = 6.28 / 1000;
-let t0 = performance.now();
 
-let millisX = 0;
-
-let fadingWB_1000ms = lerpColor('#ff0000', '#ffffff', 0.5);
-let fadingDarkRed_1000ms = lerpColor('#550000', '#000000', 0.5);
 let canvas1;
 let canvas2;
 let canvas3;
@@ -62,14 +56,10 @@ function init_CanvasX() {
 
 let reDraw_C2 = true;
 let reDraw_C1 = true;
-
+let t0=0;
 function drawX() {
 	// console.log("[INFO][drawX()]");
-	millisX = performance.now();
-    var sin_val_1000=(1 + Math.sin(dx * millisX))/2;
-    fadingWB_1000ms = lerpColor('#444444', '#ffffff', sin_val_1000);
-    fadingDarkRed_1000ms = lerpColor('#550000', '#000000',sin_val_1000);
-    fadingDarkRed_1000ms = Math.round(fadingDarkRed_1000ms);
+
 
 	if (reDraw_C1&&canvas1.getContext) {
 		// reDraw_C1=false;
@@ -86,14 +76,14 @@ function drawX() {
 
 	}
 	let now = performance.now();
-	FPS = now - t0;
+	GDA.FPS = now - t0;
 	t0 = now;
 }
 
 function drawCheckArea(C) {
 
 	let ctx = C.getContext("2d");
-	ctx.fillStyle = 'rgb(' + fadingDarkRed_1000ms + ',0,0)';
+	ctx.fillStyle =  GDA.fadingDarkRed_1000ms ;
 	ctx.fillRect(0, 0, C.width, C.height);
 	ctx.fillStyle = "rgb(255,255,255)";
 	ctx.fillRect(10,10, C.width - 20, C.height - 20);
@@ -103,13 +93,13 @@ function drawCrossMouse(C) {
     let context = C.getContext("2d");
     context.save();
     context.beginPath();
-    context.strokeStyle = fadingWB_1000ms;
+    context.strokeStyle = GDA.fadingWB_1000ms;
 
-    context.moveTo(MOUSE_VARs.getMouseXY(2)[0]-50,MOUSE_VARs.getMouseXY(2)[1]);
-    context.lineTo(MOUSE_VARs.getMouseXY(2)[0]+50,MOUSE_VARs.getMouseXY(2)[1]);
+    context.moveTo(MOUSE_VARs.invX-50,MOUSE_VARs.invY);
+    context.lineTo(MOUSE_VARs.invX+50,MOUSE_VARs.invY);
     context.closePath();
-    context.moveTo(MOUSE_VARs.getMouseXY(2)[0],MOUSE_VARs.getMouseXY(2)[1]-50);
-    context.lineTo(MOUSE_VARs.getMouseXY(2)[0],MOUSE_VARs.getMouseXY(2)[1]+50);
+    context.moveTo(MOUSE_VARs.invX,MOUSE_VARs.invY-50);
+    context.lineTo(MOUSE_VARs.invX,MOUSE_VARs.invY+50);
     context.closePath();
 
     context.rect(MOUSE_VARs.invX-15,MOUSE_VARs.invY-15,30,30);

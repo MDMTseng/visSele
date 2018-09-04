@@ -1,7 +1,7 @@
 function initCanvasEvents() {
-    canvas1.addEventListener("mousemove", mouseMove1);
-    canvas2.addEventListener("mousemove", mouseMove2);
-    canvas3.addEventListener("mousemove", mouseMove3);
+    canvas1.addEventListener("mousemove", mouseMove,1);
+    canvas2.addEventListener("mousemove", mouseMove,2);
+    canvas3.addEventListener("mousemove", mouseMove,3);
 
 
     document.getElementById("reset_ip").addEventListener("click", function () {
@@ -89,6 +89,7 @@ function initCanvasEvents() {
         mouseDown = true;
         startDragPos.x = evt.clientX;
         startDragPos.y = evt.clientY;
+
     });
 
     canvas3.addEventListener("mouseup", function (evt) {
@@ -108,22 +109,33 @@ function initCanvasEvents() {
     });
 
 }
+function mouseMove(evt) {
 
+    if(evt.path[0].id==="canvas3"){
+        MOUSE_VARs.updateMouseEvt(evt,2);
+        $('#checkAreaTitle2').html('3mX=' + evt.offsetX + ',3mY=' + evt.offsetY);
+    }else if(evt.path[0].id==="canvas1"){
+        MOUSE_VARs.updateMouseEvt(evt,0);
+        $('#checkAreaTitle').html('1mX=' + evt.offsetX + ',1mY=' + evt.offsetY);
+    }else{
+        MOUSE_VARs.updateMouseEvt(evt,1);
+        $('#checkAreaTitle').html('2mX=' + evt.offsetX + ',2mY=' + evt.offsetY);
+    }
+}
 function mouseMove1(evt) {
-    // console.log(evt);
-    MOUSE_VARs.updateMouseEvt(evt,0);
-    $('#checkAreaTitle').html('1mX=' + evt.offsetX + ',1mY=' + evt.offsetY);
+    console.log(evt);
+
 }
 
 function mouseMove2(evt) {
-    // console.log(evt);
+    console.log(evt);
     MOUSE_VARs.updateMouseEvt(evt,1);
     $('#checkAreaTitle2').html('2mX=' + evt.offsetX + ',2mY=' + evt.offsetY);
 }
 
 function mouseMove3(evt) {
-    MOUSE_VARs.updateMouseEvt(evt,2);
-    $('#checkAreaTitle2').html('3mX=' + evt.offsetX + ',3mY=' + evt.offsetY);
+    console.log(evt);
+
 
 }
 

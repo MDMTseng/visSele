@@ -67,3 +67,26 @@ const Mouse_Vars = {
     }
 };
 const MOUSE_VARs = Mouse_Vars.newnew();
+
+const GlobalDrawArgs = {
+    newnew: function () {
+        let dx500ms = Math.PI*2 / 500;
+        let millisX = 0;
+        let VARs = {};
+        VARs.FPS=0;
+        VARs.fadingWB_1000ms = lerpColor('#ff0000', '#ffffff', 0.5);
+        VARs.fadingDarkRed_1000ms = lerpColor('#550000', '#000000', 0.5);
+        VARs.sin_0_1_1000ms=0;
+        VARs.updateAllArgs = function (which) {
+            millisX = performance.now();
+            VARs.sin_0_1_1000ms=(1 + Math.sin(dx500ms * millisX))/2;
+            VARs.fadingWB_1000ms = lerpColor('#000000', '#ffffff', VARs.sin_0_1_1000ms*0.1);
+            VARs.fadingDarkRed_1000ms = lerpColor('#550000', '#000000', VARs.sin_0_1_1000ms);
+
+        };
+        return VARs;
+    }
+};
+const GDA = GlobalDrawArgs.newnew();
+
+

@@ -55,6 +55,7 @@ function initTreejs() {
 }
 
 function timeInterval33() {
+    GDA.updateAllArgs();
     drawX();
 }
 

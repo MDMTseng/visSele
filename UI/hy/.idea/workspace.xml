@@ -1,25 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="bf9cb1db-b225-4602-8d47-b91863bcbd44" name="Default Changelist" comment="add cross on canvas 2 mapping to 3">
-      <change afterPath="$PROJECT_DIR$/js/TransformX.js" afterDir="false" />
+    <list default="true" id="bf9cb1db-b225-4602-8d47-b91863bcbd44" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/jsLibraryMappings.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/hy.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/hy.iml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/index0821.html" beforeDir="false" afterPath="$PROJECT_DIR$/index0821.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/EventsX.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/EventsX.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/GlobalParamater.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/GlobalParamater.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/Tables.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/Tables.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/canvasF.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/CanvasF.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/canvasX.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/canvasX.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/js/main.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/main.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/ws.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/ws.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/js/xlinx.js" beforeDir="false" afterPath="$PROJECT_DIR$/js/xlinx.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/libraries/dat.gui.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/libraries/p5.dom.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/libraries/p5.gui.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/libraries/p5.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/libraries/p5.sound.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/libraries/quicksettings.js" beforeDir="false" />
     </list>
     <list id="760a7d64-5479-4f60-90a1-fe05150550e2" name="Extract FeatureManager_sig360_circle_line out of FeatureManager file, and some log and exception handle" comment="Extract FeatureManager_sig360_circle_line out of FeatureManager file, and some log and exception handle">
       <changelist_data name="Chia-Pin Tseng" email="chiapintseng@gmail.com" date="1535453533000">
@@ -61,7 +51,7 @@
       <usages-collector id="statistics.file.extensions.open">
         <counts>
           <entry key="html" value="2" />
-          <entry key="js" value="29" />
+          <entry key="js" value="31" />
           <entry key="json" value="1" />
           <entry key="ts" value="2" />
         </counts>
@@ -70,22 +60,22 @@
         <counts>
           <entry key="HTML" value="2" />
           <entry key="JSON" value="1" />
-          <entry key="JavaScript" value="29" />
+          <entry key="JavaScript" value="31" />
           <entry key="TypeScript" value="2" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
-          <entry key="html" value="241" />
-          <entry key="js" value="2573" />
-          <entry key="txt" value="62" />
+          <entry key="html" value="244" />
+          <entry key="js" value="2880" />
+          <entry key="txt" value="90" />
         </counts>
       </usages-collector>
       <usages-collector id="statistics.file.types.edit">
         <counts>
-          <entry key="HTML" value="241" />
-          <entry key="JavaScript" value="2573" />
-          <entry key="PLAIN_TEXT" value="62" />
+          <entry key="HTML" value="244" />
+          <entry key="JavaScript" value="2880" />
+          <entry key="PLAIN_TEXT" value="90" />
         </counts>
       </usages-collector>
     </session>
@@ -98,8 +88,8 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/index.html">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="527">
-              <caret line="42" column="53" selection-start-line="42" selection-start-column="53" selection-end-line="42" selection-end-column="53" />
+            <state relative-caret-position="290">
+              <caret line="85" column="61" selection-start-line="85" selection-start-column="61" selection-end-line="85" selection-end-column="61" />
               <folding>
                 <element signature="n#style#0;n#div#0;n#div#0;n#div#0;n#body#0;n#html#0;n#!!top" expanded="true" />
                 <element signature="n#style#0;n#canvas#0;n#div#0;n#div#0;n#div#0;n#body#0;n#html#0;n#!!top" expanded="true" />
@@ -135,19 +125,19 @@
         </entry>
       </file>
       <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/sftp-config.json">
+        <entry file="file://$PROJECT_DIR$/js/main.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="51">
-              <caret line="8" column="27" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
+            <state relative-caret-position="174">
+              <caret line="57" column="7" selection-start-line="57" selection-start-column="7" selection-end-line="57" selection-end-column="7" />
             </state>
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="false">
+      <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/js/EventsX.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="29">
-              <caret line="118" column="22" lean-forward="true" selection-start-line="118" selection-start-column="22" selection-end-line="118" selection-end-column="22" />
+            <state relative-caret-position="402">
+              <caret line="118" column="44" selection-start-line="118" selection-start-column="44" selection-end-line="118" selection-end-column="44" />
             </state>
           </provider>
         </entry>
@@ -157,9 +147,6 @@
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="124">
               <caret line="80" column="9" selection-start-line="80" selection-start-column="9" selection-end-line="80" selection-end-column="9" />
-              <folding>
-                <element signature="n#style#0;n#table#0;n#!!top" expanded="true" />
-              </folding>
             </state>
           </provider>
         </entry>
@@ -167,17 +154,17 @@
       <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/js/GlobalParamater.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="307">
-              <caret line="47" column="22" lean-forward="true" selection-start-line="47" selection-start-column="22" selection-end-line="47" selection-end-column="22" />
+            <state relative-caret-position="128">
+              <caret line="54" column="8" selection-start-line="54" selection-start-column="8" selection-end-line="54" selection-end-column="8" />
             </state>
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="true">
+      <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/js/canvasX.js">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="445">
-              <caret line="69" column="40" selection-start-line="69" selection-start-column="40" selection-end-line="69" selection-end-column="40" />
+            <state relative-caret-position="136">
+              <caret line="85" column="46" selection-start-line="85" selection-start-column="46" selection-end-line="85" selection-end-column="46" />
             </state>
           </provider>
         </entry>
@@ -186,7 +173,7 @@
         <entry file="file://$PROJECT_DIR$/js/TransformX.js">
           <provider selected="true" editor-type-id="text-editor">
             <state>
-              <caret column="9" selection-start-column="9" selection-end-column="9" />
+              <caret column="18" selection-start-column="9" selection-end-column="18" />
             </state>
           </provider>
         </entry>
@@ -202,36 +189,36 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>sli</find>
-      <find>FV.</find>
-      <find>raw</find>
-      <find>RAW_I_DATA</find>
-      <find>0.5</find>
-      <find>RAW</find>
-      <find>paint</find>
       <find>draw</find>
       <find>child</find>
       <find>initChildRow</find>
       <find>tab</find>
       <find>table</find>
       <find>for</find>
-      <find>mouse</find>
       <find>drawjson</find>
       <find>checkAreaTitle2</find>
       <find>mX=</find>
       <find>.html</find>
       <find>move</find>
-      <find>mill</find>
       <find>fill</find>
       <find>lerp</find>
-      <find>millisX</find>
       <find>dx</find>
       <find>scale</find>
       <find>drawCrossMouse</find>
       <find>drawCross</find>
       <find>checkAreaTitle</find>
       <find>canvasf</find>
+      <find>fade</find>
       <find>cross</find>
+      <find>mill</find>
+      <find>millisX</find>
+      <find>DarkRed</find>
+      <find>pako</find>
+      <find>mousedown</find>
+      <find>mouseMove1</find>
+      <find>mousemo</find>
+      <find>mouse</find>
+      <find>check</find>
     </findStrings>
     <replaceStrings>
       <replace>let</replace>
@@ -251,15 +238,15 @@
         <option value="$PROJECT_DIR$/js/Socket.js" />
         <option value="$PROJECT_DIR$/js/IMGFilter.js" />
         <option value="$PROJECT_DIR$/js/FETURE_JSON_TEMP.js" />
-        <option value="$PROJECT_DIR$/js/main.js" />
         <option value="$PROJECT_DIR$/js/ws.js" />
         <option value="$PROJECT_DIR$/js/Tables.js" />
-        <option value="$PROJECT_DIR$/js/EventsX.js" />
         <option value="$PROJECT_DIR$/js/xlinx.js" />
         <option value="$PROJECT_DIR$/js/TransformX.js" />
-        <option value="$PROJECT_DIR$/index.html" />
-        <option value="$PROJECT_DIR$/js/GlobalParamater.js" />
+        <option value="$PROJECT_DIR$/js/main.js" />
         <option value="$PROJECT_DIR$/js/canvasX.js" />
+        <option value="$PROJECT_DIR$/js/GlobalParamater.js" />
+        <option value="$PROJECT_DIR$/index.html" />
+        <option value="$PROJECT_DIR$/js/EventsX.js" />
       </list>
     </option>
   </component>
@@ -270,9 +257,10 @@
     <sorting>DEFINITION_ORDER</sorting>
   </component>
   <component name="ProjectFrameBounds" extendedState="6">
+    <option name="x" value="-1920" />
     <option name="y" value="22" />
-    <option name="width" value="1255" />
-    <option name="height" value="778" />
+    <option name="width" value="1920" />
+    <option name="height" value="1058" />
   </component>
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectView">
@@ -351,12 +339,12 @@
       <workItem from="1535211081806" duration="395000" />
       <workItem from="1535211499401" duration="436000" />
       <workItem from="1535217833928" duration="30363000" />
-      <workItem from="1535519580428" duration="11356000" />
+      <workItem from="1535519580428" duration="16494000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="52691000" />
+    <option name="totallyTimeSpent" value="57829000" />
   </component>
   <component name="TodoView" selected-index="2">
     <todo-panel id="selected-file">
@@ -372,26 +360,48 @@
     <editor active="true" />
     <layout>
       <window_info id="Favorites" order="0" sideWeight="0.5044444" side_tool="true" weight="0.2497939" />
-      <window_info active="true" content_ui="combo" id="Project" order="1" sideWeight="0.67305064" visible="true" weight="0.17891374" />
-      <window_info id="Structure" order="2" sideWeight="0.3269494" side_tool="true" visible="true" weight="0.17891374" />
-      <window_info anchor="bottom" id="Messages" weight="0.32985073" />
-      <window_info anchor="bottom" id="Terminal" order="0" />
-      <window_info anchor="bottom" id="Event Log" order="1" sideWeight="0.5004122" side_tool="true" weight="0.3283582" />
-      <window_info anchor="bottom" id="Version Control" order="2" weight="0.70298505" />
-      <window_info anchor="bottom" id="File Transfer" order="3" weight="0.10597015" />
-      <window_info anchor="bottom" id="Docker" order="4" show_stripe_button="false" />
-      <window_info anchor="bottom" id="Message" order="5" />
-      <window_info anchor="bottom" id="Find" order="6" visible="true" weight="0.23052631" />
-      <window_info anchor="bottom" id="Run" order="7" />
-      <window_info anchor="bottom" id="Debug" order="8" weight="0.4" />
-      <window_info anchor="bottom" id="Cvs" order="9" weight="0.25" />
-      <window_info anchor="bottom" id="Inspection" order="10" weight="0.4" />
-      <window_info anchor="bottom" id="TODO" order="11" sideWeight="0.4995878" weight="0.20895523" />
+      <window_info content_ui="combo" id="Project" order="1" sideWeight="0.6711111" visible="true" weight="0.17891374" />
+      <window_info id="Structure" order="2" sideWeight="0.3288889" side_tool="true" weight="0.27699918" />
+      <window_info anchor="bottom" id="Messages" order="0" weight="0.3283582" />
+      <window_info anchor="bottom" id="Terminal" order="1" />
+      <window_info anchor="bottom" id="Event Log" order="2" sideWeight="0.5004122" side_tool="true" weight="0.3283582" />
+      <window_info anchor="bottom" id="Version Control" order="3" weight="0.70298505" />
+      <window_info anchor="bottom" id="File Transfer" order="4" weight="0.10597015" />
+      <window_info anchor="bottom" id="Docker" order="5" show_stripe_button="false" />
+      <window_info anchor="bottom" id="Message" order="6" />
+      <window_info active="true" anchor="bottom" id="Find" order="7" visible="true" weight="0.23052631" />
+      <window_info anchor="bottom" id="Run" order="8" />
+      <window_info anchor="bottom" id="Debug" order="9" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="10" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="11" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="12" sideWeight="0.4995878" weight="0.20895523" />
       <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
       <window_info anchor="right" id="Remote Host" order="3" weight="0.32893652" />
     </layout>
+    <layout-to-restore>
+      <window_info id="Favorites" order="0" sideWeight="0.5044444" side_tool="true" weight="0.2497939" />
+      <window_info content_ui="combo" id="Project" order="1" sideWeight="0.6711111" weight="0.27699918" />
+      <window_info id="Structure" order="2" sideWeight="0.3288889" side_tool="true" weight="0.27699918" />
+      <window_info anchor="bottom" id="Messages" order="0" weight="0.3283582" />
+      <window_info anchor="bottom" id="Terminal" order="1" />
+      <window_info anchor="bottom" id="Event Log" order="2" sideWeight="0.5004122" side_tool="true" weight="0.3283582" />
+      <window_info anchor="bottom" id="Version Control" order="3" weight="0.70298505" />
+      <window_info anchor="bottom" id="File Transfer" order="4" weight="0.10597015" />
+      <window_info anchor="bottom" id="Docker" order="5" show_stripe_button="false" />
+      <window_info anchor="bottom" id="Message" order="6" />
+      <window_info anchor="bottom" id="Find" order="7" visible="true" weight="0.32686567" />
+      <window_info anchor="bottom" id="Run" order="8" />
+      <window_info anchor="bottom" id="Debug" order="9" weight="0.4" />
+      <window_info anchor="bottom" id="Cvs" order="10" weight="0.25" />
+      <window_info anchor="bottom" id="Inspection" order="11" weight="0.4" />
+      <window_info anchor="bottom" id="TODO" order="12" sideWeight="0.4995878" weight="0.20895523" />
+      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
+      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
+      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
+      <window_info anchor="right" id="Remote Host" order="3" weight="0.32893652" />
+    </layout-to-restore>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
@@ -440,7 +450,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="using webstorm commit test" />
     <MESSAGE value="add cross on canvas 2 mapping to 3" />
-    <option name="LAST_COMMIT_MESSAGE" value="add cross on canvas 2 mapping to 3" />
+    <MESSAGE value="mouse with invert matrix ok." />
+    <option name="LAST_COMMIT_MESSAGE" value="mouse with invert matrix ok." />
   </component>
   <component name="editorHistoryManager">
     <entry file="file://$PROJECT_DIR$/js/Socket.js">
@@ -503,24 +514,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/js/main.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="128">
-          <caret line="12" column="16" lean-forward="true" selection-start-line="12" selection-start-column="16" selection-end-line="12" selection-end-column="16" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/js/xlinx.js">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="283">
           <caret line="25" column="1" selection-start-line="25" selection-end-line="25" selection-end-column="1" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/sftp-config.json">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="51">
-          <caret line="8" column="27" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
         </state>
       </provider>
     </entry>
@@ -531,17 +528,55 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/js/canvasX.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="136">
+          <caret line="85" column="46" selection-start-line="85" selection-start-column="46" selection-end-line="85" selection-end-column="46" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/js/pako_inflate.min.js">
+      <provider selected="true" editor-type-id="text-editor" />
+    </entry>
+    <entry file="file://$PROJECT_DIR$/sftp-config.json">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="8" column="27" selection-start-line="8" selection-start-column="27" selection-end-line="8" selection-end-column="27" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/js/main.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="174">
+          <caret line="57" column="7" selection-start-line="57" selection-start-column="7" selection-end-line="57" selection-end-column="7" />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/js/TransformX.js">
       <provider selected="true" editor-type-id="text-editor">
         <state>
-          <caret column="9" selection-start-column="9" selection-end-column="9" />
+          <caret column="18" selection-start-column="9" selection-end-column="18" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/js/Tables.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="124">
+          <caret line="80" column="9" selection-start-line="80" selection-start-column="9" selection-end-line="80" selection-end-column="9" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/js/GlobalParamater.js">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="128">
+          <caret line="54" column="8" selection-start-line="54" selection-start-column="8" selection-end-line="54" selection-end-column="8" />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/index.html">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="527">
-          <caret line="42" column="53" selection-start-line="42" selection-start-column="53" selection-end-line="42" selection-end-column="53" />
+        <state relative-caret-position="290">
+          <caret line="85" column="61" selection-start-line="85" selection-start-column="61" selection-end-line="85" selection-end-column="61" />
           <folding>
             <element signature="n#style#0;n#div#0;n#div#0;n#div#0;n#body#0;n#html#0;n#!!top" expanded="true" />
             <element signature="n#style#0;n#canvas#0;n#div#0;n#div#0;n#div#0;n#body#0;n#html#0;n#!!top" expanded="true" />
@@ -575,34 +610,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/js/Tables.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="124">
-          <caret line="80" column="9" selection-start-line="80" selection-start-column="9" selection-end-line="80" selection-end-column="9" />
-          <folding>
-            <element signature="n#style#0;n#table#0;n#!!top" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/js/EventsX.js">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="29">
-          <caret line="118" column="22" lean-forward="true" selection-start-line="118" selection-start-column="22" selection-end-line="118" selection-end-column="22" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/js/GlobalParamater.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="307">
-          <caret line="47" column="22" lean-forward="true" selection-start-line="47" selection-start-column="22" selection-end-line="47" selection-end-column="22" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/js/canvasX.js">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="445">
-          <caret line="69" column="40" selection-start-line="69" selection-start-column="40" selection-end-line="69" selection-end-column="40" />
+        <state relative-caret-position="402">
+          <caret line="118" column="44" selection-start-line="118" selection-start-column="44" selection-end-line="118" selection-end-column="44" />
         </state>
       </provider>
     </entry>
