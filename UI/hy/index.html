@@ -31,7 +31,7 @@
     <!-- datatable start -->
 
     <!--<script src="https://cdnjs.cloudflare.com/ajax/libs/jcanvas/21.0.1/min/jcanvas.min.js"></script>-->
-    
+
     <!-- <link href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/3.5.3/css/tabulator.min.css" rel="stylesheet">
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/3.5.3/js/tabulator.min.js"></script> -->
     <!-- data table end -->
@@ -46,14 +46,17 @@
     <script type="text/javascript" src="js/EventsX.js"></script>
     <script type="text/javascript" src="js/BPG_Protocol.js"></script>
     <script type="text/javascript" src="js/ws.js"></script>
-    
+
     <!-- <script type="text/javascript" src="js/CanvasF.js"></script> -->
     <script type="text/javascript" src="js/Tables.js"></script>
     <script type="text/javascript" src="js/IMGFilter.js"></script>
     <script type="text/javascript" src="js/canvasX.js"></script>
     <script type="text/javascript" src="js/FETURE_JSON_TEMP.js"></script>
     <script type="text/javascript" src="js/FeturesTableX.js"></script>
-
+    <script type="text/javascript" src="react_lib/react.min.js"></script>
+    <script type="text/javascript" src="react_lib/react-dom.min.js"></script>
+    <script src="react_lib/babel.js"></script>
+    <script type="text/babel" src="js/comp1.js"></script>
     <!-- tree -->
     <!-- <link href='js/jquery-tree/basic.css' type="text/css" rel='stylesheet' />
     <script type='text/javascript' src='js/jquery-tree/jquery.bgimages.js'></script>
@@ -72,6 +75,7 @@
 <!-- <body onload="initWSocket();"> -->
 <body>
 <div data-role="page" id="index" data-theme="b">
+    <div id="root"></div>
     <div data-role="collapsible" data-theme="b" data-content-theme="b" data-collapsed="true" data-icon="cloud">
         <h4>檢測區域
             <span style="display:inline;" id="checkAreaTitle"></span>
