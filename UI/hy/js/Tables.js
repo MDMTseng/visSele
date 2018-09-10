@@ -78,42 +78,42 @@ function initDataTables() {
 function inlineEditor2() {
     editor = new $.fn.dataTable.Editor({});
 }
-function inlineEditor(){
-    editor =new $.fn.dataTable.Editor( {
-        // ajax: "../php/staff.php",
-        "table": "#table_id1",
-        "idsrc":"area",
-        "fields": [ {
-            label: "area",
-            name: "area"
-        }, {
-            label: "scale",
-            name: "scale"
-        }, {
-            label: "cx",
-            name: "cx"
-        }, {
-            label: "cy",
-            name: "cy"
-        }, {
-            label: "isFlipped",
-            name: "isFlipped"
-        }
-        ],
-        select: {
-            style:    'os',
-            selector: 'td:first-child'
-        },
-        buttons: [
-            { extend: "create", editor: editor },
-            { extend: "edit",   editor: editor },
-            { extend: "remove", editor: editor }
-        ]
-    } );
-    $('#table_id1').on( 'click', 'tbody td:not(:first-child)', function (e) {
-        editor.inline( this );
-    } );
-}
+// function inlineEditor(){
+//     editor =new $.fn.dataTable.Editor( {
+//         // ajax: "../php/staff.php",
+//         "table": "#table_id1",
+//         "idsrc":"area",
+//         "fields": [ {
+//             label: "area",
+//             name: "area"
+//         }, {
+//             label: "scale",
+//             name: "scale"
+//         }, {
+//             label: "cx",
+//             name: "cx"
+//         }, {
+//             label: "cy",
+//             name: "cy"
+//         }, {
+//             label: "isFlipped",
+//             name: "isFlipped"
+//         }
+//         ],
+//         select: {
+//             style:    'os',
+//             selector: 'td:first-child'
+//         },
+//         buttons: [
+//             { extend: "create", editor: editor },
+//             { extend: "edit",   editor: editor },
+//             { extend: "remove", editor: editor }
+//         ]
+//     } );
+//     $('#table_id1').on( 'click', 'tbody td:not(:first-child)', function (e) {
+//         editor.inline( this );
+//     } );
+// }
 function format(d) {
     // `d` is the original data object for the row
     return '<table cellpadding="5" cellspacing="0" border="0" style="float: left; padding-left:50px;">' +
