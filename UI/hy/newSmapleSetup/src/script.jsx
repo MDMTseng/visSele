@@ -6,8 +6,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import $CSSTG  from 'react-addons-css-transition-group';
 
-
-//import * as BASE_COM from './component/baseComponent';
+import * as BASE_COM from './component/baseComponent';
 
 
 class APPMaster extends React.Component{
@@ -30,9 +29,13 @@ class APPMaster extends React.Component{
   render() {
 
     return(
-
     <div className="HXF">
-    </div>);
+
+      <button className="HX2 green width4"/>
+
+      <button className="HX2 green width4"/>
+    </div>
+    );
   }
 }
 
@@ -50,7 +53,7 @@ class APPMasterX extends React.Component{
 
       this.state.isStoreInited=true;
       this.setState(this.state);
-    }.bind(this),2000)
+    }.bind(this),100)
 
   }
 

@@ -117,7 +117,7 @@ body.sp_Style.blockS  {
   transform-origin: 50% -120%;
 }
 .sp_Style.blockS .logoFrame-leave-active{
-  animation-delay: 1s;
+  animation-delay: 0.7s;
   animation-name: logoFrameAnimation;
   animation-duration: 1.0s;
   animation-timing-function: ease-in-out;
