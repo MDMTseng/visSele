@@ -19,7 +19,8 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = INADDR_ANY;
     local.sin_port = htons(port);
-    if (bind(listenSocket, (struct sockaddr *) &local, sizeof(local)) == SOCKET_ERROR) {
+
+    if (bind(listenSocket, (struct sockaddr *) &local, sizeof(local))<0) {
         printf("bind failed\n");
         close(listenSocket);
         listenSocket = -1;
