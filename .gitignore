@@ -13,3 +13,5 @@ sidePrj/websocket/main
 UI/hy/js/jquery-tree
 UI/hy/js/jstree
 UI/hy/Editor174
+node_modules
+bundle.js

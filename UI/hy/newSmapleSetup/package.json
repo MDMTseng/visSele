@@ -1,0 +1,56 @@
+{
+  "name": "gp_react",
+  "version": "1.0.0",
+  "description": "Just a React play ground",
+  "main": "script.js",
+  "dependencies": {
+    "jsonp": "^0.2.0",
+    "react": "^16.5.0",
+    "react-addons-css-transition-group": "^15.3.0",
+    "react-dom": "^16.5.0",
+    "react-redux": "^5.0.7",
+    "redux": "^4.0.0",
+    "redux-thunk": "^2.1.0"
+  },
+  "devDependencies": {
+    "babel-core": "^6.26.3",
+    "babel-loader": "^7.1.5",
+    "babel-preset-es2015": "^6.6.0",
+    "babel-preset-react": "^6.5.0",
+    "babel-preset-stage-2": "^6.5.0",
+    "babel-register": "^6.6.0",
+    "css-loader": "^1.0.0",
+    "file-loader": "^2.0.0",
+    "json-loader": "^0.5.4",
+    "style-loader": "^0.23.0",
+    "url-loader": "^1.1.1",
+    "webpack": "^4.17.2",
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.8",
+    "webpack-shell-plugin": "^0.5.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "webpack",
+    "build-w": "webpack --progress --colors --watch",
+    "build-opt": "set NODE_ENV=production&&webpack --optimize-minimize",
+    "build-w-android": "set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
+    "build-opt-android": "NODE_ENV=production NOTIMON_PRJ=deploy webpack --progress --colors --watch",
+    "build-win-android": "set NODE_ENV=production&&set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
+    "dev": "webpack-dev-server --devtool eval --progress --colors --content-base "
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://MDMTseng@github.com/MDMTseng/GP_React.git"
+  },
+  "keywords": [
+    "react",
+    "MDMx"
+  ],
+  "author": "MDMx",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/MDMTseng/GP_React/issues"
+  },
+  "homepage": "https://github.com/MDMTseng/GP_React#readme"
+}

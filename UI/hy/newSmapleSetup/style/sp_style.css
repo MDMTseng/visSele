@@ -1,0 +1,209 @@
+
+body.sp_Style.blockS  {
+  overflow: hidden;
+  padding: 15px;
+  background: #EAEBEE;
+}
+.sp_Style.blockS *.shadow1 {
+  box-shadow:0 0px 3px rgba(0,0,0,0.5);
+}
+
+.sp_Style.blockS .radarScanPanel {
+  box-shadow: inset 0px 0px 8px rgba(0,0,0,0.8);
+  border-radius: 50%;
+}
+.sp_Style.blockS .radarScanWave {
+  border-radius: 50%;
+  border: 5px solid gray;
+  animation: scanWave 5s infinite;
+}
+
+@keyframes scanWave{
+  0%,40%{
+    transform: translate3d(-50%,-50%,0) scale(0.05);
+    opacity: 0.4;
+  }
+  100%{
+    transform: translate3d(-50%,-50%,0) scale(0.8);
+    opacity: 0;
+  }
+}
+
+
+.sp_Style.blockS .sideCtrl{
+  transition:opacity 0.5s, transform ease-out 0.3s;
+}
+.sp_Style.blockS .sideCtrl.fadeIn-enter{
+  transform: translate(-50%,-70%);
+  opacity: 0;
+
+}
+.sp_Style.blockS .sideCtrl.fadeIn-enter.fadeIn-enter-active{
+  opacity: 1;
+  transform: translate(-50%,-50%);
+}
+.sp_Style.blockS .sideCtrl.fadeIn-leave{
+  opacity: 1;
+}
+.sp_Style.blockS .sideCtrl.fadeIn-leave.fadeIn-leave-active{
+  opacity: 0;
+}
+.sp_Style.blockS{
+  perspective:300px;
+  -webkit-perspective: 300px;
+}
+
+@font-face {
+    font-family: 'roboto_med';
+    src: url(../resource/fonts/Roboto-Medium.ttf);
+}
+
+
+.sp_Style.blockS .robotoFont  {
+  font-family: 'roboto_med';
+  color: #000;
+}
+
+.sp_Style.blockS .logoFrame .Title{
+  font-family: 'roboto_med';
+  color: #000;
+  font-size: 30pt;
+}
+
+.sp_Style.blockS .logoFrame .TitleTextCon{
+  transform: translate(0%,-50%);
+}
+.sp_Style.blockS .logoFrame-leave-active .TitleTextCon{
+  animation-delay: 0.2s;
+  animation-duration: 0.2s;
+  animation-name: LOGOTitleAnimation;
+  animation-fill-mode: forwards;
+  animation-timing-function: ease-in-out;
+}
+@keyframes LOGOTitleAnimation {
+  100% {
+      transform: none;
+  }
+}
+
+.sp_Style.blockS .logoFrame .LOGOImg{
+  transform-origin: 50% 50%;
+  animation-duration: 0.4s;
+  animation-timing-function: ease-in-out;
+  -webkit-filter: grayscale(100%);
+  transform: rotateZ(-360deg);
+}
+
+.sp_Style.blockS .logoFrame-leave-active .LOGOImg{
+  animation-delay: 0s;
+  animation-name: LOGOImgRotateAnimation;
+  animation-fill-mode: forwards;
+}
+
+@keyframes LOGOImgRotateAnimation {
+
+  50%  {
+  }
+
+  100% {
+      transform: none;
+      -webkit-filter: none;
+  }
+}
+
+
+
+.sp_Style.blockS .logoFrame{
+  transform-origin: 50% -120%;
+}
+.sp_Style.blockS .logoFrame-leave-active{
+  animation-delay: 1s;
+  animation-name: logoFrameAnimation;
+  animation-duration: 1.0s;
+  animation-timing-function: ease-in-out;
+}
+@keyframes logoFrameAnimation {
+
+  15%  {
+    transform: translate(-50%,-50%);
+  }
+  40%  {
+    transform: rotateX(2deg) translate(-50%,-50%) ;
+  }
+  100% {
+    transform: rotateX(0deg) translate(-50%,-100%) ;
+    opacity: 0;
+  }
+}
+
+
+
+
+.sp_Style.blockS .scroll::-webkit-scrollbar {
+	width: 5px;
+	height: 0;
+	background-color: #cccccc;
+}
+.sp_Style.blockS .scroll::-webkit-scrollbar-thumb {
+	background-color: #555;
+}
+.sp_Style.blockS .scroll::-webkit-scrollbar-thumb:hover {
+	border: 1px solid #333333;
+}
+.sp_Style.blockS .scroll::-webkit-scrollbar-thumb:active {
+	border: 1px solid #333333;
+}
+
+.sp_Style.blockS *{
+	font-size: 0.6cm;
+}
+
+.sp_Style.blockS .sFontSize{
+	font-size: 0.4cm;
+}
+.sp_Style.blockS .mFontSize{
+	font-size: 0.6cm;
+}
+.sp_Style.blockS .lFontSize{
+	font-size: 0.7cm;
+}
+
+
+.sp_Style.blockS button.sidebar{
+  border-bottom : 2px solid #EEE;
+  border-right : 4px solid #111;
+  background: white;
+  color: white;
+}
+
+.sp_Style.blockS button.sidebar:hover {
+  background: #222;
+}
+
+.sp_Style.blockS button.sidebar >p {
+  padding: 15px;
+  text-align: left;
+  color: #333;
+}
+
+
+.sp_Style.blockS button.sidebar >img {
+  width:20px;
+  margin-left: 8px;
+}
+
+.sp_Style.blockS button.sidebar:hover>p {
+  text-align: center;
+  color: white;
+
+}
+
+.sp_Style.blockS .pokemonSpriteCon>* {
+
+	transition: transform ease-out 0.5s;
+}
+
+.sp_Style.blockS .sysAPPBtn{
+
+	transition: transform ease-out 0.5s;
+}
