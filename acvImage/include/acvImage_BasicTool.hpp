@@ -4,14 +4,14 @@
 
 #ifdef _MSC_VER
 #pragma pack(push,1)
-typedef struct tagBITMAPFILEHEADER
+typedef struct acv_tagBITMAPFILEHEADER
 {
 	int16_t bfType;  //specifies the file type
 	int32_t bfSize;  //specifies the size in bytes of the bitmap file
 	int32_t bfReserved;  //reserved; must be 0
 	int32_t bOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
-} BITMAPFILEHEADER;
-typedef struct tagBITMAPINFOHEADER
+} acv_BITMAPFILEHEADER;
+typedef struct acv_tagBITMAPINFOHEADER
 {
 	int32_t biSize;  //specifies the number of bytes required by the struct
 	int32_t biWidth;  //specifies width in pixels
@@ -24,19 +24,19 @@ typedef struct tagBITMAPINFOHEADER
 	int32_t biYPelsPerMeter;  //number of pixels per meter in y axis
 	int32_t biClrUsed;  //number of colors used by th ebitmap
 	int32_t biClrImportant;  //number of colors that are important
-} BITMAPINFOHEADER;
+} acv_BITMAPINFOHEADER;
 #pragma pack(pop)
 #else
 
 #pragma pack(push,1)
-typedef struct __attribute__((__packed__)) tagBITMAPFILEHEADER
+typedef struct __attribute__((__packed__)) acv_tagBITMAPFILEHEADER
 {
 	int16_t bfType;  //specifies the file type
 	int32_t bfSize;  //specifies the size in bytes of the bitmap file
 	int32_t bfReserved;  //reserved; must be 0
 	int32_t bOffBits;  //species the offset in bytes from the bitmapfileheader to the bitmap bits
-} BITMAPFILEHEADER;
-typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
+} acv_BITMAPFILEHEADER;
+typedef struct __attribute__((__packed__)) acv_tagBITMAPINFOHEADER
 {
 	int32_t biSize;  //specifies the number of bytes required by the struct
 	int32_t biWidth;  //specifies width in pixels
@@ -49,7 +49,7 @@ typedef struct __attribute__((__packed__)) tagBITMAPINFOHEADER
 	int32_t biYPelsPerMeter;  //number of pixels per meter in y axis
 	int32_t biClrUsed;  //number of colors used by th ebitmap
 	int32_t biClrImportant;  //number of colors that are important
-} BITMAPINFOHEADER;
+} acv_BITMAPINFOHEADER;
 #pragma pack(pop)
 #endif
 
@@ -109,7 +109,7 @@ void acvCloneImage_single(acvImage *OriPic, int layer_ori, acvImage *OutPic, int
 
 char *PrintHexArr_buff(char *strBuff,int strBuffL,char *data, int dataL);
 char *PrintHexArr(char *data, int dataL);
-unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapInfoHeader);
+unsigned char *acvLoadBitmapFile(const char *filename, acv_BITMAPINFOHEADER *bitmapInfoHeader);
 int acvLoadBitmapFile(acvImage *img,const char *filename);
 int acvSaveBitmapFile(const char *filename,unsigned char* pixData,int width,int height);
 int acvSaveBitmapFile(const char *filename,acvImage *img);

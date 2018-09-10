@@ -35,7 +35,7 @@ typedef struct websock_data
         HAND_SHAKING_FINISHED,
         DATA_FRAME,
         CLOSING,
-        ERROR,
+        ERROR_EV,
     } type;
 
     ws_conn_data* peer;
@@ -55,7 +55,7 @@ typedef struct websock_data
             char *key;
             char *resource;
         }hs_frame;
-        
+
         typedef struct _ERROR
         {
             int code;

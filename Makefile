@@ -74,4 +74,8 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 
 export MakeTemplate:= $(abspath Makefile.in)
 export FLAGS= -w -O3
+
+ifeq ($(OS)$(CC),Windows_NTcc)
+    export FLAGS+= -lws2_32
+endif
 include $(MakeTemplate)

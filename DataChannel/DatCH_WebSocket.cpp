@@ -20,7 +20,7 @@ int DatCH_WebSocket::runLoop(struct timeval *tv)
 int DatCH_WebSocket::ws_callback(websock_data data, void* param)
 {
     printf("%s:DatCH_WebSocket type:%d sock:%d\n",__func__,data.type,data.peer->getSocket());
-    if(data.type == websock_data::CLOSING || data.type == websock_data::ERROR)
+    if(data.type == websock_data::CLOSING || data.type == websock_data::ERROR_EV)
     {
       if(data.peer == default_peer)
         default_peer = NULL;

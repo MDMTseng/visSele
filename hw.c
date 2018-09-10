@@ -17,7 +17,7 @@
 #include "DatCH_Image.hpp"
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
-
+#include <stdexcept>
 
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
@@ -307,7 +307,7 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 }
 
 
-int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
+int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
 {
   if(data.type!=DatCH_Data::DataType_websock_data)return -1;
   DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
@@ -662,7 +662,9 @@ int simpP(char* strNum)
 
 int mainLoop()
 {
+printf(">>>>>\n" );
   websocket =new DatCH_WebSocket(4090);
+  printf(">>>>>\n" );
   acvImage *test1 = new acvImage();
 
   websocket->SetEventCallBack(&callbk_obj,websocket);
@@ -681,10 +683,6 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
       LOGE("Tear down websocket.... \n");
       delete websocket;
     break;
-    case SIGPIPE:
-      LOGE("Get a signal -- SIGPIPE \n");
-    break;
-
   }
   return;
 }
@@ -692,9 +690,24 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
 #include <vector>
 int main(int argc, char** argv)
 {
-  signal(SIGINT, sigroutine);
-  signal(SIGPIPE, sigroutine);
 
+  #ifdef __WIN32__
+  {
+      WSADATA wsaData;
+      int iResult;
+      // Initialize Winsock
+      iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+      if (iResult != 0) {
+          printf("WSAStartup failed with error: %d\n", iResult);
+          return 1;
+      }
+      
+  }
+  #endif
+
+
+
+  signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);

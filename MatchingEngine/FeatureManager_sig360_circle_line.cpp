@@ -1120,10 +1120,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           if(line->skpsList.size()<2)
           {
             LOGE("skpListSize:%d <2 not enough",line->skpsList.size());
-            const FeatureReport_lineReport lr={
-              .line=lf_zero,
-              .def = line
-            };
+            FeatureReport_lineReport lr;
+            lr.line=lf_zero;
+            lr.def=line;
+
             detectedLines.push_back(lr);
             continue;
             //Error
@@ -1173,10 +1173,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           //Search distance a 2*searchDist(since you go back off initMatchingMargin)
           if(searchP(img, &line_cand.line_anchor , searchVec, 2*line->searchDist)!=0)
           {
-            const FeatureReport_lineReport lr={
-              .line=lf_zero,
-              .def = line
-            };
+            FeatureReport_lineReport lr;
+            lr.line=lf_zero;
+            lr.def=line;
             detectedLines.push_back(lr);
             continue;
           }
@@ -1228,9 +1227,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           lf.end_neg.X,
           lf.end_neg.Y);
 
-        const FeatureReport_lineReport lr={
-          .line=lf,.def = line
-        };
+        FeatureReport_lineReport lr;
+        lr.line=lf_zero;
+        lr.def=line;
         detectedLines.push_back(lr);
       }
 
@@ -1270,9 +1269,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         hypot(cf.circle.circumcenter.X-center.X,cf.circle.circumcenter.Y-center.Y),
         cf.matching_pts);
 
-        const FeatureReport_circleReport cr={
-          .circle=cf,.def = &cdef
-        };
+        FeatureReport_circleReport cr;
+        cr.circle=cf;
+        cr.def = &cdef;
+
+
         detectedCircles.push_back(cr);
 
       }

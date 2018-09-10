@@ -185,7 +185,12 @@ void wsGetHandshakeAnswer(const struct handshake *hs, uint8_t *outFrame,
     sha1(shaHash, responseKey, length);
     size_t base64Length = base64(responseKey, length, shaHash, 20);
     responseKey[base64Length] = '\0';
-    
+
+    //TODO: fix the base64 problem in Windows
+    //HACK:
+    //Somehow in windows the last byte is always 'A' which should be '=' in WebSocket
+    //So I hack the issue to make it work...
+    responseKey[base64Length-1] = '=';
     int written = sprintf_P((char *)outFrame,
                             PSTR("HTTP/1.1 101 Switching Protocols\r\n"
                                  "%s%s\r\n"

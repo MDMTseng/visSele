@@ -406,10 +406,10 @@ char *PrintHexArr(char *data, int dataL)
     return PrintHexArr_buff(bufferStr, sizeof(bufferStr), data, dataL);
 }
 
-unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapInfoHeader)
+unsigned char *acvLoadBitmapFile(const char *filename, acv_BITMAPINFOHEADER *bitmapInfoHeader)
 {
     FILE *filePtr;                     //our file pointer
-    BITMAPFILEHEADER bitmapFileHeader; //our bitmap file header
+    acv_BITMAPFILEHEADER bitmapFileHeader; //our bitmap file header
     unsigned char *bitmapImage;        //store image data
     int imageIdx = 0;                  //image index counter
     unsigned char tempRGB;             //our swap variable
@@ -420,7 +420,7 @@ unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapI
         return NULL;
 
     //read the bitmap file header
-    fread(&bitmapFileHeader, sizeof(BITMAPFILEHEADER), 1, filePtr);
+    fread(&bitmapFileHeader, sizeof(acv_BITMAPFILEHEADER), 1, filePtr);
 
     //verify that this is a bmp file by check bitmap id
     if (bitmapFileHeader.bfType != 0x4D42)
@@ -430,7 +430,7 @@ unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapI
     }
 
     //read the bitmap info header
-    fread(bitmapInfoHeader, sizeof(BITMAPINFOHEADER), 1, filePtr); // small edit. forgot to add the closing bracket at sizeof
+    fread(bitmapInfoHeader, sizeof(acv_BITMAPINFOHEADER), 1, filePtr); // small edit. forgot to add the closing bracket at sizeof
 
     int bmpRawSize = bitmapFileHeader.bfSize - bitmapFileHeader.bOffBits;
 
@@ -464,7 +464,7 @@ unsigned char *acvLoadBitmapFile(const char *filename, BITMAPINFOHEADER *bitmapI
 int acvLoadBitmapFile(acvImage *img,const  char *filename)
 {
 
-    BITMAPINFOHEADER bitmapInfoHeader;
+    acv_BITMAPINFOHEADER bitmapInfoHeader;
     unsigned char *bitmap = acvLoadBitmapFile(filename, &bitmapInfoHeader);
     if (bitmap == NULL)
     {
@@ -515,8 +515,8 @@ int acvSaveBitmapFile(const char *filename, unsigned char *pixData, int width, i
     f = fopen(filename, "wb");
 
     int padding = (4 - ((width * 3) % 4)) % 4;
-    BITMAPFILEHEADER bm_header = {0};
-    BITMAPINFOHEADER bm_info_header = {0};
+    acv_BITMAPFILEHEADER bm_header = {0};
+    acv_BITMAPINFOHEADER bm_info_header = {0};
     bm_info_header.biSize = sizeof(bm_info_header);
     bm_info_header.biWidth = width;
     bm_info_header.biHeight = height;
