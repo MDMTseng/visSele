@@ -1,6 +1,5 @@
 let centerCenter = new Path2D("M10 10 h 80 v 80 h -80 Z");
 let theta = 0.01;
-
 let canvas1;
 let canvas2;
 let canvas3;
@@ -10,8 +9,9 @@ let scaleMultiplier = 0.1;
 let translateStep = 8;
 let RXJS;
 let allW = 500;
+
 let startDragPos = {
-	x: 0,
+	x: 0, 
 	y: 0
 };
 let translateDragOffset = {
