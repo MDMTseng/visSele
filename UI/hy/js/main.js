@@ -14,7 +14,7 @@ $(document).ready(function () {
 
 
     initDataTables();
-    inlineEditor();
+    // inlineEditor();
     // initTabulator();
     // $("#tabs").tabs();
     window.setInterval(timeInterval1000, 1000);
