@@ -7,6 +7,7 @@
 ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(this)
 {
     this->cb = cb;
+
     listenSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (listenSocket == -1) {
         printf("Error:create socket failed\n");
@@ -18,14 +19,15 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = INADDR_ANY;
     local.sin_port = htons(port);
-    if (bind(listenSocket, (struct sockaddr *) &local, sizeof(local)) == -1) {
+
+    if (bind(listenSocket, (struct sockaddr *) &local, sizeof(local))<0) {
         printf("bind failed\n");
         close(listenSocket);
         listenSocket = -1;
         return;
     }
 
-    if (listen(listenSocket, 1) == -1) {
+    if (listen(listenSocket, 1) <0) {
         printf("listen failed\n");
         close(listenSocket);
         listenSocket = -1;
@@ -240,18 +242,18 @@ int ws_conn_entity_pool::size()
 
 
 //////////////////////////////ws_conn/////////////////////////////////////
-
+//#define PACKET_DUMP
 int ws_conn::safeSend(int sock, const uint8_t *buffer, size_t bufferSize)
 {
 #ifdef PACKET_DUMP
-    printf("out packet:\n");
+    printf("=================out packet:\n");
     fwrite(buffer, 1, bufferSize, stdout);
     printf("\n");
 #endif
     if(sock<0)return -1;
     ssize_t written = send(sock, (const char*)buffer, bufferSize, 0);
     if (written == -1) {
-        perror("send failed");
+        perror("safeSend:send failed");
         return -1;
     }
     if (written != bufferSize) {

@@ -41,7 +41,7 @@ int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr)
   cJSON *tmpObj = cJSON_GetArrayItem(obj,idx);
   return getDataFromJsonObj(tmpObj,ret_ptr);
 }
-int getDataFromJsonObj(cJSON * obj,char *name,void **ret_ptr)
+int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
 {
 
   cJSON *tmpObj = cJSON_GetObjectItem(obj,name);

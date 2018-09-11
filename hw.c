@@ -17,7 +17,7 @@
 #include "DatCH_Image.hpp"
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
-
+#include <stdexcept>
 
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
@@ -275,7 +275,7 @@ int SignatureGenerator()
   return 0;
 
   // clock_t t = clock();
-  //acvLoadBitmapFile(target, "data/target.bmp");
+  // acvLoadBitmapFile(target, "data/target.bmp");
   // acvThreshold(target, 128, 0);
   // zlibDeflate_testX(target,test1_buff,RGB2BW_collapse,BW2RGB_uncollapse);
 
@@ -307,7 +307,7 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 }
 
 
-int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callback_param)
+int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
 {
   if(data.type!=DatCH_Data::DataType_websock_data)return -1;
   DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
@@ -370,8 +370,12 @@ int DatCH_WS_callback(DatCH_Interface *interface, DatCH_Data data, void* callbac
 
             imgSrc_X->SetFileName("data/test1.bmp");
 
-            ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-
+            try {
+                ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+            }
+            catch (std::invalid_argument iaex) {
+                LOGE( "Caught an error!");
+            }
 
             const FeatureReport * report = matchingEng.GetReport();
 
@@ -439,7 +443,7 @@ public:
         break;
 
         case DatCH_Data::DataType_websock_data:
-          LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
+          //LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
           return DatCH_WS_callback(from, data, callback_param);
         break;
 
@@ -491,7 +495,7 @@ public:
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
 
-      LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
+      //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
       switch(data.type)
       {
         case DatCH_Data::DataType_error:
@@ -502,9 +506,7 @@ public:
 
         case DatCH_Data::DataType_websock_data://App -(prot)>[here] WS
         {
-          LOGI("DatCH_Data::DataType_websock_data, %p",websocket);
           DatCH_Data ret = websocket->SendData(data);
-          LOGI("DatCH_Data::DataType_websock_data");
         }
         break;
 
@@ -538,29 +540,38 @@ public:
 
 
               imgSrc_X->SetFileName("data/test1.bmp");
-              ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-              const FeatureReport * report = matchingEng.GetReport();
 
-              if(report!=NULL)
-              {
-                cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                cJSON_AddNumberToObject(jobj, "session_id", session_id);
-                char * jstr  = cJSON_Print(jobj);
-                cJSON_Delete(jobj);
 
-                BPG_data bpg_dat=GenStrBPGData("IR", jstr);
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+              try {
+                  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+                  const FeatureReport * report = matchingEng.GetReport();
 
-                delete jstr;
+                  if(report!=NULL)
+                  {
+                    cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                    cJSON_AddNumberToObject(jobj, "session_id", session_id);
+                    char * jstr  = cJSON_Print(jobj);
+                    cJSON_Delete(jobj);
+
+                    //LOGI("__\n %s  \n___",jstr);
+                    BPG_data bpg_dat=GenStrBPGData("IR", jstr);
+                    datCH_BPG.data.p_BPG_data=&bpg_dat;
+                    self->SendData(datCH_BPG);
+
+                    delete jstr;
+                  }
+                  else
+                  {
+                    sprintf(tmp,"{\"session_id\":%d}",session_id);
+                    BPG_data bpg_dat=GenStrBPGData("IR", tmp);
+                    datCH_BPG.data.p_BPG_data=&bpg_dat;
+                    self->SendData(datCH_BPG);
+                  }
               }
-              else
-              {
-                sprintf(tmp,"{\"session_id\":%d}",session_id);
-                BPG_data bpg_dat=GenStrBPGData("IR", tmp);
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+              catch (std::invalid_argument iaex) {
+                  LOGE( "Caught an error!");
               }
+
 
 
               bpg_dat=GenStrBPGData("IM", NULL);
@@ -605,9 +616,18 @@ int testX(int repeatTime)
     imgSrc_g->GetAcvImage();
     ImgInspection(matchingEng,test1,test1_buff,repeatTime,"data/target.json");
     acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
-  }
-  delete test1;
 
+    const FeatureReport * report = matchingEng.GetReport();
+    if(report!=NULL)
+    {
+      cJSON* jobj = matchingEng.FeatureReport2Json(report);
+      char * jstr  = cJSON_Print(jobj);
+      cJSON_Delete(jobj);
+      LOGI("...\n%s\n...",jstr);
+      delete jstr;
+    }
+
+  }
   return 0;
 }
 
@@ -642,7 +662,9 @@ int simpP(char* strNum)
 
 int mainLoop()
 {
+printf(">>>>>\n" );
   websocket =new DatCH_WebSocket(4090);
+  printf(">>>>>\n" );
   acvImage *test1 = new acvImage();
 
   websocket->SetEventCallBack(&callbk_obj,websocket);
@@ -661,10 +683,6 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
       LOGE("Tear down websocket.... \n");
       delete websocket;
     break;
-    case SIGPIPE:
-      LOGE("Get a signal -- SIGPIPE \n");
-    break;
-
   }
   return;
 }
@@ -672,9 +690,24 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
 #include <vector>
 int main(int argc, char** argv)
 {
-  signal(SIGINT, sigroutine);
-  signal(SIGPIPE, sigroutine);
 
+  #ifdef __WIN32__
+  {
+      WSADATA wsaData;
+      int iResult;
+      // Initialize Winsock
+      iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+      if (iResult != 0) {
+          printf("WSAStartup failed with error: %d\n", iResult);
+          return 1;
+      }
+      
+  }
+  #endif
+
+
+
+  signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);

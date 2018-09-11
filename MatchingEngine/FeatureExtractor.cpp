@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <MatchingCore.h>
 #include <common_lib.h>
+#include <FeatureManager_binary_processing.h>
 
 
 
@@ -86,7 +87,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
     if(idx!=-1)
     {
       LOGE("Only one component is allowed for extractor");
-      report.data.sig360_extractor.error = 
+      report.data.sig360_extractor.error =
       FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
       return -1;
     }
@@ -95,7 +96,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   if(idx==-1)
   {
     LOGE("Cannot find one component for extractor");
-    report.data.sig360_extractor.error = 
+    report.data.sig360_extractor.error =
     FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
     return -1;
   }
@@ -109,6 +110,20 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
 
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
+
+  {
+    report.data.sig360_extractor.LTBound=ldData[idx].LTBound;
+    report.data.sig360_extractor.RBBound=ldData[idx].RBBound;
+    report.data.sig360_extractor.Center=ldData[idx].Center;
+    report.data.sig360_extractor.area=ldData[idx].area;
+
+    report.type = FeatureReport::sig360_extractor;
+    report.data.sig360_extractor.signature = &signature;
+    report.data.sig360_extractor.detectedCircles = &detectedCircles;
+    report.data.sig360_extractor.detectedLines = &detectedLines;
+  }
+
+
 #if 0
   for(int i=0;i<detectedCircles.size();i++)
   {

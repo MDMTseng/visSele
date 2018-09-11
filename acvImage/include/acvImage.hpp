@@ -2,7 +2,7 @@
 #define ACV_IMG_H
 
 #define _USE_MATH_DEFINES
-#include <cmath> 
+#include <cmath>
 
 #include <stddef.h>
 #include <stdio.h>
@@ -29,7 +29,7 @@
 
 #define NCC_g  1
 #define NCC_r  2
-#define BYTE  unsigned char
+typedef uint8_t BYTE;
 
 
 
