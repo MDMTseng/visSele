@@ -104,7 +104,7 @@ class EverCheckCanvasComponent{
     this.camera={
       scale: 1,
       scaleCenter:{x:0,y:0},
-      rotate: 1,
+      rotate: 0,
       translate: {x:0,y:0,dx:0,dy:0}
     };
 
@@ -223,7 +223,7 @@ class EverCheckCanvasComponent{
   }
 
 
-  drawReportJSON(context,Report,depth=0) {
+  drawReportJSON_action(context,Report,action,depth=0) {
 
     if (Report.type == "binary_processing_group")
     {
@@ -235,8 +235,26 @@ class EverCheckCanvasComponent{
     }
     else
     {
-      //console.log("sig360_circle_line_single_report>>",Report);
+      action(Report);
+    }
 
+    /*context.lineWidth = 2;
+    // context.strokeStyle="rgba(255,0,0,0.5)";
+    context.strokeStyle = lerpColor('#ff0000', '#0fff00', i/RXJS.reports[j].reports.length);*/
+
+
+    if(typeof Report.reports !=='undefined')
+    {
+      Report.reports.forEach((report)=>{
+        this.drawReportJSON_action(context,report,action,depth+1);
+      });
+    }
+
+  }
+  drawReportJSON(context,Report,depth=0) {
+
+    this.drawReportJSON_action(context,Report,(report_line_cir)=>{
+      let Report = report_line_cir;
       let offset = 0.5;
       let x_offset = offset + Report.cx;
       let y_offset = offset + Report.cy;
@@ -258,22 +276,160 @@ class EverCheckCanvasComponent{
           context.closePath();
           context.stroke();
         });
-    }
-
-    /*context.lineWidth = 2;
-    // context.strokeStyle="rgba(255,0,0,0.5)";
-    context.strokeStyle = lerpColor('#ff0000', '#0fff00', i/RXJS.reports[j].reports.length);*/
-
-
-    if(typeof Report.reports !=='undefined')
-    {
-      Report.reports.forEach((report)=>{
-        this.drawReportJSON(context,report,depth+1);
-      });
-    }
+    },depth=0);
 
   }
 
+  distance_arc_point(arc, point)
+  {
+    //arc={cx,cy,r,angleFrom,angleTo}
+    let arc2p_angle = Math.atan2(point.y-arc.y,point.x-arc.x);
+    let arc2p_angle_BK = arc2p_angle;
+    let angleFrom=arc.angleFrom;
+    let angleTo=arc.angleTo;
+
+
+    arc2p_angle-=angleFrom;
+    angleTo-=angleFrom;
+    arc2p_angle=arc2p_angle%(2*Math.PI);
+    angleTo=angleTo%(2*Math.PI);
+    if(arc2p_angle<0)arc2p_angle+=2*Math.PI;
+    if(angleTo<0)angleTo+=2*Math.PI;
+    angleFrom=0;
+
+    if(arc2p_angle<angleTo)//Check is arc2p_angle within angleFrom to angleTo
+    {
+      arc2p_angle = arc2p_angle_BK;
+      return {
+        x: (arc.r*Math.cos(arc2p_angle))+arc.x,
+        y: (arc.r*Math.sin(arc2p_angle))+arc.y,
+        dist:Math.abs(Math.hypot(point.x-arc.x,point.y-arc.y)-arc.r)
+      };
+    }
+
+    angleFrom=arc.angleFrom;
+    angleTo=arc.angleTo;
+
+    let point1={x:arc.r*Math.cos(angleTo)+arc.x,y:arc.r*Math.sin(angleTo)+arc.y};
+    let point2={x:arc.r*Math.cos(angleFrom)+arc.x,y:arc.r*Math.sin(angleFrom)+arc.y};
+
+    let dist1=Math.hypot(point.x-point1.x,point.y-point1.y);
+    let dist2=Math.hypot(point.x-point2.x,point.y-point2.y);
+
+    if(dist1<dist2)
+    {
+      point1.dist = dist1;
+      return point1;
+    }
+    point2.dist = dist2;
+    return point2;
+  }
+
+
+
+  closestPointOnLine(line, point)
+  {
+    let line_ = {
+      x:(line.x1+line.x2)/2,y:(line.y1+line.y2)/2,
+      vx:line.x2-line.x1,vy:line.y2-line.y1
+    };
+
+    let normalizeFactor = Math.hypot(line_.vx,line_.vy);
+    line_.vx/=normalizeFactor;
+    line_.vy/=normalizeFactor;
+
+    let point_={x:point.x,y:point.y};
+
+    point_.x-=line_.x;
+    point_.y-=line_.y;
+
+    let dist = line_.vx * point_.x + line_.vy * point_.y;
+    line_.x+=dist*line_.vx;
+    line_.y+=dist*line_.vy;
+    line_.dist =dist;
+
+    return line_;
+  }
+
+  distance_line_point(line, point)
+  {
+    //arc={x1,y1,x2,y2}
+
+    let closestPoint = this.closestPointOnLine(line, point);
+
+    let ratio;
+
+    if(Math.abs(line.x2-line.x1)>Math.abs(line.y2-line.y1))
+    {
+      ratio = (closestPoint.x-line.x1)/(line.x2-line.x1);
+    }
+    else
+    {
+      ratio = (closestPoint.y-line.y1)/(line.y2-line.y1);
+    }
+
+    if(ratio>1)
+    {
+      let dist2 = Math.hypot(point.x-line.x2,point.y-line.y2);
+      return {x: line.x2,y: line.y2,dist:dist2};
+    }
+
+    if(ratio>0)
+    {
+      let dist3 = Math.hypot(point.x-closestPoint.x,point.y-closestPoint.y);
+      closestPoint.dist = dist3;
+      return closestPoint;
+    }
+
+    let dist1 = Math.hypot(point.x-line.x1,point.y-line.y1);
+    return {x: line.x1,y: line.y1,dist:dist1};  
+
+
+
+  }
+
+
+  drawReportJSON_closestPoint(context,Report,point,depth=0) {
+
+    this.drawReportJSON_action(context,Report,(report_line_cir)=>{
+      let Report = report_line_cir;
+      let offset = 0.5;
+      let x_offset = offset + Report.cx;
+      let y_offset = offset + Report.cy;
+
+      if(Array.isArray(Report.detectedLines))
+        Report.detectedLines.forEach((line,idx)=>{
+
+          let line_={
+            x1:line.x0+x_offset,
+            y1:line.y0+y_offset,
+            x2:line.x1+x_offset,
+            y2:line.y1+y_offset};
+          let retDist = this.distance_line_point(line_, point);
+          console.log(retDist);
+          let boxW=5;
+          context.fillRect(retDist.x-boxW/2,retDist.y-boxW/2, boxW, boxW);
+
+
+        });
+
+
+      if(Array.isArray(Report.detectedCircles))
+        Report.detectedCircles.forEach((circle,idx)=>{
+          let arc={
+            x:circle.x+x_offset,
+            y:circle.y+y_offset,
+            r:circle.r,
+            angleFrom:0,
+            angleTo:2*Math.PI-0.0001};
+          let retDist = this.distance_arc_point(arc, point);
+          let boxW=5;
+          context.fillRect(retDist.x-boxW/2,retDist.y-boxW/2, boxW, boxW);
+
+        });
+    },depth=0);
+
+  }
 
 
   setDOMMatrixIdentity(mat)
@@ -326,14 +482,20 @@ class EverCheckCanvasComponent{
 
       this.Mouse2SecCanvas = ctx.getTransform().invertSelf();
 
+
+
       //ctx.setTransform(1,0,0,1,0,0); 
 
       let invMat =this.Mouse2SecCanvas;
       let mPos = this.mouseStatus;
-
       let XX= mPos.x * invMat.a + mPos.y * invMat.c + invMat.e;
       let YY= mPos.x * invMat.b + mPos.y * invMat.d + invMat.f;
-      ctx.fillRect(XX,YY, 100, 100);
+      let mouseOnCanvas2={x:XX,y:YY};
+
+      if(typeof this.ReportJSON !=='undefined')
+      {
+        this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2);
+      }
     }
 
     //ctx.fillRect(this.mouseStatus.x,this.mouseStatus.y, 100, 100);
