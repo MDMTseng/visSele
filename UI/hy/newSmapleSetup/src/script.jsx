@@ -98,6 +98,16 @@ class EverCheckCanvasComponent{
     this.transformMat= new  DOMMatrix();
     this.cameraMat= new  DOMMatrix();
     this.dragMat= new  DOMMatrix();
+    this.Mouse2SecCanvas= new  DOMMatrix();
+
+
+    this.camera={
+      scale: 1,
+      scaleCenter:{x:0,y:0},
+      rotate: 1,
+      translate: {x:0,y:0,dx:0,dy:0}
+    };
+
 
   }
 
@@ -129,6 +139,7 @@ class EverCheckCanvasComponent{
 
 
     this.cameraMat.scaleSelf(scale,scale);
+    this.camera.scale*=scale;
     this.draw();
   }
   onmousemove(evt)
@@ -137,18 +148,25 @@ class EverCheckCanvasComponent{
     let pos = this.getMousePos(this.canvas,evt);
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
-
     if(this.mouseStatus.status==1)
     {
       this.setDOMMatrixIdentity(this.dragMat);
       this.dragMat.translateSelf(pos.x-this.mouseStatus.px,pos.y-this.mouseStatus.py);
-      this.draw();
+
+
+      this.camera.translate.dx=(pos.x-this.mouseStatus.px)/this.camera.scale;
+      this.camera.translate.dy=(pos.y-this.mouseStatus.py)/this.camera.scale;
+
+      this.rotate2d_dxy(this.camera.translate, this.camera.translate, -this.camera.rotate);
     }
 
     //this.setDOMMatrixIdentity(this.cameraMat);
     //this.cameraMat.translateSelf(pos.x,pos.y);
 
 
+    this.camera.scaleCenter.x = pos.x-this.canvas.width/2;
+    this.camera.scaleCenter.y = pos.y-this.canvas.width/2;
+    this.draw();
 
   }
 
@@ -171,9 +189,14 @@ class EverCheckCanvasComponent{
     this.mouseStatus.y=pos.y;
     this.mouseStatus.status = 0;
 
+    this.camera.translate.x+=this.camera.translate.dx;
+    this.camera.translate.y+=this.camera.translate.dy;
+    this.camera.translate.dx = 0;
+    this.camera.translate.dy = 0;
 
-    this.cameraMat.preMultiplySelf(this.dragMat);
+    this.cameraMat.multiplySelf(this.dragMat);
     this.setDOMMatrixIdentity(this.dragMat);
+
     this.draw();
   }
 
@@ -184,6 +207,15 @@ class EverCheckCanvasComponent{
     this.draw();
   }
 
+
+  rotate2d_dxy(coord_dst, coord_src, theta) {
+    let sin_v = Math.sin(theta);
+    let cos_v = Math.cos(theta);
+    let tmp_dx= coord_src.dx;
+
+    coord_dst.dx = tmp_dx * cos_v - coord_src.dy * sin_v;
+    coord_dst.dy = tmp_dx * sin_v + coord_src.dy * cos_v;
+  }
 
   getCameraMat()
   {
@@ -242,6 +274,8 @@ class EverCheckCanvasComponent{
 
   }
 
+
+
   setDOMMatrixIdentity(mat)
   {
     mat.a=1;
@@ -251,7 +285,7 @@ class EverCheckCanvasComponent{
     mat.e=0;
     mat.f=1;
   }
-
+ 
   draw()
   {
     let ctx = this.canvas.getContext('2d');
@@ -265,19 +299,41 @@ class EverCheckCanvasComponent{
 
       var mat = this.transformMat;
       this.setDOMMatrixIdentity(mat);
-      mat.translateSelf((this.canvas.width / 2), (this.canvas.height / 2));
+      ctx.translate((this.canvas.width / 2), (this.canvas.height / 2));
 
-      mat.multiplySelf(this.dragMat);
-      mat.multiplySelf(this.getCameraMat());
-      mat.translateSelf(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
+      //mat.multiplySelf(this.getCameraMat());
+      //mat.multiplySelf(this.dragMat);
 
-      ctx.setTransform(mat.a,mat.b,mat.c,mat.d,mat.e,mat.f);
+      //ctx.translate(this.camera.scaleCenter.x, this.camera.scaleCenter.y);
+
+      ctx.scale(this.camera.scale, this.camera.scale);
+      //ctx.translate(-this.camera.scaleCenter.x/this.camera.scale, -this.camera.scaleCenter.y/this.camera.scale);
+
+      ctx.rotate(this.camera.rotate);
+
+      ctx.translate(this.camera.translate.x+this.camera.translate.dx, this.camera.translate.y+this.camera.translate.dy);
+
+      ctx.translate(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
+
+      //ctx.setTransform(mat.a,mat.b,mat.c,mat.d,mat.e,mat.f);
       ctx.drawImage(this.secCanvas,0,0);
 
       if(typeof this.ReportJSON !=='undefined')
       {
         this.drawReportJSON(ctx,this.ReportJSON);
       }
+
+
+      this.Mouse2SecCanvas = ctx.getTransform().invertSelf();
+
+      //ctx.setTransform(1,0,0,1,0,0); 
+
+      let invMat =this.Mouse2SecCanvas;
+      let mPos = this.mouseStatus;
+
+      let XX= mPos.x * invMat.a + mPos.y * invMat.c + invMat.e;
+      let YY= mPos.x * invMat.b + mPos.y * invMat.d + invMat.f;
+      ctx.fillRect(XX,YY, 100, 100);
     }
 
     //ctx.fillRect(this.mouseStatus.x,this.mouseStatus.y, 100, 100);
