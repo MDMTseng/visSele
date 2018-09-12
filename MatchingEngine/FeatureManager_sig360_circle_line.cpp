@@ -1228,7 +1228,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           lf.end_neg.Y);
 
         FeatureReport_lineReport lr;
-        lr.line=lf_zero;
+        lr.line=lf;
         lr.def=line;
         detectedLines.push_back(lr);
       }

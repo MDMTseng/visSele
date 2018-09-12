@@ -14,7 +14,7 @@ if(process.env.NODE_ENV === "production")
     'process.env': {
       'NODE_ENV': JSON.stringify('production')
     }
-  }));
+  })); 
 
   PluginSets.push(new webpack.optimize.UglifyJsPlugin({
     compressor: {
@@ -41,7 +41,7 @@ module.exports = {
     rules: [
       {
 
-        test: /.jsx?$/,
+        test: /.js.?$/,
         loader: 'babel-loader',
         exclude: /node_modules/,
         query: {

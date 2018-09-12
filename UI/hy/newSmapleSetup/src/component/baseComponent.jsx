@@ -1,41 +1,33 @@
 import React from 'react';
+import React_createClass from 'create-react-class';
 
-class APPMaster extends React.Component{
+export let CardFrameWarp = React_createClass({
 
-  constructor(props) {
-      super(props);
-      this.state = {
-        boxShadow:"1px 2px 10px #000",
-        addClass: "",
-      };
-  }
 
-  componentWillMount()
-  {
-  }
-  componentWillUnmount()
-  {
-  }
+  getDefaultProps: function() {
+    return {
+      boxShadow:"1px 2px 10px #000",
+      addClass: "",
+    };
 
-  shouldComponentUpdate(nextProps, nextState) {
-    return true;
-  }
-  render() {
+  },
+  render: function() {
 
     let HX_Type=(this.props.fixedFrame)?"HXF":"HXA";
     let topHX_Type = this.props.addClass + ((this.props.fixedFrame)?"":" HXA");
-    return(      
+    return(
       <div className={"padding showOverFlow "+ topHX_Type}>
         <div
           className={HX_Type+" white padding showOverFlow"}
           style={{boxShadow:this.props.boxShadow}} >
             {this.props.children}
         </div>
-      </div>);
+      </div>
+    );
   }
-}
+});
 
-export let DropDownWarp = React.createClass({
+export let DropDownWarp = React_createClass({
 
   render: function() {
     var dropDownClassName="HXA dropDownContent "+(this.props.ifShowDropDown?"":"hide ")+this.props.dropdownClass;
@@ -53,7 +45,7 @@ export let DropDownWarp = React.createClass({
   }
 });
 
-export let DropDown = React.createClass({
+export let DropDown = React_createClass({
 
   handleClick: function(event,caller) {
     this.props.onClick(event,caller);
@@ -136,7 +128,7 @@ export let DropDown = React.createClass({
 
 
 
-export let Button = React.createClass({
+export let Button = React_createClass({
 
   handleClick: function(event) {
     this.props.onClick(event,this);
@@ -156,7 +148,7 @@ export let Button = React.createClass({
 
 
 
-export let ImgSprite = React.createClass({
+export let ImgSprite = React_createClass({
   shouldComponentUpdate: function(nextProps, nextState) {
     return(
     (nextProps.position != this.props.position) ||
@@ -193,7 +185,7 @@ export let ImgSprite = React.createClass({
   }
 });
 
-export let SwitchButton = React.createClass({
+export let SwitchButton = React_createClass({
 
   handleClick: function(event) {
     this.props.onClick(event,this);
