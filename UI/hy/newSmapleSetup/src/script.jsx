@@ -108,7 +108,7 @@ class EverCheckCanvasComponent{
       translate: {x:0,y:0,dx:0,dy:0}
     };
 
-
+    this.near_select_obj=null;
   }
 
 
@@ -481,37 +481,56 @@ class EverCheckCanvasComponent{
     mat.e=0;
     mat.f=1;
   }
+
+
+  VecX2DMat(vec,mat)
+  {
+
+    let XX= vec.x * mat.a + vec.y * mat.c + mat.e;
+    let YY= vec.x * mat.b + vec.y * mat.d + mat.f;
+    return {x:XX,y:YY};
+  }
+
+  worldTransform()
+  {
+    let ctx = this.canvas.getContext('2d');
+
+    ctx.setTransform(1,0,0,1,0,0); 
+
+    ctx.translate((this.canvas.width / 2), (this.canvas.height / 2));
+
+    //mat.multiplySelf(this.getCameraMat());
+    //mat.multiplySelf(this.dragMat);
+
+    //ctx.translate(this.camera.scaleCenter.x, this.camera.scaleCenter.y);
+
+    ctx.scale(this.camera.scale, this.camera.scale);
+    //ctx.translate(-this.camera.scaleCenter.x/this.camera.scale, -this.camera.scaleCenter.y/this.camera.scale);
+
+    ctx.rotate(this.camera.rotate);
+
+    ctx.translate(this.camera.translate.x+this.camera.translate.dx, this.camera.translate.y+this.camera.translate.dy);
+
+    ctx.translate(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
+
+    return ctx.getTransform();
+
+  }
  
   draw()
   {
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
-
+    ctx.lineWidth = 2;
     ctx.setTransform(1,0,0,1,0,0); 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
 
     {
 
-      var mat = this.transformMat;
-      this.setDOMMatrixIdentity(mat);
-      ctx.translate((this.canvas.width / 2), (this.canvas.height / 2));
+      this.Mouse2SecCanvas = this.worldTransform().invertSelf();
 
-      //mat.multiplySelf(this.getCameraMat());
-      //mat.multiplySelf(this.dragMat);
 
-      //ctx.translate(this.camera.scaleCenter.x, this.camera.scaleCenter.y);
-
-      ctx.scale(this.camera.scale, this.camera.scale);
-      //ctx.translate(-this.camera.scaleCenter.x/this.camera.scale, -this.camera.scaleCenter.y/this.camera.scale);
-
-      ctx.rotate(this.camera.rotate);
-
-      ctx.translate(this.camera.translate.x+this.camera.translate.dx, this.camera.translate.y+this.camera.translate.dy);
-
-      ctx.translate(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
-
-      //ctx.setTransform(mat.a,mat.b,mat.c,mat.d,mat.e,mat.f);
       ctx.drawImage(this.secCanvas,0,0);
 
       if(typeof this.ReportJSON !=='undefined')
@@ -520,35 +539,34 @@ class EverCheckCanvasComponent{
         this.drawReportJSON(ctx,this.ReportJSON);
       }
 
-
-      this.Mouse2SecCanvas = ctx.getTransform().invertSelf();
-
-
-
-      //ctx.setTransform(1,0,0,1,0,0); 
-
       let invMat =this.Mouse2SecCanvas;
       let mPos = this.mouseStatus;
-      let XX= mPos.x * invMat.a + mPos.y * invMat.c + invMat.e;
-      let YY= mPos.x * invMat.b + mPos.y * invMat.d + invMat.f;
-      let mouseOnCanvas2={x:XX,y:YY};
+      let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
 
       if(typeof this.ReportJSON !=='undefined')
       {
-        var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2);
+        var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2,15/this.camera.scale);
 
         if(ret.measure!=null)
         {
-          let boxW=5;
-          ctx.fillStyle = '#00ff00';
-          ctx.fillRect(ret.measure.x-boxW/2,ret.measure.y-boxW/2, boxW, boxW);
+          let scaleF = this.camera.scale;
+          if(scaleF>1)scaleF=1;
+          let boxW=5/scaleF;
+          ctx.fillStyle = '#999999';
+          //ctx.fillRect(ret.measure.x-boxW/2,ret.measure.y-boxW/2, boxW, boxW);
+          ctx.beginPath();
+          ctx.arc(ret.measure.x,ret.measure.y,boxW, 0,2*Math.PI);
+          ctx.fill();
+
 
           ctx.strokeStyle = '#0000FF';
+
           this.drawReportJSON(ctx,ret.obj);
 
+          ctx.lineWidth = 3/scaleF;
           ctx.strokeStyle = '#FF0000';
           this.drawReportJSON(ctx,ret.obj,0,ret.feature) 
-
+          this.near_select_obj = ret;
         }
 
 
