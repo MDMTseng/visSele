@@ -133,7 +133,7 @@ class EverCheckCanvasComponent{
   {
     console.log("onmouseswheel",evt);
 
-    let scale = 1.05;
+    let scale = 1/1.05;
 
     scale = Math.pow(scale,evt.deltaY);
 
@@ -251,30 +251,42 @@ class EverCheckCanvasComponent{
     }
 
   }
-  drawReportJSON(context,Report,depth=0) {
+
+
+  drawReportLine(ctx, line_obj, offset)
+  {
+    ctx.beginPath();
+    ctx.moveTo(line_obj.x0+offset.x,line_obj.y0+offset.y);
+    ctx.lineTo(line_obj.x1+offset.x,line_obj.y1+offset.y);
+    ctx.closePath();
+    ctx.stroke();
+  }
+  drawReportCircle(ctx, circle_obj, offset)
+  {
+    ctx.beginPath();
+    ctx.arc(circle_obj.x+offset.x,circle_obj.y+offset.y,circle_obj.r,0,Math.PI*2, false);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  drawReportJSON(context,Report,depth=0,draw_obj=null) {
 
     this.drawReportJSON_action(context,Report,(report_line_cir)=>{
       let Report = report_line_cir;
-      let offset = 0.5;
-      let x_offset = offset + Report.cx;
-      let y_offset = offset + Report.cy;
+      let offset_pix = 0.5;
+      let offset ={x: offset_pix + Report.cx, y:offset_pix + Report.cy};
 
       if(Array.isArray(Report.detectedLines))
         Report.detectedLines.forEach((line,idx)=>{
-          context.beginPath();
-          context.moveTo(line.x0+x_offset,line.y0+y_offset);
-          context.lineTo(line.x1+x_offset,line.y1+y_offset);
-          context.closePath();
-          context.stroke();
+          if(draw_obj==null || draw_obj.line==line)
+            this.drawReportLine(context, line, offset);
         });
 
 
       if(Array.isArray(Report.detectedCircles))
         Report.detectedCircles.forEach((circle,idx)=>{
-          context.beginPath();
-          context.arc(circle.x+x_offset,circle.y+y_offset,circle.r,0,Math.PI*2, false);
-          context.closePath();
-          context.stroke();
+          if(draw_obj==null || draw_obj.circle==circle)
+            this.drawReportCircle(context, circle, offset);
         });
     },depth=0);
 
@@ -389,9 +401,14 @@ class EverCheckCanvasComponent{
   }
 
 
-  drawReportJSON_closestPoint(context,Report,point,depth=0) {
+  drawReportJSON_closestPoint(ctx,Report,point,minDist=15,depth=0) {
 
-    this.drawReportJSON_action(context,Report,(report_line_cir)=>{
+    let closestDist=minDist+1;
+    let selectedObject=null;
+    let selectedFeature=null;
+    let cpointInfo=null;
+
+    this.drawReportJSON_action(ctx,Report,(report_line_cir)=>{
       let Report = report_line_cir;
       let offset = 0.5;
       let x_offset = offset + Report.cx;
@@ -406,10 +423,17 @@ class EverCheckCanvasComponent{
             x2:line.x1+x_offset,
             y2:line.y1+y_offset};
           let retDist = this.distance_line_point(line_, point);
-          console.log(retDist);
-          let boxW=5;
-          context.fillRect(retDist.x-boxW/2,retDist.y-boxW/2, boxW, boxW);
-
+          if(retDist.dist>minDist)
+          {
+            return;
+          }
+          if(closestDist>retDist.dist)
+          {
+            closestDist = retDist.dist;
+            selectedObject = Report;
+            selectedFeature = {line:line};
+            cpointInfo = retDist;
+          }
 
         });
 
@@ -423,11 +447,27 @@ class EverCheckCanvasComponent{
             angleFrom:0,
             angleTo:2*Math.PI-0.0001};
           let retDist = this.distance_arc_point(arc, point);
-          let boxW=5;
-          context.fillRect(retDist.x-boxW/2,retDist.y-boxW/2, boxW, boxW);
+          if(retDist.dist>minDist)
+          {
+            return;
+          }
+          if(closestDist>retDist.dist)
+          {
+            closestDist = retDist.dist;
+            selectedObject = Report;
+            selectedFeature = {circle:circle};
+            cpointInfo = retDist;
+          }
+
 
         });
     },depth=0);
+
+    return {
+      obj:selectedObject,
+      feature:selectedFeature,
+      measure:cpointInfo
+    };
 
   }
 
@@ -476,6 +516,7 @@ class EverCheckCanvasComponent{
 
       if(typeof this.ReportJSON !=='undefined')
       {
+        ctx.strokeStyle = '#a00080';
         this.drawReportJSON(ctx,this.ReportJSON);
       }
 
@@ -494,8 +535,28 @@ class EverCheckCanvasComponent{
 
       if(typeof this.ReportJSON !=='undefined')
       {
-        this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2);
+        var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2);
+
+        if(ret.measure!=null)
+        {
+          let boxW=5;
+          ctx.fillStyle = '#00ff00';
+          ctx.fillRect(ret.measure.x-boxW/2,ret.measure.y-boxW/2, boxW, boxW);
+
+          ctx.strokeStyle = '#0000FF';
+          this.drawReportJSON(ctx,ret.obj);
+
+          ctx.strokeStyle = '#FF0000';
+          this.drawReportJSON(ctx,ret.obj,0,ret.feature) 
+
+        }
+
+
+
       }
+
+
+
     }
 
     //ctx.fillRect(this.mouseStatus.x,this.mouseStatus.y, 100, 100);
