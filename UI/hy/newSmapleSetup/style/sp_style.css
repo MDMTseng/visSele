@@ -34,15 +34,16 @@ body.sp_Style.blockS  {
   transition:opacity 0.5s, transform ease-out 0.3s;
 }
 .sp_Style.blockS .sideCtrl.fadeIn-enter{
-  transform: translate(-50%,-70%);
+  transform: translate(50%,0%);
   opacity: 0;
 
 }
 .sp_Style.blockS .sideCtrl.fadeIn-enter.fadeIn-enter-active{
   opacity: 1;
-  transform: translate(-50%,-50%);
+  transform: translate(0%,0%);
 }
 .sp_Style.blockS .sideCtrl.fadeIn-leave{
+  transform: translate(50%,0%);
   opacity: 1;
 }
 .sp_Style.blockS .sideCtrl.fadeIn-leave.fadeIn-leave-active{
@@ -154,7 +155,7 @@ body.sp_Style.blockS  {
 	border: 1px solid #333333;
 }
 
-.sp_Style.blockS *{
+.sp_Style.blockS *:not(.nblockS *){
 	font-size: 0.6cm;
 }
 

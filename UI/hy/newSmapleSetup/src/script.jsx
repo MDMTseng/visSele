@@ -6,10 +6,8 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
-
 import ReactResizeDetector from 'react-resize-detector';
  
-import Websocket from 'react-websocket';  
 import BPG_Protocol from './UTIL/BPG_Protocol.js'; 
 import BPG_WEBSOCKET from './UTIL/BPG_WebSocket.js';  
 
@@ -109,17 +107,21 @@ class EverCheckCanvasComponent{
     };
 
     this.near_select_obj=null;
+
+    this.onfeatureselected=(ev)=>{};
   }
 
 
   SetReport( report )
   {
+
+    if(report == this.ReportJSON)return;
     this.ReportJSON = report;
     this.draw();
   }
   SetImg( img )
   {
-    if(img == null)return;
+    if(img == null || img == this.secCanvas_rawImg)return;
     console.log(img);
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
@@ -179,6 +181,11 @@ class EverCheckCanvasComponent{
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
     this.mouseStatus.status = 1;
+
+    if(this.near_select_obj!=null)
+    {
+      this.onfeatureselected(this.near_select_obj);
+    }
   }
 
   onmouseup(evt)
@@ -568,6 +575,10 @@ class EverCheckCanvasComponent{
           this.drawReportJSON(ctx,ret.obj,0,ret.feature) 
           this.near_select_obj = ret;
         }
+        else
+        {
+          this.near_select_obj = null;
+        }
 
 
 
@@ -585,6 +596,7 @@ class CanvasComponent extends React.Component {
 
   componentDidMount() {
     this.ec_canvas=new EverCheckCanvasComponent(this.refs.canvas);
+    this.ec_canvas.onfeatureselected=this.props.onfeatureselected;
     //this.updateCanvas();
   }
   updateCanvas() {
@@ -615,8 +627,36 @@ class CanvasComponent extends React.Component {
   }   
 }
 
+class SideBar extends React.Component{
+
+  //<JSONTree data={this.state.selectedFeature}/>
+  render() {
+    return(
+      <BASE_COM.CardFrameWarp addClass="overlay width5 height10 overlayright sideCtrl scroll" fixedFrame={true}>
+        <div className="HXF scroll ">
+          <div className="">
+          
+
+
+
+
+          </div>
+        </div>
+      </BASE_COM.CardFrameWarp>
+    );
+  }
+
+}
+
 class APPMaster extends React.Component{
 
+  eccanvas_onfeatureselected(ev)
+  {
+    console.log(ev);
+    this.state.selectedFeature = ev;
+    this.state.MENU_EXPEND=!this.state.MENU_EXPEND;
+    this.setState(this.state);
+  }
   onMessage(evt)
   {
     console.log("onMessage:::");
@@ -654,8 +694,6 @@ class APPMaster extends React.Component{
 
 
     }
-    // RXMSG.listAll();
-
   }
 
 
@@ -669,7 +707,10 @@ class APPMaster extends React.Component{
         checkReport:{
           report:{},
           img:null
-        }
+        },
+        showSlideMenu:false,
+        selectedFeature:{},
+
       };
   }
 
@@ -687,10 +728,21 @@ class APPMaster extends React.Component{
   render() {
     return(
     <div className="HXF">
-      <BASE_COM.CardFrameWarp addClass="width12 height10" fixedFrame={true}>
-        <CanvasComponent checkReport={this.state.checkReport}/>
+      <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}>
+        <CanvasComponent 
+          checkReport={this.state.checkReport} 
+          onfeatureselected={this.eccanvas_onfeatureselected.bind(this)}/>
       </BASE_COM.CardFrameWarp>
-      <MenuComponent className="height2"/>
+
+
+      <$CSSTG transitionName = "fadeIn"  className="width0">
+
+        {(this.state.MENU_EXPEND)?
+          <SideBar/>
+          :[]
+        }
+      </$CSSTG>
+
     </div>
     );
   }
@@ -703,14 +755,14 @@ class APPMasterX extends React.Component{
   constructor(props) {
     super(props);
     this.state={};
-    this.state.isStoreInited=true;
+    this.state.isStoreInited=false;
 
     setTimeout(function(){
       console.log(">>>>");
 
       this.state.isStoreInited=true;
       this.setState(this.state);
-    }.bind(this),1000)
+    }.bind(this),200)
 
   }
 
