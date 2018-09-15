@@ -16,10 +16,10 @@ class BPG_WebSocket
         this.websocket.onmessage = this.onmessage.bind(this);
         this.websocket.onerror = this.onerror.bind(this);
 
-        this.onopen_bk=(evt)=>{};
-        this.onclose_bk=(evt)=>{};
-        this.onmessage_bk=(evt)=>{};
-        this.onerror_bk=(evt)=>{};
+        this.onopen_cb=(evt)=>{};
+        this.onclose_cb=(evt)=>{};
+        this.onmessage_cb=(evt)=>{};
+        this.onerror_cb=(evt)=>{};
 
     }
 
