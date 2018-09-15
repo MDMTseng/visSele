@@ -12,50 +12,11 @@ import BPG_Protocol from './UTIL/BPG_Protocol.js';
 import BPG_WEBSOCKET from './UTIL/BPG_WebSocket.js';  
 
 import UI_Ctrl from './UI_Ctrl.js';  
+import {ReduxStoreSetUp} from './redux/redux';
+import * as UIAct from './redux/actions/UIAct';
 
+let Store= ReduxStoreSetUp({});
 
-
-class MenuComponent extends React.Component{
-
-    constructor(props) {
-      super(props);
-    }
-
-    componentWillMount()
-    {
-
-    }
-    componentWillUnmount()
-    {
-    }
-    handleDropDownClick(event,caller) {
-
-      //Store.dispatch(UIAct.UIACT_SetMENU_EXPEND(!Store.getState().UIData.MENU_EXPEND))
-      //this.setState({ifShowDropDown:!this.state.ifShowDropDown});
-    }
-    handlePageTabClick(event,caller) {
-
-      //Store.dispatch(UIAct.UIACT_SetMENU_EXPEND(!Store.getState().UIData.MENU_EXPEND))
-      //this.setState({ifShowDropDown:!this.state.ifShowDropDown});
-    }
-
-    shouldComponentUpdate(nextProps, nextState) {
-
-      return true;
-    }
-    render() {
-
-      return(
-        <BASE_COM.CardFrameWarp addClass={this.props.className} fixedFrame={true}>
-          <div className=" HXF width8"></div>
-          <BASE_COM.Button
-            addClass="lgreen HXF width4"
-            text="..."
-            onClick={this.handlePageTabClick}/>
-        </BASE_COM.CardFrameWarp>
-      );
-    }
-}
 
 class CanvasComponent extends React.Component {
 
@@ -156,14 +117,27 @@ class APPMaster extends React.Component{
   }
   ws_onopen(evt)
   {
-    this.props.do_splash(false);
+    Store.dispatch(UIAct.UIACT_SPLASH_SWITCH(false));
   }
 
   ws_onclose(evt)
   {
-    this.props.do_splash(true);
+    Store.dispatch(UIAct.UIACT_SPLASH_SWITCH(true));
   }
 
+  componentWillMount()
+  {
+    this.unSubscribe=Store.subscribe(()=>
+    {
+      this.setState(Store.getState().UIData);
+    });
+  }
+
+  componentWillUnmount()
+  {
+    this.unSubscribe();
+    this.unSubscribe=null;
+  }
 
   constructor(props) {
       super(props);
@@ -172,7 +146,6 @@ class APPMaster extends React.Component{
       binary_ws.onopen_bk = this.ws_onopen.bind(this);
       binary_ws.onclose_bk = this.ws_onclose.bind(this);
       this.state ={
-        buttonCount:1,
         ws:binary_ws,
         checkReport:{
           report:{},
@@ -229,32 +202,34 @@ class APPMasterX extends React.Component{
 
   constructor(props) {
     super(props);
-    this.state={};
-    this.state.do_splash=true;
+    //this.state={};
+    //this.state.do_splash=true;
 
+    this.state =Store.getState().UIData;
+    console.log(this.state);
   }
-
   componentWillMount()
   {
-      //
+    this.unSubscribe=Store.subscribe(()=>
+    {
+      this.setState(Store.getState().UIData);
+    });
   }
 
-  do_splash(act)
+  componentWillUnmount()
   {
-    this.state.do_splash=act;
-    this.setState(this.state);
-      //
+    this.unSubscribe();
+    this.unSubscribe=null;
   }
-
   shouldComponentUpdate(nextProps, nextState) {
     return true;
   }
   render() {
     return(
     <$CSSTG transitionName = "logoFrame" className="HXF">
-      <APPMaster key="APP" do_splash={this.do_splash.bind(this)}/>
+      <APPMaster key="APP"/>
       {
-        (this.state.do_splash)?
+        (this.state.showSplash)?
         <div key="LOGO" className="HXF WXF overlay veleXY logoFrame white">
           <div className="veleXY width6 height6">
             <img className="height8 LOGOImg " src="resource/image/NotiMon.svg"></img>
