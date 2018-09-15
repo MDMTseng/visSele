@@ -17,11 +17,11 @@ class STATE_MACHINE_CORE
     let func = this.target_obj[this.state+TYPE_Str];
     if(func === undefined)
     {
-        let errorMsg = "Error: Func:"+this.state+TYPE_Str+" cannot be found!!!";
-        if(strict)
-            throw errorMsg;
-        console.log(errorMsg);
-        return;
+      let errorMsg = "Error: Func:"+this.state+TYPE_Str+" cannot be found!!!";
+      if(strict)
+        throw errorMsg;
+      console.log(errorMsg);
+      return;
     }
     return this.target_obj[this.state+TYPE_Str](event,this);
   }
@@ -29,38 +29,38 @@ class STATE_MACHINE_CORE
   input(event) {
     for(let i=0;i<this.state_table.length;i++)
     {
-        if(this.state_table[i][0]!=this.state)
-            continue;
+      if(this.state_table[i][0]!=this.state)
+        continue;
 
-        if(this.state_table[i][1]!=event.type)
-            continue;
-        let idx = this._invoke_(event,"_"+event.type+"_EVENT",true);
+      if(this.state_table[i][1]!=event.type)
+        continue;
+      let idx = this._invoke_(event,"_"+event.type+"_EVENT",true);
 
 
-        if(idx  === undefined)
-        {
-            throw "Error: event must return next state idx";
-        }
+      if(idx  === undefined)
+      {
+        throw "Error: event must return next state idx";
+      }
 
-        if(idx+2>=this.state_table[i].length)
-        {
-            throw "Error: next state id:"+idx+" out of possible next state";
-        }
+      if(idx+2>=this.state_table[i].length)
+      {
+        throw "Error: next state id:"+idx+" out of possible next state";
+      }
 
-        let nex_state = this.state_table[i][idx+2];
+      let nex_state = this.state_table[i][idx+2];
 
-        //console.log(this.state_table[i],idx+2,nex_state);
-        if(nex_state!=this.state)
-        {
-            let p_state = this.p_state;
+      //console.log(this.state_table[i],idx+2,nex_state);
+      if(nex_state!=this.state)
+      {
+        let p_state = this.p_state;
 
-            this._invoke_(event,"_EXIT");
-            this.p_state = this.state;
-            this.state = nex_state;
-            this._invoke_(event,"_ENTER");
+        this._invoke_(event,"_EXIT");
+        this.p_state = this.state;
+        this.state = nex_state;
+        this._invoke_(event,"_ENTER");
 
-        }
-        return;
+      }
+      return;
     }
 
     throw  ("Error: state:"+this.state +" with event:"+event.type+ " is not in the map");
@@ -78,14 +78,14 @@ class FSM_TrafficLight
   constructor(target_obj, state_table) {
     console.log(STATE_MACHINE_CORE);
     this.SM=new STATE_MACHINE_CORE(this,[//example for 
-        ["RED",    "RESET",        "RED"],
-        ["RED",    "CROSS_CLEAR",  "RED","YELLOW"],
-        ["RED",    "TIMES_UP",     "RED","YELLOW"],
+      ["RED",    "RESET",        "RED"],
+      ["RED",    "CROSS_CLEAR",  "RED","YELLOW"],
+      ["RED",    "TIMES_UP",     "RED","YELLOW"],
 
-        ["YELLOW", "TIMES_UP",     "YELLOW","GREEN"],
+      ["YELLOW", "TIMES_UP",     "YELLOW","GREEN"],
 
-        ["GREEN",  "TIMES_UP",     "RED"],
-        ]);
+      ["GREEN",  "TIMES_UP",     "RED"],
+      ]);
 
     this.SM.input({type:"TIMES_UP"});
   }
