@@ -135,9 +135,9 @@ class EverCheckCanvasComponent{
   {
     console.log("onmouseswheel",evt);
 
-    let scale = 1/1.05;
+    let scale = 1/1.1;
 
-    scale = Math.pow(scale,evt.deltaY);
+    scale = Math.pow(scale,evt.deltaY>0?1:-1);
 
 
     this.cameraMat.scaleSelf(scale,scale);
@@ -627,20 +627,16 @@ class CanvasComponent extends React.Component {
   }   
 }
 
-class SideBar extends React.Component{
+class SideMenu extends React.Component{
 
   //<JSONTree data={this.state.selectedFeature}/>
   render() {
     return(
       <BASE_COM.CardFrameWarp addClass="overlay width5 height10 overlayright sideCtrl scroll" fixedFrame={true}>
         <div className="HXF scroll ">
-          <div className="">
-          
-
-
-
-
-          </div>
+          <BASE_COM.Button
+            addClass="lgreen width4"
+            text="..."/>
         </div>
       </BASE_COM.CardFrameWarp>
     );
@@ -738,7 +734,7 @@ class APPMaster extends React.Component{
       <$CSSTG transitionName = "fadeIn"  className="width0">
 
         {(this.state.MENU_EXPEND)?
-          <SideBar/>
+          <SideMenu/>
           :[]
         }
       </$CSSTG>
