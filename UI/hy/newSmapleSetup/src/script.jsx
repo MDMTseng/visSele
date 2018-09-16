@@ -88,36 +88,37 @@ class APPMaster extends React.Component{
       console.log("onMessage:["+header.type+"]");
       if(header.type === "HR")
       {
-          this.state.ws.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
+        this.state.ws.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
 
-          // websocket.send(BPG_Protocol.obj2raw("TG",{}));
-          setTimeout(()=>{
-              this.state.ws.send(BPG_Protocol.obj2raw("TG",{}));
-          },0);
+        // websocket.send(BPG_Protocol.obj2raw("TG",{}));
+        setTimeout(()=>{
+            this.state.ws.send(BPG_Protocol.obj2raw("TG",{}));
+        },0);
+        
+        Store.dispatch(UIAct.UIACT_SPLASH_SWITCH(false));
       }
       else if(header.type === "SS")
       {
-          let SS =BPG_Protocol.raw2obj(evt);
-          // console.log(header);
-          console.log("Session start:",SS);
+        let SS =BPG_Protocol.raw2obj(evt);
+        // console.log(header);
+        console.log("Session start:",SS);
       }
       else if(header.type === "IM")
       {
-          let pkg = BPG_Protocol.raw2Obj_IM(evt);
-          this.state.checkReport.img = new ImageData(pkg.image, pkg.width);
+        let pkg = BPG_Protocol.raw2Obj_IM(evt);
+        this.state.checkReport.img = new ImageData(pkg.image, pkg.width);
       }
       else if(header.type === "IR")
       {
-          let IR =BPG_Protocol.raw2obj(evt);
-          console.log("IR",IR);
-          this.state.checkReport.report = IR.data;
+        let IR =BPG_Protocol.raw2obj(evt);
+        console.log("IR",IR);
+        this.state.checkReport.report = IR.data;
 
       }
     }
   }
   ws_onopen(evt)
   {
-    Store.dispatch(UIAct.UIACT_SPLASH_SWITCH(false));
   }
 
   ws_onclose(evt)
@@ -155,11 +156,6 @@ class APPMaster extends React.Component{
         selectedFeature:{},
 
       };
-      this.UI_STATE = new UI_Ctrl.UI_STATE();
-
-      this.UI_STATE.input({type:UI_Ctrl.UI_TOP_EVENT.Connected});
-      //this.TrafficLight = new UI_Ctrl.FSM_TrafficLight();
-
   }
 
   componentWillMount()

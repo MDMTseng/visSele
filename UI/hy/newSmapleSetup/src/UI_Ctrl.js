@@ -1,8 +1,4 @@
 //UIControl
-
-import STATE_MACHINE_CORE from './UTIL/STATE_MACHINE_CORE.js';  
-
-
 class EverCheckCanvasComponent{
 
   getMousePos(canvas, evt) {
@@ -540,33 +536,4 @@ class EverCheckCanvasComponent{
 }
 
 
-export const UI_TOP_EVENT = {
-    Connected:"Connected",
-    EDIT_MODE:"EDIT_MODE"
-};
-
-class UI_STATE
-{
-  constructor() {
-    this.Main_SM=new STATE_MACHINE_CORE(this,[//example for 
-        ["Splash",    UI_TOP_EVENT.Connected,        "MainManu"],
-        ["MainManu",    UI_TOP_EVENT.EDIT_MODE,  "Splash","Splash"]
-        ]);
-
-  }
-
-  input(event)
-  {
-    return this.Main_SM.input(event);
-  }
-
-  Splash_Connected_EVENT()
-  {
-    console.log("Splash_Connected_EVENT",this);
-    return 0;
-  }
-}
-
-
-
-export default { EverCheckCanvasComponent, UI_STATE,UI_TOP_EVENT }
+export default { EverCheckCanvasComponent }

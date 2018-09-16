@@ -11,5 +11,6 @@ export function ReduxStoreSetUp(presistStore){
 
   const middleware = applyMiddleware(thunk,midware.logger,midware.error_catch);
 
-   return createStore(reducer_C,presistStore,middleware);
+  console.log("lllllllllllllll");
+  return createStore(reducer_C,presistStore,middleware);
 }
