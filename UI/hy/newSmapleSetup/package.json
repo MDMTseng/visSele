@@ -4,15 +4,16 @@
   "description": "Just a React play ground",
   "main": "script.js",
   "dependencies": {
+    "create-react-class": "^15.6.3",
     "jsonp": "^0.2.0",
     "react": "^16.5.1",
     "react-addons-css-transition-group": "^15.3.0",
     "react-dom": "^16.5.1",
     "react-redux": "^5.0.7",
+    "react-resize-detector": "^3.1.2",
     "redux": "^4.0.0",
     "redux-thunk": "^2.1.0",
-    "react-resize-detector": "^3.1.2",
-    "create-react-class": "^15.6.3"
+    "xstate": "^3.3.3"
   },
   "devDependencies": {
     "babel-core": "^6.26.3",

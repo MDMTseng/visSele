@@ -37,8 +37,8 @@ class BPG_WebSocket
     }
 
     onmessage(evt){
-        console.log(">>>>");
-        console.log(this.url,"onmessage");
+        //console.log(">>>>");
+        //console.log(this.url,"onmessage");
         this.onmessage_bk(evt);
     }
 

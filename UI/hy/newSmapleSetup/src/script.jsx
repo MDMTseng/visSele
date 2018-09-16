@@ -20,17 +20,35 @@ let Store= ReduxStoreSetUp({});
 
 class CanvasComponent extends React.Component {
 
+  componentWillMount()
+  {
+    this.unSubscribe=Store.subscribe(()=>
+    {
+      this.setState(Store.getState().UIData);
+    });
+  }
+
+  componentWillUnmount()
+  {
+    this.unSubscribe();
+    this.unSubscribe=null;
+  }
+
+
+  constructor(props) {
+    super(props);
+    this.state =Store.getState().UIData;
+    console.log(this.state);
+  }
   componentDidMount() {
     this.ec_canvas=new UI_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
-    this.ec_canvas.onfeatureselected=this.props.onfeatureselected;
-    //this.updateCanvas();
   }
   updateCanvas() {
     if(this.ec_canvas  !== undefined)
     {
-      console.log(this.props);
-      this.ec_canvas.SetReport(this.props.checkReport.report);
-      this.ec_canvas.SetImg(this.props.checkReport.img);
+      console.log(this.state);
+      this.ec_canvas.SetReport(this.state.report);
+      this.ec_canvas.SetImg(this.state.img);
       this.ec_canvas.draw();
     }
   }
@@ -70,61 +88,54 @@ class SideMenu extends React.Component{
 
 }
 
-class APPMaster extends React.Component{
+class APP_EDIT_MODE extends React.Component{
 
-  eccanvas_onfeatureselected(ev)
+
+  componentWillMount()
   {
-    console.log(ev);
-    this.state.selectedFeature = ev;
-    this.state.MENU_EXPEND=!this.state.MENU_EXPEND;
-    this.setState(this.state);
+    this.unSubscribe=Store.subscribe(()=>
+    {
+      this.setState(Store.getState().UIData);
+    });
   }
-  onMessage(evt)
+  componentDidMount()
   {
-    console.log("onMessage:::");
-    console.log(evt);
-    if (evt.data instanceof ArrayBuffer) {
-      let header = BPG_Protocol.raw2header(evt);
-      console.log("onMessage:["+header.type+"]");
-      if(header.type === "HR")
-      {
-        this.state.ws.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
-
-        // websocket.send(BPG_Protocol.obj2raw("TG",{}));
-        setTimeout(()=>{
-            this.state.ws.send(BPG_Protocol.obj2raw("TG",{}));
-        },0);
-        
-        Store.dispatch(UIAct.UIACT_SPLASH_SWITCH(false));
-      }
-      else if(header.type === "SS")
-      {
-        let SS =BPG_Protocol.raw2obj(evt);
-        // console.log(header);
-        console.log("Session start:",SS);
-      }
-      else if(header.type === "IM")
-      {
-        let pkg = BPG_Protocol.raw2Obj_IM(evt);
-        this.state.checkReport.img = new ImageData(pkg.image, pkg.width);
-      }
-      else if(header.type === "IR")
-      {
-        let IR =BPG_Protocol.raw2obj(evt);
-        console.log("IR",IR);
-        this.state.checkReport.report = IR.data;
-
-      }
-    }
+    bpg_ws.send("TG");
   }
-  ws_onopen(evt)
+  componentWillUnmount()
   {
+    this.unSubscribe();
+    this.unSubscribe=null;
   }
 
-  ws_onclose(evt)
-  {
-    Store.dispatch(UIAct.UIACT_SPLASH_SWITCH(true));
+  constructor(props) {
+      super(props);
+      this.state =Store.getState().UIData;
+      console.log(this.state);
   }
+  render() {
+
+    console.log(this.state);
+    return(
+    <div className="HXF">
+      <CanvasComponent/>
+
+
+      <$CSSTG transitionName = "fadeIn"  className="width0">
+
+        {(this.state.MENU_EXPEND)?
+          <SideMenu/>
+          :[]
+        }
+      </$CSSTG>
+
+    </div>
+    );
+  }
+}
+
+class APPMain extends React.Component{
+
 
   componentWillMount()
   {
@@ -142,56 +153,43 @@ class APPMaster extends React.Component{
 
   constructor(props) {
       super(props);
-      let binary_ws = new BPG_WEBSOCKET.BPG_WebSocket("ws://localhost:4090");
-      binary_ws.onmessage_bk = this.onMessage.bind(this);
-      binary_ws.onopen_bk = this.ws_onopen.bind(this);
-      binary_ws.onclose_bk = this.ws_onclose.bind(this);
-      this.state ={
-        ws:binary_ws,
-        checkReport:{
-          report:{},
-          img:null
-        },
-        showSlideMenu:false,
-        selectedFeature:{},
-
-      };
+      this.state =Store.getState().UIData;
+      console.log(this.state);
   }
 
-  componentWillMount()
-  {
-  }
-  componentWillUnmount()
-  {
-  }
 
   shouldComponentUpdate(nextProps, nextState) {
     return true;
   }
 
   render() {
+    let UI;
+    console.log(this.state);
+    switch(this.state.c_state.value)
+    {
+      case UIAct.UI_SM_STATES.MAIN:
+        UI = 
+        <BASE_COM.Button
+          addClass="lgreen width4"
+          text="EDIT MODE" onClick={(event)=>{Store.dispatch(UIAct.EV_UI_Edit_Mode())}}/>;
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE:
+        UI = <APP_EDIT_MODE/>;
+      break;
+      default:
+        UI = [];
+
+    }
+
+
     return(
-    <div className="HXF">
-      <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}>
-        <CanvasComponent 
-          checkReport={this.state.checkReport} 
-          onfeatureselected={this.eccanvas_onfeatureselected.bind(this)}/>
-      </BASE_COM.CardFrameWarp>
+    <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}>
+      {UI}
+    </BASE_COM.CardFrameWarp>
 
-
-      <$CSSTG transitionName = "fadeIn"  className="width0">
-
-        {(this.state.MENU_EXPEND)?
-          <SideMenu/>
-          :[]
-        }
-      </$CSSTG>
-
-    </div>
     );
   }
 }
-
 
 
 class APPMasterX extends React.Component{
@@ -223,7 +221,7 @@ class APPMasterX extends React.Component{
   render() {
     return(
     <$CSSTG transitionName = "logoFrame" className="HXF">
-      <APPMaster key="APP"/>
+      <APPMain key="APP"/>
       {
         (this.state.showSplash)?
         <div key="LOGO" className="HXF WXF overlay veleXY logoFrame white">
@@ -245,6 +243,64 @@ class APPMasterX extends React.Component{
   }
 }
 
+function BPG_WS (url){
+  
+  this.binary_ws = new BPG_WEBSOCKET.BPG_WebSocket(url);//"ws://localhost:4090");
 
+  let onMessage=(evt)=>
+  {
+    console.log("onMessage:::");
+    console.log(evt);
+    if (evt.data instanceof ArrayBuffer) {
+      let header = BPG_Protocol.raw2header(evt);
+      console.log("onMessage:["+header.type+"]");
+      if(header.type === "HR")
+      {
+        this.binary_ws.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
+
+        // websocket.send(BPG_Protocol.obj2raw("TG",{}));
+        //setTimeout(()=>{this.state.ws.send(BPG_Protocol.obj2raw("TG",{}));},0);
+        
+      }
+      else if(header.type === "SS")
+      {
+        let SS =BPG_Protocol.raw2obj(evt);
+        // console.log(header);
+        console.log("Session start:",SS);
+      }
+      else if(header.type === "IM")
+      {
+        let pkg = BPG_Protocol.raw2Obj_IM(evt);
+        let img = new ImageData(pkg.image, pkg.width);
+        Store.dispatch(UIAct.EV_WS_Image_Update(img));
+      }
+      else if(header.type === "IR")
+      {
+        let IR =BPG_Protocol.raw2obj(evt);
+        console.log("IR",IR);
+        Store.dispatch(UIAct.EV_WS_Inspection_Report(IR.data));
+
+      }
+    }
+  }
+  let ws_onopen=(evt)=>
+  {
+    Store.dispatch(UIAct.EV_WS_Connected(evt));
+  }
+
+  let ws_onclose=(evt)=>
+  {
+    Store.dispatch(UIAct.EV_WS_Disconnected(evt));
+  }
+  this.send=(tl,data={})=>
+  {
+    this.binary_ws.send(BPG_Protocol.obj2raw(tl,data));
+  }
+  this.binary_ws.onmessage_bk = onMessage.bind(this);
+  this.binary_ws.onopen_bk = ws_onopen.bind(this);
+  this.binary_ws.onclose_bk = ws_onclose.bind(this);
+}
+
+let bpg_ws = new BPG_WS("ws://localhost:4090");
 
 ReactDOM.render(<APPMasterX/>,document.getElementById('container'));
