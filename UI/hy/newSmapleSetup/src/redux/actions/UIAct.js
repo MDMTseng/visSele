@@ -19,6 +19,7 @@ export const UI_SM_EVENT = {
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
   Image_Update:"Image_Update",
+  Control_SM_Panel:"Control_SM_Panel"
 };
 
 

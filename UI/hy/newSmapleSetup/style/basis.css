@@ -135,9 +135,6 @@ html, body {
 .blockS .dropdownBox,.blockS .dropDownContent{
   position: relative;
 }
-.blockS .hide{
-  display: none;
-}
 
 .blockS .HCenter{
 margin:auto; float: none;

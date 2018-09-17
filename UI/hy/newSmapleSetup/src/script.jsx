@@ -164,24 +164,25 @@ class APPMain extends React.Component{
   }
 
   render() {
-    let UI;
+    let UI=[];
     console.log(this.state);
-    switch(this.state.c_state.value)
+
+    //TODO: ugly logic, find a way to deal with it
+    if(typeof this.state.c_state.value === "string") // displays "string")
     {
-      case UIAct.UI_SM_STATES.MAIN:
+      if(this.state.c_state.value === UIAct.UI_SM_STATES.MAIN)
+      {
         UI = 
-        <BASE_COM.Button
-          addClass="lgreen width4"
-          text="EDIT MODE" onClick={(event)=>{Store.dispatch(UIAct.EV_UI_Edit_Mode())}}/>;
-      break;
-      case UIAct.UI_SM_STATES.EDIT_MODE:
-        UI = <APP_EDIT_MODE/>;
-      break;
-      default:
-        UI = [];
-
+          <BASE_COM.Button
+            addClass="lgreen width4"
+            text="EDIT MODE" onClick={(event)=>{Store.dispatch(UIAct.EV_UI_Edit_Mode())}}/>;
+        
+      }
     }
-
+    else if(UIAct.UI_SM_STATES.EDIT_MODE in this.state.c_state.value)
+    {
+      UI = <APP_EDIT_MODE/>;
+    }
 
     return(
     <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}>
@@ -244,11 +245,12 @@ class APPMasterX extends React.Component{
     <$CSSTG transitionName = "logoFrame" className="HXF">
       <APPMain key="APP"/>
 
-      <BASE_COM.CardFrameWarp addClass="width6 height6 overlay veleY stateMachineG" fixedFrame={true}>
-        <div className="layout width10 height12">
+      <BASE_COM.CardFrameWarp addClass={"width6 height10 overlay SMGraph "+((this.state.showSM_graph)?"":"hide")} fixedFrame={true}>
+        <div className="layout width11 height12">
           <XSGraph addClass="width12 height12" state_machine={this.state.sm.config}/>
         </div>
-        <div className="layout button width2 height12"></div>
+        <div className="layout button width1 height12" onClick=
+          {()=>Store.dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data: !this.state.showSM_graph})}></div>
       </BASE_COM.CardFrameWarp>
 
       {

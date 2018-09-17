@@ -67,6 +67,7 @@ function Default_UICtrlReducer()
     showSplash:true,
     report:[],
     img:null,
+    showSM_graph:false,
 
     sm:toggleSplashMachine,
     c_state:toggleSplashMachine.initialState
@@ -83,6 +84,9 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   console.log(state.c_state.value," + ",action.type," > ",currentState.value);
   state.c_state=currentState;
 
+  if (action.type === UI_SM_EVENT.Control_SM_Panel) {
+      return Object.assign({},state,{showSM_graph:action.data});
+  }
   let obj={};
   switch(state.c_state.value)
   {
@@ -92,19 +96,32 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
     case UI_SM_STATES.MAIN:
       obj.showSplash=false;
       return Object.assign({},state,obj);
-    case UI_SM_STATES.EDIT_MODE:
-    {
-      obj.showSplash=false;
+    
+  }
 
-      if (action.type === UI_SM_EVENT.Inspection_Report) {
-        obj.report=action.data;
-      }
-
-      if (action.type  === UI_SM_EVENT.Image_Update) {
-        obj.img=action.data;
-      }
+  switch(state.c_state.value)
+  {
+    case UI_SM_STATES.SPLASH:
+      obj.showSplash=true;
       return Object.assign({},state,obj);
+    case UI_SM_STATES.MAIN:
+      obj.showSplash=false;
+      return Object.assign({},state,obj);
+    
+  }
+
+  if(UI_SM_STATES.EDIT_MODE in state.c_state.value)
+  {
+    obj.showSplash=false;
+
+    if (action.type === UI_SM_EVENT.Inspection_Report) {
+      obj.report=action.data;
     }
+
+    if (action.type  === UI_SM_EVENT.Image_Update) {
+      obj.img=action.data;
+    }
+    return Object.assign({},state,obj);
   }
   
   return state;
