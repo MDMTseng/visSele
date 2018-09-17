@@ -5,19 +5,61 @@ import STATE_MACHINE_CORE from '../../UTIL/STATE_MACHINE_CORE';
 import { Machine } from 'xstate';
 import {UI_SM_STATES,UI_SM_EVENT} from '../actions/UIAct';
 
+const EditStates = {
+  initial: 'NEUTRAL',
+  states: {
+    NEUTRAL: {on: {PED_TIMER: 'wait'}},
+    wait:    {on: {PED_TIMER: 'stop'}},
+    stop:    {}
+  }
+};
 
+let d = {
+  "initial": "SPLASH",
+  "states": {
+    "SPLASH": {
+      "on": {
+        "Connected": "MAIN"
+      }
+    },
+    "MAIN": {
+      "on": {
+        "Edit_Mode": "EDIT_MODE",
+        "Disonnected": "SPLASH"
+      }
+    },
+    "EDIT_MODE": {
+      "on": {
+        "Disonnected": "SPLASH"
+      },
+      "initial": "NEUTRAL",
+      "states": {
+        "NEUTRAL": {
+          "on": {
+            "PED_TIMER": "wait"
+          }
+        }
+      }
+    }
+  }
+}
 
 function Default_UICtrlReducer()
 {
-  let toggleSplashMachine = Machine({
+  let ST = {
     initial: UI_SM_STATES.SPLASH,
     states: {
       SPLASH:    { on: { Connected:   UI_SM_STATES.MAIN } },
-      MAIN:      { on: { Edit_Mode:    UI_SM_STATES.EDIT_MODE,
+      MAIN:      { on: { Edit_Mode:   UI_SM_STATES.EDIT_MODE,
                          Disonnected: UI_SM_STATES.SPLASH } },
-      EDIT_MODE: { on: { Disonnected: UI_SM_STATES.SPLASH } }
+      EDIT_MODE: Object.assign(
+                 { on: { Disonnected: UI_SM_STATES.SPLASH }},
+                 EditStates)
     }
-  });
+  };
+  //ST = d;
+  console.log("ST...",JSON.stringify(ST));
+  let toggleSplashMachine = Machine(ST);
   return {
     MENU_EXPEND:false,
 
@@ -36,8 +78,9 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
   
   if(action.type === undefined || action.type.includes("@@redux/"))return state;
+  console.log(state.c_state,">>",action.type);
   let currentState = state.sm.transition(state.c_state, action.type);
-  console.log(state.c_state.value+" + "+action.type+" > "+currentState.value);
+  console.log(state.c_state.value," + ",action.type," > ",currentState.value);
   state.c_state=currentState;
 
   let obj={};

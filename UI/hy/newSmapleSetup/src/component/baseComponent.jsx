@@ -16,9 +16,9 @@ export let CardFrameWarp = React_createClass({
     let HX_Type=(this.props.fixedFrame)?"HXF":"HXA";
     let topHX_Type = this.props.addClass + ((this.props.fixedFrame)?"":" HXA");
     return(
-      <div className={"padding showOverFlow "+ topHX_Type}>
+      <div className={"padding "+ topHX_Type}>
         <div
-          className={HX_Type+" white padding showOverFlow"}
+          className={HX_Type+" white padding "}
           style={{boxShadow:this.props.boxShadow}} >
             {this.props.children}
         </div>
@@ -134,14 +134,14 @@ export let Button = React_createClass({
     this.props.onClick(event,this);
   },
   render: function() {
-    var className=("lgray vbox "+ this.props.addClass);
-    return <button
+    var className=("button s lgray vbox "+ this.props.addClass);
+    return <div
       onClick={this.handleClick}
       className={className}>
       <p>
         {this.props.text}
       </p>
-    </button>;
+    </div>;
   }
 });
 

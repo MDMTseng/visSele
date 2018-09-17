@@ -13,6 +13,7 @@ import BPG_WEBSOCKET from './UTIL/BPG_WebSocket.js';
 
 import UI_Ctrl from './UI_Ctrl.js';  
 import {ReduxStoreSetUp} from './redux/redux';
+import {XSGraph} from './xstate_visual';
 import * as UIAct from './redux/actions/UIAct';
 
 let Store= ReduxStoreSetUp({});
@@ -191,7 +192,27 @@ class APPMain extends React.Component{
   }
 }
 
-
+const lightMachine = {
+  id: 'light',
+  initial: 'green',
+  states: {
+      green: {
+      on: {
+          TIMER: 'yellow'
+      }
+      },
+      yellow: {
+      on: {
+          TIMER: 'red'
+      }
+      },
+      red: {
+      on: {
+          TIMER: 'green'
+      }
+      }
+  }
+};
 class APPMasterX extends React.Component{
 
   constructor(props) {
@@ -222,13 +243,21 @@ class APPMasterX extends React.Component{
     return(
     <$CSSTG transitionName = "logoFrame" className="HXF">
       <APPMain key="APP"/>
+
+      <BASE_COM.CardFrameWarp addClass="width6 height6 overlay veleY stateMachineG" fixedFrame={true}>
+        <div className="layout width10 height12">
+          <XSGraph addClass="width12 height12" state_machine={this.state.sm.config}/>
+        </div>
+        <div className="layout button width2 height12"></div>
+      </BASE_COM.CardFrameWarp>
+
       {
         (this.state.showSplash)?
-        <div key="LOGO" className="HXF WXF overlay veleXY logoFrame white">
+        <div key="LOGO" className="s HXF WXF overlay veleXY logoFrame white">
           <div className="veleXY width6 height6">
             <img className="height8 LOGOImg " src="resource/image/NotiMon.svg"></img>
             <div className="HX0_5"/>
-            <div>
+            <div className="s">
               <div className="TitleTextCon showOverFlow HX2">
                 <h1 className="Title">GO  !!</h1>
                 <h1 className="Title">NOTIMON</h1>

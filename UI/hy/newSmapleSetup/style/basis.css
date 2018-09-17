@@ -79,7 +79,16 @@ html, body {
 
 
 
-.blockS * {
+.blockS{
+}
+
+
+.blockS .layout {
+	float: left;
+	border-style: none;
+	box-sizing: border-box;
+}
+.blockS .s {
 	float: left;
 	border-style: none;
 	transition: background ease-in 0.2s, color ease-in 0.2s;
@@ -93,17 +102,6 @@ html, body {
 	overflow:hidden;
 }
 
-.blockS.nblockS * {
-	
-	float: auto;
-	border-style: auto;
-	transition: auto;
-	width: auto;
-	height: auto;
-	font-size: 0.3cm;
-	text-align: auto;
-	overflow:auto;
-}
 
 .blockS .scroll {
 	overflow: auto;
@@ -249,119 +247,119 @@ margin:auto; float: none;
 	color:#333;
 }
 
-.width0 {
+.blockS .width0 {
 	width: 0%;
 }
-.width1 {
+.blockS .width1 {
 	width: 8.333%;
 }
-.width2 {
+.blockS .width2 {
 	width: 16.666%;
 }
-.width3 {
+.blockS .width3 {
 	width: 25%;
 }
-.width4 {
+.blockS .width4 {
 	width: 33.333%;
 }
-.width5 {
+.blockS .width5 {
 	width: 41.666%;
 }
-.width6 {
+.blockS .width6 {
 	width: 50%;
 }
-.width7 {
+.blockS .width7 {
 	width: 58.333%;
 }
-.width8 {
+.blockS .width8 {
 	width: 66.666%;
 }
-.width9 {
+.blockS .width9 {
 	width: 75%;
 }
-.width10 {
+.blockS .width10 {
 	width: 83.333%;
 }
-.width11 {
+.blockS .width11 {
 	width: 91.6666%;
 }
 
-.width005 {
+.blockS .width005 {
 	width: 4.1666%;
 }
-.width12 {
+.blockS .width12 {
 	width: 100%;
 }
 
 
-.widthR{
+.blockS .widthR{
 
 	width: unset;
 	float:unset;
 }
-.height0 {
+.blockS .height0 {
 	height: 0%;
 }
-.height1 {
+.blockS .height1 {
 	height: 8.333%;
 }
-.height2 {
+.blockS .height2 {
 	height: 16.666%;
 }
-.height3 {
+.blockS .height3 {
 	height: 25%;
 }
-.height4 {
+.blockS .height4 {
 	height: 33.333%;
 }
-.height5 {
+.blockS .height5 {
 	height: 41.666%;
 }
-.height6 {
+.blockS .height6 {
 	height: 50%;
 }
-.height7 {
+.blockS .height7 {
 	height: 58.333%;
 }
-.height8 {
+.blockS .height8 {
 	height: 66.666%;
 }
-.height9 {
+.blockS .height9 {
 	height: 75%;
 }
-.height10 {
+.blockS .height10 {
 	height: 83.333%;
 }
-.height11 {
+.blockS .height11 {
 	height: 91.6666%;
 }
 
-.height115 {
+.blockS .height115 {
 	height: 95.8333%;
 }
-.height005 {
+.blockS .height005 {
 	height: 4.1666%;
 }
-.height12 {
+.blockS .height12 {
 	height: 100%;
 }
 
 
 @media screen and (max-width: 800px) {
-	.widthF800 {
+	.blockS .widthF800 {
 		width: 100%;
 	}
 
-	.widthN800 {
+	.blockS .widthN800 {
 		display: none;
 	}
 }
 
 @media screen and (max-width: 500px) {
-	.widthF500 {
+	.blockS .widthF500 {
 		width: 100%;
 	}
-	.widthN500 {
+	.blockS .widthN500 {
 		display: none;
 	}
 }
