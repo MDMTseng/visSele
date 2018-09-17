@@ -8,41 +8,15 @@ import {UI_SM_STATES,UI_SM_EVENT} from '../actions/UIAct';
 const EditStates = {
   initial: 'NEUTRAL',
   states: {
-    NEUTRAL: {on: {PED_TIMER: 'wait'}},
-    wait:    {on: {PED_TIMER: 'stop'}},
-    stop:    {}
+    NEUTRAL:  {on: {Line_Create: UI_SM_STATES.EDIT_MODE_LINE_CREATE,
+                    Arc_Create:  UI_SM_STATES.EDIT_MODE_ARC_CREATE}},
+
+    LINE_CREATE:{on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}},
+    ARC_CREATE: {on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}},
+    LINE_EDIT:{on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}},
+    ARC_EDIT: {on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}}
   }
 };
-
-let d = {
-  "initial": "SPLASH",
-  "states": {
-    "SPLASH": {
-      "on": {
-        "Connected": "MAIN"
-      }
-    },
-    "MAIN": {
-      "on": {
-        "Edit_Mode": "EDIT_MODE",
-        "Disonnected": "SPLASH"
-      }
-    },
-    "EDIT_MODE": {
-      "on": {
-        "Disonnected": "SPLASH"
-      },
-      "initial": "NEUTRAL",
-      "states": {
-        "NEUTRAL": {
-          "on": {
-            "PED_TIMER": "wait"
-          }
-        }
-      }
-    }
-  }
-}
 
 function Default_UICtrlReducer()
 {
@@ -51,9 +25,11 @@ function Default_UICtrlReducer()
     states: {
       SPLASH:    { on: { Connected:   UI_SM_STATES.MAIN } },
       MAIN:      { on: { Edit_Mode:   UI_SM_STATES.EDIT_MODE,
-                         Disonnected: UI_SM_STATES.SPLASH } },
+                         Disonnected: UI_SM_STATES.SPLASH, 
+                         EXIT:        UI_SM_STATES.SPLASH } },
       EDIT_MODE: Object.assign(
-                 { on: { Disonnected: UI_SM_STATES.SPLASH }},
+                 { on: { Disonnected: UI_SM_STATES.SPLASH , 
+                         EXIT:        UI_SM_STATES.SPLASH }},
                  EditStates)
     }
   };

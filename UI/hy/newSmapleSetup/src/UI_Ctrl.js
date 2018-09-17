@@ -22,7 +22,6 @@ class EverCheckCanvasComponent{
 
     this.canvas.onmouseup=this.onmouseup.bind(this);
 
-
     this.canvas.addEventListener('wheel',function(event){
       this.onmouseswheel(event);
       return false; 
@@ -77,14 +76,21 @@ class EverCheckCanvasComponent{
   onmouseswheel(evt)
   {
     console.log("onmouseswheel",evt);
+    let deltaY = evt.deltaY/4;
+    if(deltaY>50)deltaY=1;
+    if(deltaY<-50)deltaY=-1;
+
+
 
     let scale = 1/1.1;
 
-    scale = Math.pow(scale,evt.deltaY>0?1:-1);
+    scale = Math.pow(scale,deltaY);
 
 
     this.cameraMat.scaleSelf(scale,scale);
     this.camera.scale*=scale;
+    if(this.camera.scale<0.1)this.camera.scale=0.1;
+    else if(this.camera.scale>10)this.camera.scale=10;
     this.draw();
   }
   onmousemove(evt)

@@ -2,7 +2,10 @@
 export const UI_SM_STATES = {
   SPLASH:"SPLASH",
   MAIN:"MAIN",
-  EDIT_MODE:"EDIT_MODE"
+  EDIT_MODE:"EDIT_MODE",
+  EDIT_MODE_NEUTRAL:"NEUTRAL",
+  EDIT_MODE_LINE_CREATE:"LINE_CREATE",
+  EDIT_MODE_ARC_CREATE:"ARC_CREATE",
 };
 
 export const BPG_WS_EVENT = {
@@ -19,7 +22,8 @@ export const UI_SM_EVENT = {
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
   Image_Update:"Image_Update",
-  Control_SM_Panel:"Control_SM_Panel"
+  Control_SM_Panel:"Control_SM_Panel",
+  
 };
 
 

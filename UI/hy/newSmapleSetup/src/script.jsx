@@ -64,7 +64,7 @@ class CanvasComponent extends React.Component {
   render() {
     this.updateCanvas();
     return (
-      <div className="width12 HXF">
+      <div className={this.props.addClass+" HXF"}>
         <canvas ref="canvas" className="width12 HXF"/>
         <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
       </div>
@@ -77,7 +77,7 @@ class SideMenu extends React.Component{
   //<JSONTree data={this.state.selectedFeature}/>
   render() {
     return(
-      <BASE_COM.CardFrameWarp addClass="overlay width5 height10 overlayright sideCtrl scroll" fixedFrame={true}>
+      <BASE_COM.CardFrameWarp addClass={this.props.addClass+" overlay height10 overlayright sideCtrl scroll"} fixedFrame={true}>
         <div className="HXF scroll ">
           <BASE_COM.Button
             addClass="lgreen width4"
@@ -119,16 +119,19 @@ class APP_EDIT_MODE extends React.Component{
     console.log(this.state);
     return(
     <div className="HXF">
-      <CanvasComponent/>
+      <CanvasComponent addClass="layout width11"/>
+      <div className="layout width1 HXF scroll ">
+          <BASE_COM.Button
+            addClass="layout black"
+            text="line"/>
+          <BASE_COM.Button
+            addClass="layout black"
+            text="arc"/>
+          <BASE_COM.Button
+            addClass="layout black"
+            text="List"/>
+      </div>
 
-
-      <$CSSTG transitionName = "fadeIn"  className="width0">
-
-        {(this.state.MENU_EXPEND)?
-          <SideMenu/>
-          :[]
-        }
-      </$CSSTG>
 
     </div>
     );
