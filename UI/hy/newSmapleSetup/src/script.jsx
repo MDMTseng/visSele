@@ -2,6 +2,7 @@
    
 import styles from '../style/basis.css'
 import sp_style from '../style/sp_style.css'
+import { Provider, connect } from 'react-redux'
 import React from 'react';
 import ReactDOM from 'react-dom';
 import $CSSTG  from 'react-addons-css-transition-group';
@@ -16,40 +17,19 @@ import {ReduxStoreSetUp} from './redux/redux';
 import {XSGraph} from './xstate_visual';
 import * as UIAct from './redux/actions/UIAct';
 
-let Store= ReduxStoreSetUp({});
+let StoreX= ReduxStoreSetUp({});
 
 
 class CanvasComponent extends React.Component {
 
-  componentWillMount()
-  {
-    this.unSubscribe=Store.subscribe(()=>
-    {
-      this.setState(Store.getState().UIData);
-    });
-  }
-
-  componentWillUnmount()
-  {
-    this.unSubscribe();
-    this.unSubscribe=null;
-  }
-
-
-  constructor(props) {
-    super(props);
-    this.state =Store.getState().UIData;
-    console.log(this.state);
-  }
   componentDidMount() {
     this.ec_canvas=new UI_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
   }
   updateCanvas() {
     if(this.ec_canvas  !== undefined)
     {
-      console.log(this.state);
-      this.ec_canvas.SetReport(this.state.report);
-      this.ec_canvas.SetImg(this.state.img);
+      this.ec_canvas.SetReport(this.props.report);
+      this.ec_canvas.SetImg(this.props.img);
       this.ec_canvas.draw();
     }
   }
@@ -62,6 +42,7 @@ class CanvasComponent extends React.Component {
     }
   }
   render() {
+    console.log("CanvasComponent render");
     this.updateCanvas();
     return (
       <div className={this.props.addClass+" HXF"}>
@@ -72,54 +53,35 @@ class CanvasComponent extends React.Component {
   }   
 }
 
-class SideMenu extends React.Component{
 
-  //<JSONTree data={this.state.selectedFeature}/>
-  render() {
-    return(
-      <BASE_COM.CardFrameWarp addClass={this.props.addClass+" overlay height10 overlayright sideCtrl scroll"} fixedFrame={true}>
-        <div className="HXF scroll ">
-          <BASE_COM.Button
-            addClass="lgreen width4"
-            text="..."/>
-        </div>
-      </BASE_COM.CardFrameWarp>
-    );
+const mapStateToProps_CanvasComponent = (state) => {
+  console.log("mapStateToProps",state);
+  return {
+    c_state: state.UIData.c_state,
+    report: state.UIData.report,
+    img: state.UIData.img
   }
-
 }
+const CanvasComponent_rdx = connect(mapStateToProps_CanvasComponent)(CanvasComponent);
+
+
 
 class APP_EDIT_MODE extends React.Component{
 
 
-  componentWillMount()
-  {
-    this.unSubscribe=Store.subscribe(()=>
-    {
-      this.setState(Store.getState().UIData);
-    });
-  }
   componentDidMount()
   {
     bpg_ws.send("TG");
   }
-  componentWillUnmount()
-  {
-    this.unSubscribe();
-    this.unSubscribe=null;
-  }
-
   constructor(props) {
       super(props);
-      this.state =Store.getState().UIData;
-      console.log(this.state);
   }
   render() {
 
-    console.log(this.state);
+    console.log("APP_EDIT_MODE render");
     return(
     <div className="HXF">
-      <CanvasComponent addClass="layout width11"/>
+      <CanvasComponent_rdx addClass="layout width11"/>
       <div className="layout width1 HXF scroll ">
           <BASE_COM.Button
             addClass="layout black"
@@ -138,27 +100,15 @@ class APP_EDIT_MODE extends React.Component{
   }
 }
 
+
+const APP_EDIT_MODE_rdx = connect()(APP_EDIT_MODE);
+
+
 class APPMain extends React.Component{
 
 
-  componentWillMount()
-  {
-    this.unSubscribe=Store.subscribe(()=>
-    {
-      this.setState(Store.getState().UIData);
-    });
-  }
-
-  componentWillUnmount()
-  {
-    this.unSubscribe();
-    this.unSubscribe=null;
-  }
-
   constructor(props) {
       super(props);
-      this.state =Store.getState().UIData;
-      console.log(this.state);
   }
 
 
@@ -168,23 +118,23 @@ class APPMain extends React.Component{
 
   render() {
     let UI=[];
-    console.log(this.state);
 
+    console.log("APPMain render",this.props);
     //TODO: ugly logic, find a way to deal with it
-    if(typeof this.state.c_state.value === "string") // displays "string")
+    if(typeof this.props.c_state.value === "string") // displays "string")
     {
-      if(this.state.c_state.value === UIAct.UI_SM_STATES.MAIN)
+      if(this.props.c_state.value === UIAct.UI_SM_STATES.MAIN)
       {
         UI = 
           <BASE_COM.Button
             addClass="lgreen width4"
-            text="EDIT MODE" onClick={(event)=>{Store.dispatch(UIAct.EV_UI_Edit_Mode())}}/>;
+            text="EDIT MODE" onClick={this.props.EV_UI_Edit_Mode}/>;
         
       }
     }
-    else if(UIAct.UI_SM_STATES.EDIT_MODE in this.state.c_state.value)
+    else if(UIAct.UI_SM_STATES.EDIT_MODE in this.props.c_state.value)
     {
-      UI = <APP_EDIT_MODE/>;
+      UI = <APP_EDIT_MODE_rdx/>;
     }
 
     return(
@@ -195,6 +145,19 @@ class APPMain extends React.Component{
     );
   }
 }
+const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
+  return {
+    EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
+  }
+}
+const mapStateToProps_APPMain = (state) => {
+  console.log("mapStateToProps",state);
+  return {
+    c_state: state.UIData.c_state
+  }
+}
+const APPMain_rdx = connect(mapStateToProps_APPMain,mapDispatchToProps_APPMain)(APPMain);
+
 
 const lightMachine = {
   id: 'light',
@@ -224,40 +187,26 @@ class APPMasterX extends React.Component{
     //this.state={};
     //this.state.do_splash=true;
 
-    this.state =Store.getState().UIData;
-    console.log(this.state);
-  }
-  componentWillMount()
-  {
-    this.unSubscribe=Store.subscribe(()=>
-    {
-      this.setState(Store.getState().UIData);
-    });
-  }
-
-  componentWillUnmount()
-  {
-    this.unSubscribe();
-    this.unSubscribe=null;
   }
   shouldComponentUpdate(nextProps, nextState) {
     return true;
   }
   render() {
+    console.log("APPMasterX render",this.props);
     return(
     <$CSSTG transitionName = "logoFrame" className="HXF">
-      <APPMain key="APP"/>
+      <APPMain_rdx key="APP"/>
 
-      <BASE_COM.CardFrameWarp addClass={"width6 height10 overlay SMGraph "+((this.state.showSM_graph)?"":"hide")} fixedFrame={true}>
+      <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph "+((this.props.showSM_graph)?"":"hide")} fixedFrame={true}>
         <div className="layout width11 height12">
-          <XSGraph addClass="width12 height12" state_machine={this.state.sm.config}/>
+          <XSGraph addClass="width12 height12" state_machine={this.props.stateMachine.config}/>
         </div>
         <div className="layout button width1 height12" onClick=
-          {()=>Store.dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data: !this.state.showSM_graph})}></div>
+          {()=>this.props.ACT_Ctrl_SM_Panel( !this.props.showSM_graph)}></div>
       </BASE_COM.CardFrameWarp>
 
       {
-        (this.state.showSplash)?
+        (this.props.showSplash)?
         <div key="LOGO" className="s HXF WXF overlay veleXY logoFrame white">
           <div className="veleXY width6 height6">
             <img className="height8 LOGOImg " src="resource/image/NotiMon.svg"></img>
@@ -276,6 +225,21 @@ class APPMasterX extends React.Component{
     );
   }
 }
+
+const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
+  return {
+    ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
+  }
+}
+const mapStateToProps_APPMasterX = (state) => {
+  console.log("mapStateToProps",state);
+  return {
+    showSplash: state.UIData.showSplash,
+    showSM_graph: state.UIData.showSM_graph,
+    stateMachine:state.UIData.sm
+  }
+}
+const APPMasterX_rdx = connect(mapStateToProps_APPMasterX,mapDispatchToProps_APPMasterX)(APPMasterX);
 
 function BPG_WS (url){
   
@@ -306,25 +270,25 @@ function BPG_WS (url){
       {
         let pkg = BPG_Protocol.raw2Obj_IM(evt);
         let img = new ImageData(pkg.image, pkg.width);
-        Store.dispatch(UIAct.EV_WS_Image_Update(img));
+        StoreX.dispatch(UIAct.EV_WS_Image_Update(img));
       }
       else if(header.type === "IR")
       {
         let IR =BPG_Protocol.raw2obj(evt);
         console.log("IR",IR);
-        Store.dispatch(UIAct.EV_WS_Inspection_Report(IR.data));
+        StoreX.dispatch(UIAct.EV_WS_Inspection_Report(IR.data));
 
       }
     }
   }
   let ws_onopen=(evt)=>
   {
-    Store.dispatch(UIAct.EV_WS_Connected(evt));
+    StoreX.dispatch(UIAct.EV_WS_Connected(evt));
   }
 
   let ws_onclose=(evt)=>
   {
-    Store.dispatch(UIAct.EV_WS_Disconnected(evt));
+    StoreX.dispatch(UIAct.EV_WS_Disconnected(evt));
   }
   this.send=(tl,data={})=>
   {
@@ -337,4 +301,8 @@ function BPG_WS (url){
 
 let bpg_ws = new BPG_WS("ws://localhost:4090");
 
-ReactDOM.render(<APPMasterX/>,document.getElementById('container'));
+ReactDOM.render(
+  
+  <Provider store={StoreX}>
+    <APPMasterX_rdx/>
+  </Provider>,document.getElementById('container'));

@@ -33,13 +33,14 @@ body.sp_Style.blockS  {
 
 .sp_Style.blockS .SMGraph{
   top: 50%;
+  left: 0px;
   opacity: 1;
   transition:opacity 0.5s, transform ease-out 0.3s;
   transform: translate(-0%,-50%);
 }
 .sp_Style.blockS .SMGraph.hide{
-  opacity: 0.3;
-  transform: translate(-98%,-50%);
+  opacity: 0.1;
+  transform: translate(-90%,-50%);
 }
 
 

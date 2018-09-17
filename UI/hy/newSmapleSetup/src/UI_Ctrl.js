@@ -77,12 +77,12 @@ class EverCheckCanvasComponent{
   {
     console.log("onmouseswheel",evt);
     let deltaY = evt.deltaY/4;
-    if(deltaY>50)deltaY=1;
+    if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
     if(deltaY<-50)deltaY=-1;
 
 
 
-    let scale = 1/1.1;
+    let scale = 1/1.01;
 
     scale = Math.pow(scale,deltaY);
 
