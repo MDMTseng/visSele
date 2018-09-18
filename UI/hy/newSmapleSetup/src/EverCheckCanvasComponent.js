@@ -57,7 +57,7 @@ class EverCheckCanvasComponent{
 
     this.onfeatureselected=(ev)=>{};
     
-    this.state="";
+    this.state=UI_SM_STATES.NEUTRAL;
   }
 
   SetState(state)
@@ -105,20 +105,30 @@ class EverCheckCanvasComponent{
   }
   onmousemove(evt)
   {
-    //console.log("onmousemove");
     let pos = this.getMousePos(this.canvas,evt);
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
-    if(this.mouseStatus.status==1)
+
+    console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
+    switch(this.state)
     {
-      this.setDOMMatrixIdentity(this.dragMat);
-      this.dragMat.translateSelf(pos.x-this.mouseStatus.px,pos.y-this.mouseStatus.py);
+      case UI_SM_STATES.EDIT_MODE_NEUTRAL:
+        console.log("this.state:>>>");
+        if(this.mouseStatus.status==1)
+        {
+          this.setDOMMatrixIdentity(this.dragMat);
+          this.dragMat.translateSelf(pos.x-this.mouseStatus.px,pos.y-this.mouseStatus.py);
 
 
-      this.camera.translate.dx=(pos.x-this.mouseStatus.px)/this.camera.scale;
-      this.camera.translate.dy=(pos.y-this.mouseStatus.py)/this.camera.scale;
+          this.camera.translate.dx=(pos.x-this.mouseStatus.px)/this.camera.scale;
+          this.camera.translate.dy=(pos.y-this.mouseStatus.py)/this.camera.scale;
 
-      this.rotate2d_dxy(this.camera.translate, this.camera.translate, -this.camera.rotate);
+          this.rotate2d_dxy(this.camera.translate, this.camera.translate, -this.camera.rotate);
+        }
+      break;
+      
+      case UI_SM_STATES.EDIT_MODE_LINE_CREATE:
+      break;
     }
 
     //this.setDOMMatrixIdentity(this.cameraMat);
@@ -367,6 +377,39 @@ class EverCheckCanvasComponent{
   }
 
 
+  threePointToArc(p1, p2, p3)
+  {
+    let offset =p2.x*p2.x +p2.y*p2.y;
+
+    let bc =   (p1.x*p1.x +p1.y*p1.y - offset )/2.0;
+    let cd =   (offset - p3.x*p3.x -p3.y*p3.y )/2.0;
+
+    let det =  (p1.x - p2.x) * (p2.y - p3.y) - (p2.x - p3.x)* (p1.y - p2.y); 
+
+    //if (Math.abs(det) < TOL) { throw new IllegalArgumentException("Yeah, lazy."); }
+
+    //let idet = 1/det;
+    console.log(p2.y);
+    let centerx =  (bc * (p2.y - p3.y) - cd * (p1.y - p2.y)) / det;
+    let centery =  (cd * (p1.x - p2.x) - bc * (p2.x - p3.x)) / det;
+    let radius = 
+       Math.sqrt( Math.pow(p2.x - centerx,2) + Math.pow(p2.y-centery,2));
+
+    let theta1 = Math.atan2(p1.y-centery,p1.x-centerx);
+    let thetaM = Math.atan2(p2.y-centery,p2.x-centerx);
+    let theta2 = Math.atan2(p3.y-centery,p3.x-centerx);
+    let theta1M = (theta1 - thetaM+4*Math.PI)%(2*Math.PI);
+    let theta12 = (theta1 - theta2+4*Math.PI)%(2*Math.PI);
+    if(theta12>theta1M)
+    {
+      theta1M = theta1;
+      theta1 = theta2;
+      theta2 = theta1M;
+    }
+
+    return {x:centerx,y:centery,r:radius,thetaS:theta1,thetaE:theta2};
+  }
+
   drawReportJSON_closestPoint(ctx,Report,point,minDist=15,depth=0) {
 
     let closestDist=minDist+1;
@@ -491,10 +534,15 @@ class EverCheckCanvasComponent{
     ctx.setTransform(1,0,0,1,0,0); 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
+    this.Mouse2SecCanvas = this.worldTransform().invertSelf();
+
+    let invMat =this.Mouse2SecCanvas;
+    //this.Mouse2SecCanvas = invMat;
+    let mPos = this.mouseStatus;
+    let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
 
     {
 
-      this.Mouse2SecCanvas = this.worldTransform().invertSelf();
 
 
       ctx.drawImage(this.secCanvas,0,0);
@@ -504,10 +552,6 @@ class EverCheckCanvasComponent{
         ctx.strokeStyle = '#a00080';
         this.drawReportJSON(ctx,this.ReportJSON);
       }
-
-      let invMat =this.Mouse2SecCanvas;
-      let mPos = this.mouseStatus;
-      let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
 
       if(typeof this.ReportJSON !=='undefined')
       {
@@ -546,8 +590,49 @@ class EverCheckCanvasComponent{
 
 
     }
+    ctx.closePath();
+    ctx.save();
+    
+    if(this.mouseStatus.status==1)
+    {
+      let pmPos = {x:this.mouseStatus.px,y:this.mouseStatus.py};
+      let pmouseOnCanvas2=this.VecX2DMat(pmPos,invMat);
 
-    //ctx.fillRect(this.mouseStatus.x,this.mouseStatus.y, 100, 100);
+      if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE)
+      {
+        
+  
+        let diffX = pmouseOnCanvas2.x-mouseOnCanvas2.x;
+        let diffY = pmouseOnCanvas2.y-mouseOnCanvas2.y;
+        let midX = (pmouseOnCanvas2.x+mouseOnCanvas2.x)/2;
+        let midY = (pmouseOnCanvas2.y+mouseOnCanvas2.y)/2;
+  
+        let len = Math.hypot(diffX,diffY);
+  
+        //console.log(minX,minY,maxX,maxY);
+  
+        ctx.translate( midX, midY );
+        ctx.rotate(Math.atan2(diffY,diffX));
+        ctx.translate( -midX, -midY);
+        let width = 20;
+        ctx.beginPath();
+        ctx.rect(midX-len/2,midY-width/2,len,width);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      else if(this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
+      {
+        let arc = this.threePointToArc(mouseOnCanvas2,{x:100,y:100},pmouseOnCanvas2);
+        //return {x:0,y:0,r:0,thetaS:0,thetaE:0};
+        console.log(arc);
+        ctx.beginPath();
+        ctx.arc(arc.x,arc.y,arc.r,arc.thetaS,arc.thetaE, false);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+    
   }
 }
 

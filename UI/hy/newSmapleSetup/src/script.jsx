@@ -140,7 +140,7 @@ class APP_EDIT_MODE extends React.Component{
     return(
     <div className="HXF">
       <CanvasComponent_rdx addClass="layout width12"/>
-      <div className="layout overlay width2 HXF scroll ">
+      <div className="layout overlay width2 HXA scroll ">
         {MenuSet}
       </div>
     </div>
