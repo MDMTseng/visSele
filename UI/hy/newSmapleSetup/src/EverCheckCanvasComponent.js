@@ -3,6 +3,7 @@
 import {UI_SM_STATES} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+import {distance_arc_point,closestPointOnLine,threePointToArc,distance_line_point} from 'UTIL/MathTools';
 
 class EverCheckCanvasComponent{
 
@@ -229,7 +230,7 @@ class EverCheckCanvasComponent{
   }
 
 
-  drawReportLine(ctx, line_obj, offset)
+  drawReportLine(ctx, line_obj, offset={x:0,y:0})
   {
     ctx.beginPath();
     ctx.moveTo(line_obj.x0+offset.x,line_obj.y0+offset.y);
@@ -237,13 +238,17 @@ class EverCheckCanvasComponent{
     ctx.closePath();
     ctx.stroke();
   }
-  drawReportCircle(ctx, circle_obj, offset)
+  drawReportArc(ctx, arc_obj, offset={x:0,y:0})
   {
     ctx.beginPath();
-    ctx.arc(circle_obj.x+offset.x,circle_obj.y+offset.y,circle_obj.r,0,Math.PI*2, false);
-    ctx.closePath();
+    if(arc_obj.thetaS === undefined||arc_obj.thetaE === undefined )
+      ctx.arc(arc_obj.x+offset.x,arc_obj.y+offset.y,arc_obj.r,0,Math.PI*2, false);
+    else
+      ctx.arc(arc_obj.x+offset.x,arc_obj.y+offset.y,arc_obj.r,arc_obj.thetaS,arc_obj.thetaE, false);
+    //ctx.closePath();
     ctx.stroke();
   }
+
 
   drawReportJSON(context,Report,depth=0,draw_obj=null) {
 
@@ -262,153 +267,13 @@ class EverCheckCanvasComponent{
       if(Array.isArray(Report.detectedCircles))
         Report.detectedCircles.forEach((circle,idx)=>{
           if(draw_obj==null || draw_obj.circle==circle)
-            this.drawReportCircle(context, circle, offset);
+            this.drawReportArc(context, circle, offset);
         });
     },depth=0);
 
   }
 
-  distance_arc_point(arc, point)
-  {
-    //arc={cx,cy,r,angleFrom,angleTo}
-    let arc2p_angle = Math.atan2(point.y-arc.y,point.x-arc.x);
-    let arc2p_angle_BK = arc2p_angle;
-    let angleFrom=arc.angleFrom;
-    let angleTo=arc.angleTo;
 
-
-    arc2p_angle-=angleFrom;
-    angleTo-=angleFrom;
-    arc2p_angle=arc2p_angle%(2*Math.PI);
-    angleTo=angleTo%(2*Math.PI);
-    if(arc2p_angle<0)arc2p_angle+=2*Math.PI;
-    if(angleTo<0)angleTo+=2*Math.PI;
-    angleFrom=0;
-
-    if(arc2p_angle<angleTo)//Check is arc2p_angle within angleFrom to angleTo
-    {
-      arc2p_angle = arc2p_angle_BK;
-      return {
-        x: (arc.r*Math.cos(arc2p_angle))+arc.x,
-        y: (arc.r*Math.sin(arc2p_angle))+arc.y,
-        dist:Math.abs(Math.hypot(point.x-arc.x,point.y-arc.y)-arc.r)
-      };
-    }
-
-    angleFrom=arc.angleFrom;
-    angleTo=arc.angleTo;
-
-    let point1={x:arc.r*Math.cos(angleTo)+arc.x,y:arc.r*Math.sin(angleTo)+arc.y};
-    let point2={x:arc.r*Math.cos(angleFrom)+arc.x,y:arc.r*Math.sin(angleFrom)+arc.y};
-
-    let dist1=Math.hypot(point.x-point1.x,point.y-point1.y);
-    let dist2=Math.hypot(point.x-point2.x,point.y-point2.y);
-
-    if(dist1<dist2)
-    {
-      point1.dist = dist1;
-      return point1;
-    }
-    point2.dist = dist2;
-    return point2;
-  }
-
-
-
-  closestPointOnLine(line, point)
-  {
-    let line_ = {
-      x:(line.x1+line.x2)/2,y:(line.y1+line.y2)/2,
-      vx:line.x2-line.x1,vy:line.y2-line.y1
-    };
-
-    let normalizeFactor = Math.hypot(line_.vx,line_.vy);
-    line_.vx/=normalizeFactor;
-    line_.vy/=normalizeFactor;
-
-    let point_={x:point.x,y:point.y};
-
-    point_.x-=line_.x;
-    point_.y-=line_.y;
-
-    let dist = line_.vx * point_.x + line_.vy * point_.y;
-    line_.x+=dist*line_.vx;
-    line_.y+=dist*line_.vy;
-    line_.dist =dist;
-
-    return line_;
-  }
-
-  distance_line_point(line, point)
-  {
-    //arc={x1,y1,x2,y2}
-
-    let closestPoint = this.closestPointOnLine(line, point);
-
-    let ratio;
-
-    if(Math.abs(line.x2-line.x1)>Math.abs(line.y2-line.y1))
-    {
-      ratio = (closestPoint.x-line.x1)/(line.x2-line.x1);
-    }
-    else
-    {
-      ratio = (closestPoint.y-line.y1)/(line.y2-line.y1);
-    }
-
-    if(ratio>1)
-    {
-      let dist2 = Math.hypot(point.x-line.x2,point.y-line.y2);
-      return {x: line.x2,y: line.y2,dist:dist2};
-    }
-
-    if(ratio>0)
-    {
-      let dist3 = Math.hypot(point.x-closestPoint.x,point.y-closestPoint.y);
-      closestPoint.dist = dist3;
-      return closestPoint;
-    }
-
-    let dist1 = Math.hypot(point.x-line.x1,point.y-line.y1);
-    return {x: line.x1,y: line.y1,dist:dist1};  
-
-
-
-  }
-
-
-  threePointToArc(p1, p2, p3)
-  {
-    let offset =p2.x*p2.x +p2.y*p2.y;
-
-    let bc =   (p1.x*p1.x +p1.y*p1.y - offset )/2.0;
-    let cd =   (offset - p3.x*p3.x -p3.y*p3.y )/2.0;
-
-    let det =  (p1.x - p2.x) * (p2.y - p3.y) - (p2.x - p3.x)* (p1.y - p2.y); 
-
-    //if (Math.abs(det) < TOL) { throw new IllegalArgumentException("Yeah, lazy."); }
-
-    //let idet = 1/det;
-    console.log(p2.y);
-    let centerx =  (bc * (p2.y - p3.y) - cd * (p1.y - p2.y)) / det;
-    let centery =  (cd * (p1.x - p2.x) - bc * (p2.x - p3.x)) / det;
-    let radius = 
-       Math.sqrt( Math.pow(p2.x - centerx,2) + Math.pow(p2.y-centery,2));
-
-    let theta1 = Math.atan2(p1.y-centery,p1.x-centerx);
-    let thetaM = Math.atan2(p2.y-centery,p2.x-centerx);
-    let theta2 = Math.atan2(p3.y-centery,p3.x-centerx);
-    let theta1M = (theta1 - thetaM+4*Math.PI)%(2*Math.PI);
-    let theta12 = (theta1 - theta2+4*Math.PI)%(2*Math.PI);
-    if(theta12>theta1M)
-    {
-      theta1M = theta1;
-      theta1 = theta2;
-      theta2 = theta1M;
-    }
-
-    return {x:centerx,y:centery,r:radius,thetaS:theta1,thetaE:theta2};
-  }
 
   drawReportJSON_closestPoint(ctx,Report,point,minDist=15,depth=0) {
 
@@ -431,7 +296,7 @@ class EverCheckCanvasComponent{
             y1:line.y0+y_offset,
             x2:line.x1+x_offset,
             y2:line.y1+y_offset};
-          let retDist = this.distance_line_point(line_, point);
+          let retDist = distance_line_point(line_, point);
           if(retDist.dist>minDist)
           {
             return;
@@ -455,7 +320,7 @@ class EverCheckCanvasComponent{
             r:circle.r,
             angleFrom:0,
             angleTo:2*Math.PI-0.0001};
-          let retDist = this.distance_arc_point(arc, point);
+          let retDist = distance_arc_point(arc, point);
           if(retDist.dist>minDist)
           {
             return;
@@ -600,34 +465,19 @@ class EverCheckCanvasComponent{
 
       if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE)
       {
+        let line_obj = {x0:mouseOnCanvas2.x,y0:mouseOnCanvas2.y,
+                        x1:pmouseOnCanvas2.x,y1:pmouseOnCanvas2.y,};
         
-  
-        let diffX = pmouseOnCanvas2.x-mouseOnCanvas2.x;
-        let diffY = pmouseOnCanvas2.y-mouseOnCanvas2.y;
-        let midX = (pmouseOnCanvas2.x+mouseOnCanvas2.x)/2;
-        let midY = (pmouseOnCanvas2.y+mouseOnCanvas2.y)/2;
-  
-        let len = Math.hypot(diffX,diffY);
-  
-        //console.log(minX,minY,maxX,maxY);
-  
-        ctx.translate( midX, midY );
-        ctx.rotate(Math.atan2(diffY,diffX));
-        ctx.translate( -midX, -midY);
-        let width = 20;
-        ctx.beginPath();
-        ctx.rect(midX-len/2,midY-width/2,len,width);
-        ctx.closePath();
-        ctx.stroke();
+        ctx.lineWidth=12;
+        ctx.strokeStyle="rgba(255,0,0,0.5)";
+        this.drawReportLine(ctx, line_obj);
       }
       else if(this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
       {
-        let arc = this.threePointToArc(mouseOnCanvas2,{x:100,y:100},pmouseOnCanvas2);
-        //return {x:0,y:0,r:0,thetaS:0,thetaE:0};
-        console.log(arc);
-        ctx.beginPath();
-        ctx.arc(arc.x,arc.y,arc.r,arc.thetaS,arc.thetaE, false);
-        ctx.stroke();
+        let arc = threePointToArc(mouseOnCanvas2,{x:100,y:100},pmouseOnCanvas2);
+        ctx.lineWidth=12;
+        ctx.strokeStyle="rgba(255,0,0,0.5)";  
+        this.drawReportArc(ctx, arc);
       }
     }
 
