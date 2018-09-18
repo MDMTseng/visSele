@@ -1,7 +1,9 @@
 'use strict'
    
-import styles from '../style/basis.css'
-import sp_style from '../style/sp_style.css'
+
+
+import styles from 'STYLE/basis.css'
+import sp_style from 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
 import React from 'react';
 import ReactDOM from 'react-dom';
@@ -9,13 +11,14 @@ import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
  
-import BPG_Protocol from './UTIL/BPG_Protocol.js'; 
-import BPG_WEBSOCKET from './UTIL/BPG_WebSocket.js';  
+import BPG_Protocol from 'UTIL/BPG_Protocol.js'; 
+import BPG_WEBSOCKET from 'UTIL/BPG_WebSocket.js';  
 
-import UI_Ctrl from './UI_Ctrl.js';  
-import {ReduxStoreSetUp} from './redux/redux';
+import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';  
+import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import {XSGraph} from './xstate_visual';
-import * as UIAct from './redux/actions/UIAct';
+import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
+import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
 let StoreX= ReduxStoreSetUp({});
 
@@ -23,13 +26,14 @@ let StoreX= ReduxStoreSetUp({});
 class CanvasComponent extends React.Component {
 
   componentDidMount() {
-    this.ec_canvas=new UI_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
+    this.ec_canvas=new EC_CANVAS_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
   }
-  updateCanvas() {
+  updateCanvas(state) {
     if(this.ec_canvas  !== undefined)
     {
       this.ec_canvas.SetReport(this.props.report);
       this.ec_canvas.SetImg(this.props.img);
+      this.ec_canvas.SetState(state);
       this.ec_canvas.draw();
     }
   }
@@ -43,7 +47,19 @@ class CanvasComponent extends React.Component {
   }
   render() {
     console.log("CanvasComponent render");
-    this.updateCanvas();
+    let substate = this.props.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
+    console.log("substate:"+substate);
+    this.updateCanvas(substate);
+    switch(substate)
+    {
+      case UIAct.UI_SM_STATES.EDIT_MODE_NEUTRAL:
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_ARC_CREATE:
+      break;
+    }
+ 
     return (
       <div className={this.props.addClass+" HXF"}>
         <canvas ref="canvas" className="width12 HXF"/>
@@ -78,30 +94,79 @@ class APP_EDIT_MODE extends React.Component{
   }
   render() {
 
+    let MenuSet=[];
+
+    console.log("CanvasComponent render");
+    let substate = this.props.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
+    switch(substate)
+    {
+      case UIAct.UI_SM_STATES.EDIT_MODE_NEUTRAL:
+      MenuSet=[
+          <BASE_COM.Button
+          addClass="layout black vbox"
+          text="<" onClick={()=>this.props.ACT_EXIT()}/>,
+          <BASE_COM.Button
+            addClass="layout lgreen vbox"
+            text="LINE" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
+          <BASE_COM.Button
+            addClass="layout lgreen vbox"
+            text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
+          <BASE_COM.Button
+            addClass="layout lgreen vbox"
+            text="LIST"/>,
+        ];
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div className="s lred vbox">LINE</div>,
+      ];
+      
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_ARC_CREATE:          
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div className="s lred vbox">ARC</div>
+      ];
+      break;
+    }
+ 
+
     console.log("APP_EDIT_MODE render");
     return(
     <div className="HXF">
-      <CanvasComponent_rdx addClass="layout width11"/>
-      <div className="layout width1 HXF scroll ">
-          <BASE_COM.Button
-            addClass="layout black"
-            text="line"/>
-          <BASE_COM.Button
-            addClass="layout black"
-            text="arc"/>
-          <BASE_COM.Button
-            addClass="layout black"
-            text="List"/>
+      <CanvasComponent_rdx addClass="layout width12"/>
+      <div className="layout overlay width2 HXF scroll ">
+        {MenuSet}
       </div>
-
-
     </div>
     );
   }
 }
 
 
-const APP_EDIT_MODE_rdx = connect()(APP_EDIT_MODE);
+const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) => 
+{ 
+  return{
+    ACT_Line_Add_Mode: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
+    ACT_Arc_Add_Mode: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT("EDIT_MODE"+UIAct.UI_SM_EVENT._FAIL))},
+    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
+  }
+}
+
+const mapStateToProps_APP_EDIT_MODE = (state) => {
+  return { 
+    c_state: state.UIData.c_state
+  }
+};
+const APP_EDIT_MODE_rdx = connect(
+    mapStateToProps_APP_EDIT_MODE,
+    mapDispatchToProps_APP_EDIT_MODE)(APP_EDIT_MODE);
 
 
 class APPMain extends React.Component{
@@ -120,19 +185,16 @@ class APPMain extends React.Component{
     let UI=[];
 
     console.log("APPMain render",this.props);
-    //TODO: ugly logic, find a way to deal with it
-    if(typeof this.props.c_state.value === "string") // displays "string")
+
+    let stateObj = xstate_GetCurrentMainState(this.props.c_state);
+    if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
-      if(this.props.c_state.value === UIAct.UI_SM_STATES.MAIN)
-      {
-        UI = 
-          <BASE_COM.Button
-            addClass="lgreen width4"
-            text="EDIT MODE" onClick={this.props.EV_UI_Edit_Mode}/>;
-        
-      }
+      UI = 
+        <BASE_COM.Button
+          addClass="lgreen width4"
+          text="EDIT MODE" onClick={this.props.EV_UI_Edit_Mode}/>;
     }
-    else if(UIAct.UI_SM_STATES.EDIT_MODE in this.props.c_state.value)
+    else if(stateObj.state === UIAct.UI_SM_STATES.EDIT_MODE)
     {
       UI = <APP_EDIT_MODE_rdx/>;
     }
@@ -147,39 +209,17 @@ class APPMain extends React.Component{
 }
 const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   return {
-    EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
+    EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())}
   }
 }
 const mapStateToProps_APPMain = (state) => {
   console.log("mapStateToProps",state);
-  return {
+  return { 
     c_state: state.UIData.c_state
   }
 }
 const APPMain_rdx = connect(mapStateToProps_APPMain,mapDispatchToProps_APPMain)(APPMain);
 
-
-const lightMachine = {
-  id: 'light',
-  initial: 'green',
-  states: {
-      green: {
-      on: {
-          TIMER: 'yellow'
-      }
-      },
-      yellow: {
-      on: {
-          TIMER: 'red'
-      }
-      },
-      red: {
-      on: {
-          TIMER: 'green'
-      }
-      }
-  }
-};
 class APPMasterX extends React.Component{
 
   constructor(props) {

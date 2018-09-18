@@ -1,9 +1,11 @@
-import {DISP_EVE_UI} from '../constant';
+import {DISP_EVE_UI} from 'REDUX_STORE_SRC/constant';
 
 
-import STATE_MACHINE_CORE from '../../UTIL/STATE_MACHINE_CORE';  
+import STATE_MACHINE_CORE from 'UTIL/STATE_MACHINE_CORE';  
 import { Machine } from 'xstate';
-import {UI_SM_STATES,UI_SM_EVENT} from '../actions/UIAct';
+import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
+
+import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
 const EditStates = {
   initial: 'NEUTRAL',
@@ -11,10 +13,14 @@ const EditStates = {
     NEUTRAL:  {on: {Line_Create: UI_SM_STATES.EDIT_MODE_LINE_CREATE,
                     Arc_Create:  UI_SM_STATES.EDIT_MODE_ARC_CREATE}},
 
-    LINE_CREATE:{on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}},
-    ARC_CREATE: {on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}},
-    LINE_EDIT:{on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}},
-    ARC_EDIT: {on: {PED_TIMER: UI_SM_STATES.EDIT_MODE_NEUTRAL}}
+    LINE_CREATE:{on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_NEUTRAL,
+                      EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}},
+    ARC_CREATE: {on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_NEUTRAL,
+                      EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}},
+    LINE_EDIT:{on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_NEUTRAL,
+                    EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}},
+    ARC_EDIT: {on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_NEUTRAL,
+                    EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}}
   }
 };
 
@@ -29,12 +35,12 @@ function Default_UICtrlReducer()
                          EXIT:        UI_SM_STATES.SPLASH } },
       EDIT_MODE: Object.assign(
                  { on: { Disonnected: UI_SM_STATES.SPLASH , 
-                         EXIT:        UI_SM_STATES.SPLASH }},
+                         EXIT:        UI_SM_STATES.MAIN }},
                  EditStates)
     }
   };
   //ST = d;
-  console.log("ST...",JSON.stringify(ST));
+  //console.log("ST...",JSON.stringify(ST));
   let toggleSplashMachine = Machine(ST);
   return {
     MENU_EXPEND:false,
@@ -75,7 +81,9 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
     
   }
 
-  switch(state.c_state.value)
+  let stateObj = xstate_GetCurrentMainState(state.c_state);
+
+  switch(stateObj.state)
   {
     case UI_SM_STATES.SPLASH:
       obj.showSplash=true;
@@ -83,23 +91,21 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
     case UI_SM_STATES.MAIN:
       obj.showSplash=false;
       return Object.assign({},state,obj);
-    
-  }
+    case UI_SM_STATES.EDIT_MODE:
+    {
+      obj.showSplash=false;
 
-  if(UI_SM_STATES.EDIT_MODE in state.c_state.value)
-  {
-    obj.showSplash=false;
-
-    if (action.type === UI_SM_EVENT.Inspection_Report) {
-      obj.report=action.data;
-    }
-
-    if (action.type  === UI_SM_EVENT.Image_Update) {
-      obj.img=action.data;
-    }
-    return Object.assign({},state,obj);
-  }
+      if (action.type === UI_SM_EVENT.Inspection_Report) {
+        obj.report=action.data;
+      }
   
+      if (action.type  === UI_SM_EVENT.Image_Update) {
+        obj.img=action.data;
+      }
+      return Object.assign({},state,obj);
+    }
+  }
+
   return state;
 }
 export default UICtrlReducer

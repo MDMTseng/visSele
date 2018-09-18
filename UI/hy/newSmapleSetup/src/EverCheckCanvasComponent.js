@@ -1,4 +1,9 @@
 //UIControl
+
+import {UI_SM_STATES} from 'REDUX_STORE_SRC/actions/UIAct';
+
+import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+
 class EverCheckCanvasComponent{
 
   getMousePos(canvas, evt) {
@@ -51,9 +56,14 @@ class EverCheckCanvasComponent{
     this.near_select_obj=null;
 
     this.onfeatureselected=(ev)=>{};
+    
+    this.state="";
   }
 
-
+  SetState(state)
+  {
+    this.state=state;
+  }
   SetReport( report )
   {
 

@@ -37,6 +37,14 @@ module.exports = {
   output: { path: __dirname, filename: 'bundle.js' },
   devtool: (process.env.NODE_ENV !== "production")?"inline-sourcemap" : null,
   plugins:PluginSets,
+  
+  resolve: {
+    alias: {
+      UTIL: path.resolve(__dirname, 'src/UTIL/'),
+      REDUX_STORE_SRC: path.resolve(__dirname, 'src/redux/'),
+      STYLE: path.resolve(__dirname, 'style/')
+    }
+  },
   module: {
     rules: [
       {

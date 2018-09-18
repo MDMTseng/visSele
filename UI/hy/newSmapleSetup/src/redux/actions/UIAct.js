@@ -8,6 +8,8 @@ export const UI_SM_STATES = {
   EDIT_MODE_ARC_CREATE:"ARC_CREATE",
 };
 
+
+
 export const BPG_WS_EVENT = {
   BPG_WS_REGISTER:"BPG_WS_REGISTER",
   BPG_WS_SEND:"BPG_WS_SEND",
@@ -18,10 +20,17 @@ export const BPG_WS_EVENT = {
 export const UI_SM_EVENT = {
   Connected:"Connected",
   Disonnected:"Disonnected",
-
+  _SUCCESS:"_SUCCESS",
+  _FAIL:"_FAIL",
+  EXIT:"EXIT",
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
   Image_Update:"Image_Update",
+  Line_Edit_Mode:"Line_Edit",
+  Arc_Edit_Mode:"Arc_Edit",
+  Line_Create:"Line_Create",
+  Arc_Create:"Arc_Create",
+
   Control_SM_Panel:"Control_SM_Panel",
   
 };
@@ -67,6 +76,16 @@ export function EV_UI_Edit_Mode()
 {
   return {
     type: UI_SM_EVENT.Edit_Mode
+  }
+}
+
+
+export function EV_UI_ACT(ACT,data=null,misc=null)
+{
+  return {
+    type: ACT,
+    data:data,
+    misc:null
   }
 }
 
