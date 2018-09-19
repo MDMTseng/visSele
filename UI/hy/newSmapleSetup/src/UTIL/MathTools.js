@@ -118,7 +118,7 @@ export function threePointToArc(p1, p2, p3)
   //if (Math.abs(det) < TOL) { throw new IllegalArgumentException("Yeah, lazy."); }
 
   //let idet = 1/det;
-  console.log(p2.y);
+  //console.log(p2.y);
   let centerx =  (bc * (p2.y - p3.y) - cd * (p1.y - p2.y)) / det;
   let centery =  (cd * (p1.x - p2.x) - bc * (p2.x - p3.x)) / det;
   let radius = 

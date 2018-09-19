@@ -59,6 +59,9 @@ class EverCheckCanvasComponent{
     this.onfeatureselected=(ev)=>{};
     
     this.state=UI_SM_STATES.NEUTRAL;
+    this.shapeList=[];
+    
+    this.EditShape=null;
   }
 
   SetState(state)
@@ -249,6 +252,50 @@ class EverCheckCanvasComponent{
     ctx.stroke();
   }
 
+  drawpoint(ctx, point,size=5)
+  {
+    ctx.beginPath();
+    ctx.strokeRect(point.x-size/2,point.y-size/2, size, size);
+    //ctx.closePath();
+    ctx.stroke();
+  }
+  drawEditObject(ctx, eObjects)
+  {
+    eObjects.forEach((eObject)=>{
+      if(eObject==null)return;
+      switch(eObject.type)
+      {
+        case 'line':
+
+
+        
+        ctx.strokeStyle=eObject.color; 
+        ctx.lineWidth=eObject.margin*2;;
+        this.drawReportLine(ctx, eObject);
+        ctx.lineWidth=2;
+        ctx.strokeStyle="black";  
+        this.drawpoint(ctx, {x:eObject.x0,y:eObject.y0});
+        this.drawpoint(ctx, {x:eObject.x1,y:eObject.y1});
+
+        break;
+        
+        
+        case 'arc':
+        
+          ctx.strokeStyle=eObject.color; 
+          let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
+          ctx.lineWidth=eObject.margin*2; 
+          this.drawReportArc(ctx, arc);
+          
+          ctx.lineWidth=2;
+          ctx.strokeStyle="black";  
+          this.drawpoint(ctx, eObject.pt1);
+          this.drawpoint(ctx, eObject.pt2);
+          this.drawpoint(ctx, eObject.pt3);
+        break;
+      }
+    });
+  }
 
   drawReportJSON(context,Report,depth=0,draw_obj=null) {
 
@@ -468,18 +515,46 @@ class EverCheckCanvasComponent{
         let line_obj = {x0:mouseOnCanvas2.x,y0:mouseOnCanvas2.y,
                         x1:pmouseOnCanvas2.x,y1:pmouseOnCanvas2.y,};
         
-        ctx.lineWidth=12;
-        ctx.strokeStyle="rgba(255,0,0,0.5)";
-        this.drawReportLine(ctx, line_obj);
+        this.EditShape=line_obj;
+        this.EditShape.type="line";
+        this.EditShape.margin=5;
+        this.EditShape.color="rgba(255,0,0,0.5)";
       }
       else if(this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
       {
-        let arc = threePointToArc(mouseOnCanvas2,{x:100,y:100},pmouseOnCanvas2);
-        ctx.lineWidth=12;
-        ctx.strokeStyle="rgba(255,0,0,0.5)";  
-        this.drawReportArc(ctx, arc);
+        let midPosition = {
+          x:(mouseOnCanvas2.x+pmouseOnCanvas2.x)/2,
+          y:(mouseOnCanvas2.y+pmouseOnCanvas2.y)/2};
+        midPosition.x+=(mouseOnCanvas2.y-pmouseOnCanvas2.y)/1000;
+        midPosition.y+=-(mouseOnCanvas2.x-pmouseOnCanvas2.x)/1000;
+
+        
+        this.EditShape={
+          type:"arc",
+          pt1:mouseOnCanvas2,
+          pt2:midPosition,
+          pt3:pmouseOnCanvas2,
+          margin:5
+        };
+        this.EditShape.color="rgba(255,0,0,0.5)";
       }
+      this.drawEditObject(ctx, [this.EditShape]);
     }
+    else
+    {
+      if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE || this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
+      {
+        if(this.EditShape!=null)
+        {
+          this.EditShape.color="rgba(100,0,100,0.5)";
+          this.shapeList.push(this.EditShape);
+          
+        }
+        this.EditShape=null;
+      }
+      
+    }
+    this.drawEditObject(ctx, this.shapeList);
 
     ctx.restore();
     
