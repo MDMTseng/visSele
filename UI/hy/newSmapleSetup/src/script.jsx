@@ -113,7 +113,7 @@ class APP_EDIT_MODE extends React.Component{
             text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
-            text="LIST"/>,
+            text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
@@ -131,6 +131,14 @@ class APP_EDIT_MODE extends React.Component{
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div className="s lred vbox">ARC</div>
+      ];
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:          
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div className="s lred vbox">EDIT</div>
       ];
       break;
     }
@@ -154,6 +162,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
   return{
     ACT_Line_Add_Mode: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
     ACT_Arc_Add_Mode: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
+    ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT("EDIT_MODE"+UIAct.UI_SM_EVENT._FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
   }

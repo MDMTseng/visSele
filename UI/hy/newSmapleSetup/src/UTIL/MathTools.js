@@ -1,4 +1,10 @@
 
+export function distance_point_point(pt1, pt2)
+{
+  return Math.hypot(pt1.x-pt2.x,pt1.y-pt2.y);
+}
+
+
 export function distance_arc_point(arc, point)
 {
   //arc={x,y,r,angleFrom,angleTo}

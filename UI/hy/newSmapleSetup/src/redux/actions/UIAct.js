@@ -6,6 +6,7 @@ export const UI_SM_STATES = {
   EDIT_MODE_NEUTRAL:"NEUTRAL",
   EDIT_MODE_LINE_CREATE:"LINE_CREATE",
   EDIT_MODE_ARC_CREATE:"ARC_CREATE",
+  EDIT_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 };
 
 
@@ -30,6 +31,7 @@ export const UI_SM_EVENT = {
   Arc_Edit_Mode:"Arc_Edit",
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
+  Shape_Edit:"Shape_Edit",
 
   Control_SM_Panel:"Control_SM_Panel",
   

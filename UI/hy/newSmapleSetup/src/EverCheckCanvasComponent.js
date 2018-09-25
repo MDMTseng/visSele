@@ -3,7 +3,7 @@
 import {UI_SM_STATES} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
-import {distance_arc_point,closestPointOnLine,threePointToArc,distance_line_point} from 'UTIL/MathTools';
+import {distance_arc_point,distance_point_point,threePointToArc,distance_line_point} from 'UTIL/MathTools';
 
 class EverCheckCanvasComponent{
 
@@ -62,6 +62,7 @@ class EverCheckCanvasComponent{
     this.shapeList=[];
     
     this.EditShape=null;
+    this.EditPoint=null;
   }
 
   SetState(state)
@@ -271,11 +272,14 @@ class EverCheckCanvasComponent{
         
         ctx.strokeStyle=eObject.color; 
         ctx.lineWidth=eObject.margin*2;;
-        this.drawReportLine(ctx, eObject);
+        this.drawReportLine(ctx, {
+          x0:eObject.pt1.x,y0:eObject.pt1.y,
+          x1:eObject.pt2.x,y1:eObject.pt2.y,
+        });
         ctx.lineWidth=2;
         ctx.strokeStyle="black";  
-        this.drawpoint(ctx, {x:eObject.x0,y:eObject.y0});
-        this.drawpoint(ctx, {x:eObject.x1,y:eObject.y1});
+        this.drawpoint(ctx, eObject.pt1);
+        this.drawpoint(ctx, eObject.pt2);
 
         break;
         
@@ -459,13 +463,13 @@ class EverCheckCanvasComponent{
 
       ctx.drawImage(this.secCanvas,0,0);
 
-      if(typeof this.ReportJSON !=='undefined')
+      if(false && typeof this.ReportJSON !=='undefined')
       {
         ctx.strokeStyle = '#a00080';
         this.drawReportJSON(ctx,this.ReportJSON);
       }
 
-      if(typeof this.ReportJSON !=='undefined')
+      if(false && typeof this.ReportJSON !=='undefined')
       {
         var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2,15/this.camera.scale);
 
@@ -505,6 +509,12 @@ class EverCheckCanvasComponent{
     ctx.closePath();
     ctx.save();
     
+    this.drawEditObject(ctx, this.shapeList);
+
+
+
+
+
     if(this.mouseStatus.status==1)
     {
       let pmPos = {x:this.mouseStatus.px,y:this.mouseStatus.py};
@@ -516,17 +526,26 @@ class EverCheckCanvasComponent{
                         x1:pmouseOnCanvas2.x,y1:pmouseOnCanvas2.y,};
         
         this.EditShape=line_obj;
-        this.EditShape.type="line";
-        this.EditShape.margin=5;
-        this.EditShape.color="rgba(255,0,0,0.5)";
+
+        
+        this.EditShape={
+          type:"line",
+          pt1:mouseOnCanvas2,
+          pt2:pmouseOnCanvas2,
+          margin:5,
+          color:"rgba(255,0,0,0.5)"
+        };
+
+        this.drawEditObject(ctx, [this.EditShape]);
       }
       else if(this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
       {
         let midPosition = {
           x:(mouseOnCanvas2.x+pmouseOnCanvas2.x)/2,
-          y:(mouseOnCanvas2.y+pmouseOnCanvas2.y)/2};
+          y:(mouseOnCanvas2.y+pmouseOnCanvas2.y)/2};//Find middle
         midPosition.x+=(mouseOnCanvas2.y-pmouseOnCanvas2.y)/1000;
         midPosition.y+=-(mouseOnCanvas2.x-pmouseOnCanvas2.x)/1000;
+        //Add normal vec to make sure it's not exactly on straight line
 
         
         this.EditShape={
@@ -534,11 +553,19 @@ class EverCheckCanvasComponent{
           pt1:mouseOnCanvas2,
           pt2:midPosition,
           pt3:pmouseOnCanvas2,
-          margin:5
+          margin:5,
+          color:"rgba(255,0,0,0.5)"
         };
-        this.EditShape.color="rgba(255,0,0,0.5)";
+        this.drawEditObject(ctx, [this.EditShape]);
+      }      
+      else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
+      {
+        if(this.EditPoint!=null)
+        {
+          this.EditPoint.x = mouseOnCanvas2.x;
+          this.EditPoint.y = mouseOnCanvas2.y;
+        }
       }
-      this.drawEditObject(ctx, [this.EditShape]);
     }
     else
     {
@@ -552,9 +579,71 @@ class EverCheckCanvasComponent{
         }
         this.EditShape=null;
       }
+      else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
+      {
+        this.EditPoint=null;
+
+        let minDist=1000;
+
+        this.shapeList.forEach((shape)=>{
+          let tmpDist;
+          switch(shape.type)
+          {
+            case "line":
+            tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
+            if(minDist>tmpDist)
+            {
+              minDist = tmpDist;
+              this.EditPoint = shape.pt1;
+            }
+            tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
+            if(minDist>tmpDist)
+            {
+              minDist = tmpDist;
+              this.EditPoint = shape.pt2;
+            }
+            break;
+            
+            case "arc":
+            
+            tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
+            if(minDist>tmpDist)
+            {
+              minDist = tmpDist;
+              this.EditPoint = shape.pt1;
+            }
+            tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
+            if(minDist>tmpDist)
+            {
+              minDist = tmpDist;
+              this.EditPoint = shape.pt2;
+            }
+            tmpDist = distance_point_point(shape.pt3,mouseOnCanvas2);
+            if(minDist>tmpDist)
+            {
+              minDist = tmpDist;
+              this.EditPoint = shape.pt3;
+            }
+            break;
+          }
+        });
+
+        console.log(">>>",minDist);
+        if(this.EditPoint!=null&& minDist<50)
+        {
+          
+          ctx.lineWidth=3;
+          ctx.strokeStyle="green";  
+          this.drawpoint(ctx, this.EditPoint);
+        }
+        else
+        {
+          this.EditPoint=null;
+        }
+      }
+      
       
     }
-    this.drawEditObject(ctx, this.shapeList);
 
     ctx.restore();
     
