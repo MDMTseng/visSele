@@ -509,8 +509,6 @@ class EverCheckCanvasComponent{
     ctx.closePath();
     ctx.save();
     
-    this.drawEditObject(ctx, this.shapeList);
-
 
 
 
@@ -644,6 +642,8 @@ class EverCheckCanvasComponent{
       
       
     }
+
+    this.drawEditObject(ctx, this.shapeList);
 
     ctx.restore();
     
