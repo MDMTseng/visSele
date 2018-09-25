@@ -404,7 +404,7 @@ class EverCheckCanvasComponent{
     mat.c=0;
     mat.d=1;
     mat.e=0;
-    mat.f=1;
+    mat.f=0;
   }
 
 
@@ -418,26 +418,27 @@ class EverCheckCanvasComponent{
 
   worldTransform()
   {
-    let ctx = this.canvas.getContext('2d');
+    let mat = this.transformMat;
 
-    ctx.setTransform(1,0,0,1,0,0); 
+    this.setDOMMatrixIdentity(mat);
 
-    ctx.translate((this.canvas.width / 2), (this.canvas.height / 2));
 
-    //mat.multiplySelf(this.getCameraMat());
+    let mouseX = this.mouseStatus.x-(this.canvas.width / 2);
+    let mouseY = this.mouseStatus.y-(this.canvas.height / 2);
+    mat.translateSelf((this.canvas.width / 2), (this.canvas.height / 2));
+
+    mat.multiplySelf(this.getCameraMat());
     //mat.multiplySelf(this.dragMat);
 
-    //ctx.translate(this.camera.scaleCenter.x, this.camera.scaleCenter.y);
+    //mat.scaleSelf(this.camera.scale, this.camera.scale);
+    //mat.rotateSelf(this.camera.rotate);
 
-    ctx.scale(this.camera.scale, this.camera.scale);
-    //ctx.translate(-this.camera.scaleCenter.x/this.camera.scale, -this.camera.scaleCenter.y/this.camera.scale);
+    //mat.translateSelf(this.camera.translate.x+this.camera.translate.dx, this.camera.translate.y+this.camera.translate.dy);
 
-    ctx.rotate(this.camera.rotate);
+    mat.translateSelf(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
 
-    ctx.translate(this.camera.translate.x+this.camera.translate.dx, this.camera.translate.y+this.camera.translate.dy);
-
-    ctx.translate(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
-
+    let ctx = this.canvas.getContext('2d');
+    ctx.setTransform(mat.a,mat.b,mat.c,mat.d,mat.e,mat.f); 
     return ctx.getTransform();
 
   }
