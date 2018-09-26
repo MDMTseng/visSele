@@ -57,6 +57,8 @@ function Default_UICtrlReducer()
     report:[],
     img:null,
     showSM_graph:false,
+    BROADCAST_INFO:null,
+    edit_tar_info:null,
 
     sm:toggleSplashMachine,
     c_state:toggleSplashMachine.initialState
@@ -73,18 +75,27 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   console.log(state.c_state.value," + ",action.type," > ",currentState.value);
   state.c_state=currentState;
 
+  let newState = Object.assign({},state);
+  newState.BROADCAST_INFO = null;
+  
   if (action.type === UISEV.Control_SM_Panel) {
-      return Object.assign({},state,{showSM_graph:action.data});
+    newState.showSM_graph = action.data;
+    return newState;
   }
-  let obj={};
+  else if(action.type === UISEV.BROADCAST)
+  {
+    newState.BROADCAST_INFO = action.data;
+    return newState;
+
+  }
   switch(state.c_state.value)
   {
     case UISTS.SPLASH:
-      obj.showSplash=true;
-      return Object.assign({},state,obj);
+      newState.showSplash=true;
+      return newState;
     case UISTS.MAIN:
-      obj.showSplash=false;
-      return Object.assign({},state,obj);
+      newState.showSplash=false;
+      return newState;
     
   }
 
@@ -93,26 +104,31 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   switch(stateObj.state)
   {
     case UISTS.SPLASH:
-      obj.showSplash=true;
-      return Object.assign({},state,obj);
+      newState.showSplash=true;
+      return newState;
     case UISTS.MAIN:
-      obj.showSplash=false;
-      return Object.assign({},state,obj);
+      newState.showSplash=false;
+      return newState;
     case UISTS.EDIT_MODE:
     {
-      obj.showSplash=false;
+      newState.showSplash=false;
+      switch(action.type)
+      {
+        case UISEV.Inspection_Report:
+          newState.report=action.data;
+        break;
+        case UISEV.Image_Update:
+          newState.img=action.data;
+        break;
+        case UISEV.EDIT_MODE_Edit_Tar_Update:
+          newState.edit_tar_info=action.data;
+        break;
+      }
 
-      if (action.type === UISEV.Inspection_Report) {
-        obj.report=action.data;
-      }
-  
-      if (action.type  === UISEV.Image_Update) {
-        obj.img=action.data;
-      }
-      return Object.assign({},state,obj);
+      return newState;
     }
   }
 
-  return state;
+  return newState;
 }
 export default UICtrlReducer

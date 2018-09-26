@@ -45,25 +45,34 @@ body.sp_Style.blockS  {
 
 
 
-.sp_Style.blockS .sideCtrl{
-  transition:opacity 0.5s, transform ease-out 0.3s;
+.sp_Style.blockS .MenuAnim{
+  transition:opacity 0.2s, transform 0.3s;
+
+  transition-timing-function: cubic-bezier(.05,.88,.6,.87);
+  transform-origin: -20% 50%;
+  perspective: 200px;
 }
-.sp_Style.blockS .sideCtrl.fadeIn-enter{
-  transform: translate(50%,0%);
+.sp_Style.blockS .MenuAnim.fadeIn-enter{
+  transform: rotateY(-10deg);
   opacity: 0;
 
+  z-index: 2;
+
 }
-.sp_Style.blockS .sideCtrl.fadeIn-enter.fadeIn-enter-active{
+.sp_Style.blockS .MenuAnim.fadeIn-enter.fadeIn-enter-active{
   opacity: 1;
-  transform: translate(0%,0%);
+  transform: rotateY(00deg);
+  z-index: 2;
 }
-.sp_Style.blockS .sideCtrl.fadeIn-leave{
-  transform: translate(50%,0%);
+.sp_Style.blockS .MenuAnim.fadeIn-leave{
   opacity: 1;
+  z-index: 1;
 }
-.sp_Style.blockS .sideCtrl.fadeIn-leave.fadeIn-leave-active{
+.sp_Style.blockS .MenuAnim.fadeIn-leave.fadeIn-leave-active{
   opacity: 0;
+  z-index: 1;
 }
+
 .sp_Style.blockS{
   perspective:300px;
   -webkit-perspective: 300px;

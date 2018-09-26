@@ -23,8 +23,6 @@ export const UI_SM_EVENT = {
   Disonnected:"Disonnected",
   _SUCCESS:"_SUCCESS",
   _FAIL:"_FAIL",
-  EDIT_MODE_SUCCESS:"EDIT_MODE_SUCCESS",
-  EDIT_MODE_FAIL:"EDIT_MODE_FAIL",
   EXIT:"EXIT",
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
@@ -34,10 +32,20 @@ export const UI_SM_EVENT = {
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
   Shape_Edit:"Shape_Edit",
+  EDIT_MODE_SUCCESS:"EDIT_MODE_SUCCESS",
+  EDIT_MODE_FAIL:"EDIT_MODE_FAIL",
 
   Control_SM_Panel:"Control_SM_Panel",
-  
+  BROADCAST:"BROADCAST",
+  EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update"
 };
+
+export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
+{
+  return {
+    type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data: targetObj
+  }
+}
 
 
 
@@ -89,8 +97,14 @@ export function EV_UI_ACT(ACT,data=null,misc=null)
   return {
     type: ACT,
     data:data,
-    misc:null
+    misc:misc
   }
+}
+
+
+export function EV_UI_BROADCAST(data=null,misc=null)
+{
+  return EV_UI_ACT(UI_SM_EVENT.BROADCAST,data,misc);
 }
 
 export function EV_WS_Inspection_Report(report)

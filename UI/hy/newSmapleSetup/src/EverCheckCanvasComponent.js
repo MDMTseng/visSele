@@ -33,7 +33,7 @@ class EverCheckCanvasComponent{
       return false; 
     }.bind(this), false);
 
-    this.mouseStatus={x:-1,y:-1,px:-1,py:-1,status:0};
+    this.mouseStatus={x:-1,y:-1,px:-1,py:-1,status:0,pstatus:0};
 
     this.ReportJSON={};
 
@@ -70,6 +70,9 @@ class EverCheckCanvasComponent{
   SetState(state)
   {
     this.state=state;
+    this.EditShape=null;
+    this.EditPoint=null;
+    this.near_select_obj=null;
   }
   SetReport( report )
   {
@@ -116,14 +119,14 @@ class EverCheckCanvasComponent{
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
 
-    console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
+    //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
     switch(this.state)
     {
       case UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:
         
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.EDIT_MODE_NEUTRAL:
-        console.log("this.state:>>>");
+        //console.log("this.state:>>>");
         if(this.mouseStatus.status==1)
         {
           this.setDOMMatrixIdentity(this.dragMat);
@@ -162,6 +165,7 @@ class EverCheckCanvasComponent{
     {
       this.onfeatureselected(this.near_select_obj);
     }
+    this.draw();
   }
 
   onmouseup(evt)
@@ -564,6 +568,11 @@ class EverCheckCanvasComponent{
         {
           this.EditPoint.x = mouseOnCanvas2.x;
           this.EditPoint.y = mouseOnCanvas2.y;
+
+          if(this.mouseStatus.pstatus==0 && this.EditShape!=null)
+          {
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+          }
         }
       }
     }
@@ -575,7 +584,7 @@ class EverCheckCanvasComponent{
         {
           this.EditShape.color="rgba(100,0,100,0.5)";
           this.shapeList.push(this.EditShape);
-          this.EmitEvent(UI_SM_EVENT.EDIT_MODE_SUCCESS);
+          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
           
         }
         this.EditShape=null;
@@ -584,6 +593,7 @@ class EverCheckCanvasComponent{
       {
         this.EditPoint=null;
 
+        this.EditShape=null;
         let minDist=1000;
 
         this.shapeList.forEach((shape)=>{
@@ -594,12 +604,15 @@ class EverCheckCanvasComponent{
             tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
             if(minDist>tmpDist)
             {
+
+              this.EditShape=shape;
               minDist = tmpDist;
               this.EditPoint = shape.pt1;
             }
             tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
             if(minDist>tmpDist)
             {
+              this.EditShape=shape;
               minDist = tmpDist;
               this.EditPoint = shape.pt2;
             }
@@ -610,18 +623,23 @@ class EverCheckCanvasComponent{
             tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
             if(minDist>tmpDist)
             {
+
+              this.EditShape=shape;
               minDist = tmpDist;
               this.EditPoint = shape.pt1;
             }
             tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
             if(minDist>tmpDist)
             {
+
+              this.EditShape=shape;
               minDist = tmpDist;
               this.EditPoint = shape.pt2;
             }
             tmpDist = distance_point_point(shape.pt3,mouseOnCanvas2);
             if(minDist>tmpDist)
             {
+              this.EditShape=shape;
               minDist = tmpDist;
               this.EditPoint = shape.pt3;
             }
@@ -629,7 +647,7 @@ class EverCheckCanvasComponent{
           }
         });
 
-        console.log(">>>",minDist);
+        //console.log(">>>",minDist);
         if(this.EditPoint!=null&& minDist<this.mouse_close_dist/this.camera.scale)
         {
           
@@ -649,6 +667,8 @@ class EverCheckCanvasComponent{
     this.drawEditObject(ctx, this.shapeList);
 
     ctx.restore();
+
+    this.mouseStatus.pstatus = this.mouseStatus.status;
     
   }
 }

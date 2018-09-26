@@ -26,13 +26,17 @@ let StoreX= ReduxStoreSetUp({});
 class CanvasComponent extends React.Component {
 
   ec_canvas_EmitEvent(event){
-    switch(event)
+    switch(event.type)
     { 
       case UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS:
         this.props.ACT_SUCCESS();
       break;
       case UIAct.UI_SM_EVENT.EDIT_MODE_FAIL:
         this.props.ACT_Fail();
+      break; 
+      case UIAct.UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update:
+        console.log(event);
+        this.props.ACT_EDIT_TAR_UPDATE(event.data);
       break; 
     }
   }
@@ -98,7 +102,8 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) =>
   return{
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
-    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
+    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
+    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
   }
 }
 const CanvasComponent_rdx = connect(
@@ -120,7 +125,7 @@ class APP_EDIT_MODE extends React.Component{
   render() {
 
     let MenuSet=[];
-
+    let menu_height="HXA";//auto
     console.log("CanvasComponent render");
     let substate = this.props.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
     switch(substate)
@@ -158,13 +163,20 @@ class APP_EDIT_MODE extends React.Component{
         <div className="s lred vbox">ARC</div>
       ];
       break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:          
+      case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
+      menu_height = "HXF";         
       MenuSet=[
-        <BASE_COM.Button
-          addClass="layout black vbox"
-          text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div className="s lred vbox">EDIT</div>
-      ];
+        <div className="s height6">
+          <BASE_COM.Button
+            addClass="layout black vbox"
+            text="<" onClick={()=>this.props.ACT_Fail()}/>
+          <div className="s lred vbox">EDIT</div>
+        </div>]
+      if(this.props.edit_tar_info!=null)
+        MenuSet.push(
+          <div className="s height6">
+            <div className="s lred vbox">{this.props.edit_tar_info.type}</div>
+          </div>);
       break;
     }
  
@@ -173,9 +185,12 @@ class APP_EDIT_MODE extends React.Component{
     return(
     <div className="HXF">
       <CanvasComponent_rdx addClass="layout width12"/>
-      <div className="layout overlay width2 HXA scroll ">
-        {MenuSet}
-      </div>
+        <$CSSTG transitionName = "fadeIn">
+          <div key={substate} className={"s width2 overlay scroll MenuAnim " + menu_height}>
+            {MenuSet}
+          </div>
+        </$CSSTG>
+      
     </div>
     );
   }
@@ -196,7 +211,8 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
 
 const mapStateToProps_APP_EDIT_MODE = (state) => {
   return { 
-    c_state: state.UIData.c_state
+    c_state: state.UIData.c_state,
+    edit_tar_info:state.UIData.edit_tar_info
   }
 };
 const APP_EDIT_MODE_rdx = connect(
