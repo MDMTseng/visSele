@@ -25,8 +25,20 @@ let StoreX= ReduxStoreSetUp({});
 
 class CanvasComponent extends React.Component {
 
+  ec_canvas_EmitEvent(event){
+    switch(event)
+    { 
+      case UIAct.UI_SM_EVENT._SUCCESS:
+        this.props.ACT_SUCCESS();
+      break;
+      case UIAct.UI_SM_EVENT._FAIL:
+        this.props.ACT_Fail();
+      break; 
+    }
+  }
   componentDidMount() {
     this.ec_canvas=new EC_CANVAS_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
+    this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
   }
   updateCanvas(state) {
     if(this.ec_canvas  !== undefined)
@@ -78,7 +90,20 @@ const mapStateToProps_CanvasComponent = (state) => {
     img: state.UIData.img
   }
 }
-const CanvasComponent_rdx = connect(mapStateToProps_CanvasComponent)(CanvasComponent);
+
+
+
+const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => 
+{ 
+  return{
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._FAIL))},
+    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
+  }
+}
+const CanvasComponent_rdx = connect(
+    mapStateToProps_CanvasComponent,
+    mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
 
 
@@ -160,10 +185,11 @@ class APP_EDIT_MODE extends React.Component{
 const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) => 
 { 
   return{
-    ACT_Line_Add_Mode: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
-    ACT_Arc_Add_Mode: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
+    ACT_Line_Add_Mode: (arg) =>  {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
+    ACT_Arc_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT("EDIT_MODE"+UIAct.UI_SM_EVENT._FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
   }
 }

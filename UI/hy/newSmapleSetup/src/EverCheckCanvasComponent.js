@@ -1,6 +1,6 @@
 //UIControl
 
-import {UI_SM_STATES} from 'REDUX_STORE_SRC/actions/UIAct';
+import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {distance_arc_point,distance_point_point,threePointToArc,distance_line_point} from 'UTIL/MathTools';
@@ -47,6 +47,7 @@ class EverCheckCanvasComponent{
     this.Mouse2SecCanvas= new  DOMMatrix();
 
 
+    this.mouse_close_dist= 10;
     this.camera={
       scale: 1,
       scaleCenter:{x:0,y:0},
@@ -63,6 +64,7 @@ class EverCheckCanvasComponent{
     
     this.EditShape=null;
     this.EditPoint=null;
+    this.EmitEvent=(event)=>{console.log(event);};
   }
 
   SetState(state)
@@ -117,6 +119,9 @@ class EverCheckCanvasComponent{
     console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
     switch(this.state)
     {
+      case UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:
+        
+        if(this.EditPoint!=null)break;
       case UI_SM_STATES.EDIT_MODE_NEUTRAL:
         console.log("this.state:>>>");
         if(this.mouseStatus.status==1)
@@ -130,9 +135,6 @@ class EverCheckCanvasComponent{
 
           this.rotate2d_dxy(this.camera.translate, this.camera.translate, -this.camera.rotate);
         }
-      break;
-      
-      case UI_SM_STATES.EDIT_MODE_LINE_CREATE:
       break;
     }
 
@@ -471,7 +473,7 @@ class EverCheckCanvasComponent{
 
       if(false && typeof this.ReportJSON !=='undefined')
       {
-        var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2,15/this.camera.scale);
+        var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2,this.mouse_close_dist/this.camera.scale);
 
         if(ret.measure!=null)
         {
@@ -573,6 +575,7 @@ class EverCheckCanvasComponent{
         {
           this.EditShape.color="rgba(100,0,100,0.5)";
           this.shapeList.push(this.EditShape);
+          this.EmitEvent(UI_SM_EVENT._SUCCESS);
           
         }
         this.EditShape=null;
@@ -627,7 +630,7 @@ class EverCheckCanvasComponent{
         });
 
         console.log(">>>",minDist);
-        if(this.EditPoint!=null&& minDist<50)
+        if(this.EditPoint!=null&& minDist<this.mouse_close_dist/this.camera.scale)
         {
           
           ctx.lineWidth=3;
