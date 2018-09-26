@@ -7,35 +7,42 @@ import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
+
+let UISTS = UI_SM_STATES;
+let UISEV = UI_SM_EVENT;
 const EditStates = {
-  initial: 'NEUTRAL',
+  initial: UISTS.EDIT_MODE_NEUTRAL,
   states: {
-    NEUTRAL:  {on: {Line_Create: UI_SM_STATES.EDIT_MODE_LINE_CREATE,
-                    Arc_Create:  UI_SM_STATES.EDIT_MODE_ARC_CREATE,
-                    Shape_Edit:  UI_SM_STATES.EDIT_MODE_SHAPE_EDIT
+    [UISTS.EDIT_MODE_NEUTRAL]
+            :  {on: {[UISEV.Line_Create]: UISTS.EDIT_MODE_LINE_CREATE,
+                     [UISEV.Arc_Create]:  UISTS.EDIT_MODE_ARC_CREATE,
+                     [UISEV.Shape_Edit]:  UISTS.EDIT_MODE_SHAPE_EDIT
                     }},
 
-    LINE_CREATE:{on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_SHAPE_EDIT,
-                      EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}},
-    ARC_CREATE: {on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_SHAPE_EDIT,
-                      EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}},
-    SHAPE_EDIT: {on: {EDIT_MODE_SUCCESS: UI_SM_STATES.EDIT_MODE_NEUTRAL,
-                      EDIT_MODE_FAIL:    UI_SM_STATES.EDIT_MODE_NEUTRAL}}
+    [UISTS.EDIT_MODE_LINE_CREATE]
+               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+    [UISTS.EDIT_MODE_ARC_CREATE]
+               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+    [UISTS.EDIT_MODE_SHAPE_EDIT]
+               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
+                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}}
   }
 };
 
 function Default_UICtrlReducer()
 {
   let ST = {
-    initial: UI_SM_STATES.SPLASH,
+    initial: UISTS.SPLASH,
     states: {
-      SPLASH:    { on: { Connected:   UI_SM_STATES.MAIN } },
-      MAIN:      { on: { Edit_Mode:   UI_SM_STATES.EDIT_MODE,
-                         Disonnected: UI_SM_STATES.SPLASH, 
-                         EXIT:        UI_SM_STATES.SPLASH } },
-      EDIT_MODE: Object.assign(
-                 { on: { Disonnected: UI_SM_STATES.SPLASH , 
-                         EXIT:        UI_SM_STATES.MAIN }},
+      [UISTS.SPLASH]:    { on: { [UISEV.Connected]:   UISTS.MAIN } },
+      [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.EDIT_MODE,
+                                 [UISEV.Disonnected]: UISTS.SPLASH, 
+                                 [UISEV.EXIT]:        UISTS.SPLASH } },
+      [UISTS.EDIT_MODE]: Object.assign(
+                 { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
+                         [UISEV.EXIT]:        UISTS.MAIN }},
                  EditStates)
     }
   };
@@ -66,16 +73,16 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   console.log(state.c_state.value," + ",action.type," > ",currentState.value);
   state.c_state=currentState;
 
-  if (action.type === UI_SM_EVENT.Control_SM_Panel) {
+  if (action.type === UISEV.Control_SM_Panel) {
       return Object.assign({},state,{showSM_graph:action.data});
   }
   let obj={};
   switch(state.c_state.value)
   {
-    case UI_SM_STATES.SPLASH:
+    case UISTS.SPLASH:
       obj.showSplash=true;
       return Object.assign({},state,obj);
-    case UI_SM_STATES.MAIN:
+    case UISTS.MAIN:
       obj.showSplash=false;
       return Object.assign({},state,obj);
     
@@ -85,21 +92,21 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
   switch(stateObj.state)
   {
-    case UI_SM_STATES.SPLASH:
+    case UISTS.SPLASH:
       obj.showSplash=true;
       return Object.assign({},state,obj);
-    case UI_SM_STATES.MAIN:
+    case UISTS.MAIN:
       obj.showSplash=false;
       return Object.assign({},state,obj);
-    case UI_SM_STATES.EDIT_MODE:
+    case UISTS.EDIT_MODE:
     {
       obj.showSplash=false;
 
-      if (action.type === UI_SM_EVENT.Inspection_Report) {
+      if (action.type === UISEV.Inspection_Report) {
         obj.report=action.data;
       }
   
-      if (action.type  === UI_SM_EVENT.Image_Update) {
+      if (action.type  === UISEV.Image_Update) {
         obj.img=action.data;
       }
       return Object.assign({},state,obj);

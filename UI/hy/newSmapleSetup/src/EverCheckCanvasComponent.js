@@ -575,7 +575,7 @@ class EverCheckCanvasComponent{
         {
           this.EditShape.color="rgba(100,0,100,0.5)";
           this.shapeList.push(this.EditShape);
-          this.EmitEvent(UI_SM_EVENT._SUCCESS);
+          this.EmitEvent(UI_SM_EVENT.EDIT_MODE_SUCCESS);
           
         }
         this.EditShape=null;

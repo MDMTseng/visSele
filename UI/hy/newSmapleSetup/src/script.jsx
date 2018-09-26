@@ -28,10 +28,10 @@ class CanvasComponent extends React.Component {
   ec_canvas_EmitEvent(event){
     switch(event)
     { 
-      case UIAct.UI_SM_EVENT._SUCCESS:
+      case UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS:
         this.props.ACT_SUCCESS();
       break;
-      case UIAct.UI_SM_EVENT._FAIL:
+      case UIAct.UI_SM_EVENT.EDIT_MODE_FAIL:
         this.props.ACT_Fail();
       break; 
     }
@@ -96,8 +96,8 @@ const mapStateToProps_CanvasComponent = (state) => {
 const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => 
 { 
   return{
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
   }
 }
@@ -188,8 +188,8 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Line_Add_Mode: (arg) =>  {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
     ACT_Arc_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_STATES.EDIT_MODE+UIAct.UI_SM_EVENT._FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
   }
 }

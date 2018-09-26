@@ -23,6 +23,8 @@ export const UI_SM_EVENT = {
   Disonnected:"Disonnected",
   _SUCCESS:"_SUCCESS",
   _FAIL:"_FAIL",
+  EDIT_MODE_SUCCESS:"EDIT_MODE_SUCCESS",
+  EDIT_MODE_FAIL:"EDIT_MODE_FAIL",
   EXIT:"EXIT",
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
