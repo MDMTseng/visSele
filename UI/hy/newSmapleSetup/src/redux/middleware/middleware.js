@@ -6,6 +6,15 @@ export const ActionThrottle = ATData => store => next => action => {
   
   if (ATData.initted === undefined)
   {
+    if (typeof(ATData.time ) != typeof(0))
+    {
+      ATData.time=30;
+    }
+
+    if (typeof(ATData.posEdge ) != typeof(true))
+    {
+      ATData.posEdge=true;
+    }
     ATData.actions=[];
     ATData.initted=true;
     ATData.timeout_obj=null;
@@ -36,7 +45,12 @@ export const ActionThrottle = ATData => store => next => action => {
         ATData.timeout_obj = setTimeout(()=>{
           store.dispatch({ActionThrottle_type:"flush"});
         },ATData.time);
-        return next(action);
+
+        if(ATData.posEdge)
+          return next(action);
+        else
+          ATData.actions.push(action);
+        return;
       }
       else
       {
