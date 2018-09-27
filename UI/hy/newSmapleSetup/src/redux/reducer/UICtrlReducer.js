@@ -121,7 +121,14 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
           newState.img=action.data;
         break;
         case UISEV.EDIT_MODE_Edit_Tar_Update:
-          newState.edit_tar_info=action.data;
+          if(action.data == null)
+          {
+            newState.edit_tar_info=null;
+          }
+          else
+          {
+            newState.edit_tar_info=Object.assign({},action.data);
+          }
         break;
       }
 

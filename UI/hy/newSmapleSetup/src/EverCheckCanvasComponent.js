@@ -63,23 +63,82 @@ class EverCheckCanvasComponent{
     this.shapeList=[];
     
     this.EditShape=null;
+    
+    this.ShapeCount=0;
     this.EditPoint=null;
     this.EmitEvent=(event)=>{console.log(event);};
   }
 
   SetState(state)
   {
-    this.state=state;
-    this.EditShape=null;
-    this.EditPoint=null;
-    this.near_select_obj=null;
+    if(this.state!=state)
+    {
+      this.state=state;
+      this.EditShape=null;
+      this.EditPoint=null;
+      this.near_select_obj=null;
+    }
   }
   SetReport( report )
   {
 
     if(report == this.ReportJSON)return;
     this.ReportJSON = report;
-    this.draw();
+    //this.draw();
+  }
+  
+  FindShapeIdx( id )
+  {
+    if(id>=0)
+    {
+      for(let i=0;i<this.shapeList.length;i++)
+      {
+        if(this.shapeList[i].id == id)
+        {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+  SetShape( shape_obj, id=-1 )
+  {
+    console.log("SETShape>",this.shapeList,shape_obj,id);
+    //shape_obj.color="rgba(100,0,100,0.5)";
+    let shape = null;
+    let targetIdx=-1;
+    if(id>=0)
+    {
+      let tmpIdx = this.FindShapeIdx( id );
+      console.log("SETShape>",tmpIdx);
+      if(tmpIdx>=0)
+      {
+        shape = this.shapeList[tmpIdx];
+        targetIdx = tmpIdx;
+      }
+    }
+    else{
+      this.ShapeCount++;
+      id = this.ShapeCount;
+    }
+
+    console.log("SETShape>",shape);
+    if(shape == null)
+    {
+      shape = Object.assign({id:id},shape_obj);
+      this.shapeList.push(shape);
+    }
+    else
+    {
+      shape = Object.assign({id:id},shape_obj);
+      if(targetIdx!=-1)
+      {
+        this.shapeList[targetIdx] = shape;
+      }
+    }
+    
+    return shape;
+
   }
   SetImg( img )
   {
@@ -410,7 +469,7 @@ class EverCheckCanvasComponent{
     mat.c=0;
     mat.d=1;
     mat.e=0;
-    mat.f=1;
+    mat.f=0;
   }
 
 
@@ -518,7 +577,7 @@ class EverCheckCanvasComponent{
 
 
 
-
+    
     if(this.mouseStatus.status==1)
     {
       let pmPos = {x:this.mouseStatus.px,y:this.mouseStatus.py};
@@ -569,11 +628,9 @@ class EverCheckCanvasComponent{
           this.EditPoint.x = mouseOnCanvas2.x;
           this.EditPoint.y = mouseOnCanvas2.y;
 
-          if(this.mouseStatus.pstatus==0 && this.EditShape!=null)
-          {
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
-          }
         }
+        console.log(">>>>>>>>>>",this.EditShape);
+        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
       }
     }
     else
@@ -583,7 +640,8 @@ class EverCheckCanvasComponent{
         if(this.EditShape!=null)
         {
           this.EditShape.color="rgba(100,0,100,0.5)";
-          this.shapeList.push(this.EditShape);
+          this.SetShape( this.EditShape);
+          
           this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
           
         }
@@ -647,7 +705,6 @@ class EverCheckCanvasComponent{
           }
         });
 
-        //console.log(">>>",minDist);
         if(this.EditPoint!=null&& minDist<this.mouse_close_dist/this.camera.scale)
         {
           

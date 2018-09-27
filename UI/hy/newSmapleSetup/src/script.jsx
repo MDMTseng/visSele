@@ -24,6 +24,10 @@ let StoreX= ReduxStoreSetUp({});
 
 
 class CanvasComponent extends React.Component {
+  constructor(props) {
+    super(props);
+
+  }
 
   ec_canvas_EmitEvent(event){
     switch(event.type)
@@ -43,6 +47,7 @@ class CanvasComponent extends React.Component {
   componentDidMount() {
     this.ec_canvas=new EC_CANVAS_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
+    this.props.onCanvasInit(this.ec_canvas);
   }
   updateCanvas(state) {
     if(this.ec_canvas  !== undefined)
@@ -50,7 +55,7 @@ class CanvasComponent extends React.Component {
       this.ec_canvas.SetReport(this.props.report);
       this.ec_canvas.SetImg(this.props.img);
       this.ec_canvas.SetState(state);
-      this.ec_canvas.draw();
+      //this.ec_canvas.draw();
     }
   }
 
@@ -59,11 +64,13 @@ class CanvasComponent extends React.Component {
     {
       this.ec_canvas.resize(width,height);
       this.updateCanvas();
+      this.ec_canvas.draw();
     }
   }
-  render() {
+  componentWillUpdate(nextProps, nextState) {
+    
     console.log("CanvasComponent render");
-    let substate = this.props.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
+    let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
     console.log("substate:"+substate);
     this.updateCanvas(substate);
     switch(substate)
@@ -75,6 +82,10 @@ class CanvasComponent extends React.Component {
       case UIAct.UI_SM_STATES.EDIT_MODE_ARC_CREATE:
       break;
     }
+    
+  }
+
+  render() {
  
     return (
       <div className={this.props.addClass+" HXF"}>
@@ -112,6 +123,74 @@ const CanvasComponent_rdx = connect(
 
 
 
+class JsonEditBlock extends React.Component{
+  
+
+  constructor(props) {
+      super(props);
+      this.states={
+
+      };
+  }
+
+  shouldComponentUpdate(nextProps, nextState) {
+    return true;
+  }
+
+  composeObject(obj,whiteListKey=null)
+  {
+    var rows = [];
+    for (var key in obj) {
+        let ele = obj[key];
+
+        if(whiteListKey!=null && (whiteListKey.indexOf(key) == -1))continue;
+        console.log(key,ele,typeof ele);
+        switch(typeof ele)
+        {
+          case "string":
+            rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<div className="s HX1 width9 vbox lblue">{(ele)}</div>);
+          break;
+          case "number":
+            rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<div className="s HX1 width9 vbox lblue">{(ele).toFixed(4)}</div>);
+          break;
+          case "object":
+            rows.push(<div className="s HX0_1 WXF  vbox"></div>);
+            rows.push(<div className="s HX1 WXF vbox black">{key}</div>);
+            rows.push(<div className="s HX1 width1"></div>);
+            rows.push(<div className="s HXA width11">{this.composeObject(ele,whiteListKey)}</div>);
+            rows.push(<div className="s HX0_1 WXF  vbox"></div>);
+          break;
+          default:
+            rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<div className="s HX1 width9 vbox lblue">Not supported</div>);
+          break;
+        }
+    }
+    return rows
+  }
+
+  render() {
+    var rows = this.composeObject(this.props.object,this.props.whiteListKey);
+    /*for (var i = 0; i < numrows; i++) {
+        rows.push(
+          
+      <div className="s width4 lred vbox black">Margin</div>,
+      <input className="width8 s vbox blackText" type="number" value={this.props.line.margin} 
+        onChange={(evt)=>{ this.textInputUpdate(evt,shape,"margin")}} />
+
+        );
+    }*/
+
+    return(
+    <div className="WXF HXA">
+      {rows}
+    </div>
+    );
+  }
+}
+
 class APP_EDIT_MODE extends React.Component{
 
 
@@ -121,7 +200,21 @@ class APP_EDIT_MODE extends React.Component{
   }
   constructor(props) {
       super(props);
+      this.ec_canvas = null;
   }
+
+  shouldComponentUpdate(nextProps, nextState) {
+    return true;
+  }
+
+  textInputUpdate(evt,shape,key){
+    console.log(evt.target.value,shape);
+    shape[key]=Number(evt.target.value);
+    
+    this.ec_canvas.SetShape( shape, shape.id);
+    //this.setState(this.state);
+  }
+
   render() {
 
     let MenuSet=[];
@@ -166,23 +259,47 @@ class APP_EDIT_MODE extends React.Component{
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
       menu_height = "HXF";         
       MenuSet=[
-        <div className="s height6">
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          text="<" onClick={()=>this.props.ACT_Fail()}/>,
+          
+        <div className="s lblue vbox">EDIT</div>,
+        <div className="s HX0_1"></div>
+      ]
+      if(this.props.edit_tar_info!=null)
+        MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} whiteListKey={["pt1","pt2","pt3","x","y","margin"]}/>);
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT+"K": 
+      menu_height = "HXF";         
+      MenuSet=[
           <BASE_COM.Button
             addClass="layout black vbox"
-            text="<" onClick={()=>this.props.ACT_Fail()}/>
-          <div className="s lred vbox">EDIT</div>
-        </div>]
+            text="<" onClick={()=>this.props.ACT_Fail()}/>,
+            
+          <div className="s lblue vbox">EDIT</div>,
+          <div className="s HX0_1"></div>
+        ]
       if(this.props.edit_tar_info!=null)
       {
         let shape = this.props.edit_tar_info;
+        console.log(shape);
         MenuSet.push(
           <div className="s height6">
-            <div className="s lred vbox">{shape.type}</div>
+            <div className="s lblue vbox">{shape.type.toUpperCase()}</div>
             {
               (shape.type=="line")?
-                <div className="s lred vbox">{shape.pt1.x}</div>
+              [
+
+                <div className="s width4 lred vbox black">Margin</div>,
+                <input className="width8 s vbox blackText" type="number" value={shape.margin} 
+                  onChange={(evt)=>{ this.textInputUpdate(evt,shape,"margin")}} />
+              ]
               :
-              {}
+              [
+                <div className="s width4 lred vbox black">Margin</div>,
+                <input className="width8 s vbox blackText" type="number" value={shape.margin} 
+                  onChange={(evt)=>{ this.textInputUpdate(evt,shape,"margin")}} />
+              ]
             }
           </div>);
       }
@@ -193,7 +310,7 @@ class APP_EDIT_MODE extends React.Component{
     console.log("APP_EDIT_MODE render");
     return(
     <div className="HXF">
-      <CanvasComponent_rdx addClass="layout width12"/>
+      <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
         <$CSSTG transitionName = "fadeIn">
           <div key={substate} className={"s width2 overlay scroll MenuAnim " + menu_height}>
             {MenuSet}
@@ -273,7 +390,6 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   }
 }
 const mapStateToProps_APPMain = (state) => {
-  console.log("mapStateToProps",state);
   return { 
     c_state: state.UIData.c_state
   }
@@ -332,7 +448,6 @@ const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
   }
 }
 const mapStateToProps_APPMasterX = (state) => {
-  console.log("mapStateToProps",state);
   return {
     showSplash: state.UIData.showSplash,
     showSM_graph: state.UIData.showSM_graph,
