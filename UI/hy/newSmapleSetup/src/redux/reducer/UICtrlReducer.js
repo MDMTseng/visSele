@@ -66,16 +66,15 @@ function Default_UICtrlReducer()
 }
 
 
-let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
+function StateReducer(newState,action)
+{
 
-  
-  if(action.type === undefined || action.type.includes("@@redux/"))return state;
-  console.log(state.c_state,">>",action.type);
-  let currentState = state.sm.transition(state.c_state, action.type);
-  console.log(state.c_state.value," + ",action.type," > ",currentState.value);
-  state.c_state=currentState;
 
-  let newState = Object.assign({},state);
+  console.log(newState.c_state,">>",action.type);
+  let currentState = newState.sm.transition(newState.c_state, action.type);
+  console.log(newState.c_state.value," + ",action.type," > ",currentState.value);
+  newState.c_state=currentState;
+
   newState.BROADCAST_INFO = null;
   
   if (action.type === UISEV.Control_SM_Panel) {
@@ -88,7 +87,7 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
     return newState;
 
   }
-  switch(state.c_state.value)
+  switch(newState.c_state.value)
   {
     case UISTS.SPLASH:
       newState.showSplash=true;
@@ -99,7 +98,7 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
     
   }
 
-  let stateObj = xstate_GetCurrentMainState(state.c_state);
+  let stateObj = xstate_GetCurrentMainState(newState.c_state);
 
   switch(stateObj.state)
   {
@@ -134,6 +133,30 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
       return newState;
     }
+  }
+  return newState;
+}
+
+
+let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
+
+  
+  if(action.type === undefined || action.type.includes("@@redux/"))return state;
+
+  let newState = Object.assign({},state);
+
+  if(action.type==="ATBundle")
+  {
+    for( let i=0 ;i<action.data.length;i++)
+    {
+      
+      newState = StateReducer(newState,action.data[i]);
+    }
+    return newState;
+  }
+  else
+  {
+    return StateReducer(newState,action);
   }
 
   return newState;

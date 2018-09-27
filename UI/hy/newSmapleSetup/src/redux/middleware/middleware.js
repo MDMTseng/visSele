@@ -1,6 +1,56 @@
 
 import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
 
+export const ActionThrottle = ATData => store => next => action => {
+  console.log("ActionThrottle", ATData);
+  
+  if (ATData.initted === undefined)
+  {
+    ATData.actions=[];
+    ATData.initted=true;
+    ATData.timeout_obj=null;
+  }
+
+  switch(action.ActionThrottle_type)
+  {
+    case "express":
+    return next(action);
+
+    case "flush":
+    {
+      console.log("Trigger.....");
+      clearTimeout(ATData.timeout_obj);
+      ATData.timeout_obj=null;
+      if(ATData.actions.length==0)return;
+      let actions = ATData.actions;
+      ATData.actions=[];
+      return next({
+        type:"ATBundle",
+        data:actions
+      });
+    }
+    break;
+    default:
+      if(ATData.timeout_obj == null)
+      {
+        ATData.timeout_obj = setTimeout(()=>{
+          store.dispatch({ActionThrottle_type:"flush"});
+        },ATData.time);
+        return next(action);
+      }
+      else
+      {
+        ATData.actions.push(action);
+      }
+    return;
+    
+  }
+
+
+  return next(action);
+  
+};
+
 
 export const logger = (store) => (next) => (action) =>{
   //console.log("action fired", action);
