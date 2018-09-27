@@ -173,10 +173,19 @@ class APP_EDIT_MODE extends React.Component{
           <div className="s lred vbox">EDIT</div>
         </div>]
       if(this.props.edit_tar_info!=null)
+      {
+        let shape = this.props.edit_tar_info;
         MenuSet.push(
           <div className="s height6">
-            <div className="s lred vbox">{this.props.edit_tar_info.type}</div>
+            <div className="s lred vbox">{shape.type}</div>
+            {
+              (shape.type=="line")?
+                <div className="s lred vbox">{shape.pt1.x}</div>
+              :
+              {}
+            }
           </div>);
+      }
       break;
     }
  
