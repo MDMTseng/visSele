@@ -105,10 +105,28 @@ class EverCheckCanvasComponent{
   }
   SetShape( shape_obj, id=-1 )
   {
+    let shape = null;
+
+    if(shape_obj == null)
+    {
+      if( id>=0)
+      {
+        let tmpIdx = this.FindShapeIdx( id );
+        console.log("SETShape>",tmpIdx);
+        if(tmpIdx>=0)
+        {
+          shape = this.shapeList[tmpIdx];
+          this.shapeList.splice(tmpIdx, 1);
+        }
+      }
+      if(this.EditShape.id == id)
+        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:{}});
+      return shape;
+    }
+
     console.log("SETShape>",this.shapeList,shape_obj,id);
           
     //shape_obj.color="rgba(100,0,100,0.5)";
-    let shape = null;
     let targetIdx=-1;
     if(id>=0)
     {
@@ -159,7 +177,7 @@ class EverCheckCanvasComponent{
 
   onmouseswheel(evt)
   {
-    console.log("onmouseswheel",evt);
+    //console.log("onmouseswheel",evt);
     let deltaY = evt.deltaY/4;
     if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
     if(deltaY<-50)deltaY=-1;
@@ -334,7 +352,7 @@ class EverCheckCanvasComponent{
   {
     eObjects.forEach((eObject)=>{
       if(eObject==null)return;
-      if(eObject == this.EditShape)
+      if(this.EditShape!=null && eObject.id == this.EditShape.id)
       {
         ctx.strokeStyle=this.EditShape_color; 
       }
@@ -718,7 +736,6 @@ class EverCheckCanvasComponent{
           {
             this.EditPoint.x = mouseOnCanvas2.x;
             this.EditPoint.y = mouseOnCanvas2.y;
-  
           }
           this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
         }

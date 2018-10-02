@@ -130,14 +130,14 @@ class JsonElement extends React.Component{
     switch(this.props.type)
     {
       case "input-number":
-        return <input className={this.props.className} type="number" value={this.props.children}  
+        return <input key={this.props.id} className={this.props.className} type="number" value={this.props.children}  
           onChange={(evt)=>this.props.onChange(evt,this.props.target)}/>
       case "input":
-        return <input className={this.props.className} value={this.props.children}  
+        return <input key={this.props.id} className={this.props.className} value={this.props.children}  
           onChange={(evt)=>this.props.onChange(evt,this.props.target)}/>
       case "div":
       default:
-        return <div className={this.props.className} >{this.props.children}</div>
+        return <div key={this.props.id} className={this.props.className} >{this.props.children}</div>
       
     }
   }
@@ -164,7 +164,7 @@ class JsonEditBlock extends React.Component{
     return true;
   }
 
-  composeObject(obj,whiteListKey=null)
+  composeObject(obj,whiteListKey=null,idHeader="")
   {
     var rows = [];
     for (var key in obj) {
@@ -175,28 +175,30 @@ class JsonEditBlock extends React.Component{
         switch(typeof ele)
         {
           case "string":
-            rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement className="s HX1 width9 vbox blackText" type={whiteListKey[key]}
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={whiteListKey[key]}
               target={{obj:obj,key:key}} 
               onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
             
           break;
           case "number":
-            rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement className="s HX1 width9 vbox blackText" type={whiteListKey[key]} 
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={whiteListKey[key]} 
               target={{obj:obj,key:key}}  
               onChange={this.onChangeX.bind(this)}>{(ele).toFixed(4)}</JsonElement>);
           break;
           case "object":
-            rows.push(<div className="s HX0_1 WXF  vbox"></div>);
-            rows.push(<div className="s HX1 WXF vbox black">{key}</div>);
-            rows.push(<div className="s HX1 width1"></div>);
-            rows.push(<div className="s HXA width11">{this.composeObject(ele,whiteListKey[key])}</div>);
-            rows.push(<div className="s HX0_1 WXF  vbox"></div>);
+            rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 WXF vbox black">{key}</div>);
+            rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
+            rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
+              this.composeObject(ele,whiteListKey[key],idHeader+"_"+key)
+            }</div>);
+            rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
           break;
           default:
-            rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<div className="s HX1 width9 vbox lblue">Not supported</div>);
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<div key={idHeader+"_"+key+"_XXX"} className="s HX1 width9 vbox lblue">Not supported</div>);
           break;
         }
     }
@@ -242,16 +244,20 @@ class APP_EDIT_MODE extends React.Component{
       case UIAct.UI_SM_STATES.EDIT_MODE_NEUTRAL:
       MenuSet=[
           <BASE_COM.Button
+          key="<"
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_EXIT()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
+            key="LINE"
             text="LINE" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
+            key="ARC"
             text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
+            key="EDIT"
             text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
         ];
       break;
@@ -259,8 +265,8 @@ class APP_EDIT_MODE extends React.Component{
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox"
-          text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div className="s lred vbox">LINE</div>,
+          key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div key="LINE" className="s lred vbox">LINE</div>,
       ];
       
       break;
@@ -268,19 +274,21 @@ class APP_EDIT_MODE extends React.Component{
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox"
+          key="<"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div className="s lred vbox">ARC</div>
+        <div key="ARC" className="s lred vbox">ARC</div>
       ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
       menu_height = "HXF";         
       MenuSet=[
         <BASE_COM.Button
+          key="<"
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
           
-        <div className="s lblue vbox">EDIT</div>,
-        <div className="s HX0_1"></div>
+        <div key="EDIT_Text" className="s lblue vbox">EDIT</div>,
+        <div key="HLINE" className="s HX0_1"></div>
       ]
       
       if(this.props.edit_tar_info!=null)
@@ -292,6 +300,7 @@ class APP_EDIT_MODE extends React.Component{
           this.ec_canvas.SetShape( updated_obj, updated_obj.id);
         }
         MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
+          key="JsonEditBlock"
           jsonChange={on_Tar_Change.bind(this)}
           whiteListKey={{
             margin:"input-number",
@@ -301,6 +310,19 @@ class APP_EDIT_MODE extends React.Component{
               y:"div",
             }*/
           }}/>);
+
+        let on_DEL_Tar=(id)=>
+        {
+          this.ec_canvas.SetShape( null, id);
+        }
+        if(this.props.edit_tar_info.id !== undefined)
+        {
+          MenuSet.push(<BASE_COM.Button
+            key="DEL_BTN"
+            addClass="layout red vbox"
+            text="DEL" onClick={()=>on_DEL_Tar(this.props.edit_tar_info.id)}/>);
+        }
+        
       }
       break;
     }
