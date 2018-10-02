@@ -123,17 +123,44 @@ const CanvasComponent_rdx = connect(
 
 
 
+class JsonElement extends React.Component{
+
+  render()
+  {
+    switch(this.props.type)
+    {
+      case "input-number":
+        return <input className={this.props.className} type="number" value={this.props.children}  
+          onChange={(evt)=>this.props.onChange(evt,this.props.target)}/>
+      case "input":
+        return <input className={this.props.className} value={this.props.children}  
+          onChange={(evt)=>this.props.onChange(evt,this.props.target)}/>
+      case "div":
+      default:
+        return <div className={this.props.className} >{this.props.children}</div>
+      
+    }
+  }
+}
+
 class JsonEditBlock extends React.Component{
   
 
   constructor(props) {
       super(props);
-      this.states={
-
+      this.tmp={
+        object:{}
       };
   }
 
+  onChangeX(evt,target) {
+    console.log(evt.target,target);
+    target.obj[target.key]=evt.target.value;
+    this.props.jsonChange(this.tmp.object);
+    return true;
+  }
   shouldComponentUpdate(nextProps, nextState) {
+    this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
     return true;
   }
 
@@ -143,23 +170,28 @@ class JsonEditBlock extends React.Component{
     for (var key in obj) {
         let ele = obj[key];
 
-        if(whiteListKey!=null && (whiteListKey.indexOf(key) == -1))continue;
+        if(whiteListKey!=null && (whiteListKey[key] === undefined))continue;
         console.log(key,ele,typeof ele);
         switch(typeof ele)
         {
           case "string":
             rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<div className="s HX1 width9 vbox lblue">{(ele)}</div>);
+            rows.push(<JsonElement className="s HX1 width9 vbox blackText" type={whiteListKey[key]}
+              target={{obj:obj,key:key}} 
+              onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
+            
           break;
           case "number":
             rows.push(<div className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<div className="s HX1 width9 vbox lblue">{(ele).toFixed(4)}</div>);
+            rows.push(<JsonElement className="s HX1 width9 vbox blackText" type={whiteListKey[key]} 
+              target={{obj:obj,key:key}}  
+              onChange={this.onChangeX.bind(this)}>{(ele).toFixed(4)}</JsonElement>);
           break;
           case "object":
             rows.push(<div className="s HX0_1 WXF  vbox"></div>);
             rows.push(<div className="s HX1 WXF vbox black">{key}</div>);
             rows.push(<div className="s HX1 width1"></div>);
-            rows.push(<div className="s HXA width11">{this.composeObject(ele,whiteListKey)}</div>);
+            rows.push(<div className="s HXA width11">{this.composeObject(ele,whiteListKey[key])}</div>);
             rows.push(<div className="s HX0_1 WXF  vbox"></div>);
           break;
           default:
@@ -172,17 +204,9 @@ class JsonEditBlock extends React.Component{
   }
 
   render() {
-    var rows = this.composeObject(this.props.object,this.props.whiteListKey);
-    /*for (var i = 0; i < numrows; i++) {
-        rows.push(
-          
-      <div className="s width4 lred vbox black">Margin</div>,
-      <input className="width8 s vbox blackText" type="number" value={this.props.line.margin} 
-        onChange={(evt)=>{ this.textInputUpdate(evt,shape,"margin")}} />
-
-        );
-    }*/
-
+    this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
+    console.log("this.props.object:",this.props.object,this.tmp.object);
+    var rows = this.composeObject(this.tmp.object,this.props.whiteListKey);
     return(
     <div className="WXF HXA">
       {rows}
@@ -199,20 +223,12 @@ class APP_EDIT_MODE extends React.Component{
     bpg_ws.send("TG");
   }
   constructor(props) {
-      super(props);
-      this.ec_canvas = null;
+    super(props);
+    this.ec_canvas = null;
   }
 
   shouldComponentUpdate(nextProps, nextState) {
     return true;
-  }
-
-  textInputUpdate(evt,shape,key){
-    console.log(evt.target.value,shape);
-    shape[key]=Number(evt.target.value);
-    
-    this.ec_canvas.SetShape( shape, shape.id);
-    //this.setState(this.state);
   }
 
   render() {
@@ -266,42 +282,25 @@ class APP_EDIT_MODE extends React.Component{
         <div className="s lblue vbox">EDIT</div>,
         <div className="s HX0_1"></div>
       ]
-      if(this.props.edit_tar_info!=null)
-        MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} whiteListKey={["pt1","pt2","pt3","x","y","margin"]}/>);
-      break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT+"K": 
-      menu_height = "HXF";         
-      MenuSet=[
-          <BASE_COM.Button
-            addClass="layout black vbox"
-            text="<" onClick={()=>this.props.ACT_Fail()}/>,
-            
-          <div className="s lblue vbox">EDIT</div>,
-          <div className="s HX0_1"></div>
-        ]
+      
       if(this.props.edit_tar_info!=null)
       {
-        let shape = this.props.edit_tar_info;
-        console.log(shape);
-        MenuSet.push(
-          <div className="s height6">
-            <div className="s lblue vbox">{shape.type.toUpperCase()}</div>
-            {
-              (shape.type=="line")?
-              [
-
-                <div className="s width4 lred vbox black">Margin</div>,
-                <input className="width8 s vbox blackText" type="number" value={shape.margin} 
-                  onChange={(evt)=>{ this.textInputUpdate(evt,shape,"margin")}} />
-              ]
-              :
-              [
-                <div className="s width4 lred vbox black">Margin</div>,
-                <input className="width8 s vbox blackText" type="number" value={shape.margin} 
-                  onChange={(evt)=>{ this.textInputUpdate(evt,shape,"margin")}} />
-              ]
-            }
-          </div>);
+        let on_Tar_Change=(updated_obj)=>
+        {
+          console.log(updated_obj);
+          
+          this.ec_canvas.SetShape( updated_obj, updated_obj.id);
+        }
+        MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
+          jsonChange={on_Tar_Change.bind(this)}
+          whiteListKey={{
+            margin:"input-number",
+            id:"div",
+            /*pt1:{
+              x:"div",
+              y:"div",
+            }*/
+          }}/>);
       }
       break;
     }

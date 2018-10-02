@@ -63,9 +63,11 @@ class EverCheckCanvasComponent{
     this.shapeList=[];
     
     this.EditShape=null;
+    this.EditShape_color="rgba(255,0,0,0.7)";
     
     this.ShapeCount=0;
     this.EditPoint=null;
+    
     this.EmitEvent=(event)=>{console.log(event);};
   }
 
@@ -104,6 +106,7 @@ class EverCheckCanvasComponent{
   SetShape( shape_obj, id=-1 )
   {
     console.log("SETShape>",this.shapeList,shape_obj,id);
+          
     //shape_obj.color="rgba(100,0,100,0.5)";
     let shape = null;
     let targetIdx=-1;
@@ -137,6 +140,8 @@ class EverCheckCanvasComponent{
       }
     }
     
+    if(this.EditShape.id == id)
+      this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:shape});
     return shape;
 
   }
@@ -329,14 +334,20 @@ class EverCheckCanvasComponent{
   {
     eObjects.forEach((eObject)=>{
       if(eObject==null)return;
+      if(eObject == this.EditShape)
+      {
+        ctx.strokeStyle=this.EditShape_color; 
+      }
+      else
+      {
+        ctx.strokeStyle=eObject.color; 
+      }
       switch(eObject.type)
       {
         case 'line':
 
 
-        
-        ctx.strokeStyle=eObject.color; 
-        ctx.lineWidth=eObject.margin*2;;
+        ctx.lineWidth=eObject.margin*2;
         this.drawReportLine(ctx, {
           x0:eObject.pt1.x,y0:eObject.pt1.y,
           x1:eObject.pt2.x,y1:eObject.pt2.y,
@@ -351,7 +362,7 @@ class EverCheckCanvasComponent{
         
         case 'arc':
         
-          ctx.strokeStyle=eObject.color; 
+          //ctx.strokeStyle=eObject.color; 
           let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
           ctx.lineWidth=eObject.margin*2; 
           this.drawReportArc(ctx, arc);
@@ -623,14 +634,94 @@ class EverCheckCanvasComponent{
       }      
       else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
       {
-        if(this.EditPoint!=null)
+        if(this.mouseStatus.pstatus==0)
         {
-          this.EditPoint.x = mouseOnCanvas2.x;
-          this.EditPoint.y = mouseOnCanvas2.y;
-
+          console.log(">>>>>>>>>>",this.EditShape);
+          this.EditPoint=null;
+          let EditShape_tmp=null;
+          let minDist=Number.POSITIVE_INFINITY;
+  
+          this.shapeList.forEach((shape)=>{
+            let tmpDist;
+            switch(shape.type)
+            {
+              case "line":
+              tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
+              if(minDist>tmpDist)
+              {
+  
+                EditShape_tmp=shape;
+                minDist = tmpDist;
+                this.EditPoint = shape.pt1;
+              }
+              tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
+              if(minDist>tmpDist)
+              {
+                EditShape_tmp=shape;
+                minDist = tmpDist;
+                this.EditPoint = shape.pt2;
+              }
+              break;
+              
+              case "arc":
+              
+              tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
+              if(minDist>tmpDist)
+              {
+  
+                EditShape_tmp=shape;
+                minDist = tmpDist;
+                this.EditPoint = shape.pt1;
+              }
+              tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
+              if(minDist>tmpDist)
+              {
+  
+                EditShape_tmp=shape;
+                minDist = tmpDist;
+                this.EditPoint = shape.pt2;
+              }
+              tmpDist = distance_point_point(shape.pt3,mouseOnCanvas2);
+              if(minDist>tmpDist)
+              {
+                EditShape_tmp=shape;
+                minDist = tmpDist;
+                this.EditPoint = shape.pt3;
+              }
+              break;
+            }
+          });
+  
+          if(this.EditPoint!=null&& minDist<this.mouse_close_dist/this.camera.scale)
+          {
+            
+            ctx.lineWidth=3;
+            ctx.strokeStyle="green";  
+            this.drawpoint(ctx, this.EditPoint);
+          }
+          else
+          {
+            this.EditPoint=null;
+  
+            EditShape_tmp=null;
+          }
+          
+          if(this.EditShape!=EditShape_tmp)
+          {
+            this.EditShape=EditShape_tmp;
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+          }
         }
-        console.log(">>>>>>>>>>",this.EditShape);
-        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+        else
+        {
+          if(this.EditPoint!=null)
+          {
+            this.EditPoint.x = mouseOnCanvas2.x;
+            this.EditPoint.y = mouseOnCanvas2.y;
+  
+          }
+          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+        }
       }
     }
     else
@@ -649,73 +740,7 @@ class EverCheckCanvasComponent{
       }
       else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
       {
-        this.EditPoint=null;
 
-        this.EditShape=null;
-        let minDist=1000;
-
-        this.shapeList.forEach((shape)=>{
-          let tmpDist;
-          switch(shape.type)
-          {
-            case "line":
-            tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
-            if(minDist>tmpDist)
-            {
-
-              this.EditShape=shape;
-              minDist = tmpDist;
-              this.EditPoint = shape.pt1;
-            }
-            tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
-            if(minDist>tmpDist)
-            {
-              this.EditShape=shape;
-              minDist = tmpDist;
-              this.EditPoint = shape.pt2;
-            }
-            break;
-            
-            case "arc":
-            
-            tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
-            if(minDist>tmpDist)
-            {
-
-              this.EditShape=shape;
-              minDist = tmpDist;
-              this.EditPoint = shape.pt1;
-            }
-            tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
-            if(minDist>tmpDist)
-            {
-
-              this.EditShape=shape;
-              minDist = tmpDist;
-              this.EditPoint = shape.pt2;
-            }
-            tmpDist = distance_point_point(shape.pt3,mouseOnCanvas2);
-            if(minDist>tmpDist)
-            {
-              this.EditShape=shape;
-              minDist = tmpDist;
-              this.EditPoint = shape.pt3;
-            }
-            break;
-          }
-        });
-
-        if(this.EditPoint!=null&& minDist<this.mouse_close_dist/this.camera.scale)
-        {
-          
-          ctx.lineWidth=3;
-          ctx.strokeStyle="green";  
-          this.drawpoint(ctx, this.EditPoint);
-        }
-        else
-        {
-          this.EditPoint=null;
-        }
       }
       
       
