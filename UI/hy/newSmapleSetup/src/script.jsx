@@ -39,12 +39,16 @@ class CanvasComponent extends React.Component {
         this.props.ACT_Fail();
       break; 
       case UIAct.UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update:
-        console.log(event);
+        //console.log(event);
         this.props.ACT_EDIT_TAR_UPDATE(event.data);
       break; 
       case UIAct.UI_SM_EVENT.EDIT_MODE_Shape_List_Update:
         console.log(event);
         this.props.ACT_EDIT_SHAPELIST_UPDATE(event.data);
+      break; 
+      case UIAct.UI_SM_EVENT.EDIT_MODE_Shape_Set:
+        console.log(event);
+        this.props.ACT_EDIT_SHAPE_SET(event.data);
       break; 
     }
   }
@@ -76,6 +80,9 @@ class CanvasComponent extends React.Component {
     console.log("CanvasComponent render");
     let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
     console.log("substate:"+substate);
+    console.log(this.props.edit_info.list);
+    
+    this.ec_canvas.SetShapeList(this.props.edit_info.list);
     this.updateCanvas(substate);
     switch(substate)
     {
@@ -106,7 +113,9 @@ const mapStateToProps_CanvasComponent = (state) => {
   return {
     c_state: state.UIData.c_state,
     report: state.UIData.report,
-    img: state.UIData.img
+    img: state.UIData.img,
+    edit_info: state.UIData.edit_info,
+
   }
 }
 
@@ -119,7 +128,8 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) =>
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
-    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_List_Update(shapeList))}
+    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_List_Update(shapeList))},
+    ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_Set(shape_data))},
   }
 }
 const CanvasComponent_rdx = connect(
@@ -212,7 +222,7 @@ class JsonEditBlock extends React.Component{
 
   render() {
     this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
-    console.log("this.props.object:",this.props.object,this.tmp.object);
+   //console.log("this.props.object:",this.props.object,this.tmp.object);
     var rows = this.composeObject(this.tmp.object,this.props.whiteListKey);
     return(
     <div className="WXF HXA">
@@ -364,7 +374,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
 const mapStateToProps_APP_EDIT_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
-    edit_tar_info:state.UIData.edit_info.edit_tar_info
+    edit_tar_info:state.UIData.edit_info.edit_tar_info,
   }
 };
 const APP_EDIT_MODE_rdx = connect(

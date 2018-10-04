@@ -39,6 +39,8 @@ export const UI_SM_EVENT = {
   BROADCAST:"BROADCAST",
   EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
+  EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
+  EDIT_MODE_Mouse_Update:"EDIT_MODE_Mouse_Update",
 };
 
 export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
@@ -47,11 +49,24 @@ export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
     type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data: targetObj
   }
 }
+export function EV_UI_EDIT_MODE_Mouse_Update(mouseInfo)
+{
+  return {
+    type: UI_SM_EVENT.EDIT_MODE_Mouse_Update,data: mouseInfo
+  }
+}
 
 export function EV_UI_EDIT_MODE_Shape_List_Update(shapeList)
 {
   return {
     type: UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data: shapeList
+  }
+}
+
+export function EV_UI_EDIT_MODE_Shape_Set(shape_data)
+{
+  return {
+    type: UI_SM_EVENT.EDIT_MODE_Shape_Set,data: {shape:shape_data.shape,id:shape_data.id}
   }
 }
 

@@ -2,7 +2,7 @@
 import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
 
 export const ActionThrottle = ATData => store => next => action => {
-  console.log("ActionThrottle", ATData);
+  //console.log("ActionThrottle", ATData);
   
   if (ATData.initted === undefined)
   {

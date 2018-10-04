@@ -27,6 +27,7 @@ class EverCheckCanvasComponent{
     this.canvas.onmousedown=this.onmousedown.bind(this);
 
     this.canvas.onmouseup=this.onmouseup.bind(this);
+    this.canvas.onmouseout=this.onmouseout.bind(this);
 
     this.canvas.addEventListener('wheel',function(event){
       this.onmouseswheel(event);
@@ -103,72 +104,23 @@ class EverCheckCanvasComponent{
     }
     return -1;
   }
+
   SetShape( shape_obj, id=-1 )
   {
-    let shape = null;
-
-    if(shape_obj == null)//For delete
-    {
-      if( id>=0)
-      {
-        let tmpIdx = this.FindShapeIdx( id );
-        console.log("SETShape>",tmpIdx);
-        if(tmpIdx>=0)
-        {
-          shape = this.shapeList[tmpIdx];
-          this.shapeList.splice(tmpIdx, 1);
-          
-          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data:this.shapeList});
-        }
-      }
-      if(this.EditShape.id == id)
-        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:{}});
-      return shape;
-    }
-
-    console.log("SETShape>",this.shapeList,shape_obj,id);
-          
-    //shape_obj.color="rgba(100,0,100,0.5)";
-    let targetIdx=-1;
-    if(id>=0)
-    {
-      let tmpIdx = this.FindShapeIdx( id );
-      console.log("SETShape>",tmpIdx);
-      if(tmpIdx>=0)
-      {
-        shape = this.shapeList[tmpIdx];
-        targetIdx = tmpIdx;
-      }
-    }
-    else{
-      this.ShapeCount++;
-      id = this.ShapeCount;
-    }
-
-    console.log("SETShape>",shape);
-    if(shape == null)
-    {
-      shape = Object.assign({id:id},shape_obj);
-      this.shapeList.push(shape);
-
-      
-      this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data:this.shapeList});
-    }
-    else
-    {
-      shape = Object.assign({id:id},shape_obj);
-      if(targetIdx!=-1)
-      {
-        this.shapeList[targetIdx] = shape;
-        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data:this.shapeList});
-      }
-    }
-    
-    if(this.EditShape.id == id)
-      this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:shape});
-    return shape;
-
+    this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_Set,data:{shape:shape_obj,id:id}});
   }
+
+  
+  SetShapeList( shapeList )
+  {
+    this.shapeList = shapeList;
+  }
+  SetEditShape( EditShape )
+  {
+    this.EditShape = EditShape;
+  }
+
+
   SetImg( img )
   {
     if(img == null || img == this.secCanvas_rawImg)return;
@@ -264,6 +216,7 @@ class EverCheckCanvasComponent{
     this.mouseStatus.y=pos.y;
     this.mouseStatus.status = 0;
 
+
     this.camera.translate.x+=this.camera.translate.dx;
     this.camera.translate.y+=this.camera.translate.dy;
     this.camera.translate.dx = 0;
@@ -273,6 +226,13 @@ class EverCheckCanvasComponent{
     this.setDOMMatrixIdentity(this.dragMat);
 
     this.draw();
+  }
+  onmouseout(evt)
+  {
+    if(this.mouseStatus.status==1)
+    {
+      this.onmouseup(evt);
+    }
   }
 
   resize(width,height)
@@ -361,11 +321,14 @@ class EverCheckCanvasComponent{
       if(this.EditShape!=null && eObject.id == this.EditShape.id)
       {
         ctx.strokeStyle=this.EditShape_color; 
+        eObject=this.EditShape;
       }
       else
       {
         ctx.strokeStyle=eObject.color; 
       }
+      
+      
       switch(eObject.type)
       {
         case 'line':
@@ -611,7 +574,7 @@ class EverCheckCanvasComponent{
     
 
 
-
+    let ifOnMouseLeftClickEdge = (this.mouseStatus.status!=this.mouseStatus.pstatus);
     
     if(this.mouseStatus.status==1)
     {
@@ -658,10 +621,11 @@ class EverCheckCanvasComponent{
       }      
       else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
       {
-        if(this.mouseStatus.pstatus==0)
+        if(ifOnMouseLeftClickEdge)
         {
           console.log(">>>>>>>>>>",this.EditShape);
           this.EditPoint=null;
+          let PointKey=null;
           let EditShape_tmp=null;
           let minDist=Number.POSITIVE_INFINITY;
   
@@ -670,48 +634,31 @@ class EverCheckCanvasComponent{
             switch(shape.type)
             {
               case "line":
-              tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
-              if(minDist>tmpDist)
-              {
-  
-                EditShape_tmp=shape;
-                minDist = tmpDist;
-                this.EditPoint = shape.pt1;
-              }
-              tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
-              if(minDist>tmpDist)
-              {
-                EditShape_tmp=shape;
-                minDist = tmpDist;
-                this.EditPoint = shape.pt2;
-              }
+
+              ["pt1","pt2"].forEach((key)=>{
+                tmpDist = distance_point_point(shape[key],mouseOnCanvas2);
+                if(minDist>tmpDist)
+                {
+                  EditShape_tmp=shape;
+                  minDist = tmpDist;
+                  this.EditPoint = shape.pt1;
+                  PointKey = key;
+                }
+              });
               break;
               
               case "arc":
               
-              tmpDist = distance_point_point(shape.pt1,mouseOnCanvas2);
-              if(minDist>tmpDist)
-              {
-  
-                EditShape_tmp=shape;
-                minDist = tmpDist;
-                this.EditPoint = shape.pt1;
-              }
-              tmpDist = distance_point_point(shape.pt2,mouseOnCanvas2);
-              if(minDist>tmpDist)
-              {
-  
-                EditShape_tmp=shape;
-                minDist = tmpDist;
-                this.EditPoint = shape.pt2;
-              }
-              tmpDist = distance_point_point(shape.pt3,mouseOnCanvas2);
-              if(minDist>tmpDist)
-              {
-                EditShape_tmp=shape;
-                minDist = tmpDist;
-                this.EditPoint = shape.pt3;
-              }
+              ["pt1","pt2","pt3"].forEach((key)=>{
+                tmpDist = distance_point_point(shape[key],mouseOnCanvas2);
+                if(minDist>tmpDist)
+                {
+                  EditShape_tmp=shape;
+                  minDist = tmpDist;
+                  this.EditPoint = shape.pt1;
+                  PointKey = key;
+                }
+              });
               break;
             }
           });
@@ -722,19 +669,25 @@ class EverCheckCanvasComponent{
             ctx.lineWidth=3;
             ctx.strokeStyle="green";  
             this.drawpoint(ctx, this.EditPoint);
+            console.log(EditShape_tmp,this.EditShape);
+          
+            {
+              this.EditShape=JSON.parse(JSON.stringify(EditShape_tmp));//Deep copy
+              this.EditPoint=this.EditShape[PointKey];
+              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+            }
           }
           else
           {
             this.EditPoint=null;
   
             EditShape_tmp=null;
+            this.EditShape=null;
+            this.EditPoint=null;
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+          
           }
           
-          if(this.EditShape!=EditShape_tmp)
-          {
-            this.EditShape=EditShape_tmp;
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
-          }
         }
         else
         {
@@ -742,8 +695,8 @@ class EverCheckCanvasComponent{
           {
             this.EditPoint.x = mouseOnCanvas2.x;
             this.EditPoint.y = mouseOnCanvas2.y;
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
           }
-          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
         }
       }
     }
@@ -751,7 +704,7 @@ class EverCheckCanvasComponent{
     {
       if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE || this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
       {
-        if(this.EditShape!=null)
+        if(this.EditShape!=null && ifOnMouseLeftClickEdge)
         {
           this.EditShape.color="rgba(100,0,100,0.5)";
           this.SetShape( this.EditShape);
@@ -759,11 +712,13 @@ class EverCheckCanvasComponent{
           this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
           
         }
-        this.EditShape=null;
       }
       else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
       {
-
+        if(this.EditShape!=null && ifOnMouseLeftClickEdge)
+        {
+          this.SetShape(this.EditShape,this.EditShape.id);
+        }
       }
       
       

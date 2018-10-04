@@ -58,12 +58,116 @@ function Default_UICtrlReducer()
     img:null,
     showSM_graph:false,
     edit_info:{
+      _obj:new InspectionEditorLogic(),
       list:[],
       edit_tar_info:null,
     },
     sm:toggleSplashMachine,
     c_state:toggleSplashMachine.initialState
   }
+}
+
+class InspectionEditorLogic
+{
+  constructor()
+  {
+    this.shapeCount=0;
+    this.shapeList=[];
+    this.editShape=null;
+    this.editPoint=null;
+    
+    this.state=null;
+  }
+
+  
+  SetState(state)
+  {
+    if(this.state!=state)
+    {
+      this.shapeCount=0;
+      this.editShape=null;
+      this.editPoint=null;
+    }
+  }
+  FindShapeIdx( id )
+  {
+    if(id>=0)
+    {
+      for(let i=0;i<this.shapeList.length;i++)
+      {
+        if(this.shapeList[i].id == id)
+        {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  SetShape( shape_obj, id=-1 )
+  {
+    let shape = null;
+
+    if(shape_obj == null)//For delete
+    {
+      if( id>=0)
+      {
+        let tmpIdx = this.FindShapeIdx( id );
+        console.log("SETShape>",tmpIdx);
+        if(tmpIdx>=0)
+        {
+          shape = this.shapeList[tmpIdx];
+          this.shapeList.splice(tmpIdx, 1);
+          if(this.editShape!=null && this.editShape.id == id)
+          {
+            this.editShape = null;
+          }
+        }
+      }
+      return shape;
+    }
+
+    console.log("SETShape>",this.shapeList,shape_obj,id);
+          
+    //shape_obj.color="rgba(100,0,100,0.5)";
+    let targetIdx=-1;
+    if(id>=0)
+    {
+      let tmpIdx = this.FindShapeIdx( id );
+      console.log("SETShape>",tmpIdx);
+      if(tmpIdx>=0)
+      {
+        shape = this.shapeList[tmpIdx];
+        targetIdx = tmpIdx;
+      }
+    }
+    else{
+      this.shapeCount++;
+      id = this.shapeCount;
+    }
+
+    console.log("FoundShape>",shape);
+    if(shape == null)
+    {
+      shape = Object.assign({id:id},shape_obj);
+      this.shapeList.push(shape);
+    }
+    else
+    {
+      shape = Object.assign({id:id},shape_obj);
+      if(targetIdx!=-1)
+      {
+        this.shapeList[targetIdx] = shape;
+      }
+    }
+    if(this.editShape!== null && this.editShape.id == id)
+    {
+      this.editShape = shape;
+    }
+    return shape;
+
+  }
+
 }
 
 
@@ -122,6 +226,7 @@ function StateReducer(newState,action)
           {
             newState.edit_info.edit_tar_info=Object.assign({},action.data);
           }
+        break;
         case UISEV.EDIT_MODE_Shape_List_Update:
           if(action.data == null)
           {
@@ -131,6 +236,27 @@ function StateReducer(newState,action)
           {
             newState.edit_info.list=action.data;
           }
+        break;
+        case UISEV.EDIT_MODE_Shape_Set:
+        {
+          newState.edit_info._obj.SetShape(action.data.shape,action.data.id);
+
+          newState.edit_info.list=newState.edit_info._obj.shapeList;
+          let tmpTarIdx=
+            newState.edit_info._obj.FindShapeIdx( action.data.id );
+          console.log(tmpTarIdx);
+          if(tmpTarIdx == -1)
+          {
+            newState.edit_info.edit_tar_info=null;
+          }
+          else
+          {
+            newState.edit_info.edit_tar_info = 
+              JSON.parse(JSON.stringify(newState.edit_info.list[tmpTarIdx]));
+          }
+
+          newState.edit_info=Object.assign({},newState.edit_info);
+        }
         break;
       }
 
