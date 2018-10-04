@@ -42,6 +42,10 @@ class CanvasComponent extends React.Component {
         console.log(event);
         this.props.ACT_EDIT_TAR_UPDATE(event.data);
       break; 
+      case UIAct.UI_SM_EVENT.EDIT_MODE_Shape_List_Update:
+        console.log(event);
+        this.props.ACT_EDIT_SHAPELIST_UPDATE(event.data);
+      break; 
     }
   }
   componentDidMount() {
@@ -115,6 +119,7 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) =>
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
+    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_List_Update(shapeList))}
   }
 }
 const CanvasComponent_rdx = connect(
@@ -359,7 +364,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
 const mapStateToProps_APP_EDIT_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
-    edit_tar_info:state.UIData.edit_tar_info
+    edit_tar_info:state.UIData.edit_info.edit_tar
   }
 };
 const APP_EDIT_MODE_rdx = connect(

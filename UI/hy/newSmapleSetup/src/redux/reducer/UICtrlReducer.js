@@ -57,9 +57,10 @@ function Default_UICtrlReducer()
     report:[],
     img:null,
     showSM_graph:false,
-    BROADCAST_INFO:null,
-    edit_tar_info:null,
-
+    edit_info:{
+      list:[],
+      edit_tar_info:null,
+    },
     sm:toggleSplashMachine,
     c_state:toggleSplashMachine.initialState
   }
@@ -75,17 +76,10 @@ function StateReducer(newState,action)
   console.log(newState.c_state.value," + ",action.type," > ",currentState.value);
   newState.c_state=currentState;
 
-  newState.BROADCAST_INFO = null;
   
   if (action.type === UISEV.Control_SM_Panel) {
     newState.showSM_graph = action.data;
     return newState;
-  }
-  else if(action.type === UISEV.BROADCAST)
-  {
-    newState.BROADCAST_INFO = action.data;
-    return newState;
-
   }
   switch(newState.c_state.value)
   {
@@ -122,11 +116,20 @@ function StateReducer(newState,action)
         case UISEV.EDIT_MODE_Edit_Tar_Update:
           if(action.data == null)
           {
-            newState.edit_tar_info=null;
+            newState.edit_info.edit_tar_info=null;
           }
           else
           {
-            newState.edit_tar_info=Object.assign({},action.data);
+            newState.edit_info.edit_tar_info=Object.assign({},action.data);
+          }
+        case UISEV.EDIT_MODE_Shape_List_Update:
+          if(action.data == null)
+          {
+            newState.edit_info.list=[];
+          }
+          else
+          {
+            newState.edit_info.list=action.data;
           }
         break;
       }

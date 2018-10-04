@@ -107,7 +107,7 @@ class EverCheckCanvasComponent{
   {
     let shape = null;
 
-    if(shape_obj == null)
+    if(shape_obj == null)//For delete
     {
       if( id>=0)
       {
@@ -117,6 +117,8 @@ class EverCheckCanvasComponent{
         {
           shape = this.shapeList[tmpIdx];
           this.shapeList.splice(tmpIdx, 1);
+          
+          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data:this.shapeList});
         }
       }
       if(this.EditShape.id == id)
@@ -148,6 +150,9 @@ class EverCheckCanvasComponent{
     {
       shape = Object.assign({id:id},shape_obj);
       this.shapeList.push(shape);
+
+      
+      this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data:this.shapeList});
     }
     else
     {
@@ -155,6 +160,7 @@ class EverCheckCanvasComponent{
       if(targetIdx!=-1)
       {
         this.shapeList[targetIdx] = shape;
+        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data:this.shapeList});
       }
     }
     

@@ -37,13 +37,21 @@ export const UI_SM_EVENT = {
 
   Control_SM_Panel:"Control_SM_Panel",
   BROADCAST:"BROADCAST",
-  EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update"
+  EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update",
+  EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
 };
 
 export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
 {
   return {
     type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data: targetObj
+  }
+}
+
+export function EV_UI_EDIT_MODE_Shape_List_Update(shapeList)
+{
+  return {
+    type: UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data: shapeList
   }
 }
 
