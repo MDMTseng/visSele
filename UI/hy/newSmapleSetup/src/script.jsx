@@ -364,7 +364,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
 const mapStateToProps_APP_EDIT_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
-    edit_tar_info:state.UIData.edit_info.edit_tar
+    edit_tar_info:state.UIData.edit_info.edit_tar_info
   }
 };
 const APP_EDIT_MODE_rdx = connect(
