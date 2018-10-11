@@ -292,7 +292,8 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   }
   else
   {
-    return StateReducer(newState,action);
+    newState = StateReducer(newState,action);
+    return newState;
   }
 
   return newState;
