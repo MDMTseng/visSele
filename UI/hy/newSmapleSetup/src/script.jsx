@@ -73,6 +73,7 @@ class CanvasComponent extends React.Component {
       let stateObj = xstate_GetCurrentMainState(this.props.c_state);
       this.ec_canvas.resize(width,height);
       this.updateCanvas(stateObj.substate);
+      this.ec_canvas.ctrlLogic();
       this.ec_canvas.draw();
     }
   }
