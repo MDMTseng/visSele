@@ -176,23 +176,27 @@ class JsonEditBlock extends React.Component{
   composeObject(obj,whiteListKey=null,idHeader="")
   {
     var rows = [];
-    for (var key in obj) {
+    let keyList = (whiteListKey==null )?obj:whiteListKey;
+    for (var key in keyList) {
         let ele = obj[key];
+        let displayMethod=(whiteListKey==null )?null:whiteListKey[key];
 
-        if(whiteListKey!=null && (whiteListKey[key] === undefined))continue;
+        if((ele === undefined) || displayMethod=== undefined)continue;
         console.log(key,ele,typeof ele);
         switch(typeof ele)
         {
           case "string":
+            if(displayMethod==null)displayMethod="input";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={whiteListKey[key]}
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod}
               target={{obj:obj,key:key}} 
               onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
             
           break;
           case "number":
+            if(displayMethod==null)displayMethod="input-number";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={whiteListKey[key]} 
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod} 
               target={{obj:obj,key:key}}  
               onChange={this.onChangeX.bind(this)}>{(ele).toFixed(4)}</JsonElement>);
           break;
@@ -201,7 +205,7 @@ class JsonEditBlock extends React.Component{
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 WXF vbox black">{key}</div>);
             rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
             rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-              this.composeObject(ele,whiteListKey[key],idHeader+"_"+key)
+              this.composeObject(ele,displayMethod,idHeader+"_"+key)
             }</div>);
             rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
           break;
@@ -334,8 +338,9 @@ class APP_EDIT_MODE extends React.Component{
           key="JsonEditBlock"
           jsonChange={on_Tar_Change.bind(this)}
           whiteListKey={{
+            //id:"div",
+            name:"input",
             margin:"input-number",
-            id:"div",
             /*pt1:{
               x:"div",
               y:"div",

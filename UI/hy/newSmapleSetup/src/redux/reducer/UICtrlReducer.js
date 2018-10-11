@@ -96,19 +96,22 @@ class InspectionEditorLogic
       this.editPoint=null;
     }
   }
-  FindShapeIdx( id )
+
+  FindShape( key , val )
   {
-    if(id>=0)
+    for(let i=0;i<this.shapeList.length;i++)
     {
-      for(let i=0;i<this.shapeList.length;i++)
+      if(this.shapeList[i][key] == val)
       {
-        if(this.shapeList[i].id == id)
-        {
-          return i;
-        }
+        return i;
       }
     }
     return -1;
+  }
+
+  FindShapeIdx( id )
+  {
+    return this.FindShape( "id" , id );
   }
 
   SetShape( shape_obj, id=-1 )
@@ -139,8 +142,16 @@ class InspectionEditorLogic
     //shape_obj.color="rgba(100,0,100,0.5)";
     let targetIdx=-1;
     if(id>=0)
-    {
+    {//id(identification)!=idx(index)
       let tmpIdx = this.FindShapeIdx( id );
+      let nameIdx = this.FindShape("name",shape_obj.name);
+
+      //Check if the name in shape_obj exits in the list and duplicates with other shape in list(tmpIdx!=nameIdx)
+      if(nameIdx!=-1 && tmpIdx!=nameIdx)
+      {
+        console.log("Error:Shape id:"+id+" Duplicated shape name:"+shape_obj.name+" with idx:"+nameIdx+" ");
+        return null;
+      }
       console.log("SETShape>",tmpIdx);
       if(tmpIdx>=0)
       {
@@ -157,6 +168,10 @@ class InspectionEditorLogic
     if(shape == null)
     {
       shape = Object.assign({id:id},shape_obj);
+      if(shape.name === undefined)
+      {
+        shape.name="@"+shape.type+"_"+id;
+      }
       this.shapeList.push(shape);
     }
     else
