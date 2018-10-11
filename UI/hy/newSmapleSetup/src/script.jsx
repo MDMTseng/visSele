@@ -78,15 +78,15 @@ class CanvasComponent extends React.Component {
   }
   componentWillUpdate(nextProps, nextState) {
     
-    console.log("CanvasComponent render",this.props.c_state);
+    console.log("CanvasComponent render",nextProps.c_state);
     //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
     
-    let stateObj = xstate_GetCurrentMainState(this.props.c_state);
+    let stateObj = xstate_GetCurrentMainState(nextProps.c_state);
     let substate = stateObj.substate;
     console.log("substate:"+substate,stateObj);
-    console.log(this.props.edit_info.list);
+    console.log(nextProps.edit_info.list);
     
-    this.ec_canvas.SetShapeList(this.props.edit_info.list);
+    this.ec_canvas.SetShapeList(nextProps.edit_info.list);
     this.updateCanvas(substate);
   }
 
