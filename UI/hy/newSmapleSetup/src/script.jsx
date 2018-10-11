@@ -70,30 +70,24 @@ class CanvasComponent extends React.Component {
   onResize(width,height){
     if(this.ec_canvas  !== undefined)
     {
+      let stateObj = xstate_GetCurrentMainState(this.props.c_state);
       this.ec_canvas.resize(width,height);
-      this.updateCanvas();
+      this.updateCanvas(stateObj.substate);
       this.ec_canvas.draw();
     }
   }
   componentWillUpdate(nextProps, nextState) {
     
-    console.log("CanvasComponent render");
-    let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
-    console.log("substate:"+substate);
-    console.log(this.props.edit_info.list);
+    console.log("CanvasComponent render",nextProps.c_state);
+    //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
     
-    this.ec_canvas.SetShapeList(this.props.edit_info.list);
+    let stateObj = xstate_GetCurrentMainState(nextProps.c_state);
+    let substate = stateObj.substate;
+    console.log("substate:"+substate,stateObj);
+    console.log(nextProps.edit_info.list);
+    
+    this.ec_canvas.SetShapeList(nextProps.edit_info.list);
     this.updateCanvas(substate);
-    switch(substate)
-    {
-      case UIAct.UI_SM_STATES.EDIT_MODE_NEUTRAL:
-      break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:
-      break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_ARC_CREATE:
-      break;
-    }
-    
   }
 
   render() {
@@ -109,7 +103,7 @@ class CanvasComponent extends React.Component {
 
 
 const mapStateToProps_CanvasComponent = (state) => {
-  console.log("mapStateToProps",state);
+  console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
     report: state.UIData.report,
@@ -272,6 +266,10 @@ class APP_EDIT_MODE extends React.Component{
             text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
+            key="ALINE"
+            text="ALINE" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
+          <BASE_COM.Button
+            addClass="layout lgreen vbox"
             key="EDIT"
             text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
         ];
@@ -293,6 +291,24 @@ class APP_EDIT_MODE extends React.Component{
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="ARC" className="s lred vbox">ARC</div>
       ];
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:          
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          key="<"
+          text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div key="ARC" className="s lred vbox">ALINE</div>
+      ];
+      break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:         
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div key="LINE" className="s lred vbox">ALINE</div>,
+      ];
+      
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
       menu_height = "HXF";         
@@ -364,6 +380,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
   return{
     ACT_Line_Add_Mode: (arg) =>  {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
     ACT_Arc_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
+    ACT_Aux_Line_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},

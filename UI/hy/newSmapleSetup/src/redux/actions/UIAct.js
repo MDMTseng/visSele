@@ -5,7 +5,10 @@ export const UI_SM_STATES = {
   EDIT_MODE:"EDIT_MODE",
   EDIT_MODE_NEUTRAL:"NEUTRAL",
   EDIT_MODE_LINE_CREATE:"LINE_CREATE",
+  EDIT_MODE_AUX_LINE_CREATE:"AUX_LINE_CREATE",
+  EDIT_MODE_AUX_POINT_CREATE:"AUX_POINT_CREATE",
   EDIT_MODE_ARC_CREATE:"ARC_CREATE",
+  EDIT_MODE_AUX_ARC_CREATE:"AUX_ARC_CREATE",
   EDIT_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 };
 
@@ -24,23 +27,32 @@ export const UI_SM_EVENT = {
   _SUCCESS:"_SUCCESS",
   _FAIL:"_FAIL",
   EXIT:"EXIT",
+
+
+
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
   Image_Update:"Image_Update",
-  Line_Edit_Mode:"Line_Edit",
-  Arc_Edit_Mode:"Arc_Edit",
+
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
+  Aux_Line_Create:"Aux_Line_Create",
+  Aux_Point_Create:"Aux_Point_Create",
+  Arc_Create:"Arc_Create",
   Shape_Edit:"Shape_Edit",
+
   EDIT_MODE_SUCCESS:"EDIT_MODE_SUCCESS",
   EDIT_MODE_FAIL:"EDIT_MODE_FAIL",
 
-  Control_SM_Panel:"Control_SM_Panel",
-  BROADCAST:"BROADCAST",
   EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
   EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
   EDIT_MODE_Mouse_Update:"EDIT_MODE_Mouse_Update",
+
+
+
+  
+  Control_SM_Panel:"Control_SM_Panel",
 };
 
 export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)

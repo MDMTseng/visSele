@@ -66,7 +66,6 @@ class EverCheckCanvasComponent{
     this.EditShape=null;
     this.EditShape_color="rgba(255,0,0,0.7)";
     
-    this.ShapeCount=0;
     this.EditPoint=null;
     
     this.EmitEvent=(event)=>{console.log(event);};
@@ -124,7 +123,7 @@ class EverCheckCanvasComponent{
   SetImg( img )
   {
     if(img == null || img == this.secCanvas_rawImg)return;
-    console.log(img);
+    console.log("SetImg:::");
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
 
@@ -159,6 +158,7 @@ class EverCheckCanvasComponent{
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
 
+    //console.log("onmousemove_pre:",this.state);
     //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
     switch(this.state)
     {
@@ -166,9 +166,10 @@ class EverCheckCanvasComponent{
         
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.EDIT_MODE_NEUTRAL:
-        //console.log("this.state:>>>");
+        //console.log("onmousemove");
         if(this.mouseStatus.status==1)
         {
+          console.log("onmousemove_drag");
           this.setDOMMatrixIdentity(this.dragMat);
           this.dragMat.translateSelf(pos.x-this.mouseStatus.px,pos.y-this.mouseStatus.py);
 
