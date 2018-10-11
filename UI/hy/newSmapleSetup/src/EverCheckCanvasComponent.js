@@ -3,7 +3,7 @@
 import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
-import {distance_arc_point,distance_point_point,threePointToArc,distance_line_point} from 'UTIL/MathTools';
+import {distance_arc_point,distance_point_point,threePointToArc,distance_line_point,LineCentralNormal} from 'UTIL/MathTools';
 
 class EverCheckCanvasComponent{
 
@@ -372,33 +372,62 @@ class EverCheckCanvasComponent{
       switch(eObject.type)
       {
         case 'line':
+        {
+          ctx.lineWidth=eObject.margin*2;
+          this.drawReportLine(ctx, {
+            x0:eObject.pt1.x,y0:eObject.pt1.y,
+            x1:eObject.pt2.x,y1:eObject.pt2.y,
+          });
 
 
-        ctx.lineWidth=eObject.margin*2;
-        this.drawReportLine(ctx, {
-          x0:eObject.pt1.x,y0:eObject.pt1.y,
-          x1:eObject.pt2.x,y1:eObject.pt2.y,
-        });
-        ctx.lineWidth=2;
-        ctx.strokeStyle="black";  
-        this.drawpoint(ctx, eObject.pt1);
-        this.drawpoint(ctx, eObject.pt2);
+          let cnormal =LineCentralNormal(eObject);
+          ctx.lineWidth=2;
+          ctx.strokeStyle="rgba(0,100,100,0.4)"; 
+          let marginOffset = eObject.margin+1;
+          if(eObject.direction<0)
+          {
+            marginOffset=-marginOffset;
+          }
+          this.drawReportLine(ctx, {
+            x0:eObject.pt1.x+cnormal.vx*marginOffset,y0:eObject.pt1.y+cnormal.vy*marginOffset,
+            x1:eObject.pt2.x+cnormal.vx*marginOffset,y1:eObject.pt2.y+cnormal.vy*marginOffset,
+          });
 
+
+
+
+          ctx.lineWidth=2;
+          ctx.strokeStyle="black";  
+          this.drawpoint(ctx, eObject.pt1);
+          this.drawpoint(ctx, eObject.pt2);
+        }
         break;
         
         
         case 'arc':
-        
+        {
           //ctx.strokeStyle=eObject.color; 
           let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
           ctx.lineWidth=eObject.margin*2; 
           this.drawReportArc(ctx, arc);
           
           ctx.lineWidth=2;
+          ctx.strokeStyle="rgba(0,100,100,0.4)"; 
+          
+          let marginOffset = eObject.margin+1;
+          if(eObject.direction<0)
+          {
+            marginOffset=-marginOffset;
+          }
+          arc.r+=marginOffset;
+          this.drawReportArc(ctx, arc);
+
+          ctx.lineWidth=2;
           ctx.strokeStyle="black";  
           this.drawpoint(ctx, eObject.pt1);
           this.drawpoint(ctx, eObject.pt2);
           this.drawpoint(ctx, eObject.pt3);
+        }
         break;
       }
     });
@@ -562,7 +591,7 @@ class EverCheckCanvasComponent{
       -matrix.f); 
     */
    
-   let matrix  = this.worldTransform();
+    let matrix  = this.worldTransform();
     this.Mouse2SecCanvas = matrix.invertSelf();
 
     let invMat =this.Mouse2SecCanvas;
@@ -676,39 +705,34 @@ class EverCheckCanvasComponent{
 
       if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE)
       {
-        let line_obj = {x0:mouseOnCanvas2.x,y0:mouseOnCanvas2.y,
-                        x1:pmouseOnCanvas2.x,y1:pmouseOnCanvas2.y,};
-        
-        this.EditShape=line_obj;
-
-        
         this.EditShape={
           type:"line",
           pt1:mouseOnCanvas2,
           pt2:pmouseOnCanvas2,
           margin:5,
-          color:"rgba(255,0,0,0.5)"
+          color:"rgba(255,0,0,0.5)",
+          direction:1
         };
 
         //this.drawEditObject(ctx, [this.EditShape]);
       }
       else if(this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
       {
-        let midPosition = {
-          x:(mouseOnCanvas2.x+pmouseOnCanvas2.x)/2,
-          y:(mouseOnCanvas2.y+pmouseOnCanvas2.y)/2};//Find middle
-        midPosition.x+=(mouseOnCanvas2.y-pmouseOnCanvas2.y)/1000;
-        midPosition.y+=-(mouseOnCanvas2.x-pmouseOnCanvas2.x)/1000;
-        //Add normal vec to make sure it's not exactly on straight line
+        let cnormal =LineCentralNormal({
+          pt1:mouseOnCanvas2,
+          pt2:pmouseOnCanvas2,
+        });
 
-        
         this.EditShape={
           type:"arc",
           pt1:mouseOnCanvas2,
-          pt2:midPosition,
+          pt2:{
+            x:cnormal.x+cnormal.vx,
+            y:cnormal.y+cnormal.vy},
           pt3:pmouseOnCanvas2,
           margin:5,
-          color:"rgba(255,0,0,0.5)"
+          color:"rgba(255,0,0,0.5)",
+          direction:1
         };
         //this.drawEditObject(ctx, [this.EditShape]);
       }      

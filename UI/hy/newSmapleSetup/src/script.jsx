@@ -342,6 +342,8 @@ class APP_EDIT_MODE extends React.Component{
             //id:"div",
             name:"input",
             margin:"input-number",
+            direction:"input-number",
+
             /*pt1:{
               x:"div",
               y:"div",

@@ -144,3 +144,17 @@ export function threePointToArc(p1, p2, p3)
 
   return {x:centerx,y:centery,r:radius,thetaS:theta1,thetaE:theta2};
 }
+
+
+export function LineCentralNormal(line)
+{
+  let dx=(line.pt2.y-line.pt1.y);
+  let dy=(line.pt2.x-line.pt1.x);
+  let dist = Math.hypot(dx,dy);
+  return {
+    x:(line.pt1.x+line.pt2.x)/2,
+    y:(line.pt1.y+line.pt2.y)/2,
+    vx:dx/dist,
+    vy:-dy/dist,
+  };
+}
