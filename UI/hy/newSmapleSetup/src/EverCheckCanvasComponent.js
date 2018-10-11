@@ -66,7 +66,6 @@ class EverCheckCanvasComponent{
     this.EditShape=null;
     this.EditShape_color="rgba(255,0,0,0.7)";
     
-    this.ShapeCount=0;
     this.EditPoint=null;
     
     this.EmitEvent=(event)=>{console.log(event);};

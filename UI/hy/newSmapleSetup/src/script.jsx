@@ -294,6 +294,15 @@ class APP_EDIT_MODE extends React.Component{
         <div key="ARC" className="s lred vbox">ARC</div>
       ];
       break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:         
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div key="LINE" className="s lred vbox">ALINE</div>,
+      ];
+      
+      break;
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
       menu_height = "HXF";         
       MenuSet=[

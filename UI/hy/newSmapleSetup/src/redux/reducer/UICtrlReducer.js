@@ -16,9 +16,16 @@ const EditStates = {
     [UISTS.EDIT_MODE_NEUTRAL]
             :  {on: {[UISEV.Line_Create]: UISTS.EDIT_MODE_LINE_CREATE,
                      [UISEV.Arc_Create]:  UISTS.EDIT_MODE_ARC_CREATE,
-                     [UISEV.Shape_Edit]:  UISTS.EDIT_MODE_SHAPE_EDIT
+                     [UISEV.Aux_Line_Create]: UISTS.EDIT_MODE_AUX_LINE_CREATE,
+                     [UISEV.Aux_Point_Create]: UISTS.EDIT_MODE_AUX_POINT_CREATE,
+                     [UISEV.Shape_Edit]:  UISTS.EDIT_MODE_SHAPE_EDIT,
                     }},
-
+    [UISTS.EDIT_MODE_AUX_LINE_CREATE]
+               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+             [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+    [UISTS.EDIT_MODE_AUX_POINT_CREATE]
+              :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+              [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_LINE_CREATE]
                :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
                       [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
