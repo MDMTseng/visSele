@@ -114,7 +114,7 @@ class InspectionEditorLogic
     return this.FindShape( "id" , id );
   }
 
-  SetShape( shape_obj, id=-1 )
+  SetShape( shape_obj, id=-1 )//-1 means add new shape
   {
     let shape = null;
 
@@ -141,7 +141,7 @@ class InspectionEditorLogic
           
     //shape_obj.color="rgba(100,0,100,0.5)";
     let targetIdx=-1;
-    if(id>=0)
+    if(id!=-1)
     {//id(identification)!=idx(index)
       let tmpIdx = this.FindShapeIdx( id );
       let nameIdx = this.FindShape("name",shape_obj.name);
@@ -157,6 +157,11 @@ class InspectionEditorLogic
       {
         shape = this.shapeList[tmpIdx];
         targetIdx = tmpIdx;
+      }
+      else
+      {
+        console.log("Error:Shape id:"+id+" doesn't exist in the list....");
+        return null;
       }
     }
     else{
@@ -261,20 +266,31 @@ function StateReducer(newState,action)
         break;
         case UISEV.EDIT_MODE_Shape_Set:
         {
-          newState.edit_info._obj.SetShape(action.data.shape,action.data.id);
+          let newID=action.data.id;
+          console.log("newID:",newID);
+          let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
 
           newState.edit_info.list=newState.edit_info._obj.shapeList;
-          let tmpTarIdx=
-            newState.edit_info._obj.FindShapeIdx( action.data.id );
-          console.log(tmpTarIdx);
-          if(tmpTarIdx == -1)
+
+          if(newID!==undefined && newID!=-1)
           {
-            newState.edit_info.edit_tar_info=null;
+            let tmpTarIdx=
+            newState.edit_info._obj.FindShapeIdx( newID );
+            console.log(tmpTarIdx);
+            if(tmpTarIdx == -1)
+            {
+              newState.edit_info.edit_tar_info=null;
+            }
+            else
+            {
+              newState.edit_info.edit_tar_info = 
+                JSON.parse(JSON.stringify(newState.edit_info.list[tmpTarIdx]));
+            }
           }
           else
           {
             newState.edit_info.edit_tar_info = 
-              JSON.parse(JSON.stringify(newState.edit_info.list[tmpTarIdx]));
+              JSON.parse(JSON.stringify(shape));
           }
 
           newState.edit_info=Object.assign({},newState.edit_info);

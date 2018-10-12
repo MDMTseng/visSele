@@ -76,8 +76,8 @@ class EverCheckCanvasComponent{
     if(this.state!=state)
     {
       this.state=state;
-      this.EditShape=null;
-      this.EditPoint=null;
+      //this.EditShape=null;
+      //this.EditPoint=null;
       this.near_select_obj=null;
     }
   }
@@ -107,14 +107,25 @@ class EverCheckCanvasComponent{
     this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_Set,data:{shape:shape_obj,id:id}});
   }
 
+  SetEditShape( EditShape )
+  {
+      this.EditShape = EditShape;
+  }
+
   
   SetShapeList( shapeList )
   {
     this.shapeList = shapeList;
-  }
-  SetEditShape( EditShape )
-  {
-    this.EditShape = EditShape;
+    //console.log("this.EditShape.id:",this.EditShape);
+    if(this.EditShape!=null && this.EditShape.id!==undefined)
+    {
+      let idx = this.FindShape( "id" , this.EditShape.id );
+      if(idx ==-1)
+      {
+        this.EditShape=null;
+        this.EditPoint=null;
+      }
+    }
   }
 
 
@@ -653,7 +664,7 @@ class EverCheckCanvasComponent{
     
 
     let wMat = this.worldTransform();
-    console.log("this.camera.matrix::",wMat);
+    //console.log("this.camera.matrix::",wMat);
     let worldTransform = new DOMMatrix().setMatrixValue(wMat);
     let worldTransform_inv = worldTransform.invertSelf();
     //this.Mouse2SecCanvas = invMat;

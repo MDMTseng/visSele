@@ -47,7 +47,8 @@ body.sp_Style.blockS  {
 
 .sp_Style.blockS .MenuAnim{
   transition:opacity 0.2s, transform 0.3s;
-
+  background-color: rgba(0,0,0,0.1);
+  width:200px;
   transition-timing-function: cubic-bezier(.05,.88,.6,.87);
   transform-origin: -20% 50%;
   perspective: 200px;

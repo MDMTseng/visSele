@@ -63,7 +63,7 @@ class CanvasComponent extends React.Component {
       this.ec_canvas.SetReport(this.props.report);
       this.ec_canvas.SetImg(this.props.img);
       this.ec_canvas.SetState(state);
-      //this.ec_canvas.draw();
+      this.ec_canvas.draw();
     }
   }
 
@@ -88,6 +88,8 @@ class CanvasComponent extends React.Component {
     console.log(nextProps.edit_info.list);
     
     this.ec_canvas.SetShapeList(nextProps.edit_info.list);
+    this.ec_canvas.SetEditShape(nextProps.edit_info.edit_tar_info);
+    
     this.updateCanvas(substate);
   }
 
@@ -316,7 +318,7 @@ class APP_EDIT_MODE extends React.Component{
       
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
-      menu_height = "HXF";         
+      menu_height = "HXA";         
       MenuSet=[
         <BASE_COM.Button
           key="<"
@@ -372,7 +374,7 @@ class APP_EDIT_MODE extends React.Component{
     <div className="HXF">
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
         <$CSSTG transitionName = "fadeIn">
-          <div key={substate} className={"s width2 overlay scroll MenuAnim " + menu_height}>
+          <div key={substate} className={"s overlay scroll MenuAnim " + menu_height}>
             {MenuSet}
           </div>
         </$CSSTG>
