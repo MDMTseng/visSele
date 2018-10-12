@@ -282,25 +282,25 @@ class APP_EDIT_MODE extends React.Component{
       case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
       MenuSet=[
         <BASE_COM.Button
-          addClass="layout black vbox"
+          addClass="layout black vbox width4"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div key="LINE" className="s lred vbox">LINE</div>,
+        <div key="LINE" className="s width8 lred vbox">LINE</div>,
       ];
       
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_ARC_CREATE:          
       MenuSet=[
         <BASE_COM.Button
-          addClass="layout black vbox"
+          addClass="layout black vbox width4"
           key="<"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div key="ARC" className="s lred vbox">ARC</div>
+        <div key="ARC" className="s width8 lred vbox">ARC</div>
       ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:          
       MenuSet=[
         <BASE_COM.Button
-          addClass="layout black vbox"
+        addClass="layout black vbox width4"
           key="<"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="ARC" className="s lred vbox">ALINE</div>
@@ -320,10 +320,10 @@ class APP_EDIT_MODE extends React.Component{
       MenuSet=[
         <BASE_COM.Button
           key="<"
-          addClass="layout black vbox"
+          addClass="layout black vbox width4"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
           
-        <div key="EDIT_Text" className="s lblue vbox">EDIT</div>,
+        <div key="EDIT_Text" className="s width8 lblue vbox">EDIT</div>,
         <div key="HLINE" className="s HX0_1"></div>
       ]
       

@@ -67,7 +67,7 @@ class EverCheckCanvasComponent{
     this.EditShape=null;
     this.EditShape_color="rgba(255,0,0,0.7)";
     
-    this.CandEditPoint=null;
+    this.CandEditPointInfo=null;
     this.EditPoint=null;
     
     this.EmitEvent=(event)=>{console.log(event);};
@@ -581,29 +581,28 @@ class EverCheckCanvasComponent{
     ctx.lineWidth = 2;
     ctx.setTransform(1,0,0,1,0,0); 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    /*let matrix = this.camera.matrix;    
+    //let matrix  = this.worldTransform();
+    let matrix = this.camera.matrix;    
     ctx.setTransform(
       matrix.a,
       matrix.b,
       matrix.c,
       matrix.d,
-      -matrix.e,
-      -matrix.f); 
-    */
-   
-    let matrix  = this.worldTransform();
-    this.Mouse2SecCanvas = matrix.invertSelf();
-
-    let invMat =this.Mouse2SecCanvas;
-    //this.Mouse2SecCanvas = invMat;
-    let mPos = this.mouseStatus;
-    let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
+      matrix.e,
+      matrix.f);  
+    
 
 
     ctx.drawImage(this.secCanvas,0,0);
     {
 
 
+      this.Mouse2SecCanvas = matrix.invertSelf();
+      let invMat =this.Mouse2SecCanvas;
+      //this.Mouse2SecCanvas = invMat;
+      let mPos = this.mouseStatus;
+      let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
+  
 
       if(false && typeof this.ReportJSON !=='undefined')
       {
@@ -673,11 +672,11 @@ class EverCheckCanvasComponent{
 
 
 
-    if(this.CandEditPoint!=null)
+    if(this.CandEditPointInfo!=null)
     {
       ctx.lineWidth=3;
       ctx.strokeStyle="rgba(0,255,0,0.3)";  
-      this.drawpoint(ctx, this.CandEditPoint);
+      this.drawpoint(ctx, this.CandEditPointInfo.pt);
     }
 
 
@@ -688,134 +687,144 @@ class EverCheckCanvasComponent{
   ctrlLogic()
   {
     this.camera.matrix = this.worldTransform();
-    //console.log("this.camera.matrix::",this.camera.matrix);
+    console.log("this.camera.matrix::",this.camera.matrix);
     let worldTransform = this.camera.matrix;//
-    let worldTransform_inv = worldTransform.invertSelf();
+    let worldTransform_inv = worldTransform.invert();
     //this.Mouse2SecCanvas = invMat;
     let mPos = this.mouseStatus;
     let mouseOnCanvas2=this.VecX2DMat(mPos,worldTransform_inv);
 
+    let pmPos = {x:this.mouseStatus.px,y:this.mouseStatus.py};
+    let pmouseOnCanvas2=this.VecX2DMat(pmPos,worldTransform_inv);
 
     let ifOnMouseLeftClickEdge = (this.mouseStatus.status!=this.mouseStatus.pstatus);
     
-    if(this.mouseStatus.status==1)
+
+
+
+    switch(this.state)
     {
-      let pmPos = {x:this.mouseStatus.px,y:this.mouseStatus.py};
-      let pmouseOnCanvas2=this.VecX2DMat(pmPos,worldTransform_inv);
-
-      if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE)
+      case UI_SM_STATES.EDIT_MODE_LINE_CREATE:
       {
-        this.EditShape={
-          type:"line",
-          pt1:mouseOnCanvas2,
-          pt2:pmouseOnCanvas2,
-          margin:5,
-          color:"rgba(255,0,0,0.5)",
-          direction:1
-        };
-
-        //this.drawEditObject(ctx, [this.EditShape]);
-      }
-      else if(this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
-      {
-        let cnormal =LineCentralNormal({
-          pt1:mouseOnCanvas2,
-          pt2:pmouseOnCanvas2,
-        });
-
-        this.EditShape={
-          type:"arc",
-          pt1:mouseOnCanvas2,
-          pt2:{
-            x:cnormal.x+cnormal.vx,
-            y:cnormal.y+cnormal.vy},
-          pt3:pmouseOnCanvas2,
-          margin:5,
-          color:"rgba(255,0,0,0.5)",
-          direction:1
-        };
-        //this.drawEditObject(ctx, [this.EditShape]);
-      }      
-      else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
-      {
-        if(ifOnMouseLeftClickEdge)
+        
+        if(this.mouseStatus.status==1)
         {
-          this.CandEditPoint=null;
+          this.EditShape={
+            type:"line",
+            pt1:mouseOnCanvas2,
+            pt2:pmouseOnCanvas2,
+            margin:5,
+            color:"rgba(255,0,0,0.5)",
+            direction:1
+          };
+        }
+        else
+        {
+          if(this.EditShape!=null && ifOnMouseLeftClickEdge)
+          {
+            this.EditShape.color="rgba(100,0,100,0.5)";
+            this.SetShape( this.EditShape);
+            
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
+            
+          }
+        }
+        break;
+      }      
+      case UI_SM_STATES.EDIT_MODE_ARC_CREATE:
+      {
+        
+        if(this.mouseStatus.status==1)
+        {
+          let cnormal =LineCentralNormal({
+            pt1:mouseOnCanvas2,
+            pt2:pmouseOnCanvas2,
+          });
+  
+          this.EditShape={
+            type:"arc",
+            pt1:mouseOnCanvas2,
+            pt2:{
+              x:cnormal.x+cnormal.vx,
+              y:cnormal.y+cnormal.vy},
+            pt3:pmouseOnCanvas2,
+            margin:5,
+            color:"rgba(255,0,0,0.5)",
+            direction:1
+          };
+        }
+        else
+        {
+          if(this.EditShape!=null && ifOnMouseLeftClickEdge)
+          {
+            this.EditShape.color="rgba(100,0,100,0.5)";
+            this.SetShape( this.EditShape);
+            
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
+            
+          }
+        }
+        break;
+      }
+      case UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:
+      {
+        
+        if(this.mouseStatus.status==1)
+        {
+          if(ifOnMouseLeftClickEdge)
+          {
+            if(this.CandEditPointInfo!=null)
+            {
+              {
+                let pt_info = this.CandEditPointInfo;
+                this.CandEditPointInfo=null;
+                this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
+                this.EditPoint=this.EditShape[pt_info.key];
+                this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+              }
+            }
+            else
+            {
+              this.EditPoint=null;
+              this.EditShape=null;
+              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+            
+            }
+            
+          }
+          else
+          {
+            if(this.EditPoint!=null)
+            {
+              this.EditPoint.x = mouseOnCanvas2.x;
+              this.EditPoint.y = mouseOnCanvas2.y;
+              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+            }
+          }
+        }
+        else
+        {
+          if(this.EditShape!=null && ifOnMouseLeftClickEdge)
+          {
+            this.SetShape(this.EditShape,this.EditShape.id);
+          }
+
           let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
 
           if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
           {
             
-            //ctx.lineWidth=3;
-            //ctx.strokeStyle="green";  
-            //this.drawpoint(ctx, this.EditPoint);
-            {
-              this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
-              this.EditPoint=this.EditShape[pt_info.key];
-              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
-            }
+            this.CandEditPointInfo=pt_info;
+            
           }
           else
           {
-            this.EditPoint=null;
-            this.EditShape=null;
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
-          
-          }
-          
-        }
-        else
-        {
-          if(this.EditPoint!=null)
-          {
-            this.EditPoint.x = mouseOnCanvas2.x;
-            this.EditPoint.y = mouseOnCanvas2.y;
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+            this.CandEditPointInfo=null;
           }
         }
+        break;
       }
     }
-    else
-    {
-      if(this.state == UI_SM_STATES.EDIT_MODE_LINE_CREATE || this.state == UI_SM_STATES.EDIT_MODE_ARC_CREATE)
-      {
-        if(this.EditShape!=null && ifOnMouseLeftClickEdge)
-        {
-          this.EditShape.color="rgba(100,0,100,0.5)";
-          this.SetShape( this.EditShape);
-          
-          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
-          
-        }
-      }
-      else if(this.state == UI_SM_STATES.EDIT_MODE_SHAPE_EDIT)
-      {
-        if(this.EditShape!=null && ifOnMouseLeftClickEdge)
-        {
-          this.SetShape(this.EditShape,this.EditShape.id);
-        }
-
-
-
-        let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-
-        if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
-        {
-          
-          this.CandEditPoint=pt_info.pt;//Deep copy
-          
-        }
-        else
-        {
-          this.CandEditPoint=null;
-        }
-      }
-      
-      
-    }
-
-    //this.drawEditObject(ctx, this.shapeList);
-
     //ctx.restore();
 
     this.mouseStatus.pstatus = this.mouseStatus.status;
