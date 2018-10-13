@@ -166,7 +166,7 @@ class EverCheckCanvasComponent{
     this.camera.scale*=scale;
     if(this.camera.scale<0.1)this.camera.scale=0.1;
     else if(this.camera.scale>10)this.camera.scale=10;
-    this.ctrlLogic();
+    //this.ctrlLogic();
     this.draw();
   }
   onmousemove(evt)
@@ -240,7 +240,7 @@ class EverCheckCanvasComponent{
   {
     this.canvas.width=width;
     this.canvas.height=height;
-    this.ctrlLogic();
+    //this.ctrlLogic();
     this.draw();
   }
 

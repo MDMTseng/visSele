@@ -343,6 +343,7 @@ class APP_EDIT_MODE extends React.Component{
           jsonChange={on_Tar_Change.bind(this)}
           whiteListKey={{
             //id:"div",
+            type:"div",
             name:"input",
             margin:"input-number",
             direction:"input-number",
