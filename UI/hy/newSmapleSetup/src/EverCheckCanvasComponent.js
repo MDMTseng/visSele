@@ -377,9 +377,9 @@ class EverCheckCanvasComponent{
 
 
           let cnormal =LineCentralNormal(eObject);
-          ctx.lineWidth=2;
-          ctx.strokeStyle="rgba(0,100,100,0.4)"; 
-          let marginOffset = eObject.margin+1;
+          ctx.lineWidth=4;
+          ctx.strokeStyle="rgba(100,50,100,0.8)"; 
+          let marginOffset = eObject.margin+ctx.lineWidth/2;
           if(eObject.direction<0)
           {
             marginOffset=-marginOffset;
@@ -407,10 +407,10 @@ class EverCheckCanvasComponent{
           ctx.lineWidth=eObject.margin*2; 
           this.drawReportArc(ctx, arc);
           
-          ctx.lineWidth=2;
-          ctx.strokeStyle="rgba(0,100,100,0.4)"; 
+          ctx.lineWidth=4;
+          ctx.strokeStyle="rgba(100,50,100,0.8)"; 
           
-          let marginOffset = eObject.margin+1;
+          let marginOffset = eObject.margin+ctx.lineWidth/2;
           if(eObject.direction<0)
           {
             marginOffset=-marginOffset;
