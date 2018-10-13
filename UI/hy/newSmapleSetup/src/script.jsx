@@ -57,11 +57,12 @@ class CanvasComponent extends React.Component {
     this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
     this.props.onCanvasInit(this.ec_canvas);
   }
-  updateCanvas(state) {
+  updateCanvas(state,props=this.props) {
     if(this.ec_canvas  !== undefined)
     {
-      this.ec_canvas.SetReport(this.props.report);
-      this.ec_canvas.SetImg(this.props.img);
+      console.log("updateCanvas>>",props.img);
+      this.ec_canvas.SetReport(props.report);
+      this.ec_canvas.SetImg(props.img);
       this.ec_canvas.SetState(state);
       this.ec_canvas.draw();
     }
@@ -90,7 +91,7 @@ class CanvasComponent extends React.Component {
     this.ec_canvas.SetShapeList(nextProps.edit_info.list);
     this.ec_canvas.SetEditShape(nextProps.edit_info.edit_tar_info);
     
-    this.updateCanvas(substate);
+    this.updateCanvas(substate,nextProps);
   }
 
   render() {
@@ -106,7 +107,7 @@ class CanvasComponent extends React.Component {
 
 
 const mapStateToProps_CanvasComponent = (state) => {
-  console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
+  //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
     report: state.UIData.report,
