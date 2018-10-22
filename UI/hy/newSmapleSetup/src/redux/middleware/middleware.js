@@ -4,6 +4,12 @@ import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
 export const ActionThrottle = ATData => store => next => action => {
   //console.log("ActionThrottle", ATData);
   
+
+  if(ATData.ATID!=action.ATID)//Add ATID for different packet throttle setup
+  {
+    return next(action);
+  }
+
   if (ATData.initted === undefined)
   {
     if (typeof(ATData.time ) != typeof(0))
@@ -23,6 +29,7 @@ export const ActionThrottle = ATData => store => next => action => {
   switch(action.ActionThrottle_type)
   {
     case "express":
+      action.ExATID=ATData.ExATID;
     return next(action);
 
     case "flush":
@@ -34,7 +41,9 @@ export const ActionThrottle = ATData => store => next => action => {
       let actions = ATData.actions;
       ATData.actions=[];
       return next({
+        
         type:"ATBundle",
+        ExATID:ATData.ExATID,
         data:actions
       });
     }
@@ -47,7 +56,10 @@ export const ActionThrottle = ATData => store => next => action => {
         },ATData.time);
 
         if(ATData.posEdge)
+        {
+          action.ExATID=ATData.ExATID;
           return next(action);
+        }
         else
           ATData.actions.push(action);
         return;
@@ -59,8 +71,7 @@ export const ActionThrottle = ATData => store => next => action => {
     return;
     
   }
-
-
+  action.ExATID=ATData.ExATID;
   return next(action);
   
 };

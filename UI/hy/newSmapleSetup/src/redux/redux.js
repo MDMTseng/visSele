@@ -10,7 +10,7 @@ export function ReduxStoreSetUp(presistStore){
     UIData:UICtrlReducer
   })
 
-  const middleware = applyMiddleware(thunk,midware.ActionThrottle({time:100,posEdge:true}),midware.error_catch);
+  const middleware = applyMiddleware(thunk,midware.ActionThrottle({time:100,posEdge:true,ATID:undefined,ExATID:undefined}),midware.error_catch);
 
   return createStore(reducer_C,presistStore,middleware);
 }
