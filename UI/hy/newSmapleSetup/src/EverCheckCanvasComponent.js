@@ -59,7 +59,7 @@ class EverCheckCanvasComponent{
 
     this.onfeatureselected=(ev)=>{};
     
-    this.state=UI_SM_STATES.NEUTRAL;
+    this.state=UI_SM_STATES.EDIT_MODE_NEUTRAL;
     this.shapeList=[];
     
     this.EditShape=null;
@@ -76,9 +76,14 @@ class EverCheckCanvasComponent{
     if(this.state!=state)
     {
       this.state=state;
-      //this.EditShape=null;
-      //this.EditPoint=null;
       this.near_select_obj=null;
+
+      if(this.state==UI_SM_STATES.EDIT_MODE_NEUTRAL)
+      {
+        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:null});
+        this.EditShape=null;
+        this.EditPoint=null;
+      }
     }
   }
   SetReport( report )
@@ -691,7 +696,7 @@ class EverCheckCanvasComponent{
             pt1:mouseOnCanvas2,
             pt2:pmouseOnCanvas2,
             margin:5,
-            color:"rgba(255,0,0,0.5)",
+            color:"rgba(100,0,100,0.5)",
             direction:1
           };
         }
@@ -699,7 +704,6 @@ class EverCheckCanvasComponent{
         {
           if(this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
-            this.EditShape.color="rgba(100,0,100,0.5)";
             this.SetShape( this.EditShape);
             
             this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
@@ -708,6 +712,32 @@ class EverCheckCanvasComponent{
         }
         break;
       }      
+      
+      case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
+      {
+        this.EditPoint=null;
+        if(this.mouseStatus.status==0)
+        {
+          if(!ifOnMouseLeftClickEdge)
+          {
+            let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
+  
+            if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
+            {
+              this.CandEditPointInfo=pt_info;
+            }
+            else
+            {
+              this.CandEditPointInfo=null;
+            }
+          }
+        }
+        else
+        {
+
+        }
+        break;
+      }    
       case UI_SM_STATES.EDIT_MODE_ARC_CREATE:
       {
         
@@ -726,7 +756,7 @@ class EverCheckCanvasComponent{
               y:cnormal.y+cnormal.vy},
             pt3:pmouseOnCanvas2,
             margin:5,
-            color:"rgba(255,0,0,0.5)",
+            color:"rgba(100,0,100,0.5)",
             direction:1
           };
         }
@@ -734,7 +764,6 @@ class EverCheckCanvasComponent{
         {
           if(this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
-            this.EditShape.color="rgba(100,0,100,0.5)";
             this.SetShape( this.EditShape);
             
             this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});

@@ -274,6 +274,10 @@ class APP_EDIT_MODE extends React.Component{
             text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
+            key="APOINT"
+            text="APOINT" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
+          <BASE_COM.Button
+            addClass="layout lgreen vbox"
             key="ALINE"
             text="ALINE" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
           <BASE_COM.Button
@@ -300,24 +304,25 @@ class APP_EDIT_MODE extends React.Component{
         <div key="ARC" className="s width8 lred vbox">ARC</div>
       ];
       break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:          
-      MenuSet=[
-        <BASE_COM.Button
-        addClass="layout black vbox width4"
-          key="<"
-          text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div key="ARC" className="s lred vbox">ALINE</div>
-      ];
-      break;
+
       case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:         
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div key="LINE" className="s lred vbox">ALINE</div>,
+        <div key="AUX_LINE" className="s lred vbox">ALINE</div>,
       ];
-      
       break;
+
+      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:         
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox"
+          key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div key="AUX_POINT" className="s lred vbox">APOINT</div>,
+      ];
+      break;
+
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
       menu_height = "HXA";         
       MenuSet=[
@@ -393,6 +398,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Line_Add_Mode: (arg) =>  {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
     ACT_Arc_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
     ACT_Aux_Line_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create))},
+    ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
