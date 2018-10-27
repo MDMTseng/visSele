@@ -61,6 +61,7 @@ class EverCheckCanvasComponent{
     
     this.state=UI_SM_STATES.EDIT_MODE_NEUTRAL;
     this.shapeList=[];
+    this.inherentShapeList=[];
     
     this.EditShape=null;
     this.EditShape_color="rgba(255,0,0,0.7)";
@@ -133,6 +134,10 @@ class EverCheckCanvasComponent{
     }
   }
 
+  SetInherentShapeList( inherentShapeList )
+  {
+    this.inherentShapeList = inherentShapeList;
+  }
 
   SetImg( img )
   {
@@ -314,10 +319,17 @@ class EverCheckCanvasComponent{
     ctx.stroke();
   }
 
-  drawpoint(ctx, point,size=5)
+  drawpoint(ctx, point,type,size=5)
   {
     ctx.beginPath();
-    ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
+    if(type==null || type=="arc")
+    {
+      ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
+    }
+    else
+    {
+      ctx.rect(point.x-size/2,point.y-size/2,size,size);
+    }
     //ctx.closePath();
     ctx.stroke();
   }
@@ -348,10 +360,98 @@ class EverCheckCanvasComponent{
       });
     });
     return pt_info;
-
-
   }
 
+  FindClosestInherentPointInfo( location,inherentShapeList)
+  {
+    let pt_info={
+      pt:null,
+      key:null,
+      shape:null,
+      dist:Number.POSITIVE_INFINITY
+    };
+    inherentShapeList.forEach((ishape)=>{
+      if(ishape==null)return;
+      if(ishape.type!="aux_point")return;
+      let point = this.auxPointParse(ishape);
+      let tmpDist = distance_point_point(point,location);
+      if(pt_info.dist>tmpDist)
+      {
+        pt_info.shape=ishape;
+        pt_info.key=null;
+        pt_info.pt=point;
+        pt_info.dist = tmpDist;
+      }
+
+    });
+
+    return pt_info;
+  }
+
+  auxPointParse(aux_point)
+  {
+    let point=null;
+    if(aux_point.type!="aux_point")return point;
+    if(aux_point.ref[0].name == "@__SIGNATURE__" &&
+    aux_point.ref[0].element == "centre")
+    {
+      let cx = this.ReportJSON.reports[0].reports[0].cx;
+      let cy = this.ReportJSON.reports[0].reports[0].cy;
+      point = {x:cx,y:cy};
+    }
+    else
+    {
+      let idx = this.FindShape( "name" , aux_point.ref[0].name );
+      if(idx<0)return null;
+      let ref0_shape=this.shapeList[idx];
+      switch(ref0_shape.type)
+      {
+        case "arc":
+        {
+          let shape_arc = this.shapeList[idx];
+          let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
+          point = arc;
+          point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+          point.ref[0]._obj=shape_arc;
+        }
+        break;
+      }
+    }
+
+    return point;
+  }
+
+  drawInherentShapeList(ctx, inherentShapeList)
+  {
+    if(inherentShapeList===undefined || inherentShapeList ==null )return;
+    inherentShapeList.forEach((ishape)=>{
+      if(ishape==null)return;
+      
+      switch(ishape.type)
+      {
+        case 'aux_point':
+        {
+          let point = this.auxPointParse(ishape);
+          if(point!=null)
+          {
+            ctx.lineWidth=4;
+            ctx.strokeStyle="rgba(0,0,100,0.5)";  
+            this.drawpoint(ctx,point,"rect");
+
+            ctx.lineWidth=2;
+            ctx.strokeStyle="black";  
+            this.drawpoint(ctx,point,"rect");
+          }
+        }
+        break;
+
+        case 'aux_line':
+        {
+        }
+        break;
+      }
+    });
+  }
   
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[])
   {
@@ -403,6 +503,19 @@ class EverCheckCanvasComponent{
           this.drawpoint(ctx, eObject.pt2);
         }
         break;
+        
+        case 'aux_point':
+        {
+          
+          let subObjs = eObject.ref
+            .map((ref)=> this.FindShape( "name" , ref.name ))
+            .map((idx)=>{ console.log(idx);  return idx>=0?this.shapeList[idx]:null});
+          console.log(eObject.ref);
+          this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
+            
+        }
+        break;
+        
         
         
         case 'arc':
@@ -629,18 +742,48 @@ class EverCheckCanvasComponent{
     }
     ctx.closePath();
     ctx.save();
+
     
+    let skipDrawIdxs=[];
     if(this.EditShape!=null)
     {
-      this.drawShapeList(ctx, this.shapeList,true,[this.EditShape.id]);
-
+      skipDrawIdxs.push(this.EditShape.id);
+      
       ctx.strokeStyle=this.EditShape_color;
       this.drawShapeList(ctx, [this.EditShape],false);
     }
-    else
+
+    if(this.CandEditPointInfo!=null)
     {
-      this.drawShapeList(ctx, this.shapeList);
+      var candPtInfo = this.CandEditPointInfo;
+      var found = skipDrawIdxs.find(function(skip_id) {
+        return candPtInfo.shape.id == skip_id;
+      }.bind(this));
+      
+      if( found===undefined )
+      {
+        skipDrawIdxs.push(candPtInfo.shape.id);
+
+        if(candPtInfo.shape.type.startsWith("aux"))
+        {
+          ctx.strokeStyle="rgba(255,0,255,0.5)";
+
+          this.drawShapeList(ctx, [candPtInfo.shape],false);
+
+        }
+        else{
+          ctx.strokeStyle="rgba(255,0,255,0.5)";
+          this.drawShapeList(ctx, [candPtInfo.shape],false);
+        }
+      }
     }
+
+    if(this.inherentShapeList!=null)
+    {
+    }
+    
+    this.drawShapeList(ctx, this.shapeList,true,skipDrawIdxs);
+    this.drawInherentShapeList(ctx, this.inherentShapeList);
 
 
     if(this.EditPoint!=null)
@@ -816,12 +959,14 @@ class EverCheckCanvasComponent{
           }
 
           let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-
+          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
+          if(pt_info.dist>pt_info2.dist)
+          {
+            pt_info = pt_info2;
+          }
           if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
           {
-            
             this.CandEditPointInfo=pt_info;
-            
           }
           else
           {

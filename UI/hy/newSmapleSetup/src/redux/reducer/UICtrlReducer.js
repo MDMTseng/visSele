@@ -67,6 +67,7 @@ function Default_UICtrlReducer()
     edit_info:{
       _obj:new InspectionEditorLogic(),
       list:[],
+      inherentShapeList:[],
       edit_tar_info:null,
     },
     sm:toggleSplashMachine,
@@ -80,12 +81,21 @@ class InspectionEditorLogic
   {
     this.shapeCount=0;
     this.shapeList=[];
+    this.inherentShapeList=[];
     this.editShape=null;
     this.editPoint=null;
     
     this.state=null;
-  }
 
+    
+    this.report=null;
+    this.img=null;
+  }
+  SetCurrentReport(report)
+  {
+    console.log(report);
+    this.report=report;
+  }
   
   SetState(state)
   {
@@ -114,6 +124,45 @@ class InspectionEditorLogic
     return this.FindShape( "id" , id );
   }
 
+  UpdateInherentShapeList()
+  {
+    this.inherentShapeList=[];
+
+    this.inherentShapeList.push({
+      type:"aux_point",
+      name:"@__SIGNATURE__.centre",
+      ref:[{
+        name:"@__SIGNATURE__",
+        element:"centre"
+      }]
+    });
+    this.inherentShapeList.push({
+      type:"aux_line",
+      name:"@__SIGNATURE__.orientation",
+      ref:[{
+        name:"@__SIGNATURE__",
+        element:"orientation"
+      }]
+      //ref:"__OBJ_CENTRAL__"
+    });
+
+    this.shapeList.forEach((shape)=>{
+      if(shape.type=="arc")
+      {
+        this.inherentShapeList.push({
+          type:"aux_point",
+          name:shape.name+".centre",
+          ref:[{
+            name:shape.name,
+            element:"centre"
+          }]
+        });
+      }
+    });
+
+    return this.inherentShapeList;
+  }
+
   SetShape( shape_obj, id=-1 )//-1 means add new shape
   {
     let shape = null;
@@ -134,6 +183,7 @@ class InspectionEditorLogic
           }
         }
       }
+      //UpdateInherentShapeList();
       return shape;
     }
 
@@ -191,6 +241,7 @@ class InspectionEditorLogic
     {
       this.editShape = shape;
     }
+    //UpdateInherentShapeList();
     return shape;
 
   }
@@ -240,6 +291,7 @@ function StateReducer(newState,action)
       {
         case UISEV.Inspection_Report:
           newState.report=action.data;
+          newState.edit_info._obj.SetCurrentReport(action.data);
         break;
         case UISEV.Image_Update:
           newState.img=action.data;
@@ -269,9 +321,10 @@ function StateReducer(newState,action)
           let newID=action.data.id;
           console.log("newID:",newID);
           let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
-
           newState.edit_info.list=newState.edit_info._obj.shapeList;
-
+          
+          newState.edit_info.inherentShapeList=
+            newState.edit_info._obj.UpdateInherentShapeList();
           if(newID!==undefined && newID!=-1)
           {
             let tmpTarIdx=

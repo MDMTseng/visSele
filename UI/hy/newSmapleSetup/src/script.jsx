@@ -60,7 +60,13 @@ class CanvasComponent extends React.Component {
   updateCanvas(state,props=this.props) {
     if(this.ec_canvas  !== undefined)
     {
-      console.log("updateCanvas>>",props.img);
+      console.log("updateCanvas>>",props.edit_info.inherentShapeList);
+      
+      
+      this.ec_canvas.SetShapeList(props.edit_info.list);
+      this.ec_canvas.SetInherentShapeList(props.edit_info.inherentShapeList);
+      this.ec_canvas.SetEditShape(props.edit_info.edit_tar_info);
+      
       this.ec_canvas.SetReport(props.report);
       this.ec_canvas.SetImg(props.img);
       this.ec_canvas.SetState(state);
@@ -86,11 +92,7 @@ class CanvasComponent extends React.Component {
     let stateObj = xstate_GetCurrentMainState(nextProps.c_state);
     let substate = stateObj.substate;
     console.log("substate:"+substate,stateObj);
-    console.log(nextProps.edit_info.list);
-    
-    this.ec_canvas.SetShapeList(nextProps.edit_info.list);
-    this.ec_canvas.SetEditShape(nextProps.edit_info.edit_tar_info);
-    
+    console.log(nextProps.edit_info.inherentShapeList);
     this.updateCanvas(substate,nextProps);
   }
 
