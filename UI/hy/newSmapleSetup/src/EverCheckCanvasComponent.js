@@ -863,16 +863,6 @@ class EverCheckCanvasComponent{
         {
           if(!ifOnMouseLeftClickEdge)
           {
-            let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-  
-            if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
-            {
-              this.CandEditPointInfo=pt_info;
-            }
-            else
-            {
-              this.CandEditPointInfo=null;
-            }
           }
         }
         else
