@@ -34,10 +34,10 @@ export const ActionThrottle = ATData => store => next => action => {
 
     case "flush":
     {
-      console.log("Trigger.....",ATData.ATID);
       clearTimeout(ATData.timeout_obj);
       ATData.timeout_obj=null;
       if(ATData.actions.length==0)return;
+      console.log("Trigger.....",ATData.ATID);
       let actions = ATData.actions;
       ATData.actions=[];
       return next({

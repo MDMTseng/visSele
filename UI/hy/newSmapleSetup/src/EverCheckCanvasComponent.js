@@ -858,18 +858,22 @@ class EverCheckCanvasComponent{
       
       case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
       {
-        this.EditPoint=null;
-        if(this.mouseStatus.status==0)
+        
+        if(ifOnMouseLeftClickEdge)
         {
-          if(!ifOnMouseLeftClickEdge)
-          {
-
-
-          }
-        }
-        else
-        {
-
+          this.EditShape={
+            type:"aux_point",
+            ref:[{
+              name:"aux_point"
+            },{
+              name:"aux_line"
+            }]
+          };
+          
+          this.SetShape( this.EditShape);
+              
+          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
+          
         }
         break;
       }    
