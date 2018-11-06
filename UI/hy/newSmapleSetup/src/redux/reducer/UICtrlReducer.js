@@ -107,11 +107,11 @@ class InspectionEditorLogic
     }
   }
 
-  FindShape( key , val )
+  FindShape( key , val, shapeList=this.shapeList)
   {
-    for(let i=0;i<this.shapeList.length;i++)
+    for(let i=0;i<shapeList.length;i++)
     {
-      if(this.shapeList[i][key] == val)
+      if(shapeList[i][key] == val)
       {
         return i;
       }
@@ -189,6 +189,14 @@ class InspectionEditorLogic
 
     console.log("SETShape>",this.shapeList,shape_obj,id);
           
+
+    let nameIdx=this.FindShape( "name" , shape_obj.name,this.inherentShapeList);
+    if(nameIdx!=-1)
+    {
+      console.log("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
+      return null;
+    }
+
     //shape_obj.color="rgba(100,0,100,0.5)";
     let targetIdx=-1;
     if(id!=-1)

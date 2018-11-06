@@ -509,8 +509,8 @@ class EverCheckCanvasComponent{
           
           let subObjs = eObject.ref
             .map((ref)=> this.FindShape( "name" , ref.name ))
-            .map((idx)=>{ console.log(idx);  return idx>=0?this.shapeList[idx]:null});
-          console.log(eObject.ref);
+            .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
+          //console.log(eObject.ref);
           this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
             
         }
@@ -863,6 +863,8 @@ class EverCheckCanvasComponent{
         {
           if(!ifOnMouseLeftClickEdge)
           {
+
+
           }
         }
         else
