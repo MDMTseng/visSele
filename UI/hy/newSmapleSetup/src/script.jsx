@@ -70,6 +70,7 @@ class CanvasComponent extends React.Component {
       this.ec_canvas.SetReport(props.report);
       this.ec_canvas.SetImg(props.img);
       this.ec_canvas.SetState(state);
+      //this.ec_canvas.ctrlLogic();
       this.ec_canvas.draw();
     }
   }
@@ -325,13 +326,42 @@ class APP_EDIT_MODE extends React.Component{
       ];
       break;
 
-      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:         
-      MenuSet=[
-        <BASE_COM.Button
-          addClass="layout black vbox"
-          key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div key="AUX_POINT" className="s lred vbox">APOINT</div>,
-      ];
+      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:  
+      {       
+        MenuSet=[
+          <BASE_COM.Button
+            addClass="layout black vbox"
+            key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+          <div key="AUX_POINT" className="s lred vbox">APOINT</div>,
+        ];
+
+      
+        if(this.props.edit_tar_info!=null)
+        {
+          let on_Tar_Change=(updated_obj)=>
+          {
+            console.log(updated_obj);
+            
+            this.ec_canvas.SetShape( updated_obj, updated_obj.id);
+          }
+          MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
+            key="JsonEditBlock"
+            jsonChange={on_Tar_Change.bind(this)}/>);
+
+          let on_DEL_Tar=(id)=>
+          {
+            this.ec_canvas.SetShape( null, id);
+          }
+          if(this.props.edit_tar_info.id !== undefined)
+          {
+            MenuSet.push(<BASE_COM.Button
+              key="DEL_BTN"
+              addClass="layout red vbox"
+              text="DEL" onClick={()=>on_DEL_Tar(this.props.edit_tar_info.id)}/>);
+          }
+          
+        }
+      }
       break;
 
       case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 

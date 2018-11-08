@@ -48,7 +48,6 @@ class EverCheckCanvasComponent{
     this.mouse_close_dist= 10;
     this.camera={
       scale: 1,
-      scaleCenter:{x:0,y:0},
       rotate: 0,
       translate: {x:0,y:0,dx:0,dy:0},
       matrix:new DOMMatrix(),
@@ -858,23 +857,6 @@ class EverCheckCanvasComponent{
       
       case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
       {
-        
-        if(ifOnMouseLeftClickEdge)
-        {
-          this.EditShape={
-            type:"aux_point",
-            ref:[{
-              name:"aux_point"
-            },{
-              name:"aux_line"
-            }]
-          };
-          
-          this.SetShape( this.EditShape);
-              
-          this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
-          
-        }
         break;
       }    
       case UI_SM_STATES.EDIT_MODE_ARC_CREATE:

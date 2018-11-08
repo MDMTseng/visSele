@@ -270,6 +270,8 @@ function StateReducer(newState,action)
   console.log(newState.c_state,">>",action.type);
   let currentState = newState.sm.transition(newState.c_state, action.type);
   console.log(newState.c_state.value," + ",action.type," > ",currentState.value);
+  let state_chaged = JSON.stringify(newState.c_state.value)!==JSON.stringify(currentState.value);
+  console.log("state change:"+state_chaged);
   newState.c_state=currentState;
 
   
@@ -300,6 +302,23 @@ function StateReducer(newState,action)
       return newState;
     case UISTS.EDIT_MODE:
     {
+      let sbstate = stateObj.substate;
+
+      switch(sbstate)
+      {
+        case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
+        if(state_chaged)
+        {
+          newState.edit_info.edit_tar_info = {
+            type:"aux_point",
+            ref:[{},{}]
+          };
+        }
+        break;
+      }
+
+
+
       newState.showSplash=false;
       switch(action.type)
       {
@@ -332,6 +351,11 @@ function StateReducer(newState,action)
         break;
         case UISEV.EDIT_MODE_Shape_Set:
         {
+          //Three cases
+          //ID undefined but shaped is defiend -Add new shape
+          //ID is defined and shaped is defiend - Modify an existed shape if it's in the list
+          //ID is defined and shaped is null   - delete  an existed shape if it's in the list
+
           let newID=action.data.id;
           console.log("newID:",newID);
           let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
@@ -339,23 +363,23 @@ function StateReducer(newState,action)
           
           newState.edit_info.inherentShapeList=
             newState.edit_info._obj.UpdateInherentShapeList();
-          if(newID!==undefined && newID!==undefined)
-          {
+          if(newID!==undefined)
+          {//If this time it's not for adding new shape(ie, newID is not undefined)
             let tmpTarIdx=
             newState.edit_info._obj.FindShapeIdx( newID );
             console.log(tmpTarIdx);
-            if(tmpTarIdx === undefined)
+            if(tmpTarIdx === undefined)//In this case we delete the shape in the list 
             {
               newState.edit_info.edit_tar_info=null;
             }
             else
-            {
+            {//Otherwise, we deepcopy the shape
               newState.edit_info.edit_tar_info = 
                 JSON.parse(JSON.stringify(newState.edit_info.list[tmpTarIdx]));
             }
           }
           else
-          {
+          {//We just added a shape, set it as an edit target
             newState.edit_info.edit_tar_info = 
               JSON.parse(JSON.stringify(shape));
           }
