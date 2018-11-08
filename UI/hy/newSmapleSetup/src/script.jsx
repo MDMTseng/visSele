@@ -146,10 +146,10 @@ class JsonElement extends React.Component{
     {
       case "input-number":
         return <input key={this.props.id} className={this.props.className} type="number" value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(evt,this.props.target)}/>
+          onChange={(evt)=>this.props.onChange(evt,this.props.target,this.props.type)}/>
       case "input":
         return <input key={this.props.id} className={this.props.className} value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(evt,this.props.target)}/>
+          onChange={(evt)=>this.props.onChange(evt,this.props.target,this.props.type)}/>
       case "div":
       default:
         return <div key={this.props.id} className={this.props.className} >{this.props.children}</div>
@@ -168,10 +168,19 @@ class JsonEditBlock extends React.Component{
       };
   }
 
-  onChangeX(evt,target) {
-    console.log(evt.target,target);
-    target.obj[target.key]=evt.target.value;
+  onChangeX(evt,target,type) {
+    //console.log(evt.target,target);
+    //let fval = parseFloat(evt.target.value);
+    if(type == "input-number")
+    {
+      target.obj[target.key]=parseFloat(evt.target.value);
+    }
+    else
+    {
+      target.obj[target.key]=evt.target.value;
+    }
     this.props.jsonChange(this.tmp.object);
+
     return true;
   }
   shouldComponentUpdate(nextProps, nextState) {
