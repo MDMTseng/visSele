@@ -147,10 +147,16 @@ class JsonElement extends React.Component{
     {
       case "input-number":
         return <input key={this.props.id} className={this.props.className} type="number" value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(evt,this.props.target,this.props.type)}/>
+          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
       case "input":
         return <input key={this.props.id} className={this.props.className} value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(evt,this.props.target,this.props.type)}/>
+          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+      case "btn":
+        return <button
+          key={this.props.id}
+          className={this.props.className}
+          onClick={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}>
+          {this.props.children}</button>
       case "div":
       default:
         return <div key={this.props.id} className={this.props.className} >{this.props.children}</div>
@@ -169,19 +175,8 @@ class JsonEditBlock extends React.Component{
       };
   }
 
-  onChangeX(evt,target,type) {
-    //console.log(evt.target,target);
-    //let fval = parseFloat(evt.target.value);
-    if(type == "input-number")
-    {
-      target.obj[target.key]=parseFloat(evt.target.value);
-    }
-    else
-    {
-      target.obj[target.key]=evt.target.value;
-    }
-    this.props.jsonChange(this.tmp.object);
-
+  onChangeX(target,type,evt) {
+    this.props.jsonChange(this.tmp.object,target,type,evt);
     return true;
   }
   shouldComponentUpdate(nextProps, nextState) {
@@ -189,7 +184,7 @@ class JsonEditBlock extends React.Component{
     return true;
   }
 
-  composeObject(obj,whiteListKey=null,idHeader="")
+  composeObject(obj,whiteListKey=null,idHeader="",keyHist=[])
   {
     var rows = [];
     let keyList = (whiteListKey==null )?obj:whiteListKey;
@@ -199,13 +194,16 @@ class JsonEditBlock extends React.Component{
 
         if((ele === undefined) || displayMethod=== undefined)continue;
         console.log(key,ele,typeof ele);
+        
+        let newkeyHist = keyHist.slice();
+        newkeyHist.push(key);
         switch(typeof ele)
         {
           case "string":
             if(displayMethod==null)displayMethod="input";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod}
-              target={{obj:obj,key:key}} 
+              target={{obj:obj,keyHist:newkeyHist}} 
               onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
             
           break;
@@ -213,17 +211,26 @@ class JsonEditBlock extends React.Component{
             if(displayMethod==null)displayMethod="input-number";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod} 
-              target={{obj:obj,key:key}}  
+              target={{obj:obj,keyHist:newkeyHist}}  
               onChange={this.onChangeX.bind(this)}>{(ele).toFixed(4)}</JsonElement>);
           break;
           case "object":
+          {
+
             rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 WXF vbox black">{key}</div>);
+            let obj_disp_type = (displayMethod==null)?"div":displayMethod.__OBJ__;
+            if(obj_disp_type == undefined)obj_disp_type="div";
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} 
+              className="s HX1 WXF vbox black" type={obj_disp_type} 
+              onChange={this.onChangeX.bind(this)}
+              target={{obj:obj,keyHist:newkeyHist}}>{key}</JsonElement>);
+
             rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
             rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-              this.composeObject(ele,displayMethod,idHeader+"_"+key)
+              this.composeObject(ele,displayMethod,idHeader+"_"+key,newkeyHist)
             }</div>);
             rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
+          }
           break;
           default:
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
@@ -338,14 +345,24 @@ class APP_EDIT_MODE extends React.Component{
       
         if(this.props.edit_tar_info!=null)
         {
-          let on_Tar_Change=(updated_obj)=>
+          let on_Tar_Change=(original_obj,target,type,evt)=>
           {
-            console.log(updated_obj);
+            console.log(target);
             
-            this.ec_canvas.SetShape( updated_obj, updated_obj.id);
+            //this.ec_canvas.SetShape( original_obj, original_obj.id);
           }
           MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
             key="JsonEditBlock"
+            whiteListKey={{
+              //id:"div",
+              type:"div",
+              name:"input",
+  
+              ref:{__OBJ__:"btn",
+                0:{__OBJ__:"btn"},
+                1:{__OBJ__:"btn"},
+              }
+            }}
             jsonChange={on_Tar_Change.bind(this)}/>);
 
           let on_DEL_Tar=(id)=>
@@ -378,12 +395,19 @@ class APP_EDIT_MODE extends React.Component{
       
       if(this.props.edit_tar_info!=null)
       {
-        let on_Tar_Change=(updated_obj)=>
+        let on_Tar_Change=(original_obj,target,type,evt)=>
         {
-          console.log(updated_obj);
-          
+          //console.log(original_obj[target.key]);
+          let lastKey = target.keyHist[target.keyHist.length-1];
+          if(type == "input-number")
+            target.obj[lastKey]=parseFloat(evt.target.value);
+          else if(type == "input")
+            target.obj[lastKey]=evt.target.value;
+
+          let updated_obj=original_obj;
           this.ec_canvas.SetShape( updated_obj, updated_obj.id);
         }
+        
         MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
           key="JsonEditBlock"
           jsonChange={on_Tar_Change.bind(this)}
@@ -394,10 +418,11 @@ class APP_EDIT_MODE extends React.Component{
             margin:"input-number",
             direction:"input-number",
 
-            /*pt1:{
-              x:"div",
-              y:"div",
-            }*/
+            pt1:{
+              __OBJ__:"btn",
+              x:"input-number",
+              y:"input-number",
+            }
           }}/>);
 
         let on_DEL_Tar=(id)=>
