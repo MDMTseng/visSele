@@ -116,19 +116,21 @@ class InspectionEditorLogic
         return i;
       }
     }
-    return -1;
+    return undefined;
   }
 
-  FindShapeIdx( id )
+  FindShapeIdx( id , shapeList=this.shapeList)
   {
-    return this.FindShape( "id" , id );
+    return this.FindShape( "id" , id ,shapeList);
   }
 
   UpdateInherentShapeList()
   {
     this.inherentShapeList=[];
 
+    let id=100000;
     this.inherentShapeList.push({
+      id:id++,
       type:"aux_point",
       name:"@__SIGNATURE__.centre",
       ref:[{
@@ -137,6 +139,7 @@ class InspectionEditorLogic
       }]
     });
     this.inherentShapeList.push({
+      id:id++,
       type:"aux_line",
       name:"@__SIGNATURE__.orientation",
       ref:[{
@@ -150,10 +153,13 @@ class InspectionEditorLogic
       if(shape.type=="arc")
       {
         this.inherentShapeList.push({
+          
+          id:id+shape.id*10,
           type:"aux_point",
           name:shape.name+".centre",
           ref:[{
-            name:shape.name,
+            //name:shape.name,
+            id:shape.id,
             element:"centre"
           }]
         });
@@ -163,13 +169,13 @@ class InspectionEditorLogic
     return this.inherentShapeList;
   }
 
-  SetShape( shape_obj, id=-1 )//-1 means add new shape
+  SetShape( shape_obj, id )//undefined means add new shape
   {
     let shape = null;
 
     if(shape_obj == null)//For delete
     {
-      if( id>=0)
+      if( id!== undefined)
       {
         let tmpIdx = this.FindShapeIdx( id );
         console.log("SETShape>",tmpIdx);
@@ -190,22 +196,22 @@ class InspectionEditorLogic
     console.log("SETShape>",this.shapeList,shape_obj,id);
           
 
-    let nameIdx=this.FindShape( "name" , shape_obj.name,this.inherentShapeList);
-    if(nameIdx!=-1)
+    let nameIdx=this.FindShapeIdx( shape_obj.id,this.inherentShapeList);
+    if(nameIdx!=undefined)
     {
       console.log("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
       return null;
     }
 
     //shape_obj.color="rgba(100,0,100,0.5)";
-    let targetIdx=-1;
-    if(id!=-1)
+    let targetIdx=undefined;
+    if(id!=undefined)
     {//id(identification)!=idx(index)
       let tmpIdx = this.FindShapeIdx( id );
       let nameIdx = this.FindShape("name",shape_obj.name);
 
       //Check if the name in shape_obj exits in the list and duplicates with other shape in list(tmpIdx!=nameIdx)
-      if(nameIdx!=-1 && tmpIdx!=nameIdx)
+      if(nameIdx!==undefined && tmpIdx!=nameIdx)
       {
         console.log("Error:Shape id:"+id+" Duplicated shape name:"+shape_obj.name+" with idx:"+nameIdx+" ");
         return null;
@@ -240,7 +246,7 @@ class InspectionEditorLogic
     else
     {
       shape = Object.assign({id:id},shape_obj);
-      if(targetIdx!=-1)
+      if(targetIdx!=undefined)
       {
         this.shapeList[targetIdx] = shape;
       }
@@ -333,12 +339,12 @@ function StateReducer(newState,action)
           
           newState.edit_info.inherentShapeList=
             newState.edit_info._obj.UpdateInherentShapeList();
-          if(newID!==undefined && newID!=-1)
+          if(newID!==undefined && newID!==undefined)
           {
             let tmpTarIdx=
             newState.edit_info._obj.FindShapeIdx( newID );
             console.log(tmpTarIdx);
-            if(tmpTarIdx == -1)
+            if(tmpTarIdx === undefined)
             {
               newState.edit_info.edit_tar_info=null;
             }

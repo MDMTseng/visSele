@@ -105,10 +105,10 @@ class EverCheckCanvasComponent{
         return i;
       }
     }
-    return -1;
+    return undefined;
   }
 
-  SetShape( shape_obj, id=-1 )
+  SetShape( shape_obj, id)
   {
     this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_Set,data:{shape:shape_obj,id:id}});
   }
@@ -126,7 +126,7 @@ class EverCheckCanvasComponent{
     if(this.EditShape!=null && this.EditShape.id!==undefined)
     {
       let idx = this.FindShape( "id" , this.EditShape.id );
-      if(idx ==-1)
+      if(idx ==undefined)
       {
         this.EditShape=null;
         this.EditPoint=null;
@@ -401,7 +401,7 @@ class EverCheckCanvasComponent{
     }
     else
     {
-      let idx = this.FindShape( "name" , aux_point.ref[0].name );
+      let idx = this.FindShape( "id" , aux_point.ref[0].id );
       if(idx<0)return null;
       let ref0_shape=this.shapeList[idx];
       switch(ref0_shape.type)
@@ -508,7 +508,7 @@ class EverCheckCanvasComponent{
         {
           
           let subObjs = eObject.ref
-            .map((ref)=> this.FindShape( "name" , ref.name ))
+            .map((ref)=> this.FindShape( "id" , ref.id ))
             .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
           //console.log(eObject.ref);
           this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
