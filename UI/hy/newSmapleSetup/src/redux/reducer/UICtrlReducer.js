@@ -5,7 +5,7 @@ import STATE_MACHINE_CORE from 'UTIL/STATE_MACHINE_CORE';
 import { Machine } from 'xstate';
 import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 
-import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 
 
 let UISTS = UI_SM_STATES;
@@ -68,7 +68,19 @@ function Default_UICtrlReducer()
       _obj:new InspectionEditorLogic(),
       list:[],
       inherentShapeList:[],
-      edit_tar_info:null,
+
+      edit_tar_info:null,//It's for usual edit target
+
+      //It's the target element in edit target
+      //Example 
+      //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
+      //And our target is c
+      //Then, edit_tar_ele_info={obj:b, keyHist:["a","b",3]}
+      edit_tar_ele_info:null,
+
+      //This is the cadidate info for target element content
+      edit_tar_ele_cand:null,
+
     },
     sm:toggleSplashMachine,
     c_state:toggleSplashMachine.initialState
@@ -262,7 +274,6 @@ class InspectionEditorLogic
 
 }
 
-
 function StateReducer(newState,action)
 {
 
@@ -292,6 +303,7 @@ function StateReducer(newState,action)
 
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
 
+  let substate = stateObj.substate;
   switch(stateObj.state)
   {
     case UISTS.SPLASH:
@@ -302,21 +314,6 @@ function StateReducer(newState,action)
       return newState;
     case UISTS.EDIT_MODE:
     {
-      let sbstate = stateObj.substate;
-
-      switch(sbstate)
-      {
-        case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
-        if(state_chaged)
-        {
-          newState.edit_info.edit_tar_info = {
-            type:"aux_point",
-            ref:[{},{}]
-          };
-        }
-        break;
-      }
-
 
 
       newState.showSplash=false;
@@ -326,29 +323,30 @@ function StateReducer(newState,action)
           newState.report=action.data;
           newState.edit_info._obj.SetCurrentReport(action.data);
         break;
+
         case UISEV.Image_Update:
           newState.img=action.data;
         break;
+
         case UISEV.EDIT_MODE_Edit_Tar_Update:
-          if(action.data == null)
-          {
-            newState.edit_info.edit_tar_info=null;
-          }
-          else
-          {
-            newState.edit_info.edit_tar_info=Object.assign({},action.data);
-          }
+          newState.edit_info.edit_tar_info=
+            (action.data == null)? null : Object.assign({},action.data);
         break;
+
         case UISEV.EDIT_MODE_Shape_List_Update:
-          if(action.data == null)
-          {
-            newState.edit_info.list=[];
-          }
-          else
-          {
-            newState.edit_info.list=action.data;
-          }
+          newState.edit_info.list=(action.data == null)? []: action.data;
         break;
+
+        case UISEV.EDIT_MODE_Edit_Tar_Ele_Update:
+          newState.edit_info.edit_tar_ele_info=
+            (action.data == null)? null : Object.assign({},action.data);
+        break;
+        case UISEV.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
+          newState.edit_info.edit_tar_ele_cand=
+            (action.data == null)? null : Object.assign({},action.data);
+            console.log("EDIT_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
+        break;
+
         case UISEV.EDIT_MODE_Shape_Set:
         {
           //Three cases
@@ -388,6 +386,46 @@ function StateReducer(newState,action)
         }
         break;
       }
+
+      
+      switch(substate)
+      {
+        case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
+        {
+          if(state_chaged)
+          {
+            newState.edit_info.edit_tar_info = {
+              type:"aux_point",
+              ref:[{},{}]
+            };
+            newState.edit_info.edit_tar_ele_info=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+            break;
+          }
+          
+          if(newState.edit_info.edit_tar_ele_info!=null && newState.edit_info.edit_tar_ele_cand!=null)
+          {
+            let keyHist=newState.edit_info.edit_tar_ele_info.keyHist;
+            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyHist,keyHist.length-2);
+            let cand=newState.edit_info.edit_tar_ele_cand;
+
+            console.log("GetObjElement",obj,keyHist[keyHist.length-1]);
+            obj[keyHist[keyHist.length-1]]={
+              id:cand.shape.id,
+              element:cand.shape.type
+            };
+
+            console.log(newState.edit_info.edit_tar_ele_info,newState.edit_info.edit_tar_ele_cand);
+            console.log(obj,newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_ele_info=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+          }
+        }
+        break;
+      }
+
+
 
       return newState;
     }

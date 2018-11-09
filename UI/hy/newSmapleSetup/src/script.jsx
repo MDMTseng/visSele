@@ -42,6 +42,10 @@ class CanvasComponent extends React.Component {
         //console.log(event);
         this.props.ACT_EDIT_TAR_UPDATE(event.data);
       break; 
+      case UIAct.UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
+        //console.log(event);
+        this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(event.data);
+      break; 
       case UIAct.UI_SM_EVENT.EDIT_MODE_Shape_List_Update:
         console.log(event);
         this.props.ACT_EDIT_SHAPELIST_UPDATE(event.data);
@@ -129,6 +133,7 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) =>
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
+    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_List_Update(shapeList))},
     ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_Set(shape_data))},
   }
@@ -348,35 +353,44 @@ class APP_EDIT_MODE extends React.Component{
           let on_Tar_Change=(original_obj,target,type,evt)=>
           {
             console.log(target);
-            
+            this.props.ACT_EDIT_TAR_ELE_UPDATE(target);
             //this.ec_canvas.SetShape( original_obj, original_obj.id);
           }
+          console.log("JsonEditBlock:",this.props.edit_tar_info);
           MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
             key="JsonEditBlock"
             whiteListKey={{
               //id:"div",
               type:"div",
               name:"input",
-  
-              ref:{__OBJ__:"btn",
-                0:{__OBJ__:"btn"},
-                1:{__OBJ__:"btn"},
+              ref:{__OBJ__:"div",
+                0:{__OBJ__:"btn",
+                  id:"div",
+                  element:"div"},
+                1:{__OBJ__:"btn",
+                  id:"div",
+                  element:"div"},
               }
             }}
             jsonChange={on_Tar_Change.bind(this)}/>);
+          
 
-          let on_DEL_Tar=(id)=>
-          {
-            this.ec_canvas.SetShape( null, id);
-          }
-          if(this.props.edit_tar_info.id !== undefined)
+          let tar_info = this.props.edit_tar_info;
+          if(tar_info.ref[0].id !==undefined && 
+            tar_info.ref[1].id !==undefined &&
+            tar_info.ref[0].id !=tar_info.ref[1].id 
+            )
           {
             MenuSet.push(<BASE_COM.Button
-              key="DEL_BTN"
+              key="ADD_BTN"
               addClass="layout red vbox"
-              text="DEL" onClick={()=>on_DEL_Tar(this.props.edit_tar_info.id)}/>);
+              text="ADD" onClick={()=>
+                {
+                  this.ec_canvas.SetShape( this.props.edit_tar_info);
+                  this.props.ACT_SUCCESS();
+                }}/>);
           }
-          
+        
         }
       }
       break;
@@ -466,6 +480,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Aux_Line_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create))},
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
+    ACT_EDIT_TAR_ELE_UPDATE: (candObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Update(candObj))},
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
