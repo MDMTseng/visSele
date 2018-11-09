@@ -855,38 +855,6 @@ class EverCheckCanvasComponent{
         break;
       }      
       
-      case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
-      {
-        
-        if(this.mouseStatus.status==1)
-        {
-          if(ifOnMouseLeftClickEdge && this.CandEditPointInfo!=null)
-          {
-            console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
-
-          }
-        }
-        else
-        {
-
-          let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
-          if(pt_info.dist>pt_info2.dist)
-          {
-            pt_info = pt_info2;
-          }
-          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
-          {
-            this.CandEditPointInfo=pt_info;
-          }
-          else
-          {
-            this.CandEditPointInfo=null;
-          }
-        }
-        break;
-      }
       case UI_SM_STATES.EDIT_MODE_ARC_CREATE:
       {
         
@@ -921,6 +889,42 @@ class EverCheckCanvasComponent{
         }
         break;
       }
+
+
+      case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
+      {
+        
+        if(this.mouseStatus.status==1)
+        {
+          if(ifOnMouseLeftClickEdge && this.CandEditPointInfo!=null)
+          {
+            console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
+
+          }
+        }
+        else
+        {
+
+          let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
+          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
+          if(pt_info.dist>pt_info2.dist)
+          {
+            pt_info = pt_info2;
+          }
+          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
+          {
+            this.CandEditPointInfo=pt_info;
+          }
+          else
+          {
+            this.CandEditPointInfo=null;
+          }
+        }
+        break;
+      }
+
+
       case UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:
       {
         

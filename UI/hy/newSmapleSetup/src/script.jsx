@@ -274,6 +274,73 @@ class APP_EDIT_MODE extends React.Component{
     return true;
   }
 
+
+  genTarEditUI(edit_tar)
+  {
+    switch(edit_tar.type)
+    {
+      case "aux_point":
+      {
+        return (<JsonEditBlock object={edit_tar} 
+          key="JsonEditBlock"
+          whiteListKey={{
+            //id:"div",
+            type:"div",
+            name:"input",
+            ref:{__OBJ__:"div",
+              0:{__OBJ__:"btn",
+                id:"div",
+                element:"div"},
+              1:{__OBJ__:"btn",
+                id:"div",
+                element:"div"},
+            }
+          }}
+          jsonChange={(original_obj,target,type,evt)=>
+            {
+              console.log(target);
+              this.props.ACT_EDIT_TAR_ELE_UPDATE(target);
+              //this.ec_canvas.SetShape( original_obj, original_obj.id);
+            }}/>);
+      }
+      break;
+      default:
+      {
+        return (<JsonEditBlock object={edit_tar} 
+          key="JsonEditBlock"
+          jsonChange={(original_obj,target,type,evt)=>
+            {
+              //console.log(original_obj[target.key]);
+              let lastKey = target.keyHist[target.keyHist.length-1];
+              if(type == "input-number")
+                target.obj[lastKey]=parseFloat(evt.target.value);
+              else if(type == "input")
+                target.obj[lastKey]=evt.target.value;
+    
+              let updated_obj=original_obj;
+              this.ec_canvas.SetShape( updated_obj, updated_obj.id);
+            }}
+          whiteListKey={{
+            //id:"div",
+            type:"div",
+            name:"input",
+            margin:"input-number",
+            direction:"input-number",
+
+            pt1:{
+              __OBJ__:"btn",
+              x:"input-number",
+              y:"input-number",
+            }
+          }}/>);
+      }
+      break;
+      
+    }
+  }
+
+
+
   render() {
 
     let MenuSet=[];
@@ -350,30 +417,9 @@ class APP_EDIT_MODE extends React.Component{
       
         if(this.props.edit_tar_info!=null)
         {
-          let on_Tar_Change=(original_obj,target,type,evt)=>
-          {
-            console.log(target);
-            this.props.ACT_EDIT_TAR_ELE_UPDATE(target);
-            //this.ec_canvas.SetShape( original_obj, original_obj.id);
-          }
           console.log("JsonEditBlock:",this.props.edit_tar_info);
-          MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
-            key="JsonEditBlock"
-            whiteListKey={{
-              //id:"div",
-              type:"div",
-              name:"input",
-              ref:{__OBJ__:"div",
-                0:{__OBJ__:"btn",
-                  id:"div",
-                  element:"div"},
-                1:{__OBJ__:"btn",
-                  id:"div",
-                  element:"div"},
-              }
-            }}
-            jsonChange={on_Tar_Change.bind(this)}/>);
-          
+
+          MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
 
           let tar_info = this.props.edit_tar_info;
           if(tar_info.ref[0].id !==undefined && 
@@ -409,35 +455,7 @@ class APP_EDIT_MODE extends React.Component{
       
       if(this.props.edit_tar_info!=null)
       {
-        let on_Tar_Change=(original_obj,target,type,evt)=>
-        {
-          //console.log(original_obj[target.key]);
-          let lastKey = target.keyHist[target.keyHist.length-1];
-          if(type == "input-number")
-            target.obj[lastKey]=parseFloat(evt.target.value);
-          else if(type == "input")
-            target.obj[lastKey]=evt.target.value;
-
-          let updated_obj=original_obj;
-          this.ec_canvas.SetShape( updated_obj, updated_obj.id);
-        }
-        
-        MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
-          key="JsonEditBlock"
-          jsonChange={on_Tar_Change.bind(this)}
-          whiteListKey={{
-            //id:"div",
-            type:"div",
-            name:"input",
-            margin:"input-number",
-            direction:"input-number",
-
-            pt1:{
-              __OBJ__:"btn",
-              x:"input-number",
-              y:"input-number",
-            }
-          }}/>);
+        MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
 
         let on_DEL_Tar=(id)=>
         {
@@ -451,6 +469,17 @@ class APP_EDIT_MODE extends React.Component{
             text="DEL" onClick={()=>on_DEL_Tar(this.props.edit_tar_info.id)}/>);
         }
         
+      }
+      else
+      {
+        console.log(this.props.shape_list);
+        this.props.shape_list.forEach((shape)=>
+        {
+          MenuSet.push(<BASE_COM.Button
+            key={"shape_listing_"+shape.id}
+            addClass="layout lgreen vbox"
+            text={shape.name} onClick={()=>this.props.ACT_EDIT_TAR_UPDATE(shape)}/>);
+        });
       }
       break;
     }
@@ -481,6 +510,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_EDIT_TAR_ELE_UPDATE: (candObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Update(candObj))},
+    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
@@ -491,6 +521,7 @@ const mapStateToProps_APP_EDIT_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
+    shape_list:state.UIData.edit_info.list,
   }
 };
 const APP_EDIT_MODE_rdx = connect(
