@@ -115,6 +115,11 @@ class EverCheckCanvasComponent{
   SetEditShape( EditShape )
   {
       this.EditShape = EditShape;
+      
+      if(this.EditShape!=null && this.tmp_EditShape_id !=this.EditShape.id){
+        this.fitCameraToShape(this.EditShape);
+        this.tmp_EditShape_id=this.EditShape.id;
+      }
   }
 
   
@@ -401,7 +406,7 @@ class EverCheckCanvasComponent{
     else
     {
       let idx = this.FindShape( "id" , aux_point.ref[0].id );
-      if(idx<0)return null;
+      if(idx ===undefined)return null;
       let ref0_shape=this.shapeList[idx];
       switch(ref0_shape.type)
       {
@@ -419,6 +424,64 @@ class EverCheckCanvasComponent{
 
     return point;
   }
+
+
+  fitCameraToShape(shape)
+  {
+    if(shape==null || shape===undefined)return;
+    let dst_matrix=new DOMMatrix();
+    dst_matrix.setMatrixValue(this.identityMat);
+
+
+
+    let center={x:0,y:0};
+    let size=1;
+
+    console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",shape);
+    switch(shape.type)
+    {
+      case "line":
+      center.x=(shape.pt1.x+shape.pt2.x)/2;
+      center.y=(shape.pt1.y+shape.pt2.y)/2;
+      //size = Math.hypot(shape.pt1.x-shape.pt2.x,shape.pt1.y-shape.pt2.y);
+      dst_matrix.translateSelf(-center.x,-center.y);
+      console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
+        
+      dst_matrix.translateSelf(
+        (this.secCanvas.width / 2), 
+        (this.secCanvas.height / 2));
+      this.camera.matrix.setMatrixValue(dst_matrix);
+      break;
+      case "arc":
+      let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
+      if(arc.r>500)
+      {
+
+        dst_matrix.translateSelf(
+          -(shape.pt1.x+shape.pt3.x)/2,
+          -(shape.pt1.x+shape.pt3.y)/2);
+      }
+      else
+      {
+        dst_matrix.translateSelf(-arc.x,-arc.y);
+      }
+        
+      dst_matrix.translateSelf(
+        (this.secCanvas.width / 2), 
+        (this.secCanvas.height / 2));
+      this.camera.matrix.setMatrixValue(dst_matrix);
+    
+      break;
+      case "aux_point":
+        let pt = this.auxPointParse(shape);
+        if(pt ==null)break;
+        console.log(shape,pt);
+        dst_matrix.translateSelf(-pt.x,-pt.y);
+      break;
+    }
+
+  }
+
 
   drawInherentShapeList(ctx, inherentShapeList)
   {
