@@ -281,8 +281,8 @@ function StateReducer(newState,action)
   console.log(newState.c_state,">>",action.type);
   let currentState = newState.sm.transition(newState.c_state, action.type);
   console.log(newState.c_state.value," + ",action.type," > ",currentState.value);
-  let state_chaged = JSON.stringify(newState.c_state.value)!==JSON.stringify(currentState.value);
-  console.log("state change:"+state_chaged);
+  let state_changed = JSON.stringify(newState.c_state.value)!==JSON.stringify(currentState.value);
+  console.log("state change:"+state_changed);
   newState.c_state=currentState;
 
   
@@ -392,7 +392,7 @@ function StateReducer(newState,action)
       {
         case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
         {
-          if(state_chaged)
+          if(state_changed)
           {
             newState.edit_info.edit_tar_info = {
               type:"aux_point",
