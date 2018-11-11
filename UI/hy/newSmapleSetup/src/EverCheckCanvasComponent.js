@@ -619,7 +619,25 @@ class EverCheckCanvasComponent{
           //console.log(eObject.ref);
           this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
           if(eObject.id === undefined)break;
+
           let point = this.auxPointParse(eObject);
+          if(subObjs.length ==2 && subObjs[0].type == "line" && subObjs[1].type == "line" )
+          {//Draw crosssect line
+            ctx.setLineDash([5, 15]);
+  
+            ctx.beginPath();
+            ctx.moveTo(point.x,point.y);
+            ctx.lineTo(subObjs[0].pt1.x,subObjs[0].pt1.y);
+            ctx.closePath();
+            ctx.stroke();
+  
+            ctx.beginPath();
+            ctx.moveTo(point.x,point.y);
+            ctx.lineTo(subObjs[1].pt1.x,subObjs[1].pt1.y);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
           this.drawpoint(ctx, point);
         }
         break;
