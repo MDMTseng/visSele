@@ -53,9 +53,7 @@ class EverCheckCanvasComponent{
 
     this.mouse_close_dist= 10;
     this.camera={
-      scale: 1,
       rotate: 0,
-      translate: {x:0,y:0,dx:0,dy:0},
       matrix:new DOMMatrix(),
       tmpMatrix:new DOMMatrix(),
     };
@@ -184,9 +182,7 @@ class EverCheckCanvasComponent{
     mat.translateSelf(-(this.mouseStatus.x-(this.canvas.width / 2)),-(this.mouseStatus.y-(this.canvas.height / 2)));
 
     this.camera.matrix.preMultiplySelf(mat);
-    this.camera.scale*=scale;
-    if(this.camera.scale<0.1)this.camera.scale=0.1;
-    else if(this.camera.scale>10)this.camera.scale=10;
+
     //this.ctrlLogic();
     this.draw();
   }
@@ -474,11 +470,6 @@ class EverCheckCanvasComponent{
   fitCameraToShape(shape)
   {
     if(shape==null || shape===undefined)return;
-    let dst_matrix=new DOMMatrix();
-    dst_matrix.setMatrixValue(this.identityMat);
-
-
-
     let center={x:0,y:0};
     let size=1;
 
@@ -489,42 +480,39 @@ class EverCheckCanvasComponent{
       center.x=(shape.pt1.x+shape.pt2.x)/2;
       center.y=(shape.pt1.y+shape.pt2.y)/2;
       //size = Math.hypot(shape.pt1.x-shape.pt2.x,shape.pt1.y-shape.pt2.y);
-      dst_matrix.translateSelf(-center.x,-center.y);
       console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
-        
-      dst_matrix.translateSelf(
-        (this.secCanvas.width / 2), 
-        (this.secCanvas.height / 2));
-      this.camera.matrix.setMatrixValue(dst_matrix);
       break;
       case SHAPE_TYPE.arc:
       let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
       if(arc.r>500)
       {
-
-        dst_matrix.translateSelf(
-          -(shape.pt1.x+shape.pt3.x)/2,
-          -(shape.pt1.x+shape.pt3.y)/2);
+        center.x=(shape.pt1.x+shape.pt3.x)/2;
+        center.y=(shape.pt1.y+shape.pt3.y)/2;
       }
       else
       {
-        dst_matrix.translateSelf(-arc.x,-arc.y);
+        center.x=arc.x;
+        center.y=arc.y;
       }
         
-      dst_matrix.translateSelf(
-        (this.secCanvas.width / 2), 
-        (this.secCanvas.height / 2));
-      this.camera.matrix.setMatrixValue(dst_matrix);
-    
       break;
       case SHAPE_TYPE.aux_point:
         let pt = this.auxPointParse(shape);
         if(pt ==null)break;
+        center=pt;
         console.log(shape,pt);
-        dst_matrix.translateSelf(-pt.x,-pt.y);
       break;
     }
+    let dst_matrix=new DOMMatrix(this.camera.matrix);
 
+    dst_matrix.m41=0;
+    dst_matrix.m42=0;    
+    dst_matrix.translateSelf(-center.x,-center.y);
+    dst_matrix.translateSelf(
+      (this.secCanvas.width / 2), 
+      (this.secCanvas.height / 2));
+
+    this.camera.matrix.setMatrixValue(dst_matrix);
   }
 
 
@@ -696,7 +684,14 @@ class EverCheckCanvasComponent{
     },depth=0);
 
   }
+  getCameraScale(matrix) {//It's an ver simplified way to get scale for an matrix, change it if nesessary
+    return Math.sqrt(matrix.m11*matrix.m22-matrix.m12*matrix.m21);
+  }
 
+
+  getCameraOffset(matrix) {
+    return {x:matrix.m41,y:matrix.m42};
+  }
 
 
   drawReportJSON_closestPoint(ctx,Report,point,minDist=15,depth=0) {
@@ -800,16 +795,10 @@ class EverCheckCanvasComponent{
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx.lineWidth = 2;
-    ctx.setTransform(1,0,0,1,0,0); 
+    ctx.setTransform(this.identityMat);  
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
-    ctx.setTransform(
-      matrix.a,
-      matrix.b,
-      matrix.c,
-      matrix.d,
-      matrix.e,
-      matrix.f);  
+    ctx.setTransform(matrix);  
     
 
 
@@ -1040,7 +1029,7 @@ class EverCheckCanvasComponent{
           {
             pt_info = pt_info2;
           }
-          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
+          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.getCameraScale(wMat))
           {
             this.CandEditPointInfo=pt_info;
           }
@@ -1111,7 +1100,8 @@ class EverCheckCanvasComponent{
           {
             pt_info = pt_info2;
           }
-          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.scale)
+
+          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.getCameraScale(wMat))
           {
             this.CandEditPointInfo=pt_info;
           }
