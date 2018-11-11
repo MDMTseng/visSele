@@ -3,7 +3,7 @@ import {DISP_EVE_UI} from 'REDUX_STORE_SRC/constant';
 
 import STATE_MACHINE_CORE from 'UTIL/STATE_MACHINE_CORE';  
 import { Machine } from 'xstate';
-import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
+import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 
@@ -143,7 +143,7 @@ class InspectionEditorLogic
     let id=100000;
     this.inherentShapeList.push({
       id:id++,
-      type:"aux_point",
+      type:SHAPE_TYPE.aux_point,
       name:"@__SIGNATURE__.centre",
       ref:[{
         name:"@__SIGNATURE__",
@@ -152,7 +152,7 @@ class InspectionEditorLogic
     });
     this.inherentShapeList.push({
       id:id++,
-      type:"aux_line",
+      type:SHAPE_TYPE.aux_line,
       name:"@__SIGNATURE__.orientation",
       ref:[{
         name:"@__SIGNATURE__",
@@ -162,12 +162,12 @@ class InspectionEditorLogic
     });
 
     this.shapeList.forEach((shape)=>{
-      if(shape.type=="arc")
+      if(shape.type==SHAPE_TYPE.arc)
       {
         this.inherentShapeList.push({
           
           id:id+shape.id*10,
-          type:"aux_point",
+          type:SHAPE_TYPE.aux_point,
           name:shape.name+".centre",
           ref:[{
             //name:shape.name,
@@ -395,7 +395,7 @@ function StateReducer(newState,action)
           if(state_changed)
           {
             newState.edit_info.edit_tar_info = {
-              type:"aux_point",
+              type:SHAPE_TYPE.aux_point,
               ref:[{},{}]
             };
             newState.edit_info.edit_tar_ele_info=null;

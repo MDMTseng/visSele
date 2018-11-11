@@ -12,6 +12,24 @@ export const UI_SM_STATES = {
 };
 
 
+export const SHAPE_ATTR_KEY = {
+  id:"id",
+  name:"name",
+  color:"color",
+  type:"type",
+  ref:"ref",
+  element:"element",
+};
+export const SAK = SHAPE_ATTR_KEY;
+
+
+export const SHAPE_TYPE = {
+  line:"line",
+  arc:"arc",
+  aux_point:"aux_point",
+  aux_line:"aux_line",
+};
+
 
 export const BPG_WS_EVENT = {
   BPG_WS_REGISTER:"BPG_WS_REGISTER",

@@ -1,6 +1,6 @@
 //UIControl
 
-import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
+import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {
@@ -122,6 +122,7 @@ class EverCheckCanvasComponent{
   {
       this.EditShape = EditShape;
       
+      console.log(this.tmp_EditShape_id);
       if(this.EditShape!=null && this.tmp_EditShape_id !=this.EditShape.id){
         this.fitCameraToShape(this.EditShape);
         this.tmp_EditShape_id=this.EditShape.id;
@@ -332,7 +333,7 @@ class EverCheckCanvasComponent{
   drawpoint(ctx, point,type,size=5)
   {
     ctx.beginPath();
-    if(type==null || type=="arc")
+    if(type==null || type==SHAPE_TYPE.arc)
     {
       ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
     }
@@ -360,8 +361,8 @@ class EverCheckCanvasComponent{
 
       switch(shape.type)
       {
-        case "line":
-        case "arc":
+        case SHAPE_TYPE.line:
+        case SHAPE_TYPE.arc:
           ["pt1","pt2","pt3"].forEach((key)=>{
             if(shape[key]===undefined)return;
             tmpDist = distance_point_point(shape[key],location);
@@ -375,7 +376,7 @@ class EverCheckCanvasComponent{
           });
         break;
 
-        case "aux_point":
+        case SHAPE_TYPE.aux_point:
         {
           let point = this.auxPointParse(shape);
           tmpDist = distance_point_point(point,location);
@@ -404,7 +405,7 @@ class EverCheckCanvasComponent{
     };
     inherentShapeList.forEach((ishape)=>{
       if(ishape==null)return;
-      if(ishape.type!="aux_point")return;
+      if(ishape.type!=SHAPE_TYPE.aux_point)return;
       let point = this.auxPointParse(ishape);
       let tmpDist = distance_point_point(point,location);
       if(pt_info.dist>tmpDist)
@@ -423,7 +424,7 @@ class EverCheckCanvasComponent{
   auxPointParse(aux_point)
   {
     let point=null;
-    if(aux_point.type!="aux_point")return point;
+    if(aux_point.type!=SHAPE_TYPE.aux_point)return point;
     
     if(aux_point.ref[0].name == "@__SIGNATURE__" &&
     aux_point.ref[0].element == "centre")
@@ -439,7 +440,7 @@ class EverCheckCanvasComponent{
       let ref0_shape=this.shapeList[idx];
       switch(ref0_shape.type)
       {
-        case "arc":
+        case SHAPE_TYPE.arc:
         {
           let shape_arc = this.shapeList[idx];
           let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
@@ -459,7 +460,7 @@ class EverCheckCanvasComponent{
       
       let ref0_shape=this.shapeList[idx0];
       let ref1_shape=this.shapeList[idx1];
-      if(ref0_shape.type == "line" && ref1_shape.type == "line")
+      if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
       {
         return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
       }
@@ -484,7 +485,7 @@ class EverCheckCanvasComponent{
     console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",shape);
     switch(shape.type)
     {
-      case "line":
+      case SHAPE_TYPE.line:
       center.x=(shape.pt1.x+shape.pt2.x)/2;
       center.y=(shape.pt1.y+shape.pt2.y)/2;
       //size = Math.hypot(shape.pt1.x-shape.pt2.x,shape.pt1.y-shape.pt2.y);
@@ -496,7 +497,7 @@ class EverCheckCanvasComponent{
         (this.secCanvas.height / 2));
       this.camera.matrix.setMatrixValue(dst_matrix);
       break;
-      case "arc":
+      case SHAPE_TYPE.arc:
       let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
       if(arc.r>500)
       {
@@ -516,7 +517,7 @@ class EverCheckCanvasComponent{
       this.camera.matrix.setMatrixValue(dst_matrix);
     
       break;
-      case "aux_point":
+      case SHAPE_TYPE.aux_point:
         let pt = this.auxPointParse(shape);
         if(pt ==null)break;
         console.log(shape,pt);
@@ -535,7 +536,7 @@ class EverCheckCanvasComponent{
       
       switch(ishape.type)
       {
-        case 'aux_point':
+        case SHAPE_TYPE.aux_point:
         {
           let point = this.auxPointParse(ishape);
           if(point!=null)
@@ -578,7 +579,7 @@ class EverCheckCanvasComponent{
       
       switch(eObject.type)
       {
-        case 'line':
+        case SHAPE_TYPE.line:
         {
           ctx.lineWidth=eObject.margin*2;
           this.drawReportLine(ctx, {
@@ -610,7 +611,7 @@ class EverCheckCanvasComponent{
         }
         break;
         
-        case 'aux_point':
+        case SHAPE_TYPE.aux_point:
         {
           
           let subObjs = eObject.ref
@@ -621,7 +622,7 @@ class EverCheckCanvasComponent{
           if(eObject.id === undefined)break;
 
           let point = this.auxPointParse(eObject);
-          if(subObjs.length ==2 && subObjs[0].type == "line" && subObjs[1].type == "line" )
+          if(subObjs.length ==2 && subObjs[0].type == SHAPE_TYPE.line && subObjs[1].type == SHAPE_TYPE.line )
           {//Draw crosssect line
             ctx.setLineDash([5, 15]);
   
@@ -644,7 +645,7 @@ class EverCheckCanvasComponent{
         
         
         
-        case 'arc':
+        case SHAPE_TYPE.arc:
         {
           //ctx.strokeStyle=eObject.color; 
           let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
@@ -961,7 +962,7 @@ class EverCheckCanvasComponent{
         if(this.mouseStatus.status==1)
         {
           this.EditShape={
-            type:"line",
+            type:SHAPE_TYPE.line,
             pt1:mouseOnCanvas2,
             pt2:pmouseOnCanvas2,
             margin:5,
@@ -993,7 +994,7 @@ class EverCheckCanvasComponent{
           });
   
           this.EditShape={
-            type:"arc",
+            type:SHAPE_TYPE.arc,
             pt1:mouseOnCanvas2,
             pt2:{
               x:cnormal.x+cnormal.vx,
@@ -1062,12 +1063,13 @@ class EverCheckCanvasComponent{
             if(this.CandEditPointInfo!=null)
             {
               {
-                //if(this.EditShape=null ||(this.EditShape!=null && this.EditShape.type!="aux_point"))
+                //if(this.EditShape=null ||(this.EditShape!=null && this.EditShape.type!=SHAPE_TYPE.aux_point))
                 {
                   let pt_info = this.CandEditPointInfo;
                   this.CandEditPointInfo=null;
                   this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
                   this.EditPoint=this.EditShape[pt_info.key];
+                  this.tmp_EditShape_id = this.EditShape.id;
                   this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
                 }
                 //else
