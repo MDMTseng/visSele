@@ -65,7 +65,7 @@ export const UI_SM_EVENT = {
   EDIT_MODE_FAIL:"EDIT_MODE_FAIL",
 
   EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update",
-  EDIT_MODE_Edit_Tar_Ele_Update:"EDIT_MODE_Edit_Tar_Ele_Update",
+  EDIT_MODE_Edit_Tar_Ele_Trace_Update:"EDIT_MODE_Edit_Tar_Ele_Trace_Update",
   EDIT_MODE_Edit_Tar_Ele_Cand_Update:"EDIT_MODE_Edit_Tar_Ele_Cand_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
   EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
@@ -85,10 +85,10 @@ export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
 }
 
 
-export function EV_UI_EDIT_MODE_Edit_Tar_Ele_Update(targetObj)
+export function EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace)
 {
   return {
-    type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Update,data: targetObj
+    type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Trace_Update,data: keyTrace
   }
 }
 export function EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj)

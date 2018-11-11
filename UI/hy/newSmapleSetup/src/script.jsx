@@ -185,11 +185,10 @@ class JsonEditBlock extends React.Component{
     return true;
   }
   shouldComponentUpdate(nextProps, nextState) {
-    this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
     return true;
   }
 
-  composeObject(obj,whiteListKey=null,idHeader="",keyHist=[])
+  composeObject(obj,whiteListKey=null,idHeader="",keyTrace=[])
   {
     var rows = [];
     let keyList = (whiteListKey==null )?obj:whiteListKey;
@@ -200,15 +199,15 @@ class JsonEditBlock extends React.Component{
         if((ele === undefined) || displayMethod=== undefined)continue;
         console.log(key,ele,typeof ele);
         
-        let newkeyHist = keyHist.slice();
-        newkeyHist.push(key);
+        let newkeyTrace = keyTrace.slice();
+        newkeyTrace.push(key);
         switch(typeof ele)
         {
           case "string":
             if(displayMethod==null)displayMethod="input";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod}
-              target={{obj:obj,keyHist:newkeyHist}} 
+              target={{obj:obj,keyTrace:newkeyTrace}} 
               onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
             
           break;
@@ -216,7 +215,7 @@ class JsonEditBlock extends React.Component{
             if(displayMethod==null)displayMethod="input-number";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod} 
-              target={{obj:obj,keyHist:newkeyHist}}  
+              target={{obj:obj,keyTrace:newkeyTrace}}  
               onChange={this.onChangeX.bind(this)}>{(ele).toFixed(4)}</JsonElement>);
           break;
           case "object":
@@ -228,11 +227,11 @@ class JsonEditBlock extends React.Component{
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} 
               className="s HX1 WXF vbox black" type={obj_disp_type} 
               onChange={this.onChangeX.bind(this)}
-              target={{obj:obj,keyHist:newkeyHist}}>{key}</JsonElement>);
+              target={{obj:obj,keyTrace:newkeyTrace}}>{key}</JsonElement>);
 
             rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
             rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-              this.composeObject(ele,displayMethod,idHeader+"_"+key,newkeyHist)
+              this.composeObject(ele,displayMethod,idHeader+"_"+key,newkeyTrace)
             }</div>);
             rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
           }
@@ -299,7 +298,7 @@ class APP_EDIT_MODE extends React.Component{
           jsonChange={(original_obj,target,type,evt)=>
             {
               console.log(target);
-              this.props.ACT_EDIT_TAR_ELE_UPDATE(target);
+              this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
               //this.ec_canvas.SetShape( original_obj, original_obj.id);
             }}/>);
       }
@@ -310,13 +309,13 @@ class APP_EDIT_MODE extends React.Component{
           key="JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
             {
-              //console.log(original_obj[target.key]);
-              let lastKey = target.keyHist[target.keyHist.length-1];
+              let lastKey = target.keyTrace[target.keyTrace.length-1];
               if(type == "input-number")
                 target.obj[lastKey]=parseFloat(evt.target.value);
               else if(type == "input")
                 target.obj[lastKey]=evt.target.value;
     
+              console.log(target.obj);
               let updated_obj=original_obj;
               this.ec_canvas.SetShape( updated_obj, updated_obj.id);
             }}
@@ -509,7 +508,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Aux_Line_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create))},
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
-    ACT_EDIT_TAR_ELE_UPDATE: (candObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Update(candObj))},
+    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},

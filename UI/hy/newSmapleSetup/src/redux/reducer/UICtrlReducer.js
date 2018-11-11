@@ -75,8 +75,8 @@ function Default_UICtrlReducer()
       //Example 
       //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
       //And our target is c
-      //Then, edit_tar_ele_info={obj:b, keyHist:["a","b",3]}
-      edit_tar_ele_info:null,
+      //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
+      edit_tar_ele_trace:null,
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
@@ -328,18 +328,21 @@ function StateReducer(newState,action)
           newState.img=action.data;
         break;
 
-        case UISEV.EDIT_MODE_Edit_Tar_Update:
-          newState.edit_info.edit_tar_info=
-            (action.data == null)? null : Object.assign({},action.data);
-        break;
 
         case UISEV.EDIT_MODE_Shape_List_Update:
           newState.edit_info.list=(action.data == null)? []: action.data;
         break;
 
-        case UISEV.EDIT_MODE_Edit_Tar_Ele_Update:
-          newState.edit_info.edit_tar_ele_info=
+        case UISEV.EDIT_MODE_Edit_Tar_Update:
+          newState.edit_info.edit_tar_info=
             (action.data == null)? null : Object.assign({},action.data);
+          
+          newState.edit_info.edit_tar_ele_trace=null;
+          newState.edit_info.edit_tar_ele_cand=null;
+        break;
+        case UISEV.EDIT_MODE_Edit_Tar_Ele_Trace_Update:
+          newState.edit_info.edit_tar_ele_trace=
+            (action.data == null)? null : action.data.slice();
         break;
         case UISEV.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
           newState.edit_info.edit_tar_ele_cand=
@@ -398,27 +401,27 @@ function StateReducer(newState,action)
               type:SHAPE_TYPE.aux_point,
               ref:[{},{}]
             };
-            newState.edit_info.edit_tar_ele_info=null;
+            newState.edit_info.edit_tar_ele_trace=null;
             newState.edit_info.edit_tar_ele_cand=null;
             break;
           }
+          console.log(newState.edit_info.edit_tar_ele_trace,newState.edit_info.edit_tar_ele_cand);
           
-          if(newState.edit_info.edit_tar_ele_info!=null && newState.edit_info.edit_tar_ele_cand!=null)
+          if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
           {
-            let keyHist=newState.edit_info.edit_tar_ele_info.keyHist;
-            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyHist,keyHist.length-2);
+            let keyTrace=newState.edit_info.edit_tar_ele_trace;
+            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
             let cand=newState.edit_info.edit_tar_ele_cand;
 
-            console.log("GetObjElement",obj,keyHist[keyHist.length-1]);
-            obj[keyHist[keyHist.length-1]]={
+            console.log("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            obj[keyTrace[keyTrace.length-1]]={
               id:cand.shape.id,
               element:cand.shape.type
             };
 
-            console.log(newState.edit_info.edit_tar_ele_info,newState.edit_info.edit_tar_ele_cand);
             console.log(obj,newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
-            newState.edit_info.edit_tar_ele_info=null;
+            newState.edit_info.edit_tar_ele_trace=null;
             newState.edit_info.edit_tar_ele_cand=null;
           }
         }

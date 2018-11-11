@@ -27,7 +27,7 @@ export function GetObjElement(rootObj,keyTrace,traceIdxTo=keyTrace.length-1)
   let traceIdxTLen = traceIdxTo+1;
   for (let i=0;i<traceIdxTLen;i++) {
     let key = keyTrace[i];
-    console.log(obj,key,obj[key]);
+    //console.log(obj,key,obj[key]);
     obj = obj[key];
 
     if( obj === undefined)return;
