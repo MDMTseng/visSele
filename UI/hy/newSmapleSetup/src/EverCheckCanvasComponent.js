@@ -3,7 +3,13 @@
 import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
-import {distance_arc_point,distance_point_point,threePointToArc,distance_line_point,LineCentralNormal} from 'UTIL/MathTools';
+import {
+  distance_arc_point,
+  distance_point_point,
+  threePointToArc,
+  distance_line_point,
+  intersectPoint,
+  LineCentralNormal} from 'UTIL/MathTools';
 
 class EverCheckCanvasComponent{
 
@@ -351,17 +357,39 @@ class EverCheckCanvasComponent{
 
     this.shapeList.forEach((shape)=>{
       let tmpDist;
-      ["pt1","pt2","pt3"].forEach((key)=>{
-        if(shape[key]===undefined)return;
-        tmpDist = distance_point_point(shape[key],location);
-        if(pt_info.dist>tmpDist)
+
+      switch(shape.type)
+      {
+        case "line":
+        case "arc":
+          ["pt1","pt2","pt3"].forEach((key)=>{
+            if(shape[key]===undefined)return;
+            tmpDist = distance_point_point(shape[key],location);
+            if(pt_info.dist>tmpDist)
+            {
+              pt_info.shape=shape;
+              pt_info.key=key;
+              pt_info.pt=shape[key];
+              pt_info.dist = tmpDist;
+            }
+          });
+        break;
+
+        case "aux_point":
         {
-          pt_info.shape=shape;
-          pt_info.key=key;
-          pt_info.pt=shape[key];
-          pt_info.dist = tmpDist;
+          let point = this.auxPointParse(shape);
+          tmpDist = distance_point_point(point,location);
+          if(pt_info.dist>tmpDist)
+          {
+            pt_info.shape=shape;
+            pt_info.key=undefined;
+            pt_info.pt=point;
+            pt_info.dist = tmpDist;
+          }
         }
-      });
+        break;
+
+      }
     });
     return pt_info;
   }
@@ -396,6 +424,7 @@ class EverCheckCanvasComponent{
   {
     let point=null;
     if(aux_point.type!="aux_point")return point;
+    
     if(aux_point.ref[0].name == "@__SIGNATURE__" &&
     aux_point.ref[0].element == "centre")
     {
@@ -403,7 +432,7 @@ class EverCheckCanvasComponent{
       let cy = this.ReportJSON.reports[0].reports[0].cy;
       point = {x:cx,y:cy};
     }
-    else
+    else if(aux_point.ref.length ==1)
     {
       let idx = this.FindShape( "id" , aux_point.ref[0].id );
       if(idx ===undefined)return null;
@@ -420,6 +449,21 @@ class EverCheckCanvasComponent{
         }
         break;
       }
+    }
+    else if(aux_point.ref.length ==2)
+    {
+      let idx0 = this.FindShape( "id" , aux_point.ref[0].id );
+      if(idx0 ===undefined)return null;
+      let idx1 = this.FindShape( "id" , aux_point.ref[1].id );
+      if(idx1 ===undefined)return null;
+      
+      let ref0_shape=this.shapeList[idx0];
+      let ref1_shape=this.shapeList[idx1];
+      if(ref0_shape.type == "line" && ref1_shape.type == "line")
+      {
+        return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
+      }
+
     }
 
     return point;
@@ -574,7 +618,9 @@ class EverCheckCanvasComponent{
             .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
           //console.log(eObject.ref);
           this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
-            
+          if(eObject.id === undefined)break;
+          let point = this.auxPointParse(eObject);
+          this.drawpoint(ctx, point);
         }
         break;
         
@@ -998,11 +1044,19 @@ class EverCheckCanvasComponent{
             if(this.CandEditPointInfo!=null)
             {
               {
-                let pt_info = this.CandEditPointInfo;
-                this.CandEditPointInfo=null;
-                this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
-                this.EditPoint=this.EditShape[pt_info.key];
-                this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+                //if(this.EditShape=null ||(this.EditShape!=null && this.EditShape.type!="aux_point"))
+                {
+                  let pt_info = this.CandEditPointInfo;
+                  this.CandEditPointInfo=null;
+                  this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
+                  this.EditPoint=this.EditShape[pt_info.key];
+                  this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+                }
+                //else
+                {
+                  //this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
+
+                }
               }
             }
             else

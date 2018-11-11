@@ -74,6 +74,31 @@ export function closestPointOnLine(line, point)
   return line_;
 }
 
+
+
+export function  intersectPoint( p1, p2, p3, p4)
+{
+  let intersec={x:0,y:0};
+  let denominator;
+
+  let V1 = (p1.x-p2.x);
+  let V2 = (p3.x-p4.x);
+  let V3 = (p1.y-p2.y);
+  let V4 = (p3.y-p4.y);
+
+  denominator = V1* V4 - V3* V2;
+
+  let V12 = (p1.x*p2.y-p1.y*p2.x);
+  let V34 = (p3.x*p4.y-p3.y*p4.x);
+  intersec.x=( V12 * V2 - V1 * V34 )/denominator;
+  intersec.y=( V12 * V4 - V3 * V34 )/denominator;
+
+  return intersec;
+}
+
+
+
+
 export function distance_line_point(line, point)
 {
   //arc={x1,y1,x2,y2}
