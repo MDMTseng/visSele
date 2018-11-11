@@ -31,6 +31,9 @@ export const SHAPE_TYPE = {
 };
 
 
+
+
+
 export const BPG_WS_EVENT = {
   BPG_WS_REGISTER:"BPG_WS_REGISTER",
   BPG_WS_SEND:"BPG_WS_SEND",

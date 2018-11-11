@@ -327,11 +327,11 @@ class APP_EDIT_MODE extends React.Component{
             margin:"input-number",
             direction:"input-number",
 
-            pt1:{
+            /*pt1:{
               __OBJ__:"btn",
               x:"input-number",
               y:"input-number",
-            }
+            }*/
           }}/>);
       }
       break;
