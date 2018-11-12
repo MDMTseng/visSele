@@ -183,18 +183,19 @@ class InspectionEditorLogic
 
   SetShape( shape_obj, id )//undefined means add new shape
   {
-    let shape = null;
+    let pre_shape = null;
+    let pre_shape_idx=undefined;
 
     if(shape_obj == null)//For delete
     {
       if( id!== undefined)
       {
-        let tmpIdx = this.FindShapeIdx( id );
-        console.log("SETShape>",tmpIdx);
-        if(tmpIdx>=0)
+        pre_shape_idx = this.FindShapeIdx( id );
+        console.log("SETShape>",pre_shape_idx);
+        if(pre_shape_idx!=undefined)
         {
-          shape = this.shapeList[tmpIdx];
-          this.shapeList.splice(tmpIdx, 1);
+          pre_shape = this.shapeList[pre_shape_idx];
+          this.shapeList.splice(pre_shape_idx, 1);
           if(this.editShape!=null && this.editShape.id == id)
           {
             this.editShape = null;
@@ -202,23 +203,22 @@ class InspectionEditorLogic
         }
       }
       //UpdateInherentShapeList();
-      return shape;
+      return pre_shape;
     }
 
     console.log("SETShape>",this.shapeList,shape_obj,id);
           
 
-    let nameIdx=this.FindShapeIdx( shape_obj.id,this.inherentShapeList);
-    if(nameIdx!=undefined)
+    let ishapeIdx=this.FindShapeIdx( shape_obj.id,this.inherentShapeList);
+    //If the id is in the inherentShapeList Exit, no change is allowed
+    if(ishapeIdx!=undefined)
     {
       console.log("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
       return null;
     }
 
-    //shape_obj.color="rgba(100,0,100,0.5)";
-    let targetIdx=undefined;
-    if(id!=undefined)
-    {//id(identification)!=idx(index)
+    if(id!=undefined)//If the id is assigned, which might exist in the shapelist
+    {
       let tmpIdx = this.FindShapeIdx( id );
       let nameIdx = this.FindShape("name",shape_obj.name);
 
@@ -229,10 +229,10 @@ class InspectionEditorLogic
         return null;
       }
       console.log("SETShape>",tmpIdx);
-      if(tmpIdx>=0)
+      if(tmpIdx!=undefined)
       {
-        shape = this.shapeList[tmpIdx];
-        targetIdx = tmpIdx;
+        pre_shape = this.shapeList[tmpIdx];
+        pre_shape_idx = tmpIdx;
       }
       else
       {
@@ -240,13 +240,14 @@ class InspectionEditorLogic
         return null;
       }
     }
-    else{
+    else{//If the id is undefined, find an available id then append shapelist with this object
       this.shapeCount++;
       id = this.shapeCount;
     }
 
-    console.log("FoundShape>",shape);
-    if(shape == null)
+    console.log("FoundShape>",pre_shape);
+    let shape=null;
+    if(pre_shape == null)
     {
       shape = Object.assign({id:id},shape_obj);
       if(shape.name === undefined)
@@ -258,9 +259,9 @@ class InspectionEditorLogic
     else
     {
       shape = Object.assign({id:id},shape_obj);
-      if(targetIdx!=undefined)
+      if(pre_shape_idx!=undefined)
       {
-        this.shapeList[targetIdx] = shape;
+        this.shapeList[pre_shape_idx] = shape;
       }
     }
     if(this.editShape!== null && this.editShape.id == id)
