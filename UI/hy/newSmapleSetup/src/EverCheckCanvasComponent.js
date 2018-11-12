@@ -11,6 +11,65 @@ import {
   intersectPoint,
   LineCentralNormal} from 'UTIL/MathTools';
 
+
+class CameraCtrl
+{
+  constructor( canvasDOM )
+  {
+    this.matrix=new DOMMatrix();
+    this.tmpMatrix=new DOMMatrix();
+    this.identityMat= new  DOMMatrix();
+  }
+
+  Scale(scale,center={x:0,y:0})
+  {
+    let mat = new DOMMatrix();
+    mat.translateSelf(center.x,center.y);
+    mat.scaleSelf(scale,scale);
+    mat.translateSelf(-center.x,-center.y);
+
+    this.matrix.preMultiplySelf(mat);
+  }
+
+  StartDrag(vector={x:0,y:0})
+  {
+    this.tmpMatrix.setMatrixValue(this.identityMat);
+    this.tmpMatrix.translateSelf(vector.x,vector.y);
+  }
+  EndDrag()
+  {
+    this.matrix.preMultiplySelf(this.tmpMatrix);
+    this.tmpMatrix.setMatrixValue(this.identityMat);
+  }
+
+  SetOffset(location={x:0,y:0})
+  {
+    
+    this.matrix.m41=0;
+    this.matrix.m42=0;
+
+
+    
+    this.matrix.translateSelf(location.x,location.y);
+  }
+  
+  GetCameraScale(matrix=this.matrix) {//It's an over simplified way to get scale for an matrix, change it if nesessary
+    return Math.sqrt(matrix.m11*matrix.m22-matrix.m12*matrix.m21);
+  }
+
+
+  GetCameraOffset(matrix=this.matrix) {
+    return {x:matrix.m41,y:matrix.m42};
+  }
+
+  CameraTransform(matrix_input) {
+    matrix_input.multiplySelf(this.tmpMatrix);
+    matrix_input.multiplySelf(this.matrix);
+  }
+
+
+}
+
 class EverCheckCanvasComponent{
 
   getMousePos(canvas, evt) {
@@ -47,16 +106,18 @@ class EverCheckCanvasComponent{
     this.secCanvas = document.createElement('canvas');
 
     this.identityMat= new  DOMMatrix();
-    this.dragMat= new  DOMMatrix();
     this.Mouse2SecCanvas= new  DOMMatrix();
 
 
     this.mouse_close_dist= 10;
-    this.camera={
+
+
+    this.camera= new CameraCtrl();
+    /*this.camera={
       rotate: 0,
       matrix:new DOMMatrix(),
       tmpMatrix:new DOMMatrix(),
-    };
+    };*/
 
     this.near_select_obj=null;
 
@@ -173,16 +234,9 @@ class EverCheckCanvasComponent{
 
     scale = Math.pow(scale,deltaY);
 
-    
-    //this.camera.matrix.translateSelf(this.mouseStatus.x-(this.canvas.width / 2),this.mouseStatus.y-(this.canvas.height / 2));
-    //
-    let mat = new DOMMatrix();
-    mat.translateSelf((this.mouseStatus.x-(this.canvas.width / 2)),(this.mouseStatus.y-(this.canvas.height / 2)));
-    mat.scaleSelf(scale,scale);
-    mat.translateSelf(-(this.mouseStatus.x-(this.canvas.width / 2)),-(this.mouseStatus.y-(this.canvas.height / 2)));
-
-    this.camera.matrix.preMultiplySelf(mat);
-
+    this.camera.Scale(scale,
+      {x:(this.mouseStatus.x-(this.canvas.width / 2)),
+        y:(this.mouseStatus.y-(this.canvas.height / 2))});
     //this.ctrlLogic();
     this.draw();
   }
@@ -203,9 +257,7 @@ class EverCheckCanvasComponent{
         //console.log("onmousemove");
         if(this.mouseStatus.status==1)
         {
-          this.camera.tmpMatrix.setMatrixValue(this.identityMat);
-          this.camera.tmpMatrix.translateSelf(pos.x-this.mouseStatus.px,pos.y-this.mouseStatus.py);
-
+          this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
         }
       break;
     }
@@ -239,9 +291,7 @@ class EverCheckCanvasComponent{
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
     this.mouseStatus.status = 0;
-
-    this.camera.matrix.preMultiplySelf(this.camera.tmpMatrix);
-    this.camera.tmpMatrix.setMatrixValue(this.identityMat);
+    this.camera.EndDrag();
     this.ctrlLogic();
     this.draw();
   }
@@ -269,11 +319,6 @@ class EverCheckCanvasComponent{
 
     coord_dst.dx = tmp_dx * cos_v - coord_src.dy * sin_v;
     coord_dst.dy = tmp_dx * sin_v + coord_src.dy * cos_v;
-  }
-
-  getCameraMat()
-  {
-    return this.cameraMat;
   }
 
 
@@ -503,16 +548,11 @@ class EverCheckCanvasComponent{
         console.log(shape,pt);
       break;
     }
-    let dst_matrix=new DOMMatrix(this.camera.matrix);
 
-    dst_matrix.m41=0;
-    dst_matrix.m42=0;    
-    dst_matrix.translateSelf(-center.x,-center.y);
-    dst_matrix.translateSelf(
-      (this.secCanvas.width / 2), 
-      (this.secCanvas.height / 2));
-
-    this.camera.matrix.setMatrixValue(dst_matrix);
+    this.camera.SetOffset({
+      x:(this.secCanvas.width / 2)-center.x,
+      y:(this.secCanvas.height / 2)-center.y
+    });
   }
 
 
@@ -684,15 +724,6 @@ class EverCheckCanvasComponent{
     },depth=0);
 
   }
-  getCameraScale(matrix) {//It's an ver simplified way to get scale for an matrix, change it if nesessary
-    return Math.sqrt(matrix.m11*matrix.m22-matrix.m12*matrix.m21);
-  }
-
-
-  getCameraOffset(matrix) {
-    return {x:matrix.m41,y:matrix.m42};
-  }
-
 
   drawReportJSON_closestPoint(ctx,Report,point,minDist=15,depth=0) {
 
@@ -777,13 +808,7 @@ class EverCheckCanvasComponent{
   {
     let wMat = new DOMMatrix();
     wMat.translateSelf((this.canvas.width / 2), (this.canvas.height / 2));
-    wMat.multiplySelf(this.camera.tmpMatrix);
-    wMat.multiplySelf(this.camera.matrix);
-    
-    /*wMat.scaleSelf(this.camera.scale, this.camera.scale);
-    wMat.rotateSelf(this.camera.rotate);
-    wMat.translateSelf(this.camera.translate.x+this.camera.translate.dx, this.camera.translate.y+this.camera.translate.dy);*/
-
+    this.camera.CameraTransform(wMat);
     wMat.translateSelf(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
 
     return wMat;
@@ -1029,7 +1054,7 @@ class EverCheckCanvasComponent{
           {
             pt_info = pt_info2;
           }
-          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.getCameraScale(wMat))
+          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.GetCameraScale())
           {
             this.CandEditPointInfo=pt_info;
           }
@@ -1101,7 +1126,7 @@ class EverCheckCanvasComponent{
             pt_info = pt_info2;
           }
 
-          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.getCameraScale(wMat))
+          if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.GetCameraScale())
           {
             this.CandEditPointInfo=pt_info;
           }
