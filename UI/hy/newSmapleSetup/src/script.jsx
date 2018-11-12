@@ -297,9 +297,17 @@ class APP_EDIT_MODE extends React.Component{
           }}
           jsonChange={(original_obj,target,type,evt)=>
             {
-              console.log(target);
-              this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
-              //this.ec_canvas.SetShape( original_obj, original_obj.id);
+              let lastKey=target.keyTrace[target.keyTrace.length-1];
+              
+              if(lastKey=="name")
+              {
+                target.obj[lastKey]=evt.target.value;
+                this.ec_canvas.SetShape( original_obj, original_obj.id);
+              }
+              else
+              {
+                this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+              }
             }}/>);
       }
       break;
