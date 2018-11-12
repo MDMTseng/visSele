@@ -1,8 +1,5 @@
 import {DISP_EVE_UI} from 'REDUX_STORE_SRC/constant';
 
-
-import STATE_MACHINE_CORE from 'UTIL/STATE_MACHINE_CORE';  
-import { Machine } from 'xstate';
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
@@ -10,52 +7,10 @@ import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
-const EditStates = {
-  initial: UISTS.EDIT_MODE_NEUTRAL,
-  states: {
-    [UISTS.EDIT_MODE_NEUTRAL]
-            :  {on: {[UISEV.Line_Create]: UISTS.EDIT_MODE_LINE_CREATE,
-                     [UISEV.Arc_Create]:  UISTS.EDIT_MODE_ARC_CREATE,
-                     [UISEV.Search_Point_Create]: UISTS.EDIT_MODE_SEARCH_POINT_CREATE,
-                     [UISEV.Aux_Point_Create]: UISTS.EDIT_MODE_AUX_POINT_CREATE,
-                     [UISEV.Shape_Edit]:  UISTS.EDIT_MODE_SHAPE_EDIT,
-                    }},
-    [UISTS.EDIT_MODE_SEARCH_POINT_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_AUX_POINT_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_LINE_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_ARC_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_SHAPE_EDIT]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}}
-  }
-};
-
 function Default_UICtrlReducer()
 {
-  let ST = {
-    initial: UISTS.SPLASH,
-    states: {
-      [UISTS.SPLASH]:    { on: { [UISEV.Connected]:   UISTS.MAIN } },
-      [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.EDIT_MODE,
-                                 [UISEV.Disonnected]: UISTS.SPLASH, 
-                                 [UISEV.EXIT]:        UISTS.SPLASH } },
-      [UISTS.EDIT_MODE]: Object.assign(
-                 { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
-                         [UISEV.EXIT]:        UISTS.MAIN }},
-                 EditStates)
-    }
-  };
   //ST = d;
   //console.log("ST...",JSON.stringify(ST));
-  let toggleSplashMachine = Machine(ST);
   return {
     MENU_EXPEND:false,
 
@@ -82,8 +37,10 @@ function Default_UICtrlReducer()
       edit_tar_ele_cand:null,
 
     },
-    sm:toggleSplashMachine,
-    c_state:toggleSplashMachine.initialState
+    sm:null,
+    c_state:null,
+    p_state:null,
+    state_count:0
   }
 }
 
@@ -278,14 +235,15 @@ class InspectionEditorLogic
 function StateReducer(newState,action)
 {
 
-
-  console.log(newState.c_state,">>",action.type);
-  let currentState = newState.sm.transition(newState.c_state, action.type);
-  console.log(newState.c_state.value," + ",action.type," > ",currentState.value);
-  let state_changed = JSON.stringify(newState.c_state.value)!==JSON.stringify(currentState.value);
-  console.log("state change:"+state_changed);
-  newState.c_state=currentState;
-
+  newState.state_count++;
+  if(action.type == "ev_state_update")
+  {
+    newState.c_state = action.data.c_state;
+    newState.p_state = action.data.p_state;
+    newState.sm = action.data.sm;
+    newState.state_count=0;
+    console.log(newState.p_state.value," + ",action.data.action," > ",newState.c_state.value);
+  }
   
   if (action.type === UISEV.Control_SM_Panel) {
     newState.showSM_graph = action.data;
@@ -396,7 +354,7 @@ function StateReducer(newState,action)
       {
         case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
         {
-          if(state_changed)
+          if(newState.state_count==0)
           {
             newState.edit_info.edit_tar_info = {
               type:SHAPE_TYPE.aux_point,
@@ -449,14 +407,15 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   {
     for( let i=0 ;i<action.data.length;i++)
     {
-      
       newState = StateReducer(newState,action.data[i]);
+      console.log(newState);
     }
     return newState;
   }
   else
   {
     newState = StateReducer(newState,action);
+    console.log(newState);
     return newState;
   }
 

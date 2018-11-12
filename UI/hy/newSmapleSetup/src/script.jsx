@@ -552,7 +552,7 @@ class APPMain extends React.Component{
     let UI=[];
 
     console.log("APPMain render",this.props);
-
+    if(this.props.c_state==null)return null;
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
@@ -599,13 +599,22 @@ class APPMasterX extends React.Component{
   }
   render() {
     console.log("APPMasterX render",this.props);
+
+    let xstateG;
+    if (this.props.stateMachine!=null) {
+      xstateG = 
+      <XSGraph addClass="width12 height12" 
+      state_machine={this.props.stateMachine.config}/>;
+    } else {
+      xstateG = null;
+    }
     return(
     <$CSSTG transitionName = "logoFrame" className="HXF">
       <APPMain_rdx key="APP"/>
 
       <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph "+((this.props.showSM_graph)?"":"hide")} fixedFrame={true}>
         <div className="layout width11 height12">
-          <XSGraph addClass="width12 height12" state_machine={this.props.stateMachine.config}/>
+          {xstateG}  
         </div>
         <div className="layout button width1 height12" onClick=
           {()=>this.props.ACT_Ctrl_SM_Panel( !this.props.showSM_graph)}></div>
