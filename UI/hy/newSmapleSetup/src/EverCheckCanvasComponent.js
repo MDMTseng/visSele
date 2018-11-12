@@ -363,21 +363,35 @@ class EverCheckCanvasComponent{
     ctx.stroke();
   }
 
-  drawpoint(ctx, point,type,size=5)
+  _drawpoint(ctx, point,type,size=5)
   {
     ctx.beginPath();
-    if(type==null || type==SHAPE_TYPE.arc)
-    {
-      ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
-    }
-    else
+
+    if(type == "rect")
     {
       ctx.rect(point.x-size/2,point.y-size/2,size,size);
     }
-    //ctx.closePath();
+    else
+    {
+      ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
+    }
+    ctx.closePath();
     ctx.stroke();
   }
 
+  drawpoint(ctx, point,type)
+  {
+    let lineWidth_bk=ctx.lineWidth;
+    let strokeStyle_bk=ctx.strokeStyle;
+
+    ctx.lineWidth=lineWidth_bk*2;
+    ctx.strokeStyle="rgba(0,0,100,0.5)";  
+    this._drawpoint(ctx,point,type);
+
+    ctx.lineWidth=lineWidth_bk;
+    ctx.strokeStyle=strokeStyle_bk;  
+    this._drawpoint(ctx,point,type);
+  }
   
   FindClosestCtrlPointInfo( location)
   {
@@ -509,15 +523,11 @@ class EverCheckCanvasComponent{
     if(shape==null || shape===undefined)return;
     let center={x:0,y:0};
     let size=1;
-
-    console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>",shape);
     switch(shape.type)
     {
       case SHAPE_TYPE.line:
       center.x=(shape.pt1.x+shape.pt2.x)/2;
       center.y=(shape.pt1.y+shape.pt2.y)/2;
-      //size = Math.hypot(shape.pt1.x-shape.pt2.x,shape.pt1.y-shape.pt2.y);
-      console.log(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>");
       break;
       case SHAPE_TYPE.arc:
       let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
@@ -561,13 +571,9 @@ class EverCheckCanvasComponent{
           let point = this.auxPointParse(ishape);
           if(point!=null)
           {
-            ctx.lineWidth=4;
-            ctx.strokeStyle="rgba(0,0,100,0.5)";  
-            this.drawpoint(ctx,point,"rect");
-
             ctx.lineWidth=2;
             ctx.strokeStyle="black";  
-            this.drawpoint(ctx,point,"rect");
+            this.drawpoint(ctx,point,"rect")
           }
         }
         break;
@@ -622,12 +628,11 @@ class EverCheckCanvasComponent{
           });
 
 
-
-
           ctx.lineWidth=2;
-          ctx.strokeStyle="black";  
-          this.drawpoint(ctx, eObject.pt1);
-          this.drawpoint(ctx, eObject.pt2);
+          ctx.strokeStyle="gray"; 
+          this.drawpoint(ctx,eObject.pt1);
+          this.drawpoint(ctx,eObject.pt2);
+
         }
         break;
         
@@ -659,6 +664,8 @@ class EverCheckCanvasComponent{
             ctx.stroke();
             ctx.setLineDash([]);
           }
+          ctx.lineWidth=2;
+          ctx.strokeStyle="gray"; 
           this.drawpoint(ctx, point);
         }
         break;
@@ -683,11 +690,13 @@ class EverCheckCanvasComponent{
           arc.r+=marginOffset;
           this.drawReportArc(ctx, arc);
 
+                
           ctx.lineWidth=2;
-          ctx.strokeStyle="black";  
-          this.drawpoint(ctx, eObject.pt1);
-          this.drawpoint(ctx, eObject.pt2);
-          this.drawpoint(ctx, eObject.pt3);
+          ctx.strokeStyle="gray";  
+          this.drawpoint(ctx,eObject.pt1);
+          this.drawpoint(ctx,eObject.pt2);
+          this.drawpoint(ctx,eObject.pt3);
+
         }
         break;
       }
