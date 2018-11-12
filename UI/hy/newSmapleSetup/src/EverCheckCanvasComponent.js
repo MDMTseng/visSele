@@ -47,9 +47,6 @@ class CameraCtrl
     
     this.matrix.m41=0;
     this.matrix.m42=0;
-
-
-    
     this.matrix.translateSelf(location.x,location.y);
   }
   
@@ -113,11 +110,6 @@ class EverCheckCanvasComponent{
 
 
     this.camera= new CameraCtrl();
-    /*this.camera={
-      rotate: 0,
-      matrix:new DOMMatrix(),
-      tmpMatrix:new DOMMatrix(),
-    };*/
 
     this.near_select_obj=null;
 
@@ -543,7 +535,7 @@ class EverCheckCanvasComponent{
       break;
       case SHAPE_TYPE.aux_point:
         let pt = this.auxPointParse(shape);
-        if(pt ==null)break;
+        if(pt ==null)return;
         center=pt;
         console.log(shape,pt);
       break;

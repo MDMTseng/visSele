@@ -278,7 +278,7 @@ class APP_EDIT_MODE extends React.Component{
   {
     switch(edit_tar.type)
     {
-      case "aux_point":
+      case UIAct.SHAPE_TYPE.aux_point:
       {
         return (<JsonEditBlock object={edit_tar} 
           key="JsonEditBlock"
