@@ -376,8 +376,8 @@ class APP_EDIT_MODE extends React.Component{
             text="APOINT" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
-            key="ALINE"
-            text="ALINE" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
+            key="SPOINT"
+            text="SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
           <BASE_COM.Button
             addClass="layout lgreen vbox"
             key="EDIT"
@@ -403,12 +403,12 @@ class APP_EDIT_MODE extends React.Component{
       ];
       break;
 
-      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_LINE_CREATE:         
+      case UIAct.UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:         
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
-        <div key="AUX_LINE" className="s lred vbox">ALINE</div>,
+        <div key="SEARCH_POINT" className="s lred vbox">SPOINT</div>,
       ];
       break;
 
@@ -513,7 +513,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
   return{
     ACT_Line_Add_Mode: (arg) =>  {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
     ACT_Arc_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
-    ACT_Aux_Line_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create))},
+    ACT_Search_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create))},
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace))},

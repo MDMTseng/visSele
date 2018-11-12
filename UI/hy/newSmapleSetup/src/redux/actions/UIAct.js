@@ -7,6 +7,7 @@ export const UI_SM_STATES = {
   EDIT_MODE_LINE_CREATE:"LINE_CREATE",
   EDIT_MODE_AUX_LINE_CREATE:"AUX_LINE_CREATE",
   EDIT_MODE_AUX_POINT_CREATE:"AUX_POINT_CREATE",
+  EDIT_MODE_SEARCH_POINT_CREATE:"SEARCH_POINT_CREATE",
   EDIT_MODE_ARC_CREATE:"ARC_CREATE",
   EDIT_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 };
@@ -28,6 +29,7 @@ export const SHAPE_TYPE = {
   arc:"arc",
   aux_point:"aux_point",
   aux_line:"aux_line",
+  search_point:"search_point",
 };
 
 
@@ -57,6 +59,7 @@ export const UI_SM_EVENT = {
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
   Aux_Line_Create:"Aux_Line_Create",
+  Search_Point_Create:"Search_Point_Create",
   Aux_Point_Create:"Aux_Point_Create",
   Arc_Create:"Arc_Create",
   Shape_Edit:"Shape_Edit",
@@ -69,8 +72,6 @@ export const UI_SM_EVENT = {
   EDIT_MODE_Edit_Tar_Ele_Cand_Update:"EDIT_MODE_Edit_Tar_Ele_Cand_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
   EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
-  EDIT_MODE_Mouse_Update:"EDIT_MODE_Mouse_Update",
-
 
 
   
@@ -95,13 +96,6 @@ export function EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj)
 {
   return {
     type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data: targetObj
-  }
-}
-
-export function EV_UI_EDIT_MODE_Mouse_Update(mouseInfo)
-{
-  return {
-    type: UI_SM_EVENT.EDIT_MODE_Mouse_Update,data: mouseInfo
   }
 }
 
