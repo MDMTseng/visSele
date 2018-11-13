@@ -9,7 +9,8 @@ import {
   threePointToArc,
   distance_line_point,
   intersectPoint,
-  LineCentralNormal} from 'UTIL/MathTools';
+  LineCentralNormal,
+  PtRotate2d} from 'UTIL/MathTools';
 
 
 class CameraCtrl
@@ -120,12 +121,15 @@ class EverCheckCanvasComponent{
     this.inherentShapeList=[];
     
     this.EditShape=null;
-    this.EditShape_color="rgba(255,0,0,0.7)";
     
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
     this.EmitEvent=(event)=>{console.log(event);};
+    this.colorSet={
+      unselected:"rgba(100,0,100,0.5)",
+      editShape:"rgba(255,0,0,0.7)"
+    };
   }
 
   SetState(state)
@@ -174,7 +178,7 @@ class EverCheckCanvasComponent{
       this.EditShape = EditShape;
       
       console.log(this.tmp_EditShape_id);
-      if(this.EditShape!=null && this.tmp_EditShape_id !=this.EditShape.id){
+      if(this.EditShape!=null && this.EditShape.id!=undefined && this.tmp_EditShape_id !=this.EditShape.id){
         this.fitCameraToShape(this.EditShape);
         this.tmp_EditShape_id=this.EditShape.id;
       }
@@ -303,17 +307,6 @@ class EverCheckCanvasComponent{
     this.draw();
   }
 
-
-  rotate2d_dxy(coord_dst, coord_src, theta) {
-    let sin_v = Math.sin(theta);
-    let cos_v = Math.cos(theta);
-    let tmp_dx= coord_src.dx;
-
-    coord_dst.dx = tmp_dx * cos_v - coord_src.dy * sin_v;
-    coord_dst.dy = tmp_dx * sin_v + coord_src.dy * cos_v;
-  }
-
-
   drawReportJSON_action(context,Report,action,depth=0) {
 
     if (Report.type == "binary_processing_group")
@@ -410,6 +403,7 @@ class EverCheckCanvasComponent{
       {
         case SHAPE_TYPE.line:
         case SHAPE_TYPE.arc:
+        case SHAPE_TYPE.search_point:
           ["pt1","pt2","pt3"].forEach((key)=>{
             if(shape[key]===undefined)return;
             tmpDist = distance_point_point(shape[key],location);
@@ -516,6 +510,44 @@ class EverCheckCanvasComponent{
 
     return point;
   }
+  searchPointParse(search_point)
+  {
+    let point=null;
+    if(search_point.type!=SHAPE_TYPE.search_point)return point;
+    
+    if(search_point.ref.length ==1)
+    {
+      let idx = this.FindShape( "id" , search_point.ref[0].id );
+      if(idx ===undefined)return null;
+      let ref0_shape=this.shapeList[idx];
+      switch(ref0_shape.type)
+      {
+        case SHAPE_TYPE.line:
+        {
+          point = search_point.pt1;
+        }
+        break;
+      }
+    }
+
+    return point;
+  }
+  xPointParse(xpoint)
+  {
+    let point=null;
+    switch(aux_point.type)
+    {
+      case SHAPE_TYPE.aux_point:
+        return this.auxPointParse(xpoint);
+      break;
+      case SHAPE_TYPE.search_point:
+      {
+        return this.searchPointParse(xpoint);
+      }
+      break;
+    }
+    return point;
+  }
 
 
   fitCameraToShape(shape)
@@ -549,6 +581,13 @@ class EverCheckCanvasComponent{
         center=pt;
         console.log(shape,pt);
       break;
+      case SHAPE_TYPE.search_point:
+      {
+        center = shape.pt1;
+      }
+      break;
+      default:
+      return;
     }
 
     this.camera.SetOffset({
@@ -696,6 +735,47 @@ class EverCheckCanvasComponent{
           this.drawpoint(ctx,eObject.pt1);
           this.drawpoint(ctx,eObject.pt2);
           this.drawpoint(ctx,eObject.pt3);
+
+        }
+        break;
+
+        case SHAPE_TYPE.search_point:
+        {
+          let subObjs = eObject.ref
+            .map((ref)=> this.FindShape( "id" , ref.id ))
+            .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
+          
+          if(subObjs[0]==null)break;
+          let line = subObjs[0];
+          let cnormal =LineCentralNormal(line);
+          cnormal =PtRotate2d({x:cnormal.vx,y:cnormal.vy}, eObject.angle*Math.PI/180);
+          let vector = {x:cnormal.y,y:-cnormal.x};
+          let mag=eObject.width/2;//It starts from center so devide by 2.
+          vector.x*=mag;
+          vector.y*=mag;
+
+
+          ctx.lineWidth=eObject.margin*2; 
+          this.drawReportLine(ctx, {
+            x0:eObject.pt1.x-vector.x,y0:eObject.pt1.y-vector.y,
+            x1:eObject.pt1.x+vector.x,y1:eObject.pt1.y+vector.y,
+          });
+
+
+          ctx.lineWidth=4;
+          ctx.strokeStyle="rgba(100,50,100,0.8)"; 
+          let marginOffset = eObject.margin+ctx.lineWidth/2;
+          this.drawReportLine(ctx, {
+            x0:eObject.pt1.x-vector.x+cnormal.x*marginOffset,y0:eObject.pt1.y-vector.y+cnormal.y*marginOffset,
+            x1:eObject.pt1.x+vector.x+cnormal.x*marginOffset,y1:eObject.pt1.y+vector.y+cnormal.y*marginOffset,
+          });
+
+
+          this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
+
+          ctx.lineWidth=2;
+          ctx.strokeStyle="gray";  
+          this.drawpoint(ctx,eObject.pt1);
 
         }
         break;
@@ -891,7 +971,7 @@ class EverCheckCanvasComponent{
     {
       skipDrawIdxs.push(this.EditShape.id);
       
-      ctx.strokeStyle=this.EditShape_color;
+      ctx.strokeStyle=this.colorSet.editShape;
       this.drawShapeList(ctx, [this.EditShape],false);
     }
 
@@ -906,17 +986,8 @@ class EverCheckCanvasComponent{
       {
         skipDrawIdxs.push(candPtInfo.shape.id);
 
-        if(candPtInfo.shape.type.startsWith("aux"))
-        {
-          ctx.strokeStyle="rgba(255,0,255,0.5)";
-
-          this.drawShapeList(ctx, [candPtInfo.shape],false);
-
-        }
-        else{
-          ctx.strokeStyle="rgba(255,0,255,0.5)";
-          this.drawShapeList(ctx, [candPtInfo.shape],false);
-        }
+        ctx.strokeStyle="rgba(255,0,255,0.5)";
+        this.drawShapeList(ctx, [candPtInfo.shape],false);
       }
     }
 
@@ -981,7 +1052,7 @@ class EverCheckCanvasComponent{
             pt1:mouseOnCanvas2,
             pt2:pmouseOnCanvas2,
             margin:5,
-            color:"rgba(100,0,100,0.5)",
+            color:this.colorSet.unselected,
             direction:1
           };
         }
@@ -1016,7 +1087,7 @@ class EverCheckCanvasComponent{
               y:cnormal.y+cnormal.vy},
             pt3:pmouseOnCanvas2,
             margin:5,
-            color:"rgba(100,0,100,0.5)",
+            color:this.colorSet.unselected,
             direction:1
           };
         }
@@ -1034,6 +1105,7 @@ class EverCheckCanvasComponent{
       }
 
 
+      case UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:
       case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
       {
         
@@ -1041,9 +1113,22 @@ class EverCheckCanvasComponent{
         {
           if(ifOnMouseLeftClickEdge && this.CandEditPointInfo!=null)
           {
-            console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
-
+            this.EditShape={
+              type:SHAPE_TYPE.search_point,
+              pt1:{x:0,y:0},
+              angle:90,
+              margin:10,
+              width:40,
+              ref:[{
+                id:this.CandEditPointInfo.shape.id,
+                element:this.CandEditPointInfo.shape.type
+              }],
+              color:this.colorSet.unselected,
+            };
+            //this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+            
+            this.SetShape( this.EditShape);
+            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
           }
         }
         else

@@ -183,3 +183,15 @@ export function LineCentralNormal(line)
     vy:-dy/dist,
   };
 }
+
+
+
+export function PtRotate2d(pt, theta) {
+  let sin_v = Math.sin(theta);
+  let cos_v = Math.cos(theta);
+  return {
+    x: pt.x * cos_v - pt.y * sin_v,
+    y: pt.x * sin_v + pt.y * cos_v
+  };
+}
+
