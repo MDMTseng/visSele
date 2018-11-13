@@ -279,6 +279,7 @@ class APP_EDIT_MODE extends React.Component{
     switch(edit_tar.type)
     {
       case UIAct.SHAPE_TYPE.aux_point:
+      case UIAct.SHAPE_TYPE.search_point:
       {
         return (<JsonEditBlock object={edit_tar} 
           key="JsonEditBlock"
@@ -286,6 +287,10 @@ class APP_EDIT_MODE extends React.Component{
             //id:"div",
             type:"div",
             name:"input",
+            //pt1:null,
+            angle:"input-number",
+            margin:"input-number",
+            width:"input-number",
             ref:{__OBJ__:"div",
               0:{__OBJ__:"btn",
                 id:"div",
@@ -297,16 +302,22 @@ class APP_EDIT_MODE extends React.Component{
           }}
           jsonChange={(original_obj,target,type,evt)=>
             {
-              let lastKey=target.keyTrace[target.keyTrace.length-1];
-              
-              if(lastKey=="name")
+              if(type =="btn")
               {
-                target.obj[lastKey]=evt.target.value;
-                this.ec_canvas.SetShape( original_obj, original_obj.id);
+                if(target.keyTrace[0]=="ref")
+                {
+                  this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+                }
               }
               else
               {
-                this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+                let lastKey=target.keyTrace[target.keyTrace.length-1];
+                
+                if(type == "input-number")
+                  target.obj[lastKey]=parseFloat(evt.target.value);
+                else if(type == "input")
+                  target.obj[lastKey]=evt.target.value;
+                this.ec_canvas.SetShape( original_obj, original_obj.id);
               }
             }}/>);
       }
@@ -410,6 +421,26 @@ class APP_EDIT_MODE extends React.Component{
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="SEARCH_POINT" className="s lred vbox">SPOINT</div>,
       ];
+      if(this.props.edit_tar_info!=null)
+      {
+        console.log("JsonEditBlock:",this.props.edit_tar_info);
+
+        MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
+
+        let tar_info = this.props.edit_tar_info;
+        if(tar_info.ref[0].id !==undefined )
+        {
+          MenuSet.push(<BASE_COM.Button
+            key="ADD_BTN"
+            addClass="layout red vbox"
+            text="ADD" onClick={()=>
+              {
+                this.ec_canvas.SetShape( this.props.edit_tar_info);
+                this.props.ACT_SUCCESS();
+              }}/>);
+        }
+      
+      }
       break;
 
       case UIAct.UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:  

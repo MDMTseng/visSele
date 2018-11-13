@@ -1,4 +1,3 @@
-import {DISP_EVE_UI} from 'REDUX_STORE_SRC/constant';
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
@@ -352,6 +351,42 @@ function StateReducer(newState,action)
       
       switch(substate)
       {
+        case UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:
+        {
+          if(newState.state_count==0)
+          {
+            /*newState.edit_info.edit_tar_info = {
+              type:SHAPE_TYPE.search_point,
+              pt1:{x:0,y:0},
+              angle:90,
+              margin:10,
+              width:40,
+              ref:[{}]
+            };*/
+            newState.edit_info.edit_tar_ele_trace=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+            break;
+          }
+          
+          if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
+          {
+            let keyTrace=newState.edit_info.edit_tar_ele_trace;
+            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
+            let cand=newState.edit_info.edit_tar_ele_cand;
+
+            console.log("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            obj[keyTrace[keyTrace.length-1]]={
+              id:cand.shape.id,
+              element:cand.shape.type
+            };
+
+            console.log(obj,newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_ele_trace=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+          }
+          break;
+        }
         case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
         {
           if(newState.state_count==0)
