@@ -262,6 +262,7 @@ class APP_EDIT_MODE extends React.Component{
 
   componentDidMount()
   {
+    bpg_ws.send("SV",0,new Uint8Array([1,2,3,44,11,255]));
     bpg_ws.send("TG");
   }
   constructor(props) {
@@ -699,7 +700,7 @@ function BPG_WS (url){
       console.log("onMessage:["+header.type+"]");
       if(header.type === "HR")
       {
-        this.binary_ws.send(BPG_Protocol.obj2raw("HR",{a:["d"]}));
+        this.binary_ws.send(BPG_Protocol.objbarr2raw("HR",0,{a:["d"]}));
 
         // websocket.send(BPG_Protocol.obj2raw("TG",{}));
         //setTimeout(()=>{this.state.ws.send(BPG_Protocol.obj2raw("TG",{}));},0);
@@ -735,9 +736,16 @@ function BPG_WS (url){
   {
     StoreX.dispatch(UIAct.EV_WS_Disconnected(evt));
   }
-  this.send=(tl,data={})=>
+  this.send=(tl,prop=0,data={})=>
   {
-    this.binary_ws.send(BPG_Protocol.obj2raw(tl,data));
+    if(data instanceof Uint8Array)
+    {
+      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,{sss:"aaa"},data));
+    }
+    else
+    {
+      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,data,null));
+    }
   }
   this.binary_ws.onmessage_bk = onMessage.bind(this);
   this.binary_ws.onopen_bk = ws_onopen.bind(this);

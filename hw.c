@@ -297,12 +297,22 @@ public:
           BPG_data *dat = data.data.p_BPG_data;
 
           LOGI("%s:DataType_BPG>>>>%c%c>", __func__,dat->tl[0],dat->tl[1]);
-          dat->dat_raw[dat->size]='\0';
-          LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
-
           if(checkTL("HR",dat))
           {
+            LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
+
             LOGI("%s:Hello ready.......", __func__);
+          }
+          else if(checkTL("SV",dat))//Data from UI to save file
+          {
+            
+            LOGI("%s:DataType_BPG>>STR>>%s", __func__,dat->dat_raw);
+            int strinL = strlen((char*)dat->dat_raw)+1;
+            LOGI("%s:DataType_BPG>>BIN>>%s", __func__,byteArrString(dat->dat_raw+strinL,dat->size-strinL));
+          }
+          else if(checkTL("RD",dat))
+          {
+
           }
           else if(checkTL("TG",dat))
           {

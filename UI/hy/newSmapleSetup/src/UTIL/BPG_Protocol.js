@@ -69,31 +69,40 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   return ret_obj;
 };
 
-let obj2raw=(type,data)=>{
-  let str = JSON.stringify(data);
-  let str_end_padding = false;
+let objbarr2raw=(type,prop,obj,barr=null)=>{
+  
+  let str = (obj==null)?"":JSON.stringify(obj);
   let BPG_header_L = 7;
-  let bbuf = new Uint8Array(BPG_header_L+str.length+((str_end_padding)?1:0));
+  let objstr_L = str.length;
+  
+  let barr_L = (barr instanceof Uint8Array)?barr.length:0;
+  let bbuf = new Uint8Array(BPG_header_L+objstr_L+1+barr_L);
 
   bbuf[0] = type.charCodeAt(0);
   bbuf[1] = type.charCodeAt(1);
-  bbuf[2] = 0;
+  bbuf[2] = prop;
 
-  let data_length =str.length+((str_end_padding)?1:0);//Add NULL in the end of the string
+  let data_length =bbuf.length - BPG_header_L;//Add NULL in the end of the string
   bbuf[3] = data_length>>24;
   bbuf[4] = data_length>>16;
   bbuf[5] = data_length>>8;
   bbuf[6] = data_length;
-  let i;
-  for( i=BPG_header_L ;i<bbuf.length; i++)
+  if(objstr_L!=0)
   {
-    bbuf[i]= str.charCodeAt(i-BPG_header_L);
+    let i;
+    for( i=0 ;i<objstr_L; i++)
+    {
+      bbuf[BPG_header_L+i]= str.charCodeAt(i);
+    }
+  }
+  bbuf[BPG_header_L+objstr_L]=0;//The end of string session
+  if(barr_L!=0)
+  {
+    bbuf.set(barr, BPG_header_L+objstr_L+1);
   }
   return bbuf;
 };
-
-
-export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,obj2raw }
+export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw }
 
 //let binaryX = BPG_Protocol.obj2raw("TC",{a:1,b:{c:2}});
 //console.log(BPG_Protocol.raw2obj({data:binaryX.buffer}));
