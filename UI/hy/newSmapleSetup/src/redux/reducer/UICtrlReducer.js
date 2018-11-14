@@ -105,7 +105,8 @@ class InspectionEditorLogic
       name:"@__SIGNATURE__",
       pt1:{x:setupTarget.cx,y:setupTarget.cy},
       area:setupTarget.area,
-      orientation:0
+      orientation:0,
+      signature:setupTarget.signature
     });
     id = signature_id+1;
     this.inherentShapeList.push({
