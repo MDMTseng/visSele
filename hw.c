@@ -88,120 +88,121 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 }
 
 
-int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
-{
-  if(data.type!=DatCH_Data::DataType_websock_data)return -1;
-  DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
-  websock_data ws_data = *data.data.p_websocket;
-  LOGI("SEND>>>>>>..websock_data..\n");
-  if( (BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
-  {
-    LOGI("SEND>>>>>>..MatchPeer..\n");
-    BPG_protocol->SendData(data);// WS [here]-(prot)> App
-  }
-
-
-  switch(ws_data.type)
-  {
-      case websock_data::eventType::OPENING:
-          if(ws->default_peer == NULL){
-            ws->default_peer = ws_data.peer;
-          }
-          printf("OPENING peer %s:%d\n",
-             inet_ntoa(ws_data.peer->getAddr().sin_addr),
-             ntohs(ws_data.peer->getAddr().sin_port));
-
-      break;
-
-      case websock_data::eventType::HAND_SHAKING_FINISHED:
-
-          LOGI("HAND_SHAKING: host:%s orig:%s key:%s res:%s\n",
-            ws_data.data.hs_frame.host,
-            ws_data.data.hs_frame.origin,
-            ws_data.data.hs_frame.key,
-            ws_data.data.hs_frame.resource);
-
-          if(1)
-          {
-            LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
-            DatCH_Data datCH_BPG=
-              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
-            LOGI("SEND>>>>>>..GenMsgType..\n");
-            BPG_data BPG_dat;
-            datCH_BPG.data.p_BPG_data=&BPG_dat;
-            BPG_dat.tl[0]='H';
-            BPG_dat.tl[1]='R';
-            char tmp[]="{\"AA\":5}";
-            BPG_dat.size=sizeof(tmp)-1;
-            BPG_dat.dat_raw =(uint8_t*) tmp;
-            //App [here]-(prot)> WS
-            BPG_protocol->SendData(datCH_BPG);
-          }
-      break;
-      case websock_data::eventType::DATA_FRAME:
-          printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
-              ws_data.data.data_frame.type,
-              ws_data.data.data_frame.rawL,
-              ws_data.data.data_frame.raw
-              );
-
-          if(false&&ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
-          {
-
-            imgSrc_X->SetFileName("data/test1.bmp");
-
-            try {
-                ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-            }
-            catch (std::invalid_argument iaex) {
-                LOGE( "Caught an error!");
-            }
-
-            const FeatureReport * report = matchingEng.GetReport();
-
-            if(false && report!=NULL)
-            {
-              cJSON* jobj = matchingEng.FeatureReport2Json(report);
-              char * jstr  = cJSON_Print(jobj);
-              cJSON_Delete(jobj);
-              LOGI("...\n%s\n...",jstr);
-              DatCH_Data ret = ws->SendData(jstr,strlen(jstr));
-              delete jstr;
-              if(ret.type!=DatCH_Data::DataType_ACK)
-              {
-                if(ret.type==DatCH_Data::DataType_error)
-                {
-                  LOGI("...\nERROR:%d....\n...",ret.data.error.code);
-                }
-                break;
-              }
-            }
-            printf("Start to send....\n");
-
-          }
-          else
-          {
-
-          }
-
-
-      break;
-      case websock_data::eventType::CLOSING:
-
-          printf("CLOSING peer %s:%d\n",
-             inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
-
-      break;
-      default:
-        return -1;
-  }
-  return 0;
-
-}
 
 class DatCH_CallBack_T : public DatCH_CallBack
 {
+    
+  int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
+  {
+    if(data.type!=DatCH_Data::DataType_websock_data)return -1;
+    DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
+    websock_data ws_data = *data.data.p_websocket;
+    LOGI("SEND>>>>>>..websock_data..\n");
+    if( (BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
+    {
+      LOGI("SEND>>>>>>..MatchPeer..\n");
+      BPG_protocol->SendData(data);// WS [here]-(prot)> App
+    }
+
+
+    switch(ws_data.type)
+    {
+        case websock_data::eventType::OPENING:
+            if(ws->default_peer == NULL){
+              ws->default_peer = ws_data.peer;
+            }
+            printf("OPENING peer %s:%d\n",
+              inet_ntoa(ws_data.peer->getAddr().sin_addr),
+              ntohs(ws_data.peer->getAddr().sin_port));
+
+        break;
+
+        case websock_data::eventType::HAND_SHAKING_FINISHED:
+
+            LOGI("HAND_SHAKING: host:%s orig:%s key:%s res:%s\n",
+              ws_data.data.hs_frame.host,
+              ws_data.data.hs_frame.origin,
+              ws_data.data.hs_frame.key,
+              ws_data.data.hs_frame.resource);
+
+            if(1)
+            {
+              LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
+              DatCH_Data datCH_BPG=
+                BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+              LOGI("SEND>>>>>>..GenMsgType..\n");
+              BPG_data BPG_dat;
+              datCH_BPG.data.p_BPG_data=&BPG_dat;
+              BPG_dat.tl[0]='H';
+              BPG_dat.tl[1]='R';
+              char tmp[]="{\"AA\":5}";
+              BPG_dat.size=sizeof(tmp)-1;
+              BPG_dat.dat_raw =(uint8_t*) tmp;
+              //App [here]-(prot)> WS
+              BPG_protocol->SendData(datCH_BPG);
+            }
+        break;
+        case websock_data::eventType::DATA_FRAME:
+            printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
+                ws_data.data.data_frame.type,
+                ws_data.data.data_frame.rawL,
+                ws_data.data.data_frame.raw
+                );
+
+            if(false&&ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
+            {
+
+              //imgSrc_X->SetFileName("data/test1.bmp");
+
+              try {
+                  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+              }
+              catch (std::invalid_argument iaex) {
+                  LOGE( "Caught an error!");
+              }
+
+              const FeatureReport * report = matchingEng.GetReport();
+
+              if(false && report!=NULL)
+              {
+                cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                char * jstr  = cJSON_Print(jobj);
+                cJSON_Delete(jobj);
+                LOGI("...\n%s\n...",jstr);
+                DatCH_Data ret = ws->SendData(jstr,strlen(jstr));
+                delete jstr;
+                if(ret.type!=DatCH_Data::DataType_ACK)
+                {
+                  if(ret.type==DatCH_Data::DataType_error)
+                  {
+                    LOGI("...\nERROR:%d....\n...",ret.data.error.code);
+                  }
+                  break;
+                }
+              }
+              printf("Start to send....\n");
+
+            }
+            else
+            {
+
+            }
+
+
+        break;
+        case websock_data::eventType::CLOSING:
+
+            printf("CLOSING peer %s:%d\n",
+              inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
+
+        break;
+        default:
+          return -1;
+    }
+    return 0;
+
+  }
 public:
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
