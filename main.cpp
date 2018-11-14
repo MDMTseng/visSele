@@ -88,12 +88,18 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 }
 
 
+// V DatCH_CallBack_BPG.SendData(BPG_data)                 $$ Application layer $$  DatCH_CallBack_BPG.callback({type:DataType_BPG}) 
+// V DatCH_BPG1_0::SendData(BPG_data data)                   $$ BPG_protocol $$     DatCH_BPG1_0::Process_websock_data^
+//DatCH_CallBack_BPG.callback({type:DataType_websock_data})   $$ Websocket $$      DatCH_CallBack_T::BPG_protocol.SendData({type:DataType_websock_data})^
+
 
 class DatCH_CallBack_T : public DatCH_CallBack
 {
     
   int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
   {
+    //first stage of incoming data
+    //and first stage of outcoming data if needed
     if(data.type!=DatCH_Data::DataType_websock_data)return -1;
     DatCH_WebSocket *ws=(DatCH_WebSocket*)callback_param;
     websock_data ws_data = *data.data.p_websocket;
@@ -286,13 +292,14 @@ public:
         }
         break;
 
-        case DatCH_Data::DataType_websock_data://App -(prot)>[here] WS
+        //Connection layer of the BPG protocol
+        case DatCH_Data::DataType_websock_data://App -(prot)>[here] WS //Final stage of outcoming data
         {
           DatCH_Data ret = websocket->SendData(data);
         }
         break;
 
-        case DatCH_Data::DataType_BPG:// WS -(prot)>[here] App
+        case DatCH_Data::DataType_BPG:// WS -(prot)>[here] App //Final stage of incoming data
         {
           BPG_data *dat = data.data.p_BPG_data;
 
