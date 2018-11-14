@@ -26,6 +26,18 @@ typedef struct DatCH_Data_BMP_Read
 typedef struct websock_data;
 typedef struct BPG_data;
 
+typedef struct DatCH_Data_Fragment
+{
+    uint32_t maxFrameL;
+    uint32_t offset;
+    bool finish;
+    uint32_t dataL;
+    uint8_t *data;
+};
+
+
+
+
 typedef struct DatCH_Data
 {
     enum TYPE{
@@ -37,6 +49,7 @@ typedef struct DatCH_Data
       DataType_BMP_Read,
       DataType_websock_data,
       DataType_BPG,
+      DataType_Fragment,
       DataType_END,
     } type;
     union data
