@@ -262,7 +262,6 @@ class APP_EDIT_MODE extends React.Component{
 
   componentDidMount()
   {
-    bpg_ws.send("SV",0,new Uint8Array([1,2,3,44,11,255]));
     bpg_ws.send("TG");
   }
   constructor(props) {
@@ -394,6 +393,18 @@ class APP_EDIT_MODE extends React.Component{
             addClass="layout lgreen vbox"
             key="EDIT"
             text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
+            
+          <BASE_COM.Button
+            addClass="layout lred vbox"
+            key="SAVE"
+            text="SAVE" onClick={()=>{
+              console.log(this.props.shape_list);
+              bpg_ws.send("SV",0,
+              {
+                filename:"test.ic",
+                data:this.props.shape_list
+              });
+            }}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
@@ -461,6 +472,7 @@ class APP_EDIT_MODE extends React.Component{
           MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
 
           let tar_info = this.props.edit_tar_info;
+          console.log(tar_info.ref);
           if(tar_info.ref[0].id !==undefined && 
             tar_info.ref[1].id !==undefined &&
             tar_info.ref[0].id !=tar_info.ref[1].id 
@@ -740,7 +752,7 @@ function BPG_WS (url){
   {
     if(data instanceof Uint8Array)
     {
-      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,{sss:"aaa"},data));
+      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,null,data));
     }
     else
     {

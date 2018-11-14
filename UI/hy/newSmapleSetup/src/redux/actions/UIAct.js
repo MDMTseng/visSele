@@ -25,6 +25,8 @@ export const SAK = SHAPE_ATTR_KEY;
 
 
 export const SHAPE_TYPE = {
+  sign360:"sign360",
+  point:"point",
   line:"line",
   arc:"arc",
   aux_point:"aux_point",

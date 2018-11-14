@@ -96,14 +96,25 @@ class InspectionEditorLogic
   {
     this.inherentShapeList=[];
 
+    let setupTarget=this.report.reports[0];
     let id=100000;
+    let signature_id = id;
+    this.inherentShapeList.push({
+      id:signature_id,
+      type:SHAPE_TYPE.sign360,
+      name:"@__SIGNATURE__",
+      pt1:{x:setupTarget.cx,y:setupTarget.cy},
+      area:setupTarget.area,
+      orientation:0
+    });
+    id = signature_id+1;
     this.inherentShapeList.push({
       id:id++,
       type:SHAPE_TYPE.aux_point,
       name:"@__SIGNATURE__.centre",
       ref:[{
-        name:"@__SIGNATURE__",
-        element:"centre"
+        id:signature_id,
+        keyTrace:["pt1"]
       }]
     });
     this.inherentShapeList.push({
@@ -112,11 +123,11 @@ class InspectionEditorLogic
       name:"@__SIGNATURE__.orientation",
       ref:[{
         name:"@__SIGNATURE__",
-        element:"orientation"
+        keyTrace:["orientation"]
       }]
       //ref:"__OBJ_CENTRAL__"
     });
-
+    id=100100;
     this.shapeList.forEach((shape)=>{
       if(shape.type==SHAPE_TYPE.arc)
       {
@@ -280,6 +291,8 @@ function StateReducer(newState,action)
         case UISEV.Inspection_Report:
           newState.report=action.data;
           newState.edit_info._obj.SetCurrentReport(action.data);
+          newState.edit_info.inherentShapeList=
+            newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
         case UISEV.Image_Update:

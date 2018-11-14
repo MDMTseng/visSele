@@ -341,7 +341,7 @@ public:
 
 
               try {
-                  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
+                  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/featureDetect.json");
                   const FeatureReport * report = matchingEng.GetReport();
 
                   if(report!=NULL)

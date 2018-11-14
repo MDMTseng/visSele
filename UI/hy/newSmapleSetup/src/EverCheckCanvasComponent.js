@@ -2,7 +2,7 @@
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
-import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {
   distance_arc_point,
   distance_point_point,
@@ -156,11 +156,11 @@ class EverCheckCanvasComponent{
   }
   
 
-  FindShape( key , val )
+  FindShape( key , val, shapeList=this.shapeList)
   {
-    for(let i=0;i<this.shapeList.length;i++)
+    for(let i=0;i<shapeList.length;i++)
     {
-      if(this.shapeList[i][key] == val)
+      if(shapeList[i][key] == val)
       {
         return i;
       }
@@ -467,29 +467,42 @@ class EverCheckCanvasComponent{
     let point=null;
     if(aux_point.type!=SHAPE_TYPE.aux_point)return point;
     
-    if(aux_point.ref[0].name == "@__SIGNATURE__" &&
-    aux_point.ref[0].element == "centre")
+    if(aux_point.ref.length ==1)
     {
-      let cx = this.ReportJSON.reports[0].reports[0].cx;
-      let cy = this.ReportJSON.reports[0].reports[0].cy;
-      point = {x:cx,y:cy};
-    }
-    else if(aux_point.ref.length ==1)
-    {
+      let ref0_shape=null;
       let idx = this.FindShape( "id" , aux_point.ref[0].id );
-      if(idx ===undefined)return null;
-      let ref0_shape=this.shapeList[idx];
-      switch(ref0_shape.type)
+      
+      if(idx ===undefined)
       {
-        case SHAPE_TYPE.arc:
+        let idx = this.FindShape( "id" , aux_point.ref[0].id ,this.inherentShapeList);
+        if(idx ===undefined)return null;
+        ref0_shape=this.inherentShapeList[idx];
+      }
+      else
+      {
+        ref0_shape=this.shapeList[idx];
+      }
+      
+      if(aux_point.ref[0].keyTrace !== undefined)
+      {
+        point = GetObjElement(ref0_shape,aux_point.ref[0].keyTrace) ;
+        point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+        point.ref[0]._obj=ref0_shape;
+      }
+      else 
+      {
+        switch(ref0_shape.type)
         {
-          let shape_arc = this.shapeList[idx];
-          let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
-          point = arc;
-          point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
-          point.ref[0]._obj=shape_arc;
+          case SHAPE_TYPE.arc:
+          {
+            let shape_arc = ref0_shape;
+            let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
+            point = arc;
+            point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+            point.ref[0]._obj=shape_arc;
+          }
+          break;
         }
-        break;
       }
     }
     else if(aux_point.ref.length ==2)
@@ -990,11 +1003,6 @@ class EverCheckCanvasComponent{
         this.drawShapeList(ctx, [candPtInfo.shape],false);
       }
     }
-
-    if(this.inherentShapeList!=null)
-    {
-    }
-    
     this.drawShapeList(ctx, this.shapeList,true,skipDrawIdxs);
     this.drawInherentShapeList(ctx, this.inherentShapeList);
 
