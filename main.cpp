@@ -218,9 +218,9 @@ public:
         case DatCH_Data::DataType_BMP_Read:
         {
 
-          acvImage *test1 = data.data.BMP_Read.img;
+          //acvImage *test1 = data.data.BMP_Read.img;
 
-          ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
+          //ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
         }
         break;
 
@@ -392,66 +392,6 @@ public:
 };
 
 
-
-int testX(int repeatTime)
-{
-  bool doCallbackStyle=false;
-
-  acvImage *test1 = new acvImage();
-  DatCH_BMP imgSrc1(test1);
-  if(doCallbackStyle)
-    imgSrc1.SetEventCallBack(&callbk_obj,NULL);
-  imgSrc1.SetFileName("data/test1.bmp");
-  if(!doCallbackStyle)
-  {
-    DatCH_acvImageInterface *imgSrc_g = &imgSrc1;
-    imgSrc_g->GetAcvImage();
-    ImgInspection(matchingEng,test1,test1_buff,repeatTime,"data/target.json");
-    acvSaveBitmapFile("data/test1_buff.bmp",test1_buff);
-
-    const FeatureReport * report = matchingEng.GetReport();
-    if(report!=NULL)
-    {
-      cJSON* jobj = matchingEng.FeatureReport2Json(report);
-      char * jstr  = cJSON_Print(jobj);
-      cJSON_Delete(jobj);
-      LOGI("...\n%s\n...",jstr);
-      delete jstr;
-    }
-
-  }
-  return 0;
-}
-
-
-
-
-int test_featureDetect()
-{
-  acvImage *test1 = new acvImage();
-  DatCH_BMP imgSrc1(test1);
-  imgSrc1.SetFileName("data/target.bmp");
-  ImgInspection(matchingEng,imgSrc1.GetAcvImage(),test1_buff,1,"data/featureDetect.json");
-  delete test1;
-  return 0;
-}
-
-int simpP(char* strNum)
-{
-  int Num =0;
-  char c;
-  while( (c = *strNum) )
-  {
-    if( c>'9' || c<'0' )
-      return 0;
-    Num=(Num*10)+(c-'0');
-    strNum++;
-  }
-
-  return Num;
-}
-
-
 int mainLoop()
 {
 printf(">>>>>\n" );
@@ -507,17 +447,4 @@ int main(int argc, char** argv)
   BPG_protocol = new DatCH_BPG1_0(NULL);
   BPG_protocol->SetEventCallBack(new DatCH_CallBack_BPG(BPG_protocol),NULL);
   return mainLoop();
-  int seed = time(NULL);
-  srand(seed);
-  int ret = 0, repeatNum=1;
-
-  if(argc>=2)
-  {
-    repeatNum=simpP(argv[1]);
-  }
-  //test_featureDetect();
-  ret = testX(repeatNum);
-  logi("execute %d times\r\n", repeatNum);
-
-  return ret;
 }
