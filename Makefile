@@ -37,7 +37,7 @@ IDIR=	include/ \
 
 
 
-_OBJ = hw.o
+_OBJ = main.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
