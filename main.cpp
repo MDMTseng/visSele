@@ -87,11 +87,10 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 
 }
 
-
-// V DatCH_CallBack_BPG.SendData(BPG_data)                 $$ Application layer $$  DatCH_CallBack_BPG.callback({type:DataType_BPG}) 
-// V DatCH_BPG1_0::SendData(BPG_data data)                   $$ BPG_protocol $$     DatCH_BPG1_0::Process_websock_data^
-//DatCH_CallBack_BPG.callback({type:DataType_websock_data})   $$ Websocket $$      DatCH_CallBack_T::BPG_protocol.SendData({type:DataType_websock_data})^
-
+// V DatCH_BPG1_0::SendData(BPG_data data)                 $$ Application layer $$  DatCH_CallBack_BPG.callback({type:DataType_BPG}) 
+//                                                     $$ BPG_protocol(DatCH_CallBack_BPG) $$     DatCH_BPG1_0::Process_websock_data^
+//DatCH_CallBack_BPG.callback({type:DataType_websock_data})                         
+//                websocket->SendData(data);       $$ DatCH_WebSocket(DatCH_CallBack_T) $$  DatCH_CallBack_T::BPG_protocol.SendData({type:DataType_websock_data})^         
 
 class DatCH_CallBack_T : public DatCH_CallBack
 {
