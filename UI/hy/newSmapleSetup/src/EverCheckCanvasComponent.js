@@ -637,7 +637,32 @@ class EverCheckCanvasComponent{
       }
     });
   }
-  
+  shapeProp(shape,prop)
+  {
+    switch(shape.type)
+    {
+      
+      case SHAPE_TYPE.line:
+      {
+        let line = shape;
+        switch(prop)
+        {
+          case "angle":
+          {
+            let dx=(line.pt2.x-line.pt1.x);
+            let dy=(line.pt2.y-line.pt1.y);
+            return Math.atan2(dy,dx);
+          }
+        }
+      }
+      break;
+      case SHAPE_TYPE.aux_point:
+      {
+        
+      }
+      break;
+    }
+  }
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[])
   {
     eObjects.forEach((eObject)=>{
@@ -759,9 +784,13 @@ class EverCheckCanvasComponent{
             .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
           
           if(subObjs[0]==null)break;
+
           let line = subObjs[0];
-          let cnormal =LineCentralNormal(line);
-          cnormal =PtRotate2d({x:cnormal.vx,y:cnormal.vy}, eObject.angle*Math.PI/180);
+
+          let angle=this.shapeProp(line,"angle")+eObject.angle*Math.PI/180;
+          let cnormal={x:Math.sin(angle),y:-Math.cos(angle)};
+
+          console.log("sdklfjslidjflsjdfkljsdklfjklsdjfkl",cnormal);
           let vector = {x:cnormal.y,y:-cnormal.x};
           let mag=eObject.width/2;//It starts from center so devide by 2.
           vector.x*=mag;
