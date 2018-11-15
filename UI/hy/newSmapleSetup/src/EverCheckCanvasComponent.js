@@ -486,8 +486,8 @@ class EverCheckCanvasComponent{
       if(aux_point.ref[0].keyTrace !== undefined)
       {
         point = GetObjElement(ref0_shape,aux_point.ref[0].keyTrace) ;
-        point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
-        point.ref[0]._obj=ref0_shape;
+        //point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+        //point.ref[0]._obj=ref0_shape;
       }
       else 
       {

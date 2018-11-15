@@ -34,17 +34,6 @@ export const SHAPE_TYPE = {
   search_point:"search_point",
 };
 
-
-
-
-
-export const BPG_WS_EVENT = {
-  BPG_WS_REGISTER:"BPG_WS_REGISTER",
-  BPG_WS_SEND:"BPG_WS_SEND",
-  BPG_WS_DISCONNECT:"BPG_WS_DISCONNECT",
-  BPG_WS_RECV:"BPG_WS_RECV",
-};
-
 export const UI_SM_EVENT = {
   Connected:"Connected",
   Disonnected:"Disonnected",
@@ -53,6 +42,8 @@ export const UI_SM_EVENT = {
   EXIT:"EXIT",
 
 
+
+  WS_channel:"WS_channel",
 
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
@@ -74,11 +65,29 @@ export const UI_SM_EVENT = {
   EDIT_MODE_Edit_Tar_Ele_Cand_Update:"EDIT_MODE_Edit_Tar_Ele_Cand_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
   EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
-
+  EDIT_MODE_Save_Edit_Info:"EDIT_MODE_Save_Edit_Info",
 
   
   Control_SM_Panel:"Control_SM_Panel",
 };
+
+
+
+
+export function EV_WS_ChannelUpdate(WS_CH)
+{
+  return {
+    type: UI_SM_EVENT.WS_channel ,data:WS_CH
+  }
+}
+
+export function EV_UI_EDIT_MODE_Save_Edit_Info()
+{
+  return {
+    type: UI_SM_EVENT.EDIT_MODE_Save_Edit_Info
+  }
+}
+
 
 export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
 {

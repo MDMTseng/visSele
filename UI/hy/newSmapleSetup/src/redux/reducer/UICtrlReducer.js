@@ -18,6 +18,7 @@ function Default_UICtrlReducer()
     report:[],
     img:null,
     showSM_graph:false,
+    WS_CH:undefined,
     edit_info:{
       _obj:new InspectionEditorLogic(),
       list:[],
@@ -149,6 +150,22 @@ class InspectionEditorLogic
     return this.inherentShapeList;
   }
 
+  GenerateEditReport()
+  {
+    console.log(this.inherentShapeList);
+    return {
+      type:"binary_processing_group",
+      featureSet:[
+      {
+        "type":"sig360_circle_line",
+        "ver":"0.0.0.0",
+        "unit":"mm",
+        features:this.shapeList,
+        inherentfeatures:this.inherentShapeList
+      }]
+    };
+  }
+
   SetShape( shape_obj, id )//undefined means add new shape
   {
     let pre_shape = null;
@@ -260,6 +277,19 @@ function StateReducer(newState,action)
     newState.showSM_graph = action.data;
     return newState;
   }
+
+
+  switch(action.type)
+  {
+    case UISEV.Control_SM_Panel:
+      newState.showSM_graph = action.data;
+    return newState;
+
+    case UISEV.WS_channel:
+      newState.WS_CH=action.data;
+    return newState;
+    
+  }
   switch(newState.c_state.value)
   {
     case UISTS.SPLASH:
@@ -272,7 +302,7 @@ function StateReducer(newState,action)
   }
 
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
-
+  console.log()
   let substate = stateObj.substate;
   switch(stateObj.state)
   {
@@ -315,6 +345,19 @@ function StateReducer(newState,action)
         case UISEV.EDIT_MODE_Edit_Tar_Ele_Trace_Update:
           newState.edit_info.edit_tar_ele_trace=
             (action.data == null)? null : action.data.slice();
+        break;
+        case UISEV.EDIT_MODE_Save_Edit_Info:
+        {
+          if(newState.WS_CH==undefined)break;
+          var enc = new TextEncoder();
+
+          let report = newState.edit_info._obj.GenerateEditReport();
+          console.log(newState.WS_CH);
+          newState.WS_CH.send("SV",0,
+            {filename:"test.ic.json"},
+            enc.encode(JSON.stringify(report, null, 2))
+          );
+        }
         break;
         case UISEV.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
           newState.edit_info.edit_tar_ele_cand=

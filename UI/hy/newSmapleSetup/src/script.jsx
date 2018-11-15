@@ -397,16 +397,7 @@ class APP_EDIT_MODE extends React.Component{
           <BASE_COM.Button
             addClass="layout lred vbox"
             key="SAVE"
-            text="SAVE" onClick={()=>{
-              var enc = new TextEncoder();
-              console.log(this.props.shape_list);
-              bpg_ws.send("SV",0,
-              {
-                filename:"test.ic",
-              },
-              enc.encode(JSON.stringify(this.props.shape_list, null, 2))
-              );
-            }}/>,
+            text="SAVE" onClick={()=>{this.props.ACT_Save_Edit_Info()}}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
@@ -564,6 +555,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
+    ACT_Save_Edit_Info: (arg) => {dispatch(UIAct.EV_UI_EDIT_MODE_Save_Edit_Info())},
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
@@ -744,6 +736,7 @@ function BPG_WS (url){
   let ws_onopen=(evt)=>
   {
     StoreX.dispatch(UIAct.EV_WS_Connected(evt));
+    StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
   }
 
   let ws_onclose=(evt)=>

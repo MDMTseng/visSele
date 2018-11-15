@@ -194,16 +194,18 @@ cJSON* acv_LineFitVector2JSON(const vector< acv_LineFit> &vec, acv_XY center_off
 cJSON* acv_Signature2JSON(const vector< acv_XY> &signature)
 {
 
-  cJSON* signature_jarr = cJSON_CreateArray();
+  cJSON* signature_jobj = cJSON_CreateObject();
+  cJSON* magnitude_jarr = cJSON_CreateArray();
+  cJSON* angle_jarr = cJSON_CreateArray();
 
+  cJSON_AddItemToObject(signature_jobj,"magnitude",magnitude_jarr);
+  cJSON_AddItemToObject(signature_jobj,"angle",angle_jarr);
   for(int j=0;j<signature.size();j++)
   {
-    cJSON* sigEle_jobj = cJSON_CreateObject();
-    cJSON_AddNumberToObject(sigEle_jobj, "r", signature[j].X);
-    cJSON_AddNumberToObject(sigEle_jobj, "a", signature[j].Y);
-    cJSON_AddItemToArray(signature_jarr,sigEle_jobj);
+    cJSON_AddItemToArray(magnitude_jarr, cJSON_CreateNumber(signature[j].X));
+    cJSON_AddItemToArray(angle_jarr, cJSON_CreateNumber(signature[j].Y));
   }
-  return signature_jarr;
+  return signature_jobj;
 }
 
 
