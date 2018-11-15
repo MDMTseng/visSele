@@ -69,6 +69,7 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   return ret_obj;
 };
 
+var enc = new TextEncoder();
 let objbarr2raw=(type,prop,obj,barr=null)=>{
   
   let str = (obj==null)?"":JSON.stringify(obj);
@@ -89,11 +90,7 @@ let objbarr2raw=(type,prop,obj,barr=null)=>{
   bbuf[6] = data_length;
   if(objstr_L!=0)
   {
-    let i;
-    for( i=0 ;i<objstr_L; i++)
-    {
-      bbuf[BPG_header_L+i]= str.charCodeAt(i);
-    }
+    bbuf.set(enc.encode(str), BPG_header_L);
   }
   bbuf[BPG_header_L+objstr_L]=0;//The end of string session
   if(barr_L!=0)

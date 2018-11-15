@@ -212,12 +212,12 @@ public:
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
 
-      LOGI("DatCH_CallBack_T:%s_______type:%d________", __func__,data.type);
+      LOGI("DatCH_CallBack_T:_______type:%d________",data.type);
       switch(data.type)
       {
         case DatCH_Data::DataType_error:
         {
-          LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+          LOGE("error code:%d..........",data.data.error.code);
         }
         break;
         case DatCH_Data::DataType_BMP_Read:
@@ -236,7 +236,7 @@ public:
 
         default:
 
-          LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+          LOGI("type:%d, UNKNOWN type",data.type);
       }
       return 0;
   }
@@ -287,7 +287,7 @@ public:
       {
         case DatCH_Data::DataType_error:
         {
-          LOGE("%s: error code:%d..........", __func__,data.data.error.code);
+          LOGE("error code:%d..........",data.data.error.code);
         }
         break;
 
@@ -302,19 +302,47 @@ public:
         {
           BPG_data *dat = data.data.p_BPG_data;
 
-          LOGI("%s:DataType_BPG>>>>%c%c>", __func__,dat->tl[0],dat->tl[1]);
+          LOGI("DataType_BPG>>>>%c%c>",dat->tl[0],dat->tl[1]);
           if(checkTL("HR",dat))
           {
-            LOGI("%s:DataType_BPG>>>>%s", __func__,dat->dat_raw);
+            LOGI("DataType_BPG>>>>%s",dat->dat_raw);
 
-            LOGI("%s:Hello ready.......", __func__);
+            LOGI("Hello ready.......");
           }
           else if(checkTL("SV",dat))//Data from UI to save file
           {
-            
-            LOGI("%s:DataType_BPG>>STR>>%s", __func__,dat->dat_raw);
-            int strinL = strlen((char*)dat->dat_raw)+1;
-            LOGI("%s:DataType_BPG>>BIN>>%s", __func__,byteArrString(dat->dat_raw+strinL,dat->size-strinL));
+            LOGI("DataType_BPG>>STR>>%s",dat->dat_raw);
+            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+            if (json == NULL)
+            {
+              LOGE("JSON parse failed");
+              break;
+            }
+            do{
+
+              char* fileName =(char* )JFetch(json,"filename",cJSON_String);
+              if (fileName == NULL)
+              {
+                LOGE("No entry:\"filename\" in it");
+                break;
+              }
+              int strinL = strlen((char*)dat->dat_raw)+1;
+              LOGI("DataType_BPG>>BIN>>%s",byteArrString(dat->dat_raw+strinL,dat->size-strinL));
+
+              FILE *write_ptr;
+
+              write_ptr = fopen(fileName,"wb");  // w for write, b for binary
+              if(write_ptr==NULL)
+              {
+                LOGE("File open failed");
+                break;
+              }
+              fwrite(dat->dat_raw+strinL,dat->size-strinL,1,write_ptr); // write 10 bytes from our buffer
+
+              fclose (write_ptr);
+
+            }while(false);
+            cJSON_Delete(json);
           }
           else if(checkTL("RD",dat))
           {
@@ -322,7 +350,7 @@ public:
           }
           else if(checkTL("TG",dat))
           {
-            LOGI("%s:Trigger.......", __func__);
+            LOGI("Trigger.......");
 
             {
               DatCH_Data datCH_BPG=
@@ -391,7 +419,7 @@ public:
         }
         break;
         default:
-          LOGI("%s:type:%d, UNKNOWN type", __func__,data.type);
+          LOGI("type:%d, UNKNOWN type",data.type);
       }
       return 0;
   }

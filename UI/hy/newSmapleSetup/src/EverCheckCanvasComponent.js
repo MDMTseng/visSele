@@ -789,8 +789,6 @@ class EverCheckCanvasComponent{
 
           let angle=this.shapeProp(line,"angle")+eObject.angle*Math.PI/180;
           let cnormal={x:Math.sin(angle),y:-Math.cos(angle)};
-
-          console.log("sdklfjslidjflsjdfkljsdklfjklsdjfkl",cnormal);
           let vector = {x:cnormal.y,y:-cnormal.x};
           let mag=eObject.width/2;//It starts from center so devide by 2.
           vector.x*=mag;

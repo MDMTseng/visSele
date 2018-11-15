@@ -50,7 +50,7 @@ int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
 
 int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
 {
-  char buff[128];
+  char buff[128];//HACK no check
   strcpy(buff,path);
   char *paramH=buff;
   char *paramPtr=buff;
@@ -59,7 +59,7 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
   {
     char ch=*paramPtr;
     if(ch=='[')
-    {//Not supported yet
+    {//TODO:Not supported yet
       return cJSON_Invalid;
     }
 

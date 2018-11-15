@@ -289,7 +289,6 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddNumberToObject(report_jobj, "scale", report->data.sig360_extractor.scale);
       cJSON_AddNumberToObject(report_jobj, "cx", report->data.sig360_extractor.Center.X);
       cJSON_AddNumberToObject(report_jobj, "cy", report->data.sig360_extractor.Center.Y);
-      cJSON_AddItemToObject(report_jobj, "signature", acv_Signature2JSON(*(report->data.sig360_extractor.signature)));
 
       const vector<acv_CircleFit> *detectedCircle =
       report->data.sig360_extractor.detectedCircles;
@@ -304,6 +303,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddItemToObject(report_jobj,"detectedLines",
         acv_LineFitVector2JSON(*detectedLines,report->data.sig360_extractor.Center));
 
+      cJSON_AddItemToObject(report_jobj, "signature", acv_Signature2JSON(*(report->data.sig360_extractor.signature)));
     }
     break;
 

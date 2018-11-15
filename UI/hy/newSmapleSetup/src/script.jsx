@@ -398,12 +398,14 @@ class APP_EDIT_MODE extends React.Component{
             addClass="layout lred vbox"
             key="SAVE"
             text="SAVE" onClick={()=>{
+              var enc = new TextEncoder();
               console.log(this.props.shape_list);
               bpg_ws.send("SV",0,
               {
                 filename:"test.ic",
-                data:this.props.shape_list
-              });
+              },
+              enc.encode(JSON.stringify(this.props.shape_list, null, 2))
+              );
             }}/>,
         ];
       break;
@@ -748,7 +750,7 @@ function BPG_WS (url){
   {
     StoreX.dispatch(UIAct.EV_WS_Disconnected(evt));
   }
-  this.send=(tl,prop=0,data={})=>
+  this.send=(tl,prop=0,data={},uintArr=null)=>
   {
     if(data instanceof Uint8Array)
     {
@@ -756,7 +758,7 @@ function BPG_WS (url){
     }
     else
     {
-      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,data,null));
+      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,data,uintArr));
     }
   }
   this.binary_ws.onmessage_bk = onMessage.bind(this);
