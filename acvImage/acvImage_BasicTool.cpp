@@ -616,6 +616,13 @@ acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3)
 }
 
 
+
+acv_XY acvVecNormal(acv_XY vec)
+{
+  acv_XY nvec={-vec.Y,vec.X};
+  return nvec;
+}
+
 acv_XY acvVecNormalize(acv_XY vec)
 {
   acv_XY nvec={vec.X,vec.Y};

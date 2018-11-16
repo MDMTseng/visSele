@@ -70,6 +70,7 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
 {
   me.ResetFeature();
   char *string = ReadText(defFilename);
+  printf("%s\n%s\n",string,defFilename);
   me.AddMatchingFeature(string);
   free(string);
   buff->ReSize(test1->GetWidth(), test1->GetHeight());
@@ -453,10 +454,23 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
   return;
 }
 
+int simpleTest()
+{
+  test1_buff = new acvImage();
+  test1_buff->ReSize(100,100);
+  imgSrc_X = new DatCH_BMP(new acvImage());
+  imgSrc_X->SetFileName("data/test1.bmp");
+  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/test.ic.json");
+
+  return 0;
+}
+
+
+
 #include <vector>
 int main(int argc, char** argv)
 {
-
+  return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;

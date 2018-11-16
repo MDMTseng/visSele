@@ -376,9 +376,9 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
       strcpy(line.name,tmpstr);
     }
   }
-  if((pnum=JSON_GET_NUM(line_obj,"MatchingMargin")) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"margin")) == NULL )
   {
-    LOGE("No MatchingMargin");
+    LOGE("No margin");
 
     return -1;
   }
@@ -408,30 +408,30 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
   acv_XY p0,p1;
-  if((pnum=JSON_GET_NUM(line_obj,"param.x0")) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"pt1.x")) == NULL )
   {
-    LOGE("No param.x0");
+    LOGE("No pt1.x");
     return -1;
   }
   p0.X=*pnum;
 
-  if((pnum=JSON_GET_NUM(line_obj,"param.y0")) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"pt1.y")) == NULL )
   {
-    LOGE("No param.y0");
+    LOGE("No pt1.y");
     return -1;
   }
   p0.Y=*pnum;
 
-  if((pnum=JSON_GET_NUM(line_obj,"param.x1")) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"pt2.x")) == NULL )
   {
-    LOGE("No param.x1");
+    LOGE("No pt2.x");
     return -1;
   }
   p1.X=*pnum;
 
-  if((pnum=JSON_GET_NUM(line_obj,"param.y1")) == NULL )
+  if((pnum=JSON_GET_NUM(line_obj,"pt2.y")) == NULL )
   {
-    LOGE("No param.y1");
+    LOGE("No pt2.y");
     return -1;
   }
   p1.Y=*pnum;
@@ -442,90 +442,21 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   }
   line.lineTar.line_anchor.X=(p0.X+p1.X)/2;
   line.lineTar.line_anchor.Y=(p0.Y+p1.Y)/2;
-  line.lineTar.line_vec.X=(p0.X-p1.X);
-  line.lineTar.line_vec.Y=(p0.Y-p1.Y);
+  line.lineTar.line_vec.X=(p1.X-p0.X);
+  line.lineTar.line_vec.Y=(p1.Y-p0.Y);
   line.lineTar.line_vec = acvVecNormalize(line.lineTar.line_vec);
 
 
 
+  acv_XY normal = acvVecNormal(line.lineTar.line_vec);
+
+  line.searchVec=normal;
+  line.searchDist=line.initMatchingMargin*2;
+
   line.searchEstAnchor = line.lineTar.line_anchor;
-  if((pnum=JSON_GET_NUM(line_obj,"searchVec.x")) == NULL )
-  {
-    LOGE("No searchVec.x");
-    return -1;
-  }
-  line.searchEstAnchor.X=*pnum;
+  line.searchEstAnchor.X-=normal.X*line.initMatchingMargin;
+  line.searchEstAnchor.Y-=normal.Y*line.initMatchingMargin;
 
-  if((pnum=JSON_GET_NUM(line_obj,"searchVec.y")) == NULL )
-  {
-    LOGE("No searchVec.y");
-    return -1;
-  }
-  line.searchEstAnchor.Y=*pnum;
-
-
-
-  line.searchVec=acvClosestPointOnLine(line.searchEstAnchor, line.lineTar);
-  line.searchVec.X-=line.searchEstAnchor.X;
-  line.searchVec.Y-=line.searchEstAnchor.Y;
-  float dist = hypot(line.searchVec.X,line.searchVec.Y);
-  if(dist>1)
-  {
-
-    line.searchVec.X/=dist;
-    line.searchVec.Y/=dist;
-    line.searchDist=dist*2;
-  }
-  else
-  {
-    dist=-1;
-    LOGE("The start pt(%f,%f) to closest pt(%f,%f) is too close to find search vector",
-      line.searchEstAnchor.X,line.searchEstAnchor.Y,
-      line.searchVec.X + line.searchEstAnchor.X,
-      line.searchVec.Y + line.searchEstAnchor.Y
-    );
-  }
-
-
-  //Get param for searchVec start direction/vector
-  if((pnum=JSON_GET_NUM(line_obj,"searchVec.vx")) == NULL )
-  {
-    if(dist<0)
-    {
-      LOGE("The search start pt is not enough to establish search vec, thus, the vx is required..");
-      return -1;
-    }
-  }
-  else
-  {
-    line.searchVec.X=*pnum;
-  }
-
-  if((pnum=JSON_GET_NUM(line_obj,"searchVec.vy")) == NULL )
-  {
-    if(dist<0)
-    {
-      LOGE("The search start pt is not enough to establish search vec, thus, the vy is required..");
-      return -1;
-    }
-  }
-  else
-  {
-    line.searchVec.Y=*pnum;
-  }
-
-  if((pnum=JSON_GET_NUM(line_obj,"searchVec.searchDist")) == NULL )
-  {
-    if(dist<0)
-    {
-      LOGE("The search start pt is not enough to establish search vec, thus, the searchDist is required..");
-      return -1;
-    }
-  }
-  else
-  {
-    line.searchDist=*pnum;
-  }
 
 
   LOGV("feature is a line");

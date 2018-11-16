@@ -21,11 +21,13 @@ typedef struct {
 
 
 typedef struct featureDef_circle{
+  int id;
   char name[FeatureManager_NAME_LENGTH];
   acv_Circle circleTar;
   float initMatchingMargin;
 }featureDef_circle;
 typedef struct featureDef_line{
+  int id;
   char name[FeatureManager_NAME_LENGTH];
   acv_Line lineTar;
   acv_XY searchVec;//The vector to searching the contour edge
@@ -45,6 +47,7 @@ typedef struct featureDef_line{
 
 
 typedef struct FeatureReport_judgeDef{
+  int id;
 
   char name[FeatureManager_NAME_LENGTH];
 
