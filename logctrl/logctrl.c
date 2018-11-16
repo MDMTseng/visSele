@@ -87,3 +87,43 @@ char* byteArrString(uint8_t *data, int length,int spaceInterval)
 
     return buff;
 }
+
+
+char* _SubString(const char* str,int Count){
+    static char ______SubString_Buff[100];
+    if(str==NULL)return NULL;
+    if(Count > (sizeof(______SubString_Buff)-1))
+    {
+        Count = (sizeof(______SubString_Buff)-1);
+    }
+    int i=0;
+    for(i=0;i<Count;i++)
+    {
+        if(str[i]=='\0')break;
+        ______SubString_Buff[i] = str[i];
+    }
+    ______SubString_Buff[i]='\0';
+    return ______SubString_Buff;
+}
+
+
+char* _SubString_Align(const char* str,int Count){
+    static char ______SubString_Buff[100];
+    if(str==NULL)return NULL;
+    if(Count > (sizeof(______SubString_Buff)-1))
+    {
+        Count = (sizeof(______SubString_Buff)-1);
+    }
+    int i=0;
+    int isend=0;
+    for(i=0;i<Count;i++)
+    {
+        if(!isend && str[i]=='\0')isend=1;
+        if(isend)
+            ______SubString_Buff[i] = ' ';
+        else
+            ______SubString_Buff[i] = str[i];
+    }
+    ______SubString_Buff[i]='\0';
+    return ______SubString_Buff;
+}
