@@ -62,7 +62,7 @@ typedef struct acv_XY
 typedef struct acv_Circle
 {
     acv_XY circumcenter;
-		float radius;
+	float radius;
 } acv_Circle;
 
 typedef struct acv_Line {

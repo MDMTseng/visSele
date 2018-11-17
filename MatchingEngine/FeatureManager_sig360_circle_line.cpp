@@ -75,7 +75,7 @@ char* json_find_name(cJSON *root)
 }
 
 
-int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
+int FeatureManager_sig360_circle_line::parse_arcData(cJSON * circle_obj)
 {
   featureDef_circle cir;
 
@@ -90,35 +90,83 @@ int FeatureManager_sig360_circle_line::parse_circleData(cJSON * circle_obj)
 
   double *pnum;
 
-  if((pnum=JSON_GET_NUM(circle_obj,"MatchingMargin")) == NULL )
+  if((pnum=JSON_GET_NUM(circle_obj,"id")) == NULL )
   {
+    LOGE("No id");
     return -1;
   }
+  cir.id = (int)*pnum;
+  LOGV("feature is an arc:%s %d",cir.name, cir.id);
+
+
+
+  if((pnum=JSON_GET_NUM(circle_obj,"margin")) == NULL )
+  {
+    LOGE("No margin can be found");
+    return -1;
+  }
+
+
   cir.initMatchingMargin=*pnum;
 
 
-  if((pnum=JSON_GET_NUM(circle_obj,"param.x")) == NULL )
+
+  acv_XY pt1,pt2,pt3;
+  if((pnum=JSON_GET_NUM(circle_obj,"pt1.x")) == NULL )
   {
+    LOGE("No pt1.x can be found");
     return -1;
   }
-  cir.circleTar.circumcenter.X=*pnum;
+  pt1.X=*pnum;
 
 
-  if((pnum=JSON_GET_NUM(circle_obj,"param.y")) == NULL )
+  int pt1y;
+  if((pnum=JSON_GET_NUM(circle_obj,"pt1.y")) == NULL )
   {
+    LOGE("No pt1.y can be found");
     return -1;
   }
-  cir.circleTar.circumcenter.Y=*pnum;
+  pt1.Y=*pnum;
 
 
-  if((pnum=JSON_GET_NUM(circle_obj,"param.r")) == NULL )
+  if((pnum=JSON_GET_NUM(circle_obj,"pt2.x")) == NULL )
   {
+    LOGE("No pt2.x can be found");
     return -1;
   }
-  cir.circleTar.radius=*pnum;
+  pt2.X=*pnum;
 
 
-  LOGV("feature is a circle");
+  int pt2y;
+  if((pnum=JSON_GET_NUM(circle_obj,"pt2.y")) == NULL )
+  {
+    LOGE("No pt2.y can be found");
+    return -1;
+  }
+  pt2.Y=*pnum;
+
+
+  int pt3x;
+  if((pnum=JSON_GET_NUM(circle_obj,"pt3.x")) == NULL )
+  {
+    LOGE("No pt3.x can be found");
+    return -1;
+  }
+  pt3.X=*pnum;
+
+
+  int pt3y;
+  if((pnum=JSON_GET_NUM(circle_obj,"pt3.y")) == NULL )
+  {
+    LOGE("No pt3.y can be found");
+    return -1;
+  }
+  pt3.Y=*pnum;
+
+  acv_XY circumcenter = acvCircumcenter(pt1,pt2,pt3);
+  cir.circleTar.circumcenter=circumcenter;
+  cir.circleTar.radius=hypot(circumcenter.X-pt2.X,circumcenter.Y-pt2.Y);
+
   LOGV("x:%f y:%f r:%f margin:%f",
   cir.circleTar.circumcenter.X,
   cir.circleTar.circumcenter.Y,
@@ -362,6 +410,72 @@ int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspAr
 
 
 }
+
+
+int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
+{
+  LOGE("____");
+
+
+  featureDef_searchPoint searchPoint;
+
+  {
+    char *tmpstr;
+    searchPoint.name[0] = '\0';
+    if(tmpstr = json_find_name(jobj))
+    {
+      strcpy(searchPoint.name,tmpstr);
+    }
+  }
+
+  double *pnum;
+
+  if((pnum=JSON_GET_NUM(jobj,"id")) == NULL )
+  {
+    LOGE("No id");
+    return -1;
+  }
+  searchPoint.id = (int)*pnum;
+  LOGV("feature is an searchPoint:%s %d",searchPoint.name, searchPoint.id);
+
+
+
+
+
+  return 0;
+}
+
+int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON * auxpoint_obj)
+{
+  LOGE("____");
+
+
+  featureDef_auxPoint auxPoint;
+
+  {
+    char *tmpstr;
+    auxPoint.name[0] = '\0';
+    if(tmpstr = json_find_name(auxpoint_obj))
+    {
+      strcpy(auxPoint.name,tmpstr);
+    }
+  }
+
+  double *pnum;
+
+  if((pnum=JSON_GET_NUM(auxpoint_obj,"id")) == NULL )
+  {
+    LOGE("No id");
+    return -1;
+  }
+  auxPoint.id = (int)*pnum;
+  LOGV("feature is an auxPoint:%s %d",auxPoint.name, auxPoint.id);
+
+
+
+
+  return 0;
+}
 int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 {
   featureDef_line line;
@@ -376,6 +490,16 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
       strcpy(line.name,tmpstr);
     }
   }
+  
+  if((pnum=JSON_GET_NUM(line_obj,"id")) == NULL )
+  {
+    LOGE("No id");
+    return -1;
+  }
+  line.id = (int)*pnum;
+
+  LOGV("feature is a line:%s %d",line.name,line.id);
+
   if((pnum=JSON_GET_NUM(line_obj,"margin")) == NULL )
   {
     LOGE("No margin");
@@ -459,7 +583,6 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
 
-  LOGV("feature is a line");
   LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f ,MatchingMargin:%f",
   line.lineTar.line_anchor.X,
   line.lineTar.line_anchor.Y,
@@ -702,6 +825,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
 
 
   cJSON *featureList = cJSON_GetObjectItem(root,"features");
+  cJSON *inherentfeatureList = cJSON_GetObjectItem(root,"inherentfeatures");
 
   if(featureList==NULL)
   {
@@ -725,9 +849,9 @@ int FeatureManager_sig360_circle_line::parse_jobj()
        return -1;
      }
      const char *feature_type =tmp_obj->valuestring;
-     if(strcmp(feature_type, "circle")==0)
+     if(strcmp(feature_type, "arc")==0)
      {
-       if(parse_circleData(feature)!=0)
+       if(parse_arcData(feature)!=0)
        {
          LOGE("feature[%d] has error %s format",i,feature_type);
          return -1;
@@ -749,11 +873,23 @@ int FeatureManager_sig360_circle_line::parse_jobj()
          return -1;
        }
      }
-     else if(strcmp(feature_type, "aux-line")==0)
+     else if(strcmp(feature_type, "aux_point")==0)
      {
+       
+       if(parse_auxPointData(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
      }
-     else if(strcmp(feature_type, "aux-point")==0)
+     else if(strcmp(feature_type, "search_point")==0)
      {
+       
+       if(parse_searchPointData(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
      }
      else if(strcmp(feature_type, "judge")==0)
      {

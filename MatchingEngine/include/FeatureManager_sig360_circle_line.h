@@ -14,6 +14,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
   vector<FeatureReport_judgeDef> judgeList;
+  
+  vector<featureDef_auxPoint> auxPointList;
+  vector<FeatureReport_judgeDef> searchPointList;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
   ContourGrid inward_curve_grid;
@@ -32,8 +35,10 @@ protected:
 
   int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
   float find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList);
-  int parse_circleData(cJSON * circle_obj);
+  int parse_arcData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
+  int parse_auxPointData(cJSON * auxPoint_obj);
+  int parse_searchPointData(cJSON * searchPoint_obj);
   int parse_signatureData(cJSON * signature_obj);
   int parse_judgeData(cJSON * judge_obj);
   int parse_jobj() override;

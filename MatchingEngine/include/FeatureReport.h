@@ -46,6 +46,40 @@ typedef struct featureDef_line{
 }featureDef_line;
 
 
+
+typedef struct featureDef_auxPoint{
+  int id;
+  char name[FeatureManager_NAME_LENGTH];
+  enum{
+    lineCross
+  }subtype;
+  
+  union{
+    struct{
+      int line1_id;
+      int line2_id;
+    }lineCross;
+  }data;
+}featureDef_auxPoint;
+
+
+typedef struct featureDef_searchPoint{
+  int id;
+  char name[FeatureManager_NAME_LENGTH];
+  enum{
+    anglefollow
+  }subtype;
+  
+  union{
+    struct{
+      acv_XY position;
+      int target_id;
+      float angle;
+    }anglefollow;
+  }data;
+}featureDef_searchPoint;
+
+
 typedef struct FeatureReport_judgeDef{
   int id;
 
@@ -75,6 +109,7 @@ typedef struct FeatureReport_judgeDef{
   float targetVal;
   float targetVal_margin;
 }FeatureReport_judgeDef;
+
 
 typedef struct FeatureReport_judgeReport{
 
