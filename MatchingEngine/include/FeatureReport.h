@@ -70,8 +70,8 @@ typedef struct featureDef_searchPoint{
     anglefollow
   }subtype;
   
-  union{
-    struct{
+  union data{
+    struct anglefollow{
       acv_XY position;
       int target_id;
       float angle;

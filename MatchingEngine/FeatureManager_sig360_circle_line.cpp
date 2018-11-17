@@ -414,8 +414,6 @@ int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspAr
 
 int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
 {
-  LOGE("____");
-
 
   featureDef_searchPoint searchPoint;
 
@@ -438,24 +436,74 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
   searchPoint.id = (int)*pnum;
   LOGV("feature is an searchPoint:%s %d",searchPoint.name, searchPoint.id);
 
+  //The subtype might be determined by definition file 
+  searchPoint.subtype = featureDef_searchPoint::anglefollow;
 
+  switch(searchPoint.subtype)
+  {
+    case featureDef_searchPoint::anglefollow:
+    {
+      if((pnum=JSON_GET_NUM(jobj,"angle")) == NULL )
+      {
+        LOGE("No angle");
+        return -1;
+      }
+      searchPoint.data.anglefollow.angle=*pnum;
+
+      if((pnum=JSON_GET_NUM(jobj,"ref[0].id")) == NULL )
+      {
+        LOGE("No target_id");
+        return -1;
+      }
+      searchPoint.data.anglefollow.target_id=(int)*pnum;
+
+
+      if((pnum=JSON_GET_NUM(jobj,"pt1.x")) == NULL )
+      {
+        LOGE("No pt1.x");
+        return -1;
+      }
+      searchPoint.data.anglefollow.position.X=*pnum;
+
+
+      if((pnum=JSON_GET_NUM(jobj,"pt1.y")) == NULL )
+      {
+        LOGE("No pt1.y");
+        return -1;
+      }
+      searchPoint.data.anglefollow.position.Y=*pnum;
+
+
+      LOGV("searchPoint.X:%f searchPoint.Y:%f searchPoint.angle:%f searchPoint.tar_id:%d",
+      searchPoint.data.anglefollow.position.X,
+      searchPoint.data.anglefollow.position.Y,
+      searchPoint.data.anglefollow.angle,
+      searchPoint.data.anglefollow.target_id
+      );
+
+
+
+    }
+    break;
+    default:
+      return -1;
+  }
+  
+  searchPointList.push_back(searchPoint);
 
 
 
   return 0;
 }
 
-int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON * auxpoint_obj)
+int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON * jobj)
 {
-  LOGE("____");
-
-
   featureDef_auxPoint auxPoint;
 
   {
     char *tmpstr;
     auxPoint.name[0] = '\0';
-    if(tmpstr = json_find_name(auxpoint_obj))
+    if(tmpstr = json_find_name(jobj))
     {
       strcpy(auxPoint.name,tmpstr);
     }
@@ -463,13 +511,55 @@ int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON * auxpoint_obj)
 
   double *pnum;
 
-  if((pnum=JSON_GET_NUM(auxpoint_obj,"id")) == NULL )
+  if((pnum=JSON_GET_NUM(jobj,"id")) == NULL )
   {
     LOGE("No id");
     return -1;
   }
   auxPoint.id = (int)*pnum;
-  LOGV("feature is an auxPoint:%s %d",auxPoint.name, auxPoint.id);
+  LOGV("feature is an auxPoint:%s %d  skip...",auxPoint.name, auxPoint.id);
+
+
+  //The subtype might be determined by definition file 
+  auxPoint.subtype = featureDef_auxPoint::lineCross;
+
+
+
+  switch(auxPoint.subtype)
+  {
+    case featureDef_auxPoint::lineCross:
+    {
+      if((pnum=JSON_GET_NUM(jobj,"ref[0].id")) == NULL )
+      {
+        LOGE("No target[0]_id");
+        return -1;
+      }
+      auxPoint.data.lineCross.line1_id=(int)*pnum;
+
+      if((pnum=JSON_GET_NUM(jobj,"ref[1].id")) == NULL )
+      {
+        LOGE("No target[1]_id");
+        return -1;
+      }
+      auxPoint.data.lineCross.line2_id=(int)*pnum;
+
+
+      LOGV("id_1:%d id_2:%d",
+        auxPoint.data.lineCross.line1_id,auxPoint.data.lineCross.line2_id
+      );
+
+
+
+    }
+    break;
+    default:
+      return -1;
+  }
+  
+  auxPointList.push_back(auxPoint);
+
+
+
 
 
 
@@ -962,7 +1052,13 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   }
   featureCircleList.resize(0);
   featureLineList.resize(0);
+  judgeList.resize(0);
+
+  auxPointList.resize(0);
+  searchPointList.resize(0);
   feature_signature.resize(0);
+
+
 
   root = cJSON_Parse(json_str);
   if(root==NULL)

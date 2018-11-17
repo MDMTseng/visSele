@@ -16,7 +16,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<FeatureReport_judgeDef> judgeList;
   
   vector<featureDef_auxPoint> auxPointList;
-  vector<FeatureReport_judgeDef> searchPointList;
+  vector<featureDef_searchPoint> searchPointList;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
   ContourGrid inward_curve_grid;
