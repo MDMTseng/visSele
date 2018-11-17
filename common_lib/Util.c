@@ -50,40 +50,104 @@ int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
 
 int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
 {
-  char buff[128];//HACK no check
+  char buff[20];//HACK no check
   strcpy(buff,path);
-  char *paramH=buff;
-  char *paramPtr=buff;
-  cJSON * curobj=obj;
-  for(;;paramPtr++)
+  char *nextSection=nextSection;
+  int i=0;
+  char endType;
+  for(i=0;i<sizeof(buff);i++)
   {
-    char ch=*paramPtr;
-    if(ch=='[')
-    {//TODO:Not supported yet
-      return cJSON_Invalid;
-    }
+    if(i==sizeof(buff)-1)return cJSON_Invalid;
+    endType = path[i];
+    if(endType=='.' || endType == '[' || endType == ']' || endType == '\0')break;
+    buff[i]=endType;
+  }
+  buff[i]='\0';
+  int nameLength = i;
+  nextSection = path+(i+((endType=='\0')?0:1));
 
-    if(ch=='.')
+  //printf("%s  %s  %s  obj->type:%d\n",buff,path,nextSection,obj->type);
+  cJSON * curobj=obj;
+  switch(endType)
+  {
+    case '.':
     {
-      *paramPtr='\0';//replace as termination
       cJSON * getobj=NULL;
-      int obj_type = getDataFromJsonObj(curobj,paramH,(void**)&getobj);
-
-      *paramPtr=ch;//restore value
-      if( (ch='.' && !(obj_type&cJSON_Object)))
+      int obj_type = getDataFromJsonObj(curobj,buff,(void**)&getobj);
+      if( !(obj_type&cJSON_Object) )
       {
         return cJSON_Invalid;
       }
-      curobj=getobj;
-
-      paramH=paramPtr+1;
+      return getDataFromJson(getobj,nextSection,ret_ptr);
     }
-
-    if(ch=='\0')
+    break;
+    
+    case '[':
     {
-      return getDataFromJsonObj(curobj,paramH,ret_ptr);
+      
+      cJSON * getobj=NULL;
+      int obj_type = getDataFromJsonObj(curobj,buff,(void**)&getobj);
+      if( !(obj_type&(cJSON_Object|cJSON_Array)) )
+      {
+        return cJSON_Invalid;
+      }
+      return getDataFromJson(getobj,nextSection,ret_ptr);
     }
+    break;
+    
+    case ']':
+    {
+      if(obj->type&cJSON_Array)
+      {
+        char * pEnd;
+        long int idx = strtol (buff,&pEnd,10);
+          
+        cJSON * getobj=NULL;
+        int obj_type = getDataFromJsonObj(curobj,idx,(void**)&getobj);
+        if( !(obj_type&cJSON_Object) )
+        {
+          *ret_ptr = (void*)getobj;
+          return obj_type;
+        }
+        if(nextSection[0]=='.')//Skip the .
+          nextSection++;
+        return getDataFromJson(getobj,nextSection,ret_ptr);
+      }
+      else if(obj->type&cJSON_Object)
+      {
+        if(buff[0]!='\"' || buff[nameLength-1] !='\"')
+        {
+          return cJSON_Invalid;
+        }
+        buff[nameLength-1]='\0';
+        //buff++;
+        nameLength-=2;
+
+        cJSON * getobj=NULL;
+        int obj_type = getDataFromJsonObj(curobj,buff+1,(void**)&getobj);
+        if( !(obj_type&cJSON_Object) )
+        {
+          *ret_ptr = (void*)getobj;
+          return obj_type;
+        }
+        return getDataFromJson(getobj,nextSection,ret_ptr);
+
+      }
+      else
+      {
+        return cJSON_Invalid;
+      }
+    }
+    break;
+    
+    case '\0':
+    {
+      return getDataFromJsonObj(curobj,buff,ret_ptr);
+    }
+    break;
+    default: return cJSON_Invalid;
   }
+
 }
 
 
