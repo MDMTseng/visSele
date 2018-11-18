@@ -604,8 +604,8 @@ class EverCheckCanvasComponent{
     }
 
     this.camera.SetOffset({
-      x:(this.secCanvas.width / 2)-center.x,
-      y:(this.secCanvas.height / 2)-center.y
+      x:-center.x,
+      y:-center.y
     });
   }
 
@@ -925,12 +925,33 @@ class EverCheckCanvasComponent{
     return {x:XX,y:YY};
   }
 
+  getReportCenter()
+  {
+    
+    let center = {x:0,y:0};
+    try{
+      //console.log(this.ReportJSON);
+  
+      center.x = this.ReportJSON.reports[0].cx;
+      center.y = this.ReportJSON.reports[0].cy;
+
+    }catch(e)
+    {
+      center.x = 0;//(this.secCanvas.width / 2)
+      center.y = 0;//(this.secCanvas.height / 2)
+    }
+
+    return center;
+  }
+
   worldTransform()
   {
     let wMat = new DOMMatrix();
+
     wMat.translateSelf((this.canvas.width / 2), (this.canvas.height / 2));
     this.camera.CameraTransform(wMat);
-    wMat.translateSelf(-(this.secCanvas.width / 2), -(this.secCanvas.height / 2));
+    //let center = this.getReportCenter();
+    //wMat.translateSelf(-center.x, -center.y);
 
     return wMat;
 
@@ -948,7 +969,13 @@ class EverCheckCanvasComponent{
     
 
 
-    ctx.drawImage(this.secCanvas,0,0);
+    {
+      let center = this.getReportCenter();
+      ctx.drawImage(this.secCanvas,-center.x,-center.y);
+    }
+
+
+
     {
 
 

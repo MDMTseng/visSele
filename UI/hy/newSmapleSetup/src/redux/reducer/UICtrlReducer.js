@@ -104,7 +104,9 @@ class InspectionEditorLogic
       id:signature_id,
       type:SHAPE_TYPE.sign360,
       name:"@__SIGNATURE__",
-      pt1:{x:setupTarget.cx,y:setupTarget.cy},
+      pt1:{x:setupTarget.cx,y:setupTarget.cy},//The location on the image
+      pt2:{x:0,y:0},//The ref location that we use as graphic center
+
       area:setupTarget.area,
       orientation:0,
       signature:setupTarget.signature
@@ -116,7 +118,7 @@ class InspectionEditorLogic
       name:"@__SIGNATURE__.centre",
       ref:[{
         id:signature_id,
-        keyTrace:["pt1"]
+        keyTrace:["pt2"]
       }]
     });
     this.inherentShapeList.push({
