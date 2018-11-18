@@ -679,7 +679,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   line.lineTar.line_vec.X,
   line.lineTar.line_vec.Y,
   line.initMatchingMargin);
-  LOGV("searchVec X:%f Y:%f vX:%f vY:%f sVX:%f sVY:%f,searchDist:%f",
+  LOGV("searchVec X:%f Y:%f vX:%f vY:%f,searchDist:%f",
   line.searchEstAnchor.X,
   line.searchEstAnchor.Y,
   line.searchVec.X,
