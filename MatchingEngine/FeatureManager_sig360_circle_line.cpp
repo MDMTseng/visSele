@@ -697,7 +697,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   return 0;
 }
 
-int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj)
+int FeatureManager_sig360_circle_line::parse_sign360(cJSON * signature_obj)
 {
 
   if( feature_signature.size()!=0 )
@@ -706,21 +706,21 @@ int FeatureManager_sig360_circle_line::parse_signatureData(cJSON * signature_obj
     return -1;
   }
 
-  cJSON *param;
-  if(!(getDataFromJsonObj(signature_obj,"param",(void**)&param)&cJSON_Object))
+  cJSON *signature;
+  if(!(getDataFromJsonObj(signature_obj,"signature",(void**)&signature)&cJSON_Object))
   {
     return -1;
   }
 
   cJSON *signature_magnitude;
   cJSON *signature_angle;
-  if(!(getDataFromJsonObj(param,"magnitude",(void**)&signature_magnitude)&cJSON_Array))
+  if(!(getDataFromJsonObj(signature,"magnitude",(void**)&signature_magnitude)&cJSON_Array))
   {
     LOGE("The signature_magnitude is not an cJSON_Array");
     return -1;
   }
 
-  if(!(getDataFromJsonObj(param,"angle",(void**)&signature_angle)&cJSON_Array))
+  if(!(getDataFromJsonObj(signature,"angle",(void**)&signature_angle)&cJSON_Array))
   {
     LOGE("The signature_angle is not an cJSON_Array");
     return -1;
@@ -955,14 +955,6 @@ int FeatureManager_sig360_circle_line::parse_jobj()
          return -1;
        }
      }
-     else if(strcmp(feature_type, "feature_signature")==0)
-     {
-       if(parse_signatureData(feature)!=0)
-       {
-         LOGE("feature[%d] has error %s format",i,feature_type);
-         return -1;
-       }
-     }
      else if(strcmp(feature_type, "aux_point")==0)
      {
        
@@ -983,6 +975,45 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
      else if(strcmp(feature_type, "judge")==0)
      {
+     }
+     else
+     {
+       LOGE("feature[%d] has unknown type:[%s]",i,feature_type);
+       return -1;
+     }
+  }
+
+  if(inherentfeatureList==NULL)
+  {
+    LOGE("inherentfeatures does not exists");
+    return -1;
+  }
+
+  for (int i = 0 ; i < cJSON_GetArraySize(inherentfeatureList) ; i++)
+  {
+     cJSON * feature = cJSON_GetArrayItem(inherentfeatureList, i);
+     cJSON * tmp_obj = cJSON_GetObjectItem(feature, "type");
+     if(tmp_obj == NULL)
+     {
+       LOGE("feature[%d] has no type...",i);
+       return -1;
+     }
+     const char *feature_type =tmp_obj->valuestring;
+     if(strcmp(feature_type, "sign360")==0)
+     {
+       if(parse_sign360(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
+     }
+     else if(strcmp(feature_type, "aux_point")==0)
+     {
+       //return -1;
+     }
+     else if(strcmp(feature_type, "aux_line")==0)
+     {
+       //return -1;
      }
      else
      {

@@ -39,7 +39,7 @@ protected:
   int parse_lineData(cJSON * line_obj);
   int parse_auxPointData(cJSON * auxPoint_obj);
   int parse_searchPointData(cJSON * searchPoint_obj);
-  int parse_signatureData(cJSON * signature_obj);
+  int parse_sign360(cJSON * signature_obj);
   int parse_judgeData(cJSON * judge_obj);
   int parse_jobj() override;
 
