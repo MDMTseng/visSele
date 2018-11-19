@@ -19,6 +19,7 @@ const EditStates = {
                      [UISEV.Search_Point_Create]: UISTS.EDIT_MODE_SEARCH_POINT_CREATE,
                      [UISEV.Aux_Point_Create]: UISTS.EDIT_MODE_AUX_POINT_CREATE,
                      [UISEV.Shape_Edit]:  UISTS.EDIT_MODE_SHAPE_EDIT,
+                     [UISEV.Measure_Create]:  UISTS.EDIT_MODE_MEASURE_CREATE,
                     }},
     [UISTS.EDIT_MODE_SEARCH_POINT_CREATE]
                :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
@@ -33,6 +34,9 @@ const EditStates = {
                :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
                       [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_SHAPE_EDIT]
+               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
+                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+    [UISTS.EDIT_MODE_MEASURE_CREATE]
                :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
                       [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}}
   }

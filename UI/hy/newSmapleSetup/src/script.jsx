@@ -393,13 +393,70 @@ class APP_EDIT_MODE extends React.Component{
             addClass="layout lgreen vbox"
             key="EDIT"
             text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
-            
           <BASE_COM.Button
             addClass="layout lred vbox"
             key="SAVE"
             text="SAVE" onClick={()=>{this.props.ACT_Save_Edit_Info()}}/>,
+          <BASE_COM.Button
+            addClass="layout lblue vbox"
+            key="MEASURE"
+            text="MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
         ];
       break;
+      case UIAct.UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:         
+      MenuSet=[
+        <BASE_COM.Button
+          addClass="layout black vbox width4"
+          key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+        <div key="MEASURE" className="s width8 lblue vbox">MEASURE</div>,
+      ];
+
+      
+      if(this.props.edit_tar_info!=null)
+      {
+        console.log("JsonEditBlock:",this.props.edit_tar_info);
+
+        MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
+          key="JsonEditBlock"
+          whiteListKey={{
+            //id:"div",
+            type:"div",
+            name:"input",
+            //pt1:null,
+            subtype:"div",
+            ref:{__OBJ__:"div",
+              0:{__OBJ__:"btn",
+                id:"div",
+                element:"div"},
+              1:{__OBJ__:"btn",
+                id:"div",
+                element:"div"},
+            }
+          }}
+          jsonChange={(original_obj,target,type,evt)=>
+            {
+              if(type =="btn")
+              {
+                if(target.keyTrace[0]=="ref")
+                {
+                  this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+                }
+              }
+              else
+              {
+                let lastKey=target.keyTrace[target.keyTrace.length-1];
+                
+                if(type == "input-number")
+                  target.obj[lastKey]=parseFloat(evt.target.value);
+                else if(type == "input")
+                  target.obj[lastKey]=evt.target.value;
+                this.ec_canvas.SetShape( original_obj, original_obj.id);
+              }
+            }}/>);
+
+      }
+      break;
+      
       case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
       MenuSet=[
         <BASE_COM.Button
@@ -553,6 +610,7 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Search_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create))},
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
+    ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
     ACT_Save_Edit_Info: (arg) => {dispatch(UIAct.EV_UI_EDIT_MODE_Save_Edit_Info())},

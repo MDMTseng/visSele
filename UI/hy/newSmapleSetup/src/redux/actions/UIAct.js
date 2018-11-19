@@ -8,6 +8,7 @@ export const UI_SM_STATES = {
   EDIT_MODE_AUX_LINE_CREATE:"AUX_LINE_CREATE",
   EDIT_MODE_AUX_POINT_CREATE:"AUX_POINT_CREATE",
   EDIT_MODE_SEARCH_POINT_CREATE:"SEARCH_POINT_CREATE",
+  EDIT_MODE_MEASURE_CREATE:"MEASURE_CREATE",
   EDIT_MODE_ARC_CREATE:"ARC_CREATE",
   EDIT_MODE_SHAPE_EDIT:"SHAPE_EDIT",
 };
@@ -32,8 +33,14 @@ export const SHAPE_TYPE = {
   aux_point:"aux_point",
   aux_line:"aux_line",
   search_point:"search_point",
-};
 
+  measure:"measure",
+};
+export const MEASURE_TYPE = {
+  sigma:"sigma",
+  distance:"distance",
+  angle:"angle",
+};
 export const UI_SM_EVENT = {
   Connected:"Connected",
   Disonnected:"Disonnected",
@@ -56,6 +63,7 @@ export const UI_SM_EVENT = {
   Aux_Point_Create:"Aux_Point_Create",
   Arc_Create:"Arc_Create",
   Shape_Edit:"Shape_Edit",
+  Measure_Create:"Measure_Create",
 
   EDIT_MODE_SUCCESS:"EDIT_MODE_SUCCESS",
   EDIT_MODE_FAIL:"EDIT_MODE_FAIL",

@@ -479,6 +479,43 @@ function StateReducer(newState,action)
           }
         }
         break;
+
+
+        
+        case UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:
+        {
+          if(newState.state_count==0)
+          {
+            newState.edit_info.edit_tar_info = {
+              type:SHAPE_TYPE.measure,
+              subtype:SHAPE_TYPE.measure,
+              ref:[{},{}]
+            };
+            newState.edit_info.edit_tar_ele_trace=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+            break;
+          }
+          console.log(newState.edit_info.edit_tar_ele_trace,newState.edit_info.edit_tar_ele_cand);
+          
+          if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
+          {
+            let keyTrace=newState.edit_info.edit_tar_ele_trace;
+            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
+            let cand=newState.edit_info.edit_tar_ele_cand;
+
+            console.log("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            obj[keyTrace[keyTrace.length-1]]={
+              id:cand.shape.id,
+              element:cand.shape.type
+            };
+
+            console.log(obj,newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_ele_trace=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+          }
+        }
+        break;
       }
 
 

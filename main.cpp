@@ -475,15 +475,6 @@ int simpleTest()
   printf("Start to send....\n");
 
 
-
-
-
-
-
-
-
-
-
   return 0;
 }
 
@@ -492,7 +483,7 @@ int simpleTest()
 #include <vector>
 int main(int argc, char** argv)
 {
-  return simpleTest();
+  //return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;
