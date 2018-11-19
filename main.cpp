@@ -462,6 +462,28 @@ int simpleTest()
   imgSrc_X->SetFileName("data/test1.bmp");
   ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/test.ic.json");
 
+  const FeatureReport * report = matchingEng.GetReport();
+
+  if(report!=NULL)
+  {
+    cJSON* jobj = matchingEng.FeatureReport2Json(report);
+    char * jstr  = cJSON_Print(jobj);
+    cJSON_Delete(jobj);
+    LOGI("...\n%s\n...",jstr);
+    
+  }
+  printf("Start to send....\n");
+
+
+
+
+
+
+
+
+
+
+
   return 0;
 }
 
