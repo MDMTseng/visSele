@@ -10,7 +10,7 @@ import {
   distance_line_point,
   intersectPoint,
   LineCentralNormal,
-  PtRotate2d} from 'UTIL/MathTools';
+  closestPointOnLine} from 'UTIL/MathTools';
 
 
 class CameraCtrl
@@ -166,6 +166,18 @@ class EverCheckCanvasComponent{
         return i;
       }
     }
+    return undefined;
+  }
+
+  FindShapeObject( key , val)
+  {
+  
+    let idx =this.FindShape( key , val, this.shapeList);
+    if(idx!==undefined)return this.shapeList[idx];
+
+    idx =this.FindShape( key , val, this.inherentShapeList);
+    if(idx!==undefined)return this.inherentShapeList[idx];
+
     return undefined;
   }
 
@@ -346,6 +358,18 @@ class EverCheckCanvasComponent{
     ctx.closePath();
     ctx.stroke();
   }
+
+
+  drawLine(ctx, line, offset={x:0,y:0})
+  {
+    ctx.beginPath();
+    ctx.moveTo(line.pt1.x+offset.x,line.pt1.y+offset.y);
+    ctx.lineTo(line.pt2.x+offset.x,line.pt2.y+offset.y);
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+
   drawReportArc(ctx, arc_obj, offset={x:0,y:0})
   {
     ctx.beginPath();
@@ -471,18 +495,10 @@ class EverCheckCanvasComponent{
     
     if(aux_point.ref.length ==1)
     {
-      let ref0_shape=null;
-      let idx = this.FindShape( "id" , aux_point.ref[0].id );
-      
-      if(idx ===undefined)
+      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
+      if(ref0_shape ===undefined)
       {
-        let idx = this.FindShape( "id" , aux_point.ref[0].id ,this.inherentShapeList);
-        if(idx ===undefined)return null;
-        ref0_shape=this.inherentShapeList[idx];
-      }
-      else
-      {
-        ref0_shape=this.shapeList[idx];
+        return null;
       }
       
       if(aux_point.ref[0].keyTrace !== undefined)
@@ -509,13 +525,13 @@ class EverCheckCanvasComponent{
     }
     else if(aux_point.ref.length ==2)
     {
-      let idx0 = this.FindShape( "id" , aux_point.ref[0].id );
-      if(idx0 ===undefined)return null;
-      let idx1 = this.FindShape( "id" , aux_point.ref[1].id );
-      if(idx1 ===undefined)return null;
       
-      let ref0_shape=this.shapeList[idx0];
-      let ref1_shape=this.shapeList[idx1];
+      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
+      if(ref0_shape ===undefined)return null;
+      let ref1_shape=this.FindShapeObject( "id" , aux_point.ref[1].id);
+      if(ref1_shape ===undefined)return null;
+
+
       if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
       {
         return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
@@ -532,9 +548,8 @@ class EverCheckCanvasComponent{
     
     if(search_point.ref.length ==1)
     {
-      let idx = this.FindShape( "id" , search_point.ref[0].id );
-      if(idx ===undefined)return null;
-      let ref0_shape=this.shapeList[idx];
+      let ref0_shape=this.FindShapeObject( "id" , search_point.ref[0].id);
+      if(ref0_shape ===undefined)return null;
       switch(ref0_shape.type)
       {
         case SHAPE_TYPE.line:
@@ -547,6 +562,51 @@ class EverCheckCanvasComponent{
 
     return point;
   }
+
+
+
+  shapeMiddlePointParse(shape)
+  {
+    switch(shape.type)
+    {
+      
+      case SHAPE_TYPE.line:
+        return {x:(shape.pt1.x+shape.pt2.x)/2,y:(shape.pt1.y+shape.pt2.y)/2};
+      case SHAPE_TYPE.arc:
+        return threePointToArc(shape.pt1,shape.pt2,shape.pt3);
+      case SHAPE_TYPE.aux_point:
+        return this.auxPointParse(shape);
+      case SHAPE_TYPE.search_point:
+        return this.searchPointParse(shape);
+    }
+    return undefined;
+  }
+
+  shapeVectorParse(shape)
+  {
+    switch(shape.type)
+    {
+      
+      case SHAPE_TYPE.line:
+        return {x:(shape.pt2.x-shape.pt1.x),y:(shape.pt2.y-shape.pt1.y)};
+      case SHAPE_TYPE.search_point:
+      {
+        if(shape.ref===undefined || shape.ref.length!=1)return undefined;
+
+        let refObj = this.FindShapeObject( "id" , shape.ref[0].id );
+        
+        if(refObj===undefined || refObj.type !== SHAPE_TYPE.line)return undefined;
+        let lineVec = this.shapeVectorParse(refObj);
+
+        if(lineVec===undefined )return undefined;
+        let angle=Math.atan2(lineVec.y,lineVec.x)+shape.angle*Math.PI/180;
+        return {x:Math.cos(angle),y:Math.sin(angle)};
+      }
+    }
+    return undefined;
+  }
+
+
   xPointParse(xpoint)
   {
     let point=null;
@@ -639,34 +699,6 @@ class EverCheckCanvasComponent{
       }
     });
   }
-  shapeProp(shape,prop)
-  {
-    switch(shape.type)
-    {
-      
-      case SHAPE_TYPE.line:
-      {
-        let line = shape;
-        switch(prop)
-        {
-          case "angle":
-          {
-            let dx=(line.pt2.x-line.pt1.x);
-            let dy=(line.pt2.y-line.pt1.y);
-            return Math.atan2(dy,dx);
-          }
-        }
-      }
-      break;
-      case SHAPE_TYPE.aux_point:
-      {
-        
-      }
-      break;
-    }
-  }
-
-
   canvas_arrow(ctx, fromx, fromy, tox, toy,headlen = 10,aangle=Math.PI/6){
     var angle = Math.atan2(toy-fromy,tox-fromx);
     ctx.beginPath();
@@ -700,17 +732,75 @@ class EverCheckCanvasComponent{
 
   drawMeasureDistance(ctx,eObject,refObjs)
   {
-    switch(refObjs[0].type)
+    ctx.lineWidth=2;
+    ctx.strokeStyle=this.colorSet.measure_info; 
+              
+    ctx.font="30px Arial";
+    ctx.fillStyle=this.colorSet.measure_info; 
+
+    let alignLine=null;
+    let point_onAlignLine=null;
+    let point=null;
+
+    
+    point_onAlignLine = this.shapeMiddlePointParse(refObjs[0]);
+    point = this.shapeMiddlePointParse(refObjs[1]);
+    let mainObjVec= this.shapeVectorParse(refObjs[0]);
+    if(mainObjVec===undefined)
     {
-      case SHAPE_TYPE.aux_point:
-      case SHAPE_TYPE.search_point:
-      case SHAPE_TYPE.arc:
+      mainObjVec = {x:-(point.y-point_onAlignLine.y),y:(point.x-point_onAlignLine.x)};
+    }
+
+    alignLine={
+      x1:point_onAlignLine.x,y1:point_onAlignLine.y,
+      x2:point_onAlignLine.x+mainObjVec.x,y2:point_onAlignLine.y+mainObjVec.y,
+    };
+
+    if(point!=null && alignLine!=null)
+    {
+      //this.canvas_arrow(ctx, point.x, point.y, point_on_line.x, point_on_line.y);
+
+      let point_on_line = closestPointOnLine(alignLine,point);
+
+
+      let closestPt_disp = closestPointOnLine(alignLine,eObject.pt1);
+
+
+      let extended_ind_line = {
+        x0:closestPt_disp.x,y0:closestPt_disp.y,
+        x1:closestPt_disp.x+(point.x-point_on_line.x),
+        y1:closestPt_disp.y+(point.y-point_on_line.y),
+      }
+
+
+      ctx.setLineDash([5, 15]);
+      
+      this.drawReportLine(ctx, {
+        
+        x0:extended_ind_line.x0,y0:extended_ind_line.y0,
+        x1:point_onAlignLine.x,y1:point_onAlignLine.y
+      });
+
+      this.drawReportLine(ctx, {
+        
+        x0:extended_ind_line.x1,y0:extended_ind_line.y1,
+        x1:point.x,y1:point.y
+      });
+
+      
+      ctx.setLineDash([]);
       
 
-      break;
+      this.drawReportLine(ctx, extended_ind_line);
+
+      
+      this.drawpoint(ctx,eObject.pt1);
+
+
+      ctx.fillText("D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)).toFixed(4)+"±"+(eObject.margin).toFixed(4),
+      eObject.pt1.x,eObject.pt1.y);
     }
   }
-
 
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[])
   {
@@ -836,9 +926,8 @@ class EverCheckCanvasComponent{
 
           let line = subObjs[0];
 
-          let angle=this.shapeProp(line,"angle")+eObject.angle*Math.PI/180;
-          let cnormal={x:Math.sin(angle),y:-Math.cos(angle)};
-          let vector = {x:cnormal.y,y:-cnormal.x};
+          let vector = this.shapeVectorParse(eObject);
+          let cnormal={x:-vector.y,y:vector.x};
           let mag=eObject.width/2;//It starts from center so devide by 2.
           vector.x*=mag;
           vector.y*=mag;
@@ -871,18 +960,16 @@ class EverCheckCanvasComponent{
         case SHAPE_TYPE.measure:
         {
           if(eObject.ref===undefined)break;
-
           let subObjs = eObject.ref
-            .map((ref)=> this.FindShape( "id" , ref.id ))
-            .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
-          let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!=null),true);
+            .map((ref)=> this.FindShapeObject( "id" , ref.id ));
+          let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!==undefined),true);
           if(!subObjs_valid)break;
 
           switch(eObject.subtype)
           {
             case SHAPE_TYPE.measure_subtype.distance:
             {
-              this.drawMeasureDistance(ctx,eObject,subObjs_valid);
+              this.drawMeasureDistance(ctx,eObject,subObjs);
             }
             break;
             case SHAPE_TYPE.measure_subtype.angle:
@@ -1431,11 +1518,11 @@ class EverCheckCanvasComponent{
           }
 
           let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          /*let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
+          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
           if(pt_info.dist>pt_info2.dist)
           {
             pt_info = pt_info2;
-          }*/
+          }
 
           if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.GetCameraScale())
           {
