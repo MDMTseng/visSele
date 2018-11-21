@@ -697,6 +697,21 @@ class EverCheckCanvasComponent{
   drawLineArrow(ctx,x1,y1,x2,y2)
   {
   }
+
+  drawMeasureDistance(ctx,eObject,refObjs)
+  {
+    switch(refObjs[0].type)
+    {
+      case SHAPE_TYPE.aux_point:
+      case SHAPE_TYPE.search_point:
+      case SHAPE_TYPE.arc:
+      
+
+      break;
+    }
+  }
+
+
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[])
   {
     eObjects.forEach((eObject)=>{
@@ -867,7 +882,7 @@ class EverCheckCanvasComponent{
           {
             case SHAPE_TYPE.measure_subtype.distance:
             {
-              
+              this.drawMeasureDistance(ctx,eObject,subObjs_valid);
             }
             break;
             case SHAPE_TYPE.measure_subtype.angle:
