@@ -128,7 +128,8 @@ class EverCheckCanvasComponent{
     this.EmitEvent=(event)=>{console.log(event);};
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
-      editShape:"rgba(255,0,0,0.7)"
+      editShape:"rgba(255,0,0,0.7)",
+      measure_info:"rgba(128,128,200,0.7)"
     };
   }
 
@@ -404,6 +405,7 @@ class EverCheckCanvasComponent{
         case SHAPE_TYPE.line:
         case SHAPE_TYPE.arc:
         case SHAPE_TYPE.search_point:
+        case SHAPE_TYPE.measure:
           ["pt1","pt2","pt3"].forEach((key)=>{
             if(shape[key]===undefined)return;
             tmpDist = distance_point_point(shape[key],location);
@@ -663,6 +665,38 @@ class EverCheckCanvasComponent{
       break;
     }
   }
+
+
+  canvas_arrow(ctx, fromx, fromy, tox, toy,headlen = 10,aangle=Math.PI/6){
+    var angle = Math.atan2(toy-fromy,tox-fromx);
+    ctx.beginPath();
+    ctx.moveTo(fromx, fromy);
+    ctx.lineTo(tox, toy);
+    
+    ctx.moveTo(tox, toy);
+    ctx.lineTo(tox-headlen*Math.cos(angle-aangle),toy-headlen*Math.sin(angle-aangle));
+    ctx.moveTo(tox, toy);
+    ctx.lineTo(tox-headlen*Math.cos(angle+aangle),toy-headlen*Math.sin(angle+aangle));
+    ctx.stroke();
+  }
+  
+  drawArcArrow(ctx,x,y,r,sAngle,eAngle,ccw=false)
+  {
+    ctx.beginPath();
+    //console.log(ctx,x,y,r,sAngle,eAngle,ccw);
+    ctx.arc(x,y,r,sAngle,eAngle,ccw);
+    ctx.stroke();
+    let ax= Math.cos(eAngle);
+    let ay= Math.sin(eAngle);
+    x+=r*ax;
+    y+=r*ay;
+    let dirSign=(ccw)?-1:1;
+    this.canvas_arrow(ctx, x+dirSign*ay, y-dirSign*ax, x, y);
+    
+  }
+  drawLineArrow(ctx,x1,y1,x2,y2)
+  {
+  }
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[])
   {
     eObjects.forEach((eObject)=>{
@@ -817,6 +851,114 @@ class EverCheckCanvasComponent{
           ctx.strokeStyle="gray";  
           this.drawpoint(ctx,eObject.pt1);
 
+        }
+        break;
+        case SHAPE_TYPE.measure:
+        {
+          if(eObject.ref===undefined)break;
+
+          let subObjs = eObject.ref
+            .map((ref)=> this.FindShape( "id" , ref.id ))
+            .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
+          let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!=null),true);
+          if(!subObjs_valid)break;
+
+          switch(eObject.subtype)
+          {
+            case SHAPE_TYPE.measure_subtype.distance:
+            {
+              
+            }
+            break;
+            case SHAPE_TYPE.measure_subtype.angle:
+            {
+              let srcPt = 
+                intersectPoint(subObjs[0].pt1,subObjs[0].pt2,subObjs[1].pt1,subObjs[1].pt2);
+                  
+              ctx.lineWidth=2;
+              ctx.strokeStyle=this.colorSet.measure_info; 
+                        
+              ctx.font="30px Arial";
+              ctx.fillStyle=this.colorSet.measure_info; 
+              //this.drawpoint(ctx, srcPt,"rect");
+              
+              let sAngle = Math.atan2(subObjs[0].pt1.y - srcPt.y,subObjs[0].pt1.x - srcPt.x);
+              let eAngle = Math.atan2(subObjs[1].pt1.y - srcPt.y,subObjs[1].pt1.x - srcPt.x);
+              let midwayAngle = Math.atan2(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);//-PI~PI
+
+              let angleDiff = (eAngle - sAngle);
+              if(angleDiff<0)
+              {
+                angleDiff+=Math.PI*2;
+              }
+
+              let angleDiff_midway = (midwayAngle - sAngle);
+              if(angleDiff_midway<0)
+              {
+                angleDiff_midway+=Math.PI*2;
+              }
+
+              let dist = Math.hypot(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);
+              let margin_deg = eObject.margin*Math.PI/180;
+              let measureDeg = angleDiff;
+              if(angleDiff_midway<angleDiff)
+              {
+                //sAngle+=margin_deg/2;
+                //eAngle-=margin_deg/2;
+                //The midway_angle is within the angle
+                this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist,sAngle,eAngle);
+                //this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist+5,sAngle-margin_deg,eAngle+margin_deg);
+              }
+              else
+              {
+                measureDeg = 2*Math.PI - angleDiff;
+                //sAngle-=eObject.margin/2;
+                //eAngle+=eObject.margin/2;
+                this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist,sAngle,eAngle,true);
+                //this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist+5,sAngle+margin_deg,eAngle-margin_deg);
+              }
+
+
+              this.drawpoint(ctx,eObject.pt1);
+              
+              ctx.fillText(""+(measureDeg*180/Math.PI).toFixed(4)+"º ±"+(eObject.margin).toFixed(4),
+                eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4,
+                eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4);
+              //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);
+            }
+            break;
+            
+            case SHAPE_TYPE.measure_subtype.radius:
+            {
+              ctx.lineWidth=2;
+              ctx.strokeStyle=this.colorSet.measure_info; 
+
+              ctx.font="30px Arial";
+              ctx.fillStyle=this.colorSet.measure_info; 
+              let arc = threePointToArc(subObjs[0].pt1,subObjs[0].pt2,subObjs[0].pt3);
+              let dispVec = {x:eObject.pt1.x - arc.x,y:eObject.pt1.y - arc.y};
+              let mag = Math.hypot(dispVec.x,dispVec.y);
+              let dispVec_normalized ={x:dispVec.x/mag,y:dispVec.y/mag};
+              dispVec.x*=arc.r/mag;
+              dispVec.y*=arc.r/mag;//{x:dispVec.x*arc.r/mag,y:dispVec.x*arc.r/mag};
+
+              /*let lineInfo = {
+                x0:arc.x+dispVec.x,y0:arc.y+dispVec.y,
+                x1:eObject.pt1.x,y1:eObject.pt1.y,
+              };*/
+              
+              this.canvas_arrow(ctx, eObject.pt1.x, eObject.pt1.y, arc.x+dispVec.x, arc.y+dispVec.y);
+              //this.drawReportLine(ctx, lineInfo);
+              this.drawpoint(ctx,eObject.pt1);
+
+              dispVec_normalized.x*=40;
+              dispVec_normalized.y*=40;
+              ctx.fillText("R"+(arc.r).toFixed(4)+"±"+(eObject.margin).toFixed(4),
+                eObject.pt1.x+dispVec_normalized.x,
+                eObject.pt1.y+dispVec_normalized.y);
+            
+            }
+          }
         }
         break;
       }
@@ -1026,8 +1168,6 @@ class EverCheckCanvasComponent{
 
       }
 
-
-
     }
     ctx.closePath();
     ctx.save();
@@ -1080,7 +1220,6 @@ class EverCheckCanvasComponent{
 
 
   }
-
 
   ctrlLogic()
   {
@@ -1169,6 +1308,7 @@ class EverCheckCanvasComponent{
 
       case UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:
       case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
+      case UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:
       {
         
         if(this.mouseStatus.status==1)
@@ -1276,11 +1416,11 @@ class EverCheckCanvasComponent{
           }
 
           let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
+          /*let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
           if(pt_info.dist>pt_info2.dist)
           {
             pt_info = pt_info2;
-          }
+          }*/
 
           if(pt_info.pt!=null&& pt_info.dist<this.mouse_close_dist/this.camera.GetCameraScale())
           {

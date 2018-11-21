@@ -35,12 +35,16 @@ export const SHAPE_TYPE = {
   search_point:"search_point",
 
   measure:"measure",
+  measure_subtype:{
+    NA:"NA",
+    sigma:"sigma",
+    distance:"distance",
+    angle:"angle",
+    radius:"radius",
+  }
+
 };
-export const MEASURE_TYPE = {
-  sigma:"sigma",
-  distance:"distance",
-  angle:"angle",
-};
+
 export const UI_SM_EVENT = {
   Connected:"Connected",
   Disonnected:"Disonnected",

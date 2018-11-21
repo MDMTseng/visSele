@@ -148,6 +148,33 @@ class JsonElement extends React.Component{
 
   render()
   {
+ 
+    if(this.props.type.type !== undefined)
+    {
+      return this.renderComplex();
+    }
+    else
+    {
+      //if(this.props.type instanceof String)
+      
+      return this.renderSimple();
+      
+    }
+  }
+
+
+  renderComplex()
+  {
+    switch(this.props.type.type)
+    {
+      case "droplist":
+      return <div key={this.props.id} className={this.props.className} >
+        {this.props.children}
+      </div>
+    }
+  }
+  renderSimple()
+  {
     switch(this.props.type)
     {
       case "input-number":
@@ -196,8 +223,9 @@ class JsonEditBlock extends React.Component{
         let ele = obj[key];
         let displayMethod=(whiteListKey==null )?null:whiteListKey[key];
 
+        //console.log(key,keyList[key],obj,obj[key]);
         if((ele === undefined) || displayMethod=== undefined)continue;
-        console.log(key,ele,typeof ele);
+        //console.log(key,ele,typeof ele);
         
         let newkeyTrace = keyTrace.slice();
         newkeyTrace.push(key);
@@ -280,15 +308,18 @@ class APP_EDIT_MODE extends React.Component{
     {
       case UIAct.SHAPE_TYPE.aux_point:
       case UIAct.SHAPE_TYPE.search_point:
+      case UIAct.SHAPE_TYPE.measure:
       {
         return (<JsonEditBlock object={edit_tar} 
           key="JsonEditBlock"
           whiteListKey={{
             //id:"div",
             type:"div",
+            subtype:"div",
             name:"input",
             //pt1:null,
             angle:"input-number",
+            value:"input-number",
             margin:"input-number",
             width:"input-number",
             ref:{__OBJ__:"div",
@@ -314,7 +345,11 @@ class APP_EDIT_MODE extends React.Component{
                 let lastKey=target.keyTrace[target.keyTrace.length-1];
                 
                 if(type == "input-number")
-                  target.obj[lastKey]=parseFloat(evt.target.value);
+                {
+                  let parseNum =  parseFloat(evt.target.value);
+                  if(isNaN(parseNum))return;
+                  target.obj[lastKey]=parseNum;
+                }
                 else if(type == "input")
                   target.obj[lastKey]=evt.target.value;
                 this.ec_canvas.SetShape( original_obj, original_obj.id);
@@ -341,6 +376,7 @@ class APP_EDIT_MODE extends React.Component{
           whiteListKey={{
             //id:"div",
             type:"div",
+            subtype:"div",
             name:"input",
             margin:"input-number",
             direction:"input-number",
@@ -416,11 +452,11 @@ class APP_EDIT_MODE extends React.Component{
       {
         console.log("JsonEditBlock:",this.props.edit_tar_info);
 
+        
         MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
           key="JsonEditBlock"
           whiteListKey={{
             //id:"div",
-            type:"div",
             name:"input",
             //pt1:null,
             subtype:"div",
@@ -453,7 +489,41 @@ class APP_EDIT_MODE extends React.Component{
                 this.ec_canvas.SetShape( original_obj, original_obj.id);
               }
             }}/>);
-
+        if(this.props.edit_tar_info.subtype == UIAct.SHAPE_TYPE.measure_subtype.NA)
+        {
+          for (var key in UIAct.SHAPE_TYPE.measure_subtype) {
+            if(key == "NA")continue;
+            MenuSet.push(<BASE_COM.Button
+              key={"MSUB__"+key}
+              addClass="layout red vbox"
+              text={key} onClick={(data,btn)=>
+                {
+                  console.log(btn.props.text);
+                  this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(btn.props.text);
+                }}/>);
+          }
+        }
+      
+        let tar_info = this.props.edit_tar_info;
+        console.log(tar_info.ref);
+        if(tar_info.ref!==undefined)
+        {
+          let notFullSet=false;
+          tar_info.ref.forEach((ref_data)=>{
+            if(ref_data.id === undefined)notFullSet=true;
+          });
+          if(!notFullSet)
+          {
+            MenuSet.push(<BASE_COM.Button
+              key="ADD_BTN"
+              addClass="layout red vbox"
+              text="ADD" onClick={()=>
+                {
+                  this.ec_canvas.SetShape( this.props.edit_tar_info);
+                  this.props.ACT_SUCCESS();
+                }}/>);
+          }
+        }
       }
       break;
       
@@ -611,9 +681,13 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
+   
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace))},
+    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
+   
     ACT_Save_Edit_Info: (arg) => {dispatch(UIAct.EV_UI_EDIT_MODE_Save_Edit_Info())},
+   
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
