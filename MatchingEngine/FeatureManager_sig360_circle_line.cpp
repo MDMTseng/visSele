@@ -222,19 +222,197 @@ int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_lin
   return -1;
 }
 
+int FeatureManager_sig360_circle_line::FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type)
+{
+  if(ret_type==NULL)return -1;
+  *ret_type=FEATURETYPE::NA;
+  for(int i=0;i<featureCircleList.size();i++)
+  {
+    if(featureCircleList[i].id == feature_id)
+    {
+      *ret_type = FEATURETYPE::ARC;
+      return i;
+    }
+  }
+
+  
+  for(int i=0;i<featureLineList.size();i++)
+  {
+    if(featureLineList[i].id == feature_id)
+    {
+      *ret_type = FEATURETYPE::LINE;
+      return i;
+    }
+  }
+
+  
+  for(int i=0;i<judgeList.size();i++)
+  {
+    if(judgeList[i].id == feature_id)
+    {
+      *ret_type = FEATURETYPE::MEASURE;
+      return i;
+    }
+  }
+
+  for(int i=0;i<auxPointList.size();i++)
+  {
+    if(auxPointList[i].id == feature_id)
+    {
+      *ret_type = FEATURETYPE::AUX_POINT;
+      return i;
+    }
+  }
+
+  
+  for(int i=0;i<searchPointList.size();i++)
+  {
+    if(searchPointList[i].id == feature_id)
+    {
+      *ret_type = FEATURETYPE::SEARCH_POINT;
+      return i;
+    }
+  }
+  return -1;
+}
 
 
+int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec)
+{
+  if(vec == NULL)return -1;
+  FEATURETYPE type;
+  int idx = FindFeatureDefIndex( feature_id,&type);
+  if(idx <0)return -1;
+  switch(type)
+  {
+
+    case MEASURE:
+    case ARC:
+    case AUX_POINT:
+      return -1;
+    case LINE:
+    {
+      acv_LineFit line = (*report.detectedLines)[idx].line;
+      vec->X = line.end_pos.X - line.end_pos.Y;
+      vec->Y = line.end_pos.Y - line.end_pos.Y;
+      return 0;
+    }
+    case SEARCH_POINT:
+    {
+      FeatureReport_searchPointReport sPoint = (*report.detectedSearchPoints)[idx];
+      if(sPoint.def->subtype != featureDef_searchPoint::anglefollow)
+        return -1;
+      acv_XY line_vec;
+      int ret_val = ParseMainVector(report,sPoint.def->data.anglefollow.target_id, &line_vec);
+      if(ret_val<0)return -1;
+      float angle = sPoint.def->data.anglefollow.angleDeg*M_PI/180;
+      acv_XY ret_vec =  acvRotation(sin(angle),cos(angle),1,line_vec);
+      *vec=ret_vec;
+      return 0;
+    }
+    break;
+  }
+  return -1;
+}
+
+int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt)
+{
+  if(pt == NULL)return -1;
+  FEATURETYPE type;
+  int idx = FindFeatureDefIndex( feature_id,&type);
+  if(idx <0)return -1;
+  switch(type)
+  {
+
+    case MEASURE:
+      return -1;
+    case ARC:
+    {
+      FeatureReport_circleReport cir = (*report.detectedCircles)[idx];
+      *pt=cir.circle.circle.circumcenter;
+      return 0;
+    }
+
+    case AUX_POINT:
+    {
+      FeatureReport_auxPointReport aPoint = (*report.detectedAuxPoints)[idx];
+      *pt=aPoint.pt;
+      return 0;
+    }
+    case LINE:
+    {
+      acv_LineFit line = (*report.detectedLines)[idx].line;
+      pt->X = (line.end_pos.X + line.end_pos.Y)/2;
+      pt->Y = (line.end_pos.Y + line.end_pos.Y)/2;
+      return 0;
+    }
+    case SEARCH_POINT:
+    {
+      FeatureReport_searchPointReport sPoint = (*report.detectedSearchPoints)[idx];
+
+      *pt=sPoint.pt;
+      return 0;
+    }
+    break;
+  }
+  return -1;
+}
 FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge)
 {
 
   //vector<FeatureReport_judgeReport> &judgeReport = *report.judgeReports;
   FeatureReport_judgeReport judgeReport={0};
   judgeReport.def = &judge;
-  LOGV("judge:%s  OBJ1:%s, OBJ2:%s type:%d, swapped:%d ",judge.name,judge.OBJ1,judge.OBJ2,judge.measure_type,judge.swap);
-  LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judge.OBJ1_type,judge.OBJ1_idx,judge.OBJ2_type,judge.OBJ2_idx);
+  LOGV("judge:%s  OBJ1:%d, OBJ2:%d subtype:%d",judge.name,judge.OBJ1_id,judge.OBJ2_id,judge.measure_type);
+  //LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judge.OBJ1_type,judge.OBJ1_idx,judge.OBJ2_type,judge.OBJ2_idx);
   LOGV("-val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
 
-  if(judge.OBJ1_type == FeatureReport_judgeDef::LINE)
+  FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
+  int idx1 = FindFeatureDefIndex(judge.OBJ1_id, &type1);
+  int idx2 = FindFeatureDefIndex(judge.OBJ2_id, &type2);
+  if(idx1<0)return judgeReport;
+
+  switch(judge.measure_type)
+  {
+    case FeatureReport_judgeDef::ANGLE:
+      if(type1 != FEATURETYPE::LINE || type2 != FEATURETYPE::LINE)break;
+      {
+        acv_XY vec1,vec2;
+        ParseMainVector(report,judge.OBJ1_id, &vec1);
+        ParseMainVector(report,judge.OBJ2_id, &vec2);
+      }
+
+    break;
+    case FeatureReport_judgeDef::DISTANCE :
+
+
+    break;
+    case FeatureReport_judgeDef::RADIUS :
+    {
+      if(type1 != FEATURETYPE::ARC)break;
+      FeatureReport_circleReport cir = (*report.detectedCircles)[idx1];
+      judgeReport.def->measured_val=cir.circle.circle.radius;
+    }
+    break;
+    break;
+    case FeatureReport_judgeDef::SIGMA :
+
+    break;
+  }
+
+
+  switch(type1)
+  {
+    case LINE:
+    case ARC:
+    case AUX_POINT:
+    case SEARCH_POINT:
+    case MEASURE:
+    break;
+  }
+
+
+  if(type1 == FeatureReport_judgeDef::LINE)
   {
     acv_LineFit OBJ1 = (*report.detectedLines)[judge.OBJ1_idx].line;
     if(judge.OBJ2_type == FeatureReport_judgeDef::NONE)

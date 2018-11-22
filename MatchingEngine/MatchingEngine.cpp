@@ -102,19 +102,8 @@ cJSON* acv_CircleFit2JSON(const acv_CircleFit cir , acv_XY center_offset)
 cJSON* JudgeReport2JSON(const FeatureReport_judgeReport judge , acv_XY center_offset )
 {
   cJSON* judge_jobj = cJSON_CreateObject();
-  if(judge.def->swap)
-  {
-    cJSON_AddStringToObject(judge_jobj, "OBJ1", judge.def->OBJ2);
-    cJSON_AddStringToObject(judge_jobj, "OBJ2", judge.def->OBJ1);
-  }
-  else
-  {
-    cJSON_AddNumberToObject(judge_jobj, "measured_val", judge.measured_val);
-    cJSON_AddStringToObject(judge_jobj, "OBJ1", judge.def->OBJ1);
-    if(judge.def->OBJ2 && judge.def->OBJ2[0])
-      cJSON_AddStringToObject(judge_jobj, "OBJ2", judge.def->OBJ2);
-  }
-  cJSON_AddStringToObject(judge_jobj, "name", judge.def->name);
+  cJSON_AddNumberToObject(judge_jobj, "value", judge.measured_val);
+  cJSON_AddNumberToObject(judge_jobj, "id", judge.def->id);
 
 
 

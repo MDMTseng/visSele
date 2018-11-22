@@ -74,7 +74,7 @@ typedef struct featureDef_searchPoint{
     struct anglefollow{
       acv_XY position;
       int target_id;
-      float angle;
+      float angleDeg;
     }anglefollow;
   }data;
 }featureDef_searchPoint;
@@ -118,11 +118,27 @@ typedef struct FeatureReport_circleReport{
   acv_CircleFit circle;
 }FeatureReport_circleReport;
 
+
+
+typedef struct FeatureReport_auxPointReport{
+  featureDef_auxPoint *def;
+  acv_XY pt;
+}FeatureReport_auxPointReport;
+
+
+typedef struct FeatureReport_searchPointReport{
+  featureDef_searchPoint *def;
+  acv_XY pt;
+}FeatureReport_searchPointReport;
+
+
+
 typedef struct FeatureReport_sig360_circle_line_single{
   vector<FeatureReport_circleReport> *detectedCircles;
   vector<FeatureReport_lineReport> *detectedLines;
   vector<acv_Line> *detectedAuxLines;
-  vector<acv_XY> *detectedAuxPoints;
+  vector<FeatureReport_auxPointReport> *detectedAuxPoints;
+  vector<FeatureReport_searchPointReport> *detectedSearchPoints;
   vector<FeatureReport_judgeReport> *judgeReports;
 
   acv_XY LTBound;
@@ -134,6 +150,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   float scale;
   char *targetName;
 };
+
 
 typedef struct FeatureReport_sig360_circle_line{
   vector<FeatureReport_sig360_circle_line_single> *reports;

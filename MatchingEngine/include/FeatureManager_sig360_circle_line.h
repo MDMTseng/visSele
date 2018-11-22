@@ -11,6 +11,15 @@
 
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
 
+  typedef enum FEATURETYPE {
+    
+    NA,
+    LINE,
+    ARC,
+    AUX_POINT,
+    SEARCH_POINT,
+    MEASURE
+    }; 
   vector<featureDef_circle> featureCircleList;
   vector<featureDef_line> featureLineList;
   vector<FeatureReport_judgeDef> judgeList;
@@ -49,6 +58,10 @@ protected:
 
   int FindFeatureDefIndex(vector<featureDef_line> &list, char* name);
   int FindFeatureDefIndex(vector<featureDef_circle> &list, char* name);
+  int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
+  int ParseMainVector(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec);
+  int ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt);
+
 };
 
 
