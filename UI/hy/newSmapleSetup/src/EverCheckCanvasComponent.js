@@ -1206,10 +1206,11 @@ class EverCheckCanvasComponent{
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx.lineWidth = 2;
-    ctx.setTransform(this.identityMat);  
+    ctx.resetTransform();  
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
-    ctx.setTransform(matrix);  
+    ctx.setTransform(matrix.a,matrix.b,matrix.c,
+      matrix.d,matrix.e,matrix.f);  
     
 
 
