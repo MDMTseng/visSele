@@ -315,6 +315,26 @@ int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circ
   return -1;
 }
 
+
+int FeatureManager_sig360_circle_line::lineCrossPosition(FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt)
+{
+  if(pt == NULL)return -1;
+  FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
+  int idx1 = FindFeatureDefIndex(line1_id,&type1);
+  if(idx1<0|| type1!=FEATURETYPE::LINE)return -1;
+  int idx2 = FindFeatureDefIndex(line2_id,&type2);
+  if(idx2<0|| type2!=FEATURETYPE::LINE)return -1;
+  
+  acv_LineFit line1 = (*report.detectedLines)[idx1].line;
+  acv_LineFit line2 = (*report.detectedLines)[idx2].line;
+  acv_XY cross = acvIntersectPoint(
+              line1.end_pos,line1.end_neg,
+              line2.end_pos,line2.end_neg);
+  
+  *pt=cross;
+  return 0;
+}
+
 int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt)
 {
   if(pt == NULL)return -1;
@@ -336,7 +356,13 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
     case AUX_POINT:
     {
       FeatureReport_auxPointReport aPoint = (*report.detectedAuxPoints)[idx];
-      *pt=aPoint.pt;
+      if(aPoint.def->subtype != featureDef_auxPoint::lineCross)return -1;
+      acv_XY cross;
+      int ret = lineCrossPosition(report,
+      aPoint.def->data.lineCross.line1_id,
+      aPoint.def->data.lineCross.line2_id, &cross);
+      if(ret<0)return -1;
+      *pt=cross;
       return 0;
     }
     case LINE:
@@ -380,6 +406,28 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         acv_XY vec1,vec2;
         ParseMainVector(report,judge.OBJ1_id, &vec1);
         ParseMainVector(report,judge.OBJ2_id, &vec2);
+
+        int quadrant = judge.quadrant;
+
+        
+        float sAngle = atan2(vec1.Y,vec1.X);
+        float eAngle = atan2(vec2.Y,vec2.X);
+        
+        float angleDiff = (eAngle - sAngle);
+        if(angleDiff<0)
+        {
+          angleDiff+=M_PI*2;
+        }
+        if(angleDiff>M_PI)
+        {
+          angleDiff-=M_PI;
+        }
+
+        if(quadrant&1==0)
+        {
+          angleDiff=M_PI-angleDiff;
+        }
+        judgeReport.measured_val=180*angleDiff/M_PI;
       }
 
     break;
@@ -391,12 +439,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     {
       if(type1 != FEATURETYPE::ARC)break;
       FeatureReport_circleReport cir = (*report.detectedCircles)[idx1];
-      judgeReport.def->measured_val=cir.circle.circle.radius;
+      judgeReport.measured_val=cir.circle.circle.radius;
     }
     break;
     break;
     case FeatureReport_judgeDef::SIGMA :
+    {
 
+    }
     break;
   }
 
@@ -412,10 +462,10 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   }
 
 
-  if(type1 == FeatureReport_judgeDef::LINE)
+  if(type1 == FEATURETYPE::LINE)
   {
     acv_LineFit OBJ1 = (*report.detectedLines)[judge.OBJ1_idx].line;
-    if(judge.OBJ2_type == FeatureReport_judgeDef::NONE)
+    if(judge.OBJ2_type == FEATURETYPE::NA)
     {
       switch(judge.measure_type)
       {
@@ -431,7 +481,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
           LOGE("judge.measure_type:%d is not supported",judge.measure_type);
       }
     }
-    else if(judge.OBJ2_type == FeatureReport_judgeDef::LINE)
+    else if(judge.OBJ2_type == FEATURETYPE::LINE)
     {
       acv_LineFit OBJ2 = (*report.detectedLines)[judge.OBJ2_idx].line;
       switch(judge.measure_type)
