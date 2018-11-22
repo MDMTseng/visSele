@@ -38,14 +38,14 @@ double* json_get_num(cJSON *root,char* path, char* dbg_str)
   double *pnum;
   if((pnum=(double *)JFetch(root,path,cJSON_Number)) == NULL )
   {
-    /*if(dbg_str)
+    if(dbg_str)
     {
       LOGE("%s: Cannot get Number In path: %s",dbg_str,path);
     }
     else
     {
       LOGE("Cannot get Number In path: %s",path);
-    }*/
+    }
     return NULL;
   }
   return pnum;
@@ -903,9 +903,9 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
 
 int FeatureManager_sig360_circle_line::parse_jobj()
 {
-  const char *type_str= (char *)JFetch(root,"type",cJSON_String);
-  const char *ver_str = (char *)JFetch(root,"ver",cJSON_String);
-  const char *unit_str =(char *)JFetch(root,"unit",cJSON_String);
+  const char *type_str= JFetch_STRING(root,"type");
+  const char *ver_str = JFetch_STRING(root,"ver");
+  const char *unit_str =JFetch_STRING(root,"unit");
   if(type_str==NULL||ver_str==NULL||unit_str==NULL)
   {
     LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>",type_str,ver_str,unit_str);
@@ -932,13 +932,13 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   for (int i = 0 ; i < cJSON_GetArraySize(featureList) ; i++)
   {
      cJSON * feature = cJSON_GetArrayItem(featureList, i);
-     cJSON * tmp_obj = cJSON_GetObjectItem(feature, "type");
-     if(tmp_obj == NULL)
+     const char *feature_type =JFetch_STRING(feature, "type");
+     if(feature_type == NULL)
      {
        LOGE("feature[%d] has no type...",i);
        return -1;
      }
-     const char *feature_type =tmp_obj->valuestring;
+
      if(strcmp(feature_type, "arc")==0)
      {
        if(parse_arcData(feature)!=0)
@@ -992,13 +992,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   for (int i = 0 ; i < cJSON_GetArraySize(inherentfeatureList) ; i++)
   {
      cJSON * feature = cJSON_GetArrayItem(inherentfeatureList, i);
-     cJSON * tmp_obj = cJSON_GetObjectItem(feature, "type");
-     if(tmp_obj == NULL)
+     const char *feature_type =JFetch_STRING(feature, "type");
+     if(feature_type == NULL)
      {
        LOGE("feature[%d] has no type...",i);
        return -1;
      }
-     const char *feature_type =tmp_obj->valuestring;
      if(strcmp(feature_type, "sign360")==0)
      {
        if(parse_sign360(feature)!=0)

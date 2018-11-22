@@ -90,22 +90,10 @@ typedef struct FeatureReport_judgeDef{
     SIGMA,
     ANGLE,
     DISTANCE,
+    RADIUS
   } measure_type;
-  enum{
-    NONE,
-    LINE,
-    CIRCLE,
-    AUX_LINE,
-    AUX_CIRCLE,
-    AUX_POINT
-  } OBJ1_type,OBJ2_type;
-  int OBJ1_idx;
-  int OBJ2_idx;
-  char OBJ1[FeatureManager_NAME_LENGTH];
-  char OBJ2[FeatureManager_NAME_LENGTH];
-  bool swap;
-
-
+  int OBJ1_id;
+  int OBJ2_id;
   float targetVal;
   float targetVal_margin;
 }FeatureReport_judgeDef;
