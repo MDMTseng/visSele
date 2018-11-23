@@ -328,8 +328,8 @@ int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circ
     case LINE:
     {
       acv_LineFit line = (*report.detectedLines)[idx].line;
-      vec->X = line.end_pos.X - line.end_pos.Y;
-      vec->Y = line.end_pos.Y - line.end_pos.Y;
+      vec->X = line.line.line_vec.X;
+      vec->Y = line.line.line_vec.Y;
       return 0;
     }
     case SEARCH_POINT:
@@ -391,20 +391,13 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
     case AUX_POINT:
     {
       FeatureReport_auxPointReport aPoint = (*report.detectedAuxPoints)[idx];
-      if(aPoint.def->subtype != featureDef_auxPoint::lineCross)return -1;
-      acv_XY cross;
-      int ret = lineCrossPosition(report,
-      aPoint.def->data.lineCross.line1_id,
-      aPoint.def->data.lineCross.line2_id, &cross);
-      if(ret<0)return -1;
-      *pt=cross;
+      *pt=aPoint.pt;
       return 0;
     }
     case LINE:
     {
       acv_LineFit line = (*report.detectedLines)[idx].line;
-      pt->X = (line.end_pos.X + line.end_pos.X)/2;
-      pt->Y = (line.end_pos.Y + line.end_pos.Y)/2;
+      *pt = line.line.line_anchor;
       return 0;
     }
     case SEARCH_POINT:
@@ -481,11 +474,13 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     {
         int ret;
         acv_XY vec1,pt1,pt2;
-                
+        LOGV("####### ########");
         ret = ParseLocatePosition(report,judge.OBJ1_id, &pt1);
         if(ret!=0)break;
+        LOGV("####### ########");
         ret = ParseLocatePosition(report,judge.OBJ2_id, &pt2);
         if(ret!=0)break;
+        LOGV("####### ########");
 
         ret = ParseMainVector(report,judge.OBJ1_id, &vec1);
         if(ret!=0)
