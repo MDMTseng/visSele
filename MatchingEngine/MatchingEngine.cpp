@@ -104,7 +104,26 @@ cJSON* JudgeReport2JSON(const FeatureReport_judgeReport judge , acv_XY center_of
   cJSON* judge_jobj = cJSON_CreateObject();
   cJSON_AddNumberToObject(judge_jobj, "value", judge.measured_val);
   cJSON_AddNumberToObject(judge_jobj, "id", judge.def->id);
+  cJSON_AddStringToObject(judge_jobj, "name", judge.def->name);
 
+  switch(judge.def->measure_type)
+  {
+    case FeatureReport_judgeDef::ANGLE :
+      cJSON_AddStringToObject(judge_jobj, "subtype", "angle");
+    break;
+    case FeatureReport_judgeDef::AREA :
+      cJSON_AddStringToObject(judge_jobj, "subtype", "area");
+    break;
+    case FeatureReport_judgeDef::DISTANCE :
+      cJSON_AddStringToObject(judge_jobj, "subtype", "distance");
+    break;
+    case FeatureReport_judgeDef::RADIUS :
+      cJSON_AddStringToObject(judge_jobj, "subtype", "radius");
+    break;
+    case FeatureReport_judgeDef::SIGMA :
+      cJSON_AddStringToObject(judge_jobj, "subtype", "sigma");
+    break;
+  }
 
 
 
@@ -134,7 +153,9 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
   {
     cJSON* cfj = acv_CircleFit2JSON(vec[j].circle,center_offset);
     cJSON_AddStringToObject(cfj, "name", vec[j].def->name);
+    cJSON_AddNumberToObject(cfj, "id", vec[j].def->id);
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
+
   }
   return detectedCircles_jarr;
 }
@@ -161,6 +182,7 @@ cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_
 
     cJSON* lfj = acv_LineFit2JSON(vec[j].line,center_offset);
     cJSON_AddStringToObject(lfj, "name", vec[j].def->name);
+    cJSON_AddNumberToObject(lfj, "id", vec[j].def->id);
     cJSON_AddItemToArray(detectedLines_jarr, lfj );
   }
   return detectedLines_jarr;

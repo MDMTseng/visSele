@@ -62,6 +62,11 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
     if(endType=='.' || endType == '[' || endType == ']' || endType == '\0')break;
     buff[i]=endType;
   }
+  if(i==0)
+  {
+    *ret_ptr = obj;
+    return obj->type;
+  }
   buff[i]='\0';
   int nameLength = i;
   nextSection = path+(i+((endType=='\0')?0:1));
@@ -162,6 +167,17 @@ void* JFetch(cJSON * obj,char *path,int type)
 
 }
 
+void* JFetEx(cJSON * obj,char *path,int type)
+{
+  void *ptr = JFetch(obj,path,type);
+  if(ptr == NULL)
+  {
+    char ExpMsg[100];
+    sprintf(ExpMsg,"ERROR: JFetEx parse error, path:%s type:%d",path,type);
+    throw std::runtime_error(ExpMsg);
+  }
+  return ptr;
+}
 
 
 size_t zlibDeflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen,int effort)

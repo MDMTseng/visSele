@@ -71,7 +71,7 @@ char* json_find_str(cJSON *root, const char* key)
 
 char* json_find_name(cJSON *root)
 {
-  return json_find_str(root,"name");;
+  return json_find_str(root,"name");
 }
 
 
@@ -418,6 +418,8 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
   }
   return -1;
 }
+
+
 FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(FeatureReport_sig360_circle_line_single &report, FeatureReport_judgeDef &judge)
 {
 
@@ -535,6 +537,51 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   LOGV("===================");
 
   return judgeReport;
+}
+
+
+FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
+  (FeatureReport_sig360_circle_line_single &report, featureDef_auxPoint &def)
+{
+  
+    FeatureReport_auxPointReport rep;
+    rep.def = &def;
+    switch(def.subtype)
+    {
+      case featureDef_auxPoint::lineCross:
+      {
+        acv_XY cross;
+        int ret = lineCrossPosition(report,
+        def.data.lineCross.line1_id,
+        def.data.lineCross.line1_id, &cross);
+        if(ret<0)return rep;
+        rep.pt = cross;
+      }
+      
+      case featureDef_auxPoint::centre :
+      {
+        if(this->signature_feature_id == def.data.centre.obj1_id)
+        {
+          rep.pt = report.Center;
+          return rep;
+        }
+              
+        FEATURETYPE type1=FEATURETYPE::NA;
+        int idx1 = FindFeatureReportIndex(report,def.data.centre.obj1_id,&type1);
+        if(idx1<0|| type1!=FEATURETYPE::ARC)return rep;
+        
+        rep.pt = (*report.detectedCircles)[idx1].circle.circle.circumcenter;
+      }
+    }
+    return rep;
+}
+
+
+FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process
+  (FeatureReport_sig360_circle_line_single &report, featureDef_searchPoint &def)
+{
+    FeatureReport_searchPointReport rep;
+    return rep;
 }
 
 int FeatureManager_sig360_circle_line::parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList)
@@ -686,70 +733,34 @@ int FeatureManager_sig360_circle_line::parse_auxPointData(cJSON * jobj)
 {
   featureDef_auxPoint auxPoint;
 
-  {
-    char *tmpstr;
-    auxPoint.name[0] = '\0';
-    if(tmpstr = json_find_name(jobj))
-    {
-      strcpy(auxPoint.name,tmpstr);
-    }
-  }
-
+  strcpy(auxPoint.name,JFetEx_STRING(jobj,"name"));
   double *pnum;
 
-  if((pnum=JSON_GET_NUM(jobj,"id")) == NULL )
-  {
-    LOGE("No id");
-    return -1;
-  }
-  auxPoint.id = (int)*pnum;
-  LOGV("feature is an auxPoint:%s %d  skip...",auxPoint.name, auxPoint.id);
+  auxPoint.id = (int)*JFetEx_NUMBER(jobj,"id");
+  LOGV("feature is an auxPoint:%s %d",auxPoint.name, auxPoint.id);
 
 
-  //The subtype might be determined by definition file 
-  auxPoint.subtype = featureDef_auxPoint::lineCross;
-
-
-
-  switch(auxPoint.subtype)
-  {
-    case featureDef_auxPoint::lineCross:
-    {
-      if((pnum=JSON_GET_NUM(jobj,"ref[0].id")) == NULL )
-      {
-        LOGE("No target[0]_id");
-        return -1;
-      }
-      auxPoint.data.lineCross.line1_id=(int)*pnum;
-
-      if((pnum=JSON_GET_NUM(jobj,"ref[1].id")) == NULL )
-      {
-        LOGE("No target[1]_id");
-        return -1;
-      }
-      auxPoint.data.lineCross.line2_id=(int)*pnum;
-
-
-      LOGV("id_1:%d id_2:%d",
-        auxPoint.data.lineCross.line1_id,auxPoint.data.lineCross.line2_id
-      );
-
-
-
-    }
-    break;
-    default:
-      return -1;
-  }
   
+
+  if(JFetch_OBJECT(jobj,"ref[1]")!=NULL)
+  {
+    //The subtype might be determined by definition file 
+    auxPoint.subtype = featureDef_auxPoint::lineCross;
+    auxPoint.data.lineCross.line1_id=(int)*JFetEx_NUMBER(jobj,"ref[0].id");
+    auxPoint.data.lineCross.line2_id=(int)*JFetEx_NUMBER(jobj,"ref[1].id");
+
+    LOGV("id_1:%d id_2:%d",
+      auxPoint.data.lineCross.line1_id,auxPoint.data.lineCross.line2_id
+    );
+  }
+  else
+  {
+    auxPoint.subtype = featureDef_auxPoint::centre;
+    auxPoint.data.centre.obj1_id = (int)*JFetEx_NUMBER(jobj,"ref[0].id");
+    LOGV("the auxPoint is centre for the obj1_id:%d ",
+      auxPoint.data.centre.obj1_id);
+  }
   auxPointList.push_back(auxPoint);
-
-
-
-
-
-
-
   return 0;
 }
 int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
@@ -767,22 +778,11 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
     }
   }
   
-  if((pnum=JSON_GET_NUM(line_obj,"id")) == NULL )
-  {
-    LOGE("No id");
-    return -1;
-  }
-  line.id = (int)*pnum;
+  line.id=(int)*JFetEx_NUMBER(line_obj,"id");
 
   LOGV("feature is a line:%s %d",line.name,line.id);
 
-  if((pnum=JSON_GET_NUM(line_obj,"margin")) == NULL )
-  {
-    LOGE("No margin");
-
-    return -1;
-  }
-  line.initMatchingMargin=*pnum;
+  line.initMatchingMargin=(int)*JFetEx_NUMBER(line_obj,"margin");
 
 
   if((pnum=JSON_GET_NUM(line_obj,"MatchingMarginX")) == NULL )
@@ -808,33 +808,10 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
   acv_XY p0,p1;
-  if((pnum=JSON_GET_NUM(line_obj,"pt1.x")) == NULL )
-  {
-    LOGE("No pt1.x");
-    return -1;
-  }
-  p0.X=*pnum;
-
-  if((pnum=JSON_GET_NUM(line_obj,"pt1.y")) == NULL )
-  {
-    LOGE("No pt1.y");
-    return -1;
-  }
-  p0.Y=*pnum;
-
-  if((pnum=JSON_GET_NUM(line_obj,"pt2.x")) == NULL )
-  {
-    LOGE("No pt2.x");
-    return -1;
-  }
-  p1.X=*pnum;
-
-  if((pnum=JSON_GET_NUM(line_obj,"pt2.y")) == NULL )
-  {
-    LOGE("No pt2.y");
-    return -1;
-  }
-  p1.Y=*pnum;
+  p0.X=*JFetEx_NUMBER(line_obj,"pt1.x");
+  p0.Y=*JFetEx_NUMBER(line_obj,"pt1.y");
+  p1.X=*JFetEx_NUMBER(line_obj,"pt2.x");
+  p1.Y=*JFetEx_NUMBER(line_obj,"pt2.y");
 
   if(line.MatchingMarginX==0)
   {
@@ -892,6 +869,7 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON * signature_obj)
     return -1;
   }
 
+  this->signature_feature_id = (int)*JFetEx_NUMBER(signature_obj,"id");
   cJSON *signature;
   if(!(getDataFromJsonObj(signature_obj,"signature",(void**)&signature)&cJSON_Object))
   {
@@ -955,21 +933,61 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
 {
 
   FeatureReport_judgeDef judge={0};
+  double *pnum;
 
+  char *tmpstr=JFetEx_STRING(judge_obj,"name");
+  strcpy(judge.name,tmpstr);
+
+  judge.id = (int)*JFetEx_NUMBER(judge_obj,"id");
+
+  
+  char *subtype = JFetEx_STRING(judge_obj,"subtype");
+
+  judge.measure_type=FeatureReport_judgeDef::NA;
+
+  if(strcmp(subtype, "sigma")==0 )
   {
-    char *tmpstr;
-    judge.name[0] = '\0';
-    if(tmpstr = json_find_name(judge_obj))
-    {
-      strcpy(judge.name,tmpstr);
-    }
+    judge.measure_type=FeatureReport_judgeDef::SIGMA;
+  }
+  else if(strcmp(subtype, "radius")==0 )
+  {
+    judge.measure_type=FeatureReport_judgeDef::RADIUS;
+  }
+  else if(strcmp(subtype, "distance")==0 )
+  {
+    judge.measure_type=FeatureReport_judgeDef::DISTANCE;
+  }
+  else if(strcmp(subtype, "angle")==0 )
+  {
+    judge.measure_type=FeatureReport_judgeDef::ANGLE;
+  }
+  else if(strcmp(subtype, "area")==0 )
+  {
+    judge.measure_type=FeatureReport_judgeDef::ANGLE;
   }
 
-
+  if(judge.measure_type==FeatureReport_judgeDef::NA)
   {
+    
+    LOGV("the subtype:%s does not belong to what we support",subtype);
+    LOGV("sigma,distance,angle,radius");
     return -1;
   }
+  LOGV("feature is a measure/judge:%s id:%d subtype:%s",judge.name,judge.id,subtype);
 
+
+  judge.targetVal=*JFetEx_NUMBER(judge_obj,"value");
+
+  judge.targetVal_margin=*JFetEx_NUMBER(judge_obj,"margin");
+
+  
+  judge.OBJ1_id = (int)*JFetEx_NUMBER(judge_obj,"ref[0].id");
+
+  pnum = JFetch_NUMBER(judge_obj,"ref[1].id");
+  if(pnum == NULL)judge.OBJ2_id = -1;
+  else {judge.OBJ2_id = *pnum;}
+
+  LOGV("value:%f margin:%f id1:%d id2:%d",judge.targetVal,judge.targetVal_margin,judge.OBJ1_id,judge.OBJ2_id);
   judgeList.push_back(judge);
   return 0;
 }
@@ -1048,8 +1066,13 @@ int FeatureManager_sig360_circle_line::parse_jobj()
          return -1;
        }
      }
-     else if(strcmp(feature_type, "judge")==0)
+     else if(strcmp(feature_type, "measure")==0)
      {
+       if(parse_judgeData(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
      }
      else
      {
@@ -1083,7 +1106,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
      else if(strcmp(feature_type, "aux_point")==0)
      {
-       //return -1;
+       if(parse_auxPointData(feature)!=0)
+       {
+         LOGE("feature[%d] has error %s format",i,feature_type);
+         return -1;
+       }
      }
      else if(strcmp(feature_type, "aux_line")==0)
      {
@@ -1096,30 +1123,6 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
   }
 
-
-  for (int i = 0 ; i < cJSON_GetArraySize(featureList) ; i++)
-  {
-     cJSON * feature = cJSON_GetArrayItem(featureList, i);
-     cJSON * tmp_obj = cJSON_GetObjectItem(feature, "type");
-     if(tmp_obj == NULL)
-     {
-       LOGE("feature[%d] has no type...",i);
-       continue;
-     }
-     const char *feature_type =tmp_obj->valuestring;
-     if(strcmp(feature_type, "judge")==0)
-     {
-       if(parse_judgeData(feature)!=0)
-       {
-         LOGE("feature[%d] has error %s format",i,feature_type);
-         return -1;
-       }
-     }
-     else
-     {
-       continue;
-     }
-  }
 
 
   {
@@ -1330,14 +1333,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       float error = SignatureMinMatching( tmp_signature,feature_signature,
         &isInv, &angle);
 
-      LOGV("======%d===er:%f,inv:%d,ang:%f",i,error,isInv,angle*180/3.14159);
+      LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,
           .detectedLines=reportDataPool[count].detectedLines,
-          .detectedAuxLines=reportDataPool[count].detectedAuxLines,
           .detectedAuxPoints=reportDataPool[count].detectedAuxPoints,
+          .detectedSearchPoints=reportDataPool[count].detectedSearchPoints,
           .judgeReports = reportDataPool[count].judgeReports,
           .LTBound=ldData[i].LTBound,
           .RBBound=ldData[i].RBBound,
@@ -1348,6 +1351,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           .scale=1,
           .targetName=NULL,
       };
+
+
+      LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
       reports.push_back(singleReport);
 
       vector<FeatureReport_circleReport> &detectedCircles = *singleReport.detectedCircles;
@@ -1362,7 +1368,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       detectedAuxPoints.resize(0);
       detectedSearchPoints.resize(0);
       judgeReports.resize(0);
-
 
       float cached_cos,cached_sin;
       //The angle we get from matching is current object rotates 'angle' to match target
@@ -1547,6 +1552,17 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       }
 
+
+      for(int i=0;i<auxPointList.size();i++)
+      {
+        FeatureReport_auxPointReport report= auxPoint_process(singleReport,auxPointList[i]);
+        detectedAuxPoints.push_back(report);
+      }
+      for(int i=0;i<searchPointList.size();i++)
+      {
+        FeatureReport_searchPointReport report= searchPoint_process(singleReport,searchPointList[i]);
+        detectedSearchPoints.push_back(report);
+      }
       for(int i=0;i<judgeList.size();i++)
       {
         FeatureReport_judgeReport report= measure_process(singleReport,judgeList[i]);

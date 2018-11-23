@@ -51,7 +51,8 @@ typedef struct featureDef_auxPoint{
   int id;
   char name[FeatureManager_NAME_LENGTH];
   enum{
-    lineCross
+    lineCross,
+    centre
   }subtype;
   
   union{
@@ -59,6 +60,11 @@ typedef struct featureDef_auxPoint{
       int line1_id;
       int line2_id;
     }lineCross;
+    struct{
+      int obj1_id;
+    }centre;
+
+
   }data;
 }featureDef_auxPoint;
 
@@ -86,6 +92,7 @@ typedef struct FeatureReport_judgeDef{
   char name[FeatureManager_NAME_LENGTH];
 
   enum{
+    NA,
     AREA,
     SIGMA,
     ANGLE,
@@ -137,7 +144,6 @@ typedef struct FeatureReport_searchPointReport{
 typedef struct FeatureReport_sig360_circle_line_single{
   vector<FeatureReport_circleReport> *detectedCircles;
   vector<FeatureReport_lineReport> *detectedLines;
-  vector<acv_Line> *detectedAuxLines;
   vector<FeatureReport_auxPointReport> *detectedAuxPoints;
   vector<FeatureReport_searchPointReport> *detectedSearchPoints;
   vector<FeatureReport_judgeReport> *judgeReports;

@@ -26,6 +26,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   
   vector<featureDef_auxPoint> auxPointList;
   vector<featureDef_searchPoint> searchPointList;
+  int signature_feature_id;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
   ContourGrid inward_curve_grid;
@@ -53,7 +54,9 @@ protected:
   int parse_jobj() override;
 
 
-  FeatureReport_judgeReport measure_process(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge);
+  FeatureReport_judgeReport measure_process(FeatureReport_sig360_circle_line_single &report, FeatureReport_judgeDef &judge);
+  FeatureReport_auxPointReport auxPoint_process(FeatureReport_sig360_circle_line_single &report, featureDef_auxPoint &def);
+  FeatureReport_searchPointReport searchPoint_process(FeatureReport_sig360_circle_line_single &report, featureDef_searchPoint &def);
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);

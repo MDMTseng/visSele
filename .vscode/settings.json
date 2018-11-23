@@ -7,6 +7,15 @@
     "utility": "cpp",
     "xmemory0": "cpp",
     "xtr1common": "cpp",
-    "xutility": "cpp"
+    "xutility": "cpp",
+    "__functional_base": "c",
+    "__functional_base_03": "c",
+    "__tuple": "c",
+    "chrono": "c",
+    "functional": "c",
+    "limits": "c",
+    "memory": "c",
+    "ratio": "c",
+    "tuple": "c"
   }
 }
