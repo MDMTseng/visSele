@@ -383,7 +383,7 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
   }
   return -1;
 }
-FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge)
+FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(FeatureReport_sig360_circle_line_single &report, FeatureReport_judgeDef &judge)
 {
 
   //vector<FeatureReport_judgeReport> &judgeReport = *report.judgeReports;
@@ -414,20 +414,29 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         float eAngle = atan2(vec2.Y,vec2.X);
         
         float angleDiff = (eAngle - sAngle);
-        if(angleDiff<0)
+        if(angleDiff<0)//Find diff angle 0~2PI
         {
           angleDiff+=M_PI*2;
         }
+
+        //The logic blow is to find angle in 4 quadrants (line1 as x axis, line2 as y axis)
+        //So actually only 2 angle will be available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
+        //quadrant 0 means quadrant 4 => quadrant n%2
+
+
+        //If the angle is begger than PI(180) means the vector that we use to calculate angle is reversed
+        //Like we use x axis and -y axis, the angle will be 270 instead of 90, so we will use 
         if(angleDiff>M_PI)
         {
           angleDiff-=M_PI;
         }
+        //Now we have the quadrant 1 angle
 
-        if(quadrant&1==0)
+        if(quadrant&1==0)//if our target quadrant is 2 or 4..., find the complement angle 
         {
           angleDiff=M_PI-angleDiff;
         }
-        judgeReport.measured_val=180*angleDiff/M_PI;
+        judgeReport.measured_val=180*angleDiff/M_PI;//Convert to degree
       }
 
     break;
