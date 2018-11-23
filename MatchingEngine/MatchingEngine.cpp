@@ -69,7 +69,6 @@ cJSON* acv_LineFit2JSON(const acv_LineFit line, acv_XY center_offset )
   cJSON_AddNumberToObject(Line_jobj, "matching_pts", line.matching_pts);
   cJSON_AddNumberToObject(Line_jobj, "s", line.s);
 
-
   acv_XY point = acvClosestPointOnLine(line.end_pos, line.line);
   cJSON_AddNumberToObject(Line_jobj, "x0", point.X-center_offset.X);
   cJSON_AddNumberToObject(Line_jobj, "y0", point.Y-center_offset.Y);
@@ -80,9 +79,6 @@ cJSON* acv_LineFit2JSON(const acv_LineFit line, acv_XY center_offset )
   cJSON_AddNumberToObject(Line_jobj, "cy", line.line.line_anchor.Y-center_offset.Y);
   cJSON_AddNumberToObject(Line_jobj, "vx", line.line.line_vec.X);
   cJSON_AddNumberToObject(Line_jobj, "vy", line.line.line_vec.Y);
-
-
-
 
   return Line_jobj;
 }
@@ -170,8 +166,40 @@ cJSON* acv_CircleFitVector2JSON(const vector< acv_CircleFit> &vec, acv_XY center
   return detectedCircles_jarr;
 }
 
+cJSON* acv_AuxPointReport2JSON(const vector< FeatureReport_auxPointReport> &vec, acv_XY center_offset)
+{
+  
+  cJSON* detectedAuxPoint_jarr = cJSON_CreateArray();
 
+  for(int j=0;j<vec.size();j++)
+  {
+    cJSON* apj = cJSON_CreateObject();
+    cJSON_AddStringToObject(apj, "name", vec[j].def->name);
+    cJSON_AddNumberToObject(apj, "id", vec[j].def->id);
+    cJSON_AddNumberToObject(apj, "x", vec[j].pt.X);
+    cJSON_AddNumberToObject(apj, "y", vec[j].pt.Y);
+    cJSON_AddItemToArray(detectedAuxPoint_jarr, apj );
 
+  }
+  return detectedAuxPoint_jarr;
+}
+cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport> &vec, acv_XY center_offset)
+{
+  
+  cJSON* detectedSearchPoint_jarr = cJSON_CreateArray();
+
+  for(int j=0;j<vec.size();j++)
+  {
+    cJSON* spj = cJSON_CreateObject();
+    cJSON_AddStringToObject(spj, "name", vec[j].def->name);
+    cJSON_AddNumberToObject(spj, "id", vec[j].def->id);
+    cJSON_AddNumberToObject(spj, "x", vec[j].pt.X);
+    cJSON_AddNumberToObject(spj, "y", vec[j].pt.Y);
+    cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
+
+  }
+  return detectedSearchPoint_jarr;
+}
 cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_XY center_offset)
 {
 
@@ -179,7 +207,6 @@ cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_
 
   for(int j=0;j<vec.size();j++)
   {
-
     cJSON* lfj = acv_LineFit2JSON(vec[j].line,center_offset);
     cJSON_AddStringToObject(lfj, "name", vec[j].def->name);
     cJSON_AddNumberToObject(lfj, "id", vec[j].def->id);
@@ -231,19 +258,26 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   cJSON_AddNumberToObject(report_jobj, "rotate", report.rotate);
   cJSON_AddBoolToObject(report_jobj, "isFlipped", report.isFlipped);
 
-
+  acv_XY offset = {0};
   const vector<FeatureReport_circleReport> &detectedCircle = *report.detectedCircles;
   cJSON_AddItemToObject(report_jobj,"detectedCircles",
-    acv_CircleFitVector2JSON(detectedCircle,report.Center));
+    acv_CircleFitVector2JSON(detectedCircle,offset));
 
   const vector<FeatureReport_lineReport> &detectedLines =*report.detectedLines;
   cJSON_AddItemToObject(report_jobj,"detectedLines",
-    acv_LineFitVector2JSON(detectedLines,report.Center));
+    acv_LineFitVector2JSON(detectedLines,offset));
 
-  const vector< FeatureReport_judgeReport> &judgeReports
-    =*report.judgeReports;
+  const vector<FeatureReport_auxPointReport> &detectedAuxPoints =*report.detectedAuxPoints;
+  cJSON_AddItemToObject(report_jobj,"auxPoints",
+    acv_AuxPointReport2JSON(detectedAuxPoints,offset));
+
+  const vector<FeatureReport_searchPointReport> &detectedSearchPoints =*report.detectedSearchPoints;
+  cJSON_AddItemToObject(report_jobj,"searchPoints",
+    acv_SearchPointReport2JSON(detectedSearchPoints,offset));
+
+  const vector< FeatureReport_judgeReport> &judgeReports=*report.judgeReports;
   cJSON_AddItemToObject(report_jobj,"judgeReports",
-    JudgeReportVector2JSON(judgeReports,report.Center));
+    JudgeReportVector2JSON(judgeReports,offset));
 
 
 
