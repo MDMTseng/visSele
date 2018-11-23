@@ -55,10 +55,8 @@ protected:
 
   FeatureReport_judgeReport measure_process(FeatureReport_sig360_circle_line_single &report,struct FeatureReport_judgeDef &judge);
 
-
-  int FindFeatureDefIndex(vector<featureDef_line> &list, char* name);
-  int FindFeatureDefIndex(vector<featureDef_circle> &list, char* name);
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
+  int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);
   int ParseMainVector(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec);
   int ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt);
   int lineCrossPosition(FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt);

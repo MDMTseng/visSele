@@ -195,33 +195,6 @@ float FeatureManager_sig360_circle_line::find_search_key_points_longest_distance
   return maxDist;
 }
 
-
-int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_circle> &list, char* name)
-{
-  if(!name)return -1;
-  for(int i=0;i<list.size();i++)
-  {
-    if(strcmp(list[i].name, name)==0)
-    {
-      return i;
-    }
-  }
-  return -1;
-}
-
-int FeatureManager_sig360_circle_line::FindFeatureDefIndex(vector<featureDef_line> &list, char* name)
-{
-  if(!name)return -1;
-  for(int i=0;i<list.size();i++)
-  {
-    if(strcmp(list[i].name, name)==0)
-    {
-      return i;
-    }
-  }
-  return -1;
-}
-
 int FeatureManager_sig360_circle_line::FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type)
 {
   if(ret_type==NULL)return -1;
@@ -277,11 +250,73 @@ int FeatureManager_sig360_circle_line::FindFeatureDefIndex(int feature_id,FEATUR
 }
 
 
+int FeatureManager_sig360_circle_line::FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type)
+{
+  if(ret_type==NULL)return -1;
+  *ret_type=FEATURETYPE::NA;
+  for(int i=0;i<report.detectedCircles->size();i++)
+  {
+    featureDef_circle *def = (*report.detectedCircles)[i].def;
+    if(def==NULL)continue;
+    if(def->id == feature_id)
+    {
+      *ret_type = FEATURETYPE::ARC;
+      return i;
+    }
+  }
+
+  for(int i=0;i<report.detectedLines->size();i++)
+  {
+    featureDef_line *def = (*report.detectedLines)[i].def;
+    if(def==NULL)continue;
+    if(def->id == feature_id)
+    {
+      *ret_type = FEATURETYPE::LINE;
+      return i;
+    }
+  }
+  
+  for(int i=0;i<report.detectedAuxPoints->size();i++)
+  {
+    featureDef_auxPoint *def = (*report.detectedAuxPoints)[i].def;
+    if(def==NULL)continue;
+    if(def->id == feature_id)
+    {
+      *ret_type = FEATURETYPE::AUX_POINT;
+      return i;
+    }
+  }
+  
+  for(int i=0;i<report.detectedSearchPoints->size();i++)
+  {
+    featureDef_searchPoint *def = (*report.detectedSearchPoints)[i].def;
+    if(def==NULL)continue;
+    if(def->id == feature_id)
+    {
+      *ret_type = FEATURETYPE::SEARCH_POINT;
+      return i;
+    }
+  }
+
+  for(int i=0;i<report.judgeReports->size();i++)
+  {
+    FeatureReport_judgeDef *def = (*report.judgeReports)[i].def;
+    if(def==NULL)continue;
+    if(def->id == feature_id)
+    {
+      *ret_type = FEATURETYPE::MEASURE;
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec)
 {
   if(vec == NULL)return -1;
   FEATURETYPE type;
-  int idx = FindFeatureDefIndex( feature_id,&type);
+  int idx = FindFeatureReportIndex(report, feature_id,&type);
   if(idx <0)return -1;
   switch(type)
   {
@@ -320,9 +355,9 @@ int FeatureManager_sig360_circle_line::lineCrossPosition(FeatureReport_sig360_ci
 {
   if(pt == NULL)return -1;
   FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
-  int idx1 = FindFeatureDefIndex(line1_id,&type1);
+  int idx1 = FindFeatureReportIndex(report,line1_id,&type1);
   if(idx1<0|| type1!=FEATURETYPE::LINE)return -1;
-  int idx2 = FindFeatureDefIndex(line2_id,&type2);
+  int idx2 = FindFeatureReportIndex(report,line2_id,&type2);
   if(idx2<0|| type2!=FEATURETYPE::LINE)return -1;
   
   acv_LineFit line1 = (*report.detectedLines)[idx1].line;
@@ -339,7 +374,7 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
 {
   if(pt == NULL)return -1;
   FEATURETYPE type;
-  int idx = FindFeatureDefIndex( feature_id,&type);
+  int idx = FindFeatureReportIndex(report,feature_id,&type);
   if(idx <0)return -1;
   switch(type)
   {
@@ -368,7 +403,7 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
     case LINE:
     {
       acv_LineFit line = (*report.detectedLines)[idx].line;
-      pt->X = (line.end_pos.X + line.end_pos.Y)/2;
+      pt->X = (line.end_pos.X + line.end_pos.X)/2;
       pt->Y = (line.end_pos.Y + line.end_pos.Y)/2;
       return 0;
     }
@@ -394,15 +429,15 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   LOGV("-val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
 
   FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
-  int idx1 = FindFeatureDefIndex(judge.OBJ1_id, &type1);
-  int idx2 = FindFeatureDefIndex(judge.OBJ2_id, &type2);
+  int idx1 = FindFeatureReportIndex(report,judge.OBJ1_id, &type1);
+  int idx2 = FindFeatureReportIndex(report,judge.OBJ2_id, &type2);
   if(idx1<0)return judgeReport;
 
   switch(judge.measure_type)
   {
     case FeatureReport_judgeDef::ANGLE:
       if(type1 != FEATURETYPE::LINE || type2 != FEATURETYPE::LINE)break;
-      {
+      else{
         acv_XY vec1,vec2;
         ParseMainVector(report,judge.OBJ1_id, &vec1);
         ParseMainVector(report,judge.OBJ2_id, &vec2);
@@ -441,6 +476,44 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
 
     break;
     case FeatureReport_judgeDef::DISTANCE :
+    {
+        int ret;
+        acv_XY vec1,pt1,pt2;
+                
+        ret = ParseLocatePosition(report,judge.OBJ1_id, &pt1);
+        if(ret!=0)break;
+        ret = ParseLocatePosition(report,judge.OBJ2_id, &pt2);
+        if(ret!=0)break;
+
+        ret = ParseMainVector(report,judge.OBJ1_id, &vec1);
+        if(ret!=0)
+        {//OBJ1 have no direction
+
+          ret = ParseMainVector(report,judge.OBJ2_id, &vec1);//Try to fetch the vector of OBJ2
+          
+          if(ret!=0)//Still no vector, do simple distance measure
+          {
+            judgeReport.measured_val=acvDistance(pt1,pt2);
+          }
+          else
+          {//The object 2 has the vector, swap order.
+            acv_XY tmp;
+            tmp =pt2;
+            pt2 = pt1;
+            pt1 = tmp;
+          }
+        }
+
+
+        if(ret==0)//If there vec1 is found, do line point dist measure
+        {//NOTE:The pt1 pt2 vec1 might be swapped above.
+          acv_Line line;
+          line.line_vec = vec1;
+          line.line_anchor = pt1;
+          pt1 = acvClosestPointOnLine(pt2,line);
+          judgeReport.measured_val=acvDistance(pt1,pt2);
+        }
+    }
 
 
     break;
@@ -451,136 +524,12 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       judgeReport.measured_val=cir.circle.circle.radius;
     }
     break;
-    break;
-    case FeatureReport_judgeDef::SIGMA :
+    case FeatureReport_judgeDef::SIGMA:
     {
-
+      judgeReport.measured_val=0;
     }
     break;
   }
-
-
-  switch(type1)
-  {
-    case LINE:
-    case ARC:
-    case AUX_POINT:
-    case SEARCH_POINT:
-    case MEASURE:
-    break;
-  }
-
-
-  if(type1 == FEATURETYPE::LINE)
-  {
-    acv_LineFit OBJ1 = (*report.detectedLines)[judge.OBJ1_idx].line;
-    if(judge.OBJ2_type == FEATURETYPE::NA)
-    {
-      switch(judge.measure_type)
-      {
-        case FeatureReport_judgeDef::AREA:
-          LOGI("AREA:%d",OBJ1.matching_pts);
-          judgeReport.measured_val = OBJ1.matching_pts;
-        break;
-        case FeatureReport_judgeDef::SIGMA:
-          LOGI("SIGMA:%f",OBJ1.s);
-          judgeReport.measured_val = OBJ1.s;
-        break;
-        default:
-          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
-      }
-    }
-    else if(judge.OBJ2_type == FEATURETYPE::LINE)
-    {
-      acv_LineFit OBJ2 = (*report.detectedLines)[judge.OBJ2_idx].line;
-      switch(judge.measure_type)
-      {
-        case FeatureReport_judgeDef::ANGLE:
-        {
-          float angle = acvLineAngle(OBJ1.line,OBJ2.line);
-          LOGI("angle:%f",angle*180/M_PI);
-          judgeReport.measured_val = angle;
-        }
-        break;
-        case FeatureReport_judgeDef::DISTANCE:
-        {
-          acv_XY vec= OBJ1.end_pos;
-          vec = acvVecAdd(vec,OBJ1.end_neg);
-          vec = acvVecAdd(vec,OBJ1.end_pos);
-          vec = acvVecMult(vec,-1);
-          vec = acvVecAdd(vec,OBJ2.end_neg);
-          vec = acvVecAdd(vec,OBJ2.end_neg);
-          float distance = hypot(vec.X,vec.Y)/2;
-          LOGI("distance:%f",distance);
-          judgeReport.measured_val = distance;
-        }
-        break;
-        default:
-          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
-      }
-    }
-    else if(judge.OBJ2_type == FeatureReport_judgeDef::CIRCLE)
-    {
-      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx].circle;
-      switch(judge.measure_type)
-      {
-        case FeatureReport_judgeDef::DISTANCE:
-        {
-          acv_XY vec= OBJ1.end_pos;
-          vec = acvVecAdd(vec,OBJ1.end_neg);
-          vec = acvVecAdd(vec,OBJ1.end_pos);
-          vec = acvVecMult(vec,-0.5);
-          vec = acvVecAdd(vec,OBJ2.circle.circumcenter);
-          float distance = hypot(vec.X,vec.Y);
-          LOGI("distance:%f",distance);
-          judgeReport.measured_val = distance;
-        }
-        break;
-        default:
-          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
-      }
-    }
-  }
-  else if(judge.OBJ1_type == FeatureReport_judgeDef::CIRCLE)
-  {
-    acv_CircleFit OBJ1 = (*report.detectedCircles)[judge.OBJ1_idx].circle;
-    if(judge.OBJ2_type == FeatureReport_judgeDef::NONE)
-    {
-      switch(judge.measure_type)
-      {
-        case FeatureReport_judgeDef::AREA:
-          LOGI("AREA:%d",OBJ1.matching_pts);
-          judgeReport.measured_val = OBJ1.matching_pts;
-        break;
-        case FeatureReport_judgeDef::SIGMA:
-          LOGI("SIGMA:%f",OBJ1.s);
-          judgeReport.measured_val = OBJ1.s;
-        break;
-        default:
-          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
-      }
-    }
-    else if(judge.OBJ2_type == FeatureReport_judgeDef::CIRCLE)
-    {
-      acv_CircleFit OBJ2 = (*report.detectedCircles)[judge.OBJ2_idx].circle;
-      switch(judge.measure_type)
-      {
-        case FeatureReport_judgeDef::DISTANCE:
-        {
-          float distance = acvDistance(OBJ1.circle.circumcenter,OBJ2.circle.circumcenter);
-          LOGI("distance:%f",distance);
-          judgeReport.measured_val = distance;
-        }
-        break;
-        default:
-          LOGE("judge.measure_type:%d is not supported",judge.measure_type);
-      }
-    }
-  }
-
-
-
-
 
 
   LOGV("===================");
@@ -680,12 +629,12 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
   {
     case featureDef_searchPoint::anglefollow:
     {
-      if((pnum=JSON_GET_NUM(jobj,"angle")) == NULL )
+      if((pnum=JSON_GET_NUM(jobj,"angleDeg")) == NULL )
       {
-        LOGE("No angle");
+        LOGE("No angleDeg");
         return -1;
       }
-      searchPoint.data.anglefollow.angle=*pnum;
+      searchPoint.data.anglefollow.angleDeg=*pnum;
 
       if((pnum=JSON_GET_NUM(jobj,"ref[0].id")) == NULL )
       {
@@ -711,10 +660,10 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
       searchPoint.data.anglefollow.position.Y=*pnum;
 
 
-      LOGV("searchPoint.X:%f searchPoint.Y:%f searchPoint.angle:%f searchPoint.tar_id:%d",
+      LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
       searchPoint.data.anglefollow.position.X,
       searchPoint.data.anglefollow.position.Y,
-      searchPoint.data.anglefollow.angle,
+      searchPoint.data.anglefollow.angleDeg,
       searchPoint.data.anglefollow.target_id
       );
 
@@ -1016,120 +965,9 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
     }
   }
 
-  if(judge.name[0]=='\0')
-  {
-    sprintf(judge.name,"@JUDGE_%d",judgeList.size());
-  }
 
-  char * OBJ1_name = json_find_str(judge_obj, "OBJ1");
-  if(OBJ1_name == NULL)
-  {
-    LOGE("OBJ1:Cannot find the name of it");
-    return -1;
-  }
-  strcpy(judge.OBJ1,OBJ1_name);
-
-  judge.OBJ1_type = FeatureReport_judgeDef::NONE;
-  int idx1;
-  if((idx1 = FindFeatureDefIndex(featureLineList, judge.OBJ1)) >= 0)
-  {
-    judge.OBJ1_type = FeatureReport_judgeDef::LINE;
-  }
-  else if((idx1 = FindFeatureDefIndex(featureCircleList, judge.OBJ1)) >= 0 )
-  {
-    judge.OBJ1_type = FeatureReport_judgeDef::CIRCLE;
-  }
-  else
-  {
-    LOGE("OBJ1:Cannot find the feature that has name:%s",judge.OBJ1);
-    return -1;
-  }
-  judge.OBJ1_idx = idx1;
-
-
-
-  char * OBJ2_name = json_find_str(judge_obj, "OBJ2");
-  if(OBJ2_name)
-  {
-    strcpy(judge.OBJ2,OBJ2_name);
-  }
-
-  int idx2;
-  judge.OBJ2_type = FeatureReport_judgeDef::NONE;
-  if(judge.OBJ2[0]=='\0')
-  {
-    idx2 = -1;
-    LOGI("OBJ2:Is NULL");
-  }
-  else if((idx2 = FindFeatureDefIndex(featureLineList, judge.OBJ2)) >=0)
-  {
-    judge.OBJ2_type = FeatureReport_judgeDef::LINE;
-  }
-  else if((idx2 = FindFeatureDefIndex(featureCircleList, judge.OBJ2)) >=0)
-  {
-    judge.OBJ2_type = FeatureReport_judgeDef::CIRCLE;
-  }
-  else
-  {
-    LOGE("OBJ2:Cannot find the feature that has name:%s",judge.OBJ2);
-    return -1;
-  }
-  judge.OBJ2_idx = idx2;
-
-
-  double * measure_val =NULL;
-
-  if( measure_val = json_get_num(judge_obj,"sigma"))
-  {
-    judge.measure_type = FeatureReport_judgeDef::SIGMA;
-    judge.targetVal = *measure_val;
-    measure_val = json_get_num(judge_obj,"sigma_margin");
-    if(measure_val == NULL)return -1;
-    judge.targetVal_margin = *measure_val;
-  }else
-  if( measure_val = json_get_num(judge_obj,"angle"))
-  {
-    judge.measure_type = FeatureReport_judgeDef::ANGLE;
-    judge.targetVal = *measure_val;
-    measure_val = json_get_num(judge_obj,"angle_margin");
-    if(measure_val == NULL)return -1;
-    judge.targetVal_margin = *measure_val;
-  }else
-  if( measure_val = json_get_num(judge_obj,"distance"))
-  {
-    judge.measure_type = FeatureReport_judgeDef::DISTANCE;
-    judge.targetVal = *measure_val;
-    measure_val = json_get_num(judge_obj,"distance_margin");
-    if(measure_val == NULL)return -1;
-    judge.targetVal_margin = *measure_val;
-  }else
-  if( measure_val = json_get_num(judge_obj,"area"))
-  {
-    judge.measure_type = FeatureReport_judgeDef::AREA;
-    judge.targetVal = *measure_val;
-    measure_val = json_get_num(judge_obj,"area_margin");
-    if(measure_val == NULL)return -1;
-    judge.targetVal_margin = *measure_val;
-  }
-  else
   {
     return -1;
-  }
-
-
-
-  if( judge.OBJ2_type!= FeatureReport_judgeDef::NONE && judge.OBJ1_type>judge.OBJ2_type )
-  {//Make sure the OBJ1_type is always less than OBJ2_type, so that we don't need to do reverse compatiable judgement: like line2circle and circle2line
-    FeatureReport_judgeDef tmp_judge=judge;
-    judge.swap=true;
-    judge.OBJ1_type = tmp_judge.OBJ2_type;
-    judge.OBJ2_type = tmp_judge.OBJ1_type;
-
-    judge.OBJ1_idx = tmp_judge.OBJ2_idx;
-    judge.OBJ2_idx = tmp_judge.OBJ1_idx;
-
-    strcpy(judge.OBJ1,tmp_judge.OBJ2);
-    strcpy(judge.OBJ2,tmp_judge.OBJ1);
   }
 
   judgeList.push_back(judge);
@@ -1293,11 +1131,11 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     {
       LOGV("featureCircleList[%d]:%s",i,featureCircleList[i].name);
     }
-    for(int i=0;i<judgeList.size();i++)
+    /*for(int i=0;i<judgeList.size();i++)
     {
       LOGV("judgeList[%d]:%s  OBJ1:%s, OBJ2:%s type:%d",i,judgeList[i].name,judgeList[i].OBJ1,judgeList[i].OBJ2,judgeList[i].measure_type);
       LOGV("-val:%f  margin:%f",judgeList[i].targetVal,judgeList[i].targetVal_margin);
-    }
+    }*/
   }
 
 
@@ -1472,8 +1310,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         {
           reportDataPool[i].detectedCircles = new vector<FeatureReport_circleReport>(0);
           reportDataPool[i].detectedLines = new vector<FeatureReport_lineReport>(0);
-          reportDataPool[i].detectedAuxLines = new vector<acv_Line>(0);
-          reportDataPool[i].detectedAuxPoints = new vector<acv_XY>(0);
+          reportDataPool[i].detectedAuxPoints = new vector<FeatureReport_auxPointReport>(0);
+          reportDataPool[i].detectedSearchPoints = new vector<FeatureReport_searchPointReport>(0);
           reportDataPool[i].judgeReports = new vector<FeatureReport_judgeReport>(0);
         }
       }
@@ -1515,14 +1353,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       vector<FeatureReport_circleReport> &detectedCircles = *singleReport.detectedCircles;
       vector<FeatureReport_lineReport> &detectedLines = *singleReport.detectedLines;
 
-      vector<acv_Line> &detectedAuxLines = *singleReport.detectedAuxLines;
-      vector<acv_XY> &detectedAuxPoints = *singleReport.detectedAuxPoints;
+      vector<FeatureReport_auxPointReport> &detectedAuxPoints = *singleReport.detectedAuxPoints;
+      vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
       vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
       detectedCircles.resize(0);
       detectedLines.resize(0);
-      detectedAuxLines.resize(0);
       detectedAuxPoints.resize(0);
+      detectedSearchPoints.resize(0);
+      judgeReports.resize(0);
 
 
       float cached_cos,cached_sin;
