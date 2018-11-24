@@ -444,9 +444,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         float eAngle = atan2(vec2.Y,vec2.X);
         
         float angleDiff = (eAngle - sAngle);
-        if(angleDiff>M_2_PI)angleDiff-=M_2_PI;
-        else if(angleDiff<-M_2_PI)angleDiff+=M_2_PI;
+        
+        if(angleDiff>2*M_PI)angleDiff-=2*M_PI;
+        else if(angleDiff<-2*M_PI)angleDiff+=2*M_PI;
 
+
+        LOGV("quadrant:%d ",quadrant);
+        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
+        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
         if(angleDiff<0)//Find diff angle 0~2PI
         {
           angleDiff+=M_PI*2;
@@ -464,14 +469,10 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         }
         //Now we have the quadrant 1 angle
 
-        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
         if(quadrant%2==0)//if our target quadrant is 2 or 4..., find the complement angle 
         {
           angleDiff=M_PI-angleDiff;
         }
-
-        LOGV("quadrant:%d _________%f_%f_%f",quadrant,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
-        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
         judgeReport.measured_val=180*angleDiff/M_PI;//Convert to degree
       }
 
