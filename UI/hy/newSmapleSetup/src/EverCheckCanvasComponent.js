@@ -355,7 +355,7 @@ class EverCheckCanvasComponent{
     ctx.beginPath();
     ctx.moveTo(line_obj.x0+offset.x,line_obj.y0+offset.y);
     ctx.lineTo(line_obj.x1+offset.x,line_obj.y1+offset.y);
-    ctx.closePath();
+    //ctx.closePath();
     ctx.stroke();
   }
 
@@ -365,7 +365,7 @@ class EverCheckCanvasComponent{
     ctx.beginPath();
     ctx.moveTo(line.pt1.x+offset.x,line.pt1.y+offset.y);
     ctx.lineTo(line.pt2.x+offset.x,line.pt2.y+offset.y);
-    ctx.closePath();
+    //ctx.closePath();
     ctx.stroke();
   }
 
@@ -393,7 +393,7 @@ class EverCheckCanvasComponent{
     {
       ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
     }
-    ctx.closePath();
+    //ctx.closePath();
     ctx.stroke();
   }
 
@@ -875,13 +875,11 @@ class EverCheckCanvasComponent{
             ctx.beginPath();
             ctx.moveTo(point.x,point.y);
             ctx.lineTo(subObjs[0].pt1.x,subObjs[0].pt1.y);
-            ctx.closePath();
             ctx.stroke();
   
             ctx.beginPath();
             ctx.moveTo(point.x,point.y);
             ctx.lineTo(subObjs[1].pt1.x,subObjs[1].pt1.y);
-            ctx.closePath();
             ctx.stroke();
             ctx.setLineDash([]);
           }
