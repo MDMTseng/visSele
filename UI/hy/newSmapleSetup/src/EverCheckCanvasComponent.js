@@ -788,6 +788,11 @@ class EverCheckCanvasComponent{
       });
 
       
+      this.drawReportLine(ctx, {
+        
+        x0:extended_ind_line.x1,y0:extended_ind_line.y1,
+        x1:eObject.pt1.x,y1:eObject.pt1.y
+      });
       ctx.setLineDash([]);
       
 
@@ -986,44 +991,133 @@ class EverCheckCanvasComponent{
               
               let sAngle = Math.atan2(subObjs[0].pt1.y - srcPt.y,subObjs[0].pt1.x - srcPt.x);
               let eAngle = Math.atan2(subObjs[1].pt1.y - srcPt.y,subObjs[1].pt1.x - srcPt.x);
-              let midwayAngle = Math.atan2(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);//-PI~PI
+              //eAngle+=Math.PI;
 
-              let angleDiff = (eAngle - sAngle);
+              let angleDiff = (eAngle - sAngle)%(2*Math.PI);
               if(angleDiff<0)
               {
                 angleDiff+=Math.PI*2;
               }
-
-              let angleDiff_midway = (midwayAngle - sAngle);
-              if(angleDiff_midway<0)
+              if(angleDiff>Math.PI)
               {
-                angleDiff_midway+=Math.PI*2;
+                angleDiff-=Math.PI;
+              }
+
+              
+              let quadrant=0;
+
+              if(eObject.quadrant===undefined)
+              {
+
+                let midwayAngle = Math.atan2(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);//-PI~PI
+              
+                let angleDiff_midway = (midwayAngle - sAngle)%(2*Math.PI);
+                if(angleDiff_midway<0)
+                {
+                  angleDiff_midway+=Math.PI*2;
+                }
+
+                if(angleDiff_midway<angleDiff)
+                {
+                  quadrant=1;
+                }
+                else if(angleDiff_midway<Math.PI)
+                {
+                  quadrant=2;
+                }
+                else if(angleDiff_midway<(Math.PI+angleDiff))
+                {
+                  quadrant=3;
+                }
+                else{
+                  quadrant=4;
+                }
+                
+
+              }
+              else
+              {
+                quadrant = eObject.quadrant;
               }
 
               let dist = Math.hypot(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);
               let margin_deg = eObject.margin*Math.PI/180;
-              let measureDeg = angleDiff;
-              if(angleDiff_midway<angleDiff)
+              let draw_sAngle=sAngle,draw_eAngle=eAngle;
+              let ext_Angle1=sAngle,ext_Angle2=eAngle;
+              switch(quadrant%4)
               {
-                //sAngle+=margin_deg/2;
-                //eAngle-=margin_deg/2;
-                //The midway_angle is within the angle
-                this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist,sAngle,eAngle);
-                //this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist+5,sAngle-margin_deg,eAngle+margin_deg);
+                case 1:
+                {
+
+                }
+                break;
+                
+                case 2:
+                {
+                  draw_sAngle += angleDiff;
+                }
+                break;
+                case 3:
+                {
+                  draw_sAngle += Math.PI;
+                  
+                }
+                break;
+                case 0:
+                {
+                  draw_sAngle = draw_sAngle+angleDiff+Math.PI;
+
+                }
+                break;
+              }
+              //console.log(angleDiff*180/Math.PI,sAngle*180/Math.PI,eAngle*180/Math.PI);
+              if(quadrant%2==0)//if our target quadrant is 2 or 4..., find the complement angle 
+              {
+                angleDiff=Math.PI-angleDiff;
+              }
+
+              //console.log(angleDiff*180/Math.PI);
+              draw_eAngle = draw_sAngle + angleDiff;
+
+              if(quadrant%2==0)
+              {
+                ext_Angle1=draw_eAngle;
+                ext_Angle2=draw_sAngle;
               }
               else
               {
-                measureDeg = 2*Math.PI - angleDiff;
-                //sAngle-=eObject.margin/2;
-                //eAngle+=eObject.margin/2;
-                this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist,sAngle,eAngle,true);
-                //this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist+5,sAngle+margin_deg,eAngle-margin_deg);
+                ext_Angle1=draw_sAngle;
+                ext_Angle2=draw_eAngle;
               }
+
+
+
+
+              this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist,draw_sAngle,draw_eAngle);
 
 
               this.drawpoint(ctx,eObject.pt1);
               
-              ctx.fillText(""+(measureDeg*180/Math.PI).toFixed(4)+"º ±"+(eObject.margin).toFixed(4),
+              let measureDeg = angleDiff*180/Math.PI;
+
+
+              {
+                    
+                ctx.setLineDash([5, 15]);
+                
+                this.drawReportLine(ctx, {
+                  x0:subObjs[0].pt1.x,y0:subObjs[0].pt1.y,
+                  x1:srcPt.x+dist*Math.cos(ext_Angle1),y1:srcPt.y+dist*Math.sin(ext_Angle1)
+                });
+
+                this.drawReportLine(ctx, {
+                  x0:subObjs[1].pt1.x,y0:subObjs[1].pt1.y,
+                  x1:srcPt.x+dist*Math.cos(ext_Angle2),y1:srcPt.y+dist*Math.sin(ext_Angle2)
+                });
+
+                ctx.setLineDash([]);
+              }
+              ctx.fillText(""+(measureDeg).toFixed(4)+"º ±"+(eObject.margin).toFixed(4),
                 eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4,
                 eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4);
               //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);

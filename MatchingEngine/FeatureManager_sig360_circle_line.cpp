@@ -421,7 +421,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   judgeReport.def = &judge;
   LOGV("judge:%s  OBJ1:%d, OBJ2:%d subtype:%d",judge.name,judge.OBJ1_id,judge.OBJ2_id,judge.measure_type);
   //LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judge.OBJ1_type,judge.OBJ1_idx,judge.OBJ2_type,judge.OBJ2_idx);
-  LOGV("-val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
+  LOGV("val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
 
   FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
   int idx1 = FindFeatureReportIndex(report,judge.OBJ1_id, &type1);
@@ -449,6 +449,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
           angleDiff+=M_PI*2;
         }
 
+        LOGV("quadrant:%d _________%f_%f_%f",quadrant,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
+        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
         //The logic blow is to find angle in 4 quadrants (line1 as x axis, line2 as y axis)
         //So actually only 2 angle will be available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
         //quadrant 0 means quadrant 4 => quadrant n%2
