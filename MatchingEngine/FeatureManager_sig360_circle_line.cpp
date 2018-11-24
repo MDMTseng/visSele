@@ -437,22 +437,22 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         ParseMainVector(report,judge.OBJ1_id, &vec1);
         ParseMainVector(report,judge.OBJ2_id, &vec2);
 
-        int quadrant = judge.quadrant;
+        int quadrant = judge.data.ANGLE.quadrant;
 
         
         float sAngle = atan2(vec1.Y,vec1.X);
         float eAngle = atan2(vec2.Y,vec2.X);
         
         float angleDiff = (eAngle - sAngle);
+        if(angleDiff>M_2_PI)angleDiff-=M_2_PI;
+        else if(angleDiff<-M_2_PI)angleDiff+=M_2_PI;
+
         if(angleDiff<0)//Find diff angle 0~2PI
         {
           angleDiff+=M_PI*2;
         }
-
-        LOGV("quadrant:%d _________%f_%f_%f",quadrant,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
-        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
         //The logic blow is to find angle in 4 quadrants (line1 as x axis, line2 as y axis)
-        //So actually only 2 angle will be available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
+        //So actually only 2 angles available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
         //quadrant 0 means quadrant 4 => quadrant n%2
 
 
@@ -464,10 +464,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         }
         //Now we have the quadrant 1 angle
 
-        if(quadrant&1==0)//if our target quadrant is 2 or 4..., find the complement angle 
+        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
+        if(quadrant%2==0)//if our target quadrant is 2 or 4..., find the complement angle 
         {
           angleDiff=M_PI-angleDiff;
         }
+
+        LOGV("quadrant:%d _________%f_%f_%f",quadrant,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
+        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
         judgeReport.measured_val=180*angleDiff/M_PI;//Convert to degree
       }
 
@@ -957,10 +961,21 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   else if(strcmp(subtype, "angle")==0 )
   {
     judge.measure_type=FeatureReport_judgeDef::ANGLE;
+    pnum=JFetch_NUMBER(judge_obj,"quadrant");
+    if(pnum==NULL)
+    {
+      judge.data.ANGLE.quadrant = 0;
+    }
+    else
+    {
+      judge.data.ANGLE.quadrant = (int)*pnum;
+    }
+    LOGV("quadrant:%d",judge.data.ANGLE.quadrant);
   }
   else if(strcmp(subtype, "area")==0 )
   {
-    judge.measure_type=FeatureReport_judgeDef::ANGLE;
+    judge.measure_type=FeatureReport_judgeDef::AREA;
+
   }
 
   if(judge.measure_type==FeatureReport_judgeDef::NA)

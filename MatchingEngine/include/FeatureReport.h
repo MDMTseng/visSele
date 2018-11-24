@@ -101,9 +101,14 @@ typedef struct FeatureReport_judgeDef{
   } measure_type;
   int OBJ1_id;
   int OBJ2_id;
-  int quadrant;
   float targetVal;
   float targetVal_margin;
+  
+  union data{
+    struct ANGLE{
+      int quadrant;
+    }ANGLE;
+  }data;
 }FeatureReport_judgeDef;
 
 

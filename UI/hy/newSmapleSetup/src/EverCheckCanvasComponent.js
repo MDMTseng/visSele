@@ -1006,7 +1006,7 @@ class EverCheckCanvasComponent{
               
               let quadrant=0;
 
-              if(eObject.quadrant===undefined)
+              //if(eObject.quadrant===undefined)
               {
 
                 let midwayAngle = Math.atan2(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);//-PI~PI
@@ -1035,9 +1035,9 @@ class EverCheckCanvasComponent{
                 
 
               }
-              else
+
               {
-                quadrant = eObject.quadrant;
+                eObject.quadrant = quadrant;
               }
 
               let dist = Math.hypot(eObject.pt1.y - srcPt.y,eObject.pt1.x - srcPt.x);
