@@ -786,6 +786,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
   line.initMatchingMargin=(int)*JFetEx_NUMBER(line_obj,"margin");
 
+  double direction = *JFetEx_NUMBER(line_obj,"direction");
 
   if((pnum=JSON_GET_NUM(line_obj,"MatchingMarginX")) == NULL )
   {
@@ -828,6 +829,10 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
 
   acv_XY normal = acvVecNormal(line.lineTar.line_vec);
+  if(direction<0)
+  {
+    normal = acvVecMult(normal,-1);
+  }
 
   line.searchVec=normal;
   line.searchDist=line.initMatchingMargin*2;
