@@ -1328,8 +1328,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
     }
   }
 
-  static vector<int> s_intersectIdxs;
-  static vector<acv_XY> s_points;
   float sigma;
   int count = 0;
 
