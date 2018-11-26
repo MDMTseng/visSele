@@ -54,9 +54,17 @@ protected:
   int parse_jobj() override;
 
 
-  FeatureReport_judgeReport measure_process(FeatureReport_sig360_circle_line_single &report, FeatureReport_judgeDef &judge);
-  FeatureReport_auxPointReport auxPoint_process(FeatureReport_sig360_circle_line_single &report, featureDef_auxPoint &def);
-  FeatureReport_searchPointReport searchPoint_process(FeatureReport_sig360_circle_line_single &report, featureDef_searchPoint &def);
+  FeatureReport_judgeReport measure_process(FeatureReport_sig360_circle_line_single &report, 
+  float sine,float cosine,float flip_f,
+  FeatureReport_judgeDef &judge);
+
+  FeatureReport_auxPointReport auxPoint_process(FeatureReport_sig360_circle_line_single &report,
+  float sine,float cosine,float flip_f,
+  featureDef_auxPoint &def);
+
+  FeatureReport_searchPointReport searchPoint_process(FeatureReport_sig360_circle_line_single &report, 
+  float sine,float cosine,float flip_f,
+  featureDef_searchPoint &def);
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);

@@ -413,7 +413,10 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
 }
 
 
-FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(FeatureReport_sig360_circle_line_single &report, FeatureReport_judgeDef &judge)
+FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
+  (FeatureReport_sig360_circle_line_single &report, 
+  float sine,float cosine,float flip_f,
+  FeatureReport_judgeDef &judge)
 {
 
   //vector<FeatureReport_judgeReport> &judgeReport = *report.judgeReports;
@@ -469,7 +472,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         }
         //Now we have the quadrant 1 angle
 
-        if(quadrant%2==0)//if our target quadrant is 2 or 4..., find the complement angle 
+        if( (quadrant%2==0) ^ (flip_f!=1) )//if our target quadrant is 2 or 4..., find the complement angle 
         {
           angleDiff=M_PI-angleDiff;
         }
@@ -481,13 +484,10 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     {
         int ret;
         acv_XY vec1,pt1,pt2;
-        LOGV("####### ########");
         ret = ParseLocatePosition(report,judge.OBJ1_id, &pt1);
         if(ret!=0)break;
-        LOGV("####### ########");
         ret = ParseLocatePosition(report,judge.OBJ2_id, &pt2);
         if(ret!=0)break;
-        LOGV("####### ########");
 
         ret = ParseMainVector(report,judge.OBJ1_id, &vec1);
         if(ret!=0)
@@ -543,7 +543,9 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
 
 
 FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
-  (FeatureReport_sig360_circle_line_single &report, featureDef_auxPoint &def)
+  (FeatureReport_sig360_circle_line_single &report, 
+  float sine,float cosine,float flip_f,
+  featureDef_auxPoint &def)
 {
   
     FeatureReport_auxPointReport rep;
@@ -580,9 +582,19 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
 
 
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process
-  (FeatureReport_sig360_circle_line_single &report, featureDef_searchPoint &def)
+  (FeatureReport_sig360_circle_line_single &report, 
+  float sine,float cosine,float flip_f,
+  featureDef_searchPoint &def)
 {
     FeatureReport_searchPointReport rep;
+    rep.def = &def;
+    switch(def.subtype)
+    {
+      case featureDef_searchPoint::anglefollow:
+        rep.pt =acvRotation(sine,cosine,flip_f,def.data.anglefollow.position);
+      break;
+    }
+
     return rep;
 }
 
@@ -1573,17 +1585,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       for(int i=0;i<auxPointList.size();i++)
       {
-        FeatureReport_auxPointReport report= auxPoint_process(singleReport,auxPointList[i]);
+        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,auxPointList[i]);
         detectedAuxPoints.push_back(report);
       }
       for(int i=0;i<searchPointList.size();i++)
       {
-        FeatureReport_searchPointReport report= searchPoint_process(singleReport,searchPointList[i]);
+        FeatureReport_searchPointReport report= searchPoint_process(singleReport,cached_sin,cached_cos,flip_f,searchPointList[i]);
+        LOGV("id:%d, %d",report.def->id,searchPointList[i].id);
         detectedSearchPoints.push_back(report);
       }
       for(int i=0;i<judgeList.size();i++)
       {
-        FeatureReport_judgeReport report= measure_process(singleReport,judgeList[i]);
+        FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judgeList[i]);
         judgeReports.push_back(report);
       }
 

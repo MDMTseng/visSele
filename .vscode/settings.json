@@ -16,6 +16,8 @@
     "limits": "c",
     "memory": "c",
     "ratio": "c",
-    "tuple": "c"
+    "tuple": "c",
+    "system_error": "cpp",
+    "xlocale": "cpp"
   }
 }
