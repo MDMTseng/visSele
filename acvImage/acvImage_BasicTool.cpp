@@ -568,6 +568,14 @@ acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input)
   output.Y = input.X*sine  +flip_f*input.Y*cosine;
   return output;
 }
+acv_XY acvRotation(float sine,float cosine,acv_XY input)
+{
+  return acvRotation(sine,cosine,1,input);
+}
+acv_XY acvRotation(float angle,acv_XY input)
+{
+  return acvRotation(sin(angle),cos(angle),1,input);
+}
 
 
 acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4)

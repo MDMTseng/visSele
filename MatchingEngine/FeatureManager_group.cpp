@@ -153,7 +153,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
     //acvRemoveRegionLessThan(img, &ldData, 120);
 
 
-    acvCloneImage( img,buff, -1);
+    //acvCloneImage( img,buff, -1);
 
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {

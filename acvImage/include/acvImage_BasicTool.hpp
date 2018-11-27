@@ -127,6 +127,9 @@ acv_XY acvVecNormalize(acv_XY vec);
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecMult(acv_XY vec1,float mult);
 acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
+acv_XY acvRotation(float sine,float cosine,acv_XY input);
+acv_XY acvRotation(float angle,acv_XY input);
+
 
 acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line);
 float acvDistance_Signed(acv_Line line, acv_XY point);

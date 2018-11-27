@@ -73,6 +73,9 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatT
   printf("%s\n%s\n",string,defFilename);
   me.AddMatchingFeature(string);
   free(string);
+  
+
+  LOGI("================================");
   buff->ReSize(test1->GetWidth(), test1->GetHeight());
 
   clock_t t = clock();

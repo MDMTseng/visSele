@@ -5,6 +5,8 @@
 #include <MatchingCore.h>
 #include <stdio.h>
 
+
+static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
 /*
   FeatureManager_sig360_circle_line Section
 */
@@ -1287,7 +1289,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
   straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
-
+  acvCloneImage( img,buff, -1);
 
   tmp_signature.resize(feature_signature.size());
   reports.resize(0);
