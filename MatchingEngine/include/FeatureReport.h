@@ -75,7 +75,8 @@ typedef struct featureDef_searchPoint{
   enum{
     anglefollow
   }subtype;
-  
+  float width;
+  float margin;
   union data{
     struct anglefollow{
       acv_XY position;

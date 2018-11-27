@@ -10,11 +10,11 @@
           "id": 1,
           "type": "line",
           "pt1": {
-            "x": -31.59375,
+            "x": -30.59375,
             "y": -61.59375
           },
           "pt2": {
-            "x": 104.40625,
+            "x": 106.40625,
             "y": -62.59375
           },
           "margin": 5,
@@ -24,127 +24,41 @@
         },
         {
           "id": 2,
-          "type": "line",
+          "type": "search_point",
           "pt1": {
-            "x": -49.1875,
-            "y": 23.3125
+            "x": -177.59375,
+            "y": 1.40625
           },
-          "pt2": {
-            "x": -41.1875,
-            "y": -54.6875
-          },
-          "margin": 5,
+          "angle": 90,
+          "margin": 10,
+          "width": 40,
+          "ref": [
+            {
+              "id": 1,
+              "element": "line"
+            }
+          ],
           "color": "rgba(100,0,100,0.5)",
-          "direction": 1,
-          "name": "@line_2"
+          "name": "@search_point_2"
         },
         {
           "id": 3,
-          "type": "measure",
-          "subtype": "angle",
+          "type": "search_point",
+          "pt1": {
+            "x": 147.40625,
+            "y": -17.59375
+          },
+          "angle": -90,
+          "margin": 10,
+          "width": 40,
           "ref": [
             {
               "id": 1,
-              "type": "line"
-            },
-            {
-              "id": 2,
-              "type": "line"
+              "element": "line"
             }
           ],
-          "pt1": {
-            "x": 248.21875,
-            "y": 90.71875
-          },
-          "value": 0,
-          "margin": 1,
-          "quadrant": 1,
-          "name": "@measure_3"
-        },
-        {
-          "id": 4,
-          "type": "measure",
-          "subtype": "angle",
-          "ref": [
-            {
-              "id": 1,
-              "type": "line"
-            },
-            {
-              "id": 2,
-              "type": "line"
-            }
-          ],
-          "pt1": {
-            "x": -185.57749827214445,
-            "y": 155.05514914061894
-          },
-          "value": 0,
-          "margin": 1,
-          "quadrant": 2,
-          "name": "@measure_4"
-        },
-        {
-          "id": 5,
-          "type": "measure",
-          "subtype": "angle",
-          "ref": [
-            {
-              "id": 2,
-              "type": "line"
-            },
-            {
-              "id": 1,
-              "type": "line"
-            }
-          ],
-          "pt1": {
-            "x": -194.98899964768202,
-            "y": -175.6918991997024
-          },
-          "value": 0,
-          "margin": 1,
-          "quadrant": 2,
-          "name": "@measure_5"
-        },
-        {
-          "id": 6,
-          "type": "line",
-          "pt1": {
-            "x": 112.22168925319332,
-            "y": 41.69321497220224
-          },
-          "pt2": {
-            "x": 22.6378869544707,
-            "y": 67.70245084868853
-          },
-          "margin": 5,
           "color": "rgba(100,0,100,0.5)",
-          "direction": 1,
-          "name": "@line_6"
-        },
-        {
-          "id": 7,
-          "type": "measure",
-          "subtype": "angle",
-          "ref": [
-            {
-              "id": 1,
-              "type": "line"
-            },
-            {
-              "id": 6,
-              "type": "line"
-            }
-          ],
-          "pt1": {
-            "x": -316.3936509331188,
-            "y": 96.96354183851395
-          },
-          "value": 0,
-          "margin": 1,
-          "quadrant": 4,
-          "name": "@measure_7"
+          "name": "@search_point_3"
         }
       ],
       "inherentfeatures": [

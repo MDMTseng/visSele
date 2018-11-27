@@ -591,7 +591,17 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     switch(def.subtype)
     {
       case featureDef_searchPoint::anglefollow:
-        rep.pt =acvRotation(sine,cosine,flip_f,def.data.anglefollow.position);
+      {
+        acv_XY pt = acvRotation(sine,cosine,flip_f,def.data.anglefollow.position);
+        acv_XY vec;
+        int ret = ParseMainVector(report,def.id, &vec);
+        float width = def.width;
+        float margin = def.margin;
+        LOGV("%f %f",width,margin);
+        rep.pt =pt;
+        if(ret<0)break;
+        
+      }
       break;
     }
 
@@ -686,39 +696,27 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
   //The subtype might be determined by definition file 
   searchPoint.subtype = featureDef_searchPoint::anglefollow;
 
+  
+  searchPoint.margin=
+    *JFetEx_NUMBER(jobj,"margin");
+  
+  searchPoint.width=
+    *JFetEx_NUMBER(jobj,"width");
+
   switch(searchPoint.subtype)
   {
     case featureDef_searchPoint::anglefollow:
     {
-      if((pnum=JSON_GET_NUM(jobj,"angleDeg")) == NULL )
-      {
-        LOGE("No angleDeg");
-        return -1;
-      }
-      searchPoint.data.anglefollow.angleDeg=*pnum;
+      searchPoint.data.anglefollow.angleDeg=
+       *JFetEx_NUMBER(jobj,"angleDeg");
 
-      if((pnum=JSON_GET_NUM(jobj,"ref[0].id")) == NULL )
-      {
-        LOGE("No target_id");
-        return -1;
-      }
-      searchPoint.data.anglefollow.target_id=(int)*pnum;
-
-
-      if((pnum=JSON_GET_NUM(jobj,"pt1.x")) == NULL )
-      {
-        LOGE("No pt1.x");
-        return -1;
-      }
-      searchPoint.data.anglefollow.position.X=*pnum;
-
-
-      if((pnum=JSON_GET_NUM(jobj,"pt1.y")) == NULL )
-      {
-        LOGE("No pt1.y");
-        return -1;
-      }
-      searchPoint.data.anglefollow.position.Y=*pnum;
+      searchPoint.data.anglefollow.target_id=(int)
+       *JFetEx_NUMBER(jobj,"ref[0].id");
+      
+      searchPoint.data.anglefollow.position.X=
+       *JFetEx_NUMBER(jobj,"pt1.x");
+      searchPoint.data.anglefollow.position.Y=
+       *JFetEx_NUMBER(jobj,"pt1.y");
 
 
       LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
