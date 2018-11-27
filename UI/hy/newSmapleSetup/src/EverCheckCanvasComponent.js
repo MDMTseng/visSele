@@ -599,7 +599,7 @@ class EverCheckCanvasComponent{
         let lineVec = this.shapeVectorParse(refObj);
 
         if(lineVec===undefined )return undefined;
-        let angle=Math.atan2(lineVec.y,lineVec.x)+shape.angle*Math.PI/180;
+        let angle=Math.atan2(lineVec.y,lineVec.x)+shape.angleDeg*Math.PI/180;
         return {x:Math.cos(angle),y:Math.sin(angle)};
       }
     }
@@ -1514,7 +1514,7 @@ class EverCheckCanvasComponent{
               this.EditShape={
                 type:SHAPE_TYPE.search_point,
                 pt1:{x:0,y:0},
-                angle:90,
+                angleDeg:90,
                 margin:10,
                 width:40,
                 ref:[{

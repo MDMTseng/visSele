@@ -318,7 +318,7 @@ class APP_EDIT_MODE extends React.Component{
             subtype:"div",
             name:"input",
             //pt1:null,
-            angle:"input-number",
+            angleDeg:"input-number",
             value:"input-number",
             margin:"input-number",
             quadrant:"div",
