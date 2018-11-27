@@ -330,8 +330,7 @@ int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circ
     case LINE:
     {
       acv_LineFit line = (*report.detectedLines)[idx].line;
-      vec->X = line.line.line_vec.X;
-      vec->Y = line.line.line_vec.Y;
+      *vec = line.line.line_vec;
       return 0;
     }
     case SEARCH_POINT:
@@ -583,8 +582,9 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
 }
 
 
+
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process
-  (FeatureReport_sig360_circle_line_single &report, 
+  (acvImage *labeledImg,int labelId,acv_LabeledData labeledData,FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,
   featureDef_searchPoint &def)
 {
@@ -594,14 +594,79 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     {
       case featureDef_searchPoint::anglefollow:
       {
-        acv_XY pt = acvRotation(sine,cosine,flip_f,def.data.anglefollow.position);
         acv_XY vec;
-        int ret = ParseMainVector(report,def.id, &vec);
+        int ret_val;
+
+        {
+              
+          ret_val = ParseMainVector(report,def.data.anglefollow.target_id, &vec);
+          if(ret_val<0) break;
+          float angle = def.data.anglefollow.angleDeg*M_PI/180;
+          if(flip_f<0)
+          {
+            angle=-angle;//depends on flip or not invert the angle
+          }
+
+          vec =  acvRotation(sin(angle),cos(angle),1,vec);//No need to do the flip rotation 
+          LOGV("Angle:%f",def.data.anglefollow.angleDeg);
+          LOGV("line vec:%f %f",vec.X,vec.Y);
+        }
+
+        acv_XY pt = acvRotation(sine,cosine,flip_f,def.data.anglefollow.position);//Rotate the default point
+        pt=acvVecAdd(pt,labeledData.Center);
+        
         float width = def.width;
         float margin = def.margin;
-        LOGV("%f %f",width,margin);
-        rep.pt =pt;
-        if(ret<0)break;
+
+        vec=acvVecNormalize(vec);
+        acv_XY searchVec_nor = vec;
+        acv_XY searchVec =  acvVecNormal(vec);
+        
+        if(flip_f>0)
+        {
+          searchVec = acvVecMult(searchVec,-1);
+        }
+        LOGV("searchVec_nor:%f %f",searchVec_nor.X,searchVec_nor.Y);
+        LOGV("searchVec:%f %f",searchVec.X,searchVec.Y);
+        acv_XY searchStart = acvVecMult(searchVec,-margin/2);
+        searchStart=acvVecAdd(searchStart,pt);
+        acv_XY searchVec_nor_edge = acvVecMult(searchVec_nor,-width/2);
+        searchStart=acvVecAdd(searchStart,searchVec_nor_edge);
+        
+        LOGV("searchStart:%f %f",searchStart.X,searchStart.Y);
+        acv_XY searchPt = searchStart;//Find from end line and approach to the end line;
+        acv_XY searchPt_sum={0};
+        int foundC =0;
+        
+        LOGV("searchPt:%f %f",searchPt.X,searchPt.Y);
+        for(int i=0;i<margin;i++)
+        {
+          for(int j=0;j<width;j++)
+          {
+            searchPt = acvVecAdd(searchPt,searchVec_nor);
+            int Y = (int)round(searchPt.Y);
+            int X = (int)round(searchPt.X);
+            uint8_t *pix = &(labeledImg->CVector[Y][X*3]);
+            if(pix[0]!=255)
+            {
+              searchPt_sum.X += X;
+              searchPt_sum.Y += Y;
+              foundC++;
+            }
+          }
+          if(foundC!=0)break;
+          searchStart = acvVecAdd(searchStart,searchVec);
+          searchPt = searchStart;
+        }
+        if(foundC!=0)
+        {
+          rep.pt =acvVecMult(searchPt_sum,1.0/foundC);
+        }
+        else
+        {
+          //rep.pt =acvVecMult(searchPt_sum,1.0/foundC);
+        }
+        LOGV("found:%d,rep.pt:%f %f",foundC,rep.pt.X,rep.pt.Y);
         
       }
       break;
@@ -1351,6 +1416,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
   for (int i = 1; i < ldData.size(); i++,count++)
   {
+      LOGI("Lable:%2d area:%d",i,ldData[i].area);
       if(ldData[i].area<120)continue;
 
 
@@ -1416,6 +1482,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         int mult=100;
         featureDef_line *line = &featureLineList[j];
 
+        acv_XY target_vec = {0};
         acv_Line line_cand;
         if(line->skpsList.size()!=0)
         {
@@ -1431,6 +1498,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             //Error
           }
           s_points.resize(0);
+          
           for(int k=0;k<line->skpsList.size();k++)
           {
             featureDef_line::searchKeyPoint skp= line->skpsList[k];
@@ -1458,7 +1526,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         else
         {
           //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
+          
           line_cand.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
+          target_vec = line_cand.line_vec;
           line_cand.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
           acv_XY searchVec;
           searchVec = acvRotation(cached_sin,cached_cos,flip_f,line->searchVec);
@@ -1503,6 +1573,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           line_cand.line_anchor.X+mult*line_cand.line_vec.X,
           line_cand.line_anchor.Y+mult*line_cand.line_vec.Y,
           20,255,128);
+
+
+        if( (line_cand.line_vec.X*target_vec.X + line_cand.line_vec.Y*target_vec.Y < 0) )
+        {
+          LOGV("VEC INV::::");
+          line_cand.line_vec = acvVecMult(line_cand.line_vec,-1);
+        }
 
         LOGV("L=%d===anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f ,sigma:%f",j,
         line_cand.line_anchor.X,
@@ -1581,20 +1658,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       }
 
 
-      for(int i=0;i<auxPointList.size();i++)
+      for(int j=0;j<auxPointList.size();j++)
       {
-        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,auxPointList[i]);
+        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,auxPointList[j]);
         detectedAuxPoints.push_back(report);
       }
-      for(int i=0;i<searchPointList.size();i++)
+      for(int j=0;j<searchPointList.size();j++)
       {
-        FeatureReport_searchPointReport report= searchPoint_process(singleReport,cached_sin,cached_cos,flip_f,searchPointList[i]);
-        LOGV("id:%d, %d",report.def->id,searchPointList[i].id);
+        FeatureReport_searchPointReport report= searchPoint_process(img,i,ldData[i],singleReport,cached_sin,cached_cos,flip_f,searchPointList[j]);
+        LOGV("id:%d, %d",report.def->id,searchPointList[j].id);
         detectedSearchPoints.push_back(report);
       }
-      for(int i=0;i<judgeList.size();i++)
+      for(int j=0;j<judgeList.size();j++)
       {
-        FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judgeList[i]);
+        FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judgeList[j]);
         judgeReports.push_back(report);
       }
 

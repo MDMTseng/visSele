@@ -67,7 +67,8 @@ protected:
   float sine,float cosine,float flip_f,
   featureDef_auxPoint &def);
 
-  FeatureReport_searchPointReport searchPoint_process(FeatureReport_sig360_circle_line_single &report, 
+  FeatureReport_searchPointReport searchPoint_process(acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
+  FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,
   featureDef_searchPoint &def);
 

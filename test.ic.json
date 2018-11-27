@@ -14,8 +14,8 @@
             "y": -61.59375
           },
           "pt2": {
-            "x": 106.40625,
-            "y": -62.59375
+            "x": 105.40625,
+            "y": -64.59375
           },
           "margin": 5,
           "color": "rgba(100,0,100,0.5)",
@@ -26,10 +26,10 @@
           "id": 2,
           "type": "search_point",
           "pt1": {
-            "x": -177.59375,
-            "y": 1.40625
+            "x": -178.59375,
+            "y": 8.40625
           },
-          "angle": 90,
+          "angleDeg": 90,
           "margin": 10,
           "width": 40,
           "ref": [
@@ -45,10 +45,10 @@
           "id": 3,
           "type": "search_point",
           "pt1": {
-            "x": 147.40625,
-            "y": -17.59375
+            "x": 148.40625,
+            "y": -21.59375
           },
-          "angle": -90,
+          "angleDeg": -90,
           "margin": 10,
           "width": 40,
           "ref": [
@@ -59,6 +59,28 @@
           ],
           "color": "rgba(100,0,100,0.5)",
           "name": "@search_point_3"
+        },
+        {
+          "id": 4,
+          "type": "measure",
+          "subtype": "distance",
+          "ref": [
+            {
+              "id": 2,
+              "type": "search_point"
+            },
+            {
+              "id": 3,
+              "type": "search_point"
+            }
+          ],
+          "pt1": {
+            "x": 166.23301384407688,
+            "y": -177.15326474991042
+          },
+          "value": 0,
+          "margin": 1,
+          "name": "@measure_4"
         }
       ],
       "inherentfeatures": [
