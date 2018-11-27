@@ -314,7 +314,7 @@ int FeatureManager_sig360_circle_line::FindFeatureReportIndex(FeatureReport_sig3
   return -1;
 }
 
-int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec)
+int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f,FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec)
 {
   if(vec == NULL)return -1;
   FEATURETYPE type;
@@ -339,9 +339,10 @@ int FeatureManager_sig360_circle_line::ParseMainVector(FeatureReport_sig360_circ
       if(sPoint.def->subtype != featureDef_searchPoint::anglefollow)
         return -1;
       acv_XY line_vec;
-      int ret_val = ParseMainVector(report,sPoint.def->data.anglefollow.target_id, &line_vec);
+      int ret_val = ParseMainVector(flip_f,report,sPoint.def->data.anglefollow.target_id, &line_vec);
       if(ret_val<0)return -1;
       float angle = sPoint.def->data.anglefollow.angleDeg*M_PI/180;
+      if(flip_f<0)angle*=-1;
       acv_XY ret_vec =  acvRotation(sin(angle),cos(angle),1,line_vec);
       *vec=ret_vec;
       return 0;
@@ -438,8 +439,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
       if(type1 != FEATURETYPE::LINE || type2 != FEATURETYPE::LINE)break;
       else{
         acv_XY vec1,vec2;
-        ParseMainVector(report,judge.OBJ1_id, &vec1);
-        ParseMainVector(report,judge.OBJ2_id, &vec2);
+        ParseMainVector(flip_f,report,judge.OBJ1_id, &vec1);
+        ParseMainVector(flip_f,report,judge.OBJ2_id, &vec2);
 
         int quadrant = judge.data.ANGLE.quadrant;
 
@@ -490,11 +491,11 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         ret = ParseLocatePosition(report,judge.OBJ2_id, &pt2);
         if(ret!=0)break;
 
-        ret = ParseMainVector(report,judge.OBJ1_id, &vec1);
+        ret = ParseMainVector(flip_f,report,judge.OBJ1_id, &vec1);
         if(ret!=0)
         {//OBJ1 have no direction
 
-          ret = ParseMainVector(report,judge.OBJ2_id, &vec1);//Try to fetch the vector of OBJ2
+          ret = ParseMainVector(flip_f,report,judge.OBJ2_id, &vec1);//Try to fetch the vector of OBJ2
           
           if(ret!=0)//Still no vector, do simple distance measure
           {
@@ -599,7 +600,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
         {
               
-          ret_val = ParseMainVector(report,def.data.anglefollow.target_id, &vec);
+          ret_val = ParseMainVector(flip_f,report,def.data.anglefollow.target_id, &vec);
           if(ret_val<0) break;
           float angle = def.data.anglefollow.angleDeg*M_PI/180;
           if(flip_f<0)
