@@ -61,19 +61,13 @@ class CanvasComponent extends React.Component {
     this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
     this.props.onCanvasInit(this.ec_canvas);
   }
-  updateCanvas(state,props=this.props) {
+  updateCanvas(ec_state,props=this.props) {
     if(this.ec_canvas  !== undefined)
     {
-      console.log("updateCanvas>>",props.edit_info.inherentShapeList);
+      console.log("updateCanvas>>",props.edit_info);
       
-      
-      this.ec_canvas.SetShapeList(props.edit_info.list);
-      this.ec_canvas.SetInherentShapeList(props.edit_info.inherentShapeList);
-      this.ec_canvas.SetEditShape(props.edit_info.edit_tar_info);
-      
-      this.ec_canvas.SetReport(props.report);
-      this.ec_canvas.SetImg(props.img);
-      this.ec_canvas.SetState(state);
+      this.ec_canvas.EditDBInfoSync(props.edit_info);
+      this.ec_canvas.SetState(ec_state);
       //this.ec_canvas.ctrlLogic();
       this.ec_canvas.draw();
     }
@@ -290,7 +284,7 @@ class APP_EDIT_MODE extends React.Component{
 
   componentDidMount()
   {
-    bpg_ws.send("TG");
+    bpg_ws.send("EX");
   }
   constructor(props) {
     super(props);
@@ -427,6 +421,10 @@ class APP_EDIT_MODE extends React.Component{
             key="SPOINT"
             text="SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
           <BASE_COM.Button
+            addClass="layout lblue vbox"
+            key="MEASURE"
+            text="MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
+          <BASE_COM.Button
             addClass="layout lgreen vbox"
             key="EDIT"
             text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
@@ -435,9 +433,9 @@ class APP_EDIT_MODE extends React.Component{
             key="SAVE"
             text="SAVE" onClick={()=>{this.props.ACT_Save_Edit_Info()}}/>,
           <BASE_COM.Button
-            addClass="layout lblue vbox"
-            key="MEASURE"
-            text="MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
+            addClass="layout lred vbox"
+            key="TRIGGER"
+            text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:         
@@ -687,7 +685,8 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
    
-    ACT_Save_Edit_Info: (arg) => {dispatch(UIAct.EV_UI_EDIT_MODE_Save_Edit_Info())},
+    ACT_Save_Edit_Info: (arg) => {dispatch(UIAct.EV_UI_EC_Save_Edit_Info())},
+    ACT_Trigger_Inspection: (info) => {dispatch(UIAct.EV_UI_EC_Trigger_Inspection(info))},
    
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
@@ -857,11 +856,25 @@ function BPG_WS (url){
         let img = new ImageData(pkg.image, pkg.width);
         StoreX.dispatch(UIAct.EV_WS_Image_Update(img));
       }
-      else if(header.type === "IR")
+      else if(header.type === "IR" || header.type === "RP" )
       {
-        let IR =BPG_Protocol.raw2obj(evt);
-        console.log("IR",IR);
-        StoreX.dispatch(UIAct.EV_WS_Inspection_Report(IR.data));
+        let report =BPG_Protocol.raw2obj(evt);
+        console.log(header.type,report);
+        StoreX.dispatch(UIAct.EV_WS_Inspection_Report(report.data));
+
+      }
+      else if(header.type === "DF")
+      {
+        let report =BPG_Protocol.raw2obj(evt);
+        console.log(header.type,report);
+        StoreX.dispatch(UIAct.EV_WS_Define_File_Update(report.data));
+
+      }
+      else if(header.type === "SG")
+      {
+        let report =BPG_Protocol.raw2obj(evt);
+        console.log(header.type,report);
+        StoreX.dispatch(UIAct.EV_WS_SIG360_Report_Update(report.data));
 
       }
     }

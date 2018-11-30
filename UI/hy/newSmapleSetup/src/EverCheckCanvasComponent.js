@@ -5,7 +5,6 @@ import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {
   distance_arc_point,
-  distance_point_point,
   threePointToArc,
   distance_line_point,
   intersectPoint,
@@ -97,8 +96,6 @@ class EverCheckCanvasComponent{
 
     this.mouseStatus={x:-1,y:-1,px:-1,py:-1,status:0,pstatus:0};
 
-    this.ReportJSON={};
-
     this.secCanvas_rawImg=null;
 
     this.secCanvas = document.createElement('canvas');
@@ -106,7 +103,8 @@ class EverCheckCanvasComponent{
     this.identityMat= new  DOMMatrix();
     this.Mouse2SecCanvas= new  DOMMatrix();
 
-
+    this.edit_DB_info =null;
+    this.db_obj = null;
     this.mouse_close_dist= 10;
 
 
@@ -117,11 +115,9 @@ class EverCheckCanvasComponent{
     this.onfeatureselected=(ev)=>{};
     
     this.state=UI_SM_STATES.EDIT_MODE_NEUTRAL;
-    this.shapeList=[];
-    this.inherentShapeList=[];
-    
+
+
     this.EditShape=null;
-    
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
@@ -148,37 +144,13 @@ class EverCheckCanvasComponent{
       }
     }
   }
-  SetReport( report )
+
+  EditDBInfoSync(edit_DB_info)
   {
-
-    if(report == this.ReportJSON)return;
-    this.ReportJSON = report;
-    //this.draw();
-  }
-  
-
-  FindShape( key , val, shapeList=this.shapeList)
-  {
-    for(let i=0;i<shapeList.length;i++)
-    {
-      if(shapeList[i][key] == val)
-      {
-        return i;
-      }
-    }
-    return undefined;
-  }
-
-  FindShapeObject( key , val)
-  {
-  
-    let idx =this.FindShape( key , val, this.shapeList);
-    if(idx!==undefined)return this.shapeList[idx];
-
-    idx =this.FindShape( key , val, this.inherentShapeList);
-    if(idx!==undefined)return this.inherentShapeList[idx];
-
-    return undefined;
+    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    this.edit_DB_info = edit_DB_info;
+    this.db_obj = edit_DB_info._obj;
+    this.SetImg( edit_DB_info.img );
   }
 
   SetShape( shape_obj, id)
@@ -197,37 +169,18 @@ class EverCheckCanvasComponent{
       }
   }
 
-  
-  SetShapeList( shapeList )
-  {
-    this.shapeList = shapeList;
-    //console.log("this.EditShape.id:",this.EditShape);
-    if(this.EditShape!=null && this.EditShape.id!==undefined)
-    {
-      let idx = this.FindShape( "id" , this.EditShape.id );
-      if(idx ==undefined)
-      {
-        this.EditShape=null;
-        this.EditPoint=null;
-      }
-    }
-  }
-
-  SetInherentShapeList( inherentShapeList )
-  {
-    this.inherentShapeList = inherentShapeList;
-  }
-
   SetImg( img )
   {
-    if(img == null || img == this.secCanvas_rawImg)return;
     console.log("SetImg:::");
+    if(img == null || img == this.secCanvas_rawImg)return;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
 
     this.secCanvas_rawImg=img;
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(img, 0, 0);
+
+    console.log("SetImg::: UPDATE",ctx2nd);
   }
 
   onmouseswheel(evt)
@@ -410,219 +363,6 @@ class EverCheckCanvasComponent{
     ctx.strokeStyle=strokeStyle_bk;  
     this._drawpoint(ctx,point,type);
   }
-  
-  FindClosestCtrlPointInfo( location)
-  {
-    let pt_info={
-      pt:null,
-      key:null,
-      shape:null,
-      dist:Number.POSITIVE_INFINITY
-    };
-
-
-    this.shapeList.forEach((shape)=>{
-      let tmpDist;
-
-      switch(shape.type)
-      {
-        case SHAPE_TYPE.line:
-        case SHAPE_TYPE.arc:
-        case SHAPE_TYPE.search_point:
-        case SHAPE_TYPE.measure:
-          ["pt1","pt2","pt3"].forEach((key)=>{
-            if(shape[key]===undefined)return;
-            tmpDist = distance_point_point(shape[key],location);
-            if(pt_info.dist>tmpDist)
-            {
-              pt_info.shape=shape;
-              pt_info.key=key;
-              pt_info.pt=shape[key];
-              pt_info.dist = tmpDist;
-            }
-          });
-        break;
-
-        case SHAPE_TYPE.aux_point:
-        {
-          let point = this.auxPointParse(shape);
-          tmpDist = distance_point_point(point,location);
-          if(pt_info.dist>tmpDist)
-          {
-            pt_info.shape=shape;
-            pt_info.key=undefined;
-            pt_info.pt=point;
-            pt_info.dist = tmpDist;
-          }
-        }
-        break;
-
-      }
-    });
-    return pt_info;
-  }
-
-  FindClosestInherentPointInfo( location,inherentShapeList)
-  {
-    let pt_info={
-      pt:null,
-      key:null,
-      shape:null,
-      dist:Number.POSITIVE_INFINITY
-    };
-    inherentShapeList.forEach((ishape)=>{
-      if(ishape==null)return;
-      if(ishape.type!=SHAPE_TYPE.aux_point)return;
-      let point = this.auxPointParse(ishape);
-      let tmpDist = distance_point_point(point,location);
-      if(pt_info.dist>tmpDist)
-      {
-        pt_info.shape=ishape;
-        pt_info.key=null;
-        pt_info.pt=point;
-        pt_info.dist = tmpDist;
-      }
-
-    });
-
-    return pt_info;
-  }
-
-  auxPointParse(aux_point)
-  {
-    let point=null;
-    if(aux_point.type!=SHAPE_TYPE.aux_point)return point;
-    
-    if(aux_point.ref.length ==1)
-    {
-      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
-      if(ref0_shape ===undefined)
-      {
-        return null;
-      }
-      
-      if(aux_point.ref[0].keyTrace !== undefined)
-      {
-        point = GetObjElement(ref0_shape,aux_point.ref[0].keyTrace) ;
-        //point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
-        //point.ref[0]._obj=ref0_shape;
-      }
-      else 
-      {
-        switch(ref0_shape.type)
-        {
-          case SHAPE_TYPE.arc:
-          {
-            let shape_arc = ref0_shape;
-            let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
-            point = arc;
-            point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
-            point.ref[0]._obj=shape_arc;
-          }
-          break;
-        }
-      }
-    }
-    else if(aux_point.ref.length ==2)
-    {
-      
-      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
-      if(ref0_shape ===undefined)return null;
-      let ref1_shape=this.FindShapeObject( "id" , aux_point.ref[1].id);
-      if(ref1_shape ===undefined)return null;
-
-
-      if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
-      {
-        return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
-      }
-
-    }
-
-    return point;
-  }
-  searchPointParse(search_point)
-  {
-    let point=null;
-    if(search_point.type!=SHAPE_TYPE.search_point)return point;
-    
-    if(search_point.ref.length ==1)
-    {
-      let ref0_shape=this.FindShapeObject( "id" , search_point.ref[0].id);
-      if(ref0_shape ===undefined)return null;
-      switch(ref0_shape.type)
-      {
-        case SHAPE_TYPE.line:
-        {
-          point = search_point.pt1;
-        }
-        break;
-      }
-    }
-
-    return point;
-  }
-
-
-
-  shapeMiddlePointParse(shape)
-  {
-    switch(shape.type)
-    {
-      
-      case SHAPE_TYPE.line:
-        return {x:(shape.pt1.x+shape.pt2.x)/2,y:(shape.pt1.y+shape.pt2.y)/2};
-      case SHAPE_TYPE.arc:
-        return threePointToArc(shape.pt1,shape.pt2,shape.pt3);
-      case SHAPE_TYPE.aux_point:
-        return this.auxPointParse(shape);
-      case SHAPE_TYPE.search_point:
-        return this.searchPointParse(shape);
-    }
-    return undefined;
-  }
-
-  shapeVectorParse(shape)
-  {
-    switch(shape.type)
-    {
-      
-      case SHAPE_TYPE.line:
-        return {x:(shape.pt2.x-shape.pt1.x),y:(shape.pt2.y-shape.pt1.y)};
-      case SHAPE_TYPE.search_point:
-      {
-        if(shape.ref===undefined || shape.ref.length!=1)return undefined;
-
-        let refObj = this.FindShapeObject( "id" , shape.ref[0].id );
-        
-        if(refObj===undefined || refObj.type !== SHAPE_TYPE.line)return undefined;
-        let lineVec = this.shapeVectorParse(refObj);
-
-        if(lineVec===undefined )return undefined;
-        let angle=Math.atan2(lineVec.y,lineVec.x)+shape.angleDeg*Math.PI/180;
-        return {x:Math.cos(angle),y:Math.sin(angle)};
-      }
-    }
-    return undefined;
-  }
-
-
-  xPointParse(xpoint)
-  {
-    let point=null;
-    switch(aux_point.type)
-    {
-      case SHAPE_TYPE.aux_point:
-        return this.auxPointParse(xpoint);
-      break;
-      case SHAPE_TYPE.search_point:
-      {
-        return this.searchPointParse(xpoint);
-      }
-      break;
-    }
-    return point;
-  }
 
 
   fitCameraToShape(shape)
@@ -651,7 +391,7 @@ class EverCheckCanvasComponent{
         
       break;
       case SHAPE_TYPE.aux_point:
-        let pt = this.auxPointParse(shape);
+        let pt = this.db_obj.auxPointParse(shape);
         if(pt ==null)return;
         center=pt;
         console.log(shape,pt);
@@ -675,6 +415,7 @@ class EverCheckCanvasComponent{
   drawInherentShapeList(ctx, inherentShapeList)
   {
     if(inherentShapeList===undefined || inherentShapeList ==null )return;
+    
     inherentShapeList.forEach((ishape)=>{
       if(ishape==null)return;
       
@@ -682,7 +423,7 @@ class EverCheckCanvasComponent{
       {
         case SHAPE_TYPE.aux_point:
         {
-          let point = this.auxPointParse(ishape);
+          let point = this.db_obj.auxPointParse(ishape);
           if(point!=null)
           {
             ctx.lineWidth=2;
@@ -743,9 +484,11 @@ class EverCheckCanvasComponent{
     let point=null;
 
     
-    point_onAlignLine = this.shapeMiddlePointParse(refObjs[0]);
-    point = this.shapeMiddlePointParse(refObjs[1]);
-    let mainObjVec= this.shapeVectorParse(refObjs[0]);
+    let db_obj = this.db_obj;
+    point_onAlignLine = db_obj.shapeMiddlePointParse(refObjs[0]);
+    point = db_obj.shapeMiddlePointParse(refObjs[1]);
+    
+    let mainObjVec= db_obj.shapeVectorParse(refObjs[0]);
     if(mainObjVec===undefined)
     {
       mainObjVec = {x:-(point.y-point_onAlignLine.y),y:(point.x-point_onAlignLine.x)};
@@ -860,14 +603,15 @@ class EverCheckCanvasComponent{
         case SHAPE_TYPE.aux_point:
         {
           
+          let db_obj = this.db_obj;
           let subObjs = eObject.ref
-            .map((ref)=> this.FindShape( "id" , ref.id ))
-            .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
+            .map((ref)=> db_obj.FindShape( "id" , ref.id ))
+            .map((idx)=>{  return idx>=0?this.edit_DB_info.list[idx]:null});
           //console.log(eObject.ref);
           this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list);
           if(eObject.id === undefined)break;
 
-          let point = this.auxPointParse(eObject);
+          let point = this.db_obj.auxPointParse(eObject);
           if(subObjs.length ==2 && subObjs[0].type == SHAPE_TYPE.line && subObjs[1].type == SHAPE_TYPE.line )
           {//Draw crosssect line
             ctx.setLineDash([5, 15]);
@@ -921,9 +665,10 @@ class EverCheckCanvasComponent{
 
         case SHAPE_TYPE.search_point:
         {
+          let db_obj = this.db_obj;
           let subObjs = eObject.ref
-            .map((ref)=> this.FindShape( "id" , ref.id ))
-            .map((idx)=>{  return idx>=0?this.shapeList[idx]:null});
+            .map((ref)=> db_obj.FindShape( "id" , ref.id ))
+            .map((idx)=>{  return idx>=0?this.edit_DB_info.list[idx]:null});
           
           if(subObjs[0]==null)break;
 
@@ -962,9 +707,10 @@ class EverCheckCanvasComponent{
         break;
         case SHAPE_TYPE.measure:
         {
+          let db_obj = this.db_obj;
           if(eObject.ref===undefined)break;
           let subObjs = eObject.ref
-            .map((ref)=> this.FindShapeObject( "id" , ref.id ));
+            .map((ref)=> db_obj.FindShapeObject( "id" , ref.id ));
           let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!==undefined),true);
           if(!subObjs_valid)break;
 
@@ -1261,24 +1007,6 @@ class EverCheckCanvasComponent{
     return {x:XX,y:YY};
   }
 
-  getReportCenter()
-  {
-    
-    let center = {x:0,y:0};
-    try{
-      //console.log(this.ReportJSON);
-  
-      center.x = this.ReportJSON.reports[0].cx;
-      center.y = this.ReportJSON.reports[0].cy;
-
-    }catch(e)
-    {
-      center.x = 0;//(this.secCanvas.width / 2)
-      center.y = 0;//(this.secCanvas.height / 2)
-    }
-
-    return center;
-  }
 
   worldTransform()
   {
@@ -1303,10 +1031,8 @@ class EverCheckCanvasComponent{
     let matrix  = this.worldTransform();
     ctx.setTransform(matrix);  
     
-
-
     {
-      let center = this.getReportCenter();
+      let center = this.db_obj.getSig360ReportCenter();
       ctx.drawImage(this.secCanvas,-center.x,-center.y);
     }
 
@@ -1321,47 +1047,6 @@ class EverCheckCanvasComponent{
       let mPos = this.mouseStatus;
       let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
   
-
-      if(false && typeof this.ReportJSON !=='undefined')
-      {
-        ctx.strokeStyle = '#a00080';
-        this.drawReportJSON(ctx,this.ReportJSON);
-      }
-
-      if(false && typeof this.ReportJSON !=='undefined')
-      {
-        var ret = this.drawReportJSON_closestPoint(ctx,this.ReportJSON,mouseOnCanvas2,this.mouse_close_dist/this.camera.scale);
-
-        if(ret.measure!=null)
-        {
-          let scaleF = this.camera.scale;
-          if(scaleF>1)scaleF=1;
-          let boxW=5/scaleF;
-          ctx.fillStyle = '#999999';
-          //ctx.fillRect(ret.measure.x-boxW/2,ret.measure.y-boxW/2, boxW, boxW);
-          ctx.beginPath();
-          ctx.arc(ret.measure.x,ret.measure.y,boxW, 0,2*Math.PI);
-          ctx.fill();
-
-
-          ctx.strokeStyle = '#0000FF';
-
-          this.drawReportJSON(ctx,ret.obj);
-
-          ctx.lineWidth = 3/scaleF;
-          ctx.strokeStyle = '#FF0000';
-          this.drawReportJSON(ctx,ret.obj,0,ret.feature) 
-          this.near_select_obj = ret;
-        }
-        else
-        {
-          this.near_select_obj = null;
-        }
-
-
-
-      }
-
     }
     ctx.closePath();
     ctx.save();
@@ -1391,8 +1076,9 @@ class EverCheckCanvasComponent{
         this.drawShapeList(ctx, [candPtInfo.shape],false);
       }
     }
-    this.drawShapeList(ctx, this.shapeList,true,skipDrawIdxs);
-    this.drawInherentShapeList(ctx, this.inherentShapeList);
+    
+    this.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs);
+    this.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
 
     if(this.EditPoint!=null)
@@ -1538,8 +1224,8 @@ class EverCheckCanvasComponent{
         else
         {
 
-          let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
+          let pt_info = this.db_obj.FindClosestCtrlPointInfo( mouseOnCanvas2);
+          let pt_info2 = this.db_obj.FindClosestInherentPointInfo( mouseOnCanvas2,this.edit_DB_info.inherentShapeList);
           if(pt_info.dist>pt_info2.dist)
           {
             pt_info = pt_info2;
@@ -1609,8 +1295,8 @@ class EverCheckCanvasComponent{
             this.SetShape(this.EditShape,this.EditShape.id);
           }
 
-          let pt_info = this.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          let pt_info2 = this.FindClosestInherentPointInfo( mouseOnCanvas2,this.inherentShapeList);
+          let pt_info = this.db_obj.FindClosestCtrlPointInfo( mouseOnCanvas2);
+          let pt_info2 = this.db_obj.FindClosestInherentPointInfo( mouseOnCanvas2,this.edit_DB_info.inherentShapeList);
           if(pt_info.dist>pt_info2.dist)
           {
             pt_info = pt_info2;

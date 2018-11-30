@@ -958,6 +958,7 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON * signature_obj)
   cJSON *signature;
   if(!(getDataFromJsonObj(signature_obj,"signature",(void**)&signature)&cJSON_Object))
   {
+    LOGE("The signature is not an cJSON_Object");
     return -1;
   }
 

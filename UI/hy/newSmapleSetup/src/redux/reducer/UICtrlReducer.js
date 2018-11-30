@@ -3,6 +3,11 @@ import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct
 
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 
+import {
+  distance_point_point,
+  threePointToArc,
+  intersectPoint} from 'UTIL/MathTools';
+
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
@@ -15,12 +20,15 @@ function Default_UICtrlReducer()
 
 
     showSplash:true,
-    report:[],
-    img:null,
     showSM_graph:false,
     WS_CH:undefined,
     edit_info:{
       _obj:new InspectionEditorLogic(),
+      defInfo:[],
+      inspReport:[],
+      sig360report:[],
+      img:null,
+
       list:[],
       inherentShapeList:[],
 
@@ -35,7 +43,6 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-
 
     },
     sm:null,
@@ -58,15 +65,71 @@ class InspectionEditorLogic
     this.state=null;
 
     
-    this.report=null;
+    this.sig360report=null;
+    this.inspreport=null;
     this.img=null;
   }
-  SetCurrentReport(report)
+
+  SetSig360Report(sig360report)
   {
-    console.log(report);
-    this.report=report;
+    console.log(sig360report);
+    this.sig360report=sig360report;
+  }
+  SetInspectionReport(inspreport)
+  {
+    console.log(inspreport);
+    this.inspreport=inspreport;
   }
   
+
+  getSig360ReportCenter()
+  {
+    
+    let center = {x:0,y:0};
+    try{
+      center.x = this.sig360report.reports[0].cx;
+      center.y = this.sig360report.reports[0].cy;
+
+    }catch(e)
+    {
+      center.x = 0;//(this.secCanvas.width / 2)
+      center.y = 0;//(this.secCanvas.height / 2)
+    }
+
+    return center;
+  }
+
+
+  SetDefInfo(defInfo)
+  {
+    this.shapeList = defInfo.featureSet[0].features;
+    //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
+    console.log(defInfo);
+    let sig360Info = defInfo.featureSet[0].inherentfeatures[0];
+    this.SetSig360Report(
+      {
+        reports:[
+          {
+            cx:sig360Info.pt1.x,
+            cy:sig360Info.pt1.y,
+            area:sig360Info.area,
+            orientation:sig360Info.orientation,
+            signature:sig360Info.signature,
+          }
+        ]
+      }
+    );
+    let maxId=0;
+    this.shapeList.forEach((shape)=>{
+      if(maxId<shape.id)
+      {
+        maxId=shape.id;
+      }
+    });
+    this.shapeCount = maxId;
+    this.UpdateInherentShapeList();
+  }
+
   SetState(state)
   {
     if(this.state!=state)
@@ -94,11 +157,23 @@ class InspectionEditorLogic
     return this.FindShape( "id" , id ,shapeList);
   }
 
+  FindShapeObject( key , val)
+  {
+    let idx =this.FindShape( key , val, this.shapeList);
+    if(idx!==undefined)return this.shapeList[idx];
+    idx =this.FindShape( key , val, this.inherentShapeList);
+    if(idx!==undefined)return this.inherentShapeList[idx];
+    return undefined;
+  }
+
+
   UpdateInherentShapeList()
   {
     this.inherentShapeList=[];
 
-    let setupTarget=this.report.reports[0];
+    let setupTarget=this.sig360report.reports[0];
+    
+    console.log(setupTarget);
     let id=100000;
     let signature_id = id;
     this.inherentShapeList.push({
@@ -168,7 +243,7 @@ class InspectionEditorLogic
       }]
     };
   }
-
+  
   SetShape( shape_obj, id )//undefined means add new shape
   {
     let pre_shape = null;
@@ -261,6 +336,221 @@ class InspectionEditorLogic
 
   }
 
+
+
+    
+  FindClosestCtrlPointInfo( location)
+  {
+    let pt_info={
+      pt:null,
+      key:null,
+      shape:null,
+      dist:Number.POSITIVE_INFINITY
+    };
+
+    this.shapeList.forEach((shape)=>{
+      let tmpDist;
+
+      switch(shape.type)
+      {
+        case SHAPE_TYPE.line:
+        case SHAPE_TYPE.arc:
+        case SHAPE_TYPE.search_point:
+        case SHAPE_TYPE.measure:
+          ["pt1","pt2","pt3"].forEach((key)=>{
+            if(shape[key]===undefined)return;
+            tmpDist = distance_point_point(shape[key],location);
+            if(pt_info.dist>tmpDist)
+            {
+              pt_info.shape=shape;
+              pt_info.key=key;
+              pt_info.pt=shape[key];
+              pt_info.dist = tmpDist;
+            }
+          });
+        break;
+
+        case SHAPE_TYPE.aux_point:
+        {
+          let point = this.auxPointParse(shape);
+          tmpDist = distance_point_point(point,location);
+          if(pt_info.dist>tmpDist)
+          {
+            pt_info.shape=shape;
+            pt_info.key=undefined;
+            pt_info.pt=point;
+            pt_info.dist = tmpDist;
+          }
+        }
+        break;
+
+      }
+    });
+    return pt_info;
+  }
+
+  FindClosestInherentPointInfo( location,inherentShapeList)
+  {
+    let pt_info={
+      pt:null,
+      key:null,
+      shape:null,
+      dist:Number.POSITIVE_INFINITY
+    };
+    inherentShapeList.forEach((ishape)=>{
+      if(ishape==null)return;
+      if(ishape.type!=SHAPE_TYPE.aux_point)return;
+      let point = this.auxPointParse(ishape);
+      let tmpDist = distance_point_point(point,location);
+      if(pt_info.dist>tmpDist)
+      {
+        pt_info.shape=ishape;
+        pt_info.key=null;
+        pt_info.pt=point;
+        pt_info.dist = tmpDist;
+      }
+
+    });
+
+    return pt_info;
+  }
+
+  auxPointParse(aux_point)
+  {
+    let point=null;
+    if(aux_point.type!=SHAPE_TYPE.aux_point)return point;
+    
+    if(aux_point.ref.length ==1)
+    {
+      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
+      if(ref0_shape ===undefined)
+      {
+        return null;
+      }
+      
+      if(aux_point.ref[0].keyTrace !== undefined)
+      {
+        point = GetObjElement(ref0_shape,aux_point.ref[0].keyTrace) ;
+        //point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+        //point.ref[0]._obj=ref0_shape;
+      }
+      else 
+      {
+        switch(ref0_shape.type)
+        {
+          case SHAPE_TYPE.arc:
+          {
+            let shape_arc = ref0_shape;
+            let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
+            point = arc;
+            point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+            point.ref[0]._obj=shape_arc;
+          }
+          break;
+        }
+      }
+    }
+    else if(aux_point.ref.length ==2)
+    {
+      
+      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
+      if(ref0_shape ===undefined)return null;
+      let ref1_shape=this.FindShapeObject( "id" , aux_point.ref[1].id);
+      if(ref1_shape ===undefined)return null;
+
+
+      if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
+      {
+        return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
+      }
+
+    }
+
+    return point;
+  }
+  searchPointParse(search_point)
+  {
+    let point=null;
+    if(search_point.type!=SHAPE_TYPE.search_point)return point;
+    
+    if(search_point.ref.length ==1)
+    {
+      let ref0_shape=this.FindShapeObject( "id" , search_point.ref[0].id);
+      if(ref0_shape ===undefined)return null;
+      switch(ref0_shape.type)
+      {
+        case SHAPE_TYPE.line:
+        {
+          point = search_point.pt1;
+        }
+        break;
+      }
+    }
+
+    return point;
+  }
+
+
+
+  shapeMiddlePointParse(shape)
+  {
+    switch(shape.type)
+    {
+      
+      case SHAPE_TYPE.line:
+        return {x:(shape.pt1.x+shape.pt2.x)/2,y:(shape.pt1.y+shape.pt2.y)/2};
+      case SHAPE_TYPE.arc:
+        return threePointToArc(shape.pt1,shape.pt2,shape.pt3);
+      case SHAPE_TYPE.aux_point:
+        return this.auxPointParse(shape);
+      case SHAPE_TYPE.search_point:
+        return this.searchPointParse(shape);
+    }
+    return undefined;
+  }
+
+  shapeVectorParse(shape)
+  {
+    switch(shape.type)
+    {
+      
+      case SHAPE_TYPE.line:
+        return {x:(shape.pt2.x-shape.pt1.x),y:(shape.pt2.y-shape.pt1.y)};
+      case SHAPE_TYPE.search_point:
+      {
+        if(shape.ref===undefined || shape.ref.length!=1)return undefined;
+
+        let refObj = this.FindShapeObject( "id" , shape.ref[0].id );
+        
+        if(refObj===undefined || refObj.type !== SHAPE_TYPE.line)return undefined;
+        let lineVec = this.shapeVectorParse(refObj);
+
+        if(lineVec===undefined )return undefined;
+        let angle=Math.atan2(lineVec.y,lineVec.x)+shape.angleDeg*Math.PI/180;
+        return {x:Math.cos(angle),y:Math.sin(angle)};
+      }
+    }
+    return undefined;
+  }
+
+
+  xPointParse(xpoint)
+  {
+    let point=null;
+    switch(aux_point.type)
+    {
+      case SHAPE_TYPE.aux_point:
+        return this.auxPointParse(xpoint);
+      break;
+      case SHAPE_TYPE.search_point:
+      {
+        return this.searchPointParse(xpoint);
+      }
+      break;
+    }
+    return point;
+  }
+
 }
 
 function StateReducer(newState,action)
@@ -322,17 +612,40 @@ function StateReducer(newState,action)
       newState.showSplash=false;
       switch(action.type)
       {
-        case UISEV.Inspection_Report:
-          newState.report=action.data;
-          newState.edit_info._obj.SetCurrentReport(action.data);
-          newState.edit_info.inherentShapeList=
-            newState.edit_info._obj.UpdateInherentShapeList();
-        break;
-
         case UISEV.Image_Update:
-          newState.img=action.data;
+          newState.edit_info=Object.assign({},newState.edit_info);
+          newState.edit_info.img=action.data;
         break;
 
+
+        case UISEV.Inspection_Report:
+          newState.edit_info=Object.assign({},newState.edit_info);
+          //newState.report=action.data;
+          newState.edit_info._obj.SetInspectionReport(action.data);
+          //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+        break;
+
+        case UISEV.Define_File_Update:
+          
+          newState.edit_info=Object.assign({},newState.edit_info);
+          newState.edit_info._obj.SetDefInfo(action.data);
+          
+          newState.edit_info.edit_tar_info = null;
+          
+          newState.edit_info.list=newState.edit_info._obj.shapeList;
+          
+          //newState.edit_info.inherentShapeList=
+            //newState.edit_info._obj.UpdateInherentShapeList();
+        break;
+        case UISEV.SIG360_Report_Update:
+          
+          newState.edit_info=Object.assign({},newState.edit_info);
+          newState.edit_info._obj.SetSig360Report(action.data);
+          newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
+        break;
+
+
+        
 
         case UISEV.EDIT_MODE_Shape_List_Update:
           newState.edit_info.list=(action.data == null)? []: action.data;
@@ -349,7 +662,7 @@ function StateReducer(newState,action)
           newState.edit_info.edit_tar_ele_trace=
             (action.data == null)? null : action.data.slice();
         break;
-        case UISEV.EDIT_MODE_Save_Edit_Info:
+        case UISEV.EC_Save_Edit_Info:
         {
           if(newState.WS_CH==undefined)break;
           var enc = new TextEncoder();
@@ -360,6 +673,19 @@ function StateReducer(newState,action)
             {filename:"test.ic.json"},
             enc.encode(JSON.stringify(report, null, 2))
           );
+        }
+        break;
+        case UISEV.EC_Trigger_Inspection:
+        {
+          if(newState.WS_CH==undefined)break;
+          let IIData=action.data;
+          if(IIData === undefined)
+          {
+            IIData={
+
+            };
+          }
+          newState.WS_CH.send("II",0,IIData);
         }
         break;
         case UISEV.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
@@ -617,8 +943,9 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
     for( let i=0 ;i<action.data.length;i++)
     {
       newState = StateReducer(newState,action.data[i]);
-      console.log(newState);
     }
+
+    console.log(newState);
     return newState;
   }
   else

@@ -66,14 +66,24 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 
 }
 
+
+int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *jsonStr);
+
 int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
 {
-  me.ResetFeature();
   char *string = ReadText(defFilename);
   printf("%s\n%s\n",string,defFilename);
-  me.AddMatchingFeature(string);
+  int ret = ImgInspection_JSONStr(me ,test1,buff, repeatTime,string);
   free(string);
-  
+  return ret;
+}
+
+int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *jsonStr)
+{
+
+  me.ResetFeature();
+  me.AddMatchingFeature(jsonStr);
+
 
   LOGI("================================");
   buff->ReSize(test1->GetWidth(), test1->GetHeight());
@@ -352,7 +362,103 @@ public:
           {
 
           }
-          else if(checkTL("TG",dat))
+          else if(checkTL("II",dat))
+          {
+            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+            if (json == NULL)
+            {
+              LOGE("JSON parse failed");
+              break;
+            }
+            do{
+              char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
+              if (deffile == NULL)
+              {
+                LOGE("No entry:\"deffile\" in it");
+                break;
+              }
+
+              char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
+              if (imgSrcPath == NULL)
+              {
+                LOGE("No entry:imgSrcPath in it");
+                break;
+              }
+            
+              imgSrc_X->SetFileName(imgSrcPath);
+
+
+              DatCH_Data datCH_BPG=
+                BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+              char tmp[100];
+              int session_id = rand();
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              BPG_data bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+              try {
+                  char *jsonStr = ReadText(deffile);
+                  if(jsonStr == NULL)
+                  {
+                    LOGE("Cannot read defFile from:%s",jsonStr);
+                    break;
+                  }
+                  LOGV("Read deffile:%s",deffile);
+                  BPG_data bpg_dat=GenStrBPGData("DF", jsonStr);
+                  datCH_BPG.data.p_BPG_data=&bpg_dat;
+                  self->SendData(datCH_BPG);
+
+                  int ret = ImgInspection_JSONStr(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,jsonStr);
+                  free(jsonStr);
+
+                  const FeatureReport * report = matchingEng.GetReport();
+
+                  if(report!=NULL)
+                  {
+                    cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                    cJSON_AddNumberToObject(jobj, "session_id", session_id);
+                    char * jstr  = cJSON_Print(jobj);
+                    cJSON_Delete(jobj);
+
+                    //LOGI("__\n %s  \n___",jstr);
+                    BPG_data bpg_dat=GenStrBPGData("RP", jstr);
+                    datCH_BPG.data.p_BPG_data=&bpg_dat;
+                    self->SendData(datCH_BPG);
+
+                    delete jstr;
+                  }
+                  else
+                  {
+                    sprintf(tmp,"{\"session_id\":%d}",session_id);
+                    BPG_data bpg_dat=GenStrBPGData("RP", tmp);
+                    datCH_BPG.data.p_BPG_data=&bpg_dat;
+                    self->SendData(datCH_BPG);
+                  }
+              }
+              catch (std::invalid_argument iaex) {
+                  LOGE( "Caught an error!");
+              }
+
+
+
+              bpg_dat=GenStrBPGData("IM", NULL);
+              bpg_dat.dat_img=imgSrc_X->GetAcvImage();
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+
+
+              sprintf(tmp,"{\"session_id\":%d, \"start\":false}",session_id);
+              bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+            }while(false);
+
+
+          }
+          else if(checkTL("EX",dat))
           {
             LOGI("Trigger.......");
 
@@ -384,7 +490,7 @@ public:
                     cJSON_Delete(jobj);
 
                     //LOGI("__\n %s  \n___",jstr);
-                    BPG_data bpg_dat=GenStrBPGData("IR", jstr);
+                    BPG_data bpg_dat=GenStrBPGData("SG", jstr);//SG report : signature360
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
                     self->SendData(datCH_BPG);
 
@@ -393,7 +499,7 @@ public:
                   else
                   {
                     sprintf(tmp,"{\"session_id\":%d}",session_id);
-                    BPG_data bpg_dat=GenStrBPGData("IR", tmp);
+                    BPG_data bpg_dat=GenStrBPGData("SG", tmp);
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
                     self->SendData(datCH_BPG);
                   }
@@ -486,7 +592,7 @@ int simpleTest()
 #include <vector>
 int main(int argc, char** argv)
 {
-  return simpleTest();
+  //return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;

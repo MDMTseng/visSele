@@ -59,6 +59,9 @@ export const UI_SM_EVENT = {
   Edit_Mode:"Edit_Mode",
   Inspection_Report:"Inspection_Report",
   Image_Update:"Image_Update",
+  Define_File_Update:"Define_File_Update",
+  SIG360_Report_Update:"SIG360_Report_Update",
+
 
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
@@ -77,7 +80,9 @@ export const UI_SM_EVENT = {
   EDIT_MODE_Edit_Tar_Ele_Cand_Update:"EDIT_MODE_Edit_Tar_Ele_Cand_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
   EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
-  EDIT_MODE_Save_Edit_Info:"EDIT_MODE_Save_Edit_Info",
+  
+  EC_Save_Edit_Info:"EC_Save_Edit_Info",
+  EC_Trigger_Inspection:"EC_Trigger_Inspection",
 
   
   Control_SM_Panel:"Control_SM_Panel",
@@ -93,10 +98,17 @@ export function EV_WS_ChannelUpdate(WS_CH)
   }
 }
 
-export function EV_UI_EDIT_MODE_Save_Edit_Info()
+export function EV_UI_EC_Save_Edit_Info()
 {
   return {
-    type: UI_SM_EVENT.EDIT_MODE_Save_Edit_Info
+    type: UI_SM_EVENT.EC_Save_Edit_Info
+  }
+}
+export function EV_UI_EC_Trigger_Inspection(info)
+{
+  return {
+    type: UI_SM_EVENT.EC_Trigger_Inspection,
+    data:info
   }
 }
 
@@ -206,5 +218,18 @@ export function EV_WS_Image_Update(ImageData)
 {
   return {
     type: UI_SM_EVENT.Image_Update ,data:ImageData
+  }
+}
+
+export function EV_WS_Define_File_Update(DFData)
+{
+  return {
+    type: UI_SM_EVENT.Define_File_Update ,data:DFData
+  }
+}
+export function EV_WS_SIG360_Report_Update(data)
+{
+  return {
+    type: UI_SM_EVENT.SIG360_Report_Update ,data:data
   }
 }
