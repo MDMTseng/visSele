@@ -310,6 +310,7 @@ function StateReducer(newState,action)
             newState.edit_info.edit_tar_info = {
               type:SHAPE_TYPE.measure,
               subtype:SHAPE_TYPE.measure_subtype.NA,
+              docheck:true
               //ref:[{},{}]
             };
             newState.edit_info.edit_tar_ele_trace=["subtype"];

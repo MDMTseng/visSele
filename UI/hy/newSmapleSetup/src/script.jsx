@@ -137,148 +137,6 @@ const CanvasComponent_rdx = connect(
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
 
-
-class JsonElement extends React.Component{
-
-  render()
-  {
- 
-    if(this.props.type.type !== undefined)
-    {
-      return this.renderComplex();
-    }
-    else
-    {
-      //if(this.props.type instanceof String)
-      
-      return this.renderSimple();
-      
-    }
-  }
-
-
-  renderComplex()
-  {
-    switch(this.props.type.type)
-    {
-      case "droplist":
-      return <div key={this.props.id} className={this.props.className} >
-        {this.props.children}
-      </div>
-    }
-  }
-  renderSimple()
-  {
-    switch(this.props.type)
-    {
-      case "input-number":
-        return <input key={this.props.id} className={this.props.className} type="number" value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
-      case "input":
-        return <input key={this.props.id} className={this.props.className} value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
-      case "btn":
-        return <button
-          key={this.props.id}
-          className={this.props.className}
-          onClick={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}>
-          {this.props.children}</button>
-      case "div":
-      default:
-        return <div key={this.props.id} className={this.props.className} >{this.props.children}</div>
-      
-    }
-  }
-}
-
-class JsonEditBlock extends React.Component{
-  
-
-  constructor(props) {
-      super(props);
-      this.tmp={
-        object:{}
-      };
-  }
-
-  onChangeX(target,type,evt) {
-    this.props.jsonChange(this.tmp.object,target,type,evt);
-    return true;
-  }
-  shouldComponentUpdate(nextProps, nextState) {
-    return true;
-  }
-
-  composeObject(obj,whiteListKey=null,idHeader="",keyTrace=[])
-  {
-    var rows = [];
-    let keyList = (whiteListKey==null )?obj:whiteListKey;
-    for (var key in keyList) {
-        let ele = obj[key];
-        let displayMethod=(whiteListKey==null )?null:whiteListKey[key];
-
-        //console.log(key,keyList[key],obj,obj[key]);
-        if((ele === undefined) || displayMethod=== undefined)continue;
-        //console.log(key,ele,typeof ele);
-        
-        let newkeyTrace = keyTrace.slice();
-        newkeyTrace.push(key);
-        switch(typeof ele)
-        {
-          case "string":
-            if(displayMethod==null)displayMethod="input";
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod}
-              target={{obj:obj,keyTrace:newkeyTrace}} 
-              onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
-            
-          break;
-          case "number":
-            if(displayMethod==null)displayMethod="input-number";
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod} 
-              target={{obj:obj,keyTrace:newkeyTrace}}  
-              onChange={this.onChangeX.bind(this)}>{(ele).toFixed(4)}</JsonElement>);
-          break;
-          case "object":
-          {
-
-            rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
-            let obj_disp_type = (displayMethod==null)?"div":displayMethod.__OBJ__;
-            if(obj_disp_type == undefined)obj_disp_type="div";
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} 
-              className="s HX1 WXF vbox black" type={obj_disp_type} 
-              onChange={this.onChangeX.bind(this)}
-              target={{obj:obj,keyTrace:newkeyTrace}}>{key}</JsonElement>);
-
-            rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
-            rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-              this.composeObject(ele,displayMethod,idHeader+"_"+key,newkeyTrace)
-            }</div>);
-            rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
-          }
-          break;
-          default:
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<div key={idHeader+"_"+key+"_XXX"} className="s HX1 width9 vbox lblue">Not supported</div>);
-          break;
-        }
-    }
-    return rows
-  }
-
-  render() {
-    this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
-   //console.log("this.props.object:",this.props.object,this.tmp.object);
-    var rows = this.composeObject(this.tmp.object,this.props.whiteListKey);
-    return(
-    <div className="WXF HXA">
-      {rows}
-    </div>
-    );
-  }
-}
-
 class APP_EDIT_MODE extends React.Component{
 
 
@@ -304,8 +162,8 @@ class APP_EDIT_MODE extends React.Component{
       case UIAct.SHAPE_TYPE.search_point:
       case UIAct.SHAPE_TYPE.measure:
       {
-        return (<JsonEditBlock object={edit_tar} 
-          key="JsonEditBlock"
+        return (<BASE_COM.JsonEditBlock object={edit_tar} 
+          key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
             type:"div",
@@ -316,6 +174,7 @@ class APP_EDIT_MODE extends React.Component{
             value:"input-number",
             margin:"input-number",
             quadrant:"div",
+            docheck:"checkbox",
             width:"input-number",
             ref:{__OBJ__:"div",
               0:{__OBJ__:"btn",
@@ -339,14 +198,26 @@ class APP_EDIT_MODE extends React.Component{
               {
                 let lastKey=target.keyTrace[target.keyTrace.length-1];
                 
-                if(type == "input-number")
+                switch(type)
                 {
-                  let parseNum =  parseFloat(evt.target.value);
-                  if(isNaN(parseNum))return;
-                  target.obj[lastKey]=parseNum;
+                  case "input-number":
+                  {
+                    let parseNum =  parseFloat(evt.target.value);
+                    if(isNaN(parseNum))return;
+                    target.obj[lastKey]=parseNum;
+                  }
+                  break;
+                  case "input":
+                  {
+                    target.obj[lastKey]=evt.target.value;
+                  }
+                  break;
+                  case "checkbox":
+                  {
+                    target.obj[lastKey]=evt.target.checked;
+                  }
+                  break;
                 }
-                else if(type == "input")
-                  target.obj[lastKey]=evt.target.value;
                 this.ec_canvas.SetShape( original_obj, original_obj.id);
               }
             }}/>);
@@ -354,8 +225,8 @@ class APP_EDIT_MODE extends React.Component{
       break;
       default:
       {
-        return (<JsonEditBlock object={edit_tar} 
-          key="JsonEditBlock"
+        return (<BASE_COM.JsonEditBlock object={edit_tar} 
+          key="BASE_COM.JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
             {
               let lastKey = target.keyTrace[target.keyTrace.length-1];
@@ -449,11 +320,11 @@ class APP_EDIT_MODE extends React.Component{
       
       if(this.props.edit_tar_info!=null)
       {
-        console.log("JsonEditBlock:",this.props.edit_tar_info);
+        console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
         
-        MenuSet.push(<JsonEditBlock object={this.props.edit_tar_info} 
-          key="JsonEditBlock"
+        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} 
+          key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
             name:"input",
@@ -554,7 +425,7 @@ class APP_EDIT_MODE extends React.Component{
       ];
       if(this.props.edit_tar_info!=null)
       {
-        console.log("JsonEditBlock:",this.props.edit_tar_info);
+        console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
         MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
 
@@ -586,7 +457,7 @@ class APP_EDIT_MODE extends React.Component{
       
         if(this.props.edit_tar_info!=null)
         {
-          console.log("JsonEditBlock:",this.props.edit_tar_info);
+          console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
           MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
 

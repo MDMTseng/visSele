@@ -1,6 +1,150 @@
 import React from 'react';
 import React_createClass from 'create-react-class';
 
+
+
+
+export class JsonElement extends React.Component{
+
+  render()
+  {
+ 
+    if(this.props.type.type !== undefined)
+    {
+      return this.renderComplex();
+    }
+    else
+    {
+      //if(this.props.type instanceof String)
+      
+      return this.renderSimple();
+      
+    }
+  }
+
+
+  renderComplex()
+  {
+    switch(this.props.type.type)
+    {
+      case "droplist":
+      return <div key={this.props.id} className={this.props.className} >
+        {this.props.children}
+      </div>
+    }
+  }
+  renderSimple()
+  {
+    switch(this.props.type)
+    {
+      case "input-number":
+        return <input key={this.props.id} className={this.props.className} type="number" value={this.props.children}  
+          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+      case "input":
+        return <input key={this.props.id} className={this.props.className} value={this.props.children}  
+          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+          
+      case "checkbox":
+        return <input key={this.props.id} className={this.props.className} type="checkbox" checked={this.props.children}
+          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+      case "btn":
+        return <button
+          key={this.props.id}
+          className={this.props.className}
+          onClick={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}>
+          {this.props.children}</button>
+      case "div":
+      default:
+        return <div key={this.props.id} className={this.props.className} >{this.props.children}</div>
+      
+    }
+  }
+}
+
+export class JsonEditBlock extends React.Component{
+  
+
+  constructor(props) {
+      super(props);
+      this.tmp={
+        object:{}
+      };
+  }
+
+  onChangeX(target,type,evt) {
+    this.props.jsonChange(this.tmp.object,target,type,evt);
+    return true;
+  }
+  shouldComponentUpdate(nextProps, nextState) {
+    return true;
+  }
+
+  composeObject(obj,whiteListKey=null,idHeader="",keyTrace=[])
+  {
+    var rows = [];
+    let keyList = (whiteListKey==null )?obj:whiteListKey;
+    for (var key in keyList) {
+        let ele = obj[key];
+        let displayMethod=(whiteListKey==null )?null:whiteListKey[key];
+
+        //console.log(key,keyList[key],obj,obj[key]);
+        if((ele === undefined) || displayMethod=== undefined)continue;
+        //console.log(key,ele,typeof ele);
+        
+        let newkeyTrace = keyTrace.slice();
+        newkeyTrace.push(key);
+        switch(typeof ele)
+        {
+          case "string":
+          case "boolean":
+          case "number":
+            if(displayMethod==null)displayMethod="div";
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod}
+              target={{obj:obj,keyTrace:newkeyTrace}} 
+              onChange={this.onChangeX.bind(this)}>{(typeof ele ==="number" )?(ele).toFixed(4):(ele)}</JsonElement>);
+          break;
+          case "object":
+          {
+
+            rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
+            let obj_disp_type = (displayMethod==null)?"div":displayMethod.__OBJ__;
+            if(obj_disp_type == undefined)obj_disp_type="div";
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} 
+              className="s HX1 WXF vbox black" type={obj_disp_type} 
+              onChange={this.onChangeX.bind(this)}
+              target={{obj:obj,keyTrace:newkeyTrace}}>{key}</JsonElement>);
+
+            rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
+            rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
+              this.composeObject(ele,displayMethod,idHeader+"_"+key,newkeyTrace)
+            }</div>);
+            rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
+          }
+          break;
+          default:
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
+            rows.push(<div key={idHeader+"_"+key+"_XXX"} className="s HX1 width9 vbox lblue">Not supported</div>);
+          break;
+        }
+    }
+    return rows
+  }
+
+  render() {
+    this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
+   //console.log("this.props.object:",this.props.object,this.tmp.object);
+    var rows = this.composeObject(this.tmp.object,this.props.whiteListKey);
+    return(
+    <div className="WXF HXA">
+      {rows}
+    </div>
+    );
+  }
+}
+
+
+
 export let CardFrameWarp = React_createClass({
 
 
