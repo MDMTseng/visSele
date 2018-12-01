@@ -302,11 +302,15 @@ class APP_EDIT_MODE extends React.Component{
           <BASE_COM.Button
             addClass="layout lred vbox"
             key="SAVE"
-            text="SAVE" onClick={()=>{this.props.ACT_Save_Edit_Info()}}/>,
-          <BASE_COM.Button
+            text="SAVE" onClick={()=>{this.props.ACT_Save_Def_Config({filename:"data/test.ic.json"})}}/>,
+          /*<BASE_COM.Button
             addClass="layout lred vbox"
             key="TRIGGER"
-            text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,
+            text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
+          <BASE_COM.Button
+            addClass="layout lred vbox"
+            key="LOAD"
+            text="LOAD" onClick={()=>{this.props.ACT_Load_Def_Config({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:         
@@ -556,8 +560,9 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
    
-    ACT_Save_Edit_Info: (arg) => {dispatch(UIAct.EV_UI_EC_Save_Edit_Info())},
+    ACT_Save_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Save_Def_Config(info))},
     ACT_Trigger_Inspection: (info) => {dispatch(UIAct.EV_UI_EC_Trigger_Inspection(info))},
+    ACT_Load_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Load_Def_Config(info))},
    
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},

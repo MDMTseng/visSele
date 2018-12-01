@@ -80,8 +80,9 @@ export const UI_SM_EVENT = {
   EDIT_MODE_Edit_Tar_Ele_Cand_Update:"EDIT_MODE_Edit_Tar_Ele_Cand_Update",
   EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
   EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
-  
-  EC_Save_Edit_Info:"EC_Save_Edit_Info",
+
+  EC_Save_Def_Config:"EC_Save_Def_Config",
+  EC_Load_Def_Config:"EC_Load_Def_Config",
   EC_Trigger_Inspection:"EC_Trigger_Inspection",
 
   
@@ -98,10 +99,18 @@ export function EV_WS_ChannelUpdate(WS_CH)
   }
 }
 
-export function EV_UI_EC_Save_Edit_Info()
+export function EV_UI_EC_Save_Def_Config(info)
 {
   return {
-    type: UI_SM_EVENT.EC_Save_Edit_Info
+    type: UI_SM_EVENT.EC_Save_Def_Config,
+    data:info
+  }
+}
+export function EV_UI_EC_Load_Def_Config(info)
+{
+  return {
+    type: UI_SM_EVENT.EC_Load_Def_Config,
+    data:info
   }
 }
 export function EV_UI_EC_Trigger_Inspection(info)

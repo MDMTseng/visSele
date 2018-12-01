@@ -156,7 +156,7 @@ function StateReducer(newState,action)
           newState.edit_info.edit_tar_ele_trace=
             (action.data == null)? null : action.data.slice();
         break;
-        case UISEV.EC_Save_Edit_Info:
+        case UISEV.EC_Save_Def_Config:
         {
           if(newState.WS_CH==undefined)break;
           var enc = new TextEncoder();
@@ -164,22 +164,27 @@ function StateReducer(newState,action)
           let report = newState.edit_info._obj.GenerateEditReport();
           console.log(newState.WS_CH);
           newState.WS_CH.send("SV",0,
-            {filename:"test.ic.json"},
+            action.data,
             enc.encode(JSON.stringify(report, null, 2))
           );
+        }
+        break;
+        case UISEV.EC_Load_Def_Config:
+        {
+          if(newState.WS_CH==undefined)break;
+          let dat=action.data;
+          if(dat === undefined)
+            dat={};
+          newState.WS_CH.send("LD",0,dat);
         }
         break;
         case UISEV.EC_Trigger_Inspection:
         {
           if(newState.WS_CH==undefined)break;
-          let IIData=action.data;
-          if(IIData === undefined)
-          {
-            IIData={
-
-            };
-          }
-          newState.WS_CH.send("II",0,IIData);
+          let dat=action.data;
+          if(dat === undefined)
+            dat={};
+          newState.WS_CH.send("II",0,dat);
         }
         break;
         case UISEV.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
