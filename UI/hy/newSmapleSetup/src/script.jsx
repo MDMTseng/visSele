@@ -18,7 +18,7 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
 let StoreX= ReduxStoreSetUp({});
@@ -33,25 +33,25 @@ class CanvasComponent extends React.Component {
   ec_canvas_EmitEvent(event){
     switch(event.type)
     { 
-      case DefEditAct.EVENT.SUCCESS:
+      case DefConfAct.EVENT.SUCCESS:
         this.props.ACT_SUCCESS();
       break;
-      case DefEditAct.EVENT.FAIL:
+      case DefConfAct.EVENT.FAIL:
         this.props.ACT_Fail();
       break; 
-      case DefEditAct.EVENT.Edit_Tar_Update:
+      case DefConfAct.EVENT.Edit_Tar_Update:
         //console.log(event);
         this.props.ACT_EDIT_TAR_UPDATE(event.data);
       break; 
-      case DefEditAct.EVENT.Edit_Tar_Ele_Cand_Update:
+      case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:
         //console.log(event);
         this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(event.data);
       break; 
-      case DefEditAct.EVENT.Shape_List_Update:
+      case DefConfAct.EVENT.Shape_List_Update:
         console.log(event);
         this.props.ACT_EDIT_SHAPELIST_UPDATE(event.data);
       break; 
-      case DefEditAct.EVENT.Shape_Set:
+      case DefConfAct.EVENT.Shape_Set:
         console.log(event);
         this.props.ACT_EDIT_SHAPE_SET(event.data);
       break; 
@@ -87,7 +87,7 @@ class CanvasComponent extends React.Component {
   componentWillUpdate(nextProps, nextState) {
     
     console.log("CanvasComponent render",nextProps.c_state);
-    //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
+    //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
     
     let stateObj = xstate_GetCurrentMainState(nextProps.c_state);
     let substate = stateObj.substate;
@@ -124,13 +124,13 @@ const mapStateToProps_CanvasComponent = (state) => {
 const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => 
 { 
   return{
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
-    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefEditAct.Edit_Tar_Update(targetObj))},
-    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefEditAct.Edit_Tar_Ele_Cand_Update(targetObj))},
-    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(DefEditAct.Shape_List_Update(shapeList))},
-    ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(DefEditAct.Shape_Set(shape_data))},
+    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefConfAct.Edit_Tar_Update(targetObj))},
+    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
+    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(DefConfAct.Shape_List_Update(shapeList))},
+    ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(DefConfAct.Shape_Set(shape_data))},
   }
 }
 const CanvasComponent_rdx = connect(
@@ -138,7 +138,7 @@ const CanvasComponent_rdx = connect(
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
 
-class APP_EDIT_MODE extends React.Component{
+class APP_DEFCONF_MODE extends React.Component{
 
 
   componentDidMount()
@@ -267,10 +267,10 @@ class APP_EDIT_MODE extends React.Component{
     let MenuSet=[];
     let menu_height="HXA";//auto
     console.log("CanvasComponent render");
-    let substate = this.props.c_state.value[UIAct.UI_SM_STATES.EDIT_MODE];
+    let substate = this.props.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
     switch(substate)
     {
-      case UIAct.UI_SM_STATES.EDIT_MODE_NEUTRAL:
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       MenuSet=[
           <BASE_COM.Button
           key="<"
@@ -314,7 +314,7 @@ class APP_EDIT_MODE extends React.Component{
             text="LOAD" onClick={()=>{this.props.ACT_Load_Def_Config({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,
         ];
       break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:         
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:         
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox width4"
@@ -402,7 +402,7 @@ class APP_EDIT_MODE extends React.Component{
       }
       break;
       
-      case UIAct.UI_SM_STATES.EDIT_MODE_LINE_CREATE:         
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:         
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox width4"
@@ -411,7 +411,7 @@ class APP_EDIT_MODE extends React.Component{
       ];
       
       break;
-      case UIAct.UI_SM_STATES.EDIT_MODE_ARC_CREATE:          
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:          
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox width4"
@@ -421,7 +421,7 @@ class APP_EDIT_MODE extends React.Component{
       ];
       break;
 
-      case UIAct.UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:         
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:         
       MenuSet=[
         <BASE_COM.Button
           addClass="layout black vbox"
@@ -450,7 +450,7 @@ class APP_EDIT_MODE extends React.Component{
       }
       break;
 
-      case UIAct.UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:  
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:  
       {       
         MenuSet=[
           <BASE_COM.Button
@@ -487,7 +487,7 @@ class APP_EDIT_MODE extends React.Component{
       }
       break;
 
-      case UIAct.UI_SM_STATES.EDIT_MODE_SHAPE_EDIT: 
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT: 
       menu_height = "HXA";         
       MenuSet=[
         <BASE_COM.Button
@@ -531,7 +531,7 @@ class APP_EDIT_MODE extends React.Component{
     }
  
 
-    console.log("APP_EDIT_MODE render");
+    console.log("APP_DEFCONF_MODE render");
     return(
     <div className="HXF">
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
@@ -547,7 +547,7 @@ class APP_EDIT_MODE extends React.Component{
 }
 
 
-const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) => 
+const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => 
 { 
   return{
     ACT_Line_Add_Mode: (arg) =>  {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create))},
@@ -557,32 +557,32 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
    
-    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefEditAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
-    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefEditAct.Edit_Tar_Ele_Cand_Update(targetObj))},
-    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefEditAct.Edit_Tar_Update(targetObj))},
+    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
+    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
+    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefConfAct.Edit_Tar_Update(targetObj))},
    
     ACT_Save_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Save_Def_Config(info))},
     ACT_Trigger_Inspection: (info) => {dispatch(UIAct.EV_UI_EC_Trigger_Inspection(info))},
     ACT_Load_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Load_Def_Config(info))},
    
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
   }
 }
 
-const mapStateToProps_APP_EDIT_MODE = (state) => {
+const mapStateToProps_APP_DEFCONF_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
     shape_list:state.UIData.edit_info.list,
   }
 };
-const APP_EDIT_MODE_rdx = connect(
-    mapStateToProps_APP_EDIT_MODE,
-    mapDispatchToProps_APP_EDIT_MODE)(APP_EDIT_MODE);
+const APP_DEFCONF_MODE_rdx = connect(
+    mapStateToProps_APP_DEFCONF_MODE,
+    mapDispatchToProps_APP_DEFCONF_MODE)(APP_DEFCONF_MODE);
 
-
+    
 class APPMain extends React.Component{
 
 
@@ -603,14 +603,22 @@ class APPMain extends React.Component{
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
-      UI = 
+      UI.push(
         <BASE_COM.Button
-          addClass="lgreen width4"
-          text="EDIT MODE" onClick={this.props.EV_UI_Edit_Mode}/>;
+          key="EDIT MODE" addClass="lgreen width4"
+          text="EDIT MODE" onClick={this.props.EV_UI_Edit_Mode}/>);
+          
+      UI.push(
+        <BASE_COM.Button
+          key="INSP MODE" addClass="lblue width4"
+          text="INSP MODE" onClick={this.props.EV_UI_Insp_Mode}/>);
     }
-    else if(stateObj.state === UIAct.UI_SM_STATES.EDIT_MODE)
+    else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
     {
-      UI = <APP_EDIT_MODE_rdx/>;
+      UI = <APP_DEFCONF_MODE_rdx/>;
+    }
+    else if(stateObj.state === UIAct.UI_SM_STATES.INSP_MODE)
+    {
     }
 
     return(
@@ -623,7 +631,8 @@ class APPMain extends React.Component{
 }
 const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   return {
-    EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())}
+    EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
+    EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())}
   }
 }
 const mapStateToProps_APPMain = (state) => {

@@ -7,8 +7,8 @@ export const EVENT = {
   Shape_List_Update:"Shape_List_Update",
   Shape_Set:"Shape_Set",
 
-  SUCCESS:"EDIT_MODE_SUCCESS",
-  FAIL:"EDIT_MODE_FAIL",
+  SUCCESS:"DEFCONF_MODE_SUCCESS",
+  FAIL:"DEFCONF_MODE_FAIL",
 
 }
 
@@ -18,7 +18,6 @@ export function Edit_Tar_Update(targetObj)
     type: EVENT.Edit_Tar_Update,data: targetObj
   }
 }
-
 
 export function Edit_Tar_Ele_Trace_Update(keyTrace)
 {

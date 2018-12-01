@@ -6,54 +6,68 @@ import thunk from 'redux-thunk';
 
 
 import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
-import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
 const EditStates = {
-  initial: UISTS.EDIT_MODE_NEUTRAL,
+  initial: UISTS.DEFCONF_MODE_NEUTRAL,
   states: {
-    [UISTS.EDIT_MODE_NEUTRAL]
-            :  {on: {[UISEV.Line_Create]: UISTS.EDIT_MODE_LINE_CREATE,
-                     [UISEV.Arc_Create]:  UISTS.EDIT_MODE_ARC_CREATE,
-                     [UISEV.Search_Point_Create]: UISTS.EDIT_MODE_SEARCH_POINT_CREATE,
-                     [UISEV.Aux_Point_Create]: UISTS.EDIT_MODE_AUX_POINT_CREATE,
-                     [UISEV.Shape_Edit]:  UISTS.EDIT_MODE_SHAPE_EDIT,
-                     [UISEV.Measure_Create]:  UISTS.EDIT_MODE_MEASURE_CREATE,
+    [UISTS.DEFCONF_MODE_NEUTRAL]
+            :  {on: {[UISEV.Line_Create]: UISTS.DEFCONF_MODE_LINE_CREATE,
+                     [UISEV.Arc_Create]:  UISTS.DEFCONF_MODE_ARC_CREATE,
+                     [UISEV.Search_Point_Create]: UISTS.DEFCONF_MODE_SEARCH_POINT_CREATE,
+                     [UISEV.Aux_Point_Create]: UISTS.DEFCONF_MODE_AUX_POINT_CREATE,
+                     [UISEV.Shape_Edit]:  UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                     [UISEV.Measure_Create]:  UISTS.DEFCONF_MODE_MEASURE_CREATE,
                     }},
-    [UISTS.EDIT_MODE_SEARCH_POINT_CREATE]
-               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_AUX_POINT_CREATE]
-               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_LINE_CREATE]
-               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_ARC_CREATE]
-               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_SHAPE_EDIT]
-               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
-                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
-    [UISTS.EDIT_MODE_MEASURE_CREATE]
-               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}}
+    [UISTS.DEFCONF_MODE_SEARCH_POINT_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_AUX_POINT_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_LINE_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_ARC_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_SHAPE_EDIT]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_NEUTRAL,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}},
+    [UISTS.DEFCONF_MODE_MEASURE_CREATE]
+               :{on: {[DefConfAct.EVENT.SUCCESS]: UISTS.DEFCONF_MODE_SHAPE_EDIT,
+                      [DefConfAct.EVENT.FAIL]:    UISTS.DEFCONF_MODE_NEUTRAL}}
   }
 };
+
+const InspectionStates = {
+  initial: UISTS.DEFCONF_MODE_NEUTRAL,
+  states: {
+    [UISTS.DEFCONF_MODE_NEUTRAL]
+            :  {on: {}}
+  }
+};
+
 
 let ST = {
     initial: UISTS.SPLASH,
     states: {
       [UISTS.SPLASH]:    { on: { [UISEV.Connected]:   UISTS.MAIN } },
-      [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.EDIT_MODE,
+      [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.DEFCONF_MODE,
+                                 [UISEV.Insp_Mode]:   UISTS.INSP_MODE,
                                  [UISEV.Disonnected]: UISTS.SPLASH, 
                                  [UISEV.EXIT]:        UISTS.SPLASH } },
-      [UISTS.EDIT_MODE]: Object.assign(
+      [UISTS.DEFCONF_MODE]: Object.assign(
                  { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
                          [UISEV.EXIT]:        UISTS.MAIN }},
-                 EditStates)
+                 EditStates),
+      [UISTS.INSP_MODE]: Object.assign(
+                 { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
+                         [UISEV.EXIT]:        UISTS.MAIN }},
+                 InspectionStates)
     }
   };
 

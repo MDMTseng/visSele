@@ -1,7 +1,7 @@
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
-import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
@@ -100,7 +100,7 @@ function StateReducer(newState,action)
     case UISTS.MAIN:
       newState.showSplash=false;
       return newState;
-    case UISTS.EDIT_MODE:
+    case UISTS.DEFCONF_MODE:
     {
 
 
@@ -143,18 +143,18 @@ function StateReducer(newState,action)
 
         
 
-        case DefEditAct.EVENT.Shape_List_Update:
+        case DefConfAct.EVENT.Shape_List_Update:
           newState.edit_info.list=(action.data == null)? []: action.data;
         break;
 
-        case DefEditAct.EVENT.Edit_Tar_Update:
+        case DefConfAct.EVENT.Edit_Tar_Update:
           newState.edit_info.edit_tar_info=
             (action.data == null)? null : Object.assign({},action.data);
           
           newState.edit_info.edit_tar_ele_trace=null;
           newState.edit_info.edit_tar_ele_cand=null;
         break;
-        case DefEditAct.EVENT.Edit_Tar_Ele_Trace_Update:
+        case DefConfAct.EVENT.Edit_Tar_Ele_Trace_Update:
           newState.edit_info.edit_tar_ele_trace=
             (action.data == null)? null : action.data.slice();
         break;
@@ -189,13 +189,13 @@ function StateReducer(newState,action)
           newState.WS_CH.send("II",0,dat);
         }
         break;
-        case DefEditAct.EVENT.Edit_Tar_Ele_Cand_Update:
+        case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:
           newState.edit_info.edit_tar_ele_cand=
             (action.data == null)? null :(action.data instanceof Object)? Object.assign({},action.data):action.data;
-            console.log("EDIT_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
+            console.log("DEFCONF_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
         break;
 
-        case DefEditAct.EVENT.Shape_Set:
+        case DefConfAct.EVENT.Shape_Set:
         {
           //Three cases
           //ID undefined but shaped is defiend -Add new shape
@@ -238,7 +238,7 @@ function StateReducer(newState,action)
       
       switch(substate)
       {
-        case UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:
+        case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
         {
           if(newState.edit_info.edit_tar_info==null)
           {
@@ -274,7 +274,7 @@ function StateReducer(newState,action)
           }
           break;
         }
-        case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
+        case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         {
           if(newState.edit_info.edit_tar_info==null)
           {
@@ -310,7 +310,7 @@ function StateReducer(newState,action)
 
 
         
-        case UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:
+        case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         {
           if(newState.edit_info.edit_tar_info==null)
           {

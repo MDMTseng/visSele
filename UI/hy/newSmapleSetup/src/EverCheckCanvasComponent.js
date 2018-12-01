@@ -2,7 +2,7 @@
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
-import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {
   distance_arc_point,
@@ -115,7 +115,7 @@ class EverCheckCanvasComponent{
 
     this.onfeatureselected=(ev)=>{};
     
-    this.state=UI_SM_STATES.EDIT_MODE_NEUTRAL;
+    this.state=UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
 
 
     this.EditShape=null;
@@ -137,9 +137,9 @@ class EverCheckCanvasComponent{
       this.state=state;
       this.near_select_obj=null;
 
-      if(this.state==UI_SM_STATES.EDIT_MODE_NEUTRAL)
+      if(this.state==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
       {
-        this.EmitEvent(DefEditAct.Edit_Tar_Update(null));
+        this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
         this.EditShape=null;
         this.EditPoint=null;
       }
@@ -156,7 +156,7 @@ class EverCheckCanvasComponent{
 
   SetShape( shape_obj, id)
   {
-    this.EmitEvent(DefEditAct.Shape_Set({shape:shape_obj,id:id}));
+    this.EmitEvent(DefConfAct.Shape_Set({shape:shape_obj,id:id}));
   }
 
   SetEditShape( EditShape )
@@ -213,10 +213,10 @@ class EverCheckCanvasComponent{
     //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
     switch(this.state)
     {
-      case UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:
+      case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         
         if(this.EditPoint!=null)break;
-      case UI_SM_STATES.EDIT_MODE_NEUTRAL:
+      case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
         //console.log("onmousemove");
         if(this.mouseStatus.status==1)
         {
@@ -1124,7 +1124,7 @@ class EverCheckCanvasComponent{
 
     switch(this.state)
     {
-      case UI_SM_STATES.EDIT_MODE_LINE_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:
       {
         
         if(this.mouseStatus.status==1)
@@ -1143,13 +1143,13 @@ class EverCheckCanvasComponent{
           if(this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
             this.SetShape(this.EditShape);
-            this.EmitEvent(DefEditAct.SUCCESS());
+            this.EmitEvent(DefConfAct.SUCCESS());
           }
         }
         break;
       }      
       
-      case UI_SM_STATES.EDIT_MODE_ARC_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:
       {
         
         if(this.mouseStatus.status==1)
@@ -1176,23 +1176,23 @@ class EverCheckCanvasComponent{
           if(this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
             this.SetShape( this.EditShape);
-            this.EmitEvent(DefEditAct.SUCCESS());
+            this.EmitEvent(DefConfAct.SUCCESS());
           }
         }
         break;
       }
 
 
-      case UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE:
-      case UI_SM_STATES.EDIT_MODE_AUX_POINT_CREATE:
-      case UI_SM_STATES.EDIT_MODE_MEASURE_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
       {
         
         if(this.mouseStatus.status==1)
         {
           if(ifOnMouseLeftClickEdge && this.CandEditPointInfo!=null)
           {
-            if(this.state == UI_SM_STATES.EDIT_MODE_SEARCH_POINT_CREATE){
+            if(this.state == UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE){
               
               this.EditShape={
                 type:SHAPE_TYPE.search_point,
@@ -1208,13 +1208,13 @@ class EverCheckCanvasComponent{
               };
               
               this.SetShape( this.EditShape);
-              this.EmitEvent(DefEditAct.SUCCESS());
+              this.EmitEvent(DefConfAct.SUCCESS());
 
             }
             else
             {
               console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
-              this.EmitEvent(DefEditAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
+              this.EmitEvent(DefConfAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
   
             }
           }
@@ -1241,7 +1241,7 @@ class EverCheckCanvasComponent{
       }
 
 
-      case UI_SM_STATES.EDIT_MODE_SHAPE_EDIT:
+      case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
       {
         
         if(this.mouseStatus.status==1)
@@ -1258,12 +1258,12 @@ class EverCheckCanvasComponent{
                   this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
                   this.EditPoint=this.EditShape[pt_info.key];
                   this.tmp_EditShape_id = this.EditShape.id;
-                  this.EmitEvent(DefEditAct.Edit_Tar_Update(this.EditShape));
+                  this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
                   
                 }
                 //else
                 {
-                  //this.EmitEvent({type:DefEditAct.EVENT.Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
+                  //this.EmitEvent({type:DefConfAct.EVENT.Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
 
                 }
               }
@@ -1272,7 +1272,7 @@ class EverCheckCanvasComponent{
             {
               this.EditPoint=null;
               this.EditShape=null;
-              this.EmitEvent(DefEditAct.Edit_Tar_Update(this.EditShape));
+              this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
             
             }
             
@@ -1283,7 +1283,7 @@ class EverCheckCanvasComponent{
             {
               this.EditPoint.x = mouseOnCanvas2.x;
               this.EditPoint.y = mouseOnCanvas2.y;
-              this.EmitEvent(DefEditAct.Edit_Tar_Update(this.EditShape));
+              this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
             }
           }
         }
