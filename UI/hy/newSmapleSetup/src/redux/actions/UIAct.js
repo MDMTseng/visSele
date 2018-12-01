@@ -72,14 +72,6 @@ export const UI_SM_EVENT = {
   Shape_Edit:"Shape_Edit",
   Measure_Create:"Measure_Create",
 
-  EDIT_MODE_SUCCESS:"EDIT_MODE_SUCCESS",
-  EDIT_MODE_FAIL:"EDIT_MODE_FAIL",
-
-  EDIT_MODE_Edit_Tar_Update:"EDIT_MODE_Edit_Tar_Update",
-  EDIT_MODE_Edit_Tar_Ele_Trace_Update:"EDIT_MODE_Edit_Tar_Ele_Trace_Update",
-  EDIT_MODE_Edit_Tar_Ele_Cand_Update:"EDIT_MODE_Edit_Tar_Ele_Cand_Update",
-  EDIT_MODE_Shape_List_Update:"EDIT_MODE_Shape_List_Update",
-  EDIT_MODE_Shape_Set:"EDIT_MODE_Shape_Set",
 
   EC_Save_Def_Config:"EC_Save_Def_Config",
   EC_Load_Def_Config:"EC_Load_Def_Config",
@@ -122,44 +114,6 @@ export function EV_UI_EC_Trigger_Inspection(info)
 }
 
 
-export function EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj)
-{
-  return {
-    type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data: targetObj
-  }
-}
-
-
-export function EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace)
-{
-  return {
-    type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Trace_Update,data: keyTrace
-  }
-}
-export function EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj)
-{
-  return {
-    type: UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data: targetObj
-  }
-}
-
-export function EV_UI_EDIT_MODE_Shape_List_Update(shapeList)
-{
-  return {
-    type: UI_SM_EVENT.EDIT_MODE_Shape_List_Update,data: shapeList
-  }
-}
-
-export function EV_UI_EDIT_MODE_Shape_Set(shape_data)
-{
-  return {
-    type: UI_SM_EVENT.EDIT_MODE_Shape_Set,data: {shape:shape_data.shape,id:shape_data.id}
-  }
-}
-
-
-
-
 export function EV_WS_Connected(peer)
 {
   return {
@@ -187,6 +141,7 @@ export function EV_WS_SEND(ws,data)
     type: BPG_WS_EVENT.BPG_WS_SEND ,data:data,ws:ws
   }
 }
+
 export function EV_WS_RECV(evt)
 {
   return {
@@ -211,11 +166,6 @@ export function EV_UI_ACT(ACT,data=null,misc=null)
   }
 }
 
-
-export function EV_UI_BROADCAST(data=null,misc=null)
-{
-  return EV_UI_ACT(UI_SM_EVENT.BROADCAST,data,misc);
-}
 
 export function EV_WS_Inspection_Report(report)
 {

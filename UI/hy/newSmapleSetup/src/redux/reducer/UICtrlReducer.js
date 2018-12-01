@@ -1,6 +1,7 @@
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
+import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
@@ -127,6 +128,7 @@ function StateReducer(newState,action)
           newState.edit_info.edit_tar_info = null;
           
           newState.edit_info.list=newState.edit_info._obj.shapeList;
+          newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
           
           //newState.edit_info.inherentShapeList=
             //newState.edit_info._obj.UpdateInherentShapeList();
@@ -141,18 +143,18 @@ function StateReducer(newState,action)
 
         
 
-        case UISEV.EDIT_MODE_Shape_List_Update:
+        case DefEditAct.EVENT.Shape_List_Update:
           newState.edit_info.list=(action.data == null)? []: action.data;
         break;
 
-        case UISEV.EDIT_MODE_Edit_Tar_Update:
+        case DefEditAct.EVENT.Edit_Tar_Update:
           newState.edit_info.edit_tar_info=
             (action.data == null)? null : Object.assign({},action.data);
           
           newState.edit_info.edit_tar_ele_trace=null;
           newState.edit_info.edit_tar_ele_cand=null;
         break;
-        case UISEV.EDIT_MODE_Edit_Tar_Ele_Trace_Update:
+        case DefEditAct.EVENT.Edit_Tar_Ele_Trace_Update:
           newState.edit_info.edit_tar_ele_trace=
             (action.data == null)? null : action.data.slice();
         break;
@@ -187,13 +189,13 @@ function StateReducer(newState,action)
           newState.WS_CH.send("II",0,dat);
         }
         break;
-        case UISEV.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
+        case DefEditAct.EVENT.Edit_Tar_Ele_Cand_Update:
           newState.edit_info.edit_tar_ele_cand=
             (action.data == null)? null :(action.data instanceof Object)? Object.assign({},action.data):action.data;
             console.log("EDIT_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
         break;
 
-        case UISEV.EDIT_MODE_Shape_Set:
+        case DefEditAct.EVENT.Shape_Set:
         {
           //Three cases
           //ID undefined but shaped is defiend -Add new shape

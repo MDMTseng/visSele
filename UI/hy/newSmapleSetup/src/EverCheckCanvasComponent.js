@@ -2,6 +2,7 @@
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
+import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {
   distance_arc_point,
@@ -138,7 +139,7 @@ class EverCheckCanvasComponent{
 
       if(this.state==UI_SM_STATES.EDIT_MODE_NEUTRAL)
       {
-        this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:null});
+        this.EmitEvent(DefEditAct.Edit_Tar_Update(null));
         this.EditShape=null;
         this.EditPoint=null;
       }
@@ -155,7 +156,7 @@ class EverCheckCanvasComponent{
 
   SetShape( shape_obj, id)
   {
-    this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Shape_Set,data:{shape:shape_obj,id:id}});
+    this.EmitEvent(DefEditAct.Shape_Set({shape:shape_obj,id:id}));
   }
 
   SetEditShape( EditShape )
@@ -674,7 +675,7 @@ class EverCheckCanvasComponent{
 
           let line = subObjs[0];
 
-          let vector = this.shapeVectorParse(eObject);
+          let vector = db_obj.shapeVectorParse(eObject);
           let cnormal={x:-vector.y,y:vector.x};
           let mag=eObject.width/2;//It starts from center so devide by 2.
           vector.x*=mag;
@@ -1141,10 +1142,8 @@ class EverCheckCanvasComponent{
         {
           if(this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
-            this.SetShape( this.EditShape);
-            
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
-            
+            this.SetShape(this.EditShape);
+            this.EmitEvent(DefEditAct.SUCCESS());
           }
         }
         break;
@@ -1177,9 +1176,7 @@ class EverCheckCanvasComponent{
           if(this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
             this.SetShape( this.EditShape);
-            
-            this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
-            
+            this.EmitEvent(DefEditAct.SUCCESS());
           }
         }
         break;
@@ -1211,12 +1208,13 @@ class EverCheckCanvasComponent{
               };
               
               this.SetShape( this.EditShape);
-              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_SUCCESS});
+              this.EmitEvent(DefEditAct.SUCCESS());
+
             }
             else
             {
               console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
-              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
+              this.EmitEvent(DefEditAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
   
             }
           }
@@ -1260,11 +1258,12 @@ class EverCheckCanvasComponent{
                   this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
                   this.EditPoint=this.EditShape[pt_info.key];
                   this.tmp_EditShape_id = this.EditShape.id;
-                  this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+                  this.EmitEvent(DefEditAct.Edit_Tar_Update(this.EditShape));
+                  
                 }
                 //else
                 {
-                  //this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
+                  //this.EmitEvent({type:DefEditAct.EVENT.Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
 
                 }
               }
@@ -1273,7 +1272,7 @@ class EverCheckCanvasComponent{
             {
               this.EditPoint=null;
               this.EditShape=null;
-              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+              this.EmitEvent(DefEditAct.Edit_Tar_Update(this.EditShape));
             
             }
             
@@ -1284,7 +1283,7 @@ class EverCheckCanvasComponent{
             {
               this.EditPoint.x = mouseOnCanvas2.x;
               this.EditPoint.y = mouseOnCanvas2.y;
-              this.EmitEvent({type:UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update,data:this.EditShape});
+              this.EmitEvent(DefEditAct.Edit_Tar_Update(this.EditShape));
             }
           }
         }

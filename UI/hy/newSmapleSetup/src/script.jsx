@@ -18,6 +18,7 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
+import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
 let StoreX= ReduxStoreSetUp({});
@@ -32,25 +33,25 @@ class CanvasComponent extends React.Component {
   ec_canvas_EmitEvent(event){
     switch(event.type)
     { 
-      case UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS:
+      case DefEditAct.EVENT.SUCCESS:
         this.props.ACT_SUCCESS();
       break;
-      case UIAct.UI_SM_EVENT.EDIT_MODE_FAIL:
+      case DefEditAct.EVENT.FAIL:
         this.props.ACT_Fail();
       break; 
-      case UIAct.UI_SM_EVENT.EDIT_MODE_Edit_Tar_Update:
+      case DefEditAct.EVENT.Edit_Tar_Update:
         //console.log(event);
         this.props.ACT_EDIT_TAR_UPDATE(event.data);
       break; 
-      case UIAct.UI_SM_EVENT.EDIT_MODE_Edit_Tar_Ele_Cand_Update:
+      case DefEditAct.EVENT.Edit_Tar_Ele_Cand_Update:
         //console.log(event);
         this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(event.data);
       break; 
-      case UIAct.UI_SM_EVENT.EDIT_MODE_Shape_List_Update:
+      case DefEditAct.EVENT.Shape_List_Update:
         console.log(event);
         this.props.ACT_EDIT_SHAPELIST_UPDATE(event.data);
       break; 
-      case UIAct.UI_SM_EVENT.EDIT_MODE_Shape_Set:
+      case DefEditAct.EVENT.Shape_Set:
         console.log(event);
         this.props.ACT_EDIT_SHAPE_SET(event.data);
       break; 
@@ -123,13 +124,13 @@ const mapStateToProps_CanvasComponent = (state) => {
 const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => 
 { 
   return{
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
-    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
-    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj))},
-    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_List_Update(shapeList))},
-    ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(UIAct.EV_UI_EDIT_MODE_Shape_Set(shape_data))},
+    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefEditAct.Edit_Tar_Update(targetObj))},
+    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefEditAct.Edit_Tar_Ele_Cand_Update(targetObj))},
+    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(DefEditAct.Shape_List_Update(shapeList))},
+    ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(DefEditAct.Shape_Set(shape_data))},
   }
 }
 const CanvasComponent_rdx = connect(
@@ -556,16 +557,16 @@ const mapDispatchToProps_APP_EDIT_MODE = (dispatch, ownProps) =>
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
    
-    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Trace_Update(keyTrace))},
-    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Ele_Cand_Update(targetObj))},
-    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(UIAct.EV_UI_EDIT_MODE_Edit_Tar_Update(targetObj))},
+    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefEditAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
+    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefEditAct.Edit_Tar_Ele_Cand_Update(targetObj))},
+    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefEditAct.Edit_Tar_Update(targetObj))},
    
     ACT_Save_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Save_Def_Config(info))},
     ACT_Trigger_Inspection: (info) => {dispatch(UIAct.EV_UI_EC_Trigger_Inspection(info))},
     ACT_Load_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Load_Def_Config(info))},
    
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EDIT_MODE_FAIL))},
+    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.SUCCESS))},
+    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefEditAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
   }
 }

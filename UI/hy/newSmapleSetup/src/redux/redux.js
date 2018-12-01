@@ -5,7 +5,8 @@ import {ECStateMachine} from "REDUX_STORE_SRC/middleware/ECStateMachine";
 import thunk from 'redux-thunk';
 
 
-import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
+import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
+import * as DefEditAct from 'REDUX_STORE_SRC/actions/DefEditAct';
 
 
 let UISTS = UI_SM_STATES;
@@ -22,23 +23,23 @@ const EditStates = {
                      [UISEV.Measure_Create]:  UISTS.EDIT_MODE_MEASURE_CREATE,
                     }},
     [UISTS.EDIT_MODE_SEARCH_POINT_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_AUX_POINT_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_LINE_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_ARC_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_SHAPE_EDIT]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
+               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
+                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}},
     [UISTS.EDIT_MODE_MEASURE_CREATE]
-               :{on: {[UISEV.EDIT_MODE_SUCCESS]: UISTS.EDIT_MODE_NEUTRAL,
-                      [UISEV.EDIT_MODE_FAIL]:    UISTS.EDIT_MODE_NEUTRAL}}
+               :{on: {[DefEditAct.EVENT.SUCCESS]: UISTS.EDIT_MODE_SHAPE_EDIT,
+                      [DefEditAct.EVENT.FAIL]:    UISTS.EDIT_MODE_NEUTRAL}}
   }
 };
 
