@@ -156,9 +156,14 @@ class APPMasterX extends React.Component{
       },
       onclose:(ev,ws_obj)=>{
         this.props.DISPATCH(UIAct.EV_WS_Disconnected(ev));
+        setTimeout(()=>{
+          this.props.ACT_WS_CONNECT(this.props.WS_ID,"ws://localhost:4090",this.BPG_WS);
+        },3000);
       },
       onerror:(ev,ws_obj)=>{
-    
+        setTimeout(()=>{
+          this.props.ACT_WS_CONNECT(this.props.WS_ID,"ws://localhost:4090",this.BPG_WS);
+        },3000);
       },
       send:(data,ws_obj)=>{
         console.log(">>>>>>>");
@@ -248,90 +253,6 @@ const mapStateToProps_APPMasterX = (state) => {
 const APPMasterX_rdx = connect(mapStateToProps_APPMasterX,mapDispatchToProps_APPMasterX)(APPMasterX);
 
 
-
-/*
-function BPG_WS (url){
-  
-  this.binary_ws = new BPG_WEBSOCKET.BPG_WebSocket(url);//"ws://localhost:4090");
-
-  let onMessage=(evt)=>
-  {
-    console.log("onMessage:::");
-    console.log(evt);
-    if (evt.data instanceof ArrayBuffer) {
-      let header = BPG_Protocol.raw2header(evt);
-      console.log("onMessage:["+header.type+"]");
-      if(header.type === "HR")
-      {
-        this.binary_ws.send(BPG_Protocol.objbarr2raw("HR",0,{a:["d"]}));
-
-        // websocket.send(BPG_Protocol.obj2raw("TG",{}));
-        //setTimeout(()=>{this.state.ws.send(BPG_Protocol.obj2raw("TG",{}));},0);
-        
-      }
-      else if(header.type === "SS")
-      {
-        let SS =BPG_Protocol.raw2obj(evt);
-        // console.log(header);
-        console.log("Session start:",SS);
-      }
-      else if(header.type === "IM")
-      {
-        let pkg = BPG_Protocol.raw2Obj_IM(evt);
-        let img = new ImageData(pkg.image, pkg.width);
-        StoreX.dispatch(UIAct.EV_WS_Image_Update(img));
-      }
-      else if(header.type === "IR" || header.type === "RP" )
-      {
-        let report =BPG_Protocol.raw2obj(evt);
-        console.log(header.type,report);
-        StoreX.dispatch(UIAct.EV_WS_Inspection_Report(report.data));
-
-      }
-      else if(header.type === "DF")
-      {
-        let report =BPG_Protocol.raw2obj(evt);
-        console.log(header.type,report);
-        StoreX.dispatch(UIAct.EV_WS_Define_File_Update(report.data));
-
-      }
-      else if(header.type === "SG")
-      {
-        let report =BPG_Protocol.raw2obj(evt);
-        console.log(header.type,report);
-        StoreX.dispatch(UIAct.EV_WS_SIG360_Report_Update(report.data));
-
-      }
-    }
-  }
-  let ws_onopen=(evt)=>
-  {
-    StoreX.dispatch(UIAct.EV_WS_Connected(evt));
-    StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
-  }
-
-  let ws_onclose=(evt)=>
-  {
-    StoreX.dispatch(UIAct.EV_WS_Disconnected(evt));
-  }
-  this.send=(tl,prop=0,data={},uintArr=null)=>
-  {
-    if(data instanceof Uint8Array)
-    {
-      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,null,data));
-    }
-    else
-    {
-      this.binary_ws.send(BPG_Protocol.objbarr2raw(tl,prop,data,uintArr));
-    }
-  }
-  this.binary_ws.onmessage_bk = onMessage.bind(this);
-  this.binary_ws.onopen_bk = ws_onopen.bind(this);
-  this.binary_ws.onclose_bk = ws_onclose.bind(this);
-}
-
-let bpg_ws = new BPG_WS("ws://localhost:4090");
-*/
 ReactDOM.render(
   
   <Provider store={StoreX}>

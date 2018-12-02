@@ -84,7 +84,7 @@ export const MWWebSocket = WSData => store => next => action => {
     // User request to disconnect
     case MWWS_EVENT.DISCONNECT:
     {
-      WSData[id].websocket.disconnect();
+      WSData[id].websocket.close();
       break;
     }
 
