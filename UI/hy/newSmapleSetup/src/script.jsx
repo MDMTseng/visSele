@@ -161,9 +161,6 @@ class APPMasterX extends React.Component{
         },3000);
       },
       onerror:(ev,ws_obj)=>{
-        setTimeout(()=>{
-          this.props.ACT_WS_CONNECT(this.props.WS_ID,"ws://localhost:4090",this.BPG_WS);
-        },3000);
       },
       send:(data,ws_obj)=>{
         console.log(">>>>>>>");
@@ -186,9 +183,6 @@ class APPMasterX extends React.Component{
 
     
   }
-  shouldComponentUpdate(nextProps, nextState) {
-    return true;
-  }
   render() {
     console.log("APPMasterX render",this.props);
 
@@ -201,7 +195,7 @@ class APPMasterX extends React.Component{
       xstateG = null;
     }
     return(
-    <$CSSTG transitionName = "logoFrame" className="HXF">
+    <div className="HXF">
       <APPMain_rdx key="APP"/>
 
       <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph "+((this.props.showSM_graph)?"":"hide")} fixedFrame={true}>
@@ -228,7 +222,7 @@ class APPMasterX extends React.Component{
         </div>
         :[]
       }
-    </$CSSTG>
+    </div>
     );
   }
 }
@@ -237,6 +231,7 @@ const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
   return {
     ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
     ACT_WS_CONNECT: (id,url,obj) => dispatch({type:MWWS_EVENT.CONNECT,data:Object.assign({id:id,url:url,binaryType:"arraybuffer"},obj)}),
+    ACT_WS_DISCONNECT:(id)=> dispatch({type:MWWS_EVENT.DISCONNECT,data:{id:id}}),
     DISPATCH:(act)=>dispatch(act),
     ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
