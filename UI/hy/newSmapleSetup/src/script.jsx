@@ -18,6 +18,7 @@ import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+import {MWWS_EVENT} from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
 
 
@@ -58,7 +59,7 @@ class APPMain extends React.Component{
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
     {
-      UI = <APP_DEFCONF_MODE_rdx EC_WS_CH={bpg_ws}/>;
+      UI = <APP_DEFCONF_MODE_rdx/>;
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.INSP_MODE)
     {
@@ -92,6 +93,94 @@ class APPMasterX extends React.Component{
     //this.state={};
     //this.state.do_splash=true;
 
+
+    this.BPG_WS={
+      onopen:(ev,ws_obj)=>{
+    
+        StoreX.dispatch(UIAct.EV_WS_Connected(ws_obj));
+        //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
+      },
+      onmessage:(evt,ws_obj)=>{
+        console.log("onMessage:::");
+        console.log(evt);
+        if (!(evt.data instanceof ArrayBuffer)) return;
+
+        let header = BPG_Protocol.raw2header(evt);
+        console.log("onMessage:["+header.type+"]");
+        switch(header.type )
+        {
+          case "HR":
+          {
+            //console.log(this.props.WS_CH);
+            this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+            break;
+          }
+
+          case "SS":
+          {
+            let SS =BPG_Protocol.raw2obj(evt);
+            // console.log(header);
+            console.log("Session start:",SS);
+            break;
+          }
+          case "IM":
+          {
+            let pkg = BPG_Protocol.raw2Obj_IM(evt);
+            let img = new ImageData(pkg.image, pkg.width);
+            this.props.DISPATCH(UIAct.EV_WS_Image_Update(img));
+            break;
+          }
+          case "IR":
+          case "RP":
+          {
+            let report =BPG_Protocol.raw2obj(evt);
+            console.log(header.type,report);
+            this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
+            break;
+          }
+          case "DF":
+          {
+            let report =BPG_Protocol.raw2obj(evt);
+            console.log(header.type,report);
+            this.props.DISPATCH(UIAct.EV_WS_Define_File_Update(report.data));
+            break;
+          }
+          case "SG":
+          {
+            let report =BPG_Protocol.raw2obj(evt);
+            console.log(header.type,report);
+            this.props.DISPATCH(UIAct.EV_WS_SIG360_Report_Update(report.data));
+            break;
+          }
+
+        }
+      },
+      onclose:(ev,ws_obj)=>{
+        this.props.DISPATCH(UIAct.EV_WS_Disconnected(ev));
+      },
+      onerror:(ev,ws_obj)=>{
+    
+      },
+      send:(data,ws_obj)=>{
+        console.log(">>>>>>>");
+        //tl,prop=0,data={},uintArr=null
+        //ws_obj.websocket.send(BPG_Protocol.objbarr2raw("HR",0,{a:["d"]}));
+
+        if(data.data instanceof Uint8Array)
+        {
+          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,null,data.data));
+        }
+        else
+        {
+          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,data.data,data.uintArr));
+        }
+      }
+    }
+    
+    this.props.ACT_WS_CONNECT(this.props.WS_ID,"ws://localhost:4090",this.BPG_WS);
+    
+
+    
   }
   shouldComponentUpdate(nextProps, nextState) {
     return true;
@@ -143,17 +232,25 @@ class APPMasterX extends React.Component{
 const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
   return {
     ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
+    ACT_WS_CONNECT: (id,url,obj) => dispatch({type:MWWS_EVENT.CONNECT,data:Object.assign({id:id,url:url,binaryType:"arraybuffer"},obj)}),
+    DISPATCH:(act)=>dispatch(act),
+    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
 }
 const mapStateToProps_APPMasterX = (state) => {
   return {
     showSplash: state.UIData.showSplash,
     showSM_graph: state.UIData.showSM_graph,
-    stateMachine:state.UIData.sm
+    stateMachine:state.UIData.sm,
+    WS_CH:state.UIData.WS_CH,
+    WS_ID:state.UIData.WS_ID
   }
 }
 const APPMasterX_rdx = connect(mapStateToProps_APPMasterX,mapDispatchToProps_APPMasterX)(APPMasterX);
 
+
+
+/*
 function BPG_WS (url){
   
   this.binary_ws = new BPG_WEBSOCKET.BPG_WebSocket(url);//"ws://localhost:4090");
@@ -235,7 +332,7 @@ function BPG_WS (url){
 }
 
 let bpg_ws = new BPG_WS("ws://localhost:4090");
-
+*/
 ReactDOM.render(
   
   <Provider store={StoreX}>

@@ -135,7 +135,7 @@ class APP_DEFCONF_MODE extends React.Component{
 
   componentDidMount()
   {
-    this.props.EC_WS_CH.send("EX");
+    this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0);
     
   }
   constructor(props) {
@@ -296,7 +296,11 @@ class APP_DEFCONF_MODE extends React.Component{
           <BASE_COM.Button
             addClass="layout lred vbox"
             key="SAVE"
-            text="SAVE" onClick={()=>{this.props.ACT_Save_Def_Config({filename:"data/test.ic.json"})}}/>,
+            text="SAVE" onClick={()=>{
+                var enc = new TextEncoder();
+                let report = this.props.edit_info._obj.GenerateEditReport();
+                this.props.ACT_Report_Save(this.props.WS_ID,"data/test.ic.json",enc.encode(JSON.stringify(report, null, 2)));
+            }}/>,
           /*<BASE_COM.Button
             addClass="layout lred vbox"
             key="TRIGGER"
@@ -304,7 +308,11 @@ class APP_DEFCONF_MODE extends React.Component{
           <BASE_COM.Button
             addClass="layout lred vbox"
             key="LOAD"
-            text="LOAD" onClick={()=>{this.props.ACT_Load_Def_Config({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,
+            text="LOAD" onClick={()=>{
+                
+                this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"});
+                
+            }}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:         
@@ -560,7 +568,16 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
    
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS))},
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
-    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))}
+    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
+    
+    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+    
+    ACT_Report_Save:(id,fileName,content)=>{
+        dispatch(UIAct.EV_WS_SEND(id,"SV",0,
+            {filename:fileName},
+            content
+        ));
+    },
   }
 }
 
@@ -569,6 +586,9 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     c_state: state.UIData.c_state,
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
     shape_list:state.UIData.edit_info.list,
+    WS_ID:state.UIData.WS_ID,
+    edit_info:state.UIData.edit_info
+
   }
 };
 

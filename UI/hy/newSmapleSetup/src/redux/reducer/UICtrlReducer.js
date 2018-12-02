@@ -44,7 +44,8 @@ function Default_UICtrlReducer()
     sm:null,
     c_state:null,
     p_state:null,
-    state_count:0
+    state_count:0,
+    WS_ID:"EverCheckWS"
   }
 }
 
@@ -69,14 +70,17 @@ function StateReducer(newState,action)
 
   switch(action.type)
   {
+    case UISEV.Connected:
+      newState.WS_CH=action.data;
+      console.log("Connected",newState.WS_CH);
+    return newState;
+    case UISEV.Disonnected:
+      newState.WS_CH=undefined;
+    return newState;
+
     case UISEV.Control_SM_Panel:
       newState.showSM_graph = action.data;
     return newState;
-
-    case UISEV.WS_channel:
-      newState.WS_CH=action.data;
-    return newState;
-    
   }
   switch(newState.c_state.value)
   {
@@ -161,23 +165,6 @@ function StateReducer(newState,action)
         case UISEV.EC_Save_Def_Config:
         {
           if(newState.WS_CH==undefined)break;
-          var enc = new TextEncoder();
-
-          let report = newState.edit_info._obj.GenerateEditReport();
-          console.log(newState.WS_CH);
-          newState.WS_CH.send("SV",0,
-            action.data,
-            enc.encode(JSON.stringify(report, null, 2))
-          );
-        }
-        break;
-        case UISEV.EC_Load_Def_Config:
-        {
-          if(newState.WS_CH==undefined)break;
-          let dat=action.data;
-          if(dat === undefined)
-            dat={};
-          newState.WS_CH.send("LD",0,dat);
         }
         break;
         case UISEV.EC_Trigger_Inspection:

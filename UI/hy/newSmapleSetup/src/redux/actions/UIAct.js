@@ -120,10 +120,10 @@ export function EV_UI_EC_Trigger_Inspection(info)
 }
 
 
-export function EV_WS_Connected(peer)
+export function EV_WS_Connected(ws_obj)
 {
   return {
-    type: UI_SM_EVENT.Connected ,data:peer
+    type: UI_SM_EVENT.Connected ,data:ws_obj
   }
 }
 
@@ -134,26 +134,6 @@ export function EV_WS_Disconnected(peer)
   }
 }
 
-export function EV_WS_Register(ws)
-{
-  return {
-    type: BPG_WS_EVENT.BPG_WS_REGISTER ,ws:ws
-  }
-}
-
-export function EV_WS_SEND(ws,data)
-{
-  return {
-    type: BPG_WS_EVENT.BPG_WS_SEND ,data:data,ws:ws
-  }
-}
-
-export function EV_WS_RECV(evt)
-{
-  return {
-    type: UI_SM_EVENT.BPG_WS_RECV ,data:evt
-  }
-}
 
 export function EV_UI_Edit_Mode()
 {
@@ -203,4 +183,20 @@ export function EV_WS_SIG360_Report_Update(data)
   return {
     type: UI_SM_EVENT.SIG360_Report_Update ,data:data
   }
+}
+
+
+export function EV_WS_SEND(id,tl,prop,data,uintArr){
+  return ({
+    type:"MWWS_SEND",
+    data:{
+      id:id,
+      data:{
+        tl:tl,
+        prop:prop,
+        data:data,
+        uintArr:uintArr
+      }
+    }
+  });
 }
