@@ -11,7 +11,6 @@ import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
  
 import BPG_Protocol from 'UTIL/BPG_Protocol.js'; 
-import BPG_WEBSOCKET from 'UTIL/BPG_WebSocket.js';  
 
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import {XSGraph} from './xstate_visual';
