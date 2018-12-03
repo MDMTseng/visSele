@@ -489,7 +489,7 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT: 
-      menu_height = "HXA";         
+      menu_height = "HXA";
       MenuSet=[
         <BASE_COM.Button
           key="<"

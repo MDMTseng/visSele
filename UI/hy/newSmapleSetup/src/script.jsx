@@ -16,6 +16,8 @@ import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
+import APP_INSP_MODE_rdx from './InspectionUI';
+
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {MWWS_EVENT} from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
@@ -62,6 +64,8 @@ class APPMain extends React.Component{
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.INSP_MODE)
     {
+      UI = <APP_INSP_MODE_rdx/>;
+      
     }
 
     return(
@@ -163,10 +167,6 @@ class APPMasterX extends React.Component{
       onerror:(ev,ws_obj)=>{
       },
       send:(data,ws_obj)=>{
-        console.log(">>>>>>>");
-        //tl,prop=0,data={},uintArr=null
-        //ws_obj.websocket.send(BPG_Protocol.objbarr2raw("HR",0,{a:["d"]}));
-
         if(data.data instanceof Uint8Array)
         {
           ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,null,data.data));
