@@ -3,7 +3,10 @@
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
+import {
+  xstate_GetCurrentMainState,
+  xstate_GetMainState,
+  xstate_GetSubState} from 'UTIL/MISC_Util';
 import {
   distance_arc_point,
   threePointToArc,
@@ -115,7 +118,7 @@ class EverCheckCanvasComponent{
 
     this.onfeatureselected=(ev)=>{};
     
-    this.state=UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
+    this.state=undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
 
 
     this.EditShape=null;
@@ -132,18 +135,23 @@ class EverCheckCanvasComponent{
 
   SetState(state)
   {
-    if(this.state!=state)
-    {
-      this.state=state;
-      this.near_select_obj=null;
+    console.log(state);
+    let stateObj = xstate_GetCurrentMainState(state);
+    let stateStr = JSON.stringify(stateObj);
+    if(JSON.stringify(this.state) === stateStr)return;
 
-      if(this.state==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
-      {
-        this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
-        this.EditShape=null;
-        this.EditPoint=null;
-      }
+    this.state = JSON.parse(stateStr);
+    this.near_select_obj=null;
+
+    if(
+      this.state.state ==  UI_SM_STATES.DEFCONF_MODE&&
+      this.state.substate==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
+    {
+      this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
+      this.EditShape=null;
+      this.EditPoint=null;
     }
+    
   }
 
   EditDBInfoSync(edit_DB_info)
@@ -199,7 +207,7 @@ class EverCheckCanvasComponent{
 
     this.camera.Scale(scale,
       {x:(this.mouseStatus.x-(this.canvas.width / 2)),
-        y:(this.mouseStatus.y-(this.canvas.height / 2))});
+       y:(this.mouseStatus.y-(this.canvas.height / 2))});
     //this.ctrlLogic();
     this.draw();
   }
@@ -211,7 +219,9 @@ class EverCheckCanvasComponent{
 
     //console.log("onmousemove_pre:",this.state);
     //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
-    switch(this.state)
+
+    
+    switch(this.state.substate)
     {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         
@@ -231,6 +241,8 @@ class EverCheckCanvasComponent{
 
   onmousedown(evt)
   {
+    
+    console.log(this.state);
     console.log("onmousedown");
     let pos = this.getMousePos(this.canvas,evt);
     this.mouseStatus.px=pos.x;
@@ -1119,10 +1131,7 @@ class EverCheckCanvasComponent{
 
     let ifOnMouseLeftClickEdge = (this.mouseStatus.status!=this.mouseStatus.pstatus);
     
-
-
-
-    switch(this.state)
+    switch(this.state.substate)
     {
       case UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:
       {
@@ -1192,7 +1201,7 @@ class EverCheckCanvasComponent{
         {
           if(ifOnMouseLeftClickEdge && this.CandEditPointInfo!=null)
           {
-            if(this.state == UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE){
+            if(this.state.substate == UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE){
               
               this.EditShape={
                 type:SHAPE_TYPE.search_point,

@@ -69,9 +69,8 @@ class CanvasComponent extends React.Component {
   onResize(width,height){
     if(this.ec_canvas  !== undefined)
     {
-      let stateObj = xstate_GetCurrentMainState(this.props.c_state);
       this.ec_canvas.resize(width,height);
-      this.updateCanvas(stateObj.substate);
+      this.updateCanvas(this.props.c_state);
       this.ec_canvas.ctrlLogic();
       this.ec_canvas.draw();
     }
@@ -81,11 +80,8 @@ class CanvasComponent extends React.Component {
     console.log("CanvasComponent render",nextProps.c_state);
     //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
     
-    let stateObj = xstate_GetCurrentMainState(nextProps.c_state);
-    let substate = stateObj.substate;
-    console.log("substate:"+substate,stateObj);
     console.log(nextProps.edit_info.inherentShapeList);
-    this.updateCanvas(substate,nextProps);
+    this.updateCanvas(nextProps.c_state,nextProps);
   }
 
   render() {
