@@ -11,7 +11,6 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
 let StoreX= ReduxStoreSetUp({});
 
@@ -53,6 +52,10 @@ class CanvasComponent extends React.Component {
     this.ec_canvas=new EC_CANVAS_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
     this.props.onCanvasInit(this.ec_canvas);
+    this.updateCanvas(this.props.c_state);
+  }
+  componentWillUnmount() {
+    this.ec_canvas.resourceClean();
   }
   updateCanvas(ec_state,props=this.props) {
     if(this.ec_canvas  !== undefined)
@@ -100,8 +103,6 @@ const mapStateToProps_CanvasComponent = (state) => {
   //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
-    report: state.UIData.report,
-    img: state.UIData.img,
     edit_info: state.UIData.edit_info,
 
   }

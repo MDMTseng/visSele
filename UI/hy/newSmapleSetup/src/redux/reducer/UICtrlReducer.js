@@ -105,6 +105,7 @@ function StateReducer(newState,action)
       newState.showSplash=false;
       return newState;
     case UISTS.DEFCONF_MODE:
+    case UISTS.INSP_MODE:
     {
 
 
@@ -121,6 +122,8 @@ function StateReducer(newState,action)
           newState.edit_info=Object.assign({},newState.edit_info);
           //newState.report=action.data;
           newState.edit_info._obj.SetInspectionReport(action.data);
+          newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
+          console.log(newState.edit_info.inspReport);
           //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
@@ -429,11 +432,7 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
   if(action.type==="ATBundle")
   {
-    for( let i=0 ;i<action.data.length;i++)
-    {
-      newState = StateReducer(newState,action.data[i]);
-    }
-
+    action.data.reduce((state,action)=> StateReducer(state,action),newState);
     console.log(newState);
     return newState;
   }
