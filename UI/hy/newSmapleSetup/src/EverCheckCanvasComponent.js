@@ -125,6 +125,8 @@ class EverCheckCanvasComponent{
     this.EmitEvent=(event)=>{console.log(event);};
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
+      inspection_Pass:"rgba(0,255,0,0.1)",
+      inspection_Fail:"rgba(255,0,0,0.1)",
       editShape:"rgba(255,0,0,0.7)",
       measure_info:"rgba(128,128,200,0.7)"
     };
@@ -533,6 +535,26 @@ class EverCheckCanvasComponent{
     }
   }
 
+
+  drawSignature(ctx,signature,pointSkip=36)
+  {
+    
+    ctx.beginPath();
+    ctx.moveTo(
+      signature.magnitude[0]*Math.cos(signature.angle[0]),
+      signature.magnitude[0]*Math.sin(signature.angle[0]));
+    for(let i=1;i<signature.angle.length;i+=pointSkip)
+    {
+
+      ctx.lineTo(
+        signature.magnitude[i]*Math.cos(signature.angle[i]),
+        signature.magnitude[i]*Math.sin(signature.angle[i]));
+
+    }
+    ctx.closePath();
+    //ctx.stroke();
+  }
+
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList)
   {
     eObjects.forEach((eObject)=>{
@@ -649,7 +671,7 @@ class EverCheckCanvasComponent{
           let db_obj = this.db_obj;
           let subObjs = eObject.ref
             .map((ref)=> db_obj.FindShape( "id" , ref.id,shapeList ))
-            .map((idx)=>{  return idx>=0?this.edit_DB_info.list[idx]:null});
+            .map((idx)=>{  return idx>=0?shapeList[idx]:null});
           
           if(subObjs[0]==null)break;
 
@@ -698,7 +720,7 @@ class EverCheckCanvasComponent{
           if(useShapeColor)
           {
             ctx.strokeStyle=this.colorSet.measure_info; 
-            ctx.fillStyle=this.colorSet.measure_info; 
+            ctx.fillStyle=this.colorSet.measure_info;  
             
           }
 
@@ -1038,14 +1060,36 @@ class EverCheckCanvasComponent{
       ctx.drawImage(this.secCanvas,0,0);
     }
 
+    if(true)
+    {
+      let sigScale = 1.1;
+      inspectionReport.forEach((report,idx)=>{
+        ctx.save();
+        ctx.translate(report.cx,report.cy);
+        ctx.rotate(-report.rotate);
+        if(report.isFlipped)
+          ctx.scale(1,-1);
+        
+        ctx.scale(sigScale,sigScale);
+        this.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,20);
+        ctx.fillStyle=this.colorSet.inspection_Fail;
+        ctx.fill();
+
+        ctx.restore();
+
+        
+        
+      });
+    }
+
+
+    if(true)
     {
       inspectionReport.forEach((report)=>{
-        
         this.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         this.drawShapeList(ctx,listClone,true,[],listClone);
-
       });
     }
 

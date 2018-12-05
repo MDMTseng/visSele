@@ -325,6 +325,14 @@ export class InspectionEditorLogic
     }
     
     {
+      let inspIdx = this.FindShapeIdx(id,inspReport.searchPoints);
+      if(inspIdx!=undefined)
+      {
+        return inspReport.searchPoints[inspIdx];
+      }
+    }
+    
+    {
       let inspIdx = this.FindShapeIdx(id,inspReport.judgeReports);
       if(inspIdx!=undefined)
       {
@@ -335,7 +343,7 @@ export class InspectionEditorLogic
     return undefined;
   }
   
-  ShapeListAdjustsWithInspectionResult(shapeList,InspResult)
+  ShapeListAdjustsWithInspectionResult(shapeList,InspResult,oriBase=false)
   {
     let cos_v = Math.cos(-InspResult.rotate);
     let sin_v = Math.sin(-InspResult.rotate);
@@ -359,17 +367,21 @@ export class InspectionEditorLogic
       {
         case SHAPE_TYPE.line:
         {
-          //Rotate and offset the shape
           ["pt1","pt2"].forEach((key)=>{
             eObject[key]=closestPointOnLine(inspAdjObj, eObject[key]);
           });
-          
+          if(InspResult.isFlipped)
+          {
+            let tmp = eObject.pt1;
+            eObject.pt1=eObject.pt2;
+            eObject.pt2=tmp;
+          }
         }
         break;
         
+        
         case SHAPE_TYPE.arc:
         {
-          //Rotate and offset the shape
           ["pt1","pt2","pt3"].forEach((key)=>{
             eObject[key].x-=inspAdjObj.x;
             eObject[key].y-=inspAdjObj.y;
@@ -380,8 +392,35 @@ export class InspectionEditorLogic
           
         }
         break;
+
+        case SHAPE_TYPE.search_point:
+        {
+          eObject.pt1.x = inspAdjObj.x;
+          eObject.pt1.y = inspAdjObj.y;
+          if(InspResult.isFlipped)
+            eObject.angleDeg=-eObject.angleDeg;
+        }
+        break;
+      }
+      if(oriBase)//rotate back to original orientation
+      {
+        ["pt1","pt2","pt3"].forEach((key)=>{
+          if(eObject[key]===undefined)return;
+          eObject[key].x-=InspResult.cx;
+          eObject[key].y-=InspResult.cy;
+          if(flip_f<0)
+          {
+            eObject[key] = PtRotate2d_sc(eObject[key],sin_v,cos_v,-1);
+          }
+          else
+          {
+            eObject[key] = PtRotate2d_sc(eObject[key],-sin_v,cos_v,1);
+          }
+        });
       }
     });
+
+    
   }
 
     
