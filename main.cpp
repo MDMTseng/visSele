@@ -127,13 +127,15 @@ class DatCH_CallBack_T : public DatCH_CallBack
     switch(ws_data.type)
     {
         case websock_data::eventType::OPENING:
+            printf("OPENING peer %s:%d  sock:%d\n",
+              inet_ntoa(ws_data.peer->getAddr().sin_addr),
+              ntohs(ws_data.peer->getAddr().sin_port),ws_data.peer->getSocket());
             if(ws->default_peer == NULL){
               ws->default_peer = ws_data.peer;
             }
-            printf("OPENING peer %s:%d\n",
-              inet_ntoa(ws_data.peer->getAddr().sin_addr),
-              ntohs(ws_data.peer->getAddr().sin_port));
-
+            else
+            {
+            }
         break;
 
         case websock_data::eventType::HAND_SHAKING_FINISHED:
@@ -144,7 +146,7 @@ class DatCH_CallBack_T : public DatCH_CallBack
               ws_data.data.hs_frame.key,
               ws_data.data.hs_frame.resource);
 
-            if(1)
+            if(ws->default_peer == ws_data.peer )
             {
               LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
               DatCH_Data datCH_BPG=
@@ -160,6 +162,10 @@ class DatCH_CallBack_T : public DatCH_CallBack
               BPG_dat.dat_raw =(uint8_t*) tmp;
               //App [here]-(prot)> WS
               BPG_protocol->SendData(datCH_BPG);
+            }
+            else
+            {
+              ws->disconnect(ws_data.peer->getSocket());
             }
         break;
         case websock_data::eventType::DATA_FRAME:

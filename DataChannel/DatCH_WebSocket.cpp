@@ -78,3 +78,9 @@ DatCH_Data DatCH_WebSocket::SendData(DatCH_Data ws_data)
 
     return GenMsgType(DatCH_Data::DataType_ACK);
 }
+
+
+int DatCH_WebSocket::disconnect(int sock)
+{
+    return  server->disconnect(sock);
+}

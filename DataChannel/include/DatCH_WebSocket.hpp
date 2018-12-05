@@ -21,6 +21,8 @@ public:
     int ws_callback(websock_data data, void* param);
     DatCH_Data SendData(void* data, size_t dataL) override;
     DatCH_Data SendData(DatCH_Data) override;
+    
+    int disconnect(int sock);
 };
 
 
