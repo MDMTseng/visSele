@@ -301,7 +301,6 @@ export class InspectionEditorLogic
       let inspIdx = this.FindShapeIdx(id,inspReport.detectedCircles);
       if(inspIdx!=undefined)
       {
-        console.log(inspReport);
         return inspReport.detectedCircles[inspIdx];
       }
     }
@@ -509,7 +508,6 @@ export class InspectionEditorLogic
       if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
       {
         let retPt = intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
-        console.log(retPt);
         return retPt;
       }
 

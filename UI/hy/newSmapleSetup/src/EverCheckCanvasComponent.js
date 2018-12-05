@@ -157,10 +157,12 @@ class EverCheckCanvasComponent{
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.SetImg( edit_DB_info.img );
+    this.SetEditShape( edit_DB_info.edit_tar_info );
   }
 
   SetShape( shape_obj, id)
   {
+    this.tmp_EditShape_id=id;
     this.EmitEvent(DefConfAct.Shape_Set({shape:shape_obj,id:id}));
   }
 
@@ -170,7 +172,10 @@ class EverCheckCanvasComponent{
       
       console.log(this.tmp_EditShape_id);
       if(this.EditShape!=null && this.EditShape.id!=undefined && this.tmp_EditShape_id !=this.EditShape.id){
-        this.fitCameraToShape(this.EditShape);
+        if(this.tmp_EditShape_id!=undefined)
+        {
+          this.fitCameraToShape(this.EditShape);
+        }
         this.tmp_EditShape_id=this.EditShape.id;
       }
   }
