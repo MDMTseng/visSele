@@ -459,10 +459,8 @@ class EverCheckCanvasComponent{
   drawMeasureDistance(ctx,eObject,refObjs,shapeList)
   {
     ctx.lineWidth=2;
-    ctx.strokeStyle=this.colorSet.measure_info; 
               
     ctx.font="30px Arial";
-    ctx.fillStyle=this.colorSet.measure_info; 
 
     let alignLine=null;
     let point_onAlignLine=null;
@@ -697,6 +695,13 @@ class EverCheckCanvasComponent{
           let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!==undefined),true);
           if(!subObjs_valid)break;
 
+          if(useShapeColor)
+          {
+            ctx.strokeStyle=this.colorSet.measure_info; 
+            ctx.fillStyle=this.colorSet.measure_info; 
+            
+          }
+
           switch(eObject.subtype)
           {
             case SHAPE_TYPE.measure_subtype.distance:
@@ -710,10 +715,10 @@ class EverCheckCanvasComponent{
                 intersectPoint(subObjs[0].pt1,subObjs[0].pt2,subObjs[1].pt1,subObjs[1].pt2);
                   
               ctx.lineWidth=2;
-              ctx.strokeStyle=this.colorSet.measure_info; 
+              //ctx.strokeStyle=this.colorSet.measure_info; 
                         
               ctx.font="30px Arial";
-              ctx.fillStyle=this.colorSet.measure_info; 
+              ///ctx.fillStyle=this.colorSet.measure_info; 
               //this.drawpoint(ctx, srcPt,"rect");
               
               let sAngle = Math.atan2(subObjs[0].pt1.y - srcPt.y,subObjs[0].pt1.x - srcPt.x);
@@ -853,10 +858,9 @@ class EverCheckCanvasComponent{
             case SHAPE_TYPE.measure_subtype.radius:
             {
               ctx.lineWidth=2;
-              ctx.strokeStyle=this.colorSet.measure_info; 
+              //ctx.strokeStyle=this.colorSet.measure_info; 
 
               ctx.font="30px Arial";
-              ctx.fillStyle=this.colorSet.measure_info; 
               let arc = threePointToArc(subObjs[0].pt1,subObjs[0].pt2,subObjs[0].pt3);
               let dispVec = {x:eObject.pt1.x - arc.x,y:eObject.pt1.y - arc.y};
               let mag = Math.hypot(dispVec.x,dispVec.y);
