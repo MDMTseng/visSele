@@ -364,9 +364,16 @@ int FeatureManager_sig360_circle_line::lineCrossPosition(FeatureReport_sig360_ci
   
   acv_LineFit line1 = (*report.detectedLines)[idx1].line;
   acv_LineFit line2 = (*report.detectedLines)[idx2].line;
+  
+  acv_XY line1_pt2=line1.line.line_anchor;
+  acv_XY line2_pt2=line2.line.line_anchor;
+  line1_pt2 = acvVecAdd(line1_pt2,line1.line.line_vec);
+  line2_pt2 = acvVecAdd(line2_pt2,line2.line.line_vec);
+
+
   acv_XY cross = acvIntersectPoint(
-              line1.end_pos,line1.end_neg,
-              line2.end_pos,line2.end_neg);
+              line1.line.line_anchor,line1_pt2,
+              line2.line.line_anchor,line2_pt2);
   
   *pt=cross;
   return 0;
@@ -559,7 +566,7 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
         acv_XY cross;
         int ret = lineCrossPosition(report,
         def.data.lineCross.line1_id,
-        def.data.lineCross.line1_id, &cross);
+        def.data.lineCross.line2_id, &cross);
         if(ret<0)return rep;
         rep.pt = cross;
       }

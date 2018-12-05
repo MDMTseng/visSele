@@ -508,7 +508,9 @@ export class InspectionEditorLogic
 
       if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
       {
-        return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
+        let retPt = intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
+        console.log(retPt);
+        return retPt;
       }
 
     }
