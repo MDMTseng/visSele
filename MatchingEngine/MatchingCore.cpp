@@ -128,7 +128,7 @@ void ContourFilter(vector<acv_XY> &contour,vector<acv_XY> &innerCornorContour,ve
       if(crossP_LF<-7*epsilon){
         continue;
       }//Inner curve
-      if(crossP_LF<-epsilon){
+      if(crossP_LF>epsilon){
         innerCornorContour.push_back(contour[i]);
       }//Inner curve
 
