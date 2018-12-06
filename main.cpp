@@ -372,7 +372,7 @@ public:
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
             char tmp[100];
             int session_id = rand();
-            sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+            sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
             BPG_data bpg_dat=GenStrBPGData("SS", tmp);
             datCH_BPG.data.p_BPG_data=&bpg_dat;
             self->SendData(datCH_BPG);
@@ -466,7 +466,7 @@ public:
 
               char tmp[100];
               int session_id = rand();
-              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"RP\",\"IM\"]}",session_id);
               BPG_data bpg_dat=GenStrBPGData("SS", tmp);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
@@ -541,7 +541,7 @@ public:
 
               char tmp[100];
               int session_id = rand();
-              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"SG\",\"IM\"]}",session_id);
               BPG_data bpg_dat=GenStrBPGData("SS", tmp);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
