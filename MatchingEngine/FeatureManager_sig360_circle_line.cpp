@@ -480,7 +480,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         if(angleDiff<-180)angleDiff+=360;
         if(angleDiff>180)angleDiff-=360;
         if(angleDiff<0)angleDiff=-angleDiff;
-        if(angleDiff>judgeReport.def->targetVal_margin/2)
+        if(angleDiff>judgeReport.def->targetVal_margin)
         {
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
         }
@@ -520,7 +520,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         float diff = judgeReport.measured_val - judgeReport.def->targetVal;
         if(diff < 0)diff = -diff;
         
-        if(diff>judgeReport.def->targetVal_margin/2)
+        if(diff>judgeReport.def->targetVal_margin)
         {
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
         }
@@ -541,7 +541,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
     
       float diff = judgeReport.measured_val - judgeReport.def->targetVal;
       if(diff < 0)diff = -diff;
-      if(diff>judgeReport.def->targetVal_margin/2)
+      if(diff>judgeReport.def->targetVal_margin)
       {
         judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
       }
@@ -663,9 +663,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         {
           searchVec = acvVecMult(searchVec,-1);
         }
+        LOGV("pt:%f %f",pt.X,pt.Y);
         LOGV("searchVec_nor:%f %f",searchVec_nor.X,searchVec_nor.Y);
         LOGV("searchVec:%f %f",searchVec.X,searchVec.Y);
-        acv_XY searchStart = acvVecMult(searchVec,-margin/2);
+        acv_XY searchStart = acvVecMult(searchVec,-margin);
         searchStart=acvVecAdd(searchStart,pt);
         acv_XY searchVec_nor_edge = acvVecMult(searchVec_nor,-width/2);
         searchStart=acvVecAdd(searchStart,searchVec_nor_edge);
@@ -676,13 +677,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         int foundC =0;
         
         LOGV("searchPt:%f %f",searchPt.X,searchPt.Y);
-        for(int i=0;i<margin;i++)
+        for(int i=0;i<margin*2;i++)
         {
           for(int j=0;j<width;j++)
           {
             searchPt = acvVecAdd(searchPt,searchVec_nor);
             int Y = (int)round(searchPt.Y);
             int X = (int)round(searchPt.X);
+            
+            LOGV("X:%d Y:%d",X,Y);
             uint8_t *pix = &(labeledImg->CVector[Y][X*3]);
             if(pix[0]!=255)
             {
@@ -1539,7 +1542,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             acvDrawCrossX(buff,
               skp.searchStart.X,skp.searchStart.Y,
               2,2);
-            if(searchP(img, &skp.searchStart , skp.searchVec, 2*skp.searchDist)!=0)
+            if(searchP(img, &skp.searchStart , skp.searchVec, skp.searchDist)!=0)
             {
               continue;
             }
@@ -1583,7 +1586,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             line_cand.line_anchor.X,line_cand.line_anchor.Y,
             2,2);
           //Search distance a 2*searchDist(since you go back off initMatchingMargin)
-          if(searchP(img, &line_cand.line_anchor , searchVec, 2*line->searchDist)!=0)
+          if(searchP(img, &line_cand.line_anchor , searchVec, line->searchDist)!=0)
           {
             FeatureReport_lineReport lr;
             lr.line=lf_zero;
@@ -1711,8 +1714,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         cf.matching_pts);
 
 
-        if( cf.circle.radius<cdef.circleTar.radius-cdef.initMatchingMargin/2 ||
-        cf.circle.radius>cdef.circleTar.radius+cdef.initMatchingMargin/2 )
+        if( cf.circle.radius<cdef.circleTar.radius-cdef.initMatchingMargin||
+        cf.circle.radius>cdef.circleTar.radius+cdef.initMatchingMargin )
         {
           cr.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
         }
