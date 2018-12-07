@@ -12,9 +12,6 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 
 
-
-
-
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
@@ -22,9 +19,10 @@ class CanvasComponent extends React.Component {
   }
 
   ec_canvas_EmitEvent(event){
+    console.log(event);
   }
   componentDidMount() {
-    this.ec_canvas=new EC_CANVAS_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
+    this.ec_canvas=new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
     this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);

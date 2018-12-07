@@ -49,7 +49,7 @@ class CanvasComponent extends React.Component {
     }
   }
   componentDidMount() {
-    this.ec_canvas=new EC_CANVAS_Ctrl.EverCheckCanvasComponent(this.refs.canvas);
+    this.ec_canvas=new EC_CANVAS_Ctrl.DEFCONF_CanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent=this.ec_canvas_EmitEvent.bind(this);
     this.props.onCanvasInit(this.ec_canvas);
     this.updateCanvas(this.props.c_state);

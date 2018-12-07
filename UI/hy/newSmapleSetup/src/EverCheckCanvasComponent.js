@@ -5,9 +5,7 @@ import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {
-  distance_arc_point,
   threePointToArc,
-  distance_line_point,
   intersectPoint,
   LineCentralNormal,
   closestPointOnLine} from 'UTIL/MathTools';
@@ -68,61 +66,12 @@ class CameraCtrl
 
 }
 
-class EverCheckCanvasComponent{
 
-  getMousePos(canvas, evt) {
-    var rect = canvas.getBoundingClientRect();
-    let  mouse = {
-      x: evt.clientX - rect.left,
-      y: evt.clientY - rect.top
-    };
-    return mouse;
-  }
-
-
-  resourceClean()
+class renderUTIL
+{
+  constructor(editor_db_obj)
   {
-    this.canvas.removeEventListener('wheel',this.onmouseswheel.bind(this));
-    console.log("resourceClean......")
-  }
-
-  constructor( canvasDOM )
-  {
-    this.canvas = canvasDOM;
-
-    this.canvas.onmousemove=this.onmousemove.bind(this);
-    this.canvas.onmousedown=this.onmousedown.bind(this);
-    this.canvas.onmouseup=this.onmouseup.bind(this);
-    this.canvas.onmouseout=this.onmouseout.bind(this);
-
-    this.canvas.addEventListener('wheel',this.onmouseswheel.bind(this), false);
-
-    this.mouseStatus={x:-1,y:-1,px:-1,py:-1,status:0,pstatus:0};
-
-    this.secCanvas_rawImg=null;
-
-    this.secCanvas = document.createElement('canvas');
-
-    this.identityMat= new  DOMMatrix();
-    this.Mouse2SecCanvas= new  DOMMatrix();
-
-    this.edit_DB_info =null;
-    this.db_obj = null;
-    this.mouse_close_dist= 10;
-
-
-    this.camera= new CameraCtrl();
-
-    this.near_select_obj=null;
-    
-    this.state=undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
-
-
-    this.EditShape=null;
-    this.CandEditPointInfo=null;
-    this.EditPoint=null;
-    
-    this.EmitEvent=(event)=>{console.log(event);};
+    this.setEditor_db_obj(editor_db_obj);
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
       inspection_Pass:"rgba(0,255,0,0.1)",
@@ -132,164 +81,15 @@ class EverCheckCanvasComponent{
     };
   }
 
-  SetState(state)
+  setEditor_db_obj(editor_db_obj)
   {
-    console.log(state);
-    let stateObj = xstate_GetCurrentMainState(state);
-    let stateStr = JSON.stringify(stateObj);
-    if(JSON.stringify(this.state) === stateStr)return;
-
-    this.state = JSON.parse(stateStr);
-    this.near_select_obj=null;
-
-    if(
-      this.state.state ==  UI_SM_STATES.DEFCONF_MODE&&
-      this.state.substate==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
-    {
-      this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
-      this.EditShape=null;
-      this.EditPoint=null;
-    }
-    
+    this.db_obj = editor_db_obj;
   }
 
-  EditDBInfoSync(edit_DB_info)
+  setColorSet(colorset)
   {
-    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
-    this.edit_DB_info = edit_DB_info;
-    this.db_obj = edit_DB_info._obj;
-    this.SetImg( edit_DB_info.img );
-    this.SetEditShape( edit_DB_info.edit_tar_info );
+    this.colorSet=colorset;
   }
-
-  SetShape( shape_obj, id)
-  {
-    this.tmp_EditShape_id=id;
-    this.EmitEvent(DefConfAct.Shape_Set({shape:shape_obj,id:id}));
-  }
-
-  SetEditShape( EditShape )
-  {
-      this.EditShape = EditShape;
-      
-      console.log(this.tmp_EditShape_id);
-      if(this.EditShape!=null && this.EditShape.id!=undefined && this.tmp_EditShape_id !=this.EditShape.id){
-        if(this.tmp_EditShape_id!=undefined)
-        {
-          this.fitCameraToShape(this.EditShape);
-        }
-        this.tmp_EditShape_id=this.EditShape.id;
-      }
-  }
-
-  SetImg( img )
-  {
-    console.log("SetImg:::");
-    if(img == null || img == this.secCanvas_rawImg)return;
-    this.secCanvas.width = img.width;
-    this.secCanvas.height = img.height;
-
-    this.secCanvas_rawImg=img;
-    let ctx2nd = this.secCanvas.getContext('2d');
-    ctx2nd.putImageData(img, 0, 0);
-
-    console.log("SetImg::: UPDATE",ctx2nd);
-  }
-
-  onmouseswheel(evt)
-  {
-    //console.log("onmouseswheel",evt);
-    let deltaY = evt.deltaY/4;
-    if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
-    if(deltaY<-50)deltaY=-1;
-
-
-
-    let scale = 1/1.01;
-
-    scale = Math.pow(scale,deltaY);
-
-    this.camera.Scale(scale,
-      {x:(this.mouseStatus.x-(this.canvas.width / 2)),
-       y:(this.mouseStatus.y-(this.canvas.height / 2))});
-    //this.ctrlLogic();
-    this.draw();
-
-    return false;
-  }
-  onmousemove(evt)
-  {
-    let pos = this.getMousePos(this.canvas,evt);
-    this.mouseStatus.x=pos.x;
-    this.mouseStatus.y=pos.y;
-
-    //console.log("onmousemove_pre:",this.state);
-    //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
-
-    
-    switch(this.state.substate)
-    {
-      case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
-        
-        if(this.EditPoint!=null)break;
-      case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
-        //console.log("onmousemove");
-        if(this.mouseStatus.status==1)
-        {
-          this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
-        }
-      break;
-    }
-    this.ctrlLogic();
-    this.draw();
-
-  }
-
-  onmousedown(evt)
-  {
-    
-    let pos = this.getMousePos(this.canvas,evt);
-    this.mouseStatus.px=pos.x;
-    this.mouseStatus.py=pos.y;
-    this.mouseStatus.x=pos.x;
-    this.mouseStatus.y=pos.y;
-    this.mouseStatus.status = 1;
-
-    if(this.near_select_obj!=null)
-    {
-      this.onfeatureselected(this.near_select_obj);
-    }
-    this.ctrlLogic();
-    this.draw();
-  }
-
-  onmouseup(evt)
-  {
-    let pos = this.getMousePos(this.canvas,evt);
-    this.mouseStatus.x=pos.x;
-    this.mouseStatus.y=pos.y;
-    this.mouseStatus.status = 0;
-    this.camera.EndDrag();
-    this.ctrlLogic();
-    this.draw();
-  }
-  onmouseout(evt)
-  {
-    if(this.mouseStatus.status==1)
-    {
-      this.onmouseup(evt);
-    }
-  }
-
-  resize(width,height)
-  {
-    this.canvas.width=width;
-    this.canvas.height=height;
-    //this.ctrlLogic();
-    this.draw();
-  }
-
-
   drawReportLine(ctx, line_obj, offset={x:0,y:0})
   {
     ctx.beginPath();
@@ -350,54 +150,6 @@ class EverCheckCanvasComponent{
     ctx.strokeStyle=strokeStyle_bk;  
     this._drawpoint(ctx,point,type);
   }
-
-
-  fitCameraToShape(shape)
-  {
-    if(shape==null || shape===undefined)return;
-    let center={x:0,y:0};
-    let size=1;
-    switch(shape.type)
-    {
-      case SHAPE_TYPE.line:
-      center.x=(shape.pt1.x+shape.pt2.x)/2;
-      center.y=(shape.pt1.y+shape.pt2.y)/2;
-      break;
-      case SHAPE_TYPE.arc:
-      let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
-      if(arc.r>500)
-      {
-        center.x=(shape.pt1.x+shape.pt3.x)/2;
-        center.y=(shape.pt1.y+shape.pt3.y)/2;
-      }
-      else
-      {
-        center.x=arc.x;
-        center.y=arc.y;
-      }
-        
-      break;
-      case SHAPE_TYPE.aux_point:
-        let pt = this.db_obj.auxPointParse(shape);
-        if(pt ==null)return;
-        center=pt;
-        console.log(shape,pt);
-      break;
-      case SHAPE_TYPE.search_point:
-      {
-        center = shape.pt1;
-      }
-      break;
-      default:
-      return;
-    }
-
-    this.camera.SetOffset({
-      x:-center.x,
-      y:-center.y
-    });
-  }
-
 
   drawInherentShapeList(ctx, inherentShapeList)
   {
@@ -913,107 +665,169 @@ class EverCheckCanvasComponent{
     });
   }
 
-  drawReportJSON(context,Report,depth=0,draw_obj=null) {
 
-    this.drawReportJSON_action(context,Report,(report_line_cir)=>{
-      let Report = report_line_cir;
-      let offset_pix = 0.5;
-      let offset ={x: offset_pix + Report.cx, y:offset_pix + Report.cy};
-
-      if(Array.isArray(Report.detectedLines))
-        Report.detectedLines.forEach((line,idx)=>{
-          if(draw_obj==null || draw_obj.line==line)
-            this.drawReportLine(context, line, offset);
-        });
+}
 
 
-      if(Array.isArray(Report.detectedCircles))
-        Report.detectedCircles.forEach((circle,idx)=>{
-          if(draw_obj==null || draw_obj.circle==circle)
-            this.drawReportArc(context, circle, offset);
-        });
-    },depth=0);
 
+class EverCheckCanvasComponent_proto{
+  
+  getMousePos(canvas, evt) {
+    var rect = canvas.getBoundingClientRect();
+    let  mouse = {
+      x: evt.clientX - rect.left,
+      y: evt.clientY - rect.top
+    };
+    return mouse;
   }
 
-  drawReportJSON_closestPoint(ctx,Report,point,minDist=15,depth=0) {
 
-    let closestDist=minDist+1;
-    let selectedObject=null;
-    let selectedFeature=null;
-    let cpointInfo=null;
+  constructor( canvasDOM )
+  {
+    this.canvas = canvasDOM;
 
-    this.drawReportJSON_action(ctx,Report,(report_line_cir)=>{
-      let Report = report_line_cir;
-      let offset = 0.5;
-      let x_offset = offset + Report.cx;
-      let y_offset = offset + Report.cy;
+    this.canvas.onmousemove=this.onmousemove.bind(this);
+    this.canvas.onmousedown=this.onmousedown.bind(this);
+    this.canvas.onmouseup=this.onmouseup.bind(this);
+    this.canvas.onmouseout=this.onmouseout.bind(this);
 
-      if(Array.isArray(Report.detectedLines))
-        Report.detectedLines.forEach((line,idx)=>{
+    this.canvas.addEventListener('wheel',this.onmouseswheel.bind(this), false);
 
-          let line_={
-            x1:line.x0+x_offset,
-            y1:line.y0+y_offset,
-            x2:line.x1+x_offset,
-            y2:line.y1+y_offset};
-          let retDist = distance_line_point(line_, point);
-          if(retDist.dist>minDist)
-          {
-            return;
-          }
-          if(closestDist>retDist.dist)
-          {
-            closestDist = retDist.dist;
-            selectedObject = Report;
-            selectedFeature = {line:line};
-            cpointInfo = retDist;
-          }
+    this.mouseStatus={x:-1,y:-1,px:-1,py:-1,status:0,pstatus:0};
 
-        });
+    this.secCanvas_rawImg=null;
 
+    this.secCanvas = document.createElement('canvas');
 
-      if(Array.isArray(Report.detectedCircles))
-        Report.detectedCircles.forEach((circle,idx)=>{
-          let arc={
-            x:circle.x+x_offset,
-            y:circle.y+y_offset,
-            r:circle.r,
-            angleFrom:0,
-            angleTo:2*Math.PI-0.0001};
-          let retDist = distance_arc_point(arc, point);
-          if(retDist.dist>minDist)
-          {
-            return;
-          }
-          if(closestDist>retDist.dist)
-          {
-            closestDist = retDist.dist;
-            selectedObject = Report;
-            selectedFeature = {circle:circle};
-            cpointInfo = retDist;
-          }
-
-
-        });
-    },depth=0);
-
-    return {
-      obj:selectedObject,
-      feature:selectedFeature,
-      measure:cpointInfo
+    this.identityMat= new  DOMMatrix();
+    this.Mouse2SecCanvas= new  DOMMatrix();
+    this.camera= new CameraCtrl();
+    
+    this.colorSet={
+      unselected:"rgba(100,0,100,0.5)",
+      inspection_Pass:"rgba(0,255,0,0.1)",
+      inspection_Fail:"rgba(255,0,0,0.1)",
+      editShape:"rgba(255,0,0,0.7)",
+      measure_info:"rgba(128,128,200,0.7)"
     };
 
+    this.rUtil=new renderUTIL(null);
+    this.rUtil.setColorSet(this.colorSet);
   }
 
 
-  VecX2DMat(vec,mat)
+  resourceClean()
   {
-
-    let XX= vec.x * mat.a + vec.y * mat.c + mat.e;
-    let YY= vec.x * mat.b + vec.y * mat.d + mat.f;
-    return {x:XX,y:YY};
+    this.canvas.removeEventListener('wheel',this.onmouseswheel.bind(this));
+    console.log("resourceClean......")
   }
+
+  SetImg( img )
+  {
+    console.log("SetImg:::");
+    if(img == null || img == this.secCanvas_rawImg)return;
+    this.secCanvas.width = img.width;
+    this.secCanvas.height = img.height;
+
+    this.secCanvas_rawImg=img;
+    let ctx2nd = this.secCanvas.getContext('2d');
+    ctx2nd.putImageData(img, 0, 0);
+
+    console.log("SetImg::: UPDATE",ctx2nd);
+  }
+
+  onmouseswheel(evt)
+  {
+    //console.log("onmouseswheel",evt);
+    let deltaY = evt.deltaY/4;
+    if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
+    if(deltaY<-50)deltaY=-1;
+
+
+
+    let scale = 1/1.01;
+
+    scale = Math.pow(scale,deltaY);
+
+    this.camera.Scale(scale,
+      {x:(this.mouseStatus.x-(this.canvas.width / 2)),
+       y:(this.mouseStatus.y-(this.canvas.height / 2))});
+    //this.ctrlLogic();
+    this.draw();
+
+    return false;
+  }
+
+
+  
+  onmousemove(evt)
+  {
+    let pos = this.getMousePos(this.canvas,evt);
+    this.mouseStatus.x=pos.x;
+    this.mouseStatus.y=pos.y;
+
+    //console.log("onmousemove_pre:",this.state);
+    //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
+
+    
+    switch(this.state.substate)
+    {
+      case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
+        
+        if(this.EditPoint!=null)break;
+      case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
+        //console.log("onmousemove");
+        if(this.mouseStatus.status==1)
+        {
+          this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
+        }
+      break;
+    }
+    this.ctrlLogic();
+    this.draw();
+
+  }
+
+  onmousedown(evt)
+  {
+    
+    let pos = this.getMousePos(this.canvas,evt);
+    this.mouseStatus.px=pos.x;
+    this.mouseStatus.py=pos.y;
+    this.mouseStatus.x=pos.x;
+    this.mouseStatus.y=pos.y;
+    this.mouseStatus.status = 1;
+
+    this.ctrlLogic();
+    this.draw();
+  }
+
+  onmouseup(evt)
+  {
+    let pos = this.getMousePos(this.canvas,evt);
+    this.mouseStatus.x=pos.x;
+    this.mouseStatus.y=pos.y;
+    this.mouseStatus.status = 0;
+    this.camera.EndDrag();
+    this.ctrlLogic();
+    this.draw();
+  }
+  onmouseout(evt)
+  {
+    if(this.mouseStatus.status==1)
+    {
+      this.onmouseup(evt);
+    }
+  }
+
+  resize(width,height)
+  {
+    this.canvas.width=width;
+    this.canvas.height=height;
+    //this.ctrlLogic();
+    this.draw();
+  }
+
 
 
   worldTransform()
@@ -1029,17 +843,84 @@ class EverCheckCanvasComponent{
 
   }
  
+
+
+  VecX2DMat(vec,mat)
+  {
+
+    let XX= vec.x * mat.a + vec.y * mat.c + mat.e;
+    let YY= vec.x * mat.b + vec.y * mat.d + mat.f;
+    return {x:XX,y:YY};
+  }
+}
+
+
+
+
+class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
+
+  constructor( canvasDOM )
+  {
+    super(canvasDOM);
+    this.edit_DB_info =null;
+    this.db_obj = null;
+    this.mouse_close_dist= 10;
+
+
+
+    this.state=undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
+
+
+    this.EditShape=null;
+    this.CandEditPointInfo=null;
+    this.EditPoint=null;
+    
+    this.EmitEvent=(event)=>{console.log(event);};
+  }
+
+  SetState(state)
+  {
+    console.log(state);
+    let stateObj = xstate_GetCurrentMainState(state);
+    let stateStr = JSON.stringify(stateObj);
+    if(JSON.stringify(this.state) === stateStr)return;
+
+    this.state = JSON.parse(stateStr);
+
+    if(
+      this.state.state ==  UI_SM_STATES.DEFCONF_MODE&&
+      this.state.substate==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
+    {
+      this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
+      this.EditShape=null;
+      this.EditPoint=null;
+    }
+    
+  }
+
+  EditDBInfoSync(edit_DB_info)
+  {
+    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    this.edit_DB_info = edit_DB_info;
+    this.db_obj = edit_DB_info._obj;
+    this.rUtil.setEditor_db_obj(this.db_obj);
+    this.SetImg( edit_DB_info.img );
+
+  }
+
+  SetShape( shape_obj, id)
+  {
+    this.tmp_EditShape_id=id;
+    this.EmitEvent(DefConfAct.Shape_Set({shape:shape_obj,id:id}));
+  }
+
+
+
+
+
   draw()
   {
-    switch(this.state.state)
-    {
-      case UI_SM_STATES.DEFCONF_MODE:
-        this.draw_DEFCONF();
-      break;
-      case UI_SM_STATES.INSP_MODE:
-        this.draw_INSP();
-      break;
-    }
+      this.draw_INSP();
   }
   draw_INSP()
   {
@@ -1071,7 +952,7 @@ class EverCheckCanvasComponent{
           ctx.scale(1,-1);
         
         ctx.scale(sigScale,sigScale);
-        this.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,20);
+        this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,20);
         ctx.fillStyle=this.colorSet.inspection_Fail;
         ctx.fill();
 
@@ -1086,10 +967,10 @@ class EverCheckCanvasComponent{
     if(true)
     {
       inspectionReport.forEach((report)=>{
-        this.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
+        this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
-        this.drawShapeList(ctx,listClone,true,[],listClone);
+        this.rUtil.drawShapeList(ctx,listClone,true,[],listClone);
       });
     }
 
@@ -1097,21 +978,147 @@ class EverCheckCanvasComponent{
 
   ctrlLogic()
   {
-    switch(this.state.state)
-    {
-      case UI_SM_STATES.DEFCONF_MODE:
-        this.ctrlLogic_DEFCONF();
-      break;
-      case UI_SM_STATES.INSP_MODE:
-        this.ctrlLogic_INSP();
-      break;
-    }
+    this.ctrlLogic_INSP();
   }
   
   ctrlLogic_INSP()
   {
 
   }
+}
+
+
+class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
+
+  constructor( canvasDOM )
+  {
+    super(canvasDOM);
+    this.edit_DB_info =null;
+    this.db_obj = null;
+    this.mouse_close_dist= 10;
+
+
+
+    this.state=undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
+
+
+    this.EditShape=null;
+    this.CandEditPointInfo=null;
+    this.EditPoint=null;
+    
+    this.EmitEvent=(event)=>{console.log(event);};
+  }
+
+  SetState(state)
+  {
+    console.log(state);
+    let stateObj = xstate_GetCurrentMainState(state);
+    let stateStr = JSON.stringify(stateObj);
+    if(JSON.stringify(this.state) === stateStr)return;
+
+    this.state = JSON.parse(stateStr);
+
+    if(
+      this.state.state ==  UI_SM_STATES.DEFCONF_MODE&&
+      this.state.substate==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
+    {
+      this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
+      this.EditShape=null;
+      this.EditPoint=null;
+    }
+    
+  }
+
+  EditDBInfoSync(edit_DB_info)
+  {
+    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    this.edit_DB_info = edit_DB_info;
+    this.db_obj = edit_DB_info._obj;
+    this.rUtil.setEditor_db_obj(this.db_obj);
+    this.SetImg( edit_DB_info.img );
+
+    this.SetEditShape( edit_DB_info.edit_tar_info );
+  }
+
+  SetShape( shape_obj, id)
+  {
+    this.tmp_EditShape_id=id;
+    this.EmitEvent(DefConfAct.Shape_Set({shape:shape_obj,id:id}));
+  }
+
+  SetEditShape( EditShape )
+  {
+      this.EditShape = EditShape;
+      
+      console.log(this.tmp_EditShape_id);
+      if(this.EditShape!=null && this.EditShape.id!=undefined && this.tmp_EditShape_id !=this.EditShape.id){
+        if(this.tmp_EditShape_id!=undefined)
+        {
+          this.fitCameraToShape(this.EditShape);
+        }
+        this.tmp_EditShape_id=this.EditShape.id;
+      }
+  }
+
+
+
+  fitCameraToShape(shape)
+  {
+    if(shape==null || shape===undefined)return;
+    let center={x:0,y:0};
+    let size=1;
+    switch(shape.type)
+    {
+      case SHAPE_TYPE.line:
+      center.x=(shape.pt1.x+shape.pt2.x)/2;
+      center.y=(shape.pt1.y+shape.pt2.y)/2;
+      break;
+      case SHAPE_TYPE.arc:
+      let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
+      if(arc.r>500)
+      {
+        center.x=(shape.pt1.x+shape.pt3.x)/2;
+        center.y=(shape.pt1.y+shape.pt3.y)/2;
+      }
+      else
+      {
+        center.x=arc.x;
+        center.y=arc.y;
+      }
+        
+      break;
+      case SHAPE_TYPE.aux_point:
+        let pt = this.db_obj.auxPointParse(shape);
+        if(pt ==null)return;
+        center=pt;
+        console.log(shape,pt);
+      break;
+      case SHAPE_TYPE.search_point:
+      {
+        center = shape.pt1;
+      }
+      break;
+      default:
+      return;
+    }
+
+    this.camera.SetOffset({
+      x:-center.x,
+      y:-center.y
+    });
+  }
+
+
+
+  draw()
+  {
+    this.draw_DEFCONF();
+  }
+  ctrlLogic()
+  {
+    this.ctrlLogic_DEFCONF();
+  }
+  
 
   draw_DEFCONF()
   {
@@ -1151,7 +1158,7 @@ class EverCheckCanvasComponent{
       skipDrawIdxs.push(this.EditShape.id);
       
       ctx.strokeStyle=this.colorSet.editShape;
-      this.drawShapeList(ctx, [this.EditShape],false,[],this.edit_DB_info.list);
+      this.rUtil.drawShapeList(ctx, [this.EditShape],false,[],this.edit_DB_info.list);
     }
 
     if(this.CandEditPointInfo!=null)
@@ -1166,19 +1173,19 @@ class EverCheckCanvasComponent{
         skipDrawIdxs.push(candPtInfo.shape.id);
 
         ctx.strokeStyle="rgba(255,0,255,0.5)";
-        this.drawShapeList(ctx, [candPtInfo.shape],false,[],this.edit_DB_info.list);
+        this.rUtil.drawShapeList(ctx, [candPtInfo.shape],false,[],this.edit_DB_info.list);
       }
     }
     
-    this.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list);
-    this.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
+    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list);
+    this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
 
     if(this.EditPoint!=null)
     {
       ctx.lineWidth=3;
       ctx.strokeStyle="green";  
-      this.drawpoint(ctx, this.EditPoint);
+      this.rUtil.drawpoint(ctx, this.EditPoint);
     }
 
 
@@ -1187,7 +1194,7 @@ class EverCheckCanvasComponent{
     {
       ctx.lineWidth=3;
       ctx.strokeStyle="rgba(0,255,0,0.3)";  
-      this.drawpoint(ctx, this.CandEditPointInfo.pt);
+      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt);
     }
 
 
@@ -1409,4 +1416,4 @@ class EverCheckCanvasComponent{
 }
 
 
-export default { EverCheckCanvasComponent }
+export default { INSP_CanvasComponent,DEFCONF_CanvasComponent }
