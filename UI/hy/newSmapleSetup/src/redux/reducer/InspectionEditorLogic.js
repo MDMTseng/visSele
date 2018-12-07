@@ -356,6 +356,7 @@ export class InspectionEditorLogic
       {
         return;
       }
+      eObject.inspection_status = inspAdjObj.status;
       ["pt1","pt2","pt3"].forEach((key)=>{
         if(eObject[key]===undefined)return;
         eObject[key] = PtRotate2d_sc(eObject[key],sin_v,cos_v,flip_f);

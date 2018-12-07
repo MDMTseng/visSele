@@ -10,6 +10,7 @@ import {
   LineCentralNormal,
   closestPointOnLine} from 'UTIL/MathTools';
 
+  import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 
 class CameraCtrl
 {
@@ -76,6 +77,7 @@ class renderUTIL
       unselected:"rgba(100,0,100,0.5)",
       inspection_Pass:"rgba(0,255,0,0.1)",
       inspection_Fail:"rgba(255,0,0,0.1)",
+      inspection_NA:"rgba(128,128,128,0.1)",
       editShape:"rgba(255,0,0,0.7)",
       measure_info:"rgba(128,128,200,0.7)"
     };
@@ -431,7 +433,7 @@ class renderUTIL
 
           let vector = db_obj.shapeVectorParse(eObject,shapeList);
           let cnormal={x:-vector.y,y:vector.x};
-          let mag=eObject.width/2;//It starts from center so devide by 2.
+          let mag=eObject.width/2;
           vector.x*=mag;
           vector.y*=mag;
 
@@ -471,9 +473,16 @@ class renderUTIL
 
           if(useShapeColor)
           {
-            ctx.strokeStyle=this.colorSet.measure_info; 
-            ctx.fillStyle=this.colorSet.measure_info;  
-            
+            if(eObject.color!==undefined)
+            {
+              ctx.strokeStyle=eObject.color; 
+              ctx.fillStyle=eObject.color;  
+            }
+            else
+            {
+              ctx.strokeStyle=this.colorSet.measure_info; 
+              ctx.fillStyle=this.colorSet.measure_info;  
+            }
           }
 
           switch(eObject.subtype)
@@ -866,6 +875,19 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.db_obj = null;
     this.mouse_close_dist= 10;
 
+    this.colorSet=
+    Object.assign(this.colorSet,
+      {
+        inspection_Pass:"rgba(0,255,0,0.1)",
+        inspection_Fail:"rgba(255,0,0,0.1)",
+        inspection_NA:"rgba(64,64,64,0.1)",
+
+          
+        color_NA:"rgba(128,128,128,0.5)",
+        color_SUCCESS:this.colorSet.measure_info,
+        color_FAILURE:"rgba(255,0,0,0.5)",
+      }
+    );
 
 
     this.state=undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
@@ -916,7 +938,27 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
 
 
+  inspectionResult(objReport)
+  {
+    let judgeReports = objReport.judgeReports;
+    let ret_status = judgeReports.reduce((res,obj)=>{
+      if(res==INSPECTION_STATUS.NA)return res;
+      if(res==INSPECTION_STATUS.FAILURE)
+      {
+        if(obj.status==INSPECTION_STATUS.NA)return INSPECTION_STATUS.NA;
+        return res;
+      }
+      return obj.status;
+    }
+    ,INSPECTION_STATUS.SUCCESS);
 
+    if(ret_status==undefined)
+    {
+      return INSPECTION_STATUS.NA;
+    }
+
+    return ret_status;
+  }
 
   draw()
   {
@@ -953,26 +995,55 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         
         ctx.scale(sigScale,sigScale);
         this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,20);
-        ctx.fillStyle=this.colorSet.inspection_Fail;
+
+        let ret_res = this.inspectionResult(report);
+        switch(ret_res)
+        {
+          case INSPECTION_STATUS.NA:
+            ctx.fillStyle=this.colorSet.inspection_NA;
+          break;
+          case INSPECTION_STATUS.SUCCESS:
+            ctx.fillStyle=this.colorSet.inspection_Pass;
+          break;
+          case INSPECTION_STATUS.FAILURE:
+            ctx.fillStyle=this.colorSet.inspection_Fail;
+          break;
+
+        }
         ctx.fill();
-
         ctx.restore();
-
-        
-        
+        ctx.strokeStyle = "black";
+        this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
       });
     }
 
 
-    if(true)
-    {
-      inspectionReport.forEach((report)=>{
-        this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
+    inspectionReport.forEach((report,idx)=>{
+      let ret_res = this.inspectionResult(report);
+      //if(ret_res == INSPECTION_STATUS.SUCCESS)
+      {
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
+        
+        listClone.forEach((eObj)=>{
+          //console.log(eObj);
+          switch(eObj.inspection_status)
+          {
+            case INSPECTION_STATUS.NA:
+              eObj.color=this.colorSet.color_NA;
+            break;
+            case INSPECTION_STATUS.SUCCESS:
+              eObj.color=this.colorSet.color_SUCCESS;
+            break;
+            case INSPECTION_STATUS.FAILURE:
+              eObj.color=this.colorSet.color_FAILURE;
+            break;
+
+          }
+        });
         this.rUtil.drawShapeList(ctx,listClone,true,[],listClone);
-      });
-    }
+      }
+    });
 
   }
 

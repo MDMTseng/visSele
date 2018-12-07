@@ -1519,6 +1519,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
+      if(sqrt(error)>30)continue;
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,

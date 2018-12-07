@@ -380,7 +380,7 @@ float SignatureMatchingError(const acv_XY *signature, int offset,
           errorSum += (error1<error2)?error1:error2;
         }
     }
-    return errorSum;
+    return errorSum/arrsize;
 }
 
 float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
