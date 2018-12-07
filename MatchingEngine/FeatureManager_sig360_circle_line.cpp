@@ -92,78 +92,27 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON * circle_obj)
 
   double *pnum;
 
-  if((pnum=JSON_GET_NUM(circle_obj,"id")) == NULL )
-  {
-    LOGE("No id");
-    return -1;
-  }
-  cir.id = (int)*pnum;
+  
+  cir.id=(int)*JFetEx_NUMBER(circle_obj,"id");
   LOGV("feature is an arc:%s %d",cir.name, cir.id);
 
 
 
-  if((pnum=JSON_GET_NUM(circle_obj,"margin")) == NULL )
-  {
-    LOGE("No margin can be found");
-    return -1;
-  }
-
-
-  cir.initMatchingMargin=*pnum;
+  cir.initMatchingMargin=*JFetEx_NUMBER(circle_obj,"margin");
 
 
 
   acv_XY pt1,pt2,pt3;
-  if((pnum=JSON_GET_NUM(circle_obj,"pt1.x")) == NULL )
-  {
-    LOGE("No pt1.x can be found");
-    return -1;
-  }
-  pt1.X=*pnum;
+  
+  pt1.X=*JFetEx_NUMBER(circle_obj,"pt1.x");
+  pt1.Y=*JFetEx_NUMBER(circle_obj,"pt1.y");
+  
+  pt2.X=*JFetEx_NUMBER(circle_obj,"pt2.x");
+  pt2.Y=*JFetEx_NUMBER(circle_obj,"pt2.y");
+  
+  pt3.X=*JFetEx_NUMBER(circle_obj,"pt3.x");
+  pt3.Y=*JFetEx_NUMBER(circle_obj,"pt3.y");
 
-
-  int pt1y;
-  if((pnum=JSON_GET_NUM(circle_obj,"pt1.y")) == NULL )
-  {
-    LOGE("No pt1.y can be found");
-    return -1;
-  }
-  pt1.Y=*pnum;
-
-
-  if((pnum=JSON_GET_NUM(circle_obj,"pt2.x")) == NULL )
-  {
-    LOGE("No pt2.x can be found");
-    return -1;
-  }
-  pt2.X=*pnum;
-
-
-  int pt2y;
-  if((pnum=JSON_GET_NUM(circle_obj,"pt2.y")) == NULL )
-  {
-    LOGE("No pt2.y can be found");
-    return -1;
-  }
-  pt2.Y=*pnum;
-
-
-  int pt3x;
-  if((pnum=JSON_GET_NUM(circle_obj,"pt3.x")) == NULL )
-  {
-    LOGE("No pt3.x can be found");
-    return -1;
-  }
-  pt3.X=*pnum;
-
-
-  int pt3y;
-  if((pnum=JSON_GET_NUM(circle_obj,"pt3.y")) == NULL )
-  {
-    LOGE("No pt3.y can be found");
-    return -1;
-  }
-  pt3.Y=*pnum;
 
   acv_XY circumcenter = acvCircumcenter(pt1,pt2,pt3);
   cir.circleTar.circumcenter=circumcenter;
