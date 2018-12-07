@@ -117,19 +117,21 @@ typedef struct FeatureReport_judgeReport{
 
   FeatureReport_judgeDef *def;
   float measured_val;
-
+  int status;
 }FeatureReport_judgeReport;
 
 
 typedef struct FeatureReport_lineReport{
   featureDef_line *def;
   acv_LineFit line;
+  int status;
 }FeatureReport_lineReport;
 
 
 typedef struct FeatureReport_circleReport{
   featureDef_circle *def;
   acv_CircleFit circle;
+  int status;
 }FeatureReport_circleReport;
 
 
@@ -137,12 +139,14 @@ typedef struct FeatureReport_circleReport{
 typedef struct FeatureReport_auxPointReport{
   featureDef_auxPoint *def;
   acv_XY pt;
+  int status;
 }FeatureReport_auxPointReport;
 
 
 typedef struct FeatureReport_searchPointReport{
   featureDef_searchPoint *def;
   acv_XY pt;
+  int status;
 }FeatureReport_searchPointReport;
 
 
@@ -162,7 +166,14 @@ typedef struct FeatureReport_sig360_circle_line_single{
   bool  isFlipped;
   float scale;
   char *targetName;
+  
+  enum FeatureReport_FeatureStatus{
+      STATUS_NA=-128,
+      STATUS_SUCCESS=0,
+      STATUS_FAILURE=-1,
+  } ;
 };
+typedef FeatureReport_sig360_circle_line_single FeatureReport_SCLS;
 
 
 typedef struct FeatureReport_sig360_circle_line{

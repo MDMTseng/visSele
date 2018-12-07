@@ -435,7 +435,7 @@ public:
             self->SendData(datCH_BPG);
 
           }
-          else if(checkTL("II",dat))
+          else if(checkTL("II",dat))//[I]mage [I]nspection
           {
             cJSON *json = cJSON_Parse((char*)dat->dat_raw);
             if (json == NULL)
@@ -641,7 +641,7 @@ int simpleTest()
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
-  imgSrc_X->SetFileName("data/test1.bmp");
+  imgSrc_X->SetFileName("data/testInsp.bmp");
   ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/test.ic.json");
 
   const FeatureReport * report = matchingEng.GetReport();
