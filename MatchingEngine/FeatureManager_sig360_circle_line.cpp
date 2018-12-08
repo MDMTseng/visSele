@@ -682,7 +682,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
             int Y = (int)round(searchPt.Y);
             int X = (int)round(searchPt.X);
             
-            LOGV("X:%d Y:%d",X,Y);
+            //LOGV("X:%d Y:%d",X,Y);
             uint8_t *pix = &(labeledImg->CVector[Y][X*3]);
             if(pix[0]!=255)
             {
