@@ -313,34 +313,31 @@ int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f,FeatureRepor
 }
 
 
-int FeatureManager_sig360_circle_line::lineCrossPosition(FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt)
+int FeatureManager_sig360_circle_line::lineCrossPosition(float flip_f,FeatureReport_sig360_circle_line_single &report,int obj1_id,int obj2_id, acv_XY *pt)
 {
   if(pt == NULL)return -1;
   FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
-  int idx1 = FindFeatureReportIndex(report,line1_id,&type1);
-  if(idx1<0|| type1!=FEATURETYPE::LINE)return -1;
-  int idx2 = FindFeatureReportIndex(report,line2_id,&type2);
-  if(idx2<0|| type2!=FEATURETYPE::LINE)return -1;
-  
-  if( (*report.detectedLines)[idx1].status ==  FeatureReport_sig360_circle_line_single::STATUS_NA || 
-    (*report.detectedLines)[idx2].status ==  FeatureReport_sig360_circle_line_single::STATUS_NA
-  )
-  {
-    return -2;
-  }
 
-  acv_LineFit line1 = (*report.detectedLines)[idx1].line;
-  acv_LineFit line2 = (*report.detectedLines)[idx2].line;
-  
-  acv_XY line1_pt2=line1.line.line_anchor;
-  acv_XY line2_pt2=line2.line.line_anchor;
-  line1_pt2 = acvVecAdd(line1_pt2,line1.line.line_vec);
-  line2_pt2 = acvVecAdd(line2_pt2,line2.line.line_vec);
+  acv_XY vec1,vec2;
+
+  if(ParseMainVector(flip_f,report,obj1_id, &vec1) !=0 ||
+    ParseMainVector(flip_f,report,obj2_id, &vec2) !=0 )
+    {
+      return -1;
+    }
+
+  acv_XY pt11,pt21;
+  if(ParseLocatePosition(report,obj1_id, &pt11) !=0 ||
+    ParseLocatePosition(report,obj2_id, &pt21) !=0 )
+    {
+      return -1;
+    }
+
+  acv_XY pt12 = acvVecAdd(vec1,pt11);
+  acv_XY pt22 = acvVecAdd(vec2,pt21);
 
 
-  acv_XY cross = acvIntersectPoint(
-              line1.line.line_anchor,line1_pt2,
-              line2.line.line_anchor,line2_pt2);
+  acv_XY cross = acvIntersectPoint(pt11,pt12,pt21,pt22);
   
   *pt=cross;
   return 0;
@@ -579,7 +576,7 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
       case featureDef_auxPoint::lineCross:
       {
         acv_XY cross;
-        int ret = lineCrossPosition(report,
+        int ret = lineCrossPosition(flip_f,report,
         def.data.lineCross.line1_id,
         def.data.lineCross.line2_id, &cross);
         if(ret<0)
@@ -1730,16 +1727,16 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       }
 
 
-      for(int j=0;j<auxPointList.size();j++)
-      {
-        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,auxPointList[j]);
-        detectedAuxPoints.push_back(report);
-      }
       for(int j=0;j<searchPointList.size();j++)
       {
         FeatureReport_searchPointReport report= searchPoint_process(img,i,ldData[i],singleReport,cached_sin,cached_cos,flip_f,searchPointList[j]);
         LOGV("id:%d, %d",report.def->id,searchPointList[j].id);
         detectedSearchPoints.push_back(report);
+      }
+      for(int j=0;j<auxPointList.size();j++)
+      {
+        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,auxPointList[j]);
+        detectedAuxPoints.push_back(report);
       }
       for(int j=0;j<judgeList.size();j++)
       {
