@@ -369,7 +369,7 @@ class renderUTIL
           if(eObject.id === undefined)break;
 
           let point = this.db_obj.auxPointParse(eObject,shapeList);
-          if(subObjs.length ==2 && subObjs[0].type == SHAPE_TYPE.line && subObjs[1].type == SHAPE_TYPE.line )
+          if(point !== undefined && subObjs.length ==2 )
           {//Draw crosssect line
             ctx.setLineDash([5, 15]);
   
@@ -383,10 +383,10 @@ class renderUTIL
             ctx.lineTo(subObjs[1].pt1.x,subObjs[1].pt1.y);
             ctx.stroke();
             ctx.setLineDash([]);
+            ctx.lineWidth=2;
+            ctx.strokeStyle="gray"; 
+            this.drawpoint(ctx, point);
           }
-          ctx.lineWidth=2;
-          ctx.strokeStyle="gray"; 
-          this.drawpoint(ctx, point);
         }
         break;
         

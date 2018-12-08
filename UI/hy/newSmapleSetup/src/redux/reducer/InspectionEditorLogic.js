@@ -3,7 +3,8 @@ import {
     threePointToArc,
     intersectPoint,
     closestPointOnLine,
-    PtRotate2d_sc} from 'UTIL/MathTools';
+    PtRotate2d_sc,
+    vecXY_addin} from 'UTIL/MathTools';
   
 import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {GetObjElement} from 'UTIL/MISC_Util';
@@ -503,7 +504,7 @@ export class InspectionEditorLogic
 
   auxPointParse(aux_point,shapelist = this.shapeList)
   {
-    let point=null;
+    let point=undefined;
     if(aux_point.type!=SHAPE_TYPE.aux_point)return point;
     
     if(aux_point.ref.length ==1)
@@ -511,7 +512,7 @@ export class InspectionEditorLogic
       let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id,shapelist);
       if(ref0_shape ===undefined)
       {
-        return null;
+        return undefined;
       }
       
       if(aux_point.ref[0].keyTrace !== undefined)
@@ -540,16 +541,30 @@ export class InspectionEditorLogic
     {
       
       let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id,shapelist);
-      if(ref0_shape ===undefined)return null;
+      if(ref0_shape ===undefined)return undefined;
       let ref1_shape=this.FindShapeObject( "id" , aux_point.ref[1].id,shapelist);
-      if(ref1_shape ===undefined)return null;
+      if(ref1_shape ===undefined)return undefined;
 
 
-      if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
+      let v0 = this.shapeVectorParse(ref0_shape,shapelist);
+      let v1 = this.shapeVectorParse(ref1_shape,shapelist);
+      if(v0 === undefined || v1 === undefined)
       {
-        let retPt = intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
-        return retPt;
+        return undefined;
       }
+
+      let p0 = this.shapeMiddlePointParse(ref0_shape,shapelist);
+      let p1 = this.shapeMiddlePointParse(ref1_shape,shapelist);
+      
+      if(p0 === undefined || p1 === undefined)
+      {
+        return undefined;
+      }
+      vecXY_addin(v0,p0);//Let vx become another point on line
+      vecXY_addin(v1,p1);
+
+      let retPt = intersectPoint(p0,v0,p1,v1);
+      return retPt;
 
     }
 
@@ -557,13 +572,13 @@ export class InspectionEditorLogic
   }
   searchPointParse(search_point,shapelist = this.shapeList)
   {
-    let point=null;
-    if(search_point.type!=SHAPE_TYPE.search_point)return point;
+    let point=undefined;
+    if(search_point.type!=SHAPE_TYPE.search_point)return undefined;
     
     if(search_point.ref.length ==1)
     {
       let ref0_shape=this.FindShapeObject( "id" , search_point.ref[0].id);
-      if(ref0_shape ===undefined)return null;
+      if(ref0_shape ===undefined)return undefined;
       switch(ref0_shape.type)
       {
         case SHAPE_TYPE.line:
@@ -618,24 +633,6 @@ export class InspectionEditorLogic
       }
     }
     return undefined;
-  }
-
-
-  xPointParse(xpoint,shapelist = this.shapeList)
-  {
-    let point=null;
-    switch(aux_point.type)
-    {
-      case SHAPE_TYPE.aux_point:
-        return this.auxPointParse(xpoint,shapelist);
-      break;
-      case SHAPE_TYPE.search_point:
-      {
-        return this.searchPointParse(xpoint,shapelist);
-      }
-      break;
-    }
-    return point;
   }
 
 }
