@@ -37,7 +37,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
 
   
   vector<int> s_intersectIdxs;
-  vector<acv_XY> s_points;
+  vector<ContourGrid::ptInfo> s_points;
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;

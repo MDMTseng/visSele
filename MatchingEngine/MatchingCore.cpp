@@ -134,7 +134,8 @@ void ContourFilter(vector<acv_XY> &contour,ContourGrid &cgrid)
       //refineEdgeInfo(Pic,ContourGrid::ptInfo *inout_ptinfo,int searching_limit)
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
-      ContourGrid::ptInfo ptinfo ={.pt=contour[i],.curvature=crossP_LF}
+      ContourGrid::ptInfo ptinfo ={.pt=contour[i]};
+      ptinfo.curvature = crossP_LF;
       cgrid.push(ptinfo);
       
       
@@ -571,7 +572,6 @@ void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourG
         {
           edge_grid.tmpXYSeq.resize(0);
           acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,edge_grid.tmpXYSeq);
-          
           ContourFilter(edge_grid.tmpXYSeq,edge_grid);
         }
         else if(pre_pix==0 && cur_pix == 255)//black to white

@@ -1405,9 +1405,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
     for(int i=0;i<edge_grid.dataSize();i++)
     {
 
-      const acv_XY* p = edge_grid.get(i);
-      int X = round(p->X);
-      int Y = round(p->Y);
+      const acv_XY p = edge_grid.get(i)->pt;
+      int X = round(p.X);
+      int Y = round(p.Y);
       {
             buff->CVector[Y][X*3]=0;
             buff->CVector[Y][X*3+1]=100;
@@ -1512,6 +1512,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
         acv_XY target_vec = {0};
         acv_Line line_cand;
+#if(0)
         if(line->skpsList.size()!=0)
         {
           s_points.resize(0);
@@ -1552,6 +1553,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           //  line.MatchingMarginX=30
         }
         else
+#endif
         {
           //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
           
@@ -1593,8 +1595,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           line->initMatchingMargin,
           s_intersectIdxs,s_points);
 
-        acvFitLine(&s_points[0], s_points.size(),&line_cand,&sigma);
-
+        acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
         //LOGV("Matched points:%d",s_points.size());
         acvDrawLine(buff,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
@@ -1618,15 +1619,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         sigma);
 
 
-        acv_XY *end_pos=findEndPoint(line_cand, 1, s_points);
-        acv_XY *end_neg=findEndPoint(line_cand, -1, s_points);
+        //acv_XY *end_pos=findEndPoint(line_cand, 1, s_points);
+        //acv_XY *end_neg=findEndPoint(line_cand, -1, s_points);
 
         acv_LineFit lf;
         lf.line=line_cand;
         lf.matching_pts=s_points.size();
         lf.s=sigma;
-        if(end_pos)lf.end_pos=*end_pos;
-        if(end_neg)lf.end_neg=*end_neg;
+        //if(end_pos)lf.end_pos=*end_pos;
+        //if(end_neg)lf.end_neg=*end_neg;
 
 
         LOGV("end_pos.X:%f end_pos.Y:%f end_neg.X:%f end_neg.Y:%f",
