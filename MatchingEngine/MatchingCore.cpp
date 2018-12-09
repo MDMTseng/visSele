@@ -70,6 +70,13 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
 
     return 0;
 }
+float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
+{
+  acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};
+  acv_XY v2={.X=pc.X-p2.X,.Y=pc.Y-p2.Y};
+  return acvVectorAngle(v1,v2);
+}
+
 void refineEdgeInfo(acvImage *Pic,ContourGrid::ptInfo *inout_ptinfo,int searching_limit)
 {
   ContourGrid::ptInfo pinfo = *inout_ptinfo;
@@ -77,13 +84,6 @@ void refineEdgeInfo(acvImage *Pic,ContourGrid::ptInfo *inout_ptinfo,int searchin
 
 
 
-}
-
-float acvPoint3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
-{
-  acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};
-  acv_XY v2={.X=pc.X-p2.X,.Y=pc.Y-p2.Y};
-  return acvVectorAngle(v1,v2);
 }
 
 void ContourFilter(vector<acv_XY> &contour,ContourGrid &cgrid)
@@ -130,21 +130,23 @@ void ContourFilter(vector<acv_XY> &contour,ContourGrid &cgrid)
       crossPHist[crossPHist_head] = angle;
       crossPHist_head = valueWarping(crossPHist_head+1,LP_hWindow*2);
 
+
+      //refineEdgeInfo(Pic,ContourGrid::ptInfo *inout_ptinfo,int searching_limit)
       //If the cross product is more than -epsilon(the epsilon is margin to filter out straight line)
       //if the low filtered cross product is more than 0 (history shows it's most likely an outward contour)
-      ContourGrid
-      cgrid.push();
-      if(crossP_LF<-7*epsilon){
+      ContourGrid::ptInfo ptinfo ={.pt=contour[i],.curvature=crossP_LF}
+      cgrid.push(ptinfo);
+      
+      
+      /*if(crossP_LF<-7*epsilon){
         continue;
       }//Inner curve
       if(crossP_LF>epsilon){
         innerCornorContour.push_back(contour[i]);
       }//Inner curve
-
-
       if(crossP_LF<epsilon && crossP_LF>-epsilon ){
         lineContour.push_back(contour[i]);
-      }//Line
+      }//Line*/
 
     }
 }
@@ -569,11 +571,14 @@ void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourG
         {
           edge_grid.tmpXYSeq.resize(0);
           acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,edge_grid.tmpXYSeq);
+          
+          ContourFilter(edge_grid.tmpXYSeq,edge_grid);
         }
         else if(pre_pix==0 && cur_pix == 255)//black to white
         {
           edge_grid.tmpXYSeq.resize(0);
           acvContourExtraction(labeledImg, j-1, i, 1, 128, 1, searchType_C_B2W,edge_grid.tmpXYSeq);
+          ContourFilter(edge_grid.tmpXYSeq,edge_grid);
         }
 
         pre_pix= cur_pix;

@@ -14,6 +14,7 @@ class ContourGrid{
     {
       acv_XY pt;
       acv_XY sobel;
+      float curvature;
     };
 
     
