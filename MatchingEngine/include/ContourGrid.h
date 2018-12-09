@@ -9,7 +9,18 @@
 
 
 class ContourGrid{
-    std::vector< std::vector <acv_XY> > contourSections;
+    public:
+    typedef struct ptInfo
+    {
+      acv_XY pt;
+      acv_XY sobel;
+    };
+
+    
+    std::vector< acv_XY > tmpXYSeq;
+    private:
+
+    std::vector< std::vector <ptInfo> > contourSections;
     std::vector< int > intersectTestNodes;
     int gridSize;
     int dataNumber=0;
@@ -32,13 +43,13 @@ class ContourGrid{
 
     int getSecIdx(int X,int Y);
 
-    std::vector<acv_XY> &fetchBelongingSection(acv_XY data);
+    std::vector<ptInfo> &fetchBelongingSection(acv_XY data);
 
-    void push(acv_XY data);
+    void push(ptInfo data);
 
     int dataSize();
 
-    const acv_XY* get(int idx);
+    const ptInfo* get(int idx);
 
     enum intersectTestType
     {
@@ -51,11 +62,11 @@ class ContourGrid{
       std::vector<int> &intersectIdxs);
 
     void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,
-      std::vector<int> &intersectIdxs,std::vector<acv_XY> &points);
+      std::vector<int> &intersectIdxs,std::vector<ptInfo> &points);
 
     void GetSectionsWithinLineContour(acv_Line line,float epsilonX, float epsilonY,std::vector<int> &intersectIdxs);
 
-    void getContourPointsWithInLineContour(acv_Line line,float epsilonX, float epsilonY,std::vector<int> &intersectIdxs,std::vector<acv_XY> &points);
+    void getContourPointsWithInLineContour(acv_Line line,float epsilonX, float epsilonY,std::vector<int> &intersectIdxs,std::vector<ptInfo> &points);
 
     int getGetSectionRegionDataSize(int secX,int secY,int secW,int secH);
     const acv_XY* getGetSectionRegionData(int secX,int secY,int secW,int secH,int dataIdx);

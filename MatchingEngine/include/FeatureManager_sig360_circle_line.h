@@ -29,8 +29,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int signature_feature_id;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
-  ContourGrid inward_curve_grid;
-  ContourGrid straight_line_grid;
+  ContourGrid edge_grid;
 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;

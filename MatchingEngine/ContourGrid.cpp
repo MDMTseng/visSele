@@ -60,15 +60,15 @@ int ContourGrid::getSecIdx(int X,int Y)
   return sectionCol*gridY+gridX;
 }
 
-std::vector<acv_XY> &ContourGrid::fetchBelongingSection(acv_XY data)
+std::vector<ContourGrid::ptInfo> &ContourGrid::fetchBelongingSection(acv_XY pt)
 {
-  int gridIdx=getSecIdx(data.X,data.Y);
+  int gridIdx=getSecIdx(pt.X,pt.Y);
   return contourSections[gridIdx];
 }
 
-void ContourGrid::push(acv_XY data)
+void ContourGrid::push(ptInfo data)
 {
-  fetchBelongingSection(data).push_back(data);
+  fetchBelongingSection(data.pt).push_back(data);
   dataNumber++;
 }
 
@@ -77,7 +77,7 @@ int ContourGrid::dataSize()
   return dataNumber;
 }
 
-const acv_XY* ContourGrid::get(int idx)
+const ContourGrid::ptInfo* ContourGrid::get(int idx)
 {
   int idx_count_down=idx;
   for(int i=0;i<contourSections.size();i++)
@@ -262,7 +262,7 @@ void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,fl
 }
 
 void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,
-  std::vector<int> &intersectIdxs,std::vector<acv_XY> &points)
+  std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
 {
   points.resize(0);
   GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
@@ -281,8 +281,8 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
     int idx = intersectIdxs[i];
     for(int j=0;j<contourSections[idx].size();j++)
     {
-      float dX = X-contourSections[idx][j].X;
-      float dY = Y-contourSections[idx][j].Y;
+      float dX = X-contourSections[idx][j].pt.X;
+      float dY = Y-contourSections[idx][j].pt.Y;
       float dist_sq = dX*dX + dY*dY;
 
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
@@ -387,7 +387,7 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
   }
 }
 
-void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY, std::vector<int> &intersectIdxs,std::vector<acv_XY> &points)
+void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
 {
   points.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
@@ -401,7 +401,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
     {
 
 
-      acv_XY pt=contourSections[idx][j];
+      acv_XY pt=contourSections[idx][j].pt;
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
 
@@ -507,7 +507,7 @@ const acv_XY* ContourGrid::getGetSectionRegionData(int secX,int secY,int secW,in
 
       if(curSecSize+count > dataIdx)
       {
-        return &(contourSections[idx][dataIdx-count]);
+        return &(contourSections[idx][dataIdx-count].pt);
       }
       count+=curSecSize;
     }

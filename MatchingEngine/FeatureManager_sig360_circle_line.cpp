@@ -1390,23 +1390,22 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 {
 
   int grid_size = 50;
-  inward_curve_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
-  straight_line_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+  edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
   acvCloneImage( img,buff, -1);
 
   tmp_signature.resize(feature_signature.size());
   reports.resize(0);
   int scanline_skip=15;
-  extractContourDataToContourGrid(buff,grid_size,inward_curve_grid, straight_line_grid,scanline_skip);
+  extractContourDataToContourGrid(buff,grid_size,edge_grid,scanline_skip);
 
 
   if(1)//Draw debug image(curve and straight line)
   {
-    for(int i=0;i<inward_curve_grid.dataSize();i++)
+    for(int i=0;i<edge_grid.dataSize();i++)
     {
 
-      const acv_XY* p = inward_curve_grid.get(i);
+      const acv_XY* p = edge_grid.get(i);
       int X = round(p->X);
       int Y = round(p->Y);
       {
@@ -1419,17 +1418,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
     }
 
 
-    for(int i=0;i<straight_line_grid.dataSize();i++)
-    {
-        const acv_XY* p2 = straight_line_grid.get(i);
-        int X = round(p2->X);
-        int Y = round(p2->Y);
-        {
-              buff->CVector[Y][X*3]=0;
-              buff->CVector[Y][X*3+1]=255;
-              buff->CVector[Y][X*3+2]=100;
-        }
-    }
   }
 
   float sigma;
@@ -1600,7 +1588,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         }
 
         s_points.resize(0);
-        straight_line_grid.getContourPointsWithInLineContour(line_cand,
+        edge_grid.getContourPointsWithInLineContour(line_cand,
           line->MatchingMarginX+line->initMatchingMargin,
           line->initMatchingMargin,
           s_intersectIdxs,s_points);
@@ -1670,13 +1658,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         int matching_tor=cdef.initMatchingMargin;
         center.X+=ldData[i].Center.X;
         center.Y+=ldData[i].Center.Y;
-        inward_curve_grid.getContourPointsWithInCircleContour(center.X,center.Y,cdef.circleTar.radius,matching_tor*2,
+        edge_grid.getContourPointsWithInCircleContour(center.X,center.Y,cdef.circleTar.radius,matching_tor*2,
           s_intersectIdxs,s_points);
 
         acv_CircleFit cf;
         circleRefine(s_points,&cf);
 
-        inward_curve_grid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,matching_tor,
+        edge_grid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,matching_tor,
           s_intersectIdxs,s_points);
         circleRefine(s_points,&cf);
 
