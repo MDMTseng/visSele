@@ -80,18 +80,15 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   detectedCircles.resize(0);
   detectedLines.resize(0);
   int idx=-1;
+  int maxArea=0;
   for(int i=1;i<ldData.size();i++)
   {
     if(ldData[i].area<=0)continue;
-    LOGV("[%d]: X:%f Y:%f...",i,ldData[i].Center.X,ldData[i].Center.Y);
-    if(idx!=-1)
+    if(maxArea<ldData[i].area)
     {
-      LOGE("Only one component is allowed for extractor");
-      report.data.sig360_extractor.error =
-      FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
-      return -1;
+      idx = i;
+      maxArea=ldData[i].area;
     }
-    idx=i;
   }
   if(idx==-1)
   {
