@@ -994,7 +994,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
           ctx.scale(1,-1);
         
         ctx.scale(sigScale,sigScale);
-        this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,20);
+        this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,5);
 
         let ret_res = this.inspectionResult(report);
         switch(ret_res)

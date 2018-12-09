@@ -644,6 +644,7 @@ int simpleTest()
   imgSrc_X->SetFileName("data/testInsp.bmp");
   ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/test.ic.json");
 
+  acvSaveBitmapFile("data/buff.bmp",test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
 
   if(report!=NULL)
