@@ -14,11 +14,12 @@ class ContourGrid{
     {
       acv_XY pt;
       acv_XY sobel;
+      acv_XY contourDir;
       float curvature;
     };
 
     
-    std::vector< acv_XY > tmpXYSeq;
+    std::vector< ptInfo > tmpXYSeq;
     private:
 
     std::vector< std::vector <ptInfo> > contourSections;
@@ -39,6 +40,9 @@ class ContourGrid{
     void resetSecROI();
 
     int getColumSize();
+
+    
+    void ptInfoOpt(acvImage *img);
 
     int getRowSize();
 

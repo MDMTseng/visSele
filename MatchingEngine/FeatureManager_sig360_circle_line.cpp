@@ -1390,35 +1390,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 {
 
   int grid_size = 50;
-  edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
 
   acvCloneImage( img,buff, -1);
 
   tmp_signature.resize(feature_signature.size());
   reports.resize(0);
   int scanline_skip=15;
-  extractContourDataToContourGrid(buff,grid_size,edge_grid,scanline_skip);
-
-
-  if(1)//Draw debug image(curve and straight line)
-  {
-    for(int i=0;i<edge_grid.dataSize();i++)
-    {
-
-      const acv_XY p = edge_grid.get(i)->pt;
-      int X = round(p.X);
-      int Y = round(p.Y);
-      {
-            buff->CVector[Y][X*3]=0;
-            buff->CVector[Y][X*3+1]=100;
-            buff->CVector[Y][X*3+2]=255;
-      }
-
-
-    }
-
-
-  }
+  
 
   float sigma;
   int count = 0;
@@ -1445,6 +1423,22 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   {
       LOGI("Lable:%2d area:%d",i,ldData[i].area);
       if(ldData[i].area<120)continue;
+
+
+      if(1)//Draw debug image(curve and straight line)
+      {
+        for(int i=0;i<edge_grid.dataSize();i++)
+        {
+          const acv_XY p = edge_grid.get(i)->pt;
+          int X = round(p.X);
+          int Y = round(p.Y);
+          {
+            buff->CVector[Y][X*3]=0;
+            buff->CVector[Y][X*3+1]=100;
+            buff->CVector[Y][X*3+2]=255;
+          }
+        }
+      }
 
 
       acvContourCircleSignature(img, ldData[i], i, tmp_signature);
@@ -1504,6 +1498,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       }
 
 
+      edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+      extractLabeledContourDataToContourGrid(originalImage,buff,i,ldData[i],
+        grid_size,edge_grid,scanline_skip);
       acv_LineFit lf_zero = {0};
       for (int j = 0; j < featureLineList.size(); j++)
       {
