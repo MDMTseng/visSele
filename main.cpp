@@ -485,6 +485,7 @@ public:
 
                   int ret = ImgInspection_JSONStr(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,jsonStr);
                   free(jsonStr);
+                  acvSaveBitmapFile("data/buff.bmp",test1_buff);
 
                   const FeatureReport * report = matchingEng.GetReport();
 
@@ -666,7 +667,7 @@ int simpleTest()
 #include <vector>
 int main(int argc, char** argv)
 {
-  return simpleTest();
+  //return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;

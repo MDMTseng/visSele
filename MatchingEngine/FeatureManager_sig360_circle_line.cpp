@@ -114,9 +114,42 @@ int FeatureManager_sig360_circle_line::parse_arcData(cJSON * circle_obj)
   pt3.Y=*JFetEx_NUMBER(circle_obj,"pt3.y");
 
 
+  double direction = *JFetEx_NUMBER(circle_obj,"direction");
+  
   acv_XY circumcenter = acvCircumcenter(pt1,pt2,pt3);
   cir.circleTar.circumcenter=circumcenter;
   cir.circleTar.radius=hypot(circumcenter.X-pt2.X,circumcenter.Y-pt2.Y);
+
+
+  {
+    pt1.X -= circumcenter.X;
+    pt1.Y -= circumcenter.Y;
+    pt2.X -= circumcenter.X;
+    pt2.Y -= circumcenter.Y;
+    pt3.X -= circumcenter.X;
+    pt3.Y -= circumcenter.Y;
+    float angle1 = atan2(pt1.Y,pt1.X);
+    float angle2 = atan2(pt2.Y,pt2.X);
+    float angle3 = atan2(pt3.Y,pt3.X);
+
+    float angle21 = angle2-angle1;
+    float angle31 = angle3-angle1;
+    if(angle21<0)angle21+=2*M_PI;
+    if(angle31<0)angle31+=2*M_PI;
+
+    if(angle31>angle21)
+    {
+      cir.sAngle = angle1;
+      cir.eAngle = angle3;
+    }
+    else
+    {
+      cir.sAngle = angle3;
+      cir.eAngle = angle1;
+    }
+    cir.outter_inner=direction;
+  }
+
 
   LOGV("x:%f y:%f r:%f margin:%f",
   cir.circleTar.circumcenter.X,
@@ -941,13 +974,13 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
   line.lineTar.line_vec.Y=(p1.Y-p0.Y);
   line.lineTar.line_vec = acvVecNormalize(line.lineTar.line_vec);
 
+  if(direction<0)
+  {
+    line.lineTar.line_vec = acvVecMult(line.lineTar.line_vec,-1);
+  }
 
 
   acv_XY normal = acvVecNormal(line.lineTar.line_vec);
-  if(direction<0)
-  {
-    normal = acvVecMult(normal,-1);
-  }
 
   line.searchVec=normal;
   line.searchDist=line.initMatchingMargin*2;
@@ -1425,20 +1458,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       if(ldData[i].area<120)continue;
 
 
-      if(1)//Draw debug image(curve and straight line)
-      {
-        for(int i=0;i<edge_grid.dataSize();i++)
-        {
-          const acv_XY p = edge_grid.get(i)->pt;
-          int X = round(p.X);
-          int Y = round(p.Y);
-          {
-            buff->CVector[Y][X*3]=0;
-            buff->CVector[Y][X*3+1]=100;
-            buff->CVector[Y][X*3+2]=255;
-          }
-        }
-      }
 
 
       acvContourCircleSignature(img, ldData[i], i, tmp_signature);
@@ -1450,7 +1469,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
-      if(sqrt(error)>30)continue;
+      if(sqrt(error)>40)continue;
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,
@@ -1501,6 +1520,34 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
       extractLabeledContourDataToContourGrid(originalImage,buff,i,ldData[i],
         grid_size,edge_grid,scanline_skip);
+
+      
+      
+      if(1)//Draw debug image(curve and straight line)
+      {
+        for(int i=0;i<edge_grid.dataSize();i++)
+        {
+          const ContourGrid::ptInfo pti= *edge_grid.get(i);
+          const acv_XY p = pti.pt;
+          int X = round(p.X);
+          int Y = round(p.Y);
+
+          if(abs(pti.curvature)<0.1)
+          {
+            buff->CVector[Y][X*3]=0;
+            buff->CVector[Y][X*3+1]=100;
+            buff->CVector[Y][X*3+2]=255;
+          }
+          else if(abs(pti.curvature)>0.15)
+          {
+            buff->CVector[Y][X*3]=255;
+            buff->CVector[Y][X*3+1]=100;
+            buff->CVector[Y][X*3+2]=0;
+          }
+        }
+      }
+
+
       acv_LineFit lf_zero = {0};
       for (int j = 0; j < featureLineList.size(); j++)
       {
@@ -1555,6 +1602,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
           
           line_cand.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
+          if(flip_f<0)
+          {
+            
+            line_cand.line_vec = acvVecMult(line_cand.line_vec,-1);
+          }
           target_vec = line_cand.line_vec;
           line_cand.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
           acv_XY searchVec;
@@ -1588,12 +1640,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
         s_points.resize(0);
         edge_grid.getContourPointsWithInLineContour(line_cand,
-          line->MatchingMarginX+line->initMatchingMargin,
+          line->MatchingMarginX,
           line->initMatchingMargin,
           s_intersectIdxs,s_points);
-
         acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
         //LOGV("Matched points:%d",s_points.size());
+
         acvDrawLine(buff,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
           line_cand.line_anchor.Y-mult*line_cand.line_vec.Y,
@@ -1607,6 +1659,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           LOGV("VEC INV::::");
           line_cand.line_vec = acvVecMult(line_cand.line_vec,-1);
         }
+        if(1)//Draw debug image(curve and straight line)
+        {
+          for(int i=0;i<s_points.size();i++)
+          {
+            const ContourGrid::ptInfo pti= s_points[i];
+            const acv_XY p = pti.pt;
+            int X = round(p.X);
+            int Y = round(p.Y);
+
+            {
+              buff->CVector[Y][X*3]=255;
+              buff->CVector[Y][X*3+1]=100;
+              buff->CVector[Y][X*3+2]=255;
+            }
+          }
+        }
+
 
         LOGV("L=%d===anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f ,sigma:%f",j,
         line_cand.line_anchor.X,
@@ -1656,13 +1725,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         int matching_tor=cdef.initMatchingMargin;
         center.X+=ldData[i].Center.X;
         center.Y+=ldData[i].Center.Y;
-        edge_grid.getContourPointsWithInCircleContour(center.X,center.Y,cdef.circleTar.radius,matching_tor*2,
+        edge_grid.getContourPointsWithInCircleContour(
+          center.X,
+          center.Y,
+          cdef.circleTar.radius,
+          cdef.sAngle,cdef.eAngle,cdef.outter_inner,
+          matching_tor*2,
           s_intersectIdxs,s_points);
 
         acv_CircleFit cf;
         circleRefine(s_points,&cf);
 
-        edge_grid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,matching_tor,
+        edge_grid.getContourPointsWithInCircleContour(
+          cf.circle.circumcenter.X,
+          cf.circle.circumcenter.Y,
+          cf.circle.radius,
+          cdef.sAngle,cdef.eAngle,cdef.outter_inner,
+          matching_tor,
           s_intersectIdxs,s_points);
         circleRefine(s_points,&cf);
 
@@ -1683,6 +1762,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
         acvDrawCrossX(buff,
           center.X,center.Y,
+          3,3);
+
+        acvDrawCrossX(buff,
+          cf.circle.circumcenter.X,cf.circle.circumcenter.Y,
           5,3);
 
         acvDrawCircle(buff,

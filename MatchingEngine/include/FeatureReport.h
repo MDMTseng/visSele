@@ -25,6 +25,9 @@ typedef struct featureDef_circle{
   char name[FeatureManager_NAME_LENGTH];
   acv_Circle circleTar;
   float initMatchingMargin;
+  float sAngle;
+  float eAngle;
+  float outter_inner;
 }featureDef_circle;
 typedef struct featureDef_line{
   int id;

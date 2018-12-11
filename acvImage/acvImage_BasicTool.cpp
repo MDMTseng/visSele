@@ -740,7 +740,7 @@ bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, f
 
 bool acvFitLine(const void *pts_struct,int pts_step, const void *ptsw_struct,int ptsw_step, int ptsL,acv_Line *line, float *ret_sigma) 
 {
-
+  acv_Line tarline = *line;
   if( ptsL < 2 || pts_struct==NULL || line==NULL) {
     // Fail: infinitely many lines passing through this single point
     return false;
@@ -790,6 +790,11 @@ bool acvFitLine(const void *pts_struct,int pts_step, const void *ptsw_struct,int
   line->line_vec.X /=denominator;
   line->line_vec.Y /=denominator;
 
+  if( (line->line_vec.X*tarline.line_vec.X + line->line_vec.Y*tarline.line_vec.Y )<0)
+  {
+      line->line_vec.X =-line->line_vec.X;
+      line->line_vec.Y =-line->line_vec.Y;
+  }
 
   line->line_anchor.X = xMean;
   line->line_anchor.Y = yMean;

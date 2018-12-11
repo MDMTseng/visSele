@@ -375,7 +375,9 @@ bool CircleFitTest(ContourGrid &contourGrid,
 
     static vector<int> s_intersectIdxs;
     static vector<ContourGrid::ptInfo> s_points;
-    contourGrid.getContourPointsWithInCircleContour(c.circumcenter.X,c.circumcenter.Y,c.radius,epsilon1,
+    contourGrid.getContourPointsWithInCircleContour(c.circumcenter.X,c.circumcenter.Y,c.radius,
+      0,2*M_PI,0,
+      epsilon1,
       s_intersectIdxs,s_points);
 
     float matchingScore =(float)s_points.size() / c.radius/((float)(2*M_PI));//Around 2PI
@@ -385,7 +387,13 @@ bool CircleFitTest(ContourGrid &contourGrid,
       acv_CircleFit cf ;
 
       circleRefine(s_points,&cf);
-      contourGrid.getContourPointsWithInCircleContour(cf.circle.circumcenter.X,cf.circle.circumcenter.Y,cf.circle.radius,epsilon2,
+      contourGrid.getContourPointsWithInCircleContour(
+        cf.circle.circumcenter.X,
+        cf.circle.circumcenter.Y,
+        cf.circle.radius,0,
+        0,
+        2*M_PI,
+        epsilon2,
         s_intersectIdxs,s_points);
       matchingScore =(float)s_points.size() / cf.circle.radius/((float)(2*M_PI));//Around 2PI
       circleRefine(s_points,&cf);

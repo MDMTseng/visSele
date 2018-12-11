@@ -18,6 +18,11 @@
     "ratio": "c",
     "tuple": "c",
     "system_error": "cpp",
-    "xlocale": "cpp"
+    "xlocale": "cpp",
+    "istream": "cpp",
+    "xlocmon": "cpp",
+    "xlocnum": "cpp",
+    "xloctime": "cpp",
+    "cstdlib": "cpp"
   }
 }

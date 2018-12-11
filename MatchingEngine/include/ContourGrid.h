@@ -66,7 +66,8 @@ class ContourGrid{
     void GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,
       std::vector<int> &intersectIdxs);
 
-    void getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,
+    void getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
+      float epsilon,
       std::vector<int> &intersectIdxs,std::vector<ptInfo> &points);
 
     void GetSectionsWithinLineContour(acv_Line line,float epsilonX, float epsilonY,std::vector<int> &intersectIdxs);
