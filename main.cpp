@@ -485,7 +485,7 @@ public:
 
                   int ret = ImgInspection_JSONStr(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,jsonStr);
                   free(jsonStr);
-                  acvSaveBitmapFile("data/buff.bmp",test1_buff);
+                  //acvSaveBitmapFile("data/buff.bmp",test1_buff);
 
                   const FeatureReport * report = matchingEng.GetReport();
 
@@ -519,6 +519,8 @@ public:
 
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.dat_img=imgSrc_X->GetAcvImage();
+              
+              acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -586,6 +588,8 @@ public:
 
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.dat_img=imgSrc_X->GetAcvImage();
+              
+              acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
