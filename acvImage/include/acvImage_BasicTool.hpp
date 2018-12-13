@@ -121,6 +121,7 @@ void acvInnerFramePixCopy(acvImage *Pic,int FrameX);
 acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4);
 acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3);
 float acv2DCrossProduct(acv_XY v1,acv_XY v2);
+float acv2DDotProduct(acv_XY v1,acv_XY v2);
 float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
 float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormal(acv_XY vec);

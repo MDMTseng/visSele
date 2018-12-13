@@ -510,14 +510,14 @@ bool LineFitTest(ContourGrid &contourGrid,
   static vector<int> s_intersectIdxs;
   static vector<ContourGrid::ptInfo> s_points;
 
-  contourGrid.getContourPointsWithInLineContour(line,1000000,epsilon1,s_intersectIdxs,s_points);
+  contourGrid.getContourPointsWithInLineContour(line,1000000,epsilon1,1,s_intersectIdxs,s_points);
   if(s_points.size()>minInBoundPoints)
   {
     //acvFitLine(&s_points[0], s_points.size(),&line,NULL);
     
     acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line,NULL);
 
-    contourGrid.getContourPointsWithInLineContour(line,1000000,epsilon2,s_intersectIdxs,s_points);
+    contourGrid.getContourPointsWithInLineContour(line,1000000,epsilon2,1,s_intersectIdxs,s_points);
     if(s_points.size()>minInBoundPoints)
     {
       float sigma;

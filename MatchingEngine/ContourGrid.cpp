@@ -271,7 +271,8 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
   GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
   float outerDist_sq=radius+epsilon;
   outerDist_sq*=outerDist_sq;
-  const float arcCurvatureMax = 0.15;
+  const float arcCurvatureMin = 0.06;
+  const float arcCurvatureMax = 0.4;
 
   float innerDist_sq=radius-epsilon;
   if(innerDist_sq<0)
@@ -292,8 +293,10 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
 
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
       {
-
-        if(abs(pti.curvature)>arcCurvatureMax && (pti.curvature*outter_inner)>=0)
+        float absCurv = abs(pti.curvature);
+        if(absCurv>arcCurvatureMin &&
+          absCurv<arcCurvatureMax &&
+         (pti.curvature*outter_inner)>=0)
         {
           points.push_back(pti);
         }
@@ -396,7 +399,7 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
   }
 }
 
-void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
+void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
 {
   LOGV("test...");
   points.resize(0);
@@ -424,7 +427,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       {
         float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
         //LOGV("%f,%f   %f,%f  dotP:%f",pti.contourDir.X,pti.contourDir.Y,line.line_vec.X,line.line_vec.Y,dotP);
-        if(dotP>0.9 && abs(pti.curvature)<lineCurvatureMax)
+        if(dotP*flip_f>0.9 && abs(pti.curvature)<lineCurvatureMax)
         {
           //LOGV(">>>>>>>");
         

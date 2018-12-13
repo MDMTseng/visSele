@@ -41,11 +41,9 @@ typedef struct featureDef_line{
 
 
   typedef struct searchKeyPoint{
-    acv_XY searchStart;
-    acv_XY searchVec;
-    float searchDist;
+    acv_XY keyPt;
   };
-  vector<searchKeyPoint> skpsList;
+  vector<searchKeyPoint> keyPtList;
 }featureDef_line;
 
 

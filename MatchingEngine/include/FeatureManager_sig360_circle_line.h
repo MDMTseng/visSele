@@ -34,7 +34,8 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;
 
-
+  acvImage buff1;
+  acvImage buff2;
   
   vector<int> s_intersectIdxs;
   vector<ContourGrid::ptInfo> s_points;
@@ -47,8 +48,8 @@ public :
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
 protected:
 
-  int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
-  float find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList);
+  //int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
+  //float find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList);
   int parse_arcData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_auxPointData(cJSON * auxPoint_obj);
@@ -69,7 +70,7 @@ protected:
   FeatureReport_searchPointReport searchPoint_process(acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
   FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,
-  featureDef_searchPoint &def);
+  featureDef_searchPoint &def,acvImage *dbgImg);
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);

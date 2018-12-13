@@ -666,6 +666,10 @@ float acv2DCrossProduct(acv_XY v1,acv_XY v2)
 	return v1.X*v2.Y - v2.X*v1.Y;
 }
 
+float acv2DDotProduct(acv_XY v1,acv_XY v2)
+{
+	return v1.X*v2.X + v2.Y*v1.Y;
+}
 
 float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3)
 {
