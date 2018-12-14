@@ -11,6 +11,7 @@ export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath contrib/SOIL)
 export MODULE_lodepng=$(abspath contrib/lodepng)
 export MODULE_DataChannel=$(abspath DataChannel)
+export MODULE_CameraLayer=$(abspath CameraLayer)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -33,7 +34,8 @@ IDIR=	include/ \
 			$(MODULE_LOGCTRL)/include \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_zlib)/src \
-			$(MODULE_DataChannel)/include
+			$(MODULE_DataChannel)/include\
+			$(MODULE_CameraLayer)/include
 
 
 
@@ -49,6 +51,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_common_lib)/common_lib.a \
 					$(MODULE_DataChannel)/DataChannel.a \
 					$(MODULE_acvImage)/acvImage.a \
+					$(MODULE_CameraLayer)/CameraLayer.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a
@@ -78,6 +81,7 @@ else
 									$(MODULE_SOIL) \
 									$(MODULE_lodepng) \
 									$(MODULE_DataChannel) \
+									$(MODULE_CameraLayer) \
 									sidePrj
 endif
 

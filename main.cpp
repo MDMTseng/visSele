@@ -18,6 +18,7 @@
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
 #include <stdexcept>
+#include "CameraLayer_BMP.hpp"
 
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
@@ -641,13 +642,26 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
   return;
 }
 
+
+void CameraLayer_Callback_(CameraLayer &cl_obj, int type, void* context)
+{
+  CameraLayer_BMP &clBMP=*((CameraLayer_BMP*)&cl_obj);
+  LOGV("Called.... %d, filename:%s",type,clBMP.GetCurrentFileName().c_str());
+}
 int simpleTest()
 {
+  
+  CameraLayer_BMP cl_BMP(CameraLayer_Callback_,NULL);
+
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
-  imgSrc_X = new DatCH_BMP(new acvImage());
-  imgSrc_X->SetFileName("data/testInsp.bmp");
-  ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/test.ic.json");
+  CameraLayer::status ret = cl_BMP.LoadBMP("data/testInsp.bmp");
+  if(ret != CameraLayer::ACK)
+  {
+    LOGV("LoadBMP failed: ret:%d",ret);
+    return -1;
+  }
+  ImgInspection(matchingEng,cl_BMP.GetImg(),test1_buff,1,"data/test.ic.json");
 
   acvSaveBitmapFile("data/buff.bmp",test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
@@ -666,12 +680,11 @@ int simpleTest()
   return 0;
 }
 
-
-
 #include <vector>
 int main(int argc, char** argv)
 {
-  //return simpleTest();
+  
+  return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;

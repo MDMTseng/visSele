@@ -1121,14 +1121,14 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   LOGV("feature is a measure/judge:%s id:%d subtype:%s",judge.name,judge.id,subtype);
 
 
-  judge.targetVal=*JFetEx_NUMBER(judge_obj,"value");
+  judge.targetVal=*JxNUM(judge_obj,"value");
 
-  judge.targetVal_margin=*JFetEx_NUMBER(judge_obj,"margin");
+  judge.targetVal_margin=*JxNUM(judge_obj,"margin");
 
   
-  judge.OBJ1_id = (int)*JFetEx_NUMBER(judge_obj,"ref[0].id");
+  judge.OBJ1_id = (int)*JxNUM(judge_obj,"ref[0].id");
 
-  pnum = JFetch_NUMBER(judge_obj,"ref[1].id");
+  pnum = JFetch_NUMBER(judge_obj,"ref[1].id");//It's fine if we don't have OBJ2(ref[1])
   if(pnum == NULL)judge.OBJ2_id = -1;
   else {judge.OBJ2_id = *pnum;}
 
