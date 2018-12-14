@@ -27,6 +27,7 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
   vector<FeatureManager_binary_processing*> binaryFeatureBundle;
 
   vector<acv_LabeledData> ldData;
+  acvImage binary_img;
 public :
   FeatureManager_binary_processing_group(const char *json_str);
   static bool check(cJSON *root);

@@ -52,10 +52,23 @@ export function distance_arc_point(arc, point)
 
 export function closestPointOnLine(line, point)
 {
-  let line_ = {
-    x:(line.x1+line.x2)/2,y:(line.y1+line.y2)/2,
-    vx:line.x2-line.x1,vy:line.y2-line.y1
-  };
+
+  let line_ ;
+  
+  if(line.vx === undefined)
+  {
+    line_= {
+      x:(line.x1+line.x2)/2,y:(line.y1+line.y2)/2,
+      vx:line.x2-line.x1,vy:line.y2-line.y1
+    };
+  }
+  else
+  {
+    line_= {
+      x:line.cx,y:line.cy,
+      vx:line.vx,vy:line.vy
+    };
+  }
 
   let normalizeFactor = Math.hypot(line_.vx,line_.vy);
   line_.vx/=normalizeFactor;
@@ -96,8 +109,18 @@ export function  intersectPoint( p1, p2, p3, p4)
   return intersec;
 }
 
-
-
+export function vecXY_addin(v1,v2)
+{
+  v1.x+=v2.x;
+  v1.y+=v2.y;
+  return v1;
+}
+export function vecXY_mulin(v1,realNum)
+{
+  v1.x*=realNum;
+  v1.y*=realNum;
+  return v1;
+}
 
 export function distance_line_point(line, point)
 {
@@ -185,13 +208,20 @@ export function LineCentralNormal(line)
 }
 
 
-
-export function PtRotate2d(pt, theta) {
-  let sin_v = Math.sin(theta);
-  let cos_v = Math.cos(theta);
+export function PtRotate2d_sc(pt, sin_v,cos_v,flipF=1) {
+  if(flipF>=0)flipF=1;
+  else flipF=-1;
   return {
-    x: pt.x * cos_v - pt.y * sin_v,
-    y: pt.x * sin_v + pt.y * cos_v
+    x: pt.x * cos_v -flipF* pt.y * sin_v,
+    y: pt.x * sin_v +flipF* pt.y * cos_v
   };
 }
+
+export function PtRotate2d(pt, theta,flipF=1) {
+  let sin_v = Math.sin(theta);
+  let cos_v = Math.cos(theta);
+  return PtRotate2d_sc(pt,sin_v,cos_v,flipF);
+}
+
+
 

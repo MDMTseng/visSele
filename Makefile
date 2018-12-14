@@ -57,20 +57,31 @@ else
 endif
 
 
-ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
-SUB_MAKEFILES = $(MODULE_acvImage) \
-								$(MODULE_common_lib) \
-								$(MODULE_MLNN) \
-								$(MODULE_circleFitting) \
-								$(MODULE_cJSON) \
-								$(MODULE_LOGCTRL) \
-								$(MODULE_MatchingEngine) \
-								$(MODULE_zlib) \
-								$(MODULE_GLACC) \
-								$(MODULE_SOIL) \
-								$(MODULE_lodepng) \
-								$(MODULE_DataChannel) \
-								sidePrj
+
+ESS_TRACK=
+ifeq ($(BUILDONLY),ME)
+	SUB_MAKEFILES=$(MODULE_MatchingEngine)
+else ifeq ($(BUILDONLY),NONE)
+	SUB_MAKEFILES=
+else
+
+	ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
+	SUB_MAKEFILES = $(MODULE_acvImage) \
+									$(MODULE_common_lib) \
+									$(MODULE_MLNN) \
+									$(MODULE_circleFitting) \
+									$(MODULE_cJSON) \
+									$(MODULE_LOGCTRL) \
+									$(MODULE_MatchingEngine) \
+									$(MODULE_zlib) \
+									$(MODULE_GLACC) \
+									$(MODULE_SOIL) \
+									$(MODULE_lodepng) \
+									$(MODULE_DataChannel) \
+									sidePrj
+endif
+
+
 
 export MakeTemplate:= $(abspath Makefile.in)
 export FLAGS= -w -O3

@@ -158,9 +158,9 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
         int sendL = 0;
         for(int i=0;i<buffer_size-4;i+=4,img_pix_ptr+=3)
         {
-          buffer[i]=img_pix_ptr[0];
+          buffer[i]=img_pix_ptr[2];
           buffer[i+1]=img_pix_ptr[1];
-          buffer[i+2]=img_pix_ptr[2];
+          buffer[i+2]=img_pix_ptr[0];
           buffer[i+3]=255;
           sendL+=4;
           rest_len--;

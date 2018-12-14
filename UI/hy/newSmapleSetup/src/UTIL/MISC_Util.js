@@ -19,6 +19,26 @@ export function xstate_GetCurrentMainState(state)
 
 }
 
+export function xstate_GetMainState(state)
+{
+  if(typeof state.value === "string")
+  {
+    return state.value;
+  }
+  let complexState = state.value;
+  return Object.keys(complexState)[0];
+}
+
+export function xstate_GetSubState(state)
+{
+  if(typeof state.value === "string")
+  {
+    return undefined;
+  }
+  let complexState = state.value;
+  let state_Str = Object.keys(complexState)[0];
+  return complexState[state_Str];
+}
 
 
 export function GetObjElement(rootObj,keyTrace,traceIdxTo=keyTrace.length-1)

@@ -44,6 +44,20 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
 
 }
 
+int ws_server::disconnect(int sock)
+{
+    ws_conn *conn = ws_conn_pool.find(sock);
+    int ret = conn->doClosing();
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
+    
+    for (int i = 0; i < (*servers).size(); i++)
+    {
+        printf("peer %s:%d  sock:%d\n",
+            inet_ntoa((*servers)[i]->getAddr().sin_addr),
+            ntohs((*servers)[i]->getAddr().sin_port),(*servers)[i]->getSocket());
+    }
+    return ret;
+}
 
 ws_server::~ws_server()
 {
@@ -118,8 +132,8 @@ int ws_server::runLoop(struct timeval *tv)
         conn->setAddr(remote);
         conn->setCallBack(this);
 
-        printf("connected %s:%d\n",
-               inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port));
+        printf("connected %s:%d sock:%d\n",
+               inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port),conn->getSocket());
 
 
         FD_SET(NewSock, &evtSet);
@@ -357,8 +371,8 @@ int ws_conn::doClosing()
     if (isOccupied())
         close(sock);
 
+    printf("%s:cb:%p sock:%d\n",__func__,cb,sock);
     sock=-1;
-    printf("%s:cb:%p\n",__func__,cb);
     if(cb!=NULL)
     {
       cb->ws_callback(genCallbackData(websock_data::eventType::CLOSING));

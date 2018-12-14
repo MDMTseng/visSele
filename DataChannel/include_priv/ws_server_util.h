@@ -91,5 +91,6 @@ public:
     int ws_callback(websock_data data, void* param);
     int send_pkt(websock_data *packet);
     int send_pkt(void *packet, size_t pkt_size);
+    int disconnect(int sock);
     ~ws_server();
 };

@@ -127,13 +127,15 @@ class DatCH_CallBack_T : public DatCH_CallBack
     switch(ws_data.type)
     {
         case websock_data::eventType::OPENING:
+            printf("OPENING peer %s:%d  sock:%d\n",
+              inet_ntoa(ws_data.peer->getAddr().sin_addr),
+              ntohs(ws_data.peer->getAddr().sin_port),ws_data.peer->getSocket());
             if(ws->default_peer == NULL){
               ws->default_peer = ws_data.peer;
             }
-            printf("OPENING peer %s:%d\n",
-              inet_ntoa(ws_data.peer->getAddr().sin_addr),
-              ntohs(ws_data.peer->getAddr().sin_port));
-
+            else
+            {
+            }
         break;
 
         case websock_data::eventType::HAND_SHAKING_FINISHED:
@@ -144,7 +146,7 @@ class DatCH_CallBack_T : public DatCH_CallBack
               ws_data.data.hs_frame.key,
               ws_data.data.hs_frame.resource);
 
-            if(1)
+            if(ws->default_peer == ws_data.peer )
             {
               LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
               DatCH_Data datCH_BPG=
@@ -160,6 +162,10 @@ class DatCH_CallBack_T : public DatCH_CallBack
               BPG_dat.dat_raw =(uint8_t*) tmp;
               //App [here]-(prot)> WS
               BPG_protocol->SendData(datCH_BPG);
+            }
+            else
+            {
+              ws->disconnect(ws_data.peer->getSocket());
             }
         break;
         case websock_data::eventType::DATA_FRAME:
@@ -366,7 +372,7 @@ public:
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
             char tmp[100];
             int session_id = rand();
-            sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+            sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
             BPG_data bpg_dat=GenStrBPGData("SS", tmp);
             datCH_BPG.data.p_BPG_data=&bpg_dat;
             self->SendData(datCH_BPG);
@@ -429,7 +435,7 @@ public:
             self->SendData(datCH_BPG);
 
           }
-          else if(checkTL("II",dat))
+          else if(checkTL("II",dat))//[I]mage [I]nspection
           {
             cJSON *json = cJSON_Parse((char*)dat->dat_raw);
             if (json == NULL)
@@ -460,7 +466,7 @@ public:
 
               char tmp[100];
               int session_id = rand();
-              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"RP\",\"IM\"]}",session_id);
               BPG_data bpg_dat=GenStrBPGData("SS", tmp);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
@@ -479,6 +485,7 @@ public:
 
                   int ret = ImgInspection_JSONStr(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,jsonStr);
                   free(jsonStr);
+                  //acvSaveBitmapFile("data/buff.bmp",test1_buff);
 
                   const FeatureReport * report = matchingEng.GetReport();
 
@@ -512,6 +519,8 @@ public:
 
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.dat_img=imgSrc_X->GetAcvImage();
+              
+              acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -535,7 +544,7 @@ public:
 
               char tmp[100];
               int session_id = rand();
-              sprintf(tmp,"{\"session_id\":%d, \"start\":true}",session_id);
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"SG\",\"IM\"]}",session_id);
               BPG_data bpg_dat=GenStrBPGData("SS", tmp);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
@@ -579,6 +588,8 @@ public:
 
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.dat_img=imgSrc_X->GetAcvImage();
+              
+              acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -635,9 +646,10 @@ int simpleTest()
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
-  imgSrc_X->SetFileName("data/test1.bmp");
+  imgSrc_X->SetFileName("data/testInsp.bmp");
   ImgInspection(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/test.ic.json");
 
+  acvSaveBitmapFile("data/buff.bmp",test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
 
   if(report!=NULL)

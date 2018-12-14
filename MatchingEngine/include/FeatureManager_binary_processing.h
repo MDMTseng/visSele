@@ -10,11 +10,13 @@ class FeatureManager_binary_processing:public FeatureManager {
 
 protected:
   virtual int parse_jobj()=0;
+  acvImage *originalImage;
 public :
   FeatureManager_binary_processing(const char *json_str):FeatureManager(json_str){};
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg){return -1;};
   virtual int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)=0;
+  void setOriginalImage(acvImage *oriImage){this->originalImage = oriImage;};
 };
 
 

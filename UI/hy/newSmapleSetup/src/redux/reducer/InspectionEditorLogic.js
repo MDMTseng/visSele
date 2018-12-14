@@ -1,8 +1,10 @@
-
 import {
     distance_point_point,
     threePointToArc,
-    intersectPoint} from 'UTIL/MathTools';
+    intersectPoint,
+    closestPointOnLine,
+    PtRotate2d_sc,
+    vecXY_addin} from 'UTIL/MathTools';
   
 import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {GetObjElement} from 'UTIL/MISC_Util';
@@ -112,12 +114,12 @@ export class InspectionEditorLogic
     return this.FindShape( "id" , id ,shapeList);
   }
 
-  FindShapeObject( key , val)
+  FindShapeObject( key , val, shapeList=this.shapeList,inherentShapeList=this.inherentShapeList)
   {
-    let idx =this.FindShape( key , val, this.shapeList);
-    if(idx!==undefined)return this.shapeList[idx];
-    idx =this.FindShape( key , val, this.inherentShapeList);
-    if(idx!==undefined)return this.inherentShapeList[idx];
+    let idx =this.FindShape( key , val, shapeList);
+    if(idx!==undefined)return shapeList[idx];
+    idx =this.FindShape( key , val, inherentShapeList);
+    if(idx!==undefined)return inherentShapeList[idx];
     return undefined;
   }
 
@@ -292,6 +294,136 @@ export class InspectionEditorLogic
   }
 
 
+  
+  FindInspShapeObject( id , inspReport)
+  {
+    if(inspReport == undefined)return undefined;
+    {
+      let inspIdx = this.FindShapeIdx(id,inspReport.detectedCircles);
+      if(inspIdx!=undefined)
+      {
+        return inspReport.detectedCircles[inspIdx];
+      }
+    }
+    
+
+    
+    {
+      let inspIdx = this.FindShapeIdx(id,inspReport.detectedLines);
+      if(inspIdx!=undefined)
+      {
+        return inspReport.detectedLines[inspIdx];
+      }
+    }
+
+    
+    {
+      let inspIdx = this.FindShapeIdx(id,inspReport.auxPoints);
+      if(inspIdx!=undefined)
+      {
+        return inspReport.auxPoints[inspIdx];
+      }
+    }
+    
+    {
+      let inspIdx = this.FindShapeIdx(id,inspReport.searchPoints);
+      if(inspIdx!=undefined)
+      {
+        return inspReport.searchPoints[inspIdx];
+      }
+    }
+    
+    {
+      let inspIdx = this.FindShapeIdx(id,inspReport.judgeReports);
+      if(inspIdx!=undefined)
+      {
+        return inspReport.judgeReports[inspIdx];
+      }
+    }
+
+    return undefined;
+  }
+  
+  ShapeListAdjustsWithInspectionResult(shapeList,InspResult,oriBase=false)
+  {
+    let cos_v = Math.cos(-InspResult.rotate);
+    let sin_v = Math.sin(-InspResult.rotate);
+    let flip_f = (InspResult.isFlipped)?-1:1;
+    shapeList.forEach((eObject)=>{
+      if(eObject==null)return;
+
+      let inspAdjObj= this.FindInspShapeObject( eObject.id , InspResult);
+      if(InspResult!=undefined && inspAdjObj == undefined)
+      {
+        return;
+      }
+      eObject.inspection_status = inspAdjObj.status;
+      ["pt1","pt2","pt3"].forEach((key)=>{
+        if(eObject[key]===undefined)return;
+        eObject[key] = PtRotate2d_sc(eObject[key],sin_v,cos_v,flip_f);
+        eObject[key].x+=InspResult.cx;
+        eObject[key].y+=InspResult.cy;
+      });
+
+      switch(eObject.type)
+      {
+        case SHAPE_TYPE.line:
+        {
+          ["pt1","pt2"].forEach((key)=>{
+            eObject[key]=closestPointOnLine(inspAdjObj, eObject[key]);
+          });
+          if(InspResult.isFlipped)
+          {
+            let tmp = eObject.pt1;
+            eObject.pt1=eObject.pt2;
+            eObject.pt2=tmp;
+          }
+        }
+        break;
+        
+        
+        case SHAPE_TYPE.arc:
+        {
+          ["pt1","pt2","pt3"].forEach((key)=>{
+            eObject[key].x-=inspAdjObj.x;
+            eObject[key].y-=inspAdjObj.y;
+            let mag = Math.hypot(eObject[key].x,eObject[key].y);
+            eObject[key].x=eObject[key].x*inspAdjObj.r/mag+inspAdjObj.x;
+            eObject[key].y=eObject[key].y*inspAdjObj.r/mag+inspAdjObj.y;
+          });
+          
+        }
+        break;
+
+        case SHAPE_TYPE.search_point:
+        {
+          eObject.pt1.x = inspAdjObj.x;
+          eObject.pt1.y = inspAdjObj.y;
+          if(InspResult.isFlipped)
+            eObject.angleDeg=-eObject.angleDeg;
+        }
+        break;
+      }
+      if(oriBase)//rotate back to original orientation
+      {
+        ["pt1","pt2","pt3"].forEach((key)=>{
+          if(eObject[key]===undefined)return;
+          eObject[key].x-=InspResult.cx;
+          eObject[key].y-=InspResult.cy;
+          if(flip_f<0)
+          {
+            eObject[key] = PtRotate2d_sc(eObject[key],sin_v,cos_v,-1);
+          }
+          else
+          {
+            eObject[key] = PtRotate2d_sc(eObject[key],-sin_v,cos_v,1);
+          }
+        });
+      }
+    });
+
+    
+  }
 
     
   FindClosestCtrlPointInfo( location)
@@ -370,17 +502,17 @@ export class InspectionEditorLogic
     return pt_info;
   }
 
-  auxPointParse(aux_point)
+  auxPointParse(aux_point,shapelist = this.shapeList)
   {
-    let point=null;
+    let point=undefined;
     if(aux_point.type!=SHAPE_TYPE.aux_point)return point;
     
     if(aux_point.ref.length ==1)
     {
-      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
+      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id,shapelist);
       if(ref0_shape ===undefined)
       {
-        return null;
+        return undefined;
       }
       
       if(aux_point.ref[0].keyTrace !== undefined)
@@ -408,30 +540,45 @@ export class InspectionEditorLogic
     else if(aux_point.ref.length ==2)
     {
       
-      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id);
-      if(ref0_shape ===undefined)return null;
-      let ref1_shape=this.FindShapeObject( "id" , aux_point.ref[1].id);
-      if(ref1_shape ===undefined)return null;
+      let ref0_shape=this.FindShapeObject( "id" , aux_point.ref[0].id,shapelist);
+      if(ref0_shape ===undefined)return undefined;
+      let ref1_shape=this.FindShapeObject( "id" , aux_point.ref[1].id,shapelist);
+      if(ref1_shape ===undefined)return undefined;
 
 
-      if(ref0_shape.type == SHAPE_TYPE.line && ref1_shape.type == SHAPE_TYPE.line)
+      let v0 = this.shapeVectorParse(ref0_shape,shapelist);
+      let v1 = this.shapeVectorParse(ref1_shape,shapelist);
+      if(v0 === undefined || v1 === undefined)
       {
-        return intersectPoint(ref0_shape.pt1,ref0_shape.pt2,ref1_shape.pt1,ref1_shape.pt2);
+        return undefined;
       }
+
+      let p0 = this.shapeMiddlePointParse(ref0_shape,shapelist);
+      let p1 = this.shapeMiddlePointParse(ref1_shape,shapelist);
+      
+      if(p0 === undefined || p1 === undefined)
+      {
+        return undefined;
+      }
+      vecXY_addin(v0,p0);//Let vx become another point on line
+      vecXY_addin(v1,p1);
+
+      let retPt = intersectPoint(p0,v0,p1,v1);
+      return retPt;
 
     }
 
     return point;
   }
-  searchPointParse(search_point)
+  searchPointParse(search_point,shapelist = this.shapeList)
   {
-    let point=null;
-    if(search_point.type!=SHAPE_TYPE.search_point)return point;
+    let point=undefined;
+    if(search_point.type!=SHAPE_TYPE.search_point)return undefined;
     
     if(search_point.ref.length ==1)
     {
       let ref0_shape=this.FindShapeObject( "id" , search_point.ref[0].id);
-      if(ref0_shape ===undefined)return null;
+      if(ref0_shape ===undefined)return undefined;
       switch(ref0_shape.type)
       {
         case SHAPE_TYPE.line:
@@ -447,7 +594,7 @@ export class InspectionEditorLogic
 
 
 
-  shapeMiddlePointParse(shape)
+  shapeMiddlePointParse(shape,shapelist = this.shapeList)
   {
     switch(shape.type)
     {
@@ -457,14 +604,14 @@ export class InspectionEditorLogic
       case SHAPE_TYPE.arc:
         return threePointToArc(shape.pt1,shape.pt2,shape.pt3);
       case SHAPE_TYPE.aux_point:
-        return this.auxPointParse(shape);
+        return this.auxPointParse(shape,shapelist);
       case SHAPE_TYPE.search_point:
-        return this.searchPointParse(shape);
+        return this.searchPointParse(shape,shapelist);
     }
     return undefined;
   }
 
-  shapeVectorParse(shape)
+  shapeVectorParse(shape,shapelist = this.shapeList)
   {
     switch(shape.type)
     {
@@ -475,10 +622,10 @@ export class InspectionEditorLogic
       {
         if(shape.ref===undefined || shape.ref.length!=1)return undefined;
 
-        let refObj = this.FindShapeObject( "id" , shape.ref[0].id );
+        let refObj = this.FindShapeObject( "id" , shape.ref[0].id,shapelist );
         
         if(refObj===undefined || refObj.type !== SHAPE_TYPE.line)return undefined;
-        let lineVec = this.shapeVectorParse(refObj);
+        let lineVec = this.shapeVectorParse(refObj,shapelist);
 
         if(lineVec===undefined )return undefined;
         let angle=Math.atan2(lineVec.y,lineVec.x)+shape.angleDeg*Math.PI/180;
@@ -486,24 +633,6 @@ export class InspectionEditorLogic
       }
     }
     return undefined;
-  }
-
-
-  xPointParse(xpoint)
-  {
-    let point=null;
-    switch(aux_point.type)
-    {
-      case SHAPE_TYPE.aux_point:
-        return this.auxPointParse(xpoint);
-      break;
-      case SHAPE_TYPE.search_point:
-      {
-        return this.searchPointParse(xpoint);
-      }
-      break;
-    }
-    return point;
   }
 
 }

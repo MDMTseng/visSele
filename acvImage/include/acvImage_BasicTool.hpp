@@ -53,6 +53,7 @@ typedef struct __attribute__((__packed__)) acv_tagBITMAPINFOHEADER
 #pragma pack(pop)
 #endif
 
+
 typedef struct acv_XY
 {
     float X,Y;
@@ -120,6 +121,7 @@ void acvInnerFramePixCopy(acvImage *Pic,int FrameX);
 acv_XY acvIntersectPoint(acv_XY p1,acv_XY p2,acv_XY p3,acv_XY p4);
 acv_XY acvCircumcenter(acv_XY p1,acv_XY p2,acv_XY p3);
 float acv2DCrossProduct(acv_XY v1,acv_XY v2);
+float acv2DDotProduct(acv_XY v1,acv_XY v2);
 float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
 float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormal(acv_XY vec);
@@ -138,5 +140,5 @@ float acvLineAngle(acv_Line line1,acv_Line line2);
 float acvVectorAngle(acv_XY v1,acv_XY v2);
 bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma);
 bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma);
-
+bool acvFitLine(const void *pts_struct,int pts_step, const void *ptsw_struct,int ptsw_step, int ptsL,acv_Line *line, float *ret_sigma);
 #endif

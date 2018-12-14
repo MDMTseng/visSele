@@ -99,7 +99,16 @@ let objbarr2raw=(type,prop,obj,barr=null)=>{
   }
   return bbuf;
 };
-export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw }
+
+
+
+export const INSPECTION_STATUS = {
+  NA:-128,
+  SUCCESS:0,
+  FAILURE:-1,
+};
+
+export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw,INSPECTION_STATUS }
 
 //let binaryX = BPG_Protocol.obj2raw("TC",{a:1,b:{c:2}});
 //console.log(BPG_Protocol.raw2obj({data:binaryX.buffer}));

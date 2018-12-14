@@ -11,9 +11,13 @@ void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_X
 void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
   std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines);
 
-void extractContourDataToContourGrid(acvImage *labeledImg,int grid_size,ContourGrid &inward_curve_grid, ContourGrid &straight_line_grid,int scanline_skip);
+void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int grid_size,ContourGrid &edge_curve_grid,int scanline_skip);
+
+void extractLabeledContourDataToContourGrid(
+  acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,
+  int grid_size,ContourGrid &edge_curve_grid,int scanline_skip);
 
 acv_XY* findEndPoint(acv_Line line, int signees, std::vector<acv_XY> &points);
 
-void circleRefine(std::vector<acv_XY> &pointsInRange,acv_CircleFit *circleF);
+void circleRefine(std::vector<ContourGrid::ptInfo> &pointsInRange,acv_CircleFit *circleF);
 #endif

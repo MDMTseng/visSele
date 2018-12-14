@@ -18,6 +18,20 @@
     "ratio": "c",
     "tuple": "c",
     "system_error": "cpp",
-    "xlocale": "cpp"
+    "xlocale": "cpp",
+    "istream": "cpp",
+    "xlocmon": "cpp",
+    "xlocnum": "cpp",
+    "xloctime": "cpp",
+    "cstdlib": "cpp",
+    "__config": "cpp",
+    "__nullptr": "cpp",
+    "cstddef": "cpp",
+    "exception": "cpp",
+    "initializer_list": "cpp",
+    "new": "cpp",
+    "stdexcept": "cpp",
+    "typeinfo": "cpp",
+    "algorithm": "cpp"
   }
 }
