@@ -58,53 +58,52 @@ class CameraLayer{
         this->context = context;
     }
 
-    CameraLayer::status TriggerMode(int type)
+    virtual CameraLayer::status TriggerMode(int type)
     {
         return CameraLayer::NAK;
     }
 
 
-    CameraLayer::status TriggerCount(int TYPE)
+    virtual CameraLayer::status TriggerCount(int TYPE)
     {
         return CameraLayer::NAK;
     }
 
-    CameraLayer::status RUN()
+    virtual CameraLayer::status RUN()
     {
         return CameraLayer::NAK;
     }
 
 
-    CameraLayer::status SetCrop(int x,int y, int width,int height)
+    virtual CameraLayer::status SetCrop(int x,int y, int width,int height)
     {
         return CameraLayer::NAK;
     }
-    CameraLayer::status SetResolution(int width,int height)
+    virtual CameraLayer::status SetResolution(int width,int height)
     {
         return CameraLayer::NAK;
     }
-    CameraLayer::status SetAnalogGain(int min,int max)
-    {
-        return CameraLayer::NAK;
-    }
-
-    CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max)
+    virtual CameraLayer::status SetAnalogGain(int min,int max)
     {
         return CameraLayer::NAK;
     }
 
-    CameraLayer::status SetExposureTime(double time_ms)
+    virtual CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max)
     {
         return CameraLayer::NAK;
     }
 
-    CameraLayer::status GetExposureTime(double *ret_time_ms)
+    virtual CameraLayer::status SetExposureTime(double time_ms)
     {
         return CameraLayer::NAK;
     }
-    public:
 
-    acvImage* GetImg()
+    virtual CameraLayer::status GetExposureTime(double *ret_time_ms)
+    {
+        return CameraLayer::NAK;
+    }
+    
+    virtual acvImage* GetImg()
     {
         return &img;
     }

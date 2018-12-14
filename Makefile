@@ -3,6 +3,7 @@ export MODULE_acvImage=$(abspath acvImage)
 export MODULE_MLNN=$(abspath MLNN)
 export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
 export MODULE_circleFitting=$(abspath contrib/circleFitting)
+export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE)
 export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_LOGCTRL=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
@@ -20,7 +21,6 @@ export SO_EXPORT_PATH=$(abspath .)
 export GLEWSRCDir=$(abspath ../glew-2.1.0)
 export GLFWSRCDir=$(abspath ../glfw-3.2.1)
 export MODULE_GLACC=$(abspath GLAcc)
-
 
 
 target_bin=visSele
@@ -54,9 +54,13 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
-	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a
+	export platform=win_x86
+	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
+						 $(MODULE_MindVision_GIGE)/$(platform)/MVCAMSDK.lib
+	
 else
 	LIBS+= -lz
+	export platform=mac
 endif
 
 

@@ -1,9 +1,9 @@
 
 
 MODULE_acvImage?=../acvImage
-
-IDIR = include $(MODULE_acvImage)/include/
-_OBJ = CameraLayer.opp CameraLayer_BMP.opp
+MODULE_MindVision_GIGE?=../contrib/MindVision_GIGE
+IDIR = include $(MODULE_acvImage)/include/ $(MODULE_MindVision_GIGE)/include/
+_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_GIGE_MindVision.opp
 
 target_a = CameraLayer.a
 
