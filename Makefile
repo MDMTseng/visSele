@@ -63,7 +63,10 @@ endif
 
 ESS_TRACK=
 ifeq ($(BUILDONLY),ME)
-	SUB_MAKEFILES=$(MODULE_MatchingEngine)
+	SUB_MAKEFILES=$(MODULE_MatchingEngine)\
+								$(MODULE_acvImage) \
+								$(MODULE_CameraLayer) \
+
 else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
 else

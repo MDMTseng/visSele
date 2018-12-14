@@ -48,7 +48,7 @@ class CameraLayer{
 
     typedef enum {
         EV_IMG,
-        EV_ERR,
+        EV_ERROR
     }ev_type;
 
 
@@ -58,49 +58,49 @@ class CameraLayer{
         this->context = context;
     }
 
-    status TriggerMode(int type)
+    CameraLayer::status TriggerMode(int type)
     {
-        return NAK;
+        return CameraLayer::NAK;
     }
 
 
-    status TriggerCount(int TYPE)
+    CameraLayer::status TriggerCount(int TYPE)
     {
-        return NAK;
+        return CameraLayer::NAK;
     }
 
-    status RUN()
+    CameraLayer::status RUN()
     {
-        return NAK;
+        return CameraLayer::NAK;
     }
 
 
-    status SetCrop(int x,int y, int width,int height)
+    CameraLayer::status SetCrop(int x,int y, int width,int height)
     {
-        return NAK;
+        return CameraLayer::NAK;
     }
-    status SetResolution(int width,int height)
+    CameraLayer::status SetResolution(int width,int height)
     {
-        return NAK;
+        return CameraLayer::NAK;
     }
-    status SetAnalogGain(int min,int max)
+    CameraLayer::status SetAnalogGain(int min,int max)
     {
-        return NAK;
-    }
-
-    status GetAnalogGain(int *ret_min,int *ret_max)
-    {
-        return NAK;
+        return CameraLayer::NAK;
     }
 
-    status SetExposureTime(double time_ms)
+    CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max)
     {
-        return NAK;
+        return CameraLayer::NAK;
     }
 
-    status GetExposureTime(double *ret_time_ms)
+    CameraLayer::status SetExposureTime(double time_ms)
     {
-        return NAK;
+        return CameraLayer::NAK;
+    }
+
+    CameraLayer::status GetExposureTime(double *ret_time_ms)
+    {
+        return CameraLayer::NAK;
     }
     public:
 

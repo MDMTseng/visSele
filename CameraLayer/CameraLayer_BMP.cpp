@@ -17,7 +17,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     if(ret!=0)
     {
         ret_status=NAK;
-        callback(*this,CameraLayer::EV_ERR,context);
+        callback(*this,CameraLayer::EV_ERROR,context);
     }
     else
     {
