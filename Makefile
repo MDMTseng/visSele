@@ -71,6 +71,9 @@ ifeq ($(BUILDONLY),ME)
 								$(MODULE_acvImage) \
 								$(MODULE_CameraLayer) \
 
+else ifeq ($(BUILDONLY),CL)
+	SUB_MAKEFILES=$(MODULE_CameraLayer) \
+
 else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
 else
