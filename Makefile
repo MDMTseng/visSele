@@ -35,7 +35,8 @@ IDIR=	include/ \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include\
-			$(MODULE_CameraLayer)/include
+			$(MODULE_CameraLayer)/include \
+			$(MODULE_MindVision_GIGE)/include
 
 
 
@@ -54,7 +55,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
-	export platform=win_x86
+	export platform=win_x64
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
 						 $(MODULE_MindVision_GIGE)/$(platform)/MVCAMSDK.lib
 	

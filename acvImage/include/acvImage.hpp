@@ -42,7 +42,12 @@ private:
     BYTE*   ImLine;
     int ROIWidth,ROIHeight,RealWidth,RealHeight;
     int ROIOffsetX,ROIOffsetY;
-public :
+    bool isBufferInternal;
+    int bufferDataLength;
+    int cVecLength;
+    BYTE *bufferPtr;
+
+public:
     int Channel;
     BYTE    *ImageData;
     BYTE    **CVector;
@@ -51,10 +56,12 @@ public :
     void VarInit(void);
 
     void ReSize(int SetWidth,int SetHeight);
-    void SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight);
+    int useExtBuffer(BYTE *extBuffer,int extBufferLen,int SetWidth,int SetHeight);
+    int SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight);
     void ReSetROI();
 
     void ChannelOffset(int offset);
+    void ResetChannelOffset();
     void FreeImage();
     ~acvImage();
 private:

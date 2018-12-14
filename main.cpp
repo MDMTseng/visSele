@@ -19,6 +19,7 @@
 #include "DatCH_BPG.hpp"
 #include <stdexcept>
 #include "CameraLayer_BMP.hpp"
+#include "CameraLayer_GIGE_MindVision.hpp"
 
 acvImage *test1_buff;
 DatCH_BMP *imgSrc_X;
@@ -642,23 +643,70 @@ void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信�
   return;
 }
 
-
-void CameraLayer_Callback_(CameraLayer &cl_obj, int type, void* context)
+void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
-  CameraLayer_BMP &clBMP=*((CameraLayer_BMP*)&cl_obj);
-  LOGV("Called.... %d, filename:%s",type,clBMP.GetCurrentFileName().c_str());
+  //CameraLayer_BMP &clBMP=*((CameraLayer_BMP*)&cl_obj);
+  //LOGV("Called.... %d, filename:%s",type,clBMP.GetCurrentFileName().c_str());
 }
-int simpleTest()
+
+
+void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
+{
+  //CameraLayer_BMP &clBMP=*((CameraLayer_BMP*)&cl_obj);
+  //LOGV("Called.... %d, filename:%s",type,clBMP.GetCurrentFileName().c_str());
+}
+
+
+void testGIGE()
 {
   
-  CameraLayer_BMP cl_BMP(CameraLayer_Callback_,NULL);
+  CameraLayer_GIGE_MindVision cl_GIGEMV(CameraLayer_Callback_GIGEMV,NULL);
+
+  tSdkCameraDevInfo sCameraList[10];
+  int retListL = sizeof(sCameraList)/sizeof(sCameraList[0]);
+  cl_GIGEMV.EnumerateDevice(sCameraList,&retListL);
+  
+  if(retListL<=0)return;
+	for (int i=0; i< retListL;i++)
+	{
+		printf("CAM:%d======\n", i);
+		printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
+		printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
+		printf("acLinkName:%s\n", sCameraList[i].acLinkName);
+		printf("acPortType:%s\n", sCameraList[i].acPortType);
+		printf("acProductName:%s\n", sCameraList[i].acProductName);
+		printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
+		printf("acSensorType:%s\n", sCameraList[i].acSensorType);
+		printf("acSn:%s\n", sCameraList[i].acSn);
+		printf("\n\n\n\n");
+	}
+  
+  LOGV("InitCamera:::::");
+  cl_GIGEMV.InitCamera(&(sCameraList[0]));
+  LOGV("TriggerMode:::::");
+  cl_GIGEMV.TriggerMode(1);
+  LOGV("Trigger:::::");
+  cl_GIGEMV.Trigger();
+		Sleep(2000);
+  
+  LOGV("SAVE:::::, %p   WH:%d,%d",cl_GIGEMV.GetImg()->CVector[0],cl_GIGEMV.GetImg()->GetWidth(),cl_GIGEMV.GetImg()->GetHeight());
+  acvSaveBitmapFile("data/MVCam.bmp",cl_GIGEMV.GetImg());
+
+  LOGV("OK:::::");
+}
+
+int simpleTest()
+{
+  testGIGE();
+  return 0;
+  CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
   CameraLayer::status ret = cl_BMP.LoadBMP("data/testInsp.bmp");
   if(ret != CameraLayer::ACK)
   {
-    LOGV("LoadBMP failed: ret:%d",ret);
+    LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
   ImgInspection(matchingEng,cl_BMP.GetImg(),test1_buff,1,"data/test.ic.json");

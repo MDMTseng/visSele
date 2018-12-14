@@ -14,7 +14,8 @@ acvImage::acvImage(int SetWidth,int SetHeight,int SetChannel)
 void acvImage::VarInit(void)
 {
     CVector=NULL;
-    ImageData=0;
+    bufferPtr = NULL;
+    ImageData=NULL;
     ColorType=S_RGB;
     ROIWidth=ROIHeight
              =RealWidth=RealHeight=
@@ -26,13 +27,14 @@ void acvImage::ReSize(int SetWidth,int SetHeight)
 {
     RESIZE(SetWidth,SetHeight);
 }
-void acvImage::SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight)
+int acvImage::SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight)
 {
     //if(!Bitmap)Bitmap->FreeImage();
     //RESIZE(SetWidth,SetHeight);
     if(SetOffsetX+SetWidth>RealWidth||SetOffsetY+SetHeight>RealHeight)
     {
         //ReSize(ROIOffsetX+SetWidth,ROIOffsetY+SetHeight);
+        return -1;
     }
 
     ROIWidth=SetWidth;
@@ -40,7 +42,7 @@ void acvImage::SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight)
     ROIOffsetX=SetOffsetX;
     ROIOffsetY=SetOffsetY;
 
-
+    return 0;
 }
 void acvImage::ReSetROI()
 {
@@ -54,14 +56,29 @@ void acvImage::ReSetROI()
 
 void acvImage::FreeImage()
 {
-    if(ImageData)
+    if( isBufferInternal && bufferPtr!=NULL )
     {
-        delete(ImageData);
-        delete(CVector);
-
-        ImageData=NULL;
-        CVector=NULL;
+        delete(bufferPtr);
     }
+
+    if(CVector!=NULL)
+    {
+        delete(CVector);
+    }
+
+    ImageData=NULL;
+    CVector=NULL;
+    bufferPtr=NULL;
+
+    bufferDataLength =
+    cVecLength =
+    ROIWidth=RealWidth=
+    ROIHeight=RealHeight=
+    ROIOffsetX=
+    ROIOffsetY=0;
+    
+    isBufferInternal=true;
+
 }
 acvImage::~acvImage()
 {
@@ -69,13 +86,58 @@ acvImage::~acvImage()
 }
 void acvImage::RESIZE(int SetWidth,int SetHeight)
 {
-    RealWidth=ROIWidth=SetWidth;
-    RealHeight=ROIHeight=SetHeight;
-    FreeImage();
-    ImageData=new BYTE[SetWidth*SetHeight*Channel];
-    CVector=new BYTE* [SetHeight];
-    ChannelOffset(0);
+    if(RealWidth==SetWidth && RealHeight==SetHeight)return;
+    
+    ResetChannelOffset();
+    
+    ReSetROI();
 
+    
+    //Check if we have enough sapce
+    if(bufferDataLength<SetWidth*SetHeight*Channel)
+    {//If not, claim a new space
+        
+        FreeImage();
+        bufferDataLength = SetWidth*SetHeight*Channel;
+
+        bufferPtr = 
+        ImageData=new BYTE[bufferDataLength];
+        isBufferInternal=true;
+    }
+
+    
+    //Need to reflow the pixel 4X4 => 5X3 ~1
+    //RealHeight=bufferDataLength/Channel/RealWidth;//There might be some residual pixels.
+    if(SetHeight>cVecLength)
+    {
+        if(CVector!=NULL)
+        {
+            delete(CVector);
+        }
+        cVecLength = SetHeight;
+        CVector=new BYTE* [cVecLength];
+    }
+
+    RealWidth=SetWidth;
+    RealHeight=SetHeight;
+    ChannelOffset(0);
+    ReSetROI();
+
+}
+
+
+int acvImage::useExtBuffer(BYTE *extBuffer,int extBufferLen,int SetWidth,int SetHeight)
+{
+    if(extBufferLen<SetWidth*SetHeight*Channel)return -1;
+    
+    FreeImage();
+    ImageData = bufferPtr = extBuffer;
+    bufferDataLength=extBufferLen;
+    isBufferInternal=false;
+    
+    RESIZE(SetWidth,SetHeight);
+    
+    return 0;
 }
 
 void acvImage::ChannelOffset(int offset)
@@ -88,6 +150,13 @@ void acvImage::ChannelOffset(int offset)
     }
 
 }
+void acvImage::ResetChannelOffset()
+{
+    if(ImageData==bufferPtr)return;
+    ImageData = bufferPtr;
+    ChannelOffset(0);
+}
+
 
 void acvImage::YUY2ToYUV()
 {
