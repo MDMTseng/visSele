@@ -1,6 +1,6 @@
 
 target_a = DataChannel.a
-IDIR = $(MODULE_cwebsocket)/lib/ $(MODULE_acvImage)/include/ include include_priv
+IDIR = $(MODULE_cwebsocket)/lib/ $(MODULE_acvImage)/include/ $(MODULE_logctrl)/include/ include include_priv
 VPATH = $(MODULE_cwebsocket)/lib/
 _OBJ = DatCH_WebSocket.opp websocket.o ws_server_util.opp DatCH_BPG.opp
 

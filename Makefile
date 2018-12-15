@@ -5,7 +5,7 @@ export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
 export MODULE_circleFitting=$(abspath contrib/circleFitting)
 export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE)
 export MODULE_cJSON=$(abspath contrib/cJSON)
-export MODULE_LOGCTRL=$(abspath logctrl)
+export MODULE_logctrl=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
 export MODULE_common_lib=$(abspath common_lib)
 export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
@@ -31,7 +31,7 @@ IDIR=	include/ \
 			$(MODULE_circleFitting) \
 			$(MODULE_common_lib)/include \
 			$(MODULE_cJSON) \
-			$(MODULE_LOGCTRL)/include \
+			$(MODULE_logctrl)/include \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include\
@@ -48,7 +48,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
-					$(MODULE_LOGCTRL)/logctrl.a \
+					$(MODULE_logctrl)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
 					$(MODULE_DataChannel)/DataChannel.a \
 					$(MODULE_acvImage)/acvImage.a \
@@ -85,7 +85,7 @@ else
 									$(MODULE_MLNN) \
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
-									$(MODULE_LOGCTRL) \
+									$(MODULE_logctrl) \
 									$(MODULE_MatchingEngine) \
 									$(MODULE_zlib) \
 									$(MODULE_GLACC) \
