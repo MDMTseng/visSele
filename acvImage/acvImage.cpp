@@ -21,6 +21,9 @@ void acvImage::VarInit(void)
              =RealWidth=RealHeight=
                             ROIOffsetX=ROIOffsetY=0;
     Channel=3;
+    cVecLength = 0;
+    bufferDataLength = 0;
+
 }
 
 void acvImage::ReSize(int SetWidth,int SetHeight)
@@ -105,7 +108,6 @@ void acvImage::RESIZE(int SetWidth,int SetHeight)
         isBufferInternal=true;
     }
 
-    
     //Need to reflow the pixel 4X4 => 5X3 ~1
     //RealHeight=bufferDataLength/Channel/RealWidth;//There might be some residual pixels.
     if(SetHeight>cVecLength)
