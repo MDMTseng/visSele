@@ -13,6 +13,7 @@ typedef struct BPG_data
 
     uint32_t size;//32bit
     uint8_t* dat_raw;
+    float scale;
     acvImage* dat_img;//For bulk data transfer
 };
 

@@ -979,8 +979,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     let matrix  = this.worldTransform();
     ctx.setTransform(matrix);  
     
-    {
+    {//TODO:HACK: 4X4 times scale down for transmission speed
+      ctx.save();
+      ctx.scale(4,4);
       ctx.drawImage(this.secCanvas,0,0);
+      ctx.restore();
     }
 
     if(true)
@@ -1204,7 +1207,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     
     {
       let center = this.db_obj.getSig360ReportCenter();
-      ctx.drawImage(this.secCanvas,-center.x,-center.y);
+      //TODO:HACK: 4X4 times scale down for transmission speed
+      ctx.save();
+      ctx.translate(-center.x,-center.y);
+      ctx.scale(4,4);
+      ctx.drawImage(this.secCanvas,0,0);
+      ctx.restore();
     }
 
 

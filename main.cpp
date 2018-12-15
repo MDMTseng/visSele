@@ -22,11 +22,43 @@
 #include "CameraLayer_GIGE_MindVision.hpp"
 
 acvImage *test1_buff;
+acvImage dataSend_buff;
 DatCH_BMP *imgSrc_X;
 DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 char* ReadFile(char *filename);
+
+void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
+{
+  dst.ReSize(src.GetWidth()/downScale,src.GetHeight()/downScale);
+
+  for(int i=0;i<dst.GetHeight();i++)
+  {
+    int src_i = i*downScale;
+    for(int j=0;j<dst.GetWidth();j++)
+    {
+      int RSum=0,GSum=0,BSum=0;
+      int src_j = j*downScale;
+      for(int m=0;m<downScale;m++)
+      {
+        for(int n=0;n<downScale;n++)
+        {
+          BSum+=src.CVector[src_i+m][(src_j+n)*3];
+          GSum+=src.CVector[src_i+m][(src_j+n)*3+1];
+          RSum+=src.CVector[src_i+m][(src_j+n)*3+2];
+        }
+      }
+      
+      BSum/=(downScale*downScale);
+      GSum/=(downScale*downScale);
+      RSum/=(downScale*downScale);
+      dst.CVector[i][j*3+0]=BSum;
+      dst.CVector[i][j*3+1]=GSum;
+      dst.CVector[i][j*3+2]=RSum;
+    }
+  }
+}
 
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst,size_t dstLen,uint8_t *src,size_t srcLen);
@@ -420,10 +452,11 @@ public:
                   LOGE( "Caught an error!");
               }
 
-
-
+              //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.dat_img=imgSrc_X->GetAcvImage();
+              bpg_dat.scale = 4;
+              ImageDownSampling(dataSend_buff,*imgSrc_X->GetAcvImage(),bpg_dat.scale);
+              bpg_dat.dat_img=&dataSend_buff;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -518,11 +551,11 @@ public:
               }
 
 
-
+              //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.dat_img=imgSrc_X->GetAcvImage();
-              
-              acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
+              bpg_dat.scale = 4;
+              ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
+              bpg_dat.dat_img=&dataSend_buff;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -589,9 +622,14 @@ public:
 
 
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.dat_img=imgSrc_X->GetAcvImage();
-              
-              acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
+
+                          
+            
+              //TODO:HACK: 4X4 times scale down for transmission speed
+              bpg_dat.scale = 4;
+              ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
+              bpg_dat.dat_img=&dataSend_buff;
+              //acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -626,6 +664,7 @@ printf(">>>>>\n" );
   websocket->SetEventCallBack(&callbk_obj,websocket);
   while(1)
   {
+    LOGV(">>>>>");
       websocket->runLoop(NULL);
   }
   delete test1;
@@ -731,7 +770,7 @@ int simpleTest()
 int main(int argc, char** argv)
 {
   
-  return simpleTest();
+  //return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;
