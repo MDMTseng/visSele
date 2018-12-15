@@ -1144,12 +1144,13 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   const char *type_str= JFetch_STRING(root,"type");
   const char *ver_str = JFetch_STRING(root,"ver");
   const char *unit_str =JFetch_STRING(root,"unit");
-  if(type_str==NULL||ver_str==NULL||unit_str==NULL)
+  const double *mmpp  = JFetch_NUMBER(root,"mmpp");
+  if(type_str==NULL||ver_str==NULL||unit_str==NULL||mmpp==NULL)
   {
     LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>",type_str,ver_str,unit_str);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  unit:<%s>",type_str,ver_str,unit_str);
+  LOGI("type:<%s>  ver:<%s>  unit:<%s> mmpp:%f",type_str,ver_str,unit_str,*mmpp);
 
 
   cJSON *featureList = cJSON_GetObjectItem(root,"features");

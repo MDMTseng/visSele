@@ -376,6 +376,14 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     {
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_sig360_circle_line::GetFeatureTypeName());
 
+      cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
+
+      cJSON_AddStringToObject(report_jobj, "unit", "px");
+
+      cJSON_AddNumberToObject(report_jobj, "mmpp", 0.01);
+
+
+
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
 

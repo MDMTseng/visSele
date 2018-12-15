@@ -194,7 +194,8 @@ export class InspectionEditorLogic
       {
         "type":"sig360_circle_line",
         "ver":"0.0.0.0",
-        "unit":"mm",
+        "unit":"px",
+        "mmpp":0.01,//TODO:The mmpp need to be measured to get more accurate
         features:this.shapeList,
         inherentfeatures:this.inherentShapeList
       }]

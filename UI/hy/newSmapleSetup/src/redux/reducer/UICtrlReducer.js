@@ -39,7 +39,7 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-
+      session_lock:null
     },
     sm:null,
     c_state:null,
@@ -145,6 +145,12 @@ function StateReducer(newState,action)
           newState.edit_info=Object.assign({},newState.edit_info);
           newState.edit_info._obj.SetSig360Report(action.data);
           newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
+        break;
+
+        case UISEV.Session_Lock:
+          
+          newState.edit_info=Object.assign({},newState.edit_info);
+          newState.edit_info.session_lock = (action.data);
         break;
 
 

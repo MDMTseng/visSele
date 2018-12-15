@@ -67,6 +67,7 @@ export const UI_SM_EVENT = {
   Image_Update:"Image_Update",
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
+  Session_Lock:"Session_Lock",
 
 
   Line_Create:"Line_Create",
@@ -185,6 +186,12 @@ export function EV_WS_SIG360_Report_Update(data)
   }
 }
 
+export function EV_WS_Session_Lock(SSData)
+{
+  return {
+    type: UI_SM_EVENT.Session_Lock ,data:SSData
+  }
+}
 
 export function EV_WS_SEND(id,tl,prop,data,uintArr){
   return ({
