@@ -99,11 +99,7 @@ endif
 
 
 export MakeTemplate:= $(abspath Makefile.in)
-STRICT_FLAGS= -Wall -Wextra \
- -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op \
- -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow \
- -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=5 -Wswitch-default -Wundef -Wno-unused \
- -Wno-parentheses -fdiagnostics-show-option
+STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
 export FLAGS= -w -O3 $(STRICT_FLAGS)

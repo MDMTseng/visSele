@@ -1410,7 +1410,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   acvCloneImage( img,buff_, -1);
   acvCloneImage( img,buff, -1);
 
-  
+  float feature_signature_ave=0;
+  for(int i=0;i<feature_signature.size();i++)
+  {
+    feature_signature_ave+=feature_signature[i].X;
+  }
+  feature_signature_ave/=feature_signature.size();
 
   tmp_signature.resize(feature_signature.size());
   reports.resize(0);
@@ -1453,9 +1458,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       float error = SignatureMinMatching( tmp_signature,feature_signature,
         &isInv, &angle);
 
+      error = sqrt(error)/feature_signature_ave;
       LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
-      if(sqrt(error)>20)continue;
+      if(error>0.5)continue;
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,
