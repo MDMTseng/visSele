@@ -1,6 +1,7 @@
 
 #include "ws_server_util.h"
 
+#include "logctrl.h"
 #include "websocket.h"
 //////////////////////////////ws_server/////////////////////////////////////
 
@@ -113,27 +114,40 @@ int ws_server::runLoop(struct timeval *tv)
     fd_set read_fds = evtSet;
 
 
+    LOGV(">>>>>");
     if (select(fdmax + 1, &read_fds, NULL, NULL, tv) == -1) {
+        LOGV("select failed...");
         perror("select");
-        exit(4);
+        //exit(4);
+        return -1;
     }
 
 
+    LOGV(">>>>>");
     if (FD_ISSET(listenSocket, &read_fds))
     {
+        LOGV("listenSocket");
         struct sockaddr_in remote;
         socklen_t sockaddrLen = sizeof(remote);
+        LOGV("accept::");
         int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
         if (NewSock == -1) {
+            
+            LOGV("accept failed");
             printf("accept failed");
+            Sleep(1000);
         }
+        
+        LOGV("Find slot");
         ws_conn* conn = ws_conn_pool.find_avaliable_conn_info_slot();
+        LOGV("slot is here:%p",conn);
         conn->setSocket(NewSock);
         conn->setAddr(remote);
-        conn->setCallBack(this);
-
-        printf("connected %s:%d sock:%d\n",
+        
+        LOGV("connected %s:%d sock:%d",
                inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port),conn->getSocket());
+
+        conn->setCallBack(this);
 
 
         FD_SET(NewSock, &evtSet);
@@ -146,6 +160,7 @@ int ws_server::runLoop(struct timeval *tv)
     }
     else
     {
+        LOGV("listenSocket else");
         std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
         bool evt_trigger = false;
         for (int i = 0; i < (*servers).size(); i++)
@@ -168,7 +183,7 @@ int ws_server::runLoop(struct timeval *tv)
 
         if (!evt_trigger)
         {
-            printf("No matching event\n");
+            LOGV("No matching event");
             return -2;
         }
     }

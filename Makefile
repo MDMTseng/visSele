@@ -99,7 +99,14 @@ endif
 
 
 export MakeTemplate:= $(abspath Makefile.in)
-export FLAGS= -w -O3
+STRICT_FLAGS= -Wall -Wextra \
+ -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Winit-self -Wlogical-op \
+ -Wmissing-include-dirs -Wnoexcept -Wold-style-cast -Woverloaded-virtual -Wredundant-decls -Wshadow \
+ -Wsign-promo -Wstrict-null-sentinel -Wstrict-overflow=5 -Wswitch-default -Wundef -Wno-unused \
+ -Wno-parentheses -fdiagnostics-show-option
+
+ 
+export FLAGS= -w -O3 $(STRICT_FLAGS)
 
 ifeq ($(OS)$(CC),Windows_NTcc)
     export FLAGS+= -lws2_32
