@@ -307,6 +307,7 @@ void ws_conn::RESET()
 int ws_conn::setSocket(int socket)
 {
     sock = socket;
+    return 0;
 }
 
 
@@ -314,6 +315,7 @@ int ws_conn::setSocket(int socket)
 int ws_conn::setAddr(struct sockaddr_in address)
 {
     addr = address;
+    return 0;
 }
 
 
