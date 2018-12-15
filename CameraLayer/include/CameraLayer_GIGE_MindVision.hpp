@@ -13,7 +13,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     protected:
     std::mutex m;
-    CameraHandle    m_hCamera=0;	//������豸���|the handle of the camera we use
+    CameraHandle    m_hCamera=0;	//the handle of the camera we use
     BYTE*           m_pFrameBuffer=NULL;
     static void sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
     void GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);

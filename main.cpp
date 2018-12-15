@@ -681,13 +681,12 @@ void testGIGE()
 		printf("\n\n\n\n");
 	}
   
-  LOGV("InitCamera:::::");
   cl_GIGEMV.InitCamera(&(sCameraList[0]));
-  LOGV("TriggerMode:::::");
+  cl_GIGEMV.SetAnalogGain(1500);
+  cl_GIGEMV.SetExposureTime(5);
   cl_GIGEMV.TriggerMode(1);
-  LOGV("Trigger:::::");
   cl_GIGEMV.Trigger();
-		Sleep(2000);
+  Sleep(1000);
   
   LOGV("SAVE:::::, %p   WH:%d,%d",cl_GIGEMV.GetImg()->CVector[0],cl_GIGEMV.GetImg()->GetWidth(),cl_GIGEMV.GetImg()->GetHeight());
   acvSaveBitmapFile("data/MVCam.bmp",cl_GIGEMV.GetImg());

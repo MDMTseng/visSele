@@ -22,8 +22,8 @@ int main()
 	for (int i=0;i<100;i++)
 	{
 		//FetchImage(); //Directly get image from camera
-		Sleep(200);
-		CameraSoftTrigger(m_hCamera);//SoftTrigger
+		Sleep(2000);
+		//CameraSoftTrigger(m_hCamera);//SoftTrigger
 	}
 	UnInitCamera();
 	system("pause");
@@ -105,7 +105,7 @@ BOOL InitCamera()
 	}
 
 	{
-		CameraSetTriggerMode(m_hCamera,1);
+		CameraSetTriggerMode(m_hCamera,0);
 		//0 for continuous, 1 for soft trigger, 2 for HW trigger
 		CameraSetTriggerCount(m_hCamera,1);
 		CameraSetCallbackFunction(m_hCamera,GrabImageCallback,(PVOID)NULL,NULL);
