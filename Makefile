@@ -102,7 +102,7 @@ export MakeTemplate:= $(abspath Makefile.in)
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
-export FLAGS= -w -O3 $(STRICT_FLAGS)
+export FLAGS= -w -O3 -static -static-libgcc -static-libstdc++ $(STRICT_FLAGS)
 
 ifeq ($(OS)$(CC),Windows_NTcc)
     export FLAGS+= -lws2_32

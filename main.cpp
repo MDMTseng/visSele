@@ -229,6 +229,8 @@ public:
               //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.scale = 4;
+              
+              acvThreshold(imgSrc_X->GetAcvImage(), 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
               ImageDownSampling(dataSend_buff,*imgSrc_X->GetAcvImage(),bpg_dat.scale);
               bpg_dat.dat_img=&dataSend_buff;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
