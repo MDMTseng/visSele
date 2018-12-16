@@ -157,7 +157,10 @@ function StateReducer(newState,action)
         
 
         case DefConfAct.EVENT.Shape_List_Update:
-          newState.edit_info.list=(action.data == null)? []: action.data;
+          newState.edit_info._obj.SetShapeList(action.data);
+          newState.edit_info.edit_tar_info = null;
+          newState.edit_info.list=newState.edit_info._obj.shapeList;
+          newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
         case DefConfAct.EVENT.Edit_Tar_Update:

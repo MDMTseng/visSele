@@ -183,13 +183,21 @@ public:
             datCH_BPG.data.p_BPG_data=&bpg_dat;
             self->SendData(datCH_BPG);
 
-            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
-            if (json == NULL)
-            {
-              LOGE("JSON parse failed");
-              break;
-            }
             do{
+              cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+              if (json == NULL)
+              {
+                LOGE("JSON parse failed");
+              
+                break;
+              }
+              char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
+              if (imgSrcPath == NULL)
+              {
+                LOGE("No entry:imgSrcPath in it");
+
+                break;
+              }
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
@@ -197,12 +205,6 @@ public:
                 break;
               }
 
-              char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
-              if (imgSrcPath == NULL)
-              {
-                LOGE("No entry:imgSrcPath in it");
-                break;
-              }
             
               imgSrc_X->SetFileName(imgSrcPath);
 
@@ -414,11 +416,44 @@ public:
 
 
 
-              imgSrc_X->SetFileName("data/test1.bmp");
+              char* imgSrcPath=NULL; 
+              cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+              if (json != NULL)
+              {
+                imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
+                if (imgSrcPath == NULL)
+                {
+                  LOGE("No entry:imgSrcPath in it");
+
+                }
+              }
+              
+              acvImage *srcImg=NULL;
+              if(imgSrcPath!=NULL)
+              {
+                imgSrc_X->SetFileName(imgSrcPath);
+                srcImg = imgSrc_X->GetAcvImage();
+              }
+
+              if(srcImg==NULL)
+              {
+                cl_GIGEMV->TriggerMode(1);
+                LOGE("LOCK...");
+                mainThreadLock.lock();
+                cl_GIGEMV->Trigger();
+                LOGE("LOCK BLOCK...");
+                mainThreadLock.lock();
+                
+                LOGE( "unlock");
+                mainThreadLock.unlock();
+                srcImg = cl_GIGEMV->GetImg();
+                acvSaveBitmapFile("data/test1.bmp",srcImg);
+              }
+
 
 
               try {
-                  ImgInspection_DefRead(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/featureDetect.json");
+                  ImgInspection_DefRead(matchingEng,srcImg,test1_buff,1,"data/featureDetect.json");
                   const FeatureReport * report = matchingEng.GetReport();
 
                   if(report!=NULL)
@@ -564,11 +599,20 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
+  
+  if(!cameraFeedTrigger)
+  {
+    /*LOGE( "lock");
+    mainThreadLock.lock();*/
+    LOGE( "unlock");
+    mainThreadLock.unlock();
+    return;
+  }
   CameraLayer_GIGE_MindVision &cl_GMV=*((CameraLayer_GIGE_MindVision*)&cl_obj);
   int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,1);
 
-  LOGE( "lock");
-  mainThreadLock.lock();
+  /*LOGE( "lock");
+  mainThreadLock.lock();*/
   do{
     char tmp[100];
     int session_id = rand();
@@ -635,8 +679,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   }while(false);
 
 
-  LOGE( "unlock");
-  mainThreadLock.unlock();
+  /*LOGE( "unlock");
+  mainThreadLock.unlock();*/
 
 }
 
