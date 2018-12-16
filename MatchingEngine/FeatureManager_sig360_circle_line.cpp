@@ -734,6 +734,11 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
             searchPt = acvVecAdd(searchPt,searchVec_nor);
             int Y = (int)round(searchPt.Y);
             int X = (int)round(searchPt.X);
+
+            if(Y<0 || Y>=labeledImg->GetHeight() || X<0 || X>=labeledImg->GetWidth() )
+            {
+              continue;
+            }
             
             //LOGV("X:%d Y:%d",X,Y);
             uint8_t *pix = &(labeledImg->CVector[Y][X*3]);
