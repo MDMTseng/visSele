@@ -977,7 +977,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     if(!isNaN(mmpp) )
     {
       unitConvert={
-        unit:"μm",
+        unit:"mm",//"μm",
         mult:mmpp
       }
     } 
