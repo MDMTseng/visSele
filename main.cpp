@@ -792,11 +792,11 @@ public:
 
         case DatCH_Data::DataType_websock_data:
           //LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
-          LOGV("lock");
-          mainThreadLock.lock();
+          /*LOGV("lock");
+          mainThreadLock.lock();*/
           ret_val =  DatCH_WS_callback(from, data, callback_param);
-          LOGV("unlock");
-          mainThreadLock.unlock();
+          /*LOGV("unlock");
+          mainThreadLock.unlock();*/
         break;
 
         default:
