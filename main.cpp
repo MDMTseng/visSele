@@ -612,7 +612,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     //TODO:HACK: 4X4 times scale down for transmission speed
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
     bpg_dat.scale = 4;
-    ImageDownSampling(dataSend_buff,*cl_GMV.GetImg(),bpg_dat.scale);
+    //ImageDownSampling(dataSend_buff,*cl_GMV.GetImg(),bpg_dat.scale);
+    ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
     bpg_dat.dat_img=&dataSend_buff;
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
