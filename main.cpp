@@ -21,6 +21,7 @@
 #include "CameraLayer_BMP.hpp"
 #include "CameraLayer_GIGE_MindVision.hpp"
 
+std::mutex mainThreadLock;
 acvImage *test1_buff;
 acvImage dataSend_buff;
 DatCH_BMP *imgSrc_X;
@@ -563,10 +564,11 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
-
   CameraLayer_GIGE_MindVision &cl_GMV=*((CameraLayer_GIGE_MindVision*)&cl_obj);
   int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,1);
 
+  LOGE( "lock");
+  mainThreadLock.lock();
   do{
     char tmp[100];
     int session_id = rand();
@@ -633,6 +635,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   }while(false);
 
 
+  LOGE( "unlock");
+  mainThreadLock.unlock();
 
 }
 
@@ -769,6 +773,7 @@ public:
   {
 
       LOGI("DatCH_CallBack_T:_______type:%d________",data.type);
+      int ret_val=0;
       switch(data.type)
       {
         case DatCH_Data::DataType_error:
@@ -787,14 +792,20 @@ public:
 
         case DatCH_Data::DataType_websock_data:
           //LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
-          return DatCH_WS_callback(from, data, callback_param);
+          LOGV("lock");
+          mainThreadLock.lock();
+          ret_val =  DatCH_WS_callback(from, data, callback_param);
+          LOGV("unlock");
+          mainThreadLock.unlock();
         break;
 
         default:
 
           LOGI("type:%d, UNKNOWN type",data.type);
       }
-      return 0;
+      
+      
+      return ret_val;
   }
 };
 DatCH_CallBack_T callbk_obj;
@@ -865,7 +876,7 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 }
 
 
-void testGIGE()
+int testGIGE()
 {
   
   cl_GIGEMV=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
@@ -882,13 +893,14 @@ void testGIGE()
   acvSaveBitmapFile("data/MVCam.bmp",cl_GIGEMV->GetImg());
 
   LOGV("OK:::::");
+
+  return 0;
 }
 
 
 int simpleTest()
 {
-  testGIGE();
-  return 0;
+  //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
   test1_buff = new acvImage();
