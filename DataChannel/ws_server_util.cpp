@@ -179,6 +179,7 @@ int ws_server::runLoop(struct timeval *tv)
                 break;
             }
         }
+        LOGV("listenSocket else end for");
 
 
         if (!evt_trigger)

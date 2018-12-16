@@ -1,5 +1,6 @@
 
 #include "DatCH_BPG.hpp"
+#include "logctrl.h"
 
 DatCH_BPG1_0::DatCH_BPG1_0(ws_conn_data *conn): DatCH_BPG()
 {
@@ -81,7 +82,7 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
     header[0] = data.tl[0];
     header[1] = data.tl[1];
 
-    printf("TWOLETTER:  %c%c\n",data.tl[0],data.tl[1]);
+    LOGV("TWOLETTER:  %c%c",data.tl[0],data.tl[1]);
     header[2] = data.prop;
     uint32_t length=0;
     if(data.dat_raw)
@@ -228,16 +229,17 @@ DatCH_Data DatCH_BPG1_0::Process_websock_data(websock_data* p_websocket)
     switch(p_websocket->type)
     {
       case websock_data::OPENING:
-        printf(">>>>>>>>>>>>>OPENING\n");
+        LOGI(">>>>>>>>>>>>>OPENING");
         RESET(p_websocket->peer);
         //printf(">>>>>>>>>>>>>OPENING_RESET\n");
       break;
       case websock_data::CLOSING:
-        printf(">>>>>>>>>>>>>CLOSING\n");
+        LOGI(">>>>>>>>>>>>>CLOSING");
         RESET(NULL);
       break;
       case websock_data::DATA_FRAME:
 
+        LOGI(">>>>>>>>>>>>>DATA_FRAME");
         uint8_t* raw = p_websocket->data.data_frame.raw;
         size_t rawL = p_websocket->data.data_frame.rawL;
         if(cb_obj!=NULL && p_websocket->data.data_frame.isFinal && rawL >= 7)
