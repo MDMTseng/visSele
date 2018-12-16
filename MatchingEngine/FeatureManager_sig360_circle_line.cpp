@@ -511,6 +511,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         if(angleDiff<-180)angleDiff+=360;
         if(angleDiff>180)angleDiff-=360;
         if(angleDiff<0)angleDiff=-angleDiff;
+        if(angleDiff>90)angleDiff=180-angleDiff;
         if(angleDiff>judgeReport.def->targetVal_margin)
         {
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
