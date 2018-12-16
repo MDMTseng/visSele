@@ -96,7 +96,8 @@ html, body {
 	height: 50px;
 	font-family: 'Open Sans', sans-serif;
 	text-align: center;
-	font-size: 0.7cm;
+	font-size: 0.4cm;
+	font-weight:bold;
 	box-sizing: border-box;
 	color:#FFF;
 	overflow:hidden;
