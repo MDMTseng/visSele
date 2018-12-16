@@ -100,8 +100,11 @@ class APP_INSP_MODE extends React.Component{
   componentDidMount()
   {
     
-    this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{deffile:"data/test.ic.json", imgsrc:"data/testInsp.bmp"});
+    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{deffile:"data/test.ic.json"});
            
+  }
+  componentWillUnmount() {
+    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{});
   }
   constructor(props) {
     super(props);

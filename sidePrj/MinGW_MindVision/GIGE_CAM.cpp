@@ -105,7 +105,7 @@ BOOL InitCamera()
 	}
 
 	{
-		CameraSetTriggerMode(m_hCamera,0);
+		CameraSetTriggerMode(m_hCamera,1);
 		//0 for continuous, 1 for soft trigger, 2 for HW trigger
 		CameraSetTriggerCount(m_hCamera,1);
 		CameraSetCallbackFunction(m_hCamera,GrabImageCallback,(PVOID)NULL,NULL);

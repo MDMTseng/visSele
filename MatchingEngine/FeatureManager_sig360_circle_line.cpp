@@ -737,11 +737,17 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
             
             //LOGV("X:%d Y:%d",X,Y);
             uint8_t *pix = &(labeledImg->CVector[Y][X*3]);
+            
+
             if(pix[0]!=255)
             {
-              searchPt_sum.X += X;
-              searchPt_sum.Y += Y;
-              foundC++;
+              _3BYTE *lableId = (_3BYTE*)pix;
+              if(labelId == lableId->Num)
+              {
+                searchPt_sum.X += X;
+                searchPt_sum.Y += Y;
+                foundC++;
+              }
             }
           }
           if(foundC!=0)break;

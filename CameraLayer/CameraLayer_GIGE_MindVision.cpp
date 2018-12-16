@@ -81,7 +81,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     TriggerMode(1);
     TriggerCount(1);
     CameraSetCallbackFunction(m_hCamera,sGIGEMV_CB,(PVOID)this,NULL);
-    CameraSetAeState(m_hCamera,FALSE);
+    //CameraSetAeState(m_hCamera,FALSE);
     int maxBufferSize = width*height * 3;
 	m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
 	LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
