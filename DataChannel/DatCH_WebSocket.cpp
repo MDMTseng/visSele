@@ -3,6 +3,7 @@
 
 #include <ws_server_util.h>
 #include <exception>
+#include <stdexcept>
 
 DatCH_WebSocket::DatCH_WebSocket(int port): DatCH_Interface(),ws_protocol_callback(this)
 {
