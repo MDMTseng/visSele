@@ -2,11 +2,17 @@
 #include "DatCH_WebSocket.hpp"
 
 #include <ws_server_util.h>
+#include <exception>
 
 DatCH_WebSocket::DatCH_WebSocket(int port): DatCH_Interface(),ws_protocol_callback(this)
 {
 
     server = new ws_server(port,this);
+    if(server->get_socket()<0)
+    {
+        throw std::invalid_argument("WS Server INIT Failed..");
+    }
+    
     default_peer = NULL;
 }
 

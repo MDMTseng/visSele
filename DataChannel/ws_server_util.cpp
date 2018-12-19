@@ -73,7 +73,10 @@ ws_server::~ws_server()
     }
     close(listenSocket);
 }
-
+int ws_server::get_socket()
+{
+    return listenSocket;
+}
 int ws_server::findMaxFd()
 {
     int max = listenSocket;
