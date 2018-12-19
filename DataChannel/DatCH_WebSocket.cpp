@@ -20,8 +20,8 @@ DatCH_WebSocket::DatCH_WebSocket(int port): DatCH_Interface(),ws_protocol_callba
 
 int DatCH_WebSocket::runLoop(struct timeval *tv)
 {
-    server->runLoop(tv);
-    return 0;
+    
+    return server->runLoop(tv);
 }
 
 int DatCH_WebSocket::ws_callback(websock_data data, void* param)

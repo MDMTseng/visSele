@@ -70,7 +70,7 @@ ifeq ($(OS)$(CC),Windows_NTcc)
 			   $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
 	
 else
-	FLAGS+= -lmvsdk -L$(MODULE_MindVision_GIGE)/lib/
+	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
 	EXT_OBJS+=
 endif
 

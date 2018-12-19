@@ -390,8 +390,8 @@ public:
 
 
                   camera->TriggerMode(1);
-                  camera->Trigger();
                   cameraFeedTrigger=true;
+                  camera->Trigger();
                   //acvSaveBitmapFile("data/buff.bmp",test1_buff);
 
               }
@@ -441,14 +441,15 @@ public:
 
               if(srcImg==NULL)
               {
+                LOGV("Do camera Fetch..");
                 camera->TriggerMode(1);
-                LOGE("LOCK...");
+                LOGV("LOCK...");
                 mainThreadLock.lock();
                 camera->Trigger();
-                LOGE("LOCK BLOCK...");
+                LOGV("LOCK BLOCK...");
                 mainThreadLock.lock();
                 
-                LOGE( "unlock");
+                LOGV( "unlock");
                 mainThreadLock.unlock();
                 srcImg = camera->GetImg();
                 acvSaveBitmapFile("data/test1.bmp",srcImg);
@@ -603,7 +604,7 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
-  
+  LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
   {
     /*LOGE( "lock");
@@ -675,11 +676,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
-    /*if(cameraFeedTrigger)
+    if(cameraFeedTrigger)
     {
-      sleep(500);
+      LOGV("cameraFeedTrigger:%d Get Next frame...",cameraFeedTrigger);
+      sleep(1);
       cl_GMV.Trigger();
-    }*/
+    }
   }while(false);
 
 
@@ -896,6 +898,12 @@ int mainLoop()
   CameraLayer_BMP_carousel *camera;
   camera=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
   initCamera(camera);
+  
+  BPG_protocol = new DatCH_BPG1_0(NULL);
+  DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
+  cb->camera = camera;
+  BPG_protocol->SetEventCallBack(cb,NULL);
+
   camera->TriggerMode(1);
   printf(">>>>>\n" );
   websocket =new DatCH_WebSocket(4090);
@@ -903,11 +911,12 @@ int mainLoop()
   acvImage *test1 = new acvImage();
 
   websocket->SetEventCallBack(&callbk_obj,websocket);
-  while(1)
+
+  while(websocket->runLoop(NULL) == 0)
   {
-    LOGV(">>>>>");
-      websocket->runLoop(NULL);
+    
   }
+
   delete test1;
   return 0;
 }
@@ -1011,7 +1020,5 @@ int main(int argc, char** argv)
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
-  BPG_protocol = new DatCH_BPG1_0(NULL);
-  BPG_protocol->SetEventCallBack(new DatCH_CallBack_BPG(BPG_protocol),NULL);
   return mainLoop();
 }

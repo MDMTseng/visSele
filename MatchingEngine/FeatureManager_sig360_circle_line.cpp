@@ -1062,7 +1062,7 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON * signature_obj)
     {
       return -1;
     }
-    acv_XY dat={.X=*pnum_mag,.Y=*pnum_ang};
+    acv_XY dat={.X=(float)*pnum_mag,.Y=(float)*pnum_ang};
 
     feature_signature.push_back(dat);
     /*cJSON * feature = cJSON_GetArrayItem(signature, i);
@@ -1159,10 +1159,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   const double *mmpp  = JFetch_NUMBER(root,"mmpp");
   if(type_str==NULL||ver_str==NULL||unit_str==NULL||mmpp==NULL)
   {
-    LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>",type_str,ver_str,unit_str);
+    LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p> mmpp(number):<%p>",type_str,ver_str,unit_str,mmpp);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  unit:<%s> mmpp:%f",type_str,ver_str,unit_str,*mmpp);
+  LOGI("type:<%s>  ver:<%s>  unit:<%s> mmpp(number):%f",type_str,ver_str,unit_str,*mmpp);
 
 
   cJSON *featureList = cJSON_GetObjectItem(root,"features");
