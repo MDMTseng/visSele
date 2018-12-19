@@ -28,7 +28,8 @@ DatCH_BMP *imgSrc_X;
 DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
-CameraLayer_GIGE_MindVision *cl_GIGEMV;
+CameraLayer *gen_camera;
+
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
 
@@ -83,6 +84,7 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
     return (((uint16_t)TL[0]<<8) |  TL[1]);
   }
 public:
+  CameraLayer *camera=NULL;
   DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
   {
       this->self = self;
@@ -387,8 +389,8 @@ public:
                   free(jsonStr);
 
 
-                  cl_GIGEMV->TriggerMode(1);
-                  cl_GIGEMV->Trigger();
+                  camera->TriggerMode(1);
+                  camera->Trigger();
                   cameraFeedTrigger=true;
                   //acvSaveBitmapFile("data/buff.bmp",test1_buff);
 
@@ -439,16 +441,16 @@ public:
 
               if(srcImg==NULL)
               {
-                cl_GIGEMV->TriggerMode(1);
+                camera->TriggerMode(1);
                 LOGE("LOCK...");
                 mainThreadLock.lock();
-                cl_GIGEMV->Trigger();
+                camera->Trigger();
                 LOGE("LOCK BLOCK...");
                 mainThreadLock.lock();
                 
                 LOGE( "unlock");
                 mainThreadLock.unlock();
-                srcImg = cl_GIGEMV->GetImg();
+                srcImg = camera->GetImg();
                 acvSaveBitmapFile("data/test1.bmp",srcImg);
               }
 
@@ -610,7 +612,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     mainThreadLock.unlock();
     return;
   }
-  CameraLayer_GIGE_MindVision &cl_GMV=*((CameraLayer_GIGE_MindVision*)&cl_obj);
+  CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
   int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,1);
 
   /*LOGE( "lock");
@@ -673,11 +675,11 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
-    if(cameraFeedTrigger)
+    /*if(cameraFeedTrigger)
     {
       sleep(500);
-      cl_GIGEMV->Trigger();
-    }
+      cl_GMV.Trigger();
+    }*/
   }while(false);
 
 
@@ -858,12 +860,12 @@ DatCH_CallBack_T callbk_obj;
 
 
 
-void initGIGE(CameraLayer_GIGE_MindVision *CL_GIGE)
+void initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 {
   
   tSdkCameraDevInfo sCameraList[10];
   int retListL = sizeof(sCameraList)/sizeof(sCameraList[0]);
-  cl_GIGEMV->EnumerateDevice(sCameraList,&retListL);
+  CL_GIGE->EnumerateDevice(sCameraList,&retListL);
   
   if(retListL<=0)return;
 	for (int i=0; i< retListL;i++)
@@ -880,14 +882,21 @@ void initGIGE(CameraLayer_GIGE_MindVision *CL_GIGE)
 		printf("\n\n\n\n");
 	}
   
-  cl_GIGEMV->InitCamera(&(sCameraList[0]));
+  CL_GIGE->InitCamera(&(sCameraList[0]));
+}
+void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
+{
+  
 }
 int mainLoop()
 {
   
-  cl_GIGEMV=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
-  initGIGE(cl_GIGEMV);
-  cl_GIGEMV->TriggerMode(1);
+  //CameraLayer_GIGE_MindVision *camera;
+  //camera=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
+  CameraLayer_BMP_carousel *camera;
+  camera=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
+  initCamera(camera);
+  camera->TriggerMode(1);
   printf(">>>>>\n" );
   websocket =new DatCH_WebSocket(4090);
   printf(">>>>>\n" );
@@ -924,10 +933,10 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 
 int testGIGE()
 {
-  
+  CameraLayer_GIGE_MindVision *cl_GIGEMV;
   cl_GIGEMV=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
 
-  initGIGE(cl_GIGEMV);
+  initCamera(cl_GIGEMV);
 
   cl_GIGEMV->SetAnalogGain(1500);
   cl_GIGEMV->SetExposureTime(5);

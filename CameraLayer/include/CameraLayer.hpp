@@ -69,6 +69,13 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
+    
+    virtual CameraLayer::status Trigger()
+    {
+        return CameraLayer::NAK;
+    }
+
+
     virtual CameraLayer::status RUN()
     {
         return CameraLayer::NAK;
