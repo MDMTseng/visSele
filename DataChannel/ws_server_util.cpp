@@ -135,7 +135,8 @@ int ws_server::runLoop(struct timeval *tv)
             
             LOGV("accept failed");
             printf("accept failed");
-            Sleep(1000);
+            //sleep(1000);
+            return -2;
         }
         
         LOGV("Find slot");

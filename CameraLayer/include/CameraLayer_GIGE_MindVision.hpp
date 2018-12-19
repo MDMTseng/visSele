@@ -1,7 +1,8 @@
 #ifndef CAMERALAYER_GIGE_MINDVISION_HPP
 #define CAMERALAYER_GIGE_MINDVISION_HPP
-
+#ifdef __WIN32__
 #include <windows.h>
+#endif
 #include <CameraLayer.hpp>
 #include <string>
 #include <acvImage_BasicTool.hpp>

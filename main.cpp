@@ -675,7 +675,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
     if(cameraFeedTrigger)
     {
-      Sleep(500);
+      sleep(500);
       cl_GIGEMV->Trigger();
     }
   }while(false);
@@ -933,7 +933,7 @@ int testGIGE()
   cl_GIGEMV->SetExposureTime(5);
   cl_GIGEMV->TriggerMode(1);
   cl_GIGEMV->Trigger();
-  Sleep(1000);
+  sleep(1000);
   
   LOGV("SAVE:::::, %p   WH:%d,%d",cl_GIGEMV->GetImg()->CVector[0],cl_GIGEMV->GetImg()->GetWidth(),cl_GIGEMV->GetImg()->GetHeight());
   acvSaveBitmapFile("data/MVCam.bmp",cl_GIGEMV->GetImg());

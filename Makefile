@@ -1,9 +1,20 @@
 
+ifeq ($(OS)$(CC),Windows_NTcc)
+	export platform=win_x64
+	FLAGS+= -static -static-libgcc -static-libstdc++ -lws2_32
+else
+	LIBS+= -lz
+	export platform=mac_x64
+endif
+
+
+
+
 export MODULE_acvImage=$(abspath acvImage)
 export MODULE_MLNN=$(abspath MLNN)
 export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
 export MODULE_circleFitting=$(abspath contrib/circleFitting)
-export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE)
+export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE/$(platform))
 export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_logctrl=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
@@ -55,13 +66,12 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
-	export platform=win_x64
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
-						 $(MODULE_MindVision_GIGE)/$(platform)/MVCAMSDK.lib
+			   $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
 	
 else
-	LIBS+= -lz
-	export platform=mac
+	FLAGS+= -lmvsdk -L$(MODULE_MindVision_GIGE)/lib/
+	EXT_OBJS+=
 endif
 
 
@@ -102,9 +112,6 @@ export MakeTemplate:= $(abspath Makefile.in)
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
-export FLAGS= -w -O3 -static -static-libgcc -static-libstdc++ $(STRICT_FLAGS)
+export FLAGS+= -w -O3 $(STRICT_FLAGS)
 
-ifeq ($(OS)$(CC),Windows_NTcc)
-    export FLAGS+= -lws2_32
-endif
 include $(MakeTemplate)
