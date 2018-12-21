@@ -991,10 +991,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx.lineWidth = 2;
-    ctx.setTransform(this.identityMat);  
+    ctx.resetTransform();  
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
-    ctx.setTransform(matrix);  
+    ctx.setTransform(matrix.a,matrix.b,matrix.c,
+      matrix.d,matrix.e,matrix.f);  
     
     {//TODO:HACK: 4X4 times scale down for transmission speed
       
