@@ -997,7 +997,8 @@ int simpleTest()
 #include <vector>
 int main(int argc, char** argv)
 {
-  
+  auto lambda = []() { LOGV("Hello, Lambda"); };
+  lambda();
   //return simpleTest();
   #ifdef __WIN32__
   {

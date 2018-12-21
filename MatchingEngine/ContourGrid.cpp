@@ -262,6 +262,27 @@ void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,fl
 
 }
 
+bool isAngleBetween(float angle,float sAngle,float eAngle)
+{
+  angle-=sAngle;
+  eAngle-=sAngle;
+
+  if(angle>M_PI*2)angle-=M_PI*2;
+  else if(angle<0)
+  {
+    angle+=M_PI*2;
+  }
+
+  if(eAngle>M_PI*2)eAngle-=M_PI*2;
+  else if(eAngle<0)
+  {
+    eAngle+=M_PI*2;
+  }
+
+  //LOGV(">>%f %f",angle,eAngle);
+  return angle<eAngle;
+}
+
 //outter_inner => bigger than 0 is for outer circle, smaller than 0 is fo inner, 0 is for both
 void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
   float epsilon,
@@ -287,8 +308,8 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
     for(int j=0;j<contourSections[idx].size();j++)
     {
       ptInfo pti = contourSections[idx][j];
-      float dX = X-pti.pt.X;
-      float dY = Y-pti.pt.Y;
+      float dX = pti.pt.X-X;
+      float dY = pti.pt.Y-Y;
       float dist_sq = dX*dX + dY*dY;
 
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
@@ -298,7 +319,12 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
           absCurv<arcCurvatureMax &&
          (pti.curvature*outter_inner)>=0)
         {
-          points.push_back(pti);
+          float angle = atan2(dY,dX);
+          //LOGV(">>%f,%f:  %f %f %f",pti.pt.X,pti.pt.Y,angle, sAngle, eAngle);
+          if(isAngleBetween( angle, sAngle, eAngle))
+          {
+            points.push_back(pti);
+          }
         }
       }
     }

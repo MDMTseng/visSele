@@ -1728,12 +1728,26 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         center.X+=ldData[i].Center.X;
         center.Y+=ldData[i].Center.Y;
         
+        LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
+        float sAngle,eAngle;
+        if(flip_f>0)
+        {
+          sAngle = cdef.sAngle+angle;
+          eAngle = cdef.eAngle+angle;
+        }
+        else
+        {
+          sAngle = -(cdef.eAngle-angle);
+          eAngle = -(cdef.sAngle-angle);
+        }
+        LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,sAngle,eAngle);
+        
 
         edge_grid.getContourPointsWithInCircleContour(
           center.X,
           center.Y,
           cdef.circleTar.radius,
-          cdef.sAngle,cdef.eAngle,cdef.outter_inner,
+          sAngle,eAngle,cdef.outter_inner,
           matching_tor*2,
           s_intersectIdxs,s_points);
 
@@ -1744,7 +1758,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           cf.circle.circumcenter.X,
           cf.circle.circumcenter.Y,
           cf.circle.radius,
-          cdef.sAngle,cdef.eAngle,cdef.outter_inner,
+          sAngle,eAngle,cdef.outter_inner,
           matching_tor,
           s_intersectIdxs,s_points);
         circleRefine(s_points,&cf);
