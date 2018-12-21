@@ -212,7 +212,7 @@ class renderUTIL
   {
   }
 
-  drawMeasureDistance(ctx,eObject,refObjs,shapeList)
+  drawMeasureDistance(ctx,eObject,refObjs,shapeList,unitConvert)
   {
     ctx.lineWidth=2;
               
@@ -283,8 +283,7 @@ class renderUTIL
       
       this.drawpoint(ctx,eObject.pt1);
 
-
-      ctx.fillText("D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)).toFixed(4)+"±"+(eObject.margin).toFixed(4),
+      ctx.fillText("D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
       eObject.pt1.x,eObject.pt1.y);
     }
   }
@@ -309,7 +308,7 @@ class renderUTIL
     //ctx.stroke();
   }
 
-  drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList)
+  drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"px",mult:1})
   {
     eObjects.forEach((eObject)=>{
       if(eObject==null)return;
@@ -489,7 +488,7 @@ class renderUTIL
           {
             case SHAPE_TYPE.measure_subtype.distance:
             {
-              this.drawMeasureDistance(ctx,eObject,subObjs,shapeList);
+              this.drawMeasureDistance(ctx,eObject,subObjs,shapeList,unitConvert);
             }
             break;
             case SHAPE_TYPE.measure_subtype.angle:
@@ -631,7 +630,7 @@ class renderUTIL
 
                 ctx.setLineDash([]);
               }
-              ctx.fillText(""+(measureDeg).toFixed(4)+"º ±"+(eObject.margin).toFixed(4),
+              ctx.fillText(""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2),
                 eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4,
                 eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4);
               //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);
@@ -662,7 +661,7 @@ class renderUTIL
 
               dispVec_normalized.x*=40;
               dispVec_normalized.y*=40;
-              ctx.fillText("R"+(arc.r).toFixed(4)+"±"+(eObject.margin).toFixed(4),
+              ctx.fillText("R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
             
@@ -970,7 +969,25 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     {
       return;
     }
-    let inspectionReport = this.edit_DB_info.inspReport.reports[0].reports;
+    let inspReportGroup= this.edit_DB_info.inspReport.reports[0];
+    let inspectionReport = inspReportGroup.reports;
+    let mmpp = inspReportGroup.mmpp;
+    let unitConvert;
+
+    if(!isNaN(mmpp) )
+    {
+      unitConvert={
+        unit:"mm",//"μm",
+        mult:mmpp
+      }
+    } 
+    else
+    {
+      unitConvert={
+        unit:"px",
+        mult:1
+      }
+    }
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx.lineWidth = 2;
@@ -979,13 +996,18 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     let matrix  = this.worldTransform();
     ctx.setTransform(matrix);  
     
-    {
+    {//TODO:HACK: 4X4 times scale down for transmission speed
+      
+      ctx.translate(-this.secCanvas.width*4/2,-this.secCanvas.height*4/2);//Move to the center of the secCanvas
+      ctx.save();
+      ctx.scale(4,4);
       ctx.drawImage(this.secCanvas,0,0);
+      ctx.restore();
     }
 
     if(true)
     {
-      let sigScale = 1.1;
+      let sigScale = 1;
       inspectionReport.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);
@@ -1041,7 +1063,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
           }
         });
-        this.rUtil.drawShapeList(ctx,listClone,true,[],listClone);
+        this.rUtil.drawShapeList(ctx,listClone,true,[],listClone,unitConvert);
       }
     });
 
@@ -1204,7 +1226,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     
     {
       let center = this.db_obj.getSig360ReportCenter();
-      ctx.drawImage(this.secCanvas,-center.x,-center.y);
+      //TODO:HACK: 4X4 times scale down for transmission speed
+      ctx.save();
+      ctx.translate(-center.x,-center.y);
+      ctx.scale(4,4);
+      ctx.drawImage(this.secCanvas,0,0);
+      ctx.restore();
     }
 
 

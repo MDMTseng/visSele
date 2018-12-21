@@ -4,7 +4,7 @@ _OBJ = GIGE_CAM.opp
 
 target_bin = GIGE_CAM
 
-EXT_OBJS?=MVCAMSDK.lib
 FLAGS=-static-libgcc
+LIBS= MVCAMSDK_X64.lib
 export MakeTemplate:= $(abspath ../../Makefile.in)
 include $(MakeTemplate)

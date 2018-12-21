@@ -39,7 +39,7 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-
+      session_lock:null
     },
     sm:null,
     c_state:null,
@@ -147,11 +147,20 @@ function StateReducer(newState,action)
           newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
         break;
 
+        case UISEV.Session_Lock:
+          
+          newState.edit_info=Object.assign({},newState.edit_info);
+          newState.edit_info.session_lock = (action.data);
+        break;
+
 
         
 
         case DefConfAct.EVENT.Shape_List_Update:
-          newState.edit_info.list=(action.data == null)? []: action.data;
+          newState.edit_info._obj.SetShapeList(action.data);
+          newState.edit_info.edit_tar_info = null;
+          newState.edit_info.list=newState.edit_info._obj.shapeList;
+          newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
         case DefConfAct.EVENT.Edit_Tar_Update:

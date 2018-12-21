@@ -56,10 +56,22 @@ export class InspectionEditorLogic
     return center;
   }
 
+  SetShapeList(shapeList)
+  {
+    this.shapeList = shapeList;
+    let maxId=0;
+    this.shapeList.forEach((shape)=>{
+      if(maxId<shape.id)
+      {
+        maxId=shape.id;
+      }
+    });
+    this.shapeCount = maxId;
+  }
 
   SetDefInfo(defInfo)
   {
-    this.shapeList = defInfo.featureSet[0].features;
+    this.SetShapeList(defInfo.featureSet[0].features);
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     console.log(defInfo);
     let sig360Info = defInfo.featureSet[0].inherentfeatures[0];
@@ -76,14 +88,6 @@ export class InspectionEditorLogic
         ]
       }
     );
-    let maxId=0;
-    this.shapeList.forEach((shape)=>{
-      if(maxId<shape.id)
-      {
-        maxId=shape.id;
-      }
-    });
-    this.shapeCount = maxId;
     this.UpdateInherentShapeList();
   }
 
@@ -194,7 +198,8 @@ export class InspectionEditorLogic
       {
         "type":"sig360_circle_line",
         "ver":"0.0.0.0",
-        "unit":"mm",
+        "unit":"px",
+        "mmpp":0.01,//TODO:The mmpp need to be measured to get more accurate
         features:this.shapeList,
         inherentfeatures:this.inherentShapeList
       }]

@@ -87,6 +87,7 @@ public:
     ws_server(int port,ws_protocol_callback *cb);
 
     int findMaxFd();
+    int get_socket();
     int runLoop(struct timeval *tv);
     int ws_callback(websock_data data, void* param);
     int send_pkt(websock_data *packet);

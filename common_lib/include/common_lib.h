@@ -21,6 +21,10 @@ void* JFetEx(cJSON * obj,char *path,int type);
 #define JFetEx_ARRAY(obj,path) ((cJSON*)JFetEx(obj,path,cJSON_Array))
 #define JFetEx_OBJECT(obj,path) ((cJSON*)JFetEx(obj,path,cJSON_Object))
 
+#define JxSTR(obj,path) JFetEx_STRING(obj,path)
+#define JxNUM(obj,path) JFetEx_NUMBER(obj,path)
+#define JxARR(obj,path) JFetEx_ARRAY(obj,path)
+#define JxOBJ(obj,path) JFetEx_OBJECT(obj,path)
 
 
 size_t zlibDeflate(uint8_t *dst,size_t dstLen, uint8_t *src, size_t srcLen,int effort);

@@ -124,6 +124,7 @@ class APPMasterX extends React.Component{
             let SS =BPG_Protocol.raw2obj(evt);
             // console.log(header);
             console.log("Session start:",SS);
+            this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
             break;
           }
           case "IM":

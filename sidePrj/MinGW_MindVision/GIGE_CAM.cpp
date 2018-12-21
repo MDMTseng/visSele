@@ -22,8 +22,8 @@ int main()
 	for (int i=0;i<100;i++)
 	{
 		//FetchImage(); //Directly get image from camera
-		Sleep(200);
-		CameraSoftTrigger(m_hCamera);//SoftTrigger
+		Sleep(2000);
+		//CameraSoftTrigger(m_hCamera);//SoftTrigger
 	}
 	UnInitCamera();
 	system("pause");

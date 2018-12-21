@@ -1,16 +1,29 @@
 
+ifeq ($(OS)$(CC),Windows_NTcc)
+	export platform=win_x64
+	FLAGS+= -static -static-libgcc -static-libstdc++ -lws2_32
+else
+	LIBS+= -lz
+	export platform=mac_x64
+endif
+
+
+
+
 export MODULE_acvImage=$(abspath acvImage)
 export MODULE_MLNN=$(abspath MLNN)
 export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
 export MODULE_circleFitting=$(abspath contrib/circleFitting)
+export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE/$(platform))
 export MODULE_cJSON=$(abspath contrib/cJSON)
-export MODULE_LOGCTRL=$(abspath logctrl)
+export MODULE_logctrl=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
 export MODULE_common_lib=$(abspath common_lib)
 export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath contrib/SOIL)
 export MODULE_lodepng=$(abspath contrib/lodepng)
 export MODULE_DataChannel=$(abspath DataChannel)
+export MODULE_CameraLayer=$(abspath CameraLayer)
 
 export SO_EXPORT_PATH=$(abspath .)
 
@@ -21,7 +34,6 @@ export GLFWSRCDir=$(abspath ../glfw-3.2.1)
 export MODULE_GLACC=$(abspath GLAcc)
 
 
-
 target_bin=visSele
 ODIR=obj
 IDIR=	include/ \
@@ -30,10 +42,12 @@ IDIR=	include/ \
 			$(MODULE_circleFitting) \
 			$(MODULE_common_lib)/include \
 			$(MODULE_cJSON) \
-			$(MODULE_LOGCTRL)/include \
+			$(MODULE_logctrl)/include \
 			$(MODULE_MatchingEngine)/include \
 			$(MODULE_zlib)/src \
-			$(MODULE_DataChannel)/include
+			$(MODULE_DataChannel)/include\
+			$(MODULE_CameraLayer)/include \
+			$(MODULE_MindVision_GIGE)/include
 
 
 
@@ -45,22 +59,32 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
-					$(MODULE_LOGCTRL)/logctrl.a \
+					$(MODULE_logctrl)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
 					$(MODULE_DataChannel)/DataChannel.a \
 					$(MODULE_acvImage)/acvImage.a \
+					$(MODULE_CameraLayer)/CameraLayer.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
-	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a
+	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
+			   $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
+	
 else
-	LIBS+= -lz
+	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
+	EXT_OBJS+=
 endif
 
 
 
 ESS_TRACK=
 ifeq ($(BUILDONLY),ME)
-	SUB_MAKEFILES=$(MODULE_MatchingEngine)
+	SUB_MAKEFILES=$(MODULE_MatchingEngine)\
+								$(MODULE_acvImage) \
+								$(MODULE_CameraLayer) \
+
+else ifeq ($(BUILDONLY),CL)
+	SUB_MAKEFILES=$(MODULE_CameraLayer) \
+
 else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
 else
@@ -71,22 +95,23 @@ else
 									$(MODULE_MLNN) \
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
-									$(MODULE_LOGCTRL) \
+									$(MODULE_logctrl) \
 									$(MODULE_MatchingEngine) \
 									$(MODULE_zlib) \
 									$(MODULE_GLACC) \
 									$(MODULE_SOIL) \
 									$(MODULE_lodepng) \
 									$(MODULE_DataChannel) \
+									$(MODULE_CameraLayer) \
 									sidePrj
 endif
 
 
 
 export MakeTemplate:= $(abspath Makefile.in)
-export FLAGS= -w -O3
+STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
-ifeq ($(OS)$(CC),Windows_NTcc)
-    export FLAGS+= -lws2_32
-endif
+ 
+export FLAGS+= -w -O3 $(STRICT_FLAGS)
+
 include $(MakeTemplate)

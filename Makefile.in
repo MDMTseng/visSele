@@ -39,7 +39,7 @@ domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a) $(target_
 	@echo Done GOAL:\"$(MAKECMDGOALS)\" `pwd`
 
 $(target_bin):$(OBJ) $(EXT_OBJS)
-	$(CXX) $(OBJ) $(EXT_OBJS)  $(CFLAGS) $(LIBS)  -o $@
+	$(CXX) $(OBJ) $(EXT_OBJS)  $(CFLAGS) -o $@  $(LIBS) 
 
 $(target_a):$(OBJ) $(EXT_OBJS)
 	$(AR) rvs $@ $(OBJ) $(EXT_OBJS)

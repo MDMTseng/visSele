@@ -511,6 +511,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         if(angleDiff<-180)angleDiff+=360;
         if(angleDiff>180)angleDiff-=360;
         if(angleDiff<0)angleDiff=-angleDiff;
+        if(angleDiff>90)angleDiff=180-angleDiff;
         if(angleDiff>judgeReport.def->targetVal_margin)
         {
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
@@ -734,14 +735,25 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
             searchPt = acvVecAdd(searchPt,searchVec_nor);
             int Y = (int)round(searchPt.Y);
             int X = (int)round(searchPt.X);
+
+            if(Y<0 || Y>=labeledImg->GetHeight() || X<0 || X>=labeledImg->GetWidth() )
+            {
+              continue;
+            }
             
             //LOGV("X:%d Y:%d",X,Y);
             uint8_t *pix = &(labeledImg->CVector[Y][X*3]);
+            
+
             if(pix[0]!=255)
             {
-              searchPt_sum.X += X;
-              searchPt_sum.Y += Y;
-              foundC++;
+              _3BYTE *lableId = (_3BYTE*)pix;
+              if(labelId == lableId->Num)
+              {
+                searchPt_sum.X += X;
+                searchPt_sum.Y += Y;
+                foundC++;
+              }
             }
           }
           if(foundC!=0)break;
@@ -1050,7 +1062,7 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON * signature_obj)
     {
       return -1;
     }
-    acv_XY dat={.X=*pnum_mag,.Y=*pnum_ang};
+    acv_XY dat={.X=(float)*pnum_mag,.Y=(float)*pnum_ang};
 
     feature_signature.push_back(dat);
     /*cJSON * feature = cJSON_GetArrayItem(signature, i);
@@ -1121,14 +1133,14 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   LOGV("feature is a measure/judge:%s id:%d subtype:%s",judge.name,judge.id,subtype);
 
 
-  judge.targetVal=*JFetEx_NUMBER(judge_obj,"value");
+  judge.targetVal=*JxNUM(judge_obj,"value");
 
-  judge.targetVal_margin=*JFetEx_NUMBER(judge_obj,"margin");
+  judge.targetVal_margin=*JxNUM(judge_obj,"margin");
 
   
-  judge.OBJ1_id = (int)*JFetEx_NUMBER(judge_obj,"ref[0].id");
+  judge.OBJ1_id = (int)*JxNUM(judge_obj,"ref[0].id");
 
-  pnum = JFetch_NUMBER(judge_obj,"ref[1].id");
+  pnum = JFetch_NUMBER(judge_obj,"ref[1].id");//It's fine if we don't have OBJ2(ref[1])
   if(pnum == NULL)judge.OBJ2_id = -1;
   else {judge.OBJ2_id = *pnum;}
 
@@ -1144,12 +1156,13 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   const char *type_str= JFetch_STRING(root,"type");
   const char *ver_str = JFetch_STRING(root,"ver");
   const char *unit_str =JFetch_STRING(root,"unit");
-  if(type_str==NULL||ver_str==NULL||unit_str==NULL)
+  const double *mmpp  = JFetch_NUMBER(root,"mmpp");
+  if(type_str==NULL||ver_str==NULL||unit_str==NULL||mmpp==NULL)
   {
-    LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>",type_str,ver_str,unit_str);
+    LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p> mmpp(number):<%p>",type_str,ver_str,unit_str,mmpp);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  unit:<%s>",type_str,ver_str,unit_str);
+  LOGI("type:<%s>  ver:<%s>  unit:<%s> mmpp(number):%f",type_str,ver_str,unit_str,*mmpp);
 
 
   cJSON *featureList = cJSON_GetObjectItem(root,"features");
@@ -1410,7 +1423,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   acvCloneImage( img,buff_, -1);
   acvCloneImage( img,buff, -1);
 
-  
+  float feature_signature_ave=0;
+  for(int i=0;i<feature_signature.size();i++)
+  {
+    feature_signature_ave+=feature_signature[i].X;
+  }
+  feature_signature_ave/=feature_signature.size();
 
   tmp_signature.resize(feature_signature.size());
   reports.resize(0);
@@ -1453,9 +1471,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
       float error = SignatureMinMatching( tmp_signature,feature_signature,
         &isInv, &angle);
 
+      error = sqrt(error)/feature_signature_ave;
       LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
-      if(sqrt(error)>20)continue;
+      if(error>0.5)continue;
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,

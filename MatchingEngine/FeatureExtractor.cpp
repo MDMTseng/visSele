@@ -37,14 +37,13 @@ int FeatureManager_sig360_extractor::parse_jobj()
   const char *type_str = subObj?subObj->valuestring:NULL;
   subObj = cJSON_GetObjectItem(root,"ver");
   const char *ver_str = subObj?subObj->valuestring:NULL;
-  subObj = cJSON_GetObjectItem(root,"mmpp");//mm per pixel
-  const char *mmpp_str = subObj?subObj->valuestring:NULL;
-  if(type_str==NULL||ver_str==NULL||mmpp_str==NULL)
+  const double *mmpp  = JFetch_NUMBER(root,"mmpp");
+  if(type_str==NULL||ver_str==NULL||mmpp==NULL)
   {
-    LOGE("ptr: type:<%p>  ver:<%p>  mmpp_str:<%p>",type_str,ver_str,mmpp_str);
+    LOGE("ptr: type:<%p>  ver:<%p>  mmpp(number):<%p>",type_str,ver_str,mmpp);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  mmpp_str:<%s>",type_str,ver_str,mmpp_str);
+  LOGI("type:<%s>  ver:<%s>  mmpp(number):<%f>",type_str,ver_str,*mmpp);
 
 
 

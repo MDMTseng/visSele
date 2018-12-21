@@ -1,4 +1,5 @@
 
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include "acvImage.hpp"
 #include "acvImage_ToolBox.hpp"
@@ -314,7 +315,7 @@ bool acvContourCircleSignature
     } while(X!=startX||Y!=startY);
 
     interpolateSignData(signature,_1stIdx,preIdx);
-
+    return true;
 }
 
 float SignatureMatchingErrorX(const acv_XY *signature, int offset,

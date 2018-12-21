@@ -61,11 +61,13 @@ class CanvasComponent extends React.Component {
     if(this.ec_canvas  !== undefined)
     {
       console.log("updateCanvas>>",props.edit_info);
-      
-      this.ec_canvas.EditDBInfoSync(props.edit_info);
-      this.ec_canvas.SetState(ec_state);
-      //this.ec_canvas.ctrlLogic();
-      this.ec_canvas.draw();
+      if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
+      {
+        this.ec_canvas.EditDBInfoSync(props.edit_info);
+        this.ec_canvas.SetState(ec_state);
+        //this.ec_canvas.ctrlLogic();
+        this.ec_canvas.draw();
+      }
     }
   }
 
@@ -132,7 +134,7 @@ class APP_DEFCONF_MODE extends React.Component{
 
   componentDidMount()
   {
-    this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0);
+    this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
     
   }
   constructor(props) {
@@ -302,7 +304,7 @@ class APP_DEFCONF_MODE extends React.Component{
             addClass="layout lred vbox"
             key="TRIGGER"
             text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
-          <BASE_COM.Button
+            <BASE_COM.Button
             addClass="layout lred vbox"
             key="LOAD"
             text="LOAD" onClick={()=>{
@@ -310,6 +312,13 @@ class APP_DEFCONF_MODE extends React.Component{
                 this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"});
                 
             }}/>,
+            <BASE_COM.Button
+              addClass="layout red vbox"
+              key="TAKE"
+              text="TAKE" onClick={()=>{
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
+                  this.props.ACT_Shape_List_Reset();
+              }}/>,
         ];
       break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:         
@@ -558,6 +567,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefConfAct.Edit_Tar_Update(targetObj))},
+    ACT_Shape_List_Reset:() => {dispatch(DefConfAct.Shape_List_Update([]))},
    
     ACT_Save_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Save_Def_Config(info))},
     ACT_Trigger_Inspection: (info) => {dispatch(UIAct.EV_UI_EC_Trigger_Inspection(info))},

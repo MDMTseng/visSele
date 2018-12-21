@@ -34,11 +34,13 @@ class CanvasComponent extends React.Component {
     if(this.ec_canvas  !== undefined)
     {
       console.log("updateCanvas>>",props.edit_info);
-      
-      this.ec_canvas.EditDBInfoSync(props.edit_info);
-      this.ec_canvas.SetState(ec_state);
-      //this.ec_canvas.ctrlLogic();
-      this.ec_canvas.draw();
+      if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
+      {
+        this.ec_canvas.EditDBInfoSync(props.edit_info);
+        this.ec_canvas.SetState(ec_state);
+        //this.ec_canvas.ctrlLogic();
+        this.ec_canvas.draw();
+      }
     }
   }
 
@@ -98,8 +100,11 @@ class APP_INSP_MODE extends React.Component{
   componentDidMount()
   {
     
-    this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{deffile:"data/test.ic.json", imgsrc:"data/testInsp.bmp"});
+    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{deffile:"data/test.ic.json"});
            
+  }
+  componentWillUnmount() {
+    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{});
   }
   constructor(props) {
     super(props);
