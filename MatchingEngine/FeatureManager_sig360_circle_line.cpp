@@ -1413,24 +1413,114 @@ const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
 }
 
 
-
-
-int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point)
+void spline9(float *f,int fL,float *edgeX)
 {
-  const int GradTableL=10;
+    int n,i,j,k;
+    const int L = 9;
+    float h[L],a,b,c,d,sum,s[L]={0},x[L],F[L],p,m[L][L]={0},temp;
+    n = fL;
+
+
+
+    for(i=0;i<n;i++)
+    {
+        x[i]=i;
+        //printf("%f\n",f[i]);
+    }
+
+
+    for(i=n-1;i>0;i--)
+    {
+        F[i]=(f[i]-f[i-1])/(x[i]-x[i-1]);
+        h[i-1]=x[i]-x[i-1];
+    }
+
+    //*********** formation of h, s , f matrix **************//
+    for(i=1;i<n-1;i++)
+    {
+        m[i][i]=2*(h[i-1]+h[i]);
+        if(i!=1)
+        {
+            m[i][i-1]=h[i-1];
+            m[i-1][i]=h[i-1];
+        }
+        m[i][n-1]=6*(F[i+1]-F[i]);
+    }
+
+    //***********  forward elimination **************//
+
+    for(i=1;i<n-2;i++)
+    {
+        temp=(m[i+1][i]/m[i][i]);
+        for(j=1;j<=n-1;j++)
+            m[i+1][j]-=temp*m[i][j];
+    }
+
+    //*********** back ward substitution *********//
+    for(i=n-2;i>0;i--)
+    {
+        sum=0;
+        for(j=i;j<=n-2;j++)
+            sum+=m[i][j]*s[j];
+        s[i]=(m[i][n-1]-sum)/m[i][i];
+    }
+
+    float maxEdge_response = 0;
+    float maxEdge_offset=NAN;
+    for(i=0;i<n-1;i++)
+    {
+        a=(s[i+1]-s[i])/(6*h[i]);
+        bool zeroCross = (s[i+1]*s[i])<0;
+        float response =  abs(s[i+1]-s[i]);
+        //printf("%f %f => %f \n",s[i],s[i+1],response);
+        if(zeroCross || (s[i]==0 && i!=0))
+        {
+            float offset = s[i]/(s[i]-s[i+1]);
+            if(maxEdge_response<response)
+            {
+                maxEdge_response=response;
+                maxEdge_offset = i+offset;
+            }
+            //printf("cross: offset:%f\n",i+offset);
+        }
+    }
+
+    //printf("MAX rsp>>> %f %f\n",maxEdge_response,maxEdge_offset);
+    *edgeX = maxEdge_offset;
+}
+
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt)
+{
+  if(ret_point_opt==NULL)return -1;
+  const int GradTableL=9;
   float gradTable[GradTableL]={0};
 
   //curpoint = point -(GradTableL-1)*gVec/2
+  gradVec = acvVecNormalize(gradVec);
+  //gradVec= acvVecMult(gradVec,1);
+  
   acv_XY  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
   curpoint = acvVecAdd(curpoint,point);
-
+  acv_XY bkpoint = curpoint;
   for(int i=0;i<GradTableL;i++)
   {
     float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
+    //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
     gradTable[i] = ptn;
 
     curpoint = acvVecAdd(curpoint,gradVec);
   }
+  float edgeX;
+  spline9(gradTable,GradTableL,&edgeX);
+  //LOGV("<<%f",edgeX);
+  if(edgeX!=edgeX)//NAN
+  {
+    return -1;
+  }
+
+  gradVec = acvVecMult(gradVec,edgeX);
+  *ret_point_opt = acvVecAdd(bkpoint,gradVec);
+
 
   return 0;
 }
@@ -1668,7 +1758,27 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           line->initMatchingMargin,
           flip_f,
           s_intersectIdxs,s_points);
+
+
+        //acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
+        if(1)for(int i=0;i<s_points.size();i++)
+        {
+          acv_XY ret_point_opt;
+          
+          acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
+          int ret_val = EdgePointOpt(originalImage,lineNormal,s_points[i].pt,&ret_point_opt);
+          if(ret_val==0)
+          {
+            s_points[i].pt = ret_point_opt;
+          }
+        }
+        
+
         acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
+
+
+
+
         //LOGV("Matched points:%d",s_points.size());
 
         acvDrawLine(buff_,
@@ -1700,7 +1810,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             }
           }
         }
-
 
         LOGV("L=%d===anchor:%f,%f vec:%f,%f ,sigma:%f target_vec:%f,%f",j,
         line_cand.line_anchor.X,

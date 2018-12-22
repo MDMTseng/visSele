@@ -999,7 +999,7 @@ int main(int argc, char** argv)
 {
   auto lambda = []() { LOGV("Hello, Lambda"); };
   lambda();
-  return simpleTest();
+  //return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;

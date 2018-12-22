@@ -25,6 +25,22 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
+        for(int i=0;i<img.GetHeight();i++)//Add noise
+        {
+            for(int j=0;j<img.GetWidth();j++)
+            {
+                int d = img.CVector[i][j*3];
+                int randX = 20;
+                d+=( (random()%(randX*2+1)) -randX);
+                if(d<0)d=0;
+                else if(randX>255)randX=255;
+                
+                img.CVector[i][j*3] = d;
+
+            }
+        }
+
+
         ret_status=ACK;
         callback(*this,CameraLayer::EV_IMG,context);
     }
