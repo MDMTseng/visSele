@@ -237,7 +237,7 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
     {
       for(int j=drawMargin+offsetX;j<buff->GetWidth()-drawMargin;j+=skipF)
       {
-        acv_XY from={.X=j,.Y=i};
+        acv_XY from={.X=(float)j,.Y=(float)i};
         acv_XY mapPt={0};
 
 
@@ -261,7 +261,7 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
           float diffY = -traningRate*diff*sobelY/256/128;
 
           {
-            acv_XY adjposition={.X=j,.Y=i};
+            acv_XY adjposition={.X=(float)j,.Y=(float)i};
             acv_XY adjVec={.X=diffX,.Y=diffY};
             moEng.Mapping_adjust(adjposition,adjVec);
           }
@@ -278,7 +278,7 @@ int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,ac
   {
     for(int j=drawMargin;j<buff->GetWidth()-drawMargin;j++)
     {
-      acv_XY from={.X=j,.Y=i};
+      acv_XY from={.X=(float)j,.Y=(float)i};
       acv_XY mapPt={0};
 
 

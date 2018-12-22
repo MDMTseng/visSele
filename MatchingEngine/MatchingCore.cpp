@@ -53,7 +53,7 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
     while (1)
     {
         ContourGrid::ptInfo pt={
-          pt:{.X=NowPos[0],.Y=NowPos[1]},
+          pt:{.X=(float)NowPos[0],.Y=(float)NowPos[1]},
           
           sobel:{.X=0,.Y=0}
           };
