@@ -57,26 +57,37 @@ void spline10(float *f,int fL,float *edgeX)
         s[i]=(m[i][n-1]-sum)/m[i][i];
     }
 
-
+    float maxEdge_response = 0;
+    float maxEdge_offset=NAN;
     for(i=0;i<n-1;i++)
     {
         a=(s[i+1]-s[i])/(6*h[i]);
         bool zeroCross = (s[i+1]*s[i])<0;
-        printf("%f %f => %f \n",s[i],s[i+1],abs(s[i+1]-s[i]));
-        if(zeroCross)
+        float response =  abs(s[i+1]-s[i]);
+        printf("%f %f => %f \n",s[i],s[i+1],response);
+        if(zeroCross || (s[i]==0 && i!=0))
         {
             float offset = s[i]/(s[i]-s[i+1]);
+            if(maxEdge_response<response)
+            {
+                maxEdge_response=response;
+                maxEdge_offset = i+offset;
+            }
             printf("cross: offset:%f\n",i+offset);
         }
     }
+
+    printf("MAX rsp>>> %f %f\n",maxEdge_response,maxEdge_offset);
+    *edgeX = maxEdge_offset;
 }
 int main()
 {
-    float f[]={0,0,2.5001,5,5};
+    float f[]={0,0,2.5,4,8};
     int fL = sizeof(f)/sizeof(f[0]);
     float edgeX;
     spline10(f,fL,&edgeX);
     
+    printf("edgeX: %f\n",edgeX);
     return 0;
 }
 int mainX()
