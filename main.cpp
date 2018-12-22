@@ -563,7 +563,7 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
 {
   char *string = ReadText(defFilename);
-  printf("%s\n%s\n",string,defFilename);
+  //printf("%s\n%s\n",string,defFilename);
   int ret = ImgInspection_JSONStr(me ,test1,buff, repeatTime,string);
   free(string);
   return ret;
@@ -999,7 +999,7 @@ int main(int argc, char** argv)
 {
   auto lambda = []() { LOGV("Hello, Lambda"); };
   lambda();
-  //return simpleTest();
+  return simpleTest();
   #ifdef __WIN32__
   {
       WSADATA wsaData;

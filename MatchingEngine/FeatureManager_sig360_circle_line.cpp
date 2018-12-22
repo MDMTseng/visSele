@@ -4,6 +4,7 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include <stdio.h>
+#include <acvImage_SpDomainTool.hpp>
 
 
 static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
@@ -1410,6 +1411,30 @@ const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
   report.data.sig360_circle_line.reports = &reports;
   return &report;
 }
+
+
+
+
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point)
+{
+  const int GradTableL=10;
+  float gradTable[GradTableL]={0};
+
+  //curpoint = point -(GradTableL-1)*gVec/2
+  acv_XY  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
+  curpoint = acvVecAdd(curpoint,point);
+
+  for(int i=0;i<GradTableL;i++)
+  {
+    float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
+    gradTable[i] = ptn;
+
+    curpoint = acvVecAdd(curpoint,gradVec);
+  }
+
+  return 0;
+}
+
 
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff_,vector<acv_LabeledData> &ldData,acvImage *dbg)
 {
