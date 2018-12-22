@@ -318,10 +318,10 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     case FeatureReport::binary_processing_group:
     {
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_binary_processing_group::GetFeatureTypeName());
+
+      /*
       cJSON* label_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"labeledData",label_jarr);
-      cJSON* reports_jarr = cJSON_CreateArray();
-      cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
 
       const vector<acv_LabeledData> *ldata =
       report->data.binary_processing_group.labeledData;
@@ -329,11 +329,14 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
 
       for(int j=2;j<ldata->size();j++)
       {
+        if((*ldata)[j].area<2)continue;
         cJSON* label_jobj = cJSON_CreateObject();
         cJSON_AddItemToArray(label_jarr, label_jobj );
         cJSON_AddNumberToObject(label_jobj, "area", (*ldata)[j].area);
-      }
+      }*/
 
+      cJSON* reports_jarr = cJSON_CreateArray();
+      cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
 
 
       const vector<const FeatureReport*> *sub_reports =

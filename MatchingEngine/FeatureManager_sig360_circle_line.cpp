@@ -1527,7 +1527,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         grid_size,edge_grid,scanline_skip);
       
       
-      
       if(1)//Draw debug image(curve and straight line)
       {
         for(int i=0;i<edge_grid.dataSize();i++)
@@ -1748,18 +1747,19 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           center.Y,
           cdef.circleTar.radius,
           sAngle,eAngle,cdef.outter_inner,
-          matching_tor*2,
+          matching_tor,
           s_intersectIdxs,s_points);
 
         acv_CircleFit cf;
         circleRefine(s_points,&cf);
-
+        float minTor = matching_tor/5;
+        if(minTor<1)minTor=1;
         edge_grid.getContourPointsWithInCircleContour(
           cf.circle.circumcenter.X,
           cf.circle.circumcenter.Y,
           cf.circle.radius,
           sAngle,eAngle,cdef.outter_inner,
-          matching_tor,
+          minTor,
           s_intersectIdxs,s_points);
         circleRefine(s_points,&cf);
 
