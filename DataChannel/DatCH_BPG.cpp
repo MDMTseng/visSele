@@ -5,6 +5,8 @@
 DatCH_BPG1_0::DatCH_BPG1_0(ws_conn_data *conn): DatCH_BPG()
 {
   version="1.0.0.alpha";
+  peer = NULL;
+  buffer = NULL;
   RESET(conn);
   BufferSetup(1000);
 }
@@ -26,13 +28,12 @@ void DatCH_BPG1_0::BufferSetup(int buffer_size)
 }
 void DatCH_BPG1_0::RESET(ws_conn_data *peer)
 {
-  printf("RESET:this->peer:%p   peer:%p\n",this->peer,peer);
+  LOGV("RESET:this->peer:%p   peer:%p",this->peer,peer);
   if(cb_obj && this->peer)
   {//Tear down connection
       websock_data close_pkt;
       close_pkt.type = websock_data::CLOSING;
       close_pkt.peer = this->peer;
-
       this->peer = NULL;
       DatCH_Data ws_data=GenMsgType(DatCH_Data::DataType_websock_data);
       ws_data.data.p_websocket = &close_pkt;
