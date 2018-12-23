@@ -185,10 +185,25 @@ void circleRefine(vector<ContourGrid::ptInfo> &pointsInRange,acv_CircleFit *circ
   int skip=1;
   //CircleFitData.resize_force(0);
   CircleFitData.resize(pointsInRange.size()/skip);
+  
+  float sum_edgeRsp=0;
+  for(int i=0;i<CircleFitData.size();i++)
+  {
+    sum_edgeRsp+=pointsInRange[i*skip].edgeRsp;
+  }
   for(int i=0;i<CircleFitData.size();i++)
   {
     CircleFitData.X[i]=pointsInRange[i*skip].pt.X;
     CircleFitData.Y[i]=pointsInRange[i*skip].pt.Y;
+    //printf(">>>>>>>%d>>>>>>> %f\n",i,pointsInRange[i*skip].edgeRsp);
+    if(sum_edgeRsp==0)
+    {
+      CircleFitData.W[i]=1;
+    }
+    else
+    {
+      CircleFitData.W[i]=pointsInRange[i*skip].edgeRsp;
+    }
   }
 
   Circle circle;
