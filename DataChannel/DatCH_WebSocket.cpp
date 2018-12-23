@@ -2,19 +2,26 @@
 #include "DatCH_WebSocket.hpp"
 
 #include <ws_server_util.h>
+#include <exception>
+#include <stdexcept>
 
 DatCH_WebSocket::DatCH_WebSocket(int port): DatCH_Interface(),ws_protocol_callback(this)
 {
 
     server = new ws_server(port,this);
+    if(server->get_socket()<0)
+    {
+        throw std::invalid_argument("WS Server INIT Failed..");
+    }
+    
     default_peer = NULL;
 }
 
 
 int DatCH_WebSocket::runLoop(struct timeval *tv)
 {
-    server->runLoop(tv);
-    return 0;
+    
+    return server->runLoop(tv);
 }
 
 int DatCH_WebSocket::ws_callback(websock_data data, void* param)
@@ -77,4 +84,10 @@ DatCH_Data DatCH_WebSocket::SendData(DatCH_Data ws_data)
     }
 
     return GenMsgType(DatCH_Data::DataType_ACK);
+}
+
+
+int DatCH_WebSocket::disconnect(int sock)
+{
+    return  server->disconnect(sock);
 }

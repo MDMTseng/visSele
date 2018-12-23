@@ -8,21 +8,24 @@ Data::Data(int N)
 {
   X=NULL;
   Y=NULL;
+  W=NULL;
   reset();
   resize(N);
 }
 
 // Constructor with assignment of each field
-Data::Data(int N, reals dataX[], reals dataY[])
+Data::Data(int N, reals dataX[], reals dataY[], reals dataW[])
 {
   X=NULL;
   Y=NULL;
+  W=NULL;
   reset();
   resize(N);
 	for (int i=0; i<n; i++)
 	{
 		X[i]=dataX[i];
 		Y[i]=dataY[i];
+		W[i]=dataW[i];
 	}
 }
 
@@ -32,13 +35,15 @@ void Data::means(void)
 {
 	meanX=0.; meanY=0.;
 
+	reals sumW=0;
 	for (int i=0; i<n; i++)
 	{
-		meanX += X[i];
-		meanY += Y[i];
+		sumW+=W[i];
+		meanX += X[i]*W[i];
+		meanY += Y[i]*W[i];
 	}
-	meanX /= n;
-	meanY /= n;
+	meanX /= sumW;
+	meanY /= sumW;
 }
 
 void Data::resize(int new_size)
@@ -70,9 +75,12 @@ void Data::reset()
 	 delete[] X;
   if(Y != NULL)
    delete[] Y;
+  if(W != NULL)
+   delete[] W;
 
   X=NULL;
   Y=NULL;
+  W=NULL;
   n=0;
   real_n=0;
 }
@@ -85,6 +93,7 @@ void Data::resize_force(int new_size)
   real_n=new_size;
   X = new reals[n];
   Y = new reals[n];
+  W = new reals[n];
 }
 
 
@@ -96,13 +105,16 @@ void Data::center(void)
 	reals sX=0.,sY=0.;
 	int i;
 
+	reals sumW=0;
+
 	for (i=0; i<n; i++)
 	{
+		sumW += W[i];
 		sX += X[i];
 		sY += Y[i];
 	}
-	sX /= n;
-	sY /= n;
+	sX /= sumW;
+	sY /= sumW;
 
 	for (i=0; i<n; i++)
 	{

@@ -29,16 +29,16 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int signature_feature_id;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
-  ContourGrid inward_curve_grid;
-  ContourGrid straight_line_grid;
+  ContourGrid edge_grid;
 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;
 
-
+  acvImage buff1;
+  acvImage buff2;
   
   vector<int> s_intersectIdxs;
-  vector<acv_XY> s_points;
+  vector<ContourGrid::ptInfo> s_points;
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;
@@ -48,8 +48,8 @@ public :
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
 protected:
 
-  int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
-  float find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList);
+  //int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
+  //float find_search_key_points_longest_distance(vector<featureDef_line::searchKeyPoint> &skpsList);
   int parse_arcData(cJSON * circle_obj);
   int parse_lineData(cJSON * line_obj);
   int parse_auxPointData(cJSON * auxPoint_obj);
@@ -67,16 +67,16 @@ protected:
   float sine,float cosine,float flip_f,
   featureDef_auxPoint &def);
 
-  FeatureReport_searchPointReport searchPoint_process(acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
+  FeatureReport_searchPointReport searchPoint_process(acvImage *grayLevelImg,acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
   FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,
-  featureDef_searchPoint &def);
+  featureDef_searchPoint &def,acvImage *dbgImg);
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);
   int ParseMainVector(float flip_f,FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec);
   int ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt);
-  int lineCrossPosition(FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt);
+  int lineCrossPosition(float flip_f,FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt);
 };
 
 

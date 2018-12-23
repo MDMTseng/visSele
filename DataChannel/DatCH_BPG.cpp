@@ -1,9 +1,12 @@
 
 #include "DatCH_BPG.hpp"
+#include "logctrl.h"
 
 DatCH_BPG1_0::DatCH_BPG1_0(ws_conn_data *conn): DatCH_BPG()
 {
   version="1.0.0.alpha";
+  peer = NULL;
+  buffer = NULL;
   RESET(conn);
   BufferSetup(1000);
 }
@@ -25,13 +28,12 @@ void DatCH_BPG1_0::BufferSetup(int buffer_size)
 }
 void DatCH_BPG1_0::RESET(ws_conn_data *peer)
 {
-  printf("RESET:this->peer:%p   peer:%p\n",this->peer,peer);
+  LOGV("RESET:this->peer:%p   peer:%p",this->peer,peer);
   if(cb_obj && this->peer)
   {//Tear down connection
       websock_data close_pkt;
       close_pkt.type = websock_data::CLOSING;
       close_pkt.peer = this->peer;
-
       this->peer = NULL;
       DatCH_Data ws_data=GenMsgType(DatCH_Data::DataType_websock_data);
       ws_data.data.p_websocket = &close_pkt;
@@ -81,7 +83,7 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
     header[0] = data.tl[0];
     header[1] = data.tl[1];
 
-    printf("TWOLETTER:  %c%c\n",data.tl[0],data.tl[1]);
+    LOGV("TWOLETTER:  %c%c",data.tl[0],data.tl[1]);
     header[2] = data.prop;
     uint32_t length=0;
     if(data.dat_raw)
@@ -158,9 +160,9 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
         int sendL = 0;
         for(int i=0;i<buffer_size-4;i+=4,img_pix_ptr+=3)
         {
-          buffer[i]=img_pix_ptr[0];
+          buffer[i]=img_pix_ptr[2];
           buffer[i+1]=img_pix_ptr[1];
-          buffer[i+2]=img_pix_ptr[2];
+          buffer[i+2]=img_pix_ptr[0];
           buffer[i+3]=255;
           sendL+=4;
           rest_len--;
@@ -228,16 +230,17 @@ DatCH_Data DatCH_BPG1_0::Process_websock_data(websock_data* p_websocket)
     switch(p_websocket->type)
     {
       case websock_data::OPENING:
-        printf(">>>>>>>>>>>>>OPENING\n");
+        LOGI(">>>>>>>>>>>>>OPENING");
         RESET(p_websocket->peer);
         //printf(">>>>>>>>>>>>>OPENING_RESET\n");
       break;
       case websock_data::CLOSING:
-        printf(">>>>>>>>>>>>>CLOSING\n");
+        LOGI(">>>>>>>>>>>>>CLOSING");
         RESET(NULL);
       break;
       case websock_data::DATA_FRAME:
 
+        LOGI(">>>>>>>>>>>>>DATA_FRAME");
         uint8_t* raw = p_websocket->data.data_frame.raw;
         size_t rawL = p_websocket->data.data_frame.rawL;
         if(cb_obj!=NULL && p_websocket->data.data_frame.isFinal && rawL >= 7)

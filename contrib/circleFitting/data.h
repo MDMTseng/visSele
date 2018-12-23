@@ -23,11 +23,12 @@ public:
 	int n;
 	reals *X;		//space is allocated in the constructors
 	reals *Y;		//space is allocated in the constructors
+	reals *W;		//space is allocated in the constructors
 	reals meanX, meanY;
 
 	// constructors
 	Data(int N);
-	Data(int N, reals X[], reals Y[]);
+	Data(int N, reals X[], reals Y[], reals W[]);
 
 	void reset();
 	void resize(int new_size);

@@ -112,14 +112,15 @@ void SimulateRandom(Data& data, reals Window)
 reals Sigma (Data& data, Circle& circle)
 {
     reals sum=0.,dx,dy;
-
+    reals sumW=0;
     for (int i=0; i<data.n; i++)
     {
         dx = data.X[i] - circle.a;
         dy = data.Y[i] - circle.b;
-        sum += SQR(sqrt(dx*dx+dy*dy) - circle.r);
+        sumW+=data.W[i];
+        sum += SQR(sqrt(dx*dx+dy*dy) - circle.r)*data.W[i];
     }
-    return sqrt(sum/data.n);
+    return sqrt(sum/sumW);
 }
 
 //****************** SigmaReduced ************************************

@@ -59,25 +59,27 @@ Circle CircleFitByHyper (Data& data)
 //     computing moments
 
     Mxx=Myy=Mxy=Mxz=Myz=Mzz=0.;
+    reals sumW=0;
     for (i=0; i<data.n; i++)
     {
         Xi = data.X[i] - data.meanX;   //  centered x-coordinates
         Yi = data.Y[i] - data.meanY;   //  centered y-coordinates
         Zi = Xi*Xi + Yi*Yi;
 
-        Mxy += Xi*Yi;
-        Mxx += Xi*Xi;
-        Myy += Yi*Yi;
-        Mxz += Xi*Zi;
-        Myz += Yi*Zi;
-        Mzz += Zi*Zi;
+        sumW+=data.W[i];
+        Mxy += Xi*Yi*data.W[i];
+        Mxx += Xi*Xi*data.W[i];
+        Myy += Yi*Yi*data.W[i];
+        Mxz += Xi*Zi*data.W[i];
+        Myz += Yi*Zi*data.W[i];
+        Mzz += Zi*Zi*data.W[i];
     }
-    Mxx /= data.n;
-    Myy /= data.n;
-    Mxy /= data.n;
-    Mxz /= data.n;
-    Myz /= data.n;
-    Mzz /= data.n;
+    Mxx /= sumW;
+    Myy /= sumW;
+    Mxy /= sumW;
+    Mxz /= sumW;
+    Myz /= sumW;
+    Mzz /= sumW;
 
 //    computing the coefficients of the characteristic polynomial
 
@@ -109,7 +111,6 @@ Circle CircleFitByHyper (Data& data)
     DET = x*x - x*Mz + Cov_xy;
     Xcenter = (Mxz*(Myy - x) - Myz*Mxy)/DET/Two;
     Ycenter = (Myz*(Mxx - x) - Mxz*Mxy)/DET/Two;
-
 //       assembling the output
 
     circle.a = Xcenter + data.meanX;

@@ -4,7 +4,7 @@ MODULE_NAME=$(notdir $(basename $(CURDIR)))
 IDIR=	./include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_acvImage)/include\
-			$(MODULE_LOGCTRL)/include\
+			$(MODULE_logctrl)/include\
 			$(MODULE_zlib)/src
 
 ODIR=obj

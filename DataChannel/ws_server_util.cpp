@@ -1,6 +1,7 @@
 
 #include "ws_server_util.h"
 
+#include "logctrl.h"
 #include "websocket.h"
 //////////////////////////////ws_server/////////////////////////////////////
 
@@ -44,6 +45,20 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
 
 }
 
+int ws_server::disconnect(int sock)
+{
+    ws_conn *conn = ws_conn_pool.find(sock);
+    int ret = conn->doClosing();
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
+    
+    for (int i = 0; i < (*servers).size(); i++)
+    {
+        printf("peer %s:%d  sock:%d\n",
+            inet_ntoa((*servers)[i]->getAddr().sin_addr),
+            ntohs((*servers)[i]->getAddr().sin_port),(*servers)[i]->getSocket());
+    }
+    return ret;
+}
 
 ws_server::~ws_server()
 {
@@ -58,7 +73,10 @@ ws_server::~ws_server()
     }
     close(listenSocket);
 }
-
+int ws_server::get_socket()
+{
+    return listenSocket;
+}
 int ws_server::findMaxFd()
 {
     int max = listenSocket;
@@ -99,27 +117,41 @@ int ws_server::runLoop(struct timeval *tv)
     fd_set read_fds = evtSet;
 
 
+    LOGV(">>>>>");
     if (select(fdmax + 1, &read_fds, NULL, NULL, tv) == -1) {
+        LOGV("select failed...");
         perror("select");
-        exit(4);
+        //exit(4);
+        return -1;
     }
 
 
+    LOGV(">>>>>");
     if (FD_ISSET(listenSocket, &read_fds))
     {
+        LOGV("listenSocket");
         struct sockaddr_in remote;
         socklen_t sockaddrLen = sizeof(remote);
+        LOGV("accept::");
         int NewSock = accept(listenSocket, (struct sockaddr*)&remote, &sockaddrLen);
         if (NewSock == -1) {
+            
+            LOGV("accept failed");
             printf("accept failed");
+            //sleep(1000);
+            return -2;
         }
+        
+        LOGV("Find slot");
         ws_conn* conn = ws_conn_pool.find_avaliable_conn_info_slot();
+        LOGV("slot is here:%p",conn);
         conn->setSocket(NewSock);
         conn->setAddr(remote);
-        conn->setCallBack(this);
+        
+        LOGV("connected %s:%d sock:%d",
+               inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port),conn->getSocket());
 
-        printf("connected %s:%d\n",
-               inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port));
+        conn->setCallBack(this);
 
 
         FD_SET(NewSock, &evtSet);
@@ -132,6 +164,7 @@ int ws_server::runLoop(struct timeval *tv)
     }
     else
     {
+        LOGV("listenSocket else");
         std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
         bool evt_trigger = false;
         for (int i = 0; i < (*servers).size(); i++)
@@ -150,11 +183,12 @@ int ws_server::runLoop(struct timeval *tv)
                 break;
             }
         }
+        LOGV("listenSocket else end for");
 
 
         if (!evt_trigger)
         {
-            printf("No matching event\n");
+            LOGV("No matching event");
             return -2;
         }
     }
@@ -293,6 +327,7 @@ void ws_conn::RESET()
 int ws_conn::setSocket(int socket)
 {
     sock = socket;
+    return 0;
 }
 
 
@@ -300,6 +335,7 @@ int ws_conn::setSocket(int socket)
 int ws_conn::setAddr(struct sockaddr_in address)
 {
     addr = address;
+    return 0;
 }
 
 
@@ -357,8 +393,8 @@ int ws_conn::doClosing()
     if (isOccupied())
         close(sock);
 
+    printf("%s:cb:%p sock:%d\n",__func__,cb,sock);
     sock=-1;
-    printf("%s:cb:%p\n",__func__,cb);
     if(cb!=NULL)
     {
       cb->ws_callback(genCallbackData(websock_data::eventType::CLOSING));

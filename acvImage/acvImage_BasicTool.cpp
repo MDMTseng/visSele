@@ -1,4 +1,4 @@
-
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include "acvImage.hpp"
 #include "acvImage_BasicTool.hpp"
@@ -666,6 +666,10 @@ float acv2DCrossProduct(acv_XY v1,acv_XY v2)
 	return v1.X*v2.Y - v2.X*v1.Y;
 }
 
+float acv2DDotProduct(acv_XY v1,acv_XY v2)
+{
+	return v1.X*v2.X + v2.Y*v1.Y;
+}
 
 float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3)
 {
@@ -732,22 +736,33 @@ float acvLineAngle(acv_Line line1,acv_Line line2)
 }
 // Construct line from points
 
-bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma) {
-  if( ptsL < 2 || pts==NULL || line==NULL) {
+bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, float *ret_sigma) 
+{
+    
+    return acvFitLine(pts,sizeof(acv_XY),ptsw,sizeof(float),ptsL,line, ret_sigma);
+}
+
+bool acvFitLine(const void *pts_struct,int pts_step, const void *ptsw_struct,int ptsw_step, int ptsL,acv_Line *line, float *ret_sigma) 
+{
+  acv_Line tarline = *line;
+  if( ptsL < 2 || pts_struct==NULL || line==NULL) {
     // Fail: infinitely many lines passing through this single point
     return false;
   }
 
   float sumX=0, sumY=0, sumXY=0, sumX2=0, sumY2=0;
   float wsum=0;
+  
   for(int i=0; i<ptsL; i++) {
-    float w = (ptsw)?ptsw[i]:1;
-    sumX += pts[i].X*w;
-    sumY += pts[i].Y*w;
-    sumXY += pts[i].X * pts[i].Y*w;
-    sumX2 += pts[i].X * pts[i].X*w;
-    sumY2 += pts[i].Y * pts[i].Y*w;
+    float w = (ptsw_struct)?(*(float*)((uint8_t*)ptsw_struct+i*ptsw_step)):1;
+    acv_XY pt = *(acv_XY*)((uint8_t*)pts_struct+i*pts_step);
+    sumX += pt.X*w;
+    sumY += pt.Y*w;
+    sumXY += pt.X * pt.Y*w;
+    sumX2 += pt.X * pt.X*w;
+    sumY2 += pt.Y * pt.Y*w;
     wsum+=w;
+    
   }
 
 
@@ -779,6 +794,11 @@ bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, f
   line->line_vec.X /=denominator;
   line->line_vec.Y /=denominator;
 
+  if( (line->line_vec.X*tarline.line_vec.X + line->line_vec.Y*tarline.line_vec.Y )<0)
+  {
+      line->line_vec.X =-line->line_vec.X;
+      line->line_vec.Y =-line->line_vec.Y;
+  }
 
   line->line_anchor.X = xMean;
   line->line_anchor.Y = yMean;
@@ -796,8 +816,9 @@ bool acvFitLine(const acv_XY *pts, const float *ptsw, int ptsL,acv_Line *line, f
     float sigma=0;
     wsum=0;
     for(int i=0; i<ptsL; i++) {
-      float w = (ptsw)?ptsw[i]:1;
-      float dist=acvDistance_Signed(*line, pts[i]);
+      float w = (ptsw_struct)?(*(float*)((uint8_t*)ptsw_struct+i*ptsw_step)):1;
+      acv_XY pt = *(acv_XY*)((uint8_t*)pts_struct+i*pts_step);
+      float dist=acvDistance_Signed(*line, pt);
       sigma+=dist*dist*w;
       wsum+=w;
     }

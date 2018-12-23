@@ -39,12 +39,13 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-
+      session_lock:null
     },
     sm:null,
     c_state:null,
     p_state:null,
-    state_count:0
+    state_count:0,
+    WS_ID:"EverCheckWS"
   }
 }
 
@@ -69,14 +70,17 @@ function StateReducer(newState,action)
 
   switch(action.type)
   {
+    case UISEV.Connected:
+      newState.WS_CH=action.data;
+      console.log("Connected",newState.WS_CH);
+    return newState;
+    case UISEV.Disonnected:
+      newState.WS_CH=undefined;
+    return newState;
+
     case UISEV.Control_SM_Panel:
       newState.showSM_graph = action.data;
     return newState;
-
-    case UISEV.WS_channel:
-      newState.WS_CH=action.data;
-    return newState;
-    
   }
   switch(newState.c_state.value)
   {
@@ -101,6 +105,7 @@ function StateReducer(newState,action)
       newState.showSplash=false;
       return newState;
     case UISTS.DEFCONF_MODE:
+    case UISTS.INSP_MODE:
     {
 
 
@@ -117,6 +122,8 @@ function StateReducer(newState,action)
           newState.edit_info=Object.assign({},newState.edit_info);
           //newState.report=action.data;
           newState.edit_info._obj.SetInspectionReport(action.data);
+          newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
+          console.log(newState.edit_info.inspReport);
           //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
@@ -140,11 +147,20 @@ function StateReducer(newState,action)
           newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
         break;
 
+        case UISEV.Session_Lock:
+          
+          newState.edit_info=Object.assign({},newState.edit_info);
+          newState.edit_info.session_lock = (action.data);
+        break;
+
 
         
 
         case DefConfAct.EVENT.Shape_List_Update:
-          newState.edit_info.list=(action.data == null)? []: action.data;
+          newState.edit_info._obj.SetShapeList(action.data);
+          newState.edit_info.edit_tar_info = null;
+          newState.edit_info.list=newState.edit_info._obj.shapeList;
+          newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
         case DefConfAct.EVENT.Edit_Tar_Update:
@@ -161,23 +177,6 @@ function StateReducer(newState,action)
         case UISEV.EC_Save_Def_Config:
         {
           if(newState.WS_CH==undefined)break;
-          var enc = new TextEncoder();
-
-          let report = newState.edit_info._obj.GenerateEditReport();
-          console.log(newState.WS_CH);
-          newState.WS_CH.send("SV",0,
-            action.data,
-            enc.encode(JSON.stringify(report, null, 2))
-          );
-        }
-        break;
-        case UISEV.EC_Load_Def_Config:
-        {
-          if(newState.WS_CH==undefined)break;
-          let dat=action.data;
-          if(dat === undefined)
-            dat={};
-          newState.WS_CH.send("LD",0,dat);
         }
         break;
         case UISEV.EC_Trigger_Inspection:
@@ -442,11 +441,7 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
   if(action.type==="ATBundle")
   {
-    for( let i=0 ;i<action.data.length;i++)
-    {
-      newState = StateReducer(newState,action.data[i]);
-    }
-
+    action.data.reduce((state,action)=> StateReducer(state,action),newState);
     console.log(newState);
     return newState;
   }

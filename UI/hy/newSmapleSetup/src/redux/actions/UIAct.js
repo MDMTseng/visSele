@@ -4,7 +4,7 @@ export const UI_SM_STATES = {
   MAIN:"MAIN",
 
   DEFCONF_MODE:"DEFCONF_MODE",
-  DEFCONF_MODE_NEUTRAL:"NEUTRAL",
+  DEFCONF_MODE_NEUTRAL:"DEFCONF_MODE_NEUTRAL",
   DEFCONF_MODE_LINE_CREATE:"LINE_CREATE",
   DEFCONF_MODE_AUX_LINE_CREATE:"AUX_LINE_CREATE",
   DEFCONF_MODE_AUX_POINT_CREATE:"AUX_POINT_CREATE",
@@ -67,6 +67,7 @@ export const UI_SM_EVENT = {
   Image_Update:"Image_Update",
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
+  Session_Lock:"Session_Lock",
 
 
   Line_Create:"Line_Create",
@@ -120,10 +121,10 @@ export function EV_UI_EC_Trigger_Inspection(info)
 }
 
 
-export function EV_WS_Connected(peer)
+export function EV_WS_Connected(ws_obj)
 {
   return {
-    type: UI_SM_EVENT.Connected ,data:peer
+    type: UI_SM_EVENT.Connected ,data:ws_obj
   }
 }
 
@@ -134,26 +135,6 @@ export function EV_WS_Disconnected(peer)
   }
 }
 
-export function EV_WS_Register(ws)
-{
-  return {
-    type: BPG_WS_EVENT.BPG_WS_REGISTER ,ws:ws
-  }
-}
-
-export function EV_WS_SEND(ws,data)
-{
-  return {
-    type: BPG_WS_EVENT.BPG_WS_SEND ,data:data,ws:ws
-  }
-}
-
-export function EV_WS_RECV(evt)
-{
-  return {
-    type: UI_SM_EVENT.BPG_WS_RECV ,data:evt
-  }
-}
 
 export function EV_UI_Edit_Mode()
 {
@@ -203,4 +184,26 @@ export function EV_WS_SIG360_Report_Update(data)
   return {
     type: UI_SM_EVENT.SIG360_Report_Update ,data:data
   }
+}
+
+export function EV_WS_Session_Lock(SSData)
+{
+  return {
+    type: UI_SM_EVENT.Session_Lock ,data:SSData
+  }
+}
+
+export function EV_WS_SEND(id,tl,prop,data,uintArr){
+  return ({
+    type:"MWWS_SEND",
+    data:{
+      id:id,
+      data:{
+        tl:tl,
+        prop:prop,
+        data:data,
+        uintArr:uintArr
+      }
+    }
+  });
 }

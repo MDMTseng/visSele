@@ -14,7 +14,7 @@ void MorphEngine::RESET(int grid_size,int img_width,int img_height)
   {
     for(int j=0;j<sectionCol;j++)
     {
-      acv_XY c={.X=grid_size*j,.Y=grid_size*i};
+      acv_XY c={.X=(float)(grid_size*j),.Y=(float)(grid_size*i)};
       morphNodes[sectionCol*i+j]=c;
     }
   }

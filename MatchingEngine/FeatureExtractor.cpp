@@ -37,14 +37,13 @@ int FeatureManager_sig360_extractor::parse_jobj()
   const char *type_str = subObj?subObj->valuestring:NULL;
   subObj = cJSON_GetObjectItem(root,"ver");
   const char *ver_str = subObj?subObj->valuestring:NULL;
-  subObj = cJSON_GetObjectItem(root,"mmpp");//mm per pixel
-  const char *mmpp_str = subObj?subObj->valuestring:NULL;
-  if(type_str==NULL||ver_str==NULL||mmpp_str==NULL)
+  const double *mmpp  = JFetch_NUMBER(root,"mmpp");
+  if(type_str==NULL||ver_str==NULL||mmpp==NULL)
   {
-    LOGE("ptr: type:<%p>  ver:<%p>  mmpp_str:<%p>",type_str,ver_str,mmpp_str);
+    LOGE("ptr: type:<%p>  ver:<%p>  mmpp(number):<%p>",type_str,ver_str,mmpp);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  mmpp_str:<%s>",type_str,ver_str,mmpp_str);
+  LOGI("type:<%s>  ver:<%s>  mmpp(number):<%f>",type_str,ver_str,*mmpp);
 
 
 
@@ -80,18 +79,15 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   detectedCircles.resize(0);
   detectedLines.resize(0);
   int idx=-1;
+  int maxArea=0;
   for(int i=1;i<ldData.size();i++)
   {
     if(ldData[i].area<=0)continue;
-    LOGV("[%d]: X:%f Y:%f...",i,ldData[i].Center.X,ldData[i].Center.Y);
-    if(idx!=-1)
+    if(maxArea<ldData[i].area)
     {
-      LOGE("Only one component is allowed for extractor");
-      report.data.sig360_extractor.error =
-      FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
-      return -1;
+      idx = i;
+      maxArea=ldData[i].area;
     }
-    idx=i;
   }
   if(idx==-1)
   {
@@ -106,7 +102,8 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   LOGI(">>>LTBound X:%f Y:%f...",ldData[idx].LTBound.X,ldData[idx].LTBound.Y);
   LOGI(">>>RBBound X:%f Y:%f...",ldData[idx].RBBound.X,ldData[idx].RBBound.Y);
   acvContourCircleSignature(img, ldData[idx], idx, signature);
-  MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
+  acvCloneImage( img,buff, -1);
+  //MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
 
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());

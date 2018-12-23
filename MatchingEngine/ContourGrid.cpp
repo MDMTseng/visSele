@@ -1,5 +1,6 @@
 
 #include "ContourGrid.h"
+#include "logctrl.h"
 
 ContourGrid::ContourGrid()
 {
@@ -60,15 +61,15 @@ int ContourGrid::getSecIdx(int X,int Y)
   return sectionCol*gridY+gridX;
 }
 
-std::vector<acv_XY> &ContourGrid::fetchBelongingSection(acv_XY data)
+std::vector<ContourGrid::ptInfo> &ContourGrid::fetchBelongingSection(acv_XY pt)
 {
-  int gridIdx=getSecIdx(data.X,data.Y);
+  int gridIdx=getSecIdx(pt.X,pt.Y);
   return contourSections[gridIdx];
 }
 
-void ContourGrid::push(acv_XY data)
+void ContourGrid::push(ptInfo data)
 {
-  fetchBelongingSection(data).push_back(data);
+  fetchBelongingSection(data.pt).push_back(data);
   dataNumber++;
 }
 
@@ -77,7 +78,7 @@ int ContourGrid::dataSize()
   return dataNumber;
 }
 
-const acv_XY* ContourGrid::get(int idx)
+const ContourGrid::ptInfo* ContourGrid::get(int idx)
 {
   int idx_count_down=idx;
   for(int i=0;i<contourSections.size();i++)
@@ -261,13 +262,38 @@ void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,fl
 
 }
 
-void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radius,float epsilon,
-  std::vector<int> &intersectIdxs,std::vector<acv_XY> &points)
+bool isAngleBetween(float angle,float sAngle,float eAngle)
+{
+  angle-=sAngle;
+  eAngle-=sAngle;
+
+  if(angle>M_PI*2)angle-=M_PI*2;
+  else if(angle<0)
+  {
+    angle+=M_PI*2;
+  }
+
+  if(eAngle>M_PI*2)eAngle-=M_PI*2;
+  else if(eAngle<0)
+  {
+    eAngle+=M_PI*2;
+  }
+
+  //LOGV(">>%f %f",angle,eAngle);
+  return angle<eAngle;
+}
+
+//outter_inner => bigger than 0 is for outer circle, smaller than 0 is fo inner, 0 is for both
+void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
+  float epsilon,
+  std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
 {
   points.resize(0);
   GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
   float outerDist_sq=radius+epsilon;
   outerDist_sq*=outerDist_sq;
+  const float arcCurvatureMin = 0.06;
+  const float arcCurvatureMax = 0.4;
 
   float innerDist_sq=radius-epsilon;
   if(innerDist_sq<0)
@@ -281,13 +307,25 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
     int idx = intersectIdxs[i];
     for(int j=0;j<contourSections[idx].size();j++)
     {
-      float dX = X-contourSections[idx][j].X;
-      float dY = Y-contourSections[idx][j].Y;
+      ptInfo pti = contourSections[idx][j];
+      float dX = pti.pt.X-X;
+      float dY = pti.pt.Y-Y;
       float dist_sq = dX*dX + dY*dY;
 
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
       {
-        points.push_back(contourSections[idx][j]);
+        float absCurv = abs(pti.curvature);
+        if(absCurv>arcCurvatureMin &&
+          absCurv<arcCurvatureMax &&
+         (pti.curvature*outter_inner)>=0)
+        {
+          float angle = atan2(dY,dX);
+          //LOGV(">>%f,%f:  %f %f %f",pti.pt.X,pti.pt.Y,angle, sAngle, eAngle);
+          if(isAngleBetween( angle, sAngle, eAngle))
+          {
+            points.push_back(pti);
+          }
+        }
       }
     }
   }
@@ -387,55 +425,45 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
   }
 }
 
-void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY, std::vector<int> &intersectIdxs,std::vector<acv_XY> &points)
+void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
 {
+  LOGV("test...");
   points.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
   GetSectionsWithinLineContour(line,epsilonX,epsilonY,intersectIdxs);
   //exit(0);
+  const float lineCurvatureMax = 0.1;
   int count=0;
   for(int i=0;i<intersectIdxs.size();i++)
   {
     int idx = intersectIdxs[i];
     for(int j=0;j<contourSections[idx].size();j++)
     {
-
-
-      acv_XY pt=contourSections[idx][j];
+  
+      ptInfo pti = contourSections[idx][j];
+      acv_XY pt=pti.pt;
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
 
+      //reverse rotate the target point to check if the point is in the margin(rotated box)
       pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
       if(pt.X<0)pt.X=-pt.X;
       if(pt.Y<0)pt.Y=-pt.Y;
       if(pt.X < epsilonX && pt.Y < epsilonY)
       {
-        points.push_back(contourSections[idx][j]);
+        float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
+        //LOGV("%f,%f   %f,%f  dotP:%f",pti.contourDir.X,pti.contourDir.Y,line.line_vec.X,line.line_vec.Y,dotP);
+        if(dotP*flip_f>0.9 && abs(pti.curvature)<lineCurvatureMax)
+        {
+          //LOGV(">>>>>>>");
+        
+          points.push_back(pti);
+        }
       }
     }
 
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 int ContourGrid::getGetSectionRegionDataSize(int secX,int secY,int secW,int secH)
 {
@@ -507,7 +535,7 @@ const acv_XY* ContourGrid::getGetSectionRegionData(int secX,int secY,int secW,in
 
       if(curSecSize+count > dataIdx)
       {
-        return &(contourSections[idx][dataIdx-count]);
+        return &(contourSections[idx][dataIdx-count].pt);
       }
       count+=curSecSize;
     }

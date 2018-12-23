@@ -63,9 +63,8 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 }
 
 
-cJSON* acv_LineFit2JSON(const acv_LineFit line, acv_XY center_offset )
+cJSON* acv_LineFit2JSON(cJSON* Line_jobj, const acv_LineFit line, acv_XY center_offset )
 {
-  cJSON* Line_jobj = cJSON_CreateObject();
   cJSON_AddNumberToObject(Line_jobj, "matching_pts", line.matching_pts);
   cJSON_AddNumberToObject(Line_jobj, "s", line.s);
 
@@ -84,9 +83,8 @@ cJSON* acv_LineFit2JSON(const acv_LineFit line, acv_XY center_offset )
 }
 
 
-cJSON* acv_CircleFit2JSON(const acv_CircleFit cir , acv_XY center_offset)
+cJSON* acv_CircleFit2JSON(cJSON* Circle_jobj,const acv_CircleFit cir , acv_XY center_offset)
 {
-  cJSON* Circle_jobj = cJSON_CreateObject();
   cJSON_AddNumberToObject(Circle_jobj, "matching_pts", cir.matching_pts);
   cJSON_AddNumberToObject(Circle_jobj, "s", cir.s);
   cJSON_AddNumberToObject(Circle_jobj, "x", cir.circle.circumcenter.X-center_offset.X);
@@ -98,9 +96,10 @@ cJSON* acv_CircleFit2JSON(const acv_CircleFit cir , acv_XY center_offset)
 cJSON* JudgeReport2JSON(const FeatureReport_judgeReport judge , acv_XY center_offset )
 {
   cJSON* judge_jobj = cJSON_CreateObject();
-  cJSON_AddNumberToObject(judge_jobj, "value", judge.measured_val);
+  cJSON_AddNumberToObject(judge_jobj, "status", judge.status);
   cJSON_AddNumberToObject(judge_jobj, "id", judge.def->id);
   cJSON_AddStringToObject(judge_jobj, "name", judge.def->name);
+  cJSON_AddNumberToObject(judge_jobj, "value", judge.measured_val);
 
   switch(judge.def->measure_type)
   {
@@ -147,9 +146,13 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
 
   for(int j=0;j<vec.size();j++)
   {
-    cJSON* cfj = acv_CircleFit2JSON(vec[j].circle,center_offset);
-    cJSON_AddStringToObject(cfj, "name", vec[j].def->name);
+    cJSON* cfj = cJSON_CreateObject();
+    cJSON_AddNumberToObject(cfj, "status", vec[j].status);
     cJSON_AddNumberToObject(cfj, "id", vec[j].def->id);
+    cJSON_AddStringToObject(cfj, "name", vec[j].def->name);
+    
+    if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+      acv_CircleFit2JSON(cfj,vec[j].circle,center_offset);
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
 
   }
@@ -161,7 +164,8 @@ cJSON* acv_CircleFitVector2JSON(const vector< acv_CircleFit> &vec, acv_XY center
   cJSON* detectedCircles_jarr = cJSON_CreateArray();
   for(int j=0;j<vec.size();j++)
   {
-    cJSON_AddItemToArray(detectedCircles_jarr, acv_CircleFit2JSON(vec[j],center_offset) );
+    cJSON* cfj = cJSON_CreateObject();
+    cJSON_AddItemToArray(detectedCircles_jarr, acv_CircleFit2JSON(cfj,vec[j],center_offset) );
   }
   return detectedCircles_jarr;
 }
@@ -174,10 +178,15 @@ cJSON* acv_AuxPointReport2JSON(const vector< FeatureReport_auxPointReport> &vec,
   for(int j=0;j<vec.size();j++)
   {
     cJSON* apj = cJSON_CreateObject();
-    cJSON_AddStringToObject(apj, "name", vec[j].def->name);
+    cJSON_AddNumberToObject(apj, "status", vec[j].status);
     cJSON_AddNumberToObject(apj, "id", vec[j].def->id);
-    cJSON_AddNumberToObject(apj, "x", vec[j].pt.X);
-    cJSON_AddNumberToObject(apj, "y", vec[j].pt.Y);
+    cJSON_AddStringToObject(apj, "name", vec[j].def->name);
+    
+    if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      cJSON_AddNumberToObject(apj, "x", vec[j].pt.X);
+      cJSON_AddNumberToObject(apj, "y", vec[j].pt.Y);
+    }
     cJSON_AddItemToArray(detectedAuxPoint_jarr, apj );
 
   }
@@ -191,10 +200,15 @@ cJSON* acv_SearchPointReport2JSON(const vector< FeatureReport_searchPointReport>
   for(int j=0;j<vec.size();j++)
   {
     cJSON* spj = cJSON_CreateObject();
-    cJSON_AddStringToObject(spj, "name", vec[j].def->name);
+    cJSON_AddNumberToObject(spj, "status", vec[j].status);
     cJSON_AddNumberToObject(spj, "id", vec[j].def->id);
-    cJSON_AddNumberToObject(spj, "x", vec[j].pt.X);
-    cJSON_AddNumberToObject(spj, "y", vec[j].pt.Y);
+    cJSON_AddStringToObject(spj, "name", vec[j].def->name);
+    
+    if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      cJSON_AddNumberToObject(spj, "x", vec[j].pt.X);
+      cJSON_AddNumberToObject(spj, "y", vec[j].pt.Y);
+    }
     cJSON_AddItemToArray(detectedSearchPoint_jarr, spj );
 
   }
@@ -207,9 +221,12 @@ cJSON* acv_LineFitVector2JSON(const vector< FeatureReport_lineReport> &vec, acv_
 
   for(int j=0;j<vec.size();j++)
   {
-    cJSON* lfj = acv_LineFit2JSON(vec[j].line,center_offset);
-    cJSON_AddStringToObject(lfj, "name", vec[j].def->name);
+    cJSON* lfj = cJSON_CreateObject();
+    cJSON_AddNumberToObject(lfj, "status", vec[j].status);
     cJSON_AddNumberToObject(lfj, "id", vec[j].def->id);
+    cJSON_AddStringToObject(lfj, "name", vec[j].def->name);
+    if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+      acv_LineFit2JSON(lfj,vec[j].line,center_offset);
     cJSON_AddItemToArray(detectedLines_jarr, lfj );
   }
   return detectedLines_jarr;
@@ -224,7 +241,8 @@ cJSON* acv_LineFitVector2JSON(const vector< acv_LineFit> &vec, acv_XY center_off
 
   for(int j=0;j<vec.size();j++)
   {
-    cJSON_AddItemToArray(detectedLines_jarr, acv_LineFit2JSON(vec[j],center_offset) );
+    cJSON* lfj = cJSON_CreateObject();
+    cJSON_AddItemToArray(detectedLines_jarr, acv_LineFit2JSON(lfj,vec[j],center_offset) );
   }
   return detectedLines_jarr;
 }
@@ -300,10 +318,10 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     case FeatureReport::binary_processing_group:
     {
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_binary_processing_group::GetFeatureTypeName());
+
+      /*
       cJSON* label_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"labeledData",label_jarr);
-      cJSON* reports_jarr = cJSON_CreateArray();
-      cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
 
       const vector<acv_LabeledData> *ldata =
       report->data.binary_processing_group.labeledData;
@@ -311,11 +329,14 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
 
       for(int j=2;j<ldata->size();j++)
       {
+        if((*ldata)[j].area<2)continue;
         cJSON* label_jobj = cJSON_CreateObject();
         cJSON_AddItemToArray(label_jarr, label_jobj );
         cJSON_AddNumberToObject(label_jobj, "area", (*ldata)[j].area);
-      }
+      }*/
 
+      cJSON* reports_jarr = cJSON_CreateArray();
+      cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
 
 
       const vector<const FeatureReport*> *sub_reports =
@@ -357,6 +378,14 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     case FeatureReport::sig360_circle_line:
     {
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_sig360_circle_line::GetFeatureTypeName());
+
+      cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
+
+      cJSON_AddStringToObject(report_jobj, "unit", "px");
+
+      cJSON_AddNumberToObject(report_jobj, "mmpp", 0.01);
+
+
 
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
