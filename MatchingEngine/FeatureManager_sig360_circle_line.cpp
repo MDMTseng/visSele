@@ -8,6 +8,8 @@
 
 
 static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
+
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt);
 /*
   FeatureManager_sig360_circle_line Section
 */
@@ -650,7 +652,7 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
 
 
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process
-  (acvImage *labeledImg,int labelId,acv_LabeledData labeledData,FeatureReport_sig360_circle_line_single &report, 
+  (acvImage *grayLevelImg,acvImage *labeledImg,int labelId,acv_LabeledData labeledData,FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,
   featureDef_searchPoint &def,acvImage *dbgImg)
 {
@@ -767,6 +769,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         {
           rep.pt =acvVecMult(searchPt_sum,1.0/foundC);
           rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+
+          acv_XY ret_point_opt;
+          if(EdgePointOpt(grayLevelImg,searchVec,rep.pt,&ret_point_opt)==0)
+          {
+            LOGV("ret_point_opt:%f %f",ret_point_opt.X,ret_point_opt.Y);
+            rep.pt = ret_point_opt;
+          }
+          
+
         }
         else
         {
@@ -1554,9 +1565,16 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
   buff_->ReSize(img->GetWidth(),img->GetHeight());
   buff1.ReSize(img->GetWidth(),img->GetHeight());
   buff2.ReSize(img->GetWidth(),img->GetHeight());
-  acvImage *buff = &buff1;
-  acvCloneImage( img,buff_, -1);
-  acvCloneImage( img,buff, -1);
+  acvImage *labeledBuff = &buff1;
+  acvImage *smoothedImg = &buff2;
+  //acvCloneImage( img,buff_, -1);
+  acvCloneImage( img,labeledBuff, -1);
+  acvCloneImage( originalImage,smoothedImg, -1);
+  //acvBoxFilter(buff_,smoothedImg,7);
+  //acvBoxFilter(buff_,smoothedImg,7);
+  //acvBoxFilter(buff_,smoothedImg,7);
+  acvBoxFilter(buff_,smoothedImg,2);
+  acvBoxFilter(buff_,smoothedImg,2);
 
   float feature_signature_ave=0;
   for(int i=0;i<feature_signature.size();i++)
@@ -1593,9 +1611,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
   for (int i = 1; i < ldData.size(); i++,count++)
   {
-      LOGI("Lable:%2d area:%d",i,ldData[i].area);
       if(ldData[i].area<120)continue;
 
+      LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
 
 
@@ -1658,7 +1676,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
 
       edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
-      extractLabeledContourDataToContourGrid(originalImage,buff,i,ldData[i],
+      extractLabeledContourDataToContourGrid(smoothedImg,labeledBuff,i,ldData[i],
         grid_size,edge_grid,scanline_skip);
       
       
@@ -1794,7 +1812,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             acv_XY ret_point_opt;
             
             acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            int ret_val = EdgePointOpt(originalImage,lineNormal,s_points[i].pt,&ret_point_opt);
+            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt);
             if(ret_val==0)
             {
               s_points[i].pt = ret_point_opt;
@@ -1944,7 +1962,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             acv_XY ret_point_opt;
             
             acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            int ret_val = EdgePointOpt(originalImage,lineNormal,s_points[i].pt,&ret_point_opt);
+            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt);
             if(ret_val==0)
             {
               s_points[i].pt = ret_point_opt;
@@ -2014,7 +2032,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
       for(int j=0;j<searchPointList.size();j++)
       {
-        FeatureReport_searchPointReport report= searchPoint_process(img,i,ldData[i],singleReport,cached_sin,cached_cos,flip_f,searchPointList[j],buff_);
+        FeatureReport_searchPointReport report= searchPoint_process(smoothedImg,img,i,ldData[i],singleReport,cached_sin,cached_cos,flip_f,searchPointList[j],buff_);
         LOGV("id:%d, %d",report.def->id,searchPointList[j].id);
         detectedSearchPoints.push_back(report);
       }

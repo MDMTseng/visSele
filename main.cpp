@@ -1004,6 +1004,7 @@ int simpleTest()
 #include <vector>
 int main(int argc, char** argv)
 {
+  srand(time(NULL));
   auto lambda = []() { LOGV("Hello, Lambda"); };
   lambda();
   //return simpleTest();

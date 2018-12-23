@@ -30,12 +30,18 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
             for(int j=0;j<img.GetWidth();j++)
             {
                 int d = img.CVector[i][j*3];
-                int randX = 20;
-                d+=( (random()%(randX*2+1)) -randX);
+                float u = rand() / (double)RAND_MAX;
+                float v = rand() / (double)RAND_MAX;
+                float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v) * 4 + 0;
+
+
+                d+=(int)x;
                 if(d<0)d=0;
                 else if(d>255)d=255;
                 
                 img.CVector[i][j*3] = d;
+                img.CVector[i][j*3+1] = d;
+                img.CVector[i][j*3+2] = d;
 
             }
         }
