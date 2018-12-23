@@ -62,6 +62,9 @@ void spline10(float *f,int fL,float *edgeX)
     for(i=0;i<n-1;i++)
     {
         a=(s[i+1]-s[i])/(6*h[i]);
+        b=s[i]/2;
+        c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
+        d=f[i];
         bool zeroCross = (s[i+1]*s[i])<0;
         float response =  abs(s[i+1]-s[i]);
         printf("%f %f => %f \n",s[i],s[i+1],response);
@@ -73,16 +76,47 @@ void spline10(float *f,int fL,float *edgeX)
                 maxEdge_response=response;
                 maxEdge_offset = i+offset;
             }
+
+            float xi =offset;
+            float firDir = 3*a*xi*xi+2*b*xi+c;
+            float secDir = 6*a*xi+2*b;
             printf("cross: offset:%f\n",i+offset);
+            printf("%f <<%f,%f\n",sum,firDir,secDir);
         }
     }
 
     printf("MAX rsp>>> %f %f\n",maxEdge_response,maxEdge_offset);
     *edgeX = maxEdge_offset;
+
+    return ;
+    int SessionI=-1;
+    for(j=0;j<100;j++)
+    {
+        float p = j*10.0/100.0;
+        for(i=0;i<n-1;i++)
+            if(x[i]<=p&&p<=x[i+1])
+            {
+                a=(s[i+1]-s[i])/(6*h[i]);
+                b=s[i]/2;
+                c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
+                d=f[i];
+                float xi = p-x[i];
+                sum=a*pow(xi,3)+b*pow(xi,2)+c*(xi)+d;
+
+                if(SessionI!=i)
+                {
+                    printf("-----%d---a:%f b:%f  c:%f  d:%f--\n",i,a,b,c,d);
+                    SessionI=i;
+                }
+                float firDir = 3*a*xi*xi+2*b*xi+c;
+                float secDir = 6*a*xi+2*b;
+                printf("%f <<%f,%f\n",sum,firDir,secDir);
+            }
+    }
 }
 int main()
 {
-    float f[]={0,0,2.5,4,8};
+    float f[]={138.164139, 118.298965, 82.842812, 25.000084, 27.482094, 10.453522, 14.436648};
     int fL = sizeof(f)/sizeof(f[0]);
     float edgeX;
     spline10(f,fL,&edgeX);

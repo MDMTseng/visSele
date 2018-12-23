@@ -1470,15 +1470,22 @@ void spline9(float *f,int fL,float *edgeX)
     for(i=0;i<n-1;i++)
     {
         a=(s[i+1]-s[i])/(6*h[i]);
+        b=s[i]/2;
+        c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
+        d=f[i];
         bool zeroCross = (s[i+1]*s[i])<0;
         float response =  abs(s[i+1]-s[i]);
         //printf("%f %f => %f \n",s[i],s[i+1],response);
         if(zeroCross || (s[i]==0 && i!=0))
         {
             float offset = s[i]/(s[i]-s[i+1]);
-            if(maxEdge_response<response)
+            float xi =offset;
+            float firDir = 3*a*xi*xi+2*b*xi+c;
+            float secDir = 6*a*xi+2*b;
+            float abs_firDir = abs(firDir);
+            if(maxEdge_response<abs_firDir)
             {
-                maxEdge_response=response;
+                maxEdge_response=abs_firDir;
                 maxEdge_offset = i+offset;
             }
             //printf("cross: offset:%f\n",i+offset);
@@ -1492,7 +1499,7 @@ void spline9(float *f,int fL,float *edgeX)
 int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt)
 {
   if(ret_point_opt==NULL)return -1;
-  const int GradTableL=9;
+  const int GradTableL=7;
   float gradTable[GradTableL]={0};
 
   //curpoint = point -(GradTableL-1)*gVec/2
@@ -1510,6 +1517,7 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
 
     curpoint = acvVecAdd(curpoint,gradVec);
   }
+  
   float edgeX;
   spline9(gradTable,GradTableL,&edgeX);
   //LOGV("<<%f",edgeX);
@@ -1518,6 +1526,16 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
     return -1;
   }
 
+  LOGV("%f %f %f %f %f %f %f <= %f",
+  gradTable[0],
+  gradTable[1],
+  gradTable[2],
+  gradTable[3],
+  gradTable[4],
+  gradTable[5],
+  gradTable[6],
+  edgeX
+  );
   gradVec = acvVecMult(gradVec,edgeX);
   *ret_point_opt = acvVecAdd(bkpoint,gradVec);
 
@@ -1760,33 +1778,44 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           s_intersectIdxs,s_points);
 
 
-        //acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
-        if(1)for(int i=0;i<s_points.size();i++)
+       
+        if(1)
         {
-          acv_XY ret_point_opt;
-          
-          acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-          int ret_val = EdgePointOpt(originalImage,lineNormal,s_points[i].pt,&ret_point_opt);
-          if(ret_val==0)
+          for(int i=0;i<s_points.size();i++)
           {
-            s_points[i].pt = ret_point_opt;
+            acv_XY ret_point_opt;
+            
+            acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
+            int ret_val = EdgePointOpt(originalImage,lineNormal,s_points[i].pt,&ret_point_opt);
+            if(ret_val==0)
+            {
+              s_points[i].pt = ret_point_opt;
+              //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
+              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
+              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
+              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
+            }
           }
+          
+
+          acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
         }
-        
-
-        acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
-
+        else
+        {
+          acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
+          acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
+        }
 
 
 
         //LOGV("Matched points:%d",s_points.size());
 
-        acvDrawLine(buff_,
+        /*acvDrawLine(buff_,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
           line_cand.line_anchor.Y-mult*line_cand.line_vec.Y,
           line_cand.line_anchor.X+mult*line_cand.line_vec.X,
           line_cand.line_anchor.Y+mult*line_cand.line_vec.Y,
-          20,255,128);
+          20,255,128);*/
 
 
         if( acv2DDotProduct(line_cand.line_vec,target_vec)<0  )
@@ -1895,6 +1924,27 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           sAngle,eAngle,cdef.outter_inner,
           minTor,
           s_intersectIdxs,s_points);
+
+        
+        if(1)
+        {
+          for(int i=0;i<s_points.size();i++)
+          {
+            acv_XY ret_point_opt;
+            
+            acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
+            int ret_val = EdgePointOpt(originalImage,lineNormal,s_points[i].pt,&ret_point_opt);
+            if(ret_val==0)
+            {
+              s_points[i].pt = ret_point_opt;
+              //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
+              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
+              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
+              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
+            }
+          }
+        }
+
         circleRefine(s_points,&cf);
 
         FeatureReport_circleReport cr;

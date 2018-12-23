@@ -33,7 +33,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
                 int randX = 20;
                 d+=( (random()%(randX*2+1)) -randX);
                 if(d<0)d=0;
-                else if(randX>255)randX=255;
+                else if(d>255)d=255;
                 
                 img.CVector[i][j*3] = d;
 
