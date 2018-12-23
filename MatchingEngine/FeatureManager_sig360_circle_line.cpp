@@ -9,7 +9,7 @@
 
 static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
 
-int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt);
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response);
 /*
   FeatureManager_sig360_circle_line Section
 */
@@ -771,7 +771,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
 
           acv_XY ret_point_opt;
-          if(EdgePointOpt(grayLevelImg,searchVec,rep.pt,&ret_point_opt)==0)
+          float edgeResponse;
+          if(EdgePointOpt(grayLevelImg,searchVec,rep.pt,&ret_point_opt,&edgeResponse)==0)
           {
             LOGV("ret_point_opt:%f %f",ret_point_opt.X,ret_point_opt.Y);
             rep.pt = ret_point_opt;
@@ -1426,7 +1427,7 @@ const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
 }
 
 
-void spline9(float *f,int fL,float *edgeX)
+void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
 {
     int n,i,j,k;
     const int L = 9;
@@ -1507,9 +1508,10 @@ void spline9(float *f,int fL,float *edgeX)
 
     //printf("MAX rsp>>> %f %f\n",maxEdge_response,maxEdge_offset);
     *edgeX = maxEdge_offset;
+    *ret_edge_response = maxEdge_response;
 }
 
-int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt)
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response)
 {
   if(ret_point_opt==NULL)return -1;
   const int GradTableL=7;
@@ -1532,7 +1534,7 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
   }
   
   float edgeX;
-  spline9(gradTable,GradTableL,&edgeX);
+  spline9(gradTable,GradTableL,&edgeX,ret_edge_response);
   //LOGV("<<%f",edgeX);
   if(edgeX!=edgeX)//NAN
   {
@@ -1810,12 +1812,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           for(int i=0;i<s_points.size();i++)
           {
             acv_XY ret_point_opt;
+            float edgeResponse;
             
             acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt);
+            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt,&edgeResponse);
             if(ret_val==0)
             {
               s_points[i].pt = ret_point_opt;
+              s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               if(drawDBG_IMG)
               {
@@ -1826,13 +1830,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             }
           }
           
-
-          acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
+          acvFitLine(
+            &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
+            &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), s_points.size(),&line_cand,&sigma);
         }
         else
         {
           acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
-          acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
         }
 
 
@@ -1960,12 +1964,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           for(int i=0;i<s_points.size();i++)
           {
             acv_XY ret_point_opt;
-            
+            float edgeResponse;
             acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt);
+            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt,&edgeResponse);
+            s_points[i].edgeRsp=1;
             if(ret_val==0)
             {
               s_points[i].pt = ret_point_opt;
+              s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
               //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
