@@ -898,14 +898,19 @@ int mainLoop()
   //CameraLayer_GIGE_MindVision *camera;
   //camera=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
   CameraLayer_BMP_carousel *camera;
+  LOGV("CameraLayer_BMP_carousel");
   camera=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
+  
+  LOGV("initCamera");
   initCamera(camera);
   
+  LOGV("DatCH_BPG1_0");
   BPG_protocol = new DatCH_BPG1_0(NULL);
   DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
   cb->camera = camera;
   BPG_protocol->SetEventCallBack(cb,NULL);
 
+  LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
   printf(">>>>>\n" );
   websocket =new DatCH_WebSocket(4090);

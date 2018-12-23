@@ -703,22 +703,24 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         acv_XY searchStart = acvVecMult(searchVec,-margin);
         searchStart=acvVecAdd(searchStart,pt);
         
-        
-        acvDrawLine(dbgImg,
-          pt.X,
-          pt.Y,
-          pt.X+searchVec.X*margin*2,
-          pt.Y+searchVec.Y*margin*2,
-          20,255,128);
+        if(0)
+        {
+          acvDrawLine(dbgImg,
+            pt.X,
+            pt.Y,
+            pt.X+searchVec.X*margin*2,
+            pt.Y+searchVec.Y*margin*2,
+            20,255,128);
 
 
-        acvDrawLine(dbgImg,
-          pt.X+searchVec_nor.X*width/2,
-          pt.Y+searchVec_nor.Y*width/2,
-          pt.X-searchVec_nor.X*width/2,
-          pt.Y-searchVec_nor.Y*width/2,
-          20,255,128);
+          acvDrawLine(dbgImg,
+            pt.X+searchVec_nor.X*width/2,
+            pt.Y+searchVec_nor.Y*width/2,
+            pt.X-searchVec_nor.X*width/2,
+            pt.Y-searchVec_nor.Y*width/2,
+            20,255,128);
 
+        }
         acv_XY searchVec_nor_edge = acvVecMult(searchVec_nor,-width/2);
         searchStart=acvVecAdd(searchStart,searchVec_nor_edge);
         
@@ -1525,7 +1527,7 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
   {
     return -1;
   }
-
+  /*
   LOGV("%f %f %f %f %f %f %f <= %f",
   gradTable[0],
   gradTable[1],
@@ -1535,7 +1537,7 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
   gradTable[5],
   gradTable[6],
   edgeX
-  );
+  );*/
   gradVec = acvVecMult(gradVec,edgeX);
   *ret_point_opt = acvVecAdd(bkpoint,gradVec);
 
@@ -1548,7 +1550,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 {
 
   int grid_size = 50;
-
+  bool drawDBG_IMG = false;
   buff_->ReSize(img->GetWidth(),img->GetHeight());
   buff1.ReSize(img->GetWidth(),img->GetHeight());
   buff2.ReSize(img->GetWidth(),img->GetHeight());
@@ -1660,7 +1662,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         grid_size,edge_grid,scanline_skip);
       
       
-      if(1)//Draw debug image(curve and straight line)
+      if(drawDBG_IMG)//Draw debug image(curve and straight line)
       {
         for(int i=0;i<edge_grid.dataSize();i++)
         {
@@ -1723,16 +1725,22 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             skp.keyPt= acvRotation(cached_sin,cached_cos,flip_f,skp.keyPt);
             skp.keyPt.X+=ldData[i].Center.X;
             skp.keyPt.Y+=ldData[i].Center.Y;
-            acvDrawCrossX(buff_,
+            if(drawDBG_IMG)
+            {
+              acvDrawCrossX(buff_,
               skp.keyPt.X,skp.keyPt.Y,
               2,2);
+            }
             if(searchP(img, &skp.keyPt , searchVec, line->searchDist)!=0)
             {
               continue;
             }
-            acvDrawCrossX(buff_,
+            if(drawDBG_IMG)
+            {
+              acvDrawCrossX(buff_,
               skp.keyPt.X,skp.keyPt.Y,
               2,4);
+            }
             
                   
             ContourGrid::ptInfo pti= {pt:skp.keyPt};
@@ -1791,9 +1799,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             {
               s_points[i].pt = ret_point_opt;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
-              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
-              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
-              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
+              if(drawDBG_IMG)
+              {
+                buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
+                buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
+                buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
+              }
             }
           }
           
@@ -1823,7 +1834,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           LOGV("VEC INV::::");
           line_cand.line_vec = acvVecMult(line_cand.line_vec,-1);
         }
-        if(1)//Draw debug image(curve and straight line)
+        if(0)//Draw debug image(curve and straight line)
         {
           for(int i=0;i<s_points.size();i++)
           {
@@ -1831,7 +1842,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             const acv_XY p = pti.pt;
             int X = round(p.X);
             int Y = round(p.Y);
-
+            if(drawDBG_IMG)
             {
               buff_->CVector[Y][X*3]=255;
               buff_->CVector[Y][X*3+1]=100;
@@ -1938,9 +1949,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             {
               s_points[i].pt = ret_point_opt;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
-              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
-              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
-              buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
+              //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
+              //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
+              //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
             }
           }
         }
@@ -1961,20 +1972,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         }
 
         
+        if(drawDBG_IMG)
+        {
 
-        acvDrawCrossX(buff_,
-          center.X,center.Y,
-          3,3);
+          acvDrawCrossX(buff_,
+            center.X,center.Y,
+            3,3);
 
-        acvDrawCrossX(buff_,
-          cf.circle.circumcenter.X,cf.circle.circumcenter.Y,
-          5,3);
+          acvDrawCrossX(buff_,
+            cf.circle.circumcenter.X,cf.circle.circumcenter.Y,
+            5,3);
 
-        acvDrawCircle(buff_,
-        cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
-        cf.circle.radius,
-        20,255, 0, 0);
+          acvDrawCircle(buff_,
+          cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
+          cf.circle.radius,
+          20,255, 0, 0);
 
+        }
 
         LOGV("C=%d===%f,%f   => %f,%f, dist:%f matching_pts:%d",
         j,cdef.circleTar.circumcenter.X,cdef.circleTar.circumcenter.Y,center.X,center.Y,
