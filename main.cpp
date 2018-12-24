@@ -681,7 +681,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     if(cameraFeedTrigger)
     {
       LOGV("cameraFeedTrigger:%d Get Next frame...",cameraFeedTrigger);
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
       cl_GMV.Trigger();
     }
   }while(false);

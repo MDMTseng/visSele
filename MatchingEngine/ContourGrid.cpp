@@ -311,7 +311,7 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
       float dX = pti.pt.X-X;
       float dY = pti.pt.Y-Y;
       float dist_sq = dX*dX + dY*dY;
-
+      pti.edgeRsp=1;
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
       {
         float absCurv = abs(pti.curvature);
@@ -444,6 +444,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       acv_XY pt=pti.pt;
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
+      pti.edgeRsp=1;
 
       //reverse rotate the target point to check if the point is in the margin(rotated box)
       pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
