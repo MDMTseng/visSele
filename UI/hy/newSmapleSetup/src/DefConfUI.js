@@ -11,9 +11,11 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import { DatePicker,Icon } from 'antd';
 import 'antd/dist/antd.css';
 let StoreX= ReduxStoreSetUp({});
+
+
+import EC_zh_TW from './languages/zh_TW';
 
 
 class CanvasComponent extends React.Component {
@@ -156,7 +158,8 @@ class APP_DEFCONF_MODE extends React.Component{
       case UIAct.SHAPE_TYPE.search_point:
       case UIAct.SHAPE_TYPE.measure:
       {
-        return (<BASE_COM.JsonEditBlock object={edit_tar} 
+        return (<BASE_COM.JsonEditBlock object={edit_tar}
+        dict={EC_zh_TW}
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
@@ -219,7 +222,8 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
       default:
       {
-        return (<BASE_COM.JsonEditBlock object={edit_tar} 
+        return (<BASE_COM.JsonEditBlock object={edit_tar}
+          dict={EC_zh_TW}
           key="BASE_COM.JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
             {
@@ -269,35 +273,44 @@ class APP_DEFCONF_MODE extends React.Component{
           key="<"
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_EXIT()}/>,
-          <BASE_COM.Button
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
             addClass="layout palatte-blue-8 vbox"
             key="LINE"
-            text="線/LINE" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
-          <BASE_COM.Button
+            text="line" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
             addClass="layout palatte-blue-8 vbox"
             key="ARC"
-            text="弧/ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
-          <BASE_COM.Button
+            text="arc" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
             addClass="layout palatte-blue-6 vbox"
             key="APOINT"
-            text="交點/APOINT" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
-          <BASE_COM.Button
+            text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
             addClass="layout palatte-blue-6 vbox"
             key="SPOINT"
-            text="搜尋點/SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
+            text="spoint" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
         <BASE_COM.IconButton
             iconType="scan"
             addClass="layout palatte-gold-6 "
             key="MEASURE"
-            text="測量定義/MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
-          <BASE_COM.Button
+            dict={EC_zh_TW}
+            text="mesure"
+            onClick={()=>this.props.ACT_Measure_Add_Mode()}>
+        </BASE_COM.IconButton>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
             addClass="layout palatte-gold-6 vbox"
             key="EDIT"
-            text="編輯測量定義/Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
-          <BASE_COM.Button
+            text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
             addClass="layout palatte-gold-7 vbox"
             key="SAVE"
-            text="儲存定義/SAVE" onClick={()=>{
+            text="save" onClick={()=>{
                 var enc = new TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
                 this.props.ACT_Report_Save(this.props.WS_ID,"data/test.ic.json",enc.encode(JSON.stringify(report, null, 2)));
@@ -306,18 +319,20 @@ class APP_DEFCONF_MODE extends React.Component{
             addClass="layout lred vbox"
             key="TRIGGER"
             text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
-            <BASE_COM.Button
+            <BASE_COM.IconButton
+                dict={EC_zh_TW}
             addClass="layout palatte-purple-8 vbox"
             key="LOAD"
-            text="讀取定義/LOAD" onClick={()=>{
+            text="load" onClick={()=>{
                 
                 this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"});
                 
             }}/>,
-            <BASE_COM.Button
+            <BASE_COM.IconButton
+                dict={EC_zh_TW}
               addClass="layout palatte-purple-8 vbox"
               key="TAKE"
-              text="重新設定/TAKE" onClick={()=>{
+              text="take" onClick={()=>{
                   this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
                   this.props.ACT_Shape_List_Reset();
               }}/>,
@@ -337,8 +352,9 @@ class APP_DEFCONF_MODE extends React.Component{
         console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
         
-        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={ {line:"LINE線"} } 
+        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={EC_zh_TW}
           key="BASE_COM.JsonEditBlock"
+
           whiteListKey={{
             //id:"div",
             name:"input",
