@@ -21,7 +21,16 @@ import APP_INSP_MODE_rdx from './InspectionUI';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {MWWS_EVENT} from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
+import { LocaleProvider } from 'antd';
+// import fr_FR from 'antd/lib/locale-provider/fr_FR';
+import zh_TW from 'antd/lib/locale-provider/zh_TW';
+import EC_zh_TW from './languages/zh_TW';
 
+
+let zhTW = Object.assign({},zh_TW,EC_zh_TW);
+// import moment from 'moment';
+// import 'moment/locale/fr';
+// moment.locale('fr');
 
 
 let StoreX= ReduxStoreSetUp({});
@@ -248,9 +257,13 @@ const mapStateToProps_APPMasterX = (state) => {
 }
 const APPMasterX_rdx = connect(mapStateToProps_APPMasterX,mapDispatchToProps_APPMasterX)(APPMasterX);
 
-
+console.log(zhTW);
 ReactDOM.render(
-  
+
   <Provider store={StoreX}>
-    <APPMasterX_rdx/>
+    <LocaleProvider locale={zhTW}>
+      <APPMasterX_rdx/>
+    </LocaleProvider>
+
   </Provider>,document.getElementById('container'));
+
