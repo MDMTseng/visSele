@@ -11,7 +11,8 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-
+import { DatePicker,Icon } from 'antd';
+import 'antd/dist/antd.css';
 let StoreX= ReduxStoreSetUp({});
 
 
@@ -284,8 +285,9 @@ class APP_DEFCONF_MODE extends React.Component{
             addClass="layout palatte-blue-6 vbox"
             key="SPOINT"
             text="搜尋點/SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout palatte-gold-6 vbox"
+        <BASE_COM.IconButton
+            iconType="scan"
+            addClass="layout palatte-gold-6 "
             key="MEASURE"
             text="測量定義/MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
           <BASE_COM.Button

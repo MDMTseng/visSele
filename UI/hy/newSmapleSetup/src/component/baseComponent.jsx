@@ -1,6 +1,6 @@
 import React from 'react';
 import React_createClass from 'create-react-class';
-
+import { Icon } from 'antd';
 
 
 
@@ -272,7 +272,24 @@ export let DropDown = React_createClass({
   }
 });
 
+export let IconButton = React_createClass({
 
+  handleClick: function(event) {
+    this.props.onClick(event,this);
+  },
+  render: function() {
+    var className=("button s "+ this.props.addClass);
+    return <div
+        onClick={this.handleClick}
+        className={className}>
+        <Icon className="layout iconButtonSize veleY" type={this.props.iconType}/>
+
+        <p className={"layout veleY iconTextPadding"}>
+        {this.props.text}
+        </p>
+    </div>;
+  }
+});
 
 export let Button = React_createClass({
 
@@ -290,6 +307,7 @@ export let Button = React_createClass({
     </div>;
   }
 });
+
 
 
 
