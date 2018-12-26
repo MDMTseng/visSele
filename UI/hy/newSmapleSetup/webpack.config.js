@@ -62,6 +62,18 @@ module.exports = {
                 ]},
       { test: /\.(png|woff|woff2|eot|ttf|svg)$/, use: 'url-loader?limit=100000' },
       { test: /\.json$/, use: 'json' },
-    ]
+      {
+        test: /\.less$/,
+        use: [{
+          loader: 'style-loader',
+        }, {
+          loader: 'css-loader', // translates CSS into CommonJS
+        }, {
+          loader: 'less-loader', // compiles Less to CSS
+         options: {
+          javascriptEnabled: true
+         },
+        }]
+      }]
   },
 };
