@@ -91,6 +91,7 @@ CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderNam
 
 CameraLayer::status CameraLayer_BMP_carousel::LoadNext()
 {
+    updateFolder(this->folderName);
     if(files_in_folder.size()==0)return NAK;
     fileIdx++;
     if(fileIdx>=files_in_folder.size())
