@@ -91,6 +91,8 @@ export class JsonEditBlock extends React.Component{
         if((ele === undefined) || displayMethod=== undefined)continue;
         //console.log(key,ele,typeof ele);
         
+        //this.props.dict
+        
         let newkeyTrace = keyTrace.slice();
         newkeyTrace.push(key);
         switch(typeof ele)
@@ -278,7 +280,7 @@ export let Button = React_createClass({
     this.props.onClick(event,this);
   },
   render: function() {
-    var className=("button s lgray vbox "+ this.props.addClass);
+    var className=("button s vbox "+ this.props.addClass);
     return <div
       onClick={this.handleClick}
       className={className}>

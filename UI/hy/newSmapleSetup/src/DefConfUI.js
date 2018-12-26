@@ -269,33 +269,33 @@ class APP_DEFCONF_MODE extends React.Component{
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_EXIT()}/>,
           <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            addClass="layout palatte-blue-8 vbox"
             key="LINE"
-            text="LINE" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
+            text="線/LINE" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
           <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            addClass="layout palatte-blue-8 vbox"
             key="ARC"
-            text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
+            text="弧/ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
           <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            addClass="layout palatte-blue-6 vbox"
             key="APOINT"
-            text="APOINT" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
+            text="交點/APOINT" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
           <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            addClass="layout palatte-blue-6 vbox"
             key="SPOINT"
-            text="SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
+            text="搜尋點/SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
           <BASE_COM.Button
-            addClass="layout lblue vbox"
+            addClass="layout palatte-gold-6 vbox"
             key="MEASURE"
-            text="MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
+            text="測量定義/MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
           <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            addClass="layout palatte-gold-6 vbox"
             key="EDIT"
-            text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
+            text="編輯測量定義/Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
           <BASE_COM.Button
-            addClass="layout lred vbox"
+            addClass="layout palatte-gold-7 vbox"
             key="SAVE"
-            text="SAVE" onClick={()=>{
+            text="儲存定義/SAVE" onClick={()=>{
                 var enc = new TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
                 this.props.ACT_Report_Save(this.props.WS_ID,"data/test.ic.json",enc.encode(JSON.stringify(report, null, 2)));
@@ -305,17 +305,17 @@ class APP_DEFCONF_MODE extends React.Component{
             key="TRIGGER"
             text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
             <BASE_COM.Button
-            addClass="layout lred vbox"
+            addClass="layout palatte-purple-8 vbox"
             key="LOAD"
-            text="LOAD" onClick={()=>{
+            text="讀取定義/LOAD" onClick={()=>{
                 
                 this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"});
                 
             }}/>,
             <BASE_COM.Button
-              addClass="layout red vbox"
+              addClass="layout palatte-purple-8 vbox"
               key="TAKE"
-              text="TAKE" onClick={()=>{
+              text="重新設定/TAKE" onClick={()=>{
                   this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
                   this.props.ACT_Shape_List_Reset();
               }}/>,
@@ -335,7 +335,7 @@ class APP_DEFCONF_MODE extends React.Component{
         console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
         
-        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} 
+        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={ {line:"LINE線"} } 
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
