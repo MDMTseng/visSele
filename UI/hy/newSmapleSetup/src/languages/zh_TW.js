@@ -16,14 +16,16 @@ export default {
         take:"重新設定/TAKE",
         type:"類型",
         subtype:"次類型",
-        value:"目標值",
+        value:"出貨目標",
+        submargin1:"生產目標",
         margin:"範圍",
         direction:"方向",
         angleDeg:"角度°",
         width:"寬",
         ref:"參考物件",
         id:"編號",
-        name:"名稱"
+        name:"名稱",
+        docheck:"品質判定"
 
     }
 };

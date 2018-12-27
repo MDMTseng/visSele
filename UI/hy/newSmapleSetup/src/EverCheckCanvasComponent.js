@@ -884,6 +884,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
           
         color_NA:"rgba(128,128,128,0.5)",
         color_SUCCESS:this.colorSet.measure_info,
+        color_FAILURE_opt1:"rgba(100,100,0,0.5)",
         color_FAILURE:"rgba(255,0,0,0.5)",
       }
     );
