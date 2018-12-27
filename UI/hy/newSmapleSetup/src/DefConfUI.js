@@ -285,25 +285,25 @@ class APP_DEFCONF_MODE extends React.Component{
             text="arc" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
           <BASE_COM.IconButton
               dict={EC_zh_TW}
-            addClass="layout palatte-blue-6 vbox"
+            addClass="layout palatte-blue-8 vbox"
             key="APOINT"
             text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
           <BASE_COM.IconButton
               dict={EC_zh_TW}
-            addClass="layout palatte-blue-6 vbox"
+            addClass="layout palatte-blue-8 vbox"
             key="SPOINT"
             text="spoint" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
         <BASE_COM.IconButton
             iconType="scan"
-            addClass="layout palatte-gold-6 "
+            addClass="layout palatte-blue-8"
             key="MEASURE"
             dict={EC_zh_TW}
-            text="mesure"
+            text="measure"
             onClick={()=>this.props.ACT_Measure_Add_Mode()}>
         </BASE_COM.IconButton>,
           <BASE_COM.IconButton
               dict={EC_zh_TW}
-            addClass="layout palatte-gold-6 vbox"
+            addClass="layout palatte-blue-5 vbox"
             key="EDIT"
             text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
           <BASE_COM.IconButton
@@ -321,7 +321,7 @@ class APP_DEFCONF_MODE extends React.Component{
             text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
             <BASE_COM.IconButton
                 dict={EC_zh_TW}
-            addClass="layout palatte-purple-8 vbox"
+            addClass="layout palatte-gold-7 vbox"
             key="LOAD"
             text="load" onClick={()=>{
                 
@@ -391,9 +391,12 @@ class APP_DEFCONF_MODE extends React.Component{
             }}/>);
         if(this.props.edit_tar_info.subtype == UIAct.SHAPE_TYPE.measure_subtype.NA)
         {
+
           for (var key in UIAct.SHAPE_TYPE.measure_subtype) {
             if(key == "NA")continue;
-            MenuSet.push(<BASE_COM.Button
+
+            MenuSet.push(<BASE_COM.IconButton
+                dict={EC_zh_TW}
               key={"MSUB__"+key}
               addClass="layout red vbox"
               text={key} onClick={(data,btn)=>

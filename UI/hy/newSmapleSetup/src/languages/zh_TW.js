@@ -9,7 +9,7 @@ export default {
         apoint:"交點/APOINT",
         aux_point:"交點",
 
-        mesure:"測量定義/MEASURE",
+        measure:"測量定義/MEASURE",
         edit:"編輯測量定義/Edit",
         save:"儲存定義/SAVE",
         load:"讀取定義/LOAD",
@@ -18,11 +18,16 @@ export default {
         subtype:"次類型",
         value:"目標值",
         margin:"範圍",
+        margin2:"次範圍",
         direction:"方向",
         angleDeg:"角度°",
         width:"寬",
         ref:"參考物件",
         id:"編號",
+        sigma:"標準差",
+        distance:"距離/D",
+        angle:"角度/A",
+        radius:"半徑/R",
         name:"名稱"
 
     }
