@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,height=device-height">
+    <title>核函数概率密度分布</title>
+    <style>::-webkit-scrollbar{display:none;}html,body{overflow:hidden;height:100%;margin:0;}</style>
+</head>
+<body>
+<div id="mountNode"></div>
+<script>/*Fixing iframe window.innerHeight 0 issue in Safari*/document.body.clientHeight;</script>
+<script src="https://gw.alipayobjects.com/os/antv/pkg/_antv.g2-3.4.1/dist/g2.min.js"></script>
+<script src="https://gw.alipayobjects.com/os/antv/pkg/_antv.data-set-0.10.1/dist/data-set.min.js"></script>
+<script src="https://gw.alipayobjects.com/os/antv/assets/lib/jquery-3.2.1.min.js"></script>
+<script>
+    $.getJSON('diamond.json', function(data) {
+        var chart = new G2.Chart({
+            container: 'mountNode',
+            forceFit: true,
+            height: window.innerHeight
+        });
+
+        var dv = new DataSet.View().source(data);
+        dv.transform({
+            type: 'kernel-smooth.density',
+            fields: ['carat', 'price'],
+            as: ['carat', 'price', 'density']
+        });
+
+        chart.source(data);
+        chart.legend({
+            offset: 45
+        });
+        chart.point().position('carat*price');
+
+        var view = chart.view();
+        view.axis(false);
+        view.source(dv);
+        view.heatmap().position('carat*price').color('density', 'blue-cyan-lime-yellow-red');
+
+        chart.render();
+    });
+</script>
+</body>
+</html>
