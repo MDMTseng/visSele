@@ -169,6 +169,7 @@ class APP_DEFCONF_MODE extends React.Component{
             //pt1:null,
             angleDeg:"input-number",
             value:"input-number",
+            submargin1:"input-number",
             margin:"input-number",
             quadrant:"div",
             docheck:"checkbox",

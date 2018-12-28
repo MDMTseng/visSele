@@ -16,7 +16,8 @@ export default {
         take:"重新設定/TAKE",
         type:"類型",
         subtype:"次類型",
-        value:"目標值",
+        value:"出貨目標",
+        submargin1:"生產目標",
         margin:"範圍",
         margin2:"次範圍",
         direction:"方向",
@@ -28,7 +29,8 @@ export default {
         distance:"距離/D",
         angle:"角度/A",
         radius:"半徑/R",
-        name:"名稱"
+        name:"名稱",
+        docheck:"品質判定"
 
     }
 };

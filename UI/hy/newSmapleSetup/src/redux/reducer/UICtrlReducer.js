@@ -408,6 +408,7 @@ function StateReducer(newState,action)
                   {
                     pt1:{x:0,y:0},
                     value:0,
+                    submargin1:0,
                     margin:1
                   });
               if(acceptData)
