@@ -122,7 +122,6 @@ export class JsonEditBlock extends React.Component{
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
 
 
-
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={displayMethod}
               target={{obj:obj,keyTrace:newkeyTrace}}
               dict={this.props.dict}

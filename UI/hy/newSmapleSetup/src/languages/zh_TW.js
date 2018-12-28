@@ -8,7 +8,7 @@ export default {
 
         apoint:"交點/APOINT",
         aux_point:"交點",
-
+        '<':"< 返回",
         measure:"測量定義/MEASURE",
         edit:"編輯測量定義/Edit",
         save:"儲存定義/SAVE",
