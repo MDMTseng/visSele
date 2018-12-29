@@ -1434,8 +1434,6 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
     float h[L],a,b,c,d,sum,s[L]={0},x[L],F[L],p,m[L][L]={0},temp;
     n = fL;
 
-
-
     for(i=0;i<n;i++)
     {
         x[i]=i;
@@ -1483,6 +1481,7 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
     float maxEdge_offset=NAN;
     
     float edgePowerInt = 0;
+    float edgeCentralInt = 0;
     for(i=0;i<n-1;i++)
     {
         a=(s[i+1]-s[i])/(6*h[i]);
@@ -1490,13 +1489,28 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
         c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
         d=f[i];
         
-        float edgePower = a*a*9/5 + 4/3*b*b + 3*a*b + 2*a*c + 2*c*b + c*c;//Integeral(pow(f',2),0,1)
+        //f' = 3ax^2+2bx + c
+        //pow(f',2) = 9aax^4 + 12abx^3 + (6ac+4bb)x^2 + 4cbx +cc
+        float edgePower = 
+          (9*a*a)/5 + 
+          (12*a*b)/4 + 
+          (6*a*c+4*b*b)/3 +
+          (4*c*b)/2+
+          (c*c)/1;//Integeral(pow(f',2),0,1)
 
+    
+        float edgeCentral = 
+          (9*a*a)/6 + 
+          (12*a*b)/5 + 
+          (6*a*c+4*b*b)/4 +
+          (4*c*b)/3+
+          (c*c)/2;//Integeral(pow(f'(x),2)x,0,1)
+        edgeCentral/=edgePower;
+        edgeCentralInt+=edgePower*(i+edgeCentral);
 
         edgePowerInt+=edgePower;
         bool zeroCross = (s[i+1]*s[i])<0;
-        float response =  abs(s[i+1]-s[i]);
-        //printf("%f %f => %f \n",s[i],s[i+1],response);
+
         if(zeroCross || (s[i]==0 && i!=0))
         {
             float offset = s[i]/(s[i]-s[i+1]);
@@ -1513,17 +1527,51 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
         }
     }
 
+
+
+    float edgeSide1 = 0;
+    float edgeSide2 = 0;
+    for(i=0;i<n;i++)
+    {
+      if(i<maxEdge_offset)
+      {
+        edgeSide1+=f[i];
+      }
+      else
+      {
+        edgeSide2+=f[i];
+      }
+    }
+    edgeSide1/=(1+(int)maxEdge_offset);
+    edgeSide2/=(n-1-(int)maxEdge_offset);
+    float edgeSideDiff = edgeSide1-edgeSide2;
+
+    if(edgeSideDiff<0)edgeSideDiff=-edgeSideDiff;
+    //edgeSideDiff=edgeSideDiff*edgeSideDiff;
+    edgeSideDiff-=20;
+    if(edgeSideDiff<0)edgeSideDiff=0;
+
+    edgeCentralInt/=edgePowerInt;
     float edgeRange=1;
     float BGEdgePower = (edgePowerInt-maxEdge_response*maxEdge_response*edgeRange)/(n-1-edgeRange);
-
     if(BGEdgePower<0)BGEdgePower=0;
-
     BGEdgePower=sqrt(BGEdgePower);
-    //printf("MAX rsp>>> %f %f %f\n",maxEdge_response,BGEdgePower, maxEdge_response/(BGEdgePower+0.1));
-    *edgeX = maxEdge_offset;
-
     float SNR = maxEdge_response/(BGEdgePower+0.1);
-    *ret_edge_response = SNR;
+    //printf("MAX rsp>>> %f %f %f\n",maxEdge_response,BGEdgePower, maxEdge_response/(BGEdgePower+0.1));
+    
+    //LOGV("%f %f %f %f %f %f %f --- %f:",f[0],f[1],f[2],f[3],f[4],f[5],f[6],edgeSideDiff);
+    //LOGV("edgeCentralInt::%f %f",edgeCentralInt,maxEdge_offset);
+    if(0)
+    {
+      *edgeX = edgeCentralInt;
+      *ret_edge_response = edgePowerInt;
+    }
+    else
+    {
+      *edgeX = edgeCentralInt;
+      *ret_edge_response = edgeSideDiff;
+    }
+
 }
 
 int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response)
