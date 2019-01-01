@@ -160,6 +160,7 @@ class APP_DEFCONF_MODE extends React.Component{
       {
         return (<BASE_COM.JsonEditBlock object={edit_tar}
         dict={EC_zh_TW}
+        dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
@@ -225,6 +226,7 @@ class APP_DEFCONF_MODE extends React.Component{
       {
         return (<BASE_COM.JsonEditBlock object={edit_tar}
           dict={EC_zh_TW}
+          dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
             {

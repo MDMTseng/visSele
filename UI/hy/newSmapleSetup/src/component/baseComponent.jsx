@@ -1,6 +1,7 @@
 import React from 'react';
 import React_createClass from 'create-react-class';
 import { Icon } from 'antd';
+import {GetObjElement} from 'UTIL/MISC_Util';
 
 
 
@@ -35,11 +36,22 @@ export class JsonElement extends React.Component{
   }
   renderSimple()
   {
-    let translateValue=this.props.children;
-
+    let text=this.props.children;
+    let translateValue = undefined;
     if(this.props.type!=="input-number"||this.props.type!=="checkbox"){
-      translateValue=(this.props.dict===undefined||this.props.dict.EverCheck[translateValue] === undefined) ?
-          translateValue : this.props.dict.EverCheck[translateValue];
+
+      translateValue = GetObjElement(this.props.dict,[this.props.dictTheme, text]);
+
+      if(translateValue===undefined)
+      {
+        translateValue = GetObjElement(this.props.dict,["fallback", text]);
+      }
+    }
+
+
+    if(translateValue===undefined)
+    {
+      translateValue = text;
     }
 
 
@@ -104,11 +116,20 @@ export class JsonEditBlock extends React.Component{
         let newkeyTrace = keyTrace.slice();
         newkeyTrace.push(key);
 
+        let translateKey = undefined;
 
-        let translateKey=(this.props.dict===undefined||this.props.dict.EverCheck[key] === undefined) ?
-            key :
-            this.props.dict.EverCheck[key]
 
+        translateKey = GetObjElement(this.props.dict,[this.props.dictTheme, key]);
+
+        if(translateKey===undefined)
+        {
+          translateKey = GetObjElement(this.props.dict,["fallback", key]);
+        }
+
+        if(translateKey===undefined)
+        {
+          translateKey = key;
+        }
 
         switch(typeof ele)
         {
@@ -304,17 +325,29 @@ export let IconButton = React_createClass({
     console.log(this.props);
     console.log(this.context);
     var className=("button s "+ this.props.addClass);
+    let translation = undefined;
+
+
+    translation = GetObjElement(this.props.dict,[this.props.dictTheme, this.props.text]);
+
+    if(translation===undefined)
+    {
+      translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
+    }
+
+    if(translation===undefined)
+    {
+      translation = this.props.text;
+    }
+
+
     return <div
         onClick={this.handleClick}
         className={className}>
         <Icon className="layout iconButtonSize veleY" type={this.props.iconType}/>
 
         <p className={"layout veleY iconTextPadding"}>
-          {
-            (this.props.dict===undefined||this.props.dict.EverCheck[this.props.text] === undefined) ?
-                this.props.text :
-                this.props.dict.EverCheck[this.props.text]
-          }
+          {translation}
         </p>
     </div>;
   }

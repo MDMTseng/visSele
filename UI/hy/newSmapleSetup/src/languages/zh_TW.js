@@ -1,6 +1,6 @@
 
 export default {
-    EverCheck:{
+    fallback:{
         line:"量測線段/Line",
         arc:"量測弧/Arc",
         spoint:"搜尋點/SPOINT",
@@ -17,8 +17,8 @@ export default {
         type:"類型",
         subtype:"次類型",
         value:"出貨目標",
-        submargin1:"生產目標",
         margin:"範圍",
+        submargin1:"生產目標",
         margin2:"次範圍",
         direction:"方向",
         angleDeg:"角度°",
@@ -30,7 +30,16 @@ export default {
         angle:"角度/A",
         radius:"半徑/R",
         name:"名稱",
-        docheck:"品質判定"
+        docheck:"必要判定",
+    },
+    
+    measure:{
 
+        value:"目標",
+        margin:"出貨公差",
+        submargin1:"生產公差",
+        docheck:"必要判定",
     }
+
+
 };
