@@ -5,6 +5,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
+
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
 function Default_UICtrlReducer()
@@ -22,6 +23,7 @@ function Default_UICtrlReducer()
       _obj:new InspectionEditorLogic(),
       defInfo:[],
       inspReport:[],
+      reportStatisticState:{},
       sig360report:[],
       img:null,
 
@@ -124,6 +126,24 @@ function StateReducer(newState,action)
           newState.edit_info._obj.SetInspectionReport(action.data);
           newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
           console.log(newState.edit_info.inspReport);
+
+          let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
+          console.log(reportGroup);
+
+
+        {
+            let measure1 = newState.edit_info.reportStatisticState.measure1;
+            if(measure1 === undefined)measure1=[];
+            measure1.push({
+              genre: "G"+Math.random(), sold:Math.random()
+            })
+            newState.edit_info.reportStatisticState=Object.assign({},
+              newState.edit_info.reportStatisticState,
+              {
+                measure1:measure1
+              });
+            ;
+          }
           //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 

@@ -160,6 +160,7 @@ class APP_DEFCONF_MODE extends React.Component{
       {
         return (<BASE_COM.JsonEditBlock object={edit_tar}
         dict={EC_zh_TW}
+        dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
@@ -225,6 +226,7 @@ class APP_DEFCONF_MODE extends React.Component{
       {
         return (<BASE_COM.JsonEditBlock object={edit_tar}
           dict={EC_zh_TW}
+          dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
             {
@@ -270,7 +272,8 @@ class APP_DEFCONF_MODE extends React.Component{
     {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       MenuSet=[
-          <BASE_COM.Button
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
           key="<"
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_EXIT()}/>,
@@ -295,7 +298,7 @@ class APP_DEFCONF_MODE extends React.Component{
             key="SPOINT"
             text="spoint" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
         <BASE_COM.IconButton
-            iconType="scan"
+            iconType="form"
             addClass="layout palatte-blue-8"
             key="MEASURE"
             dict={EC_zh_TW}
@@ -303,11 +306,13 @@ class APP_DEFCONF_MODE extends React.Component{
             onClick={()=>this.props.ACT_Measure_Add_Mode()}>
         </BASE_COM.IconButton>,
           <BASE_COM.IconButton
+              iconType="edit"
               dict={EC_zh_TW}
             addClass="layout palatte-blue-5 vbox"
             key="EDIT"
             text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
           <BASE_COM.IconButton
+              iconType="save"
               dict={EC_zh_TW}
             addClass="layout palatte-gold-7 vbox"
             key="SAVE"
@@ -321,6 +326,7 @@ class APP_DEFCONF_MODE extends React.Component{
             key="TRIGGER"
             text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
             <BASE_COM.IconButton
+                iconType="export"
                 dict={EC_zh_TW}
             addClass="layout palatte-gold-7 vbox"
             key="LOAD"
@@ -330,6 +336,7 @@ class APP_DEFCONF_MODE extends React.Component{
                 
             }}/>,
             <BASE_COM.IconButton
+                iconType="camera"
                 dict={EC_zh_TW}
               addClass="layout palatte-purple-8 vbox"
               key="TAKE"
@@ -433,7 +440,8 @@ class APP_DEFCONF_MODE extends React.Component{
       
       case UIAct.UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:         
       MenuSet=[
-        <BASE_COM.Button
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
           addClass="layout black vbox width4"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="LINE" className="s width8 lred vbox">LINE</div>,
@@ -442,7 +450,8 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:          
       MenuSet=[
-        <BASE_COM.Button
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
           addClass="layout black vbox width4"
           key="<"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
@@ -452,7 +461,8 @@ class APP_DEFCONF_MODE extends React.Component{
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:         
       MenuSet=[
-        <BASE_COM.Button
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
           addClass="layout black vbox"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="SEARCH_POINT" className="s lred vbox">SPOINT</div>,

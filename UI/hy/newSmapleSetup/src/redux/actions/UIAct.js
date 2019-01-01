@@ -75,7 +75,7 @@ export const UI_SM_EVENT = {
   Aux_Line_Create:"Aux_Line_Create",
   Search_Point_Create:"Search_Point_Create",
   Aux_Point_Create:"Aux_Point_Create",
-  Arc_Create:"Arc_Create",
+
   Shape_Edit:"Shape_Edit",
   Measure_Create:"Measure_Create",
 
