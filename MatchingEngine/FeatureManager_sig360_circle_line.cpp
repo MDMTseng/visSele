@@ -1896,6 +1896,35 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           acvFitLine(
             &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
             &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), s_points.size(),&line_cand,&sigma);
+          
+          
+          for(int i=0;i<s_points.size();i++)
+          {
+            s_points[i].tmp =  acvDistance_Signed(line_cand,s_points[i].pt);
+            if(s_points[i].tmp<0)s_points[i].tmp=-s_points[i].tmp;
+          }
+
+          std::sort(s_points.begin(), s_points.end(),  
+                [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
+            { 
+                return a.tmp < b.tmp; 
+            });
+          
+          int usable_L;
+          for(int i=s_points.size()/3;i<s_points.size();i++)
+          {
+            usable_L=i;
+            if(s_points[i].tmp>sigma)break;
+          }
+          LOGV("usable_L:%d/%d  sigma:%f=>%f",
+            usable_L,s_points.size(),
+            s_points[usable_L-1].tmp,sigma);
+
+          acvFitLine(
+            &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
+            &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), 
+            usable_L,&line_cand,&sigma);
+          
         }
         else
         {
