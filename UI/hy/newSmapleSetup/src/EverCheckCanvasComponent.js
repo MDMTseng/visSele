@@ -283,7 +283,7 @@ class renderUTIL
       
       this.drawpoint(ctx,eObject.pt1);
 
-      ctx.fillText("D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
+      this.drawText(ctx,"D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
       eObject.pt1.x,eObject.pt1.y);
     }
   }
@@ -306,6 +306,14 @@ class renderUTIL
     }
     ctx.closePath();
     //ctx.stroke();
+  }
+  drawText(ctx,text,x,y)
+  {
+    ctx.font="bold 30px  Arial";
+    ctx.fillText(text,x,y);
+    ctx.strokeStyle="white";
+    ctx.lineWidth=2;
+    ctx.strokeText(text,x,y);
   }
 
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"px",mult:1})
@@ -499,7 +507,6 @@ class renderUTIL
               ctx.lineWidth=2;
               //ctx.strokeStyle=this.colorSet.measure_info; 
                         
-              ctx.font="30px Arial";
               ///ctx.fillStyle=this.colorSet.measure_info; 
               //this.drawpoint(ctx, srcPt,"rect");
               
@@ -630,9 +637,11 @@ class renderUTIL
 
                 ctx.setLineDash([]);
               }
-              ctx.fillText(""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2),
-                eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4,
-                eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4);
+
+              let text = ""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2);
+              let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4;
+              let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4;
+              this.drawText(ctx,text,x,y);
               //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);
             }
             break;
@@ -661,9 +670,10 @@ class renderUTIL
 
               dispVec_normalized.x*=40;
               dispVec_normalized.y*=40;
-              ctx.fillText("R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
+              this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
+            
             
             }
           }
