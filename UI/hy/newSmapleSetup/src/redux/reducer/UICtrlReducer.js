@@ -137,7 +137,7 @@ function StateReducer(newState,action)
             measure1.push({
               genre: "G"+Math.random(), sold:Math.random()
             })
-            if(measure1.length>100)measure1.slice();
+            if(measure1.length>20)measure1.shift();
             newState.edit_info.reportStatisticState=Object.assign({},
               newState.edit_info.reportStatisticState,
               {

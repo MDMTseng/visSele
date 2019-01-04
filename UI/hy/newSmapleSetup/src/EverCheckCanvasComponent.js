@@ -76,6 +76,7 @@ class renderUTIL
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
       inspection_Pass:"rgba(0,255,0,0.1)",
+      inspection_production_Fail:"rgba(128,128,0,0.1)",
       inspection_Fail:"rgba(255,0,0,0.1)",
       inspection_NA:"rgba(128,128,128,0.1)",
       editShape:"rgba(255,0,0,0.7)",
@@ -673,7 +674,7 @@ class renderUTIL
               this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
-            
+                
             
             }
           }
@@ -888,13 +889,16 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     Object.assign(this.colorSet,
       {
         inspection_Pass:"rgba(0,255,0,0.1)",
+        inspection_production_Fail:"rgba(128,128,0,0.3)",
         inspection_Fail:"rgba(255,0,0,0.1)",
         inspection_NA:"rgba(64,64,64,0.1)",
 
           
         color_NA:"rgba(128,128,128,0.5)",
         color_SUCCESS:this.colorSet.measure_info,
-        color_FAILURE_opt1:"rgba(100,100,0,0.5)",
+        color_FAILURE_opt:{
+          submargin1:"rgba(255,255,0,0.5)",
+        },
         color_FAILURE:"rgba(255,0,0,0.5)",
       }
     );
@@ -970,6 +974,52 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     return ret_status;
   }
 
+  featureInspectionMarginTest(featureMeasure,target,marginSet)
+  {
+    let subtype = featureMeasure.subtype;
+
+
+    
+    let error = featureMeasure.value - target;
+    if(error<0)error=-error;
+    if(subtype === "angle")
+    {
+      if(error>=90)error=180-error;
+    }
+
+
+    let minViolation=Number.MAX_VALUE;
+    let violationInfo={
+      subtype:subtype,
+      target:target,
+      value:featureMeasure.value,
+      error:error,
+      minViolationKey:undefined,
+      minViolationIdx:Number.MAX_VALUE,
+      minViolationValue:Number.MAX_VALUE
+    };
+
+    let idx=0;
+    for (var key in marginSet)
+    {
+      let violation = error-marginSet[key];
+      if(violation>0)
+      {
+        if(minViolation>violation)
+        {
+          minViolation = violation;
+          violationInfo.minViolationValue = violation;
+          violationInfo.minViolationKey = key;
+          violationInfo.minViolationIdx = idx;
+        }
+      }
+      idx++;
+
+    }
+    return violationInfo;
+  }
+
+
   draw()
   {
       this.draw_INSP();
@@ -1020,6 +1070,18 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     if(true)
     {
       let sigScale = 1;
+
+      
+      let measureShape =[];
+      if(this.edit_DB_info.list !== undefined)
+      {
+        measureShape = this.edit_DB_info.list.reduce((measureShape,shape)=>{
+          if(shape.type == SHAPE_TYPE.measure)
+            measureShape.push(shape)
+          return measureShape;
+        },[]);
+      }
+
       inspectionReport.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);
@@ -1029,7 +1091,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         
         ctx.scale(sigScale,sigScale);
         this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,5);
-
+        
         let ret_res = this.inspectionResult(report);
         switch(ret_res)
         {
@@ -1037,7 +1099,35 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
             ctx.fillStyle=this.colorSet.inspection_NA;
           break;
           case INSPECTION_STATUS.SUCCESS:
+          {
             ctx.fillStyle=this.colorSet.inspection_Pass;
+
+            {
+              let minViolationIdx = Number.MAX_VALUE;
+              this.edit_DB_info.list.forEach((eObj)=>{
+                if(eObj.type === "measure")
+                {
+                  let targetID = eObj.id;
+                  let inspMeasureTar = report.judgeReports.reduce((tar,measure)=>
+                    (tar===undefined && measure.id === targetID)?measure:tar
+                    ,undefined);
+                  let measureSet={
+                    submargin1:eObj.submargin1
+                  };
+                  
+                  let submargin = this.featureInspectionMarginTest(inspMeasureTar,eObj.value,measureSet);
+                  if(submargin.minViolationKey != undefined && minViolationIdx>submargin.minViolationIdx)
+                  {
+                    minViolationIdx=submargin.minViolationIdx;
+                    ctx.fillStyle=this.colorSet.color_FAILURE_opt[submargin.minViolationKey];
+                  }
+
+                }
+              });
+            }
+            //ctx.fillStyle=this.colorSet.inspection_production_Fail;
+            
+          }
           break;
           case INSPECTION_STATUS.FAILURE:
             ctx.fillStyle=this.colorSet.inspection_Fail;
@@ -1053,7 +1143,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
 
     inspectionReport.forEach((report,idx)=>{
-      let ret_res = this.inspectionResult(report);
+      //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
       {
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
@@ -1067,7 +1157,27 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
               eObj.color=this.colorSet.color_NA;
             break;
             case INSPECTION_STATUS.SUCCESS:
+            {
               eObj.color=this.colorSet.color_SUCCESS;
+              if(eObj.type === "measure")
+              {
+                let targetID = eObj.id;
+                let inspMeasureTar = report.judgeReports.reduce((tar,measure)=>
+                  (tar===undefined && measure.id === targetID)?measure:tar
+                  ,undefined);
+                let measureSet={
+                  submargin1:eObj.submargin1
+                };
+                
+                let submargin = this.featureInspectionMarginTest(inspMeasureTar,eObj.value,measureSet);
+                if(submargin.minViolationKey != undefined)
+                {
+                  eObj.color=this.colorSet.color_FAILURE_opt[submargin.minViolationKey];
+                }
+
+              }
+
+            }
             break;
             case INSPECTION_STATUS.FAILURE:
               eObj.color=this.colorSet.color_FAILURE;
