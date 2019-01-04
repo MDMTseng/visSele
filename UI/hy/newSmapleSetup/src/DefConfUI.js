@@ -11,8 +11,11 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-
+import 'antd/dist/antd.css';
 let StoreX= ReduxStoreSetUp({});
+
+
+import EC_zh_TW from './languages/zh_TW';
 
 
 class CanvasComponent extends React.Component {
@@ -155,7 +158,9 @@ class APP_DEFCONF_MODE extends React.Component{
       case UIAct.SHAPE_TYPE.search_point:
       case UIAct.SHAPE_TYPE.measure:
       {
-        return (<BASE_COM.JsonEditBlock object={edit_tar} 
+        return (<BASE_COM.JsonEditBlock object={edit_tar}
+        dict={EC_zh_TW}
+        dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
             //id:"div",
@@ -165,6 +170,7 @@ class APP_DEFCONF_MODE extends React.Component{
             //pt1:null,
             angleDeg:"input-number",
             value:"input-number",
+            submargin1:"input-number",
             margin:"input-number",
             quadrant:"div",
             docheck:"checkbox",
@@ -218,7 +224,9 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
       default:
       {
-        return (<BASE_COM.JsonEditBlock object={edit_tar} 
+        return (<BASE_COM.JsonEditBlock object={edit_tar}
+          dict={EC_zh_TW}
+          dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
             {
@@ -264,38 +272,51 @@ class APP_DEFCONF_MODE extends React.Component{
     {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       MenuSet=[
-          <BASE_COM.Button
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
           key="<"
           addClass="layout black vbox"
           text="<" onClick={()=>this.props.ACT_EXIT()}/>,
-          <BASE_COM.Button
-            addClass="layout lgreen vbox"
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
+            addClass="layout palatte-blue-8 vbox"
             key="LINE"
-            text="LINE" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            text="line" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
+            addClass="layout palatte-blue-8 vbox"
             key="ARC"
-            text="ARC" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            text="arc" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
+            addClass="layout palatte-blue-8 vbox"
             key="APOINT"
-            text="APOINT" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
+            addClass="layout palatte-blue-8 vbox"
             key="SPOINT"
-            text="SPOINT" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout lblue vbox"
+            text="spoint" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
+        <BASE_COM.IconButton
+            iconType="form"
+            addClass="layout palatte-blue-8"
             key="MEASURE"
-            text="MEASURE" onClick={()=>this.props.ACT_Measure_Add_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout lgreen vbox"
+            dict={EC_zh_TW}
+            text="measure"
+            onClick={()=>this.props.ACT_Measure_Add_Mode()}>
+        </BASE_COM.IconButton>,
+          <BASE_COM.IconButton
+              iconType="edit"
+              dict={EC_zh_TW}
+            addClass="layout palatte-blue-5 vbox"
             key="EDIT"
-            text="Edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
-          <BASE_COM.Button
-            addClass="layout lred vbox"
+            text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
+          <BASE_COM.IconButton
+              iconType="save"
+              dict={EC_zh_TW}
+            addClass="layout palatte-gold-7 vbox"
             key="SAVE"
-            text="SAVE" onClick={()=>{
+            text="save" onClick={()=>{
                 var enc = new TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
                 this.props.ACT_Report_Save(this.props.WS_ID,"data/test.ic.json",enc.encode(JSON.stringify(report, null, 2)));
@@ -304,18 +325,22 @@ class APP_DEFCONF_MODE extends React.Component{
             addClass="layout lred vbox"
             key="TRIGGER"
             text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
-            <BASE_COM.Button
-            addClass="layout lred vbox"
+            <BASE_COM.IconButton
+                iconType="export"
+                dict={EC_zh_TW}
+            addClass="layout palatte-gold-7 vbox"
             key="LOAD"
-            text="LOAD" onClick={()=>{
+            text="load" onClick={()=>{
                 
                 this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"});
                 
             }}/>,
-            <BASE_COM.Button
-              addClass="layout red vbox"
+            <BASE_COM.IconButton
+                iconType="camera"
+                dict={EC_zh_TW}
+              addClass="layout palatte-purple-8 vbox"
               key="TAKE"
-              text="TAKE" onClick={()=>{
+              text="take" onClick={()=>{
                   this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
                   this.props.ACT_Shape_List_Reset();
               }}/>,
@@ -335,8 +360,9 @@ class APP_DEFCONF_MODE extends React.Component{
         console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
         
-        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} 
+        MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={EC_zh_TW}
           key="BASE_COM.JsonEditBlock"
+
           whiteListKey={{
             //id:"div",
             name:"input",
@@ -373,9 +399,12 @@ class APP_DEFCONF_MODE extends React.Component{
             }}/>);
         if(this.props.edit_tar_info.subtype == UIAct.SHAPE_TYPE.measure_subtype.NA)
         {
+
           for (var key in UIAct.SHAPE_TYPE.measure_subtype) {
             if(key == "NA")continue;
-            MenuSet.push(<BASE_COM.Button
+
+            MenuSet.push(<BASE_COM.IconButton
+                dict={EC_zh_TW}
               key={"MSUB__"+key}
               addClass="layout red vbox"
               text={key} onClick={(data,btn)=>
@@ -411,7 +440,8 @@ class APP_DEFCONF_MODE extends React.Component{
       
       case UIAct.UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:         
       MenuSet=[
-        <BASE_COM.Button
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
           addClass="layout black vbox width4"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="LINE" className="s width8 lred vbox">LINE</div>,
@@ -420,7 +450,8 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:          
       MenuSet=[
-        <BASE_COM.Button
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
           addClass="layout black vbox width4"
           key="<"
           text="<" onClick={()=>this.props.ACT_Fail()}/>,
@@ -430,7 +461,8 @@ class APP_DEFCONF_MODE extends React.Component{
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:         
       MenuSet=[
-        <BASE_COM.Button
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
           addClass="layout black vbox"
           key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
         <div key="SEARCH_POINT" className="s lred vbox">SPOINT</div>,

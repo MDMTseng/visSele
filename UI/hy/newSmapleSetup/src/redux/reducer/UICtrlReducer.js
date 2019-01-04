@@ -5,12 +5,15 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
+import * as logX from 'loglevel';
+let log = logX.getLogger(__filename);
+
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
 function Default_UICtrlReducer()
 {
   //ST = d;
-  //console.log("ST...",JSON.stringify(ST));
+  //log.info("ST...",JSON.stringify(ST));
   return {
     MENU_EXPEND:false,
 
@@ -22,6 +25,7 @@ function Default_UICtrlReducer()
       _obj:new InspectionEditorLogic(),
       defInfo:[],
       inspReport:[],
+      reportStatisticState:{},
       sig360report:[],
       img:null,
 
@@ -59,7 +63,7 @@ function StateReducer(newState,action)
     newState.p_state = action.data.p_state;
     newState.sm = action.data.sm;
     newState.state_count=0;
-    console.log(newState.p_state.value," + ",action.data.action," > ",newState.c_state.value);
+    log.info(newState.p_state.value," + ",action.data.action," > ",newState.c_state.value);
   }
   
   if (action.type === UISEV.Control_SM_Panel) {
@@ -72,7 +76,7 @@ function StateReducer(newState,action)
   {
     case UISEV.Connected:
       newState.WS_CH=action.data;
-      console.log("Connected",newState.WS_CH);
+      log.info("Connected",newState.WS_CH);
     return newState;
     case UISEV.Disonnected:
       newState.WS_CH=undefined;
@@ -94,7 +98,7 @@ function StateReducer(newState,action)
   }
 
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
-  console.log()
+  log.info()
   let substate = stateObj.substate;
   switch(stateObj.state)
   {
@@ -123,7 +127,23 @@ function StateReducer(newState,action)
           //newState.report=action.data;
           newState.edit_info._obj.SetInspectionReport(action.data);
           newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
-          console.log(newState.edit_info.inspReport);
+
+          let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
+
+        {
+            let measure1 = newState.edit_info.reportStatisticState.measure1;
+            if(measure1 === undefined)measure1=[];
+            measure1.push({
+              genre: "G"+Math.random(), sold:Math.random()
+            })
+            if(measure1.length>20)measure1.shift();
+            newState.edit_info.reportStatisticState=Object.assign({},
+              newState.edit_info.reportStatisticState,
+              {
+                measure1:measure1
+              });
+            ;
+          }
           //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
@@ -191,7 +211,7 @@ function StateReducer(newState,action)
         case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:
           newState.edit_info.edit_tar_ele_cand=
             (action.data == null)? null :(action.data instanceof Object)? Object.assign({},action.data):action.data;
-            console.log("DEFCONF_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
+            log.info("DEFCONF_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
         break;
 
         case DefConfAct.EVENT.Shape_Set:
@@ -202,7 +222,7 @@ function StateReducer(newState,action)
           //ID is defined and shaped is null   - delete  an existed shape if it's in the list
 
           let newID=action.data.id;
-          console.log("newID:",newID);
+          log.info("newID:",newID);
           let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
           newState.edit_info.list=newState.edit_info._obj.shapeList;
           
@@ -212,7 +232,7 @@ function StateReducer(newState,action)
           {//If this time it's not for adding new shape(ie, newID is not undefined)
             let tmpTarIdx=
             newState.edit_info._obj.FindShapeIdx( newID );
-            console.log(tmpTarIdx);
+            log.info(tmpTarIdx);
             if(tmpTarIdx === undefined)//In this case we delete the shape in the list 
             {
               newState.edit_info.edit_tar_info=null;
@@ -260,13 +280,13 @@ function StateReducer(newState,action)
             let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
             let cand=newState.edit_info.edit_tar_ele_cand;
 
-            console.log("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            log.info("GetObjElement",obj,keyTrace[keyTrace.length-1]);
             obj[keyTrace[keyTrace.length-1]]={
               id:cand.shape.id,
               type:cand.shape.type
             };
 
-            console.log(obj,newState.edit_info.edit_tar_info);
+            log.info(obj,newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_ele_trace=null;
             newState.edit_info.edit_tar_ele_cand=null;
@@ -285,7 +305,7 @@ function StateReducer(newState,action)
             newState.edit_info.edit_tar_ele_cand=null;
             break;
           }
-          console.log(newState.edit_info.edit_tar_ele_trace,newState.edit_info.edit_tar_ele_cand);
+          log.info(newState.edit_info.edit_tar_ele_trace,newState.edit_info.edit_tar_ele_cand);
           
           if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
           {
@@ -293,13 +313,13 @@ function StateReducer(newState,action)
             let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
             let cand=newState.edit_info.edit_tar_ele_cand;
 
-            console.log("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            log.info("GetObjElement",obj,keyTrace[keyTrace.length-1]);
             obj[keyTrace[keyTrace.length-1]]={
               id:cand.shape.id,
               type:cand.shape.type
             };
 
-            console.log(obj,newState.edit_info.edit_tar_info);
+            log.info(obj,newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_ele_trace=null;
             newState.edit_info.edit_tar_ele_cand=null;
@@ -323,7 +343,7 @@ function StateReducer(newState,action)
             newState.edit_info.edit_tar_ele_cand=null;
             //break;
           }
-          console.log(newState.edit_info.edit_tar_ele_trace,newState.edit_info.edit_tar_ele_cand);
+          log.info(newState.edit_info.edit_tar_ele_trace,newState.edit_info.edit_tar_ele_cand);
           
           if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
           {
@@ -352,7 +372,7 @@ function StateReducer(newState,action)
                   }
                   else
                   {
-                    console.log("Error: "+ subtype+ 
+                    log.info("Error: "+ subtype+ 
                       " doesn't accept "+cand.shape.type);
                     acceptData=false;
                   }
@@ -360,7 +380,7 @@ function StateReducer(newState,action)
                 case SHAPE_TYPE.measure_subtype.radius://Has to be an arc
                   if(cand.shape.type!=SHAPE_TYPE.arc)
                   {
-                    console.log("Error: "+ subtype+ 
+                    log.info("Error: "+ subtype+ 
                       " Only accepts arc");
                     acceptData=false;
                   }
@@ -368,18 +388,18 @@ function StateReducer(newState,action)
                 case SHAPE_TYPE.measure_subtype.angle://Has to be an line to measure
                 if(cand.shape.type!=SHAPE_TYPE.line)
                 {
-                  console.log("Error: "+ subtype+ 
+                  log.info("Error: "+ subtype+ 
                     " Only accepts line");
                   acceptData=false;
                 }
               break;
                 default :
-                  console.log("Error: "+ subtype+ " is not in the measure_subtype list");
+                  log.info("Error: "+ subtype+ " is not in the measure_subtype list");
                   acceptData=false;
               }
               if(acceptData)
               {
-                console.log("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+                log.info("GetObjElement",obj,keyTrace[keyTrace.length-1]);
                 obj[keyTrace[keyTrace.length-1]]={
                   id:cand.shape.id,
                   type:cand.shape.type
@@ -400,7 +420,7 @@ function StateReducer(newState,action)
                   newState.edit_info.edit_tar_info.ref=[{},{}];
                 break;
                 default :
-                  console.log("Error: "+ cand+ " is not in the measure_subtype list");
+                  log.info("Error: "+ cand+ " is not in the measure_subtype list");
                   acceptData=false;
               }
               newState.edit_info.edit_tar_info = 
@@ -408,13 +428,14 @@ function StateReducer(newState,action)
                   {
                     pt1:{x:0,y:0},
                     value:0,
+                    submargin1:0,
                     margin:1
                   });
               if(acceptData)
                 obj[keyTrace[keyTrace.length-1]] = cand;
             }
 
-            console.log(obj,newState.edit_info.edit_tar_info);
+            log.info(obj,newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_ele_trace=null;
             newState.edit_info.edit_tar_ele_cand=null;
@@ -442,13 +463,13 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   if(action.type==="ATBundle")
   {
     action.data.reduce((state,action)=> StateReducer(state,action),newState);
-    console.log(newState);
+    log.info(newState);
     return newState;
   }
   else
   {
     newState = StateReducer(newState,action);
-    console.log(newState);
+    log.info(newState);
     return newState;
   }
 

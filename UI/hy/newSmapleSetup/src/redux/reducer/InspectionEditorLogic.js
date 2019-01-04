@@ -8,7 +8,9 @@ import {
   
 import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {GetObjElement} from 'UTIL/MISC_Util';
-  
+import * as logX from 'loglevel';
+let log = logX.getLogger(__filename);
+
 export class InspectionEditorLogic
 {
   constructor()
@@ -29,12 +31,12 @@ export class InspectionEditorLogic
 
   SetSig360Report(sig360report)
   {
-    console.log(sig360report);
+    log.info(sig360report);
     this.sig360report=sig360report;
   }
   SetInspectionReport(inspreport)
   {
-    console.log(inspreport);
+    log.info(inspreport);
     this.inspreport=inspreport;
   }
   
@@ -73,7 +75,7 @@ export class InspectionEditorLogic
   {
     this.SetShapeList(defInfo.featureSet[0].features);
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
-    console.log(defInfo);
+    log.info(defInfo);
     let sig360Info = defInfo.featureSet[0].inherentfeatures[0];
     this.SetSig360Report(
       {
@@ -134,7 +136,7 @@ export class InspectionEditorLogic
 
     let setupTarget=this.sig360report.reports[0];
     
-    console.log(setupTarget);
+    log.info(setupTarget);
     let id=100000;
     let signature_id = id;
     this.inherentShapeList.push({
@@ -191,7 +193,7 @@ export class InspectionEditorLogic
 
   GenerateEditReport()
   {
-    console.log(this.inherentShapeList);
+    log.info(this.inherentShapeList);
     return {
       type:"binary_processing_group",
       featureSet:[
@@ -216,7 +218,7 @@ export class InspectionEditorLogic
       if( id!== undefined)
       {
         pre_shape_idx = this.FindShapeIdx( id );
-        console.log("SETShape>",pre_shape_idx);
+        log.info("SETShape>",pre_shape_idx);
         if(pre_shape_idx!=undefined)
         {
           pre_shape = this.shapeList[pre_shape_idx];
@@ -231,14 +233,14 @@ export class InspectionEditorLogic
       return pre_shape;
     }
 
-    console.log("SETShape>",this.shapeList,shape_obj,id);
+    log.info("SETShape>",this.shapeList,shape_obj,id);
           
 
     let ishapeIdx=this.FindShapeIdx( shape_obj.id,this.inherentShapeList);
     //If the id is in the inherentShapeList Exit, no change is allowed
     if(ishapeIdx!=undefined)
     {
-      console.log("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
+      log.info("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
       return null;
     }
 
@@ -250,10 +252,10 @@ export class InspectionEditorLogic
       //Check if the name in shape_obj exits in the list and duplicates with other shape in list(tmpIdx!=nameIdx)
       if(nameIdx!==undefined && tmpIdx!=nameIdx)
       {
-        console.log("Error:Shape id:"+id+" Duplicated shape name:"+shape_obj.name+" with idx:"+nameIdx+" ");
+        log.info("Error:Shape id:"+id+" Duplicated shape name:"+shape_obj.name+" with idx:"+nameIdx+" ");
         return null;
       }
-      console.log("SETShape>",tmpIdx);
+      log.info("SETShape>",tmpIdx);
       if(tmpIdx!=undefined)
       {
         pre_shape = this.shapeList[tmpIdx];
@@ -261,7 +263,7 @@ export class InspectionEditorLogic
       }
       else
       {
-        console.log("Error:Shape id:"+id+" doesn't exist in the list....");
+        log.info("Error:Shape id:"+id+" doesn't exist in the list....");
         return null;
       }
     }
@@ -270,7 +272,7 @@ export class InspectionEditorLogic
       id = this.shapeCount;
     }
 
-    console.log("FoundShape>",pre_shape);
+    log.info("FoundShape>",pre_shape);
     let shape=null;
     if(pre_shape == null)
     {

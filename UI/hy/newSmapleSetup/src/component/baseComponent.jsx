@@ -1,6 +1,7 @@
 import React from 'react';
 import React_createClass from 'create-react-class';
-
+import { Icon } from 'antd';
+import {GetObjElement} from 'UTIL/MISC_Util';
 
 
 
@@ -35,27 +36,46 @@ export class JsonElement extends React.Component{
   }
   renderSimple()
   {
+    let text=this.props.children;
+    let translateValue = undefined;
+    if(this.props.type!=="input-number"||this.props.type!=="checkbox"){
+
+      translateValue = GetObjElement(this.props.dict,[this.props.dictTheme, text]);
+
+      if(translateValue===undefined)
+      {
+        translateValue = GetObjElement(this.props.dict,["fallback", text]);
+      }
+    }
+
+
+    if(translateValue===undefined)
+    {
+      translateValue = text;
+    }
+
+
     switch(this.props.type)
     {
       case "input-number":
-        return <input key={this.props.id} className={this.props.className} type="number" value={this.props.children}  
+        return <input key={this.props.id} className={this.props.className} type="number" value={translateValue}
           onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
       case "input":
-        return <input key={this.props.id} className={this.props.className} value={this.props.children}  
-          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+        return <input key={this.props.id} className={this.props.className} value={translateValue}
+                      onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
           
       case "checkbox":
-        return <input key={this.props.id} className={this.props.className} type="checkbox" checked={this.props.children}
-          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+        return <input key={this.props.id} className={this.props.className} type="checkbox" checked={translateValue}
+                      onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
       case "btn":
         return <button
           key={this.props.id}
           className={this.props.className}
           onClick={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}>
-          {this.props.children}</button>
+          {translateValue}</button>
       case "div":
       default:
-        return <div key={this.props.id} className={this.props.className} >{this.props.children}</div>
+        return <div key={this.props.id} className={this.props.className} >{translateValue} </div>
       
     }
   }
@@ -91,17 +111,41 @@ export class JsonEditBlock extends React.Component{
         if((ele === undefined) || displayMethod=== undefined)continue;
         //console.log(key,ele,typeof ele);
         
+        //this.props.dict
+        
         let newkeyTrace = keyTrace.slice();
         newkeyTrace.push(key);
+
+        let translateKey = undefined;
+
+
+        translateKey = GetObjElement(this.props.dict,[this.props.dictTheme, key]);
+
+        if(translateKey===undefined)
+        {
+          translateKey = GetObjElement(this.props.dict,["fallback", key]);
+        }
+
+        if(translateKey===undefined)
+        {
+          translateKey = key;
+        }
+
         switch(typeof ele)
         {
           case "string":
           case "boolean":
           case "number":
             if(displayMethod==null)displayMethod="div";
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width9 vbox blackText" type={displayMethod}
-              target={{obj:obj,keyTrace:newkeyTrace}} 
+
+
+
+            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
+
+
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={displayMethod}
+              target={{obj:obj,keyTrace:newkeyTrace}}
+              dict={this.props.dict}
               onChange={this.onChangeX.bind(this)}>{(typeof ele ==="number" )?(ele).toFixed(4):(ele)}</JsonElement>);
           break;
           case "object":
@@ -110,10 +154,11 @@ export class JsonEditBlock extends React.Component{
             rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
             let obj_disp_type = (displayMethod==null)?"div":displayMethod.__OBJ__;
             if(obj_disp_type == undefined)obj_disp_type="div";
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} 
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"}
+                                   dict={this.props.dict}
               className="s HX1 WXF vbox black" type={obj_disp_type} 
               onChange={this.onChangeX.bind(this)}
-              target={{obj:obj,keyTrace:newkeyTrace}}>{key}</JsonElement>);
+              target={{obj:obj,keyTrace:newkeyTrace}}>{translateKey}</JsonElement>);
 
             rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
             rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
@@ -270,7 +315,43 @@ export let DropDown = React_createClass({
   }
 });
 
+export let IconButton = React_createClass({
 
+  handleClick: function(event) {
+    this.props.onClick(event,this);
+  },
+  render: function() {
+
+    console.log(this.props);
+    console.log(this.context);
+    var className=("button s "+ this.props.addClass);
+    let translation = undefined;
+
+
+    translation = GetObjElement(this.props.dict,[this.props.dictTheme, this.props.text]);
+
+    if(translation===undefined)
+    {
+      translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
+    }
+
+    if(translation===undefined)
+    {
+      translation = this.props.text;
+    }
+
+
+    return <div
+        onClick={this.handleClick}
+        className={className}>
+        <Icon className="layout iconButtonSize veleY" type={this.props.iconType}/>
+
+        <p className={"layout veleY iconTextPadding"}>
+          {translation}
+        </p>
+    </div>;
+  }
+});
 
 export let Button = React_createClass({
 
@@ -278,7 +359,7 @@ export let Button = React_createClass({
     this.props.onClick(event,this);
   },
   render: function() {
-    var className=("button s lgray vbox "+ this.props.addClass);
+    var className=("button s vbox "+ this.props.addClass);
     return <div
       onClick={this.handleClick}
       className={className}>
@@ -288,6 +369,7 @@ export let Button = React_createClass({
     </div>;
   }
 });
+
 
 
 

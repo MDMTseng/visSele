@@ -892,21 +892,31 @@ void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
   
 }
-int mainLoop()
+int mainLoop(bool realCamera=false)
 {
-  
-  //CameraLayer_GIGE_MindVision *camera;
-  //camera=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
-  CameraLayer_BMP_carousel *camera;
-  LOGV("CameraLayer_BMP_carousel");
-  camera=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
-  
-  LOGV("initCamera");
-  initCamera(camera);
-  
-  LOGV("DatCH_BPG1_0");
   BPG_protocol = new DatCH_BPG1_0(NULL);
   DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
+  CameraLayer *camera;
+  if(realCamera)
+  {
+    CameraLayer_GIGE_MindVision *camera_GIGE;
+    camera_GIGE=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
+    LOGV("initCamera");
+    initCamera(camera_GIGE);
+    camera=camera_GIGE;
+
+  }
+  else
+  {
+    CameraLayer_BMP_carousel *camera_BMP;
+    LOGV("CameraLayer_BMP_carousel");
+    camera_BMP=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
+    camera=camera_BMP;
+  }
+  /**/
+  
+  
+  LOGV("DatCH_BPG1_0");
   cb->camera = camera;
   BPG_protocol->SetEventCallBack(cb,NULL);
 

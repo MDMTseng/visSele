@@ -10,7 +10,8 @@ import {
   LineCentralNormal,
   closestPointOnLine} from 'UTIL/MathTools';
 
-  import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import * as log from 'loglevel';
 
 class CameraCtrl
 {
@@ -76,6 +77,7 @@ class renderUTIL
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
       inspection_Pass:"rgba(0,255,0,0.1)",
+      inspection_production_Fail:"rgba(128,128,0,0.1)",
       inspection_Fail:"rgba(255,0,0,0.1)",
       inspection_NA:"rgba(128,128,128,0.1)",
       editShape:"rgba(255,0,0,0.7)",
@@ -197,7 +199,7 @@ class renderUTIL
   drawArcArrow(ctx,x,y,r,sAngle,eAngle,ccw=false)
   {
     ctx.beginPath();
-    //console.log(ctx,x,y,r,sAngle,eAngle,ccw);
+    //log.debug(ctx,x,y,r,sAngle,eAngle,ccw);
     ctx.arc(x,y,r,sAngle,eAngle,ccw);
     ctx.stroke();
     let ax= Math.cos(eAngle);
@@ -283,7 +285,7 @@ class renderUTIL
       
       this.drawpoint(ctx,eObject.pt1);
 
-      ctx.fillText("D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
+      this.drawText(ctx,"D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
       eObject.pt1.x,eObject.pt1.y);
     }
   }
@@ -306,6 +308,14 @@ class renderUTIL
     }
     ctx.closePath();
     //ctx.stroke();
+  }
+  drawText(ctx,text,x,y)
+  {
+    ctx.font="bold 30px  Arial";
+    ctx.fillText(text,x,y);
+    ctx.strokeStyle="white";
+    ctx.lineWidth=2;
+    ctx.strokeText(text,x,y);
   }
 
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"px",mult:1})
@@ -499,7 +509,6 @@ class renderUTIL
               ctx.lineWidth=2;
               //ctx.strokeStyle=this.colorSet.measure_info; 
                         
-              ctx.font="30px Arial";
               ///ctx.fillStyle=this.colorSet.measure_info; 
               //this.drawpoint(ctx, srcPt,"rect");
               
@@ -584,7 +593,7 @@ class renderUTIL
                 }
                 break;
               }
-              //console.log(angleDiff*180/Math.PI,sAngle*180/Math.PI,eAngle*180/Math.PI);
+              //log.debug(angleDiff*180/Math.PI,sAngle*180/Math.PI,eAngle*180/Math.PI);
               if(quadrant%2==0)//if our target quadrant is 2 or 4..., find the complement angle 
               {
                 angleDiff=Math.PI-angleDiff;
@@ -630,9 +639,11 @@ class renderUTIL
 
                 ctx.setLineDash([]);
               }
-              ctx.fillText(""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2),
-                eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4,
-                eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4);
+
+              let text = ""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2);
+              let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4;
+              let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4;
+              this.drawText(ctx,text,x,y);
               //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);
             }
             break;
@@ -661,9 +672,10 @@ class renderUTIL
 
               dispVec_normalized.x*=40;
               dispVec_normalized.y*=40;
-              ctx.fillText("R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
+              this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
+                
             
             }
           }
@@ -727,12 +739,12 @@ class EverCheckCanvasComponent_proto{
   resourceClean()
   {
     this.canvas.removeEventListener('wheel',this.onmouseswheel.bind(this));
-    console.log("resourceClean......")
+    log.debug("resourceClean......")
   }
 
   SetImg( img )
   {
-    console.log("SetImg:::");
+    log.debug("SetImg:::");
     if(img == null || img == this.secCanvas_rawImg)return;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
@@ -741,12 +753,12 @@ class EverCheckCanvasComponent_proto{
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(img, 0, 0);
 
-    console.log("SetImg::: UPDATE",ctx2nd);
+    log.debug("SetImg::: UPDATE",ctx2nd);
   }
 
   onmouseswheel(evt)
   {
-    //console.log("onmouseswheel",evt);
+    //log.debug("onmouseswheel",evt);
     let deltaY = evt.deltaY/4;
     if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
     if(deltaY<-50)deltaY=-1;
@@ -774,8 +786,8 @@ class EverCheckCanvasComponent_proto{
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
 
-    //console.log("onmousemove_pre:",this.state);
-    //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
+    //log.debug("onmousemove_pre:",this.state);
+    //log.debug("this.state:"+this.state+"  "+this.mouseStatus.status);
 
     
     switch(this.state.substate)
@@ -784,7 +796,7 @@ class EverCheckCanvasComponent_proto{
         
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
-        //console.log("onmousemove");
+        //log.debug("onmousemove");
         if(this.mouseStatus.status==1)
         {
           this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
@@ -878,12 +890,16 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     Object.assign(this.colorSet,
       {
         inspection_Pass:"rgba(0,255,0,0.1)",
+        inspection_production_Fail:"rgba(128,128,0,0.3)",
         inspection_Fail:"rgba(255,0,0,0.1)",
         inspection_NA:"rgba(64,64,64,0.1)",
 
           
         color_NA:"rgba(128,128,128,0.5)",
         color_SUCCESS:this.colorSet.measure_info,
+        color_FAILURE_opt:{
+          submargin1:"rgba(255,255,0,0.5)",
+        },
         color_FAILURE:"rgba(255,0,0,0.5)",
       }
     );
@@ -896,12 +912,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
-    this.EmitEvent=(event)=>{console.log(event);};
+    this.EmitEvent=(event)=>{log.debug(event);};
   }
 
   SetState(state)
   {
-    console.log(state);
+    log.info(state);
     let stateObj = xstate_GetCurrentMainState(state);
     let stateStr = JSON.stringify(stateObj);
     if(JSON.stringify(this.state) === stateStr)return;
@@ -921,12 +937,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   EditDBInfoSync(edit_DB_info)
   {
-    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
-
   }
 
   SetShape( shape_obj, id)
@@ -958,6 +972,53 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
     return ret_status;
   }
+
+  featureInspectionMarginTest(featureMeasure,target,marginSet)
+  {
+    let subtype = featureMeasure.subtype;
+
+
+    
+    let error = featureMeasure.value - target;
+    if(error<0)error=-error;
+    if(subtype === "angle")
+    {
+      if(error>=90)error=180-error;
+    }
+
+
+    let minViolation=Number.MAX_VALUE;
+    let violationInfo={
+      subtype:subtype,
+      target:target,
+      value:featureMeasure.value,
+      error:error,
+      minViolationKey:undefined,
+      minViolationIdx:Number.MAX_VALUE,
+      minViolationValue:Number.MAX_VALUE
+    };
+
+    let idx=0;
+    for (var key in marginSet)
+    {
+      if(marginSet[key] == 0)continue;
+      let violation = error-marginSet[key];
+      if(violation>0)
+      {
+        if(minViolation>violation)
+        {
+          minViolation = violation;
+          violationInfo.minViolationValue = violation;
+          violationInfo.minViolationKey = key;
+          violationInfo.minViolationIdx = idx;
+        }
+      }
+      idx++;
+
+    }
+    return violationInfo;
+  }
+
 
   draw()
   {
@@ -1009,6 +1070,18 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     if(true)
     {
       let sigScale = 1;
+
+      
+      let measureShape =[];
+      if(this.edit_DB_info.list !== undefined)
+      {
+        measureShape = this.edit_DB_info.list.reduce((measureShape,shape)=>{
+          if(shape.type == SHAPE_TYPE.measure)
+            measureShape.push(shape)
+          return measureShape;
+        },[]);
+      }
+
       inspectionReport.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);
@@ -1018,7 +1091,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         
         ctx.scale(sigScale,sigScale);
         this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,5);
-
+        
         let ret_res = this.inspectionResult(report);
         switch(ret_res)
         {
@@ -1026,7 +1099,35 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
             ctx.fillStyle=this.colorSet.inspection_NA;
           break;
           case INSPECTION_STATUS.SUCCESS:
+          {
             ctx.fillStyle=this.colorSet.inspection_Pass;
+
+            {
+              let minViolationIdx = Number.MAX_VALUE;
+              this.edit_DB_info.list.forEach((eObj)=>{
+                if(eObj.type === "measure")
+                {
+                  let targetID = eObj.id;
+                  let inspMeasureTar = report.judgeReports.reduce((tar,measure)=>
+                    (tar===undefined && measure.id === targetID)?measure:tar
+                    ,undefined);
+                  let measureSet={
+                    submargin1:eObj.submargin1
+                  };
+                  
+                  let submargin = this.featureInspectionMarginTest(inspMeasureTar,eObj.value,measureSet);
+                  if(submargin.minViolationKey != undefined && minViolationIdx>submargin.minViolationIdx)
+                  {
+                    minViolationIdx=submargin.minViolationIdx;
+                    ctx.fillStyle=this.colorSet.color_FAILURE_opt[submargin.minViolationKey];
+                  }
+
+                }
+              });
+            }
+            //ctx.fillStyle=this.colorSet.inspection_production_Fail;
+            
+          }
           break;
           case INSPECTION_STATUS.FAILURE:
             ctx.fillStyle=this.colorSet.inspection_Fail;
@@ -1042,21 +1143,41 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
 
     inspectionReport.forEach((report,idx)=>{
-      let ret_res = this.inspectionResult(report);
+      //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
       {
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         
         listClone.forEach((eObj)=>{
-          //console.log(eObj);
+          //log.debug(eObj);
           switch(eObj.inspection_status)
           {
             case INSPECTION_STATUS.NA:
               eObj.color=this.colorSet.color_NA;
             break;
             case INSPECTION_STATUS.SUCCESS:
+            {
               eObj.color=this.colorSet.color_SUCCESS;
+              if(eObj.type === "measure")
+              {
+                let targetID = eObj.id;
+                let inspMeasureTar = report.judgeReports.reduce((tar,measure)=>
+                  (tar===undefined && measure.id === targetID)?measure:tar
+                  ,undefined);
+                let measureSet={
+                  submargin1:eObj.submargin1
+                };
+                
+                let submargin = this.featureInspectionMarginTest(inspMeasureTar,eObj.value,measureSet);
+                if(submargin.minViolationKey != undefined)
+                {
+                  eObj.color=this.colorSet.color_FAILURE_opt[submargin.minViolationKey];
+                }
+
+              }
+
+            }
             break;
             case INSPECTION_STATUS.FAILURE:
               eObj.color=this.colorSet.color_FAILURE;
@@ -1100,12 +1221,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
-    this.EmitEvent=(event)=>{console.log(event);};
+    this.EmitEvent=(event)=>{log.debug(event);};
   }
 
   SetState(state)
   {
-    console.log(state);
+    log.debug(state);
     let stateObj = xstate_GetCurrentMainState(state);
     let stateStr = JSON.stringify(stateObj);
     if(JSON.stringify(this.state) === stateStr)return;
@@ -1125,7 +1246,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   EditDBInfoSync(edit_DB_info)
   {
-    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    log.debug(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
@@ -1144,7 +1265,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   {
       this.EditShape = EditShape;
       
-      console.log(this.tmp_EditShape_id);
+      log.debug(this.tmp_EditShape_id);
       if(this.EditShape!=null && this.EditShape.id!=undefined && this.tmp_EditShape_id !=this.EditShape.id){
         if(this.tmp_EditShape_id!=undefined)
         {
@@ -1185,7 +1306,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         let pt = this.db_obj.auxPointParse(shape);
         if(pt ==null)return;
         center=pt;
-        console.log(shape,pt);
       break;
       case SHAPE_TYPE.search_point:
       {
@@ -1304,7 +1424,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   {
 
     let wMat = this.worldTransform();
-    //console.log("this.camera.matrix::",wMat);
+    //log.debug("this.camera.matrix::",wMat);
     let worldTransform = new DOMMatrix().setMatrixValue(wMat);
     let worldTransform_inv = worldTransform.invertSelf();
     //this.Mouse2SecCanvas = invMat;
@@ -1407,7 +1527,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
             }
             else
             {
-              console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
+              log.debug(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
               this.EmitEvent(DefConfAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
   
             }
