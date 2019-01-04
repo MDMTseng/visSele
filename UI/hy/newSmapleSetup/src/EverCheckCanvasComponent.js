@@ -1002,6 +1002,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     let idx=0;
     for (var key in marginSet)
     {
+      if(marginSet[key] == 0)continue;
       let violation = error-marginSet[key];
       if(violation>0)
       {
