@@ -3,10 +3,12 @@ import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
 
 import { Machine } from 'xstate';
 
+import * as logX from 'loglevel';
+let log = logX.getLogger(__filename);
 
 export const ECStateMachine = ECSMData => store => next => action => {
   
-  console.log(action);
+  log.debug(action);
   if (ECSMData.initted === undefined || !ECSMData.initted)
   {
     ECSMData.sm = Machine(ECSMData.state_config);

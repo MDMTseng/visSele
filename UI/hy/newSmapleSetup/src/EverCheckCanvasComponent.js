@@ -10,7 +10,8 @@ import {
   LineCentralNormal,
   closestPointOnLine} from 'UTIL/MathTools';
 
-  import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import * as log from 'loglevel';
 
 class CameraCtrl
 {
@@ -198,7 +199,7 @@ class renderUTIL
   drawArcArrow(ctx,x,y,r,sAngle,eAngle,ccw=false)
   {
     ctx.beginPath();
-    //console.log(ctx,x,y,r,sAngle,eAngle,ccw);
+    //log.debug(ctx,x,y,r,sAngle,eAngle,ccw);
     ctx.arc(x,y,r,sAngle,eAngle,ccw);
     ctx.stroke();
     let ax= Math.cos(eAngle);
@@ -592,7 +593,7 @@ class renderUTIL
                 }
                 break;
               }
-              //console.log(angleDiff*180/Math.PI,sAngle*180/Math.PI,eAngle*180/Math.PI);
+              //log.debug(angleDiff*180/Math.PI,sAngle*180/Math.PI,eAngle*180/Math.PI);
               if(quadrant%2==0)//if our target quadrant is 2 or 4..., find the complement angle 
               {
                 angleDiff=Math.PI-angleDiff;
@@ -738,12 +739,12 @@ class EverCheckCanvasComponent_proto{
   resourceClean()
   {
     this.canvas.removeEventListener('wheel',this.onmouseswheel.bind(this));
-    console.log("resourceClean......")
+    log.debug("resourceClean......")
   }
 
   SetImg( img )
   {
-    console.log("SetImg:::");
+    log.debug("SetImg:::");
     if(img == null || img == this.secCanvas_rawImg)return;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
@@ -752,12 +753,12 @@ class EverCheckCanvasComponent_proto{
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(img, 0, 0);
 
-    console.log("SetImg::: UPDATE",ctx2nd);
+    log.debug("SetImg::: UPDATE",ctx2nd);
   }
 
   onmouseswheel(evt)
   {
-    //console.log("onmouseswheel",evt);
+    //log.debug("onmouseswheel",evt);
     let deltaY = evt.deltaY/4;
     if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
     if(deltaY<-50)deltaY=-1;
@@ -785,8 +786,8 @@ class EverCheckCanvasComponent_proto{
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
 
-    //console.log("onmousemove_pre:",this.state);
-    //console.log("this.state:"+this.state+"  "+this.mouseStatus.status);
+    //log.debug("onmousemove_pre:",this.state);
+    //log.debug("this.state:"+this.state+"  "+this.mouseStatus.status);
 
     
     switch(this.state.substate)
@@ -795,7 +796,7 @@ class EverCheckCanvasComponent_proto{
         
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
-        //console.log("onmousemove");
+        //log.debug("onmousemove");
         if(this.mouseStatus.status==1)
         {
           this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
@@ -911,12 +912,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
-    this.EmitEvent=(event)=>{console.log(event);};
+    this.EmitEvent=(event)=>{log.debug(event);};
   }
 
   SetState(state)
   {
-    console.log(state);
+    log.info(state);
     let stateObj = xstate_GetCurrentMainState(state);
     let stateStr = JSON.stringify(stateObj);
     if(JSON.stringify(this.state) === stateStr)return;
@@ -936,12 +937,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   EditDBInfoSync(edit_DB_info)
   {
-    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
-
   }
 
   SetShape( shape_obj, id)
@@ -1151,7 +1150,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         
         listClone.forEach((eObj)=>{
-          //console.log(eObj);
+          //log.debug(eObj);
           switch(eObj.inspection_status)
           {
             case INSPECTION_STATUS.NA:
@@ -1222,12 +1221,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
-    this.EmitEvent=(event)=>{console.log(event);};
+    this.EmitEvent=(event)=>{log.debug(event);};
   }
 
   SetState(state)
   {
-    console.log(state);
+    log.debug(state);
     let stateObj = xstate_GetCurrentMainState(state);
     let stateStr = JSON.stringify(stateObj);
     if(JSON.stringify(this.state) === stateStr)return;
@@ -1247,7 +1246,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   EditDBInfoSync(edit_DB_info)
   {
-    console.log(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    log.debug(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
@@ -1266,7 +1265,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   {
       this.EditShape = EditShape;
       
-      console.log(this.tmp_EditShape_id);
+      log.debug(this.tmp_EditShape_id);
       if(this.EditShape!=null && this.EditShape.id!=undefined && this.tmp_EditShape_id !=this.EditShape.id){
         if(this.tmp_EditShape_id!=undefined)
         {
@@ -1307,7 +1306,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         let pt = this.db_obj.auxPointParse(shape);
         if(pt ==null)return;
         center=pt;
-        console.log(shape,pt);
       break;
       case SHAPE_TYPE.search_point:
       {
@@ -1426,7 +1424,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   {
 
     let wMat = this.worldTransform();
-    //console.log("this.camera.matrix::",wMat);
+    //log.debug("this.camera.matrix::",wMat);
     let worldTransform = new DOMMatrix().setMatrixValue(wMat);
     let worldTransform_inv = worldTransform.invertSelf();
     //this.Mouse2SecCanvas = invMat;
@@ -1529,7 +1527,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
             }
             else
             {
-              console.log(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
+              log.debug(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
               this.EmitEvent(DefConfAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
   
             }
