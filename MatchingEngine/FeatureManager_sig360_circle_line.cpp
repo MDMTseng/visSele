@@ -1483,6 +1483,7 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
     float maxEdge_offset=NAN;
     
     float edgePowerInt = 0;
+    float edgeCenteralInt = 0;
     for(i=0;i<n-1;i++)
     {
         a=(s[i+1]-s[i])/(6*h[i]);
@@ -1491,6 +1492,8 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
         d=f[i];
         
         float edgePower = a*a*9/5 + 4/3*b*b + 3*a*b + 2*a*c + 2*c*b + c*c;//Integeral(pow(f',2),0,1)
+        float edgeCentral = a*a*3/2 + a*b*12.0/5 + a*c*6/4 + b*b + c*b*4/3 + c*c/2;//Integeral(x*pow(f'(x),2),0,1)
+        edgeCenteralInt+=edgeCentral*(i+0.5);
 
 
         edgePowerInt+=edgePower;
@@ -1513,16 +1516,13 @@ void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
         }
     }
 
-    float edgeRange=1;
-    float BGEdgePower = (edgePowerInt-maxEdge_response*maxEdge_response*edgeRange)/(n-1-edgeRange);
-
-    if(BGEdgePower<0)BGEdgePower=0;
+    float BGEdgePower = edgePowerInt/(n-1);
 
     BGEdgePower=sqrt(BGEdgePower);
     //printf("MAX rsp>>> %f %f %f\n",maxEdge_response,BGEdgePower, maxEdge_response/(BGEdgePower+0.1));
     *edgeX = maxEdge_offset;
 
-    float SNR = maxEdge_response/(BGEdgePower+0.1);
+    float SNR = maxEdge_response/(BGEdgePower);
     *ret_edge_response = SNR;
 }
 
