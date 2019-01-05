@@ -133,7 +133,7 @@ export class InspectionEditorLogic
   UpdateInherentShapeList()
   {
     this.inherentShapeList=[];
-
+    if(this.sig360report===null || this.sig360report === undefined)return;
     let setupTarget=this.sig360report.reports[0];
     
     log.info(setupTarget);

@@ -1246,7 +1246,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   EditDBInfoSync(edit_DB_info)
   {
-    log.debug(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    log.info(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);

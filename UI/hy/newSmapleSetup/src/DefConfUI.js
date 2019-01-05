@@ -137,8 +137,10 @@ class APP_DEFCONF_MODE extends React.Component{
 
   componentDidMount()
   {
-    this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
-    
+    //this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
+    let defModelPath = this.props.edit_info.defModelPath;
+
+    //this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
   }
   constructor(props) {
     super(props);
@@ -268,6 +270,8 @@ class APP_DEFCONF_MODE extends React.Component{
     let menu_height="HXA";//auto
     console.log("CanvasComponent render");
     let substate = this.props.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
+    
+    let defModelPath = this.props.edit_info.defModelPath;
     switch(substate)
     {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
@@ -319,7 +323,8 @@ class APP_DEFCONF_MODE extends React.Component{
             text="save" onClick={()=>{
                 var enc = new TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
-                this.props.ACT_Report_Save(this.props.WS_ID,"data/test.ic.json",enc.encode(JSON.stringify(report, null, 2)));
+                this.props.ACT_Report_Save(this.props.WS_ID,defModelPath+".json",enc.encode(JSON.stringify(report, null, 2)));
+                this.props.ACT_Cache_Img_Save(this.props.WS_ID,defModelPath+".bmp");
             }}/>,
           /*<BASE_COM.Button
             addClass="layout lred vbox"
@@ -332,7 +337,7 @@ class APP_DEFCONF_MODE extends React.Component{
             key="LOAD"
             text="load" onClick={()=>{
                 
-                this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"});
+                this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
                 
             }}/>,
             <BASE_COM.IconButton
@@ -612,10 +617,15 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
     
     ACT_Report_Save:(id,fileName,content)=>{
-        dispatch(UIAct.EV_WS_SEND(id,"SV",0,
-            {filename:fileName},
-            content
-        ));
+      dispatch(UIAct.EV_WS_SEND(id,"SV",0,
+          {filename:fileName},
+          content
+      ));
+    },
+    ACT_Cache_Img_Save:(id,fileName)=>{
+      dispatch(UIAct.EV_WS_SEND(id,"SV",0,
+          {filename:fileName, type:"__CACHE_IMG__"}
+      ));
     },
   }
 }

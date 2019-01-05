@@ -22,6 +22,7 @@ function Default_UICtrlReducer()
     showSM_graph:false,
     WS_CH:undefined,
     edit_info:{
+      defModelPath:"data/cache_def",
       _obj:new InspectionEditorLogic(),
       defInfo:[],
       inspReport:[],

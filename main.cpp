@@ -30,6 +30,9 @@ DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 
+
+acvImage cacheImage;
+
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
 
@@ -155,19 +158,34 @@ public:
                 break;
               }
               int strinL = strlen((char*)dat->dat_raw)+1;
-              LOGI("DataType_BPG>>BIN>>%s",byteArrString(dat->dat_raw+strinL,dat->size-strinL));
 
-              FILE *write_ptr;
+              if(dat->size-strinL == 0 )
+              {//No raw data, check "type" 
 
-              write_ptr = fopen(fileName,"wb");  // w for write, b for binary
-              if(write_ptr==NULL)
-              {
-                LOGE("File open failed");
-                break;
+                char* type =(char* )JFetch(json,"type",cJSON_String);
+                if (strcmp(type,"__CACHE_IMG__") == 0 )
+                {
+                  acvSaveBitmapFile(fileName,&cacheImage);
+                }
               }
-              fwrite(dat->dat_raw+strinL,dat->size-strinL,1,write_ptr); // write 10 bytes from our buffer
+              else
+              {
 
-              fclose (write_ptr);
+                LOGI("DataType_BPG>>BIN>>%s",byteArrString(dat->dat_raw+strinL,dat->size-strinL));
+
+                FILE *write_ptr;
+
+                write_ptr = fopen(fileName,"wb");  // w for write, b for binary
+                if(write_ptr==NULL)
+                {
+                  LOGE("File open failed");
+                  break;
+                }
+                fwrite(dat->dat_raw+strinL,dat->size-strinL,1,write_ptr); // write 10 bytes from our buffer
+
+                fclose (write_ptr);
+              }
+
 
             }while(false);
             cJSON_Delete(json);
@@ -452,7 +470,9 @@ public:
                 LOGV( "unlock");
                 mainThreadLock.unlock();
                 srcImg = camera->GetImg();
-                acvSaveBitmapFile("data/test1.bmp",srcImg);
+                cacheImage.ReSize(srcImg->GetWidth(),srcImg->GetHeight());
+                acvCloneImage(srcImg,&cacheImage,-1);
+                //acvSaveBitmapFile("data/test1.bmp",srcImg);
               }
 
 

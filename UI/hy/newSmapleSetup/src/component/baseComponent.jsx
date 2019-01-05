@@ -322,8 +322,8 @@ export let IconButton = React_createClass({
   },
   render: function() {
 
-    console.log(this.props);
-    console.log(this.context);
+    //console.log(this.props);
+    //console.log(this.context);
     var className=("button s "+ this.props.addClass);
     let translation = undefined;
 
