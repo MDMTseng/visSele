@@ -3,6 +3,8 @@ import React_createClass from 'create-react-class';
 import { Icon } from 'antd';
 import {GetObjElement} from 'UTIL/MISC_Util';
 
+import * as logX from 'loglevel';
+let log = logX.getLogger(__filename);
 
 
 export class JsonElement extends React.Component{
@@ -322,8 +324,8 @@ export let IconButton = React_createClass({
   },
   render: function() {
 
-    console.log(this.props);
-    console.log(this.context);
+    log.debug(this.props);
+    log.debug(this.context);
     var className=("button s "+ this.props.addClass);
     let translation = undefined;
 
