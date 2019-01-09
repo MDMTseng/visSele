@@ -2,24 +2,18 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
-#include "acvImage_ToolBox.hpp"
-#include "acvImage_BasicDrawTool.hpp"
-#include "acvImage_BasicTool.hpp"
 
-#include "acvImage_MophologyTool.hpp"
-#include "acvImage_SpDomainTool.hpp"
 #include "MLNN.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
-#include "FeatureManager.h"
-#include "MatchingEngine.h"
-#include "common_lib.h"
 #include "DatCH_Image.hpp"
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
+
+
+#include <main.h>
+#include <playground.h>
 #include <stdexcept>
-#include "CameraLayer_BMP.hpp"
-#include "CameraLayer_GIGE_MindVision.hpp"
 
 std::mutex mainThreadLock;
 acvImage *test1_buff;
@@ -883,7 +877,6 @@ public:
 DatCH_CallBack_T callbk_obj;
 
 
-
 void initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 {
   
@@ -912,10 +905,11 @@ void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
   
 }
-int mainLoop(bool realCamera=false)
+
+
+CameraLayer *getCamera(bool realCamera=false)
 {
-  BPG_protocol = new DatCH_BPG1_0(NULL);
-  DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
+
   CameraLayer *camera;
   if(realCamera)
   {
@@ -933,8 +927,16 @@ int mainLoop(bool realCamera=false)
     camera_BMP=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
     camera=camera_BMP;
   }
+  return camera;
+}
+
+int mainLoop(bool realCamera=false)
+{
   /**/
   
+  BPG_protocol = new DatCH_BPG1_0(NULL);
+  DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
+  CameraLayer *camera = getCamera(realCamera);
   
   LOGV("DatCH_BPG1_0");
   cb->camera = camera;
@@ -958,6 +960,7 @@ int mainLoop(bool realCamera=false)
   return 0;
 }
 
+
 void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信號的值 */
   switch (dunno) {
     case SIGINT:
@@ -974,28 +977,6 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 {
   CameraLayer_BMP &clBMP=*((CameraLayer_BMP*)&cl_obj);
   LOGV("Called.... %d, filename:%s",type,clBMP.GetCurrentFileName().c_str());
-}
-
-
-int testGIGE()
-{
-  CameraLayer_GIGE_MindVision *cl_GIGEMV;
-  cl_GIGEMV=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
-
-  initCamera(cl_GIGEMV);
-
-  cl_GIGEMV->SetAnalogGain(1500);
-  cl_GIGEMV->SetExposureTime(5);
-  cl_GIGEMV->TriggerMode(1);
-  cl_GIGEMV->Trigger();
-  sleep(1000);
-  
-  LOGV("SAVE:::::, %p   WH:%d,%d",cl_GIGEMV->GetImg()->CVector[0],cl_GIGEMV->GetImg()->GetWidth(),cl_GIGEMV->GetImg()->GetHeight());
-  acvSaveBitmapFile("data/MVCam.bmp",cl_GIGEMV->GetImg());
-
-  LOGV("OK:::::");
-
-  return 0;
 }
 
 
@@ -1031,13 +1012,16 @@ int simpleTest()
   return 0;
 }
 
+
+
+
+
 #include <vector>
 int main(int argc, char** argv)
 {
   srand(time(NULL));
-  auto lambda = []() { LOGV("Hello, Lambda"); };
-  lambda();
-  //return simpleTest();
+  /*auto lambda = []() { LOGV("Hello, Lambda"); };
+  lambda();*/
   #ifdef __WIN32__
   {
       WSADATA wsaData;
@@ -1051,7 +1035,8 @@ int main(int argc, char** argv)
       
   }
   #endif
-
+  calcCameraCalibration();
+  return -1;
 
 
   signal(SIGINT, sigroutine);
@@ -1059,5 +1044,5 @@ int main(int argc, char** argv)
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
-  return mainLoop();
+  return mainLoop(true);
 }
