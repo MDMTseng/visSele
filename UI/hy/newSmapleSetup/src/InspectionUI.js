@@ -203,7 +203,7 @@ class APP_INSP_MODE extends React.Component{
   componentDidMount()
   {
     
-    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{deffile:"data/test.ic.json"});
+    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{deffile:this.props.defModelPath+".json"});
            
   }
   componentWillUnmount() {
@@ -229,7 +229,7 @@ class APP_INSP_MODE extends React.Component{
         ];
 
 
-    return(
+    /*return(
     <div className="HXF">
       <G2HOT className={"height4 width12"} data={this.props.reportStatisticState.measure1}/>
       <CanvasComponent_rdx addClass="layout width12 height8" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
@@ -241,7 +241,19 @@ class APP_INSP_MODE extends React.Component{
       </$CSSTG>
       
     </div>
-    );
+    );*/
+    return(
+      <div className="HXF">
+        <CanvasComponent_rdx addClass="layout width12 height12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
+          
+        <$CSSTG transitionName = "fadeIn">
+          <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
+            {MenuSet}
+          </div>
+        </$CSSTG>
+        
+      </div>
+      );
   }
 }
 
@@ -260,6 +272,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
     shape_list:state.UIData.edit_info.list,
+    defModelPath:state.UIData.edit_info.defModelPath,
     WS_ID:state.UIData.WS_ID,
     reportStatisticState:state.UIData.edit_info.reportStatisticState
 
