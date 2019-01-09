@@ -361,7 +361,7 @@ margin:auto; float: none;
 		display: none;
 	}
 }
-.blockS .button, .blockS button {
+.blockS .button {
     outline:none;
 	border-bottom : 5px solid #111;
 	border-right : 3px solid #111;
@@ -371,7 +371,7 @@ margin:auto; float: none;
 
 
 
-.blockS .button:active, .blockS button:active {
+.blockS .button:active {
 	border-top: 5px solid #111;
 	border-bottom : 0;
 	border-right :0;

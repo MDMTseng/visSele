@@ -13,9 +13,127 @@ import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import G2 from '@antv/g2';
 import DataSet from '@antv/data-set';
+
 import * as logX from 'loglevel';
 let log = logX.getLogger(__filename);
 
+import {
+  Button, Menu, Dropdown, Icon,
+} from 'antd';
+
+
+
+
+class AirControl extends React.Component {
+  constructor(props){
+    super(props);
+    this.state = {
+      loading: false,
+      iconLoading: false,
+      websocketAir:undefined
+    }
+  }
+
+  blowAir_LEFTa(){
+    console.log("[WS]/cue/LEFT");
+    this.state.websocketAir.send("/cue/LEFT");
+  }
+  blowAir_RIGHTa(){
+    console.log("[WS]/cue/RIGHT");
+    this.state.websocketAir.send("/cue/RIGHT");
+  }
+  enterLoading()  {
+    this.setState({ loading: true });
+  }
+  componentWillMount()
+  {
+    console.log("[init][componentWillMount]");
+    this.websocketConnect();
+  }
+
+  websocketConnect(url="ws://169.254.170.123:5213")
+  {
+    console.log("[init][WS]");
+    this.state.websocketAir=new WebSocket(url);
+    this.state.websocketAir.onmessage = this.onMessage;
+    this.state.websocketAir.onerror = this.onError;
+    console.log("[init][WS][OK]");
+    console.log(this.state.websocketAir);
+  }
+  onError(ev){
+    this.websocketConnect();
+  }
+  onMessage(ev){
+    console.log(ev);
+  }
+
+  enterIconLoading() {
+    this.setState({ iconLoading: true });
+  }
+
+  render() {
+    return (
+        <div>
+        <Button type="primary" size="large" onClick={this.blowAir_LEFTa.bind(this)}>
+          LEFT
+        </Button>
+
+        <Button type="primary" size="large" onClick={()=>this.blowAir_RIGHTa()}>
+          RIGHT
+        </Button>
+        <br />
+        <Button type="primary" loading={this.state.loading} onClick={this.enterLoading}>
+          Click me!
+        </Button>
+        <Button type="primary" icon="poweroff" loading={this.state.iconLoading} onClick={this.enterIconLoading}>
+          Click me!
+        </Button>
+        <br />
+        <Button shape="circle" loading />
+        <Button type="primary" shape="circle" loading />
+      </div>
+    );
+  }
+}
+
+class G2PointJitter extends React.Component{
+  getInitialState() {
+    return {
+      data: [],
+      forceFit: true,
+      width: 500,
+      height: 450,
+      plotCfg: {
+        margin: [80, 80, 0],
+        background: {
+          stroke: '#ccc'
+        }
+      }
+    };
+  }
+  componentDidMount () {
+    const self = this;
+    axios.get('../../../static/data/dv-grades.json').then(function (response) {
+      self.setState({
+        data: response.data
+      });
+    }).catch(function (error) {
+      console.log(error);
+    });
+  }
+  render() {
+    return (
+        <div>
+          <Chart
+              data={this.state.data}
+              width={this.state.width}
+              height={this.state.height}
+              plotCfg={this.state.plotCfg}
+              forceFit={this.state.forceFit} />
+        </div>
+    );
+  }
+}
 
 class G2HOT extends React.Component{
   constructor(props) {
@@ -65,7 +183,7 @@ class G2HOT extends React.Component{
   }
 
   onResize(width,height){
-    log.info("G2HOT resize>>",width,height);
+    log.debug("G2HOT resize>>",width,height);
     this.state.G2Chart.changeSize(width,height);
 
   }
@@ -105,7 +223,7 @@ class G2LINE extends React.Component{
   }
 
   onResize(width,height){
-    log.info("G2HOT resize>>",width,height);
+    log.debug("G2HOT resize>>",width,height);
     this.state.G2Chart.changeSize(width,height);
 
   }
@@ -127,7 +245,7 @@ class CanvasComponent extends React.Component {
   }
 
   ec_canvas_EmitEvent(event){
-    log.info(event);
+    log.debug(event);
   }
   componentDidMount() {
     this.ec_canvas=new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
@@ -141,7 +259,7 @@ class CanvasComponent extends React.Component {
   updateCanvas(ec_state,props=this.props) {
     if(this.ec_canvas  !== undefined)
     {
-      log.info("updateCanvas>>",props.edit_info);
+      log.debug("updateCanvas>>",props.edit_info);
       if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
@@ -208,25 +326,40 @@ class APP_INSP_MODE extends React.Component{
   }
   componentWillUnmount() {
     this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{});
+
   }
+
   constructor(props) {
     super(props);
     this.ec_canvas = null;
   }
-
   render() {
 
     let MenuSet=[];
     let menu_height="HXA";//auto
-    log.info("CanvasComponent render");
+    log.debug("CanvasComponent render");
       MenuSet=[
           <BASE_COM.IconButton
               dict={EC_zh_TW}
           key="<"
           addClass="layout black vbox"
-          text="<" onClick={()=>this.props.ACT_EXIT()}/>,
-          
-        ];
+          text="<" onClick={this.props.ACT_EXIT}/>
+        ,
+        <AirControl />
+        // ,<BASE_COM.IconButton
+        //     dict={EC_zh_TW}
+        //     key="LEFT"
+        //     addClass="layout black vbox"
+        //     text="LEFT" onClick={()=>this.blowAir_LEFTx()}/>
+        // ,<BASE_COM.IconButton
+        //     dict={EC_zh_TW}
+        //     key="RIGHT"
+        //     addClass="layout black vbox"
+        //     text="RIGHT" onClick={()=>this.blowAir_RIGHTx()}/>
+
+
+
+      ];
 
 
     /*return(
@@ -237,7 +370,9 @@ class APP_INSP_MODE extends React.Component{
       <$CSSTG transitionName = "fadeIn">
         <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
           {MenuSet}
+
         </div>
+
       </$CSSTG>
       
     </div>

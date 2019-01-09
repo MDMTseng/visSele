@@ -1,6 +1,10 @@
 
 import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
 
+import * as logX from 'loglevel';
+let log = logX.getLogger(__filename);
+
+
 export const ActionThrottle = ATData => store => next => action => {
   //console.log("ActionThrottle", ATData.ATID,action.ATID);
   
@@ -37,7 +41,7 @@ export const ActionThrottle = ATData => store => next => action => {
       clearTimeout(ATData.timeout_obj);
       ATData.timeout_obj=null;
       if(ATData.actions.length==0)return;
-      console.log("Trigger.....",ATData.ATID);
+      log.debug("Trigger.....",ATData.ATID);
       let actions = ATData.actions;
       ATData.actions=[];
       return next({

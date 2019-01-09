@@ -917,7 +917,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   SetState(state)
   {
-    log.info(state);
+    log.debug(state);
     let stateObj = xstate_GetCurrentMainState(state);
     let stateStr = JSON.stringify(stateObj);
     if(JSON.stringify(this.state) === stateStr)return;
