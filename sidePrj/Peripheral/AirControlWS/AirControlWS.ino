@@ -34,8 +34,8 @@
 byte mac[] = {
   0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED
 };
-IPAddress ip(192, 168, 168, 123);
-IPAddress gateway(192, 168, 168, 1);
+IPAddress ip(169, 254, 170, 123);
+IPAddress gateway(169, 254, 170, 254);
 IPAddress subnet(255, 255, 255, 0);
 
 EthernetServer server(5213);
@@ -48,7 +48,11 @@ char *buffiter;
 char *retPackage = buff;
 
 WebSocketProtocol::WPFrameInfo retframeInfo;//={.opcode = 1, .isMasking = 0, .isFinal = 1 };
+int LEFTPIN = 2;
+int RIGHTPIN = 3;
 void setup() {
+  pinMode(LEFTPIN,OUTPUT);
+  pinMode(RIGHTPIN,OUTPUT);
   Ethernet.begin(mac, ip, gateway, subnet);
   server.begin();
   Serial.begin(57600);
@@ -63,9 +67,7 @@ byte LiveClient = 0;
 
 boolean LEFT_ACT = false;
 boolean RIGHT_ACT = false;
-int LEFTPIN = 11;
 
-int RIGHTPIN = 12;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
 void timerX() {
