@@ -183,7 +183,7 @@ class G2HOT extends React.Component{
   }
 
   onResize(width,height){
-    log.info("G2HOT resize>>",width,height);
+    log.debug("G2HOT resize>>",width,height);
     this.state.G2Chart.changeSize(width,height);
 
   }
@@ -223,7 +223,7 @@ class G2LINE extends React.Component{
   }
 
   onResize(width,height){
-    log.info("G2HOT resize>>",width,height);
+    log.debug("G2HOT resize>>",width,height);
     this.state.G2Chart.changeSize(width,height);
 
   }
@@ -337,7 +337,7 @@ class APP_INSP_MODE extends React.Component{
 
     let MenuSet=[];
     let menu_height="HXA";//auto
-    log.info("CanvasComponent render");
+    log.debug("CanvasComponent render");
       MenuSet=[
           <BASE_COM.IconButton
               dict={EC_zh_TW}

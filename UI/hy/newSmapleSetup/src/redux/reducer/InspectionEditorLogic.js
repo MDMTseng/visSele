@@ -31,12 +31,12 @@ export class InspectionEditorLogic
 
   SetSig360Report(sig360report)
   {
-    log.info(sig360report);
+    log.debug(sig360report);
     this.sig360report=sig360report;
   }
   SetInspectionReport(inspreport)
   {
-    log.info(inspreport);
+    log.debug(inspreport);
     this.inspreport=inspreport;
   }
   
@@ -136,7 +136,7 @@ export class InspectionEditorLogic
 
     let setupTarget=this.sig360report.reports[0];
     
-    log.info(setupTarget);
+    log.debug(setupTarget);
     let id=100000;
     let signature_id = id;
     this.inherentShapeList.push({
@@ -218,7 +218,7 @@ export class InspectionEditorLogic
       if( id!== undefined)
       {
         pre_shape_idx = this.FindShapeIdx( id );
-        log.info("SETShape>",pre_shape_idx);
+        log.debug("SETShape>",pre_shape_idx);
         if(pre_shape_idx!=undefined)
         {
           pre_shape = this.shapeList[pre_shape_idx];
@@ -240,7 +240,7 @@ export class InspectionEditorLogic
     //If the id is in the inherentShapeList Exit, no change is allowed
     if(ishapeIdx!=undefined)
     {
-      log.info("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
+      log.error("Error:Shape id:"+id+" name:"+shape_obj.name+" is in inherentShapeList which is not changeable.");
       return null;
     }
 
@@ -252,7 +252,7 @@ export class InspectionEditorLogic
       //Check if the name in shape_obj exits in the list and duplicates with other shape in list(tmpIdx!=nameIdx)
       if(nameIdx!==undefined && tmpIdx!=nameIdx)
       {
-        log.info("Error:Shape id:"+id+" Duplicated shape name:"+shape_obj.name+" with idx:"+nameIdx+" ");
+        log.error("Error:Shape id:"+id+" Duplicated shape name:"+shape_obj.name+" with idx:"+nameIdx+" ");
         return null;
       }
       log.info("SETShape>",tmpIdx);
@@ -263,7 +263,7 @@ export class InspectionEditorLogic
       }
       else
       {
-        log.info("Error:Shape id:"+id+" doesn't exist in the list....");
+        log.error("Error:Shape id:"+id+" doesn't exist in the list....");
         return null;
       }
     }
@@ -272,7 +272,7 @@ export class InspectionEditorLogic
       id = this.shapeCount;
     }
 
-    log.info("FoundShape>",pre_shape);
+    //log.info("FoundShape>",pre_shape);
     let shape=null;
     if(pre_shape == null)
     {

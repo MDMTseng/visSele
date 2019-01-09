@@ -463,13 +463,13 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
   if(action.type==="ATBundle")
   {
     action.data.reduce((state,action)=> StateReducer(state,action),newState);
-    log.info(newState);
+    log.debug(newState);
     return newState;
   }
   else
   {
     newState = StateReducer(newState,action);
-    log.info(newState);
+    log.debug(newState);
     return newState;
   }
 
