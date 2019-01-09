@@ -39,6 +39,7 @@ export default {
         margin:"出貨公差",
         submargin1:"生產公差",
         docheck:"必要判定",
+        quadrant:"量測象限"
     }
 
 

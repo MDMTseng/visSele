@@ -25,6 +25,10 @@ import { LocaleProvider } from 'antd';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
+import * as log from 'loglevel';
+
+log.setLevel("INFO");
+log.getLogger("InspectionEditorLogic.js").setLevel("ERROR");
 
 
 let zhTW = Object.assign({},zh_TW,EC_zh_TW);
@@ -52,7 +56,7 @@ class APPMain extends React.Component{
   render() {
     let UI=[];
 
-    console.log("APPMain render",this.props);
+    log.debug("APPMain render",this.props);
     if(this.props.c_state==null)return null;
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
@@ -113,17 +117,17 @@ class APPMasterX extends React.Component{
         //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
       },
       onmessage:(evt,ws_obj)=>{
-        console.log("onMessage:::");
-        console.log(evt);
+        log.debug("onMessage:::");
+        log.debug(evt);
         if (!(evt.data instanceof ArrayBuffer)) return;
 
         let header = BPG_Protocol.raw2header(evt);
-        console.log("onMessage:["+header.type+"]");
+        log.debug("onMessage:["+header.type+"]");
         switch(header.type )
         {
           case "HR":
           {
-            //console.log(this.props.WS_CH);
+            //log.info(this.props.WS_CH);
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
             break;
           }
@@ -131,8 +135,8 @@ class APPMasterX extends React.Component{
           case "SS":
           {
             let SS =BPG_Protocol.raw2obj(evt);
-            // console.log(header);
-            console.log("Session start:",SS);
+            // log.debug(header);
+            log.debug("Session start:",SS);
             this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
             break;
           }
@@ -147,21 +151,21 @@ class APPMasterX extends React.Component{
           case "RP":
           {
             let report =BPG_Protocol.raw2obj(evt);
-            console.log(header.type,report);
+            log.debug(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
             break;
           }
           case "DF":
           {
             let report =BPG_Protocol.raw2obj(evt);
-            console.log(header.type,report);
+            log.debug(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_Define_File_Update(report.data));
             break;
           }
           case "SG":
           {
             let report =BPG_Protocol.raw2obj(evt);
-            console.log(header.type,report);
+            log.debug(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_SIG360_Report_Update(report.data));
             break;
           }
@@ -194,7 +198,7 @@ class APPMasterX extends React.Component{
     
   }
   render() {
-    console.log("APPMasterX render",this.props);
+    log.debug("APPMasterX render",this.props);
 
     let xstateG;
     if (this.props.stateMachine!=null) {
@@ -257,7 +261,7 @@ const mapStateToProps_APPMasterX = (state) => {
 }
 const APPMasterX_rdx = connect(mapStateToProps_APPMasterX,mapDispatchToProps_APPMasterX)(APPMasterX);
 
-console.log(zhTW);
+log.info(zhTW);
 ReactDOM.render(
 
   <Provider store={StoreX}>

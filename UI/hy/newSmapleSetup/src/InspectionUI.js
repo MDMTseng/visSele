@@ -13,6 +13,8 @@ import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import G2 from '@antv/g2';
 import DataSet from '@antv/data-set';
+import * as logX from 'loglevel';
+let log = logX.getLogger(__filename);
 
 
 class G2HOT extends React.Component{
@@ -63,7 +65,7 @@ class G2HOT extends React.Component{
   }
 
   onResize(width,height){
-    console.log("G2HOT resize>>",width,height);
+    log.info("G2HOT resize>>",width,height);
     this.state.G2Chart.changeSize(width,height);
 
   }
@@ -103,7 +105,7 @@ class G2LINE extends React.Component{
   }
 
   onResize(width,height){
-    console.log("G2HOT resize>>",width,height);
+    log.info("G2HOT resize>>",width,height);
     this.state.G2Chart.changeSize(width,height);
 
   }
@@ -125,7 +127,7 @@ class CanvasComponent extends React.Component {
   }
 
   ec_canvas_EmitEvent(event){
-    console.log(event);
+    log.info(event);
   }
   componentDidMount() {
     this.ec_canvas=new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
@@ -139,7 +141,7 @@ class CanvasComponent extends React.Component {
   updateCanvas(ec_state,props=this.props) {
     if(this.ec_canvas  !== undefined)
     {
-      console.log("updateCanvas>>",props.edit_info);
+      log.info("updateCanvas>>",props.edit_info);
       if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
@@ -160,11 +162,6 @@ class CanvasComponent extends React.Component {
     }
   }
   componentWillUpdate(nextProps, nextState) {
-    
-    console.log("CanvasComponent render",nextProps.c_state);
-    //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
-    
-    console.log(nextProps.edit_info.inherentShapeList);
     this.updateCanvas(nextProps.c_state,nextProps);
   }
 
@@ -180,7 +177,7 @@ class CanvasComponent extends React.Component {
 
 
 const mapStateToProps_CanvasComponent = (state) => {
-  //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
+  //log.info("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
     edit_info: state.UIData.edit_info,
@@ -221,7 +218,7 @@ class APP_INSP_MODE extends React.Component{
 
     let MenuSet=[];
     let menu_height="HXA";//auto
-    console.log("CanvasComponent render");
+    log.info("CanvasComponent render");
       MenuSet=[
           <BASE_COM.IconButton
               dict={EC_zh_TW}
