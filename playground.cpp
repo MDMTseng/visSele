@@ -1,4 +1,5 @@
 #include <playground.h>
+#include "MorphEngine.h"
 
 static int markPointExtraction(acvImage &labelImg, vector<acv_LabeledData> &ldData,vector<struct idx_dist>& ret_idxList);
 struct idx_dist{
@@ -96,7 +97,59 @@ void calcCameraCalibration()
         LOGV("%d+%d>>%f",idxList[i].idx1,idxList[i].idx2,idxList[i].dist);
     }
 
+    MorphEngine moEng;
+    int XFactor = 10;
+    moEng.RESET(10*XFactor,labelImg.GetWidth(),labelImg.GetHeight());
 
+
+
+
+    int drawMargin=80;
+    int iterCount=100;
+    int skipF=6;
+    float lRate_start=1*skipF*skipF;
+    float lRate_end=0.7*skipF*skipF;
+    for(int iter=0;iter<iterCount;iter++)
+    {
+        if(iter%1==0)moEng.regularization(0.4);
+        int offsetX=iter%skipF;
+        int offsetY=(iter/skipF)%skipF;
+        float traningRate=lRate_start+(lRate_end-lRate_start)*iter/iterCount;
+
+
+        
+        float meanDist=0;
+        for(int i=0;i<idxList.size();i++)
+        {
+            acv_LabeledData d1= ldData[idxList[i].idx1];
+            acv_LabeledData d2= ldData[idxList[i].idx2];
+            
+            acv_XY mapPt1,mapPt2;
+            moEng.Mapping(d1.Center,&mapPt1);
+            moEng.Mapping(d2.Center,&mapPt2);
+            idxList[i].dist = acvDistance(d1.Center,d2.Center);
+            meanDist+= idxList[i].dist;
+        }
+        meanDist/=idxList.size();
+
+
+        
+        for(int i=0;i<idxList.size();i++)
+        {
+            acv_LabeledData d1= ldData[idxList[i].idx1];
+            acv_LabeledData d2= ldData[idxList[i].idx2];
+            
+            acv_XY mapPt1,mapPt2;
+            moEng.Mapping(d1.Center,&mapPt1);
+            moEng.Mapping(d2.Center,&mapPt2);
+
+
+
+            LOGV("%d+%d>>%f",idxList[i].idx1,idxList[i].idx2,idxList[i].dist);
+        }
+
+        moEng.optimization(0.7);
+    }
     /*for(int i=0;i<labelImg.GetHeight();i++)
     {
         for(int j=0;j<labelImg.GetWidth();j++)
