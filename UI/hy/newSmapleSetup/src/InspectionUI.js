@@ -30,10 +30,15 @@ class AirControl extends React.Component {
     this.state = {
       loading: false,
       iconLoading: false,
-      websocketAir:undefined
+      websocketAir:undefined,
+      websocketAirTime:10
     }
   }
 
+  blowAir_TEST(){
+    console.log("[WS]/cue/TEST");
+    this.state.websocketAir.send("/cue/TEST");
+  }
   blowAir_LEFTa(){
     console.log("[WS]/cue/LEFT");
     this.state.websocketAir.send("/cue/LEFT");
@@ -42,6 +47,23 @@ class AirControl extends React.Component {
     console.log("[WS]/cue/RIGHT");
     this.state.websocketAir.send("/cue/RIGHT");
   }
+  blowAir_TIMEUpdate()
+  {
+    this.setState(Object.assign({},this.state));
+    this.state.websocketAir.send("/cue/TIME/"+this.state.websocketAirTime);
+  }
+  blowAir_TIMEADD(val){
+    this.state.websocketAirTime+=val;
+    console.log("[WS]/cue/RIGHT");
+    this.blowAir_TIMEUpdate();
+  }
+  blowAir_TIMESUB(val){
+    this.state.websocketAirTime-=val;
+    if(this.state.websocketAirTime<10)
+      this.state.websocketAirTime=10;
+    console.log("[WS]/cue/RIGHT");
+    this.blowAir_TIMEUpdate();
+  }
   enterLoading()  {
     this.setState({ loading: true });
   }
@@ -49,6 +71,12 @@ class AirControl extends React.Component {
   {
     console.log("[init][componentWillMount]");
     this.websocketConnect();
+  }
+
+  componentWillUnmount()
+  {
+    this.state.websocketAir.close();
+    this.state.websocketAir=undefined;
   }
 
   websocketConnect(url="ws://169.254.170.123:5213")
@@ -70,7 +98,16 @@ class AirControl extends React.Component {
   enterIconLoading() {
     this.setState({ iconLoading: true });
   }
+  componentWillReceiveProps(nextProps){
 
+    log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
+    if(nextProps.checkResult2AirAction.ver==this.props.checkResult2AirAction.ver)return;
+    if(nextProps.checkResult2AirAction.direction==="left")
+      this.blowAir_LEFTa();
+    else if(nextProps.checkResult2AirAction.direction==="right")
+      this.blowAir_RIGHTa();
+
+  }
   render() {
     return (
         <div>
@@ -81,6 +118,22 @@ class AirControl extends React.Component {
         <Button type="primary" size="large" onClick={()=>this.blowAir_RIGHTa()}>
           RIGHT
         </Button>
+          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMEADD(10)}>
+            ADD 10ms={this.state.websocketAirTime}
+          </Button>
+          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMESUB(10)}>
+            SUB 10ms={this.state.websocketAirTime}
+          </Button>
+          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMEADD(100)}>
+            ADD 100ms={this.state.websocketAirTime}
+          </Button>
+          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMESUB(100)}>
+            SUB 100ms={this.state.websocketAirTime}
+          </Button>
+          <Button type="primary" size="large" onClick={()=>this.blowAir_TEST()}>
+            TEST MODE
+          </Button>
+
         <br />
         <Button type="primary" loading={this.state.loading} onClick={this.enterLoading}>
           Click me!
@@ -332,9 +385,19 @@ class APP_INSP_MODE extends React.Component{
   constructor(props) {
     super(props);
     this.ec_canvas = null;
+    this.checkResult2AirAction={direction:"none",ver:0};
   }
   render() {
 
+    log.error(this.props.inspectionReport)
+    if(this.props.inspectionReport!==undefined)
+    {
+
+      let inspReportGroup= this.props.inspectionReport.reports[0];
+      let inspectionReport = inspReportGroup.reports;
+      if(inspectionReport.length>0)
+        this.checkResult2AirAction = {direction:"right",ver:this.checkResult2AirAction.ver+1};
+    }
     let MenuSet=[];
     let menu_height="HXA";//auto
     log.debug("CanvasComponent render");
@@ -345,7 +408,9 @@ class APP_INSP_MODE extends React.Component{
           addClass="layout black vbox"
           text="<" onClick={this.props.ACT_EXIT}/>
         ,
-        <AirControl />
+        <AirControl
+          checkResult2AirAction={this.checkResult2AirAction}
+        />
         // ,<BASE_COM.IconButton
         //     dict={EC_zh_TW}
         //     key="LEFT"
@@ -361,11 +426,10 @@ class APP_INSP_MODE extends React.Component{
 
       ];
 
-
+    //<G2HOT className={"height4 width12"} data={this.props.reportStatisticState.measure1}/>
     return(
     <div className="HXF">
-      <G2HOT className={"height4 width12"} data={this.props.reportStatisticState.measure1}/>
-      <CanvasComponent_rdx addClass="layout width12 height8" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
+      <CanvasComponent_rdx addClass="layout width12 height12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
         
       <$CSSTG transitionName = "fadeIn">
         <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
@@ -396,7 +460,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     c_state: state.UIData.c_state,
     shape_list:state.UIData.edit_info.list,
     WS_ID:state.UIData.WS_ID,
-    reportStatisticState:state.UIData.edit_info.reportStatisticState
+    inspectionReport:state.UIData.edit_info.inspReport,
+    //reportStatisticState:state.UIData.edit_info.reportStatisticState
 
   }
 };
