@@ -53,6 +53,7 @@ int RIGHTPIN = 3;
 void setup() {
   pinMode(LEFTPIN,OUTPUT);
   pinMode(RIGHTPIN,OUTPUT);
+  
   Ethernet.begin(mac, ip, gateway, subnet);
   server.begin();
   Serial.begin(57600);
@@ -67,9 +68,11 @@ byte LiveClient = 0;
 
 boolean LEFT_ACT = false;
 boolean RIGHT_ACT = false;
-
+boolean TEST_ACT=false;
+boolean TEST_ACT_TOGGLE=false;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
+int airTime=10;
 void timerX() {
   currentMillis = millis();
   if (previousMillis == 0) {
@@ -78,16 +81,23 @@ void timerX() {
     digitalWrite(RIGHTPIN, RIGHT_ACT);
     DEBUG_print(LEFT_ACT);
     DEBUG_print(RIGHT_ACT);
-
-  } else if (currentMillis - previousMillis >= 1000) {
+  }else if (currentMillis - previousMillis >= airTime) {
     previousMillis = currentMillis;
     //    PORTB ^= _BV(PB5);
-    LEFT_ACT = false;
-    RIGHT_ACT = false;
-    digitalWrite(LEFTPIN, LEFT_ACT);
-    digitalWrite(RIGHTPIN, RIGHT_ACT);
-    DEBUG_print(LEFT_ACT);
-    DEBUG_print(RIGHT_ACT);
+    if(TEST_ACT){
+      TEST_ACT_TOGGLE=!TEST_ACT_TOGGLE;
+      LEFT_ACT = !TEST_ACT_TOGGLE;
+      RIGHT_ACT = TEST_ACT_TOGGLE;
+      digitalWrite(LEFTPIN, LEFT_ACT);
+      digitalWrite(RIGHTPIN, RIGHT_ACT);
+    }else{
+      LEFT_ACT = false;
+      RIGHT_ACT = false;
+      digitalWrite(LEFTPIN, LEFT_ACT);
+      digitalWrite(RIGHTPIN, RIGHT_ACT);
+      DEBUG_print(LEFT_ACT);
+      DEBUG_print(RIGHT_ACT);
+    }
   }
 
 }
@@ -116,7 +126,21 @@ void RECVWebSocketPkg(WebSocketProtocol* WProt, EthernetClient* client, char* RE
     MessageL = sprintf(dataBuff, "[O]RECV:/cue/RIGHT");
     RIGHT_ACT = true;
     previousMillis = 0;
+  }else if (strcmp(RECVData, "/cue/TEST") == 0) {
+    MessageL = sprintf(dataBuff, "[O]RECV:/cue/TEST");
+    TEST_ACT = !TEST_ACT;
+    previousMillis = 0;
+  }else if (strncmp(RECVData, "/cue/TIME/",9) == 0) {
+    char *airTimeStr = RECVData+10;
+    char tmp[10];
+    strncpy(tmp,airTimeStr,10);
+    int t=(int)atoi(tmp);//1690byte
+    if(t>0&&t<9999)
+      airTime=t;
+    MessageL = sprintf(dataBuff,"airTime:%d,t=%d,s=%s", airTime,t,tmp);
   }
+
+  
   if (MessageL == 0)
   {
     MessageL = sprintf(dataBuff, "RECV:EMPTY");

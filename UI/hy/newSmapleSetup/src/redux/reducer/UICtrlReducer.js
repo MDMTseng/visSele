@@ -25,7 +25,7 @@ function Default_UICtrlReducer()
       defModelPath:"data/cache_def",
       _obj:new InspectionEditorLogic(),
       defInfo:[],
-      inspReport:[],
+      inspReport:undefined,
       reportStatisticState:{},
       sig360report:[],
       img:null,
@@ -131,7 +131,7 @@ function StateReducer(newState,action)
 
           let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
 
-        {
+          {
             let measure1 = newState.edit_info.reportStatisticState.measure1;
             if(measure1 === undefined)measure1=[];
             measure1.push({

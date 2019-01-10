@@ -1035,8 +1035,8 @@ int main(int argc, char** argv)
       
   }
   #endif
-  calcCameraCalibration();
-  return -1;
+  /*calcCameraCalibration();
+  return -1;*/
 
 
   signal(SIGINT, sigroutine);

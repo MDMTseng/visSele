@@ -143,9 +143,9 @@ void calcCameraCalibration()
             moEng.Mapping(d1.Center,&mapPt1);
             moEng.Mapping(d2.Center,&mapPt2);
 
-
-
             LOGV("%d+%d>>%f",idxList[i].idx1,idxList[i].idx2,idxList[i].dist);
+            
+            //moEng.Mapping_adjust(adjposition,adjVec);
         }
 
         moEng.optimization(0.7);
