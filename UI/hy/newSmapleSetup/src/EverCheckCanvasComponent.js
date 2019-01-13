@@ -1039,7 +1039,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     {
       unitConvert={
         unit:"mm",//"μm",
-        mult:mmpp
+        mult:mmpp*1.00624
       }
     } 
     else
