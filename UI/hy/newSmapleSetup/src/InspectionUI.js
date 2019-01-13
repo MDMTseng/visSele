@@ -14,6 +14,11 @@ import EC_zh_TW from "./languages/zh_TW";
 import G2 from '@antv/g2';
 import DataSet from '@antv/data-set';
 
+import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
+
+
+import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+
 import * as logX from 'loglevel';
 let log = logX.getLogger(__filename);
 
@@ -31,7 +36,8 @@ class AirControl extends React.Component {
       loading: false,
       iconLoading: false,
       websocketAir:undefined,
-      websocketAirTime:10
+      websocketAirTime:10,
+      STOP:false
     }
   }
 
@@ -51,6 +57,11 @@ class AirControl extends React.Component {
   {
     this.setState(Object.assign({},this.state));
     this.state.websocketAir.send("/cue/TIME/"+this.state.websocketAirTime);
+  }
+  blowAir_StartStop()
+  {
+    this.state.STOP = !this.state.STOP;
+    this.setState(Object.assign({},this.state));
   }
   blowAir_TIMEADD(val){
     this.state.websocketAirTime+=val;
@@ -96,11 +107,11 @@ class AirControl extends React.Component {
   }
 
   enterIconLoading() {
-    this.setState({ iconLoading: true });
+    //this.setState({ iconLoading: true });
   }
   componentWillReceiveProps(nextProps){
-
-    log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
+    if(this.state.STOP)return;
+   //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
     if(nextProps.checkResult2AirAction.ver==this.props.checkResult2AirAction.ver)return;
     if(nextProps.checkResult2AirAction.direction==="left")
       this.blowAir_LEFTa();
@@ -132,6 +143,9 @@ class AirControl extends React.Component {
           </Button>
           <Button type="primary" size="large" onClick={()=>this.blowAir_TEST()}>
             TEST MODE
+          </Button>
+          <Button type="primary" size="large" onClick={()=>this.blowAir_StartStop()}>
+            STOP:{this.state.STOP+""}
           </Button>
 
         <br />
@@ -389,14 +403,57 @@ class APP_INSP_MODE extends React.Component{
   }
   render() {
 
-    log.error(this.props.inspectionReport)
+    //log.error(this.props.inspectionReport)
     if(this.props.inspectionReport!==undefined)
     {
 
       let inspReportGroup= this.props.inspectionReport.reports[0];
       let inspectionReport = inspReportGroup.reports;
       if(inspectionReport.length>0)
-        this.checkResult2AirAction = {direction:"right",ver:this.checkResult2AirAction.ver+1};
+      {
+        let groupResult = inspectionReport.map((single_rep)=>{
+
+          let judgeReports = single_rep.judgeReports;
+          let ret_status = judgeReports.reduce((res,obj)=>{
+            if(res==INSPECTION_STATUS.NA)return res;
+            if(res==INSPECTION_STATUS.FAILURE)
+            {
+              if(obj.status==INSPECTION_STATUS.NA)return INSPECTION_STATUS.NA;
+              return res;
+            }
+            return obj.status;
+          }
+          ,INSPECTION_STATUS.SUCCESS);
+          return ret_status;
+        });
+        
+        let ret_status = groupResult.reduce((gresult,result)=>{
+          if(gresult === undefined)
+            return result;
+
+          if(gresult ==INSPECTION_STATUS.NA || result == INSPECTION_STATUS.NA)
+            return INSPECTION_STATUS.NA;
+
+          if(gresult!=result)
+            return INSPECTION_STATUS.NA;
+          
+          return result;
+        },undefined);
+
+        if(ret_status == INSPECTION_STATUS.SUCCESS)
+        {
+          this.checkResult2AirAction = {direction:"right",ver:this.checkResult2AirAction.ver+1};
+        }
+        else if(ret_status == INSPECTION_STATUS.FAILURE)
+        {
+          this.checkResult2AirAction = {direction:"left",ver:this.checkResult2AirAction.ver+1};
+        }
+        else
+        {
+          log.error("result NA...");
+        }
+        //
+      }
     }
     let MenuSet=[];
     let menu_height="HXA";//auto
