@@ -153,11 +153,16 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
     acvComponentLabeling(&binary_img);
     acvLabeledRegionInfo(&binary_img, &ldData);
+
+    LOGV(">>>%d",ldData[1].area);
+    int CLimit = (img->GetWidth()+img->GetHeight()-2)*2;
+    if(ldData[1].area>CLimit*102/100)return 0;//If the cage connects something link to the edge we don't want to do the inspection
     if(ldData.size()<=1)
     {
       return 0;
     }
     ldData[1].area = 0;
+
 
     //Delete the object that has less than certain amount of area on ldData
     //acvRemoveRegionLessThan(img, &ldData, 120);
