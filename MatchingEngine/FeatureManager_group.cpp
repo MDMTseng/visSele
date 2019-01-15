@@ -154,9 +154,11 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
     acvComponentLabeling(&binary_img);
     acvLabeledRegionInfo(&binary_img, &ldData);
 
-    LOGV(">>>%d",ldData[1].area);
     int CLimit = (img->GetWidth()+img->GetHeight()-2)*2;
-    if(ldData[1].area>CLimit*102/100)return 0;//If the cage connects something link to the edge we don't want to do the inspection
+    CLimit = CLimit*1200/100;
+
+    LOGV(">fence limit>>%d,%d",ldData[1].area,CLimit);
+    if(ldData[1].area>CLimit)return 0;//If the cage connects something link to the edge we don't want to do the inspection
     if(ldData.size()<=1)
     {
       return 0;

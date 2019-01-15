@@ -648,6 +648,13 @@ acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2)
   return vec1;
 }
 
+acv_XY acvVecSub(acv_XY vec1,acv_XY vec2)
+{
+  vec1.X-=vec2.X;
+  vec1.Y-=vec2.Y;
+  return vec1;
+}
+
 acv_XY acvVecMult(acv_XY vec1,float mult)
 {
   vec1.X*=mult;

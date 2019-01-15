@@ -127,6 +127,7 @@ float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormal(acv_XY vec);
 acv_XY acvVecNormalize(acv_XY vec);
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2);
+acv_XY acvVecSub(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecMult(acv_XY vec1,float mult);
 acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
 acv_XY acvRotation(float sine,float cosine,acv_XY input);

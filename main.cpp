@@ -934,6 +934,10 @@ int mainLoop(bool realCamera=false)
 {
   /**/
   
+  printf(">>>>>\n" );
+  websocket =new DatCH_WebSocket(4090);
+  printf(">>>>>\n" );
+  
   BPG_protocol = new DatCH_BPG1_0(NULL);
   DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
   CameraLayer *camera = getCamera(realCamera);
@@ -944,9 +948,6 @@ int mainLoop(bool realCamera=false)
 
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
-  printf(">>>>>\n" );
-  websocket =new DatCH_WebSocket(4090);
-  printf(">>>>>\n" );
   acvImage *test1 = new acvImage();
 
   websocket->SetEventCallBack(&callbk_obj,websocket);
@@ -1035,8 +1036,8 @@ int main(int argc, char** argv)
       
   }
   #endif
-  /*calcCameraCalibration();
-  return -1;*/
+  calcCameraCalibration();
+  return 0;
 
 
   signal(SIGINT, sigroutine);
