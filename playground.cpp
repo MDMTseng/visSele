@@ -104,9 +104,96 @@ void findMeanVec(vector<acv_LabeledData> &ldData, vector<struct idx_dist> &idxLi
     {
         ret_vec[j].X = ret_vec[2*j].X/ret_vec[2*j+1].X;
         ret_vec[j].Y = ret_vec[2*j].Y/ret_vec[2*j+1].X;
+        ret_vec[j]=acvVecNormalize(ret_vec[j]);
     }
     ret_vec.resize(ret_vec.size()/2);
 }
+
+
+float raditialDistortion_R(float R, float K1,float K2)
+{
+    float Rsq=R*R;
+    return 1+K1*Rsq+K2*Rsq*Rsq;
+}
+
+acv_XY imgXY2PatternCoord(
+    acv_XY imgXY, 
+    vector<vector<int>> &boardCoordIdx, vector<acv_LabeledData> &ldData, 
+    vector<acv_XY> &mainVec, float meanDist)
+{
+    int idxS=-1;
+    for(int i=0;i<boardCoordIdx.size();i++)
+    {
+        for(int j=0;i<boardCoordIdx[i].size();j++)
+        {
+            if(boardCoordIdx[i][j]!=-1)
+            {
+                idxS = boardCoordIdx[i][j];
+                break;
+            }
+        }
+        if(idxS!=-1)break;
+    }
+
+    /*
+    [v11 v12][cX]=[iX= v11*cX + v12*cY]
+    [v21 v22][cY] [iY= v21*cX + v22*cY]
+    */
+    acv_XY v0 = mainVec[0];
+    acv_XY v1 = mainVec[1];
+    /*
+    [v0.X v1.X]
+    [v0.Y v1.Y]
+    */
+
+    float det = ( v0.X*v1.Y - v0.Y*v1.X );
+    /*
+    [ v1.Y -v1.X]
+    [-v0.Y  v0.X]
+    */
+    acv_XY iv0 = acvVecMult({X: v1.Y,Y:-v0.Y},1/det/meanDist);
+    acv_XY iv1 = acvVecMult({X:-v1.X,Y: v0.X},1/det/meanDist);
+    
+    acv_XY pX;
+    for(int i=0;i<3;i++)
+    {
+        acv_XY imgVec = acvVecSub(imgXY,ldData[idxS].Center); 
+        //LOGV("%f %f  ",imgVec.X,imgVec.Y);
+
+        pX=acvVecAdd(acvVecMult(iv0,imgVec.X),acvVecMult(iv1,imgVec.Y));
+        pX=acvVecAdd(pX,ldData[idxS].LTBound);
+        //LOGV("%f %f   %f %f   %f %f",iv0.X,iv0.Y, iv1.X,iv1.Y, pX.X,pX.Y);
+        //LOGV("%f,%f",pX.X,pX.Y);
+        int tmpY = round(pX.Y);
+        int tmpX = round(pX.X);
+        if(tmpY<0 || tmpY>=boardCoordIdx.size() || 
+        tmpX<0 || tmpX>=boardCoordIdx[0].size() )
+        {
+            pX.X=-1;
+            pX.Y=-1;
+            break;
+        }
+        int new_idxS = boardCoordIdx[tmpY][tmpX];
+        LOGV("%d,%d",idxS,new_idxS);
+        if(new_idxS==-1){
+            pX.X=-1;
+            pX.Y=-1;
+            break;
+        }
+        
+        if(new_idxS==idxS)break;
+        idxS = new_idxS;
+    }
+
+    if(pX.X==-1)return pX;
+    //boardCoordIdx[floor(pX.Y)][floor(pX.X)];
+
+    //refine
+    
+
+    return pX;
+}
+
 
 void calcCameraCalibration()
 {
@@ -339,7 +426,7 @@ void calcCameraCalibration()
     }
 
 
-    {
+    if(0){
 
         for(int i=0;i<boardCoord.size();i++)
         {
@@ -366,6 +453,72 @@ void calcCameraCalibration()
 
 
     }
+    acv_XY dCenter={X:(float)((labelImg.GetWidth()-1)/2),Y:(float)((labelImg.GetHeight()-1)/2)}; 
+    acv_XY coordCenter=imgXY2PatternCoord(dCenter, boardCoord, ldData, ret_vec_mean, distMean);
+
+    int _X=round(coordCenter.X);
+    int _Y=round(coordCenter.Y);
+    int _idx = boardCoord[_Y][_X];
+    LOGV("%f,%f",dCenter.X,dCenter.Y);
+    LOGV("%f,%f",ldData[_idx].Center.X,ldData[_idx].Center.Y);
+    dCenter = ldData[_idx].Center;
+
+
+    float K1=0,K2=0;
+    float alpha=0.00000001;
+    for(int i=0;i<100;i++)
+    {
+        
+        int idx1 = (rand()%(ldData.size()-2))+2;
+        int idx2 = (rand()%(ldData.size()-2))+2;
+        while(ldData[idx1].LTBound.X !=ldData[idx1].LTBound.X )
+            idx1 = (rand()%(ldData.size()-2))+2;
+        while(ldData[idx2].LTBound.X !=ldData[idx2].LTBound.X )
+            idx2 = (rand()%(ldData.size()-2))+2;
+
+        acv_XY v1 = acvVecSub(ldData[idx1].Center,dCenter);
+        acv_XY v2 = acvVecSub(ldData[idx2].Center,dCenter);
+        float R1 = acvDistance(dCenter,ldData[idx1].Center);
+        float R2 = acvDistance(dCenter,ldData[idx2].Center);
+        float R1_ = raditialDistortion_R(R1, K1,K2);
+        float R2_ = raditialDistortion_R(R2, K1,K2);
+        v1 = acvVecMult(v1,R1_/R1);
+        v2 = acvVecMult(v2,R2_/R2);
+        acv_XY p12 = acvVecMult(acvVecAdd(v2,v1),0.5);
+        float tarL12 = acvDistance(ldData[idx1].LTBound,ldData[idx2].LTBound)*distMean;
+        float curL12 = acvDistance(v1,v2);
+
+
+        int idx3 = (rand()%(ldData.size()-2))+2;
+        int idx4 = (rand()%(ldData.size()-2))+2;
+        while(ldData[idx3].LTBound.X !=ldData[idx3].LTBound.X )
+            idx3 = (rand()%(ldData.size()-2))+2;
+        while(ldData[idx4].LTBound.X !=ldData[idx4].LTBound.X )
+            idx4 = (rand()%(ldData.size()-2))+2;
+
+        acv_XY v3 = acvVecSub(ldData[idx3].Center,dCenter);
+        acv_XY v4 = acvVecSub(ldData[idx4].Center,dCenter);
+        acv_XY p34 = acvVecMult(acvVecAdd(v3,v4),0.5);
+        float R3 = acvDistance(dCenter,ldData[idx3].Center);
+        float R4 = acvDistance(dCenter,ldData[idx4].Center);
+        float R3_ = raditialDistortion_R(R3, K1,K2);
+        float R4_ = raditialDistortion_R(R4, K1,K2);
+        v3 = acvVecMult(v3,R3_/R3);
+        v4 = acvVecMult(v4,R4_/R4);
+        float tarL34 = acvDistance(ldData[idx3].LTBound,ldData[idx4].LTBound)*distMean;
+        float curL34 = acvDistance(v3,v2);
+
+        float cur_ratio = curL12/curL34;
+        float tar_ratio = tarL12/tarL34;
+        float midR = cur_ratio/tar_ratio*(R1+R2+R3+R4)/4;
+        float midR_sq=midR*midR;
+        //K1+=alpha*midR_sq;
+        //K2-=alpha*midR_sq*midR_sq;
+        LOGV("%f,%f,%f: %f,%f",cur_ratio,tar_ratio,cur_ratio/tar_ratio,K1,K2);
+    }
+
+
+
 
     return;
 }
