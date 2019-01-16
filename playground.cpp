@@ -236,12 +236,19 @@ acv_XY imgXY2PatternCoord(
 }
 
 
+typedef struct radialDistortionParam{
+    acv_XY calibrationCenter;
+    double RNormalFactor;
+    double K0,K1,K2;
+    double mmpp;
+}radialDistortionParam;
+
 void calcCameraCalibration()
 {
     
     acvImage calibImage;
     acvLoadBitmapFile(&calibImage,"data/calibration_Img/rectSmall.bmp");
-
+    double blockDist_mm=0.5;
     
     acvImage labelImg;
     acvImage tmp;
@@ -497,18 +504,22 @@ void calcCameraCalibration()
 
     }
     acv_XY dCenter={X:(float)((labelImg.GetWidth()-1)/2),Y:(float)((labelImg.GetHeight()-1)/2)}; 
-    dCenter.X+=4;
-   // dCenter.Y-=1;
+    //dCenter.X+=5;
+    //dCenter.Y-=4;
     acv_XY coordCenter=imgXY2PatternCoord(dCenter, boardCoord, ldData, ret_vec_mean, distMean);
 
     double K0=1,K1=0,K2=0;
-    float alpha=1;
+    float alpha=0.9;
     
     double dK0=0,dK1=0,dK2=0,aveErr=0,maxErr=0;
-    int RNorm = labelImg.GetWidth();
-    for(int i=0;i<1500;i++)
+    float RNorm = labelImg.GetWidth()/2.0;
+
+    acv_XY vec_offset;
+    float Y_scale = 1/1.000;
+    for(int i=0;i<1000;i++)
     {
         aveErr=maxErr = dK0=dK1=dK2=0;
+        vec_offset=acvVecMult(vec_offset,0);
         int count =0;
         for(int j=2;j<ldData.size();j++)
         {
@@ -516,7 +527,8 @@ void calcCameraCalibration()
 
 
             acv_XY v1 = acvVecSub(ldData[idx1].Center,dCenter);
-            float R1 = acvDistance(dCenter,ldData[idx1].Center)/RNorm;
+            v1.Y*=Y_scale;
+            float R1 = hypot(v1.Y,v1.X)/RNorm;
 
                 
             float R1_sq=R1*R1;
@@ -525,13 +537,11 @@ void calcCameraCalibration()
             float R_coord = acvDistance(ldData[idx1].LTBound,coordCenter)*distMean/RNorm;
             if(R_coord==0 || R_coord!=R_coord)continue;
 
-
-
-            
-            
             float error = R_coord-R1*mult;
+            vec_offset=acvVecAdd(vec_offset, acvVecMult(v1,error));
+            
             float error_sq = error*error;
-            //if(i>800 && sqrt(error_sq)*RNorm>0.8)continue;
+            if(i>800 && sqrt(error_sq)*RNorm>0.8)continue;
 
 
             if(maxErr<error_sq)maxErr = error_sq;
@@ -547,16 +557,22 @@ void calcCameraCalibration()
         dK1/=count;
         dK2/=count;
         aveErr/=count;
+        vec_offset = acvVecMult(vec_offset,RNorm/count);
+
+
         //K2-=alpha*midR_sq*midR_sq;
 
         {
             
             //LOGV("%f,  %f, %f  %f ",R_coord,R,R1,tar_K1);
-            if(i%100==0)
-                LOGV("dK %g %g %g aveE:%f,%f",K0,K1,K2,sqrt(aveErr)*RNorm,sqrt(maxErr)*RNorm);
+            if(i%10==0)
+            {
+                LOGV("K: %g %g %g aveE:%f,%f",K0,K1,K2,sqrt(aveErr)*RNorm,sqrt(maxErr)*RNorm);
+                LOGV("Center: %g,%g RNorm:%f",vec_offset.X,vec_offset.Y,RNorm);
+            }
             K0+=dK0*alpha;
-            K1+=dK1*alpha*100;
-            K2+=dK2*alpha/10;
+            K1+=dK1*alpha;
+            K2+=dK2*alpha/100;
             //alpha+=0.1*(0.5-alpha);
             //LOGV("K:%f %g %g",K0,K1,K2);
             //K2+=dK2;
@@ -564,18 +580,62 @@ void calcCameraCalibration()
     }
 
 
+    radialDistortionParam rDP;
+    rDP.calibrationCenter = dCenter;
+    rDP.RNormalFactor = RNorm;
+    rDP.K0=K0;
+    rDP.K1=K1;
+    rDP.K2=K2;
+
+    for(int i=2;i<ldData.size();i++)//Find left top
+    {   
+        
+        acv_XY v1 = acvVecSub(ldData[i].Center,rDP.calibrationCenter);
+        v1.Y*=Y_scale;
+        float R1 = hypot(v1.Y,v1.X)/rDP.RNormalFactor;
+        float R1_sq=R1*R1;
+
+        float mult = rDP.K0+rDP.K1*R1_sq+rDP.K2*R1_sq*R1_sq;
+        acv_XY new_Center = acvVecMult(v1,mult);
+        new_Center=acvVecAdd(new_Center,dCenter);
+        ldData[i].RBBound = new_Center;
+
+    }
+    distMean = 0;
+    for(int i=0;i<idxList.size();i++)
+    {
+        idxList[i].dist = acvDistance(ldData[idxList[i].idx1].RBBound,ldData[idxList[i].idx2].RBBound);
+        distMean+=idxList[i].dist;
+    }
+    distMean/=idxList.size();
+
+    rDP.mmpp=blockDist_mm/distMean;
+    float sigma=0;
+
+    for(int i=0;i<idxList.size();i++)
+    {
+        float dist = idxList[i].dist;
+        float tmp = distMean-dist;
+        sigma+=tmp*tmp;
+    }
+    sigma=sqrt(sigma/idxList.size());
+
+    LOGV("distMean:%f sigma:%g ,mmpp:%f",distMean,sigma,rDP.mmpp);
+
+
     if(0){//debug image
 
         for(int i=2;i<ldData.size();i++)//Find left top
         {   
             
-            acv_XY v1 = acvVecSub(ldData[i].Center,dCenter);
-            float R1 = acvDistance(dCenter,ldData[i].Center)/RNorm;
+            acv_XY v1 = acvVecSub(ldData[i].Center,rDP.calibrationCenter);
+            v1.Y*=Y_scale;
+            float R1 = hypot(v1.Y,v1.X)/rDP.RNormalFactor;
             float R1_sq=R1*R1;
             
-            float R_coord = acvDistance(ldData[i].LTBound,coordCenter)*distMean/RNorm;
+            float R_coord = acvDistance(ldData[i].LTBound,coordCenter)*distMean/rDP.RNormalFactor;
 
-            float mult = K0+K1*R1_sq+K2*R1_sq*R1_sq;
+            float mult = rDP.K0+rDP.K1*R1_sq+rDP.K2*R1_sq*R1_sq;
             acv_XY new_Center = acvVecMult(v1,mult);
             new_Center=acvVecAdd(new_Center,dCenter);
 
@@ -589,8 +649,9 @@ void calcCameraCalibration()
             new_Center.X, new_Center.Y, 
             255, 0,0,4);
 
-            if(sqrt(error_sq)*RNorm>1)
-                acvDrawCrossX(&calibImage,new_Center.X,new_Center.Y,4,255,0 , 255);
+            float width = sqrt(error_sq)*RNorm;
+            if(width>1.0)
+                acvDrawCrossX(&calibImage,new_Center.X,new_Center.Y,14,255,0 , 255,10*(width-1)+2);
             //calibImage.CVector[Y][3*X+1]=0;
             //calibImage.CVector[Y][3*X+2]=255;
         }
