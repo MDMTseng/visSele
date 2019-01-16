@@ -202,7 +202,7 @@ acv_XY imgXY2PatternCoord(
             break;
         }
         int new_idxS = boardCoordIdx[tmpY][tmpX];
-        LOGV("%d,%d",idxS,new_idxS);
+        //LOGV("%d,%d",idxS,new_idxS);
         if(new_idxS==-1){
             pX.X=-1;
             pX.Y=-1;
@@ -240,7 +240,7 @@ void calcCameraCalibration()
 {
     
     acvImage calibImage;
-    acvLoadBitmapFile(&calibImage,"data/calibration_Img/rectSmallS.bmp");
+    acvLoadBitmapFile(&calibImage,"data/calibration_Img/rectSmall.bmp");
 
     
     acvImage labelImg;
@@ -253,10 +253,11 @@ void calcCameraCalibration()
     
     acvCloneImage(&calibImage,&labelImg, -1);
 
-    acvBoxFilter(&tmp,&labelImg,3);
-    acvBoxFilter(&tmp,&labelImg,3);
-    acvBoxFilter(&tmp,&labelImg,3);
-    acvBoxFilter(&tmp,&labelImg,3);
+
+    acvBoxFilter(&tmp,&labelImg,6);
+    acvBoxFilter(&tmp,&labelImg,6);
+    acvBoxFilter(&tmp,&labelImg,6);
+    acvBoxFilter(&tmp,&labelImg,6);
     acvCloneImage(&labelImg,&tmp, -1);
     acvThreshold(&labelImg, 90);
 
@@ -273,6 +274,7 @@ void calcCameraCalibration()
     acvComponentLabeling(&labelImg);
     acvLabeledRegionInfo(&labelImg, &ldData);
     
+    //acvSaveBitmapFile("data/labelImg.bmp",&labelImg);
     vector<struct idx_dist> idxList;
     markPointExtraction(labelImg, ldData,idxList);   
 
@@ -295,7 +297,7 @@ void calcCameraCalibration()
     LOGV("distMean:%f",distMean);
 
 
-    /*for(int i=2;i<ldData.size();i++) //refine the center
+    for(int i=2;i<ldData.size();i++) //refine the center
     {
         
         acv_XY cr = LableCenterRefine(calibImage,ldData[i],distMean);
@@ -303,9 +305,9 @@ void calcCameraCalibration()
         int X = round(cr.X);
         int Y = round(cr.Y);
         //acvDrawCrossX(&calibImage,X,Y, 4);
-        calibImage.CVector[Y][3*X+1]=0;
-        calibImage.CVector[Y][3*X+2]=255;
-    }*/
+        //calibImage.CVector[Y][3*X+1]=0;
+        //calibImage.CVector[Y][3*X+2]=255;
+    }
     
 
     for(int i=0;i<idxList.size();i++)//update distance
@@ -495,65 +497,105 @@ void calcCameraCalibration()
 
     }
     acv_XY dCenter={X:(float)((labelImg.GetWidth()-1)/2),Y:(float)((labelImg.GetHeight()-1)/2)}; 
+    dCenter.X+=4;
+   // dCenter.Y-=1;
     acv_XY coordCenter=imgXY2PatternCoord(dCenter, boardCoord, ldData, ret_vec_mean, distMean);
 
     double K0=1,K1=0,K2=0;
-    float alpha=1.5;
-    float xSum=0;
-    float xSumC=0;
+    float alpha=1;
     
-    double dK0=0,dK1=0,dK2=0,aveErr=0;
-    int updateBatch=100;
+    double dK0=0,dK1=0,dK2=0,aveErr=0,maxErr=0;
     int RNorm = labelImg.GetWidth();
-    for(int i=0;i<100000;i++)
+    for(int i=0;i<1500;i++)
     {
-        int idx1 = (rand()%(ldData.size()-2))+2;
-        while(ldData[idx1].LTBound.X !=ldData[idx1].LTBound.X )
-            idx1 = (rand()%(ldData.size()-2))+2;
+        aveErr=maxErr = dK0=dK1=dK2=0;
+        int count =0;
+        for(int j=2;j<ldData.size();j++)
+        {
+            int idx1 = j;
 
 
-        acv_XY v1 = acvVecSub(ldData[idx1].Center,dCenter);
-        float R1 = acvDistance(dCenter,ldData[idx1].Center)/RNorm;
+            acv_XY v1 = acvVecSub(ldData[idx1].Center,dCenter);
+            float R1 = acvDistance(dCenter,ldData[idx1].Center)/RNorm;
+
+                
+            float R1_sq=R1*R1;
+            float mult = K0+K1*R1_sq+K2*R1_sq*R1_sq;
+            
+            float R_coord = acvDistance(ldData[idx1].LTBound,coordCenter)*distMean/RNorm;
+            if(R_coord==0 || R_coord!=R_coord)continue;
+
+
 
             
-        float R1_sq=R1*R1;
-        float mult = K0+K1*R1_sq+K2*R1_sq*R1_sq;
-        float R_coord = acvDistance(ldData[idx1].LTBound,coordCenter)*distMean/RNorm;
-        if(R_coord==0)continue;
+            
+            float error = R_coord-R1*mult;
+            float error_sq = error*error;
+            //if(i>800 && sqrt(error_sq)*RNorm>0.8)continue;
 
-        
-        /*float tar_K1 = ((R_coord/R1-1)/(R1*R1));
 
-        float R=R1*mult;
-        xSum+=tar_K1;
-        xSumC++;
-        K1=tar_K1;*/
-        float error = R_coord-R1*mult;
-        float error_sq = error*error;
-        if(aveErr<error_sq)aveErr = error_sq;
-        dK0+=(error)/updateBatch;
-        dK1+=(error)*R1_sq/updateBatch;
-        dK2+=(error)*R1_sq*R1_sq/updateBatch;
+            if(maxErr<error_sq)maxErr = error_sq;
+            aveErr+=error_sq;
+            dK0+=(error);
+            dK1+=(error)*R1_sq;
+            dK2+=(error)*R1_sq*R1_sq;
+
+            count++;
         
+        }
+        dK0/=count;
+        dK1/=count;
+        dK2/=count;
+        aveErr/=count;
         //K2-=alpha*midR_sq*midR_sq;
 
-        if(i%updateBatch==0)
         {
             
             //LOGV("%f,  %f, %f  %f ",R_coord,R,R1,tar_K1);
-            LOGV("dK %g %g %g aveE:%f",dK0,dK1,dK2,sqrt(aveErr)*RNorm);
+            if(i%100==0)
+                LOGV("dK %g %g %g aveE:%f,%f",K0,K1,K2,sqrt(aveErr)*RNorm,sqrt(maxErr)*RNorm);
             K0+=dK0*alpha;
             K1+=dK1*alpha*100;
             K2+=dK2*alpha/10;
-            alpha+=0.1*(0.1-alpha);
+            //alpha+=0.1*(0.5-alpha);
             //LOGV("K:%f %g %g",K0,K1,K2);
             //K2+=dK2;
-            aveErr = dK0=dK1=dK2=0;
         }
     }
 
 
+    if(0){//debug image
 
+        for(int i=2;i<ldData.size();i++)//Find left top
+        {   
+            
+            acv_XY v1 = acvVecSub(ldData[i].Center,dCenter);
+            float R1 = acvDistance(dCenter,ldData[i].Center)/RNorm;
+            float R1_sq=R1*R1;
+            
+            float R_coord = acvDistance(ldData[i].LTBound,coordCenter)*distMean/RNorm;
+
+            float mult = K0+K1*R1_sq+K2*R1_sq*R1_sq;
+            acv_XY new_Center = acvVecMult(v1,mult);
+            new_Center=acvVecAdd(new_Center,dCenter);
+
+
+        
+            float error = R_coord-R1*mult;
+            float error_sq = error*error;
+
+            acvDrawLine(&calibImage, 
+            ldData[i].Center.X, ldData[i].Center.Y, 
+            new_Center.X, new_Center.Y, 
+            255, 0,0,4);
+
+            if(sqrt(error_sq)*RNorm>1)
+                acvDrawCrossX(&calibImage,new_Center.X,new_Center.Y,4,255,0 , 255);
+            //calibImage.CVector[Y][3*X+1]=0;
+            //calibImage.CVector[Y][3*X+2]=255;
+        }
+        acvSaveBitmapFile("data/calibImage.bmp",&calibImage);
+    }
 
     return;
 }
@@ -639,15 +681,18 @@ static acv_XY LableCenterRefine(acvImage &grayLevelImage,acv_LabeledData ldat,in
     float rangeCenter=((float)range-1)/2;
     SPoint.X-=rangeCenter;
     SPoint.Y-=rangeCenter;
-    acv_XY center={0};
 
     int max,min=1000,mean=0;
     for(int i=0;i<range;i++)
     {
+        int Y = round(SPoint.Y)+i;
+        if(Y<0)continue;
+        if(Y>=grayLevelImage.GetHeight())break;
         for(int j=0;j<range;j++)
         {
-            int Y = round(SPoint.Y)+i;
-            int X = round(SPoint.X)+i;
+            int X = round(SPoint.X)+j;
+            if(X<0)continue;
+            if(X>=grayLevelImage.GetWidth())break;
             int intensity = grayLevelImage.CVector[Y][X*3];
             if(max<intensity)max=intensity;
             if(min>intensity)min=intensity;
@@ -655,18 +700,24 @@ static acv_XY LableCenterRefine(acvImage &grayLevelImage,acv_LabeledData ldat,in
         }
     }
     mean/=range*range;
+    min=mean;
+    max=mean+20;
 
 
-
+    acv_XY center={0};
     float  ptCount=0;
     for(int i=0;i<range;i++)
     {
         float weightY=1;//rangeCenter-i;
+        int Y = round(SPoint.Y)+i;
+        if(Y<0)continue;
+        if(Y>=grayLevelImage.GetHeight())break;
         for(int j=0;j<range;j++)
         {
             
-            int Y = round(SPoint.Y)+i;
             int X = round(SPoint.X)+j;
+            if(X<0)continue;
+            if(X>=grayLevelImage.GetWidth())break;
 
             float weightX=1;//rangeCenter-j;
             float weight = weightX*weightY;
@@ -675,6 +726,7 @@ static acv_XY LableCenterRefine(acvImage &grayLevelImage,acv_LabeledData ldat,in
             float intensity = grayLevelImage.CVector[Y][X*3];
 
             float convInternsity = 1 - (intensity-min)/(max-min);
+            if(convInternsity<0)convInternsity=0;
             float w = weight*convInternsity;
             
             center.X+=w*X;
@@ -696,16 +748,17 @@ static int markPointExtraction(acvImage &labelImg, vector<acv_LabeledData> &ldDa
     
     const int topListN=4;
     struct idx_dist idist[topListN];
-    ret_idxList.resize(0);
+    
     float targetArea =  findMedianSize(ldData);
 
-    //LOGV("targetArea:%f",targetArea);
-    float range_Area=2;
+    LOGV("targetArea:%f",targetArea);
+    float range_Area=3;
     for(int i=2;i<ldData.size();i++) 
     {
         auto ldat = ldData[i];
         if(ldat.area< targetArea/range_Area|| ldat.area>targetArea*range_Area )
         {
+            LOGV("targetArea[%d]:%d",i,ldat.area);
             ldData[i].area = -1;
         }
     }
