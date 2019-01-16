@@ -126,6 +126,7 @@ float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
 float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormal(acv_XY vec);
 acv_XY acvVecNormalize(acv_XY vec);
+acv_XY acvVecInterp(acv_XY vec1,acv_XY vec2,float alpha);
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecSub(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecMult(acv_XY vec1,float mult);

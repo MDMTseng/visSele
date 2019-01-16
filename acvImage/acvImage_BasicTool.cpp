@@ -641,6 +641,13 @@ acv_XY acvVecNormalize(acv_XY vec)
 }
 
 
+acv_XY acvVecInterp(acv_XY vec1,acv_XY vec2,float alpha)
+{
+    vec1.X+=alpha*(vec2.X-vec1.X);
+    vec1.Y+=alpha*(vec2.Y-vec1.Y);
+    return vec1;
+}
+
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2)
 {
   vec1.X+=vec2.X;
