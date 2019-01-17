@@ -628,7 +628,7 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
-  ImgInspection(me,test1,buff,repeatTime);
+  ImgInspection(me,test1,buff,param_default,repeatTime);
   return 0;
 
 }
@@ -646,7 +646,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     return;
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
-  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,1);
+  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,param_default,1);
 
   /*LOGE( "lock");
   mainThreadLock.lock();*/
@@ -1056,7 +1056,7 @@ int main(int argc, char** argv)
   #endif
 
 
-  if(1){
+  if(0){
 
     acvRadialDistortionParam param = calcCameraCalibration("data/calibration_Img/calib2.bmp");
     
@@ -1071,5 +1071,5 @@ int main(int argc, char** argv)
   test1_buff = new acvImage();
   test1_buff->ReSize(100,100);
   imgSrc_X = new DatCH_BMP(new acvImage());
-  return mainLoop(true);
+  return mainLoop(false);
 }
