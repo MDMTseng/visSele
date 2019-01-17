@@ -471,7 +471,7 @@ int acvLoadBitmapFile(acvImage *img,const  char *filename)
         return -1;
     }
     int biBitCount = bitmapInfoHeader.biBitCount;
-    if (biBitCount != 32 && biBitCount != 24)
+    if (biBitCount != 32 && biBitCount != 24 && biBitCount != 8)
     {
         delete (bitmap);
         return -1;
@@ -495,9 +495,18 @@ int acvLoadBitmapFile(acvImage *img,const  char *filename)
 
         for (int j = img->GetROIOffsetX(); j < img->GetWidth(); j++)
         {
-            ImLine[0] = bmp_ptr[0];
-            ImLine[1] = bmp_ptr[1];
-            ImLine[2] = bmp_ptr[2];
+            if(BpP==1)
+            {
+                ImLine[0] = bmp_ptr[0];
+                ImLine[1] = bmp_ptr[0];
+                ImLine[2] = bmp_ptr[0];
+            }
+            else
+            {
+                ImLine[0] = bmp_ptr[0];
+                ImLine[1] = bmp_ptr[1];
+                ImLine[2] = bmp_ptr[2];
+            }
             ImLine += 3;
             bmp_ptr += BpP;
         }
