@@ -92,6 +92,25 @@ typedef struct acv_LineFit
 
 
 
+typedef struct acvRadialDistortionParam{
+    acv_XY calibrationCenter;
+    double RNormalFactor;
+    double K0,K1,K2;
+	//r = r_image/RNormalFactor
+    //C1 = K1/K0
+    //C2 = K2/K0
+	//r"=r'/K0
+    //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+    //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+    //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+    //r/r'=r*K0/r"
+    double mmpp;
+}acvRadialDistortionParam;
+
+
+acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam param);//Forward
+acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param);//Backward
+
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);

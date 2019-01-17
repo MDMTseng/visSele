@@ -2,8 +2,5 @@
 #define PLAYGROUND_HPP
 
 #include <main.h>
-
-
-void calcCameraCalibration();
-
+acvRadialDistortionParam calcCameraCalibration(char *path);
 #endif

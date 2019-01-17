@@ -845,3 +845,33 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
 {
   return acvFitLine(pts, NULL, ptsL,line, ret_sigma);
 }
+
+acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam param)
+{
+
+    acv_XY v1 = acvVecSub(distortedVec,param.calibrationCenter);
+    float R = hypot(v1.Y,v1.X)/param.RNormalFactor;
+
+        
+    float R_sq=R*R;
+    float mult = param.K0+param.K1*R_sq+param.K2*R_sq*R_sq;
+
+    return acvVecAdd(acvVecMult(v1,mult),param.calibrationCenter);
+}
+acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param)//Still not perfect, there has some error for the conversion
+{
+
+    acv_XY v1 = acvVecSub(Vec,param.calibrationCenter);
+    float R1 = hypot(v1.Y,v1.X)/param.RNormalFactor;
+    float R2 = R1/param.K0;
+
+    double C1=param.K1/param.K0;
+    double C2=param.K2/param.K0;
+
+        
+    float R2_sq=R2*R2;
+    float mult = 1-C1*R2_sq+(3*C1*C2-C2)*R2_sq*R2_sq;//r/r"
+    float mult2 = mult/param.K0;//K0* r/r"
+
+    return acvVecAdd(acvVecMult(v1,mult2),param.calibrationCenter);
+}

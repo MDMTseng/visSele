@@ -24,6 +24,24 @@ DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 
+//main.cpp  1061 main:v K: 0.989226 0.0101698 0.000896734 RNormalFactor:1296
+//main.cpp  1062 main:v Center: 1295,971
+acvRadialDistortionParam param_default={
+    calibrationCenter:{1295,971},
+    RNormalFactor:1296,
+    K0:0.989226,
+    K1:0.0101698,
+    K2:0.000896734,
+    //r = r_image/RNormalFactor
+    //C1 = K1/K0
+    //C2 = K2/K0
+    //r"=r'/K0
+    //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+    //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+    //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+    //r/r'=r*K0/r"
+    mmpp:1
+};
 
 acvImage cacheImage;
 
@@ -584,7 +602,7 @@ int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 }
 
 
-int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime)
+int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,acvRadialDistortionParam param,int repeatTime)
 {
 
   LOGI("================================");
@@ -1036,8 +1054,16 @@ int main(int argc, char** argv)
       
   }
   #endif
-  calcCameraCalibration();
-  return 0;
+
+
+  if(1){
+
+    acvRadialDistortionParam param = calcCameraCalibration("data/calibration_Img/calib2.bmp");
+    
+    LOGV("K: %g %g %g RNormalFactor:%g",param.K0,param.K1,param.K2,param.RNormalFactor);
+    LOGV("Center: %g,%g",param.calibrationCenter.X,param.calibrationCenter.Y);
+    return 0;
+  }
 
 
   signal(SIGINT, sigroutine);

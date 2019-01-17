@@ -236,20 +236,38 @@ acv_XY imgXY2PatternCoord(
 }
 
 
-typedef struct radialDistortionParam{
-    acv_XY calibrationCenter;
-    double RNormalFactor;
-    double K0,K1,K2;
-    double mmpp;
-}radialDistortionParam;
-
-void calcCameraCalibration()
+acvRadialDistortionParam calcCameraCalibration(char *path)
 {
     
     acvImage calibImage;
-    acvLoadBitmapFile(&calibImage,"data/calibration_Img/rectSmall.bmp");
-    double blockDist_mm=0.5;
+    int ret_val = acvLoadBitmapFile(&calibImage,path);
+
+    acvRadialDistortionParam retParam;
     
+    {
+        float NAN_ = 0/0;
+        acvRadialDistortionParam errParam={
+            calibrationCenter:{0,0},
+            RNormalFactor:NAN_,
+            K0:NAN_,
+            K1:NAN_,
+            K2:NAN_,
+            //r = r_image/RNormalFactor
+            //C1 = K1/K0
+            //C2 = K2/K0
+            //r"=r'/K0
+            //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+            //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+            //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+            //r/r'=r*K0/r"
+            mmpp:NAN_
+        };
+        retParam = errParam;
+    }
+    if(ret_val!=0)
+    {
+        return retParam;
+    }
     acvImage labelImg;
     acvImage tmp;
     acvImage tmp2;
@@ -343,7 +361,7 @@ void calcCameraCalibration()
     if(ret_vec_mean.size()!=2)
     {
         LOGV("Main vector has to be size in 2 but we found %d",ret_vec_mean.size());
-        return;
+        return retParam;
     }
 
 
@@ -516,13 +534,15 @@ void calcCameraCalibration()
 
     acv_XY vec_offset;
     float Y_scale = 1/1.000;
-    for(int i=0;i<1000;i++)
+    int iterNum=10000;
+    for(int i=0;i<iterNum;i++)
     {
         aveErr=maxErr = dK0=dK1=dK2=0;
         vec_offset=acvVecMult(vec_offset,0);
         int count =0;
         for(int j=2;j<ldData.size();j++)
         {
+            if(ldData[i].area<0)continue;
             int idx1 = j;
 
 
@@ -541,7 +561,11 @@ void calcCameraCalibration()
             vec_offset=acvVecAdd(vec_offset, acvVecMult(v1,error));
             
             float error_sq = error*error;
-            if(i>800 && sqrt(error_sq)*RNorm>0.8)continue;
+            /*if(i>800 && sqrt(error_sq)*RNorm>0.8)
+            {
+                ldData[i].area=-1;
+                continue;
+            }*/
 
 
             if(maxErr<error_sq)maxErr = error_sq;
@@ -565,14 +589,14 @@ void calcCameraCalibration()
         {
             
             //LOGV("%f,  %f, %f  %f ",R_coord,R,R1,tar_K1);
-            if(i%10==0)
+            if(i%1000==0 || i==iterNum-1)
             {
                 LOGV("K: %g %g %g aveE:%f,%f",K0,K1,K2,sqrt(aveErr)*RNorm,sqrt(maxErr)*RNorm);
                 LOGV("Center: %g,%g RNorm:%f",vec_offset.X,vec_offset.Y,RNorm);
             }
             K0+=dK0*alpha;
             K1+=dK1*alpha;
-            K2+=dK2*alpha/100;
+            K2+=dK2*alpha/20;
             //alpha+=0.1*(0.5-alpha);
             //LOGV("K:%f %g %g",K0,K1,K2);
             //K2+=dK2;
@@ -580,27 +604,35 @@ void calcCameraCalibration()
     }
 
 
-    radialDistortionParam rDP;
+    acvRadialDistortionParam rDP;
     rDP.calibrationCenter = dCenter;
     rDP.RNormalFactor = RNorm;
     rDP.K0=K0;
     rDP.K1=K1;
     rDP.K2=K2;
 
+    
+    LOGD("K: %g %g %g RNormalFactor:%g",K0,K1,K2,rDP.RNormalFactor);
+    LOGD("Center: %g,%g",rDP.calibrationCenter.X,rDP.calibrationCenter.Y);
+
     for(int i=2;i<ldData.size();i++)//Find left top
     {   
         
-        acv_XY v1 = acvVecSub(ldData[i].Center,rDP.calibrationCenter);
-        v1.Y*=Y_scale;
-        float R1 = hypot(v1.Y,v1.X)/rDP.RNormalFactor;
-        float R1_sq=R1*R1;
+        acv_XY calibP = acvVecRadialDistortionRemove(ldData[i].Center,rDP);
+        ldData[i].RBBound = calibP;
+        acv_XY calibP_rec = acvVecRadialDistortionApply(ldData[i].RBBound,rDP);
 
-        float mult = rDP.K0+rDP.K1*R1_sq+rDP.K2*R1_sq*R1_sq;
-        acv_XY new_Center = acvVecMult(v1,mult);
-        new_Center=acvVecAdd(new_Center,dCenter);
-        ldData[i].RBBound = new_Center;
+        /*LOGV("%f",acvDistance(calibP_rec,ldData[i].Center));
+
+        acvDrawLine(&labelImg, 
+                    ldData[i].Center.X, ldData[i].Center.Y, 
+                    calibP_rec.X, calibP_rec.Y, 
+                    0, 255,0,1);*/
 
     }
+
+
+
     distMean = 0;
     for(int i=0;i<idxList.size();i++)
     {
@@ -609,6 +641,8 @@ void calcCameraCalibration()
     }
     distMean/=idxList.size();
 
+    double blockDist_mm=0.5;
+    
     rDP.mmpp=blockDist_mm/distMean;
     float sigma=0;
 
@@ -620,7 +654,166 @@ void calcCameraCalibration()
     }
     sigma=sqrt(sigma/idxList.size());
 
-    LOGV("distMean:%f sigma:%g ,mmpp:%f",distMean,sigma,rDP.mmpp);
+    LOGD("distMean:%f sigma:%f",distMean,sigma);
+
+    // 0.989113 0.0106168 0.000557766
+    if(0){//Draw debug grid to check if the corrected dot is in the straight line
+
+        for(int i=0;i<boardCoord.size();i++)
+        {
+            int preIdx=-1;
+            int idx1 = boardCoord[i][0];
+            int idx2 = boardCoord[i][boardCoord[i].size()-1];
+            
+            acvDrawLine(&labelImg, 
+            ldData[idx1].RBBound.X, ldData[idx1].RBBound.Y, 
+            ldData[idx2].RBBound.X, ldData[idx2].RBBound.Y, 
+            0, 0,255,1);
+        }
+        
+        for(int j=0;j<boardCoord[0].size();j++)
+        {
+            int preIdx=-1;
+            int idx1 = boardCoord[0][j];
+            int idx2 = boardCoord[boardCoord.size()-1][j];
+            
+            acvDrawLine(&labelImg, 
+            ldData[idx1].RBBound.X, ldData[idx1].RBBound.Y, 
+            ldData[idx2].RBBound.X, ldData[idx2].RBBound.Y, 
+            0, 0,255,1);
+        }
+        for(int i=0;i<boardCoord.size();i++)
+        {
+            int preIdx=-1;
+            for(int j=0;j<boardCoord[i].size();j++)
+            {
+                int idx = boardCoord[i][j];
+                if(j>0 && (preIdx!=-1 && idx!=-1))
+                {
+
+                    /*acvDrawLine(&labelImg, 
+                    ldData[idx].Center.X, ldData[idx].Center.Y, 
+                    ldData[preIdx].Center.X, ldData[preIdx].Center.Y, 
+                    255, 0,0,1);*/
+
+                    
+                    /*acvDrawLine(&labelImg, 
+                    ldData[idx].RBBound.X, ldData[idx].RBBound.Y, 
+                    ldData[preIdx].RBBound.X, ldData[preIdx].RBBound.Y, 
+                    0, 255,0,1);*/
+                    int X = ldData[idx].RBBound.X;
+                    int Y = ldData[idx].RBBound.Y;
+                    labelImg.CVector[Y][3*X+0]=0;
+                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+2]=255;
+
+                    X+=1;
+                    labelImg.CVector[Y][3*X+0]=0;
+                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+2]=255;
+
+                    
+                    X-=1;
+                    Y+=1;
+                    labelImg.CVector[Y][3*X+0]=0;
+                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+2]=255;
+
+                    
+                    X+=1;
+                    labelImg.CVector[Y][3*X+0]=0;
+                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+2]=255;
+                }
+                preIdx= idx;
+
+            }
+        }
+        acvSaveBitmapFile("data/tmp.bmp",&labelImg);
+
+    }
+
+
+
+    if(0){//Check sigma value
+        
+
+        float distMean = 0;
+
+        for(int i=0;i<idxList.size();i++)
+        {
+            distMean+=acvDistance(ldData[idxList[i].idx1].RBBound,ldData[idxList[i].idx2].RBBound);
+        }
+        distMean/=idxList.size();
+
+
+        float sigma=0;
+        float maxError=0;
+        int sampleCount=100000;
+        for(int i=0;i<sampleCount;i++)
+        {
+            int idx1 = (rand()%(ldData.size()-2))+2;
+            int idx2 = (rand()%(ldData.size()-2))+2;
+
+            if(idx1==idx2 || ldData[idx1].LTBound.X!=ldData[idx1].LTBound.X || ldData[idx2].LTBound.X!=ldData[idx2].LTBound.X)
+            {
+                i--;
+                continue;
+            }
+            
+            if(ldData[idx1].area<0|| ldData[idx2].area<0)
+            {
+                i--;
+                continue;
+            }
+
+            float dist = acvDistance(ldData[idx1].RBBound,ldData[idx2].RBBound);
+            float dist_ = acvDistance(ldData[idx1].LTBound,ldData[idx2].LTBound);
+            float tmp = distMean-dist/dist_;
+            if(maxError<abs(tmp))
+            {
+                maxError=abs(tmp);
+                    
+            }
+            sigma+=tmp*tmp;
+        }
+        sigma=sqrt(sigma/sampleCount);
+
+        LOGV("distMean:%f sigma:%g maxError:%f",distMean,sigma,maxError);
+
+        for(int i=0;i<sampleCount;i++)
+        {
+            int idx1 = (rand()%(ldData.size()-2))+2;
+            int idx2 = (rand()%(ldData.size()-2))+2;
+
+            if(idx1==idx2 || ldData[idx1].LTBound.X!=ldData[idx1].LTBound.X || ldData[idx2].LTBound.X!=ldData[idx2].LTBound.X)
+            {
+                i--;
+                continue;
+            }
+            
+            if(ldData[idx1].area<0|| ldData[idx2].area<0)
+            {
+                i--;
+                continue;
+            }
+
+            float dist = acvDistance(ldData[idx1].RBBound,ldData[idx2].RBBound);
+            float dist_ = acvDistance(ldData[idx1].LTBound,ldData[idx2].LTBound);
+            float tmp = distMean-dist/dist_;
+            if(0.7<abs(tmp))
+            {
+                acvDrawLine(&calibImage, 
+                ldData[idx1].RBBound.X, ldData[idx1].RBBound.Y, 
+                ldData[idx2].RBBound.X, ldData[idx2].RBBound.Y, 
+                255, 0,0,4);
+                
+                LOGV("dist:%f",dist);
+            }
+        }
+
+    }
+
 
 
     if(0){//debug image
@@ -658,7 +851,7 @@ void calcCameraCalibration()
         acvSaveBitmapFile("data/calibImage.bmp",&calibImage);
     }
 
-    return;
+    return rDP;
 }
 
 /*
