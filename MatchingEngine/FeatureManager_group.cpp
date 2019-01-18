@@ -95,14 +95,20 @@ int FeatureManager_binary_processing_group::clearFeatureGroup()
 
 int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
 {
+  
+  char *str=JFetch_STRING(subFeature,"type");
+  if(str==NULL)
+  {
+    return -1;
+  }
   FeatureManager_binary_processing *newFeature=NULL;
-  if(FeatureManager_sig360_circle_line::check(subFeature))
+  if(strcmp(FeatureManager_sig360_circle_line::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_sig360_circle_line is the type...");
     newFeature = new FeatureManager_sig360_circle_line(cJSON_Print(subFeature));
   }
-  else if(FeatureManager_sig360_extractor::check(subFeature))
+  else if(strcmp(FeatureManager_sig360_extractor::GetFeatureTypeName(),str) == 0)
   {
     LOGI("FeatureManager_sig360_extractor is the type...");
     newFeature = new FeatureManager_sig360_extractor(cJSON_Print(subFeature));
@@ -119,22 +125,6 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   report.type = FeatureReport::binary_processing_group;
   return 0;
 }
-
-bool FeatureManager_binary_processing_group::check(cJSON *root)
-{
-    char *str;
-    LOGI("FeatureManager_binary_processing_group>>>");
-    if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-    {
-      return false;
-    }
-    if (strcmp("binary_processing_group",str) == 0)
-    {
-      return true;
-    }
-    return false;
-}
-
 
 int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
@@ -175,7 +165,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {
       binaryFeatureBundle[i]->setOriginalImage(img);
-      binaryFeatureBundle[i]->FeatureMatching(&binary_img,buff,ldData,dbg);
+      binaryFeatureBundle[i]->setLabeledData(&ldData);
+      binaryFeatureBundle[i]->setRadialDistortionParam(param);
+      binaryFeatureBundle[i]->FeatureMatching(&binary_img,buff,dbg);
     }
   return 0;
 }
@@ -221,14 +213,19 @@ int FeatureManager_group::clearFeatureGroup()
 
 int FeatureManager_group::addSubFeature(cJSON * subFeature)
 {
+  char *str=JFetch_STRING(subFeature,"type");
+  if(str==NULL)
+  {
+    return -1;
+  }
   FeatureManager *newFeature=NULL;
-  if(FeatureManager_group::check(subFeature))
+  if(strcmp(FeatureManager_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_group is the type...:%s",cJSON_Print(subFeature));
     newFeature = new FeatureManager_group(cJSON_Print(subFeature));
   }
-  else if(FeatureManager_binary_processing_group::check(subFeature))
+  else if(strcmp(FeatureManager_binary_processing_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_binary_processing_group is the type...");
@@ -243,25 +240,13 @@ int FeatureManager_group::addSubFeature(cJSON * subFeature)
   return 0;
 }
 
-bool FeatureManager_group::check(cJSON *root)
-{
-  char *str;
-  LOGI("FeatureManager_group>>>");
-  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-  {
-    return false;
-  }
-  if (strcmp("processing_group",str) == 0)
-  {
-    return true;
-  }
-  return false;
-}
 
 int FeatureManager_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
+    //featureBundle[i]->param;
+    featureBundle[i]->setRadialDistortionParam(param);
     featureBundle[i]->FeatureMatching(img,buff,dbg);
   }
   return 0;

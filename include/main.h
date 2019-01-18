@@ -11,6 +11,7 @@
 #include "cJSON.h"
 #include "logctrl.h"
 #include "FeatureManager.h"
+#include "FeatureManager_sig360_circle_line.h"
 #include "MatchingEngine.h"
 #include "common_lib.h"
 #include <stdexcept>

@@ -23,21 +23,6 @@ FeatureManager_sig360_circle_line::FeatureManager_sig360_circle_line(const char 
     throw std::invalid_argument( "Error:FeatureManager_sig360_circle_line failed... " );
 }
 
-bool FeatureManager_sig360_circle_line::check(cJSON *root)
-{
-  char *str;
-  LOGI("FeatureManager_sig360_circle_line>>>");
-  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-  {
-    return false;
-  }
-  if (strcmp("sig360_circle_line",str) == 0)
-  {
-    return true;
-  }
-  return false;
-}
-
 double* json_get_num(cJSON *root,char* path, char* dbg_str)
 {
   double *pnum;
@@ -772,10 +757,11 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
           acv_XY ret_point_opt;
           float edgeResponse;
-          if(EdgePointOpt(grayLevelImg,searchVec,rep.pt,&ret_point_opt,&edgeResponse)==0)
+          acv_XY tmp_pt = acvVecRadialDistortionApply(rep.pt,param);
+          if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
           {
-            LOGV("ret_point_opt:%f %f",ret_point_opt.X,ret_point_opt.Y);
-            rep.pt = ret_point_opt;
+            rep.pt = acvVecRadialDistortionRemove(ret_point_opt,param);
+            LOGV("ret_point_opt:%f %f",rep.pt.X,rep.pt.Y);
           }
           
 
@@ -1622,9 +1608,10 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
 }
 
 
-int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff_,vector<acv_LabeledData> &ldData,acvImage *dbg)
+int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff_,acvImage *dbg)
 {
-
+  
+  vector<acv_LabeledData> &ldData=*this->_ldData;
   int grid_size = 50;
   bool drawDBG_IMG = false;
   buff_->ReSize(img->GetWidth(),img->GetHeight());
@@ -1741,8 +1728,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
 
 
       edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+      
+      acvRadialDistortionParam param=this->param;
       extractLabeledContourDataToContourGrid(smoothedImg,labeledBuff,i,ldData[i],
-        grid_size,edge_grid,scanline_skip);
+        grid_size,edge_grid,scanline_skip,param);
       
       
       if(drawDBG_IMG)//Draw debug image(curve and straight line)
@@ -1867,7 +1856,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           line->initMatchingMargin,
           flip_f,
           s_intersectIdxs,s_points);
-
+        LOGV("getContourPointsWithInLineContour OK");
 
        
         if(1)
@@ -1878,10 +1867,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             float edgeResponse;
             
             acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt,&edgeResponse);
+
+            acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
+            int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
             if(ret_val==0)
             {
-              s_points[i].pt = ret_point_opt;
+              s_points[i].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
               s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               if(drawDBG_IMG)
@@ -2050,7 +2041,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
           minTor,
           s_intersectIdxs,s_points);
 
-        
         if(1)
         {
           for(int i=0;i<s_points.size();i++)
@@ -2058,11 +2048,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
             acv_XY ret_point_opt;
             float edgeResponse;
             acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            int ret_val = EdgePointOpt(smoothedImg,lineNormal,s_points[i].pt,&ret_point_opt,&edgeResponse);
+            acv_XY tmp_pt= acvVecRadialDistortionApply(s_points[i].pt,param);
+            int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
             s_points[i].edgeRsp=1;
             if(ret_val==0)
             {
-              s_points[i].pt = ret_point_opt;
+
+              s_points[i].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
               s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;

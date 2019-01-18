@@ -12,9 +12,11 @@ class FeatureManager {
   FeatureReport report;
   cJSON *root;
   virtual int parse_jobj()=0;
+  acvRadialDistortionParam param;
 public :
-  static bool check(cJSON *root){return false;};
+  //static bool check(cJSON *root);
   FeatureManager(const char *json_str){};
+  void setRadialDistortionParam(acvRadialDistortionParam param){this->param=param;};
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)=0;
   virtual const FeatureReport* GetReport(){return NULL;};

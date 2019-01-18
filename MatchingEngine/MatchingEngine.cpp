@@ -3,6 +3,7 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "FeatureManager_platingCheck.h"
 #include "logctrl.h"
+#include <common_lib.h>
 
 int MatchingEngine::ResetFeature()
 {
@@ -36,19 +37,25 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     return -1;
   }
 
-  if(FeatureManager_group::check(root))
+  char *str=JFetch_STRING(root,"type");
+  if(str==NULL)
+  {
+    return -1;
+  }
+
+  if(strcmp(FeatureManager_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_group is the type...");
     featureSet = new FeatureManager_group(json_str);
   }
-  else if(FeatureManager_binary_processing_group::check(root))
+  else if(strcmp(FeatureManager_binary_processing_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_binary_processing_group is the type...");
     featureSet = new FeatureManager_binary_processing_group(json_str);
   }
-  else if(FeatureManager_platingCheck::check(root))
+  else if(strcmp(FeatureManager_platingCheck::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_platingCheck is the type...");
@@ -56,6 +63,9 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
   }
   else
   {
+    /*char * jstr  = cJSON_Print(root);
+    LOGE("Cannot find a corresponding type:[%s]...",jstr);
+    delete jstr;*/
     LOGE("Cannot find a corresponding type...");
   }
   cJSON_Delete(root);
@@ -416,6 +426,7 @@ int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
+    featureBundle[i]->setRadialDistortionParam(param);
     featureBundle[i]->FeatureMatching(img,buff,dbg);
   }
 

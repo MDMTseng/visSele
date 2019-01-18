@@ -15,22 +15,6 @@ FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *jso
     throw std::invalid_argument( "Error:FeatureManager_sig360_extractor failed... " );
 }
 
-
-
-bool FeatureManager_sig360_extractor::check(cJSON *root)
-{
-  char *str;
-  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-  {
-    return false;
-  }
-  if (strcmp("sig360_extractor",str) == 0)
-  {
-    return true;
-  }
-  return false;
-}
-
 int FeatureManager_sig360_extractor::parse_jobj()
 {
   cJSON *subObj = cJSON_GetObjectItem(root,"type");
@@ -73,8 +57,10 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
+int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
 {
+  
+  vector<acv_LabeledData> &ldData=*this->_ldData;
   signature.resize(360);
   detectedCircles.resize(0);
   detectedLines.resize(0);

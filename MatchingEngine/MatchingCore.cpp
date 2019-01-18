@@ -639,7 +639,7 @@ void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg
 }
 
 
-void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int grid_size,ContourGrid &edge_grid,int scanline_skip)
+void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int grid_size,ContourGrid &edge_grid,int scanline_skip,acvRadialDistortionParam param)
 {
 
   edge_grid.RESET(grid_size,labeledImg->GetWidth(),labeledImg->GetHeight());
@@ -665,14 +665,18 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
       for (int j = sX; j < eX; j++,OriLine+=3)
       {
         cur_pix = OriLine[2];
+        
+        lableConv=(_24BitUnion*)OriLine;
+        if(edge_grid.tmpXYSeq.size()!=0)
+        {
+          edge_grid.tmpXYSeq.resize(0);
+        }
+
         if(pre_pix==255 && cur_pix == 0)//White to black
         {
-          lableConv=(_24BitUnion*)OriLine;
           if(lableConv->_3Byte.Num==label)
           {
-            edge_grid.tmpXYSeq.resize(0);
             acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,edge_grid.tmpXYSeq);
-            ContourFilter(grayLevelImg,edge_grid.tmpXYSeq,edge_grid);
           }
         }
         else if(pre_pix==0 && cur_pix == 255)//black to white
@@ -680,10 +684,19 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
           
           if(lableConv->_3Byte.Num==label)
           {
-            edge_grid.tmpXYSeq.resize(0);
             acvContourExtraction(labeledImg, j-1, i, 1, 128, 1, searchType_C_B2W,edge_grid.tmpXYSeq);
-            ContourFilter(grayLevelImg,edge_grid.tmpXYSeq,edge_grid);
           }
+        }
+
+        if(edge_grid.tmpXYSeq.size()!=0)
+        {
+          for(int i=0;i<edge_grid.tmpXYSeq.size();i++)
+          {
+            edge_grid.tmpXYSeq[i].pt=
+              acvVecRadialDistortionRemove(
+                edge_grid.tmpXYSeq[i].pt,param);
+          }
+          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq,edge_grid);
         }
 
         pre_pix= cur_pix;
