@@ -624,7 +624,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
         int count =0;
         for(int j=2;j<ldData.size();j++)
         {
-            if(ldData[i].area<0)continue;
+            if(ldData[j].area<0)continue;
             int idx1 = j;
 
 
