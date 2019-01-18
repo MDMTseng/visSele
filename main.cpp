@@ -306,15 +306,31 @@ public:
                 LOGE("No entry:\"deffile\" in it");
                 break;
               }
-
               char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
-              if (imgSrcPath == NULL)
+
+              acvImage *srcImg=NULL;
+              if(imgSrcPath!=NULL)
               {
-                LOGE("No entry:imgSrcPath in it");
-                break;
+                imgSrc_X->SetFileName(imgSrcPath);
+                srcImg = imgSrc_X->GetAcvImage();
               }
+
+              if(srcImg==NULL)
+              {
+                LOGV("Do camera Fetch..");
+                camera->TriggerMode(1);
+                LOGV("LOCK...");
+                mainThreadLock.lock();
+                camera->Trigger();
+                LOGV("LOCK BLOCK...");
+                mainThreadLock.lock();
+                
+                LOGV( "unlock");
+                mainThreadLock.unlock();
+                srcImg = camera->GetImg();
+              }
+
             
-              imgSrc_X->SetFileName(imgSrcPath);
 
 
               DatCH_Data datCH_BPG=
@@ -331,7 +347,7 @@ public:
                   char *jsonStr = ReadText(deffile);
                   if(jsonStr == NULL)
                   {
-                    LOGE("Cannot read defFile from:%s",jsonStr);
+                    LOGE("Cannot read defFile from:%s",deffile);
                     break;
                   }
                   LOGV("Read deffile:%s",deffile);
@@ -339,7 +355,7 @@ public:
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
 
-                  int ret = ImgInspection_JSONStr(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,jsonStr);
+                  int ret = ImgInspection_JSONStr(matchingEng,srcImg,test1_buff,1,jsonStr);
                   free(jsonStr);
                   //acvSaveBitmapFile("data/buff.bmp",test1_buff);
 

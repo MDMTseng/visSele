@@ -326,11 +326,7 @@ class APP_DEFCONF_MODE extends React.Component{
                 this.props.ACT_Report_Save(this.props.WS_ID,defModelPath+".json",enc.encode(JSON.stringify(report, null, 2)));
                 this.props.ACT_Cache_Img_Save(this.props.WS_ID,defModelPath+".bmp");
             }}/>,
-          /*<BASE_COM.Button
-            addClass="layout lred vbox"
-            key="TRIGGER"
-            text="TRIGGER" onClick={()=>{this.props.ACT_Trigger_Inspection({deffile:"data/test.ic.json",imgsrc:"data/test1.bmp"})}}/>,*/
-            <BASE_COM.IconButton
+          <BASE_COM.IconButton
                 iconType="export"
                 dict={EC_zh_TW}
             addClass="layout palatte-gold-7 vbox"
@@ -607,7 +603,6 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Shape_List_Reset:() => {dispatch(DefConfAct.Shape_List_Update([]))},
    
     ACT_Save_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Save_Def_Config(info))},
-    ACT_Trigger_Inspection: (info) => {dispatch(UIAct.EV_UI_EC_Trigger_Inspection(info))},
     ACT_Load_Def_Config: (info) => {dispatch(UIAct.EV_UI_EC_Load_Def_Config(info))},
    
     ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS))},

@@ -70,6 +70,16 @@ class APPMain extends React.Component{
         <BASE_COM.Button
           key="INSP MODE" addClass="lblue width4"
           text="INSP MODE" onClick={this.props.EV_UI_Insp_Mode}/>);
+
+      UI.push(
+        <BASE_COM.Button
+          key="CAM calib" addClass="lblue width4"
+          text="CAM calib" onClick={()=>{
+
+            this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{
+              deffile:"data/cameraCalibration.json"});
+                
+          }}/>);
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
     {
@@ -92,12 +102,15 @@ class APPMain extends React.Component{
 const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   return {
     EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
-    EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())}
+    EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
+    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
 }
 const mapStateToProps_APPMain = (state) => {
   return { 
-    c_state: state.UIData.c_state
+    c_state: state.UIData.c_state,
+    WS_CH:state.UIData.WS_CH,
+    WS_ID:state.UIData.WS_ID
   }
 }
 const APPMain_rdx = connect(mapStateToProps_APPMain,mapDispatchToProps_APPMain)(APPMain);
@@ -151,7 +164,7 @@ class APPMasterX extends React.Component{
           case "RP":
           {
             let report =BPG_Protocol.raw2obj(evt);
-            log.debug(header.type,report);
+            //log.info(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
             break;
           }

@@ -15,7 +15,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 {
     status ret_status;
     m.lock();
-    LOGV("............");
+    LOGV("Loading:%s",fileName.c_str());
     this->fileName = fileName;
     int ret = acvLoadBitmapFile(&img, fileName.c_str());
     if(ret!=0)

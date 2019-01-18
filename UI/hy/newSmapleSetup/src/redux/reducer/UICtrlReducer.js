@@ -92,15 +92,57 @@ function StateReducer(newState,action)
     case UISTS.SPLASH:
       newState.showSplash=true;
       return newState;
-    case UISTS.MAIN:
-      newState.showSplash=false;
-      return newState;
-    
   }
 
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
-  log.info()
   let substate = stateObj.substate;
+
+  function EVENT_Inspection_Report(newState,action)
+  {
+
+    if(action.data.type === "binary_processing_group")
+    {
+      action.data.reports.forEach((report)=>
+      {
+        switch(report.type)
+        {
+          case "sig360_extractor":
+          case "sig360_circle_line":
+          {
+
+            newState.edit_info=Object.assign({},newState.edit_info);
+            //newState.report=action.data;
+            newState.edit_info._obj.SetInspectionReport(report);
+            newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
+  
+            if(false){
+              let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
+              let measure1 = newState.edit_info.reportStatisticState.measure1;
+              if(measure1 === undefined)measure1=[];
+              measure1.push({
+                genre: "G"+Math.random(), sold:Math.random()
+              })
+              if(measure1.length>20)measure1.shift();
+              newState.edit_info.reportStatisticState=Object.assign({},
+                newState.edit_info.reportStatisticState,
+                {
+                  measure1:measure1
+                });
+              ;
+            }
+          }
+          break;
+          case "camera_calibration":
+            log.error(report);
+          break;
+        }
+        
+      });
+    }
+    //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+  }
+
+
   switch(stateObj.state)
   {
     case UISTS.SPLASH:
@@ -108,6 +150,10 @@ function StateReducer(newState,action)
       return newState;
     case UISTS.MAIN:
       newState.showSplash=false;
+      if(action.type===UISEV.Inspection_Report)
+      {
+        EVENT_Inspection_Report(newState,action);
+      }
       return newState;
     case UISTS.DEFCONF_MODE:
     case UISTS.INSP_MODE:
@@ -125,62 +171,43 @@ function StateReducer(newState,action)
 
         case UISEV.Inspection_Report:
         {
-          if(action.data.type === "binary_processing_group")
-          {
-
-            action.data.reports.forEach((report)=>
-            {
-              switch(report.type)
-              {
-                case "sig360_extractor":
-                case "sig360_circle_line":
-                {
-  
-                  newState.edit_info=Object.assign({},newState.edit_info);
-                  //newState.report=action.data;
-                  newState.edit_info._obj.SetInspectionReport(report);
-                  newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
-        
-                  if(false){
-                    let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
-                    let measure1 = newState.edit_info.reportStatisticState.measure1;
-                    if(measure1 === undefined)measure1=[];
-                    measure1.push({
-                      genre: "G"+Math.random(), sold:Math.random()
-                    })
-                    if(measure1.length>20)measure1.shift();
-                    newState.edit_info.reportStatisticState=Object.assign({},
-                      newState.edit_info.reportStatisticState,
-                      {
-                        measure1:measure1
-                      });
-                    ;
-                  }
-                }
-                break;
-                case "camera_calibration":
-                  log.info(report);
-                break;
-              }
-              
-            });
-          }
-          //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+          EVENT_Inspection_Report(newState,action);
         }
         break;
 
         case UISEV.Define_File_Update:
           
-          newState.edit_info=Object.assign({},newState.edit_info);
-          newState.edit_info._obj.SetDefInfo(action.data);
-          
-          newState.edit_info.edit_tar_info = null;
-          
-          newState.edit_info.list=newState.edit_info._obj.shapeList;
-          newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
-          
-          //newState.edit_info.inherentShapeList=
-            //newState.edit_info._obj.UpdateInherentShapeList();
+        if(action.data.type === "binary_processing_group")
+        {
+          action.data.featureSet.forEach((report)=>
+          {
+            switch(report.type)
+            {
+              case "sig360_extractor":
+              case "sig360_circle_line":
+              {
+
+                newState.edit_info=Object.assign({},newState.edit_info);
+                newState.edit_info._obj.SetDefInfo(report);
+                
+                newState.edit_info.edit_tar_info = null;
+                
+                newState.edit_info.list=newState.edit_info._obj.shapeList;
+                newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+                
+              }
+              break;
+              case "camera_calibration":
+                log.info(report);
+
+
+
+                
+              break;
+            }
+            
+          });
+        }
         break;
         case UISEV.SIG360_Report_Update:
           
@@ -219,15 +246,6 @@ function StateReducer(newState,action)
         case UISEV.EC_Save_Def_Config:
         {
           if(newState.WS_CH==undefined)break;
-        }
-        break;
-        case UISEV.EC_Trigger_Inspection:
-        {
-          if(newState.WS_CH==undefined)break;
-          let dat=action.data;
-          if(dat === undefined)
-            dat={};
-          newState.WS_CH.send("II",0,dat);
         }
         break;
         case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:

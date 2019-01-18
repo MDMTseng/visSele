@@ -73,10 +73,10 @@ export class InspectionEditorLogic
 
   SetDefInfo(defInfo)
   {
-    this.SetShapeList(defInfo.featureSet[0].features);
+    this.SetShapeList(defInfo.features);
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
-    let sig360Info = defInfo.featureSet[0].inherentfeatures[0];
+    let sig360Info = defInfo.inherentfeatures[0];
     this.SetSig360Report(
       {
         reports:[
