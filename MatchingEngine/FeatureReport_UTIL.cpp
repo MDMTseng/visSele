@@ -366,7 +366,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
         cJSON_AddNumberToObject(report_jobj, "K0", param.K0);
         cJSON_AddNumberToObject(report_jobj, "K1", param.K1);
         cJSON_AddNumberToObject(report_jobj, "K2", param.K2);
-        cJSON_AddNumberToObject(report_jobj, "mmpp", param.mmpp);
+        cJSON_AddNumberToObject(report_jobj, "ppb2b", param.ppb2b);
         cJSON_AddNumberToObject(report_jobj, "RNormalFactor", param.RNormalFactor);
         cJSON_AddItemToObject(report_jobj, "calibrationCenter", acv_acv_XY2JSON(param.calibrationCenter));
       }

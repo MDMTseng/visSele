@@ -104,7 +104,7 @@ typedef struct acvRadialDistortionParam{
     //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
     //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
     //r/r'=r*K0/r"
-    double mmpp;
+    double ppb2b;//pixels per block 2 block	
 }acvRadialDistortionParam;
 
 

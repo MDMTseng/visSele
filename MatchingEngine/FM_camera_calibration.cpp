@@ -344,7 +344,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
             //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
             //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
             //r/r'=r*K0/r"
-            mmpp:dNAN_
+            ppb2b:dNAN_
         };
         retParam = errParam;
     }
@@ -720,9 +720,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     }
     distMean/=idxList.size();
 
-    double blockDist_mm=1;
-    
-    retParam.mmpp=blockDist_mm/distMean;
+    retParam.ppb2b=distMean;
     float sigma=0;
 
     for(int i=0;i<idxList.size();i++)
