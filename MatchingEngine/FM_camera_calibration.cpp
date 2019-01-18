@@ -14,6 +14,8 @@ static int markPointExtraction(acvImage &labelImg, vector<acv_LabeledData> &ldDa
 
 static acv_XY LableCenterRefine(acvImage &grayLevelImage,acv_LabeledData ldat,int range);
 
+static double dNAN_=std::numeric_limits<double>::quiet_NaN();
+static float fNAN_=(float)dNAN_;
 
 FM_camera_calibration::FM_camera_calibration(const char *json_str): FeatureManager_binary_processing(json_str)
 {
@@ -210,8 +212,7 @@ static acv_XY PatternCoord2imgXY(
 
         if(tl.Y<0 || tl.Y+1>=boardCoordIdx.size() || tl.X<0 || tl.X+1>=boardCoordIdx[0].size() )
         {
-            float NAN_=0/0;
-            return {X:NAN_,Y:NAN_};
+            return {X:fNAN_,Y:fNAN_};
         }
         int idxTL = boardCoordIdx[tl.Y  ][tl.X  ];
         int idxTR = boardCoordIdx[tl.Y  ][tl.X+1];
@@ -220,8 +221,7 @@ static acv_XY PatternCoord2imgXY(
 
         if(idxTL<0 || idxTR<0 || idxBL<0 || idxBR<0)
         {
-            float NAN_=0/0;
-            return {X:NAN_,Y:NAN_};
+            return {X:fNAN_,Y:fNAN_};
         }
 
         acv_XY imgXY_Top = acvVecInterp(ldData[idxTL].Center,ldData[idxTR].Center,ratio.X);
@@ -330,13 +330,12 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     acvRadialDistortionParam retParam;
     
     {
-        float NAN_ = 0/0;
         acvRadialDistortionParam errParam={
-            calibrationCenter:{0,0},
-            RNormalFactor:NAN_,
-            K0:NAN_,
-            K1:NAN_,
-            K2:NAN_,
+            calibrationCenter:{fNAN_,fNAN_},
+            RNormalFactor:dNAN_,
+            K0:dNAN_,
+            K1:dNAN_,
+            K2:dNAN_,
             //r = r_image/RNormalFactor
             //C1 = K1/K0
             //C2 = K2/K0
@@ -345,7 +344,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
             //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
             //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
             //r/r'=r*K0/r"
-            mmpp:NAN_
+            mmpp:dNAN_
         };
         retParam = errParam;
     }
@@ -403,7 +402,8 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
 
     LOGV("distMean:%f",distMean);
 
-
+    //Following calculation will use LTBound as the grid coordinate(the Nature number grid coordinate, (-1,-1) if fail to locate the point)
+    //and use RBBound as calibrated cordinate(the XY after radial calibration)
     for(int i=2;i<ldData.size();i++) //refine the center
     {
         
@@ -460,7 +460,6 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
 
     float minXY=100000000;
     float minXY_idx=-1;
-    float _NAN_ = 0.0 / 0.0;
     for(int i=2;i<ldData.size();i++)//Find left top
     {
         if(minXY>ldData[i].Center.X+ldData[i].Center.Y)
@@ -468,8 +467,8 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
             minXY=ldData[i].Center.X+ldData[i].Center.Y;
             minXY_idx = i;
         }
-        ldData[i].LTBound.X=_NAN_;//Use LTBound as new coord tmp data
-        ldData[i].LTBound.Y=_NAN_;
+        ldData[i].LTBound.X=dNAN_;//Use LTBound as new coord tmp data
+        ldData[i].LTBound.Y=dNAN_;
         
     }
     ldData[idxList[0].idx1].LTBound.X=0;//Set a start seed
@@ -576,7 +575,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     }
 
 
-    if(0){
+    /*if(0){
 
         for(int i=0;i<boardCoord.size();i++)
         {
@@ -602,7 +601,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
         acvSaveBitmapFile("data/tmp.bmp",&labelImg);
 
 
-    }
+    }*/
     acv_XY dCenter={X:(float)((labelImg.GetWidth()-1)/2),Y:(float)((labelImg.GetHeight()-1)/2)}; 
     //dCenter.X+=5;
     //dCenter.Y-=4;
@@ -685,24 +684,22 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
         }
     }
 
-
-    acvRadialDistortionParam rDP;
-    rDP.calibrationCenter = dCenter;
-    rDP.RNormalFactor = RNorm;
-    rDP.K0=K0;
-    rDP.K1=K1;
-    rDP.K2=K2;
+    retParam.calibrationCenter = dCenter;
+    retParam.RNormalFactor = RNorm;
+    retParam.K0=K0;
+    retParam.K1=K1;
+    retParam.K2=K2;
 
     
-    LOGD("K: %g %g %g RNormalFactor:%g",K0,K1,K2,rDP.RNormalFactor);
-    LOGD("Center: %g,%g",rDP.calibrationCenter.X,rDP.calibrationCenter.Y);
+    LOGD("K: %g %g %g RNormalFactor:%g",K0,K1,K2,retParam.RNormalFactor);
+    LOGD("Center: %g,%g",retParam.calibrationCenter.X,retParam.calibrationCenter.Y);
 
     for(int i=2;i<ldData.size();i++)//Find left top
     {   
         
-        acv_XY calibP = acvVecRadialDistortionRemove(ldData[i].Center,rDP);
+        acv_XY calibP = acvVecRadialDistortionRemove(ldData[i].Center,retParam);
         ldData[i].RBBound = calibP;
-        acv_XY calibP_rec = acvVecRadialDistortionApply(ldData[i].RBBound,rDP);
+        acv_XY calibP_rec = acvVecRadialDistortionApply(ldData[i].RBBound,retParam);
 
         /*LOGV("%f",acvDistance(calibP_rec,ldData[i].Center));
 
@@ -723,9 +720,9 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     }
     distMean/=idxList.size();
 
-    double blockDist_mm=0.5;
+    double blockDist_mm=1;
     
-    rDP.mmpp=blockDist_mm/distMean;
+    retParam.mmpp=blockDist_mm/distMean;
     float sigma=0;
 
     for(int i=0;i<idxList.size();i++)
@@ -739,7 +736,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     LOGD("distMean:%f sigma:%f",distMean,sigma);
 
     // 0.989113 0.0106168 0.000557766
-    if(0){//Draw debug grid to check if the corrected dot is in the straight line
+    /*if(0){//Draw debug grid to check if the corrected dot is in the straight line
 
         for(int i=0;i<boardCoord.size();i++)
         {
@@ -773,16 +770,16 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
                 if(j>0 && (preIdx!=-1 && idx!=-1))
                 {
 
-                    /*acvDrawLine(&labelImg, 
-                    ldData[idx].Center.X, ldData[idx].Center.Y, 
-                    ldData[preIdx].Center.X, ldData[preIdx].Center.Y, 
-                    255, 0,0,1);*/
+                    // acvDrawLine(&labelImg, 
+                    // ldData[idx].Center.X, ldData[idx].Center.Y, 
+                    // ldData[preIdx].Center.X, ldData[preIdx].Center.Y, 
+                    // 255, 0,0,1);
 
                     
-                    /*acvDrawLine(&labelImg, 
-                    ldData[idx].RBBound.X, ldData[idx].RBBound.Y, 
-                    ldData[preIdx].RBBound.X, ldData[preIdx].RBBound.Y, 
-                    0, 255,0,1);*/
+                    // acvDrawLine(&labelImg, 
+                    // ldData[idx].RBBound.X, ldData[idx].RBBound.Y, 
+                    // ldData[preIdx].RBBound.X, ldData[preIdx].RBBound.Y, 
+                    // 0, 255,0,1);
                     int X = ldData[idx].RBBound.X;
                     int Y = ldData[idx].RBBound.Y;
                     labelImg.CVector[Y][3*X+0]=0;
@@ -903,14 +900,14 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
         for(int i=2;i<ldData.size();i++)//Find left top
         {   
             
-            acv_XY v1 = acvVecSub(ldData[i].Center,rDP.calibrationCenter);
+            acv_XY v1 = acvVecSub(ldData[i].Center,retParam.calibrationCenter);
             v1.Y*=Y_scale;
-            float R1 = hypot(v1.Y,v1.X)/rDP.RNormalFactor;
+            float R1 = hypot(v1.Y,v1.X)/retParam.RNormalFactor;
             float R1_sq=R1*R1;
             
-            float R_coord = acvDistance(ldData[i].LTBound,coordCenter)*distMean/rDP.RNormalFactor;
+            float R_coord = acvDistance(ldData[i].LTBound,coordCenter)*distMean/retParam.RNormalFactor;
 
-            float mult = rDP.K0+rDP.K1*R1_sq+rDP.K2*R1_sq*R1_sq;
+            float mult = retParam.K0+retParam.K1*R1_sq+retParam.K2*R1_sq*R1_sq;
             acv_XY new_Center = acvVecMult(v1,mult);
             new_Center=acvVecAdd(new_Center,dCenter);
 
@@ -931,9 +928,9 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
             //calibImage.CVector[Y][3*X+2]=255;
         }
         acvSaveBitmapFile("data/calibImage.bmp",&calibImage);
-    }
+    }*/
 
-    return rDP;
+    return retParam;
 }
 
 
@@ -1062,6 +1059,7 @@ static int markPointExtraction(acvImage &labelImg, vector<acv_LabeledData> &ldDa
 
     }
 
+    if(distances.size()==0)return -1;
     
     sort(distances.begin(), distances.end()); 
     float mainDist = distances[distances.size()*1/3];
