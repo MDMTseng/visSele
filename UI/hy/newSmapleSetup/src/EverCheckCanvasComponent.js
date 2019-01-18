@@ -218,7 +218,7 @@ class renderUTIL
   {
     ctx.lineWidth=2;
               
-    ctx.font="30px Arial";
+    ctx.font="bold 60px  Arial";
 
     let alignLine=null;
     let point_onAlignLine=null;
@@ -311,9 +311,9 @@ class renderUTIL
   }
   drawText(ctx,text,x,y)
   {
-    ctx.font="bold 30px  Arial";
+    ctx.font="bold 60px  Arial";
     ctx.fillText(text,x,y);
-    ctx.strokeStyle="white";
+    ctx.strokeStyle="black";
     ctx.lineWidth=2;
     ctx.strokeText(text,x,y);
   }
@@ -653,7 +653,7 @@ class renderUTIL
               ctx.lineWidth=2;
               //ctx.strokeStyle=this.colorSet.measure_info; 
 
-              ctx.font="30px Arial";
+              ctx.font="bold 60px  Arial";
               let arc = threePointToArc(subObjs[0].pt1,subObjs[0].pt2,subObjs[0].pt3);
               let dispVec = {x:eObject.pt1.x - arc.x,y:eObject.pt1.y - arc.y};
               let mag = Math.hypot(dispVec.x,dispVec.y);

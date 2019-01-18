@@ -81,7 +81,7 @@ class AirControl extends React.Component {
   componentWillMount()
   {
     console.log("[init][componentWillMount]");
-    this.websocketConnect();
+    this.websocketConnect(this.props.url);
   }
 
   componentWillUnmount()
@@ -90,17 +90,27 @@ class AirControl extends React.Component {
     this.state.websocketAir=undefined;
   }
 
-  websocketConnect(url="ws://169.254.170.123:5213")
+  websocketConnect(url)
   {
-    console.log("[init][WS]");
+    console.log("[init][WS]"+url);
     this.state.websocketAir=new WebSocket(url);
-    this.state.websocketAir.onmessage = this.onMessage;
-    this.state.websocketAir.onerror = this.onError;
+    this.state.websocketAir.onmessage = this.onMessage.bind(this);
+    this.state.websocketAir.onerror = this.onError.bind(this);
+
+
+    this.state.websocketAir.onclose = (evt)=> {
+      if (evt.code == 3001) {
+        console.log('ws closed');
+      } else { 
+        console.log('ws connection error');
+      }
+    };
     console.log("[init][WS][OK]");
     console.log(this.state.websocketAir);
   }
   onError(ev){
-    this.websocketConnect();
+    //this.websocketConnect();
+    console.log("onError");
   }
   onMessage(ev){
     console.log(ev);
@@ -111,6 +121,7 @@ class AirControl extends React.Component {
   }
   componentWillReceiveProps(nextProps){
     if(this.state.STOP)return;
+    if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)return;
    //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
     if(nextProps.checkResult2AirAction.ver==this.props.checkResult2AirAction.ver)return;
     if(nextProps.checkResult2AirAction.direction==="left")
@@ -120,6 +131,17 @@ class AirControl extends React.Component {
 
   }
   render() {
+
+    if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)
+    {
+      return <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          addClass="layout black vbox"
+          text="Reconnect" onClick={()=>{
+            this.websocketConnect(this.props.url);
+          }}/>;
+    }
+
     return (
         <div>
         <Button type="primary" size="large" onClick={this.blowAir_LEFTa.bind(this)}>
@@ -466,6 +488,7 @@ class APP_INSP_MODE extends React.Component{
           text="<" onClick={this.props.ACT_EXIT}/>
         ,
         <AirControl
+          url={"ws://169.254.170.123:5213"}
           checkResult2AirAction={this.checkResult2AirAction}
         />
         // ,<BASE_COM.IconButton
