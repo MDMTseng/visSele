@@ -4,6 +4,7 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include "FeatureManager_sig360_circle_line.h"
+#include "FM_camera_calibration.h"
 #include "FeatureManager_group.h"
 /*
   FeatureManager_group_proto Section
@@ -113,6 +114,12 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
     LOGI("FeatureManager_sig360_extractor is the type...");
     newFeature = new FeatureManager_sig360_extractor(cJSON_Print(subFeature));
   }
+  else if(strcmp(FM_camera_calibration::GetFeatureTypeName(),str) == 0)
+  {
+
+    LOGI("FeatureManager_camera_calibration is the type...");
+    newFeature = new FM_camera_calibration(cJSON_Print(subFeature));
+  }
   else
   {
     LOGE("Cannot find a corresponding type...");
@@ -146,9 +153,8 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
 
     int CLimit = (img->GetWidth()+img->GetHeight()-2)*2;
     CLimit = CLimit*1200/100;
-
     LOGV(">fence limit>>%d,%d",ldData[1].area,CLimit);
-    if(ldData[1].area>CLimit)return 0;//If the cage connects something link to the edge we don't want to do the inspection
+    //if(ldData[1].area>CLimit)return 0;//If the cage connects something link to the edge we don't want to do the inspection
     if(ldData.size()<=1)
     {
       return 0;

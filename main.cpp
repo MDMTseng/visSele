@@ -553,8 +553,6 @@ public:
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
             }
-
-
           }
 
         }
@@ -1071,21 +1069,37 @@ int main(int argc, char** argv)
   }
   #endif
 
-
   if(0){
 
-    acvRadialDistortionParam param = calcCameraCalibration("data/calibration_Img/lens1_2.bmp");
+
+    acvImage calibImage;
+    acvImage test_buff;
+    int ret_val = acvLoadBitmapFile(&calibImage,"data/calibration_Img/lens1_2.bmp");
+    if(ret_val!=0)return -1;
+    ImgInspection_DefRead(matchingEng,&calibImage,&test_buff,1,"data/cameraCalibration.json");
+
     
-    LOGV("K: %g %g %g RNormalFactor:%g",param.K0,param.K1,param.K2,param.RNormalFactor);
-    LOGV("Center: %g,%g",param.calibrationCenter.X,param.calibrationCenter.Y);
+    const FeatureReport * report = matchingEng.GetReport();
+
+    if(report!=NULL)
+    {
+      cJSON* jobj = matchingEng.FeatureReport2Json(report);
+      //cJSON_AddNumberToObject(jobj, "session_id", session_id);
+      char * jstr  = cJSON_Print(jobj);
+      cJSON_Delete(jobj);
+
+      LOGI("__\n %s  \n___",jstr);
+
+      delete jstr;
+    }
     return 0;
   }
 
 
+
   signal(SIGINT, sigroutine);
-  //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   test1_buff = new acvImage();
-  test1_buff->ReSize(100,100);
+  //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);\
   imgSrc_X = new DatCH_BMP(new acvImage());
   return mainLoop(false);
 }

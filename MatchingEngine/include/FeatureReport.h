@@ -4,6 +4,7 @@
 
 #include "FeatureManager.h"
 #include "acvImage_ComponentLabelingTool.hpp"
+#include "acvImage_BasicTool.hpp"
 #include <vector>
 #include <string>
 
@@ -208,6 +209,18 @@ typedef struct FeatureReport_sig360_extractor{
   } error;
 };
 
+typedef struct FeatureReport_camera_calibration{
+
+  acvRadialDistortionParam param;
+  
+  enum{
+    NONE,
+    FAIL,
+    END
+  } error;
+};
+
+
 typedef struct FeatureReport
 {
   enum{
@@ -215,6 +228,7 @@ typedef struct FeatureReport
     binary_processing_group,
     sig360_extractor,
     sig360_circle_line,
+    camera_calibration,
     END
   } type;
   string name;
@@ -223,6 +237,7 @@ typedef struct FeatureReport
     FeatureReport_binary_processing_group binary_processing_group;
     FeatureReport_sig360_extractor        sig360_extractor;
     FeatureReport_sig360_circle_line      sig360_circle_line;
+    FeatureReport_camera_calibration      camera_calibration;
   }data;
   string info;
 }FeatureReport;

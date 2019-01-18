@@ -37,19 +37,4 @@ protected:
   int parse_jobj() override;
 };
 
-
-
-
-class FeatureManager_Camera_Calibration:public FeatureManager_binary_processing
-{
-public :
-  FeatureManager_Camera_Calibration(const char *json_str);
-  int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
-  cJSON *jobj;
-  virtual const FeatureReport* GetReport() override;
-  static const char* GetFeatureTypeName(){return "camera_calibration";};
-protected:
-  int parse_jobj() override;
-};
 #endif

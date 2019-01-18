@@ -25,7 +25,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
-        for(int i=0;i<img.GetHeight();i++)//Add noise
+        /*for(int i=0;i<img.GetHeight();i++)//Add noise
         {
             for(int j=0;j<img.GetWidth();j++)
             {
@@ -44,7 +44,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
                 img.CVector[i][j*3+2] = d;
 
             }
-        }
+        }*/
 
 
         ret_status=ACK;
