@@ -1853,7 +1853,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
         s_points.resize(0);
         edge_grid.getContourPointsWithInLineContour(line_cand,
           line->MatchingMarginX,
-          line->initMatchingMargin,
+
+          //HACK:Kinda hack... the initial Margin is for initial keypoints search, 
+          //But since we get the cadidate line already, no need for huge Margin
+          line->initMatchingMargin/2,
           flip_f,
           s_intersectIdxs,s_points);
         LOGV("getContourPointsWithInLineContour OK");
