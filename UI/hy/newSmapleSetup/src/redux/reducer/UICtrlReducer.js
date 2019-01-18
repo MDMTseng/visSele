@@ -124,28 +124,49 @@ function StateReducer(newState,action)
 
 
         case UISEV.Inspection_Report:
-          newState.edit_info=Object.assign({},newState.edit_info);
-          //newState.report=action.data;
-          newState.edit_info._obj.SetInspectionReport(action.data);
-          newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
-
-          let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
-
+        {
+          if(action.data.type === "binary_processing_group")
           {
-            let measure1 = newState.edit_info.reportStatisticState.measure1;
-            if(measure1 === undefined)measure1=[];
-            measure1.push({
-              genre: "G"+Math.random(), sold:Math.random()
-            })
-            if(measure1.length>20)measure1.shift();
-            newState.edit_info.reportStatisticState=Object.assign({},
-              newState.edit_info.reportStatisticState,
+
+            action.data.reports.forEach((report)=>
+            {
+              switch(report.type)
               {
-                measure1:measure1
-              });
-            ;
+                case "sig360_extractor":
+                case "sig360_circle_line":
+                {
+  
+                  newState.edit_info=Object.assign({},newState.edit_info);
+                  //newState.report=action.data;
+                  newState.edit_info._obj.SetInspectionReport(report);
+                  newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
+        
+                  if(false){
+                    let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
+                    let measure1 = newState.edit_info.reportStatisticState.measure1;
+                    if(measure1 === undefined)measure1=[];
+                    measure1.push({
+                      genre: "G"+Math.random(), sold:Math.random()
+                    })
+                    if(measure1.length>20)measure1.shift();
+                    newState.edit_info.reportStatisticState=Object.assign({},
+                      newState.edit_info.reportStatisticState,
+                      {
+                        measure1:measure1
+                      });
+                    ;
+                  }
+                }
+                break;
+                case "camera_calibration":
+                  log.info(report);
+                break;
+              }
+              
+            });
           }
           //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+        }
         break;
 
         case UISEV.Define_File_Update:

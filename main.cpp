@@ -1099,7 +1099,7 @@ int main(int argc, char** argv)
 
   signal(SIGINT, sigroutine);
   test1_buff = new acvImage();
-  //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);\
+  //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   imgSrc_X = new DatCH_BMP(new acvImage());
   return mainLoop(false);
 }

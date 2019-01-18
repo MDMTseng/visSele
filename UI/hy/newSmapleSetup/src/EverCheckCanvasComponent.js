@@ -1026,13 +1026,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
   }
   draw_INSP()
   {
-    if(this.edit_DB_info.inspReport==null || this.edit_DB_info.inspReport.reports==undefined)
+    if(this.edit_DB_info==null ||
+      this.edit_DB_info.inspReport==null || this.edit_DB_info.inspReport==undefined )
     {
       return;
     }
-    let inspReportGroup= this.edit_DB_info.inspReport.reports[0];
-    let inspectionReport = inspReportGroup.reports;
-    let mmpp = inspReportGroup.mmpp;
+    let inspectionReport = this.edit_DB_info.inspReport;
+    let mmpp = 1;
     let unitConvert;
 
     if(!isNaN(mmpp) )
@@ -1081,8 +1081,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
           return measureShape;
         },[]);
       }
-
-      inspectionReport.forEach((report,idx)=>{
+      
+      inspectionReport.reports.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);
         ctx.rotate(-report.rotate);
@@ -1141,8 +1141,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       });
     }
 
-
-    inspectionReport.forEach((report,idx)=>{
+    inspectionReport.reports.forEach((report,idx)=>{
       //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
       {

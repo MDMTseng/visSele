@@ -429,8 +429,7 @@ class APP_INSP_MODE extends React.Component{
     if(this.props.inspectionReport!==undefined)
     {
 
-      let inspReportGroup= this.props.inspectionReport.reports[0];
-      let inspectionReport = inspReportGroup.reports;
+      let inspectionReport = this.props.inspectionReport;
       if(inspectionReport.length>0)
       {
         let groupResult = inspectionReport.map((single_rep)=>{

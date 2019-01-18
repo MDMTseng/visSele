@@ -381,7 +381,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     acvComponentLabeling(&labelImg);
     acvLabeledRegionInfo(&labelImg, &ldData);
     
-    acvSaveBitmapFile("data/labelImg.bmp",&labelImg);
+    //acvSaveBitmapFile("data/labelImg.bmp",&labelImg);
     vector<struct idx_dist> idxList;
     markPointExtraction(labelImg, ldData,idxList);   
 
