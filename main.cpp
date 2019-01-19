@@ -440,6 +440,8 @@ public:
               {
                 LOGE("No entry:\"deffile\" in it");
                 cameraFeedTrigger=false;
+                
+                camera->TriggerMode(1);
                 break;
               }
 
@@ -468,7 +470,7 @@ public:
                   free(jsonStr);
 
 
-                  camera->TriggerMode(1);
+                  camera->TriggerMode(0);
                   cameraFeedTrigger=true;
                   camera->Trigger();
                   //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
@@ -744,7 +746,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
-
+    
     //TODO:HACK: 4X4 times scale down for transmission speed
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
     bpg_dat.scale = 4;
@@ -766,7 +768,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     if(cameraFeedTrigger)
     {
       LOGV("cameraFeedTrigger:%d Get Next frame...",cameraFeedTrigger);
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
       cl_GMV.Trigger();
     }
   }while(false);

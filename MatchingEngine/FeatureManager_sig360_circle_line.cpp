@@ -1718,7 +1718,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   {
       if(ldData[i].area<120)continue;
 
-      LOGI("Lable:%2d area:%d",i,ldData[i].area);
+      //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
 
 
@@ -1730,7 +1730,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         &isInv, &angle);
 
       error = sqrt(error)/feature_signature_ave;
-      LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+      //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
       if(error>0.5)continue;
       FeatureReport_sig360_circle_line_single singleReport=
@@ -1751,7 +1751,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       };
 
 
-      LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+      //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
       reports.push_back(singleReport);
 
       vector<FeatureReport_circleReport> &detectedCircles = *singleReport.detectedCircles;

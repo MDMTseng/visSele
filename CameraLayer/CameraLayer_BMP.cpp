@@ -106,20 +106,37 @@ CameraLayer::status CameraLayer_BMP_carousel::Trigger()
     imageTakingCount+=1;
     
     LOGV("imageTakingCount:%d",imageTakingCount);
-    return TriggerMode(0);
+    return TriggerMode(-1);
 }
 
 void CameraLayer_BMP_carousel::ContTriggerThread( )
 {
+    //The logic here is you always stay in the loop,
+    //and execute LoadNext when imageTakingCount >0
+    int idle_loop_interval_ms =100;
     while( ThreadTerminationFlag == 0)
     {
-        if(imageTakingCount>0)
+        int delay_time=0;
+        if(imageTakingCount>0 || triggerMode==0)
         {
-            LOGV("imageTakingCount:%d",imageTakingCount);
+            LOGV("imageTakingCount:%d,ThreadTerminationFlag:%d",imageTakingCount,ThreadTerminationFlag);
             LoadNext();
             imageTakingCount--;
+            
+            if(triggerMode==0)
+            {
+                imageTakingCount=0;
+            }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        else
+        {//So we need a delay when imageTakingCount<=0 to prevent loop becoming too fast
+            std::this_thread::sleep_for(std::chrono::milliseconds(idle_loop_interval_ms));
+            delay_time+=idle_loop_interval_ms;
+        }
+        if(frameInterval_ms-delay_time>0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
+        }
     }
     //ThreadTerminationFlag = 0;
 
@@ -128,7 +145,12 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
 
 CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 {
-    if(mode==0)
+    
+    if(mode>=0)
+    {
+        triggerMode = mode;
+    }
+    if(mode==0 || mode==-1 )
     {
         ThreadTerminationFlag = 0;
         if(cameraThread == NULL)
