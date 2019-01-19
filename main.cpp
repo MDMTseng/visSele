@@ -16,9 +16,6 @@
 #include <stdexcept>
 
 std::mutex mainThreadLock;
-acvImage *test1_buff;
-acvImage dataSend_buff;
-DatCH_BMP *imgSrc_X;
 DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
@@ -54,8 +51,6 @@ acvRadialDistortionParam param_default={
     //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
     //r/r'=r*K0/r"
 };
-
-acvImage cacheImage;
 
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
@@ -101,6 +96,12 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
 class DatCH_CallBack_BPG : public DatCH_CallBack
 {
   DatCH_BPG1_0 *self;
+  
+  acvImage test1_buff;
+  acvImage tmp_buff;
+  acvImage cacheImage;
+  acvImage dataSend_buff;
+
   bool checkTL(const char *TL,const BPG_data *dat)
   {
     if(TL==NULL)return false;
@@ -249,9 +250,20 @@ public:
                 break;
               }
 
-            
-              imgSrc_X->SetFileName(imgSrcPath);
-
+              acvImage *srcImg=NULL;
+              if(imgSrcPath!=NULL)
+              {
+                
+                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                if(ret_val==0)
+                {
+                  srcImg = &tmp_buff;
+                }
+              }
+              if(srcImg==NULL)
+              {
+                break;
+              }
 
               try {
                   char *jsonStr = ReadText(deffile);
@@ -274,8 +286,8 @@ public:
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.scale = 4;
               
-              acvThreshold(imgSrc_X->GetAcvImage(), 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-              ImageDownSampling(dataSend_buff,*imgSrc_X->GetAcvImage(),bpg_dat.scale);
+              //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+              ImageDownSampling(dataSend_buff,*srcImg,bpg_dat.scale);
               bpg_dat.dat_img=&dataSend_buff;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
@@ -306,12 +318,16 @@ public:
                 break;
               }
               char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
-
+              LOGI("Load Image from %s",imgSrcPath);
               acvImage *srcImg=NULL;
               if(imgSrcPath!=NULL)
               {
-                imgSrc_X->SetFileName(imgSrcPath);
-                srcImg = imgSrc_X->GetAcvImage();
+                
+                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                if(ret_val==0)
+                {
+                  srcImg = &tmp_buff;
+                }
               }
 
               if(srcImg==NULL)
@@ -327,6 +343,12 @@ public:
                 LOGV( "unlock");
                 mainThreadLock.unlock();
                 srcImg = camera->GetImg();
+              }
+
+              if(srcImg==NULL)
+              {
+                LOGE("No Image from %s, exit...",imgSrcPath);
+                break;
               }
 
             
@@ -354,9 +376,9 @@ public:
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
 
-                  int ret = ImgInspection_JSONStr(matchingEng,srcImg,test1_buff,1,jsonStr);
+                  int ret = ImgInspection_JSONStr(matchingEng,srcImg,&test1_buff,1,jsonStr);
                   free(jsonStr);
-                  //acvSaveBitmapFile("data/buff.bmp",test1_buff);
+                  //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
 
                   const FeatureReport * report = matchingEng.GetReport();
 
@@ -390,7 +412,7 @@ public:
               //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
+              ImageDownSampling(dataSend_buff,test1_buff,bpg_dat.scale);
               bpg_dat.dat_img=&dataSend_buff;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
@@ -450,7 +472,7 @@ public:
                   camera->TriggerMode(1);
                   cameraFeedTrigger=true;
                   camera->Trigger();
-                  //acvSaveBitmapFile("data/buff.bmp",test1_buff);
+                  //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
 
               }
               catch (std::invalid_argument iaex) {
@@ -490,12 +512,16 @@ public:
                 }
               }
               
-              acvImage *srcImg=NULL;
+              acvImage *srcImg;
               if(imgSrcPath!=NULL)
               {
-                imgSrc_X->SetFileName(imgSrcPath);
-                srcImg = imgSrc_X->GetAcvImage();
+                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                if(ret_val==0)
+                {
+                  srcImg = &tmp_buff;
+                }
               }
+
 
               if(srcImg==NULL)
               {
@@ -518,7 +544,7 @@ public:
 
 
               try {
-                  ImgInspection_DefRead(matchingEng,srcImg,test1_buff,1,"data/featureDetect.json");
+                  ImgInspection_DefRead(matchingEng,srcImg,&test1_buff,1,"data/featureDetect.json");
                   const FeatureReport * report = matchingEng.GetReport();
 
                   if(report!=NULL)
@@ -555,7 +581,7 @@ public:
             
               //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
+              ImageDownSampling(dataSend_buff,test1_buff,bpg_dat.scale);
               bpg_dat.dat_img=&dataSend_buff;
               //acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -645,8 +671,8 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,acvRadialDi
   t = clock();
 
   return 0;
-  //ContourFeatureDetect(test1,test1_buff,tar_signature);
-  //acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
+  //ContourFeatureDetect(test1,&test1_buff,tar_signature);
+  //acvSaveBitmapFile("data/target_buff.bmp",&test1_buff);
 
 }
 
@@ -665,6 +691,7 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
+  static acvImage test1_buff;
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
   {
@@ -675,7 +702,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     return;
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
-  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,param_default,1);
+  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),&test1_buff,param_default,1);
 
   /*LOGE( "lock");
   mainThreadLock.lock();*/
@@ -724,9 +751,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     //TODO:HACK: 4X4 times scale down for transmission speed
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
     bpg_dat.scale = 4;
-    ImageDownSampling(dataSend_buff,*cl_GMV.GetImg(),bpg_dat.scale);
+    ImageDownSampling(test1_buff,*cl_GMV.GetImg(),bpg_dat.scale);
     //ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
-    bpg_dat.dat_img=&dataSend_buff;
+    bpg_dat.dat_img=&test1_buff;
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
@@ -737,7 +764,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
-    //acvSaveBitmapFile("data/MVCamX.bmp",test1_buff);
+    //acvSaveBitmapFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
     if(cameraFeedTrigger)
     {
@@ -828,45 +855,6 @@ class DatCH_CallBack_T : public DatCH_CallBack
                 ws_data.data.data_frame.raw
                 );
 
-            if(false&&ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
-            {
-
-              //imgSrc_X->SetFileName("data/test1.bmp");
-
-              try {
-                  ImgInspection_DefRead(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-              }
-              catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
-              }
-
-              const FeatureReport * report = matchingEng.GetReport();
-
-              if(false && report!=NULL)
-              {
-                cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                char * jstr  = cJSON_Print(jobj);
-                cJSON_Delete(jobj);
-                LOGI("...\n%s\n...",jstr);
-                DatCH_Data ret = ws->SendData(jstr,strlen(jstr));
-                delete jstr;
-                if(ret.type!=DatCH_Data::DataType_ACK)
-                {
-                  if(ret.type==DatCH_Data::DataType_error)
-                  {
-                    LOGI("...\nERROR:%d....\n...",ret.data.error.code);
-                  }
-                  break;
-                }
-              }
-              printf("Start to send....\n");
-
-            }
-            else
-            {
-
-            }
-
 
         break;
         case websock_data::eventType::CLOSING:
@@ -899,7 +887,7 @@ public:
 
           //acvImage *test1 = data.data.BMP_Read.img;
 
-          //ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
+          //ImgInspection(matchingEng,test1,&test1_buff,1,"data/target.json");
         }
         break;
 
@@ -1030,20 +1018,19 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 
 int simpleTest()
 {
+  acvImage test1_buff;
   //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
-  test1_buff = new acvImage();
-  test1_buff->ReSize(100,100);
   CameraLayer::status ret = cl_BMP.LoadBMP("data/testInsp.bmp");
   if(ret != CameraLayer::ACK)
   {
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),test1_buff,1,"data/test.ic.json");
+  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),&test1_buff,1,"data/test.ic.json");
 
-  acvSaveBitmapFile("data/buff.bmp",test1_buff);
+  acvSaveBitmapFile("data/buff.bmp",&test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
 
   if(report!=NULL)
@@ -1113,8 +1100,6 @@ int main(int argc, char** argv)
 
 
   signal(SIGINT, sigroutine);
-  test1_buff = new acvImage();
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
-  imgSrc_X = new DatCH_BMP(new acvImage());
   return mainLoop(false);
 }
