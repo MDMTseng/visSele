@@ -151,8 +151,14 @@ class APPMasterX extends React.Component{
           {
             let SS =BPG_Protocol.raw2obj(evt);
             // log.debug(header);
-            log.debug("Session start:",SS);
-            this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
+            if(SS.data.start)
+            {
+              this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
+            }
+            else
+            {
+              this.props.DISPATCH_flush(UIAct.EV_WS_Session_Lock(SS.data));
+            }
             break;
           }
           case "IM":
@@ -261,7 +267,13 @@ const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
     ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
     ACT_WS_CONNECT: (id,url,obj) => dispatch({type:MWWS_EVENT.CONNECT,data:Object.assign({id:id,url:url,binaryType:"arraybuffer"},obj)}),
     ACT_WS_DISCONNECT:(id)=> dispatch({type:MWWS_EVENT.DISCONNECT,data:{id:id}}),
-    DISPATCH:(act)=>dispatch(act),
+    DISPATCH:(act)=>{
+      dispatch(act)
+    },
+    DISPATCH_flush:(act)=>{
+      act.ActionThrottle_type="flush";
+      dispatch(act)
+    },
     ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
 }
