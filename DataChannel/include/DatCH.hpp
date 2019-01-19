@@ -28,6 +28,7 @@ public:
     DatCH_Data GenErrorMsg(DatCH_Data_error::error_enum code)
     {
         DatCH_Data error_data;
+        memset(&error_data,0,sizeof(error_data));
         error_data.type = DatCH_Data::DataType_error;
         error_data.data.error.code = code;
         return error_data;
@@ -37,6 +38,7 @@ public:
     DatCH_Data GenMsgType(DatCH_Data::TYPE type)
     {
         DatCH_Data data;
+        memset(&data,0,sizeof(data));
         data.type = type;
         data.data.raw = NULL;
         return data;

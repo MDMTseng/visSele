@@ -119,7 +119,7 @@ public:
 
   static BPG_data GenStrBPGData(char *TL, char* jsonStr)
   {
-    BPG_data BPG_dat;
+    BPG_data BPG_dat={0};
     BPG_dat.tl[0]=TL[0];
     BPG_dat.tl[1]=TL[1];
     if(jsonStr ==NULL)
@@ -283,11 +283,12 @@ public:
 
               //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.scale = 4;
-              
+              BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
               //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-              ImageDownSampling(dataSend_buff,*srcImg,bpg_dat.scale);
-              bpg_dat.dat_img=&dataSend_buff;
+              ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+              bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;
+
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -407,14 +408,15 @@ public:
                   LOGE( "Caught an error!");
               }
 
-
-              //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,*srcImg,bpg_dat.scale);
-              bpg_dat.dat_img=&dataSend_buff;
+              BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+              //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+              ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+              bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;              
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
+
 
 
 
@@ -577,17 +579,13 @@ public:
 
 
               bpg_dat=GenStrBPGData("IM", NULL);
-
-                          
-            
-              //TODO:HACK: 4X4 times scale down for transmission speed
-              bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,*srcImg,bpg_dat.scale);
-              bpg_dat.dat_img=&dataSend_buff;
-              //acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
+              BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+              //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+              ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+              bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;              
               datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
-
+              BPG_protocol->SendData(datCH_BPG);
 
 
               sprintf(tmp,"{\"session_id\":%d, \"start\":false}",session_id);
@@ -746,13 +744,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
-    
-    //TODO:HACK: 4X4 times scale down for transmission speed
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
-    bpg_dat.scale = 4;
-    ImageDownSampling(test1_buff,*cl_GMV.GetImg(),bpg_dat.scale);
-    //ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
-    bpg_dat.dat_img=&test1_buff;
+    BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
+    //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+    ImageDownSampling(test1_buff,*cl_GMV.GetImg(),iminfo.scale);
+    bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+    bpg_dat.callback=DatCH_BPG_acvImage_Send;              
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
