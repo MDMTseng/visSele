@@ -1032,14 +1032,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       return;
     }
     let inspectionReport = this.edit_DB_info.inspReport;
-    let mmpp = 1;
+    let mmpp = 0.0099752838;
     let unitConvert;
 
     if(!isNaN(mmpp) )
     {
       unitConvert={
         unit:"mm",//"μm",
-        mult:mmpp*1.00624
+        mult:mmpp
       }
     } 
     else
@@ -1081,7 +1081,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
           return measureShape;
         },[]);
       }
-      
+
       inspectionReport.reports.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);

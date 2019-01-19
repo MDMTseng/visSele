@@ -77,7 +77,9 @@ class APPMain extends React.Component{
           text="CAM calib" onClick={()=>{
 
             this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{
-              deffile:"data/cameraCalibration.json"});
+              deffile:"data/cameraCalibration.json",
+              imgsrc:"data/BMP_carousel_test/calibration.bmp"
+            });
                 
           }}/>);
     }

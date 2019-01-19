@@ -1568,14 +1568,27 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
 
   //curpoint = point -(GradTableL-1)*gVec/2
   gradVec = acvVecNormalize(gradVec);
+
+  
+  const int nM=1;
+  acv_XY nvec = {X:gradVec.Y,Y:-gradVec.X};
+  acv_XY nvecBM = acvVecMult(nvec,-(float)(nM-1)/2);
+  
   //gradVec= acvVecMult(gradVec,1);
   
   acv_XY  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
   curpoint = acvVecAdd(curpoint,point);
+  curpoint = acvVecAdd(curpoint,nvecBM);
   acv_XY bkpoint = curpoint;
   for(int i=0;i<GradTableL;i++)
   {
-    float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
+    float ptn = 0;
+    acv_XY tmpCurPt=curpoint;
+    for(int j=0;j<nM;j++)
+    {
+      ptn+= acvUnsignedMap1Sampling(graylevelImg, tmpCurPt, 0);
+      tmpCurPt = acvVecAdd(tmpCurPt,nvec);
+    }
     //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
     gradTable[i] = ptn;
 
@@ -1604,6 +1617,46 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
   *ret_point_opt = acvVecAdd(bkpoint,gradVec);
 
 
+  return 0;
+}
+
+
+int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<ContourGrid::ptInfo> ptList,int width)
+{
+  const int GradTableL=7;
+  float gradTable[GradTableL]={0};
+
+  //curpoint = point -(GradTableL-1)*gVec/2
+  gradVec = acvVecNormalize(gradVec);
+  //gradVec= acvVecMult(gradVec,1);
+  
+  acv_XY  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
+  curpoint = acvVecAdd(curpoint,point);
+  ContourGrid::ptInfo tmp_pt;
+  for(int i=0;i<GradTableL;i++)
+  {
+    float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
+    //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
+    gradTable[i] = ptn;
+    tmp_pt.pt=curpoint;
+    curpoint = acvVecAdd(curpoint,gradVec);
+  }
+
+  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
+  curpoint = acvVecAdd(curpoint,point);
+  for(int i=0;i<GradTableL-1;i++)
+  {
+    float diff = gradTable[i]-gradTable[i+1];
+    if(diff<0)diff=-diff;
+
+    tmp_pt.pt=curpoint;
+    tmp_pt.edgeRsp = diff*diff*diff*diff*diff;
+    ptList.push_back(tmp_pt);
+    curpoint = acvVecAdd(curpoint,gradVec);
+  }
+
+
+  
   return 0;
 }
 
@@ -1864,13 +1917,16 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *b
        
         if(1)
         {
+
+          
+          acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
+          LOGV("X:%f Y:%f",lineNormal.X,lineNormal.Y);
+          int sptL=s_points.size();
           for(int i=0;i<s_points.size();i++)
           {
             acv_XY ret_point_opt;
             float edgeResponse;
             
-            acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-
             acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
             int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
             if(ret_val==0)

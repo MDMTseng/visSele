@@ -25,7 +25,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
-        for(int i=0;i<img.GetHeight();i++)//Add noise
+        if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
         {
             for(int j=0;j<img.GetWidth();j++)
             {
@@ -75,7 +75,7 @@ CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderNam
             if(dir->d_name[0]=='.')continue;
             std::string str(dir->d_name);
             str = folderName+"/"+str;
-            LOGV("FILE::%s",str.c_str());
+            //LOGV("FILE::%s",str.c_str());
             files_in_folder.push_back(str);
         }
         closedir(d);
