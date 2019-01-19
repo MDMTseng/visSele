@@ -74,12 +74,12 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 }
 
 
-int MatchingEngine::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int MatchingEngine::FeatureMatching(acvImage *img)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
     featureBundle[i]->setRadialDistortionParam(param);
-    featureBundle[i]->FeatureMatching(img,buff,dbg);
+    featureBundle[i]->FeatureMatching(img);
   }
 
   return 0;

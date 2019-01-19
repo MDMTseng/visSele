@@ -1661,9 +1661,9 @@ int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<Co
 }
 
 
-int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img,acvImage *buff_,acvImage *dbg)
+int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
-  
+  acvImage *buff_=&_buff;
   vector<acv_LabeledData> &ldData=*this->_ldData;
   int grid_size = 50;
   bool drawDBG_IMG = false;

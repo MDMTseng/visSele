@@ -68,7 +68,7 @@ int FM_camera_calibration::reload(const char *json_str)
   return 0;
 }
 
-int FM_camera_calibration::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FM_camera_calibration::FeatureMatching(acvImage *img)
 {
   acvRadialDistortionParam param = calcCameraCalibration(*(this->originalImage));;
   this->param = param;

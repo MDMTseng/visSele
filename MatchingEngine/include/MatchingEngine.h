@@ -19,7 +19,7 @@ public:
   void setRadialDistortionParam(acvRadialDistortionParam param){this->param=param;};
   int AddMatchingFeature(const char *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg);
+  int FeatureMatching(acvImage *img);
   const FeatureReport *GetReport();
   cJSON*FeatureReport2Json(const FeatureReport *report);
   ~MatchingEngine();

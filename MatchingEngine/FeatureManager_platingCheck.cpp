@@ -195,9 +195,11 @@ int FeatureManager_platingCheck::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_platingCheck::FeatureMatching(acvImage *img)
 {
   acvImage *tarImg = stdMap[0].rgb;
+  acvImage *buff = &_buff;
+  buff->ReSize(img);
   int XFactor=3;
   moEng.RESET(10*XFactor,tarImg->GetWidth(),tarImg->GetHeight());
 

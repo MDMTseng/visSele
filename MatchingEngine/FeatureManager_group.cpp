@@ -133,7 +133,7 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   return 0;
 }
 
-int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 {
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
@@ -173,7 +173,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
       binaryFeatureBundle[i]->setOriginalImage(img);
       binaryFeatureBundle[i]->setLabeledData(&ldData);
       binaryFeatureBundle[i]->setRadialDistortionParam(param);
-      binaryFeatureBundle[i]->FeatureMatching(&binary_img,buff,dbg);
+      binaryFeatureBundle[i]->FeatureMatching(&binary_img);
     }
   return 0;
 }
@@ -247,13 +247,13 @@ int FeatureManager_group::addSubFeature(cJSON * subFeature)
 }
 
 
-int FeatureManager_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_group::FeatureMatching(acvImage *img)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
     //featureBundle[i]->param;
     featureBundle[i]->setRadialDistortionParam(param);
-    featureBundle[i]->FeatureMatching(img,buff,dbg);
+    featureBundle[i]->FeatureMatching(img);
   }
   return 0;
 }

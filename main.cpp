@@ -55,9 +55,9 @@ acvRadialDistortionParam param_default={
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
 
-int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *jsonStr);
+int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,char *jsonStr);
 
-int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename);
+int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename);
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst,size_t dstLen,uint8_t *src,size_t srcLen);
 
@@ -97,7 +97,6 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
 {
   DatCH_BPG1_0 *self;
   
-  acvImage test1_buff;
   acvImage tmp_buff;
   acvImage cacheImage;
   acvImage dataSend_buff;
@@ -376,7 +375,7 @@ public:
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
 
-                  int ret = ImgInspection_JSONStr(matchingEng,srcImg,&test1_buff,1,jsonStr);
+                  int ret = ImgInspection_JSONStr(matchingEng,srcImg,1,jsonStr);
                   free(jsonStr);
                   //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
 
@@ -412,7 +411,7 @@ public:
               //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat=GenStrBPGData("IM", NULL);
               bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,test1_buff,bpg_dat.scale);
+              ImageDownSampling(dataSend_buff,*srcImg,bpg_dat.scale);
               bpg_dat.dat_img=&dataSend_buff;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
@@ -544,7 +543,7 @@ public:
 
 
               try {
-                  ImgInspection_DefRead(matchingEng,srcImg,&test1_buff,1,"data/featureDetect.json");
+                  ImgInspection_DefRead(matchingEng,srcImg,1,"data/featureDetect.json");
                   const FeatureReport * report = matchingEng.GetReport();
 
                   if(report!=NULL)
@@ -581,7 +580,7 @@ public:
             
               //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,test1_buff,bpg_dat.scale);
+              ImageDownSampling(dataSend_buff,*srcImg,bpg_dat.scale);
               bpg_dat.dat_img=&dataSend_buff;
               //acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
               datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -644,27 +643,25 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 }
 
 
-int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
+int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename)
 {
   char *string = ReadText(defFilename);
   //printf("%s\n%s\n",string,defFilename);
-  int ret = ImgInspection_JSONStr(me ,test1,buff, repeatTime,string);
+  int ret = ImgInspection_JSONStr(me ,test1, repeatTime,string);
   free(string);
   return ret;
 }
 
 
-int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,acvRadialDistortionParam param,int repeatTime)
+int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam param,int repeatTime)
 {
 
   LOGI("================================");
-  buff->ReSize(test1->GetWidth(), test1->GetHeight());
-
   clock_t t = clock();
   for(int i=0;i<repeatTime;i++)
   {
     me.setRadialDistortionParam(param);
-    me.FeatureMatching(test1,buff,NULL);
+    me.FeatureMatching(test1);
   }
 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -678,12 +675,12 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,acvRadialDi
 
 
 
-int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *jsonStr)
+int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,char *jsonStr)
 {
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
-  ImgInspection(me,test1,buff,param_default,repeatTime);
+  ImgInspection(me,test1,param_default,repeatTime);
   return 0;
 
 }
@@ -702,7 +699,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     return;
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
-  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),&test1_buff,param_default,1);
+  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),param_default,1);
 
   /*LOGE( "lock");
   mainThreadLock.lock();*/
@@ -1028,7 +1025,7 @@ int simpleTest()
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),&test1_buff,1,"data/test.ic.json");
+  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,"data/test.ic.json");
 
   acvSaveBitmapFile("data/buff.bmp",&test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
@@ -1078,7 +1075,7 @@ int main(int argc, char** argv)
     acvImage test_buff;
     int ret_val = acvLoadBitmapFile(&calibImage,"data/calibration_Img/lens1_2.bmp");
     if(ret_val!=0)return -1;
-    ImgInspection_DefRead(matchingEng,&calibImage,&test_buff,1,"data/cameraCalibration.json");
+    ImgInspection_DefRead(matchingEng,&calibImage,1,"data/cameraCalibration.json");
 
     
     const FeatureReport * report = matchingEng.GetReport();

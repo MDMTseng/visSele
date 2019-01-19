@@ -30,7 +30,7 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
   acvImage binary_img;
 public :
   FeatureManager_binary_processing_group(const char *json_str);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
   static const char* GetFeatureTypeName(){return "binary_processing_group";};
 
@@ -46,7 +46,7 @@ class FeatureManager_group:public FeatureManager_group_proto {
 
 public :
   FeatureManager_group(const char *json_str);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img) override;
   static const char* GetFeatureTypeName(){return "group";};
 protected:
   int addSubFeature(cJSON * subFeature) override;

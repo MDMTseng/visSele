@@ -57,9 +57,10 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 {
-  
+  acvImage *buff = &_buff;
+  buff->ReSize(img);
   vector<acv_LabeledData> &ldData=*this->_ldData;
   signature.resize(360);
   detectedCircles.resize(0);
