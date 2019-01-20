@@ -44,7 +44,8 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-      session_lock:null
+      session_lock:null,
+      camera_calibration_param:undefined,
     },
     sm:null,
     c_state:null,
@@ -133,7 +134,7 @@ function StateReducer(newState,action)
           }
           break;
           case "camera_calibration":
-            log.error(report);
+            newState.edit_info.camera_calibration_param = report;
           break;
         }
         

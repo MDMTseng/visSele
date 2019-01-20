@@ -284,6 +284,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
         cJSON_AddNumberToObject(label_jobj, "area", (*ldata)[j].area);
       }*/
 
+      cJSON_AddNumberToObject(report_jobj, "error", report->data.binary_processing_group.error);
       cJSON* reports_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
 
@@ -302,6 +303,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     case FeatureReport::sig360_extractor:
     {
 
+      cJSON_AddNumberToObject(report_jobj, "error", report->data.sig360_extractor.error);
       cJSON_AddNumberToObject(report_jobj, "area", report->data.sig360_extractor.area);
       cJSON_AddNumberToObject(report_jobj, "scale", report->data.sig360_extractor.scale);
       cJSON_AddNumberToObject(report_jobj, "cx", report->data.sig360_extractor.Center.X);
@@ -339,6 +341,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
 
+      cJSON_AddNumberToObject(report_jobj, "error", report->data.sig360_circle_line.error);
       cJSON* reports_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
       for(int i=0;i<scl_reports.size();i++)
@@ -356,11 +359,8 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddStringToObject(report_jobj, "type", FM_camera_calibration::GetFeatureTypeName());
 
       cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
-      if(report->data.camera_calibration.error==FeatureReport_camera_calibration::FAIL)
-      {
-        cJSON_AddNumberToObject(report_jobj, "ERROR", FeatureReport_camera_calibration::FAIL);
-      }
-      else
+      cJSON_AddNumberToObject(report_jobj, "error", report->data.camera_calibration.error);
+      if(report->data.camera_calibration.error==FeatureReport_ERROR::NONE)
       {
         acvRadialDistortionParam param = report->data.camera_calibration.param;
         cJSON_AddNumberToObject(report_jobj, "K0", param.K0);

@@ -82,6 +82,26 @@ class APPMain extends React.Component{
             });
                 
           }}/>);
+
+      if(this.props.camera_calibration_param!==undefined)
+      {
+        let Calib_Err = this.props.camera_calibration_param.ERROR;
+        if(Calib_Err==undefined)
+        {
+          UI.push(
+            <BASE_COM.Button
+              key="CAM calib save" addClass="lblue width4"
+              text="CAM calib save" />);
+
+        }
+        else
+        {
+          UI.push(
+            <BASE_COM.Button
+              key="CAM calib err" addClass="lblue width4"
+              text="CAM calib ERR" />);
+        }
+      }
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
     {
@@ -111,6 +131,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
 const mapStateToProps_APPMain = (state) => {
   return { 
     c_state: state.UIData.c_state,
+    camera_calibration_param: state.UIData.edit_info.camera_calibration_param,
     WS_CH:state.UIData.WS_CH,
     WS_ID:state.UIData.WS_ID
   }

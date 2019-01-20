@@ -84,11 +84,11 @@ const FeatureReport* FM_camera_calibration::GetReport()
   report.data.camera_calibration.param=this->param;
   if(this->param.K0==this->param.K0)
   {
-    report.data.camera_calibration.error=FeatureReport_camera_calibration::NONE;
+    report.data.camera_calibration.error=FeatureReport_ERROR::NONE;
   }
   else
   {
-    report.data.camera_calibration.error=FeatureReport_camera_calibration::FAIL;
+    report.data.camera_calibration.error=FeatureReport_ERROR::GENERIC;
   }
   return &report;
 }

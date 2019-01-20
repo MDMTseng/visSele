@@ -12,14 +12,19 @@
 #define FeatureManager_NAME_LENGTH 32
 
 
+enum FeatureReport_ERROR {
+  NONE                            =0,
+  GENERIC                         =1,
+  ONLY_ONE_COMPONENT_IS_ALLOWED   =2,
+  END
+};
 typedef struct FeatureReport;
 
 typedef struct {
   vector<acv_LabeledData> *labeledData;
   vector<const FeatureReport*> *reports;
+  FeatureReport_ERROR error;
 } FeatureReport_binary_processing_group;
-
-
 
 typedef struct featureDef_circle{
   int id;
@@ -180,11 +185,7 @@ typedef FeatureReport_sig360_circle_line_single FeatureReport_SCLS;
 
 typedef struct FeatureReport_sig360_circle_line{
   vector<FeatureReport_sig360_circle_line_single> *reports;
-  enum{
-    NONE,
-    ONLY_ONE_COMPONENT_IS_ALLOWED,
-    END
-  } error;
+  FeatureReport_ERROR error;
 };
 
 
@@ -202,22 +203,14 @@ typedef struct FeatureReport_sig360_extractor{
   bool  isFlipped;
   float scale;
   
-  enum{
-    NONE,
-    ONLY_ONE_COMPONENT_IS_ALLOWED,
-    END
-  } error;
+  FeatureReport_ERROR error;
 };
 
 typedef struct FeatureReport_camera_calibration{
 
   acvRadialDistortionParam param;
   
-  enum{
-    NONE,
-    FAIL,
-    END
-  } error;
+  FeatureReport_ERROR error;
 };
 
 

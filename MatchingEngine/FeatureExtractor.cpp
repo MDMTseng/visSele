@@ -80,7 +80,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   {
     LOGE("Cannot find one component for extractor");
     report.data.sig360_extractor.error =
-    FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
+    FeatureReport_ERROR::ONLY_ONE_COMPONENT_IS_ALLOWED;
     return -1;
   }
   acv_XY center=ldData[idx].Center;
