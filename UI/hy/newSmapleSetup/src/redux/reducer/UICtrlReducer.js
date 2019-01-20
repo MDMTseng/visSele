@@ -6,6 +6,7 @@ import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
 import * as logX from 'loglevel';
+import { loadavg } from 'os';
 let log = logX.getLogger(__filename);
 
 let UISTS = UI_SM_STATES;
@@ -100,7 +101,7 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-
+    log.error(action);
     if(action.data.type === "binary_processing_group")
     {
       action.data.reports.forEach((report)=>
@@ -110,7 +111,6 @@ function StateReducer(newState,action)
           case "sig360_extractor":
           case "sig360_circle_line":
           {
-
             newState.edit_info=Object.assign({},newState.edit_info);
             //newState.report=action.data;
             newState.edit_info._obj.SetInspectionReport(report);

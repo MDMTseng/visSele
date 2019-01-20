@@ -44,6 +44,7 @@ public :
   int reload(const char *json_str) override;
   int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
+  virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
 protected:
 

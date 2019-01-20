@@ -21,6 +21,7 @@ public :
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img)=0;
   virtual const FeatureReport* GetReport(){return NULL;};
+  virtual void ClearReport(){};
   static const char* GetFeatureTypeName(){return NULL;};
   virtual ~FeatureManager(){};
 

@@ -13,9 +13,10 @@
 
 
 enum FeatureReport_ERROR {
-  NONE                            =0,
-  GENERIC                         =1,
-  ONLY_ONE_COMPONENT_IS_ALLOWED   =2,
+  NONE                            = 0,
+  GENERIC                         = 1,
+  ONLY_ONE_COMPONENT_IS_ALLOWED   = 2,
+  EXTERNAL_INTRUSION_OBJECT       = 3,
   END
 };
 typedef struct FeatureReport;

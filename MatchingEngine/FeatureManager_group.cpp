@@ -135,6 +135,8 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
 
 int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 {
+  
+    error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
     
@@ -151,12 +153,29 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     acvComponentLabeling(&binary_img);
     acvLabeledRegionInfo(&binary_img, &ldData);
 
-    int CLimit = (img->GetWidth()+img->GetHeight()-2)*2;
-    CLimit = CLimit*1200/100;
-    LOGV(">fence limit>>%d,%d",ldData[1].area,CLimit);
-    //if(ldData[1].area>CLimit)return 0;//If the cage connects something link to the edge we don't want to do the inspection
+    int FENCE_AREA = (img->GetWidth()+img->GetHeight()-2)*2;//External frame
+    FENCE_AREA=110/100;
+    int CLimit = (img->GetWidth()/100*img->GetHeight()/100);//small object=> 1920×1080=>19*10
+
+    int intrusionObjectArea = ldData[1].area - FENCE_AREA;
+    LOGV(">OBJ:%d  CLimit:%d",intrusionObjectArea,CLimit);
+    if(intrusionObjectArea>CLimit)
+    {//If the cage connects something link to the edge we don't want to do the inspection
+      error=FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT;
+      
+      for(int i=0;i<binaryFeatureBundle.size();i++)
+      {
+        binaryFeatureBundle[i]->ClearReport();
+      }
+      return 0;
+    }
     if(ldData.size()<=1)
     {
+      error=FeatureReport_ERROR::GENERIC;
+      for(int i=0;i<binaryFeatureBundle.size();i++)
+      {
+        binaryFeatureBundle[i]->ClearReport();
+      }
       return 0;
     }
     ldData[1].area = 0;
@@ -185,7 +204,10 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   {
     sub_reports.resize(binaryFeatureBundle.size());
   }
-  for(int i=0;i<binaryFeatureBundle.size();i++)
+  
+  report.data.binary_processing_group.error = error;
+
+  for(int i=0;i<sub_reports.size();i++)
   {
     sub_reports[i] = binaryFeatureBundle[i]->GetReport();
   }
@@ -195,6 +217,23 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   return &report;
 }
 
+
+void FeatureManager_binary_processing_group::ClearReport()
+{
+  if(binaryFeatureBundle.size()!=sub_reports.size())
+  {
+    sub_reports.resize(binaryFeatureBundle.size());
+  }
+
+  for(int i=0;i<sub_reports.size();i++)
+  {
+    binaryFeatureBundle[i]->ClearReport();
+  }
+  report.type = FeatureReport::binary_processing_group;
+  report.data.binary_processing_group.reports = &sub_reports;
+  report.data.binary_processing_group.labeledData = &ldData;
+  report.data.binary_processing_group.error=error=FeatureReport_ERROR::NONE;
+}
 /*
   FeatureManager_binary_processing_group Section
 */

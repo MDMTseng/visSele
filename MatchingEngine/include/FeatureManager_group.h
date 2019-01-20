@@ -28,11 +28,15 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
 
   vector<acv_LabeledData> ldData;
   acvImage binary_img;
+  
+  FeatureReport_ERROR error;
 public :
   FeatureManager_binary_processing_group(const char *json_str);
   int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
+  virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "binary_processing_group";};
+
 
 protected:
   int addSubFeature(cJSON * subFeature) override;

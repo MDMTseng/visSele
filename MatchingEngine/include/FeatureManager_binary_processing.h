@@ -32,6 +32,7 @@ public :
   int FeatureMatching(acvImage *img) override;
   cJSON *jobj;
   virtual const FeatureReport* GetReport() override;
+  virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_extractor";};
 protected:
   int parse_jobj() override;

@@ -1412,6 +1412,13 @@ const FeatureReport* FeatureManager_sig360_circle_line::GetReport()
   return &report;
 }
 
+void FeatureManager_sig360_circle_line::ClearReport()
+{
+  report.type = FeatureReport::sig360_circle_line;
+  report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
+  reports.resize(0);
+  report.data.sig360_circle_line.reports = &reports;
+}
 
 void spline9(float *f,int fL,float *edgeX,float *ret_edge_response)
 {

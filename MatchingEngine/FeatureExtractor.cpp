@@ -179,3 +179,16 @@ const FeatureReport* FeatureManager_sig360_extractor::GetReport()
   report.data.sig360_extractor.detectedLines = &detectedLines;
   return &report;
 }
+
+
+void FeatureManager_sig360_extractor::ClearReport()
+{
+  report.type = FeatureReport::sig360_extractor;
+  report.data.sig360_extractor.error=FeatureReport_ERROR::NONE;
+  signature.resize(0);
+  detectedCircles.resize(0);
+  detectedLines.resize(0);
+  report.data.sig360_extractor.signature = &signature;
+  report.data.sig360_extractor.detectedCircles = &detectedCircles;
+  report.data.sig360_extractor.detectedLines = &detectedLines;
+}
