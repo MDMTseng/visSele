@@ -71,7 +71,7 @@ int FM_camera_calibration::reload(const char *json_str)
 int FM_camera_calibration::FeatureMatching(acvImage *img)
 {
   acvRadialDistortionParam param = calcCameraCalibration(*(this->originalImage));;
-  this->param = param;
+  this->cali_param = param;
 
   LOGV("K: %g %g %g RNormalFactor:%g",param.K0,param.K1,param.K2,param.RNormalFactor);
   LOGV("Center: %g,%g",param.calibrationCenter.X,param.calibrationCenter.Y);
@@ -81,8 +81,8 @@ int FM_camera_calibration::FeatureMatching(acvImage *img)
 const FeatureReport* FM_camera_calibration::GetReport()
 {
   report.type = FeatureReport::camera_calibration;
-  report.data.camera_calibration.param=this->param;
-  if(this->param.K0==this->param.K0)
+  report.data.camera_calibration.param=this->cali_param;
+  if(this->cali_param.K0==this->cali_param.K0)
   {
     report.data.camera_calibration.error=FeatureReport_ERROR::NONE;
   }
@@ -93,6 +93,27 @@ const FeatureReport* FM_camera_calibration::GetReport()
   return &report;
 }
 
+void FM_camera_calibration::ClearReport()
+{
+    
+    acvRadialDistortionParam errParam={
+        calibrationCenter:{fNAN_,fNAN_},
+        RNormalFactor:dNAN_,
+        K0:dNAN_,
+        K1:dNAN_,
+        K2:dNAN_,
+        //r = r_image/RNormalFactor
+        //C1 = K1/K0
+        //C2 = K2/K0
+        //r"=r'/K0
+        //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+        //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+        //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+        //r/r'=r*K0/r"
+        ppb2b:dNAN_
+    };
+    this->cali_param = errParam;
+};
 
 struct idx_dist{
     int idx1;
