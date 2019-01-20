@@ -7,5 +7,6 @@
         "unit":"mm",
         "pattern_dist":0.1
       }
-    ]
+    ],
+    "extrusionSizeLimitRatio":1
   }

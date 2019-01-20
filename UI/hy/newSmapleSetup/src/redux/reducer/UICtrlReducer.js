@@ -101,7 +101,6 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-    log.error(action);
     if(action.data.type === "binary_processing_group")
     {
       action.data.reports.forEach((report)=>
@@ -134,6 +133,7 @@ function StateReducer(newState,action)
           }
           break;
           case "camera_calibration":
+            log.error(action);
             newState.edit_info.camera_calibration_param = report;
           break;
         }

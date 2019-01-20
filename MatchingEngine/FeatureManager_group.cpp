@@ -155,10 +155,10 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 
     int FENCE_AREA = (img->GetWidth()+img->GetHeight()-2)*2;//External frame
     FENCE_AREA=110/100;
-    int CLimit = (img->GetWidth()/100*img->GetHeight()/100);//small object=> 1920×1080=>19*10
+    int CLimit = (img->GetWidth()*img->GetHeight())*extrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
-    LOGV(">OBJ:%d  CLimit:%d",intrusionObjectArea,CLimit);
+    LOGV("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
     if(intrusionObjectArea>CLimit)
     {//If the cage connects something link to the edge we don't want to do the inspection
       error=FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT;
@@ -234,6 +234,22 @@ void FeatureManager_binary_processing_group::ClearReport()
   report.data.binary_processing_group.labeledData = &ldData;
   report.data.binary_processing_group.error=error=FeatureReport_ERROR::NONE;
 }
+
+int FeatureManager_binary_processing_group::parse_jobj()
+{
+  double *val= JFetch_NUMBER(root,"extrusionSizeLimitRatio");
+
+  extrusionSizeLimitRatio=(val!=NULL)?*val:0;
+  
+  LOGV("extrusionSizeLimitRatio:%f  ptr:%p",extrusionSizeLimitRatio,val);
+
+  FeatureManager_group_proto::parse_jobj();
+
+  return 0;
+}
+
+
+
 /*
   FeatureManager_binary_processing_group Section
 */
@@ -296,3 +312,4 @@ int FeatureManager_group::FeatureMatching(acvImage *img)
   }
   return 0;
 }
+

@@ -1014,19 +1014,17 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 
 int simpleTest()
 {
-  acvImage test1_buff;
   //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
-  CameraLayer::status ret = cl_BMP.LoadBMP("data/testInsp.bmp");
+  CameraLayer::status ret = cl_BMP.LoadBMP("data/cache_def.bmp");
   if(ret != CameraLayer::ACK)
   {
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,"data/test.ic.json");
+  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,"data/cache_def.json");
 
-  acvSaveBitmapFile("data/buff.bmp",&test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
 
   if(report!=NULL)
@@ -1093,7 +1091,7 @@ int main(int argc, char** argv)
     return 0;
   }
 
-
+  //return simpleTest();
 
   signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
