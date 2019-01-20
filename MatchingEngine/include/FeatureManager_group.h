@@ -39,7 +39,7 @@ public :
 
 
 protected:
-  double extrusionSizeLimitRatio=0;
+  double intrusionSizeLimitRatio=0;
   int addSubFeature(cJSON * subFeature) override;
   int clearFeatureGroup() override;
   ~FeatureManager_binary_processing_group(){clearFeatureGroup();};

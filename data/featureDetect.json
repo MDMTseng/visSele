@@ -1,6 +1,6 @@
 {
   "type":"binary_processing_group",
-  "extrusionSizeLimitRatio":1,
+  "intrusionSizeLimitRatio":1,
   "featureSet":[
     {
       "type":"sig360_extractor",

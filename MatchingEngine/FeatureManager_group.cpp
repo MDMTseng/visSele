@@ -155,7 +155,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 
     int FENCE_AREA = (img->GetWidth()+img->GetHeight()-2)*2;//External frame
     FENCE_AREA=110/100;
-    int CLimit = (img->GetWidth()*img->GetHeight())*extrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
+    int CLimit = (img->GetWidth()*img->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
     LOGV("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
@@ -237,11 +237,11 @@ void FeatureManager_binary_processing_group::ClearReport()
 
 int FeatureManager_binary_processing_group::parse_jobj()
 {
-  double *val= JFetch_NUMBER(root,"extrusionSizeLimitRatio");
+  double *val= JFetch_NUMBER(root,"intrusionSizeLimitRatio");
 
-  extrusionSizeLimitRatio=(val!=NULL)?*val:0;
+  intrusionSizeLimitRatio=(val!=NULL)?*val:0;
   
-  LOGV("extrusionSizeLimitRatio:%f  ptr:%p",extrusionSizeLimitRatio,val);
+  LOGV("intrusionSizeLimitRatio:%f  ptr:%p",intrusionSizeLimitRatio,val);
 
   FeatureManager_group_proto::parse_jobj();
 

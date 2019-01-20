@@ -8,5 +8,5 @@
         "pattern_dist":0.1
       }
     ],
-    "extrusionSizeLimitRatio":1
+    "intrusionSizeLimitRatio":1
   }
