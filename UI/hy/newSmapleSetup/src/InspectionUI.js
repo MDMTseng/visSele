@@ -122,23 +122,23 @@ class AirControl extends React.Component {
   render() {
     return (
         <div>
-        <Button type="primary" size="large" onClick={this.blowAir_LEFTa.bind(this)}>
+        <Button icon='check-circle' type="primary" size="large" onClick={this.blowAir_LEFTa.bind(this)}>
           LEFT
         </Button>
 
-        <Button type="primary" size="large" onClick={()=>this.blowAir_RIGHTa()}>
+        <Button icon='close-circle' type="primary" size="large" onClick={()=>this.blowAir_RIGHTa()}>
           RIGHT
         </Button>
-          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMEADD(10)}>
+          <Button icon='edit' type="primary" size="large" onClick={()=>this.blowAir_TIMEADD(10)}>
             ADD 10ms={this.state.websocketAirTime}
           </Button>
-          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMESUB(10)}>
+          <Button icon='edit' type="primary" size="large" onClick={()=>this.blowAir_TIMESUB(10)}>
             SUB 10ms={this.state.websocketAirTime}
           </Button>
-          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMEADD(100)}>
+          <Button icon='edit' type="primary" size="large" onClick={()=>this.blowAir_TIMEADD(100)}>
             ADD 100ms={this.state.websocketAirTime}
           </Button>
-          <Button type="primary" size="large" onClick={()=>this.blowAir_TIMESUB(100)}>
+          <Button icon='edit' type="primary" size="large" onClick={()=>this.blowAir_TIMESUB(100)}>
             SUB 100ms={this.state.websocketAirTime}
           </Button>
           <Button type="primary" size="large" onClick={()=>this.blowAir_TEST()}>
