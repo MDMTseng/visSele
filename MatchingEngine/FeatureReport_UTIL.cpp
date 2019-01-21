@@ -332,12 +332,6 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
 
       cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
 
-      cJSON_AddStringToObject(report_jobj, "unit", "px");
-
-      cJSON_AddNumberToObject(report_jobj, "mmpp", 0.01);
-
-
-
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
 
@@ -367,6 +361,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
         cJSON_AddNumberToObject(report_jobj, "K1", param.K1);
         cJSON_AddNumberToObject(report_jobj, "K2", param.K2);
         cJSON_AddNumberToObject(report_jobj, "ppb2b", param.ppb2b);
+        cJSON_AddNumberToObject(report_jobj, "mmpb2b", param.mmpb2b);
         cJSON_AddNumberToObject(report_jobj, "RNormalFactor", param.RNormalFactor);
         cJSON_AddItemToObject(report_jobj, "calibrationCenter", acv_acv_XY2JSON(param.calibrationCenter));
       }

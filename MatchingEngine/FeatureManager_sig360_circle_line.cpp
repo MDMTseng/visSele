@@ -1157,13 +1157,12 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   const char *type_str= JFetch_STRING(root,"type");
   const char *ver_str = JFetch_STRING(root,"ver");
   const char *unit_str =JFetch_STRING(root,"unit");
-  const double *mmpp  = JFetch_NUMBER(root,"mmpp");
-  if(type_str==NULL||ver_str==NULL||unit_str==NULL||mmpp==NULL)
+  if(type_str==NULL||ver_str==NULL||unit_str==NULL)
   {
-    LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p> mmpp(number):<%p>",type_str,ver_str,unit_str,mmpp);
+    LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>",type_str,ver_str,unit_str);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  unit:<%s> mmpp(number):%f",type_str,ver_str,unit_str,*mmpp);
+  LOGI("type:<%s>  ver:<%s>  unit:<%s>",type_str,ver_str,unit_str);
 
 
   cJSON *featureList = cJSON_GetObjectItem(root,"features");
@@ -1282,6 +1281,67 @@ int FeatureManager_sig360_circle_line::parse_jobj()
      }
   }
 
+
+  {
+
+    float ppmm =param.ppb2b/param.mmpb2b;//mm per pixel
+    //Convert mm to Pixel unit
+    for(int i=0;i<featureLineList.size();i++)
+    {
+      featureLineList[i].searchDist*=ppmm;
+      featureLineList[i].initMatchingMargin*=ppmm;
+      featureLineList[i].MatchingMarginX*=ppmm;
+      
+      featureLineList[i].searchEstAnchor=acvVecMult(featureLineList[i].searchEstAnchor,ppmm);
+      //featureLineList[i].searchVec=acvVecMult(featureLineList[i].searchVec,ppmm);
+
+      vector<featureDef_line::searchKeyPoint> &keyPtList = featureLineList[i].keyPtList;
+      for(int j=0;j<keyPtList.size();j++)
+      {
+        keyPtList[j].keyPt = acvVecMult(keyPtList[j].keyPt,ppmm);
+      }
+    }
+
+    for(int i=0;i<featureCircleList.size();i++)
+    {
+      featureCircleList[i].outter_inner *=ppmm;
+      featureCircleList[i].initMatchingMargin*=ppmm;
+
+      featureCircleList[i].circleTar.circumcenter = 
+        acvVecMult(featureCircleList[i].circleTar.circumcenter ,ppmm);
+      featureCircleList[i].circleTar.radius*=ppmm;
+    }
+
+    for(int i=0;i<judgeList.size();i++)
+    {
+      judgeList[i].targetVal*=ppmm;
+      judgeList[i].targetVal_margin*=ppmm;
+    }
+    
+    for(int i=0;i<auxPointList.size();i++)
+    {
+      //No unit data to convert
+      //auxPointList[i].data.lineCross.
+    }
+
+    for(int i=0;i<searchPointList.size();i++)
+    {
+      searchPointList[i].margin*=ppmm;
+      searchPointList[i].width*=ppmm;
+      if(searchPointList[i].subtype == featureDef_searchPoint::anglefollow)
+      {
+        searchPointList[i].data.anglefollow.position=
+          acvVecMult(searchPointList[i].data.anglefollow.position,ppmm);
+      }
+    }
+
+
+    for(int i=0;i<feature_signature.size();i++)
+    {
+      feature_signature[i].X*=ppmm;
+    }
+
+  }
 
 
   {
@@ -1721,8 +1781,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   }
 
 
-  for (int i = 1; i < ldData.size(); i++,count++)
-  {
+  for (int i = 2; i < ldData.size(); i++,count++)
+  {// idx 0 is not a label, idx 1 is the outer frame to detect external object intrusion 
       if(ldData[i].area<120)continue;
 
       //LOGI("Lable:%2d area:%d",i,ldData[i].area);
@@ -2205,6 +2265,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
   }
 
+
+
+  {//convert pixel unit to mm
+    float mmpp=param.mmpb2b/param.ppb2b;
+
+  }
 
   //LOGI(">>>>>>>>");
   return 0;

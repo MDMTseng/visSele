@@ -46,7 +46,7 @@ function Default_UICtrlReducer()
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
       session_lock:null,
-      camera_calibration_param:undefined,
+      camera_calibration_report:undefined,
     },
     sm:null,
     c_state:null,
@@ -134,7 +134,16 @@ function StateReducer(newState,action)
           break;
           case "camera_calibration":
             log.error(action);
-            newState.edit_info.camera_calibration_param = report;
+            if(report.error!==undefined &&report.error == 0)
+            {
+              newState.edit_info._obj.SetCameraParamInfo(report);
+              newState.edit_info.camera_calibration_report = action.data;
+            }
+            else
+            {
+              newState.edit_info._obj.SetCameraParamInfo(undefined);
+              newState.edit_info.camera_calibration_report = undefined;
+            }
           break;
         }
         
@@ -177,10 +186,10 @@ function StateReducer(newState,action)
         break;
 
         case UISEV.Define_File_Update:
-          
-        if(action.data.type === "binary_processing_group")
+        let root_defFile=action.data;
+        if(root_defFile.type === "binary_processing_group")
         {
-          action.data.featureSet.forEach((report)=>
+          root_defFile.featureSet.forEach((report)=>
           {
             switch(report.type)
             {
@@ -199,11 +208,16 @@ function StateReducer(newState,action)
               }
               break;
               case "camera_calibration":
-                log.info(report);
 
-
-
-                
+                log.error(action);
+                /*if(report.error!==undefined &&report.error == 0)
+                {
+                  newState.edit_info.camera_calibration_report = root_report;
+                }
+                else
+                {
+                  newState.edit_info.camera_calibration_report = undefined;
+                }*/
               break;
             }
             

@@ -93,6 +93,11 @@ export class InspectionEditorLogic
     this.UpdateInherentShapeList();
   }
 
+  SetCameraParamInfo(cameraParam)
+  {
+    this.cameraParam = cameraParam;
+  }
+
   SetState(state)
   {
     if(this.state!=state)

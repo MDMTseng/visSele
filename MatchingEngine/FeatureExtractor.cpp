@@ -95,6 +95,24 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
 
+
+  
+  {//convert pixel unit to mm
+    float mmpp=param.mmpb2b/param.ppb2b;
+    for(int i=0;i<signature.size();i++)
+    {
+      signature[i].X*=mmpp;
+
+    }
+    ldData[idx].LTBound=acvVecMult(ldData[idx].LTBound,mmpp);
+    ldData[idx].RBBound=acvVecMult(ldData[idx].RBBound,mmpp);
+    ldData[idx].Center=acvVecMult(ldData[idx].Center,mmpp);
+    ldData[idx].area*=mmpp*mmpp;//area
+  }
+
+
+
+
   {
     report.data.sig360_extractor.LTBound=ldData[idx].LTBound;
     report.data.sig360_extractor.RBBound=ldData[idx].RBBound;

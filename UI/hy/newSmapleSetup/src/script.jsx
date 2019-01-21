@@ -83,24 +83,19 @@ class APPMain extends React.Component{
                 
           }}/>);
 
-      if(this.props.camera_calibration_param!==undefined)
+      if(this.props.camera_calibration_report!==undefined)
       {
-        let Calib_Err = this.props.camera_calibration_param.ERROR;
-        if(Calib_Err==undefined)
-        {
-          UI.push(
-            <BASE_COM.Button
-              key="CAM calib save" addClass="lblue width4"
-              text="CAM calib save" />);
+        UI.push(
+          <BASE_COM.Button
+            key="CAM calib save" addClass="lblue width4"
+            text="CAM calib save" onClick={()=>{
+              var enc = new TextEncoder();
+              let enc_report = enc.encode(JSON.stringify(this.props.camera_calibration_report, null, 2));
+              this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
+                {filename:"data/default_camera_param.json"},
+                enc_report);
+            }}/>);
 
-        }
-        else
-        {
-          UI.push(
-            <BASE_COM.Button
-              key="CAM calib err" addClass="lblue width4"
-              text="CAM calib ERR" />);
-        }
       }
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
@@ -131,7 +126,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
 const mapStateToProps_APPMain = (state) => {
   return { 
     c_state: state.UIData.c_state,
-    camera_calibration_param: state.UIData.edit_info.camera_calibration_param,
+    camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     WS_CH:state.UIData.WS_CH,
     WS_ID:state.UIData.WS_ID
   }
@@ -150,6 +145,7 @@ class APPMasterX extends React.Component{
       onopen:(ev,ws_obj)=>{
     
         StoreX.dispatch(UIAct.EV_WS_Connected(ws_obj));
+        
         //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
       },
       onmessage:(evt,ws_obj)=>{
@@ -165,6 +161,8 @@ class APPMasterX extends React.Component{
           {
             //log.info(this.props.WS_CH);
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+            
+            this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
             break;
           }
 
@@ -202,6 +200,16 @@ class APPMasterX extends React.Component{
             let report =BPG_Protocol.raw2obj(evt);
             log.debug(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_Define_File_Update(report.data));
+            break;
+          }
+          case "FL":
+          {
+            let report =BPG_Protocol.raw2obj(evt);
+            log.error(header.type,report);
+            if(report.data.type === "binary_processing_group" )
+            {
+              this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
+            }
             break;
           }
           case "SG":

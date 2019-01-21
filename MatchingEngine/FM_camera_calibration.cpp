@@ -110,7 +110,8 @@ void FM_camera_calibration::ClearReport()
         //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
         //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
         //r/r'=r*K0/r"
-        ppb2b:dNAN_
+        ppb2b:dNAN_,
+        mmpb2b:dNAN_,
     };
     this->cali_param = errParam;
 };
@@ -365,7 +366,8 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
             //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
             //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
             //r/r'=r*K0/r"
-            ppb2b:dNAN_
+            ppb2b:dNAN_,
+            mmpb2b:dNAN_
         };
         retParam = errParam;
     }
@@ -742,6 +744,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     distMean/=idxList.size();
 
     retParam.ppb2b=distMean;
+    retParam.mmpb2b=-1;
     float sigma=0;
 
     for(int i=0;i<idxList.size();i++)

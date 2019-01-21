@@ -50,6 +50,9 @@ acvRadialDistortionParam param_default={
     //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
     //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
     //r/r'=r*K0/r"
+
+    ppb2b: 63.11896896362305,
+    mmpb2b: 0.62962962,
 };
 
 bool cameraFeedTrigger=false;
@@ -217,18 +220,51 @@ public:
           else if(checkTL("LD",dat))
           {
 
-
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
             char tmp[100];
             int session_id = rand();
-            sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
-            BPG_data bpg_dat=GenStrBPGData("SS", tmp);
-            datCH_BPG.data.p_BPG_data=&bpg_dat;
-            self->SendData(datCH_BPG);
-
+            BPG_data bpg_dat;
             do{
+              
               cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+
+              char* filename =(char* )JFetch(json,"filename",cJSON_String);
+              if(filename!=NULL)
+              {
+                sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"FL\"]}",session_id);
+                bpg_dat=GenStrBPGData("SS", tmp);
+                datCH_BPG.data.p_BPG_data=&bpg_dat;
+                self->SendData(datCH_BPG);
+
+
+                try {
+                  char *fileStr = ReadText(filename);
+                  if(fileStr == NULL)
+                  {
+                    LOGE("Cannot read defFile from:%s",filename);
+                    break;
+                  }
+                  LOGV("Read deffile:%s",filename);
+                  BPG_data bpg_dat=GenStrBPGData("FL", fileStr);
+                  datCH_BPG.data.p_BPG_data=&bpg_dat;
+                  self->SendData(datCH_BPG);
+                  free(fileStr);
+
+                }
+                catch (std::invalid_argument iaex) {
+                  LOGE( "Caught an error!");
+                }
+
+                break;
+              }
+
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
+              bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+
               if (json == NULL)
               {
                 LOGE("JSON parse failed");
@@ -275,7 +311,7 @@ public:
                   BPG_data bpg_dat=GenStrBPGData("DF", jsonStr);
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
-
+                  free(jsonStr);
               }
               catch (std::invalid_argument iaex) {
                   LOGE( "Caught an error!");
