@@ -692,6 +692,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
         {
           for(int i=0;i<edge_grid.tmpXYSeq.size();i++)
           {
+            
             edge_grid.tmpXYSeq[i].pt=
               acvVecRadialDistortionRemove(
                 edge_grid.tmpXYSeq[i].pt,param);

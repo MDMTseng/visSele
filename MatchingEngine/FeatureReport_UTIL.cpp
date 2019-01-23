@@ -17,12 +17,12 @@ cJSON* acv_LineFit2JSON(cJSON* Line_jobj, const acv_LineFit line, acv_XY center_
   cJSON_AddNumberToObject(Line_jobj, "matching_pts", line.matching_pts);
   cJSON_AddNumberToObject(Line_jobj, "s", line.s);
 
-  acv_XY point = acvClosestPointOnLine(line.end_pos, line.line);
+  /*acv_XY point = acvClosestPointOnLine(line.end_pos, line.line);
   cJSON_AddNumberToObject(Line_jobj, "x0", point.X-center_offset.X);
   cJSON_AddNumberToObject(Line_jobj, "y0", point.Y-center_offset.Y);
   point = acvClosestPointOnLine(line.end_neg, line.line);
   cJSON_AddNumberToObject(Line_jobj, "x1", point.X-center_offset.X);
-  cJSON_AddNumberToObject(Line_jobj, "y1", point.Y-center_offset.Y);
+  cJSON_AddNumberToObject(Line_jobj, "y1", point.Y-center_offset.Y);*/
   cJSON_AddNumberToObject(Line_jobj, "cx", line.line.line_anchor.X-center_offset.X);
   cJSON_AddNumberToObject(Line_jobj, "cy", line.line.line_anchor.Y-center_offset.Y);
   cJSON_AddNumberToObject(Line_jobj, "vx", line.line.line_vec.X);

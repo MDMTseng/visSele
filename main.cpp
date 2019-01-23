@@ -118,6 +118,7 @@ public:
   DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
   {
       this->self = self;
+      cacheImage.ReSize(1,1);
   }
 
   static BPG_data GenStrBPGData(char *TL, char* jsonStr)
@@ -192,7 +193,10 @@ public:
                 char* type =(char* )JFetch(json,"type",cJSON_String);
                 if (strcmp(type,"__CACHE_IMG__") == 0 )
                 {
-                  acvSaveBitmapFile(fileName,&cacheImage);
+                  if(cacheImage.GetWidth()*cacheImage.GetHeight()>10)
+                    acvSaveBitmapFile(fileName,&cacheImage);
+                  
+                  cacheImage.ReSize(1,1);
                 }
               }
               else
@@ -1053,7 +1057,7 @@ int simpleTest()
   //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
-  CameraLayer::status ret = cl_BMP.LoadBMP("data/cache_def.bmp");
+  CameraLayer::status ret = cl_BMP.LoadBMP("data/testImg.bmp");
   if(ret != CameraLayer::ACK)
   {
     LOGE("LoadBMP failed: ret:%d",ret);

@@ -974,6 +974,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.rUtil.renderParam.mmpp=mmpp;
   }
 
+
+
+  
   SetShape( shape_obj, id)
   {
     this.tmp_EditShape_id=id;
@@ -1072,7 +1075,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
-    ctx.lineWidth = this.getIndicationLineSize();
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
     ctx.resetTransform();  
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
@@ -1081,10 +1084,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     
     {//TODO:HACK: 4X4 times scale down for transmission speed
       
-      ctx.translate(-this.secCanvas.width*4/2,-this.secCanvas.height*4/2);//Move to the center of the secCanvas
-      ctx.save();
       let mmpp = this.rUtil.get_mmpp();
-      ctx.scale(4*mmpp,4*mmpp);
+      let mmpp_mult = 4*mmpp;
+      ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
+      ctx.save();
+
+      ctx.scale(mmpp_mult,mmpp_mult);
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
@@ -1168,6 +1173,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
       {
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
+        
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         
         listClone.forEach((eObj)=>{

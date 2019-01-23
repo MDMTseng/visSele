@@ -201,6 +201,7 @@ export class InspectionEditorLogic
     log.info(this.inherentShapeList);
     return {
       type:"binary_processing_group",
+      intrusionSizeLimitRatio:0.1,
       featureSet:[
       {
         "type":"sig360_circle_line",
@@ -370,6 +371,9 @@ export class InspectionEditorLogic
         return;
       }
       eObject.inspection_status = inspAdjObj.status;
+
+
+
       ["pt1","pt2","pt3"].forEach((key)=>{
         if(eObject[key]===undefined)return;
         eObject[key] = PtRotate2d_sc(eObject[key],sin_v,cos_v,flip_f);
@@ -390,6 +394,7 @@ export class InspectionEditorLogic
             eObject.pt1=eObject.pt2;
             eObject.pt2=tmp;
           }
+          
         }
         break;
         

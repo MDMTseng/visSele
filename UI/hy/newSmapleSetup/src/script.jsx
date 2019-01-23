@@ -85,10 +85,13 @@ class APPMain extends React.Component{
 
       if(this.props.camera_calibration_report!==undefined)
       {
+
+        let camParam = this.props.isp_db.cameraParam;
+        let mmpp = camParam.mmpb2b/camParam.ppb2b;
         UI.push(
           <BASE_COM.Button
             key="CAM calib save" addClass="lblue width4"
-            text="CAM calib save" onClick={()=>{
+            text={"calib save(mmpp:"+mmpp.toFixed(6)+")"} onClick={()=>{
               var enc = new TextEncoder();
               let enc_report = enc.encode(JSON.stringify(this.props.camera_calibration_report, null, 2));
               this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
@@ -127,6 +130,7 @@ const mapStateToProps_APPMain = (state) => {
   return { 
     c_state: state.UIData.c_state,
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
+    isp_db: state.UIData.edit_info._obj,
     WS_CH:state.UIData.WS_CH,
     WS_ID:state.UIData.WS_ID
   }

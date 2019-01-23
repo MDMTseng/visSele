@@ -906,7 +906,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
   LOGV("feature is a line:%s %d",line.name,line.id);
 
-  line.initMatchingMargin=(int)*JFetEx_NUMBER(line_obj,"margin");
+  line.initMatchingMargin=(float)*JFetEx_NUMBER(line_obj,"margin");
 
   double direction = *JFetEx_NUMBER(line_obj,"direction");
 
@@ -962,6 +962,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON * line_obj)
 
   line.searchVec=normal;
   line.searchDist=line.initMatchingMargin*2;
+  
 
   line.searchEstAnchor = line.lineTar.line_anchor;
   line.searchEstAnchor.X-=normal.X*line.initMatchingMargin;
@@ -1282,9 +1283,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   }
 
 
-  {
-
-    float ppmm =param.ppb2b/param.mmpb2b;//mm per pixel
+  if(0){
+    //It's in parsing stage, there is no cameraParam yet.
+    float ppmm =param.ppb2b/param.mmpb2b;//pixel 2 mm
+    LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
     //Convert mm to Pixel unit
     for(int i=0;i<featureLineList.size();i++)
     {
@@ -1730,6 +1732,7 @@ int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<Co
 
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
+  float ppmm =param.ppb2b/param.mmpb2b;//pixel per mm
   acvImage *buff_=&_buff;
   vector<acv_LabeledData> &ldData=*this->_ldData;
   int grid_size = 50;
@@ -1788,8 +1791,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
 
-
       acvContourCircleSignature(img, ldData[i], i, tmp_signature);
+
+      //the tmp_signature is in Pixel unit, convert it to mm
+      for(int j=0;j<tmp_signature.size();j++)
+      {
+        tmp_signature[j].X/=ppmm;
+      }
 
       bool isInv;
       float angle;
@@ -1797,9 +1805,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         &isInv, &angle);
 
       error = sqrt(error)/feature_signature_ave;
-      //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+      LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+
 
       if(error>0.5)continue;
+      float mmpp = param.mmpb2b/param.ppb2b;//mm per pixel
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,
@@ -1810,12 +1820,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           .LTBound=ldData[i].LTBound,
           .RBBound=ldData[i].RBBound,
           .Center=ldData[i].Center,
-          .area=ldData[i].area,
+          .area=(float)ldData[i].area,
           .rotate=angle,
           .isFlipped=isInv,
           .scale=1,
           .targetName=NULL,
       };
+
+      singleReport.Center=acvVecMult(singleReport.Center,mmpp);
+      singleReport.LTBound=acvVecMult(singleReport.LTBound,mmpp);
+      singleReport.RBBound=acvVecMult(singleReport.RBBound,mmpp);
+      singleReport.area*=mmpp*mmpp;
+
 
 
       //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
@@ -1850,6 +1866,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
       
       acvRadialDistortionParam param=this->param;
+      
       extractLabeledContourDataToContourGrid(smoothedImg,labeledBuff,i,ldData[i],
         grid_size,edge_grid,scanline_skip,param);
       
@@ -1893,12 +1910,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
           
           line_cand.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
-
+          line_cand.line_vec = acvVecMult(line_cand.line_vec,ppmm);//convert to pixel unit
           
           LOGV("line->lineTar.line_vec: %f %f",line_cand.line_vec.X,line_cand.line_vec.Y);
             
           target_vec = line_cand.line_vec;
           line_cand.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
+          line_cand.line_anchor = acvVecMult(line_cand.line_anchor,ppmm);//convert to pixel unit
           
           //Offet to real image and backoff searchDist distance along with the searchVec as start
           line_cand.line_anchor.X+=ldData[i].Center.X;
@@ -1915,16 +1933,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             featureDef_line::searchKeyPoint skp= line->keyPtList[k];
 
             skp.keyPt= acvRotation(cached_sin,cached_cos,flip_f,skp.keyPt);
-            skp.keyPt.X+=ldData[i].Center.X;
-            skp.keyPt.Y+=ldData[i].Center.Y;
+            skp.keyPt=acvVecMult(skp.keyPt,ppmm);
+            skp.keyPt=acvVecAdd(skp.keyPt,ldData[i].Center);
+            
+            float searchDist = line->searchDist*ppmm;
+            LOGV("skp.keyPt %f %f, searchDist:%f ppmm:%f",skp.keyPt.X,skp.keyPt.Y,line->searchDist,ppmm);
             if(drawDBG_IMG)
             {
               acvDrawCrossX(buff_,
               skp.keyPt.X,skp.keyPt.Y,
               2,2);
             }
-            if(searchP(img, &skp.keyPt , searchVec, line->searchDist)!=0)
+            if(searchP(img, &skp.keyPt , searchVec, searchDist)!=0)
             {
+              LOGV("Fail...");
               continue;
             }
             if(drawDBG_IMG)
@@ -1935,6 +1957,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
             
                   
+            //LOGV("skp.keyPt %f %f <= found..",skp.keyPt.X,skp.keyPt.Y);
             ContourGrid::ptInfo pti= {pt:skp.keyPt};
 
             s_points.push_back(pti);
@@ -1953,7 +1976,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           }
           else if(s_points.size()==1)
           {
-            //Use the 
             line_cand.line_anchor = s_points[0].pt;
           }
           else
@@ -1968,18 +1990,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
         }
 
-
+        float MatchingMarginX=line->MatchingMarginX*ppmm;
+        float initMatchingMargin=line->initMatchingMargin*ppmm;
 
         s_points.resize(0);
         edge_grid.getContourPointsWithInLineContour(line_cand,
-          line->MatchingMarginX,
+          MatchingMarginX,
 
           //HACK:Kinda hack... the initial Margin is for initial keypoints search, 
           //But since we get the cadidate line already, no need for huge Margin
-          line->initMatchingMargin/2,
+          initMatchingMargin,
           flip_f,
           s_intersectIdxs,s_points);
-        LOGV("getContourPointsWithInLineContour OK");
+        LOGV("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
+          MatchingMarginX,s_points.size(),initMatchingMargin);
 
        
         if(1)
@@ -1987,7 +2011,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
           
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
-          LOGV("X:%f Y:%f",lineNormal.X,lineNormal.Y);
+          
           int sptL=s_points.size();
           for(int i=0;i<s_points.size();i++)
           {
@@ -2119,18 +2143,27 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
           lr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
         }
+        lr.line.end_neg=acvVecMult(lr.line.end_neg,0);
+        lr.line.end_pos=acvVecMult(lr.line.end_pos,0);
         detectedLines.push_back(lr);
       }
 
       acv_CircleFit cf_zero= {0};
       for (int j = 0; j < featureCircleList.size(); j++)
       {
+        
         featureDef_circle &cdef= featureCircleList[j];
+        
+        float initMatchingMargin=cdef.initMatchingMargin*ppmm;
+        
+
         acv_XY center = acvRotation(cached_sin,cached_cos,flip_f,cdef.circleTar.circumcenter);
 
-        int matching_tor=cdef.initMatchingMargin;
-        center.X+=ldData[i].Center.X;
-        center.Y+=ldData[i].Center.Y;
+        center = acvVecMult(center,ppmm);
+
+
+        int matching_tor=initMatchingMargin;
+        center=acvVecAdd(center,ldData[i].Center);
         
         LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
         float sAngle,eAngle;
@@ -2145,12 +2178,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           eAngle = -(cdef.sAngle-angle);
         }
         LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,sAngle,eAngle);
-        
+        float radius = cdef.circleTar.radius*ppmm;
 
         edge_grid.getContourPointsWithInCircleContour(
           center.X,
           center.Y,
-          cdef.circleTar.radius,
+          radius,
           sAngle,eAngle,cdef.outter_inner,
           matching_tor,
           s_intersectIdxs,s_points);
@@ -2225,13 +2258,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         }
 
         LOGV("C=%d===%f,%f   => %f,%f, dist:%f matching_pts:%d",
-        j,cdef.circleTar.circumcenter.X,cdef.circleTar.circumcenter.Y,center.X,center.Y,
+        j,cdef.circleTar.circumcenter.X*ppmm,cdef.circleTar.circumcenter.Y*ppmm,
+        center.X,center.Y,
         hypot(cf.circle.circumcenter.X-center.X,cf.circle.circumcenter.Y-center.Y),
         cf.matching_pts);
 
 
-        if( cf.circle.radius<cdef.circleTar.radius-cdef.initMatchingMargin||
-        cf.circle.radius>cdef.circleTar.radius+cdef.initMatchingMargin )
+        if( cf.circle.radius<radius-initMatchingMargin||
+        cf.circle.radius>radius+initMatchingMargin )
         {
           cr.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
         }
@@ -2239,29 +2273,131 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
           cr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
         }
-
-
         detectedCircles.push_back(cr);
-
       }
 
 
       for(int j=0;j<searchPointList.size();j++)
       {
-        FeatureReport_searchPointReport report= searchPoint_process(smoothedImg,img,i,ldData[i],singleReport,cached_sin,cached_cos,flip_f,searchPointList[j],buff_);
+        featureDef_searchPoint spoint =searchPointList[j];
+        spoint.margin*=ppmm;
+        spoint.width*=ppmm;
+        if(spoint.subtype == featureDef_searchPoint::anglefollow)
+        {
+          spoint.data.anglefollow.position=acvVecMult(spoint.data.anglefollow.position,ppmm);
+        }
+        FeatureReport_searchPointReport report= searchPoint_process(smoothedImg,img,i,ldData[i],singleReport,cached_sin,cached_cos,flip_f,spoint,buff_);
         LOGV("id:%d, %d",report.def->id,searchPointList[j].id);
+        report.def = &(searchPointList[j]);
         detectedSearchPoints.push_back(report);
       }
       for(int j=0;j<auxPointList.size();j++)
       {
-        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,auxPointList[j]);
+        featureDef_auxPoint apoint =auxPointList[j];
+        if(apoint.subtype == featureDef_auxPoint::lineCross)
+        {
+          //No value to convert, id only
+        }
+        else if(apoint.subtype == featureDef_auxPoint::centre )
+        {
+          //No value to convert, id only
+        }
+        
+        FeatureReport_auxPointReport report= auxPoint_process(singleReport,cached_sin,cached_cos,flip_f,apoint);
+        report.def = &(auxPointList[j]);
         detectedAuxPoints.push_back(report);
       }
       for(int j=0;j<judgeList.size();j++)
       {
-        FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judgeList[j]);
+        FeatureReport_judgeDef judge= judgeList[j];
+        
+        
+        switch(judge.measure_type)
+        {
+          case FeatureReport_judgeDef::AREA :
+          {
+            judge.targetVal*=ppmm*ppmm;
+            judge.targetVal_margin*=ppmm*ppmm;
+          }
+          break;
+          case FeatureReport_judgeDef::DISTANCE :
+          case FeatureReport_judgeDef::SIGMA :
+          case FeatureReport_judgeDef::RADIUS :
+          {
+            judge.targetVal*=ppmm;
+            judge.targetVal_margin*=ppmm;
+          }
+          break;
+          case FeatureReport_judgeDef::ANGLE :
+          case FeatureReport_judgeDef::NA :
+          {
+          }
+          break;
+        }
+        FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judge);
+        report.def = &(judgeList[j]);
         judgeReports.push_back(report);
       }
+
+
+
+
+      if(1)
+      { 
+        //Convert report to mm based unit
+        for(int i=0;i<detectedLines.size();i++)
+        {
+          detectedLines[i].line.end_neg = acvVecMult(detectedLines[i].line.end_neg,mmpp);
+          detectedLines[i].line.end_pos = acvVecMult(detectedLines[i].line.end_pos,mmpp);
+          detectedLines[i].line.line.line_anchor = acvVecMult(detectedLines[i].line.line.line_anchor,mmpp);
+          //detectedLines[i].line.line.line_vec = acvVecMult(detectedLines[i].line.line.line_vec,mmpp);
+          detectedLines[i].line.s = detectedLines[i].line.s*mmpp;
+        }
+        for(int i=0;i<detectedCircles.size();i++)
+        {
+          detectedCircles[i].circle.s*=mmpp;
+          detectedCircles[i].circle.circle.circumcenter=
+            acvVecMult(detectedCircles[i].circle.circle.circumcenter,mmpp);
+          detectedCircles[i].circle.circle.radius*=mmpp;
+        }
+        for(int i=0;i<detectedSearchPoints.size();i++)
+        {
+          detectedSearchPoints[i].pt=
+            acvVecMult(detectedSearchPoints[i].pt,mmpp);
+        }
+        for(int i=0;i<detectedAuxPoints.size();i++)
+        {
+          detectedAuxPoints[i].pt=
+            acvVecMult(detectedAuxPoints[i].pt,mmpp);
+        }
+
+        for(int i=0;i<judgeReports.size();i++)
+        {
+          switch(judgeReports[i].def->measure_type)
+          {
+            case FeatureReport_judgeDef::AREA :
+            {
+              judgeReports[i].measured_val*=mmpp*mmpp;
+            }
+            break;
+            case FeatureReport_judgeDef::DISTANCE :
+            case FeatureReport_judgeDef::SIGMA :
+            case FeatureReport_judgeDef::RADIUS :
+            {
+              judgeReports[i].measured_val*=mmpp;
+            }
+            break;
+            case FeatureReport_judgeDef::ANGLE :
+            case FeatureReport_judgeDef::NA :
+            {
+            }
+            break;
+          }
+        }
+
+      }
+     
+
 
   }
 

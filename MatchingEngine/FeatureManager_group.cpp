@@ -187,6 +187,8 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 
     //acvCloneImage( img,buff, -1);
 
+  
+    LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {
       binaryFeatureBundle[i]->setOriginalImage(img);
