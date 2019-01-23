@@ -4,6 +4,7 @@
 #include <common_lib.h>
 #include <FM_camera_calibration.h>
 #include "acvImage_SpDomainTool.hpp"
+#include <algorithm>
 
 
 static acvRadialDistortionParam calcCameraCalibration(acvImage &img);

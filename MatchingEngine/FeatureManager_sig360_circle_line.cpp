@@ -2,6 +2,8 @@
 #include "logctrl.h"
 #include <stdexcept>
 #include <common_lib.h>
+#include <algorithm>
+#include <limits>
 #include <MatchingCore.h>
 #include <stdio.h>
 #include <acvImage_SpDomainTool.hpp>

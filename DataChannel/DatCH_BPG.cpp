@@ -75,7 +75,10 @@ DatCH_Data DatCH_BPG1_0::SendData(websock_data wsdata)
   memset(&ws_data,0,sizeof(ws_data));
   wsdata.peer = peer;
   ret_data.data.p_websocket = &wsdata;
-  cb_obj->callback(this, ret_data, callback_param);
+  int ret = cb_obj->callback(this, ret_data, callback_param);
+  if(ret != 0)
+    return GenMsgType(DatCH_Data::DataType_NAK);
+  return GenMsgType(DatCH_Data::DataType_ACK);
 }
 
 
