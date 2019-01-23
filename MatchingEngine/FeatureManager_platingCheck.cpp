@@ -18,20 +18,6 @@ FeatureManager_platingCheck::FeatureManager_platingCheck(const char *json_str): 
     throw std::invalid_argument( "Error:FeatureManager_platingCheck failed... " );
 }
 
-bool FeatureManager_platingCheck::check(cJSON *root)
-{
-  char *str;
-  LOGI("FeatureManager_platingCheck>>>");
-  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-  {
-    return false;
-  }
-  if (strcmp("plating_check",str) == 0)
-  {
-    return true;
-  }
-  return false;
-}
 
 static void acvScalingSobelResult_max(acvImage *src)
 {
@@ -209,9 +195,11 @@ int FeatureManager_platingCheck::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_platingCheck::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_platingCheck::FeatureMatching(acvImage *img)
 {
   acvImage *tarImg = stdMap[0].rgb;
+  acvImage *buff = &_buff;
+  buff->ReSize(img);
   int XFactor=3;
   moEng.RESET(10*XFactor,tarImg->GetWidth(),tarImg->GetHeight());
 

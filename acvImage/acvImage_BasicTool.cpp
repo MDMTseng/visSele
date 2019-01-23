@@ -471,7 +471,7 @@ int acvLoadBitmapFile(acvImage *img,const  char *filename)
         return -1;
     }
     int biBitCount = bitmapInfoHeader.biBitCount;
-    if (biBitCount != 32 && biBitCount != 24)
+    if (biBitCount != 32 && biBitCount != 24 && biBitCount != 8)
     {
         delete (bitmap);
         return -1;
@@ -495,9 +495,18 @@ int acvLoadBitmapFile(acvImage *img,const  char *filename)
 
         for (int j = img->GetROIOffsetX(); j < img->GetWidth(); j++)
         {
-            ImLine[0] = bmp_ptr[0];
-            ImLine[1] = bmp_ptr[1];
-            ImLine[2] = bmp_ptr[2];
+            if(BpP==1)
+            {
+                ImLine[0] = bmp_ptr[0];
+                ImLine[1] = bmp_ptr[0];
+                ImLine[2] = bmp_ptr[0];
+            }
+            else
+            {
+                ImLine[0] = bmp_ptr[0];
+                ImLine[1] = bmp_ptr[1];
+                ImLine[2] = bmp_ptr[2];
+            }
             ImLine += 3;
             bmp_ptr += BpP;
         }
@@ -641,10 +650,24 @@ acv_XY acvVecNormalize(acv_XY vec)
 }
 
 
+acv_XY acvVecInterp(acv_XY vec1,acv_XY vec2,float alpha)
+{
+    vec1.X+=alpha*(vec2.X-vec1.X);
+    vec1.Y+=alpha*(vec2.Y-vec1.Y);
+    return vec1;
+}
+
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2)
 {
   vec1.X+=vec2.X;
   vec1.Y+=vec2.Y;
+  return vec1;
+}
+
+acv_XY acvVecSub(acv_XY vec1,acv_XY vec2)
+{
+  vec1.X-=vec2.X;
+  vec1.Y-=vec2.Y;
   return vec1;
 }
 
@@ -830,4 +853,34 @@ bool acvFitLine(const void *pts_struct,int pts_step, const void *ptsw_struct,int
 bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
 {
   return acvFitLine(pts, NULL, ptsL,line, ret_sigma);
+}
+
+acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam param)
+{
+
+    acv_XY v1 = acvVecSub(distortedVec,param.calibrationCenter);
+    float R = hypot(v1.Y,v1.X)/param.RNormalFactor;
+
+        
+    float R_sq=R*R;
+    float mult = param.K0+param.K1*R_sq+param.K2*R_sq*R_sq;
+
+    return acvVecAdd(acvVecMult(v1,mult),param.calibrationCenter);
+}
+acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param)//Still not perfect, there has some error for the conversion
+{
+
+    acv_XY v1 = acvVecSub(Vec,param.calibrationCenter);
+    float R1 = hypot(v1.Y,v1.X)/param.RNormalFactor;
+    float R2 = R1/param.K0;
+
+    double C1=param.K1/param.K0;
+    double C2=param.K2/param.K0;
+
+        
+    float R2_sq=R2*R2;
+    float mult = 1-C1*R2_sq+(3*C1*C2-C2)*R2_sq*R2_sq;//r/r"
+    float mult2 = mult/param.K0;//K0* r/r"
+
+    return acvVecAdd(acvVecMult(v1,mult2),param.calibrationCenter);
 }

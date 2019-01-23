@@ -54,8 +54,9 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   ret_obj.width=(headerArray[2]<<8)|headerArray[3];
   ret_obj.height=(headerArray[4]<<8)|headerArray[5];
   let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
+  
 
-  if(RGBA_pix_Num == (ret_obj.length-6))
+  if(true||RGBA_pix_Num == (ret_obj.length-6))
   {
     ret_obj.image=new Uint8ClampedArray(ws_evt.data,
       offset+BPG_header_L+6,4*ret_obj.width*ret_obj.height);

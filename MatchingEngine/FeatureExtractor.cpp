@@ -15,22 +15,6 @@ FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *jso
     throw std::invalid_argument( "Error:FeatureManager_sig360_extractor failed... " );
 }
 
-
-
-bool FeatureManager_sig360_extractor::check(cJSON *root)
-{
-  char *str;
-  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-  {
-    return false;
-  }
-  if (strcmp("sig360_extractor",str) == 0)
-  {
-    return true;
-  }
-  return false;
-}
-
 int FeatureManager_sig360_extractor::parse_jobj()
 {
   cJSON *subObj = cJSON_GetObjectItem(root,"type");
@@ -73,8 +57,11 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
   return 0;
 }
 
-int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg)
+int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 {
+  acvImage *buff = &_buff;
+  buff->ReSize(img);
+  vector<acv_LabeledData> &ldData=*this->_ldData;
   signature.resize(360);
   detectedCircles.resize(0);
   detectedLines.resize(0);
@@ -93,7 +80,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
   {
     LOGE("Cannot find one component for extractor");
     report.data.sig360_extractor.error =
-    FeatureReport_sig360_extractor::ONLY_ONE_COMPONENT_IS_ALLOWED;
+    FeatureReport_ERROR::ONLY_ONE_COMPONENT_IS_ALLOWED;
     return -1;
   }
   acv_XY center=ldData[idx].Center;
@@ -107,6 +94,24 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img,acvImage *buf
 
   LOGI(">>>detectedCircles:%d",detectedCircles.size());
   LOGI(">>>detectedLines:%d",detectedLines.size());
+
+
+  
+  {//convert pixel unit to mm
+    float mmpp=param.mmpb2b/param.ppb2b;
+    for(int i=0;i<signature.size();i++)
+    {
+      signature[i].X*=mmpp;
+
+    }
+    ldData[idx].LTBound=acvVecMult(ldData[idx].LTBound,mmpp);
+    ldData[idx].RBBound=acvVecMult(ldData[idx].RBBound,mmpp);
+    ldData[idx].Center=acvVecMult(ldData[idx].Center,mmpp);
+    ldData[idx].area*=mmpp*mmpp;//area
+  }
+
+
+
 
   {
     report.data.sig360_extractor.LTBound=ldData[idx].LTBound;
@@ -191,4 +196,17 @@ const FeatureReport* FeatureManager_sig360_extractor::GetReport()
   report.data.sig360_extractor.detectedCircles = &detectedCircles;
   report.data.sig360_extractor.detectedLines = &detectedLines;
   return &report;
+}
+
+
+void FeatureManager_sig360_extractor::ClearReport()
+{
+  report.type = FeatureReport::sig360_extractor;
+  report.data.sig360_extractor.error=FeatureReport_ERROR::NONE;
+  signature.resize(0);
+  detectedCircles.resize(0);
+  detectedLines.resize(0);
+  report.data.sig360_extractor.signature = &signature;
+  report.data.sig360_extractor.detectedCircles = &detectedCircles;
+  report.data.sig360_extractor.detectedLines = &detectedLines;
 }

@@ -189,8 +189,13 @@ int acvDrawContour_2(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R
 }
 
 
-void acvComponentLabeling(acvImage *Pic) //,DyArray<int> * Information)
+void acvComponentLabeling(acvImage *Pic)
 {
+    acvComponentLabeling(Pic,1);
+}
+void acvComponentLabeling(acvImage *Pic,int lineSkip) //,DyArray<int> * Information)
+{
+    if(lineSkip<1)return;
     int Pic_H = Pic->GetROIOffsetY() + Pic->GetHeight() - 1,
         Pic_W = Pic->GetROIOffsetX() + Pic->GetWidth() - 1;
     char State = 0;
@@ -200,7 +205,7 @@ void acvComponentLabeling(acvImage *Pic) //,DyArray<int> * Information)
 
     int ccstop = 0;
     NowLable._3Byte.Num = 0;
-    for (int i = Pic->GetROIOffsetY() + 1; i < Pic_H; i++, State = 0)
+    for (int i = Pic->GetROIOffsetY() + 1; i < Pic_H; i+=lineSkip, State = 0)
         for (int j = Pic->GetROIOffsetX() + 1; j < Pic_W; j++)
         {
             if (Pic->CVector[i][3 * j + 2] == 255)

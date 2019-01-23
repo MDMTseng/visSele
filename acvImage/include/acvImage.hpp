@@ -56,6 +56,7 @@ public:
     void VarInit(void);
 
     void ReSize(int SetWidth,int SetHeight);
+    void ReSize(acvImage *refImg);
     int useExtBuffer(BYTE *extBuffer,int extBufferLen,int SetWidth,int SetHeight);
     int SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight);
     void ReSetROI();

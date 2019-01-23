@@ -92,6 +92,26 @@ typedef struct acv_LineFit
 
 
 
+typedef struct acvRadialDistortionParam{
+    acv_XY calibrationCenter;
+    double RNormalFactor;
+    double K0,K1,K2;
+	//r = r_image/RNormalFactor
+    //C1 = K1/K0
+    //C2 = K2/K0
+	//r"=r'/K0
+    //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+    //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+    //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+    //r/r'=r*K0/r"
+    double ppb2b;//pixels per block 2 block	
+    double mmpb2b;//the distance between block and block
+}acvRadialDistortionParam;
+
+
+acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam param);//Forward
+acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param);//Backward
+
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);
@@ -126,7 +146,9 @@ float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3);
 float acvDistance(acv_XY p1,acv_XY p2);
 acv_XY acvVecNormal(acv_XY vec);
 acv_XY acvVecNormalize(acv_XY vec);
+acv_XY acvVecInterp(acv_XY vec1,acv_XY vec2,float alpha);
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2);
+acv_XY acvVecSub(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecMult(acv_XY vec1,float mult);
 acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
 acv_XY acvRotation(float sine,float cosine,acv_XY input);

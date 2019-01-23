@@ -6,6 +6,18 @@
 
 #include "DatCH_WebSocket.hpp"
 
+
+struct BPG_data;
+class DatCH_BPG1_0;
+typedef int (*BPG_data_feed_callback)(DatCH_BPG1_0 &dch,struct BPG_data *data,uint8_t *callbackInfo);
+
+typedef struct BPG_data_acvImage_Send_info
+{
+    acvImage* img;
+    float scale;
+}BPG_data_acvImage_Send_info;
+
+
 typedef struct BPG_data
 {
     char tl[2];//Two letter
@@ -13,8 +25,9 @@ typedef struct BPG_data
 
     uint32_t size;//32bit
     uint8_t* dat_raw;
-    float scale;
-    acvImage* dat_img;//For bulk data transfer
+    BPG_data_feed_callback callback;//For bulk data transfer
+    uint8_t *callbackInfo;
+
 };
 
 
@@ -36,6 +49,7 @@ public:
     virtual DatCH_Data Process_websock_data(websock_data* p_websocket)=0;
 };
 
+int DatCH_BPG_acvImage_Send(DatCH_BPG1_0 &dch,struct BPG_data *data,uint8_t *callbackInfo);
 
 class DatCH_BPG1_0: public DatCH_BPG
 {
@@ -46,19 +60,21 @@ class DatCH_BPG1_0: public DatCH_BPG
       BPG_END,
     }state;
     ws_conn_data *peer;
-    size_t buffer_size;
-    uint8_t *buffer;
 protected:
     void RESET(ws_conn_data *conn);
 
     void BufferSetup(int buffer_size);
 public:
+    size_t buffer_size;
+    uint8_t *buffer;
     DatCH_BPG1_0(ws_conn_data *conn);
     ~DatCH_BPG1_0();
     //DatCH_Data SendData(DatCH_Data) override;
     DatCH_Data SendHR();
     DatCH_Data SendData(DatCH_Data);
     DatCH_Data SendData(BPG_data data);
+    
+    DatCH_Data SendData(websock_data wsdata);
     int MatchPeer(const ws_conn_data* ext_peer);
     DatCH_Data Process_websock_data(websock_data* p_websocket);
 };

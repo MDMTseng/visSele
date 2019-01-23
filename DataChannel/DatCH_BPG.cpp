@@ -2,6 +2,84 @@
 #include "DatCH_BPG.hpp"
 #include "logctrl.h"
 
+
+int DatCH_BPG_acvImage_Send(DatCH_BPG1_0 &dch,struct BPG_data *data,uint8_t *callbackInfo)
+{
+  if(callbackInfo==NULL)return -1;
+  websock_data ws_data;
+  ws_data.type = websock_data::DATA_FRAME;
+  ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
+
+  BPG_data_acvImage_Send_info *img_info = (BPG_data_acvImage_Send_info*)callbackInfo;
+
+  acvImage *img=img_info->img;
+
+
+  uint8_t header[]={
+    0,0,
+    img->GetWidth()>>8,
+    img->GetWidth(),
+    img->GetHeight()>>8,
+    img->GetHeight(),
+
+  };
+
+
+  ws_data.data.data_frame.isFinal=false;
+  ws_data.data.data_frame.raw=header;
+  ws_data.data.data_frame.rawL=6;
+  dch.SendData(ws_data);
+
+  ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
+
+  int rest_len =
+    img->GetWidth()*
+    img->GetHeight();
+
+  uint8_t *img_pix_ptr=img->CVector[0];
+
+  for(bool isKeepGoing=true;isKeepGoing && rest_len;)
+  {
+    int sendL = 0;
+    for(int i=0;i<dch.buffer_size-4;i+=4,img_pix_ptr+=3)
+    {
+      dch.buffer[i]=img_pix_ptr[2];
+      dch.buffer[i+1]=img_pix_ptr[1];
+      dch.buffer[i+2]=img_pix_ptr[0];
+      dch.buffer[i+3]=255;
+      sendL+=4;
+      rest_len--;
+      if(rest_len==0)
+      {
+        isKeepGoing=false;
+        ws_data.data.data_frame.isFinal=true;
+        break;
+      }
+    }
+    ws_data.data.data_frame.rawL=sendL;
+    ws_data.data.data_frame.raw=dch.buffer;
+    //printf("L:%d\n",ws_data.data.data_frame.rawL);
+
+    dch.SendData(ws_data);
+  }
+  return 0;
+
+}
+
+
+
+DatCH_Data DatCH_BPG1_0::SendData(websock_data wsdata)
+{
+  DatCH_Data ret_data = GenMsgType(DatCH_Data::DataType_websock_data);
+  websock_data ws_data;
+  memset(&ws_data,0,sizeof(ws_data));
+  wsdata.peer = peer;
+  ret_data.data.p_websocket = &wsdata;
+  cb_obj->callback(this, ret_data, callback_param);
+}
+
+
+
 DatCH_BPG1_0::DatCH_BPG1_0(ws_conn_data *conn): DatCH_BPG()
 {
   version="1.0.0.alpha";
@@ -83,18 +161,11 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
     header[0] = data.tl[0];
     header[1] = data.tl[1];
 
-    LOGV("TWOLETTER:  %c%c",data.tl[0],data.tl[1]);
     header[2] = data.prop;
     uint32_t length=0;
     if(data.dat_raw)
     {
       length = data.size;
-    }
-    else if(data.dat_img)
-    {
-      length = 6+ 4*
-        data.dat_img->GetWidth()*
-        data.dat_img->GetHeight();
     }
     header[3] = length>>24;
     header[4] = length>>16;
@@ -103,7 +174,10 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
 
     ws_data.data.data_frame.raw=header;
     ws_data.data.data_frame.rawL=sizeof(header);
-    ws_data.data.data_frame.isFinal=(length==0);
+    //ws_data.data.data_frame.isFinal=(length==0);
+    ws_data.data.data_frame.isFinal=(length==0 && data.callback==NULL);
+
+    LOGV("TWOLETTER:  %c%c cb:%p",data.tl[0],data.tl[1],data.callback);
 
     cb_obj->callback(this, ret_data, callback_param);
 
@@ -136,50 +210,15 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
 
 
     }
-    else if(data.dat_img)
+    else if(data.callback)
     {
-      header[0] = 0;//camera id
-      header[1] = 0;//sessionID
-      header[2] = data.dat_img->GetWidth()>>8;
-      header[3] = data.dat_img->GetWidth();
-      header[4] = data.dat_img->GetHeight()>>8;
-      header[5] = data.dat_img->GetHeight();
+      int ret_val;
+      ret_val=data.callback(*this,&data,data.callbackInfo);
+     
 
-      ws_data.data.data_frame.raw=header;
-      ws_data.data.data_frame.rawL=6;
-      cb_obj->callback(this, ret_data, callback_param);
-
-      int rest_len =
-        data.dat_img->GetWidth()*
-        data.dat_img->GetHeight();
-
-      uint8_t *img_pix_ptr=data.dat_img->CVector[0];
-
-      for(bool isKeepGoing=true;isKeepGoing && rest_len;)
+      if(ret_val!=0)
       {
-        int sendL = 0;
-        for(int i=0;i<buffer_size-4;i+=4,img_pix_ptr+=3)
-        {
-          buffer[i]=img_pix_ptr[2];
-          buffer[i+1]=img_pix_ptr[1];
-          buffer[i+2]=img_pix_ptr[0];
-          buffer[i+3]=255;
-          sendL+=4;
-          rest_len--;
-          if(rest_len==0)
-          {
-            isKeepGoing=false;
-            ws_data.data.data_frame.isFinal=true;
-            break;
-          }
-        }
-        ws_data.data.data_frame.rawL=sendL;
-        ws_data.data.data_frame.raw=buffer;
-        //printf("L:%d\n",ws_data.data.data_frame.rawL);
-
-        ret_data.data.p_websocket = &ws_data;
-
-        cb_obj->callback(this, ret_data, callback_param);
+        return GenMsgType(DatCH_Data::DataType_NAK);
       }
 
     }

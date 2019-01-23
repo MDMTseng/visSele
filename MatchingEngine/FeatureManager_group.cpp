@@ -4,6 +4,7 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include "FeatureManager_sig360_circle_line.h"
+#include "FM_camera_calibration.h"
 #include "FeatureManager_group.h"
 /*
   FeatureManager_group_proto Section
@@ -95,17 +96,29 @@ int FeatureManager_binary_processing_group::clearFeatureGroup()
 
 int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
 {
+  
+  char *str=JFetch_STRING(subFeature,"type");
+  if(str==NULL)
+  {
+    return -1;
+  }
   FeatureManager_binary_processing *newFeature=NULL;
-  if(FeatureManager_sig360_circle_line::check(subFeature))
+  if(strcmp(FeatureManager_sig360_circle_line::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_sig360_circle_line is the type...");
     newFeature = new FeatureManager_sig360_circle_line(cJSON_Print(subFeature));
   }
-  else if(FeatureManager_sig360_extractor::check(subFeature))
+  else if(strcmp(FeatureManager_sig360_extractor::GetFeatureTypeName(),str) == 0)
   {
     LOGI("FeatureManager_sig360_extractor is the type...");
     newFeature = new FeatureManager_sig360_extractor(cJSON_Print(subFeature));
+  }
+  else if(strcmp(FM_camera_calibration::GetFeatureTypeName(),str) == 0)
+  {
+
+    LOGI("FeatureManager_camera_calibration is the type...");
+    newFeature = new FM_camera_calibration(cJSON_Print(subFeature));
   }
   else
   {
@@ -120,24 +133,10 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   return 0;
 }
 
-bool FeatureManager_binary_processing_group::check(cJSON *root)
+int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 {
-    char *str;
-    LOGI("FeatureManager_binary_processing_group>>>");
-    if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-    {
-      return false;
-    }
-    if (strcmp("binary_processing_group",str) == 0)
-    {
-      return true;
-    }
-    return false;
-}
-
-
-int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
-{
+  
+    error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
     
@@ -153,11 +152,34 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
     acvComponentLabeling(&binary_img);
     acvLabeledRegionInfo(&binary_img, &ldData);
+
+    int FENCE_AREA = (img->GetWidth()+img->GetHeight()-2)*2;//External frame
+    FENCE_AREA=110/100;
+    int CLimit = (img->GetWidth()*img->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
+
+    int intrusionObjectArea = ldData[1].area - FENCE_AREA;
+    LOGV("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
+    if(intrusionObjectArea>CLimit)
+    {//If the cage connects something link to the edge we don't want to do the inspection
+      error=FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT;
+      
+      for(int i=0;i<binaryFeatureBundle.size();i++)
+      {
+        binaryFeatureBundle[i]->ClearReport();
+      }
+      return 0;
+    }
     if(ldData.size()<=1)
     {
+      error=FeatureReport_ERROR::GENERIC;
+      for(int i=0;i<binaryFeatureBundle.size();i++)
+      {
+        binaryFeatureBundle[i]->ClearReport();
+      }
       return 0;
     }
     ldData[1].area = 0;
+
 
     //Delete the object that has less than certain amount of area on ldData
     //acvRemoveRegionLessThan(img, &ldData, 120);
@@ -165,10 +187,14 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img,acvIma
 
     //acvCloneImage( img,buff, -1);
 
+  
+    LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {
       binaryFeatureBundle[i]->setOriginalImage(img);
-      binaryFeatureBundle[i]->FeatureMatching(&binary_img,buff,ldData,dbg);
+      binaryFeatureBundle[i]->setLabeledData(&ldData);
+      binaryFeatureBundle[i]->setRadialDistortionParam(param);
+      binaryFeatureBundle[i]->FeatureMatching(&binary_img);
     }
   return 0;
 }
@@ -180,7 +206,10 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   {
     sub_reports.resize(binaryFeatureBundle.size());
   }
-  for(int i=0;i<binaryFeatureBundle.size();i++)
+  
+  report.data.binary_processing_group.error = error;
+
+  for(int i=0;i<sub_reports.size();i++)
   {
     sub_reports[i] = binaryFeatureBundle[i]->GetReport();
   }
@@ -189,6 +218,39 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.data.binary_processing_group.labeledData = &ldData;
   return &report;
 }
+
+
+void FeatureManager_binary_processing_group::ClearReport()
+{
+  if(binaryFeatureBundle.size()!=sub_reports.size())
+  {
+    sub_reports.resize(binaryFeatureBundle.size());
+  }
+
+  for(int i=0;i<sub_reports.size();i++)
+  {
+    binaryFeatureBundle[i]->ClearReport();
+  }
+  report.type = FeatureReport::binary_processing_group;
+  report.data.binary_processing_group.reports = &sub_reports;
+  report.data.binary_processing_group.labeledData = &ldData;
+  report.data.binary_processing_group.error=error=FeatureReport_ERROR::NONE;
+}
+
+int FeatureManager_binary_processing_group::parse_jobj()
+{
+  double *val= JFetch_NUMBER(root,"intrusionSizeLimitRatio");
+
+  intrusionSizeLimitRatio=(val!=NULL)?*val:0;
+  
+  LOGV("intrusionSizeLimitRatio:%f  ptr:%p",intrusionSizeLimitRatio,val);
+
+  FeatureManager_group_proto::parse_jobj();
+
+  return 0;
+}
+
+
 
 /*
   FeatureManager_binary_processing_group Section
@@ -214,14 +276,19 @@ int FeatureManager_group::clearFeatureGroup()
 
 int FeatureManager_group::addSubFeature(cJSON * subFeature)
 {
+  char *str=JFetch_STRING(subFeature,"type");
+  if(str==NULL)
+  {
+    return -1;
+  }
   FeatureManager *newFeature=NULL;
-  if(FeatureManager_group::check(subFeature))
+  if(strcmp(FeatureManager_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_group is the type...:%s",cJSON_Print(subFeature));
     newFeature = new FeatureManager_group(cJSON_Print(subFeature));
   }
-  else if(FeatureManager_binary_processing_group::check(subFeature))
+  else if(strcmp(FeatureManager_binary_processing_group::GetFeatureTypeName(),str) == 0)
   {
 
     LOGI("FeatureManager_binary_processing_group is the type...");
@@ -236,26 +303,15 @@ int FeatureManager_group::addSubFeature(cJSON * subFeature)
   return 0;
 }
 
-bool FeatureManager_group::check(cJSON *root)
-{
-  char *str;
-  LOGI("FeatureManager_group>>>");
-  if(!(getDataFromJsonObj(root,"type",(void**)&str)&cJSON_String))
-  {
-    return false;
-  }
-  if (strcmp("processing_group",str) == 0)
-  {
-    return true;
-  }
-  return false;
-}
 
-int FeatureManager_group::FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg)
+int FeatureManager_group::FeatureMatching(acvImage *img)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
-    featureBundle[i]->FeatureMatching(img,buff,dbg);
+    //featureBundle[i]->param;
+    featureBundle[i]->setRadialDistortionParam(param);
+    featureBundle[i]->FeatureMatching(img);
   }
   return 0;
 }
+

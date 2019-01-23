@@ -28,17 +28,22 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
 
   vector<acv_LabeledData> ldData;
   acvImage binary_img;
+  
+  FeatureReport_ERROR error;
 public :
   FeatureManager_binary_processing_group(const char *json_str);
-  static bool check(cJSON *root);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
+  virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "binary_processing_group";};
 
+
 protected:
+  double intrusionSizeLimitRatio=0;
   int addSubFeature(cJSON * subFeature) override;
   int clearFeatureGroup() override;
   ~FeatureManager_binary_processing_group(){clearFeatureGroup();};
+  int parse_jobj() override;
 
 };
 
@@ -47,8 +52,8 @@ class FeatureManager_group:public FeatureManager_group_proto {
 
 public :
   FeatureManager_group(const char *json_str);
-  static bool check(cJSON *root);
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
+  int FeatureMatching(acvImage *img) override;
+  static const char* GetFeatureTypeName(){return "group";};
 protected:
   int addSubFeature(cJSON * subFeature) override;
   int clearFeatureGroup() override;

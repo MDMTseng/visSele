@@ -70,6 +70,36 @@ class APPMain extends React.Component{
         <BASE_COM.Button
           key="INSP MODE" addClass="lblue width4"
           text="INSP MODE" onClick={this.props.EV_UI_Insp_Mode}/>);
+
+      UI.push(
+        <BASE_COM.Button
+          key="CAM calib" addClass="lblue width4"
+          text="CAM calib" onClick={()=>{
+
+            this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{
+              deffile:"data/cameraCalibration.json",
+              imgsrc:"data/BMP_carousel_test/calibration.bmp"
+            });
+                
+          }}/>);
+
+      if(this.props.camera_calibration_report!==undefined)
+      {
+
+        let camParam = this.props.isp_db.cameraParam;
+        let mmpp = camParam.mmpb2b/camParam.ppb2b;
+        UI.push(
+          <BASE_COM.Button
+            key="CAM calib save" addClass="lblue width4"
+            text={"calib save(mmpp:"+mmpp.toFixed(6)+")"} onClick={()=>{
+              var enc = new TextEncoder();
+              let enc_report = enc.encode(JSON.stringify(this.props.camera_calibration_report, null, 2));
+              this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
+                {filename:"data/default_camera_param.json"},
+                enc_report);
+            }}/>);
+
+      }
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
     {
@@ -92,12 +122,17 @@ class APPMain extends React.Component{
 const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   return {
     EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
-    EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())}
+    EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
+    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
 }
 const mapStateToProps_APPMain = (state) => {
   return { 
-    c_state: state.UIData.c_state
+    c_state: state.UIData.c_state,
+    camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
+    isp_db: state.UIData.edit_info._obj,
+    WS_CH:state.UIData.WS_CH,
+    WS_ID:state.UIData.WS_ID
   }
 }
 const APPMain_rdx = connect(mapStateToProps_APPMain,mapDispatchToProps_APPMain)(APPMain);
@@ -114,6 +149,7 @@ class APPMasterX extends React.Component{
       onopen:(ev,ws_obj)=>{
     
         StoreX.dispatch(UIAct.EV_WS_Connected(ws_obj));
+        
         //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
       },
       onmessage:(evt,ws_obj)=>{
@@ -129,6 +165,8 @@ class APPMasterX extends React.Component{
           {
             //log.info(this.props.WS_CH);
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+            
+            this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
             break;
           }
 
@@ -136,8 +174,14 @@ class APPMasterX extends React.Component{
           {
             let SS =BPG_Protocol.raw2obj(evt);
             // log.debug(header);
-            log.debug("Session start:",SS);
-            this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
+            if(SS.data.start)
+            {
+              this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
+            }
+            else
+            {
+              this.props.DISPATCH_flush(UIAct.EV_WS_Session_Lock(SS.data));
+            }
             break;
           }
           case "IM":
@@ -151,7 +195,7 @@ class APPMasterX extends React.Component{
           case "RP":
           {
             let report =BPG_Protocol.raw2obj(evt);
-            log.debug(header.type,report);
+            //log.info(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
             break;
           }
@@ -160,6 +204,16 @@ class APPMasterX extends React.Component{
             let report =BPG_Protocol.raw2obj(evt);
             log.debug(header.type,report);
             this.props.DISPATCH(UIAct.EV_WS_Define_File_Update(report.data));
+            break;
+          }
+          case "FL":
+          {
+            let report =BPG_Protocol.raw2obj(evt);
+            log.error(header.type,report);
+            if(report.data.type === "binary_processing_group" )
+            {
+              this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
+            }
             break;
           }
           case "SG":
@@ -246,7 +300,13 @@ const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
     ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
     ACT_WS_CONNECT: (id,url,obj) => dispatch({type:MWWS_EVENT.CONNECT,data:Object.assign({id:id,url:url,binaryType:"arraybuffer"},obj)}),
     ACT_WS_DISCONNECT:(id)=> dispatch({type:MWWS_EVENT.DISCONNECT,data:{id:id}}),
-    DISPATCH:(act)=>dispatch(act),
+    DISPATCH:(act)=>{
+      dispatch(act)
+    },
+    DISPATCH_flush:(act)=>{
+      act.ActionThrottle_type="flush";
+      dispatch(act)
+    },
     ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
 }
