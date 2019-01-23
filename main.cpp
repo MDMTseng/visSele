@@ -948,14 +948,14 @@ public:
 DatCH_CallBack_T callbk_obj;
 
 
-void initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
+int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 {
   
   tSdkCameraDevInfo sCameraList[10];
   int retListL = sizeof(sCameraList)/sizeof(sCameraList[0]);
   CL_GIGE->EnumerateDevice(sCameraList,&retListL);
   
-  if(retListL<=0)return;
+  if(retListL<=0)return -1;
 	for (int i=0; i< retListL;i++)
 	{
 		printf("CAM:%d======\n", i);
@@ -971,6 +971,7 @@ void initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 	}
   
   CL_GIGE->InitCamera(&(sCameraList[0]));
+  return 0;
 }
 void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
@@ -981,17 +982,25 @@ void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 CameraLayer *getCamera(bool realCamera=false)
 {
 
-  CameraLayer *camera;
+  CameraLayer *camera=NULL;
   if(realCamera)
   {
     CameraLayer_GIGE_MindVision *camera_GIGE;
     camera_GIGE=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
     LOGV("initCamera");
-    initCamera(camera_GIGE);
-    camera=camera_GIGE;
+    if(initCamera(camera_GIGE)==0)
+    {
+      camera=camera_GIGE;
+    }
+    else
+    {
+      camera=NULL;
+    }
 
   }
-  else
+
+
+  if(camera==NULL)
   {
     CameraLayer_BMP_carousel *camera_BMP;
     LOGV("CameraLayer_BMP_carousel");
@@ -1135,5 +1144,5 @@ int main(int argc, char** argv)
 
   signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
-  return mainLoop(false);
+  return mainLoop(true);
 }
