@@ -2,40 +2,65 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
-#include "acvImage_ToolBox.hpp"
-#include "acvImage_BasicDrawTool.hpp"
-#include "acvImage_BasicTool.hpp"
 
-#include "acvImage_MophologyTool.hpp"
-#include "acvImage_SpDomainTool.hpp"
 #include "MLNN.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
-#include "FeatureManager.h"
-#include "MatchingEngine.h"
-#include "common_lib.h"
 #include "DatCH_Image.hpp"
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
+
+
+#include <main.h>
+#include <playground.h>
 #include <stdexcept>
-#include "CameraLayer_BMP.hpp"
-#include "CameraLayer_GIGE_MindVision.hpp"
 
 std::mutex mainThreadLock;
-acvImage *test1_buff;
-acvImage dataSend_buff;
-DatCH_BMP *imgSrc_X;
 DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 
+//lens1
+//main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
+//main.cpp  1068 main:v Center: 1295,971
+
+
+//main.cpp  1075 main:v K: 0.999783 0.00054474 -0.000394607 RNormalFactor:1296
+//main.cpp  1076 main:v Center: 1295,971
+
+
+//lens2
+//main.cpp  1061 main:v K: 0.989226 0.0101698 0.000896734 RNormalFactor:1296
+//main.cpp  1062 main:v Center: 1295,971
+
+
+
+acvRadialDistortionParam param_default={
+    calibrationCenter:{1295,971},
+    RNormalFactor:1296,
+    K0:0.999783,
+    K1:0.00054474,
+    K2:-0.000394607,
+    //r = r_image/RNormalFactor
+    //C1 = K1/K0
+    //C2 = K2/K0
+    //r"=r'/K0
+    //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+    //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+    //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+    //r/r'=r*K0/r"
+
+    ppb2b: 63.11896896362305,
+    mmpb2b: 0.62962962,
+};
+
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
 
-int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *jsonStr);
+int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,char *jsonStr);
 
-int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename);
+int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename);
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst,size_t dstLen,uint8_t *src,size_t srcLen);
 
@@ -74,6 +99,11 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
 class DatCH_CallBack_BPG : public DatCH_CallBack
 {
   DatCH_BPG1_0 *self;
+  
+  acvImage tmp_buff;
+  acvImage cacheImage;
+  acvImage dataSend_buff;
+
   bool checkTL(const char *TL,const BPG_data *dat)
   {
     if(TL==NULL)return false;
@@ -88,11 +118,12 @@ public:
   DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
   {
       this->self = self;
+      cacheImage.ReSize(1,1);
   }
 
   static BPG_data GenStrBPGData(char *TL, char* jsonStr)
   {
-    BPG_data BPG_dat;
+    BPG_data BPG_dat={0};
     BPG_dat.tl[0]=TL[0];
     BPG_dat.tl[1]=TL[1];
     if(jsonStr ==NULL)
@@ -155,19 +186,37 @@ public:
                 break;
               }
               int strinL = strlen((char*)dat->dat_raw)+1;
-              LOGI("DataType_BPG>>BIN>>%s",byteArrString(dat->dat_raw+strinL,dat->size-strinL));
 
-              FILE *write_ptr;
+              if(dat->size-strinL == 0 )
+              {//No raw data, check "type" 
 
-              write_ptr = fopen(fileName,"wb");  // w for write, b for binary
-              if(write_ptr==NULL)
-              {
-                LOGE("File open failed");
-                break;
+                char* type =(char* )JFetch(json,"type",cJSON_String);
+                if (strcmp(type,"__CACHE_IMG__") == 0 )
+                {
+                  if(cacheImage.GetWidth()*cacheImage.GetHeight()>10)
+                    acvSaveBitmapFile(fileName,&cacheImage);
+                  
+                  cacheImage.ReSize(1,1);
+                }
               }
-              fwrite(dat->dat_raw+strinL,dat->size-strinL,1,write_ptr); // write 10 bytes from our buffer
+              else
+              {
 
-              fclose (write_ptr);
+                LOGI("DataType_BPG>>BIN>>%s",byteArrString(dat->dat_raw+strinL,dat->size-strinL));
+
+                FILE *write_ptr;
+
+                write_ptr = fopen(fileName,"wb");  // w for write, b for binary
+                if(write_ptr==NULL)
+                {
+                  LOGE("File open failed");
+                  break;
+                }
+                fwrite(dat->dat_raw+strinL,dat->size-strinL,1,write_ptr); // write 10 bytes from our buffer
+
+                fclose (write_ptr);
+              }
+
 
             }while(false);
             cJSON_Delete(json);
@@ -175,18 +224,51 @@ public:
           else if(checkTL("LD",dat))
           {
 
-
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
             char tmp[100];
             int session_id = rand();
-            sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
-            BPG_data bpg_dat=GenStrBPGData("SS", tmp);
-            datCH_BPG.data.p_BPG_data=&bpg_dat;
-            self->SendData(datCH_BPG);
-
+            BPG_data bpg_dat;
             do{
+              
               cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+
+              char* filename =(char* )JFetch(json,"filename",cJSON_String);
+              if(filename!=NULL)
+              {
+                sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"FL\"]}",session_id);
+                bpg_dat=GenStrBPGData("SS", tmp);
+                datCH_BPG.data.p_BPG_data=&bpg_dat;
+                self->SendData(datCH_BPG);
+
+
+                try {
+                  char *fileStr = ReadText(filename);
+                  if(fileStr == NULL)
+                  {
+                    LOGE("Cannot read defFile from:%s",filename);
+                    break;
+                  }
+                  LOGV("Read deffile:%s",filename);
+                  BPG_data bpg_dat=GenStrBPGData("FL", fileStr);
+                  datCH_BPG.data.p_BPG_data=&bpg_dat;
+                  self->SendData(datCH_BPG);
+                  free(fileStr);
+
+                }
+                catch (std::invalid_argument iaex) {
+                  LOGE( "Caught an error!");
+                }
+
+                break;
+              }
+
+              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
+              bpg_dat=GenStrBPGData("SS", tmp);
+              datCH_BPG.data.p_BPG_data=&bpg_dat;
+              self->SendData(datCH_BPG);
+
+
               if (json == NULL)
               {
                 LOGE("JSON parse failed");
@@ -207,9 +289,20 @@ public:
                 break;
               }
 
-            
-              imgSrc_X->SetFileName(imgSrcPath);
-
+              acvImage *srcImg=NULL;
+              if(imgSrcPath!=NULL)
+              {
+                
+                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                if(ret_val==0)
+                {
+                  srcImg = &tmp_buff;
+                }
+              }
+              if(srcImg==NULL)
+              {
+                break;
+              }
 
               try {
                   char *jsonStr = ReadText(deffile);
@@ -222,7 +315,7 @@ public:
                   BPG_data bpg_dat=GenStrBPGData("DF", jsonStr);
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
-
+                  free(jsonStr);
               }
               catch (std::invalid_argument iaex) {
                   LOGE( "Caught an error!");
@@ -230,11 +323,12 @@ public:
 
               //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.scale = 4;
-              
-              acvThreshold(imgSrc_X->GetAcvImage(), 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-              ImageDownSampling(dataSend_buff,*imgSrc_X->GetAcvImage(),bpg_dat.scale);
-              bpg_dat.dat_img=&dataSend_buff;
+              BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+              //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+              ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+              bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;
+
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -263,15 +357,41 @@ public:
                 LOGE("No entry:\"deffile\" in it");
                 break;
               }
-
               char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
-              if (imgSrcPath == NULL)
+              LOGI("Load Image from %s",imgSrcPath);
+              acvImage *srcImg=NULL;
+              if(imgSrcPath!=NULL)
               {
-                LOGE("No entry:imgSrcPath in it");
+                
+                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                if(ret_val==0)
+                {
+                  srcImg = &tmp_buff;
+                }
+              }
+
+              if(srcImg==NULL)
+              {
+                LOGV("Do camera Fetch..");
+                camera->TriggerMode(1);
+                LOGV("LOCK...");
+                mainThreadLock.lock();
+                camera->Trigger();
+                LOGV("LOCK BLOCK...");
+                mainThreadLock.lock();
+                
+                LOGV( "unlock");
+                mainThreadLock.unlock();
+                srcImg = camera->GetImg();
+              }
+
+              if(srcImg==NULL)
+              {
+                LOGE("No Image from %s, exit...",imgSrcPath);
                 break;
               }
+
             
-              imgSrc_X->SetFileName(imgSrcPath);
 
 
               DatCH_Data datCH_BPG=
@@ -288,7 +408,7 @@ public:
                   char *jsonStr = ReadText(deffile);
                   if(jsonStr == NULL)
                   {
-                    LOGE("Cannot read defFile from:%s",jsonStr);
+                    LOGE("Cannot read defFile from:%s",deffile);
                     break;
                   }
                   LOGV("Read deffile:%s",deffile);
@@ -296,9 +416,9 @@ public:
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
 
-                  int ret = ImgInspection_JSONStr(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,jsonStr);
+                  int ret = ImgInspection_JSONStr(matchingEng,srcImg,1,jsonStr);
                   free(jsonStr);
-                  //acvSaveBitmapFile("data/buff.bmp",test1_buff);
+                  //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
 
                   const FeatureReport * report = matchingEng.GetReport();
 
@@ -328,14 +448,15 @@ public:
                   LOGE( "Caught an error!");
               }
 
-
-              //TODO:HACK: 4X4 times scale down for transmission speed
               bpg_dat=GenStrBPGData("IM", NULL);
-              bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
-              bpg_dat.dat_img=&dataSend_buff;
+              BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+              //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+              ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+              bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;              
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
+
 
 
 
@@ -361,6 +482,8 @@ public:
               {
                 LOGE("No entry:\"deffile\" in it");
                 cameraFeedTrigger=false;
+                
+                camera->TriggerMode(1);
                 break;
               }
 
@@ -389,10 +512,10 @@ public:
                   free(jsonStr);
 
 
-                  camera->TriggerMode(1);
+                  camera->TriggerMode(0);
                   cameraFeedTrigger=true;
                   camera->Trigger();
-                  //acvSaveBitmapFile("data/buff.bmp",test1_buff);
+                  //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
 
               }
               catch (std::invalid_argument iaex) {
@@ -432,12 +555,16 @@ public:
                 }
               }
               
-              acvImage *srcImg=NULL;
+              acvImage *srcImg;
               if(imgSrcPath!=NULL)
               {
-                imgSrc_X->SetFileName(imgSrcPath);
-                srcImg = imgSrc_X->GetAcvImage();
+                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                if(ret_val==0)
+                {
+                  srcImg = &tmp_buff;
+                }
               }
+
 
               if(srcImg==NULL)
               {
@@ -452,13 +579,15 @@ public:
                 LOGV( "unlock");
                 mainThreadLock.unlock();
                 srcImg = camera->GetImg();
-                acvSaveBitmapFile("data/test1.bmp",srcImg);
+                cacheImage.ReSize(srcImg->GetWidth(),srcImg->GetHeight());
+                acvCloneImage(srcImg,&cacheImage,-1);
+                //acvSaveBitmapFile("data/test1.bmp",srcImg);
               }
 
 
 
               try {
-                  ImgInspection_DefRead(matchingEng,srcImg,test1_buff,1,"data/featureDetect.json");
+                  ImgInspection_DefRead(matchingEng,srcImg,1,"data/featureDetect.json");
                   const FeatureReport * report = matchingEng.GetReport();
 
                   if(report!=NULL)
@@ -490,17 +619,13 @@ public:
 
 
               bpg_dat=GenStrBPGData("IM", NULL);
-
-                          
-            
-              //TODO:HACK: 4X4 times scale down for transmission speed
-              bpg_dat.scale = 4;
-              ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
-              bpg_dat.dat_img=&dataSend_buff;
-              //acvCloneImage( bpg_dat.dat_img,bpg_dat.dat_img, 2);
+              BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+              //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+              ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+              bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;              
               datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
-
+              BPG_protocol->SendData(datCH_BPG);
 
 
               sprintf(tmp,"{\"session_id\":%d, \"start\":false}",session_id);
@@ -508,8 +633,6 @@ public:
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
             }
-
-
           }
 
         }
@@ -560,43 +683,44 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 }
 
 
-int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *defFilename)
+int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename)
 {
   char *string = ReadText(defFilename);
   //printf("%s\n%s\n",string,defFilename);
-  int ret = ImgInspection_JSONStr(me ,test1,buff, repeatTime,string);
+  int ret = ImgInspection_JSONStr(me ,test1, repeatTime,string);
   free(string);
   return ret;
 }
 
 
-int ImgInspection(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime)
+int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam param,int repeatTime)
 {
 
   LOGI("================================");
-  buff->ReSize(test1->GetWidth(), test1->GetHeight());
-
   clock_t t = clock();
   for(int i=0;i<repeatTime;i++)
-    me.FeatureMatching(test1,buff,NULL);
+  {
+    me.setRadialDistortionParam(param);
+    me.FeatureMatching(test1);
+  }
 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
   return 0;
-  //ContourFeatureDetect(test1,test1_buff,tar_signature);
-  //acvSaveBitmapFile("data/target_buff.bmp",test1_buff);
+  //ContourFeatureDetect(test1,&test1_buff,tar_signature);
+  //acvSaveBitmapFile("data/target_buff.bmp",&test1_buff);
 
 }
 
 
 
-int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int repeatTime,char *jsonStr)
+int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,char *jsonStr)
 {
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
-  ImgInspection(me,test1,buff,repeatTime);
+  ImgInspection(me,test1,param_default,repeatTime);
   return 0;
 
 }
@@ -604,6 +728,7 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,acvImage *buff,int
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
+  static acvImage test1_buff;
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
   {
@@ -614,7 +739,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     return;
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
-  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),test1_buff,1);
+  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),param_default,1);
 
   /*LOGE( "lock");
   mainThreadLock.lock();*/
@@ -659,13 +784,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
-
-    //TODO:HACK: 4X4 times scale down for transmission speed
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
-    bpg_dat.scale = 4;
-    ImageDownSampling(dataSend_buff,*cl_GMV.GetImg(),bpg_dat.scale);
-    //ImageDownSampling(dataSend_buff,*test1_buff,bpg_dat.scale);
-    bpg_dat.dat_img=&dataSend_buff;
+    BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
+    //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+    ImageDownSampling(test1_buff,*cl_GMV.GetImg(),iminfo.scale);
+    bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+    bpg_dat.callback=DatCH_BPG_acvImage_Send;              
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
@@ -676,12 +800,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
-    //acvSaveBitmapFile("data/MVCamX.bmp",test1_buff);
+    //acvSaveBitmapFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
     if(cameraFeedTrigger)
     {
       LOGV("cameraFeedTrigger:%d Get Next frame...",cameraFeedTrigger);
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
       cl_GMV.Trigger();
     }
   }while(false);
@@ -767,45 +891,6 @@ class DatCH_CallBack_T : public DatCH_CallBack
                 ws_data.data.data_frame.raw
                 );
 
-            if(false&&ws_data.data.data_frame.type == WS_DFT_TEXT_FRAME)
-            {
-
-              //imgSrc_X->SetFileName("data/test1.bmp");
-
-              try {
-                  ImgInspection_DefRead(matchingEng,imgSrc_X->GetAcvImage(),test1_buff,1,"data/target.json");
-              }
-              catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
-              }
-
-              const FeatureReport * report = matchingEng.GetReport();
-
-              if(false && report!=NULL)
-              {
-                cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                char * jstr  = cJSON_Print(jobj);
-                cJSON_Delete(jobj);
-                LOGI("...\n%s\n...",jstr);
-                DatCH_Data ret = ws->SendData(jstr,strlen(jstr));
-                delete jstr;
-                if(ret.type!=DatCH_Data::DataType_ACK)
-                {
-                  if(ret.type==DatCH_Data::DataType_error)
-                  {
-                    LOGI("...\nERROR:%d....\n...",ret.data.error.code);
-                  }
-                  break;
-                }
-              }
-              printf("Start to send....\n");
-
-            }
-            else
-            {
-
-            }
-
 
         break;
         case websock_data::eventType::CLOSING:
@@ -838,7 +923,7 @@ public:
 
           //acvImage *test1 = data.data.BMP_Read.img;
 
-          //ImgInspection(matchingEng,test1,test1_buff,1,"data/target.json");
+          //ImgInspection(matchingEng,test1,&test1_buff,1,"data/target.json");
         }
         break;
 
@@ -863,15 +948,14 @@ public:
 DatCH_CallBack_T callbk_obj;
 
 
-
-void initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
+int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 {
   
   tSdkCameraDevInfo sCameraList[10];
   int retListL = sizeof(sCameraList)/sizeof(sCameraList[0]);
   CL_GIGE->EnumerateDevice(sCameraList,&retListL);
   
-  if(retListL<=0)return;
+  if(retListL<=0)return -1;
 	for (int i=0; i< retListL;i++)
 	{
 		printf("CAM:%d======\n", i);
@@ -887,34 +971,56 @@ void initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 	}
   
   CL_GIGE->InitCamera(&(sCameraList[0]));
+  return 0;
 }
 void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
   
 }
-int mainLoop(bool realCamera=false)
+
+
+CameraLayer *getCamera(bool realCamera=false)
 {
-  BPG_protocol = new DatCH_BPG1_0(NULL);
-  DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
-  CameraLayer *camera;
+
+  CameraLayer *camera=NULL;
   if(realCamera)
   {
     CameraLayer_GIGE_MindVision *camera_GIGE;
     camera_GIGE=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
     LOGV("initCamera");
-    initCamera(camera_GIGE);
-    camera=camera_GIGE;
+    if(initCamera(camera_GIGE)==0)
+    {
+      camera=camera_GIGE;
+    }
+    else
+    {
+      camera=NULL;
+    }
 
   }
-  else
+
+
+  if(camera==NULL)
   {
     CameraLayer_BMP_carousel *camera_BMP;
     LOGV("CameraLayer_BMP_carousel");
     camera_BMP=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
     camera=camera_BMP;
   }
+  return camera;
+}
+
+int mainLoop(bool realCamera=false)
+{
   /**/
   
+  printf(">>>>>\n" );
+  websocket =new DatCH_WebSocket(4090);
+  printf(">>>>>\n" );
+  
+  BPG_protocol = new DatCH_BPG1_0(NULL);
+  DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
+  CameraLayer *camera = getCamera(realCamera);
   
   LOGV("DatCH_BPG1_0");
   cb->camera = camera;
@@ -922,9 +1028,6 @@ int mainLoop(bool realCamera=false)
 
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
-  printf(">>>>>\n" );
-  websocket =new DatCH_WebSocket(4090);
-  printf(">>>>>\n" );
   acvImage *test1 = new acvImage();
 
   websocket->SetEventCallBack(&callbk_obj,websocket);
@@ -937,6 +1040,7 @@ int mainLoop(bool realCamera=false)
   delete test1;
   return 0;
 }
+
 
 void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信號的值 */
   switch (dunno) {
@@ -957,44 +1061,19 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 }
 
 
-int testGIGE()
-{
-  CameraLayer_GIGE_MindVision *cl_GIGEMV;
-  cl_GIGEMV=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
-
-  initCamera(cl_GIGEMV);
-
-  cl_GIGEMV->SetAnalogGain(1500);
-  cl_GIGEMV->SetExposureTime(5);
-  cl_GIGEMV->TriggerMode(1);
-  cl_GIGEMV->Trigger();
-  sleep(1000);
-  
-  LOGV("SAVE:::::, %p   WH:%d,%d",cl_GIGEMV->GetImg()->CVector[0],cl_GIGEMV->GetImg()->GetWidth(),cl_GIGEMV->GetImg()->GetHeight());
-  acvSaveBitmapFile("data/MVCam.bmp",cl_GIGEMV->GetImg());
-
-  LOGV("OK:::::");
-
-  return 0;
-}
-
-
 int simpleTest()
 {
   //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
-  test1_buff = new acvImage();
-  test1_buff->ReSize(100,100);
-  CameraLayer::status ret = cl_BMP.LoadBMP("data/testInsp.bmp");
+  CameraLayer::status ret = cl_BMP.LoadBMP("data/testImg.bmp");
   if(ret != CameraLayer::ACK)
   {
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),test1_buff,1,"data/test.ic.json");
+  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,"data/cache_def.json");
 
-  acvSaveBitmapFile("data/buff.bmp",test1_buff);
   const FeatureReport * report = matchingEng.GetReport();
 
   if(report!=NULL)
@@ -1011,13 +1090,16 @@ int simpleTest()
   return 0;
 }
 
+
+
+
+
 #include <vector>
 int main(int argc, char** argv)
 {
   srand(time(NULL));
-  auto lambda = []() { LOGV("Hello, Lambda"); };
-  lambda();
-  //return simpleTest();
+  /*auto lambda = []() { LOGV("Hello, Lambda"); };
+  lambda();*/
   #ifdef __WIN32__
   {
       WSADATA wsaData;
@@ -1032,12 +1114,35 @@ int main(int argc, char** argv)
   }
   #endif
 
+  if(0){
 
+
+    acvImage calibImage;
+    acvImage test_buff;
+    int ret_val = acvLoadBitmapFile(&calibImage,"data/calibration_Img/lens1_2.bmp");
+    if(ret_val!=0)return -1;
+    ImgInspection_DefRead(matchingEng,&calibImage,1,"data/cameraCalibration.json");
+
+    
+    const FeatureReport * report = matchingEng.GetReport();
+
+    if(report!=NULL)
+    {
+      cJSON* jobj = matchingEng.FeatureReport2Json(report);
+      //cJSON_AddNumberToObject(jobj, "session_id", session_id);
+      char * jstr  = cJSON_Print(jobj);
+      cJSON_Delete(jobj);
+
+      LOGI("__\n %s  \n___",jstr);
+
+      delete jstr;
+    }
+    return 0;
+  }
+
+  //return simpleTest();
 
   signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
-  test1_buff = new acvImage();
-  test1_buff->ReSize(100,100);
-  imgSrc_X = new DatCH_BMP(new acvImage());
-  return mainLoop();
+  return mainLoop(true);
 }

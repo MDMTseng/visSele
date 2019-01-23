@@ -6,6 +6,7 @@ import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
 import * as logX from 'loglevel';
+import { loadavg } from 'os';
 let log = logX.getLogger(__filename);
 
 let UISTS = UI_SM_STATES;
@@ -22,6 +23,7 @@ function Default_UICtrlReducer()
     showSM_graph:false,
     WS_CH:undefined,
     edit_info:{
+      defModelPath:"data/cache_def",
       _obj:new InspectionEditorLogic(),
       defInfo:[],
       inspReport:undefined,
@@ -43,7 +45,8 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-      session_lock:null
+      session_lock:null,
+      camera_calibration_report:undefined,
     },
     sm:null,
     c_state:null,
@@ -91,15 +94,65 @@ function StateReducer(newState,action)
     case UISTS.SPLASH:
       newState.showSplash=true;
       return newState;
-    case UISTS.MAIN:
-      newState.showSplash=false;
-      return newState;
-    
   }
 
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
-  log.info()
   let substate = stateObj.substate;
+
+  function EVENT_Inspection_Report(newState,action)
+  {
+    if(action.data.type === "binary_processing_group")
+    {
+      action.data.reports.forEach((report)=>
+      {
+        switch(report.type)
+        {
+          case "sig360_extractor":
+          case "sig360_circle_line":
+          {
+            newState.edit_info=Object.assign({},newState.edit_info);
+            //newState.report=action.data;
+            newState.edit_info._obj.SetInspectionReport(report);
+            newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
+  
+            if(false){
+              let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
+              let measure1 = newState.edit_info.reportStatisticState.measure1;
+              if(measure1 === undefined)measure1=[];
+              measure1.push({
+                genre: "G"+Math.random(), sold:Math.random()
+              })
+              if(measure1.length>20)measure1.shift();
+              newState.edit_info.reportStatisticState=Object.assign({},
+                newState.edit_info.reportStatisticState,
+                {
+                  measure1:measure1
+                });
+              ;
+            }
+          }
+          break;
+          case "camera_calibration":
+            log.error(action);
+            if(report.error!==undefined &&report.error == 0)
+            {
+              newState.edit_info._obj.SetCameraParamInfo(report);
+              newState.edit_info.camera_calibration_report = action.data;
+            }
+            else
+            {
+              newState.edit_info._obj.SetCameraParamInfo(undefined);
+              newState.edit_info.camera_calibration_report = undefined;
+            }
+          break;
+        }
+        
+      });
+    }
+    //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+  }
+
+
   switch(stateObj.state)
   {
     case UISTS.SPLASH:
@@ -107,6 +160,10 @@ function StateReducer(newState,action)
       return newState;
     case UISTS.MAIN:
       newState.showSplash=false;
+      if(action.type===UISEV.Inspection_Report)
+      {
+        EVENT_Inspection_Report(newState,action);
+      }
       return newState;
     case UISTS.DEFCONF_MODE:
     case UISTS.INSP_MODE:
@@ -123,42 +180,49 @@ function StateReducer(newState,action)
 
 
         case UISEV.Inspection_Report:
-          newState.edit_info=Object.assign({},newState.edit_info);
-          //newState.report=action.data;
-          newState.edit_info._obj.SetInspectionReport(action.data);
-          newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
-
-          let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
-
-          {
-            let measure1 = newState.edit_info.reportStatisticState.measure1;
-            if(measure1 === undefined)measure1=[];
-            measure1.push({
-              genre: "G"+Math.random(), sold:Math.random()
-            })
-            if(measure1.length>20)measure1.shift();
-            newState.edit_info.reportStatisticState=Object.assign({},
-              newState.edit_info.reportStatisticState,
-              {
-                measure1:measure1
-              });
-            ;
-          }
-          //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+        {
+          EVENT_Inspection_Report(newState,action);
+        }
         break;
 
         case UISEV.Define_File_Update:
-          
-          newState.edit_info=Object.assign({},newState.edit_info);
-          newState.edit_info._obj.SetDefInfo(action.data);
-          
-          newState.edit_info.edit_tar_info = null;
-          
-          newState.edit_info.list=newState.edit_info._obj.shapeList;
-          newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
-          
-          //newState.edit_info.inherentShapeList=
-            //newState.edit_info._obj.UpdateInherentShapeList();
+        let root_defFile=action.data;
+        if(root_defFile.type === "binary_processing_group")
+        {
+          root_defFile.featureSet.forEach((report)=>
+          {
+            switch(report.type)
+            {
+              case "sig360_extractor":
+              case "sig360_circle_line":
+              {
+
+                newState.edit_info=Object.assign({},newState.edit_info);
+                newState.edit_info._obj.SetDefInfo(report);
+                
+                newState.edit_info.edit_tar_info = null;
+                
+                newState.edit_info.list=newState.edit_info._obj.shapeList;
+                newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+                
+              }
+              break;
+              case "camera_calibration":
+
+                log.error(action);
+                /*if(report.error!==undefined &&report.error == 0)
+                {
+                  newState.edit_info.camera_calibration_report = root_report;
+                }
+                else
+                {
+                  newState.edit_info.camera_calibration_report = undefined;
+                }*/
+              break;
+            }
+            
+          });
+        }
         break;
         case UISEV.SIG360_Report_Update:
           
@@ -197,15 +261,6 @@ function StateReducer(newState,action)
         case UISEV.EC_Save_Def_Config:
         {
           if(newState.WS_CH==undefined)break;
-        }
-        break;
-        case UISEV.EC_Trigger_Inspection:
-        {
-          if(newState.WS_CH==undefined)break;
-          let dat=action.data;
-          if(dat === undefined)
-            dat={};
-          newState.WS_CH.send("II",0,dat);
         }
         break;
         case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:

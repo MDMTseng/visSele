@@ -82,7 +82,6 @@ export const UI_SM_EVENT = {
 
   EC_Save_Def_Config:"EC_Save_Def_Config",
   EC_Load_Def_Config:"EC_Load_Def_Config",
-  EC_Trigger_Inspection:"EC_Trigger_Inspection",
 
   
   Control_SM_Panel:"Control_SM_Panel",
@@ -112,14 +111,6 @@ export function EV_UI_EC_Load_Def_Config(info)
     data:info
   }
 }
-export function EV_UI_EC_Trigger_Inspection(info)
-{
-  return {
-    type: UI_SM_EVENT.EC_Trigger_Inspection,
-    data:info
-  }
-}
-
 
 export function EV_WS_Connected(ws_obj)
 {

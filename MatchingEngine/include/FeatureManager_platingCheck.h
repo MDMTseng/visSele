@@ -14,8 +14,8 @@ class FeatureManager_platingCheck:public FeatureManager {
 public :
   FeatureManager_platingCheck(const char *json_str);
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img,acvImage *buff,acvImage *dbg) override;
-  static bool check(cJSON *root);
+  int FeatureMatching(acvImage *img) override;
+  static const char* GetFeatureTypeName(){return "plating_check";};
   cJSON *jobj;
 protected:
   int creat_stdMapDat(FeatureManager_platingCheck::stdMapData *dat,char* f_path);

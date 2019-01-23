@@ -50,7 +50,8 @@ int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
 
 int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
 {
-  char buff[20];//HACK no check
+  char buff[64];//HACK no check
+  if(strlen(path)>sizeof(buff))return -1;
   strcpy(buff,path);
   char *nextSection=nextSection;
   int i=0;

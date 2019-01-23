@@ -73,10 +73,10 @@ export class InspectionEditorLogic
 
   SetDefInfo(defInfo)
   {
-    this.SetShapeList(defInfo.featureSet[0].features);
+    this.SetShapeList(defInfo.features);
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
-    let sig360Info = defInfo.featureSet[0].inherentfeatures[0];
+    let sig360Info = defInfo.inherentfeatures[0];
     this.SetSig360Report(
       {
         reports:[
@@ -91,6 +91,11 @@ export class InspectionEditorLogic
       }
     );
     this.UpdateInherentShapeList();
+  }
+
+  SetCameraParamInfo(cameraParam)
+  {
+    this.cameraParam = cameraParam;
   }
 
   SetState(state)
@@ -133,7 +138,7 @@ export class InspectionEditorLogic
   UpdateInherentShapeList()
   {
     this.inherentShapeList=[];
-
+    if(this.sig360report===null || this.sig360report === undefined)return;
     let setupTarget=this.sig360report.reports[0];
     
     log.debug(setupTarget);
@@ -196,6 +201,7 @@ export class InspectionEditorLogic
     log.info(this.inherentShapeList);
     return {
       type:"binary_processing_group",
+      intrusionSizeLimitRatio:0.1,
       featureSet:[
       {
         "type":"sig360_circle_line",
@@ -365,6 +371,9 @@ export class InspectionEditorLogic
         return;
       }
       eObject.inspection_status = inspAdjObj.status;
+
+
+
       ["pt1","pt2","pt3"].forEach((key)=>{
         if(eObject[key]===undefined)return;
         eObject[key] = PtRotate2d_sc(eObject[key],sin_v,cos_v,flip_f);
@@ -385,6 +394,7 @@ export class InspectionEditorLogic
             eObject.pt1=eObject.pt2;
             eObject.pt2=tmp;
           }
+          
         }
         break;
         

@@ -42,9 +42,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;
-  int FeatureMatching(acvImage *img,acvImage *buff,vector<acv_LabeledData> &ldData,acvImage *dbg) override;
-  static bool check(cJSON *root);
+  int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
+  virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
 protected:
 

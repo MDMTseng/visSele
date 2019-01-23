@@ -94,7 +94,7 @@ class AirControl extends React.Component {
   componentWillMount()
   {
     console.log("[init][componentWillMount]");
-    this.websocketConnect();
+    this.websocketConnect(this.props.url);
   }
 
   componentWillUnmount()
@@ -103,17 +103,28 @@ class AirControl extends React.Component {
     this.state.websocketAir=undefined;
   }
 
+
   websocketConnect(url="ws://192.168.2.2:5213")
   {
-    console.log("[init][WS]");
+    console.log("[init][WS]"+url);
     this.state.websocketAir=new WebSocket(url);
-    this.state.websocketAir.onmessage = this.onMessage;
-    this.state.websocketAir.onerror = this.onError;
+    this.state.websocketAir.onmessage = this.onMessage.bind(this);
+    this.state.websocketAir.onerror = this.onError.bind(this);
+
+
+    this.state.websocketAir.onclose = (evt)=> {
+      if (evt.code == 3001) {
+        console.log('ws closed');
+      } else { 
+        console.log('ws connection error');
+      }
+    };
     console.log("[init][WS][OK]");
     console.log(this.state.websocketAir);
   }
   onError(ev){
-    this.websocketConnect();
+    //this.websocketConnect();
+    console.log("onError");
   }
   onMessage(ev){
     console.log(ev);
@@ -124,6 +135,7 @@ class AirControl extends React.Component {
   }
   componentWillReceiveProps(nextProps){
     if(this.state.STOP)return;
+    if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)return;
    //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
     if(nextProps.checkResult2AirAction.ver==this.props.checkResult2AirAction.ver)return;
     if(nextProps.checkResult2AirAction.direction==="left")
@@ -133,6 +145,17 @@ class AirControl extends React.Component {
 
   }
   render() {
+
+    if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)
+    {
+      return <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          addClass="layout black vbox"
+          text="Reconnect" onClick={()=>{
+            this.websocketConnect(this.props.url);
+          }}/>;
+    }
+
     return (
         <div>
         <Button icon='check-circle' type="primary" size="large" onClick={this.blowAir_LEFTa.bind(this)}>
@@ -405,7 +428,7 @@ class APP_INSP_MODE extends React.Component{
   componentDidMount()
   {
     
-    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{deffile:"data/test.ic.json"});
+    this.props.ACT_WS_SEND(this.props.WS_ID,"CI",0,{deffile:this.props.defModelPath+".json"});
            
   }
   componentWillUnmount() {
@@ -424,8 +447,7 @@ class APP_INSP_MODE extends React.Component{
     if(this.props.inspectionReport!==undefined)
     {
 
-      let inspReportGroup= this.props.inspectionReport.reports[0];
-      let inspectionReport = inspReportGroup.reports;
+      let inspectionReport = this.props.inspectionReport;
       if(inspectionReport.length>0)
       {
         let groupResult = inspectionReport.map((single_rep)=>{
@@ -483,6 +505,7 @@ class APP_INSP_MODE extends React.Component{
           text="<" onClick={this.props.ACT_EXIT}/>
         ,
         <AirControl
+          url={"ws://169.254.170.123:5213"}
           checkResult2AirAction={this.checkResult2AirAction}
         />
         // ,<BASE_COM.IconButton
@@ -500,21 +523,18 @@ class APP_INSP_MODE extends React.Component{
 
       ];
 
-    //<G2HOT className={"height4 width12"} data={this.props.reportStatisticState.measure1}/>
     return(
-    <div className="HXF">
-      <CanvasComponent_rdx addClass="layout width12 height12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
+      <div className="HXF">
+        <CanvasComponent_rdx addClass="layout width12 height12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
+          
+        <$CSSTG transitionName = "fadeIn">
+          <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
+            {MenuSet}
+          </div>
+        </$CSSTG>
         
-      <$CSSTG transitionName = "fadeIn">
-        <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
-          {MenuSet}
-
-        </div>
-
-      </$CSSTG>
-      
-    </div>
-    );
+      </div>
+      );
   }
 }
 
@@ -533,6 +553,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
   return { 
     c_state: state.UIData.c_state,
     shape_list:state.UIData.edit_info.list,
+    defModelPath:state.UIData.edit_info.defModelPath,
     WS_ID:state.UIData.WS_ID,
     inspectionReport:state.UIData.edit_info.inspReport,
     //reportStatisticState:state.UIData.edit_info.reportStatisticState

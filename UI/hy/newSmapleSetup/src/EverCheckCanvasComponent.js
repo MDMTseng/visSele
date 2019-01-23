@@ -83,6 +83,40 @@ class renderUTIL
       editShape:"rgba(255,0,0,0.7)",
       measure_info:"rgba(128,128,200,0.7)"
     };
+    
+    this.renderParam={
+      base_Size:1,
+      size_Multiplier:1,
+      mmpp:0.1,
+      font_Base_Size:60,
+      font_Style:"bold "
+    };
+  }
+  get_mmpp()
+  {
+    return this.renderParam.mmpp;
+  }
+  getPrimitiveSize()
+  {
+    return this.renderParam.base_Size*this.renderParam.size_Multiplier*this.get_mmpp();
+  }
+  
+  getPointSize()
+  {
+    return 8*this.getPrimitiveSize();
+  }
+  getIndicationLineSize()
+  {
+    return 4*this.getPrimitiveSize();
+  }
+  getSearchDirectionLineSize()
+  {
+    return 8*this.getPrimitiveSize();
+  }
+  getFontStyle(size=this.renderParam.font_Base_Size)
+  {
+    return this.renderParam.font_Style + 
+    size*this.renderParam.size_Multiplier*this.get_mmpp()+"px Arial";
   }
 
   setEditor_db_obj(editor_db_obj)
@@ -141,18 +175,17 @@ class renderUTIL
     ctx.stroke();
   }
 
-  drawpoint(ctx, point,type)
+  drawpoint(ctx, point,type,size=this.getPointSize())
   {
-    let lineWidth_bk=ctx.lineWidth;
     let strokeStyle_bk=ctx.strokeStyle;
 
-    ctx.lineWidth=lineWidth_bk*2;
+    ctx.lineWidth=size*2;
     ctx.strokeStyle="rgba(0,0,100,0.5)";  
-    this._drawpoint(ctx,point,type);
+    this._drawpoint(ctx,point,type,2*size);
 
-    ctx.lineWidth=lineWidth_bk;
+    ctx.lineWidth=size/2;
     ctx.strokeStyle=strokeStyle_bk;  
-    this._drawpoint(ctx,point,type);
+    this._drawpoint(ctx,point,type,2*size);
   }
 
   drawInherentShapeList(ctx, inherentShapeList)
@@ -169,7 +202,6 @@ class renderUTIL
           let point = this.db_obj.auxPointParse(ishape);
           if(point!=null)
           {
-            ctx.lineWidth=2;
             ctx.strokeStyle="black";  
             this.drawpoint(ctx,point,"rect")
           }
@@ -207,7 +239,9 @@ class renderUTIL
     x+=r*ax;
     y+=r*ay;
     let dirSign=(ccw)?-1:1;
-    this.canvas_arrow(ctx, x+dirSign*ay, y-dirSign*ax, x, y);
+    dirSign*=this.getPrimitiveSize();
+    let arrowSize = 10*this.getPrimitiveSize();
+    this.canvas_arrow(ctx, x+dirSign*ay, y-dirSign*ax, x, y,arrowSize);
     
   }
   drawLineArrow(ctx,x1,y1,x2,y2)
@@ -216,9 +250,9 @@ class renderUTIL
 
   drawMeasureDistance(ctx,eObject,refObjs,shapeList,unitConvert)
   {
-    ctx.lineWidth=2;
+    ctx.lineWidth=this.getIndicationLineSize();
               
-    ctx.font="30px Arial";
+    ctx.font=this.getFontStyle();
 
     let alignLine=null;
     let point_onAlignLine=null;
@@ -257,7 +291,7 @@ class renderUTIL
       }
 
 
-      ctx.setLineDash([5, 15]);
+      ctx.setLineDash([5*this.getPrimitiveSize(), 15*this.getPrimitiveSize()]);
       
       this.drawReportLine(ctx, {
         
@@ -282,7 +316,6 @@ class renderUTIL
 
       this.drawReportLine(ctx, extended_ind_line);
 
-      
       this.drawpoint(ctx,eObject.pt1);
 
       this.drawText(ctx,"D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
@@ -311,14 +344,14 @@ class renderUTIL
   }
   drawText(ctx,text,x,y)
   {
-    ctx.font="bold 30px  Arial";
+    ctx.font=this.getFontStyle();
     ctx.fillText(text,x,y);
-    ctx.strokeStyle="white";
-    ctx.lineWidth=2;
+    ctx.strokeStyle="black";
+    ctx.lineWidth=this.getIndicationLineSize();
     ctx.strokeText(text,x,y);
   }
 
-  drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"px",mult:1})
+  drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1})
   {
     eObjects.forEach((eObject)=>{
       if(eObject==null)return;
@@ -345,7 +378,7 @@ class renderUTIL
 
 
           let cnormal =LineCentralNormal(eObject);
-          ctx.lineWidth=4;
+          ctx.lineWidth=this.getSearchDirectionLineSize();
           ctx.strokeStyle="rgba(100,50,100,0.8)"; 
           let marginOffset = eObject.margin+ctx.lineWidth/2;
           if(eObject.direction<0)
@@ -358,7 +391,6 @@ class renderUTIL
           });
 
 
-          ctx.lineWidth=2;
           ctx.strokeStyle="gray"; 
           this.drawpoint(ctx,eObject.pt1);
           this.drawpoint(ctx,eObject.pt2);
@@ -380,7 +412,7 @@ class renderUTIL
           let point = this.db_obj.auxPointParse(eObject,shapeList);
           if(point !== undefined && subObjs.length ==2 )
           {//Draw crosssect line
-            ctx.setLineDash([5, 15]);
+            ctx.setLineDash([5*this.getPrimitiveSize(), 15*this.getPrimitiveSize()]);
   
             ctx.beginPath();
             ctx.moveTo(point.x,point.y);
@@ -392,7 +424,6 @@ class renderUTIL
             ctx.lineTo(subObjs[1].pt1.x,subObjs[1].pt1.y);
             ctx.stroke();
             ctx.setLineDash([]);
-            ctx.lineWidth=2;
             ctx.strokeStyle="gray"; 
             this.drawpoint(ctx, point);
           }
@@ -405,10 +436,10 @@ class renderUTIL
         {
           //ctx.strokeStyle=eObject.color; 
           let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
-          ctx.lineWidth=eObject.margin*2; 
+          ctx.lineWidth=eObject.margin*2;
           this.drawReportArc(ctx, arc);
           
-          ctx.lineWidth=4;
+          ctx.lineWidth=this.getSearchDirectionLineSize();
           ctx.strokeStyle="rgba(100,50,100,0.8)"; 
           
           let marginOffset = eObject.margin+ctx.lineWidth/2;
@@ -419,8 +450,7 @@ class renderUTIL
           arc.r+=marginOffset;
           this.drawReportArc(ctx, arc);
 
-                
-          ctx.lineWidth=2;
+              
           ctx.strokeStyle="gray";  
           this.drawpoint(ctx,eObject.pt1);
           this.drawpoint(ctx,eObject.pt2);
@@ -447,14 +477,14 @@ class renderUTIL
           vector.y*=mag;
 
 
-          ctx.lineWidth=eObject.margin*2; 
+          ctx.lineWidth=eObject.margin*2;
           this.drawReportLine(ctx, {
             x0:eObject.pt1.x-vector.x,y0:eObject.pt1.y-vector.y,
             x1:eObject.pt1.x+vector.x,y1:eObject.pt1.y+vector.y,
           });
 
 
-          ctx.lineWidth=4;
+          ctx.lineWidth=this.getSearchDirectionLineSize();
           ctx.strokeStyle="rgba(100,50,100,0.8)"; 
           let marginOffset = eObject.margin+ctx.lineWidth/2;
           this.drawReportLine(ctx, {
@@ -465,7 +495,6 @@ class renderUTIL
 
           this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list,shapeList);
 
-          ctx.lineWidth=2;
           ctx.strokeStyle="gray";  
           this.drawpoint(ctx,eObject.pt1);
 
@@ -506,7 +535,7 @@ class renderUTIL
               let srcPt = 
                 intersectPoint(subObjs[0].pt1,subObjs[0].pt2,subObjs[1].pt1,subObjs[1].pt2);
                   
-              ctx.lineWidth=2;
+              ctx.lineWidth=this.getIndicationLineSize();
               //ctx.strokeStyle=this.colorSet.measure_info; 
                         
               ///ctx.fillStyle=this.colorSet.measure_info; 
@@ -614,9 +643,7 @@ class renderUTIL
 
 
 
-
               this.drawArcArrow(ctx,srcPt.x,srcPt.y,dist,draw_sAngle,draw_eAngle);
-
 
               this.drawpoint(ctx,eObject.pt1);
               
@@ -625,7 +652,7 @@ class renderUTIL
 
               {
                     
-                ctx.setLineDash([5, 15]);
+                ctx.setLineDash([5*this.getPrimitiveSize(), 15*this.getPrimitiveSize()]);
                 
                 this.drawReportLine(ctx, {
                   x0:subObjs[0].pt1.x,y0:subObjs[0].pt1.y,
@@ -641,8 +668,8 @@ class renderUTIL
               }
 
               let text = ""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2);
-              let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4;
-              let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4;
+              let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4*this.getPrimitiveSize();
+              let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4*this.getPrimitiveSize();
               this.drawText(ctx,text,x,y);
               //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);
             }
@@ -650,10 +677,10 @@ class renderUTIL
             
             case SHAPE_TYPE.measure_subtype.radius:
             {
-              ctx.lineWidth=2;
+              ctx.lineWidth=this.getIndicationLineSize();
               //ctx.strokeStyle=this.colorSet.measure_info; 
 
-              ctx.font="30px Arial";
+              ctx.font=this.getFontStyle();
               let arc = threePointToArc(subObjs[0].pt1,subObjs[0].pt2,subObjs[0].pt3);
               let dispVec = {x:eObject.pt1.x - arc.x,y:eObject.pt1.y - arc.y};
               let mag = Math.hypot(dispVec.x,dispVec.y);
@@ -665,13 +692,14 @@ class renderUTIL
                 x0:arc.x+dispVec.x,y0:arc.y+dispVec.y,
                 x1:eObject.pt1.x,y1:eObject.pt1.y,
               };*/
-              
-              this.canvas_arrow(ctx, eObject.pt1.x, eObject.pt1.y, arc.x+dispVec.x, arc.y+dispVec.y);
+              let arrowSize = 10*this.getPrimitiveSize();
+              this.canvas_arrow(ctx, eObject.pt1.x, eObject.pt1.y, arc.x+dispVec.x, arc.y+dispVec.y,arrowSize);
               //this.drawReportLine(ctx, lineInfo);
+              
               this.drawpoint(ctx,eObject.pt1);
 
-              dispVec_normalized.x*=40;
-              dispVec_normalized.y*=40;
+              dispVec_normalized.x*=40*this.getPrimitiveSize();
+              dispVec_normalized.y*=40*this.getPrimitiveSize();
               this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
@@ -722,7 +750,7 @@ class EverCheckCanvasComponent_proto{
     this.identityMat= new  DOMMatrix();
     this.Mouse2SecCanvas= new  DOMMatrix();
     this.camera= new CameraCtrl();
-    
+    this.camera.Scale(100);
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
       inspection_Pass:"rgba(0,255,0,0.1)",
@@ -941,8 +969,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
+    
+    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    this.rUtil.renderParam.mmpp=mmpp;
   }
 
+
+
+  
   SetShape( shape_obj, id)
   {
     this.tmp_EditShape_id=id;
@@ -1026,32 +1060,22 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
   }
   draw_INSP()
   {
-    if(this.edit_DB_info.inspReport==null || this.edit_DB_info.inspReport.reports==undefined)
+    if(this.edit_DB_info==null ||
+      this.edit_DB_info.inspReport==null || this.edit_DB_info.inspReport==undefined )
     {
       return;
     }
-    let inspReportGroup= this.edit_DB_info.inspReport.reports[0];
-    let inspectionReport = inspReportGroup.reports;
-    let mmpp = inspReportGroup.mmpp;
+    let inspectionReport = this.edit_DB_info.inspReport;
     let unitConvert;
 
-    if(!isNaN(mmpp) )
-    {
-      unitConvert={
-        unit:"mm",//"μm",
-        mult:mmpp*1.00624
-      }
-    } 
-    else
-    {
-      unitConvert={
-        unit:"px",
-        mult:1
-      }
-    }
+    unitConvert={
+      unit:"mm",//"μm",
+      mult:1
+    };
+
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
-    ctx.lineWidth = 2;
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
     ctx.resetTransform();  
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
@@ -1060,9 +1084,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     
     {//TODO:HACK: 4X4 times scale down for transmission speed
       
-      ctx.translate(-this.secCanvas.width*4/2,-this.secCanvas.height*4/2);//Move to the center of the secCanvas
+      let mmpp = this.rUtil.get_mmpp();
+      let mmpp_mult = 4*mmpp;
+      ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
-      ctx.scale(4,4);
+
+      ctx.scale(mmpp_mult,mmpp_mult);
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
@@ -1082,7 +1109,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         },[]);
       }
 
-      inspectionReport.forEach((report,idx)=>{
+      inspectionReport.reports.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);
         ctx.rotate(-report.rotate);
@@ -1141,12 +1168,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       });
     }
 
-
-    inspectionReport.forEach((report,idx)=>{
+    inspectionReport.reports.forEach((report,idx)=>{
       //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
       {
         let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
+        
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         
         listClone.forEach((eObj)=>{
@@ -1246,13 +1273,16 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   EditDBInfoSync(edit_DB_info)
   {
-    log.debug(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
+    log.info(">>>>>>>>>>>>>>>>>>>>>",edit_DB_info);
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
 
     this.SetEditShape( edit_DB_info.edit_tar_info );
+    
+    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    this.rUtil.renderParam.mmpp=mmpp;
   }
 
   SetShape( shape_obj, id)
@@ -1281,7 +1311,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   {
     if(shape==null || shape===undefined)return;
     let center={x:0,y:0};
-    let size=1;
     switch(shape.type)
     {
       case SHAPE_TYPE.line:
@@ -1337,9 +1366,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   draw_DEFCONF()
   {
 
+    let mmpp = this.rUtil.get_mmpp();
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
-    ctx.lineWidth = 2;
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
     ctx.setTransform(this.identityMat);  
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
@@ -1350,12 +1380,15 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
       ctx.translate(-center.x,-center.y);
-      ctx.scale(4,4);
+      ctx.scale(4*mmpp,4*mmpp);
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
 
-
+    let unitConvert={
+      unit:"mm",//"μm",
+      mult:1
+    }
 
     {
 
@@ -1377,7 +1410,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       skipDrawIdxs.push(this.EditShape.id);
       
       ctx.strokeStyle=this.colorSet.editShape;
-      this.rUtil.drawShapeList(ctx, [this.EditShape],false,[],this.edit_DB_info.list);
+      this.rUtil.drawShapeList(ctx, [this.EditShape],false,[],this.edit_DB_info.list,unitConvert);
     }
 
     if(this.CandEditPointInfo!=null)
@@ -1392,28 +1425,28 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         skipDrawIdxs.push(candPtInfo.shape.id);
 
         ctx.strokeStyle="rgba(255,0,255,0.5)";
-        this.rUtil.drawShapeList(ctx, [candPtInfo.shape],false,[],this.edit_DB_info.list);
+        this.rUtil.drawShapeList(ctx, [candPtInfo.shape],false,[],this.edit_DB_info.list,unitConvert);
       }
     }
     
-    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list);
+    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
 
     if(this.EditPoint!=null)
     {
-      ctx.lineWidth=3;
+      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
       ctx.strokeStyle="green";  
-      this.rUtil.drawpoint(ctx, this.EditPoint);
+      this.rUtil.drawpoint(ctx, this.EditPoint,2*this.rUtil.getPointSize());
     }
 
 
 
     if(this.CandEditPointInfo!=null)
     {
-      ctx.lineWidth=3;
+      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
       ctx.strokeStyle="rgba(0,255,0,0.3)";  
-      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt);
+      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt,2*this.rUtil.getPointSize());
     }
 
 
@@ -1423,6 +1456,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
   ctrlLogic_DEFCONF()
   {
 
+    let mmpp = this.rUtil.get_mmpp();
     let wMat = this.worldTransform();
     //log.debug("this.camera.matrix::",wMat);
     let worldTransform = new DOMMatrix().setMatrixValue(wMat);
@@ -1447,7 +1481,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
             type:SHAPE_TYPE.line,
             pt1:mouseOnCanvas2,
             pt2:pmouseOnCanvas2,
-            margin:5,
+            margin:5*mmpp,
             color:this.colorSet.unselected,
             direction:1
           };
@@ -1480,7 +1514,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
               x:cnormal.x+cnormal.vx,
               y:cnormal.y+cnormal.vy},
             pt3:pmouseOnCanvas2,
-            margin:5,
+            margin:5*mmpp,
             color:this.colorSet.unselected,
             direction:1
           };
@@ -1512,8 +1546,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
                 type:SHAPE_TYPE.search_point,
                 pt1:{x:0,y:0},
                 angleDeg:90,
-                margin:10,
-                width:40,
+                margin:10*mmpp,
+                width:40*mmpp,
                 ref:[{
                   id:this.CandEditPointInfo.shape.id,
                   element:this.CandEditPointInfo.shape.type

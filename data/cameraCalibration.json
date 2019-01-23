@@ -1,0 +1,12 @@
+{
+    "type":"binary_processing_group",
+    "featureSet":[
+      {
+        "type":"camera_calibration",
+        "ver":"0.0.0.0",
+        "unit":"mm",
+        "pattern_dist":0.1
+      }
+    ],
+    "intrusionSizeLimitRatio":1
+  }

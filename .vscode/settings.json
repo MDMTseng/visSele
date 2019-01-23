@@ -66,6 +66,7 @@
     "xiosbase": "cpp",
     "xlocinfo": "cpp",
     "xmemory": "cpp",
-    "xstddef": "cpp"
+    "xstddef": "cpp",
+    "common_lib.h": "c"
   }
 }

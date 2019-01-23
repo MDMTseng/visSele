@@ -1,7 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="bb6bc915-c66f-49ee-b7e7-598d9bacc4ea" name="Default Changelist" comment="" />
+    <list default="true" id="bb6bc915-c66f-49ee-b7e7-598d9bacc4ea" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/../../MatchingEngine/FM_camera_calibration.cpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../MatchingEngine/FeatureReport_UTIL.cpp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FM_camera_calibration.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../MatchingEngine/include_priv/FeatureReport_UTIL.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../data/cameraCalibration.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../include/main.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../include/playground.h" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/../../playground.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../.vscode/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/../../.vscode/settings.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../CameraLayer/CameraLayer_BMP.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../CameraLayer/CameraLayer_BMP.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../CameraLayer/include/CameraLayer_BMP.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../CameraLayer/include/CameraLayer_BMP.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../DataChannel/DatCH_BPG.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../DataChannel/DatCH_BPG.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../DataChannel/include/DatCH.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../DataChannel/include/DatCH.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../DataChannel/include/DatCH_BPG.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../DataChannel/include/DatCH_BPG.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/../../Makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/FeatureExtractor.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/FeatureExtractor.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/FeatureManager_group.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/FeatureManager_group.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/FeatureManager_platingCheck.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/FeatureManager_platingCheck.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/FeatureManager_sig360_circle_line.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/FeatureManager_sig360_circle_line.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/Makefile" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/MatchingCore.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/MatchingCore.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/MatchingEngine.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/MatchingEngine.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_binary_processing.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_binary_processing.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_group.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_group.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_platingCheck.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_platingCheck.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_sig360_circle_line.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureManager_sig360_circle_line.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureReport.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/FeatureReport.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include/MatchingEngine.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include/MatchingEngine.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../MatchingEngine/include_priv/MatchingCore.h" beforeDir="false" afterPath="$PROJECT_DIR$/../../MatchingEngine/include_priv/MatchingCore.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/DefConfUI.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/DefConfUI.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/EverCheckCanvasComponent.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/EverCheckCanvasComponent.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/InspectionUI.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/InspectionUI.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/UTIL/BPG_Protocol.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/UTIL/BPG_Protocol.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/component/baseComponent.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/component/baseComponent.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/actions/UIAct.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/actions/UIAct.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/middleware/ActionThrottle.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/middleware/ActionThrottle.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/reducer/InspectionEditorLogic.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/reducer/InspectionEditorLogic.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/reducer/UICtrlReducer.js" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/redux/reducer/UICtrlReducer.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../hy/newSmapleSetup/src/script.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/../hy/newSmapleSetup/src/script.jsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/acvImage.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/acvImage.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/acvImage_BasicTool.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/acvImage_BasicTool.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/acvImage_ComponentLabelingTool.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/acvImage_ComponentLabelingTool.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/acvImage_SpDomainTool.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/acvImage_SpDomainTool.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/include/acvImage.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/include/acvImage.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/include/acvImage_BasicTool.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/include/acvImage_BasicTool.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../acvImage/include/acvImage_ComponentLabelingTool.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../acvImage/include/acvImage_ComponentLabelingTool.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../common_lib/Util.c" beforeDir="false" afterPath="$PROJECT_DIR$/../../common_lib/Util.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../data/featureDetect.json" beforeDir="false" afterPath="$PROJECT_DIR$/../../data/featureDetect.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../../main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/../../main.cpp" afterDir="false" />
+    </list>
     <ignored path="$PROJECT_DIR$/out/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -167,7 +218,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="8759000" />
+    <option name="totallyTimeSpent" value="9182000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="24" y="23" width="1256" height="777" extended-state="6" />

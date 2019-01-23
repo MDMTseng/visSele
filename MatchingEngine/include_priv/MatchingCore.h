@@ -15,7 +15,7 @@ void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg
 
 void extractLabeledContourDataToContourGrid(
   acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,
-  int grid_size,ContourGrid &edge_curve_grid,int scanline_skip);
+  int grid_size,ContourGrid &edge_curve_grid,int scanline_skip,acvRadialDistortionParam param);
 
 acv_XY* findEndPoint(acv_Line line, int signees, std::vector<acv_XY> &points);
 

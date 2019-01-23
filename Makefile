@@ -44,6 +44,7 @@ IDIR=	include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_logctrl)/include \
 			$(MODULE_MatchingEngine)/include \
+			$(MODULE_MatchingEngine)/MorphEngine/include \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
@@ -51,7 +52,7 @@ IDIR=	include/ \
 
 
 
-_OBJ = main.opp
+_OBJ = main.opp playground.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 

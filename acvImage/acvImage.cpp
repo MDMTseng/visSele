@@ -30,6 +30,10 @@ void acvImage::ReSize(int SetWidth,int SetHeight)
 {
     RESIZE(SetWidth,SetHeight);
 }
+void acvImage::ReSize(acvImage *refImg)
+{
+    RESIZE(refImg->GetWidth(),refImg->GetHeight());
+}
 int acvImage::SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight)
 {
     //if(!Bitmap)Bitmap->FreeImage();

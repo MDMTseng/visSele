@@ -20,9 +20,10 @@ class CameraLayer_BMP : public CameraLayer{
 
 
 class CameraLayer_BMP_carousel : public CameraLayer_BMP{
-
+    int frameInterval_ms=100;
     int ThreadTerminationFlag=0;
     int imageTakingCount=0;
+    int triggerMode=1;
     std::thread *cameraThread;
     std::string folderName;
     std::string fileName;
