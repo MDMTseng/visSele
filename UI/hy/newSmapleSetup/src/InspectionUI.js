@@ -20,13 +20,21 @@ import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 
 import * as logX from 'loglevel';
+
 let log = logX.getLogger(__filename);
 
 import {
-  Button, Menu, Dropdown, Icon,
+  Upload,Button, Menu, Dropdown, Icon,
 } from 'antd';
 
+const FileProps = {
+  name: 'file',
 
+  onChange(info) {
+    console.log(info);
+
+  },
+};
 
 
 class AirControl extends React.Component {
@@ -43,20 +51,25 @@ class AirControl extends React.Component {
 
   blowAir_TEST(){
     console.log("[WS]/cue/TEST");
-    this.state.websocketAir.send("/cue/TEST");
+
+    if (this.state.websocketAir.readyState===1)
+      this.state.websocketAir.send("/cue/TEST");
   }
   blowAir_LEFTa(){
     console.log("[WS]/cue/LEFT");
-    this.state.websocketAir.send("/cue/LEFT");
+    if (this.state.websocketAir.readyState===1)
+      this.state.websocketAir.send("/cue/LEFT");
   }
   blowAir_RIGHTa(){
     console.log("[WS]/cue/RIGHT");
-    this.state.websocketAir.send("/cue/RIGHT");
+    if (this.state.websocketAir.readyState===1)
+      this.state.websocketAir.send("/cue/RIGHT");
   }
   blowAir_TIMEUpdate()
   {
     this.setState(Object.assign({},this.state));
-    this.state.websocketAir.send("/cue/TIME/"+this.state.websocketAirTime);
+    if (this.state.websocketAir.readyState===1)
+      this.state.websocketAir.send("/cue/TIME/"+this.state.websocketAirTime);
   }
   blowAir_StartStop()
   {
@@ -90,7 +103,7 @@ class AirControl extends React.Component {
     this.state.websocketAir=undefined;
   }
 
-  websocketConnect(url="ws://169.254.170.123:5213")
+  websocketConnect(url="ws://192.168.2.2:5213")
   {
     console.log("[init][WS]");
     this.state.websocketAir=new WebSocket(url);
@@ -149,12 +162,16 @@ class AirControl extends React.Component {
           </Button>
 
         <br />
-        <Button type="primary" loading={this.state.loading} onClick={this.enterLoading}>
-          Click me!
-        </Button>
-        <Button type="primary" icon="poweroff" loading={this.state.iconLoading} onClick={this.enterIconLoading}>
-          Click me!
-        </Button>
+          <Upload {...FileProps}>
+            <Button>
+              <Icon type="upload" />選取特徵檔案!</Button>
+          </Upload>,
+        {/*<Button type="file" loading={this.state.loading} onClick={this.FileExplorer}>*/}
+          {/*選取特徵檔案!*/}
+        {/*</Button>*/}
+        {/*<Button type="primary" icon="poweroff" loading={this.state.iconLoading} onClick={this.enterIconLoading}>*/}
+          {/*Click me!*/}
+        {/*</Button>*/}
         <br />
         <Button shape="circle" loading />
         <Button type="primary" shape="circle" loading />
@@ -373,7 +390,7 @@ const mapStateToProps_CanvasComponent = (state) => {
 
 
 const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => 
-{ 
+{
   return{
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
   }
