@@ -443,14 +443,12 @@ class APP_INSP_MODE extends React.Component{
   }
   render() {
 
-    //log.error(this.props.inspectionReport)
     if(this.props.inspectionReport!==undefined)
     {
-
       let inspectionReport = this.props.inspectionReport;
-      if(inspectionReport.length>0)
+      if(inspectionReport.reports.length>0)
       {
-        let groupResult = inspectionReport.map((single_rep)=>{
+        let groupResult = inspectionReport.reports.map((single_rep)=>{
 
           let judgeReports = single_rep.judgeReports;
           let ret_status = judgeReports.reduce((res,obj)=>{
