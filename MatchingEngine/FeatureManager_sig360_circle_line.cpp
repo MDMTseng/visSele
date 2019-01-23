@@ -1786,6 +1786,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   }
 
 
+  LOGV("ldData.size()=%d",ldData.size());
   for (int i = 2; i < ldData.size(); i++,count++)
   {// idx 0 is not a label, idx 1 is the outer frame to detect external object intrusion 
       if(ldData[i].area<120)continue;
@@ -1807,7 +1808,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         &isInv, &angle);
 
       error = sqrt(error)/feature_signature_ave;
-      LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+      if(i<10)
+      {
+        LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+      }
 
 
       if(error>0.5)continue;
