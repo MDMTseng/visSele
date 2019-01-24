@@ -66,7 +66,17 @@ class AirControl extends React.Component {
             STOP: false
         }
     }
-
+    keyEventX(event) {
+        let key = event.keyCode || event.which;
+        let keychar = String.fromCharCode(key);
+        log.info("keyEvent>>", key, keychar);
+        if (keychar === 'R') {
+            this.blowAir_RIGHTa();
+        }
+        else if (keychar === 'L') {
+            this.blowAir_LEFTa();
+        }
+    }
     blowAir_TEST() {
         console.log("[WS]/cue/TEST");
         if (this.state.websocketAir.readyState === 1) {
@@ -129,13 +139,19 @@ class AirControl extends React.Component {
     }
 
     componentWillMount() {
+        this._keyEventX=this.keyEventX.bind(this);
         console.log("[init][componentWillMount]");
         this.websocketConnect(this.props.url);
+        document.addEventListener('keydown', this._keyEventX);
+
     }
 
     componentWillUnmount() {
+        log.info("componentWillUnmount1")
         this.state.websocketAir.close();
         this.state.websocketAir = undefined;
+        document.removeEventListener('keydown', this._keyEventX);
+        log.info("componentWillUnmount2")
     }
 
 
@@ -169,6 +185,7 @@ class AirControl extends React.Component {
     enterIconLoading() {
         //this.setState({ iconLoading: true });
     }
+
 
     componentWillReceiveProps(nextProps) {
         log.info("111");
@@ -206,7 +223,7 @@ class AirControl extends React.Component {
                         onClick={() => this.blowAir_StartStop()}>
                     噴氣功能: {this.state.STOP ? " 暫停=" : " 啟動=" }{this.state.websocketAirTime}ms
                 </Button>
-                <ButtonGroup block>
+                <ButtonGroup>
                     <Button style={{backgroundColor: "#c41d7f", marginBottom: 2}} type="primary"
                             size="large"
                             onClick={this.blowAir_LEFTa.bind(this)}>
