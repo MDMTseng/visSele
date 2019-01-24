@@ -51,13 +51,12 @@ WebSocketProtocol::WPFrameInfo retframeInfo;//={.opcode = 1, .isMasking = 0, .is
 int LEFTPIN = 2;
 int RIGHTPIN = 3;
 void setup() {
+  setupLED();
   pinMode(LEFTPIN,OUTPUT);
   pinMode(RIGHTPIN,OUTPUT);
-  
   Ethernet.begin(mac, ip, gateway, subnet);
   server.begin();
   Serial.begin(57600);
-
   DEBUG_print("Chat server address:");
   DEBUG_println(Ethernet.localIP());
   setRetryTimeout(4, 1000);
@@ -65,7 +64,7 @@ void setup() {
 
 unsigned int counter2Pin = 0;
 byte LiveClient = 0;
-
+boolean firstTime=true;
 boolean LEFT_ACT = false;
 boolean RIGHT_ACT = false;
 boolean TEST_ACT=false;
@@ -73,8 +72,24 @@ boolean TEST_ACT_TOGGLE=false;
 unsigned long previousMillis = 0;
 unsigned long currentMillis = 0;
 int airTime=10;
+//int LED_Time=33;
+//unsigned long LED_previousMillis = 0;
+static uint8_t led_hue=0;
+static uint8_t led_value=60;
+
+//void timerLED(){
+//  currentMillis = millis();
+//  if (currentMillis - LED_previousMillis >= LED_Time) {
+//    LED_previousMillis = currentMillis;
+//  }  
+//}
+
+float valueApproach(float nowVal, float destVal, float speed) { 
+  return (float) ((nowVal * (1.0 - speed)) + (destVal * speed));
+}
 void timerX() {
   currentMillis = millis();
+  
   if (previousMillis == 0) {
     previousMillis = currentMillis;
     digitalWrite(LEFTPIN, LEFT_ACT);
@@ -99,7 +114,6 @@ void timerX() {
       DEBUG_print(RIGHT_ACT);
     }
   }
-
 }
 void RECVWebSocketPkg(WebSocketProtocol* WProt, EthernetClient* client, char* RECVData)
 {
@@ -120,11 +134,15 @@ void RECVWebSocketPkg(WebSocketProtocol* WProt, EthernetClient* client, char* RE
   if (strcmp(RECVData, "/cue/LEFT") == 0) {
     MessageL = sprintf(dataBuff, "[O]RECV:/cue/LEFT");
     LEFT_ACT = true;
+    led_hue=0;
+    led_value=60;
     previousMillis = 0;
   }
   else if (strcmp(RECVData, "/cue/RIGHT") == 0) {
     MessageL = sprintf(dataBuff, "[O]RECV:/cue/RIGHT");
     RIGHT_ACT = true;
+    led_hue=96;
+    led_value=60;
     previousMillis = 0;
   }else if (strcmp(RECVData, "/cue/TEST") == 0) {
     MessageL = sprintf(dataBuff, "[O]RECV:/cue/TEST");
@@ -138,6 +156,8 @@ void RECVWebSocketPkg(WebSocketProtocol* WProt, EthernetClient* client, char* RE
     if(t>0&&t<9999)
       airTime=t;
     MessageL = sprintf(dataBuff,"airTime:%d,t=%d,s=%s", airTime,t,tmp);
+    led_hue=160;
+    led_value=60;
   }
 
   
@@ -171,6 +191,8 @@ void RECVWebSocketPkg_binary(WebSocketProtocol* WProt, EthernetClient* client, c
 void loop() {
   // wait for a new client:
   timerX();
+loopLED();
+  
   EthernetClient client = server.available();
   if (!client)
   {
@@ -238,7 +260,7 @@ void loop() {
   // client::WSPptr
   // recv Data::recvData
   RECVWebSocketPkg(WSPptr, &client, recvData);
-
+  
 }
 void clearUnreachableClient()
 {

@@ -37,6 +37,7 @@ module.exports = {
   output: { path: __dirname, filename: 'bundle.js' },
   devtool: (process.env.NODE_ENV !== "production")?"inline-sourcemap" : null,
   plugins:PluginSets,
+  // target: 'electron-renderer',
   
   resolve: {
     alias: {
