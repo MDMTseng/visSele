@@ -69,7 +69,7 @@ protected:
 
   FeatureReport_searchPointReport searchPoint_process(acvImage *grayLevelImg,acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
   FeatureReport_sig360_circle_line_single &report, 
-  float sine,float cosine,float flip_f,
+  float sine,float cosine,float flip_f,float thres,
   featureDef_searchPoint &def,acvImage *dbgImg);
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);

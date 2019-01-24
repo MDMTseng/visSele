@@ -806,7 +806,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     if(cameraFeedTrigger)
     {
       LOGV("cameraFeedTrigger:%d Get Next frame...",cameraFeedTrigger);
-      //std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      //std::this_thread::sleep_for(std::chrono::milliseconds(100));
       cl_GMV.Trigger();
     }
   }while(false);
@@ -1067,7 +1067,7 @@ int simpleTest()
   //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
-  CameraLayer::status ret = cl_BMP.LoadBMP("data/testImg.bmp");
+  CameraLayer::status ret = cl_BMP.LoadBMP("data/BMP_carousel_test/01-17-20-38-26-050.bmp");
   if(ret != CameraLayer::ACK)
   {
     LOGE("LoadBMP failed: ret:%d",ret);

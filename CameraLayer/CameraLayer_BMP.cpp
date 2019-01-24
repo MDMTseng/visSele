@@ -25,14 +25,14 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
-        if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
+        if(1)for(int i=0;i<img.GetHeight();i++)//Add noise
         {
             for(int j=0;j<img.GetWidth();j++)
             {
                 int d = img.CVector[i][j*3];
                 float u = rand() / (double)RAND_MAX;
                 float v = rand() / (double)RAND_MAX;
-                float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v) * 20 + 0;
+                float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v) * 10 + 0;
 
 
                 d+=(int)x;
