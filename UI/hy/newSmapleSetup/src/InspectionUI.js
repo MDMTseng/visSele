@@ -485,7 +485,7 @@ class APP_INSP_MODE extends React.Component{
           text="<" onClick={this.props.ACT_EXIT}/>
         ,
         <AirControl
-          url={"ws://169.254.170.123:5213"}
+          url={"ws://192.168.2.2:5213"}
           checkResult2AirAction={this.checkResult2AirAction}
         />
         // ,<BASE_COM.IconButton

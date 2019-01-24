@@ -784,6 +784,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
+    /*
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
     BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
     //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
@@ -791,7 +792,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     bpg_dat.callbackInfo = (uint8_t*)&iminfo;
     bpg_dat.callback=DatCH_BPG_acvImage_Send;              
     datCH_BPG.data.p_BPG_data=&bpg_dat;
-    BPG_protocol->SendData(datCH_BPG);
+    BPG_protocol->SendData(datCH_BPG);*/
 
 
 

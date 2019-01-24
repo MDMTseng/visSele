@@ -1750,8 +1750,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   //acvBoxFilter(buff_,smoothedImg,7);
   //acvBoxFilter(buff_,smoothedImg,7);
   //acvBoxFilter(buff_,smoothedImg,7);
-  acvBoxFilter(buff_,smoothedImg,2);
-  acvBoxFilter(buff_,smoothedImg,2);
+  //acvBoxFilter(buff_,smoothedImg,2);
+  //acvBoxFilter(buff_,smoothedImg,2);
 
   float feature_signature_ave=0;
   for(int i=0;i<feature_signature.size();i++)
