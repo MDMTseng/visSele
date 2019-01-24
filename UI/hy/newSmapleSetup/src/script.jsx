@@ -28,7 +28,7 @@ import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
 
 log.setLevel("INFO");
-log.getLogger("InspectionEditorLogic.js").setLevel("ERROR");
+log.getLogger("InspectionEditorLogic.js").setLevel("INFO");
 
 
 let zhTW = Object.assign({},zh_TW,EC_zh_TW);
