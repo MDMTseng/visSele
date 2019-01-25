@@ -825,7 +825,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 class DatCH_CallBack_T : public DatCH_CallBack
 {
-    
+  public:
+  CameraLayer *camera;
   int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
   {
     //first stage of incoming data
@@ -899,6 +900,7 @@ class DatCH_CallBack_T : public DatCH_CallBack
             printf("CLOSING peer %s:%d\n",
               inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
             cameraFeedTrigger=false;
+            camera->TriggerMode(1);
         break;
         default:
           return -1;
@@ -1030,7 +1032,7 @@ int mainLoop(bool realCamera=false)
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
   acvImage *test1 = new acvImage();
-
+  callbk_obj.camera=camera;
   websocket->SetEventCallBack(&callbk_obj,websocket);
 
   while(websocket->runLoop(NULL) == 0)
