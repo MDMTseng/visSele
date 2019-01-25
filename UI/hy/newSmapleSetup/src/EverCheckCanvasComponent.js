@@ -714,8 +714,96 @@ class renderUTIL
   }
 
 
-}
 
+
+  
+  drawInspectionShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1})
+  {
+    let normalRenderGroup=[];
+    eObjects.forEach((eObject)=>{
+      if(eObject==null)return;
+      var found = skip_id_list.find(function(skip_id) {
+        return eObject.id == skip_id;
+      });
+      if(found!==undefined)
+      {
+        return;
+      }
+      else if(useShapeColor)
+      {
+        ctx.strokeStyle=eObject.color; 
+      }
+      switch(eObject.type)
+      {
+        case SHAPE_TYPE.line:
+        {
+          ctx.lineWidth=2*this.getPrimitiveSize();
+          this.drawReportLine(ctx, {
+            x0:eObject.pt1.x,y0:eObject.pt1.y,
+            x1:eObject.pt2.x,y1:eObject.pt2.y,
+          });
+        }
+        break;
+        
+        
+        case SHAPE_TYPE.arc:
+        {
+          //ctx.strokeStyle=eObject.color; 
+          let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
+          ctx.lineWidth=2*this.getPrimitiveSize();
+          this.drawReportArc(ctx, arc);
+          
+
+        }
+        break;
+
+        case SHAPE_TYPE.search_point:
+        {
+          ctx.strokeStyle="gray";  
+          this.drawpoint(ctx,eObject.pt1,"rect");
+        }
+        break;
+        case SHAPE_TYPE.aux_point:
+        {
+          
+          let db_obj = this.db_obj;
+          let subObjs = eObject.ref
+            .map((ref)=> db_obj.FindShape( "id" , ref.id, shapeList ))
+            .map((idx)=>{  return idx>=0?shapeList[idx]:null});
+
+          if(eObject.id === undefined)break;
+
+          let point = this.db_obj.auxPointParse(eObject,shapeList);
+          if(point !== undefined && subObjs.length ==2 )
+          {//Draw crosssect line
+            ctx.setLineDash([5*this.getPrimitiveSize(), 15*this.getPrimitiveSize()]);
+  
+            ctx.beginPath();
+            ctx.moveTo(point.x,point.y);
+            ctx.lineTo(subObjs[0].pt1.x,subObjs[0].pt1.y);
+            ctx.stroke();
+  
+            ctx.beginPath();
+            ctx.moveTo(point.x,point.y);
+            ctx.lineTo(subObjs[1].pt1.x,subObjs[1].pt1.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.strokeStyle="gray"; 
+            this.drawpoint(ctx, point,"rect");
+          }
+        }
+        break;
+        
+        case SHAPE_TYPE.measure:
+          normalRenderGroup.push(eObject);
+        break;
+      }
+    });
+    this.drawShapeList(ctx, normalRenderGroup,useShapeColor,skip_id_list,shapeList,unitConvert);
+  }
+
+  
+}
 
 
 class EverCheckCanvasComponent_proto{
@@ -1164,7 +1252,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         ctx.fill();
         ctx.restore();
         ctx.strokeStyle = "black";
-        this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
+        //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
       });
     }
 
@@ -1212,7 +1300,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
           }
         });
-        this.rUtil.drawShapeList(ctx,listClone,true,[],listClone,unitConvert);
+        this.rUtil.drawInspectionShapeList(ctx,listClone,true,[],listClone,unitConvert);
       }
     });
 
