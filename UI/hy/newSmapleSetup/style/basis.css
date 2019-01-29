@@ -88,6 +88,11 @@ html, body {
 	border-style: none;
 	box-sizing: border-box;
 }
+.blockS .layoutRight {
+	float: right;
+	border-style: none;
+	box-sizing: border-box;
+}
 .blockS .s {
 	float: left;
 	border-style: none;
