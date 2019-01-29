@@ -69,10 +69,9 @@ class OK_NG_BOX extends React.Component {
         return (
             <div>
                 <Tag style={{'font-size': 20}}
-                     color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}</Tag>
-                D1=13.8877mm
-                D2=13.8877mm
-                D3=13.8877mm
+                     color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}
+                </Tag>
+                {this.props.children}
             </div>
         )
     }
@@ -97,25 +96,29 @@ class ObjInfoList extends React.Component {
         let resultMenu = [];
         if (this.props.IR != undefined) {
 
-
+            console.log();
             resultMenu = this.props.IR.reports.map((singleReport,idx) => {
 
-                    return (
-                        <SubMenu style={{'text-align': 'left'}} key="sub1"
-                                 title={<span><Icon type="paper-clip"/><span>{idx}</span></span>}>
-                            {
+                let reportDetail=[];
+                let judgeReports = singleReport.judgeReports;
+
+                reportDetail = judgeReports.map((rep,idx)=>
+                    <Menu.Item key="i1">
+                        <OK_NG_BOX OK_NG={rep.status==INSPECTION_STATUS.SUCCESS} >
+                            {"#"+rep.value}
+                        </OK_NG_BOX>
+
+                    </Menu.Item>
+                );
 
 
+                return (
+                    <SubMenu style={{'text-align': 'left'}} key="sub1"
+                             title={<span><Icon type="paper-clip"/><span>{idx}</span></span>}>
+                        {reportDetail}
+                    </SubMenu>
 
-                                <Menu.Item key="i1">
-                                    <OK_NG_BOX OK_NG={true} />
-                                    {singleReport.name}
-                                </Menu.Item>
-                            }
-
-                        </SubMenu>
-
-                        )
+                    )
                 }
             )
         }
