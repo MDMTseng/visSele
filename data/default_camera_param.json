@@ -1,0 +1,22 @@
+{
+  "type": "binary_processing_group",
+  "error": 0,
+  "reports": [
+    {
+      "type": "camera_calibration",
+      "ver": "0.0.0.0",
+      "error": 0,
+      "K0": 1.0003010095637261,
+      "K1": 0.00039353688950616663,
+      "K2": -0.0006092589709952339,
+      "ppb2b": 63.11896896362305,
+      "mmpb2b": 0.6311123,
+      "RNormalFactor": 1296,
+      "calibrationCenter": {
+        "x": 1295,
+        "y": 971
+      }
+    }
+  ],
+  "session_id": 871301773
+}

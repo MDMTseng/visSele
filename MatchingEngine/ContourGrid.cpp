@@ -432,7 +432,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
   line.line_vec=acvVecNormalize(line.line_vec);
   GetSectionsWithinLineContour(line,epsilonX,epsilonY,intersectIdxs);
   //exit(0);
-  const float lineCurvatureMax = 0.1;
+  const float lineCurvatureMax = 0.15;
   int count=0;
   for(int i=0;i<intersectIdxs.size();i++)
   {

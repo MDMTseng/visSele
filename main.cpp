@@ -52,7 +52,7 @@ acvRadialDistortionParam param_default={
     //r/r'=r*K0/r"
 
     ppb2b: 63.11896896362305,
-    mmpb2b: 0.62962962,
+    mmpb2b:  0.630049821,
 };
 
 bool cameraFeedTrigger=false;
@@ -725,10 +725,79 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 
 }
 
+float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff)
+{
+  float diffSum=0;
+  float diffMax=0;
+  for(int i=0;i<img1->GetHeight();i++)
+  {
+    for(int j=0;j<img1->GetWidth();j++)
+    {
+      float diff = img1->CVector[i][3*j] - img2->CVector[i][3*j];
+      diff*=diff;
+      diffSum+=diff;
+      if(diffMax<diff)
+      {
+        diffMax=diff;
+      }
+    }
+  }
+  if(ret_max_diff)*ret_max_diff=sqrt(diffMax);
+  return sqrt(diffSum/(img1->GetHeight()*img1->GetWidth()));
+}
+
+void  acvImageAve(acvImage* imgStackRes,acvImage *imgStack,int stackingN)
+{
+  for(int i=0;i<imgStackRes->GetHeight();i++)
+  {
+    for(int j=0;j<imgStackRes->GetWidth();j++)
+    {
+      int pixSum=0;
+      for(int k=0;k<stackingN;k++)
+      {
+        pixSum+=imgStack[k].CVector[i][3*j];
+      }
+      imgStackRes->CVector[i][3*j]=
+      imgStackRes->CVector[i][3*j+1]=
+      imgStackRes->CVector[i][3*j+2]=pixSum/stackingN;
+    }
+  }
+}
+
+void  acvImageBlendIn(acvImage* imgOut,acvImage* imgA_Deep_Blend,acvImage *imgB,int Num)
+{
+  for(int i=0;i<imgOut->GetHeight();i++)
+  {
+    for(int j=0;j<imgOut->GetWidth();j++)
+    {
+      float pixSum=0;
+      
+      _3BYTE *deepPix = (_3BYTE*)&(imgA_Deep_Blend->CVector[i][3*j]);
+      if(Num==0)
+      {
+        pixSum = imgB->CVector[i][3*j];
+      }
+      else
+      {
+        pixSum = deepPix->Num+imgB->CVector[i][3*j];
+      }
+      deepPix->Num = pixSum;
+      imgOut->CVector[i][3*j]=
+      imgOut->CVector[i][3*j+1]=
+      imgOut->CVector[i][3*j+2]=round(pixSum/(Num+1));
+    }
+  }
+}
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   static acvImage test1_buff;
+  static int stackingC=0;
+  static acvImage imgStackRes_deep;
+  static acvImage imgStackRes;
+
+
+
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
   {
@@ -739,7 +808,37 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     return;
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
-  int ret = ImgInspection(matchingEng,cl_GMV.GetImg(),param_default,1);
+  
+  acvImage &capImg=*cl_GMV.GetImg();
+  imgStackRes_deep.ReSize(&capImg);
+  imgStackRes.ReSize(&capImg);
+  
+
+
+  //stackingC=0;
+
+  if(stackingC!=0)
+  {
+    float diffMax;
+    float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax);
+    LOGV("diff:%f  max:%f",diff,diffMax);
+    if(diff>7||diffMax>30)
+    {
+      stackingC=0;
+    }
+  }
+
+
+  LOGV("stackingC:%d",stackingC);
+  acvImageBlendIn(&imgStackRes,&imgStackRes_deep,&capImg,stackingC);
+  stackingC++;
+
+
+  if(stackingC<=0)return;
+  //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
+
+
+  int ret = ImgInspection(matchingEng,&imgStackRes,param_default,1);
 
   /*LOGE( "lock");
   mainThreadLock.lock();*/
@@ -784,15 +883,18 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
-    /*
-    bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
-    BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
-    //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-    ImageDownSampling(test1_buff,*cl_GMV.GetImg(),iminfo.scale);
-    bpg_dat.callbackInfo = (uint8_t*)&iminfo;
-    bpg_dat.callback=DatCH_BPG_acvImage_Send;              
-    datCH_BPG.data.p_BPG_data=&bpg_dat;
-    BPG_protocol->SendData(datCH_BPG);*/
+    if(stackingC==1)
+    {
+      bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
+      BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
+      //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+      ImageDownSampling(test1_buff,imgStackRes,iminfo.scale);
+      bpg_dat.callbackInfo = (uint8_t*)&iminfo;
+      bpg_dat.callback=DatCH_BPG_acvImage_Send;              
+      datCH_BPG.data.p_BPG_data=&bpg_dat;
+      BPG_protocol->SendData(datCH_BPG);
+
+    }
 
 
 
@@ -807,7 +909,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     {
       LOGV("cameraFeedTrigger:%d Get Next frame...",cameraFeedTrigger);
       //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      cl_GMV.Trigger();
+      //cl_GMV.Trigger();
     }
   }while(false);
 
@@ -825,7 +927,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 class DatCH_CallBack_T : public DatCH_CallBack
 {
-    
+  public:
+  CameraLayer *camera;
   int DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
   {
     //first stage of incoming data
@@ -899,6 +1002,7 @@ class DatCH_CallBack_T : public DatCH_CallBack
             printf("CLOSING peer %s:%d\n",
               inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
             cameraFeedTrigger=false;
+            camera->TriggerMode(1);
         break;
         default:
           return -1;
@@ -1030,7 +1134,7 @@ int mainLoop(bool realCamera=false)
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
   acvImage *test1 = new acvImage();
-
+  callbk_obj.camera=camera;
   websocket->SetEventCallBack(&callbk_obj,websocket);
 
   while(websocket->runLoop(NULL) == 0)
