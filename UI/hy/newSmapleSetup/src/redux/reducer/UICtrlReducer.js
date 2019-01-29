@@ -47,6 +47,7 @@ function Default_UICtrlReducer()
       edit_tar_ele_cand:null,
       session_lock:null,
       camera_calibration_report:undefined,
+      mouseLocation:undefined
     },
     sm:null,
     c_state:null,
@@ -178,7 +179,11 @@ function StateReducer(newState,action)
           newState.edit_info.img=action.data;
         break;
 
-
+        case UI_SM_EVENT.Canvas_Mouse_Location:
+        {
+          newState.edit_info.mouseLocation = action.data;
+        }
+        break;
         case UISEV.Inspection_Report:
         {
           EVENT_Inspection_Report(newState,action);

@@ -68,34 +68,34 @@ class AirControl extends React.Component {
     }
 
     blowAir_TEST() {
-        console.log("[WS]/cue/TEST");
-        if (this.state.websocketAir.readyState === 1) {
-            console.log("[O][WS]/cue/TEST");
-            this.state.websocketAir.send("/cue/TEST");
-        } else {
-            console.log("[X][WS]/cue/TEST");
-        }
+      log.debug("[WS]/cue/TEST");
+      if (this.state.websocketAir.readyState === 1) {
+        log.debug("[O][WS]/cue/TEST");
+        this.state.websocketAir.send("/cue/TEST");
+      } else {
+        log.debug("[X][WS]/cue/TEST");
+      }
 
     }
 
     blowAir_LEFTa() {
-        console.log("[WS]/cue/LEFT");
+        log.debug("[WS]/cue/LEFT");
         if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN) {
-            console.log("[O][WS]/cue/LEFT");
+          log.debug("[O][WS]/cue/LEFT");
             this.state.websocketAir.send("/cue/LEFT");
         } else {
-            console.log("[X][WS]/cue/LEFT");
+          log.debug("[X][WS]/cue/LEFT");
         }
 
     }
 
     blowAir_RIGHTa() {
-        console.log("[WS]/cue/RIGHT");
+        log.debug("[WS]/cue/RIGHT");
         if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN) {
-            console.log("[O][WS]/cue/RIGHT");
+            log.debug("[O][WS]/cue/RIGHT");
             this.state.websocketAir.send("/cue/RIGHT");
         } else {
-            console.log("[X][WS]/cue/RIGHT");
+            log.debug("[X][WS]/cue/RIGHT");
         }
     }
 
@@ -112,7 +112,7 @@ class AirControl extends React.Component {
 
     blowAir_TIMEADD(val) {
         this.state.websocketAirTime += val;
-        console.log("[WS]/cue/RIGHT");
+        log.info("[WS]/cue/RIGHT");
         this.blowAir_TIMEUpdate();
     }
 
@@ -120,7 +120,7 @@ class AirControl extends React.Component {
         this.state.websocketAirTime -= val;
         if (this.state.websocketAirTime < 10)
             this.state.websocketAirTime = 10;
-        console.log("[WS]/cue/RIGHT");
+          log.info("[WS]/cue/RIGHT");
         this.blowAir_TIMEUpdate();
     }
 
@@ -129,7 +129,7 @@ class AirControl extends React.Component {
     }
 
     componentWillMount() {
-        console.log("[init][componentWillMount]");
+        log.info("[init][componentWillMount]");
         this.websocketConnect(this.props.url);
     }
 
@@ -159,7 +159,7 @@ class AirControl extends React.Component {
 
     onError(ev) {
         //this.websocketConnect();
-        console.log("onError");
+        log.error("onError",ev);
     }
 
     onMessage(ev) {
@@ -410,7 +410,11 @@ class CanvasComponent extends React.Component {
     }
 
     ec_canvas_EmitEvent(event) {
-        log.debug(event);
+        //log.error(event);
+
+
+      this.props.Dispatch(event);
+
     }
 
     componentDidMount() {
@@ -474,6 +478,9 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => {
     return {
         ACT_EXIT: (arg) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
+        },
+        Dispatch: (action) => {
+            dispatch(action)
         },
     }
 }
@@ -557,7 +564,8 @@ class APP_INSP_MODE extends React.Component {
             <AirControl
                 url={"ws://192.168.2.2:5213"}
                 checkResult2AirAction={this.checkResult2AirAction}
-            />
+            />,
+            <div>{JSON.stringify(this.props.mouseLocation)}</div>
             // ,<BASE_COM.IconButton
             //     dict={EC_zh_TW}
             //     key="LEFT"
@@ -608,6 +616,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
+        mouseLocation:state.UIData.edit_info.mouseLocation,
         //reportStatisticState:state.UIData.edit_info.reportStatisticState
 
     }

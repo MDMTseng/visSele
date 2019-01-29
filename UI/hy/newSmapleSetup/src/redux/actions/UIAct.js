@@ -85,6 +85,7 @@ export const UI_SM_EVENT = {
 
   
   Control_SM_Panel:"Control_SM_Panel",
+  Canvas_Mouse_Location:"Canvas_Mouse_Location"
 };
 
 
@@ -147,6 +148,16 @@ export function EV_UI_ACT(ACT,data=null,misc=null)
     type: ACT,
     data:data,
     misc:misc
+  }
+}
+
+
+
+export function EV_UI_Canvas_Mouse_Location(mouseLoc)
+{
+  return {
+    type: UI_SM_EVENT.Canvas_Mouse_Location,
+    data:mouseLoc,
   }
 }
 

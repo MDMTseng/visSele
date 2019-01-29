@@ -13,6 +13,8 @@ import {
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as log from 'loglevel';
 
+import {EV_UI_Canvas_Mouse_Location} from 'REDUX_STORE_SRC/actions/UIAct';
+
 class CameraCtrl
 {
   constructor( canvasDOM )
@@ -1028,7 +1030,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.CandEditPointInfo=null;
     this.EditPoint=null;
     
-    this.EmitEvent=(event)=>{log.debug(event);};
+    this.EmitEvent=(event)=>{log.info(event);};
   }
 
   SetState(state)
@@ -1308,11 +1310,22 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   ctrlLogic()
   {
-    this.ctrlLogic_INSP();
-  }
-  
-  ctrlLogic_INSP()
-  {
+
+    //let mmpp = this.rUtil.get_mmpp();
+    let wMat = this.worldTransform();
+    //log.debug("this.camera.matrix::",wMat);
+    let worldTransform = new DOMMatrix().setMatrixValue(wMat);
+    let worldTransform_inv = worldTransform.invertSelf();
+    //this.Mouse2SecCanvas = invMat;
+    let mPos = this.mouseStatus;
+    let mouseOnCanvas2=this.VecX2DMat(mPos,worldTransform_inv);
+
+    let pmPos = {x:this.mouseStatus.px,y:this.mouseStatus.py};
+    let pmouseOnCanvas2=this.VecX2DMat(pmPos,worldTransform_inv);
+
+    let ifOnMouseLeftClickEdge = (this.mouseStatus.status!=this.mouseStatus.pstatus);
+    
+    this.EmitEvent(EV_UI_Canvas_Mouse_Location(mouseOnCanvas2));
 
   }
 }

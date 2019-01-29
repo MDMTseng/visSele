@@ -743,9 +743,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
               _3BYTE *lableId = (_3BYTE*)pix;
               if(labelId == lableId->Num)
               {
-                searchPt_sum.X += X;
-                searchPt_sum.Y += Y;
-                foundC++;
+                int b = grayLevelImg->CVector[Y][X*3];
+                if(b<thres)
+                {
+                  searchPt_sum.X += X;
+                  searchPt_sum.Y += Y;
+                  foundC++;
+                }
               }
             }
           }
@@ -763,7 +767,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           acv_XY tmp_pt = acvVecRadialDistortionApply(rep.pt,param);
           
             //int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,7,thres,&ret_point_opt,&edgeResponse);
-          if(EdgePointOpt2(grayLevelImg,searchVec,tmp_pt,10,thres,&ret_point_opt,&edgeResponse)==0)
+          if(EdgePointOpt2(grayLevelImg,searchVec,tmp_pt,3,thres,&ret_point_opt,&edgeResponse)==0)
+          //if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
           {
             rep.pt = acvVecRadialDistortionRemove(ret_point_opt,param);
             LOGV("ret_point_opt:%f %f",rep.pt.X,rep.pt.Y);
@@ -2108,6 +2113,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       acvRadialDistortionParam param=this->param;
       
       float thres = OTSU_Threshold(*smoothedImg,&ldData[i],3);
+      LOGV("OTSU_Threshold:%f",thres);
 
       extractLabeledContourDataToContourGrid(smoothedImg,labeledBuff,i,ldData[i],
         grid_size,edge_grid,scanline_skip,param);
@@ -2252,6 +2258,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
 
           
+          LOGV("Line adj");
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
           
           int sptL=s_points.size();
@@ -2277,6 +2284,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
           }
           
+          LOGV("first fit");
           acvFitLine(
             &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
             &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), s_points.size(),&line_cand,&sigma);
@@ -2288,12 +2296,26 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             if(s_points[i].tmp<0)s_points[i].tmp=-s_points[i].tmp;
           }
 
+          LOGV("sort");
           std::sort(s_points.begin(), s_points.end(),  
                 [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
             { 
                 return a.tmp < b.tmp; 
             });
           
+          LOGV("sort finish,%d",s_points.size());
+
+          if(s_points.size()==0)
+          {
+            FeatureReport_lineReport lr;
+            lr.line=lf_zero;
+            lr.def=line;
+            lr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;//Not able to find starting point
+            detectedLines.push_back(lr);
+            continue;
+          }
+
+
           int usable_L;
           for(int i=s_points.size()/3;i<s_points.size();i++)
           {
