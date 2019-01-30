@@ -25,7 +25,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
-        if(1)for(int i=0;i<img.GetHeight();i++)//Add noise
+        if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
         {
             for(int j=0;j<img.GetWidth();j++)
             {

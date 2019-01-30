@@ -1165,19 +1165,18 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
   LOGV("Called.... %d, filename:%s",type,clBMP.GetCurrentFileName().c_str());
 }
 
-
-int simpleTest()
+int simpleTest(char *imgName, char *defName)
 {
   //return testGIGE();;
   CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
 
-  CameraLayer::status ret = cl_BMP.LoadBMP("data/BMP_carousel_test/01-17-20-38-26-050.bmp");
+  CameraLayer::status ret = cl_BMP.LoadBMP(imgName);
   if(ret != CameraLayer::ACK)
   {
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,"data/cache_def.json");
+  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,defName);
 
   const FeatureReport * report = matchingEng.GetReport();
 
@@ -1245,7 +1244,15 @@ int main(int argc, char** argv)
     return 0;
   }
 
-  //return simpleTest();
+  {
+    //char *imgName="data/BMP_carousel_test/01-17-20-38-26-050.bmp";
+    //char *defName = "data/cache_def.json";
+
+    char *imgName="data/calib_cam1_surfaceGo.bmp";
+    char *defName = "data/cameraCalibration.json";
+    //
+    return simpleTest(imgName,defName);
+  }
 
   signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);

@@ -5,7 +5,7 @@
         "type":"camera_calibration",
         "ver":"0.0.0.0",
         "unit":"mm",
-        "pattern_dist":0.63217657
+        "pattern_dist":0.630049821
       }
     ],
     "intrusionSizeLimitRatio":1
