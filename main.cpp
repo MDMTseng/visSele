@@ -725,15 +725,18 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 
 }
 
-float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff)
+float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff,int skipSampling)
 {
-  float diffSum=0;
-  float diffMax=0;
-  for(int i=0;i<img1->GetHeight();i++)
+  if(skipSampling<1)skipSampling=1;
+  uint64_t diffSum=0;
+  int diffMax=0;
+  int count=0;
+  for(int i=0;i<img1->GetHeight();i+=skipSampling)
   {
-    for(int j=0;j<img1->GetWidth();j++)
+    for(int j=0;j<img1->GetWidth();j+=skipSampling)
     {
-      float diff = img1->CVector[i][3*j] - img2->CVector[i][3*j];
+      count++;
+      int diff = img1->CVector[i][3*j] - img2->CVector[i][3*j];
       diff*=diff;
       diffSum+=diff;
       if(diffMax<diff)
@@ -743,7 +746,7 @@ float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff)
     }
   }
   if(ret_max_diff)*ret_max_diff=sqrt(diffMax);
-  return sqrt(diffSum/(img1->GetHeight()*img1->GetWidth()));
+  return sqrt((float)diffSum/(count));
 }
 
 void  acvImageAve(acvImage* imgStackRes,acvImage *imgStack,int stackingN)
@@ -764,27 +767,24 @@ void  acvImageAve(acvImage* imgStackRes,acvImage *imgStack,int stackingN)
   }
 }
 
-void  acvImageBlendIn(acvImage* imgOut,acvImage* imgA_Deep_Blend,acvImage *imgB,int Num)
+void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
 {
   for(int i=0;i<imgOut->GetHeight();i++)
   {
     for(int j=0;j<imgOut->GetWidth();j++)
     {
-      float pixSum=0;
-      
-      _3BYTE *deepPix = (_3BYTE*)&(imgA_Deep_Blend->CVector[i][3*j]);
+      int *pixSum=&(imgSArr[i*imgOut->GetWidth()+j]);
       if(Num==0)
       {
-        pixSum = imgB->CVector[i][3*j];
+        *pixSum = imgB->CVector[i][3*j];
       }
       else
       {
-        pixSum = deepPix->Num+imgB->CVector[i][3*j];
+        *pixSum += imgB->CVector[i][3*j];
       }
-      deepPix->Num = pixSum;
       imgOut->CVector[i][3*j]=
       imgOut->CVector[i][3*j+1]=
-      imgOut->CVector[i][3*j+2]=round(pixSum/(Num+1));
+      imgOut->CVector[i][3*j+2]=(*pixSum/(Num+1));
     }
   }
 }
@@ -793,10 +793,10 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   static acvImage test1_buff;
   static int stackingC=0;
-  static acvImage imgStackRes_deep;
   static acvImage imgStackRes;
 
 
+  clock_t t = clock();
 
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
@@ -810,17 +810,17 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
   
   acvImage &capImg=*cl_GMV.GetImg();
-  imgStackRes_deep.ReSize(&capImg);
   imgStackRes.ReSize(&capImg);
-  
 
 
-  //stackingC=0;
+  int ret=0;
+
+    //stackingC=0;
 
   if(stackingC!=0)
   {
     float diffMax;
-    float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax);
+    float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax,30);
     LOGV("diff:%f  max:%f",diff,diffMax);
     if(diff>7||diffMax>30)
     {
@@ -828,20 +828,33 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
 
+  if(1)
+  {
+    static vector <int>imgStackRes_deep;
+    imgStackRes_deep.resize(capImg.GetWidth()*capImg.GetHeight());
+      
 
-  LOGV("stackingC:%d",stackingC);
-  acvImageBlendIn(&imgStackRes,&imgStackRes_deep,&capImg,stackingC);
+
+    LOGV("stackingC:%d",stackingC);
+    acvImageBlendIn(&imgStackRes,&(imgStackRes_deep[0]),&capImg,stackingC);
+
+    LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+
+    //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
+
+    ret = ImgInspection(matchingEng,&imgStackRes,param_default,1);
+  }
+  else
+  {
+    ret = ImgInspection(matchingEng,&capImg,param_default,1);
+  }
+
   stackingC++;
-
-
-  if(stackingC<=0)return;
-  //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
-
-
-  int ret = ImgInspection(matchingEng,&imgStackRes,param_default,1);
 
   /*LOGE( "lock");
   mainThreadLock.lock();*/
+  
+
   do{
     char tmp[100];
     int session_id = rand();
@@ -883,12 +896,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
-    if(stackingC==1)
+    //if(stackingC==0)
     {
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff,imgStackRes,iminfo.scale);
+      ImageDownSampling(test1_buff,capImg,iminfo.scale);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
       bpg_dat.callback=DatCH_BPG_acvImage_Send;              
       datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -912,6 +925,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
       //cl_GMV.Trigger();
     }
   }while(false);
+
+  LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  t = clock();
 
 
   /*LOGE( "unlock");

@@ -15,9 +15,15 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 {
     status ret_status;
     m.lock();
-    LOGV("Loading:%s",fileName.c_str());
     this->fileName = fileName;
-    int ret = acvLoadBitmapFile(&img, fileName.c_str());
+
+    int ret = 0;
+    
+    //if(img.GetWidth()<100)//Just to skip image loading
+    {
+        LOGV("Loading:%s",fileName.c_str());
+        ret = acvLoadBitmapFile(&img, fileName.c_str());
+    }
     if(ret!=0)
     {
         ret_status=NAK;
@@ -25,13 +31,13 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
-        if(1)for(int i=0;i<img.GetHeight();i++)//Add noise
+        if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
         {
             for(int j=0;j<img.GetWidth();j++)
             {
                 int d = img.CVector[i][j*3];
-                float u = rand() / (double)RAND_MAX;
-                float v = rand() / (double)RAND_MAX;
+                float u = rand() / (float)RAND_MAX;
+                float v = rand() / (float)RAND_MAX;
                 float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v) * 3 + 0;
                 if(x>10)x=10;
                 if(x<-10)x=-10;
@@ -131,12 +137,12 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         }
         else
         {//So we need a delay when imageTakingCount<=0 to prevent loop becoming too fast
-            std::this_thread::sleep_for(std::chrono::milliseconds(idle_loop_interval_ms));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(idle_loop_interval_ms));
             delay_time+=idle_loop_interval_ms;
         }
         if(frameInterval_ms-delay_time>0)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
         }
     }
     //ThreadTerminationFlag = 0;
