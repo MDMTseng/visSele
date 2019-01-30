@@ -1463,6 +1463,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.ctrlLogic_DEFCONF();
   }
   
+  setMatrix(ctx,matrix)
+  {
+
+    ctx.setTransform(matrix.a,matrix.b,matrix.c,
+      matrix.d,matrix.e,matrix.f);  
+  }
 
   draw_DEFCONF()
   {
@@ -1471,10 +1477,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx.lineWidth = this.rUtil.getIndicationLineSize();
-    ctx.setTransform(this.identityMat);  
+    this.setMatrix(ctx,this.identityMat); 
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     let matrix  = this.worldTransform();
-    ctx.setTransform(matrix);  
+    this.setMatrix(ctx,matrix); 
     
     {
       let center = this.db_obj.getSig360ReportCenter();
