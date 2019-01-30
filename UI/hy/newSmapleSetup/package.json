@@ -19,6 +19,7 @@
     "react-resize-detector": "^3.2.1",
     "redux": "^4.0.1",
     "redux-thunk": "^2.3.0",
+    "text-encoding": "^0.7.0",
     "xstate": "^3.3.3"
   },
   "devDependencies": {

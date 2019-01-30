@@ -18,6 +18,7 @@ import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import t_enc from 'text-encoding';
 
 import * as logX from 'loglevel';
 

@@ -12,6 +12,9 @@ import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import 'antd/dist/antd.css';
+
+import t_enc from 'text-encoding';
+
 let StoreX= ReduxStoreSetUp({});
 
 
@@ -321,7 +324,7 @@ class APP_DEFCONF_MODE extends React.Component{
             addClass="layout palatte-gold-7 vbox"
             key="SAVE"
             text="save" onClick={()=>{
-                var enc = new TextEncoder();
+                var enc = new t_enc.TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
                 this.props.ACT_Report_Save(this.props.WS_ID,defModelPath+".json",enc.encode(JSON.stringify(report, null, 2)));
                 this.props.ACT_Cache_Img_Save(this.props.WS_ID,defModelPath+".bmp");

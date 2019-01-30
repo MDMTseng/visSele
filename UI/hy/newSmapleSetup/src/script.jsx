@@ -26,6 +26,7 @@ import { LocaleProvider } from 'antd';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
+import t_enc from 'text-encoding';
 
 log.setLevel("INFO");
 log.getLogger("InspectionEditorLogic.js").setLevel("INFO");
@@ -92,7 +93,7 @@ class APPMain extends React.Component{
           <BASE_COM.Button
             key="CAM calib save" addClass="lblue width4"
             text={"calib save(mmpp:"+mmpp.toFixed(6)+")"} onClick={()=>{
-              var enc = new TextEncoder();
+              var enc = new t_enc.TextEncoder();
               let enc_report = enc.encode(JSON.stringify(this.props.camera_calibration_report, null, 2));
               this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
                 {filename:"data/default_camera_param.json"},
