@@ -683,6 +683,53 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 }
 
 
+
+int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_param)
+{
+  
+  if(ret_param==NULL)return -1;
+  acvRadialDistortionParam param_default={
+      calibrationCenter:{1295,971},
+      RNormalFactor:1296,
+      K0:0.999783,
+      K1:0.00054474,
+      K2:-0.000394607,
+      //r = r_image/RNormalFactor
+      //C1 = K1/K0
+      //C2 = K2/K0
+      //r"=r'/K0
+      //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+      //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+      //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+      //r/r'=r*K0/r"
+
+      ppb2b: 63.11896896362305,
+      mmpb2b:  0.630049821,
+  };
+
+  *ret_param = param_default;
+  if(root ==NULL)return -1;
+  acvRadialDistortionParam tmp_param;
+  tmp_param.K0  = *JFetEx_NUMBER(root,"reports[0].K0");
+  tmp_param.K1  = *JFetEx_NUMBER(root,"reports[0].K1");
+  tmp_param.K2  = *JFetEx_NUMBER(root,"reports[0].K2");
+
+  tmp_param.ppb2b  = *JFetEx_NUMBER(root,"reports[0].ppb2b");
+  tmp_param.mmpb2b  = *JFetEx_NUMBER(root,"reports[0].mmpb2b");
+
+
+  tmp_param.RNormalFactor  = *JFetEx_NUMBER(root,"reports[0].RNormalFactor");
+  tmp_param.calibrationCenter.X  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.x");
+  tmp_param.calibrationCenter.Y  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.y");
+
+  *ret_param = tmp_param;
+
+  return 0;
+
+}
+
+
+
 int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename)
 {
   char *string = ReadText(defFilename);
@@ -1261,7 +1308,31 @@ int main(int argc, char** argv)
     return 0;
   }
 
-  //return simpleTest();
+
+
+  {
+    char *filename = "data/default_camera_param.json";
+    //return simpleTest();
+    acvRadialDistortionParam cam_param;
+    char *fileStr = ReadText(filename);
+    
+    cJSON *json = cJSON_Parse(fileStr);
+    int ret = jObject2acvRadialDistortionParam(json,&cam_param);
+
+
+    if(fileStr == NULL)
+    {
+      LOGE("Cannot read defFile from:%s",filename);
+      exit(-1);
+    }
+    LOGV("Read deffile:%s ret:%d  K:%g %g %g",filename,ret,cam_param.K0,cam_param.K1,cam_param.K2);
+    cJSON_Delete(json);
+    free(fileStr);
+    param_default=cam_param;
+    //return 0;
+  }
+
+
 
   signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
