@@ -90,7 +90,7 @@ class CameraLayer{
     {
         return CameraLayer::NAK;
     }
-    virtual CameraLayer::status SetAnalogGain(int min,int max)
+    virtual CameraLayer::status SetAnalogGain(int gain)
     {
         return CameraLayer::NAK;
     }

@@ -555,7 +555,7 @@ public:
                 }
               }
               
-              acvImage *srcImg;
+              acvImage *srcImg=NULL;
               if(imgSrcPath!=NULL)
               {
                 int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
@@ -683,6 +683,53 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 }
 
 
+
+int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_param)
+{
+  
+  if(ret_param==NULL)return -1;
+  acvRadialDistortionParam param_default={
+      calibrationCenter:{1295,971},
+      RNormalFactor:1296,
+      K0:0.999783,
+      K1:0.00054474,
+      K2:-0.000394607,
+      //r = r_image/RNormalFactor
+      //C1 = K1/K0
+      //C2 = K2/K0
+      //r"=r'/K0
+      //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+      //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+      //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+      //r/r'=r*K0/r"
+
+      ppb2b: 63.11896896362305,
+      mmpb2b:  0.630049821,
+  };
+
+  *ret_param = param_default;
+  if(root ==NULL)return -1;
+  acvRadialDistortionParam tmp_param;
+  tmp_param.K0  = *JFetEx_NUMBER(root,"reports[0].K0");
+  tmp_param.K1  = *JFetEx_NUMBER(root,"reports[0].K1");
+  tmp_param.K2  = *JFetEx_NUMBER(root,"reports[0].K2");
+
+  tmp_param.ppb2b  = *JFetEx_NUMBER(root,"reports[0].ppb2b");
+  tmp_param.mmpb2b  = *JFetEx_NUMBER(root,"reports[0].mmpb2b");
+
+
+  tmp_param.RNormalFactor  = *JFetEx_NUMBER(root,"reports[0].RNormalFactor");
+  tmp_param.calibrationCenter.X  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.x");
+  tmp_param.calibrationCenter.Y  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.y");
+
+  *ret_param = tmp_param;
+
+  return 0;
+
+}
+
+
+
 int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename)
 {
   char *string = ReadText(defFilename);
@@ -725,15 +772,18 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 
 }
 
-float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff)
+float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff,int skipSampling)
 {
-  float diffSum=0;
-  float diffMax=0;
-  for(int i=0;i<img1->GetHeight();i++)
+  if(skipSampling<1)skipSampling=1;
+  uint64_t diffSum=0;
+  int diffMax=0;
+  int count=0;
+  for(int i=0;i<img1->GetHeight();i+=skipSampling)
   {
-    for(int j=0;j<img1->GetWidth();j++)
+    for(int j=0;j<img1->GetWidth();j+=skipSampling)
     {
-      float diff = img1->CVector[i][3*j] - img2->CVector[i][3*j];
+      count++;
+      int diff = img1->CVector[i][3*j] - img2->CVector[i][3*j];
       diff*=diff;
       diffSum+=diff;
       if(diffMax<diff)
@@ -743,7 +793,7 @@ float  acvImageDiff(acvImage* img1,acvImage *img2,float *ret_max_diff)
     }
   }
   if(ret_max_diff)*ret_max_diff=sqrt(diffMax);
-  return sqrt(diffSum/(img1->GetHeight()*img1->GetWidth()));
+  return sqrt((float)diffSum/(count));
 }
 
 void  acvImageAve(acvImage* imgStackRes,acvImage *imgStack,int stackingN)
@@ -764,27 +814,24 @@ void  acvImageAve(acvImage* imgStackRes,acvImage *imgStack,int stackingN)
   }
 }
 
-void  acvImageBlendIn(acvImage* imgOut,acvImage* imgA_Deep_Blend,acvImage *imgB,int Num)
+void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
 {
   for(int i=0;i<imgOut->GetHeight();i++)
   {
     for(int j=0;j<imgOut->GetWidth();j++)
     {
-      float pixSum=0;
-      
-      _3BYTE *deepPix = (_3BYTE*)&(imgA_Deep_Blend->CVector[i][3*j]);
+      int *pixSum=&(imgSArr[i*imgOut->GetWidth()+j]);
       if(Num==0)
       {
-        pixSum = imgB->CVector[i][3*j];
+        *pixSum = imgB->CVector[i][3*j];
       }
       else
       {
-        pixSum = deepPix->Num+imgB->CVector[i][3*j];
+        *pixSum += imgB->CVector[i][3*j];
       }
-      deepPix->Num = pixSum;
       imgOut->CVector[i][3*j]=
       imgOut->CVector[i][3*j+1]=
-      imgOut->CVector[i][3*j+2]=round(pixSum/(Num+1));
+      imgOut->CVector[i][3*j+2]=(*pixSum/(Num+1));
     }
   }
 }
@@ -793,10 +840,10 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   static acvImage test1_buff;
   static int stackingC=0;
-  static acvImage imgStackRes_deep;
   static acvImage imgStackRes;
 
 
+  clock_t t = clock();
 
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
@@ -810,17 +857,17 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
   
   acvImage &capImg=*cl_GMV.GetImg();
-  imgStackRes_deep.ReSize(&capImg);
   imgStackRes.ReSize(&capImg);
-  
 
 
-  //stackingC=0;
+  int ret=0;
+
+    //stackingC=0;
 
   if(stackingC!=0)
   {
     float diffMax;
-    float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax);
+    float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax,30);
     LOGV("diff:%f  max:%f",diff,diffMax);
     if(diff>7||diffMax>30)
     {
@@ -828,20 +875,34 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
 
+  if(0)
+  {
+    static vector <int>imgStackRes_deep;
+    imgStackRes_deep.resize(capImg.GetWidth()*capImg.GetHeight());
+      
 
-  LOGV("stackingC:%d",stackingC);
-  acvImageBlendIn(&imgStackRes,&imgStackRes_deep,&capImg,stackingC);
+
+    LOGV("stackingC:%d",stackingC);
+    acvImageBlendIn(&imgStackRes,&(imgStackRes_deep[0]),&capImg,stackingC);
+
+    LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+
+    //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
+
+    ret = ImgInspection(matchingEng,&imgStackRes,param_default,1);
+  }
+  else
+  {
+    ret = ImgInspection(matchingEng,&capImg,param_default,1);
+  }
+
   stackingC++;
 
-
-  if(stackingC<=0)return;
-  //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
-
-
-  int ret = ImgInspection(matchingEng,&imgStackRes,param_default,1);
-
+  LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   /*LOGE( "lock");
   mainThreadLock.lock();*/
+  
+
   do{
     char tmp[100];
     int session_id = rand();
@@ -883,12 +944,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         LOGE( "Caught an error!");
     }
 
-    if(stackingC==1)
+    //if(stackingC==0)
     {
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff,imgStackRes,iminfo.scale);
+      ImageDownSampling(test1_buff,capImg,iminfo.scale);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
       bpg_dat.callback=DatCH_BPG_acvImage_Send;              
       datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -912,6 +973,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
       //cl_GMV.Trigger();
     }
   }while(false);
+
+  LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  t = clock();
 
 
   /*LOGE( "unlock");
@@ -1133,6 +1197,11 @@ int mainLoop(bool realCamera=false)
 
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
+
+
+  camera->SetExposureTime(17570.5110);
+  camera->SetAnalogGain(2);
+
   acvImage *test1 = new acvImage();
   callbk_obj.camera=camera;
   websocket->SetEventCallBack(&callbk_obj,websocket);
@@ -1244,6 +1313,8 @@ int main(int argc, char** argv)
     return 0;
   }
 
+
+  if(0)
   {
     //char *imgName="data/BMP_carousel_test/01-17-20-38-26-050.bmp";
     //char *defName = "data/cache_def.json";
@@ -1253,6 +1324,31 @@ int main(int argc, char** argv)
     //
     return simpleTest(imgName,defName);
   }
+
+
+  {
+    char *filename = "data/default_camera_param.json";
+    //return simpleTest();
+    acvRadialDistortionParam cam_param;
+    char *fileStr = ReadText(filename);
+    
+    cJSON *json = cJSON_Parse(fileStr);
+    int ret = jObject2acvRadialDistortionParam(json,&cam_param);
+
+
+    if(fileStr == NULL)
+    {
+      LOGE("Cannot read defFile from:%s",filename);
+      exit(-1);
+    }
+    LOGV("Read deffile:%s ret:%d  K:%g %g %g",filename,ret,cam_param.K0,cam_param.K1,cam_param.K2);
+    cJSON_Delete(json);
+    free(fileStr);
+    param_default=cam_param;
+    //return 0;
+  }
+
+
 
   signal(SIGINT, sigroutine);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);

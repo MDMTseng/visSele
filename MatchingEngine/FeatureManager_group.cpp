@@ -140,9 +140,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
     
-    acvCloneImage( img,&binary_img, 0);
+    acvCloneImage( img,&binary_img, -1);
     acvThreshold(&binary_img, 100, 0);
-
+ 
     //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
     acvDrawBlock(&binary_img, 1, 1, binary_img.GetWidth() - 2, binary_img.GetHeight() - 2);
 
