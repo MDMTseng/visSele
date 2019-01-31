@@ -96,28 +96,23 @@ class ObjInfoList extends React.Component {
         let resultMenu = [];
         if (this.props.IR != undefined) {
 
-            console.log();
-            resultMenu = this.props.IR.reports.map((singleReport,idx) => {
 
+
+            resultMenu = this.props.IR.reports.map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
-
-                reportDetail = judgeReports.map((rep,idx)=>
-                    <Menu.Item key="i1">
+                reportDetail = judgeReports.map((rep,idxx)=>
+                    <Menu.Item key={"i"+idx+rep.name}>
                         <OK_NG_BOX OK_NG={rep.status==INSPECTION_STATUS.SUCCESS} >
-                            {"#"+rep.value}
+                            {"#"+rep.value.toFixed(4)+"mm"}
                         </OK_NG_BOX>
-
                     </Menu.Item>
                 );
-
-
                 return (
-                    <SubMenu style={{'text-align': 'left'}} key="sub1"
+                    <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
                              title={<span><Icon type="paper-clip"/><span>{idx}</span></span>}>
                         {reportDetail}
                     </SubMenu>
-
                     )
                 }
             )
@@ -142,10 +137,7 @@ class ObjInfoList extends React.Component {
                         />
                     </SubMenu>
 
-                    {resultMenu
-
-
-                    }
+                    {resultMenu}
 
                 </Menu>
             </div>
