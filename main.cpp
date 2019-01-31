@@ -555,7 +555,7 @@ public:
                 }
               }
               
-              acvImage *srcImg;
+              acvImage *srcImg=NULL;
               if(imgSrcPath!=NULL)
               {
                 int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
