@@ -836,6 +836,10 @@ void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
   }
 }
 
+
+clock_t pframeT;
+
+
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   static acvImage test1_buff;
@@ -844,6 +848,10 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 
   clock_t t = clock();
+
+  
+  LOGI("frameInterval:%fms \n", ((double)t - pframeT) / CLOCKS_PER_SEC * 1000);
+  pframeT=t;
 
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
@@ -866,7 +874,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
   if(stackingC!=0)
   {
-    float diffMax;
+    float diffMax=0;
     float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax,30);
     LOGV("diff:%f  max:%f",diff,diffMax);
     if(diff>7||diffMax>30)
@@ -875,6 +883,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
 
+  //if(stackingC!=0)return;
   if(0)
   {
     static vector <int>imgStackRes_deep;
@@ -894,8 +903,13 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   else
   {
     ret = ImgInspection(matchingEng,&capImg,param_default,1);
-  }
+    if(stackingC==0)
+    {
+      
+      acvCloneImage(&capImg,&imgStackRes,-1);
 
+    }
+  }
   stackingC++;
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -945,7 +959,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
 
     //if(stackingC==0)
-    {
+    if(0){
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70

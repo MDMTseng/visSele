@@ -767,7 +767,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           acv_XY tmp_pt = acvVecRadialDistortionApply(rep.pt,param);
           
             //int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,7,thres,&ret_point_opt,&edgeResponse);
-          if(EdgePointOpt2(grayLevelImg,searchVec,tmp_pt,3,thres,&ret_point_opt,&edgeResponse)==0)
+          if(EdgePointOpt2(grayLevelImg,searchVec,tmp_pt,7,thres,&ret_point_opt,&edgeResponse)==0)
           //if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
           {
             rep.pt = acvVecRadialDistortionRemove(ret_point_opt,param);

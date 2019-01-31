@@ -172,14 +172,14 @@ class AirControl extends React.Component {
     }
 
     componentWillReceiveProps(nextProps) {
-        log.info("111");
+        //log.info("111");
         if (this.state.STOP) return;
-        log.info(nextProps.checkResult2AirAction.ver, "222");
+        //log.info(nextProps.checkResult2AirAction.ver, "222");
         // console.log(this.state.websocketAir.OPEN,this.state.websocketAir.readyState,"XXX");
         // if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)return;
         //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
         if (nextProps.checkResult2AirAction.ver == this.props.checkResult2AirAction.ver) return;
-        log.info("333");
+        //log.info("333");
         if (nextProps.checkResult2AirAction.direction === "left") {
             this.blowAir_LEFTa();
         } else if (nextProps.checkResult2AirAction.direction === "right") {
