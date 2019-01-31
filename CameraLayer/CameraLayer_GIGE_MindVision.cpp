@@ -81,7 +81,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     TriggerMode(1);
     TriggerCount(1);
     CameraSetCallbackFunction(m_hCamera,sGIGEMV_CB,(PVOID)this,NULL);
-    CameraSetAeState(m_hCamera,TRUE);
+    CameraSetAeState(m_hCamera,FALSE);
     int maxBufferSize = width*height * 3;
 	m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
 	LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
@@ -138,8 +138,8 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetResolution(int width,int hei
 }
 CameraLayer::status CameraLayer_GIGE_MindVision::SetAnalogGain(int gain)
 {
-    CameraSetGain(m_hCamera,gain,gain,gain);
-    if (CameraSetAnalogGain(m_hCamera,20)!= CAMERA_STATUS_SUCCESS)
+    //CameraSetGain(m_hCamera,gain,gain,gain);
+    if (CameraSetAnalogGain(m_hCamera,gain)!= CAMERA_STATUS_SUCCESS)
     {
 		LOGE("Failed...");
         return CameraLayer::NAK;

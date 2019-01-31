@@ -875,7 +875,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
 
-  if(1)
+  if(0)
   {
     static vector <int>imgStackRes_deep;
     imgStackRes_deep.resize(capImg.GetWidth()*capImg.GetHeight());
@@ -898,6 +898,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
   stackingC++;
 
+  LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   /*LOGE( "lock");
   mainThreadLock.lock();*/
   
@@ -1196,6 +1197,11 @@ int mainLoop(bool realCamera=false)
 
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
+
+
+  camera->SetExposureTime(17570.5110);
+  camera->SetAnalogGain(2);
+
   acvImage *test1 = new acvImage();
   callbk_obj.camera=camera;
   websocket->SetEventCallBack(&callbk_obj,websocket);
