@@ -35,7 +35,7 @@ if(process.env.NOTIMON_PRJ === "deploy")
 module.exports = {
   entry: './src/script.jsx',
   output: { path: __dirname, filename: 'bundle.js' },
-  devtool: (process.env.NODE_ENV !== "production")?"inline-sourcemap" : null,
+  devtool: (process.env.NODE_ENV !== "production")?"cheap-module-eval-source-map" : null,
   plugins:PluginSets,
   // target: 'electron-renderer',
   
