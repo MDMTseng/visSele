@@ -50,7 +50,8 @@
     "build-w-android": "set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
     "build-opt-android": "NODE_ENV=production NOTIMON_PRJ=deploy webpack --progress --colors --watch",
     "build-win-android": "set NODE_ENV=production&&set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
-    "dev": "webpack-dev-server --mode development --open --hot"
+    "dev": "webpack-dev-server --mode development --hot",
+    "dev_detail":"webpack-dev-server --mode development --hot --colors --progress --profile"
   },
   "repository": {
     "type": "git",

@@ -33,6 +33,7 @@ if(process.env.NOTIMON_PRJ === "deploy")
 }
 
 module.exports = {
+  cache: true,
   entry: './src/script.jsx',
   output: { path: __dirname, filename: 'bundle.js' },
   devtool: (process.env.NODE_ENV !== "production")?"cheap-module-eval-source-map" : null,
@@ -54,6 +55,7 @@ module.exports = {
         loader: 'babel-loader',
         exclude: /node_modules/,
         query: {
+          cacheDirectory: true, //important for performance
           presets: ['es2015', 'react']
         }
       },
