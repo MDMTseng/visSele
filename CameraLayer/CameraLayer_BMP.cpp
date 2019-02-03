@@ -8,7 +8,14 @@
 
 CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLayer(cb,context)
 {
-
+    gaussianNoiseTable_M.resize(256);
+    for(int i=0;i<gaussianNoiseTable_M.size();i++)
+    {
+        float u = rand() / (float)RAND_MAX;
+        float v = rand() / (float)RAND_MAX;
+        float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v);
+        gaussianNoiseTable_M[i]=(int)(x*1000000);//million scale up
+    }
 }
 
 CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
@@ -35,14 +42,11 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         {
             for(int j=0;j<img.GetWidth();j++)
             {
-                int d = img.CVector[i][j*3];
-                float u = rand() / (float)RAND_MAX;
-                float v = rand() / (float)RAND_MAX;
-                float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v) * 3 + 0;
-                if(x>10)x=10;
-                if(x<-10)x=-10;
+                int u = rand()%(gaussianNoiseTable_M.size());
+                int x = gaussianNoiseTable_M[u] * 10/1000000 + 0;
 
-                d+=(int)x;
+                int d = img.CVector[i][j*3];
+                d+=x;
                 if(d<0)d=0;
                 else if(d>255)d=255;
                 

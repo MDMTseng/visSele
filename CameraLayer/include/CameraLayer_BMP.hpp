@@ -10,6 +10,8 @@ class CameraLayer_BMP : public CameraLayer{
 
     std::mutex m;
     std::string fileName;
+    std::vector <int> gaussianNoiseTable_M;
+
     public:
     CameraLayer_BMP(CameraLayer_Callback cb,void* context);
     
