@@ -8,6 +8,7 @@ obj
 visSele*
 *.a
 *.jpg
+**/.idea
 licensePlate
 sidePrj/websocket/main
 UI/hy/js/jquery-tree
@@ -16,7 +17,6 @@ UI/hy/Editor174
 node_modules
 bundle.js
 UI/3DModelSketch
-UI/hy/newSmapleSetup/.idea
 UI/ECJFX
 UI/FileWalker
 LaserCut

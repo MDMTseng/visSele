@@ -18,14 +18,13 @@ import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
-import t_enc from 'text-encoding';
 
 import * as logX from 'loglevel';
 
 let log = logX.getLogger(__filename);
 
 import {
-    Input, Select, Upload, Button, Menu, Dropdown, Icon,
+    Tag, Input, Select, Upload, Button, Menu, Dropdown, Icon,
 } from 'antd';
 
 const ButtonGroup = Button.Group;
@@ -55,6 +54,96 @@ const selectAfter = (
         <Option value=".org">.org</Option>
     </Select>
 );
+const SubMenu = Menu.SubMenu;
+const MenuItemGroup = Menu.ItemGroup;
+
+class OK_NG_BOX extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            // OK_NG: undefined,
+        }
+    }
+
+    render() {
+        return (
+            <div>
+                <Tag style={{'font-size': 20}}
+                     color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}
+                </Tag>
+                {this.props.children}
+            </div>
+        )
+    }
+}
+
+class ObjInfoList extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            collapsed: false,
+        }
+    }
+
+    toggleCollapsed() {
+        this.setState({
+            collapsed: !this.state.collapsed,
+        });
+    }
+
+    render() {
+
+        let resultMenu = [];
+        if (this.props.IR != undefined) {
+
+
+
+            resultMenu = this.props.IR.reports.map((singleReport,idx) => {
+                let reportDetail=[];
+                let judgeReports = singleReport.judgeReports;
+                reportDetail = judgeReports.map((rep,idxx)=>
+                    <Menu.Item key={"i"+idx+rep.name}>
+                        <OK_NG_BOX OK_NG={rep.status==INSPECTION_STATUS.SUCCESS} >
+                            {"#"+rep.value.toFixed(4)+"mm"}
+                        </OK_NG_BOX>
+                    </Menu.Item>
+                );
+                return (
+                    <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
+                             title={<span><Icon type="paper-clip"/><span>{idx}</span></span>}>
+                        {reportDetail}
+                    </SubMenu>
+                    )
+                }
+            )
+        }
+
+
+        return (
+            <div>
+                <Menu
+                    onClick={this.handleClick}
+                    selectable={true}
+                    // style={{align: 'left', width: 200}}
+                    defaultSelectedKeys={['i1']}
+                    defaultOpenKeys={['sub1']}
+                    mode="inline">
+                    <SubMenu style={{'text-align': 'left'}} key="functionMenu"
+                             title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
+                        <AirControl
+                            url={"ws://192.168.2.2:5213"}
+                            checkResult2AirAction={this.props.checkResult2AirAction}
+
+                        />
+                    </SubMenu>
+
+                    {resultMenu}
+
+                </Menu>
+            </div>
+        );
+    }
+}
 
 class AirControl extends React.Component {
     constructor(props) {
@@ -64,39 +153,70 @@ class AirControl extends React.Component {
             iconLoading: false,
             websocketAir: undefined,
             websocketAirTime: 10,
-            STOP: false
+            STOP: true,
+            transCameraImage: false
         }
     }
 
+    keyEventX(event) {
+        let key = event.keyCode || event.which;
+        let keychar = String.fromCharCode(key);
+        log.info("keyEvent>>", key, keychar);
+        switch (keychar) {
+            case 'R':
+                this.blowAir_RIGHTa();
+                break;
+            case 'L':
+                this.blowAir_LEFTa();
+                break;
+            case 'B':
+                this.blowAir_StartStop();
+                break;
+            case '1':
+                this.blowAir_TIMEADD(10);
+                break;
+            case '2':
+                this.blowAir_TIMESUB(10);
+                break;
+            case 'T':
+                this.blowAir_TEST();
+                break;
+            case 'I':
+                this.getCameraImage_StartStop();
+                break;
+        }
+
+    }
+
     blowAir_TEST() {
-      log.debug("[WS]/cue/TEST");
-      if (this.state.websocketAir.readyState === 1) {
-        log.debug("[O][WS]/cue/TEST");
-        this.state.websocketAir.send("/cue/TEST");
-      } else {
-        log.debug("[X][WS]/cue/TEST");
-      }
+        console.log("[WS]/cue/TEST");
+        if (this.state.websocketAir.readyState === 1) {
+            console.log("[O][WS]/cue/TEST");
+            this.state.websocketAir.send("/cue/TEST");
+        } else {
+            console.log("[X][WS]/cue/TEST");
+        }
 
     }
 
     blowAir_LEFTa() {
-        log.debug("[WS]/cue/LEFT");
+        console.log("[WS]/cue/LEFT");
         if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN) {
-          log.debug("[O][WS]/cue/LEFT");
+            console.log("[O][WS]/cue/LEFT");
             this.state.websocketAir.send("/cue/LEFT");
         } else {
-          log.debug("[X][WS]/cue/LEFT");
+            console.log("[X][WS]/cue/LEFT");
         }
 
     }
 
     blowAir_RIGHTa() {
-        log.debug("[WS]/cue/RIGHT");
+        console.log("[WS]/cue/RIGHT");
         if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN) {
-            log.debug("[O][WS]/cue/RIGHT");
+            console.log("[O][WS]/cue/RIGHT");
             this.state.websocketAir.send("/cue/RIGHT");
         } else {
-            log.debug("[X][WS]/cue/RIGHT");
+            console.log("[X][WS]/cue/RIGHT");
         }
     }
 
@@ -106,6 +226,10 @@ class AirControl extends React.Component {
             this.state.websocketAir.send("/cue/TIME/" + this.state.websocketAirTime);
     }
 
+    getCameraImage_StartStop() {
+        log.INFO("fun getCameraImage_StartStop click");
+    }
+
     blowAir_StartStop() {
         this.state.STOP = !this.state.STOP;
         this.setState(Object.assign({}, this.state));
@@ -113,7 +237,7 @@ class AirControl extends React.Component {
 
     blowAir_TIMEADD(val) {
         this.state.websocketAirTime += val;
-        log.info("[WS]/cue/RIGHT");
+        console.log("[WS]/cue/RIGHT");
         this.blowAir_TIMEUpdate();
     }
 
@@ -121,7 +245,7 @@ class AirControl extends React.Component {
         this.state.websocketAirTime -= val;
         if (this.state.websocketAirTime < 10)
             this.state.websocketAirTime = 10;
-          log.info("[WS]/cue/RIGHT");
+        console.log("[WS]/cue/RIGHT");
         this.blowAir_TIMEUpdate();
     }
 
@@ -130,13 +254,19 @@ class AirControl extends React.Component {
     }
 
     componentWillMount() {
-        log.info("[init][componentWillMount]");
+        this._keyEventX = this.keyEventX.bind(this);
+        console.log("[init][componentWillMount]");
         this.websocketConnect(this.props.url);
+        document.addEventListener('keydown', this._keyEventX);
+
     }
 
     componentWillUnmount() {
+        log.info("componentWillUnmount1")
         this.state.websocketAir.close();
         this.state.websocketAir = undefined;
+        document.removeEventListener('keydown', this._keyEventX);
+        log.info("componentWillUnmount2")
     }
 
 
@@ -160,7 +290,7 @@ class AirControl extends React.Component {
 
     onError(ev) {
         //this.websocketConnect();
-        log.error("onError",ev);
+        console.log("onError");
     }
 
     onMessage(ev) {
@@ -171,15 +301,15 @@ class AirControl extends React.Component {
         //this.setState({ iconLoading: true });
     }
 
+
     componentWillReceiveProps(nextProps) {
-        //log.info("111");
         if (this.state.STOP) return;
-        //log.info(nextProps.checkResult2AirAction.ver, "222");
+        log.info(nextProps.checkResult2AirAction.ver, "222");
         // console.log(this.state.websocketAir.OPEN,this.state.websocketAir.readyState,"XXX");
         // if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)return;
         //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
         if (nextProps.checkResult2AirAction.ver == this.props.checkResult2AirAction.ver) return;
-        //log.info("333");
+
         if (nextProps.checkResult2AirAction.direction === "left") {
             this.blowAir_LEFTa();
         } else if (nextProps.checkResult2AirAction.direction === "right") {
@@ -203,11 +333,15 @@ class AirControl extends React.Component {
         return (
 
             <div>
-                <Button block style={{marginTop: 2,marginBottom: 2}} type="primary" size="small"
-                        onClick={() => this.blowAir_StartStop()}>
-                    噴氣功能: {this.state.STOP ? " 暫停=" : " 啟動=" }{this.state.websocketAirTime}ms
+                <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
+                        onClick={() => this.getCameraImage_StartStop()}>
+                    傳輸相機影像(I): {this.state.transCameraImage ? " 暫停" : " 啟動"}
                 </Button>
-                <ButtonGroup block>
+                <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
+                        onClick={() => this.blowAir_StartStop()}>
+                    噴氣功能(B): {this.state.STOP ? " 暫停=" : " 啟動="}{this.state.websocketAirTime}ms
+                </Button>
+                <ButtonGroup>
                     <Button style={{backgroundColor: "#c41d7f", marginBottom: 2}} type="primary"
                             size="large"
                             onClick={this.blowAir_LEFTa.bind(this)}>
@@ -222,29 +356,29 @@ class AirControl extends React.Component {
                 </ButtonGroup>
                 <Button block style={{marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.blowAir_TIMEADD(10)}>
-                    <Icon type="up-circle" />
-                    增加噴氣時間
+                    <Icon type="up-circle"/>
+                    增加噴氣時間(1)
                 </Button>
                 <Button block style={{marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.blowAir_TIMESUB(10)}>
-                    <Icon type="down-circle" />
-                    漸少噴氣時間
+                    <Icon type="down-circle"/>
+                    漸少噴氣時間(2)
                 </Button>
 
                 <Button block style={{marginBottom: 2}} type="primary" size="small" onClick={() => this.blowAir_TEST()}>
-                    <Icon type="swap" />
-                    左右交互自動噴氣
-                    <Icon type="swap" />
+                    <Icon type="swap"/>
+                    測試左右噴氣(T)
+                    <Icon type="swap"/>
                 </Button>
 
 
                 <br/>
                 <Upload {...FileProps}>
                     <Button block style={{marginBottom: 3}} type="primary" size="small">
-                        <Icon type="thunderbolt" />
+                        <Icon type="thunderbolt"/>
                         快速切換特徵檔案
-                        <Icon type="thunderbolt" />
-                        </Button>
+                        <Icon type="thunderbolt"/>
+                    </Button>
 
                 </Upload>
 
@@ -411,11 +545,7 @@ class CanvasComponent extends React.Component {
     }
 
     ec_canvas_EmitEvent(event) {
-        //log.error(event);
-
-
-      this.props.Dispatch(event);
-
+        log.debug(event);
     }
 
     componentDidMount() {
@@ -480,9 +610,6 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => {
         ACT_EXIT: (arg) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
-        Dispatch: (action) => {
-            dispatch(action)
-        },
     }
 }
 const CanvasComponent_rdx = connect(
@@ -507,20 +634,25 @@ class APP_INSP_MODE extends React.Component {
         super(props);
         this.ec_canvas = null;
         this.checkResult2AirAction = {direction: "none", ver: 0};
+        // this.IR = undefined;
     }
 
     render() {
-
+        let inspectionReport = undefined;
         if (this.props.inspectionReport !== undefined) {
-            let inspectionReport = this.props.inspectionReport;
+            inspectionReport = this.props.inspectionReport;
             if (inspectionReport.reports.length > 0) {
                 let groupResult = inspectionReport.reports.map((single_rep) => {
+
+                    // [1,2,3,4].reduce((sum,ele)=>{return sum+ele},0);
+                    // [1,2,3,4].map((ele)=>2*ele);
 
                     let judgeReports = single_rep.judgeReports;
                     let ret_status = judgeReports.reduce((res, obj) => {
                             if (res == INSPECTION_STATUS.NA) return res;
                             if (res == INSPECTION_STATUS.FAILURE) {
-                                if (obj.status == INSPECTION_STATUS.NA) return INSPECTION_STATUS.NA;
+                                if (obj.status == INSPECTION_STATUS.NA)
+                                    return INSPECTION_STATUS.NA;
                                 return res;
                             }
                             return obj.status;
@@ -553,6 +685,7 @@ class APP_INSP_MODE extends React.Component {
             }
         }
         let MenuSet = [];
+        let InfoSet = [];
         let menu_height = "HXA";//auto
         log.debug("CanvasComponent render");
         MenuSet = [
@@ -562,27 +695,13 @@ class APP_INSP_MODE extends React.Component {
                 addClass="layout black vbox"
                 text="<" onClick={this.props.ACT_EXIT}/>
             ,
-            <AirControl
-                url={"ws://192.168.2.2:5213"}
-                checkResult2AirAction={this.checkResult2AirAction}
-            />,
-            <div>{JSON.stringify(this.props.mouseLocation)}</div>
-            // ,<BASE_COM.IconButton
-            //     dict={EC_zh_TW}
-            //     key="LEFT"
-            //     addClass="layout black vbox"
-            //     text="LEFT" onClick={()=>this.blowAir_LEFTx()}/>
-            // ,<BASE_COM.IconButton
-            //     dict={EC_zh_TW}
-            //     key="RIGHT"
-            //     addClass="layout black vbox"
-            //     text="RIGHT" onClick={()=>this.blowAir_RIGHTx()}/>
-
+            <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}/>
 
         ];
 
         return (
             <div className="HXF">
+
                 <CanvasComponent_rdx addClass="layout width12 height12" onCanvasInit={(canvas) => {
                     this.ec_canvas = canvas
                 }}/>
@@ -590,6 +709,7 @@ class APP_INSP_MODE extends React.Component {
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
                         {MenuSet}
+
                     </div>
                 </$CSSTG>
 
@@ -617,7 +737,6 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
-        mouseLocation:state.UIData.edit_info.mouseLocation,
         //reportStatisticState:state.UIData.edit_info.reportStatisticState
 
     }
