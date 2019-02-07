@@ -175,6 +175,139 @@ void acvBoxFilter(acvImage *BuffPic, acvImage *Pic, int Size)
     acvBoxFilterY_BL(BuffPic, Pic, Size,BUFFX,sizeof(BUFFX)/sizeof(*BUFFX));
     acvBoxFilterX(Pic, BuffPic, Size);
 }
+
+
+
+
+void acvBoxFilterY_BL(acvImage *src, int Size,int *LineBuff,int LineBuffL)
+{
+
+
+    int i, j, k, SizeX2Add1 = Size * 2 + 1;
+    DIV_APPROX_BASE_TYPE TmpSum;
+    int SizeP1 = Size + 1;
+    int width = src->GetWidth();
+
+    if(width > LineBuffL)
+    {//Line buff is not enough
+      return;
+    }
+    memset(LineBuff,0,sizeof(*LineBuff)*width);
+
+    DIV_APPROX_BASE_TYPE XMul = ((DIV_APPROX_BASE_TYPE)1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
+    int height = src->GetHeight();
+    int wx3 = width * DEPTH_X;
+    BYTE *srcfront,*srctail;
+    BYTE *resfront;
+
+
+
+    //exp:Size=1
+    //LineBuff+=src[0]
+    for (i = 0; i < Size; i++)
+    {
+      srcfront = &(src->CVector[i][0]);
+      for (j=0 ; j < width; j++ ,srcfront+=DEPTH_X)
+      {
+        LineBuff[j]+=*srcfront;
+      }
+    }
+
+
+    //Size=1
+    //i=0 => LineBuff=src[0] + src[1] => res[0]=LineBuff/(0+ Size +1)
+    //i=1 => LineBuff=src[0] + src[1]+src[2] => res[1]=LineBuff/(1+ Size +1)
+    for (i = 0; i < Size+1; i++)
+    {
+      srcfront = &(src->CVector[i+Size][0]);
+      resfront = &(src->CVector[i][1]);
+      for (j=0 ; j < width; j++ ,srcfront+=DEPTH_X,resfront+=DEPTH_X)
+      {
+        LineBuff[j]+=*srcfront;
+        *resfront = (LineBuff[j] / (i + Size+1));
+      }
+    }
+
+    //Size=1
+    //i=2 => LineBuff=src[0]+[1]+[2]+[3] - src[0] => res=LineBuff/(Size * 2 + 1)
+    //i=n => LineBuff=
+    //        src[n-Size-1]+[n-Size]+[n-Size+1]+[n+Size] - src[n-Size-1] => res=LineBuff/(Size * 2 + 1)
+
+    for (i = Size+1; i < height - Size; i++)
+    {
+      srctail =  &(src->CVector[i-Size-1][0]);
+      srcfront = &(src->CVector[i+Size][0]);
+      resfront = &(src->CVector[i][1]);
+      for (j=0 ; j < width; j++ ,srcfront+=DEPTH_X,srctail+=DEPTH_X,resfront+=DEPTH_X)
+      {
+        LineBuff[j]=LineBuff[j]+ *srcfront - *srctail;
+        *resfront = (LineBuff[j] * XMul) >> DIV_APPROX_BASE_SHIFT;
+      }
+    }
+
+    for (i = height - Size; i < height; i++)
+    {
+      srctail =  &(src->CVector[i-Size-1][0]);
+      resfront = &(src->CVector[i][1]);
+      for (j=0 ; j < width; j++ ,srctail+=DEPTH_X,resfront+=DEPTH_X)
+      {
+        LineBuff[j]=LineBuff[j] - *srctail;
+        *resfront = (LineBuff[j] / (Size + height - i));
+      }
+    }
+}
+
+
+
+void acvBoxFilterX(acvImage *src, int Size)
+{
+    int i, j, k, SizeX2Add1 = Size * 2 + 1;
+    DIV_APPROX_BASE_TYPE TmpSum;
+    int SizeP1 = Size + 1;
+
+    int width = src->GetWidth();
+    int height = src->GetHeight();
+    BYTE *srcfront;
+    BYTE *resfront;
+	DIV_APPROX_BASE_TYPE XMul = ((DIV_APPROX_BASE_TYPE)1 << DIV_APPROX_BASE_SHIFT) / SizeX2Add1;
+    for (i = 0; i < height; i++)
+    {
+        TmpSum = 0;
+        srcfront = &(src->CVector[i][0]);
+        resfront = &(src->CVector[i][1]);
+        for (k = 0; k < Size; k++, srcfront += DEPTH_X)
+        {
+            TmpSum += *srcfront;
+        }
+        for (j = 0; j < SizeP1; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
+        {
+            TmpSum += *srcfront;
+
+            *resfront = (TmpSum / (j + SizeP1));
+        }
+        for (; j < width - Size; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
+        {
+
+            TmpSum -= *(srcfront - SizeX2Add1 * DEPTH_X);
+            TmpSum += *srcfront;
+            *resfront = (TmpSum * XMul) >> DIV_APPROX_BASE_SHIFT; //Approximate (X/SizeX2Add1) => X*(1024/SizeX2Add1)>>10
+        }
+        for (; j < width; j++, srcfront += DEPTH_X, resfront += DEPTH_X)
+        {
+            TmpSum -= *(srcfront - SizeX2Add1 * DEPTH_X);
+            *resfront = (TmpSum / (Size + width - j));
+        }
+    }
+}
+
+void acvBoxFilter_inCH(acvImage *Pic, int Size)
+{
+    int BUFFX[3000];
+    acvBoxFilterY_BL(Pic, Size,BUFFX,sizeof(BUFFX)/sizeof(*BUFFX));
+    acvBoxFilterX(Pic, Size);
+}
+
+
 void acvBoxFilter_naive(acvImage *BuffPic, acvImage *Pic, int Size)
 {
     acvBoxFilterY(BuffPic, Pic, Size);

@@ -716,7 +716,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         
 
         LOGV("searchStart:%f %f",searchStart.X,searchStart.Y);
-        acv_XY searchPt = searchStart;//Find from end line and approach to the end line;
+        acv_XY searchPt = searchStart;//Find from start line to the end line;
         acv_XY searchPt_sum={0};
         int foundC =0;
         
