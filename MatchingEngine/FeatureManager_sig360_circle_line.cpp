@@ -1869,7 +1869,7 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   
   *ret_point_opt = point;
   *ret_edge_response = 1;
-  const int GradTableL=7;
+  const int GradTableL=9;
   float gradTable[GradTableL]={0};
 
   //curpoint = point -(GradTableL-1)*gVec/2
@@ -1901,11 +1901,11 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
     curpoint = acvVecAdd(curpoint,gradVec);
   }
 
+  /*
   for(int i=0;i<GradTableL;i++)
   {
     gradTable[i]-=thres;
   }
-
   for(int i=0;i<GradTableL-1;i++)
   {
     if(gradTable[i]*gradTable[i+1]<0)
@@ -1924,10 +1924,40 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
 
       return 0;
     }
+  }*/
+
+  float edgeWSum=0;
+  float edgePos=0;
+  for(int i=0;i<GradTableL;i++)
+  {
+    
+    float diff = gradTable[i]-thres;
+    if(diff<0)diff=-diff;
+    //if(diff>10)continue;
+    float weight = 1/(diff*diff/100+1);
+    printf("%g ",weight);
+    edgePos+=i*weight;
+    edgeWSum+=weight;
   }
+  LOGV("edgeWSum:%f",edgeWSum);
 
 
-  return -1;
+
+
+
+
+  if(edgeWSum==0)return -1;
+  edgePos/=edgeWSum;
+
+
+  *ret_edge_response=1;
+  
+  gradVec = acvVecMult(gradVec,edgePos);
+  *ret_point_opt = acvVecAdd(bkpoint,gradVec);
+
+
+
+  return 0;
 }
 
 int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<ContourGrid::ptInfo> ptList,int width)
@@ -2292,17 +2322,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
           }
           
-
+          float minS_pts=0;
           float minSigma=99999;
-          for(int j=0;j<10;j++)
+          for(int j=0;j<7;j++)
           {
-            int sampleL=5;
+            int sampleL=s_points.size()/5;
             for(int j=0;j<sampleL;j++)//Shuffle in 
             {
               int idx2Swap = (rand()%(s_points.size()-i))+i;
               ContourGrid::ptInfo tmp_pt=s_points[j];
               s_points[j]=s_points[idx2Swap];
               s_points[idx2Swap]=tmp_pt;
+              s_points[j].edgeRsp=1;
             }
 
             acv_Line tmp_line;
@@ -2310,19 +2341,26 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
               &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), sampleL,&tmp_line,&sigma);
 
-            float sigma_sum=0;
             int sigma_count=0;
+            float sigma_sum=0;
             for(int i=0;i<s_points.size();i++)
             {
               float diff =  acvDistance_Signed(tmp_line,s_points[i].pt);
               float abs_diff=(diff<0)?-diff:diff;
-              if(abs_diff>2)continue;
+              if(abs_diff>2)
+              {
+                s_points[j].edgeRsp=0;
+                continue;
+              }
               sigma_count++;
               sigma_sum+=diff*diff;
+              
+              s_points[j].edgeRsp=1/(abs_diff*abs_diff+1);
             }
             sigma_sum=sqrt(sigma_sum/sigma_count);
             if(minSigma>sigma_sum)
             {
+              minS_pts = sigma_count;
               minSigma = sigma_sum;
               line_cand = tmp_line;
               LOGV("minSigma:%f",minSigma);
@@ -2336,8 +2374,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             usable_L=0;
             for(int i=0;i<s_points.size();i++)
             {
-              s_points[i].tmp =  acvDistance_Signed(line_cand,s_points[i].pt);
-              if(s_points[i].tmp<0)s_points[i].tmp=-s_points[i].tmp;
+              float dist  = acvDistance_Signed(line_cand,s_points[i].pt);
+              if(dist<0)dist=-dist;
+              s_points[i].tmp =  dist;
+              s_points[i].edgeRsp=1;
               
             }
 
@@ -2353,7 +2393,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
 
             
-            LOGV("sort");
+            LOGV("sort: s_points.size():%d",s_points.size());
             std::sort(s_points.begin(), s_points.end(),  
                   [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
               { 
@@ -2368,7 +2408,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               usable_L=i;
               if(s_points[i].tmp>distThres)break;
             }
-            usable_L=usable_L*10/11;//back off
+            //usable_L=usable_L*10/11;//back off
             LOGV("usable_L:%d/%d  minSigma:%f=>%f",
               usable_L,s_points.size(),
               s_points[usable_L-1].tmp,distThres);
@@ -2474,7 +2514,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       // char strdd[100];
       // sprintf(strdd,"data//ttt/MVCamX%d.bmp",rand()%200);
       // acvSaveBitmapFile(strdd,smoothedImg);
-      // exit(1);
+      //exit(1);
 
       acv_CircleFit cf_zero= {0};
       for (int j = 0; j < featureCircleList.size(); j++)

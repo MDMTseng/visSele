@@ -146,7 +146,7 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         }
         if(frameInterval_ms-delay_time>0)
         {
-            //std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
+            std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
         }
     }
     //ThreadTerminationFlag = 0;
