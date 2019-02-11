@@ -711,9 +711,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
             20,255,128);
 
         }
+
         acv_XY searchVec_nor_edge = acvVecMult(searchVec_nor,-width/2);
         searchStart=acvVecAdd(searchStart,searchVec_nor_edge);
-        
 
         LOGV("searchStart:%f %f",searchStart.X,searchStart.Y);
         acv_XY searchPt = searchStart;//Find from start line to the end line;
@@ -721,13 +721,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         int foundC =0;
         
         LOGV("searchPt:%f %f",searchPt.X,searchPt.Y);
-        for(int i=0;i<margin*2;i++)
+        float nearestDist=10000;
+        acv_XY nearestPt;
+        for(int j=0;j<width;j++,searchPt=acvVecAdd(searchPt,searchVec_nor))
         {
-          for(int j=0;j<width;j++)
+          acv_XY curPt = searchPt;
+          for(int i=0;i<margin*2;i++,curPt=acvVecAdd(curPt,searchVec))
           {
-            searchPt = acvVecAdd(searchPt,searchVec_nor);
-            int Y = (int)round(searchPt.Y);
-            int X = (int)round(searchPt.X);
+            int Y = (int)round(curPt.Y);
+            int X = (int)round(curPt.X);
 
             if(Y<0 || Y>=labeledImg->GetHeight() || X<0 || X>=labeledImg->GetWidth() )
             {
@@ -746,34 +748,39 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                 int b = grayLevelImg->CVector[Y][X*3];
                 if(b<thres)
                 {
-                  searchPt_sum.X += X;
-                  searchPt_sum.Y += Y;
-                  foundC++;
+                  acv_XY retPt;
+                  float ret_rsp;
+                  if(EdgePointOpt2(grayLevelImg,searchVec,curPt,3,thres,&retPt,&ret_rsp)==0)
+                  //if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
+                  {
+                    float dist = acvDistance(retPt,searchPt);
+                    if(nearestDist>dist)
+                    {
+                      nearestDist = dist;
+                      nearestPt = retPt;
+                    }
+
+
+                    LOGV("ret_point_opt:%f %f",rep.pt.X,rep.pt.Y);
+
+                    break;
+                  }
+          
+                  continue;
                 }
               }
             }
           }
-          if(foundC!=0)break;
-          searchStart = acvVecAdd(searchStart,searchVec);
-          searchPt = searchStart;
         }
-        if(foundC!=0)
+
+
+
+        if(nearestDist<10000)
         {
-          rep.pt =acvVecMult(searchPt_sum,1.0/foundC);
+          
+          rep.pt = acvVecRadialDistortionRemove(nearestPt,param);          
           rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
 
-          acv_XY ret_point_opt;
-          float edgeResponse;
-          acv_XY tmp_pt = acvVecRadialDistortionApply(rep.pt,param);
-          
-            //int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,7,thres,&ret_point_opt,&edgeResponse);
-          if(EdgePointOpt2(grayLevelImg,searchVec,tmp_pt,7,thres,&ret_point_opt,&edgeResponse)==0)
-          //if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
-          {
-            rep.pt = acvVecRadialDistortionRemove(ret_point_opt,param);
-            LOGV("ret_point_opt:%f %f",rep.pt.X,rep.pt.Y);
-          }
-          
 
         }
         else
