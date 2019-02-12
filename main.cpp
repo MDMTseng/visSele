@@ -1213,7 +1213,7 @@ int mainLoop(bool realCamera=false)
   camera->TriggerMode(1);
 
 
-  camera->SetExposureTime(17570.5110);
+  camera->SetExposureTime(10570.5110);
   camera->SetAnalogGain(2);
 
   acvImage *test1 = new acvImage();
