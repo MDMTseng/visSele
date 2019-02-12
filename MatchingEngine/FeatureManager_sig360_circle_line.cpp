@@ -723,11 +723,20 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGV("searchPt:%f %f",searchPt.X,searchPt.Y);
         float nearestDist=10000;
         acv_XY nearestPt;
-        for(int j=0;j<width;j++,searchPt=acvVecAdd(searchPt,searchVec_nor))
+
+
+        int stepX=1;
+        acv_XY searchVec_norX = acvVecMult(searchVec_nor,stepX);
+        int stepY=1;
+        acv_XY searchVecY = acvVecMult(searchVec,stepY);
+
+
+        for(int j=0;j<width;j+=stepX,searchPt=acvVecAdd(searchPt,searchVec_norX))
         {
           acv_XY curPt = searchPt;
-          for(int i=0;i<margin*2;i++,curPt=acvVecAdd(curPt,searchVec))
+          for(int i=0;i<margin*2;i+=stepY,curPt=acvVecAdd(curPt,searchVecY))
           {
+            if(i>nearestDist+stepY+4)break;
             int Y = (int)round(curPt.Y);
             int X = (int)round(curPt.X);
 
@@ -753,6 +762,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                   if(EdgePointOpt2(grayLevelImg,searchVec,curPt,3,thres,&retPt,&ret_rsp)==0)
                   //if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
                   {
+                    //EdgePointOpt2(grayLevelImg,searchVec,retPt,3,thres,&retPt,&ret_rsp);
                     float dist = acvDistance(retPt,searchPt);
                     if(nearestDist>dist)
                     {
@@ -761,7 +771,6 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                     }
 
 
-                    LOGV("ret_point_opt:%f %f",rep.pt.X,rep.pt.Y);
 
                     break;
                   }
@@ -777,11 +786,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
         if(nearestDist<10000)
         {
-          
-          rep.pt = acvVecRadialDistortionRemove(nearestPt,param);          
+          float ret_rsp;
+          LOGV("nearestPt:%f %f",nearestPt.X,nearestPt.Y); 
+          rep.pt = acvVecRadialDistortionRemove(nearestPt,param);         
           rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-
-
         }
         else
         {
@@ -1942,11 +1950,11 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
     if(diff<0)diff=-diff;
     //if(diff>10)continue;
     float weight = 1/(diff*diff/100+1);
-    printf("%g ",weight);
+    //printf("%g ",weight);
     edgePos+=i*weight;
     edgeWSum+=weight;
   }
-  LOGV("edgeWSum:%f",edgeWSum);
+  //LOGV("edgeWSum:%f",edgeWSum);
 
 
 
@@ -2308,20 +2316,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             //And the points on the image is still the distorted data
             acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
             //int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
-            int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,3,thres,&ret_point_opt,&edgeResponse);
+            int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,1,thres,&ret_point_opt,&edgeResponse);
             if(ret_val==0)
             {
               int X_=round(ret_point_opt.X);
               int Y_=round(ret_point_opt.Y);
-              img->CVector[Y_][X_*3]=125;
-              img->CVector[Y_][X_*3+1]=255;
-              img->CVector[Y_][X_*3+2]=0;
 
               s_points[i].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
               s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               if(drawDBG_IMG)
               {
+                img->CVector[Y_][X_*3]=125;
+                img->CVector[Y_][X_*3+1]=255;
+                img->CVector[Y_][X_*3+2]=0;
                 buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
                 buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
                 buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+2]=255;
@@ -2426,17 +2434,21 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           }
           
           if(usable_L==0)continue;
-          for(int i=0;i<usable_L;i++)
+
+          if(0)
           {
-            
-            acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
-            int X_=round(tmp_pt.X);
-            int Y_=round(tmp_pt.Y);
-            smoothedImg->CVector[Y_][X_*3]=255;
-            smoothedImg->CVector[Y_][X_*3+1]=0;
-            smoothedImg->CVector[Y_][X_*3+2]=125;
-          }
+            for(int i=0;i<usable_L;i++)
+            {
+              
+              acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
+              int X_=round(tmp_pt.X);
+              int Y_=round(tmp_pt.Y);
+              smoothedImg->CVector[Y_][X_*3]=255;
+              smoothedImg->CVector[Y_][X_*3+1]=0;
+              smoothedImg->CVector[Y_][X_*3+2]=125;
+            }
         
+          }
         }
         else
         {
