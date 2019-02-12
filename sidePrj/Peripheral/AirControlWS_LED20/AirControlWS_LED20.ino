@@ -94,8 +94,8 @@ void timerX() {
     previousMillis = currentMillis;
     digitalWrite(LEFTPIN, LEFT_ACT);
     digitalWrite(RIGHTPIN, RIGHT_ACT);
-    DEBUG_print(LEFT_ACT);
-    DEBUG_print(RIGHT_ACT);
+    //DEBUG_print(LEFT_ACT);
+    //DEBUG_print(RIGHT_ACT);
   }else if (currentMillis - previousMillis >= airTime) {
     previousMillis = currentMillis;
     //    PORTB ^= _BV(PB5);
@@ -110,11 +110,57 @@ void timerX() {
       RIGHT_ACT = false;
       digitalWrite(LEFTPIN, LEFT_ACT);
       digitalWrite(RIGHTPIN, RIGHT_ACT);
-      DEBUG_print(LEFT_ACT);
-      DEBUG_print(RIGHT_ACT);
+      //DEBUG_print(LEFT_ACT);
+      //DEBUG_print(RIGHT_ACT);
     }
   }
 }
+
+
+int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
+{
+  unsigned int MessageL = 0; //echo
+  if (strcmp(recv_cmd, "/cue/LEFT") == 0) {
+    MessageL = sprintf(send_rsp, "[O]RECV:/cue/LEFT");
+    LEFT_ACT = true;
+    led_hue=0;
+    led_value=60;
+    previousMillis = 0;
+  }
+  else if (strcmp(recv_cmd, "/cue/RIGHT") == 0) {
+    MessageL = sprintf(send_rsp, "[O]RECV:/cue/RIGHT");
+    RIGHT_ACT = true;
+    led_hue=96;
+    led_value=60;
+    previousMillis = 0;
+  }else if (strcmp(recv_cmd, "/cue/TEST") == 0) {
+    MessageL = sprintf(send_rsp, "[O]RECV:/cue/TEST");
+    TEST_ACT = !TEST_ACT;
+    previousMillis = 0;
+  }else if (strncmp(recv_cmd, "/cue/TIME/",9) == 0) {
+    char *airTimeStr = recv_cmd+10;
+    char tmp[10];
+    strncpy(tmp,airTimeStr,10);
+    int t=(int)atoi(tmp);//1690byte
+    if(t>0&&t<9999)
+      airTime=t;
+    MessageL = sprintf(send_rsp,"airTime:%d,t=%d,s=%s", airTime,t,tmp);
+    led_hue=160;
+    led_value=60;
+  }
+  
+  if (MessageL == 0)
+  {
+    char *tmpX = send_rsp+200;
+    
+    strcpy(tmpX,recv_cmd);
+    MessageL = sprintf(send_rsp, "UNKNOWN:%s",tmpX);
+  }
+
+  return MessageL;
+}
+
+
 void RECVWebSocketPkg(WebSocketProtocol* WProt, EthernetClient* client, char* RECVData)
 {
   if (WProt->getPkgframeInfo().opcode == 2)//binary data
@@ -130,41 +176,7 @@ void RECVWebSocketPkg(WebSocketProtocol* WProt, EthernetClient* client, char* RE
   //If RECVData is text message, it will end with '\0'
   DEBUG_println(RECVData);
   char *dataBuff = retPackage + 8;//write data after 8 bytes(8 bytes are for header)
-  unsigned int MessageL = 0; //echo
-  if (strcmp(RECVData, "/cue/LEFT") == 0) {
-    MessageL = sprintf(dataBuff, "[O]RECV:/cue/LEFT");
-    LEFT_ACT = true;
-    led_hue=0;
-    led_value=60;
-    previousMillis = 0;
-  }
-  else if (strcmp(RECVData, "/cue/RIGHT") == 0) {
-    MessageL = sprintf(dataBuff, "[O]RECV:/cue/RIGHT");
-    RIGHT_ACT = true;
-    led_hue=96;
-    led_value=60;
-    previousMillis = 0;
-  }else if (strcmp(RECVData, "/cue/TEST") == 0) {
-    MessageL = sprintf(dataBuff, "[O]RECV:/cue/TEST");
-    TEST_ACT = !TEST_ACT;
-    previousMillis = 0;
-  }else if (strncmp(RECVData, "/cue/TIME/",9) == 0) {
-    char *airTimeStr = RECVData+10;
-    char tmp[10];
-    strncpy(tmp,airTimeStr,10);
-    int t=(int)atoi(tmp);//1690byte
-    if(t>0&&t<9999)
-      airTime=t;
-    MessageL = sprintf(dataBuff,"airTime:%d,t=%d,s=%s", airTime,t,tmp);
-    led_hue=160;
-    led_value=60;
-  }
-
-  
-  if (MessageL == 0)
-  {
-    MessageL = sprintf(dataBuff, "RECV:EMPTY");
-  }
+  unsigned int MessageL = CMDExec(RECVData, RECVDataL,dataBuff,sizeof(buff)-8);
   unsigned int totalPackageL;
   char* retPkg = WProt->codeFrame(dataBuff, MessageL, &retframeInfo, &totalPackageL); //get complete package might have some shift compare to "retPackage"
   WProt->getClientOBJ().write(retPkg, totalPackageL);
@@ -219,6 +231,7 @@ loopLED();
   KL = PkgL;
   recv(client._sock, (uint8_t*)buffiter, PkgL);//get raw data
   WebSocketProtocol* WSPptr  = findFromProt(client);
+  DEBUG_println(">>>>");
   if (WSPptr == null)
   {
     client.stop();
@@ -226,7 +239,13 @@ loopLED();
   }
   client = WSPptr->getClientOBJ();
   char *recvData = WSPptr->processRecvPkg(buff, KL);//Check/process is the websocket PKG
+  DEBUG_println(">>>>");
   byte frameL = WSPptr->getPkgframeInfo().length; //get frame
+  
+  DEBUG_print(">>>>WSPptr->getState() ");
+  DEBUG_print(WSPptr->getState() );
+  DEBUG_print(" OP:");
+  DEBUG_println(WSPptr->getRecvOPState() );
   if (WSPptr->getState() == WS_HANDSHAKE)//On hand shaking
   {
     DEBUG_print("WS_HANDSHAKE::");
@@ -234,6 +253,29 @@ loopLED();
     client.print(buff);
     return;
   }
+
+  if (WSPptr->getState() == UNKNOWN_CONNECTED)
+    //not websocket package. might be AJAX or normal TCP data
+    //handle it by yourself.
+  {
+    /*DEBUG_print("unusual close::");
+    DEBUG_println(client._sock);
+    client.print(WSPptr->codeSendPkg_endConnection(buff));
+
+    client.stop();
+    WSPptr->rmClientOBJ();*/
+
+    DEBUG_println("WSOP_UNKNOWN");
+    
+    int retL=  CMDExec(buff, KL,buff,sizeof(buff));
+    WSPptr->getClientOBJ().write(buff, retL);
+    return;
+  }
+
+
+
+
+  
   if (WSPptr->getRecvOPState() == WSOP_CLOSE)//websocket close
   {
 
@@ -243,19 +285,6 @@ loopLED();
     WSPptr->rmClientOBJ();
     return;
   }
-  if (WSPptr->getRecvOPState() == WSOP_UNKNOWN)
-    //not websocket package. might be AJAX or normal TCP data
-    //handle it by yourself.
-  {
-    DEBUG_print("unusual close::");
-    DEBUG_println(client._sock);
-    client.print(WSPptr->codeSendPkg_endConnection(buff));
-
-    client.stop();
-    WSPptr->rmClientOBJ();
-    return;
-  }
-
   // Normal websocket section
   // client::WSPptr
   // recv Data::recvData
