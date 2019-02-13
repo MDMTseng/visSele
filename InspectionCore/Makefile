@@ -29,8 +29,8 @@ export SO_EXPORT_PATH=$(abspath .)
 
 
 
-export GLEWSRCDir=$(abspath ../glew-2.1.0)
-export GLFWSRCDir=$(abspath ../glfw-3.2.1)
+export GLEWSRCDir=$(abspath ../../glew-2.1.0)
+export GLFWSRCDir=$(abspath ../../glfw-3.2.1)
 export MODULE_GLACC=$(abspath GLAcc)
 
 
