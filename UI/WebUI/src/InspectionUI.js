@@ -14,7 +14,7 @@ import EC_zh_TW from "./languages/zh_TW";
 import G2 from '@antv/g2';
 import DataSet from '@antv/data-set';
 
-import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
+import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/actions/UIAct';
 
 
 
@@ -30,7 +30,12 @@ import {
 } from 'antd';
 
 const ButtonGroup = Button.Group;
+const OK_NG_BOX_COLOR_TEXTx = {
+    [INSPECTION_STATUS.NA]:{COLORx:"#aaa",TEXTx:"NA"},
+    [INSPECTION_STATUS.SUCCESS]:{COLORx:"#87d068",TEXTx:"OK"},
+    [INSPECTION_STATUS.FAILURE]:{COLORx:"#f50",TEXTx:"NG"}
 
+}
 
 const FileProps = {
     name: 'file',
@@ -68,10 +73,12 @@ class OK_NG_BOX extends React.Component {
     }
 
     render() {
+        log.info("OK_NG_BOX_COLOR_TEXTx[this.props]",this.props);
         return (
+
             <div style={{'display':'inline-block'}}>
                 <Tag style={{'font-size': 20}}
-                     color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}
+                     color={OK_NG_BOX_COLOR_TEXTx[this.props.OK_NG].COLORx}>{OK_NG_BOX_COLOR_TEXTx[this.props.OK_NG].TEXTx}
                 </Tag>
                 {this.props.children}
             </div>
@@ -106,7 +113,7 @@ class ObjInfoList extends React.Component {
 
                 reportDetail = judgeReports.map((rep,idxx)=>
                     <Menu.Item key={"i"+idx+rep.name}>
-                        <OK_NG_BOX OK_NG={rep.status==INSPECTION_STATUS.SUCCESS} >
+                        <OK_NG_BOX OK_NG={rep.status} >
                             {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
                         </OK_NG_BOX>
                     </Menu.Item>
@@ -127,7 +134,7 @@ class ObjInfoList extends React.Component {
                 log.info("judgeReports>>", judgeReports);
                 return (
                     <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
-                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX OK_NG={ finalResult==INSPECTION_STATUS.SUCCESS } ></OK_NG_BOX></span>
+                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX OK_NG={ finalResult } ></OK_NG_BOX></span>
 
                              </span>}>
                         {reportDetail}
