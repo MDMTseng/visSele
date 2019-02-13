@@ -69,7 +69,7 @@ class OK_NG_BOX extends React.Component {
         return (
             <div>
                 <Tag style={{'font-size': 20}}
-                     color={this.props.OK_NG ? "#87d068" : "#ff5500"}>{this.props.OK_NG ? "OK" : "NG"}
+                     color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}
                 </Tag>
                 {this.props.children}
             </div>
