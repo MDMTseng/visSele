@@ -14,7 +14,9 @@ import EC_zh_TW from "./languages/zh_TW";
 import G2 from '@antv/g2';
 import DataSet from '@antv/data-set';
 
-import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
+import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
+
+
 
 
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
@@ -67,7 +69,7 @@ class OK_NG_BOX extends React.Component {
 
     render() {
         return (
-            <div>
+            <div style={{'display':'inline-block'}}>
                 <Tag style={{'font-size': 20}}
                      color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}
                 </Tag>
@@ -101,18 +103,37 @@ class ObjInfoList extends React.Component {
             resultMenu = this.props.IR.reports.map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
+
                 reportDetail = judgeReports.map((rep,idxx)=>
                     <Menu.Item key={"i"+idx+rep.name}>
                         <OK_NG_BOX OK_NG={rep.status==INSPECTION_STATUS.SUCCESS} >
-                            {"#"+rep.value.toFixed(4)+"mm"}
+                            {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
                         </OK_NG_BOX>
                     </Menu.Item>
                 );
+
+                let finalResult = judgeReports.reduce((res, obj) => {
+                        if (res == INSPECTION_STATUS.NA) return res;
+                        if (res == INSPECTION_STATUS.FAILURE) {
+                            if (obj.status == INSPECTION_STATUS.NA)
+                                return INSPECTION_STATUS.NA;
+                            return res;
+                        }
+                        return obj.status;
+                    }
+                    , INSPECTION_STATUS.SUCCESS);
+
+
+                log.info("judgeReports>>", judgeReports);
                 return (
                     <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
-                             title={<span><Icon type="paper-clip"/><span>{idx}</span></span>}>
+                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX OK_NG={ finalResult==INSPECTION_STATUS.SUCCESS } ></OK_NG_BOX></span>
+
+                             </span>}>
                         {reportDetail}
                     </SubMenu>
+
+
                     )
                 }
             )

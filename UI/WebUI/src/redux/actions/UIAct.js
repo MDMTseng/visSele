@@ -50,6 +50,14 @@ export const SHAPE_TYPE = {
 
 };
 
+export const DEFAULT_UNIT = {
+  [SHAPE_TYPE.measure_subtype.sigma]:"",
+  [SHAPE_TYPE.measure_subtype.distance]:"mm",
+  [SHAPE_TYPE.measure_subtype.angle]:"º",
+  [SHAPE_TYPE.measure_subtype.radius]:"mm"
+
+}
+
 export const UI_SM_EVENT = {
   Connected:"Connected",
   Disonnected:"Disonnected",
