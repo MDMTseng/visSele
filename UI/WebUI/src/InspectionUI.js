@@ -30,12 +30,6 @@ import {
 } from 'antd';
 
 const ButtonGroup = Button.Group;
-const OK_NG_BOX_COLOR_TEXTx = {
-    [INSPECTION_STATUS.NA]:{COLORx:"#aaa",TEXTx:"NA"},
-    [INSPECTION_STATUS.SUCCESS]:{COLORx:"#87d068",TEXTx:"OK"},
-    [INSPECTION_STATUS.FAILURE]:{COLORx:"#f50",TEXTx:"NG"}
-
-}
 
 const FileProps = {
     name: 'file',
@@ -73,12 +67,12 @@ class OK_NG_BOX extends React.Component {
     }
 
     render() {
-        log.info("OK_NG_BOX_COLOR_TEXTx[this.props]",this.props);
+        //log.info("OK_NG_BOX_COLOR_TEXT[this.props]",this.props);
         return (
 
             <div style={{'display':'inline-block'}}>
                 <Tag style={{'font-size': 20}}
-                     color={OK_NG_BOX_COLOR_TEXTx[this.props.OK_NG].COLORx}>{OK_NG_BOX_COLOR_TEXTx[this.props.OK_NG].TEXTx}
+                     color={OK_NG_BOX_COLOR_TEXT[this.props.OK_NG].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.OK_NG].TEXT}
                 </Tag>
                 {this.props.children}
             </div>
@@ -151,10 +145,11 @@ class ObjInfoList extends React.Component {
             <div>
                 <Menu
                     onClick={this.handleClick}
+                    // selectedKeys={[this.current]}
                     selectable={true}
                     // style={{align: 'left', width: 200}}
-                    defaultSelectedKeys={['i1']}
-                    defaultOpenKeys={['sub1']}
+                    defaultSelectedKeys={['functionMenu']}
+                    defaultOpenKeys={['functionMenu']}
                     mode="inline">
                     <SubMenu style={{'text-align': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
