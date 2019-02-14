@@ -1,6 +1,7 @@
 
 export default {
     fallback:{
+        ReconnectAirDevice:"重新連接噴氣裝置",
         line:"量測線段/Line",
         arc:"量測弧/Arc",
         spoint:"搜尋點/SPOINT",

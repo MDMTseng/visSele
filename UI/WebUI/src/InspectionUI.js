@@ -345,12 +345,19 @@ class AirControl extends React.Component {
     render() {
 
         if (this.state.websocketAir.readyState != this.state.websocketAir.OPEN) {
-            return <BASE_COM.IconButton
-                dict={EC_zh_TW}
-                addClass="layout black vbox"
-                text="Reconnect" onClick={() => {
-                this.websocketConnect(this.props.url);
-            }}/>;
+            return(
+            <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
+                    onClick={() => {this.websocketConnect(this.props.url);
+                    }}>
+
+            </BASE_COM.AButton>
+            );
+            // <BASE_COM.IconButton
+            //     dict={EC_zh_TW}
+            //     addClass="layout black vbox"
+            //     text="Reconnect" onClick={() => {
+            //     this.websocketConnect(this.props.url);
+            // }}/>;
         }
 
         return (

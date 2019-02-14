@@ -2,8 +2,11 @@ import React from 'react';
 import React_createClass from 'create-react-class';
 import { Icon } from 'antd';
 import {GetObjElement} from 'UTIL/MISC_Util';
-
+import{
+  Button as AntButton
+} from 'antd';
 import * as logX from 'loglevel';
+import EC_zh_TW from "../languages/zh_TW";
 let log = logX.getLogger(__filename);
 
 
@@ -316,7 +319,35 @@ export let DropDown = React_createClass({
     );
   }
 });
+export let AButton = React_createClass({
 
+  handleClick: function(event) {
+    this.props.onClick(event,this);
+  },
+  render: function() {
+
+    let translation = undefined;
+
+
+    translation = GetObjElement(this.props.dict,[this.props.dictTheme, this.props.text]);
+
+    if(translation===undefined)
+    {
+      translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
+    }
+
+    if(translation===undefined)
+    {
+      translation = this.props.text;
+    }
+
+    return <AntButton block type={this.props.type} shape="round" icon={this.props.icon} size={this.props.size} dict={EC_zh_TW}
+            onClick={this.handleClick()}>
+      {translation}
+    </AntButton>;
+
+  }
+});
 export let IconButton = React_createClass({
 
   handleClick: function(event) {
