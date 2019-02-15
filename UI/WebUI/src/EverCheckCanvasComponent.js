@@ -321,8 +321,21 @@ class renderUTIL
 
       this.drawpoint(ctx,eObject.pt1);
 
-      this.drawText(ctx,"D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
-      eObject.pt1.x,eObject.pt1.y);
+      
+      let text;
+      if(eObject.inspection_value!==undefined)
+      {
+        text = "D"+(eObject.inspection_value).toFixed(4)+unitConvert.unit;
+      
+      }
+      else
+      {
+        text = "D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit;
+      }
+
+
+      this.drawText(ctx,text,
+        eObject.pt1.x,eObject.pt1.y);
     }
   }
 
@@ -669,8 +682,16 @@ class renderUTIL
 
                 ctx.setLineDash([]);
               }
-
-              let text = ""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2);
+              
+              let text ="";
+              if(eObject.inspection_value!==undefined)
+              {
+                text =""+(eObject.inspection_value).toFixed(2)+"º";
+              }
+              else
+              {
+                text = ""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2);
+              }
               let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4*this.getPrimitiveSize();
               let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4*this.getPrimitiveSize();
               this.drawText(ctx,text,x,y);
@@ -703,9 +724,19 @@ class renderUTIL
 
               dispVec_normalized.x*=40*this.getPrimitiveSize();
               dispVec_normalized.y*=40*this.getPrimitiveSize();
-              this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
+
+              if(eObject.inspection_value!==undefined)
+              {
+                this.drawText(ctx,"R"+(eObject.inspection_value).toFixed(4)+unitConvert.unit,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
+              }
+              else
+              {
+                this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
+                  eObject.pt1.x+dispVec_normalized.x,
+                  eObject.pt1.y+dispVec_normalized.y);
+              }
                 
             
             }
@@ -1157,7 +1188,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       return;
     }
     //let inspectionReport = this.edit_DB_info.inspReport;
-    let inspectionReportList = this.edit_DB_info.inspReport.reports;
+    //let inspectionReportList = this.edit_DB_info.inspReport.reports;
+
+
+    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x)=>x.isCurObj);
+    this.edit_DB_info.inspReport.reports;
+
+
     let unitConvert;
 
     unitConvert={
@@ -1227,8 +1264,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
                 if(eObj.type === SHAPE_TYPE.measure)
                 {
                   let targetID = eObj.id;
-                  let inspMeasureTar = report.judgeReports.find((measure)=>
-                    (tar===undefined && measure.id === targetID));
+                  let inspMeasureTar = report.judgeReports.find((measure)=>(measure.id === targetID));
+                  if(inspMeasureTar===undefined)
+                  {
+                    return;
+                  }
                   let measureSet={
                     submargin1:eObj.submargin1
                   };
@@ -1277,12 +1317,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
             case INSPECTION_STATUS.SUCCESS:
             {
               eObj.color=this.colorSet.color_SUCCESS;
-              if(eObj.type === "measure")
+
+              if(eObj.type === SHAPE_TYPE.measure)
               {
                 let targetID = eObj.id;
-                let inspMeasureTar = report.judgeReports.reduce((tar,measure)=>
-                  (tar===undefined && measure.id === targetID)?measure:tar
-                  ,undefined);
+                let inspMeasureTar = report.judgeReports.find((measure)=>measure.id === targetID);
+                if(inspMeasureTar===undefined)break;
                 let measureSet={
                   submargin1:eObj.submargin1
                 };

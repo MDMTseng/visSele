@@ -10,7 +10,7 @@ import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {GetObjElement} from 'UTIL/MISC_Util';
 import dclone from 'clone';
 import * as logX from 'loglevel';
-let log = logX.getLogger(__filename);
+let log = logX.getLogger("InspectionEditorLogic");
 
 export class InspectionEditorLogic
 {
@@ -419,6 +419,13 @@ export class InspectionEditorLogic
           eObject.pt1.y = inspAdjObj.y;
           if(InspResult.isFlipped)
             eObject.angleDeg=-eObject.angleDeg;
+        }
+        break;
+
+        
+        case SHAPE_TYPE.measure:
+        {
+          eObject.inspection_value=inspAdjObj.value;
         }
         break;
       }

@@ -29,7 +29,7 @@ import * as log from 'loglevel';
 import t_enc from 'text-encoding';
 
 log.setLevel("info");
-log.getLogger("InspectionEditorLogic.js").setLevel("INFO");
+log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
 
 

@@ -149,9 +149,6 @@ function StateReducer(newState,action)
             }
 
             let reportStatisticState = newState.edit_info.reportStatisticState;
-            log.info(">>>trackingWindow>>",reportStatisticState.trackingWindow.length);
-            log.info(">>>historyReport>>",reportStatisticState.historyReport.length);
-            log.info(">>>inspReport.reports>>",inspReport.reports.length);
 
 
             reportStatisticState.trackingWindow.forEach((srep_inWindow)=>{
@@ -225,12 +222,17 @@ function StateReducer(newState,action)
                   //log.info(">>>>>",closeRep,singleReport);
 
 
+                  function valueAveIn(ave,new_val,datCount_before)
+                  {
+                    
+                      ave+=(1/(datCount_before+1))*(new_val-ave);
+                      return ave;
+                  }
                   
-                  closeRep.area+=(1/(closeRep.repeatTime+1))*(singleReport.area-closeRep.area);
-                  closeRep.cx+=(1/(closeRep.repeatTime+1))*(singleReport.cx-closeRep.cx);
-                  closeRep.cy+=(1/(closeRep.repeatTime+1))*(singleReport.cy-closeRep.cy);
+                  closeRep.area=valueAveIn(closeRep.area,singleReport.area,closeRep.repeatTime);
+                  closeRep.cx=valueAveIn(closeRep.cx,singleReport.cx,closeRep.repeatTime);
+                  closeRep.cy=valueAveIn(closeRep.cy,singleReport.cy,closeRep.repeatTime);
                   //closeRep.area+=(1/(closeRep.repeatTime+1))*(sjrep.area-cjrep.area);
-
 
                   closeRep.judgeReports.forEach((cjrep)=>{
                     let id = cjrep.id;
@@ -246,8 +248,43 @@ function StateReducer(newState,action)
                     cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
                   });
 
+                  closeRep.detectedLines.forEach((clrep)=>{
+                    let id = clrep.id;
+                    let slrep = singleReport.detectedLines.find((slrep)=>slrep.id==id);
+                    if(slrep===undefined)return;
 
-                  closeRep.seq.push(singleReport);//Push current report into the sequence
+                    
+                    clrep.cx=valueAveIn(clrep.cx,slrep.cx,closeRep.repeatTime);
+                    clrep.cy=valueAveIn(clrep.cy,slrep.cy,closeRep.repeatTime);
+                    clrep.vx=valueAveIn(clrep.vx,slrep.vx,closeRep.repeatTime);
+                    clrep.vy=valueAveIn(clrep.vy,slrep.vy,closeRep.repeatTime);
+                  });
+
+                  
+                  closeRep.detectedCircles.forEach((ccrep)=>{
+                    let id = ccrep.id;
+                    let screp = singleReport.detectedCircles.find((screp)=>screp.id==id);
+                    if(screp===undefined)return;
+                    //TODO: average the arc info
+                    //the arc info uses three points
+                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
+                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
+                    ccrep.r=valueAveIn(ccrep.r,screp.r,closeRep.repeatTime);
+                    ccrep.s=valueAveIn(ccrep.s,screp.s,closeRep.repeatTime);
+                  });
+
+                  
+                  closeRep.searchPoints.forEach((ccrep)=>{
+                    let id = ccrep.id;
+                    let screp = singleReport.searchPoints.find((screp)=>screp.id==id);
+                    if(screp===undefined)return;
+                    //TODO: average the arc info
+                    //the arc info uses three points
+                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
+                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
+                  });
+
+                  //closeRep.seq.push(singleReport);//Push current report into the sequence
                   closeRep.time_ms = currentTime_ms;
                   closeRep.repeatTime+=1;
                   closeRep.isCurObj=true;
@@ -261,7 +298,7 @@ function StateReducer(newState,action)
                   treport.time_ms = currentTime_ms;
                   treport.add_time_ms = currentTime_ms;
                   treport.repeatTime=0;
-                  treport.seq=[singleReport];
+                  //treport.seq=[singleReport];
                   treport.isCurObj=true;
                   reportStatisticState.trackingWindow.push(treport);
                 }
