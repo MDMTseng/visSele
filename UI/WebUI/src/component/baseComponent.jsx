@@ -3,6 +3,7 @@ import React_createClass from 'create-react-class';
 import { Icon } from 'antd';
 import {GetObjElement} from 'UTIL/MISC_Util';
 
+import dclone from 'clone';
 import * as logX from 'loglevel';
 let log = logX.getLogger(__filename);
 
@@ -179,7 +180,7 @@ export class JsonEditBlock extends React.Component{
   }
 
   render() {
-    this.tmp.object = JSON.parse(JSON.stringify(this.props.object));
+    this.tmp.object = dclone(this.props.object);
    //console.log("this.props.object:",this.props.object,this.tmp.object);
     var rows = this.composeObject(this.tmp.object,this.props.whiteListKey);
     return(

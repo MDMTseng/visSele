@@ -12,6 +12,7 @@ import {
 
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as log from 'loglevel';
+import dclone from 'clone';
 
 import {EV_UI_Canvas_Mouse_Location} from 'REDUX_STORE_SRC/actions/UIAct';
 
@@ -1155,7 +1156,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     {
       return;
     }
-    let inspectionReport = this.edit_DB_info.inspReport;
+    //let inspectionReport = this.edit_DB_info.inspReport;
+    let inspectionReportList = this.edit_DB_info.inspReport.reports;
     let unitConvert;
 
     unitConvert={
@@ -1199,7 +1201,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         },[]);
       }
 
-      inspectionReport.reports.forEach((report,idx)=>{
+      inspectionReportList.forEach((report,idx)=>{
         ctx.save();
         ctx.translate(report.cx,report.cy);
         ctx.rotate(-report.rotate);
@@ -1222,12 +1224,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
             {
               let minViolationIdx = Number.MAX_VALUE;
               this.edit_DB_info.list.forEach((eObj)=>{
-                if(eObj.type === "measure")
+                if(eObj.type === SHAPE_TYPE.measure)
                 {
                   let targetID = eObj.id;
-                  let inspMeasureTar = report.judgeReports.reduce((tar,measure)=>
-                    (tar===undefined && measure.id === targetID)?measure:tar
-                    ,undefined);
+                  let inspMeasureTar = report.judgeReports.find((measure)=>
+                    (tar===undefined && measure.id === targetID));
                   let measureSet={
                     submargin1:eObj.submargin1
                   };
@@ -1258,11 +1259,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       });
     }
 
-    inspectionReport.reports.forEach((report,idx)=>{
+    inspectionReportList.forEach((report,idx)=>{
       //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
       {
-        let listClone = JSON.parse(JSON.stringify(this.edit_DB_info.list)); 
+        let listClone = dclone(this.edit_DB_info.list); 
         
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         
@@ -1710,7 +1711,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
                 {
                   let pt_info = this.CandEditPointInfo;
                   this.CandEditPointInfo=null;
-                  this.EditShape=JSON.parse(JSON.stringify(pt_info.shape));//Deep copy
+                  this.EditShape=dclone(pt_info.shape);//Deep copy
                   this.EditPoint=this.EditShape[pt_info.key];
                   this.tmp_EditShape_id = this.EditShape.id;
                   this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
