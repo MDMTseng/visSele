@@ -7,6 +7,7 @@
     "@antv/data-set": "^0.10.1",
     "@antv/g2": "^3.4.8",
     "antd": "^3.11.6",
+    "clone": "^2.1.2",
     "create-react-class": "^15.6.3",
     "cytoscape": "^3.3.0",
     "cytoscape-cose-bilkent": "^4.0.0",
@@ -51,7 +52,7 @@
     "build-opt-android": "NODE_ENV=production NOTIMON_PRJ=deploy webpack --progress --colors --watch",
     "build-win-android": "set NODE_ENV=production&&set NOTIMON_PRJ=deploy&&webpack --progress --colors --watch",
     "dev": "webpack-dev-server --mode development --hot",
-    "dev_detail":"webpack-dev-server --mode development --hot --colors --progress --profile"
+    "dev_detail": "webpack-dev-server --mode development --hot --colors --progress --profile"
   },
   "repository": {
     "type": "git",

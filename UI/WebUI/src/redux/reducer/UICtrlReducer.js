@@ -6,8 +6,10 @@ import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
 import * as logX from 'loglevel';
+import dclone from 'clone';
 import { loadavg } from 'os';
-let log = logX.getLogger(__filename);
+
+let log = logX.getLogger("UICtrlReducer");
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
@@ -27,7 +29,10 @@ function Default_UICtrlReducer()
       _obj:new InspectionEditorLogic(),
       defInfo:[],
       inspReport:undefined,
-      reportStatisticState:{},
+      reportStatisticState:{
+        trackingWindow:[],
+        historyReport:[]
+      },
       sig360report:[],
       img:null,
 
@@ -102,6 +107,25 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
+
+
+    let keepInTrackingTime_ms=4000;
+    let currentDate = action.date;
+    let currentTime_ms = currentDate.getTime();
+
+    let camParam = newState.edit_info._obj.cameraParam;
+   // let mmpcampix = newState..cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    
+    let mmpcampix ;
+    if(camParam===undefined)
+    {
+      mmpcampix=undefined;
+    }
+    else
+    {
+      mmpcampix = camParam.mmpb2b/camParam.ppb2b;
+    }
+
     if(action.data.type === "binary_processing_group")
     {
       action.data.reports.forEach((report)=>
@@ -114,8 +138,137 @@ function StateReducer(newState,action)
             newState.edit_info=Object.assign({},newState.edit_info);
             //newState.report=action.data;
             newState.edit_info._obj.SetInspectionReport(report);
-            newState.edit_info.inspReport = newState.edit_info._obj.inspreport;
-  
+            let inspReport = newState.edit_info._obj.inspreport;
+
+            newState.edit_info.inspReport = inspReport;
+            inspReport.time_ms = currentTime_ms;
+
+            if(mmpcampix===undefined)
+            {
+              break;
+            }
+
+            let reportStatisticState = newState.edit_info.reportStatisticState;
+            log.info(">>>trackingWindow>>",reportStatisticState.trackingWindow.length);
+            log.info(">>>historyReport>>",reportStatisticState.historyReport.length);
+            log.info(">>>inspReport.reports>>",inspReport.reports.length);
+
+
+            reportStatisticState.trackingWindow.forEach((srep_inWindow)=>{
+              srep_inWindow.isCurObj=false;
+              //Reset the current object property, then we will check if there's a new similar report object as it.
+            });
+
+            
+            reportStatisticState.trackingWindow = //Check if the trackingWindow object is timeout
+              reportStatisticState.trackingWindow.filter((srep_inWindow)=>
+                {
+                  let tdiff = currentTime_ms - srep_inWindow.time_ms;
+                  if(tdiff<keepInTrackingTime_ms)
+                  {
+                    return true;
+                  }
+                  //if the time is longer than 4s then remove it from matchingWindow
+                  
+                  //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
+                  reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                  return false;
+                });
+            
+            if(inspReport.reports === undefined)
+            {
+              break;
+            }
+            
+            {//Do matching in tracking_window
+              inspReport.reports.forEach((singleReport)=>{
+                
+                let closeRep = reportStatisticState.trackingWindow.reduce((closeRep,srep_inWindow)=>{
+                  if(closeRep!==undefined)return closeRep;
+                  //Check direction consistency
+                  if(singleReport.isFlipped != srep_inWindow.isFlipped)
+                  {
+                    return closeRep;
+                  }
+
+                  //Check area consistency
+                  let areaDiff = singleReport.area/srep_inWindow.area;
+                  if(areaDiff>1.2 || areaDiff < 1/1.2)
+                  {
+                    return closeRep;
+                  }
+
+                  //Check retation consistency
+                  let angleDiff = singleReport.rotate - srep_inWindow.rotate;
+                  if(angleDiff>180)angleDiff=angleDiff-360;
+                  if(angleDiff>5 || angleDiff<-5)
+                  {
+                    return closeRep;
+                  }
+
+                  //Check position consistency
+                  let distance = Math.hypot(singleReport.cx - srep_inWindow.cx,singleReport.cy - srep_inWindow.cy);
+                
+                  if(distance>mmpcampix/2)
+                  {
+                    return closeRep;
+                  }
+                  //If we get here, which means the information is very similar.
+                  //return/mark the current object as same report object
+                  return srep_inWindow;
+                },undefined);
+
+                if(closeRep !== undefined)
+                {
+                  //blend the report with the existed report in tracking window  
+
+                  //log.info(">>>>>",closeRep,singleReport);
+
+
+                  
+                  closeRep.area+=(1/(closeRep.repeatTime+1))*(singleReport.area-closeRep.area);
+                  closeRep.cx+=(1/(closeRep.repeatTime+1))*(singleReport.cx-closeRep.cx);
+                  closeRep.cy+=(1/(closeRep.repeatTime+1))*(singleReport.cy-closeRep.cy);
+                  //closeRep.area+=(1/(closeRep.repeatTime+1))*(sjrep.area-cjrep.area);
+
+
+                  closeRep.judgeReports.forEach((cjrep)=>{
+                    let id = cjrep.id;
+                    let sjrep = singleReport.judgeReports.find((sjrep)=>sjrep.id==id);
+                    if(sjrep===undefined)return;
+
+                    let dataDiff = sjrep.value-cjrep.value;
+
+                    if(cjrep.subtype===SHAPE_TYPE.measure_subtype.angle)
+                    {
+                      if(dataDiff>180)dataDiff-=360;
+                    }
+                    cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
+                  });
+
+
+                  closeRep.seq.push(singleReport);//Push current report into the sequence
+                  closeRep.time_ms = currentTime_ms;
+                  closeRep.repeatTime+=1;
+                  closeRep.isCurObj=true;
+                }
+                else
+                {
+
+                  //If there is no report in tracking window similar to the current report
+                  //Add into the trackingWindow
+                  let treport = dclone(singleReport);
+                  treport.time_ms = currentTime_ms;
+                  treport.add_time_ms = currentTime_ms;
+                  treport.repeatTime=0;
+                  treport.seq=[singleReport];
+                  treport.isCurObj=true;
+                  reportStatisticState.trackingWindow.push(treport);
+                }
+              });
+            }
+
+
             if(false){
               let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
               let measure1 = newState.edit_info.reportStatisticState.measure1;
@@ -230,20 +383,15 @@ function StateReducer(newState,action)
         }
         break;
         case UISEV.SIG360_Report_Update:
-          
           newState.edit_info=Object.assign({},newState.edit_info);
           newState.edit_info._obj.SetSig360Report(action.data);
           newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
         break;
 
         case UISEV.Session_Lock:
-          
           newState.edit_info=Object.assign({},newState.edit_info);
           newState.edit_info.session_lock = (action.data);
         break;
-
-
-        
 
         case DefConfAct.EVENT.Shape_List_Update:
           newState.edit_info._obj.SetShapeList(action.data);
@@ -300,13 +448,13 @@ function StateReducer(newState,action)
             else
             {//Otherwise, we deepcopy the shape
               newState.edit_info.edit_tar_info = 
-                JSON.parse(JSON.stringify(newState.edit_info.list[tmpTarIdx]));
+                dclone(newState.edit_info.list[tmpTarIdx]);
             }
           }
           else
           {//We just added a shape, set it as an edit target
             newState.edit_info.edit_tar_info = 
-              JSON.parse(JSON.stringify(shape));
+              dclone(shape);
           }
 
           newState.edit_info=Object.assign({},newState.edit_info);
@@ -517,17 +665,23 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
   
   if(action.type === undefined || action.type.includes("@@redux/"))return state;
-
   let newState = Object.assign({},state);
+
+  var d = new Date();
 
   if(action.type==="ATBundle")
   {
-    action.data.reduce((state,action)=> StateReducer(state,action),newState);
+    newState = action.data.reduce((state,action)=>{
+      action.date=d;
+      return StateReducer(state,action);
+    },newState);
+    
     log.debug(newState);
     return newState;
   }
   else
   {
+    action.date=d;
     newState = StateReducer(newState,action);
     log.debug(newState);
     return newState;

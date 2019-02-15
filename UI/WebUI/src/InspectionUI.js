@@ -737,6 +737,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
+        reportStatisticState:state.UIData.edit_info.reportStatisticState
         //reportStatisticState:state.UIData.edit_info.reportStatisticState
 
     }
