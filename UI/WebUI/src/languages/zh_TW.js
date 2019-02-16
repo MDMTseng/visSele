@@ -6,7 +6,7 @@ export default {
         arc:"量測弧/Arc",
         spoint:"搜尋點/SPOINT",
         search_point:"搜尋點",
-
+        "ReconnectAirDevice:@1ms":"",
         apoint:"交點/APOINT",
         aux_point:"交點",
         '<':"< 返回",

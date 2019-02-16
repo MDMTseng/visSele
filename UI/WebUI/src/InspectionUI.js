@@ -18,7 +18,6 @@ import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/acti
 
 
 
-
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 
 import * as logX from 'loglevel';
@@ -346,18 +345,10 @@ class AirControl extends React.Component {
 
         if (this.state.websocketAir.readyState != this.state.websocketAir.OPEN) {
             return(
-            <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
+            <BASE_COM.AButton block text="ReconnectAirDevice:@1ms" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
                     onClick={() => {this.websocketConnect(this.props.url);
-                    }}>
-
-            </BASE_COM.AButton>
+                    }}/>
             );
-            // <BASE_COM.IconButton
-            //     dict={EC_zh_TW}
-            //     addClass="layout black vbox"
-            //     text="Reconnect" onClick={() => {
-            //     this.websocketConnect(this.props.url);
-            // }}/>;
         }
 
         return (
