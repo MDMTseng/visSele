@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www",
-    "mstart": "nodemon ./bin/www"
+    "start": "node ./runbin/www.js",
+    "mstart": "nodemon ./runbin/www.js"
   },
   "dependencies": {
     "cookie-parser": "~1.4.3",
