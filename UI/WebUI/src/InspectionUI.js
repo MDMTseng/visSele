@@ -345,7 +345,7 @@ class AirControl extends React.Component {
 
         if (this.state.websocketAir.readyState != this.state.websocketAir.OPEN) {
             return(
-            <BASE_COM.AButton block text="ReconnectAirDevice:@1ms" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
+            <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
                     onClick={() => {this.websocketConnect(this.props.url);
                     }}/>
             );
