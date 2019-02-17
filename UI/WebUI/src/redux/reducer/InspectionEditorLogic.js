@@ -8,8 +8,9 @@ import {
   
 import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {GetObjElement} from 'UTIL/MISC_Util';
+import dclone from 'clone';
 import * as logX from 'loglevel';
-let log = logX.getLogger(__filename);
+let log = logX.getLogger("InspectionEditorLogic");
 
 export class InspectionEditorLogic
 {
@@ -420,6 +421,13 @@ export class InspectionEditorLogic
             eObject.angleDeg=-eObject.angleDeg;
         }
         break;
+
+        
+        case SHAPE_TYPE.measure:
+        {
+          eObject.inspection_value=inspAdjObj.value;
+        }
+        break;
       }
       if(oriBase)//rotate back to original orientation
       {
@@ -535,7 +543,7 @@ export class InspectionEditorLogic
       if(aux_point.ref[0].keyTrace !== undefined)
       {
         point = GetObjElement(ref0_shape,aux_point.ref[0].keyTrace) ;
-        //point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+        //point.ref = dclone(aux_point.ref);//Deep copy
         //point.ref[0]._obj=ref0_shape;
       }
       else 
@@ -547,7 +555,7 @@ export class InspectionEditorLogic
             let shape_arc = ref0_shape;
             let arc = threePointToArc(shape_arc.pt1,shape_arc.pt2,shape_arc.pt3);
             point = arc;
-            point.ref = JSON.parse(JSON.stringify(aux_point.ref));//Deep copy
+            point.ref = dclone(aux_point.ref);//Deep copy
             point.ref[0]._obj=shape_arc;
           }
           break;

@@ -9,4 +9,6 @@ _OBJ =image_DXT.o image_helper.o SOIL.o stb_image_aug.o
 #target_bin=TestAlgebraicCircleFits
 target_a=SOIL.a
 
+ 
+FLAGS= -w -O3 -Wno-narrowing
 include $(MakeTemplate)
