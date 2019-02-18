@@ -1959,17 +1959,64 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   }
   //LOGV("edgeWSum:%f",edgeWSum);
 
-
-
-
-
-
   if(edgeWSum==0)return -1;
   edgePos/=edgeWSum;
 
+  int edgeMargin=(int)edgePos+1;
+  int edgeMarginS=0;
+  if((edgeMargin)*2>GradTableL)
+  {
+    edgeMargin=GradTableL -(edgeMargin);
+    edgeMarginS = GradTableL - (edgeMargin)*2;
+  }
 
-  *ret_edge_response=1;
+
+  edgeWSum=0;
+  edgePos=0;
   
+  for(int i=edgeMarginS;i<edgeMarginS+(edgeMargin)*2;i++)
+  {
+    
+    float diff = gradTable[i]-thres;
+    if(diff<0)diff=-diff;
+    //if(diff>10)continue;
+    float weight = 1/(diff*diff/100+1);
+    //printf("%g ",weight);
+    edgePos+=i*weight;
+    edgeWSum+=weight;
+  }
+  edgePos/=edgeWSum;
+  
+
+  if(ret_edge_response)
+  {
+
+    int avgPart1=0;
+    int avgPart2=0;
+
+    {
+      edgeMargin=(int)edgePos+1;
+      edgeMarginS=0;
+      if((edgeMargin)*2>GradTableL)
+      {
+        edgeMargin=GradTableL -(edgeMargin);
+        edgeMarginS = GradTableL - (edgeMargin)*2;
+      }
+
+      if(edgeMargin>3)edgeMargin=3;
+      for(int i=0;i<(edgeMargin);i++)
+      {
+        avgPart1+=gradTable[edgeMarginS+edgeMargin-i-1];
+        avgPart2+=gradTable[edgeMarginS+edgeMargin+i];
+      }
+    }
+
+    avgPart1-=avgPart2;
+    if(avgPart1<0)avgPart1=-avgPart1;
+
+    *ret_edge_response=((float)avgPart1)/(edgeMargin+1);
+  }
+
   gradVec = acvVecMult(gradVec,edgePos);
   *ret_point_opt = acvVecAdd(bkpoint,gradVec);
 
@@ -2306,7 +2353,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
 
           
-          LOGV("Line adj");
+          LOGV("Line adj:thres:%f",thres);
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
           
           int sptL=s_points.size();
@@ -2351,7 +2398,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               ContourGrid::ptInfo tmp_pt=s_points[j];
               s_points[j]=s_points[idx2Swap];
               s_points[idx2Swap]=tmp_pt;
-              s_points[j].edgeRsp=1;
+              //s_points[j].edgeRsp=1;
             }
 
             acv_Line tmp_line;
@@ -2367,13 +2414,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               float abs_diff=(diff<0)?-diff:diff;
               if(abs_diff>2)
               {
-                s_points[j].edgeRsp=0;
+                //s_points[j].edgeRsp=0;
                 continue;
               }
               sigma_count++;
               sigma_sum+=diff*diff;
               
-              s_points[j].edgeRsp=1/(abs_diff*abs_diff+1);
+              //s_points[j].edgeRsp=1/(abs_diff*abs_diff+1);
             }
             sigma_sum=sqrt(sigma_sum/sigma_count);
             if(minSigma>sigma_sum)
@@ -2395,7 +2442,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               float dist  = acvDistance_Signed(line_cand,s_points[i].pt);
               if(dist<0)dist=-dist;
               s_points[i].tmp =  dist;
-              s_points[i].edgeRsp=1;
+              //s_points[i].edgeRsp=1;
               
             }
 
@@ -2418,7 +2465,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
                   return a.tmp < b.tmp; 
               });
             
-            float distThres = s_points[s_points.size()/2].tmp+0.5;
+            float distThres = s_points[s_points.size()/2].tmp+1;
             LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
 
             for(int i=s_points.size()/2;i<s_points.size();i++)

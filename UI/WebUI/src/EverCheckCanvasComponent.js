@@ -1302,7 +1302,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
 
     let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x)=>x.isCurObj);
-    this.edit_DB_info.inspReport.reports;
+    //this.edit_DB_info.inspReport.reports;
 
 
     let unitConvert;
