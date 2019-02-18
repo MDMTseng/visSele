@@ -2003,7 +2003,7 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
         edgeMarginS = GradTableL - (edgeMargin)*2;
       }
 
-      if(edgeMargin>3)edgeMargin=3;
+      if(edgeMargin>3)edgeMargin=3;//we just want to calculate the slop, so don't make it to wide
       for(int i=0;i<(edgeMargin);i++)
       {
         avgPart1+=gradTable[edgeMarginS+edgeMargin-i-1];
@@ -2366,7 +2366,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             //And the points on the image is still the distorted data
             acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
             //int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
-            int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,1,thres,&ret_point_opt,&edgeResponse);
+            int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,3,thres,&ret_point_opt,&edgeResponse);
             if(ret_val==0)
             {
               int X_=round(ret_point_opt.X);
