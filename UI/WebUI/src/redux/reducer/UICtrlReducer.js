@@ -31,7 +31,8 @@ function Default_UICtrlReducer()
       inspReport:undefined,
       reportStatisticState:{
         trackingWindow:[],
-        historyReport:[]
+        historyReport:[],
+        statisticValue:undefined
       },
       sig360report:[],
       img:null,
@@ -166,9 +167,9 @@ function StateReducer(newState,action)
                     return true;
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
-                  
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
                   reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                  
                   return false;
                 });
             
@@ -178,6 +179,11 @@ function StateReducer(newState,action)
             }
             
             {//Do matching in tracking_window
+
+
+              //new inspection report >
+              //  [update/insert]> tracking_window >
+              //     [if no update after 4s]> historyReport
               inspReport.reports.forEach((singleReport)=>{
                 
                 let closeRep = reportStatisticState.trackingWindow.reduce((closeRep,srep_inWindow)=>{
@@ -394,12 +400,39 @@ function StateReducer(newState,action)
 
                 newState.edit_info=Object.assign({},newState.edit_info);
                 newState.edit_info._obj.SetDefInfo(report);
-                
+                let reportStatisticState = newState.edit_info.reportStatisticState;
+
                 newState.edit_info.edit_tar_info = null;
                 
                 newState.edit_info.list=newState.edit_info._obj.shapeList;
                 newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
                 
+
+                
+                //reportStatisticState.statisticValue
+                let measureList=
+                  dclone(newState.edit_info.list.filter((feature)=>
+                    feature.type==SHAPE_TYPE.measure ))
+                  .map((feature)=>{
+                    feature.statistic={
+                      count : 0,
+                      //those value should be undefined, but since the count is 0 so the following calc should ignore those value
+                      mean: 0,
+                      variance: 0,
+                      //
+                      CP:0,
+                      CA:0,
+                      CPU:0,
+                      CPL:0,
+                      CPK:0,
+                    }
+                    return feature;
+                  });
+                  reportStatisticState.statisticValue={
+                    
+                    measureList:measureList
+                  }
+                log.info(reportStatisticState.statisticValue);
               }
               break;
               case "camera_calibration":

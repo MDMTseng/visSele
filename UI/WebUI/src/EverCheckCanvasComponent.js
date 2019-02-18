@@ -325,17 +325,22 @@ class renderUTIL
       let text;
       if(eObject.inspection_value!==undefined)
       {
-        text = "D"+(eObject.inspection_value).toFixed(4)+unitConvert.unit;
-      
+        text = "D"+(eObject.inspection_value*unitConvert.mult).toFixed(4)+unitConvert.unit;
+          
+        text +=":"+((eObject.inspection_value-eObject.value)/eObject.margin*100).toFixed(2)+"%";
+        
+        this.drawText(ctx,text,
+          eObject.pt1.x,eObject.pt1.y);
       }
       else
       {
         text = "D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit;
+          
+        this.drawText(ctx,text,
+          eObject.pt1.x,eObject.pt1.y);
       }
 
 
-      this.drawText(ctx,text,
-        eObject.pt1.x,eObject.pt1.y);
     }
   }
 
@@ -687,6 +692,9 @@ class renderUTIL
               if(eObject.inspection_value!==undefined)
               {
                 text =""+(eObject.inspection_value).toFixed(2)+"º";
+                let angleDiff = eObject.inspection_value-eObject.value;
+                if(angleDiff>180)angleDiff-=360;
+                text +=":"+((angleDiff)/eObject.margin*100).toFixed(2)+"%";
               }
               else
               {
@@ -727,9 +735,13 @@ class renderUTIL
 
               if(eObject.inspection_value!==undefined)
               {
-                this.drawText(ctx,"R"+(eObject.inspection_value).toFixed(4)+unitConvert.unit,
+                let text = "R"+(eObject.inspection_value).toFixed(4)+unitConvert.unit;
+                text +=":"+((eObject.inspection_value-eObject.value)/eObject.margin*100).toFixed(2)+"%";
+
+                this.drawText(ctx,text,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
+                
               }
               else
               {
