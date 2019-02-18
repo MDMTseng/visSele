@@ -73,6 +73,20 @@ class APPMain extends React.Component{
           key="INSP MODE" addClass="lblue width4"
           text="INSP MODE" onClick={this.props.EV_UI_Insp_Mode}/>);
 
+        
+          
+      UI.push(
+        <BASE_COM.Button
+          key="Reconnect CAM" addClass="lblue width4"
+          text="Reconnect CAM" onClick={()=>{
+
+            this.props.ACT_WS_SEND(this.props.WS_ID,"RC",0,{
+              target:"camera_ez_reconnect",
+              req_id:"asdadkks"
+            });
+                
+          }}/>);
+          
       UI.push(
         <BASE_COM.Button
           key="CAM calib" addClass="lblue width4"
@@ -175,7 +189,7 @@ class APPMasterX extends React.Component{
           case "SS":
           {
             let SS =BPG_Protocol.raw2obj(evt);
-            // log.debug(header);
+            log.info(SS);
             if(SS.data.start)
             {
               this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));

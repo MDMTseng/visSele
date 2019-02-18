@@ -84,7 +84,8 @@ export function ReduxStoreSetUp(presistStore){
   const middleware = applyMiddleware(thunk,
     new MWWebSocket({}),
     new ECStateMachine({ev_state_update:"ev_state_update",state_config:ST}),
-    new ActionThrottle({time:100,posEdge:true}));
+    new ActionThrottle({time:100,posEdge:true}),
+    );
 
   return createStore(reducer_C,presistStore,middleware);
 }

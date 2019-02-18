@@ -5,7 +5,7 @@ import {GetObjElement} from 'UTIL/MISC_Util';
 
 import dclone from 'clone';
 import * as logX from 'loglevel';
-let log = logX.getLogger(__filename);
+let log = logX.getLogger("baseComponent");
 
 
 export class JsonElement extends React.Component{

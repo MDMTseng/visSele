@@ -2,7 +2,7 @@
 import {BPG_WS_EVENT,UI_SM_EVENT} from '../actions/UIAct';
 
 import * as logX from 'loglevel';
-let log = logX.getLogger(__filename);
+let log = logX.getLogger("ActionThrottle");
 
 
 export const ActionThrottle = ATData => store => next => action => {

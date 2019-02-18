@@ -21,7 +21,7 @@ import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 
 import * as logX from 'loglevel';
 
-let log = logX.getLogger(__filename);
+let log = logX.getLogger("InspectionUI");
 
 import {
     Tag, Input, Select, Upload, Button, Menu, Dropdown, Icon,
