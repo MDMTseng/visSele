@@ -36,8 +36,10 @@ export default {
     measure:{
 
         value:"目標",
-        margin:"出貨公差",
-        submargin1:"生產公差",
+        USL:"規格上限",
+        LSL:"規格下限",
+        UCL:"管制上限",
+        LCL:"管制下限",
         docheck:"必要判定",
         quadrant:"量測象限"
     }

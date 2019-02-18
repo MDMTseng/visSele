@@ -111,7 +111,8 @@ typedef struct FeatureReport_judgeDef{
   int OBJ1_id;
   int OBJ2_id;
   float targetVal;
-  float targetVal_margin;
+  float USL,LSL;
+  float UCL,LCL;
   
   union data{
     struct ANGLE{

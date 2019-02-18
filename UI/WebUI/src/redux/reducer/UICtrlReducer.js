@@ -706,8 +706,10 @@ function StateReducer(newState,action)
                   {
                     pt1:{x:0,y:0},
                     value:0,
-                    submargin1:0,
-                    margin:1
+                    USL:0,
+                    LSL:0,
+                    UCL:0,
+                    LCL:0,
                   });
               if(acceptData)
                 obj[keyTrace[keyTrace.length-1]] = cand;

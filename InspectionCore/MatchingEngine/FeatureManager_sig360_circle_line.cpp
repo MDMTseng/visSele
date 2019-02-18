@@ -441,7 +441,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
   judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
   LOGV("judge:%s  OBJ1:%d, OBJ2:%d subtype:%d",judge.name,judge.OBJ1_id,judge.OBJ2_id,judge.measure_type);
   //LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judge.OBJ1_type,judge.OBJ1_idx,judge.OBJ2_type,judge.OBJ2_idx);
-  LOGV("val:%f  margin:%f",judge.targetVal,judge.targetVal_margin);
+  LOGV("val:%f  USL:%f,LSL:%f",judge.targetVal,judge.USL,judge.LSL);
 
   FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
   int idx1 = FindFeatureReportIndex(report,judge.OBJ1_id, &type1);
@@ -498,12 +498,14 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
           angleDiff=M_PI-angleDiff;
         }
         judgeReport.measured_val=180*angleDiff/M_PI;//Convert to degree
-        angleDiff = judgeReport.measured_val - judgeReport.def->targetVal;
-        if(angleDiff<-180)angleDiff+=360;
-        if(angleDiff>180)angleDiff-=360;
-        if(angleDiff<0)angleDiff=-angleDiff;
-        if(angleDiff>90)angleDiff=180-angleDiff;
-        if(angleDiff>judgeReport.def->targetVal_margin)
+
+
+        
+        
+        //angleDiff = judgeReport.measured_val - judgeReport.def->LSL;
+        
+        if(judgeReport.measured_val >judgeReport.def->USL || 
+           judgeReport.measured_val <judgeReport.def->LSL)
         {
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
         }
@@ -540,10 +542,10 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
           judgeReport.measured_val=acvDistance(pt1,pt2);
 
         }
-        float diff = judgeReport.measured_val - judgeReport.def->targetVal;
-        if(diff < 0)diff = -diff;
-        
-        if(diff>judgeReport.def->targetVal_margin)
+        //float diff = judgeReport.measured_val - judgeReport.def->targetVal;
+        //if(diff < 0)diff = -diff;
+        if(judgeReport.measured_val >judgeReport.def->USL || 
+           judgeReport.measured_val <judgeReport.def->LSL)
         {
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
         }
@@ -562,9 +564,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
       judgeReport.measured_val=cir.circle.circle.radius;
       
     
-      float diff = judgeReport.measured_val - judgeReport.def->targetVal;
-      if(diff < 0)diff = -diff;
-      if(diff>judgeReport.def->targetVal_margin)
+      if(judgeReport.measured_val >judgeReport.def->USL || 
+        judgeReport.measured_val <judgeReport.def->LSL)
       {
         judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
       }
@@ -1162,7 +1163,8 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
 
   judge.targetVal=*JxNUM(judge_obj,"value");
 
-  judge.targetVal_margin=*JxNUM(judge_obj,"margin");
+  judge.USL=*JxNUM(judge_obj,"USL");
+  judge.LSL=*JxNUM(judge_obj,"LSL");
 
   
   judge.OBJ1_id = (int)*JxNUM(judge_obj,"ref[0].id");
@@ -1171,7 +1173,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   if(pnum == NULL)judge.OBJ2_id = -1;
   else {judge.OBJ2_id = *pnum;}
 
-  LOGV("value:%f margin:%f id1:%d id2:%d",judge.targetVal,judge.targetVal_margin,judge.OBJ1_id,judge.OBJ2_id);
+  LOGV("value:%f USL:%f LSL:%f id1:%d id2:%d",judge.targetVal,judge.USL,judge.LSL,judge.OBJ1_id,judge.OBJ2_id);
   judgeList.push_back(judge);
   return 0;
 }
@@ -1342,7 +1344,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     for(int i=0;i<judgeList.size();i++)
     {
       judgeList[i].targetVal*=ppmm;
-      judgeList[i].targetVal_margin*=ppmm;
+      judgeList[i].LSL*=ppmm;
+      judgeList[i].USL*=ppmm;
     }
     
     for(int i=0;i<auxPointList.size();i++)
@@ -2694,38 +2697,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         report.def = &(auxPointList[j]);
         detectedAuxPoints.push_back(report);
       }
-      for(int j=0;j<judgeList.size();j++)
-      {
-        FeatureReport_judgeDef judge= judgeList[j];
-        
-        
-        switch(judge.measure_type)
-        {
-          case FeatureReport_judgeDef::AREA :
-          {
-            judge.targetVal*=ppmm*ppmm;
-            judge.targetVal_margin*=ppmm*ppmm;
-          }
-          break;
-          case FeatureReport_judgeDef::DISTANCE :
-          case FeatureReport_judgeDef::SIGMA :
-          case FeatureReport_judgeDef::RADIUS :
-          {
-            judge.targetVal*=ppmm;
-            judge.targetVal_margin*=ppmm;
-          }
-          break;
-          case FeatureReport_judgeDef::ANGLE :
-          case FeatureReport_judgeDef::NA :
-          {
-          }
-          break;
-        }
-        FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judge);
-        report.def = &(judgeList[j]);
-        judgeReports.push_back(report);
-      }
-
 
 
 
@@ -2758,30 +2729,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             acvVecMult(detectedAuxPoints[i].pt,mmpp);
         }
 
-        for(int i=0;i<judgeReports.size();i++)
+        for(int j=0;j<judgeList.size();j++)
         {
-          switch(judgeReports[i].def->measure_type)
-          {
-            case FeatureReport_judgeDef::AREA :
-            {
-              judgeReports[i].measured_val*=mmpp*mmpp;
-            }
-            break;
-            case FeatureReport_judgeDef::DISTANCE :
-            case FeatureReport_judgeDef::SIGMA :
-            case FeatureReport_judgeDef::RADIUS :
-            {
-              judgeReports[i].measured_val*=mmpp;
-            }
-            break;
-            case FeatureReport_judgeDef::ANGLE :
-            case FeatureReport_judgeDef::NA :
-            {
-            }
-            break;
-          }
+          FeatureReport_judgeDef judge= judgeList[j];
+          
+          FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judge);
+          report.def = &(judgeList[j]);
+          judgeReports.push_back(report);
         }
-
       }
      
 

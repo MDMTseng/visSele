@@ -67,7 +67,7 @@ class CanvasComponent extends React.Component {
     if(this.ec_canvas  !== undefined)
     {
       console.log("updateCanvas>>",props.edit_info);
-      if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
+      //if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
         this.ec_canvas.SetState(ec_state);
@@ -175,8 +175,11 @@ class APP_DEFCONF_MODE extends React.Component{
             //pt1:null,
             angleDeg:"input-number",
             value:"input-number",
-            submargin1:"input-number",
             margin:"input-number",
+            USL:"input-number",
+            LSL:"input-number",
+            UCL:"input-number",
+            LCL:"input-number",
             quadrant:"div",
             docheck:"checkbox",
             width:"input-number",
