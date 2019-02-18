@@ -5,6 +5,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
+import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import dclone from 'clone';
 import { loadavg } from 'os';
@@ -27,7 +28,6 @@ function Default_UICtrlReducer()
     edit_info:{
       defModelPath:"data/cache_def",
       _obj:new InspectionEditorLogic(),
-      defInfo:[],
       inspReport:undefined,
       reportStatisticState:{
         trackingWindow:[],
@@ -252,6 +252,24 @@ function StateReducer(newState,action)
                       if(dataDiff>180)dataDiff-=360;
                     }
                     cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
+
+
+                    let defInfo = newState.edit_info.list;
+                    let sj_def = defInfo.find((sj_def)=>sj_def.id==id);
+                    if(sj_def===undefined)return;
+
+                    if(cjrep.value !== cjrep.value)//NAN
+                    {
+                      cjrep.status=INSPECTION_STATUS.NA;
+                    }
+                    else if(cjrep.value<sj_def.USL && cjrep.value>sj_def.LSL)
+                    {
+                      cjrep.status=INSPECTION_STATUS.SUCCESS;
+                    }
+                    else
+                    {
+                      cjrep.status=INSPECTION_STATUS.FAILURE;
+                    }
                   });
 
                   closeRep.detectedLines.forEach((clrep)=>{

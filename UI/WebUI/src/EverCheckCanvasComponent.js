@@ -110,16 +110,21 @@ class renderUTIL
   }
   getIndicationLineSize()
   {
-    return 4*this.getPrimitiveSize();
+    return 8*this.getPrimitiveSize();
   }
   getSearchDirectionLineSize()
   {
     return 8*this.getPrimitiveSize();
   }
-  getFontStyle(size=this.renderParam.font_Base_Size)
+  
+  getFontHeightPx(size=this.renderParam.font_Base_Size)
   {
-    return this.renderParam.font_Style + 
-    size*this.renderParam.size_Multiplier*this.get_mmpp()+"px Arial";
+    return size*this.renderParam.size_Multiplier*this.get_mmpp();
+  }
+
+  getFontStyle(size_px=this.getFontHeightPx())
+  {
+    return this.renderParam.font_Style + size_px+"px Arial";
   }
 
   setEditor_db_obj(editor_db_obj)
@@ -250,12 +255,27 @@ class renderUTIL
   drawLineArrow(ctx,x1,y1,x2,y2)
   {
   }
+  
+  drawText(ctx,text,x,y)
+  {
+    ctx.fillText(text,x,y);
+    ctx.strokeStyle="black";
+    ctx.lineWidth=this.getIndicationLineSize();
+    ctx.strokeText(text,x,y);
+  }
+
+  draw_Text(ctx,text,scale,x,y)
+  {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillText(text, 0, 0);
+    ctx.strokeText(text,0,0);
+    ctx.restore();
+  }
 
   drawMeasureDistance(ctx,eObject,refObjs,shapeList,unitConvert)
   {
-    ctx.lineWidth=this.getIndicationLineSize();
-              
-    ctx.font=this.getFontStyle();
 
     let alignLine=null;
     let point_onAlignLine=null;
@@ -322,22 +342,44 @@ class renderUTIL
       this.drawpoint(ctx,eObject.pt1);
 
       
+      let fontPx = this.getFontHeightPx();
+      ctx.font=this.getFontStyle(1);
+      ctx.strokeStyle="black";
+      ctx.lineWidth=this.getIndicationLineSize();
       let text;
       if(eObject.inspection_value!==undefined)
       {
         text = "D"+(eObject.inspection_value*unitConvert.mult).toFixed(4)+unitConvert.unit;
-          
-        text +=":"+((eObject.inspection_value-eObject.value)/eObject.margin*100).toFixed(2)+"%";
         
-        this.drawText(ctx,text,
-          eObject.pt1.x,eObject.pt1.y);
+        let marginPC = (eObject.inspection_value>eObject.value)?
+          (eObject.inspection_value-eObject.value)/(eObject.USL-eObject.value):
+          -(eObject.inspection_value-eObject.value)/(eObject.LSL-eObject.value);
+        text +=":"+(marginPC*100).toFixed(1)+"%";
+        
+        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y); 
       }
       else
       {
-        text = "D"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit;
-          
-        this.drawText(ctx,text,
-          eObject.pt1.x,eObject.pt1.y);
+        ctx.save();
+        let Y_offset = 0;
+            
+
+        let text = "D"+eObject.value.toFixed(4)+unitConvert.unit;
+        
+        //log.info( eObject,ctx.measureText(text));
+        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y);
+        Y_offset+=fontPx/2;
+        fontPx/=2;
+
+        text = "L:"+eObject.LSL*unitConvert.mult.toFixed(3)+unitConvert.unit+" U:"+eObject.USL*unitConvert.mult.toFixed(3)+unitConvert.unit;
+        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+        Y_offset+=fontPx;
+        
+
+        text = "Now:"+(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(4)+unitConvert.unit;
+        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+
+
       }
 
 
@@ -363,15 +405,6 @@ class renderUTIL
     ctx.closePath();
     //ctx.stroke();
   }
-  drawText(ctx,text,x,y)
-  {
-    ctx.font=this.getFontStyle();
-    ctx.fillText(text,x,y);
-    ctx.strokeStyle="black";
-    ctx.lineWidth=this.getIndicationLineSize();
-    ctx.strokeText(text,x,y);
-  }
-
   drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1})
   {
     eObjects.forEach((eObject)=>{
@@ -688,22 +721,58 @@ class renderUTIL
                 ctx.setLineDash([]);
               }
               
-              let text ="";
+              let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4*this.getPrimitiveSize();
+              let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4*this.getPrimitiveSize();
+
+
+              
+              let fontPx = this.getFontHeightPx();
+              ctx.font=this.getFontStyle(1);
+              let text;
               if(eObject.inspection_value!==undefined)
               {
+                
                 text =""+(eObject.inspection_value).toFixed(2)+"º";
-                let angleDiff = eObject.inspection_value-eObject.value;
-                if(angleDiff>180)angleDiff-=360;
-                text +=":"+((angleDiff)/eObject.margin*100).toFixed(2)+"%";
+
+                let marginPC = (eObject.inspection_value>eObject.value)?
+                (eObject.inspection_value-eObject.value)/(eObject.USL-eObject.value):
+                -(eObject.inspection_value-eObject.value)/(eObject.LSL-eObject.value);
+                text +=":"+(marginPC*100).toFixed(1)+"%";
+
+
+                
+                ctx.strokeStyle="black";
+                ctx.lineWidth=this.getIndicationLineSize();
+                this.draw_Text(ctx,text,fontPx,
+                x,
+                y);
               }
               else
               {
-                text = ""+(measureDeg).toFixed(2)+"º ±"+(eObject.margin).toFixed(2);
+                ctx.save();
+                let Y_offset = 0;
+                    
+                ctx.strokeStyle="black";
+                ctx.lineWidth=this.getIndicationLineSize();
+        
+                let text = "R"+eObject.value.toFixed(4)+"º";
+                
+                //log.info( eObject,ctx.measureText(text));
+                this.draw_Text(ctx,text,fontPx,x,y);
+                Y_offset+=fontPx/2;
+                fontPx/=2;
+        
+                text = "L:"+eObject.LSL.toFixed(3)+"º U:"+eObject.USL.toFixed(3)+"º";
+                this.draw_Text(ctx,text,fontPx,x,y+Y_offset);
+                Y_offset+=fontPx;
+                
+        
+                text = "Now:"+(measureDeg).toFixed(4)+"º";
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+        
+        
               }
-              let x = eObject.pt1.x+(eObject.pt1.x - srcPt.x)/dist*4*this.getPrimitiveSize();
-              let y = eObject.pt1.y+(eObject.pt1.y - srcPt.y)/dist*4*this.getPrimitiveSize();
-              this.drawText(ctx,text,x,y);
-              //this.drawArcArrow(ctx,srcPt.x,srcPt.y,100,1,0,true);
+
             }
             break;
             
@@ -733,23 +802,52 @@ class renderUTIL
               dispVec_normalized.x*=40*this.getPrimitiveSize();
               dispVec_normalized.y*=40*this.getPrimitiveSize();
 
+
+
+              let fontPx = this.getFontHeightPx();
+              ctx.font=this.getFontStyle(1);
+              let text;
               if(eObject.inspection_value!==undefined)
               {
-                let text = "R"+(eObject.inspection_value).toFixed(4)+unitConvert.unit;
-                text +=":"+((eObject.inspection_value-eObject.value)/eObject.margin*100).toFixed(2)+"%";
+                let text = "R"+(eObject.inspection_value*unitConvert.mult).toFixed(4)+unitConvert.unit;
+                let marginPC = (eObject.inspection_value>eObject.value)?
+                (eObject.inspection_value-eObject.value)/(eObject.USL-eObject.value):
+                -(eObject.inspection_value-eObject.value)/(eObject.LSL-eObject.value);
+                text +=":"+(marginPC*100).toFixed(1)+"%";
 
-                this.drawText(ctx,text,
+
+                ctx.strokeStyle="black";
+                ctx.lineWidth=this.getIndicationLineSize();
+                this.draw_Text(ctx,text,fontPx,
                 eObject.pt1.x+dispVec_normalized.x,
                 eObject.pt1.y+dispVec_normalized.y);
-                
               }
               else
               {
-                this.drawText(ctx,"R"+(arc.r*unitConvert.mult).toFixed(4)+"±"+(eObject.margin*unitConvert.mult).toFixed(4)+unitConvert.unit,
-                  eObject.pt1.x+dispVec_normalized.x,
-                  eObject.pt1.y+dispVec_normalized.y);
-              }
+                ctx.save();
+                let Y_offset = 0;
+                    
+                ctx.strokeStyle="black";
+                ctx.lineWidth=this.getIndicationLineSize();
+        
+                let text = "R"+eObject.value.toFixed(4)+unitConvert.unit;
                 
+                //log.info( eObject,ctx.measureText(text));
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y);
+                Y_offset+=fontPx/2;
+                fontPx/=2;
+        
+                text = "L:"+eObject.LSL*unitConvert.mult.toFixed(3)+unitConvert.unit+" U:"+eObject.USL*unitConvert.mult.toFixed(3)+unitConvert.unit;
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+                Y_offset+=fontPx;
+                
+        
+                text = "Now:"+(arc.r*unitConvert.mult).toFixed(4)+unitConvert.unit;
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+        
+        
+              }
+
             
             }
           }
