@@ -15,11 +15,7 @@ import G2 from '@antv/g2';
 import DataSet from '@antv/data-set';
 
 import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/actions/UIAct';
-
-
-
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
-
 import * as logX from 'loglevel';
 
 let log = logX.getLogger(__filename);
@@ -27,7 +23,8 @@ let log = logX.getLogger(__filename);
 import {
     Tag, Input, Select, Upload, Button, Menu, Dropdown, Icon,
 } from 'antd';
-
+const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
+const MDB_LOCAL="mongodb://localhost:27017/db_hy";
 const ButtonGroup = Button.Group;
 
 const FileProps = {
@@ -57,6 +54,49 @@ const selectAfter = (
 const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
+
+class DB extends React.Component {
+    constructor(props) {
+        super(props);
+        this.resultDB=undefined;
+        this.state = {
+            db_open: false,
+            resultX:undefined
+        }
+    }
+    componentDidMount() {
+
+    }
+    echoTime(){
+        return ""+new Date().getSeconds();
+    }
+    query(){
+        this.resultDB="[!]";
+        fetch('http://127.0.0.1:4000/gui', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({query: "{ hello }"})
+        }).then(r => r.json()).then((datax) => {
+            console.log('[O]DB data returned:', JSON.stringify(datax));
+
+            this.resultDB=JSON.stringify(datax);
+        });
+        return this.resultDB;
+    }
+    render() {
+        return (
+            <div style={{'display':'inline-block'}}>
+                {/*{this.echoTime()}*/}
+                <p>
+                {/*{this.query()}*/}
+                </p>
+            </div>
+        );
+    }
+}
 class OK_NG_BOX extends React.Component {
     constructor(props) {
         super(props);
@@ -150,6 +190,14 @@ class ObjInfoList extends React.Component {
                     defaultSelectedKeys={['functionMenu']}
                     defaultOpenKeys={['functionMenu']}
                     mode="inline">
+                    <SubMenu style={{'text-align': 'left'}} key="DBMenu"
+                             title={<span><Icon type="setting"/><span>資料庫操作</span></span>}>
+                        <DB
+                            url={MDB_ATLAS}
+                            checkResult2AirAction={this.props.checkResult2AirAction}
+
+                        />
+                    </SubMenu>
                     <SubMenu style={{'text-align': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
                         <AirControl

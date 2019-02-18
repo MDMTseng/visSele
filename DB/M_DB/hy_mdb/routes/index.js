@@ -3,6 +3,7 @@ var router = express.Router();
 
 var dbModel = require('../dbModels/dataModel.js');
 
+
 // router.get('/list', function(req, res, next) {
 //   dbModel.find(function(err, data){
 //     if(err){ return console.log(err) }

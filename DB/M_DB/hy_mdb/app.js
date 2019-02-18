@@ -1,3 +1,5 @@
+
+
 var createError = require('http-errors');
 var express = require('express');
 var path = require('path');
@@ -12,6 +14,36 @@ var app = express();
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'pug');
+
+let graphqlHTTP = require('express-graphql');
+let { buildSchema } = require('graphql');
+
+let schema = buildSchema(`
+  type Query {
+    hello: String
+  }
+`);
+let root = {
+  hello: () => {
+    return 'Hello world!';
+  },
+};
+// app.use(bodyParser.text({
+//   type: 'application/graphql'
+// }));
+
+app.post('/gq', (req, res) => {
+  graphql(schema, req.body).then((result) => {
+    res.send(JSON.stringify(result, null, 2));
+  });
+});
+
+app.use('/graphql', graphqlHTTP({
+  schema: schema,
+  rootValue: root,
+  graphiql: true,
+}));
+
 
 app.use(logger('dev'));
 // app.use(logger('debug'));
