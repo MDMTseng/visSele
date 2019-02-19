@@ -133,7 +133,7 @@ class ObjInfoList extends React.Component {
                         <AirControl
                             url={"ws://192.168.2.2:5213"}
                             checkResult2AirAction={this.props.checkResult2AirAction}
-
+                            WSCMD_CB={this.props.WSCMD_CB}
                         />
                     </SubMenu>
 
@@ -154,7 +154,7 @@ class AirControl extends React.Component {
             websocketAir: undefined,
             websocketAirTime: 10,
             STOP: true,
-            transCameraImage: false
+            DoImageTransfer: false
         }
     }
 
@@ -227,7 +227,13 @@ class AirControl extends React.Component {
     }
 
     getCameraImage_StartStop() {
-        log.INFO("fun getCameraImage_StartStop click");
+        log.info("fun getCameraImage_StartStop click");
+        
+        this.state.DoImageTransfer = !this.state.DoImageTransfer;
+        this.setState(Object.assign({}, this.state));
+
+        this.props.WSCMD_CB("ST", 0, {DoImageTransfer: this.state.DoImageTransfer});
+        //this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0, {DoImageTransfer: false});
     }
 
     blowAir_StartStop() {
@@ -335,7 +341,7 @@ class AirControl extends React.Component {
             <div>
                 <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.getCameraImage_StartStop()}>
-                    傳輸相機影像(I): {this.state.transCameraImage ? " 暫停" : " 啟動"}
+                    傳輸相機影像(I): {this.state.DoImageTransfer ? " 啟動":" 暫停"}
                 </Button>
                 <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.blowAir_StartStop()}>
@@ -696,7 +702,11 @@ class APP_INSP_MODE extends React.Component {
                 addClass="layout black vbox"
                 text="<" onClick={this.props.ACT_EXIT}/>
             ,
-            <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}/>
+            <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
+            WSCMD_CB={(tl, prop, data, uintArr)=>{
+                this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);
+            }}
+            />
 
         ];
 

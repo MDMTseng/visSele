@@ -34,6 +34,10 @@ int getDataFromJsonObj(cJSON * obj,void **ret_ptr)
     return obj->type;
   }
 
+  if (obj->type & (cJSON_True|cJSON_False) ) {
+    *ret_ptr=obj;
+    return obj->type;
+  }
   return cJSON_Invalid;
 }
 int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr)

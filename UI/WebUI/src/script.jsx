@@ -189,7 +189,7 @@ class APPMasterX extends React.Component{
           case "SS":
           {
             let SS =BPG_Protocol.raw2obj(evt);
-            log.info(SS);
+            //log.info(SS);
             if(SS.data.start)
             {
               this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));

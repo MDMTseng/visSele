@@ -104,6 +104,7 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
 
 
 char req_id_fallback[]="NO req_id";
+bool DoImageTransfer=true;
 class DatCH_CallBack_BPG : public DatCH_CallBack
 {
   DatCH_BPG1_0 *self;
@@ -123,6 +124,7 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   }
 public:
   CameraLayer *camera=NULL;
+  
   DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
   {
       this->self = self;
@@ -712,9 +714,49 @@ public:
             BPG_data bpg_dat=GenStrBPGData("SS", tmp);
             datCH_BPG.data.p_BPG_data=&bpg_dat;
             self->SendData(datCH_BPG);
+          }else if(checkTL("ST",dat))
+          {
+            for(int i=0;i<20;i++)
+            {
+              LOGI("++++++++++++++++++++++++++++++");
+            }
+            
+            mainThreadLock.lock();
+            req_id = req_id_fallback;
+            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+            if (json != NULL)
+            {
+              req_id =(char* )JFetch(json,"req_id",cJSON_String);
+              if(req_id==NULL)req_id = req_id_fallback;
+            }
+            DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+            void *target;
+            int type = getDataFromJson(json,"DoImageTransfer",&target);
+            if(type==cJSON_False)
+            {
+              DoImageTransfer=false;
+            }
+            else if( type ==cJSON_True)
+            {
+              DoImageTransfer=true;
+            }
+            LOGI("dat->dat_raw:%s",dat->dat_raw);
+            LOGI("DoImageTransfer:%d  type:%d",DoImageTransfer,type);
+
+            char tmp[100];
+            sprintf(tmp,"{\"req_id\":\"%s\", \"start\":false}",req_id);
+            BPG_data bpg_dat=GenStrBPGData("SS", tmp);
+            datCH_BPG.data.p_BPG_data=&bpg_dat;
+            self->SendData(datCH_BPG);
+            
+            
+            mainThreadLock.unlock();
           }
         }
         break;
+        
         default:
           LOGI("type:%d, UNKNOWN type",data.type);
       }
@@ -916,7 +958,6 @@ void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
 
 
 clock_t pframeT;
-
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   static acvImage test1_buff;
@@ -990,8 +1031,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   stackingC++;
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-  /*LOGE( "lock");
-  mainThreadLock.lock();*/
+  LOGE( "lock");
+  mainThreadLock.lock();
   
 
   do{
@@ -1037,7 +1078,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
 
     //if(stackingC==0)
-    if(1){
+    if(DoImageTransfer){
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
@@ -1070,8 +1111,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   t = clock();
 
 
-  /*LOGE( "unlock");
-  mainThreadLock.unlock();*/
+  LOGE( "unlock");
+  mainThreadLock.unlock();
 
 }
 
