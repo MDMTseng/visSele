@@ -9,14 +9,18 @@ CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer_Callback cb
 
 CameraLayer_GIGE_MindVision::~CameraLayer_GIGE_MindVision()
 {
-    
+    LOGI("CameraPause");
 	CameraPause(m_hCamera);
+    LOGI("CameraStop");
+    CameraStop(m_hCamera);
 	if (m_pFrameBuffer)
 	{
+        LOGI("CameraAlignFree");
 		CameraAlignFree(m_pFrameBuffer);
 		m_pFrameBuffer = NULL;
 	}
 
+    LOGI("CameraUnInit");
 	CameraUnInit(m_hCamera);
 
 }

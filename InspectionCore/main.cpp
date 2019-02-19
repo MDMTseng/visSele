@@ -680,15 +680,12 @@ public:
             }
             else if(strcmp(target,"camera_ez_reconnect") == 0 )
             {
-
+              
               delete camera;
-
+              
+              std::this_thread::sleep_for(std::chrono::milliseconds(1000));
               CameraLayer *camera = getCamera(true);
               
-              LOGV("TriggerMode(1)");
-              camera->TriggerMode(1);
-              camera->SetExposureTime(10570.5110);
-              camera->SetAnalogGain(2);
 
               LOGV("DatCH_BPG1_0");
               this->camera = camera;
@@ -1246,6 +1243,12 @@ CameraLayer *getCamera(bool realCamera)
     camera_BMP=new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV,NULL,"data/BMP_carousel_test");
     camera=camera_BMP;
   }
+
+  
+  LOGV("TriggerMode(1)");
+  camera->TriggerMode(1);
+  camera->SetExposureTime(12570.5110);
+  camera->SetAnalogGain(2);
   return camera;
 }
 
@@ -1264,10 +1267,6 @@ int mainLoop(bool realCamera=false)
     
     CameraLayer *camera = getCamera(realCamera);
     
-    LOGV("TriggerMode(1)");
-    camera->TriggerMode(1);
-    camera->SetExposureTime(10570.5110);
-    camera->SetAnalogGain(2);
 
     LOGV("DatCH_BPG1_0");
     cb->camera = camera;

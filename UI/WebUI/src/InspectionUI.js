@@ -562,7 +562,8 @@ class CanvasComponent extends React.Component {
     updateCanvas(ec_state, props = this.props) {
         if (this.ec_canvas !== undefined) {
             log.debug("updateCanvas>>", props.edit_info);
-            if (props.edit_info.session_lock != null && props.edit_info.session_lock.start == false) {
+            //if (props.edit_info.session_lock != null && props.edit_info.session_lock.start == false) 
+            {
                 this.ec_canvas.EditDBInfoSync(props.edit_info);
                 this.ec_canvas.SetState(ec_state);
                 //this.ec_canvas.ctrlLogic();
