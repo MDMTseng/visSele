@@ -23,7 +23,7 @@ DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 DatCH_CallBack_WSBPG callbk_obj;
-int CamInitStyle=1;
+int CamInitStyle=0;
 
 
 //lens1
