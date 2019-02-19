@@ -1219,8 +1219,11 @@ int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 		printf("\n\n\n\n");
 	}
   
-  CL_GIGE->InitCamera(&(sCameraList[0]));
-  return 0;
+  if(CL_GIGE->InitCamera(&(sCameraList[0]))==CameraLayer::ACK)
+  {
+    return 0;
+  }
+  return -1;
 }
 void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
@@ -1243,6 +1246,7 @@ CameraLayer *getCamera(int initCameraType)
     }
     else
     {
+      delete camera;
       camera=NULL;
     }
 
