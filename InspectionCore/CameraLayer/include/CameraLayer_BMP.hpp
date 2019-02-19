@@ -39,6 +39,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status Trigger();
     status LoadNext();
     status TriggerMode(int mode);
+    ~CameraLayer_BMP_carousel();
 };
 
 

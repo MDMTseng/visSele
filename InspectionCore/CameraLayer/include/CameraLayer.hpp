@@ -115,6 +115,7 @@ class CameraLayer{
         return &img;
     }
 
+    virtual  ~CameraLayer(){}
 };
 
 

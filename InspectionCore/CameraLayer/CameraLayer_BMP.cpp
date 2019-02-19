@@ -73,6 +73,12 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void*
     cameraThread=NULL;
 }
 
+CameraLayer_BMP_carousel::~CameraLayer_BMP_carousel()
+{
+    LOGI("Descructor...");
+}
+
+
 
 CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderName)
 {
