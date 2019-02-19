@@ -23,6 +23,8 @@ DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 DatCH_CallBack_WSBPG callbk_obj;
+int CamInitStyle=1;
+
 
 //lens1
 //main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
@@ -62,7 +64,7 @@ char CI_req_id[64];
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
 
-CameraLayer *getCamera(bool realCamera=false);
+CameraLayer *getCamera(int initCameraType);//0 for real First, then fake one, 1 for real camera only, 2 for fake only
 int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,char *jsonStr);
 
 int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename);
@@ -682,9 +684,20 @@ public:
             {
               
               delete camera;
+              camera=NULL;
               
-              std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-              CameraLayer *camera = getCamera(true);
+
+              
+              camera = getCamera(CamInitStyle);
+    
+    
+              for(int i=0;camera==NULL;i++)
+              {
+                LOGV("Camera init retry[%d]...",i);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                camera = getCamera(CamInitStyle);
+              }
+              LOGV("DatCH_BPG1_0:%p",camera);
               
 
               LOGV("DatCH_BPG1_0");
@@ -1215,11 +1228,11 @@ void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 }
 
 
-CameraLayer *getCamera(bool realCamera)
+CameraLayer *getCamera(int initCameraType)
 {
 
   CameraLayer *camera=NULL;
-  if(realCamera)
+  if(initCameraType==0 || initCameraType==1)
   {
     CameraLayer_GIGE_MindVision *camera_GIGE;
     camera_GIGE=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
@@ -1236,7 +1249,7 @@ CameraLayer *getCamera(bool realCamera)
   }
 
 
-  if(camera==NULL)
+  if(camera==NULL && (initCameraType ==0 || initCameraType==2) )
   {
     CameraLayer_BMP_carousel *camera_BMP;
     LOGV("CameraLayer_BMP_carousel");
@@ -1244,6 +1257,10 @@ CameraLayer *getCamera(bool realCamera)
     camera=camera_BMP;
   }
 
+  if(camera==NULL)
+  {
+    return NULL;
+  }
   
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
@@ -1265,10 +1282,17 @@ int mainLoop(bool realCamera=false)
 
   {
     
-    CameraLayer *camera = getCamera(realCamera);
+    CameraLayer *camera = getCamera(CamInitStyle);
     
+    
+    for(int i=0;camera==NULL;i++)
+    {
+      LOGV("Camera init retry[%d]...",i);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+      camera = getCamera(CamInitStyle);
+    }
+    LOGV("DatCH_BPG1_0:%p",camera);
 
-    LOGV("DatCH_BPG1_0");
     cb->camera = camera;
     callbk_obj.camera=camera;
 
@@ -1358,6 +1382,33 @@ int main(int argc, char** argv)
       
   }
   #endif
+
+  for(int i=0;i<argc;i++)
+  {
+    bool doMatch=true;
+    if (strcmp(argv[i],"CamInitStyle=0") == 0 )
+    {
+      CamInitStyle=0;
+    }
+    else if (strcmp(argv[i],"CamInitStyle=1") == 0 )
+    {
+      CamInitStyle=1;
+    }
+    else if (strcmp(argv[i],"CamInitStyle=2") == 0 )
+    {
+      CamInitStyle=2;
+    }
+    else
+    {
+      doMatch=false;
+      LOGE("unknown param[%d]:%s",i,argv[i]);
+    }
+
+    if(doMatch)
+    {
+      LOGE("CMD param[%d]:%s ...OK",i,argv[i]);
+    }
+  }
 
   if(0){
 
