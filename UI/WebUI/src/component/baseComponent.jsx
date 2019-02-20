@@ -2,11 +2,15 @@ import React from 'react';
 import React_createClass from 'create-react-class';
 import { Icon } from 'antd';
 import {GetObjElement} from 'UTIL/MISC_Util';
+import * as logX from 'loglevel';
+import EC_zh_TW from "../languages/zh_TW";
+
 import{
   Button as AntButton
 } from 'antd';
-import * as logX from 'loglevel';
-import EC_zh_TW from "../languages/zh_TW";
+// import { button as AntButton } from 'antd/lib/button';
+// import {Button as AntButton} from 'antd/lib/Button';
+
 let log = logX.getLogger(__filename);
 
 

@@ -11,26 +11,38 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
-import G2 from '@antv/g2';
-import DataSet from '@antv/data-set';
-
 import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 
 let log = logX.getLogger(__filename);
 
+//#### A N T Session
+import G2 from '@antv/g2';
+import DataSet from '@antv/data-set';
+
 import {
-    Tag, Input, Select, Upload, Button, Menu, Dropdown, Icon,
+    Tag, Select, Input,Dropdown,Upload, Button, Menu,Icon
 } from 'antd';
-const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
-const MDB_LOCAL="mongodb://localhost:27017/db_hy";
+
+// import Upload from 'antd/lib/upload';
+// import Input from 'antd/lib/Input';
+// import Dropdown from 'antd/lib/Dropdown'
+
+// import Tag from 'antd/lib/tag';
+// import Select from 'antd/lib/select';
+// import Menu from 'antd/lib/menu';
+// import Button from 'antd/lib/button';
+// import Icon from 'antd/lib/icon';
+
 const ButtonGroup = Button.Group;
+const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
+const MDB_LOCAL="mongodb://localhost:27017/db_hy  ";
 
 const FileProps = {
     name: 'file',
 
-    onChange(info) {
+    onChange(info)   {
         console.log(info);
 
     },
