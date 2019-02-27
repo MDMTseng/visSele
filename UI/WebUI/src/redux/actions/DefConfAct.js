@@ -9,6 +9,7 @@ export const EVENT = {
   DefFileName_Update:"DefFileName_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
+  ERROR:"ERROR",
 
 }
 
@@ -69,4 +70,13 @@ export function FAIL()
   }
 }
 
+
+
+
+export function ERROR()
+{
+  return {
+    type: EVENT.ERROR
+  }
+}
 

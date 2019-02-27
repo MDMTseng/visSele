@@ -69,8 +69,37 @@ function Default_UICtrlReducer()
 
 function Edit_info_reset(newState)
 {
+  let empty_edit_info ={
+    inspReport:undefined,
+    reportStatisticState:{
+      trackingWindow:[],
+      historyReport:[],
+      statisticValue:undefined
+    },
+    sig360report:[],
+    img:null,
+    DefFileName:"",
+    list:[],
+    inherentShapeList:[],
 
-  newState.edit_info=Object.assign({},newState.edit_info);
+    edit_tar_info:null,//It's for usual edit target
+
+    //It's the target element in edit target
+    //Example 
+    //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
+    //And our target is c
+    //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
+    edit_tar_ele_trace:null,
+
+    //This is the cadidate info for target element content
+    edit_tar_ele_cand:null,
+    session_lock:null,
+    camera_calibration_report:undefined,
+    mouseLocation:undefined
+  }
+
+
+  newState.edit_info=Object.assign({},newState.edit_info,empty_edit_info);
   newState.edit_info._obj.reset();
   
   newState.edit_info.edit_tar_info = null;
@@ -78,11 +107,6 @@ function Edit_info_reset(newState)
   newState.edit_info.list=newState.edit_info._obj.shapeList;
   newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
   
-  newState.edit_info.reportStatisticState={
-    trackingWindow:[],
-    historyReport:[],
-    statisticValue:undefined
-  };
 }
 
 function StateReducer(newState,action)
@@ -433,10 +457,10 @@ function StateReducer(newState,action)
         if(root_defFile.type === "binary_processing_group")
         {
           let doExit=false;
-          if(root_defFile.featureSet_sha1!==undefined)//If there is a 
+          let sha1_info_in_json = JSum.digest(root_defFile.featureSet, 'sha1', 'hex');
+          if(root_defFile.featureSet_sha1!==undefined)//If there is a saved sha1, check integrity 
           {
             let sha1_info_in_file = root_defFile.featureSet_sha1;
-            let sha1_info_in_json = JSum.digest(root_defFile.featureSet, 'sha1', 'hex');
             if(sha1_info_in_file !== sha1_info_in_json)
             {
               doExit=true;
@@ -478,6 +502,7 @@ function StateReducer(newState,action)
                 newState.edit_info.list=newState.edit_info._obj.shapeList;
                 newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
                 
+                log.info(newState.edit_info.inherentShapeList);
 
                 
                 //reportStatisticState.statisticValue

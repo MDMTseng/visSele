@@ -1142,6 +1142,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
   constructor( canvasDOM )
   {
     super(canvasDOM);
+    this.ERROR_LOCK=false;
     this.edit_DB_info =null;
     this.db_obj = null;
     this.mouse_close_dist= 10;
@@ -1292,7 +1293,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
   }
   draw_INSP()
   {
-    if(this.edit_DB_info==null ||
+
+    if(this.ERROR_LOCK || this.edit_DB_info==null ||
       this.edit_DB_info.inspReport==null || this.edit_DB_info.inspReport==undefined )
     {
       return;
@@ -1461,7 +1463,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   ctrlLogic()
   {
-
+    if(
+      this.edit_DB_info.inherentShapeList===null ||
+      this.edit_DB_info.inherentShapeList===undefined || 
+      this.edit_DB_info.inherentShapeList.length==0)
+    {
+      this.ERROR_LOCK =true;
+      this.EmitEvent({type:"ERROR",data:("Define Config is not valid or the corrupted...")});
+      return;
+    }
     //let mmpp = this.rUtil.get_mmpp();
     let wMat = this.worldTransform();
     //log.debug("this.camera.matrix::",wMat);

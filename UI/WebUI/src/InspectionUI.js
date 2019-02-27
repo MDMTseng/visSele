@@ -14,6 +14,7 @@ import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
 let log = logX.getLogger("InspectionUI");
 
@@ -176,7 +177,7 @@ class ObjInfoList extends React.Component {
                     , INSPECTION_STATUS.SUCCESS);
 
 
-                log.info("judgeReports>>", judgeReports);
+                //log.info("judgeReports>>", judgeReports);
                 return (
                     <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
                              title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX OK_NG={ finalResult } ></OK_NG_BOX></span>
@@ -628,11 +629,16 @@ class G2LINE extends React.Component {
 class CanvasComponent extends React.Component {
     constructor(props) {
         super(props);
-
     }
 
     ec_canvas_EmitEvent(event) {
-        log.debug(event);
+        switch(event.type)
+        { 
+        case DefConfAct.EVENT.ERROR:
+            log.error(event);
+            this.props.ACT_ERROR();
+        break;
+        }
     }
 
     componentDidMount() {
@@ -663,8 +669,6 @@ class CanvasComponent extends React.Component {
         if (this.ec_canvas !== undefined) {
             this.ec_canvas.resize(width, height);
             this.updateCanvas(this.props.c_state);
-            this.ec_canvas.ctrlLogic();
-            this.ec_canvas.draw();
         }
     }
 
@@ -697,6 +701,9 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => {
     return {
         ACT_EXIT: (arg) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
+        },
+        ACT_ERROR:(arg) => {
+            dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.ERROR))
         },
     }
 }

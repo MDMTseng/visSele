@@ -68,6 +68,7 @@ let ST = {
                  EditStates),
       [UISTS.INSP_MODE]: Object.assign(
                  { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
+                         [UISEV.ERROR]:       UISTS.MAIN , 
                          [UISEV.EXIT]:        UISTS.MAIN }},
                  InspectionStates)
     }

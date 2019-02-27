@@ -537,7 +537,10 @@ public:
 
 
                   free(jsonStr);
-
+                  
+                  //TODO: HACK: this sleep is to wait for the gap in between def config file arriving and inspection result arriving.
+                  //If the inspection result arrives without def config file then webUI will generate(by design) an statemachine error event.
+                  std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
                   camera->TriggerMode(0);
                   cameraFeedTrigger=true;
