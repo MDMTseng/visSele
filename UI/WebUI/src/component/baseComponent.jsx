@@ -49,8 +49,8 @@ export class JsonElement extends React.Component{
   {
     let text=this.props.children;
     let translateValue = undefined;
-    if(this.props.type!=="input-number"||this.props.type!=="checkbox"){
-
+    if(this.props.type=="div"){
+      log.error(text);
       translateValue = GetObjElement(this.props.dict,[this.props.dictTheme, text]);
 
       if(translateValue===undefined)
@@ -64,11 +64,12 @@ export class JsonElement extends React.Component{
     {
       translateValue = text;
     }
-
+    
     switch(this.props.type)
     {
       case "input-number":
-        return <input key={this.props.id} className={this.props.className} type="number" step="0.05" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+        translateValue = translateValue+"";
+        return <input key={this.props.id} className={this.props.className} type="number" step="0.01" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
           value={translateValue}
           onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
       case "input":
@@ -157,7 +158,7 @@ export class JsonEditBlock extends React.Component{
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={displayMethod}
               target={{obj:obj,keyTrace:newkeyTrace}}
               dict={this.props.dict}
-              onChange={this.onChangeX.bind(this)}>{(typeof ele ==="number" )?(ele).toFixed(4):(ele)}</JsonElement>);
+              onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
           break;
           case "object":
           {
