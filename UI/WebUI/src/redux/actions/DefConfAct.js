@@ -6,7 +6,7 @@ export const EVENT = {
   Edit_Tar_Ele_Cand_Update:"Edit_Tar_Ele_Cand_Update",
   Shape_List_Update:"Shape_List_Update",
   Shape_Set:"Shape_Set",
-
+  DefFileName_Update:"DefFileName_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
 
@@ -45,6 +45,14 @@ export function Shape_Set(shape_data)
     type: EVENT.Shape_Set,data: {shape:shape_data.shape,id:shape_data.id}
   }
 }
+
+export function DefFileName_Update(newName)
+{
+  return {
+    type: EVENT.DefFileName_Update,data: newName
+  }
+}
+
 
 
 export function SUCCESS()

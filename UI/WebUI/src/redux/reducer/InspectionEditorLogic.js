@@ -16,6 +16,11 @@ export class InspectionEditorLogic
 {
   constructor()
   {
+    this.reset();
+  }
+
+  reset()
+  {
     this.shapeCount=0;
     this.shapeList=[];
     this.inherentShapeList=[];
@@ -78,6 +83,11 @@ export class InspectionEditorLogic
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
     let sig360Info = defInfo.inherentfeatures[0];
+
+    sig360Info.signature.magnitude=sig360Info.signature.magnitude.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places //to 0.001mm/1um
+    sig360Info.signature.angle=sig360Info.signature.angle.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places// 0.001*180/pi=0.057 deg
+    
+
     this.SetSig360Report(
       {
         reports:[

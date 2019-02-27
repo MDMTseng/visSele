@@ -11,11 +11,10 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import JSum from 'jsum';
 import 'antd/dist/antd.css';
 
 import t_enc from 'text-encoding';
-
-let StoreX= ReduxStoreSetUp({});
 
 
 import EC_zh_TW from './languages/zh_TW';
@@ -283,10 +282,19 @@ class APP_DEFCONF_MODE extends React.Component{
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       MenuSet=[
           <BASE_COM.IconButton
-              dict={EC_zh_TW}
-          key="<"
-          addClass="layout black vbox"
-          text="<" onClick={()=>this.props.ACT_EXIT()}/>,
+            dict={EC_zh_TW}
+            key="<"
+            addClass="layout black vbox"
+            text="<" onClick={()=>this.props.ACT_EXIT()}/>,
+
+          <BASE_COM.JsonEditBlock object={{DefFileName:this.props.edit_info.DefFileName}}
+            dict={EC_zh_TW}
+            key="this.props.edit_info.DefFileName"
+            jsonChange={(original_obj,target,type,evt)=>
+              {
+                this.props.ACT_DefFileName_Update(evt.target.value);
+              }}
+            whiteListKey={{DefFileName:"input",}}/>,
           <BASE_COM.IconButton
               dict={EC_zh_TW}
             addClass="layout palatte-blue-8 vbox"
@@ -329,6 +337,11 @@ class APP_DEFCONF_MODE extends React.Component{
             text="save" onClick={()=>{
                 var enc = new t_enc.TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
+                report.name = this.props.edit_info.DefFileName;
+
+                
+                let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+                report.featureSet_sha1 = sha1_info_in_json;
                 this.props.ACT_Report_Save(this.props.WS_ID,defModelPath+".json",enc.encode(JSON.stringify(report, null, 2)));
                 this.props.ACT_Cache_Img_Save(this.props.WS_ID,defModelPath+".bmp");
             }}/>,
@@ -602,6 +615,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
+    ACT_DefFileName_Update:(newName) => {dispatch(DefConfAct.DefFileName_Update(newName))},
    
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
@@ -637,8 +651,7 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
     shape_list:state.UIData.edit_info.list,
     WS_ID:state.UIData.WS_ID,
-    edit_info:state.UIData.edit_info
-
+    edit_info:state.UIData.edit_info,
   }
 };
 

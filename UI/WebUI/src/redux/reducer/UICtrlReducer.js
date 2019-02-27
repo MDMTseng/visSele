@@ -10,6 +10,10 @@ import * as logX from 'loglevel';
 import dclone from 'clone';
 import { loadavg } from 'os';
 
+import dateFormat from 'dateFormat';
+import JSum from 'jsum';
+
+
 let log = logX.getLogger("UICtrlReducer");
 
 let UISTS = UI_SM_STATES;
@@ -36,7 +40,7 @@ function Default_UICtrlReducer()
       },
       sig360report:[],
       img:null,
-
+      DefFileName:"",
       list:[],
       inherentShapeList:[],
 
@@ -61,6 +65,24 @@ function Default_UICtrlReducer()
     state_count:0,
     WS_ID:"EverCheckWS"
   }
+}
+
+function Edit_info_reset(newState)
+{
+
+  newState.edit_info=Object.assign({},newState.edit_info);
+  newState.edit_info._obj.reset();
+  
+  newState.edit_info.edit_tar_info = null;
+  
+  newState.edit_info.list=newState.edit_info._obj.shapeList;
+  newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
+  
+  newState.edit_info.reportStatisticState={
+    trackingWindow:[],
+    historyReport:[],
+    statisticValue:undefined
+  };
 }
 
 function StateReducer(newState,action)
@@ -406,8 +428,38 @@ function StateReducer(newState,action)
 
         case UISEV.Define_File_Update:
         let root_defFile=action.data;
+        
+        Edit_info_reset(newState);
         if(root_defFile.type === "binary_processing_group")
         {
+          let doExit=false;
+          if(root_defFile.featureSet_sha1!==undefined)//If there is a 
+          {
+            let sha1_info_in_file = root_defFile.featureSet_sha1;
+            let sha1_info_in_json = JSum.digest(root_defFile.featureSet, 'sha1', 'hex');
+            if(sha1_info_in_file !== sha1_info_in_json)
+            {
+              doExit=true;
+            }
+          }
+          
+          if(doExit)
+          {
+            break;
+          }
+
+
+          if(root_defFile.name === undefined)
+          {
+            var now = new Date();
+            var time = dateFormat(now, "yyyymmdd_HHMMss");
+            newState.edit_info.DefFileName="Sample_"+time;
+          }
+          else
+          {
+            newState.edit_info.DefFileName   = root_defFile.name;
+          }
+
           root_defFile.featureSet.forEach((report)=>
           {
             switch(report.type)
@@ -415,9 +467,10 @@ function StateReducer(newState,action)
               case "sig360_extractor":
               case "sig360_circle_line":
               {
-
+                
                 newState.edit_info=Object.assign({},newState.edit_info);
                 newState.edit_info._obj.SetDefInfo(report);
+
                 let reportStatisticState = newState.edit_info.reportStatisticState;
 
                 newState.edit_info.edit_tar_info = null;
@@ -509,6 +562,12 @@ function StateReducer(newState,action)
             (action.data == null)? null :(action.data instanceof Object)? Object.assign({},action.data):action.data;
             log.info("DEFCONF_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
         break;
+
+        case DefConfAct.EVENT.DefFileName_Update:
+        {
+          newState.edit_info=Object.assign({},newState.edit_info,{DefFileName:action.data});
+          break;
+        }
 
         case DefConfAct.EVENT.Shape_Set:
         {
