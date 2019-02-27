@@ -349,7 +349,7 @@ export let AButton = React_createClass({
     }
 
     return <AntButton block type={this.props.type} shape="round" icon={this.props.icon} size={this.props.size} dict={EC_zh_TW}
-            onClick={this.handleClick()}>
+            onClick={this.handleClick}>
       {translation}
     </AntButton>;
 
