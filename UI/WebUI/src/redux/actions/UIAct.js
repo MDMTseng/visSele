@@ -1,4 +1,4 @@
-
+import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 export const UI_SM_STATES = {
   SPLASH:"SPLASH",
   MAIN:"MAIN",
@@ -49,6 +49,19 @@ export const SHAPE_TYPE = {
   }
 
 };
+export const OK_NG_BOX_COLOR_TEXT = {
+  [INSPECTION_STATUS.NA]:{COLOR:"#aaa",TEXT:"NA"},
+  [INSPECTION_STATUS.SUCCESS]:{COLOR:"#87d068",TEXT:"OK"},
+  [INSPECTION_STATUS.FAILURE]:{COLOR:"#f50",TEXT:"NG"}
+
+}
+export const DEFAULT_UNIT = {
+  [SHAPE_TYPE.measure_subtype.sigma]:"",
+  [SHAPE_TYPE.measure_subtype.distance]:"mm",
+  [SHAPE_TYPE.measure_subtype.angle]:"º",
+  [SHAPE_TYPE.measure_subtype.radius]:"mm"
+
+}
 
 export const UI_SM_EVENT = {
   Connected:"Connected",

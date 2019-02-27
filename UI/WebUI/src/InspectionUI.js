@@ -11,29 +11,38 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
-import G2 from '@antv/g2';
-import DataSet from '@antv/data-set';
-
-import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
-
-
+import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
-
 import * as logX from 'loglevel';
 
 let log = logX.getLogger("InspectionUI");
 
+//#### A N T Session
+import G2 from '@antv/g2';
+import DataSet from '@antv/data-set';
+
 import {
-    Tag, Input, Select, Upload, Button, Menu, Dropdown, Icon,
+    Tag, Select, Input,Dropdown,Upload, Button, Menu,Icon
 } from 'antd';
 
-const ButtonGroup = Button.Group;
+// import Upload from 'antd/lib/upload';
+// import Input from 'antd/lib/Input';
+// import Dropdown from 'antd/lib/Dropdown'
 
+// import Tag from 'antd/lib/tag';
+// import Select from 'antd/lib/select';
+// import Menu from 'antd/lib/menu';
+// import Button from 'antd/lib/button';
+// import Icon from 'antd/lib/icon';
+
+const ButtonGroup = Button.Group;
+const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
+const MDB_LOCAL="mongodb://localhost:27017/db_hy  ";
 
 const FileProps = {
     name: 'file',
 
-    onChange(info) {
+    onChange(info)   {
         console.log(info);
 
     },
@@ -57,6 +66,49 @@ const selectAfter = (
 const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
+
+class DB extends React.Component {
+    constructor(props) {
+        super(props);
+        this.resultDB=undefined;
+        this.state = {
+            db_open: false,
+            resultX:undefined
+        }
+    }
+    componentDidMount() {
+
+    }
+    echoTime(){
+        return ""+new Date().getSeconds();
+    }
+    query(){
+        this.resultDB="[!]";
+        fetch('http://127.0.0.1:4000/gui', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({query: "{ hello }"})
+        }).then(r => r.json()).then((datax) => {
+            console.log('[O]DB data returned:', JSON.stringify(datax));
+
+            this.resultDB=JSON.stringify(datax);
+        });
+        return this.resultDB;
+    }
+    render() {
+        return (
+            <div style={{'display':'inline-block'}}>
+                {/*{this.echoTime()}*/}
+                <p>
+                {/*{this.query()}*/}
+                </p>
+            </div>
+        );
+    }
+}
 class OK_NG_BOX extends React.Component {
     constructor(props) {
         super(props);
@@ -66,10 +118,12 @@ class OK_NG_BOX extends React.Component {
     }
 
     render() {
+        //log.info("OK_NG_BOX_COLOR_TEXT[this.props]",this.props);
         return (
-            <div>
+
+            <div style={{'display':'inline-block'}}>
                 <Tag style={{'font-size': 20}}
-                     color={this.props.OK_NG ? "#87d068" : "#f50"}>{this.props.OK_NG ? "OK" : "NG"}
+                     color={OK_NG_BOX_COLOR_TEXT[this.props.OK_NG].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.OK_NG].TEXT}
                 </Tag>
                 {this.props.children}
             </div>
@@ -101,18 +155,37 @@ class ObjInfoList extends React.Component {
             resultMenu = this.props.IR.reports.map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
+
                 reportDetail = judgeReports.map((rep,idxx)=>
                     <Menu.Item key={"i"+idx+rep.name}>
-                        <OK_NG_BOX OK_NG={rep.status==INSPECTION_STATUS.SUCCESS} >
-                            {"#"+rep.value.toFixed(4)+"mm"}
+                        <OK_NG_BOX OK_NG={rep.status} >
+                            {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
                         </OK_NG_BOX>
                     </Menu.Item>
                 );
+
+                let finalResult = judgeReports.reduce((res, obj) => {
+                        if (res == INSPECTION_STATUS.NA) return res;
+                        if (res == INSPECTION_STATUS.FAILURE) {
+                            if (obj.status == INSPECTION_STATUS.NA)
+                                return INSPECTION_STATUS.NA;
+                            return res;
+                        }
+                        return obj.status;
+                    }
+                    , INSPECTION_STATUS.SUCCESS);
+
+
+                log.info("judgeReports>>", judgeReports);
                 return (
                     <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
-                             title={<span><Icon type="paper-clip"/><span>{idx}</span></span>}>
+                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX OK_NG={ finalResult } ></OK_NG_BOX></span>
+
+                             </span>}>
                         {reportDetail}
                     </SubMenu>
+
+
                     )
                 }
             )
@@ -123,11 +196,20 @@ class ObjInfoList extends React.Component {
             <div>
                 <Menu
                     onClick={this.handleClick}
+                    // selectedKeys={[this.current]}
                     selectable={true}
                     // style={{align: 'left', width: 200}}
-                    defaultSelectedKeys={['i1']}
-                    defaultOpenKeys={['sub1']}
+                    defaultSelectedKeys={['functionMenu']}
+                    defaultOpenKeys={['functionMenu']}
                     mode="inline">
+                    <SubMenu style={{'text-align': 'left'}} key="DBMenu"
+                             title={<span><Icon type="setting"/><span>資料庫操作</span></span>}>
+                        <DB
+                            url={MDB_ATLAS}
+                            checkResult2AirAction={this.props.checkResult2AirAction}
+
+                        />
+                    </SubMenu>
                     <SubMenu style={{'text-align': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
                         <AirControl
@@ -328,12 +410,11 @@ class AirControl extends React.Component {
     render() {
 
         if (this.state.websocketAir.readyState != this.state.websocketAir.OPEN) {
-            return <BASE_COM.IconButton
-                dict={EC_zh_TW}
-                addClass="layout black vbox"
-                text="Reconnect" onClick={() => {
-                this.websocketConnect(this.props.url);
-            }}/>;
+            return(
+            <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
+                    onClick={() => {this.websocketConnect(this.props.url);
+                    }}/>
+            );
         }
 
         return (
