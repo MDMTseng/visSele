@@ -156,6 +156,35 @@ const APPMain_rdx = connect(mapStateToProps_APPMain,mapDispatchToProps_APPMain)(
 
 class APPMasterX extends React.Component{
 
+  static mapDispatchToProps(dispatch, ownProps){
+    return {
+      ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
+      ACT_WS_CONNECT: (id,url,obj) => dispatch({type:MWWS_EVENT.CONNECT,data:Object.assign({id:id,url:url,binaryType:"arraybuffer"},obj)}),
+      ACT_WS_DISCONNECT:(id)=> dispatch({type:MWWS_EVENT.DISCONNECT,data:{id:id}}),
+      DISPATCH:(act)=>{
+        dispatch(act)
+      },
+      DISPATCH_flush:(act)=>{
+        act.ActionThrottle_type="flush";
+        dispatch(act)
+      },
+      ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+    }
+  }
+  static mapStateToProps(state){
+    return {
+      showSplash: state.UIData.showSplash,
+      showSM_graph: state.UIData.showSM_graph,
+      stateMachine:state.UIData.sm,
+      WS_CH:state.UIData.WS_CH,
+      WS_ID:state.UIData.WS_ID
+    }
+  }
+  static connect(){
+    return connect(APPMasterX.mapStateToProps,APPMasterX.mapDispatchToProps)(APPMasterX);
+  }
+
+
   constructor(props) {
     super(props);
     //this.state={};
@@ -312,31 +341,7 @@ class APPMasterX extends React.Component{
   }
 }
 
-const mapDispatchToProps_APPMasterX = (dispatch, ownProps) => {
-  return {
-    ACT_Ctrl_SM_Panel: (args) => dispatch({type:UIAct.UI_SM_EVENT.Control_SM_Panel,data:args}),
-    ACT_WS_CONNECT: (id,url,obj) => dispatch({type:MWWS_EVENT.CONNECT,data:Object.assign({id:id,url:url,binaryType:"arraybuffer"},obj)}),
-    ACT_WS_DISCONNECT:(id)=> dispatch({type:MWWS_EVENT.DISCONNECT,data:{id:id}}),
-    DISPATCH:(act)=>{
-      dispatch(act)
-    },
-    DISPATCH_flush:(act)=>{
-      act.ActionThrottle_type="flush";
-      dispatch(act)
-    },
-    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
-  }
-}
-const mapStateToProps_APPMasterX = (state) => {
-  return {
-    showSplash: state.UIData.showSplash,
-    showSM_graph: state.UIData.showSM_graph,
-    stateMachine:state.UIData.sm,
-    WS_CH:state.UIData.WS_CH,
-    WS_ID:state.UIData.WS_ID
-  }
-}
-const APPMasterX_rdx = connect(mapStateToProps_APPMasterX,mapDispatchToProps_APPMasterX)(APPMasterX);
+let APPMasterX_rdx = APPMasterX.connect();
 
 log.info(zhTW);
 ReactDOM.render(
