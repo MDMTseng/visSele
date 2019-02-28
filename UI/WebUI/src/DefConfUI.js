@@ -11,6 +11,7 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import {round as roundX} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
 import 'antd/dist/antd.css';
 
@@ -217,13 +218,11 @@ class APP_DEFCONF_MODE extends React.Component{
                       let val = target.obj.value;
                       if(lastKey == "LSL")
                       {
-                        let tmp = Math.round((val+(target.obj.LSL-val)/3)*1000)/1000;
-                        target.obj.LCL=tmp;
+                        target.obj.LCL=roundX((val+(target.obj.LSL-val)/3),0.001);
                       }
                       else if(lastKey == "USL")
                       {
-                        let tmp = Math.round((val+(target.obj.USL-val)/3)*1000)/1000;
-                        target.obj.UCL=tmp;
+                        target.obj.UCL=roundX((val+(target.obj.USL-val)/3),0.001);
                       }
                     }
                   }

@@ -6,6 +6,11 @@ export function Num2Str_padding(pad,num)
   return str.substr(-pad);
 }
 
+export function round(num,round_nor=1)
+{
+  return Math.round(num/round_nor)*round_nor;
+}
+
 
 export function xstate_GetCurrentMainState(state)
 {
