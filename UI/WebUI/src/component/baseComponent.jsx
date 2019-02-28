@@ -50,7 +50,6 @@ export class JsonElement extends React.Component{
     let text=this.props.children;
     let translateValue = undefined;
     if(this.props.type=="div"){
-      log.error(text);
       translateValue = GetObjElement(this.props.dict,[this.props.dictTheme, text]);
 
       if(translateValue===undefined)

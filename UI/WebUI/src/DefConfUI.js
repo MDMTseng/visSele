@@ -211,6 +211,21 @@ class APP_DEFCONF_MODE extends React.Component{
                     let parseNum =  parseFloat(evt.target.value);
                     if(isNaN(parseNum))return;
                     target.obj[lastKey]=parseNum;
+                    if( target.obj.value!== undefined)
+                    {
+                      //Special case, if USL LSL gets changes then UCL and LCL will be changed as well
+                      let val = target.obj.value;
+                      if(lastKey == "LSL")
+                      {
+                        let tmp = Math.round((val+(target.obj.LSL-val)/3)*1000)/1000;
+                        target.obj.LCL=tmp;
+                      }
+                      else if(lastKey == "USL")
+                      {
+                        let tmp = Math.round((val+(target.obj.USL-val)/3)*1000)/1000;
+                        target.obj.UCL=tmp;
+                      }
+                    }
                   }
                   break;
                   case "input":
