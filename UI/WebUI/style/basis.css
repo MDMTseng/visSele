@@ -172,6 +172,7 @@ margin:auto; float: none;
 .blockS .HXA {
 
   height: auto;
+  max-height: 100%;
 }
 .blockS .WXA {
 

@@ -561,7 +561,6 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT: 
-      menu_height = "HXA";
       MenuSet=[
         <BASE_COM.Button
           key="<"
@@ -606,13 +605,13 @@ class APP_DEFCONF_MODE extends React.Component{
 
     console.log("APP_DEFCONF_MODE render");
     return(
-    <div className="HXF">
+    <div className="overlayCon HXF">
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
-        <$CSSTG transitionName = "fadeIn">
-          <div key={substate} className={"s overlay scroll MenuAnim " + menu_height}>
-            {MenuSet}
-          </div>
-        </$CSSTG>
+      <$CSSTG transitionName = "fadeIn">
+        <div key={substate} className={"s overlay scroll MenuAnim " + menu_height}>
+          {MenuSet}
+        </div>
+      </$CSSTG>
       
     </div>
     );
