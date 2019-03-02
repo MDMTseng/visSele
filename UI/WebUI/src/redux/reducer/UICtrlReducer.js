@@ -208,7 +208,7 @@ function StateReducer(newState,action)
               reportStatisticState.trackingWindow.filter((srep_inWindow)=>
                 {
                   let tdiff = currentTime_ms - srep_inWindow.time_ms;
-                  if(tdiff<keepInTrackingTime_ms)
+                  if(tdiff<keepInTrackingTime_ms && false)
                   {
                     return true;
                   }
@@ -394,7 +394,6 @@ function StateReducer(newState,action)
           }
           break;
           case "camera_calibration":
-            log.error(action);
             if(report.error!==undefined &&report.error == 0)
             {
               newState.edit_info._obj.SetCameraParamInfo(report);

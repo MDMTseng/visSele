@@ -294,6 +294,7 @@ class APP_DEFCONF_MODE extends React.Component{
     switch(substate)
     {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
+      menu_height="HXA";
       MenuSet=[
           <BASE_COM.IconButton
             dict={EC_zh_TW}

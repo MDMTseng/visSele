@@ -17,6 +17,7 @@ import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
+import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {MWWS_EVENT} from "REDUX_STORE_SRC/middleware/MWWebSocket";
@@ -73,6 +74,10 @@ class APPMain extends React.Component{
         <BASE_COM.Button
           key="INSP MODE" addClass="lblue width4"
           text="INSP MODE" onClick={this.props.EV_UI_Insp_Mode}/>);
+      UI.push(
+        <BASE_COM.Button
+          key="ANALYSIS MODE" addClass="lblue width4"
+          text="ANALYSIS MODE" onClick={this.props.EV_UI_Analysis_Mode}/>);
 
         
           
@@ -127,6 +132,11 @@ class APPMain extends React.Component{
       UI = <APP_INSP_MODE_rdx/>;
       
     }
+    else if(stateObj.state === UIAct.UI_SM_STATES.ANALYSIS_MODE)
+    {
+      UI = <APP_ANALYSIS_MODE_rdx/>;
+      
+    }
 
     return(
     <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}>
@@ -140,6 +150,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
   return {
     EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
     EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
+    EV_UI_Analysis_Mode:()=>{dispatch(UIAct.EV_UI_Analysis_Mode())},
     ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
   }
 }

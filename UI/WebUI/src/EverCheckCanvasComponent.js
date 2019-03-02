@@ -1056,6 +1056,7 @@ class EverCheckCanvasComponent_proto{
         
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
+      case UI_SM_STATES.INSP_MODE_NEUTRAL:
         //log.debug("onmousemove");
         if(this.mouseStatus.status==1)
         {
@@ -1185,15 +1186,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
     this.state = JSON.parse(stateStr);
 
-    if(
-      this.state.state ==  UI_SM_STATES.DEFCONF_MODE&&
-      this.state.substate==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
-    {
-      this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
-      this.EditShape=null;
-      this.EditPoint=null;
-    }
-    
   }
 
   EditDBInfoSync(edit_DB_info)
