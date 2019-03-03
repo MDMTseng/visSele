@@ -110,6 +110,73 @@ const CanvasComponent_rdx = connect(
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
 
+
+
+
+class DataStatsTable extends React.Component{
+  render() {
+    let statstate = this.props.reportStatisticState;
+    let measureList = statstate.statisticValue.measureList;
+
+    
+    let measureReports=measureList.map((measure)=>{
+
+      let valArr = statstate.historyReport.map((reps)=>
+        reps.judgeReports.find((rep)=>
+          rep.id == measure.id)
+        .value);
+
+      let mean = valArr.reduce((sum,val)=>sum+val,0)/valArr.length;
+      let sigma = Math.sqrt(valArr.reduce((sum,val)=>sum+(mean-val)*(mean-val),0)/valArr.length);
+
+
+      let CPU = (measure.USL-mean)/(3*sigma);
+      let CPL = (mean-measure.LSL)/(3*sigma);
+      let CP = Math.min(CPU,CPL);
+      let CA = (mean-measure.value)/((measure.USL-measure.LSL)/2);
+      let CPK = CP*(1-Math.abs(CA));
+
+      let id = measure.id;
+      let name = measure.name;
+      let subtype=measure.subtype;
+
+
+      CPU=roundX(CPU,0.001);
+      CPL=roundX(CPL,0.001);
+      CP=roundX(CP,0.001);
+      CA=roundX(CA,0.001);
+      CPK=roundX(CPK,0.001);
+      return {id,name,subtype,measure,valArr,mean,sigma,CPU,CPL,CP,CA,CPK};
+    });
+    
+
+    log.error(measureReports);
+
+    
+    //statstate.historyReport.map((rep)=>rep.judgeReports[0]);
+    const dataSource = measureReports;
+    
+    const columns = ["id","name","subtype","CA","CPU","CPL","CP","CPK"].map((type)=>({title:type,dataIndex:type,key:type}));
+
+    let menuStyle={
+      top:"0px",
+      width:"100px"
+    }
+    return(
+        <Table dataSource={dataSource} columns={columns} />
+    );
+  }
+}
+
+
+
+
+
+
+
+
+
+
 class APP_ANALYSIS_MODE extends React.Component{
 
 
@@ -267,17 +334,6 @@ class APP_ANALYSIS_MODE extends React.Component{
               addClass="layout black vbox"
               text="<" onClick={()=>this.props.ACT_EXIT()}/>];
 
-    let statstate = this.props.reportStatisticState;
-    let measureReports=statstate.historyReport.map((rep)=>rep.judgeReports[0]);
-    log.error(measureReports);
-
-
-
-    const dataSource = measureReports;
-    
-
-
-    const columns = ["id","name","value","status"].map((type)=>({title:type,dataIndex:type,key:type}));
 
     let menuStyle={
       top:"0px",
@@ -287,7 +343,6 @@ class APP_ANALYSIS_MODE extends React.Component{
     <div className="HXF">
 
       <div className="overlayCon s overlayCon width2 HXF">
-
         <$CSSTG transitionName = "fadeIn">
             <div key="k1" className={"s overlay scroll MenuAnim " + menu_height} style={menuStyle}>
               {MenuSet}
@@ -295,7 +350,7 @@ class APP_ANALYSIS_MODE extends React.Component{
         </$CSSTG>
       </div>
       <div className="s overlayCon width10 HXF">
-        <Table dataSource={dataSource} columns={columns} />
+        <DataStatsTable reportStatisticState={this.props.reportStatisticState} />
       </div>
     </div>
     );

@@ -8,7 +8,14 @@ export function Num2Str_padding(pad,num)
 
 export function round(num,round_nor=1)
 {
-  return Math.round(num/round_nor)*round_nor;
+  let tmp = (1/round_nor);
+  let round_nor_inv = Math.round(tmp);
+  if(round_nor_inv==0)
+  {
+    round_nor_inv=tmp;
+  }
+
+  return Math.round(num*round_nor_inv)/round_nor_inv;
 }
 
 
