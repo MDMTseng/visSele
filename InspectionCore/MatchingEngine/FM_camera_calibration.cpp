@@ -385,9 +385,6 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
 
 
     acvBoxFilter(&tmp,&labelImg,6);
-    acvBoxFilter(&tmp,&labelImg,6);
-    acvBoxFilter(&tmp,&labelImg,6);
-    acvBoxFilter(&tmp,&labelImg,6);
     acvCloneImage(&labelImg,&tmp, -1);
     acvThreshold(&labelImg, 120);
 
@@ -657,11 +654,11 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     double alpha=0.9;
     
     double dK0=0,dK1=0,dK2=0,aveErr=0,maxErr=0;
-    double RNorm = labelImg.GetWidth()/2.0;
+    double RNorm = hypot(labelImg.GetWidth(),labelImg.GetHeight())/1.5;
 
     acv_XY vec_offset;
     double Y_scale = 1/1.000;
-    int iterNum=10000;
+    int iterNum=20000;
     int iter_FineTuneCount=iterNum/2;
     bool doPrint=false;
     for(int i=0;i<iterNum;i++)
@@ -771,7 +768,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
                         {
                             if(CSE.XorY_test!=0 && CSE.advStep<0)//if the current test is Y test and reverse direction
                             {
-                                CSE.advStep*=0.5;
+                                CSE.advStep*=0.8;
                             }
                             CSE.XorY_test=(CSE.XorY_test==0)?1:0;//Toggle X test or Y test
                         }
@@ -911,11 +908,10 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
         }
         for(int i=0;i<boardCoord.size();i++)
         {
-            int preIdx=-1;
             for(int j=0;j<boardCoord[i].size();j++)
             {
                 int idx = boardCoord[i][j];
-                if(j>0 && (preIdx!=-1 && idx!=-1))
+                if((idx!=-1))
                 {
 
                     // acvDrawLine(&labelImg, 
@@ -930,30 +926,29 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
                     // 0, 255,0,1);
                     int X = ldData[idx].RBBound.X;
                     int Y = ldData[idx].RBBound.Y;
+                    if(X<0||X>=labelImg.GetWidth() || Y<0 ||Y>=labelImg.GetHeight())continue;
                     labelImg.CVector[Y][3*X+0]=0;
-                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+1]=0;
                     labelImg.CVector[Y][3*X+2]=255;
 
                     X+=1;
                     labelImg.CVector[Y][3*X+0]=0;
-                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+1]=0;
                     labelImg.CVector[Y][3*X+2]=255;
 
                     
                     X-=1;
                     Y+=1;
                     labelImg.CVector[Y][3*X+0]=0;
-                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+1]=0;
                     labelImg.CVector[Y][3*X+2]=255;
 
                     
                     X+=1;
                     labelImg.CVector[Y][3*X+0]=0;
-                    labelImg.CVector[Y][3*X+1]=255;
+                    labelImg.CVector[Y][3*X+1]=0;
                     labelImg.CVector[Y][3*X+2]=255;
                 }
-                preIdx= idx;
-
             }
         }
         acvDrawLine(&labelImg, 
@@ -1083,6 +1078,36 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
         acvSaveBitmapFile("data/calibImage.bmp",&calibImage);
     }
 
+    if(1){//Find the worst distortion inverse case
+        acvRadialDistortionParam param=retParam;
+        int skip_step=10;
+        float MaxErr=0;
+
+        for(int i=0;i<calibImage.GetHeight();i+=skip_step)//Find left top
+        {   
+            int j=i;
+            for(int j=0;j<labelImg.GetWidth();j+=skip_step)//Find left top
+            {   
+                acv_XY curXY={X:j,Y:i};
+                acv_XY calibXY=acvVecRadialDistortionRemove(curXY,param);
+                acv_XY distoXY=acvVecRadialDistortionApply(calibXY,param);
+                float err = acvDistance(curXY,distoXY);
+                if(MaxErr<err)
+                {
+                    MaxErr=err;
+                    LOGV("MaxErr:%0.3f",MaxErr);
+                    LOGV("(%0.3f,%0.3f)->(%0.3f,%0.3f)->(%0.3f,%0.3f)",curXY.X,curXY.Y,calibXY.X,calibXY.Y,distoXY.X,distoXY.Y);                
+                
+                }
+                if(err>1)
+                {
+                    
+                    acvDrawCrossX(&calibImage,curXY.X,curXY.Y,14,0,255 , 0,err/3+1);
+                }
+            }
+        }
+        acvSaveBitmapFile("data/calibImage2.bmp",&calibImage);
+    }
     return retParam;
 }
 
@@ -1164,7 +1189,7 @@ static int markPointExtraction(acvImage &labelImg, vector<acv_LabeledData> &ldDa
     float targetArea =  findMedianSize(ldData);
 
     LOGV("targetArea:%f",targetArea);
-    float range_Area=4;
+    float range_Area=1.5;
     for(int i=2;i<ldData.size();i++) 
     {
         auto ldat = ldData[i];

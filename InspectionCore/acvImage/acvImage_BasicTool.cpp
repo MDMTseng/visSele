@@ -873,13 +873,17 @@ acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param)//S
     acv_XY v1 = acvVecSub(Vec,param.calibrationCenter);
     float R1 = hypot(v1.Y,v1.X)/param.RNormalFactor;
     float R2 = R1/param.K0;
+    
 
     double C1=param.K1/param.K0;
     double C2=param.K2/param.K0;
 
         
     float R2_sq=R2*R2;
-    float mult = 1-C1*R2_sq+(3*C1*C2-C2)*R2_sq*R2_sq;//r/r"
+    //float mult = 1-C1*R2_sq+(3*C1*C1-C2)*R2_sq*R2_sq;//r/r"
+
+    //HACK: SUPER hacky formula, just trial and error...
+    float mult = 1+0.001*(C2/0.03572)-C1*R2_sq+(3*C1*C1-0.9*C2)*R2_sq*R2_sq;
     float mult2 = mult/param.K0;//K0* r/r"
 
     return acvVecAdd(acvVecMult(v1,mult2),param.calibrationCenter);
