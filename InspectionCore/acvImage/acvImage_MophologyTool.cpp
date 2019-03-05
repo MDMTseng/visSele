@@ -57,6 +57,55 @@ void acvbDilation(acvImage *BuffPic, acvImage *Pic, int Size) //Max
     }
 }
 
+void acvWindowMax(acvImage *Pic, int Size) //Max
+{
+    int i, j, k;
+
+    for (j = 0; j < Pic->GetWidth(); j++)
+    {
+        for (i = 0; i < Pic->GetHeight(); i++)
+        {
+            int max=0;
+            for (k = -Size+1; k < Size; k++)
+            {
+                int y = k+i;
+                if(y<0 || y>=Pic->GetHeight())continue;
+                
+                int tmp = Pic->CVector[y][3 * j];
+                if(max<tmp)
+                {
+                    max=tmp;
+                }
+            }
+            Pic->CVector[i][3 * j+1]=max;
+        }
+    }
+
+
+    for (i = 0; i < Pic->GetHeight(); i++)
+    {
+        for (j = 0; j < Pic->GetWidth(); j++)
+        {
+            int max=0;
+            for (k = -Size+1; k < Size; k++)
+            {
+                int x = k+j;
+                if(x<0 || x>=Pic->GetWidth())continue;
+                
+                int tmp = Pic->CVector[i][3 * x+1];
+                if(max<tmp)
+                {
+                    max=tmp;
+                }
+            }
+            Pic->CVector[i][3 * j]=max;
+        }
+    }
+}
+
+
+
+
 void acvbErosion(acvImage *BuffPic, acvImage *Pic, int Size) //Min
 {
     int i, j, k, TmpSum;

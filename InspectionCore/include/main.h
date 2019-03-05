@@ -17,6 +17,6 @@
 #include <stdexcept>
 #include "CameraLayer_BMP.hpp"
 #include "CameraLayer_GIGE_MindVision.hpp"
-
+#include "acvImage_MophologyTool.hpp"
 
 #endif

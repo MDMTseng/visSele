@@ -961,6 +961,7 @@ void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
 
 
 clock_t pframeT;
+acvImage proBG;
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   static acvImage test1_buff;
@@ -987,6 +988,25 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   
   acvImage &capImg=*cl_GMV.GetImg();
   imgStackRes.ReSize(&capImg);
+
+
+  
+
+  for (int i = 0; i < capImg.GetHeight(); i++)
+  {
+    for (int j = 0; j < capImg.GetWidth(); j++)
+    {
+      int stdBG = proBG.CVector[i][j*3];
+      int curBri = capImg.CVector[i][j*3];
+      curBri=curBri*200/stdBG;
+      if(curBri>255)curBri=255;
+      capImg.CVector[i][j*3] = 
+      capImg.CVector[i][j*3+1] = 
+      capImg.CVector[i][j*3+2] = curBri;
+    }
+  }
+
+
 
 
   int ret=0;
@@ -1463,7 +1483,7 @@ int main(int argc, char** argv)
 
     acvImage calibImage;
     acvImage test_buff;
-    int ret_val = acvLoadBitmapFile(&calibImage,"data/calibration_Img/lens1_2.bmp");
+    int ret_val = acvLoadBitmapFile(&calibImage,"data/calibImg.BMP");
     if(ret_val!=0)return -1;
     ImgInspection_DefRead(matchingEng,&calibImage,1,"data/cameraCalibration.json");
 
@@ -1487,11 +1507,12 @@ int main(int argc, char** argv)
 
   if(0)
   {
-    //char *imgName="data/BMP_carousel_test/01-17-20-38-26-050.bmp";
-    //char *defName = "data/cache_def.json";
+    char *imgName="data/test1.BMP";
+    char *defName = "data/cache_def.json";
 
-    char *imgName="data/calib_cam1_surfaceGo.bmp";
-    char *defName = "data/cameraCalibration.json";
+    acvLoadBitmapFile(&proBG,"data/proBG.BMP");
+    //char *imgName="data/calib_cam1_surfaceGo.bmp";
+    //char *defName = "data/cameraCalibration.json";
     //
     return simpleTest(imgName,defName);
   }
@@ -1519,6 +1540,53 @@ int main(int argc, char** argv)
     //return 0;
   }
 
+  if(0)//GenBG map
+  {
+    
+    acvImage BuffImage;
+    acvImage BGImage;
+    acvImage BGImage_Ori;
+    int ret_val = acvLoadBitmapFile(&BGImage,"data/BG.BMP");
+    if(ret_val)return ret_val;
+    BuffImage.ReSize(&BGImage);
+    BGImage_Ori.ReSize(&BGImage);
+    acvCloneImage(&BGImage,&BGImage_Ori,0);
+
+    acvWindowMax(&BGImage, 5);
+
+    acvBoxFilter(&BuffImage,&BGImage,20);
+    acvBoxFilter(&BuffImage,&BGImage,20);
+    acvBoxFilter(&BuffImage,&BGImage,20);
+    acvBoxFilter(&BuffImage,&BGImage,20);
+    
+    acvCloneImage(&BGImage,&BGImage,0);
+    
+
+    for(int i=0;i<BGImage_Ori.GetHeight();i++)
+    {
+      for(int j=0;j<BGImage_Ori.GetWidth();j++)
+      {
+        int BG_Ori = BGImage_Ori.CVector[i][3*j];
+        int BG = BGImage.CVector[i][3*j];
+        int diff = BG_Ori-BG-5;
+        if(diff<0)diff=-diff;
+        diff*=3;
+        if(diff>255)diff=255;
+
+        BGImage_Ori.CVector[i][3*j]=diff;
+        BGImage_Ori.CVector[i][3*j+1]=diff;
+        BGImage_Ori.CVector[i][3*j+2]=diff;
+      }
+    }
+    acvSaveBitmapFile("data/BGImage_OriX.bmp",&BGImage_Ori);
+
+
+
+    acvSaveBitmapFile("data/proBG.bmp",&BGImage);
+
+    return 0;
+  }
+  acvLoadBitmapFile(&proBG,"data/proBG.BMP");
 
 
   signal(SIGINT, sigroutine);

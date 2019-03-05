@@ -208,7 +208,7 @@ function StateReducer(newState,action)
               reportStatisticState.trackingWindow.filter((srep_inWindow)=>
                 {
                   let tdiff = currentTime_ms - srep_inWindow.time_ms;
-                  if(tdiff<keepInTrackingTime_ms && false)
+                  if(tdiff<keepInTrackingTime_ms)
                   {
                     return true;
                   }

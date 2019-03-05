@@ -218,11 +218,11 @@ class APP_DEFCONF_MODE extends React.Component{
                       let val = target.obj.value;
                       if(lastKey == "LSL")
                       {
-                        target.obj.LCL=roundX((val+(target.obj.LSL-val)/3),0.001);
+                        target.obj.LCL=roundX((val+(target.obj.LSL-val)*2/3),0.001);
                       }
                       else if(lastKey == "USL")
                       {
-                        target.obj.UCL=roundX((val+(target.obj.USL-val)/3),0.001);
+                        target.obj.UCL=roundX((val+(target.obj.USL-val)*2/3),0.001);
                       }
                     }
                   }
