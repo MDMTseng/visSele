@@ -2255,16 +2255,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           line_cand.line_vec = acvRotation(cached_sin,cached_cos,flip_f,line->lineTar.line_vec);
           line_cand.line_vec = acvVecMult(line_cand.line_vec,ppmm);//convert to pixel unit
           
-          LOGV("line->lineTar.line_vec: %f %f",line_cand.line_vec.X,line_cand.line_vec.Y);
             
           target_vec = line_cand.line_vec;
           line_cand.line_anchor =acvRotation(cached_sin,cached_cos,flip_f,line->searchEstAnchor);
           line_cand.line_anchor = acvVecMult(line_cand.line_anchor,ppmm);//convert to pixel unit
           
           //Offet to real image and backoff searchDist distance along with the searchVec as start
-          line_cand.line_anchor.X+=ldData[i].Center.X;
-          line_cand.line_anchor.Y+=ldData[i].Center.Y;
-          
+          line_cand.line_anchor=acvVecAdd(line_cand.line_anchor,ldData[i].Center);
+          LOGV("line->lineTar.line_vec: %f %f",line_cand.line_vec.X,line_cand.line_vec.Y);
+          LOGV("line->lineTar.line_anchor: %f %f",line_cand.line_anchor.X,line_cand.line_anchor.Y);
           
           
           acv_XY searchVec;
@@ -2280,13 +2279,13 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             skp.keyPt=acvVecAdd(skp.keyPt,ldData[i].Center);
             
             float searchDist = line->searchDist*ppmm;
-            //LOGV("skp.keyPt %f %f, searchDist:%f ppmm:%f",skp.keyPt.X,skp.keyPt.Y,line->searchDist,ppmm);
             if(drawDBG_IMG)
             {
               acvDrawCrossX(buff_,
               skp.keyPt.X,skp.keyPt.Y,
               2,2);
             }
+            //LOGV("skp.keyPt %f %f, searchDist:%f ppmm:%f",skp.keyPt.X,skp.keyPt.Y,searchDist,ppmm);
             if(searchP(img, &skp.keyPt , searchVec, searchDist)!=0)
             {
               LOGV("Fail...");
@@ -2332,6 +2331,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           }
 
         }
+        // Apply distortion remove on init line candidate anchor(line 2335 Sig360_cir_lin..)
+        // The init line candidate based on labeled image point scanning(5 init dots) and the labeled img is pre-distortion removal
+        // Also, the point info in Contour grid are post-distortion removal. So the region will be misaligned.
+        // So the solution is to apply acvVecRadialDistortionRemove for the init line_cand, that will compensate the problem.
+        // Ideally, the line vector and region width should be compensated as well, but.... if the lens is really that bad, you better find a really good reason to use that.
+        line_cand.line_anchor=acvVecRadialDistortionRemove(line_cand.line_anchor,param);
 
         float MatchingMarginX=line->MatchingMarginX*ppmm;
         float initMatchingMargin=line->initMatchingMargin*ppmm;
@@ -2345,6 +2350,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           initMatchingMargin/2,
           flip_f,
           s_intersectIdxs,s_points);
+          
+        //LOGV("l-vec: %f %f l-anc:%f %f",line_cand.line_vec.X,line_cand.line_vec.Y,line_cand.line_anchor.X,line_cand.line_anchor.Y);
         LOGV("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
           MatchingMarginX,s_points.size(),initMatchingMargin);
 
@@ -2353,9 +2360,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
 
           
-          LOGV("Line adj:thres:%f",thres);
+          //LOGV("Line adj:thres:%f",thres);
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
-          
           int sptL=s_points.size();
           for(int i=0;i<s_points.size();i++)
           {
@@ -2437,15 +2443,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           for(int j=0;j<2;j++)
           {
             usable_L=0;
-            for(int i=0;i<s_points.size();i++)
-            {
-              float dist  = acvDistance_Signed(line_cand,s_points[i].pt);
-              if(dist<0)dist=-dist;
-              s_points[i].tmp =  dist;
-              //s_points[i].edgeRsp=1;
-              
-            }
-
             if(s_points.size()==0)
             {
               usable_L=0;
@@ -2454,11 +2451,19 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               lr.def=line;
               lr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;//Not able to find starting point
               detectedLines.push_back(lr);
+              LOGE("Not able to find starting point");
               break;
             }
 
+            for(int n=0;n<s_points.size();n++)
+            {
+              float dist  = acvDistance_Signed(line_cand,s_points[n].pt);
+              if(dist<0)dist=-dist;
+              s_points[n].tmp =  dist;
+              //s_points[i].edgeRsp=1;
+              
+            }
             
-            LOGV("sort: s_points.size():%d",s_points.size());
             std::sort(s_points.begin(), s_points.end(),  
                   [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
               { 
