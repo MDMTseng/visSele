@@ -1088,7 +1088,7 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
             int j=i;
             for(int j=0;j<labelImg.GetWidth();j+=skip_step)//Find left top
             {   
-                acv_XY curXY={X:j,Y:i};
+                acv_XY curXY={X:(float)j,Y:(float)i};
                 acv_XY calibXY=acvVecRadialDistortionRemove(curXY,param);
                 acv_XY distoXY=acvVecRadialDistortionApply(calibXY,param);
                 float err = acvDistance(curXY,distoXY);
