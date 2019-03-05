@@ -2125,7 +2125,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   {// idx 0 is not a label, idx 1 is the outer frame to detect external object intrusion 
       if(ldData[i].area<120)continue;
 
-      //LOGI("Lable:%2d area:%d",i,ldData[i].area);
+      LOGI("Lable[%2d]: area:%d X:%f Y:%f",i,ldData[i].area,ldData[i].Center.X,ldData[i].Center.Y);
 
 
       acvContourCircleSignature(img, ldData[i], i, tmp_signature);
@@ -2387,61 +2387,16 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
           }
           
-          float minS_pts=0;
-          float minSigma=99999;
-          for(int j=0;j<7;j++)
-          {
-            int sampleL=s_points.size()/5;
-            for(int j=0;j<sampleL;j++)//Shuffle in 
-            {
-              int idx2Swap = (rand()%(s_points.size()-i))+i;
-              ContourGrid::ptInfo tmp_pt=s_points[j];
-              s_points[j]=s_points[idx2Swap];
-              s_points[idx2Swap]=tmp_pt;
-              //s_points[j].edgeRsp=1;
-            }
-
-            acv_Line tmp_line;
-            acvFitLine(
-              &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
-              &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), sampleL,&tmp_line,&sigma);
-
-            int sigma_count=0;
-            float sigma_sum=0;
-            for(int i=0;i<s_points.size();i++)
-            {
-              float diff =  acvDistance_Signed(tmp_line,s_points[i].pt);
-              float abs_diff=(diff<0)?-diff:diff;
-              if(abs_diff>2)
-              {
-                //s_points[j].edgeRsp=0;
-                continue;
-              }
-              sigma_count++;
-              sigma_sum+=diff*diff;
-              
-              //s_points[j].edgeRsp=1/(abs_diff*abs_diff+1);
-            }
-            sigma_sum=sqrt(sigma_sum/sigma_count);
-            if(minSigma>sigma_sum)
-            {
-              minS_pts = sigma_count;
-              minSigma = sigma_sum;
-              line_cand = tmp_line;
-              LOGV("minSigma:%f",minSigma);
-            }
-          }
-
           
           int usable_L=0;
-          for(int j=0;j<2;j++)
+          for(int m=0;m<2;m++)
           {
             usable_L=0;
-            for(int i=0;i<s_points.size();i++)
+            for(int n=0;n<s_points.size();n++)
             {
-              float dist  = acvDistance_Signed(line_cand,s_points[i].pt);
+              float dist  = acvDistance_Signed(line_cand,s_points[n].pt);
               if(dist<0)dist=-dist;
-              s_points[i].tmp =  dist;
+              s_points[n].tmp =  dist;
               //s_points[i].edgeRsp=1;
               
             }
@@ -2468,10 +2423,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             float distThres = s_points[s_points.size()/2].tmp+1;
             LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
 
-            for(int i=s_points.size()/2;i<s_points.size();i++)
+            for(int n=s_points.size()/2;n<s_points.size();n++)
             {
-              usable_L=i;
-              if(s_points[i].tmp>distThres)break;
+              usable_L=n;
+              if(s_points[n].tmp>distThres)break;
             }
             //usable_L=usable_L*10/11;//back off
             LOGV("usable_L:%d/%d  minSigma:%f=>%f",

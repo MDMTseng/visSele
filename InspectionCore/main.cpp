@@ -1417,6 +1417,79 @@ int main(int argc, char** argv)
   srand(time(NULL));
   /*auto lambda = []() { LOGV("Hello, Lambda"); };
   lambda();*/
+
+  if(0){
+
+      acvRadialDistortionParam param={
+        calibrationCenter:{1221.8525390625,991.11297607421875},
+        RNormalFactor:2127.8061732947176,
+        K0:0.97073391586914659,
+        K1:0.069715262698745548,
+        K2:0.03572587452515371,
+        //r = r_image/RNormalFactor
+        //C1 = K1/K0
+        //C2 = K2/K0
+        //r"=r'/K0
+        //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+        //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+        //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+        //r/r'=r*K0/r"
+
+        ppb2b: 46.407768249511719,
+        mmpb2b:  0.630049821,
+    };
+
+    
+    acvImage calibImage;
+    calibImage.ReSize(1500,1500);
+    int skip_step=10;
+    float MaxErr=0;
+    for(int i=0;i<calibImage.GetHeight();i+=skip_step)//Find left top
+    {   
+        int j=i;
+        {   
+            acv_XY curXY={X:j,Y:i};
+            acv_XY calibXY=acvVecRadialDistortionRemove(curXY,param);
+            acv_XY distoXY=acvVecRadialDistortionApply(calibXY,param);
+            float err = acvDistance(curXY,distoXY);
+            if(MaxErr<err)
+            {
+                MaxErr=err;
+                LOGV("MaxErr:%0.3f",MaxErr);
+                LOGV("(%0.3f,%0.3f)->(%0.3f,%0.3f)->(%0.3f,%0.3f)",curXY.X,curXY.Y,calibXY.X,calibXY.Y,distoXY.X,distoXY.Y);                
+            
+            }
+        }
+    }
+
+    for(int i=0;i<100;i+=skip_step)//Find left top
+    {   
+        float r=i/100.0;
+        float s=r*(param.K0+param.K1*r*r+param.K2*r*r*r*r);
+
+
+        float R2 = s/param.K0;
+        
+
+        double C1=param.K1/param.K0;
+        double C2=param.K2/param.K0;
+
+            
+        float R2_sq=R2*R2;
+        //float mult = 1-C1*R2_sq+(3*C1*C1-C2)*R2_sq*R2_sq;//r/r"
+        float rev_r = R2*(1-C1*R2_sq+(3*C1*C1-0.9*C2)*R2_sq*R2_sq);//r/r"
+
+
+
+        LOGV("%f %f %f",r,s,rev_r);
+
+
+    }
+    return 0;
+  }
+
+
+
   #ifdef __WIN32__
   {
       WSADATA wsaData;
@@ -1463,7 +1536,7 @@ int main(int argc, char** argv)
 
     acvImage calibImage;
     acvImage test_buff;
-    int ret_val = acvLoadBitmapFile(&calibImage,"data/calibration_Img/lens1_2.bmp");
+    int ret_val = acvLoadBitmapFile(&calibImage,"data/cam2div3_lens2_2.BMP");
     if(ret_val!=0)return -1;
     ImgInspection_DefRead(matchingEng,&calibImage,1,"data/cameraCalibration.json");
 
