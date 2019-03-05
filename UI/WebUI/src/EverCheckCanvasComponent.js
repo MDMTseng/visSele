@@ -1741,7 +1741,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
             type:SHAPE_TYPE.line,
             pt1:mouseOnCanvas2,
             pt2:pmouseOnCanvas2,
-            margin:5,
+            margin:0.3,
             color:this.colorSet.unselected,
             direction:1
           };
@@ -1774,7 +1774,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
               x:cnormal.x+cnormal.vx,
               y:cnormal.y+cnormal.vy},
             pt3:pmouseOnCanvas2,
-            margin:5,
+            margin:0.3,
             color:this.colorSet.unselected,
             direction:1
           };
@@ -1806,8 +1806,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
                 type:SHAPE_TYPE.search_point,
                 pt1:{x:0,y:0},
                 angleDeg:90,
-                margin:10,
-                width:40,
+                margin:0.15,
+                width:0.5,
                 ref:[{
                   id:this.CandEditPointInfo.shape.id,
                   element:this.CandEditPointInfo.shape.type
