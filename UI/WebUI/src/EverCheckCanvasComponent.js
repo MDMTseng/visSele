@@ -2,6 +2,7 @@
 
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
+import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {
@@ -15,6 +16,19 @@ import * as log from 'loglevel';
 import dclone from 'clone';
 
 import {EV_UI_Canvas_Mouse_Location} from 'REDUX_STORE_SRC/actions/UIAct';
+
+
+export const MEASURE_RESULT_VISUAL_INFO = {
+  [MEASURERSULTRESION.NA]:{COLOR:"rgba(128,128,128,0.5)",TEXT:MEASURERSULTRESION.NA},
+  [MEASURERSULTRESION.UOK]:{COLOR:"rgba(128,128,200,0.7)",TEXT:MEASURERSULTRESION.UOK},
+  [MEASURERSULTRESION.LOK]:{COLOR:"rgba(128,128,200,0.7)",TEXT:MEASURERSULTRESION.LOK},
+  [MEASURERSULTRESION.UCNG]:{COLOR:"rgba(255,255,0,0.5)",TEXT:MEASURERSULTRESION.UCNG},
+  [MEASURERSULTRESION.LCNG]:{COLOR:"rgba(255,255,0,0.5)",TEXT:MEASURERSULTRESION.LCNG},
+  [MEASURERSULTRESION.USNG]:{COLOR:"rgba(255,0,0,0.5)",TEXT:MEASURERSULTRESION.USNG},
+  [MEASURERSULTRESION.LSNG]:{COLOR:"rgba(255,0,0,0.5)",TEXT:MEASURERSULTRESION.LSNG},
+};
+
+
 
 class CameraCtrl
 {
@@ -1232,53 +1246,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     return ret_status;
   }
 
-  featureInspectionMarginTest(featureMeasure,target,marginSet)
-  {
-    let subtype = featureMeasure.subtype;
-
-
-    
-    let error = featureMeasure.value - target;
-    if(error<0)error=-error;
-    if(subtype === "angle")
-    {
-      if(error>=90)error=180-error;
-    }
-
-
-    let minViolation=Number.MAX_VALUE;
-    let violationInfo={
-      subtype:subtype,
-      target:target,
-      value:featureMeasure.value,
-      error:error,
-      minViolationKey:undefined,
-      minViolationIdx:Number.MAX_VALUE,
-      minViolationValue:Number.MAX_VALUE
-    };
-
-    let idx=0;
-    for (var key in marginSet)
-    {
-      if(marginSet[key] == 0)continue;
-      let violation = error-marginSet[key];
-      if(violation>0)
-      {
-        if(minViolation>violation)
-        {
-          minViolation = violation;
-          violationInfo.minViolationValue = violation;
-          violationInfo.minViolationKey = key;
-          violationInfo.minViolationIdx = idx;
-        }
-      }
-      idx++;
-
-    }
-    return violationInfo;
-  }
-
-
   draw()
   {
       this.draw_INSP();
@@ -1373,17 +1340,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
                   {
                     return;
                   }
-                  let measureSet={
-                    submargin1:eObj.submargin1
-                  };
-                  
-                  let submargin = this.featureInspectionMarginTest(inspMeasureTar,eObj.value,measureSet);
-                  if(submargin.minViolationKey != undefined && minViolationIdx>submargin.minViolationIdx)
-                  {
-                    minViolationIdx=submargin.minViolationIdx;
-                    ctx.fillStyle=this.colorSet.color_FAILURE_opt[submargin.minViolationKey];
-                  }
 
+                  ctx.fillStyle=MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
                 }
               });
             }
@@ -1427,15 +1385,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
                 let targetID = eObj.id;
                 let inspMeasureTar = report.judgeReports.find((measure)=>measure.id === targetID);
                 if(inspMeasureTar===undefined)break;
-                let measureSet={
-                  submargin1:eObj.submargin1
-                };
                 
-                let submargin = this.featureInspectionMarginTest(inspMeasureTar,eObj.value,measureSet);
-                if(submargin.minViolationKey != undefined)
-                {
-                  eObj.color=this.colorSet.color_FAILURE_opt[submargin.minViolationKey];
-                }
+                ctx.color=MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
 
               }
 

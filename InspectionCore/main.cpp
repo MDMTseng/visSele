@@ -1562,26 +1562,26 @@ int main(int argc, char** argv)
     acvCloneImage(&BGImage,&BGImage,0);
     
 
-    for(int i=0;i<BGImage_Ori.GetHeight();i++)
+    if(BGImage_Ori.GetHeight() == BGImage.GetHeight() && BGImage_Ori.GetWidth() == BGImage.GetWidth() )
     {
-      for(int j=0;j<BGImage_Ori.GetWidth();j++)
+      for(int i=0;i<BGImage_Ori.GetHeight();i++)
       {
-        int BG_Ori = BGImage_Ori.CVector[i][3*j];
-        int BG = BGImage.CVector[i][3*j];
-        int diff = BG_Ori-BG-5;
-        if(diff<0)diff=-diff;
-        diff*=3;
-        if(diff>255)diff=255;
+        for(int j=0;j<BGImage_Ori.GetWidth();j++)
+        {
+          int BG_Ori = BGImage_Ori.CVector[i][3*j];
+          int BG = BGImage.CVector[i][3*j];
+          int diff = BG_Ori-BG-5;
+          if(diff<0)diff=-diff;
+          diff*=3;
+          if(diff>255)diff=255;
 
-        BGImage_Ori.CVector[i][3*j]=diff;
-        BGImage_Ori.CVector[i][3*j+1]=diff;
-        BGImage_Ori.CVector[i][3*j+2]=diff;
+          BGImage_Ori.CVector[i][3*j]=diff;
+          BGImage_Ori.CVector[i][3*j+1]=diff;
+          BGImage_Ori.CVector[i][3*j+2]=diff;
+        }
       }
     }
     acvSaveBitmapFile("data/BGImage_OriX.bmp",&BGImage_Ori);
-
-
-
     acvSaveBitmapFile("data/proBG.bmp",&BGImage);
 
     return 0;

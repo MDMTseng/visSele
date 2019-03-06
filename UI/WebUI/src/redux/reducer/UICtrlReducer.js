@@ -154,9 +154,7 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-
-
-    let keepInTrackingTime_ms=4000;
+    let keepInTrackingTime_ms=3000;
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
 
@@ -214,6 +212,46 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
+
+                  reportStatisticState.statisticValue.measureList.forEach((measure)=>{
+                    let new_rep = srep_inWindow.judgeReports.find((rep)=>rep.id == measure.id);
+                    //measure.statistic
+                    let stat = measure.statistic;
+                    if(new_rep === undefined || new_rep.status == INSPECTION_STATUS.NA)
+                    {
+                      stat.count_stat.NA++;
+                      log.error("The incoming inspection report doesn't match the defFile");
+                      return;
+                    }
+                    let nv_val = new_rep.value;
+
+                    if(stat.count_stat[new_rep.detailStatus]===undefined)
+                    {
+                      stat.count_stat[new_rep.detailStatus]=0;
+                    }
+                    else
+                    {
+                      stat.count_stat[new_rep.detailStatus]++;
+                    }
+                    
+                    stat.count++;
+                    stat.sum+=nv_val;
+                    stat.mean = stat.sum/stat.count;
+                    stat.sqSum+=nv_val*nv_val;
+                    stat.variance = stat.sqSum/stat.count-stat.mean*stat.mean;//E[X^2]-E[X]^2
+                    stat.sigma = Math.sqrt(stat.variance);
+
+
+                    stat.CPU = (measure.USL-stat.mean)/(3*stat.sigma);
+                    stat.CPL = (stat.mean-measure.LSL)/(3*stat.sigma);
+                    stat.CP = Math.min(stat.CPU,stat.CPL);
+                    stat.CA = (stat.mean-measure.value)/((measure.USL-measure.LSL)/2);
+                    stat.CPK = stat.CP*(1-Math.abs(stat.CA));
+              
+
+                    log.info(stat);
+                  
+                  });
                   reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
                   
                   return false;
@@ -510,10 +548,26 @@ function StateReducer(newState,action)
                     feature.type==SHAPE_TYPE.measure ))
                   .map((feature)=>{
                     feature.statistic={
+                      count_stat:
+                      {
+                        NA:0,
+                        UOK:0,
+                        LOK:0,
+                        
+                        UCNG:0,
+                        LCNG:0,
+
+                        USNG:0,
+                        LSNG:0,
+                      },
                       count : 0,
                       //those value should be undefined, but since the count is 0 so the following calc should ignore those value
-                      mean: 0,
-                      variance: 0,
+                      sum:0,
+                      sqSum:0,//E[X^2]*count
+                      mean: 0,//E[X]*count
+                      variance: 0,//E[X^2]-E[X]^2
+                      //deviation = Sigma = sqrt(variance)
+                      sigma: 0,
                       //
                       CP:0,
                       CA:0,

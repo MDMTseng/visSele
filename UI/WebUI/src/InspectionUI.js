@@ -11,7 +11,8 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
-import {SHAPE_TYPE,DEFAULT_UNIT,OK_NG_BOX_COLOR_TEXT} from 'REDUX_STORE_SRC/actions/UIAct';
+import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
+import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -110,6 +111,19 @@ class DB extends React.Component {
         );
     }
 }
+
+
+export const OK_NG_BOX_COLOR_TEXT = {
+    [MEASURERSULTRESION.NA]:{COLOR:"#aaa",TEXT:MEASURERSULTRESION.NA},
+    [MEASURERSULTRESION.UOK]:{COLOR:"#87d068",TEXT:MEASURERSULTRESION.UOK},
+    [MEASURERSULTRESION.LOK]:{COLOR:"#87d068",TEXT:MEASURERSULTRESION.LOK},
+    [MEASURERSULTRESION.UCNG]:{COLOR:"#d0d068",TEXT:MEASURERSULTRESION.UCNG},
+    [MEASURERSULTRESION.LCNG]:{COLOR:"#d0d068",TEXT:MEASURERSULTRESION.LCNG},
+    [MEASURERSULTRESION.USNG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.USNG},
+    [MEASURERSULTRESION.LSNG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.LSNG},
+};
+
+
 class OK_NG_BOX extends React.Component {
     constructor(props) {
         super(props);
@@ -120,11 +134,12 @@ class OK_NG_BOX extends React.Component {
 
     render() {
         //log.info("OK_NG_BOX_COLOR_TEXT[this.props]",this.props);
+        log.info("detailStatus",this.props);
         return (
 
             <div style={{'display':'inline-block'}}>
                 <Tag style={{'font-size': 20}}
-                     color={OK_NG_BOX_COLOR_TEXT[this.props.OK_NG].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.OK_NG].TEXT}
+                     color={OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].TEXT}
                 </Tag>
                 {this.props.children}
             </div>
@@ -156,31 +171,26 @@ class ObjInfoList extends React.Component {
             resultMenu = this.props.IR.reports.map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
-
-                reportDetail = judgeReports.map((rep,idxx)=>
-                    <Menu.Item key={"i"+idx+rep.name}>
-                        <OK_NG_BOX OK_NG={rep.status} >
-                            {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
-                        </OK_NG_BOX>
-                    </Menu.Item>
+                reportDetail = judgeReports.map((rep)=>
+                    {
+                        console.log(rep);
+                        return <Menu.Item key={"i"+idx+rep.name}>
+                            <OK_NG_BOX detailStatus={rep.detailStatus} >
+                                {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
+                            </OK_NG_BOX>
+                        </Menu.Item>
+                    }
                 );
 
                 let finalResult = judgeReports.reduce((res, obj) => {
-                        if (res == INSPECTION_STATUS.NA) return res;
-                        if (res == INSPECTION_STATUS.FAILURE) {
-                            if (obj.status == INSPECTION_STATUS.NA)
-                                return INSPECTION_STATUS.NA;
-                            return res;
-                        }
-                        return obj.status;
+                        return MEASURERSULTRESION_reducer(res, obj.detailStatus);
                     }
-                    , INSPECTION_STATUS.SUCCESS);
-
+                    , undefined);
 
                 //log.info("judgeReports>>", judgeReports);
                 return (
                     <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
-                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX OK_NG={ finalResult } ></OK_NG_BOX></span>
+                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX detailStatus={ finalResult } ></OK_NG_BOX></span>
 
                              </span>}>
                         {reportDetail}

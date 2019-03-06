@@ -12,6 +12,58 @@ import dclone from 'clone';
 import * as logX from 'loglevel';
 let log = logX.getLogger("InspectionEditorLogic");
 
+export const MEASURERSULTRESION=
+{
+  NA:"NA",
+  UOK:"UOK",
+  LOK:"LOK",
+  
+  UCNG:"UCNG",
+  LCNG:"LCNG",
+
+  USNG:"USNG",
+  LSNG:"LSNG",
+};
+
+
+export const MEASURERSULTRESION_priority=
+{
+  [MEASURERSULTRESION.NA]:0,
+
+  [MEASURERSULTRESION.LSNG]:1,
+  [MEASURERSULTRESION.USNG]:1,
+  [MEASURERSULTRESION.UCNG]:2,
+  [MEASURERSULTRESION.LCNG]:2,
+
+  [MEASURERSULTRESION.UOK]:3,
+  [MEASURERSULTRESION.LOK]:3,
+  
+
+};
+
+export function MEASURERSULTRESION_reducer(res, measure_result_region)
+{
+  if (res == MEASURERSULTRESION.NA) return res;
+
+  if (res == MEASURERSULTRESION.USNG || res == MEASURERSULTRESION.LSNG ) {
+      if (measure_result_region == MEASURERSULTRESION.NA)
+          return measure_result_region;
+      return res;
+  }
+
+  if (res == MEASURERSULTRESION.UCNG || res == MEASURERSULTRESION.LCNG ) {
+    if (measure_result_region == MEASURERSULTRESION.NA || 
+      measure_result_region == MEASURERSULTRESION.USNG||
+      measure_result_region == MEASURERSULTRESION.LSNG
+      )
+        return measure_result_region;
+    return res;
+  }
+  //If the res is undefined/UOK/LOK then the new result is the return value
+  return measure_result_region;
+}
+
+
 export class InspectionEditorLogic
 {
   constructor()
@@ -42,8 +94,42 @@ export class InspectionEditorLogic
   }
   SetInspectionReport(inspreport)
   {
-    log.debug(inspreport);
     this.inspreport=inspreport;
+
+    this.inspreport.reports[0].judgeReports.forEach((measure)=>{
+      let measureDef = this.shapeList.find((feature)=>feature.id ==measure.id);
+
+      if(measureDef===undefined)
+      {
+        measure.detailStatus=MEASURERSULTRESION.NA;
+      }
+      else if(measure.value<measureDef.LSL)
+      {
+        measure.detailStatus=MEASURERSULTRESION.LSNG;
+      }
+      else if(measure.value<measureDef.LCL)
+      {
+        measure.detailStatus=MEASURERSULTRESION.LCNG;
+      }
+      else if(measure.value<measureDef.value)
+      {
+        measure.detailStatus=MEASURERSULTRESION.LOK;
+      }
+      else if(measure.value<measureDef.UCL)
+      {
+        measure.detailStatus=MEASURERSULTRESION.UOK;
+      }
+      else if(measure.value<measureDef.USL)
+      {
+        measure.detailStatus=MEASURERSULTRESION.UCNG;
+      }
+      else
+      {
+        measure.detailStatus=MEASURERSULTRESION.USNG;
+      }
+      
+    });
+
   }
   
 

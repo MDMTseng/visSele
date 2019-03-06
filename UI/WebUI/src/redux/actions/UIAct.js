@@ -52,12 +52,6 @@ export const SHAPE_TYPE = {
   }
 
 };
-export const OK_NG_BOX_COLOR_TEXT = {
-  [INSPECTION_STATUS.NA]:{COLOR:"#aaa",TEXT:"NA"},
-  [INSPECTION_STATUS.SUCCESS]:{COLOR:"#87d068",TEXT:"OK"},
-  [INSPECTION_STATUS.FAILURE]:{COLOR:"#f50",TEXT:"NG"}
-
-}
 export const DEFAULT_UNIT = {
   [SHAPE_TYPE.measure_subtype.sigma]:"",
   [SHAPE_TYPE.measure_subtype.distance]:"mm",
