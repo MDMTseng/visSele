@@ -33,6 +33,7 @@ function Edit_info_reset(newState)
     sig360report:[],
     img:null,
     DefFileName:"",
+    DefFileHash:"",
     list:[],
     inherentShapeList:[],
 
@@ -194,6 +195,53 @@ function StateReducer(newState,action)
   }
 
 
+  function statReducer(statistic,report)
+  {
+    
+    //if the time is longer than 4s then remove it from matchingWindow
+    //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
+    statistic.measureList.forEach((measure)=>{
+      let new_rep = report.judgeReports.find((rep)=>rep.id == measure.id);
+      //measure.statistic
+      let stat = measure.statistic;
+      if(new_rep === undefined || new_rep.status == INSPECTION_STATUS.NA)
+      {
+        stat.count_stat.NA++;
+        log.error("The incoming inspection report doesn't match the defFile");
+        return;
+      }
+      let nv_val = new_rep.value;
+
+      if(stat.count_stat[new_rep.detailStatus]===undefined)
+      {
+        stat.count_stat[new_rep.detailStatus]=0;
+      }
+      else
+      {
+        stat.count_stat[new_rep.detailStatus]++;
+      }
+      
+      stat.count++;
+      stat.sum+=nv_val;
+      stat.mean = stat.sum/stat.count;
+      stat.sqSum+=nv_val*nv_val;
+      stat.variance = stat.sqSum/stat.count-stat.mean*stat.mean;//E[X^2]-E[X]^2
+      stat.sigma = Math.sqrt(stat.variance);
+
+
+      stat.CPU = (measure.USL-stat.mean)/(3*stat.sigma);
+      stat.CPL = (stat.mean-measure.LSL)/(3*stat.sigma);
+      stat.CP = Math.min(stat.CPU,stat.CPL);
+      stat.CA = (stat.mean-measure.value)/((measure.USL-measure.LSL)/2);
+      stat.CPK = stat.CP*(1-Math.abs(stat.CA));
+
+      
+      stat.histogram = histDataReducer(stat.histogram,nv_val);
+      //log.info(stat);
+    
+    });
+    return statistic;
+  }
 
 
 
@@ -257,46 +305,8 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  reportStatisticState.statisticValue.measureList.forEach((measure)=>{
-                    let new_rep = srep_inWindow.judgeReports.find((rep)=>rep.id == measure.id);
-                    //measure.statistic
-                    let stat = measure.statistic;
-                    if(new_rep === undefined || new_rep.status == INSPECTION_STATUS.NA)
-                    {
-                      stat.count_stat.NA++;
-                      log.error("The incoming inspection report doesn't match the defFile");
-                      return;
-                    }
-                    let nv_val = new_rep.value;
 
-                    if(stat.count_stat[new_rep.detailStatus]===undefined)
-                    {
-                      stat.count_stat[new_rep.detailStatus]=0;
-                    }
-                    else
-                    {
-                      stat.count_stat[new_rep.detailStatus]++;
-                    }
-                    
-                    stat.count++;
-                    stat.sum+=nv_val;
-                    stat.mean = stat.sum/stat.count;
-                    stat.sqSum+=nv_val*nv_val;
-                    stat.variance = stat.sqSum/stat.count-stat.mean*stat.mean;//E[X^2]-E[X]^2
-                    stat.sigma = Math.sqrt(stat.variance);
-
-
-                    stat.CPU = (measure.USL-stat.mean)/(3*stat.sigma);
-                    stat.CPL = (stat.mean-measure.LSL)/(3*stat.sigma);
-                    stat.CP = Math.min(stat.CPU,stat.CPL);
-                    stat.CA = (stat.mean-measure.value)/((measure.USL-measure.LSL)/2);
-                    stat.CPK = stat.CP*(1-Math.abs(stat.CA));
-              
-                    
-                    histDataPush(stat.histogram,nv_val);
-                    //log.info(stat);
-                  
-                  });
+                  reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                   reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
                   
                   return false;
@@ -535,7 +545,6 @@ function StateReducer(newState,action)
         case UISEV.Define_File_Update:
         let root_defFile=action.data;
         
-        Edit_info_reset(newState);
         if(root_defFile.type === "binary_processing_group")
         {
           let doExit=false;
@@ -549,11 +558,19 @@ function StateReducer(newState,action)
             }
           }
           
+          if(newState.edit_info.DefFileHash==sha1_info_in_json)
+          {
+            //No need to wipe out the data;
+            break;
+          }
+          Edit_info_reset(newState);
           if(doExit)
           {
+            newState.edit_info.DefFileHash=undefined;
             break;
           }
 
+          newState.edit_info.DefFileHash=sha1_info_in_json;
 
           if(root_defFile.name === undefined)
           {

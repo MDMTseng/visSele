@@ -734,8 +734,16 @@ class MeasureStatList extends React.Component {
     }
 
     render() {
-        //console.log(this.props.inspection_Info);
-        return <div>ssss</div>
+         console.log(this.props.inspection_Info);
+        let statisticValue = this.props.inspection_Info.statisticValue;
+        if(statisticValue===undefined)
+        {
+            return null;
+        }
+        let info = statisticValue.measureList
+            .map((measure)=>measure.statistic.mean)
+            .map((val)=><div>{val}</div>)
+        return <div className={this.props.addClass}>{info}</div>
     }
 }
 
