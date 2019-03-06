@@ -18,54 +18,8 @@ let log = logX.getLogger("UICtrlReducer");
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
-function Default_UICtrlReducer()
-{
-  //ST = d;
-  //log.info("ST...",JSON.stringify(ST));
-  return {
-    MENU_EXPEND:false,
 
 
-    showSplash:true,
-    showSM_graph:false,
-    WS_CH:undefined,
-    edit_info:{
-      defModelPath:"data/cache_def",
-      _obj:new InspectionEditorLogic(),
-      inspReport:undefined,
-      reportStatisticState:{
-        trackingWindow:[],
-        historyReport:[],
-        statisticValue:undefined
-      },
-      sig360report:[],
-      img:null,
-      DefFileName:"",
-      list:[],
-      inherentShapeList:[],
-
-      edit_tar_info:null,//It's for usual edit target
-
-      //It's the target element in edit target
-      //Example 
-      //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
-      //And our target is c
-      //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
-      edit_tar_ele_trace:null,
-
-      //This is the cadidate info for target element content
-      edit_tar_ele_cand:null,
-      session_lock:null,
-      camera_calibration_report:undefined,
-      mouseLocation:undefined
-    },
-    sm:null,
-    c_state:null,
-    p_state:null,
-    state_count:0,
-    WS_ID:"EverCheckWS"
-  }
-}
 
 function Edit_info_reset(newState)
 {
@@ -109,6 +63,60 @@ function Edit_info_reset(newState)
   
 }
 
+
+function Default_UICtrlReducer()
+{
+  //ST = d;
+  //log.info("ST...",JSON.stringify(ST));
+  let defState = {
+    MENU_EXPEND:false,
+
+
+    showSplash:true,
+    showSM_graph:false,
+    WS_CH:undefined,
+    edit_info:{
+      defModelPath:"data/cache_def",
+      _obj:new InspectionEditorLogic(),
+      inspReport:undefined,
+      reportStatisticState:{
+        trackingWindow:[],
+        historyReport:[],
+        statisticValue:undefined
+      },
+      sig360report:[],
+      img:null,
+      DefFileName:"",
+      list:[],
+      inherentShapeList:[],
+
+      edit_tar_info:null,//It's for usual edit target
+
+      //It's the target element in edit target
+      //Example 
+      //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
+      //And our target is c
+      //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
+      edit_tar_ele_trace:null,
+
+      //This is the cadidate info for target element content
+      edit_tar_ele_cand:null,
+      session_lock:null,
+      camera_calibration_report:undefined,
+      mouseLocation:undefined
+    },
+    sm:null,
+    c_state:null,
+    p_state:null,
+    state_count:0,
+    WS_ID:"EverCheckWS"
+  }
+
+  Edit_info_reset(defState);
+  return defState;
+}
+
+
 function StateReducer(newState,action)
 {
 
@@ -151,6 +159,43 @@ function StateReducer(newState,action)
 
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
   let substate = stateObj.substate;
+
+  function histDataReducer(histoInfo,dataValue)
+  {
+    if(dataValue<histoInfo.xmin)
+    {
+      histoInfo.histo[0]++;
+      return histoInfo;
+    }
+    if(dataValue>histoInfo.xmax)
+    {
+      histoInfo.histo[histoInfo.histo.length-1]++;
+      return histoInfo;
+    }
+    let dataRegion=histoInfo.histo.length-2;//The first value and last value are the value excced xmin& xmax
+
+    //If the data is in the boundary then there must be a position for it.
+    let val_idx=Math.floor(dataRegion*(dataValue-histoInfo.xmin)/(histoInfo.xmax-histoInfo.xmin));
+    //Suppose xmax=21 xmin=20 dataRegion=4(index 0~3)
+    //idx = floor(dataRegion*(value-min)/(max-min+1));
+    //=>value=21   (4*(21-20)/(21-20))=>4/1=4  :on the edge case the idx might hit the boundary
+    //=>value=20   (4*(20-20)/(21-20))=>0/1=0 
+
+
+    //Suppose xmax=20 xmin=10 dataRegion=14(index 0~13)
+    //=>value=214   (13*(14-10)/(20-10))=>13*4/10=5.2  :on the edge case the idx might hit the boundary
+    //=>value=19    (13*(19-10)/(20-10))=>13*9/10=117/10=11.7
+    //=>value=19.9    (13*(19.9-10)/(20-10))=>13*9.9/10=117/10=12.87
+
+    if(val_idx>=dataRegion)val_idx=dataRegion-1;//Just in case it hits upper boundary;
+    histoInfo.histo[val_idx+1]++;//with 1 padding for lower over boundary data
+
+    return histoInfo;
+  }
+
+
+
+
 
   function EVENT_Inspection_Report(newState,action)
   {
@@ -212,7 +257,6 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-
                   reportStatisticState.statisticValue.measureList.forEach((measure)=>{
                     let new_rep = srep_inWindow.judgeReports.find((rep)=>rep.id == measure.id);
                     //measure.statistic
@@ -248,8 +292,9 @@ function StateReducer(newState,action)
                     stat.CA = (stat.mean-measure.value)/((measure.USL-measure.LSL)/2);
                     stat.CPK = stat.CP*(1-Math.abs(stat.CA));
               
-
-                    log.info(stat);
+                    
+                    histDataPush(stat.histogram,nv_val);
+                    //log.info(stat);
                   
                   });
                   reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
@@ -541,12 +586,12 @@ function StateReducer(newState,action)
                 
                 log.info(newState.edit_info.inherentShapeList);
 
-                
                 //reportStatisticState.statisticValue
                 let measureList=
                   dclone(newState.edit_info.list.filter((feature)=>
                     feature.type==SHAPE_TYPE.measure ))
                   .map((feature)=>{
+                    console.log(feature);
                     feature.statistic={
                       count_stat:
                       {
@@ -559,6 +604,11 @@ function StateReducer(newState,action)
 
                         USNG:0,
                         LSNG:0,
+                      },
+                      histogram:{
+                        xmin:1.2*(feature.LSL-feature.value)+feature.value,
+                        xmax:1.2*(feature.USL-feature.value)+feature.value,
+                        histo:new Array(502).fill(0)//The first value and last value are the value excced xmin& xmax
                       },
                       count : 0,
                       //those value should be undefined, but since the count is 0 so the following calc should ignore those value

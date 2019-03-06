@@ -133,10 +133,7 @@ class OK_NG_BOX extends React.Component {
     }
 
     render() {
-        //log.info("OK_NG_BOX_COLOR_TEXT[this.props]",this.props);
-        log.info("detailStatus",this.props);
         return (
-
             <div style={{'display':'inline-block'}}>
                 <Tag style={{'font-size': 20}}
                      color={OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].TEXT}
@@ -173,7 +170,6 @@ class ObjInfoList extends React.Component {
                 let judgeReports = singleReport.judgeReports;
                 reportDetail = judgeReports.map((rep)=>
                     {
-                        console.log(rep);
                         return <Menu.Item key={"i"+idx+rep.name}>
                             <OK_NG_BOX detailStatus={rep.detailStatus} >
                                 {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
@@ -721,6 +717,29 @@ const CanvasComponent_rdx = connect(
     mapStateToProps_CanvasComponent,
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
+
+
+
+
+class MeasureStatList extends React.Component {
+
+    componentDidMount() {
+    }
+
+    componentWillUnmount() {
+    }
+
+    constructor(props) {
+        super(props);
+    }
+
+    render() {
+        //console.log(this.props.inspection_Info);
+        return <div>ssss</div>
+    }
+}
+
+
 class APP_INSP_MODE extends React.Component {
 
 
@@ -800,6 +819,8 @@ class APP_INSP_MODE extends React.Component {
                 addClass="layout black vbox"
                 text="<" onClick={this.props.ACT_EXIT}/>
             ,
+            <MeasureStatList inspection_Info={this.props.reportStatisticState}/>
+            ,
             <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
             WSCMD_CB={(tl, prop, data, uintArr)=>{
                 this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);
@@ -826,6 +847,7 @@ class APP_INSP_MODE extends React.Component {
         );
     }
 }
+
 
 
 const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {

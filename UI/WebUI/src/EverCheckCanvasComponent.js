@@ -1386,7 +1386,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
                 let inspMeasureTar = report.judgeReports.find((measure)=>measure.id === targetID);
                 if(inspMeasureTar===undefined)break;
                 
-                ctx.color=MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
+                eObj.color=MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
 
               }
 
