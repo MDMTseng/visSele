@@ -1,6 +1,6 @@
 
 #include "Eth_Extra.h"
-#include <utility/w5100.h>
+//#include <utility/w5100.h>
  
 inline void SPI_Write(unsigned int addr, unsigned char data)
 {

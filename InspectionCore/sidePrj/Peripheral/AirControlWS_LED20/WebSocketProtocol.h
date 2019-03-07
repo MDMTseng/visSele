@@ -44,6 +44,11 @@ www.codebender.cc
 
 */
 
+
+#ifndef WEBSOCKETPRO_H_
+#define WEBSOCKETPRO_H_
+
+
 #include <Arduino.h> // Arduino 1.0 or greater is required
 #include <stdlib.h>
 
@@ -51,11 +56,6 @@ www.codebender.cc
 #include <Ethernet.h>
 #undef private
 //#include <Ethernet.h>// Just for manage client, it doesn't do data transfer.
-
-
-#ifndef WEBSOCKETPRO_H_
-#define WEBSOCKETPRO_H_
-
 
 
 #ifndef null

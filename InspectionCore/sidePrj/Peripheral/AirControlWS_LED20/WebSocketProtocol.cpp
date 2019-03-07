@@ -1,7 +1,7 @@
 #include "WebSocketProtocol.h"
 #include "sha1.h"
 #include "Base64.h"
-#include <Ethernet.h>
+//#include <Ethernet2.h>
 //#include "Eth_Boost.h"
 //#include "RingBuff.h"
 
@@ -430,7 +430,7 @@ EthernetClient WebSocketProtocol::getClientOBJ()
 
 void WebSocketProtocol::rmClientOBJ()
 {
-	clientOBJ._sock = MAX_SOCK_NUM;
+	//clientOBJ._sock = MAX_SOCK_NUM;
 	//clientOBJ=null;
     state = DISCONNECTED;
 	recvOPState=WSOP_CLOSE;
