@@ -17,6 +17,9 @@ import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import Table from 'antd/lib/table';
+import Switch from 'antd/lib/switch';
+
+import {round} from 'UTIL/MISC_Util';
 
 
 let log = logX.getLogger("InspectionUI");
@@ -170,9 +173,9 @@ class ObjInfoList extends React.Component {
             resultMenu = this.props.IR.reports.map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
-                reportDetail = judgeReports.map((rep)=>
+                reportDetail = judgeReports.map((rep,idx_)=>
                     {
-                        return <Menu.Item key={"i"+idx+rep.name}>
+                        return <Menu.Item key={"i"+idx+rep.name} key={idx_}>
                             <OK_NG_BOX detailStatus={rep.detailStatus} >
                                 {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
                             </OK_NG_BOX>
@@ -211,7 +214,7 @@ class ObjInfoList extends React.Component {
                     defaultSelectedKeys={['functionMenu']}
                     defaultOpenKeys={['functionMenu']}
                     mode="inline">
-                    <SubMenu style={{'text-align': 'left'}} key="DBMenu"
+                    <SubMenu style={{'textAlign': 'left'}} key="DBMenu"
                              title={<span><Icon type="setting"/><span>資料庫操作</span></span>}>
                         <DB
                             url={MDB_ATLAS}
@@ -219,7 +222,7 @@ class ObjInfoList extends React.Component {
 
                         />
                     </SubMenu>
-                    <SubMenu style={{'text-align': 'left'}} key="functionMenu"
+                    <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
                         <AirControl
                             url={"ws://192.168.2.2:5213"}
@@ -715,6 +718,13 @@ const CanvasComponent_rdx = connect(
 
 
 class DataStatsTable extends React.Component{
+    constructor(props) {
+        super(props);
+        this.state={
+            drawList:[]
+        };
+    }
+
     render() {
         let statstate = this.props.reportStatisticState;
         //console.log(statstate);
@@ -730,32 +740,65 @@ class DataStatsTable extends React.Component{
             name:measure.name,
             subtype:measure.subtype,
             count:measure.statistic.count,
-            mean:measure.statistic.mean.toFixed(4),
-            sigma:measure.statistic.sigma.toFixed(4),
-            CK:measure.statistic.CK.toFixed(4),
-            CPU:measure.statistic.CPU.toFixed(4),
-            CPL:measure.statistic.CPL.toFixed(4),
-            CP:measure.statistic.CP.toFixed(4),
-            CPK:measure.statistic.CPK.toFixed(4),
+            mean:round(measure.statistic.mean,0.001),
+            sigma:round(measure.statistic.sigma,0.001),
+            CK:round(measure.statistic.CK,0.001),
+            CPU:round(measure.statistic.CPU,0.001),
+            CPL:round(measure.statistic.CPL,0.001),
+            CP:round(measure.statistic.CP,0.001),
+            CPK:round(measure.statistic.CPK,0.001),
         })
         );
         
-    
+        if(measureReports.length==0)return null;
         //log.error(measureReports);
     
         
         //statstate.historyReport.map((rep)=>rep.judgeReports[0]);
         const dataSource = measureReports;
         
-        const columns = ["name","subtype","count","mean","sigma","CK","CP","CPK","CPU","CPL"].map((type)=>({title:type,dataIndex:type,key:type}));
-    
+        const columns = ["name","subtype","count","mean","sigma","CK","CP","CPU","CPL","CPK"]
+            .map((type)=>({title:type,dataIndex:type,key:type}))
+            .map((col)=>(  typeof measureReports[0][col.title]  == 'number')?//Find the first dataset and if it's number then add a sorter
+                Object.assign(col,{sorter: (a, b) => a[col.title] - b[col.title]}):col)
+        columns[0].fixed="left";
+        columns[0].width=100;
+
+        columns[columns.length-1].fixed="right";
+        columns[columns.length-1].width=100;
+        columns.push(
+            {title:"Draw Toggle",key:"draw",fixed:"right",
+            render: (text, record) => {
+                return <Switch checkedChildren="I" unCheckedChildren="O" onChange={(val)=>{
+                    
+                    this.state.drawList[record.name]=val;
+                    }
+                } />
+            }}
+        );
+
+        let graphX =Object.keys(this.state.drawList).map((key,idx)=>
+        {
+            if(this.state.drawList[key]==true)
+            {
+
+                return <div className="s black">{key}</div>;
+            }
+            return null;
+        });
+        console.log(graphX);
+
+
         let menuStyle={
         top:"0px",
         width:"100px"
         }
+
+      
         return(
             <div className={this.props.className}>
-                <Table dataSource={dataSource} columns={columns} />
+                <Table key="dat_table" dataSource={dataSource} columns={columns} scroll={{ x: 1300 }} pagination={false}/>
+                {graphX}
             </div>
         );
     }
@@ -798,6 +841,7 @@ class APP_INSP_MODE extends React.Component {
     componentDidMount() {
 
         this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + ".json"});
+        this.getCameraImage_StartStop(false);
 
     }
 
@@ -914,6 +958,7 @@ class APP_INSP_MODE extends React.Component {
         else
         {  
             CanvasWindowRatio=10;
+            menuOpacity=1;
 
             
             MenuSet.push(
@@ -922,20 +967,21 @@ class APP_INSP_MODE extends React.Component {
                 iconType="up-square"
                 key="DoImageTransfer"
                 addClass="layout palatte-blue-8 vbox"
-                text={"傳輸相機影像(I):"+ ((this.state.DoImageTransfer) ? " 啟動":" 暫停")}
+                text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
                 onClick={() => this.getCameraImage_StartStop()}/>);
             
             MenuSet.push(
                 <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
+                key="ObjInfoList"
                 WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
                 />);
         }
 
         return (
             <div className="HXF">
-                <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} onCanvasInit={(canvas) => {
-                                                this.ec_canvas = canvas
-                                            }}/>
+                
+                <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
+                    onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>
                 <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height} 

@@ -366,14 +366,15 @@ export let IconButton = React_createClass({
     var className=("button s "+ this.props.addClass);
     let translation = undefined;
 
-
-    translation = GetObjElement(this.props.dict,[this.props.dictTheme, this.props.text]);
-
-    if(translation===undefined)
+    if(this.props.dict!==undefined)
     {
-      translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
+      translation = GetObjElement(this.props.dict,[this.props.dictTheme, this.props.text]);
+  
+      if(translation===undefined)
+      {
+        translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
+      }
     }
-
     if(translation===undefined)
     {
       translation = this.props.text;
