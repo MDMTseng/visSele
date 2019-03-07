@@ -232,8 +232,8 @@ function StateReducer(newState,action)
       stat.CPU = (measure.USL-stat.mean)/(3*stat.sigma);
       stat.CPL = (stat.mean-measure.LSL)/(3*stat.sigma);
       stat.CP = Math.min(stat.CPU,stat.CPL);
-      stat.CA = (stat.mean-measure.value)/((measure.USL-measure.LSL)/2);
-      stat.CPK = stat.CP*(1-Math.abs(stat.CA));
+      stat.CK = (stat.mean-measure.value)/((measure.USL-measure.LSL)/2);
+      stat.CPK = stat.CP*(1-Math.abs(stat.CK));
 
       
       stat.histogram = histDataReducer(stat.histogram,nv_val);
@@ -247,7 +247,7 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-    let keepInTrackingTime_ms=3000;
+    let keepInTrackingTime_ms=1000;
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
 
@@ -305,10 +305,16 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-
-                  reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
-                  reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
-                  
+                  if(srep_inWindow.repeatTime>0)
+                  {
+                    reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
+                    reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                  }
+                  else
+                  {
+                    log.error("the current data only gets single sampling ignore",
+                    "this error case is to remove abnormal sample that's caused by air blow");
+                  }
                   return false;
                 });
             
@@ -637,7 +643,7 @@ function StateReducer(newState,action)
                       sigma: 0,
                       //
                       CP:0,
-                      CA:0,
+                      CK:0,
                       CPU:0,
                       CPL:0,
                       CPK:0,

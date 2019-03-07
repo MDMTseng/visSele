@@ -32,7 +32,8 @@ export default {
         radius:"半徑/R",
         name:"名稱",
         docheck:"必要判定",
-        DefFileName:"設定檔名"
+        DefFileName:"設定檔名",
+        "Info Graphs":"資料圖表"
     },
     
     measure:{

@@ -16,6 +16,8 @@ import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/red
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import Table from 'antd/lib/table';
+
 
 let log = logX.getLogger("InspectionUI");
 
@@ -243,7 +245,6 @@ class AirControl extends React.Component {
             websocketAir: undefined,
             websocketAirTime: 10,
             STOP: true,
-            DoImageTransfer: false
         }
     }
 
@@ -313,16 +314,6 @@ class AirControl extends React.Component {
         this.setState(Object.assign({}, this.state));
         if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN)
             this.state.websocketAir.send("/cue/TIME/" + this.state.websocketAirTime);
-    }
-
-    getCameraImage_StartStop() {
-        log.info("fun getCameraImage_StartStop click");
-        
-        this.state.DoImageTransfer = !this.state.DoImageTransfer;
-        this.setState(Object.assign({}, this.state));
-
-        this.props.WSCMD_CB("ST", 0, {DoImageTransfer: this.state.DoImageTransfer});
-        //this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0, {DoImageTransfer: false});
     }
 
     blowAir_StartStop() {
@@ -427,10 +418,6 @@ class AirControl extends React.Component {
         return (
 
             <div>
-                <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
-                        onClick={() => this.getCameraImage_StartStop()}>
-                    傳輸相機影像(I): {this.state.DoImageTransfer ? " 啟動":" 暫停"}
-                </Button>
                 <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.blowAir_StartStop()}>
                     噴氣功能(B): {this.state.STOP ? " 暫停=" : " 啟動="}{this.state.websocketAirTime}ms
@@ -635,6 +622,7 @@ class G2LINE extends React.Component {
 class CanvasComponent extends React.Component {
     constructor(props) {
         super(props);
+        this.windowSize={};
     }
 
     ec_canvas_EmitEvent(event) {
@@ -672,8 +660,12 @@ class CanvasComponent extends React.Component {
     }
 
     onResize(width, height) {
+        if(Math.hypot(this.windowSize.width-width,this.windowSize.height-height)<5)return;
         if (this.ec_canvas !== undefined) {
             this.ec_canvas.resize(width, height);
+            this.windowSize={
+                width,height
+            }
             this.updateCanvas(this.props.c_state);
         }
     }
@@ -721,6 +713,58 @@ const CanvasComponent_rdx = connect(
 
 
 
+
+class DataStatsTable extends React.Component{
+    render() {
+        let statstate = this.props.reportStatisticState;
+        //console.log(statstate);
+        if(statstate.statisticValue===undefined)
+        {
+            return null;
+        }
+        let measureList = statstate.statisticValue.measureList;
+    
+        
+        let measureReports=measureList.map((measure)=>
+            ({
+            name:measure.name,
+            subtype:measure.subtype,
+            count:measure.statistic.count,
+            mean:measure.statistic.mean.toFixed(4),
+            sigma:measure.statistic.sigma.toFixed(4),
+            CK:measure.statistic.CK.toFixed(4),
+            CPU:measure.statistic.CPU.toFixed(4),
+            CPL:measure.statistic.CPL.toFixed(4),
+            CP:measure.statistic.CP.toFixed(4),
+            CPK:measure.statistic.CPK.toFixed(4),
+        })
+        );
+        
+    
+        //log.error(measureReports);
+    
+        
+        //statstate.historyReport.map((rep)=>rep.judgeReports[0]);
+        const dataSource = measureReports;
+        
+        const columns = ["name","subtype","count","mean","sigma","CK","CP","CPK","CPU","CPL"].map((type)=>({title:type,dataIndex:type,key:type}));
+    
+        let menuStyle={
+        top:"0px",
+        width:"100px"
+        }
+        return(
+            <div className={this.props.className}>
+                <Table dataSource={dataSource} columns={columns} />
+            </div>
+        );
+    }
+    }
+    
+    
+    
+      
+
 class MeasureStatList extends React.Component {
 
     componentDidMount() {
@@ -734,15 +778,15 @@ class MeasureStatList extends React.Component {
     }
 
     render() {
-         console.log(this.props.inspection_Info);
+        //console.log(this.props.inspection_Info);
         let statisticValue = this.props.inspection_Info.statisticValue;
         if(statisticValue===undefined)
         {
             return null;
         }
         let info = statisticValue.measureList
-            .map((measure)=>measure.statistic.mean)
-            .map((val)=><div>{val}</div>)
+            .map(measure=><div>{measure.statistic.mean}</div>)
+
         return <div className={this.props.addClass}>{info}</div>
     }
 }
@@ -766,7 +810,26 @@ class APP_INSP_MODE extends React.Component {
         super(props);
         this.ec_canvas = null;
         this.checkResult2AirAction = {direction: "none", ver: 0};
+        this.state={
+            displayGraphUI:false,
+            CanvasWindowRatio:9,
+            DoImageTransfer:true
+        };
         // this.IR = undefined;
+    }
+
+    
+
+    getCameraImage_StartStop(doTransfer) {
+        log.info("fun getCameraImage_StartStop click");
+        
+
+        this.state.DoImageTransfer = (doTransfer===undefined)?!this.state.DoImageTransfer:doTransfer;
+        this.setState(Object.assign({}, this.state));
+
+
+        
+        this.props.ACT_WS_SEND(this.props.WS_ID,"ST", 0, {DoImageTransfer: this.state.DoImageTransfer});
     }
 
     render() {
@@ -817,9 +880,12 @@ class APP_INSP_MODE extends React.Component {
             }
         }
         let MenuSet = [];
-        let InfoSet = [];
         let menu_height = "HXA";//auto
         log.debug("CanvasComponent render");
+        let CanvasWindowRatio = 12;
+        let menuOpacity = 1;
+
+
         MenuSet = [
             <BASE_COM.IconButton
                 dict={EC_zh_TW}
@@ -827,27 +893,54 @@ class APP_INSP_MODE extends React.Component {
                 addClass="layout black vbox"
                 text="<" onClick={this.props.ACT_EXIT}/>
             ,
-            <MeasureStatList inspection_Info={this.props.reportStatisticState}/>
+            <BASE_COM.IconButton
+                dict={EC_zh_TW}
+                iconType="bar-chart"
+                key="Info Graphs"
+                addClass="layout black vbox"
+                text="Info Graphs" onClick={()=>{
+                    this.state.displayGraphUI^=true;
+                    this.setState(Object.assign({},this.state));
+                }}/>
+            
             ,
-            <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
-            WSCMD_CB={(tl, prop, data, uintArr)=>{
-                this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);
-            }}
-            />
-
         ];
+
+        if(this.state.displayGraphUI)
+        {
+            CanvasWindowRatio=3;
+            menuOpacity=0.3;
+        }
+        else
+        {  
+            CanvasWindowRatio=10;
+
+            
+            MenuSet.push(
+                <BASE_COM.IconButton
+                dict={EC_zh_TW}
+                iconType="up-square"
+                key="DoImageTransfer"
+                addClass="layout palatte-blue-8 vbox"
+                text={"傳輸相機影像(I):"+ ((this.state.DoImageTransfer) ? " 啟動":" 暫停")}
+                onClick={() => this.getCameraImage_StartStop()}/>);
+            
+            MenuSet.push(
+                <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
+                WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
+                />);
+        }
 
         return (
             <div className="HXF">
-
-                <CanvasComponent_rdx addClass="layout width12 height12" onCanvasInit={(canvas) => {
-                    this.ec_canvas = canvas
-                }}/>
-
+                <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} onCanvasInit={(canvas) => {
+                                                this.ec_canvas = canvas
+                                            }}/>
+                <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
                 <$CSSTG transitionName="fadeIn">
-                    <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height}>
+                    <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height} 
+                        style={{opacity:menuOpacity,boxShadow: `5px 10px 13px rgba(10,10,10,0.3)`}}> 
                         {MenuSet}
-
                     </div>
                 </$CSSTG>
 
