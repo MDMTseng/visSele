@@ -15,8 +15,6 @@ import {round as roundX} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
 import 'antd/dist/antd.css';
 
-import t_enc from 'text-encoding';
-
 
 import EC_zh_TW from './languages/zh_TW';
 
@@ -350,7 +348,7 @@ class APP_DEFCONF_MODE extends React.Component{
             addClass="layout palatte-gold-7 vbox"
             key="SAVE"
             text="save" onClick={()=>{
-                var enc = new t_enc.TextEncoder();
+                var enc = new TextEncoder();
                 let report = this.props.edit_info._obj.GenerateEditReport();
                 report.name = this.props.edit_info.DefFileName;
 
@@ -609,7 +607,7 @@ class APP_DEFCONF_MODE extends React.Component{
     <div className="overlayCon HXF">
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
       <$CSSTG transitionName = "fadeIn">
-        <div key={substate} className={"s overlay scroll MenuAnim " + menu_height}>
+        <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
           {MenuSet}
         </div>
       </$CSSTG>

@@ -1,27 +1,25 @@
 var path = require('path');
 var webpack = require('webpack');
 var WebpackShellPlugin = require('webpack-shell-plugin');
+const UglifyJsPlugin = require('uglifyjs-webpack-plugin')
 //console.log(process.env.FOO);
 //process.env.NODE_ENV = "production";
 
 var PluginSets = [];
+var opt_minimizer = [];
 
 if(process.env.NODE_ENV === "production")
 {
-  PluginSets.push(new webpack.optimize.OccurenceOrderPlugin());
-
+  PluginSets.push(new webpack.optimize.OccurrenceOrderPlugin());
   PluginSets.push(new webpack.DefinePlugin({
     'process.env': {
       'NODE_ENV': JSON.stringify('production')
     }
   })); 
-
-  PluginSets.push(new webpack.optimize.UglifyJsPlugin({
-    compressor: {
-      warnings: false
-    }
+  opt_minimizer.push(new UglifyJsPlugin({
+    cache: true,
+    parallel: true,
   }));
-
 
 }
 if(process.env.NOTIMON_PRJ === "deploy")
@@ -36,7 +34,7 @@ module.exports = {
   cache: true,
   entry: './src/script.jsx',
   output: { path: __dirname, filename: 'bundle.js' },
-  devtool: (process.env.NODE_ENV !== "production")?"cheap-module-eval-source-map" : null,
+  devtool: (process.env.NODE_ENV !== "production")?"cheap-module-eval-source-map" : undefined,
   plugins:PluginSets,
   // target: 'electron-renderer',
   

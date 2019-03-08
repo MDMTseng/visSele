@@ -16,21 +16,21 @@ import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/red
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import Table from 'antd/lib/table';
-import Switch from 'antd/lib/switch';
+import Plot from 'react-plotly.js';
 
 import {round} from 'UTIL/MISC_Util';
 
-
 let log = logX.getLogger("InspectionUI");
 
-//#### A N T Session
-import G2 from '@antv/g2';
-import DataSet from '@antv/data-set';
+import Table from 'antd/lib/table';
+import Switch from 'antd/lib/switch';
 
-import {
-    Tag, Select, Input,Dropdown,Upload, Button, Menu,Icon
-} from 'antd';
+import  Tag  from 'antd/lib/tag';
+import  Select  from 'antd/lib/select';
+import  Upload  from 'antd/lib/upload';
+import  Button  from 'antd/lib/button';
+import  Menu  from 'antd/lib/menu';
+import  Icon  from 'antd/lib/icon';
 
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/Input';
@@ -474,154 +474,6 @@ class AirControl extends React.Component {
     }
 }
 
-class G2PointJitter extends React.Component {
-    getInitialState() {
-        return {
-            data: [],
-            forceFit: true,
-            width: 500,
-            height: 450,
-            plotCfg: {
-                margin: [80, 80, 0],
-                background: {
-                    stroke: '#ccc'
-                }
-            }
-        };
-    }
-
-    componentDidMount() {
-        const self = this;
-        axios.get('../../../static/data/dv-grades.json').then(function (response) {
-            self.setState({
-                data: response.data
-            });
-        }).catch(function (error) {
-            console.log(error);
-        });
-    }
-
-    render() {
-        return (
-            <div>
-                <Chart
-                    data={this.state.data}
-                    width={this.state.width}
-                    height={this.state.height}
-                    plotCfg={this.state.plotCfg}
-                    forceFit={this.state.forceFit}/>
-            </div>
-        );
-    }
-}
-
-class G2HOT extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            G2Chart: undefined,
-            divID: "asdcsdacadsc" + Math.round(Math.random() * 10000),
-
-            jdata: [{"name": "n1", "carat": 1000, "cut": "Ideal", "depth": 61.4, "table": 57, "price": 10},
-                {"name": "n2", "carat": 2000, "cut": "Good", "depth": 64, "table": 57, "price": 20},
-                {"name": "n3", "carat": 3000, "cut": "Ideal", "depth": 59.2, "table": 60, "price": 30},
-                {"name": "n4", "carat": 4000, "cut": "Ideal", "color": "J", "depth": 63, "table": 56, "price": 40}]
-        }
-
-    }
-
-    componentWillUpdate(nextProps, nextState) {
-
-        this.state.jdata.push({"carat": 2000 + (Math.random() - 0.5) * 400, "price": 20 + (Math.random() - 0.5) * 1});
-        let dv = new DataSet.View().source(this.state.jdata);
-        dv.transform({
-            type: 'kernel-smooth.density',
-            fields: ['carat', 'price'],
-            as: ['carat', 'price', 'density']
-        });
-
-        this.state.view.source(dv);
-
-        this.state.G2Chart.source(this.state.jdata);
-        this.state.G2Chart.render();
-    }
-
-    componentDidMount() {
-        this.state.G2Chart = new G2.Chart({
-            container: this.state.divID,
-            //forceFit:true
-        });
-
-        this.state.G2Chart.legend({
-            offset: 45
-        });
-        this.state.G2Chart.point().position('carat*price');
-
-        this.state.view = this.state.G2Chart.view();
-        this.state.view.axis(false);
-        this.state.view.heatmap().position('carat*price').color('density', 'blue-cyan-lime-yellow-red');
-
-    }
-
-    onResize(width, height) {
-        log.debug("G2HOT resize>>", width, height);
-        this.state.G2Chart.changeSize(width, height);
-
-    }
-
-    render() {
-
-        return <div className={this.props.className} id={this.state.divID}>
-
-            <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
-        </div>
-    }
-
-}
-
-class G2LINE extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            G2Chart: undefined,
-            divID: "asdcsdacadsc" + Math.round(Math.random() * 10000),
-
-        }
-
-    }
-
-    componentWillUpdate(nextProps, nextState) {
-        // if(nextProps.data===undefined)
-        //   return;
-        this.state.G2Chart.source(nextProps.data);
-        this.state.G2Chart.interval().position('genre*sold').color('genre');
-        this.state.G2Chart.render();
-    }
-
-    componentDidMount() {
-
-        this.state.G2Chart = new G2.Chart({
-            container: this.state.divID,
-            //forceFit:true
-        });
-    }
-
-    onResize(width, height) {
-        log.debug("G2HOT resize>>", width, height);
-        this.state.G2Chart.changeSize(width, height);
-
-    }
-
-    render() {
-
-        return <div className={this.props.className} id={this.state.divID}>
-
-            <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
-        </div>
-    }
-
-}
-
 class CanvasComponent extends React.Component {
     constructor(props) {
         super(props);
@@ -733,10 +585,10 @@ class DataStatsTable extends React.Component{
             return null;
         }
         let measureList = statstate.statisticValue.measureList;
-    
         
         let measureReports=measureList.map((measure)=>
             ({
+            id:measure.id,
             name:measure.name,
             subtype:measure.subtype,
             count:measure.statistic.count,
@@ -769,9 +621,8 @@ class DataStatsTable extends React.Component{
         columns.push(
             {title:"Draw Toggle",key:"draw",fixed:"right",
             render: (text, record) => {
-                return <Switch checkedChildren="I" unCheckedChildren="O" onChange={(val)=>{
-                    
-                    this.state.drawList[record.name]=val;
+                return <Switch  onChange={(val)=>{
+                    this.state.drawList[record.id]=val;
                     }
                 } />
             }}
@@ -781,23 +632,32 @@ class DataStatsTable extends React.Component{
         {
             if(this.state.drawList[key]==true)
             {
-
-                return <div className="s black">{key}</div>;
+                
+                
+                return <Plot
+                    data={[
+                    {
+                        y: statstate.historyReport.map((rep)=>rep.judgeReports.find((jrep)=>jrep.id==key).value),
+                        type: 'scatter',
+                        mode: 'lines+points',
+                        marker: {color: 'red'},
+                    },
+                    ]}
+                    useResizeHandler
+                    style={{ width: '100%', height: '300px' }}
+                    layout={{
+                        autosize: true,
+                        title: measureReports.find((rep)=>rep.id==key).name
+                    }}
+                />
             }
             return null;
         });
-        console.log(graphX);
-
-
-        let menuStyle={
-        top:"0px",
-        width:"100px"
-        }
-
+        //console.log(graphX);
       
         return(
             <div className={this.props.className}>
-                <Table key="dat_table" dataSource={dataSource} columns={columns} scroll={{ x: 1300 }} pagination={false}/>
+                <Table key="dat_table" dataSource={dataSource} columns={columns} scroll={{ x: 1000 }} pagination={false}/>
                 {graphX}
             </div>
         );
@@ -855,7 +715,7 @@ class APP_INSP_MODE extends React.Component {
         this.ec_canvas = null;
         this.checkResult2AirAction = {direction: "none", ver: 0};
         this.state={
-            displayGraphUI:false,
+            GraphUIDisplayMode:0,
             CanvasWindowRatio:9,
             DoImageTransfer:true
         };
@@ -943,20 +803,17 @@ class APP_INSP_MODE extends React.Component {
                 key="Info Graphs"
                 addClass="layout black vbox"
                 text="Info Graphs" onClick={()=>{
-                    this.state.displayGraphUI^=true;
+                    this.state.GraphUIDisplayMode=(this.state.GraphUIDisplayMode+1)%3;
                     this.setState(Object.assign({},this.state));
                 }}/>
             
             ,
         ];
 
-        if(this.state.displayGraphUI)
+
+        switch(this.state.GraphUIDisplayMode)
         {
-            CanvasWindowRatio=3;
-            menuOpacity=0.3;
-        }
-        else
-        {  
+            case 0:
             CanvasWindowRatio=10;
             menuOpacity=1;
 
@@ -975,6 +832,36 @@ class APP_INSP_MODE extends React.Component {
                 key="ObjInfoList"
                 WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
                 />);
+            break;
+            case 1:
+            CanvasWindowRatio=3;
+            menuOpacity=0.3;
+            break;
+            
+            case 2:
+            CanvasWindowRatio=0;
+            menuOpacity=0.3;
+
+            
+            MenuSet.push(
+                <BASE_COM.IconButton
+                dict={EC_zh_TW}
+                iconType="up-square"
+                key="DoImageTransfer"
+                addClass="layout palatte-blue-8 vbox"
+                text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
+                onClick={() => this.getCameraImage_StartStop()}/>);
+            
+            MenuSet.push(
+                <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
+                key="ObjInfoList"
+                WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
+                />);
+            break;
+            case 3:
+            CanvasWindowRatio=3;
+            menuOpacity=0.3;
+            break;
         }
 
         return (
@@ -984,8 +871,8 @@ class APP_INSP_MODE extends React.Component {
                     onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>
                 <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
                 <$CSSTG transitionName="fadeIn">
-                    <div key={"MENU"} className={"s overlay scroll MenuAnim " + menu_height} 
-                        style={{opacity:menuOpacity,boxShadow: `5px 10px 13px rgba(10,10,10,0.3)`}}> 
+                    <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
+                        style={{opacity:menuOpacity}}> 
                         {MenuSet}
                     </div>
                 </$CSSTG>

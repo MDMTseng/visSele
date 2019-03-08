@@ -1,6 +1,4 @@
 
-import t_enc from 'text-encoding';
-
 
 
 let raw2header=(ws_evt, offset = 0)=>{
@@ -41,7 +39,7 @@ let raw2obj=(ws_evt, offset = 0)=>{
   ret_obj.rawdata = new Uint8ClampedArray(ws_evt.data,
     offset+BPG_header_L,ret_obj.length
   );
-  let  enc = new t_enc.TextDecoder("utf-8");
+  let  enc = new TextDecoder("utf-8");
   let str = enc.decode(ret_obj.rawdata);
   ret_obj.data = JSON.parse(str);
   return ret_obj;
@@ -74,7 +72,7 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   return ret_obj;
 };
 
-var enc = new t_enc.TextEncoder();
+var enc = new TextEncoder();
 let objbarr2raw=(type,prop,obj,barr=null)=>{
   
   let str = (obj==null)?"":JSON.stringify(obj);

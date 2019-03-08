@@ -13,7 +13,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js'; 
 
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
-import {XSGraph} from './xstate_visual';
+//import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
@@ -28,7 +28,6 @@ import  LocaleProvider  from 'antd/lib/locale-provider';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
-import t_enc from 'text-encoding';
 
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
@@ -114,7 +113,7 @@ class APPMain extends React.Component{
           <BASE_COM.Button
             key="CAM calib save" addClass="lblue width4"
             text={"calib save(mmpp:"+mmpp.toFixed(6)+")"} onClick={()=>{
-              var enc = new t_enc.TextEncoder();
+              var enc = new TextEncoder();
               let enc_report = enc.encode(JSON.stringify(this.props.camera_calibration_report, null, 2));
               this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
                 {filename:"data/default_camera_param.json"},
@@ -312,7 +311,7 @@ class APPMasterX extends React.Component{
     log.debug("APPMasterX render",this.props);
 
     let xstateG;
-    if (this.props.stateMachine!=null) {
+    if (false && this.props.stateMachine!=null) {
       xstateG = 
       <XSGraph addClass="width12 height12" 
       state_machine={this.props.stateMachine.config}/>;

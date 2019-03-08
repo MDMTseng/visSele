@@ -1,6 +1,5 @@
 import React from 'react';
 import React_createClass from 'create-react-class';
-import { Icon } from 'antd';
 import {GetObjElement} from 'UTIL/MISC_Util';
 
 import dclone from 'clone';
@@ -8,9 +7,9 @@ import * as logX from 'loglevel';
 
 import EC_zh_TW from "../languages/zh_TW";
 
-import{
-  Button as AntButton
-} from 'antd';
+import  {default as AntButton}  from 'antd/lib/button';
+import  Icon  from 'antd/lib/icon';
+
 // import { button as AntButton } from 'antd/lib/button';
 // import {Button as AntButton} from 'antd/lib/Button';
 

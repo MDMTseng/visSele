@@ -305,6 +305,7 @@ margin:auto; float: none;
 }
 .blockS .height0 {
 	height: 0%;
+	display: none;
 }
 .blockS .height1 {
 	height: 8.333%;
