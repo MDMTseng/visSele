@@ -16,7 +16,8 @@ import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/red
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import Plot from 'react-plotly.js';
+//import Plot from 'react-plotly.js';
+import {Doughnut} from 'react-chartjs-2';
 
 import {round} from 'UTIL/MISC_Util';
 
@@ -566,8 +567,101 @@ const CanvasComponent_rdx = connect(
 
 
 
+class ControlChart extends React.Component {
+    constructor(props) {
+        super(props);
+        this.divID="ControlChart_ID_" + Math.round(Math.random() * 10000);
+        this.charObj = undefined;
+
+        this.state={
+            chartOpt:{
+                type: 'line',
+                data:{labels:[],datasets:[{lineTension: 0,data:[]}]},
+                bezierCurve : false,
+                options: {
+                    bezierCurve : false,
+                    animation: {
+                        duration: 0
+                    },
+                    maintainAspectRatio: false,
+                    responsive: true,
+                    title: {
+                        display: true,
+                        text: ''
+                },
+                tooltips: {
+                    mode: 'index',
+                    intersect: true
+                },
+                annotation: {
+                    annotations: [{
+                    type: 'line',
+                    mode: 'horizontal',
+                    scaleID: 'y-axis-0',
+                    value: 5,
+                    borderColor: 'rgb(75, 192, 192)',
+                    borderWidth: 4,
+                    label: {
+                        enabled: false,
+                        content: 'Test label'
+                    }
+                    }]
+                }
+                }
+            }
+        };
+    } 
+
+    componentWillUpdate(nextProps, nextState) {
+
+        
+        //Make sure the data object is the same, don't change it/ you gonna set the data object to chart again
+        this.state.chartOpt.data.labels=[];
+        this.state.chartOpt.data.datasets.forEach((datInfo)=>{
+            datInfo.data=[];
+        });
+        let length = nextProps.reportArray.length;
+        if(length==0)return;
+        let newTime = nextProps.reportArray[length-1].time_ms;
+        this.state.chartOpt.options.title.text=nextProps.reportArray[0].judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasureId).name;
+
+        nextProps.reportArray.reduce((acc_data,rep,idx)=>{
+            if((idx-(length-1))%10==0)
+                acc_data.labels.push((newTime-rep.time_ms)/1000);
+            else
+                acc_data.labels.push("");
+
+            //TODO:for now there is only one data set in one chart
+            acc_data.datasets[0].data.push(
+                rep.judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasureId).value);
+            return acc_data;
+        }, this.state.chartOpt.data );
+
+        this.charObj.update();
+    }
 
 
+    componentDidMount() {
+        var ctx = document.getElementById(this.divID).getContext("2d");
+
+        this.charObj = new Chart(ctx, this.state.chartOpt);
+    }
+    onResize(width, height) {
+        //log.debug("G2HOT resize>>", width, height);
+        //this.state.G2Chart.changeSize(width, height);
+
+    }
+
+    render() {
+        return <div className={this.props.className}>
+            <canvas id={this.divID}  style={{height: "200px"}}/>
+            <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
+        </div>
+    }
+
+}
+
+    
 
 class DataStatsTable extends React.Component{
     constructor(props) {
@@ -632,24 +726,7 @@ class DataStatsTable extends React.Component{
         {
             if(this.state.drawList[key]==true)
             {
-                
-                
-                return <Plot
-                    data={[
-                    {
-                        y: statstate.historyReport.map((rep)=>rep.judgeReports.find((jrep)=>jrep.id==key).value),
-                        type: 'scatter',
-                        mode: 'lines+points',
-                        marker: {color: 'red'},
-                    },
-                    ]}
-                    useResizeHandler
-                    style={{ width: '100%', height: '300px' }}
-                    layout={{
-                        autosize: true,
-                        title: measureReports.find((rep)=>rep.id==key).name
-                    }}
-                />
+                return <ControlChart reportArray={statstate.historyReport} targetMeasureId={key}/>
             }
             return null;
         });
