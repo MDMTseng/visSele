@@ -33,6 +33,8 @@ import  Button  from 'antd/lib/button';
 import  Menu  from 'antd/lib/menu';
 import  Icon  from 'antd/lib/icon';
 
+import Chart from 'chart.js';
+import 'chartjs-plugin-annotation';
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/Input';
 // import Dropdown from 'antd/lib/Dropdown'
@@ -576,9 +578,25 @@ class ControlChart extends React.Component {
         this.state={
             chartOpt:{
                 type: 'line',
-                data:{labels:[],datasets:[{lineTension: 0,data:[]}]},
+                data:{labels:[],datasets:[{            
+                    type: "line",
+                    borderColor:"rgb(100, 255, 100)",
+                    lineTension: 0.2,data:[]}]},
                 bezierCurve : false,
                 options: {
+                    scales: {
+                        xAxes: [{
+                            ticks: {
+                                callback: function(value, index, values) {
+                                    return value;
+                                }
+                            }
+                        }]   
+                    },
+                    elements: {
+                        line: {fill: false},
+                        point: { radius: 0 } 
+                    },
                     bezierCurve : false,
                     animation: {
                         duration: 0
@@ -588,28 +606,27 @@ class ControlChart extends React.Component {
                     title: {
                         display: true,
                         text: ''
-                },
-                tooltips: {
-                    mode: 'index',
-                    intersect: true
-                },
-                annotation: {
-                    annotations: [{
-                    type: 'line',
-                    mode: 'horizontal',
-                    scaleID: 'y-axis-0',
-                    value: 5,
-                    borderColor: 'rgb(75, 192, 192)',
-                    borderWidth: 4,
-                    label: {
-                        enabled: false,
-                        content: 'Test label'
+                    },
+                    annotation: {
+                        annotations: []
+                    },
+                    legend: {
+                        display: false
+                    },
+                    tooltips: {
+                        enabled: false
                     }
-                    }]
-                }
                 }
             }
         };
+
+        this.default_annotationTargets=[
+            {type:"USL",color:"rgb(200, 0, 0)"},
+            {type:"LSL",color:"rgb(200, 0, 0)"},
+            {type:"UCL",color:"rgb(100, 100, 0)"},
+            {type:"LCL",color:"rgb(100, 100, 0)"},
+            {type:"value",color:"rgb(0, 0, 0)"},
+        ];
     } 
 
     componentWillUpdate(nextProps, nextState) {
@@ -623,19 +640,45 @@ class ControlChart extends React.Component {
         let length = nextProps.reportArray.length;
         if(length==0)return;
         let newTime = nextProps.reportArray[length-1].time_ms;
-        this.state.chartOpt.options.title.text=nextProps.reportArray[0].judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasureId).name;
+        this.state.chartOpt.options.title.text=nextProps.reportArray[0].judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasure.id).name;
 
         nextProps.reportArray.reduce((acc_data,rep,idx)=>{
-            if((idx-(length-1))%10==0)
-                acc_data.labels.push((newTime-rep.time_ms)/1000);
-            else
-                acc_data.labels.push("");
+            acc_data.labels.push((newTime-rep.time_ms)/1000);
 
             //TODO:for now there is only one data set in one chart
             acc_data.datasets[0].data.push(
-                rep.judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasureId).value);
+                rep.judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasure.id).value);
             return acc_data;
         }, this.state.chartOpt.data );
+
+
+
+        let annotationTargets=this.props.nnotationTargets;
+        if(annotationTargets===undefined)
+        {
+            annotationTargets = this.default_annotationTargets
+        }
+
+        this.state.chartOpt.options.annotation.annotations = 
+            annotationTargets.map((annotationTar) => {
+            
+                let val = nextProps.targetMeasure[annotationTar.type];
+                return ({
+                    type: 'line',
+                    mode: 'horizontal',
+                    scaleID: 'y-axis-0',
+                    value: val,
+                    borderColor: annotationTar.color,
+                    borderWidth: 4,
+                    borderDash: [6, 6],
+                    label: {
+                        position: "right",
+                        enabled: true,
+                        content: annotationTar.type
+                    }
+                });
+            });
+
 
         this.charObj.update();
     }
@@ -654,7 +697,7 @@ class ControlChart extends React.Component {
 
     render() {
         return <div className={this.props.className}>
-            <canvas id={this.divID}  style={{height: "200px"}}/>
+            <canvas id={this.divID}  style={{height: "400px"}}/>
             <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
         </div>
     }
@@ -726,7 +769,11 @@ class DataStatsTable extends React.Component{
         {
             if(this.state.drawList[key]==true)
             {
-                return <ControlChart reportArray={statstate.historyReport} targetMeasureId={key}/>
+                let targetMeasure = measureList.find((m)=>m.id==key);
+
+                let lastN=500;
+                let lastNArr = statstate.historyReport.slice(Math.max(statstate.historyReport.length - lastN, 1));
+                return <ControlChart reportArray={lastNArr} targetMeasure={targetMeasure}/>
             }
             return null;
         });
@@ -944,8 +991,9 @@ class APP_INSP_MODE extends React.Component {
         return (
             <div className="HXF">
                 
-                <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
-                    onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>
+                {(CanvasWindowRatio<=0)?null:
+                    <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
+                        onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
                 <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
