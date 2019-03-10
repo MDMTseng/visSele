@@ -204,12 +204,21 @@ function StateReducer(newState,action)
       let new_rep = report.judgeReports.find((rep)=>rep.id == measure.id);
       //measure.statistic
       let stat = measure.statistic;
-      if(new_rep === undefined || new_rep.status == INSPECTION_STATUS.NA)
+      if(new_rep === undefined)
       {
         stat.count_stat.NA++;
         log.error("The incoming inspection report doesn't match the defFile");
         return;
       }
+
+      if(new_rep.status == INSPECTION_STATUS.NA)
+      {
+        stat.count_stat.NA++;
+        log.error("The measure["+new_rep.name+"] is NA");
+        return;
+      }
+
+
       let nv_val = new_rep.value;
 
       if(stat.count_stat[new_rep.detailStatus]===undefined)

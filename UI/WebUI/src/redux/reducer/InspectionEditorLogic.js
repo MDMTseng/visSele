@@ -6,6 +6,7 @@ import {
     PtRotate2d_sc,
     vecXY_addin} from 'UTIL/MathTools';
   
+import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import {SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 import {GetObjElement} from 'UTIL/MISC_Util';
 import dclone from 'clone';
@@ -98,8 +99,7 @@ export class InspectionEditorLogic
 
     this.inspreport.reports[0].judgeReports.forEach((measure)=>{
       let measureDef = this.shapeList.find((feature)=>feature.id ==measure.id);
-
-      if(measureDef===undefined)
+      if(measureDef===undefined || measure.status === INSPECTION_STATUS.NA)
       {
         measure.detailStatus=MEASURERSULTRESION.NA;
       }
