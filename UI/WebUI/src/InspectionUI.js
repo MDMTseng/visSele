@@ -581,7 +581,8 @@ class ControlChart extends React.Component {
                 data:{labels:[],datasets:[{            
                     type: "line",
                     borderColor:"rgb(100, 255, 100)",
-                    lineTension: 0.2,data:[]}]},
+                    lineTension: 0.2,data:[],
+                    pointBackgroundColor:[]}]},
                 bezierCurve : false,
                 options: {
                     scales: {
@@ -595,7 +596,7 @@ class ControlChart extends React.Component {
                     },
                     elements: {
                         line: {fill: false},
-                        point: { radius: 0 } 
+                        point: { radius: 6 } 
                     },
                     bezierCurve : false,
                     animation: {
@@ -614,18 +615,18 @@ class ControlChart extends React.Component {
                         display: false
                     },
                     tooltips: {
-                        enabled: false
+                        enabled: true
                     }
                 }
             }
         };
 
         this.default_annotationTargets=[
-            {type:"USL",color:"rgb(200, 0, 0)"},
-            {type:"LSL",color:"rgb(200, 0, 0)"},
-            {type:"UCL",color:"rgb(100, 100, 0)"},
-            {type:"LCL",color:"rgb(100, 100, 0)"},
-            {type:"value",color:"rgb(0, 0, 0)"},
+            {type:"USL",color:"rgba(200, 0, 0,0.2)"},
+            {type:"LSL",color:"rgba(200, 0, 0,0.2)"},
+            {type:"UCL",color:"rgba(100, 100, 0,0.2)"},
+            {type:"LCL",color:"rgba(100, 100, 0,0.2)"},
+            {type:"value",color:"rgba(0, 0, 0,0.2)"},
         ];
     } 
 
@@ -636,6 +637,7 @@ class ControlChart extends React.Component {
         this.state.chartOpt.data.labels=[];
         this.state.chartOpt.data.datasets.forEach((datInfo)=>{
             datInfo.data=[];
+            datInfo.pointBackgroundColor=[];
         });
         let length = nextProps.reportArray.length;
         if(length==0)return;
@@ -645,9 +647,26 @@ class ControlChart extends React.Component {
         nextProps.reportArray.reduce((acc_data,rep,idx)=>{
             acc_data.labels.push((newTime-rep.time_ms)/1000);
 
+            let measureObj = rep.judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasure.id);
+
+            let pointColor=undefined;
+            let val=measureObj.value;
+            pointColor=OK_NG_BOX_COLOR_TEXT[measureObj.detailStatus].COLOR;
+            if(pointColor===undefined)
+            {
+                pointColor="#AA0000";
+            }
+            //console.log(measureObj.detailStatus);
+            if(measureObj.detailStatus===MEASURERSULTRESION.NA)
+            {
+                val=undefined;
+            }
+
+
+
+            acc_data.datasets[0].pointBackgroundColor.push(pointColor);
             //TODO:for now there is only one data set in one chart
-            acc_data.datasets[0].data.push(
-                rep.judgeReports.find((jrep)=>jrep.id==nextProps.targetMeasure.id).value);
+            acc_data.datasets[0].data.push(val);
             return acc_data;
         }, this.state.chartOpt.data );
 
@@ -670,7 +689,7 @@ class ControlChart extends React.Component {
                     value: val,
                     borderColor: annotationTar.color,
                     borderWidth: 4,
-                    borderDash: [6, 6],
+                    borderDash: [12, 12],
                     label: {
                         position: "right",
                         enabled: true,
