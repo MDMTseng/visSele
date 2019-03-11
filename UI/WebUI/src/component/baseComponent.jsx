@@ -8,7 +8,12 @@ import * as logX from 'loglevel';
 import EC_zh_TW from "../languages/zh_TW";
 
 import  {default as AntButton}  from 'antd/lib/button';
+import  Modal  from 'antd/lib/modal';
+import  Table  from 'antd/lib/table';
 import  Icon  from 'antd/lib/icon';
+import Menu from 'antd/lib/menu';
+const AntButtonGroup = AntButton.Group;
+
 
 // import { button as AntButton } from 'antd/lib/button';
 // import {Button as AntButton} from 'antd/lib/Button';
@@ -243,6 +248,172 @@ export let DropDownWarp = React_createClass({
     );
   }
 });
+
+
+
+
+export class BPG_FileBrowser extends React.Component{
+  
+  constructor(props) {
+    super(props);
+    this.state={
+      folderStruct:{},
+      history:["./"]
+    }
+  }
+
+  goDir(path)
+  {
+    if(path===undefined)
+    {
+      if(this.state.history.length<=1)
+      {
+        return;
+      }
+      this.state.history.pop();
+      
+      path = this.state.history[this.state.history.length-1];
+    }
+    else
+    {
+      if(path == this.state.history[this.state.history.length-1])
+      {
+        return;
+      }
+      this.state.history.push(path);
+    }
+    new Promise((resolve, reject) => {
+      this.props.BPG_Channel("FB",0,{//"FB" is for file browsing
+        path:path,
+        depth:0,
+      },undefined,{resolve,reject});
+      setTimeout(()=>reject("Timeout"),1000)
+    })
+    .then((data) => {
+      if(data[1].data.ACK)
+      {
+        let folderStruct = data[0].data;
+        this.setState(Object.assign(this.state,{folderStruct:folderStruct}));
+      }
+      else
+      {
+        setTimeout(()=>this.goDir(),1000)
+        
+      }
+    })
+    .catch((err) => {
+      console.log(err);
+    })
+  }
+  componentWillMount() {
+    this.goDir(this.props.path);
+  }
+
+  bytesToSize(bytes) {
+    var sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    if (bytes == 0) return '0 Byte';
+    var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+    return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+  }
+  
+  render()
+  {
+
+    const columns = ['type','name','size'].map((info)=>({
+      title: info,
+      dataIndex: info,
+      key:info,
+    }));
+
+    columns[0].render=(text, record) => {
+      
+      let iconType=(text=="DIR")?"folder":"file"
+      return <Icon type={iconType} />
+    }
+    columns[0].width=64;
+
+    let fileList = (this.state.folderStruct.files===undefined)?[]:this.state.folderStruct.files;
+    fileList = fileList.filter((file)=>
+      (file.name!='.' && file.name!='..' )&&
+      (this.props.fileFilter===undefined?true:this.props.fileFilter(file)
+    ));
+    fileList.forEach((file)=>{
+      file.size = this.bytesToSize(file.size_bytes);
+    });
+
+    let favoriteDir=[
+      {name:"origin",path:"./"},];
+
+
+
+
+    let curPathArr = (typeof this.state.folderStruct.path ==='string')?
+      this.state.folderStruct.path.split("/"):[];
+
+    curPathArr=curPathArr.map((name)=>({name}));
+
+    curPathArr.reduce((pathInt,pathObj)=>{
+        pathInt=pathInt+pathObj.name+"/";
+        pathObj.path=pathInt;
+        return pathInt;
+      },"");
+      
+    let titleRender=<div>
+      
+      <AntButtonGroup>
+        <AntButton type="primary"  onClick={()=>this.goDir()}>
+          <Icon type="left" />
+        </AntButton>
+      </AntButtonGroup>
+      &nbsp;&nbsp;&nbsp;
+      <AntButtonGroup>
+        {curPathArr.map((folder,idx)=>
+          <AntButton key={folder.name+"_"+idx}   onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
+        )}
+      </AntButtonGroup>
+
+    </div>
+
+     // title={}
+    return (
+        <Modal
+          title={titleRender}
+          visible={this.props.display}
+          width={1000}
+          onCancel={this.props.onCancel}
+          footer={null}
+        >
+          <div style={{height:500}}>
+          
+            <div className="s height12 width2 scroll">
+              <Menu
+                onClick={(evt)=>{this.goDir(evt.item.props.path);}}
+                mode="inline"
+              >
+                {
+                  favoriteDir.map(dir=>
+                    <Menu.Item key={dir.name} path={dir.path}>{dir.name}</Menu.Item>)
+                }
+              </Menu>
+            </div>
+            <div className="height12 width10 scroll">
+              <Table 
+                onRow={(file) => ({
+                  onClick: (evt) => { 
+                    if(file.type!="DIR")
+                      this.props.onFileSelected(this.state.folderStruct.path+"/"+file.name);
+                    else
+                      this.goDir(this.state.folderStruct.path+"/"+file.name);
+                  }})} 
+                pagination={false}
+                columns={columns} dataSource={fileList} />
+              </div>
+          </div>
+        </Modal>
+    );
+  }
+}
+
 
 export let DropDown = React_createClass({
 

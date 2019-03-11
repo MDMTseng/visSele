@@ -213,7 +213,7 @@ export function EV_WS_Session_Lock(SSData)
   }
 }
 
-export function EV_WS_SEND(id,tl,prop,data,uintArr){
+export function EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs){
   return ({
     type:"MWWS_SEND",
     data:{
@@ -223,7 +223,8 @@ export function EV_WS_SEND(id,tl,prop,data,uintArr){
         prop:prop,
         data:data,
         uintArr:uintArr
-      }
+      },
+      promiseCBs
     }
   });
 }

@@ -11,7 +11,9 @@
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"
 
-
+#include <dirent.h> 
+#include <limits.h> 
+#include <sys/stat.h>
 
 #include <main.h>
 #include <playground.h>
@@ -103,6 +105,88 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
 }
 
 
+
+cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
+{
+  if(path==NULL)return NULL;
+              
+  DIR *d = opendir(path);
+
+  if (d==NULL) return NULL;
+
+
+  cJSON *retObj =(jObj_to_W==NULL)?cJSON_CreateObject():jObj_to_W;
+  struct dirent *dir;
+  cJSON *dirFiles = cJSON_CreateArray();
+  char buf[PATH_MAX + 1]; 
+  realpath(path, buf);
+
+  cJSON_AddStringToObject(retObj, "path", buf);
+  cJSON_AddItemToObject(retObj, "files", dirFiles);
+
+  
+  std::string folderPath(buf);
+
+  while ((dir = readdir(d)) != NULL) {
+    //if(dir->d_name[0]=='.')continue;
+    cJSON *fileInfo =  cJSON_CreateObject();
+    cJSON_AddItemToArray(dirFiles, fileInfo);
+    cJSON_AddStringToObject(fileInfo, "name", dir->d_name);
+
+    char *type=NULL;
+    std::string fileName(dir->d_name);
+    std::string filePath=folderPath+"/"+fileName;
+
+    switch(dir->d_type)
+    {
+      case DT_REG:
+        type="REG";break;
+      case DT_DIR:
+      {
+        if(depth>0 && dir->d_name!=NULL && dir->d_name[0]!='\0' && dir->d_name[0]!='.')
+        {
+          cJSON *subFolderStruct = cJSON_DirFiles(filePath.c_str(),NULL,depth-1);
+          if(subFolderStruct!=NULL)
+          {
+            cJSON_AddItemToObject(fileInfo,"struct", subFolderStruct);
+          }
+
+        }
+        type="DIR";break;
+      }
+      case DT_FIFO:
+        type="FIFO";break;
+      case DT_SOCK:
+        type="SOCK";break;
+      case DT_CHR:
+        type="CHR";break;
+      case DT_BLK:
+        type="BLK";break;
+      case DT_LNK:
+        type="LNK";break;
+      case DT_UNKNOWN:
+      default:
+        type="UNKNOWN";break;
+    }
+    cJSON_AddStringToObject(fileInfo, "type",type);
+    
+  
+    struct stat st;
+    if(stat(filePath.c_str(), &st) == 0) {
+      cJSON_AddNumberToObject(fileInfo, "size_bytes",st.st_size);
+      cJSON_AddNumberToObject(fileInfo, "mtime_ms",st.st_mtime*1000);
+      cJSON_AddNumberToObject(fileInfo, "ctime_ms",st.st_ctime*1000);
+      cJSON_AddNumberToObject(fileInfo, "atime_ms",st.st_atime*1000);
+    }
+
+
+  }
+  closedir(d);
+    
+  return retObj;
+}
+
+
 char req_id_fallback[]="NO req_id";
 bool DoImageTransfer=true;
 class DatCH_CallBack_BPG : public DatCH_CallBack
@@ -151,7 +235,6 @@ public:
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
 
-      char* req_id=NULL;
       //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
       switch(data.type)
       {
@@ -173,19 +256,43 @@ public:
           BPG_data *dat = data.data.p_BPG_data;
 
           LOGI("DataType_BPG>>>>%c%c>",dat->tl[0],dat->tl[1]);
+          
+          cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+          char* req_id=NULL;
+          if(json)
+          {
+            req_id =(char* )JFetch(json,"req_id",cJSON_String);
+          }
+          if(req_id==NULL)
+          {
+            req_id = req_id_fallback;
+          }
+          char err_str[100]="\0";
+          bool session_ACK=false;
+          char tmp[200];//For string construct json reply
+          BPG_data bpg_dat;//Empty
+          // {  
+          //     sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
+          //     bpg_dat=GenStrBPGData("SS", tmp);
+          //     datCH_BPG.data.p_BPG_data=&bpg_dat;
+          //     self->SendData(datCH_BPG);
+          // }
+
           if(checkTL("HR",dat))
           {
             LOGI("DataType_BPG>>>>%s",dat->dat_raw);
 
             LOGI("Hello ready.......");
+            session_ACK=true;
           }
           else if(checkTL("SV",dat))//Data from UI to save file
           {
             LOGI("DataType_BPG>>STR>>%s",dat->dat_raw);
-            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
+
             if (json == NULL)
             {
-              LOGE("JSON parse failed");
+              snprintf(err_str,sizeof(err_str),"JSON parse failed");
+              LOGE("%s",err_str);
               break;
             }
             do{
@@ -193,7 +300,8 @@ public:
               char* fileName =(char* )JFetch(json,"filename",cJSON_String);
               if (fileName == NULL)
               {
-                LOGE("No entry:\"filename\" in it");
+                snprintf(err_str,sizeof(err_str),"No entry:\"filename\" in it");
+                LOGE("%s",err_str);
                 break;
               }
               int strinL = strlen((char*)dat->dat_raw)+1;
@@ -220,7 +328,8 @@ public:
                 write_ptr = fopen(fileName,"wb");  // w for write, b for binary
                 if(write_ptr==NULL)
                 {
-                  LOGE("File open failed");
+                  snprintf(err_str,sizeof(err_str),"File open failed");
+                  LOGE("%s",err_str);
                   break;
                 }
                 fwrite(dat->dat_raw+strinL,dat->size-strinL,1,write_ptr); // write 10 bytes from our buffer
@@ -229,39 +338,98 @@ public:
               }
 
 
+              session_ACK=true;
             }while(false);
-            cJSON_Delete(json);
+            
+            
+          }
+          else if(checkTL("FB",dat))//[F]ile [B]rowsing
+          {
+
+            DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+            BPG_data bpg_dat;
+            do{
+              
+              if(json ==  NULL)
+              {
+                snprintf(err_str,sizeof(err_str),"JSON parse failed");
+                LOGE("%s",err_str);
+                break;
+              }
+              
+              char* pathStr =(char* )JFetch(json,"path",cJSON_String);
+              if(pathStr==NULL)
+              {
+                //ERROR
+                snprintf(err_str,sizeof(err_str),"No \"path\" entry in the JSON");
+                LOGE("%s",err_str);
+                break;
+              }
+
+              int depth=0;
+              double* p_depth =JFetch_NUMBER(json,"depth");
+              if(p_depth!=NULL)
+              {
+                depth=(int)*p_depth;
+              }
+
+              {
+                cJSON * cjFileStruct = cJSON_DirFiles(pathStr,NULL,depth);
+
+                char * fileStructStr  = NULL;
+                
+                if(cjFileStruct==NULL)
+                { 
+                  cjFileStruct=cJSON_CreateObject();
+                  snprintf(err_str,sizeof(err_str),"File Structure is NULL");
+                  LOGI("W:%s",err_str);
+                  
+                  session_ACK=false;
+                }
+                else
+                {
+                  
+                  session_ACK=true;
+                }
+
+                cJSON_AddStringToObject(cjFileStruct, "req_id", req_id);
+                fileStructStr = cJSON_Print(cjFileStruct);
+                
+
+                BPG_data bpg_dat=GenStrBPGData("FS", fileStructStr);//[F]older [S]truct
+                datCH_BPG.data.p_BPG_data=&bpg_dat;
+                self->SendData(datCH_BPG);
+                if(fileStructStr)free(fileStructStr);
+                cJSON_Delete(cjFileStruct);
+
+              }
+
+
+
+            }while(false);
+
           }
           else if(checkTL("LD",dat))
           {
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-            char tmp[100];
-            int session_id = rand();
+
             BPG_data bpg_dat;
             do{
               
-              cJSON *json = cJSON_Parse((char*)dat->dat_raw);
-
-
-              req_id =(char* )JFetch(json,"req_id",cJSON_String);
-              if(req_id==NULL)req_id = req_id_fallback;
 
               
               char* filename =(char* )JFetch(json,"filename",cJSON_String);
               if(filename!=NULL)
               {
-                sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\",\"start\":true,\"PACKS\":[\"FL\"]}",session_id,req_id);
-                bpg_dat=GenStrBPGData("SS", tmp);
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
-
-
                 try {
                   char *fileStr = ReadText(filename);
                   if(fileStr == NULL)
                   {
-                    LOGE("Cannot read defFile from:%s",filename);
+                    snprintf(err_str,sizeof(err_str),"Cannot read file from:%s",filename);
+                    LOGE("%s",err_str);
                     break;
                   }
                   LOGV("Read deffile:%s",filename);
@@ -272,35 +440,33 @@ public:
 
                 }
                 catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
+                  snprintf(err_str,sizeof(err_str),"Caught an error! LINE:%04d",__LINE__);
+                  LOGE("%s",err_str);
                 }
 
                 break;
               }
 
-              sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
-              bpg_dat=GenStrBPGData("SS", tmp);
-              datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
-
 
               if (json == NULL)
               {
-                LOGE("JSON parse failed");
+                snprintf(err_str,sizeof(err_str),"JSON parse failed LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
               
                 break;
               }
               char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
               if (imgSrcPath == NULL)
               {
-                LOGE("No entry:imgSrcPath in it");
-
+                snprintf(err_str,sizeof(err_str),"No entry:imgSrcPath in it LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
                 break;
               }
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
-                LOGE("No entry:\"deffile\" in it");
+                snprintf(err_str,sizeof(err_str),"No entry:\"deffile\" in it LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
                 break;
               }
 
@@ -323,7 +489,8 @@ public:
                   char *jsonStr = ReadText(deffile);
                   if(jsonStr == NULL)
                   {
-                    LOGE("Cannot read defFile from:%s",jsonStr);
+                    snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",deffile,__LINE__);
+                    LOGE("%s",err_str);
                     break;
                   }
                   LOGV("Read deffile:%s",deffile);
@@ -333,7 +500,8 @@ public:
                   free(jsonStr);
               }
               catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
+                  snprintf(err_str,sizeof(err_str),"Caught an error! LINE:%04d",__LINE__);
+                  LOGE("%s",err_str);
               }
 
               //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
@@ -346,23 +514,19 @@ public:
 
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
-
+              
+              session_ACK=true;
 
             }while(false);
 
 
-            sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\",\"start\":false}",session_id,req_id);
-            bpg_dat=GenStrBPGData("SS", tmp);
-            datCH_BPG.data.p_BPG_data=&bpg_dat;
-            self->SendData(datCH_BPG);
-
           }
           else if(checkTL("II",dat))//[I]mage [I]nspection
           {
-            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
             if (json == NULL)
             {
-              LOGE("JSON parse failed");
+              snprintf(err_str,sizeof(err_str),"JSON parse failed LINE:%04d",__LINE__);
+              LOGE("%s",err_str);
               break;
             }
             
@@ -371,7 +535,8 @@ public:
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
-                LOGE("No entry:\"deffile\" in it");
+                snprintf(err_str,sizeof(err_str),"No entry:\"deffile\" in it LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
                 break;
               }
               char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
@@ -404,7 +569,8 @@ public:
 
               if(srcImg==NULL)
               {
-                LOGE("No Image from %s, exit...",imgSrcPath);
+                snprintf(err_str,sizeof(err_str),"No Image from %s, exit... LINE:%04d",imgSrcPath,__LINE__);
+                LOGE("%s",err_str);
                 break;
               }
 
@@ -414,23 +580,13 @@ public:
               DatCH_Data datCH_BPG=
                 BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-              req_id =(char* )JFetch(json,"req_id",cJSON_String);
-              if(req_id==NULL)req_id = req_id_fallback;
-
-              char tmp[100];
-              int session_id = rand();
-
-              sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\", \"start\":true, \"PACKS\":[\"DF\",\"RP\",\"IM\"]}",
-                session_id,req_id);
-              BPG_data bpg_dat=GenStrBPGData("SS", tmp);
-              datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
 
               try {
                   char *jsonStr = ReadText(deffile);
                   if(jsonStr == NULL)
                   {
-                    LOGE("Cannot read defFile from:%s",deffile);
+                    snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",deffile,__LINE__);
+                    LOGE("%s",err_str);
                     break;
                   }
                   LOGV("Read deffile:%s",deffile);
@@ -447,7 +603,7 @@ public:
                   if(report!=NULL)
                   {
                     cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                    cJSON_AddNumberToObject(jobj, "session_id", session_id);
+                    cJSON_AddStringToObject(jobj, "req_id", req_id);
                     char * jstr  = cJSON_Print(jobj);
                     cJSON_Delete(jobj);
 
@@ -457,17 +613,17 @@ public:
                     self->SendData(datCH_BPG);
 
                     delete jstr;
+                    session_ACK=true;
                   }
                   else
                   {
-                    sprintf(tmp,"{\"session_id\":%d}",session_id);
-                    BPG_data bpg_dat=GenStrBPGData("RP", tmp);
-                    datCH_BPG.data.p_BPG_data=&bpg_dat;
-                    self->SendData(datCH_BPG);
+                    session_ACK=false;
                   }
               }
               catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
+                  snprintf(err_str,sizeof(err_str),"Caught an error! LINE:%04d",__LINE__);
+                  LOGE("%s",err_str);
+                  break;
               }
 
               bpg_dat=GenStrBPGData("IM", NULL);
@@ -480,34 +636,31 @@ public:
               self->SendData(datCH_BPG);
 
 
+              session_ACK=true;
 
-
-              sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\", \"start\":false}",session_id,req_id);
-              bpg_dat=GenStrBPGData("SS", tmp);
-              datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
             }while(false);
 
 
           }
           else if(checkTL("CI",dat))//[C]ontinuous [I]nspection
           {
-            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
-            if (json == NULL)
-            {
-              LOGE("JSON parse failed");
-              break;
-            }
-            
-            req_id =(char* )JFetch(json,"req_id",cJSON_String);
-            if(req_id==NULL)req_id = req_id_fallback;
-            strcpy(CI_req_id,req_id);
-
             do{
+
+                
+              if (json == NULL)
+              {
+                snprintf(err_str,sizeof(err_str),"JSON parse failed LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
+                break;
+              }
+              
+              strcpy(CI_req_id,req_id);
+
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
-                LOGE("No entry:\"deffile\" in it");
+                snprintf(err_str,sizeof(err_str),"No entry:\"deffile\" in it LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
                 cameraFeedTrigger=false;
                 
                 camera->TriggerMode(1);
@@ -522,7 +675,10 @@ public:
                   char *jsonStr = ReadText(deffile);
                   if(jsonStr == NULL)
                   {
-                    LOGE("Cannot read defFile from:%s",jsonStr);
+                    snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",jsonStr,__LINE__);
+                    LOGE("%s",err_str);
+                    cameraFeedTrigger=false;
+                    
                     break;
                   }
 
@@ -546,10 +702,13 @@ public:
                   cameraFeedTrigger=true;
                   camera->Trigger();
                   //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
-
+          
+                  session_ACK=true;
               }
               catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
+                
+                snprintf(err_str,sizeof(err_str),"Caught an error! LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
               }
 
             }while(false);
@@ -563,28 +722,17 @@ public:
             {
 
               char* imgSrcPath=NULL; 
-              cJSON *json = cJSON_Parse((char*)dat->dat_raw);
               if (json != NULL)
               {
                 imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
                 if (imgSrcPath == NULL)
                 {
-                  LOGE("No entry:imgSrcPath in it");
-
+                  snprintf(err_str,sizeof(err_str),"No entry:imgSrcPath in it LINE:%04d",__LINE__);
+                  LOGE("%s",err_str);
                 }
               }
-              req_id =(char* )JFetch(json,"req_id",cJSON_String);
-              if(req_id==NULL)req_id = req_id_fallback;
-
               DatCH_Data datCH_BPG=
                 BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
-              char tmp[100];
-              int session_id = rand();
-              sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\", \"start\":true, \"PACKS\":[\"SG\",\"IM\"]}",session_id,req_id);
-              BPG_data bpg_dat=GenStrBPGData("SS", tmp);
-              datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
 
 
               
@@ -617,8 +765,6 @@ public:
                 //acvSaveBitmapFile("data/test1.bmp",srcImg);
               }
 
-
-
               try {
                   ImgInspection_DefRead(matchingEng,srcImg,1,"data/featureDetect.json");
                   const FeatureReport * report = matchingEng.GetReport();
@@ -626,7 +772,7 @@ public:
                   if(report!=NULL)
                   {
                     cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                    cJSON_AddNumberToObject(jobj, "session_id", session_id);
+                    cJSON_AddStringToObject(jobj, "req_id", req_id);
                     char * jstr  = cJSON_Print(jobj);
                     cJSON_Delete(jobj);
 
@@ -639,14 +785,15 @@ public:
                   }
                   else
                   {
-                    sprintf(tmp,"{\"session_id\":%d}",session_id);
+                    sprintf(tmp,"{\"req_id\":%s}",req_id);
                     BPG_data bpg_dat=GenStrBPGData("SG", tmp);
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
                     self->SendData(datCH_BPG);
                   }
               }
               catch (std::invalid_argument iaex) {
-                  LOGE( "Caught an error!");
+                snprintf(err_str,sizeof(err_str),"Caught an error! LINE:%04d",__LINE__);
+                LOGE("%s",err_str);
               }
 
 
@@ -660,22 +807,13 @@ public:
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               BPG_protocol->SendData(datCH_BPG);
 
-              sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\", \"start\":false}",session_id,req_id);
-              bpg_dat=GenStrBPGData("SS", tmp);
-              datCH_BPG.data.p_BPG_data=&bpg_dat;
-              self->SendData(datCH_BPG);
             }
+            
+            session_ACK=true;
           }
           else if(checkTL("RC",dat))
           {
 
-            req_id = req_id_fallback;
-            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
-            if (json != NULL)
-            {
-              req_id =(char* )JFetch(json,"req_id",cJSON_String);
-              if(req_id==NULL)req_id = req_id_fallback;
-            }
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
@@ -711,27 +849,12 @@ public:
 
 
             }
-            char tmp[100];
-            int session_id = rand();
-            sprintf(tmp,"{\"req_id\":\"%s\", \"start\":false}",req_id);
-            BPG_data bpg_dat=GenStrBPGData("SS", tmp);
-            datCH_BPG.data.p_BPG_data=&bpg_dat;
-            self->SendData(datCH_BPG);
+            
+            session_ACK=true;
           }else if(checkTL("ST",dat))
           {
-            for(int i=0;i<20;i++)
-            {
-              LOGI("++++++++++++++++++++++++++++++");
-            }
             
             mainThreadLock.lock();
-            req_id = req_id_fallback;
-            cJSON *json = cJSON_Parse((char*)dat->dat_raw);
-            if (json != NULL)
-            {
-              req_id =(char* )JFetch(json,"req_id",cJSON_String);
-              if(req_id==NULL)req_id = req_id_fallback;
-            }
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
@@ -745,24 +868,45 @@ public:
             {
               DoImageTransfer=true;
             }
+
+            if(type==cJSON_Invalid)
+            {
+              snprintf(err_str,sizeof(err_str),"the CMD is not found",__LINE__);
+              LOGE("%s",err_str);
+            }
+            else
+            {
+              session_ACK=true;
+            }
             LOGI("dat->dat_raw:%s",dat->dat_raw);
             LOGI("DoImageTransfer:%d  type:%d",DoImageTransfer,type);
 
-            char tmp[100];
-            sprintf(tmp,"{\"req_id\":\"%s\", \"start\":false}",req_id);
-            BPG_data bpg_dat=GenStrBPGData("SS", tmp);
-            datCH_BPG.data.p_BPG_data=&bpg_dat;
-            self->SendData(datCH_BPG);
-            
             
             mainThreadLock.unlock();
           }
+          
+
+          DatCH_Data datCH_BPG=
+            BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+
+          sprintf(tmp,"{\"req_id\":\"%s\",\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+            req_id,dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
+          bpg_dat=GenStrBPGData("SS", tmp);
+          datCH_BPG.data.p_BPG_data=&bpg_dat;
+          self->SendData(datCH_BPG);
+
+          cJSON_Delete(json);
+
         }
         break;
         
         default:
           LOGI("type:%d, UNKNOWN type",data.type);
       }
+
+
+
       return 0;
   }
 };
@@ -1056,17 +1200,16 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   LOGE( "lock");
   mainThreadLock.lock();
-  
+
 
   do{
     char tmp[100];
-    int session_id = rand();
-    
-    sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\", \"start\":true, \"PACKS\":[\"RP\",\"IM\"]}",session_id,CI_req_id);
-    BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
-
     DatCH_Data datCH_BPG=
       BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+
+    sprintf(tmp,"{\"req_id\":\"%s\", \"start\":true}",CI_req_id);
+    BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
@@ -1077,7 +1220,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         if(report!=NULL)
         {
           cJSON* jobj = matchingEng.FeatureReport2Json(report);
-          cJSON_AddNumberToObject(jobj, "session_id", session_id);
+          cJSON_AddStringToObject(jobj, "req_id", CI_req_id);
           char * jstr  = cJSON_Print(jobj);
           cJSON_Delete(jobj);
 
@@ -1090,7 +1233,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         }
         else
         {
-          sprintf(tmp,"{\"session_id\":%d}",session_id);
+          sprintf(tmp,"{\"req_id\":%s}",CI_req_id);
           BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("RP", tmp);
           datCH_BPG.data.p_BPG_data=&bpg_dat;
           BPG_protocol->SendData(datCH_BPG);
@@ -1102,7 +1245,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
     //if(stackingC==0)
     if(DoImageTransfer){
-      bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
+      
+      BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff,capImg,iminfo.scale);
@@ -1115,7 +1259,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 
 
-    sprintf(tmp,"{\"session_id\":%d,\"req_id\":\"%s\", \"start\":false}",session_id,CI_req_id);
+    sprintf(tmp,"{\"req_id\":\"%s\", \"start\":false, \"continue\":%s,\"ACK\":true}",CI_req_id,(cameraFeedTrigger)?"true":"false");
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);

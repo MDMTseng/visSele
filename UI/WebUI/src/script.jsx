@@ -23,11 +23,14 @@ import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {MWWS_EVENT} from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
 import  LocaleProvider  from 'antd/lib/locale-provider';
+BPG_FileBrowser
 
+import {BPG_FileBrowser} from './component/baseComponent.jsx';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
+
 
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
@@ -41,14 +44,15 @@ let zhTW = Object.assign({},zh_TW,EC_zh_TW);
 
 
 let StoreX= ReduxStoreSetUp({});
-
-
     
 class APPMain extends React.Component{
 
 
   constructor(props) {
       super(props);
+      this.state={
+        doFileSelect:false
+      }
   }
 
 
@@ -99,10 +103,27 @@ class APPMain extends React.Component{
 
             this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{
               deffile:"data/cameraCalibration.json",
-              imgsrc:"data/BMP_carousel_test/calibration.bmp"
+              imgsrc:"data/calibration.bmp"
             });
                 
           }}/>);
+      
+      
+      UI.push(
+        <BPG_FileBrowser 
+          path="." display={this.state.doFileSelect}
+          BPG_Channel={(tl,prop,data,uintArr,promiseCBs)=>this.props.ACT_WS_SEND(this.props.WS_ID,tl,prop,data,uintArr,promiseCBs)} 
+          onFileSelected={(file)=>
+          { 
+            this.setState(Object.assign(this.state,{doFileSelect:false}));
+            console.log(file)
+          }}
+          onCancel={()=>
+            { 
+              this.setState(Object.assign(this.state,{doFileSelect:false}));
+            }}
+          //fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+          />);
 
       if(this.props.camera_calibration_report!==undefined)
       {
@@ -134,7 +155,6 @@ class APPMain extends React.Component{
     else if(stateObj.state === UIAct.UI_SM_STATES.ANALYSIS_MODE)
     {
       UI = <APP_ANALYSIS_MODE_rdx/>;
-      
     }
 
     return(
@@ -150,7 +170,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
     EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
     EV_UI_Analysis_Mode:()=>{dispatch(UIAct.EV_UI_Analysis_Mode())},
-    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+    ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
   }
 }
 const mapStateToProps_APPMain = (state) => {
@@ -163,6 +183,87 @@ const mapStateToProps_APPMain = (state) => {
   }
 }
 const APPMain_rdx = connect(mapStateToProps_APPMain,mapDispatchToProps_APPMain)(APPMain);
+
+
+function map_BPG_Packet2Act(parsed_packet)
+{
+  let acts=[];
+  let req_id="";
+  switch(parsed_packet.type )
+  {
+    case "HR":
+    {
+      /*//log.info(this.props.WS_CH);
+      this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+      
+      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
+      break;*/
+    }
+
+    case "SS":
+    {
+      let SS =parsed_packet;
+      req_id=SS.data.req_id;
+      acts.push(UIAct.EV_WS_Session_Lock(SS.data));
+      break;
+    }
+    case "IM":
+    {
+      let pkg = parsed_packet;
+      let img = new ImageData(pkg.image, pkg.width);
+      
+      acts.push(UIAct.EV_WS_Image_Update(img));
+      break;
+    }
+    case "IR":
+    case "RP":
+    {
+      let report =parsed_packet;
+      acts.push(UIAct.EV_WS_Inspection_Report(report.data));
+      break;
+    }
+    case "DF":
+    {
+      let report =parsed_packet;
+      req_id=report.data.req_id;
+      log.debug(report.type,report);
+      
+      acts.push(UIAct.EV_WS_Define_File_Update(report.data));
+      break;
+    }
+    case "FL":
+    {
+      let report =parsed_packet;
+      req_id=report.data.req_id;
+      log.error(report.type,report);
+      if(report.data.type === "binary_processing_group" )
+      {
+        
+        acts.push(UIAct.EV_WS_Inspection_Report(report.data));
+      }
+      break;
+    }
+    case "SG":
+    {
+      let report =parsed_packet;
+      req_id=report.data.req_id;
+      log.debug(report.type,report);
+      acts.push(UIAct.EV_WS_SIG360_Report_Update(report.data));
+      break;
+    }
+    default:
+    {
+      let report =parsed_packet;
+      req_id=report.data.req_id;
+      
+      act = (report);
+    }
+
+
+
+  }
+  return acts[0];
+}
 
 class APPMasterX extends React.Component{
 
@@ -202,6 +303,7 @@ class APPMasterX extends React.Component{
 
 
     this.BPG_WS={
+      reqWindow:[],
       onopen:(ev,ws_obj)=>{
     
         StoreX.dispatch(UIAct.EV_WS_Connected(ws_obj));
@@ -215,6 +317,11 @@ class APPMasterX extends React.Component{
 
         let header = BPG_Protocol.raw2header(evt);
         log.debug("onMessage:["+header.type+"]");
+        let req_id=undefined;
+
+        let parsed_pkt=undefined;
+        let SS_start = false;
+
         switch(header.type )
         {
           case "HR":
@@ -229,57 +336,82 @@ class APPMasterX extends React.Component{
           case "SS":
           {
             let SS =BPG_Protocol.raw2obj(evt);
-            //log.info(SS);
+            req_id=SS.data.req_id;
             if(SS.data.start)
             {
-              this.props.DISPATCH(UIAct.EV_WS_Session_Lock(SS.data));
+              SS_start=true;
             }
             else
             {
-              this.props.DISPATCH_flush(UIAct.EV_WS_Session_Lock(SS.data));
             }
+            parsed_pkt=SS;
             break;
           }
           case "IM":
           {
             let pkg = BPG_Protocol.raw2Obj_IM(evt);
-            let img = new ImageData(pkg.image, pkg.width);
-            this.props.DISPATCH(UIAct.EV_WS_Image_Update(img));
+            parsed_pkt=pkg;
             break;
           }
           case "IR":
           case "RP":
-          {
-            let report =BPG_Protocol.raw2obj(evt);
-            //log.info(header.type,report);
-            this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
-            break;
-          }
           case "DF":
-          {
-            let report =BPG_Protocol.raw2obj(evt);
-            log.debug(header.type,report);
-            this.props.DISPATCH(UIAct.EV_WS_Define_File_Update(report.data));
-            break;
-          }
           case "FL":
-          {
-            let report =BPG_Protocol.raw2obj(evt);
-            log.error(header.type,report);
-            if(report.data.type === "binary_processing_group" )
-            {
-              this.props.DISPATCH(UIAct.EV_WS_Inspection_Report(report.data));
-            }
-            break;
-          }
           case "SG":
+          default:
           {
             let report =BPG_Protocol.raw2obj(evt);
-            log.debug(header.type,report);
-            this.props.DISPATCH(UIAct.EV_WS_SIG360_Report_Update(report.data));
+            req_id=report.data.req_id;
+            parsed_pkt=report;
+
             break;
           }
 
+        }
+
+        if(req_id === undefined)
+        {//Not in tracking window, just Dispatch it
+          if(parsed_pkt!==undefined)
+          {
+
+            this.props.DISPATCH(map_BPG_Packet2Act(parsed_pkt));
+          }
+        }
+        else
+        {
+          
+          let req_pkt=this.BPG_WS.reqWindow[req_id];
+          
+          if(req_pkt!==undefined)//Find the tracking req
+          {
+            if(parsed_pkt!==undefined)//There is a act, push into the req acts
+              req_pkt.pkts.push(parsed_pkt);
+
+            if(!SS_start && header.type=="SS")//Get the termination session[SS] pkt
+            {//remove tracking(reqWindow) info and Dispatch the pkt
+              delete this.BPG_WS.reqWindow[req_id];
+              if(req_pkt.promiseCBs!==undefined)
+              {
+                req_pkt.promiseCBs.resolve(req_pkt.pkts);
+              }
+              else
+              {
+                req_pkt.pkts.forEach((pkt)=>this.props.DISPATCH(map_BPG_Packet2Act(pkt)));
+              }
+              //////
+            }
+
+          }
+          else//No tracking req info in the window
+          {
+            if(SS_start)//And it's SS start, put the new tracking info
+            {
+              this.BPG_WS.reqWindow[req_id]={
+                time:new Date().getTime(),
+                pkts:[parsed_pkt]
+              };
+            }
+          }
         }
       },
       onclose:(ev,ws_obj)=>{
@@ -290,13 +422,25 @@ class APPMasterX extends React.Component{
       },
       onerror:(ev,ws_obj)=>{
       },
-      send:(data,ws_obj)=>{
+      send:(data,ws_obj,promiseCBs)=>{
         if(data.data instanceof Uint8Array)
         {
           ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,null,data.data));
         }
         else
         {
+          if(data.data instanceof Object)
+          {
+            if(data.data.req_id === undefined)
+            {
+              data.data.req_id = Math.random().toString(36).substring(7);
+            }
+            this.BPG_WS.reqWindow[data.data.req_id]={
+              time:new Date().getTime(),
+              pkts:[],
+              promiseCBs:promiseCBs,
+            };
+          }
           ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,data.data,data.uintArr));
         }
       }

@@ -76,7 +76,7 @@ export const MWWebSocket = WSData => store => next => action => {
       }
       else
       {
-        WSData[id].send(info.data,WSData[id]);
+        WSData[id].send(info.data,WSData[id],info.promiseCBs);
       }
       break;
     }
