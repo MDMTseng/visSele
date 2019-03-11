@@ -67,7 +67,7 @@
     "start-electron": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build-linux": "export NODE_ENV=production ; webpack",
-    "build-win": "SET NODE_ENV=production webpack",
+    "build-win": "set NODE_ENV=production; webpack",
     "build-profile": "export NODE_ENV=production ; webpack --profile --json > wstats.json",
     "bundle-analyzer": "webpack-bundle-analyzer wstats.json -m server",
     "build-w": "webpack --progress --colors --watch",

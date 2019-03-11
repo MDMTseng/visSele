@@ -22,3 +22,4 @@ UI/FileWalker
 LaserCut
 UI/WebUI/wstats.json
 .vscode/
+UI/WebUI/package-lock.json

@@ -96,8 +96,11 @@ export class InspectionEditorLogic
   SetInspectionReport(inspreport)
   {
     this.inspreport=inspreport;
-
-    this.inspreport.reports[0].judgeReports.forEach((measure)=>{
+    if(this.inspreport.reports===undefined || this.inspreport.reports.length==0)
+    {
+      return;
+    }
+    this.inspreport.reports.forEach(report=>report.judgeReports.forEach((measure)=>{
       let measureDef = this.shapeList.find((feature)=>feature.id ==measure.id);
       if(measureDef===undefined || measure.status === INSPECTION_STATUS.NA)
       {
@@ -128,7 +131,8 @@ export class InspectionEditorLogic
         measure.detailStatus=MEASURERSULTRESION.USNG;
       }
       
-    });
+    })
+    );
 
   }
   

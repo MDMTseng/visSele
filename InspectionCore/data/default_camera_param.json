@@ -1,19 +1,22 @@
 {
-	"type":	"binary_processing_group",
-	"error":	0,
-	"reports":	[{
-			"type":	"camera_calibration",
-			"ver":	"0.0.0.0",
-			"error":	0,
-			"K0":	1.00002107032403,
-			"K1":	-0.0033,
-			"K2":	-0.0003959506084837856,
-			"ppb2b":	62.465667724609375,
-                        "mmpb2b":       0.623664122137,
-			"RNormalFactor":	2160,
-			"calibrationCenter":	{
-				"x":	1252.5972900390625,
-				"y":	919.163818359375
-			}
-		}]
-}  
+  "type": "binary_processing_group",
+  "error":        0,
+  "reports":      [{
+                  "type": "camera_calibration",
+                  "ver":  "0.0.0.0",
+                  "error":        0,
+                  "K0":	1.00002107,
+                  "K1":	-0.0033,
+                  "K2":	-0.00039595,
+                  "ppb2b":	62.46566772460,
+                  "mmpb2b":       0.6256840,
+                  "RNormalFactor":        2160,
+                  "calibrationCenter":    {
+                          "x":    1252.59729,
+                          "y":    919.163818
+                  }
+          }]
+}
+
+
+

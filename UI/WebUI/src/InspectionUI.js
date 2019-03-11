@@ -17,7 +17,7 @@ import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 //import Plot from 'react-plotly.js';
-import {Doughnut} from 'react-chartjs-2';
+//import {Doughnut} from 'react-chartjs-2';
 
 import {round} from 'UTIL/MISC_Util';
 
@@ -769,11 +769,11 @@ class DataStatsTable extends React.Component{
             .map((type)=>({title:type,dataIndex:type,key:type}))
             .map((col)=>(  typeof measureReports[0][col.title]  == 'number')?//Find the first dataset and if it's number then add a sorter
                 Object.assign(col,{sorter: (a, b) => a[col.title] - b[col.title]}):col)
-        columns[0].fixed="left";
+        /*columns[0].fixed="left";
         columns[0].width=100;
 
         columns[columns.length-1].fixed="right";
-        columns[columns.length-1].width=100;
+        columns[columns.length-1].width=100;*/
         columns.push(
             {title:"Draw Toggle",key:"draw",fixed:"right",
             render: (text, record) => {
@@ -960,21 +960,6 @@ class APP_INSP_MODE extends React.Component {
             CanvasWindowRatio=10;
             menuOpacity=1;
 
-            
-            MenuSet.push(
-                <BASE_COM.IconButton
-                dict={EC_zh_TW}
-                iconType="up-square"
-                key="DoImageTransfer"
-                addClass="layout palatte-blue-8 vbox"
-                text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
-                onClick={() => this.getCameraImage_StartStop()}/>);
-            
-            MenuSet.push(
-                <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
-                key="ObjInfoList"
-                WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
-                />);
             break;
             case 1:
             CanvasWindowRatio=3;
@@ -986,26 +971,32 @@ class APP_INSP_MODE extends React.Component {
             menuOpacity=0.3;
 
             
-            MenuSet.push(
-                <BASE_COM.IconButton
-                dict={EC_zh_TW}
-                iconType="up-square"
-                key="DoImageTransfer"
-                addClass="layout palatte-blue-8 vbox"
-                text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
-                onClick={() => this.getCameraImage_StartStop()}/>);
-            
-            MenuSet.push(
-                <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
-                key="ObjInfoList"
-                WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
-                />);
             break;
             case 3:
             CanvasWindowRatio=3;
             menuOpacity=0.3;
             break;
         }
+        
+
+
+        
+            
+
+        MenuSet.push(
+            <BASE_COM.IconButton
+            dict={EC_zh_TW}
+            iconType="up-square"
+            key="DoImageTransfer"
+            addClass="layout palatte-blue-8 vbox"
+            text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
+            onClick={() => this.getCameraImage_StartStop()}/>);
+        
+        MenuSet.push(
+            <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
+            key="ObjInfoList"
+            WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
+            />);
 
         return (
             <div className="HXF">
