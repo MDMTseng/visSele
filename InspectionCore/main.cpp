@@ -1134,22 +1134,22 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 
   
-
-  for (int i = 0; i < capImg.GetHeight(); i++)
+  if(capImg.GetHeight()==proBG.GetHeight() &&capImg.GetWidth()==proBG.GetWidth()  )
   {
-    for (int j = 0; j < capImg.GetWidth(); j++)
+    for (int i = 0; i < capImg.GetHeight(); i++)
     {
-      int stdBG = proBG.CVector[i][j*3];
-      int curBri = capImg.CVector[i][j*3];
-      curBri=curBri*200/stdBG;
-      if(curBri>255)curBri=255;
-      capImg.CVector[i][j*3] = 
-      capImg.CVector[i][j*3+1] = 
-      capImg.CVector[i][j*3+2] = curBri;
+      for (int j = 0; j < capImg.GetWidth(); j++)
+      {
+        int stdBG = proBG.CVector[i][j*3];
+        int curBri = capImg.CVector[i][j*3];
+        curBri=curBri*200/stdBG;
+        if(curBri>255)curBri=255;
+        capImg.CVector[i][j*3] = 
+        capImg.CVector[i][j*3+1] = 
+        capImg.CVector[i][j*3+2] = curBri;
+      }
     }
   }
-
-
 
 
   int ret=0;
