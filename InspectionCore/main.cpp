@@ -122,7 +122,7 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
 #ifdef _WIN32
   _fullpath(buf,path,PATH_MAX);
 #else
-  abspath (path, buf);
+  realpath (path, buf);
 #endif
 
   cJSON_AddStringToObject(retObj, "path", buf);
