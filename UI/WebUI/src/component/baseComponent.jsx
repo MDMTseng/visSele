@@ -348,7 +348,7 @@ export class BPG_FileBrowser extends React.Component{
 
 
     let curPathArr = (typeof this.state.folderStruct.path ==='string')?
-      this.state.folderStruct.path.split("/"):[];
+      this.state.folderStruct.path.replace(/\\+/g, "/").split("/"):[];
 
     curPathArr=curPathArr.map((name)=>({name}));
 

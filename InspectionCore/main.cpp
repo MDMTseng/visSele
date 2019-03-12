@@ -11,7 +11,7 @@
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"
 
-#include <dirent.h> 
+#include <compat_dirent.h> 
 #include <limits.h> 
 #include <sys/stat.h>
 
@@ -119,7 +119,11 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
   struct dirent *dir;
   cJSON *dirFiles = cJSON_CreateArray();
   char buf[PATH_MAX + 1]; 
-  realpath(path, buf);
+#ifdef _WIN32
+  _fullpath(buf,path,PATH_MAX);
+#else
+  abspath (path, buf);
+#endif
 
   cJSON_AddStringToObject(retObj, "path", buf);
   cJSON_AddItemToObject(retObj, "files", dirFiles);
@@ -154,16 +158,11 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
         }
         type="DIR";break;
       }
-      case DT_FIFO:
-        type="FIFO";break;
-      case DT_SOCK:
-        type="SOCK";break;
-      case DT_CHR:
-        type="CHR";break;
-      case DT_BLK:
-        type="BLK";break;
-      case DT_LNK:
-        type="LNK";break;
+      // case DT_FIFO:
+      // case DT_SOCK:
+      // case DT_CHR:
+      // case DT_BLK:
+      // case DT_LNK:
       case DT_UNKNOWN:
       default:
         type="UNKNOWN";break;

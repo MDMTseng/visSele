@@ -15,6 +15,7 @@ export MODULE_MLNN=$(abspath MLNN)
 export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
 export MODULE_circleFitting=$(abspath contrib/circleFitting)
 export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE/$(platform))
+export MODULE_Compat_dirent=$(abspath contrib/Compat_dirent/$(platform))
 export MODULE_cJSON=$(abspath contrib/cJSON)
 export MODULE_logctrl=$(abspath logctrl)
 export MODULE_MatchingEngine=$(abspath MatchingEngine)
@@ -48,7 +49,8 @@ IDIR=	include/ \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
-			$(MODULE_MindVision_GIGE)/include
+			$(MODULE_MindVision_GIGE)/include \
+			$(MODULE_Compat_dirent)/include
 
 
 
@@ -69,6 +71,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
 			   $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
+	FLAGS+= -D_MINGW -D_WINDOWS
 	
 else
 	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
