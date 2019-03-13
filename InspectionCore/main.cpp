@@ -299,7 +299,7 @@ public:
               char* fileName =(char* )JFetch(json,"filename",cJSON_String);
               if (fileName == NULL)
               {
-                snprintf(err_str,sizeof(err_str),"No entry:\"filename\" in it");
+                snprintf(err_str,sizeof(err_str),"No entry:'filename' in it");
                 LOGE("%s",err_str);
                 break;
               }
@@ -362,7 +362,7 @@ public:
               if(pathStr==NULL)
               {
                 //ERROR
-                snprintf(err_str,sizeof(err_str),"No \"path\" entry in the JSON");
+                snprintf(err_str,sizeof(err_str),"No 'path' entry in the JSON");
                 LOGE("%s",err_str);
                 break;
               }
@@ -464,7 +464,7 @@ public:
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
-                snprintf(err_str,sizeof(err_str),"No entry:\"deffile\" in it LINE:%04d",__LINE__);
+                snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
                 LOGE("%s",err_str);
                 break;
               }
@@ -477,10 +477,13 @@ public:
                 if(ret_val==0)
                 {
                   srcImg = &tmp_buff;
+                  cacheImage.ReSize(srcImg);
+                  acvCloneImage(srcImg,&cacheImage,-1);
                 }
               }
               if(srcImg==NULL)
               {
+                cacheImage.ReSize(1,1);
                 break;
               }
 
@@ -534,7 +537,7 @@ public:
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
-                snprintf(err_str,sizeof(err_str),"No entry:\"deffile\" in it LINE:%04d",__LINE__);
+                snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
                 LOGE("%s",err_str);
                 break;
               }
@@ -658,7 +661,7 @@ public:
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
               {
-                snprintf(err_str,sizeof(err_str),"No entry:\"deffile\" in it LINE:%04d",__LINE__);
+                snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
                 LOGE("%s",err_str);
                 cameraFeedTrigger=false;
                 
@@ -759,7 +762,7 @@ public:
                 LOGV( "unlock");
                 mainThreadLock.unlock();
                 srcImg = camera->GetImg();
-                cacheImage.ReSize(srcImg->GetWidth(),srcImg->GetHeight());
+                cacheImage.ReSize(srcImg);
                 acvCloneImage(srcImg,&cacheImage,-1);
                 //acvSaveBitmapFile("data/test1.bmp",srcImg);
               }

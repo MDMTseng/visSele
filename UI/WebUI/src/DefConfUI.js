@@ -5,6 +5,9 @@ import { connect } from 'react-redux'
 import React from 'react';
 import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
+let BPG_FileBrowser=BASE_COM.BPG_FileBrowser;
+let BPG_FileSavingBrowser=BASE_COM.BPG_FileSavingBrowser;
+
 import ReactResizeDetector from 'react-resize-detector';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';  
@@ -64,8 +67,6 @@ class CanvasComponent extends React.Component {
   updateCanvas(ec_state,props=this.props) {
     if(this.ec_canvas  !== undefined)
     {
-      console.log("updateCanvas>>",props.edit_info);
-      //if(props.edit_info.session_lock!=null && props.edit_info.session_lock.start == false)
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
         this.ec_canvas.SetState(ec_state);
@@ -138,14 +139,24 @@ class APP_DEFCONF_MODE extends React.Component{
 
   componentDidMount()
   {
-    //this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
     let defModelPath = this.props.edit_info.defModelPath;
+    
+    this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
+                
 
-    //this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
+  }
+  
+  componentWillUnmount()
+  {
+    this.props.ACT_ClearImage();
   }
   constructor(props) {
     super(props);
     this.ec_canvas = null;
+    this.state={
+      fileSelectedCallBack:undefined,
+      fileSavingCallBack:undefined
+    }
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -294,40 +305,40 @@ class APP_DEFCONF_MODE extends React.Component{
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       menu_height="HXA";
       MenuSet=[
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            key="<"
-            addClass="layout black vbox"
-            text="<" onClick={()=>this.props.ACT_EXIT()}/>,
+        <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          key="<"
+          addClass="layout black vbox"
+          text="<" onClick={()=>this.props.ACT_EXIT()}/>,
 
-          <BASE_COM.JsonEditBlock object={{DefFileName:this.props.edit_info.DefFileName}}
+        <BASE_COM.JsonEditBlock object={{DefFileName:this.props.edit_info.DefFileName}}
+          dict={EC_zh_TW}
+          key="this.props.edit_info.DefFileName"
+          jsonChange={(original_obj,target,type,evt)=>
+            {
+              this.props.ACT_DefFileName_Update(evt.target.value);
+            }}
+          whiteListKey={{DefFileName:"input",}}/>,
+        <BASE_COM.IconButton
             dict={EC_zh_TW}
-            key="this.props.edit_info.DefFileName"
-            jsonChange={(original_obj,target,type,evt)=>
-              {
-                this.props.ACT_DefFileName_Update(evt.target.value);
-              }}
-            whiteListKey={{DefFileName:"input",}}/>,
-          <BASE_COM.IconButton
-              dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="LINE"
-            text="line" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
-          <BASE_COM.IconButton
-              dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="ARC"
-            text="arc" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
-          <BASE_COM.IconButton
-              dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="APOINT"
-            text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
-          <BASE_COM.IconButton
-              dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="SPOINT"
-            text="spoint" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
+          addClass="layout palatte-blue-8 vbox"
+          key="LINE"
+          text="line" onClick={()=>this.props.ACT_Line_Add_Mode()}/>,
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
+          addClass="layout palatte-blue-8 vbox"
+          key="ARC"
+          text="arc" onClick={()=>this.props.ACT_Arc_Add_Mode()}/>,
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
+          addClass="layout palatte-blue-8 vbox"
+          key="APOINT"
+          text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
+        <BASE_COM.IconButton
+            dict={EC_zh_TW}
+          addClass="layout palatte-blue-8 vbox"
+          key="SPOINT"
+          text="spoint" onClick={()=>this.props.ACT_Search_Point_Add_Mode()}/>,
         <BASE_COM.IconButton
             iconType="form"
             addClass="layout palatte-blue-8"
@@ -336,48 +347,123 @@ class APP_DEFCONF_MODE extends React.Component{
             text="measure"
             onClick={()=>this.props.ACT_Measure_Add_Mode()}>
         </BASE_COM.IconButton>,
-          <BASE_COM.IconButton
-              iconType="edit"
-              dict={EC_zh_TW}
-            addClass="layout palatte-blue-5 vbox"
-            key="EDIT"
-            text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
-          <BASE_COM.IconButton
-              iconType="save"
-              dict={EC_zh_TW}
-            addClass="layout palatte-gold-7 vbox"
-            key="SAVE"
-            text="save" onClick={()=>{
-                var enc = new TextEncoder();
-                let report = this.props.edit_info._obj.GenerateEditReport();
-                report.name = this.props.edit_info.DefFileName;
+        <BASE_COM.IconButton
+            iconType="edit"
+            dict={EC_zh_TW}
+          addClass="layout palatte-blue-5 vbox"
+          key="EDIT"
+          text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
+        <BASE_COM.IconButton
+            iconType="save"
+            dict={EC_zh_TW}
+          addClass="layout palatte-gold-7 vbox"
+          key="SAVE"
+          text="save" onClick={()=>{
 
-                
-                let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
-                report.featureSet_sha1 = sha1_info_in_json;
-                this.props.ACT_Report_Save(this.props.WS_ID,defModelPath+".json",enc.encode(JSON.stringify(report, null, 2)));
-                this.props.ACT_Cache_Img_Save(this.props.WS_ID,defModelPath+".bmp");
-            }}/>,
-          <BASE_COM.IconButton
-                iconType="export"
-                dict={EC_zh_TW}
-            addClass="layout palatte-gold-7 vbox"
-            key="LOAD"
-            text="load" onClick={()=>{
-                
-                this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
-                
-            }}/>,
-            <BASE_COM.IconButton
-                iconType="camera"
-                dict={EC_zh_TW}
-              addClass="layout palatte-purple-8 vbox"
-              key="TAKE"
-              text="take" onClick={()=>{
-                  this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
-                  this.props.ACT_Shape_List_Reset();
-              }}/>,
+              
+            this.setState({...this.state,fileSavingCallBack:(folderInfo,fileName,existed)=>{
+
+              let fileNamePath=folderInfo.path+"/"+fileName.replace(".json","");
+
+              console.log(fileNamePath);
+
+              var enc = new TextEncoder();
+              let report = this.props.edit_info._obj.GenerateEditReport();
+              report.name = this.props.edit_info.DefFileName;
+
+              
+              let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+              report.featureSet_sha1 = sha1_info_in_json;
+              console.log("ACT_Report_Save");
+              this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+".json",enc.encode(JSON.stringify(report, null, 2)));
+              console.log("ACT_Cache_Img_Save");
+              this.props.ACT_Cache_Img_Save(this.props.WS_ID,fileNamePath+".bmp");
+
+
+              this.props.ACT_Def_Model_Path_Update(fileNamePath);
+              this.setState({...this.state,fileSavingCallBack:undefined});
+
+
+              },fileSelectFooter:
+              <div>ddd</div>
+            });
+            
+          }}/>,
+        <BASE_COM.IconButton
+              iconType="export"
+              dict={EC_zh_TW}
+          addClass="layout palatte-gold-7 vbox"
+          key="LOAD"
+          text="load" onClick={()=>{
+              
+            this.setState({...this.state,fileSelectedCallBack:(filePath)=>{
+              let fileNamePath=filePath.replace(".json","");
+              console.log(fileNamePath);
+              this.props.ACT_Def_Model_Path_Update(fileNamePath);
+              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+".json",imgsrc:fileNamePath+".bmp"});
+              
+              this.setState({...this.state,fileSelectedCallBack:undefined});
+            }});
+            
+          }}/>,
+        <BASE_COM.IconButton
+            iconType="camera"
+            dict={EC_zh_TW}
+          addClass="layout palatte-purple-8 vbox"
+          key="TAKE"
+          text="take" onClick={()=>{
+              this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
+              this.props.ACT_Shape_List_Reset();
+          }}/>,
+              
         ];
+
+      
+      let DefFileFolder= defModelPath.substr(0,defModelPath.lastIndexOf('/') + 1);
+      if(this.state.fileSelectedCallBack!==undefined)
+      {
+        MenuSet.push(
+          <BPG_FileBrowser key="BPG_FileBrowser"
+            path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
+            BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+            onFileSelected={(filePath,fileInfo)=>
+            { 
+              this.state.fileSelectedCallBack(filePath,fileInfo);
+            }}
+            onOk={(folderPath)=>
+            { 
+              console.log(folderPath);
+            }}
+            onCancel={()=>
+            { 
+              this.setState({...this.state,fileSelectedCallBack:undefined});
+            }}
+            fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+            />);
+  
+      }
+      if(this.state.fileSavingCallBack!==undefined)
+      {
+        MenuSet.push(
+          <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+            path={DefFileFolder} visible={this.state.fileSavingCallBack!==undefined}
+            BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+
+            onOk={(folderInfo,fileName,existed)=>
+            { 
+              this.state.fileSavingCallBack(folderInfo,fileName,existed);
+              
+            }}
+            onCancel={()=>
+            { 
+              this.setState({...this.state,fileSavingCallBack:undefined});
+            }}
+            fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+            />);
+  
+      }
+
+      
       break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:         
       MenuSet=[
@@ -641,13 +727,17 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
     
-    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+    ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
+    ACT_WS_SEND:(...args)=>dispatch(UIAct.EV_WS_SEND(...args)),
+    ACT_ClearImage:()=>{dispatch(UIAct.EV_WS_Image_Update(null))},
     
     ACT_Report_Save:(id,fileName,content)=>{
-      dispatch(UIAct.EV_WS_SEND(id,"SV",0,
-          {filename:fileName},
-          content
-      ));
+      let act = UIAct.EV_WS_SEND(id,"SV",0,
+      {filename:fileName},
+      content
+      )
+      console.log(act);
+      dispatch(act);
     },
     ACT_Cache_Img_Save:(id,fileName)=>{
       dispatch(UIAct.EV_WS_SEND(id,"SV",0,

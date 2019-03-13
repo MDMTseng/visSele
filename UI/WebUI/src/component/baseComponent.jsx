@@ -12,6 +12,7 @@ import  Modal  from 'antd/lib/modal';
 import  Table  from 'antd/lib/table';
 import  Icon  from 'antd/lib/icon';
 import Menu from 'antd/lib/menu';
+import Input from 'antd/lib/input'
 const AntButtonGroup = AntButton.Group;
 
 
@@ -250,15 +251,66 @@ export let DropDownWarp = React_createClass({
 });
 
 
-
-
 export class BPG_FileBrowser extends React.Component{
+  render()
+  {
+    return <BPG_FileBrowser_proto {...this.props} footer={null}/>
+  }
+}
+
+export class BPG_FileSavingBrowser extends React.Component{
+  
+  constructor(props) {
+    super(props);
+    
+    this.state={
+      fileName:"",
+      folderInfo:undefined
+    };
+  }
+  render()
+  {
+    let isTarFileExist = this.state.folderInfo!=undefined &&
+     ((this.state.folderInfo.files.find((file)=>file.name==this.state.fileName))!==undefined);
+    return <BPG_FileBrowser_proto {...this.props}
+    onFileSelected={(file)=>{
+      let fileName= file.substr(file.lastIndexOf('/') + 1);
+      this.setState({...this.state,fileName});
+    }}
+
+    
+    footer={
+      <div>
+        <Input className="width9" placeholder="File Name" 
+        value={this.state.fileName}
+        onChange={(ev)=>this.setState({...this.state,fileName:ev.target.value})}/>
+        
+        <AntButtonGroup className="width2">
+          <AntButton onClick={this.props.onCancel}>Cancel</AntButton>
+          <AntButton onClick={()=>this.props.onOk(this.state.folderInfo,this.state.fileName,isTarFileExist)} 
+            type={isTarFileExist?"danger":"primary"}
+            disabled={(this.state.fileName.length==0 || this.state.folderInfo===undefined)}>OK</AntButton>
+        </AntButtonGroup>
+        </div>
+    }
+    onFolderLoaded={(folderStruct)=>this.setState({...this.state,folderInfo:folderStruct})}/>
+  }
+}
+
+export class BPG_FolderBrowser extends React.Component{
+  render()
+  {
+    return <BPG_FileBrowser_proto {...this.props} footer={null} />
+  }
+}
+
+export class BPG_FileBrowser_proto extends React.Component{
   
   constructor(props) {
     super(props);
     this.state={
       folderStruct:{},
-      history:["./"]
+      history:["./"],
     }
   }
 
@@ -294,6 +346,10 @@ export class BPG_FileBrowser extends React.Component{
       {
         let folderStruct = data[0].data;
         this.setState(Object.assign(this.state,{folderStruct:folderStruct}));
+        if(this.props.onFolderLoaded!==undefined)
+        {
+          this.props.onFolderLoaded(folderStruct);
+        }
       }
       else
       {
@@ -307,6 +363,15 @@ export class BPG_FileBrowser extends React.Component{
   }
   componentWillMount() {
     this.goDir(this.props.path);
+  }
+
+
+  componentDidUpdate(prevProps) {
+    
+    if(this.props.visible==true && prevProps.visible==false)
+    {
+      this.goDir(this.props.path);
+    }
   }
 
   bytesToSize(bytes) {
@@ -339,6 +404,7 @@ export class BPG_FileBrowser extends React.Component{
     ));
     fileList.forEach((file)=>{
       file.size = this.bytesToSize(file.size_bytes);
+      file.key = file.name;
     });
 
     let favoriteDir=[
@@ -378,14 +444,15 @@ export class BPG_FileBrowser extends React.Component{
     return (
         <Modal
           title={titleRender}
-          visible={this.props.display}
-          width={1000}
+          visible={this.props.visible}
+          width={this.props.width===undefined?900:this.props.width}
           onCancel={this.props.onCancel}
-          footer={null}
+          onOk={this.props.onOk}
+          footer={this.props.footer}
         >
-          <div style={{height:500}}>
+          <div style={{height:this.props.height===undefined?400:this.props.height}}>
           
-            <div className="s height12 width2 scroll">
+            <div className="s height12 width2 scroll" key="sideMenu">
               <Menu
                 onClick={(evt)=>{this.goDir(evt.item.props.path);}}
                 mode="inline"
@@ -396,12 +463,12 @@ export class BPG_FileBrowser extends React.Component{
                 }
               </Menu>
             </div>
-            <div className="height12 width10 scroll">
+            <div className="height12 width10 scroll" key="folderView">
               <Table 
                 onRow={(file) => ({
                   onClick: (evt) => { 
                     if(file.type!="DIR")
-                      this.props.onFileSelected(this.state.folderStruct.path+"/"+file.name);
+                      this.props.onFileSelected(this.state.folderStruct.path+"/"+file.name,file);
                     else
                       this.goDir(this.state.folderStruct.path+"/"+file.name);
                   }})} 
@@ -550,11 +617,15 @@ export let IconButton = React_createClass({
       translation = this.props.text;
     }
 
-
     return <div
         onClick={this.handleClick}
         className={className}>
-        <Icon className="layout iconButtonSize veleY" type={this.props.iconType}/>
+
+        {
+          (this.props.iconType === undefined)?
+            null:
+            <Icon className="layout iconButtonSize veleY" type={this.props.iconType}/>
+        }
 
         <p className={"layout veleY iconTextPadding"}>
           {translation}

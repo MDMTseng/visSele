@@ -48,7 +48,6 @@ function Edit_info_reset(newState)
 
     //This is the cadidate info for target element content
     edit_tar_ele_cand:null,
-    session_lock:null,
     camera_calibration_report:undefined,
     mouseLocation:undefined
   }
@@ -102,7 +101,6 @@ function Default_UICtrlReducer()
 
       //This is the cadidate info for target element content
       edit_tar_ele_cand:null,
-      session_lock:null,
       camera_calibration_report:undefined,
       mouseLocation:undefined
     },
@@ -129,6 +127,8 @@ function StateReducer(newState,action)
     newState.sm = action.data.sm;
     newState.state_count=0;
     log.info(newState.p_state.value," + ",action.data.action," > ",newState.c_state.value);
+
+
   }
   
   if (action.type === UISEV.Control_SM_Panel) {
@@ -314,7 +314,7 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  if(srep_inWindow.repeatTime>0)
+                  if(srep_inWindow.repeatTime>-1)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
@@ -528,9 +528,20 @@ function StateReducer(newState,action)
       return newState;
     case UISTS.MAIN:
       newState.showSplash=false;
-      if(action.type===UISEV.Inspection_Report)
+
+      switch(action.type)
       {
-        EVENT_Inspection_Report(newState,action);
+        case UISEV.Inspection_Report:
+          EVENT_Inspection_Report(newState,action);
+        break;
+        case UISEV.Def_Model_Path_Update:
+          newState.edit_info={...newState.edit_info,defModelPath:action.data};
+
+          //Edit_info_reset(newState);
+        break;
+        case UISEV.Image_Update:
+          newState.edit_info={...newState.edit_info,img:action.data};
+        break;
       }
       return newState;
     case UISTS.DEFCONF_MODE:
@@ -542,10 +553,13 @@ function StateReducer(newState,action)
       switch(action.type)
       {
         case UISEV.Image_Update:
-          newState.edit_info=Object.assign({},newState.edit_info);
-          newState.edit_info.img=action.data;
+          newState.edit_info={...newState.edit_info,img:action.data};
         break;
 
+        case UISEV.Def_Model_Path_Update:
+          newState.edit_info={...newState.edit_info,defModelPath:action.data};
+          //Edit_info_reset(newState);
+        break;
         case UI_SM_EVENT.Canvas_Mouse_Location:
         {
           newState.edit_info.mouseLocation = action.data;
@@ -687,11 +701,6 @@ function StateReducer(newState,action)
           newState.edit_info=Object.assign({},newState.edit_info);
           newState.edit_info._obj.SetSig360Report(action.data);
           newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
-        break;
-
-        case UISEV.Session_Lock:
-          newState.edit_info=Object.assign({},newState.edit_info);
-          newState.edit_info.session_lock = (action.data);
         break;
 
         case DefConfAct.EVENT.Shape_List_Update:

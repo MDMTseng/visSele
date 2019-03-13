@@ -69,7 +69,7 @@ export const UI_SM_EVENT = {
   ERROR:"ERROR",
 
 
-
+  Def_Model_Path_Update:"Def_Model_Path_Update",
   WS_channel:"WS_channel",
 
   Edit_Mode:"Edit_Mode",
@@ -79,8 +79,6 @@ export const UI_SM_EVENT = {
   Image_Update:"Image_Update",
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
-  Session_Lock:"Session_Lock",
-
 
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
@@ -170,6 +168,15 @@ export function EV_UI_ACT(ACT,data=null,misc=null)
 }
 
 
+export function Def_Model_Path_Update(newPath)
+{
+  return {
+    type: UI_SM_EVENT.Def_Model_Path_Update ,data:newPath
+  }
+}
+
+
+
 
 export function EV_UI_Canvas_Mouse_Location(mouseLoc)
 {
@@ -203,13 +210,6 @@ export function EV_WS_SIG360_Report_Update(data)
 {
   return {
     type: UI_SM_EVENT.SIG360_Report_Update ,data:data
-  }
-}
-
-export function EV_WS_Session_Lock(SSData)
-{
-  return {
-    type: UI_SM_EVENT.Session_Lock ,data:SSData
   }
 }
 

@@ -316,7 +316,7 @@ size_t BW2RGB_uncollapse(uint8_t *dst_rgb,size_t dstLen,uint8_t *src_bw,size_t s
 
 
 
-char* ReadText(char *filename)
+char* ReadText(const char *filename)
 {
    char *buffer = NULL;
    int string_size, read_size;

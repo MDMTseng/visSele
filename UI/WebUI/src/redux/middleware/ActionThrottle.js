@@ -45,12 +45,14 @@ export const ActionThrottle = ATData => store => next => action => {
       ATData.actions.push(action);
       let actions = ATData.actions;
       ATData.actions=[];
-      return next({
-        
-        type:"ATBundle",
-        ATID:ATData.ExATID,
-        data:actions
-      });
+      console.log(actions);
+      actions.forEach((act=>{
+        if(act.type!==undefined)
+        {
+          next(act)
+        }
+      }));
+      return null;
     }
     break;
     default:

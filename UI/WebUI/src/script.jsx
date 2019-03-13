@@ -23,14 +23,17 @@ import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import {MWWS_EVENT} from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
 import  LocaleProvider  from 'antd/lib/locale-provider';
-BPG_FileBrowser
+
 
 import {BPG_FileBrowser} from './component/baseComponent.jsx';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
+import  {default as AntButton}  from 'antd/lib/button';
 
+import  Collapse  from 'antd/lib/collapse';
+const Panel = Collapse.Panel;
 
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
@@ -51,7 +54,8 @@ class APPMain extends React.Component{
   constructor(props) {
       super(props);
       this.state={
-        doFileSelect:false
+        fileSelectedCallBack:undefined,
+        selectedFileInfo:props.defModelPath
       }
   }
 
@@ -68,6 +72,23 @@ class APPMain extends React.Component{
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
+      
+      UI.push(
+      <Collapse key="slsl" defaultActiveKey={['1']}>
+        <Panel header="The current Loaded defFile" key="1">
+          <AntButton onClick={()=>{
+            let fileSelectedCallBack=
+              (filePath,fileInfo)=>{
+                filePath=filePath.replace(".json","");
+                this.setState({...this.state,fileSelectedCallBack:undefined});
+                this.props.ACT_Def_Model_Path_Update(filePath);
+              }
+            this.setState({...this.state,fileSelectedCallBack});
+
+          }}>{this.props.defModelPath}</AntButton>
+        </Panel>
+      </Collapse>);
+          
       UI.push(
         <BASE_COM.Button
           key="EDIT MODE" addClass="lgreen width4"
@@ -109,20 +130,21 @@ class APPMain extends React.Component{
           }}/>);
       
       
+      let DefFileFolder= this.props.defModelPath.substr(0,this.props.defModelPath.lastIndexOf('/') + 1);
       UI.push(
-        <BPG_FileBrowser 
-          path="." display={this.state.doFileSelect}
-          BPG_Channel={(tl,prop,data,uintArr,promiseCBs)=>this.props.ACT_WS_SEND(this.props.WS_ID,tl,prop,data,uintArr,promiseCBs)} 
-          onFileSelected={(file)=>
+        <BPG_FileBrowser key="BPG_FileBrowser"
+          path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
+          BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+          onFileSelected={(filePath,fileInfo)=>
           { 
-            this.setState(Object.assign(this.state,{doFileSelect:false}));
-            console.log(file)
+            this.setState({...this.state,fileSelectedCallBack:undefined});
+            this.state.fileSelectedCallBack(filePath,fileInfo);
           }}
           onCancel={()=>
-            { 
-              this.setState(Object.assign(this.state,{doFileSelect:false}));
-            }}
-          //fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+          { 
+            this.setState({...this.state,fileSelectedCallBack:undefined});
+          }}
+          fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
           />);
 
       if(this.props.camera_calibration_report!==undefined)
@@ -170,11 +192,13 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Edit_Mode: (arg) => {dispatch(UIAct.EV_UI_Edit_Mode())},
     EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
     EV_UI_Analysis_Mode:()=>{dispatch(UIAct.EV_UI_Analysis_Mode())},
+    ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
     ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
   }
 }
 const mapStateToProps_APPMain = (state) => {
   return { 
+    defModelPath: state.UIData.edit_info.defModelPath,
     c_state: state.UIData.c_state,
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     isp_db: state.UIData.edit_info._obj,
@@ -204,7 +228,6 @@ function map_BPG_Packet2Act(parsed_packet)
     {
       let SS =parsed_packet;
       req_id=SS.data.req_id;
-      acts.push(UIAct.EV_WS_Session_Lock(SS.data));
       break;
     }
     case "IM":
@@ -373,8 +396,9 @@ class APPMasterX extends React.Component{
         {//Not in tracking window, just Dispatch it
           if(parsed_pkt!==undefined)
           {
-
-            this.props.DISPATCH(map_BPG_Packet2Act(parsed_pkt));
+            let act=map_BPG_Packet2Act(parsed_pkt);
+            if(act!==undefined)
+              this.props.DISPATCH(act);
           }
         }
         else
@@ -396,7 +420,12 @@ class APPMasterX extends React.Component{
               }
               else
               {
-                req_pkt.pkts.forEach((pkt)=>this.props.DISPATCH(map_BPG_Packet2Act(pkt)));
+                req_pkt.pkts.forEach((pkt)=>
+                {
+                  let act=map_BPG_Packet2Act(pkt);
+                  if(act!==undefined)
+                    this.props.DISPATCH(act)
+                });
               }
               //////
             }
