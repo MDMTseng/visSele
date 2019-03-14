@@ -11,6 +11,7 @@ import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
  
 import BPG_Protocol from 'UTIL/BPG_Protocol.js'; 
+import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 //import {XSGraph} from './xstate_visual';
@@ -79,7 +80,7 @@ class APPMain extends React.Component{
           <AntButton onClick={()=>{
             let fileSelectedCallBack=
               (filePath,fileInfo)=>{
-                filePath=filePath.replace(".json","");
+                filePath=filePath.replace("."+DEF_EXTENSION,"");
                 this.setState({...this.state,fileSelectedCallBack:undefined});
                 this.props.ACT_Def_Model_Path_Update(filePath);
               }
@@ -144,7 +145,7 @@ class APPMain extends React.Component{
           { 
             this.setState({...this.state,fileSelectedCallBack:undefined});
           }}
-          fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+          fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION)}
           />);
 
       if(this.props.camera_calibration_report!==undefined)

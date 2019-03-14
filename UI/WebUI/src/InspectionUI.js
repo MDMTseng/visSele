@@ -13,7 +13,7 @@ import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
-import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import {INSPECTION_STATUS,DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 //import Plot from 'react-plotly.js';
@@ -843,7 +843,7 @@ class APP_INSP_MODE extends React.Component {
 
     componentDidMount() {
 
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + ".json"});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
         this.getCameraImage_StartStop(false);
 
     }

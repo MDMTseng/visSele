@@ -314,7 +314,7 @@ public:
                   if(cacheImage.GetWidth()*cacheImage.GetHeight()>10)
                     acvSaveBitmapFile(fileName,&cacheImage);
                   
-                  cacheImage.ReSize(1,1);
+                  //cacheImage.ReSize(1,1);
                 }
               }
               else

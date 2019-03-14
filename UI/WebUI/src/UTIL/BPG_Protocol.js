@@ -111,6 +111,11 @@ export const INSPECTION_STATUS = {
   FAILURE:-1,
 };
 
+
+
+
+export const DEF_EXTENSION = "hydef";
+
 export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw,INSPECTION_STATUS }
 
 //let binaryX = BPG_Protocol.obj2raw("TC",{a:1,b:{c:2}});

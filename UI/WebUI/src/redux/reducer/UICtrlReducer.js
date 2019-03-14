@@ -256,7 +256,7 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-    let keepInTrackingTime_ms=1000;
+    let keepInTrackingTime_ms=3000;
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
 
@@ -314,7 +314,7 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  if(srep_inWindow.repeatTime>-1)
+                  if(srep_inWindow.repeatTime>0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport

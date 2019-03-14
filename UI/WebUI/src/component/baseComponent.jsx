@@ -264,7 +264,7 @@ export class BPG_FileSavingBrowser extends React.Component{
     super(props);
     
     this.state={
-      fileName:"",
+      fileName:(props.defaultName===undefined)?"":props.defaultName,
       folderInfo:undefined
     };
   }
@@ -272,6 +272,8 @@ export class BPG_FileSavingBrowser extends React.Component{
   {
     let isTarFileExist = this.state.folderInfo!=undefined &&
      ((this.state.folderInfo.files.find((file)=>file.name==this.state.fileName))!==undefined);
+    
+    console.log(isTarFileExist);
     return <BPG_FileBrowser_proto {...this.props}
     onFileSelected={(file)=>{
       let fileName= file.substr(file.lastIndexOf('/') + 1);
@@ -293,7 +295,11 @@ export class BPG_FileSavingBrowser extends React.Component{
         </AntButtonGroup>
         </div>
     }
-    onFolderLoaded={(folderStruct)=>this.setState({...this.state,folderInfo:folderStruct})}/>
+    onFolderLoaded={(folderStruct)=>{
+        
+        this.setState({...this.state,folderInfo:folderStruct})
+      }
+    }/>
   }
 }
 

@@ -9,7 +9,7 @@ let BPG_FileBrowser=BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser=BASE_COM.BPG_FileSavingBrowser;
 
 import ReactResizeDetector from 'react-resize-detector';
-
+import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';  
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -141,7 +141,7 @@ class APP_DEFCONF_MODE extends React.Component{
   {
     let defModelPath = this.props.edit_info.defModelPath;
     
-    this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
+    this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath+".bmp"});
                 
 
   }
@@ -363,7 +363,7 @@ class APP_DEFCONF_MODE extends React.Component{
               
             this.setState({...this.state,fileSavingCallBack:(folderInfo,fileName,existed)=>{
 
-              let fileNamePath=folderInfo.path+"/"+fileName.replace(".json","");
+              let fileNamePath=folderInfo.path+"/"+fileName.replace('.'+DEF_EXTENSION,"");
 
               console.log(fileNamePath);
 
@@ -375,7 +375,7 @@ class APP_DEFCONF_MODE extends React.Component{
               let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
               report.featureSet_sha1 = sha1_info_in_json;
               console.log("ACT_Report_Save");
-              this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+".json",enc.encode(JSON.stringify(report, null, 2)));
+              this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+'.'+DEF_EXTENSION,enc.encode(JSON.stringify(report, null, 2)));
               console.log("ACT_Cache_Img_Save");
               this.props.ACT_Cache_Img_Save(this.props.WS_ID,fileNamePath+".bmp");
 
@@ -397,10 +397,10 @@ class APP_DEFCONF_MODE extends React.Component{
           text="load" onClick={()=>{
               
             this.setState({...this.state,fileSelectedCallBack:(filePath)=>{
-              let fileNamePath=filePath.replace(".json","");
+              let fileNamePath=filePath.replace("."+DEF_EXTENSION,"");
               console.log(fileNamePath);
               this.props.ACT_Def_Model_Path_Update(fileNamePath);
-              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+".json",imgsrc:fileNamePath+".bmp"});
+              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath+".bmp"});
               
               this.setState({...this.state,fileSelectedCallBack:undefined});
             }});
@@ -438,15 +438,17 @@ class APP_DEFCONF_MODE extends React.Component{
             { 
               this.setState({...this.state,fileSelectedCallBack:undefined});
             }}
-            fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+            fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes('.'+DEF_EXTENSION)}
             />);
   
       }
       if(this.state.fileSavingCallBack!==undefined)
       {
+        let defaultName= defModelPath.substr(defModelPath.lastIndexOf('/') + 1);
         MenuSet.push(
           <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
             path={DefFileFolder} visible={this.state.fileSavingCallBack!==undefined}
+            defaultName={defaultName}
             BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
 
             onOk={(folderInfo,fileName,existed)=>
@@ -458,7 +460,7 @@ class APP_DEFCONF_MODE extends React.Component{
             { 
               this.setState({...this.state,fileSavingCallBack:undefined});
             }}
-            fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".json")}
+            fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes('.'+DEF_EXTENSION)}
             />);
   
       }
