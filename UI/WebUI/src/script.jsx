@@ -31,9 +31,17 @@ import {BPG_FileBrowser} from './component/baseComponent.jsx';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
-import  {default as AntButton}  from 'antd/lib/button';
 
+import  {default as AntButton}  from 'antd/lib/button';
 import  Collapse  from 'antd/lib/collapse';
+import  Icon  from 'antd/lib/icon';
+import  Menu  from 'antd/lib/menu';
+import  Layout  from 'antd/lib/layout';
+const { Header, Content, Footer, Sider } = Layout;
+const SubMenu = Menu.SubMenu;
+
+
+
 const Panel = Collapse.Panel;
 
 log.setLevel("info");
@@ -56,7 +64,8 @@ class APPMain extends React.Component{
       super(props);
       this.state={
         fileSelectedCallBack:undefined,
-        selectedFileInfo:props.defModelPath
+        menuSelect:"Overview",
+        menuCollapsed:true
       }
   }
 
@@ -73,98 +82,101 @@ class APPMain extends React.Component{
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
-      
-      UI.push(
-      <Collapse key="slsl" defaultActiveKey={['1']}>
-        <Panel header="The current Loaded defFile" key="1">
-          <AntButton onClick={()=>{
-            let fileSelectedCallBack=
-              (filePath,fileInfo)=>{
-                filePath=filePath.replace("."+DEF_EXTENSION,"");
-                this.setState({...this.state,fileSelectedCallBack:undefined});
-                this.props.ACT_Def_Model_Path_Update(filePath);
-              }
-            this.setState({...this.state,fileSelectedCallBack});
-
-          }}>{this.props.defModelPath}</AntButton>
-        </Panel>
-      </Collapse>);
-          
-      UI.push(
-        <BASE_COM.Button
-          key="EDIT MODE" addClass="lgreen width4"
-          text="EDIT MODE" onClick={this.props.EV_UI_Edit_Mode}/>);
-          
-      UI.push(
-        <BASE_COM.Button
-          key="INSP MODE" addClass="lblue width4"
-          text="INSP MODE" onClick={this.props.EV_UI_Insp_Mode}/>);
-      UI.push(
-        <BASE_COM.Button
-          key="ANALYSIS MODE" addClass="lblue width4"
-          text="ANALYSIS MODE" onClick={this.props.EV_UI_Analysis_Mode}/>);
-
-        
-          
-      UI.push(
-        <BASE_COM.Button
-          key="Reconnect CAM" addClass="lblue width4"
-          text="Reconnect CAM" onClick={()=>{
-
-            this.props.ACT_WS_SEND(this.props.WS_ID,"RC",0,{
-              target:"camera_ez_reconnect",
-              req_id:"asdadkks"
-            });
-                
-          }}/>);
-          
-      UI.push(
-        <BASE_COM.Button
-          key="CAM calib" addClass="lblue width4"
-          text="CAM calib" onClick={()=>{
-
-            this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{
-              deffile:"data/cameraCalibration.json",
-              imgsrc:"data/calibration.bmp"
-            });
-                
-          }}/>);
-      
-      
       let DefFileFolder= this.props.defModelPath.substr(0,this.props.defModelPath.lastIndexOf('/') + 1);
+      let genericMenuItemCBsCB=(selectInfo)=>{this.setState({...this.state,menuSelect:selectInfo.key})}
+      let MenuItem={
+        Overview:{
+          icon:"info-circle" ,
+          content:<div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
+            <AntButton onClick={()=>{
+              let fileSelectedCallBack=
+                (filePath,fileInfo)=>{
+                  filePath=filePath.replace("."+DEF_EXTENSION,"");
+                  this.setState({...this.state,fileSelectedCallBack:undefined});
+                  this.props.ACT_Def_Model_Path_Update(filePath);
+                }
+              this.setState({...this.state,fileSelectedCallBack});
+
+            }}>{this.props.defModelPath}</AntButton>
+            <BPG_FileBrowser key="BPG_FileBrowser"
+              path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
+              BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+              onFileSelected={(filePath,fileInfo)=>
+              { 
+                this.setState({...this.state,fileSelectedCallBack:undefined});
+                this.state.fileSelectedCallBack(filePath,fileInfo);
+              }}
+              onCancel={()=>
+              { 
+                this.setState({...this.state,fileSelectedCallBack:undefined});
+              }}
+              fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION)}
+              />
+          </div>,
+          onSelected:genericMenuItemCBsCB
+        },
+        EDIT:{
+          icon:"edit",
+          content:null,
+          onSelected:this.props.EV_UI_Edit_Mode
+        },
+        Inspect:{
+          icon:"scan",
+          content:null,
+          onSelected:this.props.EV_UI_Insp_Mode
+        },
+        Setting:{
+          icon:"setting" ,
+          content:<div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
+            .....
+          </div>,
+          onSelected:genericMenuItemCBsCB
+        },
+        Collapse:{
+          icon:this.state.menuCollapsed?"right":"left" ,
+          content:null,
+          onSelected:()=>this.setState({...this.state,menuCollapsed:!this.state.menuCollapsed})
+        }
+      };
+
+      let LayoutContent=null;
+
       UI.push(
-        <BPG_FileBrowser key="BPG_FileBrowser"
-          path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
-          BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
-          onFileSelected={(filePath,fileInfo)=>
-          { 
-            this.setState({...this.state,fileSelectedCallBack:undefined});
-            this.state.fileSelectedCallBack(filePath,fileInfo);
-          }}
-          onCancel={()=>
-          { 
-            this.setState({...this.state,fileSelectedCallBack:undefined});
-          }}
-          fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION)}
-          />);
+        <Layout className="HXF">
+          <Sider
+            trigger={null}
+            collapsible
+            collapsed={this.state.menuCollapsed}
+            //collapsed={this.state.collapsed}
+          >
+            <div className="logo" />
+            <Menu theme="dark" mode="inline" defaultSelectedKeys={["Overview"]} 
+              onClick={(select)=>MenuItem[select.key].onSelected(select)}>
+              {
+                Object.keys(MenuItem).map(itemKey=>(
+                <Menu.Item key={itemKey} callback>
+                  <Icon type={MenuItem[itemKey].icon} />
+                  <span>{itemKey}</span>
+                </Menu.Item>
+                ))
+              }
+            </Menu>
+          </Sider>
 
-      if(this.props.camera_calibration_report!==undefined)
-      {
+          <Layout>
+            <Content>
+              {
 
-        let camParam = this.props.isp_db.cameraParam;
-        let mmpp = camParam.mmpb2b/camParam.ppb2b;
-        UI.push(
-          <BASE_COM.Button
-            key="CAM calib save" addClass="lblue width4"
-            text={"calib save(mmpp:"+mmpp.toFixed(6)+")"} onClick={()=>{
-              var enc = new TextEncoder();
-              let enc_report = enc.encode(JSON.stringify(this.props.camera_calibration_report, null, 2));
-              this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
-                {filename:"data/default_camera_param.json"},
-                enc_report);
-            }}/>);
+                MenuItem[this.state.menuSelect].content
+              }
+            </Content>
+          </Layout>
+        </Layout>
 
-      }
+
+
+      )
+
     }
     else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
     {

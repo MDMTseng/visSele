@@ -66,3 +66,17 @@ export function GetObjElement(rootObj,keyTrace,traceIdxTo=keyTrace.length-1)
   }
   return obj;
 }
+
+
+
+export function DictConv(key,dict,dictTheme)
+{
+  let translation = (dictTheme===undefined)?undefined:GetObjElement(dict,[dictTheme, key]);
+
+  if(translation===undefined)
+  {
+    translation = GetObjElement(dict,["fallback", key]);
+  }
+
+  return translation;
+}

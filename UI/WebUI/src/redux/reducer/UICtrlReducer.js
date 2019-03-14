@@ -48,7 +48,7 @@ function Edit_info_reset(newState)
 
     //This is the cadidate info for target element content
     edit_tar_ele_cand:null,
-    camera_calibration_report:undefined,
+    //camera_calibration_report:undefined // the camera calibration data shouldn't be reset
     mouseLocation:undefined
   }
 
