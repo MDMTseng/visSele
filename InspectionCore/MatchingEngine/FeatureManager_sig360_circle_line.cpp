@@ -2142,9 +2142,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         &isInv, &angle);
 
       error = sqrt(error)/feature_signature_ave;
-      if(i<10)
+      //if(i<10)
       {
-        LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
+        LOGV("======%d===X:%0.4f Y:%0.4f er:%f,inv:%d,angDeg:%f",i,ldData[i].Center.X,ldData[i].Center.Y,error,isInv,angle*180/3.14159);
       }
 
 
@@ -2242,13 +2242,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       acv_LineFit lf_zero = {0};
       for (int j = 0; j < featureLineList.size(); j++)
       {
+        
         int mult=100;
         featureDef_line *line = &featureLineList[j];
 
         acv_XY target_vec = {0};
         acv_Line line_cand;
 
-        
+         
         {
           //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
           
@@ -2262,8 +2263,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           
           //Offet to real image and backoff searchDist distance along with the searchVec as start
           line_cand.line_anchor=acvVecAdd(line_cand.line_anchor,ldData[i].Center);
-          LOGV("line->lineTar.line_vec: %f %f",line_cand.line_vec.X,line_cand.line_vec.Y);
-          LOGV("line->lineTar.line_anchor: %f %f",line_cand.line_anchor.X,line_cand.line_anchor.Y);
+          LOGV("line[%d]->lineTar.line_vec: %f %f",j,line_cand.line_vec.X,line_cand.line_vec.Y);
+          LOGV("line[%d]->lineTar.line_anchor: %f %f",j,line_cand.line_anchor.X,line_cand.line_anchor.Y);
           
           
           acv_XY searchVec;
@@ -2311,6 +2312,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               s_points.size(),&line_cand,&sigma);
             
             LOGV(" %f %f, %f %f",line_cand.line_vec.X,line_cand.line_vec.Y,target_vec.X,target_vec.Y);
+            LOGV("line_anchor: %f %f",line_cand.line_anchor.X,line_cand.line_anchor.Y);
             if( acv2DDotProduct(line_cand.line_vec,target_vec)<0 )
             {
               line_cand.line_vec = acvVecMult(line_cand.line_vec,-1);
@@ -2356,7 +2358,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           MatchingMarginX,s_points.size(),initMatchingMargin);
 
        
-        if(1)
+        if(s_points.size()>5*4)
         {
 
           
