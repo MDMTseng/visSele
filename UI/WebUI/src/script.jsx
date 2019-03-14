@@ -499,22 +499,22 @@ class APPMasterX extends React.Component{
     let xstateG;
     if (false && this.props.stateMachine!=null) {
       xstateG = 
-      <XSGraph addClass="width12 height12" 
-      state_machine={this.props.stateMachine.config}/>;
+      <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph "+((this.props.showSM_graph)?"":"hide")} fixedFrame={true}>
+        <div className="layout width11 height12">
+        <XSGraph addClass="width12 height12" 
+          state_machine={this.props.stateMachine.config}/>;
+        </div>
+        <div className="layout button width1 height12" onClick=
+          {()=>this.props.ACT_Ctrl_SM_Panel( !this.props.showSM_graph)}></div>
+      </BASE_COM.CardFrameWarp>
+     
     } else {
       xstateG = null;
     }
     return(
     <div className="HXF">
       <APPMain_rdx key="APP"/>
-
-      <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph "+((this.props.showSM_graph)?"":"hide")} fixedFrame={true}>
-        <div className="layout width11 height12">
-          {xstateG}  
-        </div>
-        <div className="layout button width1 height12" onClick=
-          {()=>this.props.ACT_Ctrl_SM_Panel( !this.props.showSM_graph)}></div>
-      </BASE_COM.CardFrameWarp>
+      {xstateG}
 
       {
         (this.props.showSplash)?
