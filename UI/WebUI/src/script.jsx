@@ -67,6 +67,7 @@ class APPMain extends React.Component{
         menuSelect:"Overview",
         menuCollapsed:true
       }
+      this.p_state = null;
   }
 
 
@@ -77,13 +78,25 @@ class APPMain extends React.Component{
   render() {
     let UI=[];
 
-    log.debug("APPMain render",this.props);
     if(this.props.c_state==null)return null;
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
+    if(this.p_state !== stateObj.state)
+    {
+      this.state.menuSelect ="Overview";
+      this.p_state=stateObj.state;
+    }
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
       let DefFileFolder= this.props.defModelPath.substr(0,this.props.defModelPath.lastIndexOf('/') + 1);
       let genericMenuItemCBsCB=(selectInfo)=>{this.setState({...this.state,menuSelect:selectInfo.key})}
+
+      let mmpp = undefined;
+      if(this.props.camera_calibration_report!==undefined)
+      {
+        let camParam = this.props.isp_db.cameraParam;
+        mmpp= camParam.mmpb2b/camParam.ppb2b;
+      }
+
       let MenuItem={
         Overview:{
           icon:"info-circle" ,
@@ -97,7 +110,20 @@ class APPMain extends React.Component{
                 }
               this.setState({...this.state,fileSelectedCallBack});
 
-            }}>{this.props.defModelPath}</AntButton>
+            }}>{"defModelPath:"+this.props.defModelPath}</AntButton>
+
+            {(mmpp===undefined)?null:
+            <AntButton onClick={()=>{
+              
+              let cameraCalibPath = "data/default_camera_param.json";
+              this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
+                {LoadCameraCalibration:cameraCalibPath});
+            
+              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+                {filename:cameraCalibPath});
+            }}>{"mmpp:"+mmpp}</AntButton>}
+
+
             <BPG_FileBrowser key="BPG_FileBrowser"
               path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
               BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
@@ -128,7 +154,46 @@ class APPMain extends React.Component{
         Setting:{
           icon:"setting" ,
           content:<div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
-            .....
+              
+
+              
+            <AntButton key="Reconnect CAM" 
+              onClick={()=>{
+                this.props.ACT_WS_SEND(this.props.WS_ID,"RC",0,{
+                  target:"camera_ez_reconnect"});
+            }}>Reconnect CAM</AntButton>
+
+              
+            <AntButton key="camera Calib" 
+              onClick={()=>{
+                let fileSelectedCallBack=
+                (filePath,fileInfo)=>{
+                  console.log(filePath,fileInfo);
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"II",0,{
+                    deffile:"data/cameraCalibration.json",
+                    imgsrc:filePath
+                  });
+
+                }
+              this.setState({...this.state,fileSelectedCallBack});
+
+            }}>camera Calib</AntButton>
+
+
+            <BPG_FileBrowser key="BPG_FileBrowser"
+              path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
+              BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+              onFileSelected={(filePath,fileInfo)=>
+              { 
+                this.setState({...this.state,fileSelectedCallBack:undefined});
+                this.state.fileSelectedCallBack(filePath,fileInfo);
+              }}
+              onCancel={()=>
+              { 
+                this.setState({...this.state,fileSelectedCallBack:undefined});
+              }}
+              fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".bmp")}
+              />
           </div>,
           onSelected:genericMenuItemCBsCB
         },
@@ -139,8 +204,6 @@ class APPMain extends React.Component{
         }
       };
 
-      let LayoutContent=null;
-
       UI.push(
         <Layout className="HXF">
           <Sider
@@ -149,7 +212,6 @@ class APPMain extends React.Component{
             collapsed={this.state.menuCollapsed}
             //collapsed={this.state.collapsed}
           >
-            <div className="logo" />
             <Menu theme="dark" mode="inline" defaultSelectedKeys={["Overview"]} 
               onClick={(select)=>MenuItem[select.key].onSelected(select)}>
               {

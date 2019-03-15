@@ -186,6 +186,87 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
 }
 
 
+
+
+int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_param)
+{
+  
+  if(ret_param==NULL)return -1;
+  acvRadialDistortionParam param_default={
+      calibrationCenter:{1295,971},
+      RNormalFactor:1296,
+      K0:0.999783,
+      K1:0.00054474,
+      K2:-0.000394607,
+      //r = r_image/RNormalFactor
+      //C1 = K1/K0
+      //C2 = K2/K0
+      //r"=r'/K0
+      //Forward: r' = r*(K0+K1*r^2+K2*r^4)
+      //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
+      //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
+      //r/r'=r*K0/r"
+
+      ppb2b: 63.11896896362305,
+      mmpb2b:  0.630049821,
+  };
+
+  *ret_param = param_default;
+  if(root ==NULL)return -1;
+  acvRadialDistortionParam tmp_param;
+  tmp_param.K0  = *JFetEx_NUMBER(root,"reports[0].K0");
+  tmp_param.K1  = *JFetEx_NUMBER(root,"reports[0].K1");
+  tmp_param.K2  = *JFetEx_NUMBER(root,"reports[0].K2");
+
+  tmp_param.ppb2b  = *JFetEx_NUMBER(root,"reports[0].ppb2b");
+  tmp_param.mmpb2b  = *JFetEx_NUMBER(root,"reports[0].mmpb2b");
+
+
+  tmp_param.RNormalFactor  = *JFetEx_NUMBER(root,"reports[0].RNormalFactor");
+  tmp_param.calibrationCenter.X  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.x");
+  tmp_param.calibrationCenter.Y  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.y");
+
+  *ret_param = tmp_param;
+
+  return 0;
+
+}
+
+int LoadCameraCalibrationFile(char * filename)
+{
+  acvRadialDistortionParam cam_param={0};
+  char *fileStr = ReadText(filename);
+  
+  if(fileStr == NULL)
+  {
+    LOGE("Cannot read defFile from:%s",filename);
+    return -1;
+  }
+
+
+  cJSON *json = cJSON_Parse(fileStr);
+  
+  bool executionError=false;
+
+  try{
+
+    int ret = jObject2acvRadialDistortionParam(json,&cam_param);
+    if(ret)
+      executionError=true;
+  }
+  catch(const std::exception & ex)
+  {
+    LOGE("Exception:%s",ex.what());
+    executionError=true;
+  }
+
+  LOGI("Read deffile:%s executionError:%d  K:%g %g %g",filename,executionError,cam_param.K0,cam_param.K1,cam_param.K2);
+  cJSON_Delete(json);
+  free(fileStr);
+  param_default=cam_param;
+  return 0;
+}
+
 char req_id_fallback[]="NO req_id";
 bool DoImageTransfer=true;
 class DatCH_CallBack_BPG : public DatCH_CallBack
@@ -865,23 +946,24 @@ public:
             if(type==cJSON_False)
             {
               DoImageTransfer=false;
+              session_ACK=true;
             }
             else if( type ==cJSON_True)
             {
               DoImageTransfer=true;
-            }
-
-            if(type==cJSON_Invalid)
-            {
-              snprintf(err_str,sizeof(err_str),"the CMD is not found",__LINE__);
-              LOGE("%s",err_str);
-            }
-            else
-            {
               session_ACK=true;
             }
+
+            char *path  = JFetch_STRING(json,"LoadCameraCalibration");
+            if(path!=NULL)
+            {
+              int ret = LoadCameraCalibrationFile(path);
+              if(ret)session_ACK=true;
+            }
+
+
             LOGI("dat->dat_raw:%s",dat->dat_raw);
-            LOGI("DoImageTransfer:%d  type:%d",DoImageTransfer,type);
+            LOGI("DoImageTransfer:%d",DoImageTransfer);
 
             
             mainThreadLock.unlock();
@@ -951,51 +1033,6 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 
 }
 
-
-
-int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_param)
-{
-  
-  if(ret_param==NULL)return -1;
-  acvRadialDistortionParam param_default={
-      calibrationCenter:{1295,971},
-      RNormalFactor:1296,
-      K0:0.999783,
-      K1:0.00054474,
-      K2:-0.000394607,
-      //r = r_image/RNormalFactor
-      //C1 = K1/K0
-      //C2 = K2/K0
-      //r"=r'/K0
-      //Forward: r' = r*(K0+K1*r^2+K2*r^4)
-      //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
-      //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
-      //r/r'=r*K0/r"
-
-      ppb2b: 63.11896896362305,
-      mmpb2b:  0.630049821,
-  };
-
-  *ret_param = param_default;
-  if(root ==NULL)return -1;
-  acvRadialDistortionParam tmp_param;
-  tmp_param.K0  = *JFetEx_NUMBER(root,"reports[0].K0");
-  tmp_param.K1  = *JFetEx_NUMBER(root,"reports[0].K1");
-  tmp_param.K2  = *JFetEx_NUMBER(root,"reports[0].K2");
-
-  tmp_param.ppb2b  = *JFetEx_NUMBER(root,"reports[0].ppb2b");
-  tmp_param.mmpb2b  = *JFetEx_NUMBER(root,"reports[0].mmpb2b");
-
-
-  tmp_param.RNormalFactor  = *JFetEx_NUMBER(root,"reports[0].RNormalFactor");
-  tmp_param.calibrationCenter.X  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.x");
-  tmp_param.calibrationCenter.Y  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.y");
-
-  *ret_param = tmp_param;
-
-  return 0;
-
-}
 
 
 
@@ -1663,28 +1700,8 @@ int main(int argc, char** argv)
     return simpleTest(imgName,defName);
   }
 
+  LoadCameraCalibrationFile("data/default_camera_param.json");
 
-  {
-    char *filename = "data/default_camera_param.json";
-    //return simpleTest();
-    acvRadialDistortionParam cam_param;
-    char *fileStr = ReadText(filename);
-    
-    cJSON *json = cJSON_Parse(fileStr);
-    int ret = jObject2acvRadialDistortionParam(json,&cam_param);
-
-
-    if(fileStr == NULL)
-    {
-      LOGE("Cannot read defFile from:%s",filename);
-      exit(-1);
-    }
-    LOGV("Read deffile:%s ret:%d  K:%g %g %g",filename,ret,cam_param.K0,cam_param.K1,cam_param.K2);
-    cJSON_Delete(json);
-    free(fileStr);
-    param_default=cam_param;
-    //return 0;
-  }
 
   if(0)//GenBG map
   {
