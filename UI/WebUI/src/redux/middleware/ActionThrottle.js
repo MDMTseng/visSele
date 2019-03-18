@@ -41,11 +41,11 @@ export const ActionThrottle = ATData => store => next => action => {
       clearTimeout(ATData.timeout_obj);
       ATData.timeout_obj=null;
       if(ATData.actions.length==0)return;
-      log.debug("Trigger.....",ATData.ATID);
+      //log.debug("Trigger.....",ATData.ATID);
       ATData.actions.push(action);
       let actions = ATData.actions;
       ATData.actions=[];
-      console.log(actions);
+      //console.log(actions);
       actions.forEach((act=>{
         if(act.type!==undefined)
         {

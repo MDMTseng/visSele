@@ -358,6 +358,8 @@ public:
           //     self->SendData(datCH_BPG);
           // }
 
+
+          mainThreadLock.lock();
           if(checkTL("HR",dat))
           {
             LOGI("DataType_BPG>>>>%s",dat->dat_raw);
@@ -637,6 +639,7 @@ public:
 
               if(srcImg==NULL)
               {
+                mainThreadLock.unlock();
                 LOGV("Do camera Fetch..");
                 camera->TriggerMode(1);
                 LOGV("LOCK...");
@@ -832,6 +835,7 @@ public:
 
               if(srcImg==NULL)
               {
+                mainThreadLock.unlock();
                 LOGV("Do camera Fetch..");
                 camera->TriggerMode(1);
                 LOGV("LOCK...");
@@ -937,7 +941,6 @@ public:
           }else if(checkTL("ST",dat))
           {
             
-            mainThreadLock.lock();
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
@@ -966,7 +969,6 @@ public:
             LOGI("DoImageTransfer:%d",DoImageTransfer);
 
             
-            mainThreadLock.unlock();
           }
           
 
@@ -980,6 +982,7 @@ public:
           datCH_BPG.data.p_BPG_data=&bpg_dat;
           self->SendData(datCH_BPG);
 
+          mainThreadLock.unlock();
           cJSON_Delete(json);
 
         }
