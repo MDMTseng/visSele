@@ -77,7 +77,9 @@ let objbarr2raw=(type,prop,obj,barr=null)=>{
   
   let str = (obj==null)?"":JSON.stringify(obj);
   let BPG_header_L = 7;
-  let objstr_L = str.length;
+
+  let encStr= enc.encode(str);
+  let objstr_L = encStr.length;
   
   let barr_L = (barr instanceof Uint8Array)?barr.length:0;
   let bbuf = new Uint8Array(BPG_header_L+objstr_L+1+barr_L);
@@ -93,7 +95,7 @@ let objbarr2raw=(type,prop,obj,barr=null)=>{
   bbuf[6] = data_length;
   if(objstr_L!=0)
   {
-    bbuf.set(enc.encode(str), BPG_header_L);
+    bbuf.set(encStr, BPG_header_L);
   }
   bbuf[BPG_header_L+objstr_L]=0;//The end of string session
   if(barr_L!=0)

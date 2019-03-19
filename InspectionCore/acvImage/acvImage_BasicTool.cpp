@@ -522,6 +522,7 @@ int acvSaveBitmapFile(const char *filename, unsigned char *pixData, int width, i
 {
     FILE *f;
     f = fopen(filename, "wb");
+    if(f==NULL)return -1;
 
     int padding = (4 - ((width * 3) % 4)) % 4;
     acv_BITMAPFILEHEADER bm_header = {0};

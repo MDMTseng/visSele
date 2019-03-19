@@ -268,6 +268,9 @@ export class BPG_FileSavingBrowser extends React.Component{
       folderInfo:undefined
     };
   }
+  isASCII(str, extended=false) {
+    return (extended ? /^[\x00-\xFF]*$/ : /^[\x00-\x7F]*$/).test(str);
+  }
   render()
   {
     let isTarFileExist = this.state.folderInfo!=undefined &&
@@ -285,7 +288,13 @@ export class BPG_FileSavingBrowser extends React.Component{
       <div>
         <Input className="width9" placeholder="File Name" 
         value={this.state.fileName}
-        onChange={(ev)=>this.setState({...this.state,fileName:ev.target.value})}/>
+        onChange={(ev)=>{
+          let fileName = ev.target.value;
+          if(this.isASCII(fileName))
+          {
+            this.setState({...this.state,fileName})
+          }
+          }}/>
         
         <AntButtonGroup className="width2">
           <AntButton onClick={this.props.onCancel}>Cancel</AntButton>
