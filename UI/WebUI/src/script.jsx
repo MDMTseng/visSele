@@ -67,7 +67,6 @@ class APPMain extends React.Component{
         menuSelect:"Overview",
         menuCollapsed:true
       }
-      this.p_state = null;
   }
 
 
@@ -80,11 +79,6 @@ class APPMain extends React.Component{
 
     if(this.props.c_state==null)return null;
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
-    if(this.p_state !== stateObj.state)
-    {
-      this.state.menuSelect ="Overview";
-      this.p_state=stateObj.state;
-    }
     if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
     {
       let DefFileFolder= this.props.defModelPath.substr(0,this.props.defModelPath.lastIndexOf('/') + 1);
@@ -212,7 +206,7 @@ class APPMain extends React.Component{
             collapsed={this.state.menuCollapsed}
             //collapsed={this.state.collapsed}
           >
-            <Menu theme="dark" mode="inline" defaultSelectedKeys={["Overview"]} 
+            <Menu theme="dark" mode="inline" defaultSelectedKeys={[this.state.menuSelect]} 
               onClick={(select)=>MenuItem[select.key].onSelected(select)}>
               {
                 Object.keys(MenuItem).map(itemKey=>(
