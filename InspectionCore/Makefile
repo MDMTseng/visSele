@@ -120,19 +120,22 @@ export FLAGS+= -w -O3 $(STRICT_FLAGS)
 
 include $(MakeTemplate)
 
-
-
-.PHONY:export
+.PHONY:export release
 export:
 ifeq ($(EXPORT_PATH),)
 	$(error "No EXPORT_PATH was set")
 else
-	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir $(EXPORT_PATH) || true
-	cp $(target_bin) $(EXPORT_PATH)/
-	
+	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir -p $(EXPORT_PATH) || true
+	cp $(target_bin)* $(EXPORT_PATH)/
 	cp $(MODULE_MindVision_GIGE)/lib/* $(EXPORT_PATH)/
-
-	
 	-@[ ! -z "$(EXPORT_PATH)/data" ]&&mkdir $(EXPORT_PATH)/data || true
 	cd data ;cp featureDetect.json cameraCalibration.json $(EXPORT_PATH)/data
 endif
+
+
+domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a) $(target_lib)
+	@echo Done GOAL:\"$(MAKECMDGOALS)\" `pwd`
+
+release: 
+	make -C $(abspath .) domake
+	make -C $(abspath .) export EXPORT_PATH=$(abspath .)/../release_export/InspectionCore/$(platform)

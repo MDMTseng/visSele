@@ -4,13 +4,12 @@
 *.so
 *.dll
 data
+release_export/
 obj
-visSele*
+InspectionCore/visSele*
 *.a
 *.jpg
 **/.idea
-licensePlate
-sidePrj/websocket/main
 UI/hy/js/jquery-tree
 UI/hy/js/jstree
 UI/hy/Editor174
