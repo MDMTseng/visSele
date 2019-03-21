@@ -19,7 +19,7 @@
 #include <playground.h>
 #include <stdexcept>
 
-std::mutex mainThreadLock;
+std::timed_mutex mainThreadLock;
 DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
@@ -799,6 +799,7 @@ public:
 
             }while(false);
 
+            LOGE("//////");
 
           }
           else if(checkTL("EX",dat))
@@ -971,10 +972,12 @@ public:
             
           }
           
+            LOGE("//////");
 
           DatCH_Data datCH_BPG=
             BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
+            LOGE("//////");
 
           sprintf(tmp,"{\"req_id\":\"%s\",\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             req_id,dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
@@ -1238,8 +1241,23 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   stackingC++;
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-  LOGE( "lock");
-  mainThreadLock.lock();
+
+
+  {
+
+    using Ms = std::chrono::milliseconds;
+
+    while(!mainThreadLock.try_lock_for(Ms(100)))//Lock and wait 100 ms
+    {
+      LOGE( "try lock");
+      //Still locked
+      if(!cameraFeedTrigger)//If the flag is closed then, exit
+      {
+        LOGE( "cameraFeedTrigger is off return..");
+        return;
+      }
+    }
+  }
 
 
   do{
