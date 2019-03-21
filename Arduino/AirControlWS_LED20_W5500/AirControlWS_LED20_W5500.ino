@@ -13,9 +13,12 @@
 
 #include <SPI.h>
 #define private public //dirty trick
-#include <Ethernet.h>
+#include <Ethernet2.h>
 #undef private
-#include "WebSocketProtocol.h"
+#include <WebSocketProtocol.h>
+//#include "utility/w5100.h"
+//#include "utility/socket.h"
+//#include <ETH_Extra.h>
 
 #define DEBUG_
 #ifdef DEBUG_
@@ -32,7 +35,7 @@ byte mac[] = {
 IPAddress ip(192,168,2,2);
 IPAddress gateway(169, 254, 170, 254);
 IPAddress subnet(255, 255, 255, 0);
-void setupLED();
+
 EthernetServer server(5213);
 #define MAX_WSP_CLIENTs 2
 WebSocketProtocol WSP[MAX_WSP_CLIENTs];
@@ -52,9 +55,9 @@ void setup() {
   Ethernet.begin(mac, ip, gateway, subnet);
   server.begin();
   Serial.begin(57600);
-  DEBUG_print("Chat server address:");
+  DEBUG_print("HYVisionServer address:");
   DEBUG_println(Ethernet.localIP());
-  //setRetryTimeout(4, 1000);
+  setRetryTimeout(4, 1000);
 }
 
 unsigned int counter2Pin = 0;
@@ -224,8 +227,7 @@ loopLED();
   unsigned int  KL = 0;
   unsigned int PkgL =  client.available();
   KL = PkgL;
-//  EthernetClass::socketRecv(client._sock, (uint8_t*)buffiter, PkgL);//get raw data
-  client.read((uint8_t*)buffiter, PkgL);
+  recv(client._sock, (uint8_t*)buffiter, PkgL);//get raw data
   WebSocketProtocol* WSPptr  = findFromProt(client);
   DEBUG_println(">>>>");
   if (WSPptr == null)
@@ -245,7 +247,7 @@ loopLED();
   if (WSPptr->getState() == WS_HANDSHAKE)//On hand shaking
   {
     DEBUG_print("WS_HANDSHAKE::");
-    //DEBUG_println(client._sock);
+    DEBUG_println(client._sock);
     client.print(buff);
     return;
   }
@@ -276,7 +278,7 @@ loopLED();
   {
 
     DEBUG_print("Normal close::");
-    //DEBUG_println(client._sock);
+    DEBUG_println(client._sock);
     client.stop();
     WSPptr->rmClientOBJ();
     return;
@@ -296,7 +298,7 @@ void clearUnreachableClient()
     if (Rc && Rc.status() == 0x00)
     {
       DEBUG_print("clear timeout sock::");
-      //DEBUG_println(Rc._sock);
+      DEBUG_println(Rc._sock);
       Rc.stop();
       WSP[i].rmClientOBJ();
 
@@ -312,7 +314,7 @@ void PingAllClient()
     {
       //byte SnIR = ReadSn_IR(WSP[i].getClientOBJ()._sock);
 
-      //testAlive(WSP[i].getClientOBJ()._sock);
+      testAlive(WSP[i].getClientOBJ()._sock);
     }
 }
 byte countConnected()
@@ -347,7 +349,7 @@ WebSocketProtocol* findFromProt(EthernetClient client)
       for (; ii < MAX_WSP_CLIENTs; ii++)if (WSP[ii].getClientOBJ())LiveClient++;
 
       DEBUG_print("new socket:::");
-      //DEBUG_print(client._sock);
+      DEBUG_print(client._sock);
       DEBUG_print('/');
       DEBUG_println(LiveClient);
       // OnClientsChange();
@@ -356,3 +358,4 @@ WebSocketProtocol* findFromProt(EthernetClient client)
   }
   return null;
 }
+
