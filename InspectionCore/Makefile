@@ -119,3 +119,20 @@ STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 export FLAGS+= -w -O3 $(STRICT_FLAGS)
 
 include $(MakeTemplate)
+
+
+
+.PHONY:export
+export:
+ifeq ($(EXPORT_PATH),)
+	$(error "No EXPORT_PATH was set")
+else
+	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir $(EXPORT_PATH) || true
+	cp $(target_bin) $(EXPORT_PATH)/
+	
+	cp $(MODULE_MindVision_GIGE)/lib/* $(EXPORT_PATH)/
+
+	
+	-@[ ! -z "$(EXPORT_PATH)/data" ]&&mkdir $(EXPORT_PATH)/data || true
+	cd data ;cp featureDetect.json cameraCalibration.json $(EXPORT_PATH)/data
+endif
