@@ -28,6 +28,7 @@ function Edit_info_reset(newState)
     reportStatisticState:{
       trackingWindow:[],
       historyReport:[],
+      newAddedReport:[],
       statisticValue:undefined
     },
     sig360report:[],
@@ -82,6 +83,7 @@ function Default_UICtrlReducer()
       reportStatisticState:{
         trackingWindow:[],
         historyReport:[],
+        newAddedReport:[],
         statisticValue:undefined
       },
       sig360report:[],
@@ -297,6 +299,7 @@ function StateReducer(newState,action)
 
             let reportStatisticState = newState.edit_info.reportStatisticState;
 
+            reportStatisticState.newAddedReport=[];
 
             reportStatisticState.trackingWindow.forEach((srep_inWindow)=>{
               srep_inWindow.isCurObj=false;
@@ -318,6 +321,7 @@ function StateReducer(newState,action)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                    reportStatisticState.newAddedReport.push(srep_inWindow);
                   }
                   else
                   {
