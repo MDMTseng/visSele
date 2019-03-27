@@ -22,7 +22,7 @@ typedef struct BPG_data
 {
     char tl[2];//Two letter
     uint8_t prop;
-
+    uint16_t pgID;
     uint32_t size;//32bit
     uint8_t* dat_raw;
     BPG_data_feed_callback callback;//For bulk data transfer

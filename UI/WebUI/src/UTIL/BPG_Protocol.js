@@ -1,8 +1,7 @@
 
 
-
+const BPG_header_L = 9;
 let raw2header=(ws_evt, offset = 0)=>{
-  let BPG_header_L = 7;
   if (( ws_evt.data instanceof ArrayBuffer) && ws_evt.data.byteLength>=BPG_header_L) {
     // var aDataArray = new Float64Array(evt.data);
     // var aDataArray = new Uint8Array(evt.data);
@@ -13,15 +12,16 @@ let raw2header=(ws_evt, offset = 0)=>{
 
     ret_obj.type = String.fromCharCode(headerArray[0],headerArray[1]);
     ret_obj.prop = headerArray[2];
+    ret_obj.pgID = headerArray[3]*8+headerArray[4];
+
     ret_obj.length =
-      headerArray[3]<<24 | headerArray[4]<<16 |
-      headerArray[5]<<8  | headerArray[6];
+      headerArray[5]<<24 | headerArray[6]<<16 |
+      headerArray[7]<<8  | headerArray[8];
     return ret_obj;
   }
   return null;
 };
 let raw2obj_rawdata=(ws_evt, offset = 0)=>{
-  let BPG_header_L = 7;
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
@@ -32,7 +32,6 @@ let raw2obj_rawdata=(ws_evt, offset = 0)=>{
   return ret_obj;
 };
 let raw2obj=(ws_evt, offset = 0)=>{
-  let BPG_header_L = 7;
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
@@ -45,7 +44,6 @@ let raw2obj=(ws_evt, offset = 0)=>{
   return ret_obj;
 };
 let raw2Obj_IM=(ws_evt, offset = 0)=>{
-  let BPG_header_L = 7;
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
@@ -73,10 +71,9 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
 };
 
 var enc = new TextEncoder();
-let objbarr2raw=(type,prop,obj,barr=null)=>{
+let objbarr2raw=(type,prop,pgID,obj,barr=null)=>{
   
   let str = (obj==null)?"":JSON.stringify(obj);
-  let BPG_header_L = 7;
 
   let encStr= enc.encode(str);
   let objstr_L = encStr.length;
@@ -87,12 +84,14 @@ let objbarr2raw=(type,prop,obj,barr=null)=>{
   bbuf[0] = type.charCodeAt(0);
   bbuf[1] = type.charCodeAt(1);
   bbuf[2] = prop;
+  bbuf[3] = pgID>>1;
+  bbuf[4] = pgID&255;
 
   let data_length =bbuf.length - BPG_header_L;//Add NULL in the end of the string
-  bbuf[3] = data_length>>24;
-  bbuf[4] = data_length>>16;
-  bbuf[5] = data_length>>8;
-  bbuf[6] = data_length;
+  bbuf[5] = data_length>>24;
+  bbuf[6] = data_length>>16;
+  bbuf[7] = data_length>>8;
+  bbuf[8] = data_length;
   if(objstr_L!=0)
   {
     bbuf.set(encStr, BPG_header_L);

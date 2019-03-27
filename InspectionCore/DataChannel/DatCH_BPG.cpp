@@ -151,7 +151,7 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
     {
         return GenErrorMsg(DatCH_Data_error::NO_CALLBACK_ERROR);
     }
-    uint8_t header[7];
+    uint8_t header[9];
     DatCH_Data ret_data = GenMsgType(DatCH_Data::DataType_websock_data);
     websock_data ws_data;
     ret_data.data.p_websocket = &ws_data;
@@ -165,15 +165,20 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
     header[1] = data.tl[1];
 
     header[2] = data.prop;
+
+    header[3] = data.pgID>>1;
+    header[4] = data.pgID&0xFF;
+
+
     uint32_t length=0;
     if(data.dat_raw)
     {
       length = data.size;
     }
-    header[3] = length>>24;
-    header[4] = length>>16;
-    header[5] = length>>8;
-    header[6] = length;
+    header[5] = length>>24;
+    header[6] = length>>16;
+    header[7] = length>>8;
+    header[8] = length;
 
     ws_data.data.data_frame.raw=header;
     ws_data.data.data_frame.rawL=sizeof(header);
@@ -285,22 +290,23 @@ DatCH_Data DatCH_BPG1_0::Process_websock_data(websock_data* p_websocket)
         LOGI(">>>>>>>>>>>>>DATA_FRAME");
         uint8_t* raw = p_websocket->data.data_frame.raw;
         size_t rawL = p_websocket->data.data_frame.rawL;
-        if(cb_obj!=NULL && p_websocket->data.data_frame.isFinal && rawL >= 7)
+        if(cb_obj!=NULL && p_websocket->data.data_frame.isFinal && rawL >= 9)
         {
           BPG_data updata;
           updata.size =
-            ((uint32_t)raw[3]<<24)|
-            ((uint32_t)raw[4]<<16)|
-            ((uint32_t)raw[5]<<8)|
-            (uint32_t)raw[6];
-          if(updata.size+7 != rawL)
+            ((uint32_t)raw[5]<<24)|
+            ((uint32_t)raw[6]<<16)|
+            ((uint32_t)raw[7]<<8)|
+            (uint32_t)raw[8];
+          if(updata.size+9 != rawL)
           {
             break;
           }
           updata.tl[0] = raw[0];
           updata.tl[1] = raw[1];
           updata.prop = raw[2];
-          updata.dat_raw = &(raw[7]);
+          updata.pgID = (raw[3]<<1)|( raw[4]);
+          updata.dat_raw = &(raw[9]);
           DatCH_Data dch_data = GenMsgType(DatCH_Data::DataType_BPG);
           dch_data.data.p_BPG_data = &updata;
           cb_obj->callback(this, dch_data, callback_param);
