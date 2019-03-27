@@ -1150,6 +1150,187 @@ class EverCheckCanvasComponent_proto{
 }
 
 
+class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
+
+
+  constructor( canvasDOM )
+  {
+    super(canvasDOM);
+    this.edit_DB_info =null;
+    this.db_obj = null;
+    this.mouse_close_dist= 10;
+
+
+
+    this.state=undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
+
+
+    this.EditShape=null;
+    this.CandEditPointInfo=null;
+    this.EditPoint=null;
+    
+    this.EmitEvent=(event)=>{log.debug(event);};
+  }
+
+  SetState(state)
+  {
+    log.debug(state);
+    let stateObj = xstate_GetCurrentMainState(state);
+    let stateStr = JSON.stringify(stateObj);
+    if(JSON.stringify(this.state) === stateStr)return;
+
+    this.state = JSON.parse(stateStr);
+
+    if(
+      this.state.state ==  UI_SM_STATES.DEFCONF_MODE&&
+      this.state.substate==UI_SM_STATES.DEFCONF_MODE_NEUTRAL)
+    {
+      this.EmitEvent(DefConfAct.Edit_Tar_Update(null));
+      this.EditShape=null;
+      this.EditPoint=null;
+    }
+    
+  }
+
+  EditDBInfoSync(edit_DB_info)
+  {
+    this.edit_DB_info = edit_DB_info;
+    if(this.db_obj===undefined || this.db_obj==null || this.db_obj.cameraParam===undefined)return;
+    this.db_obj = edit_DB_info._obj;
+    this.rUtil.setEditor_db_obj(this.db_obj);
+    this.SetImg( edit_DB_info.img );
+    
+    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    this.rUtil.renderParam.mmpp=mmpp;
+  }
+
+
+  fitCameraToShape(shape)
+  {
+    if(shape==null || shape===undefined)return;
+    let center={x:0,y:0};
+    switch(shape.type)
+    {
+      case SHAPE_TYPE.line:
+      center.x=(shape.pt1.x+shape.pt2.x)/2;
+      center.y=(shape.pt1.y+shape.pt2.y)/2;
+      break;
+      case SHAPE_TYPE.arc:
+      let arc = threePointToArc(shape.pt1,shape.pt2,shape.pt3);
+      if(arc.r>500)
+      {
+        center.x=(shape.pt1.x+shape.pt3.x)/2;
+        center.y=(shape.pt1.y+shape.pt3.y)/2;
+      }
+      else
+      {
+        center.x=arc.x;
+        center.y=arc.y;
+      }
+        
+      break;
+      case SHAPE_TYPE.aux_point:
+        let pt = this.db_obj.auxPointParse(shape);
+        if(pt ==null)return;
+        center=pt;
+      break;
+      case SHAPE_TYPE.search_point:
+      {
+        center = shape.pt1;
+      }
+      break;
+      default:
+      return;
+    }
+
+    this.camera.SetOffset({
+      x:-center.x,
+      y:-center.y
+    });
+  }
+
+
+  ctrlLogic()
+  {
+  }
+  
+  setMatrix(ctx,matrix)
+  {
+
+    ctx.setTransform(matrix.a,matrix.b,matrix.c,
+      matrix.d,matrix.e,matrix.f);  
+  }
+
+  draw()
+  {
+
+    if(this.db_obj===undefined || this.db_obj==null || this.db_obj.cameraParam===undefined)return;
+    let mmpp = this.rUtil.get_mmpp();
+    let ctx = this.canvas.getContext('2d');
+    let ctx2nd = this.secCanvas.getContext('2d');
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+    this.setMatrix(ctx,this.identityMat); 
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    let matrix  = this.worldTransform();
+    this.setMatrix(ctx,matrix); 
+    
+    {
+      let center = this.db_obj.getSig360ReportCenter();
+      //TODO:HACK: 4X4 times scale down for transmission speed
+      ctx.save();
+      ctx.translate(-center.x,-center.y);
+      ctx.scale(4*mmpp,4*mmpp);
+      ctx.drawImage(this.secCanvas,0,0);
+      ctx.restore();
+    }
+
+    let unitConvert={
+      unit:"mm",//"μm",
+      mult:1
+    }
+
+    {
+
+
+      this.Mouse2SecCanvas = matrix.invertSelf();
+      let invMat =this.Mouse2SecCanvas;
+      //this.Mouse2SecCanvas = invMat;
+      let mPos = this.mouseStatus;
+      let mouseOnCanvas2=this.VecX2DMat(mPos,invMat);
+  
+    }
+    ctx.closePath();
+    ctx.save();
+
+    
+    let skipDrawIdxs=[];
+    
+    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
+    this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
+
+
+    if(this.EditPoint!=null)
+    {
+      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
+      ctx.strokeStyle="green";  
+      this.rUtil.drawpoint(ctx, this.EditPoint,2*this.rUtil.getPointSize());
+    }
+
+
+
+    if(this.CandEditPointInfo!=null)
+    {
+      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
+      ctx.strokeStyle="rgba(0,255,0,0.3)";  
+      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt,2*this.rUtil.getPointSize());
+    }
+
+
+
+  }
+
+}
+
 
 
 class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
@@ -1879,4 +2060,4 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 }
 
 
-export default { INSP_CanvasComponent,DEFCONF_CanvasComponent }
+export default {Preview_CanvasComponent, INSP_CanvasComponent,DEFCONF_CanvasComponent }

@@ -527,23 +527,6 @@ function StateReducer(newState,action)
       newState.showSplash=true;
       return newState;
     case UISTS.MAIN:
-      newState.showSplash=false;
-
-      switch(action.type)
-      {
-        case UISEV.Inspection_Report:
-          EVENT_Inspection_Report(newState,action);
-        break;
-        case UISEV.Def_Model_Path_Update:
-          newState.edit_info={...newState.edit_info,defModelPath:action.data};
-
-          //Edit_info_reset(newState);
-        break;
-        case UISEV.Image_Update:
-          newState.edit_info={...newState.edit_info,img:action.data};
-        break;
-      }
-      return newState;
     case UISTS.DEFCONF_MODE:
     case UISTS.INSP_MODE:
     {
