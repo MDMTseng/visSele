@@ -499,8 +499,19 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         }
         judgeReport.measured_val=180*angleDiff/M_PI;//Convert to degree
 
+        //HACK: the current method would have 0<->180 jumping back&forward issue
+        //So warp around if the diff value is too much
+        float measureDiff=judgeReport.measured_val - judgeReport.def->targetVal;
+        if(measureDiff<-90)
+        {
+          judgeReport.measured_val+=180;
+        }
+        else if(measureDiff>90)
+        {
+          judgeReport.measured_val-=180;
+        }
 
-        
+
         
         //angleDiff = judgeReport.measured_val - judgeReport.def->LSL;
         
