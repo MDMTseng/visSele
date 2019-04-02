@@ -267,7 +267,6 @@ int LoadCameraCalibrationFile(char * filename)
   return 0;
 }
 
-char req_id_fallback[]="NO req_id";
 bool DoImageTransfer=true;
 class DatCH_CallBack_BPG : public DatCH_CallBack
 {
@@ -337,15 +336,6 @@ public:
           LOGI("DataType_BPG:[%c%c] pgID:%02X",dat->tl[0],dat->tl[1],
           dat->pgID);
           cJSON *json = cJSON_Parse((char*)dat->dat_raw);
-          char* req_id=NULL;
-          if(json)
-          {
-            req_id =(char* )JFetch(json,"req_id",cJSON_String);
-          }
-          if(req_id==NULL)
-          {
-            req_id = req_id_fallback;
-          }
           char err_str[100]="\0";
           bool session_ACK=false;
           char tmp[200];//For string construct json reply
@@ -474,7 +464,6 @@ public:
                   session_ACK=true;
                 }
 
-                cJSON_AddStringToObject(cjFileStruct, "req_id", req_id);
                 fileStructStr = cJSON_Print(cjFileStruct);
                 
 
@@ -691,7 +680,6 @@ public:
                   if(report!=NULL)
                   {
                     cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                    cJSON_AddStringToObject(jobj, "req_id", req_id);
                     char * jstr  = cJSON_Print(jobj);
                     cJSON_Delete(jobj);
 
@@ -865,7 +853,6 @@ public:
                   if(report!=NULL)
                   {
                     cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                    cJSON_AddStringToObject(jobj, "req_id", req_id);
                     char * jstr  = cJSON_Print(jobj);
                     cJSON_Delete(jobj);
 
@@ -879,7 +866,7 @@ public:
                   }
                   else
                   {
-                    sprintf(tmp,"{\"req_id\":%s}",req_id);
+                    sprintf(tmp,"{}");
                     bpg_dat=GenStrBPGData("SG", tmp);
                     bpg_dat.pgID=dat->pgID;
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -987,8 +974,8 @@ public:
 
             LOGE("//////");
 
-          sprintf(tmp,"{\"req_id\":\"%s\",\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
-            req_id,dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
+          sprintf(tmp,"{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
+            dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
           bpg_dat=GenStrBPGData("SS", tmp);
           bpg_dat.pgID=dat->pgID;
           datCH_BPG.data.p_BPG_data=&bpg_dat;

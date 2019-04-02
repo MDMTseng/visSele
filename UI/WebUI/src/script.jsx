@@ -47,7 +47,6 @@ let StoreX= ReduxStoreSetUp({});
 function map_BPG_Packet2Act(parsed_packet)
 {
   let acts=[];
-  let req_id="";
   switch(parsed_packet.type )
   {
     case "HR":
@@ -61,8 +60,6 @@ function map_BPG_Packet2Act(parsed_packet)
 
     case "SS":
     {
-      let SS =parsed_packet;
-      req_id=SS.data.req_id;
       break;
     }
     case "IM":
@@ -83,7 +80,6 @@ function map_BPG_Packet2Act(parsed_packet)
     case "DF":
     {
       let report =parsed_packet;
-      req_id=report.data.req_id;
       log.debug(report.type,report);
       
       acts.push(UIAct.EV_WS_Define_File_Update(report.data));
@@ -92,7 +88,6 @@ function map_BPG_Packet2Act(parsed_packet)
     case "FL":
     {
       let report =parsed_packet;
-      req_id=report.data.req_id;
       log.error(report.type,report);
       if(report.data.type === "binary_processing_group" )
       {
@@ -104,7 +99,6 @@ function map_BPG_Packet2Act(parsed_packet)
     case "SG":
     {
       let report =parsed_packet;
-      req_id=report.data.req_id;
       log.debug(report.type,report);
       acts.push(UIAct.EV_WS_SIG360_Report_Update(report.data));
       break;
@@ -112,8 +106,6 @@ function map_BPG_Packet2Act(parsed_packet)
     default:
     {
       let report =parsed_packet;
-      req_id=report.data.req_id;
-      
       act = (report);
     }
 
@@ -162,6 +154,7 @@ class APPMasterX extends React.Component{
 
     this.BPG_WS={
       reqWindow:[],
+      pgIDCounter:0,
       onopen:(ev,ws_obj)=>{
     
         StoreX.dispatch(UIAct.EV_WS_Connected(ws_obj));
@@ -175,7 +168,7 @@ class APPMasterX extends React.Component{
 
         let header = BPG_Protocol.raw2header(evt);
         log.debug("onMessage:["+header.type+"]");
-        let req_id=undefined;
+        let pgID=header.pgID;
 
         let parsed_pkt=undefined;
         let SS_start = false;
@@ -194,7 +187,7 @@ class APPMasterX extends React.Component{
           case "SS":
           {
             let SS =BPG_Protocol.raw2obj(evt);
-            req_id=SS.data.req_id;
+
             if(SS.data.start)
             {
               SS_start=true;
@@ -219,7 +212,7 @@ class APPMasterX extends React.Component{
           default:
           {
             let report =BPG_Protocol.raw2obj(evt);
-            req_id=report.data.req_id;
+
             parsed_pkt=report;
 
             break;
@@ -227,7 +220,7 @@ class APPMasterX extends React.Component{
 
         }
 
-        if(req_id === undefined)
+        if(pgID === -1)
         {//Not in tracking window, just Dispatch it
           if(parsed_pkt!==undefined)
           {
@@ -239,7 +232,7 @@ class APPMasterX extends React.Component{
         else
         {
           
-          let req_pkt=this.BPG_WS.reqWindow[req_id];
+          let req_pkt=this.BPG_WS.reqWindow[pgID];
           
           if(req_pkt!==undefined)//Find the tracking req
           {
@@ -248,7 +241,7 @@ class APPMasterX extends React.Component{
 
             if(!SS_start && header.type=="SS")//Get the termination session[SS] pkt
             {//remove tracking(reqWindow) info and Dispatch the pkt
-              delete this.BPG_WS.reqWindow[req_id];
+              delete this.BPG_WS.reqWindow[pgID];
               if(req_pkt.promiseCBs!==undefined)
               {
                 req_pkt.promiseCBs.resolve(req_pkt.pkts);
@@ -270,7 +263,7 @@ class APPMasterX extends React.Component{
           {
             if(SS_start)//And it's SS start, put the new tracking info
             {
-              this.BPG_WS.reqWindow[req_id]={
+              this.BPG_WS.reqWindow[pgID]={
                 time:new Date().getTime(),
                 pkts:[parsed_pkt]
               };
@@ -287,25 +280,35 @@ class APPMasterX extends React.Component{
       onerror:(ev,ws_obj)=>{
       },
       send:(data,ws_obj,promiseCBs)=>{
+
+
+        let PGID=undefined;
+        if(data.data instanceof Object)
+        {
+          PGID=data.data._PGID_;
+          delete data.data["_PGID_"];
+        }
+        if(PGID===undefined)
+        {
+          PGID=this.BPG_WS.pgIDCounter;
+          this.BPG_WS.pgIDCounter++;
+          if(this.BPG_WS.pgIDCounter>10000)this.BPG_WS.pgIDCounter=0;
+        }
+
+        
         if(data.data instanceof Uint8Array)
         {
-          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,1,null,data.data));
+          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,PGID,null,data.data));
         }
         else
         {
-          if(data.data instanceof Object)
-          {
-            if(data.data.req_id === undefined)
-            {
-              data.data.req_id = Math.random().toString(36).substring(7);
-            }
-            this.BPG_WS.reqWindow[data.data.req_id]={
-              time:new Date().getTime(),
-              pkts:[],
-              promiseCBs:promiseCBs,
-            };
-          }
-          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,300,data.data,data.uintArr));
+          this.BPG_WS.reqWindow[PGID]={
+            time:new Date().getTime(),
+            pkts:[],
+            promiseCBs:promiseCBs,
+          };
+          
+          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,PGID,data.data,data.uintArr));
         }
       }
     }
