@@ -12,7 +12,8 @@ let raw2header=(ws_evt, offset = 0)=>{
 
     ret_obj.type = String.fromCharCode(headerArray[0],headerArray[1]);
     ret_obj.prop = headerArray[2];
-    ret_obj.pgID = headerArray[3]*8+headerArray[4];
+    ret_obj.pgID = (headerArray[3]<<8)+headerArray[4];
+    console.log(ret_obj.pgID);
 
     ret_obj.length =
       headerArray[5]<<24 | headerArray[6]<<16 |

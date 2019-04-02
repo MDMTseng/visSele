@@ -166,7 +166,7 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
 
     header[2] = data.prop;
 
-    header[3] = data.pgID>>1;
+    header[3] = data.pgID>>8;
     header[4] = data.pgID&0xFF;
 
 

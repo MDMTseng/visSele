@@ -62,7 +62,7 @@ acvRadialDistortionParam param_default={
     mmpb2b:  0.630049821,
 };
 
-char CI_req_id[64];
+uint16_t CI_pgID;
 bool cameraFeedTrigger=false;
 char* ReadFile(char *filename);
 
@@ -314,7 +314,6 @@ public:
   }
   int callback(DatCH_Interface *from, DatCH_Data data, void* callback_param)
   {
-
       //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
       switch(data.type)
       {
@@ -335,8 +334,8 @@ public:
         {
           BPG_data *dat = data.data.p_BPG_data;
 
-          LOGI("DataType_BPG>>>>%c%c>",dat->tl[0],dat->tl[1]);
-          
+          LOGI("DataType_BPG:[%c%c] pgID:%02X",dat->tl[0],dat->tl[1],
+          dat->pgID);
           cJSON *json = cJSON_Parse((char*)dat->dat_raw);
           char* req_id=NULL;
           if(json)
@@ -357,7 +356,7 @@ public:
           //     datCH_BPG.data.p_BPG_data=&bpg_dat;
           //     self->SendData(datCH_BPG);
           // }
-
+          bpg_dat.pgID=dat->pgID;
 
           mainThreadLock.lock();
           if(checkTL("HR",dat))
@@ -431,7 +430,6 @@ public:
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-            BPG_data bpg_dat;
             do{
               
               if(json ==  NULL)
@@ -480,7 +478,8 @@ public:
                 fileStructStr = cJSON_Print(cjFileStruct);
                 
 
-                BPG_data bpg_dat=GenStrBPGData("FS", fileStructStr);//[F]older [S]truct
+                bpg_dat=GenStrBPGData("FS", fileStructStr);//[F]older [S]truct
+                bpg_dat.pgID=dat->pgID;
                 datCH_BPG.data.p_BPG_data=&bpg_dat;
                 self->SendData(datCH_BPG);
                 if(fileStructStr)free(fileStructStr);
@@ -498,7 +497,6 @@ public:
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-            BPG_data bpg_dat;
             do{
               
 
@@ -515,7 +513,8 @@ public:
                     break;
                   }
                   LOGV("Read deffile:%s",filename);
-                  BPG_data bpg_dat=GenStrBPGData("FL", fileStr);
+                  bpg_dat=GenStrBPGData("FL", fileStr);
+                  bpg_dat.pgID=dat->pgID;
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
                   free(fileStr);
@@ -579,7 +578,8 @@ public:
                     break;
                   }
                   LOGV("Read deffile:%s",deffile);
-                  BPG_data bpg_dat=GenStrBPGData("DF", jsonStr);
+                  bpg_dat=GenStrBPGData("DF", jsonStr);
+                  bpg_dat.pgID=dat->pgID;
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
                   free(jsonStr);
@@ -596,7 +596,8 @@ public:
               ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
               bpg_dat.callbackInfo = (uint8_t*)&iminfo;
               bpg_dat.callback=DatCH_BPG_acvImage_Send;
-
+              
+              bpg_dat.pgID=dat->pgID;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
               
@@ -676,7 +677,8 @@ public:
                     break;
                   }
                   LOGV("Read deffile:%s",deffile);
-                  BPG_data bpg_dat=GenStrBPGData("DF", jsonStr);
+                  bpg_dat=GenStrBPGData("DF", jsonStr);
+                  bpg_dat.pgID=dat->pgID;
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
 
@@ -694,7 +696,8 @@ public:
                     cJSON_Delete(jobj);
 
                     //LOGI("__\n %s  \n___",jstr);
-                    BPG_data bpg_dat=GenStrBPGData("RP", jstr);
+                    bpg_dat=GenStrBPGData("RP", jstr);
+                    bpg_dat.pgID=dat->pgID;
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
                     self->SendData(datCH_BPG);
 
@@ -717,7 +720,8 @@ public:
               //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
               ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
               bpg_dat.callbackInfo = (uint8_t*)&iminfo;
-              bpg_dat.callback=DatCH_BPG_acvImage_Send;              
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;
+              bpg_dat.pgID=dat->pgID;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               self->SendData(datCH_BPG);
 
@@ -740,7 +744,7 @@ public:
                 break;
               }
               
-              strcpy(CI_req_id,req_id);
+              CI_pgID = dat->pgID;
 
               char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
               if (deffile == NULL)
@@ -769,7 +773,8 @@ public:
                   }
 
                   LOGV("Read deffile:%s",deffile);
-                  BPG_data bpg_dat=GenStrBPGData("DF", jsonStr);
+                  bpg_dat=GenStrBPGData("DF", jsonStr);
+                  bpg_dat.pgID=dat->pgID;
                   datCH_BPG.data.p_BPG_data=&bpg_dat;
                   self->SendData(datCH_BPG);
 
@@ -865,7 +870,8 @@ public:
                     cJSON_Delete(jobj);
 
                     //LOGI("__\n %s  \n___",jstr);
-                    BPG_data bpg_dat=GenStrBPGData("SG", jstr);//SG report : signature360
+                    bpg_dat=GenStrBPGData("SG", jstr);//SG report : signature360
+                    bpg_dat.pgID=dat->pgID;
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
                     self->SendData(datCH_BPG);
 
@@ -874,7 +880,8 @@ public:
                   else
                   {
                     sprintf(tmp,"{\"req_id\":%s}",req_id);
-                    BPG_data bpg_dat=GenStrBPGData("SG", tmp);
+                    bpg_dat=GenStrBPGData("SG", tmp);
+                    bpg_dat.pgID=dat->pgID;
                     datCH_BPG.data.p_BPG_data=&bpg_dat;
                     self->SendData(datCH_BPG);
                   }
@@ -891,7 +898,8 @@ public:
               //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
               ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
               bpg_dat.callbackInfo = (uint8_t*)&iminfo;
-              bpg_dat.callback=DatCH_BPG_acvImage_Send;              
+              bpg_dat.callback=DatCH_BPG_acvImage_Send;
+              bpg_dat.pgID=dat->pgID;
               datCH_BPG.data.p_BPG_data=&bpg_dat;
               BPG_protocol->SendData(datCH_BPG);
 
@@ -982,6 +990,7 @@ public:
           sprintf(tmp,"{\"req_id\":\"%s\",\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             req_id,dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
           bpg_dat=GenStrBPGData("SS", tmp);
+          bpg_dat.pgID=dat->pgID;
           datCH_BPG.data.p_BPG_data=&bpg_dat;
           self->SendData(datCH_BPG);
 
@@ -1259,15 +1268,16 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
 
-
+  BPG_data bpg_dat;
   do{
     char tmp[100];
     DatCH_Data datCH_BPG=
       BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
 
-    sprintf(tmp,"{\"req_id\":\"%s\", \"start\":true}",CI_req_id);
-    BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
+    sprintf(tmp,"{\"start\":true}");
+    bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
+    bpg_dat.pgID=CI_pgID;
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
@@ -1278,12 +1288,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         if(report!=NULL)
         {
           cJSON* jobj = matchingEng.FeatureReport2Json(report);
-          cJSON_AddStringToObject(jobj, "req_id", CI_req_id);
           char * jstr  = cJSON_Print(jobj);
           cJSON_Delete(jobj);
 
           //LOGI("__\n %s  \n___",jstr);
-          BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
+          bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
+          bpg_dat.pgID=CI_pgID;
           datCH_BPG.data.p_BPG_data=&bpg_dat;
           BPG_protocol->SendData(datCH_BPG);
 
@@ -1291,8 +1301,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         }
         else
         {
-          sprintf(tmp,"{\"req_id\":%s}",CI_req_id);
-          BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("RP", tmp);
+          sprintf(tmp,"{}");
+          bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("RP", tmp);
+          bpg_dat.pgID=CI_pgID;
           datCH_BPG.data.p_BPG_data=&bpg_dat;
           BPG_protocol->SendData(datCH_BPG);
         }
@@ -1304,12 +1315,13 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     //if(stackingC==0)
     if(DoImageTransfer){
       
-      BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
+      bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff,capImg,iminfo.scale);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
-      bpg_dat.callback=DatCH_BPG_acvImage_Send;              
+      bpg_dat.callback=DatCH_BPG_acvImage_Send;
+      bpg_dat.pgID=CI_pgID;
       datCH_BPG.data.p_BPG_data=&bpg_dat;
       BPG_protocol->SendData(datCH_BPG);
 
@@ -1317,8 +1329,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 
 
-    sprintf(tmp,"{\"req_id\":\"%s\", \"start\":false, \"continue\":%s,\"ACK\":true}",CI_req_id,(cameraFeedTrigger)?"true":"false");
+    sprintf(tmp,"{\"start\":false, \"continue\":%s,\"ACK\":true}",(cameraFeedTrigger)?"true":"false");
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
+    bpg_dat.pgID=CI_pgID;
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 

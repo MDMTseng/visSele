@@ -289,7 +289,7 @@ class APPMasterX extends React.Component{
       send:(data,ws_obj,promiseCBs)=>{
         if(data.data instanceof Uint8Array)
         {
-          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,0,null,data.data));
+          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,1,null,data.data));
         }
         else
         {
@@ -305,7 +305,7 @@ class APPMasterX extends React.Component{
               promiseCBs:promiseCBs,
             };
           }
-          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,0,data.data,data.uintArr));
+          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,300,data.data,data.uintArr));
         }
       }
     }
