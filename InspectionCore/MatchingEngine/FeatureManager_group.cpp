@@ -216,6 +216,8 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.type = FeatureReport::binary_processing_group;
   report.data.binary_processing_group.reports = &sub_reports;
   report.data.binary_processing_group.labeledData = &ldData;
+  report.data.binary_processing_group.subFeatureDefSha1 = subFeatureDefSha1;
+  
   return &report;
 }
 
@@ -246,6 +248,14 @@ int FeatureManager_binary_processing_group::parse_jobj()
   LOGV("intrusionSizeLimitRatio:%f  ptr:%p",intrusionSizeLimitRatio,val);
 
   FeatureManager_group_proto::parse_jobj();
+
+  strcpy(subFeatureDefSha1,"");
+  const char *sSet_sha1= JFetch_STRING(root,"featureSet_sha1");
+  if(sSet_sha1!=NULL)
+  {
+    strncpy(subFeatureDefSha1,sSet_sha1,sizeof(subFeatureDefSha1));
+    subFeatureDefSha1[sizeof(subFeatureDefSha1)-1]=='\0';
+  }
 
   return 0;
 }

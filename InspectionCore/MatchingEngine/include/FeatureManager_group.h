@@ -27,6 +27,7 @@ class FeatureManager_binary_processing_group:public FeatureManager_group_proto {
   vector<FeatureManager_binary_processing*> binaryFeatureBundle;
 
   vector<acv_LabeledData> ldData;
+  char subFeatureDefSha1[128];
   acvImage binary_img;
   
   FeatureReport_ERROR error;

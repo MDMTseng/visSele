@@ -285,6 +285,8 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       }*/
 
       cJSON_AddNumberToObject(report_jobj, "error", report->data.binary_processing_group.error);
+      
+      cJSON_AddStringToObject(report_jobj, "subFeatureDefSha1", report->data.binary_processing_group.subFeatureDefSha1);
       cJSON* reports_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
 

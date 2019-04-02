@@ -273,6 +273,15 @@ function StateReducer(newState,action)
       mmpcampix = camParam.mmpb2b/camParam.ppb2b;
     }
 
+    let subFeatureDefSha1 = action.data.subFeatureDefSha1;
+    if(typeof subFeatureDefSha1 == "string")
+    {
+      if(subFeatureDefSha1.length>8)
+      {
+        subFeatureDefSha1 =  subFeatureDefSha1.substring(0,8);
+      }
+    }
+
     if(action.data.type === "binary_processing_group")
     {
       action.data.reports.forEach((report)=>
@@ -282,10 +291,13 @@ function StateReducer(newState,action)
           case "sig360_extractor":
           case "sig360_circle_line":
           {
-            newState.edit_info=Object.assign({},newState.edit_info);
+            newState.edit_info={...newState.edit_info};
             //newState.report=action.data;
             newState.edit_info._obj.SetInspectionReport(report);
+
             let inspReport = newState.edit_info._obj.inspreport;
+
+            inspReport.subFeatureDefSha1=inspReport;
 
             newState.edit_info.inspReport = inspReport;
             inspReport.time_ms = currentTime_ms;

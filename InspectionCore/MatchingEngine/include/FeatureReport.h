@@ -25,6 +25,7 @@ typedef struct {
   vector<acv_LabeledData> *labeledData;
   vector<const FeatureReport*> *reports;
   FeatureReport_ERROR error;
+  char *subFeatureDefSha1;
 } FeatureReport_binary_processing_group;
 
 typedef struct featureDef_circle{
