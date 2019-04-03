@@ -1491,9 +1491,9 @@ int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
   }
   return -1;
 }
-void initCamera(CameraLayer_BMP_carousel *CL_bmpc)
+int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
-  
+  return CL_bmpc==NULL?-1:0;
 }
 
 
@@ -1506,11 +1506,19 @@ CameraLayer *getCamera(int initCameraType)
     CameraLayer_GIGE_MindVision *camera_GIGE;
     camera_GIGE=new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV,NULL);
     LOGV("initCamera");
-    if(initCamera(camera_GIGE)==0)
-    {
-      camera=camera_GIGE;
+
+    try{
+      if(initCamera(camera_GIGE)==0)
+      {
+        camera=camera_GIGE;
+      }
+      else
+      {
+        delete camera;
+        camera=NULL;
+      }
     }
-    else
+    catch(std::exception& e)
     {
       delete camera;
       camera=NULL;

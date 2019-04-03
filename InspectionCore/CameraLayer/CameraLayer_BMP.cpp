@@ -133,6 +133,7 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
     int idle_loop_interval_ms =100;
     while( ThreadTerminationFlag == 0)
     {
+        LOGV("ThreadTerminationFlag:%d",ThreadTerminationFlag);
         int delay_time=0;
         if(imageTakingCount>0 || triggerMode==0)
         {
@@ -150,6 +151,12 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
             //std::this_thread::sleep_for(std::chrono::milliseconds(idle_loop_interval_ms));
             delay_time+=idle_loop_interval_ms;
         }
+
+        if(imageTakingCount==0 && triggerMode!=0)
+        {
+            break;
+        }
+
         if(frameInterval_ms-delay_time>0)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));

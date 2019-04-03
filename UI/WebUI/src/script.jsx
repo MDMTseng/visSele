@@ -249,12 +249,19 @@ class APPMasterX extends React.Component{
               }
               else
               {
-                req_pkt.pkts.forEach((pkt)=>
-                {
-                  let act=map_BPG_Packet2Act(pkt);
-                  if(act!==undefined)
-                    this.props.DISPATCH(act)
-                });
+                this.props.DISPATCH({
+                  type:"ATBundle",
+                  ActionThrottle_type:"express",
+                  data:req_pkt.pkts.map(pkt=>map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
+                  rawData:req_pkt
+                })
+                // req_pkt.pkts.forEach((pkt)=>
+                // {
+                //   let act=map_BPG_Packet2Act(pkt);
+                //   if(act!==undefined)
+                //     this.props.DISPATCH(act)
+                // });
+
               }
               //////
             }
