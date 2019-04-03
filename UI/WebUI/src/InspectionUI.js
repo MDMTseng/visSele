@@ -77,6 +77,150 @@ const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
 
+
+class RAW_InspectionReportPull extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            WS_DB_Insert: undefined,
+            WS_DB_Query: undefined,
+
+        }
+        this.doReconnect=true;
+    }
+    componentWillUnmount() {
+
+       this.websocketClose();
+    }
+    componentWillMount() {
+        this.websocketConnect(this.props.url);
+    }
+
+    componentDidUpdate(prevProps, prevState, snapshot) {
+        if(this.props.reportStatisticState.newAddedReport.length>0)
+        {
+            // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
+            let x=this.props.reportStatisticState.newAddedReport;
+            log.info("_RAW >0");
+            log.info("_RAW",x);
+            this.send2WS("new report legth>0");
+
+            var command_json = {"db_action":"insert","checked":true,"data":x};
+
+            var result = {
+                dbcmd:command_json,
+                data:x,
+            };
+            this.state.WS_DB_Insert.send(JSON.stringify(result));
+            // this.state.WS_DB_Insert.send(BSON.serialize(x));
+
+        }else{
+            log.info("_RAW <0");
+            this.send2WS("new report legth<0 ");
+        }
+
+    }
+    send2WS(msg){
+        if(this.state.WS_DB_Insert===undefined)return;
+
+        if(this.state.WS_DB_Insert.readyState===WebSocket.OPEN){
+            this.state.WS_DB_Query.send("{date:2019}");
+            this.state.WS_DB_Insert.send(new Date()+": "+msg);
+        }
+
+        else
+            console.log("[X][Send2WS] StatusCode="+ this.state.WS_DB_Insert.readyState );
+    }
+
+    websocketClose()
+    {
+
+        this.doReconnect=false;
+        if(this.state.WS_DB_Insert!=undefined)
+        {
+            this.state.WS_DB_Insert.close();
+        }
+        if(this.state.WS_DB_Query!=undefined)
+        {
+            this.state.WS_DB_Query.close();
+        }
+    }
+    websocketConnect(url = "ws://localhost:3333/") {
+        console.log("[init][WS]" + url);
+
+
+        if(this.state.WS_DB_Insert===undefined)
+        {
+            this.state.WS_DB_Insert = new WebSocket(url+"insert");
+
+            // this.state.WS_DB_Insert.binaryType = "arraybuffer";
+
+            this.state.WS_DB_Insert.onopen = this.onOpen.bind(this);
+            this.state.WS_DB_Insert.onmessage = this.onMessage.bind(this);
+            this.state.WS_DB_Insert.onerror = this.onError.bind(this);
+
+            this.state.WS_DB_Insert.onclose = (evt) => {
+                if (evt.code == 3001) {
+                    console.log('ws closed RAW_InspectionReportPull');
+                } else {
+                    console.log('ws connection error RAW_InspectionReportPull');
+                }
+                this.state.WS_DB_Insert=undefined;
+                if(this.doReconnect)
+                {
+                    this.websocketConnect(this.props.url);
+                }
+            };
+            console.log("[init][WS][OK]");
+            console.log(this.state.WS_DB_Insert);
+        }
+
+        if(this.state.WS_DB_Query===undefined)
+        {
+            this.state.WS_DB_Query = new WebSocket(url+"query");
+            this.state.WS_DB_Query.onopen = this.onOpen.bind(this);
+            this.state.WS_DB_Query.onmessage = this.onMessage.bind(this);
+            this.state.WS_DB_Query.onerror = this.onError.bind(this);
+
+            this.state.WS_DB_Query.onclose = (evt) => {
+                if (evt.code == 3001) {
+                    console.log('ws closed RAW_InspectionReportPull');
+                } else {
+                    console.log('ws connection error RAW_InspectionReportPull');
+                }
+                this.state.WS_DB_Query=undefined;
+                if(this.doReconnect)
+                {
+                    this.websocketConnect(this.props.url);
+                }
+            };
+            console.log("[init][WS][OK]");
+            console.log(this.state.WS_DB_Query);
+        }
+
+    }
+
+
+
+    onError(ev) {
+        //this.websocketConnect();
+        console.log("onError RAW_InspectionReportPull");
+    }
+    onOpen(ev) {
+        console.log("onOpen RAW_InspectionReportPull");
+        this.state.WS_DB_Insert.send("IUI:onOpened");
+
+    }
+    onMessage(ev) {
+        console.log(ev);
+    }
+
+    render() {
+
+        return null;
+    }
+}
+
 class DB extends React.Component {
     constructor(props) {
         super(props);
@@ -1005,6 +1149,7 @@ class APP_INSP_MODE extends React.Component {
                     <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
                         onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
                 <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
+                <RAW_InspectionReportPull reportStatisticState={this.props.reportStatisticState}/>
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
                         style={{opacity:menuOpacity}}> 

@@ -1,0 +1,25 @@
+{
+  "name": "apollo_gql_server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "mstart": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "apollo-server": "^2.4.2",
+    "express": "^4.16.4",
+    "express-ws": "^4.0.0",
+    "graphql": "^14.1.1",
+    "mongoose": "^5.4.13",
+    "nodemon": "^1.18.10"
+  },
+  "devDependencies": {
+    "babel-register": "^6.26.0"
+  }
+}
