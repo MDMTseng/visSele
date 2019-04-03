@@ -1163,8 +1163,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   LOGV("cameraFeedTrigger:%d",cameraFeedTrigger); 
   if(!cameraFeedTrigger)
   {
-    // LOGE( "unlock");
-    // mainThreadLock.unlock();
+    LOGE( "unlock");
+    mainThreadLock.unlock();
     return;
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
