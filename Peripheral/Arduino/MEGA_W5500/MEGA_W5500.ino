@@ -116,20 +116,20 @@ int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
 {
   unsigned int MessageL = 0; //echo
   if (strcmp(recv_cmd, "/cue/LEFT") == 0) {
-    MessageL = sprintf(send_rsp, "[O]RECV:/cue/LEFT");
+    MessageL = sprintf(send_rsp, "/rsp/LEFT");
     LEFT_ACT = true;
     led_hue=0;
     led_value=60;
     previousMillis = 0;
   }
   else if (strcmp(recv_cmd, "/cue/RIGHT") == 0) {
-    MessageL = sprintf(send_rsp, "[O]RECV:/cue/RIGHT");
+    MessageL = sprintf(send_rsp, "/rsp/RIGHT");
     RIGHT_ACT = true;
     led_hue=96;
     led_value=60;
     previousMillis = 0;
   }else if (strcmp(recv_cmd, "/cue/TEST") == 0) {
-    MessageL = sprintf(send_rsp, "[O]RECV:/cue/TEST");
+    MessageL = sprintf(send_rsp, "/rsp/TEST");
     TEST_ACT = !TEST_ACT;
     previousMillis = 0;
   }else if (strncmp(recv_cmd, "/cue/TIME/",9) == 0) {
@@ -139,9 +139,12 @@ int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
     int t=(int)atoi(tmp);//1690byte
     if(t>0&&t<9999)
       airTime=t;
-    MessageL = sprintf(send_rsp,"airTime:%d,t=%d,s=%s", airTime,t,tmp);
+    MessageL = sprintf(send_rsp,"/rsp/TIME/%d", airTime);
     led_hue=160;
     led_value=60;
+  }else if (strcmp(recv_cmd, "/cue/PING") == 0) {
+    
+    MessageL = sprintf(send_rsp, "/rsp/PONG");
   }
   
   if (MessageL == 0)

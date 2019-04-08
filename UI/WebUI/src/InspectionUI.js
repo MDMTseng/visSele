@@ -392,10 +392,19 @@ class AirControl extends React.Component {
         this.state = {
             loading: false,
             iconLoading: false,
-            websocketAir: undefined,
             websocketAirTime: 10,
             STOP: true,
         }
+        this.wsCenter={
+            websocketAir: undefined,
+            doReconnect: true,
+        };
+        this.heartBeat={
+            timer:undefined,
+            PINGcount:0,
+            PONGcount:0,
+            PONGPace:0,
+        };
     }
 
     keyEventX(event) {
@@ -430,9 +439,9 @@ class AirControl extends React.Component {
 
     blowAir_TEST() {
         console.log("[WS]/cue/TEST");
-        if (this.state.websocketAir.readyState === 1) {
+        if (this.wsCenter.websocketAir.readyState === 1) {
             console.log("[O][WS]/cue/TEST");
-            this.state.websocketAir.send("/cue/TEST");
+            this.wsCenter.websocketAir.send("/cue/TEST");
         } else {
             console.log("[X][WS]/cue/TEST");
         }
@@ -440,10 +449,8 @@ class AirControl extends React.Component {
     }
 
     blowAir_LEFTa() {
-        console.log("[WS]/cue/LEFT");
-        if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN) {
-            console.log("[O][WS]/cue/LEFT");
-            this.state.websocketAir.send("/cue/LEFT");
+        if (this.wsCenter.websocketAir.readyState === this.wsCenter.websocketAir.OPEN) {
+            this.wsCenter.websocketAir.send("/cue/LEFT");
         } else {
             console.log("[X][WS]/cue/LEFT");
         }
@@ -451,10 +458,8 @@ class AirControl extends React.Component {
     }
 
     blowAir_RIGHTa() {
-        console.log("[WS]/cue/RIGHT");
-        if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN) {
-            console.log("[O][WS]/cue/RIGHT");
-            this.state.websocketAir.send("/cue/RIGHT");
+        if (this.wsCenter.websocketAir.readyState === this.wsCenter.websocketAir.OPEN) {
+            this.wsCenter.websocketAir.send("/cue/RIGHT");
         } else {
             console.log("[X][WS]/cue/RIGHT");
         }
@@ -462,8 +467,8 @@ class AirControl extends React.Component {
 
     blowAir_TIMEUpdate() {
         this.setState(Object.assign({}, this.state));
-        if (this.state.websocketAir.readyState === this.state.websocketAir.OPEN)
-            this.state.websocketAir.send("/cue/TIME/" + this.state.websocketAirTime);
+        if (this.wsCenter.websocketAir.readyState === this.wsCenter.websocketAir.OPEN)
+            this.wsCenter.websocketAir.send("/cue/TIME/" + this.wsCenter.websocketAirTime);
     }
 
     blowAir_StartStop() {
@@ -472,65 +477,112 @@ class AirControl extends React.Component {
     }
 
     blowAir_TIMEADD(val) {
-        this.state.websocketAirTime += val;
-        console.log("[WS]/cue/RIGHT");
+        this.wsCenter.websocketAirTime += val;
         this.blowAir_TIMEUpdate();
     }
 
     blowAir_TIMESUB(val) {
-        this.state.websocketAirTime -= val;
-        if (this.state.websocketAirTime < 10)
-            this.state.websocketAirTime = 10;
-        console.log("[WS]/cue/RIGHT");
+        this.wsCenter.websocketAirTime -= val;
+        if (this.wsCenter.websocketAirTime < 10)
+            this.wsCenter.websocketAirTime = 10;
         this.blowAir_TIMEUpdate();
     }
 
     enterLoading() {
-        this.setState({loading: true});
+        this.setState({...this.state,loading: true});
     }
 
+
+    sendHeartBeat()
+    {
+        if (this.wsCenter.websocketAir===undefined ||
+            this.wsCenter.websocketAir.readyState != this.wsCenter.websocketAir.OPEN) return;
+
+        log.info("sendHeartBeat: PING:"+this.heartBeat.PINGcount, " PONG:"+this.heartBeat.PONGcount);
+        if(this.heartBeat.PINGcount>this.heartBeat.PONGPace+2)
+        {
+            log.error("Heart beat ERROR: PINGcount > PONGPace+2");
+            this.wsCenter.websocketAir.terminate();
+            this.wsCenter.websocketAir = undefined;
+            return;
+        }
+
+        
+        this.wsCenter.websocketAir.send("/cue/PING");
+        this.heartBeat.PINGcount++;
+    }
     componentWillMount() {
         this._keyEventX = this.keyEventX.bind(this);
         console.log("[init][componentWillMount]");
         this.websocketConnect(this.props.url);
         document.addEventListener('keydown', this._keyEventX);
-
+        
+        this.heartBeat.timer=setInterval(this.sendHeartBeat.bind(this),3000);
     }
 
     componentWillUnmount() {
         log.info("componentWillUnmount1")
-        this.state.websocketAir.close();
-        this.state.websocketAir = undefined;
+        if(this.wsCenter.websocketAir!==undefined)
+        {
+            this.wsCenter.websocketAir.close();
+            this.wsCenter.websocketAir = undefined;
+        }
+        this.wsCenter.doReconnect=false;
         document.removeEventListener('keydown', this._keyEventX);
         log.info("componentWillUnmount2")
-    }
 
+        clearInterval(this.heartBeat.timer);
+        this.heartBeat.timer=undefined;
+    }
+    
+
+    websocketReConnect(url)
+    {
+        this.websocketConnect(url);
+    }
 
     websocketConnect(url = "ws://192.168.2.2:5213") {
         console.log("[init][WS]" + url);
-        this.state.websocketAir = new WebSocket(url);
-        this.state.websocketAir.onmessage = this.onMessage.bind(this);
-        this.state.websocketAir.onerror = this.onError.bind(this);
+        this.wsCenter.websocketAir = new WebSocket(url);
+        this.wsCenter.websocketAir.onmessage = this.onMessage.bind(this);
+        this.wsCenter.websocketAir.onerror = this.onError.bind(this);
+        this.wsCenter.websocketAir.onopen = (ev)=>{
+            this.setState({...this.state,loading: false});
+            console.log("onopen:",ev);
+            
+            this.heartBeat.PINGcount=0;
+            this.heartBeat.PONGcount=0;
 
-
-        this.state.websocketAir.onclose = (evt) => {
+        };
+        this.wsCenter.websocketAir.onclose = (evt) => {
+            this.setState({...this.state,loading: true});
             if (evt.code == 3001) {
-                console.log('ws closed');
+                console.log('ws closed',evt);
             } else {
-                console.log('ws connection error');
+                console.log('ws connection error',evt);
             }
+            if(this.wsCenter.doReconnect)
+                setTimeout(()=>this.websocketReConnect(url),1000);
         };
         console.log("[init][WS][OK]");
-        console.log(this.state.websocketAir);
+        console.log(this.wsCenter.websocketAir);
     }
 
     onError(ev) {
+        this.setState({...this.state,loading: false});
         //this.websocketConnect();
         console.log("onError");
     }
 
     onMessage(ev) {
-        // console.log(ev);
+        console.log(ev);
+        let tstamp = ev.timeStamp;
+        let data = ev.data;
+        if(data === "/rsp/PONG")
+        {
+            this.heartBeat.PONGcount++;
+            this.heartBeat.PONGPace=this.heartBeat.PINGcount;
+        }
     }
 
     enterIconLoading() {
@@ -540,9 +592,9 @@ class AirControl extends React.Component {
 
     componentWillReceiveProps(nextProps) {
         if (this.state.STOP) return;
-        log.info(nextProps.checkResult2AirAction.ver, "222");
-        // console.log(this.state.websocketAir.OPEN,this.state.websocketAir.readyState,"XXX");
-        // if(this.state.websocketAir.readyState != this.state.websocketAir.OPEN)return;
+        //log.info(nextProps.checkResult2AirAction.ver, "222");
+        // console.log(this.wsCenter.websocketAir.OPEN,this.wsCenter.websocketAir.readyState,"XXX");
+        // if(this.wsCenter.websocketAir.readyState != this.wsCenter.websocketAir.OPEN)return;
         //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
         if (nextProps.checkResult2AirAction.ver == this.props.checkResult2AirAction.ver) return;
 
@@ -556,8 +608,8 @@ class AirControl extends React.Component {
     }
 
     render() {
-
-        if (this.state.websocketAir.readyState != this.state.websocketAir.OPEN) {
+        if (this.wsCenter.websocketAir===undefined ||
+            this.wsCenter.websocketAir.readyState != this.wsCenter.websocketAir.OPEN) {
             return(
             <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
                     onClick={() => {this.websocketConnect(this.props.url);
@@ -570,7 +622,7 @@ class AirControl extends React.Component {
             <div>
                 <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.blowAir_StartStop()}>
-                    噴氣功能(B): {this.state.STOP ? " 暫停=" : " 啟動="}{this.state.websocketAirTime}ms
+                    噴氣功能(B): {this.state.STOP ? " 暫停=" : " 啟動="}{this.wsCenter.websocketAirTime}ms
                 </Button>
                 <ButtonGroup>
                     <Button style={{backgroundColor: "#c41d7f", marginBottom: 2}} type="primary"
@@ -987,7 +1039,7 @@ class APP_INSP_MODE extends React.Component {
 
     componentDidMount() {
 
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+        //this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
         this.getCameraImage_StartStop(false);
 
     }
@@ -1149,7 +1201,7 @@ class APP_INSP_MODE extends React.Component {
                     <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
                         onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
                 <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
-                <RAW_InspectionReportPull reportStatisticState={this.props.reportStatisticState}/>
+                
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
                         style={{opacity:menuOpacity}}> 
