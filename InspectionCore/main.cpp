@@ -232,6 +232,52 @@ int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_p
 
 }
 
+
+
+int CameraSetup(CameraLayer &camera, cJSON &settingJson)
+{
+  double *val = JFetch_NUMBER(&settingJson,"exposure");
+  if(val)
+  {
+    camera.SetExposureTime(*val);
+    LOGI("SetExposureTime:%f",*val);
+  }
+
+  val = JFetch_NUMBER(&settingJson,"gain");
+  if(val)
+  {
+    camera.SetAnalogGain((int)*val);
+    LOGI("SetAnalogGain:%f",*val);
+  }
+  return 0;
+}
+
+int LoadCameraSetup(CameraLayer &camera, char * filename)
+{
+  char *fileStr = ReadText(filename);
+  
+  if(fileStr == NULL)
+  {
+    LOGE("Cannot read defFile from:%s",filename);
+    return -1;
+  }
+
+
+  cJSON *json = cJSON_Parse(fileStr);
+  
+  free(fileStr);
+  if(json == NULL)
+  {
+    LOGE("File:%s is not a JSON...",filename);
+    return -1;
+  }
+  
+  int ret = CameraSetup(camera, *json);
+  cJSON_Delete(json);
+  return ret;
+}
+
+
 int LoadCameraCalibrationFile(char * filename)
 {
   acvRadialDistortionParam cam_param={0};
@@ -963,16 +1009,16 @@ public:
 
             LOGI("dat->dat_raw:%s",dat->dat_raw);
             LOGI("DoImageTransfer:%d",DoImageTransfer);
-
+            cJSON *camSettingObj = JFetch_OBJECT(json,"CameraSetting");
+            if(camera && camSettingObj)
+            {
+              CameraSetup(*camera, *camSettingObj);
+            }
             
           }
-          
-            LOGE("//////");
-
           DatCH_Data datCH_BPG=
             BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-            LOGE("//////");
 
           sprintf(tmp,"{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
@@ -1544,6 +1590,9 @@ CameraLayer *getCamera(int initCameraType)
   camera->TriggerMode(1);
   camera->SetExposureTime(12570.5110);
   camera->SetAnalogGain(2);
+
+
+  LoadCameraSetup(*camera, "data/default_camera_setting.json");
   return camera;
 }
 
