@@ -315,6 +315,7 @@ class CameraCtrl  {
             this.ev_emptyResultCountChange=()=>{};
 
         this.setSpeedSwitchingCount(1000);
+        this.setCameraSpeed_HIGH();
     }
 
     
@@ -341,11 +342,11 @@ class CameraCtrl  {
         this.data.speedSwitchingCount=speedSwitchingCount;
     }
 
-    setCameraSpeed_Normal()
+    setCameraSpeed_HIGH()
     {
-        this.setCameraSpeedMode(1);
+        this.setCameraSpeedMode(2);
     }
-    setCameraSpeed_Slow()
+    setCameraSpeed_LOW()
     {
         this.setCameraSpeedMode(0);
     }
@@ -356,8 +357,8 @@ class CameraCtrl  {
         {
             this.data.emptyResultCount++;
             if(this.data.emptyResultCount>this.data.speedSwitchingCount)
-                this.setCameraSpeed_Slow();
-            
+                this.setCameraSpeed_LOW();
+
             this.ev_emptyResultCountChange(this.data.emptyResultCount);
             return;
         }
@@ -366,7 +367,7 @@ class CameraCtrl  {
         {
             this.ev_emptyResultCountChange(this.data.emptyResultCount);
             this.data.emptyResultCount=0;
-            this.setCameraSpeed_Normal();
+            this.setCameraSpeed_HIGH();
         }
     }
 

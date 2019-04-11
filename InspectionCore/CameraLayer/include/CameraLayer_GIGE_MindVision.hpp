@@ -8,6 +8,7 @@
 #include <acvImage_BasicTool.hpp>
 #include <mutex>
 #include <queue>
+#include <thread>
 
 #include "CameraApi.h"
 class CameraLayer_GIGE_MindVision : public CameraLayer{
@@ -15,6 +16,11 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     protected:
     std::mutex m;
     CameraHandle    m_hCamera=0;	//the handle of the camera we use
+    int L_frameRateMode=2;
+    int L_triggerMode=1;
+    int eff_triggerMode=1;
+    std::thread *cameraTriggerThread=NULL;
+
     BYTE*           m_pFrameBuffer=NULL;
     static void sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
     void GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
@@ -37,7 +43,14 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status GetAnalogGain(int *ret_gain);
     CameraLayer::status SetExposureTime(double time_ms);
     CameraLayer::status GetExposureTime(double *ret_time_ms);
+    void ContTriggerThread();
+    void ContTriggerThreadTermination();
     acvImage* GetImg();
+
+
+    
+    CameraLayer::status L_TriggerMode(int type);
+    CameraLayer::status L_SetFrameRateMode(int type);
 
     ~CameraLayer_GIGE_MindVision();
 };

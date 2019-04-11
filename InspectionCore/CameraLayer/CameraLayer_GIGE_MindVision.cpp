@@ -96,7 +96,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)
+CameraLayer::status CameraLayer_GIGE_MindVision::L_TriggerMode(int type)
 {
 	//0 for continuous, 1 for soft trigger, 2 for HW trigger
 	if (CameraSetTriggerMode(m_hCamera,type)!= CAMERA_STATUS_SUCCESS)
@@ -104,7 +104,29 @@ CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)
 		LOGE("Failed...");
         return CameraLayer::NAK;
     }
+    L_triggerMode=type;
     return CameraLayer::ACK;
+}
+
+
+
+CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)
+{
+    eff_triggerMode=type;
+    
+    if(eff_triggerMode==0 && L_frameRateMode==0)
+    {
+        if(L_triggerMode!=1)
+            L_TriggerMode(1);
+        if(cameraTriggerThread==NULL)
+            cameraTriggerThread = new std::thread(&CameraLayer_GIGE_MindVision::ContTriggerThread, this);
+        return CameraLayer::ACK;
+    }
+    else
+    {
+        ContTriggerThreadTermination();
+    }
+	return L_TriggerMode(type);
 }
 
 
@@ -133,6 +155,27 @@ CameraLayer::status CameraLayer_GIGE_MindVision::RUN()
     return CameraLayer::NAK;
 }
 
+void CameraLayer_GIGE_MindVision::ContTriggerThread( )
+{
+    LOGI("ContTriggerThread: fr:%d eff_tm:%d",L_frameRateMode,eff_triggerMode);
+    while( L_frameRateMode == 0 && eff_triggerMode==0)
+    {
+        Trigger();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
+}
+
+
+
+void CameraLayer_GIGE_MindVision::ContTriggerThreadTermination( )
+{
+    if(cameraTriggerThread)
+    {
+        cameraTriggerThread->join();
+        delete cameraTriggerThread;
+        cameraTriggerThread = NULL;
+    }
+}
 
 CameraLayer::status CameraLayer_GIGE_MindVision::SetCrop(int x,int y, int width,int height)
 {
@@ -155,15 +198,41 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetAnalogGain(int gain)
 
 
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
+CameraLayer::status CameraLayer_GIGE_MindVision::L_SetFrameRateMode(int mode)
 {
     if (CameraSetFrameSpeed(m_hCamera,mode)!= CAMERA_STATUS_SUCCESS)
     {
 		LOGE("Failed...");
         return CameraLayer::NAK;
     }
+    L_frameRateMode=mode;
     return CameraLayer::ACK;
 }
+
+
+CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
+{
+    L_SetFrameRateMode(mode);
+    L_frameRateMode = mode;
+
+
+    if(eff_triggerMode==0 && L_frameRateMode==0)
+    {
+        if(L_triggerMode!=1)
+            L_TriggerMode(1);
+        if(cameraTriggerThread==NULL)
+            cameraTriggerThread = new std::thread(&CameraLayer_GIGE_MindVision::ContTriggerThread, this);
+        return CameraLayer::ACK;
+    }
+    else
+    {
+        ContTriggerThreadTermination();
+        L_TriggerMode(eff_triggerMode);
+    }
+
+    return CameraLayer::ACK;
+}
+
 
 CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_gain)
 {
