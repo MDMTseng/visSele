@@ -1255,7 +1255,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
     //stackingC=0;
 
-  if(stackingC!=0)
+  if(0&&stackingC!=0)
   {
     float diffMax=0;
     float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax,30);
