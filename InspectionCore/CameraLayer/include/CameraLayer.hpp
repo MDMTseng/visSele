@@ -109,6 +109,11 @@ class CameraLayer{
     {
         return CameraLayer::NAK;
     }
+
+    virtual CameraLayer::status SetFrameRateMode(int mode)
+    {
+        return CameraLayer::NAK;
+    }
     
     virtual acvImage* GetImg()
     {

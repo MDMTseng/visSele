@@ -237,10 +237,12 @@ int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_p
 int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 {
   double *val = JFetch_NUMBER(&settingJson,"exposure");
+  int retV=-1;
   if(val)
   {
     camera.SetExposureTime(*val);
     LOGI("SetExposureTime:%f",*val);
+    retV=0;
   }
 
   val = JFetch_NUMBER(&settingJson,"gain");
@@ -248,6 +250,17 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   {
     camera.SetAnalogGain((int)*val);
     LOGI("SetAnalogGain:%f",*val);
+    retV=0;
+  }
+
+  
+  val = JFetch_NUMBER(&settingJson,"framerate_mode");
+  if(val)
+  {
+    *val=(int)*val;
+    camera.SetFrameRateMode((int)*val);
+    LOGI("framerate_mode:%f",*val);
+    retV=0;
   }
   return 0;
 }
@@ -1591,8 +1604,10 @@ CameraLayer *getCamera(int initCameraType)
   camera->SetExposureTime(12570.5110);
   camera->SetAnalogGain(2);
 
-
-  LoadCameraSetup(*camera, "data/default_camera_setting.json");
+  
+  LOGV("Loading data/default_camera_setting.json....");
+  int ret = LoadCameraSetup(*camera, "data/default_camera_setting.json");
+  LOGV("ret:%d",ret);
   return camera;
 }
 

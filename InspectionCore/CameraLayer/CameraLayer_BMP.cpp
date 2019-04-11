@@ -167,6 +167,20 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
 }
 
 
+
+CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
+{
+    switch(mode)
+    {
+        case 0:frameInterval_ms=1000;break;
+        case 1:frameInterval_ms=100;break;
+        case 2:frameInterval_ms=10;break;
+        case 3:frameInterval_ms=0;break;
+    }
+    return CameraLayer::ACK;
+}
+
+
 CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 {
     

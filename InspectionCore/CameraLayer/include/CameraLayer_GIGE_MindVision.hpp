@@ -32,6 +32,8 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status SetCrop(int x,int y, int width,int height);
     CameraLayer::status SetResolution(int width,int height);
     CameraLayer::status SetAnalogGain(int gain);
+    
+    CameraLayer::status SetFrameRateMode(int mode);
     CameraLayer::status GetAnalogGain(int *ret_gain);
     CameraLayer::status SetExposureTime(double time_ms);
     CameraLayer::status GetExposureTime(double *ret_time_ms);

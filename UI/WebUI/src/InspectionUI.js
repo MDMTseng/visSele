@@ -287,7 +287,7 @@ class OK_NG_BOX extends React.Component {
     render() {
         return (
             <div style={{'display':'inline-block'}}>
-                <Tag style={{'font-size': 20}}
+                <Tag style={{'fontSize': 20}}
                      color={OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].TEXT}
                 </Tag>
                 {this.props.children}
@@ -295,6 +295,83 @@ class OK_NG_BOX extends React.Component {
         )
     }
 }
+
+class CameraCtrl  {
+    constructor(setting) {
+        this.data={
+            DoImageTransfer:true,
+            emptyResultCount:0,
+            cameraSpeedMode:-1,
+            speedSwitchingCount:100,
+        };
+        this.ws_ch=setting.ws_ch;
+
+        this.ev_speedModeChange=setting.ev_speedModeChange;
+        if(this.ev_speedModeChange===undefined)
+            this.ev_speedModeChange=()=>{};
+
+        this.ev_emptyResultCountChange=setting.ev_emptyResultCountChange;
+        if(this.ev_emptyResultCountChange===undefined)
+            this.ev_emptyResultCountChange=()=>{};
+
+        this.setSpeedSwitchingCount(1000);
+    }
+
+    
+
+    setCameraImageTransfer(doTransfer) {
+        if(doTransfer===undefined)doTransfer=!this.data.DoImageTransfer;
+        this.data.DoImageTransfer = doTransfer;
+        this.ws_ch({DoImageTransfer: doTransfer});
+    }
+
+    setCameraSpeedMode(mode) {
+        if(this.data.cameraSpeedMode == mode)return;
+        log.info("setCameraSpeedMode:"+mode);
+        this.data.cameraSpeedMode=mode;
+        
+        this.ev_speedModeChange(mode);
+        this.ws_ch({CameraSetting: {framerate_mode:mode}});
+    }
+
+    
+    
+    setSpeedSwitchingCount(speedSwitchingCount=1000)
+    {
+        this.data.speedSwitchingCount=speedSwitchingCount;
+    }
+
+    setCameraSpeed_Normal()
+    {
+        this.setCameraSpeedMode(1);
+    }
+    setCameraSpeed_Slow()
+    {
+        this.setCameraSpeedMode(0);
+    }
+
+    updateInspectionReport(report)
+    {
+        if(report===undefined || report.reports.length==0)
+        {
+            this.data.emptyResultCount++;
+            if(this.data.emptyResultCount>this.data.speedSwitchingCount)
+                this.setCameraSpeed_Slow();
+            
+            this.ev_emptyResultCountChange(this.data.emptyResultCount);
+            return;
+        }
+
+        if(this.data.emptyResultCount!=0)
+        {
+            this.ev_emptyResultCountChange(this.data.emptyResultCount);
+            this.data.emptyResultCount=0;
+            this.setCameraSpeed_Normal();
+        }
+    }
+
+}
+
 
 class ObjInfoList extends React.Component {
     constructor(props) {
@@ -337,7 +414,7 @@ class ObjInfoList extends React.Component {
 
                 //log.info("judgeReports>>", judgeReports);
                 return (
-                    <SubMenu style={{'text-align': 'left'}} key={"sub1"+idx}
+                    <SubMenu style={{'textAlign': 'left'}} key={"sub1"+idx}
                              title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX detailStatus={ finalResult } ></OK_NG_BOX></span>
 
                              </span>}>
@@ -1003,10 +1080,6 @@ class DataStatsTable extends React.Component{
     }
     }
     
-    
-    
-      
-
 class MeasureStatList extends React.Component {
 
     componentDidMount() {
@@ -1033,15 +1106,12 @@ class MeasureStatList extends React.Component {
     }
 }
 
-
 class APP_INSP_MODE extends React.Component {
 
 
     componentDidMount() {
-
         this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
-        this.getCameraImage_StartStop(false);
-
+        this.CameraCtrl.setCameraImageTransfer(false);
     }
 
     componentWillUnmount() {
@@ -1056,25 +1126,27 @@ class APP_INSP_MODE extends React.Component {
         this.state={
             GraphUIDisplayMode:0,
             CanvasWindowRatio:9,
-            DoImageTransfer:true
         };
+
+        this.CameraCtrl=new CameraCtrl({
+            ws_ch:(STData,promiseCBs)=>
+            {
+                this.props.ACT_WS_SEND(this.props.WS_ID,"ST", 0, STData,undefined,promiseCBs)
+            },
+            ev_speedModeChange:(mode)=>{
+                console.log(mode);
+            }
+        });
         // this.IR = undefined;
     }
 
     
-
-    getCameraImage_StartStop(doTransfer) {
-        log.info("fun getCameraImage_StartStop click");
-        
-
-        this.state.DoImageTransfer = (doTransfer===undefined)?!this.state.DoImageTransfer:doTransfer;
-        this.setState(Object.assign({}, this.state));
-
-
-        
-        this.props.ACT_WS_SEND(this.props.WS_ID,"ST", 0, {DoImageTransfer: this.state.DoImageTransfer});
+    componentDidUpdate()
+    {
+        this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
     }
 
+    
     render() {
         let inspectionReport = undefined;
         if (this.props.inspectionReport !== undefined) {
@@ -1186,7 +1258,7 @@ class APP_INSP_MODE extends React.Component {
             key="DoImageTransfer"
             addClass="layout palatte-blue-8 vbox"
             text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
-            onClick={() => this.getCameraImage_StartStop()}/>);
+            onClick={() => this.CameraCtrl.setCameraImageTransfer()}/>);
         
         MenuSet.push(
             <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
@@ -1200,7 +1272,10 @@ class APP_INSP_MODE extends React.Component {
                 {(CanvasWindowRatio<=0)?null:
                     <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
                         onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
-                <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} reportStatisticState={this.props.reportStatisticState}/>
+                
+                {(CanvasWindowRatio>=12)?null:
+                    <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} 
+                        reportStatisticState={this.props.reportStatisticState}/>}
                 
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
@@ -1222,7 +1297,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
 
-        ACT_WS_SEND: (id, tl, prop, data, uintArr) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr)),
+        ACT_WS_SEND: (id, tl, prop, data, uintArr,promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr,promiseCBs)),
 
     }
 }

@@ -153,6 +153,18 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetAnalogGain(int gain)
     return CameraLayer::ACK;
 }
 
+
+
+CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
+{
+    if (CameraSetFrameSpeed(m_hCamera,mode)!= CAMERA_STATUS_SUCCESS)
+    {
+		LOGE("Failed...");
+        return CameraLayer::NAK;
+    }
+    return CameraLayer::ACK;
+}
+
 CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_gain)
 {
     if (CameraGetAnalogGain(m_hCamera,ret_gain)!= CAMERA_STATUS_SUCCESS)
