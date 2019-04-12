@@ -80,3 +80,119 @@ export function DictConv(key,dict,dictTheme)
 
   return translation;
 }
+
+
+
+export class websocket_autoReconnect{
+  constructor(url,timeout=5000) {
+      this.url=undefined;
+      this.wsclose=false;
+      this.reconnectionCounter=0;
+      this.connectionTimeout_ms=timeout;
+      this.connectionTimer=null;
+      this.readyState=undefined;
+      this._connect(url);
+
+  }
+  open(ev){}
+  onmessage(ev){}
+  onerror(ev){}
+  onclose(ev){}
+
+  onreconnection(reconnectionCounter){}
+  onconnectiontimeout(){}
+
+  setWebsocketCallbackUndefined(ws)
+  {
+    ws.open=
+    ws.onmessage=
+    ws.onerror=
+    ws.onclose=undefined;
+  }
+  _connect(url) {
+    if(this.wsclose)return;
+    
+    console.log("_connect");
+    this.url=url;
+    if(this.websocket!==undefined)
+    {
+        this.reconnectionCounter++;
+        let doconnection = this.onreconnection(this.reconnectionCounter);
+        if(doconnection!==undefined && doconnection!=true)
+        {
+          this.websocket=undefined;
+          return;
+        }
+    }
+
+    if(this.connectionTimer!==undefined)
+      clearTimeout(this.connectionTimer);
+    this.connectionTimer=undefined;
+
+    this.websocket = new WebSocket(url);
+    this.OPEN=this.websocket.OPEN;
+    this.CONNECTING=this.websocket.CONNECTING;
+    this.CLOSED=this.websocket.CLOSED;
+    this.CLOSING=this.websocket.CLOSING;
+    this.connectionTimer = setTimeout(()=>{
+        this.close();
+        this.onconnectiontimeout();
+    },this.connectionTimeout_ms);
+    // this.state.WS_DB_Insert.binaryType = "arraybuffer";
+
+    this.websocket.onopen = (ev)=>{
+      this.readyState=this.websocket.readyState;
+      clearTimeout(this.connectionTimer);
+      this.connectionTimer=undefined;
+      return this.onopen(ev);
+    };
+    this.websocket.onmessage =(ev)=> this.onmessage(ev);
+    this.websocket.onerror =(ev)=>{
+      this.readyState=this.websocket.readyState;
+      setTimeout(()=>this._connect(url),10);
+      return this.onerror(ev);
+    }
+    this.websocket.onclose =(ev)=>{
+      this.readyState=this.websocket.readyState;
+      setTimeout(()=>this._connect(url),10);
+      
+      return this.onclose(ev);
+    }
+  }
+  
+  reconnect() {
+    console.log(    this.wsclose,this.websocket);
+    this.wsclose=false;
+    if(this.websocket!==undefined)
+    {
+      if(this.websocket.readyState!=this.websocket.OPEN)
+      {
+        setWebsocketCallbackUndefined(this.websocket);
+        this.websocket=undefined;
+        this._connect(this.url);
+      }
+      else
+        this.websocket.close();//this should trigger _connect affter close/error event
+    }
+    else
+    {
+      this._connect(this.url);
+    }
+  }
+  close(url) {
+    this.wsclose=true;
+    
+    if(this.connectionTimer!==undefined)
+      clearTimeout(this.connectionTimer);
+    this.connectionTimer=undefined;
+    if(this.websocket!==undefined)
+    {
+        this.websocket.close();
+
+    }
+  }
+
+  send(data){
+    return this.websocket.send(data);
+  }
+}
