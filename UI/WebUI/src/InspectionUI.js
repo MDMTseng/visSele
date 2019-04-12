@@ -101,12 +101,7 @@ class RAW_InspectionReportPull extends React.Component {
         {
             // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
             let x=this.props.reportStatisticState.newAddedReport;
-            var command_json = {"db_action":"insert","checked":true};
-            var result = {
-                dbcmd:command_json,
-                data:x,
-            };
-            this.send2WS_Insert(JSON.stringify(result));
+            this.send2WS_Insert(x);
             // this.state.WS_DB_Insert.send(BSON.serialize(x));
         }
     }
@@ -124,9 +119,15 @@ class RAW_InspectionReportPull extends React.Component {
     send2WS_Query(msg){
         this.state.WS_DB_Query.send("{date:2019}");
     }
-    send2WS_Insert(msg){
+    send2WS_Insert(data){
         if(this.state.WS_DB_Insert===undefined)return;
         if(this.state.WS_DB_Insert.readyState===WebSocket.OPEN){
+                
+            var msg_obj = {
+                dbcmd:{"db_action":"insert","checked":true},
+                data
+            };
+            var msg = JSON.stringify(msg_obj);
             this.state.WS_DB_Insert.send(msg);
 
             let ls_len=this.handleLocalStorage(msg);
@@ -150,7 +151,8 @@ class RAW_InspectionReportPull extends React.Component {
             this.state.WS_DB_Query.close();
         }
     }
-    websocketConnect(url = "ws://hyv.decade.tw:8010/") {
+
+    websocketConnect(url = "ws://hyv.decade.tw:8080/") {
         console.log("[init][WS]" + url);
 
 
@@ -1282,7 +1284,9 @@ class APP_INSP_MODE extends React.Component {
                 {(CanvasWindowRatio>=12)?null:
                     <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} 
                         reportStatisticState={this.props.reportStatisticState}/>}
-                
+                <RAW_InspectionReportPull 
+                    reportStatisticState={this.props.reportStatisticState} 
+                    url= "ws://hyv.decade.tw:8080/"/>
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
                         style={{opacity:menuOpacity}}> 
