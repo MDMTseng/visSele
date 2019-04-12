@@ -16,6 +16,7 @@
 #include <Ethernet.h>
 #undef private
 #include "WebSocketProtocol.h"
+#include "ETH_Extra.h"
 
 #define DEBUG_
 #ifdef DEBUG_
@@ -34,7 +35,7 @@ IPAddress gateway(169, 254, 170, 254);
 IPAddress subnet(255, 255, 255, 0);
 void setupLED();
 EthernetServer server(5213);
-#define MAX_WSP_CLIENTs 2
+#define MAX_WSP_CLIENTs MAX_SOCK_NUM
 WebSocketProtocol WSP[MAX_WSP_CLIENTs];
 
 char buff[600];
@@ -54,7 +55,9 @@ void setup() {
   Serial.begin(57600);
   DEBUG_print("Chat server address:");
   DEBUG_println(Ethernet.localIP());
-  //setRetryTimeout(4, 1000);
+  setRetryTimeout(1, 10);
+
+  
 }
 
 unsigned int counter2Pin = 0;
@@ -201,24 +204,22 @@ void RECVWebSocketPkg_binary(WebSocketProtocol* WProt, EthernetClient* client, c
 void loop() {
   // wait for a new client:
   timerX();
-loopLED();
+  loopLED();
   
   EthernetClient client = server.available();
   if (!client)
   {
     if (LiveClient)
     {
-
-      if (counter2Pin++ > 1000)//check client still alive periodically
+      
+      
+      if (counter2Pin++ > 300)//check client still alive periodically
       {
         PingAllClient();
         clearUnreachableClient();
         counter2Pin = 0;
       }
-      delay(10 >> LiveClient);
     }
-    else
-      delay(1);
     return;
   }
 
@@ -290,70 +291,94 @@ loopLED();
   RECVWebSocketPkg(WSPptr, &client, recvData);
   
 }
+
+
+int FindLiveClient()
+{
+  
+  LiveClient = 0;
+
+  for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
+  {
+    if (WSP[i].alive())
+    {
+      LiveClient++;
+    }
+  }
+  return LiveClient;
+}
 void clearUnreachableClient()
 {
-  LiveClient = 0;
   for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
   {
     EthernetClient Rc = WSP[i].getClientOBJ();
-    if (Rc && Rc.status() == 0x00)
+    if(!WSP[i].alive())continue;
+    DEBUG_print("sock:");
+    DEBUG_print(Rc.sockindex);
+    DEBUG_print(" status:");
+
+    int stat = Rc.status();
+    DEBUG_println(stat);
+
+    if (stat == 0|| stat == 20)
     {
-      DEBUG_print("clear timeout sock::");
-      //DEBUG_println(Rc._sock);
+      DEBUG_print("clear timeout sock::sock");
+      DEBUG_println(Rc.sockindex);
+      DEBUG_print(" state::");
+      DEBUG_println(stat);
       Rc.stop();
       WSP[i].rmClientOBJ();
 
     }
-    else if (Rc)
-      LiveClient++;
   }
+  FindLiveClient();
 }
 void PingAllClient()
 {
   for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
-    if (WSP[i].getClientOBJ())
+  {
+    
+    if (WSP[i].alive())
     {
+      EthernetClient Rc = WSP[i].getClientOBJ();
+      DEBUG_print(Rc);
+      DEBUG_print(":::sock:");
+      DEBUG_println(Rc.sockindex);
       //byte SnIR = ReadSn_IR(WSP[i].getClientOBJ()._sock);
 
-      //testAlive(WSP[i].getClientOBJ()._sock);
+      testAlive(Rc.sockindex);
     }
-}
-byte countConnected()
-{
-  byte C = 0;
-  for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
-    if (WSP[i].getClientOBJ())
-      C++;
-  return C;
+  }
 }
 
 WebSocketProtocol* findFromProt(EthernetClient client)
 {
 
-  LiveClient = 0;
   for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
   {
     EthernetClient Rc = WSP[i].getClientOBJ();
-    if (Rc == client)
+    if (Rc.sockindex == client.sockindex)
+    {
+      FindLiveClient();
       return WSP + i;
+    }
   }
 
   for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
   {
-    if (!WSP[i].getClientOBJ())
+    if (!WSP[i].alive())
     {
 
       WSP[i].setClientOBJ(client);
 
-      LiveClient = i;
+      //LiveClient = i;
       byte ii = i;
-      for (; ii < MAX_WSP_CLIENTs; ii++)if (WSP[ii].getClientOBJ())LiveClient++;
-
       DEBUG_print("new socket:::");
-      //DEBUG_print(client._sock);
+      DEBUG_print(client.sockindex);
       DEBUG_print('/');
       DEBUG_println(LiveClient);
       // OnClientsChange();
+      FindLiveClient();
       return WSP + i;
     }
   }

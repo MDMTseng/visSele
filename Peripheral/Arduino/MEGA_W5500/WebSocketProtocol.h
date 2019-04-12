@@ -96,7 +96,8 @@ public:
     RecvOP getRecvOPState();
 	void printState();
 	void printRecvOPState();
-	void rmClientOBJ();
+  void rmClientOBJ();
+  bool alive();
 	void setClientOBJ(EthernetClient cli);
 	EthernetClient getClientOBJ();
 	char * codeSendPkg_setPkgL(char *Pkg, unsigned int length);

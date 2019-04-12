@@ -24,8 +24,8 @@
 #define RMSR 0x001A   // RX Memory Size Register
 #define TMSR 0x001B   // TX Memory Size Register
 
-#define RTR 0x0017   // 16b Timeout 100us
-#define RCR 0x0019   // 8b  retry times
+#define RTR 0x0019   // 16b Timeout 100us
+#define RCR 0x001B   // 8b  retry times
 
 #define SnCR      0x1   //sock CMD
 #define SnCR_SEND_KEEP 0x22
@@ -37,8 +37,6 @@
 #define SnSR_      0x3   //sock state
 #define SnIR_ 0x2
 
-
-#define MaxSockNumber 4
 
 #define ADDR(CMD,_SOCK) (_SOCK*_SOCKINC+_SOCKBASE+CMD)
 
