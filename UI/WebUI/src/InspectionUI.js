@@ -1,7 +1,7 @@
 'use strict'
 
 
-import {connect} from 'react-redux'
+import {connect} from 'react-redux';
 import React from 'react';
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
@@ -20,7 +20,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 //import {Doughnut} from 'react-chartjs-2';
 
 import {round} from 'UTIL/MISC_Util';
-
+let localStorage = require('localStorage');
 let log = logX.getLogger("InspectionUI");
 
 import Table from 'antd/lib/table';
@@ -101,35 +101,40 @@ class RAW_InspectionReportPull extends React.Component {
         {
             // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
             let x=this.props.reportStatisticState.newAddedReport;
-            log.info("_RAW >0");
-            log.info("_RAW",x);
-            this.send2WS("new report legth>0");
-
-            var command_json = {"db_action":"insert","checked":true,"data":x};
-
+            var command_json = {"db_action":"insert","checked":true};
             var result = {
                 dbcmd:command_json,
                 data:x,
             };
-            this.state.WS_DB_Insert.send(JSON.stringify(result));
+            this.send2WS_Insert(JSON.stringify(result));
             // this.state.WS_DB_Insert.send(BSON.serialize(x));
-
-        }else{
-            log.info("_RAW <0");
-            this.send2WS("new report legth<0 ");
         }
-
     }
-    send2WS(msg){
-        if(this.state.WS_DB_Insert===undefined)return;
 
-        if(this.state.WS_DB_Insert.readyState===WebSocket.OPEN){
-            this.state.WS_DB_Query.send("{date:2019}");
-            this.state.WS_DB_Insert.send(new Date()+": "+msg);
+    handleLocalStorage(insertWhat){
+        if (localStorage) {
+            console.log("Local Storage: Supported");
+            localStorage.setItem("HYVision",JSON.stringify(insertWhat));
+            return localStorage.length;
+        } else {
+            console.log("Local Storage: Unsupported");
         }
+        return 0;
+    }
+    send2WS_Query(msg){
+        this.state.WS_DB_Query.send("{date:2019}");
+    }
+    send2WS_Insert(msg){
+        if(this.state.WS_DB_Insert===undefined)return;
+        if(this.state.WS_DB_Insert.readyState===WebSocket.OPEN){
+            this.state.WS_DB_Insert.send(msg);
 
+            let ls_len=this.handleLocalStorage(msg);
+            console.log("[LocalStorage len=]",ls_len);
+
+        }
         else
-            console.log("[X][Send2WS] StatusCode="+ this.state.WS_DB_Insert.readyState );
+            console.log("[X][WS]StatusCode="+ this.state.WS_DB_Insert.readyState );
     }
 
     websocketClose()
@@ -145,7 +150,7 @@ class RAW_InspectionReportPull extends React.Component {
             this.state.WS_DB_Query.close();
         }
     }
-    websocketConnect(url = "ws://localhost:3333/") {
+    websocketConnect(url = "ws://hyv.decade.tw:8010/") {
         console.log("[init][WS]" + url);
 
 

@@ -1,4 +1,5 @@
 const {  gql } = require('apollo-server');
+const mongoose =require('mongoose');
 const array_books = [
     {
         title: 'Harry Potter and the Chamber of Secrets',
@@ -34,5 +35,23 @@ let typeDefs = gql`
     addBook(title: String, author: String): type_Book
   }
 `;
+let Inspection_With_TS_Schema = new mongoose.Schema(
+    {InspectionData:{}},
+    { timestamps: true }
+    );
 
-module.exports = {typeDefs,resolvers};
+let ItemSchema = new mongoose.Schema({
+    Inspection_Result: String,
+    createTime: {
+        type: Date,
+        default: Date.now
+    },
+    updateTime: {
+        type: Date,
+        default: Date.now
+    }
+}, {
+    versionKey: false,
+    timestamps: { createdAt: 'createTime', updatedAt: 'updateTime' }
+});
+module.exports = {Inspection_With_TS_Schema,typeDefs,resolvers};

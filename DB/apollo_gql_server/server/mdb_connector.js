@@ -1,10 +1,14 @@
 const mongoose =require('mongoose');
 const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
 const MDB_LOCAL="mongodb://localhost:27017/db_hy";
+let localStorage = require('localStorage');
+
+const {Inspection_With_TS_Schema}=require('../schema/schema.js') ;
 mongoose.Promise = global.Promise;
 mongoose.connect(MDB_ATLAS, {useNewUrlParser: true});
+mongoose.pluralize(null);
+// let db =mongoose.connection.once('open', () => console.log(`Connected to mongo at ${url}`));
 let db = mongoose.connection;
-
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));
 db.on('error', console.error.bind(console, 'error：'));
 db.on('open', function (ref) {
@@ -14,7 +18,38 @@ db.on('open', function (ref) {
     });
 })
 
+let InspectionModel_A = db.model('Machine_A', Inspection_With_TS_Schema);
 
+function CRUD_insertOne(CollectionNameString,insertWhat){
+    new InspectionModel_A({InspectionData:insertWhat}).save(function (err) {
+        if (err) {
+            handleError(err,insertWhat);
+        }
+        let ls_len=handleLocalStorage(insertWhat);
+        console.log("[LocalStorage len=]",ls_len);
+        console.log(new Date(),"[O]InsertOK!!");
+    });
+}
+
+function CRUD_insertOne_directInsertByDBconnection(CollectionNameString,insertWhat){
+    // InspectionModel.insertMany(insertWhat,function(err,records){
+    // db.collection(CollectionNameString).insertOne(insertWhat,function(err,records){
+    db.collection(CollectionNameString).insertOne(insertWhat,function(err,records){
+        if (err)
+            return handleError(err);
+        else{
+            // console.log("Record added as " , records);
+            return handleOK(records );
+        }
+    });
+}
+function CRUD_InsertMany(model,insertWhat){
+    model.insertMany(insertWhat,function(err){
+        if (err) return handleError(err);
+        else
+            return handleOK(insertWhat);
+    });
+}
 function mdb_query(whichCollection,queryWhat){
     db.collection(whichCollection).find(queryWhat).toArray(function(err, result) {
         if (err) throw err;
@@ -26,51 +61,45 @@ function mdb_query(whichCollection,queryWhat){
 function dropDB(db){
     db.dropDatabase();
 }
-function basic_deleteMany(CollectionNameString,findWhere={}){
+function CRUD_deleteMany(CollectionNameString,findWhere={}){
     db.collection(CollectionNameString).deleteMany(findWhere, function(err, obj) {
         if (err) throw err;
         console.log("1 Collection deleted");
     });
 }
-function basic_update(CollectionNameString,q,v){
+function CRUD_update(CollectionNameString,q,v){
     db.collection(CollectionNameString).updateOne(q, v, function(err, res) {
         if (err) throw err;
         console.log("1 document updated");
     });
 }
-function basic_query(CollectionNameString,q){
+function CRUD_query(CollectionNameString,q){
     db.collection(CollectionNameString).find(q).toArray(function(err, result) {
         if (err) throw err;
         console.log(result);
     });
 }
-function basic_Find(model,findWhere){
+function CRUD_Find(model,findWhere){
     model.find(findWhere).exec(function (err, r) {
         if (err) return handleError(err);
         else return console.log("rrr",r);
     })
 }
-function basic_Drop(CollectionNameString){
+function CRUD_Drop(CollectionNameString){
     db.collection(CollectionNameString).drop(function(err, delOK) {
         if (err) console.log("Collection drop w/error.",err);
         if (delOK) console.log("Collection droped");
     });
 }
-function basic_CreateCollection(collectionName){
+function CRUD_CreateCollection(collectionName){
     db.createCollection(collectionName, function(err, res) {
         if (err) throw err;
         console.log("Collection created! "+collectionName);
     });
 }
 
-function basic_InsertMany(model,insertWhat){
-    model.insertMany(insertWhat,function(err){
-        if (err) return handleError(err);
-        else
-            return handleOK(insertWhat);
-    });
-}
-function basic_ModelSave(model){
+
+function CRUD_ModelSave(model){
     model.save(function (err, ok) {
         if (err)
             return handleError(err);
@@ -79,15 +108,32 @@ function basic_ModelSave(model){
     });
 }
 
-
-function findResult(r){
+function findResult(r,){
     console.log("rrr",r);
 }
-function handleError(e){
-    console.log("create error"+e);
-}
-function handleOK(model,o){
-    console.log("handleOK>",model,o);
+function handleError(e,insertWhat){
+    console.log("[X]ExceptionHandler"+e);
+    console.log("[X][?]InsertFail trying local storage..."+e);
+    let len=handleLocalStorage(insertWhat);
+    console.log("[X][O]save to local storage OK! Len="+len);
 
-
 }
+function handleOK(model){
+    console.log("handleOK>",model.ops[0]._id);
+}
+function handleLocalStorage(insertWhat){
+    if (localStorage) {
+        console.log("Local Storage: Supported");
+        localStorage.setItem("HYVision",JSON.stringify(insertWhat));
+        console.log("[O]Local Storage saved and Len=",localStorage.length);
+        return localStorage.length;
+    } else {
+        console.log("Local Storage: Unsupported");
+    }
+
+    return 0;
+}
+module.exports = {
+    insertOne:CRUD_insertOne,
+    insertMany:CRUD_InsertMany
+};
