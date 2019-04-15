@@ -20,7 +20,17 @@ db.on('open', function (ref) {
 
 let InspectionModel_A = db.model('Machine_A', Inspection_With_TS_Schema);
 let DefineFileModel_A = db.model('DefineFile_A', DefineFile_With_TS_Schema);
+//featureSet_sha1
+function CRUD_upsertOne(which,insertWhat){
 
+    if(which=='df'){
+        new DefineFileModel_A({DF:insertWhat}).findOneAndUpdate({"DF.featureSet_sha1":insertWhat.featureSet_sha1 }, insertWhat, {upsert:true}, function(err, doc){
+            if (err) {
+                handleError(err,insertWhat);
+            }
+        });
+    }
+}
 function CRUD_insertOne(which,insertWhat){
     if(which=='df'){
         new DefineFileModel_A({DF:insertWhat}).save(function (err) {
@@ -80,12 +90,7 @@ function CRUD_deleteMany(CollectionNameString,findWhere={}){
         console.log("1 Collection deleted");
     });
 }
-function CRUD_update(CollectionNameString,q,v){
-    db.collection(CollectionNameString).updateOne(q, v, function(err, res) {
-        if (err) throw err;
-        console.log("1 document updated");
-    });
-}
+
 function CRUD_query(CollectionNameString,q){
     db.collection(CollectionNameString).find(q).toArray(function(err, result) {
         if (err) throw err;
@@ -148,5 +153,6 @@ function handleLocalStorage(insertWhat){
 }
 module.exports = {
     insertOne:CRUD_insertOne,
-    insertMany:CRUD_InsertMany
+    insertMany:CRUD_InsertMany,
+    upsertOne:CRUD_upsertOne
 };

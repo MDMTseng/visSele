@@ -82,7 +82,7 @@ app.ws('/insert_df', function(ws, req) {
             console.log('[WS][RX][X_JSON],RX_MSG=', msg);
         }
         else{
-            mdb_connector.insertOne("df",RX_JSON);
+            mdb_connector.upsertOne("df",RX_JSON);
             // idb_connector.insertOne("Inspection",RX_JSON);
             // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
             // var result = Object.assign({},msg, {"TS":new BSNO.Timestamp()});
