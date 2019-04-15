@@ -299,8 +299,6 @@ function StateReducer(newState,action)
 
             let inspReport = newState.edit_info._obj.inspreport;
 
-            inspReport.subFeatureDefSha1=inspReport;
-
             newState.edit_info.inspReport = inspReport;
             inspReport.time_ms = currentTime_ms;
 
