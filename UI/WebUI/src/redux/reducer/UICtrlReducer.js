@@ -276,13 +276,13 @@ function StateReducer(newState,action)
     }
 
     let subFeatureDefSha1 = action.data.subFeatureDefSha1;
-    if(typeof subFeatureDefSha1 == "string")
-    {
-      if(subFeatureDefSha1.length>8)
-      {
-        subFeatureDefSha1 =  subFeatureDefSha1.substring(0,8);
-      }
-    }
+    // if(typeof subFeatureDefSha1 == "string")
+    // {
+    //   if(subFeatureDefSha1.length>8)
+    //   {
+    //     subFeatureDefSha1 =  subFeatureDefSha1.substring(0,8);
+    //   }
+    // }
 
     if(action.data.type === "binary_processing_group")
     {
@@ -298,8 +298,6 @@ function StateReducer(newState,action)
             newState.edit_info._obj.SetInspectionReport(report);
 
             let inspReport = newState.edit_info._obj.inspreport;
-
-            inspReport.subFeatureDefSha1=inspReport;
 
             newState.edit_info.inspReport = inspReport;
             inspReport.time_ms = currentTime_ms;
@@ -491,6 +489,7 @@ function StateReducer(newState,action)
                   let treport = dclone(singleReport);
                   treport.time_ms = currentTime_ms;
                   treport.add_time_ms = currentTime_ms;
+                  treport.subFeatureDefSha1=subFeatureDefSha1;
                   treport.repeatTime=0;
                   //treport.seq=[singleReport];
                   treport.isCurObj=true;

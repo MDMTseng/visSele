@@ -1,6 +1,10 @@
 
+
+#define private public //dirty trick
 #include "Eth_Extra.h"
-//#include <utility/w5100.h>
+#include <Ethernet.h>
+#include <utility/w5100.h>
+#undef private
  
 inline void SPI_Write(unsigned int addr, unsigned char data)
 {
@@ -87,20 +91,38 @@ byte ReadSnSR(byte _sock)
 	return SPI_Read(ADDR(SnSR_,_sock));
 }
 
-void SetSnCR(byte data,byte _sock)
+void SetSnCR(byte data,byte _sock) 
 {
   SPI_Write(ADDR(SnCR,_sock), data);
 }
 
+
+static void write2byte(uint16_t addr,uint16_t _data) {       
+  uint8_t buf[2];                               
+  buf[0] = _data >> 8;                          
+  buf[1] = _data & 0xFF;                        
+  W5100Class::write(addr, buf, 2);                       
+}
+
+
+static void write1byte(uint16_t addr,uint8_t _data) {  
+  W5100Class::write(addr, &_data, 1);                       
+}
+
 void setRetryTimeout(byte retryTimes,unsigned int TimeOut100us)
 {
-	  SPI_Write16(RTR,TimeOut100us);
-		SPI_Write(RCR,retryTimes);
+  write2byte(RTR,TimeOut100us);//RTR
+  write1byte(RCR,retryTimes);//RCR
+  //W5100Class::writeRTR(TimeOut100us);//The address in Eth lib is wrong
+  //W5100Class::writeRCR(retryTimes);
+
+
 }
 
 void testAlive(byte _sock)
 {
-	return SPI_Write(ADDR(SnCR,_sock),SnCR_SEND_KEEP);
+  W5100Class::writeSnCR(_sock,SnCR_SEND_KEEP);
+  ///W5100Class::writeSn(_sock,0x002F, 1);//writeSn_KPALVTR
 }
 
 void getIP(byte* buff,byte _sock)

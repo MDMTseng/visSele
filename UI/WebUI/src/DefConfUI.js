@@ -14,9 +14,10 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {round as roundX} from 'UTIL/MISC_Util';
+import {round as roundX,websocket_autoReconnect} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
 import 'antd/dist/antd.css';
+import * as log from 'loglevel';
 
 
 import EC_zh_TW from './languages/zh_TW';
@@ -142,12 +143,26 @@ class APP_DEFCONF_MODE extends React.Component{
     let defModelPath = this.props.edit_info.defModelPath;
     
     this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath+".bmp"});
-                
+    
+
+    
+    this.WS_DEF_DB_Insert=new websocket_autoReconnect("ws://hyv.decade.tw:8080/insert_df",10000);
+
+    this.WS_DEF_DB_Insert.onreconnection=(reconnectionCounter)=>{
+        log.info("onreconnection"+reconnectionCounter);
+        return true;
+    };
+    this.WS_DEF_DB_Insert.onopen=log.info("WS_DEF_DB_Insert:onopen");
+    this.WS_DEF_DB_Insert.onmessage=(msg)=>log.info("WS_DEF_DB_Insert:onmessage::"+msg);
+    this.WS_DEF_DB_Insert.onconnectiontimeout=()=>log.info("WS_DEF_DB_Insert:onconnectiontimeout");
+    this.WS_DEF_DB_Insert.onclose=()=>log.info("WS_DEF_DB_Insert:onclose");
+    this.WS_DEF_DB_Insert.onerror=()=>log.info("WS_DEF_DB_Insert:onerror");
 
   }
   
   componentWillUnmount()
   {
+    this.WS_DEF_DB_Insert.cloase();
     this.props.ACT_ClearImage();
   }
   constructor(props) {
@@ -384,6 +399,12 @@ class APP_DEFCONF_MODE extends React.Component{
               this.setState({...this.state,fileSavingCallBack:undefined});
 
 
+              var msg_obj = {
+                dbcmd:{"db_action":"insert","checked":true},
+                data:report
+              };
+              this.WS_DEF_DB_Insert.send(JSON.stringify(msg_obj));
+              
               },fileSelectFooter:
               <div>ddd</div>
             });

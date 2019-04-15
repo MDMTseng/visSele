@@ -427,11 +427,14 @@ EthernetClient WebSocketProtocol::getClientOBJ()
 {
     return clientOBJ;
 }
-
+bool WebSocketProtocol::alive()
+{
+  return recvOPState!=WSOP_CLOSE;
+}
 void WebSocketProtocol::rmClientOBJ()
 {
-	//clientOBJ._sock = MAX_SOCK_NUM;
-	//clientOBJ=null;
-    state = DISCONNECTED;
+	clientOBJ.sockindex = MAX_SOCK_NUM;
+  state = DISCONNECTED;
 	recvOPState=WSOP_CLOSE;
+  clientOBJ=0;
 }

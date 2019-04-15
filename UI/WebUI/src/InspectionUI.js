@@ -9,7 +9,7 @@ import ReactResizeDetector from 'react-resize-detector';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+import {websocket_autoReconnect} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
@@ -82,18 +82,19 @@ class RAW_InspectionReportPull extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
-            WS_DB_Insert: undefined,
-            WS_DB_Query: undefined,
 
         }
-        this.doReconnect=true;
+        this.WS_DB_Inser= undefined;
+        this.WS_DB_Query= undefined;
     }
     componentWillUnmount() {
 
-       this.websocketClose();
+        this.websocketClose();
     }
     componentWillMount() {
+
         this.websocketConnect(this.props.url);
+
     }
 
     componentDidUpdate(prevProps, prevState, snapshot) {
@@ -102,7 +103,7 @@ class RAW_InspectionReportPull extends React.Component {
             // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
             let x=this.props.reportStatisticState.newAddedReport;
             this.send2WS_Insert(x);
-            // this.state.WS_DB_Insert.send(BSON.serialize(x));
+            // this.WS_DB_Insert.send(BSON.serialize(x));
         }
     }
 
@@ -117,92 +118,71 @@ class RAW_InspectionReportPull extends React.Component {
         return 0;
     }
     send2WS_Query(msg){
-        this.state.WS_DB_Query.send("{date:2019}");
+        //this.state.WS_DB_Query.send("{date:2019}");
     }
     send2WS_Insert(data){
-        if(this.state.WS_DB_Insert===undefined)return;
-        if(this.state.WS_DB_Insert.readyState===WebSocket.OPEN){
+        if(this.WS_DB_Insert===undefined)return;
+        if(this.WS_DB_Insert.readyState===WebSocket.OPEN){
                 
             var msg_obj = {
                 dbcmd:{"db_action":"insert","checked":true},
                 data
             };
             var msg = JSON.stringify(msg_obj);
-            this.state.WS_DB_Insert.send(msg);
+            this.WS_DB_Insert.send(msg);
 
             let ls_len=this.handleLocalStorage(msg);
             console.log("[LocalStorage len=]",ls_len);
 
         }
         else
-            console.log("[X][WS]StatusCode="+ this.state.WS_DB_Insert.readyState );
+            console.log("[X][WS]StatusCode="+ this.WS_DB_Insert.readyState );
     }
 
     websocketClose()
     {
-
-        this.doReconnect=false;
-        if(this.state.WS_DB_Insert!=undefined)
-        {
-            this.state.WS_DB_Insert.close();
-        }
-        if(this.state.WS_DB_Query!=undefined)
-        {
-            this.state.WS_DB_Query.close();
-        }
+        this.WS_DB_Insert.close();
+        this.WS_DB_Query.close();
     }
 
     websocketConnect(url = "ws://hyv.decade.tw:8080/") {
         console.log("[init][WS]" + url);
 
 
-        if(this.state.WS_DB_Insert===undefined)
+        if(this.WS_DB_Insert===undefined)
         {
-            this.state.WS_DB_Insert = new WebSocket(url+"insert");
+            this.WS_DB_Insert=new websocket_autoReconnect(url+"insert",10000);
 
-            // this.state.WS_DB_Insert.binaryType = "arraybuffer";
-
-            this.state.WS_DB_Insert.onopen = this.onOpen.bind(this);
-            this.state.WS_DB_Insert.onmessage = this.onMessage.bind(this);
-            this.state.WS_DB_Insert.onerror = this.onError.bind(this);
-
-            this.state.WS_DB_Insert.onclose = (evt) => {
-                if (evt.code == 3001) {
-                    console.log('ws closed RAW_InspectionReportPull');
-                } else {
-                    console.log('ws connection error RAW_InspectionReportPull');
-                }
-                this.state.WS_DB_Insert=undefined;
-                if(this.doReconnect)
-                {
-                    this.websocketConnect(this.props.url);
-                }
+            this.WS_DB_Insert.onreconnection=(reconnectionCounter)=>{
+                log.info("onreconnection"+reconnectionCounter);
+                return true;
             };
-            console.log("[init][WS][OK]");
-            console.log(this.state.WS_DB_Insert);
+            this.WS_DB_Insert.onconnectiontimeout=()=>log.info("onconnectiontimeout");
+
+
+            this.WS_DB_Insert.onopen=this.onOpen.bind(this);
+            this.WS_DB_Insert.onmessage=this.onMessage.bind(this);
+            this.WS_DB_Insert.onclose=()=>log.info("WS_DB_Insert:onclose");
+            this.WS_DB_Insert.onerror=()=>this.onError.bind(this);
+
         }
 
-        if(this.state.WS_DB_Query===undefined)
+        if(this.WS_DB_Query===undefined)
         {
-            this.state.WS_DB_Query = new WebSocket(url+"query");
-            this.state.WS_DB_Query.onopen = this.onOpen.bind(this);
-            this.state.WS_DB_Query.onmessage = this.onMessage.bind(this);
-            this.state.WS_DB_Query.onerror = this.onError.bind(this);
+            this.WS_DB_Query=new websocket_autoReconnect(url+"query",10000);
 
-            this.state.WS_DB_Query.onclose = (evt) => {
-                if (evt.code == 3001) {
-                    console.log('ws closed RAW_InspectionReportPull');
-                } else {
-                    console.log('ws connection error RAW_InspectionReportPull');
-                }
-                this.state.WS_DB_Query=undefined;
-                if(this.doReconnect)
-                {
-                    this.websocketConnect(this.props.url);
-                }
+            
+            this.WS_DB_Query.onreconnection=(reconnectionCounter)=>{
+                log.info("onreconnection"+reconnectionCounter);
+                return true;
             };
-            console.log("[init][WS][OK]");
-            console.log(this.state.WS_DB_Query);
+            this.WS_DB_Query.onconnectiontimeout=()=>log.info("onconnectiontimeout");
+
+
+            this.WS_DB_Query.onopen=this.onOpen.bind(this);
+            this.WS_DB_Query.onmessage=this.onMessage.bind(this);
+            this.WS_DB_Query.onclose=()=>log.info("WS_DB_Query:onclose");
+            this.WS_DB_Query.onerror=()=>this.onError.bind(this);
         }
 
     }
@@ -215,7 +195,7 @@ class RAW_InspectionReportPull extends React.Component {
     }
     onOpen(ev) {
         console.log("onOpen RAW_InspectionReportPull");
-        this.state.WS_DB_Insert.send("IUI:onOpened");
+        this.WS_DB_Insert.send("IUI:onOpened");
 
     }
     onMessage(ev) {
@@ -480,10 +460,7 @@ class AirControl extends React.Component {
             websocketAirTime: 10,
             STOP: true,
         }
-        this.wsCenter={
-            websocketAir: undefined,
-            doReconnect: true,
-        };
+        this.websocketAir=undefined;
         this.heartBeat={
             timer:undefined,
             PINGcount:0,
@@ -524,9 +501,9 @@ class AirControl extends React.Component {
 
     blowAir_TEST() {
         console.log("[WS]/cue/TEST");
-        if (this.wsCenter.websocketAir.readyState === 1) {
+        if (this.websocketAir.readyState === 1) {
             console.log("[O][WS]/cue/TEST");
-            this.wsCenter.websocketAir.send("/cue/TEST");
+            this.websocketAir.send("/cue/TEST");
         } else {
             console.log("[X][WS]/cue/TEST");
         }
@@ -534,8 +511,8 @@ class AirControl extends React.Component {
     }
 
     blowAir_LEFTa() {
-        if (this.wsCenter.websocketAir.readyState === this.wsCenter.websocketAir.OPEN) {
-            this.wsCenter.websocketAir.send("/cue/LEFT");
+        if (this.websocketAir.readyState === this.websocketAir.OPEN) {
+            this.websocketAir.send("/cue/LEFT");
         } else {
             console.log("[X][WS]/cue/LEFT");
         }
@@ -543,8 +520,8 @@ class AirControl extends React.Component {
     }
 
     blowAir_RIGHTa() {
-        if (this.wsCenter.websocketAir.readyState === this.wsCenter.websocketAir.OPEN) {
-            this.wsCenter.websocketAir.send("/cue/RIGHT");
+        if (this.websocketAir.readyState === this.websocketAir.OPEN) {
+            this.websocketAir.send("/cue/RIGHT");
         } else {
             console.log("[X][WS]/cue/RIGHT");
         }
@@ -552,8 +529,8 @@ class AirControl extends React.Component {
 
     blowAir_TIMEUpdate() {
         this.setState(Object.assign({}, this.state));
-        if (this.wsCenter.websocketAir.readyState === this.wsCenter.websocketAir.OPEN)
-            this.wsCenter.websocketAir.send("/cue/TIME/" + this.wsCenter.websocketAirTime);
+        if (this.websocketAir.readyState === this.websocketAir.OPEN)
+            this.websocketAir.send("/cue/TIME/" + this.state.websocketAirTime);
     }
 
     blowAir_StartStop() {
@@ -562,14 +539,14 @@ class AirControl extends React.Component {
     }
 
     blowAir_TIMEADD(val) {
-        this.wsCenter.websocketAirTime += val;
+        this.state.websocketAirTime += val;
         this.blowAir_TIMEUpdate();
     }
 
     blowAir_TIMESUB(val) {
-        this.wsCenter.websocketAirTime -= val;
-        if (this.wsCenter.websocketAirTime < 10)
-            this.wsCenter.websocketAirTime = 10;
+        this.state.websocketAirTime -= val;
+        if (this.state.websocketAirTime < 10)
+            this.state.websocketAirTime = 10;
         this.blowAir_TIMEUpdate();
     }
 
@@ -580,26 +557,49 @@ class AirControl extends React.Component {
 
     sendHeartBeat()
     {
-        if (this.wsCenter.websocketAir===undefined ||
-            this.wsCenter.websocketAir.readyState != this.wsCenter.websocketAir.OPEN) return;
+        if (this.websocketAir===undefined ||
+            this.websocketAir.readyState != this.websocketAir.OPEN) return;
 
-        log.info("sendHeartBeat: PING:"+this.heartBeat.PINGcount, " PONG:"+this.heartBeat.PONGcount);
+        log.info("sendHeartBeat: PING:"+this.heartBeat.PINGcount, 
+            " PONG:"+this.heartBeat.PONGPace+"/"+this.heartBeat.PONGcount);
         if(this.heartBeat.PINGcount>this.heartBeat.PONGPace+2)
         {
             log.error("Heart beat ERROR: PINGcount > PONGPace+2");
-            this.wsCenter.websocketAir.terminate();
-            this.wsCenter.websocketAir = undefined;
+            this.websocketAir.reconnect();
+            this.heartBeat.PINGcount=this.heartBeat.PONGPace=0;
             return;
         }
 
         
-        this.wsCenter.websocketAir.send("/cue/PING");
+        this.websocketAir.send("/cue/PING");
         this.heartBeat.PINGcount++;
     }
     componentWillMount() {
         this._keyEventX = this.keyEventX.bind(this);
         console.log("[init][componentWillMount]");
         this.websocketConnect(this.props.url);
+        
+        this.websocketAir=new websocket_autoReconnect(this.props.url,10000);
+        this.websocketAir.onreconnection=(count)=>console.log(count);
+        this.websocketAir.onmessage = this.onMessage.bind(this);
+        this.websocketAir.onerror = this.onError.bind(this);
+        this.websocketAir.onopen = (ev)=>{
+                this.setState({...this.state,loading: false});
+                console.log("onopen:",ev);
+                
+                this.heartBeat.PINGcount=0;
+                this.heartBeat.PONGcount=0;
+    
+            };
+        this.websocketAir.onclose =(evt) => {
+                this.setState({...this.state,loading: true});
+                if (evt.code == 3001) {
+                    console.log('ws closed',evt);
+                } else {
+                    console.log('ws connection error',evt);
+                }
+            };
+
         document.addEventListener('keydown', this._keyEventX);
         
         this.heartBeat.timer=setInterval(this.sendHeartBeat.bind(this),3000);
@@ -607,12 +607,11 @@ class AirControl extends React.Component {
 
     componentWillUnmount() {
         log.info("componentWillUnmount1")
-        if(this.wsCenter.websocketAir!==undefined)
+        if(this.websocketAir!==undefined)
         {
-            this.wsCenter.websocketAir.close();
-            this.wsCenter.websocketAir = undefined;
+            this.websocketAir.close();
+            this.websocketAir = undefined;
         }
-        this.wsCenter.doReconnect=false;
         document.removeEventListener('keydown', this._keyEventX);
         log.info("componentWillUnmount2")
 
@@ -621,36 +620,10 @@ class AirControl extends React.Component {
     }
     
 
-    websocketReConnect(url)
-    {
-        this.websocketConnect(url);
-    }
-
     websocketConnect(url = "ws://192.168.2.2:5213") {
-        console.log("[init][WS]" + url);
-        this.wsCenter.websocketAir = new WebSocket(url);
-        this.wsCenter.websocketAir.onmessage = this.onMessage.bind(this);
-        this.wsCenter.websocketAir.onerror = this.onError.bind(this);
-        this.wsCenter.websocketAir.onopen = (ev)=>{
-            this.setState({...this.state,loading: false});
-            console.log("onopen:",ev);
-            
-            this.heartBeat.PINGcount=0;
-            this.heartBeat.PONGcount=0;
 
-        };
-        this.wsCenter.websocketAir.onclose = (evt) => {
-            this.setState({...this.state,loading: true});
-            if (evt.code == 3001) {
-                console.log('ws closed',evt);
-            } else {
-                console.log('ws connection error',evt);
-            }
-            if(this.wsCenter.doReconnect)
-                setTimeout(()=>this.websocketReConnect(url),1000);
-        };
         console.log("[init][WS][OK]");
-        console.log(this.wsCenter.websocketAir);
+        console.log(this.websocketAir);
     }
 
     onError(ev) {
@@ -678,8 +651,8 @@ class AirControl extends React.Component {
     componentWillReceiveProps(nextProps) {
         if (this.state.STOP) return;
         //log.info(nextProps.checkResult2AirAction.ver, "222");
-        // console.log(this.wsCenter.websocketAir.OPEN,this.wsCenter.websocketAir.readyState,"XXX");
-        // if(this.wsCenter.websocketAir.readyState != this.wsCenter.websocketAir.OPEN)return;
+        // console.log(this.websocketAir.OPEN,this.websocketAir.readyState,"XXX");
+        // if(this.websocketAir.readyState != this.websocketAir.OPEN)return;
         //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
         if (nextProps.checkResult2AirAction.ver == this.props.checkResult2AirAction.ver) return;
 
@@ -693,8 +666,8 @@ class AirControl extends React.Component {
     }
 
     render() {
-        if (this.wsCenter.websocketAir===undefined ||
-            this.wsCenter.websocketAir.readyState != this.wsCenter.websocketAir.OPEN) {
+        if (this.websocketAir===undefined ||
+            this.websocketAir.readyState != this.websocketAir.OPEN) {
             return(
             <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
                     onClick={() => {this.websocketConnect(this.props.url);
@@ -707,7 +680,7 @@ class AirControl extends React.Component {
             <div>
                 <Button block style={{marginTop: 2, marginBottom: 2}} type="primary" size="small"
                         onClick={() => this.blowAir_StartStop()}>
-                    噴氣功能(B): {this.state.STOP ? " 暫停=" : " 啟動="}{this.wsCenter.websocketAirTime}ms
+                    噴氣功能(B): {this.state.STOP ? " 暫停=" : " 啟動="}{this.state.websocketAirTime}ms
                 </Button>
                 <ButtonGroup>
                     <Button style={{backgroundColor: "#c41d7f", marginBottom: 2}} type="primary"
