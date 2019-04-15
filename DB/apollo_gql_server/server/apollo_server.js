@@ -75,6 +75,23 @@ app.ws('/insert', function(ws, req) {
     });
 
 });
+app.ws('/insert_df', function(ws, req) {
+    ws.on('message', function(msg) {
+        var RX_JSON=isJSON(msg);
+        if(RX_JSON===false){
+            console.log('[WS][RX][X_JSON],RX_MSG=', msg);
+        }
+        else{
+            mdb_connector.insertOne("df",RX_JSON);
+            // idb_connector.insertOne("Inspection",RX_JSON);
+            // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
+            // var result = Object.assign({},msg, {"TS":new BSNO.Timestamp()});
+            // var RX_JSON_TS=Object.assign({TS: new Timestamp()}, RX_JSON);
+            // var RX_JSON_TS=Object.assign({ timestamps: true }, RX_JSON);
+        }
+    });
+
+});
 var objectIdFromDate = function (date) {
     return Math.floor(date.getTime() / 1000).toString(16) + "0000000000000000";
 };

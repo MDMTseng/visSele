@@ -1,9 +1,9 @@
 const mongoose =require('mongoose');
 const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
 const MDB_LOCAL="mongodb://localhost:27017/db_hy";
-let localStorage = require('localStorage');
+// let localStorage = require('localStorage');
 
-const {Inspection_With_TS_Schema}=require('../schema/schema.js') ;
+const {Inspection_With_TS_Schema,DefineFile_With_TS_Schema}=require('../schema/schema.js') ;
 mongoose.Promise = global.Promise;
 mongoose.connect(MDB_ATLAS, {useNewUrlParser: true});
 mongoose.pluralize(null);
@@ -19,16 +19,29 @@ db.on('open', function (ref) {
 })
 
 let InspectionModel_A = db.model('Machine_A', Inspection_With_TS_Schema);
+let DefineFileModel_A = db.model('DefineFile_A', DefineFile_With_TS_Schema);
 
-function CRUD_insertOne(CollectionNameString,insertWhat){
-    new InspectionModel_A({InspectionData:insertWhat}).save(function (err) {
-        if (err) {
-            handleError(err,insertWhat);
-        }
-        let ls_len=handleLocalStorage(insertWhat);
-        console.log("[LocalStorage len=]",ls_len);
-        console.log(new Date(),"[O]InsertOK!!");
-    });
+function CRUD_insertOne(which,insertWhat){
+    if(which=='Inspection'){
+        new DefineFileModel_A({DF:insertWhat}).save(function (err) {
+            if (err) {
+                handleError(err,insertWhat);
+            }
+
+            console.log(new Date(),"[O]DF InsertOK!!");
+        });
+    }else if(which=='df'){
+        new InspectionModel_A({InspectionData:insertWhat}).save(function (err) {
+            if (err) {
+                handleError(err,insertWhat);
+            }
+
+            console.log(new Date(),"[O]InsertOK!!");
+        });
+
+    }
+
+
 }
 
 function CRUD_insertOne_directInsertByDBconnection(CollectionNameString,insertWhat){

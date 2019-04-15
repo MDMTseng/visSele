@@ -39,6 +39,10 @@ let Inspection_With_TS_Schema = new mongoose.Schema(
     {InspectionData:{}},
     { timestamps: true }
     );
+let DefineFile_With_TS_Schema = new mongoose.Schema(
+    {DF:{}},
+    { timestamps: true }
+);
 
 let ItemSchema = new mongoose.Schema({
     Inspection_Result: String,
@@ -54,4 +58,4 @@ let ItemSchema = new mongoose.Schema({
     versionKey: false,
     timestamps: { createdAt: 'createTime', updatedAt: 'updateTime' }
 });
-module.exports = {Inspection_With_TS_Schema,typeDefs,resolvers};
+module.exports = {DefineFile_With_TS_Schema,Inspection_With_TS_Schema,typeDefs,resolvers};
