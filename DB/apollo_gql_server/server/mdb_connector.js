@@ -22,7 +22,7 @@ let InspectionModel_A = db.model('Machine_A', Inspection_With_TS_Schema);
 let DefineFileModel_A = db.model('DefineFile_A', DefineFile_With_TS_Schema);
 
 function CRUD_insertOne(which,insertWhat){
-    if(which=='Inspection'){
+    if(which=='df'){
         new DefineFileModel_A({DF:insertWhat}).save(function (err) {
             if (err) {
                 handleError(err,insertWhat);
@@ -30,7 +30,7 @@ function CRUD_insertOne(which,insertWhat){
 
             console.log(new Date(),"[O]DF InsertOK!!");
         });
-    }else if(which=='df'){
+    }else if(which=='Inspection'){
         new InspectionModel_A({InspectionData:insertWhat}).save(function (err) {
             if (err) {
                 handleError(err,insertWhat);
