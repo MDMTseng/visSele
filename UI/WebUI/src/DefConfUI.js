@@ -150,9 +150,10 @@ class APP_DEFCONF_MODE extends React.Component{
 
     this.WS_DEF_DB_Insert.onreconnection=(reconnectionCounter)=>{
         log.info("onreconnection"+reconnectionCounter);
+        if(reconnectionCounter>10)return false;
         return true;
     };
-    this.WS_DEF_DB_Insert.onopen=log.info("WS_DEF_DB_Insert:onopen");
+    this.WS_DEF_DB_Insert.onopen=()=>log.info("WS_DEF_DB_Insert:onopen");
     this.WS_DEF_DB_Insert.onmessage=(msg)=>log.info("WS_DEF_DB_Insert:onmessage::"+msg);
     this.WS_DEF_DB_Insert.onconnectiontimeout=()=>log.info("WS_DEF_DB_Insert:onconnectiontimeout");
     this.WS_DEF_DB_Insert.onclose=()=>log.info("WS_DEF_DB_Insert:onclose");
@@ -162,7 +163,7 @@ class APP_DEFCONF_MODE extends React.Component{
   
   componentWillUnmount()
   {
-    this.WS_DEF_DB_Insert.cloase();
+    this.WS_DEF_DB_Insert.close();
     this.props.ACT_ClearImage();
   }
   constructor(props) {

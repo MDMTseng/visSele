@@ -88,13 +88,14 @@ export class websocket_autoReconnect{
       this.url=undefined;
       this.wsclose=false;
       this.reconnectionCounter=0;
+      this.reconnectGap_ms=1000;
       this.connectionTimeout_ms=timeout;
       this.connectionTimer=null;
       this.readyState=undefined;
       this._connect(url);
 
   }
-  open(ev){}
+  onopen(ev){}
   onmessage(ev){}
   onerror(ev){}
   onclose(ev){}
@@ -104,7 +105,7 @@ export class websocket_autoReconnect{
 
   setWebsocketCallbackUndefined(ws)
   {
-    ws.open=
+    ws.onopen=
     ws.onmessage=
     ws.onerror=
     ws.onclose=undefined;
@@ -149,13 +150,12 @@ export class websocket_autoReconnect{
     this.websocket.onmessage =(ev)=> this.onmessage(ev);
     this.websocket.onerror =(ev)=>{
       this.readyState=this.websocket.readyState;
-      setTimeout(()=>this._connect(url),10);
+      //setTimeout(()=>this._connect(url),10);
       return this.onerror(ev);
     }
     this.websocket.onclose =(ev)=>{
       this.readyState=this.websocket.readyState;
-      setTimeout(()=>this._connect(url),10);
-      
+      setTimeout(()=>this._connect(url),this.reconnectGap_ms);
       return this.onclose(ev);
     }
   }
