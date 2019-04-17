@@ -21,37 +21,24 @@ db.on('open', function (ref) {
 let InspectionModel_A = db.model('Machine_A', Inspection_With_TS_Schema);
 let DefineFileModel_A = db.model('DefineFile_A', DefineFile_With_TS_Schema);
 //featureSet_sha1
-function CRUD_upsertOne(which,insertWhat){
-
-    if(which=='df'){
-        new DefineFileModel_A({DF:insertWhat}).findOneAndUpdate({"DF.featureSet_sha1":insertWhat.featureSet_sha1 }, insertWhat, {upsert:true}, function(err, doc){
+function CRUD_upsertOne(which,insertWhat){//return promise
+ 
+    /*if(which=='df'){
+        new DefineFileModel_A({DF:insertWhat}).findOneAndUpdate({"DF.data.featureSet_sha1":insertWhat.data.featureSet_sha1 }, insertWhat, {upsert:true}, function(err, doc){
             if (err) {
                 handleError(err,insertWhat);
             }
         });
-    }
+    }*/
+    return CRUD_insertOne(which,insertWhat);
 }
 function CRUD_insertOne(which,insertWhat){
+    //Without callback it will return promise
     if(which=='df'){
-        new DefineFileModel_A({DF:insertWhat}).save(function (err) {
-            if (err) {
-                handleError(err,insertWhat);
-            }
-
-            console.log(new Date(),"[O]DF InsertOK!!");
-        });
+        return new DefineFileModel_A({DefineFile:insertWhat}).save();
     }else if(which=='Inspection'){
-        new InspectionModel_A({InspectionData:insertWhat}).save(function (err) {
-            if (err) {
-                handleError(err,insertWhat);
-            }
-
-            console.log(new Date(),"[O]InsertOK!!");
-        });
-
+        return new InspectionModel_A({InspectionData:insertWhat}).save();
     }
-
-
 }
 
 function CRUD_insertOne_directInsertByDBconnection(CollectionNameString,insertWhat){

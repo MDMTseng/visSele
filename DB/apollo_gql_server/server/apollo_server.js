@@ -65,7 +65,29 @@ app.ws('/insert', function(ws, req) {
             console.log('[WS][RX][X_JSON],RX_MSG=', msg);
         }
         else{
-            mdb_connector.insertOne("Inspection",RX_JSON);
+            let req_id = RX_JSON.req_id;
+
+            switch(RX_JSON.dbcmd.db_action)
+            {
+                case "insert":
+                    mdb_connector.insertOne("df",RX_JSON.data).
+                        then((prod)=>{
+                            ws.send(JSON.stringify({
+                                type:"ACK",
+                                req_id:req_id,
+                            }));
+                            console.log("[O]DF InsertOK!!");
+                        }).
+                        catch((err)=>{
+                            ws.send(JSON.stringify({
+                                type:"NAK",
+                                req_id:req_id,
+                                error:err
+                            }));
+                            console.log("[X]DF InsertFailed!!",err);
+                        });
+                break;
+            }
             // idb_connector.insertOne("Inspection",RX_JSON);
             // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
             // var result = Object.assign({},msg, {"TS":new BSNO.Timestamp()});
@@ -75,14 +97,56 @@ app.ws('/insert', function(ws, req) {
     });
 
 });
-app.ws('/insert_df', function(ws, req) {
+
+
+
+
+
+app.ws('/query/def', function(ws, req) {
+    ws.on('message', function(msg) {
+        console.log("[WS][/query],RX_MSG=",msg);
+        ws.send(msg);
+    });
+    console.log('socket echo,RX_MSG=', req.testing);
+    mdb_connector.find({
+        ts: {
+            $gte: ISODate("2017-02-02 00:00:00").getTime(),
+            $lt: ISODate("2017-02-05 00:00:00").getTime()
+        }
+    });
+});
+app.ws('/insert/def', function(ws, req) {
     ws.on('message', function(msg) {
         var RX_JSON=isJSON(msg);
+
+
         if(RX_JSON===false){
             console.log('[WS][RX][X_JSON],RX_MSG=', msg);
         }
         else{
-            mdb_connector.upsertOne("df",RX_JSON);
+            let req_id = RX_JSON.req_id;
+
+            switch(RX_JSON.dbcmd.db_action)
+            {
+                case "insert":
+                    mdb_connector.upsertOne("df",RX_JSON.data).
+                        then((prod)=>{
+                            ws.send(JSON.stringify({
+                                type:"ACK",
+                                req_id:req_id
+                            }));
+                            console.log("[O]DF InsertOK!!");
+                        }).
+                        catch((err)=>{
+                            ws.send(JSON.stringify({
+                                type:"NAK",
+                                req_id:req_id,
+                                error:err
+                            }));
+                            console.log("[X]DF InsertFailed!!",err);
+                        });
+                break;
+            }
             // idb_connector.insertOne("Inspection",RX_JSON);
             // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
             // var result = Object.assign({},msg, {"TS":new BSNO.Timestamp()});
