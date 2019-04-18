@@ -14,7 +14,7 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {round as roundX,websocket_autoReconnect} from 'UTIL/MISC_Util';
+import {round as roundX,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
 import 'antd/dist/antd.css';
 import * as log from 'loglevel';
@@ -145,8 +145,8 @@ class APP_DEFCONF_MODE extends React.Component{
     this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath+".bmp"});
     
 
-    
-    this.WS_DEF_DB_Insert=new websocket_autoReconnect("ws://hyv.decade.tw:8080/insert_df",10000);
+    let _ws=new websocket_autoReconnect("ws://hyv.decade.tw:8080/insert/def",10000);
+    this.WS_DEF_DB_Insert=new websocket_reqTrack(_ws);
 
     this.WS_DEF_DB_Insert.onreconnection=(reconnectionCounter)=>{
         log.info("onreconnection"+reconnectionCounter);
@@ -154,7 +154,7 @@ class APP_DEFCONF_MODE extends React.Component{
         return true;
     };
     this.WS_DEF_DB_Insert.onopen=()=>log.info("WS_DEF_DB_Insert:onopen");
-    this.WS_DEF_DB_Insert.onmessage=(msg)=>log.info("WS_DEF_DB_Insert:onmessage::"+msg);
+    this.WS_DEF_DB_Insert.onmessage=(msg)=>log.info("WS_DEF_DB_Insert:onmessage::",msg);
     this.WS_DEF_DB_Insert.onconnectiontimeout=()=>log.info("WS_DEF_DB_Insert:onconnectiontimeout");
     this.WS_DEF_DB_Insert.onclose=()=>log.info("WS_DEF_DB_Insert:onclose");
     this.WS_DEF_DB_Insert.onerror=()=>log.info("WS_DEF_DB_Insert:onerror");
@@ -401,10 +401,12 @@ class APP_DEFCONF_MODE extends React.Component{
 
 
               var msg_obj = {
-                dbcmd:{"db_action":"insert","checked":true},
+                dbcmd:{"db_action":"insert"},
                 data:report
               };
-              this.WS_DEF_DB_Insert.send(JSON.stringify(msg_obj));
+              this.WS_DEF_DB_Insert.send_obj(msg_obj).
+                then((ret)=>console.log('then',ret)).
+                catch((ret)=>console.log("catch",ret));
               
               },fileSelectFooter:
               <div>ddd</div>

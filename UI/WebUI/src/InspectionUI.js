@@ -9,7 +9,7 @@ import ReactResizeDetector from 'react-resize-detector';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import {websocket_autoReconnect} from 'UTIL/MISC_Util';
+import {websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
@@ -121,18 +121,21 @@ class RAW_InspectionReportPull extends React.Component {
         //this.state.WS_DB_Query.send("{date:2019}");
     }
     send2WS_Insert(data){
+        console.log("send2WS_Insert");
         if(this.WS_DB_Insert===undefined)return;
+        console.log("readyState:"+this.WS_DB_Insert.readyState);
         if(this.WS_DB_Insert.readyState===WebSocket.OPEN){
                 
             var msg_obj = {
                 dbcmd:{"db_action":"insert","checked":true},
                 data
             };
-            var msg = JSON.stringify(msg_obj);
-            this.WS_DB_Insert.send(msg);
+            this.WS_DB_Insert.send_obj(msg_obj).
+            then((ret)=>console.log('then',ret)).
+            catch((ret)=>console.log("catch",ret));
 
-            let ls_len=this.handleLocalStorage(msg);
-            console.log("[LocalStorage len=]",ls_len);
+            //let ls_len=this.handleLocalStorage(msg);
+            //console.log("[LocalStorage len=]",ls_len);
 
         }
         else
@@ -146,12 +149,13 @@ class RAW_InspectionReportPull extends React.Component {
     }
 
     websocketConnect(url = "ws://hyv.decade.tw:8080/") {
-        console.log("[init][WS]" + url);
 
 
         if(this.WS_DB_Insert===undefined)
         {
-            this.WS_DB_Insert=new websocket_autoReconnect(url+"insert",10000);
+            console.log("[init][WS]" + url+"insert/insp");
+            let _ws=new websocket_autoReconnect(url+"insert/insp",10000);
+            this.WS_DB_Insert=new websocket_reqTrack(_ws);
 
             this.WS_DB_Insert.onreconnection=(reconnectionCounter)=>{
                 log.info("onreconnection"+reconnectionCounter);
@@ -169,7 +173,10 @@ class RAW_InspectionReportPull extends React.Component {
 
         if(this.WS_DB_Query===undefined)
         {
-            this.WS_DB_Query=new websocket_autoReconnect(url+"query",10000);
+            
+            console.log("[init][WS]" + url+"query/insp");
+            let _ws=new websocket_autoReconnect(url+"query/insp",10000);
+            this.WS_DB_Query=new websocket_reqTrack(_ws);
 
             
             this.WS_DB_Query.onreconnection=(reconnectionCounter)=>{
@@ -195,7 +202,6 @@ class RAW_InspectionReportPull extends React.Component {
     }
     onOpen(ev) {
         console.log("onOpen RAW_InspectionReportPull");
-        this.WS_DB_Insert.send("IUI:onOpened");
 
     }
     onMessage(ev) {

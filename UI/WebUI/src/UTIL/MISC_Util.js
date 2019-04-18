@@ -179,7 +179,7 @@ export class websocket_autoReconnect{
       this._connect(this.url);
     }
   }
-  close(url) {
+  close() {
     this.wsclose=true;
     
     if(this.connectionTimer!==undefined)
@@ -194,5 +194,111 @@ export class websocket_autoReconnect{
 
   send(data){
     return this.websocket.send(data);
+  }
+}
+
+export class websocket_reqTrack{
+  constructor(websocket) {
+    let onopen = websocket.onopen;
+    let onmessage = websocket.onmessage;
+    let onerror = websocket.onerror;
+    let onclose = websocket.onclose;
+
+    this.trackWindow={};
+
+    websocket.onopen=(ev)=>{
+      this.readyState=this.websocket.readyState;
+      this.onopen(ev);
+    };
+    websocket.onclose=(ev)=>{
+      this.readyState=this.websocket.readyState;
+      this.onclose(ev);
+    };
+    websocket.onmessage=(ev)=>{
+      this.readyState=this.websocket.readyState;
+      let p = JSON.parse(ev.data);
+      let type=p.type;
+      if(type=="ACK" || type=="NAK")
+      {
+        let req_id=p.req_id;
+        if(req_id!==undefined)
+        {
+          let tobj = this.trackWindow[req_id];
+          if(tobj!==undefined)
+          {
+            delete this.trackWindow[req_id];
+            if(type=="ACK")
+            {
+              tobj.resolve(p);
+            }
+            else
+            {
+              tobj.reject(p);
+            }
+          }
+          else
+          {
+            req_id=undefined;
+          }
+        }
+        
+        if(req_id===undefined){
+          
+          this.onTrackError({
+            type:"ACK_TRACK_ERR",
+            data:p
+          });
+        }
+      }
+      this.onmessage(ev,p);
+    };
+    websocket.onerror=(ev)=>{
+      this.readyState=this.websocket.readyState;
+      this.onerror(ev);
+    };
+    this.websocket=websocket;
+  }
+  
+  onTrackError(ev){}
+
+  onopen(ev){}
+  onmessage(ev){}
+  onerror(ev){}
+  onclose(ev){}
+
+
+  
+  close() {
+    return this.websocket.close();
+  }
+
+  send_obj(data){
+
+    let req_id = data.req_id;
+
+    while(req_id===undefined||
+      Object.keys(this.trackWindow).reduce((match,id)=>match||ids === req_id,false))
+      //Check existance
+    {
+      //if req_id is undefined / exists in the lookup table
+      req_id = Math.floor(Math.random()*16777215).toString(16);
+    }
+    data.req_id = req_id;
+
+
+    this.websocket.send(JSON.stringify(data));
+  
+    let trackObj={
+      time:Date.now(),
+      resolve:undefined,
+      reject:undefined,
+      data:data,
+      rsp:undefined
+    };
+    this.trackWindow[req_id]=trackObj;
+    return new Promise((resolve, reject)=>{
+      trackObj.resolve=resolve;
+      trackObj.reject=reject;
+    });
   }
 }
