@@ -44,7 +44,7 @@ app.ws('/', function(ws, req) {
     });
     console.log('socket /', req.testing);
 });
-app.ws('/query', function(ws, req) {
+app.ws('/query/insp', function(ws, req) {
     ws.on('message', function(msg) {
         console.log("[WS][/query],RX_MSG=",msg);
         ws.send(msg);
@@ -58,7 +58,7 @@ app.ws('/query', function(ws, req) {
     });
 });
 
-app.ws('/insert', function(ws, req) {
+app.ws('/insert/insp', function(ws, req) {
     ws.on('message', function(msg) {
         var RX_JSON=isJSON(msg);
         if(RX_JSON===false){
@@ -75,16 +75,18 @@ app.ws('/insert', function(ws, req) {
                             ws.send(JSON.stringify({
                                 type:"ACK",
                                 req_id:req_id,
+                                dbcmd:RX_JSON.dbcmd
                             }));
-                            console.log("[O]DF InsertOK!!");
+                            console.log("[O]INSP InsertOK!!");
                         }).
                         catch((err)=>{
                             ws.send(JSON.stringify({
                                 type:"NAK",
                                 req_id:req_id,
-                                error:err
+                                error:err,
+                                dbcmd:RX_JSON.dbcmd
                             }));
-                            console.log("[X]DF InsertFailed!!",err);
+                            console.log("[X]INSP InsertFailed!!",err);
                         });
                 break;
                 default:
