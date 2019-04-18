@@ -141,7 +141,8 @@ app.ws('/insert/def', function(ws, req) {
                         then((prod)=>{
                             ws.send(JSON.stringify({
                                 type:"ACK",
-                                req_id:req_id
+                                req_id:req_id,
+                                dbcmd:RX_JSON.dbcmd
                             }));
                             console.log("[O]DF InsertOK!!");
                         }).
@@ -149,6 +150,7 @@ app.ws('/insert/def', function(ws, req) {
                             ws.send(JSON.stringify({
                                 type:"NAK",
                                 req_id:req_id,
+                                dbcmd:RX_JSON.dbcmd,
                                 error:err
                             }));
                             console.log("[X]DF InsertFailed!!",err);
@@ -158,6 +160,8 @@ app.ws('/insert/def', function(ws, req) {
                 default:
                     ws.send(JSON.stringify({
                         type:"NAK",
+                        dbcmd:RX_JSON.dbcmd,
+                        error:"Error: db_action("+RX_JSON.dbcmd.db_action+") is not defind.",
                         req_id:req_id,
                     }));
                 break
