@@ -87,7 +87,15 @@ app.ws('/insert', function(ws, req) {
                             console.log("[X]DF InsertFailed!!",err);
                         });
                 break;
+                default:
+                    ws.send(JSON.stringify({
+                        type:"NAK",
+                        req_id:req_id,
+                    }));
+                break
             }
+
+
             // idb_connector.insertOne("Inspection",RX_JSON);
             // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
             // var result = Object.assign({},msg, {"TS":new BSNO.Timestamp()});
@@ -145,7 +153,14 @@ app.ws('/insert/def', function(ws, req) {
                             }));
                             console.log("[X]DF InsertFailed!!",err);
                         });
+
                 break;
+                default:
+                    ws.send(JSON.stringify({
+                        type:"NAK",
+                        req_id:req_id,
+                    }));
+                break
             }
             // idb_connector.insertOne("Inspection",RX_JSON);
             // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
