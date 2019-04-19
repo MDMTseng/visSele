@@ -45,15 +45,47 @@ app.ws('/', function(ws, req) {
     console.log('socket /', req.testing);
 });
 app.ws('/query/insp', function(ws, req) {
+
     ws.on('message', function(msg) {
-        console.log("[WS][/query],RX_MSG=",msg);
-        ws.send(msg);
-    });
-    console.log('socket echo,RX_MSG=', req.testing);
-    mdb_connector.find({
-        ts: {
-            $gte: ISODate("2017-02-02 00:00:00").getTime(),
-            $lt: ISODate("2017-02-05 00:00:00").getTime()
+        var RX_JSON=isJSON(msg);
+        if(RX_JSON===false){
+            console.log('[WS][RX][X_JSON],RX_MSG=', msg);
+        }
+        else{
+            let req_id = RX_JSON.req_id;
+            //console.log(RX_JSON.dbcmd.cmd);
+            switch(RX_JSON.dbcmd.db_action)
+            {
+                case "query":
+                    mdb_connector.query("inspection",RX_JSON.dbcmd.cmd).
+                        then((res)=>{
+
+                            //console.log(res);
+                            ws.send(JSON.stringify({
+                                type:"ACK",
+                                req_id:req_id,
+                                dbcmd:RX_JSON.dbcmd,
+                                result:res
+                            }));
+                            console.log("[O]INSP InsertOK!!");
+                        }).
+                        catch((err)=>{
+                            ws.send(JSON.stringify({
+                                type:"NAK",
+                                req_id:req_id,
+                                error:err,
+                                dbcmd:RX_JSON.dbcmd
+                            }));
+                            console.log("[X]DEF QueryFailed!!",err);
+                        });
+                break;
+                default:
+                    ws.send(JSON.stringify({
+                        type:"NAK",
+                        req_id:req_id,
+                    }));
+                break
+            }
         }
     });
 });
@@ -70,7 +102,7 @@ app.ws('/insert/insp', function(ws, req) {
             switch(RX_JSON.dbcmd.db_action)
             {
                 case "insert":
-                    mdb_connector.insertOne("df",RX_JSON.data).
+                    mdb_connector.insertOne("Inspection",RX_JSON.data).
                         then((prod)=>{
                             ws.send(JSON.stringify({
                                 type:"ACK",
@@ -96,13 +128,6 @@ app.ws('/insert/insp', function(ws, req) {
                     }));
                 break
             }
-
-
-            // idb_connector.insertOne("Inspection",RX_JSON);
-            // console.log('[WS][RX][O_JSON],RX_MSG=', msg);
-            // var result = Object.assign({},msg, {"TS":new BSNO.Timestamp()});
-            // var RX_JSON_TS=Object.assign({TS: new Timestamp()}, RX_JSON);
-            // var RX_JSON_TS=Object.assign({ timestamps: true }, RX_JSON);
         }
     });
 
@@ -114,14 +139,45 @@ app.ws('/insert/insp', function(ws, req) {
 
 app.ws('/query/def', function(ws, req) {
     ws.on('message', function(msg) {
-        console.log("[WS][/query],RX_MSG=",msg);
-        ws.send(msg);
-    });
-    console.log('socket echo,RX_MSG=', req.testing);
-    mdb_connector.find({
-        ts: {
-            $gte: ISODate("2017-02-02 00:00:00").getTime(),
-            $lt: ISODate("2017-02-05 00:00:00").getTime()
+        var RX_JSON=isJSON(msg);
+        if(RX_JSON===false){
+            console.log('[WS][RX][X_JSON],RX_MSG=', msg);
+        }
+        else{
+            let req_id = RX_JSON.req_id;
+            //console.log(RX_JSON.dbcmd.cmd);
+            switch(RX_JSON.dbcmd.db_action)
+            {
+                case "query":
+                    mdb_connector.query("df",RX_JSON.dbcmd.cmd).
+                        then((res)=>{
+
+                            //console.log(res);
+                            ws.send(JSON.stringify({
+                                type:"ACK",
+                                req_id:req_id,
+                                dbcmd:RX_JSON.dbcmd,
+                                result:res
+                            }));
+                            console.log("[O]INSP InsertOK!!");
+                        }).
+                        catch((err)=>{
+                            ws.send(JSON.stringify({
+                                type:"NAK",
+                                req_id:req_id,
+                                error:err,
+                                dbcmd:RX_JSON.dbcmd
+                            }));
+                            console.log("[X]DEF QueryFailed!!",err);
+                        });
+                break;
+                default:
+                    ws.send(JSON.stringify({
+                        type:"NAK",
+                        req_id:req_id,
+                    }));
+                break
+            }
         }
     });
 });
