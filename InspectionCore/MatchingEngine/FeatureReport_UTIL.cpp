@@ -11,6 +11,10 @@ cJSON* acv_acv_XY2JSON(acv_XY pt )
   return xy;
 }
 
+float round_dec(float num, int round_mult)
+{
+  return roundf(round_mult * num) / round_mult;
+}
 
 cJSON* acv_LineFit2JSON(cJSON* Line_jobj, const acv_LineFit line, acv_XY center_offset )
 {
@@ -251,6 +255,21 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   return report_jobj;
 }
 
+int cameraCalib2JSON(cJSON* jobj,acvRadialDistortionParam param)
+{
+  {
+    cJSON_AddNumberToObject(jobj, "K0", param.K0);
+    cJSON_AddNumberToObject(jobj, "K1", param.K1);
+    cJSON_AddNumberToObject(jobj, "K2", param.K2);
+    cJSON_AddNumberToObject(jobj, "ppb2b", param.ppb2b);
+    cJSON_AddNumberToObject(jobj, "mmpb2b", param.mmpb2b);
+    cJSON_AddNumberToObject(jobj, "RNormalFactor", param.RNormalFactor);
+    cJSON_AddItemToObject(jobj, "calibrationCenter", acv_acv_XY2JSON(param.calibrationCenter));
+  }
+  return 0;
+}
+
+
 cJSON* MatchingReport2JSON(const FeatureReport *report )
 {
 
@@ -285,7 +304,11 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       }*/
 
       cJSON_AddNumberToObject(report_jobj, "error", report->data.binary_processing_group.error);
+
       
+      cJSON_AddNumberToObject(report_jobj, "mmpp", report->data.binary_processing_group.mmpp);
+
+
       cJSON_AddStringToObject(report_jobj, "subFeatureDefSha1", report->data.binary_processing_group.subFeatureDefSha1);
       cJSON* reports_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
@@ -307,10 +330,16 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
 
       cJSON_AddNumberToObject(report_jobj, "error", report->data.sig360_extractor.error);
       cJSON_AddNumberToObject(report_jobj, "area", report->data.sig360_extractor.area);
-      cJSON_AddNumberToObject(report_jobj, "scale", report->data.sig360_extractor.scale);
+      cJSON_AddNumberToObject(report_jobj, "mmpp", report->data.sig360_extractor.mmpp);
       cJSON_AddNumberToObject(report_jobj, "cx", report->data.sig360_extractor.Center.X);
       cJSON_AddNumberToObject(report_jobj, "cy", report->data.sig360_extractor.Center.Y);
 
+      {
+        cJSON* cam_param = cJSON_CreateObject();
+        cJSON_AddItemToObject(report_jobj, "cam_param", cam_param);
+        cameraCalib2JSON(cam_param,report->data.sig360_extractor.calib_param);
+      }
+      
       const vector<acv_CircleFit> *detectedCircle =
       report->data.sig360_extractor.detectedCircles;
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_sig360_extractor::GetFeatureTypeName());
@@ -358,14 +387,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       cJSON_AddNumberToObject(report_jobj, "error", report->data.camera_calibration.error);
       if(report->data.camera_calibration.error==FeatureReport_ERROR::NONE)
       {
-        acvRadialDistortionParam param = report->data.camera_calibration.param;
-        cJSON_AddNumberToObject(report_jobj, "K0", param.K0);
-        cJSON_AddNumberToObject(report_jobj, "K1", param.K1);
-        cJSON_AddNumberToObject(report_jobj, "K2", param.K2);
-        cJSON_AddNumberToObject(report_jobj, "ppb2b", param.ppb2b);
-        cJSON_AddNumberToObject(report_jobj, "mmpb2b", param.mmpb2b);
-        cJSON_AddNumberToObject(report_jobj, "RNormalFactor", param.RNormalFactor);
-        cJSON_AddItemToObject(report_jobj, "calibrationCenter", acv_acv_XY2JSON(param.calibrationCenter));
+        cameraCalib2JSON(report_jobj,report->data.camera_calibration.param);
       }
 
     }

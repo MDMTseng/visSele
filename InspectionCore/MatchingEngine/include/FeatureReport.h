@@ -26,6 +26,7 @@ typedef struct {
   vector<const FeatureReport*> *reports;
   FeatureReport_ERROR error;
   char *subFeatureDefSha1;
+  float mmpp;
 } FeatureReport_binary_processing_group;
 
 typedef struct featureDef_circle{
@@ -204,7 +205,9 @@ typedef struct FeatureReport_sig360_extractor{
   int area;
   float rotate;
   bool  isFlipped;
-  float scale;
+  float mmpp;
+  acvRadialDistortionParam calib_param;
+  
   
   FeatureReport_ERROR error;
 };

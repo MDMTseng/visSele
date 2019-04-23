@@ -217,7 +217,7 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.data.binary_processing_group.reports = &sub_reports;
   report.data.binary_processing_group.labeledData = &ldData;
   report.data.binary_processing_group.subFeatureDefSha1 = subFeatureDefSha1;
-  
+  report.data.binary_processing_group.mmpp = param.mmpb2b/param.ppb2b;
   return &report;
 }
 

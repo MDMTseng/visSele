@@ -195,6 +195,10 @@ const FeatureReport* FeatureManager_sig360_extractor::GetReport()
   report.data.sig360_extractor.signature = &signature;
   report.data.sig360_extractor.detectedCircles = &detectedCircles;
   report.data.sig360_extractor.detectedLines = &detectedLines;
+  
+  report.data.sig360_extractor.mmpp = param.mmpb2b/param.ppb2b;
+  report.data.sig360_extractor.calib_param = param;
+
   return &report;
 }
 
