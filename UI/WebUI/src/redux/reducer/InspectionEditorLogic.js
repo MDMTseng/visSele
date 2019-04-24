@@ -83,15 +83,15 @@ export class InspectionEditorLogic
     this.state=null;
 
     
-    this.sig360report=null;
+    this.sig360info=null;
     this.inspreport=null;
     this.img=null;
   }
 
-  SetSig360Report(sig360report)
+  Setsig360info(sig360info)
   {
-    log.debug(sig360report);
-    this.sig360report=sig360report;
+    log.info(sig360info);
+    this.sig360info=sig360info;
   }
   SetInspectionReport(inspreport)
   {
@@ -135,15 +135,27 @@ export class InspectionEditorLogic
     );
 
   }
-  
 
-  getSig360ReportCenter()
+  getsig360info_mmpp()
+  {
+    try{
+      console.log(this.sig360info);
+      return this.sig360info.reports[0].mmpp;
+
+    }catch(e)
+    {
+    }
+
+    return 1;
+  }
+
+  getsig360infoCenter()
   {
     
     let center = {x:0,y:0};
     try{
-      center.x = this.sig360report.reports[0].cx;
-      center.y = this.sig360report.reports[0].cy;
+      center.x = this.sig360info.reports[0].cx;
+      center.y = this.sig360info.reports[0].cy;
 
     }catch(e)
     {
@@ -172,21 +184,23 @@ export class InspectionEditorLogic
     this.SetShapeList(defInfo.features);
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
-    let sig360Info = defInfo.inherentfeatures[0];
+    let sig360info = defInfo.inherentfeatures[0];
 
-    sig360Info.signature.magnitude=sig360Info.signature.magnitude.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places //to 0.001mm/1um
-    sig360Info.signature.angle=sig360Info.signature.angle.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places// 0.001*180/pi=0.057 deg
+    sig360info.signature.magnitude=sig360info.signature.magnitude.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places //to 0.001mm/1um
+    sig360info.signature.angle=sig360info.signature.angle.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places// 0.001*180/pi=0.057 deg
     
 
-    this.SetSig360Report(
+    this.Setsig360info(
       {
         reports:[
           {
-            cx:sig360Info.pt1.x,
-            cy:sig360Info.pt1.y,
-            area:sig360Info.area,
-            orientation:sig360Info.orientation,
-            signature:sig360Info.signature,
+            cx:sig360info.pt1.x,
+            cy:sig360info.pt1.y,
+            area:sig360info.area,
+            orientation:sig360info.orientation,
+            signature:sig360info.signature,
+            mmpp:defInfo.mmpp,
+            cam_param:defInfo.cam_param,
           }
         ]
       }
@@ -239,8 +253,8 @@ export class InspectionEditorLogic
   UpdateInherentShapeList()
   {
     this.inherentShapeList=[];
-    if(this.sig360report===null || this.sig360report === undefined)return;
-    let setupTarget=this.sig360report.reports[0];
+    if(this.sig360info===null || this.sig360info === undefined)return;
+    let setupTarget=this.sig360info.reports[0];
     
     log.debug(setupTarget);
     let id=100000;
@@ -306,9 +320,10 @@ export class InspectionEditorLogic
       featureSet:[
       {
         "type":"sig360_circle_line",
-        "ver":"0.0.0.0",
+        "ver":"0.0.1.0",
         "unit":"px",
-        "mmpp":0.01,//TODO:The mmpp need to be measured to get more accurate
+        "mmpp":this.sig360info.reports[0].mmpp,
+        cam_param:this.sig360info.reports[0].cam_param,
         features:this.shapeList,
         inherentfeatures:this.inherentShapeList
       }]

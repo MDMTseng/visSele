@@ -44,77 +44,6 @@ let zhTW = Object.assign({},zh_TW,EC_zh_TW);
 
 let StoreX= ReduxStoreSetUp({});
     
-function map_BPG_Packet2Act(parsed_packet)
-{
-  let acts=[];
-  switch(parsed_packet.type )
-  {
-    case "HR":
-    {
-      /*//log.info(this.props.WS_CH);
-      this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
-      
-      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
-      break;*/
-    }
-
-    case "SS":
-    {
-      break;
-    }
-    case "IM":
-    {
-      let pkg = parsed_packet;
-      let img = new ImageData(pkg.image, pkg.width);
-      
-      acts.push(UIAct.EV_WS_Image_Update(img));
-      break;
-    }
-    case "IR":
-    case "RP":
-    {
-      let report =parsed_packet;
-      acts.push(UIAct.EV_WS_Inspection_Report(report.data));
-      break;
-    }
-    case "DF":
-    {
-      let report =parsed_packet;
-      log.debug(report.type,report);
-      
-      acts.push(UIAct.EV_WS_Define_File_Update(report.data));
-      break;
-    }
-    case "FL":
-    {
-      let report =parsed_packet;
-      log.error(report.type,report);
-      if(report.data.type === "binary_processing_group" )
-      {
-        
-        acts.push(UIAct.EV_WS_Inspection_Report(report.data));
-      }
-      break;
-    }
-    case "SG":
-    {
-      let report =parsed_packet;
-      log.debug(report.type,report);
-      acts.push(UIAct.EV_WS_SIG360_Report_Update(report.data));
-      break;
-    }
-    default:
-    {
-      let report =parsed_packet;
-      act = (report);
-    }
-
-
-
-  }
-  return acts[0];
-}
-
 class APPMasterX extends React.Component{
 
   static mapDispatchToProps(dispatch, ownProps){
@@ -225,7 +154,7 @@ class APPMasterX extends React.Component{
         {//Not in tracking window, just Dispatch it
           if(parsed_pkt!==undefined)
           {
-            let act=map_BPG_Packet2Act(parsed_pkt);
+            let act=BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
             if(act!==undefined)
               this.props.DISPATCH(act);
           }
@@ -252,7 +181,7 @@ class APPMasterX extends React.Component{
                 this.props.DISPATCH({
                   type:"ATBundle",
                   ActionThrottle_type:"express",
-                  data:req_pkt.pkts.map(pkt=>map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
+                  data:req_pkt.pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
                   rawData:req_pkt
                 })
                 // req_pkt.pkts.forEach((pkt)=>

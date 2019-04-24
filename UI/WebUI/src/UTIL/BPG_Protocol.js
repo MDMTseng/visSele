@@ -1,4 +1,5 @@
 
+import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 
 const BPG_header_L = 9;
 let raw2header=(ws_evt, offset = 0)=>{
@@ -116,9 +117,82 @@ export const INSPECTION_STATUS = {
 
 
 
+function map_BPG_Packet2Act(parsed_packet)
+{
+  let acts=[];
+  switch(parsed_packet.type )
+  {
+    case "HR":
+    {
+      /*//log.info(this.props.WS_CH);
+      this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+      
+      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
+      break;*/
+    }
+
+    case "SS":
+    {
+      break;
+    }
+    case "IM":
+    {
+      let pkg = parsed_packet;
+      let img = new ImageData(pkg.image, pkg.width);
+      
+      acts.push(UIAct.EV_WS_Image_Update(img));
+      break;
+    }
+    case "IR":
+    case "RP":
+    {
+      let report =parsed_packet;
+      acts.push(UIAct.EV_WS_Inspection_Report(report.data));
+      break;
+    }
+    case "DF":
+    {
+      let report =parsed_packet;
+      //log.debug(report.type,report);
+      
+      acts.push(UIAct.EV_WS_Define_File_Update(report.data));
+      break;
+    }
+    case "FL":
+    {
+      let report =parsed_packet;
+      //log.error(report.type,report);
+      if(report.data.type === "binary_processing_group" )
+      {
+        
+        acts.push(UIAct.EV_WS_Inspection_Report(report.data));
+      }
+      break;
+    }
+    case "SG":
+    {
+      let report =parsed_packet;
+      //log.debug(report.type,report);
+      acts.push(UIAct.EV_WS_SIG360_Report_Update(report.data));
+      break;
+    }
+    default:
+    {
+      let report =parsed_packet;
+      act = (report);
+    }
+
+
+
+  }
+  return acts[0];
+}
+
+
+
 export const DEF_EXTENSION = "hydef";
 
-export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw,INSPECTION_STATUS }
+export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw,INSPECTION_STATUS,map_BPG_Packet2Act }
 
 //let binaryX = BPG_Protocol.obj2raw("TC",{a:1,b:{c:2}});
 //console.log(BPG_Protocol.raw2obj({data:binaryX.buffer}));

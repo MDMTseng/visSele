@@ -79,6 +79,7 @@ export const UI_SM_EVENT = {
   Image_Update:"Image_Update",
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
+  SIG360_Extraction:"SIG360_Extraction",
 
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
@@ -206,6 +207,16 @@ export function EV_WS_Define_File_Update(DFData)
     type: UI_SM_EVENT.Define_File_Update ,data:DFData
   }
 }
+
+
+export function EV_WS_SIG360_Extraction(data)
+{
+  return {
+    type: UI_SM_EVENT.SIG360_Extraction ,data:data
+  }
+}
+
+
 export function EV_WS_SIG360_Report_Update(data)
 {
   return {

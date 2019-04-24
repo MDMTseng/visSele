@@ -31,7 +31,7 @@ function Edit_info_reset(newState)
       newAddedReport:[],
       statisticValue:undefined
     },
-    sig360report:[],
+    sig360info:[],
     img:null,
     DefFileName:"",
     DefFileHash:"",
@@ -86,7 +86,7 @@ function Default_UICtrlReducer()
         newAddedReport:[],
         statisticValue:undefined
       },
-      sig360report:[],
+      sig360info:[],
       img:null,
       DefFileName:"",
       list:[],
@@ -696,9 +696,11 @@ function StateReducer(newState,action)
         }
         break;
         case UISEV.SIG360_Report_Update:
+        case UISEV.SIG360_Extraction:
           newState.edit_info=Object.assign({},newState.edit_info);
-          newState.edit_info._obj.SetSig360Report(action.data);
-          newState.edit_info.sig360report = newState.edit_info._obj.sig360report;
+          console.log(action.data);
+          newState.edit_info._obj.Setsig360info(action.data);
+          newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
         break;
 
         case DefConfAct.EVENT.Shape_List_Update:

@@ -10,6 +10,7 @@ let BPG_FileSavingBrowser=BASE_COM.BPG_FileSavingBrowser;
 
 import ReactResizeDetector from 'react-resize-detector';
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
+import BPG_Protocol from 'UTIL/BPG_Protocol.js'; 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';  
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -436,7 +437,21 @@ class APP_DEFCONF_MODE extends React.Component{
           addClass="layout palatte-purple-8 vbox"
           key="TAKE"
           text="take" onClick={()=>{
-              this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{});
+              new Promise((resolve, reject) => {
+                this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{},
+                undefined,{resolve,reject});
+                setTimeout(()=>reject("Timeout"),1000)
+              })
+              .then((pkts) => {
+                  this.props.DISPATCH({
+                    type:"ATBundle",
+                    ActionThrottle_type:"express",
+                    data:pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined)
+                  })
+              })
+              .catch((err) => {
+                log.info(err);
+              })
               this.props.ACT_Shape_List_Reset();
           }}/>,
               
@@ -769,6 +784,11 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
       dispatch(UIAct.EV_WS_SEND(id,"SV",0,
           {filename:fileName, type:"__CACHE_IMG__"}
       ));
+    },
+    ACT_SIG360_Extraction:(report)=>dispatch(UIAct.EV_WS_SIG360_Extraction(report))
+    ,
+    DISPATCH:(act)=>{
+      dispatch(act)
     },
   }
 }

@@ -1275,7 +1275,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.setMatrix(ctx,matrix); 
     
     {
-      let center = this.db_obj.getSig360ReportCenter();
+      let center = this.db_obj.getsig360infoCenter();
       //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
       ctx.translate(-center.x,-center.y);
@@ -1390,7 +1390,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
     
-    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    let mmpp = this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp=mmpp;
   }
 
@@ -1666,7 +1666,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
     this.SetEditShape( edit_DB_info.edit_tar_info );
     
-    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    let mmpp = this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp=mmpp;
   }
 
@@ -1767,7 +1767,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.setMatrix(ctx,matrix); 
     
     {
-      let center = this.db_obj.getSig360ReportCenter();
+      let center = this.db_obj.getsig360infoCenter();
       //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
       ctx.translate(-center.x,-center.y);
