@@ -185,7 +185,22 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
   return retObj;
 }
 
+machine_hash machine_h={0};
+void AttachStaticInfo(cJSON *reportJson)
+{
+  if(reportJson==NULL)return;
+  char tmpStr[128];
 
+  {
+    char *tmpStr_ptr=tmpStr;
+    for(int i=0;i<sizeof(machine_h.machine);i++)
+    {
+      tmpStr_ptr+=sprintf(tmpStr_ptr,"%02X",machine_h.machine[i]);
+    }
+    cJSON_AddStringToObject(reportJson, "machine_hash", tmpStr);
+  }
+
+}
 
 
 int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_param)
@@ -739,6 +754,7 @@ public:
                   if(report!=NULL)
                   {
                     cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                    AttachStaticInfo(jobj);
                     char * jstr  = cJSON_Print(jobj);
                     cJSON_Delete(jobj);
 
@@ -912,6 +928,7 @@ public:
                   if(report!=NULL)
                   {
                     cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                    AttachStaticInfo(jobj);
                     char * jstr  = cJSON_Print(jobj);
                     cJSON_Delete(jobj);
 
@@ -1334,6 +1351,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         if(report!=NULL)
         {
           cJSON* jobj = matchingEng.FeatureReport2Json(report);
+          AttachStaticInfo(jobj);
           char * jstr  = cJSON_Print(jobj);
           cJSON_Delete(jobj);
 
@@ -1690,6 +1708,7 @@ int simpleTest(char *imgName, char *defName)
   if(report!=NULL)
   {
     cJSON* jobj = matchingEng.FeatureReport2Json(report);
+    AttachStaticInfo(jobj);
     char * jstr  = cJSON_Print(jobj);
     cJSON_Delete(jobj);
     LOGI("...\n%s\n...",jstr);
@@ -1708,6 +1727,9 @@ int simpleTest(char *imgName, char *defName)
 #include <vector>
 int main(int argc, char** argv)
 {
+  
+  machine_h= get_machine_hash();
+
   srand(time(NULL));
   /*auto lambda = []() { LOGV("Hello, Lambda"); };
   lambda();*/
@@ -1767,6 +1789,7 @@ int main(int argc, char** argv)
     if(report!=NULL)
     {
       cJSON* jobj = matchingEng.FeatureReport2Json(report);
+      AttachStaticInfo(jobj);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char * jstr  = cJSON_Print(jobj);
       cJSON_Delete(jobj);

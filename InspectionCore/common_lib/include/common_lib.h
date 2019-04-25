@@ -4,6 +4,12 @@
 #include "cJSON.h"
 #include "acvImage_BasicTool.hpp"
 #include "zlib.h"
+
+typedef struct {
+    uint8_t machine[8];
+}machine_hash;
+
+
 int getDataFromJsonObj(cJSON * obj,void **ret_ptr);
 int getDataFromJsonObj(cJSON * obj,int idx,void **ret_ptr);
 int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr);
@@ -38,4 +44,5 @@ size_t RGB2BW_collapse(uint8_t *dst_bw,size_t dstLen,uint8_t *src_rgb,size_t src
 size_t BW2RGB_uncollapse(uint8_t *dst_rgb,size_t dstLen,uint8_t *src_bw,size_t srcLen);
 
 char* ReadText(const char *filename);
+machine_hash get_machine_hash();
 #endif

@@ -314,6 +314,31 @@ size_t BW2RGB_uncollapse(uint8_t *dst_rgb,size_t dstLen,uint8_t *src_bw,size_t s
 }
 
 
+uint64_t sdbm(uint8_t* str)
+{
+    uint64_t hash = 0;
+    int c;
+
+    while (c = *str++)
+        hash = c + (hash << 6) + (hash << 16) - hash;
+
+    return hash;
+}
+
+machine_hash get_machine_hash()
+{
+  machine_hash hash_info={0};
+  char* txt = ReadText("data/machine_info");
+  if(txt)
+  {
+    char *ptr=txt;
+    uint64_t hash = sdbm((uint8_t*)txt);
+    free(txt);
+    float minL = sizeof(hash)<sizeof(hash_info.machine)?sizeof(hash):sizeof(hash_info.machine);
+    memcpy(hash_info.machine,&hash,minL);
+  }
+  return hash_info;
+}
 
 
 char* ReadText(const char *filename)
