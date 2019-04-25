@@ -142,8 +142,25 @@ class APP_DEFCONF_MODE extends React.Component{
   componentDidMount()
   {
     let defModelPath = this.props.edit_info.defModelPath;
-    
-    this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath+".bmp"});
+
+    new Promise((resolve, reject) => {
+      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+      {
+        deffile:defModelPath+'.'+DEF_EXTENSION,
+        imgsrc:defModelPath+".bmp"},
+      undefined,{resolve,reject});
+      setTimeout(()=>reject("Timeout"),1000)
+    })
+    .then((pkts) => {
+        this.props.DISPATCH({
+          type:"ATBundle",
+          ActionThrottle_type:"express",
+          data:pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined)
+        })
+    })
+    .catch((err) => {
+      log.info(err);
+    })
     
 
     let _ws=new websocket_autoReconnect("ws://hyv.decade.tw:8080/insert/def",10000);
