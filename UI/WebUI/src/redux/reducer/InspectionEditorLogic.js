@@ -139,7 +139,7 @@ export class InspectionEditorLogic
   getsig360info_mmpp()
   {
     try{
-      console.log(this.sig360info);
+      //console.log(this.sig360info);
       return this.sig360info.reports[0].mmpp;
 
     }catch(e)
