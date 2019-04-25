@@ -130,6 +130,9 @@ else
 	cp $(MODULE_MindVision_GIGE)/lib/* $(EXPORT_PATH)/
 	-@[ ! -z "$(EXPORT_PATH)/data" ]&&mkdir $(EXPORT_PATH)/data || true
 	cd data ;cp featureDetect.json cameraCalibration.json $(EXPORT_PATH)/data
+	-@[ ! -z "$(EXPORT_PATH)/additional_data" ]&&mkdir $(EXPORT_PATH)/additional_data || true
+	cd data ;cp  machine_info default_camera_setting.json $(EXPORT_PATH)/additional_data
+
 endif
 
 
