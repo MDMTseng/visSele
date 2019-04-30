@@ -55,7 +55,7 @@ void setup() {
   Serial.begin(57600);
   DEBUG_print("Chat server address:");
   DEBUG_println(Ethernet.localIP());
-  setRetryTimeout(1, 10);
+  setRetryTimeout(3, 100);
 
   
 }

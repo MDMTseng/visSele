@@ -277,7 +277,7 @@ export class websocket_reqTrack{
     let req_id = data.req_id;
 
     while(req_id===undefined||
-      Object.keys(this.trackWindow).reduce((match,id)=>match||ids === req_id,false))
+      Object.keys(this.trackWindow).reduce((match,id)=>match||id === req_id,false))
       //Check existance
     {
       //if req_id is undefined / exists in the lookup table
