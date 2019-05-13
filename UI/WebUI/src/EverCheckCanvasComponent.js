@@ -37,6 +37,7 @@ class CameraCtrl
     this.matrix=new DOMMatrix();
     this.tmpMatrix=new DOMMatrix();
     this.identityMat= new  DOMMatrix();
+    this.Scale(0.1);
   }
 
   Scale(scale,center={x:0,y:0})
@@ -1195,8 +1196,8 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
   EditDBInfoSync(edit_DB_info)
   {
     this.edit_DB_info = edit_DB_info;
-    if(this.db_obj===undefined || this.db_obj==null || this.db_obj.cameraParam===undefined)return;
     this.db_obj = edit_DB_info._obj;
+    if(this.db_obj===undefined || this.db_obj==null || this.db_obj.cameraParam===undefined)return;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
     
@@ -1263,7 +1264,6 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   draw()
   {
-
     if(this.db_obj===undefined || this.db_obj==null || this.db_obj.cameraParam===undefined)return;
     let mmpp = this.rUtil.get_mmpp();
     let ctx = this.canvas.getContext('2d');

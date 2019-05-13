@@ -162,18 +162,25 @@ class APPMain extends React.Component{
           Overview:{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
-              <CanvasComponent_rdx className="HX3 WX3"/>
-              <AntButton onClick={()=>{
-                let fileSelectedCallBack=
-                  (filePath,fileInfo)=>{
-                    filePath=filePath.replace("."+DEF_EXTENSION,"");
-                    this.setState({...this.state,fileSelectedCallBack:undefined});
-                    this.props.ACT_Def_Model_Path_Update(filePath);
-                  }
-                this.setState({...this.state,fileSelectedCallBack});
-  
-              }} key="1">{"defModelPath:"+this.props.defModelPath}</AntButton>
-  
+
+              <div className="s HX6 width5">
+
+                <AntButton onClick={()=>{
+                  let fileSelectedCallBack=
+                    (filePath,fileInfo)=>{
+                      filePath=filePath.replace("."+DEF_EXTENSION,"");
+                      this.setState({...this.state,fileSelectedCallBack:undefined});
+                      this.props.ACT_Def_Model_Path_Update(filePath);
+                      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath+".bmp"});
+                    }
+                  this.setState({...this.state,fileSelectedCallBack});
+                }} className="height4 width12" key="1">
+                  {this.props.defModelPath}<br/>
+                  {this.props.defModelName}
+                </AntButton>
+                <CanvasComponent_rdx className="height8"/>
+    
+              </div>
               {(mmpp===undefined)?null:
               <AntButton  key="mmpp" onClick={()=>{
                 
@@ -296,11 +303,7 @@ class APPMain extends React.Component{
               </Content>
             </Layout>
           </Layout>
-  
-  
-  
         )
-  
       }
       else if(stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE)
       {
@@ -335,12 +338,14 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
 }
 const mapStateToProps_APPMain = (state) => {
     return { 
+        defModelName:state.UIData.edit_info.DefFileName,
         defModelPath: state.UIData.edit_info.defModelPath,
         c_state: state.UIData.c_state,
         camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
         isp_db: state.UIData.edit_info._obj,
         WS_CH:state.UIData.WS_CH,
         WS_ID:state.UIData.WS_ID
+        
     }
 }
 

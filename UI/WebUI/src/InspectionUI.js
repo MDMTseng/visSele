@@ -269,6 +269,40 @@ export const OK_NG_BOX_COLOR_TEXT = {
 };
 
 
+class InspectionResultDisplay extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+        }
+    }
+
+    render() {
+        let rep = this.props.singleInspection;
+        
+        //console.log(rep);
+        return <div className="s black" style={{"border-bottom": "6px solid red",height: 70}}>
+            <div className="s width8  HXF">
+                <div className="s height1"/>
+                <div className="s vbox height3">
+                    {rep.name}
+                </div>
+
+                <div className="s vbox  height8"  style={{'fontSize': 25}}>
+                    {rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
+                </div>
+
+            </div>
+            
+            <div className="s vbox width4 HXF">
+                <Tag style={{'fontSize': 20}}
+                        color={OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR}>
+                        {OK_NG_BOX_COLOR_TEXT[rep.detailStatus].TEXT}
+                </Tag>
+            </div>
+        </div>;
+    }
+}
+
 class OK_NG_BOX extends React.Component {
     constructor(props) {
         super(props);
@@ -385,21 +419,16 @@ class ObjInfoList extends React.Component {
 
         let resultMenu = [];
         if (this.props.IR != undefined) {
-
-
-
             resultMenu = this.props.IR.reports.map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
                 reportDetail = judgeReports.map((rep,idx_)=>
                     {
-                        return <Menu.Item key={"i"+idx+rep.name} key={idx_}>
-                            <OK_NG_BOX detailStatus={rep.detailStatus} >
-                                {""+rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
-                            </OK_NG_BOX>
-                        </Menu.Item>
+                        return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_}
+                        singleInspection = {rep}/>
                     }
                 );
+                
 
                 let finalResult = judgeReports.reduce((res, obj) => {
                         return MEASURERSULTRESION_reducer(res, obj.detailStatus);
@@ -432,14 +461,6 @@ class ObjInfoList extends React.Component {
                     defaultSelectedKeys={['functionMenu']}
                     defaultOpenKeys={['functionMenu']}
                     mode="inline">
-                    <SubMenu style={{'textAlign': 'left'}} key="DBMenu"
-                             title={<span><Icon type="setting"/><span>資料庫操作</span></span>}>
-                        <DB
-                            url={MDB_ATLAS}
-                            checkResult2AirAction={this.props.checkResult2AirAction}
-
-                        />
-                    </SubMenu>
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
                         <AirControl
@@ -1196,6 +1217,13 @@ class APP_INSP_MODE extends React.Component {
                 text="<" onClick={this.props.ACT_EXIT}/>
             ,
             <BASE_COM.IconButton
+            iconType="file"
+            key="LOADDef"
+            addClass="layout gray-1 vbox"
+            text={this.props.defModelName}
+            onClick={() => {}}/>
+            ,
+            <BASE_COM.IconButton
                 dict={EC_zh_TW}
                 iconType="bar-chart"
                 key="Info Graphs"
@@ -1212,10 +1240,10 @@ class APP_INSP_MODE extends React.Component {
         switch(this.state.GraphUIDisplayMode)
         {
             case 0:
-            CanvasWindowRatio=10;
+            CanvasWindowRatio=12;
             menuOpacity=1;
-
             break;
+
             case 1:
             CanvasWindowRatio=3;
             menuOpacity=0.3;
@@ -1224,20 +1252,14 @@ class APP_INSP_MODE extends React.Component {
             case 2:
             CanvasWindowRatio=0;
             menuOpacity=0.3;
-
-            
             break;
+
             case 3:
             CanvasWindowRatio=3;
             menuOpacity=0.3;
             break;
         }
         
-
-
-        
-            
-
         MenuSet.push(
             <BASE_COM.IconButton
             dict={EC_zh_TW}
@@ -1246,7 +1268,8 @@ class APP_INSP_MODE extends React.Component {
             addClass="layout palatte-blue-8 vbox"
             text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
             onClick={() => this.CameraCtrl.setCameraImageTransfer()}/>);
-        
+
+            
         MenuSet.push(
             <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
             key="ObjInfoList"
@@ -1268,7 +1291,7 @@ class APP_INSP_MODE extends React.Component {
                     url= "ws://hyv.decade.tw:8080/"/>
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
-                        style={{opacity:menuOpacity}}> 
+                        style={{opacity:menuOpacity,width:"250px"}}> 
                         {MenuSet}
                     </div>
                 </$CSSTG>
@@ -1295,12 +1318,12 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     return {
         c_state: state.UIData.c_state,
         shape_list: state.UIData.edit_info.list,
+        defModelName:state.UIData.edit_info.DefFileName,
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
         reportStatisticState:state.UIData.edit_info.reportStatisticState
         //reportStatisticState:state.UIData.edit_info.reportStatisticState
-
     }
 };
 
