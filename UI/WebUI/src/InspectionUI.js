@@ -1277,7 +1277,7 @@ class APP_INSP_MODE extends React.Component {
             />);
 
         return (
-            <div className="HXF">
+            <div className="overlayCon HXF">
                 
                 {(CanvasWindowRatio<=0)?null:
                     <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
