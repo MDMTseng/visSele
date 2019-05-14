@@ -418,8 +418,14 @@ class ObjInfoList extends React.Component {
     render() {
 
         let resultMenu = [];
-        if (this.props.IR != undefined) {
-            resultMenu = this.props.IR.reports.map((singleReport,idx) => {
+        let reports = this.props.IR;
+        if(!Array.isArray(reports) )
+        {
+            return null;
+        }
+        
+        {
+            resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
                 reportDetail = judgeReports.map((rep,idx_)=>
@@ -1271,7 +1277,7 @@ class APP_INSP_MODE extends React.Component {
 
             
         MenuSet.push(
-            <ObjInfoList IR={inspectionReport} checkResult2AirAction={this.checkResult2AirAction}
+            <ObjInfoList IR={this.props.reportStatisticState.trackingWindow} checkResult2AirAction={this.checkResult2AirAction}
             key="ObjInfoList"
             WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
             />);
