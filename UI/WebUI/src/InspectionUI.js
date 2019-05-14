@@ -280,7 +280,7 @@ class InspectionResultDisplay extends React.Component {
         let rep = this.props.singleInspection;
         
         //console.log(rep);
-        return <div className="s black" style={{"border-bottom": "6px solid red",height: 70}}>
+        return <div className="s black" style={{"borderBottom": "6px solid red",height: 70}}>
             <div className="s width8  HXF">
                 <div className="s height1"/>
                 <div className="s vbox height3">
