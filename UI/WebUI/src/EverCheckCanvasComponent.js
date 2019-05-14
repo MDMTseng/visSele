@@ -1201,7 +1201,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
     
-    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    let mmpp = this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp=mmpp;
   }
 
@@ -1308,25 +1308,6 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
-
-    if(this.EditPoint!=null)
-    {
-      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
-      ctx.strokeStyle="green";  
-      this.rUtil.drawpoint(ctx, this.EditPoint,2*this.rUtil.getPointSize());
-    }
-
-
-
-    if(this.CandEditPointInfo!=null)
-    {
-      //ctx.lineWidth=3*this.rUtil.getPrimitiveSize();
-      ctx.strokeStyle="rgba(0,255,0,0.3)";  
-      this.rUtil.drawpoint(ctx, this.CandEditPointInfo.pt,2*this.rUtil.getPointSize());
-    }
-
-
-
   }
 
 }
@@ -1389,8 +1370,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg( edit_DB_info.img );
-    
-    let mmpp = this.db_obj.getsig360info_mmpp();
+    let mmpp = this.db_obj.cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
     this.rUtil.renderParam.mmpp=mmpp;
   }
 
