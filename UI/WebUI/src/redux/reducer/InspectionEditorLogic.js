@@ -189,7 +189,6 @@ export class InspectionEditorLogic
     sig360info.signature.magnitude=sig360info.signature.magnitude.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places //to 0.001mm/1um
     sig360info.signature.angle=sig360info.signature.angle.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places// 0.001*180/pi=0.057 deg
     
-
     this.Setsig360info(
       {
         reports:[
@@ -313,7 +312,6 @@ export class InspectionEditorLogic
 
   GenerateEditReport()
   {
-    log.info(this.inherentShapeList);
     return {
       type:"binary_processing_group",
       intrusionSizeLimitRatio:0.1,

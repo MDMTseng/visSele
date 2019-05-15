@@ -364,6 +364,10 @@ class renderUTIL
       let text;
       if(eObject.inspection_value!==undefined)
       {
+        
+        let Y_offset = 0;
+        this.draw_Text(ctx,eObject.name,fontPx,eObject.pt1.x,eObject.pt1.y);
+        Y_offset+=fontPx;
         text = "D"+(eObject.inspection_value*unitConvert.mult).toFixed(4)+unitConvert.unit;
         
         let marginPC = (eObject.inspection_value>eObject.value)?
@@ -371,18 +375,21 @@ class renderUTIL
           -(eObject.inspection_value-eObject.value)/(eObject.LSL-eObject.value);
         text +=":"+(marginPC*100).toFixed(1)+"%";
         
-        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y); 
+        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset); 
       }
       else
       {
         ctx.save();
         let Y_offset = 0;
-            
+      
+
+        
+        this.draw_Text(ctx,eObject.name,fontPx,eObject.pt1.x,eObject.pt1.y);
+        Y_offset+=fontPx;
 
         let text = "D"+eObject.value.toFixed(4)+unitConvert.unit;
-        
         //log.info( eObject,ctx.measureText(text));
-        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y);
+        this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
         Y_offset+=fontPx/2;
         fontPx/=2;
 
@@ -747,6 +754,14 @@ class renderUTIL
               if(eObject.inspection_value!==undefined)
               {
                 
+                let Y_offset = 0;
+                
+                ctx.strokeStyle="black";
+                ctx.lineWidth=this.getIndicationLineSize();
+                this.draw_Text(ctx,eObject.name,fontPx,
+                x,y);
+                Y_offset+=fontPx;
+
                 text =""+(eObject.inspection_value).toFixed(2)+"º";
 
                 let marginPC = (eObject.inspection_value>eObject.value)?
@@ -755,25 +770,22 @@ class renderUTIL
                 text +=":"+(marginPC*100).toFixed(1)+"%";
 
 
-                
-                ctx.strokeStyle="black";
-                ctx.lineWidth=this.getIndicationLineSize();
                 this.draw_Text(ctx,text,fontPx,
-                x,
-                y);
+                x,y+Y_offset);
               }
               else
               {
                 ctx.save();
                 let Y_offset = 0;
-                    
                 ctx.strokeStyle="black";
                 ctx.lineWidth=this.getIndicationLineSize();
+                this.draw_Text(ctx,eObject.name,fontPx,eObject.pt1.x,eObject.pt1.y);
+                Y_offset+=fontPx;
         
-                let text = "R"+eObject.value.toFixed(4)+"º";
+                let text = eObject.value.toFixed(4)+"º";
                 
                 //log.info( eObject,ctx.measureText(text));
-                this.draw_Text(ctx,text,fontPx,x,y);
+                this.draw_Text(ctx,text,fontPx,x,y+Y_offset);
                 Y_offset+=fontPx/2;
                 fontPx/=2;
         
@@ -824,6 +836,8 @@ class renderUTIL
               let text;
               if(eObject.inspection_value!==undefined)
               {
+
+
                 let text = "R"+(eObject.inspection_value*unitConvert.mult).toFixed(4)+unitConvert.unit;
                 let marginPC = (eObject.inspection_value>eObject.value)?
                 (eObject.inspection_value-eObject.value)/(eObject.USL-eObject.value):
@@ -833,9 +847,15 @@ class renderUTIL
 
                 ctx.strokeStyle="black";
                 ctx.lineWidth=this.getIndicationLineSize();
+
+                this.draw_Text(ctx,eObject.name,fontPx,
+                  eObject.pt1.x+dispVec_normalized.x,
+                  eObject.pt1.y+dispVec_normalized.y);
+                let Y_offset=fontPx;
+
                 this.draw_Text(ctx,text,fontPx,
                 eObject.pt1.x+dispVec_normalized.x,
-                eObject.pt1.y+dispVec_normalized.y);
+                eObject.pt1.y+dispVec_normalized.y+Y_offset);
               }
               else
               {
@@ -845,10 +865,12 @@ class renderUTIL
                 ctx.strokeStyle="black";
                 ctx.lineWidth=this.getIndicationLineSize();
         
+                this.draw_Text(ctx,eObject.name,fontPx,eObject.pt1.x,eObject.pt1.y);
+                Y_offset+=fontPx;
                 let text = "R"+eObject.value.toFixed(4)+unitConvert.unit;
                 
                 //log.info( eObject,ctx.measureText(text));
-                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y);
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
                 Y_offset+=fontPx/2;
                 fontPx/=2;
         
