@@ -123,6 +123,7 @@ CameraLayer::status CameraLayer_BMP_carousel::Trigger()
     imageTakingCount+=1;
     
     LOGV("imageTakingCount:%d",imageTakingCount);
+    if(imageTakingCount==0)imageTakingCount=1;
     return TriggerMode(-1);
 }
 
@@ -133,7 +134,8 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
     int idle_loop_interval_ms =100;
     while( ThreadTerminationFlag == 0)
     {
-        LOGV("ThreadTerminationFlag:%d",ThreadTerminationFlag);
+        LOGV("TTFlag:%d imageTakingCount:%d triggerMode:%d",
+            ThreadTerminationFlag,imageTakingCount,triggerMode);
         int delay_time=0;
         if(imageTakingCount>0 || triggerMode==0)
         {
