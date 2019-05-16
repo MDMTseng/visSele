@@ -83,6 +83,8 @@ function CRUD_query(which,queryCMD){
     if(which=='df'){
         return DefineFileModel_A.find(queryCMD);
     }else if(which=='Inspection'){
+        return InspectionModel_A.find(queryCMD);
+
     }
 
 

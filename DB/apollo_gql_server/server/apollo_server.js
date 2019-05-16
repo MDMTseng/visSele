@@ -37,10 +37,44 @@ app.get('/', function(req, res, next){
     res.end();
 });
 app.get('/insp_time', function(req, res) {
-    console.log(req.query.date_start);
-    console.log(req.query.date_end);
+    //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
+    //{InspectionData.time_ms : {$gt:1556640000000}}
+    //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
+    console.log(req.query.tStart);
+    console.log(req.query.tEnd);
+    let start_MS = (new Date(req.query.tStart)).getTime();
+    let endd=new Date(req.query.tEnd).getTime();
+    let end_MS = (endd==endd)?endd:new Date().getTime();
+    // let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS},"InspectionData.subFeatureDefSha1"};
+    let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS}};
+    if(req.query.subFeatureDefSha1!==undefined)
+    {
+        qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
+    }
+
+    if(req.query.subFeatureDefSha1!==undefined)
+    {
+        qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
+    }
+    console.log(start_MS);
+    console.log(end_MS);
+    console.log(qStr);
+    mdb_connector.query("Inspection",qStr).
+    then((result)=>{
+        // console.log(result);
+
+        res.send(result);
+        console.log("[O]Q by get Q OK!! len=" + result.length);
+    }).
+    catch((err)=>{
+        res.send("[X]Q by get Q FAIL!!");
+        console.log("[X]Q by get Q FAIL!!");
+    });
+
+
+
     // res.sendFile(path.join(__dirname+'/index.html'));
-    res.send("xlinx");
+
     // {InspectionData.time_ms : {$gt:1556187710991}}
 
 });
