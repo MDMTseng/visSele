@@ -36,6 +36,14 @@ app.get('/', function(req, res, next){
     console.log('get route', req.testing);
     res.end();
 });
+app.get('/insp_time', function(req, res) {
+    console.log(req.query.date_start);
+    console.log(req.query.date_end);
+    // res.sendFile(path.join(__dirname+'/index.html'));
+    res.send("xlinx");
+    // {InspectionData.time_ms : {$gt:1556187710991}}
+
+});
 app.ws('/', function(ws, req) {
     util.inspect(ws);
     ws.on('message', function(msg) {
