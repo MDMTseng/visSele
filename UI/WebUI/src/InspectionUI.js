@@ -280,46 +280,25 @@ export class InspectionResultDisplay_FullScren extends React.Component {
     }
     render()
     {
+        // if(!this.props.visible)return;
+
         let reports = this.props.IR;
         if(!Array.isArray(reports) )
         {
             return null;
         }
-        let resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
-                let reportDetail=[];
-                let judgeReports = singleReport.judgeReports;
-                reportDetail = judgeReports.map((rep,idx_)=>
-                    {
-                        return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_} singleInspection = {rep} />
-                        // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
 
-                    }
-                );
+        console.log("[XLINX]clone rMenu");
+        console.log(this.props.resultMenuCopy);
+        let resultMenu_4fullscreenUse=this.props.resultMenuCopy;
 
-
-                let finalResult = judgeReports.reduce((res, obj) => {
-                        return MEASURERSULTRESION_reducer(res, obj.detailStatus);
-                    }
-                    , undefined);
-
-                //log.info("judgeReports>>", judgeReports);
-                return (
-                    <SubMenu style={{'textAlign': 'left'}} key={"sub1"+idx}
-                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX detailStatus={ finalResult } ></OK_NG_BOX></span>
-
-                             </span>}>
-                        {reportDetail}
-                    </SubMenu>
-
-
-                )
-            }
-        )
         let titleRender=<div>
             Object List Window
         </div>;
 
-
+    let openAllsubMenuKeyList=resultMenu_4fullscreenUse.map(function(item, index, array){
+        return "sub1"+index;
+    });
         return (
             <Modal
                 title={titleRender}
@@ -327,23 +306,22 @@ export class InspectionResultDisplay_FullScren extends React.Component {
                 width={this.props.width===undefined?900:this.props.width}
                 onCancel={this.props.onCancel}
                 onOk={this.props.onOk}
-                footer={this.props.footer}
+                footer={null}
             >
-                <div style={{height:this.props.height===undefined?400:this.props.height}}>
-
-
+                <div style= {{ height:this.props.height===undefined?400:this.props.height}}>
                     <Menu
                         onClick={this.handleClick}
                         // selectedKeys={[this.current]}
                         selectable={true}
                         // style={{align: 'left', width: 200}}
                         defaultSelectedKeys={['functionMenu']}
-                        defaultOpenKeys={['functionMenu']}
-                        mode="inline">
+                        defaultOpenKeys={openAllsubMenuKeyList}
 
-                        {resultMenu}
+                        mode="inline">
+                        {resultMenu_4fullscreenUse}
 
                     </Menu>
+
 
                 </div>
             </Modal>
@@ -374,19 +352,14 @@ class InspectionResultDisplay extends React.Component {
         //console.log(rep);
         return <div className="s black" style={{"borderBottom": "6px solid red",height: 70}}>
             <div className="s width8  HXF">
-                <div className="s height1"/>
-                <div className="s vbox height3">
-                    <Icon type="fullscreen" onClick={this.clickFullScreen.bind(this)}/> {rep.name}
+                <div className="s vbox height4">
+                    <Icon type="fullscreen" onClick={this.clickFullScreen.bind(this)}/>
+                    {rep.name}
                 </div>
-
-
-
                 <div className="s vbox  height8"  style={{'fontSize': 25}}>
                     {rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
                 </div>
-
             </div>
-            
             <div className="s vbox width4 HXF">
                 <Tag style={{'fontSize': 20}}
                         color={OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR}>
@@ -525,12 +498,9 @@ class ObjInfoList extends React.Component {
             return null;
         }
 
-        let fullScreenMODAL =<InspectionResultDisplay_FullScren {...this.state} IR={reports} visible={this.state.fullScreen}
-           onCancel={ this.toggleFullscreen.bind(this)} width="90%" height="90%"/>;
 
 
 
-        {
             resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
@@ -561,8 +531,9 @@ class ObjInfoList extends React.Component {
                     )
                 }
             )
-        }
 
+        let fullScreenMODAL =<InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
+                                                                onCancel={ this.toggleFullscreen.bind(this)} width="90%" />;
 
         return (
             <div>
@@ -572,7 +543,7 @@ class ObjInfoList extends React.Component {
                     selectable={true}
                     // style={{align: 'left', width: 200}}
                     defaultSelectedKeys={['functionMenu']}
-                    defaultOpenKeys={['functionMenu']}
+                    // defaultOpenKeys={['functionMenu']}
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
@@ -582,10 +553,11 @@ class ObjInfoList extends React.Component {
                             WSCMD_CB={this.props.WSCMD_CB}
                         />
                     </SubMenu>
-                    {fullScreenMODAL}
+
                     {resultMenu}
 
                 </Menu>
+                {fullScreenMODAL}
             </div>
         );
     }
@@ -746,14 +718,14 @@ class AirControl extends React.Component {
     }
 
     componentWillUnmount() {
-        log.info("componentWillUnmount1")
+        // log.info("componentWillUnmount1")
         if(this.websocketAir!==undefined)
         {
             this.websocketAir.close();
             this.websocketAir = undefined;
         }
         document.removeEventListener('keydown', this._keyEventX);
-        log.info("componentWillUnmount2")
+        // log.info("componentWillUnmount2")
 
         clearInterval(this.heartBeat.timer);
         this.heartBeat.timer=undefined;
