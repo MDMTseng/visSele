@@ -251,6 +251,10 @@ export let DropDownWarp = React_createClass({
 });
 
 
+
+
+
+
 export class BPG_FileBrowser extends React.Component{
   render()
   {
@@ -278,10 +282,10 @@ export class BPG_FileSavingBrowser extends React.Component{
     
     console.log(isTarFileExist);
     return <BPG_FileBrowser_proto {...this.props}
-    onFileSelected={(file)=>{
-      let fileName= file.substr(file.lastIndexOf('/') + 1);
-      this.setState({...this.state,fileName});
-    }}
+        onFileSelected={(file)=>{
+          let fileName= file.substr(file.lastIndexOf('/') + 1);
+          this.setState({...this.state,fileName});
+        }}
 
     
     footer={
@@ -495,6 +499,10 @@ export class BPG_FileBrowser_proto extends React.Component{
     );
   }
 }
+
+
+
+
 
 
 export let DropDown = React_createClass({

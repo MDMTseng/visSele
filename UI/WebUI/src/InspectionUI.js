@@ -29,12 +29,13 @@ import Switch from 'antd/lib/switch';
 import  Tag  from 'antd/lib/tag';
 import  Select  from 'antd/lib/select';
 import  Upload  from 'antd/lib/upload';
-import  Button  from 'antd/lib/button';
+import Button, {default as AntButton} from 'antd/lib/button';
 import  Menu  from 'antd/lib/menu';
 import  Icon  from 'antd/lib/icon';
 
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
+import Modal from "antd/lib/modal";
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/Input';
 // import Dropdown from 'antd/lib/Dropdown'
@@ -268,24 +269,117 @@ export const OK_NG_BOX_COLOR_TEXT = {
     [MEASURERSULTRESION.LSNG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.LSNG},
 };
 
+export class InspectionResultDisplay_FullScren extends React.Component {
+
+    constructor(props) {
+        super(props);
+        this.state = {
+            folderStruct: {},
+            history: ["./"],
+        }
+    }
+    render()
+    {
+        let reports = this.props.IR;
+        if(!Array.isArray(reports) )
+        {
+            return null;
+        }
+        let resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
+                let reportDetail=[];
+                let judgeReports = singleReport.judgeReports;
+                reportDetail = judgeReports.map((rep,idx_)=>
+                    {
+                        return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_} singleInspection = {rep} />
+                        // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
+
+                    }
+                );
+
+
+                let finalResult = judgeReports.reduce((res, obj) => {
+                        return MEASURERSULTRESION_reducer(res, obj.detailStatus);
+                    }
+                    , undefined);
+
+                //log.info("judgeReports>>", judgeReports);
+                return (
+                    <SubMenu style={{'textAlign': 'left'}} key={"sub1"+idx}
+                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX detailStatus={ finalResult } ></OK_NG_BOX></span>
+
+                             </span>}>
+                        {reportDetail}
+                    </SubMenu>
+
+
+                )
+            }
+        )
+        let titleRender=<div>
+            Object List Window
+        </div>;
+
+
+        return (
+            <Modal
+                title={titleRender}
+                visible={this.props.visible}
+                width={this.props.width===undefined?900:this.props.width}
+                onCancel={this.props.onCancel}
+                onOk={this.props.onOk}
+                footer={this.props.footer}
+            >
+                <div style={{height:this.props.height===undefined?400:this.props.height}}>
+
+
+                    <Menu
+                        onClick={this.handleClick}
+                        // selectedKeys={[this.current]}
+                        selectable={true}
+                        // style={{align: 'left', width: 200}}
+                        defaultSelectedKeys={['functionMenu']}
+                        defaultOpenKeys={['functionMenu']}
+                        mode="inline">
+
+                        {resultMenu}
+
+                    </Menu>
+
+                </div>
+            </Modal>
+        );
+    }
+}
 
 class InspectionResultDisplay extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
+            // fullScreen:false
         }
     }
 
+
+    clickFullScreen() {
+        // this.setState({
+        //     ...this.state,fullScreen:!this.state.fullScreen
+        // });
+        // console.log("[XLINX]fullScreen="+this.state.fullScreen);
+        this.props.fullScreenToggleCallback();
+    };
+
+
     render() {
         let rep = this.props.singleInspection;
-        
         //console.log(rep);
         return <div className="s black" style={{"borderBottom": "6px solid red",height: 70}}>
             <div className="s width8  HXF">
                 <div className="s height1"/>
                 <div className="s vbox height3">
-                    {rep.name}
+                    <Icon type="fullscreen" onClick={this.clickFullScreen.bind(this)}/> {rep.name}
                 </div>
+
+
 
                 <div className="s vbox  height8"  style={{'fontSize': 25}}>
                     {rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
@@ -406,15 +500,22 @@ class ObjInfoList extends React.Component {
         super(props);
         this.state = {
             collapsed: false,
+            fullScreen: false,
         }
     }
 
     toggleCollapsed() {
-        this.setState({
+        this.setState({...this.state,
             collapsed: !this.state.collapsed,
         });
     }
+    toggleFullscreen(){
+        console.log("[XLINX2]fullScreen="+this.state.fullScreen);
+        this.setState({...this.state,
+            fullScreen: !this.state.fullScreen,
+        });
 
+    }
     render() {
 
         let resultMenu = [];
@@ -423,15 +524,21 @@ class ObjInfoList extends React.Component {
         {
             return null;
         }
-        
+
+        let fullScreenMODAL =<InspectionResultDisplay_FullScren {...this.state} IR={reports} visible={this.state.fullScreen}
+           onCancel={ this.toggleFullscreen.bind(this)} width="90%" height="90%"/>;
+
+
+
         {
             resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
                 reportDetail = judgeReports.map((rep,idx_)=>
                     {
-                        return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_}
-                        singleInspection = {rep}/>
+                        return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_} singleInspection = {rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)}/>
+                        // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
+
                     }
                 );
                 
@@ -475,7 +582,7 @@ class ObjInfoList extends React.Component {
                             WSCMD_CB={this.props.WSCMD_CB}
                         />
                     </SubMenu>
-
+                    {fullScreenMODAL}
                     {resultMenu}
 
                 </Menu>
