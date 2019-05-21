@@ -564,7 +564,7 @@ export class InspectionEditorLogic
   }
 
     
-  FindClosestCtrlPointInfo( location)
+  FindClosestCtrlPointInfo( location,shapeList=this.shapeList)
   {
     let pt_info={
       pt:null,
@@ -573,7 +573,7 @@ export class InspectionEditorLogic
       dist:Number.POSITIVE_INFINITY
     };
 
-    this.shapeList.forEach((shape)=>{
+    shapeList.forEach((shape)=>{
       let tmpDist;
 
       switch(shape.type)

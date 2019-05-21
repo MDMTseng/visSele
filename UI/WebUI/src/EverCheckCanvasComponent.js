@@ -1692,7 +1692,34 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       }
   }
 
+  AvailableShapeFilter(state,shapeList)
+  {
+    switch(state.substate)
+    {
+      case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
+        return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.line);
+      break;
+      case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
+        if(this.EditShape===undefined || this.EditShape===null)
+          return shapeList;
+        switch(this.EditShape.subtype)
+        {
+          case SHAPE_TYPE.measure_subtype.distance:
+            return shapeList;
+          break;
+          case SHAPE_TYPE.measure_subtype.angle:
+            return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.line);
+          break;
+          case SHAPE_TYPE.measure_subtype.radius:
+            return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.arc);
+          break;
+        }
+      break;
 
+    }
+    return shapeList;
+  }
 
   fitCameraToShape(shape)
   {
@@ -1821,8 +1848,13 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         this.rUtil.drawShapeList(ctx, [candPtInfo.shape],false,[],this.edit_DB_info.list,unitConvert);
       }
     }
-    
-    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
+
+    let displayShape=this.AvailableShapeFilter(this.state,this.edit_DB_info.list);
+
+
+    this.rUtil.drawShapeList(ctx, displayShape,true,skipDrawIdxs,displayShape,unitConvert);
+
+
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
 
@@ -1956,15 +1988,16 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
             {
               log.debug(ifOnMouseLeftClickEdge,this.CandEditPointInfo);
               this.EmitEvent(DefConfAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
-  
             }
           }
         }
         else
         {
 
-          let pt_info = this.db_obj.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          let pt_info2 = this.db_obj.FindClosestInherentPointInfo( mouseOnCanvas2,this.edit_DB_info.inherentShapeList);
+          let displayShape=this.AvailableShapeFilter(this.state,this.edit_DB_info.list);
+          let pt_info = this.db_obj.FindClosestCtrlPointInfo( mouseOnCanvas2,displayShape);
+          let displayiShape=this.AvailableShapeFilter(this.state,this.edit_DB_info.inherentShapeList);
+          let pt_info2 = this.db_obj.FindClosestInherentPointInfo( mouseOnCanvas2,displayiShape);
           if(pt_info.dist>pt_info2.dist)
           {
             pt_info = pt_info2;
@@ -2034,9 +2067,13 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
           {
             this.SetShape(this.EditShape,this.EditShape.id);
           }
+          
+          let displayShape=this.AvailableShapeFilter(this.state,this.edit_DB_info.list);
 
-          let pt_info = this.db_obj.FindClosestCtrlPointInfo( mouseOnCanvas2);
-          let pt_info2 = this.db_obj.FindClosestInherentPointInfo( mouseOnCanvas2,this.edit_DB_info.inherentShapeList);
+          let pt_info = this.db_obj.FindClosestCtrlPointInfo( mouseOnCanvas2,displayShape);
+          
+          let displayiShape=this.AvailableShapeFilter(this.state,this.edit_DB_info.inherentShapeList);
+          let pt_info2 = this.db_obj.FindClosestInherentPointInfo( mouseOnCanvas2,displayiShape);
           if(pt_info.dist>pt_info2.dist)
           {
             pt_info = pt_info2;
