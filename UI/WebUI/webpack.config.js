@@ -33,11 +33,18 @@ if(process.env.NOTIMON_PRJ === "deploy")
 module.exports = {
   cache: true,
   entry: './src/script.jsx',
-  output: { path: __dirname, filename: 'bundle.js' },
+  output: { 
+    path: path.resolve(__dirname, 'dist'),
+    filename: '[name].js', 
+    publicPath: '/dist/'},
   devtool: (process.env.NODE_ENV !== "production")?"cheap-module-eval-source-map" : undefined,
   plugins:PluginSets,
   // target: 'electron-renderer',
-  
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+    },
+  },
   resolve: {
     alias: {
       UTIL: path.resolve(__dirname, 'src/UTIL/'),
