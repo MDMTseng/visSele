@@ -23,9 +23,12 @@ import {round} from 'UTIL/MISC_Util';
 let localStorage = require('localStorage');
 let log = logX.getLogger("InspectionUI");
 
+import Row  from 'antd/lib/Row';
+import Col  from 'antd/lib/Col';
+import Slider  from 'antd/lib/Slider';
+
 import Table from 'antd/lib/table';
 import Switch from 'antd/lib/switch';
-
 import  Tag  from 'antd/lib/tag';
 import  Select  from 'antd/lib/select';
 import  Upload  from 'antd/lib/upload';
@@ -288,17 +291,32 @@ export class InspectionResultDisplay_FullScren extends React.Component {
             return null;
         }
 
-        console.log("[XLINX]clone rMenu");
-        console.log(this.props.resultMenuCopy);
+        // console.log("[XLINX]clone rMenu");
+        // console.log(this.props.resultMenuCopy);
         let resultMenu_4fullscreenUse=this.props.resultMenuCopy;
 
         let titleRender=<div>
             Object List Window
         </div>;
+        let openAllsubMenuKeyList=resultMenu_4fullscreenUse.map(function(item, index, array){
+            return "sub1"+index;
+        });
 
-    let openAllsubMenuKeyList=resultMenu_4fullscreenUse.map(function(item, index, array){
-        return "sub1"+index;
-    });
+        let seprateSubMenu=resultMenu_4fullscreenUse.map(function(item){
+            return <Col span={4}>
+                <Menu
+                    // onClick={this.handleClick}
+                    // selectedKeys={[this.current]}
+                    selectable={true}
+                    // style={{align: 'left', width: 200}}
+                    defaultSelectedKeys={['functionMenu']}
+                    defaultOpenKeys={openAllsubMenuKeyList}
+                    mode="inline">
+                    {item}
+                </Menu>
+                </Col>;
+        });
+
         return (
             <Modal
                 title={titleRender}
@@ -309,20 +327,9 @@ export class InspectionResultDisplay_FullScren extends React.Component {
                 footer={null}
             >
                 <div style= {{ height:this.props.height===undefined?400:this.props.height}}>
-                    <Menu
-                        onClick={this.handleClick}
-                        // selectedKeys={[this.current]}
-                        selectable={true}
-                        // style={{align: 'left', width: 200}}
-                        defaultSelectedKeys={['functionMenu']}
-                        defaultOpenKeys={openAllsubMenuKeyList}
-
-                        mode="inline">
-                        {resultMenu_4fullscreenUse}
-
-                    </Menu>
-
-
+                    <Row type="flex" justify="space-around" align="top">
+                    {seprateSubMenu}
+                    </Row>
                 </div>
             </Modal>
         );
@@ -497,10 +504,6 @@ class ObjInfoList extends React.Component {
         {
             return null;
         }
-
-
-
-
             resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
                 let reportDetail=[];
                 let judgeReports = singleReport.judgeReports;
@@ -508,17 +511,16 @@ class ObjInfoList extends React.Component {
                     {
                         return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_} singleInspection = {rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)}/>
                         // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
-
                     }
                 );
-                
+
 
                 let finalResult = judgeReports.reduce((res, obj) => {
                         return MEASURERSULTRESION_reducer(res, obj.detailStatus);
                     }
                     , undefined);
 
-                //log.info("judgeReports>>", judgeReports);
+                // log.info("judgeReports>>", judgeReports);
                 return (
                     <SubMenu style={{'textAlign': 'left'}} key={"sub1"+idx}
                              title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX detailStatus={ finalResult } ></OK_NG_BOX></span>

@@ -388,7 +388,12 @@ function StateReducer(newState,action)
                   //return/mark the current object as same report object
                   return srep_inWindow;
                 },undefined);
+                function valueAveIn(ave,new_val,datCount_before)
+                {
 
+                  ave+=(1/(datCount_before+1))*(new_val-ave);
+                  return ave;
+                }
                 if(closeRep !== undefined)
                 {
                   //blend the report with the existed report in tracking window  
@@ -396,12 +401,7 @@ function StateReducer(newState,action)
                   //log.info(">>>>>",closeRep,singleReport);
 
 
-                  function valueAveIn(ave,new_val,datCount_before)
-                  {
-                    
-                      ave+=(1/(datCount_before+1))*(new_val-ave);
-                      return ave;
-                  }
+
                   
                   closeRep.area=valueAveIn(closeRep.area,singleReport.area,closeRep.repeatTime);
                   closeRep.cx=valueAveIn(closeRep.cx,singleReport.cx,closeRep.repeatTime);
