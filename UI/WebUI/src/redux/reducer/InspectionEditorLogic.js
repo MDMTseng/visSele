@@ -182,6 +182,9 @@ export class InspectionEditorLogic
   SetDefInfo(defInfo)
   {
     this.SetShapeList(defInfo.features);
+    let lostRefObjs = this.findLostRefShapes();
+    this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
+
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
     let sig360info = defInfo.inherentfeatures[0];
