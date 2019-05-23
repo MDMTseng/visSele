@@ -327,7 +327,7 @@ export class InspectionResultDisplay_FullScren extends React.Component {
                 footer={null}
             >
                 <div style= {{ height:this.props.height===undefined?400:this.props.height}}>
-                    <Row type="flex" justify="space-around" align="top">
+                    <Row type="flex" justify="start" align="top">
                     {separateSubMenu}
                     </Row>
                 </div>
