@@ -357,7 +357,7 @@ class InspectionResultDisplay extends React.Component {
     render() {
         let rep = this.props.singleInspection;
         //console.log(rep);
-        return <div className="s black" style={{"borderBottom": "6px solid red",height: 70}}>
+        return <div className="s black" style={{"borderBottom": "6px solid #A9A9A9",height: 70}}>
             <div className="s width8  HXF">
                 <div className="s vbox height4">
                     <Icon type="fullscreen" onClick={this.clickFullScreen.bind(this)}/>
