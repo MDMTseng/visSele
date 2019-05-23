@@ -26,6 +26,7 @@ import APPMain_rdx from './MAINUI';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
+import jsonp from 'jsonp';
 
 import  {default as AntButton}  from 'antd/lib/button';
 import  Collapse  from 'antd/lib/collapse';
@@ -59,6 +60,8 @@ class APPMasterX extends React.Component{
         dispatch(act)
       },
       ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+      ACT_Version_Map_Update:(mapInfo)=>dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
+      
     }
   }
   static mapStateToProps(state){
@@ -106,8 +109,21 @@ class APPMasterX extends React.Component{
         {
           case "HR":
           {
-            //log.info(this.props.WS_CH);
+            {
+              let HR =BPG_Protocol.raw2obj(evt);
+              function getRandom(min,max){
+                return Math.floor(Math.random()*(max-min+1))+min;
+              };
+              let url = HR.data.webUI_resource;
+              if(url===undefined)url="http://hyv.idcircle.me/version.jsonp?rand="+getRandom();
+              jsonp(url, {name:"hyv_version_map"}, (err,data)=>{
+                data.core_info=HR.data;
+                this.props.ACT_Version_Map_Update(data);
+              });
+            }
+           
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+
             setTimeout(()=>{
               this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
             },100);
@@ -286,8 +302,8 @@ class APPMasterX extends React.Component{
             <div className="HX0_5"/>
             <div className="s">
               <div className="TitleTextCon showOverFlow HX2">
-                <h1 className="Title">GO  !!</h1>
-                <h1 className="Title">NOTIMON</h1>
+                <h1 className="Title">HY</h1>
+                <h1 className="Title">Vision</h1>
               </div>
             </div>
           </div>

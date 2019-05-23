@@ -182,6 +182,9 @@ export class InspectionEditorLogic
   SetDefInfo(defInfo)
   {
     this.SetShapeList(defInfo.features);
+    let lostRefObjs = this.findLostRefShapes();
+    this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
+
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
     let sig360info = defInfo.inherentfeatures[0];
@@ -224,14 +227,8 @@ export class InspectionEditorLogic
 
   FindShape( key , val, shapeList=this.shapeList)
   {
-    for(let i=0;i<shapeList.length;i++)
-    {
-      if(shapeList[i][key] == val)
-      {
-        return i;
-      }
-    }
-    return undefined;
+    let idx = shapeList.findIndex((shape)=>shape[key]==val);
+    return (idx<0)?undefined:idx;
   }
 
   FindShapeIdx( id , shapeList=this.shapeList)
@@ -328,6 +325,26 @@ export class InspectionEditorLogic
     };
   }
   
+  findLostRefShapes(shapeList=this.shapeList)
+  {
+    //Check if there is any object/shape/measure that refs this(pre_shape)
+    let objs = shapeList.filter((shape)=>
+    {
+      if(!(shape.ref instanceof Array))return false;
+      let lostRef = shape.ref.find(ref=>{//This "find" will return a lost ref if there is any
+        //refObj is the corresponding objct in ref 
+        let refObj = shapeList.find(shape=>shape.id ==ref.id);
+        //If You cannot find the corresponding object, then this "ref" is the lost ref
+        return refObj===undefined;
+      });
+      //If the lost ref exist, then the shape has lost ref....
+      return lostRef!==undefined;
+
+    });
+    return objs;
+  }
+  
+
   SetShape( shape_obj, id )//undefined means add new shape
   {
     let pre_shape = null;
@@ -347,6 +364,9 @@ export class InspectionEditorLogic
           {
             this.editShape = null;
           }
+          let lostRefObjs = this.findLostRefShapes();
+          this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
+
         }
       }
       //UpdateInherentShapeList();

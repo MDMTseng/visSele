@@ -6,6 +6,7 @@ import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
+import APP_INFO from 'JSSRCROOT/info.js';
 import * as logX from 'loglevel';
 import dclone from 'clone';
 import { loadavg } from 'os';
@@ -18,7 +19,6 @@ let log = logX.getLogger("UICtrlReducer");
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
-
 
 
 function Edit_info_reset(newState)
@@ -106,6 +106,9 @@ function Default_UICtrlReducer()
       camera_calibration_report:undefined,
       mouseLocation:undefined
     },
+    
+    version_map_info:undefined,
+    WebUI_info:APP_INFO,
     sm:null,
     c_state:null,
     p_state:null,
@@ -120,7 +123,7 @@ function Default_UICtrlReducer()
 
 function StateReducer(newState,action)
 {
-
+  console.log(newState.WebUI_info)
   newState.state_count++;
   if(action.type == "ev_state_update")
   {
@@ -145,6 +148,38 @@ function StateReducer(newState,action)
       newState.WS_CH=action.data;
       log.info("Connected",newState.WS_CH);
     return newState;
+    
+    case UISEV.Version_Map_Update:
+      log.info("Version_Map_Update",action.data);
+      let version_map_info = action.data;
+      version_map_info.webUI_info=APP_INFO.info;
+      
+      {
+        let core_info = version_map_info.core_info;
+        version_map_info.recommend_ver={};
+        let coreVersion=core_info.version;
+        if(coreVersion===undefined)
+        {
+          coreVersion="v0.0.0";
+        }
+        let WebUI_Version = version_map_info.core2wui[coreVersion];
+        if(WebUI_Version!==undefined && WebUI_Version.ver !== undefined)
+        {
+          let versions = WebUI_Version.ver;
+          let resource_url="http://hyv.idcircle.me/";
+          if(core_info.resource_url !== undefined)resource_url=core_info.resource_url;
+        
+          version_map_info.recommend_info={
+            versions,
+            url:resource_url+versions[versions.length-1]
+          }
+        }
+
+      }
+      console.log(version_map_info);
+      newState={...newState,version_map_info};
+    return newState;
+    
     case UISEV.Disonnected:
       newState.WS_CH=undefined;
     return newState;
@@ -994,7 +1029,7 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
       return StateReducer(state,action);
     },newState);
     
-    log.debug(newState);
+    log.info(newState);
     return newState;
   }
   else
