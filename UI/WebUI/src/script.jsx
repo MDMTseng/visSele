@@ -26,6 +26,7 @@ import APPMain_rdx from './MAINUI';
 import zh_TW from 'antd/lib/locale-provider/zh_TW';
 import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
+import jsonp from 'jsonp';
 
 import  {default as AntButton}  from 'antd/lib/button';
 import  Collapse  from 'antd/lib/collapse';
@@ -106,8 +107,32 @@ class APPMasterX extends React.Component{
         {
           case "HR":
           {
-            //log.info(this.props.WS_CH);
+            if(flase&&window.location.href.indexOf("/v.")==-1)
+            {
+              let HR =BPG_Protocol.raw2obj(evt);
+
+              let url = HR.data.webUI_resource;
+              if(url===undefined)url="http://hyv.idcircle.me/version.jsonp";
+              jsonp(url, {name:"hyv_version_map"}, (err,data)=>{
+                //console.log(err,data);
+                let coreVersion=HR.data.version;
+                if(coreVersion===undefined)
+                {
+                  coreVersion="v0.0.0";
+                }
+                let WebUI_Version = data[coreVersion];
+                if(WebUI_Version!==undefined)
+                {
+                  window.location.href ="http://hyv.idcircle.me/";
+                }
+                //console.log(err,data,HR,WebUI_Version);
+              });
+  
+  
+            }
+           
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+
             setTimeout(()=>{
               this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
             },100);
@@ -286,8 +311,8 @@ class APPMasterX extends React.Component{
             <div className="HX0_5"/>
             <div className="s">
               <div className="TitleTextCon showOverFlow HX2">
-                <h1 className="Title">GO  !!</h1>
-                <h1 className="Title">NOTIMON</h1>
+                <h1 className="Title">HY</h1>
+                <h1 className="Title">Vision</h1>
               </div>
             </div>
           </div>
