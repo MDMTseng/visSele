@@ -302,8 +302,8 @@ export class InspectionResultDisplay_FullScren extends React.Component {
             return "sub1"+index;
         });
 
-        let seprateSubMenu=resultMenu_4fullscreenUse.map(function(item){
-            return <Col span={4}>
+        let separateSubMenu=resultMenu_4fullscreenUse.map(function(item){
+            return <Col span={8}>
                 <Menu
                     // onClick={this.handleClick}
                     // selectedKeys={[this.current]}
@@ -327,8 +327,8 @@ export class InspectionResultDisplay_FullScren extends React.Component {
                 footer={null}
             >
                 <div style= {{ height:this.props.height===undefined?400:this.props.height}}>
-                    <Row type="flex" justify="space-around" align="top">
-                    {seprateSubMenu}
+                    <Row type="flex" justify="start" align="top">
+                    {separateSubMenu}
                     </Row>
                 </div>
             </Modal>
@@ -353,22 +353,32 @@ class InspectionResultDisplay extends React.Component {
         this.props.fullScreenToggleCallback();
     };
 
+    showResultValueCheck(o){
+        if(o.status==-1)
+            return "NaN ";
+        else if(o.value===+o.value)
+            return o.value.toFixed(3);
+        else
+            return "Null ";
+    }
+
 
     render() {
         let rep = this.props.singleInspection;
         //console.log(rep);
-        return <div className="s black" style={{"borderBottom": "6px solid red",height: 70}}>
+        return <div className="s black" style={{"borderBottom": "6px solid #A9A9A9",height: 70}}>
             <div className="s width8  HXF">
                 <div className="s vbox height4">
                     <Icon type="fullscreen" onClick={this.clickFullScreen.bind(this)}/>
                     {rep.name}
                 </div>
                 <div className="s vbox  height8"  style={{'fontSize': 25}}>
-                    {rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
+                    {this.showResultValueCheck(rep)+DEFAULT_UNIT[rep.subtype]}
+
                 </div>
             </div>
             <div className="s vbox width4 HXF">
-                <Tag style={{'fontSize': 20}}
+                <Tag style={{'fontSize': 18}}
                         color={OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR}>
                         {OK_NG_BOX_COLOR_TEXT[rep.detailStatus].TEXT}
                 </Tag>
