@@ -21,13 +21,16 @@ import {BPG_FileBrowser} from './component/baseComponent.jsx';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 
 import  {default as AntButton}  from 'antd/lib/button';
+import  PageHeader  from 'antd/lib/page-header';
+import  Typography  from 'antd/lib/typography';
+
 import  Collapse  from 'antd/lib/collapse';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
 import  Layout  from 'antd/lib/layout';
 const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
-
+const { Paragraph } = Typography;
 
 
 const Panel = Collapse.Panel;
@@ -140,6 +143,65 @@ class APPMain extends React.Component{
     shouldComponentUpdate(nextProps, nextState) {
       return true;
     }
+
+    FrontDoor(){
+        const content = (
+            <div className="content">
+                <Paragraph>
+                    HYVision 2019 is the most famous vision-check system in the world.
+                </Paragraph>
+                <Paragraph>
+                    HYVision 2019 - v1 (http://hyv.idcircle.me)
+                    HYVision 2019 - v2 (http://hyv.idcircle.me)
+                    HYVision 2019 - v3 (http://hyv.idcircle.me)
+                </Paragraph>
+                <p className="contentLink">
+                    <a>
+                        <img
+                            src="https://gw.alipayobjects.com/zos/rmsportal/MjEImQtenlyueSmVEfUD.svg"
+                            alt="start"
+                        />
+                        Quick Start
+                    </a>
+                    <a>
+                        <img src="https://gw.alipayobjects.com/zos/rmsportal/NbuDUAuBlIApFuDvWiND.svg" alt="info" />
+                        Product Info
+                    </a>
+                    <a>
+                        <img src="https://gw.alipayobjects.com/zos/rmsportal/ohOEPSYdDTNnyMbGuyLb.svg" alt="doc" />
+                        Product Doc
+                    </a>
+                </p>
+            </div>
+        );
+
+        const extraContent = (
+            <img
+                src="https://gw.alipayobjects.com/mdn/mpaas_user/afts/img/A*KsfVQbuLRlYAAAAAAAAAAABjAQAAAQ/original"
+                alt="content"
+            />
+        );
+        const routes = [
+            {
+                path: 'index',
+                breadcrumbName: 'First-level Menu',
+            },
+            {
+                path: 'first',
+                breadcrumbName: 'Second-level Menu',
+            },
+            {
+                path: 'second',
+                breadcrumbName: 'Third-level Menu',
+            },
+        ];
+        return (<PageHeader title="Title" breadcrumb={{ routes }}>
+            <div className="wrap">
+                <div className="content">{content}</div>
+                <div className="extraContent">{extraContent}</div>
+            </div>
+        </PageHeader>);
+    }
   
     render() {
       let UI=[];
@@ -150,7 +212,7 @@ class APPMain extends React.Component{
       {
         let DefFileFolder= this.props.defModelPath.substr(0,this.props.defModelPath.lastIndexOf('/') + 1);
         let genericMenuItemCBsCB=(selectInfo)=>{this.setState({...this.state,menuSelect:selectInfo.key})}
-  
+
         let mmpp = undefined;
         if(this.props.camera_calibration_report!==undefined)
         {
@@ -159,6 +221,11 @@ class APPMain extends React.Component{
         }
   
         let MenuItem={
+            HOME:{
+                icon:"home",
+                content:this.FrontDoor(),
+                onSelected:null
+            },
           Overview:{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
@@ -190,7 +257,7 @@ class APPMain extends React.Component{
               
                 this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
                   {filename:cameraCalibPath});
-              }}>{"mmpp:"+mmpp}</AntButton>}
+              }}><Icon type="camera" /> <Icon type="control" /> {"mmpp:"+mmpp}</AntButton>}
   
   
               <BPG_FileBrowser key="BPG_FileBrowser"
@@ -223,9 +290,6 @@ class APPMain extends React.Component{
           Setting:{
             icon:"setting" ,
             content:<div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
-                
-  
-                
               <AntButton key="Reconnect CAM" 
                 onClick={()=>{
                   this.props.ACT_WS_SEND(this.props.WS_ID,"RC",0,{
