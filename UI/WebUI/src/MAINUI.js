@@ -21,9 +21,9 @@ import {BPG_FileBrowser} from './component/baseComponent.jsx';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 
 import  {default as AntButton}  from 'antd/lib/button';
+
 import  PageHeader  from 'antd/lib/page-header';
 import  Typography  from 'antd/lib/typography';
-
 import  Collapse  from 'antd/lib/collapse';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
@@ -151,21 +151,20 @@ class APPMain extends React.Component{
                     HYVision 2019 is the most famous vision-check system in the world.
                 </Paragraph>
                 <Paragraph>
-                    HYVision 2019 - v1 (http://hyv.idcircle.me)
-                    HYVision 2019 - v2 (http://hyv.idcircle.me)
-                    HYVision 2019 - v3 (http://hyv.idcircle.me)
+                    <p>HYVision 2019 - v1 (http://hyv.idcircle.me)</p>
+                    <p>HYVision 2019 - v2 (http://hyv.idcircle.me)</p>
+                    <p>HYVision 2019 - v3 (http://hyv.idcircle.me)</p>
                 </Paragraph>
                 <p className="contentLink">
                     <a>
                         <img
                             src="https://gw.alipayobjects.com/zos/rmsportal/MjEImQtenlyueSmVEfUD.svg"
                             alt="start"
-                        />
-                        Quick Start
-                    </a>
+                        /> Quick Start
+                    </a> 
                     <a>
                         <img src="https://gw.alipayobjects.com/zos/rmsportal/NbuDUAuBlIApFuDvWiND.svg" alt="info" />
-                        Product Info
+                         Product Info
                     </a>
                     <a>
                         <img src="https://gw.alipayobjects.com/zos/rmsportal/ohOEPSYdDTNnyMbGuyLb.svg" alt="doc" />
@@ -184,18 +183,18 @@ class APPMain extends React.Component{
         const routes = [
             {
                 path: 'index',
-                breadcrumbName: 'First-level Menu',
+                breadcrumbName: 'HYV',
             },
             {
                 path: 'first',
-                breadcrumbName: 'Second-level Menu',
+                breadcrumbName: 'HOME',
             },
             {
                 path: 'second',
-                breadcrumbName: 'Third-level Menu',
+                breadcrumbName: 'Manual',
             },
         ];
-        return (<PageHeader title="Title" breadcrumb={{ routes }}>
+        return (<PageHeader title="HYVision 2019" breadcrumb={{ routes }}>
             <div className="wrap">
                 <div className="content">{content}</div>
                 <div className="extraContent">{extraContent}</div>
@@ -224,7 +223,7 @@ class APPMain extends React.Component{
             HOME:{
                 icon:"home",
                 content:this.FrontDoor(),
-                onSelected:null
+                onSelected: genericMenuItemCBsCB
             },
           Overview:{
             icon:"info-circle" ,
