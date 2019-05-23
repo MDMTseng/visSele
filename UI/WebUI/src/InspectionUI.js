@@ -353,6 +353,15 @@ class InspectionResultDisplay extends React.Component {
         this.props.fullScreenToggleCallback();
     };
 
+    showResultValueCheck(o){
+        if(o.status==-1)
+            return "NaN ";
+        else if(o.value===+o.value)
+            return o.value.toFixed(3);
+        else
+            return "Null ";
+    }
+
 
     render() {
         let rep = this.props.singleInspection;
@@ -364,7 +373,8 @@ class InspectionResultDisplay extends React.Component {
                     {rep.name}
                 </div>
                 <div className="s vbox  height8"  style={{'fontSize': 25}}>
-                    {rep.value.toFixed(3)+DEFAULT_UNIT[rep.subtype]}
+                    {this.showResultValueCheck(rep)+DEFAULT_UNIT[rep.subtype]}
+
                 </div>
             </div>
             <div className="s vbox width4 HXF">
