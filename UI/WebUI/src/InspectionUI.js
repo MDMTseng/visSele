@@ -368,7 +368,7 @@ class InspectionResultDisplay extends React.Component {
                 </div>
             </div>
             <div className="s vbox width4 HXF">
-                <Tag style={{'fontSize': 20}}
+                <Tag style={{'fontSize': 18}}
                         color={OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR}>
                         {OK_NG_BOX_COLOR_TEXT[rep.detailStatus].TEXT}
                 </Tag>
