@@ -302,8 +302,8 @@ export class InspectionResultDisplay_FullScren extends React.Component {
             return "sub1"+index;
         });
 
-        let seprateSubMenu=resultMenu_4fullscreenUse.map(function(item){
-            return <Col span={4}>
+        let separateSubMenu=resultMenu_4fullscreenUse.map(function(item){
+            return <Col span={8}>
                 <Menu
                     // onClick={this.handleClick}
                     // selectedKeys={[this.current]}
@@ -328,7 +328,7 @@ export class InspectionResultDisplay_FullScren extends React.Component {
             >
                 <div style= {{ height:this.props.height===undefined?400:this.props.height}}>
                     <Row type="flex" justify="space-around" align="top">
-                    {seprateSubMenu}
+                    {separateSubMenu}
                     </Row>
                 </div>
             </Modal>
