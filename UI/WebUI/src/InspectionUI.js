@@ -354,12 +354,12 @@ class InspectionResultDisplay extends React.Component {
     };
 
     showResultValueCheck(o){
-        if(o.status==-1)
+        if(o.status==MEASURERSULTRESION.NA)
             return "NaN ";
         else if(o.value===+o.value)
             return o.value.toFixed(3);
         else
-            return "Null ";
+            return "NaN ";
     }
 
 

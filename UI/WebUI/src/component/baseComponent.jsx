@@ -73,7 +73,7 @@ export class JsonElement extends React.Component{
     {
       case "input-number":
         translateValue = translateValue+"";
-        return <input key={this.props.id} className={this.props.className} type="number" step="0.01" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+        return <input key={this.props.id} className={this.props.className} type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
           value={translateValue}
           onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
       case "input":
