@@ -68,7 +68,7 @@ export const UI_SM_EVENT = {
   EXIT:"EXIT",
   ERROR:"ERROR",
 
-
+  Version_Map_Update:"Version_Map_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
   WS_channel:"WS_channel",
 
@@ -124,6 +124,15 @@ export function EV_UI_EC_Load_Def_Config(info)
   }
 }
 
+export function EV_UI_Version_Map_Update(mapInfo)
+{
+  return {
+    type: UI_SM_EVENT.Version_Map_Update,
+    data: mapInfo
+  }
+}
+
+
 export function EV_WS_Connected(ws_obj)
 {
   return {
@@ -137,7 +146,6 @@ export function EV_WS_Disconnected(peer)
     type: UI_SM_EVENT.Disonnected ,data:peer
   }
 }
-
 
 export function EV_UI_Edit_Mode()
 {

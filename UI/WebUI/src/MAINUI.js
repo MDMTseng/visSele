@@ -12,7 +12,7 @@ import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 
-import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
@@ -157,12 +157,12 @@ class APPMain extends React.Component{
           let camParam = this.props.isp_db.cameraParam;
           mmpp= camParam.mmpb2b/camParam.ppb2b;
         }
-  
+
         let MenuItem={
           Overview:{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
-
+              <div className="s black">{this.props.WebUI_info.version}</div>
               <div className="s HX6 width5">
 
                 <AntButton onClick={()=>{
@@ -191,7 +191,6 @@ class APPMain extends React.Component{
                 this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
                   {filename:cameraCalibPath});
               }}>{"mmpp:"+mmpp}</AntButton>}
-  
   
               <BPG_FileBrowser key="BPG_FileBrowser"
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
@@ -272,6 +271,22 @@ class APPMain extends React.Component{
             onSelected:()=>this.setState({...this.state,menuCollapsed:!this.state.menuCollapsed})
           }
         };
+
+        
+        let ver_map = this.props.version_map_info;
+        let recommend_URL = GetObjElement(ver_map,["recommend_info","url"]);
+
+        if(recommend_URL!==undefined && (recommend_URL.indexOf())==-1)
+        {
+          MenuItem.UPDATE={
+            icon:"cloud-upload",
+            content:null,
+            onSelected:()=>{
+              window.location.href =recommend_URL;
+            }
+          };
+        }
+
   
         UI.push(
           <Layout className="HXF">
@@ -344,8 +359,9 @@ const mapStateToProps_APPMain = (state) => {
         camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
         isp_db: state.UIData.edit_info._obj,
         WS_CH:state.UIData.WS_CH,
-        WS_ID:state.UIData.WS_ID
-        
+        WS_ID:state.UIData.WS_ID,
+        version_map_info:state.UIData.version_map_info,
+        WebUI_info:state.UIData.WebUI_info
     }
 }
 

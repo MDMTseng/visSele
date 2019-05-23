@@ -60,6 +60,8 @@ class APPMasterX extends React.Component{
         dispatch(act)
       },
       ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+      ACT_Version_Map_Update:(mapInfo)=>dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
+      
     }
   }
   static mapStateToProps(state){
@@ -107,28 +109,17 @@ class APPMasterX extends React.Component{
         {
           case "HR":
           {
-            if(false&&window.location.href.indexOf("/v.")==-1)
             {
               let HR =BPG_Protocol.raw2obj(evt);
-
+              function getRandom(min,max){
+                return Math.floor(Math.random()*(max-min+1))+min;
+              };
               let url = HR.data.webUI_resource;
-              if(url===undefined)url="http://hyv.idcircle.me/version.jsonp";
+              if(url===undefined)url="http://hyv.idcircle.me/version.jsonp?rand="+getRandom();
               jsonp(url, {name:"hyv_version_map"}, (err,data)=>{
-                //console.log(err,data);
-                let coreVersion=HR.data.version;
-                if(coreVersion===undefined)
-                {
-                  coreVersion="v0.0.0";
-                }
-                let WebUI_Version = data[coreVersion];
-                if(WebUI_Version!==undefined)
-                {
-                  window.location.href ="http://hyv.idcircle.me/";
-                }
-                //console.log(err,data,HR,WebUI_Version);
+                data.core_info=HR.data;
+                this.props.ACT_Version_Map_Update(data);
               });
-  
-  
             }
            
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
