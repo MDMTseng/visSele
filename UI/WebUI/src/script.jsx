@@ -107,7 +107,7 @@ class APPMasterX extends React.Component{
         {
           case "HR":
           {
-            if(flase&&window.location.href.indexOf("/v.")==-1)
+            if(false&&window.location.href.indexOf("/v.")==-1)
             {
               let HR =BPG_Protocol.raw2obj(evt);
 
