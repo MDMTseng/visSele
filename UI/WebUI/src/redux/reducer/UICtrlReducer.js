@@ -362,17 +362,17 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  if(srep_inWindow.repeatTime>0)
+                  //if(srep_inWindow.repeatTime>0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
                     reportStatisticState.newAddedReport.push(srep_inWindow);
                   }
-                  else
-                  {
-                    log.error("the current data only gets single sampling ignore",
-                    "this error case is to remove abnormal sample that's caused by air blow");
-                  }
+                  // else
+                  // {
+                  //   log.error("the current data only gets single sampling ignore",
+                  //   "this error case is to remove abnormal sample that's caused by air blow");
+                  // }
                   return false;
                 });
             
@@ -530,7 +530,16 @@ function StateReducer(newState,action)
                   treport.isCurObj=true;
                   reportStatisticState.trackingWindow.push(treport);
                 }
+
+
               });
+
+
+              //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
+              //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
+              reportStatisticState.trackingWindow=
+                reportStatisticState.trackingWindow.
+                filter((srep_inWindow)=>(srep_inWindow.isCurObj || treport.repeatTime>2));
             }
 
 
