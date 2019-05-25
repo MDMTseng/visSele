@@ -421,9 +421,9 @@ export class InspectionEditorLogic
 
     //log.info("FoundShape>",pre_shape);
     let shape=null;
+    shape = {...shape_obj,id};
     if(pre_shape == null)
     {
-      shape = Object.assign({id:id},shape_obj);
       if(shape.name === undefined)
       {
         shape.name="@"+shape.type+"_"+id;
@@ -432,12 +432,12 @@ export class InspectionEditorLogic
     }
     else
     {
-      shape = Object.assign({id:id},shape_obj);
       if(pre_shape_idx!=undefined)
       {
         this.shapeList[pre_shape_idx] = shape;
       }
     }
+
     if(this.editShape!== null && this.editShape.id == id)
     {
       this.editShape = shape;

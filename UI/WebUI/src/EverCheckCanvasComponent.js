@@ -2035,14 +2035,13 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
                 this.EditShape=dclone(pt_info.shape);//Deep copy
                 this.EditPoint=this.EditShape[pt_info.key];
                 this.tmp_EditShape_id = this.EditShape.id;
-                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
               }
               else
               {
                 this.EditPoint=null;
                 this.EditShape=null;
-                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
               }
+              this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
             }
             else
             {

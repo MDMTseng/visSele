@@ -20,6 +20,7 @@ import JSum from 'jsum';
 import 'antd/dist/antd.css';
 import * as log from 'loglevel';
 import dclone from 'clone';
+import Modal from "antd/lib/modal";
 
 
 import EC_zh_TW from './languages/zh_TW';
@@ -728,12 +729,44 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           this.ec_canvas.SetShape( null, id);
         }
+        let on_COPY_Tar=(targetShape)=>
+        {
+          let copy_shape = dclone(targetShape);
+          copy_shape.id=undefined;
+          console.log(copy_shape);
+          ["pt1","pt2","pt3"].forEach((pt_key)=>{
+            if(copy_shape[pt_key]===undefined)return;
+            copy_shape[pt_key].x+=1;
+            copy_shape[pt_key].y+=1;
+          });
+          copy_shape.name+="_copy";
+          this.ec_canvas.SetShape( copy_shape,undefined );
+        }
         if(this.props.edit_tar_info.id !== undefined)
         {
           MenuSet.push(<BASE_COM.Button
+            key="COPY_BTN"
+            addClass="layout blue vbox"
+            text="COPY" onClick={()=>on_COPY_Tar(this.props.edit_tar_info)}/>);
+
+
+          MenuSet.push(<BASE_COM.Button
             key="DEL_BTN"
             addClass="layout red vbox"
-            text="DEL" onClick={()=>on_DEL_Tar(this.props.edit_tar_info.id)}/>);
+            text="DEL" onClick={()=>{
+              
+              this.setState({...this.state,warningInfo:{
+                onOk:()=>{
+                  on_DEL_Tar(this.props.edit_tar_info.id);
+                  console.log("onOK")
+                },
+                onCancel:()=>{console.log("onCancel")},
+                content:"確定要刪除:"+this.props.edit_tar_info.name+" ?"
+              }})
+            }}/>);
+  
+  
+
         }
         
       }
@@ -755,6 +788,25 @@ class APP_DEFCONF_MODE extends React.Component{
     console.log("APP_DEFCONF_MODE render");
     return(
     <div className="overlayCon HXF">
+      
+      <Modal
+            title={null}
+            visible={this.state.warningInfo!==undefined}
+
+            okText= 'Yes'
+            okType= 'danger'
+            onCancel={(param)=>{
+              this.state.warningInfo.onCancel(param);
+              this.setState({...this.state,warningInfo:undefined});
+              }}
+            onOk={(param)=>{
+              this.state.warningInfo.onOk(param);
+              this.setState({...this.state,warningInfo:undefined});
+              }
+            }
+        >
+        {(this.state.warningInfo!==undefined)?this.state.warningInfo.content:null}
+      </Modal>
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
       <$CSSTG transitionName = "fadeIn">
         <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
