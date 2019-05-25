@@ -43,7 +43,7 @@ function Edit_info_reset(newState)
     //It's the target element in edit target
     //Example 
     //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
-    //And our target is c
+    //And our goal is to trace to c
     //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
     edit_tar_ele_trace:null,
 
@@ -894,9 +894,6 @@ function StateReducer(newState,action)
           }
         }
         break;
-
-
-        
         case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         {
           if(newState.edit_info.edit_tar_info==null)
@@ -1012,6 +1009,26 @@ function StateReducer(newState,action)
           }
         }
         break;
+        case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
+          if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
+          {
+            let keyTrace=newState.edit_info.edit_tar_ele_trace;
+            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
+            let cand=newState.edit_info.edit_tar_ele_cand;
+
+            log.info("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            obj[keyTrace[keyTrace.length-1]]={
+              id:cand.shape.id,
+              type:cand.shape.type
+            };
+
+            newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_ele_trace=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+          }
+        break;
+
+        
       }
 
 

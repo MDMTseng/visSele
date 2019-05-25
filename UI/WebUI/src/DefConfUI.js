@@ -19,6 +19,7 @@ import {round as roundX,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/M
 import JSum from 'jsum';
 import 'antd/dist/antd.css';
 import * as log from 'loglevel';
+import dclone from 'clone';
 
 
 import EC_zh_TW from './languages/zh_TW';
@@ -55,6 +56,10 @@ class CanvasComponent extends React.Component {
         console.log(event);
         this.props.ACT_EDIT_SHAPE_SET(event.data);
       break; 
+      case DefConfAct.EVENT.Edit_Tar_Ele_Trace_Update:
+        this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(event.data);
+      break; 
+
     }
   }
   componentDidMount() {
@@ -129,6 +134,7 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) =>
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(DefConfAct.Shape_List_Update(shapeList))},
     ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(DefConfAct.Shape_Set(shape_data))},
+    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
   }
 }
 const CanvasComponent_rdx = connect(
@@ -738,7 +744,7 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           MenuSet.push(<BASE_COM.Button
             key={"shape_listing_"+shape.id}
-            addClass="layout lgreen vbox"
+            addClass="layout lred vbox"
             text={shape.name} onClick={()=>this.props.ACT_EDIT_TAR_UPDATE(shape)}/>);
         });
       }

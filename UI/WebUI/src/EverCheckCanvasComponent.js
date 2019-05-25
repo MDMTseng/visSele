@@ -2022,34 +2022,39 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         {
           if(ifOnMouseLeftClickEdge)
           {
-            if(this.CandEditPointInfo!=null)
+            
+            let tar_ele_trace = this.edit_DB_info.edit_tar_ele_trace;
+              
+            if(tar_ele_trace==null || tar_ele_trace===undefined)
             {
+              //If there is no tar_ele_trace was set,ie. if user didn't select ref
+              if(this.CandEditPointInfo!=null)
               {
-                //if(this.EditShape=null ||(this.EditShape!=null && this.EditShape.type!=SHAPE_TYPE.aux_point))
-                {
-                  let pt_info = this.CandEditPointInfo;
-                  this.CandEditPointInfo=null;
-                  this.EditShape=dclone(pt_info.shape);//Deep copy
-                  this.EditPoint=this.EditShape[pt_info.key];
-                  this.tmp_EditShape_id = this.EditShape.id;
-                  this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
-                  
-                }
-                //else
-                {
-                  //this.EmitEvent({type:DefConfAct.EVENT.Tar_Ele_Cand_Update,data:this.CandEditPointInfo});
-
-                }
+                let pt_info = this.CandEditPointInfo;
+                this.CandEditPointInfo=null;
+                this.EditShape=dclone(pt_info.shape);//Deep copy
+                this.EditPoint=this.EditShape[pt_info.key];
+                this.tmp_EditShape_id = this.EditShape.id;
+                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
+              }
+              else
+              {
+                this.EditPoint=null;
+                this.EditShape=null;
+                this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
               }
             }
             else
             {
-              this.EditPoint=null;
-              this.EditShape=null;
-              this.EmitEvent(DefConfAct.Edit_Tar_Update(this.EditShape));
-            
-            }
-            
+              if(this.CandEditPointInfo!=null)
+              {
+                this.EmitEvent(DefConfAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
+              }
+              else
+              {//If there is a edit_tar_ele_trace set, then it will cancel the edit_tar_ele_trace
+                this.EmitEvent(DefConfAct.Edit_Tar_Ele_Trace_Update(null));
+              }
+            }            
           }
           else
           {
