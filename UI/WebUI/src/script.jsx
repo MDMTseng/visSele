@@ -115,7 +115,9 @@ class APPMasterX extends React.Component{
                 return Math.floor(Math.random()*(max-min+1))+min;
               };
               let url = HR.data.webUI_resource;
-              if(url===undefined)url="http://hyv.idcircle.me/version.jsonp?rand="+getRandom();
+              if(url===undefined)url="http://hyv.idcircle.me"
+              url+="/version.jsonp?rand="+getRandom();
+              
               jsonp(url, {name:"hyv_version_map"}, (err,data)=>{
                 data.core_info=HR.data;
                 this.props.ACT_Version_Map_Update(data);

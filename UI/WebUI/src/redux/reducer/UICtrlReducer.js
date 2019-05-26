@@ -167,8 +167,8 @@ function StateReducer(newState,action)
         {
           let versions = WebUI_Version.ver;
 
-          let resource_url="http://hyv.idcircle.me/";
-          if(core_info.resource_url !== undefined)resource_url=core_info.resource_url;
+          let webUI_resource="http://hyv.idcircle.me";
+          if(core_info.webUI_resource !== undefined)webUI_resource=core_info.webUI_resource;
         
           let localV=semver.clean(APP_INFO.version);
           
@@ -181,7 +181,7 @@ function StateReducer(newState,action)
           {
             version_map_info.recommend_info={
               versions,
-              url:resource_url+versions[versions.length-1]
+              url:webUI_resource+"/"+versions[versions.length-1]
             }
           }
         }
