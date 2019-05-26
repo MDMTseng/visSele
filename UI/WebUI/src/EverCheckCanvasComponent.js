@@ -301,7 +301,14 @@ class renderUTIL
     point_onAlignLine = db_obj.shapeMiddlePointParse(refObjs[0],shapeList);
     point = db_obj.shapeMiddlePointParse(refObjs[1],shapeList);
     
-    let mainObjVec= db_obj.shapeVectorParse(refObjs[0],shapeList);
+    let main_refObj;
+    if(eObject.ref_baseLine!==undefined && eObject.ref_baseLine.id!==undefined )
+    {
+      main_refObj=shapeList.find((shape)=>shape.id==eObject.ref_baseLine.id);
+    }
+    if(main_refObj===undefined)main_refObj=refObjs[0];
+
+    let mainObjVec= db_obj.shapeVectorParse(main_refObj,shapeList);
     if(mainObjVec===undefined)
     {
       mainObjVec = {x:-(point.y-point_onAlignLine.y),y:(point.x-point_onAlignLine.x)};

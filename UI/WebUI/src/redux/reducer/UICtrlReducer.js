@@ -991,6 +991,9 @@ function StateReducer(newState,action)
                   newState.edit_info.edit_tar_info.ref=[{}];
                 break;
                 case SHAPE_TYPE.measure_subtype.distance:
+                    newState.edit_info.edit_tar_info.ref=[{},{}];
+                    newState.edit_info.edit_tar_info.ref_baseLine={};
+                  break;
                 case SHAPE_TYPE.measure_subtype.angle:
                   newState.edit_info.edit_tar_info.ref=[{},{}];
                 break;
@@ -1010,6 +1013,13 @@ function StateReducer(newState,action)
                   });
               if(acceptData)
                 obj[keyTrace[keyTrace.length-1]] = cand;
+            }
+            else if(keyTrace[0] == "ref_baseLine")
+            {
+              obj[keyTrace[keyTrace.length-1]]={
+                id:cand.shape.id,
+                type:cand.shape.type
+              };
             }
 
             log.info(obj,newState.edit_info.edit_tar_info);

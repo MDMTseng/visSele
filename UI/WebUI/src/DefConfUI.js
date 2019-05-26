@@ -240,13 +240,18 @@ class APP_DEFCONF_MODE extends React.Component{
               1:{__OBJ__:"btn",
                 id:"div",
                 element:"div"},
+            },
+            ref_baseLine:{
+              __OBJ__:"btn",
+              id:"div",
+              element:"div"
             }
           }}
           jsonChange={(original_obj,target,type,evt)=>
             {
               if(type =="btn")
               {
-                if(target.keyTrace[0]=="ref")
+                if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
                 {
                   this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
                 }
@@ -559,13 +564,19 @@ class APP_DEFCONF_MODE extends React.Component{
               1:{__OBJ__:"btn",
                 id:"div",
                 element:"div"},
+            },
+            ref_baseLine:{
+              __OBJ__:"btn",
+              id:"div",
+              element:"div"
             }
           }}
           jsonChange={(original_obj,target,type,evt)=>
             {
+              console.log(target);
               if(type =="btn")
               {
-                if(target.keyTrace[0]=="ref")
+                if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
                 {
                   this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
                 }
