@@ -27,6 +27,7 @@
     "dateformat": "^3.0.3",
     "jsonp": "^0.2.0",
     "jsum": "^0.1.4",
+    "localStorage": "^1.0.4",
     "loglevel": "^1.6.1",
     "plotly.js": "^1.45.1",
     "react": "^16.7.0",
@@ -38,8 +39,8 @@
     "react-resize-detector": "^3.2.1",
     "redux": "^4.0.1",
     "redux-thunk": "^2.3.0",
+    "semver": "^6.1.0",
     "text-encoding": "^0.7.0",
-    "localStorage": "^1.0.4",
     "xstate": "^3.3.3"
   },
   "devDependencies": {

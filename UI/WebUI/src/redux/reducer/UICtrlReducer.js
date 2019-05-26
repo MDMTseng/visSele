@@ -13,7 +13,7 @@ import { loadavg } from 'os';
 
 import dateFormat from 'dateFormat';
 import JSum from 'jsum';
-
+import semver from 'semver'
 
 let log = logX.getLogger("UICtrlReducer");
 
@@ -123,7 +123,6 @@ function Default_UICtrlReducer()
 
 function StateReducer(newState,action)
 {
-  console.log(newState.WebUI_info)
   newState.state_count++;
   if(action.type == "ev_state_update")
   {
@@ -152,7 +151,7 @@ function StateReducer(newState,action)
     case UISEV.Version_Map_Update:
       log.info("Version_Map_Update",action.data);
       let version_map_info = action.data;
-      version_map_info.webUI_info=APP_INFO.info;
+      version_map_info.webUI_info=APP_INFO;
       
       {
         let core_info = version_map_info.core_info;
@@ -160,23 +159,34 @@ function StateReducer(newState,action)
         let coreVersion=core_info.version;
         if(coreVersion===undefined)
         {
-          coreVersion="v0.0.0";
+          coreVersion="0.0.0";
         }
         let WebUI_Version = version_map_info.core2wui[coreVersion];
+        
         if(WebUI_Version!==undefined && WebUI_Version.ver !== undefined)
         {
           let versions = WebUI_Version.ver;
+
           let resource_url="http://hyv.idcircle.me/";
           if(core_info.resource_url !== undefined)resource_url=core_info.resource_url;
         
-          version_map_info.recommend_info={
-            versions,
-            url:resource_url+versions[versions.length-1]
+          let localV=semver.clean(APP_INFO.version);
+          
+          let maxV = versions
+            .map(ver=>semver.clean(ver))
+            .reduce((maxV,ver)=>semver.gt(maxV, ver)?maxV:ver);
+          let hasNewVer = semver.gt(maxV, localV);
+          
+          if(hasNewVer)
+          {
+            version_map_info.recommend_info={
+              versions,
+              url:resource_url+versions[versions.length-1]
+            }
           }
         }
 
       }
-      console.log(version_map_info);
       newState={...newState,version_map_info};
     return newState;
     

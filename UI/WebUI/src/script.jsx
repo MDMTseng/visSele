@@ -111,7 +111,7 @@ class APPMasterX extends React.Component{
           {
             {
               let HR =BPG_Protocol.raw2obj(evt);
-              function getRandom(min,max){
+              function getRandom(min=0,max=1000000){
                 return Math.floor(Math.random()*(max-min+1))+min;
               };
               let url = HR.data.webUI_resource;
