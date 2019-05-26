@@ -112,6 +112,7 @@ typedef struct FeatureReport_judgeDef{
   } measure_type;
   int OBJ1_id;
   int OBJ2_id;
+  int ref_baseLine_id;
   float targetVal;
   float USL,LSL;
   float UCL,LCL;

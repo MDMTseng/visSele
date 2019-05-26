@@ -538,8 +538,9 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
           {
             break;
           }
-
-        ret = ParseMainVector(flip_f,report,judge.OBJ1_id, &vec1);
+        int baseLine_id = judge.ref_baseLine_id;
+        if(baseLine_id<0)baseLine_id=judge.OBJ1_id;
+        ret = ParseMainVector(flip_f,report,baseLine_id, &vec1);
         if(ret!=0)
         {//OBJ1 have no direction
           judgeReport.measured_val=acvDistance(pt1,pt2);
@@ -1183,6 +1184,11 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   pnum = JFetch_NUMBER(judge_obj,"ref[1].id");//It's fine if we don't have OBJ2(ref[1])
   if(pnum == NULL)judge.OBJ2_id = -1;
   else {judge.OBJ2_id = *pnum;}
+
+  
+  pnum = JFetch_NUMBER(judge_obj,"ref_baseLine.id");//It's fine if we don't have ref_baseLine
+  if(pnum == NULL)judge.ref_baseLine_id = -1;
+  else {judge.ref_baseLine_id = *pnum;}
 
   LOGV("value:%f USL:%f LSL:%f id1:%d id2:%d",judge.targetVal,judge.USL,judge.LSL,judge.OBJ1_id,judge.OBJ2_id);
   judgeList.push_back(judge);
