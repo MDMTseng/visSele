@@ -263,7 +263,7 @@ class renderUTIL
     y+=r*ay;
     let dirSign=(ccw)?-1:1;
     dirSign*=this.getPrimitiveSize();
-    let arrowSize = 10*this.getPrimitiveSize();
+    let arrowSize = 50*this.getPrimitiveSize();
     this.canvas_arrow(ctx, x+dirSign*ay, y-dirSign*ax, x, y,arrowSize);
     
   }
@@ -827,7 +827,7 @@ class renderUTIL
                 x0:arc.x+dispVec.x,y0:arc.y+dispVec.y,
                 x1:eObject.pt1.x,y1:eObject.pt1.y,
               };*/
-              let arrowSize = 10*this.getPrimitiveSize();
+              let arrowSize = 50*this.getPrimitiveSize();
               this.canvas_arrow(ctx, eObject.pt1.x, eObject.pt1.y, arc.x+dispVec.x, arc.y+dispVec.y,arrowSize);
               //this.drawReportLine(ctx, lineInfo);
               
