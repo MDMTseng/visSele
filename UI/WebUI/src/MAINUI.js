@@ -163,7 +163,7 @@ class APPMain extends React.Component{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
               <div className="s black">{this.props.WebUI_info.version}</div>
-              <div className="s HX6 width5">
+              <div className="s width7" style={{height:"500px"}}>
 
                 <AntButton onClick={()=>{
                   let fileSelectedCallBack=
@@ -174,11 +174,11 @@ class APPMain extends React.Component{
                       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath+".bmp"});
                     }
                   this.setState({...this.state,fileSelectedCallBack});
-                }} className="height4 width12" key="1">
+                }} className="height1 width12" key="1">
                   {this.props.defModelPath}<br/>
                   {this.props.defModelName}
                 </AntButton>
-                <CanvasComponent_rdx className="height8"/>
+                <CanvasComponent_rdx className="height11"/>
     
               </div>
               {(mmpp===undefined)?null:
