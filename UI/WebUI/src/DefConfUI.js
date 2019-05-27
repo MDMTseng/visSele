@@ -154,7 +154,7 @@ class APP_DEFCONF_MODE extends React.Component{
       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
       {
         deffile:defModelPath+'.'+DEF_EXTENSION,
-        imgsrc:defModelPath+".bmp"},
+        imgsrc:defModelPath},
       undefined,{resolve,reject});
       setTimeout(()=>reject("Timeout"),1000)
     })
@@ -423,7 +423,7 @@ class APP_DEFCONF_MODE extends React.Component{
               console.log("ACT_Report_Save");
               this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+'.'+DEF_EXTENSION,enc.encode(JSON.stringify(report, null, 2)));
               console.log("ACT_Cache_Img_Save");
-              this.props.ACT_Cache_Img_Save(this.props.WS_ID,fileNamePath+".bmp");
+              this.props.ACT_Cache_Img_Save(this.props.WS_ID,fileNamePath);
 
 
               this.props.ACT_Def_Model_Path_Update(fileNamePath);
@@ -454,7 +454,7 @@ class APP_DEFCONF_MODE extends React.Component{
               let fileNamePath=filePath.replace("."+DEF_EXTENSION,"");
               console.log(fileNamePath);
               this.props.ACT_Def_Model_Path_Update(fileNamePath);
-              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath+".bmp"});
+              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath});
               
               this.setState({...this.state,fileSelectedCallBack:undefined});
             }});

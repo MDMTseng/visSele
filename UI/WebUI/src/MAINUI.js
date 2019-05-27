@@ -131,7 +131,7 @@ class APPMain extends React.Component{
 
             let defModelPath = this.props.defModelPath;
       
-            this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath+".bmp"});
+            this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath});
                         
         },1000);
   
@@ -171,7 +171,7 @@ class APPMain extends React.Component{
                       filePath=filePath.replace("."+DEF_EXTENSION,"");
                       this.setState({...this.state,fileSelectedCallBack:undefined});
                       this.props.ACT_Def_Model_Path_Update(filePath);
-                      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath+".bmp"});
+                      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
                     }
                   this.setState({...this.state,fileSelectedCallBack});
                 }} className="height1 width12" key="1">
@@ -260,7 +260,7 @@ class APPMain extends React.Component{
                 { 
                   this.setState({...this.state,fileSelectedCallBack:undefined});
                 }}
-                fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".bmp")}
+                fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".bmp")||fileInfo.name.includes(".png")}
                 />
             </div>,
             onSelected:genericMenuItemCBsCB

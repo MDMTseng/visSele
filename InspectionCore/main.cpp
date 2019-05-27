@@ -19,6 +19,7 @@
 #include <playground.h>
 #include <stdexcept>
 
+#include <lodepng.h>
 std::timed_mutex mainThreadLock;
 DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
@@ -72,6 +73,143 @@ int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename);
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst,size_t dstLen,uint8_t *src,size_t srcLen);
+
+
+
+
+
+
+int Save2PNG(uint8_t *data, int width, int height,int channelCount,const char* filePath)
+{
+    // we're going to encode with a state rather than a convenient function, because enforcing a color type requires setting options
+    lodepng::State state;
+    // input color type
+    state.info_raw.colortype = LCT_GREY;
+    switch(channelCount)
+    {
+      case 1:state.info_raw.colortype = LCT_GREY;break;
+      case 2:state.info_raw.colortype = LCT_GREY_ALPHA;break;//Weird but what ever
+      case 3:state.info_raw.colortype = LCT_RGB;break;
+      case 4:state.info_raw.colortype = LCT_RGBA;break;
+      default:return -1;
+    }
+    state.info_raw.bitdepth = 8;
+    // output color type
+    state.info_png.color.colortype = LCT_RGBA;
+    state.info_png.color.bitdepth = 8;
+    state.encoder.auto_convert = 1; // without this, it would ignore the output color type specified above and choose an optimal one instead
+
+    std::vector<unsigned char> buffer;
+    unsigned error = lodepng::encode(buffer, data, width, height,state);
+    if(error)
+    {
+      LOGI("encoder error %d : %s",error,lodepng_error_text(error));
+      return error;
+    }
+
+
+    return lodepng::save_file(buffer,filePath);
+}
+
+
+int LoadPNGFile(acvImage *img,const  char *filename)
+{
+  
+  std::vector<unsigned char> image;
+  unsigned ret_width, ret_height;
+  image.resize(0);
+  
+  unsigned error = lodepng::decode(image, ret_width, ret_height, filename,LCT_RGB,8);
+  if(error!=0)return error;
+  img->ReSize(ret_width,ret_height);
+
+  for(int i=0;i<img->GetHeight();i++)
+  {
+    
+    for(int j=0;j<img->GetWidth();j++)
+    {
+      img->CVector[i][j*3+0]=image[i*ret_width*3+j*3+2];
+      img->CVector[i][j*3+1]=image[i*ret_width*3+j*3+1];
+      img->CVector[i][j*3+2]=image[i*ret_width*3+j*3+0];//The order is reversed
+    }
+    //memcpy(img->CVector[i],&(image[i*ret_width*3]),ret_width*3);
+  }
+  
+  return 0;
+}
+
+int LoadIMGFile(acvImage *ret_img,const  char *filename)
+{
+  const char *dot = strrchr(filename, '.');
+  std::string fname_str(filename);
+
+  int retVal;
+  if(!dot)
+  {
+    retVal= LoadPNGFile(ret_img,(fname_str+".png").c_str());
+    if(retVal==0)return 0;
+    retVal= acvLoadBitmapFile(ret_img,(fname_str+".bmp").c_str());
+    if(retVal==0)return 0;
+    return -1;
+  }
+
+  if(strcmp(dot, ".bmp")==0)
+  {
+    return acvLoadBitmapFile(ret_img,filename);
+  }
+  if(strcmp(dot, ".png")==0)
+  {
+    return LoadPNGFile(ret_img,filename);
+  }
+  return -1;
+
+
+}
+
+int SavePNGFile(const char *filename, acvImage *img)
+{
+  LOGE("SavePNGFile:%s",filename);
+  int w=img->GetWidth();
+  std::vector<uint8_t> pix_arr(img->GetHeight()*img->GetWidth()*3);
+  for(int i=0;i<img->GetHeight();i++)
+  {
+    
+    for(int j=0;j<w;j++)
+    {
+      pix_arr[i*w*3+j*3+2]=img->CVector[i][j*3+0];
+      pix_arr[i*w*3+j*3+1]=img->CVector[i][j*3+1];
+      pix_arr[i*w*3+j*3+0]=img->CVector[i][j*3+2];
+    }
+    //memcpy(img->CVector[i],&(image[i*ret_width*3]),ret_width*3);
+  }
+
+  return Save2PNG(&(pix_arr[0]),  img->GetWidth(),  img->GetHeight(),3, filename);
+}
+
+
+int SaveIMGFile(const char *filename, acvImage *img)
+{
+  const char *dot = strrchr(filename, '.');
+
+  LOGE("SaveIMGFile:%s",filename);
+  int retVal;
+  if(!dot)
+  {
+    std::string fname_str(filename);
+    return SavePNGFile((fname_str+".png").c_str(),img);
+  }
+
+  if(strcmp(dot, ".bmp")==0)
+  {
+    return acvSaveBitmapFile(filename,img);
+  }
+  if(strcmp(dot, ".png")==0)
+  {
+    return SavePNGFile(filename,img);
+  }
+  return -1;
+
+}
 
 void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
 {
@@ -457,8 +595,12 @@ public:
                 char* type =(char* )JFetch(json,"type",cJSON_String);
                 if (strcmp(type,"__CACHE_IMG__") == 0 )
                 {
+                  LOGE("__CACHE_IMG__ %d x %d",cacheImage.GetWidth(),cacheImage.GetHeight());
                   if(cacheImage.GetWidth()*cacheImage.GetHeight()>10)
-                    acvSaveBitmapFile(fileName,&cacheImage);
+                  {
+                    SaveIMGFile(fileName,&cacheImage);
+
+                  }
                   
                   //cacheImage.ReSize(1,1);
                 }
@@ -618,7 +760,7 @@ public:
               if(imgSrcPath!=NULL)
               {
                 
-                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                int ret_val = LoadIMGFile(&tmp_buff,imgSrcPath);
                 if(ret_val==0)
                 {
                   srcImg = &tmp_buff;
@@ -694,7 +836,7 @@ public:
               if(imgSrcPath!=NULL)
               {
                 
-                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                int ret_val = LoadIMGFile(&tmp_buff,imgSrcPath);
                 if(ret_val==0)
                 {
                   srcImg = &tmp_buff;
@@ -747,7 +889,7 @@ public:
 
                   int ret = ImgInspection_JSONStr(matchingEng,srcImg,1,jsonStr);
                   free(jsonStr);
-                  //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
+                  //SaveIMGFile("data/buff.bmp",&test1_buff);
 
                   const FeatureReport * report = matchingEng.GetReport();
 
@@ -855,7 +997,7 @@ public:
                   camera->TriggerMode(0);
                   cameraFeedTrigger=true;
                   camera->Trigger();
-                  //acvSaveBitmapFile("data/buff.bmp",&test1_buff);
+                  //SaveIMGFile("data/buff.bmp",&test1_buff);
           
                   session_ACK=true;
               }
@@ -894,7 +1036,7 @@ public:
               acvImage *srcImg=NULL;
               if(imgSrcPath!=NULL)
               {
-                int ret_val = acvLoadBitmapFile(&tmp_buff,imgSrcPath);
+                int ret_val = LoadIMGFile(&tmp_buff,imgSrcPath);
                 if(ret_val==0)
                 {
                   srcImg = &tmp_buff;
@@ -918,7 +1060,7 @@ public:
                 srcImg = camera->GetImg();
                 cacheImage.ReSize(srcImg);
                 acvCloneImage(srcImg,&cacheImage,-1);
-                //acvSaveBitmapFile("data/test1.bmp",srcImg);
+                //SaveIMGFile("data/test1.bmp",srcImg);
               }
 
               try {
@@ -1140,7 +1282,7 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam p
 
   return 0;
   //ContourFeatureDetect(test1,&test1_buff,tar_signature);
-  //acvSaveBitmapFile("data/target_buff.bmp",&test1_buff);
+  //SaveIMGFile("data/target_buff.bmp",&test1_buff);
 
 }
 
@@ -1399,7 +1541,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
-    //acvSaveBitmapFile("data/MVCamX.bmp",&test1_buff);
+    //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
     if(cameraFeedTrigger)
     {
@@ -1721,9 +1863,6 @@ int simpleTest(char *imgName, char *defName)
 }
 
 
-
-
-
 #include <vector>
 int main(int argc, char** argv)
 {
@@ -1779,7 +1918,7 @@ int main(int argc, char** argv)
 
     acvImage calibImage;
     acvImage test_buff;
-    int ret_val = acvLoadBitmapFile(&calibImage,"data/calibImg.BMP");
+    int ret_val = LoadIMGFile(&calibImage,"data/calibImg.BMP");
     if(ret_val!=0)return -1;
     ImgInspection_DefRead(matchingEng,&calibImage,1,"data/cameraCalibration.json");
 
@@ -1807,7 +1946,7 @@ int main(int argc, char** argv)
     char *imgName="data/test1.BMP";
     char *defName = "data/cache_def.json";
 
-    acvLoadBitmapFile(&proBG,"data/proBG.BMP");
+    LoadIMGFile(&proBG,"data/proBG.BMP");
     //char *imgName="data/calib_cam1_surfaceGo.bmp";
     //char *defName = "data/cameraCalibration.json";
     //
@@ -1823,7 +1962,7 @@ int main(int argc, char** argv)
     acvImage BuffImage;
     acvImage BGImage;
     acvImage BGImage_Ori;
-    int ret_val = acvLoadBitmapFile(&BGImage,"data/BG.BMP");
+    int ret_val = LoadIMGFile(&BGImage,"data/BG.BMP");
     if(ret_val)return ret_val;
     BuffImage.ReSize(&BGImage);
     BGImage_Ori.ReSize(&BGImage);
@@ -1858,12 +1997,12 @@ int main(int argc, char** argv)
         }
       }
     }
-    acvSaveBitmapFile("data/BGImage_OriX.bmp",&BGImage_Ori);
-    acvSaveBitmapFile("data/proBG.bmp",&BGImage);
+    SaveIMGFile("data/BGImage_OriX.bmp",&BGImage_Ori);
+    SaveIMGFile("data/proBG.bmp",&BGImage);
 
     return 0;
   }
-  acvLoadBitmapFile(&proBG,"data/proBG.BMP");
+  LoadIMGFile(&proBG,"data/proBG.BMP");
 
 
   signal(SIGINT, sigroutine);
