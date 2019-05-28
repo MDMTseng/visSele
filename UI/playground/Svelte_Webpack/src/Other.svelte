@@ -20,7 +20,8 @@
 		url+="projection="+JSON.stringify(
 			{"_id":0,"InspectionData.time_ms":1,
 			"InspectionData.judgeReports.id":1,
-			"InspectionData.judgeReports.value":1}
+			"InspectionData.judgeReports.value":1,
+			"InspectionData.judgeReports.status":1}
 			);
 	}
 	else{
