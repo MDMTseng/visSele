@@ -549,10 +549,10 @@ function StateReducer(newState,action)
               //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
               reportStatisticState.trackingWindow=
                 reportStatisticState.trackingWindow.
-                filter((srep_inWindow)=>(srep_inWindow.isCurObj || treport.repeatTime>2));
+                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>2));
             }
 
-
+            
             if(false){
               let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
               let measure1 = newState.edit_info.reportStatisticState.measure1;
