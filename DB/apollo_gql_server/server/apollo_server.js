@@ -46,6 +46,7 @@ app.get('/insp_time', function(req, res) {
     console.log(req.query.tStart);
     console.log(req.query.tEnd);
 
+    console.log(req.query.tEnd);
     let projection=req.query.projection;
     console.log(req.query.projection);
     try{
@@ -75,8 +76,17 @@ app.get('/insp_time', function(req, res) {
     mdb_connector.query("Inspection",qStr,projection).
     then((result)=>{
         // console.log(result);
+        if(req.query.callback===undefined)//normal ajax
+        {
+            res.send(result);
+        }
+        else
+        {
+            let cbName = req.query.callback;
 
-        res.send(result);
+            res.send(cbName+"("+JSON.stringify(result)+")");
+        }
+        console.log(req.query.tEnd);
         console.log("[O]Q by get Q OK!! len=" + result.length);
     }).
     catch((err)=>{
