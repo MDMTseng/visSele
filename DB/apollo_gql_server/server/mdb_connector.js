@@ -78,12 +78,12 @@ function CRUD_deleteMany(CollectionNameString,findWhere={}){
     });
 }
 
-function CRUD_query(which,queryCMD){
+function CRUD_query(which,queryCMD,projection){
     //Without callback it will return promise
     if(which=='df'){
-        return DefineFileModel_A.find(queryCMD);
+        return DefineFileModel_A.find(queryCMD,projection);
     }else if(which=='Inspection'){
-        return InspectionModel_A.find(queryCMD);
+        return InspectionModel_A.find(queryCMD,projection);
 
     }
 

@@ -40,8 +40,21 @@ app.get('/insp_time', function(req, res) {
     //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
     //{InspectionData.time_ms : {$gt:1556640000000}}
     //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
+    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1} only return time
+    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
+    //Return time and judgeReports
     console.log(req.query.tStart);
     console.log(req.query.tEnd);
+
+    let projection=req.query.projection;
+    console.log(req.query.projection);
+    try{
+        projection=JSON.parse(projection);
+    }
+    catch (e) 
+    {
+        projection={"_id":0,"InspectionData.time_ms":1};
+    }
     let start_MS = (new Date(req.query.tStart)).getTime();
     let endd=new Date(req.query.tEnd).getTime();
     let end_MS = (endd==endd)?endd:new Date().getTime();
@@ -59,7 +72,7 @@ app.get('/insp_time', function(req, res) {
     console.log(start_MS);
     console.log(end_MS);
     console.log(qStr);
-    mdb_connector.query("Inspection",qStr).
+    mdb_connector.query("Inspection",qStr,projection).
     then((result)=>{
         // console.log(result);
 
