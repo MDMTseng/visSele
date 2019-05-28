@@ -134,7 +134,8 @@ class RAW_InspectionReportPull extends React.Component {
                 dbcmd:{"db_action":"insert","checked":true},
                 data
             };
-            this.WS_DB_Insert.send_obj(msg_obj).
+            //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
+            this.WS_DB_Insert.send_obj(msg_obj,(key,val)=>val.toFixed ? Number(val.toFixed(5)) : val).
             then((ret)=>console.log('then',ret)).
             catch((ret)=>console.log("catch",ret));
 
