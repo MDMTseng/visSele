@@ -35,7 +35,13 @@
 	jsonp(url,  (err,data)=>{
 		console.log(err,data);
 		text=JSON.stringify(
-			data.map(data=>data.InspectionData[0].time_ms)
+			data.
+			reduce((arr,data)=>
+			{
+				data.InspectionData.forEach(ele =>arr.push(ele));
+				return arr;
+			},[]).
+			map(data=>data.judgeReports)
 		);
 	});
 	
