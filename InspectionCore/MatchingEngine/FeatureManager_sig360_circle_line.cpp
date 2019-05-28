@@ -2233,9 +2233,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       
       if(drawDBG_IMG)//Draw debug image(curve and straight line)
       {
-        for(int i=0;i<edge_grid.dataSize();i++)
+        for(int j=0;j<edge_grid.dataSize();i++)
         {
-          const ContourGrid::ptInfo pti= *edge_grid.get(i);
+          const ContourGrid::ptInfo pti= *edge_grid.get(j);
           const acv_XY p = pti.pt;
           int X = round(p.X);
           int Y = round(p.Y);
@@ -2382,14 +2382,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           //LOGV("Line adj:thres:%f",thres);
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
           int sptL=s_points.size();
-          for(int i=0;i<s_points.size();i++)
+          for(int k=0;k<s_points.size();k++)
           {
             acv_XY ret_point_opt;
             float edgeResponse;
             
             //remember!! the s_points[i].pt are the points after distortion removal
             //And the points on the image is still the distorted data
-            acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
+            acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[k].pt,param);
             //int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
             int ret_val = EdgePointOpt2(smoothedImg,lineNormal,tmp_pt,3,thres,&ret_point_opt,&edgeResponse);
             if(ret_val==0)
@@ -2397,8 +2397,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               int X_=round(ret_point_opt.X);
               int Y_=round(ret_point_opt.Y);
 
-              s_points[i].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
-              s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
+              s_points[k].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
+              s_points[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               if(drawDBG_IMG)
               {
@@ -2414,7 +2414,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           
           float minS_pts=0;
           float minSigma=99999;
-          for(int j=0;j<7;j++)
+          for(int m=0;m<7;m++)
           {
             int sampleL=s_points.size()/5;
             for(int k=0;k<sampleL;k++)//Shuffle in 
@@ -2460,7 +2460,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
           
           int usable_L=0;
-          for(int j=0;j<2;j++)
+          for(int k=0;k<2;k++)
           {
             usable_L=0;
             if(s_points.size()==0)
@@ -2493,10 +2493,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             float distThres = s_points[s_points.size()/2].tmp+1;
             LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
 
-            for(int i=s_points.size()/2;i<s_points.size();i++)
+            for(int n=s_points.size()/2;n<s_points.size();n++)
             {
-              usable_L=i;
-              if(s_points[i].tmp>distThres)break;
+              usable_L=n;
+              if(s_points[n].tmp>distThres)break;
             }
             //usable_L=usable_L*10/11;//back off
             LOGV("usable_L:%d/%d  minSigma:%f=>%f",
@@ -2512,10 +2512,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
           if(0)
           {
-            for(int i=0;i<usable_L;i++)
+            for(int n=0;n<usable_L;n++)
             {
               
-              acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[i].pt,param);
+              acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[n].pt,param);
               int X_=round(tmp_pt.X);
               int Y_=round(tmp_pt.Y);
               smoothedImg->CVector[Y_][X_*3]=255;
@@ -2548,9 +2548,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         }
         if(0)//Draw debug image(curve and straight line)
         {
-          for(int i=0;i<s_points.size();i++)
+          for(int k=0;k<s_points.size();k++)
           {
-            const ContourGrid::ptInfo pti= s_points[i];
+            const ContourGrid::ptInfo pti= s_points[k];
             const acv_XY p = pti.pt;
             int X = round(p.X);
             int Y = round(p.Y);
@@ -2663,19 +2663,19 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
         if(1)
         {
-          for(int i=0;i<s_points.size();i++)
+          for(int k=0;k<s_points.size();k++)
           {
             acv_XY ret_point_opt;
             float edgeResponse;
-            acv_XY lineNormal ={X:-s_points[i].contourDir.Y,Y:s_points[i].contourDir.X};
-            acv_XY tmp_pt= acvVecRadialDistortionApply(s_points[i].pt,param);
+            acv_XY lineNormal ={X:-s_points[k].contourDir.Y,Y:s_points[k].contourDir.X};
+            acv_XY tmp_pt= acvVecRadialDistortionApply(s_points[k].pt,param);
             int ret_val = EdgePointOpt(smoothedImg,lineNormal,tmp_pt,&ret_point_opt,&edgeResponse);
-            s_points[i].edgeRsp=1;
+            s_points[k].edgeRsp=1;
             if(ret_val==0)
             {
 
-              s_points[i].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
-              s_points[i].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
+              s_points[k].pt = acvVecRadialDistortionRemove(ret_point_opt,param);
+              s_points[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
               //LOGV("%f  %f",ret_point_opt.X,ret_point_opt.Y);
               //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3]=0;
               //buff_->CVector[(int)round(ret_point_opt.Y)][(int)round(ret_point_opt.X)*3+1]=0;
@@ -2774,30 +2774,30 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       if(1)
       { 
         //Convert report to mm based unit
-        for(int i=0;i<detectedLines.size();i++)
+        for(int j=0;j<detectedLines.size();j++)
         {
-          detectedLines[i].line.end_neg = acvVecMult(detectedLines[i].line.end_neg,mmpp);
-          detectedLines[i].line.end_pos = acvVecMult(detectedLines[i].line.end_pos,mmpp);
-          detectedLines[i].line.line.line_anchor = acvVecMult(detectedLines[i].line.line.line_anchor,mmpp);
+          detectedLines[j].line.end_neg = acvVecMult(detectedLines[j].line.end_neg,mmpp);
+          detectedLines[j].line.end_pos = acvVecMult(detectedLines[j].line.end_pos,mmpp);
+          detectedLines[j].line.line.line_anchor = acvVecMult(detectedLines[j].line.line.line_anchor,mmpp);
           //detectedLines[i].line.line.line_vec = acvVecMult(detectedLines[i].line.line.line_vec,mmpp);
-          detectedLines[i].line.s = detectedLines[i].line.s*mmpp;
+          detectedLines[j].line.s = detectedLines[j].line.s*mmpp;
         }
-        for(int i=0;i<detectedCircles.size();i++)
+        for(int j=0;j<detectedCircles.size();j++)
         {
-          detectedCircles[i].circle.s*=mmpp;
-          detectedCircles[i].circle.circle.circumcenter=
-            acvVecMult(detectedCircles[i].circle.circle.circumcenter,mmpp);
-          detectedCircles[i].circle.circle.radius*=mmpp;
+          detectedCircles[j].circle.s*=mmpp;
+          detectedCircles[j].circle.circle.circumcenter=
+            acvVecMult(detectedCircles[j].circle.circle.circumcenter,mmpp);
+          detectedCircles[j].circle.circle.radius*=mmpp;
         }
-        for(int i=0;i<detectedSearchPoints.size();i++)
+        for(int j=0;j<detectedSearchPoints.size();j++)
         {
-          detectedSearchPoints[i].pt=
-            acvVecMult(detectedSearchPoints[i].pt,mmpp);
+          detectedSearchPoints[j].pt=
+            acvVecMult(detectedSearchPoints[j].pt,mmpp);
         }
-        for(int i=0;i<detectedAuxPoints.size();i++)
+        for(int j=0;j<detectedAuxPoints.size();j++)
         {
-          detectedAuxPoints[i].pt=
-            acvVecMult(detectedAuxPoints[i].pt,mmpp);
+          detectedAuxPoints[j].pt=
+            acvVecMult(detectedAuxPoints[j].pt,mmpp);
         }
 
         for(int j=0;j<judgeList.size();j++)
