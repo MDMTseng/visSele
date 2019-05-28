@@ -2417,11 +2417,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           for(int j=0;j<7;j++)
           {
             int sampleL=s_points.size()/5;
-            for(int j=0;j<sampleL;j++)//Shuffle in 
+            for(int k=0;k<sampleL;k++)//Shuffle in 
             {
-              int idx2Swap = (rand()%(s_points.size()-i))+i;
-              ContourGrid::ptInfo tmp_pt=s_points[j];
-              s_points[j]=s_points[idx2Swap];
+              int idx2Swap = (rand()%(s_points.size()-k))+k;
+
+              ContourGrid::ptInfo tmp_pt=s_points[k];
+              s_points[k]=s_points[idx2Swap];
               s_points[idx2Swap]=tmp_pt;
               //s_points[j].edgeRsp=1;
             }
@@ -2531,7 +2532,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
 
 
-        //LOGV("Matched points:%d",s_points.size());
 
         /*acvDrawLine(buff_,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
