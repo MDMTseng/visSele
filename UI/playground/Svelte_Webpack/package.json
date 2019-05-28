@@ -18,6 +18,8 @@
     "dev": "webpack-dev-server --content-base public"
   },
   "dependencies": {
+    "axios": "^0.18.0",
+    "jsonp": "^0.2.1",
     "svelte-redux": "^1.1.1",
     "xstate": "^4.6.0"
   }

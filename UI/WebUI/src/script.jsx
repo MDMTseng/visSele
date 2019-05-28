@@ -303,7 +303,7 @@ class APPMasterX extends React.Component{
             <img className="height8 LOGOImg " src="resource/image/NotiMon.svg"></img>
             <div className="HX0_5"/>
             <div className="s">
-              <div className="TitleTextCon showOverFlow HX2">
+              <div className="TitleTextCon showOverFlow HX4">
                 <h1 className="Title">HY</h1>
                 <h1 className="Title">Vision</h1>
               </div>
