@@ -457,6 +457,12 @@ function StateReducer(newState,action)
                     let id = cjrep.id;
                     let sjrep = singleReport.judgeReports.find((sjrep)=>sjrep.id==id);
                     if(sjrep===undefined)return;
+                    if(sjrep.status==INSPECTION_STATUS.NA || cjrep==INSPECTION_STATUS.NA)
+                    {
+                      cjrep.status=INSPECTION_STATUS.NA;
+                      cjrep.value=NaN;
+                      return;
+                    }
 
                     let dataDiff = sjrep.value-cjrep.value;
 
