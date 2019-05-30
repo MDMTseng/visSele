@@ -71,11 +71,12 @@ function mdb_query(whichCollection,queryWhat){
 function dropDB(db){
     db.dropDatabase();
 }
-function CRUD_deleteMany(CollectionNameString,findWhere={}){
-    db.collection(CollectionNameString).deleteMany(findWhere, function(err, obj) {
-        if (err) throw err;
-        console.log("1 Collection deleted");
-    });
+function CRUD_deleteMany(which,queryCMD){
+    if(which=='df'){
+        return DefineFileModel_A.deleteMany(queryCMD);
+    }else if(which=='Inspection'){
+        return InspectionModel_A.deleteMany(queryCMD);
+    }
 }
 
 function CRUD_query(which,queryCMD,projection){
@@ -144,6 +145,7 @@ function handleLocalStorage(insertWhat){
     return 0;
 }
 module.exports = {
+    deleteMany:CRUD_deleteMany,
     insertOne:CRUD_insertOne,
     insertMany:CRUD_InsertMany,
     upsertOne:CRUD_upsertOne,

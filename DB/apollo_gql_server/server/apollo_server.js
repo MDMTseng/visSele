@@ -36,26 +36,14 @@ app.get('/', function(req, res, next){
     console.log('get route', req.testing);
     res.end();
 });
-app.get('/insp_time', function(req, res) {
-    //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
-    //{InspectionData.time_ms : {$gt:1556640000000}}
-    //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
-    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1} only return time
-    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
-    //Return time and judgeReports
+
+function queryParamParse(req)
+{
     console.log(req.query.tStart);
     console.log(req.query.tEnd);
 
     console.log(req.query.tEnd);
-    let projection=req.query.projection;
-    console.log(req.query.projection);
-    try{
-        projection=JSON.parse(projection);
-    }
-    catch (e) 
-    {
-        projection={"_id":0,"InspectionData.time_ms":1};
-    }
+
     let start_MS = (new Date(req.query.tStart)).getTime();
     let endd=new Date(req.query.tEnd).getTime();
     let end_MS = (endd==endd)?endd:new Date().getTime();
@@ -73,7 +61,60 @@ app.get('/insp_time', function(req, res) {
     console.log(start_MS);
     console.log(end_MS);
     console.log(qStr);
-    mdb_connector.query("Inspection",qStr,projection).
+    return qStr;
+}
+
+
+app.get('/DELETE', function(req, res){
+    let qStr = queryParamParse(req);
+    console.log(qStr);
+
+    mdb_connector.deleteMany("Inspection",qStr).
+    then((result)=>{
+        
+    }).
+    catch((err)=>{
+    });
+
+})
+
+
+app.get('/insp_time', function(req, res) {
+    //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
+    //{InspectionData.time_ms : {$gt:1556640000000}}
+    //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
+    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1} only return time
+    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
+    //Return time and judgeReports
+
+    //param list
+    //tStart=2019/5/15/9:59:0
+    //tEnd=2019/5/15/9:59:0
+    //subFeatureDefSha1=[REGX matched sha1]
+    //projection={js OBJ} object which in mongodb projection format
+    //page={int} page number starts from 1
+    //limit={int} maximum query result in this page, 1000 by default
+
+    console.log(req.query.tEnd);
+    let projection=req.query.projection;
+
+    try{
+        projection=JSON.parse(projection);
+    }
+    catch (e) 
+    {
+        projection={"_id":0,"InspectionData.time_ms":1};
+    }
+
+    let qStr = queryParamParse(req);
+    let queryPage=parseInt(req.query.page);
+    let queryLimit=parseInt(req.query.limit);
+    if(queryPage===undefined || queryPage<1)queryPage=1;
+
+    if(queryLimit===undefined)queryLimit=1000;
+
+    console.log(qStr,queryPage,queryLimit);
+    mdb_connector.query("Inspection",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
     then((result)=>{
         // console.log(result);
         if(req.query.callback===undefined)//normal ajax
@@ -101,6 +142,11 @@ app.get('/insp_time', function(req, res) {
     // {InspectionData.time_ms : {$gt:1556187710991}}
 
 });
+
+
+
+
+
 app.ws('/', function(ws, req) {
     util.inspect(ws);
     ws.on('message', function(msg) {
