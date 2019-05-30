@@ -53,11 +53,6 @@ function queryParamParse(req)
     {
         qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
     }
-
-    if(req.query.subFeatureDefSha1!==undefined)
-    {
-        qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
-    }
     console.log(start_MS);
     console.log(end_MS);
     console.log(qStr);
@@ -78,8 +73,65 @@ app.get('/DELETE', function(req, res){
 
 })
 
+app.get('/query/deffile', function(req, res) {
+    //http://hyv.decade.tw:8080/query/deffile?name=Test1|FC.&limit=1000
+    let projection=req.query.projection;
 
-app.get('/insp_time', function(req, res) {
+    try{
+        projection=JSON.parse(projection);
+    }
+    catch (e) 
+    {
+        projection={"_id":0,"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"createdAt":1};
+    }
+
+
+    let qStr ={};
+    if(req.query.name!==undefined)
+    {
+        qStr["DefineFile.name"]={$regex:req.query.name};
+    }
+
+    let queryPage=parseInt(req.query.page);
+    let queryLimit=parseInt(req.query.limit);
+    if(queryPage===undefined || queryPage<1)queryPage=1;
+
+    if(queryLimit===undefined)queryLimit=100;
+
+    console.log(qStr,queryPage,queryLimit);
+    mdb_connector.query("df",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
+    then((result)=>{
+        // console.log(result);
+        if(req.query.callback===undefined)//normal ajax
+        {
+            res.send(result);
+        }
+        else
+        {
+            let cbName = req.query.callback;
+
+            res.send(cbName+"("+JSON.stringify(result)+")");
+        }
+        console.log(req.query.tEnd);
+        console.log("[O]Q by get Q OK!! len=" + result.length);
+    }).
+    catch((err)=>{
+        res.send("[X]Q by get Q FAIL!!");
+        console.log("[X]Q by get Q FAIL!!");
+    });
+
+
+
+    // res.sendFile(path.join(__dirname+'/index.html'));
+
+    // {InspectionData.time_ms : {$gt:1556187710991}}
+
+});
+
+
+
+function inspection_result_query(req, res)
+{
     //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
     //{InspectionData.time_ms : {$gt:1556640000000}}
     //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
@@ -141,7 +193,11 @@ app.get('/insp_time', function(req, res) {
 
     // {InspectionData.time_ms : {$gt:1556187710991}}
 
-});
+}
+
+
+app.get('/query/inspection',inspection_result_query);
+app.get('/insp_time',inspection_result_query);
 
 
 
