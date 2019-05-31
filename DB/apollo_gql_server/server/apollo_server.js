@@ -91,12 +91,30 @@ app.get('/query/deffile', function(req, res) {
     {
         qStr["DefineFile.name"]={$regex:req.query.name};
     }
-
+    if(req.query.featureSet_sha1!==undefined)
+    {
+        qStr["DefineFile.featureSet_sha1"]={$regex:req.query.featureSet_sha1
+        };
+    }
     let queryPage=parseInt(req.query.page);
     let queryLimit=parseInt(req.query.limit);
     if(queryPage===undefined || queryPage<1)queryPage=1;
 
     if(queryLimit===undefined)queryLimit=100;
+
+    if(qStr["DefineFile.name"]===undefined && qStr["DefineFile.featureSet_sha1"]===undefined )
+    {
+        if(req.query.callback===undefined)//normal ajax
+        {
+            res.send([]);
+        }
+        else
+        {
+            let cbName = req.query.callback;
+            res.send(cbName+"("+JSON.stringify([])+")");
+        }
+        return;
+    }
 
     console.log(qStr,queryPage,queryLimit);
     mdb_connector.query("df",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
