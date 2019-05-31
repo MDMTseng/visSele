@@ -220,11 +220,11 @@ class APPMain extends React.Component{
         }
 
         let MenuItem={
-            HOME:{
-                icon:"home",
-                content:this.FrontDoor(),
-                onSelected: genericMenuItemCBsCB
-            },
+          HOME:{
+              icon:"home",
+              content:this.FrontDoor(),
+              onSelected: genericMenuItemCBsCB
+          },
           Overview:{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
@@ -284,6 +284,11 @@ class APPMain extends React.Component{
             icon:"scan",
             content:null,
             onSelected:this.props.EV_UI_Insp_Mode
+          },
+          STA:{
+              icon:"bar-chart",
+              content:null,
+              onSelected:this.props.EV_UI_Analysis_Mode
           },
           Setting:{
             icon:"setting" ,
