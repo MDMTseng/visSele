@@ -1,0 +1,43 @@
+{
+  "name": "hyvdb_service",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "antd": "^3.18.2",
+    "express": "^4.16.4",
+    "express-ws": "^4.0.0",
+    "jsonp": "^0.2.1",
+    "loglevel": "^1.6.2",
+    "mongoose": "^5.4.13",
+    "nodemon": "^1.18.10",
+    "qr-scanner": "^1.1.1",
+    "react": "^16.8.6",
+    "react-dom": "^16.8.6",
+    "react-scripts": "3.0.1"
+  },
+  "scripts": {
+    "mstart": "nodemon server.js",
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": "react-app"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "file-loader": "^3.0.1"
+  }
+}
