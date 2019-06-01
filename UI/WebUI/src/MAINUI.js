@@ -11,7 +11,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
-
+import WelcomeUI from './WelcomeUI';
 import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -22,15 +22,14 @@ import {BPG_FileBrowser} from './component/baseComponent.jsx';
 
 import  {default as AntButton}  from 'antd/lib/button';
 
-import  PageHeader  from 'antd/lib/page-header';
-import  Typography  from 'antd/lib/typography';
+
 import  Collapse  from 'antd/lib/collapse';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
 import  Layout  from 'antd/lib/layout';
-const { Header, Content, Footer, Sider } = Layout;
-const SubMenu = Menu.SubMenu;
-const { Paragraph } = Typography;
+const { Content, Sider } = Layout;
+
+
 
 
 const Panel = Collapse.Panel;
@@ -187,63 +186,7 @@ class APPMain extends React.Component{
       return true;
     }
 
-    FrontDoor(){
-        const content = (
-            <div className="content">
-                <Paragraph>
-                    HYVision 2019 is the most famous vision-check system in the world.
-                </Paragraph>
-                <Paragraph>
-                    <p>HYVision 2019 - v1 (http://hyv.idcircle.me)</p>
-                    <p>HYVision 2019 - v2 (http://hyv.idcircle.me)</p>
-                    <p>HYVision 2019 - v3 (http://hyv.idcircle.me)</p>
-                </Paragraph>
-                <p className="contentLink">
-                    <a>
-                        <img
-                            src="https://gw.alipayobjects.com/zos/rmsportal/MjEImQtenlyueSmVEfUD.svg"
-                            alt="start"
-                        /> Quick Start
-                    </a>
-                    <a>
-                        <img src="https://gw.alipayobjects.com/zos/rmsportal/NbuDUAuBlIApFuDvWiND.svg" alt="info" />
-                         Product Info
-                    </a>
-                    <a>
-                        <img src="https://gw.alipayobjects.com/zos/rmsportal/ohOEPSYdDTNnyMbGuyLb.svg" alt="doc" />
-                        Product Doc
-                    </a>
-                </p>
-            </div>
-        );
 
-        const extraContent = (
-            <img
-                src="https://gw.alipayobjects.com/mdn/mpaas_user/afts/img/A*KsfVQbuLRlYAAAAAAAAAAABjAQAAAQ/original"
-                alt="content"
-            />
-        );
-        const routes = [
-            {
-                path: 'index',
-                breadcrumbName: 'HYV',
-            },
-            {
-                path: 'first',
-                breadcrumbName: 'HOME',
-            },
-            {
-                path: 'second',
-                breadcrumbName: 'Manual',
-            },
-        ];
-        return (<PageHeader title="HYVision 2019" breadcrumb={{ routes }}>
-            <div className="wrap">
-                <div className="content">{content}</div>
-                <div className="extraContent">{extraContent}</div>
-            </div>
-        </PageHeader>);
-    }
   
     render() {
       let UI=[];
@@ -265,7 +208,7 @@ class APPMain extends React.Component{
         let MenuItem={
           HOME:{
               icon:"home",
-              content:this.FrontDoor(),
+              content:<WelcomeUI/>,
               onSelected: genericMenuItemCBsCB
           },
           Overview:{
