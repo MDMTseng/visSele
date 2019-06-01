@@ -25,6 +25,7 @@ export default {
         angleDeg:"角度°",
         width:"寬",
         ref:"參考物件",
+        ref_baseLine:"參考線",
         id:"編號",
         sigma:"標準差",
         distance:"距離/D",

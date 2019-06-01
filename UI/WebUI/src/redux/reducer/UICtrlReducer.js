@@ -13,7 +13,7 @@ import { loadavg } from 'os';
 
 import dateFormat from 'dateFormat';
 import JSum from 'jsum';
-
+import semver from 'semver'
 
 let log = logX.getLogger("UICtrlReducer");
 
@@ -43,7 +43,7 @@ function Edit_info_reset(newState)
     //It's the target element in edit target
     //Example 
     //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
-    //And our target is c
+    //And our goal is to trace to c
     //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
     edit_tar_ele_trace:null,
 
@@ -123,7 +123,6 @@ function Default_UICtrlReducer()
 
 function StateReducer(newState,action)
 {
-  console.log(newState.WebUI_info)
   newState.state_count++;
   if(action.type == "ev_state_update")
   {
@@ -152,7 +151,7 @@ function StateReducer(newState,action)
     case UISEV.Version_Map_Update:
       log.info("Version_Map_Update",action.data);
       let version_map_info = action.data;
-      version_map_info.webUI_info=APP_INFO.info;
+      version_map_info.webUI_info=APP_INFO;
       
       {
         let core_info = version_map_info.core_info;
@@ -160,23 +159,34 @@ function StateReducer(newState,action)
         let coreVersion=core_info.version;
         if(coreVersion===undefined)
         {
-          coreVersion="v0.0.0";
+          coreVersion="0.0.0";
         }
         let WebUI_Version = version_map_info.core2wui[coreVersion];
+        
         if(WebUI_Version!==undefined && WebUI_Version.ver !== undefined)
         {
           let versions = WebUI_Version.ver;
-          let resource_url="http://hyv.idcircle.me/";
-          if(core_info.resource_url !== undefined)resource_url=core_info.resource_url;
+
+          let webUI_resource="http://hyv.idcircle.me";
+          if(core_info.webUI_resource !== undefined)webUI_resource=core_info.webUI_resource;
         
-          version_map_info.recommend_info={
-            versions,
-            url:resource_url+versions[versions.length-1]
+          let localV=semver.clean(APP_INFO.version);
+          
+          let maxV = versions
+            .map(ver=>semver.clean(ver))
+            .reduce((maxV,ver)=>semver.gt(maxV, ver)?maxV:ver);
+          let hasNewVer = semver.gt(maxV, localV);
+          
+          if(hasNewVer)
+          {
+            version_map_info.recommend_info={
+              versions,
+              url:webUI_resource+"/"+versions[versions.length-1]
+            }
           }
         }
 
       }
-      console.log(version_map_info);
       newState={...newState,version_map_info};
     return newState;
     
@@ -362,17 +372,17 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  if(srep_inWindow.repeatTime>0)
+                  //if(srep_inWindow.repeatTime>0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
                     reportStatisticState.newAddedReport.push(srep_inWindow);
                   }
-                  else
-                  {
-                    log.error("the current data only gets single sampling ignore",
-                    "this error case is to remove abnormal sample that's caused by air blow");
-                  }
+                  // else
+                  // {
+                  //   log.error("the current data only gets single sampling ignore",
+                  //   "this error case is to remove abnormal sample that's caused by air blow");
+                  // }
                   return false;
                 });
             
@@ -447,6 +457,12 @@ function StateReducer(newState,action)
                     let id = cjrep.id;
                     let sjrep = singleReport.judgeReports.find((sjrep)=>sjrep.id==id);
                     if(sjrep===undefined)return;
+                    if(sjrep.status==INSPECTION_STATUS.NA || cjrep==INSPECTION_STATUS.NA)
+                    {
+                      cjrep.status=INSPECTION_STATUS.NA;
+                      cjrep.value=NaN;
+                      return;
+                    }
 
                     let dataDiff = sjrep.value-cjrep.value;
 
@@ -530,10 +546,19 @@ function StateReducer(newState,action)
                   treport.isCurObj=true;
                   reportStatisticState.trackingWindow.push(treport);
                 }
+
+
               });
+
+
+              //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
+              //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
+              reportStatisticState.trackingWindow=
+                reportStatisticState.trackingWindow.
+                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>2));
             }
 
-
+            
             if(false){
               let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
               let measure1 = newState.edit_info.reportStatisticState.measure1;
@@ -885,9 +910,6 @@ function StateReducer(newState,action)
           }
         }
         break;
-
-
-        
         case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         {
           if(newState.edit_info.edit_tar_info==null)
@@ -975,6 +997,9 @@ function StateReducer(newState,action)
                   newState.edit_info.edit_tar_info.ref=[{}];
                 break;
                 case SHAPE_TYPE.measure_subtype.distance:
+                    newState.edit_info.edit_tar_info.ref=[{},{}];
+                    newState.edit_info.edit_tar_info.ref_baseLine={};
+                  break;
                 case SHAPE_TYPE.measure_subtype.angle:
                   newState.edit_info.edit_tar_info.ref=[{},{}];
                 break;
@@ -995,6 +1020,13 @@ function StateReducer(newState,action)
               if(acceptData)
                 obj[keyTrace[keyTrace.length-1]] = cand;
             }
+            else if(keyTrace[0] == "ref_baseLine")
+            {
+              obj[keyTrace[keyTrace.length-1]]={
+                id:cand.shape.id,
+                type:cand.shape.type
+              };
+            }
 
             log.info(obj,newState.edit_info.edit_tar_info);
             newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
@@ -1003,6 +1035,26 @@ function StateReducer(newState,action)
           }
         }
         break;
+        case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
+          if(newState.edit_info.edit_tar_ele_trace!=null && newState.edit_info.edit_tar_ele_cand!=null)
+          {
+            let keyTrace=newState.edit_info.edit_tar_ele_trace;
+            let obj=GetObjElement(newState.edit_info.edit_tar_info,keyTrace,keyTrace.length-2);
+            let cand=newState.edit_info.edit_tar_ele_cand;
+
+            log.info("GetObjElement",obj,keyTrace[keyTrace.length-1]);
+            obj[keyTrace[keyTrace.length-1]]={
+              id:cand.shape.id,
+              type:cand.shape.type
+            };
+
+            newState.edit_info.edit_tar_info=Object.assign({},newState.edit_info.edit_tar_info);
+            newState.edit_info.edit_tar_ele_trace=null;
+            newState.edit_info.edit_tar_ele_cand=null;
+          }
+        break;
+
+        
       }
 
 

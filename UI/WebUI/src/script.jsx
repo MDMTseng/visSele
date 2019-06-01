@@ -111,11 +111,13 @@ class APPMasterX extends React.Component{
           {
             {
               let HR =BPG_Protocol.raw2obj(evt);
-              function getRandom(min,max){
+              function getRandom(min=0,max=1000000){
                 return Math.floor(Math.random()*(max-min+1))+min;
               };
               let url = HR.data.webUI_resource;
-              if(url===undefined)url="http://hyv.idcircle.me/version.jsonp?rand="+getRandom();
+              if(url===undefined)url="http://hyv.idcircle.me"
+              url+="/version.jsonp?rand="+getRandom();
+              
               jsonp(url, {name:"hyv_version_map"}, (err,data)=>{
                 data.core_info=HR.data;
                 this.props.ACT_Version_Map_Update(data);
@@ -301,7 +303,7 @@ class APPMasterX extends React.Component{
             <img className="height8 LOGOImg " src="resource/image/NotiMon.svg"></img>
             <div className="HX0_5"/>
             <div className="s">
-              <div className="TitleTextCon showOverFlow HX2">
+              <div className="TitleTextCon showOverFlow HX4">
                 <h1 className="Title">HY</h1>
                 <h1 className="Title">Vision</h1>
               </div>

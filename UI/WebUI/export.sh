@@ -1,4 +1,3 @@
-
 EXPORT_PATH=${1:-"../../release_export/"}
 
 mkdir -p $EXPORT_PATH/WebUI/

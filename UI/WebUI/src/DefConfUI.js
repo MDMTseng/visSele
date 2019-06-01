@@ -19,6 +19,8 @@ import {round as roundX,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/M
 import JSum from 'jsum';
 import 'antd/dist/antd.css';
 import * as log from 'loglevel';
+import dclone from 'clone';
+import Modal from "antd/lib/modal";
 
 
 import EC_zh_TW from './languages/zh_TW';
@@ -55,6 +57,10 @@ class CanvasComponent extends React.Component {
         console.log(event);
         this.props.ACT_EDIT_SHAPE_SET(event.data);
       break; 
+      case DefConfAct.EVENT.Edit_Tar_Ele_Trace_Update:
+        this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(event.data);
+      break; 
+
     }
   }
   componentDidMount() {
@@ -129,6 +135,7 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) =>
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
     ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(DefConfAct.Shape_List_Update(shapeList))},
     ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(DefConfAct.Shape_Set(shape_data))},
+    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
   }
 }
 const CanvasComponent_rdx = connect(
@@ -147,7 +154,7 @@ class APP_DEFCONF_MODE extends React.Component{
       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
       {
         deffile:defModelPath+'.'+DEF_EXTENSION,
-        imgsrc:defModelPath+".bmp"},
+        imgsrc:defModelPath},
       undefined,{resolve,reject});
       setTimeout(()=>reject("Timeout"),1000)
     })
@@ -233,13 +240,18 @@ class APP_DEFCONF_MODE extends React.Component{
               1:{__OBJ__:"btn",
                 id:"div",
                 element:"div"},
+            },
+            ref_baseLine:{
+              __OBJ__:"btn",
+              id:"div",
+              element:"div"
             }
           }}
           jsonChange={(original_obj,target,type,evt)=>
             {
               if(type =="btn")
               {
-                if(target.keyTrace[0]=="ref")
+                if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
                 {
                   this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
                 }
@@ -411,7 +423,7 @@ class APP_DEFCONF_MODE extends React.Component{
               console.log("ACT_Report_Save");
               this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+'.'+DEF_EXTENSION,enc.encode(JSON.stringify(report, null, 2)));
               console.log("ACT_Cache_Img_Save");
-              this.props.ACT_Cache_Img_Save(this.props.WS_ID,fileNamePath+".bmp");
+              this.props.ACT_Cache_Img_Save(this.props.WS_ID,fileNamePath);
 
 
               this.props.ACT_Def_Model_Path_Update(fileNamePath);
@@ -442,7 +454,7 @@ class APP_DEFCONF_MODE extends React.Component{
               let fileNamePath=filePath.replace("."+DEF_EXTENSION,"");
               console.log(fileNamePath);
               this.props.ACT_Def_Model_Path_Update(fileNamePath);
-              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath+".bmp"});
+              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath});
               
               this.setState({...this.state,fileSelectedCallBack:undefined});
             }});
@@ -552,13 +564,19 @@ class APP_DEFCONF_MODE extends React.Component{
               1:{__OBJ__:"btn",
                 id:"div",
                 element:"div"},
+            },
+            ref_baseLine:{
+              __OBJ__:"btn",
+              id:"div",
+              element:"div"
             }
           }}
           jsonChange={(original_obj,target,type,evt)=>
             {
+              console.log(target);
               if(type =="btn")
               {
-                if(target.keyTrace[0]=="ref")
+                if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
                 {
                   this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
                 }
@@ -722,12 +740,44 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           this.ec_canvas.SetShape( null, id);
         }
+        let on_COPY_Tar=(targetShape)=>
+        {
+          let copy_shape = dclone(targetShape);
+          copy_shape.id=undefined;
+          console.log(copy_shape);
+          ["pt1","pt2","pt3"].forEach((pt_key)=>{
+            if(copy_shape[pt_key]===undefined)return;
+            copy_shape[pt_key].x+=1;
+            copy_shape[pt_key].y+=1;
+          });
+          copy_shape.name+="_copy";
+          this.ec_canvas.SetShape( copy_shape,undefined );
+        }
         if(this.props.edit_tar_info.id !== undefined)
         {
           MenuSet.push(<BASE_COM.Button
+            key="COPY_BTN"
+            addClass="layout blue vbox"
+            text="COPY" onClick={()=>on_COPY_Tar(this.props.edit_tar_info)}/>);
+
+
+          MenuSet.push(<BASE_COM.Button
             key="DEL_BTN"
             addClass="layout red vbox"
-            text="DEL" onClick={()=>on_DEL_Tar(this.props.edit_tar_info.id)}/>);
+            text="DEL" onClick={()=>{
+              
+              this.setState({...this.state,warningInfo:{
+                onOk:()=>{
+                  on_DEL_Tar(this.props.edit_tar_info.id);
+                  console.log("onOK")
+                },
+                onCancel:()=>{console.log("onCancel")},
+                content:"確定要刪除:"+this.props.edit_tar_info.name+" ?"
+              }})
+            }}/>);
+  
+  
+
         }
         
       }
@@ -738,7 +788,7 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           MenuSet.push(<BASE_COM.Button
             key={"shape_listing_"+shape.id}
-            addClass="layout lgreen vbox"
+            addClass="layout lred vbox"
             text={shape.name} onClick={()=>this.props.ACT_EDIT_TAR_UPDATE(shape)}/>);
         });
       }
@@ -749,6 +799,25 @@ class APP_DEFCONF_MODE extends React.Component{
     console.log("APP_DEFCONF_MODE render");
     return(
     <div className="overlayCon HXF">
+      
+      <Modal
+            title={null}
+            visible={this.state.warningInfo!==undefined}
+
+            okText= 'Yes'
+            okType= 'danger'
+            onCancel={(param)=>{
+              this.state.warningInfo.onCancel(param);
+              this.setState({...this.state,warningInfo:undefined});
+              }}
+            onOk={(param)=>{
+              this.state.warningInfo.onOk(param);
+              this.setState({...this.state,warningInfo:undefined});
+              }
+            }
+        >
+        {(this.state.warningInfo!==undefined)?this.state.warningInfo.content:null}
+      </Modal>
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
       <$CSSTG transitionName = "fadeIn">
         <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>

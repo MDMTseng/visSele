@@ -273,7 +273,7 @@ export class websocket_reqTrack{
     return this.websocket.close();
   }
 
-  send_obj(data){
+  send_obj(data,replacer){
 
     let req_id = data.req_id;
 
@@ -287,7 +287,7 @@ export class websocket_reqTrack{
     data.req_id = req_id;
 
 
-    this.websocket.send(JSON.stringify(data));
+    this.websocket.send(JSON.stringify(data,replacer));
   
     let trackObj={
       time:Date.now(),

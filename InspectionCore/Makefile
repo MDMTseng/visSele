@@ -50,7 +50,8 @@ IDIR=	include/ \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_MindVision_GIGE)/include \
-			$(MODULE_Compat_dirent)/include
+			$(MODULE_Compat_dirent)/include \
+			$(MODULE_lodepng)
 
 
 
@@ -67,6 +68,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_DataChannel)/DataChannel.a \
 					$(MODULE_acvImage)/acvImage.a \
 					$(MODULE_CameraLayer)/CameraLayer.a \
+					$(MODULE_lodepng)/lodepng.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \

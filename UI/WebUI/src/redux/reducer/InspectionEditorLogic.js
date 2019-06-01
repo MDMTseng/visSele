@@ -182,8 +182,6 @@ export class InspectionEditorLogic
   SetDefInfo(defInfo)
   {
     this.SetShapeList(defInfo.features);
-    let lostRefObjs = this.findLostRefShapes();
-    this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
 
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
     log.info(defInfo);
@@ -207,6 +205,10 @@ export class InspectionEditorLogic
         ]
       }
     );
+    this.UpdateInherentShapeList();
+    
+    let lostRefObjs = this.findLostRefShapes();
+    this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
     this.UpdateInherentShapeList();
   }
 
@@ -327,6 +329,7 @@ export class InspectionEditorLogic
   
   findLostRefShapes(shapeList=this.shapeList)
   {
+    let inherentShapeList = this.inherentShapeList;
     //Check if there is any object/shape/measure that refs this(pre_shape)
     let objs = shapeList.filter((shape)=>
     {
@@ -334,6 +337,10 @@ export class InspectionEditorLogic
       let lostRef = shape.ref.find(ref=>{//This "find" will return a lost ref if there is any
         //refObj is the corresponding objct in ref 
         let refObj = shapeList.find(shape=>shape.id ==ref.id);
+        if(refObj===undefined)
+        {
+          refObj = inherentShapeList.find(ishape=>ishape.id ==ref.id);
+        }
         //If You cannot find the corresponding object, then this "ref" is the lost ref
         return refObj===undefined;
       });
@@ -414,9 +421,9 @@ export class InspectionEditorLogic
 
     //log.info("FoundShape>",pre_shape);
     let shape=null;
+    shape = {...shape_obj,id};
     if(pre_shape == null)
     {
-      shape = Object.assign({id:id},shape_obj);
       if(shape.name === undefined)
       {
         shape.name="@"+shape.type+"_"+id;
@@ -425,12 +432,12 @@ export class InspectionEditorLogic
     }
     else
     {
-      shape = Object.assign({id:id},shape_obj);
       if(pre_shape_idx!=undefined)
       {
         this.shapeList[pre_shape_idx] = shape;
       }
     }
+
     if(this.editShape!== null && this.editShape.id == id)
     {
       this.editShape = shape;

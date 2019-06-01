@@ -36,12 +36,14 @@ app.get('/', function(req, res, next){
     console.log('get route', req.testing);
     res.end();
 });
-app.get('/insp_time', function(req, res) {
-    //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
-    //{InspectionData.time_ms : {$gt:1556640000000}}
-    //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
+
+function queryParamParse(req)
+{
     console.log(req.query.tStart);
     console.log(req.query.tEnd);
+
+    console.log(req.query.tEnd);
+
     let start_MS = (new Date(req.query.tStart)).getTime();
     let endd=new Date(req.query.tEnd).getTime();
     let end_MS = (endd==endd)?endd:new Date().getTime();
@@ -51,19 +53,84 @@ app.get('/insp_time', function(req, res) {
     {
         qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
     }
-
-    if(req.query.subFeatureDefSha1!==undefined)
-    {
-        qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
-    }
     console.log(start_MS);
     console.log(end_MS);
     console.log(qStr);
-    mdb_connector.query("Inspection",qStr).
+    return qStr;
+}
+
+
+app.get('/DELETE', function(req, res){
+    let qStr = queryParamParse(req);
+    console.log(qStr);
+
+    mdb_connector.deleteMany("Inspection",qStr).
+    then((result)=>{
+        
+    }).
+    catch((err)=>{
+    });
+
+})
+
+app.get('/query/deffile', function(req, res) {
+    //http://hyv.decade.tw:8080/query/deffile?name=Test1|FC.&limit=1000
+    let projection=req.query.projection;
+
+    try{
+        projection=JSON.parse(projection);
+    }
+    catch (e) 
+    {
+        projection={"_id":0,"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"createdAt":1};
+    }
+
+
+    let qStr ={};
+    if(req.query.name!==undefined)
+    {
+        qStr["DefineFile.name"]={$regex:req.query.name};
+    }
+    if(req.query.featureSet_sha1!==undefined)
+    {
+        qStr["DefineFile.featureSet_sha1"]={$regex:req.query.featureSet_sha1
+        };
+    }
+    let queryPage=parseInt(req.query.page);
+    let queryLimit=parseInt(req.query.limit);
+    if(queryPage===undefined || queryPage<1)queryPage=1;
+
+    if(queryLimit===undefined)queryLimit=100;
+
+    if(qStr["DefineFile.name"]===undefined && qStr["DefineFile.featureSet_sha1"]===undefined )
+    {
+        if(req.query.callback===undefined)//normal ajax
+        {
+            res.send([]);
+        }
+        else
+        {
+            let cbName = req.query.callback;
+            res.send(cbName+"("+JSON.stringify([])+")");
+        }
+        return;
+    }
+
+    console.log(qStr,queryPage,queryLimit);
+    mdb_connector.query("df",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
     then((result)=>{
         // console.log(result);
+        if(req.query.callback===undefined)//normal ajax
+        {
+            res.send(result);
+        }
+        else
+        {
+            let cbName = req.query.callback;
 
-        res.send(result);
+            res.send(cbName+"("+JSON.stringify(result)+")");
+        }
+        console.log(req.query.tEnd);
         console.log("[O]Q by get Q OK!! len=" + result.length);
     }).
     catch((err)=>{
@@ -78,6 +145,82 @@ app.get('/insp_time', function(req, res) {
     // {InspectionData.time_ms : {$gt:1556187710991}}
 
 });
+
+
+
+function inspection_result_query(req, res)
+{
+    //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
+    //{InspectionData.time_ms : {$gt:1556640000000}}
+    //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
+    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1} only return time
+    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
+    //Return time and judgeReports
+
+    //param list
+    //tStart=2019/5/15/9:59:0
+    //tEnd=2019/5/15/9:59:0
+    //subFeatureDefSha1=[REGX matched sha1]
+    //projection={js OBJ} object which in mongodb projection format
+    //page={int} page number starts from 1
+    //limit={int} maximum query result in this page, 1000 by default
+
+    console.log(req.query.tEnd);
+    let projection=req.query.projection;
+
+    try{
+        projection=JSON.parse(projection);
+    }
+    catch (e) 
+    {
+        projection={"_id":0,"InspectionData.time_ms":1};
+    }
+
+    let qStr = queryParamParse(req);
+    let queryPage=parseInt(req.query.page);
+    let queryLimit=parseInt(req.query.limit);
+    if(queryPage===undefined || queryPage<1)queryPage=1;
+
+    if(queryLimit===undefined)queryLimit=1000;
+
+    console.log(qStr,queryPage,queryLimit);
+    mdb_connector.query("Inspection",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
+    then((result)=>{
+        // console.log(result);
+        if(req.query.callback===undefined)//normal ajax
+        {
+            res.send(result);
+        }
+        else
+        {
+            let cbName = req.query.callback;
+
+            res.send(cbName+"("+JSON.stringify(result)+")");
+        }
+        console.log(req.query.tEnd);
+        console.log("[O]Q by get Q OK!! len=" + result.length);
+    }).
+    catch((err)=>{
+        res.send("[X]Q by get Q FAIL!!");
+        console.log("[X]Q by get Q FAIL!!");
+    });
+
+
+
+    // res.sendFile(path.join(__dirname+'/index.html'));
+
+    // {InspectionData.time_ms : {$gt:1556187710991}}
+
+}
+
+
+app.get('/query/inspection',inspection_result_query);
+app.get('/insp_time',inspection_result_query);
+
+
+
+
+
 app.ws('/', function(ws, req) {
     util.inspect(ws);
     ws.on('message', function(msg) {
