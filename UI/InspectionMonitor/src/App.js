@@ -122,7 +122,9 @@ class App extends React.Component{
 
     let urlParam = getAllUrlParams();
     if(urlParam.v!==undefined && urlParam.name!==undefined && urlParam.hash!==undefined)
+    {
       this.onQRScanResult(JSON.stringify(urlParam));
+    }
     else
     {
       this.setState({...this.state,allowQRScan:true});
@@ -150,7 +152,21 @@ class App extends React.Component{
          res_obj.v = Number(res_obj.v);
       }
       if(res_obj.v===0 && res_obj.hash!==undefined && res_obj.hash.length>5)
-        this.onDefFileInfoUpdate(res_obj);
+      {
+        console.log(window.location.protocol);
+        if(window.location.protocol === 'https:')
+        {
+          window.location.href = 'http:' + window.location.href.substring(window.location.protocol.length).split('?')[0]+
+            "?v="+res_obj.v+"&hash="+res_obj.hash+"&name="+res_obj.name;
+          
+          console.log(window.location.href);
+          this.setState({...this.state,allowQRScan:false});
+        }
+        else
+        {
+          this.onDefFileInfoUpdate(res_obj);
+        }
+      }
     } catch(e) {
         alert(e); // error in the above string (in this case, yes)!
     }
@@ -168,7 +184,8 @@ class App extends React.Component{
         >
           {
             (this.state.DefFileInfo===undefined && this.state.allowQRScan)?
-              <WebCam_SQScan style={{width:"100%",height:"100%"}} onScanResult={this.onQRScanResult.bind(this)}/>:
+              <WebCam_SQScan style={{width:"100%",height:"100%"}} 
+              onScanResult={this.onQRScanResult.bind(this)}/>:
               null
           }
         </Modal>
