@@ -10,7 +10,7 @@ export function round(num,round_nor=1)
 {
   let tmp = (1/round_nor);
   let round_nor_inv = Math.round(tmp);
-  if(round_nor_inv==0)
+  if(round_nor_inv===0)
   {
     round_nor_inv=tmp;
   }
@@ -120,7 +120,7 @@ export class websocket_autoReconnect{
     {
         this.reconnectionCounter++;
         let doconnection = this.onreconnection(this.reconnectionCounter);
-        if(doconnection!==undefined && doconnection!=true)
+        if(doconnection!==undefined && doconnection!==true)
         {
           this.websocket=undefined;
           return;
@@ -166,7 +166,7 @@ export class websocket_autoReconnect{
     this.wsclose=false;
     if(this.websocket!==undefined)
     {
-      if(this.websocket.readyState!=this.websocket.OPEN)
+      if(this.websocket.readyState!==this.websocket.OPEN)
       {
         this.setWebsocketCallbackUndefined(this.websocket);
         this.websocket=undefined;
@@ -219,7 +219,7 @@ export class websocket_reqTrack{
       this.readyState=this.websocket.readyState;
       let p = JSON.parse(ev.data);
       let type=p.type;
-      if(type=="ACK" || type=="NAK")
+      if(type==="ACK" || type==="NAK")
       {
         let req_id=p.req_id;
         if(req_id!==undefined)
@@ -228,7 +228,7 @@ export class websocket_reqTrack{
           if(tobj!==undefined)
           {
             delete this.trackWindow[req_id];
-            if(type=="ACK")
+            if(type==="ACK")
             {
               tobj.resolve(p);
             }

@@ -43,7 +43,6 @@ function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100)
     {
         url+="projection="+JSON.stringify(
             {"_id":0,"InspectionData.time_ms":1,
-            "InspectionData.subFeatureDefSha1":1,
             "InspectionData.judgeReports.id":1,
             "InspectionData.judgeReports.value":1,
             "InspectionData.judgeReports.status":1,
