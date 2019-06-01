@@ -5,7 +5,7 @@ import React from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
  
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
-
+import QRCode from 'qrcode'
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
@@ -92,6 +92,49 @@ class CanvasComponent extends React.Component {
     }   
 }
   
+class QR_Canvas extends React.Component{
+
+  constructor(props) {
+    super(props);
+    this.QR_Content="";
+    this.state={
+      canvas:undefined,
+      fUpdateC:0
+    };
+  }
+  
+  componentDidMount() {
+    this.setState({...this.state,canvas:this.refs.canvas});
+  }
+  onResize(width,height){
+    this.refs.canvas.width=width;
+    this.refs.canvas.height=height;
+    this.setState({...this.state,fUpdateC:this.state.fUpdateC++});
+  }
+  componentShouldUpdate(nextProps, nextState)
+  {
+    console.log(nextProps,this.QR_Content);
+    return nextProps.QR_Content!=this.QR_Content;
+  }
+  componentDidUpdate(prevProps, prevState) {
+    this.QR_Content = this.props.QR_Content;
+  }
+
+  render() {
+
+    if(this.refs.canvas!==undefined)
+      QRCode.toCanvas(this.refs.canvas, this.props.QR_Content,{ errorCorrectionLevel: 'L' }, function (error) {
+        if (error) console.error(error)
+        console.log('success!');
+      })
+    return (
+    <div className={this.props.className}>
+        <canvas ref="canvas" className="width12 HXF"/>
+        <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
+    </div>
+    );
+  }   
+}
 
 const mapStateToProps_CanvasComponent = (state) => {
 //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
@@ -204,7 +247,7 @@ class APPMain extends React.Component{
   
     render() {
       let UI=[];
-  
+      
       if(this.props.c_state==null)return null;
       let stateObj = xstate_GetCurrentMainState(this.props.c_state);
       if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
@@ -247,8 +290,9 @@ class APPMain extends React.Component{
                 <CanvasComponent_rdx className="height11"/>
     
               </div>
+
               {(mmpp===undefined)?null:
-              <AntButton  key="mmpp" onClick={()=>{
+              <AntButton  key="mmpp" className="s width5" onClick={()=>{
                 
                 let cameraCalibPath = "data/default_camera_param.json";
                 this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
@@ -258,6 +302,8 @@ class APPMain extends React.Component{
                   {filename:cameraCalibPath});
               }}><Icon type="camera" /> <Icon type="control" /> {"mmpp:"+mmpp}</AntButton>}
   
+              <QR_Canvas className="s width5 HX6" QR_Content={JSON.stringify({v:0,name:this.props.defModelName,hash:this.props.defModelHash})}/>
+              
               <BPG_FileBrowser key="BPG_FileBrowser"
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
@@ -423,6 +469,7 @@ const mapStateToProps_APPMain = (state) => {
     return { 
         defModelName:state.UIData.edit_info.DefFileName,
         defModelPath: state.UIData.edit_info.defModelPath,
+        defModelHash: state.UIData.edit_info.DefFileHash,
         c_state: state.UIData.c_state,
         camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
         isp_db: state.UIData.edit_info._obj,
