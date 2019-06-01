@@ -161,7 +161,7 @@ class APPMain extends React.Component{
                             src="https://gw.alipayobjects.com/zos/rmsportal/MjEImQtenlyueSmVEfUD.svg"
                             alt="start"
                         /> Quick Start
-                    </a> 
+                    </a>
                     <a>
                         <img src="https://gw.alipayobjects.com/zos/rmsportal/NbuDUAuBlIApFuDvWiND.svg" alt="info" />
                          Product Info

@@ -27,3 +27,4 @@ UI/WebUI/package-lock.json
 *.s#*
 PCB/CAMOutputs
 visSele
+*.code-workspace
