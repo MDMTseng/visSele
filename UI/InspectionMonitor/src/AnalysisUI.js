@@ -802,11 +802,11 @@ class APP_ANALYSIS_MODE extends React.Component{
     {    
       graphCtrlUI = [
         <Slider range 
-          min={this.state.inspectionRec[0].time_ms}
-          max={this.state.inspectionRec[this.state.inspectionRec.length-1].time_ms}
+          min={this.state.inspectionRec[0].time_ms-1000}
+          max={this.state.inspectionRec[this.state.inspectionRec.length-1].time_ms+1000}
           defaultValue={
-              [this.state.inspectionRec[0].time_ms, 
-              this.state.inspectionRec[this.state.inspectionRec.length-1].time_ms]} 
+              [this.state.inspectionRec[0].time_ms-1000, 
+              this.state.inspectionRec[this.state.inspectionRec.length-1].time_ms+1000]} 
           step={1000*60*5}
           tipFormatter={(time)=>new Date(time).toString()}
           onChange={(data)=>this.stateUpdate({displayRange:data})}
@@ -856,7 +856,7 @@ class APP_ANALYSIS_MODE extends React.Component{
                     let latestTime=newStream[newStream.length-1].time_ms;
                     this.stateUpdate({
                       inspectionRec:fullStream,
-                      displayRange:[this.state.displayRange[0],moment(latestTime)]
+                      displayRange:[this.state.displayRange[0],moment(latestTime+1000)]
                     });
                   }
                 }
