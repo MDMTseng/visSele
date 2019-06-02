@@ -21,6 +21,7 @@ import TimePicker from 'antd/lib/time-picker';
 import DatePicker from 'antd/lib/date-picker';
 import Checkbox from 'antd/lib/checkbox';
 
+import  Typography  from 'antd/lib/typography';
 import ReactResizeDetector from 'react-resize-detector';
 
 import Chart from 'chart.js';
@@ -28,6 +29,7 @@ import 'chartjs-plugin-annotation';
 
 
 const { RangePicker } = DatePicker;
+const { Title, Paragraph, Text } = Typography;
 
 let log = logX.getLogger("AnalysisUI");
 
@@ -794,7 +796,11 @@ class APP_ANALYSIS_MODE extends React.Component{
     let measureList = this.props.defFile.featureSet[0].features.filter(feature=>feature.type==="measure");
     
     
-    
+    console.log(this.props.defFile);
+    let HEADER=<Typography>
+
+      <Title>{this.props.defFile.name}</Title>
+    </Typography>;
     
     let graphCtrlUI=null;
 
@@ -841,7 +847,7 @@ class APP_ANALYSIS_MODE extends React.Component{
       
       <div className="overlayCon s overlayCon width12 HXF">
         
-      
+        {HEADER}
         <div className="s height12">
           <RangePicker key="RP" 
             defaultValue={this.state.dateRange} 
