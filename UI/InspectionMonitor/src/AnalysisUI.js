@@ -725,8 +725,8 @@ class APP_ANALYSIS_MODE extends React.Component{
     this.ec_canvas = null;
     this.state={
       defFileSearchName:"",
-      dateRange:[moment(Date_addDay(new Date(),-3)), moment(Date_addDay(new Date(),1))],
-      displayRange:[moment(Date_addDay(new Date(),-3)), moment(Date_addDay(new Date(),1))],
+      dateRange:[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))],
+      displayRange:[moment(0), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
       groupInterval:10*60*1000,//10 mins
       liveFeedMode:false
