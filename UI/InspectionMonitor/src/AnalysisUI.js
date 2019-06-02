@@ -797,6 +797,7 @@ class APP_ANALYSIS_MODE extends React.Component{
     
     
     console.log(this.props.defFile);
+    document.title = this.props.defFile.name; 
     let HEADER=<Typography>
 
       <Title>{this.props.defFile.name}</Title>
