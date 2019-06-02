@@ -11,7 +11,7 @@ import Table from 'antd/lib/table';
 import Button from 'antd/lib/button';
 
 import * as logX from 'loglevel';
-
+import 'chartjs-plugin-zoom'
 
 import * as DB_Query from './UTIL/DB_Query';
 
@@ -19,6 +19,7 @@ import Input from 'antd/lib/input';
 import Slider from 'antd/lib/slider';
 import TimePicker from 'antd/lib/time-picker';
 import DatePicker from 'antd/lib/date-picker';
+import Checkbox from 'antd/lib/checkbox';
 
 import ReactResizeDetector from 'react-resize-detector';
 
@@ -29,6 +30,28 @@ import 'chartjs-plugin-annotation';
 const { RangePicker } = DatePicker;
 
 let log = logX.getLogger("AnalysisUI");
+
+
+
+Chart.pluginService.register({
+  afterDraw: function(chart) {
+    console.log(chart);
+  }
+});
+
+
+
+function calcCpk(mean,sigma,USL,LSL,target)
+{
+  
+  let CPU = (USL-mean)/(3*sigma);
+  let CPL = (mean-LSL)/(3*sigma);
+  let CP = Math.min(CPU,CPL);
+  let CA = (mean-target)/((USL-LSL)/2);
+  let CPK = CP*(1-Math.abs(CA));
+  return {mean,sigma,CPU,CPL,CP,CA,CPK}
+}
+
 
 function convertInspInfo_stat(measureList,insp)
 {
@@ -110,6 +133,7 @@ function isString (value) {
   return typeof value === 'string' || value instanceof String;
 }
 
+
 function convertInspInfo2CSV(measureList,insp)
 {
   let measureReports=convertInspInfo_stat(measureList,insp);
@@ -190,13 +214,38 @@ function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000)
     if(fd[i].time_ms-frontGroup.endTime<largestInterval)
     {
       frontGroup.group.push(fd[i]);
-      frontGroup.group.endTime=fd[i].time_ms;
+      frontGroup.endTime=fd[i].time_ms;
     }
     else
     {
       AddNewGroup(fd[i]);
     }
   }
+
+  inspGroups.forEach(frontGroup=>{
+    let g= frontGroup.group;
+    if(g.length==0)return;
+
+    let stat = g[0].judgeReports.map(x=>({id:x.id}));
+    stat=stat.map(s_stat=>{
+
+      let measures=g.map(singleRep=>singleRep.judgeReports.find(measure=>measure.id==s_stat.id));
+      let mean = measures.reduce((sum,measure)=>sum+measure.value,0)/measures.length;
+      let sigma = Math.sqrt(measures.reduce((sum,measures)=>sum+(mean-+measures.value)*(mean-+measures.value),0)/measures.length);
+
+      return {
+        id:s_stat.id,
+        mean,sigma
+      }
+    })
+
+
+    frontGroup.stat=stat;
+
+
+  })
+
+
   return inspGroups;
 }
 
@@ -307,6 +356,14 @@ class ControlChart extends React.Component {
 
       };
 
+      this.state.chartOpt.options.pan={
+          enabled: true,
+          mode: 'y' // is panning about the y axis neccessary for bar charts?
+        }
+
+
+
+
       this.default_annotationTargets=[
           {type:"USL",color:"rgba(200, 0, 0,0.2)"},
           {type:"LSL",color:"rgba(200, 0, 0,0.2)"},
@@ -359,20 +416,24 @@ class ControlChart extends React.Component {
 
       let inspGroup=InspectionRecordGrouping(nextProps.reportArray,this.props.groupInterval);
 
-
+      let measureInfo=nextProps.targetMeasure;
 
       inspGroup.reduce((acc_data,repG,idx)=>{
-
-        let measureGList = repG.group.
-          map(rep=>rep.judgeReports.
-            find((jrep)=>
-              jrep.id===nextProps.targetMeasure.id &&
-              jrep.status!==-128
-            ));
+        let this_id_stat = repG.stat.
+          find((st)=>st.id===nextProps.targetMeasure.id);
         
 
-        let value = measureGList.reduce((sum,mg)=>sum+mg.value,0)/measureGList.length;
-        let time = repG.group.reduce((sum,rep)=>sum+rep.time_ms,0)/measureGList.length;
+        let cpkInfo =  calcCpk(this_id_stat.mean,this_id_stat.sigma,measureInfo.USL,measureInfo.LSL,measureInfo.value);
+
+        console.log(cpkInfo);
+        /*this_id_stat.CPU=cpkInfo.CPU;
+        this_id_stat.CPL=cpkInfo.CPL;
+        this_id_stat.CP=cpkInfo.CP;
+        this_id_stat.CA=cpkInfo.CA;
+        this_id_stat.CPK=cpkInfo.CPK;*/
+        Object.assign(this_id_stat,cpkInfo);
+        let value =this_id_stat.mean;
+        let time = repG.group.reduce((sum,rep)=>sum+rep.time_ms,0)/repG.group.length;
         if(nextProps.xAxisRange!==undefined)
         {
           if(nextProps.xAxisRange[0]>time || 
@@ -383,6 +444,8 @@ class ControlChart extends React.Component {
         let val={
           x:new Date(time).toString(),
           y:value,
+          data:repG,
+          stat:this_id_stat
         };
 
 
@@ -415,9 +478,63 @@ class ControlChart extends React.Component {
                       position: "right",
                       enabled: true,
                       content: annotationTar.type
-                  }
+                  },
+                  onMouseover: function (e) {
+                    document.getElementById("info").innerHTML = 'whatever';
+                  },
               });
           });
+      
+          this.state.chartOpt.options.tooltips={
+            callbacks: {
+              title: function(tooltipItem, data) {
+                let datasetIndex = tooltipItem[0].datasetIndex;
+                let index = tooltipItem[0].index;
+                console.log(data,tooltipItem,datasetIndex,index);
+                
+                return data.datasets[datasetIndex].data[index].y
+                return data['labels'][tooltipItem[0]['index']];
+              },
+              label: function(tooltipItem, data) {
+
+                let datasetIndex = tooltipItem.datasetIndex;
+                let index = tooltipItem.index;
+                let dataOnTip=data.datasets[datasetIndex].data[index];
+                console.log(dataOnTip);
+                let stat = dataOnTip.stat;
+                if(stat==undefined)return "";
+
+                console.log(stat);
+                return Object.keys(stat).map(key=>key+":"+stat[key].toFixed(4));
+
+
+              },
+              afterLabel: function(tooltipItem, data) {
+                
+                let datasetIndex = tooltipItem.datasetIndex;
+                let index = tooltipItem.index;
+                let dataOnTip=data.datasets[datasetIndex].data[index];
+
+                return dataOnTip.x;
+              }
+            },
+            backgroundColor: '#FFF',
+            titleFontSize: 16,
+            titleFontColor: '#0066ff',
+            bodyFontColor: '#000',
+            bodyFontSize: 14,
+            displayColors: false
+          }
+
+
+
+      let LSL=nextProps.targetMeasure["LSL"];
+      let USL=nextProps.targetMeasure["USL"];
+      let value=nextProps.targetMeasure["value"];
+      this.state.chartOpt.options.scales.yAxes[0].ticks={
+        min:1.2*(LSL-value)+value,
+        max:1.2*(USL-value)+value,
+      };
       if(this.charObj!==undefined)    
         this.charObj.update();
       //console.log(this.state.chartOpt.options.scales);
@@ -457,12 +574,12 @@ class InspRecStream
   constructor(){
     this.reset();
     this.newFeedCallBack=(newStream,fullStream)=>console.log(newStream,fullStream);
+    this.liveFeedMode=false;
   }
   
   resetStreamInfo()
   {
     this.rec=[];
-    this.liveFeedMode=false;
     this.liveFeedInterval=10000;
     this.passiveQueryRange=[];
     this.liveQueryRange=[];
@@ -494,15 +611,10 @@ class InspRecStream
     if(this.rec.length>0)
     {
       let lastMsInRec = this.rec[this.rec.length-1].time_ms;
-      let isNotNew = inspectionRec.some((srec)=>srec.time_ms<lastMsInRec);
-      let concatArr = this.rec.concat(inspectionRec);
+      let recAfterLast = inspectionRec.filter((srec)=>srec.time_ms>lastMsInRec);
+      let concatArr = this.rec.concat(recAfterLast);
       console.log( this.rec.length,inspectionRec.length,concatArr.length);
-      if(isNotNew)
-      {
-        concatArr.sort(function(a, b) {
-          return a.time_ms - b.time_ms;
-        })
-      }
+      
       this.rec = concatArr;
 
     }
@@ -511,6 +623,32 @@ class InspRecStream
       this.rec = inspectionRec;
     }
     this.newFeedCallBack(inspectionRec,this.rec);
+  }
+  setLiveFeedMode(enable){
+    console.log(enable);
+    if(this.rec.length<0)
+    {
+      enable=false;
+    }
+
+    console.log(this.rec);
+    if(enable)
+    {
+      
+      if(this.timeoutHDL==undefined)
+      {
+        this.liveQueryInspRec();
+      }
+    }
+    else
+    {
+      if(this.timeoutHDL!==undefined)
+      {
+        clearTimeout(this.timeoutHDL);
+        this.timeoutHDL=undefined;
+      }
+    }
+    return this.liveFeedMode=enable;
   }
 
   liveQueryInspRec(timeRange,maxResults)
@@ -561,7 +699,7 @@ class InspRecStream
     if(this.defFile===undefined)return false;
     this.passiveQueryRange = timeRange;
 
-    this.liveFeedMode =(moment().isBefore(timeRange[1]));
+    //this.liveFeedMode =(moment().isBefore(timeRange[1]));
     if(!this.liveFeedMode)
     {
       this.resetStreamInfo();
@@ -586,6 +724,7 @@ class APP_ANALYSIS_MODE extends React.Component{
     this.state={
       defFileSearchName:"",
       dateRange:[moment(Date_addDay(new Date(),-3)), moment(Date_addDay(new Date(),1))],
+      displayRange:[moment(Date_addDay(new Date(),-3)), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
       groupInterval:10*60*1000,//10 mins
       liveFeedMode:false
@@ -609,6 +748,11 @@ class APP_ANALYSIS_MODE extends React.Component{
 
   stateUpdate(obj) {
     return this.setState({...this.state,...obj});
+  }
+  liveFeedMode_ctrl(enable=!this.state.liveFeedMode) {
+    //console.log(enable);
+    enable = this.recStream.setLiveFeedMode(enable);
+    return this.stateUpdate({liveFeedMode:enable});
   }
 
   render() {
@@ -667,7 +811,7 @@ class APP_ANALYSIS_MODE extends React.Component{
           tipFormatter={(time)=>new Date(time).toString()}
           onChange={(data)=>this.stateUpdate({displayRange:data})}
         />,
-      
+        <Checkbox checked={this.state.liveFeedMode} onChange={(ev)=>this.liveFeedMode_ctrl(ev.target.checked)}>LIVE</Checkbox>,
         <TimePicker defaultValue={moment('0:30', 'HH:mm')} format={'HH:mm'} minuteStep={5} allowClear={false} 
           onChange={(t)=>
           {
@@ -706,7 +850,16 @@ class APP_ANALYSIS_MODE extends React.Component{
           <Button type="primary" icon="search" disabled={!dateRangeReady || !defFileReady} onClick={
             ()=>{
               this.recStream.newFeedCallBack=
-                (newStream,fullStream)=>this.stateUpdate({inspectionRec:fullStream});
+                (newStream,fullStream)=>{
+                  if(newStream.length>0)
+                  {
+                    let latestTime=newStream[newStream.length-1].time_ms;
+                    this.stateUpdate({
+                      inspectionRec:fullStream,
+                      displayRange:[this.state.displayRange[0],moment(latestTime)]
+                    });
+                  }
+                }
               this.recStream.queryInspRec(dateRange);
             }} />
             
