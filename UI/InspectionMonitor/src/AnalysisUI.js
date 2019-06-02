@@ -556,8 +556,8 @@ class ControlChart extends React.Component {
   }
 
   render() {
-    return <div className={this.props.className}>
-        <canvas id={this.divID}  style={{height: "400px"}}/>
+    return <div className={this.props.className} style={this.props.style}> 
+        <canvas id={this.divID}  style={{height: "100%"}} className={this.props.className}/>
         <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
     </div>
   }
@@ -835,12 +835,16 @@ class APP_ANALYSIS_MODE extends React.Component{
 
     
     let graphUI=null;
-    graphUI = measureList.map(m=>
+    graphUI =
+    <div  style={{width:"95%"}}> 
+      {measureList.map(m=>
       <ControlChart reportArray={this.state.inspectionRec} 
+        style={{height:"400px"}}
         key={m.name+"_"}
         targetMeasure={m} 
         xAxisRange={this.state.displayRange}
-        groupInterval={this.state.groupInterval}/>)
+        groupInterval={this.state.groupInterval}/>)}
+    </div>
     
     
     return(
@@ -850,7 +854,7 @@ class APP_ANALYSIS_MODE extends React.Component{
         
         {HEADER}
         <div className="s height12">
-          <RangePicker key="RP" 
+          <RangePicker key="RP"
             defaultValue={this.state.dateRange} 
             onChange={(date)=>this.stateUpdate({dateRange:date})}/>
 
