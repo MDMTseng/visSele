@@ -53,68 +53,21 @@ function calcCpk(mean,sigma,USL,LSL,target)
   let CPK = CP*(1-Math.abs(CA));
   return {mean,sigma,CPU,CPL,CP,CA,CPK}
 }
-
-
-function convertInspInfo_stat(measureList,insp)
-{
-  let inspectionResults = insp;
-
-  
-  let measureReports=measureList.map((measure)=>{
-    let valArr = inspectionResults.map((reps)=>
-      reps.judgeReports.find((rep)=>
-        rep.id === measure.id)
-      .value);
-
-    let mean = valArr.reduce((sum,val)=>sum+val,0)/valArr.length;
-    let sigma = Math.sqrt(valArr.reduce((sum,val)=>sum+(mean-val)*(mean-val),0)/valArr.length);
-
-
-    let CPU = (measure.USL-mean)/(3*sigma);
-    let CPL = (mean-measure.LSL)/(3*sigma);
-    let CP = Math.min(CPU,CPL);
-    let CA = (mean-measure.value)/((measure.USL-measure.LSL)/2);
-    let CPK = CP*(1-Math.abs(CA));
-
-    let id = measure.id;
-    let name = measure.name;
-    let subtype=measure.subtype;
-
-
-    CPU=roundX(CPU,0.001);
-    CPL=roundX(CPL,0.001);
-    CP=roundX(CP,0.001);
-    CA=roundX(CA,0.001);
-    CPK=roundX(CPK,0.001);
-    return {id,name,subtype,measure,valArr,mean,sigma,CPU,CPL,CP,CA,CPK};
-  });
-  console.log(measureReports);
-  return measureReports;
-}
-
-
-class DataStatsTable extends React.Component{
-  render() {
-    let inspectionResults = this.props.inspectionResults;
-    let measureList = this.props.reportStatisticState.statisticValue.measureList;
-
-    
-    let measureReports=convertInspInfo_stat(measureList,inspectionResults);
-    
-    
-    //statstate.historyReport.map((rep)=>rep.judgeReports[0]);
-    const dataSource = measureReports;
-    
-    const columns = ["id","name","subtype","CA","CPU","CPL","CP","CPK"].map((type)=>({title:type,dataIndex:type,key:type}));
-
-    let menuStyle={
-      top:"0px",
-      width:"100px"
-    }
-    return(
-        <Table dataSource={dataSource} columns={columns} />
-    );
-  }
+function copyStringToClipboard (str) {
+  // Create new element
+  var el = document.createElement('textarea');
+  // Set value (string to be copied)
+  el.value = str;
+  // Set non-editable to avoid focus and move outside of view
+  el.setAttribute('readonly', '');
+  el.style = {position: 'absolute', left: '-9999px'};
+  document.body.appendChild(el);
+  // Select text inside element
+  el.select();
+  // Copy text to clipboard
+  document.execCommand('copy');
+  // Remove temporary element
+  document.body.removeChild(el);
 }
 
 function downloadString(text, fileType, fileName) {
@@ -136,41 +89,46 @@ function isString (value) {
 }
 
 
-function convertInspInfo2CSV(measureList,insp)
+function convertInspInfo2CSV(measureList,inspRecGroup)
 {
-  let measureReports=convertInspInfo_stat(measureList,insp);
   let ci=[];
-
-
-  let dataL = measureReports.reduce((pL,rep)=>{
-    if(pL===-1)return rep.valArr.length;
-    if(pL===rep.valArr.length)return pL;
-    return NaN;
-  },-1);
-  if(dataL===-1||dataL!==dataL)return [];
-
-
-  function pushDataRow(arr,measureReports,trace,RowName)
+  console.log(measureList,inspRecGroup);
+  function pushDataRow(arr,measureReports,trace,RowName=trace[trace.length-1])
   {
-    if(isString(trace))trace=[trace];
-    if(RowName===undefined)RowName=trace[trace.length-1];
-    ci.push(RowName+",");
+    arr.push(RowName);
     measureReports.forEach((rep)=>{
       let ele = GetObjElement(rep,trace);
       if(ele===undefined)ele='';
-      ci.push(ele+",");
+      arr.push(","+ele);
     });
-    ci.push("\n");
+    arr.push("\n");
   }
   ["name","subtype"]
-    .forEach(field=>pushDataRow(ci,measureReports,field));
+    .forEach(field=>pushDataRow(ci,measureList,[field]));
 
-  ["value","LCL","UCL","LSL","USL"]
-    .forEach(field=>pushDataRow(ci,measureReports,["measure",field]));
+  ["USL","UCL","value","LCL","LSL"]
+    .forEach(field=>pushDataRow(ci,measureList,[field]));
 
-  ["mean","sigma","CA","CPU","CPL","CP","CPK"]
-    .forEach(field=>pushDataRow(ci,measureReports,field));
+  ci.push(",\n");
 
+  inspRecGroup.forEach(s_group=>{
+    s_group.group
+      .forEach(data=>{
+        let rep=data.judgeReports;
+        ci.push(data.time_ms);
+        measureList.forEach(m=>
+          {
+            let s_rep = rep.find(s_rep=>s_rep.id==m.id);
+            if(s_rep.status!==INSPECTION_STATUS.NA)
+              ci.push(","+s_rep.value);
+            else
+              ci.push(",");
+          })
+        ci.push("\n");
+        
+      });
+  })
+  /*
   measureReports.forEach((rep)=>{
     ci.push(",");
   });ci.push("\n");
@@ -179,7 +137,7 @@ function convertInspInfo2CSV(measureList,insp)
   for(let i=0;i<dateL;i++)
   {
     pushDataRow(ci,measureReports,["valArr",i],insp[i].time_ms);
-  }
+  }*/
 
 
   return ci;
@@ -794,7 +752,6 @@ class APP_ANALYSIS_MODE extends React.Component{
     return true;
   }
 
-
   stateUpdate(obj) {
     return this.setState({...this.state,...obj});
   }
@@ -854,7 +811,6 @@ class APP_ANALYSIS_MODE extends React.Component{
     console.log(this.props.defFile);
     document.title = this.props.defFile.name; 
     let HEADER=<Typography>
-
       <Title>{this.props.defFile.name}</Title>
     </Typography>;
     
@@ -939,7 +895,9 @@ class APP_ANALYSIS_MODE extends React.Component{
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
           onClick={
             ()=>{
-              let csv_arr= convertInspInfo2CSV(this.props.defFile,this.state.inspectionRec);
+              let csv_arr= convertInspInfo2CSV(measureList,this.state.inspectionRecGroup);
+              let str = csv_arr.join('');
+              //copyStringToClipboard(str);
               downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
             }} />
         </div>
