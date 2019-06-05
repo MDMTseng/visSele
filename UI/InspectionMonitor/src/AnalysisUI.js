@@ -273,6 +273,17 @@ function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000)
   return inspGroups;
 }
 
+function InspectionRecordGroup_AppendCPK(InspRecGroup,defInspRange)
+{
+  InspRecGroup.forEach(group=>{
+    group.stat.forEach(s_stat=>{
+      let defRange = defInspRange.find(s_def=>s_def.id==s_stat.id);
+      if(defRange===undefined)return;
+      let cpkInfo = calcCpk(s_stat.mean,s_stat.sigma,defRange.USL,defRange.LSL,defRange.value);
+      Object.assign(s_stat, cpkInfo);
+    })
+  })
+}
 
 const MEASURERSULTRESION=
 {
@@ -414,12 +425,14 @@ class ControlChart extends React.Component {
           datInfo.data=[];
           datInfo.pointBackgroundColor=[];
       });
-      let length = nextProps.reportArray.length;
+      let length = nextProps.inspectionRecGroup.length;
       if(length===0)return;
       //let newTime = nextProps.reportArray[length-1].time_ms;
       this.state.chartOpt.options.title.text=nextProps.targetMeasure.name;
 
-      nextProps.reportArray.reduce((acc_data,rep,idx)=>{
+      nextProps.inspectionRecGroup
+        .reduce((sumG,recG)=>sumG.concat(recG.group),[])//make [{group:[a,b]},{group:[c,d]}] => [a,b,c,d...]
+        .reduce((acc_data,rep,idx)=>{
           //acc_data.labels.push(rep.time_ms);
           if(nextProps.xAxisRange!==undefined)
           {
@@ -458,24 +471,12 @@ class ControlChart extends React.Component {
           return acc_data;
       }, this.state.chartOpt.data );
 
-      let inspGroup=InspectionRecordGrouping(nextProps.reportArray,this.props.groupInterval);
-
       let measureInfo=nextProps.targetMeasure;
 
-      inspGroup.reduce((acc_data,repG,idx)=>{
+      nextProps.inspectionRecGroup.reduce((acc_data,repG,idx)=>{
         let this_id_stat = repG.stat.
           find((st)=>st.id===nextProps.targetMeasure.id);
         
-
-        let cpkInfo =  calcCpk(this_id_stat.mean,this_id_stat.sigma,measureInfo.USL,measureInfo.LSL,measureInfo.value);
-
-        //console.log(cpkInfo);
-        /*this_id_stat.CPU=cpkInfo.CPU;
-        this_id_stat.CPL=cpkInfo.CPL;
-        this_id_stat.CP=cpkInfo.CP;
-        this_id_stat.CA=cpkInfo.CA;
-        this_id_stat.CPK=cpkInfo.CPK;*/
-        Object.assign(this_id_stat,cpkInfo);
         let value =this_id_stat.mean;
         let time = repG.group.reduce((sum,rep)=>sum+rep.time_ms,0)/repG.group.length;
         if(nextProps.xAxisRange!==undefined)
@@ -773,6 +774,7 @@ class APP_ANALYSIS_MODE extends React.Component{
       dateRange:[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))],
       displayRange:[moment(0), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
+      inspectionRecGroup:[],
       groupInterval:10*60*1000,//10 mins
       liveFeedMode:false
     };
@@ -800,6 +802,14 @@ class APP_ANALYSIS_MODE extends React.Component{
     //console.log(enable);
     enable = this.recStream.setLiveFeedMode(enable);
     return this.stateUpdate({liveFeedMode:enable});
+  }
+
+
+  inspectionRecGroup_Generate(inspectionRec,groupInterval,measureList)
+  {
+    let inspectionRecGroup = InspectionRecordGrouping(inspectionRec,groupInterval);
+    InspectionRecordGroup_AppendCPK(inspectionRecGroup,measureList);
+    return inspectionRecGroup;
   }
 
   render() {
@@ -872,7 +882,11 @@ class APP_ANALYSIS_MODE extends React.Component{
             let mo=t._d.getTime();
             let day_base=moment(t._d).startOf('date')._d.getTime();
             console.log(mo-day_base)
-            this.stateUpdate({groupInterval:mo-day_base})
+            let groupInterval = mo-day_base;
+            
+            let inspectionRecGroup =
+              this.inspectionRecGroup_Generate(this.state.inspectionRec ,groupInterval,measureList);
+            this.stateUpdate({inspectionRecGroup,groupInterval});
         }}/>
       ]
 
@@ -883,12 +897,11 @@ class APP_ANALYSIS_MODE extends React.Component{
     graphUI =
     <div  style={{width:"95%"}}> 
       {measureList.map(m=>
-      <ControlChart reportArray={this.state.inspectionRec} 
+      <ControlChart inspectionRecGroup={this.state.inspectionRecGroup} 
         style={{height:"400px"}}
         key={m.name+"_"}
         targetMeasure={m} 
-        xAxisRange={this.state.displayRange}
-        groupInterval={this.state.groupInterval}/>)}
+        xAxisRange={this.state.displayRange}/>)}
     </div>
     
     
@@ -910,8 +923,12 @@ class APP_ANALYSIS_MODE extends React.Component{
                   if(newStream.length>0)
                   {
                     let latestTime=newStream[newStream.length-1].time_ms;
+                    
+                    let inspectionRecGroup =
+                      this.inspectionRecGroup_Generate(fullStream,this.state.groupInterval,measureList);
                     this.stateUpdate({
                       inspectionRec:fullStream,
+                      inspectionRecGroup:inspectionRecGroup,
                       displayRange:[this.state.displayRange[0],moment(latestTime+1000)]
                     });
                   }
@@ -922,9 +939,8 @@ class APP_ANALYSIS_MODE extends React.Component{
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
           onClick={
             ()=>{
-
-              //let csv_arr= convertInspInfo2CSV( this.props.reportStatisticState.statisticValue.measureList,this.state.inspectionRec);
-              //downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
+              let csv_arr= convertInspInfo2CSV(this.props.defFile,this.state.inspectionRec);
+              downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
             }} />
         </div>
 
