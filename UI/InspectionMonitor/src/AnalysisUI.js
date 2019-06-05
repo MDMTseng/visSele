@@ -26,6 +26,7 @@ import ReactResizeDetector from 'react-resize-detector';
 
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
+import {INSPECTION_STATUS} from './UTIL/BPG_Protocol';
 
 
 const { RangePicker } = DatePicker;
@@ -37,7 +38,6 @@ let log = logX.getLogger("AnalysisUI");
 
 Chart.pluginService.register({
   afterDraw: function(chart) {
-    console.log(chart);
   }
 });
 
@@ -232,12 +232,34 @@ function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000)
     stat=stat.map(s_stat=>{
 
       let measures=g.map(singleRep=>singleRep.judgeReports.find(measure=>measure.id==s_stat.id));
-      let mean = measures.reduce((sum,measure)=>sum+measure.value,0)/measures.length;
-      let sigma = Math.sqrt(measures.reduce((sum,measures)=>sum+(mean-+measures.value)*(mean-+measures.value),0)/measures.length);
+      let availData= measures.filter((measure)=>measure.status !==INSPECTION_STATUS.NA);
+      let mean = availData.reduce((sum,measure)=>sum+measure.value,0)/availData.length;
+      
+      let minMax = measures.reduce((mM,measure)=>{
+        if(measure.status ===INSPECTION_STATUS.NA)
+        {
+          return mM;
+        }
+
+
+        if(mM.max===undefined || mM.max===null || measure.value>mM.max)
+          mM.max = measure.value;
+        if(mM.min===undefined || mM.min===null || measure.value<mM.min)
+          mM.min = measure.value;
+        
+        return mM;
+
+      },{
+        min:undefined,
+        max:undefined
+      });
+      let sigma = Math.sqrt(availData.reduce((sum,measure)=>sum+(mean-+measure.value)*(mean-+measure.value),0)/availData.length);
 
       return {
         id:s_stat.id,
-        mean,sigma
+        mean,sigma,
+        min:minMax.min,
+        max:minMax.max
       }
     })
 
@@ -382,6 +404,10 @@ class ControlChart extends React.Component {
   }
   PropsUpdate(nextProps) {
       
+
+      let LSL=nextProps.targetMeasure["LSL"];
+      let USL=nextProps.targetMeasure["USL"];
+      let value_target=nextProps.targetMeasure["value"];
       //Make sure the data object is the same, don't change it/ you gonna set the data object to chart again
       this.state.chartOpt.data.labels=[];
       this.state.chartOpt.data.datasets.forEach((datInfo)=>{
@@ -402,11 +428,27 @@ class ControlChart extends React.Component {
           }
 
           let measureObj = rep.judgeReports.find((jrep)=>jrep.id===nextProps.targetMeasure.id);
-          if(measureObj.status===-128)return acc_data;
+
+
+          let measureValue=measureObj.value;
           let pointColor=undefined;
+          switch(measureObj.status)
+          {
+            case INSPECTION_STATUS.SUCCESS:
+              pointColor="rgba(0,255,200,0.2)";
+            break;
+            case INSPECTION_STATUS.FAILURE:
+              pointColor="rgba(255,0,200,0.2)";
+            break;
+            case INSPECTION_STATUS.NA:
+              pointColor="#000000";
+              measureValue=value_target;
+            break;
+          }
+          
           let val={
             x:new Date(rep.time_ms).toString(),
-            y:measureObj.value,
+            y:measureValue,
           };
 
 
@@ -427,7 +469,7 @@ class ControlChart extends React.Component {
 
         let cpkInfo =  calcCpk(this_id_stat.mean,this_id_stat.sigma,measureInfo.USL,measureInfo.LSL,measureInfo.value);
 
-        console.log(cpkInfo);
+        //console.log(cpkInfo);
         /*this_id_stat.CPU=cpkInfo.CPU;
         this_id_stat.CPL=cpkInfo.CPL;
         this_id_stat.CP=cpkInfo.CP;
@@ -442,7 +484,7 @@ class ControlChart extends React.Component {
             nextProps.xAxisRange[1]<time)return acc_data;
         }
         acc_data.labels.push(new Date(time));
-        let pointColor=undefined;
+        let pointColor="rgba(0,255,0,1)";
         let val={
           x:new Date(time).toString(),
           y:value,
@@ -506,8 +548,12 @@ class ControlChart extends React.Component {
                 let stat = dataOnTip.stat;
                 if(stat==undefined)return "";
 
-                console.log(stat);
-                return Object.keys(stat).map(key=>key+":"+stat[key].toFixed(4));
+                let str = Object.keys(stat).map(key=>key+":"+
+                  ((stat[key]!=null)?stat[key].toFixed(4):"NULL")
+                );
+                if(dataOnTip.data.group!==undefined)
+                  str.push("count:"+dataOnTip.data.group.length);
+                return str;
 
 
               },
@@ -529,14 +575,19 @@ class ControlChart extends React.Component {
           }
 
 
+      if(LSL!=0 || USL!=0 || value_target!=0)
+      {
+        this.state.chartOpt.options.scales.yAxes[0].ticks={
+          min:1.2*(LSL-value_target)+value_target,
+          max:1.2*(USL-value_target)+value_target,
+        };
+      }
+      else
+      {
 
-      let LSL=nextProps.targetMeasure["LSL"];
-      let USL=nextProps.targetMeasure["USL"];
-      let value=nextProps.targetMeasure["value"];
-      this.state.chartOpt.options.scales.yAxes[0].ticks={
-        min:1.2*(LSL-value)+value,
-        max:1.2*(USL-value)+value,
-      };
+      }
+
+
       if(this.charObj!==undefined)    
         this.charObj.update();
       //console.log(this.state.chartOpt.options.scales);
@@ -549,16 +600,10 @@ class ControlChart extends React.Component {
       this.charObj = new Chart(ctx, this.state.chartOpt);
       this.PropsUpdate(this.props);
   }
-  onResize(width, height) {
-      //log.debug("G2HOT resize>>", width, height);
-      //this.state.G2Chart.changeSize(width, height);
-
-  }
 
   render() {
     return <div className={this.props.className} style={this.props.style}> 
         <canvas id={this.divID}  style={{height: "100%"}} className={this.props.className}/>
-        <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
     </div>
   }
 
