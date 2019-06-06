@@ -272,6 +272,7 @@ class APPMain extends React.Component{
         {
           InspectionMonitor_URL = this.props.InspectionMonitor_URL+
             "?v="+0+"&name="+this.props.defModelName+"&hash="+this.props.defModelHash;
+          InspectionMonitor_URL =  encodeURI(InspectionMonitor_URL);
         }
 
         let MenuItem={
