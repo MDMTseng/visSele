@@ -71,7 +71,7 @@ function copyStringToClipboard (str) {
 }
 
 function downloadString(text, fileType, fileName) {
-  var blob = new Blob([text], { type: fileType });
+  var blob = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]),text], { type: fileType });
 // downloadString("a,b,c\n1,2,3", "text/csv", "myCSV.csv")
   var a = document.createElement('a');
   a.download = fileName;
