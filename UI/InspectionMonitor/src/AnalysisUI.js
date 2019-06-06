@@ -480,7 +480,7 @@ class ControlChart extends React.Component {
                   label: {
                       position: "right",
                       enabled: true,
-                      content: annotationTar.type
+                      content: annotationTar.type+":"+val
                   },
                   onMouseover: function (e) {
                     document.getElementById("info").innerHTML = 'whatever';
@@ -493,7 +493,6 @@ class ControlChart extends React.Component {
               title: function(tooltipItem, data) {
                 let datasetIndex = tooltipItem[0].datasetIndex;
                 let index = tooltipItem[0].index;
-                console.log(data,tooltipItem,datasetIndex,index);
                 
                 return data.datasets[datasetIndex].data[index].y
                 return data['labels'][tooltipItem[0]['index']];
@@ -503,26 +502,30 @@ class ControlChart extends React.Component {
                 let datasetIndex = tooltipItem.datasetIndex;
                 let index = tooltipItem.index;
                 let dataOnTip=data.datasets[datasetIndex].data[index];
-                console.log(dataOnTip);
                 let stat = dataOnTip.stat;
-                if(stat==undefined)return "";
+                if(stat==undefined)return dataOnTip.x;
+
+                let groupSize = dataOnTip.data.group.length;
+                if(groupSize==0)return dataOnTip.x;
+                let str_arr=[
+                  moment(dataOnTip.data.group[0].time_ms).format("YYYY/MM/DD , h:mm:ss a"),
+                  moment(dataOnTip.data.group[groupSize-1].time_ms).format("YYYY/MM/DD , h:mm:ss a")
+                ];
+
 
                 let str = Object.keys(stat).map(key=>key+":"+
                   ((stat[key]!=null)?stat[key].toFixed(4):"NULL")
                 );
+                str_arr = str_arr.concat(str);
                 if(dataOnTip.data.group!==undefined)
-                  str.push("count:"+dataOnTip.data.group.length);
-                return str;
+                  str_arr.push("count:"+dataOnTip.data.group.length);
+                return str_arr;
 
 
               },
               afterLabel: function(tooltipItem, data) {
-                
-                let datasetIndex = tooltipItem.datasetIndex;
-                let index = tooltipItem.index;
-                let dataOnTip=data.datasets[datasetIndex].data[index];
+                return "";
 
-                return dataOnTip.x;
               }
             },
             backgroundColor: '#FFF',
