@@ -560,7 +560,7 @@ class ObjInfoList extends React.Component {
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
-                        <AirControl
+                        <AirControl_rdx
                             url={"ws://192.168.2.2:5213"}
                             checkResult2AirAction={this.props.checkResult2AirAction}
                             WSCMD_CB={this.props.WSCMD_CB}
@@ -711,12 +711,13 @@ class AirControl extends React.Component {
         this.websocketAir.onopen = (ev)=>{
                 this.setState({...this.state,loading: false});
                 console.log("onopen:",ev);
-                
+                this.props.ACT_MinRepeatInspReport_Update(1);
                 this.heartBeat.PINGcount=0;
                 this.heartBeat.PONGcount=0;
     
             };
         this.websocketAir.onclose =(evt) => {
+                this.props.ACT_MinRepeatInspReport_Update();
                 this.setState({...this.state,loading: true});
                 if (evt.code == 3001) {
                     console.log('ws closed',evt);
@@ -855,6 +856,25 @@ class AirControl extends React.Component {
         );
     }
 }
+
+
+const mapStateToProps_AirControl = (state) => {
+    //log.info("mapStateToProps",JSON.stringify(state.UIData.c_state));
+    return {}
+}
+const mapDispatchToProps_AirControl = (dispatch, ownProps) => {
+    return {
+        ACT_MinRepeatInspReport_Update: (arg) => {
+            dispatch(UIAct.EV_WS_MinRepeatInspReport_Update(arg))
+        },
+    }
+}
+const AirControl_rdx = connect(
+    mapStateToProps_AirControl,
+    mapDispatchToProps_AirControl)(AirControl);
+
+
+
 
 class CanvasComponent extends React.Component {
     constructor(props) {

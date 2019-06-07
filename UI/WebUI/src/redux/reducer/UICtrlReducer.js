@@ -20,6 +20,7 @@ let log = logX.getLogger("UICtrlReducer");
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
 
+const default_MinRepeatInspReport=3;
 
 function Edit_info_reset(newState)
 {
@@ -29,8 +30,9 @@ function Edit_info_reset(newState)
       trackingWindow:[],
       historyReport:[],
       newAddedReport:[],
-      statisticValue:undefined
+      statisticValue:undefined,
     },
+    MinRepeatInspReport:default_MinRepeatInspReport,
     sig360info:[],
     img:null,
     DefFileName:"",
@@ -38,7 +40,7 @@ function Edit_info_reset(newState)
     DefFileHash:"",
     list:[],
     inherentShapeList:[],
-
+    
     edit_tar_info:null,//It's for usual edit target
 
     //It's the target element in edit target
@@ -108,7 +110,6 @@ function Default_UICtrlReducer()
       camera_calibration_report:undefined,
       mouseLocation:undefined
     },
-    
     version_map_info:undefined,
     WebUI_info:APP_INFO,
     sm:null,
@@ -307,6 +308,7 @@ function StateReducer(newState,action)
   function EVENT_Inspection_Report(newState,action)
   {
     let keepInTrackingTime_ms=3000;
+    let MinRepeatInspReport = newState.edit_info.MinRepeatInspReport;
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
 
@@ -560,7 +562,7 @@ function StateReducer(newState,action)
               //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
               reportStatisticState.trackingWindow=
                 reportStatisticState.trackingWindow.
-                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>2));
+                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>=MinRepeatInspReport));
             }
 
             
@@ -615,6 +617,12 @@ function StateReducer(newState,action)
       newState.showSplash=false;
       switch(action.type)
       {
+
+        case UISEV.MinRepeatInspReport_Update:
+          let MinRepeatInspReport = 
+            (action.data===undefined)?action.data:default_MinRepeatInspReport;
+          newState.edit_info={...newState.edit_info,MinRepeatInspReport};
+        break;
         case UISEV.Image_Update:
           newState.edit_info={...newState.edit_info,img:action.data};
         break;
