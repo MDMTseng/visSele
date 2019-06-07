@@ -37,6 +37,7 @@ function Edit_info_reset(newState)
     img:null,
     DefFileName:"",
     DefFileTag:"",
+    inspOptionalTag:"",
     DefFileHash:"",
     list:[],
     inherentShapeList:[],
@@ -309,6 +310,7 @@ function StateReducer(newState,action)
   {
     let keepInTrackingTime_ms=3000;
     let MinRepeatInspReport = newState.edit_info.MinRepeatInspReport;
+    let inspOptionalTag = newState.edit_info.DefFileTag+","+newState.edit_info.inspOptionalTag;
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
 
@@ -547,6 +549,7 @@ function StateReducer(newState,action)
                   treport.time_ms = currentTime_ms;
                   treport.add_time_ms = currentTime_ms;
                   treport.subFeatureDefSha1=subFeatureDefSha1;
+                  treport.tag=inspOptionalTag;
                   treport.machine_hash=machine_hash;
                   treport.repeatTime=0;
                   //treport.seq=[singleReport];
@@ -819,6 +822,12 @@ function StateReducer(newState,action)
         case DefConfAct.EVENT.DefFileTag_Update:
         {
           newState.edit_info={...newState.edit_info,DefFileTag:action.data};
+          break;
+        }
+        
+        case DefConfAct.EVENT.InspOptionalTag_Update:
+        {
+          newState.edit_info={...newState.edit_info,inspOptionalTag:action.data};
           break;
         }
 

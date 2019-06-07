@@ -8,6 +8,7 @@ export const EVENT = {
   Shape_Set:"Shape_Set",
   DefFileName_Update:"DefFileName_Update",
   DefFileTag_Update:"DefFileTag_Update",
+  InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
   ERROR:"ERROR",
@@ -61,6 +62,12 @@ export function DefFileTag_Update(newInfo)
   }
 }
 
+export function InspOptionalTag_Update(newTag)
+{
+  return {
+    type: EVENT.InspOptionalTag_Update,data: newTag
+  }
+}
 
 
 export function SUCCESS()

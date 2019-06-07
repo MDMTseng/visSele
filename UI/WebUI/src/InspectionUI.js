@@ -1342,6 +1342,20 @@ class APP_INSP_MODE extends React.Component {
             onClick={() => {}}/>
             ,
             <BASE_COM.IconButton
+            iconType="file"
+            key="defModelTag"
+            addClass="layout gray-1 vbox"
+            text={this.props.defModelTag}
+            onClick={() => {}}/>
+            ,
+            <BASE_COM.IconButton
+            iconType="file"
+            key="inspOptionalTag"
+            addClass="layout gray-1 vbox"
+            text={this.props.inspOptionalTag}
+            onClick={() => {}}/>
+            ,
+            <BASE_COM.IconButton
                 dict={EC_zh_TW}
                 iconType="bar-chart"
                 key="Info Graphs"
@@ -1437,6 +1451,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         c_state: state.UIData.c_state,
         shape_list: state.UIData.edit_info.list,
         defModelName:state.UIData.edit_info.DefFileName,
+        defModelTag:state.UIData.edit_info.DefFileTag,
+        inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
