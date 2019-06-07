@@ -27,11 +27,11 @@ import  Typography  from 'antd/lib/typography';
 import  Collapse  from 'antd/lib/collapse';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
+import  Button  from 'antd/lib/button';
 import  Layout  from 'antd/lib/layout';
 const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
-const { Paragraph } = Typography;
-
+const { Paragraph,Title } = Typography;
 
 const Panel = Collapse.Panel;
 
@@ -286,8 +286,8 @@ class APPMain extends React.Component{
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
               <div className="s black">{this.props.WebUI_info.version}</div>
               <div className="s width7" style={{height:"500px"}}>
-
-                <AntButton onClick={()=>{
+                <Button size="large" 
+                  onClick={()=>{
                   let fileSelectedCallBack=
                     (filePath,fileInfo)=>{
                       filePath=filePath.replace("."+DEF_EXTENSION,"");
@@ -296,24 +296,20 @@ class APPMain extends React.Component{
                       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
                     }
                   this.setState({...this.state,fileSelectedCallBack});
-                }} className="height1 width12" key="1">
-                  {this.props.defModelPath}<br/>
+                }}>
+                  <Icon type="file-add" />
+                  {this.props.defModelPath}
+                </Button>
+                
+                <Title level={2}>
                   {this.props.defModelName}
-                </AntButton>
+                </Title>
+
+
+
                 <CanvasComponent_rdx className="height11"/>
     
               </div>
-
-              {(mmpp===undefined)?null:
-              <AntButton  key="mmpp" className="s width5" onClick={()=>{
-                
-                let cameraCalibPath = "data/default_camera_param.json";
-                this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
-                  {LoadCameraCalibration:cameraCalibPath});
-              
-                this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
-                  {filename:cameraCalibPath});
-              }}><Icon type="camera" /> <Icon type="control" /> {"mmpp:"+mmpp}</AntButton>}
   
               {
                 (isString(InspectionMonitor_URL))?    
@@ -323,6 +319,18 @@ class APPMain extends React.Component{
                   null
               }
               
+              {(mmpp===undefined)?null:
+                <Button  key="mmpp"  size="large"  onClick={()=>{
+                  
+                  let cameraCalibPath = "data/default_camera_param.json";
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
+                    {LoadCameraCalibration:cameraCalibPath});
+                
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+                    {filename:cameraCalibPath});
+                }}><Icon type="camera" /> {"mmpp:"+mmpp}</Button>}
+
+
               <BPG_FileBrowser key="BPG_FileBrowser"
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
@@ -412,7 +420,7 @@ class APPMain extends React.Component{
         if(recommend_URL!==undefined && (recommend_URL.indexOf())==-1)
         {
           MenuItem.UPDATE={
-            icon:"cloud-upload",
+            icon:"cloud-download",
             content:null,
             onSelected:()=>{
               window.location.href =recommend_URL;

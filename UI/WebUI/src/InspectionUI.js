@@ -1440,9 +1440,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
         ACT_EXIT: (arg) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
-
         ACT_WS_SEND: (id, tl, prop, data, uintArr,promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr,promiseCBs)),
-
     }
 }
 
