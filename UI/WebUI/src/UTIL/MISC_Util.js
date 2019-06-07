@@ -68,6 +68,9 @@ export function GetObjElement(rootObj,keyTrace,traceIdxTo=keyTrace.length-1)
   return obj;
 }
 
+export function isString (value) {
+  return typeof value === 'string' || value instanceof String;
+}
 
 
 export function DictConv(key,dict,dictTheme)

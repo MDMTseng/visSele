@@ -345,6 +345,7 @@ class APP_DEFCONF_MODE extends React.Component{
     console.log("CanvasComponent render");
     let substate = this.props.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
     
+    console.log(this.props.edit_info.DefFileTag);
     let defModelPath = this.props.edit_info.defModelPath;
     switch(substate)
     {
@@ -365,12 +366,13 @@ class APP_DEFCONF_MODE extends React.Component{
               this.props.ACT_DefFileName_Update(evt.target.value);
             }}
           whiteListKey={{DefFileName:"input",}}/>,
-        <BASE_COM.JsonEditBlock object={{DefFileTag:this.props.edit_info.DefFileTag}}
+        <BASE_COM.JsonEditBlock object={{DefFileTag:this.props.edit_info.DefFileTag.join(",")}}
           dict={EC_zh_TW}
           key="this.props.edit_info.DefFileTag"
           jsonChange={(original_obj,target,type,evt)=>
             {
-              this.props.ACT_DefFileTag_Update(evt.target.value);
+
+              this.props.ACT_DefFileTag_Update(evt.target.value.split(","));
             }}
           whiteListKey={{DefFileTag:"input",}}/>,
 

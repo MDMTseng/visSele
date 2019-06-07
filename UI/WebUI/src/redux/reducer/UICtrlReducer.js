@@ -2,7 +2,7 @@
 import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct';
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
+import {xstate_GetCurrentMainState,GetObjElement,isString} from 'UTIL/MISC_Util';
 import {InspectionEditorLogic} from './InspectionEditorLogic';
 
 import {INSPECTION_STATUS} from 'UTIL/BPG_Protocol';
@@ -36,8 +36,8 @@ function Edit_info_reset(newState)
     sig360info:[],
     img:null,
     DefFileName:"",
-    DefFileTag:"",
-    inspOptionalTag:"",
+    DefFileTag:[],
+    //inspOptionalTag:"",
     DefFileHash:"",
     list:[],
     inherentShapeList:[],
@@ -93,7 +93,8 @@ function Default_UICtrlReducer()
       sig360info:[],
       img:null,
       DefFileName:"",
-      DefFileTag:"",
+      DefFileTag:[],
+      inspOptionalTag:[],
       list:[],
       inherentShapeList:[],
 
@@ -688,7 +689,14 @@ function StateReducer(newState,action)
 
           if(root_defFile.tag !== undefined)
           {
-            newState.edit_info.DefFileTag=root_defFile.tag;
+            let tagInfo = root_defFile.tag;
+            if(isString(tagInfo))
+              tagInfo=root_defFile.tag.split(",");
+              
+            if(Array.isArray(tagInfo))
+            {
+              newState.edit_info.DefFileTag=tagInfo;
+            }
           }
 
           root_defFile.featureSet.forEach((report)=>
@@ -827,7 +835,19 @@ function StateReducer(newState,action)
         
         case DefConfAct.EVENT.InspOptionalTag_Update:
         {
-          newState.edit_info={...newState.edit_info,inspOptionalTag:action.data};
+          let inspOptionalTag = action.data;
+          let tags=inspOptionalTag;
+
+          tags = tags.filter((check_tag,check_idx)=>{
+            if(check_tag.length==0)return false;
+            for(let ii=0;ii<check_idx;ii++)
+            {
+              if(tags[ii]==check_tag)return false;
+            }
+            return true;
+          });//Chekc duplication and remove empty tag
+          inspOptionalTag=tags;
+          newState.edit_info={...newState.edit_info,inspOptionalTag};
           break;
         }
 

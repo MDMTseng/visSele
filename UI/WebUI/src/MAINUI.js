@@ -8,6 +8,7 @@ import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
@@ -29,10 +30,11 @@ import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
 import  Button  from 'antd/lib/button';
 import  Layout  from 'antd/lib/layout';
+import  Input  from 'antd/lib/input';
+import  Tag  from 'antd/lib/tag';
 const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
 const { Paragraph,Title } = Typography;
-
 const Panel = Collapse.Panel;
 
 
@@ -305,7 +307,34 @@ class APPMain extends React.Component{
                   {this.props.defModelName}
                 </Title>
 
+                {this.props.defFileTag.map(tag=><Tag color="red">{tag}</Tag>)}
+                
+                {this.props.inspOptionalTag.map(curTag=>
+                  <Tag color="green" closable onClose={(e)=>{
+                    e.preventDefault();
+                    let tagToDelete=curTag;
+                    let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
+                    console.log(e.target,NewOptionalTag);
+                    this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
+                    }}>{curTag}</Tag>)}
 
+                <Input placeholder="新標籤"
+                  onChange={(e)=>{
+                    let newStr=e.target.value;
+                    //e.target.setSelectionRange(0, newStr.length)
+                    this.setState({...this.state,newTagStr:newStr});
+                  }}
+                  onPressEnter={(e)=>{
+                    let newTag=e.target.value.split(",");
+                    let newTags=[...this.props.inspOptionalTag,...newTag];
+                    this.props.ACT_InspOptionalTag_Update(newTags);
+                    this.setState({...this.state,newTagStr:""});
+                  }}
+                  className={(this.props.inspOptionalTag.find((str)=>str==this.state.newTagStr))?"error":""}
+                  allowClear
+                  value={this.state.newTagStr}
+                  prefix={<Icon type="tags"/>}
+                />
 
                 <CanvasComponent_rdx className="height11"/>
     
@@ -489,12 +518,15 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
         EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
         EV_UI_Analysis_Mode:()=>{dispatch(UIAct.EV_UI_Analysis_Mode())},
         ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
+        ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
         ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
     }
 }
 const mapStateToProps_APPMain = (state) => {
     return { 
         defModelName:state.UIData.edit_info.DefFileName,
+        defFileTag:state.UIData.edit_info.DefFileTag,
+        inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
         defModelPath: state.UIData.edit_info.defModelPath,
         defModelHash: state.UIData.edit_info.DefFileHash,
         c_state: state.UIData.c_state,

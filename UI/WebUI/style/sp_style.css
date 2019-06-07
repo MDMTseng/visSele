@@ -56,7 +56,9 @@ body.sp_Style.blockS  {
   transform: translate(-90%,-50%);
 }
 
-
+.sp_Style .ant-input-affix-wrapper.error input{
+  background-color: #f99;
+} 
 
 .sp_Style.blockS .MenuAnim{
   transition:opacity 0.2s, transform 0.3s;

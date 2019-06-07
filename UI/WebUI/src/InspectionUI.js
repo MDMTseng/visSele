@@ -30,6 +30,7 @@ import Slider  from 'antd/lib/Slider';
 import Table from 'antd/lib/table';
 import Switch from 'antd/lib/switch';
 import  Tag  from 'antd/lib/tag';
+import  Input  from 'antd/lib/input';
 import  Select  from 'antd/lib/select';
 import  Upload  from 'antd/lib/upload';
 import Button, {default as AntButton} from 'antd/lib/button';
@@ -1341,19 +1342,11 @@ class APP_INSP_MODE extends React.Component {
             text={this.props.defModelName}
             onClick={() => {}}/>
             ,
-            <BASE_COM.IconButton
-            iconType="file"
-            key="defModelTag"
-            addClass="layout gray-1 vbox"
-            text={this.props.defModelTag}
-            onClick={() => {}}/>
-            ,
-            <BASE_COM.IconButton
-            iconType="file"
-            key="inspOptionalTag"
-            addClass="layout gray-1 vbox"
-            text={this.props.inspOptionalTag}
-            onClick={() => {}}/>
+
+            <div className="s black width12 HXA">
+                {this.props.defModelTag.map(tag=><Tag color="red">{tag}</Tag>)}
+                {this.props.inspOptionalTag.map(tag=><Tag color="green">{tag}</Tag>)}
+            </div>
             ,
             <BASE_COM.IconButton
                 dict={EC_zh_TW}
