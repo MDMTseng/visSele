@@ -324,6 +324,7 @@ function StateReducer(newState,action)
     }
 
     let subFeatureDefSha1 = action.data.subFeatureDefSha1;
+    let machine_hash = action.data.machine_hash;
     // if(typeof subFeatureDefSha1 == "string")
     // {
     //   if(subFeatureDefSha1.length>8)
@@ -544,6 +545,7 @@ function StateReducer(newState,action)
                   treport.time_ms = currentTime_ms;
                   treport.add_time_ms = currentTime_ms;
                   treport.subFeatureDefSha1=subFeatureDefSha1;
+                  treport.machine_hash=machine_hash;
                   treport.repeatTime=0;
                   //treport.seq=[singleReport];
                   treport.isCurObj=true;
