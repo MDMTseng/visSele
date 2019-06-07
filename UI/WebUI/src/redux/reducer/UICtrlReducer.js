@@ -34,6 +34,7 @@ function Edit_info_reset(newState)
     sig360info:[],
     img:null,
     DefFileName:"",
+    DefFileTag:"",
     DefFileHash:"",
     list:[],
     inherentShapeList:[],
@@ -89,6 +90,7 @@ function Default_UICtrlReducer()
       sig360info:[],
       img:null,
       DefFileName:"",
+      DefFileTag:"",
       list:[],
       inherentShapeList:[],
 
@@ -671,6 +673,11 @@ function StateReducer(newState,action)
             newState.edit_info.DefFileName   = root_defFile.name;
           }
 
+          if(root_defFile.tag !== undefined)
+          {
+            newState.edit_info.DefFileTag=root_defFile.tag;
+          }
+
           root_defFile.featureSet.forEach((report)=>
           {
             switch(report.type)
@@ -796,6 +803,12 @@ function StateReducer(newState,action)
         case DefConfAct.EVENT.DefFileName_Update:
         {
           newState.edit_info=Object.assign({},newState.edit_info,{DefFileName:action.data});
+          break;
+        }
+
+        case DefConfAct.EVENT.DefFileTag_Update:
+        {
+          newState.edit_info={...newState.edit_info,DefFileTag:action.data};
           break;
         }
 

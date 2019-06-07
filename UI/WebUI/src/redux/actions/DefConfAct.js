@@ -7,6 +7,7 @@ export const EVENT = {
   Shape_List_Update:"Shape_List_Update",
   Shape_Set:"Shape_Set",
   DefFileName_Update:"DefFileName_Update",
+  DefFileTag_Update:"DefFileTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
   ERROR:"ERROR",
@@ -51,6 +52,12 @@ export function DefFileName_Update(newName)
 {
   return {
     type: EVENT.DefFileName_Update,data: newName
+  }
+}
+export function DefFileTag_Update(newInfo)
+{
+  return {
+    type: EVENT.DefFileTag_Update,data: newInfo
   }
 }
 

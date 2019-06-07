@@ -34,6 +34,7 @@ export default {
         name:"名稱",
         docheck:"必要判定",
         DefFileName:"設定檔名",
+        DefFileTag:"額外資訊",
         "Info Graphs":"資料圖表"
     },
     

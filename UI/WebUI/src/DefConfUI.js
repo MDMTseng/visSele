@@ -365,6 +365,15 @@ class APP_DEFCONF_MODE extends React.Component{
               this.props.ACT_DefFileName_Update(evt.target.value);
             }}
           whiteListKey={{DefFileName:"input",}}/>,
+        <BASE_COM.JsonEditBlock object={{DefFileTag:this.props.edit_info.DefFileTag}}
+          dict={EC_zh_TW}
+          key="this.props.edit_info.DefFileTag"
+          jsonChange={(original_obj,target,type,evt)=>
+            {
+              this.props.ACT_DefFileTag_Update(evt.target.value);
+            }}
+          whiteListKey={{DefFileTag:"input",}}/>,
+
         <BASE_COM.IconButton
             dict={EC_zh_TW}
           addClass="layout palatte-blue-8 vbox"
@@ -416,6 +425,7 @@ class APP_DEFCONF_MODE extends React.Component{
               var enc = new TextEncoder();
               let report = this.props.edit_info._obj.GenerateEditReport();
               report.name = this.props.edit_info.DefFileName;
+              report.tag = this.props.edit_info.DefFileTag;
 
               
               let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
@@ -841,6 +851,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
     ACT_DefFileName_Update:(newName) => {dispatch(DefConfAct.DefFileName_Update(newName))},
+    ACT_DefFileTag_Update:(newInfo) => {dispatch(DefConfAct.DefFileTag_Update(newInfo))},
    
     ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
