@@ -1014,6 +1014,40 @@ class EverCheckCanvasComponent_proto{
     this.canvas.onmousedown=this.onmousedown.bind(this);
     this.canvas.onmouseup=this.onmouseup.bind(this);
     this.canvas.onmouseout=this.onmouseout.bind(this);
+    
+
+    function getTouchPos(canvasDom, touchEvent) {
+      var rect = canvasDom.getBoundingClientRect();
+      return {
+        x: touchEvent.touches[0].clientX - rect.left,
+        y: touchEvent.touches[0].clientY - rect.top
+      };
+    }
+
+    {
+      this.canvas.addEventListener("touchstart",  (e)=> {
+        //mousePos = getTouchPos(this.canvas, e);
+        var touch = e.touches[0];
+        var mouseEvent = new MouseEvent("mousedown", {
+          clientX: touch.clientX,
+          clientY: touch.clientY
+        });
+        this.canvas.dispatchEvent(mouseEvent);
+      }, false);
+      this.canvas.addEventListener("touchmove",  (e) =>{
+        var touch = e.touches[0];
+        var mouseEvent = new MouseEvent("mousemove", {
+          clientX: touch.clientX,
+          clientY: touch.clientY
+        });
+        this.canvas.dispatchEvent(mouseEvent);
+      }, false);
+      this.canvas.addEventListener("touchend",  (e)=> {
+        var mouseEvent = new MouseEvent("mouseup", {});
+        this.canvas.dispatchEvent(mouseEvent);
+      }, false);
+    }
+
 
     this.canvas.addEventListener('wheel',this.onmouseswheel.bind(this), false);
 

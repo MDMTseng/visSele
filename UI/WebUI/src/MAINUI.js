@@ -128,7 +128,7 @@ class QR_Canvas extends React.Component{
       })
     return (
     <div className={this.props.className}>
-        <canvas ref="canvas" className="width12 HXF"/>
+        <canvas ref="canvas" className="width12 HXF" onClick={this.props.onClick}/>
         <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
     </div>
     );
@@ -155,7 +155,10 @@ const CanvasComponent_rdx = connect(
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
 
-
+function isString(data)
+{
+  return (typeof data === 'string' || data instanceof String);
+}
 
 class APPMain extends React.Component{
 
@@ -205,6 +208,16 @@ class APPMain extends React.Component{
           mmpp= camParam.mmpb2b/camParam.ppb2b;
         }
 
+
+        let InspectionMonitor_URL;
+
+        if(isString(this.props.defModelHash) && this.props.defModelHash.length>5)
+        {
+          InspectionMonitor_URL = this.props.InspectionMonitor_URL+
+            "?v="+0+"&name="+this.props.defModelName+"&hash="+this.props.defModelHash;
+          InspectionMonitor_URL =  encodeURI(InspectionMonitor_URL);
+        }
+
         let MenuItem={
           HOME:{
               icon:"home",
@@ -245,7 +258,13 @@ class APPMain extends React.Component{
                   {filename:cameraCalibPath});
               }}><Icon type="camera" /> <Icon type="control" /> {"mmpp:"+mmpp}</AntButton>}
   
-              <QR_Canvas className="s width5 HX6" QR_Content={JSON.stringify({v:0,name:this.props.defModelName,hash:this.props.defModelHash})}/>
+              {
+                (isString(InspectionMonitor_URL))?    
+                  <QR_Canvas className="s width5 HX6" 
+                  onClick={()=>window.open(InspectionMonitor_URL)}
+                  QR_Content={InspectionMonitor_URL}/>:
+                  null
+              }
               
               <BPG_FileBrowser key="BPG_FileBrowser"
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
@@ -419,7 +438,8 @@ const mapStateToProps_APPMain = (state) => {
         WS_CH:state.UIData.WS_CH,
         WS_ID:state.UIData.WS_ID,
         version_map_info:state.UIData.version_map_info,
-        WebUI_info:state.UIData.WebUI_info
+        WebUI_info:state.UIData.WebUI_info,
+        InspectionMonitor_URL:state.UIData.InspectionMonitor_URL
     }
 }
 
