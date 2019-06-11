@@ -208,6 +208,7 @@ export class InspectionEditorLogic
     this.UpdateInherentShapeList();
     
     let lostRefObjs = this.findLostRefShapes();
+
     this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
     this.UpdateInherentShapeList();
   }
@@ -327,31 +328,61 @@ export class InspectionEditorLogic
     };
   }
   
-  findLostRefShapes(shapeList=this.shapeList)
+  findLostRefShapes(shapeList=this.shapeList,inherentShapeList=this.inherentShapeList)
   {
-    let inherentShapeList = this.inherentShapeList;
-    //Check if there is any object/shape/measure that refs this(pre_shape)
-    let objs = shapeList.filter((shape)=>
-    {
-      if(!(shape.ref instanceof Array))return false;
-      let lostRef = shape.ref.find(ref=>{//This "find" will return a lost ref if there is any
-        //refObj is the corresponding objct in ref 
-        let refObj = shapeList.find(shape=>shape.id ==ref.id);
-        if(refObj===undefined)
-        {
-          refObj = inherentShapeList.find(ishape=>ishape.id ==ref.id);
-        }
-        //If You cannot find the corresponding object, then this "ref" is the lost ref
-        return refObj===undefined;
-      });
-      //If the lost ref exist, then the shape has lost ref....
-      return lostRef!==undefined;
+    let totalList=shapeList.concat(inherentShapeList);
+    let lostRefShape = totalList.filter(shape=>{
+      if(shape.ref===undefined && shape.ref_baseLine===undefined)
+        return false;
+      let totalRef = shape.ref;
+      if(GetObjElement(shape,["ref_baseLine","id"])!==undefined)
+      {
+        totalRef=[...totalRef,shape.ref_baseLine];
+      }
+      let lostRef = totalRef.reduce((lostRef,ref)=>{
+        if(lostRef)return lostRef;
+        return totalList.find((shape)=>ref.id ==shape.id )==undefined;
+      },false);
+      if(lostRef)return true;
 
+
+      return false;
     });
-    return objs;
+    return lostRefShape;
   }
   
+  FindShapeRefTree(id,shapeList=this.shapeList,inherentShapeList=this.inherentShapeList)
+  {
+    let totalList=shapeList.concat(inherentShapeList);
+    let ref_layer = totalList.filter(shape=>{
+      if(shape.ref===undefined && shape.ref_baseLine===undefined)
+        return false;
+      let hasRef = shape.ref.find(ref=>ref.id==id)!==undefined;
+      if(hasRef)return true;
 
+      if(GetObjElement(shape,["ref_baseLine","id"])==id)
+        return true;
+
+      return false;
+    }).map(ref_shape=>{
+      let ref_tree = this.FindShapeRefTree(ref_shape.id,shapeList,inherentShapeList);
+      if(ref_tree.length ==0)
+        return {id:ref_shape.id,shape:ref_shape};
+      return {id:ref_shape.id,shape:ref_shape,ref_tree};
+    });
+
+    return ref_layer;
+  }
+  FlatRefTree(refTree)
+  {
+    let idList=[];
+    refTree.forEach(refShapeInfo=>{
+      idList.push(refShapeInfo);
+      if(refShapeInfo.ref_tree!==undefined)
+        idList=idList.concat(this.FlatRefTree(refShapeInfo.ref_tree));
+    });
+    return idList;
+  }
   SetShape( shape_obj, id )//undefined means add new shape
   {
     let pre_shape = null;
@@ -365,14 +396,13 @@ export class InspectionEditorLogic
         log.debug("SETShape>",pre_shape_idx);
         if(pre_shape_idx!=undefined)
         {
-          pre_shape = this.shapeList[pre_shape_idx];
-          this.shapeList.splice(pre_shape_idx, 1);
-          if(this.editShape!=null && this.editShape.id == id)
-          {
-            this.editShape = null;
-          }
-          let lostRefObjs = this.findLostRefShapes();
-          this.shapeList=this.shapeList.filter((shape)=>!lostRefObjs.includes(shape));
+          let refTree = this.FindShapeRefTree(id);
+          console.log("refTree",refTree);
+          let flatRefTree = this.FlatRefTree(refTree);
+          console.log("flatRefTree",flatRefTree);
+          this.shapeList=this.shapeList
+            .filter((shape)=>flatRefTree.find(fRef=>shape.id==fRef.id)===undefined)
+            .filter((shape)=>id!=shape.id);
 
         }
       }

@@ -831,14 +831,35 @@ class APP_DEFCONF_MODE extends React.Component{
             key="DEL_BTN"
             addClass="layout red vbox"
             text="DEL" onClick={()=>{
-              
+              let tarInfo = this.props.edit_tar_info;
+              let warningUI= "確定要刪除:"+tarInfo.name+" ?";
+
+              let refTree = this.props.edit_info._obj.FindShapeRefTree(tarInfo.id)
+              let flatTree =this.props.edit_info._obj.FlatRefTree(refTree);
+
+              //The flat tree contains shapes in inherentShapeList, 
+              //We only need the one in shapelist
+              flatTree=flatTree.filter((refedShape)=>
+                this.props.shape_list.find(shape=>shape.id==refedShape.id));
+
+              if(flatTree.length!==0)
+              {
+                warningUI=<div>
+                  {warningUI}<br/>
+                  相關連之物件如下
+                  {flatTree.map(fShape=>[<br/>,fShape.shape.name])}
+                  </div>
+              }
+
+
+              console.log(refTree,flatTree);
               this.setState({...this.state,warningInfo:{
                 onOk:()=>{
-                  on_DEL_Tar(this.props.edit_tar_info.id);
+                  on_DEL_Tar(tarInfo.id);
                   console.log("onOK")
                 },
                 onCancel:()=>{console.log("onCancel")},
-                content:"確定要刪除:"+this.props.edit_tar_info.name+" ?"
+                content:warningUI
               }})
             }}/>);
   
