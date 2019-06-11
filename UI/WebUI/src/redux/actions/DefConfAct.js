@@ -6,6 +6,7 @@ export const EVENT = {
   Edit_Tar_Ele_Cand_Update:"Edit_Tar_Ele_Cand_Update",
   Shape_List_Update:"Shape_List_Update",
   Shape_Set:"Shape_Set",
+  Shape_Decoration_ID_Order_Update:"Shape_Decoration_ID_Order_Update",
   DefFileName_Update:"DefFileName_Update",
   DefFileTag_Update:"DefFileTag_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
@@ -41,6 +42,13 @@ export function Shape_List_Update(shapeList)
     type: EVENT.Shape_List_Update,data: shapeList
   }
 }
+export function Shape_Decoration_ID_Order_Update(shape_id_order)
+{
+  return {
+    type: EVENT.Shape_Decoration_ID_Order_Update,data: shape_id_order
+  }
+}
+
 
 export function Shape_Set(shape_data)
 {

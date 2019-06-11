@@ -7,7 +7,7 @@ import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 let BPG_FileBrowser=BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser=BASE_COM.BPG_FileSavingBrowser;
-
+import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js'; 
@@ -142,6 +142,59 @@ const CanvasComponent_rdx = connect(
     mapStateToProps_CanvasComponent,
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
+
+
+class DList extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+
+    };
+
+    /*
+    itemRenderer
+    item
+    onChange
+    */
+  }
+  dragStart(e) {
+    this.dragged = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.dragged);
+  }
+  dragEnd(e) {
+    return;
+    this.dragged.style.display = 'block';
+    this.dragged.parentNode.removeChild(placeholder);
+    
+    // update state
+    var data = this.props.item;
+    var from = Number(this.dragged.dataset.id);
+    var to = Number(this.over.dataset.id);
+    if(from < to) to--;
+    data.splice(to, 0, data.splice(from, 1)[0]);
+    this.setState({colors: data});
+  }
+  dragOver(e) {
+    e.preventDefault();
+    this.dragged.style.display = "none";
+    if(e.target.className === 'placeholder') return;
+    this.over = e.target;
+    e.target.parentNode.insertBefore(placeholder, e.target);
+  }
+  render() {
+    var listItems = this.props.items.map((item, i) => {
+      let DOM=this.props.itemRenderer(item,i,'true',this.dragEnd.bind(this),this.dragStart.bind(this));
+      console.log(DOM);
+      return DOM
+    });
+    return (
+      <ul onDragOver={this.dragOver.bind(this)}>
+        {listItems}
+      </ul>
+    )
+  }
+}
 
 class APP_DEFCONF_MODE extends React.Component{
 
@@ -431,6 +484,7 @@ class APP_DEFCONF_MODE extends React.Component{
 
               
               let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+              report.featureSet[0]["__decorator"]=this.props.Info_decorator;
               report.featureSet_sha1 = sha1_info_in_json;
               console.log("ACT_Report_Save");
               this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+'.'+DEF_EXTENSION,enc.encode(JSON.stringify(report, null, 2)));
@@ -796,13 +850,35 @@ class APP_DEFCONF_MODE extends React.Component{
       else
       {
         console.log(this.props.shape_list);
-        this.props.shape_list.forEach((shape)=>
+
+        let shapeListInOrder=this.props.shape_list;
+        console.log(this.props.Info_decorator.list_id_order);
+        if(this.props.Info_decorator.list_id_order.length == shapeListInOrder.length)
         {
-          MenuSet.push(<BASE_COM.Button
-            key={"shape_listing_"+shape.id}
-            addClass="layout lred vbox"
-            text={shape.name} onClick={()=>this.props.ACT_EDIT_TAR_UPDATE(shape)}/>);
-        });
+          shapeListInOrder=this.props.Info_decorator.list_id_order.map(id=>this.props.shape_list.find(shape=>shape.id==id));
+        }
+        MenuSet.push(<div className="s HXA">
+          <DragSortableList 
+            items={shapeListInOrder.map(  (shape,id)=>({
+              content: (
+                <div
+                  key={"shape_listing_"+shape.id}
+                  className="button lred"
+                  style={{height:"40px"}}
+                  onClick={()=>this.props.ACT_EDIT_TAR_UPDATE(shape)}>
+                  {shape.name}
+                </div>),
+              shape_id:shape.id
+            })  )} 
+
+            onSort={(newContentOrder)=>{
+              let idOrder=newContentOrder.map(ele=>ele.shape_id);
+              this.props.ACT_Shape_Decoration_ID_Order_Update(idOrder);
+              console.log("onSort",newContentOrder,idOrder)
+            }} 
+            dropBackTransitionDuration={0.3} 
+            type="vertical"/>
+          </div>);
       }
       break;
     }
@@ -870,6 +946,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
     ACT_WS_SEND:(...args)=>dispatch(UIAct.EV_WS_SEND(...args)),
     ACT_ClearImage:()=>{dispatch(UIAct.EV_WS_Image_Update(null))},
+    ACT_Shape_Decoration_ID_Order_Update:(shape_id_order)=>{dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order))},
     
     ACT_Report_Save:(id,fileName,content)=>{
       let act = UIAct.EV_WS_SEND(id,"SV",0,
@@ -897,6 +974,7 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     c_state: state.UIData.c_state,
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
     shape_list:state.UIData.edit_info.list,
+    Info_decorator:state.UIData.edit_info.__decorator,
     WS_ID:state.UIData.WS_ID,
     edit_info:state.UIData.edit_info,
   }

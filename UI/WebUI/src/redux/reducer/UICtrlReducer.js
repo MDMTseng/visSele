@@ -40,6 +40,9 @@ function Edit_info_reset(newState)
     //inspOptionalTag:"",
     DefFileHash:"",
     list:[],
+    __decorator:{
+      list_id_order:[]
+    },
     inherentShapeList:[],
     
     edit_tar_info:null,//It's for usual edit target
@@ -96,6 +99,9 @@ function Default_UICtrlReducer()
       DefFileTag:[],
       inspOptionalTag:[],
       list:[],
+      __decorator:{
+        listIDOrder:[]
+      },
       inherentShapeList:[],
 
       edit_tar_info:null,//It's for usual edit target
@@ -124,6 +130,22 @@ function Default_UICtrlReducer()
 
   Edit_info_reset(defState);
   return defState;
+}
+
+
+
+
+function UpdateListIDOrder(cur_listIDOrder,list)
+{
+  //remove disappeared shape id
+  let listIDOrder=cur_listIDOrder.filter(id=>list.find(shape=>shape.id==id));
+
+  let newIDs = list.//find new IDs to add in
+    filter(shape=>listIDOrder.find(id=>id==shape.id)===undefined).
+    map(shape=>shape.id);
+
+  listIDOrder=[...listIDOrder,...newIDs];
+  return listIDOrder;
 }
 
 
@@ -652,7 +674,15 @@ function StateReducer(newState,action)
         if(root_defFile.type === "binary_processing_group")
         {
           let doExit=false;
-          let sha1_info_in_json = JSum.digest(root_defFile.featureSet, 'sha1', 'hex');
+          let clone_featureSet=dclone(root_defFile.featureSet);
+          clone_featureSet.forEach((feature)=>{//we ignore the key that starts with "__", two "_"
+            Object.keys(feature).
+              filter(key=>key.startsWith("__")).
+              forEach((keyW__)=>delete feature[keyW__]);
+          })
+          
+
+          let sha1_info_in_json = JSum.digest(clone_featureSet, 'sha1', 'hex');
           if(root_defFile.featureSet_sha1!==undefined)//If there is a saved sha1, check integrity 
           {
             let sha1_info_in_file = root_defFile.featureSet_sha1;
@@ -662,18 +692,18 @@ function StateReducer(newState,action)
             }
           }
           
-          if(newState.edit_info.DefFileHash==sha1_info_in_json)
+          /*if(newState.edit_info.DefFileHash==sha1_info_in_json)
           {
             //No need to wipe out the data;
             break;
-          }
+          }*/
           Edit_info_reset(newState);
           if(doExit)
           {
             newState.edit_info.DefFileHash=undefined;
             break;
           }
-
+          console.log(dclone(newState.edit_info))
           newState.edit_info.DefFileHash=sha1_info_in_json;
 
           if(root_defFile.name === undefined)
@@ -715,6 +745,11 @@ function StateReducer(newState,action)
                 newState.edit_info.edit_tar_info = null;
                 
                 newState.edit_info.list=newState.edit_info._obj.shapeList;
+                newState.edit_info.__decorator={...newState.edit_info.__decorator,...report.__decorator};
+                
+                newState.edit_info.__decorator.list_id_order=
+                  UpdateListIDOrder(newState.edit_info.__decorator.list_id_order,newState.edit_info.list);
+                
                 newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
                 
                 log.info(newState.edit_info.inherentShapeList);
@@ -796,6 +831,8 @@ function StateReducer(newState,action)
           newState.edit_info._obj.SetShapeList(action.data);
           newState.edit_info.edit_tar_info = null;
           newState.edit_info.list=newState.edit_info._obj.shapeList;
+          newState.edit_info.__decorator.list_id_order=
+            UpdateListIDOrder(newState.edit_info.__decorator.list_id_order,newState.edit_info.list);
           newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
         break;
 
@@ -850,6 +887,13 @@ function StateReducer(newState,action)
           newState.edit_info={...newState.edit_info,inspOptionalTag};
           break;
         }
+        case DefConfAct.EVENT.Shape_Decoration_ID_Order_Update:
+        {
+          log.info("action.data:",action.data);
+          
+          newState.edit_info.__decorator.list_id_order=
+            UpdateListIDOrder(action.data,newState.edit_info.list);
+        }
 
         case DefConfAct.EVENT.Shape_Set:
         {
@@ -862,6 +906,9 @@ function StateReducer(newState,action)
           log.info("newID:",newID);
           let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
           newState.edit_info.list=newState.edit_info._obj.shapeList;
+          
+          newState.edit_info.__decorator.list_id_order=
+            UpdateListIDOrder(newState.edit_info.__decorator.list_id_order,newState.edit_info.list);
           
           newState.edit_info.inherentShapeList=
             newState.edit_info._obj.UpdateInherentShapeList();
