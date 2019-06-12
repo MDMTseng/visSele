@@ -60,6 +60,23 @@ body.sp_Style.blockS  {
   background-color: #f99;
 } 
 
+.sp_Style .ant-tag.large{
+  font-size:20px;margin-bottom: 8px;
+} 
+
+.sp_Style .ant-tag.InspTag.fixed{
+  color: #ffffff;
+  background:#f50;
+  border-color: #f50;
+}
+
+.sp_Style .ant-tag.InspTag.optional{
+  color: #ffffff;
+  background: #108ee9;
+  border-color: #108ee9;
+} 
+
+
 .sp_Style.blockS .MenuAnim{
   transition:opacity 0.2s, transform 0.3s;
   background-color: rgba(0,0,0,0.1);

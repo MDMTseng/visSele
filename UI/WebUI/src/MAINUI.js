@@ -307,10 +307,10 @@ class APPMain extends React.Component{
                   {this.props.defModelName}
                 </Title>
 
-                {this.props.defFileTag.map(tag=><Tag color="red">{tag}</Tag>)}
+                {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed">{tag}</Tag>)}
                 
                 {this.props.inspOptionalTag.map(curTag=>
-                  <Tag color="green" closable onClose={(e)=>{
+                  <Tag closable className="large InspTag optional" onClose={(e)=>{
                     e.preventDefault();
                     let tagToDelete=curTag;
                     let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
