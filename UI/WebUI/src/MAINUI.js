@@ -113,11 +113,10 @@ class QR_Canvas extends React.Component{
     this.refs.canvas.height=height;
     this.setState({...this.state,fUpdateC:this.state.fUpdateC++});
   }
-  componentShouldUpdate(nextProps, nextState)
+  /*shouldComponentUpdate(nextProps, nextState)
   {
-    console.log(nextProps,this.QR_Content);
-    return nextProps.QR_Content!=this.QR_Content;
-  }
+    return nextProps.QR_Content!=this.QR_Content || this.refs.canvas==undefined;
+  }*/
   componentDidUpdate(prevProps, prevState) {
     this.QR_Content = this.props.QR_Content;
   }
