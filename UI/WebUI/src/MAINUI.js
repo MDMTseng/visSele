@@ -1,5 +1,5 @@
 
-import 'antd/dist/antd.css';
+import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';

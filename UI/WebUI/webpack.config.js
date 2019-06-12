@@ -77,11 +77,17 @@ module.exports = {
           loader: 'style-loader',
         }, {
           loader: 'css-loader', // translates CSS into CommonJS
-        }, {
+        }, {  
           loader: 'less-loader', // compiles Less to CSS
-         options: {
-          javascriptEnabled: true
-         },
+          options: {
+            javascriptEnabled: true,
+            modifyVars: {//Antd less modification
+              //'primary-color': '#1DA57A',
+              //'link-color': '#1DA57A',
+              //'border-radius-base': '2px',
+              'font-size-base': '20px'
+            }
+          },
         }]
       }]
   },
