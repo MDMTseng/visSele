@@ -17,7 +17,6 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {round as roundX,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
-import 'antd/dist/antd.css';
 import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";

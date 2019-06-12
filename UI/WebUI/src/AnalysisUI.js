@@ -9,8 +9,6 @@ import $CSSTG  from 'react-addons-css-transition-group';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {round as roundX,GetObjElement} from 'UTIL/MISC_Util';
-import 'antd/dist/antd.css';
-
 
 import EC_zh_TW from './languages/zh_TW';
 

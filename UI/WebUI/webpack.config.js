@@ -1,7 +1,9 @@
 var path = require('path');
 var webpack = require('webpack');
 var WebpackShellPlugin = require('webpack-shell-plugin');
-const UglifyJsPlugin = require('uglifyjs-webpack-plugin')
+const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
+const CompressionPlugin = require('compression-webpack-plugin');
+
 //console.log(process.env.FOO);
 //process.env.NODE_ENV = "production";
 
@@ -19,6 +21,9 @@ if(process.env.NODE_ENV === "production")
   opt_minimizer.push(new UglifyJsPlugin({
     cache: true,
     parallel: true,
+  }));
+  opt_minimizer.push(new CompressionPlugin({
+    test: /\.js(\?.*)?$/i,
   }));
 
 }

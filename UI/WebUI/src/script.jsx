@@ -1,7 +1,6 @@
 'use strict'
 
 
-import 'antd/dist/antd.css';
 import styles from 'STYLE/basis.css'
 import sp_style from 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
