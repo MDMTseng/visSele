@@ -512,39 +512,61 @@ class ObjInfoList extends React.Component {
 
         let resultMenu = [];
         let reports = this.props.IR;
+        let IR_decotrator = this.props.IR_decotrator;
         if(!Array.isArray(reports) )
         {
             return null;
         }
-            resultMenu = reports.filter((rep)=>rep.isCurObj).map((singleReport,idx) => {
-                let reportDetail=[];
-                let judgeReports = singleReport.judgeReports;
-                reportDetail = judgeReports.map((rep,idx_)=>
-                    {
-                        return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_} singleInspection = {rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)}/>
-                        // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
-                    }
-                );
 
+    
+        let curObjList = reports.filter((rep)=>rep.isCurObj);
+        let optiona_id_order=undefined;
+        if(IR_decotrator!==undefined)
+        {
+            optiona_id_order=IR_decotrator.list_id_order;
+        }
+        
+        
+        resultMenu = curObjList.map((singleReport,idx) => {
+            let reportDetail=[];
+            let judgeReports = singleReport.judgeReports;
 
-                let finalResult = judgeReports.reduce((res, obj) => {
-                        return MEASURERSULTRESION_reducer(res, obj.detailStatus);
-                    }
-                    , undefined);
+            if(optiona_id_order!==undefined)
+            {
+                judgeReports=optiona_id_order.
+                    map(id=>judgeReports.find(judge=>judge.id==id)).
+                    filter(rep=>rep!==undefined);
+            }
 
-                // log.info("judgeReports>>", judgeReports);
-                return (
-                    <SubMenu style={{'textAlign': 'left'}} key={"sub1"+idx}
-                             title={<span><Icon type="paper-clip"/><span>{idx} <OK_NG_BOX detailStatus={ finalResult } ></OK_NG_BOX></span>
-
-                             </span>}>
-                        {reportDetail}
-                    </SubMenu>
-
-
-                    )
+            reportDetail = judgeReports.map((rep,idx_)=>
+                {
+                    return <InspectionResultDisplay key={"i"+idx+rep.name} key={idx_} singleInspection = {rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)}/>
+                    // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
                 }
-            )
+            );
+
+
+            let finalResult = judgeReports.reduce((res, obj) => {
+                    return MEASURERSULTRESION_reducer(res, obj.detailStatus);
+                }
+                , undefined);
+
+            // log.info("judgeReports>>", judgeReports);
+            return (
+                <SubMenu style={{'textAlign': 'left'}} key={"sub1"+idx}
+                    title={
+                        <span>
+                            <Icon type="paper-clip"/>
+                            <span>
+                                {idx} <OK_NG_BOX detailStatus={ finalResult } />
+                            </span>
+                        </span>}>
+                    {reportDetail}
+                </SubMenu>
+                )
+            }
+        )
+    
 
         let fullScreenMODAL =<InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
                                                                 onCancel={ this.toggleFullscreen.bind(this)} width="90%" />;
@@ -1394,9 +1416,14 @@ class APP_INSP_MODE extends React.Component {
             text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
             onClick={() => this.CameraCtrl.setCameraImageTransfer()}/>);
 
-            
+        
+        let trackingWindowInfo=this.props.reportStatisticState.trackingWindow;
+
         MenuSet.push(
-            <ObjInfoList IR={this.props.reportStatisticState.trackingWindow} checkResult2AirAction={this.checkResult2AirAction}
+            <ObjInfoList 
+            IR={trackingWindowInfo} 
+            IR_decotrator={this.props.info_decorator}
+            checkResult2AirAction={this.checkResult2AirAction}
             key="ObjInfoList"
             WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
             />);
@@ -1441,6 +1468,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     return {
         c_state: state.UIData.c_state,
         shape_list: state.UIData.edit_info.list,
+        info_decorator:state.UIData.edit_info.__decorator,
         defModelName:state.UIData.edit_info.DefFileName,
         defModelTag:state.UIData.edit_info.DefFileTag,
         inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
