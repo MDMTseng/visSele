@@ -6,7 +6,7 @@
 int step_number = 0;
 
 
-void timer1HZ(int HZ)
+void timer1_HZ(int HZ)
 {
   
   TCNT1  = 0;
@@ -25,9 +25,7 @@ void timer1Setup(int HZ)
 
   TCCR1B = 0;
 
-  TCNT1  = 0;
-
-  timer1HZ(HZ);
+  timer1_HZ(HZ);
   TCCR1B |= (1 << WGM12);   // CTC mode
 
   TCCR1B |= (1 << CS12);    // 256 prescaler 
@@ -38,11 +36,7 @@ void timer1Setup(int HZ)
 }
 
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
-
 {
-
-  //digitalWrite(ledPin, digitalRead(ledPin) ^ 1);   // toggle LED pin
-
   OneStepX(false);
 }
 
@@ -80,7 +74,7 @@ void loop() {
         pulseHZ=tar_pulseHZ;
         
     }
-    timer1HZ(pulseHZ);
+    timer1_HZ(pulseHZ);
   }
   delay(100);
   count--;
@@ -104,6 +98,14 @@ boolean stepM_seq_a[]={1,1,0,0,0,0,0,1};
 boolean stepM_seq_b[]={0,1,1,1,0,0,0,0};
 boolean stepM_seq_c[]={0,0,0,1,1,1,0,0};
 boolean stepM_seq_d[]={0,0,0,0,0,1,1,1};
+
+/*
+
+boolean stepM_seq_a[]={1,0,0,1,0,1,0,0};
+boolean stepM_seq_b[]={0,1,0,1,0,0,1,0};
+boolean stepM_seq_c[]={0,1,0,0,1,0,0,1};
+boolean stepM_seq_d[]={0,0,1,0,0,1,0,1};
+*/
 
 int stepX_number = 0;
 void OneStepX(bool dir){
