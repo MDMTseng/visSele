@@ -35,11 +35,27 @@ void timer1Setup(int HZ)
   interrupts();             // enable all interrupts
 }
 
+uint32_t pulseHZ=0;
+uint32_t tar_pulseHZ=1000;
+uint32_t pulseHZ_step=500;
+
+uint32_t countX=0;
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
   OneStepX(false);
+  countX++;
+  if((countX&(4096-1))==(4096-1))
+  {
+    if(tar_pulseHZ!=1000)
+    {
+      tar_pulseHZ=1000;
+    }
+    else
+    {
+      tar_pulseHZ=300;
+    }
+  }
 }
-
 
 void setup() {
   pinMode(STEPPER_PIN_1, OUTPUT);
@@ -51,9 +67,6 @@ void setup() {
 
 int count=50;
 
-uint32_t pulseHZ=0;
-uint32_t tar_pulseHZ=1000;
-uint32_t pulseHZ_step=100;
 void loop() {
 
   if(pulseHZ!=tar_pulseHZ)
@@ -77,17 +90,21 @@ void loop() {
     timer1_HZ(pulseHZ);
   }
   delay(100);
-  count--;
-  if(count==0)
+  
+  if(0)
   {
-    count=50;
-    if(tar_pulseHZ!=1000)
+    count--;
+    if(count==0)
     {
-      tar_pulseHZ=1000;
-    }
-    else
-    {
-      tar_pulseHZ=1;
+      count=50;
+      if(tar_pulseHZ!=1000)
+      {
+        tar_pulseHZ=1000;
+      }
+      else
+      {
+        tar_pulseHZ=1;
+      }
     }
   }
 }
