@@ -3,6 +3,11 @@
 #define STEPPER_PIN_2 9
 #define STEPPER_PIN_3 10
 #define STEPPER_PIN_4 11
+
+
+
+#define CAMERA_PIN 12
+
 int step_number = 0;
 
 
@@ -44,7 +49,15 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
   OneStepX(false);
   countX++;
-  if((countX&(4096-1))==(4096-1))
+
+  if(countX==(4096>>2))
+  {
+    countX=0;
+    digitalWrite(CAMERA_PIN,1);
+    delay(1);
+    digitalWrite(CAMERA_PIN,0);
+  }
+  /*if((countX&(4096-1))==(4096-1))
   {
     if(tar_pulseHZ!=1000)
     {
@@ -54,7 +67,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
     {
       tar_pulseHZ=300;
     }
-  }
+  }*/
 }
 
 void setup() {
@@ -62,13 +75,13 @@ void setup() {
   pinMode(STEPPER_PIN_2, OUTPUT);
   pinMode(STEPPER_PIN_3, OUTPUT);
   pinMode(STEPPER_PIN_4, OUTPUT);
+  pinMode(CAMERA_PIN, OUTPUT);
   timer1Setup(1);
 }
 
 int count=50;
 
 void loop() {
-
   if(pulseHZ!=tar_pulseHZ)
   {
     if(pulseHZ<tar_pulseHZ)
