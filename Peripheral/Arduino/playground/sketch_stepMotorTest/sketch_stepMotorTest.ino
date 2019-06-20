@@ -50,24 +50,25 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   OneStepX(false);
   countX++;
 
-  if(countX==(4096>>2))
+  /*if(countX==(4096>>2))
   {
     countX=0;
     digitalWrite(CAMERA_PIN,1);
     delay(1);
     digitalWrite(CAMERA_PIN,0);
-  }
-  /*if((countX&(4096-1))==(4096-1))
-  {
-    if(tar_pulseHZ!=1000)
-    {
-      tar_pulseHZ=1000;
-    }
-    else
-    {
-      tar_pulseHZ=300;
-    }
   }*/
+  uint32_t rot=(1<<10)-1;
+  if((countX&(rot))==(rot))
+  {
+    tar_pulseHZ=1000;
+  }
+  
+  if(((countX-100)&(rot))==(rot))
+  {
+    tar_pulseHZ=1000;
+  }
+  
+  
 }
 
 void setup() {
