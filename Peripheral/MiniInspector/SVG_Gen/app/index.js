@@ -28,20 +28,6 @@ console.log(paper.view);
 
 {
 
-    // Define a point to start with
-    var point1 = new paper.Point(10, 20);
-
-    // Create a second point that is 4 times the first one.
-    // This is the same as creating a new point with x and y
-    // of point1 multiplied by 4:
-    var point2 = point1 * 4;
-    console.log(point1); // { x: 40, y: 80 }
-
-    // Now we calculate the difference between the two.
-    var point3 = point2 - point1;
-    console.log(point3); // { x: 30, y: 60 }
-
-
     console.log('PaperApplication::init');
 
     let w = window.innerWidth;
