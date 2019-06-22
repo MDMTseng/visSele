@@ -2156,6 +2156,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       bool isInv;
       float angle;
       float error = SignatureMinMatching( tmp_signature,feature_signature,
+        //M_PI/2,M_PI/10,-1,
+        //M_PI/2,M_PI*1.01/4,-1,
+        0,M_PI,0,
         &isInv, &angle);
 
       error = sqrt(error)/feature_signature_ave;
@@ -2165,7 +2168,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
 
 
-      if(error>0.5)continue;
+      if(error>0.2)continue;
       float mmpp = param.mmpb2b/param.ppb2b;//mm per pixel
       FeatureReport_sig360_circle_line_single singleReport=
       {

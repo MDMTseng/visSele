@@ -37,10 +37,16 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
 //The return is the angle from signature to tar_signature
 //signature o rotate(angle) = tar_signature
 float SignatureAngleMatching(const std::vector<acv_XY> &signature,
-                             const std::vector<acv_XY> &tar_signature, float *min_error);
-
+                             const std::vector<acv_XY> &tar_signature,
+                             float searchAngleOffset,float searchAngleMargin,
+                             float *min_error);
 void SignatureReverse(std::vector<acv_XY> &dst, std::vector<acv_XY> &src);
 
+
+
+//The matching algo would use searchAngleOffset, searchAngleRange and facing to limit matching range
+//facing would use -1(back face only)/0(back and front face)/1(front face only)
 float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature,
-                            bool *ret_isInv, float *ret_angle);
+  float searchAngleOffset,float searchAngleRange,int facing,
+  bool *ret_isInv, float *ret_angle);
 #endif

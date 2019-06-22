@@ -394,14 +394,15 @@ float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
 
 
 float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature,
+  float searchAngleOffset,float searchAngleRange,int facing,
   bool *ret_isInv, float *ret_angle)
 {
 
-    float sign_error;
-    float AngleDiff = SignatureAngleMatching(signature, tar_signature, &sign_error);
-    float sign_error_rev=10000;
+    float sign_error=100000000;
+    float AngleDiff = (facing>=0)?SignatureAngleMatching(signature, tar_signature,searchAngleOffset,searchAngleRange, &sign_error):0;
+    float sign_error_rev=100000000;
     SignatureReverse(signature,signature);
-    float AngleDiff_rev = SignatureAngleMatching(signature, tar_signature, &sign_error_rev);
+    float AngleDiff_rev = (facing<=0)?SignatureAngleMatching(signature, tar_signature,searchAngleOffset,searchAngleRange, &sign_error_rev):0;
     SignatureReverse(signature,signature);
     bool isInv=false;
     if(sign_error>sign_error_rev)
@@ -423,24 +424,34 @@ float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv
 
 #include <float.h>
 int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
-                             const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate, float *min_error)
+                             const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate,
+                             int startIdx,int stopIdx, float *min_error)
 {
     if (roughSearchSampleRate < 1)
         return -1;
     int fineSreachRadious = roughSearchSampleRate - 1;
     int minErrOffset = 0;
-    float minErr = FLT_MAX; //rough search
-    for (int j = 0; j < tar_signature.size(); j += roughSearchSampleRate)
+    float minErr = FLT_MAX; 
+
+    //Find the length between stopIdx and startIdx
+    int idxL = stopIdx-startIdx+1;
+    if(idxL<0)idxL+=tar_signature.size();
+    //Find the Length that can be devided by roughSearchSampleRate
+    int roughSearchCount = ( (idxL/roughSearchSampleRate) + ((idxL%roughSearchSampleRate!=0)?1:0) );
+
+    for ( int i=0 ; i<roughSearchCount ; i++)
     {
-        float error = SignatureMatchingError(signature, j, tar_signature, roughSearchSampleRate);
+        int idx=(startIdx+i*roughSearchSampleRate)%signature.size();
+        float error = SignatureMatchingError(signature, idx, tar_signature, roughSearchSampleRate);
         if (minErr > error)
         {
             minErr = error;
-            minErrOffset = j;
+            minErrOffset = idx;
         }
     }
-    minErr = FLT_MAX;
+    
     int searchHead = minErrOffset - fineSreachRadious;
+    minErr = FLT_MAX;
     minErrOffset = -1;
 
     float error;
@@ -456,23 +467,44 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
     }
 
 
-
+    minErrOffset%=tar_signature.size();
     if (minErrOffset < 0)
         minErrOffset += tar_signature.size();
-    else if (minErrOffset >= tar_signature.size())
-        minErrOffset -= tar_signature.size();
+
     if (min_error)
         *min_error = minErr;
     return minErrOffset;
 }
 
 float SignatureAngleMatching(const std::vector<acv_XY> &signature,
-                             const std::vector<acv_XY> &tar_signature, float *min_error)
+                             const std::vector<acv_XY> &tar_signature,
+                             float searchAngleOffset,float searchAngleMargin,
+                             float *min_error)
 {
     int roughSearchSampleRate=6;//magic number// signature.size() / 160;
 
     float error;
-    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate, &error);
+
+    //find offset in idx
+    float cIdx=-searchAngleOffset*signature.size()/(2 * M_PI);
+    cIdx=fmod(cIdx,signature.size());
+    if(cIdx<0)cIdx+=signature.size();
+
+    float idxRange=searchAngleMargin*signature.size()/(2 * M_PI);
+    int startIdx=(int)floor(cIdx-idxRange);
+    int stopIdx=(int)ceil(cIdx+idxRange);
+    if(stopIdx-startIdx+1>signature.size())
+    {
+        startIdx=0;
+        stopIdx=signature.size()-1;
+    }
+
+    while(startIdx<0)startIdx+=signature.size();
+    startIdx%=signature.size();
+    while(stopIdx<0)stopIdx+=signature.size();
+    stopIdx%=signature.size();
+
+    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate,startIdx,stopIdx, &error);
 
 
     if(min_error)*min_error=error;
