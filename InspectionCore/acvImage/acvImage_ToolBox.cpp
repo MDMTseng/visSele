@@ -402,7 +402,7 @@ float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv
     float AngleDiff = (facing>=0)?SignatureAngleMatching(signature, tar_signature,searchAngleOffset,searchAngleRange, &sign_error):0;
     float sign_error_rev=100000000;
     SignatureReverse(signature,signature);
-    float AngleDiff_rev = (facing<=0)?SignatureAngleMatching(signature, tar_signature,searchAngleOffset,searchAngleRange, &sign_error_rev):0;
+    float AngleDiff_rev = (facing<=0)?SignatureAngleMatching(signature, tar_signature,searchAngleOffset+M_PI,searchAngleRange, &sign_error_rev):0;
     SignatureReverse(signature,signature);
     bool isInv=false;
     if(sign_error>sign_error_rev)
