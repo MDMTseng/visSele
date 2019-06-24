@@ -1210,6 +1210,28 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   LOGI("type:<%s>  ver:<%s>  unit:<%s>",type_str,ver_str,unit_str);
 
 
+  this->matching_angle_margin=M_PI;//+-PI => 2PI matching margin
+  this->matching_angle_offset=0;//original signature init matching angle
+  this->matching_face=0;//front and back facing
+
+  {
+    double *margin_deg =JFetch_NUMBER(root,"matching_angle_margin_deg");
+    if(margin_deg!=NULL)
+    {
+      this->matching_angle_margin=*margin_deg*M_PI/180;
+      double *angle_offset_deg =JFetch_NUMBER(root,"matching_angle_offset_deg");
+      if(angle_offset_deg!=NULL)
+      {
+        this->matching_angle_offset=*angle_offset_deg*M_PI/180;
+      }
+    }
+    double *face =JFetch_NUMBER(root,"matching_face");
+    if(face!=NULL)
+    {
+      this->matching_face=(int)*face;
+    }
+  }
+
   cJSON *featureList = cJSON_GetObjectItem(root,"features");
   cJSON *inherentfeatureList = cJSON_GetObjectItem(root,"inherentfeatures");
 
@@ -2155,10 +2177,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       bool isInv;
       float angle;
+      
       float error = SignatureMinMatching( tmp_signature,feature_signature,
         //M_PI/2,M_PI/10,-1,
         //M_PI/2,M_PI*1.01/4,-1,
-        0,M_PI,0,
+        this->matching_angle_offset,this->matching_angle_margin,this->matching_face,
         &isInv, &angle);
 
       error = sqrt(error)/feature_signature_ave;

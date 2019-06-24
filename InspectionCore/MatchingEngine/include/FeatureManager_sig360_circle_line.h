@@ -31,6 +31,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<acv_XY> tmp_signature;
   ContourGrid edge_grid;
 
+  float matching_angle_margin;
+  float matching_angle_offset;
+  int matching_face;
+
+
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
   vector<FeatureReport_sig360_circle_line_single> reports;
 
