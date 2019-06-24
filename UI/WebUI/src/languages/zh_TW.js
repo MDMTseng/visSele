@@ -6,7 +6,7 @@ export default {
         arc:"量測弧/Arc",
         spoint:"搜尋點/SPOINT",
         search_point:"搜尋點",
-
+        
         apoint:"交點/APOINT",
         aux_point:"交點",
         '<':"< 返回",
@@ -35,7 +35,11 @@ export default {
         docheck:"必要判定",
         DefFileName:"設定檔名",
         DefFileTag:"標籤",
-        "Info Graphs":"資料圖表"
+        "Info Graphs":"資料圖表",
+        matchingAngleLimit180:"角度限制180",
+        matchingFaceFrontOnly:"僅正面",
+        setting:"設定",
+
     },
     
     measure:{

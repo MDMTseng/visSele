@@ -15,12 +15,12 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {round as roundX,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
+import {round as roundX,websocket_autoReconnect,websocket_reqTrack,dictLookUp,undefFallback} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
 import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
-
+import Checkbox from "antd/lib/checkbox";
 
 import EC_zh_TW from './languages/zh_TW';
 
@@ -248,7 +248,8 @@ class APP_DEFCONF_MODE extends React.Component{
     this.ec_canvas = null;
     this.state={
       fileSelectedCallBack:undefined,
-      fileSavingCallBack:undefined
+      fileSavingCallBack:undefined,
+      showSetup:false
     }
   }
 
@@ -418,15 +419,16 @@ class APP_DEFCONF_MODE extends React.Component{
               this.props.ACT_DefFileName_Update(evt.target.value);
             }}
           whiteListKey={{DefFileName:"input",}}/>,
+
         <BASE_COM.JsonEditBlock object={{DefFileTag:this.props.edit_info.DefFileTag.join(",")}}
           dict={EC_zh_TW}
           key="this.props.edit_info.DefFileTag"
           jsonChange={(original_obj,target,type,evt)=>
             {
-
               this.props.ACT_DefFileTag_Update(evt.target.value.split(","));
             }}
           whiteListKey={{DefFileTag:"input",}}/>,
+
 
         <BASE_COM.IconButton
             dict={EC_zh_TW}
@@ -481,7 +483,10 @@ class APP_DEFCONF_MODE extends React.Component{
               report.name = this.props.edit_info.DefFileName;
               report.tag = this.props.edit_info.DefFileTag;
 
-              
+              report.featureSet[0].matching_angle_margin_deg=this.props.edit_info.matching_angle_margin_deg;
+              report.featureSet[0].matching_angle_offset_deg=this.props.edit_info.matching_angle_offset_deg;
+              report.featureSet[0].matching_face=this.props.edit_info.matching_face;
+
               let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
               report.featureSet[0]["__decorator"]=this.props.Info_decorator;
               report.featureSet_sha1 = sha1_info_in_json;
@@ -526,27 +531,40 @@ class APP_DEFCONF_MODE extends React.Component{
             
           }}/>,
         <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          iconType="setting"
+          addClass="layout palatte-gray-8 vbox"
+          key="setting"
+          text="setting" onClick={()=> this.setState({...this.state,showSetup:true})}/>,
+        <BASE_COM.IconButton
             iconType="camera"
             dict={EC_zh_TW}
           addClass="layout palatte-purple-8 vbox"
           key="TAKE"
           text="take" onClick={()=>{
-              new Promise((resolve, reject) => {
-                this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{},
-                undefined,{resolve,reject});
-                setTimeout(()=>reject("Timeout"),1000)
-              })
-              .then((pkts) => {
-                  this.props.DISPATCH({
-                    type:"ATBundle",
-                    ActionThrottle_type:"express",
-                    data:pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined)
-                  })
-              })
-              .catch((err) => {
-                log.info(err);
-              })
-              this.props.ACT_Shape_List_Reset();
+            
+            this.setState({...this.state,warningInfo:{
+              onOk:()=>{
+                new Promise((resolve, reject) => {
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{},
+                  undefined,{resolve,reject});
+                  setTimeout(()=>reject("Timeout"),1000)
+                })
+                .then((pkts) => {
+                    this.props.DISPATCH({
+                      type:"ATBundle",
+                      ActionThrottle_type:"express",
+                      data:pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined)
+                    })
+                })
+                .catch((err) => {
+                  log.info(err);
+                })
+                this.props.ACT_Shape_List_Reset();
+              },
+              onCancel:()=>{console.log("onCancel")},
+              content:"確定要重新設定嗎？"
+            }})
           }}/>,
               
         ];
@@ -926,6 +944,44 @@ class APP_DEFCONF_MODE extends React.Component{
         >
         {(this.state.warningInfo!==undefined)?this.state.warningInfo.content:null}
       </Modal>
+      
+      <Modal
+            title="Setup"
+            visible={this.state.showSetup}
+            onCancel={(param)=>{
+              this.setState({...this.state,showSetup:false});
+              }}
+            footer="  "
+        >
+        <Checkbox
+          checked={this.props.edit_info.matching_angle_margin_deg==90}
+          
+          onChange={(ev)=>{
+            if(this.props.edit_info.matching_angle_margin_deg==90)
+              this.props.ACT_Matching_Angle_Margin_Deg_Update(180);
+            else
+              this.props.ACT_Matching_Angle_Margin_Deg_Update(90);
+          }}
+        >
+          {dictLookUp("matchingAngleLimit180",EC_zh_TW)}
+        </Checkbox>  
+        <br/>
+        <Checkbox
+          checked={this.props.edit_info.matching_face==1}
+          onChange={(ev)=>{
+            
+            if(this.props.edit_info.matching_face==1)
+              this.props.ACT_Matching_Face_Update(0);
+            else
+              this.props.ACT_Matching_Face_Update(1);
+
+            console.log(ev.target.checked)}
+          }
+        >
+          {dictLookUp("matchingFaceFrontOnly",EC_zh_TW)}
+        </Checkbox>  
+        
+      </Modal>
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
       <$CSSTG transitionName = "fadeIn">
         <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
@@ -967,6 +1023,8 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_WS_SEND:(...args)=>dispatch(UIAct.EV_WS_SEND(...args)),
     ACT_ClearImage:()=>{dispatch(UIAct.EV_WS_Image_Update(null))},
     ACT_Shape_Decoration_ID_Order_Update:(shape_id_order)=>{dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order))},
+    ACT_Matching_Angle_Margin_Deg_Update:(deg)=>{dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg))},
+    ACT_Matching_Face_Update:(faceSetup)=>{dispatch(DefConfAct.Matching_Face_Update(faceSetup))},//-1(back)/0(both)/1(front)
     
     ACT_Report_Save:(id,fileName,content)=>{
       let act = UIAct.EV_WS_SEND(id,"SV",0,

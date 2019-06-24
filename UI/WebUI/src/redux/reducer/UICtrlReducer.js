@@ -34,6 +34,9 @@ function Edit_info_reset(newState)
     },
     MinRepeatInspReport:default_MinRepeatInspReport,
     sig360info:[],
+    matching_angle_margin_deg:180,
+    matching_angle_offset_deg:0,
+    matching_face:0,
     img:null,
     DefFileName:"",
     DefFileTag:[],
@@ -94,6 +97,9 @@ function Default_UICtrlReducer()
         statisticValue:undefined
       },
       sig360info:[],
+      matching_angle_margin_deg:180,
+      matching_angle_offset_deg:0,
+      matching_face:0,//-1 for back(flipped ) face only, 0 for front and back face, 1 for front face only
       img:null,
       DefFileName:"",
       DefFileTag:[],
@@ -736,7 +742,14 @@ function StateReducer(newState,action)
               case "sig360_extractor":
               case "sig360_circle_line":
               {
-                
+                if(report.matching_angle_margin_deg!==undefined)
+                  newState.edit_info.matching_angle_margin_deg=report.matching_angle_margin_deg;
+                if(report.matching_angle_offset_deg!==undefined)
+                  newState.edit_info.matching_angle_offset_deg=report.matching_angle_offset_deg;
+                if(report.matching_face!==undefined)
+                  newState.edit_info.matching_face=report.matching_face;
+          
+
                 newState.edit_info=Object.assign({},newState.edit_info);
                 newState.edit_info._obj.SetDefInfo(report);
 
@@ -867,6 +880,19 @@ function StateReducer(newState,action)
         case DefConfAct.EVENT.DefFileTag_Update:
         {
           newState.edit_info={...newState.edit_info,DefFileTag:action.data};
+          break;
+        }
+
+
+        case DefConfAct.EVENT.Matching_Angle_Margin_Deg_Update:
+        {
+          newState.edit_info={...newState.edit_info,matching_angle_margin_deg:action.data};
+          break;
+        }
+        
+        case DefConfAct.EVENT.Matching_Face_Update:
+        {
+          newState.edit_info={...newState.edit_info,matching_face:action.data};
           break;
         }
         

@@ -306,3 +306,21 @@ export class websocket_reqTrack{
     });
   }
 }
+
+
+export function undefFallback(val,fallback) {
+  return  val!==undefined?val:fallback;
+}
+
+  
+export function dictLookUp(key,dict,theme) {
+  let transVal;
+  if(Array.isArray(key))
+  {
+    transVal=  GetObjElement(dict,key);
+    return undefFallback(transVal,key[key.length-1]);
+  }
+  let dictTheme=undefFallback(theme,"fallback");
+  transVal = GetObjElement(dict,[dictTheme, key]);
+  return  undefFallback(transVal,key);
+}

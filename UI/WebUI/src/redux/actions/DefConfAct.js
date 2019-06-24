@@ -9,6 +9,8 @@ export const EVENT = {
   Shape_Decoration_ID_Order_Update:"Shape_Decoration_ID_Order_Update",
   DefFileName_Update:"DefFileName_Update",
   DefFileTag_Update:"DefFileTag_Update",
+  Matching_Face_Update:"Matching_Face_Update",
+  Matching_Angle_Margin_Deg_Update:"Matching_Angle_Margin_Deg_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -49,6 +51,18 @@ export function Shape_Decoration_ID_Order_Update(shape_id_order)
   }
 }
 
+export function Matching_Face_Update(faceSetup)
+{
+  return {
+    type: EVENT.Matching_Face_Update,data: faceSetup
+  }
+}
+export function Matching_Angle_Margin_Deg_Update(deg)
+{
+  return {
+    type: EVENT.Matching_Angle_Margin_Deg_Update,data: deg
+  }
+}
 
 export function Shape_Set(shape_data)
 {
