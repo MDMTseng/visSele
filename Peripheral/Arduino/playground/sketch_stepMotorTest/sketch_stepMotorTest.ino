@@ -42,7 +42,7 @@ void timer1Setup(int HZ)
 
 uint32_t pulseHZ=0;
 uint32_t tar_pulseHZ=1000;
-uint32_t pulseHZ_step=500;
+uint32_t pulseHZ_step=200;
 
 uint32_t countX=0;
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
@@ -50,20 +50,22 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   OneStepX(false);
   countX++;
 
-  /*if(countX==(4096>>2))
-  {
-    countX=0;
-    digitalWrite(CAMERA_PIN,1);
-    delay(1);
-    digitalWrite(CAMERA_PIN,0);
-  }*/
   uint32_t rot=(1<<10)-1;
   if((countX&(rot))==(rot))
   {
-    tar_pulseHZ=1000;
+    tar_pulseHZ=30;
   }
   
-  if(((countX-100)&(rot))==(rot))
+  if(((countX-130)&(rot))==(rot))
+  {
+    
+    digitalWrite(CAMERA_PIN,1);
+    delay(1);
+    digitalWrite(CAMERA_PIN,0);
+  }
+  
+  
+  if(((countX-150)&(rot))==(rot))
   {
     tar_pulseHZ=1000;
   }
@@ -103,7 +105,7 @@ void loop() {
     }
     timer1_HZ(pulseHZ);
   }
-  delay(100);
+  delay(50);
   
   if(0)
   {
