@@ -1005,6 +1005,31 @@ class EverCheckCanvasComponent_proto{
     return mouse;
   }
 
+  copyTouchPositionInfo(e)
+  {
+    let touches=[];
+
+    Object.keys(e.touches).forEach(key=>{
+      let t=e.touches[key];
+      if(key!=="length")
+      {
+        touches.push({
+          clientX:t.clientX,
+          clientY:t.clientY,
+          force:t.force,
+          identifier:t.identifier,
+          pageX:t.pageX,
+          pageY:t.pageY,
+          radiusX:t.radiusX,
+          radiusY:t.radiusY,
+          rotationAngle:t.rotationAngle,
+          screenX:t.screenX,
+          screenY:t.screenY,
+        });
+      }
+    });
+    return touches;
+  }
 
   constructor( canvasDOM )
   {
@@ -1025,27 +1050,103 @@ class EverCheckCanvasComponent_proto{
     }
 
     {
+
+      this.multiTouchInfo={
+        ptouchStatus:[],
+        touchStatus:[],
+        dragInfo:{},
+        pinchInfo:{},
+
+      };
+      
+
+      let touchStatus=(e)=>
+      {
+        let ti=this.multiTouchInfo;
+        ti.ptouchStatus=ti.touchStatus;
+        ti.touchStatus=this.copyTouchPositionInfo(e);
+        let pTL=ti.ptouchStatus.length,TL=ti.touchStatus.length;
+
+        let touchFStat=pTL*10+TL;
+
+
+        switch(touchFStat)//handle gesture leave
+        {
+          //leave pinch gesture
+          case 20://pinch 2 no touch
+          case 21://pinch 2 drag
+            this.multiTouchInfo.pinchInfo={};
+            break;
+          
+          //leave drag gesture
+          case 10://drag 2 no touch 
+          case 12://drag 2 pinch
+            this.multiTouchInfo.dragInfo={};
+            this.onmouseup(ti.ptouchStatus[0]);
+            break;
+        }
+
+        switch(touchFStat)//handle gesture motion
+        {
+          case 11://in drag motion
+            this.onmousemove(ti.touchStatus[0]);
+            break;
+          
+          case 22://in pinch motion
+            let pts_pre=this.multiTouchInfo.pinchInfo.pts_cur;
+            let pts_cur=ti.touchStatus;
+            this.multiTouchInfo.pinchInfo={
+              pts_pre:pts_pre,
+              pts_cur:ti.touchStatus
+            }
+
+            let scale=
+              Math.hypot(pts_cur[0].clientX-pts_cur[1].clientX,pts_cur[0].clientY-pts_cur[1].clientY)/
+              Math.hypot(pts_pre[0].clientX-pts_pre[1].clientX,pts_pre[0].clientY-pts_pre[1].clientY);
+
+            let center={
+              x:(pts_pre[0].clientX+pts_pre[1].clientX)/2,
+              y:(pts_pre[0].clientY+pts_pre[1].clientY)/2,
+            }
+
+            this.scaleCanvas(center,scale);
+            break;
+        }
+
+        switch(touchFStat)//handle enter new gesture
+        {
+          //from non drag to drag gesture
+          case  1://no touch 2 drag
+          case 21://pinch 2 drag
+            this.multiTouchInfo.dragInfo={
+              start:ti.touchStatus[0]
+            }
+            this.onmousedown(ti.touchStatus[0]);
+            break;
+          
+          //from non pinch to pinch gesture
+          case  2://no touch 2 pinch
+          case 12://drag to pinch
+            this.multiTouchInfo.pinchInfo={
+              pts_cur:ti.touchStatus,
+              pts_start:ti.touchStatus
+            }
+            break;
+        }
+
+        //console.log(ti);
+      }
       this.canvas.addEventListener("touchstart",  (e)=> {
-        //mousePos = getTouchPos(this.canvas, e);
-        var touch = e.touches[0];
-        var mouseEvent = new MouseEvent("mousedown", {
-          clientX: touch.clientX,
-          clientY: touch.clientY
-        });
-        this.canvas.dispatchEvent(mouseEvent);
+        touchStatus(e);
       }, false);
       this.canvas.addEventListener("touchmove",  (e) =>{
-        var touch = e.touches[0];
-        var mouseEvent = new MouseEvent("mousemove", {
-          clientX: touch.clientX,
-          clientY: touch.clientY
-        });
-        this.canvas.dispatchEvent(mouseEvent);
+        touchStatus(e);
+        e.preventDefault();
       }, false);
       this.canvas.addEventListener("touchend",  (e)=> {
-        var mouseEvent = new MouseEvent("mouseup", {});
-        this.canvas.dispatchEvent(mouseEvent);
+        touchStatus(e);
       }, false);
+
     }
 
 
@@ -1082,7 +1183,6 @@ class EverCheckCanvasComponent_proto{
 
   SetImg( img )
   {
-    log.debug("SetImg:::");
     if(img == null || img == this.secCanvas_rawImg)return;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
@@ -1096,46 +1196,37 @@ class EverCheckCanvasComponent_proto{
 
   onmouseswheel(evt)
   {
-    //log.debug("onmouseswheel",evt);
-    let deltaY = evt.deltaY/4;
+    return this.scaleCanvas(this.mouseStatus,evt.deltaY/4);
+  }
+
+  scaleCanvas(scaleCenter,deltaY,scale=1/1.01)
+  {
     if(deltaY>50)deltaY=1;//Windows scroll hack => only 100 or -100
     if(deltaY<-50)deltaY=-1;
-
-
-
-    let scale = 1/1.01;
 
     scale = Math.pow(scale,deltaY);
 
     this.camera.Scale(scale,
-      {x:(this.mouseStatus.x-(this.canvas.width / 2)),
-       y:(this.mouseStatus.y-(this.canvas.height / 2))});
-    //this.ctrlLogic();
+      {x:(scaleCenter.x-(this.canvas.width / 2)),
+       y:(scaleCenter.y-(this.canvas.height/ 2))});
+
     this.draw();
 
     return false;
   }
 
-
-  
   onmousemove(evt)
   {
     let pos = this.getMousePos(this.canvas,evt);
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
-
-    //log.debug("onmousemove_pre:",this.state);
-    //log.debug("this.state:"+this.state+"  "+this.mouseStatus.status);
-
     
     switch(this.state.substate)
     {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
-        
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       case UI_SM_STATES.INSP_MODE_NEUTRAL:
-        //log.debug("onmousemove");
         if(this.mouseStatus.status==1)
         {
           this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
@@ -1144,7 +1235,6 @@ class EverCheckCanvasComponent_proto{
     }
     this.ctrlLogic();
     this.draw();
-
   }
 
   onmousedown(evt)
