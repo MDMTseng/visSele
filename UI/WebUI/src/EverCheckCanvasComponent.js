@@ -1109,7 +1109,7 @@ class EverCheckCanvasComponent_proto{
               y:(pts_pre[0].clientY+pts_pre[1].clientY)/2,
             }
 
-            this.scaleCanvas(center,scale);
+            this.scaleCanvas(center,1,scale);
             break;
         }
 
