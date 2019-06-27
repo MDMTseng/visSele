@@ -1103,12 +1103,11 @@ class EverCheckCanvasComponent_proto{
             let scale=
               Math.hypot(pts_cur[0].clientX-pts_cur[1].clientX,pts_cur[0].clientY-pts_cur[1].clientY)/
               Math.hypot(pts_pre[0].clientX-pts_pre[1].clientX,pts_pre[0].clientY-pts_pre[1].clientY);
-
+            
             let center={
               x:(pts_pre[0].clientX+pts_pre[1].clientX)/2,
               y:(pts_pre[0].clientY+pts_pre[1].clientY)/2,
             }
-
             this.scaleCanvas(center,1,scale);
             break;
         }
@@ -1220,18 +1219,29 @@ class EverCheckCanvasComponent_proto{
     let pos = this.getMousePos(this.canvas,evt);
     this.mouseStatus.x=pos.x;
     this.mouseStatus.y=pos.y;
-    
+    let doDragging=false;
+
     switch(this.state.substate)
     {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         if(this.EditPoint!=null)break;
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       case UI_SM_STATES.INSP_MODE_NEUTRAL:
-        if(this.mouseStatus.status==1)
-        {
-          this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
-        }
+        doDragging=true;
       break;
+    }
+
+    if(this.state.state===UI_SM_STATES.MAIN)
+    {
+      doDragging=true;
+    }
+    
+    if(doDragging)
+    {
+      if(this.mouseStatus.status==1)
+      {
+        this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
+      }
     }
     this.ctrlLogic();
     this.draw();
