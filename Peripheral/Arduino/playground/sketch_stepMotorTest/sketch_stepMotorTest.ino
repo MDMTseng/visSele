@@ -1,3 +1,5 @@
+#include "RingBuf.hpp"
+
 //Written By Nikodem Bartnik - nikodembartnik.pl
 #define STEPPER_PIN_1 8
 #define STEPPER_PIN_2 9
@@ -7,9 +9,22 @@
 
 
 #define CAMERA_PIN 12
+#define LED_PIN 12
+#define GATE_PIN 2
+typedef struct pipeLineInfo{
+  uint32_t gate_pulse;
+  uint32_t trigger_pulse;
+  int8_t stage;
+}pipeLineInfo;
+pipeLineInfo buff[50];
+
+//The index type uint8_t would be enough if the buffersize<255
+RingBuf<typeof(*buff),uint8_t > RBuf(buff,sizeof(buff)/sizeof(*buff));
+
+uint32_t perRevPulseCount=4096;
+uint32_t maxPulseCount=perRevPulseCount;
 
 int step_number = 0;
-
 
 void timer1_HZ(int HZ)
 {
@@ -40,34 +55,143 @@ void timer1Setup(int HZ)
   interrupts();             // enable all interrupts
 }
 
+uint32_t state_pulseOffset[]={800,1201,1500};
+
+int next_state(pipeLineInfo* pli)
+{
+  if(pli->stage<0 || pli->stage>=sizeof(state_pulseOffset)/sizeof(*state_pulseOffset))return -1;
+  pli->trigger_pulse=pli->gate_pulse+state_pulseOffset[pli->stage];
+  if(pli->trigger_pulse>=perRevPulseCount)pli->trigger_pulse-=perRevPulseCount;
+  pli->stage++;
+  return 0;
+}
+
 uint32_t pulseHZ=0;
 uint32_t tar_pulseHZ=1000;
-uint32_t pulseHZ_step=200;
+uint32_t pulseHZ_step=60;
 
 uint32_t countX=0;
+
+typedef struct GateInfo{
+  uint8_t state;
+  uint32_t start_pulse;
+  uint32_t end_pulse;
+  uint8_t debunce;
+  uint8_t pre_Sense;
+  uint8_t cur_Sense;
+  uint8_t Sense;
+}GateInfo;
+GateInfo gateInfo={.state=1};
+
+
+
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
   OneStepX(false);
-  countX++;
-
-  uint32_t rot=(1<<10)-1;
-  if((countX&(rot))==(rot))
-  {
-    tar_pulseHZ=30;
-  }
   
-  if(((countX-130)&(rot))==(rot))
+  countX++;
+  uint32_t countSize=perRevPulseCount;
+  countX&=perRevPulseCount-1;
+
   {
-    
+    for(uint32_t i=0;i<RBuf.size();i++)//Check if trigger pulse is hit, then do action/ mark deletion
+    {
+      pipeLineInfo* tail = RBuf.getTail(i);
+      if(!tail)break;
+      if(tail->trigger_pulse==countX)
+      {
+
+        
+        Serial.print(RBuf.getTail_Idx(i));
+        Serial.print(": ");
+        Serial.println(tail->stage);
+        int ret = next_state(tail);
+        
+        if(ret)
+        {
+          tail->stage=-3;
+        }
+      }
+    }
+
+    while(1)//Clean completed tail tasks
+    {
+      pipeLineInfo* tail = RBuf.getTail();
+      if(!tail)break;
+
+      if(tail->stage<0)
+      {
+        RBuf.consumeTail();
+        continue;
+      }
+      break;
+    }
+  }
+
+  
+  if(countX==0)
+  {
+    //tar_pulseHZ=30;
+  }
+  uint8_t cur_Sense=digitalRead(GATE_PIN);
+  if(cur_Sense!=gateInfo.pre_Sense)
+  {
+    gateInfo.debunce=0;
+  }
+  else if(gateInfo.debunce<=3)gateInfo.debunce++;
+  
+  if(gateInfo.debunce==3)
+  {
+    if(cur_Sense==0)
+    {
+      if(gateInfo.state!=cur_Sense)
+      {
+        gateInfo.state=cur_Sense;
+        gateInfo.start_pulse=countX;
+      }
+    }
+    else
+    {
+      if(gateInfo.state!=cur_Sense)
+      {
+        
+        gateInfo.end_pulse=countX;
+        //tar_pulseHZ=1000;
+        if(gateInfo.start_pulse>gateInfo.end_pulse)
+        {
+          gateInfo.end_pulse+=countSize;
+        }
+        uint32_t middle_pulse=(gateInfo.end_pulse+gateInfo.start_pulse)>>1;
+        middle_pulse&=countSize-1;
+        pipeLineInfo* head = RBuf.getHead();
+        if(head!=NULL)
+        {
+          head->gate_pulse=middle_pulse;
+          head->stage=0;
+          next_state(head);
+          RBuf.pushHead();
+//          Serial.print("====g_pulse:");
+//          Serial.print(head->gate_pulse);
+//          Serial.print(" t_pulse:");
+//          Serial.print(head->trigger_pulse);
+//          Serial.print(" CX:");
+//          Serial.println(countX);
+          
+        }
+      }
+      
+    }
+    gateInfo.state=cur_Sense;
+  }
+
+  gateInfo.pre_Sense=gateInfo.cur_Sense;
+  gateInfo.cur_Sense=cur_Sense;
+  
+  if(countX==130)
+  {
     digitalWrite(CAMERA_PIN,1);
     delay(1);
     digitalWrite(CAMERA_PIN,0);
-  }
-  
-  
-  if(((countX-150)&(rot))==(rot))
-  {
-    tar_pulseHZ=1000;
   }
   
   
@@ -79,7 +203,13 @@ void setup() {
   pinMode(STEPPER_PIN_3, OUTPUT);
   pinMode(STEPPER_PIN_4, OUTPUT);
   pinMode(CAMERA_PIN, OUTPUT);
+  pinMode(GATE_PIN, INPUT);
+  
   timer1Setup(1);
+  pinMode(LED_PIN, OUTPUT);
+
+
+  Serial.begin(9600);
 }
 
 int count=50;
@@ -105,14 +235,15 @@ void loop() {
     }
     timer1_HZ(pulseHZ);
   }
-  delay(50);
-  
+  delay(5);
+
   if(0)
   {
     count--;
     if(count==0)
     {
-      count=50;
+      count=150;
+      /*
       if(tar_pulseHZ!=1000)
       {
         tar_pulseHZ=1000;
@@ -120,7 +251,13 @@ void loop() {
       else
       {
         tar_pulseHZ=1;
-      }
+      }*/
+
+      
+      Serial.print(RBuf.size());
+      Serial.print("   ");
+      Serial.println(gateInfo.start_pulse);
+      RBuf.consumeTail();
     }
   }
 }
