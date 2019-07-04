@@ -9,7 +9,8 @@
 
 
 #define CAMERA_PIN 12
-#define LED_PIN 12
+#define AIR_BLOW_OK_PIN 4
+#define AIR_BLOW_NG_PIN 5
 #define GATE_PIN 2
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
@@ -55,19 +56,65 @@ void timer1Setup(int HZ)
   interrupts();             // enable all interrupts
 }
 
-uint32_t state_pulseOffset[]={800,1201,1500};
+
+
+uint32_t state_pulseOffset[]={1050,1055,3000,1200,1205,1500,1505};
+
+
+int stage_action(pipeLineInfo* pli)
+{
+  switch(pli->stage)
+  {
+    case 0:
+    
+    break;
+    case 1://Trigger shutter ON
+      digitalWrite(CAMERA_PIN,1);
+    break;
+    case 2://Trigger shutter OFF
+      digitalWrite(CAMERA_PIN,0);
+    break;
+
+    case 3://Termination stage
+      pli->stage=-4;
+      return -1;
+    break;
+
+    
+    case 4://Air Blow OK ON
+      digitalWrite(AIR_BLOW_OK_PIN,1);
+    break;
+    case 5://Air Blow OK OFF
+      digitalWrite(AIR_BLOW_OK_PIN,0);
+    break;
+    case 6://Air Blow NG ON
+      digitalWrite(AIR_BLOW_NG_PIN,1);
+    break;
+    case 7://Air Blow NG OFF
+      digitalWrite(AIR_BLOW_NG_PIN,0);
+    break;
+  }
+  return 0;
+}
 
 int next_state(pipeLineInfo* pli)
 {
   if(pli->stage<0 || pli->stage>=sizeof(state_pulseOffset)/sizeof(*state_pulseOffset))return -1;
+  if(stage_action(pli)<0)
+  {
+    return -1;
+  }
   pli->trigger_pulse=pli->gate_pulse+state_pulseOffset[pli->stage];
-  if(pli->trigger_pulse>=perRevPulseCount)pli->trigger_pulse-=perRevPulseCount;
+  if(pli->trigger_pulse>=perRevPulseCount)
+  {
+    pli->trigger_pulse-=perRevPulseCount;
+  }
   pli->stage++;
   return 0;
 }
 
 uint32_t pulseHZ=0;
-uint32_t tar_pulseHZ=1000;
+uint32_t tar_pulseHZ=1300;
 uint32_t pulseHZ_step=60;
 
 uint32_t countX=0;
@@ -87,7 +134,7 @@ GateInfo gateInfo={.state=1};
 
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
-  OneStepX(false);
+  OneStepX(true);
   
   countX++;
   uint32_t countSize=perRevPulseCount;
@@ -159,10 +206,10 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
         //tar_pulseHZ=1000;
         if(gateInfo.start_pulse>gateInfo.end_pulse)
         {
-          gateInfo.end_pulse+=countSize;
+          gateInfo.end_pulse+=perRevPulseCount;
         }
         uint32_t middle_pulse=(gateInfo.end_pulse+gateInfo.start_pulse)>>1;
-        middle_pulse&=countSize-1;
+        middle_pulse&=perRevPulseCount-1;
         pipeLineInfo* head = RBuf.getHead();
         if(head!=NULL)
         {
@@ -170,12 +217,12 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
           head->stage=0;
           next_state(head);
           RBuf.pushHead();
-//          Serial.print("====g_pulse:");
-//          Serial.print(head->gate_pulse);
-//          Serial.print(" t_pulse:");
-//          Serial.print(head->trigger_pulse);
-//          Serial.print(" CX:");
-//          Serial.println(countX);
+          Serial.print("====g_pulse:");
+          Serial.print(head->gate_pulse);
+          Serial.print(" t_pulse:");
+          Serial.print(head->trigger_pulse);
+          Serial.print(" CX:");
+          Serial.println(countX);
           
         }
       }
@@ -189,9 +236,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   
   if(countX==130)
   {
-    digitalWrite(CAMERA_PIN,1);
-    delay(1);
-    digitalWrite(CAMERA_PIN,0);
   }
   
   
@@ -203,11 +247,14 @@ void setup() {
   pinMode(STEPPER_PIN_3, OUTPUT);
   pinMode(STEPPER_PIN_4, OUTPUT);
   pinMode(CAMERA_PIN, OUTPUT);
+  pinMode(AIR_BLOW_OK_PIN, OUTPUT);
+  pinMode(AIR_BLOW_NG_PIN, OUTPUT);
+
+
+  
   pinMode(GATE_PIN, INPUT);
   
   timer1Setup(1);
-  pinMode(LED_PIN, OUTPUT);
-
 
   Serial.begin(9600);
 }
