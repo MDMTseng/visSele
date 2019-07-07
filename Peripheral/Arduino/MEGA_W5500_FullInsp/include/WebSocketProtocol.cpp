@@ -1,6 +1,6 @@
 #include "WebSocketProtocol.h"
-#include "include/sha1.h"
-#include "include/Base64.h"
+#include "sha1.h"
+#include "Base64.h"
 //#include <Ethernet2.h>
 //#include "Eth_Boost.h"
 //#include "RingBuff.h"

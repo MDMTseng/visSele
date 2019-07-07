@@ -1,7 +1,7 @@
 #include <string.h>
 #include <avr/io.h>
 #include <avr/pgmspace.h>
-#include "include/sha1.h"
+#include "sha1.h"
 
 #define SHA1_K0 0x5a827999
 #define SHA1_K20 0x6ed9eba1

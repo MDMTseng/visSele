@@ -1,7 +1,7 @@
 
 
 #define private public //dirty trick
-#include "include/Eth_Extra.h"
+#include "Eth_Extra.h"
 #include <Ethernet.h>
 #include <utility/w5100.h>
 #undef private
