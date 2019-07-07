@@ -1,17 +1,78 @@
 #include "RingBuf.hpp"
 
-//Written By Nikodem Bartnik - nikodembartnik.pl
-#define STEPPER_PIN_1 8
-#define STEPPER_PIN_2 9
-#define STEPPER_PIN_3 10
-#define STEPPER_PIN_4 11
 
 
 
-#define CAMERA_PIN 12
-#define AIR_BLOW_OK_PIN 4
-#define AIR_BLOW_NG_PIN 5
-#define GATE_PIN 2
+  
+boolean stepM_seq_a[]={1,1,0,0,0,0,0,1};
+boolean stepM_seq_b[]={0,1,1,1,0,0,0,0};
+boolean stepM_seq_c[]={0,0,0,1,1,1,0,0};
+boolean stepM_seq_d[]={0,0,0,0,0,1,1,1};
+  
+class StepperMotor
+{
+  
+  /*
+  
+  boolean stepM_seq_a[]={1,0,0,1,0,1,0,0};
+  boolean stepM_seq_b[]={0,1,0,1,0,0,1,0};
+  boolean stepM_seq_c[]={0,1,0,0,1,0,0,1};
+  boolean stepM_seq_d[]={0,0,1,0,0,1,0,1};
+  */
+  public:
+  int p1,p2,p3,p4;
+  
+  StepperMotor(int p1,int p2,int p3,int p4)
+  {
+    
+    pinMode(p1, OUTPUT);
+    pinMode(p2, OUTPUT);
+    pinMode(p3, OUTPUT);
+    pinMode(p4, OUTPUT);
+    this->p1=p1;
+    this->p2=p2;
+    this->p3=p3;
+    this->p4=p4;
+  }
+  
+  int stepX_number = 0;
+  void OneStep(bool dir){
+  
+    
+    digitalWrite(p1,stepM_seq_a[stepX_number]);
+    digitalWrite(p2,stepM_seq_b[stepX_number]);
+    digitalWrite(p3,stepM_seq_c[stepX_number]);
+    digitalWrite(p4,stepM_seq_d[stepX_number]);
+    
+  
+    if(dir)
+    {
+      stepX_number++;
+      if(stepX_number ==sizeof(stepM_seq_a)){
+        stepX_number = 0;
+      }
+    }
+    else
+    {
+      
+      if(stepX_number == 0){
+        stepX_number = sizeof(stepM_seq_a)-1;
+      }
+      else
+        stepX_number--;
+    }
+  }
+};
+
+
+StepperMotor stepperMotor(12,13,14,15);
+
+
+
+#define CAMERA_PIN 18
+#define AIR_BLOW_OK_PIN 19
+#define AIR_BLOW_NG_PIN 20
+#define GATE_PIN 22
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
   uint32_t trigger_pulse;
@@ -136,7 +197,7 @@ GateInfo gateInfo={.state=1};
 
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
-  OneStepX(true);
+  stepperMotor.OneStep(true);
   
   countX++;
   uint32_t countSize=perRevPulseCount;
@@ -244,21 +305,12 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 }
 
 void setup_Stepper() {
-  pinMode(STEPPER_PIN_1, OUTPUT);
-  pinMode(STEPPER_PIN_2, OUTPUT);
-  pinMode(STEPPER_PIN_3, OUTPUT);
-  pinMode(STEPPER_PIN_4, OUTPUT);
   pinMode(CAMERA_PIN, OUTPUT);
   pinMode(AIR_BLOW_OK_PIN, OUTPUT);
   pinMode(AIR_BLOW_NG_PIN, OUTPUT);
-
-
-  
   pinMode(GATE_PIN, INPUT);
   
   timer1Setup(1);
-  //TIMSK0 &= ~_BV(TOIE0);  
-  Serial.begin(9600);
 }
 
 int count=50;
@@ -307,48 +359,5 @@ void loop_setup_Stepper() {
       Serial.println(gateInfo.start_pulse);
       RBuf.consumeTail();
     }
-  }
-}
-
-
-
-boolean stepM_seq_a[]={1,1,0,0,0,0,0,1};
-boolean stepM_seq_b[]={0,1,1,1,0,0,0,0};
-boolean stepM_seq_c[]={0,0,0,1,1,1,0,0};
-boolean stepM_seq_d[]={0,0,0,0,0,1,1,1};
-
-/*
-
-boolean stepM_seq_a[]={1,0,0,1,0,1,0,0};
-boolean stepM_seq_b[]={0,1,0,1,0,0,1,0};
-boolean stepM_seq_c[]={0,1,0,0,1,0,0,1};
-boolean stepM_seq_d[]={0,0,1,0,0,1,0,1};
-*/
-
-int stepX_number = 0;
-void OneStepX(bool dir){
-
-  
-  digitalWrite(STEPPER_PIN_1,stepM_seq_a[stepX_number]);
-  digitalWrite(STEPPER_PIN_2,stepM_seq_b[stepX_number]);
-  digitalWrite(STEPPER_PIN_3,stepM_seq_c[stepX_number]);
-  digitalWrite(STEPPER_PIN_4,stepM_seq_d[stepX_number]);
-  
-
-  if(dir)
-  {
-    stepX_number++;
-    if(stepX_number ==sizeof(stepM_seq_a)){
-      stepX_number = 0;
-    }
-  }
-  else
-  {
-    
-    if(stepX_number == 0){
-      stepX_number = sizeof(stepM_seq_a)-1;
-    }
-    else
-      stepX_number--;
   }
 }

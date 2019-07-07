@@ -13,7 +13,12 @@ void breathLED(){
      leds[i] = CHSV(255/NUM_LEDS*i, 255, vv);
   }
 }
-void loopLED() {
+
+float valueApproach(float nowVal, float destVal, float speed) { 
+  return (float) ((nowVal * (1.0 - speed)) + (destVal * speed));
+}
+
+void loopLED(float led_value,float led_hue) {
   //  int avaliableLED=sizeof(buff)/sizeof(CRGB);
   //  DEBUG_println(avaliableLED);
   //  timerLED();
