@@ -1,21 +1,13 @@
-
-
-
 #include <SPI.h>
 #define private public //dirty trick
 #include <Ethernet.h>
 #undef private
 #include "WebSocketProtocol.h"
-#include "ETH_Extra.h"
-
-#include "UTIL.hpp"
-
+#include "include/ETH_Extra.h"
+#include "include/UTIL.hpp"
 
 
 class Websocket_Server{
-
-
-
   private:
    uint8_t *buff;
    uint32_t buffL;
@@ -32,11 +24,6 @@ class Websocket_Server{
   IPAddress ip;
   IPAddress gateway;
   IPAddress subnet;
-
-
-
-
-
 //  Websocket_Server(uint8_t* buff,uint32_t buffL)
 //  {
 //    
@@ -228,7 +215,7 @@ class Websocket_Server{
         return WSP + i;
       }
     }
-    return null;
+    return NULL;
   }
   
   void loop_WS()
@@ -251,7 +238,6 @@ class Websocket_Server{
       return;
     }
   
-  
     uint8_t *buffiter = buff;
     unsigned int  KL = 0;
     unsigned int PkgL =  client.available();
@@ -260,7 +246,7 @@ class Websocket_Server{
     client.read((uint8_t*)buffiter, PkgL);
     WebSocketProtocol* WSPptr  = findFromProt(client);
     DEBUG_println(">>>>");
-    if (WSPptr == null)
+    if (WSPptr == NULL)
     {
       client.stop();
       return;

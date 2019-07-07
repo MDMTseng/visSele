@@ -1,6 +1,6 @@
 #include "WebSocketProtocol.h"
-#include "sha1.h"
-#include "Base64.h"
+#include "include/sha1.h"
+#include "include/Base64.h"
 //#include <Ethernet2.h>
 //#include "Eth_Boost.h"
 //#include "RingBuff.h"
@@ -66,14 +66,6 @@ bool CheckHead(char* str,char* pattern)
 		//Serial.println();
 	return true;
 }
-/*
-bool CheckHead(char* str,char* pattern)
-{
-	for(;*pattern;str++,pattern++)
-		if(*str!=*pattern)return false;
-	return true;
-}
-*/
 
 void WebSocketProtocol::printState()
 {
@@ -95,6 +87,7 @@ void WebSocketProtocol::printRecvOPState()
 		case WSOP_UNKNOWN: Serial.print(F("WSOP_UNKNOWN"));break;
 	}
 }
+
 WebSocketProtocol::WebSocketProtocol(const char *urlPrefix ):
     socket_urlPrefix(urlPrefix)
 {
@@ -102,11 +95,12 @@ WebSocketProtocol::WebSocketProtocol(const char *urlPrefix ):
     rmClientOBJ();
 }
 
-//if you see decodeRecvPkg return null call it
+//if you see decodeRecvPkg return NULL call it
 WSState WebSocketProtocol::getState()
 {
 	return state;
 }
+
 RecvOP WebSocketProtocol::getRecvOPState()
 {
 	return recvOPState;
@@ -119,7 +113,7 @@ char * WebSocketProtocol::processRecvPkg(char *str, unsigned int length)
 		if (doHandshake(str,length)) {
 		
 			state = WS_HANDSHAKE;
-			return null;
+			return NULL;
 		}
 		state = UNKNOWN_CONNECTED;
 		return str;
@@ -128,9 +122,6 @@ char * WebSocketProtocol::processRecvPkg(char *str, unsigned int length)
 	//else if(state == WS_CONNECTED)
 	state = WS_CONNECTED;
 	return decodeFrame(str, length,&recvFrameInfo);
-	
-	
-	
 }
 
 void WebSocketProtocol::maskData(char *data, unsigned int length,byte* mask_4)
@@ -158,13 +149,14 @@ void WebSocketProtocol::maskData(char *data, unsigned int length,byte* mask_4)
 		for (i=0;i<L;i++,tmpPtr++)
 			*tmpPtr^=mask[i&3];
 }
+
 char * WebSocketProtocol::decodeFrame(char *str, unsigned int length,WebSocketProtocol::WPFrameInfo *frameInfo)
 {
 	char* striter=str;
 	if(length<2)
 	{
 		recvOPState=WSOP_UNKNOWN;
-		return null;
+		return NULL;
 	}
 	
     byte bite=*(striter++);
@@ -229,16 +221,16 @@ char * WebSocketProtocol::decodeFrame(char *str, unsigned int length,WebSocketPr
             // Close frame. Answer with close and terminate tcp connection
             // TODO: Receive all bytes the client might send before closing? No?
             recvOPState=WSOP_CLOSE;
-            return null;
+            return NULL;
             
         default:
             // Unexpected. Ignore. Probably should blow up entire universe here, but who cares.
     		
 			recvOPState=WSOP_UNKNOWN;
-			return null;
+			return NULL;
     }
 	recvOPState=WSOP_UNKNOWN;
-	return null;
+	return NULL;
 }
 
 char * WebSocketProtocol::codeFrame(char *dat_padLeast8B, unsigned int length,WebSocketProtocol::WPFrameInfo *frameInfo,unsigned int *totalL)
@@ -281,12 +273,13 @@ WebSocketProtocol::WPFrameInfo WebSocketProtocol::getPkgframeInfo()
 {
 	return recvFrameInfo;
 }
+
 char * WebSocketProtocol::doHandshake(char *str, unsigned int length){
 
 	if(!CheckHead(str,HANDSHAKE_GETHTTP))
 	{
 		state=UNKNOWN_CONNECTED;
-		return null;	
+		return NULL;	
 	}
 	
     char *temp=str;
@@ -320,7 +313,7 @@ char * WebSocketProtocol::doHandshake(char *str, unsigned int length){
 		
         
 		*(bite_ptr-1)=0;
-		bite_ptr++;if(*bite_ptr==null)break;
+		bite_ptr++;if(*bite_ptr==NULL)break;
 		
 	
 	
@@ -345,10 +338,10 @@ char * WebSocketProtocol::doHandshake(char *str, unsigned int length){
 		} else if (!hasKey && CheckHead(bite_ptr, HANDSHAKE_SECWSKEY)) {
 			bite_ptr+=strlen(HANDSHAKE_SECWSKEY);
 			for(;*bite_ptr==' ';bite_ptr++)//skip space
-				if(!*bite_ptr){state=UNKNOWN_CONNECTED;return null;}//sudden termination error
+				if(!*bite_ptr){state=UNKNOWN_CONNECTED;return NULL;}//sudden termination error
 			byte tmpc=0;
 			for(;*bite_ptr!='\r';tmpc++,bite_ptr++)//Copy key and prevent sudden termination error
-				if(!*bite_ptr){state=UNKNOWN_CONNECTED;return null;}
+				if(!*bite_ptr){state=UNKNOWN_CONNECTED;return NULL;}
 				else key[tmpc]=*bite_ptr;
 			key[tmpc]='\0';
 			
@@ -391,23 +384,24 @@ char * WebSocketProtocol::doHandshake(char *str, unsigned int length){
     } else {
         // Nope, failed handshake. Disconnect
 		state=UNKNOWN_CONNECTED;
-        return null;
+        return NULL;
     }
     
 	state=WS_HANDSHAKE;/**/
     return temp;
 }
 
-
 char * WebSocketProtocol::codeSendPkg_setPkgL(char *Pkg, unsigned int length)
 {
 	Pkg[0]=(uint8_t) 0x81;
 	Pkg[1]=(uint8_t) length;
 }
+
 char * WebSocketProtocol::codeSendPkg_getPkgContentSec(char *Pkg)
 {
 	return Pkg+2;
 }
+
 char * WebSocketProtocol::codeSendPkg_endConnection(char *Pkg)
 {
     Pkg[0]= 0x08;
@@ -427,14 +421,16 @@ EthernetClient WebSocketProtocol::getClientOBJ()
 {
     return clientOBJ;
 }
+
 bool WebSocketProtocol::alive()
 {
   return recvOPState!=WSOP_CLOSE;
 }
+
 void WebSocketProtocol::rmClientOBJ()
 {
 	clientOBJ.sockindex = MAX_SOCK_NUM;
-  state = DISCONNECTED;
+	state = DISCONNECTED;
 	recvOPState=WSOP_CLOSE;
   clientOBJ=0;
 }

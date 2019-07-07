@@ -57,16 +57,11 @@ www.codebender.cc
 #undef private
 //#include <Ethernet.h>// Just for manage client, it doesn't do data transfer.
 
-
-#ifndef null
-#define null 0
-#endif
-
 // CRLF characters to terminate lines/handshakes in headers.
 #define CRLF "\r\n"
 
-    typedef enum WSState{DISCONNECTED,WS_HANDSHAKE,WS_CONNECTED,UNKNOWN_CONNECTED}WSState;
-	typedef enum RecvOP{WSOP_CLOSE,WSOP_OK,WSOP_UNKNOWN}RecvOP; 
+typedef enum WSState{DISCONNECTED,WS_HANDSHAKE,WS_CONNECTED,UNKNOWN_CONNECTED}WSState;
+typedef enum RecvOP{WSOP_CLOSE,WSOP_OK,WSOP_UNKNOWN}RecvOP; 
 	
 class WebSocketProtocol {
 public:
