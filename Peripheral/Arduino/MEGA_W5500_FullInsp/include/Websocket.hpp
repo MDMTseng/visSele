@@ -8,7 +8,7 @@
 
 
 class Websocket_Server{
-  private:
+  protected:
    uint8_t *buff;
    uint32_t buffL;
    

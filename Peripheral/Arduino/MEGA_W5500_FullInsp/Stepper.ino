@@ -315,7 +315,7 @@ void setup_Stepper() {
 
 int count=50;
 
-void loop_setup_Stepper() {
+void loop_Stepper() {
   if(pulseHZ!=tar_pulseHZ)
   {
     if(pulseHZ<tar_pulseHZ)
