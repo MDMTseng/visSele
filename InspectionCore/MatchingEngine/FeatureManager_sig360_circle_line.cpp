@@ -2674,18 +2674,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           sAngle,eAngle,cdef.outter_inner,
           matching_tor,
           s_intersectIdxs,s_points);
-
+        
         acv_CircleFit cf;
         circleRefine(s_points,&cf);
-        float minTor = matching_tor/5;
-        if(minTor<1)minTor=1;
-        edge_grid.getContourPointsWithInCircleContour(
-          cf.circle.circumcenter.X,
-          cf.circle.circumcenter.Y,
-          cf.circle.radius,
-          sAngle,eAngle,cdef.outter_inner,
-          minTor,
-          s_intersectIdxs,s_points);
+        // float minTor = matching_tor/5;
+        // if(minTor<1)minTor=1;
+        // edge_grid.getContourPointsWithInCircleContour(
+        //   cf.circle.circumcenter.X,
+        //   cf.circle.circumcenter.Y,
+        //   cf.circle.radius,
+        //   sAngle,eAngle,cdef.outter_inner,
+        //   minTor,
+        //   s_intersectIdxs,s_points);
 
         if(1)
         {

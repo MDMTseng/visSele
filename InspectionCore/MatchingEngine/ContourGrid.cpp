@@ -292,8 +292,8 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
   GetSectionsWithinCircleContour(X,Y,radius,epsilon,intersectIdxs);
   float outerDist_sq=radius+epsilon;
   outerDist_sq*=outerDist_sq;
-  const float arcCurvatureMin = 0.06;
-  const float arcCurvatureMax = 0.4;
+  const float arcCurvatureMin = 0.02;
+  const float arcCurvatureMax = 10  ;
 
   float innerDist_sq=radius-epsilon;
   if(innerDist_sq<0)
