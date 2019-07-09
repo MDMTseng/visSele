@@ -1,3 +1,6 @@
+#ifndef WEBSOCKET_FI____
+#define WEBSOCKET_FI____
+
 
 class Websocket_FI:public Websocket_Server{
   public:
@@ -7,7 +10,7 @@ class Websocket_FI:public Websocket_Server{
   int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
     unsigned int MessageL = 0; //echo
-    
+
     if (MessageL == 0)
     {
       char *tmpX = (char*)send_rsp+200;
@@ -17,5 +20,9 @@ class Websocket_FI:public Websocket_Server{
     return MessageL;
   }
   
-  
+
 };
+
+
+
+#endif

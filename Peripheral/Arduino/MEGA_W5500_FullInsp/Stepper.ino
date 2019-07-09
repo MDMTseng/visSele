@@ -1,9 +1,5 @@
 #include "include/RingBuf.hpp"
 
-
-
-
-  
 boolean stepM_seq_a[]={1,1,0,0,0,0,0,1};
 boolean stepM_seq_b[]={0,1,1,1,0,0,0,0};
 boolean stepM_seq_c[]={0,0,0,1,1,1,0,0};
@@ -65,7 +61,7 @@ class StepperMotor
 };
 
 
-StepperMotor stepperMotor(12,13,14,15);
+StepperMotor stepperMotor(22,23,24,25);
 
 
 
@@ -309,7 +305,7 @@ void setup_Stepper() {
   pinMode(AIR_BLOW_OK_PIN, OUTPUT);
   pinMode(AIR_BLOW_NG_PIN, OUTPUT);
   pinMode(GATE_PIN, INPUT);
-  
+  Serial.println(".....");
   timer1Setup(1);
 }
 

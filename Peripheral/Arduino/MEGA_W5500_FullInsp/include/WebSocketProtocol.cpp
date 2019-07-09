@@ -424,7 +424,7 @@ EthernetClient WebSocketProtocol::getClientOBJ()
 
 bool WebSocketProtocol::alive()
 {
-  return recvOPState!=WSOP_CLOSE;
+  return recvOPState!=WSOP_CLOSE || state != DISCONNECTED;
 }
 
 void WebSocketProtocol::rmClientOBJ()

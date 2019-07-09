@@ -19,14 +19,16 @@ uint8_t buff[600];
 IPAddress _ip(192,168,2,2);
 IPAddress _gateway(169, 254, 170, 254);
 IPAddress _subnet(255, 255, 255, 0);
-Websocket_FI WS_Server(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
+
+Websocket_FI *WS_Server;
 void setup() {
   Serial.begin(57600);
+  WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
   setRetryTimeout(3, 100);
   setup_Stepper();
 }
 
 void loop() {
-  WS_Server.loop_WS();
+  WS_Server->loop_WS();
   loop_Stepper();
 }
