@@ -10,9 +10,9 @@ class Websocket_FI:public Websocket_Server{
     
     if (MessageL == 0)
     {
-      char *tmpX = send_rsp+200;
-      strcpy(tmpX,recv_cmd);
-      MessageL = sprintf(send_rsp, "UNKNOWN:%s",tmpX);
+      char *tmpX = (char*)send_rsp+200;
+      strcpy(tmpX, (char*)recv_cmd);
+      MessageL = sprintf( (char*)send_rsp, "UNKNOWN:%s",tmpX);
     }
     return MessageL;
   }

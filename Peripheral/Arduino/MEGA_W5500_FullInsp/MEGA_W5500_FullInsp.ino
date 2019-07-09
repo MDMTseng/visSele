@@ -15,7 +15,7 @@
 #include "websocket_FI.hpp"
 
 
-char buff[600];
+uint8_t buff[600];
 IPAddress _ip(192,168,2,2);
 IPAddress _gateway(169, 254, 170, 254);
 IPAddress _subnet(255, 255, 255, 0);

@@ -59,23 +59,16 @@ class Websocket_Server{
   int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
     unsigned int MessageL = 0; //echo
-    if (strcmp(recv_cmd, "/cue/LEFT") == 0) {
-      MessageL = sprintf(send_rsp, "/rsp/LEFT");
-    }
-    else if (strcmp(recv_cmd, "/cue/RIGHT") == 0) {
-      MessageL = sprintf(send_rsp, "/rsp/RIGHT");
-    }else if (strncmp(recv_cmd, "/cue/TIME/",9) == 0) {
-      MessageL = sprintf(send_rsp, "?");
-    }else if (strcmp(recv_cmd, "/cue/PING") == 0) {
-      MessageL = sprintf(send_rsp, "/rsp/PONG");
+    if (strcmp((char*)recv_cmd, "/cue/LEFT") == 0) {
+      MessageL = sprintf((char*)send_rsp, "/rsp/LEFT");
     }
     
     if (MessageL == 0)
     {
-      char *tmpX = send_rsp+200;
+      char *tmpX = (char*)send_rsp+200;
       
-      strcpy(tmpX,recv_cmd);
-      MessageL = sprintf(send_rsp, "UNKNOWN:%s",tmpX);
+      strcpy(tmpX,(char*)recv_cmd);
+      MessageL = sprintf((char*)send_rsp, "UNKNOWN:%s",tmpX);
     }
   
     return MessageL;
@@ -91,11 +84,11 @@ class Websocket_Server{
     retframeInfo.isMasking = 0; //no masking on server side
     retframeInfo.isFinal = 1; //is Final package
   
-    char *dataBuff = retPackage + 8;//write data after 8 bytes(8 bytes are for header)
+    uint8_t *dataBuff = retPackage + 8;//write data after 8 bytes(8 bytes are for header)
     dataBuff[0] = 0x55; //add data in front
     memcpy ( dataBuff + 1, RECVData, RECVDataL ); //echo
     unsigned int totalPackageL;
-    char* retPkg = WProt->codeFrame(dataBuff, RECVDataL + 1, &retframeInfo, &totalPackageL); //get complete package might have some shift compare to "retPackage"
+    char* retPkg = WProt->codeFrame((char*)dataBuff, RECVDataL + 1, &retframeInfo, &totalPackageL); //get complete package might have some shift compare to "retPackage"
     WProt->getClientOBJ().write(retPkg, totalPackageL);
     //DoRECVData( WProt, client, RECVData);
   }
@@ -107,8 +100,7 @@ class Websocket_Server{
     if (WProt->getPkgframeInfo().opcode == 2)//binary data
     {
       DEBUG_print("Binary");
-      RECVWebSocketPkg_binary( WProt, client, RECVData);
-      return;
+      return RECVWebSocketPkg_binary( WProt, client, RECVData);
     }
     unsigned int RECVDataL = WProt->getPkgframeInfo().length;
     retframeInfo.opcode = 1; //text
@@ -116,8 +108,8 @@ class Websocket_Server{
     retframeInfo.isFinal = 1; //is Final package
     //If RECVData is text message, it will end with '\0'
     DEBUG_println(RECVData);
-    char *dataBuff = retPackage + 8;//write data after 8 bytes(8 bytes are for header)
-    unsigned int MessageL = CMDExec(RECVData, RECVDataL,dataBuff,buffL-8);
+    char *dataBuff = (char*)retPackage + 8;//write data after 8 bytes(8 bytes are for header)
+    unsigned int MessageL = CMDExec((uint8_t*)RECVData, RECVDataL,(uint8_t*)dataBuff,buffL-8);
     unsigned int totalPackageL;
     char* retPkg = WProt->codeFrame(dataBuff, MessageL, &retframeInfo, &totalPackageL); //get complete package might have some shift compare to "retPackage"
     WProt->getClientOBJ().write(retPkg, totalPackageL);
@@ -252,7 +244,7 @@ class Websocket_Server{
       return;
     }
     client = WSPptr->getClientOBJ();
-    char *recvData = WSPptr->processRecvPkg(buff, KL);//Check/process the websocket PKG
+    char *recvData = WSPptr->processRecvPkg((char*)buff, KL);//Check/process the websocket PKG
     DEBUG_println(">>>>");
     byte frameL = WSPptr->getPkgframeInfo().length; //get frame
     
