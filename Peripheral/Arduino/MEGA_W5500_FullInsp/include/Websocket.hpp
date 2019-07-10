@@ -127,6 +127,7 @@ class Websocket_Server{
     memcpy(dataBuff,data,dataL);
     unsigned int MessageL = dataL;
     unsigned int totalPackageL;
+    char* retPkg=NULL;
     for (uint8_t i = 0; i < MAX_WSP_CLIENTs; i++)
     {
       if (WSP[i].alive())
@@ -137,7 +138,8 @@ class Websocket_Server{
         }
         else
         {
-          char* retPkg = WSP[i].codeFrame(dataBuff, MessageL, &retframeInfo, &totalPackageL); 
+          if(!retPkg)
+            retPkg = WSP[i].codeFrame(dataBuff, MessageL, &retframeInfo, &totalPackageL); 
           //get complete package might have some shift compare to "retPackage"
           WSP[i].getClientOBJ().write(retPkg, totalPackageL);
         }
@@ -250,7 +252,7 @@ class Websocket_Server{
     EthernetClient client = server.available();
     if (!client)
     {
-      //if (LiveClient)
+      if (LiveClient)
       {
         
         

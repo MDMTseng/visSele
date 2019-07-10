@@ -1,4 +1,4 @@
-#include "include/RingBuf.hpp"
+
 
 boolean stepM_seq_a[]={1,1,0,0,0,0,0,1};
 boolean stepM_seq_b[]={0,1,1,1,0,0,0,0};
@@ -68,16 +68,7 @@ StepperMotor stepperMotor(22,23,24,25);
 #define CAMERA_PIN 18
 #define AIR_BLOW_OK_PIN 19
 #define AIR_BLOW_NG_PIN 20
-#define GATE_PIN 22
-typedef struct pipeLineInfo{
-  uint32_t gate_pulse;
-  uint32_t trigger_pulse;
-  int8_t stage;
-}pipeLineInfo;
-static pipeLineInfo pbuff[50];
-
-//The index type uint8_t would be enough if the buffersize<255
-RingBuf<typeof(*pbuff),uint8_t > RBuf(pbuff,sizeof(pbuff)/sizeof(*pbuff));
+#define GATE_PIN 30
 
 uint32_t perRevPulseCount=4096;
 uint32_t maxPulseCount=perRevPulseCount;
@@ -121,6 +112,7 @@ uint32_t state_pulseOffset[]={1050,1055,3000,1200,1205,1500,1505};
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
 {
+  pli->notifMark=0;
   switch(pli->stage)
   {
     case 0:
@@ -128,6 +120,7 @@ int stage_action(pipeLineInfo* pli)
     break;
     case 1://Trigger shutter ON
       digitalWrite(CAMERA_PIN,1);
+      pli->notifMark=1;
     break;
     case 2://Trigger shutter OFF
       digitalWrite(CAMERA_PIN,0);
@@ -177,6 +170,7 @@ uint32_t tar_pulseHZ=1000;
 uint32_t pulseHZ_step=60;
 
 uint32_t countX=0;
+uint32_t getTimerCount(){return countX;}
 
 typedef struct GateInfo{
   uint8_t state;
