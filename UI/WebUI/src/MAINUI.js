@@ -401,6 +401,23 @@ class APPMain extends React.Component{
               }}>Reconnect CAM</AntButton>
   
                 
+              <AntButton key="____" 
+                onClick={()=>{
+                  new Promise((resolve, reject) => {
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PR",0,
+                    {ip:"192.168.2.2",port:5213},
+                    undefined,{resolve,reject});
+                    //setTimeout(()=>reject("Timeout"),1000)
+                  })
+                  .then((data) => {
+                    console.log(data);
+                  })
+                  .catch((err) => {
+                    console.log(err);
+                  })
+              }}>____</AntButton>
+
+
               <AntButton key="camera Calib" 
                 onClick={()=>{
                   let fileSelectedCallBack=
