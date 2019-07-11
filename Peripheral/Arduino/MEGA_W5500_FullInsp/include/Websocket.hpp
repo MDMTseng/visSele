@@ -1,7 +1,3 @@
-#include <SPI.h>
-#define private public //dirty trick
-#include <Ethernet.h>
-#undef private
 #include "WebSocketProtocol.h"
 #include "ETH_Extra.h"
 #include "UTIL.hpp"
@@ -174,7 +170,7 @@ class Websocket_Server{
       EthernetClient Rc = WSP[i].getClientOBJ();
       if(!WSP[i].alive())continue;
       DEBUG_print("sock:");
-      DEBUG_print(Rc.sockindex);
+      DEBUG_print(Rc.getSocketNumber());
       DEBUG_print(" status:");
       int stat = Rc.status();
       DEBUG_print(stat);
@@ -186,7 +182,7 @@ class Websocket_Server{
       if (stat == 0|| stat == 20)
       {
         DEBUG_print("clear timeout sock::sock");
-        DEBUG_println(Rc.sockindex);
+        DEBUG_println(Rc.getSocketNumber());
         DEBUG_print(" state::");
         DEBUG_println(stat);
         Rc.stop();
@@ -206,10 +202,10 @@ class Websocket_Server{
         EthernetClient Rc = WSP[i].getClientOBJ();
         DEBUG_print(Rc);
         DEBUG_print(":::sock:");
-        DEBUG_println(Rc.sockindex);
+        DEBUG_println(Rc.getSocketNumber());
         //byte SnIR = ReadSn_IR(WSP[i].getClientOBJ()._sock);
   
-        testAlive(Rc.sockindex);
+        testAlive(Rc.getSocketNumber());
       }
     }
   }
@@ -221,7 +217,7 @@ class Websocket_Server{
     for (byte i = 0; i < MAX_WSP_CLIENTs; i++)
     {
       EthernetClient Rc = WSP[i].getClientOBJ();
-      if (Rc.sockindex == client.sockindex)
+      if (Rc.getSocketNumber() == client.getSocketNumber())
       {
         FindLiveClient();
         return WSP + i;
@@ -238,7 +234,7 @@ class Websocket_Server{
         //LiveClient = i;
         byte ii = i;
         DEBUG_print("new socket:::");
-        DEBUG_println(client.sockindex);
+        DEBUG_println(client.getSocketNumber());
         // OnClientsChange();
         return WSP + i;
       }

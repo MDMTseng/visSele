@@ -1,10 +1,7 @@
 
-
-#define private public //dirty trick
 #include "Eth_Extra.h"
 #include <Ethernet.h>
 #include <utility/w5100.h>
-#undef private
  
 inline void SPI_Write(unsigned int addr, unsigned char data)
 {

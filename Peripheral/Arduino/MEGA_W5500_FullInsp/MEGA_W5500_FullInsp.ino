@@ -80,7 +80,7 @@ void loop()
     {
       tail->sent_stage=tail->stage;
       int len = sprintf(tmp,"{'s':%d,'m':%d,'p':%d}",tail->stage,tail->notifMark,tail->gate_pulse);
-      WS_Server->SEND_ALL(tmp,len,0);
+      WS_Server->SEND_ALL((uint8_t*)tmp,len,0);
       break;
     }
   }

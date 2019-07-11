@@ -193,7 +193,7 @@ char * WebSocketProtocol::decodeFrame(char *str, unsigned int length,WebSocketPr
 		else
 		{
 		  recvOPState=WSOP_UNKNOWN;
-		  return false;
+		  return NULL;
 		}
     }
 	
@@ -429,7 +429,7 @@ bool WebSocketProtocol::alive()
 
 void WebSocketProtocol::rmClientOBJ()
 {
-	clientOBJ.sockindex = MAX_SOCK_NUM;
+	//clientOBJ.getSocketNumber() = MAX_SOCK_NUM;
 	state = DISCONNECTED;
 	recvOPState=WSOP_CLOSE;
   clientOBJ=0;
