@@ -1236,7 +1236,7 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
 
 
           sprintf(tmp,"{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
-            dat->tl[0],dat->tl[0],(session_ACK)?"true":"false",err_str);
+            dat->tl[0],dat->tl[1],(session_ACK)?"true":"false",err_str);
           bpg_dat=GenStrBPGData("SS", tmp);
           bpg_dat.pgID=dat->pgID;
           datCH_BPG.data.p_BPG_data=&bpg_dat;
