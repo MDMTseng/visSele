@@ -55,7 +55,7 @@ IDIR=	include/ \
 
 
 
-_OBJ = main.opp playground.opp
+_OBJ = main.opp playground.opp MicroInsp_FType.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 

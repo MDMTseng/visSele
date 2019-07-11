@@ -38,8 +38,4 @@ char* _SubString_Align(const char* str,int Count);
 #endif
 
 
-#undef LOGV
-#undef LOGD
-#define LOGV(fmt,...)
-#define LOGD(fmt,...)
 #endif

@@ -19,14 +19,16 @@
 #include <playground.h>
 #include <stdexcept>
 
+#include <MicroInsp_FType.hpp>
 #include <lodepng.h>
 std::timed_mutex mainThreadLock;
-DatCH_BPG1_0 *BPG_protocol;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle=0;
+
+DatCH_BPG1_0 *BPG_protocol= new DatCH_BPG1_0(NULL);
 
 
 //lens1
@@ -487,6 +489,7 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   acvImage tmp_buff;
   acvImage cacheImage;
   acvImage dataSend_buff;
+  MicroInsp_FType *mift;
 
   bool checkTL(const char *TL,const BPG_data *dat)
   {
@@ -497,7 +500,7 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   {
     return (((uint16_t)TL[0]<<8) |  TL[1]);
   }
-public:
+  public:
   CameraLayer *camera=NULL;
   
   DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
@@ -505,7 +508,14 @@ public:
       this->self = self;
       cacheImage.ReSize(1,1);
   }
-
+  void delete_MicroInsp_FType()
+  {
+    if(mift)
+    {
+      delete mift;
+      mift=NULL;
+    }
+  }
   static BPG_data GenStrBPGData(char *TL, char* jsonStr)
   {
     BPG_data BPG_dat={0};
@@ -1152,7 +1162,8 @@ public:
             }
             
             session_ACK=true;
-          }else if(checkTL("ST",dat))
+          }
+          else if(checkTL("ST",dat))
           {
             
             DatCH_Data datCH_BPG=
@@ -1188,6 +1199,38 @@ public:
             }
             
           }
+          else if(checkTL("PR",dat))
+          {
+            
+            DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+            void *target;
+            char *IP  = JFetch_STRING(json,"ip");
+            double *port_number  = JFetch_NUMBER(json,"port");
+            if(IP!=NULL && port_number!=NULL)
+            {
+              try{
+                delete_MicroInsp_FType();
+                mift=new MicroInsp_FType(IP,*port_number);
+                session_ACK=true;
+              }
+              catch(int errN)
+              {
+                sprintf(err_str,"[PR] MicroInsp_FType init error:%d",errN);
+              }
+            }
+            else if( mift && IP==NULL && port_number==NULL)
+            {
+              delete_MicroInsp_FType();
+              session_ACK=true;
+            }
+            else
+            {
+              sprintf(err_str,"[PR] ip:%p port:%p",IP,port_number);
+            }
+            
+          }
           DatCH_Data datCH_BPG=
             BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
@@ -1215,6 +1258,7 @@ public:
   }
 };
 
+DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
 
 void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_func, IMG_COMPRESS_FUNC uncollapse_func)
 {
@@ -1635,6 +1679,9 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
             inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
           cameraFeedTrigger=false;
           camera->TriggerMode(1);
+          cb->delete_MicroInsp_FType();
+
+          
       break;
       default:
         return -1;
@@ -1779,9 +1826,6 @@ int mainLoop(bool realCamera=false)
   websocket =new DatCH_WebSocket(4090);
   printf(">>>>>\n" );
   
-  BPG_protocol = new DatCH_BPG1_0(NULL);
-  DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
-
   {
     
     CameraLayer *camera = getCamera(CamInitStyle);

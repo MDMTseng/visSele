@@ -34,6 +34,7 @@ class CameraLayer{
     acvImage img;
     CameraLayer_Callback callback;
     void* context;
+    uint32_t frameTimeTag;
     
     public:
     
