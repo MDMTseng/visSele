@@ -45,6 +45,8 @@ MicroInsp_FType::MicroInsp_FType(char *host,int port) throw(int)
         //perror("connect");
         throw -1;
     }
+    
+    recvThread = new std::thread(&MicroInsp_FType::recv_data_thread, this);
 }
 
 int MicroInsp_FType::send_data(uint8_t *data,int len)
@@ -57,7 +59,30 @@ int MicroInsp_FType::recv_data()
     return recv(sockfd, buf, sizeof(buf), 0);
 }
 
+int MicroInsp_FType::recv_data_thread()
+{
+    int recvL=0;
+    
+    printf("sockfd:%d",sockfd);
+    send_data((uint8_t*)">>>>>>>>>",8);
+    while((recvL=recv(sockfd, buf, sizeof(buf), 0))>0)
+    {
+        printf("\n%d\n",recvL);
+        for(int i=0;i<recvL;i++)
+        {
+            printf("%c",buf[i]);
+        }
+    }
+    return recvL;
+}
 MicroInsp_FType::~MicroInsp_FType()
 {
     close(sockfd);
+    
+    if(recvThread)
+    {
+        recvThread->join();
+        delete recvThread;
+        recvThread = NULL;
+    }
 }
