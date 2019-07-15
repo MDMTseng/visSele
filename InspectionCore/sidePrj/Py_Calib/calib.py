@@ -4,6 +4,7 @@ import glob
 import json
 import socket
 
+
 def start_tcp_server(host, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.bind((host, port))
@@ -12,23 +13,60 @@ def start_tcp_server(host, port):
     sock.listen(1)
     return sock
 
+
+
+def cameraCalib(msg):
+    return chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
+
+openCVCmd={
+    "cameraCalib":cameraCalib
+}
+
+
 def start_tcp_serverX(host, port):    
-    sock = start_tcp_server('',1229)
+    sock = start_tcp_server(host, port)
 
     while True:
         (csock, adr) = sock.accept()
         print( "Client Info: ", csock, adr)
-        msg = csock.recv(1024)
-        if not msg:
-            pass
-        else:
-            msg=msg.decode('utf-8')
-            print ("Client send: " + msg)
-            csock.send("Hello I'm Server.\r\n".encode())
+        while True:
+            msg_json = csock.recv(1024)
+            if not msg_json:
+                #pass
+                break
+            try:
+                msg_json = msg_json.decode('utf-8')
+                print(msg_json)
+                print(msg_json)
+                msg = json.loads(msg_json)
+            except Exception as e:
+                print('exception happened...',e)
+                break
+
+            
+            if 'type' not in msg:
+                break
+            
+            magType=msg['type']
+
+            if magType not in openCVCmd:
+                break
+
+            cmdExec=openCVCmd[magType]
+
+            retDict = cmdExec(msg)
+            ACK=retDict is not None
+            retDict["ACK"]=ACK
+            if "pgID" in msg:
+                retDict["pgID"]=msg["pgID"]
+            calibRes_json = json.dumps(retDict)
+            print ("Client send: " + calibRes_json)
+            # print(calibRes)
+            #msg=msg.decode('utf-8')
+            csock.send(calibRes_json.encode())
         csock.close()
 
-
-def chessBoardCalib(chessBoardDim,dir):
+def chessBoardCalib(chessBoardDim,image_path):
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
@@ -41,7 +79,7 @@ def chessBoardCalib(chessBoardDim,dir):
     objpoints = [] # 3d point in real world space
     imgpoints = [] # 2d points in image plane.
 
-    images = glob.glob(dir+'*.jpg')
+    images = glob.glob(image_path)
     print(images)
     
     if len(images) == 0 :
@@ -65,35 +103,30 @@ def chessBoardCalib(chessBoardDim,dir):
             #img = cv2.drawChessboardCorners(img, (7,6), corners2,ret)
             #cv2.imshow('img',img)
             #cv2.waitKey(500)
-    cv2.destroyAllWindows()
+    #cv2.destroyAllWindows()
     # print( gray.shape[::-1])
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-    return (ret, mtx, dist, rvecs, tvecs)
+    return {"ret":ret, "mtx":mtx, "dist":dist}#, "rvecs":rvecs, "tvecs":tvecs}
     
-    
+
+def chessBoardCalibResFormat(calibRes):
     # dst = cv2.undistort(gray, mtx, dist, None, mtx)
     # mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,mtx,gray.shape[::-1],cv2.CV_32FC1)
     # #cv2.imshow('img',dst)
     # #cv2.waitKey(5000)
-    # print(ret,mtx,dist,rvecs,tvecs)
-    # mapx=mapx.tolist()
-    # mapy.tolist()
 
-    # print()
+    calibRes['mtx']=calibRes['mtx'].tolist()
+    calibRes['dist']=calibRes['dist'].tolist()
+    # calibRes['rvecs']=list(map(lambda ele:ele.tolist(),calibRes['rvecs']))
+    # calibRes['tvecs']=list(map(lambda ele:ele.tolist(),calibRes['tvecs']))
+    return calibRes
 
 
-    # outputfilename="mapx.json"
-    # with open(outputfilename, 'w') as outfile:
-    #     json.dump(mapx, outfile)
+start_tcp_serverX("", 1229)
 
-(ret, mtx, dist, rvecs, tvecs)=chessBoardCalib((),"")
-mtx=mtx.tolist()
-dist=dist.tolist()
-rvecs[0]=rvecs[0].tolist()
-tvecs[0]=tvecs[0].tolist()
-
-calibRes={"ret":ret, "mtx":mtx, "dist":dist, "rvecs":rvecs, "tvecs":tvecs}
-print(calibRes)
-outputfilename="mapx.json"
-with open(outputfilename, 'w') as outfile:
-    json.dump(calibRes, outfile)
+# calibRes=chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
+# print(calibRes)
+# calibRes_json = json.dumps(calibRes)
+# outputfilename="mapx.json"
+# with open(outputfilename, 'w') as outfile:
+#     outfile.write(calibRes_json)
