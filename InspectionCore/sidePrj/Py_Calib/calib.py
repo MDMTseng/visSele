@@ -18,8 +18,27 @@ def start_tcp_server(host, port):
 def cameraCalib(msg):
     return chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
 
+
+
+def cameraCalib_RectifyMap(msg):
+    ret = chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
+    mtx=cv2.UMat(np.array(ret["mtx"],dtype=np.float32))
+    dist=cv2.UMat(np.array(ret["dist"],dtype=np.float32))
+    mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,mtx,(3000,2000),cv2.CV_32FC1)
+    #print(mapx,mapy)
+    return {"mapx":mapx.get().tolist(),"mapy":mapy.get().tolist()}
+
+
+
+doEXIT=False
+def _exit_(msg):
+    doEXIT=True
+    return {"doEXIT":True}
+
 openCVCmd={
-    "cameraCalib":cameraCalib
+    "cameraCalib":cameraCalib,
+    "cameraCalib_RectifyMap":cameraCalib_RectifyMap,
+    "exit":_exit_,
 }
 
 
@@ -36,7 +55,6 @@ def start_tcp_serverX(host, port):
                 break
             try:
                 msg_json = msg_json.decode('utf-8')
-                print(msg_json)
                 print(msg_json)
                 msg = json.loads(msg_json)
             except Exception as e:
@@ -56,14 +74,20 @@ def start_tcp_serverX(host, port):
 
             retDict = cmdExec(msg)
             ACK=retDict is not None
+
+            if retDict is None:
+                retDict={}
+
             retDict["ACK"]=ACK
             if "pgID" in msg:
                 retDict["pgID"]=msg["pgID"]
             calibRes_json = json.dumps(retDict)
-            print ("Client send: " + calibRes_json)
+            #print ("Client send: " + calibRes_json)
             # print(calibRes)
             #msg=msg.decode('utf-8')
             csock.send(calibRes_json.encode())
+            if(doEXIT):
+                break
         csock.close()
 
 def chessBoardCalib(chessBoardDim,image_path):
