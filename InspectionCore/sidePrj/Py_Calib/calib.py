@@ -30,9 +30,7 @@ def cameraCalib_RectifyMap(msg):
 
 
 
-doEXIT=False
 def _exit_(msg):
-    doEXIT=True
     return {"doEXIT":True}
 
 openCVCmd={
@@ -44,11 +42,12 @@ openCVCmd={
 
 def start_tcp_serverX(host, port):    
     sock = start_tcp_server(host, port)
-
-    while True:
+    doEXIT=False
+    while not doEXIT:
+        print( "Waiting for new Client")
         (csock, adr) = sock.accept()
         print( "Client Info: ", csock, adr)
-        while True:
+        while not doEXIT:
             msg_json = csock.recv(1024)
             if not msg_json:
                 #pass
@@ -86,9 +85,11 @@ def start_tcp_serverX(host, port):
             # print(calibRes)
             #msg=msg.decode('utf-8')
             csock.send(calibRes_json.encode())
-            if(doEXIT):
-                break
+            
+            if "doEXIT" in  retDict and retDict["doEXIT"] == True:
+                doEXIT=True
         csock.close()
+        
 
 def chessBoardCalib(chessBoardDim,image_path):
     # termination criteria
