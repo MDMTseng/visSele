@@ -15,13 +15,22 @@ def start_tcp_server(host, port):
 
 
 
+#{"type":"cameraCalib","pgID":12442,"img_path":"*.jpg","board_dim":[7,9]}
 def cameraCalib(msg):
-    return chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
+    print(msg)
+    if "img_path" not in msg:
+        return
+    if "board_dim" not in msg:
+        return
+    return chessBoardCalibResFormat(chessBoardCalib((msg["board_dim"][0],msg["board_dim"][1]),msg["img_path"]))
 
 
 
 def cameraCalib_RectifyMap(msg):
-    ret = chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
+
+    ret = cameraCalib(msg)
+    if ret is None:
+        return
     mtx=cv2.UMat(np.array(ret["mtx"],dtype=np.float32))
     dist=cv2.UMat(np.array(ret["dist"],dtype=np.float32))
     mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,mtx,(3000,2000),cv2.CV_32FC1)
@@ -95,7 +104,6 @@ def chessBoardCalib(chessBoardDim,image_path):
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
-    chessBoardDim=(7,9)
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
     objp = np.zeros((chessBoardDim[0]*chessBoardDim[1],3), np.float32)
     objp[:,:2] = np.mgrid[0:chessBoardDim[0],0:chessBoardDim[1]].T.reshape(-1,2)
