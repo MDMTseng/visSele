@@ -587,7 +587,7 @@ class InspRecStream
 {
   constructor(){
     this.reset();
-    this.newFeedCallBack=(newStream,fullStream)=>console.log(newStream,fullStream);
+    this.newFeedCallBack=(newStream,fullStream)=>console.log("newFeedCallBack=>",newStream,fullStream);
     this.liveFeedMode=false;
   }
   
@@ -613,7 +613,7 @@ class InspRecStream
   {
     this.resetStreamInfo();
     this.defFile=JSON.parse(JSON.stringify(defFile));
-    
+    console.log("setDefFile=",defFile);
   }
 
   newStreamFeed(inspectionRec)
@@ -687,7 +687,7 @@ class InspRecStream
     {
       maxResults=10;
     }
-    console.log(timeRange);
+    console.log("timeRange="+timeRange);
     DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],maxResults)
     .then((queryResult)=>{
       let inspectionRec = queryResult.map(res=>res.InspectionData[0]);
@@ -737,7 +737,7 @@ class APP_ANALYSIS_MODE extends React.Component{
     this.ec_canvas = null;
     this.state={
       defFileSearchName:"",
-      dateRange:[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))],
+      dateRange:[moment(Date_addDay(new Date(),-60)), moment(Date_addDay(new Date(),-30))],
       displayRange:[moment(0), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
       inspectionRecGroup:[],
@@ -888,7 +888,6 @@ class APP_ANALYSIS_MODE extends React.Component{
                   if(newStream.length>0)
                   {
                     let latestTime=newStream[newStream.length-1].time_ms;
-                    
                     let inspectionRecGroup =
                       this.inspectionRecGroup_Generate(fullStream,this.state.groupInterval,measureList);
                     this.stateUpdate({
@@ -896,6 +895,8 @@ class APP_ANALYSIS_MODE extends React.Component{
                       inspectionRecGroup:inspectionRecGroup,
                       displayRange:[this.state.displayRange[0],moment(latestTime+1000)]
                     });
+
+                    console.log("fullStream=",fullStream);
                   }
                 }
               this.recStream.queryInspRec(dateRange);
@@ -910,7 +911,7 @@ class APP_ANALYSIS_MODE extends React.Component{
               downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
             }} />
             <hr style={{width:"80%"}}/>
-            <RelatedUsageInfo />
+            <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec} />
             <hr style={{width:"80%"}}/>
         </div>
 
@@ -930,8 +931,15 @@ class MyTag extends React.Component {
 
     handleChange = checked => {
         this.setState({ checked });
+
     };
 
+// DB_Query.defFileQuery("","",{"_id":0,"DefineFile.name":1,"DefineFile.tag":1,"createdAt":1}).then((q)=>{
+    //         this.setState({"DefFileInfo":q});
+    //     console.log("[O]",q);
+    // }).catch((e)=> {
+    //     console.log("[X]",e);
+    // });
     render() {
         return (
             <CheckableTag {...this.props} checked={this.state.checked} onChange={this.handleChange} />
@@ -944,45 +952,44 @@ class RelatedUsageInfo extends React.Component{
     constructor(props){
         super(props);
         this.state={
-            DefFileInfo:[],
-
-        }
-
-        DB_Query.defFileQuery("","",{"_id":0,"DefineFile.name":1,"DefineFile.tag":1,"createdAt":1})
-        .then((q)=>{
-                this.setState({"DefFileInfo":q});
-            console.log("[O]",q);
-        }).catch((e)=> {
-            console.log("[X]",e);
-        });
+            fullStream2Tag:[]
+            // DefFileInfo:[],
+        };
+        // this.handleChange = this.handleChange.bind(this);
     }
+
     componentDidMount(){
 
     }
-    // shouldComponentUpdate(nextProps, nextState){}
+    componentWillReceiveProps(nextProps) {
+        // if(this.props===nextProps)return;
+        this.setState({...this.state,...nextProps});
+        console.log("componentWillReceiveProps",nextProps);
 
+    }
+    handleTagChange(){
+        console.log("handleTagChange");
+    }
+    updateChart(){
+        // let inspectionRecGroup = this.inspectionRecGroup_Generate(this.state.fullStream2Tag,this.state.groupInterval,measureList);
+
+    }
     render() {
-        let DEFs =this.state.DefFileInfo;
-        // let DEFTags=DEFs.map(singleRep=>singleRep.judgeReports.find(measure=>measure.id==s_stat.id));
-        console.log("DEFs=",DEFs);
-        const uniSet = new Set();
-
-        const notRepet = DEFs.filter(item => {
-            if (uniSet.has(item.DefineFile.name)) {
-                return true;
-            } else {
-                uniSet.add(item.DefineFile.name);
-            }
-        });
-        console.log(notRepet);
-        console.log(uniSet);
+        console.log("this.state.fullStream2Tag",this.state.fullStream2Tag);
+        const uniSet2 = new Set();
+        uniSet2.add("judgeReport Tag");
+        if(this.state.fullStream2Tag.length>0){
+            this.state.fullStream2Tag.forEach(function(e,i,a){
+                console.log("forEach",e.tag);
+                uniSet2.add(e.tag);
+            });
+        }
         return (
             <div>
                 <h6 style={{ marginRight: 8, display: 'inline' }}>Uni Categories:</h6>
-                {Array.from(uniSet).map(function(item, index, array) {
+                {Array.from(uniSet2).map(function(item, index, array) {
                     return (
-                        //{/*<MyTag key={index+""+item} checked={this.state.checked} onChange={this.handleChange} >*/}
-                        <MyTag>
+                        <MyTag key={index+""+item}>
                             {item}
                         </MyTag>
                     );
@@ -990,20 +997,7 @@ class RelatedUsageInfo extends React.Component{
                 })
                 }
 
-                {/*<h6 style={{ marginRight: 8, display: 'inline' }}>All Categories:</h6>*/}
-                {/*{notRepet.map(function(item, index, array) {*/}
-                {/*    console.log("tN",item.DefineFile.name);*/}
-                {/*    return (*/}
-                {/*        <CheckableTag key={index+""+item.createdAt} checked={true}>*/}
-                {/*        {item.createdAt}*/}
-                {/*    </CheckableTag>*/}
-                {/*    );*/}
-
-                {/*    })*/}
-                {/*}*/}
-
             </div>
-
         );
 
     }
