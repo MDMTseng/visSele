@@ -27,7 +27,8 @@ import ReactResizeDetector from 'react-resize-detector';
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import {INSPECTION_STATUS} from './UTIL/BPG_Protocol';
-
+import Tag  from 'antd/lib/tag';
+const { CheckableTag } = Tag;
 
 const { RangePicker } = DatePicker;
 const { Title, Paragraph, Text } = Typography;
@@ -269,6 +270,10 @@ export const OK_NG_BOX_COLOR_TEXT = {
 function newDate(time_ms) {
   return moment(time_ms).toDate();
 }
+
+
+
+
 class ControlChart extends React.Component {
   constructor(props) {
       super(props);
@@ -291,7 +296,7 @@ class ControlChart extends React.Component {
                 ]},
               bezierCurve : false,
               options: {
-                  responsive: true,
+
                   scales: {
                       xAxes: [
                         {
@@ -871,6 +876,7 @@ class APP_ANALYSIS_MODE extends React.Component{
         
         {HEADER}
         <div className="s height12">
+
           <RangePicker key="RP"
             defaultValue={this.state.dateRange} 
             onChange={(date)=>this.stateUpdate({dateRange:date})}/>
@@ -903,6 +909,9 @@ class APP_ANALYSIS_MODE extends React.Component{
               //copyStringToClipboard(str);
               downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
             }} />
+            <hr style={{width:"80%"}}/>
+            <RelatedUsageInfo />
+            <hr style={{width:"80%"}}/>
         </div>
 
         {graphCtrlUI}
@@ -916,6 +925,104 @@ class APP_ANALYSIS_MODE extends React.Component{
     );
   }
 }
+class MyTag extends React.Component {
+    state = { checked: true };
+
+    handleChange = checked => {
+        this.setState({ checked });
+    };
+
+    render() {
+        return (
+            <CheckableTag {...this.props} checked={this.state.checked} onChange={this.handleChange} />
+        );
+    }
+}
+class RelatedUsageInfo extends React.Component{
+//http://hyv.decade.tw:8080/query/deffile?name=BOS-LT13BH3421&
+// http://localhost:3000/hyvision_monitor/0.0.0/?v=0&hash=9fa42a5e990e4da632070e95daf14ec50de8a112&name=BOS-LT13BH3421
+    constructor(props){
+        super(props);
+        this.state={
+            DefFileInfo:[],
+
+        }
+
+        DB_Query.defFileQuery("","",{"_id":0,"DefineFile.name":1,"DefineFile.tag":1,"createdAt":1})
+        .then((q)=>{
+                this.setState({"DefFileInfo":q});
+            console.log("[O]",q);
+        }).catch((e)=> {
+            console.log("[X]",e);
+        });
+    }
+    componentDidMount(){
+
+    }
+    // shouldComponentUpdate(nextProps, nextState){}
+
+    render() {
+        let DEFs =this.state.DefFileInfo;
+        // let DEFTags=DEFs.map(singleRep=>singleRep.judgeReports.find(measure=>measure.id==s_stat.id));
+        console.log("DEFs=",DEFs);
+        const uniSet = new Set();
+
+        const notRepet = DEFs.filter(item => {
+            if (uniSet.has(item.DefineFile.name)) {
+                return true;
+            } else {
+                uniSet.add(item.DefineFile.name);
+            }
+        });
+        console.log(notRepet);
+        console.log(uniSet);
+        return (
+            <div>
+                <h6 style={{ marginRight: 8, display: 'inline' }}>Uni Categories:</h6>
+                {Array.from(uniSet).map(function(item, index, array) {
+                    return (
+                        //{/*<MyTag key={index+""+item} checked={this.state.checked} onChange={this.handleChange} >*/}
+                        <MyTag>
+                            {item}
+                        </MyTag>
+                    );
+
+                })
+                }
+
+                {/*<h6 style={{ marginRight: 8, display: 'inline' }}>All Categories:</h6>*/}
+                {/*{notRepet.map(function(item, index, array) {*/}
+                {/*    console.log("tN",item.DefineFile.name);*/}
+                {/*    return (*/}
+                {/*        <CheckableTag key={index+""+item.createdAt} checked={true}>*/}
+                {/*        {item.createdAt}*/}
+                {/*    </CheckableTag>*/}
+                {/*    );*/}
+
+                {/*    })*/}
+                {/*}*/}
+
+            </div>
+
+        );
+
+    }
 
 
+}
+// function getDef(q_info) {
+//     let result
+//     console.log("q_info",q_info);
+//     DB_Query.defFileQuery(q_info.name,q_info.hash).
+//     then((q)=>{
+//         if(q.length>0){
+//
+//             result=q;
+//         }else{
+//             console.log("[X]No result.");
+//         }
+//
+//     });
+//     return result;
+// }
 export default APP_ANALYSIS_MODE;
