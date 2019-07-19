@@ -1228,8 +1228,10 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
                 exApi=new Ext_Util_API(IP,*port_number);
                 LOGI("new Ext_Util_API OK...");
                 exApi->start_RECV_Thread();
-                session_ACK=true;
                 LOGI("start_RECV_Thread...");
+                char* retJson =  exApi->SYNC_cmd_cameraCalib("*.jpg",7,9);
+                LOGI("SYNC_cmd_cameraCalib...\n\n:%s",retJson);
+                session_ACK=true;
               }
               catch(int errN)
               {

@@ -25,6 +25,8 @@ SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
 {
 
     sockfd=-1;
+    this->bufL=100;
+    this->buf=new uint8_t[this->bufL];
     if ((he=gethostbyname(host)) == NULL) {  /* get the host info */
         //herror("gethostbyname");
         throw -1;
@@ -60,6 +62,20 @@ int SOCK_Msg_Flow::start_RECV_Thread()
     return -1;
 }
 
+int SOCK_Msg_Flow::buffLength(int length)
+{
+    if(buf)
+    {
+        delete buf;
+        buf=NULL;
+        bufL=0;
+    }
+    buf=new uint8_t[length];
+    bufL=length;
+
+    return length;
+}
+
 int SOCK_Msg_Flow::send_data(uint8_t *data,int len)
 {
     return send(sockfd, (char*)data, len, 0);
@@ -67,7 +83,7 @@ int SOCK_Msg_Flow::send_data(uint8_t *data,int len)
 
 int SOCK_Msg_Flow::recv_data()
 {
-    return recv(sockfd, buf, sizeof(buf), 0);
+    return recv(sockfd, buf, bufL, 0);
 }
 
 int SOCK_Msg_Flow::getfd()
@@ -81,7 +97,7 @@ int SOCK_Msg_Flow::recv_data_thread()
     
     printf("th:sockfd:%d\n",sockfd);
     send_data((uint8_t*)">>>>>>>>>",8);
-    while((recvL=recv(sockfd, buf, sizeof(buf), 0))>0)
+    while((recvL=recv(sockfd, buf, bufL, 0))>0)
     {
         printf("\n%d\n",recvL);
         for(int i=0;i<recvL;i++)

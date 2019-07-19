@@ -14,11 +14,14 @@ class SOCK_Msg_Flow
     protected:
     std::thread *recvThread;
     int sockfd;  
-    char buf[100];
+    uint8_t* buf;
+    int bufL;
     struct hostent *he;
     struct sockaddr_in their_addr; /* connector's address information */
     public:
     SOCK_Msg_Flow(char *host,int port) throw(int);
+    
+    int buffLength(int length);
     virtual int start_RECV_Thread();
     virtual int getfd();
     virtual int send_data(uint8_t *data,int len);
