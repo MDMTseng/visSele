@@ -24,6 +24,7 @@
 SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
 {
 
+    sockfd=-1;
     if ((he=gethostbyname(host)) == NULL) {  /* get the host info */
         //herror("gethostbyname");
         throw -1;
@@ -39,11 +40,13 @@ SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
     their_addr.sin_addr = *((struct in_addr *)he->h_addr);
     memset(&(their_addr.sin_zero),0, 8);     /* zero the rest of the struct */
 
+    printf("c:sockfd:%d\n",sockfd);
     if (connect(sockfd, (struct sockaddr *)&their_addr, \
                                             sizeof(struct sockaddr)) == -1) {
         //perror("connect");
         throw -1;
     }
+    recvThread=NULL;
     
 }
 
@@ -76,7 +79,7 @@ int SOCK_Msg_Flow::recv_data_thread()
 {
     int recvL=0;
     
-    printf("sockfd:%d",sockfd);
+    printf("th:sockfd:%d\n",sockfd);
     send_data((uint8_t*)">>>>>>>>>",8);
     while((recvL=recv(sockfd, buf, sizeof(buf), 0))>0)
     {

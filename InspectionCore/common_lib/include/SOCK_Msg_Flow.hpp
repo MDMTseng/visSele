@@ -25,7 +25,7 @@ class SOCK_Msg_Flow
     virtual int recv_data();
 
     virtual int recv_data_thread();
-    ~SOCK_Msg_Flow();
+    virtual ~SOCK_Msg_Flow();
 };
 
 #endif

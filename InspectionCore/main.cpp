@@ -20,6 +20,7 @@
 #include <stdexcept>
 
 #include <MicroInsp_FType.hpp>
+#include <Ext_Util_API.hpp>
 #include <lodepng.h>
 std::timed_mutex mainThreadLock;
 DatCH_WebSocket *websocket=NULL;
@@ -489,7 +490,8 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   acvImage tmp_buff;
   acvImage cacheImage;
   acvImage dataSend_buff;
-  MicroInsp_FType *mift;
+  MicroInsp_FType *mift=NULL;
+  Ext_Util_API *exApi=NULL;
 
   bool checkTL(const char *TL,const BPG_data *dat)
   {
@@ -508,8 +510,19 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
       this->self = self;
       cacheImage.ReSize(1,1);
   }
+
+  
+  void delete_Ext_Util_API()
+  {
+    if(exApi)
+    {
+      delete exApi;
+      exApi=NULL;
+    }
+  }
   void delete_MicroInsp_FType()
   {
+      
     if(mift)
     {
       delete mift;
@@ -1201,6 +1214,41 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
           }
           else if(checkTL("PR",dat))
           {
+            DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+            void *target;
+            char *IP  = JFetch_STRING(json,"ip");
+            double *port_number  = JFetch_NUMBER(json,"port");
+            if(IP!=NULL && port_number!=NULL)
+            {
+              try{
+                delete_Ext_Util_API();
+                LOGI("clean Ext_Util_API....");
+                exApi=new Ext_Util_API(IP,*port_number);
+                LOGI("new Ext_Util_API OK...");
+                exApi->start_RECV_Thread();
+                session_ACK=true;
+                LOGI("start_RECV_Thread...");
+              }
+              catch(int errN)
+              {
+                sprintf(err_str,"[PR] Ext_Util_API init error:%d",errN);
+              }
+            }
+            else if( exApi && IP==NULL && port_number==NULL)
+            {
+              delete_Ext_Util_API();
+              session_ACK=true;
+            }
+            else
+            {
+              sprintf(err_str,"[PR] ip:%p port:%p",IP,port_number);
+            }
+            
+          }
+          else if(checkTL("PD",dat))
+          {
             
             DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -1675,12 +1723,12 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
       break;
       case websock_data::eventType::CLOSING:
 
-          printf("CLOSING peer %s:%d\n",
-            inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
-          cameraFeedTrigger=false;
-          camera->TriggerMode(1);
-          cb->delete_MicroInsp_FType();
-
+        printf("CLOSING peer %s:%d\n",
+        inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
+        cameraFeedTrigger=false;
+        camera->TriggerMode(1);
+        cb->delete_MicroInsp_FType();
+        cb->delete_Ext_Util_API();
           
       break;
       default:
