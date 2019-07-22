@@ -441,7 +441,7 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
 
     for ( int i=0 ; i<roughSearchCount ; i++)
     {
-        int idx=(startIdx+i*roughSearchSampleRate)%signature.size();
+        int idx=(startIdx+i*roughSearchSampleRate);
         float error = SignatureMatchingError(signature, idx, tar_signature, roughSearchSampleRate);
         if (minErr > error)
         {
