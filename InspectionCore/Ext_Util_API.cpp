@@ -13,7 +13,7 @@ int Ext_Util_API::recv_data_thread()
     int jsonBuff_w=0;
     printf("sockfd:%d",sockfd);
     //send_data((uint8_t*)">>>>>>>>>",8);
-    while((recvL=recv(sockfd, buf, bufL, 0))>0)
+    while((recvL=recv(sockfd, (char*)buf, bufL, 0))>0)
     {
         //printf("\n%d\n",recvL);
         for(int i=0;i<recvL;i++)

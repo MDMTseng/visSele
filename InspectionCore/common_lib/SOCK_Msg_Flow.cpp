@@ -13,7 +13,10 @@
 #include <stdlib.h> 
 #include <errno.h> 
 #include <string.h> 
+#ifdef __WIN32__
+#else
 #include <netdb.h> 
+#endif
 
 #include <assert.h>
 #include <stdint.h> /* uint8_t */
@@ -83,7 +86,7 @@ int SOCK_Msg_Flow::send_data(uint8_t *data,int len)
 
 int SOCK_Msg_Flow::recv_data()
 {
-    return recv(sockfd, buf, bufL, 0);
+    return recv(sockfd, (char*)buf, bufL, 0);
 }
 
 int SOCK_Msg_Flow::getfd()
@@ -97,7 +100,7 @@ int SOCK_Msg_Flow::recv_data_thread()
     
     printf("th:sockfd:%d\n",sockfd);
     send_data((uint8_t*)">>>>>>>>>",8);
-    while((recvL=recv(sockfd, buf, bufL, 0))>0)
+    while((recvL=recv(sockfd, (char*)buf, bufL, 0))>0)
     {
         printf("\n%d\n",recvL);
         for(int i=0;i<recvL;i++)
