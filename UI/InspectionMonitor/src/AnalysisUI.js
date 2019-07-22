@@ -911,7 +911,7 @@ class APP_ANALYSIS_MODE extends React.Component{
               downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
             }} />
             <hr style={{width:"80%"}}/>
-            <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec} />
+            <RelatedUsageInfo inspectionRecGroup_Generate={this.inspectionRecGroup_Generate} fullStream2Tag={this.state.inspectionRec} measureList={measureList} groupInterval={this.state.groupInterval}/>
             <hr style={{width:"80%"}}/>
         </div>
 
@@ -927,19 +927,34 @@ class APP_ANALYSIS_MODE extends React.Component{
   }
 }
 class MyTag extends React.Component {
-    state = { checked: true };
+    constructor(props) {
+        super(props);
+        this.state = {
+            checked: true,
+            groupInterval:10*60*1000,
+            measureList:{},
+            inspectionRecGroup_Generate:{}
+        };
+        // this.handleClick = this.handleClick.bind(this);
+    }
+    componentWillReceiveProps(nextProps) {
+        // if(this.props===nextProps)return;
+        this.setState({...this.state,...nextProps});
+        console.log("componentWillReceiveProps",nextProps);
 
+    }
     handleChange = checked => {
         this.setState({ checked });
-
+        this.updateChart();
     };
+    updateChart(){
+        let inspectionRecGroup = this.inspectionRecGroup_Generate(this.state.fullStream2Tag,this.state.groupInterval,this.state.measureList);
 
-// DB_Query.defFileQuery("","",{"_id":0,"DefineFile.name":1,"DefineFile.tag":1,"createdAt":1}).then((q)=>{
-    //         this.setState({"DefFileInfo":q});
-    //     console.log("[O]",q);
-    // }).catch((e)=> {
-    //     console.log("[X]",e);
-    // });
+    }
+    appendTagtitle(props) {
+        return <h1>{props.name}</h1>;
+    }
+
     render() {
         return (
             <CheckableTag {...this.props} checked={this.state.checked} onChange={this.handleChange} />
@@ -952,7 +967,10 @@ class RelatedUsageInfo extends React.Component{
     constructor(props){
         super(props);
         this.state={
-            fullStream2Tag:[]
+            fullStream2Tag:[],
+            groupInterval:10*60*1000,
+            measureList:{},
+            inspectionRecGroup_Generate:{}
             // DefFileInfo:[],
         };
         // this.handleChange = this.handleChange.bind(this);
@@ -970,33 +988,43 @@ class RelatedUsageInfo extends React.Component{
     handleTagChange(){
         console.log("handleTagChange");
     }
-    updateChart(){
-        // let inspectionRecGroup = this.inspectionRecGroup_Generate(this.state.fullStream2Tag,this.state.groupInterval,measureList);
 
-    }
     render() {
+        function MyConstructor(data, transport) {
+            this.data = data;
+            transport.on('data', ( function () {
+                alert(this.data);
+            }).bind(this) );
+        }
         console.log("this.state.fullStream2Tag",this.state.fullStream2Tag);
         const uniSet2 = new Set();
-        uniSet2.add("judgeReport Tag");
+        // uniSet2.add("judgeReport Tag");
         if(this.state.fullStream2Tag.length>0){
             this.state.fullStream2Tag.forEach(function(e,i,a){
-                console.log("forEach",e.tag);
-                uniSet2.add(e.tag);
+                console.log("e.tag=",e.tag);
+                let tagSplit=e.tag.split(",");
+                console.log("e.tag.split=",e.tagSplit);
+                tagSplit.forEach(function(e2,i2,a2){
+                    console.log("forEach2",e2);
+                    if(e2.length!=0)
+                    uniSet2.add(e2);
+                });
+
             });
         }
         return (
             <div>
                 <h6 style={{ marginRight: 8, display: 'inline' }}>Uni Categories:</h6>
-                {Array.from(uniSet2).map(function(item, index, array) {
+
+                {Array.from(uniSet2).map((item, index, array)=>{
                     return (
-                        <MyTag key={index+""+item}>
+                        <MyTag key={index+""+item} inspectionRecGroup_Generate={this.state.inspectionRecGroup_Generate} measureList={this.state.measureList} groupInterval={this.state.groupInterval} >
                             {item}
                         </MyTag>
                     );
 
                 })
                 }
-
             </div>
         );
 
