@@ -70,7 +70,6 @@ def start_tcp_serverX(host, port):
                 print('exception happened...',e)
                 break
 
-            
             if 'type' not in msg:
                 break
             
@@ -139,6 +138,11 @@ def chessBoardCalib(chessBoardDim,image_path):
             #cv2.waitKey(500)
     #cv2.destroyAllWindows()
     # print( gray.shape[::-1])
+
+    src_pts = np.float32(imgpoints[0]).reshape(-1,1,2)
+    dst_pts = np.float32(objpoints[0]).reshape(-1,1,3)
+    H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+    print(H,mask)
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
     return {"ret":ret, "mtx":mtx, "dist":dist}#, "rvecs":rvecs, "tvecs":tvecs}
     
@@ -156,10 +160,21 @@ def chessBoardCalibResFormat(calibRes):
     return calibRes
 
 
-start_tcp_serverX("", 1229)
+#start_tcp_serverX("", 1229)
 
-# calibRes=chessBoardCalibResFormat(chessBoardCalib((),'*.jpg'))
-# print(calibRes)
+calibRes=chessBoardCalib((6,9),'*.png')
+print(calibRes)
+
+img = cv2.imread(glob.glob('*.png')[0])
+h,  w = img.shape[:2]
+newcameramtx, roi=cv2.getOptimalNewCameraMatrix(calibRes['mtx'],calibRes['dist'],(w,h),1,(w,h))
+dst = cv2.undistort(img, calibRes['mtx'],calibRes['dist'], None, newcameramtx)
+#dst = cv2.warpPerspective(img,newcameramtx,img.shape[:2])
+cv2.imshow('img',dst)
+cv2.waitKey()
+
+
+518
 # calibRes_json = json.dumps(calibRes)
 # outputfilename="mapx.json"
 # with open(outputfilename, 'w') as outfile:
