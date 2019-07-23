@@ -29,3 +29,4 @@ PCB/CAMOutputs
 visSele
 UI/InspectionMonitor/package-lock.json
 UI/InspectionMonitor/build/
+*.code-workspace

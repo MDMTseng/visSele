@@ -27,7 +27,8 @@ import ReactResizeDetector from 'react-resize-detector';
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import {INSPECTION_STATUS} from './UTIL/BPG_Protocol';
-
+import Tag  from 'antd/lib/tag';
+const { CheckableTag } = Tag;
 
 const { RangePicker } = DatePicker;
 const { Title, Paragraph, Text } = Typography;
@@ -243,6 +244,14 @@ function InspectionRecordGroup_AppendCPK(InspRecGroup,defInspRange)
   })
 }
 
+
+function inspectionRecGroup_Generate(inspectionRec,groupInterval,measureList)
+{
+    let inspectionRecGroup = InspectionRecordGrouping(inspectionRec,groupInterval);
+    InspectionRecordGroup_AppendCPK(inspectionRecGroup,measureList);
+    return inspectionRecGroup;
+}
+
 const MEASURERSULTRESION=
 {
   NA:"NA",
@@ -269,6 +278,10 @@ export const OK_NG_BOX_COLOR_TEXT = {
 function newDate(time_ms) {
   return moment(time_ms).toDate();
 }
+
+
+
+
 class ControlChart extends React.Component {
   constructor(props) {
       super(props);
@@ -291,7 +304,7 @@ class ControlChart extends React.Component {
                 ]},
               bezierCurve : false,
               options: {
-                  responsive: true,
+
                   scales: {
                       xAxes: [
                         {
@@ -582,7 +595,7 @@ class InspRecStream
 {
   constructor(){
     this.reset();
-    this.newFeedCallBack=(newStream,fullStream)=>console.log(newStream,fullStream);
+    this.newFeedCallBack=(newStream,fullStream)=>console.log("newFeedCallBack=>",newStream,fullStream);
     this.liveFeedMode=false;
   }
   
@@ -608,7 +621,7 @@ class InspRecStream
   {
     this.resetStreamInfo();
     this.defFile=JSON.parse(JSON.stringify(defFile));
-    
+    console.log("setDefFile=",defFile);
   }
 
   newStreamFeed(inspectionRec)
@@ -682,7 +695,7 @@ class InspRecStream
     {
       maxResults=10;
     }
-    console.log(timeRange);
+    console.log("timeRange="+timeRange);
     DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],maxResults)
     .then((queryResult)=>{
       let inspectionRec = queryResult.map(res=>res.InspectionData[0]);
@@ -732,9 +745,10 @@ class APP_ANALYSIS_MODE extends React.Component{
     this.ec_canvas = null;
     this.state={
       defFileSearchName:"",
-      dateRange:[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))],
+      dateRange:[moment(Date_addDay(new Date(),-60)), moment(Date_addDay(new Date(),-30))],
       displayRange:[moment(0), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
+        inspectionRec_TagFiltered:[],
       inspectionRecGroup:[],
       groupInterval:10*60*1000,//10 mins
       liveFeedMode:false
@@ -764,13 +778,6 @@ class APP_ANALYSIS_MODE extends React.Component{
     return this.stateUpdate({liveFeedMode:enable});
   }
 
-
-  inspectionRecGroup_Generate(inspectionRec,groupInterval,measureList)
-  {
-    let inspectionRecGroup = InspectionRecordGrouping(inspectionRec,groupInterval);
-    InspectionRecordGroup_AppendCPK(inspectionRecGroup,measureList);
-    return inspectionRecGroup;
-  }
 
   render() {
     if(this.props.defFile===undefined)return null;
@@ -842,9 +849,9 @@ class APP_ANALYSIS_MODE extends React.Component{
             let day_base=moment(t._d).startOf('date')._d.getTime();
             console.log(mo-day_base)
             let groupInterval = mo-day_base;
-            
+            console.log("TimePicker",this.state.inspectionRec_TagFiltered);
             let inspectionRecGroup =
-              this.inspectionRecGroup_Generate(this.state.inspectionRec ,groupInterval,measureList);
+              inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,measureList);
             this.stateUpdate({inspectionRecGroup,groupInterval});
         }}/>
       ]
@@ -871,6 +878,7 @@ class APP_ANALYSIS_MODE extends React.Component{
         
         {HEADER}
         <div className="s height12">
+
           <RangePicker key="RP"
             defaultValue={this.state.dateRange} 
             onChange={(date)=>this.stateUpdate({dateRange:date})}/>
@@ -882,14 +890,16 @@ class APP_ANALYSIS_MODE extends React.Component{
                   if(newStream.length>0)
                   {
                     let latestTime=newStream[newStream.length-1].time_ms;
-                    
                     let inspectionRecGroup =
-                      this.inspectionRecGroup_Generate(fullStream,this.state.groupInterval,measureList);
+                      inspectionRecGroup_Generate(fullStream,this.state.groupInterval,measureList);
                     this.stateUpdate({
                       inspectionRec:fullStream,
                       inspectionRecGroup:inspectionRecGroup,
+                        inspectionRec_TagFiltered:fullStream,
                       displayRange:[this.state.displayRange[0],moment(latestTime+1000)]
                     });
+
+                    console.log("fullStream=",fullStream);
                   }
                 }
               this.recStream.queryInspRec(dateRange);
@@ -903,6 +913,30 @@ class APP_ANALYSIS_MODE extends React.Component{
               //copyStringToClipboard(str);
               downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
             }} />
+            <hr style={{width:"80%"}}/>
+            <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec}
+              onTagStateChange={(tagState)=>{
+
+                  let selectedTrueTags = Object.keys(tagState).filter(key=>tagState[key]);
+
+                  var filterTagsBoolean = this.state.inspectionRec.filter(function(item, index, array){
+                      let tArr=item.tag.split(",");
+                      return selectedTrueTags.some((item)=>tArr.includes(item));
+                      //return selectedTrueTags.every((item)=>tArr.includes(item));
+                  });
+
+
+                  let inspectionRecGroup =
+                      inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,measureList);
+                  console.log(filterTagsBoolean,inspectionRecGroup);
+                  this.stateUpdate({
+                      inspectionRecGroup:inspectionRecGroup,
+                      inspectionRec_TagFiltered:filterTagsBoolean
+                  });
+
+
+              }}/>
+            <hr style={{width:"80%"}}/>
         </div>
 
         {graphCtrlUI}
@@ -916,6 +950,185 @@ class APP_ANALYSIS_MODE extends React.Component{
     );
   }
 }
+function updateChart(fullStream2Tag,tagName,checked){
+    console.log("updateChart=",tagName,checked);
+    // this.inspectionRecGroup_Generate(fullStream2Tag,this.state.groupInterval,measureList);
+
+}
+class MyTag extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = {
+            checked: true
+
+        };
+        console.log("New");
+        // this.handleClick = this.handleClick.bind(this);
+    }
+    shouldComponentUpdate(nextProps, nextState) {
+        console.log("shouldComponentUpdate",nextProps,nextState);
+        if(nextProps.tagName===this.props.tagName)
+        {
+            updateChart(nextProps.fullStream2Tag,nextProps.tagName,nextState.checked);
+        }
+        return true;
+    }
+    componentWillReceiveProps(nextProps) {
+        //console.log(nextProps);
+        // if(this.props===nextProps)return;
+        //this.setState({...this.state,...nextProps});
+        //console.log("componentWillReceiveProps",nextProps);
+    }
+    handleChange2 = checked => {
+        this.setState({ checked });
+        console.log("handleChange=",this.props.tagName,checked);
+        //updateChart(this.props.key,checked);
+        this.props.handleChange(checked);
+    };
+
+    appendTagtitle(props) {
+        return <h1>{props.name}</h1>;
+    }
+
+    render() {
+        console.log("handleChange=",this.props.tagName,this.state.checked);
+        return (
+            <CheckableTag {...this.props} checked={this.state.checked} onChange={this.handleChange2} />
+        );
+    }
+}
+class RelatedUsageInfo extends React.Component{
+//http://hyv.decade.tw:8080/query/deffile?name=BOS-LT13BH3421&
+// http://localhost:3000/hyvision_monitor/0.0.0/?v=0&hash=9fa42a5e990e4da632070e95daf14ec50de8a112&name=BOS-LT13BH3421
+    constructor(props){
+        super(props);
+        this.state={
+            tags:{
+                //"name":false
+            }
+            // DefFileInfo:[],
+        };
+
+        this.checkInspectionRec=undefined;
+        // this.handleChange = this.handleChange.bind(this);
+    }
+
+    componentDidMount(){
+
+    }
+    componentWillReceiveProps(nextProps) {
+        if(this.checkInspectionRec===nextProps.fullStream2Tag)
+        {
+            return;
+        }
+        this.checkInspectionRec=nextProps.fullStream2Tag;
+        console.log("props.fullStream2Tag",nextProps.fullStream2Tag);
+        const uniSet2 = new Set();
+        // uniSet2.add("judgeReport Tag");
+        if(nextProps.fullStream2Tag.length>0){
+            nextProps.fullStream2Tag.forEach(function(e,i,a){
+                console.log("e.tag=",e.tag);
+                let tagSplit=e.tag.split(",");
+                console.log("e.tag.split=",e.tagSplit);
+                tagSplit.forEach(function(e2,i2,a2){
+                    console.log("forEach2",e2);
+                    if(e2.length!=0)
+                        uniSet2.add(e2);
+                });
+            });
+            let tags2={};
+            Array.from(uniSet2).forEach(function(key){
+                tags2[key]=true;
+            });
+
+            this.setState( {tags:tags2});
+
+            this.props.onTagStateChange(tags2);
+        }
+    }
+    handleTagChange(){
+        console.log("handleTagChange");
+    }
+
+    getDerivedStateFromProps(props, state)
+    {
+        console.log("props.fullStream2Tag",props.fullStream2Tag);
+        const uniSet2 = new Set();
+        // uniSet2.add("judgeReport Tag");
+        if(props.fullStream2Tag.length>0){
+            props.fullStream2Tag.forEach(function(e,i,a){
+                console.log("e.tag=",e.tag);
+                let tagSplit=e.tag.split(",");
+                console.log("e.tag.split=",e.tagSplit);
+                tagSplit.forEach(function(e2,i2,a2){
+                    console.log("forEach2",e2);
+                    if(e2.length!=0)
+                        uniSet2.add(e2);
+                });
+            });
+            let tags2={};
+            Array.from(uniSet2).forEach(function(key){
+                tags2[key]=true;
+            });
+
+            return {tags:tags2};
+
+        }
+        return null;
+    }
+
+    handleTagChange = (key,onoff) =>
+    {
+        let tags2={...this.state.tags};
+        tags2[key]=onoff;
+        this.props.onTagStateChange(tags2);
+        this.setState( {tags:tags2});
+    }
+
+    render() {
+        function MyConstructor(data, transport) {
+            this.data = data;
+            transport.on('data', ( function () {
+                alert(this.data);
+            }).bind(this) );
+        }
+        console.log("this.state.tags",this.state.tags);
+
+        return (
+            <div>
+                <h6 style={{ marginRight: 8, display: 'inline' }}>Uni Categories:</h6>
+                {Object.keys(this.state.tags).map((key, index, array)=>{
+
+                    //this.state.tags[key]
+                    console.log("Array.from(uniSet2).map=",index+"="+key);
+                    return (
+                        <MyTag tagIndex={index} tagName={key} key={key} handleChange={
+                            (onoff)=>this.handleTagChange(key,onoff)}>
+                            {key}
+                        </MyTag>
+                    );
+                })
+                }
+            </div>
+        );
+
+    }
 
 
+}
+// function getDef(q_info) {
+//     let result
+//     console.log("q_info",q_info);
+//     DB_Query.defFileQuery(q_info.name,q_info.hash).
+//     then((q)=>{
+//         if(q.length>0){
+//
+//             result=q;
+//         }else{
+//             console.log("[X]No result.");
+//         }
+//
+//     });
+//     return result;
+// }
 export default APP_ANALYSIS_MODE;

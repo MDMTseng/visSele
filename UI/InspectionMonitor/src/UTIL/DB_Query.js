@@ -10,6 +10,7 @@ function defFileQuery(name,featureSet_sha1,projection)
     
     if(name!==undefined)
         url+="&name="+name;
+
     if(featureSet_sha1!==undefined)
         url+="&featureSet_sha1="+featureSet_sha1;
     
@@ -46,6 +47,10 @@ function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100)
             "InspectionData.judgeReports.id":1,
             "InspectionData.judgeReports.value":1,
             "InspectionData.judgeReports.status":1,
+            
+            "createdAt":1,
+            "updatedAt":1,
+            "InspectionData.tag":1
             });
     }
     else{
