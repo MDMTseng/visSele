@@ -7,6 +7,7 @@
 #else
 #include <netinet/in.h> /*htons*/
 #endif
+#include <mutex>
 
 
 class SOCK_Msg_Flow
@@ -29,6 +30,44 @@ class SOCK_Msg_Flow
 
     virtual int recv_data_thread();
     virtual ~SOCK_Msg_Flow();
+};
+
+
+class json_seg_parser
+{
+    protected:
+    char pch;
+    int jsonInStrState;
+    int jsonCurlyB_C;
+    int jsonSquareB_C;
+
+    public:
+    json_seg_parser();
+    void reset();
+    int newChar(char ch);
+};
+
+
+class SOCK_JSON_Flow:public SOCK_Msg_Flow
+{
+    protected:
+    json_seg_parser jsp;
+    char jsonBuff[1024];
+    char errorLock;
+    public:
+
+    std::timed_mutex syncLock;
+
+    SOCK_JSON_Flow(char *host,int port) throw(int);
+
+    int recv_data_thread();
+
+
+    int cmd_cameraCalib(char* img_path, int board_w, int board_h);
+
+    char* SYNC_cmd_cameraCalib(char* img_path, int board_w, int board_h);
+
+    ~SOCK_JSON_Flow();
 };
 
 #endif

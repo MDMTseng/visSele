@@ -859,15 +859,12 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON * jobj)
     {
       searchPoint.data.anglefollow.angleDeg=
        *JFetEx_NUMBER(jobj,"angleDeg");
-
       searchPoint.data.anglefollow.target_id=(int)
        *JFetEx_NUMBER(jobj,"ref[0].id");
-      
       searchPoint.data.anglefollow.position.X=
        *JFetEx_NUMBER(jobj,"pt1.x");
       searchPoint.data.anglefollow.position.Y=
        *JFetEx_NUMBER(jobj,"pt1.y");
-
 
       LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
       searchPoint.data.anglefollow.position.X,
