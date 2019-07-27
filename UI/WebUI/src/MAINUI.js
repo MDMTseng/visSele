@@ -404,7 +404,7 @@ class APPMain extends React.Component{
               <AntButton key="____" 
                 onClick={()=>{
                   new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND(this.props.WS_ID,"PR",0,
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
                     {ip:"192.168.2.2",port:5213},
                     undefined,{resolve,reject});
                     //setTimeout(()=>reject("Timeout"),1000)

@@ -196,6 +196,12 @@ SOCK_JSON_Flow::SOCK_JSON_Flow(char *host,int port) throw(int):
 }
 
 
+int SOCK_JSON_Flow::recv_json( char* json_str, int json_strL)
+{
+
+    printf("-----%s\n",json_str);
+}
+
 int SOCK_JSON_Flow::recv_data_thread()
 {
     int recvL=0;
@@ -227,7 +233,7 @@ int SOCK_JSON_Flow::recv_data_thread()
                 }
                 else
                     jsonBuff[jsonBuff_w++]='\0';
-                printf("-----%s\n",jsonBuff);
+                recv_json(jsonBuff,jsonBuff_w);
                 
                 syncLock.unlock();
             }

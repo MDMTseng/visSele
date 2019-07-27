@@ -1621,6 +1621,13 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     BPG_protocol->SendData(datCH_BPG);
 
     
+    if(cb->mift)
+    {
+        char buffx[100];
+        int len = sprintf(buffx,"{\"type\":\"cameraCalib\"}");
+        cb->mift->send_data((uint8_t*)buffx,len);
+    }
+    
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
     if(cb->cameraFeedTrigger)

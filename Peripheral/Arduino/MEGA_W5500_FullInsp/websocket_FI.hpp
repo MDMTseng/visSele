@@ -14,7 +14,9 @@ class Websocket_FI:public Websocket_Server{
     if (MessageL == 0)
     {
       char *tmpX = (char*)send_rsp+200;
+      recv_cmd[cmdL]='\0';
       strcpy(tmpX, (char*)recv_cmd);
+      Serial.println(tmpX);
       MessageL = sprintf( (char*)send_rsp, "UNKNOWN:%s",tmpX);
     }
     return MessageL;

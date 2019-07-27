@@ -43,8 +43,8 @@ class json_seg_parser
 
     public:
     json_seg_parser();
-    void reset();
-    int newChar(char ch);
+    virtual void reset();
+    virtual int newChar(char ch);
 };
 
 
@@ -60,12 +60,12 @@ class SOCK_JSON_Flow:public SOCK_Msg_Flow
 
     SOCK_JSON_Flow(char *host,int port) throw(int);
 
-    int recv_data_thread();
+    virtual int recv_data_thread();
+    virtual int recv_json( char* json_str, int json_strL);
 
+    virtual int cmd_cameraCalib(char* img_path, int board_w, int board_h);
 
-    int cmd_cameraCalib(char* img_path, int board_w, int board_h);
-
-    char* SYNC_cmd_cameraCalib(char* img_path, int board_w, int board_h);
+    virtual char* SYNC_cmd_cameraCalib(char* img_path, int board_w, int board_h);
 
     ~SOCK_JSON_Flow();
 };
