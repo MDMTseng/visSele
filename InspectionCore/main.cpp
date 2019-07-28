@@ -1569,6 +1569,66 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
         const FeatureReport * report = matchingEng.GetReport();
 
+        int stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
+        if(report->type==FeatureReport::binary_processing_group)
+        {
+            vector<const FeatureReport*> &reports = 
+            *(report->data.binary_processing_group.reports);
+            if(reports.size()==1 && reports[0]->type==FeatureReport::sig360_circle_line)
+            {
+                vector<FeatureReport_sig360_circle_line_single> &srep=
+                    *(reports[0]->data.sig360_circle_line.reports);
+                
+                int centerIdx=-1;
+                float min_dist=99999999;
+
+                for(int k=0;k<srep.size();k++)
+                {
+                    float dist = 
+                        abs(srep[k].Center.X-capImg.GetWidth()/2)+
+                        abs(srep[k].Center.Y-capImg.GetHeight()/2);
+                    
+                    if(min_dist>dist)
+                    {
+                        centerIdx=k;
+                        min_dist=dist;
+                    }
+                }
+
+                if(centerIdx!=-1)
+                {
+                    stat=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+                    vector<FeatureReport_judgeReport> &jrep= *(srep[centerIdx].judgeReports);
+
+                    for(int k=0;k<jrep.size();k++)
+                    {
+                        if(jrep[k].status==FeatureReport_sig360_circle_line_single::STATUS_NA)
+                        {
+                            stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
+                            break;
+                        }
+                        if(jrep[k].status==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+                        {
+                            stat=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+                        }
+                    }
+                }
+
+            }
+
+
+        }
+        
+        if(cb->mift)
+        {
+            char buffx[100];
+            int len = sprintf(buffx,"{\"type\":\"inspRep\",\"idx\":1,\"status\":%d}",stat);
+            cb->mift->send_data((uint8_t*)buffx,len);
+        }
+    
+
+
+
         if(report!=NULL)
         {
           cJSON* jobj = matchingEng.FeatureReport2Json(report);
@@ -1620,14 +1680,6 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     datCH_BPG.data.p_BPG_data=&bpg_dat;
     BPG_protocol->SendData(datCH_BPG);
 
-    
-    if(cb->mift)
-    {
-        char buffx[100];
-        int len = sprintf(buffx,"{\"type\":\"cameraCalib\"}");
-        cb->mift->send_data((uint8_t*)buffx,len);
-    }
-    
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
     if(cb->cameraFeedTrigger)
