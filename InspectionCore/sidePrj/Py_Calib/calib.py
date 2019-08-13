@@ -377,27 +377,15 @@ def rotationMatrix(theta):
     return np.array(((c,-s,0), (s, c,0),(0,0,1)))
 
 
-def genProtoPakFloat(type2B,array2save):
-    
-    if len(type2B)!=2:
-        return None
-    headerArr =[]
-    headerArr.append( array('B', map(ord, type2B)) )
-    farr = array('d', np.hstack(array2save))
-    lenX = (farr.itemsize*len(farr)).to_bytes(8, byteorder="big", signed=False)
-    headerArr.append( array('B', lenX) )
-    headerArr.append( farr )
-    return headerArr
 
-
-def genProtoPakByte(type2B,array2save):
+def genProtoPakNum(type2B,array2save,array_type='B'):
     if len(type2B)!=2:
         return None
     headerArr =[]
     headerArr.append( array('B', map(ord, type2B)) )
     if(isinstance(array2save, str)):
         array2save = map(ord, array2save)
-    farr = array('B', np.hstack(array2save))
+    farr = array(array_type, np.hstack(array2save))
     lenX = (farr.itemsize*len(farr)).to_bytes(8, byteorder="big", signed=False)
     headerArr.append( array('B', lenX) )
     headerArr.append( farr )
@@ -569,19 +557,19 @@ def chessBoardCalibsss(image_path):
 
 
 
-    # for i in range(0, len(imgpoints)):
-    #     print(rvecs[i], tvecs[i])
-    #     img = cv2.imread(images_trusted[i])
-    #     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    #     width,height = gray.shape[::-1]
-    #     for j in range(0, len(imgpoints[i])):
-    #         x,y = imgpoints[i][j].ravel()
-    #         coord = objpoints[i][j]
-    #         cv2.circle(img,(x,y),3,255,-1)
-    #         cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-    #         cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-    #     cv2.imshow('img',img)
-    #     cv2.waitKey()
+    for i in range(0, len(imgpoints)):
+        print(rvecs[i], tvecs[i])
+        img = cv2.imread(images_trusted[i])
+        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        width,height = gray.shape[::-1]
+        for j in range(0, len(imgpoints[i])):
+            x,y = imgpoints[i][j].ravel()
+            coord = objpoints[i][j]
+            cv2.circle(img,(x,y),3,255,-1)
+            cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.imshow('img',img)
+        cv2.waitKey()
 
 
 
@@ -609,7 +597,7 @@ def chessBoardCalibsss(image_path):
 
     keepAlive=True
 
-    downSamp=100
+    downSamp=5
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
     while keepAlive:
         newcameramtx_=np.matmul(np.matrix(
@@ -662,12 +650,14 @@ def chessBoardCalibsss(image_path):
     #     np.hstack(mapy)
     # ])
 
-    output_file = open("mapx.bin", 'wb')
+    output_file = open("CalibInfo.bin", 'wb')
 
-    INFO = genProtoPakByte("IF", "INFO")
-    packArrX = genProtoPakFloat("MX",np.hstack(mapx))
-    packArrY = genProtoPakFloat("MY",np.hstack(mapy))
-    packArr = genProtoPakProtoPak("CM",INFO+packArrX+packArrY)
+    INFO = genProtoPakNum("IF", "INFO")
+    DIM = genProtoPakNum("DM", [imageSize[0],imageSize[1]],'L')
+    DIM_S = genProtoPakNum("DS", [dispSize[0],dispSize[1]],'L')
+    packArrX = genProtoPakNum("MX",np.hstack(mapx),'d')
+    packArrY = genProtoPakNum("MY",np.hstack(mapy),'d')
+    packArr = genProtoPakProtoPak("CM",INFO+DIM+DIM_S+packArrX+packArrY)
     for pack in packArr:
         pack.tofile(output_file)
     
