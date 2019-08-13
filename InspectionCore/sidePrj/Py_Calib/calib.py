@@ -597,7 +597,7 @@ def chessBoardCalibsss(image_path):
 
     keepAlive=True
 
-    downSamp=5
+    downSamp=1
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
     while keepAlive:
         newcameramtx_=np.matmul(np.matrix(
