@@ -859,6 +859,15 @@ bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma)
 acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam param)
 {
 
+    if(param.map)
+    {
+
+        float imgVec[2]={distortedVec.X,distortedVec.Y};
+        param.map->i2c(imgVec);
+        distortedVec.X=imgVec[0];
+        distortedVec.Y=imgVec[1];
+        return distortedVec;
+    }
     acv_XY v1 = acvVecSub(distortedVec,param.calibrationCenter);
     float R = hypot(v1.Y,v1.X)/param.RNormalFactor;
 
@@ -871,6 +880,14 @@ acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam
 acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param)//Still not perfect, there has some error for the conversion
 {
 
+    if(param.map)
+    {
+        float imgVec[2]={Vec.X,Vec.Y};
+        param.map->c2i(imgVec);
+        Vec.X=imgVec[0];
+        Vec.Y=imgVec[1];
+        return Vec;
+    }
     acv_XY v1 = acvVecSub(Vec,param.calibrationCenter);
     float R1 = hypot(v1.Y,v1.X)/param.RNormalFactor;
     float R2 = R1/param.K0;
@@ -888,4 +905,336 @@ acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param)//S
     float mult2 = mult/param.K0;//K0* r/r"
 
     return acvVecAdd(acvVecMult(v1,mult2),param.calibrationCenter);
+}
+
+acvCalibMap::acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH)
+{
+    
+    fw=fw_;
+    fh=fh_;
+    this->fullW=fullW;
+    this->fullH=fullW;
+    invMap=NULL;
+    int pixCount = fw*fh;
+    fwdMap=new float[fw*fh*2];
+    for(int i=0;i<pixCount;i++)
+    {
+        fwdMap[i*2]=(float)MX_data[i];
+        fwdMap[i*2+1]=(float)MY_data[i];
+    }
+
+    
+    int pa=4;
+    int detC=0;
+    float detSum=0;
+    for(int i=fh/pa;i<fh*(pa-1)/pa;i++)
+    {
+        for(int j=fw/pa;j<fw*(pa-1)/pa;j++)
+        {
+            float xyVec[4];
+            float det;
+            int ret = acvCalibMapUtil::map_vec(fwdMap,fw,fh,j,i,xyVec, &det);
+            if(ret==0)
+            {
+                detSum+=det;
+                detC++;
+            }
+        }
+    }
+    float aveDet = detSum/detC;
+    fmapScale=sqrt(aveDet);
+}
+void acvCalibMap::generateInvMap(int iw_,int ih_)
+{
+    invMap=generateExtInvMap(iw_,ih_);
+    iw=iw_;
+    ih=ih_;
+}
+
+float* acvCalibMap::generateExtInvMap(int iw_,int ih_)
+{
+    
+    float* _invMap=new float[iw_*ih_*2];
+
+    int missCount=0;
+    float errSum=0;
+
+    float mapSeed_row[2]={fw/2.0f,fh/2.0f};
+    for(int i=0;i<ih_;i++)
+    {
+        float mapSeed_ret[2]={mapSeed_row[0],mapSeed_row[1]};   
+        for(int j=0;j<iw_;j++)
+        {
+            int idx = i*iw_+j;
+            if(mapSeed_ret[0]!=mapSeed_ret[0])//NAN
+            {
+                mapSeed_ret[0]=fw/2.0f;
+                mapSeed_ret[1]=fh/2.0f;
+            }
+            float tarLoc[2]={(float)j,(float)i};
+            float error = acvCalibMapUtil::locateMapPosition(fwdMap,fw,fh,tarLoc[0],tarLoc[1],mapSeed_ret);
+            
+            if(j==0)
+            {
+                mapSeed_row[0]=mapSeed_ret[0];
+                mapSeed_row[1]=mapSeed_ret[1];
+            }
+            if(error>0.02 || error!=error){
+                _invMap[idx*2+1]=
+                _invMap[idx*2]=NAN;
+                missCount++;
+            }else{
+                errSum+=error;
+                _invMap[idx*2]=mapSeed_ret[0];
+                _invMap[idx*2+1]=mapSeed_ret[1];
+            }
+        }
+    }
+    return _invMap;
+}
+int acvCalibMap::fwdMapDownScale(int dscale_idx)
+{
+    if(dscale_idx<0)return -1;
+    if(dscale_idx==0)return 0;
+
+    int dscale=1<<dscale_idx;
+    int dfw=fw/dscale;
+    int dfh=fh/dscale;
+    float *dfwdMap=new float[dfw*dfh*2];
+    for(int di=0;di<dfh;di++)
+    {
+        int i = di*dscale;
+        for(int dj=0;dj<dfw;dj++)
+        {
+            int j = dj*dscale;
+            int didx=di*dfw+dj;
+            int idx=i*fw+j;
+            dfwdMap[didx*2]=fwdMap[idx*2];
+            dfwdMap[didx*2+1]=fwdMap[idx*2+1];
+        }
+    }
+    
+    delete fwdMap;
+    fwdMap=dfwdMap;
+    fw=dfw;
+    fh=dfh;
+    downScale*=dscale;
+
+    deleteInvMap();
+    return 0;
+}
+
+void acvCalibMap::deleteInvMap()
+{
+    if(invMap)
+    {
+        delete invMap;
+        invMap=NULL;
+    }
+}
+acvCalibMap::~acvCalibMap()
+{
+    deleteInvMap();
+    delete fwdMap;
+}
+
+int acvCalibMap::i2c(float coord[2],bool useInvMap)
+{
+    int ret;
+    if(invMap && useInvMap)
+    {
+        ret = acvCalibMapUtil::sample_vec(invMap,iw,ih,coord[0],coord[1],coord);
+    }
+    else
+    {
+        ret=0;
+        //printf("coord:%d %d\n",fw,fh);
+        float x=coord[0],y=coord[1];
+        coord[0]=coord[1]=0;
+        float error = acvCalibMapUtil::locateMapPosition(fwdMap,fw,fh,x,y,coord);
+        //printf("----: %f %f\n",coord[0],coord[1]);
+        if(error>0.01 || error!=error)
+            ret=-1;
+    }
+
+    if(ret == 0)
+    {
+        coord[0]*=downScale*fmapScale;
+        coord[1]*=downScale*fmapScale;
+    }
+    else
+    {
+        coord[0]=
+        coord[1]=NAN;
+    }
+    return ret;
+}
+
+int acvCalibMap::i2c(acv_XY &coord,bool useInvMap)
+{
+    float _coord[2]={coord.X,coord.Y};
+    int ret = i2c(_coord,useInvMap);
+    coord.X=_coord[0];
+    coord.Y=_coord[1];
+    return ret;
+}
+int acvCalibMap::c2i(float coord[2])
+{
+    
+    coord[0]/=downScale*fmapScale;
+    coord[1]/=downScale*fmapScale;
+    return acvCalibMapUtil::sample_vec(fwdMap,fw,fh,coord[0],coord[1],coord);
+}
+int acvCalibMap::c2i(acv_XY &coord)
+{
+    float _coord[2]={coord.X,coord.Y};
+    int ret = c2i(_coord);
+    coord.X=_coord[0];
+    coord.Y=_coord[1];
+    return ret;
+}
+
+
+
+
+
+float acvCalibMapUtil::NumRatio(float a,float b,float ratio)
+{
+    return a+ratio*(b-a);
+}
+
+int acvCalibMapUtil::sample_vec(float* map,int width,int height,float mapfX,float mapfY,float sampleXY[2])
+{
+    
+    sampleXY[0]=sampleXY[1]=NAN;
+    if(mapfX>width-2 || mapfY>height-2 || mapfX<0 || mapfY<0)
+    {
+
+        return -1;
+    }
+    
+    int mapX=mapfX;
+    int mapY=mapfY;
+
+    float ratioX=mapfX-mapX;
+    float ratioY=mapfY-mapY;
+
+    int idxLT = (mapY)*width+mapX;
+    int idxRT = (mapY)*width+mapX+1;
+    int idxLB = (mapY+1)*width+mapX;
+    int idxRB = (mapY+1)*width+mapX+1;
+    /*
+    LT  RT
+    
+    LB  RB
+    */
+    
+    float v1[2]={NumRatio(map[idxLT*2  ],map[idxRT*2  ],ratioX),
+                NumRatio(map[idxLT*2+1],map[idxRT*2+1],ratioX)};
+    float v2[2]={NumRatio(map[idxLB*2  ],map[idxRB*2  ],ratioX),
+                NumRatio(map[idxLB*2+1],map[idxRB*2+1],ratioX)};
+
+    sampleXY[0]=NumRatio(v1[0],v2[0],ratioY);
+    sampleXY[1]=NumRatio(v1[1],v2[1],ratioY);
+
+    return 0;
+}
+
+int acvCalibMapUtil::map_vec(float* map,int width,int height,float mapfX,float mapfY,float xyVec[4], float *opt_det)
+{
+    if(mapfX>width-2)mapfX=width-2;
+    if(mapfY>height-2)mapfY=height-2;
+    if(mapfX<0)mapfX=0;
+    if(mapfY<0)mapfY=0;
+    
+    int mapX=mapfX;
+    int mapY=mapfY;
+
+    float ratioX=mapfX-mapX;
+    float ratioY=mapfY-mapY;
+
+    int idxLT = (mapY)*width+mapX;
+    int idxRT = (mapY)*width+mapX+1;
+    int idxLB = (mapY+1)*width+mapX;
+    int idxRB = (mapY+1)*width+mapX+1;
+    /*
+    
+    LT  RT
+    
+    LB  RB
+    */
+    
+    float v1[2]={NumRatio(
+                    map[idxRT*2]-map[idxLT*2],
+                    map[idxRB*2]-map[idxLB*2],
+                    ratioX),
+                NumRatio(
+                    map[idxRT*2+1]-map[idxLT*2+1],
+                    map[idxRB*2+1]-map[idxLB*2+1],
+                    ratioX)};
+    float v2[2]={NumRatio(
+                    map[idxLB*2]-map[idxLT*2],
+                    map[idxRB*2]-map[idxRT*2],
+                    ratioY),
+                NumRatio(
+                    map[idxLB*2+1]-map[idxLT*2+1],
+                    map[idxRB*2+1]-map[idxRT*2+1],
+                    ratioY)};
+                    
+
+    // LOGI("%f  %f",v1[0],v1[1]);
+    // LOGI("%f  %f",v2[0],v2[1]);
+    float det = v1[0]*v2[1]-v1[1]*v2[0];
+    if(opt_det)*opt_det=det;
+    float invMat[4]={
+        v2[1]/det,-v1[1]/det,
+        -v2[0]/det, v1[0]/det
+    };
+    memcpy(xyVec,invMat,sizeof(invMat));
+    return 0;
+}
+
+float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float tar_x,float tar_y,float mapSeed_ret[2],float maxError,int iterC)
+{
+
+    float sampleXY[2];
+    float x=tar_x, y=tar_y;
+    float error = hypot(sampleXY[0]-x,sampleXY[1]-y);
+    for(int i=0;i<iterC;i++)
+    {
+
+
+        sample_vec(map,width,height,mapSeed_ret[0],mapSeed_ret[1],sampleXY);
+        error = hypot(sampleXY[0]-x,sampleXY[1]-y);
+
+        if(error<maxError)return  error;
+        if(error!=error)
+        {
+            mapSeed_ret[0]=
+            mapSeed_ret[1]=NAN;
+            return NAN;
+        }
+        // LOGI("mapSeed_ret:%f  %f",mapSeed_ret[0],mapSeed_ret[1]);
+        // LOGI("xy:%f  %f",x,y);
+        // LOGI("sample_vec:%f  %f",sampleXY[0],sampleXY[1]);
+        float diffXY[2]={
+            x-sampleXY[0],
+            y-sampleXY[1]
+        };
+
+        float xyVec[4];
+        
+        int ret= map_vec(map, width, height,mapSeed_ret[0],mapSeed_ret[1], xyVec);
+        // LOGI("%f  %f",xyVec[0],xyVec[1]);
+        // LOGI("%f  %f",xyVec[2],xyVec[3]);
+
+        
+        mapSeed_ret[0]+=diffXY[0]*xyVec[0]+diffXY[1]*xyVec[2];
+        mapSeed_ret[1]+=diffXY[0]*xyVec[1]+diffXY[1]*xyVec[3];
+    }
+
+    sample_vec(map,width,height,mapSeed_ret[0],mapSeed_ret[1],sampleXY);
+
+    error = hypot(sampleXY[0]-x,sampleXY[1]-y);
+    return error;
 }

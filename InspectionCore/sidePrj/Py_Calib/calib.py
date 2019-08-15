@@ -430,21 +430,13 @@ def chessBoardCalibsss(image_path):
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
         width,height = gray.shape[::-1]
 
-        corners = cv2.goodFeaturesToTrack(gray,3000,0.1,20,useHarrisDetector=True,k=0.04)
+        corners = cv2.goodFeaturesToTrack(gray,3000,0.01,50,useHarrisDetector=True,k=0.1)
         
-        corners_fine = cv2.cornerSubPix(gray,corners,(21,21),(-1,-1),criteria)
+        corners_fine = cv2.cornerSubPix(gray,corners,(51,51),(-1,-1),criteria)
 
         corners_fine = [x for x in corners_fine if pixToEdgeDist(x[0],width,height)>10]
 
 
-
-        # for j in range(0, len(corners_fine)):
-        #     loc = corners_fine[j][0]
-        #     x=int(loc[0])
-        #     y=int(loc[1])
-        #     cv2.circle(gray,(x,y),3,255,-1)
-        # cv2.imshow('gray',gray)
-        # cv2.waitKey(0)
 
 
         maxMeaningfulCoordCount=0
@@ -497,19 +489,19 @@ def chessBoardCalibsss(image_path):
 
     imageSize = gray.shape[::-1]
 
-    # #refine....
-    # for x in range(5):
-    #     thres = (4-x)/4+4 if x >2 else 10
-    #     objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres)
-    #     print(x," err:",err)
-    #     # src_pts = np.float32(imgpoints[0]).reshape(-1,1,2)
-    #     # dst_pts = np.float32(objpoints[0]).reshape(-1,1,2)
-    #     # print(src_pts,dst_pts)
-    #     # H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-    #     # print(H)
+    #refine....
+    for x in range(5):
+        thres = (4-x)/4+4 if x >2 else 10
+        objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres)
+        print(x," err:",err)
+        # src_pts = np.float32(imgpoints[0]).reshape(-1,1,2)
+        # dst_pts = np.float32(objpoints[0]).reshape(-1,1,2)
+        # print(src_pts,dst_pts)
+        # H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+        # print(H)
     
     # objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,1000)
-    # print(x," err:",err)
+    print(imgpoints)
 
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
@@ -557,19 +549,19 @@ def chessBoardCalibsss(image_path):
 
 
 
-    for i in range(0, len(imgpoints)):
-        print(rvecs[i], tvecs[i])
-        img = cv2.imread(images_trusted[i])
-        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-        width,height = gray.shape[::-1]
-        for j in range(0, len(imgpoints[i])):
-            x,y = imgpoints[i][j].ravel()
-            coord = objpoints[i][j]
-            cv2.circle(img,(x,y),3,255,-1)
-            cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-            cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.imshow('img',img)
-        cv2.waitKey()
+    # for i in range(0, len(imgpoints)):
+    #     print(rvecs[i], tvecs[i])
+    #     img = cv2.imread(images_trusted[i])
+    #     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    #     width,height = gray.shape[::-1]
+    #     for j in range(0, len(imgpoints[i])):
+    #         x,y = imgpoints[i][j].ravel()
+    #         coord = objpoints[i][j]
+    #         cv2.circle(img,(x,y),3,128,-1)
+    #         cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+    #         cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+    #     cv2.imshow('img',img)
+    #     cv2.waitKey()
 
 
 
@@ -588,16 +580,17 @@ def chessBoardCalibsss(image_path):
     coorOriginLoc = imgpoints[calibImg_idx][0][0]
     print(imageSize)
     
-    print("mtx:\n",mtx)
-    offsetX=30
-    offsetY=10
-    mult=30
+    print("mtx:\n",mtx," det:",math.sqrt(np.linalg.det(newcameramtx)))
+    offsetX=0
+
+    offsetY=imageSize[1]/math.sqrt(np.linalg.det(newcameramtx))
+    mult=10
 
     rotation=0*np.pi/180
 
     keepAlive=True
 
-    downSamp=1
+    downSamp=4
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
     while keepAlive:
         newcameramtx_=np.matmul(np.matrix(
@@ -617,7 +610,7 @@ def chessBoardCalibsss(image_path):
         else:
             mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,newcameramtx_,dispSize,5)
             dst = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
-        # print(tvecs[0])
+        print(mapx)
         
         
         cv2.imshow('img',dst)
@@ -670,7 +663,7 @@ def chessBoardCalibsss(image_path):
 #"{\"type\":\"cameraCalib\",\"pgID\":12442,\"img_path\":\"*.jpg\",\"board_dim\":[7,9]}"
 #start_tcp_serverX("", 1229)
 #fileConvert("*.jpg",".jpg",".png")
-chessBoardCalibsss('*.jpg')
+chessBoardCalibsss('*.BMP')
 
 # calibRes=chessBoardCalib((6,9),'*.jpg')
 # print(calibRes)

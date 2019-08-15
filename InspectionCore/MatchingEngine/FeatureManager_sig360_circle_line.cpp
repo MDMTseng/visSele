@@ -2206,6 +2206,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           .scale=1,
           .targetName=NULL,
       };
+      param.map->i2c(singleReport.Center);
+      
+
 
       singleReport.Center=acvVecMult(singleReport.Center,mmpp);
       singleReport.LTBound=acvVecMult(singleReport.LTBound,mmpp);

@@ -254,6 +254,80 @@ int interpolateSignData(std::vector<acv_XY> &signature,int start,int end)
 }
 
 
+bool acvContourExtract
+(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &contour)
+{
+    int ret=-1;
+    contour.resize(0);
+
+    int X,Y;
+    int startX,startY;
+    X=(int)ldata.LTBound.X;
+    Y=(int)ldata.LTBound.Y;
+    for(int j=X; j<(int)ldata.RBBound.X; j++)
+    {
+        _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
+        if(pix->_3Byte.Num==labelIdx)
+        {
+            X=j;
+            startX=j;
+            startY=Y;
+            ret=0;
+            break;
+        }
+    }
+    if(ret!=0)return false;
+
+
+    int preIdx=-1;
+    int _1stIdx=-1;
+    //0|1|2
+    //7|X|3
+    //6|5|4
+    int dir =3;//>
+    do {
+        acv_XY pt={(float)X-ldata.Center.X,(float)Y-ldata.Center.Y};
+        contour.push_back(pt);
+        BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
+        dir-=2;
+
+        /* code */
+    } while(X!=startX||Y!=startY);
+    return true;
+}
+
+bool acvContourCircleSignature(std::vector<acv_XY> &contour,std::vector<acv_XY> &signature)
+{
+    memset((void*)&(signature[0]),0,signature.size()*sizeof(signature[0]));
+
+    int preIdx=-1;
+    int _1stIdx=-1;
+    for(acv_XY pt :contour)
+    {
+        
+        float theta=acvFAtan2(pt.Y,pt.X);//-pi ~pi
+        //if(theta<0)theta+=2*M_PI;
+        int idx=round(signature.size()*theta/(2*M_PI));
+        if(idx<0)idx+=signature.size();
+        //if(idx>=signature.size())idx-=signature.size();
+        if(preIdx==-1)
+        {
+            _1stIdx=idx;
+            preIdx=idx;
+        }
+        float R=hypot(pt.Y,pt.X);
+        if(signature[idx].X<R)
+        {
+            signature[idx].X=R;
+            signature[idx].Y=theta;
+            interpolateSignData(signature,preIdx,idx);
+        }
+        preIdx=idx;
+    }
+    interpolateSignData(signature,_1stIdx,preIdx);
+    return true;
+
+}
 //signature X: magnitude Y:angle
 bool acvContourCircleSignature
 (acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature)

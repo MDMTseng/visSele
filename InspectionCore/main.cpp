@@ -78,11 +78,6 @@ int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst,size_t dstLen,uint8_t *src,size_t srcLen);
 
-
-
-
-
-
 int Save2PNG(uint8_t *data, int width, int height,int channelCount,const char* filePath)
 {
     // we're going to encode with a state rather than a convenient function, because enforcing a color type requires setting options
@@ -215,10 +210,11 @@ int SaveIMGFile(const char *filename, acvImage *img)
 
 }
 
-void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
+void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *map)
 {
   dst.ReSize(src.GetWidth()/downScale,src.GetHeight()/downScale);
 
+  LOGI("map=%p",map);
   for(int i=0;i<dst.GetHeight();i++)
   {
     int src_i = i*downScale;
@@ -226,19 +222,40 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale)
     {
       int RSum=0,GSum=0,BSum=0;
       int src_j = j*downScale;
-      for(int m=0;m<downScale;m++)
+
+      if(map)
       {
-        for(int n=0;n<downScale;n++)
+        float coord[]={(float)src_j,(float)src_i};
+        int ret = map->c2i(coord);
+        
+        if(ret==0)
         {
-          BSum+=src.CVector[src_i+m][(src_j+n)*3];
-          GSum+=src.CVector[src_i+m][(src_j+n)*3+1];
-          RSum+=src.CVector[src_i+m][(src_j+n)*3+2];
+            int x=round(coord[0]);
+            int y=round(coord[1]);
+            if(x>=0 && x<src.GetWidth() && y>=0 && y<src.GetHeight())
+            {
+                BSum+=src.CVector[y][x*3];
+                GSum+=src.CVector[y][x*3+1];
+                RSum+=src.CVector[y][x*3+2];
+            }
         }
       }
-      
-      BSum/=(downScale*downScale);
-      GSum/=(downScale*downScale);
-      RSum/=(downScale*downScale);
+      else
+      {
+        for(int m=0;m<downScale;m++)
+        {
+            for(int n=0;n<downScale;n++)
+            {
+            BSum+=src.CVector[src_i+m][(src_j+n)*3];
+            GSum+=src.CVector[src_i+m][(src_j+n)*3+1];
+            RSum+=src.CVector[src_i+m][(src_j+n)*3+2];
+            }
+        }
+        
+        BSum/=(downScale*downScale);
+        GSum/=(downScale*downScale);
+        RSum/=(downScale*downScale);
+      }
       dst.CVector[i][j*3+0]=BSum;
       dst.CVector[i][j*3+1]=GSum;
       dst.CVector[i][j*3+2]=RSum;
@@ -850,8 +867,12 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat=GenStrBPGData("IM", NULL);
             BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+
+            
+
+
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,param_default.map);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
             bpg_dat.callback=DatCH_BPG_acvImage_Send;
             
@@ -976,7 +997,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             bpg_dat=GenStrBPGData("IM", NULL);
             BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,param_default.map);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
             bpg_dat.callback=DatCH_BPG_acvImage_Send;
             bpg_dat.pgID=dat->pgID;
@@ -1154,7 +1175,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             bpg_dat=GenStrBPGData("IM", NULL);
             BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale);
+            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,param_default.map);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
             bpg_dat.callback=DatCH_BPG_acvImage_Send;
             bpg_dat.pgID=dat->pgID;
@@ -1705,7 +1726,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff,capImg,iminfo.scale);
+      ImageDownSampling(test1_buff,capImg,iminfo.scale,param_default.map);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
       bpg_dat.callback=DatCH_BPG_acvImage_Send;
       bpg_dat.pgID= cb->CI_pgID;
@@ -2083,19 +2104,19 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM)
   double *MY_data=(double *)MY_pak.data;
 
   
-  acvCalibMap *cm_x=new acvCalibMap(MX_data,MY_data,dimS[0],dimS[1]);
+  acvCalibMap *cm_x=new acvCalibMap(MX_data,MY_data,dimS[0],dimS[1],dim[0],dim[1]);
   //cm_x.generateInvMap(dim[0],dim[1]);
   for(int i=0;i<7;i++)
   {
-    float coord[]={10,3};
+    float coord[]={1017,  377};
     cm_x->i2c(coord);
     LOGI("i2c:={%f,%f}",coord[0],coord[1]);
     cm_x->c2i(coord);
     LOGI("c2i:={%f,%f}",coord[0],coord[1]);
-    cm_x->fwdMapDownScale(1);
+    //cm_x->fwdMapDownScale(1);
     //cm_x.generateInvMap(dim[0],dim[1]);
   }
-
+  //exit(0);
   return cm_x;
   
 }

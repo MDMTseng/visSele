@@ -496,7 +496,6 @@ static acvRadialDistortionParam calcCameraCalibration(acvImage &img)
     ldData[idxList[0].idx1].LTBound.Y=0;
     
 
-    int deadClock=100;
     bool do_update=true;
     while(do_update)
     {
