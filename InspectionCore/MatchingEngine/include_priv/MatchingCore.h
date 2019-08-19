@@ -17,7 +17,6 @@ void extractLabeledContourDataToContourGrid(
   acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,
   int grid_size,ContourGrid &edge_curve_grid,int scanline_skip,acvRadialDistortionParam param);
 
-acv_XY* findEndPoint(acv_Line line, int signees, std::vector<acv_XY> &points);
-
+ContourGrid::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourGrid::ptInfo> &points);
 void circleRefine(std::vector<ContourGrid::ptInfo> &pointsInRange,acv_CircleFit *circleF);
 #endif

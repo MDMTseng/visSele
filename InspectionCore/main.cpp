@@ -1411,7 +1411,11 @@ int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam param,int repeatTime)
 {
 
-  LOGI("================================");
+  LOGI("============w:%d h:%d====================",test1->GetWidth(),test1->GetHeight());
+  if(test1->GetWidth()*test1->GetHeight()==0)
+  {
+      return -1;
+  }
   clock_t t = clock();
   for(int i=0;i<repeatTime;i++)
   {

@@ -310,7 +310,12 @@ int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f,FeatureRepor
         return -2;
       }
       acv_LineFit line = (*report.detectedLines)[idx].line;
+      acv_XY eneg= acvVecRadialDistortionApply(line.end_neg,param);
+      acv_XY epos= acvVecRadialDistortionApply(line.end_pos,param);
+
+      acv_XY ppvec = acvVecNormalize(acvVecSub(eneg,epos));
       *vec = line.line.line_vec;
+      *vec = ppvec;
       return 0;
     }
     case SEARCH_POINT:
@@ -742,8 +747,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         acv_XY searchVec_norX = acvVecMult(searchVec_nor,stepX);
         int stepY=1;
         acv_XY searchVecY = acvVecMult(searchVec,stepY);
-
-
+        acv_Line line={searchVec_norX,searchStart};
         for(int j=0;j<width;j+=stepX,searchPt=acvVecAdd(searchPt,searchVec_norX))
         {
           acv_XY curPt = searchPt;
@@ -776,15 +780,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                   //if(EdgePointOpt(grayLevelImg,searchVec,tmp_pt,&ret_point_opt,&edgeResponse)==0)
                   {
                     //EdgePointOpt2(grayLevelImg,searchVec,retPt,3,thres,&retPt,&ret_rsp);
-                    float dist = acvDistance(retPt,searchPt);
+
+                    float dist = acvDistance(line,retPt);
                     if(nearestDist>dist)
                     {
                       nearestDist = dist;
                       nearestPt = retPt;
+                    //   LOGI("%04.2f %04.2f i:%04.2d x:%04.2f y:%04.2f |x:%04.2f y:%04.2f",
+                    //     dist,nearestDist,i,curPt.X,curPt.Y,searchVec_norX.X,searchVec_norX.Y);
                     }
-
-
-
                     break;
                   }
           
@@ -800,7 +804,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         if(nearestDist<10000)
         {
           float ret_rsp;
-          LOGV("nearestPt:%f %f",nearestPt.X,nearestPt.Y); 
+          LOGD("nearestPt:%f %f",nearestPt.X,nearestPt.Y); 
           rep.pt = acvVecRadialDistortionRemove(nearestPt,param);         
           rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
         }
@@ -1929,7 +1933,7 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   //curpoint = point -(GradTableL-1)*gVec/2
   gradVec = acvVecNormalize(gradVec);
 
-  
+  float subPixS=3;
   const int nM=range;
   acv_XY nvec = {X:gradVec.Y,Y:-gradVec.X};
   acv_XY nvecBM = acvVecMult(nvec,-(float)(nM-1)/2);
@@ -1940,17 +1944,19 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   curpoint = acvVecAdd(curpoint,point);
   acv_XY bkpoint = curpoint;
   curpoint = acvVecAdd(curpoint,nvecBM);
+
+  nvec=acvVecMult(nvec,1.0f/subPixS);
   for(int i=0;i<GradTableL;i++)
   {
     float ptn = 0;
     acv_XY tmpCurPt=curpoint;
-    for(int j=0;j<nM;j++)
+    for(int j=0;j<nM*subPixS;j++)
     {
       ptn+= acvUnsignedMap1Sampling(graylevelImg, tmpCurPt, 0);
       tmpCurPt = acvVecAdd(tmpCurPt,nvec);
     }
     //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
-    gradTable[i] = ptn/nM;
+    gradTable[i] = ptn/nM/subPixS;
 
     curpoint = acvVecAdd(curpoint,gradVec);
   }
@@ -2396,15 +2402,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           flip_f,
           s_intersectIdxs,s_points);
           
-        //LOGV("l-vec: %f %f l-anc:%f %f",line_cand.line_vec.X,line_cand.line_vec.Y,line_cand.line_anchor.X,line_cand.line_anchor.Y);
         LOGV("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
           MatchingMarginX,s_points.size(),initMatchingMargin);
 
        
         if(s_points.size()>5*4)
         {
-
-          
           //LOGV("Line adj:thres:%f",thres);
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
           int sptL=s_points.size();
@@ -2598,15 +2601,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         target_vec.X,target_vec.Y);
 
 
-        //acv_XY *end_pos=findEndPoint(line_cand, 1, s_points);
-        //acv_XY *end_neg=findEndPoint(line_cand, -1, s_points);
+        ContourGrid::ptInfo *end_pos=findEndPoint(line_cand, 1, s_points);
+        ContourGrid::ptInfo *end_neg=findEndPoint(line_cand, -1, s_points);
 
         acv_LineFit lf;
         lf.line=line_cand;
         lf.matching_pts=s_points.size();
         lf.s=sigma;
-        //if(end_pos)lf.end_pos=*end_pos;
-        //if(end_neg)lf.end_neg=*end_neg;
+        if(end_pos)lf.end_pos=end_pos->pt;
+        if(end_neg)lf.end_neg=end_neg->pt;
 
 
         LOGV("end_pos.X:%f end_pos.Y:%f end_neg.X:%f end_neg.Y:%f",
@@ -2626,8 +2629,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
           lr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
         }
-        lr.line.end_neg=acvVecMult(lr.line.end_neg,0);
-        lr.line.end_pos=acvVecMult(lr.line.end_pos,0);
+        
+        lr.line.end_neg=acvClosestPointOnLine(lr.line.end_neg, line_cand);
+        lr.line.end_pos=acvClosestPointOnLine(lr.line.end_pos, line_cand);
         detectedLines.push_back(lr);
       }
       // char strdd[100];
@@ -2807,7 +2811,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           detectedLines[j].line.end_neg = acvVecMult(detectedLines[j].line.end_neg,mmpp);
           detectedLines[j].line.end_pos = acvVecMult(detectedLines[j].line.end_pos,mmpp);
           detectedLines[j].line.line.line_anchor = acvVecMult(detectedLines[j].line.line.line_anchor,mmpp);
-          //detectedLines[i].line.line.line_vec = acvVecMult(detectedLines[i].line.line.line_vec,mmpp);
           detectedLines[j].line.s = detectedLines[j].line.s*mmpp;
         }
         for(int j=0;j<detectedCircles.size();j++)
