@@ -329,7 +329,7 @@ def genCornorsCoord(cornors):
         searchList=searchList[curSListL:len(searchList)]
 
         
-    return coordArr
+    return coordArr,mainVecInfo
 
 
 def pixToEdgeDist(loc,W,H):
@@ -451,6 +451,7 @@ def chessBoardCalibsss(image_path):
         return None
 
     images_trusted=[]
+    mainVecInfo_list=[]
     for fname in images:
 
         print("IMG:",fname)
@@ -479,9 +480,10 @@ def chessBoardCalibsss(image_path):
 
         maxMeaningfulCoordCount=0
         coord=[]
+        mainVecInfo=None
         for j in range(0,5):
 
-            new_coord = genCornorsCoord(corners_fine)
+            new_coord,_mainVecInfo = genCornorsCoord(corners_fine)
             meaningfulCoordCount=0
             for nc in new_coord:
                 if(nc!=None):
@@ -490,6 +492,8 @@ def chessBoardCalibsss(image_path):
             if(new_coord!=None and maxMeaningfulCoordCount<meaningfulCoordCount):
                 maxMeaningfulCoordCount=meaningfulCoordCount
                 coord=new_coord
+                mainVecInfo = _mainVecInfo
+        mainVecInfo_list.append(mainVecInfo)
 
 
         if(len(coord)==0):
@@ -513,16 +517,16 @@ def chessBoardCalibsss(image_path):
         images_trusted.append(fname)
         
 
-        for j in range(0, len(corners_trusted)):
-            loc = corners_trusted[j][0]
-            coord = coord_trusted[j]
-            x=int(loc[0])
-            y=int(loc[1])
-            cv2.circle(img,(x,y),3,255,-1)
-            cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-            cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.imshow('img',img)
-        cv2.waitKey()
+        # for j in range(0, len(corners_trusted)):
+        #     loc = corners_trusted[j][0]
+        #     coord = coord_trusted[j]
+        #     x=int(loc[0])
+        #     y=int(loc[1])
+        #     cv2.circle(img,(x,y),3,255,-1)
+        #     cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+        #     cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        # cv2.imshow('img',img)
+        # cv2.waitKey()
 
 
 
@@ -623,13 +627,13 @@ def chessBoardCalibsss(image_path):
     offsetX=0
 
     offsetY=imageSize[1]/math.sqrt(np.linalg.det(newcameramtx))
-    mult=10
+    mult=20
 
     rotation=0*np.pi/180
 
     keepAlive=True
 
-    downSamp=imageSize[0]//800
+    downSamp=imageSize[0]//500
     if(downSamp==0):
         downSamp=1
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
