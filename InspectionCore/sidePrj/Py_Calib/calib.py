@@ -254,13 +254,21 @@ def genCornorsCoord(cornors):
 
     mainVecInfo=None
     interCount=0
-    while mainVecInfo==None:
+    while True:
         interCount+=1
-        print("ERROR...")
         if(interCount>100):
             return None
         mainVecInfo = findMainVecInfo(cornors,random.randint(0,len(cornors)-1))
-
+        if(mainVecInfo==None):
+            print("ERROR...")
+        else:
+            vec1 = mainVecInfo['vec1']["vec"]
+            ratio = math.fabs(vec1[0]/vec1[1])
+            if(ratio>0.25 and ratio <4):
+                mainVecInfo=None
+                #print("ERROR... the vector is not close to xy axis")
+                continue
+            break
     
     seedIdx=0
     coordArr=[None]*len(cornors)
@@ -328,7 +336,19 @@ def genCornorsCoord(cornors):
 
         searchList=searchList[curSListL:len(searchList)]
 
-        
+    minCoorX=999
+    minCoorY=999
+    for coord in coordArr: 
+        if(coord==None):continue
+        if(minCoorX>coord[0]):minCoorX=coord[0]
+        if(minCoorY>coord[1]):minCoorY=coord[1]
+    
+    for coord in coordArr: 
+        if(coord==None):continue
+        coord[0]-=minCoorX
+        coord[1]-=minCoorY
+
+
     return coordArr,mainVecInfo
 
 
@@ -398,7 +418,7 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=5,pickPercentag
     #print(availLen,":",totLen)
     if availLen>0:
         errorSum/=availLen
-    return (objpoints_inBound,imgpoints_inBound,availLen/totLen,errorSum)
+    return (objpoints_inBound,imgpoints_inBound,availLen,totLen,errorSum)
 
 
 def rotationMatrix(theta):
@@ -456,6 +476,10 @@ def chessBoardCalibsss(image_path):
 
         print("IMG:",fname)
         img = cv2.imread(fname)
+
+        blur = cv2.GaussianBlur(img,(25,25),0)
+
+        img = blur
         #img = cv2.resize(img,  (0,0), fx=0.5, fy=0.5)
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
         width,height = gray.shape[::-1]
@@ -468,7 +492,7 @@ def chessBoardCalibsss(image_path):
         if(ds_f>1):ds_f=1
         img_ds = cv2.resize(img,  (0,0), fx=ds_f, fy=ds_f)
         gray_ds = cv2.cvtColor(img_ds,cv2.COLOR_BGR2GRAY)
-        corners = cv2.goodFeaturesToTrack(gray_ds,3000,0.01,20,useHarrisDetector=True,k=0.1)
+        corners = cv2.goodFeaturesToTrack(gray_ds,3000,0.01,15,useHarrisDetector=True,k=0.1)
         for c in corners:
             c[0][0]/=ds_f
             c[0][1]/=ds_f
@@ -481,9 +505,12 @@ def chessBoardCalibsss(image_path):
         maxMeaningfulCoordCount=0
         coord=[]
         mainVecInfo=None
-        for j in range(0,5):
+        xxCount=0
+        for j in range(0,25):
 
             new_coord,_mainVecInfo = genCornorsCoord(corners_fine)
+            
+            if(new_coord==None):continue
             meaningfulCoordCount=0
             for nc in new_coord:
                 if(nc!=None):
@@ -493,6 +520,10 @@ def chessBoardCalibsss(image_path):
                 maxMeaningfulCoordCount=meaningfulCoordCount
                 coord=new_coord
                 mainVecInfo = _mainVecInfo
+            if(new_coord!=None):
+                xxCount+=1
+                if(xxCount>5):
+                    break
         mainVecInfo_list.append(mainVecInfo)
 
 
@@ -534,19 +565,22 @@ def chessBoardCalibsss(image_path):
 
     #refine....
     maxMatchingRatio=0
+    maxMatchingAvailLen=0
     objpoints_Match=None
     imgpoints_Match=None
     for x in range(100):
         thres = 5
-        objpoints_, imgpoints_, matchRatio,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize)
+        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize)
         #print("  ",x,"matchRatio>",matchRatio," error:",error)
-        if(maxMatchingRatio<matchRatio):
-            maxMatchingRatio = matchRatio
+        if(maxMatchingRatio<availLen/totLen):
+            maxMatchingRatio = availLen/totLen
+            maxMatchingAvailLen=availLen
             objpoints_Match = objpoints_
             imgpoints_Match = imgpoints_
     
     # objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,1000)
     print("maxMatchingRatio:",maxMatchingRatio)
+    print("maxMatchingAvailLen:",maxMatchingAvailLen)
     if(maxMatchingRatio<0.8):
         return None
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_Match, imgpoints_Match, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
