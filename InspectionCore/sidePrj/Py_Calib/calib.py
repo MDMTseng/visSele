@@ -177,30 +177,46 @@ def findMainVecInfo(cornors,seedIdx=None):
         return None
 
     distArr.sort(key=lambda distInfo: distInfo["dist"])
-    nbInfo=distArr[0:4]
+
+    minDistRatioIdx=None
+    minDistRatio=999
+    for i in range(0,6):
+        distRatio = distArr[i+3]["dist"]/distArr[i+0]["dist"]
+        if(minDistRatio>distRatio):
+            minDistRatio=distRatio
+            minDistRatioIdx=i
+
+
+    nbInfo=distArr[minDistRatioIdx:4+minDistRatioIdx]
+    #print("nbInfo:",nbInfo,"\nminDistRatioIdx:",minDistRatioIdx)
     #find if the top 4 neighbors has similar distance
-    distRatio = nbInfo[3]["dist"]/nbInfo[0]["dist"]
-    if(distRatio>1.3):
+    if(minDistRatio>1.3):
         return None
 
-    for i in range(0, len(nbInfo)):
-        idx = nbInfo[i]["idx"]
+    for nbEleInfo in nbInfo:
+        idx = nbEleInfo["idx"]
         curPt=cornors[idx][0]
         vec = [curPt[0]-seedPt[0], curPt[1]-seedPt[1]]
         norm= math.hypot(vec[0],vec[1])
-        nbInfo[i]["vec"]=vec
-        nbInfo[i]["nvec"]=[vec[0]/norm,vec[1]/norm]
+        nbEleInfo["vec"]=vec
+        nbEleInfo["nvec"]=[vec[0]/norm,vec[1]/norm]
 
     vec1 = {"vec":nbInfo[0]["vec"].copy(),"nvec":nbInfo[0]["nvec"].copy(),"info":[nbInfo[0]]}
     vec2 = {"vec":[0,0],"info":[]}
-    for i in range(1, len(nbInfo)):
-        nvecx = nbInfo[i]["nvec"]
+    for nbEleInfo in (nbInfo):
+        nvecx = nbEleInfo["nvec"]
         dotP = vec1["nvec"][0]*nvecx[0]+vec1["nvec"][1]*nvecx[1]
-        if(dotP>0.8 or dotP<-0.8):
-            vec1["info"].append(nbInfo[i])
-        if(dotP<0.2 and dotP>-0.2):
-            vec2["info"].append(nbInfo[i])
 
+        #print(dotP)
+        if(dotP>0.8 or dotP<-0.8):
+            vec1["info"].append(nbEleInfo)
+        if(dotP<0.2 and dotP>-0.2):
+            vec2["info"].append(nbEleInfo)
+
+    #print(vec1,"\n",vec2)
+    if(len(vec1["info"])==0 or len(vec2["info"])==0):
+        return None
+    
     vec1["vec"]=vec1["info"][0]["vec"].copy()
     vec1["dist"]=vec1["info"][0]["dist"]
     vec2["vec"]=vec2["info"][0]["vec"].copy()
@@ -224,11 +240,6 @@ def findMainVecInfo(cornors,seedIdx=None):
             vec2["vec"][1]*=-1
         return {"vec1":vec2,"vec2":vec1}
 
-        
-
-    
-
-
 
     return {"vec1":vec1,"vec2":vec2}
 
@@ -245,7 +256,8 @@ def genCornorsCoord(cornors):
     interCount=0
     while mainVecInfo==None:
         interCount+=1
-        if(interCount>10):
+        print("ERROR...")
+        if(interCount>100):
             return None
         mainVecInfo = findMainVecInfo(cornors,random.randint(0,len(cornors)-1))
 
@@ -266,7 +278,7 @@ def genCornorsCoord(cornors):
     advScale=1
     coordArr[seedIdx]=[0,0]
 
-    coordEstThres=0.9
+    coordEstThres=0.95
     while len(searchList)>0:
         curSListL=len(searchList)
         for i in range(0, curSListL):
@@ -317,7 +329,6 @@ def genCornorsCoord(cornors):
         searchList=searchList[curSListL:len(searchList)]
 
         
-
     return coordArr
 
 
@@ -325,51 +336,69 @@ def pixToEdgeDist(loc,W,H):
     return min(loc[0],loc[1],W-loc[0],H-loc[1])
 
 
-def cameraCalibPointsRuleOut(objpoints, imgpoints,size,thres):
+def obj_img_Shuffle(objpoints, imgpoints):
+    objpoints_rand=[]
+    imgpoints_rand=[]
+
+    for i in range(0,len(objpoints)):
+        combined = list(zip(objpoints[i], imgpoints[i]))
+        random.shuffle(combined)
+        objpoints_randX, imgpoints_randX = zip(*combined)
+        objpoints_rand.append(objpoints_randX)
+        imgpoints_rand.append(imgpoints_randX)
+    return objpoints_rand,imgpoints_rand
+
+
+def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=5,pickPercentage=0.2,minLen=10):
     # src_pts = np.float32(imgpoints[0]).reshape(-1,1,2)
     # dst_pts = np.float32(objpoints[0]).reshape(-1,1,2)
     # print(src_pts,dst_pts)
     # H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
     # print(H)
-    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, size,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
+    objpoints_shuf,imgpoints_shuf = obj_img_Shuffle(objpoints,imgpoints)
+    objpoints_pick=[]
+    imgpoints_pick=[]
+    for i in range(0,len(objpoints_shuf)):
+        datPtLen=len(objpoints_shuf[i])
+        datPtPorp=round(datPtLen*pickPercentage)
+        if( datPtPorp>minLen):
+            objpoints_pick.append(np.asarray(objpoints_shuf[i][:datPtPorp], dtype= np.float32))
+            imgpoints_pick.append(np.asarray(imgpoints_shuf[i][:datPtPorp], dtype= np.float32))
+        else:
+            objpoints_pick[i]=[]
+            imgpoints_pick[i]=[]
+    #print(objpoints_pick)
+    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_pick, imgpoints_pick, img_size,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
+    inBoundThres=thres
 
-    tot_error=0
-    # print( "-------")
-    # print( ret, mtx)
-    # print( dist)
-    # print( "-------")
-    #dist=np.asarray([-1]*5, dtype= np.float32)
-    do_refine=False
-    for i in range(0,len(objpoints)):
-        rvec=rvecs[i]
-        imgpoints2, _ = cv2.projectPoints(objpoints[i], rvec, tvecs[i], mtx, dist)
-        error = cv2.norm(imgpoints[i],imgpoints2, cv2.NORM_INF)#/len(imgpoints2)
-
+    objpoints_inBound=[]
+    imgpoints_inBound=[]
+    totLen=0
+    availLen=0
+    errorSum=0
+    for i in range(0,len(objpoints_shuf)):
+        imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+        #error = cv2.norm(imgpoints[i],imgpoints2, cv2.NORM_INF)#/len(imgpoints2)
         checked_img_points=[]
         checked_obj_points=[]
         for j in range(0,len(imgpoints2)):
             pt1 = imgpoints[i][j][0]
             pt_prj = imgpoints2[j][0]
             dist = math.hypot(pt1[0]-pt_prj[0],pt1[1]-pt_prj[1])
-            print( dist)
-            if dist<thres:
+            if dist<inBoundThres:
                 checked_img_points.append(imgpoints[i][j])
                 checked_obj_points.append(objpoints[i][j])
+                errorSum+=dist
+        totLen+=len(imgpoints2)
+        availLen+=len(checked_obj_points)
+        objpoints_inBound.append(np.asarray(checked_obj_points, dtype= np.float32))
+        imgpoints_inBound.append(np.asarray(checked_img_points, dtype= np.float32))
 
-        if(len(checked_obj_points)>0):
-            imgpoints[i]=np.asarray(checked_img_points, dtype= np.float32)
-            objpoints[i]=np.asarray(checked_obj_points, dtype= np.float32)
-        else:
-            do_refine=True
-        print (i,"===Error",error, "len:",len(imgpoints[i]))
-        #print (i,"===Error",error,"  file:",images_trusted[i])
-        # sub = cv2.subtract (imgpoints[i],imgpoints2)
-        # print (sub)
-        tot_error += error
-    ave_err = tot_error/len(objpoints)
-
-    return (objpoints,imgpoints,ave_err)
+    #print(availLen,":",totLen)
+    if availLen>0:
+        errorSum/=availLen
+    return (objpoints_inBound,imgpoints_inBound,availLen/totLen,errorSum)
 
 
 def rotationMatrix(theta):
@@ -426,22 +455,32 @@ def chessBoardCalibsss(image_path):
 
         print("IMG:",fname)
         img = cv2.imread(fname)
-
+        #img = cv2.resize(img,  (0,0), fx=0.5, fy=0.5)
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
         width,height = gray.shape[::-1]
 
-        corners = cv2.goodFeaturesToTrack(gray,3000,0.01,50,useHarrisDetector=True,k=0.1)
-        
-        corners_fine = cv2.cornerSubPix(gray,corners,(51,51),(-1,-1),criteria)
+        corners=[]
+
+
+        #///////////////
+        ds_f=1000/width
+        if(ds_f>1):ds_f=1
+        img_ds = cv2.resize(img,  (0,0), fx=ds_f, fy=ds_f)
+        gray_ds = cv2.cvtColor(img_ds,cv2.COLOR_BGR2GRAY)
+        corners = cv2.goodFeaturesToTrack(gray_ds,3000,0.01,20,useHarrisDetector=True,k=0.1)
+        for c in corners:
+            c[0][0]/=ds_f
+            c[0][1]/=ds_f
+        #///////////////
+
+        corners_fine = cv2.cornerSubPix(gray,corners,(21,21),(-1,-1),criteria)
 
         corners_fine = [x for x in corners_fine if pixToEdgeDist(x[0],width,height)>10]
-
-
-
 
         maxMeaningfulCoordCount=0
         coord=[]
         for j in range(0,5):
+
             new_coord = genCornorsCoord(corners_fine)
             meaningfulCoordCount=0
             for nc in new_coord:
@@ -474,36 +513,39 @@ def chessBoardCalibsss(image_path):
         images_trusted.append(fname)
         
 
-        # for j in range(0, len(corners_trusted)):
-        #     loc = corners_trusted[j][0]
-        #     coord = coord_trusted[j]
-        #     x=int(loc[0])
-        #     y=int(loc[1])
-        #     cv2.circle(img,(x,y),3,255,-1)
-        #     cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-        #     cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        # cv2.imshow('img',img)
-        # cv2.waitKey()
+        for j in range(0, len(corners_trusted)):
+            loc = corners_trusted[j][0]
+            coord = coord_trusted[j]
+            x=int(loc[0])
+            y=int(loc[1])
+            cv2.circle(img,(x,y),3,255,-1)
+            cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.imshow('img',img)
+        cv2.waitKey()
 
 
 
     imageSize = gray.shape[::-1]
 
     #refine....
-    for x in range(5):
-        thres = (4-x)/4+4 if x >2 else 10
-        objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres)
-        print(x," err:",err)
-        # src_pts = np.float32(imgpoints[0]).reshape(-1,1,2)
-        # dst_pts = np.float32(objpoints[0]).reshape(-1,1,2)
-        # print(src_pts,dst_pts)
-        # H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-        # print(H)
+    maxMatchingRatio=0
+    objpoints_Match=None
+    imgpoints_Match=None
+    for x in range(100):
+        thres = 5
+        objpoints_, imgpoints_, matchRatio,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize)
+        #print("  ",x,"matchRatio>",matchRatio," error:",error)
+        if(maxMatchingRatio<matchRatio):
+            maxMatchingRatio = matchRatio
+            objpoints_Match = objpoints_
+            imgpoints_Match = imgpoints_
     
     # objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,1000)
-    print(imgpoints)
-
-    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
+    print("maxMatchingRatio:",maxMatchingRatio)
+    if(maxMatchingRatio<0.8):
+        return None
+    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_Match, imgpoints_Match, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
 
     matArr=[]
@@ -540,9 +582,6 @@ def chessBoardCalibsss(image_path):
     print("ret:", ret,"\nmtx:", mtx,"\ndist:",dist)
     print( "-------")
 
-
-
-    print(ret, mtx, dist)
 
     newcameramtx, roi=cv2.getOptimalNewCameraMatrix(mtx,dist,imageSize,1,imageSize)
 
@@ -590,7 +629,9 @@ def chessBoardCalibsss(image_path):
 
     keepAlive=True
 
-    downSamp=4
+    downSamp=imageSize[0]//800
+    if(downSamp==0):
+        downSamp=1
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
     while keepAlive:
         newcameramtx_=np.matmul(np.matrix(
@@ -604,13 +645,13 @@ def chessBoardCalibsss(image_path):
         newcameramtx_=np.matmul(rotationMatrix(rotation),newcameramtx_)
         
 
-        print("newcameramtx:\n",newcameramtx_)
+        #print("newcameramtx:\n",newcameramtx_)
         if(False):
             dst = cv2.undistort(gray, mtx, dist, None, newcameramtx_)
         else:
             mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,newcameramtx_,dispSize,5)
             dst = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
-        print(mapx)
+        #print(mapx)
         
         
         cv2.imshow('img',dst)
@@ -663,7 +704,7 @@ def chessBoardCalibsss(image_path):
 #"{\"type\":\"cameraCalib\",\"pgID\":12442,\"img_path\":\"*.jpg\",\"board_dim\":[7,9]}"
 #start_tcp_serverX("", 1229)
 #fileConvert("*.jpg",".jpg",".png")
-chessBoardCalibsss('*.BMP')
+chessBoardCalibsss('*.png')
 
 # calibRes=chessBoardCalib((6,9),'*.jpg')
 # print(calibRes)
