@@ -7,14 +7,6 @@ boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
 
 class StepperMotor
 {
-
-    /*
-
-      boolean stepM_seq_a[]={1,0,0,1,0,1,0,0};
-      boolean stepM_seq_b[]={0,1,0,1,0,0,1,0};
-      boolean stepM_seq_c[]={0,1,0,0,1,0,0,1};
-      boolean stepM_seq_d[]={0,0,1,0,0,1,0,1};
-    */
   public:
     int p1, p2, p3, p4;
 
@@ -66,6 +58,17 @@ class StepperMotor
 };
 
 
+uint32_t mod_sim(uint32_t num,uint32_t mod_N)
+{
+  while(num>mod_N)
+  {
+    num-=mod_N;
+  }
+  return num;
+}
+
+
+
 StepperMotor stepperMotor(22, 23, 24, 25);
 //StepperMotor stepperMotorDRV8825(22,23,24,25);
 
@@ -76,10 +79,9 @@ StepperMotor stepperMotor(22, 23, 24, 25);
 #define GATE_PIN 30
 
 
-uint32_t perRevPulseCount_HW = 2400*32;
-//uint8_t subPulseDiv=1;
-uint8_t pulseSkip=32;
-uint32_t perRevPulseCount = perRevPulseCount_HW/pulseSkip;
+uint32_t perRevPulseCount_HW = 2400*32;//the real hardware pulse count per rev
+uint8_t pulseSkip=32;//We don't do task processing for every hardware pulse, so we can save computing power for other things
+uint32_t perRevPulseCount = perRevPulseCount_HW/pulseSkip;// the software pulse count that processor really care
 
 int step_number = 0;
 
@@ -216,13 +218,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 
   countX++;
   uint32_t countSize = perRevPulseCount;
-  countX %= perRevPulseCount;
-  if(countX==0)
-  {
-    
-      Serial.print("RBuf.size(): ");
-      Serial.print(RBuf.size());
-  }
+  countX = mod_sim(countX,perRevPulseCount);
   
   {
     for (uint32_t i = 0; i < RBuf.size(); i++) //Check if trigger pulse is hit, then do action/ mark deletion
@@ -233,9 +229,9 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
       {
 
 
-        Serial.print(RBuf.getTail_Idx(i));
-        Serial.print(": ");
-        Serial.println(tail->stage);
+        DEBUG_print(RBuf.getTail_Idx(i));
+        DEBUG_print(": ");
+        DEBUG_println(tail->stage);
         int ret = next_state(tail);
 
         if (ret)
@@ -260,10 +256,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   }
 
 
-  if (countX == 0)
-  {
-    //tar_pulseHZ=30;
-  }
   uint8_t cur_Sense = digitalRead(GATE_PIN);
   if (cur_Sense != gateInfo.pre_Sense)
   {
@@ -293,7 +285,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
           gateInfo.end_pulse += perRevPulseCount;
         }
         uint32_t middle_pulse = (gateInfo.end_pulse + gateInfo.start_pulse) >> 1;
-        middle_pulse %= perRevPulseCount;
+        middle_pulse = mod_sim(middle_pulse,perRevPulseCount);
         pipeLineInfo* head = RBuf.getHead();
         if (head != NULL)
         {
@@ -301,12 +293,12 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
           head->stage = 0;
           next_state(head);
           RBuf.pushHead();
-//                    Serial.print("====g_pulse:");
-//                    Serial.print(head->gate_pulse);
-//                    Serial.print(" t_pulse:");
-//                    Serial.print(head->trigger_pulse);
-//                    Serial.print(" CX:");
-//                    Serial.println(countX);
+//          DEBUG_print("====g_pulse:");
+//          DEBUG_print(head->gate_pulse);
+//          DEBUG_print(" t_pulse:");
+//          DEBUG_print(head->trigger_pulse);
+//          DEBUG_print(" CX:");
+//          DEBUG_println(countX);
 
         }
       }
@@ -318,11 +310,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   gateInfo.pre_Sense = gateInfo.cur_Sense;
   gateInfo.cur_Sense = cur_Sense;
 
-  if (countX == 130)
-  {
-  }
-
-
 }
 
 void setup_Stepper() {
@@ -330,7 +317,7 @@ void setup_Stepper() {
   pinMode(AIR_BLOW_OK_PIN, OUTPUT);
   pinMode(AIR_BLOW_NG_PIN, OUTPUT);
   pinMode(GATE_PIN, INPUT);
-  Serial.println(".....");
+  DEBUG_println(".....");
   timer1Setup(1);
 }
 
@@ -375,9 +362,9 @@ void loop_Stepper() {
         }*/
 
 
-      Serial.print(RBuf.size());
-      Serial.print("   ");
-      Serial.println(gateInfo.start_pulse);
+      DEBUG_print(RBuf.size());
+      DEBUG_print("   ");
+      DEBUG_println(gateInfo.start_pulse);
       RBuf.consumeTail();
     }
   }
