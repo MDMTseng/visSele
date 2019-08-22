@@ -15,7 +15,6 @@
 #include "websocket_FI.hpp"
 #include "include/RingBuf.hpp"
 
-uint32_t getTimerCount();
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
   uint32_t trigger_pulse;

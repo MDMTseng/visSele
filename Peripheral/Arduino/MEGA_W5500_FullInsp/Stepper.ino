@@ -60,7 +60,7 @@ class StepperMotor
 
 uint32_t mod_sim(uint32_t num,uint32_t mod_N)
 {
-  while(num>mod_N)
+  while(num>=mod_N)
   {
     num-=mod_N;
   }
@@ -172,28 +172,20 @@ int stage_action(pipeLineInfo* pli)
 int next_state(pipeLineInfo* pli);
 int next_state(pipeLineInfo* pli)
 {
-  if (pli->stage < 0 || pli->stage > sizeof(state_pulseOffset) / sizeof(*state_pulseOffset))return -1;
-  if (stage_action(pli) < 0)
+  if (pli->stage < 0 || 
+    pli->stage > (sizeof(state_pulseOffset) / sizeof(*state_pulseOffset)) ||
+    stage_action(pli) < 0)
   {
+    pli->gate_pulse=perRevPulseCount;
     return -1;
   }
-  pli->trigger_pulse = pli->gate_pulse + state_pulseOffset[pli->stage];
-  if (pli->trigger_pulse >= perRevPulseCount)
-  {
-    pli->trigger_pulse -= perRevPulseCount;
-  }
+  
+  pli->trigger_pulse = mod_sim(pli->gate_pulse + state_pulseOffset[pli->stage],perRevPulseCount);
+  
   pli->stage++;
   return 0;
 }
 
-uint32_t pulseHZ = 0;
-uint32_t tar_pulseHZ = 32 * 800;
-uint32_t pulseHZ_step = 1;
-
-uint32_t countX = 0;
-uint32_t getTimerCount() {
-  return countX;
-}
 
 typedef struct GateInfo {
   uint8_t state;
@@ -207,28 +199,56 @@ typedef struct GateInfo {
 GateInfo gateInfo = {.state = 1};
 
 
-uint8_t countSkip = 0;
+
+
+uint32_t pulse_distance(uint32_t curP,uint32_t tarP,uint32_t warp)
+{
+  if(tarP>warp)return warp;
+  if(tarP>curP)
+    return tarP-curP;
+  
+  return (warp+tarP)-curP;
+}
+
+uint32_t findClosestPulse(RingBuf<pipeLineInfo,uint8_t > &RBuf,uint32_t currentPulse,uint32_t warp)
+{
+  uint32_t minDist=warp;
+  uint32_t minDist_Pulse=0;
+  
+  for (uint32_t i = 0; i < RBuf.size(); i++) //Check if trigger pulse is hit, then do action/ mark deletion
+  {
+    pipeLineInfo* tail = RBuf.getTail(i);
+    uint32_t dist = pulse_distance(currentPulse,tail->trigger_pulse, warp);
+    if(minDist>dist)
+    {
+      minDist=dist;
+      minDist_Pulse=tail->trigger_pulse;
+    }
+  }
+  return minDist_Pulse;
+}
+
+
+uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
+uint32_t countX = 0;
+uint32_t countSkip = 0;
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
   stepperMotor.OneStep(true);
 
-  countSkip++;
-  if (countSkip < pulseSkip)return;
-  countSkip = 0;
+  countSkip = mod_sim(countSkip+1,pulseSkip);
+  if (countSkip!=0)return;
 
-  countX++;
-  uint32_t countSize = perRevPulseCount;
-  countX = mod_sim(countX,perRevPulseCount);
-  
+  countX = mod_sim(countX+1,perRevPulseCount);
+
+
+  if(countX == next_processing_pulse)
   {
     for (uint32_t i = 0; i < RBuf.size(); i++) //Check if trigger pulse is hit, then do action/ mark deletion
     {
       pipeLineInfo* tail = RBuf.getTail(i);
-      if (!tail)break;
       if (tail->trigger_pulse == countX)
       {
-
-
         DEBUG_print(RBuf.getTail_Idx(i));
         DEBUG_print(": ");
         DEBUG_println(tail->stage);
@@ -253,6 +273,8 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
       }
       break;
     }
+
+    next_processing_pulse = findClosestPulse(RBuf,countX,perRevPulseCount);
   }
 
 
@@ -279,7 +301,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
       {
 
         gateInfo.end_pulse = countX;
-        //tar_pulseHZ=1000;
         if (gateInfo.start_pulse > gateInfo.end_pulse)
         {
           gateInfo.end_pulse += perRevPulseCount;
@@ -293,6 +314,14 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
           head->stage = 0;
           next_state(head);
           RBuf.pushHead();
+          uint32_t cur_dist = pulse_distance(countX,next_processing_pulse, perRevPulseCount);
+          uint32_t new_dist = pulse_distance(countX,head->trigger_pulse, perRevPulseCount);
+          if(new_dist<cur_dist)
+          {
+            next_processing_pulse=head->trigger_pulse;
+          }
+
+          
 //          DEBUG_print("====g_pulse:");
 //          DEBUG_print(head->gate_pulse);
 //          DEBUG_print(" t_pulse:");
@@ -312,6 +341,10 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 
 }
 
+uint32_t pulseHZ = 0;
+uint32_t tar_pulseHZ = 32 * 800;
+uint32_t pulseHZ_step = 1;
+
 void setup_Stepper() {
   pinMode(CAMERA_PIN, OUTPUT);
   pinMode(AIR_BLOW_OK_PIN, OUTPUT);
@@ -321,7 +354,6 @@ void setup_Stepper() {
   timer1Setup(1);
 }
 
-int count = 50;
 
 void loop_Stepper() {
   if (pulseHZ != tar_pulseHZ)
@@ -343,29 +375,5 @@ void loop_Stepper() {
 
     }
     timer1_HZ(pulseHZ);
-  }
-
-  if (0)
-  {
-    count--;
-    if (count == 0)
-    {
-      count = 150;
-      /*
-        if(tar_pulseHZ!=1000)
-        {
-        tar_pulseHZ=1000;
-        }
-        else
-        {
-        tar_pulseHZ=1;
-        }*/
-
-
-      DEBUG_print(RBuf.size());
-      DEBUG_print("   ");
-      DEBUG_println(gateInfo.start_pulse);
-      RBuf.consumeTail();
-    }
   }
 }
