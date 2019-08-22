@@ -75,8 +75,11 @@ StepperMotor stepperMotor(22, 23, 24, 25);
 #define AIR_BLOW_NG_PIN 19
 #define GATE_PIN 30
 
-uint32_t perRevPulseCount = 2400;
-uint32_t maxPulseCount = perRevPulseCount;
+
+uint32_t perRevPulseCount_HW = 2400*32;
+//uint8_t subPulseDiv=1;
+uint8_t pulseSkip=32;
+uint32_t perRevPulseCount = perRevPulseCount_HW/pulseSkip;
 
 int step_number = 0;
 
@@ -111,9 +114,14 @@ void timer1Setup(int HZ)
 
 
 int offsetAir=80;
-uint32_t state_pulseOffset[] = {1050, 1055, 1100, 
-  perRevPulseCount*240/360+offsetAir, perRevPulseCount*240/360+6+offsetAir, 
-  perRevPulseCount*240/360+20+offsetAir, perRevPulseCount*240/360+26+offsetAir};
+
+uint32_t PRPC= perRevPulseCount;
+uint32_t state_pulseOffset[] = {
+  PRPC*30/360, PRPC*30/360+5, 
+  PRPC*30/360+10, 
+  
+  PRPC*240/360+offsetAir, PRPC*240/360+6+offsetAir, 
+  PRPC*240/360+20+offsetAir, PRPC*240/360+26+offsetAir};
 
 
 int stage_action(pipeLineInfo* pli);
@@ -177,8 +185,8 @@ int next_state(pipeLineInfo* pli)
 }
 
 uint32_t pulseHZ = 0;
-uint32_t tar_pulseHZ = 32 * 250*2;
-uint32_t pulseHZ_step = 60;
+uint32_t tar_pulseHZ = 32 * 800;
+uint32_t pulseHZ_step = 1;
 
 uint32_t countX = 0;
 uint32_t getTimerCount() {
@@ -197,14 +205,14 @@ typedef struct GateInfo {
 GateInfo gateInfo = {.state = 1};
 
 
-uint8_t count32 = 0;
+uint8_t countSkip = 0;
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
   stepperMotor.OneStep(true);
 
-  count32++;
-  if (count32 < 32)return;
-  count32 = 0;
+  countSkip++;
+  if (countSkip < pulseSkip)return;
+  countSkip = 0;
 
   countX++;
   uint32_t countSize = perRevPulseCount;
