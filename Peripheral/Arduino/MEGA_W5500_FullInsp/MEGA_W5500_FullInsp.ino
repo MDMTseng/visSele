@@ -79,7 +79,7 @@ void loop()
     }
     if(ccc==0)
         digitalWrite(FAKE_GATE_PIN, HIGH);
-    if(ccc==4400/3)
+    if(ccc==2400/3)
         digitalWrite(FAKE_GATE_PIN, LOW);
     
     

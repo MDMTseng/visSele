@@ -300,7 +300,7 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageCount)
     {
       initSize=RBuf.size();
     }
-    uint32_t processMult=initSize/(stageCount)+1;
+    uint32_t processMult=initSize/(stageCount/2)+1;
     uint32_t proS=stage*processMult;
     uint32_t proE=proS+processMult;
     if(proE>RBuf.size())proE=RBuf.size();
@@ -351,13 +351,14 @@ TIMER_SET_ISR(1)
   
   countSkip = mod_sim(countSkip+1,pulseSkip);
   
-  task_pulseStageExec(countSkip,pulseSkip);
-  if (countSkip!=0)return;
-  countX = mod_sim(countX+1,perRevPulseCount);
-  task_gateSensing();
-
+  if (countSkip==0)
+  {
+    countX = mod_sim(countX+1,perRevPulseCount);
+    task_gateSensing();
+  }
   
 
+  task_pulseStageExec(countSkip,pulseSkip);
 
 }
 
