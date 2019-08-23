@@ -6,6 +6,24 @@ boolean stepM_seq_b[] = {0, 1, 1, 1, 0, 0, 0, 0};
 boolean stepM_seq_c[] = {0, 0, 0, 1, 1, 1, 0, 0};
 boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
 
+
+
+#define TIMER_SET_ISR(TN) \
+  void timer##TN##_HZ(int HZ){TCNT##TN=0;OCR##TN##A = 16000000 / 256 / HZ;} \
+  void timer##TN##Setup(int HZ)\
+  {\
+    noInterrupts();\
+    TCCR##TN##A = 0;\
+    TCCR##TN##B = 0;\
+    timer##TN##_HZ(HZ);\
+    TCCR##TN##B |= (1 << WGM##TN##2);\
+    TCCR##TN##B |= (1 << CS12);\
+    TIMSK##TN |= (1 << OCIE##TN##A);\
+    interrupts();\
+  }\
+  ISR(TIMER##TN##_COMPA_vect) 
+
+
 class StepperMotor
 {
   public:
@@ -81,38 +99,8 @@ StepperMotor stepperMotor(22, 23, 24, 25);
 
 
 uint32_t perRevPulseCount_HW = (uint32_t)2400*32;//the real hardware pulse count per rev
-uint32_t pulseSkip=16;//We don't do task processing for every hardware pulse, so we can save computing power for other things
+uint32_t pulseSkip=32;//We don't do task processing for every hardware pulse, so we can save computing power for other things
 uint32_t perRevPulseCount = perRevPulseCount_HW/pulseSkip;// the software pulse count that processor really care
-
-void timer1_HZ(int HZ)
-{
-
-  TCNT1  = 0;
-  OCR1A = 16000000 / 256 / HZ;        // compare match register 16MHz/256/2Hz
-}
-
-void timer1Setup(int HZ)
-{
-
-
-  // initialize timer1
-
-  noInterrupts();           // disable all interrupts
-
-  TCCR1A = 0;
-
-  TCCR1B = 0;
-
-  timer1_HZ(HZ);
-  TCCR1B |= (1 << WGM12);   // CTC mode
-
-  TCCR1B |= (1 << CS12);    // 256 prescaler
-
-  TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
-
-  interrupts();             // enable all interrupts
-}
-
 
 
 uint32_t PRPC= perRevPulseCount;
@@ -232,64 +220,11 @@ uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to mean
 uint32_t countX = 0;
 uint32_t countSkip = 0;
 int initSize=-1;
-ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
+
+void task_gateSensing()
 {
-  stepperMotor.OneStep(true);
-
-  //if(countX == next_processing_pulse)
-  {//Spread processing into different sub pulse
-    if(countSkip==0)
-    {
-      initSize=RBuf.size();
-    }
-    uint32_t processMult=initSize/(pulseSkip)+1;
-    uint32_t proS=countSkip*processMult;
-    uint32_t proE=proS+processMult;
-    if(proE>RBuf.size())proE=RBuf.size();
-    for (uint32_t i = proS; i < proE ; i++) //Check if trigger pulse is hit, then do action/ mark deletion
-    {
-      pipeLineInfo* tail = RBuf.getTail(i);
-      if (tail->trigger_pulse == countX)
-      {
-        if(tail->stage==7)
-        {
-          DEBUG_println(RBuf.getTail_Idx(i));
-          DEBUG_println(processMult);
-        }
-        int ret = next_state(tail);
-
-        if (ret)
-        {
-          tail->stage = -3;
-        }
-      }
-    }
-
-    if(countSkip==pulseSkip-1)
-    while (1) //Clean completed tail tasks
-    {
-      pipeLineInfo* tail = RBuf.getTail();
-      if (!tail)break;
-
-      if (tail->stage < 0)
-      {
-        RBuf.consumeTail();
-        
-        continue;
-      }
-      break;
-    }
-
-    //next_processing_pulse = findClosestPulse(RBuf,countX,perRevPulseCount);
-  }
-
   
-  countSkip = mod_sim(countSkip+1,pulseSkip);
-
-  if (countSkip!=0)return;
-  countX = mod_sim(countX+1,perRevPulseCount);
-
-
+  
   uint8_t cur_Sense = digitalRead(GATE_PIN);
           
   if (cur_Sense != gateInfo.pre_Sense)
@@ -351,6 +286,78 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 
   gateInfo.pre_Sense = gateInfo.cur_Sense;
   gateInfo.cur_Sense = cur_Sense;
+
+}
+
+
+void task_pulseStageExec(uint8_t stage,uint8_t stageCount)
+{
+  
+
+  //if(countX == next_processing_pulse)
+  {//Spread processing into different sub pulse
+    if(countSkip==0)
+    {
+      initSize=RBuf.size();
+    }
+    uint32_t processMult=initSize/(stageCount)+1;
+    uint32_t proS=stage*processMult;
+    uint32_t proE=proS+processMult;
+    if(proE>RBuf.size())proE=RBuf.size();
+    for (uint32_t i = proS; i < proE ; i++) //Check if trigger pulse is hit, then do action/ mark deletion
+    {
+      pipeLineInfo* tail = RBuf.getTail(i);
+      if (tail->trigger_pulse == countX)
+      {
+//        if(tail->stage==7)
+//        {
+//          DEBUG_println(RBuf.getTail_Idx(i));
+//        }
+        int ret = next_state(tail);
+
+        if (ret)
+        {
+          tail->stage = -3;
+        }
+      }
+    }
+
+    if(stage==stageCount-1)
+    while (1) //Clean completed tail tasks
+    {
+      pipeLineInfo* tail = RBuf.getTail();
+      if (!tail)break;
+
+      if (tail->stage < 0)
+      {
+        RBuf.consumeTail();
+        
+        continue;
+      }
+      break;
+    }
+
+    //next_processing_pulse = findClosestPulse(RBuf,countX,perRevPulseCount);
+  }
+
+
+}
+
+
+TIMER_SET_ISR(1)
+{
+  stepperMotor.OneStep(true);
+
+  
+  countSkip = mod_sim(countSkip+1,pulseSkip);
+  
+  task_pulseStageExec(countSkip,pulseSkip);
+  if (countSkip!=0)return;
+  countX = mod_sim(countX+1,perRevPulseCount);
+  task_gateSensing();
+
+  
+
 
 }
 
