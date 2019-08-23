@@ -1,5 +1,6 @@
 
 
+#define DEBUG_
 boolean stepM_seq_a[] = {1, 1, 0, 0, 0, 0, 0, 1};
 boolean stepM_seq_b[] = {0, 1, 1, 1, 0, 0, 0, 0};
 boolean stepM_seq_c[] = {0, 0, 0, 1, 1, 1, 0, 0};
@@ -79,11 +80,9 @@ StepperMotor stepperMotor(22, 23, 24, 25);
 #define GATE_PIN 30
 
 
-uint32_t perRevPulseCount_HW = 2400*32;//the real hardware pulse count per rev
-uint8_t pulseSkip=32;//We don't do task processing for every hardware pulse, so we can save computing power for other things
+uint32_t perRevPulseCount_HW = (uint32_t)2400*32;//the real hardware pulse count per rev
+uint32_t pulseSkip=16;//We don't do task processing for every hardware pulse, so we can save computing power for other things
 uint32_t perRevPulseCount = perRevPulseCount_HW/pulseSkip;// the software pulse count that processor really care
-
-int step_number = 0;
 
 void timer1_HZ(int HZ)
 {
@@ -115,9 +114,9 @@ void timer1Setup(int HZ)
 }
 
 
-int offsetAir=80;
 
 uint32_t PRPC= perRevPulseCount;
+int offsetAir=80;
 uint32_t state_pulseOffset[] = {
   PRPC*30/360, PRPC*30/360+5, 
   PRPC*30/360+10, 
@@ -203,7 +202,7 @@ GateInfo gateInfo = {.state = 1};
 
 uint32_t pulse_distance(uint32_t curP,uint32_t tarP,uint32_t warp)
 {
-  if(tarP>warp)return warp;
+  if(tarP>=warp)return warp;
   if(tarP>curP)
     return tarP-curP;
   
@@ -232,26 +231,31 @@ uint32_t findClosestPulse(RingBuf<pipeLineInfo,uint8_t > &RBuf,uint32_t currentP
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
 uint32_t countX = 0;
 uint32_t countSkip = 0;
+int initSize=-1;
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
   stepperMotor.OneStep(true);
 
-  countSkip = mod_sim(countSkip+1,pulseSkip);
-  if (countSkip!=0)return;
-
-  countX = mod_sim(countX+1,perRevPulseCount);
-
-
-  if(countX == next_processing_pulse)
-  {
-    for (uint32_t i = 0; i < RBuf.size(); i++) //Check if trigger pulse is hit, then do action/ mark deletion
+  //if(countX == next_processing_pulse)
+  {//Spread processing into different sub pulse
+    if(countSkip==0)
+    {
+      initSize=RBuf.size();
+    }
+    uint32_t processMult=initSize/(pulseSkip)+1;
+    uint32_t proS=countSkip*processMult;
+    uint32_t proE=proS+processMult;
+    if(proE>RBuf.size())proE=RBuf.size();
+    for (uint32_t i = proS; i < proE ; i++) //Check if trigger pulse is hit, then do action/ mark deletion
     {
       pipeLineInfo* tail = RBuf.getTail(i);
       if (tail->trigger_pulse == countX)
       {
-        DEBUG_print(RBuf.getTail_Idx(i));
-        DEBUG_print(": ");
-        DEBUG_println(tail->stage);
+        if(tail->stage==7)
+        {
+          DEBUG_println(RBuf.getTail_Idx(i));
+          DEBUG_println(processMult);
+        }
         int ret = next_state(tail);
 
         if (ret)
@@ -261,6 +265,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
       }
     }
 
+    if(countSkip==pulseSkip-1)
     while (1) //Clean completed tail tasks
     {
       pipeLineInfo* tail = RBuf.getTail();
@@ -269,23 +274,31 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
       if (tail->stage < 0)
       {
         RBuf.consumeTail();
+        
         continue;
       }
       break;
     }
 
-    next_processing_pulse = findClosestPulse(RBuf,countX,perRevPulseCount);
+    //next_processing_pulse = findClosestPulse(RBuf,countX,perRevPulseCount);
   }
+
+  
+  countSkip = mod_sim(countSkip+1,pulseSkip);
+
+  if (countSkip!=0)return;
+  countX = mod_sim(countX+1,perRevPulseCount);
 
 
   uint8_t cur_Sense = digitalRead(GATE_PIN);
+          
   if (cur_Sense != gateInfo.pre_Sense)
   {
     gateInfo.debunce = 0;
   }
-  else if (gateInfo.debunce <= 3)gateInfo.debunce++;
+  else if (gateInfo.debunce <= 1)gateInfo.debunce++;
 
-  if (gateInfo.debunce == 3)
+  if (gateInfo.debunce == 1)
   {
     if (cur_Sense == 0)
     {
@@ -314,18 +327,18 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
           head->stage = 0;
           next_state(head);
           RBuf.pushHead();
-          uint32_t cur_dist = pulse_distance(countX,next_processing_pulse, perRevPulseCount);
-          uint32_t new_dist = pulse_distance(countX,head->trigger_pulse, perRevPulseCount);
-          if(new_dist<cur_dist)
-          {
-            next_processing_pulse=head->trigger_pulse;
-          }
-
-          
+//          uint32_t cur_dist = pulse_distance(countX,next_processing_pulse, perRevPulseCount);
+//          uint32_t new_dist = pulse_distance(countX,head->trigger_pulse, perRevPulseCount);
+//          if(new_dist<cur_dist)
+//          {
+//            next_processing_pulse=head->trigger_pulse;
+//          }
 //          DEBUG_print("====g_pulse:");
 //          DEBUG_print(head->gate_pulse);
 //          DEBUG_print(" t_pulse:");
 //          DEBUG_print(head->trigger_pulse);
+//          DEBUG_print(" perRevPulseCount:");
+//          DEBUG_print(perRevPulseCount);
 //          DEBUG_print(" CX:");
 //          DEBUG_println(countX);
 

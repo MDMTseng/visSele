@@ -23,7 +23,7 @@ typedef struct pipeLineInfo{
   int8_t notifMark;
 }pipeLineInfo;
 
-#define PIPE_INFO_LEN 50
+#define PIPE_INFO_LEN 120
 pipeLineInfo pbuff[PIPE_INFO_LEN];
 
 //The index type uint8_t would be enough if the buffersize<255
@@ -34,22 +34,64 @@ IPAddress _ip(192,168,2,2);
 IPAddress _gateway(169, 254, 170, 254);
 IPAddress _subnet(255, 255, 255, 0);
 
+
+int FAKE_GATE_PIN=31;
+
+
+
 Websocket_FI *WS_Server;
 void setup() {
-  Serial.begin(57600);
-  WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
-  setRetryTimeout(3, 100);
+  Serial.begin(115200);
+  //WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
+  if(WS_Server)setRetryTimeout(3, 100);
   setup_Stepper();
+  
+  pinMode(FAKE_GATE_PIN, OUTPUT);
 }
 
+uint32_t initLoop=0;
 
 uint32_t ccc=0;
 void loop() 
 {
-  RBuf.size();
-  WS_Server->loop_WS();
+  if(WS_Server)
+    WS_Server->loop_WS();
   loop_Stepper();
+  if(initLoop<10000)
+  {
+    initLoop++;
+    return;
+  }
+
+
+
+
+  DEBUG_println("start");
+  volatile int ddd=0;
+  for(uint32_t i=0;i!=50000;i++)
+  {
+    ddd%=3;
+
+    uint32_t dddx=(uint32_t)4400;
+    if(ccc++==dddx)
+    {
+      ccc=0;
+    }
+    if(ccc==0)
+        digitalWrite(FAKE_GATE_PIN, HIGH);
+    if(ccc==4400/3)
+        digitalWrite(FAKE_GATE_PIN, LOW);
+    
+    
+  }
+   
+  DEBUG_print("RBuf.size():");
+  DEBUG_println(RBuf.size());
+
   
+  DEBUG_println("END");
+  
+  /*
   char tmp[40];
   for(uint32_t i=0;i<RBuf.size();i++)
   {
@@ -59,8 +101,10 @@ void loop()
     {
       tail->sent_stage=tail->stage;
       int len = sprintf(tmp,"{'s':%d,'m':%d,'p':%d}",tail->stage,tail->notifMark,tail->gate_pulse);
-      WS_Server->SEND_ALL((uint8_t*)tmp,len,0);
+      DEBUG_println(tmp);
+      if(WS_Server)
+        WS_Server->SEND_ALL((uint8_t*)tmp,len,0);
       break;
     }
-  }
+  }*/
 }
