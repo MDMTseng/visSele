@@ -113,6 +113,13 @@ uint32_t state_pulseOffset[] = {
   PRPC*240/360+20+offsetAir, PRPC*240/360+26+offsetAir};
 
 
+
+pipeLineInfo* actionExecTask[ (sizeof(state_pulseOffset) / sizeof(*state_pulseOffset))];
+RingBuf<typeof(*actionExecTask),uint8_t > actionExecTaskQ(actionExecTask,sizeof(actionExecTask)/sizeof(*actionExecTask));
+
+
+
+
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
 {
@@ -201,6 +208,8 @@ uint32_t findClosestPulse(RingBuf<pipeLineInfo,uint8_t > &RBuf,uint32_t currentP
 {
   uint32_t minDist=warp;
   uint32_t minDist_Pulse=0;
+
+
   
   for (uint32_t i = 0; i < RBuf.size(); i++) //Check if trigger pulse is hit, then do action/ mark deletion
   {
@@ -208,8 +217,20 @@ uint32_t findClosestPulse(RingBuf<pipeLineInfo,uint8_t > &RBuf,uint32_t currentP
     uint32_t dist = pulse_distance(currentPulse,tail->trigger_pulse, warp);
     if(minDist>dist)
     {
+      actionExecTaskQ.clear();
       minDist=dist;
       minDist_Pulse=tail->trigger_pulse;
+    }
+
+    pipeLineInfo** taskToDo = actionExecTaskQ.getTail();
+    if(taskToDo && (*taskToDo)->trigger_pulse==dist)
+    {
+      pipeLineInfo** head = actionExecTaskQ.getHead();
+      if (head != NULL)
+      {
+        *head = tail;
+        actionExecTaskQ.pushHead();
+      }
     }
   }
   return minDist_Pulse;

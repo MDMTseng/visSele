@@ -88,6 +88,7 @@ class RingBufIdxCounter
     dataSize=0;
   }
 
+  void clear(){headIdx=0;tailIdx=0;dataSize=0;}
   RB_Idx_Type getHead(){return headIdx;}
   RB_Idx_Type getTail(){return tailIdx;}
   RB_Idx_Type getTail(RB_Idx_Type idx){
@@ -148,6 +149,13 @@ class RingBuf
   {
     return RBC.size();
   }
+  
+  void clear()
+  {
+      RBC.clear();
+  }
+
+
   RB_Idx_Type getHead_Idx()
   {
     return RBC.getHead();
