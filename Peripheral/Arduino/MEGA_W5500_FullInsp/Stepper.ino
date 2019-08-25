@@ -198,12 +198,26 @@ GateInfo gateInfo = {.state = 1};
 uint32_t pulse_distance(uint32_t curP,uint32_t tarP,uint32_t warp)
 {
   if(tarP>=warp)return warp;
-  if(tarP>curP)
+  if(tarP>=curP)
     return tarP-curP;
   
   return (warp+tarP)-curP;
 }
 
+
+
+uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
+{
+  for(int i=0;i<queue.size();i++)
+  {
+    pipeLineInfo** taskToDo=queue.getTail(i);
+    if(taskToDo==NULL)break;
+    pipeLineInfo* tail = (*taskToDo);
+    if(tail==NULL)continue;
+    return tail->trigger_pulse;
+  }
+  return perRevPulseCount;
+}
 
 
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
@@ -251,21 +265,29 @@ void task_gateSensing()
           head->stage = 0;
           next_state(head);
           RBuf.pushHead();
-//          uint32_t cur_dist = pulse_distance(countX,next_processing_pulse, perRevPulseCount);
-//          uint32_t new_dist = pulse_distance(countX,head->trigger_pulse, perRevPulseCount);
-//          if(new_dist<cur_dist)
-//          {
-//            next_processing_pulse=head->trigger_pulse;
-//          }
-//          DEBUG_print("====g_pulse:");
-//          DEBUG_print(head->gate_pulse);
-//          DEBUG_print(" t_pulse:");
-//          DEBUG_print(head->trigger_pulse);
-//          DEBUG_print(" perRevPulseCount:");
-//          DEBUG_print(perRevPulseCount);
-//          DEBUG_print(" CX:");
-//          DEBUG_println(countX);
 
+
+
+          //Do pulse distance check, if the new task is closer do fresh
+          {
+            uint32_t exPulse = getMinDistTaskPulse(actionExecTaskQ);
+            uint32_t exDist = pulse_distance(countX,exPulse,perRevPulseCount);
+            uint32_t newPulse = head->trigger_pulse;
+            uint32_t newDist= pulse_distance(countX,newPulse,perRevPulseCount);
+            if(newDist<exDist)
+            {
+              actionExecTaskQ.clear();
+              
+              pipeLineInfo** newQhead = actionExecTaskQ.getHead();
+              if (newQhead != NULL)
+              {
+                *newQhead = head;
+                actionExecTaskQ.pushHead();
+              }
+            }
+          }
+
+          
         }
       }
 
@@ -287,42 +309,47 @@ typedef struct pulseStageInfo
 }pulseStageInfo;
 
 
-
-uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
-{
-  if(queue.size()==0)return perRevPulseCount;
-  pipeLineInfo** taskToDo;
-  for(int i=0;i<queue.size();i++)
-  {
-    taskToDo=queue.getTail(i);
-    pipeLineInfo* tail = (*taskToDo);
-    if(tail==NULL)continue;
-    return tail->trigger_pulse;
-  }
-  return perRevPulseCount;
-  
-}
-
-
 void task_ExecuteMinDistTasks(uint8_t stage,uint8_t stageLen)
 {  
-  if(stage==0)
+  if(stage!=0)return;
+  pipeLineInfo** taskToDo =NULL;
+  while(taskToDo=actionExecTaskQ.getTail())
   {
-    pipeLineInfo** taskToDo =NULL;
-    int i=0;
-    while(taskToDo=actionExecTaskQ.getTail())
+    
+    pipeLineInfo* tail = (*taskToDo);
+    if(tail==NULL)continue;
+    if(tail->trigger_pulse!=countX)break;
+
+
+//    if(tail->stage==7)
+//    {
+//      pipeLineInfo** Q_tail = taskToDo;
+//      for (int j = 0; j < RBuf.size() ; j++)
+//      {
+//        pipeLineInfo* RBuf_tail = RBuf.getTail(j);
+//        if(*Q_tail == RBuf_tail)
+//        {
+//          static int pX_idx=0;
+//          DEBUG_print("getTail_Idx:");
+//          int fidx = RBuf.getTail_Idx(j);
+//          DEBUG_print(fidx);
+//          DEBUG_print(" diff:");
+//          DEBUG_print(fidx - pX_idx);
+//          pX_idx=fidx;
+//          DEBUG_print(" stage:");
+//          DEBUG_println(RBuf_tail->stage);
+//          break;
+//        }
+//      }
+//    }
+
+
+    int ret = next_state(tail);
+    if (ret)
     {
-      pipeLineInfo* tail = (*taskToDo);
-      if(tail==NULL)continue;
-      if(tail->trigger_pulse!=countX)break;
-      
-      int ret = next_state(tail);
-      if (ret)
-      {
-        tail->stage = -3;
-      }
-      actionExecTaskQ.consumeTail();
+      tail->stage = -3;
     }
+    actionExecTaskQ.consumeTail();
   }
   
 }
@@ -346,7 +373,10 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
     uint32_t minTaskPulse = getMinDistTaskPulse(actionExecTaskQ);
     doCollection=(minTaskPulse>=perRevPulseCount);
   }
-  if(!doCollection)return;
+  if(!doCollection)
+  {
+    return;
+  }
 
   
   proS=proE;
@@ -361,10 +391,15 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
     proE=processMult;
   }
   
-  if(proE>RBuf.size())proE=RBuf.size();
+  if(proE>RBuf.size())
+  {
+    proE=RBuf.size();
+  }
+  
   for (int i = proS; i < proE ; i++) //Check if trigger pulse is hit, then do action/ mark deletion
   {
     pipeLineInfo* tail = RBuf.getTail(i);
+    if(tail->stage<0)continue;
 
     uint32_t dist = pulse_distance(countX,tail->trigger_pulse, perRevPulseCount);
     if(minDist>dist)
@@ -409,9 +444,8 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 {
   //exp:stageLen=10
   task_ExecuteMinDistTasks(stage,1);//0 only
-  task_CollectMinDistTasks(stage-1,stageLen-2);//1~stageLen-2
-  task_CleanCompletedPipe(stage-(stageLen-1),1);//stageLen-1 only
-
+  task_CollectMinDistTasks(stage-1,stageLen-2);//1~stageLen-2 => 1~8
+  task_CleanCompletedPipe(stage-(stageLen-1),1);//stageLen-1 only => 9
 }
 
 
@@ -427,7 +461,7 @@ TIMER_SET_ISR(1)
     countX = mod_sim(countX+1,perRevPulseCount);
     task_gateSensing();
   }
-  
+
 
   task_pulseStageExec(countSkip,pulseSkip);
 
