@@ -23,6 +23,7 @@ typedef struct pipeLineInfo{
   int8_t notifMark;
 }pipeLineInfo;
 
+uint32_t logicPulseCount = 0;
 #define PIPE_INFO_LEN 120
 pipeLineInfo pbuff[PIPE_INFO_LEN];
 
@@ -34,7 +35,6 @@ IPAddress _ip(192,168,2,2);
 IPAddress _gateway(169, 254, 170, 254);
 IPAddress _subnet(255, 255, 255, 0);
 
-
 int FAKE_GATE_PIN=31;
 
 
@@ -45,13 +45,14 @@ void setup() {
   //WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
   if(WS_Server)setRetryTimeout(3, 100);
   setup_Stepper();
-  
   pinMode(FAKE_GATE_PIN, OUTPUT);
 }
 
 uint32_t initLoop=0;
 
 uint32_t ccc=0;
+
+uint32_t totalLoop=0;
 void loop() 
 {
   if(WS_Server)
@@ -70,8 +71,13 @@ void loop()
   volatile int ddd=0;
   for(uint32_t i=0;i!=50000;i++)
   {
+    totalLoop++;
+    if(logicPulseCount==0)
+    {
+       DEBUG_print("logicPulseCount==0 : totalLoop");
+       DEBUG_println(totalLoop);
+    }
     ddd%=3;
-
     uint32_t dddx=(uint32_t)4400;
     if(ccc++==dddx)
     {
@@ -81,10 +87,7 @@ void loop()
         digitalWrite(FAKE_GATE_PIN, HIGH);
     if(ccc==2400/3)
         digitalWrite(FAKE_GATE_PIN, LOW);
-    
-    
   }
-   
   DEBUG_print("RBuf.size():");
   DEBUG_println(RBuf.size());
 

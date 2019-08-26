@@ -99,8 +99,8 @@ StepperMotor stepperMotor(22, 23, 24, 25);
 
 
 uint32_t perRevPulseCount_HW = (uint32_t)2400*32;//the real hardware pulse count per rev
-uint32_t pulseSkip=32;//We don't do task processing for every hardware pulse, so we can save computing power for other things
-uint32_t perRevPulseCount = perRevPulseCount_HW/pulseSkip;// the software pulse count that processor really care
+uint32_t subPulseSkipCount=32;//We don't do task processing for every hardware pulse, so we can save computing power for other things
+uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the software pulse count that processor really care
 
 
 uint32_t PRPC= perRevPulseCount;
@@ -221,7 +221,7 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 
 
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
-uint32_t countX = 0;
+//uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
 
 void task_gateSensing()
@@ -243,7 +243,7 @@ void task_gateSensing()
       if (gateInfo.state != cur_Sense)
       {
         gateInfo.state = cur_Sense;
-        gateInfo.start_pulse = countX;
+        gateInfo.start_pulse = logicPulseCount;
       }
     }
     else
@@ -251,7 +251,7 @@ void task_gateSensing()
       if (gateInfo.state != cur_Sense)
       {
 
-        gateInfo.end_pulse = countX;
+        gateInfo.end_pulse = logicPulseCount;
         if (gateInfo.start_pulse > gateInfo.end_pulse)
         {
           gateInfo.end_pulse += perRevPulseCount;
@@ -271,9 +271,9 @@ void task_gateSensing()
           //Do pulse distance check, if the new task is closer do fresh
           {
             uint32_t exPulse = getMinDistTaskPulse(actionExecTaskQ);
-            uint32_t exDist = pulse_distance(countX,exPulse,perRevPulseCount);
+            uint32_t exDist = pulse_distance(logicPulseCount,exPulse,perRevPulseCount);
             uint32_t newPulse = head->trigger_pulse;
-            uint32_t newDist= pulse_distance(countX,newPulse,perRevPulseCount);
+            uint32_t newDist= pulse_distance(logicPulseCount,newPulse,perRevPulseCount);
             if(newDist<exDist)
             {
               actionExecTaskQ.clear();
@@ -318,7 +318,7 @@ void task_ExecuteMinDistTasks(uint8_t stage,uint8_t stageLen)
     
     pipeLineInfo* tail = (*taskToDo);
     if(tail==NULL)continue;
-    if(tail->trigger_pulse!=countX)break;
+    if(tail->trigger_pulse!=logicPulseCount)break;
 
 
 //    if(tail->stage==7)
@@ -401,7 +401,7 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
     pipeLineInfo* tail = RBuf.getTail(i);
     if(tail->stage<0)continue;
 
-    uint32_t dist = pulse_distance(countX,tail->trigger_pulse, perRevPulseCount);
+    uint32_t dist = pulse_distance(logicPulseCount,tail->trigger_pulse, perRevPulseCount);
     if(minDist>dist)
     {
       actionExecTaskQ.clear();
@@ -454,16 +454,16 @@ TIMER_SET_ISR(1)
   stepperMotor.OneStep(true);
 
   
-  countSkip = mod_sim(countSkip+1,pulseSkip);
+  countSkip = mod_sim(countSkip+1,subPulseSkipCount);
   
   if (countSkip==0)
   {
-    countX = mod_sim(countX+1,perRevPulseCount);
+    logicPulseCount = mod_sim(logicPulseCount+1,perRevPulseCount);
     task_gateSensing();
   }
 
 
-  task_pulseStageExec(countSkip,pulseSkip);
+  task_pulseStageExec(countSkip,subPulseSkipCount);
 
 }
 
