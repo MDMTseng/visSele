@@ -48,8 +48,6 @@ void setup() {
   pinMode(FAKE_GATE_PIN, OUTPUT);
 }
 
-uint32_t initLoop=0;
-
 uint32_t ccc=0;
 
 uint32_t totalLoop=0;
@@ -57,28 +55,19 @@ void loop()
 {
   if(WS_Server)
     WS_Server->loop_WS();
-  loop_Stepper();
-  if(initLoop<10000)
-  {
-    initLoop++;
-    return;
-  }
+
+  totalLoop++;
+  if( (totalLoop&0x1F)==0)
+    loop_Stepper();
+  
 
 
-
-
-  DEBUG_println("start");
   volatile int ddd=0;
-  for(uint32_t i=0;i!=50000;i++)
+  for(uint32_t i=0;i!=3;i++)
   {
-    totalLoop++;
-    if(logicPulseCount==0)
-    {
-       DEBUG_print("logicPulseCount==0 : totalLoop");
-       DEBUG_println(totalLoop);
-    }
-    ddd%=3;
-    uint32_t dddx=(uint32_t)4400;
+    
+    //ddd%=3;
+    uint32_t dddx=(uint32_t)4400*2;
     if(ccc++==dddx)
     {
       ccc=0;
@@ -88,11 +77,12 @@ void loop()
     if(ccc==2400/3)
         digitalWrite(FAKE_GATE_PIN, LOW);
   }
-  DEBUG_print("RBuf.size():");
-  DEBUG_println(RBuf.size());
-
   
-  DEBUG_println("END");
+  if( (totalLoop&0x1FFF)==0)
+  {
+    DEBUG_print("RBuf.size():");
+    DEBUG_println(RBuf.size());
+  }
   
   /*
   char tmp[40];

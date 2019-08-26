@@ -98,8 +98,8 @@ StepperMotor stepperMotor(22, 23, 24, 25);
 #define GATE_PIN 30
 
 
-uint32_t perRevPulseCount_HW = (uint32_t)2400*32;//the real hardware pulse count per rev
-uint32_t subPulseSkipCount=32;//We don't do task processing for every hardware pulse, so we can save computing power for other things
+uint32_t subPulseSkipCount=16;//We don't do task processing for every hardware pulse, so we can save computing power for other things
+uint32_t perRevPulseCount_HW = (uint32_t)2400*subPulseSkipCount;//the real hardware pulse count per rev
 uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the software pulse count that processor really care
 
 
@@ -368,15 +368,15 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
   
   static uint32_t minDist;
 
-  if(stage==0)
-  {
-    uint32_t minTaskPulse = getMinDistTaskPulse(actionExecTaskQ);
-    doCollection=(minTaskPulse>=perRevPulseCount);
-  }
-  if(!doCollection)
-  {
-    return;
-  }
+//  if(stage==0)
+//  {
+//    uint32_t minTaskPulse = getMinDistTaskPulse(actionExecTaskQ);
+//    doCollection=(minTaskPulse>=perRevPulseCount);
+//  }
+//  if(!doCollection)
+//  {
+//    return;
+//  }
 
   
   proS=proE;
@@ -468,7 +468,7 @@ TIMER_SET_ISR(1)
 }
 
 uint32_t pulseHZ = 0;
-uint32_t tar_pulseHZ = 32 * 800;
+uint32_t tar_pulseHZ = perRevPulseCount_HW/3;
 uint32_t pulseHZ_step = 1;
 
 void setup_Stepper() {
