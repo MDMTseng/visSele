@@ -930,7 +930,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             
             LOGV( "unlock");
             mainThreadLock.unlock();
-            srcImg = camera->GetImg();
+            srcImg = camera->GetFrame();
             }
 
             if(srcImg==NULL)
@@ -1131,7 +1131,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             
             LOGV( "unlock");
             mainThreadLock.unlock();
-            srcImg = camera->GetImg();
+            srcImg = camera->GetFrame();
             cacheImage.ReSize(srcImg);
             acvCloneImage(srcImg,&cacheImage,-1);
             //SaveIMGFile("data/test1.bmp",srcImg);
@@ -1533,7 +1533,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   }
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
   
-  acvImage &capImg=*cl_GMV.GetImg();
+  acvImage &capImg=*cl_GMV.GetFrame();
+  CameraLayer::frameInfo fi= cl_GMV.GetFrameInfo();
   imgStackRes.ReSize(&capImg);
 
 
@@ -1688,8 +1689,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         
         if(cb->mift)
         {
-            char buffx[100];
-            int len = sprintf(buffx,"{\"type\":\"inspRep\",\"idx\":1,\"status\":%d}",stat);
+            char buffx[150];
+            int len = sprintf(buffx,
+              "{"
+              "\"type\":\"inspRep\",\"idx\":1,\"status\":%d,"
+              "\"time_100us\":%d"
+              "}",stat,fi.timeStamp_100us);
             cb->mift->send_data((uint8_t*)buffx,len);
         }
     
@@ -2064,7 +2069,7 @@ int simpleTest(char *imgName, char *defName)
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetImg(),1,defName);
+  ImgInspection_DefRead(matchingEng,cl_BMP.GetFrame(),1,defName);
 
   const FeatureReport * report = matchingEng.GetReport();
 

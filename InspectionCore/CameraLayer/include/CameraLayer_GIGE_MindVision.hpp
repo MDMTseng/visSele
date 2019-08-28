@@ -45,7 +45,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status GetExposureTime(double *ret_time_ms);
     void ContTriggerThread();
     void ContTriggerThreadTermination();
-    acvImage* GetImg();
+    acvImage* GetFrame();
 
 
     

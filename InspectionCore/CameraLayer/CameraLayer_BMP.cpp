@@ -5,6 +5,7 @@
 #include <dirent.h> 
 #include <thread>
 
+#include<sys/time.h>
 
 CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLayer(cb,context)
 {
@@ -59,6 +60,16 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 
 
         ret_status=ACK;
+        struct timeval tp;
+        gettimeofday(&tp, NULL);
+        long int _100us = tp.tv_sec * 10000 + tp.tv_usec / 100; //get current timestamp in milliseconds
+
+        CameraLayer::frameInfo fi_={
+          timeStamp_100us:(uint64_t)_100us,
+          width:(uint32_t)img.GetWidth,
+          height:(uint32_t)img.GetHeight,
+        };
+        fi = fi_;
         callback(*this,CameraLayer::EV_IMG,context);
     }
     m.unlock();

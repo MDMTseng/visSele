@@ -52,7 +52,12 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
     //img.ReSize(width,height);
     if(CameraImageProcess(hCamera, frameBuffer, m_pFrameBuffer, frameInfo)!=CAMERA_STATUS_SUCCESS)
     {
-        
+        CameraLayer_GIGE_MindVision::frameInfo fi_={
+          timeStamp_100us:(uint64_t)frameInfo->uiTimeStamp,
+          width:(uint32_t)frameInfo->iWidth,
+          height:(uint32_t)frameInfo->iHeight,
+        };
+        fi = fi_;
         callback(*this,CameraLayer::EV_ERROR,context);
     }
     else
@@ -86,7 +91,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     TriggerCount(1);
     CameraSetCallbackFunction(m_hCamera,sGIGEMV_CB,(PVOID)this,NULL);
     CameraSetAeState(m_hCamera,FALSE);
-    CameraSetAutoConnect(m_hCamera,true);
+    //CameraSetAutoConnect(m_hCamera,true);
     CameraSetMirror(m_hCamera,1,true);
     int maxBufferSize = width*height * 3;
 	m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
@@ -264,7 +269,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::GetExposureTime(double *ret_tim
     return CameraLayer::ACK;
 }
 
-acvImage* CameraLayer_GIGE_MindVision::GetImg()
+acvImage* CameraLayer_GIGE_MindVision::GetFrame()
 {
     return &img;
 }

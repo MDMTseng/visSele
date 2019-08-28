@@ -7,6 +7,14 @@
 
 
 class CameraLayer{
+
+    public:
+    
+    typedef struct {
+      uint64_t timeStamp_100us;
+      uint32_t width;
+      uint32_t height;
+    }frameInfo;
     protected:
     /*// Camera's device information
     typedef struct
@@ -36,6 +44,7 @@ class CameraLayer{
     void* context;
     uint32_t frameTimeTag;
     
+    frameInfo fi;
     public:
     
 
@@ -51,6 +60,8 @@ class CameraLayer{
         EV_IMG,
         EV_ERROR
     }ev_type;
+
+
 
 
     CameraLayer(CameraLayer_Callback cb,void* context)
@@ -116,9 +127,13 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     
-    virtual acvImage* GetImg()
+    virtual acvImage* GetFrame()
     {
         return &img;
+    }
+    virtual frameInfo GetFrameInfo()
+    {
+      return fi;
     }
 
     virtual  ~CameraLayer(){}
