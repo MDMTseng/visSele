@@ -2125,11 +2125,24 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM)
   
 }
 
+int testCode()
+{
+  return 0;
 
+  acvImage img;
+  
+  acvImage bw_img;
+  int ret = LoadPNGFile(&img,"data/B5G-25X45X60.png");
+  bw_img.ReSize(&img);
+  acvThreshold(&bw_img, 80, 0);
+  ret = SavePNGFile("data/B5G-25X45X60__.png", &bw_img);
+
+  return -1;
+}
 #include <vector>
 int main(int argc, char** argv)
 {
-
+  if(testCode()!=0)return -1;
 
 
   machine_h= get_machine_hash();
