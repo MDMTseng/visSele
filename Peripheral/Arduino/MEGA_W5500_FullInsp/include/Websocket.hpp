@@ -169,22 +169,22 @@ class Websocket_Server{
     {
       EthernetClient Rc = WSP[i].getClientOBJ();
       if(!WSP[i].alive())continue;
-      DEBUG_print("sock:");
-      DEBUG_print(Rc.getSocketNumber());
-      DEBUG_print(" status:");
+      // DEBUG_print("sock:");
+      // DEBUG_print(Rc.getSocketNumber());
+      // DEBUG_print(" status:");
       int stat = Rc.status();
-      DEBUG_print(stat);
+      // DEBUG_print(stat);
   
-      DEBUG_print(" WSOP:");
-      DEBUG_print(WSP[i].getRecvOPState());
-      DEBUG_print(" WSStat:");
-      DEBUG_println(WSP[i].getState());
+      // DEBUG_print(" WSOP:");
+      // DEBUG_print(WSP[i].getRecvOPState());
+      // DEBUG_print(" WSStat:");
+      // DEBUG_println(WSP[i].getState());
       if (stat == 0|| stat == 20)
       {
-        DEBUG_print("clear timeout sock::sock");
-        DEBUG_println(Rc.getSocketNumber());
-        DEBUG_print(" state::");
-        DEBUG_println(stat);
+        // DEBUG_print("clear timeout sock::sock");
+        // DEBUG_println(Rc.getSocketNumber());
+        // DEBUG_print(" state::");
+        // DEBUG_println(stat);
         Rc.stop();
         WSP[i].rmClientOBJ();
   
@@ -200,9 +200,9 @@ class Websocket_Server{
       if (WSP[i].alive())
       {
         EthernetClient Rc = WSP[i].getClientOBJ();
-        DEBUG_print(Rc);
-        DEBUG_print(":::sock:");
-        DEBUG_println(Rc.getSocketNumber());
+        // DEBUG_print(Rc);
+        // DEBUG_print(":::sock:");
+        // DEBUG_println(Rc.getSocketNumber());
         //byte SnIR = ReadSn_IR(WSP[i].getClientOBJ()._sock);
   
         testAlive(Rc.getSocketNumber());

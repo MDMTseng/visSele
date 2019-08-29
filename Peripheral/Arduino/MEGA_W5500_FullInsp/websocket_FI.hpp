@@ -85,10 +85,10 @@ int json_seg_parser::newChar(char ch){
 
 
 
-class Websocket_FI:public Websocket_Server{
+class Websocket_FI_proto:public Websocket_Server{
   public:
   json_seg_parser jsparser;
-  Websocket_FI(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
+  Websocket_FI_proto(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
     Websocket_Server(buff,buffL,ip,port,gateway,subnet),
     jsparser(){}
 
@@ -141,55 +141,41 @@ class Websocket_FI:public Websocket_Server{
   }
 
   
+  char * findJsonScope(char *json,char *anchor,int *scopeL)
+  {
+    if(scopeL)*scopeL=-1;
+    char* pch = strstr (json,anchor);
+    if(pch==NULL)return NULL;
+    pch+=strlen(anchor);
+    int Len = findJsonScopeLen(pch);
+
+    if(scopeL)*scopeL=Len;
+    return pch;
+  }
   
   int findJsonScope(char *json,char *anchor,char *extBuff,int extBuffL)
   {
-    extBuff[0]='\0';
-    char* pch = strstr (json,anchor);
-    if(pch==NULL)return -1;
-    pch+=strlen(anchor);
-    int Len = findJsonScopeLen(pch);
-    if(extBuffL<Len+1)return -1;
-
-    memcpy(extBuff,pch,Len);
-    extBuff[Len]='\0';
-    return Len;
+    int scopeL;
+    char * scope= findJsonScope(json,anchor,&scopeL);
+    if(scope==NULL)return -1;
+    if(extBuffL<scopeL+1)return -1;
+    memcpy(extBuff,scope,scopeL);
+    extBuff[scopeL]='\0';
+    return scopeL;
   }
   
-  int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
+  virtual int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
     unsigned int MessageL = 0; //echo
 
+    
     recv_cmd[cmdL]='\0';
-    if(cmdL!=0)
+
+    if (MessageL == 0)
     {
-      if(strstr ((char*)recv_cmd,"\"type\":\"inspRep\"")!=NULL)
-      {
-        int buffL=100;
-        char *idxStr = (char*)send_rsp+rspMaxL/2;
-        int retL = findJsonScope((char*)recv_cmd,"\"idx\":",idxStr,buffL);
-        if(retL<0)idxStr=NULL;
-
-        char *statusStr = idxStr+buffL;
-        retL = findJsonScope((char*)recv_cmd,"\"status\":",statusStr,buffL);
-        if(retL<0)statusStr=NULL;
-
-
-        if(idxStr && statusStr)
-        {
-          Serial.println(idxStr);
-          Serial.println(statusStr);
-        }
-      }
+      //strcpy(tmpStr, (char*)recv_cmd);
+      MessageL = sprintf( (char*)send_rsp, "{\"type\":\"ER\",\"MSG\":\"EMPTY, do cmd in child class\"}");
     }
-    
-    
-
-    /*if (MessageL == 0)
-    {
-      strcpy(tmpStr, (char*)recv_cmd);
-      MessageL = sprintf( (char*)send_rsp, "UNKNOWN:%s",tmpStr);
-    }*/
     return MessageL;
   }
   

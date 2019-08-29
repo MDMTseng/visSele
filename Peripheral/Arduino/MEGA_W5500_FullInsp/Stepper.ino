@@ -7,21 +7,25 @@ boolean stepM_seq_c[] = {0, 0, 0, 1, 1, 1, 0, 0};
 boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
 
 
-
 #define TIMER_SET_ISR(TN) \
-  void timer##TN##_HZ(int HZ){TCNT##TN=0;OCR##TN##A = 16000000 / 256 / HZ;} \
+  void timer##TN##_HZ(int HZ){\
+    uint16_t OCR =  16000000 / 256 / HZ;\
+    OCR##TN##A = OCR;\
+    if(TCNT##TN>OCR){\
+      TCNT##TN=0;\
+    }\
+  } \
   void timer##TN##Setup(int HZ)\
   {\
     noInterrupts();\
     TCCR##TN##A = 0;\
     TCCR##TN##B = 0;\
-    timer##TN##_HZ(HZ);\
     TCCR##TN##B |= (1 << WGM##TN##2);\
     TCCR##TN##B |= (1 << CS12);\
     TIMSK##TN |= (1 << OCIE##TN##A);\
     interrupts();\
-  }\
-  ISR(TIMER##TN##_COMPA_vect) 
+    timer##TN##_HZ(HZ);\
+  }
 
 
 class StepperMotor
@@ -29,8 +33,7 @@ class StepperMotor
   public:
     int p1, p2, p3, p4;
 
-    StepperMotor(int p1, int p2, int p3, int p4)
-    {
+    StepperMotor(int p1, int p2, int p3, int p4){
 
       pinMode(p1, OUTPUT);
       pinMode(p2, OUTPUT);
@@ -77,6 +80,10 @@ class StepperMotor
 };
 
 
+StepperMotor stepperMotor(22, 23, 24, 25);
+
+
+//StepperMotor stepperMotorDRV8825(22,23,24,25);
 uint32_t mod_sim(uint32_t num,uint32_t mod_N)
 {
   while(num>=mod_N)
@@ -88,77 +95,67 @@ uint32_t mod_sim(uint32_t num,uint32_t mod_N)
 
 
 
-StepperMotor stepperMotor(22, 23, 24, 25);
-//StepperMotor stepperMotorDRV8825(22,23,24,25);
-
-
 #define CAMERA_PIN 16
 #define AIR_BLOW_OK_PIN 18
 #define AIR_BLOW_NG_PIN 19
 #define GATE_PIN 30
 
 
-uint32_t subPulseSkipCount=16;//We don't do task processing for every hardware pulse, so we can save computing power for other things
-uint32_t perRevPulseCount_HW = (uint32_t)2400*subPulseSkipCount;//the real hardware pulse count per rev
-uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the software pulse count that processor really care
 
-
-uint32_t PRPC= perRevPulseCount;
-int offsetAir=80;
-uint32_t state_pulseOffset[] = {
-  PRPC*30/360, PRPC*30/360+5, 
-  PRPC*30/360+10, 
-  
-  PRPC*240/360+offsetAir, PRPC*240/360+6+offsetAir, 
-  PRPC*240/360+20+offsetAir, PRPC*240/360+26+offsetAir};
+pipeLineInfo* actionExecTask[ SARRL(state_pulseOffset)];
+RingBuf<typeof(*actionExecTask),uint8_t > actionExecTaskQ(actionExecTask,SARRL(state_pulseOffset));
 
 
 
-pipeLineInfo* actionExecTask[ (sizeof(state_pulseOffset) / sizeof(*state_pulseOffset))];
-RingBuf<typeof(*actionExecTask),uint8_t > actionExecTaskQ(actionExecTask,sizeof(actionExecTask)/sizeof(*actionExecTask));
 
-
-
+int cctest=0;
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
 {
   pli->notifMark = 0;
+//  
+//  DEBUG_print("..");
+//  DEBUG_println(pli->stage);
   switch (pli->stage)
   {
     case 0:
 
+      pli->stage++;
       break;
     case 1://Trigger shutter ON
       digitalWrite(CAMERA_PIN, 1);
       pli->notifMark = 1;
+      pli->stage++;
       break;
     case 2://Trigger shutter OFF
       digitalWrite(CAMERA_PIN, 0);
+      pli->stage++;
       break;
 
     case 3://Termination stage
-      //pli->stage = 5;
-      //return -1;
-      break;
+      cctest++;
+      pli->stage=6;
+      //pli->stage=((cctest&1)==0)?4:6;
+      return 0;
 
 
     case 4://Air Blow OK ON
       digitalWrite(AIR_BLOW_OK_PIN, 1);
-      break;
+      pli->stage++;
+      return 0;
     case 5://Air Blow OK OFF
       digitalWrite(AIR_BLOW_OK_PIN, 0);
-      //pli->stage = -1;
-      //return -1;
-      break;
+      //pli->stage++;
+      return -1;
+      
     case 6://Air Blow NG ON
       digitalWrite(AIR_BLOW_NG_PIN, 1);
-      break;
+      pli->stage++;
+      return 0;
     case 7://Air Blow NG OFF
       digitalWrite(AIR_BLOW_NG_PIN, 0);
-      pli->stage = -1;
       return -1;
-      break;
   }
   return 0;
 }
@@ -167,16 +164,16 @@ int next_state(pipeLineInfo* pli);
 int next_state(pipeLineInfo* pli)
 {
   if (pli->stage < 0 || 
-    pli->stage > (sizeof(state_pulseOffset) / sizeof(*state_pulseOffset)) ||
+    pli->stage > SARRL(state_pulseOffset) ||
     stage_action(pli) < 0)
   {
     pli->gate_pulse=perRevPulseCount;
+    pli->stage=-1;//termination
     return -1;
   }
   
   pli->trigger_pulse = mod_sim(pli->gate_pulse + state_pulseOffset[pli->stage],perRevPulseCount);
   
-  pli->stage++;
   return 0;
 }
 
@@ -234,9 +231,9 @@ void task_gateSensing()
   {
     gateInfo.debunce = 0;
   }
-  else if (gateInfo.debunce <= 1)gateInfo.debunce++;
+  else if (gateInfo.debunce <= 2)gateInfo.debunce++;
 
-  if (gateInfo.debunce == 1)
+  if (gateInfo.debunce == 2)
   {
     if (cur_Sense == 0)
     {
@@ -368,15 +365,15 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
   
   static uint32_t minDist;
 
-//  if(stage==0)
-//  {
-//    uint32_t minTaskPulse = getMinDistTaskPulse(actionExecTaskQ);
-//    doCollection=(minTaskPulse>=perRevPulseCount);
-//  }
-//  if(!doCollection)
-//  {
-//    return;
-//  }
+  if(stage==0)
+  {
+    uint32_t minTaskPulse = getMinDistTaskPulse(actionExecTaskQ);
+    doCollection=(minTaskPulse>=perRevPulseCount);
+  }
+  if(!doCollection)
+  {
+    return;
+  }
 
   
   proS=proE;
@@ -450,6 +447,8 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 
 
 TIMER_SET_ISR(1)
+
+ISR(TIMER1_COMPA_vect) 
 {
   stepperMotor.OneStep(true);
 
@@ -468,8 +467,7 @@ TIMER_SET_ISR(1)
 }
 
 uint32_t pulseHZ = 0;
-uint32_t tar_pulseHZ = perRevPulseCount_HW/3;
-uint32_t pulseHZ_step = 1;
+uint32_t pulseHZ_step = 10;
 
 void setup_Stepper() {
   pinMode(CAMERA_PIN, OUTPUT);
@@ -481,7 +479,7 @@ void setup_Stepper() {
 }
 
 
-void loop_Stepper() {
+void loop_Stepper(uint32_t tar_pulseHZ) {
   if (pulseHZ != tar_pulseHZ)
   {
     if (pulseHZ < tar_pulseHZ)
