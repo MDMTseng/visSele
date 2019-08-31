@@ -152,6 +152,35 @@ class Websocket_FI_proto:public Websocket_Server{
     if(scopeL)*scopeL=Len;
     return pch;
   }
+
+
+  
+  
+  static int popNumberFromArr(char *numArr,uint32_t *ret_num)
+  {
+    uint32_t num=0;
+    int idx=0;
+    if(ret_num==NULL)return 0;
+    if(numArr[0]<'0' || numArr[0] > '9')
+    {
+      *ret_num=0;
+      return 0;
+    }
+    while(1)
+    {
+      char c = numArr[idx];
+      
+      if(c <'0' || c > '9')
+        break;
+        
+      num=num*10+(c-'0');
+      
+      idx++;
+    }
+    *ret_num = num;
+    return idx;
+  }
+
   
   int findJsonScope(char *json,char *anchor,char *extBuff,int extBuffL)
   {

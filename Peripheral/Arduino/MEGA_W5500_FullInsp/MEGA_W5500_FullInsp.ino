@@ -77,6 +77,11 @@ class Websocket_FI:public Websocket_FI_proto{
  
   int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
+    if(cmdL==NULL)
+    {
+      return 0;
+    }
+
     unsigned int MessageL = 0; //echo
     recv_cmd[cmdL]='\0';
     uint8_t *offset_cmd=send_rsp+(rspMaxL-cmdL);
@@ -88,24 +93,25 @@ class Websocket_FI:public Websocket_FI_proto{
     char *buff= (char*)send_rsp+rspMaxL/2;
     int buffL = rspMaxL/2-cmdL;
     
-    if(cmdL!=0)
+
+    
     {
-      char *idxStr = buff;
-      int idxStrL = findJsonScope((char*)recv_cmd,"\"idx\":",idxStr,buffL);
-      if(idxStrL<0)idxStr=NULL;
+      char *idStr = buff;
+      int idStrL = findJsonScope((char*)recv_cmd,"\"id\":",idStr,buffL);
+      if(idStrL<0)idStr=NULL;
 
-      buff+=idxStrL+1;
-      buffL-=idxStrL+1;
+      buff+=idStrL+1;
+      buffL-=idStrL+1;
 
-      if(idxStr && idxStr[0]=='\"' && idxStr[idxStrL-1]=='\"')
+      if(idStr && idStr[0]=='\"' && idStr[idStrL-1]=='\"')
       {
-        idxStr[idxStrL-1]='\0';
-        idxStr++;
+        idStr[idStrL-1]='\0';
+        idStr++;
       }
 
       MessageL += sprintf( (char*)send_rsp+MessageL, "{");
-        
-      MessageL += sprintf( (char*)send_rsp+MessageL, "\"idx\":\"%s\",",idxStr);
+      int ret_status=-1;
+      
       if(strstr ((char*)recv_cmd,"\"type\":\"inspRep\"")!=NULL)
       {
         char *buffX=buff;
@@ -113,24 +119,74 @@ class Websocket_FI:public Websocket_FI_proto{
         int retL = findJsonScope((char*)recv_cmd,"\"status\":",statusStr,buffL);
         if(retL<0)statusStr=NULL;
         buffX+=retL;
+        
+        ret_status=0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_pulse_offset_info\"")!=NULL)
       {
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"pulse_offset_info\"",idxStr);
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"pulse_offset_info\",",idStr);
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"table\":[");
         for(int i=0;i<SARRL(state_pulseOffset);i++)
           MessageL += sprintf( (char*)send_rsp+MessageL, "%d,",state_pulseOffset[i]);
         MessageL--;//remove last ','
         MessageL += sprintf( (char*)send_rsp+MessageL, "],");
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"perRevPulseCount\":%d,",perRevPulseCount);
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d",subPulseSkipCount);
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
         
+        ret_status=0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_offset_info\"")!=NULL)
       {
-        
-      }
+        ret_status=-1;
+        do{
+          int table_scopeL=0;
+          char * table_scope = findJsonScope((char*)recv_cmd,"\"table\":",&table_scopeL);
+          if(table_scope==NULL)break;
+          
+          if( table_scope[0]=='[' && table_scope[table_scopeL-1]==']' )
+          {
+            table_scope++;
+            table_scopeL-=2;
+          }
 
+          char *table_str=table_scope;
+          uint32_t new_state_pulseOffset[SARRL(state_pulseOffset)];
+          
+          DEBUG_print(">>>");
+          DEBUG_println(table_scope);
+          for(int i=0;i<SARRL(new_state_pulseOffset);i++)
+          {
+            int ptr_adv = popNumberFromArr(table_str,&(new_state_pulseOffset[i]));
+            
+            DEBUG_print(">>ptr_adv>:");
+            DEBUG_println(ptr_adv);
+            if(ptr_adv==0)
+            {
+              table_str=NULL;
+              break;
+            }
+            else
+            {
+              table_str+=ptr_adv+1;
+            }
+          }
+
+          if(table_str)
+          {
+            DEBUG_print(">>new_state_pulseOffset[3]>:");
+            DEBUG_println(new_state_pulseOffset[3]);
+            ret_status=0;
+            memcpy(state_pulseOffset,new_state_pulseOffset,sizeof(new_state_pulseOffset));
+          }
+          
+          
+        }while(0);
+      }
+      
+      if(idStr)
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"id\":\"%s\",",idStr);
+        
+      MessageL += sprintf( (char*)send_rsp+MessageL, "\"st\":%d,",ret_status);
       if(send_rsp[MessageL-1]== ',')
         MessageL--;
       MessageL += sprintf( (char*)send_rsp+MessageL, "}");
@@ -138,12 +194,6 @@ class Websocket_FI:public Websocket_FI_proto{
     }
     
     
-
-    if (MessageL == 0)
-    {
-      //strcpy(tmpStr, (char*)recv_cmd);
-      MessageL = sprintf( (char*)send_rsp, "{\"type\":\"ER\",\"MSG\":\"CMD not found\"}");
-    }
     return MessageL;
   }
 
@@ -173,10 +223,8 @@ void loop()
   
   if( (totalLoop&0x1F)==0)
   {
-    if(emptyPlateCount>15)
-      loop_Stepper(tar_pulseHZ_*15/10/emptyPlateCount);
-    else if(emptyPlateCount>7)
-      loop_Stepper(tar_pulseHZ_/10);
+    if(emptyPlateCount>7)
+      loop_Stepper(tar_pulseHZ_/20);
     else
       loop_Stepper(tar_pulseHZ_);
   }
