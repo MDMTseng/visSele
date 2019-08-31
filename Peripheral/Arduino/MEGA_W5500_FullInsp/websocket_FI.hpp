@@ -155,7 +155,7 @@ class Websocket_FI_proto:public Websocket_Server{
 
 
   static int ParseNumberFromArr(char *numArrStr,uint32_t *numArr, int targetArrLen)
-  {
+  {//return parsed string length, not number array length
     int ptr_idx=0;
     for(int i=0;i<targetArrLen;i++)
     {
@@ -168,7 +168,7 @@ class Websocket_FI_proto:public Websocket_Server{
 
       ptr_idx+=ptr_adv+1;
     }
-    return ptr_idx;
+    return ptr_idx-1;
   }
   
   static int PopNumberFromArr(char *numArrStr,uint32_t *ret_num)

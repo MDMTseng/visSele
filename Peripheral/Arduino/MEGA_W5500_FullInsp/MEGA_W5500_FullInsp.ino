@@ -141,7 +141,11 @@ class Websocket_FI:public Websocket_FI_proto{
         do{
           int table_scopeL=0;
           char * table_scope = findJsonScope((char*)recv_cmd,"\"table\":",&table_scopeL);
-          if(table_scope==NULL)break;
+          if(table_scope==NULL)
+          {
+            MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
+            break;
+          }
           
           if( table_scope[0]=='[' && table_scope[table_scopeL-1]==']' )
           {
@@ -151,7 +155,7 @@ class Websocket_FI:public Websocket_FI_proto{
 
           uint32_t new_state_pulseOffset[SARRL(state_pulseOffset)];
 
-          int adv_len = ParseNumberFromArr(table_scope,new_state_pulseOffset, SARRL(state_pulseOffset));
+          int adv_len = ParseNumberFromArr(table_scope,new_state_pulseOffset, SARRL(state_pulseOffset));//return parsed string length
          
           if(adv_len)
           {
