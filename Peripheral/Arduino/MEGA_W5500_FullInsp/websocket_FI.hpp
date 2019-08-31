@@ -154,21 +154,36 @@ class Websocket_FI_proto:public Websocket_Server{
   }
 
 
+  static int ParseNumberFromArr(char *numArrStr,uint32_t *numArr, int targetArrLen)
+  {
+    int ptr_idx=0;
+    for(int i=0;i<targetArrLen;i++)
+    {
+      int ptr_adv = PopNumberFromArr(numArrStr+ptr_idx,&(numArr[i]));
+      
+      if(ptr_adv==0)
+      {
+        return 0;
+      }
+
+      ptr_idx+=ptr_adv+1;
+    }
+    return ptr_idx;
+  }
   
-  
-  static int popNumberFromArr(char *numArr,uint32_t *ret_num)
+  static int PopNumberFromArr(char *numArrStr,uint32_t *ret_num)
   {
     uint32_t num=0;
     int idx=0;
     if(ret_num==NULL)return 0;
-    if(numArr[0]<'0' || numArr[0] > '9')
+    if(numArrStr[0]<'0' || numArrStr[0] > '9')
     {
       *ret_num=0;
       return 0;
     }
     while(1)
     {
-      char c = numArr[idx];
+      char c = numArrStr[idx];
       
       if(c <'0' || c > '9')
         break;

@@ -149,36 +149,20 @@ class Websocket_FI:public Websocket_FI_proto{
             table_scopeL-=2;
           }
 
-          char *table_str=table_scope;
           uint32_t new_state_pulseOffset[SARRL(state_pulseOffset)];
-          
-          DEBUG_print(">>>");
-          DEBUG_println(table_scope);
-          for(int i=0;i<SARRL(new_state_pulseOffset);i++)
-          {
-            int ptr_adv = popNumberFromArr(table_str,&(new_state_pulseOffset[i]));
-            
-            DEBUG_print(">>ptr_adv>:");
-            DEBUG_println(ptr_adv);
-            if(ptr_adv==0)
-            {
-              table_str=NULL;
-              break;
-            }
-            else
-            {
-              table_str+=ptr_adv+1;
-            }
-          }
 
-          if(table_str)
+          int adv_len = ParseNumberFromArr(table_scope,new_state_pulseOffset, SARRL(state_pulseOffset));
+         
+          if(adv_len)
           {
-            DEBUG_print(">>new_state_pulseOffset[3]>:");
-            DEBUG_println(new_state_pulseOffset[3]);
             ret_status=0;
             memcpy(state_pulseOffset,new_state_pulseOffset,sizeof(new_state_pulseOffset));
           }
-          
+          else
+          {
+            MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"Table message length is not sufficient, expected length:%d\",",SARRL(state_pulseOffset));
+          }
+
           
         }while(0);
       }
