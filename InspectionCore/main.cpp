@@ -1011,7 +1011,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
 
 
         }
-        else if(checkTL("CI",dat))//[C]ontinuous [I]nspection
+        else if(checkTL("CI",dat) || checkTL("FI",dat))//[C]ontinuous [I]nspection / [F]ull [I]nspection 
         {
         do{
 
@@ -1068,7 +1068,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 //If the inspection result arrives without def config file then webUI will generate(by design) an statemachine error event.
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-                camera->TriggerMode(0);
+                if(dat->tl[0]=='C')
+                {
+                  camera->TriggerMode(0);
+                }
+                else
+                {
+                  camera->TriggerMode(2);
+                }
+                
                 cb->cameraFeedTrigger=true;
                 camera->Trigger();
                 //SaveIMGFile("data/buff.bmp",&test1_buff);
@@ -1689,13 +1697,16 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
         
         if(cb->mift)
         {
-            char buffx[150];
-            int len = sprintf(buffx,
-              "{"
-              "\"type\":\"inspRep\",\"idx\":1,\"status\":%d,"
-              "\"time_100us\":%d"
-              "}",stat,fi.timeStamp_100us);
-            cb->mift->send_data((uint8_t*)buffx,len);
+          LOGI("mift is here!!");
+          char buffx[150];
+          int len = sprintf(buffx,
+            "{"
+            "\"type\":\"inspRep\",\"idx\":1,\"status\":%d,"
+            "\"time_100us\":%d"
+            "}",stat,fi.timeStamp_100us);
+          cb->mift->send_data((uint8_t*)buffx,len);
+          
+          LOGI("%s",buffx);
         }
     
 

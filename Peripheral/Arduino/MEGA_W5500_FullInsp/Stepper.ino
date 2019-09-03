@@ -95,70 +95,10 @@ uint32_t mod_sim(uint32_t num,uint32_t mod_N)
 
 
 
-#define CAMERA_PIN 16
-#define AIR_BLOW_OK_PIN 18
-#define AIR_BLOW_NG_PIN 19
-#define GATE_PIN 30
-
-
 
 pipeLineInfo* actionExecTask[ SARRL(state_pulseOffset)];
 RingBuf<typeof(*actionExecTask),uint8_t > actionExecTaskQ(actionExecTask,SARRL(state_pulseOffset));
 
-
-
-
-int cctest=0;
-
-int stage_action(pipeLineInfo* pli);
-int stage_action(pipeLineInfo* pli)
-{
-  pli->notifMark = 0;
-//  
-//  DEBUG_print("..");
-//  DEBUG_println(pli->stage);
-  switch (pli->stage)
-  {
-    case 0:
-
-      pli->stage++;
-      break;
-    case 1://Trigger shutter ON
-      digitalWrite(CAMERA_PIN, 1);
-      pli->notifMark = 1;
-      pli->stage++;
-      break;
-    case 2://Trigger shutter OFF
-      digitalWrite(CAMERA_PIN, 0);
-      pli->stage++;
-      break;
-
-    case 3://Termination stage
-      cctest++;
-      pli->stage=6;
-      //pli->stage=((cctest&1)==0)?4:6;
-      return 0;
-
-
-    case 4://Air Blow OK ON
-      digitalWrite(AIR_BLOW_OK_PIN, 1);
-      pli->stage++;
-      return 0;
-    case 5://Air Blow OK OFF
-      digitalWrite(AIR_BLOW_OK_PIN, 0);
-      //pli->stage++;
-      return -1;
-      
-    case 6://Air Blow NG ON
-      digitalWrite(AIR_BLOW_NG_PIN, 1);
-      pli->stage++;
-      return 0;
-    case 7://Air Blow NG OFF
-      digitalWrite(AIR_BLOW_NG_PIN, 0);
-      return -1;
-  }
-  return 0;
-}
 
 int next_state(pipeLineInfo* pli);
 int next_state(pipeLineInfo* pli)
@@ -470,10 +410,6 @@ uint32_t pulseHZ = 0;
 uint32_t pulseHZ_step = 10;
 
 void setup_Stepper() {
-  pinMode(CAMERA_PIN, OUTPUT);
-  pinMode(AIR_BLOW_OK_PIN, OUTPUT);
-  pinMode(AIR_BLOW_NG_PIN, OUTPUT);
-  pinMode(GATE_PIN, INPUT);
   DEBUG_println(".....");
   timer1Setup(1);
 }

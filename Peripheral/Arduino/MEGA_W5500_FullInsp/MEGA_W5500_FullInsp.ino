@@ -21,6 +21,7 @@ typedef struct pipeLineInfo{
   int8_t stage;
   int8_t sent_stage;
   int8_t notifMark;
+  int16_t insp_status;
 }pipeLineInfo;
 
 
@@ -30,8 +31,17 @@ typedef struct pipeLineInfo{
 
 uint32_t logicPulseCount = 0;
 
-#define PIPE_INFO_LEN 120
+#define PIPE_INFO_LEN 60
 pipeLineInfo pbuff[PIPE_INFO_LEN];
+
+#define CAMERA_PIN 16
+#define BACK_LIGHT_PIN 28
+#define AIR_BLOW_OK_PIN 18
+#define AIR_BLOW_NG_PIN 19
+#define GATE_PIN 30
+
+int FAKE_GATE_PIN=31;
+
 
 //The index type uint8_t would be enough if the buffersize<255
 
@@ -42,7 +52,6 @@ IPAddress _ip(192,168,2,2);
 IPAddress _gateway(169, 254, 170, 254);
 IPAddress _subnet(255, 255, 255, 0);
 
-int FAKE_GATE_PIN=31;
 
 
 
@@ -53,20 +62,94 @@ uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the softwar
 
 uint32_t PRPC= perRevPulseCount;
 int offsetAir=80;
-
-
 int cam_angle=103;
 int angle=149;
 int blowPCount=10;
-uint32_t state_pulseOffset[] = {
-  0,
-  PRPC*cam_angle/360, PRPC*cam_angle/360+5, 
+uint32_t state_pulseOffset[] = 
+//{
+//  0,//INIT
+//  PRPC*cam_angle/360, PRPC*cam_angle/360+5,  //Camera pin toggle
+//
+//  PRPC*cam_angle/360+10, //Waiting for inspection result
+//  
+//  PRPC*angle/360-blowPCount/2+offsetAir-10, //NA Exit
+//  
+//  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
+//  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
+{0,   686,691,  696, 1058,   1105,1118,1188,1198};
 
+int stage_action(pipeLineInfo* pli);
+int stage_action(pipeLineInfo* pli)
+{
+  pli->notifMark = 0;
   
-  PRPC*angle/360-blowPCount/2+offsetAir-10, 
-  
-  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, 
-  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};
+  static int cctest=0;
+
+//  
+//  DEBUG_print("..");
+//  DEBUG_println(pli->stage);
+  switch (pli->stage)
+  {
+    case 0:
+      pli->stage++;
+      pli->insp_status=-100;
+      break;
+    case 1://Trigger shutter ON
+      digitalWrite(CAMERA_PIN, 1);
+      digitalWrite(BACK_LIGHT_PIN, 1);
+      pli->notifMark = 1;
+      pli->stage++;
+      break;
+    case 2://Trigger shutter OFF
+      digitalWrite(CAMERA_PIN, 0);
+      digitalWrite(BACK_LIGHT_PIN, 0);
+      pli->stage++;
+      break;
+
+    case 3:
+      cctest++;
+      pli->stage=4;//Waiting for inspection result
+      //pli->stage=((cctest&1)==0)?4:6;
+      return 0;
+
+    case 4://Last moment switch
+    
+      if(pli->insp_status==0)//OK
+      {
+        pli->stage=5;
+        return 0;
+      }
+      if(pli->insp_status==-1)//NG
+      {
+        pli->stage=7;
+        return 0;
+      }
+      return -1;
+      
+
+    case 5://Air Blow OK ON
+      digitalWrite(AIR_BLOW_OK_PIN, 1);
+      pli->stage++;
+      return 0;
+    case 6://Air Blow OK OFF
+      digitalWrite(AIR_BLOW_OK_PIN, 0);
+        DEBUG_println("OK");
+      //pli->stage++;
+      return -1;
+      
+    case 7://Air Blow NG ON
+      digitalWrite(AIR_BLOW_NG_PIN, 1);
+      pli->stage++;
+      return 0;
+    case 8://Air Blow NG OFF
+      digitalWrite(AIR_BLOW_NG_PIN, 0);
+      DEBUG_println("NG");
+      return -1;
+  }
+  return 0;
+}
+
+
 
 
 class Websocket_FI:public Websocket_FI_proto{
@@ -115,11 +198,50 @@ class Websocket_FI:public Websocket_FI_proto{
       if(strstr ((char*)recv_cmd,"\"type\":\"inspRep\"")!=NULL)
       {
         char *buffX=buff;
+
+        int insp_status=-99;
         char *statusStr = buffX;
-        int retL = findJsonScope((char*)recv_cmd,"\"status\":",statusStr,buffL);
-        if(retL<0)statusStr=NULL;
-        buffX+=retL;
+        {
+          int retL = findJsonScope((char*)recv_cmd,"\"status\":",statusStr,buffL);
+          if(retL<0)statusStr=NULL;
+          else{
+            sscanf(statusStr, "%d", &insp_status);
+            DEBUG_print(">>status>>>>");
+            DEBUG_println(insp_status);
+          }
+          buffX+=retL;
+        }
         
+        char *time_100us_str = buffX;
+        {
+          int retL = findJsonScope((char*)recv_cmd,"\"time_100us\":",statusStr,buffL);
+          if(retL<0)time_100us_str=NULL;
+          buffX+=retL;
+        }
+
+
+        for(int i=0;i<RBuf.size();i++)
+        {
+          pipeLineInfo* pipe=RBuf.getTail(i);
+          if(pipe==NULL)break;
+          if(pipe->insp_status==-100)
+          {
+            pipe->insp_status=insp_status;
+            ret_status=0;
+            break;
+          }
+        }
+        
+        
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"get_dev_info\"")!=NULL)
+      {
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"dev_info\",",idStr);
+        MessageL += sprintf( (char*)send_rsp+MessageL, 
+          "\"info\":{"
+          "\"type\":\"uFullInsp\","
+          "\"ver\":\"0.0.0.0\""
+          "},");
         ret_status=0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_pulse_offset_info\"")!=NULL)
@@ -194,6 +316,12 @@ void setup() {
   if(WS_Server)setRetryTimeout(3, 100);
   setup_Stepper();
   pinMode(FAKE_GATE_PIN, OUTPUT);
+  
+  pinMode(CAMERA_PIN, OUTPUT);
+  pinMode(AIR_BLOW_OK_PIN, OUTPUT);
+  pinMode(AIR_BLOW_NG_PIN, OUTPUT);
+  pinMode(BACK_LIGHT_PIN, OUTPUT);
+  pinMode(GATE_PIN, INPUT);
 }
 
 uint32_t ccc=0;
@@ -212,7 +340,7 @@ void loop()
   if( (totalLoop&0x1F)==0)
   {
     if(emptyPlateCount>7)
-      loop_Stepper(tar_pulseHZ_/20);
+      loop_Stepper(tar_pulseHZ_/5);
     else
       loop_Stepper(tar_pulseHZ_);
   }
@@ -231,40 +359,40 @@ void loop()
     }
   }
 
-//  if(totalLoop<0xFFFF)
-//  {
-//    return;
-//  }
-//
-//  volatile int ddd=0;
-//  for(uint32_t i=0;i!=1;i++)
-//  {
-//    
-//    //ddd%=3;
-//    uint32_t dddx=(uint32_t)4400*2/8;
-//    if(ccc++==dddx)
-//    {
-//      ccc=0;
-//    }
-//    if(ccc==0)
-//        digitalWrite(FAKE_GATE_PIN, HIGH);
-//    if(ccc==dddx/2)
-//        digitalWrite(FAKE_GATE_PIN, LOW);
-//  }
-  /*
-  char tmp[40];
-  for(uint32_t i=0;i<RBuf.size();i++)
+  if(totalLoop<0xFFFF)
   {
-    pipeLineInfo* tail = RBuf.getTail(i);
-    if(!tail)break;
-    if(tail->sent_stage!=tail->stage)
+    return;
+  }
+
+  volatile int ddd=0;
+  for(uint32_t i=0;i!=1;i++)
+  {
+    
+    //ddd%=3;
+    uint32_t dddx=(uint32_t)4400*2/8*10;
+    if(ccc++==dddx)
     {
-      tail->sent_stage=tail->stage;
-      int len = sprintf(tmp,"{'s':%d,'m':%d,'p':%d}",tail->stage,tail->notifMark,tail->gate_pulse);
-      DEBUG_println(tmp);
-      if(WS_Server)
-        WS_Server->SEND_ALL((uint8_t*)tmp,len,0);
-      break;
+      ccc=0;
     }
-  }*/
+    if(ccc==0)
+        digitalWrite(FAKE_GATE_PIN, HIGH);
+    if(ccc==dddx/2)
+        digitalWrite(FAKE_GATE_PIN, LOW);
+  }
+  
+//  char tmp[40];
+//  for(uint32_t i=0;i<RBuf.size();i++)
+//  {
+//    pipeLineInfo* tail = RBuf.getTail(i);
+//    if(!tail)break;
+//    if(tail->sent_stage!=tail->stage && tail->stage>0)
+//    {
+//      tail->sent_stage=tail->stage;
+//      int len = sprintf(tmp,"{'type':'noti_obj_info','s':%d,'m':%d,'p':%d}",tail->stage,tail->notifMark,tail->gate_pulse);
+//      DEBUG_println(tmp);
+//      if(WS_Server)
+//        WS_Server->SEND_ALL((uint8_t*)tmp,len,0);
+//      break;
+//    }
+//  }
 }

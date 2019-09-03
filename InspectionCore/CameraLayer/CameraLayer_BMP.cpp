@@ -66,8 +66,8 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 
         CameraLayer::frameInfo fi_={
           timeStamp_100us:(uint64_t)_100us,
-          width:(uint32_t)img.GetWidth,
-          height:(uint32_t)img.GetHeight,
+          width:(uint32_t)img.GetWidth(),
+          height:(uint32_t)img.GetHeight(),
         };
         fi = fi_;
         callback(*this,CameraLayer::EV_IMG,context);
