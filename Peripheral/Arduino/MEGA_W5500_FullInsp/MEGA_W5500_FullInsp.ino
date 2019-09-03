@@ -34,6 +34,7 @@ uint32_t logicPulseCount = 0;
 #define PIPE_INFO_LEN 60
 pipeLineInfo pbuff[PIPE_INFO_LEN];
 
+#define LED_PIN 13
 #define CAMERA_PIN 16
 #define BACK_LIGHT_PIN 28
 #define AIR_BLOW_OK_PIN 18
@@ -111,14 +112,8 @@ int stage_action(pipeLineInfo* pli)
       break;
     case 4://BackLight OFF
       digitalWrite(BACK_LIGHT_PIN, 0);
-      pli->stage++;
+      pli->stage=6;
       break;
-
-    case 5:
-      cctest++;
-      pli->stage++;//Waiting for inspection result
-      //pli->stage=((cctest&1)==0)?4:6;
-      return 0;
 
     case 6://Last moment switch
     
@@ -158,7 +153,7 @@ int stage_action(pipeLineInfo* pli)
 
 
 
-
+int toggle_LED=0;
 class Websocket_FI:public Websocket_FI_proto{
   public:
   Websocket_FI(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
@@ -183,7 +178,7 @@ class Websocket_FI:public Websocket_FI_proto{
     char *buff= (char*)send_rsp+rspMaxL/2;
     int buffL = rspMaxL/2-cmdL;
     
-
+    
     
     {
       char *idStr = buff;
@@ -213,8 +208,8 @@ class Websocket_FI:public Websocket_FI_proto{
           if(retL<0)statusStr=NULL;
           else{
             sscanf(statusStr, "%d", &insp_status);
-            DEBUG_print(">>status>>>>");
-            DEBUG_println(insp_status);
+            //DEBUG_print(">>status>>>>");
+            //DEBUG_println(insp_status);
           }
           buffX+=retL;
         }
@@ -238,18 +233,34 @@ class Websocket_FI:public Websocket_FI_proto{
             break;
           }
         }
+        DEBUG_println(ret_status);
         
+        digitalWrite(LED_PIN, toggle_LED);
+        toggle_LED=!toggle_LED;
         
+        return 0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_dev_info\"")!=NULL)
       {
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"dev_info\",",idStr);
         MessageL += sprintf( (char*)send_rsp+MessageL, 
+          "\"type\":\"dev_info\","
           "\"info\":{"
           "\"type\":\"uFullInsp\","
-          "\"ver\":\"0.0.0.0\""
-          "},");
+          "\"ver\":\"0.0.0.0\","
+          "\"pulse_hz\":%d"
+          "},",tar_pulseHZ_);
         ret_status=0;
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_hz\"")!=NULL)
+      {
+        char *bufPtr = buff;
+        int retL = findJsonScope((char*)recv_cmd,"\"pulse_hz\":",bufPtr,buffL);
+        if(retL>0){
+          int newHZ=tar_pulseHZ_;
+          sscanf(bufPtr, "%d", &newHZ);
+          tar_pulseHZ_=newHZ;
+          ret_status=0;
+        }
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_pulse_offset_info\"")!=NULL)
       {
@@ -261,6 +272,7 @@ class Websocket_FI:public Websocket_FI_proto{
         MessageL += sprintf( (char*)send_rsp+MessageL, "],");
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"perRevPulseCount\":%d,",perRevPulseCount);
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"pulse_hz\":%d,",tar_pulseHZ_);
         
         ret_status=0;
       }
@@ -329,6 +341,9 @@ void setup() {
   pinMode(AIR_BLOW_NG_PIN, OUTPUT);
   pinMode(BACK_LIGHT_PIN, OUTPUT);
   pinMode(GATE_PIN, INPUT);
+
+  pinMode(LED_PIN, OUTPUT);
+  
 }
 
 uint32_t ccc=0;
@@ -336,7 +351,6 @@ uint32_t ccc=0;
 uint32_t totalLoop=0;
 
 int emptyPlateCount=0;
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4;
 void loop() 
 {
   if(WS_Server)
@@ -344,7 +358,7 @@ void loop()
 
   totalLoop++;
   
-  if( (totalLoop&0x1F)==0)
+  if( (totalLoop&0xF)==0)
   {
     if(emptyPlateCount>7)
       loop_Stepper(tar_pulseHZ_/5);
@@ -374,7 +388,7 @@ void loop()
   volatile int ddd=0;
   for(uint32_t i=0;i!=1;i++)
   {
-    
+
     //ddd%=3;
     uint32_t dddx=(uint32_t)4400*2/8*10;
     if(ccc++==dddx)
