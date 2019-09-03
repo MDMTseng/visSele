@@ -61,6 +61,7 @@ uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the softwar
 
 
 uint32_t PRPC= perRevPulseCount;
+
 int offsetAir=80;
 int cam_angle=103;
 int angle=149;
@@ -76,7 +77,7 @@ uint32_t state_pulseOffset[] =
 //  
 //  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
-{0,   686,691,  696, 1058,   1105,1118,1188,1198};
+{0, 670 ,686,691, 696,  697, 1058,   1105,1118,1188,1198};
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
@@ -94,56 +95,62 @@ int stage_action(pipeLineInfo* pli)
       pli->stage++;
       pli->insp_status=-100;
       break;
-    case 1://Trigger shutter ON
-      digitalWrite(CAMERA_PIN, 1);
+    
+    case 1://BackLight ON
       digitalWrite(BACK_LIGHT_PIN, 1);
+      pli->stage++;
+      break;
+    case 2://Trigger shutter ON
+      digitalWrite(CAMERA_PIN, 1);
       pli->notifMark = 1;
       pli->stage++;
       break;
-    case 2://Trigger shutter OFF
+    case 3://Trigger shutter OFF
       digitalWrite(CAMERA_PIN, 0);
+      pli->stage++;
+      break;
+    case 4://BackLight OFF
       digitalWrite(BACK_LIGHT_PIN, 0);
       pli->stage++;
       break;
 
-    case 3:
+    case 5:
       cctest++;
-      pli->stage=4;//Waiting for inspection result
+      pli->stage++;//Waiting for inspection result
       //pli->stage=((cctest&1)==0)?4:6;
       return 0;
 
-    case 4://Last moment switch
+    case 6://Last moment switch
     
       if(pli->insp_status==0)//OK
-      {
-        pli->stage=5;
-        return 0;
-      }
-      if(pli->insp_status==-1)//NG
       {
         pli->stage=7;
         return 0;
       }
+      if(pli->insp_status==-1)//NG
+      {
+        pli->stage=9;
+        return 0;
+      }
       return -1;
       
 
-    case 5://Air Blow OK ON
+    case 7://Air Blow OK ON
       digitalWrite(AIR_BLOW_OK_PIN, 1);
       pli->stage++;
       return 0;
-    case 6://Air Blow OK OFF
+    case 8://Air Blow OK OFF
       digitalWrite(AIR_BLOW_OK_PIN, 0);
-        DEBUG_println("OK");
-      //pli->stage++;
+       //DEBUG_println("OK");
       return -1;
       
-    case 7://Air Blow NG ON
+    case 9://Air Blow NG ON
       digitalWrite(AIR_BLOW_NG_PIN, 1);
       pli->stage++;
       return 0;
-    case 8://Air Blow NG OFF
+    case 10://Air Blow NG OFF
       digitalWrite(AIR_BLOW_NG_PIN, 0);
-      DEBUG_println("NG");
+      //DEBUG_println("NG");
       return -1;
   }
   return 0;
