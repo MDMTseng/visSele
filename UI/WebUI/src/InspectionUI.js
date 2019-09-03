@@ -31,6 +31,7 @@ import Table from 'antd/lib/table';
 import Switch from 'antd/lib/switch';
 import  Tag  from 'antd/lib/tag';
 import  Input  from 'antd/lib/input';
+import  InputNumber  from 'antd/lib/input-number';
 import  Select  from 'antd/lib/select';
 import  Upload  from 'antd/lib/upload';
 import Button, {default as AntButton} from 'antd/lib/button';
@@ -583,10 +584,8 @@ class ObjInfoList extends React.Component {
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
-                        <AirControl_rdx
+                        <MicroFullInspCtrl
                             url={"ws://192.168.2.2:5213"}
-                            checkResult2AirAction={this.props.checkResult2AirAction}
-                            WSCMD_CB={this.props.WSCMD_CB}
                         />
                     </SubMenu>
 
@@ -897,6 +896,126 @@ const AirControl_rdx = connect(
     mapDispatchToProps_AirControl)(AirControl);
 
 
+class MicroFullInspCtrl extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      loading: true,
+      devModel:null,
+      stageTable:[],
+      set_pulse_hz:9600
+    }
+    this.websocket=undefined;
+
+  }
+  componentWillMount() {
+    console.log("[init][componentWillMount]");
+    this.websocketAir=new websocket_autoReconnect(this.props.url,10000);
+    this.websocketAir.onreconnection=(count)=>console.log(count);
+    this.websocketAir.onmessage = this.onMessage.bind(this);
+    this.websocketAir.onerror = this.onError.bind(this);
+    this.websocketAir.onopen = (ev)=>{
+      this.setState({...this.state,loading: false});
+
+      this.websocketAir.send(JSON.stringify({type:"get_dev_info" }));
+      setTimeout(()=>{
+        this.websocketAir.send(JSON.stringify({type:"get_pulse_offset_info" }));
+      },1);//to separate messages
+      
+
+    };
+    this.websocketAir.onclose =(evt) => {
+      this.setState({...this.state,loading: true});
+      if (evt.code == 3001) {
+          console.log('ws closed',evt);
+      } else {
+          console.log('ws connection error',evt);
+      }
+    };
+  }
+  
+  componentWillUnmount() {
+    // log.info("componentWillUnmount1")
+    if(this.websocketAir!==undefined)
+    {
+        this.websocketAir.close();
+        this.websocketAir = undefined;
+    }
+  }
+
+
+  
+  onError(ev) {
+    this.setState({...this.state,loading: false});
+    console.log("onError");
+  }
+
+  onMessage(ev) {
+    let dat = JSON.parse(ev.data);
+    switch(dat.type)
+    {
+      case "dev_info":
+          
+          this.setState({...this.state,
+            pulse_hz:dat.info.pulse_hz,
+            devModel:dat.info.type
+          });
+
+        break;
+      case "pulse_offset_info":
+          log.info(">>",dat);
+          
+          this.setState({...this.state,
+            stageTable:dat.table
+          });
+        break;
+    }
+  }
+  render() {
+    if (this.websocketAir===undefined ||
+        this.websocketAir.readyState != this.websocketAir.OPEN) {
+        return(
+        <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
+                onClick={() => {this.websocketConnect(this.props.url);
+                }}/>
+        );
+    }
+    
+    log.info(this.state.stageTable);
+    return (
+        <div>
+
+            <Slider
+            min={0}
+            max={15000}
+            onChange={(value)=>{
+              
+              this.setState({...this.state,
+                pulse_hz:value
+              });
+              
+              this.websocketAir.send(
+                JSON.stringify({type:"set_pulse_hz",pulse_hz:value}));
+            }}
+            value={this.state.pulse_hz}
+            step={100}
+            />
+            {this.state.stageTable.map((pulseC,idx)=>
+              <InputNumber value={pulseC} onChange={(value)=>{
+                this.state.stageTable[idx]=value;
+                this.websocketAir.send(
+                  JSON.stringify({type:"set_pulse_offset_info",table:this.state.stageTable}));
+                this.setState({...this.state,
+                  stageTable:this.state.stageTable,
+                });
+              }} />
+            )}
+        </div>
+    );
+}
+}
+
+    
 
 
 class CanvasComponent extends React.Component {
@@ -1259,12 +1378,12 @@ class APP_INSP_MODE extends React.Component {
 
 
     componentDidMount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
         this.CameraCtrl.setCameraImageTransfer(false);
     }
 
     componentWillUnmount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {});
 
     }
 
