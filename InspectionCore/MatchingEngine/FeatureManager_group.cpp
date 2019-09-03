@@ -145,7 +145,16 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
  
     //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
     acvDrawBlock(&binary_img, 1, 1, binary_img.GetWidth() - 2, binary_img.GetHeight() - 2);
-
+    int xDist=15;
+    acvDrawBlock(&binary_img, xDist, xDist, binary_img.GetWidth() - xDist, binary_img.GetHeight() - xDist);
+    
+    uint8_t *line2Fill = binary_img.CVector[xDist+3];
+    for(int i=1;i<xDist;i++)
+    {
+      line2Fill[i*3]=
+      line2Fill[i*3+1]=
+      line2Fill[i*3+2]=0;
+    }
 
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
