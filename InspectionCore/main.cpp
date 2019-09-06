@@ -19,8 +19,11 @@
 #include <playground.h>
 #include <stdexcept>
 
+#include <RingBuf.hpp>
+
 #include <lodepng.h>
 std::timed_mutex mainThreadLock;
+std::timed_mutex ImgProcLock;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
@@ -32,8 +35,26 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM);
 DatCH_BPG1_0 *BPG_protocol= new DatCH_BPG1_0(NULL);
 
 
+
+
+
 DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
 
+
+
+typedef struct image_pipe_info
+{
+  CameraLayer *camLayer;
+  int type;
+  void* context;
+  acvImage img;
+  CameraLayer::frameInfo fi;
+  acvRadialDistortionParam cam_param;
+}image_pipe_info;
+
+
+#define ImagePipeBufferSize 10
+RingBuf <image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSize],ImagePipeBufferSize);
 //lens1
 //main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
 //main.cpp  1068 main:v Center: 1295,971
@@ -468,6 +489,9 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     LOGI("framerate_mode:%f",*val);
     retV=0;
   }
+
+  int span=300;
+  camera.SetROI(500-span,500-span,500+2*span,500+2*span,0,0);
   return 0;
 }
 
@@ -1516,37 +1540,62 @@ void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
   }
 }
 
-
 clock_t pframeT;
 acvImage proBG;
+
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
-  static acvImage test1_buff;
-  static int stackingC=0;
-  static acvImage imgStackRes;
-
-
+  
   clock_t t = clock();
 
-  
   LOGI("frameInterval:%fms \n", ((double)t - pframeT) / CLOCKS_PER_SEC * 1000);
   pframeT=t;
-
   LOGV("cb->cameraFeedTrigger:%d",cb->cameraFeedTrigger); 
+  CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
+  
+  acvImage &capImg=*cl_GMV.GetFrame();
+
+
+  image_pipe_info *headImgPipe = imagePipeBuffer.getHead();
+  if(headImgPipe==NULL)
+  {
+    return;
+  }
+  headImgPipe->camLayer=&cl_obj;
+  headImgPipe->type=type;
+  headImgPipe->context=context;
+  headImgPipe->img.ReSize(&capImg);
+  
+  acvCloneImage(&capImg,&(headImgPipe->img),-1);
+
+  headImgPipe->cam_param = param_default;
+  headImgPipe->fi= cl_GMV.GetFrameInfo();
+  imagePipeBuffer.pushHead();
+  ImgProcLock.unlock();
+}
+
+void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
+{ 
+  
+
   if(!cb->cameraFeedTrigger)
   {
     LOGE( "unlock");
     mainThreadLock.unlock();
     return;
   }
-  CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
   
-  acvImage &capImg=*cl_GMV.GetFrame();
-  CameraLayer::frameInfo fi= cl_GMV.GetFrameInfo();
-  imgStackRes.ReSize(&capImg);
+  clock_t t = clock();
+
+  static acvImage test1_buff;
+
+  static int stackingC=0;
+  static acvImage imgStackRes;
+  acvImage &capImg=imgPipe->img;
+  acvRadialDistortionParam cam_param=imgPipe->cam_param;
+  CameraLayer::frameInfo &fi =imgPipe->fi;
 
 
-  
   if(capImg.GetHeight()==proBG.GetHeight() &&capImg.GetWidth()==proBG.GetWidth()  )
   {
     for (int i = 0; i < capImg.GetHeight(); i++)
@@ -1571,6 +1620,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
   if(0&&stackingC!=0)
   {
+    imgStackRes.ReSize(&capImg);
     float diffMax=0;
     float diff = acvImageDiff(&imgStackRes,&capImg,&diffMax,30);
     LOGV("diff:%f  max:%f",diff,diffMax);
@@ -1580,6 +1630,12 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
 
+  if(cam_param.map!=NULL)
+  {
+    cam_param.map->origin_offset.X=fi.offset_x;
+    cam_param.map->origin_offset.Y=fi.offset_y;
+    
+  }
   //if(stackingC!=0)return;
   if(0)
   {
@@ -1595,17 +1651,17 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
     //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
 
-    ret = ImgInspection(matchingEng,&imgStackRes,param_default,1);
+    ret = ImgInspection(matchingEng,&imgStackRes,cam_param,1);
   }
   else
   {
-    ret = ImgInspection(matchingEng,&capImg,param_default,1);
-    if(stackingC==0)
-    {
+    ret = ImgInspection(matchingEng,&capImg,cam_param,1);
+    // if(stackingC==0)
+    // {
       
-      acvCloneImage(&capImg,&imgStackRes,-1);
+    //   acvCloneImage(&capImg,&imgStackRes,-1);
 
-    }
+    // }
   }
   stackingC++;
 
@@ -1746,7 +1802,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff,capImg,iminfo.scale,param_default.map);
+      ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
       bpg_dat.callback=DatCH_BPG_acvImage_Send;
       bpg_dat.pgID= cb->CI_pgID;
@@ -1782,6 +1838,20 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 }
 
+void ImgPipeProcessThread(bool *terminationflag)
+{
+  using Ms = std::chrono::milliseconds;
+  while(terminationflag && *terminationflag==false)
+  {
+    ImgProcLock.try_lock_for(Ms(1000));
+    image_pipe_info *headImgPipe=NULL;
+    while(headImgPipe=imagePipeBuffer.getTail())
+    {
+      ImgPipeProcessCenter_imp(headImgPipe);
+      imagePipeBuffer.consumeTail();
+    }
+  }
+}
 
 int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void* callback_param)
 {
@@ -1996,14 +2066,21 @@ CameraLayer *getCamera(int initCameraType)
   return camera;
 }
 
+
+bool terminationFlag=false;
 int mainLoop(bool realCamera=false)
 {
   /**/
   
+  
+
+
+  std::thread mThread( ImgPipeProcessThread, &terminationFlag);
+
   printf(">>>>>\n" );
   bool pass=false;
   int retryCount=0;
-  while(!pass)
+  while(!pass && !terminationFlag)
   {
     try
     {
@@ -2017,8 +2094,10 @@ int mainLoop(bool realCamera=false)
         std::this_thread::sleep_for(std::chrono::milliseconds(delaySec*1000));
     }
   }
+  if(terminationFlag)return -1;
   printf(">>>>>\n" );
-  
+
+
   {
     
     CameraLayer *camera = getCamera(CamInitStyle);
@@ -2049,14 +2128,13 @@ int mainLoop(bool realCamera=false)
 
   return 0;
 }
-
-
 void sigroutine(int dunno) { /* 信號處理常式，其中dunno將會得到信號的值 */
   switch (dunno) {
     case SIGINT:
       LOGE("Get a signal -- SIGINT \n");
       LOGE("Tear down websocket.... \n");
       delete websocket;
+      terminationFlag=true;
     break;
   }
   return;
@@ -2144,6 +2222,23 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM)
 int testCode()
 {
   return 0;
+  RingBuf <int> rbx(new int[10],10);
+  for(int i=0;i<100;i++)
+  {
+    int* ptr=rbx.getHead();
+    if(ptr==NULL)continue;
+    *ptr=i;
+    rbx.pushHead();
+  }
+
+  while(rbx.size())
+  {
+    LOGV(">>>%d",*rbx.getTail());
+    rbx.consumeTail();
+  }
+  return -1;
+
+
 
   acvImage img;
   
