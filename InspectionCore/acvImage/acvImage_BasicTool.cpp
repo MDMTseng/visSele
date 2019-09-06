@@ -914,6 +914,8 @@ acvCalibMap::acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int f
     fh=fh_;
     this->fullW=fullW;
     this->fullH=fullW;
+    origin_offset.X=0;
+    origin_offset.Y=0;
     invMap=NULL;
     int pixCount = fw*fh;
     fwdMap=new float[fw*fh*2];
@@ -1038,9 +1040,12 @@ acvCalibMap::~acvCalibMap()
     delete fwdMap;
 }
 
-int acvCalibMap::i2c(float coord[2],bool useInvMap)
+int acvCalibMap::i2c(float coord[2],bool useInvMap)//real image coord to calibrated coord
 {
     int ret;
+    
+    coord[0]+=origin_offset.X;
+    coord[1]+=origin_offset.Y;
     if(invMap && useInvMap)
     {
         ret = acvCalibMapUtil::sample_vec(invMap,iw,ih,coord[0],coord[1],coord);
@@ -1078,12 +1083,15 @@ int acvCalibMap::i2c(acv_XY &coord,bool useInvMap)
     coord.Y=_coord[1];
     return ret;
 }
-int acvCalibMap::c2i(float coord[2])
+int acvCalibMap::c2i(float coord[2])//calibrated coord to real image coord
 {
     
     coord[0]/=downScale*fmapScale;
     coord[1]/=downScale*fmapScale;
-    return acvCalibMapUtil::sample_vec(fwdMap,fw,fh,coord[0],coord[1],coord);
+    int ret = acvCalibMapUtil::sample_vec(fwdMap,fw,fh,coord[0],coord[1],coord);
+    coord[0]-=origin_offset.X;
+    coord[1]-=origin_offset.Y;
+    return ret;
 }
 int acvCalibMap::c2i(acv_XY &coord)
 {

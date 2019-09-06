@@ -14,6 +14,7 @@
 class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     protected:
+    
     std::mutex m;
     CameraHandle    m_hCamera=0;	//the handle of the camera we use
     int L_frameRateMode=2;
@@ -25,6 +26,10 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     static void sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
     void GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
 
+    float ROI_x;
+    float ROI_y;
+    float ROI_w;
+    float ROI_h;
     public:
     CameraLayer_GIGE_MindVision(CameraLayer_Callback cb,void* context);
     CameraLayer::status EnumerateDevice(tSdkCameraDevInfo * pCameraList,INT * piNums);
@@ -38,7 +43,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status SetCrop(int x,int y, int width,int height);
     CameraLayer::status SetResolution(int width,int height);
     CameraLayer::status SetAnalogGain(int gain);
-    
+    CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh);
     CameraLayer::status SetFrameRateMode(int mode);
     CameraLayer::status GetAnalogGain(int *ret_gain);
     CameraLayer::status SetExposureTime(double time_ms);

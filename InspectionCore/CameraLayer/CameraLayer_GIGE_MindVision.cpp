@@ -56,6 +56,8 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
           timeStamp_100us:(uint64_t)frameInfo->uiTimeStamp,
           width:(uint32_t)frameInfo->iWidth,
           height:(uint32_t)frameInfo->iHeight,
+          offset_x:ROI_x,
+          offset_y:ROI_y,
         };
         fi = fi_;
         callback(*this,CameraLayer::EV_ERROR,context);
@@ -85,19 +87,20 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
 	}
 
     CameraGetCapability(m_hCamera, &sCameraInfo);
-    int width = sCameraInfo.sResolutionRange.iWidthMax;
-    int height = sCameraInfo.sResolutionRange.iHeightMax;
     TriggerMode(1);
     TriggerCount(1);
     CameraSetCallbackFunction(m_hCamera,sGIGEMV_CB,(PVOID)this,NULL);
     CameraSetAeState(m_hCamera,FALSE);
     //CameraSetAutoConnect(m_hCamera,true);
     CameraSetMirror(m_hCamera,1,true);
+
+    int width = sCameraInfo.sResolutionRange.iWidthMax;
+    int height = sCameraInfo.sResolutionRange.iHeightMax;
     int maxBufferSize = width*height * 3;
-	m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
-	LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
+    m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
+    LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
     img.useExtBuffer(m_pFrameBuffer,maxBufferSize,width,height);
-	CameraPlay(m_hCamera);
+	  CameraPlay(m_hCamera);
     return CameraLayer::ACK;
 }
 
@@ -113,6 +116,36 @@ CameraLayer::status CameraLayer_GIGE_MindVision::L_TriggerMode(int type)
     return CameraLayer::ACK;
 }
 
+CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int h,int zw,int zh)
+{
+  ROI_x=x;
+  ROI_y=y;
+  ROI_w=w;
+  ROI_h=h;
+  tSdkImageResolution resInfo={
+    iIndex:0xFF,
+    uBinSumMode:0,
+    uBinAverageMode:0,
+    uSkipMode:0,
+    uResampleMask:0,
+    iHOffsetFOV:x,
+    iVOffsetFOV:y,
+    iWidthFOV:w,
+    iWidth:w,
+    iHeightFOV:h,
+    iHeight:h,
+    iWidthZoomHd:0,
+    iHeightZoomHd:0,
+    iWidthZoomSw:0,
+    iHeightZoomSw:0,
+  };
+
+
+  CameraSdkStatus camst = CameraSetImageResolution (m_hCamera,&resInfo);
+  int maxBufferSize = w*h*3;
+  img.useExtBuffer(m_pFrameBuffer,maxBufferSize,w,h);
+	return CameraLayer::ACK;
+}
 
 
 CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)

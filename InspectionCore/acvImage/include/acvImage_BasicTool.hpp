@@ -117,7 +117,7 @@ class acvCalibMap
     float fmapScale=1;
     public:
     int fullW,fullH;
-    
+    acv_XY origin_offset;  
     acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
     void generateInvMap(int iw_,int ih_);
     float* generateExtInvMap(int iw_,int ih_);

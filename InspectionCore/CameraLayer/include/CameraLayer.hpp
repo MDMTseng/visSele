@@ -14,6 +14,8 @@ class CameraLayer{
       uint64_t timeStamp_100us;
       uint32_t width;
       uint32_t height;
+      float offset_x;
+      float offset_y;
     }frameInfo;
     protected:
     /*// Camera's device information
@@ -93,8 +95,8 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-
-    virtual CameraLayer::status SetCrop(int x,int y, int width,int height)
+    
+    virtual CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh)
     {
         return CameraLayer::NAK;
     }
