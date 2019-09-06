@@ -92,7 +92,7 @@ export class websocket_autoReconnect{
       this.url=undefined;
       this.wsclose=false;
       this.reconnectionCounter=0;
-      this.reconnectGap_ms=1000;
+      this.reconnectGap_ms=5000;
       this.connectionTimeout_ms=timeout;
       this.connectionTimer=null;
       this.readyState=undefined;

@@ -415,7 +415,7 @@ class APPMain extends React.Component{
                   .catch((err) => {
                     console.log(err);
                   })
-              }}>____</AntButton>
+              }}>Connect uInsp</AntButton>
 
 
               <AntButton key="camera Calib" 

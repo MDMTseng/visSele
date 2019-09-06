@@ -920,7 +920,7 @@ class MicroFullInspCtrl extends React.Component {
       this.websocketAir.send(JSON.stringify({type:"get_dev_info" }));
       setTimeout(()=>{
         this.websocketAir.send(JSON.stringify({type:"get_pulse_offset_info" }));
-      },1);//to separate messages
+      },100);//to separate messages
       
 
     };
@@ -952,6 +952,8 @@ class MicroFullInspCtrl extends React.Component {
 
   onMessage(ev) {
     let dat = JSON.parse(ev.data);
+    
+    log.info(dat);
     switch(dat.type)
     {
       case "dev_info":
@@ -981,7 +983,6 @@ class MicroFullInspCtrl extends React.Component {
         );
     }
     
-    log.info(this.state.stageTable);
     return (
         <div>
 
