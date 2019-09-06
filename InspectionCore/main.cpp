@@ -490,8 +490,8 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV=0;
   }
 
-  int span=300;
-  camera.SetROI(500-span,500-span,500+2*span,500+2*span,0,0);
+  // int span=300;
+  // camera.SetROI(500-span,500-span,500+2*span,500+2*span,0,0);
   return 0;
 }
 
@@ -1335,34 +1335,34 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
         else if(checkTL("PD",dat))
         {
         
-        DatCH_Data datCH_BPG=
-            BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+          DatCH_Data datCH_BPG=
+              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-        void *target;
-        char *IP  = JFetch_STRING(json,"ip");
-        double *port_number  = JFetch_NUMBER(json,"port");
-        if(IP!=NULL && port_number!=NULL)
-        {
-            try{
-            delete_MicroInsp_FType();
-            mift=new MicroInsp_FType(IP,*port_number);
-            session_ACK=true;
-            }
-            catch(int errN)
-            {
-            sprintf(err_str,"[PR] MicroInsp_FType init error:%d",errN);
-            }
-        }
-        else if( mift && IP==NULL && port_number==NULL)
-        {
-            delete_MicroInsp_FType();
-            session_ACK=true;
-        }
-        else
-        {
-            sprintf(err_str,"[PR] ip:%p port:%p",IP,port_number);
-        }
-        
+          void *target;
+          char *IP  = JFetch_STRING(json,"ip");
+          double *port_number  = JFetch_NUMBER(json,"port");
+          if(IP!=NULL && port_number!=NULL)
+          {
+              try{
+              delete_MicroInsp_FType();
+              mift=new MicroInsp_FType(IP,*port_number);
+              session_ACK=true;
+              }
+              catch(int errN)
+              {
+              sprintf(err_str,"[PR] MicroInsp_FType init error:%d",errN);
+              }
+          }
+          else if( mift && IP==NULL && port_number==NULL)
+          {
+              delete_MicroInsp_FType();
+              session_ACK=true;
+          }
+          else
+          {
+              sprintf(err_str,"[PR] ip:%p port:%p",IP,port_number);
+          }
+          
         }
         DatCH_Data datCH_BPG=
         BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -2400,6 +2400,7 @@ int main(int argc, char** argv)
 
 
   signal(SIGINT, sigroutine);
+  signal(SIGPIPE, SIG_IGN);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   return mainLoop(true);
 }

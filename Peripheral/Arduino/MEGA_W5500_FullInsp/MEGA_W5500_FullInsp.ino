@@ -41,7 +41,7 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 #define AIR_BLOW_NG_PIN 19
 #define GATE_PIN 30
 
-int FAKE_GATE_PIN=31;
+#define FAKE_GATE_PIN 31
 
 
 //The index type uint8_t would be enough if the buffersize<255
@@ -78,7 +78,7 @@ uint32_t state_pulseOffset[] =
 //  
 //  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
-{0, 670 ,686,691, 696,  697, 1058,   1105,1118,1188,1198};
+{0, 685 ,686,691, 692,  697, 1058,   1200,1205,1285,1290};
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
@@ -351,6 +351,8 @@ uint32_t ccc=0;
 uint32_t totalLoop=0;
 
 int emptyPlateCount=0;
+
+uint32_t pulseHZ_step = 50;
 void loop() 
 {
   if(WS_Server)
@@ -360,13 +362,13 @@ void loop()
   
   if( (totalLoop&0xF)==0)
   {
-    if(emptyPlateCount>7)
-      loop_Stepper(tar_pulseHZ_/5);
+    if(emptyPlateCount>14)
+      loop_Stepper(tar_pulseHZ_/5,pulseHZ_step);
     else
-      loop_Stepper(tar_pulseHZ_);
+      loop_Stepper(tar_pulseHZ_,pulseHZ_step);
   }
     
-  if( (totalLoop&0x1FFF)==0)
+  if( (totalLoop&0xFFF)==0)
   {
     DEBUG_print("RBuf.size():");
     DEBUG_println(RBuf.size());

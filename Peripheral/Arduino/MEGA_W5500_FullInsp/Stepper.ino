@@ -7,9 +7,9 @@ boolean stepM_seq_c[] = {0, 0, 0, 1, 1, 1, 0, 0};
 boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
 
 
-#define TIMER_SET_ISR(TN) \
+#define TIMER_SET_ISR(TN,PRE_SCALER) \
   void timer##TN##_HZ(int HZ){\
-    uint16_t OCR =  16000000 / 256 / HZ;\
+    uint16_t OCR =  16000000 / PRE_SCALER / HZ;\
     OCR##TN##A = OCR;\
     if(TCNT##TN>OCR){\
       TCNT##TN=0;\
@@ -21,7 +21,11 @@ boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
     TCCR##TN##A = 0;\
     TCCR##TN##B = 0;\
     TCCR##TN##B |= (1 << WGM##TN##2);\
-    TCCR##TN##B |= (1 << CS12);\
+    if(PRE_SCALER==1)TCCR##TN##B        |= (1 << CS##TN##0);\
+    else if(PRE_SCALER==8)TCCR##TN##B   |= (1 << CS##TN##1);\
+    else if(PRE_SCALER==64)TCCR##TN##B  |= (1 << CS##TN##1) | (1 << CS##TN##0);\
+    else if(PRE_SCALER==256)TCCR##TN##B |= (1 << CS##TN##2);\
+    else if(PRE_SCALER==1024)TCCR##TN##B|= (1 << CS##TN##2) | (1 << CS##TN##0);\
     TIMSK##TN |= (1 << OCIE##TN##A);\
     interrupts();\
     timer##TN##_HZ(HZ);\
@@ -386,7 +390,7 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 }
 
 
-TIMER_SET_ISR(1)
+TIMER_SET_ISR(1,8)
 
 ISR(TIMER1_COMPA_vect) 
 {
@@ -407,7 +411,6 @@ ISR(TIMER1_COMPA_vect)
 }
 
 uint32_t pulseHZ = 0;
-uint32_t pulseHZ_step = 50;
 
 void setup_Stepper() {
   DEBUG_println(".....");
@@ -415,7 +418,7 @@ void setup_Stepper() {
 }
 
 
-void loop_Stepper(uint32_t tar_pulseHZ) {
+void loop_Stepper(uint32_t tar_pulseHZ,uint32_t pulseHZ_step) {
   if (pulseHZ != tar_pulseHZ)
   {
     if (pulseHZ < tar_pulseHZ)

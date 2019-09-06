@@ -79,7 +79,8 @@ class RingBuf
 {
   
   protected:
-  std::timed_mutex ptrLock;
+  std::timed_mutex headLock;
+  std::timed_mutex tailLock;
   public:
   RingBufIdxCounter<RB_Idx_Type> RBC;
   RB_Type *buff;
@@ -132,19 +133,25 @@ class RingBuf
   }
   
   
+  int lockHead()
+  {
+    headLock.lock();
+  }
   int pushHead()
   {
-    ptrLock.lock();
     int ret = RBC.pushHead();
-    ptrLock.unlock();
+    headLock.unlock();
     return ret;
   }
 
+  int lockTail()
+  {
+    tailLock.lock();
+  }
   int consumeTail()
   {
-    ptrLock.lock();
     int ret = RBC.consumeTail();
-    ptrLock.unlock();
+    tailLock.unlock();
     return ret;
   }
 };

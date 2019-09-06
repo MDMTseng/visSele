@@ -988,7 +988,7 @@ class MicroFullInspCtrl extends React.Component {
 
             <Slider
             min={0}
-            max={15000}
+            max={20000}
             onChange={(value)=>{
               
               this.setState({...this.state,
