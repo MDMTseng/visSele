@@ -69,6 +69,8 @@ RingBuf <image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSiz
 //main.cpp  1062 main:v Center: 1295,971
 
 
+acvImage proBG;
+
 
 acvRadialDistortionParam param_default={
     calibrationCenter:{1295,971},
@@ -91,6 +93,8 @@ acvRadialDistortionParam param_default={
 };
 
 char* ReadFile(char *filename);
+
+int LoadCameraSetup(CameraLayer *camera,char *path);
 
 CameraLayer *getCamera(int initCameraType);//0 for real First, then fake one, 1 for real camera only, 2 for fake only
 int ImgInspection_JSONStr(MatchingEngine &me ,acvImage *test1,int repeatTime,char *jsonStr);
@@ -383,7 +387,7 @@ void AttachStaticInfo(cJSON *reportJson)
 }
 
 
-int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_param)
+int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistortionParam *ret_param)
 {
   
   if(ret_param==NULL)return -1;
@@ -425,12 +429,13 @@ int jObject2acvRadialDistortionParam(cJSON *root,acvRadialDistortionParam *ret_p
 
 
   {
-    char default_CalibMapPath[]="data/CalibMap.bin";
+    char default_CalibMapPath[]="CalibMap.bin";
     char* calibMapPath= JFetch_STRING(root,"reports[0].CalibMapPath");
     if(calibMapPath==NULL)
         calibMapPath = default_CalibMapPath;
-    
-     
+    char path[200];
+    sprintf(path,"%s/%s",dirName,calibMapPath);
+    calibMapPath = path;
     LOGE("calibMapPath:%s",calibMapPath);
     int datL=0;
     uint8_t* bDat =  ReadByte(calibMapPath,&datL);
@@ -495,7 +500,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
-int LoadCameraSetup(CameraLayer &camera, char * filename)
+int LoadCameraSetting(CameraLayer &camera, char * filename)
 {
   char *fileStr = ReadText(filename);
   
@@ -521,9 +526,8 @@ int LoadCameraSetup(CameraLayer &camera, char * filename)
 }
 
 
-int LoadCameraCalibrationFile(char * filename)
+int LoadCameraCalibrationFile(char * filename,acvRadialDistortionParam *ret_cam_param)
 {
-  acvRadialDistortionParam cam_param={0};
   char *fileStr = ReadText(filename);
   
   if(fileStr == NULL)
@@ -531,6 +535,7 @@ int LoadCameraCalibrationFile(char * filename)
     LOGE("Cannot read defFile from:%s",filename);
     return -1;
   }
+  LOGE("Read defFile from:%s",filename);
 
 
   cJSON *json = cJSON_Parse(fileStr);
@@ -539,7 +544,19 @@ int LoadCameraCalibrationFile(char * filename)
   bool executionError=false;
 
   try{
-    int ret = jObject2acvRadialDistortionParam(json,&cam_param);
+    char folder_name[200];
+    int strLen = strlen(filename);
+    strcpy(folder_name,filename);
+    for(int i=strLen;i;i--)//Find folder name
+    {
+      if(folder_name[i]=='/')
+      {
+        folder_name[i+1]='\0';
+        break;
+      }
+    }
+
+    int ret = jObject2acvRadialDistortionParam(folder_name,json,ret_cam_param);
     if(ret)
       executionError=true;
   }
@@ -548,15 +565,6 @@ int LoadCameraCalibrationFile(char * filename)
     LOGE("Exception:%s",ex.what());
     executionError=true;
   }
-
-  LOGI("Read deffile:%s executionError:%d  K:%g %g %g",filename,executionError,cam_param.K0,cam_param.K1,cam_param.K2);
-  if(param_default.map)
-  {
-      delete param_default.map;
-      param_default.map=NULL;
-  }
-  param_default=cam_param;
-
   cJSON_Delete(json);
 
   if(executionError)return -1;
@@ -1249,6 +1257,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             }
             LOGV("DatCH_BPG1_0:%p",camera);
             
+            LoadCameraSetup(camera,"data/");
 
             LOGV("DatCH_BPG1_0");
             this->camera = camera;
@@ -1278,12 +1287,31 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             session_ACK=true;
         }
 
-        char *path  = JFetch_STRING(json,"LoadCameraCalibration");
+        // char *path  = JFetch_STRING(json,"LoadCameraCalibration");
+        // if(path!=NULL)
+        // {
+        //   acvRadialDistortionParam ret_param;
+        //   int ret = LoadCameraCalibrationFile(path,&ret_param);
+
+        //   if(param_default.map)
+        //   {
+        //       delete param_default.map;
+        //       param_default.map=NULL;
+        //   }
+        //   param_default=ret_param;
+
+        //   if(ret)session_ACK=true;
+        // }
+
+
+        char *path = JFetch_STRING(json,"LoadCameraSetup");
         if(path!=NULL)
         {
-            int ret = LoadCameraCalibrationFile(path);
-            if(ret)session_ACK=true;
+          int ret = LoadCameraSetup(this->camera,path);
+
+          if(ret)session_ACK=true;
         }
+
 
 
         LOGI("dat->dat_raw:%s",dat->dat_raw);
@@ -1427,7 +1455,41 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 
 }
 
+int LoadCameraSetup(CameraLayer *camera,char *path)
+{
+  if(!camera)return -1;
+  char tmpStr[200];
 
+  sprintf(tmpStr,"%s/default_camera_setting.json",path);
+  LOGV("Loading %s",tmpStr);
+  int ret = LoadCameraSetting(*camera, tmpStr);
+  LOGV("ret:%d",ret);
+  
+  if(ret)return ret;
+
+  sprintf(tmpStr,"%s/default_camera_param.json",path);
+
+  acvRadialDistortionParam ret_param;
+  ret = LoadCameraCalibrationFile(tmpStr,&ret_param);
+  if(ret)
+  {
+      LOGE("LoadCameraCalibrationFile ERROR");
+      return ret;
+      //throw new std::runtime_error("LoadCameraCalibrationFile ERROR");
+  }
+  
+  if(param_default.map)
+  {
+      delete param_default.map;
+      param_default.map=NULL;
+  }
+  param_default=ret_param;
+
+
+  sprintf(tmpStr,"%s/proBG.bmp",path);
+  LoadIMGFile(&proBG,tmpStr);
+
+}
 
 
 int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,char *defFilename)
@@ -1541,8 +1603,6 @@ void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
 }
 
 clock_t pframeT;
-acvImage proBG;
-
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   
@@ -2039,6 +2099,7 @@ CameraLayer *getCamera(int initCameraType)
     }
 
   }
+  LOGV("camera ptr:%p",camera);
 
 
   if(camera==NULL && (initCameraType ==0 || initCameraType==2) )
@@ -2060,9 +2121,9 @@ CameraLayer *getCamera(int initCameraType)
   camera->SetAnalogGain(2);
 
   
-  LOGV("Loading data/default_camera_setting.json....");
-  int ret = LoadCameraSetup(*camera, "data/default_camera_setting.json");
-  LOGV("ret:%d",ret);
+  // LOGV("Loading data/default_camera_setting.json....");
+  // int ret = LoadCameraSetting(*camera, "data/default_camera_setting.json");
+  // LOGV("ret:%d",ret);
   return camera;
 }
 
@@ -2103,6 +2164,7 @@ int mainLoop(bool realCamera=false)
     CameraLayer *camera = getCamera(CamInitStyle);
     
     
+
     for(int i=0;camera==NULL;i++)
     {
       LOGV("Camera init retry[%d]...",i);
@@ -2110,6 +2172,8 @@ int mainLoop(bool realCamera=false)
       camera = getCamera(CamInitStyle);
     }
     LOGV("DatCH_BPG1_0:%p",camera);
+
+    LoadCameraSetup(camera,"data/");
 
     cb->camera = camera;
     callbk_obj.camera=camera;
@@ -2342,12 +2406,6 @@ int main(int argc, char** argv)
     return simpleTest(imgName,defName);
   }
 
-  int ret = LoadCameraCalibrationFile("data/default_camera_param.json");
-  if(ret)
-  {
-      LOGE("LoadCameraCalibrationFile ERROR");
-      throw new std::runtime_error("LoadCameraCalibrationFile ERROR");
-  }
 
 
   if(0)//GenBG map
@@ -2396,9 +2454,6 @@ int main(int argc, char** argv)
 
     return 0;
   }
-  LoadIMGFile(&proBG,"data/proBG.BMP");
-
-
   signal(SIGINT, sigroutine);
   signal(SIGPIPE, SIG_IGN);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);

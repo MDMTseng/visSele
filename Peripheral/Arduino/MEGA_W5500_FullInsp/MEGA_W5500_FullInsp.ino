@@ -63,6 +63,23 @@ uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the softwar
 
 uint32_t PRPC= perRevPulseCount;
 
+uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4;
+
+typedef struct{
+  
+}aa;
+
+
+
+
+
+
+
+
+
+
+
+
 int offsetAir=80;
 int cam_angle=103;
 int angle=149;
@@ -328,6 +345,11 @@ class Websocket_FI:public Websocket_FI_proto{
 
 };
 
+
+
+
+uint32_t pulseHZ_step = 50;
+
 Websocket_FI *WS_Server;
 void setup() {
   Serial.begin(115200);
@@ -343,6 +365,8 @@ void setup() {
   pinMode(GATE_PIN, INPUT);
 
   pinMode(LED_PIN, OUTPUT);
+
+
   
 }
 
