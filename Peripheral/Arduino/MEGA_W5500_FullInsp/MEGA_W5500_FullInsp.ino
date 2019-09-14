@@ -352,7 +352,6 @@ uint32_t totalLoop=0;
 
 int emptyPlateCount=0;
 
-uint32_t pulseHZ_step = 50;
 void loop() 
 {
   if(WS_Server)
@@ -362,7 +361,7 @@ void loop()
   
   if( (totalLoop&0xF)==0)
   {
-    if(emptyPlateCount>14)
+    if(0&&emptyPlateCount>14)
       loop_Stepper(tar_pulseHZ_/5,pulseHZ_step);
     else
       loop_Stepper(tar_pulseHZ_,pulseHZ_step);

@@ -9,6 +9,7 @@ boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
 
 #define TIMER_SET_ISR(TN,PRE_SCALER) \
   void timer##TN##_HZ(int HZ){\
+    TIMSK##TN=(HZ==0)?0:(1 << OCIE##TN##A);\
     uint16_t OCR =  16000000 / PRE_SCALER / HZ;\
     OCR##TN##A = OCR;\
     if(TCNT##TN>OCR){\
