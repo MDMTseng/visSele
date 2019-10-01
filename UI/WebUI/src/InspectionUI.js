@@ -1379,12 +1379,12 @@ class APP_INSP_MODE extends React.Component {
 
 
     componentDidMount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
         this.CameraCtrl.setCameraImageTransfer(false);
     }
 
     componentWillUnmount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {});
 
     }
 

@@ -454,8 +454,10 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
     }
     else
     {
-        throw new std::runtime_error("ReadByte return NULL");
-        return -1;
+        //throw new std::runtime_error("ReadByte return NULL");
+        //return -1;
+
+        tmp_param.map=NULL;
     }
 
   }
