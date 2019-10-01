@@ -264,21 +264,34 @@ void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,fl
 
 bool isAngleBetween(float angle,float sAngle,float eAngle)
 {
+
+
+  //LOGV("%f < %f < %f",sAngle*180/3.14159,angle*180/3.14159,eAngle*180/3.14159);
   angle-=sAngle;
+
+  while(angle<0)
+  {
+    angle+=2*M_PI;
+  }
+  while(angle>2*M_PI)
+  {
+    angle-=2*M_PI;
+  }
+
+
   eAngle-=sAngle;
-
-  if(angle>M_PI*2)angle-=M_PI*2;
-  else if(angle<0)
+  
+  while(eAngle<0)
   {
-    angle+=M_PI*2;
+    eAngle+=2*M_PI;
+  }
+  while(eAngle>2*M_PI)
+  {
+    eAngle-=2*M_PI;
   }
 
-  if(eAngle>M_PI*2)eAngle-=M_PI*2;
-  else if(eAngle<0)
-  {
-    eAngle+=M_PI*2;
-  }
 
+  //LOGV("angle: %f eAngle: %f",angle*180/3.14159,eAngle*180/3.14159);
   //LOGV(">>%f %f",angle,eAngle);
   return angle<eAngle;
 }
@@ -315,12 +328,14 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
       {
         float absCurv = abs(pti.curvature);
+        //LOGV("P1");
         if(absCurv>arcCurvatureMin &&
           absCurv<arcCurvatureMax &&
          (pti.curvature*outter_inner)>=0)
         {
           float angle = atan2(dY,dX);
-          //LOGV(">>%f,%f:  %f %f %f",pti.pt.X,pti.pt.Y,angle, sAngle, eAngle);
+          // LOGV(">>%f,%f-> %f %f",pti.pt.X,pti.pt.Y,X,Y);
+          // LOGV(">>%f,%f:  %f %f %f",dX,dY,angle, sAngle, eAngle);
           if(isAngleBetween( angle, sAngle, eAngle))
           {
             points.push_back(pti);

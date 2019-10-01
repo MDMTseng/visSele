@@ -2214,7 +2214,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       };
       singleReport.Center=acvVecRadialDistortionRemove(singleReport.Center,param);
       
-
+      acv_XY calibCen = singleReport.Center;
 
       singleReport.Center=acvVecMult(singleReport.Center,mmpp);
       singleReport.LTBound=acvVecMult(singleReport.LTBound,mmpp);
@@ -2311,7 +2311,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           line_cand.line_anchor = acvVecMult(line_cand.line_anchor,ppmm);//convert to pixel unit
           
           //Offet to real image and backoff searchDist distance along with the searchVec as start
-          line_cand.line_anchor=acvVecAdd(line_cand.line_anchor,ldData[i].Center);
+          line_cand.line_anchor=acvVecAdd(line_cand.line_anchor,calibCen);
           LOGV("line[%d]->lineTar.line_vec: %f %f",j,line_cand.line_vec.X,line_cand.line_vec.Y);
           LOGV("line[%d]->lineTar.line_anchor: %f %f",j,line_cand.line_anchor.X,line_cand.line_anchor.Y);
           
@@ -2326,7 +2326,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
             skp.keyPt= acvRotation(cached_sin,cached_cos,flip_f,skp.keyPt);
             skp.keyPt=acvVecMult(skp.keyPt,ppmm);
-            skp.keyPt=acvVecAdd(skp.keyPt,ldData[i].Center);
+            skp.keyPt=acvVecAdd(skp.keyPt,calibCen);
             
             float searchDist = line->searchDist*ppmm;
             if(drawDBG_IMG)
@@ -2655,22 +2655,24 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
         int matching_tor=initMatchingMargin;
         center=acvVecAdd(center,ldData[i].Center);
+        center = acvVecRadialDistortionRemove(center,param);
         
-        LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
+        //LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
         float sAngle,eAngle;
-        if(flip_f>0)
+        if(flip_f>=0)
         {
           sAngle = cdef.sAngle+angle;
           eAngle = cdef.eAngle+angle;
         }
         else
         {
-          sAngle = -(cdef.eAngle-angle);
-          eAngle = -(cdef.sAngle-angle);
+          sAngle = -(cdef.eAngle)+angle;
+          eAngle = -(cdef.sAngle)+angle;
         }
         LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,sAngle,eAngle);
         float radius = cdef.circleTar.radius*ppmm;
 
+        //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.X,center.Y,cdef.circleTar.radius,ppmm,radius);
         edge_grid.getContourPointsWithInCircleContour(
           center.X,
           center.Y,
@@ -2678,7 +2680,17 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           sAngle,eAngle,cdef.outter_inner,
           matching_tor,
           s_intersectIdxs,s_points);
-        
+
+          
+        // for(ContourGrid::ptInfo ptinfo:s_points)
+        // {
+        //   int th=5;
+        //   acv_XY oriPt =acvVecRadialDistortionApply(ptinfo.pt,param);
+        //   acvDrawBlock(originalImage, 
+        //     oriPt.X-th,oriPt.Y-th, 
+        //     oriPt.X+th,oriPt.Y+th, 255,255,255,th);
+        // }
+
         LOGV("s_points.size():%d",s_points.size());
         acv_CircleFit cf;
         circleRefine(s_points,&cf);
@@ -2714,7 +2726,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
           }
         }
-
         LOGV("s_points.size():%d",s_points.size());
         circleRefine(s_points,&cf);
 
