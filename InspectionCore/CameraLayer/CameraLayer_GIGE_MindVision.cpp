@@ -131,20 +131,20 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int
     iHOffsetFOV:x,
     iVOffsetFOV:y,
     iWidthFOV:w,
-    iWidth:w,
     iHeightFOV:h,
+    iWidth:w,
     iHeight:h,
     iWidthZoomHd:0,
     iHeightZoomHd:0,
     iWidthZoomSw:0,
-    iHeightZoomSw:0,
+    iHeightZoomSw:0
   };
 
 
   CameraSdkStatus camst = CameraSetImageResolution (m_hCamera,&resInfo);
   int maxBufferSize = w*h*3;
   img.useExtBuffer(m_pFrameBuffer,maxBufferSize,w,h);
-	return CameraLayer::ACK;
+  return CameraLayer::ACK;
 }
 
 

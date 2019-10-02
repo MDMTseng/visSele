@@ -25,8 +25,8 @@ char* _SubString_Align(const char* str,int Count);
 #define LOG_FILENAME_L 10
 #define LOG_HAS_LINENUMBER 
 #ifdef LOG_HAS_LINENUMBER
-#define LOGV(fmt,...) logv("%s%04d %s:v " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
-#define LOGD(fmt,...) logd("%s%04d %s:d " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
+#define LOGV(fmt,...) //logv("%s%04d %s:v " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
+#define LOGD(fmt,...) //logd("%s%04d %s:d " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
 #define LOGI(fmt,...) logi("%s%04d %s:i " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
 #define LOGE(fmt,...) loge("%s%04d %s:e " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
 #else

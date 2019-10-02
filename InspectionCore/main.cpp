@@ -1494,7 +1494,7 @@ int LoadCameraSetup(CameraLayer *camera,char *path)
 
   sprintf(tmpStr,"%s/proBG.bmp",path);
   LoadIMGFile(&proBG,tmpStr);
-
+  return 0;
 }
 
 
@@ -2139,19 +2139,17 @@ int mainLoop(bool realCamera=false)
 {
   /**/
   
-  
 
-
-  std::thread mThread( ImgPipeProcessThread, &terminationFlag);
-
-  printf(">>>>>\n" );
+  LOGI(">>>>>\n" );
   bool pass=false;
   int retryCount=0;
   while(!pass && !terminationFlag)
   {
     try
     {
-        websocket =new DatCH_WebSocket(4090);
+      int port = 4090;
+        LOGI("Try to open websocket... port:%d\n",port );
+        websocket =new DatCH_WebSocket(port);
         pass=true;
     }
     catch (exception& e) {
@@ -2161,8 +2159,10 @@ int mainLoop(bool realCamera=false)
         std::this_thread::sleep_for(std::chrono::milliseconds(delaySec*1000));
     }
   }
+  
   if(terminationFlag)return -1;
-  printf(">>>>>\n" );
+  std::thread mThread( ImgPipeProcessThread, &terminationFlag);
+  LOGI(">>>>>\n" );
 
 
   {
@@ -2173,24 +2173,27 @@ int mainLoop(bool realCamera=false)
 
     for(int i=0;camera==NULL;i++)
     {
-      LOGV("Camera init retry[%d]...",i);
+      LOGI("Camera init retry[%d]...",i);
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       camera = getCamera(CamInitStyle);
     }
-    LOGV("DatCH_BPG1_0:%p",camera);
+    LOGI("DatCH_BPG1_0 camera :%p",camera);
 
     LoadCameraSetup(camera,"data/");
 
+    LOGI("LoadCameraSetup OK");
     cb->camera = camera;
     callbk_obj.camera=camera;
 
 
     BPG_protocol->SetEventCallBack(cb,NULL);
   }
+  LOGI("Camera:%p",cb->camera );
 
 
   websocket->SetEventCallBack(&callbk_obj,websocket);
 
+  LOGI("SetEventCallBack is set..." );
   while(websocket->runLoop(NULL) == 0)
   {
     
@@ -2274,16 +2277,16 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM)
   
   acvCalibMap *cm_x=new acvCalibMap(MX_data,MY_data,dimS[0],dimS[1],dim[0],dim[1]);
   //cm_x.generateInvMap(dim[0],dim[1]);
-  for(int i=0;i<7;i++)
-  {
-    float coord[]={1017,  377};
-    cm_x->i2c(coord);
-    LOGI("i2c:={%f,%f}",coord[0],coord[1]);
-    cm_x->c2i(coord);
-    LOGI("c2i:={%f,%f}",coord[0],coord[1]);
-    //cm_x->fwdMapDownScale(1);
-    //cm_x.generateInvMap(dim[0],dim[1]);
-  }
+  // for(int i=0;i<7;i++)
+  // {
+  //   float coord[]={1017,  377};
+  //   cm_x->i2c(coord);
+  //   LOGI("i2c:={%f,%f}",coord[0],coord[1]);
+  //   cm_x->c2i(coord);
+  //   LOGI("c2i:={%f,%f}",coord[0],coord[1]);
+  //   //cm_x->fwdMapDownScale(1);
+  //   //cm_x.generateInvMap(dim[0],dim[1]);
+  // }
   //exit(0);
   return cm_x;
   
@@ -2342,6 +2345,7 @@ int main(int argc, char** argv)
           return 1;
       }
       
+      LOGI("WIN32 WSAStartup ret:%d", iResult);
   }
   #endif
 
@@ -2461,7 +2465,7 @@ int main(int argc, char** argv)
     return 0;
   }
   signal(SIGINT, sigroutine);
-  signal(SIGPIPE, SIG_IGN);
+  //signal(SIGPIPE, SIG_IGN);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   return mainLoop(true);
 }
