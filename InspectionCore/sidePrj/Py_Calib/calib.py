@@ -477,9 +477,8 @@ def chessBoardCalibsss(image_path):
         print("IMG:",fname)
         img = cv2.imread(fname)
 
-        blur = cv2.GaussianBlur(img,(25,25),0)
-
-        img = blur
+        # blur = cv2.GaussianBlur(img,(25,25),0)
+        # img = blur
         #img = cv2.resize(img,  (0,0), fx=0.5, fy=0.5)
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
         width,height = gray.shape[::-1]
@@ -571,7 +570,7 @@ def chessBoardCalibsss(image_path):
     for x in range(100):
         thres = 5
         objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize)
-        #print("  ",x,"matchRatio>",matchRatio," error:",error)
+        print("  ",x," availLen>",availLen," totLen>",totLen," error:",error)
         if(maxMatchingRatio<availLen/totLen):
             maxMatchingRatio = availLen/totLen
             maxMatchingAvailLen=availLen
@@ -742,7 +741,7 @@ def chessBoardCalibsss(image_path):
 #"{\"type\":\"cameraCalib\",\"pgID\":12442,\"img_path\":\"*.jpg\",\"board_dim\":[7,9]}"
 #start_tcp_serverX("", 1229)
 #fileConvert("*.jpg",".jpg",".png")
-chessBoardCalibsss('*.png')
+chessBoardCalibsss('*.bmp')
 
 # calibRes=chessBoardCalib((6,9),'*.jpg')
 # print(calibRes)

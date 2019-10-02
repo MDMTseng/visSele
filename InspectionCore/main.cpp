@@ -235,11 +235,11 @@ int SaveIMGFile(const char *filename, acvImage *img)
 
 }
 
-void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *map)
+void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *map,bool doMap=true)
 {
   dst.ReSize(src.GetWidth()/downScale,src.GetHeight()/downScale);
 
-  LOGI("map=%p",map);
+  //LOGI("map=%p",map);
   for(int i=0;i<dst.GetHeight();i++)
   {
     int src_i = i*downScale;
@@ -251,7 +251,11 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *ma
       if(map)
       {
         float coord[]={(float)src_j,(float)src_i};
-        int ret = map->c2i(coord);
+        int ret = 0;
+        if(doMap)
+        {
+          ret = map->c2i(coord);
+        }
         
         if(ret==0)
         {
