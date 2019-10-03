@@ -350,10 +350,12 @@ class APPMain extends React.Component{
               {(mmpp===undefined)?null:
                 <Button  key="mmpp"  size="large"  onClick={()=>{
                   
-                  let LoadCameraSetup_Path = "data/xSetting/";
+                  let LoadCameraSetup_Path = "data/";
+                  //LoadCameraSetup_Path+="S0886/";
+                  
                   this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
                     {LoadCameraSetup:LoadCameraSetup_Path});
-                
+                    
                     
                   this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
                     {filename:LoadCameraSetup_Path+"default_camera_param.json"});

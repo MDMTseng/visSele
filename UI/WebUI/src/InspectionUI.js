@@ -584,8 +584,13 @@ class ObjInfoList extends React.Component {
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
-                        <MicroFullInspCtrl
+                        {/* <MicroFullInspCtrl
                             url={"ws://192.168.2.2:5213"}
+                        /> */}
+                        <AirControl_rdx
+                          
+                          url={"ws://192.168.2.2:5213"}
+                          checkResult2AirAction={this.props.checkResult2AirAction}
                         />
                     </SubMenu>
 
@@ -859,17 +864,6 @@ class AirControl extends React.Component {
                     測試左右噴氣(T)
                     <Icon type="swap"/>
                 </Button>
-
-
-                <br/>
-                <Upload {...FileProps}>
-                    <Button block style={{marginBottom: 3}} type="primary" size="small">
-                        <Icon type="thunderbolt"/>
-                        快速切換特徵檔案
-                        <Icon type="thunderbolt"/>
-                    </Button>
-
-                </Upload>
 
                 <div>
                 </div>
