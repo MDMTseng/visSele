@@ -589,7 +589,6 @@ function StateReducer(newState,action)
 
               });
 
-
               //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
               //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
               reportStatisticState.trackingWindow=
@@ -652,7 +651,7 @@ function StateReducer(newState,action)
 
         case UISEV.MinRepeatInspReport_Update:
           let MinRepeatInspReport = 
-            (action.data===undefined)?action.data:default_MinRepeatInspReport;
+            (action.data===undefined)?default_MinRepeatInspReport:action.data;
           newState.edit_info={...newState.edit_info,MinRepeatInspReport};
         break;
         case UISEV.Image_Update:

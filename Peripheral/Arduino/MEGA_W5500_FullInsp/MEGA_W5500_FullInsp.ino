@@ -36,6 +36,7 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 
 #define LED_PIN 13
 #define CAMERA_PIN 16
+#define FEEDER_PIN 14
 #define BACK_LIGHT_PIN 28
 #define AIR_BLOW_OK_PIN 18
 #define AIR_BLOW_NG_PIN 19
@@ -95,7 +96,7 @@ uint32_t state_pulseOffset[] =
 //  
 //  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
-{0, 685 ,686,691, 692,  697, 1058,   1200,1205,1285,1290};
+{0, 640 ,643,644, 685,  697, 1120,   1145,1153,1285,1290};
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
@@ -250,10 +251,14 @@ class Websocket_FI:public Websocket_FI_proto{
             break;
           }
         }
-        DEBUG_println(ret_status);
+        if(ret_status)
+        {
+          DEBUG_print("ERROR:ret_status=");
+          DEBUG_println(ret_status);
+        }
         
-        digitalWrite(LED_PIN, toggle_LED);
-        toggle_LED=!toggle_LED;
+//        digitalWrite(LED_PIN, toggle_LED);
+//        toggle_LED=!toggle_LED;
         
         return 0;
       }
@@ -365,7 +370,9 @@ void setup() {
   pinMode(GATE_PIN, INPUT);
 
   pinMode(LED_PIN, OUTPUT);
+  pinMode(FEEDER_PIN, OUTPUT);
 
+  digitalWrite(FEEDER_PIN, HIGH);
 
   
 }
@@ -376,12 +383,23 @@ uint32_t totalLoop=0;
 
 int emptyPlateCount=0;
 
+uint32_t feederX=0;
 void loop() 
 {
   if(WS_Server)
     WS_Server->loop_WS();
 
   totalLoop++;
+
+//  if(feederX<800)
+//  {
+//    digitalWrite(FEEDER_PIN, LOW);
+//  }
+//  else
+//  {
+//    digitalWrite(FEEDER_PIN, HIGH);
+//  }
+//  feederX=(feederX>20000)?0:feederX+1;
   
   if( (totalLoop&0xF)==0)
   {

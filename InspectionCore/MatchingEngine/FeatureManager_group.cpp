@@ -145,29 +145,33 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
  
     //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
     acvDrawBlock(&binary_img, 1, 1, binary_img.GetWidth() - 2, binary_img.GetHeight() - 2);
-    int xDist=15;
-    acvDrawBlock(&binary_img, xDist, xDist, binary_img.GetWidth() - xDist, binary_img.GetHeight() - xDist);
-    
-    uint8_t *line2Fill = binary_img.CVector[xDist+3];
-    for(int i=1;i<xDist;i++)
-    {
-      line2Fill[i*3]=
-      line2Fill[i*3+1]=
-      line2Fill[i*3+2]=0;
-    }
 
+    int FENCE_AREA = (img->GetWidth()+img->GetHeight())*2-4;//External frame
+    {
+      int xDist=15;
+      acvDrawBlock(&binary_img, xDist, xDist, binary_img.GetWidth() - xDist, binary_img.GetHeight() - xDist);
+      FENCE_AREA+=(img->GetWidth()-xDist+img->GetHeight()-xDist)*2-4;
+      uint8_t *line2Fill = binary_img.CVector[xDist+3];
+      for(int i=1;i<xDist;i++)
+      {
+        line2Fill[i*3]=
+        line2Fill[i*3+1]=
+        line2Fill[i*3+2]=0;
+      }
+      FENCE_AREA+=xDist;
+
+    }
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
     acvComponentLabeling(&binary_img);
     acvLabeledRegionInfo(&binary_img, &ldData);
 
-    int FENCE_AREA = (img->GetWidth()+img->GetHeight()-2)*2;//External frame
-    FENCE_AREA=110/100;
+    //FENCE_AREA=110/100;
     int CLimit = (img->GetWidth()*img->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
-    LOGV("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
+    LOGI("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
     if(intrusionObjectArea>CLimit)
     {//If the cage connects something link to the edge we don't want to do the inspection
       error=FeatureReport_ERROR::EXTERNAL_INTRUSION_OBJECT;

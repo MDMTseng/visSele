@@ -584,13 +584,8 @@ class ObjInfoList extends React.Component {
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
-                        {/* <MicroFullInspCtrl
+                        <MicroFullInspCtrl
                             url={"ws://192.168.2.2:5213"}
-                        /> */}
-                        <AirControl_rdx
-                          
-                          url={"ws://192.168.2.2:5213"}
-                          checkResult2AirAction={this.props.checkResult2AirAction}
                         />
                     </SubMenu>
 
@@ -1373,12 +1368,12 @@ class APP_INSP_MODE extends React.Component {
 
 
     componentDidMount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
         this.CameraCtrl.setCameraImageTransfer(false);
     }
 
     componentWillUnmount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {});
 
     }
 
@@ -1407,6 +1402,7 @@ class APP_INSP_MODE extends React.Component {
     componentDidUpdate()
     {
         this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
+        this.props.ACT_MinRepeatInspReport_Update(0);
     }
 
     
@@ -1575,6 +1571,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
         ACT_WS_SEND: (id, tl, prop, data, uintArr,promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr,promiseCBs)),
+        ACT_MinRepeatInspReport_Update: (arg) => dispatch(UIAct.EV_WS_MinRepeatInspReport_Update(arg)),
     }
 }
 
