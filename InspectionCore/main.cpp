@@ -501,8 +501,17 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV=0;
   }
 
-  // int span=300;
-  // camera.SetROI(500-span,500-span,500+2*span,500+2*span,0,0);
+
+  
+  cJSON *ROISetting = JFetch_OBJECT(&settingJson,"ROI");
+
+  //if(ROISetting)
+  {//ROI set
+  
+    int span=400;
+    int x=1600/2,y=1200/2;
+    camera.SetROI(x-span,y-span,2*span,2*span,0,0);
+  }
   return 0;
 }
 
@@ -1608,6 +1617,45 @@ void  acvImageBlendIn(acvImage* imgOut,int* imgSArr,acvImage *imgB,int Num)
   }
 }
 
+int InspStatusReducer(int total_status,int new_status)
+{
+  if(total_status==FeatureReport_sig360_circle_line_single::STATUS_NA)
+    return FeatureReport_sig360_circle_line_single::STATUS_NA;
+  
+  if(total_status==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+  {
+    if(new_status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      return FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+    else
+    {
+      return total_status;
+    }
+  }
+
+  
+  if(total_status==FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+  {
+    return new_status;
+  }
+  return FeatureReport_sig360_circle_line_single::STATUS_NA;
+
+}
+
+int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
+{
+  if(jrep.size()==0)return FeatureReport_sig360_circle_line_single::STATUS_NA;
+  int stat = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+  
+  for(int k=0;k<jrep.size();k++)
+  {
+    stat = InspStatusReducer(stat,jrep[k].status);
+  }
+  return stat;
+}
+
+
 clock_t pframeT;
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
@@ -1776,41 +1824,34 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
             {
                 vector<FeatureReport_sig360_circle_line_single> &srep=
                     *(reports[0]->data.sig360_circle_line.reports);
-                
-                int centerIdx=-1;
-                float min_dist=99999999;
+                stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
 
-                for(int k=0;k<srep.size();k++)
+                if(srep.size()==1)//only one detected objects in scence is allowed
                 {
-                    float dist = 
-                        abs(srep[k].Center.X-capImg.GetWidth()/2)+
-                        abs(srep[k].Center.Y-capImg.GetHeight()/2);
-                    
-                    if(min_dist>dist)
-                    {
-                        centerIdx=k;
-                        min_dist=dist;
-                    }
+                  vector<FeatureReport_judgeReport> &jrep= *(srep[0].judgeReports);
+                  stat=InspStatusReduce(jrep);
                 }
+                // for(int k=0;k<srep.size();k++)//For two or more objects in one scence
+                // {
+                //   vector<FeatureReport_judgeReport> &jrep= *(srep[k].judgeReports);
+                  
+                //   int cstat = InspStatusReduce(jrep);
+                //   LOGI("%d:stat:%d cstat:%d ",k,stat,cstat);
+                //   if(k==0)
+                //   {
+                //     stat = cstat;
+                //   }
+                //   else if(stat!=cstat)
+                //   {
+                //     stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
+                //   }
 
-                if(centerIdx!=-1)
-                {
-                    stat=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-                    vector<FeatureReport_judgeReport> &jrep= *(srep[centerIdx].judgeReports);
-
-                    for(int k=0;k<jrep.size();k++)
-                    {
-                        if(jrep[k].status==FeatureReport_sig360_circle_line_single::STATUS_NA)
-                        {
-                            stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
-                            break;
-                        }
-                        if(jrep[k].status==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
-                        {
-                            stat=FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-                        }
-                    }
-                }
+                //   if(stat == FeatureReport_sig360_circle_line_single::STATUS_NA)
+                //   {
+                //     break;
+                //   }
+                // }
+                // LOGI("FINAL stat:%d",stat);
 
             }
 
@@ -1901,7 +1942,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   LOGE( "unlock");
   mainThreadLock.unlock();
-
+  //std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 void ImgPipeProcessThread(bool *terminationflag)
