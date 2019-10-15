@@ -96,7 +96,7 @@ uint32_t state_pulseOffset[] =
 //  
 //  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
-{0, 640 ,643,644, 685,  697, 1120,   1145,1153,1285,1290};
+{0, 649 ,651,659, 670,  697, 1450,   1475,1480,1573,1583};
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
@@ -283,6 +283,20 @@ class Websocket_FI:public Websocket_FI_proto{
           tar_pulseHZ_=newHZ;
           ret_status=0;
         }
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/ON\"")!=NULL)
+      {
+        digitalWrite(BACK_LIGHT_PIN,1);
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/OFF\"")!=NULL)
+      {
+        digitalWrite(BACK_LIGHT_PIN,0);
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/CAM_TRIGGER\"")!=NULL)
+      {
+        digitalWrite(CAMERA_PIN,1);
+        delay(10);
+        digitalWrite(CAMERA_PIN,0);
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_pulse_offset_info\"")!=NULL)
       {

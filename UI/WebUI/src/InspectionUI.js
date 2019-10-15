@@ -1000,6 +1000,31 @@ class MicroFullInspCtrl extends React.Component {
                 });
               }} />
             )}
+
+            
+            <BASE_COM.IconButton
+              key="L_ON"
+              text="L_ON"
+              addClass="layout gray-1 vbox"
+              onClick={() => {
+                this.websocketAir.send(
+                JSON.stringify({type:"MISC/BACK_LIGHT/ON"}));}}/>
+
+            <BASE_COM.IconButton
+              key="L_OFF"
+              text="L_OFF"
+              addClass="layout gray-1 vbox"
+              onClick={() => {
+                this.websocketAir.send(
+                JSON.stringify({type:"MISC/BACK_LIGHT/OFF"}));}}/>
+            
+            <BASE_COM.IconButton
+              iconType="camera"
+              key="CAM"
+              addClass="layout gray-1 vbox"
+              onClick={() => {
+                this.websocketAir.send(
+                JSON.stringify({type:"MISC/CAM_TRIGGER"}));}}/>
         </div>
     );
 }
