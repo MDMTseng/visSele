@@ -918,8 +918,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             
 
 
-            //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,param_default.map);
+            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+            ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,NULL);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
             bpg_dat.callback=DatCH_BPG_acvImage_Send;
             

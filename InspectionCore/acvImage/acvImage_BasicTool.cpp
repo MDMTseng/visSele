@@ -906,19 +906,20 @@ acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param)//S
 
     return acvVecAdd(acvVecMult(v1,mult2),param.calibrationCenter);
 }
-
-acvCalibMap::acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH)
+//acvCalibMap
+acvCalibMap::acvCalibMap(double *MX_data, double *MY_data, 
+  int downSizedMapW,int downSizedMapH,int fullFrameW,int fullFrameH)
 {
     
-    fw=fw_;
-    fh=fh_;
-    this->fullW=fullW;
-    this->fullH=fullW;
+    this->downSizedMapW=downSizedMapW;
+    this->downSizedMapH=downSizedMapH;
+    this->fullFrameW=fullFrameW;
+    this->fullFrameH=fullFrameH;
     origin_offset.X=0;
     origin_offset.Y=0;
     invMap=NULL;
-    int pixCount = fw*fh;
-    fwdMap=new float[fw*fh*2];
+    int pixCount = downSizedMapW*downSizedMapH;
+    fwdMap=new float[downSizedMapW*downSizedMapH*2];
     for(int i=0;i<pixCount;i++)
     {
         fwdMap[i*2]=(float)MX_data[i];
@@ -926,16 +927,19 @@ acvCalibMap::acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int f
     }
 
     
+    //Find the relative scale factor(fmapScale) between down sized map to real image space
+    //pa is for sparse sampling factor, just to accelerate compute process, 
+    //the absolute accuracy isn't crucial.
     int pa=4;
     int detC=0;
     float detSum=0;
-    for(int i=fh/pa;i<fh*(pa-1)/pa;i++)
+    for(int i=downSizedMapH/pa;i<downSizedMapH*(pa-1)/pa;i++)
     {
-        for(int j=fw/pa;j<fw*(pa-1)/pa;j++)
+        for(int j=downSizedMapW/pa;j<downSizedMapW*(pa-1)/pa;j++)
         {
             float xyVec[4];
             float det;
-            int ret = acvCalibMapUtil::map_vec(fwdMap,fw,fh,j,i,xyVec, &det);
+            int ret = acvCalibMapUtil::map_vec(fwdMap,downSizedMapW,downSizedMapH,j,i,xyVec, &det);
             if(ret==0)
             {
                 detSum+=det;
@@ -945,6 +949,9 @@ acvCalibMap::acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int f
     }
     float aveDet = detSum/detC;
     fmapScale=sqrt(aveDet);
+    
+    //fmapScale is to find a mapping searching jump factor, 
+    //the search will start from image center then compute real jumping distance = fmapScale*distance
 }
 void acvCalibMap::generateInvMap(int iw_,int ih_)
 {
@@ -961,7 +968,7 @@ float* acvCalibMap::generateExtInvMap(int iw_,int ih_)
     int missCount=0;
     float errSum=0;
 
-    float mapSeed_row[2]={fw/2.0f,fh/2.0f};
+    float mapSeed_row[2]={downSizedMapW/2.0f,downSizedMapH/2.0f};
     for(int i=0;i<ih_;i++)
     {
         float mapSeed_ret[2]={mapSeed_row[0],mapSeed_row[1]};   
@@ -970,11 +977,11 @@ float* acvCalibMap::generateExtInvMap(int iw_,int ih_)
             int idx = i*iw_+j;
             if(mapSeed_ret[0]!=mapSeed_ret[0])//NAN
             {
-                mapSeed_ret[0]=fw/2.0f;
-                mapSeed_ret[1]=fh/2.0f;
+                mapSeed_ret[0]=downSizedMapW/2.0f;
+                mapSeed_ret[1]=downSizedMapH/2.0f;
             }
             float tarLoc[2]={(float)j,(float)i};
-            float error = acvCalibMapUtil::locateMapPosition(fwdMap,fw,fh,tarLoc[0],tarLoc[1],mapSeed_ret);
+            float error = acvCalibMapUtil::locateMapPosition(fwdMap,downSizedMapW,downSizedMapH,tarLoc[0],tarLoc[1],mapSeed_ret);
             
             if(j==0)
             {
@@ -1000,8 +1007,8 @@ int acvCalibMap::fwdMapDownScale(int dscale_idx)
     if(dscale_idx==0)return 0;
 
     int dscale=1<<dscale_idx;
-    int dfw=fw/dscale;
-    int dfh=fh/dscale;
+    int dfw=downSizedMapW/dscale;
+    int dfh=downSizedMapH/dscale;
     float *dfwdMap=new float[dfw*dfh*2];
     for(int di=0;di<dfh;di++)
     {
@@ -1010,7 +1017,7 @@ int acvCalibMap::fwdMapDownScale(int dscale_idx)
         {
             int j = dj*dscale;
             int didx=di*dfw+dj;
-            int idx=i*fw+j;
+            int idx=i*downSizedMapW+j;
             dfwdMap[didx*2]=fwdMap[idx*2];
             dfwdMap[didx*2+1]=fwdMap[idx*2+1];
         }
@@ -1018,8 +1025,8 @@ int acvCalibMap::fwdMapDownScale(int dscale_idx)
     
     delete fwdMap;
     fwdMap=dfwdMap;
-    fw=dfw;
-    fh=dfh;
+    downSizedMapW=dfw;
+    downSizedMapH=dfh;
     downScale*=dscale;
 
     deleteInvMap();
@@ -1056,7 +1063,7 @@ int acvCalibMap::i2c(float coord[2],bool useInvMap)//real image coord to calibra
         //printf("coord:%d %d\n",fw,fh);
         float x=coord[0],y=coord[1];
         coord[0]=coord[1]=0;
-        float error = acvCalibMapUtil::locateMapPosition(fwdMap,fw,fh,x,y,coord);
+        float error = acvCalibMapUtil::locateMapPosition(fwdMap,downSizedMapW,downSizedMapH,x,y,coord);
         //printf("----: %f %f\n",coord[0],coord[1]);
         if(error>0.01 || error!=error)
             ret=-1;
@@ -1088,7 +1095,7 @@ int acvCalibMap::c2i(float coord[2])//calibrated coord to real image coord
     
     coord[0]/=downScale*fmapScale;
     coord[1]/=downScale*fmapScale;
-    int ret = acvCalibMapUtil::sample_vec(fwdMap,fw,fh,coord[0],coord[1],coord);
+    int ret = acvCalibMapUtil::sample_vec(fwdMap,downSizedMapW,downSizedMapH,coord[0],coord[1],coord);
     coord[0]-=origin_offset.X;
     coord[1]-=origin_offset.Y;
     return ret;

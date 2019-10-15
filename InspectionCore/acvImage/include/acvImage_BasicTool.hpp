@@ -109,14 +109,14 @@ class acvCalibMap
     float* fwdMap;
     //the xy idx is in corrected mapping
     //fwdMap(x,y) is the xy coord from original image
-    int fw,fh;
+    int downSizedMapW,downSizedMapH;
     float* invMap;
     int iw,ih;
 
     int downScale=1;
     float fmapScale=1;
     public:
-    int fullW,fullH;
+    int fullFrameW,fullFrameH;
     acv_XY origin_offset;  
     acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
     void generateInvMap(int iw_,int ih_);
