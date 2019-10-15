@@ -419,7 +419,7 @@ void setup_Stepper() {
 }
 
 
-void loop_Stepper(uint32_t tar_pulseHZ,uint32_t pulseHZ_step) {
+uint32_t loop_Stepper(uint32_t tar_pulseHZ,uint32_t pulseHZ_step) {
   if (pulseHZ != tar_pulseHZ)
   {
     if (pulseHZ < tar_pulseHZ)
@@ -440,4 +440,5 @@ void loop_Stepper(uint32_t tar_pulseHZ,uint32_t pulseHZ_step) {
     }
     timer1_HZ(pulseHZ);
   }
+  return pulseHZ;
 }

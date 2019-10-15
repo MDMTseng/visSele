@@ -64,7 +64,7 @@ uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the softwar
 
 uint32_t PRPC= perRevPulseCount;
 
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4;
+uint32_t tar_pulseHZ_ = perRevPulseCount_HW/30;
 
 typedef struct{
   
@@ -96,7 +96,7 @@ uint32_t state_pulseOffset[] =
 //  
 //  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
-{0, 649 ,651,659, 670,  697, 1450,   1475,1480,1573,1583};
+{0, 654 ,657,659, 660,  697, 1450,   1475,1480,1573,1583};
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
@@ -417,10 +417,20 @@ void loop()
   
   if( (totalLoop&0xF)==0)
   {
+    uint32_t tar=tar_pulseHZ_;
     if(0&&emptyPlateCount>14)
-      loop_Stepper(tar_pulseHZ_/5,pulseHZ_step);
+      tar/=5;
+     
+    
+    uint32_t cur = loop_Stepper(tar,pulseHZ_step);
+    if(cur*20<perRevPulseCount_HW)
+    {
+      digitalWrite(FEEDER_PIN, LOW);
+    }
     else
-      loop_Stepper(tar_pulseHZ_,pulseHZ_step);
+    {
+      digitalWrite(FEEDER_PIN, HIGH);
+    }
   }
     
   if( (totalLoop&0xFFF)==0)
