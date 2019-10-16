@@ -1656,6 +1656,7 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 }
 
 
+void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe);
 clock_t pframeT;
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
@@ -1684,8 +1685,21 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
   headImgPipe->cam_param = param_default;
   headImgPipe->fi= cl_GMV.GetFrameInfo();
-  imagePipeBuffer.pushHead();
-  ImgProcLock.unlock();
+
+  bool doImgProcessThread=false;
+  if(doImgProcessThread)
+  {
+    imagePipeBuffer.pushHead();
+    ImgProcLock.unlock();
+  }
+  else
+  {
+    while(imagePipeBuffer.size()!=0)
+    {//Wait for ImgPipeProcessThread to complete
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    ImgPipeProcessCenter_imp(headImgPipe);
+  }
 }
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
