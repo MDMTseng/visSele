@@ -6,6 +6,7 @@ import socket
 import math
 import time
 import random
+import sys
 from array import array
 from datetime import datetime
 random.seed(datetime.now())
@@ -690,11 +691,11 @@ def chessBoardCalibsss(image_path):
             dst = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
         #print(mapx)
         
+        print("grid2realPix:",downSamp*mult, "pix2grid",1.0/mult)
         
         cv2.imshow('img',dst)
         #cv2.imwrite("./cat2_.png", dst, [int(cv2.IMWRITE_PNG_COMPRESSION), 9])
         key = cv2.waitKey()
-        print("key:",key)
         stepSize=0.2
         if  (key ==ord('d')):
             offsetX+=stepSize
@@ -709,9 +710,9 @@ def chessBoardCalibsss(image_path):
         elif(key ==ord('k')):
             mult/=1.01
         elif(key ==ord('j')):
-            rotation+=0.01
+            rotation+=0.001
         elif(key ==ord('l')):
-            rotation-=0.01
+            rotation-=0.001
         elif(key ==27):
             break
     
@@ -721,7 +722,7 @@ def chessBoardCalibsss(image_path):
     #     np.hstack(mapy)
     # ])
 
-    output_file = open("CalibInfo.bin", 'wb')
+    output_file = open("CalibMap.bin", 'wb')
 
     INFO = genProtoPakNum("IF", "INFO")
     DIM = genProtoPakNum("DM", [imageSize[0],imageSize[1]],'L')
@@ -741,7 +742,10 @@ def chessBoardCalibsss(image_path):
 #"{\"type\":\"cameraCalib\",\"pgID\":12442,\"img_path\":\"*.jpg\",\"board_dim\":[7,9]}"
 #start_tcp_serverX("", 1229)
 #fileConvert("*.jpg",".jpg",".png")
-chessBoardCalibsss('*.bmp')
+
+
+if __name__ == "__main__":
+  chessBoardCalibsss(sys.argv[1])
 
 # calibRes=chessBoardCalib((6,9),'*.jpg')
 # print(calibRes)
