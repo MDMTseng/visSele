@@ -1686,7 +1686,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   headImgPipe->cam_param = param_default;
   headImgPipe->fi= cl_GMV.GetFrameInfo();
 
-  bool doImgProcessThread=false;
+  bool doImgProcessThread=true;
   if(doImgProcessThread)
   {
     imagePipeBuffer.pushHead();
