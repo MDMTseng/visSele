@@ -272,6 +272,11 @@ class Websocket_FI:public Websocket_FI_proto{
           "\"pulse_hz\":%d"
           "},",tar_pulseHZ_);
         ret_status=0;
+      }      
+      else if(strstr ((char*)recv_cmd,"\"type\":\"PING\"")!=NULL)
+      {
+        MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"PONG\",");
+        ret_status=0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_hz\"")!=NULL)
       {
@@ -433,9 +438,9 @@ void loop()
     }
   }
     
-  if( (totalLoop&0xFFF)==0)
+  if( (totalLoop&0x7FFF)==0)
   {
-    DEBUG_print("RBuf.size():");
+    DEBUG_print("RBuf:");
     DEBUG_println(RBuf.size());
     if(RBuf.size()==0)
     {
