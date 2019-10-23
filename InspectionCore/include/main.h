@@ -23,6 +23,20 @@
 #include <Ext_Util_API.hpp>
 
 
+class MicroInsp_FType:public SOCK_JSON_Flow
+{
+    public:
+    MicroInsp_FType(char *host,int port) throw(int):
+      SOCK_JSON_Flow(host,port){};
+      
+    virtual ~MicroInsp_FType(){DESTROY();}
+    
+    virtual int recv_json( char* json_str, int json_strL);
+    protected:
+    int ev_on_close() override;
+};
+
+
 class DatCH_CallBack_BPG : public DatCH_CallBack
 {
   public:

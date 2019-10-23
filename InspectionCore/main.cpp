@@ -24,11 +24,13 @@
 #include <lodepng.h>
 std::timed_mutex mainThreadLock;
 std::timed_mutex ImgProcLock;
+std::timed_mutex ImgPipeLock;
 DatCH_WebSocket *websocket=NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle=0;
+
 
 acvCalibMap* parseCM_info(PerifProt::Pak pakCM);
 
@@ -589,6 +591,48 @@ int LoadCameraCalibrationFile(char * filename,acvRadialDistortionParam *ret_cam_
 bool DoImageTransfer=true;
 
 
+int MicroInsp_FType::recv_json( char* json_str, int json_strL)
+{
+  ImgPipeLock.lock();
+
+  int fd= getfd();
+
+
+  DatCH_Data datCH_BPG=
+  BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+  char tmp[170];
+  sprintf(tmp,"{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}",json_str,fd);
+  LOGI("MSG:%s",tmp);
+
+  BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
+  datCH_BPG.data.p_BPG_data=&bpg_dat;
+  BPG_protocol->SendData(datCH_BPG);
+  ImgPipeLock.unlock();
+  return 0;
+}
+
+
+int MicroInsp_FType::ev_on_close()
+{
+  ImgPipeLock.lock();
+  int fd= getfd();
+  LOGE("fd:%d is disconnected",fd);
+  DatCH_Data datCH_BPG=
+  BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+  char tmp[70];
+  sprintf(tmp,"{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}",getfd());
+
+
+  BPG_data bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
+  datCH_BPG.data.p_BPG_data=&bpg_dat;
+  BPG_protocol->SendData(datCH_BPG);
+
+  ImgPipeLock.unlock();
+
+  return 0;
+}
 
 bool DatCH_CallBack_BPG::checkTL(const char *TL,const BPG_data *dat)
 {
@@ -1375,37 +1419,62 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
         }
         
         }
-        else if(checkTL("PD",dat))
+        else if(checkTL("PD",dat))//Peripheral device
         {
         
           DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-          void *target;
-          char *IP  = JFetch_STRING(json,"ip");
-          double *port_number  = JFetch_NUMBER(json,"port");
-          if(IP!=NULL && port_number!=NULL)
+          char *msg_str  = JFetch_STRING(json,"msg");
+          if(msg_str && mift)
           {
-              try{
-              delete_MicroInsp_FType();
-              mift=new MicroInsp_FType(IP,*port_number);
-              session_ACK=true;
-              }
-              catch(int errN)
-              {
-              sprintf(err_str,"[PR] MicroInsp_FType init error:%d",errN);
-              }
-          }
-          else if( mift && IP==NULL && port_number==NULL)
-          {
-              delete_MicroInsp_FType();
-              session_ACK=true;
+            int ret = mift->send_data((uint8_t*)msg_str,strlen(msg_str));
+            LOGI("mift->send_data:%d",ret);
+            session_ACK=true;
           }
           else
           {
+            void *target;
+            char *IP  = JFetch_STRING(json,"ip");
+            double *port_number  = JFetch_NUMBER(json,"port");
+            if(IP!=NULL && port_number!=NULL)
+            {
+                try{
+                  LOGI("delete_MicroInsp_FType()");
+                  delete_MicroInsp_FType();
+                  LOGI("delete_MicroInsp_FType() OK...");
+                  mift=new MicroInsp_FType(IP,*port_number);
+
+
+                  LOGI("new MicroInsp_FType OK...");
+                  mift->start_RECV_Thread();
+                  LOGI("start_RECV_Thread...");
+
+
+                  int fd = mift->getfd();
+                  session_ACK=true;
+
+                  sprintf(tmp,"{\"type\":\"CONNECT\",\"CONN_ID\":%d}",fd);
+                  bpg_dat=GenStrBPGData("PD", tmp);
+                  bpg_dat.pgID=-1;
+                  datCH_BPG.data.p_BPG_data=&bpg_dat;
+                  self->SendData(datCH_BPG);
+                }
+                catch(int errN)
+                {
+                  sprintf(err_str,"[PR] MicroInsp_FType init error:%d",errN);
+                }
+            }
+            else if( mift && IP==NULL && port_number==NULL)
+            {
+              delete_MicroInsp_FType();
+              session_ACK=true;
+            }
+            else
+            {
               sprintf(err_str,"[PR] ip:%p port:%p",IP,port_number);
+            }
           }
-          
         }
         DatCH_Data datCH_BPG=
         BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -1698,7 +1767,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     {//Wait for ImgPipeProcessThread to complete
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
+    ImgPipeLock.lock();
     ImgPipeProcessCenter_imp(headImgPipe);
+    ImgPipeLock.unlock();
   }
 }
 
@@ -1968,7 +2039,10 @@ void ImgPipeProcessThread(bool *terminationflag)
     image_pipe_info *headImgPipe=NULL;
     while(headImgPipe=imagePipeBuffer.getTail())
     {
+      
+      ImgPipeLock.lock();
       ImgPipeProcessCenter_imp(headImgPipe);
+      ImgPipeLock.unlock();
       imagePipeBuffer.consumeTail();
     }
   }

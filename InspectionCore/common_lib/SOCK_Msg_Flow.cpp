@@ -18,11 +18,79 @@
 #include <netdb.h> 
 #endif
 
+#include <fcntl.h>
 #include <assert.h>
 #include <stdint.h> /* uint8_t */
 #include <stdlib.h> /* strtoul */
 #include <unistd.h>
 #include <SOCK_Msg_Flow.hpp>
+
+
+
+int connect_nonb(int sockfd, const struct sockaddr *saptr, socklen_t salen, int nsec)
+{
+    int     flags, n, error;
+    socklen_t   len;
+    fd_set  rset, wset;
+    struct timeval  tval;
+
+    if ((flags = fcntl(sockfd, F_GETFL, 0)) == -1) {
+        perror("fcntl F_GETFL");
+    }
+    if (fcntl(sockfd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        perror("fcntl F_SETFL");
+    }
+
+    error = 0;
+    if ((n = connect(sockfd, saptr, salen)) < 0) {
+        if (errno != EINPROGRESS) {
+            return -1;
+        }
+    } else if (n == 0) {
+        goto done;
+    }
+
+    FD_ZERO(&rset);
+    FD_SET(sockfd, &rset);
+    wset = rset;
+    tval.tv_sec = nsec;
+    tval.tv_usec = 0;
+
+    if ((n = select(sockfd+1, &rset, &wset, NULL, nsec ? &tval:NULL)) == 0) {
+        close(sockfd);
+        errno = ETIMEDOUT;
+        return -1;
+    } else if (n == -1) {
+        close(sockfd);
+        perror("select");
+        return -1;
+    }
+
+    if (FD_ISSET(sockfd, &rset) || FD_ISSET(sockfd, &wset)) {
+        len = sizeof(error);
+        if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &error, &len) < 0) {
+            return -1;
+        }
+    } else {
+        fprintf(stderr, "select error: socket not set");
+    }
+
+
+done:
+    if (fcntl(sockfd, F_SETFL, flags) == -1) {
+        perror("fcntl");
+    }
+
+    if (error) {
+        close(sockfd);
+        errno = error;
+        return -1;
+    }
+
+    return 0;
+}
+
+
 
 SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
 {
@@ -46,10 +114,15 @@ SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
     memset(&(their_addr.sin_zero),0, 8);     /* zero the rest of the struct */
 
     printf("c:sockfd:%d\n",sockfd);
-    if (connect(sockfd, (struct sockaddr *)&their_addr, \
-                                            sizeof(struct sockaddr)) == -1) {
+
+
+
+    int ret_val;
+
+
+    if ((ret_val=connect_nonb( sockfd,(struct sockaddr *)&their_addr,sizeof(struct sockaddr), 1))!=0) {
         //perror("connect");
-        throw -1;
+        throw ret_val;
     }
     recvThread=NULL;
     
@@ -81,7 +154,11 @@ int SOCK_Msg_Flow::buffLength(int length)
 
 int SOCK_Msg_Flow::send_data(uint8_t *data,int len)
 {
-    return send(sockfd, (char*)data, len, 0);
+  
+    sendLock.lock();
+    int ret = send(sockfd, (char*)data, len, 0);
+    sendLock.unlock();
+    return ret;
 }
 
 int SOCK_Msg_Flow::recv_data()
@@ -110,16 +187,24 @@ int SOCK_Msg_Flow::recv_data_thread()
     }
     return recvL;
 }
+
+void SOCK_Msg_Flow::DESTROY()
+{
+  //printf(">close(sockfd);>\n");
+  close(sockfd);
+  if(recvThread)
+  {
+      //printf(">recvThread->join()>\n");
+      recvThread->join();
+      //printf(">delete recvThread>\n");
+      delete recvThread;
+      recvThread = NULL;
+  }
+}
+
 SOCK_Msg_Flow::~SOCK_Msg_Flow()
 {
-    close(sockfd);
-    
-    if(recvThread)
-    {
-        recvThread->join();
-        delete recvThread;
-        recvThread = NULL;
-    }
+  DESTROY();
 }
 
 
@@ -202,15 +287,23 @@ int SOCK_JSON_Flow::recv_json( char* json_str, int json_strL)
     printf("-----%s\n",json_str);
 }
 
+int SOCK_JSON_Flow::ev_on_close()
+{
+  printf("----\n");
+  printf("----\n");
+  printf("----\n");
+  printf("----\n");
+  return 1;
+}
+
 int SOCK_JSON_Flow::recv_data_thread()
 {
     int recvL=0;
     int jsonBuff_w=0;
-    printf("sockfd:%d",sockfd);
+    printf("recv_data_thread:sockfd:%d",sockfd);
     //send_data((uint8_t*)">>>>>>>>>",8);
     while((recvL=recv(sockfd, (char*)buf, bufL, 0))>0)
     {
-        //printf("\n%d\n",recvL);
         for(int i=0;i<recvL;i++)
         {
             int ret_val = jsp.newChar(buf[i]);
@@ -248,10 +341,10 @@ int SOCK_JSON_Flow::recv_data_thread()
             
         }
     }
-    printf("END:%d",sockfd);
+    int ret =0;
+    ret = ev_on_close();
     return recvL;
 }
-
 //{"pgID":12442,"img_path":"*.jpg","board_dim":[7,9]}
 int SOCK_JSON_Flow::cmd_cameraCalib(char* img_path, int board_w, int board_h)
 {
@@ -265,7 +358,6 @@ int SOCK_JSON_Flow::cmd_cameraCalib(char* img_path, int board_w, int board_h)
 
 char* SOCK_JSON_Flow::SYNC_cmd_cameraCalib(char* img_path, int board_w, int board_h)
 {
-
     syncLock.lock();
     int ret_val = cmd_cameraCalib(img_path,  board_w,  board_h);
     
@@ -285,5 +377,5 @@ char* SOCK_JSON_Flow::SYNC_cmd_cameraCalib(char* img_path, int board_w, int boar
 }
 SOCK_JSON_Flow::~SOCK_JSON_Flow()
 {
-    
+  DESTROY();
 }

@@ -19,6 +19,8 @@ class SOCK_Msg_Flow
     int bufL;
     struct hostent *he;
     struct sockaddr_in their_addr; /* connector's address information */
+    std::timed_mutex sendLock;
+
     public:
     SOCK_Msg_Flow(char *host,int port) throw(int);
     
@@ -30,6 +32,8 @@ class SOCK_Msg_Flow
 
     virtual int recv_data_thread();
     virtual ~SOCK_Msg_Flow();
+    virtual int ev_on_close(){return 0;};
+    virtual void DESTROY();
 };
 
 
@@ -54,12 +58,15 @@ class SOCK_JSON_Flow:public SOCK_Msg_Flow
     json_seg_parser jsp;
     char jsonBuff[1024];
     char errorLock;
+
+
     public:
 
     std::timed_mutex syncLock;
 
     SOCK_JSON_Flow(char *host,int port) throw(int);
 
+    virtual int ev_on_close() override;
     virtual int recv_data_thread();
     virtual int recv_json( char* json_str, int json_strL);
 
@@ -67,7 +74,7 @@ class SOCK_JSON_Flow:public SOCK_Msg_Flow
 
     virtual char* SYNC_cmd_cameraCalib(char* img_path, int board_w, int board_h);
 
-    ~SOCK_JSON_Flow();
+    virtual ~SOCK_JSON_Flow();
 };
 
 #endif
