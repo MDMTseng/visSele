@@ -174,7 +174,6 @@ function StateReducer(newState,action)
     return newState;
   }
 
-
   switch(action.type)
   {
     case UISEV.Connected:
@@ -838,6 +837,8 @@ function StateReducer(newState,action)
           newState.edit_info._obj.Setsig360info(action.data);
           newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
         break;
+
+
 
         case DefConfAct.EVENT.Shape_List_Update:
           newState.edit_info._obj.SetShapeList(action.data);

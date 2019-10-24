@@ -26,6 +26,7 @@ import  {default as AntButton}  from 'antd/lib/button';
 import  PageHeader  from 'antd/lib/page-header';
 import  Typography  from 'antd/lib/typography';
 import  Collapse  from 'antd/lib/collapse';
+import  Divider  from 'antd/lib/divider';
 import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
 import  Button  from 'antd/lib/button';
@@ -251,7 +252,6 @@ class APPMain extends React.Component{
   
     render() {
       let UI=[];
-      
       if(this.props.c_state==null)return null;
       let stateObj = xstate_GetCurrentMainState(this.props.c_state);
       if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
@@ -398,30 +398,14 @@ class APPMain extends React.Component{
           Setting:{
             icon:"setting" ,
             content:<div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
+              
+              <Divider orientation="left">MISC</Divider>
               <AntButton key="Reconnect CAM" 
                 onClick={()=>{
                   this.props.ACT_WS_SEND(this.props.WS_ID,"RC",0,{
                     target:"camera_ez_reconnect"});
               }}>Reconnect CAM</AntButton>
-  
-                
-              <AntButton key="____" 
-                onClick={()=>{
-                  new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
-                    {ip:"192.168.2.2",port:5213},
-                    undefined,{resolve,reject});
-                    //setTimeout(()=>reject("Timeout"),1000)
-                  })
-                  .then((data) => {
-                    console.log(data);
-                  })
-                  .catch((err) => {
-                    console.log(err);
-                  })
-              }}>Connect uInsp</AntButton>
-
-
+              &ensp;
               <AntButton key="camera Calib" 
                 onClick={()=>{
                   let fileSelectedCallBack=
@@ -436,6 +420,67 @@ class APPMain extends React.Component{
                 this.setState({...this.state,fileSelectedCallBack});
   
               }}>camera Calib</AntButton>
+              
+              <Divider orientation="left">µInsp</Divider>
+              <Button.Group>
+
+                <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
+                  icon="link"
+                  onClick={()=>{
+                    new Promise((resolve, reject) => {
+                      this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                      {ip:"192.168.2.2",port:5213},
+                      undefined,{resolve,reject});
+                      //setTimeout(()=>reject("Timeout"),1000)
+                    })
+                    .then((data) => {
+                      console.log(data);
+                    })
+                    .catch((err) => {
+                      console.log(err);
+                    })
+                }}>(re)Connect</Button>
+                <Button type="danger" key="Disconnect uInsp" disabled={!this.props.uInspData.connected} 
+                  icon="disconnect"
+                  onClick={()=>{
+                    new Promise((resolve, reject) => {
+                      this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                      {},
+                      undefined,{resolve,reject});
+                      //setTimeout(()=>reject("Timeout"),1000)
+                    })
+                    .then((data) => {
+                      console.log(data);
+                    })
+                    .catch((err) => {
+                      console.log(err);
+                    })
+                }}>Disconnect</Button>
+
+              </Button.Group>
+
+              &ensp;
+              <Button key="ping uInsp"  disabled={!this.props.uInspData.connected}
+                onClick={()=>{
+                  new Promise((resolve, reject) => {
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                    {msg:{type:"PING",id:443}},
+                    undefined,{resolve,reject});
+                  })
+                  .then((data) => {
+                    console.log(data);
+                  })
+                  .catch((err) => {
+                    console.log(err);
+                  })
+              }}>
+                PING:{this.props.uInspData.alive}
+              </Button>
+
+              {
+                //JSON.stringify(this.props.uInspData)
+              }
+
   
   
               <BPG_FileBrowser key="BPG_FileBrowser"
@@ -556,7 +601,8 @@ const mapStateToProps_APPMain = (state) => {
         WS_ID:state.UIData.WS_ID,
         version_map_info:state.UIData.version_map_info,
         WebUI_info:state.UIData.WebUI_info,
-        InspectionMonitor_URL:state.UIData.InspectionMonitor_URL
+        InspectionMonitor_URL:state.UIData.InspectionMonitor_URL,
+        uInspData:state.Peripheral.uInsp
     }
 }
 

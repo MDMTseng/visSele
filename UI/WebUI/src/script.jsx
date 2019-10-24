@@ -93,12 +93,12 @@ class APPMasterX extends React.Component{
         //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
       },
       onmessage:(evt,ws_obj)=>{
-        log.debug("onMessage:::");
-        log.debug(evt);
+        // log.info("onMessage:::");
+        // log.info(evt);
         if (!(evt.data instanceof ArrayBuffer)) return;
 
         let header = BPG_Protocol.raw2header(evt);
-        log.debug("onMessage:["+header.type+"]");
+        //log.info("onMessage:["+header.type+"]");
         let pgID=header.pgID;
 
         let parsed_pkt=undefined;
@@ -156,10 +156,11 @@ class APPMasterX extends React.Component{
           case "DF":
           case "FL":
           case "SG":
+          case "PD":
           default:
           {
             let report =BPG_Protocol.raw2obj(evt);
-
+            //log.info(report);
             parsed_pkt=report;
 
             break;
@@ -178,7 +179,6 @@ class APPMasterX extends React.Component{
         }
         else
         {
-          
           let req_pkt=this.BPG_WS.reqWindow[pgID];
           
           if(req_pkt!==undefined)//Find the tracking req
@@ -222,7 +222,14 @@ class APPMasterX extends React.Component{
                 pkts:[parsed_pkt]
               };
             }
+            else
+            {
+              let act=BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
+              if(act!==undefined)
+                this.props.DISPATCH(act);
+            }
           }
+          
         }
       },
       onclose:(ev,ws_obj)=>{

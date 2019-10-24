@@ -176,10 +176,16 @@ function map_BPG_Packet2Act(parsed_packet)
       acts.push(UIAct.EV_WS_SIG360_Report_Update(report.data));
       break;
     }
+    case "PD":
+    {
+      //log.debug(report.type,report);
+      acts.push(UIAct.EV_WS_PD_DATA_Update(parsed_packet.data));
+      break;
+    }
     default:
     {
       let report =parsed_packet;
-      act = (report);
+      let act = (report);
     }
 
 

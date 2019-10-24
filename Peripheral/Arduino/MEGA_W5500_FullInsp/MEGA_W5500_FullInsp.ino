@@ -70,17 +70,6 @@ typedef struct{
   
 }aa;
 
-
-
-
-
-
-
-
-
-
-
-
 int offsetAir=80;
 int cam_angle=103;
 int angle=149;
@@ -206,8 +195,10 @@ class Websocket_FI:public Websocket_FI_proto{
       buff+=idStrL+1;
       buffL-=idStrL+1;
 
+      bool isIdAStr=false;
       if(idStr && idStr[0]=='\"' && idStr[idStrL-1]=='\"')
       {
+        isIdAStr=true;
         idStr[idStrL-1]='\0';
         idStr++;
       }
@@ -354,7 +345,16 @@ class Websocket_FI:public Websocket_FI_proto{
       }
       
       if(idStr)
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"id\":\"%s\",",idStr);
+      {
+        if(isIdAStr)
+        {
+          MessageL += sprintf( (char*)send_rsp+MessageL, "\"id\":\"%s\",",idStr);
+        }
+        else
+        {
+          MessageL += sprintf( (char*)send_rsp+MessageL, "\"id\":%s,",idStr);
+        }
+      }
         
       MessageL += sprintf( (char*)send_rsp+MessageL, "\"st\":%d,",ret_status);
       if(send_rsp[MessageL-1]== ',')

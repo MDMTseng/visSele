@@ -1,5 +1,6 @@
 import { applyMiddleware, combineReducers, createStore } from "redux";
 import UICtrlReducer from "REDUX_STORE_SRC/reducer/UICtrlReducer";
+import uInspReducer from "REDUX_STORE_SRC/reducer/uInspReducer";
 import {ActionThrottle} from "REDUX_STORE_SRC/middleware/ActionThrottle";
 import {ECStateMachine} from "REDUX_STORE_SRC/middleware/ECStateMachine";
 import {MWWebSocket} from "REDUX_STORE_SRC/middleware/MWWebSocket";
@@ -93,7 +94,10 @@ let ST = {
 export function ReduxStoreSetUp(presistStore){
 
   const reducer_C = combineReducers({
-    UIData:UICtrlReducer
+    UIData:UICtrlReducer,
+    Peripheral:combineReducers({
+      uInsp:uInspReducer
+    })
   })
 
   const middleware = applyMiddleware(thunk,

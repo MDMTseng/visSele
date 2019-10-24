@@ -1425,11 +1425,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
           DatCH_Data datCH_BPG=
               BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-          char *msg_str  = JFetch_STRING(json,"msg");
-          if(msg_str && mift)
+          cJSON *msg_obj  = JFetch_OBJECT(json,"msg");
+          if(msg_obj && mift)
           {
-            int ret = mift->send_data((uint8_t*)msg_str,strlen(msg_str));
-            LOGI("mift->send_data:%d",ret);
+            char * msgjstr  = cJSON_PrintUnformatted(msg_obj);
+            int ret = mift->send_data((uint8_t*)msgjstr,strlen(msgjstr));
+            LOGI("mift->send_data:%d,msgjstr:%s",ret,msgjstr);
+            delete msgjstr;
             session_ACK=true;
           }
           else

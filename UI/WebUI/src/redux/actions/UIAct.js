@@ -81,6 +81,7 @@ export const UI_SM_EVENT = {
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
   SIG360_Extraction:"SIG360_Extraction",
+  PD_DATA_Update:"PD_DATA_Update",
 
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
@@ -239,6 +240,12 @@ export function EV_WS_SIG360_Report_Update(data)
 {
   return {
     type: UI_SM_EVENT.SIG360_Report_Update ,data:data
+  }
+}
+export function EV_WS_PD_DATA_Update(data)
+{
+  return {
+    type: UI_SM_EVENT.PD_DATA_Update ,data:data
   }
 }
 

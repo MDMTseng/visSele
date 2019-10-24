@@ -16,6 +16,7 @@ import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/red
 import {INSPECTION_STATUS,DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import  Divider  from 'antd/lib/divider';
 //import Plot from 'react-plotly.js';
 //import {Doughnut} from 'react-chartjs-2';
 
@@ -584,7 +585,7 @@ class ObjInfoList extends React.Component {
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
-                        <MicroFullInspCtrl
+                        <MicroFullInspCtrl_rdx
                             url={"ws://192.168.2.2:5213"}
                         />
                     </SubMenu>
@@ -991,7 +992,7 @@ class MicroFullInspCtrl extends React.Component {
             step={100}
             />
             {this.state.stageTable.map((pulseC,idx)=>
-              <InputNumber value={pulseC} onChange={(value)=>{
+              <InputNumber value={pulseC} size="small" onChange={(value)=>{
                 this.state.stageTable[idx]=value;
                 this.websocketAir.send(
                   JSON.stringify({type:"set_pulse_offset_info",table:this.state.stageTable}));
@@ -1002,33 +1003,70 @@ class MicroFullInspCtrl extends React.Component {
             )}
 
             
-            <BASE_COM.IconButton
-              key="L_ON"
-              text="L_ON"
-              addClass="layout gray-1 vbox"
-              onClick={() => {
-                this.websocketAir.send(
-                JSON.stringify({type:"MISC/BACK_LIGHT/ON"}));}}/>
+            <Divider orientation="left">uInsp</Divider>
+            <Button.Group>
+              <Button
+                key="L_ON"
+                addClass="layout gray-1 vbox"
+                onClick={() => {
+                  this.websocketAir.send(
+                  JSON.stringify({type:"MISC/BACK_LIGHT/ON"}));}}>
+                    ON
+              </Button>
 
-            <BASE_COM.IconButton
-              key="L_OFF"
-              text="L_OFF"
-              addClass="layout gray-1 vbox"
-              onClick={() => {
-                this.websocketAir.send(
-                JSON.stringify({type:"MISC/BACK_LIGHT/OFF"}));}}/>
-            
-            <BASE_COM.IconButton
-              iconType="camera"
-              key="CAM"
-              addClass="layout gray-1 vbox"
-              onClick={() => {
-                this.websocketAir.send(
-                JSON.stringify({type:"MISC/CAM_TRIGGER"}));}}/>
+              <Button
+                key="L_OFF"
+                onClick={() => {
+                  this.websocketAir.send(
+                  JSON.stringify({type:"MISC/BACK_LIGHT/OFF"}));}}>OFF
+              </Button>
+              
+              <Button
+                icon="camera"
+                key="CAM"
+                onClick={() => {
+                  this.websocketAir.send(
+                  JSON.stringify({type:"MISC/CAM_TRIGGER"}));}}/>
+
+            </Button.Group>
+
+
+
+            <Button key="ping uInsp" 
+                onClick={()=>{
+                  new Promise((resolve, reject) => {
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                    {msg:{type:"PING",id:443}},
+                    undefined,{resolve,reject});
+                    
+                  })
+              }}>
+                PING:{this.props.uInspData.alive}
+                
+                
+              </Button>
         </div>
     );
 }
 }
+
+
+
+const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
+  return {
+    ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
+    
+  }
+}
+const mapStateToProps_MicroFullInspCtrl = (state) => {
+  return { 
+    WS_CH:state.UIData.WS_CH,
+    WS_ID:state.UIData.WS_ID,
+    uInspData:state.Peripheral.uInsp
+  }
+}
+
+let MicroFullInspCtrl_rdx = connect(mapStateToProps_MicroFullInspCtrl,mapDispatchToProps_MicroFullInspCtrl)(MicroFullInspCtrl);
 
     
 
