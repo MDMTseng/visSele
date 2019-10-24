@@ -3,7 +3,8 @@ import {UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 let UISEV = UI_SM_EVENT;
 let uInspReducer = (state = {
   connected:false,
-  alive:0
+  alive:0,
+  machineInfo:undefined
 }, action) => {
   if(action.type === undefined || action.type.includes("@@redux/"))return state;
   var d = new Date();
@@ -47,17 +48,20 @@ let uInspReducer = (state = {
               state={...state,alive:3}
               console.log("PONG",state);
             break;
+            case "get_setup_rsp":
+              let machineInfo = pd_data.msg;
+              delete machineInfo.id;
+              delete machineInfo.type;
+              delete machineInfo.st;
+              state={...state,machineInfo}
+              console.log("get_setup_rsp",state);
+            break;
           }
-
-
-
-
-
         break;
       }
     break;
   }
-  logX.info(action)
+  //logX.info(action)
   return state;
 }
 export default uInspReducer

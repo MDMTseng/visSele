@@ -601,7 +601,7 @@ int MicroInsp_FType::recv_json( char* json_str, int json_strL)
   DatCH_Data datCH_BPG=
   BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-  char tmp[170];
+  char tmp[1024];
   sprintf(tmp,"{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}",json_str,fd);
   LOGI("MSG:%s",tmp);
 

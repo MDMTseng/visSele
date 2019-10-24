@@ -159,14 +159,97 @@ int stage_action(pipeLineInfo* pli)
 }
 
 
-
 int toggle_LED=0;
 class Websocket_FI:public Websocket_FI_proto{
   public:
   Websocket_FI(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
     Websocket_FI_proto(buff,buffL,ip,port,gateway,subnet){}
 
- 
+     
+  int Mach_state_pulseOffset_ToJson(char* jbuff,uint32_t jbuffL, int *ret_status)
+  {
+    char* send_rsp=jbuff;
+    uint32_t MessageL=0;
+                                                  
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"state_pulseOffset\":[");
+    for(int i=0;i<SARRL(state_pulseOffset);i++)
+      MessageL += sprintf( (char*)send_rsp+MessageL, "%d,",state_pulseOffset[i]);
+    MessageL--;//remove the last comma',';
+    MessageL += sprintf( (char*)send_rsp+MessageL, "],");
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"perRevPulseCount\":%d,",perRevPulseCount);
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"pulse_hz\":%d,",tar_pulseHZ_);
+
+
+    
+    if(ret_status)*ret_status=0;
+    return MessageL;      
+  }
+  
+  int Json_state_pulseOffset_ToMach(char* send_rsp, uint32_t send_rspL,char* jbuff,uint32_t jbuffL, int *ret_status)
+  {
+    char*recv_cmd = jbuff;
+    DEBUG_println("Json_state_pulseOffset_ToMach");
+    uint32_t MessageL=0;
+    if(ret_status)*ret_status=0;
+    do{
+      int table_scopeL=0;
+      char * table_scope = findJsonScope((char*)recv_cmd,"\"state_pulseOffset\":",&table_scopeL);
+      if(table_scope==NULL)
+      {
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
+        if(ret_status)*ret_status=-1;
+        
+        break;
+      }
+      
+      if( table_scope[0]=='[' && table_scope[table_scopeL-1]==']' )
+      {
+        table_scope++;
+        table_scopeL-=2;
+      }
+  
+      uint32_t new_state_pulseOffset[SARRL(state_pulseOffset)];
+  
+      int adv_len = ParseNumberFromArr(table_scope,new_state_pulseOffset, SARRL(state_pulseOffset));//return parsed string length
+     
+      if(adv_len)
+      {
+        ret_status=0;
+        memcpy(state_pulseOffset,new_state_pulseOffset,sizeof(new_state_pulseOffset));
+      }
+      else
+      {
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"Table message length is not sufficient, expected length:%d\",",SARRL(state_pulseOffset));
+        if(ret_status)*ret_status=-1;
+      }
+  
+      
+    }while(0);
+    
+    return MessageL;
+  }
+  
+  
+  int MachToJson(char* jbuff,uint32_t jbuffL, int *ret_status)
+  {
+    char* send_rsp=jbuff;
+    uint32_t MessageL=0;
+    MessageL += Mach_state_pulseOffset_ToJson((char*)send_rsp+MessageL,jbuffL-MessageL,ret_status);
+    return MessageL;
+                                                  
+  }
+  
+  int JsonToMach(char* send_rsp, uint32_t send_rspL,char* jbuff,uint32_t jbuffL, int *ret_status)
+  {
+    int retS=0;
+    uint32_t MessageL=0;
+    MessageL+=Json_state_pulseOffset_ToMach(send_rsp+MessageL,send_rspL-MessageL,jbuff,jbuffL,&retS);
+
+    if(ret_status)*ret_status=retS;
+    return MessageL;
+  }
+
   int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
     if(cmdL==NULL)
@@ -180,7 +263,7 @@ class Websocket_FI:public Websocket_FI_proto{
     memcpy(offset_cmd,recv_cmd,cmdL);
     recv_cmd = offset_cmd;
     rspMaxL-=cmdL;
-
+    DEBUG_println((char*)recv_cmd);
 
     char *buff= (char*)send_rsp+rspMaxL/2;
     int buffL = rspMaxL/2-cmdL;
@@ -280,6 +363,20 @@ class Websocket_FI:public Websocket_FI_proto{
           ret_status=0;
         }
       }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"get_setup\"")!=NULL)
+      {
+        int ret_st=0;
+        MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"get_setup_rsp\","
+                                                      "\"ver\":\"0.0.0.0\",");
+        MessageL+=MachToJson(send_rsp+MessageL, send_rsp-MessageL, &ret_st);
+        ret_status = ret_st;
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"set_setup\"")!=NULL)
+      {
+        int ret_st=0;
+        MessageL+=JsonToMach(send_rsp+MessageL, send_rsp-MessageL,recv_cmd,cmdL, &ret_st);
+        ret_status = ret_st;
+      }
       else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/ON\"")!=NULL)
       {
         digitalWrite(BACK_LIGHT_PIN,1);
@@ -343,7 +440,8 @@ class Websocket_FI:public Websocket_FI_proto{
           
         }while(0);
       }
-      
+
+
       if(idStr)
       {
         if(isIdAStr)
@@ -362,8 +460,12 @@ class Websocket_FI:public Websocket_FI_proto{
       MessageL += sprintf( (char*)send_rsp+MessageL, "}");
       
     }
-    
-    
+//    
+//    DEBUG_print("MessageL:");
+//    DEBUG_println(MessageL);
+//    DEBUG_println("send_rsp:");
+//    DEBUG_println((char*)send_rsp);
+//    
     return MessageL;
   }
 

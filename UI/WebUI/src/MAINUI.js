@@ -6,6 +6,7 @@ import * as BASE_COM from './component/baseComponent.jsx';
  
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
+import dclone from 'clone';
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -18,7 +19,7 @@ import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
 
-import {BPG_FileBrowser} from './component/baseComponent.jsx';
+import {BPG_FileBrowser,BPG_FileSavingBrowser} from './component/baseComponent.jsx';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 
 import  {default as AntButton}  from 'antd/lib/button';
@@ -170,6 +171,7 @@ class APPMain extends React.Component{
         super(props);
         this.state={
           fileSelectedCallBack:undefined,
+          fileSelectFilter:undefined,
           menuSelect:"Overview",
           menuCollapsed:true
         }
@@ -296,7 +298,8 @@ class APPMain extends React.Component{
                       this.props.ACT_Def_Model_Path_Update(filePath);
                       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
                     }
-                  this.setState({...this.state,fileSelectedCallBack});
+                  let fileSelectFilter=(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".bmp")||fileInfo.name.includes(".png");
+                  this.setState({...this.state,fileSelectedCallBack,fileSelectFilter});
                 }}>
                   <Icon type="file-add" />
                   {this.props.defModelPath}
@@ -375,8 +378,9 @@ class APPMain extends React.Component{
                 { 
                   this.setState({...this.state,fileSelectedCallBack:undefined});
                 }}
-                fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION)}
+                fileFilter={this.state.fileSelectFilter}
                 />
+
             </div>,
             onSelected:genericMenuItemCBsCB
           },
@@ -417,7 +421,7 @@ class APPMain extends React.Component{
                     });
   
                   }
-                this.setState({...this.state,fileSelectedCallBack});
+                  this.setState({...this.state,fileSelectedCallBack});
   
               }}>camera Calib</AntButton>
               
@@ -477,6 +481,85 @@ class APPMain extends React.Component{
                 PING:{this.props.uInspData.alive}
               </Button>
 
+              &ensp;
+              <Button key="get_setup"  disabled={!this.props.uInspData.connected}
+                onClick={()=>{
+                  new Promise((resolve, reject) => {
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                    {msg:{type:"get_setup",id:4423}},
+                    undefined,{resolve,reject});
+                  })
+                  .then((data) => {
+                    console.log(data);
+                  })
+                  .catch((err) => {
+                    console.log(err);
+                  })
+              }}>
+                get_setup
+              </Button>
+
+              &ensp;
+              <Button key="set_setup"  disabled={this.props.uInspData.machineInfo===undefined}
+                onClick={()=>{
+                  let machInfo = dclone(this.props.uInspData.machineInfo);
+                  //machInfo.state_pulseOffset[0]+=1;
+                  new Promise((resolve, reject) => {
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                    {msg:{...machInfo,type:"set_setup",id:356}},
+                    undefined,{resolve,reject});
+                  })
+                  .then((data) => {
+                    console.log(data);
+                  })
+                  .catch((err) => {
+                    console.log(err);
+                  })
+              }}>
+                set_setup
+              </Button>
+
+
+              
+              <Button key="save_setup"  disabled={this.props.uInspData.machineInfo===undefined}
+                onClick={()=>{
+                  var enc = new TextEncoder();
+                  this.props.ACT_Report_Save(this.props.WS_ID,"data/uInspSetting.json",
+                  enc.encode(JSON.stringify(this.props.uInspData.machineInfo)));
+              }}>
+                save_setup
+              </Button>
+              
+
+
+              
+              <Button key="file_set_setup"  disabled={this.props.uInspData.machineInfo===undefined}
+                onClick={()=>{
+                  new Promise((resolve, reject) => {
+                    
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+                    {filename:"data/uInspSetting.json"},
+                    undefined,{resolve,reject}
+                  );
+                  
+                  setTimeout(()=>reject("Timeout"),1000)
+
+                  })
+                  .then((pkts) => {
+                    if(pkts[0].type!="FL")return;
+                    let machInfo = pkts[0].data;
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                    {msg:{...machInfo,type:"set_setup",id:356}});
+                  })
+                  .catch((err) => {
+
+                  })
+                  
+              
+              }}>
+                file_set_setup
+              </Button>
+              
               {
                 //JSON.stringify(this.props.uInspData)
               }
@@ -495,8 +578,24 @@ class APPMain extends React.Component{
                 { 
                   this.setState({...this.state,fileSelectedCallBack:undefined});
                 }}
-                fileFilter={(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".bmp")||fileInfo.name.includes(".png")}
-                />
+                fileFilter={this.state.fileSelectFilter}/>
+
+              <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+                path={DefFileFolder} visible={this.state.fileSavingCallBack!==undefined}
+                defaultName={""}
+                BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+
+                onOk={(folderInfo,fileName,existed)=>
+                { 
+                  this.state.fileSavingCallBack(folderInfo,fileName,existed);
+                  
+                }}
+                onCancel={()=>
+                { 
+                  this.setState({...this.state,fileSavingCallBack:undefined});
+                }}
+                fileFilter={this.state.fileSelectFilter}
+              />
             </div>,
             onSelected:genericMenuItemCBsCB
           },
@@ -585,6 +684,15 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
         ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
         ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
         ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
+        
+        ACT_Report_Save:(id,fileName,content)=>{
+          let act = UIAct.EV_WS_SEND(id,"SV",0,
+          {filename:fileName},
+          content
+          )
+          console.log(act);
+          dispatch(act);
+        }
     }
 }
 const mapStateToProps_APPMain = (state) => {
