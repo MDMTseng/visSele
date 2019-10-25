@@ -26,8 +26,10 @@
 #include <SOCK_Msg_Flow.hpp>
 
 
+void socket_close(int *sock);
+
 #ifdef __WIN32__
-void closesock(int *sock)
+void socket_close(int *sock)
 {
     // preserve current error code
     int err = WSAGetLastError();
@@ -46,7 +48,7 @@ int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
     u_long block = 1;
     if (ioctlsocket(sock, FIONBIO, &block) == SOCKET_ERROR)
     {
-        closesock(&sock);
+        socket_close(&sock);
         return -1;
     }
 
@@ -55,7 +57,7 @@ int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
         if (WSAGetLastError() != WSAEWOULDBLOCK)
         {
             // connection failed
-            closesock(&sock);
+            socket_close(&sock);
             return -1;
         }
 
@@ -76,7 +78,7 @@ int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
         if (ret <= 0)
         {
             // select() failed or connection timed out
-            closesock(&sock);
+            socket_close(&sock);
             if (ret == 0)
                 WSASetLastError(WSAETIMEDOUT);
             return -1;
@@ -88,7 +90,7 @@ int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
             char err = 0;
             int size =  sizeof(err);
             getsockopt(sock, SOL_SOCKET, SO_ERROR, &err,&size);
-            closesock(&sock);
+            socket_close(&sock);
             WSASetLastError(err);
             return -1;
         }
@@ -100,7 +102,7 @@ int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
     block = 0;
     if (ioctlsocket(sock, FIONBIO, &block) == SOCKET_ERROR)
     {
-        closesock(&sock);
+        socket_close(&sock);
         return -1;
     }
 
@@ -108,6 +110,11 @@ int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
 }
 
 #else
+
+void socket_close(int *sock)
+{
+  close(*sock);
+}
 
 int connect_nonb(int sockfd, const struct sockaddr *saptr, socklen_t salen, int nsec)
 {
@@ -139,11 +146,11 @@ int connect_nonb(int sockfd, const struct sockaddr *saptr, socklen_t salen, int 
     tval.tv_usec = 0;
 
     if ((n = select(sockfd+1, &rset, &wset, NULL, nsec ? &tval:NULL)) == 0) {
-        close(sockfd);
+        socket_close(&sockfd);
         errno = ETIMEDOUT;
         return -1;
     } else if (n == -1) {
-        close(sockfd);
+        socket_close(&sockfd);
         perror("select");
         return -1;
     }
@@ -164,7 +171,7 @@ done:
     }
 
     if (error) {
-        close(sockfd);
+        socket_close(&sockfd);
         errno = error;
         return -1;
     }
@@ -274,7 +281,7 @@ int SOCK_Msg_Flow::recv_data_thread()
 void SOCK_Msg_Flow::DESTROY()
 {
   //printf(">close(sockfd);>\n");
-  close(sockfd);
+  socket_close(&sockfd);
   if(recvThread)
   {
       //printf(">recvThread->join()>\n");
