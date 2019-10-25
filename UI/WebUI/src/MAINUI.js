@@ -298,7 +298,9 @@ class APPMain extends React.Component{
                       this.props.ACT_Def_Model_Path_Update(filePath);
                       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
                     }
-                  let fileSelectFilter=(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes(".bmp")||fileInfo.name.includes(".png");
+                    
+
+                  let fileSelectFilter=(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION);
                   this.setState({...this.state,fileSelectedCallBack,fileSelectFilter});
                 }}>
                   <Icon type="file-add" />
@@ -525,7 +527,7 @@ class APPMain extends React.Component{
                 onClick={()=>{
                   var enc = new TextEncoder();
                   this.props.ACT_Report_Save(this.props.WS_ID,"data/uInspSetting.json",
-                  enc.encode(JSON.stringify(this.props.uInspData.machineInfo)));
+                  enc.encode(JSON.stringify(this.props.uInspData.machineInfo, null, 4)));
               }}>
                 save_setup
               </Button>
