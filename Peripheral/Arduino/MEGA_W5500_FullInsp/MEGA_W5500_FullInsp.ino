@@ -166,7 +166,7 @@ class Websocket_FI:public Websocket_FI_proto{
     Websocket_FI_proto(buff,buffL,ip,port,gateway,subnet){}
 
      
-  int Mach_state_pulseOffset_ToJson(char* jbuff,uint32_t jbuffL, int *ret_status)
+  int Mach_state_ToJson(char* jbuff,uint32_t jbuffL, int *ret_status)
   {
     char* send_rsp=jbuff;
     uint32_t MessageL=0;
@@ -189,7 +189,6 @@ class Websocket_FI:public Websocket_FI_proto{
   int Json_state_pulseOffset_ToMach(char* send_rsp, uint32_t send_rspL,char* jbuff,uint32_t jbuffL, int *ret_status)
   {
     char*recv_cmd = jbuff;
-    DEBUG_println("Json_state_pulseOffset_ToMach");
     uint32_t MessageL=0;
     if(ret_status)*ret_status=0;
     do{
@@ -235,7 +234,7 @@ class Websocket_FI:public Websocket_FI_proto{
   {
     char* send_rsp=jbuff;
     uint32_t MessageL=0;
-    MessageL += Mach_state_pulseOffset_ToJson((char*)send_rsp+MessageL,jbuffL-MessageL,ret_status);
+    MessageL += Mach_state_ToJson((char*)send_rsp+MessageL,jbuffL-MessageL,ret_status);
     return MessageL;
                                                   
   }
@@ -246,6 +245,16 @@ class Websocket_FI:public Websocket_FI_proto{
     uint32_t MessageL=0;
     MessageL+=Json_state_pulseOffset_ToMach(send_rsp+MessageL,send_rspL-MessageL,jbuff,jbuffL,&retS);
 
+    
+    char numbuff[20];
+    int retL = findJsonScope(jbuff,"\"pulse_hz\":",numbuff,sizeof(numbuff));
+    if(retL>0){
+      int newHZ=tar_pulseHZ_;
+      sscanf(numbuff, "%d", &newHZ);
+      tar_pulseHZ_=newHZ;
+      retS=0;
+    }
+    
     if(ret_status)*ret_status=retS;
     return MessageL;
   }
@@ -263,7 +272,7 @@ class Websocket_FI:public Websocket_FI_proto{
     memcpy(offset_cmd,recv_cmd,cmdL);
     recv_cmd = offset_cmd;
     rspMaxL-=cmdL;
-    DEBUG_println((char*)recv_cmd);
+    //DEBUG_println((char*)recv_cmd);
 
     char *buff= (char*)send_rsp+rspMaxL/2;
     int buffL = rspMaxL/2-cmdL;
