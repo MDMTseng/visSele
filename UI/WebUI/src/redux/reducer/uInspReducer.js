@@ -27,6 +27,11 @@ let uInspReducer = (state = {
         }
       }
       break;
+    case UISEV.uInsp_Machine_Info_Update:
+      
+      state={...state,machineInfo:{...state.machineInfo,...action.data}};
+      console.log(state)
+      break;
     case UISEV.PD_DATA_Update:
       let pd_data = action.data;
 
@@ -34,7 +39,7 @@ let uInspReducer = (state = {
       {
         case "CONNECT":
           console.log("CONNECT");
-          state={...state,connected:true,alive:3}
+          state={...state,connected:true,alive:1}
         break;
         case "DISCONNECT":
           console.log("DISCONNECT");
@@ -45,8 +50,8 @@ let uInspReducer = (state = {
           switch(pd_data.msg.type)
           {
             case "PONG":
-              state={...state,alive:3}
-              console.log("PONG",state);
+              state={...state,alive:1}
+              //console.log("PONG",state);
             break;
             case "get_setup_rsp":
               let machineInfo = pd_data.msg;

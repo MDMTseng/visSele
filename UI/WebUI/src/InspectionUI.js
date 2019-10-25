@@ -7,6 +7,7 @@ import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 
+import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
@@ -584,7 +585,7 @@ class ObjInfoList extends React.Component {
                     // defaultOpenKeys={['functionMenu']}
                     mode="inline">
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
-                             title={<span><Icon type="setting"/><span>平台功能操作</span></span>}>
+                             title={<span><Icon type="setting"/>平台功能操作</span>}>
                         <MicroFullInspCtrl_rdx
                             url={"ws://192.168.2.2:5213"}
                         />
@@ -890,161 +891,189 @@ class MicroFullInspCtrl extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      loading: true,
-      devModel:null,
-      stageTable:[],
-      set_pulse_hz:9600
+      settingPanelVisible:false
     }
-    this.websocket=undefined;
+    this.prevConnectedState=0;
 
   }
   componentWillMount() {
-    console.log("[init][componentWillMount]");
-    this.websocketAir=new websocket_autoReconnect(this.props.url,10000);
-    this.websocketAir.onreconnection=(count)=>console.log(count);
-    this.websocketAir.onmessage = this.onMessage.bind(this);
-    this.websocketAir.onerror = this.onError.bind(this);
-    this.websocketAir.onopen = (ev)=>{
-      this.setState({...this.state,loading: false});
-
-      this.websocketAir.send(JSON.stringify({type:"get_dev_info" }));
-      setTimeout(()=>{
-        this.websocketAir.send(JSON.stringify({type:"get_pulse_offset_info" }));
-      },100);//to separate messages
+    this.ping_interval=setInterval(()=>{
       
-
-    };
-    this.websocketAir.onclose =(evt) => {
-      this.setState({...this.state,loading: true});
-      if (evt.code == 3001) {
-          console.log('ws closed',evt);
-      } else {
-          console.log('ws connection error',evt);
+      if(this.props.uInspData.connected)
+      {
+        this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+        {msg:{type:"PING",id:443}});
       }
-    };
+    },3000);
   }
   
   componentWillUnmount() {
-    // log.info("componentWillUnmount1")
-    if(this.websocketAir!==undefined)
+    clearInterval(this.ping_interval);
+    this.ping_interval=undefined;
+  }
+
+  componentDidUpdate(prevProps, prevState, snapshot)
+  {
+    if (this.props.uInspData.connected !== prevProps.uInspData.connected)
     {
-        this.websocketAir.close();
-        this.websocketAir = undefined;
+      if(this.props.uInspData.connected)
+      {
+        this.LoaduInspSettingToMachine();
+        
+        setTimeout(()=>{
+          this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+            {msg:{type:"get_setup",id:4423}});
+        },100);//to separate messages
+        
+      }
+      else
+      {
+
+      }
     }
   }
 
+  LoaduInspSettingToMachine(filePath="data/uInspSetting.json")
+  {
+    new Promise((resolve, reject) => {
+      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+        {filename:filePath},
+        undefined,{resolve,reject}
+      );
+      setTimeout(()=>reject("Timeout"),1000)
+    }).then((pkts) => {
+      if(pkts[0].type!="FL")return;
+      let machInfo = pkts[0].data;
+      this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+      {msg:{...machInfo,type:"set_setup",id:356}});
+    }).catch((err) => {
 
-  
-  onError(ev) {
-    this.setState({...this.state,loading: false});
-    console.log("onError");
-  }
-
-  onMessage(ev) {
-    let dat = JSON.parse(ev.data);
-    
-    log.info(dat);
-    switch(dat.type)
-    {
-      case "dev_info":
-          
-          this.setState({...this.state,
-            pulse_hz:dat.info.pulse_hz,
-            devModel:dat.info.type
-          });
-
-        break;
-      case "pulse_offset_info":
-          log.info(">>",dat);
-          
-          this.setState({...this.state,
-            stageTable:dat.table
-          });
-        break;
-    }
+    })
   }
   render() {
-    if (this.websocketAir===undefined ||
-        this.websocketAir.readyState != this.websocketAir.OPEN) {
-        return(
-        <BASE_COM.AButton block text="ReconnectAirDevice" type="primary" shape="round" icon="loading" size="large" dict={EC_zh_TW}
-                onClick={() => {this.websocketConnect(this.props.url);
-                }}/>
-        );
-    }
-    
-    return (
-        <div>
 
-            <Slider
+    let ctrlPanel=[];
+    if(this.props.uInspMachineInfo!==undefined && this.props.uInspData.connected)
+    {
+      let machineInfo=this.props.uInspMachineInfo;
+
+      ctrlPanel.push(
+        <Button key="ping uInsp"
+        onClick={()=>{
+            this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+            {msg:{type:"PING",id:443}});
+        }}>{this.props.uInspData.alive==0?
+          <Icon type="heart"/>:
+          <Icon type="heart" theme="twoTone" twoToneColor="#eb2f96" />}</Button>
+        );
+  
+  
+      ctrlPanel.push(
+        <Button key="opt uInsp" icon="setting"
+        onClick={()=>{this.setState({...this.state,settingPanelVisible:true})
+      }}/>);
+      <br/>
+      ctrlPanel.push(
+        <Divider orientation="left" key="divi">uInsp</Divider>);
+  
+        
+
+
+      if(machineInfo.pulse_hz!==undefined)
+      {
+        ctrlPanel.push(            
+          <Slider key="speedSlider"
             min={0}
             max={20000}
             onChange={(value)=>{
-              
-              this.setState({...this.state,
-                pulse_hz:value
-              });
-              
-              this.websocketAir.send(
-                JSON.stringify({type:"set_pulse_hz",pulse_hz:value}));
+              let xobj={pulse_hz:value};
+              this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+              {msg:{...xobj,type:"set_setup",id:356}});
+              this.props.ACT_Machine_Info_Update(xobj);
             }}
-            value={this.state.pulse_hz}
+            value={machineInfo.pulse_hz}
             step={100}
-            />
-            {this.state.stageTable.map((pulseC,idx)=>
-              <InputNumber value={pulseC} size="small" onChange={(value)=>{
-                this.state.stageTable[idx]=value;
+            />);
+      }
+
+      if(machineInfo.state_pulseOffset!==undefined)
+      {
+        
+        ctrlPanel.push(
+        machineInfo.state_pulseOffset.map((pulseC,idx)=>
+        <InputNumber value={pulseC} size="small" key={"poff"+idx} onChange={(value)=>{
+          let state_pulseOffset = dclone(machineInfo.state_pulseOffset);
+          state_pulseOffset[idx]=value;
+          
+          this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+            {msg:{state_pulseOffset,type:"set_setup",id:356}});
+
+          this.props.ACT_Machine_Info_Update({state_pulseOffset});
+          
+        }} />))
+      }
+      
+      ctrlPanel.push(
+        <Modal
+        title=""  key="settingModal"
+        visible={this.state.settingPanelVisible}
+        onCancel={()=>this.setState({...this.state,settingPanelVisible:false})}
+        onOk={()=>this.setState({...this.state,settingPanelVisible:false})}
+        footer={null}
+        >
+          <Button.Group>
+            <Button
+              key="L_ON"
+              onClick={() => {
                 this.websocketAir.send(
-                  JSON.stringify({type:"set_pulse_offset_info",table:this.state.stageTable}));
-                this.setState({...this.state,
-                  stageTable:this.state.stageTable,
-                });
-              }} />
-            )}
+                JSON.stringify({type:"MISC/BACK_LIGHT/ON"}));}}>
+                  ON
+            </Button>
 
+            <Button
+              key="L_OFF"
+              onClick={() => {
+                this.websocketAir.send(
+                JSON.stringify({type:"MISC/BACK_LIGHT/OFF"}));}}>OFF
+            </Button>
             
-            <Divider orientation="left">uInsp</Divider>
-            <Button.Group>
-              <Button
-                key="L_ON"
-                addClass="layout gray-1 vbox"
-                onClick={() => {
-                  this.websocketAir.send(
-                  JSON.stringify({type:"MISC/BACK_LIGHT/ON"}));}}>
-                    ON
-              </Button>
+            <Button
+              icon="camera"
+              key="CAM"
+              onClick={() => {
+                this.websocketAir.send(
+                JSON.stringify({type:"MISC/CAM_TRIGGER"}));}}/>
 
-              <Button
-                key="L_OFF"
-                onClick={() => {
-                  this.websocketAir.send(
-                  JSON.stringify({type:"MISC/BACK_LIGHT/OFF"}));}}>OFF
-              </Button>
-              
-              <Button
-                icon="camera"
-                key="CAM"
-                onClick={() => {
-                  this.websocketAir.send(
-                  JSON.stringify({type:"MISC/CAM_TRIGGER"}));}}/>
+            <Button
+              icon="save"
+              key="SaveToFile"
+              onClick={() => {
+                  var enc = new TextEncoder();
+                  this.props.ACT_Report_Save(this.props.WS_ID,"data/uInspSetting.json",
+                  enc.encode(JSON.stringify(this.props.uInspData.machineInfo, null, 4)));
+              }}>Save machine setting</Button>
+          </Button.Group>
+        </Modal>);
 
-            </Button.Group>
+    }
+
+    return (
+        <div>
+            {
+              this.props.uInspData.connected?
+              null
+              :
+              <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
+              icon="link"
+              onClick={()=>{
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                  {ip:"192.168.2.2",port:5213});
+                }}>連線</Button>
+            }
 
 
-
-            <Button key="ping uInsp" 
-                onClick={()=>{
-                  new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
-                    {msg:{type:"PING",id:443}},
-                    undefined,{resolve,reject});
-                    
-                  })
-              }}>
-                PING:{this.props.uInspData.alive}
-                
-                
-              </Button>
+            {ctrlPanel}
+            
         </div>
     );
 }
@@ -1055,14 +1084,24 @@ class MicroFullInspCtrl extends React.Component {
 const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
   return {
     ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
+    ACT_Machine_Info_Update:(machineInfo)=>dispatch(UIAct.EV_WS_uInsp_Machine_Info_Update(machineInfo)),
     
+    ACT_Report_Save:(id,fileName,content)=>{
+      let act = UIAct.EV_WS_SEND(id,"SV",0,
+      {filename:fileName},
+      content
+      )
+      console.log(act);
+      dispatch(act);
+    }
   }
 }
 const mapStateToProps_MicroFullInspCtrl = (state) => {
   return { 
     WS_CH:state.UIData.WS_CH,
     WS_ID:state.UIData.WS_ID,
-    uInspData:state.Peripheral.uInsp
+    uInspData:state.Peripheral.uInsp,
+    uInspMachineInfo:state.Peripheral.uInsp.machineInfo,
   }
 }
 

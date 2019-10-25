@@ -94,7 +94,16 @@ function Default_UICtrlReducer()
         trackingWindow:[],
         historyReport:[],
         newAddedReport:[],
-        statisticValue:undefined
+        statisticValue:undefined,
+        overallStat:{
+          OK:0,
+          WARN:0,
+          NG:0,
+          lastTS:0,
+          T:0,
+          soft_T:0,
+          softIdx:0.1
+        }
       },
       sig360info:[],
       matching_angle_margin_deg:180,
@@ -387,6 +396,11 @@ function StateReducer(newState,action)
             {
               break;
             }
+            
+            let overallStat = reportStatisticState.overallStat;
+
+
+
 
             let reportStatisticState = newState.edit_info.reportStatisticState;
 
@@ -411,7 +425,7 @@ function StateReducer(newState,action)
                   //if(srep_inWindow.repeatTime>0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
-                    reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                    //reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
                     reportStatisticState.newAddedReport.push(srep_inWindow);
                   }
                   // else
@@ -1207,7 +1221,6 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
       return StateReducer(state,action);
     },newState);
     
-    log.info(newState);
     return newState;
   }
   else
