@@ -505,14 +505,26 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 
 
   
-  cJSON *ROISetting = JFetch_OBJECT(&settingJson,"ROI");
+  cJSON *ROISetting = JFetch_ARRAY(&settingJson,"ROI");
 
-  //if(ROISetting)
+  if(ROISetting)
   {//ROI set
-  
-    int span=400;
-    int x=1600/2,y=1200/2;
-    camera.SetROI(x-span,y-span,2*span,2*span,0,0);
+    double* roi_x=JFetch_NUMBER(&settingJson,"ROI[0]");
+    double* roi_y=JFetch_NUMBER(&settingJson,"ROI[1]");
+    double* roi_w=JFetch_NUMBER(&settingJson,"ROI[2]");
+    double* roi_h=JFetch_NUMBER(&settingJson,"ROI[3]");
+    LOGI("ROI ptr:%p %p %p %p",roi_x , roi_y , roi_w , roi_h);
+    if(roi_x && roi_y && roi_w && roi_h)
+    {
+      camera.SetROI(*roi_x,*roi_y,*roi_w,*roi_h,0,0);
+    }
+    else
+    {
+      // int span=300;
+      // int x=1600/2,y=1200/2;
+      // camera.SetROI(x-span,y-span,2*span,2*span,0,0);
+    }
+    
   }
   return 0;
 }
