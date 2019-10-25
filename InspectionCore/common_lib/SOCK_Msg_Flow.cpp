@@ -26,6 +26,88 @@
 #include <SOCK_Msg_Flow.hpp>
 
 
+#ifdef __WIN32__
+void closesock(int *sock)
+{
+    // preserve current error code
+    int err = WSAGetLastError();
+    closesocket(*sock);
+    *sock = INVALID_SOCKET;
+    WSASetLastError(err);
+}
+
+int connect_nonb(int sock, const struct sockaddr *saptr, int salen, int sec)
+{
+    //return connect(sock,saptr,salen);
+    // you really shouldn't be calling WSAStartup() here.
+    // Call it at app startup instead...
+
+    // put socked in non-blocking mode...
+    u_long block = 1;
+    if (ioctlsocket(sock, FIONBIO, &block) == SOCKET_ERROR)
+    {
+        closesock(&sock);
+        return -1;
+    }
+
+    if (connect(sock, saptr, salen) == SOCKET_ERROR)
+    {
+        if (WSAGetLastError() != WSAEWOULDBLOCK)
+        {
+            // connection failed
+            closesock(&sock);
+            return -1;
+        }
+
+        // connection pending
+
+        fd_set setW, setE;
+
+        FD_ZERO(&setW);
+        FD_SET(sock, &setW);
+        FD_ZERO(&setE);
+        FD_SET(sock, &setE);
+
+        timeval time_out = {0};
+        time_out.tv_sec = sec;
+        time_out.tv_usec = 0; 
+
+        int ret = select(0, NULL, &setW, &setE, &time_out);
+        if (ret <= 0)
+        {
+            // select() failed or connection timed out
+            closesock(&sock);
+            if (ret == 0)
+                WSASetLastError(WSAETIMEDOUT);
+            return -1;
+        }
+
+        if (FD_ISSET(sock, &setE))
+        {
+            // connection failed
+            char err = 0;
+            int size =  sizeof(err);
+            getsockopt(sock, SOL_SOCKET, SO_ERROR, &err,&size);
+            closesock(&sock);
+            WSASetLastError(err);
+            return -1;
+        }
+    }
+
+    // connection successful
+
+    // put socked in blocking mode...
+    block = 0;
+    if (ioctlsocket(sock, FIONBIO, &block) == SOCKET_ERROR)
+    {
+        closesock(&sock);
+        return -1;
+    }
+
+    return 0;
+}
+
+#else
 
 int connect_nonb(int sockfd, const struct sockaddr *saptr, socklen_t salen, int nsec)
 {
@@ -90,6 +172,7 @@ done:
     return 0;
 }
 
+#endif
 
 
 SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
