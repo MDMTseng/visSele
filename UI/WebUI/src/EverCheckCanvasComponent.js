@@ -16,7 +16,7 @@ import * as log from 'loglevel';
 import dclone from 'clone';
 
 import {EV_UI_Canvas_Mouse_Location} from 'REDUX_STORE_SRC/actions/UIAct';
-
+import Color from 'color';
 
 export const MEASURE_RESULT_VISUAL_INFO = {
   [MEASURERSULTRESION.NA]:{COLOR:"rgba(128,128,128,0.5)",TEXT:MEASURERSULTRESION.NA},
@@ -434,8 +434,13 @@ class renderUTIL
     ctx.closePath();
     //ctx.stroke();
   }
-  drawShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1})
+  drawShapeList(ctx, eObjects,ShapeColor=undefined,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1},drawSubObjs=false)
   {
+    let next_ShapeColor=null
+    if(ShapeColor!==undefined && ShapeColor!==null)
+    {
+      next_ShapeColor = Color(ShapeColor).desaturate(0.6).string()
+    }
     eObjects.forEach((eObject)=>{
       if(eObject==null)return;
       var found = skip_id_list.find(function(skip_id) {
@@ -445,9 +450,13 @@ class renderUTIL
       {
         return;
       }
-      else if(useShapeColor)
+      else
       {
-        ctx.strokeStyle=eObject.color; 
+        if(ShapeColor!==undefined && ShapeColor!==null)
+          ctx.strokeStyle=ShapeColor; 
+        else
+          ctx.strokeStyle=eObject.color; 
+
       }
       switch(eObject.type)
       {
@@ -488,8 +497,8 @@ class renderUTIL
           let subObjs = eObject.ref
             .map((ref)=> db_obj.FindShape( "id" , ref.id, shapeList ))
             .map((idx)=>{  return idx>=0?shapeList[idx]:null});
-
-          this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list,shapeList);
+          if(drawSubObjs)
+            this.drawShapeList(ctx, subObjs,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
           if(eObject.id === undefined)break;
 
           let point = this.db_obj.auxPointParse(eObject,shapeList);
@@ -544,6 +553,7 @@ class renderUTIL
 
         case SHAPE_TYPE.search_point:
         {
+          
           let db_obj = this.db_obj;
           let subObjs = eObject.ref
             .map((ref)=> db_obj.FindShape( "id" , ref.id,shapeList ))
@@ -560,6 +570,8 @@ class renderUTIL
           vector.y*=mag;
 
 
+
+          
           ctx.lineWidth=eObject.margin*2;
           this.drawReportLine(ctx, {
             x0:eObject.pt1.x-vector.x,y0:eObject.pt1.y-vector.y,
@@ -575,8 +587,9 @@ class renderUTIL
             x1:eObject.pt1.x+vector.x+cnormal.x*marginOffset,y1:eObject.pt1.y+vector.y+cnormal.y*marginOffset,
           });
 
-
-          this.drawShapeList(ctx, subObjs,useShapeColor,skip_id_list,shapeList);
+          
+          if(drawSubObjs)
+            this.drawShapeList(ctx, subObjs,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
 
           ctx.strokeStyle="gray";  
           this.drawpoint(ctx,eObject.pt1);
@@ -589,10 +602,13 @@ class renderUTIL
           if(eObject.ref===undefined)break;
           let subObjs = eObject.ref
             .map((ref)=> db_obj.FindShapeObject( "id" , ref.id,shapeList ));
+            
+          if(drawSubObjs)
+            this.drawShapeList(ctx, subObjs,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
           let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!==undefined),true);
           if(!subObjs_valid)break;
 
-          if(useShapeColor)
+          if(ShapeColor==undefined || ShapeColor==null)
           {
             if(eObject.color!==undefined)
             {
@@ -604,6 +620,12 @@ class renderUTIL
               ctx.strokeStyle=this.colorSet.measure_info; 
               ctx.fillStyle=this.colorSet.measure_info;  
             }
+          }
+          else
+          {
+            ctx.strokeStyle=ShapeColor; 
+            ctx.fillStyle=ShapeColor;  
+            
           }
 
           switch(eObject.subtype)
@@ -905,7 +927,7 @@ class renderUTIL
 
 
   
-  drawInspectionShapeList(ctx, eObjects,useShapeColor=true,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1})
+  drawInspectionShapeList(ctx, eObjects,ShapeColor=undefined,skip_id_list=[],shapeList,unitConvert={unit:"mm",mult:1},drawSubObjs=false)
   {
     let normalRenderGroup=[];
     eObjects.forEach((eObject)=>{
@@ -917,9 +939,12 @@ class renderUTIL
       {
         return;
       }
-      else if(useShapeColor)
+      else
       {
-        ctx.strokeStyle=eObject.color; 
+        if(ShapeColor!==undefined && ShapeColor!==null)
+          ctx.strokeStyle=ShapeColor; 
+        else
+          ctx.strokeStyle=eObject.color; 
       }
       switch(eObject.type)
       {
@@ -987,7 +1012,16 @@ class renderUTIL
         break;
       }
     });
-    this.drawShapeList(ctx, normalRenderGroup,useShapeColor,skip_id_list,shapeList,unitConvert);
+    if(drawSubObjs)
+    {
+      
+      let next_ShapeColor=null
+      if(ShapeColor!==undefined && ShapeColor!==null)
+      {
+        next_ShapeColor = Color(ShapeColor).whiten(0.5).string()
+      }
+      this.drawShapeList(ctx, normalRenderGroup,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
+    }
   }
 
   
@@ -1468,7 +1502,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
     
     let skipDrawIdxs=[];
     
-    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,true,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
+    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,null,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
   }
@@ -1722,7 +1756,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
           }
         });
-        this.rUtil.drawInspectionShapeList(ctx,listClone,true,[],listClone,unitConvert);
+        this.rUtil.drawInspectionShapeList(ctx,listClone,null,[],listClone,unitConvert,true);
       }
     });
 
@@ -1989,18 +2023,24 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     ctx.closePath();
     ctx.save();
 
-    
+    let displayShape=this.AvailableShapeFilter(this.edit_DB_info.list);
+
+
+    let drawFocusItem=false;
     let skipDrawIdxs=[];
     if(this.EditShape!=null)
     {
+      
+      drawFocusItem=true;
       skipDrawIdxs.push(this.EditShape.id);
       
       ctx.strokeStyle=this.colorSet.editShape;
-      this.rUtil.drawShapeList(ctx, [this.EditShape],false,[],this.edit_DB_info.list,unitConvert);
+      this.rUtil.drawShapeList(ctx, [this.EditShape],this.colorSet.editShape,[],this.edit_DB_info.list,unitConvert,true);
     }
 
     if(this.CandEditPointInfo!=null)
     {
+      drawFocusItem=true;
       var candPtInfo = this.CandEditPointInfo;
       var found = skipDrawIdxs.find(function(skip_id) {
         return candPtInfo.shape.id == skip_id;
@@ -2009,17 +2049,20 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       if( found===undefined )
       {
         skipDrawIdxs.push(candPtInfo.shape.id);
-
-        ctx.strokeStyle="rgba(255,0,255,0.5)";
-        this.rUtil.drawShapeList(ctx, [candPtInfo.shape],false,[],this.edit_DB_info.list,unitConvert);
+        let dcolor = "rgba(255,0,255,0.5)"
+        ctx.strokeStyle=dcolor;
+        this.rUtil.drawShapeList(ctx, [candPtInfo.shape],dcolor,[],this.edit_DB_info.list,unitConvert,true);
       }
     }
 
-    let displayShape=this.AvailableShapeFilter(this.edit_DB_info.list);
-
-
-    this.rUtil.drawShapeList(ctx, displayShape,true,skipDrawIdxs,displayShape,unitConvert);
-
+    if(displayShape!=this.edit_DB_info.list)//draw all
+    {
+      this.rUtil.drawShapeList(ctx, displayShape,null,skipDrawIdxs,displayShape,unitConvert);
+    }
+    else if(!drawFocusItem)
+    {
+      this.rUtil.drawShapeList(ctx, this.edit_DB_info.list,null,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
+    }
 
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
