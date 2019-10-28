@@ -330,11 +330,29 @@ export class BPG_FileBrowser_proto extends React.Component{
     this.state={
       folderStruct:{},
       history:["./"],
+      searchText:undefined,
+      searchFolderStruct:undefined
     }
   }
 
+
+  
+  fetchDirFiles(path,depth=0)
+  {
+    return  new Promise((resolve, reject) => {
+      this.props.BPG_Channel("FB",0,{//"FB" is for file browsing
+        path:path,
+        depth:depth,
+      },undefined,{resolve,reject});
+      setTimeout(()=>reject("Timeout"),1000)
+    })
+  }
+
+
+
   goDir(path)
   {
+
     if(path===undefined)
     {
       if(this.state.history.length<=1)
@@ -349,37 +367,45 @@ export class BPG_FileBrowser_proto extends React.Component{
     {
       if(path == this.state.history[this.state.history.length-1])
       {
+        console.log(">>>>>");
         return;
       }
       this.state.history.push(path);
     }
-    new Promise((resolve, reject) => {
-      this.props.BPG_Channel("FB",0,{//"FB" is for file browsing
-        path:path,
-        depth:0,
-      },undefined,{resolve,reject});
-      setTimeout(()=>reject("Timeout"),1000)
-    })
+
+    this.fetchDirFiles(path)
     .then((data) => {
+      let folderStruct={}
       if(data[1].data.ACK)
       {
-        let folderStruct = data[0].data;
-        this.setState(Object.assign(this.state,{folderStruct:folderStruct}));
-        if(this.props.onFolderLoaded!==undefined)
-        {
-          this.props.onFolderLoaded(folderStruct);
-        }
+        folderStruct = data[0].data;
       }
-      else
+      this.setState({...this.state,folderStruct:folderStruct,searchText:undefined,searchFolderStruct:undefined});
+      if(this.props.onFolderLoaded!==undefined)
       {
-        setTimeout(()=>this.goDir(),1000)
-        
+        this.props.onFolderLoaded(folderStruct);
       }
     })
     .catch((err) => {
-      console.log(err);
+      this.setState({...this.state,folderStruct:[]});
+      if(this.props.onFolderLoaded!==undefined)
+      {
+        this.props.onFolderLoaded({});
+      }
     })
+    
+    // this.fetchDirFiles(path,1000)
+    // .then((data) => {
+      
+    //   console.log(data);
+    // })
+    // .catch((err) => {
+      
+    //   console.log(err);
+    // })
   }
+
+
   componentWillMount() {
     this.goDir(this.props.path);
   }
@@ -399,66 +425,176 @@ export class BPG_FileBrowser_proto extends React.Component{
     var i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
     return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
   }
-  
-  render()
+  fList(folderStruct,filter)
   {
-
-    const columns = ['type','name','size'].map((info)=>({
-      title: info,
-      dataIndex: info,
-      key:info,
-    }));
-
-    columns[0].render=(text, record) => {
-      
-      let iconType=(text=="DIR")?"folder":"file"
-      return <Icon type={iconType} />
+    //console.log(folderStruct);
+    if(folderStruct===undefined || folderStruct.files===undefined)return [];
+    let cfileList = folderStruct.files;
+    if(filter!==undefined)
+    {
+      cfileList = cfileList.filter(filter);
     }
-    columns[0].width=64;
-
-    let fileList = (this.state.folderStruct.files===undefined)?[]:this.state.folderStruct.files;
-    fileList = fileList.filter((file)=>
-      (file.name!='.' && file.name!='..' )&&
-      (this.props.fileFilter===undefined?true:this.props.fileFilter(file)
-    ));
-    fileList.forEach((file)=>{
+    cfileList.forEach((file)=>{
+      file.key =
+      file.path = folderStruct.path+"/"+file.name;
       file.size = this.bytesToSize(file.size_bytes);
-      file.key = file.name;
     });
 
-    let favoriteDir=[
-      {name:"origin",path:"./"},];
-
-
-
-
-    let curPathArr = (typeof this.state.folderStruct.path ==='string')?
-      this.state.folderStruct.path.replace(/\\+/g, "/").split("/"):[];
-
-    curPathArr=curPathArr.map((name)=>({name}));
-
-    curPathArr.reduce((pathInt,pathObj)=>{
-        pathInt=pathInt+pathObj.name+"/";
-        pathObj.path=pathInt;
-        return pathInt;
-      },"");
+    cfileList=folderStruct.files.reduce((list,file)=>{
+      if(file.type!="DIR")return list;
+      return list.concat(this.fList(file.struct,filter));
+    },cfileList);
+    return cfileList; 
+  }
+  render()
+  {
+    let titleRender=[]
+    let fv_UI=[]
+    let pathSplitBtns;
+    let columns =[]
+    let fileList;
+    let tableWidthClass = "width10"
+    if(this.state.searchText!==undefined && this.state.searchText.length>0)
+    {
+      columns = ['type','name','path'].map((info)=>({
+        title: info,
+        dataIndex: info,
+        key:info,
+      }));
       
-    let titleRender=<div>
+      columns[0].render=(text, record) => {
+        let iconType=(text=="DIR")?"folder":"file"
+        return <Icon type={iconType} />
+      }
+      columns[0].width=64;
       
-      <AntButtonGroup>
-        <AntButton type="primary"  onClick={()=>this.goDir()}>
-          <Icon type="left" />
-        </AntButton>
-      </AntButtonGroup>
-      &nbsp;&nbsp;&nbsp;
-      <AntButtonGroup>
-        {curPathArr.map((folder,idx)=>
-          <AntButton key={folder.name+"_"+idx}   onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
-        )}
-      </AntButtonGroup>
+      fileList=this.fList(this.state.searchFolderStruct,
+        (file)=>(file.name!='.' && file.name!='..' )&&
+        file.name.includes(this.state.searchText)&&
+        (this.props.fileFilter===undefined?true:this.props.fileFilter(file)));
 
+      tableWidthClass="width12"
+    }
+    else
+    {
+      columns = ['type','name','size'].map((info)=>({
+        title: info,
+        dataIndex: info,
+        key:info,
+      }));
+  
+      columns[0].render=(text, record) => {
+        let iconType=(text=="DIR")?"folder":"file"
+        return <Icon type={iconType} />
+      }
+      columns[0].width=64;
+  
+      fileList =
+      this.fList(this.state.folderStruct,(file)=>
+        (file.name!='.' && file.name!='..' )&&
+        (this.props.fileFilter===undefined?true:this.props.fileFilter(file)
+      ))
+      
+  
+      let favoriteDir=[
+        {name:"origin",path:"./"},];
+  
+  
+  
+  
+      let curPathArr = (typeof this.state.folderStruct.path ==='string')?
+        this.state.folderStruct.path.replace(/\\+/g, "/").split("/"):[];
+  
+      curPathArr=curPathArr.map((name)=>({name}));
+  
+      curPathArr.reduce((pathInt,pathObj)=>{
+          pathInt=pathInt+pathObj.name+"/";
+          pathObj.path=pathInt;
+          return pathInt;
+        },"");
+        
+  
+
+      fv_UI.push(
+      <div className="s height12 width2 scroll" key="sideMenu">
+        <Menu
+          onClick={(evt)=>{this.goDir(evt.item.props.path);}}
+          mode="inline"
+        >
+          {
+            favoriteDir.map(dir=>
+              <Menu.Item key={dir.name} path={dir.path}>{dir.name}</Menu.Item>)
+          }
+        </Menu>
+      </div>);
+
+
+      pathSplitBtns=<div>
+        <AntButtonGroup>
+          <AntButton type="primary"  onClick={()=>this.goDir()}>
+            <Icon type="left" />
+          </AntButton>
+        </AntButtonGroup>
+        &nbsp;&nbsp;&nbsp;
+        <AntButtonGroup>
+          {curPathArr.map((folder,idx)=>
+            <AntButton key={folder.name+"_"+idx}   onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
+          )}
+        </AntButtonGroup>
+      </div>
+    }
+
+    titleRender=<div>
+      {pathSplitBtns}
+
+      {
+        (this.props.searchDepth>=0 || this.props.searchDepth===undefined)?
+          <Input.Search key={"Search"} className="width3"  allowClear disable
+          size="small" value={this.state.searchText} placeholder="Search" 
+          onChange={(evt)=>{
+            if(this.state.searchFolderStruct===undefined)
+            {
+              this.state.searchFolderStruct={};
+              let path = this.state.folderStruct.path;
+              this.fetchDirFiles(path,this.props.searchDepth)
+              .then((data) => {
+                let folderStruct={}
+                if(data[1].data.ACK)
+                {
+                  folderStruct = data[0].data;
+                }
+                this.setState({...this.state,searchFolderStruct:folderStruct});
+                //console.log(this.state.searchFolderStruct);
+              })
+              .catch((err) => {
+                
+                this.setState({...this.state,searchFolderStruct:undefined});
+                //console.log(err);
+              })
+            }
+            this.setState({...this.state,searchText:evt.target.value});
+          }}/>:null
+        }
     </div>
 
+
+
+    fv_UI.push(
+      <div className={"height12 scroll "+tableWidthClass} key="folderView">
+        <Table key="fileList"
+          onRow={(file) => ({
+            onClick: (evt) => { 
+              console.log(evt);
+              if(file.type!="DIR")
+                this.props.onFileSelected(file.path,file);
+              else
+                this.goDir(file.path);
+            }})} 
+          pagination={false}
+          columns={columns} dataSource={fileList} />
+      </div>);
+
+    
      // title={}
     return (
         <Modal
@@ -470,30 +606,7 @@ export class BPG_FileBrowser_proto extends React.Component{
           footer={this.props.footer}
         >
           <div style={{height:this.props.height===undefined?400:this.props.height}}>
-          
-            <div className="s height12 width2 scroll" key="sideMenu">
-              <Menu
-                onClick={(evt)=>{this.goDir(evt.item.props.path);}}
-                mode="inline"
-              >
-                {
-                  favoriteDir.map(dir=>
-                    <Menu.Item key={dir.name} path={dir.path}>{dir.name}</Menu.Item>)
-                }
-              </Menu>
-            </div>
-            <div className="height12 width10 scroll" key="folderView">
-              <Table 
-                onRow={(file) => ({
-                  onClick: (evt) => { 
-                    if(file.type!="DIR")
-                      this.props.onFileSelected(this.state.folderStruct.path+"/"+file.name,file);
-                    else
-                      this.goDir(this.state.folderStruct.path+"/"+file.name);
-                  }})} 
-                pagination={false}
-                columns={columns} dataSource={fileList} />
-              </div>
+            {fv_UI}
           </div>
         </Modal>
     );

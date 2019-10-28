@@ -574,7 +574,8 @@ class APP_DEFCONF_MODE extends React.Component{
       if(this.state.fileSelectedCallBack!==undefined)
       {
         MenuSet.push(
-          <BPG_FileBrowser key="BPG_FileBrowser"
+          <BPG_FileBrowser key="BPG_FileBrowser" 
+            searchDepth={4}
             path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
             BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
             onFileSelected={(filePath,fileInfo)=>
@@ -597,7 +598,8 @@ class APP_DEFCONF_MODE extends React.Component{
       {
         let defaultName= defModelPath.substr(defModelPath.lastIndexOf('/') + 1);
         MenuSet.push(
-          <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+          <BPG_FileSavingBrowser key="BPG_FileSavingBrowser" 
+            searchDepth={4}
             path={DefFileFolder} visible={this.state.fileSavingCallBack!==undefined}
             defaultName={defaultName}
             BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 

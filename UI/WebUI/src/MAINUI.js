@@ -369,6 +369,7 @@ class APPMain extends React.Component{
 
 
               <BPG_FileBrowser key="BPG_FileBrowser"
+                searchDepth={4}
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
                 onFileSelected={(filePath,fileInfo)=>
@@ -568,7 +569,8 @@ class APPMain extends React.Component{
 
   
   
-              <BPG_FileBrowser key="BPG_FileBrowser"
+              <BPG_FileBrowser key="BPG_FileBrowser" 
+                searchDepth={4}
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
                 onFileSelected={(filePath,fileInfo)=>
@@ -583,6 +585,7 @@ class APPMain extends React.Component{
                 fileFilter={this.state.fileSelectFilter}/>
 
               <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+                searchDepth={4}
                 path={DefFileFolder} visible={this.state.fileSavingCallBack!==undefined}
                 defaultName={""}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
