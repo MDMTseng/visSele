@@ -367,7 +367,7 @@ class renderUTIL
       let fontPx = this.getFontHeightPx();
       ctx.font=this.getFontStyle(1);
       ctx.strokeStyle="black";
-      ctx.lineWidth=this.getIndicationLineSize();
+      ctx.lineWidth=this.getIndicationLineSize()/3;
       let text;
       if(eObject.inspection_value!==undefined)
       {
@@ -786,7 +786,7 @@ class renderUTIL
                 let Y_offset = 0;
                 
                 ctx.strokeStyle="black";
-                ctx.lineWidth=this.getIndicationLineSize();
+                ctx.lineWidth=this.getIndicationLineSize()/3;
                 this.draw_Text(ctx,eObject.name,fontPx,
                 x,y);
                 Y_offset+=fontPx;
@@ -807,7 +807,7 @@ class renderUTIL
                 ctx.save();
                 let Y_offset = 0;
                 ctx.strokeStyle="black";
-                ctx.lineWidth=this.getIndicationLineSize();
+                ctx.lineWidth=this.getIndicationLineSize()/3;
                 this.draw_Text(ctx,eObject.name,fontPx,eObject.pt1.x,eObject.pt1.y);
                 Y_offset+=fontPx;
         
@@ -834,7 +834,7 @@ class renderUTIL
             
             case SHAPE_TYPE.measure_subtype.radius:
             {
-              ctx.lineWidth=this.getIndicationLineSize();
+              ctx.lineWidth=this.getIndicationLineSize()/3;
               //ctx.strokeStyle=this.colorSet.measure_info; 
 
               ctx.font=this.getFontStyle();
@@ -875,7 +875,7 @@ class renderUTIL
 
 
                 ctx.strokeStyle="black";
-                ctx.lineWidth=this.getIndicationLineSize();
+                ctx.lineWidth=this.getIndicationLineSize()/3;
 
                 this.draw_Text(ctx,eObject.name,fontPx,
                   eObject.pt1.x+dispVec_normalized.x,
@@ -892,7 +892,7 @@ class renderUTIL
                 let Y_offset = 0;
                     
                 ctx.strokeStyle="black";
-                ctx.lineWidth=this.getIndicationLineSize();
+                ctx.lineWidth=this.getIndicationLineSize()/3;
         
                 this.draw_Text(ctx,eObject.name,fontPx,eObject.pt1.x,eObject.pt1.y);
                 Y_offset+=fontPx;
