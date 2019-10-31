@@ -1024,25 +1024,28 @@ class MicroFullInspCtrl extends React.Component {
           <Button.Group>
             <Button
               key="L_ON"
-              onClick={() => {
-                this.websocketAir.send(
-                JSON.stringify({type:"MISC/BACK_LIGHT/ON"}));}}>
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"MISC/BACK_LIGHT/ON"}})
+                }>
                   ON
             </Button>
 
             <Button
               key="L_OFF"
-              onClick={() => {
-                this.websocketAir.send(
-                JSON.stringify({type:"MISC/BACK_LIGHT/OFF"}));}}>OFF
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"MISC/BACK_LIGHT/OFF"}})
+                }>OFF
             </Button>
             
             <Button
               icon="camera"
               key="CAM"
-              onClick={() => {
-                this.websocketAir.send(
-                JSON.stringify({type:"MISC/CAM_TRIGGER"}));}}/>
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"MISC/CAM_TRIGGER"}})
+                }/>
 
             <Button
               icon="save"
