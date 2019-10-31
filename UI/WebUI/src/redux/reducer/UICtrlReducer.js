@@ -397,7 +397,7 @@ function StateReducer(newState,action)
               break;
             }
             
-            let overallStat = reportStatisticState.overallStat;
+            //let overallStat = reportStatisticState.overallStat;
 
 
 
@@ -425,7 +425,13 @@ function StateReducer(newState,action)
                   //if(srep_inWindow.repeatTime>0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
-                    //reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                    reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                    //limit historyReport length to 1000
+                    if(reportStatisticState.historyReport.length>2000)
+                    {
+                      reportStatisticState.historyReport=
+                      reportStatisticState.historyReport.slice(Math.max(reportStatisticState.historyReport.length - 1000, 1));
+                    }
                     reportStatisticState.newAddedReport.push(srep_inWindow);
                   }
                   // else
