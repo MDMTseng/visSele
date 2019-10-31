@@ -4,6 +4,7 @@
 
 #include "logctrl.h"
 #include "circleFitting.h"
+#include <acvImage_SpDomainTool.hpp>
 
 using namespace std;
 enum searchType_C
@@ -91,7 +92,7 @@ ContourGrid::ptInfo refineEdgeInfo(acvImage *grayLevel,ContourGrid::ptInfo ptinf
   return ptinfo;
 }
 
-void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour,ContourGrid &cgrid)
+void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour)
 {
     const int L = contour.size();
     if(L==0)return;
@@ -162,9 +163,6 @@ void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour,Cont
         ptinfo.contourDir = dir;
       }
 
-
-      cgrid.push(ptinfo);
-      
       
       /*if(crossP_LF<-7*epsilon){
         continue;
@@ -622,13 +620,21 @@ void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg
         {
           edge_grid.tmpXYSeq.resize(0);
           acvContourExtraction(labeledImg, j, i, 1, 128, 1, searchType_C_W2B,edge_grid.tmpXYSeq);
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq,edge_grid);
+          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
         }
         else if(pre_pix==0 && cur_pix == 255)//black to white
         {
           edge_grid.tmpXYSeq.resize(0);
           acvContourExtraction(labeledImg, j-1, i, 1, 128, 1, searchType_C_B2W,edge_grid.tmpXYSeq);
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq,edge_grid);
+          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
+        }
+        if(edge_grid.tmpXYSeq.size()>0)
+        {
+          for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
+          {
+            edge_grid.push(edge_grid.tmpXYSeq[k]);
+          }
+          edge_grid.tmpXYSeq.resize(0);
         }
 
         pre_pix= cur_pix;
@@ -1141,14 +1147,25 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
 
         if(edge_grid.tmpXYSeq.size()!=0)
         {
-          for(int i=0;i<edge_grid.tmpXYSeq.size();i++)
-          {
+          // for(int i=0;i<edge_grid.tmpXYSeq.size();i++)
+          // {
             
-            edge_grid.tmpXYSeq[i].pt=
-              acvVecRadialDistortionRemove(
-                edge_grid.tmpXYSeq[i].pt,param);
+          //   edge_grid.tmpXYSeq[i].pt=
+          //     acvVecRadialDistortionRemove(
+          //       edge_grid.tmpXYSeq[i].pt,param);
+          // }
+
+
+
+          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
+          if(edge_grid.tmpXYSeq.size()>0)
+          {
+            for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
+            {
+              edge_grid.push(edge_grid.tmpXYSeq[k]);
+            }
+            edge_grid.tmpXYSeq.resize(0);
           }
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq,edge_grid);
         }
 
         pre_pix= cur_pix;

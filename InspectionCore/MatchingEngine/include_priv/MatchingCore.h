@@ -19,4 +19,7 @@ void extractLabeledContourDataToContourGrid(
 
 ContourGrid::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourGrid::ptInfo> &points);
 void circleRefine(std::vector<ContourGrid::ptInfo> &pointsInRange,acv_CircleFit *circleF);
+
+
+void spline9_max(float *f,int fL,int div,float *ret_maxf,float *ret_maxf_x);
 #endif
