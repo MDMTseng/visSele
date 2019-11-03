@@ -161,6 +161,7 @@ void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour)
         
         dir = acvVecNormalize(dir);
         ptinfo.contourDir = dir;
+        contour[i]=ptinfo;
       }
 
       
@@ -949,6 +950,30 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
 }
 
 
+acv_XY pointSobel(acvImage *graylevelImg,acv_XY point,int range)
+{
+  int X=point.X;
+  int Y=point.Y;
+  int offset=range;
+  int I11 = graylevelImg->CVector[Y-offset][(X-offset)*3];
+  int I12 = graylevelImg->CVector[Y-offset][(X)*3];
+  int I13 = graylevelImg->CVector[Y-offset][(X+offset)*3];
+  int I21 = graylevelImg->CVector[Y][(X-offset)*3];
+  //int I22 = graylevelImg->CVector[Y][(X)*3];
+  int I23 = graylevelImg->CVector[Y][(X+offset)*3];
+  int I31 = graylevelImg->CVector[Y+offset][(X-offset)*3];
+  int I32 = graylevelImg->CVector[Y+offset][(X)*3];
+  int I33 = graylevelImg->CVector[Y+offset][(X+offset)*3];
+
+  acv_XY sobel;
+  //11 12 13
+  //21  X 23
+  //31 32 33
+  sobel.X=(I13+I23*2+I33) - (I11+I21*2+I31);
+  sobel.Y=(I31+I32*2+I33) - (I11+I12*2+I13);//sobel
+  return sobel;
+}
+
 
 int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,float thres,acv_XY *ret_point_opt,float *ret_edge_response)
 {
@@ -1096,7 +1121,7 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   return 0;
 }
 
-void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int grid_size,ContourGrid &edge_grid,int scanline_skip,acvRadialDistortionParam param)
+void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,int grid_size,ContourGrid &edge_grid,int scanline_skip,acvRadialDistortionParam param)
 {
 
   edge_grid.RESET(grid_size,labeledImg->GetWidth(),labeledImg->GetHeight());
@@ -1162,8 +1187,43 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
           {
             for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
             {
-              edge_grid.push(edge_grid.tmpXYSeq[k]);
+
+              float edgeResponse;
+              acv_XY ret_point_opt;
+
+              edge_grid.tmpXYSeq[k].sobel=pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,4);
+              //Check sobel intensity
+              if(hypot(edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y)<100)continue;
+
+              int ret_val = EdgePointOpt2(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,
+                edge_grid.tmpXYSeq[k].pt,3,thres,&ret_point_opt,&edgeResponse);
+
+              edge_grid.tmpXYSeq[k].pt=ret_point_opt;
+              edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
+
+
             }
+            for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
+            {
+              
+              acv_XY xy = edge_grid.tmpXYSeq[k].pt;
+
+
+              // int X=xy.X;
+              // int Y=xy.Y;
+              // uint8_t* pix = (uint8_t*)&(grayLevelImg->CVector[Y][X*3]);
+              // pix[0]=134;
+              // pix[1]=0;
+              // pix[2]=254;
+
+
+              edge_grid.tmpXYSeq[k].pt = acvVecRadialDistortionRemove(xy,param);
+              // LOGV("edge XY >%f %f",xy.X,xy.Y);
+              edge_grid.push(edge_grid.tmpXYSeq[k]);
+
+            }
+
+
             edge_grid.tmpXYSeq.resize(0);
           }
         }

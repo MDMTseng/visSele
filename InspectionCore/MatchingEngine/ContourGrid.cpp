@@ -440,14 +440,13 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
   }
 }
 
-void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points)
+void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points,float lineCurvatureMax)
 {
   LOGV("test...");
   points.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
   GetSectionsWithinLineContour(line,epsilonX,epsilonY,intersectIdxs);
   //exit(0);
-  const float lineCurvatureMax = 0.15;
   int count=0;
   for(int i=0;i<intersectIdxs.size();i++)
   {
@@ -460,6 +459,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
       pti.edgeRsp=1;
+      //LOGV(">> line.line_anchor.X:%f  Y:%f",line.line_anchor.X,line.line_anchor.Y);
 
       //reverse rotate the target point to check if the point is in the margin(rotated box)
       pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
@@ -467,13 +467,18 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
       if(pt.Y<0)pt.Y=-pt.Y;
       if(pt.X < epsilonX && pt.Y < epsilonY)
       {
-        float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
-        //LOGV("%f,%f   %f,%f  dotP:%f",pti.contourDir.X,pti.contourDir.Y,line.line_vec.X,line.line_vec.Y,dotP);
-        if(dotP*flip_f>0.9 && abs(pti.curvature)<lineCurvatureMax)
-        {
-          //LOGV(">>>>>>>");
-        
+        if( abs(pti.curvature)>lineCurvatureMax)continue;
+
+        //LOGV(">> X:%f<%f  Y:%f<%f",pt.X,epsilonX,pt.Y,epsilonY);
+        if(flip_f==0)
           points.push_back(pti);
+        else
+        {
+          float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
+          if(dotP*flip_f>0.9)
+          {
+            points.push_back(pti);
+          }
         }
       }
     }

@@ -14,7 +14,7 @@ void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<
 void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int grid_size,ContourGrid &edge_curve_grid,int scanline_skip);
 
 void extractLabeledContourDataToContourGrid(
-  acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,
+  acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,
   int grid_size,ContourGrid &edge_curve_grid,int scanline_skip,acvRadialDistortionParam param);
 
 ContourGrid::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourGrid::ptInfo> &points);

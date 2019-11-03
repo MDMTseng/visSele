@@ -74,7 +74,7 @@ class ContourGrid{
 
     void GetSectionsWithinLineContour(acv_Line line,float epsilonX, float epsilonY,std::vector<int> &intersectIdxs);
 
-    void getContourPointsWithInLineContour(acv_Line line,float epsilonX, float epsilonY,float flip_f,std::vector<int> &intersectIdxs,std::vector<ptInfo> &points);
+    void getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points,float lineCurvatureMax = 0.15);
 
     int getGetSectionRegionDataSize(int secX,int secY,int secW,int secH);
     const acv_XY* getGetSectionRegionData(int secX,int secY,int secW,int secH,int dataIdx);
