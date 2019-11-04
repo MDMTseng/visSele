@@ -778,7 +778,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
           float ret_rsp;
           LOGD("nearestPt:%f %f",nearestPt.X,nearestPt.Y); 
-          rep.pt = acvVecRadialDistortionRemove(nearestPt,param);         
+          //rep.pt = acvVecRadialDistortionRemove(nearestPt,param);    
+          rep.pt = nearestPt;       
           rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
         }
         else
