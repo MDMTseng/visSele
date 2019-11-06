@@ -14,31 +14,60 @@
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSdkInit
-// ¹¦ÄÜÃèÊö : Ïà»úSDK³õÊ¼»¯£¬ÔÚµ÷ÓÃÈÎºÎSDKÆäËû½Ó¿ÚÇ°£¬±ØĞë
-//        ÏÈµ÷ÓÃ¸Ã½Ó¿Ú½øĞĞ³õÊ¼»¯¡£¸Ãº¯ÊıÔÚÕû¸ö½ø³ÌÔËĞĞ
-//        ÆÚ¼äÖ»ĞèÒªµ÷ÓÃÒ»´Î¡£
-// ²ÎÊı     : iLanguageSel ÓÃÓÚÑ¡ÔñSDKÄÚ²¿ÌáÊ¾ĞÅÏ¢ºÍ½çÃæµÄÓïÖÖ,
-//               0:±íÊ¾Ó¢ÎÄ,1:±íÊ¾ÖĞÎÄ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSdkInit
+// åŠŸèƒ½æè¿° : ç›¸æœºSDKåˆå§‹åŒ–ï¼Œåœ¨è°ƒç”¨ä»»ä½•SDKå…¶ä»–æ¥å£å‰ï¼Œå¿…é¡»
+//        å…ˆè°ƒç”¨è¯¥æ¥å£è¿›è¡Œåˆå§‹åŒ–ã€‚è¯¥å‡½æ•°åœ¨æ•´ä¸ªè¿›ç¨‹è¿è¡Œ
+//        æœŸé—´åªéœ€è¦è°ƒç”¨ä¸€æ¬¡ã€‚
+// å‚æ•°     : iLanguageSel ç”¨äºé€‰æ‹©SDKå†…éƒ¨æç¤ºä¿¡æ¯å’Œç•Œé¢çš„è¯­ç§,
+//               0:è¡¨ç¤ºè‹±æ–‡,1:è¡¨ç¤ºä¸­æ–‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus     CameraSdkInit(int     iLanguageSel);
 
+/******************************************************/
+// å‡½æ•°å   : CameraSetDataDirectory
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºæ•°æ®æ–‡ä»¶çš„å­˜å‚¨ç›®å½•ï¼ˆ.config .mvdatç­‰ï¼‰
+//            éœ€è¦åœ¨CameraInitæ‰“å¼€ç›¸æœºå‰è®¾ç½®å¥½
+//            é»˜è®¤ç›®å½•ä¸ºå½“å‰ç›®å½•
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraSetDataDirectory(char const* dirname);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraEnumerateDevice
-// ¹¦ÄÜÃèÊö : Ã¶¾ÙÉè±¸£¬²¢½¨Á¢Éè±¸ÁĞ±í¡£ÔÚµ÷ÓÃCameraInit
-//        Ö®Ç°£¬±ØĞëµ÷ÓÃ¸Ãº¯ÊıÀ´»ñµÃÉè±¸µÄĞÅÏ¢¡£
-// ²ÎÊı     : pCameraList    Éè±¸ÁĞ±íÊı×éÖ¸Õë¡£
-//             piNums        Éè±¸µÄ¸öÊıÖ¸Õë£¬µ÷ÓÃÊ±´«ÈëpCameraList
-//                            Êı×éµÄÔªËØ¸öÊı£¬º¯Êı·µ»ØÊ±£¬±£´æÊµ¼ÊÕÒµ½µÄÉè±¸¸öÊı¡£
-//              ×¢Òâ£¬piNumsÖ¸ÏòµÄÖµ±ØĞë³õÊ¼»¯£¬ÇÒ²»³¬¹ıpCameraListÊı×éÔªËØ¸öÊı£¬
-//              ·ñÔòÓĞ¿ÉÄÜÔì³ÉÄÚ´æÒç³ö¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraUSBDeviceInit
+// åŠŸèƒ½æè¿° : (å·²åºŸå¼ƒï¼Œæ— éœ€è°ƒç”¨)
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus  CameraUSBDeviceInit();
+
+/******************************************************/
+// å‡½æ•°å   : CameraUSBDeviceUninit
+// åŠŸèƒ½æè¿° : (å·²åºŸå¼ƒï¼Œæ— éœ€è°ƒç”¨)
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus  CameraUSBDeviceUninit();
+
+
+/******************************************************/
+// å‡½æ•°å   : CameraEnumerateDevice
+// åŠŸèƒ½æè¿° : æšä¸¾è®¾å¤‡ï¼Œå¹¶å»ºç«‹è®¾å¤‡åˆ—è¡¨ã€‚åœ¨è°ƒç”¨CameraInit
+//        ä¹‹å‰ï¼Œå¿…é¡»è°ƒç”¨è¯¥å‡½æ•°æ¥è·å¾—è®¾å¤‡çš„ä¿¡æ¯ã€‚
+// å‚æ•°     : pCameraList    è®¾å¤‡åˆ—è¡¨æ•°ç»„æŒ‡é’ˆã€‚
+//             piNums        è®¾å¤‡çš„ä¸ªæ•°æŒ‡é’ˆï¼Œè°ƒç”¨æ—¶ä¼ å…¥pCameraList
+//                            æ•°ç»„çš„å…ƒç´ ä¸ªæ•°ï¼Œå‡½æ•°è¿”å›æ—¶ï¼Œä¿å­˜å®é™…æ‰¾åˆ°çš„è®¾å¤‡ä¸ªæ•°ã€‚
+//              æ³¨æ„ï¼ŒpiNumsæŒ‡å‘çš„å€¼å¿…é¡»åˆå§‹åŒ–ï¼Œä¸”ä¸è¶…è¿‡pCameraListæ•°ç»„å…ƒç´ ä¸ªæ•°ï¼Œ
+//              å¦åˆ™æœ‰å¯èƒ½é€ æˆå†…å­˜æº¢å‡ºã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraEnumerateDevice(
     tSdkCameraDevInfo* pCameraList,
@@ -46,26 +75,44 @@ MVSDK_API CameraSdkStatus  CameraEnumerateDevice(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraEnumerateDeviceEx
-// ¹¦ÄÜÃèÊö	: Ã¶¾ÙÉè±¸£¬²¢½¨Á¢Éè±¸ÁĞ±í¡£ÔÚµ÷ÓÃCameraInitEx
-//			  Ö®Ç°£¬±ØĞëµ÷ÓÃ¸Ãº¯ÊıÃ¶¾ÙÉè±¸¡£
-// ²ÎÊı	     :
-// ·µ»ØÖµ     : ·µ»ØÉè±¸¸öÊı£¬0±íÊ¾ÎŞ¡£
+// å‡½æ•°å   : CameraIdleStateDevice
+// åŠŸèƒ½æè¿° : å½“å‰ç³»ç»Ÿæœ‰æœªä½¿ç”¨çš„ç›¸æœºä¿¡æ¯ã€‚
+// å‚æ•°     : pCameraList    è®¾å¤‡åˆ—è¡¨æ•°ç»„æŒ‡é’ˆã€‚
+//             piNums        è®¾å¤‡çš„ä¸ªæ•°æŒ‡é’ˆï¼Œè°ƒç”¨æ—¶ä¼ å…¥pCameraList
+//                            æ•°ç»„çš„å…ƒç´ ä¸ªæ•°ï¼Œå‡½æ•°è¿”å›æ—¶ï¼Œä¿å­˜å®é™…æ‰¾åˆ°çš„è®¾å¤‡ä¸ªæ•°ã€‚
+//              æ³¨æ„ï¼ŒpiNumsæŒ‡å‘çš„å€¼å¿…é¡»åˆå§‹åŒ–ï¼Œä¸”ä¸è¶…è¿‡pCameraListæ•°ç»„å…ƒç´ ä¸ªæ•°ï¼Œ
+//              å¦åˆ™æœ‰å¯èƒ½é€ æˆå†…å­˜æº¢å‡ºã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus  CameraIdleStateDevice(
+    tSdkCameraDevInfo* pCameraList,
+    INT*               piNums
+);
+
+
+/******************************************************/
+// å‡½æ•°å 	: CameraEnumerateDeviceEx
+// åŠŸèƒ½æè¿°	: æšä¸¾è®¾å¤‡ï¼Œå¹¶å»ºç«‹è®¾å¤‡åˆ—è¡¨ã€‚åœ¨è°ƒç”¨CameraInitEx
+//			  ä¹‹å‰ï¼Œå¿…é¡»è°ƒç”¨è¯¥å‡½æ•°æšä¸¾è®¾å¤‡ã€‚
+// å‚æ•°	     :
+// è¿”å›å€¼     : è¿”å›è®¾å¤‡ä¸ªæ•°ï¼Œ0è¡¨ç¤ºæ— ã€‚
 /******************************************************/
 MVSDK_API INT  CameraEnumerateDeviceEx(
 );
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraIsOpened
-// ¹¦ÄÜÃèÊö : ¼ì²âÉè±¸ÊÇ·ñÒÑ¾­±»ÆäËûÓ¦ÓÃ³ÌĞò´ò¿ª¡£ÔÚµ÷ÓÃCameraInit
-//        Ö®Ç°£¬¿ÉÒÔÊ¹ÓÃ¸Ãº¯Êı½øĞĞ¼ì²â£¬Èç¹ûÒÑ¾­±»´ò¿ª£¬µ÷ÓÃ
-//        CameraInit»á·µ»ØÉè±¸ÒÑ¾­±»´ò¿ªµÄ´íÎóÂë¡£
-// ²ÎÊı     : pCameraList Éè±¸µÄÃ¶¾ÙĞÅÏ¢½á¹¹ÌåÖ¸Õë£¬ÓÉCameraEnumerateDevice»ñµÃ¡£
-//            pOpened       Éè±¸µÄ×´Ì¬Ö¸Õë£¬·µ»ØÉè±¸ÊÇ·ñ±»´ò¿ªµÄ×´Ì¬£¬TRUEÎª´ò¿ª£¬FALSEÎª¿ÕÏĞ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraIsOpened
+// åŠŸèƒ½æè¿° : æ£€æµ‹è®¾å¤‡æ˜¯å¦å·²ç»è¢«å…¶ä»–åº”ç”¨ç¨‹åºæ‰“å¼€ã€‚åœ¨è°ƒç”¨CameraInit
+//        ä¹‹å‰ï¼Œå¯ä»¥ä½¿ç”¨è¯¥å‡½æ•°è¿›è¡Œæ£€æµ‹ï¼Œå¦‚æœå·²ç»è¢«æ‰“å¼€ï¼Œè°ƒç”¨
+//        CameraInitä¼šè¿”å›è®¾å¤‡å·²ç»è¢«æ‰“å¼€çš„é”™è¯¯ç ã€‚
+// å‚æ•°     : pCameraList è®¾å¤‡çš„æšä¸¾ä¿¡æ¯ç»“æ„ä½“æŒ‡é’ˆï¼Œç”±CameraEnumerateDeviceè·å¾—ã€‚
+//            pOpened       è®¾å¤‡çš„çŠ¶æ€æŒ‡é’ˆï¼Œè¿”å›è®¾å¤‡æ˜¯å¦è¢«æ‰“å¼€çš„çŠ¶æ€ï¼ŒTRUEä¸ºæ‰“å¼€ï¼ŒFALSEä¸ºç©ºé—²ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraIsOpened(
   tSdkCameraDevInfo*  pCameraList,
@@ -74,20 +121,20 @@ MVSDK_API CameraSdkStatus  CameraIsOpened(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraInit
-// ¹¦ÄÜÃèÊö : Ïà»ú³õÊ¼»¯¡£³õÊ¼»¯³É¹¦ºó£¬²ÅÄÜµ÷ÓÃÈÎºÎÆäËû
-//        Ïà»úÏà¹ØµÄ²Ù×÷½Ó¿Ú¡£
-// ²ÎÊı     : pCameraInfo    ¸ÃÏà»úµÄÉè±¸ÃèÊöĞÅÏ¢£¬ÓÉCameraEnumerateDevice
-//               º¯Êı»ñµÃ¡£
-//            iParamLoadMode  Ïà»ú³õÊ¼»¯Ê±Ê¹ÓÃµÄ²ÎÊı¼ÓÔØ·½Ê½¡£-1±íÊ¾Ê¹ÓÃÉÏ´ÎÍË³öÊ±µÄ²ÎÊı¼ÓÔØ·½Ê½¡£
-//            emTeam         ³õÊ¼»¯Ê±Ê¹ÓÃµÄ²ÎÊı×é¡£-1±íÊ¾¼ÓÔØÉÏ´ÎÍË³öÊ±µÄ²ÎÊı×é¡£
-//            pCameraHandle  Ïà»úµÄ¾ä±úÖ¸Õë£¬³õÊ¼»¯³É¹¦ºó£¬¸ÃÖ¸Õë
-//               ·µ»Ø¸ÃÏà»úµÄÓĞĞ§¾ä±ú£¬ÔÚµ÷ÓÃÆäËûÏà»ú
-//               Ïà¹ØµÄ²Ù×÷½Ó¿ÚÊ±£¬¶¼ĞèÒª´«Èë¸Ã¾ä±ú£¬Ö÷Òª
-//               ÓÃÓÚ¶àÏà»úÖ®¼äµÄÇø·Ö¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraInit
+// åŠŸèƒ½æè¿° : ç›¸æœºåˆå§‹åŒ–ã€‚åˆå§‹åŒ–æˆåŠŸåï¼Œæ‰èƒ½è°ƒç”¨ä»»ä½•å…¶ä»–
+//        ç›¸æœºç›¸å…³çš„æ“ä½œæ¥å£ã€‚
+// å‚æ•°     : pCameraInfo    è¯¥ç›¸æœºçš„è®¾å¤‡æè¿°ä¿¡æ¯ï¼Œç”±CameraEnumerateDevice
+//               å‡½æ•°è·å¾—ã€‚
+//            iParamLoadMode  ç›¸æœºåˆå§‹åŒ–æ—¶ä½¿ç”¨çš„å‚æ•°åŠ è½½æ–¹å¼ã€‚-1è¡¨ç¤ºä½¿ç”¨ä¸Šæ¬¡é€€å‡ºæ—¶çš„å‚æ•°åŠ è½½æ–¹å¼ã€‚
+//            emTeam         åˆå§‹åŒ–æ—¶ä½¿ç”¨çš„å‚æ•°ç»„ã€‚-1è¡¨ç¤ºåŠ è½½ä¸Šæ¬¡é€€å‡ºæ—¶çš„å‚æ•°ç»„ã€‚
+//            pCameraHandle  ç›¸æœºçš„å¥æŸ„æŒ‡é’ˆï¼Œåˆå§‹åŒ–æˆåŠŸåï¼Œè¯¥æŒ‡é’ˆ
+//               è¿”å›è¯¥ç›¸æœºçš„æœ‰æ•ˆå¥æŸ„ï¼Œåœ¨è°ƒç”¨å…¶ä»–ç›¸æœº
+//               ç›¸å…³çš„æ“ä½œæ¥å£æ—¶ï¼Œéƒ½éœ€è¦ä¼ å…¥è¯¥å¥æŸ„ï¼Œä¸»è¦
+//               ç”¨äºå¤šç›¸æœºä¹‹é—´çš„åŒºåˆ†ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraInit(
     tSdkCameraDevInfo*  pCameraInfo,
@@ -97,19 +144,19 @@ MVSDK_API CameraSdkStatus  CameraInit(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraInitEx
-// ¹¦ÄÜÃèÊö	: Ïà»ú³õÊ¼»¯¡£³õÊ¼»¯³É¹¦ºó£¬²ÅÄÜµ÷ÓÃÈÎºÎÆäËû
-//			  Ïà»úÏà¹ØµÄ²Ù×÷½Ó¿Ú¡£
-// ²ÎÊı	    : iDeviceIndex    Ïà»úµÄË÷ÒıºÅ£¬CameraEnumerateDeviceEx·µ»ØÏà»ú¸öÊı¡£
-//            iParamLoadMode  Ïà»ú³õÊ¼»¯Ê±Ê¹ÓÃµÄ²ÎÊı¼ÓÔØ·½Ê½¡£-1±íÊ¾Ê¹ÓÃÉÏ´ÎÍË³öÊ±µÄ²ÎÊı¼ÓÔØ·½Ê½¡£
-//            emTeam         ³õÊ¼»¯Ê±Ê¹ÓÃµÄ²ÎÊı×é¡£-1±íÊ¾¼ÓÔØÉÏ´ÎÍË³öÊ±µÄ²ÎÊı×é¡£
-//            pCameraHandle  Ïà»úµÄ¾ä±úÖ¸Õë£¬³õÊ¼»¯³É¹¦ºó£¬¸ÃÖ¸Õë
-//							 ·µ»Ø¸ÃÏà»úµÄÓĞĞ§¾ä±ú£¬ÔÚµ÷ÓÃÆäËûÏà»ú
-//							 Ïà¹ØµÄ²Ù×÷½Ó¿ÚÊ±£¬¶¼ĞèÒª´«Èë¸Ã¾ä±ú£¬Ö÷Òª
-//							 ÓÃÓÚ¶àÏà»úÖ®¼äµÄÇø·Ö¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraInitEx
+// åŠŸèƒ½æè¿°	: ç›¸æœºåˆå§‹åŒ–ã€‚åˆå§‹åŒ–æˆåŠŸåï¼Œæ‰èƒ½è°ƒç”¨ä»»ä½•å…¶ä»–
+//			  ç›¸æœºç›¸å…³çš„æ“ä½œæ¥å£ã€‚
+// å‚æ•°	    : iDeviceIndex    ç›¸æœºçš„ç´¢å¼•å·ï¼ŒCameraEnumerateDeviceExè¿”å›ç›¸æœºä¸ªæ•°ã€‚
+//            iParamLoadMode  ç›¸æœºåˆå§‹åŒ–æ—¶ä½¿ç”¨çš„å‚æ•°åŠ è½½æ–¹å¼ã€‚-1è¡¨ç¤ºä½¿ç”¨ä¸Šæ¬¡é€€å‡ºæ—¶çš„å‚æ•°åŠ è½½æ–¹å¼ã€‚
+//            emTeam         åˆå§‹åŒ–æ—¶ä½¿ç”¨çš„å‚æ•°ç»„ã€‚-1è¡¨ç¤ºåŠ è½½ä¸Šæ¬¡é€€å‡ºæ—¶çš„å‚æ•°ç»„ã€‚
+//            pCameraHandle  ç›¸æœºçš„å¥æŸ„æŒ‡é’ˆï¼Œåˆå§‹åŒ–æˆåŠŸåï¼Œè¯¥æŒ‡é’ˆ
+//							 è¿”å›è¯¥ç›¸æœºçš„æœ‰æ•ˆå¥æŸ„ï¼Œåœ¨è°ƒç”¨å…¶ä»–ç›¸æœº
+//							 ç›¸å…³çš„æ“ä½œæ¥å£æ—¶ï¼Œéƒ½éœ€è¦ä¼ å…¥è¯¥å¥æŸ„ï¼Œä¸»è¦
+//							 ç”¨äºå¤šç›¸æœºä¹‹é—´çš„åŒºåˆ†ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraInitEx(
     int             iDeviceIndex,
@@ -118,20 +165,35 @@ MVSDK_API CameraSdkStatus  CameraInitEx(
     CameraHandle*   pCameraHandle
 );
 
+/// @ingroup API_OPEN
+/// \~chinese
+/// \brief ç›¸æœºåˆå§‹åŒ–ã€‚åˆå§‹åŒ–æˆåŠŸåï¼Œæ‰èƒ½è°ƒç”¨å…¶ä»–ç›¸æœºç›¸å…³çš„æ“ä½œæ¥å£ã€‚
+/// \param [in] CameraName ç›¸æœºæ˜µç§°ã€‚@link #tSdkCameraDevInfo.acFriendlyName @endlink
+/// \param [out] pCameraHandle ç›¸æœºçš„å¥æŸ„æŒ‡é’ˆï¼Œåˆå§‹åŒ–æˆåŠŸåï¼Œè¯¥æŒ‡é’ˆè¿”å›è¯¥ç›¸æœºçš„æœ‰æ•ˆå¥æŸ„ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief The camera is initialized. After successful initialization, other camera-related operation interfaces can be called.
+/// \param [in] CameraName Camera friendly name.@link #tSdkCameraDevInfo.acFriendlyName @endlink
+/// \param [out] pCameraHandle The handle pointer of the camera, after successful initialization, returns the camera's effective handle.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraInitEx2(
+	char* CameraName,
+	CameraHandle   *pCameraHandle
+);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetCallbackFunction
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼Ïñ²¶»ñµÄ»Øµ÷º¯Êı¡£µ±²¶»ñµ½ĞÂµÄÍ¼ÏñÊı¾İÖ¡Ê±£¬
-//        pCallBackËùÖ¸ÏòµÄ»Øµ÷º¯Êı¾Í»á±»µ÷ÓÃ¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pCallBack »Øµ÷º¯ÊıÖ¸Õë¡£
-//            pContext  »Øµ÷º¯ÊıµÄ¸½¼Ó²ÎÊı£¬ÔÚ»Øµ÷º¯Êı±»µ÷ÓÃÊ±
-//            ¸Ã¸½¼Ó²ÎÊı»á±»´«Èë£¬¿ÉÒÔÎªNULL¡£¶àÓÃÓÚ
-//            ¶à¸öÏà»úÊ±Ğ¯´ø¸½¼ÓĞÅÏ¢¡£
-//            pCallbackOld  ÓÃÓÚ±£´æµ±Ç°µÄ»Øµ÷º¯Êı¡£¿ÉÒÔÎªNULL¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetCallbackFunction
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒæ•è·çš„å›è°ƒå‡½æ•°ã€‚å½“æ•è·åˆ°æ–°çš„å›¾åƒæ•°æ®å¸§æ—¶ï¼Œ
+//        pCallBackæ‰€æŒ‡å‘çš„å›è°ƒå‡½æ•°å°±ä¼šè¢«è°ƒç”¨ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pCallBack å›è°ƒå‡½æ•°æŒ‡é’ˆã€‚
+//            pContext  å›è°ƒå‡½æ•°çš„é™„åŠ å‚æ•°ï¼Œåœ¨å›è°ƒå‡½æ•°è¢«è°ƒç”¨æ—¶
+//            è¯¥é™„åŠ å‚æ•°ä¼šè¢«ä¼ å…¥ï¼Œå¯ä»¥ä¸ºNULLã€‚å¤šç”¨äº
+//            å¤šä¸ªç›¸æœºæ—¶æºå¸¦é™„åŠ ä¿¡æ¯ã€‚
+//            pCallbackOld  ç”¨äºä¿å­˜å½“å‰çš„å›è°ƒå‡½æ•°ã€‚å¯ä»¥ä¸ºNULLã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetCallbackFunction(
     CameraHandle        hCamera,
@@ -141,25 +203,25 @@ MVSDK_API CameraSdkStatus  CameraSetCallbackFunction(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraUnInit
-// ¹¦ÄÜÃèÊö : Ïà»ú·´³õÊ¼»¯¡£ÊÍ·Å×ÊÔ´¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraUnInit
+// åŠŸèƒ½æè¿° : ç›¸æœºååˆå§‹åŒ–ã€‚é‡Šæ”¾èµ„æºã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraUnInit(
     CameraHandle hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetInformation
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµÄÃèÊöĞÅÏ¢
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbuffer Ö¸ÏòÏà»úÃèÊöĞÅÏ¢Ö¸ÕëµÄÖ¸Õë¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetInformation
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºçš„æè¿°ä¿¡æ¯
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbuffer æŒ‡å‘ç›¸æœºæè¿°ä¿¡æ¯æŒ‡é’ˆçš„æŒ‡é’ˆã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetInformation(
     CameraHandle    hCamera,
@@ -167,18 +229,18 @@ MVSDK_API CameraSdkStatus  CameraGetInformation(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraImageProcess
-// ¹¦ÄÜÃèÊö : ½«»ñµÃµÄÏà»úÔ­Ê¼Êä³öÍ¼ÏñÊı¾İ½øĞĞ´¦Àí£¬µş¼Ó±¥ºÍ¶È¡¢
-//        ÑÕÉ«ÔöÒæºÍĞ£Õı¡¢½µÔëµÈ´¦ÀíĞ§¹û£¬×îºóµÃµ½RGB888
-//        ¸ñÊ½µÄÍ¼ÏñÊı¾İ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbyIn    ÊäÈëÍ¼ÏñÊı¾İµÄ»º³åÇøµØÖ·£¬²»ÄÜÎªNULL¡£
-//            pbyOut   ´¦ÀíºóÍ¼ÏñÊä³öµÄ»º³åÇøµØÖ·£¬²»ÄÜÎªNULL¡£
-//            pFrInfo  ÊäÈëÍ¼ÏñµÄÖ¡Í·ĞÅÏ¢£¬´¦ÀíÍê³Éºó£¬Ö¡Í·ĞÅÏ¢
-//             ÖĞµÄÍ¼Ïñ¸ñÊ½uiMediaType»áËæÖ®¸Ä±ä¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraImageProcess
+// åŠŸèƒ½æè¿° : å°†è·å¾—çš„ç›¸æœºåŸå§‹è¾“å‡ºå›¾åƒæ•°æ®è¿›è¡Œå¤„ç†ï¼Œå åŠ é¥±å’Œåº¦ã€
+//        é¢œè‰²å¢ç›Šå’Œæ ¡æ­£ã€é™å™ªç­‰å¤„ç†æ•ˆæœï¼Œæœ€åå¾—åˆ°RGB888
+//        æ ¼å¼çš„å›¾åƒæ•°æ®ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbyIn    è¾“å…¥å›¾åƒæ•°æ®çš„ç¼“å†²åŒºåœ°å€ï¼Œä¸èƒ½ä¸ºNULLã€‚
+//            pbyOut   å¤„ç†åå›¾åƒè¾“å‡ºçš„ç¼“å†²åŒºåœ°å€ï¼Œä¸èƒ½ä¸ºNULLã€‚
+//            pFrInfo  è¾“å…¥å›¾åƒçš„å¸§å¤´ä¿¡æ¯ï¼Œå¤„ç†å®Œæˆåï¼Œå¸§å¤´ä¿¡æ¯
+//             ä¸­çš„å›¾åƒæ ¼å¼uiMediaTypeä¼šéšä¹‹æ”¹å˜ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraImageProcess(
     CameraHandle        hCamera,
@@ -188,16 +250,41 @@ MVSDK_API CameraSdkStatus  CameraImageProcess(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraDisplayInit
-// ¹¦ÄÜÃèÊö : ³õÊ¼»¯SDKÄÚ²¿µÄÏÔÊ¾Ä£¿é¡£ÔÚµ÷ÓÃCameraDisplayRGB24
-//        Ç°±ØĞëÏÈµ÷ÓÃ¸Ãº¯Êı³õÊ¼»¯¡£Èç¹ûÄúÔÚ¶ş´Î¿ª·¢ÖĞ£¬
-//        Ê¹ÓÃ×Ô¼ºµÄ·½Ê½½øĞĞÍ¼ÏñÏÔÊ¾(²»µ÷ÓÃCameraDisplayRGB24)£¬
-//        Ôò²»ĞèÒªµ÷ÓÃ±¾º¯Êı¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            hWndDisplay ÏÔÊ¾´°¿ÚµÄ¾ä±ú£¬Ò»°ãÎª´°¿ÚµÄm_hWnd³ÉÔ±¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraImageProcessEx
+// åŠŸèƒ½æè¿°	: å°†è·å¾—çš„ç›¸æœºåŸå§‹è¾“å‡ºå›¾åƒæ•°æ®è¿›è¡Œå¤„ç†ï¼Œå åŠ é¥±å’Œåº¦
+//			  é¢œè‰²å¢ç›Šå’Œæ ¡æ­£ã€é™å™ªç­‰å¤„ç†æ•ˆæœï¼Œæœ€åå¾—åˆ°RGB888
+//			  æ ¼å¼çš„å›¾åƒæ•°æ®ã€‚
+// å‚æ•°	    : hCamera      ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbyIn	     è¾“å…¥å›¾åƒæ•°æ®çš„ç¼“å†²åŒºåœ°å€ï¼Œä¸èƒ½ä¸ºNULLã€‚
+//            pbyOut        å¤„ç†åå›¾åƒè¾“å‡ºçš„ç¼“å†²åŒºåœ°å€ï¼Œä¸èƒ½ä¸ºNULLã€‚
+//            pFrInfo       è¾“å…¥å›¾åƒçš„å¸§å¤´ä¿¡æ¯ï¼Œå¤„ç†å®Œæˆåï¼Œå¸§å¤´ä¿¡æ¯
+//            uOutFormat    å¤„ç†å®Œåå›¾åƒçš„è¾“å‡ºæ ¼å¼
+//            uReserved     é¢„ç•™å‚æ•°ï¼Œå¿…é¡»è®¾ç½®ä¸º0
+//					   ä¸­çš„å›¾åƒæ ¼å¼uiMediaTypeä¼šéšä¹‹æ”¹å˜ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraImageProcessEx(
+    CameraHandle hCamera,
+    BYTE *pbyIn,
+    BYTE *pbyOut,
+    tSdkFrameHead *pFrInfo,
+    UINT uOutFormat,
+    UINT uReserved
+);
+
+/******************************************************/
+// å‡½æ•°å   : CameraDisplayInit
+// åŠŸèƒ½æè¿° : åˆå§‹åŒ–SDKå†…éƒ¨çš„æ˜¾ç¤ºæ¨¡å—ã€‚åœ¨è°ƒç”¨CameraDisplayRGB24
+//        å‰å¿…é¡»å…ˆè°ƒç”¨è¯¥å‡½æ•°åˆå§‹åŒ–ã€‚å¦‚æœæ‚¨åœ¨äºŒæ¬¡å¼€å‘ä¸­ï¼Œ
+//        ä½¿ç”¨è‡ªå·±çš„æ–¹å¼è¿›è¡Œå›¾åƒæ˜¾ç¤º(ä¸è°ƒç”¨CameraDisplayRGB24)ï¼Œ
+//        åˆ™ä¸éœ€è¦è°ƒç”¨æœ¬å‡½æ•°ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            hWndDisplay æ˜¾ç¤ºçª—å£çš„å¥æŸ„ï¼Œä¸€èˆ¬ä¸ºçª—å£çš„m_hWndæˆå‘˜ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraDisplayInit(
     CameraHandle    hCamera,
@@ -205,15 +292,15 @@ MVSDK_API CameraSdkStatus  CameraDisplayInit(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraDisplayRGB24
-// ¹¦ÄÜÃèÊö : ÏÔÊ¾Í¼Ïñ¡£±ØĞëµ÷ÓÃ¹ıCameraDisplayInit½øĞĞ
-//        ³õÊ¼»¯²ÅÄÜµ÷ÓÃ±¾º¯Êı¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbyRGB24 Í¼ÏñµÄÊı¾İ»º³åÇø£¬RGB888¸ñÊ½¡£
-//            pFrInfo  Í¼ÏñµÄÖ¡Í·ĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraDisplayRGB24
+// åŠŸèƒ½æè¿° : æ˜¾ç¤ºå›¾åƒã€‚å¿…é¡»è°ƒç”¨è¿‡CameraDisplayInitè¿›è¡Œ
+//        åˆå§‹åŒ–æ‰èƒ½è°ƒç”¨æœ¬å‡½æ•°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbyRGB24 å›¾åƒçš„æ•°æ®ç¼“å†²åŒºï¼ŒRGB888æ ¼å¼ã€‚
+//            pFrInfo  å›¾åƒçš„å¸§å¤´ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraDisplayRGB24(
     CameraHandle        hCamera,
@@ -222,16 +309,16 @@ MVSDK_API CameraSdkStatus  CameraDisplayRGB24(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetDisplayMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏÔÊ¾µÄÄ£Ê½¡£±ØĞëµ÷ÓÃ¹ıCameraDisplayInit
-//        ½øĞĞ³õÊ¼»¯²ÅÄÜµ÷ÓÃ±¾º¯Êı¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iMode    ÏÔÊ¾Ä£Ê½£¬DISPLAYMODE_SCALE»òÕß
-//             DISPLAYMODE_REAL,¾ßÌå²Î¼ûCameraDefine.h
-//             ÖĞemSdkDisplayModeµÄ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetDisplayMode
+// åŠŸèƒ½æè¿° : è®¾ç½®æ˜¾ç¤ºçš„æ¨¡å¼ã€‚å¿…é¡»è°ƒç”¨è¿‡CameraDisplayInit
+//        è¿›è¡Œåˆå§‹åŒ–æ‰èƒ½è°ƒç”¨æœ¬å‡½æ•°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iMode    æ˜¾ç¤ºæ¨¡å¼ï¼ŒDISPLAYMODE_SCALEæˆ–è€…
+//             DISPLAYMODE_REAL,å…·ä½“å‚è§CameraDefine.h
+//             ä¸­emSdkDisplayModeçš„å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetDisplayMode(
     CameraHandle    hCamera,
@@ -239,18 +326,18 @@ MVSDK_API CameraSdkStatus  CameraSetDisplayMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetDisplayOffset
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏÔÊ¾µÄÆğÊ¼Æ«ÒÆÖµ¡£½öµ±ÏÔÊ¾Ä£Ê½ÎªDISPLAYMODE_REAL
-//        Ê±ÓĞĞ§¡£ÀıÈçÏÔÊ¾¿Ø¼şµÄ´óĞ¡Îª320X240£¬¶øÍ¼ÏñµÄ
-//        µÄ³ß´çÎª640X480£¬ÄÇÃ´µ±iOffsetX = 160,iOffsetY = 120Ê±
-//        ÏÔÊ¾µÄÇøÓò¾ÍÊÇÍ¼ÏñµÄ¾ÓÖĞ320X240µÄÎ»ÖÃ¡£±ØĞëµ÷ÓÃ¹ı
-//        CameraDisplayInit½øĞĞ³õÊ¼»¯²ÅÄÜµ÷ÓÃ±¾º¯Êı¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iOffsetX  Æ«ÒÆµÄX×ø±ê¡£
-//            iOffsetY  Æ«ÒÆµÄY×ø±ê¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetDisplayOffset
+// åŠŸèƒ½æè¿° : è®¾ç½®æ˜¾ç¤ºçš„èµ·å§‹åç§»å€¼ã€‚ä»…å½“æ˜¾ç¤ºæ¨¡å¼ä¸ºDISPLAYMODE_REAL
+//        æ—¶æœ‰æ•ˆã€‚ä¾‹å¦‚æ˜¾ç¤ºæ§ä»¶çš„å¤§å°ä¸º320X240ï¼Œè€Œå›¾åƒçš„
+//        çš„å°ºå¯¸ä¸º640X480ï¼Œé‚£ä¹ˆå½“iOffsetX = 160,iOffsetY = 120æ—¶
+//        æ˜¾ç¤ºçš„åŒºåŸŸå°±æ˜¯å›¾åƒçš„å±…ä¸­320X240çš„ä½ç½®ã€‚å¿…é¡»è°ƒç”¨è¿‡
+//        CameraDisplayInitè¿›è¡Œåˆå§‹åŒ–æ‰èƒ½è°ƒç”¨æœ¬å‡½æ•°ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOffsetX  åç§»çš„Xåæ ‡ã€‚
+//            iOffsetY  åç§»çš„Yåæ ‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetDisplayOffset(
     CameraHandle    hCamera,
@@ -259,15 +346,15 @@ MVSDK_API CameraSdkStatus  CameraSetDisplayOffset(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetDisplaySize
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏÔÊ¾¿Ø¼şµÄ³ß´ç¡£±ØĞëµ÷ÓÃ¹ı
-//        CameraDisplayInit½øĞĞ³õÊ¼»¯²ÅÄÜµ÷ÓÃ±¾º¯Êı¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iWidth    ¿í¶È
-//            iHeight   ¸ß¶È
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetDisplaySize
+// åŠŸèƒ½æè¿° : è®¾ç½®æ˜¾ç¤ºæ§ä»¶çš„å°ºå¯¸ã€‚å¿…é¡»è°ƒç”¨è¿‡
+//        CameraDisplayInitè¿›è¡Œåˆå§‹åŒ–æ‰èƒ½è°ƒç”¨æœ¬å‡½æ•°ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iWidth    å®½åº¦
+//            iHeight   é«˜åº¦
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetDisplaySize(
     CameraHandle    hCamera,
@@ -276,23 +363,23 @@ MVSDK_API CameraSdkStatus  CameraSetDisplaySize(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetImageBuffer
-// ¹¦ÄÜÃèÊö : »ñµÃÒ»Ö¡Í¼ÏñÊı¾İ¡£ÎªÁËÌá¸ßĞ§ÂÊ£¬SDKÔÚÍ¼Ïñ×¥È¡Ê±²ÉÓÃÁËÁã¿½±´»úÖÆ£¬
-//        CameraGetImageBufferÊµ¼Ê»ñµÃÊÇÄÚºËÖĞµÄÒ»¸ö»º³åÇøµØÖ·£¬
-//        ¸Ãº¯Êı³É¹¦µ÷ÓÃºó£¬±ØĞëµ÷ÓÃCameraReleaseImageBufferÊÍ·ÅÓÉ
-//        CameraGetImageBufferµÃµ½µÄ»º³åÇø,ÒÔ±ãÈÃÄÚºË¼ÌĞøÊ¹ÓÃ
-//        ¸Ã»º³åÇø¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pFrameInfo  Í¼ÏñµÄÖ¡Í·ĞÅÏ¢Ö¸Õë¡£
-//            pbyBuffer   Ö¸ÏòÍ¼ÏñµÄÊı¾İµÄ»º³åÇøÖ¸Õë¡£ÓÉÓÚ
-//              ²ÉÓÃÁËÁã¿½±´»úÖÆÀ´Ìá¸ßĞ§ÂÊ£¬Òò´Ë
-//              ÕâÀïÊ¹ÓÃÁËÒ»¸öÖ¸ÏòÖ¸ÕëµÄÖ¸Õë¡£
-//            UINT wTimes ×¥È¡Í¼ÏñµÄ³¬Ê±Ê±¼ä¡£µ¥Î»ºÁÃë¡£ÔÚ
-//              wTimesÊ±¼äÄÚ»¹Î´»ñµÃÍ¼Ïñ£¬Ôò¸Ãº¯Êı
-//              »á·µ»Ø³¬Ê±ĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetImageBuffer
+// åŠŸèƒ½æè¿° : è·å¾—ä¸€å¸§å›¾åƒæ•°æ®ã€‚ä¸ºäº†æé«˜æ•ˆç‡ï¼ŒSDKåœ¨å›¾åƒæŠ“å–æ—¶é‡‡ç”¨äº†é›¶æ‹·è´æœºåˆ¶ï¼Œ
+//        CameraGetImageBufferå®é™…è·å¾—æ˜¯å†…æ ¸ä¸­çš„ä¸€ä¸ªç¼“å†²åŒºåœ°å€ï¼Œ
+//        è¯¥å‡½æ•°æˆåŠŸè°ƒç”¨åï¼Œå¿…é¡»è°ƒç”¨CameraReleaseImageBufferé‡Šæ”¾ç”±
+//        CameraGetImageBufferå¾—åˆ°çš„ç¼“å†²åŒº,ä»¥ä¾¿è®©å†…æ ¸ç»§ç»­ä½¿ç”¨
+//        è¯¥ç¼“å†²åŒºã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pFrameInfo  å›¾åƒçš„å¸§å¤´ä¿¡æ¯æŒ‡é’ˆã€‚
+//            pbyBuffer   æŒ‡å‘å›¾åƒçš„æ•°æ®çš„ç¼“å†²åŒºæŒ‡é’ˆã€‚ç”±äº
+//              é‡‡ç”¨äº†é›¶æ‹·è´æœºåˆ¶æ¥æé«˜æ•ˆç‡ï¼Œå› æ­¤
+//              è¿™é‡Œä½¿ç”¨äº†ä¸€ä¸ªæŒ‡å‘æŒ‡é’ˆçš„æŒ‡é’ˆã€‚
+//            UINT wTimes æŠ“å–å›¾åƒçš„è¶…æ—¶æ—¶é—´ã€‚å•ä½æ¯«ç§’ã€‚åœ¨
+//              wTimesæ—¶é—´å†…è¿˜æœªè·å¾—å›¾åƒï¼Œåˆ™è¯¥å‡½æ•°
+//              ä¼šè¿”å›è¶…æ—¶ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetImageBuffer(
     CameraHandle        hCamera,
@@ -302,18 +389,18 @@ MVSDK_API CameraSdkStatus  CameraGetImageBuffer(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetImageBufferEx
-// ¹¦ÄÜÃèÊö	: »ñµÃÒ»Ö¡Í¼ÏñÊı¾İ¡£¸Ã½Ó¿Ú»ñµÃµÄÍ¼ÏñÊÇ¾­¹ı´¦ÀíºóµÄRGB¸ñÊ½¡£¸Ãº¯Êıµ÷ÓÃºó£¬
-//			  ²»ĞèÒªµ÷ÓÃ CameraReleaseImageBuffer ÊÍ·Å£¬Ò²²»Òªµ÷ÓÃfreeÖ®ÀàµÄº¯ÊıÊÍ·Å
-//              À´ÊÍ·Å¸Ãº¯Êı·µ»ØµÄÍ¼ÏñÊı¾İ»º³åÇø¡£
-// ²ÎÊı	    : hCamera	  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piWidth    ÕûĞÎÖ¸Õë£¬·µ»ØÍ¼ÏñµÄ¿í¶È
-//            piHeight   ÕûĞÎÖ¸Õë£¬·µ»ØÍ¼ÏñµÄ¸ß¶È
-//            UINT wTimes ×¥È¡Í¼ÏñµÄ³¬Ê±Ê±¼ä¡£µ¥Î»ºÁÃë¡£ÔÚ
-//						  wTimesÊ±¼äÄÚ»¹Î´»ñµÃÍ¼Ïñ£¬Ôò¸Ãº¯Êı
-//						  »á·µ»Ø³¬Ê±ĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØRGBÊı¾İ»º³åÇøµÄÊ×µØÖ·;
-//            ·ñÔò·µ»Ø0¡£
+// å‡½æ•°å 	: CameraGetImageBufferEx
+// åŠŸèƒ½æè¿°	: è·å¾—ä¸€å¸§å›¾åƒæ•°æ®ã€‚è¯¥æ¥å£è·å¾—çš„å›¾åƒæ˜¯ç»è¿‡å¤„ç†åçš„RGBæ ¼å¼ã€‚è¯¥å‡½æ•°è°ƒç”¨åï¼Œ
+//			  ä¸éœ€è¦è°ƒç”¨ CameraReleaseImageBuffer é‡Šæ”¾ï¼Œä¹Ÿä¸è¦è°ƒç”¨freeä¹‹ç±»çš„å‡½æ•°é‡Šæ”¾
+//              æ¥é‡Šæ”¾è¯¥å‡½æ•°è¿”å›çš„å›¾åƒæ•°æ®ç¼“å†²åŒºã€‚
+// å‚æ•°	    : hCamera	  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piWidth    æ•´å½¢æŒ‡é’ˆï¼Œè¿”å›å›¾åƒçš„å®½åº¦
+//            piHeight   æ•´å½¢æŒ‡é’ˆï¼Œè¿”å›å›¾åƒçš„é«˜åº¦
+//            UINT wTimes æŠ“å–å›¾åƒçš„è¶…æ—¶æ—¶é—´ã€‚å•ä½æ¯«ç§’ã€‚åœ¨
+//						  wTimesæ—¶é—´å†…è¿˜æœªè·å¾—å›¾åƒï¼Œåˆ™è¯¥å‡½æ•°
+//						  ä¼šè¿”å›è¶…æ—¶ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›RGBæ•°æ®ç¼“å†²åŒºçš„é¦–åœ°å€;
+//            å¦åˆ™è¿”å›0ã€‚
 /******************************************************/
 MVSDK_API unsigned char*  CameraGetImageBufferEx(
     CameraHandle        hCamera,
@@ -324,21 +411,21 @@ MVSDK_API unsigned char*  CameraGetImageBufferEx(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSnapToBuffer
-// ¹¦ÄÜÃèÊö : ×¥ÅÄÒ»ÕÅÍ¼Ïñµ½»º³åÇøÖĞ¡£Ïà»ú»á½øÈë×¥ÅÄÄ£Ê½£¬²¢ÇÒ
-//        ×Ô¶¯ÇĞ»»µ½×¥ÅÄÄ£Ê½µÄ·Ö±æÂÊ½øĞĞÍ¼Ïñ²¶»ñ¡£È»ºó½«
-//        ²¶»ñµ½µÄÊı¾İ±£´æµ½»º³åÇøÖĞ¡£
-//        ¸Ãº¯Êı³É¹¦µ÷ÓÃºó£¬±ØĞëµ÷ÓÃCameraReleaseImageBuffer
-//        ÊÍ·ÅÓÉCameraSnapToBufferµÃµ½µÄ»º³åÇø¡£¾ßÌåÇë²Î¿¼
-//        CameraGetImageBufferº¯ÊıµÄ¹¦ÄÜÃèÊö²¿·Ö¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pFrameInfo  Ö¸Õë£¬·µ»ØÍ¼ÏñµÄÖ¡Í·ĞÅÏ¢¡£
-//            pbyBuffer   Ö¸ÏòÖ¸ÕëµÄÖ¸Õë£¬ÓÃÀ´·µ»ØÍ¼Ïñ»º³åÇøµÄµØÖ·¡£
-//            uWaitTimeMs ³¬Ê±Ê±¼ä£¬µ¥Î»ºÁÃë¡£ÔÚ¸ÃÊ±¼äÄÚ£¬Èç¹ûÈÔÈ»Ã»ÓĞ
-//              ³É¹¦²¶»ñµÄÊı¾İ£¬Ôò·µ»Ø³¬Ê±ĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSnapToBuffer
+// åŠŸèƒ½æè¿° : æŠ“æ‹ä¸€å¼ å›¾åƒåˆ°ç¼“å†²åŒºä¸­ã€‚ç›¸æœºä¼šè¿›å…¥æŠ“æ‹æ¨¡å¼ï¼Œå¹¶ä¸”
+//        è‡ªåŠ¨åˆ‡æ¢åˆ°æŠ“æ‹æ¨¡å¼çš„åˆ†è¾¨ç‡è¿›è¡Œå›¾åƒæ•è·ã€‚ç„¶åå°†
+//        æ•è·åˆ°çš„æ•°æ®ä¿å­˜åˆ°ç¼“å†²åŒºä¸­ã€‚
+//        è¯¥å‡½æ•°æˆåŠŸè°ƒç”¨åï¼Œå¿…é¡»è°ƒç”¨CameraReleaseImageBuffer
+//        é‡Šæ”¾ç”±CameraSnapToBufferå¾—åˆ°çš„ç¼“å†²åŒºã€‚å…·ä½“è¯·å‚è€ƒ
+//        CameraGetImageBufferå‡½æ•°çš„åŠŸèƒ½æè¿°éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pFrameInfo  æŒ‡é’ˆï¼Œè¿”å›å›¾åƒçš„å¸§å¤´ä¿¡æ¯ã€‚
+//            pbyBuffer   æŒ‡å‘æŒ‡é’ˆçš„æŒ‡é’ˆï¼Œç”¨æ¥è¿”å›å›¾åƒç¼“å†²åŒºçš„åœ°å€ã€‚
+//            uWaitTimeMs è¶…æ—¶æ—¶é—´ï¼Œå•ä½æ¯«ç§’ã€‚åœ¨è¯¥æ—¶é—´å†…ï¼Œå¦‚æœä»ç„¶æ²¡æœ‰
+//              æˆåŠŸæ•è·çš„æ•°æ®ï¼Œåˆ™è¿”å›è¶…æ—¶ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSnapToBuffer(
     CameraHandle        hCamera,
@@ -348,13 +435,13 @@ MVSDK_API CameraSdkStatus  CameraSnapToBuffer(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraReleaseImageBuffer
-// ¹¦ÄÜÃèÊö : ÊÍ·ÅÓÉCameraGetImageBuffer»ñµÃµÄ»º³åÇø¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbyBuffer   ÓÉCameraGetImageBuffer»ñµÃµÄ»º³åÇøµØÖ·¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraReleaseImageBuffer
+// åŠŸèƒ½æè¿° : é‡Šæ”¾ç”±CameraGetImageBufferè·å¾—çš„ç¼“å†²åŒºã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbyBuffer   ç”±CameraGetImageBufferè·å¾—çš„ç¼“å†²åŒºåœ°å€ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraReleaseImageBuffer(
     CameraHandle    hCamera,
@@ -362,60 +449,60 @@ MVSDK_API CameraSdkStatus  CameraReleaseImageBuffer(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraPlay
-// ¹¦ÄÜÃèÊö : ÈÃSDK½øÈë¹¤×÷Ä£Ê½£¬¿ªÊ¼½ÓÊÕÀ´×ÔÏà»ú·¢ËÍµÄÍ¼Ïñ
-//        Êı¾İ¡£Èç¹ûµ±Ç°Ïà»úÊÇ´¥·¢Ä£Ê½£¬ÔòĞèÒª½ÓÊÕµ½
-//        ´¥·¢Ö¡ÒÔºó²Å»á¸üĞÂÍ¼Ïñ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraPlay
+// åŠŸèƒ½æè¿° : è®©SDKè¿›å…¥å·¥ä½œæ¨¡å¼ï¼Œå¼€å§‹æ¥æ”¶æ¥è‡ªç›¸æœºå‘é€çš„å›¾åƒ
+//        æ•°æ®ã€‚å¦‚æœå½“å‰ç›¸æœºæ˜¯è§¦å‘æ¨¡å¼ï¼Œåˆ™éœ€è¦æ¥æ”¶åˆ°
+//        è§¦å‘å¸§ä»¥åæ‰ä¼šæ›´æ–°å›¾åƒã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraPlay(
     CameraHandle hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraPause
-// ¹¦ÄÜÃèÊö : ÈÃSDK½øÈëÔİÍ£Ä£Ê½£¬²»½ÓÊÕÀ´×ÔÏà»úµÄÍ¼ÏñÊı¾İ£¬
-//        Í¬Ê±Ò²»á·¢ËÍÃüÁîÈÃÏà»úÔİÍ£Êä³ö£¬ÊÍ·Å´«Êä´ø¿í¡£
-//        ÔİÍ£Ä£Ê½ÏÂ£¬¿ÉÒÔ¶ÔÏà»úµÄ²ÎÊı½øĞĞÅäÖÃ£¬²¢Á¢¼´ÉúĞ§¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraPause
+// åŠŸèƒ½æè¿° : è®©SDKè¿›å…¥æš‚åœæ¨¡å¼ï¼Œä¸æ¥æ”¶æ¥è‡ªç›¸æœºçš„å›¾åƒæ•°æ®ï¼Œ
+//        åŒæ—¶ä¹Ÿä¼šå‘é€å‘½ä»¤è®©ç›¸æœºæš‚åœè¾“å‡ºï¼Œé‡Šæ”¾ä¼ è¾“å¸¦å®½ã€‚
+//        æš‚åœæ¨¡å¼ä¸‹ï¼Œå¯ä»¥å¯¹ç›¸æœºçš„å‚æ•°è¿›è¡Œé…ç½®ï¼Œå¹¶ç«‹å³ç”Ÿæ•ˆã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraPause(
     CameraHandle hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraStop
-// ¹¦ÄÜÃèÊö : ÈÃSDK½øÈëÍ£Ö¹×´Ì¬£¬Ò»°ãÊÇ·´³õÊ¼»¯Ê±µ÷ÓÃ¸Ãº¯Êı£¬
-//        ¸Ãº¯Êı±»µ÷ÓÃ£¬²»ÄÜÔÙ¶ÔÏà»úµÄ²ÎÊı½øĞĞÅäÖÃ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraStop
+// åŠŸèƒ½æè¿° : è®©SDKè¿›å…¥åœæ­¢çŠ¶æ€ï¼Œä¸€èˆ¬æ˜¯ååˆå§‹åŒ–æ—¶è°ƒç”¨è¯¥å‡½æ•°ï¼Œ
+//        è¯¥å‡½æ•°è¢«è°ƒç”¨ï¼Œä¸èƒ½å†å¯¹ç›¸æœºçš„å‚æ•°è¿›è¡Œé…ç½®ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraStop(
     CameraHandle hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraInitRecord
-// ¹¦ÄÜÃèÊö : ³õÊ¼»¯Ò»´ÎÂ¼Ïñ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iFormat   Â¼ÏñµÄ¸ñÊ½£¬µ±Ç°Ö»Ö§³Ö²»Ñ¹ËõºÍMSCVÁ½ÖÖ·½Ê½¡£
-//              0:²»Ñ¹Ëõ£»1:MSCV·½Ê½Ñ¹Ëõ¡£
-//            pcSavePath  Â¼ÏñÎÄ¼ş±£´æµÄÂ·¾¶¡£
-//            b2GLimit    Èç¹ûÎªTRUE,ÔòÎÄ¼ş´óÓÚ2GÊ±×Ô¶¯·Ö¸î¡£
-//            dwQuality   Â¼ÏñµÄÖÊÁ¿Òò×Ó£¬Ô½´ó£¬ÔòÖÊÁ¿Ô½ºÃ¡£·¶Î§1µ½100.
-//            iFrameRate  Â¼ÏñµÄÖ¡ÂÊ¡£½¨ÒéÉè¶¨µÄ±ÈÊµ¼Ê²É¼¯Ö¡ÂÊ´ó£¬
-//              ÕâÑù¾Í²»»áÂ©Ö¡¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraInitRecord
+// åŠŸèƒ½æè¿° : åˆå§‹åŒ–ä¸€æ¬¡å½•åƒã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iFormat   å½•åƒçš„æ ¼å¼ï¼Œå½“å‰åªæ”¯æŒä¸å‹ç¼©å’ŒMSCVä¸¤ç§æ–¹å¼ã€‚
+//              0:ä¸å‹ç¼©ï¼›1:MSCVæ–¹å¼å‹ç¼©ã€‚
+//            pcSavePath  å½•åƒæ–‡ä»¶ä¿å­˜çš„è·¯å¾„ã€‚
+//            b2GLimit    å¦‚æœä¸ºTRUE,åˆ™æ–‡ä»¶å¤§äº2Gæ—¶è‡ªåŠ¨åˆ†å‰²ã€‚
+//            dwQuality   å½•åƒçš„è´¨é‡å› å­ï¼Œè¶Šå¤§ï¼Œåˆ™è´¨é‡è¶Šå¥½ã€‚èŒƒå›´1åˆ°100.
+//            iFrameRate  å½•åƒçš„å¸§ç‡ã€‚å»ºè®®è®¾å®šçš„æ¯”å®é™…é‡‡é›†å¸§ç‡å¤§ï¼Œ
+//              è¿™æ ·å°±ä¸ä¼šæ¼å¸§ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraInitRecord(
     CameraHandle    hCamera,
@@ -427,31 +514,31 @@ MVSDK_API CameraSdkStatus  CameraInitRecord(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraStopRecord
-// ¹¦ÄÜÃèÊö : ½áÊø±¾´ÎÂ¼Ïñ¡£µ±CameraInitRecordºó£¬¿ÉÒÔÍ¨¹ı¸Ãº¯Êı
-//        À´½áÊøÒ»´ÎÂ¼Ïñ£¬²¢Íê³ÉÎÄ¼ş±£´æ²Ù×÷¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraStopRecord
+// åŠŸèƒ½æè¿° : ç»“æŸæœ¬æ¬¡å½•åƒã€‚å½“CameraInitRecordåï¼Œå¯ä»¥é€šè¿‡è¯¥å‡½æ•°
+//        æ¥ç»“æŸä¸€æ¬¡å½•åƒï¼Œå¹¶å®Œæˆæ–‡ä»¶ä¿å­˜æ“ä½œã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraStopRecord(
     CameraHandle    hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraPushFrame
-// ¹¦ÄÜÃèÊö : ½«Ò»Ö¡Êı¾İ´æÈëÂ¼ÏñÁ÷ÖĞ¡£±ØĞëµ÷ÓÃCameraInitRecord
-//        ²ÅÄÜµ÷ÓÃ¸Ãº¯Êı¡£CameraStopRecordµ÷ÓÃºó£¬²»ÄÜÔÙµ÷ÓÃ
-//        ¸Ãº¯Êı¡£ÓÉÓÚÎÒÃÇµÄÖ¡Í·ĞÅÏ¢ÖĞĞ¯´øÁËÍ¼Ïñ²É¼¯µÄÊ±¼ä´Á
-//        ĞÅÏ¢£¬Òò´ËÂ¼Ïñ¿ÉÒÔ¾«×¼µÄÊ±¼äÍ¬²½£¬¶ø²»ÊÜÖ¡ÂÊ²»ÎÈ¶¨
-//        µÄÓ°Ïì¡£
-// ²ÎÊı     : hCamera     Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbyImageBuffer    Í¼ÏñµÄÊı¾İ»º³åÇø£¬±ØĞëÊÇRGB¸ñÊ½¡£
-//            pFrInfo           Í¼ÏñµÄÖ¡Í·ĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraPushFrame
+// åŠŸèƒ½æè¿° : å°†ä¸€å¸§æ•°æ®å­˜å…¥å½•åƒæµä¸­ã€‚å¿…é¡»è°ƒç”¨CameraInitRecord
+//        æ‰èƒ½è°ƒç”¨è¯¥å‡½æ•°ã€‚CameraStopRecordè°ƒç”¨åï¼Œä¸èƒ½å†è°ƒç”¨
+//        è¯¥å‡½æ•°ã€‚ç”±äºæˆ‘ä»¬çš„å¸§å¤´ä¿¡æ¯ä¸­æºå¸¦äº†å›¾åƒé‡‡é›†çš„æ—¶é—´æˆ³
+//        ä¿¡æ¯ï¼Œå› æ­¤å½•åƒå¯ä»¥ç²¾å‡†çš„æ—¶é—´åŒæ­¥ï¼Œè€Œä¸å—å¸§ç‡ä¸ç¨³å®š
+//        çš„å½±å“ã€‚
+// å‚æ•°     : hCamera     ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbyImageBuffer    å›¾åƒçš„æ•°æ®ç¼“å†²åŒºï¼Œå¿…é¡»æ˜¯RGBæ ¼å¼ã€‚
+//            pFrInfo           å›¾åƒçš„å¸§å¤´ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraPushFrame(
     CameraHandle    hCamera,
@@ -460,28 +547,28 @@ MVSDK_API CameraSdkStatus  CameraPushFrame(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSaveImage
-// ¹¦ÄÜÃèÊö : ½«Í¼Ïñ»º³åÇøµÄÊı¾İ±£´æ³ÉÍ¼Æ¬ÎÄ¼ş¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            lpszFileName   Í¼Æ¬±£´æÎÄ¼şÍêÕûÂ·¾¶¡£
-//            pbyImageBuffer Í¼ÏñµÄÊı¾İ»º³åÇø¡£
-//            pFrInfo        Í¼ÏñµÄÖ¡Í·ĞÅÏ¢¡£
-//            byFileType     Í¼Ïñ±£´æµÄ¸ñÊ½¡£È¡Öµ·¶Î§²Î¼ûCameraDefine.h
-//               ÖĞemSdkFileTypeµÄÀàĞÍ¶¨Òå¡£Ä¿Ç°Ö§³Ö
-//               BMP¡¢JPG¡¢PNG¡¢RAWËÄÖÖ¸ñÊ½¡£ÆäÖĞRAW±íÊ¾
-//               Ïà»úÊä³öµÄÔ­Ê¼Êı¾İ£¬±£´æRAW¸ñÊ½ÎÄ¼şÒªÇó
-//               pbyImageBufferºÍpFrInfoÊÇÓÉCameraGetImageBuffer
-//               »ñµÃµÄÊı¾İ£¬¶øÇÒÎ´¾­CameraImageProcess×ª»»
-//               ³ÉBMP¸ñÊ½£»·´Ö®£¬Èç¹ûÒª±£´æ³ÉBMP¡¢JPG»òÕß
-//               PNG¸ñÊ½£¬ÔòpbyImageBufferºÍpFrInfoÊÇÓÉ
-//               CameraImageProcess´¦ÀíºóµÄRGB¸ñÊ½Êı¾İ¡£
-//                 ¾ßÌåÓÃ·¨¿ÉÒÔ²Î¿¼AdvancedµÄÀı³Ì¡£
-//            byQuality      Í¼Ïñ±£´æµÄÖÊÁ¿Òò×Ó£¬½öµ±±£´æÎªJPG¸ñÊ½
-//                 Ê±¸Ã²ÎÊıÓĞĞ§£¬·¶Î§1µ½100¡£ÆäÓà¸ñÊ½
-//                           ¿ÉÒÔĞ´³É0¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSaveImage
+// åŠŸèƒ½æè¿° : å°†å›¾åƒç¼“å†²åŒºçš„æ•°æ®ä¿å­˜æˆå›¾ç‰‡æ–‡ä»¶ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            lpszFileName   å›¾ç‰‡ä¿å­˜æ–‡ä»¶å®Œæ•´è·¯å¾„ã€‚
+//            pbyImageBuffer å›¾åƒçš„æ•°æ®ç¼“å†²åŒºã€‚
+//            pFrInfo        å›¾åƒçš„å¸§å¤´ä¿¡æ¯ã€‚
+//            byFileType     å›¾åƒä¿å­˜çš„æ ¼å¼ã€‚å–å€¼èŒƒå›´å‚è§CameraDefine.h
+//               ä¸­emSdkFileTypeçš„ç±»å‹å®šä¹‰ã€‚ç›®å‰æ”¯æŒ
+//               BMPã€JPGã€PNGã€RAWå››ç§æ ¼å¼ã€‚å…¶ä¸­RAWè¡¨ç¤º
+//               ç›¸æœºè¾“å‡ºçš„åŸå§‹æ•°æ®ï¼Œä¿å­˜RAWæ ¼å¼æ–‡ä»¶è¦æ±‚
+//               pbyImageBufferå’ŒpFrInfoæ˜¯ç”±CameraGetImageBuffer
+//               è·å¾—çš„æ•°æ®ï¼Œè€Œä¸”æœªç»CameraImageProcessè½¬æ¢
+//               æˆBMPæ ¼å¼ï¼›åä¹‹ï¼Œå¦‚æœè¦ä¿å­˜æˆBMPã€JPGæˆ–è€…
+//               PNGæ ¼å¼ï¼Œåˆ™pbyImageBufferå’ŒpFrInfoæ˜¯ç”±
+//               CameraImageProcesså¤„ç†åçš„RGBæ ¼å¼æ•°æ®ã€‚
+//                 å…·ä½“ç”¨æ³•å¯ä»¥å‚è€ƒAdvancedçš„ä¾‹ç¨‹ã€‚
+//            byQuality      å›¾åƒä¿å­˜çš„è´¨é‡å› å­ï¼Œä»…å½“ä¿å­˜ä¸ºJPGæ ¼å¼
+//                 æ—¶è¯¥å‚æ•°æœ‰æ•ˆï¼ŒèŒƒå›´1åˆ°100ã€‚å…¶ä½™æ ¼å¼
+//                           å¯ä»¥å†™æˆ0ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSaveImage(
     CameraHandle    hCamera,
@@ -493,13 +580,13 @@ MVSDK_API CameraSdkStatus  CameraSaveImage(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetImageResolution
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°Ô¤ÀÀµÄ·Ö±æÂÊ¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            psCurVideoSize ½á¹¹ÌåÖ¸Õë£¬ÓÃÓÚ·µ»Øµ±Ç°µÄ·Ö±æÂÊ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetImageResolution
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰é¢„è§ˆçš„åˆ†è¾¨ç‡ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            psCurVideoSize ç»“æ„ä½“æŒ‡é’ˆï¼Œç”¨äºè¿”å›å½“å‰çš„åˆ†è¾¨ç‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetImageResolution(
     CameraHandle            hCamera,
@@ -507,13 +594,13 @@ MVSDK_API CameraSdkStatus  CameraGetImageResolution(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetImageResolution
-// ¹¦ÄÜÃèÊö : ÉèÖÃÔ¤ÀÀµÄ·Ö±æÂÊ¡£
-// ²ÎÊı     : hCamera      Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pImageResolution ½á¹¹ÌåÖ¸Õë£¬ÓÃÓÚ·µ»Øµ±Ç°µÄ·Ö±æÂÊ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetImageResolution
+// åŠŸèƒ½æè¿° : è®¾ç½®é¢„è§ˆçš„åˆ†è¾¨ç‡ã€‚
+// å‚æ•°     : hCamera      ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pImageResolution ç»“æ„ä½“æŒ‡é’ˆï¼Œç”¨äºè¿”å›å½“å‰çš„åˆ†è¾¨ç‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetImageResolution(
     CameraHandle            hCamera,
@@ -521,19 +608,19 @@ MVSDK_API CameraSdkStatus  CameraSetImageResolution(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetMediaType
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµ±Ç°Êä³öÔ­Ê¼Êı¾İµÄ¸ñÊ½Ë÷ÒıºÅ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piMediaType   Ö¸Õë£¬ÓÃÓÚ·µ»Øµ±Ç°¸ñÊ½ÀàĞÍµÄË÷ÒıºÅ¡£
-//              ÓÉCameraGetCapability»ñµÃÏà»úµÄÊôĞÔ£¬
-//              ÔÚtSdkCameraCapbility½á¹¹ÌåÖĞµÄpMediaTypeDesc
-//              ³ÉÔ±ÖĞ£¬ÒÔÊı×éµÄĞÎÊ½±£´æÁËÏà»úÖ§³ÖµÄ¸ñÊ½£¬
-//              piMediaTypeËùÖ¸ÏòµÄË÷ÒıºÅ£¬¾ÍÊÇ¸ÃÊı×éµÄË÷ÒıºÅ¡£
-//              pMediaTypeDesc[*piMediaType].iMediaTypeÔò±íÊ¾µ±Ç°¸ñÊ½µÄ
-//              ±àÂë¡£¸Ã±àÂëÇë²Î¼ûCameraDefine.hÖĞ[Í¼Ïñ¸ñÊ½¶¨Òå]²¿·Ö¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetMediaType
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºå½“å‰è¾“å‡ºåŸå§‹æ•°æ®çš„æ ¼å¼ç´¢å¼•å·ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piMediaType   æŒ‡é’ˆï¼Œç”¨äºè¿”å›å½“å‰æ ¼å¼ç±»å‹çš„ç´¢å¼•å·ã€‚
+//              ç”±CameraGetCapabilityè·å¾—ç›¸æœºçš„å±æ€§ï¼Œ
+//              åœ¨tSdkCameraCapbilityç»“æ„ä½“ä¸­çš„pMediaTypeDesc
+//              æˆå‘˜ä¸­ï¼Œä»¥æ•°ç»„çš„å½¢å¼ä¿å­˜äº†ç›¸æœºæ”¯æŒçš„æ ¼å¼ï¼Œ
+//              piMediaTypeæ‰€æŒ‡å‘çš„ç´¢å¼•å·ï¼Œå°±æ˜¯è¯¥æ•°ç»„çš„ç´¢å¼•å·ã€‚
+//              pMediaTypeDesc[*piMediaType].iMediaTypeåˆ™è¡¨ç¤ºå½“å‰æ ¼å¼çš„
+//              ç¼–ç ã€‚è¯¥ç¼–ç è¯·å‚è§CameraDefine.hä¸­[å›¾åƒæ ¼å¼å®šä¹‰]éƒ¨åˆ†ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetMediaType(
     CameraHandle    hCamera,
@@ -541,18 +628,18 @@ MVSDK_API CameraSdkStatus  CameraGetMediaType(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetMediaType
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úµÄÊä³öÔ­Ê¼Êı¾İ¸ñÊ½¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iMediaType  ÓÉCameraGetCapability»ñµÃÏà»úµÄÊôĞÔ£¬
-//              ÔÚtSdkCameraCapbility½á¹¹ÌåÖĞµÄpMediaTypeDesc
-//              ³ÉÔ±ÖĞ£¬ÒÔÊı×éµÄĞÎÊ½±£´æÁËÏà»úÖ§³ÖµÄ¸ñÊ½£¬
-//              iMediaType¾ÍÊÇ¸ÃÊı×éµÄË÷ÒıºÅ¡£
-//              pMediaTypeDesc[iMediaType].iMediaTypeÔò±íÊ¾µ±Ç°¸ñÊ½µÄ
-//              ±àÂë¡£¸Ã±àÂëÇë²Î¼ûCameraDefine.hÖĞ[Í¼Ïñ¸ñÊ½¶¨Òå]²¿·Ö¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetMediaType
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºçš„è¾“å‡ºåŸå§‹æ•°æ®æ ¼å¼ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iMediaType  ç”±CameraGetCapabilityè·å¾—ç›¸æœºçš„å±æ€§ï¼Œ
+//              åœ¨tSdkCameraCapbilityç»“æ„ä½“ä¸­çš„pMediaTypeDesc
+//              æˆå‘˜ä¸­ï¼Œä»¥æ•°ç»„çš„å½¢å¼ä¿å­˜äº†ç›¸æœºæ”¯æŒçš„æ ¼å¼ï¼Œ
+//              iMediaTypeå°±æ˜¯è¯¥æ•°ç»„çš„ç´¢å¼•å·ã€‚
+//              pMediaTypeDesc[iMediaType].iMediaTypeåˆ™è¡¨ç¤ºå½“å‰æ ¼å¼çš„
+//              ç¼–ç ã€‚è¯¥ç¼–ç è¯·å‚è§CameraDefine.hä¸­[å›¾åƒæ ¼å¼å®šä¹‰]éƒ¨åˆ†ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetMediaType(
     CameraHandle    hCamera,
@@ -560,13 +647,13 @@ MVSDK_API CameraSdkStatus  CameraSetMediaType(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeState
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úÆØ¹âµÄÄ£Ê½¡£×Ô¶¯»òÕßÊÖ¶¯¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bAeState    TRUE£¬Ê¹ÄÜ×Ô¶¯ÆØ¹â£»FALSE£¬Í£Ö¹×Ô¶¯ÆØ¹â¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAeState
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºæ›å…‰çš„æ¨¡å¼ã€‚è‡ªåŠ¨æˆ–è€…æ‰‹åŠ¨ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bAeState    TRUEï¼Œä½¿èƒ½è‡ªåŠ¨æ›å…‰ï¼›FALSEï¼Œåœæ­¢è‡ªåŠ¨æ›å…‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAeState(
     CameraHandle    hCamera,
@@ -574,13 +661,13 @@ MVSDK_API CameraSdkStatus  CameraSetAeState(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAeState
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµ±Ç°µÄÆØ¹âÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pAeState   Ö¸Õë£¬ÓÃÓÚ·µ»Ø×Ô¶¯ÆØ¹âµÄÊ¹ÄÜ×´Ì¬¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAeState
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºå½“å‰çš„æ›å…‰æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pAeState   æŒ‡é’ˆï¼Œç”¨äºè¿”å›è‡ªåŠ¨æ›å…‰çš„ä½¿èƒ½çŠ¶æ€ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetAeState(
     CameraHandle    hCamera,
@@ -588,14 +675,14 @@ MVSDK_API CameraSdkStatus  CameraGetAeState(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetSharpness
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼ÏñµÄ´¦ÀíµÄÈñ»¯²ÎÊı¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iSharpness Èñ»¯²ÎÊı¡£·¶Î§ÓÉCameraGetCapability
-//               »ñµÃ£¬Ò»°ãÊÇ[0,100]£¬0±íÊ¾¹Ø±ÕÈñ»¯´¦Àí¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetSharpness
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒçš„å¤„ç†çš„é”åŒ–å‚æ•°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iSharpness é”åŒ–å‚æ•°ã€‚èŒƒå›´ç”±CameraGetCapability
+//               è·å¾—ï¼Œä¸€èˆ¬æ˜¯[0,100]ï¼Œ0è¡¨ç¤ºå…³é—­é”åŒ–å¤„ç†ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetSharpness(
     CameraHandle    hCamera,
@@ -603,13 +690,13 @@ MVSDK_API CameraSdkStatus  CameraSetSharpness(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetSharpness
-// ¹¦ÄÜÃèÊö : »ñÈ¡µ±Ç°Èñ»¯Éè¶¨Öµ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piSharpness Ö¸Õë£¬·µ»Øµ±Ç°Éè¶¨µÄÈñ»¯µÄÉè¶¨Öµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetSharpness
+// åŠŸèƒ½æè¿° : è·å–å½“å‰é”åŒ–è®¾å®šå€¼ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piSharpness æŒ‡é’ˆï¼Œè¿”å›å½“å‰è®¾å®šçš„é”åŒ–çš„è®¾å®šå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetSharpness(
     CameraHandle    hCamera,
@@ -617,16 +704,16 @@ MVSDK_API CameraSdkStatus  CameraGetSharpness(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetLutMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úµÄ²é±í±ä»»Ä£Ê½LUTÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            emLutMode  LUTMODE_PARAM_GEN ±íÊ¾ÓÉÙ¤ÂíºÍ¶Ô±È¶È²ÎÊı¶¯Ì¬Éú³ÉLUT±í¡£
-//             LUTMODE_PRESET    ±íÊ¾Ê¹ÓÃÔ¤ÉèµÄLUT±í¡£
-//             LUTMODE_USER_DEF  ±íÊ¾Ê¹ÓÃÓÃ»§×Ô¶¨µÄLUT±í¡£
-//             LUTMODE_PARAM_GENµÄ¶¨Òå²Î¿¼CameraDefine.hÖĞemSdkLutModeÀàĞÍ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetLutMode
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºçš„æŸ¥è¡¨å˜æ¢æ¨¡å¼LUTæ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            emLutMode  LUTMODE_PARAM_GEN è¡¨ç¤ºç”±ä¼½é©¬å’Œå¯¹æ¯”åº¦å‚æ•°åŠ¨æ€ç”ŸæˆLUTè¡¨ã€‚
+//             LUTMODE_PRESET    è¡¨ç¤ºä½¿ç”¨é¢„è®¾çš„LUTè¡¨ã€‚
+//             LUTMODE_USER_DEF  è¡¨ç¤ºä½¿ç”¨ç”¨æˆ·è‡ªå®šçš„LUTè¡¨ã€‚
+//             LUTMODE_PARAM_GENçš„å®šä¹‰å‚è€ƒCameraDefine.hä¸­emSdkLutModeç±»å‹ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetLutMode(
     CameraHandle    hCamera,
@@ -634,14 +721,14 @@ MVSDK_API CameraSdkStatus  CameraSetLutMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetLutMode
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµÄ²é±í±ä»»Ä£Ê½LUTÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pemLutMode Ö¸Õë£¬·µ»Øµ±Ç°LUTÄ£Ê½¡£ÒâÒåÓëCameraSetLutMode
-//             ÖĞemLutMode²ÎÊıÏàÍ¬¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetLutMode
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºçš„æŸ¥è¡¨å˜æ¢æ¨¡å¼LUTæ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pemLutMode æŒ‡é’ˆï¼Œè¿”å›å½“å‰LUTæ¨¡å¼ã€‚æ„ä¹‰ä¸CameraSetLutMode
+//             ä¸­emLutModeå‚æ•°ç›¸åŒã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetLutMode(
     CameraHandle    hCamera,
@@ -649,15 +736,15 @@ MVSDK_API CameraSdkStatus  CameraGetLutMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSelectLutPreset
-// ¹¦ÄÜÃèÊö : Ñ¡ÔñÔ¤ÉèLUTÄ£Ê½ÏÂµÄLUT±í¡£±ØĞëÏÈÊ¹ÓÃCameraSetLutMode
-//        ½«LUTÄ£Ê½ÉèÖÃÎªÔ¤ÉèÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iSel     ±íµÄË÷ÒıºÅ¡£±íµÄ¸öÊıÓÉCameraGetCapability
-//             »ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSelectLutPreset
+// åŠŸèƒ½æè¿° : é€‰æ‹©é¢„è®¾LUTæ¨¡å¼ä¸‹çš„LUTè¡¨ã€‚å¿…é¡»å…ˆä½¿ç”¨CameraSetLutMode
+//        å°†LUTæ¨¡å¼è®¾ç½®ä¸ºé¢„è®¾æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iSel     è¡¨çš„ç´¢å¼•å·ã€‚è¡¨çš„ä¸ªæ•°ç”±CameraGetCapability
+//             è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSelectLutPreset(
     CameraHandle    hCamera,
@@ -665,13 +752,13 @@ MVSDK_API CameraSdkStatus  CameraSelectLutPreset(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetLutPresetSel
-// ¹¦ÄÜÃèÊö : »ñµÃÔ¤ÉèLUTÄ£Ê½ÏÂµÄLUT±íË÷ÒıºÅ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piSel      Ö¸Õë£¬·µ»Ø±íµÄË÷ÒıºÅ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetLutPresetSel
+// åŠŸèƒ½æè¿° : è·å¾—é¢„è®¾LUTæ¨¡å¼ä¸‹çš„LUTè¡¨ç´¢å¼•å·ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piSel      æŒ‡é’ˆï¼Œè¿”å›è¡¨çš„ç´¢å¼•å·ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetLutPresetSel(
     CameraHandle    hCamera,
@@ -679,18 +766,18 @@ MVSDK_API CameraSdkStatus  CameraGetLutPresetSel(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetCustomLut
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¨ÒåµÄLUT±í¡£±ØĞëÏÈÊ¹ÓÃCameraSetLutMode
-//        ½«LUTÄ£Ê½ÉèÖÃÎª×Ô¶¨ÒåÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iChannel Ö¸¶¨ÒªÉè¶¨µÄLUTÑÕÉ«Í¨µÀ£¬µ±ÎªLUT_CHANNEL_ALLÊ±£¬
-//                      Èı¸öÍ¨µÀµÄLUT½«±»Í¬Ê±Ìæ»»¡£
-//                      ²Î¿¼CameraDefine.hÖĞemSdkLutChannel¶¨Òå¡£
-//            pLut     Ö¸Õë£¬Ö¸ÏòLUT±íµÄµØÖ·¡£LUT±íÎªÎŞ·ûºÅ¶ÌÕûĞÎÊı×é£¬Êı×é´óĞ¡Îª
-//           4096£¬·Ö±ğ´úÂëÑÕÉ«Í¨µÀ´Ó0µ½4096(12bitÑÕÉ«¾«¶È)¶ÔÓ¦µÄÓ³ÉäÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetCustomLut
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªå®šä¹‰çš„LUTè¡¨ã€‚å¿…é¡»å…ˆä½¿ç”¨CameraSetLutMode
+//        å°†LUTæ¨¡å¼è®¾ç½®ä¸ºè‡ªå®šä¹‰æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iChannel æŒ‡å®šè¦è®¾å®šçš„LUTé¢œè‰²é€šé“ï¼Œå½“ä¸ºLUT_CHANNEL_ALLæ—¶ï¼Œ
+//                      ä¸‰ä¸ªé€šé“çš„LUTå°†è¢«åŒæ—¶æ›¿æ¢ã€‚
+//                      å‚è€ƒCameraDefine.hä¸­emSdkLutChannelå®šä¹‰ã€‚
+//            pLut     æŒ‡é’ˆï¼ŒæŒ‡å‘LUTè¡¨çš„åœ°å€ã€‚LUTè¡¨ä¸ºæ— ç¬¦å·çŸ­æ•´å½¢æ•°ç»„ï¼Œæ•°ç»„å¤§å°ä¸º
+//           4096ï¼Œåˆ†åˆ«ä»£ç é¢œè‰²é€šé“ä»0åˆ°4096(12bité¢œè‰²ç²¾åº¦)å¯¹åº”çš„æ˜ å°„å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetCustomLut(
     CameraHandle    hCamera,
@@ -699,17 +786,17 @@ MVSDK_API CameraSdkStatus  CameraSetCustomLut(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetCustomLut
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°Ê¹ÓÃµÄ×Ô¶¨ÒåLUT±í¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iChannel Ö¸¶¨Òª»ñµÃµÄLUTÑÕÉ«Í¨µÀ¡£µ±ÎªLUT_CHANNEL_ALLÊ±£¬
-//                      ·µ»ØºìÉ«Í¨µÀµÄLUT±í¡£
-//                      ²Î¿¼CameraDefine.hÖĞemSdkLutChannel¶¨Òå¡£
-//            pLut       Ö¸Õë£¬Ö¸ÏòLUT±íµÄµØÖ·¡£LUT±íÎªÎŞ·ûºÅ¶ÌÕûĞÎÊı×é£¬Êı×é´óĞ¡Îª
-//           4096£¬·Ö±ğ´úÂëÑÕÉ«Í¨µÀ´Ó0µ½4096(12bitÑÕÉ«¾«¶È)¶ÔÓ¦µÄÓ³ÉäÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetCustomLut
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰ä½¿ç”¨çš„è‡ªå®šä¹‰LUTè¡¨ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iChannel æŒ‡å®šè¦è·å¾—çš„LUTé¢œè‰²é€šé“ã€‚å½“ä¸ºLUT_CHANNEL_ALLæ—¶ï¼Œ
+//                      è¿”å›çº¢è‰²é€šé“çš„LUTè¡¨ã€‚
+//                      å‚è€ƒCameraDefine.hä¸­emSdkLutChannelå®šä¹‰ã€‚
+//            pLut       æŒ‡é’ˆï¼ŒæŒ‡å‘LUTè¡¨çš„åœ°å€ã€‚LUTè¡¨ä¸ºæ— ç¬¦å·çŸ­æ•´å½¢æ•°ç»„ï¼Œæ•°ç»„å¤§å°ä¸º
+//           4096ï¼Œåˆ†åˆ«ä»£ç é¢œè‰²é€šé“ä»0åˆ°4096(12bité¢œè‰²ç²¾åº¦)å¯¹åº”çš„æ˜ å°„å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetCustomLut(
     CameraHandle    hCamera,
@@ -718,18 +805,18 @@ MVSDK_API CameraSdkStatus  CameraGetCustomLut(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetCurrentLut
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµ±Ç°µÄLUT±í£¬ÔÚÈÎºÎLUTÄ£Ê½ÏÂ¶¼¿ÉÒÔµ÷ÓÃ,
-//        ÓÃÀ´Ö±¹ÛµÄ¹Û²ìLUTÇúÏßµÄ±ä»¯¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iChannel Ö¸¶¨Òª»ñµÃµÄLUTÑÕÉ«Í¨µÀ¡£µ±ÎªLUT_CHANNEL_ALLÊ±£¬
-//                      ·µ»ØºìÉ«Í¨µÀµÄLUT±í¡£
-//                      ²Î¿¼CameraDefine.hÖĞemSdkLutChannel¶¨Òå¡£
-//            pLut       Ö¸Õë£¬Ö¸ÏòLUT±íµÄµØÖ·¡£LUT±íÎªÎŞ·ûºÅ¶ÌÕûĞÎÊı×é£¬Êı×é´óĞ¡Îª
-//           4096£¬·Ö±ğ´úÂëÑÕÉ«Í¨µÀ´Ó0µ½4096(12bitÑÕÉ«¾«¶È)¶ÔÓ¦µÄÓ³ÉäÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetCurrentLut
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºå½“å‰çš„LUTè¡¨ï¼Œåœ¨ä»»ä½•LUTæ¨¡å¼ä¸‹éƒ½å¯ä»¥è°ƒç”¨,
+//        ç”¨æ¥ç›´è§‚çš„è§‚å¯ŸLUTæ›²çº¿çš„å˜åŒ–ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iChannel æŒ‡å®šè¦è·å¾—çš„LUTé¢œè‰²é€šé“ã€‚å½“ä¸ºLUT_CHANNEL_ALLæ—¶ï¼Œ
+//                      è¿”å›çº¢è‰²é€šé“çš„LUTè¡¨ã€‚
+//                      å‚è€ƒCameraDefine.hä¸­emSdkLutChannelå®šä¹‰ã€‚
+//            pLut       æŒ‡é’ˆï¼ŒæŒ‡å‘LUTè¡¨çš„åœ°å€ã€‚LUTè¡¨ä¸ºæ— ç¬¦å·çŸ­æ•´å½¢æ•°ç»„ï¼Œæ•°ç»„å¤§å°ä¸º
+//           4096ï¼Œåˆ†åˆ«ä»£ç é¢œè‰²é€šé“ä»0åˆ°4096(12bité¢œè‰²ç²¾åº¦)å¯¹åº”çš„æ˜ å°„å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetCurrentLut(
     CameraHandle    hCamera,
@@ -738,15 +825,15 @@ MVSDK_API CameraSdkStatus  CameraGetCurrentLut(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetWbMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»ú°×Æ½ºâÄ£Ê½¡£·ÖÎªÊÖ¶¯ºÍ×Ô¶¯Á½ÖÖ·½Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bAuto      TRUE£¬Ôò±íÊ¾Ê¹ÄÜ×Ô¶¯Ä£Ê½¡£
-//             FALSE£¬Ôò±íÊ¾Ê¹ÓÃÊÖ¶¯Ä£Ê½£¬Í¨¹ıµ÷ÓÃ
-//                 CameraSetOnceWBÀ´½øĞĞÒ»´Î°×Æ½ºâ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetWbMode
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºç™½å¹³è¡¡æ¨¡å¼ã€‚åˆ†ä¸ºæ‰‹åŠ¨å’Œè‡ªåŠ¨ä¸¤ç§æ–¹å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bAuto      TRUEï¼Œåˆ™è¡¨ç¤ºä½¿èƒ½è‡ªåŠ¨æ¨¡å¼ã€‚
+//             FALSEï¼Œåˆ™è¡¨ç¤ºä½¿ç”¨æ‰‹åŠ¨æ¨¡å¼ï¼Œé€šè¿‡è°ƒç”¨
+//                 CameraSetOnceWBæ¥è¿›è¡Œä¸€æ¬¡ç™½å¹³è¡¡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetWbMode(
     CameraHandle    hCamera,
@@ -754,14 +841,14 @@ MVSDK_API CameraSdkStatus  CameraSetWbMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetWbMode
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°µÄ°×Æ½ºâÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbAuto   Ö¸Õë£¬·µ»ØTRUE±íÊ¾×Ô¶¯Ä£Ê½£¬FALSE
-//             ÎªÊÖ¶¯Ä£Ê½¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetWbMode
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰çš„ç™½å¹³è¡¡æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbAuto   æŒ‡é’ˆï¼Œè¿”å›TRUEè¡¨ç¤ºè‡ªåŠ¨æ¨¡å¼ï¼ŒFALSE
+//             ä¸ºæ‰‹åŠ¨æ¨¡å¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetWbMode(
     CameraHandle    hCamera,
@@ -769,13 +856,13 @@ MVSDK_API CameraSdkStatus  CameraGetWbMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetPresetClrTemp
-// ¹¦ÄÜÃèÊö : Ñ¡ÔñÖ¸¶¨Ô¤ÉèÉ«ÎÂÄ£Ê½
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iSel Ô¤ÉèÉ«ÎÂµÄÄ£Ê½Ë÷ÒıºÅ£¬´Ó0¿ªÊ¼
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetPresetClrTemp
+// åŠŸèƒ½æè¿° : é€‰æ‹©æŒ‡å®šé¢„è®¾è‰²æ¸©æ¨¡å¼
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iSel é¢„è®¾è‰²æ¸©çš„æ¨¡å¼ç´¢å¼•å·ï¼Œä»0å¼€å§‹
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetPresetClrTemp(
     CameraHandle    hCamera,
@@ -783,13 +870,13 @@ MVSDK_API CameraSdkStatus  CameraSetPresetClrTemp(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetPresetClrTemp
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°Ñ¡ÔñµÄÔ¤ÉèÉ«ÎÂÄ£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piSel  Ö¸Õë£¬·µ»ØÑ¡ÔñµÄÔ¤ÉèÉ«ÎÂË÷ÒıºÅ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetPresetClrTemp
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰é€‰æ‹©çš„é¢„è®¾è‰²æ¸©æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piSel  æŒ‡é’ˆï¼Œè¿”å›é€‰æ‹©çš„é¢„è®¾è‰²æ¸©ç´¢å¼•å·
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetPresetClrTemp(
     CameraHandle    hCamera,
@@ -797,15 +884,15 @@ MVSDK_API CameraSdkStatus  CameraGetPresetClrTemp(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetUserClrTempGain
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¨ÒåÉ«ÎÂÄ£Ê½ÏÂµÄÊı×ÖÔöÒæ
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iRgain  ºìÉ«ÔöÒæ£¬·¶Î§0µ½400£¬±íÊ¾0µ½4±¶
-//            iGgain  ÂÌÉ«ÔöÒæ£¬·¶Î§0µ½400£¬±íÊ¾0µ½4±¶
-//            iBgain  À¶É«ÔöÒæ£¬·¶Î§0µ½400£¬±íÊ¾0µ½4±¶
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetUserClrTempGain
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªå®šä¹‰è‰²æ¸©æ¨¡å¼ä¸‹çš„æ•°å­—å¢ç›Š
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iRgain  çº¢è‰²å¢ç›Šï¼ŒèŒƒå›´0åˆ°400ï¼Œè¡¨ç¤º0åˆ°4å€
+//            iGgain  ç»¿è‰²å¢ç›Šï¼ŒèŒƒå›´0åˆ°400ï¼Œè¡¨ç¤º0åˆ°4å€
+//            iBgain  è“è‰²å¢ç›Šï¼ŒèŒƒå›´0åˆ°400ï¼Œè¡¨ç¤º0åˆ°4å€
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetUserClrTempGain(
   CameraHandle  hCamera,
@@ -816,15 +903,15 @@ MVSDK_API CameraSdkStatus  CameraSetUserClrTempGain(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetUserClrTempGain
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¨ÒåÉ«ÎÂÄ£Ê½ÏÂµÄÊı×ÖÔöÒæ
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piRgain  Ö¸Õë£¬·µ»ØºìÉ«ÔöÒæ£¬·¶Î§0µ½400£¬±íÊ¾0µ½4±¶
-//            piGgain  Ö¸Õë£¬·µ»ØÂÌÉ«ÔöÒæ£¬·¶Î§0µ½400£¬±íÊ¾0µ½4±¶
-//            piBgain  Ö¸Õë£¬·µ»ØÀ¶É«ÔöÒæ£¬·¶Î§0µ½400£¬±íÊ¾0µ½4±¶
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetUserClrTempGain
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªå®šä¹‰è‰²æ¸©æ¨¡å¼ä¸‹çš„æ•°å­—å¢ç›Š
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piRgain  æŒ‡é’ˆï¼Œè¿”å›çº¢è‰²å¢ç›Šï¼ŒèŒƒå›´0åˆ°400ï¼Œè¡¨ç¤º0åˆ°4å€
+//            piGgain  æŒ‡é’ˆï¼Œè¿”å›ç»¿è‰²å¢ç›Šï¼ŒèŒƒå›´0åˆ°400ï¼Œè¡¨ç¤º0åˆ°4å€
+//            piBgain  æŒ‡é’ˆï¼Œè¿”å›è“è‰²å¢ç›Šï¼ŒèŒƒå›´0åˆ°400ï¼Œè¡¨ç¤º0åˆ°4å€
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetUserClrTempGain(
   CameraHandle  hCamera,
@@ -834,13 +921,13 @@ MVSDK_API CameraSdkStatus  CameraGetUserClrTempGain(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetUserClrTempMatrix
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¨ÒåÉ«ÎÂÄ£Ê½ÏÂµÄÑÕÉ«¾ØÕó
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pMatrix Ö¸ÏòÒ»¸öfloat[3][3]Êı×éµÄÊ×µØÖ·
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetUserClrTempMatrix
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªå®šä¹‰è‰²æ¸©æ¨¡å¼ä¸‹çš„é¢œè‰²çŸ©é˜µ
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pMatrix æŒ‡å‘ä¸€ä¸ªfloat[3][3]æ•°ç»„çš„é¦–åœ°å€
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetUserClrTempMatrix(
   CameraHandle  hCamera,
@@ -849,13 +936,13 @@ MVSDK_API CameraSdkStatus  CameraSetUserClrTempMatrix(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetUserClrTempMatrix
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¨ÒåÉ«ÎÂÄ£Ê½ÏÂµÄÑÕÉ«¾ØÕó
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pMatrix Ö¸ÏòÒ»¸öfloat[3][3]Êı×éµÄÊ×µØÖ·
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetUserClrTempMatrix
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªå®šä¹‰è‰²æ¸©æ¨¡å¼ä¸‹çš„é¢œè‰²çŸ©é˜µ
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pMatrix æŒ‡å‘ä¸€ä¸ªfloat[3][3]æ•°ç»„çš„é¦–åœ°å€
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetUserClrTempMatrix(
   CameraHandle  hCamera,
@@ -863,17 +950,17 @@ MVSDK_API CameraSdkStatus  CameraGetUserClrTempMatrix(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetClrTempMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃ°×Æ½ºâÊ±Ê¹ÓÃµÄÉ«ÎÂÄ£Ê½£¬
-//              Ö§³ÖµÄÄ£Ê½ÓĞÈıÖÖ£¬·Ö±ğÊÇ×Ô¶¯£¬Ô¤ÉèºÍ×Ô¶¨Òå¡£
-//              ×Ô¶¯Ä£Ê½ÏÂ£¬»á×Ô¶¯Ñ¡ÔñºÏÊÊµÄÉ«ÎÂÄ£Ê½
-//              Ô¤ÉèÄ£Ê½ÏÂ£¬»áÊ¹ÓÃÓÃ»§Ö¸¶¨µÄÉ«ÎÂÄ£Ê½
-//              ×Ô¶¨ÒåÄ£Ê½ÏÂ£¬Ê¹ÓÃÓÃ»§×Ô¶¨ÒåµÄÉ«ÎÂÊı×ÖÔöÒæºÍ¾ØÕó
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iMode Ä£Ê½£¬Ö»ÄÜÊÇemSdkClrTmpModeÖĞ¶¨ÒåµÄÒ»ÖÖ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetClrTempMode
+// åŠŸèƒ½æè¿° : è®¾ç½®ç™½å¹³è¡¡æ—¶ä½¿ç”¨çš„è‰²æ¸©æ¨¡å¼ï¼Œ
+//              æ”¯æŒçš„æ¨¡å¼æœ‰ä¸‰ç§ï¼Œåˆ†åˆ«æ˜¯è‡ªåŠ¨ï¼Œé¢„è®¾å’Œè‡ªå®šä¹‰ã€‚
+//              è‡ªåŠ¨æ¨¡å¼ä¸‹ï¼Œä¼šè‡ªåŠ¨é€‰æ‹©åˆé€‚çš„è‰²æ¸©æ¨¡å¼
+//              é¢„è®¾æ¨¡å¼ä¸‹ï¼Œä¼šä½¿ç”¨ç”¨æˆ·æŒ‡å®šçš„è‰²æ¸©æ¨¡å¼
+//              è‡ªå®šä¹‰æ¨¡å¼ä¸‹ï¼Œä½¿ç”¨ç”¨æˆ·è‡ªå®šä¹‰çš„è‰²æ¸©æ•°å­—å¢ç›Šå’ŒçŸ©é˜µ
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iMode æ¨¡å¼ï¼Œåªèƒ½æ˜¯emSdkClrTmpModeä¸­å®šä¹‰çš„ä¸€ç§
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetClrTempMode(
   CameraHandle  hCamera,
@@ -881,14 +968,14 @@ MVSDK_API CameraSdkStatus  CameraSetClrTempMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetClrTempMode
-// ¹¦ÄÜÃèÊö : »ñµÃ°×Æ½ºâÊ±Ê¹ÓÃµÄÉ«ÎÂÄ£Ê½¡£²Î¿¼CameraSetClrTempMode
-//              ÖĞ¹¦ÄÜÃèÊö²¿·Ö¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pimode Ö¸Õë£¬·µ»ØÄ£Ê½Ñ¡Ôñ£¬²Î¿¼emSdkClrTmpModeÀàĞÍ¶¨Òå
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetClrTempMode
+// åŠŸèƒ½æè¿° : è·å¾—ç™½å¹³è¡¡æ—¶ä½¿ç”¨çš„è‰²æ¸©æ¨¡å¼ã€‚å‚è€ƒCameraSetClrTempMode
+//              ä¸­åŠŸèƒ½æè¿°éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pimode æŒ‡é’ˆï¼Œè¿”å›æ¨¡å¼é€‰æ‹©ï¼Œå‚è€ƒemSdkClrTmpModeç±»å‹å®šä¹‰
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetClrTempMode(
   CameraHandle  hCamera,
@@ -898,25 +985,25 @@ MVSDK_API CameraSdkStatus  CameraGetClrTempMode(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetOnceWB
-// ¹¦ÄÜÃèÊö : ÔÚÊÖ¶¯°×Æ½ºâÄ£Ê½ÏÂ£¬µ÷ÓÃ¸Ãº¯Êı»á½øĞĞÒ»´Î°×Æ½ºâ¡£
-//        ÉúĞ§µÄÊ±¼äÎª½ÓÊÕµ½ÏÂÒ»Ö¡Í¼ÏñÊı¾İÊ±¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetOnceWB
+// åŠŸèƒ½æè¿° : åœ¨æ‰‹åŠ¨ç™½å¹³è¡¡æ¨¡å¼ä¸‹ï¼Œè°ƒç”¨è¯¥å‡½æ•°ä¼šè¿›è¡Œä¸€æ¬¡ç™½å¹³è¡¡ã€‚
+//        ç”Ÿæ•ˆçš„æ—¶é—´ä¸ºæ¥æ”¶åˆ°ä¸‹ä¸€å¸§å›¾åƒæ•°æ®æ—¶ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetOnceWB(
     CameraHandle    hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetOnceBB
-// ¹¦ÄÜÃèÊö : Ö´ĞĞÒ»´ÎºÚÆ½ºâ²Ù×÷¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetOnceBB
+// åŠŸèƒ½æè¿° : æ‰§è¡Œä¸€æ¬¡é»‘å¹³è¡¡æ“ä½œã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetOnceBB(
     CameraHandle    hCamera
@@ -924,14 +1011,14 @@ MVSDK_API CameraSdkStatus  CameraSetOnceBB(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeTarget
-// ¹¦ÄÜÃèÊö : Éè¶¨×Ô¶¯ÆØ¹âµÄÁÁ¶ÈÄ¿±êÖµ¡£Éè¶¨·¶Î§ÓÉCameraGetCapability
-//        º¯Êı»ñµÃ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iAeTarget  ÁÁ¶ÈÄ¿±êÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAeTarget
+// åŠŸèƒ½æè¿° : è®¾å®šè‡ªåŠ¨æ›å…‰çš„äº®åº¦ç›®æ ‡å€¼ã€‚è®¾å®šèŒƒå›´ç”±CameraGetCapability
+//        å‡½æ•°è·å¾—ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iAeTarget  äº®åº¦ç›®æ ‡å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAeTarget(
     CameraHandle    hCamera,
@@ -939,13 +1026,13 @@ MVSDK_API CameraSdkStatus  CameraSetAeTarget(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAeTarget
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹âµÄÁÁ¶ÈÄ¿±êÖµ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            *piAeTarget Ö¸Õë£¬·µ»ØÄ¿±êÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAeTarget
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰çš„äº®åº¦ç›®æ ‡å€¼ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            *piAeTarget æŒ‡é’ˆï¼Œè¿”å›ç›®æ ‡å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetAeTarget(
     CameraHandle    hCamera,
@@ -954,14 +1041,14 @@ MVSDK_API CameraSdkStatus  CameraGetAeTarget(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeExposureRange
-// ¹¦ÄÜÃèÊö : Éè¶¨×Ô¶¯ÆØ¹âÄ£Ê½µÄÆØ¹âÊ±¼äµ÷½Ú·¶Î§
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//           fMinExposureTime ×îĞ¡ÆØ¹âÊ±¼ä£¨Î¢Ãë£©
-//			 fMaxExposureTime ×î´óÆØ¹âÊ±¼ä£¨Î¢Ãë£©
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAeExposureRange
+// åŠŸèƒ½æè¿° : è®¾å®šè‡ªåŠ¨æ›å…‰æ¨¡å¼çš„æ›å…‰æ—¶é—´è°ƒèŠ‚èŒƒå›´
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//           fMinExposureTime æœ€å°æ›å…‰æ—¶é—´ï¼ˆå¾®ç§’ï¼‰
+//			 fMaxExposureTime æœ€å¤§æ›å…‰æ—¶é—´ï¼ˆå¾®ç§’ï¼‰
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus CameraSetAeExposureRange(
 	CameraHandle    hCamera,
@@ -970,14 +1057,14 @@ MVSDK_API CameraSdkStatus CameraSetAeExposureRange(
 	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAeExposureRange
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹âÄ£Ê½µÄÆØ¹âÊ±¼äµ÷½Ú·¶Î§
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//           fMinExposureTime ×îĞ¡ÆØ¹âÊ±¼ä£¨Î¢Ãë£©
-//			 fMaxExposureTime ×î´óÆØ¹âÊ±¼ä£¨Î¢Ãë£©
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAeExposureRange
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰æ¨¡å¼çš„æ›å…‰æ—¶é—´è°ƒèŠ‚èŒƒå›´
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//           fMinExposureTime æœ€å°æ›å…‰æ—¶é—´ï¼ˆå¾®ç§’ï¼‰
+//			 fMaxExposureTime æœ€å¤§æ›å…‰æ—¶é—´ï¼ˆå¾®ç§’ï¼‰
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus CameraGetAeExposureRange(
 	CameraHandle    hCamera,
@@ -986,14 +1073,14 @@ MVSDK_API CameraSdkStatus CameraGetAeExposureRange(
 	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeAnalogGainRange
-// ¹¦ÄÜÃèÊö : Éè¶¨×Ô¶¯ÆØ¹âÄ£Ê½µÄÔöÒæµ÷½Ú·¶Î§
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//           iMinAnalogGain ×îĞ¡ÔöÒæ
-//			 iMaxAnalogGain ×î´óÔöÒæ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAeAnalogGainRange
+// åŠŸèƒ½æè¿° : è®¾å®šè‡ªåŠ¨æ›å…‰æ¨¡å¼çš„å¢ç›Šè°ƒèŠ‚èŒƒå›´
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//           iMinAnalogGain æœ€å°å¢ç›Š
+//			 iMaxAnalogGain æœ€å¤§å¢ç›Š
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus CameraSetAeAnalogGainRange(
 	CameraHandle    hCamera,
@@ -1002,14 +1089,14 @@ MVSDK_API CameraSdkStatus CameraSetAeAnalogGainRange(
 	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAeAnalogGainRange
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹âÄ£Ê½µÄÔöÒæµ÷½Ú·¶Î§
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//           iMinAnalogGain ×îĞ¡ÔöÒæ
-//			 iMaxAnalogGain ×î´óÔöÒæ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAeAnalogGainRange
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰æ¨¡å¼çš„å¢ç›Šè°ƒèŠ‚èŒƒå›´
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//           iMinAnalogGain æœ€å°å¢ç›Š
+//			 iMaxAnalogGain æœ€å¤§å¢ç›Š
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus CameraGetAeAnalogGainRange(
 	CameraHandle    hCamera,
@@ -1019,17 +1106,17 @@ MVSDK_API CameraSdkStatus CameraGetAeAnalogGainRange(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetExposureTime
-// ¹¦ÄÜÃèÊö : ÉèÖÃÆØ¹âÊ±¼ä¡£µ¥Î»ÎªÎ¢Ãë¡£¶ÔÓÚCMOS´«¸ĞÆ÷£¬ÆäÆØ¹â
-//        µÄµ¥Î»ÊÇ°´ÕÕĞĞÀ´¼ÆËãµÄ£¬Òò´Ë£¬ÆØ¹âÊ±¼ä²¢²»ÄÜÔÚÎ¢Ãë
-//        ¼¶±ğÁ¬Ğø¿Éµ÷¡£¶øÊÇ»á°´ÕÕÕûĞĞÀ´È¡Éá¡£ÔÚµ÷ÓÃ
-//        ±¾º¯ÊıÉè¶¨ÆØ¹âÊ±¼äºó£¬½¨ÒéÔÙµ÷ÓÃCameraGetExposureTime
-//        À´»ñµÃÊµ¼ÊÉè¶¨µÄÖµ¡£
-// ²ÎÊı     : hCamera      Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            fExposureTime ÆØ¹âÊ±¼ä£¬µ¥Î»Î¢Ãë¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetExposureTime
+// åŠŸèƒ½æè¿° : è®¾ç½®æ›å…‰æ—¶é—´ã€‚å•ä½ä¸ºå¾®ç§’ã€‚å¯¹äºCMOSä¼ æ„Ÿå™¨ï¼Œå…¶æ›å…‰
+//        çš„å•ä½æ˜¯æŒ‰ç…§è¡Œæ¥è®¡ç®—çš„ï¼Œå› æ­¤ï¼Œæ›å…‰æ—¶é—´å¹¶ä¸èƒ½åœ¨å¾®ç§’
+//        çº§åˆ«è¿ç»­å¯è°ƒã€‚è€Œæ˜¯ä¼šæŒ‰ç…§æ•´è¡Œæ¥å–èˆã€‚åœ¨è°ƒç”¨
+//        æœ¬å‡½æ•°è®¾å®šæ›å…‰æ—¶é—´åï¼Œå»ºè®®å†è°ƒç”¨CameraGetExposureTime
+//        æ¥è·å¾—å®é™…è®¾å®šçš„å€¼ã€‚
+// å‚æ•°     : hCamera      ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            fExposureTime æ›å…‰æ—¶é—´ï¼Œå•ä½å¾®ç§’ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 
 MVSDK_API CameraSdkStatus  CameraSetExposureTime(
@@ -1038,16 +1125,16 @@ MVSDK_API CameraSdkStatus  CameraSetExposureTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetExposureLineTime
-// ¹¦ÄÜÃèÊö : »ñµÃÒ»ĞĞµÄÆØ¹âÊ±¼ä¡£¶ÔÓÚCMOS´«¸ĞÆ÷£¬ÆäÆØ¹â
-//        µÄµ¥Î»ÊÇ°´ÕÕĞĞÀ´¼ÆËãµÄ£¬Òò´Ë£¬ÆØ¹âÊ±¼ä²¢²»ÄÜÔÚÎ¢Ãë
-//        ¼¶±ğÁ¬Ğø¿Éµ÷¡£¶øÊÇ»á°´ÕÕÕûĞĞÀ´È¡Éá¡£Õâ¸öº¯ÊıµÄ
-//          ×÷ÓÃ¾ÍÊÇ·µ»ØCMOSÏà»úÆØ¹âÒ»ĞĞ¶ÔÓ¦µÄÊ±¼ä¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pfLineTime Ö¸Õë£¬·µ»ØÒ»ĞĞµÄÆØ¹âÊ±¼ä£¬µ¥Î»ÎªÎ¢Ãë¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetExposureLineTime
+// åŠŸèƒ½æè¿° : è·å¾—ä¸€è¡Œçš„æ›å…‰æ—¶é—´ã€‚å¯¹äºCMOSä¼ æ„Ÿå™¨ï¼Œå…¶æ›å…‰
+//        çš„å•ä½æ˜¯æŒ‰ç…§è¡Œæ¥è®¡ç®—çš„ï¼Œå› æ­¤ï¼Œæ›å…‰æ—¶é—´å¹¶ä¸èƒ½åœ¨å¾®ç§’
+//        çº§åˆ«è¿ç»­å¯è°ƒã€‚è€Œæ˜¯ä¼šæŒ‰ç…§æ•´è¡Œæ¥å–èˆã€‚è¿™ä¸ªå‡½æ•°çš„
+//          ä½œç”¨å°±æ˜¯è¿”å›CMOSç›¸æœºæ›å…‰ä¸€è¡Œå¯¹åº”çš„æ—¶é—´ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pfLineTime æŒ‡é’ˆï¼Œè¿”å›ä¸€è¡Œçš„æ›å…‰æ—¶é—´ï¼Œå•ä½ä¸ºå¾®ç§’ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 
 MVSDK_API CameraSdkStatus  CameraGetExposureLineTime(
@@ -1056,30 +1143,140 @@ MVSDK_API CameraSdkStatus  CameraGetExposureLineTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetExposureTime
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµÄÆØ¹âÊ±¼ä¡£Çë²Î¼ûCameraSetExposureTime
-//        µÄ¹¦ÄÜÃèÊö¡£
-// ²ÎÊı     : hCamera        Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pfExposureTime   Ö¸Õë£¬·µ»Øµ±Ç°µÄÆØ¹âÊ±¼ä£¬µ¥Î»Î¢Ãë¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetExposureTime
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºçš„æ›å…‰æ—¶é—´ã€‚è¯·å‚è§CameraSetExposureTime
+//        çš„åŠŸèƒ½æè¿°ã€‚
+// å‚æ•°     : hCamera        ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pfExposureTime   æŒ‡é’ˆï¼Œè¿”å›å½“å‰çš„æ›å…‰æ—¶é—´ï¼Œå•ä½å¾®ç§’ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetExposureTime(
     CameraHandle    hCamera,
     double*         pfExposureTime
 );
 
+/// @ingroup API_EXPOSURE
+/// \~chinese
+/// \brief è·å¾—ç›¸æœºçš„æ›å…‰æ—¶é—´èŒƒå›´
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] pfMin		æŒ‡é’ˆï¼Œè¿”å›æ›å…‰æ—¶é—´çš„æœ€å°å€¼ï¼Œå•ä½å¾®ç§’ã€‚
+/// \param [out] pfMax		æŒ‡é’ˆï¼Œè¿”å›æ›å…‰æ—¶é—´çš„æœ€å¤§å€¼ï¼Œå•ä½å¾®ç§’ã€‚
+/// \param [out] pfStep		æŒ‡é’ˆï¼Œè¿”å›æ›å…‰æ—¶é—´çš„æ­¥è¿›å€¼ï¼Œå•ä½å¾®ç§’ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get camera exposure time range
+/// \param [in] hCamera Camera handle.
+/// \param [out] pfMin Returns the minimum exposure time in microseconds.
+/// \param [out] pfMax Returns the maximum exposure time in microseconds.
+/// \param [out] pfStep Returns the exposure time in microseconds.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetExposureTimeRange(
+	CameraHandle    hCamera, 
+	double*         pfMin,
+	double*			pfMax,
+	double*			pfStep
+	);
+
+/// @ingroup API_EXPOSURE
+/// \~chinese
+/// \brief è®¾ç½®å¤šé‡æ›å…‰æ—¶é—´ã€‚å•ä½ä¸ºå¾®ç§’ã€‚(æ­¤åŠŸèƒ½ä»…çº¿é˜µç›¸æœºæ”¯æŒ)
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] index æ›å…‰ç´¢å¼•ã€‚
+/// \param [in] fExposureTime æ›å…‰æ—¶é—´ï¼Œå•ä½å¾®ç§’ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \note å¯¹äºCMOSä¼ æ„Ÿå™¨ï¼Œå…¶æ›å…‰çš„å•ä½æ˜¯æŒ‰ç…§è¡Œæ¥è®¡ç®—çš„ï¼Œå› æ­¤ï¼Œæ›å…‰æ—¶é—´å¹¶ä¸èƒ½åœ¨å¾®ç§’çº§åˆ«è¿ç»­å¯è°ƒã€‚è€Œæ˜¯ä¼šæŒ‰ç…§æ•´è¡Œæ¥å–èˆã€‚åœ¨è°ƒç”¨æœ¬å‡½æ•°è®¾å®šæ›å…‰æ—¶é—´åï¼Œå»ºè®®å†è°ƒç”¨@link #CameraGetMultiExposureTime @endlinkæ¥è·å¾—å®é™…è®¾å®šçš„å€¼ã€‚
+/// \~english
+/// \brief Set the multiple exposure time. The unit is microseconds. (This feature is only supported by line camera)
+/// \param [in] hCamera Camera handle.
+/// \param [in] index Exposure index.
+/// \param [in] fExposureTime Exposure time in microseconds.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+/// \note For CMOS sensors, the unit of exposure is calculated in rows, so the exposure time cannot be continuously adjusted in microseconds. Instead, the entire line will be chosen. After calling this function to set the exposure time, it is recommended to call @link #CameraGetMultiExposureTime @endlink to get the actual set value.
+MVSDK_API CameraSdkStatus CameraSetMultiExposureTime(
+	CameraHandle    hCamera, 
+	int				index,
+	double          fExposureTime
+	);
+
+/// @ingroup API_EXPOSURE
+/// \~chinese
+/// \brief è·å–å¤šé‡æ›å…‰æ—¶é—´ã€‚å•ä½ä¸ºå¾®ç§’ã€‚(æ­¤åŠŸèƒ½ä»…çº¿é˜µç›¸æœºæ”¯æŒ)
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] index æ›å…‰ç´¢å¼•ã€‚
+/// \param [out] fExposureTime è¿”å›æ›å…‰æ—¶é—´ï¼Œå•ä½å¾®ç§’ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the multiple exposure time. The unit is microseconds. (This feature is only supported by line camera)
+/// \param [in] hCamera Camera handle.
+/// \param [in] index Exposure index.
+/// \param [out] fExposureTime Returns exposure time in microseconds.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetMultiExposureTime(
+	CameraHandle    hCamera, 
+	int				index,
+	double*         fExposureTime
+	);
+
+/// @ingroup API_EXPOSURE
+/// \~chinese
+/// \brief è®¾ç½®å¤šé‡æ›å…‰ä½¿èƒ½ä¸ªæ•°ã€‚(æ­¤åŠŸèƒ½ä»…çº¿é˜µç›¸æœºæ”¯æŒ)
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] count ä½¿èƒ½ä¸ªæ•°ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the number of multiple exposure enable. (This feature is only supported by line camera)
+/// \param [in] hCamera Camera handle.
+/// \param [in] count The number of exposures enabled.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetMultiExposureCount(
+	CameraHandle    hCamera, 
+	int				count
+	);
+
+/// @ingroup API_EXPOSURE
+/// \~chinese
+/// \brief è·å–å¤šé‡æ›å…‰ä½¿èƒ½ä¸ªæ•°ã€‚(æ­¤åŠŸèƒ½ä»…çº¿é˜µç›¸æœºæ”¯æŒ)
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] count ä½¿èƒ½ä¸ªæ•°ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the number of multiple exposure enable. (This feature is only supported by line camera)
+/// \param [in] hCamera Camera handle.
+/// \param [out] count The number of exposures enabled.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetMultiExposureCount(
+	CameraHandle    hCamera, 
+	int*			count
+	);
+
+/// @ingroup API_EXPOSURE
+/// \~chinese
+/// \brief è·å–å¤šé‡æ›å…‰çš„æœ€å¤§æ›å…‰ä¸ªæ•°ã€‚(æ­¤åŠŸèƒ½ä»…çº¿é˜µç›¸æœºæ”¯æŒ)
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] max_count æ”¯æŒçš„æœ€å¤§æ›å…‰ä¸ªæ•°ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the maximum number of exposures for multiple exposures. (This feature is only supported by line camera)
+/// \param [in] hCamera Camera handle.
+/// \param [out] max_count The maximum number of exposures supported.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetMultiExposureMaxCount(
+	CameraHandle    hCamera, 
+	int*			max_count
+	);
+
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAnalogGain
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úµÄÍ¼ÏñÄ£ÄâÔöÒæÖµ¡£¸ÃÖµ³ËÒÔCameraGetCapability»ñµÃ
-//        µÄÏà»úÊôĞÔ½á¹¹ÌåÖĞsExposeDesc.fAnalogGainStep£¬¾Í
-//        µÃµ½Êµ¼ÊµÄÍ¼ÏñĞÅºÅ·Å´ó±¶Êı¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iAnalogGain Éè¶¨µÄÄ£ÄâÔöÒæÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAnalogGain
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºçš„å›¾åƒæ¨¡æ‹Ÿå¢ç›Šå€¼ã€‚è¯¥å€¼ä¹˜ä»¥CameraGetCapabilityè·å¾—
+//        çš„ç›¸æœºå±æ€§ç»“æ„ä½“ä¸­sExposeDesc.fAnalogGainStepï¼Œå°±
+//        å¾—åˆ°å®é™…çš„å›¾åƒä¿¡å·æ”¾å¤§å€æ•°ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iAnalogGain è®¾å®šçš„æ¨¡æ‹Ÿå¢ç›Šå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAnalogGain(
     CameraHandle    hCamera,
@@ -1087,14 +1284,14 @@ MVSDK_API CameraSdkStatus  CameraSetAnalogGain(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAnalogGain
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼ÏñĞÅºÅµÄÄ£ÄâÔöÒæÖµ¡£²Î¼ûCameraSetAnalogGain
-//        ÏêÏ¸ËµÃ÷¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piAnalogGain Ö¸Õë£¬·µ»Øµ±Ç°µÄÄ£ÄâÔöÒæÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAnalogGain
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒä¿¡å·çš„æ¨¡æ‹Ÿå¢ç›Šå€¼ã€‚å‚è§CameraSetAnalogGain
+//        è¯¦ç»†è¯´æ˜ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piAnalogGain æŒ‡é’ˆï¼Œè¿”å›å½“å‰çš„æ¨¡æ‹Ÿå¢ç›Šå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetAnalogGain(
     CameraHandle    hCamera,
@@ -1102,17 +1299,17 @@ MVSDK_API CameraSdkStatus  CameraGetAnalogGain(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetGain
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼ÏñµÄÊı×ÖÔöÒæ¡£Éè¶¨·¶Î§ÓÉCameraGetCapability
-//        »ñµÃµÄÏà»úÊôĞÔ½á¹¹ÌåÖĞsRgbGainRange³ÉÔ±±íÊö¡£
-//        Êµ¼ÊµÄ·Å´ó±¶ÊıÊÇÉè¶¨Öµ/100¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iRGain   ºìÉ«Í¨µÀµÄÔöÒæÖµ¡£
-//            iGGain   ÂÌÉ«Í¨µÀµÄÔöÒæÖµ¡£
-//            iBGain   À¶É«Í¨µÀµÄÔöÒæÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetGain
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒçš„æ•°å­—å¢ç›Šã€‚è®¾å®šèŒƒå›´ç”±CameraGetCapability
+//        è·å¾—çš„ç›¸æœºå±æ€§ç»“æ„ä½“ä¸­sRgbGainRangeæˆå‘˜è¡¨è¿°ã€‚
+//        å®é™…çš„æ”¾å¤§å€æ•°æ˜¯è®¾å®šå€¼/100ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iRGain   çº¢è‰²é€šé“çš„å¢ç›Šå€¼ã€‚
+//            iGGain   ç»¿è‰²é€šé“çš„å¢ç›Šå€¼ã€‚
+//            iBGain   è“è‰²é€šé“çš„å¢ç›Šå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetGain(
     CameraHandle    hCamera,
@@ -1123,16 +1320,16 @@ MVSDK_API CameraSdkStatus  CameraSetGain(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetGain
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼Ïñ´¦ÀíµÄÊı×ÖÔöÒæ¡£¾ßÌåÇë²Î¼ûCameraSetGain
-//        µÄ¹¦ÄÜÃèÊö²¿·Ö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piRGain  Ö¸Õë£¬·µ»ØºìÉ«Í¨µÀµÄÊı×ÖÔöÒæÖµ¡£
-//            piGGain    Ö¸Õë£¬·µ»ØÂÌÉ«Í¨µÀµÄÊı×ÖÔöÒæÖµ¡£
-//            piBGain    Ö¸Õë£¬·µ»ØÀ¶É«Í¨µÀµÄÊı×ÖÔöÒæÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetGain
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒå¤„ç†çš„æ•°å­—å¢ç›Šã€‚å…·ä½“è¯·å‚è§CameraSetGain
+//        çš„åŠŸèƒ½æè¿°éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piRGain  æŒ‡é’ˆï¼Œè¿”å›çº¢è‰²é€šé“çš„æ•°å­—å¢ç›Šå€¼ã€‚
+//            piGGain    æŒ‡é’ˆï¼Œè¿”å›ç»¿è‰²é€šé“çš„æ•°å­—å¢ç›Šå€¼ã€‚
+//            piBGain    æŒ‡é’ˆï¼Œè¿”å›è“è‰²é€šé“çš„æ•°å­—å¢ç›Šå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetGain(
     CameraHandle    hCamera,
@@ -1143,16 +1340,16 @@ MVSDK_API CameraSdkStatus  CameraGetGain(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetGamma
-// ¹¦ÄÜÃèÊö : Éè¶¨LUT¶¯Ì¬Éú³ÉÄ£Ê½ÏÂµÄGammaÖµ¡£Éè¶¨µÄÖµ»á
-//        ÂíÉÏ±£´æÔÚSDKÄÚ²¿£¬µ«ÊÇÖ»ÓĞµ±Ïà»ú´¦ÓÚ¶¯Ì¬
-//        ²ÎÊıÉú³ÉµÄLUTÄ£Ê½Ê±£¬²Å»áÉúĞ§¡£Çë²Î¿¼CameraSetLutMode
-//        µÄº¯ÊıËµÃ÷²¿·Ö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iGamma     ÒªÉè¶¨µÄGammaÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetGamma
+// åŠŸèƒ½æè¿° : è®¾å®šLUTåŠ¨æ€ç”Ÿæˆæ¨¡å¼ä¸‹çš„Gammaå€¼ã€‚è®¾å®šçš„å€¼ä¼š
+//        é©¬ä¸Šä¿å­˜åœ¨SDKå†…éƒ¨ï¼Œä½†æ˜¯åªæœ‰å½“ç›¸æœºå¤„äºåŠ¨æ€
+//        å‚æ•°ç”Ÿæˆçš„LUTæ¨¡å¼æ—¶ï¼Œæ‰ä¼šç”Ÿæ•ˆã€‚è¯·å‚è€ƒCameraSetLutMode
+//        çš„å‡½æ•°è¯´æ˜éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iGamma     è¦è®¾å®šçš„Gammaå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetGamma(
     CameraHandle    hCamera,
@@ -1160,14 +1357,14 @@ MVSDK_API CameraSdkStatus  CameraSetGamma(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetGamma
-// ¹¦ÄÜÃèÊö : »ñµÃLUT¶¯Ì¬Éú³ÉÄ£Ê½ÏÂµÄGammaÖµ¡£Çë²Î¿¼CameraSetGamma
-//        º¯ÊıµÄ¹¦ÄÜÃèÊö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piGamma    Ö¸Õë£¬·µ»Øµ±Ç°µÄGammaÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetGamma
+// åŠŸèƒ½æè¿° : è·å¾—LUTåŠ¨æ€ç”Ÿæˆæ¨¡å¼ä¸‹çš„Gammaå€¼ã€‚è¯·å‚è€ƒCameraSetGamma
+//        å‡½æ•°çš„åŠŸèƒ½æè¿°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piGamma    æŒ‡é’ˆï¼Œè¿”å›å½“å‰çš„Gammaå€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetGamma(
     CameraHandle    hCamera,
@@ -1175,16 +1372,16 @@ MVSDK_API CameraSdkStatus  CameraGetGamma(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetContrast
-// ¹¦ÄÜÃèÊö : Éè¶¨LUT¶¯Ì¬Éú³ÉÄ£Ê½ÏÂµÄ¶Ô±È¶ÈÖµ¡£Éè¶¨µÄÖµ»á
-//        ÂíÉÏ±£´æÔÚSDKÄÚ²¿£¬µ«ÊÇÖ»ÓĞµ±Ïà»ú´¦ÓÚ¶¯Ì¬
-//        ²ÎÊıÉú³ÉµÄLUTÄ£Ê½Ê±£¬²Å»áÉúĞ§¡£Çë²Î¿¼CameraSetLutMode
-//        µÄº¯ÊıËµÃ÷²¿·Ö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iContrast  Éè¶¨µÄ¶Ô±È¶ÈÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetContrast
+// åŠŸèƒ½æè¿° : è®¾å®šLUTåŠ¨æ€ç”Ÿæˆæ¨¡å¼ä¸‹çš„å¯¹æ¯”åº¦å€¼ã€‚è®¾å®šçš„å€¼ä¼š
+//        é©¬ä¸Šä¿å­˜åœ¨SDKå†…éƒ¨ï¼Œä½†æ˜¯åªæœ‰å½“ç›¸æœºå¤„äºåŠ¨æ€
+//        å‚æ•°ç”Ÿæˆçš„LUTæ¨¡å¼æ—¶ï¼Œæ‰ä¼šç”Ÿæ•ˆã€‚è¯·å‚è€ƒCameraSetLutMode
+//        çš„å‡½æ•°è¯´æ˜éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iContrast  è®¾å®šçš„å¯¹æ¯”åº¦å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetContrast(
     CameraHandle    hCamera,
@@ -1192,14 +1389,14 @@ MVSDK_API CameraSdkStatus  CameraSetContrast(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetContrast
-// ¹¦ÄÜÃèÊö : »ñµÃLUT¶¯Ì¬Éú³ÉÄ£Ê½ÏÂµÄ¶Ô±È¶ÈÖµ¡£Çë²Î¿¼
-//        CameraSetContrastº¯ÊıµÄ¹¦ÄÜÃèÊö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piContrast Ö¸Õë£¬·µ»Øµ±Ç°µÄ¶Ô±È¶ÈÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetContrast
+// åŠŸèƒ½æè¿° : è·å¾—LUTåŠ¨æ€ç”Ÿæˆæ¨¡å¼ä¸‹çš„å¯¹æ¯”åº¦å€¼ã€‚è¯·å‚è€ƒ
+//        CameraSetContrastå‡½æ•°çš„åŠŸèƒ½æè¿°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piContrast æŒ‡é’ˆï¼Œè¿”å›å½“å‰çš„å¯¹æ¯”åº¦å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetContrast(
     CameraHandle    hCamera,
@@ -1207,15 +1404,15 @@ MVSDK_API CameraSdkStatus  CameraGetContrast(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetSaturation
-// ¹¦ÄÜÃèÊö : Éè¶¨Í¼Ïñ´¦ÀíµÄ±¥ºÍ¶È¡£¶ÔºÚ°×Ïà»úÎŞĞ§¡£
-//        Éè¶¨·¶Î§ÓÉCameraGetCapability»ñµÃ¡£100±íÊ¾
-//        ±íÊ¾Ô­Ê¼É«¶È£¬²»ÔöÇ¿¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iSaturation  Éè¶¨µÄ±¥ºÍ¶ÈÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetSaturation
+// åŠŸèƒ½æè¿° : è®¾å®šå›¾åƒå¤„ç†çš„é¥±å’Œåº¦ã€‚å¯¹é»‘ç™½ç›¸æœºæ— æ•ˆã€‚
+//        è®¾å®šèŒƒå›´ç”±CameraGetCapabilityè·å¾—ã€‚100è¡¨ç¤º
+//        è¡¨ç¤ºåŸå§‹è‰²åº¦ï¼Œä¸å¢å¼ºã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iSaturation  è®¾å®šçš„é¥±å’Œåº¦å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetSaturation(
     CameraHandle    hCamera,
@@ -1223,13 +1420,13 @@ MVSDK_API CameraSdkStatus  CameraSetSaturation(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetSaturation
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼Ïñ´¦ÀíµÄ±¥ºÍ¶È¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piSaturation Ö¸Õë£¬·µ»Øµ±Ç°Í¼Ïñ´¦ÀíµÄ±¥ºÍ¶ÈÖµ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetSaturation
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒå¤„ç†çš„é¥±å’Œåº¦ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piSaturation æŒ‡é’ˆï¼Œè¿”å›å½“å‰å›¾åƒå¤„ç†çš„é¥±å’Œåº¦å€¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetSaturation(
     CameraHandle    hCamera,
@@ -1237,13 +1434,13 @@ MVSDK_API CameraSdkStatus  CameraGetSaturation(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetMonochrome
-// ¹¦ÄÜÃèÊö : ÉèÖÃ²ÊÉ«×ªÎªºÚ°×¹¦ÄÜµÄÊ¹ÄÜ¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bEnable   TRUE£¬±íÊ¾½«²ÊÉ«Í¼Ïñ×ªÎªºÚ°×¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetMonochrome
+// åŠŸèƒ½æè¿° : è®¾ç½®å½©è‰²è½¬ä¸ºé»‘ç™½åŠŸèƒ½çš„ä½¿èƒ½ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bEnable   TRUEï¼Œè¡¨ç¤ºå°†å½©è‰²å›¾åƒè½¬ä¸ºé»‘ç™½ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetMonochrome(
     CameraHandle    hCamera,
@@ -1251,14 +1448,14 @@ MVSDK_API CameraSdkStatus  CameraSetMonochrome(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetMonochrome
-// ¹¦ÄÜÃèÊö : »ñµÃ²ÊÉ«×ª»»ºÚ°×¹¦ÄÜµÄÊ¹ÄÜ×´¿ö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbEnable   Ö¸Õë¡£·µ»ØTRUE±íÊ¾¿ªÆôÁË²ÊÉ«Í¼Ïñ
-//             ×ª»»ÎªºÚ°×Í¼ÏñµÄ¹¦ÄÜ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetMonochrome
+// åŠŸèƒ½æè¿° : è·å¾—å½©è‰²è½¬æ¢é»‘ç™½åŠŸèƒ½çš„ä½¿èƒ½çŠ¶å†µã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbEnable   æŒ‡é’ˆã€‚è¿”å›TRUEè¡¨ç¤ºå¼€å¯äº†å½©è‰²å›¾åƒ
+//             è½¬æ¢ä¸ºé»‘ç™½å›¾åƒçš„åŠŸèƒ½ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetMonochrome(
     CameraHandle    hCamera,
@@ -1266,14 +1463,14 @@ MVSDK_API CameraSdkStatus  CameraGetMonochrome(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetInverse
-// ¹¦ÄÜÃèÊö : ÉèÖÃ²ÊÍ¼ÏñÑÕÉ«·­×ª¹¦ÄÜµÄÊ¹ÄÜ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bEnable    TRUE£¬±íÊ¾¿ªÆôÍ¼ÏñÑÕÉ«·­×ª¹¦ÄÜ£¬
-//             ¿ÉÒÔ»ñµÃÀàËÆ½º¾íµ×Æ¬µÄĞ§¹û¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetInverse
+// åŠŸèƒ½æè¿° : è®¾ç½®å½©å›¾åƒé¢œè‰²ç¿»è½¬åŠŸèƒ½çš„ä½¿èƒ½ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bEnable    TRUEï¼Œè¡¨ç¤ºå¼€å¯å›¾åƒé¢œè‰²ç¿»è½¬åŠŸèƒ½ï¼Œ
+//             å¯ä»¥è·å¾—ç±»ä¼¼èƒ¶å·åº•ç‰‡çš„æ•ˆæœã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetInverse(
     CameraHandle    hCamera,
@@ -1281,13 +1478,13 @@ MVSDK_API CameraSdkStatus  CameraSetInverse(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetInverse
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼ÏñÑÕÉ«·´×ª¹¦ÄÜµÄÊ¹ÄÜ×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbEnable   Ö¸Õë£¬·µ»Ø¸Ã¹¦ÄÜÊ¹ÄÜ×´Ì¬¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetInverse
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒé¢œè‰²åè½¬åŠŸèƒ½çš„ä½¿èƒ½çŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbEnable   æŒ‡é’ˆï¼Œè¿”å›è¯¥åŠŸèƒ½ä½¿èƒ½çŠ¶æ€ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetInverse(
     CameraHandle    hCamera,
@@ -1295,14 +1492,14 @@ MVSDK_API CameraSdkStatus  CameraGetInverse(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAntiFlick
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¯ÆØ¹âÊ±¿¹ÆµÉÁ¹¦ÄÜµÄÊ¹ÄÜ×´Ì¬¡£¶ÔÓÚÊÖ¶¯
-//        ÆØ¹âÄ£Ê½ÏÂÎŞĞ§¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bEnable    TRUE£¬¿ªÆô¿¹ÆµÉÁ¹¦ÄÜ;FALSE£¬¹Ø±Õ¸Ã¹¦ÄÜ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAntiFlick
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªåŠ¨æ›å…‰æ—¶æŠ—é¢‘é—ªåŠŸèƒ½çš„ä½¿èƒ½çŠ¶æ€ã€‚å¯¹äºæ‰‹åŠ¨
+//        æ›å…‰æ¨¡å¼ä¸‹æ— æ•ˆã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bEnable    TRUEï¼Œå¼€å¯æŠ—é¢‘é—ªåŠŸèƒ½;FALSEï¼Œå…³é—­è¯¥åŠŸèƒ½ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAntiFlick(
     CameraHandle    hCamera,
@@ -1310,13 +1507,13 @@ MVSDK_API CameraSdkStatus  CameraSetAntiFlick(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAntiFlick
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹âÊ±¿¹ÆµÉÁ¹¦ÄÜµÄÊ¹ÄÜ×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbEnable   Ö¸Õë£¬·µ»Ø¸Ã¹¦ÄÜµÄÊ¹ÄÜ×´Ì¬¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAntiFlick
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰æ—¶æŠ—é¢‘é—ªåŠŸèƒ½çš„ä½¿èƒ½çŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbEnable   æŒ‡é’ˆï¼Œè¿”å›è¯¥åŠŸèƒ½çš„ä½¿èƒ½çŠ¶æ€ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetAntiFlick(
     CameraHandle    hCamera,
@@ -1324,13 +1521,13 @@ MVSDK_API CameraSdkStatus  CameraGetAntiFlick(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetLightFrequency
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹âÊ±£¬ÏûÆµÉÁµÄÆµÂÊÑ¡Ôñ¡£
-// ²ÎÊı     : hCamera      Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piFrequencySel Ö¸Õë£¬·µ»ØÑ¡ÔñµÄË÷ÒıºÅ¡£0:50HZ 1:60HZ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetLightFrequency
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰æ—¶ï¼Œæ¶ˆé¢‘é—ªçš„é¢‘ç‡é€‰æ‹©ã€‚
+// å‚æ•°     : hCamera      ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piFrequencySel æŒ‡é’ˆï¼Œè¿”å›é€‰æ‹©çš„ç´¢å¼•å·ã€‚0:50HZ 1:60HZ
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetLightFrequency(
     CameraHandle    hCamera,
@@ -1338,13 +1535,13 @@ MVSDK_API CameraSdkStatus  CameraGetLightFrequency(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetLightFrequency
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¯ÆØ¹âÊ±ÏûÆµÉÁµÄÆµÂÊ¡£
-// ²ÎÊı     : hCamera     Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
+// å‡½æ•°å   : CameraSetLightFrequency
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªåŠ¨æ›å…‰æ—¶æ¶ˆé¢‘é—ªçš„é¢‘ç‡ã€‚
+// å‚æ•°     : hCamera     ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
 //            iFrequencySel 0:50HZ , 1:60HZ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetLightFrequency(
     CameraHandle    hCamera,
@@ -1352,16 +1549,16 @@ MVSDK_API CameraSdkStatus  CameraSetLightFrequency(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetFrameSpeed
-// ¹¦ÄÜÃèÊö : Éè¶¨Ïà»úÊä³öÍ¼ÏñµÄÖ¡ÂÊ¡£Ïà»ú¿É¹©Ñ¡ÔñµÄÖ¡ÂÊÄ£Ê½ÓÉ
-//        CameraGetCapability»ñµÃµÄĞÅÏ¢½á¹¹ÌåÖĞiFrameSpeedDesc
-//        ±íÊ¾×î´óÖ¡ÂÊÑ¡ÔñÄ£Ê½¸öÊı¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iFrameSpeed Ñ¡ÔñµÄÖ¡ÂÊÄ£Ê½Ë÷ÒıºÅ£¬·¶Î§´Ó0µ½
-//              CameraGetCapability»ñµÃµÄĞÅÏ¢½á¹¹ÌåÖĞiFrameSpeedDesc - 1
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetFrameSpeed
+// åŠŸèƒ½æè¿° : è®¾å®šç›¸æœºè¾“å‡ºå›¾åƒçš„å¸§ç‡ã€‚ç›¸æœºå¯ä¾›é€‰æ‹©çš„å¸§ç‡æ¨¡å¼ç”±
+//        CameraGetCapabilityè·å¾—çš„ä¿¡æ¯ç»“æ„ä½“ä¸­iFrameSpeedDesc
+//        è¡¨ç¤ºæœ€å¤§å¸§ç‡é€‰æ‹©æ¨¡å¼ä¸ªæ•°ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iFrameSpeed é€‰æ‹©çš„å¸§ç‡æ¨¡å¼ç´¢å¼•å·ï¼ŒèŒƒå›´ä»0åˆ°
+//              CameraGetCapabilityè·å¾—çš„ä¿¡æ¯ç»“æ„ä½“ä¸­iFrameSpeedDesc - 1
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetFrameSpeed(
     CameraHandle    hCamera,
@@ -1369,14 +1566,14 @@ MVSDK_API CameraSdkStatus  CameraSetFrameSpeed(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetFrameSpeed
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úÊä³öÍ¼ÏñµÄÖ¡ÂÊÑ¡ÔñË÷ÒıºÅ¡£¾ßÌåÓÃ·¨²Î¿¼
-//        CameraSetFrameSpeedº¯ÊıµÄ¹¦ÄÜÃèÊö²¿·Ö¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piFrameSpeed Ö¸Õë£¬·µ»ØÑ¡ÔñµÄÖ¡ÂÊÄ£Ê½Ë÷ÒıºÅ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetFrameSpeed
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºè¾“å‡ºå›¾åƒçš„å¸§ç‡é€‰æ‹©ç´¢å¼•å·ã€‚å…·ä½“ç”¨æ³•å‚è€ƒ
+//        CameraSetFrameSpeedå‡½æ•°çš„åŠŸèƒ½æè¿°éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piFrameSpeed æŒ‡é’ˆï¼Œè¿”å›é€‰æ‹©çš„å¸§ç‡æ¨¡å¼ç´¢å¼•å·ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetFrameSpeed(
     CameraHandle    hCamera,
@@ -1385,14 +1582,14 @@ MVSDK_API CameraSdkStatus  CameraGetFrameSpeed(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetParameterMode
-// ¹¦ÄÜÃèÊö : Éè¶¨²ÎÊı´æÈ¡µÄÄ¿±ê¶ÔÏó¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iMode  ²ÎÊı´æÈ¡µÄ¶ÔÏó¡£²Î¿¼CameraDefine.h
-//          ÖĞemSdkParameterModeµÄÀàĞÍ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetParameterMode
+// åŠŸèƒ½æè¿° : è®¾å®šå‚æ•°å­˜å–çš„ç›®æ ‡å¯¹è±¡ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iMode  å‚æ•°å­˜å–çš„å¯¹è±¡ã€‚å‚è€ƒCameraDefine.h
+//          ä¸­emSdkParameterModeçš„ç±»å‹å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetParameterMode(
     CameraHandle    hCamera,
@@ -1400,13 +1597,13 @@ MVSDK_API CameraSdkStatus  CameraSetParameterMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetParameterMode
-// ¹¦ÄÜÃèÊö :
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
+// å‡½æ•°å   : CameraGetParameterMode
+// åŠŸèƒ½æè¿° :
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
 //            int* piTarget
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetParameterMode(
     CameraHandle    hCamera,
@@ -1414,15 +1611,15 @@ MVSDK_API CameraSdkStatus  CameraGetParameterMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetParameterMask
-// ¹¦ÄÜÃèÊö : ÉèÖÃ²ÎÊı´æÈ¡µÄÑÚÂë¡£²ÎÊı¼ÓÔØºÍ±£´æÊ±»á¸ù¾İ¸Ã
-//        ÑÚÂëÀ´¾ö¶¨¸÷¸öÄ£¿é²ÎÊıµÄÊÇ·ñ¼ÓÔØ»òÕß±£´æ¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            uMask     ÑÚÂë¡£²Î¿¼CameraDefine.hÖĞPROP_SHEET_INDEX
-//            ÀàĞÍ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetParameterMask
+// åŠŸèƒ½æè¿° : è®¾ç½®å‚æ•°å­˜å–çš„æ©ç ã€‚å‚æ•°åŠ è½½å’Œä¿å­˜æ—¶ä¼šæ ¹æ®è¯¥
+//        æ©ç æ¥å†³å®šå„ä¸ªæ¨¡å—å‚æ•°çš„æ˜¯å¦åŠ è½½æˆ–è€…ä¿å­˜ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            uMask     æ©ç ã€‚å‚è€ƒCameraDefine.hä¸­PROP_SHEET_INDEX
+//            ç±»å‹å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetParameterMask(
     CameraHandle    hCamera,
@@ -1430,17 +1627,17 @@ MVSDK_API CameraSdkStatus  CameraSetParameterMask(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSaveParameter
-// ¹¦ÄÜÃèÊö : ±£´æµ±Ç°Ïà»ú²ÎÊıµ½Ö¸¶¨µÄ²ÎÊı×éÖĞ¡£Ïà»úÌá¹©ÁËA,B,C,D
-//        A,B,C,DËÄ×é¿Õ¼äÀ´½øĞĞ²ÎÊıµÄ±£´æ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iTeam      PARAMETER_TEAM_A ±£´æµ½A×éÖĞ,
-//             PARAMETER_TEAM_B ±£´æµ½B×éÖĞ,
-//             PARAMETER_TEAM_C ±£´æµ½C×éÖĞ,
-//             PARAMETER_TEAM_D ±£´æµ½D×éÖĞ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSaveParameter
+// åŠŸèƒ½æè¿° : ä¿å­˜å½“å‰ç›¸æœºå‚æ•°åˆ°æŒ‡å®šçš„å‚æ•°ç»„ä¸­ã€‚ç›¸æœºæä¾›äº†A,B,C,D
+//        A,B,C,Då››ç»„ç©ºé—´æ¥è¿›è¡Œå‚æ•°çš„ä¿å­˜ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iTeam      PARAMETER_TEAM_A ä¿å­˜åˆ°Aç»„ä¸­,
+//             PARAMETER_TEAM_B ä¿å­˜åˆ°Bç»„ä¸­,
+//             PARAMETER_TEAM_C ä¿å­˜åˆ°Cç»„ä¸­,
+//             PARAMETER_TEAM_D ä¿å­˜åˆ°Dç»„ä¸­
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSaveParameter(
     CameraHandle    hCamera,
@@ -1449,14 +1646,14 @@ MVSDK_API CameraSdkStatus  CameraSaveParameter(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSaveParameterToFile
-// ¹¦ÄÜÃèÊö : ±£´æµ±Ç°Ïà»ú²ÎÊıµ½Ö¸¶¨µÄÎÄ¼şÖĞ¡£¸ÃÎÄ¼ş¿ÉÒÔ¸´ÖÆµ½
-//        ±ğµÄµçÄÔÉÏ¹©ÆäËûÏà»ú¼ÓÔØ£¬Ò²¿ÉÒÔ×ö²ÎÊı±¸·İÓÃ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            sFileName  ²ÎÊıÎÄ¼şµÄÍêÕûÂ·¾¶¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSaveParameterToFile
+// åŠŸèƒ½æè¿° : ä¿å­˜å½“å‰ç›¸æœºå‚æ•°åˆ°æŒ‡å®šçš„æ–‡ä»¶ä¸­ã€‚è¯¥æ–‡ä»¶å¯ä»¥å¤åˆ¶åˆ°
+//        åˆ«çš„ç”µè„‘ä¸Šä¾›å…¶ä»–ç›¸æœºåŠ è½½ï¼Œä¹Ÿå¯ä»¥åšå‚æ•°å¤‡ä»½ç”¨ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            sFileName  å‚æ•°æ–‡ä»¶çš„å®Œæ•´è·¯å¾„ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSaveParameterToFile(
   CameraHandle  hCamera,
@@ -1465,15 +1662,15 @@ MVSDK_API CameraSdkStatus  CameraSaveParameterToFile(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraReadParameterFromFile
-// ¹¦ÄÜÃèÊö : ´ÓPCÉÏÖ¸¶¨µÄ²ÎÊıÎÄ¼şÖĞ¼ÓÔØ²ÎÊı¡£ÎÒ¹«Ë¾Ïà»ú²ÎÊı
-//        ±£´æÔÚPCÉÏÎª.configºó×ºµÄÎÄ¼ş£¬Î»ÓÚ°²×°ÏÂµÄ
-//        Camera\ConfigsÎÄ¼ş¼ĞÖĞ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            *sFileName ²ÎÊıÎÄ¼şµÄÍêÕûÂ·¾¶¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraReadParameterFromFile
+// åŠŸèƒ½æè¿° : ä»PCä¸ŠæŒ‡å®šçš„å‚æ•°æ–‡ä»¶ä¸­åŠ è½½å‚æ•°ã€‚æˆ‘å…¬å¸ç›¸æœºå‚æ•°
+//        ä¿å­˜åœ¨PCä¸Šä¸º.configåç¼€çš„æ–‡ä»¶ï¼Œä½äºå®‰è£…ä¸‹çš„
+//        Camera\Configsæ–‡ä»¶å¤¹ä¸­ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            *sFileName å‚æ•°æ–‡ä»¶çš„å®Œæ•´è·¯å¾„ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraReadParameterFromFile(
     CameraHandle    hCamera,
@@ -1481,18 +1678,18 @@ MVSDK_API CameraSdkStatus  CameraReadParameterFromFile(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraLoadParameter
-// ¹¦ÄÜÃèÊö : ¼ÓÔØÖ¸¶¨×éµÄ²ÎÊıµ½Ïà»úÖĞ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iTeam    PARAMETER_TEAM_A ¼ÓÔØA×é²ÎÊı,
-//             PARAMETER_TEAM_B ¼ÓÔØB×é²ÎÊı,
-//             PARAMETER_TEAM_C ¼ÓÔØC×é²ÎÊı,
-//             PARAMETER_TEAM_D ¼ÓÔØD×é²ÎÊı,
-//             PARAMETER_TEAM_DEFAULT ¼ÓÔØÄ¬ÈÏ²ÎÊı¡£
-//             ÀàĞÍ¶¨Òå²Î¿¼CameraDefine.hÖĞemSdkParameterTeamÀàĞÍ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraLoadParameter
+// åŠŸèƒ½æè¿° : åŠ è½½æŒ‡å®šç»„çš„å‚æ•°åˆ°ç›¸æœºä¸­ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iTeam    PARAMETER_TEAM_A åŠ è½½Aç»„å‚æ•°,
+//             PARAMETER_TEAM_B åŠ è½½Bç»„å‚æ•°,
+//             PARAMETER_TEAM_C åŠ è½½Cç»„å‚æ•°,
+//             PARAMETER_TEAM_D åŠ è½½Dç»„å‚æ•°,
+//             PARAMETER_TEAM_DEFAULT åŠ è½½é»˜è®¤å‚æ•°ã€‚
+//             ç±»å‹å®šä¹‰å‚è€ƒCameraDefine.hä¸­emSdkParameterTeamç±»å‹
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraLoadParameter(
     CameraHandle    hCamera,
@@ -1500,14 +1697,14 @@ MVSDK_API CameraSdkStatus  CameraLoadParameter(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetCurrentParameterGroup
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°Ñ¡ÔñµÄ²ÎÊı×é¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piTeam     Ö¸Õë£¬·µ»Øµ±Ç°Ñ¡ÔñµÄ²ÎÊı×é¡£·µ»ØÖµ
-//             ²Î¿¼CameraLoadParameterÖĞiTeam²ÎÊı¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetCurrentParameterGroup
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰é€‰æ‹©çš„å‚æ•°ç»„ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piTeam     æŒ‡é’ˆï¼Œè¿”å›å½“å‰é€‰æ‹©çš„å‚æ•°ç»„ã€‚è¿”å›å€¼
+//             å‚è€ƒCameraLoadParameterä¸­iTeamå‚æ•°ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetCurrentParameterGroup(
     CameraHandle    hCamera,
@@ -1515,19 +1712,19 @@ MVSDK_API CameraSdkStatus  CameraGetCurrentParameterGroup(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetTransPackLen
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»ú´«ÊäÍ¼ÏñÊı¾İµÄ·Ö°ü´óĞ¡¡£
-//        Ä¿Ç°µÄSDK°æ±¾ÖĞ£¬¸Ã½Ó¿Ú½ö¶ÔGIGE½Ó¿ÚÏà»úÓĞĞ§£¬
-//        ÓÃÀ´¿ØÖÆÍøÂç´«ÊäµÄ·Ö°ü´óĞ¡¡£¶ÔÓÚÖ§³Ö¾ŞÖ¡µÄÍø¿¨£¬
-//        ÎÒÃÇ½¨ÒéÑ¡Ôñ8KµÄ·Ö°ü´óĞ¡£¬¿ÉÒÔÓĞĞ§µÄ½µµÍ´«Êä
-//        ËùÕ¼ÓÃµÄCPU´¦ÀíÊ±¼ä¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iPackSel   ·Ö°ü³¤¶ÈÑ¡ÔñµÄË÷ÒıºÅ¡£·Ö°ü³¤¶È¿ÉÓÉ
-//             »ñµÃÏà»úÊôĞÔ½á¹¹ÌåÖĞpPackLenDesc³ÉÔ±±íÊö£¬
-//             iPackLenDesc³ÉÔ±Ôò±íÊ¾×î´ó¿ÉÑ¡µÄ·Ö°üÄ£Ê½¸öÊı¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetTransPackLen
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºä¼ è¾“å›¾åƒæ•°æ®çš„åˆ†åŒ…å¤§å°ã€‚
+//        ç›®å‰çš„SDKç‰ˆæœ¬ä¸­ï¼Œè¯¥æ¥å£ä»…å¯¹GIGEæ¥å£ç›¸æœºæœ‰æ•ˆï¼Œ
+//        ç”¨æ¥æ§åˆ¶ç½‘ç»œä¼ è¾“çš„åˆ†åŒ…å¤§å°ã€‚å¯¹äºæ”¯æŒå·¨å¸§çš„ç½‘å¡ï¼Œ
+//        æˆ‘ä»¬å»ºè®®é€‰æ‹©8Kçš„åˆ†åŒ…å¤§å°ï¼Œå¯ä»¥æœ‰æ•ˆçš„é™ä½ä¼ è¾“
+//        æ‰€å ç”¨çš„CPUå¤„ç†æ—¶é—´ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iPackSel   åˆ†åŒ…é•¿åº¦é€‰æ‹©çš„ç´¢å¼•å·ã€‚åˆ†åŒ…é•¿åº¦å¯ç”±
+//             è·å¾—ç›¸æœºå±æ€§ç»“æ„ä½“ä¸­pPackLenDescæˆå‘˜è¡¨è¿°ï¼Œ
+//             iPackLenDescæˆå‘˜åˆ™è¡¨ç¤ºæœ€å¤§å¯é€‰çš„åˆ†åŒ…æ¨¡å¼ä¸ªæ•°ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetTransPackLen(
     CameraHandle    hCamera,
@@ -1535,15 +1732,15 @@ MVSDK_API CameraSdkStatus  CameraSetTransPackLen(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetTransPackLen
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµ±Ç°´«Êä·Ö°ü´óĞ¡µÄÑ¡ÔñË÷ÒıºÅ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piPackSel  Ö¸Õë£¬·µ»Øµ±Ç°Ñ¡ÔñµÄ·Ö°ü´óĞ¡Ë÷ÒıºÅ¡£
-//             ²Î¼ûCameraSetTransPackLenÖĞiPackSelµÄ
-//             ËµÃ÷¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetTransPackLen
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºå½“å‰ä¼ è¾“åˆ†åŒ…å¤§å°çš„é€‰æ‹©ç´¢å¼•å·ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piPackSel  æŒ‡é’ˆï¼Œè¿”å›å½“å‰é€‰æ‹©çš„åˆ†åŒ…å¤§å°ç´¢å¼•å·ã€‚
+//             å‚è§CameraSetTransPackLenä¸­iPackSelçš„
+//             è¯´æ˜ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetTransPackLen(
     CameraHandle    hCamera,
@@ -1551,14 +1748,14 @@ MVSDK_API CameraSdkStatus  CameraGetTransPackLen(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraIsAeWinVisible
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹â²Î¿¼´°¿ÚµÄÏÔÊ¾×´Ì¬¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbIsVisible  Ö¸Õë£¬·µ»ØTRUE£¬Ôò±íÊ¾µ±Ç°´°¿Ú»á
-//               ±»µş¼ÓÔÚÍ¼ÏñÄÚÈİÉÏ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraIsAeWinVisible
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰å‚è€ƒçª—å£çš„æ˜¾ç¤ºçŠ¶æ€ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbIsVisible  æŒ‡é’ˆï¼Œè¿”å›TRUEï¼Œåˆ™è¡¨ç¤ºå½“å‰çª—å£ä¼š
+//               è¢«å åŠ åœ¨å›¾åƒå†…å®¹ä¸Šã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraIsAeWinVisible(
     CameraHandle    hCamera,
@@ -1566,15 +1763,15 @@ MVSDK_API CameraSdkStatus  CameraIsAeWinVisible(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeWinVisible
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¯ÆØ¹â²Î¿¼´°¿ÚµÄÏÔÊ¾×´Ì¬¡£µ±ÉèÖÃ´°¿Ú×´Ì¬
-//        ÎªÏÔÊ¾£¬µ÷ÓÃCameraImageOverlayºó£¬ÄÜ¹»½«´°¿ÚÎ»ÖÃ
-//        ÒÔ¾ØĞÎµÄ·½Ê½µş¼ÓÔÚÍ¼ÏñÉÏ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bIsVisible  TRUE£¬ÉèÖÃÎªÏÔÊ¾£»FALSE£¬²»ÏÔÊ¾¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAeWinVisible
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªåŠ¨æ›å…‰å‚è€ƒçª—å£çš„æ˜¾ç¤ºçŠ¶æ€ã€‚å½“è®¾ç½®çª—å£çŠ¶æ€
+//        ä¸ºæ˜¾ç¤ºï¼Œè°ƒç”¨CameraImageOverlayåï¼Œèƒ½å¤Ÿå°†çª—å£ä½ç½®
+//        ä»¥çŸ©å½¢çš„æ–¹å¼å åŠ åœ¨å›¾åƒä¸Šã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bIsVisible  TRUEï¼Œè®¾ç½®ä¸ºæ˜¾ç¤ºï¼›FALSEï¼Œä¸æ˜¾ç¤ºã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAeWinVisible(
     CameraHandle    hCamera,
@@ -1582,16 +1779,16 @@ MVSDK_API CameraSdkStatus  CameraSetAeWinVisible(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAeWindow
-// ¹¦ÄÜÃèÊö : »ñµÃ×Ô¶¯ÆØ¹â²Î¿¼´°¿ÚµÄÎ»ÖÃ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piHOff     Ö¸Õë£¬·µ»Ø´°¿ÚÎ»ÖÃ×óÉÏ½Çºá×ø±êÖµ¡£
-//            piVOff     Ö¸Õë£¬·µ»Ø´°¿ÚÎ»ÖÃ×óÉÏ½Ç×İ×ø±êÖµ¡£
-//            piWidth    Ö¸Õë£¬·µ»Ø´°¿ÚµÄ¿í¶È¡£
-//            piHeight   Ö¸Õë£¬·µ»Ø´°¿ÚµÄ¸ß¶È¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAeWindow
+// åŠŸèƒ½æè¿° : è·å¾—è‡ªåŠ¨æ›å…‰å‚è€ƒçª—å£çš„ä½ç½®ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piHOff     æŒ‡é’ˆï¼Œè¿”å›çª—å£ä½ç½®å·¦ä¸Šè§’æ¨ªåæ ‡å€¼ã€‚
+//            piVOff     æŒ‡é’ˆï¼Œè¿”å›çª—å£ä½ç½®å·¦ä¸Šè§’çºµåæ ‡å€¼ã€‚
+//            piWidth    æŒ‡é’ˆï¼Œè¿”å›çª—å£çš„å®½åº¦ã€‚
+//            piHeight   æŒ‡é’ˆï¼Œè¿”å›çª—å£çš„é«˜åº¦ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetAeWindow(
     CameraHandle    hCamera,
@@ -1602,21 +1799,21 @@ MVSDK_API CameraSdkStatus  CameraGetAeWindow(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeWindow
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¯ÆØ¹âµÄ²Î¿¼´°¿Ú¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iHOff    ´°¿Ú×óÉÏ½ÇµÄºá×ø±ê
-//            iVOff      ´°¿Ú×óÉÏ½ÇµÄ×İ×ø±ê
-//            iWidth     ´°¿ÚµÄ¿í¶È
-//            iHeight    ´°¿ÚµÄ¸ß¶È
-//        Èç¹ûiHOff¡¢iVOff¡¢iWidth¡¢iHeightÈ«²¿Îª0£¬Ôò
-//        ´°¿ÚÉèÖÃÎªÃ¿¸ö·Ö±æÂÊÏÂµÄ¾ÓÖĞ1/2´óĞ¡¡£¿ÉÒÔËæ×Å
-//        ·Ö±æÂÊµÄ±ä»¯¶ø¸úËæ±ä»¯£»Èç¹ûiHOff¡¢iVOff¡¢iWidth¡¢iHeight
-//        Ëù¾ö¶¨µÄ´°¿ÚÎ»ÖÃ·¶Î§³¬³öÁËµ±Ç°·Ö±æÂÊ·¶Î§ÄÚ£¬
-//          Ôò×Ô¶¯Ê¹ÓÃ¾ÓÖĞ1/2´óĞ¡´°¿Ú¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetAeWindow
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªåŠ¨æ›å…‰çš„å‚è€ƒçª—å£ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iHOff    çª—å£å·¦ä¸Šè§’çš„æ¨ªåæ ‡
+//            iVOff      çª—å£å·¦ä¸Šè§’çš„çºµåæ ‡
+//            iWidth     çª—å£çš„å®½åº¦
+//            iHeight    çª—å£çš„é«˜åº¦
+//        å¦‚æœiHOffã€iVOffã€iWidthã€iHeightå…¨éƒ¨ä¸º0ï¼Œåˆ™
+//        çª—å£è®¾ç½®ä¸ºæ¯ä¸ªåˆ†è¾¨ç‡ä¸‹çš„å±…ä¸­1/2å¤§å°ã€‚å¯ä»¥éšç€
+//        åˆ†è¾¨ç‡çš„å˜åŒ–è€Œè·Ÿéšå˜åŒ–ï¼›å¦‚æœiHOffã€iVOffã€iWidthã€iHeight
+//        æ‰€å†³å®šçš„çª—å£ä½ç½®èŒƒå›´è¶…å‡ºäº†å½“å‰åˆ†è¾¨ç‡èŒƒå›´å†…ï¼Œ
+//          åˆ™è‡ªåŠ¨ä½¿ç”¨å±…ä¸­1/2å¤§å°çª—å£ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAeWindow(
     CameraHandle    hCamera,
@@ -1627,14 +1824,14 @@ MVSDK_API CameraSdkStatus  CameraSetAeWindow(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetMirror
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼Ïñ¾µÏñ²Ù×÷¡£¾µÏñ²Ù×÷·ÖÎªË®Æ½ºÍ´¹Ö±Á½¸ö·½Ïò¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iDir     ±íÊ¾¾µÏñµÄ·½Ïò¡£0£¬±íÊ¾Ë®Æ½·½Ïò£»1£¬±íÊ¾´¹Ö±·½Ïò¡£
-//            bEnable  TRUE£¬Ê¹ÄÜ¾µÏñ;FALSE£¬½ûÖ¹¾µÏñ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetMirror
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒé•œåƒæ“ä½œã€‚é•œåƒæ“ä½œåˆ†ä¸ºæ°´å¹³å’Œå‚ç›´ä¸¤ä¸ªæ–¹å‘ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iDir     è¡¨ç¤ºé•œåƒçš„æ–¹å‘ã€‚0ï¼Œè¡¨ç¤ºæ°´å¹³æ–¹å‘ï¼›1ï¼Œè¡¨ç¤ºå‚ç›´æ–¹å‘ã€‚
+//            bEnable  TRUEï¼Œä½¿èƒ½é•œåƒ;FALSEï¼Œç¦æ­¢é•œåƒ
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetMirror(
     CameraHandle    hCamera,
@@ -1643,16 +1840,16 @@ MVSDK_API CameraSdkStatus  CameraSetMirror(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetMirror
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼ÏñµÄ¾µÏñ×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iDir     ±íÊ¾Òª»ñµÃµÄ¾µÏñ·½Ïò¡£
-//             0£¬±íÊ¾Ë®Æ½·½Ïò£»1£¬±íÊ¾´¹Ö±·½Ïò¡£
-//            pbEnable   Ö¸Õë£¬·µ»ØTRUE£¬Ôò±íÊ¾iDirËùÖ¸µÄ·½Ïò
-//             ¾µÏñ±»Ê¹ÄÜ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetMirror
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒçš„é•œåƒçŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iDir     è¡¨ç¤ºè¦è·å¾—çš„é•œåƒæ–¹å‘ã€‚
+//             0ï¼Œè¡¨ç¤ºæ°´å¹³æ–¹å‘ï¼›1ï¼Œè¡¨ç¤ºå‚ç›´æ–¹å‘ã€‚
+//            pbEnable   æŒ‡é’ˆï¼Œè¿”å›TRUEï¼Œåˆ™è¡¨ç¤ºiDiræ‰€æŒ‡çš„æ–¹å‘
+//             é•œåƒè¢«ä½¿èƒ½ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetMirror(
     CameraHandle    hCamera,
@@ -1660,17 +1857,87 @@ MVSDK_API CameraSdkStatus  CameraGetMirror(
     BOOL*           pbEnable
 );
 
+/// @ingroup API_MIRROR
+/// \~chinese
+/// \brief è®¾ç½®ç¡¬ä»¶é•œåƒã€‚åˆ†ä¸ºæ°´å¹³å’Œå‚ç›´ä¸¤ä¸ªæ–¹å‘ã€‚ï¼ˆä»…éƒ¨åˆ†ç½‘å£ã€U3ç›¸æœºæ”¯æŒæ­¤åŠŸèƒ½ï¼‰
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iDir     è¡¨ç¤ºé•œåƒçš„æ–¹å‘ã€‚0ï¼Œè¡¨ç¤ºæ°´å¹³æ–¹å‘ï¼›1ï¼Œè¡¨ç¤ºå‚ç›´æ–¹å‘ã€‚
+/// \param [in] bEnable  TRUEï¼Œä½¿èƒ½é•œåƒ;FALSEï¼Œç¦æ­¢é•œåƒ
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set up the hardware mirror. Divided into two directions, horizontal and vertical. (Only some GigE and U3 cameras support this feature)
+/// \param [in] hCamera Camera handle.
+/// \param [in] iDir Indicates the direction of the mirror. 0 means horizontal direction; 1 means vertical direction.
+/// \param [in] bEnable TRUE to enable mirroring; FALSE to disable mirroring
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetHardwareMirror(
+	CameraHandle    hCamera, 
+	int             iDir, 
+	BOOL            bEnable
+	);
+
+/// @ingroup API_MIRROR
+/// \~chinese
+/// \brief è·å–è®¾ç½®çš„ç¡¬ä»¶é•œåƒçŠ¶æ€ã€‚
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iDir     è¡¨ç¤ºè¦è·å¾—çš„é•œåƒæ–¹å‘ã€‚0ï¼Œè¡¨ç¤ºæ°´å¹³æ–¹å‘ï¼›1ï¼Œè¡¨ç¤ºå‚ç›´æ–¹å‘ã€‚
+/// \param [out] pbEnable   æŒ‡é’ˆï¼Œè¿”å›TRUEï¼Œåˆ™è¡¨ç¤ºiDiræ‰€æŒ‡çš„æ–¹å‘é•œåƒè¢«ä½¿èƒ½ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the hardware mirrored state of the image.
+/// \param [in] hCamera Camera handle.
+/// \param [in] iDir Indicates the mirroring direction to be obtained. 0 means horizontal direction; 1 means vertical direction.
+/// \param [out] pbEnable Returns TRUE, indicating that the direction mirror image of iDir is enabled.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetHardwareMirror(
+	CameraHandle    hCamera, 
+	int             iDir, 
+	BOOL*           pbEnable
+	);
+
+/// @ingroup API_MIRROR
+/// \~chinese
+/// \brief è®¾ç½®å›¾åƒæ—‹è½¬æ“ä½œ
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iRot    è¡¨ç¤ºæ—‹è½¬çš„è§’åº¦ï¼ˆé€†æ—¶é’ˆæ–¹å‘ï¼‰ï¼ˆ0ï¼šä¸æ—‹è½¬ 1:90åº¦ 2:180åº¦ 3:270åº¦ï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set image rotation operation
+/// \param [in] hCamera Camera handle.
+/// \param [in] iRot rotation angle (counterclockwise) (0: no rotation 1:90 degrees 2:180 degrees 3:270 degrees)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetRotate(
+	CameraHandle    hCamera,
+	int             iRot
+	);
+
+/// @ingroup API_MIRROR
+/// \~chinese
+/// \brief è·å¾—å›¾åƒçš„æ—‹è½¬çŠ¶æ€ã€‚
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] iRot     è¡¨ç¤ºè¦è·å¾—çš„æ—‹è½¬æ–¹å‘ã€‚ï¼ˆé€†æ—¶é’ˆæ–¹å‘ï¼‰ï¼ˆ0ï¼šä¸æ—‹è½¬ 1:90åº¦ 2:180åº¦ 3:270åº¦ï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the rotation state of the image.
+/// \param [in] hCamera Camera handle.
+/// \param [out] iRot Indicates the direction of rotation to get. (Counterclockwise) (0: Do not rotate 1:90 degree 2: 180 degree 3: 270 degree)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetRotate(
+	CameraHandle    hCamera,
+	int*            iRot
+	);
+
 /******************************************************/
-// º¯ÊıÃû   : CameraGetWbWindow
-// ¹¦ÄÜÃèÊö : »ñµÃ°×Æ½ºâ²Î¿¼´°¿ÚµÄÎ»ÖÃ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            PiHOff   Ö¸Õë£¬·µ»Ø²Î¿¼´°¿ÚµÄ×óÉÏ½Çºá×ø±ê ¡£
-//            PiVOff     Ö¸Õë£¬·µ»Ø²Î¿¼´°¿ÚµÄ×óÉÏ½Ç×İ×ø±ê ¡£
-//            PiWidth    Ö¸Õë£¬·µ»Ø²Î¿¼´°¿ÚµÄ¿í¶È¡£
-//            PiHeight   Ö¸Õë£¬·µ»Ø²Î¿¼´°¿ÚµÄ¸ß¶È¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetWbWindow
+// åŠŸèƒ½æè¿° : è·å¾—ç™½å¹³è¡¡å‚è€ƒçª—å£çš„ä½ç½®ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            PiHOff   æŒ‡é’ˆï¼Œè¿”å›å‚è€ƒçª—å£çš„å·¦ä¸Šè§’æ¨ªåæ ‡ ã€‚
+//            PiVOff     æŒ‡é’ˆï¼Œè¿”å›å‚è€ƒçª—å£çš„å·¦ä¸Šè§’çºµåæ ‡ ã€‚
+//            PiWidth    æŒ‡é’ˆï¼Œè¿”å›å‚è€ƒçª—å£çš„å®½åº¦ã€‚
+//            PiHeight   æŒ‡é’ˆï¼Œè¿”å›å‚è€ƒçª—å£çš„é«˜åº¦ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetWbWindow(
     CameraHandle    hCamera,
@@ -1681,16 +1948,16 @@ MVSDK_API CameraSdkStatus  CameraGetWbWindow(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetWbWindow
-// ¹¦ÄÜÃèÊö : ÉèÖÃ°×Æ½ºâ²Î¿¼´°¿ÚµÄÎ»ÖÃ¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iHOff   ²Î¿¼´°¿ÚµÄ×óÉÏ½Çºá×ø±ê¡£
-//            iVOff     ²Î¿¼´°¿ÚµÄ×óÉÏ½Ç×İ×ø±ê¡£
-//            iWidth    ²Î¿¼´°¿ÚµÄ¿í¶È¡£
-//            iHeight   ²Î¿¼´°¿ÚµÄ¸ß¶È¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetWbWindow
+// åŠŸèƒ½æè¿° : è®¾ç½®ç™½å¹³è¡¡å‚è€ƒçª—å£çš„ä½ç½®ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iHOff   å‚è€ƒçª—å£çš„å·¦ä¸Šè§’æ¨ªåæ ‡ã€‚
+//            iVOff     å‚è€ƒçª—å£çš„å·¦ä¸Šè§’çºµåæ ‡ã€‚
+//            iWidth    å‚è€ƒçª—å£çš„å®½åº¦ã€‚
+//            iHeight   å‚è€ƒçª—å£çš„é«˜åº¦ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetWbWindow(
     CameraHandle    hCamera,
@@ -1701,13 +1968,13 @@ MVSDK_API CameraSdkStatus  CameraSetWbWindow(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraIsWbWinVisible
-// ¹¦ÄÜÃèÊö : »ñµÃ°×Æ½ºâ´°¿ÚµÄÏÔÊ¾×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbShow   Ö¸Õë£¬·µ»ØTRUE£¬Ôò±íÊ¾´°¿ÚÊÇ¿É¼ûµÄ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraIsWbWinVisible
+// åŠŸèƒ½æè¿° : è·å¾—ç™½å¹³è¡¡çª—å£çš„æ˜¾ç¤ºçŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbShow   æŒ‡é’ˆï¼Œè¿”å›TRUEï¼Œåˆ™è¡¨ç¤ºçª—å£æ˜¯å¯è§çš„ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraIsWbWinVisible(
     CameraHandle    hCamera,
@@ -1715,15 +1982,15 @@ MVSDK_API CameraSdkStatus  CameraIsWbWinVisible(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetWbWinVisible
-// ¹¦ÄÜÃèÊö : ÉèÖÃ°×Æ½ºâ´°¿ÚµÄÏÔÊ¾×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bShow      TRUE£¬Ôò±íÊ¾ÉèÖÃÎª¿É¼û¡£ÔÚµ÷ÓÃ
-//             CameraImageOverlayºó£¬Í¼ÏñÄÚÈİÉÏ½«ÒÔ¾ØĞÎ
-//             µÄ·½Ê½µş¼Ó°×Æ½ºâ²Î¿¼´°¿ÚµÄÎ»ÖÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetWbWinVisible
+// åŠŸèƒ½æè¿° : è®¾ç½®ç™½å¹³è¡¡çª—å£çš„æ˜¾ç¤ºçŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bShow      TRUEï¼Œåˆ™è¡¨ç¤ºè®¾ç½®ä¸ºå¯è§ã€‚åœ¨è°ƒç”¨
+//             CameraImageOverlayåï¼Œå›¾åƒå†…å®¹ä¸Šå°†ä»¥çŸ©å½¢
+//             çš„æ–¹å¼å åŠ ç™½å¹³è¡¡å‚è€ƒçª—å£çš„ä½ç½®ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetWbWinVisible(
     CameraHandle    hCamera,
@@ -1731,17 +1998,17 @@ MVSDK_API CameraSdkStatus  CameraSetWbWinVisible(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraImageOverlay
-// ¹¦ÄÜÃèÊö : ½«ÊäÈëµÄÍ¼ÏñÊı¾İÉÏµş¼ÓÊ®×ÖÏß¡¢°×Æ½ºâ²Î¿¼´°¿Ú¡¢
-//        ×Ô¶¯ÆØ¹â²Î¿¼´°¿ÚµÈÍ¼ĞÎ¡£Ö»ÓĞÉèÖÃÎª¿É¼û×´Ì¬µÄ
-//        Ê®×ÖÏßºÍ²Î¿¼´°¿Ú²ÅÄÜ±»µş¼ÓÉÏ¡£
-//        ×¢Òâ£¬¸Ãº¯ÊıµÄÊäÈëÍ¼Ïñ±ØĞëÊÇRGB¸ñÊ½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pRgbBuffer Í¼ÏñÊı¾İ»º³åÇø¡£
-//            pFrInfo    Í¼ÏñµÄÖ¡Í·ĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraImageOverlay
+// åŠŸèƒ½æè¿° : å°†è¾“å…¥çš„å›¾åƒæ•°æ®ä¸Šå åŠ åå­—çº¿ã€ç™½å¹³è¡¡å‚è€ƒçª—å£ã€
+//        è‡ªåŠ¨æ›å…‰å‚è€ƒçª—å£ç­‰å›¾å½¢ã€‚åªæœ‰è®¾ç½®ä¸ºå¯è§çŠ¶æ€çš„
+//        åå­—çº¿å’Œå‚è€ƒçª—å£æ‰èƒ½è¢«å åŠ ä¸Šã€‚
+//        æ³¨æ„ï¼Œè¯¥å‡½æ•°çš„è¾“å…¥å›¾åƒå¿…é¡»æ˜¯RGBæ ¼å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pRgbBuffer å›¾åƒæ•°æ®ç¼“å†²åŒºã€‚
+//            pFrInfo    å›¾åƒçš„å¸§å¤´ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraImageOverlay(
     CameraHandle    hCamera,
@@ -1750,19 +2017,19 @@ MVSDK_API CameraSdkStatus  CameraImageOverlay(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetCrossLine
-// ¹¦ÄÜÃèÊö : ÉèÖÃÖ¸¶¨Ê®×ÖÏßµÄ²ÎÊı¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iLine    ±íÊ¾ÒªÉèÖÃµÚ¼¸ÌõÊ®×ÖÏßµÄ×´Ì¬¡£·¶Î§Îª[0,8]£¬¹²9Ìõ¡£
-//            x          Ê®×ÖÏßÖĞĞÄÎ»ÖÃµÄºá×ø±êÖµ¡£
-//            y      Ê®×ÖÏßÖĞĞÄÎ»ÖÃµÄ×İ×ø±êÖµ¡£
-//            uColor     Ê®×ÖÏßµÄÑÕÉ«£¬¸ñÊ½Îª(R|(G<<8)|(B<<16))
-//            bVisible   Ê®×ÖÏßµÄÏÔÊ¾×´Ì¬¡£TRUE£¬±íÊ¾ÏÔÊ¾¡£
-//             Ö»ÓĞÉèÖÃÎªÏÔÊ¾×´Ì¬µÄÊ®×ÖÏß£¬ÔÚµ÷ÓÃ
-//             CameraImageOverlayºó²Å»á±»µş¼Óµ½Í¼ÏñÉÏ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetCrossLine
+// åŠŸèƒ½æè¿° : è®¾ç½®æŒ‡å®šåå­—çº¿çš„å‚æ•°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iLine    è¡¨ç¤ºè¦è®¾ç½®ç¬¬å‡ æ¡åå­—çº¿çš„çŠ¶æ€ã€‚èŒƒå›´ä¸º[0,8]ï¼Œå…±9æ¡ã€‚
+//            x          åå­—çº¿ä¸­å¿ƒä½ç½®çš„æ¨ªåæ ‡å€¼ã€‚
+//            y      åå­—çº¿ä¸­å¿ƒä½ç½®çš„çºµåæ ‡å€¼ã€‚
+//            uColor     åå­—çº¿çš„é¢œè‰²ï¼Œæ ¼å¼ä¸º(R|(G<<8)|(B<<16))
+//            bVisible   åå­—çº¿çš„æ˜¾ç¤ºçŠ¶æ€ã€‚TRUEï¼Œè¡¨ç¤ºæ˜¾ç¤ºã€‚
+//             åªæœ‰è®¾ç½®ä¸ºæ˜¾ç¤ºçŠ¶æ€çš„åå­—çº¿ï¼Œåœ¨è°ƒç”¨
+//             CameraImageOverlayåæ‰ä¼šè¢«å åŠ åˆ°å›¾åƒä¸Šã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetCrossLine(
     CameraHandle    hCamera,
@@ -1774,17 +2041,17 @@ MVSDK_API CameraSdkStatus  CameraSetCrossLine(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetCrossLine
-// ¹¦ÄÜÃèÊö : »ñµÃÖ¸¶¨Ê®×ÖÏßµÄ×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iLine    ±íÊ¾Òª»ñÈ¡µÄµÚ¼¸ÌõÊ®×ÖÏßµÄ×´Ì¬¡£·¶Î§Îª[0,8]£¬¹²9Ìõ¡£
-//            px     Ö¸Õë£¬·µ»Ø¸ÃÊ®×ÖÏßÖĞĞÄÎ»ÖÃµÄºá×ø±ê¡£
-//            py     Ö¸Õë£¬·µ»Ø¸ÃÊ®×ÖÏßÖĞĞÄÎ»ÖÃµÄºá×ø±ê¡£
-//            pcolor     Ö¸Õë£¬·µ»Ø¸ÃÊ®×ÖÏßµÄÑÕÉ«£¬¸ñÊ½Îª(R|(G<<8)|(B<<16))¡£
-//            pbVisible  Ö¸Õë£¬·µ»ØTRUE£¬Ôò±íÊ¾¸ÃÊ®×ÖÏß¿É¼û¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetCrossLine
+// åŠŸèƒ½æè¿° : è·å¾—æŒ‡å®šåå­—çº¿çš„çŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iLine    è¡¨ç¤ºè¦è·å–çš„ç¬¬å‡ æ¡åå­—çº¿çš„çŠ¶æ€ã€‚èŒƒå›´ä¸º[0,8]ï¼Œå…±9æ¡ã€‚
+//            px     æŒ‡é’ˆï¼Œè¿”å›è¯¥åå­—çº¿ä¸­å¿ƒä½ç½®çš„æ¨ªåæ ‡ã€‚
+//            py     æŒ‡é’ˆï¼Œè¿”å›è¯¥åå­—çº¿ä¸­å¿ƒä½ç½®çš„æ¨ªåæ ‡ã€‚
+//            pcolor     æŒ‡é’ˆï¼Œè¿”å›è¯¥åå­—çº¿çš„é¢œè‰²ï¼Œæ ¼å¼ä¸º(R|(G<<8)|(B<<16))ã€‚
+//            pbVisible  æŒ‡é’ˆï¼Œè¿”å›TRUEï¼Œåˆ™è¡¨ç¤ºè¯¥åå­—çº¿å¯è§ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetCrossLine(
     CameraHandle    hCamera,
@@ -1796,16 +2063,16 @@ MVSDK_API CameraSdkStatus  CameraGetCrossLine(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetCapability
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµÄÌØĞÔÃèÊö½á¹¹Ìå¡£¸Ã½á¹¹ÌåÖĞ°üº¬ÁËÏà»ú
-//        ¿ÉÉèÖÃµÄ¸÷ÖÖ²ÎÊıµÄ·¶Î§ĞÅÏ¢¡£¾ö¶¨ÁËÏà¹Øº¯ÊıµÄ²ÎÊı
-//        ·µ»Ø£¬Ò²¿ÉÓÃÓÚ¶¯Ì¬´´½¨Ïà»úµÄÅäÖÃ½çÃæ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pCameraInfo Ö¸Õë£¬·µ»Ø¸ÃÏà»úÌØĞÔÃèÊöµÄ½á¹¹Ìå¡£
-//                        tSdkCameraCapbilityÔÚCameraDefine.hÖĞ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetCapability
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºçš„ç‰¹æ€§æè¿°ç»“æ„ä½“ã€‚è¯¥ç»“æ„ä½“ä¸­åŒ…å«äº†ç›¸æœº
+//        å¯è®¾ç½®çš„å„ç§å‚æ•°çš„èŒƒå›´ä¿¡æ¯ã€‚å†³å®šäº†ç›¸å…³å‡½æ•°çš„å‚æ•°
+//        è¿”å›ï¼Œä¹Ÿå¯ç”¨äºåŠ¨æ€åˆ›å»ºç›¸æœºçš„é…ç½®ç•Œé¢ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pCameraInfo æŒ‡é’ˆï¼Œè¿”å›è¯¥ç›¸æœºç‰¹æ€§æè¿°çš„ç»“æ„ä½“ã€‚
+//                        tSdkCameraCapbilityåœ¨CameraDefine.hä¸­å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetCapability(
     CameraHandle            hCamera,
@@ -1813,16 +2080,16 @@ MVSDK_API CameraSdkStatus  CameraGetCapability(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetCapabilityEx
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµÄÌØĞÔÃèÊö½á¹¹Ìå¡£¸Ã½á¹¹ÌåÖĞ°üº¬ÁËÏà»ú
-//        ¿ÉÉèÖÃµÄ¸÷ÖÖ²ÎÊıµÄ·¶Î§ĞÅÏ¢¡£¾ö¶¨ÁËÏà¹Øº¯ÊıµÄ²ÎÊı
-//        ·µ»Ø£¬Ò²¿ÉÓÃÓÚ¶¯Ì¬´´½¨Ïà»úµÄÅäÖÃ½çÃæ¡£
-// ²ÎÊı     : sDeviceModel    Ïà»úµÄĞÍºÅ£¬ÓÉÉ¨ÃèÁĞ±íÖĞ»ñÈ¡
-//            pCameraInfo Ö¸Õë£¬·µ»Ø¸ÃÏà»úÌØĞÔÃèÊöµÄ½á¹¹Ìå¡£
-//                        tSdkCameraCapbilityÔÚCameraDefine.hÖĞ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetCapabilityEx
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºçš„ç‰¹æ€§æè¿°ç»“æ„ä½“ã€‚è¯¥ç»“æ„ä½“ä¸­åŒ…å«äº†ç›¸æœº
+//        å¯è®¾ç½®çš„å„ç§å‚æ•°çš„èŒƒå›´ä¿¡æ¯ã€‚å†³å®šäº†ç›¸å…³å‡½æ•°çš„å‚æ•°
+//        è¿”å›ï¼Œä¹Ÿå¯ç”¨äºåŠ¨æ€åˆ›å»ºç›¸æœºçš„é…ç½®ç•Œé¢ã€‚
+// å‚æ•°     : sDeviceModel    ç›¸æœºçš„å‹å·ï¼Œç”±æ‰«æåˆ—è¡¨ä¸­è·å–
+//            pCameraInfo æŒ‡é’ˆï¼Œè¿”å›è¯¥ç›¸æœºç‰¹æ€§æè¿°çš„ç»“æ„ä½“ã€‚
+//                        tSdkCameraCapbilityåœ¨CameraDefine.hä¸­å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetCapabilityEx(
     char*                   sDeviceModel,
@@ -1832,17 +2099,17 @@ MVSDK_API CameraSdkStatus  CameraGetCapabilityEx(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraWriteSN
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úµÄĞòÁĞºÅ¡£ÎÒ¹«Ë¾Ïà»úĞòÁĞºÅ·ÖÎª3¼¶¡£
-//        0¼¶µÄÊÇÎÒ¹«Ë¾×Ô¶¨ÒåµÄÏà»úĞòÁĞºÅ£¬³ö³§Ê±ÒÑ¾­
-//        Éè¶¨ºÃ£¬1¼¶ºÍ2¼¶Áô¸ø¶ş´Î¿ª·¢Ê¹ÓÃ¡£Ã¿¼¶ĞòÁĞ
-//        ºÅ³¤¶È¶¼ÊÇ32¸ö×Ö½Ú¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbySN    ĞòÁĞºÅµÄ»º³åÇø¡£
-//            iLevel   ÒªÉè¶¨µÄĞòÁĞºÅ¼¶±ğ£¬Ö»ÄÜÊÇ1»òÕß2¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraWriteSN
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºçš„åºåˆ—å·ã€‚æˆ‘å…¬å¸ç›¸æœºåºåˆ—å·åˆ†ä¸º3çº§ã€‚
+//        0çº§çš„æ˜¯æˆ‘å…¬å¸è‡ªå®šä¹‰çš„ç›¸æœºåºåˆ—å·ï¼Œå‡ºå‚æ—¶å·²ç»
+//        è®¾å®šå¥½ï¼Œ1çº§å’Œ2çº§ç•™ç»™äºŒæ¬¡å¼€å‘ä½¿ç”¨ã€‚æ¯çº§åºåˆ—
+//        å·é•¿åº¦éƒ½æ˜¯32ä¸ªå­—èŠ‚ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbySN    åºåˆ—å·çš„ç¼“å†²åŒºã€‚
+//            iLevel   è¦è®¾å®šçš„åºåˆ—å·çº§åˆ«ï¼Œåªèƒ½æ˜¯1æˆ–è€…2ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraWriteSN(
     CameraHandle    hCamera,
@@ -1851,15 +2118,15 @@ MVSDK_API CameraSdkStatus  CameraWriteSN(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraReadSN
-// ¹¦ÄÜÃèÊö : ¶ÁÈ¡Ïà»úÖ¸¶¨¼¶±ğµÄĞòÁĞºÅ¡£ĞòÁĞºÅµÄ¶¨ÒåÇë²Î¿¼
-//          CameraWriteSNº¯ÊıµÄ¹¦ÄÜÃèÊö²¿·Ö¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pbySN    ĞòÁĞºÅµÄ»º³åÇø¡£
-//            iLevel     Òª¶ÁÈ¡µÄĞòÁĞºÅ¼¶±ğ¡£Ö»ÄÜÊÇ1ºÍ2¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraReadSN
+// åŠŸèƒ½æè¿° : è¯»å–ç›¸æœºæŒ‡å®šçº§åˆ«çš„åºåˆ—å·ã€‚åºåˆ—å·çš„å®šä¹‰è¯·å‚è€ƒ
+//          CameraWriteSNå‡½æ•°çš„åŠŸèƒ½æè¿°éƒ¨åˆ†ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pbySN    åºåˆ—å·çš„ç¼“å†²åŒºã€‚
+//            iLevel     è¦è¯»å–çš„åºåˆ—å·çº§åˆ«ã€‚åªèƒ½æ˜¯1å’Œ2ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraReadSN(
     CameraHandle        hCamera,
@@ -1867,16 +2134,16 @@ MVSDK_API CameraSdkStatus  CameraReadSN(
     INT                 iLevel
 );
 /******************************************************/
-// º¯ÊıÃû   : CameraSetTriggerDelayTime
-// ¹¦ÄÜÃèÊö : ÉèÖÃÓ²¼ş´¥·¢Ä£Ê½ÏÂµÄ´¥·¢ÑÓÊ±Ê±¼ä£¬µ¥Î»Î¢Ãë¡£
-//        µ±Ó²´¥·¢ĞÅºÅÀ´ÁÙºó£¬¾­¹ıÖ¸¶¨µÄÑÓÊ±£¬ÔÙ¿ªÊ¼²É¼¯
-//        Í¼Ïñ¡£½ö²¿·ÖĞÍºÅµÄÏà»úÖ§³Ö¸Ã¹¦ÄÜ¡£¾ßÌåÇë²é¿´
-//        ²úÆ·ËµÃ÷Êé¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            uDelayTimeUs Ó²´¥·¢ÑÓÊ±¡£µ¥Î»Î¢Ãë¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetTriggerDelayTime
+// åŠŸèƒ½æè¿° : è®¾ç½®ç¡¬ä»¶è§¦å‘æ¨¡å¼ä¸‹çš„è§¦å‘å»¶æ—¶æ—¶é—´ï¼Œå•ä½å¾®ç§’ã€‚
+//        å½“ç¡¬è§¦å‘ä¿¡å·æ¥ä¸´åï¼Œç»è¿‡æŒ‡å®šçš„å»¶æ—¶ï¼Œå†å¼€å§‹é‡‡é›†
+//        å›¾åƒã€‚ä»…éƒ¨åˆ†å‹å·çš„ç›¸æœºæ”¯æŒè¯¥åŠŸèƒ½ã€‚å…·ä½“è¯·æŸ¥çœ‹
+//        äº§å“è¯´æ˜ä¹¦ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            uDelayTimeUs ç¡¬è§¦å‘å»¶æ—¶ã€‚å•ä½å¾®ç§’ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetTriggerDelayTime(
     CameraHandle    hCamera,
@@ -1884,13 +2151,13 @@ MVSDK_API CameraSdkStatus  CameraSetTriggerDelayTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetTriggerDelayTime
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°Éè¶¨µÄÓ²´¥·¢ÑÓÊ±Ê±¼ä¡£
-// ²ÎÊı     : hCamera     Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            puDelayTimeUs Ö¸Õë£¬·µ»ØÑÓÊ±Ê±¼ä£¬µ¥Î»Î¢Ãë¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetTriggerDelayTime
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰è®¾å®šçš„ç¡¬è§¦å‘å»¶æ—¶æ—¶é—´ã€‚
+// å‚æ•°     : hCamera     ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            puDelayTimeUs æŒ‡é’ˆï¼Œè¿”å›å»¶æ—¶æ—¶é—´ï¼Œå•ä½å¾®ç§’ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetTriggerDelayTime(
     CameraHandle    hCamera,
@@ -1898,14 +2165,43 @@ MVSDK_API CameraSdkStatus  CameraGetTriggerDelayTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetTriggerCount
-// ¹¦ÄÜÃèÊö : ÉèÖÃ´¥·¢Ä£Ê½ÏÂµÄ´¥·¢Ö¡Êı¡£¶ÔÈí¼ş´¥·¢ºÍÓ²¼ş´¥·¢
-//        Ä£Ê½¶¼ÓĞĞ§¡£Ä¬ÈÏÎª1Ö¡£¬¼´Ò»´Î´¥·¢ĞÅºÅ²É¼¯Ò»Ö¡Í¼Ïñ¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iCount    Ò»´Î´¥·¢²É¼¯µÄÖ¡Êı¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetTriggerPeriodTime
+// åŠŸèƒ½æè¿°	: ä¸€æ¬¡è§¦å‘å¤šå¸§æ—¶ï¼Œè®¾ç½®2å¸§ä¹‹é—´çš„é—´éš”æ—¶é—´ã€‚
+//           ä»…éƒ¨åˆ†å‹å·çš„ç›¸æœºæ”¯æŒè¯¥åŠŸèƒ½ã€‚
+// å‚æ•°	    : hCamera	   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//              time       é—´éš”æ—¶é—´ï¼ˆå¾®ç§’ï¼‰
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraSetTriggerPeriodTime(
+    CameraHandle hCamera,
+    UINT time
+);
+
+/******************************************************/
+// å‡½æ•°å 	: CameraGetTriggerPeriodTime
+// åŠŸèƒ½æè¿°	: è·å–å½“å‰è®¾ç½®çš„é—´éš”æ—¶é—´ã€‚
+// å‚æ•°	    : hCamera	   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//              time       é—´éš”æ—¶é—´ï¼ˆå¾®ç§’ï¼‰
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraGetTriggerPeriodTime(
+    CameraHandle hCamera,
+    UINT* time
+);
+
+/******************************************************/
+// å‡½æ•°å   : CameraSetTriggerCount
+// åŠŸèƒ½æè¿° : è®¾ç½®è§¦å‘æ¨¡å¼ä¸‹çš„è§¦å‘å¸§æ•°ã€‚å¯¹è½¯ä»¶è§¦å‘å’Œç¡¬ä»¶è§¦å‘
+//        æ¨¡å¼éƒ½æœ‰æ•ˆã€‚é»˜è®¤ä¸º1å¸§ï¼Œå³ä¸€æ¬¡è§¦å‘ä¿¡å·é‡‡é›†ä¸€å¸§å›¾åƒã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iCount    ä¸€æ¬¡è§¦å‘é‡‡é›†çš„å¸§æ•°ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetTriggerCount(
     CameraHandle    hCamera,
@@ -1913,13 +2209,13 @@ MVSDK_API CameraSdkStatus  CameraSetTriggerCount(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetTriggerCount
-// ¹¦ÄÜÃèÊö : »ñµÃÒ»´Î´¥·¢µÄÖ¡Êı¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
+// å‡½æ•°å   : CameraGetTriggerCount
+// åŠŸèƒ½æè¿° : è·å¾—ä¸€æ¬¡è§¦å‘çš„å¸§æ•°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
 //            INT* piCount
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetTriggerCount(
     CameraHandle    hCamera,
@@ -1927,30 +2223,30 @@ MVSDK_API CameraSdkStatus  CameraGetTriggerCount(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSoftTrigger
-// ¹¦ÄÜÃèÊö : Ö´ĞĞÒ»´ÎÈí´¥·¢¡£Ö´ĞĞºó£¬»á´¥·¢ÓÉCameraSetTriggerCount
-//          Ö¸¶¨µÄÖ¡Êı¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSoftTrigger
+// åŠŸèƒ½æè¿° : æ‰§è¡Œä¸€æ¬¡è½¯è§¦å‘ã€‚æ‰§è¡Œåï¼Œä¼šè§¦å‘ç”±CameraSetTriggerCount
+//          æŒ‡å®šçš„å¸§æ•°ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSoftTrigger(
     CameraHandle    hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetTriggerMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úµÄ´¥·¢Ä£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iModeSel   Ä£Ê½Ñ¡ÔñË÷ÒıºÅ¡£¿ÉÉè¶¨µÄÄ£Ê½ÓÉ
-//             CameraGetCapabilityº¯Êı»ñÈ¡¡£Çë²Î¿¼
-//               CameraDefine.hÖĞtSdkCameraCapbilityµÄ¶¨Òå¡£
-//             Ò»°ãÇé¿ö£¬0±íÊ¾Á¬Ğø²É¼¯Ä£Ê½£»1±íÊ¾
-//             Èí¼ş´¥·¢Ä£Ê½£»2±íÊ¾Ó²¼ş´¥·¢Ä£Ê½¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetTriggerMode
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºçš„è§¦å‘æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iModeSel   æ¨¡å¼é€‰æ‹©ç´¢å¼•å·ã€‚å¯è®¾å®šçš„æ¨¡å¼ç”±
+//             CameraGetCapabilityå‡½æ•°è·å–ã€‚è¯·å‚è€ƒ
+//               CameraDefine.hä¸­tSdkCameraCapbilityçš„å®šä¹‰ã€‚
+//             ä¸€èˆ¬æƒ…å†µï¼Œ0è¡¨ç¤ºè¿ç»­é‡‡é›†æ¨¡å¼ï¼›1è¡¨ç¤º
+//             è½¯ä»¶è§¦å‘æ¨¡å¼ï¼›2è¡¨ç¤ºç¡¬ä»¶è§¦å‘æ¨¡å¼ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetTriggerMode(
     CameraHandle    hCamera,
@@ -1958,13 +2254,13 @@ MVSDK_API CameraSdkStatus  CameraSetTriggerMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetTriggerMode
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»úµÄ´¥·¢Ä£Ê½¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piModeSel  Ö¸Õë£¬·µ»Øµ±Ç°Ñ¡ÔñµÄÏà»ú´¥·¢Ä£Ê½µÄË÷ÒıºÅ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetTriggerMode
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºçš„è§¦å‘æ¨¡å¼ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piModeSel  æŒ‡é’ˆï¼Œè¿”å›å½“å‰é€‰æ‹©çš„ç›¸æœºè§¦å‘æ¨¡å¼çš„ç´¢å¼•å·ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetTriggerMode(
     CameraHandle    hCamera,
@@ -1972,20 +2268,20 @@ MVSDK_API CameraSdkStatus  CameraGetTriggerMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetStrobeMode
-// ¹¦ÄÜÃèÊö	: ÉèÖÃIOÒı½Å¶Ë×ÓÉÏµÄSTROBEĞÅºÅ¡£¸ÃĞÅºÅ¿ÉÒÔ×öÉÁ¹âµÆ¿ØÖÆ£¬Ò²¿ÉÒÔ×öÍâ²¿»úĞµ¿ìÃÅ¿ØÖÆ¡£
-// ²ÎÊı	    : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iMode   µ±ÎªSTROBE_SYNC_WITH_TRIG_AUTO      ºÍ´¥·¢ĞÅºÅÍ¬²½£¬´¥·¢ºó£¬Ïà»ú½øĞĞÆØ¹âÊ±£¬×Ô¶¯Éú³ÉSTROBEĞÅºÅ¡£
-//                                                         ´ËÊ±£¬ÓĞĞ§¼«ĞÔ¿ÉÉèÖÃ(CameraSetStrobePolarity)¡£
-//                     µ±ÎªSTROBE_SYNC_WITH_TRIG_MANUALÊ±£¬ºÍ´¥·¢ĞÅºÅÍ¬²½£¬´¥·¢ºó£¬STROBEÑÓÊ±Ö¸¶¨µÄÊ±¼äºó(CameraSetStrobeDelayTime)£¬
-//                                                         ÔÙ³ÖĞøÖ¸¶¨Ê±¼äµÄÂö³å(CameraSetStrobePulseWidth)£¬
-//                                                         ÓĞĞ§¼«ĞÔ¿ÉÉèÖÃ(CameraSetStrobePolarity)¡£
-//                     µ±ÎªSTROBE_ALWAYS_HIGHÊ±£¬STROBEĞÅºÅºãÎª¸ß,ºöÂÔÆäËûÉèÖÃ
-//                     µ±ÎªSTROBE_ALWAYS_LOWÊ±£¬STROBEĞÅºÅºãÎªµÍ,ºöÂÔÆäËûÉèÖÃ
+// å‡½æ•°å 	: CameraSetStrobeMode
+// åŠŸèƒ½æè¿°	: è®¾ç½®IOå¼•è„šç«¯å­ä¸Šçš„STROBEä¿¡å·ã€‚è¯¥ä¿¡å·å¯ä»¥åšé—ªå…‰ç¯æ§åˆ¶ï¼Œä¹Ÿå¯ä»¥åšå¤–éƒ¨æœºæ¢°å¿«é—¨æ§åˆ¶ã€‚
+// å‚æ•°	    : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iMode   å½“ä¸ºSTROBE_SYNC_WITH_TRIG_AUTO      å’Œè§¦å‘ä¿¡å·åŒæ­¥ï¼Œè§¦å‘åï¼Œç›¸æœºè¿›è¡Œæ›å…‰æ—¶ï¼Œè‡ªåŠ¨ç”ŸæˆSTROBEä¿¡å·ã€‚
+//                                                         æ­¤æ—¶ï¼Œæœ‰æ•ˆææ€§å¯è®¾ç½®(CameraSetStrobePolarity)ã€‚
+//                     å½“ä¸ºSTROBE_SYNC_WITH_TRIG_MANUALæ—¶ï¼Œå’Œè§¦å‘ä¿¡å·åŒæ­¥ï¼Œè§¦å‘åï¼ŒSTROBEå»¶æ—¶æŒ‡å®šçš„æ—¶é—´å(CameraSetStrobeDelayTime)ï¼Œ
+//                                                         å†æŒç»­æŒ‡å®šæ—¶é—´çš„è„‰å†²(CameraSetStrobePulseWidth)ï¼Œ
+//                                                         æœ‰æ•ˆææ€§å¯è®¾ç½®(CameraSetStrobePolarity)ã€‚
+//                     å½“ä¸ºSTROBE_ALWAYS_HIGHæ—¶ï¼ŒSTROBEä¿¡å·æ’ä¸ºé«˜,å¿½ç•¥å…¶ä»–è®¾ç½®
+//                     å½“ä¸ºSTROBE_ALWAYS_LOWæ—¶ï¼ŒSTROBEä¿¡å·æ’ä¸ºä½,å¿½ç•¥å…¶ä»–è®¾ç½®
 //
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetStrobeMode(
     CameraHandle    hCamera,
@@ -1993,13 +2289,13 @@ MVSDK_API CameraSdkStatus   CameraSetStrobeMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetStrobeMode
-// ¹¦ÄÜÃèÊö	: »òÕßµ±Ç°STROBEĞÅºÅÉèÖÃµÄÄ£Ê½¡£
-// ²ÎÊı	    : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             piMode  Ö¸Õë£¬·µ»ØSTROBE_SYNC_WITH_TRIG_AUTO,STROBE_SYNC_WITH_TRIG_MANUAL¡¢STROBE_ALWAYS_HIGH»òÕßSTROBE_ALWAYS_LOW¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetStrobeMode
+// åŠŸèƒ½æè¿°	: æˆ–è€…å½“å‰STROBEä¿¡å·è®¾ç½®çš„æ¨¡å¼ã€‚
+// å‚æ•°	    : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             piMode  æŒ‡é’ˆï¼Œè¿”å›STROBE_SYNC_WITH_TRIG_AUTO,STROBE_SYNC_WITH_TRIG_MANUALã€STROBE_ALWAYS_HIGHæˆ–è€…STROBE_ALWAYS_LOWã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetStrobeMode(
     CameraHandle    hCamera,
@@ -2007,13 +2303,13 @@ MVSDK_API CameraSdkStatus   CameraGetStrobeMode(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetStrobeDelayTime
-// ¹¦ÄÜÃèÊö	: µ±STROBEĞÅºÅ´¦ÓÚSTROBE_SYNC_WITH_TRIGÊ±£¬Í¨¹ı¸Ãº¯ÊıÉèÖÃÆäÏà¶Ô´¥·¢ĞÅºÅÑÓÊ±Ê±¼ä¡£
-// ²ÎÊı	    : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             uDelayTimeUs  Ïà¶Ô´¥·¢ĞÅºÅµÄÑÓÊ±Ê±¼ä£¬µ¥Î»Îªus¡£¿ÉÒÔÎª0£¬µ«²»ÄÜÎª¸ºÊı¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetStrobeDelayTime
+// åŠŸèƒ½æè¿°	: å½“STROBEä¿¡å·å¤„äºSTROBE_SYNC_WITH_TRIGæ—¶ï¼Œé€šè¿‡è¯¥å‡½æ•°è®¾ç½®å…¶ç›¸å¯¹è§¦å‘ä¿¡å·å»¶æ—¶æ—¶é—´ã€‚
+// å‚æ•°	    : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             uDelayTimeUs  ç›¸å¯¹è§¦å‘ä¿¡å·çš„å»¶æ—¶æ—¶é—´ï¼Œå•ä½ä¸ºusã€‚å¯ä»¥ä¸º0ï¼Œä½†ä¸èƒ½ä¸ºè´Ÿæ•°ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetStrobeDelayTime(
     CameraHandle    hCamera,
@@ -2021,13 +2317,13 @@ MVSDK_API CameraSdkStatus   CameraSetStrobeDelayTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetStrobeDelayTime
-// ¹¦ÄÜÃèÊö	: µ±STROBEĞÅºÅ´¦ÓÚSTROBE_SYNC_WITH_TRIGÊ±£¬Í¨¹ı¸Ãº¯Êı»ñµÃÆäÏà¶Ô´¥·¢ĞÅºÅÑÓÊ±Ê±¼ä¡£
-// ²ÎÊı	    : hCamera           Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             upDelayTimeUs     Ö¸Õë£¬·µ»ØÑÓÊ±Ê±¼ä£¬µ¥Î»us¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetStrobeDelayTime
+// åŠŸèƒ½æè¿°	: å½“STROBEä¿¡å·å¤„äºSTROBE_SYNC_WITH_TRIGæ—¶ï¼Œé€šè¿‡è¯¥å‡½æ•°è·å¾—å…¶ç›¸å¯¹è§¦å‘ä¿¡å·å»¶æ—¶æ—¶é—´ã€‚
+// å‚æ•°	    : hCamera           ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             upDelayTimeUs     æŒ‡é’ˆï¼Œè¿”å›å»¶æ—¶æ—¶é—´ï¼Œå•ä½usã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetStrobeDelayTime(
     CameraHandle    hCamera,
@@ -2035,13 +2331,13 @@ MVSDK_API CameraSdkStatus   CameraGetStrobeDelayTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetStrobePulseWidth
-// ¹¦ÄÜÃèÊö	: µ±STROBEĞÅºÅ´¦ÓÚSTROBE_SYNC_WITH_TRIGÊ±£¬Í¨¹ı¸Ãº¯ÊıÉèÖÃÆäÂö³å¿í¶È¡£
-// ²ÎÊı	    : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             uTimeUs       Âö³åµÄ¿í¶È£¬µ¥Î»ÎªÊ±¼äus¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetStrobePulseWidth
+// åŠŸèƒ½æè¿°	: å½“STROBEä¿¡å·å¤„äºSTROBE_SYNC_WITH_TRIGæ—¶ï¼Œé€šè¿‡è¯¥å‡½æ•°è®¾ç½®å…¶è„‰å†²å®½åº¦ã€‚
+// å‚æ•°	    : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             uTimeUs       è„‰å†²çš„å®½åº¦ï¼Œå•ä½ä¸ºæ—¶é—´usã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetStrobePulseWidth(
     CameraHandle    hCamera,
@@ -2049,13 +2345,13 @@ MVSDK_API CameraSdkStatus   CameraSetStrobePulseWidth(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetStrobePulseWidth
-// ¹¦ÄÜÃèÊö	: µ±STROBEĞÅºÅ´¦ÓÚSTROBE_SYNC_WITH_TRIGÊ±£¬Í¨¹ı¸Ãº¯Êı»ñµÃÆäÂö³å¿í¶È¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             upTimeUs  Ö¸Õë£¬·µ»ØÂö³å¿í¶È¡£µ¥Î»ÎªÊ±¼äus¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetStrobePulseWidth
+// åŠŸèƒ½æè¿°	: å½“STROBEä¿¡å·å¤„äºSTROBE_SYNC_WITH_TRIGæ—¶ï¼Œé€šè¿‡è¯¥å‡½æ•°è·å¾—å…¶è„‰å†²å®½åº¦ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             upTimeUs  æŒ‡é’ˆï¼Œè¿”å›è„‰å†²å®½åº¦ã€‚å•ä½ä¸ºæ—¶é—´usã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetStrobePulseWidth(
     CameraHandle    hCamera,
@@ -2063,13 +2359,13 @@ MVSDK_API CameraSdkStatus   CameraGetStrobePulseWidth(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetStrobePolarity
-// ¹¦ÄÜÃèÊö	: µ±STROBEĞÅºÅ´¦ÓÚSTROBE_SYNC_WITH_TRIGÊ±£¬Í¨¹ı¸Ãº¯ÊıÉèÖÃÆäÓĞĞ§µçÆ½µÄ¼«ĞÔ¡£Ä¬ÈÏÎª¸ßÓĞĞ§£¬µ±´¥·¢ĞÅºÅµ½À´Ê±£¬STROBEĞÅºÅ±»À­¸ß¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iPolarity STROBEĞÅºÅµÄ¼«ĞÔ£¬0ÎªµÍµçÆ½ÓĞĞ§£¬1Îª¸ßµçÆ½ÓĞĞ§¡£Ä¬ÈÏÎª¸ßµçÆ½ÓĞĞ§¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetStrobePolarity
+// åŠŸèƒ½æè¿°	: å½“STROBEä¿¡å·å¤„äºSTROBE_SYNC_WITH_TRIGæ—¶ï¼Œé€šè¿‡è¯¥å‡½æ•°è®¾ç½®å…¶æœ‰æ•ˆç”µå¹³çš„ææ€§ã€‚é»˜è®¤ä¸ºé«˜æœ‰æ•ˆï¼Œå½“è§¦å‘ä¿¡å·åˆ°æ¥æ—¶ï¼ŒSTROBEä¿¡å·è¢«æ‹‰é«˜ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iPolarity STROBEä¿¡å·çš„ææ€§ï¼Œ0ä¸ºä½ç”µå¹³æœ‰æ•ˆï¼Œ1ä¸ºé«˜ç”µå¹³æœ‰æ•ˆã€‚é»˜è®¤ä¸ºé«˜ç”µå¹³æœ‰æ•ˆã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetStrobePolarity(
     CameraHandle    hCamera,
@@ -2077,13 +2373,13 @@ MVSDK_API CameraSdkStatus   CameraSetStrobePolarity(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetStrobePolarity
-// ¹¦ÄÜÃèÊö	: »ñµÃÏà»úµ±Ç°STROBEĞÅºÅµÄÓĞĞ§¼«ĞÔ¡£Ä¬ÈÏÎª¸ßµçÆ½ÓĞĞ§¡£
-// ²ÎÊı	    : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             ipPolarity    Ö¸Õë£¬·µ»ØSTROBEĞÅºÅµ±Ç°µÄÓĞĞ§¼«ĞÔ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetStrobePolarity
+// åŠŸèƒ½æè¿°	: è·å¾—ç›¸æœºå½“å‰STROBEä¿¡å·çš„æœ‰æ•ˆææ€§ã€‚é»˜è®¤ä¸ºé«˜ç”µå¹³æœ‰æ•ˆã€‚
+// å‚æ•°	    : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             ipPolarity    æŒ‡é’ˆï¼Œè¿”å›STROBEä¿¡å·å½“å‰çš„æœ‰æ•ˆææ€§ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetStrobePolarity(
     CameraHandle    hCamera,
@@ -2091,15 +2387,15 @@ MVSDK_API CameraSdkStatus   CameraGetStrobePolarity(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetExtTrigSignalType
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÏà»úÍâ´¥·¢ĞÅºÅµÄÖÖÀà¡£ÉÏ±ßÑØ¡¢ÏÂ±ßÑØ¡¢»òÕß¸ß¡¢µÍµçÆ½·½Ê½¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iType     Íâ´¥·¢ĞÅºÅÖÖÀà£¬·µ»ØÖµ²Î¿¼CameraDefine.hÖĞ
-//                       emExtTrigSignalÀàĞÍ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetExtTrigSignalType
+// åŠŸèƒ½æè¿°	: è®¾ç½®ç›¸æœºå¤–è§¦å‘ä¿¡å·çš„ç§ç±»ã€‚ä¸Šè¾¹æ²¿ã€ä¸‹è¾¹æ²¿ã€æˆ–è€…é«˜ã€ä½ç”µå¹³æ–¹å¼ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iType     å¤–è§¦å‘ä¿¡å·ç§ç±»ï¼Œè¿”å›å€¼å‚è€ƒCameraDefine.hä¸­
+//                       emExtTrigSignalç±»å‹å®šä¹‰ã€‚
 
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetExtTrigSignalType(
     CameraHandle    hCamera,
@@ -2107,14 +2403,14 @@ MVSDK_API CameraSdkStatus   CameraSetExtTrigSignalType(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetExtTrigSignalType
-// ¹¦ÄÜÃèÊö	: »ñµÃÏà»úµ±Ç°Íâ´¥·¢ĞÅºÅµÄÖÖÀà¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             ipType    Ö¸Õë£¬·µ»ØÍâ´¥·¢ĞÅºÅÖÖÀà£¬·µ»ØÖµ²Î¿¼CameraDefine.hÖĞ
-//                       emExtTrigSignalÀàĞÍ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetExtTrigSignalType
+// åŠŸèƒ½æè¿°	: è·å¾—ç›¸æœºå½“å‰å¤–è§¦å‘ä¿¡å·çš„ç§ç±»ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             ipType    æŒ‡é’ˆï¼Œè¿”å›å¤–è§¦å‘ä¿¡å·ç§ç±»ï¼Œè¿”å›å€¼å‚è€ƒCameraDefine.hä¸­
+//                       emExtTrigSignalç±»å‹å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetExtTrigSignalType(
     CameraHandle    hCamera,
@@ -2122,14 +2418,14 @@ MVSDK_API CameraSdkStatus   CameraGetExtTrigSignalType(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetExtTrigShutterType
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÍâ´¥·¢Ä£Ê½ÏÂ£¬Ïà»ú¿ìÃÅµÄ·½Ê½£¬Ä¬ÈÏÎª±ê×¼¿ìÃÅ·½Ê½¡£
-//              ²¿·Ö¹ö¶¯¿ìÃÅµÄCMOSÏà»úÖ§³ÖGRR·½Ê½¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             iType     Íâ´¥·¢¿ìÃÅ·½Ê½¡£²Î¿¼CameraDefine.hÖĞemExtTrigShutterModeÀàĞÍ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetExtTrigShutterType
+// åŠŸèƒ½æè¿°	: è®¾ç½®å¤–è§¦å‘æ¨¡å¼ä¸‹ï¼Œç›¸æœºå¿«é—¨çš„æ–¹å¼ï¼Œé»˜è®¤ä¸ºæ ‡å‡†å¿«é—¨æ–¹å¼ã€‚
+//              éƒ¨åˆ†æ»šåŠ¨å¿«é—¨çš„CMOSç›¸æœºæ”¯æŒGRRæ–¹å¼ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             iType     å¤–è§¦å‘å¿«é—¨æ–¹å¼ã€‚å‚è€ƒCameraDefine.hä¸­emExtTrigShutterModeç±»å‹ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetExtTrigShutterType(
     CameraHandle    hCamera,
@@ -2137,15 +2433,15 @@ MVSDK_API CameraSdkStatus   CameraSetExtTrigShutterType(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetExtTrigShutterType
-// ¹¦ÄÜÃèÊö	: »ñµÃÍâ´¥·¢Ä£Ê½ÏÂ£¬Ïà»ú¿ìÃÅµÄ·½Ê½£¬Ä¬ÈÏÎª±ê×¼¿ìÃÅ·½Ê½¡£
-//              ²¿·Ö¹ö¶¯¿ìÃÅµÄCMOSÏà»úÖ§³ÖGRR·½Ê½¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             ipType    Ö¸Õë£¬·µ»Øµ±Ç°Éè¶¨µÄÍâ´¥·¢¿ìÃÅ·½Ê½¡£·µ»ØÖµ²Î¿¼
-//                       CameraDefine.hÖĞemExtTrigShutterModeÀàĞÍ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetExtTrigShutterType
+// åŠŸèƒ½æè¿°	: è·å¾—å¤–è§¦å‘æ¨¡å¼ä¸‹ï¼Œç›¸æœºå¿«é—¨çš„æ–¹å¼ï¼Œé»˜è®¤ä¸ºæ ‡å‡†å¿«é—¨æ–¹å¼ã€‚
+//              éƒ¨åˆ†æ»šåŠ¨å¿«é—¨çš„CMOSç›¸æœºæ”¯æŒGRRæ–¹å¼ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             ipType    æŒ‡é’ˆï¼Œè¿”å›å½“å‰è®¾å®šçš„å¤–è§¦å‘å¿«é—¨æ–¹å¼ã€‚è¿”å›å€¼å‚è€ƒ
+//                       CameraDefine.hä¸­emExtTrigShutterModeç±»å‹ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetExtTrigShutterType(
     CameraHandle    hCamera,
@@ -2153,14 +2449,14 @@ MVSDK_API CameraSdkStatus   CameraGetExtTrigShutterType(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetExtTrigDelayTime
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÍâ´¥·¢ĞÅºÅÑÓÊ±Ê±¼ä£¬Ä¬ÈÏÎª0£¬µ¥Î»ÎªÎ¢Ãë¡£
-//              µ±ÉèÖÃµÄÖµuDelayTimeUs²»Îª0Ê±£¬Ïà»ú½ÓÊÕµ½Íâ´¥·¢ĞÅºÅºó£¬½«ÑÓÊ±uDelayTimeUs¸öÎ¢ÃëºóÔÙ½øĞĞÍ¼Ïñ²¶»ñ¡£
-// ²ÎÊı	    : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             uDelayTimeUs  ÑÓÊ±Ê±¼ä£¬µ¥Î»ÎªÎ¢Ãë£¬Ä¬ÈÏÎª0.
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetExtTrigDelayTime
+// åŠŸèƒ½æè¿°	: è®¾ç½®å¤–è§¦å‘ä¿¡å·å»¶æ—¶æ—¶é—´ï¼Œé»˜è®¤ä¸º0ï¼Œå•ä½ä¸ºå¾®ç§’ã€‚
+//              å½“è®¾ç½®çš„å€¼uDelayTimeUsä¸ä¸º0æ—¶ï¼Œç›¸æœºæ¥æ”¶åˆ°å¤–è§¦å‘ä¿¡å·åï¼Œå°†å»¶æ—¶uDelayTimeUsä¸ªå¾®ç§’åå†è¿›è¡Œå›¾åƒæ•è·ã€‚
+// å‚æ•°	    : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             uDelayTimeUs  å»¶æ—¶æ—¶é—´ï¼Œå•ä½ä¸ºå¾®ç§’ï¼Œé»˜è®¤ä¸º0.
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetExtTrigDelayTime(
     CameraHandle    hCamera,
@@ -2168,13 +2464,13 @@ MVSDK_API CameraSdkStatus   CameraSetExtTrigDelayTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetExtTrigDelayTime
-// ¹¦ÄÜÃèÊö	: »ñµÃÉèÖÃµÄÍâ´¥·¢ĞÅºÅÑÓÊ±Ê±¼ä£¬Ä¬ÈÏÎª0£¬µ¥Î»ÎªÎ¢Ãë¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
+// å‡½æ•°å 	: CameraGetExtTrigDelayTime
+// åŠŸèƒ½æè¿°	: è·å¾—è®¾ç½®çš„å¤–è§¦å‘ä¿¡å·å»¶æ—¶æ—¶é—´ï¼Œé»˜è®¤ä¸º0ï¼Œå•ä½ä¸ºå¾®ç§’ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
 //            UINT* upDelayTimeUs
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetExtTrigDelayTime(
     CameraHandle    hCamera,
@@ -2182,13 +2478,43 @@ MVSDK_API CameraSdkStatus   CameraGetExtTrigDelayTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetExtTrigJitterTime
-// ¹¦ÄÜÃèÊö	: ÉèÖÃÏà»úÍâ´¥·¢ĞÅºÅµÄÏû¶¶Ê±¼ä¡£Ä¬ÈÏÎª0£¬µ¥Î»ÎªÎ¢Ãë¡£
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
+// å‡½æ•°å 	: CameraSetExtTrigBufferedDelayTime
+// åŠŸèƒ½æè¿°	: è®¾ç½®å¤–è§¦å‘ä¿¡å·å»¶æ—¶æ—¶é—´ï¼Œé»˜è®¤ä¸º0ï¼Œå•ä½ä¸ºå¾®ç§’ã€‚
+//           å½“è®¾ç½®çš„å€¼uDelayTimeUsä¸ä¸º0æ—¶ï¼Œç›¸æœºæ¥æ”¶åˆ°å¤–è§¦å‘ä¿¡å·åï¼Œå°†å»¶æ—¶uDelayTimeUsä¸ªå¾®ç§’åå†è¿›è¡Œå›¾åƒæ•è·ã€‚
+//           å¹¶ä¸”ä¼šæŠŠå»¶æ—¶æœŸé—´æ”¶åˆ°çš„è§¦å‘ä¿¡å·ç¼“å­˜èµ·æ¥ï¼Œè¢«ç¼“å­˜çš„ä¿¡å·ä¹Ÿå°†å»¶æ—¶uDelayTimeUsä¸ªå¾®ç§’åç”Ÿæ•ˆï¼ˆæœ€å¤§ç¼“å­˜ä¸ªæ•°128ï¼‰ã€‚
+// å‚æ•°	    : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            uDelayTimeUs   å»¶æ—¶æ—¶é—´ï¼Œå•ä½ä¸ºå¾®ç§’ï¼Œé»˜è®¤ä¸º0.
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraSetExtTrigBufferedDelayTime(
+    CameraHandle    hCamera,
+    UINT            uDelayTimeUs
+);
+
+/******************************************************/
+// å‡½æ•°å 	: CameraGetExtTrigBufferedDelayTime
+// åŠŸèƒ½æè¿°	: è·å¾—è®¾ç½®çš„å¤–è§¦å‘ä¿¡å·å»¶æ—¶æ—¶é—´ï¼Œé»˜è®¤ä¸º0ï¼Œå•ä½ä¸ºå¾®ç§’ã€‚
+// å‚æ•°	    : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            puDelayTimeUs   å»¶æ—¶æ—¶é—´ï¼Œå•ä½ä¸ºå¾®ç§’ï¼Œé»˜è®¤ä¸º0.
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraGetExtTrigBufferedDelayTime(
+    CameraHandle    hCamera,
+    UINT*           puDelayTimeUs
+);
+
+/******************************************************/
+// å‡½æ•°å 	: CameraSetExtTrigJitterTime
+// åŠŸèƒ½æè¿°	: è®¾ç½®ç›¸æœºå¤–è§¦å‘ä¿¡å·çš„æ¶ˆæŠ–æ—¶é—´ã€‚é»˜è®¤ä¸º0ï¼Œå•ä½ä¸ºå¾®ç§’ã€‚
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
 //            UINT uTimeUs
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraSetExtTrigJitterTime(
     CameraHandle    hCamera,
@@ -2196,13 +2522,13 @@ MVSDK_API CameraSdkStatus   CameraSetExtTrigJitterTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetExtTrigJitterTime
-// ¹¦ÄÜÃèÊö	: »ñµÃÉèÖÃµÄÏà»úÍâ´¥·¢Ïû¶¶Ê±¼ä£¬Ä¬ÈÏÎª0.µ¥Î»ÎªÎ¢Ãî
-// ²ÎÊı	    : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
+// å‡½æ•°å 	: CameraGetExtTrigJitterTime
+// åŠŸèƒ½æè¿°	: è·å¾—è®¾ç½®çš„ç›¸æœºå¤–è§¦å‘æ¶ˆæŠ–æ—¶é—´ï¼Œé»˜è®¤ä¸º0.å•ä½ä¸ºå¾®å¦™
+// å‚æ•°	    : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
 //            UINT* upTimeUs
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetExtTrigJitterTime(
     CameraHandle    hCamera,
@@ -2210,14 +2536,14 @@ MVSDK_API CameraSdkStatus   CameraGetExtTrigJitterTime(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetExtTrigCapability
-// ¹¦ÄÜÃèÊö	: »ñµÃÏà»úÍâ´¥·¢µÄÊôĞÔÑÚÂë
-// ²ÎÊı	    : hCamera           Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             puCapabilityMask  Ö¸Õë£¬·µ»Ø¸ÃÏà»úÍâ´¥·¢ÌØĞÔÑÚÂë£¬ÑÚÂë²Î¿¼CameraDefine.hÖĞ
-//                               EXT_TRIG_MASK_ ¿ªÍ·µÄºê¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetExtTrigCapability
+// åŠŸèƒ½æè¿°	: è·å¾—ç›¸æœºå¤–è§¦å‘çš„å±æ€§æ©ç 
+// å‚æ•°	    : hCamera           ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             puCapabilityMask  æŒ‡é’ˆï¼Œè¿”å›è¯¥ç›¸æœºå¤–è§¦å‘ç‰¹æ€§æ©ç ï¼Œæ©ç å‚è€ƒCameraDefine.hä¸­
+//                               EXT_TRIG_MASK_ å¼€å¤´çš„å®å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus   CameraGetExtTrigCapability(
     CameraHandle    hCamera,
@@ -2226,13 +2552,13 @@ MVSDK_API CameraSdkStatus   CameraGetExtTrigCapability(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetResolutionForSnap
-// ¹¦ÄÜÃèÊö : »ñµÃ×¥ÅÄÄ£Ê½ÏÂµÄ·Ö±æÂÊÑ¡ÔñË÷ÒıºÅ¡£
-// ²ÎÊı     : hCamera        Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pImageResolution Ö¸Õë£¬·µ»Ø×¥ÅÄÄ£Ê½µÄ·Ö±æÂÊ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetResolutionForSnap
+// åŠŸèƒ½æè¿° : è·å¾—æŠ“æ‹æ¨¡å¼ä¸‹çš„åˆ†è¾¨ç‡é€‰æ‹©ç´¢å¼•å·ã€‚
+// å‚æ•°     : hCamera        ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pImageResolution æŒ‡é’ˆï¼Œè¿”å›æŠ“æ‹æ¨¡å¼çš„åˆ†è¾¨ç‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetResolutionForSnap(
     CameraHandle            hCamera,
@@ -2240,17 +2566,17 @@ MVSDK_API CameraSdkStatus  CameraGetResolutionForSnap(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetResolutionForSnap
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×¥ÅÄÄ£Ê½ÏÂÏà»úÊä³öÍ¼ÏñµÄ·Ö±æÂÊ¡£
-// ²ÎÊı     : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pImageResolution Èç¹ûpImageResolution->iWidth
-//                 ºÍ pImageResolution->iHeight¶¼Îª0£¬
-//                         Ôò±íÊ¾Éè¶¨Îª¸úËæµ±Ç°Ô¤ÀÀ·Ö±æÂÊ¡£×¥
-//                         ÅÂµ½µÄÍ¼ÏñµÄ·Ö±æÂÊ»áºÍµ±Ç°Éè¶¨µÄ
-//                 Ô¤ÀÀ·Ö±æÂÊÒ»Ñù¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetResolutionForSnap
+// åŠŸèƒ½æè¿° : è®¾ç½®æŠ“æ‹æ¨¡å¼ä¸‹ç›¸æœºè¾“å‡ºå›¾åƒçš„åˆ†è¾¨ç‡ã€‚
+// å‚æ•°     : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pImageResolution å¦‚æœpImageResolution->iWidth
+//                 å’Œ pImageResolution->iHeightéƒ½ä¸º0ï¼Œ
+//                         åˆ™è¡¨ç¤ºè®¾å®šä¸ºè·Ÿéšå½“å‰é¢„è§ˆåˆ†è¾¨ç‡ã€‚æŠ“
+//                         æ€•åˆ°çš„å›¾åƒçš„åˆ†è¾¨ç‡ä¼šå’Œå½“å‰è®¾å®šçš„
+//                 é¢„è§ˆåˆ†è¾¨ç‡ä¸€æ ·ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetResolutionForSnap(
     CameraHandle            hCamera,
@@ -2258,14 +2584,14 @@ MVSDK_API CameraSdkStatus  CameraSetResolutionForSnap(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraCustomizeResolution
-// ¹¦ÄÜÃèÊö : ´ò¿ª·Ö±æÂÊ×Ô¶¨ÒåÃæ°å£¬²¢Í¨¹ı¿ÉÊÓ»¯µÄ·½Ê½
-//        À´ÅäÖÃÒ»¸ö×Ô¶¨Òå·Ö±æÂÊ¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pImageCustom Ö¸Õë£¬·µ»Ø×Ô¶¨ÒåµÄ·Ö±æÂÊ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraCustomizeResolution
+// åŠŸèƒ½æè¿° : æ‰“å¼€åˆ†è¾¨ç‡è‡ªå®šä¹‰é¢æ¿ï¼Œå¹¶é€šè¿‡å¯è§†åŒ–çš„æ–¹å¼
+//        æ¥é…ç½®ä¸€ä¸ªè‡ªå®šä¹‰åˆ†è¾¨ç‡ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pImageCustom æŒ‡é’ˆï¼Œè¿”å›è‡ªå®šä¹‰çš„åˆ†è¾¨ç‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraCustomizeResolution(
     CameraHandle            hCamera,
@@ -2273,21 +2599,21 @@ MVSDK_API CameraSdkStatus  CameraCustomizeResolution(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraCustomizeReferWin
-// ¹¦ÄÜÃèÊö : ´ò¿ª²Î¿¼´°¿Ú×Ô¶¨ÒåÃæ°å¡£²¢Í¨¹ı¿ÉÊÓ»¯µÄ·½Ê½À´
-//        »ñµÃÒ»¸ö×Ô¶¨Òå´°¿ÚµÄÎ»ÖÃ¡£Ò»°ãÊÇÓÃ×Ô¶¨Òå°×Æ½ºâ
-//        ºÍ×Ô¶¯ÆØ¹âµÄ²Î¿¼´°¿Ú¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iWinType   ÒªÉú³ÉµÄ²Î¿¼´°¿ÚµÄÓÃÍ¾¡£0,×Ô¶¯ÆØ¹â²Î¿¼´°¿Ú£»
-//             1,°×Æ½ºâ²Î¿¼´°¿Ú¡£
-//            hParent    µ÷ÓÃ¸Ãº¯ÊıµÄ´°¿ÚµÄ¾ä±ú¡£¿ÉÒÔÎªNULL¡£
-//            piHOff     Ö¸Õë£¬·µ»Ø×Ô¶¨Òå´°¿ÚµÄ×óÉÏ½Çºá×ø±ê¡£
-//            piVOff     Ö¸Õë£¬·µ»Ø×Ô¶¨Òå´°¿ÚµÄ×óÉÏ½Ç×İ×ø±ê¡£
-//            piWidth    Ö¸Õë£¬·µ»Ø×Ô¶¨Òå´°¿ÚµÄ¿í¶È¡£
-//            piHeight   Ö¸Õë£¬·µ»Ø×Ô¶¨Òå´°¿ÚµÄ¸ß¶È¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraCustomizeReferWin
+// åŠŸèƒ½æè¿° : æ‰“å¼€å‚è€ƒçª—å£è‡ªå®šä¹‰é¢æ¿ã€‚å¹¶é€šè¿‡å¯è§†åŒ–çš„æ–¹å¼æ¥
+//        è·å¾—ä¸€ä¸ªè‡ªå®šä¹‰çª—å£çš„ä½ç½®ã€‚ä¸€èˆ¬æ˜¯ç”¨è‡ªå®šä¹‰ç™½å¹³è¡¡
+//        å’Œè‡ªåŠ¨æ›å…‰çš„å‚è€ƒçª—å£ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iWinType   è¦ç”Ÿæˆçš„å‚è€ƒçª—å£çš„ç”¨é€”ã€‚0,è‡ªåŠ¨æ›å…‰å‚è€ƒçª—å£ï¼›
+//             1,ç™½å¹³è¡¡å‚è€ƒçª—å£ã€‚
+//            hParent    è°ƒç”¨è¯¥å‡½æ•°çš„çª—å£çš„å¥æŸ„ã€‚å¯ä»¥ä¸ºNULLã€‚
+//            piHOff     æŒ‡é’ˆï¼Œè¿”å›è‡ªå®šä¹‰çª—å£çš„å·¦ä¸Šè§’æ¨ªåæ ‡ã€‚
+//            piVOff     æŒ‡é’ˆï¼Œè¿”å›è‡ªå®šä¹‰çª—å£çš„å·¦ä¸Šè§’çºµåæ ‡ã€‚
+//            piWidth    æŒ‡é’ˆï¼Œè¿”å›è‡ªå®šä¹‰çª—å£çš„å®½åº¦ã€‚
+//            piHeight   æŒ‡é’ˆï¼Œè¿”å›è‡ªå®šä¹‰çª—å£çš„é«˜åº¦ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraCustomizeReferWin(
     CameraHandle    hCamera,
@@ -2300,15 +2626,15 @@ MVSDK_API CameraSdkStatus  CameraCustomizeReferWin(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraShowSettingPage
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úÊôĞÔÅäÖÃ´°¿ÚÏÔÊ¾×´Ì¬¡£±ØĞëÏÈµ÷ÓÃCameraCreateSettingPage
-//        ³É¹¦´´½¨Ïà»úÊôĞÔÅäÖÃ´°¿Úºó£¬²ÅÄÜµ÷ÓÃ±¾º¯Êı½øĞĞ
-//        ÏÔÊ¾¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bShow    TRUE£¬ÏÔÊ¾;FALSE£¬Òş²Ø¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraShowSettingPage
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºå±æ€§é…ç½®çª—å£æ˜¾ç¤ºçŠ¶æ€ã€‚å¿…é¡»å…ˆè°ƒç”¨CameraCreateSettingPage
+//        æˆåŠŸåˆ›å»ºç›¸æœºå±æ€§é…ç½®çª—å£åï¼Œæ‰èƒ½è°ƒç”¨æœ¬å‡½æ•°è¿›è¡Œ
+//        æ˜¾ç¤ºã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bShow    TRUEï¼Œæ˜¾ç¤º;FALSEï¼Œéšè—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraShowSettingPage(
     CameraHandle    hCamera,
@@ -2316,27 +2642,27 @@ MVSDK_API CameraSdkStatus  CameraShowSettingPage(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraCreateSettingPage
-// ¹¦ÄÜÃèÊö : ´´½¨¸ÃÏà»úµÄÊôĞÔÅäÖÃ´°¿Ú¡£µ÷ÓÃ¸Ãº¯Êı£¬SDKÄÚ²¿»á
-//        °ïÄú´´½¨ºÃÏà»úµÄÅäÖÃ´°¿Ú£¬Ê¡È¥ÁËÄúÖØĞÂ¿ª·¢Ïà»ú
-//        ÅäÖÃ½çÃæµÄÊ±¼ä¡£Ç¿ÁÒ½¨ÒéÊ¹ÓÃÄúÊ¹ÓÃ¸Ãº¯ÊıÈÃ
-//        SDKÎªÄú´´½¨ºÃÅäÖÃ´°¿Ú¡£
-// ²ÎÊı     : hCamera     Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            hParent       Ó¦ÓÃ³ÌĞòÖ÷´°¿ÚµÄ¾ä±ú¡£¿ÉÒÔÎªNULL¡£
-//            pWinText      ×Ö·û´®Ö¸Õë£¬´°¿ÚÏÔÊ¾µÄ±êÌâÀ¸¡£
-//            pCallbackFunc ´°¿ÚÏûÏ¢µÄ»Øµ÷º¯Êı£¬µ±ÏàÓ¦µÄÊÂ¼ş·¢ÉúÊ±£¬
-//              pCallbackFuncËùÖ¸ÏòµÄº¯Êı»á±»µ÷ÓÃ£¬
-//              ÀıÈçÇĞ»»ÁË²ÎÊıÖ®ÀàµÄ²Ù×÷Ê±£¬pCallbackFunc
-//              ±»»Øµ÷Ê±£¬ÔÚÈë¿Ú²ÎÊı´¦Ö¸Ã÷ÁËÏûÏ¢ÀàĞÍ¡£
-//              ÕâÑù¿ÉÒÔ·½±ãÄú×Ô¼º¿ª·¢µÄ½çÃæºÍÎÒÃÇÉú³ÉµÄUI
-//              Ö®¼ä½øĞĞÍ¬²½¡£¸Ã²ÎÊı¿ÉÒÔÎªNULL¡£
-//            pCallbackCtx  »Øµ÷º¯ÊıµÄ¸½¼Ó²ÎÊı¡£¿ÉÒÔÎªNULL¡£pCallbackCtx
-//              »áÔÚpCallbackFunc±»»Øµ÷Ê±£¬×öÎª²ÎÊıÖ®Ò»´«Èë¡£
-//              Äú¿ÉÒÔÊ¹ÓÃ¸Ã²ÎÊıÀ´×öÒ»Ğ©Áé»îµÄÅĞ¶Ï¡£
-//            uReserved     Ô¤Áô¡£±ØĞëÉèÖÃÎª0¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraCreateSettingPage
+// åŠŸèƒ½æè¿° : åˆ›å»ºè¯¥ç›¸æœºçš„å±æ€§é…ç½®çª—å£ã€‚è°ƒç”¨è¯¥å‡½æ•°ï¼ŒSDKå†…éƒ¨ä¼š
+//        å¸®æ‚¨åˆ›å»ºå¥½ç›¸æœºçš„é…ç½®çª—å£ï¼Œçœå»äº†æ‚¨é‡æ–°å¼€å‘ç›¸æœº
+//        é…ç½®ç•Œé¢çš„æ—¶é—´ã€‚å¼ºçƒˆå»ºè®®ä½¿ç”¨æ‚¨ä½¿ç”¨è¯¥å‡½æ•°è®©
+//        SDKä¸ºæ‚¨åˆ›å»ºå¥½é…ç½®çª—å£ã€‚
+// å‚æ•°     : hCamera     ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            hParent       åº”ç”¨ç¨‹åºä¸»çª—å£çš„å¥æŸ„ã€‚å¯ä»¥ä¸ºNULLã€‚
+//            pWinText      å­—ç¬¦ä¸²æŒ‡é’ˆï¼Œçª—å£æ˜¾ç¤ºçš„æ ‡é¢˜æ ã€‚
+//            pCallbackFunc çª—å£æ¶ˆæ¯çš„å›è°ƒå‡½æ•°ï¼Œå½“ç›¸åº”çš„äº‹ä»¶å‘ç”Ÿæ—¶ï¼Œ
+//              pCallbackFuncæ‰€æŒ‡å‘çš„å‡½æ•°ä¼šè¢«è°ƒç”¨ï¼Œ
+//              ä¾‹å¦‚åˆ‡æ¢äº†å‚æ•°ä¹‹ç±»çš„æ“ä½œæ—¶ï¼ŒpCallbackFunc
+//              è¢«å›è°ƒæ—¶ï¼Œåœ¨å…¥å£å‚æ•°å¤„æŒ‡æ˜äº†æ¶ˆæ¯ç±»å‹ã€‚
+//              è¿™æ ·å¯ä»¥æ–¹ä¾¿æ‚¨è‡ªå·±å¼€å‘çš„ç•Œé¢å’Œæˆ‘ä»¬ç”Ÿæˆçš„UI
+//              ä¹‹é—´è¿›è¡ŒåŒæ­¥ã€‚è¯¥å‚æ•°å¯ä»¥ä¸ºNULLã€‚
+//            pCallbackCtx  å›è°ƒå‡½æ•°çš„é™„åŠ å‚æ•°ã€‚å¯ä»¥ä¸ºNULLã€‚pCallbackCtx
+//              ä¼šåœ¨pCallbackFuncè¢«å›è°ƒæ—¶ï¼Œåšä¸ºå‚æ•°ä¹‹ä¸€ä¼ å…¥ã€‚
+//              æ‚¨å¯ä»¥ä½¿ç”¨è¯¥å‚æ•°æ¥åšä¸€äº›çµæ´»çš„åˆ¤æ–­ã€‚
+//            uReserved     é¢„ç•™ã€‚å¿…é¡»è®¾ç½®ä¸º0ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraCreateSettingPage(
     CameraHandle            hCamera,
@@ -2348,15 +2674,15 @@ MVSDK_API CameraSdkStatus  CameraCreateSettingPage(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraCreateSettingPageEx
-// ¹¦ÄÜÃèÊö : ´´½¨¸ÃÏà»úµÄÊôĞÔÅäÖÃ´°¿Ú¡£µ÷ÓÃ¸Ãº¯Êı£¬SDKÄÚ²¿»á
-//        °ïÄú´´½¨ºÃÏà»úµÄÅäÖÃ´°¿Ú£¬Ê¡È¥ÁËÄúÖØĞÂ¿ª·¢Ïà»ú
-//        ÅäÖÃ½çÃæµÄÊ±¼ä¡£Ç¿ÁÒ½¨ÒéÊ¹ÓÃÄúÊ¹ÓÃ¸Ãº¯ÊıÈÃ
-//        SDKÎªÄú´´½¨ºÃÅäÖÃ´°¿Ú¡£
-// ²ÎÊı     : hCamera     Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraCreateSettingPageEx
+// åŠŸèƒ½æè¿° : åˆ›å»ºè¯¥ç›¸æœºçš„å±æ€§é…ç½®çª—å£ã€‚è°ƒç”¨è¯¥å‡½æ•°ï¼ŒSDKå†…éƒ¨ä¼š
+//        å¸®æ‚¨åˆ›å»ºå¥½ç›¸æœºçš„é…ç½®çª—å£ï¼Œçœå»äº†æ‚¨é‡æ–°å¼€å‘ç›¸æœº
+//        é…ç½®ç•Œé¢çš„æ—¶é—´ã€‚å¼ºçƒˆå»ºè®®ä½¿ç”¨æ‚¨ä½¿ç”¨è¯¥å‡½æ•°è®©
+//        SDKä¸ºæ‚¨åˆ›å»ºå¥½é…ç½®çª—å£ã€‚
+// å‚æ•°     : hCamera     ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraCreateSettingPageEx(
     CameraHandle            hCamera
@@ -2364,16 +2690,16 @@ MVSDK_API CameraSdkStatus  CameraCreateSettingPageEx(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetActiveSettingSubPage
-// ¹¦ÄÜÃèÊö : ÉèÖÃÏà»úÅäÖÃ´°¿ÚµÄ¼¤»îÒ³Ãæ¡£Ïà»úÅäÖÃ´°¿ÚÓĞ¶à¸ö
-//        ×ÓÒ³Ãæ¹¹³É£¬¸Ãº¯Êı¿ÉÒÔÉè¶¨µ±Ç°ÄÄÒ»¸ö×ÓÒ³Ãæ
-//        Îª¼¤»î×´Ì¬£¬ÏÔÊ¾ÔÚ×îÇ°¶Ë¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            index      ×ÓÒ³ÃæµÄË÷ÒıºÅ¡£²Î¿¼CameraDefine.hÖĞ
-//             PROP_SHEET_INDEXµÄ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetActiveSettingSubPage
+// åŠŸèƒ½æè¿° : è®¾ç½®ç›¸æœºé…ç½®çª—å£çš„æ¿€æ´»é¡µé¢ã€‚ç›¸æœºé…ç½®çª—å£æœ‰å¤šä¸ª
+//        å­é¡µé¢æ„æˆï¼Œè¯¥å‡½æ•°å¯ä»¥è®¾å®šå½“å‰å“ªä¸€ä¸ªå­é¡µé¢
+//        ä¸ºæ¿€æ´»çŠ¶æ€ï¼Œæ˜¾ç¤ºåœ¨æœ€å‰ç«¯ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            index      å­é¡µé¢çš„ç´¢å¼•å·ã€‚å‚è€ƒCameraDefine.hä¸­
+//             PROP_SHEET_INDEXçš„å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetActiveSettingSubPage(
     CameraHandle    hCamera,
@@ -2381,16 +2707,16 @@ MVSDK_API CameraSdkStatus  CameraSetActiveSettingSubPage(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSpecialControl
-// ¹¦ÄÜÃèÊö : Ïà»úÒ»Ğ©ÌØÊâÅäÖÃËùµ÷ÓÃµÄ½Ó¿Ú£¬¶ş´Î¿ª·¢Ê±Ò»°ã²»ĞèÒª
-//        µ÷ÓÃ¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            dwCtrlCode ¿ØÖÆÂë¡£
-//            dwParam    ¿ØÖÆ×ÓÂë£¬²»Í¬µÄdwCtrlCodeÊ±£¬ÒâÒå²»Í¬¡£
-//            lpData     ¸½¼Ó²ÎÊı¡£²»Í¬µÄdwCtrlCodeÊ±£¬ÒâÒå²»Í¬¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSpecialControl
+// åŠŸèƒ½æè¿° : ç›¸æœºä¸€äº›ç‰¹æ®Šé…ç½®æ‰€è°ƒç”¨çš„æ¥å£ï¼ŒäºŒæ¬¡å¼€å‘æ—¶ä¸€èˆ¬ä¸éœ€è¦
+//        è°ƒç”¨ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            dwCtrlCode æ§åˆ¶ç ã€‚
+//            dwParam    æ§åˆ¶å­ç ï¼Œä¸åŒçš„dwCtrlCodeæ—¶ï¼Œæ„ä¹‰ä¸åŒã€‚
+//            lpData     é™„åŠ å‚æ•°ã€‚ä¸åŒçš„dwCtrlCodeæ—¶ï¼Œæ„ä¹‰ä¸åŒã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSpecialControl(
     CameraHandle    hCamera,
@@ -2400,13 +2726,13 @@ MVSDK_API CameraSdkStatus  CameraSpecialControl(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetFrameStatistic
-// ¹¦ÄÜÃèÊö : »ñµÃÏà»ú½ÓÊÕÖ¡ÂÊµÄÍ³¼ÆĞÅÏ¢£¬°üÀ¨´íÎóÖ¡ºÍ¶ªÖ¡µÄÇé¿ö¡£
-// ²ÎÊı     : hCamera        Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            psFrameStatistic Ö¸Õë£¬·µ»ØÍ³¼ÆĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetFrameStatistic
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºæ¥æ”¶å¸§ç‡çš„ç»Ÿè®¡ä¿¡æ¯ï¼ŒåŒ…æ‹¬é”™è¯¯å¸§å’Œä¸¢å¸§çš„æƒ…å†µã€‚
+// å‚æ•°     : hCamera        ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            psFrameStatistic æŒ‡é’ˆï¼Œè¿”å›ç»Ÿè®¡ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetFrameStatistic(
     CameraHandle            hCamera,
@@ -2414,13 +2740,27 @@ MVSDK_API CameraSdkStatus  CameraGetFrameStatistic(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetNoiseFilter
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼Ïñ½µÔëÄ£¿éµÄÊ¹ÄÜ×´Ì¬¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            bEnable   TRUE£¬Ê¹ÄÜ£»FALSE£¬½ûÖ¹¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetStatisticResend
+// åŠŸèƒ½æè¿° : è·å¾—ç›¸æœºç»Ÿè®¡ä¿¡æ¯ä¹‹é‡ä¼ æ•°é‡
+// å‚æ•°     : hCamera        ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pResendCount  æŒ‡é’ˆï¼Œè¿”å›é‡ä¼ æ•°é‡ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus  CameraGetStatisticResend(
+    CameraHandle            hCamera,
+    UINT*                   pResendCount
+);
+
+/******************************************************/
+// å‡½æ•°å   : CameraSetNoiseFilter
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒé™å™ªæ¨¡å—çš„ä½¿èƒ½çŠ¶æ€ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            bEnable   TRUEï¼Œä½¿èƒ½ï¼›FALSEï¼Œç¦æ­¢ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetNoiseFilter(
     CameraHandle    hCamera,
@@ -2428,13 +2768,13 @@ MVSDK_API CameraSdkStatus  CameraSetNoiseFilter(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetNoiseFilterState
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼Ïñ½µÔëÄ£¿éµÄÊ¹ÄÜ×´Ì¬¡£
-// ²ÎÊı     : hCamera  Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            *pEnable   Ö¸Õë£¬·µ»Ø×´Ì¬¡£TRUE£¬ÎªÊ¹ÄÜ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetNoiseFilterState
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒé™å™ªæ¨¡å—çš„ä½¿èƒ½çŠ¶æ€ã€‚
+// å‚æ•°     : hCamera  ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            *pEnable   æŒ‡é’ˆï¼Œè¿”å›çŠ¶æ€ã€‚TRUEï¼Œä¸ºä½¿èƒ½ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetNoiseFilterState(
     CameraHandle    hCamera,
@@ -2442,30 +2782,30 @@ MVSDK_API CameraSdkStatus  CameraGetNoiseFilterState(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraRstTimeStamp
-// ¹¦ÄÜÃèÊö : ¸´Î»Í¼Ïñ²É¼¯µÄÊ±¼ä´Á£¬´Ó0¿ªÊ¼¡£
-// ²ÎÊı     : CameraHandle hCamera
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraRstTimeStamp
+// åŠŸèƒ½æè¿° : å¤ä½å›¾åƒé‡‡é›†çš„æ—¶é—´æˆ³ï¼Œä»0å¼€å§‹ã€‚
+// å‚æ•°     : CameraHandle hCamera
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraRstTimeStamp(
     CameraHandle    hCamera
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSaveUserData
-// ¹¦ÄÜÃèÊö : ½«ÓÃ»§×Ô¶¨ÒåµÄÊı¾İ±£´æµ½Ïà»úµÄ·ÇÒ×ĞÔ´æ´¢Æ÷ÖĞ¡£
-//              Ã¿¸öĞÍºÅµÄÏà»ú¿ÉÄÜÖ§³ÖµÄÓÃ»§Êı¾İÇø×î´ó³¤¶È²»Ò»Ñù¡£
-//              ¿ÉÒÔ´ÓÉè±¸µÄÌØĞÔÃèÊöÖĞ»ñÈ¡¸Ã³¤¶ÈĞÅÏ¢¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            uStartAddr  ÆğÊ¼µØÖ·£¬´Ó0¿ªÊ¼¡£
-//            pbData      Êı¾İ»º³åÇøÖ¸Õë
-//            ilen        Ğ´ÈëÊı¾İµÄ³¤¶È£¬ilen + uStartAddr±ØĞë
-//                        Ğ¡ÓÚÓÃ»§Çø×î´ó³¤¶È
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSaveUserData
+// åŠŸèƒ½æè¿° : å°†ç”¨æˆ·è‡ªå®šä¹‰çš„æ•°æ®ä¿å­˜åˆ°ç›¸æœºçš„éæ˜“æ€§å­˜å‚¨å™¨ä¸­ã€‚
+//              æ¯ä¸ªå‹å·çš„ç›¸æœºå¯èƒ½æ”¯æŒçš„ç”¨æˆ·æ•°æ®åŒºæœ€å¤§é•¿åº¦ä¸ä¸€æ ·ã€‚
+//              å¯ä»¥ä»è®¾å¤‡çš„ç‰¹æ€§æè¿°ä¸­è·å–è¯¥é•¿åº¦ä¿¡æ¯ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            uStartAddr  èµ·å§‹åœ°å€ï¼Œä»0å¼€å§‹ã€‚
+//            pbData      æ•°æ®ç¼“å†²åŒºæŒ‡é’ˆ
+//            ilen        å†™å…¥æ•°æ®çš„é•¿åº¦ï¼Œilen + uStartAddrå¿…é¡»
+//                        å°äºç”¨æˆ·åŒºæœ€å¤§é•¿åº¦
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSaveUserData(
     CameraHandle    hCamera,
@@ -2475,18 +2815,18 @@ MVSDK_API CameraSdkStatus  CameraSaveUserData(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraLoadUserData
-// ¹¦ÄÜÃèÊö : ´ÓÏà»úµÄ·ÇÒ×ĞÔ´æ´¢Æ÷ÖĞ¶ÁÈ¡ÓÃ»§×Ô¶¨ÒåµÄÊı¾İ¡£
-//              Ã¿¸öĞÍºÅµÄÏà»ú¿ÉÄÜÖ§³ÖµÄÓÃ»§Êı¾İÇø×î´ó³¤¶È²»Ò»Ñù¡£
-//              ¿ÉÒÔ´ÓÉè±¸µÄÌØĞÔÃèÊöÖĞ»ñÈ¡¸Ã³¤¶ÈĞÅÏ¢¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            uStartAddr  ÆğÊ¼µØÖ·£¬´Ó0¿ªÊ¼¡£
-//            pbData      Êı¾İ»º³åÇøÖ¸Õë£¬·µ»Ø¶Áµ½µÄÊı¾İ¡£
-//            ilen        ¶ÁÈ¡Êı¾İµÄ³¤¶È£¬ilen + uStartAddr±ØĞë
-//                        Ğ¡ÓÚÓÃ»§Çø×î´ó³¤¶È
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraLoadUserData
+// åŠŸèƒ½æè¿° : ä»ç›¸æœºçš„éæ˜“æ€§å­˜å‚¨å™¨ä¸­è¯»å–ç”¨æˆ·è‡ªå®šä¹‰çš„æ•°æ®ã€‚
+//              æ¯ä¸ªå‹å·çš„ç›¸æœºå¯èƒ½æ”¯æŒçš„ç”¨æˆ·æ•°æ®åŒºæœ€å¤§é•¿åº¦ä¸ä¸€æ ·ã€‚
+//              å¯ä»¥ä»è®¾å¤‡çš„ç‰¹æ€§æè¿°ä¸­è·å–è¯¥é•¿åº¦ä¿¡æ¯ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            uStartAddr  èµ·å§‹åœ°å€ï¼Œä»0å¼€å§‹ã€‚
+//            pbData      æ•°æ®ç¼“å†²åŒºæŒ‡é’ˆï¼Œè¿”å›è¯»åˆ°çš„æ•°æ®ã€‚
+//            ilen        è¯»å–æ•°æ®çš„é•¿åº¦ï¼Œilen + uStartAddrå¿…é¡»
+//                        å°äºç”¨æˆ·åŒºæœ€å¤§é•¿åº¦
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraLoadUserData(
     CameraHandle    hCamera,
@@ -2496,15 +2836,15 @@ MVSDK_API CameraSdkStatus  CameraLoadUserData(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetFriendlyName
-// ¹¦ÄÜÃèÊö : ¶ÁÈ¡ÓÃ»§×Ô¶¨ÒåµÄÉè±¸êÇ³Æ¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pName      Ö¸Õë£¬·µ»ØÖ¸Ïò0½áÎ²µÄ×Ö·û´®£¬
-//             Éè±¸êÇ³Æ²»³¬¹ı32¸ö×Ö½Ú£¬Òò´Ë¸ÃÖ¸Õë
-//             Ö¸ÏòµÄ»º³åÇø±ØĞë´óÓÚµÈÓÚ32¸ö×Ö½Ú¿Õ¼ä¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetFriendlyName
+// åŠŸèƒ½æè¿° : è¯»å–ç”¨æˆ·è‡ªå®šä¹‰çš„è®¾å¤‡æ˜µç§°ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pName      æŒ‡é’ˆï¼Œè¿”å›æŒ‡å‘0ç»“å°¾çš„å­—ç¬¦ä¸²ï¼Œ
+//             è®¾å¤‡æ˜µç§°ä¸è¶…è¿‡32ä¸ªå­—èŠ‚ï¼Œå› æ­¤è¯¥æŒ‡é’ˆ
+//             æŒ‡å‘çš„ç¼“å†²åŒºå¿…é¡»å¤§äºç­‰äº32ä¸ªå­—èŠ‚ç©ºé—´ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetFriendlyName(
   CameraHandle  hCamera,
@@ -2512,15 +2852,15 @@ MVSDK_API CameraSdkStatus  CameraGetFriendlyName(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetFriendlyName
-// ¹¦ÄÜÃèÊö : ÉèÖÃÓÃ»§×Ô¶¨ÒåµÄÉè±¸êÇ³Æ¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pName      Ö¸Õë£¬Ö¸Ïò0½áÎ²µÄ×Ö·û´®£¬
-//             Éè±¸êÇ³Æ²»³¬¹ı32¸ö×Ö½Ú£¬Òò´Ë¸ÃÖ¸Õë
-//             Ö¸Ïò×Ö·û´®±ØĞëĞ¡ÓÚµÈÓÚ32¸ö×Ö½Ú¿Õ¼ä¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetFriendlyName
+// åŠŸèƒ½æè¿° : è®¾ç½®ç”¨æˆ·è‡ªå®šä¹‰çš„è®¾å¤‡æ˜µç§°ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pName      æŒ‡é’ˆï¼ŒæŒ‡å‘0ç»“å°¾çš„å­—ç¬¦ä¸²ï¼Œ
+//             è®¾å¤‡æ˜µç§°ä¸è¶…è¿‡32ä¸ªå­—èŠ‚ï¼Œå› æ­¤è¯¥æŒ‡é’ˆ
+//             æŒ‡å‘å­—ç¬¦ä¸²å¿…é¡»å°äºç­‰äº32ä¸ªå­—èŠ‚ç©ºé—´ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetFriendlyName(
   CameraHandle  hCamera,
@@ -2528,27 +2868,27 @@ MVSDK_API CameraSdkStatus  CameraSetFriendlyName(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSdkGetVersionString
-// ¹¦ÄÜÃèÊö :
-// ²ÎÊı     : pVersionString Ö¸Õë£¬·µ»ØSDK°æ±¾×Ö·û´®¡£
-//                            ¸ÃÖ¸ÕëÖ¸ÏòµÄ»º³åÇø´óĞ¡±ØĞë´óÓÚ
-//                            32¸ö×Ö½Ú
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSdkGetVersionString
+// åŠŸèƒ½æè¿° :
+// å‚æ•°     : pVersionString æŒ‡é’ˆï¼Œè¿”å›SDKç‰ˆæœ¬å­—ç¬¦ä¸²ã€‚
+//                            è¯¥æŒ‡é’ˆæŒ‡å‘çš„ç¼“å†²åŒºå¤§å°å¿…é¡»å¤§äº
+//                            32ä¸ªå­—èŠ‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSdkGetVersionString(
   char*       pVersionString
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraCheckFwUpdate
-// ¹¦ÄÜÃèÊö : ¼ì²â¹Ì¼ş°æ±¾£¬ÊÇ·ñĞèÒªÉı¼¶¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pNeedUpdate Ö¸Õë£¬·µ»Ø¹Ì¼ş¼ì²â×´Ì¬£¬TRUE±íÊ¾ĞèÒª¸üĞÂ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraCheckFwUpdate
+// åŠŸèƒ½æè¿° : æ£€æµ‹å›ºä»¶ç‰ˆæœ¬ï¼Œæ˜¯å¦éœ€è¦å‡çº§ã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pNeedUpdate æŒ‡é’ˆï¼Œè¿”å›å›ºä»¶æ£€æµ‹çŠ¶æ€ï¼ŒTRUEè¡¨ç¤ºéœ€è¦æ›´æ–°
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraCheckFwUpdate(
   CameraHandle  hCamera,
@@ -2556,28 +2896,28 @@ MVSDK_API CameraSdkStatus  CameraCheckFwUpdate(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetFirmwareVision
-// ¹¦ÄÜÃèÊö : »ñµÃ¹Ì¼ş°æ±¾µÄ×Ö·û´®
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pVersion ±ØĞëÖ¸ÏòÒ»¸ö´óÓÚ32×Ö½ÚµÄ»º³åÇø£¬
-//                      ·µ»Ø¹Ì¼şµÄ°æ±¾×Ö·û´®¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetFirmwareVision
+// åŠŸèƒ½æè¿° : è·å¾—å›ºä»¶ç‰ˆæœ¬çš„å­—ç¬¦ä¸²
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pVersion å¿…é¡»æŒ‡å‘ä¸€ä¸ªå¤§äº32å­—èŠ‚çš„ç¼“å†²åŒºï¼Œ
+//                      è¿”å›å›ºä»¶çš„ç‰ˆæœ¬å­—ç¬¦ä¸²ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
-MVSDK_API CameraSdkStatus  CameraGetFirmwareVision(
+MVSDK_API CameraSdkStatus  CameraGetFirmwareVersion(
   CameraHandle  hCamera,
   char*     pVersion
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetEnumInfo
-// ¹¦ÄÜÃèÊö : »ñµÃÖ¸¶¨Éè±¸µÄÃ¶¾ÙĞÅÏ¢
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pCameraInfo Ö¸Õë£¬·µ»ØÉè±¸µÄÃ¶¾ÙĞÅÏ¢¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetEnumInfo
+// åŠŸèƒ½æè¿° : è·å¾—æŒ‡å®šè®¾å¤‡çš„æšä¸¾ä¿¡æ¯
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pCameraInfo æŒ‡é’ˆï¼Œè¿”å›è®¾å¤‡çš„æšä¸¾ä¿¡æ¯ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetEnumInfo(
   CameraHandle    hCamera,
@@ -2585,13 +2925,13 @@ MVSDK_API CameraSdkStatus  CameraGetEnumInfo(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetInerfaceVersion
-// ¹¦ÄÜÃèÊö : »ñµÃÖ¸¶¨Éè±¸½Ó¿ÚµÄ°æ±¾
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            pVersion Ö¸ÏòÒ»¸ö´óÓÚ32×Ö½ÚµÄ»º³åÇø£¬·µ»Ø½Ó¿Ú°æ±¾×Ö·û´®¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetInerfaceVersion
+// åŠŸèƒ½æè¿° : è·å¾—æŒ‡å®šè®¾å¤‡æ¥å£çš„ç‰ˆæœ¬
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pVersion æŒ‡å‘ä¸€ä¸ªå¤§äº32å­—èŠ‚çš„ç¼“å†²åŒºï¼Œè¿”å›æ¥å£ç‰ˆæœ¬å­—ç¬¦ä¸²ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetInerfaceVersion(
   CameraHandle    hCamera,
@@ -2599,16 +2939,16 @@ MVSDK_API CameraSdkStatus  CameraGetInerfaceVersion(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetIOState
-// ¹¦ÄÜÃèÊö : ÉèÖÃÖ¸¶¨IOµÄµçÆ½×´Ì¬£¬IOÎªÊä³öĞÍIO£¬Ïà»ú
-//              Ô¤Áô¿É±à³ÌÊä³öIOµÄ¸öÊıÓÉtSdkCameraCapbilityÖĞ
-//              iOutputIoCounts¾ö¶¨¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iOutputIOIndex IOµÄË÷ÒıºÅ£¬´Ó0¿ªÊ¼¡£
-//            uState ÒªÉè¶¨µÄ×´Ì¬£¬1Îª¸ß£¬0ÎªµÍ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetIOState
+// åŠŸèƒ½æè¿° : è®¾ç½®æŒ‡å®šIOçš„ç”µå¹³çŠ¶æ€ï¼ŒIOä¸ºè¾“å‡ºå‹IOï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iOutputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            uState è¦è®¾å®šçš„çŠ¶æ€ï¼Œ1ä¸ºé«˜ï¼Œ0ä¸ºä½
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetIOState(
   CameraHandle    hCamera,
@@ -2616,17 +2956,36 @@ MVSDK_API CameraSdkStatus  CameraSetIOState(
   UINT        uState
 );
 
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è¯»å–æŒ‡å®šIOçš„ç”µå¹³çŠ¶æ€ï¼ŒIOä¸ºè¾“å‡ºå‹IOï¼Œç›¸æœºé¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±@link #tSdkCameraCapbility.iOutputIoCounts @endlinkå†³å®šã€‚
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] puState è¿”å›IOçŠ¶æ€ï¼Œ1ä¸ºé«˜ï¼Œ0ä¸ºä½
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Read the level state of the specified IO. IO is the output IO. The number of programmable output IOs for the camera is determined by @link #tSdkCameraCapbility.iOutputIoCounts @endlink.
+/// \param [in] hCamera Camera handle.
+/// \param [in] iOutputIOIndex IO index, starting from 0.
+/// \param [out] puState return IO state, 1 is high, 0 is low
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetOutPutIOState(
+	CameraHandle    hCamera,
+	INT         iOutputIOIndex,
+	UINT*       puState
+	);
+
 /******************************************************/
-// º¯ÊıÃû   : CameraGetIOState
-// ¹¦ÄÜÃèÊö : ÉèÖÃÖ¸¶¨IOµÄµçÆ½×´Ì¬£¬IOÎªÊäÈëĞÍIO£¬Ïà»ú
-//              Ô¤Áô¿É±à³ÌÊä³öIOµÄ¸öÊıÓÉtSdkCameraCapbilityÖĞ
-//              iInputIoCounts¾ö¶¨¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iInputIOIndex IOµÄË÷ÒıºÅ£¬´Ó0¿ªÊ¼¡£
-//            puState Ö¸Õë£¬·µ»ØIO×´Ì¬,1Îª¸ß£¬0ÎªµÍ
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetIOState
+// åŠŸèƒ½æè¿° : è®¾ç½®æŒ‡å®šIOçš„ç”µå¹³çŠ¶æ€ï¼ŒIOä¸ºè¾“å…¥å‹IOï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iInputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            puState æŒ‡é’ˆï¼Œè¿”å›IOçŠ¶æ€,1ä¸ºé«˜ï¼Œ0ä¸ºä½
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetIOState(
   CameraHandle    hCamera,
@@ -2637,53 +2996,129 @@ MVSDK_API CameraSdkStatus  CameraGetIOState(
 
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetInPutIOMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃÊäÈëIOµÄÄ£Ê½£¬Ïà»ú
-//              Ô¤Áô¿É±à³ÌÊä³öIOµÄ¸öÊıÓÉtSdkCameraCapbilityÖĞ
-//              iInputIoCounts¾ö¶¨¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iInputIOIndex IOµÄË÷ÒıºÅ£¬´Ó0¿ªÊ¼¡£
-//            iMode IOÄ£Ê½,²Î¿¼CameraDefine.hÖĞemCameraGPIOMode
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetInPutIOMode
+// åŠŸèƒ½æè¿° : è®¾ç½®è¾“å…¥IOçš„æ¨¡å¼ï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iInputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            iMode IOæ¨¡å¼,å‚è€ƒCameraDefine.hä¸­emCameraGPIOMode
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetInPutIOMode(
 	CameraHandle    hCamera,
 	INT         iInputIOIndex,
 	INT			iMode
 	);
+	
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å…¥IOçš„æ¨¡å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piMode IOæ¨¡å¼,å‚è€ƒ@link #emCameraGPIOMode @endlink
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the input IO mode
+/// \param [in] hCamera Camera handle.
+/// \param [in] iInputIOIndex IO index, starting from 0.
+/// \param [out] piMode IO mode, reference @link #emCameraGPIOMode @endlink
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetInPutIOMode(
+	CameraHandle    hCamera,
+	INT				iInputIOIndex,
+	INT*			piMode
+	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetOutPutIOMode
-// ¹¦ÄÜÃèÊö : ÉèÖÃÊä³öIOµÄÄ£Ê½£¬Ïà»ú
-//              Ô¤Áô¿É±à³ÌÊä³öIOµÄ¸öÊıÓÉtSdkCameraCapbilityÖĞ
-//              iOutputIoCounts¾ö¶¨¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iOutputIOIndex IOµÄË÷ÒıºÅ£¬´Ó0¿ªÊ¼¡£
-//            iMode IOÄ£Ê½,²Î¿¼CameraDefine.hÖĞemCameraGPIOMode
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetOutPutIOMode
+// åŠŸèƒ½æè¿° : è®¾ç½®è¾“å‡ºIOçš„æ¨¡å¼ï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iOutputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            iMode IOæ¨¡å¼,å‚è€ƒCameraDefine.hä¸­emCameraGPIOMode
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetOutPutIOMode(
 	CameraHandle    hCamera,
 	INT         iOutputIOIndex,
 	INT			iMode
 	);
+	
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å‡ºIOçš„æ¨¡å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piMode IOæ¨¡å¼,å‚è€ƒ@link #emCameraGPIOMode @endlink
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the output IO mode
+/// \param [in] hCamera Camera handle.
+/// \param [in] iOutputIOIndex IO index, starting from 0.
+/// \param [out] piMode IO mode, reference @link #emCameraGPIOMode @endlink
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetOutPutIOMode(
+	CameraHandle    hCamera,
+	INT         iOutputIOIndex,
+	INT*		piMode
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å…¥IOçš„æ¨¡å¼æ”¯æŒèƒ½åŠ›
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piCapbility IOæ¨¡å¼æ”¯æŒä½æ©ç 
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the mode support capability of the input IO
+/// \param [in] hCamera Camera handle.
+/// \param [in] iInputIOIndex IO index, starting from 0.
+/// \param [out] piCapbility IO mode support bit mask
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetInPutIOModeCapbility(
+	CameraHandle    hCamera,
+	INT				iInputIOIndex,
+	UINT*			piCapbility
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å‡ºIOçš„æ¨¡å¼æ”¯æŒèƒ½åŠ›
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piCapbility IOæ¨¡å¼æ”¯æŒä½æ©ç 
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the mode support capability of the output IO
+/// \param [in] hCamera Camera handle.
+/// \param [in] iOutputIOIndex IO index, starting from 0.
+/// \param [out] piCapbility IO mode support bit mask
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetOutPutIOModeCapbility(
+	CameraHandle    hCamera,
+	INT				iOutputIOIndex,
+	UINT*			piCapbility
+	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetOutPutPWM
-// ¹¦ÄÜÃèÊö : ÉèÖÃPWMĞÍÊä³öµÄ²ÎÊı£¬Ïà»ú
-//              Ô¤Áô¿É±à³ÌÊä³öIOµÄ¸öÊıÓÉtSdkCameraCapbilityÖĞ
-//              iOutputIoCounts¾ö¶¨¡£
-// ²ÎÊı     : hCamera Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iOutputIOIndex IOµÄË÷ÒıºÅ£¬´Ó0¿ªÊ¼¡£
-//            iCycle PWMµÄÖÜÆÚ£¬µ¥Î»(us)
-//			  uDuty  Õ¼ÓÃ±È£¬È¡Öµ1%~99%
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetOutPutPWM
+// åŠŸèƒ½æè¿° : è®¾ç½®PWMå‹è¾“å‡ºçš„å‚æ•°ï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iOutputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            iCycle PWMçš„å‘¨æœŸï¼Œå•ä½(us)
+//			  uDuty  å ç”¨æ¯”ï¼Œå–å€¼1%~99%
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetOutPutPWM(
 	CameraHandle    hCamera,
@@ -2692,19 +3127,256 @@ MVSDK_API CameraSdkStatus  CameraSetOutPutPWM(
 	UINT		uDuty
 	);
 
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è®¾ç½®ç¼–ç å™¨æœ‰æ•ˆæ–¹å‘
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] dir æœ‰æ•ˆæ–¹å‘ï¼ˆ0:æ­£åè½¬éƒ½æœ‰æ•ˆ   1ï¼šé¡ºæ—¶é’ˆï¼ˆAç›¸è¶…å‰äºBï¼‰   2:é€†æ—¶é’ˆï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the effective direction of the rotary encoder
+/// \param [in] hCamera Camera handle.
+/// \param [in] dir Valid direction (0: Both positive and negative are valid    1: Clockwise (A phase leads B)    2: Counterclockwise)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetRotaryEncDir(
+	CameraHandle    hCamera,
+	INT				dir
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–ç¼–ç å™¨æœ‰æ•ˆæ–¹å‘
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] dir æœ‰æ•ˆæ–¹å‘ï¼ˆ0:æ­£åè½¬éƒ½æœ‰æ•ˆ   1ï¼šé¡ºæ—¶é’ˆï¼ˆAç›¸è¶…å‰äºBï¼‰   2:é€†æ—¶é’ˆï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the effective direction of the rotary encoder
+/// \param [in] hCamera Camera handle.
+/// \param [out] dir Valid direction (0: Both positive and negative are valid    1: Clockwise (A phase leads B)    2: Counterclockwise)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetRotaryEncDir(
+	CameraHandle    hCamera,
+	INT*			dir
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è®¾ç½®ç¼–ç å™¨é¢‘ç‡
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] mul å€é¢‘
+/// \param [in] div åˆ†é¢‘
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the frequency of the rotary encoder
+/// \param [in] hCamera Camera handle.
+/// \param [in] mul frequency multiplier
+/// \param [in] div frequency division
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetRotaryEncFreq(
+	CameraHandle hCamera,
+	INT			mul,
+	INT			div
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–ç¼–ç å™¨é¢‘ç‡
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] mul å€é¢‘
+/// \param [out] div åˆ†é¢‘
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the frequency of the rotary encoder
+/// \param [in] hCamera Camera handle.
+/// \param [out] mul frequency multiplier
+/// \param [out] div frequency division
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetRotaryEncFreq(
+	CameraHandle hCamera,
+	INT*		mul,
+	INT*		div
+	);
+	
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è®¾ç½®è¾“å…¥IOçš„æ ¼å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [in] iFormat IOæ ¼å¼,å‚è€ƒ@link #emCameraGPIOFormat @endlink
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the input IO format
+/// \param [in] hCamera Camera handle.
+/// \param [in] iInputIOIndex IO index, starting from 0.
+/// \param [in] iFormat IO format, reference @link #emCameraGPIOFormat @endlink
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetInPutIOFormat(
+	CameraHandle    hCamera,
+	INT         iInputIOIndex,
+	INT			iFormat
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å…¥IOçš„æ ¼å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piFormat IOæ ¼å¼,å‚è€ƒ@link #emCameraGPIOFormat @endlink
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the input IO format
+/// \param [in] hCamera Camera handle.
+/// \param [in] iInputIOIndex IO index, starting from 0.
+/// \param [out] piFormat IO format, reference @link #emCameraGPIOFormat @endlink
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetInPutIOFormat(
+	CameraHandle    hCamera,
+	INT				iInputIOIndex,
+	INT*			piFormat
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è®¾ç½®è¾“å‡ºIOçš„æ ¼å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [in] iFormat IOæ ¼å¼,å‚è€ƒ@link #emCameraGPIOFormat @endlink
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the output IO format
+/// \param [in] hCamera Camera handle.
+/// \param [in] iOutputIOIndex IO index, starting from 0.
+/// \param [in] iFormat IO format, reference @link #emCameraGPIOFormat @endlink
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetOutPutIOFormat(
+	CameraHandle    hCamera,
+	INT         iOutputIOIndex,
+	INT			iFormat
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å‡ºIOçš„æ ¼å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piFormat IOæ ¼å¼,å‚è€ƒ@link #emCameraGPIOFormat @endlink
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the output IO format
+/// \param [in] hCamera Camera handle.
+/// \param [in] iOutputIOIndex IO index, starting from 0.
+/// \param [out] piFormat IO format, reference @link #emCameraGPIOFormat @endlink
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetOutPutIOFormat(
+	CameraHandle    hCamera,
+	INT				iOutputIOIndex,
+	INT*			piFormat
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å…¥IOçš„æ ¼å¼æ”¯æŒèƒ½åŠ›
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iInputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piCapbility IOæ ¼å¼æ”¯æŒä½æ©ç 
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the format support capability of the input IO
+/// \param [in] hCamera Camera handle.
+/// \param [in] iInputIOIndex IO index, starting from 0.
+/// \param [out] piCapbility IO format support bit mask
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetInPutIOFormatCapbility(
+	CameraHandle    hCamera,
+	INT				iInputIOIndex,
+	UINT*			piCapbility
+	);
+
+/// @ingroup API_GPIO
+/// \~chinese
+/// \brief è·å–è¾“å‡ºIOçš„æ ¼å¼æ”¯æŒèƒ½åŠ›
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+/// \param [out] piCapbility IOæ ¼å¼æ”¯æŒä½æ©ç 
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the format support capability of the output IO
+/// \param [in] hCamera Camera handle.
+/// \param [in] iOutputIOIndex IO index, starting from 0.
+/// \param [out] piCapbility IO format support bit mask
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetOutPutIOFormatCapbility(
+	CameraHandle    hCamera,
+	INT				iOutputIOIndex,
+	UINT*			piCapbility
+	);
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetAeAlgorithm
-// ¹¦ÄÜÃèÊö : ÉèÖÃ×Ô¶¯ÆØ¹âÊ±Ñ¡ÔñµÄËã·¨£¬²»Í¬µÄËã·¨ÊÊÓÃÓÚ
-//        ²»Í¬µÄ³¡¾°¡£
-// ²ÎÊı     : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iIspProcessor   Ñ¡ÔñÖ´ĞĞ¸ÃËã·¨µÄ¶ÔÏó£¬²Î¿¼CameraDefine.h
-//                emSdkIspProcessorµÄ¶¨Òå
-//            iAeAlgorithmSel   ÒªÑ¡ÔñµÄËã·¨±àºÅ¡£´Ó0¿ªÊ¼£¬×î´óÖµÓÉtSdkCameraCapbility
-//                ÖĞiAeAlmSwDescºÍiAeAlmHdDesc¾ö¶¨¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetOutPutDelayTime
+// åŠŸèƒ½æè¿° : è®¾ç½®è¾“å‡ºå»¶æ—¶ï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iOutputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            uDelayTimeUs å»¶æ—¶ï¼Œå•ä½(us)
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraSetOutPutDelayTime(
+	CameraHandle    hCamera,
+	INT             iOutputIOIndex,
+	UINT            uDelayTimeUs
+	);
+
+/******************************************************/
+// å‡½æ•°å   : CameraSetOutPutPulseWidth
+// åŠŸèƒ½æè¿° : è®¾ç½®è¾“å‡ºè„‰å®½ï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iOutputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            uTimeUs è„‰å®½ï¼Œå•ä½(us)
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraSetOutPutPulseWidth(
+	CameraHandle    hCamera,
+	INT             iOutputIOIndex,
+	UINT            uTimeUs
+	);
+
+/******************************************************/
+// å‡½æ•°å   : CameraSetOutPutPolarity
+// åŠŸèƒ½æè¿° : è®¾ç½®è¾“å‡ºææ€§ï¼Œç›¸æœº
+//              é¢„ç•™å¯ç¼–ç¨‹è¾“å‡ºIOçš„ä¸ªæ•°ç”±tSdkCameraCapbilityä¸­
+//              iOutputIoCountså†³å®šã€‚
+// å‚æ•°     : hCamera ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iOutputIOIndex IOçš„ç´¢å¼•å·ï¼Œä»0å¼€å§‹ã€‚
+//            uPolarity    0:æ­£å‘    1ï¼šåå‘
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraSetOutPutPolarity(
+	CameraHandle    hCamera,
+	INT             iOutputIOIndex,
+	UINT            uPolarity
+	);
+
+/******************************************************/
+// å‡½æ•°å   : CameraSetAeAlgorithm
+// åŠŸèƒ½æè¿° : è®¾ç½®è‡ªåŠ¨æ›å…‰æ—¶é€‰æ‹©çš„ç®—æ³•ï¼Œä¸åŒçš„ç®—æ³•é€‚ç”¨äº
+//        ä¸åŒçš„åœºæ™¯ã€‚
+// å‚æ•°     : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iIspProcessor   é€‰æ‹©æ‰§è¡Œè¯¥ç®—æ³•çš„å¯¹è±¡ï¼Œå‚è€ƒCameraDefine.h
+//                emSdkIspProcessorçš„å®šä¹‰
+//            iAeAlgorithmSel   è¦é€‰æ‹©çš„ç®—æ³•ç¼–å·ã€‚ä»0å¼€å§‹ï¼Œæœ€å¤§å€¼ç”±tSdkCameraCapbility
+//                ä¸­iAeAlmSwDescå’ŒiAeAlmHdDescå†³å®šã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetAeAlgorithm(
     CameraHandle    hCamera,
@@ -2713,16 +3385,16 @@ MVSDK_API CameraSdkStatus  CameraSetAeAlgorithm(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetAeAlgorithm
-// ¹¦ÄÜÃèÊö : »ñµÃµ±Ç°×Ô¶¯ÆØ¹âËùÑ¡ÔñµÄËã·¨
-// ²ÎÊı     : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iIspProcessor   Ñ¡ÔñÖ´ĞĞ¸ÃËã·¨µÄ¶ÔÏó£¬²Î¿¼CameraDefine.h
-//                emSdkIspProcessorµÄ¶¨Òå
-//            piAeAlgorithmSel  ·µ»Øµ±Ç°Ñ¡ÔñµÄËã·¨±àºÅ¡£´Ó0¿ªÊ¼£¬×î´óÖµÓÉtSdkCameraCapbility
-//                ÖĞiAeAlmSwDescºÍiAeAlmHdDesc¾ö¶¨¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetAeAlgorithm
+// åŠŸèƒ½æè¿° : è·å¾—å½“å‰è‡ªåŠ¨æ›å…‰æ‰€é€‰æ‹©çš„ç®—æ³•
+// å‚æ•°     : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iIspProcessor   é€‰æ‹©æ‰§è¡Œè¯¥ç®—æ³•çš„å¯¹è±¡ï¼Œå‚è€ƒCameraDefine.h
+//                emSdkIspProcessorçš„å®šä¹‰
+//            piAeAlgorithmSel  è¿”å›å½“å‰é€‰æ‹©çš„ç®—æ³•ç¼–å·ã€‚ä»0å¼€å§‹ï¼Œæœ€å¤§å€¼ç”±tSdkCameraCapbility
+//                ä¸­iAeAlmSwDescå’ŒiAeAlmHdDescå†³å®šã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetAeAlgorithm(
     CameraHandle    hCamera,
@@ -2731,16 +3403,16 @@ MVSDK_API CameraSdkStatus  CameraGetAeAlgorithm(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetBayerDecAlgorithm
-// ¹¦ÄÜÃèÊö : ÉèÖÃBayerÊı¾İ×ª²ÊÉ«µÄËã·¨¡£
-// ²ÎÊı     : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iIspProcessor   Ñ¡ÔñÖ´ĞĞ¸ÃËã·¨µÄ¶ÔÏó£¬²Î¿¼CameraDefine.h
-//                emSdkIspProcessorµÄ¶¨Òå
-//            iAlgorithmSel     ÒªÑ¡ÔñµÄËã·¨±àºÅ¡£´Ó0¿ªÊ¼£¬×î´óÖµÓÉtSdkCameraCapbility
-//                ÖĞiBayerDecAlmSwDescºÍiBayerDecAlmHdDesc¾ö¶¨¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetBayerDecAlgorithm
+// åŠŸèƒ½æè¿° : è®¾ç½®Bayeræ•°æ®è½¬å½©è‰²çš„ç®—æ³•ã€‚
+// å‚æ•°     : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iIspProcessor   é€‰æ‹©æ‰§è¡Œè¯¥ç®—æ³•çš„å¯¹è±¡ï¼Œå‚è€ƒCameraDefine.h
+//                emSdkIspProcessorçš„å®šä¹‰
+//            iAlgorithmSel     è¦é€‰æ‹©çš„ç®—æ³•ç¼–å·ã€‚ä»0å¼€å§‹ï¼Œæœ€å¤§å€¼ç”±tSdkCameraCapbility
+//                ä¸­iBayerDecAlmSwDescå’ŒiBayerDecAlmHdDescå†³å®šã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetBayerDecAlgorithm(
     CameraHandle    hCamera,
@@ -2749,16 +3421,16 @@ MVSDK_API CameraSdkStatus  CameraSetBayerDecAlgorithm(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetBayerDecAlgorithm
-// ¹¦ÄÜÃèÊö : »ñµÃBayerÊı¾İ×ª²ÊÉ«ËùÑ¡ÔñµÄËã·¨¡£
-// ²ÎÊı     : hCamera       Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iIspProcessor   Ñ¡ÔñÖ´ĞĞ¸ÃËã·¨µÄ¶ÔÏó£¬²Î¿¼CameraDefine.h
-//                emSdkIspProcessorµÄ¶¨Òå
-//            piAlgorithmSel    ·µ»Øµ±Ç°Ñ¡ÔñµÄËã·¨±àºÅ¡£´Ó0¿ªÊ¼£¬×î´óÖµÓÉtSdkCameraCapbility
-//                ÖĞiBayerDecAlmSwDescºÍiBayerDecAlmHdDesc¾ö¶¨¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetBayerDecAlgorithm
+// åŠŸèƒ½æè¿° : è·å¾—Bayeræ•°æ®è½¬å½©è‰²æ‰€é€‰æ‹©çš„ç®—æ³•ã€‚
+// å‚æ•°     : hCamera       ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iIspProcessor   é€‰æ‹©æ‰§è¡Œè¯¥ç®—æ³•çš„å¯¹è±¡ï¼Œå‚è€ƒCameraDefine.h
+//                emSdkIspProcessorçš„å®šä¹‰
+//            piAlgorithmSel    è¿”å›å½“å‰é€‰æ‹©çš„ç®—æ³•ç¼–å·ã€‚ä»0å¼€å§‹ï¼Œæœ€å¤§å€¼ç”±tSdkCameraCapbility
+//                ä¸­iBayerDecAlmSwDescå’ŒiBayerDecAlmHdDescå†³å®šã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetBayerDecAlgorithm(
     CameraHandle    hCamera,
@@ -2767,15 +3439,15 @@ MVSDK_API CameraSdkStatus  CameraGetBayerDecAlgorithm(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetIspProcessor
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼Ïñ´¦Àíµ¥ÔªµÄËã·¨Ö´ĞĞ¶ÔÏó£¬ÓÉPC¶Ë»òÕßÏà»ú¶Ë
-//        À´Ö´ĞĞËã·¨£¬µ±ÓÉÏà»ú¶ËÖ´ĞĞÊ±£¬»á½µµÍPC¶ËµÄCPUÕ¼ÓÃÂÊ¡£
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iIspProcessor ²Î¿¼CameraDefine.hÖĞ
-//              emSdkIspProcessorµÄ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetIspProcessor
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒå¤„ç†å•å…ƒçš„ç®—æ³•æ‰§è¡Œå¯¹è±¡ï¼Œç”±PCç«¯æˆ–è€…ç›¸æœºç«¯
+//        æ¥æ‰§è¡Œç®—æ³•ï¼Œå½“ç”±ç›¸æœºç«¯æ‰§è¡Œæ—¶ï¼Œä¼šé™ä½PCç«¯çš„CPUå ç”¨ç‡ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iIspProcessor å‚è€ƒCameraDefine.hä¸­
+//              emSdkIspProcessorçš„å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetIspProcessor(
     CameraHandle    hCamera,
@@ -2783,14 +3455,14 @@ MVSDK_API CameraSdkStatus  CameraSetIspProcessor(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetIspProcessor
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼Ïñ´¦Àíµ¥ÔªµÄËã·¨Ö´ĞĞ¶ÔÏó¡£
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piIspProcessor ·µ»ØÑ¡ÔñµÄ¶ÔÏó£¬·µ»ØÖµ²Î¿¼CameraDefine.hÖĞ
-//               emSdkIspProcessorµÄ¶¨Òå¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetIspProcessor
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒå¤„ç†å•å…ƒçš„ç®—æ³•æ‰§è¡Œå¯¹è±¡ã€‚
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piIspProcessor è¿”å›é€‰æ‹©çš„å¯¹è±¡ï¼Œè¿”å›å€¼å‚è€ƒCameraDefine.hä¸­
+//               emSdkIspProcessorçš„å®šä¹‰ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetIspProcessor(
     CameraHandle    hCamera,
@@ -2798,13 +3470,13 @@ MVSDK_API CameraSdkStatus  CameraGetIspProcessor(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetBlackLevel
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼ÏñµÄºÚµçÆ½»ù×¼£¬Ä¬ÈÏÖµÎª0
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iBlackLevel ÒªÉè¶¨µÄµçÆ½Öµ¡£·¶Î§Îª0µ½255¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetBlackLevel
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒçš„é»‘ç”µå¹³åŸºå‡†ï¼Œé»˜è®¤å€¼ä¸º0
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iBlackLevel è¦è®¾å®šçš„ç”µå¹³å€¼ã€‚èŒƒå›´ä¸º0åˆ°255ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetBlackLevel(
   CameraHandle    hCamera,
@@ -2812,13 +3484,13 @@ MVSDK_API CameraSdkStatus  CameraSetBlackLevel(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetBlackLevel
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼ÏñµÄºÚµçÆ½»ù×¼£¬Ä¬ÈÏÖµÎª0
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piBlackLevel ·µ»Øµ±Ç°µÄºÚµçÆ½Öµ¡£·¶Î§Îª0µ½255¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetBlackLevel
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒçš„é»‘ç”µå¹³åŸºå‡†ï¼Œé»˜è®¤å€¼ä¸º0
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piBlackLevel è¿”å›å½“å‰çš„é»‘ç”µå¹³å€¼ã€‚èŒƒå›´ä¸º0åˆ°255ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetBlackLevel(
   CameraHandle    hCamera,
@@ -2826,13 +3498,13 @@ MVSDK_API CameraSdkStatus  CameraGetBlackLevel(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraSetWhiteLevel
-// ¹¦ÄÜÃèÊö : ÉèÖÃÍ¼ÏñµÄ°×µçÆ½»ù×¼£¬Ä¬ÈÏÖµÎª255
-// ²ÎÊı     : hCamera   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            iWhiteLevel ÒªÉè¶¨µÄµçÆ½Öµ¡£·¶Î§Îª0µ½255¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraSetWhiteLevel
+// åŠŸèƒ½æè¿° : è®¾ç½®å›¾åƒçš„ç™½ç”µå¹³åŸºå‡†ï¼Œé»˜è®¤å€¼ä¸º255
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            iWhiteLevel è¦è®¾å®šçš„ç”µå¹³å€¼ã€‚èŒƒå›´ä¸º0åˆ°255ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetWhiteLevel(
   CameraHandle    hCamera,
@@ -2840,13 +3512,13 @@ MVSDK_API CameraSdkStatus  CameraSetWhiteLevel(
 );
 
 /******************************************************/
-// º¯ÊıÃû   : CameraGetWhiteLevel
-// ¹¦ÄÜÃèÊö : »ñµÃÍ¼ÏñµÄ°×µçÆ½»ù×¼£¬Ä¬ÈÏÖµÎª255
-// ²ÎÊı     : hCamera    Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//            piWhiteLevel ·µ»Øµ±Ç°µÄ°×µçÆ½Öµ¡£·¶Î§Îª0µ½255¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å   : CameraGetWhiteLevel
+// åŠŸèƒ½æè¿° : è·å¾—å›¾åƒçš„ç™½ç”µå¹³åŸºå‡†ï¼Œé»˜è®¤å€¼ä¸º255
+// å‚æ•°     : hCamera    ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            piWhiteLevel è¿”å›å½“å‰çš„ç™½ç”µå¹³å€¼ã€‚èŒƒå›´ä¸º0åˆ°255ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetWhiteLevel(
   CameraHandle    hCamera,
@@ -2854,15 +3526,15 @@ MVSDK_API CameraSdkStatus  CameraGetWhiteLevel(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraSetIspOutFormat
-// ¹¦ÄÜÃèÊö	: ÉèÖÃCameraGetImageBufferº¯ÊıµÄÍ¼Ïñ´¦ÀíµÄÊä³ö¸ñÊ½£¬Ö§³Ö
-//              CAMERA_MEDIA_TYPE_MONO8ºÍCAMERA_MEDIA_TYPE_RGB8
-//              (ÔÚCameraDefine.hÖĞ¶¨Òå)ÈıÖÖ£¬·Ö±ğ¶ÔÓ¦8Î»»Ò¶ÈÍ¼ÏñºÍ24Î»²ÊÉ«Í¼Ïñ¡£
-// ²ÎÊı	    : hCamera		Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             uFormat	ÒªÉè¶¨¸ñÊ½¡£CAMERA_MEDIA_TYPE_MONO8»òÕßCAMERA_MEDIA_TYPE_RGB8
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraSetIspOutFormat
+// åŠŸèƒ½æè¿°	: è®¾ç½®CameraGetImageBufferå‡½æ•°çš„å›¾åƒå¤„ç†çš„è¾“å‡ºæ ¼å¼ï¼Œæ”¯æŒ
+//              CAMERA_MEDIA_TYPE_MONO8å’ŒCAMERA_MEDIA_TYPE_RGB8
+//              (åœ¨CameraDefine.hä¸­å®šä¹‰)ä¸‰ç§ï¼Œåˆ†åˆ«å¯¹åº”8ä½ç°åº¦å›¾åƒå’Œ24ä½å½©è‰²å›¾åƒã€‚
+// å‚æ•°	    : hCamera		ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             uFormat	è¦è®¾å®šæ ¼å¼ã€‚CAMERA_MEDIA_TYPE_MONO8æˆ–è€…CAMERA_MEDIA_TYPE_RGB8
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraSetIspOutFormat(
     CameraHandle    hCamera,
@@ -2870,15 +3542,15 @@ MVSDK_API CameraSdkStatus  CameraSetIspOutFormat(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetIspOutFormat
-// ¹¦ÄÜÃèÊö	: »ñµÃÍ¼Ïñ´¦ÀíµÄÊä³ö¸ñÊ½£¬Ä¿Ç°Ö»Ö§³Ö
-//              CAMERA_MEDIA_TYPE_MONO8ºÍCAMERA_MEDIA_TYPE_RGB8
-//              (ÔÚCameraDefine.hÖĞ¶¨Òå)Á½ÖÖ£¬ÆäËûµÄ²ÎÊı»á·µ»Ø´íÎó¡£
-// ²ÎÊı	    : hCamera		Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-//             puFormat	·µ»Øµ±Ç°Éè¶¨µÄ¸ñÊ½¡£CAMERA_MEDIA_TYPE_MONO8»òÕßCAMERA_MEDIA_TYPE_RGB8
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraGetIspOutFormat
+// åŠŸèƒ½æè¿°	: è·å¾—å›¾åƒå¤„ç†çš„è¾“å‡ºæ ¼å¼ï¼Œç›®å‰åªæ”¯æŒ
+//              CAMERA_MEDIA_TYPE_MONO8å’ŒCAMERA_MEDIA_TYPE_RGB8
+//              (åœ¨CameraDefine.hä¸­å®šä¹‰)ä¸¤ç§ï¼Œå…¶ä»–çš„å‚æ•°ä¼šè¿”å›é”™è¯¯ã€‚
+// å‚æ•°	    : hCamera		ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//             puFormat	è¿”å›å½“å‰è®¾å®šçš„æ ¼å¼ã€‚CAMERA_MEDIA_TYPE_MONO8æˆ–è€…CAMERA_MEDIA_TYPE_RGB8
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus  CameraGetIspOutFormat(
     CameraHandle    hCamera,
@@ -2886,11 +3558,11 @@ MVSDK_API CameraSdkStatus  CameraGetIspOutFormat(
 );
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraGetErrorString
-// ¹¦ÄÜÃèÊö	: »ñµÃ´íÎóÂë¶ÔÓ¦µÄÃèÊö×Ö·û´®
-// ²ÎÊı	    : iStatusCode		´íÎóÂë¡£(¶¨ÒåÓÚCameraStatus.hÖĞ)
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»Ø´íÎóÂë¶ÔÓ¦µÄ×Ö·û´®Ê×µØÖ·;
-//            ·ñÔò·µ»ØNULL¡£
+// å‡½æ•°å 	: CameraGetErrorString
+// åŠŸèƒ½æè¿°	: è·å¾—é”™è¯¯ç å¯¹åº”çš„æè¿°å­—ç¬¦ä¸²
+// å‚æ•°	    : iStatusCode		é”™è¯¯ç ã€‚(å®šä¹‰äºCameraStatus.hä¸­)
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›é”™è¯¯ç å¯¹åº”çš„å­—ç¬¦ä¸²é¦–åœ°å€;
+//            å¦åˆ™è¿”å›NULLã€‚
 /******************************************************/
 MVSDK_API char*  CameraGetErrorString(
     CameraSdkStatus     iStatusCode
@@ -2898,12 +3570,12 @@ MVSDK_API char*  CameraGetErrorString(
 
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraReConnect
-// ¹¦ÄÜÃèÊö	: ÖØĞÂÁ¬½ÓÉè±¸£¬ÓÃÓÚUSBÉè±¸ÒâÍâµôÏßºóÖØÁ¬
-// ²ÎÊı	    : hCamera	   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0);
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraReConnect
+// åŠŸèƒ½æè¿°	: é‡æ–°è¿æ¥è®¾å¤‡ï¼Œç”¨äºUSBè®¾å¤‡æ„å¤–æ‰çº¿åé‡è¿
+// å‚æ•°	    : hCamera	   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus CameraReConnect(
     CameraHandle    hCamera
@@ -2911,22 +3583,240 @@ MVSDK_API CameraSdkStatus CameraReConnect(
 
 
 /******************************************************/
-// º¯ÊıÃû 	: CameraConnectTest
-// ¹¦ÄÜÃèÊö	: ²âÊÔÏà»úµÄÁ¬½Ó×´Ì¬£¬ÓÃÓÚ¼ì²âÏà»úÊÇ·ñµôÏß
-// ²ÎÊı	    : hCamera	   Ïà»úµÄ¾ä±ú£¬ÓÉCameraInitº¯Êı»ñµÃ¡£
-// ·µ»ØÖµ   : ³É¹¦Ê±£¬·µ»ØCAMERA_STATUS_SUCCESS (0)£¬±íÊ¾Ïà»úÁ¬½Ó×´Ì¬Õı³£;
-//            ·ñÔò·µ»Ø·Ç0ÖµµÄ´íÎóÂë,Çë²Î¿¼CameraStatus.h
-//            ÖĞ´íÎóÂëµÄ¶¨Òå¡£
+// å‡½æ•°å 	: CameraConnectTest
+// åŠŸèƒ½æè¿°	: æµ‹è¯•ç›¸æœºçš„è¿æ¥çŠ¶æ€ï¼Œç”¨äºæ£€æµ‹ç›¸æœºæ˜¯å¦æ‰çº¿
+// å‚æ•°	    : hCamera	   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0)ï¼Œè¡¨ç¤ºç›¸æœºè¿æ¥çŠ¶æ€æ­£å¸¸;
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
 /******************************************************/
 MVSDK_API CameraSdkStatus CameraConnectTest(
     CameraHandle    hCamera
 );
 
-
+// ç”³è¯·ä¸€æ®µå¯¹é½çš„å†…å­˜ç©ºé—´ã€‚åŠŸèƒ½å’Œmallocç±»ä¼¼ï¼Œä½†æ˜¯è¿”å›çš„å†…å­˜æ˜¯ä»¥alignæŒ‡å®šçš„å­—èŠ‚æ•°å¯¹é½çš„
 MVSDK_API BYTE* CameraAlignMalloc(int size, int align);
-     
+
+//é‡Šæ”¾ç”±CameraAlignMalloc å‡½æ•°åˆ†é…çš„å†…å­˜ç©ºé—´ã€‚
 MVSDK_API void CameraAlignFree(BYTE* membuffer);
-     
+
+/******************************************************/
+// å‡½æ•°å   : CameraCommonCall
+// åŠŸèƒ½æè¿° : ç›¸æœºçš„ä¸€äº›ç‰¹æ®ŠåŠŸèƒ½è°ƒç”¨ï¼ŒäºŒæ¬¡å¼€å‘æ—¶ä¸€èˆ¬ä¸éœ€è¦è°ƒç”¨ã€‚
+// å‚æ•°     : hCamera   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+//            pszCall   åŠŸèƒ½åŠå‚æ•°
+//            pszResult è°ƒç”¨ç»“æœï¼Œä¸åŒçš„pszCallæ—¶ï¼Œæ„ä¹‰ä¸åŒã€‚
+//            uResultBufSize pszResultæŒ‡å‘çš„ç¼“å†²åŒºçš„å­—èŠ‚å¤§å°
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus  CameraCommonCall(
+	CameraHandle    hCamera,
+	char const*		pszCall,
+	char*			pszResult,
+	UINT			uResultBufSize
+);
+
+/******************************************************/
+// å‡½æ•°å 	: CameraGetEyeCount
+// åŠŸèƒ½æè¿°	: è·å–å¤šç›®ç›¸æœºçš„ç›®æ•°
+// å‚æ•°	    : hCamera	   ç›¸æœºçš„å¥æŸ„ï¼Œç”±CameraInitå‡½æ•°è·å¾—ã€‚
+// è¿”å›å€¼   : æˆåŠŸæ—¶ï¼Œè¿”å›CAMERA_STATUS_SUCCESS (0);
+//            å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç ,è¯·å‚è€ƒCameraStatus.h
+//            ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/******************************************************/
+MVSDK_API CameraSdkStatus CameraGetEyeCount(
+    CameraHandle hCamera,
+    int *eyecount
+);
+
+/// @ingroup API_ADVANCE
+/// \~chinese
+/// \brief è®¾ç½®å…‰æºæ§åˆ¶å™¨çš„è¾“å‡ºæ¨¡å¼ï¼ˆæ™ºèƒ½ç›¸æœºç³»åˆ—ä¸”éœ€è¦ç¡¬ä»¶æ”¯æŒï¼‰
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] index æ§åˆ¶å™¨ç´¢å¼•
+/// \param [in] mode è¾“å‡ºæ¨¡å¼ï¼ˆ0:è·Ÿéšé—ªå…‰ç¯ 1:æ‰‹åŠ¨ï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the output mode of the light controller (Smart camera series and hardware support required)
+/// \param [in] hCamera Camera handle.
+/// \param [in] index controller index
+/// \param [in] mode output mode (0: follow strobe 1: manual)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetLightingControllerMode(
+	CameraHandle        hCamera,
+	int					index,
+	int					mode
+	);
+
+/// @ingroup API_ADVANCE
+/// \~chinese
+/// \brief è®¾ç½®å…‰æºæ§åˆ¶å™¨çš„è¾“å‡ºçŠ¶æ€ï¼ˆæ™ºèƒ½ç›¸æœºç³»åˆ—ä¸”éœ€è¦ç¡¬ä»¶æ”¯æŒï¼‰
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] index æ§åˆ¶å™¨ç´¢å¼•
+/// \param [in] state è¾“å‡ºçŠ¶æ€ï¼ˆ0:å…³é—­  1ï¼šæ‰“å¼€ï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Set the output status of the light controller (Smart camera series and hardware support required)
+/// \param [in] hCamera Camera handle.
+/// \param [in] index controller index
+/// \param [in] state output state (0: off 1: on)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetLightingControllerState(
+	CameraHandle        hCamera,
+	int					index,
+	int					state
+	);
+
+/// @ingroup API_UTIL
+/// \~chinese
+/// \brief ç¿»è½¬å¸§æ•°æ®
+/// \param [inout] pFrameBuffer å¸§æ•°æ®
+/// \param [in] pFrameHead å¸§å¤´
+/// \param [in] Flags 1:ä¸Šä¸‹   2ï¼šå·¦å³    3ï¼šä¸Šä¸‹ã€å·¦å³çš†åšä¸€æ¬¡ç¿»è½¬(ç›¸å½“äºæ—‹è½¬180åº¦)
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Flip frame data
+/// \param [inout] pFrameBuffer frame data
+/// \param [in] pFrameHead Frame Header
+/// \param [in] Flags 1: Up and down 2: Around 3: Up and down, left and right are all flipped (equivalent to 180 degrees rotation)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraFlipFrameBuffer(
+	BYTE *pFrameBuffer,
+	tSdkFrameHead* pFrameHead,
+	int Flags
+	);
+
+/// @ingroup API_UTIL
+/// \~chinese
+/// \brief è½¬æ¢å¸§æ•°æ®æ ¼å¼
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] pInFrameBuffer è¾“å…¥å¸§æ•°æ®
+/// \param [out] pOutFrameBuffer è¾“å‡ºå¸§æ•°æ®
+/// \param [in] outWidth è¾“å‡ºå®½åº¦
+/// \param [in] outHeight è¾“å‡ºé«˜åº¦
+/// \param [in] outMediaType è¾“å‡ºæ ¼å¼ @see CameraSetIspOutFormat
+/// \param [inout] pFrameHead å¸§å¤´ä¿¡æ¯ï¼ˆè½¬æ¢æˆåŠŸåï¼Œé‡Œé¢çš„ä¿¡æ¯ä¼šè¢«ä¿®æ”¹ä¸ºè¾“å‡ºå¸§çš„ä¿¡æ¯ï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Conversion frame data format
+/// \param [in] hCamera Camera handle.
+/// \param [in] pInFrameBuffer input frame data
+/// \param [out] pOutFrameBuffer output frame data
+/// \param [in] outWidth output width
+/// \param [in] outHeight output height
+/// \param [in] outMediaType output format @see CameraSetIspOutFormat
+/// \param [inout] pFrameHead frame header information (after successful conversion, the information inside will be modified to output frame information)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraConvertFrameBufferFormat(
+	CameraHandle hCamera,
+	BYTE *pInFrameBuffer,
+	BYTE *pOutFrameBuffer,
+	int outWidth,
+	int outHeight,
+	UINT outMediaType,
+	tSdkFrameHead* pFrameHead
+	);
+
+/// @ingroup API_ADVANCE
+/// \~chinese
+/// \brief è·å–å½“å‰å¸§çš„IDï¼Œéœ€ç›¸æœºæ”¯æŒ(ç½‘å£å…¨ç³»åˆ—æ”¯æŒ)ï¼Œæ­¤å‡½æ•°è¿”å›é”™è¯¯ä»£ç ï¼Œè¡¨ç¤ºä¸æ”¯æŒã€‚
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] id		   å¸§ID
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief The ID of the current frame needs to be supported by the camera (supported by the full range of network ports). This function returns an error code indicating that it is not supported.
+/// \param [in] hCamera Camera handle.
+/// \param [out] id Frame ID
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetFrameID(
+	CameraHandle    hCamera,
+	UINT*           id
+	);
+
+/// @ingroup API_ADVANCE
+/// \~chinese
+/// \brief è·å–å½“å‰å¸§çš„æ—¶é—´æˆ³(å•ä½å¾®ç§’)
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [out] TimeStampL   æ—¶é—´æˆ³ä½32ä½
+/// \param [out] TimeStampH   æ—¶é—´æˆ³é«˜32ä½
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Get the timestamp of the current frame (in microseconds)
+/// \param [in] hCamera Camera handle.
+/// \param [out] TimeStampL timestamp low 32 bits
+/// \param [out] TimeStampH Timestamp high 32 bits
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGetFrameTimeStamp(
+	CameraHandle    hCamera,
+	UINT*           TimeStampL,
+	UINT*			TimeStampH
+	);
+
+/// @ingroup API_RECONNECT
+/// \~chinese
+/// \brief è®¾ç½®ç›¸æœºè¿æ¥çŠ¶æ€æ”¹å˜çš„å›è°ƒé€šçŸ¥å‡½æ•°ã€‚å½“ç›¸æœºæ‰çº¿ã€é‡è¿æ—¶ï¼ŒpCallBackæ‰€æŒ‡å‘çš„å›è°ƒå‡½æ•°å°±ä¼šè¢«è°ƒç”¨ã€‚ 
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] pCallBack å›è°ƒå‡½æ•°æŒ‡é’ˆã€‚
+/// \param [in] pContext  å›è°ƒå‡½æ•°çš„é™„åŠ å‚æ•°ï¼Œåœ¨å›è°ƒå‡½æ•°è¢«è°ƒç”¨æ—¶è¯¥é™„åŠ å‚æ•°ä¼šè¢«ä¼ å…¥ï¼Œå¯ä»¥ä¸ºNULLã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Sets the callback notification function for camera connection state changes. When the camera is disconnected and reconnected, the callback function pointed to by pCallBack will be called.
+/// \param [in] hCamera Camera handle.
+/// \param [in] pCallBack callback function pointer.
+/// \param [in] pContext Additional parameter of the callback function. This additional parameter will be passed in when the callback function is called. It can be NULL.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetConnectionStatusCallback(
+	CameraHandle        hCamera,
+	CAMERA_CONNECTION_STATUS_CALLBACK pCallBack,
+	PVOID               pContext
+	);
+
+/// @ingroup API_UTIL
+/// \~chinese
+/// \brief é…ç½®ç½‘å£ç›¸æœºçš„ä¸€äº›åŠŸèƒ½é€‰é¡¹
+/// \param [in] optionName é€‰é¡¹("NumBuffers", "3")
+/// \param [in] value å€¼
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Configure some options for the gige camera
+/// \param [in] optionName option name("NumBuffers", "3")
+/// \param [in] value setting value
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraGigeSetOption(
+	char const* optionName,
+	char const* value
+	);
+
+/// @ingroup API_GRAB
+/// \~chinese
+/// \brief æ¸…ç©ºç›¸æœºå†…å·²ç¼“å­˜çš„æ‰€æœ‰å¸§
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief Clear all cached frames in the camera
+/// \param [in] hCamera Camera handle.
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraClearBuffer(
+	CameraHandle hCamera
+	);
+
+/// @ingroup API_ADVANCE
+/// \~chinese
+/// \brief å½“ç›¸æœºå¤„äºè§¦å‘æ¨¡å¼ï¼ˆè½¯è§¦å‘æˆ–ç¡¬è§¦å‘ï¼‰æ—¶ï¼Œç›¸æœºå‘é€ä¸€å¸§åˆ°PCï¼Œå¦‚ç›¸æœºæœªæ”¶åˆ°PCç«¯çš„æ¥æ”¶ç¡®è®¤ï¼Œç›¸æœºå¯ä»¥æŠŠå¸§é‡å‘å‡ æ¬¡ã€‚ç”¨æœ¬å‡½æ•°è®¾ç½®ç›¸æœºé‡å‘æ¬¡æ•°ã€‚ï¼ˆä»…ç½‘å£ç›¸æœºæ”¯æŒï¼‰
+/// \param [in] hCamera ç›¸æœºçš„å¥æŸ„ã€‚
+/// \param [in] count é‡å‘æ¬¡æ•°ï¼ˆ<=0è¡¨ç¤ºç¦ç”¨é‡å‘åŠŸèƒ½ï¼‰
+/// \return æˆåŠŸè¿”å› CAMERA_STATUS_SUCCESS(0)ã€‚å¦åˆ™è¿”å›é0å€¼çš„é”™è¯¯ç , è¯·å‚è€ƒ CameraStatus.h ä¸­é”™è¯¯ç çš„å®šä¹‰ã€‚
+/// \~english
+/// \brief When the camera is in the trigger mode (soft trigger or hard trigger), the camera sends a frame to the PC. If the camera does not receive the reception confirmation from the PC, the camera can retransmit the frame several times. Use this function to set the number of camera resends. (only supported by Gige camera)
+/// \param [in] hCamera Camera handle.
+/// \param [in] count number of resends (<=0 means disable resends)
+/// \return Returns CAMERA_STATUS_SUCCESS(0) successfully. Otherwise, it returns a non-zero error code. Please refer to the definition of the error code in CameraStatus.h.
+MVSDK_API CameraSdkStatus CameraSetFrameResendCount(
+	CameraHandle        hCamera,
+	int					count
+	);
 
 #ifdef __cplusplus
 }
