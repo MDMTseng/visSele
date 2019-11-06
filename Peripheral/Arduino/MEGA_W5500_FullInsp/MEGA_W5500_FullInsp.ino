@@ -15,6 +15,33 @@
 #include "websocket_FI.hpp"
 #include "include/RingBuf.hpp"
 
+
+
+enum class GEN_ERROR_CODE { 
+  INSP_RESULT_HAS_NO_OBJECT,
+  OBJECT_HAS_NO_INSP_RESULT,
+  };
+
+
+
+typedef struct run_mode_info{
+  enum RUN_MODE{ 
+    INIT,
+    NORMAL,
+    TEST
+    } mode;
+
+  int misc_info;
+  int misc_var;
+  int misc_var2;
+}run_mode_info;
+
+run_mode_info mode_info={
+  mode:run_mode_info::NORMAL,
+  misc_info:0
+};
+
+#define insp_status_UNSET -1654
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
   uint32_t trigger_pulse;
@@ -28,6 +55,13 @@ typedef struct pipeLineInfo{
 
 
 #define SARRL(SARR) (sizeof((SARR))/sizeof(*(SARR)))
+
+
+
+
+GEN_ERROR_CODE errorBuf[20];
+RingBuf<typeof(*errorBuf),uint8_t > ERROR_HIST(errorBuf,SARRL(errorBuf));
+
 
 uint32_t logicPulseCount = 0;
 
@@ -49,7 +83,7 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 
 RingBuf<typeof(*pbuff),uint8_t > RBuf(pbuff,SARRL(pbuff));
 
-uint8_t buff[600];
+uint8_t buff[600];//For websocket
 IPAddress _ip(192,168,2,2);
 IPAddress _gateway(169, 254, 170, 254);
 IPAddress _subnet(255, 255, 255, 0);
@@ -62,13 +96,20 @@ uint32_t perRevPulseCount_HW = (uint32_t)2400*16;//the real hardware pulse count
 uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the software pulse count that processor really care
 
 
+
+void errorLOG(GEN_ERROR_CODE code)
+{
+  GEN_ERROR_CODE* head_code = ERROR_HIST.getHead();
+  if (head_code != NULL)
+  {
+    *head_code=code;
+    ERROR_HIST.pushHead();
+  }
+}
+
 uint32_t PRPC= perRevPulseCount;
 
 uint32_t tar_pulseHZ_ = perRevPulseCount_HW/30;
-
-typedef struct{
-  
-}aa;
 
 int offsetAir=80;
 int cam_angle=103;
@@ -101,7 +142,23 @@ int stage_action(pipeLineInfo* pli)
   {
     case 0:
       pli->stage++;
-      pli->insp_status=-100;
+      pli->insp_status=insp_status_UNSET;
+      if(mode_info.mode==run_mode_info::TEST)
+      {
+        if(mode_info.misc_var==0)
+        {
+          pli->insp_status=(mode_info.misc_var2&1)?0:-1;
+          mode_info.misc_var2++;
+        }
+        else if(mode_info.misc_var==1)
+        {
+          pli->insp_status=0;
+        }
+        else if(mode_info.misc_var==1)
+        {
+          pli->insp_status=-1;
+        }
+      }
       break;
     
     case 1://BackLight ON
@@ -134,6 +191,15 @@ int stage_action(pipeLineInfo* pli)
         pli->stage=9;
         return 0;
       }
+
+      if(pli->insp_status==insp_status_UNSET)
+      {
+        //Error:The inspection result isn't back
+        //TODO: Send error msg and stop machine
+        errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+        errorAction();
+
+      } 
       return -1;
       
 
@@ -159,6 +225,17 @@ int stage_action(pipeLineInfo* pli)
 }
 
 
+
+  
+void errorAction()
+{
+  //if there is an error
+  //clear plate
+  RBuf.clear();
+
+  //set speed to zero
+  tar_pulseHZ_=0; 
+}
 int toggle_LED=0;
 class Websocket_FI:public Websocket_FI_proto{
   public:
@@ -180,8 +257,6 @@ class Websocket_FI:public Websocket_FI_proto{
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"pulse_hz\":%d,",tar_pulseHZ_);
 
-
-    
     if(ret_status)*ret_status=0;
     return MessageL;      
   }
@@ -259,6 +334,26 @@ class Websocket_FI:public Websocket_FI_proto{
     return MessageL;
   }
 
+
+  
+  int AddErrorCodesToJson(char* send_rsp, uint32_t send_rspL)
+  {
+    
+    if(ERROR_HIST.size()==0)return 0;   
+    uint32_t MessageL=0;                                           
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"errorCodes\":[");
+    for(int i=0;i<ERROR_HIST.size();i++)
+    {
+      GEN_ERROR_CODE* head_code = ERROR_HIST.getTail(i);
+      MessageL += sprintf( (char*)send_rsp+MessageL, "%d,",*head_code);
+    }
+    MessageL--;//remove the last comma',';
+    MessageL += sprintf( (char*)send_rsp+MessageL, "],");
+    
+    return MessageL;                              
+  }
+
+  
   int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
     if(cmdL==NULL)
@@ -327,7 +422,7 @@ class Websocket_FI:public Websocket_FI_proto{
         {
           pipeLineInfo* pipe=RBuf.getTail(i);
           if(pipe==NULL)break;
-          if(pipe->insp_status==-100)
+          if(pipe->insp_status==insp_status_UNSET)
           {
             pipe->insp_status=insp_status;
             ret_status=0;
@@ -338,6 +433,11 @@ class Websocket_FI:public Websocket_FI_proto{
         {
           DEBUG_print("ERROR:ret_status=");
           DEBUG_println(ret_status);
+  
+          errorLOG(GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT);
+          errorAction();
+          //Error:The inspection result matches no object
+          //TODO: Send error msg and stop machine
         }
         
 //        digitalWrite(LED_PIN, toggle_LED);
@@ -359,6 +459,7 @@ class Websocket_FI:public Websocket_FI_proto{
       else if(strstr ((char*)recv_cmd,"\"type\":\"PING\"")!=NULL)
       {
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"PONG\",");
+        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         ret_status=0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_hz\"")!=NULL)
@@ -386,6 +487,29 @@ class Websocket_FI:public Websocket_FI_proto{
         MessageL+=JsonToMach(send_rsp+MessageL, send_rsp-MessageL,recv_cmd,cmdL, &ret_st);
         ret_status = ret_st;
       }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"error_get\"")!=NULL)
+      {
+        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
+        ret_status = 0;
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"error_clear\"")!=NULL)
+      {
+        ERROR_HIST.clear();
+        ret_status = 0;
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"mode_set\"")!=NULL)
+      {
+        if(strstr ((char*)recv_cmd,"\"mode\":\"NORMAL\""))
+        {
+          mode_info.mode=run_mode_info::NORMAL;
+          ret_status = 0;
+        }
+        if(strstr ((char*)recv_cmd,"\"mode\":\"TEST\""))
+        {
+          mode_info.mode=run_mode_info::TEST;
+          ret_status = 0;
+        }
+      }
       else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/ON\"")!=NULL)
       {
         digitalWrite(BACK_LIGHT_PIN,1);
@@ -399,6 +523,18 @@ class Websocket_FI:public Websocket_FI_proto{
         digitalWrite(CAMERA_PIN,1);
         delay(10);
         digitalWrite(CAMERA_PIN,0);
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/OK_BLOW\"")!=NULL)
+      {
+        digitalWrite(AIR_BLOW_OK_PIN, 1);
+        delay(10);
+        digitalWrite(AIR_BLOW_OK_PIN, 0);
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/NG_BLOW\"")!=NULL)
+      {
+        digitalWrite(AIR_BLOW_NG_PIN, 1);
+        delay(10);
+        digitalWrite(AIR_BLOW_NG_PIN, 0);
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_pulse_offset_info\"")!=NULL)
       {
@@ -548,11 +684,19 @@ void loop()
       digitalWrite(FEEDER_PIN, HIGH);
     }
   }
-    
+
   if( (totalLoop&0x7FFF)==0)
   {
     DEBUG_print("RBuf:");
     DEBUG_println(RBuf.size());
+
+    
+    if(ERROR_HIST.size()!=0)
+    {
+      DEBUG_print("Error:");
+      DEBUG_println(ERROR_HIST.size());
+    }
+
     if(RBuf.size()==0)
     {
       emptyPlateCount++;
@@ -562,13 +706,19 @@ void loop()
       emptyPlateCount=0;
     }
   }
-
+  
   if(totalLoop<0xFFFF)
   {
     return;
   }
+  
 
-  volatile int ddd=0;
+  if(ERROR_HIST.size()!=0)
+  {
+    
+  }
+
+  
   for(uint32_t i=0;i!=1;i++)
   {
 
