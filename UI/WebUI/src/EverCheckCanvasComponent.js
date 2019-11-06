@@ -1874,6 +1874,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     
     switch(this.state.substate)
     {      
+      case UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:
+        type = SHAPE_TYPE.line;
+        break;
+      case UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:
+        type = SHAPE_TYPE.arc;
+        break;
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         type = SHAPE_TYPE.aux_point;
         break;
@@ -1899,7 +1905,16 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     }
     switch(type)
     {
+      case SHAPE_TYPE.line:
+      case SHAPE_TYPE.arc:
+        return [];
+      break;
       case SHAPE_TYPE.aux_point:
+          return shapeList.filter((shape)=>
+            shape.type===SHAPE_TYPE.line||
+            shape.type===SHAPE_TYPE.search_point
+            );
+        break;
       case SHAPE_TYPE.search_point:
         return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.line);
       break;
@@ -1907,7 +1922,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         switch(subtype)
         {
           case SHAPE_TYPE.measure_subtype.distance:
-            return shapeList;
+            return shapeList.filter((shape)=>shape.type!==SHAPE_TYPE.measure);
           break;
           case SHAPE_TYPE.measure_subtype.angle:
             return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.line);
@@ -2024,7 +2039,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     ctx.save();
 
     let displayShape=this.AvailableShapeFilter(this.edit_DB_info.list);
-
 
     let drawFocusItem=false;
     let skipDrawIdxs=[];

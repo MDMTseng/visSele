@@ -50,8 +50,11 @@ let uInspReducer = (state = {
           switch(pd_data.msg.type)
           {
             case "PONG":
-              state={...state,alive:1}
+              state={...state,alive:1,errorCodes:pd_data.msg.errorCodes};
               //console.log("PONG",state);
+            break;
+            case "error_info":
+                state={...state,errorCodes:pd_data.msg.errorCodes};
             break;
             case "get_setup_rsp":
               let machineInfo = pd_data.msg;

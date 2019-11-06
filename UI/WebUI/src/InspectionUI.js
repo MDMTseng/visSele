@@ -17,7 +17,6 @@ import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/red
 import {INSPECTION_STATUS,DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import  Divider  from 'antd/lib/divider';
 //import Plot from 'react-plotly.js';
 //import {Doughnut} from 'react-chartjs-2';
 
@@ -35,10 +34,10 @@ import  Tag  from 'antd/lib/tag';
 import  Input  from 'antd/lib/input';
 import  InputNumber  from 'antd/lib/input-number';
 import  Select  from 'antd/lib/select';
-import  Upload  from 'antd/lib/upload';
 import Button, {default as AntButton} from 'antd/lib/button';
 import  Menu  from 'antd/lib/menu';
 import  Icon  from 'antd/lib/icon';
+import  Divider  from 'antd/lib/divider';
 
 import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
@@ -1021,7 +1020,9 @@ class MicroFullInspCtrl extends React.Component {
         onOk={()=>this.setState({...this.state,settingPanelVisible:false})}
         footer={null}
         >
-          <Button.Group>
+          
+          <div style={{height:"600px"}}>
+          <Button.Group key="GGGG">
             <Button
               key="L_ON"
               onClick={() => 
@@ -1056,6 +1057,49 @@ class MicroFullInspCtrl extends React.Component {
                   enc.encode(JSON.stringify(this.props.uInspData.machineInfo, null, 4)));
               }}>Save machine setting</Button>
           </Button.Group>
+
+
+          
+          <Divider orientation="left" key="ERROR">ERROR</Divider>
+          
+          <Button.Group key="ERRORG">
+            <Button
+              key="error_get"
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"error_get"}})
+                }>
+                  error_get
+            </Button>
+
+            <Button
+              key="error_clear"
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"error_clear"}})
+                }>error_clear
+            </Button>
+          </Button.Group>
+
+            
+          <Divider orientation="left">MISC</Divider>
+          <Button.Group key="MODE_G">
+            <Button
+              key="MODE:TEST"
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"mode_set",mode:"TEST"}})
+                }>TEST
+            </Button>
+            <Button
+              key="MODE:NORMAL"
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"mode_set",mode:"NORMAL"}})
+                }>NORMAL
+            </Button>
+          </Button.Group>
+          </div>
         </Modal>);
 
     }

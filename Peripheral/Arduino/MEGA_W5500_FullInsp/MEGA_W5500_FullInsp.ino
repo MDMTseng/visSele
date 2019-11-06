@@ -489,12 +489,15 @@ class Websocket_FI:public Websocket_FI_proto{
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"error_get\"")!=NULL)
       {
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         ret_status = 0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"error_clear\"")!=NULL)
       {
         ERROR_HIST.clear();
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
+        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         ret_status = 0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"mode_set\"")!=NULL)
