@@ -1012,16 +1012,9 @@ class renderUTIL
         break;
       }
     });
-    if(drawSubObjs)
-    {
-      
-      let next_ShapeColor=null
-      if(ShapeColor!==undefined && ShapeColor!==null)
-      {
-        next_ShapeColor = Color(ShapeColor).whiten(0.5).string()
-      }
-      this.drawShapeList(ctx, normalRenderGroup,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
-    }
+    
+    this.drawShapeList(ctx, normalRenderGroup,ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
+    
   }
 
   
@@ -1651,7 +1644,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
-
     if(true)
     {
       let sigScale = 1;
@@ -1756,7 +1748,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
           }
         });
-        this.rUtil.drawInspectionShapeList(ctx,listClone,null,[],listClone,unitConvert,true);
+        this.rUtil.drawInspectionShapeList(ctx,listClone,null,[],listClone,unitConvert,false);
       }
     });
 
