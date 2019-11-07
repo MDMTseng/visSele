@@ -396,7 +396,11 @@ class Websocket_FI:public Websocket_FI_proto{
       if(strstr ((char*)recv_cmd,"\"type\":\"inspRep\"")!=NULL)
       {
         char *buffX=buff;
-
+        
+        if(mode_info.mode==run_mode_info::TEST)
+        {
+          return 0;
+        }
         int insp_status=-99;
         char *statusStr = buffX;
         {
