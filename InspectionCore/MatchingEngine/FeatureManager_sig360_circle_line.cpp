@@ -476,10 +476,10 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         else if(angleDiff<-2*M_PI)angleDiff+=2*M_PI;
 
 
-        LOGV("quadrant:%d ",quadrant);
-        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
-        LOGV("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
-        if(angleDiff<0)//Find diff angle 0~2PI
+        LOGI("quadrant:%d ",quadrant);
+        LOGI("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec1.X,vec1.Y,atan2(vec1.Y,vec1.X)*180/M_PI);
+        LOGI("angleDiff:%f _________%f_%f_%f",angleDiff*180/M_PI,vec2.X,vec2.Y,atan2(vec2.Y,vec2.X)*180/M_PI);
+        while(angleDiff<0)//Find diff angle 0~2PI
         {
           angleDiff+=M_PI*2;
         }
@@ -528,6 +528,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
           judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
         }
 
+        LOGI("angle J:%f<%f<%f   %d",judgeReport.def->USL,judgeReport.measured_val,judgeReport.def->LSL,judgeReport.status);
       }
 
     break;
@@ -1634,7 +1635,10 @@ int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<Co
   
   return 0;
 }
-
+bool ptInfo_tmp_comp(const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) 
+{ 
+      return a.tmp < b.tmp; 
+} 
 
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
@@ -2025,20 +2029,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               
             }
             
-            std::sort(s_points.begin(), s_points.end(),  
-                  [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
-              { 
-                  return a.tmp < b.tmp; 
-              });
+  
+            std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
             
-            float distThres = s_points[s_points.size()/2].tmp+1;
+            float distThres = s_points[s_points.size()/3].tmp+1;
             LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
 
-            for(int n=s_points.size()/2;n<s_points.size();n++)
+            for(int n=s_points.size()/3;n<s_points.size();n++)
             {
               usable_L=n;
               if(s_points[n].tmp>distThres)break;
             }
+
             //usable_L=usable_L*10/11;//back off
             LOGV("usable_L:%d/%d  minSigma:%f=>%f",
               usable_L,s_points.size(),
@@ -2047,24 +2049,114 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
               &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), 
               usable_L,&line_cand,&sigma);
+            if(1){
+              acv_Line line_cand_nor=line_cand;
+              line_cand_nor.line_vec=acvVecNormal(line_cand_nor.line_vec);
+              for(int n=0;n<s_points.size();n++)
+              {
+                //find distance along the line direction, 
+                //+  +   +   +  +  points
+                //-2 1   1   3  4  <=save signed ditance to variable "curvature"
+                float dist  = acvDistance_Signed(line_cand_nor,s_points[n].pt);
+                s_points[n].curvature =  dist;//curvature would not be used again, so use it as sorting key
+              }
+
+              std::sort(s_points.begin(), s_points.end(),
+                    [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
+                { 
+                    return a.curvature < b.curvature; 
+                });
+              
+
+
+              float pdistThres=-1;
+              for(int n=0;n<s_points.size();n++)//forward pass to link slow diviating points
+              {
+                s_points[n].curvature=0;
+                //this time curvature marks as consider flag for final line matching
+                if(s_points[n].tmp<distThres)
+                {
+                  pdistThres=s_points[n].tmp;
+                  s_points[n].curvature=1;
+                  continue;
+                }
+                if(pdistThres==-1)
+                {
+                  continue;
+                }
+                if(s_points[n].tmp>2*distThres)//If the diviation is too much still mark it as ignore
+                {
+                  pdistThres=-1;
+                  continue;
+                }
+
+                //The distance is above the distThres
+                float diff = pdistThres -s_points[n].tmp;
+                if(diff<0)diff=-diff;
+                if(diff<distThres/5)
+                {
+                  pdistThres=s_points[n].tmp;
+                  s_points[n].curvature=1;
+                  continue;
+                }
+
+                //The difference is too much mark ignore 
+                pdistThres=-1;
+                continue;
+
+              }
+
+              pdistThres=-1;
+              for(int n=s_points.size()-1;n>=0;n--)//backward pass to link slow diviating points
+              {
+                //this time curvature marks as weight weight for final line matching
+                if(s_points[n].curvature==1)
+                {
+                  pdistThres=s_points[n].tmp;
+                  continue;
+                }
+                if(pdistThres==-1)
+                {
+                  continue;
+                }
+                if(s_points[n].tmp>2*distThres)//If the diviation is too much still mark it as ignore
+                {
+                  pdistThres=-1;
+                  continue;
+                }
+
+                //The distance is above the distThres
+                float diff = pdistThres -s_points[n].tmp;
+                if(diff<0)diff=-diff;
+                if(diff<distThres/5)
+                {
+                  pdistThres=s_points[n].tmp;
+                  s_points[n].curvature=0.7;
+                  continue;
+                }
+                //The difference is too much mark ignore 
+                pdistThres=-1;
+                continue;
+              }
+
+              for(int n=0;n<s_points.size();n++)//remove edgeRsp if the consideration weight is zero
+              {
+                
+                s_points[n].edgeRsp*=s_points[n].curvature;
+                
+              }
+
+              acvFitLine(
+                &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
+                &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), 
+                s_points.size(),&line_cand,&sigma);
+            }
+
+
           }
           
           if(usable_L==0)continue;
 
-          if(0)
-          {
-            for(int n=0;n<usable_L;n++)
-            {
-              
-              acv_XY tmp_pt = acvVecRadialDistortionApply(s_points[n].pt,param);
-              int X_=round(tmp_pt.X);
-              int Y_=round(tmp_pt.Y);
-              smoothedImg->CVector[Y_][X_*3]=255;
-              smoothedImg->CVector[Y_][X_*3+1]=0;
-              smoothedImg->CVector[Y_][X_*3+2]=125;
-            }
-        
-          }
         }
         else
         {
