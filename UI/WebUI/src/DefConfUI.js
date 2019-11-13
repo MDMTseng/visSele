@@ -21,7 +21,10 @@ import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
 import Checkbox from "antd/lib/checkbox";
+import  InputNumber  from 'antd/lib/input-number';
 
+import  Divider  from 'antd/lib/divider';
+import Slider  from 'antd/lib/Slider';
 import EC_zh_TW from './languages/zh_TW';
 
 
@@ -398,7 +401,6 @@ class APP_DEFCONF_MODE extends React.Component{
     console.log("CanvasComponent render");
     let substate = this.props.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
     
-    console.log(this.props.edit_info.DefFileTag);
     let defModelPath = this.props.edit_info.defModelPath;
     switch(substate)
     {
@@ -479,7 +481,17 @@ class APP_DEFCONF_MODE extends React.Component{
               console.log(fileNamePath);
 
               var enc = new TextEncoder();
-              let report = this.props.edit_info._obj.GenerateEditReport();
+
+              let feature_sig360_circle_line = this.props.edit_info._obj.GenerateFeature_sig360_circle_line();
+              let preloadedDefFile =  this.props.edit_info.loadedDefFile;
+              if(preloadedDefFile===undefined)preloadedDefFile={};
+              let report =  {...preloadedDefFile,
+                type:"binary_processing_group",
+                intrusionSizeLimitRatio:this.props.edit_info.intrusionSizeLimitRatio,
+                featureSet:[feature_sig360_circle_line]
+              };
+              delete report["featureSet_sha1"];
+            
               report.name = this.props.edit_info.DefFileName;
               report.tag = this.props.edit_info.DefFileTag;
 
@@ -982,7 +994,35 @@ class APP_DEFCONF_MODE extends React.Component{
         >
           {dictLookUp("matchingFaceFrontOnly",EC_zh_TW)}
         </Checkbox>  
+
+
         
+        <Divider orientation="left">IntrusionSizeLimitRatio</Divider>
+        <Slider
+            min={0}
+            step={0.01}
+            max={1}
+            included={true}            
+            marks={
+              {
+                0: '',
+                0.01: '',
+                0.05: '',
+                0.1: '0.1',
+                0.3: '0.2',
+                0.5: '0.5',
+                1: '',
+              }
+            }
+            onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
+            value={this.props.edit_info.intrusionSizeLimitRatio}
+          />
+        <InputNumber
+            min={0}
+            max={1}
+            value={this.props.edit_info.intrusionSizeLimitRatio}
+            onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
+          />
       </Modal>
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
       <$CSSTG transitionName = "fadeIn">
@@ -1027,6 +1067,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Shape_Decoration_ID_Order_Update:(shape_id_order)=>{dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order))},
     ACT_Matching_Angle_Margin_Deg_Update:(deg)=>{dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg))},
     ACT_Matching_Face_Update:(faceSetup)=>{dispatch(DefConfAct.Matching_Face_Update(faceSetup))},//-1(back)/0(both)/1(front)
+    ACT_IntrusionSizeLimitRatio_Update:(ratio)=>{dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio))},//0~1
     
     ACT_Report_Save:(id,fileName,content)=>{
       let act = UIAct.EV_WS_SEND(id,"SV",0,

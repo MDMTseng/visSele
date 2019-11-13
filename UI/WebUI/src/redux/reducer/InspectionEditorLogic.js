@@ -310,22 +310,18 @@ export class InspectionEditorLogic
     return this.inherentShapeList;
   }
 
-  GenerateEditReport()
+  GenerateFeature_sig360_circle_line()
   {
     return {
-      type:"binary_processing_group",
-      intrusionSizeLimitRatio:0.1,
-      featureSet:[
-      {
-        "type":"sig360_circle_line",
-        "ver":"0.0.1.0",
-        "unit":"px",
-        "mmpp":this.sig360info.reports[0].mmpp,
-        cam_param:this.sig360info.reports[0].cam_param,
-        features:this.shapeList,
-        inherentfeatures:this.inherentShapeList
-      }]
+      "type":"sig360_circle_line",
+      "ver":"0.0.1.0",
+      "unit":"px",
+      "mmpp":this.sig360info.reports[0].mmpp,
+      cam_param:this.sig360info.reports[0].cam_param,
+      features:this.shapeList,
+      inherentfeatures:this.inherentShapeList
     };
+    
   }
   
   findLostRefShapes(shapeList=this.shapeList,inherentShapeList=this.inherentShapeList)

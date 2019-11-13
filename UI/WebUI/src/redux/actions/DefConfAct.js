@@ -11,6 +11,7 @@ export const EVENT = {
   DefFileTag_Update:"DefFileTag_Update",
   Matching_Face_Update:"Matching_Face_Update",
   Matching_Angle_Margin_Deg_Update:"Matching_Angle_Margin_Deg_Update",
+  IntrusionSizeLimitRatio_Update:"IntrusionSizeLimitRatio_Update",
   InspOptionalTag_Update:"InspOptionalTag_Update",
   SUCCESS:"DEFCONF_MODE_SUCCESS",
   FAIL:"DEFCONF_MODE_FAIL",
@@ -63,6 +64,14 @@ export function Matching_Angle_Margin_Deg_Update(deg)
     type: EVENT.Matching_Angle_Margin_Deg_Update,data: deg
   }
 }
+
+export function IntrusionSizeLimitRatio_Update(ratio)
+{
+  return {
+    type: EVENT.IntrusionSizeLimitRatio_Update,data: ratio
+  }
+}
+
 
 export function Shape_Set(shape_data)
 {

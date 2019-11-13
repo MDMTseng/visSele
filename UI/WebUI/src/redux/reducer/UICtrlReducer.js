@@ -37,6 +37,7 @@ function Edit_info_reset(newState)
     matching_angle_margin_deg:180,
     matching_angle_offset_deg:0,
     matching_face:0,
+    intrusionSizeLimitRatio:0.001,
     img:null,
     DefFileName:"",
     DefFileTag:[],
@@ -60,7 +61,8 @@ function Edit_info_reset(newState)
     //This is the cadidate info for target element content
     edit_tar_ele_cand:null,
     //camera_calibration_report:undefined // the camera calibration data shouldn't be reset
-    mouseLocation:undefined
+    mouseLocation:undefined,
+    loadedDefFile:undefined,
   }
 
 
@@ -509,29 +511,97 @@ function StateReducer(newState,action)
                   closeRep.cy=valueAveIn(closeRep.cy,singleReport.cy,closeRep.repeatTime);
                   //closeRep.area+=(1/(closeRep.repeatTime+1))*(sjrep.area-cjrep.area);
 
+                  closeRep.detectedLines.forEach((clrep)=>{
+                    
+                    if(clrep.status==INSPECTION_STATUS.NA)return;
+                    let id = clrep.id;
+                    let slrep = singleReport.detectedLines.find((slrep)=>slrep.id==id);
+                    if(slrep===undefined || slrep.status==INSPECTION_STATUS.NA)
+                    {
+                      clrep.status = INSPECTION_STATUS.NA;
+                      return;
+                    }
+                    
+                    clrep.cx=valueAveIn(clrep.cx,slrep.cx,closeRep.repeatTime);
+                    clrep.cy=valueAveIn(clrep.cy,slrep.cy,closeRep.repeatTime);
+                    clrep.vx=valueAveIn(clrep.vx,slrep.vx,closeRep.repeatTime);
+                    clrep.vy=valueAveIn(clrep.vy,slrep.vy,closeRep.repeatTime);
+                  });
+
+                  
+                  closeRep.detectedCircles.forEach((ccrep)=>{
+                    if(ccrep.status==INSPECTION_STATUS.NA)return;
+                    let id = ccrep.id;
+                    let screp = singleReport.detectedCircles.find((screp)=>screp.id==id);
+                    if(screp===undefined || screp.status==INSPECTION_STATUS.NA)
+                    {
+                      ccrep.status = INSPECTION_STATUS.NA;
+                      return;
+                    }
+                    //TODO: average the arc info
+                    //the arc info uses three points
+                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
+                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
+                    ccrep.r=valueAveIn(ccrep.r,screp.r,closeRep.repeatTime);
+                    ccrep.s=valueAveIn(ccrep.s,screp.s,closeRep.repeatTime);
+                  });
+
+                  
+                  closeRep.searchPoints.forEach((ccrep)=>{
+                    if(ccrep.status==INSPECTION_STATUS.NA)return;
+                    let id = ccrep.id;
+                    let screp = singleReport.searchPoints.find((screp)=>screp.id==id);
+                    if(screp===undefined || screp.status==INSPECTION_STATUS.NA)
+                    {
+                      ccrep.status = INSPECTION_STATUS.NA;
+                      return;
+                    }
+                    //TODO: average the arc info
+                    //the arc info uses three points
+                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
+                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
+                  });
+
                   closeRep.judgeReports.forEach((cjrep)=>{
+                    
+                    if(cjrep==INSPECTION_STATUS.NA)
+                    {
+                      cjrep.value=NaN;
+                      return;
+                    }
                     let id = cjrep.id;
                     let sjrep = singleReport.judgeReports.find((sjrep)=>sjrep.id==id);
                     if(sjrep===undefined)return;
-                    if(sjrep.status==INSPECTION_STATUS.NA || cjrep==INSPECTION_STATUS.NA)
+                    if(sjrep.status==INSPECTION_STATUS.NA)
                     {
                       cjrep.status=INSPECTION_STATUS.NA;
                       cjrep.value=NaN;
                       return;
                     }
 
-                    let dataDiff = sjrep.value-cjrep.value;
 
-                    if(cjrep.subtype===SHAPE_TYPE.measure_subtype.angle)
+                    if(cjrep.value==cjrep.value)//if original value is NOT NAN
                     {
-                      if(dataDiff>180)dataDiff-=360;
+                      let dataDiff = sjrep.value-cjrep.value;
+                      if(cjrep.subtype===SHAPE_TYPE.measure_subtype.angle)
+                      {
+                        if(dataDiff>Math.PI)dataDiff-=Math.PI;
+                        if(dataDiff<-Math.PI)dataDiff+=Math.PI;
+                        //console.log(dataDiff);
+                      }
+                      if(dataDiff==dataDiff)
+                        cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
+  
                     }
-                    cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
-
+                    else//if original value is NAN
+                      cjrep.value=sjrep.value;
 
                     let defInfo = newState.edit_info.list;
                     let sj_def = defInfo.find((sj_def)=>sj_def.id==id);
                     if(sj_def===undefined)return;
+
+
+
 
                     if(cjrep.value !== cjrep.value)//NAN
                     {
@@ -545,42 +615,6 @@ function StateReducer(newState,action)
                     {
                       cjrep.status=INSPECTION_STATUS.FAILURE;
                     }
-                  });
-
-                  closeRep.detectedLines.forEach((clrep)=>{
-                    let id = clrep.id;
-                    let slrep = singleReport.detectedLines.find((slrep)=>slrep.id==id);
-                    if(slrep===undefined)return;
-
-                    
-                    clrep.cx=valueAveIn(clrep.cx,slrep.cx,closeRep.repeatTime);
-                    clrep.cy=valueAveIn(clrep.cy,slrep.cy,closeRep.repeatTime);
-                    clrep.vx=valueAveIn(clrep.vx,slrep.vx,closeRep.repeatTime);
-                    clrep.vy=valueAveIn(clrep.vy,slrep.vy,closeRep.repeatTime);
-                  });
-
-                  
-                  closeRep.detectedCircles.forEach((ccrep)=>{
-                    let id = ccrep.id;
-                    let screp = singleReport.detectedCircles.find((screp)=>screp.id==id);
-                    if(screp===undefined)return;
-                    //TODO: average the arc info
-                    //the arc info uses three points
-                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
-                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
-                    ccrep.r=valueAveIn(ccrep.r,screp.r,closeRep.repeatTime);
-                    ccrep.s=valueAveIn(ccrep.s,screp.s,closeRep.repeatTime);
-                  });
-
-                  
-                  closeRep.searchPoints.forEach((ccrep)=>{
-                    let id = ccrep.id;
-                    let screp = singleReport.searchPoints.find((screp)=>screp.id==id);
-                    if(screp===undefined)return;
-                    //TODO: average the arc info
-                    //the arc info uses three points
-                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
-                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
                   });
 
                   //closeRep.seq.push(singleReport);//Push current report into the sequence
@@ -722,6 +756,8 @@ function StateReducer(newState,action)
             break;
           }*/
           Edit_info_reset(newState);
+
+
           if(doExit)
           {
             newState.edit_info.DefFileHash=undefined;
@@ -752,6 +788,16 @@ function StateReducer(newState,action)
               newState.edit_info.DefFileTag=tagInfo;
             }
           }
+          
+
+          newState.edit_info.loadedDefFile=dclone(root_defFile);
+
+          
+          if(typeof root_defFile.intrusionSizeLimitRatio == 'number')
+          {
+            newState.edit_info.intrusionSizeLimitRatio = 
+              root_defFile.intrusionSizeLimitRatio
+          }
 
           root_defFile.featureSet.forEach((report)=>
           {
@@ -769,6 +815,7 @@ function StateReducer(newState,action)
           
 
                 newState.edit_info=Object.assign({},newState.edit_info);
+
                 newState.edit_info._obj.SetDefInfo(report);
 
                 let reportStatisticState = newState.edit_info.reportStatisticState;
@@ -915,6 +962,16 @@ function StateReducer(newState,action)
           newState.edit_info={...newState.edit_info,matching_face:action.data};
           break;
         }
+
+        case DefConfAct.EVENT.IntrusionSizeLimitRatio_Update:
+        {
+          if(typeof action.data == 'number')
+          {
+            newState.edit_info={...newState.edit_info,intrusionSizeLimitRatio:action.data};
+          }
+          break;
+        }
+        
         
         case DefConfAct.EVENT.InspOptionalTag_Update:
         {
