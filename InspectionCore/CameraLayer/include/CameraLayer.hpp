@@ -109,6 +109,11 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
+    virtual CameraLayer::status SetMirror(int Dir,int en)
+    {
+        return CameraLayer::NAK;
+    }
+
     virtual CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max)
     {
         return CameraLayer::NAK;

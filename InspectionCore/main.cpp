@@ -526,6 +526,30 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     }
     
   }
+
+
+  
+  cJSON *MIRROR = JFetch_ARRAY(&settingJson,"mirror");
+  
+  if(MIRROR)
+  {//ROI set
+    int mirrorX=0;
+    int mirrorY=0;
+    double* _mirrorX=JFetch_NUMBER(&settingJson,"mirror[0]");
+    if(_mirrorX)
+    {
+      mirrorX=(int)*_mirrorX;
+    }
+    double* _mirrorY=JFetch_NUMBER(&settingJson,"mirror[1]");
+    if(_mirrorY)
+    {
+      mirrorY=(int)*_mirrorY;
+    }
+
+    camera.SetMirror(0,mirrorX);
+    camera.SetMirror(1,mirrorY);
+    
+  }
   return 0;
 }
 

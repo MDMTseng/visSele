@@ -92,7 +92,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     CameraSetCallbackFunction(m_hCamera,sGIGEMV_CB,(PVOID)this,NULL);
     CameraSetAeState(m_hCamera,FALSE);
     //CameraSetAutoConnect(m_hCamera,true);
-    CameraSetMirror(m_hCamera,1,true);
+    //
 
     int width = sCameraInfo.sResolutionRange.iWidthMax;
     int height = sCameraInfo.sResolutionRange.iHeightMax;
@@ -102,6 +102,11 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     img.useExtBuffer(m_pFrameBuffer,maxBufferSize,width,height);
 	  CameraPlay(m_hCamera);
     return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_GIGE_MindVision::SetMirror(int Dir,int en)
+{
+  CameraSetMirror(m_hCamera,Dir,en);
+  return CameraLayer::ACK;
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::L_TriggerMode(int type)
