@@ -32,6 +32,7 @@ DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle=0;
 
 
+bool doImgProcessThread=true;
 acvCalibMap* parseCM_info(PerifProt::Pak pakCM);
 
 DatCH_BPG1_0 *BPG_protocol= new DatCH_BPG1_0(NULL);
@@ -1198,14 +1199,16 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 if(dat->tl[0]=='C')
                 {
                   camera->TriggerMode(0);
+                  camera->Trigger();
+                  doImgProcessThread=false;
                 }
-                else
-                {
+                else if(dat->tl[0]=='F')//"FI" is for full inspection
+                {//no manual trigger and process in thread
                   camera->TriggerMode(2);
+                  doImgProcessThread=true;
                 }
                 
                 cb->cameraFeedTrigger=true;
-                camera->Trigger();
                 //SaveIMGFile("data/buff.bmp",&test1_buff);
         
                 session_ACK=true;
@@ -1793,7 +1796,6 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   headImgPipe->cam_param = param_default;
   headImgPipe->fi= cl_GMV.GetFrameInfo();
 
-  bool doImgProcessThread=true;
   if(doImgProcessThread)
   {
     imagePipeBuffer.pushHead();

@@ -1517,13 +1517,13 @@ class APP_INSP_MODE extends React.Component {
 
 
     componentDidMount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
-        this.CameraCtrl.setCameraImageTransfer(false);
+
+
+      this.CameraCtrl.setCameraImageTransfer(false);
     }
 
     componentWillUnmount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {});
-
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {});
     }
 
     constructor(props) {
@@ -1533,6 +1533,7 @@ class APP_INSP_MODE extends React.Component {
         this.state={
             GraphUIDisplayMode:0,
             CanvasWindowRatio:9,
+            InspStyle:undefined
         };
 
         this.CameraCtrl=new CameraCtrl({
@@ -1556,6 +1557,33 @@ class APP_INSP_MODE extends React.Component {
 
     
     render() {
+      if(this.state.InspStyle===undefined)
+      {
+        return <div>
+          
+            <Button
+              size="large"
+              key="<" 
+              onClick={()=>{
+                this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+                this.setState({...this.state,InspStyle:"FI"});
+              }}>全檢</Button>
+
+            
+            <Button
+              size="large"
+              key=">" 
+              onClick={()=>{
+                this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+                this.setState({...this.state,InspStyle:"CI"});
+              }}>品管</Button>
+            
+          </div>
+      }
+
+
+
+
         let inspectionReport = undefined;
         if (this.props.inspectionReport !== undefined) {
             inspectionReport = this.props.inspectionReport;
