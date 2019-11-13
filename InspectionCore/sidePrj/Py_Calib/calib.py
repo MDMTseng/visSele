@@ -182,14 +182,16 @@ def findMainVecInfo(cornors,seedIdx=None):
     minDistRatioIdx=None
     minDistRatio=999
     for i in range(0,6):
-        distRatio = distArr[i+3]["dist"]/distArr[i+0]["dist"]
+        distRatio = distArr[i+2]["dist"]/distArr[i+0]["dist"]
+        
+        print("distRatio:",distRatio)
         if(minDistRatio>distRatio):
             minDistRatio=distRatio
             minDistRatioIdx=i
 
 
     nbInfo=distArr[minDistRatioIdx:4+minDistRatioIdx]
-    #print("nbInfo:",nbInfo,"\nminDistRatioIdx:",minDistRatioIdx)
+    print("nbInfo:",nbInfo,"\nminDistRatioIdx:",minDistRatioIdx,"minDistRatio:",minDistRatio)
     #find if the top 4 neighbors has similar distance
     if(minDistRatio>1.3):
         return None
@@ -214,7 +216,6 @@ def findMainVecInfo(cornors,seedIdx=None):
         if(dotP<0.2 and dotP>-0.2):
             vec2["info"].append(nbEleInfo)
 
-    #print(vec1,"\n",vec2)
     if(len(vec1["info"])==0 or len(vec2["info"])==0):
         return None
     
@@ -271,11 +272,12 @@ def genCornorsCoord(cornors):
                 continue
             break
     
-    seedIdx=0
+    seedIdx=random.randint(0,len(cornors)-1)
     coordArr=[None]*len(cornors)
     vec1=mainVecInfo["vec1"]["vec"]
     vec2=mainVecInfo["vec2"]["vec"]
 
+    print("\n\nvec1:   ",vec1,"\nvec2:   ",vec2,"\n\n")
     magVec1=math.hypot(vec1[0],vec1[1])
     nnvec1=[vec1[0]/magVec1/magVec1,vec1[1]/magVec1/magVec1]
     magVec2=math.hypot(vec2[0],vec2[1])
@@ -287,7 +289,9 @@ def genCornorsCoord(cornors):
     advScale=1
     coordArr[seedIdx]=[0,0]
 
-    coordEstThres=0.95
+    coordEstThres=0.98
+
+    count=0
     while len(searchList)>0:
         curSListL=len(searchList)
         for i in range(0, curSListL):
@@ -302,6 +306,7 @@ def genCornorsCoord(cornors):
                 distRatio=dist/mainVecInfo["vec1"]["dist"]
                 if(distRatio>1):distRatio=1/distRatio
                 if(distRatio>coordEstThres):
+
                     nndot1=nnvec1[0]*vec[0]+nnvec1[1]*vec[1]
                     c_one=close2one(math.fabs(nndot1))
 
@@ -334,7 +339,7 @@ def genCornorsCoord(cornors):
                         coordArr[j][1]-=advScale
                         searchList.append(j)
                         continue
-
+        count+=1             
         searchList=searchList[curSListL:len(searchList)]
 
     minCoorX=999
@@ -370,7 +375,7 @@ def obj_img_Shuffle(objpoints, imgpoints):
     return objpoints_rand,imgpoints_rand
 
 
-def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=5,pickPercentage=0.2,minLen=10):
+def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=1,pickPercentage=0.5,minLen=10):
     # src_pts = np.float32(imgpoints[0]).reshape(-1,1,2)
     # dst_pts = np.float32(objpoints[0]).reshape(-1,1,2)
     # print(src_pts,dst_pts)
@@ -398,6 +403,7 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=5,pickPercentag
     totLen=0
     availLen=0
     errorSum=0
+    errorMax=0
     for i in range(0,len(objpoints_shuf)):
         imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
         #error = cv2.norm(imgpoints[i],imgpoints2, cv2.NORM_INF)#/len(imgpoints2)
@@ -411,6 +417,7 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=5,pickPercentag
                 checked_img_points.append(imgpoints[i][j])
                 checked_obj_points.append(objpoints[i][j])
                 errorSum+=dist
+                if(errorMax<dist):errorMax=dist
         totLen+=len(imgpoints2)
         availLen+=len(checked_obj_points)
         objpoints_inBound.append(np.asarray(checked_obj_points, dtype= np.float32))
@@ -419,7 +426,7 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=5,pickPercentag
     #print(availLen,":",totLen)
     if availLen>0:
         errorSum/=availLen
-    return (objpoints_inBound,imgpoints_inBound,availLen,totLen,errorSum)
+    return (objpoints_inBound,imgpoints_inBound,availLen,totLen,errorMax)
 
 
 def rotationMatrix(theta):
@@ -564,13 +571,13 @@ def chessBoardCalibsss(image_path):
     imageSize = gray.shape[::-1]
 
     #refine....
-    maxMatchingRatio=0
+    maxMatchingRatio=0.8
     maxMatchingAvailLen=0
     objpoints_Match=None
     imgpoints_Match=None
     for x in range(100):
-        thres = 5
-        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize)
+        thres = 0.2
+        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres)
         print("  ",x," availLen>",availLen," totLen>",totLen," error:",error)
         if(maxMatchingRatio<availLen/totLen):
             maxMatchingRatio = availLen/totLen
@@ -626,20 +633,20 @@ def chessBoardCalibsss(image_path):
 
 
 
-    # for i in range(0, len(imgpoints)):
-    #     print(rvecs[i], tvecs[i])
-    #     img = cv2.imread(images_trusted[i])
-    #     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    #     width,height = gray.shape[::-1]
-    #     for j in range(0, len(imgpoints[i])):
-    #         x,y = imgpoints[i][j].ravel()
-    #         coord = objpoints[i][j]
-    #         cv2.circle(img,(x,y),3,128,-1)
-    #         cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-    #         cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-    #     cv2.imshow('img',img)
-    #     cv2.waitKey()
-
+    for i in range(0, len(imgpoints)):
+        print(rvecs[i], tvecs[i])
+        img = cv2.imread(images_trusted[i])
+        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        width,height = gray.shape[::-1]
+        for j in range(0, len(imgpoints[i])):
+            x,y = imgpoints[i][j].ravel()
+            coord = objpoints[i][j]
+            cv2.circle(img,(x,y),3,128,-1)
+            cv2.putText(img, str(int(coord[0])), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(int(coord[1])), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.imshow('img',img)
+        cv2.waitKey()
+        cv2.imwrite(images_trusted[i]+'_output.jpg', img)
 
 
 
