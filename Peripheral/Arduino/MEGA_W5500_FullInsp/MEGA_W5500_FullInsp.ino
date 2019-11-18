@@ -20,6 +20,7 @@
 enum class GEN_ERROR_CODE { 
   INSP_RESULT_HAS_NO_OBJECT=1,
   OBJECT_HAS_NO_INSP_RESULT=2,
+  INSP_RESULT_COUNTER_ERROR=3,
   };
 
 
@@ -51,7 +52,7 @@ typedef struct pipeLineInfo{
   int16_t insp_status;
 }pipeLineInfo;
 
-
+int cur_insp_counter=0;
 
 
 #define SARRL(SARR) (sizeof((SARR))/sizeof(*(SARR)))
@@ -401,6 +402,49 @@ class Websocket_FI:public Websocket_FI_proto{
         {
           return 0;
         }
+        
+        int new_count=-99;
+        int pre_count=cur_insp_counter;//0~255
+        char *counter_str = buffX;
+        {
+          int retL = findJsonScope((char*)recv_cmd,"\"count\":",counter_str,10);
+          if(retL>0)
+          {
+            sscanf(counter_str, "%d", &new_count);
+
+            if(new_count==-1)
+            {
+              pre_count=254;
+              new_count=255;
+            }
+            
+            cur_insp_counter=new_count;
+            if( ((pre_count+1)&0xFF) ==new_count)
+            {//PASS
+              
+            }
+            else
+            {
+              counter_str=NULL;
+            }
+          }
+          else
+          {
+            counter_str=NULL; 
+          }
+
+          if(counter_str==NULL)
+          {
+            
+            errorLOG(GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
+            errorAction();
+          }
+
+
+          
+          buffX+=retL;
+        }
+
         int insp_status=-99;
         char *statusStr = buffX;
         {
@@ -420,7 +464,7 @@ class Websocket_FI:public Websocket_FI_proto{
           if(retL<0)time_100us_str=NULL;
           buffX+=retL;
         }
-
+        
 
         for(int i=0;i<RBuf.size();i++)
         {

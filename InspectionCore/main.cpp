@@ -1987,13 +1987,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         {
           LOGI("mift is here!!");
           char buffx[150];
+          static int count=0;
           int len = sprintf(buffx,
             "{"
-            "\"type\":\"inspRep\",\"idx\":1,\"status\":%d,"
+            "\"type\":\"inspRep\",\"status\":%d,"
+            "\"idx\":%d,\"count\":%d,"
             "\"time_100us\":%d"
-            "}",stat,fi.timeStamp_100us);
+            "}",stat,1,count,fi.timeStamp_100us);
           cb->mift->send_data((uint8_t*)buffx,len);
-          
+          count=(count+1)%0xFF;
           LOGI("%s",buffx);
         }
     
