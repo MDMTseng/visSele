@@ -1871,7 +1871,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             //LOGV("skp.keyPt %f %f, searchDist:%f ppmm:%f",skp.keyPt.X,skp.keyPt.Y,searchDist,ppmm);
             if(searchP(img, &skp.keyPt , searchVec, searchDist)!=0)
             {
-              LOGV("Fail...");
+              LOGI("Fail... keyPt: (%f,%f)",skp.keyPt.X,skp.keyPt.Y);
               continue;
             }
             if(drawDBG_IMG)
@@ -1906,6 +1906,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           }
           else
           {
+            LOGI("Not able to find starting point");
             FeatureReport_lineReport lr;
             lr.line=lf_zero;
             lr.def=line;
@@ -1946,13 +1947,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           flip_f,
           s_intersectIdxs,s_points);
           
-        LOGV("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
+        LOGI("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
           MatchingMarginX,s_points.size(),initMatchingMargin,0.5);
 
        
-        if(s_points.size()>5*4)
+        if(s_points.size()>15)
         {
-          //LOGV("Line adj:thres:%f",thres);
           acv_XY lineNormal ={X:-line_cand.line_vec.Y,Y:line_cand.line_vec.X};
           int sptL=s_points.size();
 
@@ -1961,7 +1961,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           float minSigma=99999;
           for(int m=0;m<7;m++)
           {
-            int sampleL=s_points.size()/5;
+            int sampleL=s_points.size()/7+3;
+            if(sampleL>s_points.size())
+            {
+              sampleL=s_points.size()/7;
+            }
             for(int k=0;k<sampleL;k++)//Shuffle in 
             {
               int idx2Swap = (rand()%(s_points.size()-k))+k;

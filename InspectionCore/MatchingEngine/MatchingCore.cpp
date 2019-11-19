@@ -107,7 +107,7 @@ void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour)
     float crossP_LF_sum=0;
 
     const int Dist=3;
-    const int LP_hWindow=Dist;
+    const int LP_hWindow=1;
 
     float epsilon=0.05;
 
