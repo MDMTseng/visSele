@@ -107,7 +107,7 @@ void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour)
     float crossP_LF_sum=0;
 
     const int Dist=3;
-    const int LP_hWindow=Dist*2;
+    const int LP_hWindow=Dist;
 
     float epsilon=0.05;
 
@@ -1194,8 +1194,11 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               //Check sobel intensity
               if(hypot(edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y)<100)continue;
 
-              int ret_val = EdgePointOpt2(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,
-                edge_grid.tmpXYSeq[k].pt,3,thres,&ret_point_opt,&edgeResponse);
+              // int ret_val = EdgePointOpt2(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,
+              //   edge_grid.tmpXYSeq[k].pt,3,thres,&ret_point_opt,&edgeResponse);
+
+              int ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,edge_grid.tmpXYSeq[k].pt,
+                &ret_point_opt,&edgeResponse);
 
               edge_grid.tmpXYSeq[k].pt=ret_point_opt;
               edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
@@ -1203,7 +1206,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
 
               acv_XY xy = edge_grid.tmpXYSeq[k].pt;
 
-              edge_grid.tmpXYSeq[k].pt = acvVecRadialDistortionRemove(xy,param);
+              edge_grid.tmpXYSeq[k].pt =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
 
             }
             ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);

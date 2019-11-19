@@ -475,7 +475,7 @@ void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilon
         else
         {
           float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
-          if(dotP*flip_f>0.9)
+          if(dotP*flip_f>0.5)
           {
             points.push_back(pti);
           }

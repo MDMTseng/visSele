@@ -1947,7 +1947,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           s_intersectIdxs,s_points);
           
         LOGV("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
-          MatchingMarginX,s_points.size(),initMatchingMargin);
+          MatchingMarginX,s_points.size(),initMatchingMargin,0.5);
 
        
         if(s_points.size()>5*4)
