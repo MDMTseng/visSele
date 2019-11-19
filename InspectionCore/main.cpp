@@ -994,7 +994,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
 
             //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat=GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:1};
 
             
 

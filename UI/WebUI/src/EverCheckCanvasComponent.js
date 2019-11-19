@@ -1207,12 +1207,13 @@ class EverCheckCanvasComponent_proto{
     log.debug("resourceClean......")
   }
 
-  SetImg( img )
+  SetImg( img_info )
   {
-    if(img == null || img == this.secCanvas_rawImg)return;
+    if(img_info == null || img_info == this.img_info)return;
+    this.img_info=img_info;
+    let img = img_info.img;
     this.secCanvas.width = img.width;
     this.secCanvas.height = img.height;
-
     this.secCanvas_rawImg=img;
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx2nd.putImageData(img, 0, 0);
@@ -1469,7 +1470,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
       //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
       ctx.translate(-center.x,-center.y);
-      ctx.scale(4*mmpp,4*mmpp);
+      let scale=1;
+      if(this.img_info!==undefined && this.img_info.scale!==undefined)
+        scale = this.img_info.scale;
+      ctx.scale(scale*mmpp,scale*mmpp);
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
@@ -1636,7 +1640,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
     {//TODO:HACK: 4X4 times scale down for transmission speed
       
       let mmpp = this.rUtil.get_mmpp();
-      let mmpp_mult = 4*mmpp;
+      
+      let scale=1;
+      if(this.img_info!==undefined && this.img_info.scale!==undefined)
+        scale = this.img_info.scale;
+      let mmpp_mult = scale*mmpp;
+
       ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
 
@@ -2007,7 +2016,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
       ctx.translate(-center.x,-center.y);
-      ctx.scale(4*mmpp,4*mmpp);
+
+      let scale=1;
+      if(this.img_info!==undefined && this.img_info.scale!==undefined)
+        scale = this.img_info.scale;
+      ctx.scale(scale*mmpp,scale*mmpp);
+
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }

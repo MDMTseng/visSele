@@ -49,19 +49,23 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
+  let headerL=11;
   let headerArray = new Uint8ClampedArray(ws_evt.data,
-    offset+BPG_header_L,6);
+    offset+BPG_header_L,headerL);
   ret_obj.camera_id=headerArray[0];
   ret_obj.session_id=headerArray[1];
-  ret_obj.width=(headerArray[2]<<8)|headerArray[3];
-  ret_obj.height=(headerArray[4]<<8)|headerArray[5];
+  ret_obj.offsetX=(headerArray[2]<<8)|headerArray[3];
+  ret_obj.offsetY=(headerArray[4]<<8)|headerArray[5];
+  ret_obj.width=(headerArray[6]<<8)|headerArray[7];
+  ret_obj.height=(headerArray[8]<<8)|headerArray[9];
+  ret_obj.scale=headerArray[10];
   let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
   
-
-  if(true||RGBA_pix_Num == (ret_obj.length-6))
+  console.log(headerArray,RGBA_pix_Num,ret_obj.length-headerL);
+  if(true||RGBA_pix_Num == (ret_obj.length-headerL))
   {
     ret_obj.image=new Uint8ClampedArray(ws_evt.data,
-      offset+BPG_header_L+6,4*ret_obj.width*ret_obj.height);
+      offset+BPG_header_L+headerL,4*ret_obj.width*ret_obj.height);
   }
   else
   {
@@ -140,7 +144,12 @@ function map_BPG_Packet2Act(parsed_packet)
       let pkg = parsed_packet;
       let img = new ImageData(pkg.image, pkg.width);
       
-      acts.push(UIAct.EV_WS_Image_Update(img));
+
+      let objx={...pkg,img}
+      delete objx["image"];
+      acts.push(UIAct.EV_WS_Image_Update(
+        objx
+      ));
       break;
     }
     case "IR":

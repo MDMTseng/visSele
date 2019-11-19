@@ -14,7 +14,8 @@ typedef int (*BPG_data_feed_callback)(DatCH_BPG1_0 &dch,struct BPG_data *data,ui
 typedef struct BPG_data_acvImage_Send_info
 {
     acvImage* img;
-    float scale;
+    uint16_t scale;
+    uint16_t offsetX,offsetY;
 }BPG_data_acvImage_Send_info;
 
 

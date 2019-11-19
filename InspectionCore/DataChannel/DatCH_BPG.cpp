@@ -17,17 +17,23 @@ int DatCH_BPG_acvImage_Send(DatCH_BPG1_0 &dch,struct BPG_data *data,uint8_t *cal
 
   uint8_t header[]={
     0,0,
+    
+    img_info->offsetX >>8,
+    img_info->offsetX,
+    img_info->offsetY >>8,
+    img_info->offsetY,
+
     img->GetWidth()>>8,
     img->GetWidth(),
     img->GetHeight()>>8,
     img->GetHeight(),
-
+    img_info->scale,
   };
 
 
   ws_data.data.data_frame.isFinal=false;
   ws_data.data.data_frame.raw=header;
-  ws_data.data.data_frame.rawL=6;
+  ws_data.data.data_frame.rawL=11;
   dch.SendData(ws_data);
 
   ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
