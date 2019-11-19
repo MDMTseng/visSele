@@ -98,15 +98,15 @@ void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour)
     if(L==0)return;
 
   
-    for(int i=0;i<L;i++)
-    {
-      contour[i] = refineEdgeInfo(grayLevel,contour[i],3);
-    }
+    // for(int i=0;i<L;i++)
+    // {
+    //   contour[i] = refineEdgeInfo(grayLevel,contour[i],3);
+    // }
 
 
     float crossP_LF_sum=0;
 
-    const int Dist=10;
+    const int Dist=3;
     const int LP_hWindow=Dist*2;
 
     float epsilon=0.05;
@@ -1182,7 +1182,6 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
 
 
 
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
           if(edge_grid.tmpXYSeq.size()>0)
           {
             for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
@@ -1202,28 +1201,16 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
 
 
-            }
-            for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
-            {
-              
               acv_XY xy = edge_grid.tmpXYSeq[k].pt;
 
-
-              // int X=xy.X;
-              // int Y=xy.Y;
-              // uint8_t* pix = (uint8_t*)&(grayLevelImg->CVector[Y][X*3]);
-              // pix[0]=134;
-              // pix[1]=0;
-              // pix[2]=254;
-
-
               edge_grid.tmpXYSeq[k].pt = acvVecRadialDistortionRemove(xy,param);
-              // LOGV("edge XY >%f %f",xy.X,xy.Y);
-              edge_grid.push(edge_grid.tmpXYSeq[k]);
 
             }
-
-
+            ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
+            for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
+            {
+              edge_grid.push(edge_grid.tmpXYSeq[k]);
+            }
             edge_grid.tmpXYSeq.resize(0);
           }
         }
