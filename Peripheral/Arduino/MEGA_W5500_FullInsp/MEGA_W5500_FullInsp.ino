@@ -426,6 +426,9 @@ class Websocket_FI:public Websocket_FI_proto{
             else
             {
               counter_str=NULL;
+              DEBUG_print(pre_count);
+              DEBUG_print("<p  n>");
+              DEBUG_println(new_count);
             }
           }
           else
@@ -764,9 +767,9 @@ void loop()
   }
   
 
-  if(ERROR_HIST.size()!=0)
+  if(ERROR_HIST.size()!=0)//If there is at leaset an error, do errorAction.
   {
-    
+    errorAction();
   }
 
   

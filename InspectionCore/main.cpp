@@ -1995,7 +1995,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
             "\"time_100us\":%d"
             "}",stat,1,count,fi.timeStamp_100us);
           cb->mift->send_data((uint8_t*)buffx,len);
-          count=(count+1)%0xFF;
+          count=(count+1)&0xFF;
           LOGI("%s",buffx);
         }
     
