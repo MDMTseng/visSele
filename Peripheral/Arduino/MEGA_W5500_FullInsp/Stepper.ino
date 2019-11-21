@@ -165,7 +165,9 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
+#define DEBOUNCE_THRES 10
 
+uint32_t pre_pulse=0;
 void task_gateSensing()
 {
   
@@ -176,9 +178,9 @@ void task_gateSensing()
   {
     gateInfo.debunce = 0;
   }
-  else if (gateInfo.debunce <= 2)gateInfo.debunce++;
+  else if (gateInfo.debunce <= DEBOUNCE_THRES)gateInfo.debunce++;
 
-  if (gateInfo.debunce == 2)
+  if (gateInfo.debunce == DEBOUNCE_THRES)
   {
     if (cur_Sense == 0)
     {
@@ -199,9 +201,29 @@ void task_gateSensing()
           gateInfo.end_pulse += perRevPulseCount;
         }
         uint32_t middle_pulse = (gateInfo.end_pulse + gateInfo.start_pulse) >> 1;
-        middle_pulse = mod_sim(middle_pulse,perRevPulseCount);
+        if(middle_pulse<DEBOUNCE_THRES)
+        {
+          middle_pulse = perRevPulseCount+middle_pulse-DEBOUNCE_THRES;
+        }
+        else
+        {
+          middle_pulse = mod_sim(middle_pulse-DEBOUNCE_THRES,perRevPulseCount);
+        }
+
+        bool accept_pulse=false;
+        
+        {
+          uint32_t mid_pre_dist;
+
+          mid_pre_dist=(middle_pulse>pre_pulse)?
+            perRevPulseCount+middle_pulse-pre_pulse:
+            middle_pulse-pre_pulse;
+          pre_pulse=middle_pulse;
+          accept_pulse=(mid_pre_dist<40)?false:true;
+        }
+        
         pipeLineInfo* head = RBuf.getHead();
-        if (head != NULL)
+        if (accept_pulse && head != NULL)
         {
           head->gate_pulse = middle_pulse;
           head->stage = 0;

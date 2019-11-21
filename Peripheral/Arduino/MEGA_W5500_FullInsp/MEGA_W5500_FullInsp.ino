@@ -54,6 +54,8 @@ typedef struct pipeLineInfo{
 
 int cur_insp_counter=0;
 
+class Websocket_FI;
+Websocket_FI *WS_Server=NULL;
 
 #define SARRL(SARR) (sizeof((SARR))/sizeof(*(SARR)))
 
@@ -97,16 +99,8 @@ uint32_t perRevPulseCount_HW = (uint32_t)2400*16;//the real hardware pulse count
 uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the software pulse count that processor really care
 
 
+void errorLOG(GEN_ERROR_CODE code,char* errorLog=NULL);
 
-void errorLOG(GEN_ERROR_CODE code)
-{
-  GEN_ERROR_CODE* head_code = ERROR_HIST.getHead();
-  if (head_code != NULL)
-  {
-    *head_code=code;
-    ERROR_HIST.pushHead();
-  }
-}
 
 uint32_t PRPC= perRevPulseCount;
 
@@ -228,6 +222,25 @@ int stage_action(pipeLineInfo* pli)
 
 
   
+int AddErrorCodesToJson(char* send_rsp, uint32_t send_rspL)
+{
+  
+  if(ERROR_HIST.size()==0)return 0;   
+  uint32_t MessageL=0;                                           
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"errorCodes\":[");
+  for(int i=0;i<ERROR_HIST.size();i++)
+  {
+    GEN_ERROR_CODE* head_code = ERROR_HIST.getTail(i);
+    MessageL += sprintf( (char*)send_rsp+MessageL, "%d,",*head_code);
+  }
+  MessageL--;//remove the last comma',';
+  MessageL += sprintf( (char*)send_rsp+MessageL, "],");
+  
+  return MessageL;                              
+}
+
+  
+  
 void errorAction()
 {
   //if there is an error
@@ -336,25 +349,6 @@ class Websocket_FI:public Websocket_FI_proto{
   }
 
 
-  
-  int AddErrorCodesToJson(char* send_rsp, uint32_t send_rspL)
-  {
-    
-    if(ERROR_HIST.size()==0)return 0;   
-    uint32_t MessageL=0;                                           
-    MessageL += sprintf( (char*)send_rsp+MessageL, "\"errorCodes\":[");
-    for(int i=0;i<ERROR_HIST.size();i++)
-    {
-      GEN_ERROR_CODE* head_code = ERROR_HIST.getTail(i);
-      MessageL += sprintf( (char*)send_rsp+MessageL, "%d,",*head_code);
-    }
-    MessageL--;//remove the last comma',';
-    MessageL += sprintf( (char*)send_rsp+MessageL, "],");
-    
-    return MessageL;                              
-  }
-
-  
   int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
   {
     if(cmdL==NULL)
@@ -473,6 +467,10 @@ class Websocket_FI:public Websocket_FI_proto{
         {
           pipeLineInfo* pipe=RBuf.getTail(i);
           if(pipe==NULL)break;
+//          if(pipe->stage<3)//No object in ready to select field
+//          {
+//            break;
+//          }
           if(pipe->insp_status==insp_status_UNSET)
           {
             pipe->insp_status=insp_status;
@@ -671,11 +669,35 @@ class Websocket_FI:public Websocket_FI_proto{
 };
 
 
+void errorLOG(GEN_ERROR_CODE code,char* errorLog)
+{
+  GEN_ERROR_CODE* head_code = ERROR_HIST.getHead();
+  if (head_code != NULL)
+  {
+    *head_code=code;
+    ERROR_HIST.pushHead();
+  }
+
+  {
+    uint8_t errBuff[100];
+    uint8_t errBuffL=0;
+    errBuffL+=sprintf(errBuff+errBuffL,"{");
+    
+    errBuffL += sprintf( errBuff+errBuffL,"\"type\":\"error_notification\",");
+    errBuffL+=AddErrorCodesToJson(errBuff+errBuffL, 20);
+    if(errorLog)
+      errBuffL+= sprintf(errBuff+errBuffL,"\"log\":\"%s\",",errorLog);
+  
+    errBuffL--;//remove the last ','
+    errBuffL+=sprintf(errBuff+errBuffL,"}");//give it an close
+    WS_Server->SEND_ALL(errBuff,errBuffL,0);
+  }
+}
+
 
 
 uint32_t pulseHZ_step = 50;
 
-Websocket_FI *WS_Server;
 void setup() {
   Serial.begin(115200);
   WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
