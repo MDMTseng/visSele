@@ -451,6 +451,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
   int idx2 = FindFeatureReportIndex(report,judge.OBJ2_id, &type2);
   if(idx1<0)return judgeReport;
 
+  bool notNA=false;
   switch(judge.measure_type)
   {
     case FeatureReport_judgeDef::ANGLE:
@@ -513,22 +514,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
         {
           judgeReport.measured_val-=180;
         }
-
-
-        
-        //angleDiff = judgeReport.measured_val - judgeReport.def->LSL;
-        
-        if(judgeReport.measured_val >judgeReport.def->USL || 
-           judgeReport.measured_val <judgeReport.def->LSL)
-        {
-          judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-        }
-        else
-        {
-          judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-        }
-
-        LOGI("angle J:%f<%f<%f   %d",judgeReport.def->USL,judgeReport.measured_val,judgeReport.def->LSL,judgeReport.status);
+        notNA=true;
       }
 
     break;
@@ -558,17 +544,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
           judgeReport.measured_val=acvDistance(pt1,pt2);
 
         }
-        //float diff = judgeReport.measured_val - judgeReport.def->targetVal;
-        //if(diff < 0)diff = -diff;
-        if(judgeReport.measured_val >judgeReport.def->USL || 
-           judgeReport.measured_val <judgeReport.def->LSL)
-        {
-          judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-        }
-        else
-        {
-          judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-        }
+
+        notNA=true;
     }
 
 
@@ -579,16 +556,7 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
       FeatureReport_circleReport cir = (*report.detectedCircles)[idx1];
       judgeReport.measured_val=cir.circle.circle.radius;
       
-    
-      if(judgeReport.measured_val >judgeReport.def->USL || 
-        judgeReport.measured_val <judgeReport.def->LSL)
-      {
-        judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-      }
-      else
-      {
-        judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-      }
+      notNA=true;
     }
     break;
     case FeatureReport_judgeDef::SIGMA:
@@ -597,6 +565,23 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
     }
     break;
   }
+
+  if(notNA)
+  {
+    float USL=flip_f<0?judgeReport.def->USL_b:judgeReport.def->USL;
+    float LSL=flip_f<0?judgeReport.def->LSL_b:judgeReport.def->LSL;
+    if(judgeReport.measured_val >USL || 
+      judgeReport.measured_val <LSL)
+    {
+      judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+    }
+    else
+    {
+      judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+    }
+
+  }
+
 
 
   LOGV("===================");
@@ -1149,12 +1134,20 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   LOGV("feature is a measure/judge:%s id:%d subtype:%s",judge.name,judge.id,subtype);
 
 
-  judge.targetVal=*JxNUM(judge_obj,"value");
+  judge.targetVal_b = judge.targetVal=*JxNUM(judge_obj,"value");
 
-  judge.USL=*JxNUM(judge_obj,"USL");
-  judge.LSL=*JxNUM(judge_obj,"LSL");
+  judge.USL_b = judge.USL=*JxNUM(judge_obj,"USL");
+  judge.LSL_b = judge.LSL=*JxNUM(judge_obj,"LSL");
 
-  
+  void *target;
+  int type = getDataFromJson(judge_obj,"back_value_setup",&target);
+  if(type==cJSON_True)
+  {
+    judge.targetVal_b=*JxNUM(judge_obj,"value_b");
+    judge.USL_b=*JxNUM(judge_obj,"USL_b");
+    judge.LSL_b=*JxNUM(judge_obj,"LSL_b");
+  }
+
   judge.OBJ1_id = (int)*JxNUM(judge_obj,"ref[0].id");
 
   pnum = JFetch_NUMBER(judge_obj,"ref[1].id");//It's fine if we don't have OBJ2(ref[1])
@@ -1950,6 +1943,19 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         LOGI("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
           MatchingMarginX,s_points.size(),initMatchingMargin,0.5);
 
+        for(int i=0;i<s_points.size();i++)
+        {
+          acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
+          int X = round(p.X);
+          int Y = round(p.Y);
+          {
+            originalImage->CVector[Y][X*3]=255;
+            originalImage->CVector[Y][X*3+1]=100;
+            originalImage->CVector[Y][X*3+2]=255;
+          }
+        }
+
+        LOGI("s_points.size():%d",s_points.size());
        
         if(s_points.size()>15)
         {

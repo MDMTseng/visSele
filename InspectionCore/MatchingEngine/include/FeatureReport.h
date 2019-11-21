@@ -117,6 +117,10 @@ typedef struct FeatureReport_judgeDef{
   float USL,LSL;
   float UCL,LCL;
   
+  float targetVal_b;
+  float USL_b,LSL_b;
+  float UCL_b,LCL_b;
+  
   union data{
     struct ANGLE{
       int quadrant;
