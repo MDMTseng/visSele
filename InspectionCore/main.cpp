@@ -994,7 +994,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
 
             //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat=GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:1};
+            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:2};
 
             
 
@@ -1123,7 +1123,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             }
 
             bpg_dat=GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:2};
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
             ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,param_default.map);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
@@ -1311,7 +1311,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
 
 
             bpg_dat=GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:4};
+            BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:2};
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
             ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,param_default.map);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
@@ -1979,8 +1979,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
                 // LOGI("FINAL stat:%d",stat);
 
             }
-
-
         }
         
         if(cb->mift)
@@ -1998,9 +1996,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
           count=(count+1)&0xFF;
           LOGI("%s",buffx);
         }
-    
-
-
 
         if(report!=NULL)
         {
@@ -2035,6 +2030,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
+
+      //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:(uint16_t)(capImg.GetWidth()/500)};
+      
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
