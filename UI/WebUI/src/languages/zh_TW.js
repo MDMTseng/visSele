@@ -44,13 +44,19 @@ export default {
     
     measure:{
 
-        value:"目標",
-        USL:"規格上限",
-        LSL:"規格下限",
-        UCL:"管制上限",
-        LCL:"管制下限",
-        docheck:"必要判定",
-        quadrant:"量測象限"
+      back_value_setup:"背面目標設定",
+      value_b:"目標(背)",
+      USL_b:"規格上限(背)",
+      LSL_b:"規格下限(背)",
+      UCL_b:"管制上限(背)",
+      LCL_b:"管制下限(背)",
+      value:"目標",
+      USL:"規格上限",
+      LSL:"規格下限",
+      UCL:"管制上限",
+      LCL:"管制下限",
+      docheck:"必要判定",
+      quadrant:"量測象限"
     }
 
 

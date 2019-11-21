@@ -280,13 +280,22 @@ class APP_DEFCONF_MODE extends React.Component{
             name:"input",
             //pt1:null,
             angleDeg:"input-number",
-            value:"input-number",
             margin:"input-number",
+
+            value:"input-number",
             USL:"input-number",
             LSL:"input-number",
             UCL:"input-number",
             LCL:"input-number",
+
+            value_b:"input-number",
+            USL_b:"input-number",
+            LSL_b:"input-number",
+            UCL_b:"input-number",
+            LCL_b:"input-number",
+
             quadrant:"div",
+            back_value_setup:"checkbox",
             docheck:"checkbox",
             width:"input-number",
             ref:{__OBJ__:"div",
@@ -326,14 +335,21 @@ class APP_DEFCONF_MODE extends React.Component{
                     if( target.obj.value!== undefined)
                     {
                       //Special case, if USL LSL gets changes then UCL and LCL will be changed as well
-                      let val = target.obj.value;
-                      if(lastKey == "LSL")
+                      
+                      switch(lastKey)
                       {
-                        target.obj.LCL=roundX((val+(target.obj.LSL-val)*2/3),0.001);
-                      }
-                      else if(lastKey == "USL")
-                      {
-                        target.obj.UCL=roundX((val+(target.obj.USL-val)*2/3),0.001);
+                        case "LSL":
+                          target.obj.LCL=roundX((target.obj.value+(target.obj.LSL-target.obj.value)*2/3),0.001);
+                          break;
+                        case "USL":
+                          target.obj.UCL=roundX((target.obj.value+(target.obj.USL-target.obj.value)*2/3),0.001);
+                          break;
+                        case "LSL_b":
+                          target.obj.LCL_b=roundX((target.obj.value_b+(target.obj.LSL_b-target.obj.value_b)*2/3),0.001);
+                          break;
+                        case "USL_b":
+                          target.obj.UCL_b=roundX((target.obj.value_b+(target.obj.USL_b-target.obj.value_b)*2/3),0.001);
+                          break;
                       }
                     }
                   }
@@ -346,6 +362,26 @@ class APP_DEFCONF_MODE extends React.Component{
                   case "checkbox":
                   {
                     target.obj[lastKey]=evt.target.checked;
+
+                    if(lastKey=="back_value_setup")
+                    {
+                      if(evt.target.checked==false)
+                      {
+                        delete target.obj["value_b"];
+                        delete target.obj["USL_b"];
+                        delete target.obj["LSL_b"];
+                        delete target.obj["UCL_b"];
+                        delete target.obj["LCL_b"];
+                      }
+                      else
+                      {
+                        target.obj["value_b"]=target.obj["value"];
+                        target.obj["USL_b"]=target.obj["USL"];
+                        target.obj["LSL_b"]=target.obj["LSL"];
+                        target.obj["UCL_b"]=target.obj["UCL"];
+                        target.obj["LCL_b"]=target.obj["LCL"];
+                      }
+                    }
                   }
                   break;
                 }
