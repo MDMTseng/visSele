@@ -521,9 +521,6 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     }
     else
     {
-      // int span=300;
-      // int x=1600/2,y=1200/2;
-      // camera.SetROI(x-span,y-span,2*span,2*span,0,0);
     }
     
   }
@@ -997,8 +994,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:2};
 
             
-
-
+            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
             //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
             ImageDownSampling(dataSend_buff,*srcImg,iminfo.scale,NULL);
             bpg_dat.callbackInfo = (uint8_t*)&iminfo;
@@ -1580,12 +1576,31 @@ void zlibDeflate_testX(acvImage *img,acvImage *buff,IMG_COMPRESS_FUNC collapse_f
 
 }
 
+int str_ends_with(const char *str, const char *suffix)
+{
+    if (!str || !suffix)
+        return 0;
+    size_t lenstr = strlen(str);
+    size_t lensuffix = strlen(suffix);
+    if (lensuffix >  lenstr)
+        return 0;
+    return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
+
 int LoadCameraSetup(CameraLayer *camera,char *path)
 {
   if(!camera)return -1;
   char tmpStr[200];
 
-  sprintf(tmpStr,"%s/default_camera_setting.json",path);
+
+  if(str_ends_with(path, ".json"))
+  {
+    sprintf(tmpStr,"%s",path);
+  }
+  else
+  {
+    sprintf(tmpStr,"%s/default_camera_setting.json",path);
+  }
   LOGV("Loading %s",tmpStr);
   int ret = LoadCameraSetting(*camera, tmpStr);
   LOGV("ret:%d",ret);
@@ -2029,9 +2044,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
     if(DoImageTransfer){
       
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
-      BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
+      //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
 
-      //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:(uint16_t)(capImg.GetWidth()/500)};
+      BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:(uint16_t)(capImg.GetWidth()/400)};
+      if(iminfo.scale==0)
+      {
+        iminfo.scale=1;
+      }
       
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map);
