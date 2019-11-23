@@ -45,7 +45,7 @@ class CameraLayer{
     CameraLayer_Callback callback;
     void* context;
     uint32_t frameTimeTag;
-    
+    int maxWidth,maxHeight;
     frameInfo fi;
     public:
     
@@ -96,7 +96,7 @@ class CameraLayer{
     }
 
     
-    virtual CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh)
+    virtual CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh)
     {
         return CameraLayer::NAK;
     }

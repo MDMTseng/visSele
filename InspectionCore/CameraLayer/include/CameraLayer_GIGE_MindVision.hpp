@@ -43,7 +43,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status SetCrop(int x,int y, int width,int height);
     CameraLayer::status SetResolution(int width,int height);
     CameraLayer::status SetAnalogGain(int gain);
-    CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh);
+    CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh);
 
     
     CameraLayer::status SetMirror(int Dir,int en);

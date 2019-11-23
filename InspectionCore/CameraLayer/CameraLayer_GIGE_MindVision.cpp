@@ -96,6 +96,8 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
 
     int width = sCameraInfo.sResolutionRange.iWidthMax;
     int height = sCameraInfo.sResolutionRange.iHeightMax;
+    maxWidth = width;
+    maxHeight= width;
     int maxBufferSize = width*height * 3;
     m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
     LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
@@ -121,24 +123,62 @@ CameraLayer::status CameraLayer_GIGE_MindVision::L_TriggerMode(int type)
     return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int h,int zw,int zh)
+CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float w, float h,int zw,int zh)
 {
-  ROI_x=x;
-  ROI_y=y;
-  ROI_w=w;
-  ROI_h=h;
+  if(x<0||y<0||w<0||h<0 || 
+    x>maxWidth||y>maxHeight||w>maxWidth || h>maxHeight)
+  {
+    return CameraLayer::NAK;
+  }
+
+  if(x<=1)
+  {
+    ROI_x=x*maxWidth;
+  }
+  else
+  {
+    ROI_x=x>maxWidth?maxWidth:x;
+  }
+  
+  if(y<=1)
+  {
+    ROI_y=y*maxHeight;
+  }
+  else
+  {
+    ROI_y=y>maxHeight?maxHeight:y;
+  }
+
+  if(w<=1)
+  {
+    ROI_w=w*maxWidth;
+  }
+  else
+  {
+    ROI_w=w>maxWidth?maxWidth:w;
+  }
+  
+  if(h<=1)
+  {
+    ROI_h=h*maxHeight;
+  }
+  else
+  {
+    ROI_h=h>maxHeight?maxHeight:h;
+  }
+
   tSdkImageResolution resInfo={
     iIndex:0xFF,
     uBinSumMode:0,
     uBinAverageMode:0,
     uSkipMode:0,
     uResampleMask:0,
-    iHOffsetFOV:x,
-    iVOffsetFOV:y,
-    iWidthFOV:w,
-    iHeightFOV:h,
-    iWidth:w,
-    iHeight:h,
+    iHOffsetFOV:(int)ROI_x,
+    iVOffsetFOV:(int)ROI_y,
+    iWidthFOV:(int)ROI_w,
+    iHeightFOV:(int)ROI_h,
+    iWidth:(int)ROI_w,
+    iHeight:(int)ROI_h,
     iWidthZoomHd:0,
     iHeightZoomHd:0,
     iWidthZoomSw:0,
