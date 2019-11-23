@@ -1474,6 +1474,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto{
       if(this.img_info!==undefined && this.img_info.scale!==undefined)
         scale = this.img_info.scale;
       ctx.scale(scale*mmpp,scale*mmpp);
+      if(this.img_info!==undefined && this.img_info.offsetX!==undefined&& this.img_info.offsetY!==undefined)
+      {
+        ctx.translate(this.img_info.offsetX,this.img_info.offsetY);
+      }
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
@@ -1649,7 +1653,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
 
-      ctx.scale(mmpp_mult,mmpp_mult);
+      ctx.scale(mmpp_mult,mmpp_mult);      
+      if(this.img_info!==undefined && this.img_info.offsetX!==undefined&& this.img_info.offsetY!==undefined)
+      {
+        ctx.translate(this.img_info.offsetX,this.img_info.offsetY);
+      }
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
@@ -2021,6 +2029,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       if(this.img_info!==undefined && this.img_info.scale!==undefined)
         scale = this.img_info.scale;
       ctx.scale(scale*mmpp,scale*mmpp);
+      if(this.img_info!==undefined && this.img_info.offsetX!==undefined&& this.img_info.offsetY!==undefined)
+      {
+        ctx.translate(this.img_info.offsetX,this.img_info.offsetY);
+      }
 
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
