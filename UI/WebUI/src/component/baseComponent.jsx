@@ -344,7 +344,7 @@ export class BPG_FileBrowser_proto extends React.Component{
         path:path,
         depth:depth,
       },undefined,{resolve,reject});
-      setTimeout(()=>reject("Timeout"),1000)
+      setTimeout(()=>reject("Timeout"),5000)
     })
   }
 

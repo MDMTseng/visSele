@@ -127,7 +127,7 @@ class APPMasterX extends React.Component{
 
             setTimeout(()=>{
               this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
-            },100);
+            },1000);
             break;
           }
 

@@ -186,7 +186,7 @@ class APPMain extends React.Component{
       
             this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath});
                         
-        },1000);
+        },3000);
   
     }
     
@@ -545,7 +545,7 @@ class APPMain extends React.Component{
                     undefined,{resolve,reject}
                   );
                   
-                  setTimeout(()=>reject("Timeout"),1000)
+                  setTimeout(()=>reject("Timeout"),5000)
 
                   })
                   .then((pkts) => {

@@ -211,7 +211,7 @@ class APP_DEFCONF_MODE extends React.Component{
         deffile:defModelPath+'.'+DEF_EXTENSION,
         imgsrc:defModelPath},
       undefined,{resolve,reject});
-      setTimeout(()=>reject("Timeout"),1000)
+      setTimeout(()=>reject("Timeout"),5000)
     })
     .then((pkts) => {
         this.props.DISPATCH({
@@ -596,7 +596,7 @@ class APP_DEFCONF_MODE extends React.Component{
                 new Promise((resolve, reject) => {
                   this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{},
                   undefined,{resolve,reject});
-                  setTimeout(()=>reject("Timeout"),1000)
+                  setTimeout(()=>reject("Timeout"),3000)
                 })
                 .then((pkts) => {
                     this.props.DISPATCH({

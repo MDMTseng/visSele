@@ -922,7 +922,7 @@ class MicroFullInspCtrl extends React.Component {
         setTimeout(()=>{
           this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
             {msg:{type:"get_setup",id:4423}});
-        },100);//to separate messages
+        },1000);//to separate messages
         
       }
       else
