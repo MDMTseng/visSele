@@ -41,7 +41,7 @@ class CameraLayer{
     //void *cameraInst;
     typedef void (*CameraLayer_Callback)(
         CameraLayer &cl_obj, int type, void* context);
-    acvImage img;
+    acvImage img,img_load;
     CameraLayer_Callback callback;
     void* context;
     uint32_t frameTimeTag;

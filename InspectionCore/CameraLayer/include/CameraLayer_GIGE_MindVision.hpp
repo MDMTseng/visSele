@@ -40,7 +40,6 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status TriggerCount(int count);
     CameraLayer::status Trigger();
     CameraLayer::status RUN();
-    CameraLayer::status SetCrop(int x,int y, int width,int height);
     CameraLayer::status SetResolution(int width,int height);
     CameraLayer::status SetAnalogGain(int gain);
     CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh);

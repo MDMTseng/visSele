@@ -12,11 +12,16 @@ class CameraLayer_BMP : public CameraLayer{
     std::string fileName;
     std::vector <int> gaussianNoiseTable_M;
 
+    protected:
+    int ROI_X,ROI_Y,ROI_W,ROI_H;
+    int MIRROR_X,MIRROR_Y;
     public:
     CameraLayer_BMP(CameraLayer_Callback cb,void* context);
     
     status LoadBMP(std::string fileName);
     std::string GetCurrentFileName(){return this->fileName;}
+    status SetMirror(int Dir,int en);
+    status SetROI(float x, float y, float w, float h,int zw,int zh);
 };
 
 
@@ -30,6 +35,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     std::string folderName;
     std::string fileName;
     std::vector<std::string> files_in_folder;
+
     void ContTriggerThread();
     public:
     

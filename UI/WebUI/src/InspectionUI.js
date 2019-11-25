@@ -1700,9 +1700,41 @@ class APP_INSP_MODE extends React.Component {
             iconType="up-square"
             key="DoImageTransfer"
             addClass="layout palatte-blue-8 vbox"
-            text={"傳輸相機影像(I): "+ ((this.state.DoImageTransfer) ?"暫停": "啟動")}
-            onClick={() => this.CameraCtrl.setCameraImageTransfer()}/>);
+            text={"傳輸相機影像(I): "+ ((this.CameraCtrl.DoImageTransfer) ?"暫停": "啟動")}
+            onClick={() => 
+              this.CameraCtrl.setCameraImageTransfer()
+                  
+            }/>);
 
+        MenuSet.push(
+          <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          iconType="up-square"
+          key="ZOOM OUT"
+          iconType="zoom-out"
+          addClass="layout palatte-blue-8 vbox width6"
+          text={""}
+          onClick={() => 
+                
+            this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
+            {LoadCameraSetup:"data/"})
+                
+          }/>);
+              
+        MenuSet.push(
+          <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          key="ZOOM IN"
+          addClass="layout palatte-blue-8 vbox width6"
+          iconType="zoom-in"
+          text={""}
+          onClick={() => 
+            this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
+            {CameraSetting:{
+              "ROI":[100,100,800,800],
+              // "mirror":[0,1],
+              "down_samp_level":1
+            }})}/>);
         
         let trackingWindowInfo=this.props.reportStatisticState.trackingWindow;
 

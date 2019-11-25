@@ -260,10 +260,6 @@ void CameraLayer_GIGE_MindVision::ContTriggerThreadTermination( )
     }
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetCrop(int x,int y, int width,int height)
-{
-    return CameraLayer::NAK;
-}
 CameraLayer::status CameraLayer_GIGE_MindVision::SetResolution(int width,int height)
 {
     return CameraLayer::NAK;

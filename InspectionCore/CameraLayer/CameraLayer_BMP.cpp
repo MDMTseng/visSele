@@ -30,7 +30,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     //if(img.GetWidth()<100)//Just to skip image loading
     {
         LOGV("Loading:%s",fileName.c_str());
-        ret = acvLoadBitmapFile(&img, fileName.c_str());
+        ret = acvLoadBitmapFile(&img_load, fileName.c_str());
     }
     if(ret!=0)
     {
@@ -39,6 +39,24 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
+      int newH = (ROI_H<img_load.GetHeight()-ROI_Y)?ROI_H:img_load.GetHeight()-ROI_Y;
+      int newW = (ROI_W<img_load.GetWidth() -ROI_X)?ROI_W:img_load.GetWidth() -ROI_X;
+
+      img.ReSize(newW,newH);
+      for(int i=0;i<img.GetHeight();i++)//Add noise
+      {
+        int li=i+ROI_Y;
+        if(li<0 || li>=img_load.GetHeight())continue;
+        for(int j=0;j<img.GetWidth();j++)
+        {
+          int lj=j+ROI_X;
+          if(lj<0 || lj>=img_load.GetWidth())continue;
+          img.CVector[i][j*3]=img_load.CVector[li][lj*3];
+          img.CVector[i][j*3+1]=img_load.CVector[li][lj*3+1];
+          img.CVector[i][j*3+2]=img_load.CVector[li][lj*3+2];
+        }
+      }
+
         if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
         {
             for(int j=0;j<img.GetWidth();j++)
@@ -75,6 +93,30 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     m.unlock();
     return ret_status;
 }
+
+
+
+CameraLayer::status CameraLayer_BMP::SetROI(float x, float y, float w, float h,int zw,int zh)
+{
+  ROI_X=x;
+  ROI_Y=y;
+  ROI_W=w;
+  ROI_H=h;
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_BMP::SetMirror(int Dir,int en)
+{
+  if(Dir)
+  {
+    MIRROR_X=en;
+  }
+  else
+  {
+    MIRROR_Y=en;
+  }
+  return CameraLayer::ACK;
+}
+
 
 CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName):
     CameraLayer_BMP(cb,context)
@@ -178,7 +220,6 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
     //ThreadTerminationFlag = 0;
 
 }
-
 
 
 CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)

@@ -31,6 +31,7 @@ CameraLayer *gen_camera;
 DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle=0;
 
+int downSampLevel=4;
 
 bool doImgProcessThread=true;
 acvCalibMap* parseCM_info(PerifProt::Pak pakCM);
@@ -504,6 +505,12 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV=0;
   }
 
+
+  val = JFetch_NUMBER(&settingJson,"down_samp_level");
+  if(val)
+  {
+    downSampLevel = (int)*val;
+  }
 
   
   cJSON *ROISetting = JFetch_ARRAY(&settingJson,"ROI");
@@ -1407,7 +1414,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
         }
 
 
-
         LOGI("dat->dat_raw:%s",dat->dat_raw);
         LOGI("DoImageTransfer:%d",DoImageTransfer);
         cJSON *camSettingObj = JFetch_OBJECT(json,"CameraSetting");
@@ -1593,14 +1599,7 @@ int LoadCameraSetup(CameraLayer *camera,char *path)
   char tmpStr[200];
 
 
-  if(str_ends_with(path, ".json"))
-  {
-    sprintf(tmpStr,"%s",path);
-  }
-  else
-  {
-    sprintf(tmpStr,"%s/default_camera_setting.json",path);
-  }
+  sprintf(tmpStr,"%s/default_camera_setting.json",path);
   LOGV("Loading %s",tmpStr);
   int ret = LoadCameraSetting(*camera, tmpStr);
   LOGV("ret:%d",ret);
@@ -2046,7 +2045,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
 
-      BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:(uint16_t)(capImg.GetWidth()/400)};
+      BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:(uint16_t)downSampLevel};
       if(iminfo.scale==0)
       {
         iminfo.scale=1;
