@@ -13,7 +13,7 @@ class CameraLayer_BMP : public CameraLayer{
     std::vector <int> gaussianNoiseTable_M;
 
     protected:
-    int ROI_X,ROI_Y,ROI_W,ROI_H;
+    float ROI_X,ROI_Y,ROI_W,ROI_H;
     int MIRROR_X,MIRROR_Y;
     public:
     CameraLayer_BMP(CameraLayer_Callback cb,void* context);

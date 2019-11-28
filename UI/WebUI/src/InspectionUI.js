@@ -1731,7 +1731,9 @@ class APP_INSP_MODE extends React.Component {
           onClick={() => 
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
             {CameraSetting:{
-              "ROI":[100,100,800,800],
+              //"ROI":[0.3,0.3,0.4,0.4],
+              "ROI":[0.40,0.4,0.25,0.25],
+              //"ROI":[200,200,600,600],
               // "mirror":[0,1],
               "down_samp_level":1
             }})}/>);

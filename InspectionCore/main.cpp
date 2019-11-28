@@ -1924,12 +1924,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
   {
 
     using Ms = std::chrono::milliseconds;
-
+    int counter =0;
     while(!mainThreadLock.try_lock_for(Ms(100)))//Lock and wait 100 ms
     {
       LOGE( "try lock");
+      counter++;
       //Still locked
-      if(!cb->cameraFeedTrigger)//If the flag is closed then, exit
+      if(counter>1 || !cb->cameraFeedTrigger)//If the flag is closed then, exit
       {
         LOGE( "cb->cameraFeedTrigger is off return..");
         return;

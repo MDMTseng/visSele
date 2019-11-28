@@ -5,6 +5,7 @@
 
 CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer_Callback cb,void* context):CameraLayer(cb,context)
 {
+  m.unlock();
 }
 
 CameraLayer_GIGE_MindVision::~CameraLayer_GIGE_MindVision()
@@ -45,6 +46,8 @@ void CameraLayer_GIGE_MindVision::sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBu
 
 void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext)
 {
+  
+  m.lock();
     LOGV("INCOMING IMGE....%d.................",m_hCamera);
     
     int width = frameInfo->iWidth;
@@ -67,6 +70,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
         callback(*this,CameraLayer::EV_IMG,context);
     }
     
+  m.unlock();
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *devInfo)
@@ -97,7 +101,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     int width = sCameraInfo.sResolutionRange.iWidthMax;
     int height = sCameraInfo.sResolutionRange.iHeightMax;
     maxWidth = width;
-    maxHeight= width;
+    maxHeight= height;
     int maxBufferSize = width*height * 3;
     m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
     LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
@@ -107,29 +111,34 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
 }
 CameraLayer::status CameraLayer_GIGE_MindVision::SetMirror(int Dir,int en)
 {
+  m.lock();
   CameraSetMirror(m_hCamera,Dir,en);
+  m.unlock();
   return CameraLayer::ACK;
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::L_TriggerMode(int type)
 {
+  m.lock();
 	//0 for continuous, 1 for soft trigger, 2 for HW trigger
 	if (CameraSetTriggerMode(m_hCamera,type)!= CAMERA_STATUS_SUCCESS)
-    {
-		LOGE("Failed...");
-        return CameraLayer::NAK;
-    }
-    L_triggerMode=type;
-    return CameraLayer::ACK;
+  {
+  LOGE("Failed...");
+    m.unlock();
+      return CameraLayer::NAK;
+  }
+  L_triggerMode=type;
+  m.unlock();
+  return CameraLayer::ACK;
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float w, float h,int zw,int zh)
 {
-  if(x<0||y<0||w<0||h<0 || 
-    x>maxWidth||y>maxHeight||w>maxWidth || h>maxHeight)
-  {
-    return CameraLayer::NAK;
-  }
+  
+  if(x<0)x=0;
+  if(y<0)y=0;
+  if(w<0)w=0;
+  if(h<0)h=0;
 
   if(x<=1)
   {
@@ -167,6 +176,21 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
     ROI_h=h>maxHeight?maxHeight:h;
   }
 
+
+  if(ROI_x>=maxWidth-5)ROI_x=maxWidth-5;
+  if(ROI_w>maxWidth-ROI_x)ROI_w=maxWidth-ROI_x;
+
+  
+  if(ROI_y>=maxHeight-5)ROI_y=maxHeight-5;
+  if(ROI_h>maxHeight-ROI_y)ROI_h=maxHeight-ROI_y;
+
+  ROI_x=(int)ROI_x;
+  ROI_y=(int)ROI_y;
+  ROI_w=(int)ROI_w;
+  ROI_h=(int)ROI_h;
+  LOGI("MAX:%d %d",maxWidth,maxHeight);
+
+  LOGI("ROI:%f %f %f %f",ROI_x,ROI_y,ROI_w,ROI_h);
   tSdkImageResolution resInfo={
     iIndex:0xFF,
     uBinSumMode:0,
@@ -187,8 +211,17 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
 
 
   CameraSdkStatus camst = CameraSetImageResolution (m_hCamera,&resInfo);
-  int maxBufferSize = w*h*3;
-  img.useExtBuffer(m_pFrameBuffer,maxBufferSize,w,h);
+  if(camst)return CameraLayer::NAK;
+  camst = CameraGetImageResolution (m_hCamera,&resInfo);
+  if(camst)return CameraLayer::NAK;
+  //int maxBufferSize = (int)ROI_w*(int)ROI_h*3;
+  ROI_x=resInfo.iHOffsetFOV;
+  ROI_y=resInfo.iVOffsetFOV;
+
+  ROI_w=resInfo.iWidth;
+  ROI_h=resInfo.iHeight;
+
+  img.useExtBuffer(m_pFrameBuffer,maxWidth*maxHeight*3,(int)ROI_w,(int)ROI_h);
   return CameraLayer::ACK;
 }
 

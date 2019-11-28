@@ -39,17 +39,78 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     }
     else
     {
-      int newH = (ROI_H<img_load.GetHeight()-ROI_Y)?ROI_H:img_load.GetHeight()-ROI_Y;
-      int newW = (ROI_W<img_load.GetWidth() -ROI_X)?ROI_W:img_load.GetWidth() -ROI_X;
+
+      float tmpW=ROI_W;
+      float tmpH=ROI_H;
+      float tmpX=ROI_X;
+      float tmpY=ROI_Y;
+
+      LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+      if(tmpX<0){
+        tmpX=0;
+      }
+      if(tmpY<0){
+        tmpY=0;
+      }
+      if(tmpX<1)
+      {
+        tmpX=(int)(tmpX*img_load.GetWidth());
+      }
+      if(tmpY<1)
+      {
+        tmpY=(int)(tmpY*img_load.GetHeight());
+      }
+
+      if(tmpX>=img_load.GetWidth()-5)
+      {
+        tmpX=img_load.GetWidth()-5-1;
+      }
+      if(tmpY>=img_load.GetHeight()-5)
+      {
+        tmpY=img_load.GetHeight()-5-1;
+      }
+
+      if(tmpW<0){
+        tmpW=0;
+      }
+      if(tmpH<0){
+        tmpH=0;
+      }
+      if(tmpW<1)
+      {
+        tmpW=(int)(tmpW*img_load.GetWidth());
+      }
+      if(tmpH<1)
+      {
+        tmpH=(int)(tmpH*img_load.GetHeight());
+      }
+
+      LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+      if(tmpW+tmpX>img_load.GetWidth())
+      {
+        tmpW=img_load.GetWidth()-tmpX;
+      }
+      if(tmpH+tmpY>img_load.GetHeight())
+      {
+        tmpH=img_load.GetHeight()-tmpY;
+      }
+
+
+
+
+      int newX=tmpX,newY=tmpY;
+      int newH = tmpH;
+      int newW = tmpW;
+
 
       img.ReSize(newW,newH);
       for(int i=0;i<img.GetHeight();i++)//Add noise
       {
-        int li=i+ROI_Y;
+        int li=i+newY;
         if(li<0 || li>=img_load.GetHeight())continue;
         for(int j=0;j<img.GetWidth();j++)
         {
-          int lj=j+ROI_X;
+          int lj=j+newX;
           if(lj<0 || lj>=img_load.GetWidth())continue;
           img.CVector[i][j*3]=img_load.CVector[li][lj*3];
           img.CVector[i][j*3+1]=img_load.CVector[li][lj*3+1];

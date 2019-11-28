@@ -1658,6 +1658,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
       {
         ctx.translate(this.img_info.offsetX,this.img_info.offsetY);
       }
+      ctx.translate(-1*mmpp_mult,-1*mmpp_mult);
       ctx.drawImage(this.secCanvas,0,0);
       ctx.restore();
     }
