@@ -1943,17 +1943,17 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         LOGI("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
           MatchingMarginX,s_points.size(),initMatchingMargin,0.5);
 
-        for(int i=0;i<s_points.size();i++)
-        {
-          acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
-          int X = round(p.X);
-          int Y = round(p.Y);
-          {
-            originalImage->CVector[Y][X*3]=255;
-            originalImage->CVector[Y][X*3+1]=100;
-            originalImage->CVector[Y][X*3+2]=255;
-          }
-        }
+        // for(int i=0;i<s_points.size();i++)
+        // {
+        //   acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
+        //   int X = round(p.X);
+        //   int Y = round(p.Y);
+        //   {
+        //     originalImage->CVector[Y][X*3]=255;
+        //     originalImage->CVector[Y][X*3+1]=100;
+        //     originalImage->CVector[Y][X*3+2]=255;
+        //   }
+        // }
 
         LOGI("s_points.size():%d",s_points.size());
        
@@ -2269,7 +2269,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
         int matching_tor=initMatchingMargin;
         center=acvVecAdd(center,ldData[i].Center);
-        center = acvVecRadialDistortionRemove(center,param);
         
         //LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
         float sAngle,eAngle;
@@ -2296,30 +2295,101 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           s_intersectIdxs,s_points);
 
           
-        // for(ContourGrid::ptInfo ptinfo:s_points)
-        // {
-        //   int th=5;
-        //   acv_XY oriPt =acvVecRadialDistortionApply(ptinfo.pt,param);
-        //   acvDrawBlock(originalImage, 
-        //     oriPt.X-th,oriPt.Y-th, 
-        //     oriPt.X+th,oriPt.Y+th, 255,255,255,th);
-        // }
+
+        for(int i=0;i<s_points.size();i++)
+        {
+          acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
+          int X = round(p.X);
+          int Y = round(p.Y);
+          {
+            originalImage->CVector[Y][X*3]=100;
+            originalImage->CVector[Y][X*3+1]=255;
+            originalImage->CVector[Y][X*3+2]=255;
+          }
+        }
+
+
+
+
 
         LOGV("s_points.size():%d",s_points.size());
         acv_CircleFit cf;
-        circleRefine(s_points,&cf);
+        circleRefine(s_points,s_points.size(),&cf);
+
+        if(s_points.size()>30)
+        {
+          acv_CircleFit best_cf=cf;
+          float minSigmaScore=99999;
+          for(int m=0;m<10;m++)
+          {
+            int sampleL=s_points.size()/7+3;
+            for(int k=0;k<sampleL;k++)//Shuffle in 
+            {
+              int idx2Swap = (rand()%(s_points.size()-k))+k;
+
+              ContourGrid::ptInfo tmp_pt=s_points[k];
+              s_points[k]=s_points[idx2Swap];
+              s_points[idx2Swap]=tmp_pt;
+              //s_points[j].edgeRsp=1;
+            }
+            circleRefine(s_points,sampleL,&cf);
+            
+            int sigma_count=0;
+            float sigma_sum=0;
+            for(int k=0;k<sampleL;k++)//Shuffle in 
+            {
+              float dist = acvDistance(cf.circle, s_points[k].pt);
+              if(dist>3)
+              {
+                //s_points[j].edgeRsp=0;
+                continue;
+              }
+              sigma_count++;
+              sigma_sum+=dist*dist;
+            }
+            sigma_sum=sqrt(sigma_sum/sigma_count)/(sigma_count+1);
+
+            if(minSigmaScore>sigma_sum)
+            {
+              minSigmaScore=sigma_sum;
+              best_cf = cf;
+            }
+          }
+          cf = best_cf;
+
+
+
+
+          for(int n=0;n<s_points.size();n++)
+          {
+            float dist  = acvDistance_Signed(cf.circle,s_points[n].pt);
+            s_points[n].tmp =  dist;
+            
+          }
+          std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
+          
+
+          int usable_L=s_points.size()/3;
+          float distThres = s_points[usable_L].tmp+1;
+          LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
+          for(int n=usable_L;n<s_points.size();n++)
+          {
+            usable_L=n;
+            if(s_points[n].tmp>distThres)break;
+          }
+          circleRefine(s_points,usable_L,&cf);
+          
+
+
+
+
+          
+        }
+
+        
         float minTor = matching_tor/2;
         if(minTor<1)minTor=1;
-        edge_grid.getContourPointsWithInCircleContour(
-          cf.circle.circumcenter.X,
-          cf.circle.circumcenter.Y,
-          cf.circle.radius,
-          sAngle,eAngle,cdef.outter_inner,
-          minTor,
-          s_intersectIdxs,s_points);
 
-        LOGV("s_points.size():%d",s_points.size());
-        circleRefine(s_points,&cf);
 
         FeatureReport_circleReport cr;
         cr.circle=cf;

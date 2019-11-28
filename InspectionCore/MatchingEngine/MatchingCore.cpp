@@ -178,7 +178,7 @@ void ContourFilter(acvImage *grayLevel,vector<ContourGrid::ptInfo> &contour)
     }
 }
 
-void circleRefine(vector<ContourGrid::ptInfo> &pointsInRange,acv_CircleFit *circleF)
+void circleRefine(vector<ContourGrid::ptInfo> &pointsInRange,int Len,acv_CircleFit *circleF)
 {
   static Data CircleFitData(2000);
   int skip=1;
@@ -400,7 +400,7 @@ bool CircleFitTest(ContourGrid &contourGrid,
     {
       acv_CircleFit cf ;
 
-      circleRefine(s_points,&cf);
+      circleRefine(s_points,s_points.size(),&cf);
       contourGrid.getContourPointsWithInCircleContour(
         cf.circle.circumcenter.X,
         cf.circle.circumcenter.Y,
@@ -410,7 +410,7 @@ bool CircleFitTest(ContourGrid &contourGrid,
         epsilon2,
         s_intersectIdxs,s_points);
       matchingScore =(float)s_points.size() / cf.circle.radius/((float)(2*M_PI));//Around 2PI
-      circleRefine(s_points,&cf);
+      circleRefine(s_points,s_points.size(),&cf);
       cf.matching_pts=s_points.size();
       *ret_cf = cf;
       return true;
@@ -1203,15 +1203,25 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               edge_grid.tmpXYSeq[k].pt=ret_point_opt;
               edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
 
-
               acv_XY xy = edge_grid.tmpXYSeq[k].pt;
 
               edge_grid.tmpXYSeq[k].pt =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
 
             }
+            
             ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
             for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
             {
+
+              // acv_XY p =edge_grid.tmpXYSeq[k].pt;
+              // int X = round(p.X);
+              // int Y = round(p.Y);
+              // {
+              //   grayLevelImg->CVector[Y][X*3+0]=0;
+              //   grayLevelImg->CVector[Y][X*3+1]=0;
+              //   grayLevelImg->CVector[Y][X*3+2]=255;
+              // }
+
               edge_grid.push(edge_grid.tmpXYSeq[k]);
             }
             edge_grid.tmpXYSeq.resize(0);

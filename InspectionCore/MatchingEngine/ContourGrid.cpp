@@ -327,11 +327,9 @@ void ContourGrid::getContourPointsWithInCircleContour(float X,float Y,float radi
       pti.edgeRsp=1;
       if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
       {
-        float absCurv = abs(pti.curvature);
-        //LOGV("P1");
-        if(absCurv>arcCurvatureMin &&
-          absCurv<arcCurvatureMax &&
-         (pti.curvature*outter_inner)>=0)
+        float dotP = dX*pti.sobel.X+dY*pti.sobel.Y;
+
+        if(dotP*outter_inner>=0)
         {
           float angle = atan2(dY,dX);
           // LOGV(">>%f,%f-> %f %f",pti.pt.X,pti.pt.Y,X,Y);

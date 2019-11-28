@@ -199,6 +199,8 @@ acv_XY acvRotation(float angle,acv_XY input);
 acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line);
 float acvDistance_Signed(acv_Line line, acv_XY point);
 float acvDistance(acv_Line line, acv_XY point);
+float acvDistance_Signed(acv_Circle cir, acv_XY point);
+float acvDistance(acv_Circle cir, acv_XY point);
 float acvLineAngle(acv_Line line1,acv_Line line2);
 float acvVectorAngle(acv_XY v1,acv_XY v2);
 bool acvFitLine(const acv_XY *pts, int ptsL,acv_Line *line, float *ret_sigma);
