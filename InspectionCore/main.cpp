@@ -32,6 +32,7 @@ DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle=0;
 
 int downSampLevel=4;
+bool downSampWithCalib=false;
 
 bool doImgProcessThread=true;
 acvCalibMap* parseCM_info(PerifProt::Pak pakCM);
@@ -510,6 +511,22 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   if(val)
   {
     downSampLevel = (int)*val;
+  }
+
+
+  void *target;
+  int type = getDataFromJson(&settingJson,"down_samp_w_calib",&target);
+  if(type==cJSON_False)
+  {
+    downSampWithCalib=false;
+  }
+  else if( type ==cJSON_True)
+  {
+    downSampWithCalib=true;
+  }
+  else
+  {
+    downSampWithCalib=true;
   }
 
   
@@ -2053,7 +2070,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       }
       
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map);
+      ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map,downSampWithCalib);
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
       bpg_dat.callback=DatCH_BPG_acvImage_Send;
       bpg_dat.pgID= cb->CI_pgID;

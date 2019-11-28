@@ -1735,6 +1735,7 @@ class APP_INSP_MODE extends React.Component {
               "ROI":[0.40,0.4,0.25,0.25],
               //"ROI":[200,200,600,600],
               // "mirror":[0,1],
+              "down_samp_w_calib":false,
               "down_samp_level":1
             }})}/>);
         
