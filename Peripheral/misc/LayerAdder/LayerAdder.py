@@ -1,7 +1,19 @@
 import zipfile
 import re
-from PIL import Image 
+from PIL import Image , ImageChops 
 import io
+
+
+
+import os
+
+def createFolder(directory):
+  try:
+    if not os.path.exists(directory):
+      os.makedirs(directory)
+  except OSError:
+    print ('Error: Creating directory. ' +  directory)
+      
 
 def getLayerSection(gcode_parsed,layer_idx):
   if(layer_idx<0 or layer_idx>=len(gcode_parsed["layer_indices"])):
@@ -73,12 +85,49 @@ archive_printObj = zipfile.ZipFile('_20x20x20.zip', 'r')
 gcode_printObj = archive_printObj.read('run.gcode')
 gcode_printObj_Info=LayerParse(gcode_printObj)
 
-nameX = getLayerSection_image_name(gcode_floor_Info,200)
-print(nameX)
-data = archive_floor.read(nameX)
-dataEnc = io.BytesIO(data)
-img = Image.open(dataEnc)
-img.show()
+
+
+
+
+directory="output"
+createFolder(directory)
+
+
+nameX = getLayerSection_image_name(gcode_floor_Info,1000)
+maxIdx=1000
+for idx in range(800,maxIdx):
+
+  img_floor=None
+  img_printObj=None
+
+
+
+  name_floor = getLayerSection_image_name(gcode_floor_Info,idx)
+  if(name_floor!=None):
+    data = archive_floor.read(name_floor)
+    dataEnc = io.BytesIO(data)
+    img_floor = Image.open(dataEnc)
+  
+
+  name_printObj = getLayerSection_image_name(gcode_printObj_Info,idx)
+  if(name_printObj!=None):
+    data2 = archive_printObj.read(name_printObj)
+    dataEnc2 = io.BytesIO(data2)
+    img_printObj = Image.open(dataEnc2)
+  
+  img_mix=None
+  if(img_floor!=None and img_printObj!=None):
+    img_mix = ImageChops.logical_or(img_floor.convert("1") , img_printObj.convert("1") )#.convert("P")
+  elif(img_floor!=None):
+    img_mix = img_floor
+  elif(img_printObj!=None):
+    img_mix = img_printObj
+  else:
+    break
+
+  print(str(idx*100//maxIdx)+"%. idx:"+str(idx))
+  #im3.show()
+  img_mix.save( directory+"/"+name_floor, "png" )
 
 
 
