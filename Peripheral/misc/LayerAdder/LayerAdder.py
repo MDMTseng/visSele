@@ -76,9 +76,24 @@ def getLayerSection_height(gcode_parsed,layer_idx):
     idx+=1
   return None
 
+
+
+def floorIdxJump(floor_gcode_parsed,floor_clear_top_layer_idx,floor_clear_btn_layer_idx,object_gcode_parsed,object_layer_idx):
+  if(object_layer_idx<floor_clear_btn_layer_idx):return object_layer_idx
+  object_layer_count = len(object_gcode_parsed["layer_indices"])
+  if(object_layer_count<floor_clear_top_layer_idx):
+    return object_layer_idx+floor_clear_top_layer_idx-object_layer_count
+
+  return object_layer_idx
+
+
 archive_floor = zipfile.ZipFile('floor.zip', 'r')
 gcode_floor = archive_floor.read('run.gcode')
 gcode_floor_Info=LayerParse(gcode_floor)
+floor_clear_top_layer_idx=786
+floor_clear_btn_layer_idx=20
+
+
 
 
 archive_printObj = zipfile.ZipFile('_20x20x20.zip', 'r')
@@ -92,17 +107,14 @@ gcode_printObj_Info=LayerParse(gcode_printObj)
 directory="output"
 createFolder(directory)
 
-
-nameX = getLayerSection_image_name(gcode_floor_Info,1000)
 maxIdx=1000
-for idx in range(800,maxIdx):
+for idx in range(0,maxIdx):
 
   img_floor=None
   img_printObj=None
+  floor_idx = floorIdxJump(gcode_floor_Info,floor_clear_top_layer_idx,floor_clear_btn_layer_idx,gcode_printObj_Info,idx)
 
-
-
-  name_floor = getLayerSection_image_name(gcode_floor_Info,idx)
+  name_floor = getLayerSection_image_name(gcode_floor_Info,floor_idx)
   if(name_floor!=None):
     data = archive_floor.read(name_floor)
     dataEnc = io.BytesIO(data)
@@ -125,9 +137,9 @@ for idx in range(800,maxIdx):
   else:
     break
 
-  print(str(idx*100//maxIdx)+"%. idx:"+str(idx))
+  print(str(idx*100//maxIdx)+"%. idx:"+str(idx)+"  floor_idx:"+str(floor_idx))
   #im3.show()
-  img_mix.save( directory+"/"+name_floor, "png" )
+  img_mix.save( directory+"/"+str(idx+1)+".png", "png" )
 
 
 
