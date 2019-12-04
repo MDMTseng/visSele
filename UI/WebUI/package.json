@@ -21,6 +21,7 @@
     "chart.js": "^2.7.3",
     "chartjs-plugin-annotation": "^0.5.7",
     "clone": "^2.1.2",
+    "color": "^3.1.2",
     "create-react-class": "^15.6.3",
     "cytoscape": "^3.3.0",
     "cytoscape-cose-bilkent": "^4.0.0",

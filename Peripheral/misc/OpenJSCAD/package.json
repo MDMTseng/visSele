@@ -1,0 +1,24 @@
+{
+  "name": "@kaosat-dev/isolos",
+  "version": "0.0.1",
+  "description": "Isolos quadruped robot",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "jscad",
+    "cad",
+    "robot",
+    "robot",
+    "quadruped",
+    "parametric",
+    "isolos"
+  ],
+  "author": "Mark 'kaosat-dev' Moissette & sons",
+  "license": "MIT",
+  "dependencies": {
+    "@jscad/csg": "0.5.2",
+    "jscad-tree-experiment": "github:kaosat-dev/jscad-tree-experiments"
+  }
+}
