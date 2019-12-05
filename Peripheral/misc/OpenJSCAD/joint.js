@@ -84,7 +84,6 @@ function GoProJoint_plate(Leglenth=20)
 {
   let thickness=2.93;
   let cylD=15;
-  let fn=20
   let plate=cylinder({d: cylD, center: true,fn}).scale([1,1,thickness]);
   plate=union(plate,cube({size: [Leglenth,cylD,thickness], center:true}).translate([Leglenth/2,0,0])) 
   let screwRod=cylinder({d: 5, center: true,fn}).scale([1,1,20]);

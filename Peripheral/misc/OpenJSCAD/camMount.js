@@ -153,12 +153,13 @@ function sShell(){
       holes
   ).translate([-20/2,-29/2,-3/2])
 }
-
+const stlDeSerializer=require('@jscad/stl-deserializer')
+const fs = require('fs')
 function main (p) {
   //let obj = union(sampleCube()).translate([5, 0,0])
-  // const rawData = fs.readFileSync('/Users/mdm/visSele/Peripheral/misc/OpenJSCAD/simpleCube.stl')
-  // const csgData = stlDeSerializer.deserialize(rawData, undefined, {output: 'csg'})
 
+  const rawData = fs.readFileSync(__dirname+'/simpleCube.stl')
+  const csgData = stlDeSerializer.deserialize(rawData, undefined, {output: 'csg'})
   let showObj=union(
     [
       HolderBase(),
@@ -166,6 +167,7 @@ function main (p) {
       //HolderMountStick(),
       //multiCamHolder()
       //cylinder({fn:5}),
+      csgData,
       new CSG()//Empty, just for 
     ])
   console.log(">>.Done");
