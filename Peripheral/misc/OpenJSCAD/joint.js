@@ -73,10 +73,10 @@ function PolyRod(polyCount=5,angleOffset=0){
 
 function GoProScrew(length=5)
 {
-  let nutR=4.4*1.1;
+  let nutR=4.4*1.05;
   let nutH=4.8;
   let nutHole=HEX().scale([nutR,nutR,nutH]).translate([0,0,nutH/2]); 
-  let screwRod=cylinder({d: 5, center: true,fn}).scale([1,1,length]).translate([0,0,-length/2]);
+  let screwRod=cylinder({d: 6, center: true,fn}).scale([1,1,length]).translate([0,0,-length/2]);
 
   return union(nutHole,screwRod)
 }
@@ -86,7 +86,7 @@ function GoProJoint_plate(Leglenth=20)
   let cylD=15;
   let plate=cylinder({d: cylD, center: true,fn}).scale([1,1,thickness]);
   plate=union(plate,cube({size: [Leglenth,cylD,thickness], center:true}).translate([Leglenth/2,0,0])) 
-  let screwRod=cylinder({d: 5, center: true,fn}).scale([1,1,20]);
+  let screwRod=cylinder({d: 6, center: true,fn}).scale([1,1,20]);
 
 
   return difference(plate,screwRod)

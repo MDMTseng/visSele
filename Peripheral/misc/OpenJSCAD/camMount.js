@@ -5,6 +5,7 @@
 // tags       : Logo,Intersection,Sphere,Cube
 // file       : logo.jscad
 const {RotateJoint_parts,GoProJoint_parts,PolyRod} = require('./joint.js')
+const {FUYU_Linear_Module,default_FUYU_Linear_Module,default_FUYU_Linear_Module_Z_Holder} = require('./mods.js')
 //const stlDeSerializer = require('@jscad/stl-deserializer')
 
 let fn=10;
@@ -92,23 +93,24 @@ function HolderBase()
 {
   let screw=HolderMountStick();
  
+  let baseD=25;
   let screwBase=GoProJoint_parts(20)[0].rotateY(90).translate([0,0,20]);
   screwBase=union(
     screwBase.translate([0,0,0])
   ).rotateZ(360/5/4);
 
 
-  let mountBase = difference(
+  let mountBase = union(
     union(
-      PolyRod(5,-360/5/2).scale([25,25,20]),
+      PolyRod(5,-360/5/2).scale([baseD,baseD,18]),
       screwBase), 
-    union([0,1,2,3,4].map(idx=>screw.rotateZ(360*idx/5))))
+    union([0,1,2,3,4].map(idx=>screw.translate([baseD-27,0,0]).rotateZ(360*idx/5)))
+    )
 
   return union(
     mountBase.rotateZ(-360/5/4)
     )
 } 
-
 function sheel1(){
   let plate=union(
       // cylinder({r: 1.5, h: 1}).translate([0, 0, 0]),
@@ -153,6 +155,7 @@ function sShell(){
       holes
   ).translate([-20/2,-29/2,-3/2])
 }
+
 const stlDeSerializer=require('@jscad/stl-deserializer')
 const fs = require('fs')
 function main (p) {
@@ -160,16 +163,25 @@ function main (p) {
 
   const rawData = fs.readFileSync(__dirname+'/simpleCube.stl')
   const csgData = stlDeSerializer.deserialize(rawData, undefined, {output: 'csg'})
+
+
+
   let showObj=union(
     [
-      HolderBase(),
+      //HolderBase().rotateZ(360/5/4),
       //GoProMount_Screw(),
-      //HolderMountStick(),
+      //HolderMountStick().translate([20,0,0]),
       //multiCamHolder()
       //cylinder({fn:5}),
-      csgData,
+      //csgData,
+      //union(default_FUYU_Linear_Module.body),
+      union(default_FUYU_Linear_Module.screwSet.baseScrewSet),
+      //union(default_FUYU_Linear_Module_Z_Holder),
+      
       new CSG()//Empty, just for 
     ])
+
+   
   console.log(">>.Done");
-  return showObj;
+  return showObj//intersection(showObj,cube({center:true}).scale([40,20,12]).translate([20,0,0]));
 }
