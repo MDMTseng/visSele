@@ -1,12 +1,17 @@
+
+
+let fn=10;
 function main () {
+  let shell=sheel1();
+  let U_Conn=U_Connector();
   let ALL= union(
       // texts().translate([100, 100, 0]),
     //   XYZ()
-      U_Connector().translate([0, -3,0])
-      ,U_Connector().translate([0, 29,0])
-      ,sheel1()
-      ,sheel1().translate([0, 3.15, 0]).rotateX(90)
-      ,sheel1().translate([0, 3,-29-3.15]).rotateX(90)
+    U_Conn.translate([0, -3,0])
+    ,U_Conn.translate([0, 29,0])
+    ,shell
+    ,shell.translate([0, 3.15, 0]).rotateX(90)
+    ,shell.translate([0, 3,-29-3.15]).rotateX(90)
     //   ,cameraMountHole()
       // sheel1().translate([0, 0, 3]).rotateX(90)
       );
@@ -28,10 +33,10 @@ function U_Connector(){
 function cameraMountHole(){
     let plate=union(
         // cylinder({r: 1.5, h: 1}).translate([0, 0, 0]),
-        cube({size:1, center: false}).scale([29,29,3])
+        cube({size:1, center: false,fn}).scale([29,29,3])
     );
     let holes2=union(
-        cylinder({r: 29/2, h: 100}).translate([29/2,29/2, 0])
+        cylinder({r: 29/2, h: 100,fn}).translate([29/2,29/2, 0])
     );
     return difference(
         plate,holes2
@@ -72,16 +77,17 @@ function sheel1(){
     // let faceBack=cube({size:1, center: true}).scale([1,13,1]);
     let M3=3.2;
     let drillHoleOffset=((40-36)/2);
+    let m3_screw=cylinder({r: M3/2, h: 100,fn});
     let holes=union(
          cube({size:1, center: false}).scale([30,1,3]).translate([40/3, (29/2)-0.5, 0]),
-         cylinder({r: M3/2, h: 100}).translate([drillHoleOffset, 4.5, 0])
-        ,cylinder({r:M3/2, h: 100}).translate([drillHoleOffset,20+4.5, 0])
+         m3_screw.translate([drillHoleOffset, 4.5, 0])
+        ,m3_screw.translate([drillHoleOffset,20+4.5, 0])
         
-        ,cylinder({r:M3/2, h: 100}).translate([40-2,14.5, 0])
-        ,cylinder({r:M3/2, h: 100}).translate([   2,14.5, 0])
+        ,m3_screw.translate([40-2,14.5, 0])
+        ,m3_screw.translate([   2,14.5, 0])
 
-        ,cylinder({r: M3/2, h: 100}).translate([40-drillHoleOffset,(29-22)/2, 0])
-        ,cylinder({r: M3/2, h: 100}).translate([40-drillHoleOffset,29-(29-22)/2, 0])
+        ,m3_screw.translate([40-drillHoleOffset,(29-22)/2, 0])
+        ,m3_screw.translate([40-drillHoleOffset,29-(29-22)/2, 0])
         );
     return difference(
         plate.rotateZ(0),
