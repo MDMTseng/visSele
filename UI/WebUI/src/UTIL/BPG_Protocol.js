@@ -90,7 +90,7 @@ let objbarr2raw=(type,prop,pgID,obj,barr=null)=>{
   bbuf[0] = type.charCodeAt(0);
   bbuf[1] = type.charCodeAt(1);
   bbuf[2] = prop;
-  bbuf[3] = pgID>>1;
+  bbuf[3] = pgID>>8;
   bbuf[4] = pgID&255;
 
   let data_length =bbuf.length - BPG_header_L;//Add NULL in the end of the string
