@@ -19,13 +19,13 @@ let fn=10;
 function sShell(){
   let plate=union(
       // cylinder({r: 1.5, h: 1}).translate([0, 0, 0]),
-      cube({size:1, center: false}).scale([44,29,3])
+      cube({size:1, center: false}).scale([44,29,4.5])
       // .setColor([12,12,0])
       )
   // let faceRight=cube({size:1, center: true}).scale([50,44,1]);
   // let faceBack=cube({size:1, center: true}).scale([1,13,1]);
   let drillHoleOffset=((40-36)/2);
-  let hole=cylinder({r: 3/2, h: 100,fn});
+  let hole=screw_3.translate([0, 0, 6]); 
   let holes=union(
        hole.translate([drillHoleOffset, 4.5, 0])
       ,hole.translate([drillHoleOffset,20+4.5, 0])
@@ -39,7 +39,7 @@ function sShell(){
   return difference(
       plate.rotateZ(0),
       holes
-  ).translate([-20/2,-29/2,-3/2])
+  ).translate([0,-29/2,0])
 }
 
 function Isosceles_triangle()
@@ -99,7 +99,27 @@ function joint_lock(scaleF=0.9,pullRatio=0.6,shapeXY)
   }
   }).rotateZ(-90);
   
-  return union(spiral,cube().translate([0,-0.5,0]).scale([1,2,1]));
+  var fillRect = CSG.Polygon.createFromPoints([
+    [1,0, 0],
+    [1,2, 0],
+    [0,2, 0],
+    [0,0, 0]
+  ]).setColor(
+  [0, 0.8, 0]
+  ).translate([-0.5 , -1, 0]);
+
+  var fillCube = 
+  fillRect.solidFromSlices({
+  numslices: 2,
+  callback: function(t, slice) {
+    let sc=t==1?1:scaleF;
+      return this.
+      translate([0 , 0, t]).scale([1+pullRatio*t,sc,1]);
+  }
+  });
+  
+  //cube().translate([0,-0.5,0]).scale([1,2*scaleF,1])
+  return union(spiral,fillCube);
 }
 
 function dove_lock(scaleF=0.9,slop_ratio=1,pullRatio=0.1)
@@ -160,17 +180,17 @@ function dove_lock_Plate(scaleF=0.9,slop_ratio=0.3,size=5)
 
 
 
-function dove_lock_Blocks(scaleF=0.9,slop_ratio=0.3,pullRatio=0.2,block_union,block_diff)
+function dove_lock_Blocks(scaleF=0.9,slop_ratio=0.5,pullRatio=0.5,block_union,block_diff)
 { 
-  let blockH=20;
+  let blockH=10;
   let dL = dove_lock(scaleF,slop_ratio,pullRatio).translate([0,0,-0.5]).scale([4,4,blockH]);
-  
   let doveLockOffset=20;
-
-  let pos_dL=dL;//.translate([0,doveLockOffset/2,0]);
+ 
+  let pos_dL=dL.scale([0.8,0.8,1]);//.translate([0,doveLockOffset/2,0]);
+  let pos_dL_diff=pos_dL.scale([1,1.1,1]);
+  let neg_dL_diff=pos_dL_diff.rotateZ(180);
+  pos_dL=intersection(pos_dL,pos_dL.scale(2).translate([-5+0.6,0,0]));
   let neg_dL=pos_dL.rotateZ(180);
-  let neg_dL_diff=neg_dL.scale(1.03);
-  let pos_dL_diff=pos_dL.scale(1.03);
  
   let block1=cube().translate([-1,-0.5,-0.5]).scale([10,20,blockH]);
   block1=union(block1,pos_dL)
@@ -183,27 +203,39 @@ function dove_lock_Blocks(scaleF=0.9,slop_ratio=0.3,pullRatio=0.2,block_union,bl
 
 
 
+function dddd()
+{
+  let mountBox=cube().translate([0,-0.5,0]).scale([40,32,4]);
+  mountBox=difference(mountBox,
+    union(FUYU_Linear_Module(false,true).screwSet.carriageScrewSet)
+    .scale([1,1,-2]).translate([20,0,0])
+    );
+   
+  let dist=45;
+  return union(mountBox,  
+      sShell().translate([0,0,-dist]),
+      cube().translate([0,-0.5,0]).scale([32,6,-dist]),
+      cube().translate([0,-0.5,0]).scale([6,30,-dist]).translate([18,0,0])
+       
+       
+  );
+}
+
+
 function main (p) {
 
 
   console.log("Start");
-  // let mountBox=cube().translate([0,-0.5,0]).scale([50,50,6]);
-  // mountBox=difference(mountBox,
-  //   union(FUYU_Linear_Module().screwSet.carriageScrewSet)
-  //   .scale([1,1,-2]).translate([20,0,0])
-  //   );
-  
 
     
        
-  let dove_lock_X=dove_lock_Blocks(1,0.1);
+  let dove_lock_X=dove_lock_Blocks(0.8,0.4);
   let showObj=union(
     [
-      // mountBox,  
-      // sShell().translate([0,0,-30]),
+      dddd(),
       //dove_lock(),  
-      dove_lock_X[0],
-      dove_lock_X[1].translate([-30,0,0]),
+      // dove_lock_X[0],
+      // dove_lock_X[1].translate([-30,0,0]),
       //union(default_FUYU_Linear_Module.body),
       //linearModuleFixture(),
       //union(default_FUYU_Linear_Module.body),

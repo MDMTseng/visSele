@@ -12,8 +12,8 @@ const centerCylinder = cylinder({d:1,center:true,fn});
 function screw(headW=6,headD=5,threadW=4,threadD=12)
 {
   return union(
-    cylinder({d:1,fn}).scale([threadW,threadW,-threadD]),
-    cylinder({d:1,fn}).scale([headW,headW,headD])
+    cylinder({d:threadW,fn}).scale([1,1,-threadD]),
+    cylinder({d:headW,fn}).scale([1,1,headD])
   );
 }
 
@@ -28,11 +28,11 @@ function screw_section(headW=6,headD=5,threadW=4,threadD=12)
 
 
 
-const screw_4=screw(6,8,4,12);
-const screw_3=screw(5,8,3,12);
+const screw_4=screw(6,8,4.5,12);
+const screw_3=screw(5,8,3.5,12);
 const screw_3_blind=screw(3,8,3,12);
 
-function FUYU_Linear_Module(modle_with_screw=false)
+function FUYU_Linear_Module(modle_with_screw=false,onlyscrewSet=false)
 {
   let screwHole=screw_4;
 
@@ -45,14 +45,9 @@ function FUYU_Linear_Module(modle_with_screw=false)
   let caseBtnThickness=7;
 
 
-  let carriageScrewSet = [10+15-6,10+30-6].map(offset=>two_screwHole.translate([offset,0,0]));
-  let carriage=union_diff(
-    cube().scale([38,30,28]),
-    union(carriageScrewSet).translate([0,0,30+3])
-  ).translate([caseBtnThickness,0,6+6]);
-
   let carriage_offset=20;
 
+  let carriageScrewSet = [10+15-6,10+30-6].map(offset=>two_screwHole.translate([offset,0,0]));
   carriageScrewSet=carriageScrewSet.map(sc=>
     sc.translate([-25,-15,0]))//center it
 
@@ -67,30 +62,39 @@ function FUYU_Linear_Module(modle_with_screw=false)
   baseScrewSet.push(baseSideScrew);
   baseScrewSet.push(baseSideScrew.translate([0,30,0]));
 
-  return {
-    body:
-      [
-        union(
-          color("gray",union_diff(
-            union(
-              cube().scale([375,30,12]),
-              cube().scale([caseBtnThickness,30,42]),
-            ),
-            union(baseScrewSet).translate([0,0,0]))
+  let retObj={screwSet:{
+    baseScrewSet,carriageScrewSet
+  }}
+
+  if(!onlyscrewSet)
+  {
+    let carriage=union_diff(
+      cube().scale([38,30,28]),
+      union(carriageScrewSet).translate([0,0,30+3])
+    ).translate([caseBtnThickness,0,6+6]);
+  
+  
+  
+    retObj.body=[
+      union(
+        color("gray",union_diff(
+          union(
+            cube().scale([375,30,12]),
+            cube().scale([caseBtnThickness,30,42]),
           ),
-          color("black",
-            union(
-              cube().scale([-32,28,28]).translate([0,1,42-28]),
-              cube().scale([10,28,20]).translate([-32,1,-5])//for step motor's wires
-            )
-          ), 
+          union(baseScrewSet).translate([0,0,0]))
         ),
-        carriage.translate([carriage_offset,0,0])
-      ],
-    screwSet:{
-      baseScrewSet,carriageScrewSet
-    }
+        color("black",
+          union(
+            cube().scale([-32,28,28]).translate([0,1,42-28]),
+            cube().scale([10,28,20]).translate([-32,1,-5])//for step motor's wires
+          )
+        ), 
+      ),
+      carriage.translate([carriage_offset,0,0])
+    ];
   }
+  return retObj;
 }
 
 let default_FUYU_Linear_Module=null;//FUYU_Linear_Module(true);
