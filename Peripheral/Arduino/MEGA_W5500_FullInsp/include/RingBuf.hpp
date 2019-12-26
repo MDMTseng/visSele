@@ -129,6 +129,18 @@ class RingBufIdxCounter
   }
 
   
+  int pullHead(){
+    if(dataSize==0)//queue is full.... ERROR
+    {
+      return -1;
+    }
+    if(headIdx==0)headIdx=RBLen-1;
+    else headIdx--;
+    
+    
+    dataSize--;
+    return 0;
+  }
 };
 
 template <
@@ -191,6 +203,11 @@ class RingBuf
   int pushHead()
   {
     return RBC.pushHead();
+  }
+  
+  int pullHead()
+  {
+    return RBC.pullHead();
   }
 
   int consumeTail()

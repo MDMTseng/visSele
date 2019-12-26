@@ -165,8 +165,8 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_THRES 3
-#define OBJECT_SEP_THRES 50
+#define DEBOUNCE_THRES 5
+#define OBJECT_SEP_THRES (150/2)
 
 uint32_t pre_pulse=0;
 void task_gateSensing()
@@ -221,6 +221,16 @@ void task_gateSensing()
             middle_pulse-pre_pulse;
           pre_pulse=middle_pulse;
           accept_pulse=(mid_pre_dist<OBJECT_SEP_THRES)?false:true;
+        }
+
+        if(!accept_pulse)
+        {
+          //remove previous object
+          RBuf.pullHead();
+          pipeLineInfo* head = RBuf.getHead();
+          pre_pulse=(head==NULL)?
+            perRevPulseCount*3/2:
+            head->gate_pulse;
         }
         
         pipeLineInfo* head = RBuf.getHead();
