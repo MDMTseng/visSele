@@ -586,7 +586,7 @@ class ObjInfoList extends React.Component {
                     <SubMenu style={{'textAlign': 'left'}} key="functionMenu"
                              title={<span><Icon type="setting"/>平台功能操作</span>}>
                         <MicroFullInspCtrl_rdx
-                            url={"ws://192.168.2.2:5213"}
+                            url={"ws://192.168.2.43:5213"}
                         />
                     </SubMenu>
 
@@ -769,7 +769,7 @@ class AirControl extends React.Component {
     }
     
 
-    websocketConnect(url = "ws://192.168.2.2:5213") {
+    websocketConnect(url = "ws://192.168.2.43:5213") {
 
         console.log("[init][WS][OK]");
         console.log(this.websocketAir);
@@ -922,7 +922,7 @@ class MicroFullInspCtrl extends React.Component {
         setTimeout(()=>{
           this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
             {msg:{type:"get_setup",id:4423}});
-        },1000);//to separate messages
+        },100);//to separate messages
         
       }
       else
@@ -1054,7 +1054,7 @@ class MicroFullInspCtrl extends React.Component {
               onClick={() => {
                   var enc = new TextEncoder();
                   this.props.ACT_Report_Save(this.props.WS_ID,"data/uInspSetting.json",
-                  enc.encode(JSON.stringify(this.props.uInspData.machineInfo, null, 4)));
+                  enc.encode(JSON.stringify(this.props.uInspMachineInfo, null, 4)));
               }}>Save machine setting</Button>
           </Button.Group>
 
@@ -1069,7 +1069,7 @@ class MicroFullInspCtrl extends React.Component {
                 this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
                 {msg:{type:"error_get"}})
                 }>
-                  error_get
+                  error_get:{this.props.errorCodes}
             </Button>
 
             <Button
@@ -1078,6 +1078,20 @@ class MicroFullInspCtrl extends React.Component {
                 this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
                 {msg:{type:"error_clear"}})
                 }>error_clear
+            </Button>
+
+            
+            <Button
+              key="speed_set"
+              onClick={() => 
+                  {
+                    this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                      {msg:{
+                        pulse_hz:machineInfo.pulse_hz,
+                        type:"set_setup",
+                        id:356}});
+                  }
+                }>speed_set
             </Button>
           </Button.Group>
 
@@ -1114,7 +1128,7 @@ class MicroFullInspCtrl extends React.Component {
               icon="link"
               onClick={()=>{
                   this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
-                  {ip:"192.168.2.2",port:5213});
+                  {ip:"192.168.2.43",port:5213});
                 }}>連線</Button>
             }
 
@@ -1148,6 +1162,7 @@ const mapStateToProps_MicroFullInspCtrl = (state) => {
     WS_CH:state.UIData.WS_CH,
     WS_ID:state.UIData.WS_ID,
     uInspData:state.Peripheral.uInsp,
+    errorCodes:state.Peripheral.uInsp.errorCodes,
     uInspMachineInfo:state.Peripheral.uInsp.machineInfo,
   }
 }

@@ -1,14 +1,9 @@
 import * as logX from 'loglevel';
 import {UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 let UISEV = UI_SM_EVENT;
-let uInspReducer = (state = {
-  connected:false,
-  alive:0,
-  machineInfo:undefined
-}, action) => {
-  if(action.type === undefined || action.type.includes("@@redux/"))return state;
-  var d = new Date();
+let StateReducer = (state, action) => {
   
+  console.log(action.type);
   switch(action.type)
   {
     case "MWWS_SEND"://get PING trigger and alive count --1
@@ -34,7 +29,6 @@ let uInspReducer = (state = {
       break;
     case UISEV.PD_DATA_Update:
       let pd_data = action.data;
-
       switch(pd_data.type)
       {
         case "CONNECT":
@@ -72,4 +66,35 @@ let uInspReducer = (state = {
   //logX.info(action)
   return state;
 }
+
+let uInspReducer = (state = {
+  connected:false,
+  alive:0,
+  machineInfo:undefined
+}, action) => {
+  if(action.type === undefined || action.type.includes("@@redux/"))return state;
+
+
+
+  var d = new Date();
+  console.log(action);
+  let newState=state;
+  if(action.type==="ATBundle")
+  {
+    newState = action.data.reduce((state,action)=>{
+      action.date=d;
+      return StateReducer(state,action);
+    },newState);
+    
+    return newState;
+  }
+  else
+  {
+    action.date=d;
+    newState = StateReducer(newState,action);
+    //log.debug(newState);
+    return newState;
+  }
+}
+
 export default uInspReducer

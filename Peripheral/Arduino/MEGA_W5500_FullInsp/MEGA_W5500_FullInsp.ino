@@ -43,6 +43,10 @@ run_mode_info mode_info={
 };
 
 #define insp_status_UNSET -1654
+
+#define insp_status_NA -334 //insp_status_NA is just for unknown insp result
+#define insp_status_OK 0 //insp_status_NA is just for unknown insp result
+#define insp_status_NG -1 //insp_status_NA is just for unknown insp result
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
   uint32_t trigger_pulse;
@@ -52,7 +56,7 @@ typedef struct pipeLineInfo{
   int16_t insp_status;
 }pipeLineInfo;
 
-int cur_insp_counter=0;
+int cur_insp_counter=-1;
 
 class Websocket_FI;
 Websocket_FI *WS_Server=NULL;
@@ -87,9 +91,9 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 RingBuf<typeof(*pbuff),uint8_t > RBuf(pbuff,SARRL(pbuff));
 
 uint8_t buff[600];//For websocket
-IPAddress _ip(192,168,2,2);
-IPAddress _gateway(169, 254, 170, 254);
-IPAddress _subnet(255, 255, 255, 0);
+IPAddress _ip(192,168,2,43);
+IPAddress _gateway(192,168,1,1);
+IPAddress _subnet(255, 255, 0, 0);
 
 
 
@@ -140,19 +144,35 @@ int stage_action(pipeLineInfo* pli)
       pli->insp_status=insp_status_UNSET;
       if(mode_info.mode==run_mode_info::TEST)
       {
-        if(mode_info.misc_var==0)
+        switch(mode_info.misc_var)
         {
-          pli->insp_status=(mode_info.misc_var2&1)?0:-1;
-          mode_info.misc_var2++;
+          case 0:
+            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NG;
+            mode_info.misc_var2++;
+          break;
+          
+          case 1:
+            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NA;
+            mode_info.misc_var2++;
+          break;
+          
+          case 2:
+            pli->insp_status=(mode_info.misc_var2&1)?insp_status_NA:insp_status_NG;
+            mode_info.misc_var2++;
+          break;
+          
+          case 3:
+            pli->insp_status=insp_status_OK;
+          break;
+          
+          case 4:
+            pli->insp_status=insp_status_NG;
+          break;
+
+          default:
+            mode_info.misc_var=0;
         }
-        else if(mode_info.misc_var==1)
-        {
-          pli->insp_status=0;
-        }
-        else if(mode_info.misc_var==1)
-        {
-          pli->insp_status=-1;
-        }
+      
       }
       break;
     
@@ -558,7 +578,15 @@ class Websocket_FI:public Websocket_FI_proto{
         }
         if(strstr ((char*)recv_cmd,"\"mode\":\"TEST\""))
         {
-          mode_info.mode=run_mode_info::TEST;
+          if(mode_info.mode!=run_mode_info::TEST)
+          {
+            mode_info.mode=run_mode_info::TEST;
+            mode_info.misc_var=0;
+          }
+          else
+          {
+            mode_info.misc_var++;
+          }
           ret_status = 0;
         }
       }

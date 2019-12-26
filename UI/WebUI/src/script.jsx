@@ -160,12 +160,17 @@ class APPMasterX extends React.Component{
           default:
           {
             let report =BPG_Protocol.raw2obj(evt);
-            //log.info(report);
             parsed_pkt=report;
 
             break;
           }
 
+        }
+        if(header.type=="PD")
+        {
+          log.info(parsed_pkt,pgID);
+          if(pgID==0)
+            pgID=-1;
         }
 
         if(pgID === -1)
