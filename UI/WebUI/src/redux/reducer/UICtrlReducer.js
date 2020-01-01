@@ -407,14 +407,14 @@ function StateReducer(newState,action)
             let reportStatisticState = newState.edit_info.reportStatisticState;
 
             reportStatisticState.newAddedReport=[];
-
+ 
+            //Reset the current object property, then we will check if there's a new similar report object as it.
             reportStatisticState.trackingWindow.forEach((srep_inWindow)=>{
               srep_inWindow.isCurObj=false;
-              //Reset the current object property, then we will check if there's a new similar report object as it.
-            });
+             });
 
-            
-            reportStatisticState.trackingWindow = //Check if the trackingWindow object is timeout
+            //Check if the trackingWindow object is timeout(from tracking window)
+            reportStatisticState.trackingWindow = 
               reportStatisticState.trackingWindow.filter((srep_inWindow)=>
                 {
                   let tdiff = currentTime_ms - srep_inWindow.time_ms;
@@ -427,8 +427,9 @@ function StateReducer(newState,action)
                   //if(srep_inWindow.repeatTime>0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
+                    
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
-                    //limit historyReport length to 1000
+                    //limit historyReport length to 2000
                     if(reportStatisticState.historyReport.length>2000)
                     {
                       reportStatisticState.historyReport=
@@ -763,7 +764,7 @@ function StateReducer(newState,action)
             newState.edit_info.DefFileHash=undefined;
             break;
           }
-          console.log(dclone(newState.edit_info))
+          //console.log(dclone(newState.edit_info))
           newState.edit_info.DefFileHash=sha1_info_in_json;
 
           if(root_defFile.name === undefined)
@@ -1081,13 +1082,16 @@ function StateReducer(newState,action)
           break;
         }
         case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+        case UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
         {
           if(newState.edit_info.edit_tar_info==null)
           {
             newState.edit_info.edit_tar_info = {
-              type:SHAPE_TYPE.aux_point,
+              type:(substate==UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE)?
+                SHAPE_TYPE.aux_point:SHAPE_TYPE.aux_line,
               ref:[{},{}]
             };
+            
             newState.edit_info.edit_tar_ele_trace=null;
             newState.edit_info.edit_tar_ele_cand=null;
             break;

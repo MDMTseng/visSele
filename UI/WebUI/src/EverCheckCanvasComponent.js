@@ -523,6 +523,33 @@ class renderUTIL
         break;
         
         
+        case SHAPE_TYPE.aux_line:
+        {
+          
+          let db_obj = this.db_obj;
+          let subObjs = eObject.ref
+            .map((ref)=> db_obj.FindShape( "id" , ref.id, shapeList ))
+            .map((idx)=>{  return idx>=0?shapeList[idx]:null});
+          if(drawSubObjs)
+            this.drawShapeList(ctx, subObjs,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
+          if(eObject.id === undefined)break;
+
+          if(subObjs.length ==2 )
+          {//Draw crosssect line
+            ctx.setLineDash([5*this.getPrimitiveSize(), 15*this.getPrimitiveSize()]);
+  
+  
+            ctx.strokeStyle="gray"; 
+            ctx.beginPath();
+            ctx.moveTo(subObjs[0].pt1.x,subObjs[0].pt1.y);
+            ctx.lineTo(subObjs[1].pt1.x,subObjs[1].pt1.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            //this.drawpoint(ctx, point);
+          }
+        }
+        break;
+        
         
         case SHAPE_TYPE.arc:
         {
@@ -1893,6 +1920,9 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         type = SHAPE_TYPE.aux_point;
         break;
+      case UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
+        type = SHAPE_TYPE.aux_line;
+        break;
       case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
         type = SHAPE_TYPE.search_point;
       break;      
@@ -1922,6 +1952,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       case SHAPE_TYPE.aux_point:
           return shapeList.filter((shape)=>
             shape.type===SHAPE_TYPE.line||
+            shape.type===SHAPE_TYPE.search_point
+            );
+        break;
+      case SHAPE_TYPE.aux_line:
+          return shapeList.filter((shape)=>
+            shape.type===SHAPE_TYPE.arc||
             shape.type===SHAPE_TYPE.search_point
             );
         break;
@@ -2200,6 +2236,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
       case UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
       case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
       case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
       {
         

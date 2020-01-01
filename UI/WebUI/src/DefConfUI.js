@@ -266,6 +266,7 @@ class APP_DEFCONF_MODE extends React.Component{
     switch(edit_tar.type)
     {
       case UIAct.SHAPE_TYPE.aux_point:
+      case UIAct.SHAPE_TYPE.aux_line:
       case UIAct.SHAPE_TYPE.search_point:
       case UIAct.SHAPE_TYPE.measure:
       {
@@ -483,6 +484,12 @@ class APP_DEFCONF_MODE extends React.Component{
           addClass="layout palatte-blue-8 vbox"
           key="APOINT"
           text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
+        
+        <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          addClass="layout palatte-blue-8 vbox"
+          key="ALINE"
+          text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
         <BASE_COM.IconButton
             dict={EC_zh_TW}
           addClass="layout palatte-blue-8 vbox"
@@ -817,6 +824,7 @@ class APP_DEFCONF_MODE extends React.Component{
       }
       break;
 
+      
       case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:  
       {       
         MenuSet=[
@@ -827,6 +835,46 @@ class APP_DEFCONF_MODE extends React.Component{
         ];
 
       
+        if(this.props.edit_tar_info!=null)
+        {
+          console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
+
+          MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
+
+          let tar_info = this.props.edit_tar_info;
+          console.log(tar_info.ref);
+          if(tar_info.ref[0].id !==undefined && 
+            tar_info.ref[1].id !==undefined &&
+            tar_info.ref[0].id !=tar_info.ref[1].id 
+            )
+          {
+            MenuSet.push(<BASE_COM.Button
+              key="ADD_BTN"
+              addClass="layout red vbox"
+              text="ADD" onClick={()=>
+                {
+                  this.ec_canvas.SetShape( this.props.edit_tar_info);
+                  this.props.ACT_SUCCESS();
+                }}/>);
+          }
+        
+        }
+      }
+      break;
+
+
+      
+      case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:  
+      {       
+        MenuSet=[
+          <BASE_COM.Button
+            addClass="layout black vbox"
+            key="<" text="<" onClick={()=>this.props.ACT_Fail()}/>,
+          <div key="AUX_POINT" className="s lred vbox">ALINE</div>,
+        ];
+
+      
+        console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
         if(this.props.edit_tar_info!=null)
         {
           console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
@@ -1080,6 +1128,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Arc_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create))},
     ACT_Search_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create))},
     ACT_Aux_Point_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create))},
+    ACT_Aux_Line_Add_Mode: (arg) =>   {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create))},
     ACT_Shape_Edit_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit))},
     ACT_Measure_Add_Mode:(arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create))},
     ACT_DefFileName_Update:(newName) => {dispatch(DefConfAct.DefFileName_Update(newName))},
