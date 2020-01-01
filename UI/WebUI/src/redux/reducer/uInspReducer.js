@@ -44,11 +44,17 @@ let StateReducer = (state, action) => {
           switch(pd_data.msg.type)
           {
             case "PONG":
-              state={...state,alive:1,errorCodes:pd_data.msg.errorCodes};
+              state={...state,alive:1,
+                error_codes:pd_data.msg.error_codes,
+                res_count:pd_data.msg.res_count
+              };
               //console.log("PONG",state);
             break;
             case "error_info":
-                state={...state,errorCodes:pd_data.msg.errorCodes};
+                state={...state,error_codes:pd_data.msg.error_codes};
+            break;
+            case "res_count":
+                state={...state,res_count:pd_data.msg.res_count};
             break;
             case "get_setup_rsp":
               let machineInfo = pd_data.msg;
@@ -77,7 +83,7 @@ let uInspReducer = (state = {
 
 
   var d = new Date();
-  console.log(action);
+  //console.log(action);
   let newState=state;
   if(action.type==="ATBundle")
   {

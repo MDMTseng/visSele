@@ -268,12 +268,19 @@ class DB extends React.Component {
 
 export const OK_NG_BOX_COLOR_TEXT = {
     [MEASURERSULTRESION.NA]:{COLOR:"#aaa",TEXT:MEASURERSULTRESION.NA},
+
     [MEASURERSULTRESION.UOK]:{COLOR:"#87d068",TEXT:MEASURERSULTRESION.UOK},
     [MEASURERSULTRESION.LOK]:{COLOR:"#87d068",TEXT:MEASURERSULTRESION.LOK},
+    [MEASURERSULTRESION.OK]:{COLOR:"#87d068",TEXT:MEASURERSULTRESION.OK},
+
     [MEASURERSULTRESION.UCNG]:{COLOR:"#d0d068",TEXT:MEASURERSULTRESION.UCNG},
     [MEASURERSULTRESION.LCNG]:{COLOR:"#d0d068",TEXT:MEASURERSULTRESION.LCNG},
+    [MEASURERSULTRESION.CNG]:{COLOR:"#d0d068",TEXT:MEASURERSULTRESION.CNG},
+
     [MEASURERSULTRESION.USNG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.USNG},
     [MEASURERSULTRESION.LSNG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.LSNG},
+    [MEASURERSULTRESION.SNG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.SNG},
+    [MEASURERSULTRESION.NG]:{COLOR:"#f50",TEXT:MEASURERSULTRESION.SNG},
 };
 
 export class InspectionResultDisplay_FullScren extends React.Component {
@@ -403,7 +410,8 @@ class OK_NG_BOX extends React.Component {
         return (
             <div style={{'display':'inline-block'}}>
                 <Tag style={{'fontSize': 20}}
-                     color={OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].COLOR}>{OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].TEXT}
+                     color={OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].COLOR}>
+                     {OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].TEXT}
                 </Tag>
                 {this.props.children}
             </div>
@@ -976,6 +984,18 @@ class MicroFullInspCtrl extends React.Component {
         <Divider orientation="left" key="divi">uInsp</Divider>);
   
         
+      if(this.props.res_count!==undefined)
+      {
+        ctrlPanel.push(<Tag style={{'fontSize': 30}}
+            color={OK_NG_BOX_COLOR_TEXT["OK"].COLOR}>{this.props.res_count.OK}
+          </Tag>);
+        ctrlPanel.push(<Tag style={{'fontSize': 30}}
+            color={OK_NG_BOX_COLOR_TEXT["NG"].COLOR}>{this.props.res_count.NG}
+          </Tag>);
+        ctrlPanel.push(<Tag style={{'fontSize': 30}}
+            color={OK_NG_BOX_COLOR_TEXT["NA"].COLOR}>{this.props.res_count.NA}
+          </Tag>);
+      }
 
 
       if(machineInfo.pulse_hz!==undefined)
@@ -1069,7 +1089,7 @@ class MicroFullInspCtrl extends React.Component {
                 this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
                 {msg:{type:"error_get"}})
                 }>
-                  error_get:{this.props.errorCodes}
+                  error_get:{this.props.error_codes}
             </Button>
 
             <Button
@@ -1095,8 +1115,25 @@ class MicroFullInspCtrl extends React.Component {
             </Button>
           </Button.Group>
 
+
+            
             
           <Divider orientation="left">MISC</Divider>
+          <Button.Group key="MISC_BB">
+
+            <Button
+              key="res_count_clear"
+              onClick={() => 
+                this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                {msg:{type:"res_count_clear"}})
+                }>res_count_clear
+            </Button>
+
+          </Button.Group>
+
+          
+
+          <Divider orientation="left">MODE</Divider>
           <Button.Group key="MODE_G">
             <Button
               key="MODE:TEST"
@@ -1162,7 +1199,8 @@ const mapStateToProps_MicroFullInspCtrl = (state) => {
     WS_CH:state.UIData.WS_CH,
     WS_ID:state.UIData.WS_ID,
     uInspData:state.Peripheral.uInsp,
-    errorCodes:state.Peripheral.uInsp.errorCodes,
+    error_codes:state.Peripheral.uInsp.error_codes,
+    res_count:state.Peripheral.uInsp.res_count,
     uInspMachineInfo:state.Peripheral.uInsp.machineInfo,
   }
 }
@@ -1445,9 +1483,16 @@ class DataStatsTable extends React.Component{
             count:measure.statistic.count,
             mean:round(measure.statistic.mean,0.001),
             sigma:round(measure.statistic.sigma,0.001),
+
+
+            OK:["UOK","LOK","UCNG","LCNG"].reduce((sum,tag)=>sum+measure.statistic.count_stat[tag],0),
+            NG:["USNG","LSNG"].reduce((sum,tag)=>sum+measure.statistic.count_stat[tag],0), 
+            NA:measure.statistic.count_stat.NA, 
+            WARN:["UCNG","LCNG"].reduce((sum,tag)=>sum+measure.statistic.count_stat[tag],0),
+
             CK:round(measure.statistic.CK,0.001),
-            CPU:round(measure.statistic.CPU,0.001),
-            CPL:round(measure.statistic.CPL,0.001),
+            // CPU:round(measure.statistic.CPU,0.001),
+            // CPL:round(measure.statistic.CPL,0.001),
             CP:round(measure.statistic.CP,0.001),
             CPK:round(measure.statistic.CPK,0.001),
         })
@@ -1460,7 +1505,11 @@ class DataStatsTable extends React.Component{
         //statstate.historyReport.map((rep)=>rep.judgeReports[0]);
         const dataSource = measureReports;
         
-        const columns = ["name","subtype","count","mean","sigma","CK","CP","CPU","CPL","CPK"]
+        const columns = ["name","subtype","count","mean","sigma",
+        "OK","NG","NA","WARN",
+        "CK","CP",
+        //"CPU","CPL",
+        "CPK"]
             .map((type)=>({title:type,dataIndex:type,key:type}))
             .map((col)=>(  typeof measureReports[0][col.title]  == 'number')?//Find the first dataset and if it's number then add a sorter
                 Object.assign(col,{sorter: (a, b) => a[col.title] - b[col.title]}):col)

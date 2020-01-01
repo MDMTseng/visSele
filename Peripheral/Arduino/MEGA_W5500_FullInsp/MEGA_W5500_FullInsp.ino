@@ -47,6 +47,18 @@ run_mode_info mode_info={
 #define insp_status_NA -334 //insp_status_NA is just for unknown insp result
 #define insp_status_OK 0 //insp_status_NA is just for unknown insp result
 #define insp_status_NG -1 //insp_status_NA is just for unknown insp result
+
+
+typedef struct InspResCount{
+  uint32_t NA;
+  uint32_t OK;
+  uint32_t NG;
+  uint32_t ERR;
+}InspResCount;
+InspResCount inspResCount={0};
+
+
+
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
   uint32_t trigger_pulse;
@@ -196,25 +208,34 @@ int stage_action(pipeLineInfo* pli)
 
     case 6://Last moment switch
     
-      if(pli->insp_status==0)//OK
+      if(pli->insp_status==insp_status_OK)//OK
       {
+        inspResCount.OK++;
         pli->stage=7;
         return 0;
       }
-      if(pli->insp_status==-1)//NG
+      if(pli->insp_status==insp_status_NG)//NG
       {
+        inspResCount.NG++;
         pli->stage=9;
         return 0;
       }
 
+      
       if(pli->insp_status==insp_status_UNSET)
       {
+        
+        inspResCount.ERR++;
         //Error:The inspection result isn't back
         //TODO: Send error msg and stop machine
         errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
         errorAction();
 
       } 
+      else
+      {
+        inspResCount.NA++;
+      }
       return -1;
       
 
@@ -247,7 +268,7 @@ int AddErrorCodesToJson(char* send_rsp, uint32_t send_rspL)
   
   if(ERROR_HIST.size()==0)return 0;   
   uint32_t MessageL=0;                                           
-  MessageL += sprintf( (char*)send_rsp+MessageL, "\"errorCodes\":[");
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"error_codes\":[");
   for(int i=0;i<ERROR_HIST.size();i++)
   {
     GEN_ERROR_CODE* head_code = ERROR_HIST.getTail(i);
@@ -255,6 +276,25 @@ int AddErrorCodesToJson(char* send_rsp, uint32_t send_rspL)
   }
   MessageL--;//remove the last comma',';
   MessageL += sprintf( (char*)send_rsp+MessageL, "],");
+  
+  return MessageL;                              
+}
+
+
+
+int AddResultCountToJson(char* send_rsp, uint32_t send_rspL,InspResCount &inspResCount)
+{
+  uint32_t MessageL=0;                                           
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"res_count\":{");
+
+
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"OK\":%d,",inspResCount.OK);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"NG\":%d,",inspResCount.NG);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"NA\":%d,",inspResCount.NA);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":%d,",inspResCount.ERR);
+
+  MessageL--;//remove the last comma',';
+  MessageL += sprintf( (char*)send_rsp+MessageL, "},");
   
   return MessageL;                              
 }
@@ -529,6 +569,7 @@ class Websocket_FI:public Websocket_FI_proto{
       {
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"PONG\",");
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
+        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
         ret_status=0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_hz\"")!=NULL)
@@ -560,6 +601,19 @@ class Websocket_FI:public Websocket_FI_proto{
       {
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
+        ret_status = 0;
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"res_count_get\"")!=NULL)
+      {
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"res_count\",",idStr);
+        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
+        ret_status = 0;
+      }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"res_count_clear\"")!=NULL)
+      {
+        memset(&inspResCount,0,sizeof(inspResCount));
+        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"res_count\",",idStr);
+        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
         ret_status = 0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"error_clear\"")!=NULL)
