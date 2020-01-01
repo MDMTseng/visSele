@@ -1280,22 +1280,51 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
     return table.size();
   }
 
-  int angledOffsetTable::findRange(float angle)
+  int angledOffsetTable::findRange(float angle_rad)
   {   
     sort(); 
     int curLen = size();
     for(int k=0;k<curLen;k++)
     {
-      if(table[k].angle>angle)return k-1;
+      if(table[k].angle_rad>angle_rad)return k-1;
     }
     return curLen-1;
   }
 
-  float angledOffsetTable::sampleAngleOffset(float angle)
+  int angledOffsetTable::findRange(acv_XY Vec)
+  { 
+    return -1;//TODO
+    sort(); 
+    int curLen = size();
+    if(curLen==0)return -1;
+    acv_XY Vec_Nor=acvVecNormal(Vec);
+    float pre_dotP_N=0;
+    float pre_dotP=0;
+    for(int k=0;k<curLen;k++)
+    {
+      float dotP = acv2DDotProduct(Vec,table[k].angle_vec);
+      if(dotP==1)
+      {//rare but possible
+        return 0;
+      }
+
+      //if(dotP<0)continue;
+      float dotP_N = acv2DDotProduct(Vec_Nor,table[k].angle_vec);
+    }
+    return curLen-1;
+  }
+  float angledOffsetTable::sampleAngleOffset(acv_XY Vec)
+  {//TODO
+
+
+  }
+
+  float angledOffsetTable::sampleAngleOffset(float angle_rad)//in rad
   {   
     if(size()==0)return preOffset;
     sort(); 
-    int subIdx = findRange(angle);
+    int subIdx = findRange(angle_rad);
+    
     int topIdx = subIdx+1;
     if(subIdx<0 || topIdx==size())
     {
@@ -1306,18 +1335,18 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
     angledOffsetG subG = table[subIdx];
     angledOffsetG topG = table[topIdx];
 
-    if(subG.angle>topG.angle)
-    {//It's in warp sec
-      subG.angle-=360;
+    if(subG.angle_rad>topG.angle_rad)
+    {//It's in warp section
+      subG.angle_rad-=M_PI*2;
     }
 
     //Offset angle to sub based angle
-    // 60,94,180 => 0, 34, 120
-    topG.angle-=subG.angle;
-    angle-=subG.angle;
-    subG.angle-=subG.angle;
-    if(angle>360)angle-=360;
-    return subG.offset+(topG.offset-subG.offset)*(angle/topG.angle)+preOffset;
+    //example in deg 60,94,180 => 0, 34, 120
+    topG.angle_rad-=subG.angle_rad;
+    angle_rad-=subG.angle_rad;
+    subG.angle_rad-=subG.angle_rad;
+    if(angle_rad>M_PI*2)angle_rad-=M_PI*2;
+    return subG.offset+(topG.offset-subG.offset)*(angle_rad/topG.angle_rad)+preOffset;
   }
 
 
@@ -1329,7 +1358,7 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
     {
 
       angledOffsetG newPair=table[k];
-      if(newPair.angle==angle)return k;
+      if(newPair.angle_rad==angle)return k;
     }
     return -1;
   }
@@ -1337,6 +1366,8 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
   
   void angledOffsetTable::push_back(angledOffsetG aog){
     sorted=false;
+    aog.angle_vec.X=(float)cos(aog.angle_rad);
+    aog.angle_vec.Y=(float)sin(aog.angle_rad);
     return table.push_back(aog);
   }
 
@@ -1352,8 +1383,8 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
     {
 
       angledOffsetG newPair=table[k];
-      if(newPair.angle>=180)newPair.angle-=180;
-      else newPair.angle+=180;
+      if(newPair.angle_rad>=M_PI)newPair.angle_rad-=M_PI;
+      else newPair.angle_rad+=M_PI;
       push_back(newPair);
     }
     sort();
@@ -1366,7 +1397,7 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
     std::sort(table.begin(), table.end(),
           [](const angledOffsetG & a, const angledOffsetG & b) -> bool
       { 
-          return a.angle < b.angle; 
+          return a.angle_rad < b.angle_rad; 
       });
     sorted=true;
   }

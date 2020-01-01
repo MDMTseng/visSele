@@ -395,7 +395,6 @@ void AttachStaticInfo(cJSON *reportJson)
 
 }
 
-
 int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistortionParam *ret_param)
 {
   
@@ -456,8 +455,9 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
       double *val= JFetch_NUMBER(angledOffsetObj,name);
       if(val==NULL)continue;
 
-      angledOffsetG newPair={
-        tagNum,(float)*val
+      angledOffsetG newPair={//angle in rad
+        angle_rad:(float)(tagNum*M_PI/180),
+        offset:(float)*val
       };
       tmp_param.angOffsetTable->push_back(newPair);
     }
@@ -476,17 +476,17 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
       tmp_param.angOffsetTable->applyPreOffset(*preOffset);
     }
 
-    // angledOffsetTable *angOffsetTable = tmp_param.angOffsetTable;
-    // int testN=100;
+    angledOffsetTable *angOffsetTable = tmp_param.angOffsetTable;
+    int testN=100;
     
-    // LOGI("size:%d",angOffsetTable->size());
-    // for(int i=0;i<testN;i++)
-    // {
-    //   float angle = 360.0*i/testN;
-    //   float offset= angOffsetTable->sampleAngleOffset(angle);
-    //   LOGI("a:%f o:%f",angle,offset);
-    // }
-    
+    LOGI("size:%d",angOffsetTable->size());
+    for(int i=0;i<testN;i++)
+    {
+      float angle = 2*M_PI*i/testN;
+      float offset= angOffsetTable->sampleAngleOffset(angle);
+      LOGI("a:%f o:%f",angle,offset);
+    }
+    //exit(-1);
   }
 
 
@@ -1862,7 +1862,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe);
 clock_t pframeT;
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
-  
+  if(type!=CameraLayer::EV_IMG)
+    return;
   clock_t t = clock();
 
   LOGI("frameInterval:%fms \n", ((double)t - pframeT) / CLOCKS_PER_SEC * 1000);

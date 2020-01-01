@@ -29,7 +29,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     
     //if(img.GetWidth()<100)//Just to skip image loading
     {
-        LOGV("Loading:%s",fileName.c_str());
+        LOGI("Loading:%s",fileName.c_str());
         ret = acvLoadBitmapFile(&img_load, fileName.c_str());
     }
     if(ret!=0)
@@ -254,7 +254,15 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         if(imageTakingCount>0 || triggerMode==0)
         {
             LOGV("imageTakingCount:%d,ThreadTerminationFlag:%d",imageTakingCount,ThreadTerminationFlag);
-            LoadNext();
+            for(int i=0;i<10;i++)
+            {
+              
+              if(LoadNext()==ACK)
+              {
+                break;
+              }
+              //otherwise retry
+            }
             imageTakingCount--;
             
             if(triggerMode==0)

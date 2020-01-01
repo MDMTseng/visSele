@@ -134,7 +134,8 @@ class acvCalibMap
 
 
 typedef struct angledOffsetG{
-  float angle;
+  float angle_rad;
+  acv_XY angle_vec;
   float offset;
 }angledOffsetG;
 
@@ -147,11 +148,13 @@ class angledOffsetTable
 
   int size();
 
-  int findRange(float angle);
+  int findRange(float angle_rad);
 
-  float sampleAngleOffset(float angle);
+  int findRange(acv_XY Vec);
+  float sampleAngleOffset(float angle_rad);
 
-  int find(float angle);
+  float sampleAngleOffset(acv_XY Vec);
+  int find(float angle_rad);
   
   void push_back(angledOffsetG aog);
 

@@ -1189,8 +1189,11 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
 
               float edgeResponse;
               acv_XY ret_point_opt;
+              acv_XY sobel = pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,4);
+              edge_grid.tmpXYSeq[k].sobel=sobel;
 
-              edge_grid.tmpXYSeq[k].sobel=pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,4);
+
+              
               //Check sobel intensity
               if(hypot(edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y)<100)continue;
 
@@ -1200,13 +1203,20 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               int ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,edge_grid.tmpXYSeq[k].pt,
                 &ret_point_opt,&edgeResponse);
 
+
+
               edge_grid.tmpXYSeq[k].pt=ret_point_opt;
               edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
 
-              acv_XY xy = edge_grid.tmpXYSeq[k].pt;
-
-              edge_grid.tmpXYSeq[k].pt =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
-
+              acv_XY xy =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
+              if(param.angOffsetTable!=NULL)//Do angled offset
+              {
+                sobel=acvVecNormalize(sobel);
+                float angle = atan2(sobel.X,sobel.Y);
+                float offset=param.angOffsetTable->sampleAngleOffset(angle);
+                xy=acvVecAdd(xy,acvVecMult(sobel,offset));
+              }
+              edge_grid.tmpXYSeq[k].pt =xy;
             }
             
             ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
