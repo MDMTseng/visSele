@@ -417,7 +417,8 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
 
       ppb2b: 63.11896896362305,
       mmpb2b:  0.630049821,
-      map:NULL
+      map:NULL,
+      angOffsetTable:NULL,
   };
 
   *ret_param = param_default;
@@ -435,6 +436,58 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
   tmp_param.calibrationCenter.X  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.x");
   tmp_param.calibrationCenter.Y  = *JFetEx_NUMBER(root,"reports[0].calibrationCenter.y");
 
+
+  cJSON *angledOffsetObj=JFetEx_OBJECT(root,"reports[0].angledOffset");
+
+  if(angledOffsetObj!=NULL)
+  {
+    
+    tmp_param.angOffsetTable=new angledOffsetTable();
+    cJSON *current_element = angledOffsetObj->child;
+
+    for(cJSON *current_element = angledOffsetObj->child;
+      current_element!=NULL;
+      current_element = current_element->next)
+    {
+      float tagNum;
+      char *name = current_element->string;
+      if(sscanf(name,"%f",&tagNum)!=1)continue;
+      if(tagNum<0&&tagNum>=360)continue;
+      double *val= JFetch_NUMBER(angledOffsetObj,name);
+      if(val==NULL)continue;
+
+      angledOffsetG newPair={
+        tagNum,(float)*val
+      };
+      tmp_param.angOffsetTable->push_back(newPair);
+    }
+
+    
+    void *target;
+    int type = getDataFromJson(angledOffsetObj,"symmetric",&target);
+    if(type==cJSON_True)
+    {
+      tmp_param.angOffsetTable->makeSymmetic();
+    }
+
+    double* preOffset =  JFetch_NUMBER(angledOffsetObj,"preOffset");
+    if(preOffset)
+    {
+      tmp_param.angOffsetTable->applyPreOffset(*preOffset);
+    }
+
+    // angledOffsetTable *angOffsetTable = tmp_param.angOffsetTable;
+    // int testN=100;
+    
+    // LOGI("size:%d",angOffsetTable->size());
+    // for(int i=0;i<testN;i++)
+    // {
+    //   float angle = 360.0*i/testN;
+    //   float offset= angOffsetTable->sampleAngleOffset(angle);
+    //   LOGI("a:%f o:%f",angle,offset);
+    // }
+    
+  }
 
 
   {
@@ -1634,10 +1687,18 @@ int LoadCameraSetup(CameraLayer *camera,char *path)
       //throw new std::runtime_error("LoadCameraCalibrationFile ERROR");
   }
   
+  //clean up param_default dynamic objects
   if(param_default.map)
   {
       delete param_default.map;
       param_default.map=NULL;
+  }
+
+  
+  if(param_default.angOffsetTable)
+  {
+      delete param_default.angOffsetTable;
+      param_default.angOffsetTable=NULL;
   }
   param_default=ret_param;
 

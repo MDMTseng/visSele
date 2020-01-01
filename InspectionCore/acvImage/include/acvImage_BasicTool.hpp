@@ -2,6 +2,7 @@
 #define ACV_IMG_BASIC_TOOL_H
 #include "acvImage.hpp"
 
+#include <vector> 
 #ifdef _MSC_VER
 #pragma pack(push,1)
 typedef struct acv_tagBITMAPFILEHEADER
@@ -132,6 +133,37 @@ class acvCalibMap
 };
 
 
+typedef struct angledOffsetG{
+  float angle;
+  float offset;
+}angledOffsetG;
+
+class angledOffsetTable
+{
+  public:
+  std::vector<angledOffsetG> table;
+  bool sorted=false;
+  float preOffset=0;
+
+  int size();
+
+  int findRange(float angle);
+
+  float sampleAngleOffset(float angle);
+
+  int find(float angle);
+  
+  void push_back(angledOffsetG aog);
+
+  void makeSymmetic();
+  
+  void applyPreOffset(float pOffset);
+  void sort();
+};
+
+
+
+
 typedef struct acvRadialDistortionParam{
     acv_XY calibrationCenter;
     double RNormalFactor;
@@ -147,6 +179,7 @@ typedef struct acvRadialDistortionParam{
     double ppb2b;//pixels per block 2 block	
     double mmpb2b;//the distance between block and block
     acvCalibMap* map;
+    angledOffsetTable* angOffsetTable;
 }acvRadialDistortionParam;
 
 

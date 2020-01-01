@@ -157,7 +157,7 @@ int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
     break;
     default: return cJSON_Invalid;
   }
-
+  return cJSON_Invalid;
 }
 
 

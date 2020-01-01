@@ -1271,3 +1271,102 @@ float acvCalibMapUtil::locateMapPosition(float* map,int width,int height,float t
     error = hypot(sampleXY[0]-x,sampleXY[1]-y);
     return error;
 }
+
+
+
+
+  int angledOffsetTable::size()
+  {
+    return table.size();
+  }
+
+  int angledOffsetTable::findRange(float angle)
+  {   
+    sort(); 
+    int curLen = size();
+    for(int k=0;k<curLen;k++)
+    {
+      if(table[k].angle>angle)return k-1;
+    }
+    return curLen-1;
+  }
+
+  float angledOffsetTable::sampleAngleOffset(float angle)
+  {   
+    if(size()==0)return preOffset;
+    sort(); 
+    int subIdx = findRange(angle);
+    int topIdx = subIdx+1;
+    if(subIdx<0 || topIdx==size())
+    {
+      subIdx=size()-1;
+      topIdx=0;
+    }
+
+    angledOffsetG subG = table[subIdx];
+    angledOffsetG topG = table[topIdx];
+
+    if(subG.angle>topG.angle)
+    {//It's in warp sec
+      subG.angle-=360;
+    }
+
+    //Offset angle to sub based angle
+    // 60,94,180 => 0, 34, 120
+    topG.angle-=subG.angle;
+    angle-=subG.angle;
+    subG.angle-=subG.angle;
+    if(angle>360)angle-=360;
+    return subG.offset+(topG.offset-subG.offset)*(angle/topG.angle)+preOffset;
+  }
+
+
+  int angledOffsetTable::find(float angle)
+  {   
+    sort(); 
+    int curLen = size();
+    for(int k=0;k<curLen;k++)
+    {
+
+      angledOffsetG newPair=table[k];
+      if(newPair.angle==angle)return k;
+    }
+    return -1;
+  }
+
+  
+  void angledOffsetTable::push_back(angledOffsetG aog){
+    sorted=false;
+    return table.push_back(aog);
+  }
+
+  void angledOffsetTable::applyPreOffset(float gOffset){
+    preOffset=gOffset;
+  }
+
+  void angledOffsetTable::makeSymmetic()
+  {
+    sorted=false;
+    int curLen = size();
+    for(int k=0;k<curLen;k++)
+    {
+
+      angledOffsetG newPair=table[k];
+      if(newPair.angle>=180)newPair.angle-=180;
+      else newPair.angle+=180;
+      push_back(newPair);
+    }
+    sort();
+  }
+
+  
+  void angledOffsetTable::sort()
+  {
+    if(sorted)return;
+    std::sort(table.begin(), table.end(),
+          [](const angledOffsetG & a, const angledOffsetG & b) -> bool
+      { 
+          return a.angle < b.angle; 
+      });
+    sorted=true;
+  }
