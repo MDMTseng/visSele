@@ -168,7 +168,7 @@ class APPMasterX extends React.Component{
         }
         if(header.type=="PD")
         {
-          log.info(parsed_pkt,pgID);
+          //log.info(parsed_pkt,pgID);
           if(pgID==0)
             pgID=-1;
         }
