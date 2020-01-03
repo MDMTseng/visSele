@@ -3,7 +3,6 @@ import {UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 let UISEV = UI_SM_EVENT;
 let StateReducer = (state, action) => {
   
-  console.log(action.type);
   switch(action.type)
   {
     case "MWWS_SEND"://get PING trigger and alive count --1

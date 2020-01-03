@@ -61,7 +61,7 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   ret_obj.scale=headerArray[10];
   let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
   
-  console.log(headerArray,RGBA_pix_Num,ret_obj.length-headerL);
+  //console.log(headerArray,RGBA_pix_Num,ret_obj.length-headerL);
   if(true||RGBA_pix_Num == (ret_obj.length-headerL))
   {
     ret_obj.image=new Uint8ClampedArray(ws_evt.data,
