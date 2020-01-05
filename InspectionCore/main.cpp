@@ -441,6 +441,15 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
   if(angledOffsetObj!=NULL)
   {
     
+
+    float mult=1;
+    double* p_mult =  JFetch_NUMBER(angledOffsetObj,"mult");
+    if(p_mult)
+    {
+      mult=*p_mult;
+    }
+
+
     tmp_param.angOffsetTable=new angledOffsetTable();
     cJSON *current_element = angledOffsetObj->child;
 
@@ -457,7 +466,7 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
 
       angledOffsetG newPair={//angle in rad
         angle_rad:(float)(tagNum*M_PI/180),
-        offset:(float)*val
+        offset:mult*(float)*val
       };
       tmp_param.angOffsetTable->push_back(newPair);
     }
@@ -484,7 +493,7 @@ int jObject2acvRadialDistortionParam(char* dirName,cJSON *root,acvRadialDistorti
     {
       float angle = 2*M_PI*i/testN;
       float offset= angOffsetTable->sampleAngleOffset(angle);
-      LOGI("a:%f o:%f",angle,offset);
+      LOGI("a:%f o:%f",angle*180/M_PI,offset);
     }
     //exit(-1);
   }

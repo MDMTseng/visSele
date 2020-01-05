@@ -10,7 +10,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import {websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
+import {websocket_autoReconnect,websocket_reqTrack,copyToClipboard} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
@@ -44,7 +44,10 @@ import 'chartjs-plugin-annotation';
 import Modal from "antd/lib/modal";
 // import Upload from 'antd/lib/upload';
 // import Input from 'antd/lib/Input';
-// import Dropdown from 'antd/lib/Dropdown'
+import Dropdown from 'antd/lib/Dropdown'
+
+import  Typography  from 'antd/lib/typography';
+const { Paragraph,Title } = Typography;
 
 // import Tag from 'antd/lib/tag';
 // import Select from 'antd/lib/select';
@@ -1482,7 +1485,7 @@ class DataStatsTable extends React.Component{
             subtype:measure.subtype,
             count:measure.statistic.count,
             mean:round(measure.statistic.mean,0.001),
-            sigma:round(measure.statistic.sigma,0.001),
+            sigma:round(measure.statistic.sigma,0.0001),
 
 
             OK:["UOK","LOK","UCNG","LCNG"].reduce((sum,tag)=>sum+measure.statistic.count_stat[tag],0),
@@ -1575,6 +1578,241 @@ class MeasureStatList extends React.Component {
 
         return <div className={this.props.addClass}>{info}</div>
     }
+}
+
+
+let skip_counter=0;
+
+class AngledCalibrationHelper extends React.Component{
+  constructor(props) {
+    super(props);
+    this.state = { 
+      target_line:undefined,
+      target_measure:undefined,
+      target_spoint:undefined,
+      angledOffsetTable:{},
+      angleStatTable:[],
+      updateCount:0,
+      shape_list:undefined,
+      camera_calibration_report:undefined,//just for comparison
+      mmpp:-1
+    };
+
+
+    for(let i=0;i<6;i++)
+    {
+      this.state.angleStatTable.push({
+        w:0,
+        value:0
+      });
+    }
+  }
+
+  static getDerivedStateFromProps(props, state)
+  {
+    let newState=state;
+    if(newState.shapeList===undefined)
+    {
+      let shape_list=dclone(props.shape_list);
+      newState = {...newState,shape_list};
+    }
+
+    if(newState.shape_list===undefined) return newState;
+
+    
+    if(props.camera_calibration_report!=state.camera_calibration_report)
+    {
+      let rep = props.camera_calibration_report.reports[0];
+      let mmpp=rep.mmpb2b/rep.ppb2b;
+      newState = {...newState
+        ,camera_calibration_report:props.camera_calibration_report
+        ,mmpp
+      };
+    }
+
+
+    if(
+      newState.target_measure!==undefined &&
+      newState.target_line!==undefined 
+      && props.reportStatisticState.newAddedReport!==undefined 
+      && props.reportStatisticState.newAddedReport.length!==0)
+    {
+      let historyReport = props.reportStatisticState.newAddedReport;
+      //console.log(historyReport);
+      historyReport.forEach(rep=>{
+
+
+        let measure=rep.judgeReports.find(jrep=>jrep.id==state.target_measure.id);
+        //let spoint=rep.searchPoints.find(jrep=>jrep.id==state.target_spoint.id);
+        let line=rep.detectedLines.find(jrep=>jrep.id==state.target_line.id);
+
+
+
+        let ang = 
+          Math.atan2(line.vy,line.vx)*180/Math.PI
+          +90;
+        
+        if(state.target_spoint!==undefined)
+        {
+          ang+=state.target_spoint.angleDeg-180;
+        }
+        //if(ang<0)ang+=360;
+
+        
+        function fmod(a,b) 
+        { 
+          return a - (Math.floor(a / b) * b); 
+        }
+        ang = fmod(ang,360);
+
+        let pixOffset = measure.value/newState.mmpp;
+
+        function addStatValue(id,portion,value)
+        {
+          let tab = newState.angleStatTable[id];
+          tab.w+=portion;
+          tab.value+=portion*value;
+        }
+
+        function AddAngleOffsetRec(angleDeg,pixOffset)
+        {
+          angleDeg = fmod(angleDeg,360);
+          let section_f =angleDeg/(360/newState.angleStatTable.length);
+          let section=Math.floor(section_f);
+          let portion=1-(section_f-section);
+
+          let lowID=section;
+          let highID=(section+1)%newState.angleStatTable.length;
+          
+          addStatValue(lowID,portion,pixOffset);
+          addStatValue(highID,1-portion,pixOffset);
+          
+
+        }
+
+        //console.log(ang,pixOffset);
+        AddAngleOffsetRec(ang,pixOffset);
+        AddAngleOffsetRec(ang+180,pixOffset);
+
+          
+      })
+
+      if( (skip_counter++)%10==0)
+      {
+        let angleStatTable=dclone(newState.angleStatTable);
+        
+        //averaging
+        if(true){
+          for(let i=0;i<angleStatTable.length;i++)
+          {
+            let i_warp = i+angleStatTable.length;
+            let pre_stat_1 = newState.angleStatTable[(i_warp-1)%angleStatTable.length];
+            let pre_stat_2 = newState.angleStatTable[(i_warp-0)%angleStatTable.length];
+            let pre_stat_3 = newState.angleStatTable[(i_warp+1)%angleStatTable.length];
+
+            let new_stat = angleStatTable[i];
+            let beta=4;
+            new_stat.w=(pre_stat_1.w+beta*pre_stat_2.w+pre_stat_3.w)/(2+beta);
+            new_stat.value=(pre_stat_1.value+beta*pre_stat_2.value+pre_stat_3.value)/(2+beta);
+          }
+        }
+
+        let mean=angleStatTable.reduce((sum,stat)=>sum+stat.value/(stat.w+0.0001),0)/angleStatTable.length;
+        
+        let offsetMap =angleStatTable.map(stat=>stat.value/(stat.w+0.0001)-mean);
+        let tableX={};
+        offsetMap.forEach((ele,idx)=>{
+          let key=""+360*idx/offsetMap.length;
+          tableX[key]=-round(ele,0.00001)
+        });
+        console.log(JSON.stringify( tableX,null,4));
+        // angledOffsetTable
+        let updateCount=(newState.updateCount===undefined)?0:newState.updateCount+1;
+        newState = {...newState
+          ,angledOffsetTable:tableX
+          ,updateCount
+        };
+      }
+    }
+
+    return newState;
+  }
+
+  render() {
+
+    
+    let measure_dist_list = this.state.shape_list
+      .filter(shape=>shape.type=="measure"&&shape.subtype=="distance")
+
+
+    const menu = (
+      <Menu  
+        onClick={(ev)=>{
+            if(ev.key==-1)
+            {
+              
+              this.setState({target_measure:undefined,target_line:undefined,target_spoint:undefined,
+              angledOffsetTable:{},updateCount:0})
+              return;
+            }
+            let slist = this.state.shape_list;
+            let target_measure = slist.find(shape=>shape.id==ev.key);
+            let middleObject=target_measure;
+
+            let ref_id=middleObject.ref[0].id;
+            middleObject = slist.find(shape=>shape.id==ref_id);
+            let target_spoint=undefined;
+            let target_line=middleObject;
+            console.log(middleObject,ref_id);
+
+            if(middleObject.type=="search_point")
+            {
+              target_spoint=middleObject;
+              ref_id=middleObject.ref[0].id;
+              middleObject = slist.find(shape=>shape.id==ref_id);
+              target_line = middleObject;
+            }
+
+
+            let angleStatTable=dclone(this.state.angleStatTable);
+            angleStatTable.forEach(st=>{st.w=st.value=0;})
+            this.setState({target_measure,target_line,target_spoint,
+              angledOffsetTable:{},angleStatTable,updateCount:0})
+          }}>
+        {measure_dist_list.concat([{id:-1,name:"CANCEL"}])
+            .map((mea,idx)=>
+              <Menu.Item  key={mea.id}>
+                <a target="_blank" rel="noopener noreferrer">
+                  {mea.id+":  "+mea.name}
+                </a>
+              </Menu.Item>)}
+      </Menu>
+    );
+
+
+
+    let displayDropDown=  <Dropdown overlay={menu}>
+      <a className="ant-dropdown-link HX1" href="#">
+        {this.state.target_measure===undefined?
+          "SELECT":
+          ">>>"+this.state.target_measure.name}
+          <Icon type="down" />
+      </a>
+    </Dropdown>
+    return <div className={this.props.className}>
+      <div className="s HXA width12" style={{padding:"10px"}}>
+        <Divider orientation="left" key="divi">Angled Calib</Divider>
+        {displayDropDown}
+        <Button type="primary" icon="download" 
+          onClick={()=>{copyToClipboard(JSON.stringify( this.state.angledOffsetTable))}}>
+            {this.state.updateCount}
+          </Button>
+
+      </div>
+
+    </div>
+  }
+
 }
 
 class APP_INSP_MODE extends React.Component {
@@ -1700,6 +1938,7 @@ class APP_INSP_MODE extends React.Component {
         let CanvasWindowRatio = 12;
         let menuOpacity = 1;
 
+        let MenuSet_2nd = [];
 
         MenuSet = [
             <BASE_COM.IconButton
@@ -1720,16 +1959,6 @@ class APP_INSP_MODE extends React.Component {
                 {this.props.defModelTag.map(tag=><Tag color="red">{tag}</Tag>)}
                 {this.props.inspOptionalTag.map(tag=><Tag color="green">{tag}</Tag>)}
             </div>
-            ,
-            <BASE_COM.IconButton
-                dict={EC_zh_TW}
-                iconType="bar-chart"
-                key="Info Graphs"
-                addClass="layout black vbox"
-                text="Info Graphs" onClick={()=>{
-                    this.state.GraphUIDisplayMode=(this.state.GraphUIDisplayMode+1)%3;
-                    this.setState(Object.assign({},this.state));
-                }}/>
             
             ,
         ];
@@ -1770,6 +1999,17 @@ class APP_INSP_MODE extends React.Component {
                   
             }/>);
 
+        MenuSet_2nd.push(
+          <BASE_COM.IconButton
+              dict={EC_zh_TW}
+              iconType="bar-chart"
+              key="Info Graphs"
+              addClass="layout black vbox"
+              text="Info Graphs" onClick={()=>{
+                  this.state.GraphUIDisplayMode=(this.state.GraphUIDisplayMode+1)%3;
+                  this.setState(Object.assign({},this.state));
+              }}/>);
+            
         MenuSet.push(
           <BASE_COM.IconButton
           dict={EC_zh_TW}
@@ -1784,7 +2024,8 @@ class APP_INSP_MODE extends React.Component {
             {LoadCameraSetup:"data/"})
                 
           }/>);
-              
+        
+        
         MenuSet.push(
           <BASE_COM.IconButton
           dict={EC_zh_TW}
@@ -1803,6 +2044,10 @@ class APP_INSP_MODE extends React.Component {
               "down_samp_level":1
             }})}/>);
         
+        MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
+          reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
+          camera_calibration_report={this.props.camera_calibration_report}/>);
+  
         let trackingWindowInfo=this.props.reportStatisticState.trackingWindow;
 
         MenuSet.push(
@@ -1813,7 +2058,6 @@ class APP_INSP_MODE extends React.Component {
             key="ObjInfoList"
             WSCMD_CB={(tl, prop, data, uintArr)=>{this.props.ACT_WS_SEND(this.props.WS_ID,tl, prop, data, uintArr);}}
             />);
-
         return (
             <div className="overlayCon HXF">
                 
@@ -1833,6 +2077,32 @@ class APP_INSP_MODE extends React.Component {
                         {MenuSet}
                     </div>
                 </$CSSTG>
+
+
+                <Menu
+                    onClick={this.handleClick}
+                    // selectedKeys={[this.current]}
+                    selectable={true}
+                    // style={{align: 'left', width: 200}}
+                    defaultSelectedKeys={['functionMenu']}
+                    // defaultOpenKeys={['functionMenu']}
+                    mode="inline">
+
+                  <SubMenu key="sss"
+                    className="s overlay overlayright scroll HXA WXA"
+                    style={{color: '#333'}}
+                    title={<Icon type="setting"/>}>
+
+                    <div key={"MENU"} className={"s HXA"} 
+                        style={{width:"250px"}}> 
+                      {MenuSet_2nd}
+                    </div>
+
+                  </SubMenu>
+
+
+                </Menu>
+
 
             </div>
         );
@@ -1862,7 +2132,9 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
-        reportStatisticState:state.UIData.edit_info.reportStatisticState
+        reportStatisticState:state.UIData.edit_info.reportStatisticState,
+        
+        camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
         //reportStatisticState:state.UIData.edit_info.reportStatisticState
     }
 };

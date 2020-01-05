@@ -1880,6 +1880,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
             s_points.push_back(pti);
           }
+
+
+
+          if(0||drawDBG_IMG)//Draw debug image(curve and straight line)
+          {
+            int size=8;
+            for(int k=0;k<s_points.size();k++)
+            {
+              const ContourGrid::ptInfo pti= s_points[k];
+              if(pti.edgeRsp==0)continue;
+              const acv_XY p = pti.pt;
+              int X = round(p.X);
+              int Y = round(p.Y);
+              acvDrawLine(originalImage, X, Y + size, X, Y - size, 255, 50, 0, size);
+            }
+          }
+
           if(s_points.size()>2)
           {
             //Use founded points to fit a candidate line
@@ -1965,12 +1982,16 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           
           float minS_pts=0;
           float minSigma=99999;
-          for(int m=0;m<7;m++)
+          for(int m=0;m<17;m++)
           {
-            int sampleL=s_points.size()/7+3;
+            int sampleL=s_points.size()/10+3;
             if(sampleL>s_points.size())
             {
-              sampleL=s_points.size()/7;
+              sampleL=s_points.size()/10;
+            }
+            if(sampleL>20)
+            {
+              sampleL=20;
             }
             for(int k=0;k<sampleL;k++)//Shuffle in 
             {
@@ -2009,7 +2030,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               minS_pts = sigma_count;
               minSigma = sigma_sum;
               line_cand = tmp_line;
-              LOGV("minSigma:%f",minSigma);
+              LOGI("minSigma:%f",minSigma);
             }
           }
 
@@ -2042,7 +2063,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   
             std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
             
-            float distThres = s_points[s_points.size()/3].tmp+1;
+            float distThres = s_points[s_points.size()/3].tmp+3;
             LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
 
             for(int n=s_points.size()/3;n<s_points.size();n++)
@@ -2188,22 +2209,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         {
           LOGV("VEC INV::::");
           line_cand.line_vec = acvVecMult(line_cand.line_vec,-1);
-        }
-        if(0)//Draw debug image(curve and straight line)
-        {
-          for(int k=0;k<s_points.size();k++)
-          {
-            const ContourGrid::ptInfo pti= s_points[k];
-            const acv_XY p = pti.pt;
-            int X = round(p.X);
-            int Y = round(p.Y);
-            if(drawDBG_IMG)
-            {
-              buff_->CVector[Y][X*3]=255;
-              buff_->CVector[Y][X*3+1]=100;
-              buff_->CVector[Y][X*3+2]=255;
-            }
-          }
         }
 
         LOGV("L=%d===anchor:%f,%f vec:%f,%f ,sigma:%f target_vec:%f,%f",j,
