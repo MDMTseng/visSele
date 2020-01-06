@@ -14,7 +14,8 @@ import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 
-import {xstate_GetCurrentMainState,GetObjElement} from 'UTIL/MISC_Util';
+import  InputNumber  from 'antd/lib/input-number';
+import {xstate_GetCurrentMainState,GetObjElement,Calibration_MMPP_offset} from 'UTIL/MISC_Util';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
@@ -173,7 +174,13 @@ class APPMain extends React.Component{
           fileSelectedCallBack:undefined,
           fileSelectFilter:undefined,
           menuSelect:"Overview",
-          menuCollapsed:true
+          menuCollapsed:true,
+          calibCalcInfo:{
+            curMea1:0.8,
+            calibMea1:0.82,
+            curMea2:0.4,
+            calibMea2:0.44,
+          }
         }
     }
   
@@ -251,7 +258,14 @@ class APPMain extends React.Component{
             </div>
         </PageHeader>);
     }
-  
+    
+    calibInfoUpdate(newAddInfo)
+    {
+      console.log(newAddInfo);
+      this.setState({calibCalcInfo:{...this.state.calibCalcInfo,...newAddInfo}});
+    }
+
+
     render() {
       let UI=[];
       if(this.props.c_state==null)return null;
@@ -278,6 +292,14 @@ class APPMain extends React.Component{
           InspectionMonitor_URL =  encodeURI(InspectionMonitor_URL);
         }
 
+        let calibInfo = this.state.calibCalcInfo;
+        console.log(calibInfo);
+        let newCalibData = Calibration_MMPP_offset(
+          calibInfo.curMea1,
+          calibInfo.calibMea1,
+          calibInfo.curMea2,
+          calibInfo.calibMea2,
+          mmpp,0);
         let MenuItem={
           HOME:{
               icon:"home",
@@ -523,7 +545,7 @@ class APPMain extends React.Component{
               </Button>
 
 
-              
+      
               <Button key="save_setup"  disabled={this.props.uInspData.machineInfo===undefined}
                 onClick={()=>{
                   var enc = new TextEncoder();
@@ -533,7 +555,7 @@ class APPMain extends React.Component{
                 save_setup
               </Button>
               
-
+              
 
               
               <Button key="file_set_setup"  disabled={this.props.uInspData.machineInfo===undefined}
@@ -567,7 +589,24 @@ class APPMain extends React.Component{
                 //JSON.stringify(this.props.uInspData)
               }
 
-  
+              <Divider orientation="left">SolveCalib</Divider>
+
+              CurMea1: <InputNumber size="large" defaultValue={this.state.calibCalcInfo.curMea1} step={0.001}
+                onChange={(val)=>this.calibInfoUpdate({curMea1:val})}/>
+              &ensp;&ensp;CalibMea1:<InputNumber size="large"  defaultValue={this.state.calibCalcInfo.calibMea1} step={0.001}
+                onChange={(val)=>this.calibInfoUpdate({calibMea1:val})}/>
+              <br/>
+              CurMea2:<InputNumber size="large"  defaultValue={this.state.calibCalcInfo.curMea2} step={0.001}
+                onChange={(val)=>this.calibInfoUpdate({curMea2:val})}/>
+              &ensp;&ensp;CalibMea2:<InputNumber size="large"  defaultValue={this.state.calibCalcInfo.calibMea2} step={0.001}
+                onChange={(val)=>this.calibInfoUpdate({calibMea2:val})}/>
+              <br/>
+              --------------------------------
+              <br/>
+              MMPP:{newCalibData.mmpp}
+              <br/>
+              OFFSET:{newCalibData.offset}
+
   
               <BPG_FileBrowser key="BPG_FileBrowser" 
                 searchDepth={4}

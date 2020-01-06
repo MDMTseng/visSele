@@ -1742,9 +1742,9 @@ int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam p
     me.setRadialDistortionParam(param);
     me.FeatureMatching(test1);
   }
-
-  LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-  t = clock();
+  clock_t new_t = clock();
+  LOGI("%fms \n", (double)(new_t - t) / CLOCKS_PER_SEC * 1000);
+  t = new_t;
 
   return 0;
   //ContourFeatureDetect(test1,&test1_buff,tar_signature);
@@ -1874,8 +1874,9 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   if(type!=CameraLayer::EV_IMG)
     return;
   clock_t t = clock();
-
-  LOGI("frameInterval:%fms \n", ((double)t - pframeT) / CLOCKS_PER_SEC * 1000);
+  double interval = ((double)t - pframeT) / CLOCKS_PER_SEC * 1000
+  LOGI("frameInterval:%fms \n", interval);
+  if(interval<70)return;//if the interval less than 70ms then... skip this frame
   pframeT=t;
   LOGV("cb->cameraFeedTrigger:%d",cb->cameraFeedTrigger); 
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);

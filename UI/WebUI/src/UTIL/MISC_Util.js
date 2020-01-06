@@ -334,3 +334,40 @@ export const copyToClipboard = str => {
   document.execCommand('copy');
   document.body.removeChild(el);
 };
+
+
+
+
+
+export function twoEQXY(a,b,c,d,e,f) {
+  /* we solve the linear system
+  * ax+by=e
+  * cx+dy=f
+  */
+ let determinant = a*d - b*c;
+ if(determinant != 0) {
+   let x = (e*d - b*f)/determinant;
+   let y = (a*f - e*c)/determinant;
+   return [x,y];
+ }
+ return [0/0,0/0];
+}
+
+export function Calibration_MMPP_offset(old1,new1,old2,new2,cur_mmpp,cur_offset=0) {
+ //pix1=old1/cur_mmpp-cur_offset
+ //mmpp*(pix1+offset)=new1
+ //mmpp*pix1 + mmpp*offset = new1
+ //X   *a    +           Y =    e
+ //b==1
+
+ //a = old_pix1  b=1  e=new1
+ //c = old_pix2  d=1  f=new2
+ let old_pix1=old1/cur_mmpp-cur_offset;
+ let old_pix2=old2/cur_mmpp-cur_offset;
+ let retSolver=twoEQXY(
+  old_pix1,1,old_pix2,1,new1,new2);
+ let [mmpp,mmpp_x_offset] = retSolver;
+ return {
+   mmpp,offset:(mmpp_x_offset/mmpp)
+ };
+}

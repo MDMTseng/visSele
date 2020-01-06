@@ -440,7 +440,7 @@ class CameraCtrl  {
         if(this.ev_emptyResultCountChange===undefined)
             this.ev_emptyResultCountChange=()=>{};
 
-        this.setSpeedSwitchingCount(1000);
+        this.setSpeedSwitchingCount(10000);
         this.setCameraSpeed_HIGH();
     }
 
@@ -1670,6 +1670,7 @@ class AngledCalibrationHelper extends React.Component{
         function addStatValue(id,portion,value)
         {
           let tab = newState.angleStatTable[id];
+          if(tab === undefined)return;
           tab.w+=portion;
           tab.value+=portion*value;
         }
@@ -1993,7 +1994,7 @@ class APP_INSP_MODE extends React.Component {
             iconType="up-square"
             key="DoImageTransfer"
             addClass="layout palatte-blue-8 vbox"
-            text={"傳輸相機影像(I): "+ ((this.CameraCtrl.DoImageTransfer) ?"暫停": "啟動")}
+            text={"傳輸相機影像(I): "+ ((this.CameraCtrl.data.DoImageTransfer) ?"暫停": "啟動")}
             onClick={() => 
               this.CameraCtrl.setCameraImageTransfer()
                   
@@ -2037,7 +2038,7 @@ class APP_INSP_MODE extends React.Component {
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
             {CameraSetting:{
               //"ROI":[0.3,0.3,0.4,0.4],
-              "ROI":[0.45,0.45,0.10,0.10],
+              "ROI":[0.4,0.4,0.20,0.20],
               //"ROI":[200,200,600,600],
               // "mirror":[0,1],
               "down_samp_w_calib":false,
