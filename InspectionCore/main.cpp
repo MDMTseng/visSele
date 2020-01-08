@@ -1874,7 +1874,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   if(type!=CameraLayer::EV_IMG)
     return;
   clock_t t = clock();
-  double interval = ((double)t - pframeT) / CLOCKS_PER_SEC * 1000
+  double interval = ((double)t - pframeT) / CLOCKS_PER_SEC * 1000;
   LOGI("frameInterval:%fms \n", interval);
   if(interval<70)return;//if the interval less than 70ms then... skip this frame
   pframeT=t;
