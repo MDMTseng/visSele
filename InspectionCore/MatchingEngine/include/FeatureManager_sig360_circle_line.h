@@ -29,7 +29,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int signature_feature_id;
   vector<acv_XY> feature_signature;
   vector<acv_XY> tmp_signature;
-  ContourGrid edge_grid;
+  ContourFetch edge_grid;
 
   float matching_angle_margin;
   float matching_angle_offset;
@@ -42,8 +42,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   acvImage buff1;
   acvImage buff2;
   
-  vector<int> s_intersectIdxs;
-  vector<ContourGrid::ptInfo> s_points;
+  vector<ContourFetch::ptInfo> s_points;
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;

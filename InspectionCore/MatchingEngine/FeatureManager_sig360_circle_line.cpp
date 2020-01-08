@@ -727,8 +727,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         edge_grid.getContourPointsWithInLineContour(line,
           width/2,
           margin,
-          0,
-          s_intersectIdxs,s_points,999999);
+          0,s_points,999999);
 
         float nearestDist=99999;
         acv_XY nearestPt;
@@ -1590,7 +1589,7 @@ float OTSU_Threshold(acvImage &graylevelImg,acv_LabeledData *ldata,int skip=5)
 }
 
 
-int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<ContourGrid::ptInfo> ptList,int width)
+int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<ContourFetch::ptInfo> ptList,int width)
 {
   const int GradTableL=7;
   float gradTable[GradTableL]={0};
@@ -1601,7 +1600,7 @@ int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<Co
   
   acv_XY  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
   curpoint = acvVecAdd(curpoint,point);
-  ContourGrid::ptInfo tmp_pt;
+  ContourFetch::ptInfo tmp_pt;
   for(int i=0;i<GradTableL;i++)
   {
     float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
@@ -1628,7 +1627,7 @@ int EdgeGradientAdd(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,vector<Co
   
   return 0;
 }
-bool ptInfo_tmp_comp(const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) 
+bool ptInfo_tmp_comp(const ContourFetch::ptInfo & a, const ContourFetch::ptInfo & b) 
 { 
       return a.tmp < b.tmp; 
 } 
@@ -1778,7 +1777,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
 
 
-      edge_grid.RESET(grid_size,img->GetWidth(),img->GetHeight());
+      edge_grid.RESET();
       
       acvRadialDistortionParam param=this->param;
       
@@ -1793,7 +1792,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       {
         for(int j=0;j<edge_grid.dataSize();i++)
         {
-          const ContourGrid::ptInfo pti= *edge_grid.get(j);
+          const ContourFetch::ptInfo pti= *edge_grid.get(j);
           const acv_XY p = pti.pt;
           int X = round(p.X);
           int Y = round(p.Y);
@@ -1876,7 +1875,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             
                   
             //LOGV("skp.keyPt %f %f <= found..",skp.keyPt.X,skp.keyPt.Y);
-            ContourGrid::ptInfo pti= {pt:skp.keyPt};
+            ContourFetch::ptInfo pti= {pt:skp.keyPt};
 
             s_points.push_back(pti);
           }
@@ -1888,7 +1887,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             int size=8;
             for(int k=0;k<s_points.size();k++)
             {
-              const ContourGrid::ptInfo pti= s_points[k];
+              const ContourFetch::ptInfo pti= s_points[k];
               if(pti.edgeRsp==0)continue;
               const acv_XY p = pti.pt;
               int X = round(p.X);
@@ -1900,7 +1899,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           if(s_points.size()>2)
           {
             //Use founded points to fit a candidate line
-            acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, 
+            acvFitLine(&(s_points[0].pt),sizeof(ContourFetch::ptInfo), NULL,0, 
               s_points.size(),&line_cand,&sigma);
             
             LOGV(" %f %f, %f %f",line_cand.line_vec.X,line_cand.line_vec.Y,target_vec.X,target_vec.Y);
@@ -1954,8 +1953,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           //HACK:Kinda hack... the initial Margin is for initial keypoints search, 
           //But since we get the cadidate line already, no need for huge Margin
           initMatchingMargin/2,
-          flip_f,
-          s_intersectIdxs,s_points);
+          flip_f,s_points);
           
         LOGI("MatchingMarginX:%f s_points.size():%d initMatchingMargin:%f",
           MatchingMarginX,s_points.size(),initMatchingMargin,0.5);
@@ -1997,7 +1995,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             {
               int idx2Swap = (rand()%(s_points.size()-k))+k;
 
-              ContourGrid::ptInfo tmp_pt=s_points[k];
+              ContourFetch::ptInfo tmp_pt=s_points[k];
               s_points[k]=s_points[idx2Swap];
               s_points[idx2Swap]=tmp_pt;
               //s_points[j].edgeRsp=1;
@@ -2005,8 +2003,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
             acv_Line tmp_line;
             acvFitLine(
-              &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
-              &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), sampleL,&tmp_line,&sigma);
+              &(s_points[0].pt)     ,sizeof(ContourFetch::ptInfo), 
+              &(s_points[0].edgeRsp),sizeof(ContourFetch::ptInfo), sampleL,&tmp_line,&sigma);
 
             int sigma_count=0;
             float sigma_sum=0;
@@ -2077,8 +2075,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               usable_L,s_points.size(),
               s_points[usable_L-1].tmp,distThres);
             acvFitLine(
-              &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
-              &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), 
+              &(s_points[0].pt)     ,sizeof(ContourFetch::ptInfo), 
+              &(s_points[0].edgeRsp),sizeof(ContourFetch::ptInfo), 
               usable_L,&line_cand,&sigma);
             if(1){
               acv_Line line_cand_nor=line_cand;
@@ -2093,7 +2091,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               }
 
               std::sort(s_points.begin(), s_points.end(),
-                    [](const ContourGrid::ptInfo & a, const ContourGrid::ptInfo & b) -> bool
+                    [](const ContourFetch::ptInfo & a, const ContourFetch::ptInfo & b) -> bool
                 { 
                     return a.curvature < b.curvature; 
                 });
@@ -2178,8 +2176,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
               }
 
               acvFitLine(
-                &(s_points[0].pt)     ,sizeof(ContourGrid::ptInfo), 
-                &(s_points[0].edgeRsp),sizeof(ContourGrid::ptInfo), 
+                &(s_points[0].pt)     ,sizeof(ContourFetch::ptInfo), 
+                &(s_points[0].edgeRsp),sizeof(ContourFetch::ptInfo), 
                 s_points.size(),&line_cand,&sigma);
             }
 
@@ -2191,7 +2189,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         }
         else
         {
-          acvFitLine(&(s_points[0].pt),sizeof(ContourGrid::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
+          acvFitLine(&(s_points[0].pt),sizeof(ContourFetch::ptInfo), NULL,0, s_points.size(),&line_cand,&sigma);
         }
 
 
@@ -2220,8 +2218,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         target_vec.X,target_vec.Y);
 
 
-        ContourGrid::ptInfo *end_pos=findEndPoint(line_cand, 1, s_points);
-        ContourGrid::ptInfo *end_neg=findEndPoint(line_cand, -1, s_points);
+        ContourFetch::ptInfo *end_pos=findEndPoint(line_cand, 1, s_points);
+        ContourFetch::ptInfo *end_neg=findEndPoint(line_cand, -1, s_points);
 
         acv_LineFit lf;
         lf.line=line_cand;
@@ -2296,8 +2294,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           center.Y,
           radius,
           sAngle,eAngle,cdef.outter_inner,
-          matching_tor,
-          s_intersectIdxs,s_points);
+          matching_tor,s_points);
 
           
 
@@ -2332,7 +2329,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             {
               int idx2Swap = (rand()%(s_points.size()-k))+k;
 
-              ContourGrid::ptInfo tmp_pt=s_points[k];
+              ContourFetch::ptInfo tmp_pt=s_points[k];
               s_points[k]=s_points[idx2Swap];
               s_points[idx2Swap]=tmp_pt;
               //s_points[j].edgeRsp=1;

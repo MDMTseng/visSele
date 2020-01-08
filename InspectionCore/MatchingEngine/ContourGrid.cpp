@@ -2,6 +2,168 @@
 #include "ContourGrid.h"
 #include "logctrl.h"
 
+bool isAngleBetween(float angle,float sAngle,float eAngle);
+
+bool isAngleBetween(float angle,float sAngle,float eAngle)
+{
+
+
+  //LOGV("%f < %f < %f",sAngle*180/3.14159,angle*180/3.14159,eAngle*180/3.14159);
+  angle-=sAngle;
+
+  while(angle<0)
+  {
+    angle+=2*M_PI;
+  }
+  while(angle>2*M_PI)
+  {
+    angle-=2*M_PI;
+  }
+
+
+  eAngle-=sAngle;
+  
+  while(eAngle<0)
+  {
+    eAngle+=2*M_PI;
+  }
+  while(eAngle>2*M_PI)
+  {
+    eAngle-=2*M_PI;
+  }
+
+
+  //LOGV("angle: %f eAngle: %f",angle*180/3.14159,eAngle*180/3.14159);
+  //LOGV(">>%f %f",angle,eAngle);
+  return angle<eAngle;
+}
+
+
+
+ContourFetch::ContourFetch()
+{
+  RESET();
+}
+
+
+
+void ContourFetch::RESET()
+{
+  contourSections.resize(20);//Just for reservation
+  for(int i=0;i<contourSections.size();i++)
+  {
+    contourSections[i].resize(0);
+  }
+}
+
+
+
+void ContourFetch::push(int group,ptInfo data)
+{
+  if(group+1>contourSections.size())
+  {
+    contourSections.resize(group+1);
+  }
+  contourSections[group].push_back(data);
+}
+
+
+
+void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
+  float epsilon,std::vector<ptInfo> &points)
+{
+  points.resize(0);
+  float outerDist_sq=radius+epsilon;
+  outerDist_sq*=outerDist_sq;
+  const float arcCurvatureMin = 0.02;
+  const float arcCurvatureMax = 10  ;
+
+  float innerDist_sq=radius-epsilon;
+  if(innerDist_sq<0)
+    innerDist_sq=0;
+  else
+    innerDist_sq*=innerDist_sq;
+
+  int count=0;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    int idx = i;
+    for(int j=0;j<contourSections[idx].size();j++)
+    {
+      ptInfo pti = contourSections[idx][j];
+      float dX = pti.pt.X-X;
+      float dY = pti.pt.Y-Y;
+      float dist_sq = dX*dX + dY*dY;
+      pti.edgeRsp=1;
+      if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
+      {
+        float dotP = dX*pti.sobel.X+dY*pti.sobel.Y;
+
+        if(dotP*outter_inner>=0)
+        {
+          float angle = atan2(dY,dX);
+          // LOGV(">>%f,%f-> %f %f",pti.pt.X,pti.pt.Y,X,Y);
+          // LOGV(">>%f,%f:  %f %f %f",dX,dY,angle, sAngle, eAngle);
+          if(isAngleBetween( angle, sAngle, eAngle))
+          {
+            points.push_back(pti);
+          }
+        }
+      }
+    }
+  }
+}
+
+
+
+
+void ContourFetch::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<ptInfo> &points,float lineCurvatureMax)
+{
+  LOGV("test...");
+  points.resize(0);
+  line.line_vec=acvVecNormalize(line.line_vec);
+  //exit(0);
+  int count=0;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    int idx = i;
+    for(int j=0;j<contourSections[idx].size();j++)
+    {
+  
+      ptInfo pti = contourSections[idx][j];
+      acv_XY pt=pti.pt;
+      pt.X-=line.line_anchor.X;
+      pt.Y-=line.line_anchor.Y;
+      pti.edgeRsp=1;
+      //LOGV(">> line.line_anchor.X:%f  Y:%f",line.line_anchor.X,line.line_anchor.Y);
+
+      //reverse rotate the target point to check if the point is in the margin(rotated box)
+      pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
+      if(pt.X<0)pt.X=-pt.X;
+      if(pt.Y<0)pt.Y=-pt.Y;
+      if(pt.X < epsilonX && pt.Y < epsilonY)
+      {
+        if( abs(pti.curvature)>lineCurvatureMax)continue;
+
+        //LOGV(">> X:%f<%f  Y:%f<%f",pt.X,epsilonX,pt.Y,epsilonY);
+        if(flip_f==0)
+          points.push_back(pti);
+        else
+        {
+          float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
+          if(dotP*flip_f>0.9)
+          {
+            points.push_back(pti);
+          }
+        }
+      }
+    }
+
+  }
+}
+
+
+
 ContourGrid::ContourGrid()
 {
 
@@ -260,40 +422,6 @@ void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,fl
     }
   }
 
-}
-
-bool isAngleBetween(float angle,float sAngle,float eAngle)
-{
-
-
-  //LOGV("%f < %f < %f",sAngle*180/3.14159,angle*180/3.14159,eAngle*180/3.14159);
-  angle-=sAngle;
-
-  while(angle<0)
-  {
-    angle+=2*M_PI;
-  }
-  while(angle>2*M_PI)
-  {
-    angle-=2*M_PI;
-  }
-
-
-  eAngle-=sAngle;
-  
-  while(eAngle<0)
-  {
-    eAngle+=2*M_PI;
-  }
-  while(eAngle>2*M_PI)
-  {
-    eAngle-=2*M_PI;
-  }
-
-
-  //LOGV("angle: %f eAngle: %f",angle*180/3.14159,eAngle*180/3.14159);
-  //LOGV(">>%f %f",angle,eAngle);
-  return angle<eAngle;
 }
 
 //outter_inner => bigger than 0 is for outer circle, smaller than 0 is fo inner, 0 is for both

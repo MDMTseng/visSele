@@ -8,7 +8,10 @@
 #include <unistd.h>
 
 
-class ContourGrid{
+
+
+
+class ContourFetch{
     public:
     typedef struct ptInfo
     {
@@ -20,7 +23,41 @@ class ContourGrid{
       float tmp;
     };
 
+    std::vector< ptInfo > tmpXYSeq;
+    private:
+
+    std::vector< std::vector <ptInfo> > contourSections;
+    public:
+    ContourFetch();
+    void RESET();
+    void push(int group,ptInfo data);
+
+    int dataSize();
+
+    const ptInfo* get(int idx);
+
+    void getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
+      float epsilon,std::vector<ptInfo> &points);
+
+    void getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, 
+      std::vector<ptInfo> &points,float lineCurvatureMax = 0.15);
+
+};
+
+
+
+class ContourGrid:ContourFetch{
+    public:
     
+    typedef struct ptInfo
+    {
+      acv_XY pt;
+      acv_XY sobel;
+      acv_XY contourDir;
+      float curvature;
+      float edgeRsp;
+      float tmp;
+    };
     std::vector< ptInfo > tmpXYSeq;
     private:
 

@@ -15,10 +15,10 @@ void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg
 
 void extractLabeledContourDataToContourGrid(
   acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,
-  int grid_size,ContourGrid &edge_curve_grid,int scanline_skip,acvRadialDistortionParam param);
+  int grid_size,ContourFetch &edge_curve_grid,int scanline_skip,acvRadialDistortionParam param);
 
-ContourGrid::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourGrid::ptInfo> &points);
-void circleRefine(std::vector<ContourGrid::ptInfo> &pointsInRange,int len,acv_CircleFit *circleF);
+ContourFetch::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourFetch::ptInfo> &points);
+void circleRefine(std::vector<ContourFetch::ptInfo> &pointsInRange,int len,acv_CircleFit *circleF);
 
 
 void spline9_max(float *f,int fL,int div,float *ret_maxf,float *ret_maxf_x);
