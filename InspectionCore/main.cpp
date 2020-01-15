@@ -2500,15 +2500,15 @@ void CameraLayer_Callback_BMP(CameraLayer &cl_obj, int type, void* context)
 int simpleTest(char *imgName, char *defName)
 {
   //return testGIGE();;
-  CameraLayer_BMP cl_BMP(CameraLayer_Callback_BMP,NULL);
-
-  CameraLayer::status ret = cl_BMP.LoadBMP(imgName);
-  if(ret != CameraLayer::ACK)
+  
+  acvImage newImg;
+  int ret = LoadIMGFile(&newImg,imgName);
+  if(ret)
   {
     LOGE("LoadBMP failed: ret:%d",ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng,cl_BMP.GetFrame(),1,defName);
+  ImgInspection_DefRead(matchingEng,&newImg,1,defName);
 
   const FeatureReport * report = matchingEng.GetReport();
 
@@ -2683,8 +2683,8 @@ int main(int argc, char** argv)
 
   if(0)
   {
-    char *imgName="data/test1.BMP";
-    char *defName = "data/cache_def.json";
+    char *imgName="data/BMP_carousel_test/01-02-23-18-53-491.bmp";
+    char *defName = "data/calib_test_line.hydef";
 
     LoadIMGFile(&proBG,"data/proBG.BMP");
     //char *imgName="data/calib_cam1_surfaceGo.bmp";

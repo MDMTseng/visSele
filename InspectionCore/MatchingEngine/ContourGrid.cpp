@@ -67,35 +67,63 @@ void ContourFetch::push(int group,ptInfo data)
   contourSections[group].push_back(data);
 }
 
+void contourConcatLastTo(std::vector<ContourFetch::contourMatchSec> &m_sec,int toIdx)
+{
+  int endIdx = m_sec.size()-1;
+  int headSize=m_sec[endIdx].section.size();
+  int conSize=m_sec[toIdx].section.size();
+
+  m_sec[toIdx].section.resize(headSize+conSize);
+  endIdx = m_sec.size()-1;
+  
+  for(int k=conSize-1;k>=0;k--)
+  {
+    ContourFetch::ptInfo ptI = m_sec[toIdx].section[k];
+    m_sec[toIdx].section[headSize+k]=ptI;
+  }
+  for(int k=0;k<headSize;k++)
+  {
+    ContourFetch::ptInfo ptI = m_sec[endIdx].section[k];
+    m_sec[toIdx].section[k]=ptI;
+  }
+  
+  //remove the last section
+  m_sec.erase(m_sec.end() - 1);
+}
 
 
 void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
-  float epsilon,std::vector<ptInfo> &points)
+  float epsilon,std::vector<contourMatchSec> &m_sec)
 {
-  points.resize(0);
-  float outerDist_sq=radius+epsilon;
-  outerDist_sq*=outerDist_sq;
+  m_sec.resize(0);
+  float outerDist=radius+epsilon;
   const float arcCurvatureMin = 0.02;
   const float arcCurvatureMax = 10  ;
 
-  float innerDist_sq=radius-epsilon;
-  if(innerDist_sq<0)
-    innerDist_sq=0;
-  else
-    innerDist_sq*=innerDist_sq;
+  float innerDist=radius-epsilon;
+  if(innerDist<0)
+    innerDist=0;
 
-  int count=0;
+  const int gapCountMax=10;
+  int gapCount=0;
+  int init_gapCount=0;
+
   for(int i=0;i<contourSections.size();i++)
   {
     int idx = i;
+
+
+    int doMergeToIdx=-1; 
+    bool inSection=false; 
     for(int j=0;j<contourSections[idx].size();j++)
     {
       ptInfo pti = contourSections[idx][j];
       float dX = pti.pt.X-X;
       float dY = pti.pt.Y-Y;
-      float dist_sq = dX*dX + dY*dY;
+      float dist = hypot(dX,dY);
       pti.edgeRsp=1;
-      if(dist_sq>innerDist_sq && dist_sq<outerDist_sq)//The point is in the epsilon region
+      bool ptInSection=false;
+      if(dist>innerDist && dist<outerDist)//The point is in the epsilon region
       {
         float dotP = dX*pti.sobel.X+dY*pti.sobel.Y;
 
@@ -106,27 +134,86 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
           // LOGV(">>%f,%f:  %f %f %f",dX,dY,angle, sAngle, eAngle);
           if(isAngleBetween( angle, sAngle, eAngle))
           {
-            points.push_back(pti);
+            ptInSection=true;
           }
         }
       }
+
+      if(ptInSection)
+      {
+        int endIdx = m_sec.size()-1;
+        gapCount=0;
+        //points.push_back(pti);
+        if( !inSection )
+        {
+          
+          m_sec.resize(m_sec.size()+1);
+          endIdx = m_sec.size()-1;
+          m_sec[endIdx].contourIdx=m_sec.size()-1;
+          m_sec[endIdx].section.resize(0);
+          m_sec[endIdx].sigma=0;
+        }
+        inSection=true;
+        if(j<gapCountMax)
+        {
+          init_gapCount=gapCountMax-j;
+          doMergeToIdx=m_sec.size()-1;
+        }
+        float diff=dist-radius;
+        m_sec[endIdx].section.push_back(pti);
+        m_sec[endIdx].sigma+=diff*diff;
+      }
+      else
+      {
+        gapCount++;
+        if(gapCount>gapCountMax)//if the gap is bigger than gapCountMax, then disjoin the section
+        {
+          inSection=false;
+        }
+        else if( gapCount+init_gapCount>gapCountMax && j==contourSections[idx].size()-1 )
+        {
+          //If (in the end )the total gap count is bigger than gapCountMax, don't merge the head section
+          doMergeToIdx=-1;
+        }
+      }
+
     }
+
+    if(doMergeToIdx>=0)
+    {
+      contourConcatLastTo(m_sec,doMergeToIdx);
+    }
+
   }
+
+  for(int i=0;i<m_sec.size();i++)
+  {
+    m_sec[i].sigma=sqrt(m_sec[i].sigma/m_sec[i].section.size());
+  }
+
 }
 
 
 
 
-void ContourFetch::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<ptInfo> &points,float lineCurvatureMax)
+void ContourFetch::getContourPointsWithInLineContour(
+  acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<contourMatchSec> &m_sec,float lineCurvatureMax)
 {
   LOGV("test...");
-  points.resize(0);
+  m_sec.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
   //exit(0);
-  int count=0;
+  
+  const int gapCountMax=10;
+  int gapCount=0;
+  int init_gapCount=0;
   for(int i=0;i<contourSections.size();i++)
   {
     int idx = i;
+    int doMergeToIdx=-1; 
+    bool inSection=false; 
+    init_gapCount=0;
+    gapCount=0;
     for(int j=0;j<contourSections[idx].size();j++)
     {
   
@@ -141,25 +228,87 @@ void ContourFetch::getContourPointsWithInLineContour(acv_Line line, float epsilo
       pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
       if(pt.X<0)pt.X=-pt.X;
       if(pt.Y<0)pt.Y=-pt.Y;
+      bool ptInSection=false;
+
       if(pt.X < epsilonX && pt.Y < epsilonY)
       {
         if( abs(pti.curvature)>lineCurvatureMax)continue;
 
         //LOGV(">> X:%f<%f  Y:%f<%f",pt.X,epsilonX,pt.Y,epsilonY);
         if(flip_f==0)
-          points.push_back(pti);
+          ptInSection=true;
         else
         {
           float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
           if(dotP*flip_f>0.9)
           {
-            points.push_back(pti);
+            ptInSection=true;
           }
         }
       }
+
+
+
+      if(ptInSection)
+      {
+        gapCount=0;
+        int endIdx = m_sec.size()-1;
+        //points.push_back(pti);
+        if( !inSection )
+        {
+          m_sec.resize(m_sec.size()+1);
+          endIdx = m_sec.size()-1;
+          m_sec[endIdx].contourIdx=m_sec.size()-1;
+          m_sec[endIdx].section.resize(0);
+          m_sec[endIdx].sigma=0;
+        }
+        inSection=true;
+        if(j<gapCountMax)
+        {
+          init_gapCount=gapCountMax-j;
+          doMergeToIdx=m_sec.size()-1;
+        }
+        m_sec[endIdx].section.push_back(pti);
+        m_sec[endIdx].sigma+=pt.Y*pt.Y;
+        
+      }
+      else
+      {
+        gapCount++;
+        if(gapCount==gapCountMax)//if the gap is bigger than gapCountMax, then disjoin the section
+        {
+          inSection=false;
+        }
+        else if( gapCount+init_gapCount>gapCountMax && j==contourSections[idx].size()-1 )
+        {
+          //If (in the end )the total gap count is bigger than gapCountMax, don't merge the head section
+          doMergeToIdx=-1;
+        }
+      }
+
+
+    }
+    if(doMergeToIdx>=0)
+    {
+      // LOGI("________________");
+      // LOGI("doMergeToIdx:%d,m_sec.size=%d",doMergeToIdx,m_sec.size());
+      // LOGI("sec.size=%d  size=%d",m_sec[doMergeToIdx].section.size(),m_sec[m_sec.size()-1].section.size());
+      contourConcatLastTo(m_sec,doMergeToIdx);
+      
+      // LOGI("doMergeToIdx:%d,m_sec.size=%d",doMergeToIdx,m_sec.size());
+      // LOGI("sec.size=%d  size=%d",m_sec[doMergeToIdx].section.size(),m_sec[m_sec.size()-1].section.size());
     }
 
   }
+
+  for(int i=0;i<m_sec.size();i++)
+  {
+    m_sec[i].sigma=sqrt(m_sec[i].sigma/m_sec[i].section.size());
+    
+    //LOGI("Sec[%d].sigma:%f......",i,m_sec[i].sigma);
+  }
+
+
 }
 
 

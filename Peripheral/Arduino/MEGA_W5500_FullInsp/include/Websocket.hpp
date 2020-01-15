@@ -246,7 +246,7 @@ class Websocket_Server{
   {
     
     EthernetClient client = server.available();
-    if (!client)
+    if (00&&!client)
     {
       if (LiveClient)
       {

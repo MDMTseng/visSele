@@ -42,7 +42,9 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   acvImage buff1;
   acvImage buff2;
   
-  vector<ContourFetch::ptInfo> s_points;
+  vector<ContourFetch::ptInfo > tmp_points;
+  vector<ContourFetch::contourMatchSec > m_sections;
+  
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
   int reload(const char *json_str) override;

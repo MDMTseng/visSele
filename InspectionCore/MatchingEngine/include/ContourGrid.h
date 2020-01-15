@@ -23,6 +23,15 @@ class ContourFetch{
       float tmp;
     };
 
+    
+    class contourMatchSec
+    {
+      public:
+      std::vector< ptInfo > section;
+      float sigma;
+      int contourIdx;
+    };
+
     std::vector< ptInfo > tmpXYSeq;
     private:
 
@@ -37,10 +46,10 @@ class ContourFetch{
     const ptInfo* get(int idx);
 
     void getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
-      float epsilon,std::vector<ptInfo> &points);
+      float epsilon,std::vector<contourMatchSec> &m_sec);
 
-    void getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, 
-      std::vector<ptInfo> &points,float lineCurvatureMax = 0.15);
+    void getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f,
+      std::vector<contourMatchSec> &m_sec,float lineCurvatureMax = 0.15);
 
 };
 
