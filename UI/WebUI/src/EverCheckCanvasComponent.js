@@ -89,9 +89,10 @@ class CameraCtrl
 
 class renderUTIL
 {
-  constructor(editor_db_obj)
+  constructor(editor_db_obj,cameraCtrl)
   {
     this.setEditor_db_obj(editor_db_obj);
+    this.camCtrl=cameraCtrl;
     this.colorSet={
       unselected:"rgba(100,0,100,0.5)",
       inspection_Pass:"rgba(0,255,0,0.1)",
@@ -135,6 +136,11 @@ class renderUTIL
   getFontHeightPx(size=this.renderParam.font_Base_Size)
   {
     return size*this.renderParam.size_Multiplier*this.get_mmpp();
+  }
+
+  getFixSizingReg()
+  {
+    return 50/this.camCtrl.GetCameraScale();
   }
 
   getFontStyle(size_px=this.getFontHeightPx())
@@ -190,6 +196,14 @@ class renderUTIL
     {
       ctx.rect(point.x-size/2,point.y-size/2,size,size);
     }
+    if(type == "cross")
+    {
+      ctx.moveTo(point.x-size/2,point.y);
+      ctx.lineTo(point.x+size/2,point.y);
+
+      ctx.moveTo(point.x,point.y-size/2);
+      ctx.lineTo(point.x,point.y+size/2);
+    }
     else
     {
       ctx.arc(point.x,point.y,size/2,0,Math.PI*2, false);
@@ -204,7 +218,8 @@ class renderUTIL
 
     ctx.lineWidth=size*2;
     ctx.strokeStyle="rgba(0,0,100,0.5)";  
-    this._drawpoint(ctx,point,type,2*size);
+    if(type!="cross")
+      this._drawpoint(ctx,point,type,2*size);
 
     ctx.lineWidth=size/2;
     ctx.strokeStyle=strokeStyle_bk;  
@@ -364,7 +379,7 @@ class renderUTIL
       this.drawpoint(ctx,eObject.pt1);
 
       
-      let fontPx = this.getFontHeightPx();
+      let fontPx = this.getFontHeightPx()*this.getFixSizingReg();
       ctx.font=this.getFontStyle(1);
       ctx.strokeStyle="black";
       ctx.lineWidth=this.getIndicationLineSize()/3;
@@ -671,7 +686,7 @@ class renderUTIL
               //ctx.strokeStyle=this.colorSet.measure_info; 
                         
               ///ctx.fillStyle=this.colorSet.measure_info; 
-              //this.drawpoint(ctx, srcPt,"rect");
+              //this.drawpoint(ctx, srcPt,"cross");
               
               let sAngle = Math.atan2(subObjs[0].pt1.y - srcPt.y,subObjs[0].pt1.x - srcPt.x);
               let eAngle = Math.atan2(subObjs[1].pt1.y - srcPt.y,subObjs[1].pt1.x - srcPt.x);
@@ -804,7 +819,7 @@ class renderUTIL
 
 
               
-              let fontPx = this.getFontHeightPx();
+              let fontPx = this.getFontHeightPx()*this.getFixSizingReg();
               ctx.font=this.getFontStyle(1);
               let text;
               if(eObject.inspection_value!==undefined)
@@ -887,7 +902,7 @@ class renderUTIL
 
 
 
-              let fontPx = this.getFontHeightPx();
+              let fontPx = this.getFontHeightPx()*this.getFixSizingReg();
               ctx.font=this.getFontStyle(1);
               let text;
               if(eObject.inspection_value!==undefined)
@@ -999,8 +1014,10 @@ class renderUTIL
 
         case SHAPE_TYPE.search_point:
         {
-          ctx.strokeStyle="gray";  
-          this.drawpoint(ctx,eObject.pt1,"rect");
+          ctx.strokeStyle="rgba(179, 0, 0,0.5)";  
+          this.drawpoint(ctx,eObject.pt1,"cross",150*this.getPointSize()/this.camCtrl.GetCameraScale());
+          
+          ctx.lineWidth=this.getPointSize()*2;
         }
         break;
         case SHAPE_TYPE.aux_point:
@@ -1029,7 +1046,7 @@ class renderUTIL
             ctx.stroke();
             ctx.setLineDash([]);
             ctx.strokeStyle="gray"; 
-            this.drawpoint(ctx, point,"rect");
+            this.drawpoint(ctx, point,"cross");
           }
         }
         break;
@@ -1223,7 +1240,7 @@ class EverCheckCanvasComponent_proto{
       measure_info:"rgba(128,128,200,0.7)"
     };
 
-    this.rUtil=new renderUTIL(null);
+    this.rUtil=new renderUTIL(null,this.camera);
     this.rUtil.setColorSet(this.colorSet);
   }
 
@@ -1752,7 +1769,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         ctx.fill();
         ctx.restore();
         ctx.strokeStyle = "black";
-        //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"rect");
+        //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"cross");
       });
     }
 
