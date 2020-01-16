@@ -1222,10 +1222,27 @@ class CanvasComponent extends React.Component {
     ec_canvas_EmitEvent(event) {
         switch(event.type)
         { 
-        case DefConfAct.EVENT.ERROR:
-            log.error(event);
-            this.props.ACT_ERROR();
-        break;
+          case DefConfAct.EVENT.ERROR:
+              log.error(event);
+              this.props.ACT_ERROR();
+          break;
+          case "asdasdas":
+              // log.error(event);
+              // this.props.ACT_ERROR();
+              let down_samp_level = Math.floor(event.data.crop[2]/(800));
+              if(down_samp_level<=0)down_samp_level=1;
+              else if(down_samp_level>20)down_samp_level=20;
+              this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
+              {
+                CameraSetting:{
+                  down_samp_level
+                },
+                ImageTransferSetup:{
+                  crop:event.data.crop
+                }
+              });
+          break;
+
         }
     }
 
@@ -1296,7 +1313,7 @@ const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => {
         },
         ACT_ERROR:(arg) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.ERROR))
-        },
+        }
     }
 }
 const CanvasComponent_rdx = connect(
@@ -2011,7 +2028,7 @@ class APP_INSP_MODE extends React.Component {
                   this.setState(Object.assign({},this.state));
               }}/>);
             
-        MenuSet.push(
+        MenuSet_2nd.push(
           <BASE_COM.IconButton
           dict={EC_zh_TW}
           iconType="up-square"
@@ -2027,7 +2044,7 @@ class APP_INSP_MODE extends React.Component {
           }/>);
         
         
-        MenuSet.push(
+        MenuSet_2nd.push(
           <BASE_COM.IconButton
           dict={EC_zh_TW}
           key="ZOOM IN"
@@ -2036,14 +2053,20 @@ class APP_INSP_MODE extends React.Component {
           text={""}
           onClick={() => 
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
-            {CameraSetting:{
-              //"ROI":[0.3,0.3,0.4,0.4],
-              "ROI":[0.4,0.4,0.20,0.20],
-              //"ROI":[200,200,600,600],
-              // "mirror":[0,1],
-              "down_samp_w_calib":false,
-              "down_samp_level":1
-            }})}/>);
+            {
+              CameraSetting:{
+                //"ROI":[0.3,0.3,0.4,0.4],
+                //"ROI":[0.4,0.4,0.20,0.20],
+                //"ROI":[200,200,600,600],
+                // "mirror":[0,1],
+                "down_samp_w_calib":false,
+                "down_samp_level":1,
+                
+              },
+              ImageTransferSetup:{
+                crop:[700,700,700,700]
+              }
+          })}/>);
         
         MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
           reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
@@ -2064,7 +2087,9 @@ class APP_INSP_MODE extends React.Component {
                 
                 {(CanvasWindowRatio<=0)?null:
                     <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
-                        onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
+                      ACT_WS_SEND={this.props.ACT_WS_SEND}
+                      WS_ID={this.props.WS_ID}
+                      onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
                 
                 {(CanvasWindowRatio>=12)?null:
                     <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} 

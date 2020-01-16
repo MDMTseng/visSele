@@ -1242,6 +1242,9 @@ class EverCheckCanvasComponent_proto{
 
     this.rUtil=new renderUTIL(null,this.camera);
     this.rUtil.setColorSet(this.colorSet);
+
+
+    this.debounce_zoom_emit = this.debounce(this.zoom_emit.bind(this), 100);
   }
 
 
@@ -1265,9 +1268,54 @@ class EverCheckCanvasComponent_proto{
     log.debug("SetImg::: UPDATE",ctx2nd);
   }
 
+  debounce(func, wait, immediate) {
+    var timeout;
+    return function() {
+      var context = this, args = arguments;
+      var later = function() {
+        timeout = null;
+        if (!immediate) func.apply(context, args);
+      };
+      var callNow = immediate && !timeout;
+      clearTimeout(timeout);
+      timeout = setTimeout(later, wait);
+      if (callNow) func.apply(context, args);
+    };
+  };
+  zoom_emit()
+  {
+    let alpha = 0.2;
+    let ViewPortX=-this.canvas.width*alpha;
+    let ViewPortY=-this.canvas.height*alpha;
+    let ViewPortW=this.canvas.width-2*ViewPortX;
+    let ViewPortH=this.canvas.height-2*ViewPortY;
+    let totalScale = this.camera.GetCameraScale();
+    log.info(this.canvas.width,this.canvas.height,totalScale);
+    let offset = this.camera.GetCameraOffset();
+    
+
+    let mmpp = this.db_obj.getsig360info_mmpp();
+    let XXX=this.canvas.width/totalScale;
+    this.EmitEvent(
+      {
+        type:"asdasdas",
+        data:{
+          crop:[
+            (ViewPortX-offset.x-this.canvas.width/2)/totalScale/mmpp,
+            (ViewPortY-offset.y-this.canvas.height/2)/totalScale/mmpp,
+            ViewPortW/totalScale/mmpp,
+            ViewPortH/totalScale/mmpp]
+        }
+      }
+    );
+  }
+
   onmouseswheel(evt)
   {
-    return this.scaleCanvas(this.mouseStatus,evt.deltaY/4);
+    //
+    let ret_val = this.scaleCanvas(this.mouseStatus,evt.deltaY/4);
+    this.debounce_zoom_emit();
+    return ret_val;
   }
 
   scaleCanvas(scaleCenter,deltaY,scale=1/1.01)
@@ -1314,6 +1362,7 @@ class EverCheckCanvasComponent_proto{
       {
         this.camera.StartDrag({   x:pos.x-this.mouseStatus.px,   y:pos.y-this.mouseStatus.py  });
       }
+      
     }
     this.ctrlLogic();
     this.draw();
@@ -1340,6 +1389,8 @@ class EverCheckCanvasComponent_proto{
     this.mouseStatus.y=pos.y;
     this.mouseStatus.status = 0;
     this.camera.EndDrag();
+    
+    this.debounce_zoom_emit();
     this.ctrlLogic();
     this.draw();
   }
@@ -1694,13 +1745,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         scale = this.img_info.scale;
       let mmpp_mult = scale*mmpp;
 
-      ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
+      //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
 
       ctx.scale(mmpp_mult,mmpp_mult);      
       if(this.img_info!==undefined && this.img_info.offsetX!==undefined&& this.img_info.offsetY!==undefined)
       {
-        ctx.translate(this.img_info.offsetX/scale,this.img_info.offsetY/scale);
+        ctx.translate((this.img_info.offsetX-0.5)/scale,(this.img_info.offsetY-0.5)/scale);
       }
       ctx.translate(-1*mmpp_mult,-1*mmpp_mult);
       ctx.drawImage(this.secCanvas,0,0);

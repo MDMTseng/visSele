@@ -1502,6 +1502,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             session_ACK=true;
         }
 
+        ImageCropX=0;
+        ImageCropY=0;
+        ImageCropW=999999999;
+        ImageCropH=999999999;
         
         cJSON *ImTranseSetup = JFetch_OBJECT(json,"ImageTransferSetup");
         if(ImTranseSetup)
