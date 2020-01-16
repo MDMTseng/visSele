@@ -1229,9 +1229,9 @@ class CanvasComponent extends React.Component {
           case "asdasdas":
               // log.error(event);
               // this.props.ACT_ERROR();
-              let down_samp_level = Math.floor(event.data.crop[2]/(800))+1;
+              let down_samp_level = Math.floor(event.data.down_samp_level*2)+1;
               if(down_samp_level<=0)down_samp_level=1;
-              else if(down_samp_level>20)down_samp_level=20;
+              else if(down_samp_level>15)down_samp_level=15;
               this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
               {
                 CameraSetting:{

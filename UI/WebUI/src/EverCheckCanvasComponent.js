@@ -1295,16 +1295,19 @@ class EverCheckCanvasComponent_proto{
     
 
     let mmpp = this.db_obj.getsig360info_mmpp();
-    let XXX=this.canvas.width/totalScale;
+    
+    let crop = [
+      (ViewPortX-offset.x-this.canvas.width/2)/totalScale/mmpp,
+      (ViewPortY-offset.y-this.canvas.height/2)/totalScale/mmpp,
+      ViewPortW/totalScale/mmpp,
+      ViewPortH/totalScale/mmpp];
+    let down_samp_level = 1.0*crop[2]/(this.canvas.width);
     this.EmitEvent(
       {
         type:"asdasdas",
         data:{
-          crop:[
-            (ViewPortX-offset.x-this.canvas.width/2)/totalScale/mmpp,
-            (ViewPortY-offset.y-this.canvas.height/2)/totalScale/mmpp,
-            ViewPortW/totalScale/mmpp,
-            ViewPortH/totalScale/mmpp]
+          down_samp_level,
+          crop
         }
       }
     );
