@@ -32,6 +32,11 @@ DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle=0;
 
 int downSampLevel=4;
+
+int ImageCropX=0;
+int ImageCropY=0;
+int ImageCropW=99999;
+int ImageCropH=99999;
 bool downSampWithCalib=false;
 
 bool doImgProcessThread=true;
@@ -240,15 +245,46 @@ int SaveIMGFile(const char *filename, acvImage *img)
 
 }
 
-void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *map,bool doMap=true)
+void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *map,bool doMap=true,
+int X=-1,int Y=-1,int W=-1, int H=-1)
 {
-  dst.ReSize(src.GetWidth()/downScale,src.GetHeight()/downScale);
+  int X2=src.GetWidth()-1;
+  int Y2=src.GetHeight()-1;
 
+  if(X<0)X=0;
+  else if(X>=X2)X=X2-1;
+
+  if(Y<0)Y=0;
+  else if(Y>=Y2)Y=Y2-1;
+
+  if(W>0)
+  {
+    X2=X+W;
+    if(X2>=src.GetWidth())
+    {
+      X2=src.GetWidth()-1;
+    }
+  }
+
+  if(H>0)
+  {
+    Y2=Y+H;
+    if(Y2>=src.GetHeight())
+    {
+      Y2=src.GetHeight()-1;
+    }
+  }
+  X/=downScale;
+  Y/=downScale;
+  X2/=downScale;
+  Y2/=downScale;
+  dst.ReSize((X2-X+1),(Y2-Y+1));
+  LOGI("X:%d Y:%d X2:%d Y2:%d",X,Y,X2,Y2);
   //LOGI("map=%p",map);
-  for(int i=0;i<dst.GetHeight();i++)
+  for(int i=Y;i<=Y2;i++)
   {
     int src_i = i*downScale;
-    for(int j=0;j<dst.GetWidth();j++)
+    for(int j=X;j<=X2;j++)
     {
       int RSum=0,GSum=0,BSum=0;
       int src_j = j*downScale;
@@ -290,14 +326,13 @@ void ImageDownSampling(acvImage &dst,acvImage &src,int downScale,acvCalibMap *ma
         GSum/=(downScale*downScale);
         RSum/=(downScale*downScale);
       }
-      dst.CVector[i][j*3+0]=BSum;
-      dst.CVector[i][j*3+1]=GSum;
-      dst.CVector[i][j*3+2]=RSum;
+      uint8_t* pix=&(dst.CVector[i-Y][(j-X)*3+0]);
+      pix[0]=BSum;
+      pix[1]=GSum;
+      pix[2]=RSum;
     }
   }
 }
-
-
 
 cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
 {
@@ -1341,15 +1376,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             if(srcImg==NULL)
             {
             mainThreadLock.unlock();
-            LOGV("Do camera Fetch..");
+            LOGI("Do camera Fetch..");
             camera->TriggerMode(1);
-            LOGV("LOCK...");
+            LOGI("LOCK...");
             mainThreadLock.lock();
             camera->Trigger();
-            LOGV("LOCK BLOCK...");
+            LOGI("LOCK BLOCK...");
             mainThreadLock.lock();
             
-            LOGV( "unlock");
+            LOGI( "unlock");
             mainThreadLock.unlock();
             srcImg = camera->GetFrame();
             cacheImage.ReSize(srcImg);
@@ -1390,7 +1425,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             LOGE("%s",err_str);
             }
 
-
+            
 
             bpg_dat=GenStrBPGData("IM", NULL);
             BPG_data_acvImage_Send_info iminfo={img:&dataSend_buff,scale:2};
@@ -1401,7 +1436,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             bpg_dat.pgID=dat->pgID;
             datCH_BPG.data.p_BPG_data=&bpg_dat;
             BPG_protocol->SendData(datCH_BPG);
-
+            
         }
         
         session_ACK=true;
@@ -1467,21 +1502,58 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             session_ACK=true;
         }
 
-        // char *path  = JFetch_STRING(json,"LoadCameraCalibration");
-        // if(path!=NULL)
-        // {
-        //   acvRadialDistortionParam ret_param;
-        //   int ret = LoadCameraCalibrationFile(path,&ret_param);
+        
+        cJSON *ImTranseSetup = JFetch_OBJECT(json,"ImageTransferSetup");
+        if(ImTranseSetup)
+        {
+           
+          int type = getDataFromJson(json,"enable",&target);
+          if(type==cJSON_False)
+          {
+              DoImageTransfer=false;
+          }
+          else if( type ==cJSON_True)
+          {
+              DoImageTransfer=true;
+          }
+ 
 
-        //   if(param_default.map)
-        //   {
-        //       delete param_default.map;
-        //       param_default.map=NULL;
-        //   }
-        //   param_default=ret_param;
+          double*nX = JFetch_NUMBER(ImTranseSetup,"crop[0]");
+          double*nY = JFetch_NUMBER(ImTranseSetup,"crop[1]");
+          double*nW = JFetch_NUMBER(ImTranseSetup,"crop[2]");
+          double*nH = JFetch_NUMBER(ImTranseSetup,"crop[3]");
 
-        //   if(ret)session_ACK=true;
-        // }
+          if(nX&&nY&&nW&&nH)
+          {
+            ImageCropX=*nX;
+            ImageCropY=*nY;
+            ImageCropW=*nW;
+            ImageCropH=*nH;
+
+            if(ImageCropX<0)
+            {
+              ImageCropW+=ImageCropX;
+              ImageCropX=0;
+            }
+            if(ImageCropY<0)
+            {
+              ImageCropH+=ImageCropY;
+              ImageCropY=0;
+            }
+
+            if(ImageCropW<0)
+            {
+              ImageCropW=10;
+            }
+            if(ImageCropH<0)
+            {
+              ImageCropH=10;
+            }
+          }
+          
+          session_ACK=true;
+        }
+
 
 
         char *path = JFetch_STRING(json,"LoadCameraSetup");
@@ -1927,6 +1999,27 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
     return;
   }
   
+
+
+  {
+
+    using Ms = std::chrono::milliseconds;
+    int counter =0;
+    while(!mainThreadLock.try_lock_for(Ms(100)))//Lock and wait 100 ms
+    {
+      LOGE( "try lock");
+      counter++;
+      //Still locked
+      if(counter>1 || !cb->cameraFeedTrigger)//If the flag is closed then, exit
+      {
+        LOGE( "cb->cameraFeedTrigger is off return..");
+        return;
+      }
+    }
+  }
+
+
+
   clock_t t = clock();
 
   static acvImage test1_buff;
@@ -2008,24 +2101,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
   stackingC++;
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-
-
-  {
-
-    using Ms = std::chrono::milliseconds;
-    int counter =0;
-    while(!mainThreadLock.try_lock_for(Ms(100)))//Lock and wait 100 ms
-    {
-      LOGE( "try lock");
-      counter++;
-      //Still locked
-      if(counter>1 || !cb->cameraFeedTrigger)//If the flag is closed then, exit
-      {
-        LOGE( "cb->cameraFeedTrigger is off return..");
-        return;
-      }
-    }
-  }
 
   BPG_data bpg_dat;
   do{
@@ -2140,9 +2215,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       {
         iminfo.scale=1;
       }
+
+      iminfo.offsetX=(ImageCropX/iminfo.scale)*iminfo.scale;
+      iminfo.offsetY=(ImageCropY/iminfo.scale)*iminfo.scale;
+      int cropW=ImageCropW;
+      int cropH=ImageCropH;
       
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map,downSampWithCalib);
+      ImageDownSampling(test1_buff,capImg,iminfo.scale,cam_param.map,downSampWithCalib,
+        iminfo.offsetX,iminfo.offsetY,cropW,cropH
+      );
       bpg_dat.callbackInfo = (uint8_t*)&iminfo;
       bpg_dat.callback=DatCH_BPG_acvImage_Send;
       bpg_dat.pgID= cb->CI_pgID;
