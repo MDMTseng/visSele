@@ -2036,17 +2036,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             }
           }
         }
-        // for(int i=0;i<s_points.size();i++)
-        // {
-        //   acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
-        //   int X = round(p.X);
-        //   int Y = round(p.Y);
 
-          
-        //   acvDrawCrossX(originalImage,
-        //     X,Y,
-        //     8,255,100,255,8);
-        // }
 
 
         if(s_points.size()>10)
@@ -2141,11 +2131,35 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             float distThres = s_points[s_points.size()/3].tmp+3;
             LOGV("sort finish size:%d, distThres:%f",s_points.size(),distThres);
 
-            for(int n=s_points.size()/3;n<s_points.size();n++)
+            // for(int n=s_points.size()/3;n<s_points.size();n++)
+            // {
+            //   usable_L=n;
+            //   if(s_points[n].tmp>distThres)break;
+            // }
+
+
+            if(0)for(int i=0;i<s_points.size();i++)
             {
-              usable_L=n;
-              if(s_points[n].tmp>distThres)break;
+              if(s_points[i].tmp>distThres)break;
+              acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
+              int X = round(p.X);
+              int Y = round(p.Y);
+
+              if(k==0)
+              {
+                acvDrawCrossX(originalImage,
+                  X,Y,
+                  8,255,100,255,8);
+              }
+              else
+              {
+                acvDrawCrossX(originalImage,
+                  X,Y,
+                  4,0,255,255,4);
+              }
+              
             }
+            usable_L=s_points.size();
 
             //usable_L=usable_L*10/11;//back off
             LOGV("usable_L:%d/%d  minSigma:%f=>%f",
@@ -2206,7 +2220,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
                 if(diff<distThres/5)
                 {
                   pdistThres=s_points[n].tmp;
-                  s_points[n].curvature=1;
+                  s_points[n].curvature=0.5;
                   continue;
                 }
 
@@ -2241,7 +2255,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
                 if(diff<distThres/5)
                 {
                   pdistThres=s_points[n].tmp;
-                  s_points[n].curvature=0.7;
+                  s_points[n].curvature=0.5;
                   continue;
                 }
                 //The difference is too much mark ignore 
