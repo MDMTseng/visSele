@@ -289,11 +289,11 @@ int X=-1,int Y=-1,int W=-1, int H=-1)
       int RSum=0,GSum=0,BSum=0;
       int src_j = j*downScale;
 
-      if(map)
+      if(1)
       {
         float coord[]={(float)src_j,(float)src_i};
         int ret = 0;
-        if(doMap)
+        if(map&&doMap)
         {
           ret = map->c2i(coord);
         }
