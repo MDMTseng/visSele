@@ -311,6 +311,7 @@ class renderUTIL
     let point_onAlignLine=null;
     let point=null;
 
+    ctx.lineWidth=this.getIndicationLineSize();
     
     let db_obj = this.db_obj;
     point_onAlignLine = db_obj.shapeMiddlePointParse(refObjs[0],shapeList);
@@ -669,7 +670,8 @@ class renderUTIL
             ctx.fillStyle=ShapeColor;  
             
           }
-
+          
+          ctx.lineWidth=this.getIndicationLineSize();
           switch(eObject.subtype)
           {
             case SHAPE_TYPE.measure_subtype.distance:
@@ -915,7 +917,6 @@ class renderUTIL
                 -(eObject.inspection_value-eObject.value)/(eObject.LSL-eObject.value);
                 text +=":"+(marginPC*100).toFixed(1)+"%";
 
-
                 ctx.strokeStyle="black";
                 ctx.lineWidth=this.getIndicationLineSize()/3;
 
@@ -992,7 +993,7 @@ class renderUTIL
       {
         case SHAPE_TYPE.line:
         {
-          ctx.lineWidth=2*this.getPrimitiveSize();
+          ctx.lineWidth=this.getIndicationLineSize();;
           this.drawReportLine(ctx, {
             x0:eObject.pt1.x,y0:eObject.pt1.y,
             x1:eObject.pt2.x,y1:eObject.pt2.y,
@@ -1005,7 +1006,7 @@ class renderUTIL
         {
           //ctx.strokeStyle=eObject.color; 
           let arc = threePointToArc(eObject.pt1,eObject.pt2,eObject.pt3);
-          ctx.lineWidth=2*this.getPrimitiveSize();
+          ctx.lineWidth=this.getIndicationLineSize();
           this.drawReportArc(ctx, arc);
           
 
@@ -1017,7 +1018,7 @@ class renderUTIL
           ctx.strokeStyle="rgba(179, 0, 0,0.5)";  
           this.drawpoint(ctx,eObject.pt1,"cross",150*this.getPointSize()/this.camCtrl.GetCameraScale());
           
-          ctx.lineWidth=this.getPointSize()*2;
+          ctx.lineWidth=this.getIndicationLineSize();
         }
         break;
         case SHAPE_TYPE.aux_point:
@@ -1030,6 +1031,7 @@ class renderUTIL
 
           if(eObject.id === undefined)break;
 
+          ctx.lineWidth=this.getIndicationLineSize();
           let point = this.db_obj.auxPointParse(eObject,shapeList);
           if(point !== undefined && subObjs.length ==2 )
           {//Draw crosssect line
@@ -1323,17 +1325,15 @@ class EverCheckCanvasComponent_proto{
     let ViewPortW=this.canvas.width-2*ViewPortX;
     let ViewPortH=this.canvas.height-2*ViewPortY;
     let totalScale = this.camera.GetCameraScale();
-    log.info(this.canvas.width,this.canvas.height,totalScale);
     let offset = this.camera.GetCameraOffset();
     
 
-    let mmpp = this.db_obj.getsig360info_mmpp();
     
     let crop = [
-      (ViewPortX-offset.x-this.canvas.width/2)/totalScale/mmpp,
-      (ViewPortY-offset.y-this.canvas.height/2)/totalScale/mmpp,
-      ViewPortW/totalScale/mmpp,
-      ViewPortH/totalScale/mmpp];
+      (ViewPortX-offset.x-this.canvas.width/2)/totalScale,
+      (ViewPortY-offset.y-this.canvas.height/2)/totalScale,
+      ViewPortW/totalScale,
+      ViewPortH/totalScale];
     let down_samp_level = 1.0*crop[2]/(this.canvas.width);
     this.EmitEvent(
       {

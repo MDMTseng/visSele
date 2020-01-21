@@ -1229,16 +1229,24 @@ class CanvasComponent extends React.Component {
           case "asdasdas":
               // log.error(event);
               // this.props.ACT_ERROR();
-              let down_samp_level = Math.floor(event.data.down_samp_level*2)+1;
+
+              let rep = this.props.camera_calibration_report.reports[0];
+              let mmpp=rep.mmpb2b/rep.ppb2b;
+
+              let crop = event.data.crop.map(val=>val/mmpp);
+              let down_samp_level = Math.floor(event.data.down_samp_level/mmpp*2)+1;
               if(down_samp_level<=0)down_samp_level=1;
               else if(down_samp_level>15)down_samp_level=15;
+              
+              
+              log.info(crop,down_samp_level);
               this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
               {
                 CameraSetting:{
                   down_samp_level
                 },
                 ImageTransferSetup:{
-                  crop:event.data.crop
+                  crop
                 }
               });
           break;
@@ -2089,7 +2097,8 @@ class APP_INSP_MODE extends React.Component {
                     <CanvasComponent_rdx addClass={"layout WXF"+" height"+CanvasWindowRatio} 
                       ACT_WS_SEND={this.props.ACT_WS_SEND}
                       WS_ID={this.props.WS_ID}
-                      onCanvasInit={(canvas) => {this.ec_canvas = canvas}}/>}
+                      onCanvasInit={(canvas) => {this.ec_canvas = canvas}}
+                      camera_calibration_report={this.props.camera_calibration_report}/>}
                 
                 {(CanvasWindowRatio>=12)?null:
                     <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} 
