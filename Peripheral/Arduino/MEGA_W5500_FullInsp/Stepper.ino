@@ -168,7 +168,7 @@ uint32_t countSkip = 0;
 #define DEBOUNCE_THRES 5
 #define OBJECT_SEP_THRES (150/2)
 
-uint32_t pre_pulse=0;
+uint32_t step_thres_pulse_down=0;
 void task_gateSensing()
 {
   
@@ -180,6 +180,11 @@ void task_gateSensing()
     gateInfo.debunce = 0;
   }
   else if (gateInfo.debunce <= DEBOUNCE_THRES)gateInfo.debunce++;
+
+  if(step_thres_pulse_down!=0)
+  {
+    step_thres_pulse_down--;
+  }
 
   if (gateInfo.debunce == DEBOUNCE_THRES)
   {
@@ -195,7 +200,6 @@ void task_gateSensing()
     {
       if (gateInfo.state != cur_Sense)
       {
-
         gateInfo.end_pulse = logicPulseCount;
         if (gateInfo.start_pulse > gateInfo.end_pulse)
         {
@@ -211,31 +215,20 @@ void task_gateSensing()
           middle_pulse = mod_sim(middle_pulse-DEBOUNCE_THRES,perRevPulseCount);
         }
 
-        bool accept_pulse=false;
+        bool accept_pulse=(step_thres_pulse_down==0);
         
-        {
-          uint32_t mid_pre_dist;
-
-          mid_pre_dist=(middle_pulse>pre_pulse)?
-            perRevPulseCount+middle_pulse-pre_pulse:
-            middle_pulse-pre_pulse;
-          pre_pulse=middle_pulse;
-          accept_pulse=(mid_pre_dist<OBJECT_SEP_THRES)?false:true;
-        }
-
         if(!accept_pulse)
         {
           //remove previous object
           RBuf.pullHead();
           pipeLineInfo* head = RBuf.getHead();
-          pre_pulse=(head==NULL)?
-            perRevPulseCount*3/2:
-            head->gate_pulse;
+          step_thres_pulse_down=0;
         }
         
         pipeLineInfo* head = RBuf.getHead();
         if (accept_pulse && head != NULL)
         {
+          accept_pulse=OBJECT_SEP_THRES;
           head->gate_pulse = middle_pulse;
           head->stage = 0;
           next_state(head);
@@ -269,7 +262,6 @@ void task_gateSensing()
     }
     gateInfo.state = cur_Sense;
   }
-
   gateInfo.pre_Sense = gateInfo.cur_Sense;
   gateInfo.cur_Sense = cur_Sense;
 

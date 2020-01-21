@@ -760,7 +760,7 @@ void errorLOG(GEN_ERROR_CODE code,char* errorLog)
     ERROR_HIST.pushHead();
   }
 
-  {
+  if(0){
     uint8_t errBuff[100];
     uint8_t errBuffL=0;
     errBuffL+=sprintf(errBuff+errBuffL,"{");

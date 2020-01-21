@@ -673,11 +673,15 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           vec =  acvRotation(sin(angle),cos(angle),1,vec);//No need to do the flip rotation 
           LOGV("Angle:%f",angle*180/M_PI);
           LOGV("line vec:%f %f",vec.X,vec.Y);
+
         }
 
         acv_XY pt = acvRotation(sine,cosine,flip_f,def.data.anglefollow.position);//Rotate the default point
         pt=acvVecAdd(pt,labeledData.Center);
-        
+        if(flip_f>0)
+        {
+          vec = acvVecMult(vec,-1);
+        }
         float width = def.width;
         float margin = def.margin;
 
@@ -690,6 +694,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         LOGV("searchVec:%f %f",searchVec.X,searchVec.Y);
         if(0)
         {
+            
+
           acvDrawLine(originalImage,
             pt.X,
             pt.Y,
@@ -711,25 +717,20 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
         m_sections.resize(0);
 
-        if(flip_f>0)
-        {
-          searchVec = acvVecMult(searchVec,-1);
-        }
-
 
 
         acv_Line line={searchVec_nor,pt};
         acv_Line start_line=line;
 
-        start_line.line_anchor = acvVecMult(searchVec,0);//back margin vector
+        start_line.line_anchor = acvVecMult(searchVec,-999);//back margin vector
         start_line.line_anchor=acvVecAdd(start_line.line_anchor,line.line_anchor);//add line_anchor
 
         edge_grid.getContourPointsWithInLineContour(line,
           width/2,
           margin,
-          -1,m_sections,999999);
+          1,m_sections,999999);
 
-        float nearestDist=99999;
+        float nearestDist=99999999;
         acv_XY nearestPt;
 
         // for( auto &section_info:m_sections)
@@ -748,7 +749,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         {
           for( auto &pt_info:section_info.section)
           {
-            float dist =  acvDistance_Signed(start_line,pt_info.pt);
+            float dist = acvDistance(start_line,pt_info.pt);
             if(nearestDist>dist)
             {
               nearestPt = pt;
@@ -759,13 +760,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         }
         LOGI("nearestDist:%f",nearestDist);
 
-        if(nearestDist<10000&&best_section_info!=NULL)
+        if(nearestDist<99999999&&best_section_info!=NULL)
         {
           float accC=0;
           nearestPt = acvVecMult(nearestPt,0);
           for( auto &pt_info:best_section_info->section)
           {
-            float dist =  acvDistance_Signed(start_line,pt_info.pt);
+            float dist =  acvDistance(start_line,pt_info.pt);
             float reng=2;
             if(nearestDist+reng>dist)
             {

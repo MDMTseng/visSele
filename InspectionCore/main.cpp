@@ -1951,8 +1951,16 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     return;
   clock_t t = clock();
   double interval = ((double)t - pframeT) / CLOCKS_PER_SEC * 1000;
-  LOGI("frameInterval:%fms \n", interval);
-  if(interval<70)return;//if the interval less than 70ms then... skip this frame
+  if(!doImgProcessThread)
+  {
+    int skip_int=70;
+    LOGI("frameInterval:%fms \n", interval);
+    if(interval<skip_int)
+    {
+      LOGI("interval is less than skip_int:%d ms \n", skip_int);
+      return;//if the interval less than 70ms then... skip this frame
+    }
+  }
   pframeT=t;
   LOGV("cb->cameraFeedTrigger:%d",cb->cameraFeedTrigger); 
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
