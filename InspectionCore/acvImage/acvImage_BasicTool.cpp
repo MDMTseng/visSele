@@ -2,6 +2,7 @@
 #include <math.h>
 #include "acvImage.hpp"
 #include "acvImage_BasicTool.hpp"
+#include "algorithm"
 
 void acvThreshold(acvImage *Pic, BYTE Var, int channel)
 {
