@@ -39,13 +39,15 @@ app.get('/', function(req, res, next){
 
 function queryParamParse(req)
 {
-    console.log(req.query.tStart);
-    console.log(req.query.tEnd);
+    let tStart = parseInt(req.query.tStart);
+    if(tStart!==tStart)tStart = req.query.tStart
+    let tEnd = parseInt(req.query.tEnd);
+    if(tEnd!==tEnd)tEnd = req.query.tEnd
 
-    console.log(req.query.tEnd);
 
-    let start_MS = (new Date(req.query.tStart)).getTime();
-    let endd=new Date(req.query.tEnd).getTime();
+    
+    let start_MS = (new Date(tStart)).getTime();
+    let endd=new Date(tEnd).getTime();
     let end_MS = (endd==endd)?endd:new Date().getTime();
     // let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS},"InspectionData.subFeatureDefSha1"};
     let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS}};
@@ -53,9 +55,6 @@ function queryParamParse(req)
     {
         qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
     }
-    console.log(start_MS);
-    console.log(end_MS);
-    console.log(qStr);
     return qStr;
 }
 
@@ -165,7 +164,6 @@ function inspection_result_query(req, res)
     //page={int} page number starts from 1
     //limit={int} maximum query result in this page, 1000 by default
 
-    console.log(req.query.tEnd);
     let projection=req.query.projection;
 
     try{
@@ -183,8 +181,7 @@ function inspection_result_query(req, res)
 
     if(queryLimit===undefined)queryLimit=1000;
 
-    console.log(qStr,queryPage,queryLimit);
-    mdb_connector.query("Inspection",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
+    mdb_connector.query("Inspection",qStr,projection).limit(queryLimit).skip((queryPage-1)*queryLimit).
     then((result)=>{
         // console.log(result);
         if(req.query.callback===undefined)//normal ajax
