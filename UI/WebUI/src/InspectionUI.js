@@ -2103,9 +2103,9 @@ class APP_INSP_MODE extends React.Component {
                 {(CanvasWindowRatio>=12)?null:
                     <DataStatsTable className={"s scroll WXF"+" height"+(12-CanvasWindowRatio)} 
                         reportStatisticState={this.props.reportStatisticState}/>}
-                {/* <RAW_InspectionReportPull 
+                <RAW_InspectionReportPull 
                     reportStatisticState={this.props.reportStatisticState} 
-                    url= "ws://hyv.decade.tw:8080/"/> */}
+                    url= "ws://hyv.decade.tw:8080/"/> 
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
                         style={{opacity:menuOpacity,width:"250px"}}> 
