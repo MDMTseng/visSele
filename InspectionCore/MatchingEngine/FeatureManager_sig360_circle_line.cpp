@@ -728,7 +728,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         edge_grid.getContourPointsWithInLineContour(line,
           width/2,
           margin,
-          1,m_sections,999999);
+          0,m_sections,999999);
 
         float nearestDist=99999999;
         acv_XY nearestPt;
