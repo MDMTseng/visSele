@@ -2075,6 +2075,8 @@ class APP_INSP_MODE extends React.Component {
             let ROI=this.state.ROIs[ev.key];
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
               {CameraSetting:{ROI}})
+              
+            this.setState({ROI_key:ev.key});
             }
             }>
             {Object.keys(this.state.ROIs)
@@ -2088,7 +2090,7 @@ class APP_INSP_MODE extends React.Component {
         );
         MenuSet_2nd.push(<Dropdown overlay={menu_}>
           <a className="HX1 layout palatte-blue-8 vbox width6" href="#">
-            {}
+            {this.state.ROI_key}
             <Icon type="down" />
           </a>
         </Dropdown>);
