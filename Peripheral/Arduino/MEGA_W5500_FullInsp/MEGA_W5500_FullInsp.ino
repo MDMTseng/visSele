@@ -522,7 +522,7 @@ class Websocket_FI:public Websocket_FI_proto{
           buffX+=retL;
         }
         
-
+        noInterrupts();
         for(int i=0;i<RBuf.size();i++)
         {
           pipeLineInfo* pipe=RBuf.getTail(i);
@@ -538,6 +538,10 @@ class Websocket_FI:public Websocket_FI_proto{
             break;
           }
         }
+        interrupts();
+
+
+        
         if(ret_status)
         {
           DEBUG_print("ERROR:ret_status=");
