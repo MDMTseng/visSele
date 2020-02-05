@@ -1861,7 +1861,9 @@ class APP_INSP_MODE extends React.Component {
         this.state={
             GraphUIDisplayMode:0,
             CanvasWindowRatio:9,
-            InspStyle:undefined
+            InspStyle:undefined,
+            ROIs:{},
+            ROI_key:undefined
         };
 
         this.CameraCtrl=new CameraCtrl({
@@ -1874,6 +1876,24 @@ class APP_INSP_MODE extends React.Component {
             }
         });
         // this.IR = undefined;
+
+
+        
+        new Promise((resolve, reject) => {
+          this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+            {filename:"data/default_camera_setting.json"},
+            undefined,{resolve,reject}
+          );
+          setTimeout(()=>reject("Timeout"),2000)
+        }).then((pkts) => {
+          if(pkts[0].type!="FL")return;
+          let cam_setting = pkts[0].data;
+          if(typeof cam_setting.ROIs !== 'object')return;
+          let ROIs = cam_setting.ROIs;
+          console.log(">>>>",ROIs);
+          this.setState({ROIs,ROI_key:undefined});
+        }).catch((err) => {})
+        
     }
 
     
@@ -2045,36 +2065,33 @@ class APP_INSP_MODE extends React.Component {
           addClass="layout palatte-blue-8 vbox width6"
           text={""}
           onClick={() => 
-                
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
             {LoadCameraSetup:"data/"})
-                
           }/>);
         
-        
-        MenuSet_2nd.push(
-          <BASE_COM.IconButton
-          dict={EC_zh_TW}
-          key="ZOOM IN"
-          addClass="layout palatte-blue-8 vbox width6"
-          iconType="zoom-in"
-          text={""}
-          onClick={() => 
+        const menu_ = (
+          <Menu  onClick={(ev)=>{
+            console.log(ev);
+            let ROI=this.state.ROIs[ev.key];
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
-            {
-              CameraSetting:{
-                //"ROI":[0.3,0.3,0.4,0.4],
-                //"ROI":[0.4,0.4,0.20,0.20],
-                //"ROI":[200,200,600,600],
-                // "mirror":[0,1],
-                "down_samp_w_calib":false,
-                "down_samp_level":1,
-                
-              },
-              ImageTransferSetup:{
-                crop:[700,700,700,700]
-              }
-          })}/>);
+              {CameraSetting:{ROI}})
+            }
+            }>
+            {Object.keys(this.state.ROIs)
+                .map((ROI_key,idx)=>
+                  <Menu.Item  key={ROI_key}>
+                    <a target="_blank" rel="noopener noreferrer">
+                      {ROI_key}
+                    </a>
+                  </Menu.Item>)}
+          </Menu>
+        );
+        MenuSet_2nd.push(<Dropdown overlay={menu_}>
+          <a className="HX1 layout palatte-blue-8 vbox width6" href="#">
+            {}
+            <Icon type="down" />
+          </a>
+        </Dropdown>);
         
         MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
           reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
