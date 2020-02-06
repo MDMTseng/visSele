@@ -429,7 +429,7 @@ float SignatureMatchingError(const acv_XY *signature, int offset,
                              const acv_XY *tar_signature, int arrsize, int stride)
 {
     float errorSum = 0;
-
+    if(offset<0)offset+=arrsize;
     float epsilon=0.01;
     for (int i=0; i < arrsize; i += stride)
     {
@@ -540,10 +540,9 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
         }
     }
 
-
-    minErrOffset%=tar_signature.size();
     if (minErrOffset < 0)
         minErrOffset += tar_signature.size();
+    minErrOffset%=tar_signature.size();
 
     if (min_error)
         *min_error = minErr;
