@@ -1779,6 +1779,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           .RBBound=ldData[i].RBBound,
           .Center=ldData[i].Center,
           .area=(float)ldData[i].area,
+          .pix_area=ldData[i].area,
+          .labeling_idx=i,
           .rotate=angle,
           .isFlipped=isInv,
           .scale=1,

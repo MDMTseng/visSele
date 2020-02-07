@@ -2136,6 +2136,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         {
             vector<const FeatureReport*> &reports = 
             *(report->data.binary_processing_group.reports);
+
+            vector<acv_LabeledData> *ldat=report->data.binary_processing_group.labeledData;
+
             if(reports.size()==1 && reports[0]->type==FeatureReport::sig360_circle_line)
             {
                 vector<FeatureReport_sig360_circle_line_single> &srep=
@@ -2144,8 +2147,20 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
                 if(srep.size()==1)//only one detected objects in scence is allowed
                 {
-                  vector<FeatureReport_judgeReport> &jrep= *(srep[0].judgeReports);
-                  stat=InspStatusReduce(jrep);
+                  int pix_area = (*ldat)[srep[0].labeling_idx].area;
+                  
+                  int totalArea=0;
+                  for(int i=1;i<ldat->size();i++)
+                  {
+                    totalArea+= (*ldat)[i].area;
+                  }
+                  float extra_area_ratio=(float)(totalArea-pix_area)/totalArea;
+                  LOGI("totalArea:%d rep_area:%d extra_area_ratio:%f",totalArea,pix_area,extra_area_ratio);
+                  if(extra_area_ratio<0.1)
+                  {
+                    vector<FeatureReport_judgeReport> &jrep= *(srep[0].judgeReports);
+                    stat=InspStatusReduce(jrep);
+                  }
                 }
                 // for(int k=0;k<srep.size();k++)//For two or more objects in one scence
                 // {

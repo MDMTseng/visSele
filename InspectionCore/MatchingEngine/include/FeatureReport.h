@@ -193,6 +193,8 @@ typedef struct FeatureReport_sig360_circle_line_single{
   acv_XY RBBound;
   acv_XY Center;
   float area;
+  int pix_area;
+  int labeling_idx;
   float rotate;
   bool  isFlipped;
   float scale;
