@@ -2,8 +2,8 @@
 export default {
     fallback:{
         ReconnectAirDevice:"重新連接噴氣裝置",
-        line:"量測線段/Line",
-        arc:"量測弧/Arc",
+        line:"線段/Line",
+        arc:"弧/Arc",
         spoint:"搜尋點/SPOINT",
         search_point:"搜尋點",
         
@@ -31,6 +31,7 @@ export default {
         distance:"距離/D",
         angle:"角度/A",
         radius:"半徑/R",
+        calc:"計算/C",
         name:"名稱",
         docheck:"必要判定",
         DefFileName:"設定檔名",

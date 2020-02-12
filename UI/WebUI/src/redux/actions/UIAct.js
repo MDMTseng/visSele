@@ -39,24 +39,26 @@ export const SHAPE_TYPE = {
   line:"line",
   arc:"arc",
   aux_point:"aux_point",
-  aux_line:"aux_line",
+  //aux_line:"aux_line",
   search_point:"search_point",
 
   measure:"measure",
   measure_subtype:{
     NA:"NA",
-    sigma:"sigma",
+    //sigma:"sigma",
     distance:"distance",
     angle:"angle",
     radius:"radius",
+    //calc:"calc",
   }
 
 };
 export const DEFAULT_UNIT = {
-  [SHAPE_TYPE.measure_subtype.sigma]:"",
+  [SHAPE_TYPE.measure_subtype.sigma]:"mm",
   [SHAPE_TYPE.measure_subtype.distance]:"mm",
   [SHAPE_TYPE.measure_subtype.angle]:"º",
-  [SHAPE_TYPE.measure_subtype.radius]:"mm"
+  [SHAPE_TYPE.measure_subtype.radius]:"mm",
+  [SHAPE_TYPE.measure_subtype.calc]:"",
 
 }
 
