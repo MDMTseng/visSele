@@ -424,7 +424,7 @@ function StateReducer(newState,action)
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
                   //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  //if(srep_inWindow.repeatTime>0)
+                  if(srep_inWindow.repeatTime>2 && srep_inWindow.headSkipTime==0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     
@@ -437,11 +437,13 @@ function StateReducer(newState,action)
                     }
                     reportStatisticState.newAddedReport.push(srep_inWindow);
                   }
-                  // else
-                  // {
-                  //   log.error("the current data only gets single sampling ignore",
-                  //   "this error case is to remove abnormal sample that's caused by air blow");
-                  // }
+                  else
+                  {
+                    log.error("the current data only gets single sampling ignore",
+                    "this error case is to remove abnormal sample that's caused by air blow");
+                    log.error("repeatTime:",srep_inWindow.repeatTime)
+                    log.error("headSkipTime:",headSkipTime.repeatTime)
+                  }
                   return false;
                 });
             
@@ -621,6 +623,16 @@ function StateReducer(newState,action)
                   //closeRep.seq.push(singleReport);//Push current report into the sequence
                   closeRep.time_ms = currentTime_ms;
                   closeRep.repeatTime+=1;
+                  if(closeRep.headSkipTime>0)
+                  {
+                    closeRep.headSkipTime--;
+                    //When down to zero, reset repeatTime
+                    //Zero repeatTime will let next incoming data to overwrite current data
+                    if(closeRep.headSkipTime==0)
+                    {
+                      closeRep.repeatTime=0;
+                    }
+                  }
                   closeRep.isCurObj=true;
                 }
                 else
@@ -634,7 +646,8 @@ function StateReducer(newState,action)
                   treport.subFeatureDefSha1=subFeatureDefSha1;
                   treport.tag=inspOptionalTag;
                   treport.machine_hash=machine_hash;
-                  treport.repeatTime=0;
+                  treport.repeatTime=1;
+                  treport.headSkipTime=3;
                   //treport.seq=[singleReport];
                   treport.isCurObj=true;
                   reportStatisticState.trackingWindow.push(treport);
