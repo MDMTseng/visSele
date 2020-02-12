@@ -1194,6 +1194,14 @@ function StateReducer(newState,action)
                     " Only accepts line");
                   acceptData=false;
                 }
+                
+                case SHAPE_TYPE.measure_subtype.calc://Has to be an line to measure
+                if(cand.shape.type!=SHAPE_TYPE.measure)
+                {
+                  log.info("Error: "+ subtype+ 
+                    " Only accepts measure");
+                  acceptData=false;
+                }
               break;
                 default :
                   log.info("Error: "+ subtype+ " is not in the measure_subtype list");
@@ -1217,6 +1225,15 @@ function StateReducer(newState,action)
                 case SHAPE_TYPE.measure_subtype.radius:
                   newState.edit_info.edit_tar_info.ref=[{}];
                 break;
+                
+                case SHAPE_TYPE.measure_subtype.calc:
+                  newState.edit_info.edit_tar_info.ref=[{},{},{},{}];
+                  newState.edit_info.edit_tar_info.calc_f={
+                    exp:"",
+                    post_exp:[]
+                  };
+                break;
+
                 case SHAPE_TYPE.measure_subtype.distance:
                     newState.edit_info.edit_tar_info.ref=[{},{}];
                     newState.edit_info.edit_tar_info.ref_baseLine={};

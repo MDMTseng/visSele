@@ -91,6 +91,11 @@ export class JsonElement extends React.Component{
           {translateValue}</button>
       case "div":
       default:
+        if(this.props.renderLib!==undefined && this.props.renderLib[this.props.type]!==undefined)
+        {
+          let renderFunc = this.props.renderLib[this.props.type];
+          return renderFunc(this.props);
+        }
         return <div key={this.props.id} className={this.props.className} >{translateValue} </div>
       
     }
@@ -147,18 +152,37 @@ export class JsonEditBlock extends React.Component{
           translateKey = key;
         }
 
+        let Render_comp=undefined;
+        if(typeof displayMethod.__OBJ__==="function")
+        {
+          Render_comp = displayMethod.__OBJ__;
+        }
+        else if(this.props.renderLib!==undefined 
+          && typeof this.props.renderLib[displayMethod.__OBJ__]==="function")
+        {
+          Render_comp = this.props.renderLib[displayMethod.__OBJ__];
+        }
+
+        if(Render_comp!==undefined)
+        {
+          rows.push(
+            Render_comp({
+              className:"s WXF vbox black",
+              onChange:this.onChangeX.bind(this),
+              target:{obj:obj,keyTrace:newkeyTrace},
+              displayMethod
+            }));
+          continue;
+        }
+        
+
         switch(typeof ele)
         {
           case "string":
           case "boolean":
           case "number":
             if(displayMethod==null)displayMethod="div";
-
-
-
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
-
-
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={displayMethod}
               target={{obj:obj,keyTrace:newkeyTrace}}
               dict={this.props.dict}
@@ -166,7 +190,6 @@ export class JsonEditBlock extends React.Component{
           break;
           case "object":
           {
-
             rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
             let obj_disp_type = (displayMethod==null)?"div":displayMethod.__OBJ__;
             if(obj_disp_type == undefined)obj_disp_type="div";
@@ -375,6 +398,7 @@ export class BPG_FileBrowser_proto extends React.Component{
 
     this.fetchDirFiles(path)
     .then((data) => {
+      console.log("fetchDirFiles OK:",data)
       let folderStruct={}
       if(data[1].data.ACK)
       {
@@ -387,6 +411,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       }
     })
     .catch((err) => {
+      console.log("fetchDirFiles exception",err)
       this.setState({...this.state,folderStruct:[]});
       if(this.props.onFolderLoaded!==undefined)
       {

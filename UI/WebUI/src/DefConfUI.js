@@ -2,7 +2,7 @@
    
 
 import { connect } from 'react-redux'
-import React from 'react';
+import React, { useState } from 'react';
 import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 let BPG_FileBrowser=BASE_COM.BPG_FileBrowser;
@@ -26,7 +26,7 @@ import Checkbox from "antd/lib/checkbox";
 import  InputNumber  from 'antd/lib/input-number';
 import  Input  from 'antd/lib/input';
 
-import  Divider  from 'antd/lib/divider';
+import Divider  from 'antd/lib/divider';
 import Dropdown from 'antd/lib/Dropdown'
 import Slider  from 'antd/lib/Slider';
 import EC_zh_TW from './languages/zh_TW';
@@ -202,6 +202,55 @@ class DList extends React.Component {
   }
 }
 
+
+
+class Measure_Calc_Editor extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      OK:false
+    };
+  }
+  render() {
+    log.info(this.props);
+    let target = this.props.target;
+    let ele = GetObjElement(target.obj,target.keyTrace);
+
+    
+    let fx = ele;
+
+    const menu_ = (
+      <Menu  onClick={(ev)=>{
+        console.log(ev)
+        }
+        }>
+        {this.props.measure_list
+            .map((m,idx)=>
+              <Menu.Item  key={idx}>
+                <a target="_blank" rel="noopener noreferrer">
+                  {m.id}
+                </a>
+              </Menu.Item>)}
+      </Menu>
+    );
+    let xxx=<Dropdown overlay={menu_}>
+      <a className="HX1 layout palatte-blue-8 vbox width6" href="#">
+        aaa
+      </a>
+    </Dropdown>;
+    return <Input
+      placeholder={fx.exp}
+      onChange={(ev)=>{
+
+        let xxx =Exp2PostfixExp(ev.target.value);
+
+        console.log(xxx)
+      }}
+    />
+  }
+}
+
+
 class APP_DEFCONF_MODE extends React.Component{
 
 
@@ -279,7 +328,7 @@ class APP_DEFCONF_MODE extends React.Component{
         dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
-            //id:"div",
+            id:"div",
             type:"div",
             subtype:"div",
             name:"input",
@@ -307,7 +356,7 @@ class APP_DEFCONF_MODE extends React.Component{
               ...[0,1,2].reduce((acc,key)=>{
                 acc[key+""]=
                   {__OBJ__:"btn",
-                id:"div",
+                  id:"div",
                   element:"div"};
                 return acc;
               },{})
@@ -760,22 +809,32 @@ class APP_DEFCONF_MODE extends React.Component{
       {
         console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
-        
         MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={EC_zh_TW}
           key="BASE_COM.JsonEditBlock"
-
           whiteListKey={{
             //id:"div",
             name:"input",
             //pt1:null,
             subtype:"div",
+            calc_f:{
+              __OBJ__:(param)=>{
+                // log.info(param);
+                // let target = param.target;
+                // let ele = GetObjElement(target.obj,target.keyTrace);
+                // return <input key={this.props.id} className={this.props.className} type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+                //   value={translateValue}
+                //   onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+                return <Measure_Calc_Editor {...param} measure_list={this.props.shape_list.filter(s=>s.type==UIAct.SHAPE_TYPE.measure)}/>
+              }
+            },
             ref:{__OBJ__:"div",
-              0:{__OBJ__:"btn",
-                id:"div",
-                element:"div"},
-              1:{__OBJ__:"btn",
-                id:"div",
-                element:"div"},
+              ...[0,1,2,3,4,5,6,7,8,9].reduce((acc,key)=>{
+                acc[key+""]=
+                  {__OBJ__:"btn",
+                  id:"div",
+                  element:"div"};
+                return acc;
+              },{})
             },
             ref_baseLine:{
               __OBJ__:"btn",
@@ -1101,19 +1160,19 @@ class APP_DEFCONF_MODE extends React.Component{
       <Modal
         {...this.state.modal_view}
         visible={this.state.modal_view!==undefined}
-            onCancel={(param)=>{
+        onCancel={(param)=>{
           if(this.state.modal_view.onCancel!==undefined)
           {
             this.state.modal_view.onCancel(param);
-            }
+          }
           this.setState({...this.state,modal_view:undefined});
-              }}
-          
+          }}
+        
         onOk={(param)=>{
           if(this.state.modal_view.onOk!==undefined)
-              {
+          {
             this.state.modal_view.onOk(param);
-            }
+          }
           this.setState({...this.state,modal_view:undefined});
           }}>
           {this.state.modal_view===undefined?null:this.state.modal_view.view_update()}

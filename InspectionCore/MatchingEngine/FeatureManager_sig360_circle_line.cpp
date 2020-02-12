@@ -1291,6 +1291,16 @@ int FeatureManager_sig360_circle_line::parse_jobj()
          return -1;
        }
      }
+     else if(strcmp(feature_type, "aux_line")==0)
+     {
+       LOGE("TODO: feature[%d] feature[%d] ",i,feature_type);
+       return -1;
+     }
+     else if(strcmp(feature_type, "measure_calc")==0)
+     {
+       LOGE("TODO: feature[%d] feature[%d] ",i,feature_type);
+       return -1;
+     }
      else
      {
        LOGE("feature[%d] has unknown type:[%s]",i,feature_type);
