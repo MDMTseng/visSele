@@ -15,15 +15,19 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {round as roundX,websocket_autoReconnect,websocket_reqTrack,dictLookUp,undefFallback} from 'UTIL/MISC_Util';
+import {round as roundX,websocket_autoReconnect,
+  websocket_reqTrack,dictLookUp,undefFallback,GetObjElement,Exp2PostfixExp,PostfixExpCalc} from 'UTIL/MISC_Util';
 import JSum from 'jsum';
 import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
+import Menu from "antd/lib/menu";
 import Checkbox from "antd/lib/checkbox";
 import  InputNumber  from 'antd/lib/input-number';
+import  Input  from 'antd/lib/input';
 
 import  Divider  from 'antd/lib/divider';
+import Dropdown from 'antd/lib/Dropdown'
 import Slider  from 'antd/lib/Slider';
 import EC_zh_TW from './languages/zh_TW';
 
@@ -252,7 +256,7 @@ class APP_DEFCONF_MODE extends React.Component{
     this.state={
       fileSelectedCallBack:undefined,
       fileSavingCallBack:undefined,
-      showSetup:false
+      modal_view:undefined
     }
   }
 
@@ -300,12 +304,14 @@ class APP_DEFCONF_MODE extends React.Component{
             docheck:"checkbox",
             width:"input-number",
             ref:{__OBJ__:"div",
-              0:{__OBJ__:"btn",
+              ...[0,1,2].reduce((acc,key)=>{
+                acc[key+""]=
+                  {__OBJ__:"btn",
                 id:"div",
-                element:"div"},
-              1:{__OBJ__:"btn",
-                id:"div",
-                element:"div"},
+                  element:"div"};
+                return acc;
+              },{})
+             
             },
             ref_baseLine:{
               __OBJ__:"btn",
@@ -485,11 +491,11 @@ class APP_DEFCONF_MODE extends React.Component{
           key="APOINT"
           text="apoint" onClick={()=>this.props.ACT_Aux_Point_Add_Mode()}/>,
         
-        <BASE_COM.IconButton
-          dict={EC_zh_TW}
-          addClass="layout palatte-blue-8 vbox"
-          key="ALINE"
-          text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
+        // <BASE_COM.IconButton
+        //   dict={EC_zh_TW}
+        //   addClass="layout palatte-blue-8 vbox"
+        //   key="ALINE"
+        //   text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
         <BASE_COM.IconButton
             dict={EC_zh_TW}
           addClass="layout palatte-blue-8 vbox"
@@ -579,7 +585,8 @@ class APP_DEFCONF_MODE extends React.Component{
               let fileNamePath=filePath.replace("."+DEF_EXTENSION,"");
               console.log(fileNamePath);
               this.props.ACT_Def_Model_Path_Update(fileNamePath);
-              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath});
+              this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+              {deffile:fileNamePath+'.'+DEF_EXTENSION,imgsrc:fileNamePath});
               
               this.setState({...this.state,fileSelectedCallBack:undefined});
             }});
@@ -590,7 +597,71 @@ class APP_DEFCONF_MODE extends React.Component{
           iconType="setting"
           addClass="layout palatte-gray-8 vbox"
           key="setting"
-          text="setting" onClick={()=> this.setState({...this.state,showSetup:true})}/>,
+          text="setting" onClick={()=> this.setState({...this.state,modal_view:
+          {
+            title:"Setup",
+            view_update:()=>{
+              return [
+                <Checkbox
+                  checked={this.props.edit_info.matching_angle_margin_deg==90}
+                  
+                  onChange={(ev)=>{
+                    if(this.props.edit_info.matching_angle_margin_deg==90)
+                      this.props.ACT_Matching_Angle_Margin_Deg_Update(180);
+                    else
+                      this.props.ACT_Matching_Angle_Margin_Deg_Update(90);
+                  }}
+                >
+                  {dictLookUp("matchingAngleLimit180",EC_zh_TW)}
+                </Checkbox> , 
+                <br/>,
+                <Checkbox
+                  checked={this.props.edit_info.matching_face==1}
+                  onChange={(ev)=>{
+                    
+                    if(this.props.edit_info.matching_face==1)
+                      this.props.ACT_Matching_Face_Update(0);
+                    else
+                      this.props.ACT_Matching_Face_Update(1);
+        
+                    console.log(ev.target.checked)}
+                  }
+                >
+                  {dictLookUp("matchingFaceFrontOnly",EC_zh_TW)}
+                </Checkbox> ,
+      
+      
+              
+                <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
+                <Slider
+                    min={0}
+                    step={0.01}
+                    max={1}
+                    included={true}            
+                    marks={
+                      {
+                        0: '',
+                        0.01: '',
+                        0.05: '',
+                        0.1: '0.1',
+                        0.3: '0.2',
+                        0.5: '0.5',
+                        1: '',
+                      }
+                    }
+                    onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
+                    value={this.props.edit_info.intrusionSizeLimitRatio}
+                  />,
+                <InputNumber
+                    min={0}
+                    max={1}
+                    value={this.props.edit_info.intrusionSizeLimitRatio}
+                    onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
+                  />
+              ]
+            }
+            
+          }})}/>,
         <BASE_COM.IconButton
             iconType="camera"
             dict={EC_zh_TW}
@@ -598,7 +669,7 @@ class APP_DEFCONF_MODE extends React.Component{
           key="TAKE"
           text="take" onClick={()=>{
             
-            this.setState({...this.state,warningInfo:{
+            this.setState({...this.state,modal_view:{
               onOk:()=>{
                 new Promise((resolve, reject) => {
                   this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{},
@@ -618,7 +689,8 @@ class APP_DEFCONF_MODE extends React.Component{
                 this.props.ACT_Shape_List_Reset();
               },
               onCancel:()=>{console.log("onCancel")},
-              content:"確定要重新設定嗎？"
+              title:"WARNING",
+              view_update:()=>"確定要重新設定嗎？"
             }})
           }}/>,
               
@@ -968,13 +1040,15 @@ class APP_DEFCONF_MODE extends React.Component{
 
 
               console.log(refTree,flatTree);
-              this.setState({...this.state,warningInfo:{
+              this.setState({...this.state,modal_view:{
+
+                title:"WARNING",
                 onOk:()=>{
                   on_DEL_Tar(tarInfo.id);
                   console.log("onOK")
                 },
                 onCancel:()=>{console.log("onCancel")},
-                content:warningUI
+                view_update:()=>warningUI
               }})
             }}/>);
   
@@ -1025,88 +1099,24 @@ class APP_DEFCONF_MODE extends React.Component{
     <div className="overlayCon HXF">
       
       <Modal
-            title={null}
-            visible={this.state.warningInfo!==undefined}
-
-            okText= 'Yes'
-            okType= 'danger'
+        {...this.state.modal_view}
+        visible={this.state.modal_view!==undefined}
             onCancel={(param)=>{
-              this.state.warningInfo.onCancel(param);
-              this.setState({...this.state,warningInfo:undefined});
-              }}
-            onOk={(param)=>{
-              this.state.warningInfo.onOk(param);
-              this.setState({...this.state,warningInfo:undefined});
-              }
+          if(this.state.modal_view.onCancel!==undefined)
+          {
+            this.state.modal_view.onCancel(param);
             }
-        >
-        {(this.state.warningInfo!==undefined)?this.state.warningInfo.content:null}
-      </Modal>
-      
-      <Modal
-            title="Setup"
-            visible={this.state.showSetup}
-            onCancel={(param)=>{
-              this.setState({...this.state,showSetup:false});
+          this.setState({...this.state,modal_view:undefined});
               }}
-            footer="  "
-        >
-        <Checkbox
-          checked={this.props.edit_info.matching_angle_margin_deg==90}
           
-          onChange={(ev)=>{
-            if(this.props.edit_info.matching_angle_margin_deg==90)
-              this.props.ACT_Matching_Angle_Margin_Deg_Update(180);
-            else
-              this.props.ACT_Matching_Angle_Margin_Deg_Update(90);
-          }}
-        >
-          {dictLookUp("matchingAngleLimit180",EC_zh_TW)}
-        </Checkbox>  
-        <br/>
-        <Checkbox
-          checked={this.props.edit_info.matching_face==1}
-          onChange={(ev)=>{
-            
-            if(this.props.edit_info.matching_face==1)
-              this.props.ACT_Matching_Face_Update(0);
-            else
-              this.props.ACT_Matching_Face_Update(1);
-
-            console.log(ev.target.checked)}
-          }
-        >
-          {dictLookUp("matchingFaceFrontOnly",EC_zh_TW)}
-        </Checkbox>  
-
-
-        
-        <Divider orientation="left">IntrusionSizeLimitRatio</Divider>
-        <Slider
-            min={0}
-            step={0.01}
-            max={1}
-            included={true}            
-            marks={
+        onOk={(param)=>{
+          if(this.state.modal_view.onOk!==undefined)
               {
-                0: '',
-                0.01: '',
-                0.05: '',
-                0.1: '0.1',
-                0.3: '0.2',
-                0.5: '0.5',
-                1: '',
-              }
+            this.state.modal_view.onOk(param);
             }
-            onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
-            value={this.props.edit_info.intrusionSizeLimitRatio}
-          />
-        <InputNumber
-            min={0}
-            max={1}
-            value={this.props.edit_info.intrusionSizeLimitRatio}
-            onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
-          />
+          this.setState({...this.state,modal_view:undefined});
+          }}>
+          {this.state.modal_view===undefined?null:this.state.modal_view.view_update()}
       </Modal>
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
       <$CSSTG transitionName = "fadeIn">
