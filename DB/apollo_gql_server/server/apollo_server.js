@@ -38,24 +38,30 @@ app.get('/', function(req, res, next){
 });
 
 function queryParamParse(req)
-{
-    let tStart = parseInt(req.query.tStart);
-    if(tStart!==tStart)tStart = req.query.tStart
-    let tEnd = parseInt(req.query.tEnd);
-    if(tEnd!==tEnd)tEnd = req.query.tEnd
+{//http://hyv.decade.tw:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
+  let tStart = parseInt(req.query.tStart);
+  if(tStart!==tStart)tStart = req.query.tStart
+  let tEnd = parseInt(req.query.tEnd);
+  if(tEnd!==tEnd)tEnd = req.query.tEnd
+  
+  let start_MS = (new Date(tStart)).getTime();
+  let endd=new Date(tEnd).getTime();
+  let end_MS = (endd==endd)?endd:new Date().getTime();
+  // let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS},"InspectionData.subFeatureDefSha1"};
+  let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS}};
+  if(req.query.subFeatureDefSha1!==undefined)
+  {
+    qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
+  }
+  
+  let repeatTime = parseInt(req.query.repeatTime);
+  if(repeatTime==repeatTime)
+  {
+    qStr["InspectionData.repeatTime"]={$lt:repeatTime};
+  }
 
 
-    
-    let start_MS = (new Date(tStart)).getTime();
-    let endd=new Date(tEnd).getTime();
-    let end_MS = (endd==endd)?endd:new Date().getTime();
-    // let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS},"InspectionData.subFeatureDefSha1"};
-    let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS}};
-    if(req.query.subFeatureDefSha1!==undefined)
-    {
-        qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
-    }
-    return qStr;
+  return qStr;
 }
 
 
@@ -71,6 +77,7 @@ app.get('/DELETE', function(req, res){
     });
 
 })
+
 
 app.get('/query/deffile', function(req, res) {
     //http://hyv.decade.tw:8080/query/deffile?name=Test1|FC.&limit=1000
@@ -156,6 +163,8 @@ function inspection_result_query(req, res)
     //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
     //Return time and judgeReports
 
+
+
     //param list
     //tStart=2019/5/15/9:59:0
     //tEnd=2019/5/15/9:59:0
@@ -177,13 +186,19 @@ function inspection_result_query(req, res)
     let qStr = queryParamParse(req);
     let queryPage=parseInt(req.query.page);
     let queryLimit=parseInt(req.query.limit);
+    let querySample=parseInt(req.query.sample);
+
+
     if(queryPage===undefined || queryPage<1)queryPage=1;
 
-    if(queryLimit===undefined)queryLimit=1000;
-
-    mdb_connector.query("Inspection",qStr,projection).limit(queryLimit).skip((queryPage-1)*queryLimit).
+    if(queryLimit===undefined || queryLimit!==queryLimit)queryLimit=1000;
+    //console.log("qStr",qStr);
+    let queryAggRules=[];
+    if(querySample==querySample)
+      queryAggRules.push({ "$sample" : {size:querySample} });
+    mdb_connector.query("Inspection",qStr,projection,queryAggRules).limit(queryLimit).skip((queryPage-1)*queryLimit).
     then((result)=>{
-        // console.log(result);
+       console.log(result);
         if(req.query.callback===undefined)//normal ajax
         {
             res.send(result);
