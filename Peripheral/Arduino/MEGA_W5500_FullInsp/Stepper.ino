@@ -416,6 +416,7 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 }
 
 
+uint32_t revCount = 0;
 TIMER_SET_ISR(1,8)
 
 ISR(TIMER1_COMPA_vect) 
@@ -428,6 +429,11 @@ ISR(TIMER1_COMPA_vect)
   if (countSkip==0)
   {
     logicPulseCount = mod_sim(logicPulseCount+1,perRevPulseCount);
+    if(logicPulseCount==0)
+    {
+      revCount++;
+      EV_Axis0_Origin(revCount);
+    }
     task_gateSensing();
   }
 

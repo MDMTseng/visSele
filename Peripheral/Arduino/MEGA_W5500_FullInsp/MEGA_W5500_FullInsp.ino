@@ -18,12 +18,18 @@
 
 
 enum class GEN_ERROR_CODE { 
+  RESET=0,
   INSP_RESULT_HAS_NO_OBJECT=1,
   OBJECT_HAS_NO_INSP_RESULT=2,
   INSP_RESULT_COUNTER_ERROR=3,
   };
 
 
+enum class ERROR_ACTION_TYPE { 
+  NOP=0,
+  ALL_STOP=1,
+  FREE_SPIN_2_REV=2,
+  };
 
 typedef struct run_mode_info{
   enum RUN_MODE{ 
@@ -229,7 +235,6 @@ int stage_action(pipeLineInfo* pli)
         //Error:The inspection result isn't back
         //TODO: Send error msg and stop machine
         errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-        errorAction();
 
       } 
       else
@@ -299,18 +304,166 @@ int AddResultCountToJson(char* send_rsp, uint32_t send_rspL,InspResCount &inspRe
   return MessageL;                              
 }
 
-  
-  
-void errorAction()
-{
-  //if there is an error
-  //clear plate
-  RBuf.clear();
 
-  //set speed to zero
-  tar_pulseHZ_=0; 
+ERROR_ACTION_TYPE errorActionType=ERROR_ACTION_TYPE::NOP;
+
+ERROR_ACTION_TYPE errorActionTransition(ERROR_ACTION_TYPE atype,GEN_ERROR_CODE code)
+{
+  ERROR_ACTION_TYPE actionType=ERROR_ACTION_TYPE::NOP;
+  switch(code)
+  {
+    case GEN_ERROR_CODE::RESET:
+      actionType=ERROR_ACTION_TYPE::NOP;
+    break;
+    case GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT:
+
+      actionType=(atype!=ERROR_ACTION_TYPE::NOP)?
+        ERROR_ACTION_TYPE::ALL_STOP:
+        ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
+    break;
+
+    case GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT:
+      
+      actionType=(atype!=ERROR_ACTION_TYPE::NOP)?
+        ERROR_ACTION_TYPE::ALL_STOP:
+        ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
+    break;
+
+    case GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR:
+      actionType=(atype!=ERROR_ACTION_TYPE::NOP)?
+        ERROR_ACTION_TYPE::ALL_STOP:
+        ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
+    break;
+
+    default:
+      actionType=ERROR_ACTION_TYPE::ALL_STOP;
+    break;
+  }
+  errorAction(actionType);
+  return actionType;
+  
 }
-int toggle_LED=0;
+
+
+uint32_t curRevCount=0;
+int EV_Axis0_Origin(uint32_t revCount)
+{
+  curRevCount=revCount;
+  DEBUG_print("REV:");
+  DEBUG_println(curRevCount);
+}
+  
+void errorAction(ERROR_ACTION_TYPE cur_action_type)
+{
+  
+  static ERROR_ACTION_TYPE pre_action_type=ERROR_ACTION_TYPE::NOP;
+  static uint32_t targetRevCount=0;
+  if(pre_action_type!=cur_action_type)
+  {
+    switch(cur_action_type)
+    {
+      case ERROR_ACTION_TYPE::FREE_SPIN_2_REV:
+        targetRevCount=curRevCount+2;
+        
+        DEBUG_print("targetRevCount::");
+        DEBUG_println(targetRevCount);
+      break;
+    }
+    pre_action_type=cur_action_type;
+  }
+
+  switch(cur_action_type)
+  {
+    
+    case ERROR_ACTION_TYPE::NOP:
+    break;
+    case ERROR_ACTION_TYPE::FREE_SPIN_2_REV:
+    {
+      //DEBUG_println("FREE_SPIN_2_REV  IN p::");
+      if(targetRevCount!=curRevCount)
+      {
+        //if there is an error
+        //clear plate
+        RBuf.clear();
+        
+         
+        digitalWrite(AIR_BLOW_OK_PIN, 0);
+        digitalWrite(AIR_BLOW_NG_PIN, 0);
+        
+        digitalWrite(BACK_LIGHT_PIN, 1);
+        //WarningLight
+        
+//        static uint16_t LED_C_TMP=0;
+//        if(LED_C_TMP&0xFF==0)
+//        {
+//          if(LED_C_TMP&0x100==0)
+//            digitalWrite(BACK_LIGHT_PIN, 1);
+//          else
+//            digitalWrite(BACK_LIGHT_PIN, 0);
+//        }
+//        LED_C_TMP++;
+        
+      }
+      else
+      {
+        DEBUG_println("FREE_SPIN_2_REV  REACH.... ending");
+        digitalWrite(BACK_LIGHT_PIN, 0);
+        errorActionType = errorActionTransition( errorActionType,GEN_ERROR_CODE::RESET );
+      }
+    }
+    break;
+
+    case ERROR_ACTION_TYPE::ALL_STOP:
+    default:
+      //if there is an error
+      //clear plate
+      RBuf.clear();
+    
+      //set speed to zero
+      tar_pulseHZ_=0; 
+    break;
+  }
+
+}
+
+
+
+void errorLOG(GEN_ERROR_CODE code,char* errorLog)
+{
+  GEN_ERROR_CODE* head_code = ERROR_HIST.getHead();
+  if (head_code != NULL)
+  {
+    *head_code=code;
+    ERROR_HIST.pushHead();
+
+    errorActionType = errorActionTransition( errorActionType,code );
+  
+    DEBUG_print("errorLOG:");
+    DEBUG_println((int)code);
+    //errorAction(errorActionType);
+  }
+//
+//  if(0){
+//    uint8_t errBuff[100];
+//    uint8_t errBuffL=0;
+//    errBuffL+=sprintf(errBuff+errBuffL,"{");
+//    
+//    errBuffL += sprintf( errBuff+errBuffL,"\"type\":\"error_notification\",");
+//    errBuffL+=AddErrorCodesToJson(errBuff+errBuffL, 20);
+//    if(errorLog)
+//      errBuffL+= sprintf(errBuff+errBuffL,"\"log\":\"%s\",",errorLog);
+//  
+//    errBuffL--;//remove the last ','
+//    errBuffL+=sprintf(errBuff+errBuffL,"}");//give it an close
+//    WS_Server->SEND_ALL(errBuff,errBuffL,0);
+//  }
+}
+
+
+
+
+
+
 class Websocket_FI:public Websocket_FI_proto{
   public:
   Websocket_FI(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
@@ -457,7 +610,7 @@ class Websocket_FI:public Websocket_FI_proto{
           return 0;
         }
         
-        int new_count=-99;
+        int new_count=-99;  
         int pre_count=cur_insp_counter;//0~255
         char *counter_str = buffX;
         {
@@ -490,17 +643,26 @@ class Websocket_FI:public Websocket_FI_proto{
             counter_str=NULL; 
           }
 
-          if(counter_str==NULL)
-          {
-            
-            errorLOG(GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
-            errorAction();
-          }
-
 
           
           buffX+=retL;
         }
+        
+        if(errorActionType!=ERROR_ACTION_TYPE::NOP)
+        {
+          return 0;
+        }
+        
+        if(counter_str==NULL)
+        {
+          
+          errorLOG(GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
+          return 0;
+        }
+
+
+
+        
 
         int insp_status=-99;
         char *statusStr = buffX;
@@ -548,14 +710,10 @@ class Websocket_FI:public Websocket_FI_proto{
           DEBUG_println(ret_status);
   
           errorLOG(GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT);
-          errorAction();
           //Error:The inspection result matches no object
           //TODO: Send error msg and stop machine
+          return 0;
         }
-        
-//        digitalWrite(LED_PIN, toggle_LED);
-//        toggle_LED=!toggle_LED;
-        
         return 0;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_dev_info\"")!=NULL)
@@ -622,6 +780,7 @@ class Websocket_FI:public Websocket_FI_proto{
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"error_clear\"")!=NULL)
       {
+        errorLOG(GEN_ERROR_CODE::RESET);
         ERROR_HIST.clear();
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
@@ -636,16 +795,18 @@ class Websocket_FI:public Websocket_FI_proto{
         }
         if(strstr ((char*)recv_cmd,"\"mode\":\"TEST\""))
         {
-          if(mode_info.mode!=run_mode_info::TEST)
-          {
-            mode_info.mode=run_mode_info::TEST;
-            mode_info.misc_var=0;
-          }
-          else
-          {
-            mode_info.misc_var++;
-          }
-          ret_status = 0;
+          
+            errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+//          if(mode_info.mode!=run_mode_info::TEST)
+//          {
+//            mode_info.mode=run_mode_info::TEST;
+//            mode_info.misc_var=0;
+//          }
+//          else
+//          {
+//            mode_info.misc_var++;
+//          }
+//          ret_status = 0;
         }
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/ON\"")!=NULL)
@@ -755,31 +916,6 @@ class Websocket_FI:public Websocket_FI_proto{
 };
 
 
-void errorLOG(GEN_ERROR_CODE code,char* errorLog)
-{
-  GEN_ERROR_CODE* head_code = ERROR_HIST.getHead();
-  if (head_code != NULL)
-  {
-    *head_code=code;
-    ERROR_HIST.pushHead();
-  }
-
-  if(0){
-    uint8_t errBuff[100];
-    uint8_t errBuffL=0;
-    errBuffL+=sprintf(errBuff+errBuffL,"{");
-    
-    errBuffL += sprintf( errBuff+errBuffL,"\"type\":\"error_notification\",");
-    errBuffL+=AddErrorCodesToJson(errBuff+errBuffL, 20);
-    if(errorLog)
-      errBuffL+= sprintf(errBuff+errBuffL,"\"log\":\"%s\",",errorLog);
-  
-    errBuffL--;//remove the last ','
-    errBuffL+=sprintf(errBuff+errBuffL,"}");//give it an close
-    WS_Server->SEND_ALL(errBuff,errBuffL,0);
-  }
-}
-
 
 
 uint32_t pulseHZ_step = 50;
@@ -858,6 +994,11 @@ void loop()
       DEBUG_print("Error:");
       DEBUG_println(ERROR_HIST.size());
     }
+    if(errorActionType!=ERROR_ACTION_TYPE::NOP)
+    {
+      DEBUG_print("errorActionType:");
+      DEBUG_println((int)errorActionType);
+    }
 
     if(RBuf.size()==0)
     {
@@ -875,11 +1016,25 @@ void loop()
   }
   
 
-  if(ERROR_HIST.size()!=0)//If there is at leaset an error, do errorAction.
+  //if(ERROR_HIST.size()!=0)//If there is at leaset an error, do errorAction.
+  if(errorActionType!=ERROR_ACTION_TYPE::NOP)
   {
-    errorAction();
+    errorAction(errorActionType);
   }
 
+//  //test Con
+//  {
+//    
+//    static uint8_t testE=1;
+//    if(curRevCount==6 &&  testE)
+//    {
+//      
+//      DEBUG_print("Test Error Trigger::");
+//      testE=0;
+//      errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+//    }
+//    
+//  }
   
   for(uint32_t i=0;i!=1;i++)
   {
