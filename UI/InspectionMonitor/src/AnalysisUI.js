@@ -899,7 +899,7 @@ class APP_ANALYSIS_MODE extends React.Component{
                       displayRange:[this.state.displayRange[0],moment(latestTime+1000)]
                     });
 
-                    console.log("fullStream=",fullStream);
+                    //console.log("fullStream=",fullStream);
                   }
                 }
               this.recStream.queryInspRec(dateRange);
@@ -928,7 +928,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
                   let inspectionRecGroup =
                       inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,measureList);
-                  console.log(filterTagsBoolean,inspectionRecGroup);
+                  //console.log(filterTagsBoolean,inspectionRecGroup);
                   this.stateUpdate({
                       inspectionRecGroup:inspectionRecGroup,
                       inspectionRec_TagFiltered:filterTagsBoolean
@@ -1027,11 +1027,11 @@ class RelatedUsageInfo extends React.Component{
         // uniSet2.add("judgeReport Tag");
         if(nextProps.fullStream2Tag.length>0){
             nextProps.fullStream2Tag.forEach(function(e,i,a){
-                console.log("e.tag=",e.tag);
+                //console.log("e.tag=",e.tag);
                 let tagSplit=e.tag.split(",");
-                console.log("e.tag.split=",e.tagSplit);
+                //console.log("e.tag.split=",e.tagSplit);
                 tagSplit.forEach(function(e2,i2,a2){
-                    console.log("forEach2",e2);
+                    //console.log("forEach2",e2);
                     if(e2.length!=0)
                         uniSet2.add(e2);
                 });
