@@ -439,10 +439,10 @@ function StateReducer(newState,action)
                   }
                   else
                   {
-                    log.error("the current data only gets single sampling ignore",
+                    log.error("the current data only gets few samples, ignore",
                     "this error case is to remove abnormal sample that's caused by air blow");
                     log.error("repeatTime:",srep_inWindow.repeatTime)
-                    log.error("headSkipTime:",headSkipTime.repeatTime)
+                    log.error("headSkipTime:",srep_inWindow.headSkipTime)
                   }
                   return false;
                 });
@@ -1194,6 +1194,7 @@ function StateReducer(newState,action)
                     " Only accepts line");
                   acceptData=false;
                 }
+                break;
                 
                 case SHAPE_TYPE.measure_subtype.calc://Has to be an line to measure
                 if(cand.shape.type!=SHAPE_TYPE.measure)

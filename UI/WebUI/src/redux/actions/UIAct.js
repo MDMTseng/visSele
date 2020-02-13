@@ -39,7 +39,7 @@ export const SHAPE_TYPE = {
   line:"line",
   arc:"arc",
   aux_point:"aux_point",
-  //aux_line:"aux_line",
+  aux_line:"aux_line",
   search_point:"search_point",
 
   measure:"measure",
