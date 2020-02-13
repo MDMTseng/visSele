@@ -94,6 +94,7 @@ class RAW_InspectionReportPull extends React.Component {
         this.state = {
 
         }
+        this.pull_skip_count=0;
         this.WS_DB_Inser= undefined;
         this.WS_DB_Query= undefined;
     }
@@ -108,12 +109,24 @@ class RAW_InspectionReportPull extends React.Component {
     }
 
     componentDidUpdate(prevProps, prevState, snapshot) {
-        if(this.props.reportStatisticState.newAddedReport.length>0)
+        if(this.props.reportStatisticState.newAddedReport.length>0 )
         {
+          if(this.pull_skip_count==0)
+          {
             // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
             let x=this.props.reportStatisticState.newAddedReport;
             this.send2WS_Insert(x);
             // this.WS_DB_Insert.send(BSON.serialize(x));
+
+          }
+          if(this.props.pull_skip!==undefined)
+          {
+            this.pull_skip_count++;
+            if(this.pull_skip_count>=this.props.pull_skip)
+            {
+              this.pull_skip_count=0;
+            }
+          }
         }
     }
 
@@ -945,19 +958,25 @@ class MicroFullInspCtrl extends React.Component {
 
   LoaduInspSettingToMachine(filePath="data/uInspSetting.json")
   {
+    log.info("LoaduInspSettingToMachine step1");
     new Promise((resolve, reject) => {
+      
+      log.info("LoaduInspSettingToMachine step2");
       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
         {filename:filePath},
         undefined,{resolve,reject}
       );
       setTimeout(()=>reject("Timeout"),1000)
     }).then((pkts) => {
+      
+      log.info("LoaduInspSettingToMachine>> step3", pkts);
       if(pkts[0].type!="FL")return;
       let machInfo = pkts[0].data;
       this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
       {msg:{...machInfo,type:"set_setup",id:356}});
     }).catch((err) => {
 
+      log.info("LoaduInspSettingToMachine>> step3-error",err);
     })
   }
   render() {
@@ -1079,6 +1098,14 @@ class MicroFullInspCtrl extends React.Component {
                   this.props.ACT_Report_Save(this.props.WS_ID,"data/uInspSetting.json",
                   enc.encode(JSON.stringify(this.props.uInspMachineInfo, null, 4)));
               }}>Save machine setting</Button>
+
+            
+            <Button
+              key="MachineSet"
+              onClick={() => {
+                  
+                this.LoaduInspSettingToMachine();
+              }}>MachineSet</Button>
           </Button.Group>
 
 
@@ -1152,6 +1179,25 @@ class MicroFullInspCtrl extends React.Component {
                 {msg:{type:"mode_set",mode:"NORMAL"}})
                 }>NORMAL
             </Button>
+
+            <Button type="danger" key="Disconnect uInsp"
+              icon="disconnect"
+              onClick={()=>{
+                new Promise((resolve, reject) => {
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"PD",0,
+                  {},
+                  undefined,{resolve,reject});
+                  //setTimeout(()=>reject("Timeout"),1000)
+                })
+                .then((data) => {
+                  console.log(data);
+                })
+                .catch((err) => {
+                  console.log(err);
+                })
+            }}>Disconnect</Button>
+
+            
           </Button.Group>
           </div>
         </Modal>);
@@ -1493,7 +1539,26 @@ class DataStatsTable extends React.Component{
             drawList:[]
         };
     }
+    shouldComponentUpdate(nextProps)
+    {
+      let statstate = nextProps.reportStatisticState;
+      if(statstate.historyReport===undefined)
+      {
+          return false;
+      }
+      let historyReport = statstate.historyReport;
+      if(historyReport.length==0)
+      {
+        return false;
+      }
+      if(historyReport.length>0 && this.pre_last_rep==historyReport[historyReport.length-1])
+      {
+        return false;
+      }
+      this.pre_last_rep = historyReport[historyReport.length-1];
+      return true;
 
+    }
     render() {
         let statstate = this.props.reportStatisticState;
         //console.log(statstate);
@@ -2018,7 +2083,7 @@ class APP_INSP_MODE extends React.Component {
             break;
 
             case 1:
-            CanvasWindowRatio=3;
+            CanvasWindowRatio=4;
             menuOpacity=0.3;
             break;
             
@@ -2124,7 +2189,8 @@ class APP_INSP_MODE extends React.Component {
                         reportStatisticState={this.props.reportStatisticState}/>}
                 <RAW_InspectionReportPull 
                     reportStatisticState={this.props.reportStatisticState} 
-                    url= "ws://hyv.decade.tw:8080/"/> 
+                    url= "ws://hyv.decade.tw:8080/"
+                    pull_skip={(this.state.InspStyle=="FI")?10:1}/> 
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
                         style={{opacity:menuOpacity,width:"250px"}}> 
