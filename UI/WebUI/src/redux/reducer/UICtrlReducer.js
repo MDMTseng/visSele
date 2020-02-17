@@ -20,7 +20,7 @@ let log = logX.getLogger("UICtrlReducer");
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
 
-const default_MinRepeatInspReport=3;
+const default_MinRepeatInspReport=2;
 
 function Edit_info_reset(newState)
 {
@@ -32,7 +32,12 @@ function Edit_info_reset(newState)
       newAddedReport:[],
       statisticValue:undefined,
     },
-    MinRepeatInspReport:default_MinRepeatInspReport,
+    statSetting:{
+      keepInTrackingTime_ms:3000,
+      historyReportlimit:2000,
+      minReportRepeat:default_MinRepeatInspReport,
+      headReportSkip:3
+    },
     sig360info:[],
     matching_angle_margin_deg:180,
     matching_angle_offset_deg:0,
@@ -347,8 +352,7 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-    let keepInTrackingTime_ms=3000;
-    let MinRepeatInspReport = newState.edit_info.MinRepeatInspReport;
+    let statSetting = newState.edit_info.statSetting;
     let inspOptionalTag = newState.edit_info.DefFileTag+","+newState.edit_info.inspOptionalTag;
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
@@ -418,19 +422,19 @@ function StateReducer(newState,action)
               reportStatisticState.trackingWindow.filter((srep_inWindow)=>
                 {
                   let tdiff = currentTime_ms - srep_inWindow.time_ms;
-                  if(tdiff<keepInTrackingTime_ms)
+                  if(tdiff<statSetting.keepInTrackingTime_ms)
                   {
                     return true;
                   }
                   //if the time is longer than 4s then remove it from matchingWindow
-                  //log.info(">>>push(srep_inWindow)>>",srep_inWindow);
-                  if(srep_inWindow.repeatTime>2 && srep_inWindow.headSkipTime==0)
+                  if(srep_inWindow.repeatTime>statSetting.minReportRepeat
+                    && srep_inWindow.headSkipTime==0)
                   {
                     reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
                     
                     reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
                     //limit historyReport length to 2000
-                    if(reportStatisticState.historyReport.length>2000)
+                    if(reportStatisticState.historyReport.length>statSetting.historyReportlimit)
                     {
                       reportStatisticState.historyReport=
                       reportStatisticState.historyReport.slice(Math.max(reportStatisticState.historyReport.length - 1000, 1));
@@ -647,7 +651,8 @@ function StateReducer(newState,action)
                   treport.tag=inspOptionalTag;
                   treport.machine_hash=machine_hash;
                   treport.repeatTime=1;
-                  treport.headSkipTime=3;
+                  treport.headSkipTime=statSetting.headReportSkip;
+                  
                   //treport.seq=[singleReport];
                   treport.isCurObj=true;
                   reportStatisticState.trackingWindow.push(treport);
@@ -660,7 +665,7 @@ function StateReducer(newState,action)
               //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
               reportStatisticState.trackingWindow=
                 reportStatisticState.trackingWindow.
-                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>=MinRepeatInspReport));
+                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>=statSetting.minReportRepeat));
             }
 
             
@@ -716,10 +721,11 @@ function StateReducer(newState,action)
       switch(action.type)
       {
 
-        case UISEV.MinRepeatInspReport_Update:
-          let MinRepeatInspReport = 
-            (action.data===undefined)?default_MinRepeatInspReport:action.data;
-          newState.edit_info={...newState.edit_info,MinRepeatInspReport};
+        case UISEV.StatSettingParam_Update:
+          newState.edit_info.statSetting=
+            {...newState.edit_info.statSetting,
+              ...action.data};
+          console.log("StatSettingParam_Update",newState.edit_info.statSetting);
         break;
         case UISEV.Image_Update:
           newState.edit_info={...newState.edit_info,img:action.data};
@@ -1203,7 +1209,7 @@ function StateReducer(newState,action)
                     " Only accepts measure");
                   acceptData=false;
                 }
-              break;
+                break;
                 default :
                   log.info("Error: "+ subtype+ " is not in the measure_subtype list");
                   acceptData=false;

@@ -79,7 +79,7 @@ export const UI_SM_EVENT = {
   Analysis_Mode:"Analysis_Mode",
   Inspection_Report:"Inspection_Report",
   Image_Update:"Image_Update",
-  MinRepeatInspReport_Update:"MinRepeatInspReport_Update",
+  StatSettingParam_Update:"StatSettingParam_Update",
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
   SIG360_Extraction:"SIG360_Extraction",
@@ -213,10 +213,10 @@ export function EV_WS_Image_Update(ImageData)
   }
 }
 
-export function EV_WS_MinRepeatInspReport_Update(minRepeatCount)
+export function EV_StatSettingParam_Update(statSettingParam)
 {
   return {
-    type: UI_SM_EVENT.MinRepeatInspReport_Update ,data:minRepeatCount
+    type: UI_SM_EVENT.StatSettingParam_Update ,data:statSettingParam
   }
 }
 

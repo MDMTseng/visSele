@@ -758,13 +758,13 @@ class AirControl extends React.Component {
         this.websocketAir.onopen = (ev)=>{
                 this.setState({...this.state,loading: false});
                 console.log("onopen:",ev);
-                this.props.ACT_MinRepeatInspReport_Update(1);
+                this.props.ACT_StatSettingParam_Update();
                 this.heartBeat.PINGcount=0;
                 this.heartBeat.PONGcount=0;
     
             };
         this.websocketAir.onclose =(evt) => {
-                this.props.ACT_MinRepeatInspReport_Update();
+                this.props.ACT_StatSettingParam_Update();
                 this.setState({...this.state,loading: true});
                 if (evt.code == 3001) {
                     console.log('ws closed',evt);
@@ -900,8 +900,8 @@ const mapStateToProps_AirControl = (state) => {
 }
 const mapDispatchToProps_AirControl = (dispatch, ownProps) => {
     return {
-        ACT_MinRepeatInspReport_Update: (arg) => {
-            dispatch(UIAct.EV_WS_MinRepeatInspReport_Update(arg))
+      ACT_StatSettingParam_Update: (arg) => {
+            dispatch(UIAct.ACT_StatSettingParam_Update(arg))
         },
     }
 }
@@ -1965,7 +1965,30 @@ class APP_INSP_MODE extends React.Component {
     componentDidUpdate()
     {
         this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
-        this.props.ACT_MinRepeatInspReport_Update(0);
+        if(this.props.statSetting.Insp_mode!=this.state.InspStyle)
+        {
+          // statSetting will be reset when the deffile is loaded
+          //So this is the workaround to set StatSettingParam
+          if(this.state.InspStyle=="FI")
+          {
+            this.props.ACT_StatSettingParam_Update({
+              keepInTrackingTime_ms:0,
+              minReportRepeat:0,
+              headReportSkip:0,
+              Insp_mode:this.state.InspStyle
+            });
+          }
+          else if(this.state.InspStyle=="CI")
+          {
+            this.props.ACT_StatSettingParam_Update({
+              keepInTrackingTime_ms:30,
+              historyReportlimit:2000,
+              minReportRepeat:0,
+              headReportSkip:0,
+              Insp_mode:this.state.InspStyle
+            });
+          }
+        }
     }
 
     
@@ -2237,7 +2260,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
         ACT_WS_SEND: (id, tl, prop, data, uintArr,promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr,promiseCBs)),
-        ACT_MinRepeatInspReport_Update: (arg) => dispatch(UIAct.EV_WS_MinRepeatInspReport_Update(arg)),
+        ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     }
 }
 
@@ -2253,6 +2276,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         WS_ID: state.UIData.WS_ID,
         inspectionReport: state.UIData.edit_info.inspReport,
         reportStatisticState:state.UIData.edit_info.reportStatisticState,
+        
+        statSetting:state.UIData.edit_info.statSetting,
         
         camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
         //reportStatisticState:state.UIData.edit_info.reportStatisticState
