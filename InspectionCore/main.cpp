@@ -1944,20 +1944,23 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe);
-clock_t pframeT;
+
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 {
   if(type!=CameraLayer::EV_IMG)
     return;
+  static clock_t pframeT;
   clock_t t = clock();
-  double interval = ((double)t - pframeT) / CLOCKS_PER_SEC * 1000;
+
+  double interval = (double)(t - pframeT) / CLOCKS_PER_SEC * 1000;
   if(!doImgProcessThread)
   {
     int skip_int=70;
     LOGI("frameInterval:%fms \n", interval);
+    LOGI("frameInterval:%fms t:%d pframeT:%d", interval,t,pframeT);
     if(interval<skip_int)
     {
-      LOGI("interval is less than skip_int:%d ms \n", skip_int);
+      LOGI("interval:%f is less than skip_int:%d ms",interval, skip_int);
       return;//if the interval less than 70ms then... skip this frame
     }
   }
