@@ -246,14 +246,13 @@ class Websocket_Server{
   {
     
     EthernetClient client = server.available();
-    if (00&&!client)
+    if (!client)
     {
-      if (LiveClient)
+      //if (LiveClient)
       {
-        
-        
-        if (counter2Pin++ > 10000)//check client still alive periodically
+        if (counter2Pin++ > 40000)//check client still alive periodically
         {
+          //DEBUG_println("PingAllClient:");
           PingAllClient();
           clearUnreachableClient();
           FindLiveClient();

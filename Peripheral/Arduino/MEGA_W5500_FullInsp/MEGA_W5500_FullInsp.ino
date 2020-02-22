@@ -56,10 +56,10 @@ run_mode_info mode_info={
 
 
 typedef struct InspResCount{
-  uint32_t NA;
-  uint32_t OK;
-  uint32_t NG;
-  uint32_t ERR;
+  uint64_t NA;
+  uint64_t OK;
+  uint64_t NG;
+  uint64_t ERR;
 }InspResCount;
 InspResCount inspResCount={0};
 
@@ -572,7 +572,7 @@ class Websocket_FI:public Websocket_FI_proto{
     unsigned int MessageL = 0; //echo
     recv_cmd[cmdL]='\0';
     uint8_t *offset_cmd=send_rsp+(rspMaxL-cmdL);
-    memcpy(offset_cmd,recv_cmd,cmdL);
+    memcpy(offset_cmd,recv_cmd,cmdL+1);
     recv_cmd = offset_cmd;
     rspMaxL-=cmdL;
     //DEBUG_println((char*)recv_cmd);
@@ -750,13 +750,14 @@ class Websocket_FI:public Websocket_FI_proto{
         int ret_st=0;
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"get_setup_rsp\","
                                                       "\"ver\":\"0.0.0.0\",");
-        MessageL+=MachToJson(send_rsp+MessageL, send_rsp-MessageL, &ret_st);
+        MessageL+=MachToJson(send_rsp+MessageL, buffL-MessageL, &ret_st);
         ret_status = ret_st;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_setup\"")!=NULL)
       {
         int ret_st=0;
-        MessageL+=JsonToMach(send_rsp+MessageL, send_rsp-MessageL,recv_cmd,cmdL, &ret_st);
+        DEBUG_print("set_setup::");
+        MessageL+=JsonToMach(send_rsp+MessageL, buffL-MessageL,recv_cmd,cmdL, &ret_st);
         ret_status = ret_st;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"error_get\"")!=NULL)
@@ -923,7 +924,7 @@ uint32_t pulseHZ_step = 50;
 void setup() {
   Serial.begin(115200);
   WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
-  if(WS_Server)setRetryTimeout(3, 100);
+  if(WS_Server)setRetryTimeout(2, 100);
   setup_Stepper();
   pinMode(FAKE_GATE_PIN, OUTPUT);
   

@@ -51,8 +51,13 @@ class StepperMotor
     }
 
     int stepX_number = 0;
+    bool cacheDir=false;
     void OneStep(bool dir) { //DRV8825 p1=step p2=dir
-      digitalWrite(p2, dir);
+      if(cacheDir!=dir)
+      {
+        digitalWrite(p2, dir);
+        cacheDir=dir;
+      }
 
       digitalWrite(p1, HIGH);
       digitalWrite(p1, LOW);
