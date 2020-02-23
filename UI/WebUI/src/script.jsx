@@ -84,7 +84,7 @@ class APPMasterX extends React.Component{
 
 
     this.BPG_WS={
-      reqWindow:[],
+      reqWindow:{},
       pgIDCounter:0,
       onopen:(ev,ws_obj)=>{
     

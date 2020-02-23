@@ -311,7 +311,7 @@ DatCH_Data DatCH_BPG1_0::Process_websock_data(websock_data* p_websocket)
           updata.tl[0] = raw[0];
           updata.tl[1] = raw[1];
           updata.prop = raw[2];
-          updata.pgID = (raw[3]<<1)|( raw[4]);
+          updata.pgID = (raw[3]<<8)|( raw[4]);
           updata.dat_raw = &(raw[9]);
           DatCH_Data dch_data = GenMsgType(DatCH_Data::DataType_BPG);
           dch_data.data.p_BPG_data = &updata;
