@@ -1916,7 +1916,7 @@ class APP_INSP_MODE extends React.Component {
     }
 
     componentWillUnmount() {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {});
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
     }
 
     constructor(props) {
@@ -2001,7 +2001,7 @@ class APP_INSP_MODE extends React.Component {
               size="large"
               key="<" 
               onClick={()=>{
-                this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+                this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
                 this.setState({...this.state,InspStyle:"FI"});
               }}>全檢</Button>
 
@@ -2010,7 +2010,7 @@ class APP_INSP_MODE extends React.Component {
               size="large"
               key=">" 
               onClick={()=>{
-                this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+                this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
                 this.setState({...this.state,InspStyle:"CI"});
               }}>品管</Button>
             

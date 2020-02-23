@@ -193,7 +193,10 @@ class APPMasterX extends React.Component{
 
             if(!SS_start && header.type=="SS")//Get the termination session[SS] pkt
             {//remove tracking(reqWindow) info and Dispatch the pkt
+              if(req_pkt._PGINFO_===undefined || req_pkt._PGINFO_.keep!==true)
+              {
               delete this.BPG_WS.reqWindow[pgID];
+              }
               if(req_pkt.promiseCBs!==undefined)
               {
                 req_pkt.promiseCBs.resolve(req_pkt.pkts);
@@ -249,10 +252,13 @@ class APPMasterX extends React.Component{
 
 
         let PGID=undefined;
+        let PGINFO=undefined;
         if(data.data instanceof Object)
         {
           PGID=data.data._PGID_;
+          PGINFO=data.data._PGINFO_;
           delete data.data["_PGID_"];
+          delete data.data["_PGINFO_"];
         }
         if(PGID===undefined)
         {
@@ -272,6 +278,7 @@ class APPMasterX extends React.Component{
             time:new Date().getTime(),
             pkts:[],
             promiseCBs:promiseCBs,
+            _PGINFO_:PGINFO
           };
           
           ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl,data.prop,PGID,data.data,data.uintArr));
