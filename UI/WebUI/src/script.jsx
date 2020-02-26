@@ -172,7 +172,7 @@ class APPMasterX extends React.Component{
           if(pgID==0)
             pgID=-1;
         }
-
+        //log.info(parsed_pkt,pgID,this.BPG_WS.reqWindow);
         if(pgID === -1)
         {//Not in tracking window, just Dispatch it
           if(parsed_pkt!==undefined)
@@ -193,9 +193,14 @@ class APPMasterX extends React.Component{
 
             if(!SS_start && header.type=="SS")//Get the termination session[SS] pkt
             {//remove tracking(reqWindow) info and Dispatch the pkt
+              let stacked_pkts=this.BPG_WS.reqWindow[pgID].pkts;
               if(req_pkt._PGINFO_===undefined || req_pkt._PGINFO_.keep!==true)
               {
-              delete this.BPG_WS.reqWindow[pgID];
+                delete this.BPG_WS.reqWindow[pgID];
+              }
+              else
+              {
+                this.BPG_WS.reqWindow[pgID].pkts=[];
               }
               if(req_pkt.promiseCBs!==undefined)
               {
@@ -203,12 +208,13 @@ class APPMasterX extends React.Component{
               }
               else
               {
-                this.props.DISPATCH({
+                let acts={
                   type:"ATBundle",
                   ActionThrottle_type:"express",
-                  data:req_pkt.pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
+                  data:stacked_pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
                   rawData:req_pkt
-                })
+                };
+                this.props.DISPATCH(acts)
                 // req_pkt.pkts.forEach((pkt)=>
                 // {
                 //   let act=map_BPG_Packet2Act(pkt);
