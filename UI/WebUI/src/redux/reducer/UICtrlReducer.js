@@ -24,6 +24,7 @@ const default_MinRepeatInspReport=2;
 
 function Edit_info_reset(newState)
 {
+  console.log("Edit_info_reset");
   let empty_edit_info ={
     inspReport:undefined,
     reportStatisticState:{
@@ -717,6 +718,7 @@ function StateReducer(newState,action)
     {
 
 
+      //console.log(action.type,action);
       newState.showSplash=false;
       switch(action.type)
       {
@@ -747,6 +749,7 @@ function StateReducer(newState,action)
         break;
 
         case UISEV.Define_File_Update:
+        
         let root_defFile=action.data;
         
         if(root_defFile.type === "binary_processing_group")
@@ -857,7 +860,7 @@ function StateReducer(newState,action)
                   dclone(newState.edit_info.list.filter((feature)=>
                     feature.type==SHAPE_TYPE.measure ))
                   .map((feature)=>{
-                    console.log(feature);
+                    //console.log(feature);
                     feature.statistic={
                       count_stat:
                       {

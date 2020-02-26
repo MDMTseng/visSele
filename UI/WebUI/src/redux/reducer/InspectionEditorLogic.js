@@ -192,7 +192,7 @@ export class InspectionEditorLogic
     this.SetShapeList(defInfo.features);
 
     //this.inherentShapeList = defInfo.featureSet[0].inherentShapeList;
-    log.info(defInfo);
+    //log.info(defInfo);
     let sig360info = defInfo.inherentfeatures[0];
 
     sig360info.signature.magnitude=sig360info.signature.magnitude.map((val)=>Math.round(val * 1000) / 1000);//most 3 decimal places //to 0.001mm/1um

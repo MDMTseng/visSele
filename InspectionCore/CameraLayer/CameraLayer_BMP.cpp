@@ -300,7 +300,7 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
         case 2:frameInterval_ms=10;break;
         case 3:frameInterval_ms=0;break;
     }
-    frameInterval_ms=350;
+    frameInterval_ms=150;
     return CameraLayer::ACK;
 }
 

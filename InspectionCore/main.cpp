@@ -1098,7 +1098,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 LOGE("%s",err_str);
                 break;
                 }
-                LOGV("Read deffile:%s",deffile);
+                LOGI("Read deffile:%s",deffile);
                 bpg_dat=GenStrBPGData("DF", jsonStr);
                 bpg_dat.pgID=dat->pgID;
                 datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -1200,7 +1200,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 LOGE("%s",err_str);
                 break;
                 }
-                LOGV("Read deffile:%s",deffile);
+                LOGI("Read deffile:%s",deffile);
                 bpg_dat=GenStrBPGData("DF", jsonStr);
                 bpg_dat.pgID=dat->pgID;
                 datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -1296,7 +1296,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 break;
                 }
 
-                LOGV("Read deffile:%s",deffile);
+                LOGI("Read deffile:%s",deffile);
                 bpg_dat=GenStrBPGData("DF", jsonStr);
                 bpg_dat.pgID=dat->pgID;
                 datCH_BPG.data.p_BPG_data=&bpg_dat;
