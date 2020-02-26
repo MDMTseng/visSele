@@ -126,7 +126,7 @@ void errorLOG(GEN_ERROR_CODE code,char* errorLog=NULL);
 
 uint32_t PRPC= perRevPulseCount;
 
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW/30;
+uint32_t tar_pulseHZ_ = perRevPulseCount_HW/10;
 
 int offsetAir=80;
 int cam_angle=103;
@@ -154,6 +154,8 @@ int stage_action(pipeLineInfo* pli)
 
 //  
 //  DEBUG_print("..");
+//  DEBUG_print(pli->gate_pulse);
+//  DEBUG_print("-");
 //  DEBUG_println(pli->stage);
   switch (pli->stage)
   {
@@ -349,8 +351,11 @@ uint32_t curRevCount=0;
 int EV_Axis0_Origin(uint32_t revCount)
 {
   curRevCount=revCount;
-  DEBUG_print("REV:");
-  DEBUG_println(curRevCount);
+  if((revCount&7)==0)
+  {
+    DEBUG_print("REV:");
+    DEBUG_println(curRevCount);
+  }
 }
   
 void errorAction(ERROR_ACTION_TYPE cur_action_type)
@@ -550,6 +555,11 @@ class Websocket_FI:public Websocket_FI_proto{
     
     char numbuff[20];
     int retL = findJsonScope(jbuff,"\"pulse_hz\":",numbuff,sizeof(numbuff));
+    
+    
+    DEBUG_print("\n pulse_hz: retL:");
+    DEBUG_println(retL);
+    DEBUG_println(numbuff);
     if(retL>0){
       int newHZ=tar_pulseHZ_;
       sscanf(numbuff, "%d", &newHZ);
@@ -729,6 +739,7 @@ class Websocket_FI:public Websocket_FI_proto{
       }      
       else if(strstr ((char*)recv_cmd,"\"type\":\"PING\"")!=NULL)
       {
+        //DEBUG_println("PING....");
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"PONG\",");
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
@@ -751,6 +762,7 @@ class Websocket_FI:public Websocket_FI_proto{
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"get_setup_rsp\","
                                                       "\"ver\":\"0.0.0.0\",");
         MessageL+=MachToJson(send_rsp+MessageL, buffL-MessageL, &ret_st);
+        DEBUG_print("get_setup:");
         ret_status = ret_st;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_setup\"")!=NULL)
@@ -758,6 +770,11 @@ class Websocket_FI:public Websocket_FI_proto{
         int ret_st=0;
         DEBUG_print("set_setup::");
         MessageL+=JsonToMach(send_rsp+MessageL, buffL-MessageL,recv_cmd,cmdL, &ret_st);
+//        DEBUG_print("set_setupL::");
+//        DEBUG_println(MessageL);
+//        DEBUG_println((char*)send_rsp);
+//        
+        //MessageL=0;
         ret_status = ret_st;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"error_get\"")!=NULL)
@@ -797,17 +814,23 @@ class Websocket_FI:public Websocket_FI_proto{
         if(strstr ((char*)recv_cmd,"\"mode\":\"TEST\""))
         {
           
-            errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-//          if(mode_info.mode!=run_mode_info::TEST)
-//          {
-//            mode_info.mode=run_mode_info::TEST;
-//            mode_info.misc_var=0;
-//          }
-//          else
-//          {
-//            mode_info.misc_var++;
-//          }
-//          ret_status = 0;
+            //errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+          if(mode_info.mode!=run_mode_info::TEST)
+          {
+            mode_info.mode=run_mode_info::TEST;
+            mode_info.misc_var=0;
+          }
+          else
+          {
+            mode_info.misc_var++;
+          }
+          ret_status = 0;
+        }
+        if(strstr ((char*)recv_cmd,"\"mode\":\"ERROR_TEST\""))
+        {
+          
+          errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+          ret_status = 0;
         }
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/ON\"")!=NULL)
@@ -916,7 +939,24 @@ class Websocket_FI:public Websocket_FI_proto{
 
 };
 
+void showOff()
+{
+  int delayArr[]={40,40,80,40,40,80};
+  for(int i=20;i<30;i++)
+  {
 
+    digitalWrite(AIR_BLOW_OK_PIN, 1);
+    digitalWrite(AIR_BLOW_NG_PIN, 1);
+    digitalWrite(BACK_LIGHT_PIN, 1);
+    delay(1000/i);
+
+    
+    digitalWrite(AIR_BLOW_OK_PIN, 0);
+    digitalWrite(AIR_BLOW_NG_PIN, 0);
+    digitalWrite(BACK_LIGHT_PIN, 0);
+    delay(1000/i);
+  }
+}
 
 
 uint32_t pulseHZ_step = 50;
@@ -926,19 +966,21 @@ void setup() {
   WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
   if(WS_Server)setRetryTimeout(2, 100);
   setup_Stepper();
-  pinMode(FAKE_GATE_PIN, OUTPUT);
   
   pinMode(CAMERA_PIN, OUTPUT);
   pinMode(AIR_BLOW_OK_PIN, OUTPUT);
   pinMode(AIR_BLOW_NG_PIN, OUTPUT);
   pinMode(BACK_LIGHT_PIN, OUTPUT);
   pinMode(GATE_PIN, INPUT);
+  pinMode(FAKE_GATE_PIN, INPUT);
 
   pinMode(LED_PIN, OUTPUT);
   pinMode(FEEDER_PIN, OUTPUT);
 
   digitalWrite(FEEDER_PIN, HIGH);
+//  pinMode(FAKE_GATE_PIN, OUTPUT);
 
+  showOff();
   
 }
 
@@ -984,7 +1026,7 @@ void loop()
     }
   }
 
-  if( (totalLoop&0x7FFF)==0)
+  if( (totalLoop&(0x7FFF>>1))==0)
   {
     DEBUG_print("RBuf:");
     DEBUG_println(RBuf.size());
@@ -1037,20 +1079,20 @@ void loop()
 //    
 //  }
   
-  for(uint32_t i=0;i!=1;i++)
-  {
-
-    //ddd%=3;
-    uint32_t dddx=(uint32_t)4400*2/8*10;
-    if(ccc++==dddx)
-    {
-      ccc=0;
-    }
-    if(ccc==0)
-        digitalWrite(FAKE_GATE_PIN, HIGH);
-    if(ccc==dddx/2)
-        digitalWrite(FAKE_GATE_PIN, LOW);
-  }
+  //for(uint32_t i=0;i!=1;i++)
+//  {
+//
+//    //ddd%=3;
+//    uint32_t dddx=(uint32_t)4400*2/100*10;
+//    if(ccc++==dddx)
+//    {
+//      ccc=0;
+//    }
+//    if(ccc==0)
+//        digitalWrite(FAKE_GATE_PIN, HIGH);
+//    if(ccc==dddx/2)
+//        digitalWrite(FAKE_GATE_PIN, LOW);
+//  }
   
 //  char tmp[40];
 //  for(uint32_t i=0;i<RBuf.size();i++)

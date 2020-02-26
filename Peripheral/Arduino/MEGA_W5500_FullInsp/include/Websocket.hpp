@@ -159,8 +159,8 @@ class Websocket_Server{
       }
     }
     
-    //DEBUG_print("LiveClient:");
-    //DEBUG_println(LiveClient);
+    // DEBUG_print("LiveClient:");
+    // DEBUG_println(LiveClient);
     return LiveClient;
   }
   void clearUnreachableClient()
@@ -171,7 +171,7 @@ class Websocket_Server{
       if(!WSP[i].alive())continue;
       // DEBUG_print("sock:");
       // DEBUG_print(Rc.getSocketNumber());
-      // DEBUG_print(" status:");
+      // DEBUG_println(" status:");
       int stat = Rc.status();
       // DEBUG_print(stat);
   
@@ -181,10 +181,10 @@ class Websocket_Server{
       // DEBUG_println(WSP[i].getState());
       if (stat == 0|| stat == 20)
       {
-        // DEBUG_print("clear timeout sock::sock");
-        // DEBUG_println(Rc.getSocketNumber());
-        // DEBUG_print(" state::");
-        // DEBUG_println(stat);
+        DEBUG_print("clear timeout sock::");
+        DEBUG_println(Rc.getSocketNumber());
+        DEBUG_print(" state::");
+        DEBUG_println(stat);
         Rc.stop();
         WSP[i].rmClientOBJ();
   
@@ -268,6 +268,9 @@ class Websocket_Server{
     KL = PkgL;
   //  EthernetClass::socketRecv(client._sock, (uint8_t*)buffiter, PkgL);//get raw data
     client.read((uint8_t*)buffiter, PkgL);
+    buffiter[PkgL]=0;
+    // DEBUG_print("RAW::");
+    // DEBUG_println((char*)buffiter);
     WebSocketProtocol* WSPptr  = findFromProt(client);
     //DEBUG_println(">>>>");
     if (WSPptr == NULL)
@@ -280,10 +283,10 @@ class Websocket_Server{
     //DEBUG_println(">>>>");
     byte frameL = WSPptr->getPkgframeInfo().length; //get frame
     
-    //DEBUG_print(">>>>WSPptr->getState() ");
-    //DEBUG_print(WSPptr->getState() );
-    //DEBUG_print(" OP:");
-    //DEBUG_println(WSPptr->getRecvOPState() );
+    // DEBUG_print(">>>>WSPptr->getState() ");
+    // DEBUG_print(WSPptr->getState() );
+    // DEBUG_print(" OP:");
+    // DEBUG_println(WSPptr->getRecvOPState() );
     if (WSPptr->getState() == WS_HANDSHAKE)//On hand shaking
     {
       //DEBUG_print("WS_HANDSHAKE::");
