@@ -178,15 +178,8 @@ int LoadIMGFile(acvImage *ret_img,const  char *filename)
   std::string fname_str(filename);
 
   int retVal;
-  if(!dot)
+  if(dot)
   {
-    retVal= LoadPNGFile(ret_img,(fname_str+".png").c_str());
-    if(retVal==0)return 0;
-    retVal= acvLoadBitmapFile(ret_img,(fname_str+".bmp").c_str());
-    if(retVal==0)return 0;
-    return -1;
-  }
-
   if(strcmp(dot, ".bmp")==0)
   {
     return acvLoadBitmapFile(ret_img,filename);
@@ -195,6 +188,14 @@ int LoadIMGFile(acvImage *ret_img,const  char *filename)
   {
     return LoadPNGFile(ret_img,filename);
   }
+  }
+
+  retVal= LoadPNGFile(ret_img,(fname_str+".png").c_str());
+  if(retVal==0)return 0;
+  retVal= acvLoadBitmapFile(ret_img,(fname_str+".bmp").c_str());
+  if(retVal==0)return 0;
+
+
   return -1;
 
 
