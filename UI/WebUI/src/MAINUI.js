@@ -173,6 +173,7 @@ class APPMain extends React.Component{
         this.state={
           fileSelectedCallBack:undefined,
           fileSelectFilter:undefined,
+          fileStaticList:undefined,
           menuSelect:"Overview",
           menuCollapsed:true,
           calibCalcInfo:{
@@ -315,8 +316,16 @@ class APPMain extends React.Component{
                   onClick={()=>{
                   let fileSelectedCallBack=
                     (filePath,fileInfo)=>{
-                      filePath=filePath.replace("."+DEF_EXTENSION,"");
-                      this.setState({...this.state,fileSelectedCallBack:undefined});
+                      if(localStorage!==undefined)
+                      {
+                        let LocalS_RecentFiles=localStorage.getItem("RecentFiles");
+                        if(LocalS_RecentFiles==null)LocalS_RecentFiles=[];
+  
+                      }
+                      console.log(LocalS_RecentFiles);
+
+                      filePath=filePath.replace("."+DEF_EXTENSION,""); 
+                      this.setState({...this.state,fileSelectedCallBack:undefined,fileStaticList:fileInfo});
                       this.props.ACT_Def_Model_Path_Update(filePath);
                       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
                     }
@@ -394,11 +403,9 @@ class APPMain extends React.Component{
                 searchDepth={4}
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
-                onFileSelected={(filePath,fileInfo)=>
-                { 
-                  this.setState({...this.state,fileSelectedCallBack:undefined});
-                  this.state.fileSelectedCallBack(filePath,fileInfo);
-                }}
+                onFileSelected={this.state.fileSelectedCallBack}
+                staticList={this.state.fileStaticList}
+
                 onCancel={()=>
                 { 
                   this.setState({...this.state,fileSelectedCallBack:undefined});
