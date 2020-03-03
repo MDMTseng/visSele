@@ -122,8 +122,17 @@ app.get('/query/deffile', function(req, res) {
         return;
     }
 
+    let queryAggRules=[];
+    if(req.query.agg!==undefined)
+    {
+      let agg = JSON.parse(req.query.agg);
+      queryAggRules=queryAggRules.concat(agg);
+    }
+
+    
+
     console.log(qStr,queryPage,queryLimit);
-    mdb_connector.query("df",qStr,projection).skip((queryPage-1)*queryLimit).limit(queryLimit).
+    mdb_connector.query("df",qStr,projection,queryAggRules).skip((queryPage-1)*queryLimit).limit(queryLimit).
     then((result)=>{
         // console.log(result);
         if(req.query.callback===undefined)//normal ajax
@@ -163,6 +172,8 @@ function inspection_result_query(req, res)
     //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
     //Return time and judgeReports
 
+    //Find the count of certain subFeatureDefSha1/comb
+    //http://hyv.decade.tw:8080/query/inspection?tStart=0&tEnd=2581663256894&subFeatureDefSha1=497298a734229971|012a3ef713a9124d6799ac&projection={"_id":0,"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","tl": {"$sum":1}}}]
 
 
     //param list
@@ -196,6 +207,13 @@ function inspection_result_query(req, res)
     let queryAggRules=[];
     if(querySample==querySample)
       queryAggRules.push({ "$sample" : {size:querySample} });
+    if(req.query.agg!==undefined)
+    {
+      let agg = JSON.parse(req.query.agg);
+      queryAggRules=queryAggRules.concat(agg);
+    }
+
+    
     mdb_connector.query("Inspection",qStr,projection,queryAggRules).limit(queryLimit).skip((queryPage-1)*queryLimit).
     then((result)=>{
        console.log(result);

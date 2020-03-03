@@ -87,10 +87,9 @@ function CRUD_query(which,queryCMD,projection,etc=[]){
     cmd.push({ "$project" :projection});
     cmd=cmd.concat(etc);
     if(which=='df'){
-        return DefineFileModel_A.find(queryCMD,projection);
+        return DefineFileModel_A.aggregate(cmd);
     }else if(which=='Inspection'){
         //return InspectionModel_A.find(queryCMD,projection);
-        console.log(cmd);
         return InspectionModel_A.aggregate(cmd)
 
     }
