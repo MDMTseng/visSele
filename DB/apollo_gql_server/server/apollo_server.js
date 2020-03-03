@@ -51,7 +51,11 @@ function queryParamParse(req)
   let qStr={"InspectionData.time_ms" : {$gt:start_MS, $lt:end_MS}};
   if(req.query.subFeatureDefSha1!==undefined)
   {
-    qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1};
+    qStr["InspectionData.subFeatureDefSha1"]={$in:req.query.subFeatureDefSha1.split("|")};
+  }
+  if(req.query.subFeatureDefSha1_regex!==undefined)
+  {
+    qStr["InspectionData.subFeatureDefSha1"]={$regex:req.query.subFeatureDefSha1_regex};
   }
   
   let repeatTime = parseInt(req.query.repeatTime);
