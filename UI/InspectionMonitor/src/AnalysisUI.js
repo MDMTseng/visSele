@@ -745,7 +745,7 @@ class APP_ANALYSIS_MODE extends React.Component{
     this.ec_canvas = null;
     this.state={
       defFileSearchName:"",
-      dateRange:[moment(Date_addDay(new Date(),-60)), moment(Date_addDay(new Date(),-30))],
+      dateRange:[moment(Date_addDay(new Date(),-7*3)), moment(Date_addDay(new Date(),1))],
       displayRange:[moment(0), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
         inspectionRec_TagFiltered:[],
@@ -1050,18 +1050,18 @@ class RelatedUsageInfo extends React.Component{
         console.log("handleTagChange");
     }
 
-    getDerivedStateFromProps(props, state)
+    static getDerivedStateFromProps(props, state)
     {
         console.log("props.fullStream2Tag",props.fullStream2Tag);
         const uniSet2 = new Set();
         // uniSet2.add("judgeReport Tag");
         if(props.fullStream2Tag.length>0){
             props.fullStream2Tag.forEach(function(e,i,a){
-                console.log("e.tag=",e.tag);
+                //console.log("e.tag=",e.tag);
                 let tagSplit=e.tag.split(",");
-                console.log("e.tag.split=",e.tagSplit);
+                //console.log("e.tag.split=",e.tagSplit);
                 tagSplit.forEach(function(e2,i2,a2){
-                    console.log("forEach2",e2);
+                    //console.log("forEach2",e2);
                     if(e2.length!=0)
                         uniSet2.add(e2);
                 });

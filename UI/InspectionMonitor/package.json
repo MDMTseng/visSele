@@ -11,10 +11,10 @@
     "loglevel": "^1.6.2",
     "moment": "^2.24.0",
     "qr-scanner": "^1.1.1",
-    "react": "^16.8.6",
-    "react-dom": "^16.8.6",
+    "react": "^16.13.0",
+    "react-dom": "^16.13.0",
     "react-resize-detector": "^4.1.4",
-    "react-scripts": "3.0.1"
+    "react-scripts": "^3.4.0"
   },
   "homepage": "./",
   "scripts": {
