@@ -322,7 +322,7 @@ class APPMain extends React.Component{
                         if(LocalS_RecentFiles==null)LocalS_RecentFiles=[];
   
                       }
-                      console.log(LocalS_RecentFiles);
+                      //console.log(LocalS_RecentFiles);
 
                       filePath=filePath.replace("."+DEF_EXTENSION,""); 
                       this.setState({...this.state,fileSelectedCallBack:undefined,fileStaticList:fileInfo});
