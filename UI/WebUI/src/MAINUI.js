@@ -35,6 +35,7 @@ import  Button  from 'antd/lib/button';
 import  Layout  from 'antd/lib/layout';
 import  Input  from 'antd/lib/input';
 import  Tag  from 'antd/lib/tag';
+import  Dropdown  from 'antd/lib/dropdown';
 const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
 const { Paragraph,Title } = Typography;
@@ -266,7 +267,11 @@ class APPMain extends React.Component{
       this.setState({calibCalcInfo:{...this.state.calibCalcInfo,...newAddInfo}});
     }
 
-
+    Array_NtoM(N,M)
+    {
+      let Len=M-N+1;
+      return [ ...Array(Len).keys() ].map( i => i+N);
+    }
     render() {
       let UI=[];
       if(this.props.c_state==null)return null;
@@ -370,6 +375,25 @@ class APPMain extends React.Component{
                   value={this.state.newTagStr}
                   prefix={<Icon type="tags"/>}
                 />
+
+                {
+                  [{type:"成形",subtype:["[11]巡檢"]},
+                  {type:"熱處理",subtype:["[21]熱處理"]},
+                  {type:"表面處理",subtype:["[31]電鍍","[32]電著","[33]弓牙","[34]震動研磨"]},
+                  {type:"機台",subtype:[...(this.Array_NtoM(1,40).map(n=>"M"+n)),null,...(this.Array_NtoM(7,15).map(n=>"P"+n))]},
+                ].map(catg=>
+                    <Dropdown overlay={  <Menu>{
+                          catg.subtype.map((ele,idx,arr)=>ele===null?<br/>:
+                            <Tag className="large InspTag fixed" 
+                              onClick={()=>{
+                                var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
+                                this.props.ACT_InspOptionalTag_Update([...array3,ele])
+                              }}>{ele}</Tag>
+                          )}
+                        </Menu>} placement="bottomLeft">
+                          <Button>{catg.type}</Button>
+                    </Dropdown>)
+                }
 
                 <CanvasComponent_rdx className="height11"/>
     
