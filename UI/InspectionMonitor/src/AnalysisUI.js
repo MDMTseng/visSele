@@ -688,7 +688,7 @@ class InspRecStream
         console.log("No existed rec to do live query");
         
         this.timeoutHDL =undefined;
-        return false;
+        return undefined;
       }
     }
     if(maxResults==undefined)
@@ -696,7 +696,7 @@ class InspRecStream
       maxResults=10;
     }
     console.log("timeRange="+timeRange);
-    DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],maxResults)
+    return DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],maxResults)
     .then((queryResult)=>{
       let inspectionRec = queryResult.map(res=>res.InspectionData[0]);
       this.newStreamFeed(inspectionRec);
@@ -709,12 +709,8 @@ class InspRecStream
       {
         this.timeoutHDL =undefined;
       }
-      
+      return inspectionRec;
     })
-    .catch((e)=>{
-      console.log(e);
-    });
-    return true;
   }
   queryInspRec(timeRange=[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))])
   {
@@ -745,13 +741,14 @@ class APP_ANALYSIS_MODE extends React.Component{
     this.ec_canvas = null;
     this.state={
       defFileSearchName:"",
-      dateRange:[moment(Date_addDay(new Date(),-7*3)), moment(Date_addDay(new Date(),1))],
+      dateRange:[moment(Date_addDay(new Date(),-1)), moment(Date_addDay(new Date(),1))],
       displayRange:[moment(0), moment(Date_addDay(new Date(),1))],
       inspectionRec:[],
         inspectionRec_TagFiltered:[],
       inspectionRecGroup:[],
-      groupInterval:10*60*1000,//10 mins
-      liveFeedMode:false
+      groupInterval:2*60*1000,//10 mins
+      liveFeedMode:false,
+      dataInSync:false
     };
     this.recStream=new InspRecStream();
     //this.state.inspectionRec=dbInspectionQuery;
@@ -840,7 +837,8 @@ class APP_ANALYSIS_MODE extends React.Component{
           onChange={(data)=>this.stateUpdate({displayRange:data})}
         />,
         <Checkbox checked={this.state.liveFeedMode} onChange={(ev)=>this.liveFeedMode_ctrl(ev.target.checked)}>LIVE</Checkbox>,
-        <TimePicker defaultValue={moment('0:30', 'HH:mm')} format={'HH:mm'} minuteStep={5} allowClear={false} 
+        "  抽檢間隔",
+        <TimePicker defaultValue={moment('0:'+(this.state.groupInterval/60000), 'HH:mm')} format={'HH:mm'} hourStep={3} minuteStep={1} allowClear={false} 
           onChange={(t)=>
           {
             if(t===null)return;
@@ -883,7 +881,7 @@ class APP_ANALYSIS_MODE extends React.Component{
             defaultValue={this.state.dateRange} 
             onChange={(date)=>this.stateUpdate({dateRange:date})}/>
 
-          <Button type="primary" icon="search" disabled={!dateRangeReady || !defFileReady} onClick={
+          <Button type="primary" icon="search" disabled={ (!dateRangeReady || !defFileReady) || (this.state.dataInSync)} onClick={
             ()=>{
               this.recStream.newFeedCallBack=
                 (newStream,fullStream)=>{
@@ -902,7 +900,12 @@ class APP_ANALYSIS_MODE extends React.Component{
                     //console.log("fullStream=",fullStream);
                   }
                 }
-              this.recStream.queryInspRec(dateRange);
+              this.stateUpdate({dataInSync:true});
+              this.recStream.queryInspRec(dateRange).then(result=>{
+                this.stateUpdate({dataInSync:false});
+              }).catch(err=>{
+                this.stateUpdate({dataInSync:false});
+              });
             }} />
             
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
