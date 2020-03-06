@@ -379,9 +379,9 @@ class APPMain extends React.Component{
                 {
                   [{type:"成形",subtype:["[11]巡檢"]},
                   {type:"熱處理",subtype:["[21]熱處理"]},
-                  {type:"表面處理",subtype:["[31]電鍍","[32]電著","[33]弓牙","[34]震動研磨"]},
+                  {type:"表面處理",subtype:["[31]電鍍","[32]電著","[33]攻牙","[34]震動研磨"]},
                   {type:"機台",subtype:[...(this.Array_NtoM(1,40).map(n=>"M"+n)),null,...(this.Array_NtoM(7,15).map(n=>"P"+n))]},
-                ].map(catg=>
+                  ].map(catg=>
                     <Dropdown overlay={  <Menu>{
                           catg.subtype.map((ele,idx,arr)=>ele===null?<br/>:
                             <Tag className="large InspTag fixed" 
