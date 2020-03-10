@@ -90,33 +90,57 @@ function isString (value) {
 }
 
 
-function convertInspInfo2CSV(measureList,inspRecGroup)
+
+function datePrintSimple(date) {
+  function addZero(i) {
+    return (i < 10)?"0" + i:i;
+  }
+  var mm = addZero(date.getMonth() + 1); // getMonth() is zero-based
+  var dd = addZero(date.getDate());
+  var h = addZero(date.getHours());
+  var m = addZero(date.getMinutes());
+  var s = addZero(date.getSeconds());
+
+  return [date.getFullYear(),mm,dd].join('/')+" "+h+":"+m+":"+s;
+};
+function convertInspInfo2CSV(reportName,measureList,inspRecGroup)
 {
+  let converterV="0.0.1 Alpha"
   let ci=[];
+  
+  ci.push('"'+reportName+'"');
+  ci.push(",\""+converterV+'"');
+  ci.push(",\n");
   console.log(measureList,inspRecGroup);
   function pushDataRow(arr,measureReports,trace,RowName=trace[trace.length-1])
   {
-    arr.push(RowName);
+    arr.push('"'+RowName+'"');
     measureReports.forEach((rep)=>{
       let ele = GetObjElement(rep,trace);
       if(ele===undefined)ele='';
-      arr.push(","+ele);
+      arr.push(",\""+ele+'"');
     });
+    let additional
+
+
     arr.push("\n");
   }
   ["name","subtype"]
     .forEach(field=>pushDataRow(ci,measureList,[field]));
 
-  ["USL","UCL","value","LCL","LSL"]
+   
+
+  ["USL","LSL","value","UCL","LCL"]
     .forEach(field=>pushDataRow(ci,measureList,[field]));
 
   ci.push(",\n");
 
+  let additionalColumn=["tag"]
   inspRecGroup.forEach(s_group=>{
     s_group.group
       .forEach(data=>{
         let rep=data.judgeReports;
-        ci.push(data.time_ms);
+        ci.push(datePrintSimple(new Date(data.time_ms)));
         measureList.forEach(m=>
           {
             let s_rep = rep.find(s_rep=>s_rep.id==m.id);
@@ -125,6 +149,22 @@ function convertInspInfo2CSV(measureList,inspRecGroup)
             else
               ci.push(",");
           })
+        additionalColumn.forEach(name=>{
+          ci.push(",");
+          switch(name)
+          {
+            case "tag":
+              let tag=data.tag;
+              if(tag===undefined)tag="";
+              else
+              {
+                if(tag==",")tag="";
+              }
+              ci.push('"'+tag+'"');
+              break;
+          }
+          
+        })
         ci.push("\n");
         
       });
@@ -162,6 +202,7 @@ function InspectionRecordGrouping(InspectionRecord,largestInterval=2*60*1000)
   let frontGroup=undefined;
   function AddNewGroup(new_rec)
   {
+    if(new_rec===undefined)return;
     frontGroup={
       group:[new_rec],
       startTime:new_rec.time_ms,
@@ -387,6 +428,7 @@ class ControlChart extends React.Component {
   PropsUpdate(nextProps) {
       
 
+      let annotationTargets=this.props.anotationTargets;
       let LSL=nextProps.targetMeasure["LSL"];
       let USL=nextProps.targetMeasure["USL"];
       let value_target=nextProps.targetMeasure["value"];
@@ -399,7 +441,11 @@ class ControlChart extends React.Component {
       let length = nextProps.inspectionRecGroup.length;
       if(length===0)return;
       //let newTime = nextProps.reportArray[length-1].time_ms;
-      this.state.chartOpt.options.title.text=nextProps.targetMeasure.name;
+      this.state.chartOpt.options.title.text=
+        nextProps.targetMeasure.name+" "+
+        "目標:"+nextProps.targetMeasure["value"]+
+        "上限:"+nextProps.targetMeasure["USL"]+
+        "下限:"+nextProps.targetMeasure["LSL"]
 
       nextProps.inspectionRecGroup
         .reduce((sumG,recG)=>sumG.concat(recG.group),[])//make [{group:[a,b]},{group:[c,d]}] => [a,b,c,d...]
@@ -472,7 +518,6 @@ class ControlChart extends React.Component {
     }, this.state.chartOpt.data );
 
 
-      let annotationTargets=this.props.anotationTargets;
       if(annotationTargets===undefined)
       {
           annotationTargets = this.default_annotationTargets
@@ -493,7 +538,7 @@ class ControlChart extends React.Component {
                   label: {
                       position: "right",
                       enabled: true,
-                      content: annotationTar.type+":"+val
+                      content: ""//annotationTar.type+":"+val
                   },
                   onMouseover: function (e) {
                     document.getElementById("info").innerHTML = 'whatever';
@@ -911,10 +956,11 @@ class APP_ANALYSIS_MODE extends React.Component{
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
           onClick={
             ()=>{
-              let csv_arr= convertInspInfo2CSV(measureList,this.state.inspectionRecGroup);
+              let ReportName=this.props.defFile.name+"_"+YYYYMMDD(new Date());
+              let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup);
               let str = csv_arr.join('');
               //copyStringToClipboard(str);
-              downloadString(csv_arr.join(''), "text/csv", DefFileName+"_"+YYYYMMDD(new Date())+".csv");
+              downloadString(csv_arr.join(''), "text/csv", ReportName+".csv");
             }} />
             <hr style={{width:"80%"}}/>
             <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec}
@@ -924,8 +970,8 @@ class APP_ANALYSIS_MODE extends React.Component{
 
                   var filterTagsBoolean = this.state.inspectionRec.filter(function(item, index, array){
                       let tArr=item.tag.split(",");
-                      return selectedTrueTags.some((item)=>tArr.includes(item));
-                      //return selectedTrueTags.every((item)=>tArr.includes(item));
+                      //return selectedTrueTags.some((item)=>tArr.includes(item));
+                      return selectedTrueTags.every((item)=>tArr.includes(item));
                   });
 
 
@@ -1053,7 +1099,7 @@ class RelatedUsageInfo extends React.Component{
         console.log("handleTagChange");
     }
 
-    static getDerivedStateFromProps(props, state)
+    static getDerivedStateFromProps(props, prevState)
     {
         console.log("props.fullStream2Tag",props.fullStream2Tag);
         const uniSet2 = new Set();
@@ -1069,8 +1115,9 @@ class RelatedUsageInfo extends React.Component{
                         uniSet2.add(e2);
                 });
             });
-            let tags2={};
+            let tags2={...prevState.tags};
             Array.from(uniSet2).forEach(function(key){
+              if(tags2[key]===undefined)
                 tags2[key]=true;
             });
 
@@ -1089,12 +1136,6 @@ class RelatedUsageInfo extends React.Component{
     }
 
     render() {
-        function MyConstructor(data, transport) {
-            this.data = data;
-            transport.on('data', ( function () {
-                alert(this.data);
-            }).bind(this) );
-        }
         console.log("this.state.tags",this.state.tags);
 
         return (

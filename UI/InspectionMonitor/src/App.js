@@ -203,20 +203,49 @@ function fetchDeffileInfo(name)
     })
   });
 }
+
+
+
+function fetchCostomDisplayInfo(name)
+{
+  let defFileData=undefined;
+  
+  return new Promise((res,rej)=>{
+    let url='http://hyv.decade.tw:8080/QUERY/customDisplay?name='+name
+    
+    pjsonp(url,null).then((data)=>{
+      console.log(data);
+    }).catch((err)=>{
+      rej(err);
+    })
+  });
+}
+
+function insertCostomDisplayInfo(id,info)
+{
+  let defFileData=undefined;
+  
+  return new Promise((res,rej)=>{
+    let url='http://hyv.decade.tw:8080/insert/customdisplay?name='+info.name+
+      "&targetDeffiles="+JSON.stringify(info.targetDeffiles)
+    if(id!==undefined)
+    {
+      url+="&_id="+id;
+      
+    }
+    pjsonp(url,null).then((data)=>{
+      console.log(data);
+    }).catch((err)=>{
+      rej(err);
+    })
+  });
+}
+// fetchCostomDisplayInfo("Machine");
+// insertCostomDisplayInfo("5e66719724f4fc4638dd3603",{name:"><>",targetDeffiles:[{hash:"sdiosdjciojsdoi"}]});
 function getUrlPath()
 {
   return window.location.href.substring(window.location.protocol.length).split('?')[0]
 }
-
-function datePrintSimple(date) {
-  var mm = date.getMonth() + 1; // getMonth() is zero-based
-  var dd = date.getDate();
-
-  return [date.getFullYear(),
-          (mm>9 ? '' : '0') + mm,
-          (dd>9 ? '' : '0') + dd
-         ].join('/');
-};
 function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
   let searchBox=<Input placeholder={placeholder} defaultValue={defaultValue}
@@ -330,14 +359,19 @@ class App extends React.Component{
     console.log(getAllUrlParams());
     this.state={
       DefFileInfo:undefined,
-      allowQRScan:false
+      allowQRScan:false,
+
       //{v: 0, name: "BOS-LT13BH3421", hash: "9fa42a5e990e4da632070e95daf14ec50de8a112"}
     }
   }
   componentDidMount() {
 
     let urlParam = getAllUrlParams();
-    if(urlParam.v!==undefined && urlParam.hash!==undefined)
+    if(urlParam.UI==="customDisplay")
+    {
+
+    }
+    else if(urlParam.v!==undefined && urlParam.hash!==undefined)
     {
       this.onQRScanResult(JSON.stringify(urlParam));
     }
