@@ -1,4 +1,4 @@
-import React , { useState } from 'react';
+import React , { useState,useEffect } from 'react';
 import logo from './logo.svg';
 import './App.css';
 import APP_ANALYSIS_MODE from "./AnalysisUI";
@@ -7,10 +7,15 @@ import  Modal  from 'antd/lib/modal';
 import QrScanner from 'qr-scanner';
 import jsonp from 'jsonp';
 
+import  Typography  from 'antd/lib/typography';
 import Input from 'antd/lib/input';
 import Table from 'antd/lib/table';
+import Col from 'antd/lib/col';
+import Row from 'antd/lib/row';
+import Layout from 'antd/lib/layout';
 QrScanner.WORKER_PATH = "./qr-scanner-worker.min.js";
 
+const { Title, Paragraph, Text } = Typography;
 class WebCam_SQScan extends React.Component{
 
   constructor(props) {
@@ -66,7 +71,7 @@ function getAllUrlParams(url) {
       var paramValue = typeof (a[1]) === 'undefined' ? true : a[1];
 
       // (optional) keep case consistent
-      paramName = paramName.toLowerCase();
+      //paramName = paramName.toLowerCase();
       //if (typeof paramValue === 'string') paramValue = paramValue.toLowerCase();
 
       // if the paramName ends with square brackets, e.g. colors[] or colors[2]
@@ -214,7 +219,7 @@ function fetchCostomDisplayInfo(name)
     let url='http://hyv.decade.tw:8080/QUERY/customDisplay?name='+name
     
     pjsonp(url,null).then((data)=>{
-      console.log(data);
+      res(data);
     }).catch((err)=>{
       rej(err);
     })
@@ -349,6 +354,84 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   );
 }
 
+function SingleDisplayUI({ displayInfo})
+{
+  const canvasRef = React.useRef(null)
+
+
+  return <div>
+    <Title level={2}>{displayInfo.name}</Title>
+    {JSON.stringify(displayInfo)}
+
+    <canvas  key="canv"
+      ref={canvasRef}
+      onClick={e => {        
+        const canvas = canvasRef.current
+        const ctx = canvas.getContext('2d')
+        // implement draw on ctx here
+      }}
+    />
+  </div>
+}
+
+function CostomDisplayUI({ }) {
+  const [displayInfo, setDisplayInfo] = useState(undefined);
+
+  const [collapsed, setCollapsed] = useState(true);
+  useEffect(() => {
+    setDisplayInfo(undefined);
+    fetchCostomDisplayInfo("Machine").then(data=>{
+      console.log(displayInfo);
+      setDisplayInfo(data.prod);
+    }).catch(e=>{
+      console.log(e);
+    });
+    return () => {
+      console.log("1,didUpdate ret::");
+    };
+  },[]);
+
+  useEffect(() => {
+    console.log("2,count->useEffect>>");
+  },[displayInfo]);
+
+  let UI=null;
+  if(displayInfo!==undefined)
+  {
+    console.log(displayInfo);
+    UI=[];
+    UI.push(<div key="Reset" onClick={()=>setDisplayInfo(undefined)}>RESET....</div>)
+    UI.push(<Row  key="table"  style={{height:"50%"}}>{displayInfo.map(info=>
+      <Col key={info.name} span={12}  style={{height:"100%"}}>
+        <SingleDisplayUI displayInfo={info}/>
+      </Col>
+    )}</Row>)
+
+
+  }
+
+
+  return (
+
+    <Layout style={{height:"100%"}}>
+      <Layout.Header style={{ color: '#FFFFFF' }} >Header</Layout.Header>
+      <Layout>
+        <Layout.Sider  style={{ color: '#FFFFFF' }} collapsible collapsed={collapsed} 
+        onCollapse={()=>setCollapsed(!collapsed)}
+        onMouseOut={()=>(collapsed)?null:setCollapsed(true)}
+        onMouseOver={()=>(collapsed)?setCollapsed(false):null}
+        >
+          Sider
+        </Layout.Sider>
+        <Layout>
+          <Layout.Content  style={{ padding: '50px 50px' }}>{UI}</Layout.Content>
+          <Layout.Footer>Costom UI v0.0.0</Layout.Footer>
+        </Layout>
+      </Layout>
+    </Layout> 
+  );
+}
+
 
 class App extends React.Component{
 
@@ -360,24 +443,33 @@ class App extends React.Component{
     this.state={
       DefFileInfo:undefined,
       allowQRScan:false,
+      UI:undefined
 
       //{v: 0, name: "BOS-LT13BH3421", hash: "9fa42a5e990e4da632070e95daf14ec50de8a112"}
+    }
+    this.UI_type={
+      customDisplay:"customDisplay",
+      analysis:"analysis",
+      search:"search",
     }
   }
   componentDidMount() {
 
     let urlParam = getAllUrlParams();
+    console.log(urlParam);
     if(urlParam.UI==="customDisplay")
     {
-
+      this.setState({UI:this.UI_type.customDisplay});
     }
     else if(urlParam.v!==undefined && urlParam.hash!==undefined)
     {
+
       this.onQRScanResult(JSON.stringify(urlParam));
+      this.setState({UI:this.UI_type.analysis});
     }
     else
     {
-      this.setState({...this.state,allowQRScan:true});
+      this.setState({allowQRScan:true,UI:this.UI_type.search});
     }
   }
   
@@ -423,30 +515,26 @@ class App extends React.Component{
   }
 
   render() {
+    let UI;
+    switch(this.state.UI)
+    {
+      case this.UI_type.customDisplay:
+        UI=<CostomDisplayUI/>;
+        break;
+      case this.UI_type.analysis:
+        UI=<APP_ANALYSIS_MODE 
+          DefFileHash={this.state.DefFileInfo.hash} 
+          DefFileName={this.state.DefFileInfo.name}
+          defFile={this.state.defFile}/>;
+        break;
+      case this.UI_type.search:
+        UI=<XQueryInput onQueryRes={(res)=>{console.log(res)}} defaultValue="3421" placeholder="輸入名稱"/>;
+        break;
+    }
+
     return (
-      <div className="App">
-        
-        {/* <Modal
-          title={null}
-          visible={this.state.DefFileInfo===undefined}
-          onCancel={this.props.onCancel}
-          onOk={this.props.onOk}
-        >
-          {
-            (this.state.DefFileInfo===undefined && this.state.allowQRScan)?
-              <WebCam_SQScan style={{width:"100%",height:"100%"}} 
-              onScanResult={this.onQRScanResult.bind(this)}/>:
-              null
-          }
-        </Modal> */}
-        {(this.state.DefFileInfo!==undefined)?
-          <APP_ANALYSIS_MODE 
-            DefFileHash={this.state.DefFileInfo.hash} 
-            DefFileName={this.state.DefFileInfo.name}
-            defFile={this.state.defFile}/>:
-          
-          <XQueryInput onQueryRes={(res)=>{console.log(res)}} defaultValue="3421" placeholder="輸入名稱"/>
-        }
+      <div className="App"  style={{height:"100%"}}>
+        {UI}
       </div>
     );
   }
