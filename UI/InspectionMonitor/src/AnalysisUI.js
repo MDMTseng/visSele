@@ -345,7 +345,7 @@ class ControlChart extends React.Component {
                 ]},
               bezierCurve : false,
               options: {
-
+                
                   scales: {
                       xAxes: [
                         {
@@ -392,7 +392,7 @@ class ControlChart extends React.Component {
                       annotations: []
                   },
                   legend: {
-                      display: false
+                      display: true
                   },
                   tooltips: {
                       enabled: true
@@ -407,7 +407,10 @@ class ControlChart extends React.Component {
           enabled: true,
           mode: 'y' // is panning about the y axis neccessary for bar charts?
         }
-
+      this.state.chartOpt.options.zoom={
+          enabled: true,
+          mode: 'y',
+      }
 
 
 
@@ -418,6 +421,8 @@ class ControlChart extends React.Component {
           {type:"LCL",color:"rgba(100, 100, 0,0.2)"},
           {type:"value",color:"rgba(0, 0, 0,0.2)"},
       ];
+
+      
   } 
   
   componentWillMount(nextProps, nextState){
@@ -425,108 +430,282 @@ class ControlChart extends React.Component {
   componentWillUpdate(nextProps, nextState){
     this.PropsUpdate(nextProps);
   }
-  PropsUpdate(nextProps) {
-      
 
-      let annotationTargets=this.props.anotationTargets;
-      let LSL=nextProps.targetMeasure["LSL"];
-      let USL=nextProps.targetMeasure["USL"];
-      let value_target=nextProps.targetMeasure["value"];
+  genSingleRepPoints(_inspectionRecGroup,_targetMeasure,_xAxisRange,color)
+  {
+    let value_target=_targetMeasure["value"];
+    return _inspectionRecGroup
+        .reduce((sumG,recG)=>sumG.concat(recG.group),[])//make [{group:[a,b]},{group:[c,d]}] => [a,b,c,d...]
+        .reduce((acc_chart_data,rep,idx)=>{
+          //acc_data.labels.push(rep.time_ms);
+          if(_xAxisRange!==undefined)
+          {
+            if(_xAxisRange[0]>rep.time_ms || 
+              _xAxisRange[1]<rep.time_ms)return acc_chart_data;
+          }
+
+          let measureObj = rep.judgeReports.find((jrep)=>jrep.id===_targetMeasure.id);
+            
+
+          let measureValue=measureObj.value;
+          let pointColor=color;
+
+          if(pointColor===undefined)
+          {
+            switch(measureObj.status)
+              {
+              case INSPECTION_STATUS.SUCCESS:
+                pointColor="rgba(0,255,200,0.2)";
+              break;
+              case INSPECTION_STATUS.FAILURE:
+                pointColor="rgba(255,0,200,0.2)";
+              break;
+              case INSPECTION_STATUS.NA:
+                pointColor="#000000";
+                measureValue=value_target;
+              break;
+              }
+          }
+          else
+          {
+            if(measureObj.status === INSPECTION_STATUS.NA)
+            {
+              pointColor="#000000";
+              measureValue=value_target;
+            }
+          }
+
+            let val={
+            x:new Date(rep.time_ms).toString(),
+            y:measureValue,
+            };
+            
+
+          acc_chart_data.pointBackgroundColor.push(pointColor);
+          //TODO:for now there is only one data set in one chart
+          acc_chart_data.data.push(val);
+          return acc_chart_data;
+      }, { 
+        borderColor:"rgba(100, 255, 100,0)",
+        lineTension: 0,data:[],
+        pointBackgroundColor:[]});
+  }
+
+  dataPointNormalizer(value,USL,targetValue,LSL,bestEffert=true)
+  {
+    if(USL==LSL)return 1/0.0;
+    if(bestEffert)
+    {
+      if(targetValue<=LSL)
+      {
+        LSL=targetValue-(USL-targetValue);
+      }
+      else if(targetValue>=USL)
+      {
+        USL = targetValue+(targetValue-LSL);
+      }
+      if(USL<=targetValue || LSL >=targetValue)return 1/0.0;
+    }
+
+    let mValue;
+    //console.log(value,USL,targetValue,LSL);
+    if(value>targetValue)
+    {
+      mValue=(value-targetValue)/(USL-targetValue);
+    }
+    else
+    {
+      mValue=(value-targetValue)/(targetValue-LSL);
+    }
+    return mValue;
+  }
+
+  
+  genGroupRepPoints(_inspectionRecGroup,_targetMeasure,_xAxisRange,color)
+  {
+    return _inspectionRecGroup.reduce((acc_chart_data,repG)=>{
+      let this_id_stat = repG.stat.
+        find((st)=>st.id===_targetMeasure.id);
+      
+      let value =this_id_stat.mean;
+      let time = repG.group.reduce((sum,rep)=>sum+rep.time_ms,0)/repG.group.length;
+      if(_xAxisRange!==undefined)
+      {
+        if(_xAxisRange[0]>time || 
+          _xAxisRange[1]<time)return acc_chart_data;
+      }
+      let pointColor=(color===undefined)?"rgba(0,255,0,1)":color;
+        let val={
+          x:new Date(time).toString(),
+        y:value,
+          data:repG,
+        stat:this_id_stat
+        };
+
+      
+      acc_chart_data.pointBackgroundColor.push(pointColor);
+      //TODO:for now there is only one data set in one chart
+      acc_chart_data.data.push(val);
+      return acc_chart_data;
+    }, { 
+      type: "scatter",
+      borderColor:"rgba(100, 255, 100,1)",
+      lineTension: 0,data:[],
+      pointBackgroundColor:[],} );
+  }
+
+
+  colorPalette(idx,arrLen,alpha=1,hueOffset=0,sat="100%",light="50%"){
+    let hue=360*idx/arrLen+hueOffset;
+    return "hsla("+hue+", "+sat+", "+light+","+alpha+")";
+  }
+  PropsUpdate(nextProps) {
+    console.log(">>>>");
+    let doMultipleChart=nextProps.targetMeasure.length!=1;
+    // if(this.targetMeasure_cache != nextProps.targetMeasure ||
+    //   this.inspectionRecGroup != nextProps.inspectionRecGroup)
+    {
+      this.doChartDataUpdate(nextProps,doMultipleChart);
+    }
+    // this.targetMeasure_cache = nextProps.targetMeasure;
+    // this.inspectionRecGroup = nextProps.inspectionRecGroup;
+
+    let N_LSL=-100;
+    let N_USL=100;
+    let N_value_target=0;
+    if(doMultipleChart)
+    {
+      N_LSL=-100;
+      N_USL=100;
+      N_value_target=0;
+    }
+    else
+    {
+      let _targetMeasure = nextProps.targetMeasure[0];
+      N_LSL=_targetMeasure["LSL"];
+      N_USL=_targetMeasure["USL"];
+      N_value_target=_targetMeasure["value"];
+    }
+
+    if(N_LSL!=0 || N_USL!=0 || N_value_target!=0)
+    {
+      this.state.chartOpt.options.scales.yAxes[0].ticks={
+        min:1.2*(N_LSL-N_value_target)+N_value_target,
+        max:1.2*(N_USL-N_value_target)+N_value_target,
+      };
+    }
+    else
+    {
+
+    }
+
+    this.charObj.update();
+      
+    //console.log(this.state.chartOpt.options.scales);
+
+  }
+      
+  doChartDataUpdate(nextProps,doMultipleChart){
+      
       //Make sure the data object is the same, don't change it/ you gonna set the data object to chart again
       this.state.chartOpt.data.labels=[];
       this.state.chartOpt.data.datasets.forEach((datInfo)=>{
           datInfo.data=[];
           datInfo.pointBackgroundColor=[];
-      });
+        });
+
+        
       let length = nextProps.inspectionRecGroup.length;
       if(length===0)return;
-      //let newTime = nextProps.reportArray[length-1].time_ms;
-      this.state.chartOpt.options.title.text=
-        nextProps.targetMeasure.name+" "+
-        "目標:"+nextProps.targetMeasure["value"]+
-        "上限:"+nextProps.targetMeasure["USL"]+
-        "下限:"+nextProps.targetMeasure["LSL"]
-
-      nextProps.inspectionRecGroup
-        .reduce((sumG,recG)=>sumG.concat(recG.group),[])//make [{group:[a,b]},{group:[c,d]}] => [a,b,c,d...]
-        .reduce((acc_data,rep,idx)=>{
-          //acc_data.labels.push(rep.time_ms);
-          if(nextProps.xAxisRange!==undefined)
-          {
-            if(nextProps.xAxisRange[0]>rep.time_ms || 
-              nextProps.xAxisRange[1]<rep.time_ms)return acc_data;
-          }
-
-          let measureObj = rep.judgeReports.find((jrep)=>jrep.id===nextProps.targetMeasure.id);
 
 
-          let measureValue=measureObj.value;
-          let pointColor=undefined;
-          switch(measureObj.status)
-          {
-            case INSPECTION_STATUS.SUCCESS:
-              pointColor="rgba(0,255,200,0.2)";
-            break;
-            case INSPECTION_STATUS.FAILURE:
-              pointColor="rgba(255,0,200,0.2)";
-            break;
-            case INSPECTION_STATUS.NA:
-              pointColor="#000000";
-              measureValue=value_target;
-            break;
-          }
-          
-          let val={
-            x:new Date(rep.time_ms).toString(),
-            y:measureValue,
-          };
+      let _inspectionRecGroup = nextProps.inspectionRecGroup;
+      let _xAxisRange = nextProps.xAxisRange;
 
 
-          acc_data.datasets[0].pointBackgroundColor.push(pointColor);
-          //TODO:for now there is only one data set in one chart
-          acc_data.datasets[0].data.push(val);
-          return acc_data;
-      }, this.state.chartOpt.data );
-
-      let measureInfo=nextProps.targetMeasure;
-
-      nextProps.inspectionRecGroup.reduce((acc_data,repG,idx)=>{
-        let this_id_stat = repG.stat.
-          find((st)=>st.id===nextProps.targetMeasure.id);
         
-        let value =this_id_stat.mean;
-        let time = repG.group.reduce((sum,rep)=>sum+rep.time_ms,0)/repG.group.length;
-        if(nextProps.xAxisRange!==undefined)
+      let N_LSL=-100;
+      let N_USL=100;
+      let N_value_target=0;
+      this.state.chartOpt.data.datasets=[];
+      if(doMultipleChart)
+      {
+        N_LSL=-100;
+        N_USL=100;
+        N_value_target=0;
+      }
+      else
+      {
+        let _targetMeasure = nextProps.targetMeasure[0];
+        N_LSL=_targetMeasure["LSL"];
+        N_USL=_targetMeasure["USL"];
+        N_value_target=_targetMeasure["value"];
+      }
+      //this.state.chartOpt.options.legend.display=(nextProps.targetMeasure.length>1);
+      nextProps.targetMeasure.forEach((_targetMeasure,idx,arr)=>{
+        
+        let pointColor=arr.length>1?this.colorPalette(idx,arr.length,0.4,100):undefined;
+        let chart_data = this.genSingleRepPoints(_inspectionRecGroup,_targetMeasure,_xAxisRange,pointColor);
+        let groupColor=this.colorPalette(idx,arr.length,1,100);
+        let chart_group_data = this.genGroupRepPoints(_inspectionRecGroup,_targetMeasure,_xAxisRange,groupColor);
+
+        if(doMultipleChart)
         {
-          if(nextProps.xAxisRange[0]>time || 
-            nextProps.xAxisRange[1]<time)return acc_data;
+          let LSL=_targetMeasure["LSL"];
+          let USL=_targetMeasure["USL"];
+          let value_target=_targetMeasure["value"];
+    
+          chart_data.data.forEach(dat=>{
+            dat.original_y=dat.y
+            dat.y=
+              (N_USL)*this.dataPointNormalizer(dat.y,USL,value_target,LSL)});
+  
+          chart_group_data.data.forEach(dat=>{
+            dat.original_y=dat.y
+            dat.y=
+              (N_USL)*this.dataPointNormalizer(dat.y,USL,value_target,LSL)});
         }
-        acc_data.labels.push(new Date(time));
-        let pointColor="rgba(0,255,0,1)";
-        let val={
-          x:new Date(time).toString(),
-          y:value,
-          data:repG,
-          stat:this_id_stat
-        };
+        else
+        {
+          chart_data.data.forEach(dat=>{dat.original_y=dat.y});
+          chart_group_data.data.forEach(dat=>{dat.original_y=dat.y});
+        }
+        //console.log(chart_data.data);
+        let dataSet = this.state.chartOpt.data.datasets;
+        dataSet.push(chart_data);
+        dataSet.push(chart_group_data);
+        
+        dataSet[dataSet.length-2].label="";
+        dataSet[dataSet.length-1].label=_targetMeasure.name;
+        
+        //dataSet[dataSet.length-2].borderColor=(pointColor);
+        dataSet[dataSet.length-2].backgroundColor=(pointColor);
+
+        dataSet[dataSet.length-1].borderColor=(groupColor);
+        dataSet[dataSet.length-1].backgroundColor=(groupColor);
+        //dataSet[dataSet.length-1].pointRadius=10;
+
+      })
+      this.state.chartOpt.data.labels = 
+      _inspectionRecGroup.map(g=>datePrintSimple(new Date((g.startTime+g.endTime)/2)));
 
 
-        acc_data.datasets[1].pointBackgroundColor.push(pointColor);
-        //TODO:for now there is only one data set in one chart
-        acc_data.datasets[1].data.push(val);
-        return acc_data;
-    }, this.state.chartOpt.data );
-
-
+      let annotationTargets=this.props.anotationTargets;
       if(annotationTargets===undefined)
       {
           annotationTargets = this.default_annotationTargets
       }
 
+      let annoT={
+        USL:N_USL,
+        LSL:N_LSL,
+        value:N_value_target,
+      };//_targetMeasure;
+
       this.state.chartOpt.options.annotation.annotations = 
           annotationTargets.map((annotationTar) => {
           
-              let val = nextProps.targetMeasure[annotationTar.type];
+              let val = annoT[annotationTar.type];
               return ({
                   type: 'line',
                   mode: 'horizontal',
@@ -546,71 +725,57 @@ class ControlChart extends React.Component {
               });
           });
       
-          this.state.chartOpt.options.tooltips={
-            callbacks: {
-              title: function(tooltipItem, data) {
-                let datasetIndex = tooltipItem[0].datasetIndex;
-                let index = tooltipItem[0].index;
-                
-                return data.datasets[datasetIndex].data[index].y
-                return data['labels'][tooltipItem[0]['index']];
-              },
-              label: function(tooltipItem, data) {
+      this.state.chartOpt.options.tooltips={
+        callbacks: {
+          title: function(tooltipItem, data) {
+            // let datasetIndex = tooltipItem[0].datasetIndex;
+            // let index = tooltipItem[0].index;
 
-                let datasetIndex = tooltipItem.datasetIndex;
-                let index = tooltipItem.index;
-                let dataOnTip=data.datasets[datasetIndex].data[index];
-                let stat = dataOnTip.stat;
-                if(stat==undefined)return dataOnTip.x;
+            // return data.datasets[datasetIndex].data[index].original_y
+            return ""
+          },
+          label: function(tooltipItem, data) {
 
-                let groupSize = dataOnTip.data.group.length;
-                if(groupSize==0)return dataOnTip.x;
-                let str_arr=[
-                  moment(dataOnTip.data.group[0].time_ms).format("YYYY/MM/DD , h:mm:ss a"),
-                  moment(dataOnTip.data.group[groupSize-1].time_ms).format("YYYY/MM/DD , h:mm:ss a")
-                ];
+            let datasetIndex = tooltipItem.datasetIndex;
+            if(datasetIndex===undefined)return ""
+            let index = tooltipItem.index;
 
+            return data.datasets[datasetIndex].data[index].original_y
+          },
+          afterLabel: function(tooltipItem, data) {
+            let datasetIndex = tooltipItem.datasetIndex;
+            let index = tooltipItem.index;
+            let dataOnTip=data.datasets[datasetIndex].data[index];
+            let stat = dataOnTip.stat;
+            if(stat==undefined)return dataOnTip.x;
 
-                let str = Object.keys(stat).map(key=>key+":"+
-                  ((stat[key]!=null)?stat[key].toFixed(4):"NULL")
-                );
-                str_arr = str_arr.concat(str);
-                if(dataOnTip.data.group!==undefined)
-                  str_arr.push("count:"+dataOnTip.data.group.length);
-                return str_arr;
+            let groupSize = dataOnTip.data.group.length;
+            if(groupSize==0)return dataOnTip.x;
+            let str_arr=[
+              moment(dataOnTip.data.group[0].time_ms).format("YYYY/MM/DD , h:mm:ss a"),
+              moment(dataOnTip.data.group[groupSize-1].time_ms).format("YYYY/MM/DD , h:mm:ss a")
+            ];
 
 
-              },
-              afterLabel: function(tooltipItem, data) {
-                return "";
+            let str = Object.keys(stat).map(key=>key+":"+
+              ((stat[key]!=null)?stat[key].toFixed(4):"NULL")
+            );
+            str_arr = str_arr.concat(str);
+            if(dataOnTip.data.group!==undefined)
+              str_arr.push("count:"+dataOnTip.data.group.length);
+            return str_arr;
 
-              }
-            },
-            backgroundColor: '#FFF',
-            titleFontSize: 16,
-            titleFontColor: '#0066ff',
-            bodyFontColor: '#000',
-            bodyFontSize: 14,
-            displayColors: false
+
           }
-
-
-      if(LSL!=0 || USL!=0 || value_target!=0)
-      {
-        this.state.chartOpt.options.scales.yAxes[0].ticks={
-          min:1.2*(LSL-value_target)+value_target,
-          max:1.2*(USL-value_target)+value_target,
-        };
-      }
-      else
-      {
-
+        },
+        backgroundColor: '#FFF',
+        titleFontSize: 16,
+        titleFontColor: '#0066ff',
+        bodyFontColor: '#000',
+        bodyFontSize: 14,
+        displayColors: true
       }
 
-
-      if(this.charObj!==undefined)    
-        this.charObj.update();
-      //console.log(this.state.chartOpt.options.scales);
   }
 
 
@@ -793,7 +958,8 @@ class APP_ANALYSIS_MODE extends React.Component{
       inspectionRecGroup:[],
       groupInterval:2*60*1000,//10 mins
       liveFeedMode:false,
-      dataInSync:false
+      dataInSync:false,
+      controlChartOverlap:false
     };
     this.recStream=new InspRecStream();
     //this.state.inspectionRec=dbInspectionQuery;
@@ -896,23 +1062,38 @@ class APP_ANALYSIS_MODE extends React.Component{
             let inspectionRecGroup =
               inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,measureList);
             this.stateUpdate({inspectionRecGroup,groupInterval});
-        }}/>
+        }}/>,
+        <Checkbox checked={this.state.controlChartOverlap} onChange={(ev)=>this.setState({controlChartOverlap:ev.target.checked})}>重疊顯示</Checkbox>,
       ]
 
     }
 
     
     let graphUI=null;
-    graphUI =
-    <div  style={{width:"95%"}}> 
-      {measureList.map(m=>
-      <ControlChart inspectionRecGroup={this.state.inspectionRecGroup} 
-        style={{height:"400px"}}
-        key={m.name+"_"}
-        targetMeasure={m} 
-        xAxisRange={this.state.displayRange}/>)}
-    </div>
-    
+    if(this.state.controlChartOverlap)
+    {
+      graphUI =
+      <div  style={{width:"95%",height:"100%"}}> 
+        <ControlChart inspectionRecGroup={this.state.inspectionRecGroup} 
+          style={{height:"100%"}}
+          key={"_"}
+          targetMeasure={measureList} 
+          xAxisRange={this.state.displayRange}/>
+      </div>
+    }
+    else
+    {
+      graphUI =
+      <div  style={{width:"95%"}}> 
+        {measureList.map(m=>
+        <ControlChart inspectionRecGroup={this.state.inspectionRecGroup} 
+          style={{height:"400px"}}
+          key={m.name+"_"}
+          targetMeasure={[m]} 
+          xAxisRange={this.state.displayRange}/>)}
+      </div>
+    }
+
     
     return(
     <div className="HXF">

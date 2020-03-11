@@ -24,7 +24,9 @@
   font-size: calc(10px + 2vmin);
   color: white;
 }
-
+.HXF{
+  height:100%
+}
 .App-link {
   color: #61dafb;
 }
