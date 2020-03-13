@@ -69,6 +69,10 @@ function Edit_info_reset(newState)
     //camera_calibration_report:undefined // the camera calibration data shouldn't be reset
     mouseLocation:undefined,
     loadedDefFile:undefined,
+
+    DefFileHash:undefined,
+    DefFileHash_pre:undefined,
+    DefFileHash_root:undefined,
   }
 
 
@@ -788,6 +792,8 @@ function StateReducer(newState,action)
           }
           //console.log(dclone(newState.edit_info))
           newState.edit_info.DefFileHash=sha1_info_in_json;
+          newState.edit_info.DefFileHash_pre=root_defFile.featureSet_sha1_pre;
+          newState.edit_info.DefFileHash_root=root_defFile.featureSet_sha1_root;
 
           if(root_defFile.name === undefined)
           {
@@ -840,6 +846,7 @@ function StateReducer(newState,action)
                 newState.edit_info=Object.assign({},newState.edit_info);
 
                 newState.edit_info._obj.SetDefInfo(report);
+                
 
                 let reportStatisticState = newState.edit_info.reportStatisticState;
 
@@ -992,6 +999,24 @@ function StateReducer(newState,action)
           {
             newState.edit_info={...newState.edit_info,intrusionSizeLimitRatio:action.data};
           }
+          break;
+        }
+        
+        case DefConfAct.EVENT.DefFileHash_Update:
+        {
+          let DefFileHash_root = newState.edit_info.DefFileHash_root;//root is still root
+          let DefFileHash_pre = newState.edit_info.DefFileHash;//old hash become pre
+          let DefFileHash = action.data;
+
+          if(DefFileHash_root===undefined)
+          {
+            DefFileHash_root=DefFileHash_pre;
+            if(DefFileHash_root===undefined){
+              DefFileHash_root=DefFileHash;
+            }
+          }
+
+          newState.edit_info={...newState.edit_info,DefFileHash_root,DefFileHash_pre,DefFileHash};
           break;
         }
         

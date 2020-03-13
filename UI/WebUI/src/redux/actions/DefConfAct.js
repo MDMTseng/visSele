@@ -8,6 +8,7 @@ export const EVENT = {
   Shape_Set:"Shape_Set",
   Shape_Decoration_ID_Order_Update:"Shape_Decoration_ID_Order_Update",
   DefFileName_Update:"DefFileName_Update",
+  DefFileHash_Update:"DefFileHash_Update",
   DefFileTag_Update:"DefFileTag_Update",
   Matching_Face_Update:"Matching_Face_Update",
   Matching_Angle_Margin_Deg_Update:"Matching_Angle_Margin_Deg_Update",
@@ -71,6 +72,14 @@ export function IntrusionSizeLimitRatio_Update(ratio)
     type: EVENT.IntrusionSizeLimitRatio_Update,data: ratio
   }
 }
+
+export function DefFileHash_Update(hash)
+{
+  return {
+    type: EVENT.DefFileHash_Update,data: hash
+  }
+}
+
 
 
 export function Shape_Set(shape_data)

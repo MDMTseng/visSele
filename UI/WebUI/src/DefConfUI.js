@@ -600,6 +600,20 @@ class APP_DEFCONF_MODE extends React.Component{
               let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
               report.featureSet[0]["__decorator"]=this.props.Info_decorator;
               report.featureSet_sha1 = sha1_info_in_json;
+              this.props.ACT_DefFileHash_Update(sha1_info_in_json);
+
+              report.featureSet_sha1_pre = this.props.edit_info.DefFileHash;
+
+              if(this.props.edit_info.DefFileHash_root===undefined)
+              {
+                if(this.props.edit_info.featureSet_sha1_pre===undefined)
+                  report.featureSet_sha1_root=sha1_info_in_json;
+                else
+                  report.featureSet_sha1_root=this.props.edit_info.featureSet_sha1_pre;
+              }
+              else 
+                report.featureSet_sha1_root = this.props.edit_info.DefFileHash_root;
+
               console.log("ACT_Report_Save");
               this.props.ACT_Report_Save(this.props.WS_ID,fileNamePath+'.'+DEF_EXTENSION,enc.encode(JSON.stringify(report, null, 2)));
               console.log("ACT_Cache_Img_Save");
@@ -1222,7 +1236,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Matching_Angle_Margin_Deg_Update:(deg)=>{dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg))},
     ACT_Matching_Face_Update:(faceSetup)=>{dispatch(DefConfAct.Matching_Face_Update(faceSetup))},//-1(back)/0(both)/1(front)
     ACT_IntrusionSizeLimitRatio_Update:(ratio)=>{dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio))},//0~1
-    
+    ACT_DefFileHash_Update:(hash)=>{dispatch(DefConfAct.DefFileHash_Update(hash))},
     ACT_Report_Save:(id,fileName,content)=>{
       let act = UIAct.EV_WS_SEND(id,"SV",0,
       {filename:fileName},
