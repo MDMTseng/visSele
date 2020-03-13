@@ -97,7 +97,7 @@ export class websocket_autoReconnect{
       this.connectionTimer=null;
       this.readyState=undefined;
       this._connect(url);
-
+    
   }
   onopen(ev){}
   onmessage(ev){}
@@ -139,6 +139,8 @@ export class websocket_autoReconnect{
     this.CONNECTING=this.websocket.CONNECTING;
     this.CLOSED=this.websocket.CLOSED;
     this.CLOSING=this.websocket.CLOSING;
+    
+    this.onNewState(this.CONNECTING);
     this.connectionTimer = setTimeout(()=>{
         this.close();
         this.onconnectiontimeout();
@@ -147,6 +149,7 @@ export class websocket_autoReconnect{
 
     this.websocket.onopen = (ev)=>{
       this.readyState=this.websocket.readyState;
+      this.onNewState(this.readyState);
       clearTimeout(this.connectionTimer);
       this.connectionTimer=undefined;
       return this.onopen(ev);
@@ -154,11 +157,13 @@ export class websocket_autoReconnect{
     this.websocket.onmessage =(ev)=> this.onmessage(ev);
     this.websocket.onerror =(ev)=>{
       this.readyState=this.websocket.readyState;
+      this.onNewState(this.readyState);
       //setTimeout(()=>this._connect(url),10);
       return this.onerror(ev);
     }
     this.websocket.onclose =(ev)=>{
       this.readyState=this.websocket.readyState;
+      this.onNewState(this.readyState);
       setTimeout(()=>this._connect(url),this.reconnectGap_ms);
       return this.onclose(ev);
     }
@@ -183,6 +188,20 @@ export class websocket_autoReconnect{
       this._connect(this.url);
     }
   }
+  
+  onNewState(state){
+    //console.log(this.curState,state);
+    if(this.curState!=state)
+    {
+      this.onStateUpdate(state,this.curState);
+      this.curState=state;
+    }
+  }
+  onStateUpdate(curState,preState){
+
+    //console.log("onStateUpdate",curState,preState);
+  }
+
   close() {
     this.wsclose=true;
     

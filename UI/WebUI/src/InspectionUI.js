@@ -172,6 +172,15 @@ class RAW_InspectionReportPull extends React.Component {
         this.WS_DB_Query.close();
     }
 
+    onConnectionStateUpdate(cur,pre)
+    {
+      //log.info("dufkhiuefhirhgspiosfjoipfsjvoisfjd",cur,pre);
+      if(this.props.onConnectionStateUpdate!==undefined)
+      {
+        this.props.onConnectionStateUpdate(cur,pre);
+      }
+      
+    }
     websocketConnect(url = "ws://hyv.decade.tw:8080/") {
 
 
@@ -179,6 +188,7 @@ class RAW_InspectionReportPull extends React.Component {
         {
             console.log("[init][WS]" + url+"insert/insp");
             let _ws=new websocket_autoReconnect(url+"insert/insp",10000);
+            _ws.onStateUpdate=this.onConnectionStateUpdate.bind(this);
             this.WS_DB_Insert=new websocket_reqTrack(_ws);
 
             this.WS_DB_Insert.onreconnection=(reconnectionCounter)=>{
@@ -1285,7 +1295,7 @@ class CanvasComponent extends React.Component {
               else if(down_samp_level>15)down_samp_level=15;
               
               
-              log.info(crop,down_samp_level);
+              //log.info(crop,down_samp_level);
               this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
               {
                 CameraSetting:{
@@ -1928,7 +1938,8 @@ class APP_INSP_MODE extends React.Component {
             CanvasWindowRatio:9,
             InspStyle:undefined,
             ROIs:{},
-            ROI_key:undefined
+            ROI_key:undefined,
+            DB_Conn_state:undefined
         };
 
         this.CameraCtrl=new CameraCtrl({
@@ -2062,7 +2073,7 @@ class APP_INSP_MODE extends React.Component {
                 } else if (ret_status == INSPECTION_STATUS.FAILURE) {
                     this.checkResult2AirAction = {direction: "left", ver: this.checkResult2AirAction.ver + 1};
                 } else {
-                    log.error("result NA...");
+                  //log.error("result NA...");
                 }
                 //
             }
@@ -2083,16 +2094,16 @@ class APP_INSP_MODE extends React.Component {
                 text="<" onClick={this.props.ACT_EXIT}/>
             ,
             <BASE_COM.IconButton
-            iconType="file"
+            iconType={this.state.DB_Conn_state==1?"disconnect-outlined":"link-outlined"}
             key="LOADDef"
-            addClass="layout gray-1 vbox"
-            text={this.props.defModelName}
+            addClass={"blockS layout gray-1 vbox "+((this.state.DB_Conn_state==1)?"blackText lgreen":"BK_Blink")}
+            text={this.state.DB_Conn_state==1?"已連結伺服器":"斷線!! 數據不會上傳"}
             onClick={() => {}}/>
             ,
 
             <div className="s black width12 HXA">
-                {this.props.defModelTag.map(tag=><Tag color="red">{tag}</Tag>)}
-                {this.props.inspOptionalTag.map(tag=><Tag color="green">{tag}</Tag>)}
+                {this.props.defModelTag.map(tag=><Tag className="large" color="red">{tag}</Tag>)}
+                {this.props.inspOptionalTag.map(tag=><Tag className="large" color="green">{tag}</Tag>)}
             </div>
             
             ,
@@ -2213,6 +2224,10 @@ class APP_INSP_MODE extends React.Component {
                         reportStatisticState={this.props.reportStatisticState}/>}
                 <RAW_InspectionReportPull 
                     reportStatisticState={this.props.reportStatisticState} 
+                    onConnectionStateUpdate={(cur,pre)=>{
+                      //console.log(">>>>>>>>>>",cur,pre);
+                      this.setState({DB_Conn_state:cur});
+                    }}
                     url= "ws://hyv.decade.tw:8080/"
                     pull_skip={(this.state.InspStyle=="FI")?10:1}/> 
                 <$CSSTG transitionName="fadeIn">
