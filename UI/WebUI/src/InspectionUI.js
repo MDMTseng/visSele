@@ -1992,7 +1992,7 @@ class APP_INSP_MODE extends React.Component {
           else if(this.state.InspStyle=="CI")
           {
             this.props.ACT_StatSettingParam_Update({
-              keepInTrackingTime_ms:3000,
+              keepInTrackingTime_ms:1000,
               historyReportlimit:2000,
               minReportRepeat:4,
               headReportSkip:4,
