@@ -307,11 +307,11 @@ class APPMain extends React.Component{
           calibInfo.calibMea2,
           mmpp,0);
         let MenuItem={
-          HOME:{
-              icon:"home",
-              content:this.FrontDoor(),
-              onSelected: genericMenuItemCBsCB
-          },
+          // HOME:{
+          //     icon:"home",
+          //     content:this.FrontDoor(),
+          //     onSelected: genericMenuItemCBsCB
+          // },
           Overview:{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
@@ -377,14 +377,14 @@ class APPMain extends React.Component{
                 />
 
                 {
-                  [{type:"成形",subtype:["[11]巡檢"]},
+                  [{type:"成形",subtype:["[11]巡檢","[12]首件"]},
                   {type:"熱處理",subtype:["[21]熱處理"]},
                   {type:"表面處理",subtype:["[31]電鍍","[32]電著","[33]攻牙","[34]震動研磨"]},
                   {type:"機台",subtype:[...(this.Array_NtoM(1,40).map(n=>"M"+n)),null,...(this.Array_NtoM(7,15).map(n=>"P"+n))]},
                   ].map(catg=>
                     <Dropdown overlay={  <Menu>{
                           catg.subtype.map((ele,idx,arr)=>ele===null?<br/>:
-                            <Tag className="large InspTag fixed" 
+                            <Tag className="xlarge InspTag optional fixed"  
                               onClick={()=>{
                                 var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
                                 this.props.ACT_InspOptionalTag_Update([...array3,ele])

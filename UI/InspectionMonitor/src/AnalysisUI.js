@@ -562,13 +562,13 @@ class ControlChart extends React.Component {
   PropsUpdate(nextProps) {
     console.log(">>>>");
     let doMultipleChart=nextProps.targetMeasure.length!=1;
-    // if(this.targetMeasure_cache != nextProps.targetMeasure ||
-    //   this.inspectionRecGroup != nextProps.inspectionRecGroup)
+    if(this.targetMeasure_cache != nextProps.targetMeasure ||
+      this.inspectionRecGroup != nextProps.inspectionRecGroup)
     {
       this.doChartDataUpdate(nextProps,doMultipleChart);
     }
-    // this.targetMeasure_cache = nextProps.targetMeasure;
-    // this.inspectionRecGroup = nextProps.inspectionRecGroup;
+    this.targetMeasure_cache = nextProps.targetMeasure;
+    this.inspectionRecGroup = nextProps.inspectionRecGroup;
 
     let N_LSL=-100;
     let N_USL=100;

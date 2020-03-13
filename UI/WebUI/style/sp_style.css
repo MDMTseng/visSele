@@ -83,6 +83,13 @@ body.sp_Style.blockS  {
 
 .sp_Style .ant-tag.large{
   font-size:20px;margin-bottom: 8px;
+  padding: 5px;
+} 
+
+.sp_Style .ant-tag.xlarge{
+  margin: 15px;
+  font-size: 30px;
+  padding: 10px;
 } 
 
 .sp_Style .ant-tag.InspTag.fixed{
