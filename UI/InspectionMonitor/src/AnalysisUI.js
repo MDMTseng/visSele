@@ -1149,11 +1149,14 @@ class APP_ANALYSIS_MODE extends React.Component{
 
                   let selectedTrueTags = Object.keys(tagState).filter(key=>tagState[key]);
 
-                  var filterTagsBoolean = this.state.inspectionRec.filter(function(item, index, array){
-                      let tArr=item.tag.split(",");
-                      //return selectedTrueTags.some((item)=>tArr.includes(item));
-                      return selectedTrueTags.every((item)=>tArr.includes(item));
-                  });
+                  var filterTagsBoolean;
+
+                  filterTagsBoolean = selectedTrueTags.length==0?this.state.inspectionRec:
+                    this.state.inspectionRec.filter(function(item, index, array){
+                        let tArr=item.tag.split(",");
+                        return selectedTrueTags.some((item)=>tArr.includes(item));
+                        //return selectedTrueTags.every((item)=>tArr.includes(item));
+                    });
 
 
                   let inspectionRecGroup =
