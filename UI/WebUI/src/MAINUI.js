@@ -323,21 +323,40 @@ class APPMain extends React.Component{
                     (filePath,fileInfo)=>{
                       if(localStorage!==undefined)
                       {
-                        let LocalS_RecentFiles=localStorage.getItem("RecentFiles");
-                        if(LocalS_RecentFiles==null)LocalS_RecentFiles=[];
-  
+                        let LocalS_RecentDefFiles=localStorage.getItem("RecentDefFiles");
+                          try {
+                            LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+                          } catch(e) {
+                            LocalS_RecentDefFiles=[];
+                          }
+                        console.log(LocalS_RecentDefFiles);
+                        LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo)=>
+                          (ls_fileInfo.name!=fileInfo.name || ls_fileInfo.path!=fileInfo.path));
+                        
+                        LocalS_RecentDefFiles.unshift(fileInfo);
+                        LocalS_RecentDefFiles=LocalS_RecentDefFiles.slice(0, 100);
+                        localStorage.setItem("RecentDefFiles",JSON.stringify(LocalS_RecentDefFiles));
+                        console.log(localStorage.getItem("RecentDefFiles"));
                       }
-                      //console.log(LocalS_RecentFiles);
 
                       filePath=filePath.replace("."+DEF_EXTENSION,""); 
-                      this.setState({...this.state,fileSelectedCallBack:undefined,fileStaticList:fileInfo});
+                      this.setState({fileSelectedCallBack:undefined});
                       this.props.ACT_Def_Model_Path_Update(filePath);
                       this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
                     }
                     
-
+                    
+                  let LocalS_RecentDefFiles=localStorage.getItem("RecentDefFiles");
+                  try {
+                    LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+                  } catch(e) {
+                    LocalS_RecentDefFiles=[];
+                  }
+                  let fileGroups=[
+                    {name:"history",list:LocalS_RecentDefFiles}
+                  ];
                   let fileSelectFilter=(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION);
-                  this.setState({...this.state,fileSelectedCallBack,fileSelectFilter});
+                  this.setState({fileSelectedCallBack,fileSelectFilter,fileGroups});
                 }}>
                   <Icon type="file-add" />
                   {this.props.defModelPath}
@@ -428,7 +447,7 @@ class APPMain extends React.Component{
                 path={DefFileFolder} visible={this.state.fileSelectedCallBack!==undefined}
                 BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
                 onFileSelected={this.state.fileSelectedCallBack}
-                staticList={this.state.fileStaticList}
+                fileGroups={this.state.fileGroups}
 
                 onCancel={()=>
                 { 
@@ -450,11 +469,11 @@ class APPMain extends React.Component{
             content:null,
             onSelected:this.props.EV_UI_Insp_Mode
           },
-          STA:{
-              icon:"bar-chart",
-              content:null,
-              onSelected:this.props.EV_UI_Analysis_Mode
-          },
+          // STA:{
+          //     icon:"bar-chart",
+          //     content:null,
+          //     onSelected:this.props.EV_UI_Analysis_Mode
+          // },
           Setting:{
             icon:"setting" ,
             content:<div style={{ padding: 24, background: '#fff', minHeight: 360 }}>

@@ -354,7 +354,8 @@ export class BPG_FileBrowser_proto extends React.Component{
       folderStruct:{},
       history:["./"],
       searchText:undefined,
-      searchFolderStruct:undefined
+      searchFolderStruct:undefined,
+      selectedFileGroupInfo:undefined
     }
   }
 
@@ -497,8 +498,25 @@ export class BPG_FileBrowser_proto extends React.Component{
         (file)=>(file.name!='.' && file.name!='..' )&&
         file.name.includes(this.state.searchText)&&
         (this.props.fileFilter===undefined?true:this.props.fileFilter(file)));
-
+      console.log(this.state.searchFolderStruct,fileList);
       tableWidthClass="width12"
+    }
+    else if(this.state.selectedFileGroupInfo!==undefined)
+    {
+      columns = ['type','name','path'].map((info)=>({
+        title: info,
+        dataIndex: info,
+        key:info,
+      }));
+      
+      columns[0].render=(text, record) => {
+        let iconType=(text=="DIR")?"folder":"file"
+        return <Icon type={iconType} />
+      }
+      columns[0].width=64;
+      
+      fileList=this.state.selectedFileGroupInfo;
+      tableWidthClass="width10"
     }
     else
     {
@@ -514,17 +532,13 @@ export class BPG_FileBrowser_proto extends React.Component{
       }
       columns[0].width=64;
   
+
       fileList =
       this.fList(this.state.folderStruct,(file)=>
         (file.name!='.' && file.name!='..' )&&
         (this.props.fileFilter===undefined?true:this.props.fileFilter(file)
       ))
       
-  
-      let favoriteDir=[
-        {name:"origin",path:"./"},];
-  
-  
   
   
       let curPathArr = (typeof this.state.folderStruct.path ==='string')?
@@ -539,20 +553,6 @@ export class BPG_FileBrowser_proto extends React.Component{
         },"");
         
   
-
-      fv_UI.push(
-      <div className="s height12 width2 scroll" key="sideMenu">
-        <Menu
-          onClick={(evt)=>{this.goDir(evt.item.props.path);}}
-          mode="inline"
-        >
-          {
-            favoriteDir.map(dir=>
-              <Menu.Item key={dir.name} path={dir.path}>{dir.name}</Menu.Item>)
-          }
-        </Menu>
-      </div>);
-
 
       pathSplitBtns=<div>
         <AntButtonGroup>
@@ -569,12 +569,50 @@ export class BPG_FileBrowser_proto extends React.Component{
       </div>
     }
 
+    if(tableWidthClass!=="width12")
+    {
+      
+      let customfileStruct=(this.props.fileGroups===undefined)?[]:[...this.props.fileGroups];
+      
+      customfileStruct.push({name:"origin",path:"./"});
+    
+    
+      fv_UI.push(
+      <div className="s height12 width2 scroll" key="sideMenu">
+        <Menu
+          onClick={(evt)=>{
+            if(evt.item.props.list!==undefined)
+            {
+              let list = evt.item.props.list;
+              if(this.state.selectedFileGroupInfo===undefined)
+                this.setState({selectedFileGroupInfo:list});
+              else
+                this.setState({selectedFileGroupInfo:undefined});
+              return;
+            }
+            
+            this.setState({selectedFileGroupInfo:undefined});
+            if(evt.item.props.path!==undefined)
+              this.goDir(evt.item.props.path);
+          }}
+          mode="inline"
+        >
+          {
+            customfileStruct.map((group,idx)=>
+              <Menu.Item key={group.name+"_"+idx} path={group.path} list={group.list}>{group.name}</Menu.Item>)
+          }
+        </Menu>
+      </div>);
+
+
+    }
+
     titleRender=<div>
       {pathSplitBtns}
 
       {
         (this.props.searchDepth>=0 || this.props.searchDepth===undefined)?
-          <Input.Search key={"Search"} className="width3"  allowClear disable
+          <Input.Search key={"Search"} className="width3"  allowClear disable={true}
           size="small" value={this.state.searchText} placeholder="Search" 
           onChange={(evt)=>{
             if(this.state.searchFolderStruct===undefined)
@@ -588,16 +626,16 @@ export class BPG_FileBrowser_proto extends React.Component{
                 {
                   folderStruct = data[0].data;
                 }
-                this.setState({...this.state,searchFolderStruct:folderStruct});
+                this.setState({searchFolderStruct:folderStruct});
                 //console.log(this.state.searchFolderStruct);
               })
               .catch((err) => {
                 
-                this.setState({...this.state,searchFolderStruct:undefined});
+                this.setState({searchFolderStruct:undefined});
                 //console.log(err);
               })
             }
-            this.setState({...this.state,searchText:evt.target.value});
+            this.setState({searchText:evt.target.value});
           }}/>:null
         }
     </div>
@@ -614,6 +652,8 @@ export class BPG_FileBrowser_proto extends React.Component{
                 this.props.onFileSelected(file.path,file);
               else
                 this.goDir(file.path);
+              
+              this.setState({selectedFileGroupInfo:undefined});
             }})} 
           pagination={false}
           columns={columns} dataSource={fileList} />
