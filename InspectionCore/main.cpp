@@ -242,6 +242,13 @@ int SaveIMGFile(const char *filename, acvImage *img)
   {
     return SavePNGFile(filename,img);
   }
+
+  {
+    
+    std::string fname_str(filename);
+    return SavePNGFile((fname_str+".png").c_str(),img);
+  }
+  
   return -1;
 
 }
