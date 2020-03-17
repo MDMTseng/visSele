@@ -6,6 +6,7 @@ import React from 'react';
 import {round as roundX,GetObjElement} from './UTIL/MISC_Util';
 import 'antd/dist/antd.css';
 
+import dclone from 'clone';
 import moment from 'moment';
 import Table from 'antd/lib/table';
 import Button from 'antd/lib/button';
@@ -942,10 +943,6 @@ class InspRecStream
 class APP_ANALYSIS_MODE extends React.Component{
 
 
-  componentDidMount()
-  {
-  }
-
   constructor(props) {
     super(props);
     this.ec_canvas = null;
@@ -963,19 +960,12 @@ class APP_ANALYSIS_MODE extends React.Component{
     };
     this.recStream=new InspRecStream();
     //this.state.inspectionRec=dbInspectionQuery;
-    //this.props.defFile=defFile;
+    //this.state.defFile=defFile;
 
 //let IRG=InspectionRecordGrouping(dbInspectionQuery);
 //console.log(IRG,defFile);
   }
   
-  shouldComponentUpdate(nextProps, nextState) {
-    if(nextProps.defFile!==this.props.defFile)
-    {
-      this.recStream.setDefFile(nextProps.defFile);
-    }
-    return true;
-  }
 
   stateUpdate(obj) {
     return this.setState({...this.state,...obj});
@@ -986,9 +976,26 @@ class APP_ANALYSIS_MODE extends React.Component{
     return this.stateUpdate({liveFeedMode:enable});
   }
 
-
+  shouldComponentUpdate(nextProps, nextState) {
+    if(nextProps.defFile!==this.props.defFile)
+    {
+      this.recStream.setDefFile(nextProps.defFile);
+    }
+    return true;
+  }
+  static getDerivedStateFromProps(nextProps, prevState)
+  {
+    if(nextProps.defFile===undefined)return null;
+    let defFile = dclone(nextProps.defFile);
+    let features=defFile.featureSet[0].features;
+    let __decorator=defFile.featureSet[0].__decorator;
+    let featureInOrder=__decorator.list_id_order.map(id=>features.find(f=>f.id==id));
+    defFile.featureSet[0].features=featureInOrder;
+    // console.log(features,__decorator.list_id_order,featureInOrder);
+    return {...prevState,defFile};
+  }
   render() {
-    if(this.props.defFile===undefined)return null;
+    if(this.state.defFile===undefined)return null;
     let menu_height="HXA";//auto
     let MenuSet=[];
     //if()
@@ -1022,14 +1029,13 @@ class APP_ANALYSIS_MODE extends React.Component{
       this.props.DefFileHash.length>5;
 
     const dateFormat = 'YYYY/MM/DD';
-    console.log( this.props.defFile);
-    let measureList = this.props.defFile.featureSet[0].features.filter(feature=>feature.type==="measure");
+    console.log( this.state.defFile);
+    let measureList = this.state.defFile.featureSet[0].features.filter(feature=>feature.type==="measure");
     
-    
-    console.log(this.props.defFile);
-    document.title = this.props.defFile.name; 
+    console.log(this.state.defFile);
+    document.title = this.state.defFile.name; 
     let HEADER=<Typography>
-      <Title>{this.props.defFile.name}</Title>
+      <Title>{this.state.defFile.name}</Title>
     </Typography>;
     
     let graphCtrlUI=null;
@@ -1137,7 +1143,7 @@ class APP_ANALYSIS_MODE extends React.Component{
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
           onClick={
             ()=>{
-              let ReportName=this.props.defFile.name+"_"+YYYYMMDD(new Date());
+              let ReportName=this.state.defFile.name+"_"+YYYYMMDD(new Date());
               let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup);
               let str = csv_arr.join('');
               //copyStringToClipboard(str);
