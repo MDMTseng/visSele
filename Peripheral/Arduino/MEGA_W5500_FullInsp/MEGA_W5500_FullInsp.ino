@@ -102,7 +102,7 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 #define GATE_PIN 30
 
 #define FAKE_GATE_PIN 31
-
+//in libraries/Ethernet/src/utility/w5100.h CS pin is pin 10
 
 //The index type uint8_t would be enough if the buffersize<255
 
