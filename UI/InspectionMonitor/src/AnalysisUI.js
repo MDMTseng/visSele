@@ -522,7 +522,6 @@ class ControlChart extends React.Component {
     return mValue;
   }
 
-  
   genGroupRepPoints(_inspectionRecGroup,_targetMeasure,_xAxisRange,color)
   {
     return _inspectionRecGroup.reduce((acc_chart_data,repG)=>{

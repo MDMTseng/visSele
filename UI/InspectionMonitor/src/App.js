@@ -146,7 +146,6 @@ function fetchDeffileInfo(name)
     pjsonp(url,null).then((data)=>{
 
       
-      let url='http://hyv.decade.tw:8080/query/inspection?';
       let hashArr = data.map(srec=>srec.DefineFile.featureSet_sha1)
       hashArr = [...new Set(hashArr)];
 
@@ -159,7 +158,8 @@ function fetchDeffileInfo(name)
         return defFInfo;
       });
       let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
-      
+
+      let url='http://hyv.decade.tw:8080/query/inspection?';
       url+='tStart=0&tEnd=2581663256894&limit=999999999&';
       url+='subFeatureDefSha1='+hashRegx+'&'
       url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
@@ -169,7 +169,6 @@ function fetchDeffileInfo(name)
       '"time_end": {"$max":"$InspectionData.time_ms"},'+
       '"tags": {"$addToSet":"$InspectionData.tag"}'+
       '}}]';
-
       return pjsonp(url,null)
 
     }).then((dataSet)=>{
@@ -200,6 +199,13 @@ function fetchDeffileInfo(name)
         if(tar!==undefined)
         {
           Object.assign(defF, tar)
+
+
+          defF.tags = defF.tags.flat(9)
+            .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
+            .flat(9)
+            .filter(tag=>tag.length>0)
+          defF.tags = [...new Set(defF.tags)];
         }
       })
       res(defFileData)
@@ -209,7 +215,77 @@ function fetchDeffileInfo(name)
   });
 }
 
+//http://hyv.decade.tw:8080/query/inspection?tStart=1583942400000&tEnd=1584639131675&subFeatureDefSha1_regex=.&projection={"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","sum":{"$sum":1}}}]
 
+function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
+{
+  let dataSet_Formatted;
+  return new Promise((res,rej)=>{
+    let url="http://hyv.decade.tw:8080/query/inspection?tStart="+start_ms+"&tEnd="+end_ms+
+    '&projection={"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}'+
+    '&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
+      '"count":{"$sum":1},'+
+      '"time_start": {"$min":"$InspectionData.time_ms"},'+
+      '"time_end": {"$max":"$InspectionData.time_ms"},'+
+      '"tags": {"$addToSet":"$InspectionData.tag"}'+
+    '}}]';
+
+
+    pjsonp(url,null).then((dataSet)=>{
+
+      dataSet_Formatted=
+      dataSet.map(data=>{
+        data._id=data._id[0]
+        return data
+      }).reduce((acc,data)=>{
+        let id=data._id;
+        if(acc[id]===undefined)
+        {
+          acc[id]=data;
+          delete acc[id]._id; 
+        }
+        else
+        {
+          acc[id].count+=data.count;
+          acc[id].time_start=[Math.min(acc[id].time_start[0],data.time_start[0])];
+          acc[id].time_end=[Math.max(acc[id].time_end[0],data.time_end[0])];
+        }
+        return acc;
+      },{})
+      let hashRegx = Object.keys(dataSet_Formatted).reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
+
+      console.log(dataSet,dataSet_Formatted,hashRegx);
+      //'http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx
+      let url='http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx
+
+      return pjsonp(url,null)
+
+    }).then((defFileData)=>{
+
+      
+
+
+      defFileData.forEach((defF)=>{
+        defF.hash=defF.DefineFile.featureSet_sha1;
+        defF.name=[defF.DefineFile.name];
+        let tar = dataSet_Formatted[defF.hash];
+        if(tar!==undefined)
+        {
+          Object.assign(defF, tar)
+          defF.tags = defF.tags.flat(9)
+            .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
+            .flat(9)
+            .filter(tag=>tag.length>0)
+          defF.tags = [...new Set(defF.tags)];
+        }
+      })
+      console.log(defFileData);
+      res(defFileData)
+    }).catch((err)=>{
+      rej(err);
+    })
+  });
+}
 
 function fetchCostomDisplayInfo(name)
 {
@@ -253,6 +329,26 @@ function getUrlPath()
 }
 function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
+  
+  useEffect(() => {
+    console.log("1,didUpdate");
+    var cur_ms = new Date().getTime();
+    fetchDeffileInfo_in_insp_time_range(cur_ms-2*24*60*60*1000,cur_ms+1000000).
+    then((res)=>{
+
+      setFetchedRecord(res);
+      onQueryRes(res);
+    }).catch((e)=>{
+      setFetchedRecord([]);
+      if(onQueryRej!==undefined)
+        onQueryRej(e)
+    });
+
+    return () => {
+      console.log("1,didUpdate ret::");
+    };
+  },[]);
+
   let searchBox=<Input placeholder={placeholder} defaultValue={defaultValue}
     onPressEnter={(e)=>{
     console.log(e.target.value)
@@ -337,7 +433,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
 
           retSrc.Date_Start=fetchRec.time_start[0];
           retSrc.Date_End=fetchRec.time_end[0];
-          retSrc.Tags=fetchRec.tags;
+          retSrc.Tags=fetchRec.tags.join(",");
         }
   
         return retSrc
