@@ -141,7 +141,8 @@ function convertInspInfo2CSV(reportName,measureList,inspRecGroup)
     s_group.group
       .forEach(data=>{
         let rep=data.judgeReports;
-        ci.push(datePrintSimple(new Date(data.time_ms)));
+        ci.push("'"+datePrintSimple(new Date(data.time_ms)));
+        //The "'" in the head of time will let Excel left alingn time string, and have better lookup exprience
         measureList.forEach(m=>
           {
             let s_rep = rep.find(s_rep=>s_rep.id==m.id);
@@ -159,7 +160,7 @@ function convertInspInfo2CSV(reportName,measureList,inspRecGroup)
               if(tag===undefined)tag="";
               else
               {
-                if(tag==",")tag="";
+                tag=tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",")
               }
               ci.push('"'+tag+'"');
               break;

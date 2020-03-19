@@ -297,7 +297,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Name',
         dataIndex: 'name',
         key: 'name',
-        render: fetchRec => <a href={getUrlPath()+"?v=0&hash="+fetchRec.hash}>{fetchRec.name}</a>,
+        render: fetchRec => <a href={getUrlPath()+"?v=0&hash="+fetchRec.hash} target="_blank">{fetchRec.name}</a>,
       },
       {
         title: 'count',
@@ -528,7 +528,7 @@ class App extends React.Component{
           defFile={this.state.defFile}/>;
         break;
       case this.UI_type.search:
-        UI=<XQueryInput onQueryRes={(res)=>{console.log(res)}} defaultValue="3421" placeholder="輸入名稱"/>;
+        UI=<XQueryInput onQueryRes={(res)=>{console.log(res)}} defaultValue="" placeholder="輸入名稱"/>;
         break;
     }
 
