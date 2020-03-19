@@ -7,6 +7,7 @@ import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 
+import {TagOptions_rdx} from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
@@ -2086,6 +2087,28 @@ class APP_INSP_MODE extends React.Component {
 
         let MenuSet_2nd = [];
 
+
+
+        let onTagEdit=()=>
+          this.setState({
+            additionalUI:[
+              <Modal
+              title={"警告"}
+              visible={true}
+              onOk={()=>{
+                this.setState({additionalUI:[]});
+                this.props.EV_UI_Insp_Mode();
+              }}
+              onCancel={()=>{
+                this.setState({additionalUI:[]});
+              }}
+            >
+              <div style={{height:"500px"}}>
+              <TagOptions_rdx className="s width12 HXA"/>
+              </div>
+            </Modal>
+            ]
+          });
         MenuSet = [
             <BASE_COM.IconButton
                 dict={EC_zh_TW}
@@ -2104,9 +2127,11 @@ class APP_INSP_MODE extends React.Component {
             <div className="s black width12 HXA">
                 {this.props.defModelTag.map(tag=><Tag className="large" color="red">{tag}</Tag>)}
                 {this.props.inspOptionalTag.map(tag=><Tag className="large" color="green">{tag}</Tag>)}
+                {<Tag className="large" color="gray" onClick={()=>onTagEdit()}>設定Tag</Tag>}
             </div>
             
             ,
+            this.state.additionalUI
         ];
 
 

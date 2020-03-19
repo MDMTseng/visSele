@@ -187,8 +187,17 @@ function StateReducer(newState,action)
     newState.state_count=0;
     log.info(newState.p_state.value," + ",action.data.action," > ",newState.c_state.value);
 
+    switch(newState.c_state.value)//enter state action
+    {
 
+      case UISTS.MAIN:
+        {
+          newState.edit_info={...newState.edit_info,inspOptionalTag:[]};
+        }
+        break
+    }
   }
+
   
   if (action.type === UISEV.Control_SM_Panel) {
     newState.showSM_graph = action.data;

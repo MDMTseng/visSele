@@ -494,11 +494,23 @@ export class BPG_FileBrowser_proto extends React.Component{
       }
       columns[0].width=64;
       
-      fileList=this.fList(this.state.searchFolderStruct,
-        (file)=>(file.name!='.' && file.name!='..' )&&
-        file.name.includes(this.state.searchText)&&
-        (this.props.fileFilter===undefined?true:this.props.fileFilter(file)));
-      console.log(this.state.searchFolderStruct,fileList);
+
+      if(this.state.selectedFileGroupInfo==undefined)
+      {
+        fileList=this.fList(this.state.searchFolderStruct,
+          (file)=>(file.name!='.' && file.name!='..' )&&
+          file.name.includes(this.state.searchText)&&
+          (this.props.fileFilter===undefined?true:this.props.fileFilter(file)));
+      }
+      else
+      {
+        fileList=this.state.selectedFileGroupInfo.filter(
+          (file)=>(file.name!='.' && file.name!='..' )&&
+          file.name.includes(this.state.searchText)&&
+          (this.props.fileFilter===undefined?true:this.props.fileFilter(file)));
+      }
+      console.log(this.state.selectedFileGroupInfo,fileList);
+
       tableWidthClass="width12"
     }
     else if(this.state.selectedFileGroupInfo!==undefined)

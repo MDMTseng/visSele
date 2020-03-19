@@ -3,6 +3,7 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
+import {TagOptions_rdx} from './component/rdxComponent.jsx';
  
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
@@ -33,6 +34,7 @@ import  Icon  from 'antd/lib/icon';
 import  Menu  from 'antd/lib/menu';
 import  Button  from 'antd/lib/button';
 import  Layout  from 'antd/lib/layout';
+import  Modal  from 'antd/lib/modal';
 import  Input  from 'antd/lib/input';
 import  Tag  from 'antd/lib/tag';
 import  Dropdown  from 'antd/lib/dropdown';
@@ -165,7 +167,7 @@ function isString(data)
 {
   return (typeof data === 'string' || data instanceof String);
 }
-
+ 
 class APPMain extends React.Component{
 
 
@@ -176,6 +178,7 @@ class APPMain extends React.Component{
           fileSelectFilter:undefined,
           fileStaticList:undefined,
           menuSelect:"Overview",
+          additionalUI:[],
           menuCollapsed:true,
           calibCalcInfo:{
             curMea1:0.8,
@@ -191,11 +194,11 @@ class APPMain extends React.Component{
     {
         setTimeout(()=>{
 
-            let defModelPath = this.props.defModelPath;
-      
-            this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath});
-                        
-        },3000);
+          let defModelPath = this.props.defModelPath;
+    
+          this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath});
+                      
+        },1000);
   
     }
     
@@ -266,12 +269,6 @@ class APPMain extends React.Component{
       console.log(newAddInfo);
       this.setState({calibCalcInfo:{...this.state.calibCalcInfo,...newAddInfo}});
     }
-
-    Array_NtoM(N,M)
-    {
-      let Len=M-N+1;
-      return [ ...Array(Len).keys() ].map( i => i+N);
-    }
     render() {
       let UI=[];
       if(this.props.c_state==null)return null;
@@ -316,7 +313,8 @@ class APPMain extends React.Component{
             icon:"info-circle" ,
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
               <div className="s black">{this.props.WebUI_info.version}</div>
-              <div className="s width7" style={{height:"500px"}}>
+
+              <div className="s HXF">
                 <Button size="large" 
                   onClick={()=>{
                   let fileSelectedCallBack=
@@ -324,11 +322,15 @@ class APPMain extends React.Component{
                       if(localStorage!==undefined)
                       {
                         let LocalS_RecentDefFiles=localStorage.getItem("RecentDefFiles");
-                          try {
-                            LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-                          } catch(e) {
-                            LocalS_RecentDefFiles=[];
-                          }
+                        try {
+                          LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+                        } catch(e) {
+                          LocalS_RecentDefFiles=[];
+                        }
+                        if(!(LocalS_RecentDefFiles instanceof Array))
+                        {
+                          LocalS_RecentDefFiles=[];
+                        }
                         console.log(LocalS_RecentDefFiles);
                         LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo)=>
                           (ls_fileInfo.name!=fileInfo.name || ls_fileInfo.path!=fileInfo.path));
@@ -362,70 +364,23 @@ class APPMain extends React.Component{
                   {this.props.defModelPath}
                 </Button>
                 
-                <Title level={2}>
+                <Title level={2} >
                   {this.props.defModelName}
                 </Title>
 
-                {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed">{tag}</Tag>)}
-                
-                {this.props.inspOptionalTag.map(curTag=>
-                  <Tag closable className="large InspTag optional" onClose={(e)=>{
-                    e.preventDefault();
-                    let tagToDelete=curTag;
-                    let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
-                    console.log(e.target,NewOptionalTag);
-                    this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
-                    }}>{curTag}</Tag>)}
-
-                <Input placeholder="新標籤"
-                  onChange={(e)=>{
-                    let newStr=e.target.value;
-                    //e.target.setSelectionRange(0, newStr.length)
-                    this.setState({...this.state,newTagStr:newStr});
-                  }}
-                  onPressEnter={(e)=>{
-                    let newTag=e.target.value.split(",");
-                    let newTags=[...this.props.inspOptionalTag,...newTag];
-                    this.props.ACT_InspOptionalTag_Update(newTags);
-                    this.setState({...this.state,newTagStr:""});
-                  }}
-                  className={(this.props.inspOptionalTag.find((str)=>str==this.state.newTagStr))?"error":""}
-                  allowClear
-                  value={this.state.newTagStr}
-                  prefix={<Icon type="tags"/>}
-                />
-
+                <TagOptions_rdx className="s width8 HXA"/>
                 {
-                  [{type:"成形",subtype:["[11]巡檢","[12]首件"]},
-                  {type:"熱處理",subtype:["[21]熱處理"]},
-                  {type:"表面處理",subtype:["[31]電鍍","[32]電著","[33]攻牙","[34]震動研磨"]},
-                  {type:"機台",subtype:[...(this.Array_NtoM(1,40).map(n=>"M"+n)),null,...(this.Array_NtoM(7,15).map(n=>"P"+n))]},
-                  ].map(catg=>
-                    <Dropdown overlay={  <Menu>{
-                          catg.subtype.map((ele,idx,arr)=>ele===null?<br/>:
-                            <Tag className="xlarge InspTag optional fixed"  
-                              onClick={()=>{
-                                var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
-                                this.props.ACT_InspOptionalTag_Update([...array3,ele])
-                              }}>{ele}</Tag>
-                          )}
-                        </Menu>} placement="bottomLeft">
-                          <Button>{catg.type}</Button>
-                    </Dropdown>)
+                  (isString(InspectionMonitor_URL))?    
+                    <QR_Canvas className="s width4 HXA" 
+                    onClick={()=>window.open(InspectionMonitor_URL)}
+                    QR_Content={InspectionMonitor_URL}/>:
+                    null
                 }
-
-                <CanvasComponent_rdx className="height11"/>
+                <CanvasComponent_rdx className="height9"/>
     
               </div>
   
-              {
-                (isString(InspectionMonitor_URL))?    
-                  <QR_Canvas className="s width5 HX6" 
-                  onClick={()=>window.open(InspectionMonitor_URL)}
-                  QR_Content={InspectionMonitor_URL}/>:
-                  null
-              }
-              
+{/*               
               {(mmpp===undefined)?null:
                 <Button  key="mmpp"  size="large"  onClick={()=>{
                   
@@ -440,7 +395,7 @@ class APPMain extends React.Component{
                     {filename:LoadCameraSetup_Path+"default_camera_param.json"});
 
                 }}><Icon type="camera" /> {"mmpp:"+mmpp}</Button>}
-
+ */}
 
               <BPG_FileBrowser key="BPG_FileBrowser"
                 searchDepth={4}
@@ -455,7 +410,7 @@ class APPMain extends React.Component{
                 }}
                 fileFilter={this.state.fileSelectFilter}
                 />
-
+              {this.state.additionalUI}
             </div>,
             onSelected:genericMenuItemCBsCB
           },
@@ -467,7 +422,37 @@ class APPMain extends React.Component{
           Inspect:{
             icon:"scan",
             content:null,
-            onSelected:this.props.EV_UI_Insp_Mode
+            onSelected:()=>{
+              if(this.props.inspOptionalTag.length!=0)
+              {
+                this.props.EV_UI_Insp_Mode();
+              }
+              else
+              {
+                this.setState({
+                  additionalUI:[
+                    <Modal
+                    title={"警告"}
+                    visible={true}
+                    onOk={()=>{
+                      this.setState({additionalUI:[]});
+                      this.props.EV_UI_Insp_Mode();
+                    }}
+                    onCancel={()=>{
+                      this.setState({additionalUI:[]});
+                    }}
+                  >
+                    <div style={{height:"500px"}}>
+                    警告：沒有設定 Tag
+                    
+                    <TagOptions_rdx className="s width12 HXA"/>
+                    </div>
+                  </Modal>
+                  ]
+                });
+              }
+              
+            }
           },
           // STA:{
           //     icon:"bar-chart",
