@@ -1923,7 +1923,7 @@ class APP_INSP_MODE extends React.Component {
     componentDidMount() {
 
 
-      this.CameraCtrl.setCameraImageTransfer(false);
+      this.CameraCtrl.setCameraImageTransfer(true);
     }
 
     componentWillUnmount() {
