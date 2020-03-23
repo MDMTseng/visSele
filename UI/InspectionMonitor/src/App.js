@@ -9,9 +9,12 @@ import jsonp from 'jsonp';
 
 import  Typography  from 'antd/lib/typography';
 import Input from 'antd/lib/input';
+import Button from 'antd/lib/button';
 import Table from 'antd/lib/table';
 import Col from 'antd/lib/col';
 import Row from 'antd/lib/row';
+// import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons-react';
+//import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import Layout from 'antd/lib/layout';
 QrScanner.WORKER_PATH = "./qr-scanner-worker.min.js";
 
@@ -287,42 +290,66 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
   });
 }
 
-function fetchCostomDisplayInfo(name)
-{
-  let defFileData=undefined;
-  
-  return new Promise((res,rej)=>{
-    let url='http://hyv.decade.tw:8080/QUERY/customDisplay?name='+name
-    
-    pjsonp(url,null).then((data)=>{
-      res(data);
-    }).catch((err)=>{
-      rej(err);
-    })
-  });
-}
 
-function insertCostomDisplayInfo(id,info)
-{
-  let defFileData=undefined;
-  
-  return new Promise((res,rej)=>{
-    let url='http://hyv.decade.tw:8080/insert/customdisplay?name='+info.name+
-      "&targetDeffiles="+JSON.stringify(info.targetDeffiles)
-    if(id!==undefined)
-    {
-      url+="&_id="+id;
+let CusDisp_DB={
+  read:(name)=>
+  {
+    let defFileData=undefined;
+    
+    return new Promise((res,rej)=>{
+      let url='http://hyv.decade.tw:8080/QUERY/customDisplay?name='+name
+      url+='&projection={"name":1,"targetDeffiles":1}'
       
+      pjsonp(url,null).then((data)=>{
+        res(data);
+      }).catch((err)=>{
+        rej(err);
+      })
+    });
+  },
+  create:(info,id)=>{
+    let defFileData=undefined;
+    
+    return new Promise((res,rej)=>{
+      let url='http://hyv.decade.tw:8080/insert/customdisplay?name='+info.name+
+        "&targetDeffiles="+JSON.stringify(info.targetDeffiles)
+      if(id!==undefined)
+      {
+        url+="&_id="+id;
+        
+      }
+      pjsonp(url,null).then((data)=>{
+        console.log(data);
+      }).catch((err)=>{
+        rej(err);
+      })
+    });
+  },
+  delete:(id)=>{
+
+    return new Promise((res,rej)=>{
+      let url='http://hyv.decade.tw:8080/delete/customdisplay?_id='+id;
+      pjsonp(url,null).then((data)=>{
+        console.log(data);
+      }).catch((err)=>{
+        rej(err);
+      })
+    });
+  }
+}
+CusDisp_DB.update=(info,id)=>{
+  return new Promise((res,rej)=>{
+    if(id===undefined)
+    {
+      return rej("Error:No id");
     }
-    pjsonp(url,null).then((data)=>{
-      console.log(data);
-    }).catch((err)=>{
-      rej(err);
-    })
+    return CusDisp_DB.create(info,id);
   });
 }
-// fetchCostomDisplayInfo("Machine");
-// insertCostomDisplayInfo("5e66719724f4fc4638dd3603",{name:"><>",targetDeffiles:[{hash:"sdiosdjciojsdoi"}]});
+//http://hyv.decade.tw:8080/delete/customDisplay?_id=5e782cddf40281013bedd142
+// fetchCustomDisplayInfo("Machine");
+//CusDisp_DB.create({name:"><>",targetDeffiles:[{hash:"sdiosdjciojsdoi"}]},undefined);
+//CusDisp_DB.delete("5e771c388b25286acf112810");
 function getUrlPath()
 {
   return window.location.href.substring(window.location.protocol.length).split('?')[0]
@@ -470,13 +497,13 @@ function SingleDisplayUI({ displayInfo})
   </div>
 }
 
-function CostomDisplayUI({ }) {
+function CustomDisplayUI({ }) {
   const [displayInfo, setDisplayInfo] = useState(undefined);
 
   const [collapsed, setCollapsed] = useState(true);
   useEffect(() => {
     setDisplayInfo(undefined);
-    fetchCostomDisplayInfo("Machine").then(data=>{
+    CusDisp_DB.read(".").then(data=>{
       console.log(displayInfo);
       setDisplayInfo(data.prod);
     }).catch(e=>{
@@ -491,7 +518,7 @@ function CostomDisplayUI({ }) {
     console.log("2,count->useEffect>>");
   },[displayInfo]);
 
-  let UI=null;
+  let UI=[];
   if(displayInfo!==undefined)
   {
     console.log(displayInfo);
@@ -505,6 +532,18 @@ function CostomDisplayUI({ }) {
 
 
   }
+  UI.push(<Row  key="table"  style={{height:"50%"}}>
+    <Col key={"sdsd"} span={12}  style={{height:"100%"}}>
+      
+      <Button type="dashed"
+              onClick={() => {
+              }}
+              style={{ width: '60%' }}
+      >
+        Add field
+      </Button>
+
+    </Col></Row>)
 
 
   return (
@@ -521,7 +560,7 @@ function CostomDisplayUI({ }) {
         </Layout.Sider>
         <Layout>
           <Layout.Content  style={{ padding: '50px 50px' }}>{UI}</Layout.Content>
-          <Layout.Footer>Costom UI v0.0.0</Layout.Footer>
+          <Layout.Footer>Custom UI v0.0.0</Layout.Footer>
         </Layout>
       </Layout>
     </Layout> 
@@ -615,7 +654,7 @@ class App extends React.Component{
     switch(this.state.UI)
     {
       case this.UI_type.customDisplay:
-        UI=<CostomDisplayUI/>;
+        UI=<CustomDisplayUI/>;
         break;
       case this.UI_type.analysis:
         UI=<APP_ANALYSIS_MODE 
