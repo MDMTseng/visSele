@@ -367,6 +367,7 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
   
   std::string folderPath(buf);
 
+  if(depth>0)
   while ((dir = readdir(d)) != NULL) {
     //if(dir->d_name[0]=='.')continue;
     cJSON *fileInfo =  cJSON_CreateObject();
@@ -978,7 +979,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             break;
             }
 
-            int depth=0;
+            int depth=1;
             double* p_depth =JFetch_NUMBER(json,"depth");
             if(p_depth!=NULL)
             {
