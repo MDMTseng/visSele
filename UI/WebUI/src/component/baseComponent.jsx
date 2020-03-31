@@ -361,7 +361,7 @@ export class BPG_FileBrowser_proto extends React.Component{
 
 
   
-  fetchDirFiles(path,depth=0)
+  fetchDirFiles(path,depth=1)
   {
     return  new Promise((resolve, reject) => {
       this.props.BPG_Channel("FB",0,{//"FB" is for file browsing

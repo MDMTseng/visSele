@@ -14,6 +14,7 @@ function Array_NtoM(N,M)
   return [ ...Array(Len).keys() ].map( i => i+N);
 }
 
+
 class TagOptions extends React.Component{
 
   constructor(props) {
@@ -32,7 +33,7 @@ class TagOptions extends React.Component{
           e.preventDefault();
           let tagToDelete=curTag;
           let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
-          console.log(e.target,NewOptionalTag);
+          //console.log(e.target,NewOptionalTag);
           this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
           }}>{curTag}</Tag>)}
       <br/>

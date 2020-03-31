@@ -319,7 +319,7 @@ let CusDisp_DB={
         
       }
       pjsonp(url,null).then((data)=>{
-        console.log(data);
+        res(data);
       }).catch((err)=>{
         rej(err);
       })
@@ -330,7 +330,7 @@ let CusDisp_DB={
     return new Promise((res,rej)=>{
       let url='http://hyv.decade.tw:8080/delete/customdisplay?_id='+id;
       pjsonp(url,null).then((data)=>{
-        console.log(data);
+        res(data);
       }).catch((err)=>{
         rej(err);
       })
@@ -343,7 +343,11 @@ CusDisp_DB.update=(info,id)=>{
     {
       return rej("Error:No id");
     }
-    return CusDisp_DB.create(info,id);
+    CusDisp_DB.create(info,id).then((data)=>{
+      res(data);
+    }).catch((err)=>{
+      rej(err);
+    })
   });
 }
 //http://hyv.decade.tw:8080/delete/customDisplay?_id=5e782cddf40281013bedd142
@@ -484,8 +488,10 @@ function SingleDisplayUI({ displayInfo})
 
   return <div>
     <Title level={2}>{displayInfo.name}</Title>
-    {JSON.stringify(displayInfo)}
-
+    Name:{displayInfo.name}
+    {displayInfo.targetDeffiles.map((dfs,id)=>
+      "Def["+id+"]:"+JSON.stringify(displayInfo.targetDeffiles[id])
+    )}
     <canvas  key="canv"
       ref={canvasRef}
       onClick={e => {        
@@ -525,18 +531,61 @@ function CustomDisplayUI({ }) {
     UI=[];
     UI.push(<div key="Reset" onClick={()=>setDisplayInfo(undefined)}>RESET....</div>)
     UI.push(<Row  key="table"  style={{height:"50%"}}>{displayInfo.map(info=>
-      <Col key={info.name} span={12}  style={{height:"100%"}}>
+      <Col key={info._id} span={12}  style={{height:"100%"}}>
         <SingleDisplayUI displayInfo={info}/>
+
+        <Button key="sdsdfk"
+                onClick={() => {
+                  info.ddd="sss";
+                  CusDisp_DB.update({name:"OKOK",targetDeffiles:[{hash:""}]},info._id).then(()=>{
+
+                    CusDisp_DB.read(".").then(data=>{
+                      console.log(displayInfo);
+                      setDisplayInfo(data.prod);
+                    }).catch(e=>{
+                      console.log(e);
+                    });
+                  });
+                }}
+                style={{ width: '60%' }}
+        >
+          mod
+        </Button>
+        <Button type="dashed"
+                onClick={() => {
+                  setDisplayInfo(undefined);
+                  CusDisp_DB.delete(info._id).then(()=>{
+
+                    CusDisp_DB.read(".").then(data=>{
+                      console.log(displayInfo);
+                      setDisplayInfo(data.prod);
+                    }).catch(e=>{
+                      console.log(e);
+                    });
+                  });
+                }}
+                style={{ width: '60%' }}
+        >
+          Ｘ
+        </Button>
       </Col>
     )}</Row>)
 
 
   }
-  UI.push(<Row  key="table"  style={{height:"50%"}}>
+  UI.push(<Row  key="table2"  style={{height:"50%"}}>
     <Col key={"sdsd"} span={12}  style={{height:"100%"}}>
       
       <Button type="dashed"
               onClick={() => {
+                CusDisp_DB.create({name:"><>",targetDeffiles:[{hash:"sdiosdjciojsdoi"}]},undefined).then(()=>{
+                  CusDisp_DB.read(".").then(data=>{
+                    console.log(displayInfo);
+                    setDisplayInfo(data.prod);
+                  }).catch(e=>{
+                    console.log(e);
+                  });
+                });
               }}
               style={{ width: '60%' }}
       >

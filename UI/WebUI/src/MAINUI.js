@@ -1,13 +1,14 @@
 
 import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
-import React from 'react';
+import React , { useState,useEffect } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {TagOptions_rdx} from './component/rdxComponent.jsx';
  
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
 import dclone from 'clone';
+import {CusDisp_DB} from 'UTIL/DB_Query';
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -36,6 +37,9 @@ import  Button  from 'antd/lib/button';
 import  Layout  from 'antd/lib/layout';
 import  Modal  from 'antd/lib/modal';
 import  Input  from 'antd/lib/input';
+import  Tabs  from 'antd/lib/tabs';
+const { TabPane } = Tabs;
+
 import  Tag  from 'antd/lib/tag';
 import  Dropdown  from 'antd/lib/dropdown';
 const { Header, Content, Footer, Sider } = Layout;
@@ -167,6 +171,380 @@ function isString(data)
 {
   return (typeof data === 'string' || data instanceof String);
 }
+
+function SingleDisplayUI({ displayInfo})
+{
+  const canvasRef = React.useRef(null)
+
+
+  return <div>
+    <Title level={2}>{displayInfo.name}</Title>
+    Name:{displayInfo.name}
+    <br/>
+    Cat:{displayInfo.cat}
+    <br/>
+    <pre>
+    {displayInfo.targetDeffiles.map((dfs,id)=>
+      "Def["+id+"]:"+JSON.stringify(displayInfo.targetDeffiles[id],null,2)
+    )}
+    </pre>
+  </div>
+}
+
+function SingleDisplayEditUI({ displayInfo,onUpdate,onCancel,BPG_Channel})
+{
+  const [displayEditInfo, setDisplayEditInfo] = useState(undefined);
+  
+  let fileSelectFilter=(fileInfo)=>fileInfo.type=="DIR"||fileInfo.name.includes("."+DEF_EXTENSION);
+  const [fileBrowserInfo, setFileBrowserInfo] = useState(undefined);
+
+  useEffect(() => {
+    setDisplayEditInfo(dclone(displayInfo));
+  }, [displayInfo]);
+  if(displayEditInfo===undefined)return null;
+  return <div>
+    <Input addonBefore="Name:" className="s width4" value={displayEditInfo.name} 
+    onChange={e=>{
+      let dcEI = dclone(displayEditInfo)
+      dcEI.name=e.target.value;
+      setDisplayEditInfo(dcEI)}}/>
+    <div  className="s width6" />
+    <Input addonBefore="Cat:"  className="s width2" value={displayEditInfo.cat} 
+    onChange={e=>{
+      let dcEI = dclone(displayEditInfo)
+      dcEI.cat=e.target.value;
+      setDisplayEditInfo(dcEI)}}/>
+    {displayEditInfo.targetDeffiles.map((dfs,id)=>
+      
+      {
+
+        return[
+          <Input addonBefore="Tag:" value={dfs.tags} 
+            onChange={e=>{
+              
+              let dcEI = dclone(displayEditInfo);
+              let tarDef=dcEI.targetDeffiles[id];
+              tarDef.tags=e.target.value
+
+              setDisplayEditInfo(dcEI)}}/>,
+          "Def["+id+"]:"+dfs.name+":"+dfs.featureSet_sha1+"  "+dfs.path,
+          <Button key="sdsdfk_"
+            onClick={() => {
+            let fileS=
+            {
+              path:"data/",
+              selected:(path,info)=>{
+                console.log(path,info);
+
+                let PromArr=[
+                  new Promise((resolve, reject) => {
+                    BPG_Channel("LD",0,
+                      {filename:path},
+                      undefined,{resolve,reject}
+                    );
+                    setTimeout(()=>reject("Timeout"),5000)
+                  }),
+                  new Promise((resolve, reject) => {
+                    BPG_Channel("FB",0,{//"FB" is for file browsing
+                      path:"./",
+                      depth:0,
+                    },undefined,{resolve,reject});
+                    setTimeout(()=>reject("Timeout"),5000)
+                  })
+                ];
+                Promise.all(PromArr).
+                  then((pkts) => {
+                  console.log(pkts);
+                  if(pkts[0][0].type!="FL")return;
+                  if(pkts[1][0].type!="FS")return;
+                  let dataFolderPath = pkts[1][0].data.path;
+                  let machInfo = pkts[0][0].data;
+                  //console.log(pkts[0].data);
+                  let dcEI = dclone(displayEditInfo);
+                  let tarDef=dcEI.targetDeffiles[id];
+                  tarDef.hash=machInfo.featureSet_sha1;
+                  tarDef.featureSet_sha1=machInfo.featureSet_sha1;
+                  tarDef.featureSet_sha1_pre=machInfo.featureSet_sha1_pre;
+                  tarDef.featureSet_sha1_root=machInfo.featureSet_sha1_root;
+
+
+                  tarDef.path=path.replace(dataFolderPath,"").replace(/^\//,"");
+                  tarDef.name=machInfo.name
+                  //console.log(dcEI);
+                  setDisplayEditInfo(dcEI)
+
+                })
+                .catch((err) => {
+                  console.log(err);
+                })
+              
+              },
+              filter:fileSelectFilter
+            }
+            setFileBrowserInfo(fileS);
+          }}
+          style={{ width: '30%' }}
+        >
+        loadDefFile
+        </Button>]
+      }
+    )}
+    {fileBrowserInfo===undefined?null:
+      <BPG_FileBrowser key="BPG_FileBrowser" 
+            searchDepth={4}
+            path={fileBrowserInfo.path} 
+            visible={true}
+            BPG_Channel={BPG_Channel} 
+            onFileSelected={(filePath,fileInfo)=>
+            {
+              fileBrowserInfo.selected(filePath,fileInfo);
+              setFileBrowserInfo(undefined);
+            }}
+            onCancel={()=>
+            {
+              setFileBrowserInfo(undefined);
+            }}
+            fileFilter={fileBrowserInfo.filter}/>
+    }
+
+
+    
+    <Button key="onUpdate_btn"
+    onClick={()=>onUpdate(displayEditInfo)}
+    style={{ width: '30%' }}
+    >
+      OK
+    </Button>
+
+    
+    <Button key="onCancel_btn"
+    onClick={onCancel}
+    style={{ width: '30%' }}
+    >
+      Cancel
+    </Button>
+  </div>
+}
+
+function CustomDisplaySelectUI({onSelect}) {
+  const [displayInfo, setDisplayInfo] = useState(undefined);
+  const [catSet, setCatSet] = useState(undefined);
+  const [displayEle, setDisplayEle] = useState(undefined);
+
+  useEffect(() => {
+    setDisplayInfo(undefined);
+    setCatSet(undefined);
+    CusDisp_DB.read(".").then(data=>{
+      let dispInfo = data.prod;
+      setDisplayInfo(dispInfo);
+      let catArr=dispInfo.map(dispI=>dispI.cat).filter(cat=>cat!==undefined);
+      let uniCat = [...new Set(catArr)].sort(); 
+      let icat={};
+      uniCat.forEach(cat=>{
+        let catInfo={
+          set:dispInfo.filter(dispI=>cat.includes(dispI.cat))
+        }
+        icat[cat]=catInfo
+      })
+      icat["undefined"]={
+        set:dispInfo.filter(dispI=>dispI.cat===undefined)
+      }
+      setCatSet(icat);
+    }).catch(e=>{
+      console.log(e);
+    });
+    return () => {
+      console.log("1,didUpdate ret::");
+    };
+  },[]);
+
+  
+  let UI=[];
+  // if(displayInfo!==undefined)
+  // {
+  //   console.log(displayInfo);
+  //   UI=[];
+  //     UI.push(displayInfo.map(info=>
+  //       <Button onClick={()=>onSelect(info)}>
+  //         {info.name}
+  //       </Button>
+  //     ))
+  // }
+  
+  if(catSet!==undefined)
+  {
+    console.log(catSet);
+    UI=
+    <Tabs defaultActiveKey="0">
+      {Object.keys(catSet).map((cat,cat_idx)=>
+        <TabPane tab={cat} key={""+cat_idx}>
+          {catSet[cat].set.map(info=>
+            <Button onClick={()=>onSelect(info)}>
+              {info.name}
+            </Button>
+          )}
+        </TabPane>
+      )}
+    </Tabs>
+    
+  }
+  return (
+    <div>
+    {UI}
+    </div>
+  );
+}
+function CustomDisplayUI({BPG_Channel,defaultFolderPath }) {
+  const [displayInfo, setDisplayInfo] = useState(undefined);
+  const [displayEle, setDisplayEle] = useState(undefined);
+
+  useEffect(() => {
+    setDisplayInfo(undefined);
+    CusDisp_DB.read(".").then(data=>{
+      setDisplayInfo(data.prod);
+    }).catch(e=>{
+      console.log(e);
+    });
+    return () => {
+      console.log("1,didUpdate ret::");
+    };
+  },[]);
+
+  // useEffect(() => {
+  //   console.log("2,count->useEffect>>");
+  // },[displayInfo]);
+
+  let UI=[];
+  if(displayInfo!==undefined)
+  {
+    console.log(displayInfo);
+    UI=[];
+
+
+    if(displayEle===undefined)
+    {
+
+      UI.push(displayInfo.map(info=>
+        <div>
+          <SingleDisplayUI displayInfo={info}/>
+          <Button  
+            onClick={() => {
+              
+              setDisplayEle(info);
+            }}
+            style={{ width: '30%' }}
+          >
+            EDIT
+          </Button>
+          <Button type="dashed"
+                  onClick={() => {
+                    setDisplayInfo(undefined);
+                    CusDisp_DB.delete(info._id).then(()=>{
+  
+                      CusDisp_DB.read(".").then(data=>{
+                        console.log(displayInfo);
+                        setDisplayInfo(data.prod);
+                      }).catch(e=>{
+                        console.log(e);
+                      });
+                    });
+                  }}
+                  style={{ width: '60%' }}
+          >
+            Ｘ
+          </Button>
+        </div>
+      ))
+  
+      UI.push(
+        <Button type="dashed"
+                onClick={() => {
+                  CusDisp_DB.create({name:"新設定",targetDeffiles:[{}]},undefined).then(()=>{
+                    CusDisp_DB.read(".").then(data=>{
+                      console.log(displayInfo);
+                      setDisplayInfo(data.prod);
+                      
+                      setDisplayEle(data.prod[data.prod.length-1]);
+                    }).catch(e=>{
+                      console.log(e);
+                    });
+                  });
+                }}
+                style={{ width: '60%' }}
+        >
+          Add field
+        </Button>)
+  
+    }
+    else
+    {
+
+      
+      UI.push(
+        <div>
+          <SingleDisplayEditUI displayInfo={displayEle} BPG_Channel={BPG_Channel}
+          onUpdate={(updatedEle)=>{
+            console.log(updatedEle);
+            CusDisp_DB.update(updatedEle,displayEle._id).then(()=>{
+              CusDisp_DB.read(".").then(data=>{
+                console.log(displayInfo);
+                setDisplayInfo(data.prod);
+                setDisplayEle();
+              }).catch(e=>{
+                console.log(e);
+              });
+            });
+          }}
+          
+          onCancel={()=>{
+            setDisplayEle();
+          }}/>
+
+        </div>
+      )
+
+      // UI.push(
+      // <Button  
+      //   onClick={() => {
+      //     CusDisp_DB.update({name:"OKOK",targetDeffiles:[{hash:""}]},displayEle._id).then(()=>{
+
+      //       CusDisp_DB.read(".").then(data=>{
+      //         console.log(displayInfo);
+      //         setDisplayInfo(data.prod);
+      //         setDisplayEle(undefined);
+      //       }).catch(e=>{
+      //         console.log(e);
+      //       });
+      //     });
+      //   }}
+      //   style={{ width: '30%' }}
+      // >
+      //   mod
+      // </Button>);
+      
+
+    }
+
+  }
+  return (
+
+    <Layout style={{height:"100%"}}>
+      {/* <Layout.Header style={{ color: '#FFFFFF' }} >Header</Layout.Header> */}
+        {/* <Layout.Sider  style={{ color: '#FFFFFF' }} collapsible collapsed={collapsed} 
+        onCollapse={()=>setCollapsed(!collapsed)}
+        onMouseOut={()=>(collapsed)?null:setCollapsed(true)}
+        onMouseOver={()=>(collapsed)?setCollapsed(false):null}
+        >
+          Sider
+        </Layout.Sider> */}
+        <Layout>
+          <Layout.Content  style={{ padding: '50px 50px',overflow:"scroll" }}>{UI}</Layout.Content>
+          <Layout.Footer>Custom UI v0.0.0</Layout.Footer>
+        </Layout>
+
+    </Layout> 
+  );
+}
  
 class APPMain extends React.Component{
 
@@ -177,6 +555,8 @@ class APPMain extends React.Component{
           fileSelectedCallBack:undefined,
           fileSelectFilter:undefined,
           fileStaticList:undefined,
+          
+          popUpUIInfo:undefined,
           menuSelect:"Overview",
           additionalUI:[],
           menuCollapsed:true,
@@ -363,7 +743,37 @@ class APPMain extends React.Component{
                   <Icon type="file-add" />
                   {this.props.defModelPath}
                 </Button>
-                
+                <Button size="large" onClick={()=>{
+                                    
+                  let popUpUIInfo={
+                    title:"機台設定",
+                    onOK:()=>{},
+                    onCancel:()=>{},
+                    content:<CustomDisplaySelectUI onSelect={(cusDispInfo)=>{
+                    
+                      let tarDef=cusDispInfo.targetDeffiles[0];
+                      let filePath=tarDef.path;
+                      if(filePath===undefined)return;
+                      filePath=filePath.replace("."+DEF_EXTENSION,""); 
+                      this.setState({popUpUIInfo:undefined});
+                      this.props.ACT_Def_Model_Path_Update(filePath);
+                      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:filePath+'.'+DEF_EXTENSION,imgsrc:filePath});
+                      
+                      let setTags=[];
+                      try{
+                        setTags=tarDef.tags.split(",");
+  
+                      }
+                      catch(e)
+                      {
+                        setTags=[];
+                      }
+                      this.props.ACT_InspOptionalTag_Update(setTags)
+
+                    }}/>
+                  }
+                  this.setState({popUpUIInfo});
+                }}>機台設定</Button>
                 <Title level={2} >
                   {this.props.defModelName}
                 </Title>
@@ -410,6 +820,18 @@ class APPMain extends React.Component{
                 }}
                 fileFilter={this.state.fileSelectFilter}
                 />
+
+              <Modal
+                title={this.state.popUpUIInfo===undefined?"":this.state.popUpUIInfo.title}
+                visible={this.state.popUpUIInfo!==undefined}
+                onOk={()=>{this.state.popUpUIInfo.onOK();
+                this.setState({popUpUIInfo:undefined});}}
+                onCancel={()=>{this.state.popUpUIInfo.onCancel();
+                  this.setState({popUpUIInfo:undefined});}}
+              >
+                {this.state.popUpUIInfo===undefined?
+                null:this.state.popUpUIInfo.content}
+              </Modal>
               {this.state.additionalUI}
             </div>,
             onSelected:genericMenuItemCBsCB
@@ -442,7 +864,7 @@ class APPMain extends React.Component{
                       this.setState({additionalUI:[]});
                     }}
                   >
-                    <div style={{height:"500px"}}>
+                    <div style={{height:"auto"}}>
                     警告：沒有設定 Tag
                     
                     <TagOptions_rdx className="s width12 HXA"/>
@@ -453,6 +875,12 @@ class APPMain extends React.Component{
               }
               
             }
+          },
+          SDD:{
+            icon:"database" ,
+            content:<CustomDisplayUI 
+              BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} />,
+            onSelected:genericMenuItemCBsCB
           },
           // STA:{
           //     icon:"bar-chart",
