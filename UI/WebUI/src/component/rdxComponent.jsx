@@ -14,7 +14,7 @@ function Array_NtoM(N,M)
   return [ ...Array(Len).keys() ].map( i => i+N);
 }
 
-
+export const essentialTags=["01首件熱前","02首件熱後","11沖壓成形","21真空熱處理","31滾鍍","32連續鍍"];
 class TagOptions extends React.Component{
 
   constructor(props) {
@@ -37,25 +37,9 @@ class TagOptions extends React.Component{
           this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
           }}>{curTag}</Tag>)}
       <br/>
-      <Input placeholder="新標籤"
-        onChange={(e)=>{
-          let newStr=e.target.value;
-          //e.target.setSelectionRange(0, newStr.length)
-          this.setState({...this.state,newTagStr:newStr});
-        }}
-        onPressEnter={(e)=>{
-          let newTag=e.target.value.split(",");
-          let newTags=[...this.props.inspOptionalTag,...newTag];
-          this.props.ACT_InspOptionalTag_Update(newTags);
-          this.setState({...this.state,newTagStr:""});
-        }}
-        className={"width3 "+((this.props.inspOptionalTag.find((str)=>str==this.state.newTagStr))?"error":"")}
-        allowClear
-        value={this.state.newTagStr}
-        prefix={<Icon type="tags"/>}
-      />
+
       {
-        ["01首件熱前","02首件熱後","11沖壓成形","21真空熱處理","31滾鍍","32連續鍍"].map((ele,idx,arr)=>
+        essentialTags.map((ele,idx,arr)=>
         <Tag className="large InspTag optional fixed"  
           onClick={()=>{
             var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
@@ -82,7 +66,23 @@ class TagOptions extends React.Component{
                 <Button>{catg.type}</Button>
           </Dropdown>)
       }
-
+      <Input placeholder="新標籤"
+        onChange={(e)=>{
+          let newStr=e.target.value;
+          //e.target.setSelectionRange(0, newStr.length)
+          this.setState({...this.state,newTagStr:newStr});
+        }}
+        onPressEnter={(e)=>{
+          let newTag=e.target.value.split(",");
+          let newTags=[...this.props.inspOptionalTag,...newTag];
+          this.props.ACT_InspOptionalTag_Update(newTags);
+          this.setState({...this.state,newTagStr:""});
+        }}
+        className={"width3 "+((this.props.inspOptionalTag.find((str)=>str==this.state.newTagStr))?"error":"")}
+        allowClear
+        value={this.state.newTagStr}
+        prefix={<Icon type="tags"/>}
+      />
       </div>
   }
 }

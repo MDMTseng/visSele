@@ -3,7 +3,7 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React , { useState,useEffect } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import {TagOptions_rdx} from './component/rdxComponent.jsx';
+import {TagOptions_rdx,essentialTags} from './component/rdxComponent.jsx';
  
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
@@ -694,7 +694,7 @@ class APPMain extends React.Component{
             content:<div style={{ padding: 24, background: '#fff', height: "100%" }}>
               <div className="s black">{this.props.WebUI_info.version}</div>
 
-              <div className="s HXF">
+              <div className="s height11">
                 <Button size="large" 
                   onClick={()=>{
                   let fileSelectedCallBack=
@@ -845,7 +845,10 @@ class APPMain extends React.Component{
             icon:"scan",
             content:null,
             onSelected:()=>{
-              if(this.props.inspOptionalTag.length!=0)
+              
+              console.log(this.state.menuSelect);
+              if(menuSelect!=="Overview")return;
+              if(this.props.inspOptionalTag.reduce((hasEss,tag)=>hasEss||essentialTags.includes(tag),false))
               {
                 this.props.EV_UI_Insp_Mode();
               }
@@ -858,16 +861,30 @@ class APPMain extends React.Component{
                     visible={true}
                     onOk={()=>{
                       this.setState({additionalUI:[]});
-                      this.props.EV_UI_Insp_Mode();
+                      //this.props.EV_UI_Insp_Mode();
                     }}
                     onCancel={()=>{
                       this.setState({additionalUI:[]});
+                      //this.props.EV_UI_Insp_Mode();
                     }}
+                    cancelButtonProps={{ style: { display: 'none' } }}
+                    //okButtonProps={{ disabled: true }}
+                    // onCancel={()=>{
+                    //   this.setState({additionalUI:[]});
+                    // }}
                   >
                     <div style={{height:"auto"}}>
-                    警告：沒有設定 Tag
+                    警告：沒有設定 必要Tag
+                    <br/>
+                    必要Tag 如下
+                    <br/>
+
+                    {
+                      essentialTags.map((ele,idx,arr)=>
+                      <Tag className=" InspTag optional fixed">{ele}</Tag>)
+                    }
                     
-                    <TagOptions_rdx className="s width12 HXA"/>
+                    {/* <TagOptions_rdx className="s width12 HXA"/> */}
                     </div>
                   </Modal>
                   ]
