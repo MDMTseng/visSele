@@ -1042,7 +1042,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 LOGE("%s",err_str);
                 break;
                 }
-                LOGV("Read deffile:%s",filename);
+                LOGI("Read deffile:%s",filename);
                 bpg_dat=GenStrBPGData("FL", fileStr);
                 bpg_dat.pgID=dat->pgID;
                 datCH_BPG.data.p_BPG_data=&bpg_dat;
