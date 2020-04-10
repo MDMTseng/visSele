@@ -230,10 +230,12 @@ export class websocket_reqTrack{
     this.trackWindow={};
 
     websocket.onopen=(ev)=>{
+      this.trackWindow={};
       this.readyState=this.websocket.readyState;
       this.onopen(ev);
     };
     websocket.onclose=(ev)=>{
+      this.trackWindow={};
       this.readyState=this.websocket.readyState;
       this.onclose(ev);
     };
@@ -276,6 +278,8 @@ export class websocket_reqTrack{
       this.onmessage(ev,p);
     };
     websocket.onerror=(ev)=>{
+      
+      this.trackWindow={};
       this.readyState=this.websocket.readyState;
       this.onerror(ev);
     };
@@ -568,6 +572,73 @@ function ExpCalc(exp, funcSet) {
   };
 
   return PostfixExpCalc(postExp, funcSet)[0];
+}
+
+
+
+
+export class CircularCounter{
+  constructor(total_size)
+  {
+    this._total_size=total_size;
+    this.clear();
+  }
+  
+  size()
+  {
+    return this._size;
+  }
+
+  clear()
+  {
+    this._sidx=0;
+    this._eidx=0;
+    this._size=0;
+  }
+  tsize()
+  {
+    return this._total_size;
+  }
+
+  f(idx=-1)
+  {
+    idx+=1;
+    if(idx>this._size)return -1;
+    idx+=this._sidx-idx+this._total_size;
+    return idx%this._total_size;
+  }
+  
+  r(idx=0)
+  {
+    if(idx>=this._size)return -1;
+    idx=this._eidx+idx;
+    return idx%this._total_size;
+  }
+  
+  enQ(force=false)
+  {
+    //if(!force && this._size>=this._total_size)return false;
+    
+    if(this._size==this._total_size)
+    {
+      if(!force)return false;
+      //if we force push data then we deQ one data out
+      deQ();
+    }
+    this._sidx+=1;
+    this._sidx%=this._total_size;
+    this._size++;
+    return true;
+  }
+  
+  deQ()
+  {
+    if(this._size<=0)return false;
+    this._eidx+=1;
+    this._eidx%=this._total_size;
+    this._size--;
+    return true;
+  }
 }
 
 // let exp_str = "Math.max(3+Math.tan(5-1/4*3)/3,1+2*3/(4+5)/6)";

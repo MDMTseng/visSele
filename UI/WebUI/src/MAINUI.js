@@ -3,7 +3,7 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React , { useState,useEffect } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import {TagOptions_rdx,essentialTags} from './component/rdxComponent.jsx';
+import {TagOptions_rdx,essentialTags,CustomDisplaySelectUI} from './component/rdxComponent.jsx';
  
 import {DEF_EXTENSION} from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
@@ -37,9 +37,6 @@ import  Button  from 'antd/lib/button';
 import  Layout  from 'antd/lib/layout';
 import  Modal  from 'antd/lib/modal';
 import  Input  from 'antd/lib/input';
-import  Tabs  from 'antd/lib/tabs';
-const { TabPane } = Tabs;
-
 import  Tag  from 'antd/lib/tag';
 import  Dropdown  from 'antd/lib/dropdown';
 const { Header, Content, Footer, Sider } = Layout;
@@ -326,74 +323,6 @@ function SingleDisplayEditUI({ displayInfo,onUpdate,onCancel,BPG_Channel})
   </div>
 }
 
-function CustomDisplaySelectUI({onSelect}) {
-  const [displayInfo, setDisplayInfo] = useState(undefined);
-  const [catSet, setCatSet] = useState(undefined);
-  const [displayEle, setDisplayEle] = useState(undefined);
-
-  useEffect(() => {
-    setDisplayInfo(undefined);
-    setCatSet(undefined);
-    CusDisp_DB.read(".").then(data=>{
-      let dispInfo = data.prod;
-      setDisplayInfo(dispInfo);
-      let catArr=dispInfo.map(dispI=>dispI.cat).filter(cat=>cat!==undefined);
-      let uniCat = [...new Set(catArr)].sort(); 
-      let icat={};
-      uniCat.forEach(cat=>{
-        let catInfo={
-          set:dispInfo.filter(dispI=>cat.includes(dispI.cat))
-        }
-        icat[cat]=catInfo
-      })
-      icat["undefined"]={
-        set:dispInfo.filter(dispI=>dispI.cat===undefined)
-      }
-      setCatSet(icat);
-    }).catch(e=>{
-      console.log(e);
-    });
-    return () => {
-      console.log("1,didUpdate ret::");
-    };
-  },[]);
-
-  
-  let UI=[];
-  // if(displayInfo!==undefined)
-  // {
-  //   console.log(displayInfo);
-  //   UI=[];
-  //     UI.push(displayInfo.map(info=>
-  //       <Button onClick={()=>onSelect(info)}>
-  //         {info.name}
-  //       </Button>
-  //     ))
-  // }
-  
-  if(catSet!==undefined)
-  {
-    console.log(catSet);
-    UI=
-    <Tabs defaultActiveKey="0">
-      {Object.keys(catSet).map((cat,cat_idx)=>
-        <TabPane tab={cat} key={""+cat_idx}>
-          {catSet[cat].set.map(info=>
-            <Button onClick={()=>onSelect(info)}>
-              {info.name}
-            </Button>
-          )}
-        </TabPane>
-      )}
-    </Tabs>
-    
-  }
-  return (
-    <div>
-    {UI}
-    </div>
-  );
-}
 function CustomDisplayUI({BPG_Channel,defaultFolderPath }) {
   const [displayInfo, setDisplayInfo] = useState(undefined);
   const [displayEle, setDisplayEle] = useState(undefined);
@@ -572,14 +501,30 @@ class APPMain extends React.Component{
   
     componentDidMount()
     {
-        setTimeout(()=>{
+      let defModelPath = this.props.defModelPath;
 
-          let defModelPath = this.props.defModelPath;
-    
-          this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath});
-                      
-        },1000);
-  
+      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+'.'+DEF_EXTENSION,imgsrc:defModelPath});
+                  
+      new Promise((resolve, reject) => {
+        this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
+        {filename:"data/machine_info"},
+        undefined,{resolve,reject});
+
+        
+      }).then((data) => {
+        if(data[0].type=="FL")
+        {
+          let info = data[0].data;
+          if(info.length<16)
+          {
+            this.props.ACT_MachTag_Update(info);
+          }
+          //console.log(info);
+        }
+      }).catch((err) => {
+        console.log(err);
+      })
+                 
     }
     
     shouldComponentUpdate(nextProps, nextState) {
@@ -743,7 +688,13 @@ class APPMain extends React.Component{
                   <Icon type="file-add" />
                   {this.props.defModelPath}
                 </Button>
-                <Button size="large" onClick={()=>{
+                <Title level={2} >
+                  {this.props.defModelName}
+                </Title>
+
+                <div className="s width8 HXA">
+                  <TagOptions_rdx className="s width12 HXA"/>
+                  <Button size="large" onClick={()=>{
                                     
                   let popUpUIInfo={
                     title:"機台設定",
@@ -773,19 +724,15 @@ class APPMain extends React.Component{
                     }}/>
                   }
                   this.setState({popUpUIInfo});
-                }}>機台設定</Button>
-                <Title level={2} >
-                  {this.props.defModelName}
-                </Title>
-
-                <TagOptions_rdx className="s width8 HXA"/>
+                }}>機台設定選擇</Button>
+                </div>      
                 {
                   (isString(InspectionMonitor_URL))?    
                     <QR_Canvas className="s width4 HXA" 
                     onClick={()=>window.open(InspectionMonitor_URL)}
                     QR_Content={InspectionMonitor_URL}/>:
                     null
-                }
+                }         
                 <CanvasComponent_rdx className="height9"/>
     
               </div>
@@ -847,7 +794,7 @@ class APPMain extends React.Component{
             onSelected:()=>{
               
               console.log(this.state.menuSelect);
-              if(menuSelect!=="Overview")return;
+              if(this.state.menuSelect!=="Overview")return;
               if(this.props.inspOptionalTag.reduce((hasEss,tag)=>hasEss||essentialTags.includes(tag),false))
               {
                 this.props.EV_UI_Insp_Mode();
@@ -1206,6 +1153,8 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
         EV_UI_Insp_Mode: () => {dispatch(UIAct.EV_UI_Insp_Mode())},
         EV_UI_Analysis_Mode:()=>{dispatch(UIAct.EV_UI_Analysis_Mode())},
         ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
+        ACT_MachTag_Update:(machTag)=>{dispatch(DefConfAct.MachTag_Update(machTag))},
+        
         ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
         ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
         

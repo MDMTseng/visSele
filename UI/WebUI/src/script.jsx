@@ -93,8 +93,8 @@ class APPMasterX extends React.Component{
         //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
       },
       onmessage:(evt,ws_obj)=>{
-        // log.info("onMessage:::");
-        // log.info(evt);
+        //log.info("onMessage:::");
+        //log.info(evt);
         if (!(evt.data instanceof ArrayBuffer)) return;
 
         let header = BPG_Protocol.raw2header(evt);
@@ -320,7 +320,7 @@ class APPMasterX extends React.Component{
     }
     return(
     <div className="HXF">
-      <APPMain_rdx key="APP"/>
+     
       {xstateG}
 
       {
@@ -337,7 +337,7 @@ class APPMasterX extends React.Component{
             </div>
           </div>
         </div>
-        :[]
+        : <APPMain_rdx key="APP"/>
       }
     </div>
     );

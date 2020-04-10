@@ -11,7 +11,7 @@ import {TagOptions_rdx} from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import {websocket_autoReconnect,websocket_reqTrack,copyToClipboard} from 'UTIL/MISC_Util';
+import {websocket_autoReconnect,websocket_reqTrack,copyToClipboard,CircularCounter} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
@@ -88,6 +88,74 @@ const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
 
+class consumeQueue{
+  constructor(consumePromiseFunc,QSize=200) {
+    this.cC=new CircularCounter(QSize);
+    this.queue=new Array(QSize);
+    this.term=false;
+    this.inPromise=false;
+
+    this.consumePromiseFunc=consumePromiseFunc;
+  }
+  size()
+  {
+    return this.cC.size();
+  }
+  f(idx)
+  {
+    let qidx = this.cC.f(idx);
+    if(qidx===-1)return undefined;
+    return this.queue[qidx];
+  }
+
+
+  enQ(data)
+  {
+    if(this.cC.size()>=this.cC.tsize())
+    {
+      //full or error
+      return false;
+    }
+    this.queue[this.cC.f()]=data;
+    this.cC.enQ();
+    return true;
+  }
+
+  deQ()
+  {
+    if(this.cC.size()==0)return undefined;
+    let data = this.queue[this.cC.r()];
+    this.cC.deQ();
+    return data;
+  }
+  termination()
+  {
+    this.term=true;
+  }
+
+  kick()
+  {
+    //console.log("kick inPromise:"+this.inPromise);
+    if(this.inPromise)
+      return;
+    
+    this.inPromise=true;
+    this.consumePromiseFunc(this).then(result=>{
+      //console.log("Consume ok? result",result);
+      this.inPromise=false;
+      if(this.term)return;
+      if(this.cC.size()!=0)
+      {
+        this.kick();//kick next consumption
+      }
+    }).catch(e=>{
+      
+      console.log("Consume failed... e=",e);
+      this.inPromise=false;
+    });
+  }
+}
+
 
 class RAW_InspectionReportPull extends React.Component {
     constructor(props) {
@@ -98,6 +166,69 @@ class RAW_InspectionReportPull extends React.Component {
         this.pull_skip_count=0;
         this.WS_DB_Inser= undefined;
         this.WS_DB_Query= undefined;
+        this.retryQCount=0;
+
+        this.cQ = new consumeQueue((cQ)=>{
+          return new Promise((resolve, reject) => {//Implement consume rules
+            if(this.WS_DB_Insert===undefined ||
+              this.WS_DB_Insert.readyState!==WebSocket.OPEN ||
+              cQ.size()==0
+              )
+            {//If no 
+              reject(); 
+              if(this.props.onDBInsertFail!==undefined)
+                this.props.onDBInsertFail(undefined,"DB/Connection issue/Data empty");
+              return;
+            }
+
+
+            let data = cQ.deQ();//get the latest element
+            if(data===undefined)//try next data
+            {
+              resolve();
+              
+              if(this.props.onDBInsertFail!==undefined)
+                this.props.onDBInsertFail(undefined,"Data empty");
+              return;
+            }
+            var msg_obj = {
+                dbcmd:{"db_action":"insert","checked":true},
+                data
+            };
+            let timeoutFlag=setTimeout(()=>{
+              timeoutFlag=undefined;
+              console.log("consumeQueue>>timeout");
+              reject("Timeout");
+              if(this.props.onDBInsertFail!==undefined)
+                this.props.onDBInsertFail(data,"Timeout");
+            },3000);
+            
+            //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
+            this.WS_DB_Insert.send_obj(msg_obj,(key,val)=>val.toFixed ? Number(val.toFixed(5)) : val).
+            then((ret)=>{
+              clearTimeout(timeoutFlag);
+              this.retryQCount=0;
+              resolve();
+              this.props.onDBInsertSuccess(data,ret);
+            }).catch((e)=>{//Failed retry....
+              clearTimeout(timeoutFlag);
+              this.retryQCount++;
+              // if(this.retryQCount>10)
+              // {
+              //   resolve();
+              //   //reject();
+              // }
+              // else
+              {
+                cQ.enQ(data);//failed.... put back
+                resolve();
+              }
+              
+              if(this.props.onDBInsertFail!==undefined)
+                this.props.onDBInsertFail(data,e);
+            });
+          })
+        });
     }
     componentWillUnmount() {
 
@@ -116,9 +247,18 @@ class RAW_InspectionReportPull extends React.Component {
           {
             // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
             let x=this.props.reportStatisticState.newAddedReport;
-            this.send2WS_Insert(x);
+            //this.send2WS_Insert(x);
             // this.WS_DB_Insert.send(BSON.serialize(x));
-
+            
+            if(!this.cQ.enQ(x))//If enQ NOT success
+            {
+              //Just print
+              log.error("enQ failed size()="+this.cQ.size());
+              if(this.props.onDBInsertFail!==undefined)
+                this.props.onDBInsertFail(x,"Cannot enQ the data");
+            }
+            if(this.cQ.size()>0)
+              this.cQ.kick();//kick transmission
           }
           if(this.props.pull_skip!==undefined)
           {
@@ -133,7 +273,7 @@ class RAW_InspectionReportPull extends React.Component {
 
     handleLocalStorage(insertWhat){
         if (localStorage) {
-            console.log("Local Storage: Supported");
+            log.error("Local Storage: Supported");
             localStorage.setItem("HYVision",JSON.stringify(insertWhat));
             return localStorage.length;
         } else {
@@ -144,28 +284,7 @@ class RAW_InspectionReportPull extends React.Component {
     send2WS_Query(msg){
         //this.state.WS_DB_Query.send("{date:2019}");
     }
-    send2WS_Insert(data){
-        console.log("send2WS_Insert");
-        if(this.WS_DB_Insert===undefined)return;
-        console.log("readyState:"+this.WS_DB_Insert.readyState);
-        if(this.WS_DB_Insert.readyState===WebSocket.OPEN){
-                
-            var msg_obj = {
-                dbcmd:{"db_action":"insert","checked":true},
-                data
-            };
-            //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
-            this.WS_DB_Insert.send_obj(msg_obj,(key,val)=>val.toFixed ? Number(val.toFixed(5)) : val).
-            then((ret)=>console.log('then',ret)).
-            catch((ret)=>console.log("catch",ret));
 
-            //let ls_len=this.handleLocalStorage(msg);
-            //console.log("[LocalStorage len=]",ls_len);
-
-        }
-        else
-            console.log("[X][WS]StatusCode="+ this.WS_DB_Insert.readyState );
-    }
 
     websocketClose()
     {
@@ -187,7 +306,7 @@ class RAW_InspectionReportPull extends React.Component {
 
         if(this.WS_DB_Insert===undefined)
         {
-            console.log("[init][WS]" + url+"insert/insp");
+            log.info("[init][WS]" + url+"insert/insp");
             let _ws=new websocket_autoReconnect(url+"insert/insp",10000);
             _ws.onStateUpdate=this.onConnectionStateUpdate.bind(this);
             this.WS_DB_Insert=new websocket_reqTrack(_ws);
@@ -209,7 +328,7 @@ class RAW_InspectionReportPull extends React.Component {
         if(this.WS_DB_Query===undefined)
         {
             
-            console.log("[init][WS]" + url+"query/insp");
+            log.info("[init][WS]" + url+"query/insp");
             let _ws=new websocket_autoReconnect(url+"query/insp",10000);
             this.WS_DB_Query=new websocket_reqTrack(_ws);
 
@@ -233,14 +352,14 @@ class RAW_InspectionReportPull extends React.Component {
 
     onError(ev) {
         //this.websocketConnect();
-        console.log("onError RAW_InspectionReportPull");
+        log.error("onError RAW_InspectionReportPull");
     }
     onOpen(ev) {
-        console.log("onOpen RAW_InspectionReportPull");
+      log.info("onOpen RAW_InspectionReportPull");
 
     }
     onMessage(ev) {
-        console.log(ev);
+      log.debug(ev);
     }
 
     render() {
@@ -274,7 +393,7 @@ class DB extends React.Component {
             },
             body: JSON.stringify({query: "{ hello }"})
         }).then(r => r.json()).then((datax) => {
-            console.log('[O]DB data returned:', JSON.stringify(datax));
+            log.info('[O]DB data returned:', JSON.stringify(datax));
 
             this.resultDB=JSON.stringify(datax);
         });
@@ -539,7 +658,7 @@ class ObjInfoList extends React.Component {
         });
     }
     toggleFullscreen(){
-        console.log("[XLINX2]fullScreen="+this.state.fullScreen);
+        log.info("[XLINX2]fullScreen="+this.state.fullScreen);
         this.setState({...this.state,
             fullScreen: !this.state.fullScreen,
         });
@@ -683,30 +802,30 @@ class AirControl extends React.Component {
     }
 
     blowAir_TEST() {
-        console.log("[WS]/cue/TEST");
+        log.debug("[WS]/cue/TEST");
         if (this.websocketAir.readyState === 1) {
-            console.log("[O][WS]/cue/TEST");
-            this.websocketAir.send("/cue/TEST");
+          log.debug("[O][WS]/cue/TEST");
+          this.websocketAir.send("/cue/TEST");
         } else {
-            console.log("[X][WS]/cue/TEST");
+          log.debug("[X][WS]/cue/TEST");
         }
 
     }
 
     blowAir_LEFTa() {
         if (this.websocketAir.readyState === this.websocketAir.OPEN) {
-            this.websocketAir.send("/cue/LEFT");
+          this.websocketAir.send("/cue/LEFT");
         } else {
-            console.log("[X][WS]/cue/LEFT");
+          log.debug("[X][WS]/cue/LEFT");
         }
 
     }
 
     blowAir_RIGHTa() {
         if (this.websocketAir.readyState === this.websocketAir.OPEN) {
-            this.websocketAir.send("/cue/RIGHT");
+          this.websocketAir.send("/cue/RIGHT");
         } else {
-            console.log("[X][WS]/cue/RIGHT");
+          log.debug("[X][WS]/cue/RIGHT");
         }
     }
 
@@ -759,7 +878,7 @@ class AirControl extends React.Component {
     }
     componentWillMount() {
         this._keyEventX = this.keyEventX.bind(this);
-        console.log("[init][componentWillMount]");
+        log.info("[init][componentWillMount]");
         this.websocketConnect(this.props.url);
         
         this.websocketAir=new websocket_autoReconnect(this.props.url,10000);
@@ -768,7 +887,7 @@ class AirControl extends React.Component {
         this.websocketAir.onerror = this.onError.bind(this);
         this.websocketAir.onopen = (ev)=>{
                 this.setState({...this.state,loading: false});
-                console.log("onopen:",ev);
+                log.info("onopen:",ev);
                 this.props.ACT_StatSettingParam_Update();
                 this.heartBeat.PINGcount=0;
                 this.heartBeat.PONGcount=0;
@@ -778,9 +897,9 @@ class AirControl extends React.Component {
                 this.props.ACT_StatSettingParam_Update();
                 this.setState({...this.state,loading: true});
                 if (evt.code == 3001) {
-                    console.log('ws closed',evt);
+                  log.info('ws closed',evt);
                 } else {
-                    console.log('ws connection error',evt);
+                  log.error('ws connection error',evt);
                 }
             };
 
@@ -806,18 +925,18 @@ class AirControl extends React.Component {
 
     websocketConnect(url = "ws://192.168.2.43:5213") {
 
-        console.log("[init][WS][OK]");
-        console.log(this.websocketAir);
+      log.info("[init][WS][OK]");
+      log.info(this.websocketAir);
     }
 
     onError(ev) {
-        this.setState({...this.state,loading: false});
-        //this.websocketConnect();
-        console.log("onError");
+      this.setState({...this.state,loading: false});
+      //this.websocketConnect();
+      log.info("onError");
     }
 
     onMessage(ev) {
-        console.log(ev);
+      log.debug(ev);
         let tstamp = ev.timeStamp;
         let data = ev.data;
         if(data === "/rsp/PONG")
@@ -1940,7 +2059,8 @@ class APP_INSP_MODE extends React.Component {
             InspStyle:undefined,
             ROIs:{},
             ROI_key:undefined,
-            DB_Conn_state:undefined
+            DB_Conn_state:undefined,
+            inspUploadedCount:0
         };
 
         this.CameraCtrl=new CameraCtrl({
@@ -2125,9 +2245,10 @@ class APP_INSP_MODE extends React.Component {
             ,
 
             <div className="s black width12 HXA">
+                {<Tag className="large" color="red" key="MACH">{this.props.machTag}</Tag>}
                 {this.props.defModelTag.map(tag=><Tag className="large" color="red">{tag}</Tag>)}
                 {this.props.inspOptionalTag.map(tag=><Tag className="large" color="green">{tag}</Tag>)}
-                {<Tag className="large" color="gray" onClick={()=>onTagEdit()}>設定Tag</Tag>}
+                {<Tag className="large" color="gray" onClick={()=>onTagEdit()}><Icon type="tags-o" /></Tag>}
             </div>
             
             ,
@@ -2158,18 +2279,32 @@ class APP_INSP_MODE extends React.Component {
             break;
         }
         
-        MenuSet.push(
-            <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            iconType="up-square"
-            key="DoImageTransfer"
-            addClass="layout palatte-blue-8 vbox"
-            text={"傳輸相機影像(I): "+ ((this.CameraCtrl.data.DoImageTransfer) ?"暫停": "啟動")}
-            onClick={() => 
-              this.CameraCtrl.setCameraImageTransfer()
-                  
-            }/>);
 
+        MenuSet.push(
+          <div className="s black width12 HXA">
+          <Row>
+            <Col span={6}>
+              <Paragraph style={{color:"white"}}>已上傳：</Paragraph>
+            </Col>
+            
+            <Col span={24-6}>
+              <Tag className="width9 large" color="gray" key="upC" 
+                onClick={()=>this.setState({inspUploadedCount:0})}>{this.state.inspUploadedCount}</Tag>
+            </Col>
+          </Row></div>);
+
+
+        MenuSet_2nd.push(
+          <BASE_COM.IconButton
+          dict={EC_zh_TW}
+          iconType="up-square"
+          key="DoImageTransfer"
+          addClass="layout palatte-blue-8 vbox"
+          text={"傳輸相機影像(I): "+ ((this.CameraCtrl.data.DoImageTransfer) ?"暫停": "啟動")}
+          onClick={() => 
+            this.CameraCtrl.setCameraImageTransfer()
+                
+          }/>);
         MenuSet_2nd.push(
           <BASE_COM.IconButton
               dict={EC_zh_TW}
@@ -2253,6 +2388,16 @@ class APP_INSP_MODE extends React.Component {
                       //console.log(">>>>>>>>>>",cur,pre);
                       this.setState({DB_Conn_state:cur});
                     }}
+                    onDBInsertSuccess={(data,info)=>{
+                      log.info(data,info);
+
+                      this.setState({inspUploadedCount:this.state.inspUploadedCount+1});
+                      
+                    }}
+                    
+                    onDBInsertFail={(data,info)=>{
+                      log.error(data,info);
+                    }}
                     url= "ws://hyv.decade.tw:8080/"
                     pull_skip={(this.state.InspStyle=="FI")?10:1}/> 
                 <$CSSTG transitionName="fadeIn">
@@ -2312,6 +2457,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         info_decorator:state.UIData.edit_info.__decorator,
         defModelName:state.UIData.edit_info.DefFileName,
         defModelTag:state.UIData.edit_info.DefFileTag,
+        machTag:state.UIData.MachTag,
         inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
         defModelPath: state.UIData.edit_info.defModelPath,
         WS_ID: state.UIData.WS_ID,

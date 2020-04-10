@@ -61,9 +61,10 @@ export const ActionThrottle = ATData => store => next => action => {
         ATData.timeout_obj = setTimeout(()=>{
           store.dispatch({ActionThrottle_type:"flush"});
         },ATData.time);
-
+        
         if(ATData.posEdge)
         {
+          if(action.type===undefined)return;
           action.ATID=ATData.ExATID;
           return next(action);
         }

@@ -10,6 +10,7 @@ export const EVENT = {
   DefFileName_Update:"DefFileName_Update",
   DefFileHash_Update:"DefFileHash_Update",
   DefFileTag_Update:"DefFileTag_Update",
+  MachTag_Update:"MachTag_Update",
   Matching_Face_Update:"Matching_Face_Update",
   Matching_Angle_Margin_Deg_Update:"Matching_Angle_Margin_Deg_Update",
   IntrusionSizeLimitRatio_Update:"IntrusionSizeLimitRatio_Update",
@@ -99,6 +100,12 @@ export function DefFileTag_Update(newInfo)
 {
   return {
     type: EVENT.DefFileTag_Update,data: newInfo
+  }
+}
+export function MachTag_Update(MachTag)
+{
+  return {
+    type: EVENT.MachTag_Update,data: MachTag
   }
 }
 

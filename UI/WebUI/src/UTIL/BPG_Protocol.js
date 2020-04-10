@@ -42,7 +42,14 @@ let raw2obj=(ws_evt, offset = 0)=>{
   );
   let  enc = new TextDecoder("utf-8");
   let str = enc.decode(ret_obj.rawdata);
-  ret_obj.data = JSON.parse(str);
+  //console.log(str);
+  try{
+    ret_obj.data = JSON.parse(str);
+  }
+  catch(e)
+  {
+    ret_obj.data=str;
+  }
   return ret_obj;
 };
 let raw2Obj_IM=(ws_evt, offset = 0)=>{

@@ -989,6 +989,12 @@ function StateReducer(newState,action)
           break;
         }
 
+        case DefConfAct.EVENT.MachTag_Update:
+        {
+          newState={...newState,MachTag:action.data};
+          break;
+        }
+
 
         case DefConfAct.EVENT.Matching_Angle_Margin_Deg_Update:
         {
