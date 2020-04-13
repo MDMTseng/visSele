@@ -509,8 +509,6 @@ class APPMain extends React.Component{
         this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
         {filename:"data/machine_info"},
         undefined,{resolve,reject});
-
-        
       }).then((data) => {
         if(data[0].type=="FL")
         {
@@ -597,6 +595,44 @@ class APPMain extends React.Component{
     render() {
       let UI=[];
       if(this.props.c_state==null)return null;
+
+      if(this.props.inspMode===undefined)
+      {
+        return <div>
+          
+            <Button
+              size="large"
+              key="<" 
+              onClick={()=>{
+                
+                this.props.ACT_StatSettingParam_Update({
+                  keepInTrackingTime_ms:0,
+                  minReportRepeat:0,
+                  headReportSkip:0
+                });
+                this.props.ACT_Insp_Mode_Update("FI");
+              }}>全檢</Button>
+
+            
+            <Button
+              size="large"
+              key=">" 
+              onClick={()=>{
+                this.props.ACT_Insp_Mode_Update({
+                  keepInTrackingTime_ms:1000,
+                  historyReportlimit:2000,
+                  minReportRepeat:4,
+                  headReportSkip:4
+                });
+                this.props.ACT_Insp_Mode_Update("CI");
+              }}>品管</Button>
+            
+          </div>
+      }
+
+
+
+
       let stateObj = xstate_GetCurrentMainState(this.props.c_state);
       if(stateObj.state === UIAct.UI_SM_STATES.MAIN)
       {
@@ -656,14 +692,14 @@ class APPMain extends React.Component{
                         {
                           LocalS_RecentDefFiles=[];
                         }
-                        console.log(LocalS_RecentDefFiles);
+                        //console.log(LocalS_RecentDefFiles);
                         LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo)=>
                           (ls_fileInfo.name!=fileInfo.name || ls_fileInfo.path!=fileInfo.path));
                         
                         LocalS_RecentDefFiles.unshift(fileInfo);
                         LocalS_RecentDefFiles=LocalS_RecentDefFiles.slice(0, 100);
                         localStorage.setItem("RecentDefFiles",JSON.stringify(LocalS_RecentDefFiles));
-                        console.log(localStorage.getItem("RecentDefFiles"));
+                        //console.log(localStorage.getItem("RecentDefFiles"));
                       }
 
                       filePath=filePath.replace("."+DEF_EXTENSION,""); 
@@ -1157,7 +1193,9 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
         
         ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
         ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
+        ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
         
+        ACT_Insp_Mode_Update:(mode)=>dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
         ACT_Report_Save:(id,fileName,content)=>{
           let act = UIAct.EV_WS_SEND(id,"SV",0,
           {filename:fileName},
@@ -1183,7 +1221,10 @@ const mapStateToProps_APPMain = (state) => {
         version_map_info:state.UIData.version_map_info,
         WebUI_info:state.UIData.WebUI_info,
         InspectionMonitor_URL:state.UIData.InspectionMonitor_URL,
-        uInspData:state.Peripheral.uInsp
+        uInspData:state.Peripheral.uInsp,
+        
+        statSetting:state.UIData.edit_info.statSetting,
+        inspMode:state.UIData.inspMode,
     }
 }
 

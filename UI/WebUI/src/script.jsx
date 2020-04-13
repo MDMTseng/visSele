@@ -58,7 +58,8 @@ class APPMasterX extends React.Component{
         act.ActionThrottle_type="flush";
         dispatch(act)
       },
-      ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+      ACT_WS_SEND:(id,tl,prop,data,uintArr,promiseCBs)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs)),
+        
       ACT_Version_Map_Update:(mapInfo)=>dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
       
     }
@@ -124,11 +125,24 @@ class APPMasterX extends React.Component{
             }
            
             this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+            //Just for teesting
 
             setTimeout(()=>{
               this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
-            },1000);
-            break;
+              },1000);
+  
+            
+            this.props.ACT_WS_SEND(this.props.WS_ID,"GS",0,{items:["binary_path"]},
+            undefined,{
+              resolve:(data) => {
+                if(data[0].type=="GS")
+                {
+                  let path=data[0].data["binary_path"];
+                  log.info(path);
+                }
+            },reject:(err) => {
+                log.error(err);
+            }});
           }
 
           case "SS":

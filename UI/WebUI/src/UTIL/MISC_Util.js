@@ -641,6 +641,79 @@ export class CircularCounter{
   }
 }
 
+
+
+
+export class ConsumeQueue{
+  constructor(consumePromiseFunc,QSize=200) {
+    this.cC=new CircularCounter(QSize);
+    this.queue=new Array(QSize);
+    this.term=false;
+    this.inPromise=false;
+
+    this.consumePromiseFunc=consumePromiseFunc;
+  }
+  size()
+  {
+    return this.cC.size();
+  }
+  f(idx)
+  {
+    let qidx = this.cC.f(idx);
+    if(qidx===-1)return undefined;
+    return this.queue[qidx];
+  }
+
+
+  enQ(data)
+  {
+    if(this.cC.size()>=this.cC.tsize())
+    {
+      //full or error
+      return false;
+    }
+    this.queue[this.cC.f()]=data;
+    this.cC.enQ();
+    return true;
+  }
+
+  deQ()
+  {
+    if(this.cC.size()==0)return undefined;
+    let data = this.queue[this.cC.r()];
+    this.cC.deQ();
+    return data;
+  }
+  termination()
+  {
+    this.term=true;
+  }
+
+  kick()
+  {
+    //console.log("kick inPromise:"+this.inPromise);
+    if(this.inPromise)
+      return;
+    
+    this.inPromise=true;
+    this.consumePromiseFunc(this).then(result=>{
+      //console.log("Consume ok? result",result);
+      this.inPromise=false;
+      if(this.term)return;
+      if(this.cC.size()!=0)
+      {
+        this.kick();//kick next consumption
+      }
+    }).catch(e=>{
+      
+      console.log("Consume failed... e=",e);
+      this.inPromise=false;
+    });
+  }
+}
+
+
+
 // let exp_str = "Math.max(3+Math.tan(5-1/4*3)/3,1+2*3/(4+5)/6)";
 // //"3+tan(5-1/4*3)/3"
 // //"1+2*3/(4+5)/6"

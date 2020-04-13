@@ -71,6 +71,7 @@ export const UI_SM_EVENT = {
   ERROR:"ERROR",
 
   Version_Map_Update:"Version_Map_Update",
+  Insp_Mode_Update:"InspMode_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
   WS_channel:"WS_channel",
 
@@ -133,6 +134,14 @@ export function EV_UI_Version_Map_Update(mapInfo)
   return {
     type: UI_SM_EVENT.Version_Map_Update,
     data: mapInfo
+  }
+}
+
+export function EV_UI_Insp_Mode_Update(mode)
+{
+  return {
+    type: UI_SM_EVENT.Insp_Mode_Update,
+    data: mode
   }
 }
 

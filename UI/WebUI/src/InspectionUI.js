@@ -11,7 +11,7 @@ import {TagOptions_rdx} from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import {websocket_autoReconnect,websocket_reqTrack,copyToClipboard,CircularCounter} from 'UTIL/MISC_Util';
+import {websocket_autoReconnect,websocket_reqTrack,copyToClipboard,ConsumeQueue} from 'UTIL/MISC_Util';
 import EC_zh_TW from "./languages/zh_TW";
 import {SHAPE_TYPE,DEFAULT_UNIT} from 'REDUX_STORE_SRC/actions/UIAct';
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
@@ -57,17 +57,7 @@ const { Paragraph,Title } = Typography;
 // import Icon from 'antd/lib/icon';
 
 const ButtonGroup = Button.Group;
-const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
-const MDB_LOCAL="mongodb://localhost:27017/db_hy  ";
 
-const FileProps = {
-    name: 'file',
-
-    onChange(info)   {
-        console.log(info);
-
-    },
-};
 const Option = Select.Option;
 
 const selectBefore = (
@@ -87,76 +77,6 @@ const selectAfter = (
 const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
-
-class consumeQueue{
-  constructor(consumePromiseFunc,QSize=200) {
-    this.cC=new CircularCounter(QSize);
-    this.queue=new Array(QSize);
-    this.term=false;
-    this.inPromise=false;
-
-    this.consumePromiseFunc=consumePromiseFunc;
-  }
-  size()
-  {
-    return this.cC.size();
-  }
-  f(idx)
-  {
-    let qidx = this.cC.f(idx);
-    if(qidx===-1)return undefined;
-    return this.queue[qidx];
-  }
-
-
-  enQ(data)
-  {
-    if(this.cC.size()>=this.cC.tsize())
-    {
-      //full or error
-      return false;
-    }
-    this.queue[this.cC.f()]=data;
-    this.cC.enQ();
-    return true;
-  }
-
-  deQ()
-  {
-    if(this.cC.size()==0)return undefined;
-    let data = this.queue[this.cC.r()];
-    this.cC.deQ();
-    return data;
-  }
-  termination()
-  {
-    this.term=true;
-  }
-
-  kick()
-  {
-    //console.log("kick inPromise:"+this.inPromise);
-    if(this.inPromise)
-      return;
-    
-    this.inPromise=true;
-    this.consumePromiseFunc(this).then(result=>{
-      //console.log("Consume ok? result",result);
-      this.inPromise=false;
-      if(this.term)return;
-      if(this.cC.size()!=0)
-      {
-        this.kick();//kick next consumption
-      }
-    }).catch(e=>{
-      
-      console.log("Consume failed... e=",e);
-      this.inPromise=false;
-    });
-  }
-}
-
-
 class RAW_InspectionReportPull extends React.Component {
     constructor(props) {
         super(props);
@@ -168,7 +88,7 @@ class RAW_InspectionReportPull extends React.Component {
         this.WS_DB_Query= undefined;
         this.retryQCount=0;
 
-        this.cQ = new consumeQueue((cQ)=>{
+        this.cQ = new ConsumeQueue((cQ)=>{
           return new Promise((resolve, reject) => {//Implement consume rules
             if(this.WS_DB_Insert===undefined ||
               this.WS_DB_Insert.readyState!==WebSocket.OPEN ||
@@ -2043,10 +1963,36 @@ class APP_INSP_MODE extends React.Component {
 
 
       this.CameraCtrl.setCameraImageTransfer(true);
+      
+
+      if(this.props.inspMode=="FI")
+      {
+        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+
+        // this.props.ACT_StatSettingParam_Update({
+        //   keepInTrackingTime_ms:0,
+        //   minReportRepeat:0,
+        //   headReportSkip:0,
+        //   inspMode:this.props.statSetting.inspMode
+        // });
+      }
+      else if(this.props.inspMode=="CI")
+      {                
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
+        // this.props.ACT_StatSettingParam_Update({
+        //   keepInTrackingTime_ms:1000,
+        //   historyReportlimit:2000,
+        //   minReportRepeat:4,
+        //   headReportSkip:4,
+        //   inspMode:this.props.statSetting.inspMode
+          
+        // });
+      }
     }
 
     componentWillUnmount() {
         this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+
     }
 
     constructor(props) {
@@ -2056,7 +2002,6 @@ class APP_INSP_MODE extends React.Component {
         this.state={
             GraphUIDisplayMode:0,
             CanvasWindowRatio:9,
-            InspStyle:undefined,
             ROIs:{},
             ROI_key:undefined,
             DB_Conn_state:undefined,
@@ -2097,61 +2042,10 @@ class APP_INSP_MODE extends React.Component {
     componentDidUpdate()
     {
         this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
-        if(this.props.statSetting.Insp_mode!=this.state.InspStyle)
-        {
-          // statSetting will be reset when the deffile is loaded
-          //So this is the workaround to set StatSettingParam
-          if(this.state.InspStyle=="FI")
-          {
-            this.props.ACT_StatSettingParam_Update({
-              keepInTrackingTime_ms:0,
-              minReportRepeat:0,
-              headReportSkip:0,
-              Insp_mode:this.state.InspStyle
-            });
-          }
-          else if(this.state.InspStyle=="CI")
-          {
-            this.props.ACT_StatSettingParam_Update({
-              keepInTrackingTime_ms:1000,
-              historyReportlimit:2000,
-              minReportRepeat:4,
-              headReportSkip:4,
-              Insp_mode:this.state.InspStyle
-              
-            });
-          }
-        }
     }
 
     
     render() {
-      if(this.state.InspStyle===undefined)
-      {
-        return <div>
-          
-            <Button
-              size="large"
-              key="<" 
-              onClick={()=>{
-                this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
-                this.setState({...this.state,InspStyle:"FI"});
-              }}>全檢</Button>
-
-            
-            <Button
-              size="large"
-              key=">" 
-              onClick={()=>{
-                this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
-                this.setState({...this.state,InspStyle:"CI"});
-              }}>品管</Button>
-            
-          </div>
-      }
-
-
-
 
         let inspectionReport = undefined;
         if (this.props.inspectionReport !== undefined) {
@@ -2217,7 +2111,7 @@ class APP_INSP_MODE extends React.Component {
               visible={true}
               onOk={()=>{
                 this.setState({additionalUI:[]});
-                this.props.EV_UI_Insp_Mode();
+                this.props.EV_UI_inspMode();
               }}
               onCancel={()=>{
                 this.setState({additionalUI:[]});
@@ -2399,7 +2293,7 @@ class APP_INSP_MODE extends React.Component {
                       log.error(data,info);
                     }}
                     url= "ws://hyv.decade.tw:8080/"
-                    pull_skip={(this.state.InspStyle=="FI")?10:1}/> 
+                    pull_skip={(this.props.inspMode=="FI")?10:1}/> 
                 <$CSSTG transitionName="fadeIn">
                     <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height} 
                         style={{opacity:menuOpacity,width:"250px"}}> 
@@ -2446,7 +2340,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
         ACT_WS_SEND: (id, tl, prop, data, uintArr,promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr,promiseCBs)),
-        ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
+        //ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     }
 }
 
@@ -2464,7 +2358,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
         inspectionReport: state.UIData.edit_info.inspReport,
         reportStatisticState:state.UIData.edit_info.reportStatisticState,
         
-        statSetting:state.UIData.edit_info.statSetting,
+        inspMode:state.UIData.inspMode,
         
         camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
         //reportStatisticState:state.UIData.edit_info.reportStatisticState

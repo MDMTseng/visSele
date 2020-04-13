@@ -44,7 +44,8 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM);
 
 DatCH_BPG1_0 *BPG_protocol= new DatCH_BPG1_0(NULL);
 
-
+int _argc;
+char** _argv;
 
 
 
@@ -180,14 +181,14 @@ int LoadIMGFile(acvImage *ret_img,const  char *filename)
   int retVal;
   if(dot)
   {
-  if(strcmp(dot, ".bmp")==0)
-  {
-    return acvLoadBitmapFile(ret_img,filename);
-  }
-  if(strcmp(dot, ".png")==0)
-  {
-    return LoadPNGFile(ret_img,filename);
-  }
+    if(strcmp(dot, ".bmp")==0)
+    {
+      return acvLoadBitmapFile(ret_img,filename);
+    }
+    if(strcmp(dot, ".png")==0)
+    {
+      return LoadPNGFile(ret_img,filename);
+    }
   }
 
   retVal= LoadPNGFile(ret_img,(fname_str+".png").c_str());
@@ -342,6 +343,15 @@ int X=-1,int Y=-1,int W=-1, int H=-1)
   }
 }
 
+void realfullPath(const char* curPath,char* ret_fullPath)
+{
+#ifdef _WIN32
+  _fullpath(ret_fullPath,curPath,PATH_MAX);
+#else
+  realpath (curPath, ret_fullPath);
+#endif
+}
+
 cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
 {
   if(path==NULL)return NULL;
@@ -355,11 +365,7 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
   struct dirent *dir;
   cJSON *dirFiles = cJSON_CreateArray();
   char buf[PATH_MAX + 1]; 
-#ifdef _WIN32
-  _fullpath(buf,path,PATH_MAX);
-#else
-  realpath (path, buf);
-#endif
+  realfullPath(path, buf);
 
   cJSON_AddStringToObject(retObj, "path", buf);
   cJSON_AddItemToObject(retObj, "files", dirFiles);
@@ -964,46 +970,46 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
         do{
             
             if(json ==  NULL)
-            {
+          {
             snprintf(err_str,sizeof(err_str),"JSON parse failed");
             LOGE("%s",err_str);
             break;
-            }
+          }
             
             char* pathStr =(char* )JFetch(json,"path",cJSON_String);
             if(pathStr==NULL)
-            {
+          {
             //ERROR
             snprintf(err_str,sizeof(err_str),"No 'path' entry in the JSON");
             LOGE("%s",err_str);
             break;
             }
-
+        
             int depth=1;
             double* p_depth =JFetch_NUMBER(json,"depth");
             if(p_depth!=NULL)
             {
             depth=(int)*p_depth;
             }
-
+            
             {
             cJSON * cjFileStruct = cJSON_DirFiles(pathStr,NULL,depth);
 
             char * fileStructStr  = NULL;
             
             if(cjFileStruct==NULL)
-            { 
+            {
                 cjFileStruct=cJSON_CreateObject();
                 snprintf(err_str,sizeof(err_str),"File Structure is NULL");
                 LOGI("W:%s",err_str);
                 
                 session_ACK=false;
-            }
+              }
             else
-            {
+              {
                 
                 session_ACK=true;
-            }
+              }
 
             fileStructStr = cJSON_Print(cjFileStruct);
             
@@ -1014,13 +1020,60 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
             self->SendData(datCH_BPG);
             if(fileStructStr)free(fileStructStr);
             cJSON_Delete(cjFileStruct);
-
-            }
+               
+          }
 
 
 
         }while(false);
 
+        }
+        else if(checkTL("GS",dat))//[G]et [S]etting
+        {
+
+          cJSON* items =JFetch_ARRAY(json,"items");
+          if(items==NULL)
+          {
+            session_ACK=false;
+          }
+          else
+          {
+        
+            DatCH_Data datCH_BPG=
+                BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+            
+            session_ACK=true;
+
+            cJSON *retArr = cJSON_CreateObject();
+            char chBuff[120];
+            session_ACK=true;
+            
+            for(int k=0;;k++)
+            {
+              sprintf(chBuff,"items[%d]",k);
+              char* itemType = JFetch_STRING(json,chBuff);
+              if(itemType==NULL)break;
+              if (strcmp(itemType,"binary_path") == 0 )
+              {
+                realfullPath( _argv[0], chBuff );
+                cJSON_AddStringToObject(retArr, itemType, chBuff);
+              }
+              else if (strcmp(itemType,"XXXX") == 0 )
+              {
+                cJSON_AddStringToObject(retArr, itemType, "XXXX");
+              }
+
+            }
+
+            char * jstr  = cJSON_Print(retArr);
+            cJSON_Delete(retArr);
+            bpg_dat=GenStrBPGData("GS", jstr);
+            free(jstr);
+            bpg_dat.pgID=dat->pgID;
+            datCH_BPG.data.p_BPG_data=&bpg_dat;
+            self->SendData(datCH_BPG);
+               
+          }
         }
         else if(checkTL("LD",dat))
         {
@@ -1964,7 +2017,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
   double interval = (double)(t - pframeT) / CLOCKS_PER_SEC * 1000;
   if(!doImgProcessThread)
   {
-    int skip_int=70;
+    int skip_int=0;
     LOGI("frameInterval:%fms \n", interval);
     LOGI("frameInterval:%fms t:%d pframeT:%d", interval,t,pframeT);
     if(interval<skip_int)
@@ -2747,6 +2800,8 @@ int main(int argc, char** argv)
   }
   #endif
 
+  _argc=argc;
+  _argv=argv;
   for(int i=0;i<argc;i++)
   {
     bool doMatch=true;

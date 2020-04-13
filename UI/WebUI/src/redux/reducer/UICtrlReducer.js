@@ -145,6 +145,7 @@ function Default_UICtrlReducer()
       camera_calibration_report:undefined,
       mouseLocation:undefined
     },
+    inspMode:undefined,
     version_map_info:undefined,
     WebUI_info:APP_INFO,
     sm:null,
@@ -211,6 +212,13 @@ function StateReducer(newState,action)
       log.info("Connected",newState.WS_CH);
     return newState;
     
+
+    case UISEV.Insp_Mode_Update:
+      newState.inspMode=action.data;
+      log.info("inspMode",action.data);
+    return newState;
+
+
     case UISEV.Version_Map_Update:
       log.info("Version_Map_Update",action.data);
       let version_map_info = action.data;
@@ -367,7 +375,15 @@ function StateReducer(newState,action)
   function EVENT_Inspection_Report(newState,action)
   {
     let statSetting = newState.edit_info.statSetting;
-    let inspOptionalTag = newState.edit_info.DefFileTag+","+newState.edit_info.inspOptionalTag;
+    let inspOptionalTag = ""+newState.edit_info.inspOptionalTag;
+    if(newState.DefFileTag!==undefined && newState.DefFileTag.length!=0)
+    {
+      inspOptionalTag=newState.edit_info.DefFileTag+","+inspOptionalTag;
+    }
+    if(newState.MachTag!==undefined && newState.MachTag.length!=0)
+    {
+      inspOptionalTag=newState.MachTag+","+inspOptionalTag;
+    }
     let currentDate = action.date;
     let currentTime_ms = currentDate.getTime();
 
