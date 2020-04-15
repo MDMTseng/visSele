@@ -604,12 +604,6 @@ class APPMain extends React.Component{
               size="large"
               key="<" 
               onClick={()=>{
-                
-                this.props.ACT_StatSettingParam_Update({
-                  keepInTrackingTime_ms:0,
-                  minReportRepeat:0,
-                  headReportSkip:0
-                });
                 this.props.ACT_Insp_Mode_Update("FI");
               }}>全檢</Button>
 
@@ -618,12 +612,6 @@ class APPMain extends React.Component{
               size="large"
               key=">" 
               onClick={()=>{
-                this.props.ACT_Insp_Mode_Update({
-                  keepInTrackingTime_ms:1000,
-                  historyReportlimit:2000,
-                  minReportRepeat:4,
-                  headReportSkip:4
-                });
                 this.props.ACT_Insp_Mode_Update("CI");
               }}>品管</Button>
             

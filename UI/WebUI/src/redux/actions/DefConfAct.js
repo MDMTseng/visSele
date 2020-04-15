@@ -7,6 +7,7 @@ export const EVENT = {
   Shape_List_Update:"Shape_List_Update",
   Shape_Set:"Shape_Set",
   Shape_Decoration_ID_Order_Update:"Shape_Decoration_ID_Order_Update",
+  Shape_Decoration_Extra_Info_Update:"Shape_Decoration_Extra_Info_Update",
   DefFileName_Update:"DefFileName_Update",
   DefFileHash_Update:"DefFileHash_Update",
   DefFileTag_Update:"DefFileTag_Update",
@@ -19,6 +20,7 @@ export const EVENT = {
   FAIL:"DEFCONF_MODE_FAIL",
   ERROR:"ERROR",
 
+  DefConf_Lock_Level_Update:"DefConf_Lock_Level_Update",
 }
 
 export function Edit_Tar_Update(targetObj)
@@ -51,6 +53,23 @@ export function Shape_Decoration_ID_Order_Update(shape_id_order)
 {
   return {
     type: EVENT.Shape_Decoration_ID_Order_Update,data: shape_id_order
+  }
+}
+
+
+export function DefConf_Lock_Level_Update(level)
+{
+  return {
+    type: EVENT.DefConf_Lock_Level_Update ,data:level
+  }
+}
+
+
+
+export function Shape_Decoration_Extra_Info_Update(extra_info)
+{
+  return {
+    type: EVENT.Shape_Decoration_Extra_Info_Update,data: extra_info
   }
 }
 

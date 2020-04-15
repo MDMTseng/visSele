@@ -871,21 +871,20 @@ class AirControl extends React.Component {
     }
 
 
-    componentWillReceiveProps(nextProps) {
-        if (this.state.STOP) return;
-        //log.info(nextProps.checkResult2AirAction.ver, "222");
-        // console.log(this.websocketAir.OPEN,this.websocketAir.readyState,"XXX");
-        // if(this.websocketAir.readyState != this.websocketAir.OPEN)return;
-        //log.error(nextProps.checkResult2AirAction.ver,this.props.checkResult2AirAction.ver);
-        if (nextProps.checkResult2AirAction.ver == this.props.checkResult2AirAction.ver) return;
-
-        if (nextProps.checkResult2AirAction.direction === "left") {
-            this.blowAir_LEFTa();
-        } else if (nextProps.checkResult2AirAction.direction === "right") {
-            this.blowAir_RIGHTa();
-        }
+    static getDerivedStateFromProps(nextProps, prevState) {
+      // ...
+    }
 
 
+    componentDidUpdate(prevProps, prevState) {
+      if (this.state.STOP) return;
+      if (this.props.checkResult2AirAction.ver == this.props.checkResult2AirAction.ver) return;
+
+      if (this.props.checkResult2AirAction.direction === "left") {
+          this.blowAir_LEFTa();
+      } else if (this.props.checkResult2AirAction.direction === "right") {
+          this.blowAir_RIGHTa();
+      }
     }
 
     render() {
@@ -1967,26 +1966,26 @@ class APP_INSP_MODE extends React.Component {
 
       if(this.props.inspMode=="FI")
       {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
-
-        // this.props.ACT_StatSettingParam_Update({
-        //   keepInTrackingTime_ms:0,
-        //   minReportRepeat:0,
-        //   headReportSkip:0,
-        //   inspMode:this.props.statSetting.inspMode
-        // });
+        this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION},undefined);
+        //TODO:HACK HACK make StatSettingParam action slower, 
+        //because the cmd "FI"/"CI" will send DefFile("DF") and that will reset StatSettingParam make make this action useless
+        setTimeout(()=>
+        this.props.ACT_StatSettingParam_Update({
+          keepInTrackingTime_ms:0,
+          minReportRepeat:0,
+          headReportSkip:0,
+        }),2000);
       }
       else if(this.props.inspMode=="CI")
       {                
-        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION});
-        // this.props.ACT_StatSettingParam_Update({
-        //   keepInTrackingTime_ms:1000,
-        //   historyReportlimit:2000,
-        //   minReportRepeat:4,
-        //   headReportSkip:4,
-        //   inspMode:this.props.statSetting.inspMode
-          
-        // });
+        this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, {_PGID_:10004,_PGINFO_:{keep:true},deffile: this.props.defModelPath + "."+DEF_EXTENSION},undefined);
+
+        setTimeout(()=>
+        this.props.ACT_StatSettingParam_Update({
+          keepInTrackingTime_ms:0,
+          minReportRepeat:0,
+          headReportSkip:0,
+        }),2000);
       }
     }
 
@@ -2340,7 +2339,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
             dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
         },
         ACT_WS_SEND: (id, tl, prop, data, uintArr,promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr,promiseCBs)),
-        //ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
+        ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     }
 }
 

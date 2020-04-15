@@ -51,7 +51,8 @@ function Edit_info_reset(newState)
     DefFileHash:"",
     list:[],
     __decorator:{
-      list_id_order:[]
+      list_id_order:[],
+      extra_info:[]
     },
     inherentShapeList:[],
     
@@ -98,6 +99,7 @@ function Default_UICtrlReducer()
     showSplash:true,
     showSM_graph:false,
     WS_CH:undefined,
+    defConf_lock_level:0,
     edit_info:{
       defModelPath:"data/cache_def",
       _obj:new InspectionEditorLogic(),
@@ -746,12 +748,31 @@ function StateReducer(newState,action)
     case UISTS.INSP_MODE:
     {
 
+      
+      if(stateObj.state==UISTS.DEFCONF_MODE && newState.defConf_lock_level!=0){
+        let level3Filter=[DefConfAct.EVENT.DefConf_Lock_Level_Update]
 
-      //console.log(action.type,action);
+        let level2Filter=level3Filter.concat([DefConfAct.EVENT.Edit_Tar_Update]);
+        
+        let level1Filter=level2Filter.concat(
+            [DefConfAct.EVENT.Shape_Decoration_ID_Order_Update,
+              DefConfAct.EVENT.Shape_Decoration_Extra_Info_Update]);
+
+        let matchWL=level1Filter.find(actT=>actT===action.type);
+        console.log("action.type:"+action.type,"   ",matchWL);
+        if(matchWL===undefined)
+        {
+          break;
+        }
+      }
+      console.log(action.type,action);
       newState.showSplash=false;
       switch(action.type)
       {
-
+        case DefConfAct.EVENT.DefConf_Lock_Level_Update:
+          newState={...newState,defConf_lock_level:action.data};
+          //console.log(newState);
+        break;
         case UISEV.StatSettingParam_Update:
           newState.edit_info.statSetting=
             {...newState.edit_info.statSetting,
@@ -1075,6 +1096,16 @@ function StateReducer(newState,action)
           
           newState.edit_info.__decorator.list_id_order=
             UpdateListIDOrder(action.data,newState.edit_info.list);
+          break;
+        }
+
+        
+        case DefConfAct.EVENT.Shape_Decoration_Extra_Info_Update:
+        {
+          log.info("action.data:",action.data);
+          
+          newState.edit_info.__decorator={...newState.edit_info.__decorator,extra_info:action.data};
+          break;
         }
 
         case DefConfAct.EVENT.Shape_Set:
@@ -1202,7 +1233,7 @@ function StateReducer(newState,action)
             newState.edit_info.edit_tar_info = {
               type:SHAPE_TYPE.measure,
               subtype:SHAPE_TYPE.measure_subtype.NA,
-              docheck:true,
+              //importance:0,
               back_value_setup:false
               //ref:[{},{}]
             };

@@ -22,6 +22,7 @@ import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
 import Menu from "antd/lib/menu";
+import  Icon  from 'antd/lib/icon';
 import Checkbox from "antd/lib/checkbox";
 import  InputNumber  from 'antd/lib/input-number';
 import  Input  from 'antd/lib/input';
@@ -250,6 +251,105 @@ class Measure_Calc_Editor extends React.Component {
   }
 }
 
+  
+function SubDimEditUI({className,onChange,target,dimensions,displayMethod})
+{
+  
+  const [dimIdx, setDimIdx]=useState(0);
+  
+  let dropDownX=null;
+  let SetupUI=null;
+  let DelBtn=null;
+  if(dimensions!==undefined && dimensions.length>0)
+  {
+    console.log(dimensions);
+    const menu_ = (
+      <Menu  onClick={(ev)=>{
+        setDimIdx(parseInt(ev.key));
+        }
+        }>
+        {dimensions.map((m,idx)=>
+          <Menu.Item  key={idx} idx={idx}>
+            <a target="_blank" rel="noopener noreferrer">
+              {m.name}
+            </a>
+          </Menu.Item>)}
+      </Menu>
+    );
+    dropDownX=
+      <Dropdown overlay={menu_}>
+        <a className="HX0_5 layout palatte-blue-8 vbox width12" style={{color:"white"}} href="#">
+          {dimensions[dimIdx].name+"  "}
+          <Icon type="caret-down"/>
+        </a>
+      </Dropdown>;
+
+    SetupUI=<div>
+      <BASE_COM.JsonEditBlock key="dimConfig" object={dimensions[dimIdx]}
+        dict={EC_zh_TW}
+        whiteListKey={{
+          name:"input",
+          value:"input-number",
+          USL:"input-number",
+          LSL:"input-number",
+        }}
+        jsonChange={(original_obj,target_,type,evt)=>
+        {
+          let val = evt.target.value;
+          if(type==="input-number")
+          {
+            val =  parseFloat(val);
+            if(isNaN(val))return;
+          }
+
+          let dims=dclone(dimensions);
+          let dim=dims[dimIdx];
+
+          dim[target_.keyTrace[0]]=val;
+          onChange(target,undefined,{target:{value:dims}});
+
+        }}/>
+    </div>
+
+    DelBtn=<BASE_COM.IconButton
+      addClass="HX0_5 width6"
+      iconType="close"
+      onClick={()=>{
+        let dim=dclone(dimensions);
+        console.log(dimensions,dimIdx);
+        dim.splice(dimIdx, 1);
+        if(dimIdx>=dim.length)setDimIdx(dim.length-1);
+        console.log(dim,dimIdx);
+        onChange(target,undefined,{target:{value:dim}});
+      }}
+      text="" />
+  }
+  console.log(className,onChange,dimensions,displayMethod);
+
+
+  let AddNewBtn=<BASE_COM.IconButton
+  addClass="HX0_5 width6"
+  iconType="plus"
+  onClick={()=>{
+    let dim=dclone(dimensions);
+    dim.push({
+      name:"NewDim_"+dim.length,
+      value:0,USL:0,LSL:0
+    });
+    setDimIdx(dim.length-1);
+    onChange(target,undefined,{target:{value:dim}});
+  }}
+  text="" />
+  //console.log(className,onChange,dimensions,displayMethod);
+  //evt.target.value
+  //this.props.target,this.props.type,evt
+  return <div className="HXA width12">
+    {dropDownX}
+    {SetupUI}
+    {AddNewBtn}
+    {DelBtn}
+  </div>;
+}
 
 class APP_DEFCONF_MODE extends React.Component{
 
@@ -291,7 +391,7 @@ class APP_DEFCONF_MODE extends React.Component{
     this.WS_DEF_DB_Insert.onconnectiontimeout=()=>log.info("WS_DEF_DB_Insert:onconnectiontimeout");
     this.WS_DEF_DB_Insert.onclose=()=>log.info("WS_DEF_DB_Insert:onclose");
     this.WS_DEF_DB_Insert.onerror=()=>log.info("WS_DEF_DB_Insert:onerror");
-
+    this.props.ACT_DefConf_Lock_Level_Update(1);
   }
   
   componentWillUnmount()
@@ -314,174 +414,286 @@ class APP_DEFCONF_MODE extends React.Component{
   }
 
 
-  genTarEditUI(edit_tar)
+  GenTarEditUI({edit_tar_info,Info_decorator,ec_canvas,ACT_Shape_Decoration_Extra_Info_Update})
   {
-    switch(edit_tar.type)
-    {
-      case UIAct.SHAPE_TYPE.aux_point:
-      case UIAct.SHAPE_TYPE.aux_line:
-      case UIAct.SHAPE_TYPE.search_point:
-      case UIAct.SHAPE_TYPE.measure:
+    let [uiType, setUIType]=useState("main");
+    let edit_tar = edit_tar_info;
+    let decorator = Info_decorator;
+    console.log(edit_tar,decorator);
+
+    let UIArr=[];
+
+
+    if(uiType=="main"){
+
+      UIArr.push(<BASE_COM.Button
+        key="setAdditional"
+        addClass="layout black vbox HX0_5"
+        text="..." onClick={()=>
+          {
+            setUIType("deco");
+          }}/>);  
+      switch(edit_tar.type)
       {
-        return (<BASE_COM.JsonEditBlock object={edit_tar}
+        case UIAct.SHAPE_TYPE.aux_point:
+        case UIAct.SHAPE_TYPE.aux_line:
+        case UIAct.SHAPE_TYPE.search_point:
+        case UIAct.SHAPE_TYPE.measure:
+        {
+          UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
+          dict={EC_zh_TW}
+          dictTheme = {edit_tar.type}
+            key="BASE_COM.JsonEditBlock"
+            whiteListKey={{
+              id:"div",
+              type:"div",
+              subtype:"div",
+              name:"input",
+              //pt1:null,
+              angleDeg:"input-number",
+              margin:"input-number",
+
+              value:"input-number",
+              USL:"input-number",
+              LSL:"input-number",
+              UCL:"input-number",
+              LCL:"input-number",
+
+              value_b:"input-number",
+              USL_b:"input-number",
+              LSL_b:"input-number",
+              UCL_b:"input-number",
+              LCL_b:"input-number",
+
+              quadrant:"div",
+              back_value_setup:"checkbox",
+              importance:"input-number",
+              docheck:"checkbox",
+              width:"input-number",
+              ref:{__OBJ__:"div",
+                ...[0,1,2].reduce((acc,key)=>{
+                  acc[key+""]=
+                    {__OBJ__:"btn",
+                    id:"div",
+                    element:"div"};
+                  return acc;
+                },{})
+              
+              },
+              ref_baseLine:{
+                __OBJ__:"btn",
+                id:"div",
+                element:"div"
+              }
+            }}
+            jsonChange={(original_obj,target,type,evt)=>
+              {
+                if(type =="btn")
+                {
+                  if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
+                  {
+                    this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+                  }
+                }
+                else
+                {
+                  let lastKey=target.keyTrace[target.keyTrace.length-1];
+                  
+                  switch(type)
+                  {
+                    case "input-number":
+                    {
+                      let parseNum =  parseFloat(evt.target.value);
+                      if(isNaN(parseNum))return;
+                      target.obj[lastKey]=parseNum;
+                      if( target.obj.value!== undefined)
+                      {
+                        //Special case, if USL LSL gets changes then UCL and LCL will be changed as well
+                        
+                        switch(lastKey)
+                        {
+                          case "LSL":
+                            target.obj.LCL=roundX((target.obj.value+(target.obj.LSL-target.obj.value)*2/3),0.001);
+                            break;
+                          case "USL":
+                            target.obj.UCL=roundX((target.obj.value+(target.obj.USL-target.obj.value)*2/3),0.001);
+                            break;
+                          case "LSL_b":
+                            target.obj.LCL_b=roundX((target.obj.value_b+(target.obj.LSL_b-target.obj.value_b)*2/3),0.001);
+                            break;
+                          case "USL_b":
+                            target.obj.UCL_b=roundX((target.obj.value_b+(target.obj.USL_b-target.obj.value_b)*2/3),0.001);
+                            break;
+                        }
+                      }
+                    }
+                    break;
+                    case "input":
+                    {
+                      target.obj[lastKey]=evt.target.value;
+                    }
+                    break;
+                    case "checkbox":
+                    {
+                      target.obj[lastKey]=evt.target.checked;
+
+                      if(lastKey=="back_value_setup")
+                      {
+                        if(evt.target.checked==false)
+                        {
+                          delete target.obj["value_b"];
+                          delete target.obj["USL_b"];
+                          delete target.obj["LSL_b"];
+                          delete target.obj["UCL_b"];
+                          delete target.obj["LCL_b"];
+                        }
+                        else
+                        {
+                          target.obj["value_b"]=target.obj["value"];
+                          target.obj["USL_b"]=target.obj["USL"];
+                          target.obj["LSL_b"]=target.obj["LSL"];
+                          target.obj["UCL_b"]=target.obj["UCL"];
+                          target.obj["LCL_b"]=target.obj["LCL"];
+                        }
+                      }
+                    }
+                    break;
+                  }
+                  ec_canvas.SetShape( original_obj, original_obj.id);
+                }
+              }}/>);
+    
+          
+        }
+        break;
+        default:
+        {
+          UIArr.push(<BASE_COM.JsonEditBlock  key="mainConfigTable" object={edit_tar}
+            dict={EC_zh_TW}
+            dictTheme = {edit_tar.type}
+            jsonChange={(original_obj,target,type,evt)=>
+              {
+                let lastKey = target.keyTrace[target.keyTrace.length-1];
+                if(type == "input-number")
+                  target.obj[lastKey]=parseFloat(evt.target.value);
+                else if(type == "input")
+                  target.obj[lastKey]=evt.target.value;
+      
+                console.log(target.obj);
+                let updated_obj=original_obj;
+                ec_canvas.SetShape( updated_obj, updated_obj.id);
+              }}
+            whiteListKey={{
+              //id:"div",
+              type:"div",
+              subtype:"div",
+              name:"input",
+              margin:"input-number",
+              direction:"input-number",
+
+              /*pt1:{
+                __OBJ__:"btn",
+                x:"input-number",
+                y:"input-number",
+              }*/
+            }}/>);
+        }
+        break;
+        
+      }
+      
+    }
+    else if(uiType=="deco"){
+    
+      UIArr.push(<BASE_COM.Button
+        key="setAdditional"
+        addClass="layout black vbox HX0_5"
+        text="<" onClick={()=>
+          {
+            setUIType("main");
+          }}/>);
+      if(decorator!==undefined)
+      {
+        let infoIdx=-1;
+        let extraTarInfo;
+        let extra_info=[];
+        if( decorator.extra_info!==undefined)
+        {
+          extra_info = decorator.extra_info;
+          infoIdx = extra_info.findIndex(info=>info.id==edit_tar.id);
+          if(infoIdx!==-1)
+          {
+            extraTarInfo=extra_info[infoIdx];
+          }
+        }
+    
+    
+        if(extraTarInfo===undefined)
+          extraTarInfo={
+           // importance:20
+          };
+    
+        extraTarInfo={
+          id:edit_tar.id,
+          //name:"",
+          importance:0,
+          dimensions:[],
+          ...extraTarInfo};
+      
+        console.log(edit_tar.type,UIAct.SHAPE_TYPE.measure);
+        if(edit_tar.type!==UIAct.SHAPE_TYPE.measure)
+        {
+          delete extraTarInfo["dimensions"]
+        }
+          
+        UIArr.push(<BASE_COM.JsonEditBlock key="2ndConfigTable" object={extraTarInfo}
         dict={EC_zh_TW}
         dictTheme = {edit_tar.type}
-          key="BASE_COM.JsonEditBlock"
           whiteListKey={{
-            id:"div",
-            type:"div",
-            subtype:"div",
-            name:"input",
-            //pt1:null,
-            angleDeg:"input-number",
-            margin:"input-number",
-
-            value:"input-number",
-            USL:"input-number",
-            LSL:"input-number",
-            UCL:"input-number",
-            LCL:"input-number",
-
-            value_b:"input-number",
-            USL_b:"input-number",
-            LSL_b:"input-number",
-            UCL_b:"input-number",
-            LCL_b:"input-number",
-
-            quadrant:"div",
-            back_value_setup:"checkbox",
-            docheck:"checkbox",
-            width:"input-number",
-            ref:{__OBJ__:"div",
-              ...[0,1,2].reduce((acc,key)=>{
-                acc[key+""]=
-                  {__OBJ__:"btn",
-                  id:"div",
-                  element:"div"};
-                return acc;
-              },{})
-             
-            },
-            ref_baseLine:{
-              __OBJ__:"btn",
-              id:"div",
-              element:"div"
+            //name:"input",
+            importance:"input-number",
+            dimensions:{
+              __OBJ__:(param)=>{
+                let tar = GetObjElement(param.target.obj,param.target.keyTrace);
+                return <SubDimEditUI {...param} dimensions={tar}/>
+              }
             }
           }}
           jsonChange={(original_obj,target,type,evt)=>
+          {
+            
+            let val = evt.target.value;
+            if(type==="input-number")
             {
-              if(type =="btn")
-              {
-                if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
-                {
-                  this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
-                }
-              }
-              else
-              {
-                let lastKey=target.keyTrace[target.keyTrace.length-1];
-                
-                switch(type)
-                {
-                  case "input-number":
-                  {
-                    let parseNum =  parseFloat(evt.target.value);
-                    if(isNaN(parseNum))return;
-                    target.obj[lastKey]=parseNum;
-                    if( target.obj.value!== undefined)
-                    {
-                      //Special case, if USL LSL gets changes then UCL and LCL will be changed as well
-                      
-                      switch(lastKey)
-                      {
-                        case "LSL":
-                          target.obj.LCL=roundX((target.obj.value+(target.obj.LSL-target.obj.value)*2/3),0.001);
-                          break;
-                        case "USL":
-                          target.obj.UCL=roundX((target.obj.value+(target.obj.USL-target.obj.value)*2/3),0.001);
-                          break;
-                        case "LSL_b":
-                          target.obj.LCL_b=roundX((target.obj.value_b+(target.obj.LSL_b-target.obj.value_b)*2/3),0.001);
-                          break;
-                        case "USL_b":
-                          target.obj.UCL_b=roundX((target.obj.value_b+(target.obj.USL_b-target.obj.value_b)*2/3),0.001);
-                          break;
-                      }
-                    }
-                  }
-                  break;
-                  case "input":
-                  {
-                    target.obj[lastKey]=evt.target.value;
-                  }
-                  break;
-                  case "checkbox":
-                  {
-                    target.obj[lastKey]=evt.target.checked;
-
-                    if(lastKey=="back_value_setup")
-                    {
-                      if(evt.target.checked==false)
-                      {
-                        delete target.obj["value_b"];
-                        delete target.obj["USL_b"];
-                        delete target.obj["LSL_b"];
-                        delete target.obj["UCL_b"];
-                        delete target.obj["LCL_b"];
-                      }
-                      else
-                      {
-                        target.obj["value_b"]=target.obj["value"];
-                        target.obj["USL_b"]=target.obj["USL"];
-                        target.obj["LSL_b"]=target.obj["LSL"];
-                        target.obj["UCL_b"]=target.obj["UCL"];
-                        target.obj["LCL_b"]=target.obj["LCL"];
-                      }
-                    }
-                  }
-                  break;
-                }
-                this.ec_canvas.SetShape( original_obj, original_obj.id);
-              }
-            }}/>);
-      }
-      break;
-      default:
-      {
-        return (<BASE_COM.JsonEditBlock object={edit_tar}
-          dict={EC_zh_TW}
-          dictTheme = {edit_tar.type}
-          key="BASE_COM.JsonEditBlock"
-          jsonChange={(original_obj,target,type,evt)=>
+              val =  parseFloat(val);
+              if(isNaN(val))return;
+            }
+            console.log(original_obj,target,type,evt);
+            let dc_extra_Info=dclone(extra_info);
+            //let extraTarInfo=extra_Info.find(info=>info.id==edit_tar.id);
+            
+            let infoIdx = dc_extra_Info.findIndex(info=>info.id==edit_tar.id);
+            if(infoIdx===-1)//New info
             {
-              let lastKey = target.keyTrace[target.keyTrace.length-1];
-              if(type == "input-number")
-                target.obj[lastKey]=parseFloat(evt.target.value);
-              else if(type == "input")
-                target.obj[lastKey]=evt.target.value;
+              original_obj[target.keyTrace[0]]=val;
+              dc_extra_Info.push(original_obj);
+            }
+            else
+            {//Modify the old info
+              dc_extra_Info[infoIdx][target.keyTrace[0]]=val;
+            }
     
-              console.log(target.obj);
-              let updated_obj=original_obj;
-              this.ec_canvas.SetShape( updated_obj, updated_obj.id);
-            }}
-          whiteListKey={{
-            //id:"div",
-            type:"div",
-            subtype:"div",
-            name:"input",
-            margin:"input-number",
-            direction:"input-number",
-
-            /*pt1:{
-              __OBJ__:"btn",
-              x:"input-number",
-              y:"input-number",
-            }*/
-          }}/>);
+    
+            ACT_Shape_Decoration_Extra_Info_Update(dc_extra_Info);
+          }
+          }/>);
       }
-      break;
-      
     }
+
+        
+    
+
+    return UIArr;
   }
 
 
@@ -564,14 +776,15 @@ class APP_DEFCONF_MODE extends React.Component{
           addClass="layout palatte-blue-5 vbox"
           key="EDIT"
           text="edit" onClick={()=>this.props.ACT_Shape_Edit_Mode()}/>,
+        (this.props.defConf_lock_level>2)?null:
         <BASE_COM.IconButton
-            iconType="save"
-            dict={EC_zh_TW}
+          iconType="save"
+          dict={EC_zh_TW}
           addClass="layout palatte-gold-7 vbox"
           key="SAVE"
           text="save" onClick={()=>{
+            if(this.props.defConf_lock_level>2)return;
 
-              
             this.setState({...this.state,fileSavingCallBack:(folderInfo,fileName,existed)=>{
 
               let fileNamePath=folderInfo.path+"/"+fileName.replace('.'+DEF_EXTENSION,"");
@@ -720,7 +933,21 @@ class APP_DEFCONF_MODE extends React.Component{
                     max={1}
                     value={this.props.edit_info.intrusionSizeLimitRatio}
                     onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
-                  />
+                  />,
+                
+                <Divider orientation="left">MISC</Divider>,
+
+                <Checkbox
+                  checked={this.props.defConf_lock_level!=0}
+                  onChange={(ev)=>{
+                    this.props.ACT_DefConf_Lock_Level_Update(
+                      (this.props.defConf_lock_level==0)?1:0
+                    );
+                  }}
+                >
+                  {<Icon type={(this.props.defConf_lock_level!=0)?"lock":"unlock"} />}
+                  {" 鎖等級:"+this.props.defConf_lock_level}
+                </Checkbox> 
               ]
             }
             
@@ -950,8 +1177,8 @@ class APP_DEFCONF_MODE extends React.Component{
       if(this.props.edit_tar_info!=null)
       {
         console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
+        MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
-        MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
 
         let tar_info = this.props.edit_tar_info;
         if(tar_info.ref[0].id !==undefined )
@@ -984,7 +1211,8 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
-          MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
+          
+          MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
           let tar_info = this.props.edit_tar_info;
           console.log(tar_info.ref);
@@ -1024,7 +1252,7 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
 
-          MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
+          MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
           let tar_info = this.props.edit_tar_info;
           console.log(tar_info.ref);
@@ -1060,7 +1288,7 @@ class APP_DEFCONF_MODE extends React.Component{
       
       if(this.props.edit_tar_info!=null)
       {
-        MenuSet.push(this.genTarEditUI(this.props.edit_tar_info));
+        MenuSet.push(<this.GenTarEditUI key="tarEditUI" ec_canvas={this.ec_canvas} {...this.props} />);
 
         let on_DEL_Tar=(id)=>
         {
@@ -1069,14 +1297,21 @@ class APP_DEFCONF_MODE extends React.Component{
         let on_COPY_Tar=(targetShape)=>
         {
           let copy_shape = dclone(targetShape);
-          copy_shape.id=undefined;
-          console.log(copy_shape);
+          copy_shape.id=undefined;//the undefined id will let reducer append a new feature
+          //console.log(copy_shape);
           ["pt1","pt2","pt3"].forEach((pt_key)=>{
             if(copy_shape[pt_key]===undefined)return;
             copy_shape[pt_key].x+=1;
             copy_shape[pt_key].y+=1;
           });
-          copy_shape.name+="_copy";
+          let reNameCount=1;
+
+          let tmpName=copy_shape.name+"["+reNameCount+"]";
+          while(this.props.shape_list.find(shape=>shape.name===tmpName)!==undefined){
+            reNameCount++;
+            tmpName=copy_shape.name+"["+reNameCount+"]";
+          }
+          copy_shape.name=tmpName;
           this.ec_canvas.SetShape( copy_shape,undefined );
         }
         if(this.props.edit_tar_info.id !== undefined)
@@ -1132,15 +1367,15 @@ class APP_DEFCONF_MODE extends React.Component{
       }
       else
       {
-        console.log(this.props.shape_list);
+        //console.log(this.props.shape_list);
 
         let shapeListInOrder=this.props.shape_list;
-        console.log(this.props.Info_decorator.list_id_order);
+        //console.log(this.props.Info_decorator.list_id_order);
         if(this.props.Info_decorator.list_id_order.length == shapeListInOrder.length)
         {
           shapeListInOrder=this.props.Info_decorator.list_id_order.map(id=>this.props.shape_list.find(shape=>shape.id==id));
         }
-        MenuSet.push(<div className="s HXA">
+        MenuSet.push(<div className="s HXA" key="DragSortableList_con" >
           <DragSortableList 
             items={shapeListInOrder.map(  (shape,id)=>({
               content: (
@@ -1166,6 +1401,16 @@ class APP_DEFCONF_MODE extends React.Component{
       break;
     }
  
+    
+    let AddtionalInfo=null;
+    if(this.props.defConf_lock_level!=0)
+      AddtionalInfo = 
+        <div key="AddtionalInfo" className={"s overlay overlayright HXA"} style={{width:"100px", backgroundColor:"black"}}>
+          {<Icon type="lock"/>}
+          {" 鎖等級:"+this.props.defConf_lock_level}
+        </div>
+
+
 
     console.log("APP_DEFCONF_MODE render");
     return(
@@ -1192,12 +1437,15 @@ class APP_DEFCONF_MODE extends React.Component{
           {this.state.modal_view===undefined?null:this.state.modal_view.view_update()}
       </Modal>
       <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas)=>{this.ec_canvas=canvas}}/>
-      <$CSSTG transitionName = "fadeIn">
-        <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
-          {MenuSet}
-        </div>
-      </$CSSTG>
       
+      <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
+        {MenuSet}
+      </div>
+      
+      {AddtionalInfo}
+     
+
+
     </div>
     );
   }
@@ -1229,10 +1477,13 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) =>
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
     
+    ACT_DefConf_Lock_Level_Update:(level)=>{dispatch(DefConfAct.DefConf_Lock_Level_Update(level))},
+
     ACT_Def_Model_Path_Update:(path)=>{dispatch(UIAct.Def_Model_Path_Update(path))},
     ACT_WS_SEND:(...args)=>dispatch(UIAct.EV_WS_SEND(...args)),
     ACT_ClearImage:()=>{dispatch(UIAct.EV_WS_Image_Update(null))},
     ACT_Shape_Decoration_ID_Order_Update:(shape_id_order)=>{dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order))},
+    ACT_Shape_Decoration_Extra_Info_Update:(extra_info)=>{dispatch(DefConfAct.Shape_Decoration_Extra_Info_Update(extra_info))},
     ACT_Matching_Angle_Margin_Deg_Update:(deg)=>{dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg))},
     ACT_Matching_Face_Update:(faceSetup)=>{dispatch(DefConfAct.Matching_Face_Update(faceSetup))},//-1(back)/0(both)/1(front)
     ACT_IntrusionSizeLimitRatio_Update:(ratio)=>{dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio))},//0~1
@@ -1266,6 +1517,7 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     Info_decorator:state.UIData.edit_info.__decorator,
     WS_ID:state.UIData.WS_ID,
     edit_info:state.UIData.edit_info,
+    defConf_lock_level:state.UIData.defConf_lock_level
   }
 };
 

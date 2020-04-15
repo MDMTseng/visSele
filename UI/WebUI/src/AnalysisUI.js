@@ -217,6 +217,7 @@ class APP_ANALYSIS_MODE extends React.Component{
             UCL:"input-number",
             LCL:"input-number",
             quadrant:"div",
+            importance:"input-number",
             docheck:"checkbox",
             width:"input-number",
             ref:{__OBJ__:"div",
