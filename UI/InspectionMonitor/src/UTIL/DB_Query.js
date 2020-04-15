@@ -2,23 +2,29 @@ import jsonp from 'jsonp';
 
 
 let db_url = "http://hyv.decade.tw:8080/";
+
+function defFileQueryStr(name,featureSet_sha1,projection)
+{
+  let url ="";
+  
+  if(name!==undefined)
+  url+="&name="+name;
+
+  if(featureSet_sha1!==undefined)
+    url+="&featureSet_sha1="+featureSet_sha1;
+
+  if(projection!==undefined)
+    url+="&projection="+JSON.stringify(projection);
+  else
+    url+="&projection={}";
+}
+
 function defFileQuery(name,featureSet_sha1,projection)
 {
     
     let url = db_url+"query/deffile?";
-    url+="limit=1000";
     
-    if(name!==undefined)
-        url+="&name="+name;
-
-    if(featureSet_sha1!==undefined)
-        url+="&featureSet_sha1="+featureSet_sha1;
-    
-    if(projection!==undefined)
-        url+="&projection="+JSON.stringify(projection);
-    else
-        url+="&projection={}";
-    //url+="&projection={}"
+    url+=defFileQueryStr(name,featureSet_sha1,projection);
     return new Promise((res,rej)=>{
 
         jsonp(url,  (err,data)=>{

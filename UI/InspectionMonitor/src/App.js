@@ -259,14 +259,25 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
 
       console.log(dataSet,dataSet_Formatted,hashRegx);
       //'http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx
-      let url='http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx
-
+      let url='http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx+
+      '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"createdAt":1}'
+      
       return pjsonp(url,null)
 
     }).then((defFileData)=>{
 
-      
-
+      console.log(defFileData);
+      defFileData = Object.values(defFileData.reduce((obj,df)=>{
+        let sha1=df.DefineFile.featureSet_sha1;
+        let time = Date.parse(df.createdAt);
+        df.p_createdAt = time;
+        if(obj[sha1]===undefined || obj[sha1].p_createdAt<df.p_createdAt)
+        {
+          obj[sha1]=df;
+        }
+        
+        return obj;
+      },{}))
 
       defFileData.forEach((defF)=>{
         defF.hash=defF.DefineFile.featureSet_sha1;
@@ -617,6 +628,37 @@ function CustomDisplayUI({ }) {
 }
 
 
+function DBDupMan({ }) {
+  const [displayInfo, setDisplayInfo] = useState(undefined);
+
+  const [collapsed, setCollapsed] = useState(true);
+
+
+  function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
+  {
+    let dataSet_Formatted;
+    return new Promise((res,rej)=>{
+
+    let url='http://hyv.decade.tw:8080/query/deffile?name='+""+'&limit=100'+
+      '&agg=[{"$group":{"_id":"$DefineFile.featureSet_sha1",'+
+        '"count":{"$sum":1}'+
+      '}}]';
+  
+  
+      pjsonp(url,null).then((dataSet)=>{
+        console.log(dataSet);
+      }).catch((err)=>{
+        rej(err);
+      })
+    });
+  }
+  
+  fetchDeffileInfo_in_insp_time_range();
+
+
+  return ">>";
+}
+
 class App extends React.Component{
 
   constructor(props) {
@@ -633,6 +675,7 @@ class App extends React.Component{
     }
     this.UI_type={
       customDisplay:"customDisplay",
+      dbDupMan:"dbDupMan",
       analysis:"analysis",
       search:"search",
     }
@@ -644,6 +687,10 @@ class App extends React.Component{
     if(urlParam.UI==="customDisplay")
     {
       this.setState({UI:this.UI_type.customDisplay});
+    }
+    if(urlParam.UI==="dbDupMan")
+    {
+      this.setState({UI:this.UI_type.dbDupMan});
     }
     else if(urlParam.v!==undefined && urlParam.hash!==undefined)
     {
@@ -704,6 +751,9 @@ class App extends React.Component{
     {
       case this.UI_type.customDisplay:
         UI=<CustomDisplayUI/>;
+        break;
+      case this.UI_type.dbDupMan:
+        UI=<DBDupMan/>;
         break;
       case this.UI_type.analysis:
         UI=<APP_ANALYSIS_MODE 
