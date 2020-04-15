@@ -17,6 +17,8 @@ function defFileQueryStr(name,featureSet_sha1,projection)
     url+="&projection="+JSON.stringify(projection);
   else
     url+="&projection={}";
+
+  return url;
 }
 
 function defFileQuery(name,featureSet_sha1,projection)
@@ -24,6 +26,7 @@ function defFileQuery(name,featureSet_sha1,projection)
     
     let url = db_url+"query/deffile?";
     
+    url+="limit=1000";
     url+=defFileQueryStr(name,featureSet_sha1,projection);
     return new Promise((res,rej)=>{
 
