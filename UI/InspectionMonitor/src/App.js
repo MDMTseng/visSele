@@ -287,7 +287,7 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
         {
           Object.assign(defF, tar)
           defF.tags = defF.tags.flat(9)
-            .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
+            .map(tag=>tag.replace(/^,+|,+$/g, "").replace(/\,{2,}/g, ",").split(","))
             .flat(9)
             .filter(tag=>tag.length>0)
           defF.tags = [...new Set(defF.tags)];
