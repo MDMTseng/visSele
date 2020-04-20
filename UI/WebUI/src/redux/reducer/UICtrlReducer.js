@@ -759,13 +759,13 @@ function StateReducer(newState,action)
               DefConfAct.EVENT.Shape_Decoration_Extra_Info_Update]);
 
         let matchWL=level1Filter.find(actT=>actT===action.type);
-        console.log("action.type:"+action.type,"   ",matchWL);
+        //console.log("action.type:"+action.type,"   ",matchWL);
         if(matchWL===undefined)
         {
           break;
         }
       }
-      console.log(action.type,action);
+      //console.log(action.type,action);
       newState.showSplash=false;
       switch(action.type)
       {
@@ -1102,7 +1102,7 @@ function StateReducer(newState,action)
         
         case DefConfAct.EVENT.Shape_Decoration_Extra_Info_Update:
         {
-          log.info("action.data:",action.data);
+          //log.info("action.data:",action.data);
           
           newState.edit_info.__decorator={...newState.edit_info.__decorator,extra_info:action.data};
           break;
@@ -1116,7 +1116,7 @@ function StateReducer(newState,action)
           //ID is defined and shaped is null   - delete  an existed shape if it's in the list
 
           let newID=action.data.id;
-          log.info("newID:",newID);
+          //log.info("newID:",newID);
           let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
           newState.edit_info.list=newState.edit_info._obj.shapeList;
           
@@ -1129,7 +1129,7 @@ function StateReducer(newState,action)
           {//If this time it's not for adding new shape(ie, newID is not undefined)
             let tmpTarIdx=
             newState.edit_info._obj.FindShapeIdx( newID );
-            log.info(tmpTarIdx);
+            //log.info(tmpTarIdx);
             if(tmpTarIdx === undefined)//In this case we delete the shape in the list 
             {
               newState.edit_info.edit_tar_info=null;

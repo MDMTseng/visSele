@@ -157,21 +157,42 @@ export class JsonEditBlock extends React.Component{
         {
           Render_comp = displayMethod.__OBJ__;
         }
-        else if(this.props.renderLib!==undefined 
-          && typeof this.props.renderLib[displayMethod.__OBJ__]==="function")
+        else if(this.props.renderLib!==undefined)
         {
-          Render_comp = this.props.renderLib[displayMethod.__OBJ__];
+          if(typeof this.props.renderLib[displayMethod]==="function")
+          {
+            Render_comp = this.props.renderLib[displayMethod];
+          }
+          else if(typeof this.props.renderLib[displayMethod.__OBJ__]==="function")
+          {
+            Render_comp = this.props.renderLib[displayMethod.__OBJ__];
+          }
         }
-
         if(Render_comp!==undefined)
         {
+          // rows.push(
+          //   Render_comp({
+          //     className:"s WXF vbox black",
+          //     onChange:this.onChangeX.bind(this),
+          //     target:{obj:obj,keyTrace:newkeyTrace},
+          //     displayMethod,
+          //     props:this.props
+          //   }));
+
+            
+          //{className,onChange,target,displayMethod,props}
+
           rows.push(
-            Render_comp({
-              className:"s WXF vbox black",
-              onChange:this.onChangeX.bind(this),
-              target:{obj:obj,keyTrace:newkeyTrace},
-              displayMethod
-            }));
+            <Render_comp 
+              key={idHeader+"_"+key+"_Render_comp"}
+              className="s WXF vbox black"
+              onChange={this.onChangeX.bind(this)}
+              target={{obj:obj,keyTrace:newkeyTrace}}
+              obj={obj}
+              keyTrace={newkeyTrace}
+              displayMethod={displayMethod}
+              props={this.props}
+            />);
           continue;
         }
         

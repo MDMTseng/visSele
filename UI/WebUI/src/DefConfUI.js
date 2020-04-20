@@ -2,9 +2,10 @@
    
 
 import { connect } from 'react-redux'
-import React, { useState } from 'react';
+import React, { useState,useEffect }from 'react';
 import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
+import {TagOptions_rdx,essentialTags,CustomDisplaySelectUI} from './component/rdxComponent.jsx';
 let BPG_FileBrowser=BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser=BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
@@ -22,6 +23,7 @@ import * as log from 'loglevel';
 import dclone from 'clone';
 import Modal from "antd/lib/modal";
 import Menu from "antd/lib/menu";
+import Button from "antd/lib/button";
 import  Icon  from 'antd/lib/icon';
 import Checkbox from "antd/lib/checkbox";
 import  InputNumber  from 'antd/lib/input-number';
@@ -30,6 +32,8 @@ import  Input  from 'antd/lib/input';
 import Divider  from 'antd/lib/divider';
 import Dropdown from 'antd/lib/Dropdown'
 import Slider  from 'antd/lib/Slider';
+import Popover  from 'antd/lib/Popover';
+
 import EC_zh_TW from './languages/zh_TW';
 
 
@@ -105,7 +109,7 @@ class CanvasComponent extends React.Component {
     console.log("CanvasComponent render",nextProps.c_state);
     //let substate = nextProps.c_state.value[UIAct.UI_SM_STATES.DEFCONF_MODE];
     
-    console.log(nextProps.edit_info.inherentShapeList);
+    //console.log(nextProps.edit_info.inherentShapeList);
     this.updateCanvas(nextProps.c_state,nextProps);
   }
 
@@ -203,7 +207,223 @@ class DList extends React.Component {
   }
 }
 
+function Xdrop({value,lastKey,onChange,RangeCValue,target,props})
+{
+  const [offsetEditVisible, setOffsetEditVisible]=useState(false);
+  
+  let translateKey = GetObjElement(props.dict,[props.dictTheme, lastKey]);
+  if(translateKey===undefined)translateKey=lastKey
+  const content =<Menu  onClick={(ev)=>{
+    }}>
+    <Menu.Item  key={4}>
+      <div className="s" style={{width:"300px"}}>
+        <div className="s HX1 width3 vbox black" style={{color:"white"}} href="#">
+          {RangeCValue}+
+        </div>
+        <input key={"_"+lastKey+"_stxt"} className="s HX1 width9 vbox blackText" 
+              value={roundX(value-RangeCValue,0.00001)}
+              type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+              onChange={(evt)=>{
+                console.log(target,evt);
+                onChange(target,"input-number",{target:{value:parseFloat(evt.target.value)+RangeCValue}})
+              }}
+              />
+      </div>
+    </Menu.Item>
+  </Menu>
+  let dropDownX=
+  <Popover content={content} title={null} trigger="click"        
+  visible={offsetEditVisible}
+  onVisibleChange={vis=>{
+    console.log(vis);
+    setOffsetEditVisible(vis)
+    }}>
+     
+     <a className="s HX1 width4 vbox black" style={{color:"white"}} href="#">
+        {translateKey}
+        <Icon type="caret-down"/>
+      </a>
+  </Popover>
 
+  return dropDownX;
+}
+
+
+let renderMethods={
+  SubDimEditUI:({className,onChange,target,displayMethod})=>
+  {
+    let dimensions = GetObjElement(target.obj,target.keyTrace);
+    const [dimIdx, setDimIdx]=useState(0);
+    
+    let dropDownX=null;
+    let SetupUI=null;
+    let DelBtn=null;
+    if(dimensions!==undefined && dimensions.length>0)
+    {
+      console.log(dimensions);
+      const menu_ = (
+        <Menu  onClick={(ev)=>{
+          setDimIdx(parseInt(ev.key));
+          }
+          }>
+          {dimensions.map((m,idx)=>
+            <Menu.Item  key={idx} idx={idx}>
+              <a target="_blank" rel="noopener noreferrer">
+                {m.name}
+              </a>
+            </Menu.Item>)}
+        </Menu>
+      );
+      dropDownX=
+        <Dropdown overlay={menu_}>
+          <a className="HX0_5 layout palatte-blue-8 vbox width12" style={{color:"white"}} href="#">
+            {dimensions[dimIdx].name+"  "}
+            <Icon type="caret-down"/>
+          </a>
+        </Dropdown>;
+
+      
+      SetupUI=<div>
+        <BASE_COM.JsonEditBlock key="dimConfig" object={dimensions[dimIdx]}
+          renderLib={renderMethods}
+          dict={EC_zh_TW}
+          whiteListKey={{
+            name:{
+              __OBJ__:(param)=>{
+                
+                let tar = GetObjElement(param.target.obj,param.target.keyTrace);
+                console.log(param,tar);
+                //essentialTags
+                
+
+                const menu_ = (
+                  <Menu  onClick={(ev)=>{
+                      console.log(ev,ev.key);
+                      
+                      param.onChange(param.target,"input",{target:{value:ev.key}});
+                    }
+                    }>
+                    {essentialTags.map((m,idx)=>
+                      <Menu.Item  key={m} idx={idx}>
+                        <a target="_blank" rel="noopener noreferrer">
+                          {m}
+                        </a>
+                      </Menu.Item>)}
+                  </Menu>
+                );
+                let dropDownX=
+                  <Dropdown overlay={menu_}>
+                    <a className="s HX1 width4 vbox black" style={{color:"white"}} href="#">
+                      {param.target.keyTrace[0]+"  "}
+                      <Icon type="caret-down"/>
+                    </a>
+                  </Dropdown>;
+
+                return [
+                  dropDownX,
+                  <input key="dimName" className="s HX1 width8 vbox blackText"  value={tar}
+                  onChange={(evt)=>param.onChange(param.target,"input",evt)}/>
+                ]
+              
+              }
+            },
+            value:"input-number",
+            USL:"ULRangeSetup",
+            LSL:"ULRangeSetup",
+          }}
+          jsonChange={(original_obj,target_,type,evt)=>
+          {
+            let val = evt.target.value;
+            if(type==="input-number")
+            {
+              val =  parseFloat(val);
+              if(isNaN(val))return;
+            }
+
+            let dims=dclone(dimensions);
+            let dim=dims[dimIdx];
+
+            let pre_val=dim[target_.keyTrace[0]];
+            dim[target_.keyTrace[0]]=val;
+            if(target_.keyTrace[0]=="value")
+            {
+              dim.USL=roundX(dim.USL-pre_val+dim[target_.keyTrace[0]],0.0001);
+              dim.LSL=roundX(dim.LSL-pre_val+dim[target_.keyTrace[0]],0.0001);
+            }
+            onChange(target,undefined,{target:{value:dims}});
+
+          }}/>
+      </div>
+
+      DelBtn=<BASE_COM.IconButton
+        addClass="HX0_5 width6"
+        iconType="close"
+        onClick={()=>{
+          let dim=dclone(dimensions);
+          console.log(dimensions,dimIdx);
+          dim.splice(dimIdx, 1);
+          if(dimIdx>=dim.length)setDimIdx(dim.length-1);
+          console.log(dim,dimIdx);
+          onChange(target,undefined,{target:{value:dim}});
+        }}
+        text="" />
+    }
+    console.log(className,onChange,dimensions,displayMethod);
+
+
+    let AddNewBtn=<BASE_COM.IconButton
+    addClass="HX0_5 width6"
+    iconType="plus"
+    onClick={()=>{
+      let dim=dclone(dimensions);
+      let refDimVal= (dimensions.length>0)?dimensions[dimIdx]:{};
+      let newDimInfo = {
+        value:0,USL:0,LSL:0,//default value
+        ...refDimVal,
+        name:"NewDim_"+dim.length,//override name
+      };
+      dim.push(newDimInfo);
+      setDimIdx(dim.length-1);
+      onChange(target,undefined,{target:{value:dim}});
+    }}
+    text="" />
+    //console.log(className,onChange,dimensions,displayMethod);
+    //evt.target.value
+    //this.props.target,this.props.type,evt
+    return <div className="HXA width12">
+      {dropDownX}
+      {SetupUI}
+      {AddNewBtn}
+      {DelBtn}
+    </div>;
+  },
+  ULRangeSetup:({className,onChange,target,displayMethod,props} )=>{
+    let value = GetObjElement(target.obj,target.keyTrace);
+    let lastKey=target.keyTrace[target.keyTrace.length-1];
+    //console.log(params_);
+    //let {className,onChange,target,displayMethod,props} = params_;
+    let retUI=[];
+    
+    let ObjLevelM1 = GetObjElement(target.obj,target.keyTrace,target.keyTrace.length-2);
+    var tarExt ="";
+    {
+      let idfo=lastKey.lastIndexOf("_");
+      if(idfo>=0)
+        tarExt="_"+lastKey.substr(idfo + 1);
+    }
+    
+    let RangeCValue=parseFloat(ObjLevelM1["value"+tarExt]);
+
+
+
+    retUI.push(<Xdrop key={"_"+lastKey+"_Xdrop"} {...{target,value,lastKey,RangeCValue,onChange,props}}/>);
+    retUI.push(<input key={"_"+lastKey+"_stxt"} className="s HX1 width8 vbox blackText" 
+      type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+      value={value}
+      onChange={(evt)=>onChange(target,"input-number",evt)}/>);
+    return retUI;
+  }
+}
 
 class Measure_Calc_Editor extends React.Component {
   constructor(props) {
@@ -222,12 +442,13 @@ class Measure_Calc_Editor extends React.Component {
 
     const menu_ = (
       <Menu  onClick={(ev)=>{
-        console.log(ev)
+        console.log(ev,ev.target,ev.key)
+
         }
         }>
         {this.props.measure_list
             .map((m,idx)=>
-              <Menu.Item  key={idx}>
+              <Menu.Item  key={m}>
                 <a target="_blank" rel="noopener noreferrer">
                   {m.id}
                 </a>
@@ -252,104 +473,7 @@ class Measure_Calc_Editor extends React.Component {
 }
 
   
-function SubDimEditUI({className,onChange,target,dimensions,displayMethod})
-{
-  
-  const [dimIdx, setDimIdx]=useState(0);
-  
-  let dropDownX=null;
-  let SetupUI=null;
-  let DelBtn=null;
-  if(dimensions!==undefined && dimensions.length>0)
-  {
-    console.log(dimensions);
-    const menu_ = (
-      <Menu  onClick={(ev)=>{
-        setDimIdx(parseInt(ev.key));
-        }
-        }>
-        {dimensions.map((m,idx)=>
-          <Menu.Item  key={idx} idx={idx}>
-            <a target="_blank" rel="noopener noreferrer">
-              {m.name}
-            </a>
-          </Menu.Item>)}
-      </Menu>
-    );
-    dropDownX=
-      <Dropdown overlay={menu_}>
-        <a className="HX0_5 layout palatte-blue-8 vbox width12" style={{color:"white"}} href="#">
-          {dimensions[dimIdx].name+"  "}
-          <Icon type="caret-down"/>
-        </a>
-      </Dropdown>;
 
-    SetupUI=<div>
-      <BASE_COM.JsonEditBlock key="dimConfig" object={dimensions[dimIdx]}
-        dict={EC_zh_TW}
-        whiteListKey={{
-          name:"input",
-          value:"input-number",
-          USL:"input-number",
-          LSL:"input-number",
-        }}
-        jsonChange={(original_obj,target_,type,evt)=>
-        {
-          let val = evt.target.value;
-          if(type==="input-number")
-          {
-            val =  parseFloat(val);
-            if(isNaN(val))return;
-          }
-
-          let dims=dclone(dimensions);
-          let dim=dims[dimIdx];
-
-          dim[target_.keyTrace[0]]=val;
-          onChange(target,undefined,{target:{value:dims}});
-
-        }}/>
-    </div>
-
-    DelBtn=<BASE_COM.IconButton
-      addClass="HX0_5 width6"
-      iconType="close"
-      onClick={()=>{
-        let dim=dclone(dimensions);
-        console.log(dimensions,dimIdx);
-        dim.splice(dimIdx, 1);
-        if(dimIdx>=dim.length)setDimIdx(dim.length-1);
-        console.log(dim,dimIdx);
-        onChange(target,undefined,{target:{value:dim}});
-      }}
-      text="" />
-  }
-  console.log(className,onChange,dimensions,displayMethod);
-
-
-  let AddNewBtn=<BASE_COM.IconButton
-  addClass="HX0_5 width6"
-  iconType="plus"
-  onClick={()=>{
-    let dim=dclone(dimensions);
-    dim.push({
-      name:"NewDim_"+dim.length,
-      value:0,USL:0,LSL:0
-    });
-    setDimIdx(dim.length-1);
-    onChange(target,undefined,{target:{value:dim}});
-  }}
-  text="" />
-  //console.log(className,onChange,dimensions,displayMethod);
-  //evt.target.value
-  //this.props.target,this.props.type,evt
-  return <div className="HXA width12">
-    {dropDownX}
-    {SetupUI}
-    {AddNewBtn}
-    {DelBtn}
-  </div>;
-}
 
 class APP_DEFCONF_MODE extends React.Component{
 
@@ -414,15 +538,21 @@ class APP_DEFCONF_MODE extends React.Component{
   }
 
 
-  GenTarEditUI({edit_tar_info,Info_decorator,ec_canvas,ACT_Shape_Decoration_Extra_Info_Update})
+  GenTarEditUI({edit_tar_info,Info_decorator,ec_canvas,ACT_Shape_Decoration_Extra_Info_Update,ACT_EDIT_TAR_ELE_TRACE_UPDATE})
   {
     let [uiType, setUIType]=useState("main");
     let edit_tar = edit_tar_info;
     let decorator = Info_decorator;
-    console.log(edit_tar,decorator);
 
     let UIArr=[];
-
+    useEffect(
+      () => {
+        //console.log("GenTarEditUI effect");
+        return () => {
+          //console.log("GenTarEditUI cleaned up");
+        };
+      },[]
+    );
 
     if(uiType=="main"){
 
@@ -444,6 +574,7 @@ class APP_DEFCONF_MODE extends React.Component{
           dict={EC_zh_TW}
           dictTheme = {edit_tar.type}
             key="BASE_COM.JsonEditBlock"
+            renderLib={renderMethods}
             whiteListKey={{
               id:"div",
               type:"div",
@@ -454,16 +585,16 @@ class APP_DEFCONF_MODE extends React.Component{
               margin:"input-number",
 
               value:"input-number",
-              USL:"input-number",
-              LSL:"input-number",
-              UCL:"input-number",
-              LCL:"input-number",
+              USL:"ULRangeSetup",
+              LSL:"ULRangeSetup",
+              UCL:"ULRangeSetup",
+              LCL:"ULRangeSetup",
 
               value_b:"input-number",
-              USL_b:"input-number",
-              LSL_b:"input-number",
-              UCL_b:"input-number",
-              LCL_b:"input-number",
+              USL_b:"ULRangeSetup",
+              LSL_b:"ULRangeSetup",
+              UCL_b:"ULRangeSetup",
+              LCL_b:"ULRangeSetup",
 
               quadrant:"div",
               back_value_setup:"checkbox",
@@ -492,7 +623,7 @@ class APP_DEFCONF_MODE extends React.Component{
                 {
                   if(target.keyTrace[0]=="ref" || target.keyTrace[0]=="ref_baseLine")
                   {
-                    this.props.ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
+                    ACT_EDIT_TAR_ELE_TRACE_UPDATE(target.keyTrace);
                   }
                 }
                 else
@@ -505,6 +636,7 @@ class APP_DEFCONF_MODE extends React.Component{
                     {
                       let parseNum =  parseFloat(evt.target.value);
                       if(isNaN(parseNum))return;
+                      let pre_val=target.obj[lastKey];
                       target.obj[lastKey]=parseNum;
                       if( target.obj.value!== undefined)
                       {
@@ -512,6 +644,23 @@ class APP_DEFCONF_MODE extends React.Component{
                         
                         switch(lastKey)
                         {
+                          
+                          case "value":
+                            target.obj.LCL=roundX(target.obj.LCL-pre_val+target.obj.value,0.001);
+                            target.obj.UCL=roundX(target.obj.UCL-pre_val+target.obj.value,0.001);
+                            target.obj.LSL=roundX(target.obj.LSL-pre_val+target.obj.value,0.001);
+                            target.obj.USL=roundX(target.obj.USL-pre_val+target.obj.value,0.001);
+                            break;
+
+                          
+                          case "value_b":
+                            target.obj.LCL_b=roundX(target.obj.LCL_b-pre_val+target.obj.value,0.001);
+                            target.obj.UCL_b=roundX(target.obj.UCL_b-pre_val+target.obj.value,0.001);
+                            target.obj.LSL_b=roundX(target.obj.LSL_b-pre_val+target.obj.value,0.001);
+                            target.obj.USL_b=roundX(target.obj.USL_b-pre_val+target.obj.value,0.001);
+                            break;
+  
+
                           case "LSL":
                             target.obj.LCL=roundX((target.obj.value+(target.obj.LSL-target.obj.value)*2/3),0.001);
                             break;
@@ -604,14 +753,14 @@ class APP_DEFCONF_MODE extends React.Component{
       
     }
     else if(uiType=="deco"){
-    
-      UIArr.push(<BASE_COM.Button
-        key="setAdditional"
-        addClass="layout black vbox HX0_5"
-        text="<" onClick={()=>
-          {
-            setUIType("main");
-          }}/>);
+      let ModalUI=[];
+      // ModalUI.push(<BASE_COM.Button
+      //   key="setAdditional"
+      //   addClass="layout black vbox HX0_5"
+      //   text="<" onClick={()=>
+      //     {
+      //       setUIType("main");
+      //     }}/>);
       if(decorator!==undefined)
       {
         let infoIdx=-1;
@@ -646,18 +795,15 @@ class APP_DEFCONF_MODE extends React.Component{
           delete extraTarInfo["dimensions"]
         }
           
-        UIArr.push(<BASE_COM.JsonEditBlock key="2ndConfigTable" object={extraTarInfo}
+        ModalUI.push(<BASE_COM.JsonEditBlock key="2ndConfigTable" object={extraTarInfo}
         dict={EC_zh_TW}
+        renderLib={renderMethods}
         dictTheme = {edit_tar.type}
           whiteListKey={{
             //name:"input",
             importance:"input-number",
-            dimensions:{
-              __OBJ__:(param)=>{
-                let tar = GetObjElement(param.target.obj,param.target.keyTrace);
-                return <SubDimEditUI {...param} dimensions={tar}/>
-              }
-            }
+            dimensions:"SubDimEditUI"
+            
           }}
           jsonChange={(original_obj,target,type,evt)=>
           {
@@ -668,7 +814,6 @@ class APP_DEFCONF_MODE extends React.Component{
               val =  parseFloat(val);
               if(isNaN(val))return;
             }
-            console.log(original_obj,target,type,evt);
             let dc_extra_Info=dclone(extra_info);
             //let extraTarInfo=extra_Info.find(info=>info.id==edit_tar.id);
             
@@ -687,6 +832,25 @@ class APP_DEFCONF_MODE extends React.Component{
             ACT_Shape_Decoration_Extra_Info_Update(dc_extra_Info);
           }
           }/>);
+
+
+        
+      UIArr.push(<Modal
+        key="dim_edit_modal"
+        visible={true}
+        onCancel={(param)=>{
+          setUIType("main")}}
+        footer={[
+          <Button key="back" onClick={_=>setUIType("main")}>
+            
+          </Button>,
+        ]}>
+
+
+          {ModalUI}
+
+
+      </Modal>);
       }
     }
 

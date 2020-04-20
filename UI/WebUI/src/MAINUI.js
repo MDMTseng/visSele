@@ -216,7 +216,7 @@ function SingleDisplayEditUI({ displayInfo,onUpdate,onCancel,BPG_Channel})
       {
 
         return[
-          <Input addonBefore="Tag:" value={dfs.tags} 
+          <Input addonBefore="Tag:" value={dfs.tags}  key={id+"_input"}
             onChange={e=>{
               
               let dcEI = dclone(displayEditInfo);
@@ -225,7 +225,7 @@ function SingleDisplayEditUI({ displayInfo,onUpdate,onCancel,BPG_Channel})
 
               setDisplayEditInfo(dcEI)}}/>,
           "Def["+id+"]:"+dfs.name+":"+dfs.featureSet_sha1+"  "+dfs.path,
-          <Button key="sdsdfk_"
+          <Button key={id+"_Button"}
             onClick={() => {
             let fileS=
             {
@@ -852,7 +852,7 @@ class APPMain extends React.Component{
 
                     {
                       essentialTags.map((ele,idx,arr)=>
-                      <Tag className=" InspTag optional fixed">{ele}</Tag>)
+                      <Tag className=" InspTag optional fixed" key={ele+"_ele"}>{ele}</Tag>)
                     }
                     
                     {/* <TagOptions_rdx className="s width12 HXA"/> */}

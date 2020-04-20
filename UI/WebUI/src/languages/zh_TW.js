@@ -57,6 +57,13 @@ export default {
       LSL:"規格下限",
       UCL:"管制上限",
       LCL:"管制下限",
+
+      
+      UST:"上規格公差",
+      LST:"下規格公差",
+      UCT:"上管制公差",
+      LCT:"下管制公差",
+
       importance:"重要等級",
       docheck:"必要判定",
       quadrant:"量測象限"

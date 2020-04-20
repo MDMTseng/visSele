@@ -100,10 +100,10 @@ class TagOptions extends React.Component{
     console.log(this.props.defFileTag)
     return <div className={this.props.className}>
       <Tag className="large InspTag fixed" key="MACH">{this.props.MachTag}</Tag>
-      {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed">{tag}</Tag>)}
+      {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed" key={tag+"_dfTag"}>{tag}</Tag>)}
                 
       {this.props.inspOptionalTag.map(curTag=>
-        <Tag closable className="large InspTag optional" onClose={(e)=>{
+        <Tag closable className="large InspTag optional"  key={curTag+"_inspOptTag"} onClose={(e)=>{
           e.preventDefault();
           let tagToDelete=curTag;
           let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
@@ -114,7 +114,7 @@ class TagOptions extends React.Component{
 
       {
         essentialTags.map((ele,idx,arr)=>
-        <Tag className="large InspTag optional fixed"  
+        <Tag className="large InspTag optional fixed" key={ele+"_essTag"} 
           onClick={()=>{
             var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
             this.props.ACT_InspOptionalTag_Update([...array3,ele])

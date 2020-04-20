@@ -309,7 +309,7 @@ class APPMasterX extends React.Component{
 
     setTimeout(()=>
       this.props.ACT_WS_CONNECT(this.props.WS_ID,"ws://localhost:4090",this.BPG_WS)
-    ,3000);
+    ,100);
     
 
     
