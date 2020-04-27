@@ -10,6 +10,9 @@
   animation: NAME-YOUR-ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
 }
 
+div.error > textarea{
+  background-color:#fff1f0;
+}
 @-webkit-keyframes NAME-YOUR-ANIMATION {
   0%, 49% {
     background-color: #400000;

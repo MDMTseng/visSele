@@ -4,7 +4,8 @@ import {UI_SM_STATES,UI_SM_EVENT,SHAPE_TYPE} from 'REDUX_STORE_SRC/actions/UIAct
 
 import {MEASURERSULTRESION,MEASURERSULTRESION_reducer} from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
-import {xstate_GetCurrentMainState} from 'UTIL/MISC_Util';
+
+import {xstate_GetCurrentMainState,Exp2PostfixExp,PostfixExpCalc} from 'UTIL/MISC_Util';
 import {
   threePointToArc,
   intersectPoint,
@@ -645,7 +646,7 @@ class renderUTIL
           if(eObject.ref===undefined)break;
           let subObjs = eObject.ref
             .map((ref)=> db_obj.FindShapeObject( "id" , ref.id,shapeList ));
-            
+          
           if(drawSubObjs)
             this.drawShapeList(ctx, subObjs,next_ShapeColor,skip_id_list,shapeList,unitConvert,drawSubObjs);
           let subObjs_valid=subObjs.reduce((acc, cur) => acc && (cur!==undefined),true);
@@ -958,6 +959,64 @@ class renderUTIL
               }
 
             
+              break;
+            }
+
+            
+            
+            case SHAPE_TYPE.measure_subtype.calc:
+            {
+              this.drawpoint(ctx,eObject.pt1);
+
+
+              let fontPx = this.getFontHeightPx()*this.getFixSizingReg();
+              ctx.font=this.getFontStyle(1);
+
+
+
+              ctx.strokeStyle="black";
+              ctx.lineWidth=this.getIndicationLineSize()/3;
+              let Y_offset=0;
+              this.draw_Text(ctx,eObject.name,fontPx,
+                eObject.pt1.x,eObject.pt1.y+Y_offset);
+
+              Y_offset+=fontPx;
+
+              let text = "C"+eObject.value.toFixed(3)+unitConvert.unit;
+        
+              this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+              fontPx/=2;
+              Y_offset+=fontPx;
+
+              text = "L:"+eObject.LSL*unitConvert.mult.toFixed(3)+unitConvert.unit+" U:"+eObject.USL*unitConvert.mult.toFixed(3)+unitConvert.unit;
+              this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+              Y_offset+=fontPx;
+
+              // function ExpCalcBasic(postExp_,funcSet) {
+              //   let postExp=postExp_.filter(exp=>exp!="$")
+              //   funcSet = {
+              //     min$: arr => Math.min(...arr),
+              //     max$: arr => Math.max(...arr),
+              //     "$+$": vals => vals[0] + vals[1],
+              //     "$-$": vals => vals[0] - vals[1],
+              //     "$*$": vals => vals[0] * vals[1],
+              //     "$/$": vals => vals[0] / vals[1],
+              //     "$^$": vals => Math.pow(vals[0] , vals[1]),
+              //     "$": vals => vals,
+              //     ...funcSet,
+              //     //default:_=>false
+              //   };
+              
+              //   return PostfixExpCalc(postExp, funcSet)[0];
+              // }
+              
+
+              // PostfixExpCalc(eObject.post_exp,,,,);
+              text = "Now:"+">>";//(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(3)+unitConvert.unit;
+              this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+
+            
+              break;
             }
           }
         }
@@ -1990,6 +2049,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
 
   SetShape( shape_obj, id)
   {
+    console.log();
     this.tmp_EditShape_id=id;
     this.EmitEvent(DefConfAct.Shape_Set({shape:shape_obj,id:id}));
   }
@@ -2079,6 +2139,9 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
           break;
           case SHAPE_TYPE.measure_subtype.radius:
             return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.arc);
+          break;
+          case SHAPE_TYPE.measure_subtype.calc:
+            return shapeList.filter((shape)=>shape.type===SHAPE_TYPE.measure);
           break;
         }
       break;
@@ -2229,8 +2292,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
     }
 
     if(displayShape!=this.edit_DB_info.list)//draw all
-    {
-      this.rUtil.drawShapeList(ctx, displayShape,null,skipDrawIdxs,displayShape,unitConvert);
+    { 
+      this.rUtil.drawShapeList(ctx, displayShape,null,skipDrawIdxs,this.edit_DB_info.list,unitConvert);
     }
     else if(!drawFocusItem)
     {
@@ -2401,12 +2464,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
       {
         
+        let tar_ele_trace = this.edit_DB_info.edit_tar_ele_trace;
         if(this.mouseStatus.status==1)
         {
           if(ifOnMouseLeftClickEdge)
           {
             
-            let tar_ele_trace = this.edit_DB_info.edit_tar_ele_trace;
               
             if(tar_ele_trace==null || tar_ele_trace===undefined)
             {
@@ -2450,8 +2513,11 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto{
         }
         else
         {
-          if(this.EditShape!=null && ifOnMouseLeftClickEdge)
+          //the SetShape here is for EditPoint modification, so if the operation is for tar_ele_trace, skip it
+          if( (tar_ele_trace===null|| tar_ele_trace===undefined)
+            &&this.EditShape!=null && ifOnMouseLeftClickEdge)
           {
+
             this.SetShape(this.EditShape,this.EditShape.id);
           }
           

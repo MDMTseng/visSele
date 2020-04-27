@@ -542,7 +542,9 @@ export function PostfixExpCalc(postExp, funcSet) {
       else valPush = funcSet.default(exp, tmpArr.flat());
 
     } else {
-      if (funcSet.default !== undefined) {
+      if (funcSet[exp] !== undefined) {
+        valPush = funcSet[exp];
+      } else if (funcSet.default !== undefined) {
         valPush = funcSet.default(exp);
       } else {
         valPush = parseFloat(exp);
@@ -569,11 +571,60 @@ function ExpCalc(exp, funcSet) {
     "$/$": vals => vals[0] / vals[1],
     "$^$": vals => Math.pow(vals[0] , vals[1]),
     "$": vals => vals,
+    //default:_=>false
   };
 
   return PostfixExpCalc(postExp, funcSet)[0];
 }
 
+
+
+export function ExpCalcBasic(postExp_,funcSet) {
+  let postExp=postExp_.filter(exp=>exp!="$")
+  funcSet = {
+    // min$: arr => Math.min(...arr),
+    // max$: arr => Math.max(...arr),
+    "$+$": vals => vals[0] + vals[1],
+    "$-$": vals => vals[0] - vals[1],
+    "$*$": vals => vals[0] * vals[1],
+    "$/$": vals => vals[0] / vals[1],
+    "$^$": vals => Math.pow(vals[0] , vals[1]),
+    "$": vals => vals,
+    ...funcSet,
+    //default:_=>false
+  };
+
+  return PostfixExpCalc(postExp, funcSet)[0];
+}
+
+const _AndAll=arr=> arr.reduce((isVa,ele)=>(isVa&&ele),true);
+
+export function ExpValidationBasic(postExp, funcSet={}) {
+  let _postExp=postExp.filter(exp=>exp!="$")
+  // console.log(postExp);
+
+
+  funcSet = {
+    // "min$": andAll,
+    // "max$": andAll,
+    "$+$": _AndAll,
+    "$-$": _AndAll,
+    "$*$": _AndAll,
+    "$/$": _AndAll,
+    "$^$": _AndAll,
+    "$": _AndAll,
+    ...funcSet
+  };
+
+  Object.keys(funcSet).forEach((key)=>{
+    if(key!=="default")
+    {
+      funcSet[key]=key.includes("$")?_AndAll:true;
+    }
+  });
+
+  return PostfixExpCalc(_postExp, funcSet)[0];
+}
 
 
 

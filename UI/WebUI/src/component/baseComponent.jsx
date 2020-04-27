@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useState,useEffect,useRef }from 'react';
 import React_createClass from 'create-react-class';
 import {GetObjElement} from 'UTIL/MISC_Util';
 
@@ -13,6 +14,7 @@ import  Table  from 'antd/lib/table';
 import  Icon  from 'antd/lib/icon';
 import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
+import { parse } from 'semver';
 const AntButtonGroup = AntButton.Group;
 
 
@@ -20,6 +22,58 @@ const AntButtonGroup = AntButton.Group;
 // import {Button as AntButton} from 'antd/lib/Button';
 
 let log = logX.getLogger("baseComponent");
+
+export function InputNumber({key,className,step=0.1,defaultValue,value,onChange})
+{
+  const [isNumber,setIsNumber]=useState(true);
+  const [text,setText]=useState(defaultValue);
+
+  
+  useEffect(()=>{
+    setText(value);
+    setIsNumber(parseFloat(value)==value);
+  },[value]);
+
+
+
+  return <input key={key} className={className+((isNumber)?"":" error ")} 
+    step={step} 
+    type="number" 
+    pattern="^[-+]?[0-9]*\.?[0-9]*$" 
+    defaultValue={defaultValue}
+    value={value}
+
+    onChange={(evt)=>{
+      //setIsNumber(parseFloat(val)==val);
+      onChange(evt)
+      // let val = evt.target.value;
+      // //console.log(val);
+      // if(val=="-")
+      // {
+      //   setText(val);
+      // }
+      // else
+      // {
+      //   setText(text);
+      //   onChange(evt)
+      // }
+      // 
+      // setText(val);
+      // if(parseFloat(val)==val)
+      // {
+      //   onChange(evt);
+      //   setIsNumber(true);
+        
+      // }
+      // else
+      // {
+      //   setText(val);
+      //   setIsNumber(false);
+      // }
+    }}/>
+
+}
+
 
 export class JsonElement extends React.Component{
 
@@ -73,9 +127,13 @@ export class JsonElement extends React.Component{
     {
       case "input-number":
         translateValue = translateValue+"";
-        return <input key={this.props.id} className={this.props.className} type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+        return < InputNumber 
+          key={this.props.id} 
+          className={this.props.className} 
+          //defaultValue={translateValue}
           value={translateValue}
           onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+        
       case "input":
         return <input key={this.props.id} className={this.props.className} value={translateValue}
                       onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
@@ -126,10 +184,10 @@ export class JsonEditBlock extends React.Component{
     let keyList = (whiteListKey==null )?obj:whiteListKey;
     for (var key in keyList) {
         let ele = obj[key];
-        let displayMethod=(whiteListKey==null )?null:whiteListKey[key];
+        let renderContext=(whiteListKey==null )?null:whiteListKey[key];
 
         //console.log(key,keyList[key],obj,obj[key]);
-        if((ele === undefined) || displayMethod=== undefined)continue;
+        if((ele === undefined) || renderContext=== undefined)continue;
         //console.log(key,ele,typeof ele);
         
         //this.props.dict
@@ -153,19 +211,19 @@ export class JsonEditBlock extends React.Component{
         }
 
         let Render_comp=undefined;
-        if(typeof displayMethod.__OBJ__==="function")
+        if(typeof renderContext.__OBJ__==="function")
         {
-          Render_comp = displayMethod.__OBJ__;
+          Render_comp = renderContext.__OBJ__;
         }
         else if(this.props.renderLib!==undefined)
         {
-          if(typeof this.props.renderLib[displayMethod]==="function")
+          if(typeof this.props.renderLib[renderContext]==="function")
           {
-            Render_comp = this.props.renderLib[displayMethod];
+            Render_comp = this.props.renderLib[renderContext];
           }
-          else if(typeof this.props.renderLib[displayMethod.__OBJ__]==="function")
+          else if(typeof this.props.renderLib[renderContext.__OBJ__]==="function")
           {
-            Render_comp = this.props.renderLib[displayMethod.__OBJ__];
+            Render_comp = this.props.renderLib[renderContext.__OBJ__];
           }
         }
         if(Render_comp!==undefined)
@@ -175,12 +233,12 @@ export class JsonEditBlock extends React.Component{
           //     className:"s WXF vbox black",
           //     onChange:this.onChangeX.bind(this),
           //     target:{obj:obj,keyTrace:newkeyTrace},
-          //     displayMethod,
+          //     renderContext,
           //     props:this.props
           //   }));
 
             
-          //{className,onChange,target,displayMethod,props}
+          //{className,onChange,target,renderContext,props}
 
           rows.push(
             <Render_comp 
@@ -190,7 +248,7 @@ export class JsonEditBlock extends React.Component{
               target={{obj:obj,keyTrace:newkeyTrace}}
               obj={obj}
               keyTrace={newkeyTrace}
-              displayMethod={displayMethod}
+              renderContext={renderContext}
               props={this.props}
             />);
           continue;
@@ -202,9 +260,9 @@ export class JsonEditBlock extends React.Component{
           case "string":
           case "boolean":
           case "number":
-            if(displayMethod==null)displayMethod="div";
+            if(renderContext==null)renderContext="div";
             rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={displayMethod}
+            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={renderContext}
               target={{obj:obj,keyTrace:newkeyTrace}}
               dict={this.props.dict}
               onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
@@ -212,7 +270,7 @@ export class JsonEditBlock extends React.Component{
           case "object":
           {
             rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
-            let obj_disp_type = (displayMethod==null)?"div":displayMethod.__OBJ__;
+            let obj_disp_type = (renderContext==null)?"div":renderContext.__OBJ__;
             if(obj_disp_type == undefined)obj_disp_type="div";
             rows.push(<JsonElement key={idHeader+"_"+key+"_ele"}
                                    dict={this.props.dict}
@@ -222,7 +280,7 @@ export class JsonEditBlock extends React.Component{
 
             rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
             rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-              this.composeObject(ele,displayMethod,idHeader+"_"+key,newkeyTrace)
+              this.composeObject(ele,renderContext,idHeader+"_"+key,newkeyTrace)
             }</div>);
             rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
           }

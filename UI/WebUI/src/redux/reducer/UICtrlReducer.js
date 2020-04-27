@@ -999,14 +999,10 @@ function StateReducer(newState,action)
           newState.edit_info.edit_tar_ele_trace=null;
           newState.edit_info.edit_tar_ele_cand=null;
         break;
+        
         case DefConfAct.EVENT.Edit_Tar_Ele_Trace_Update:
           newState.edit_info.edit_tar_ele_trace=
             (action.data == null)? null : action.data.slice();
-        break;
-        case UISEV.EC_Save_Def_Config:
-        {
-          if(newState.WS_CH==undefined)break;
-        }
         break;
         case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:
           newState.edit_info.edit_tar_ele_cand=
@@ -1014,6 +1010,11 @@ function StateReducer(newState,action)
             log.info("DEFCONF_MODE_Edit_Tar_Ele_Cand_Update",newState.edit_info.edit_tar_ele_cand);
         break;
 
+        case UISEV.EC_Save_Def_Config:
+        {
+          if(newState.WS_CH==undefined)break;
+        }
+        break;
         case DefConfAct.EVENT.DefFileName_Update:
         {
           newState.edit_info=Object.assign({},newState.edit_info,{DefFileName:action.data});
@@ -1114,7 +1115,23 @@ function StateReducer(newState,action)
           //ID undefined but shaped is defiend -Add new shape
           //ID is defined and shaped is defiend - Modify an existed shape if it's in the list
           //ID is defined and shaped is null   - delete  an existed shape if it's in the list
+          
+          {
+            let shape = action.data.shape;
+            if(shape.subtype==="calc")
+            {
 
+              const regexp = /\[(\d+)\]/g;
+              const matches = shape.calc_f.exp.matchAll(regexp);
+
+              let ref=[];
+              for (const match of matches) {
+                ref.push({id:parseInt(match[1])});
+              }
+              //console.log(ref);
+              shape.ref=ref;
+            }
+          }
           let newID=action.data.id;
           //log.info("newID:",newID);
           let shape = newState.edit_info._obj.SetShape(action.data.shape,newID);
@@ -1324,7 +1341,7 @@ function StateReducer(newState,action)
                 break;
                 
                 case SHAPE_TYPE.measure_subtype.calc:
-                  newState.edit_info.edit_tar_info.ref=[{},{},{},{}];
+                  newState.edit_info.edit_tar_info.ref=[];
                   newState.edit_info.edit_tar_info.calc_f={
                     exp:"",
                     post_exp:[]

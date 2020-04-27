@@ -49,7 +49,7 @@ export const SHAPE_TYPE = {
     distance:"distance",
     angle:"angle",
     radius:"radius",
-    //calc:"calc",
+    calc:"calc",
   }
 
 };

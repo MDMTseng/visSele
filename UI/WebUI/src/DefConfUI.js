@@ -2,7 +2,7 @@
    
 
 import { connect } from 'react-redux'
-import React, { useState,useEffect }from 'react';
+import React, { useState,useEffect,useRef }from 'react';
 import $CSSTG  from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {TagOptions_rdx,essentialTags,CustomDisplaySelectUI} from './component/rdxComponent.jsx';
@@ -17,7 +17,10 @@ import {ReduxStoreSetUp} from 'REDUX_STORE_SRC/redux';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {round as roundX,websocket_autoReconnect,
-  websocket_reqTrack,dictLookUp,undefFallback,GetObjElement,Exp2PostfixExp,PostfixExpCalc} from 'UTIL/MISC_Util';
+  websocket_reqTrack,dictLookUp,undefFallback,
+  GetObjElement,Exp2PostfixExp,PostfixExpCalc,
+  ExpCalcBasic,ExpValidationBasic} from 'UTIL/MISC_Util';
+
 import JSum from 'jsum';
 import * as log from 'loglevel';
 import dclone from 'clone';
@@ -28,7 +31,7 @@ import  Icon  from 'antd/lib/icon';
 import Checkbox from "antd/lib/checkbox";
 import  InputNumber  from 'antd/lib/input-number';
 import  Input  from 'antd/lib/input';
-
+const { TextArea } = Input;
 import Divider  from 'antd/lib/divider';
 import Dropdown from 'antd/lib/Dropdown'
 import Slider  from 'antd/lib/Slider';
@@ -207,27 +210,55 @@ class DList extends React.Component {
   }
 }
 
-function Xdrop({value,lastKey,onChange,RangeCValue,target,props})
+function ULRangeAcc({value,lastKey,onChange,RangeCValue,target,props})
 {
   const [offsetEditVisible, setOffsetEditVisible]=useState(false);
-  
+  function numberSet(num)
+  {
+    onChange(target,"input-number",{target:{value:(RangeCValue+num).toFixed(4)}})
+  }  
+  function numberPlus(num)
+  {
+    onChange(target,"input-number",{target:{value:num.toFixed(4)}})
+  }
   let translateKey = GetObjElement(props.dict,[props.dictTheme, lastKey]);
   if(translateKey===undefined)translateKey=lastKey
-  const content =<Menu  onClick={(ev)=>{
+  const content =
+  <Menu  onClick={(ev)=>{
     }}>
     <Menu.Item  key={4}>
-      <div className="s" style={{width:"300px"}}>
-        <div className="s HX1 width3 vbox black" style={{color:"white"}} href="#">
+      <div className="s height12" style={{width:"300px"}}>
+        <div className="s  height12 width2 vbox black" style={{color:"white"}} href="#">
           {RangeCValue}+
         </div>
-        <input key={"_"+lastKey+"_stxt"} className="s HX1 width9 vbox blackText" 
-              value={roundX(value-RangeCValue,0.00001)}
-              type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
+        <input key={"_"+lastKey+"_stxt"} className="s  height12 width4 vbox blackText" 
+              value={(value-RangeCValue).toFixed(4)}
+              type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$" 
               onChange={(evt)=>{
                 console.log(target,evt);
-                onChange(target,"input-number",{target:{value:parseFloat(evt.target.value)+RangeCValue}})
+                numberSet(evt.target.value)
+                
               }}
               />
+
+        <div key="acc" className="s width3  height12">
+          <Button key="plus100u" className="s height6 width6 vbox black" onClick={_=>
+            numberPlus(value+0.1)
+            }>++</Button>
+          <Button key="plus10u" className="s  height6 width6 vbox black" onClick={_=>
+            numberPlus(value+0.01)
+            }>+</Button>
+          <Button key="minus100u" className="s  height6 width6 vbox black" onClick={_=>
+            numberPlus(value-0.1)
+            }>--</Button>
+          <Button key="minus10u" className="s  height6 width6 vbox black" onClick={_=>
+            numberPlus(value-0.01)
+            }>-</Button>
+        </div>
+          
+        <Button key="zero" className="s  height12 width2 vbox black" onClick={_=>
+          numberPlus(RangeCValue)
+          }>R</Button>
       </div>
     </Menu.Item>
   </Menu>
@@ -249,8 +280,197 @@ function Xdrop({value,lastKey,onChange,RangeCValue,target,props})
 }
 
 
+function parseCheckExpressionValid(postExp,idArr) {
+  
+  let funcSet = {
+    "min$": 0,
+    "max$": 0,
+    "$+$": 0,
+    "$-$": 0,
+    "$*$": 0,
+    "$/$": 0,
+    "$^$": 0,
+    "$": 0,
+    "$,$": 0,
+    "$,$,$": 0,
+    "$,$,$,$": 0,
+    "$,$,$,$,$": 0,
+    "cos$": 0,
+    "sin$": 0,
+    default:val=>{
+      return (parseFloat(val)==val);
+    }
+  }
+  idArr.forEach(id=>{funcSet[id]=0});
+  
+  return ExpValidationBasic(postExp,funcSet);
+}
+
+
+function Measure_Calc_Editor ({target,onChange,className,renderContext:{measure_list,ref_keyTrace_callback,ref}})
+{
+  let staticObj = useRef({
+    insertIdx:undefined
+  });
+  //console.log(target.obj.calc_f);
+
+  let ele = GetObjElement(target.obj,target.keyTrace);
+  let fx = ele;
+  const [fxOK, setFxOK]=useState(false);
+  
+  const inputEl = useRef(null);
+  const [measureIDInfo, setMeasureIDInfo]=useState([]);
+
+  const [fxExp, setFxExp]=useState(fx.exp);
+
+
+  function translatedExpChangeEvent(newExp)
+  {
+
+    let postExp =Exp2PostfixExp(newExp);
+
+    let aexp_to_del=
+      postExp
+      .filter(atom_exp=>atom_exp.includes('"'));
+
+    if(aexp_to_del.length>0)//If there is any content with unreplaced '"', replace it
+    {
+      aexp_to_del.forEach(to_del=>{
+        newExp=newExp.replace(to_del,"");
+      });
+      postExp =Exp2PostfixExp(newExp);
+      
+    }
+
+    //console.log(text,postExp);
+    //console.log(meaList);
+    let isAvail=parseCheckExpressionValid(postExp,measureIDInfo.map(info=>info.id_exp));
+    if(isAvail)
+    {
+      //onChange();
+      onChange(target,"input",{target:{value:{
+        exp:newExp,
+        post_exp:postExp
+      }}})
+    }
+    setFxOK(isAvail);
+    setFxExp(newExp);
+
+    //
+  }
+  if(ref.length>0 && staticObj.current.insertIdx!==undefined)
+  {
+    let iidx=staticObj.current.insertIdx;
+    var nfxExp = [fxExp.slice(0, iidx), "[",ref[0].id,"]", fxExp.slice(iidx)].join('');
+    staticObj.current.insertIdx=undefined;
+    translatedExpChangeEvent(nfxExp);
+  }
+
+  useEffect(()=>{
+    let idInfo = measure_list.map(m=>({id:m.id,id_exp:"["+m.id+"]",name:m.name}));
+    setMeasureIDInfo(idInfo);
+  },[measure_list]);
+
+  useEffect(() => {
+    let idMap = measure_list.map(m=>"["+m.id+"]");
+    let postExp =Exp2PostfixExp(fx.exp);
+    let isAvail=parseCheckExpressionValid(postExp,idMap);
+    setFxOK(isAvail);
+  }, [])
+
+
+  function translateForward(text_id)
+  {
+    let translatedExp = text_id;
+    let regexMatchIdBlock=/\[([^\[^\]])+\]/g;
+    let idErrSet=[];
+    let idOKSet=[];
+    let matchInfo;
+    while( (matchInfo=regexMatchIdBlock.exec(translatedExp)) !==null)
+    {
+      let idx_str = matchInfo[1];
+      let idx_wBr = matchInfo[0];
+      let translateInfo=measureIDInfo.find(info=>parseInt(idx_str)===info.id)//str is string, id is integer
+     
+      let setInfo={
+        match:matchInfo,
+        measure:translateInfo
+      }
+      if(translateInfo===undefined)
+      {
+        idErrSet.push(setInfo);
+      }
+      else
+      {
+        idOKSet.push(setInfo)
+      }
+    }
+    //console.log(idOKSet,idErrSet);
+    idErrSet.forEach(idErr=>{
+      translatedExp=translatedExp.replace(idErr.match[0], "");
+    });
+    
+    idOKSet.forEach(idOK=>{
+      translatedExp=translatedExp.replace(idOK.match[0],'"'+idOK.measure.name+'"');
+    });
+    return translatedExp;
+  }
+  let translatedExp=translateForward(fxExp);
+  //translate measure id to readable measure name
+
+
+
+
+  function translateBack(text_name)
+  {
+    measureIDInfo.forEach(idinfo=>{//translate readable measure name to measure id
+      let pre_text=text_name;
+      do{
+        pre_text=text_name;
+        text_name=text_name.replace('"'+idinfo.name+'"',idinfo.id_exp);
+      }while(pre_text!==text_name);
+    });
+    return text_name;
+  }
+
+  function untranslatedIdx(text,idx)
+  {
+
+    var text_wTag = [text.slice(0, idx), "$0", text.slice(idx)].join('');
+    text_wTag = translateBack(text_wTag);
+    let utidx = text_wTag.indexOf('"');
+    if(utidx<0)utidx=text_wTag.indexOf( "$0");
+    return utidx;
+  }
+
+
+  return <div className={className+" HXA "+(fxOK?"":" error  ")}>
+    <TextArea
+      value={translatedExp}
+      autosize={{ minRows: 1, maxRows: 6 }}
+      ref={inputEl}
+      onChange={(ev)=>{
+        let text=translateBack(ev.target.value);
+        translatedExpChangeEvent(text);
+      }}
+    />
+    <Button key="xx" className="s vbox black" 
+      onClick={_=>{
+        
+        const { selectionStart, selectionEnd } = inputEl.current.textAreaRef;
+        let true_idx = untranslatedIdx(translatedExp,selectionStart);
+        staticObj.current.insertIdx=true_idx;
+        //console.log(translatedExp,selectionStart,fxExp, true_idx);
+
+        ref_keyTrace_callback(["ref",0]);
+      }}>++</Button>
+  </div>
+}
+
+
 let renderMethods={
-  SubDimEditUI:({className,onChange,target,displayMethod})=>
+  Measure_Calc_Editor,
+  SubDimEditUI:({className,onChange,target,renderContext})=>
   {
     let dimensions = GetObjElement(target.obj,target.keyTrace);
     const [dimIdx, setDimIdx]=useState(0);
@@ -368,7 +588,7 @@ let renderMethods={
         }}
         text="" />
     }
-    console.log(className,onChange,dimensions,displayMethod);
+    console.log(className,onChange,dimensions,renderContext);
 
 
     let AddNewBtn=<BASE_COM.IconButton
@@ -387,7 +607,7 @@ let renderMethods={
       onChange(target,undefined,{target:{value:dim}});
     }}
     text="" />
-    //console.log(className,onChange,dimensions,displayMethod);
+    //console.log(className,onChange,dimensions,renderContext);
     //evt.target.value
     //this.props.target,this.props.type,evt
     return <div className="HXA width12">
@@ -397,11 +617,11 @@ let renderMethods={
       {DelBtn}
     </div>;
   },
-  ULRangeSetup:({className,onChange,target,displayMethod,props} )=>{
+  ULRangeSetup:({className,onChange,target,renderContext,props} )=>{
     let value = GetObjElement(target.obj,target.keyTrace);
     let lastKey=target.keyTrace[target.keyTrace.length-1];
     //console.log(params_);
-    //let {className,onChange,target,displayMethod,props} = params_;
+    //let {className,onChange,target,renderContext,props} = params_;
     let retUI=[];
     
     let ObjLevelM1 = GetObjElement(target.obj,target.keyTrace,target.keyTrace.length-2);
@@ -416,64 +636,14 @@ let renderMethods={
 
 
 
-    retUI.push(<Xdrop key={"_"+lastKey+"_Xdrop"} {...{target,value,lastKey,RangeCValue,onChange,props}}/>);
+    retUI.push(<ULRangeAcc key={"_"+lastKey+"_ULRangeAcc"} {...{target,value,lastKey,RangeCValue,onChange,props}}/>);
     retUI.push(<input key={"_"+lastKey+"_stxt"} className="s HX1 width8 vbox blackText" 
-      type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
-      value={value}
+      type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$" 
+      value={value.toFixed(4)}
       onChange={(evt)=>onChange(target,"input-number",evt)}/>);
     return retUI;
   }
 }
-
-class Measure_Calc_Editor extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      OK:false
-    };
-  }
-  render() {
-    log.info(this.props);
-    let target = this.props.target;
-    let ele = GetObjElement(target.obj,target.keyTrace);
-
-    
-    let fx = ele;
-
-    const menu_ = (
-      <Menu  onClick={(ev)=>{
-        console.log(ev,ev.target,ev.key)
-
-        }
-        }>
-        {this.props.measure_list
-            .map((m,idx)=>
-              <Menu.Item  key={m}>
-                <a target="_blank" rel="noopener noreferrer">
-                  {m.id}
-                </a>
-              </Menu.Item>)}
-      </Menu>
-    );
-    let xxx=<Dropdown overlay={menu_}>
-      <a className="HX1 layout palatte-blue-8 vbox width6" href="#">
-        aaa
-      </a>
-    </Dropdown>;
-    return <Input
-      placeholder={fx.exp}
-      onChange={(ev)=>{
-
-        let xxx =Exp2PostfixExp(ev.target.value);
-
-        console.log(xxx)
-      }}
-    />
-  }
-}
-
-  
-
 
 class APP_DEFCONF_MODE extends React.Component{
 
@@ -537,8 +707,8 @@ class APP_DEFCONF_MODE extends React.Component{
     return true;
   }
 
-
-  GenTarEditUI({edit_tar_info,Info_decorator,ec_canvas,ACT_Shape_Decoration_Extra_Info_Update,ACT_EDIT_TAR_ELE_TRACE_UPDATE})
+  
+  GenTarEditUI({edit_tar_info,shape_list,Info_decorator,ec_canvas,ACT_Shape_Decoration_Extra_Info_Update,ACT_EDIT_TAR_ELE_TRACE_UPDATE})
   {
     let [uiType, setUIType]=useState("main");
     let edit_tar = edit_tar_info;
@@ -555,7 +725,22 @@ class APP_DEFCONF_MODE extends React.Component{
     );
 
     if(uiType=="main"){
+      function refChainHasLoop(tar1,tar2,infoList,treeDepth=0,treeDepthMax=infoList.length+1)//when treeDepth over max, consider it has loop
+      {
+        //console.log("refChainHasLoop:",tar1,tar2,"treeDepth:",treeDepth)
+        if((tar1.id==tar2.id) || (treeDepth>=treeDepthMax))return true;
+        if(tar2.ref===undefined || tar2.ref.length==0)return false;
 
+        let id2RefTars=tar2.ref
+          .map(ref=>infoList.find(infoInList=>ref.id==infoInList.id))
+          .filter(tar=>tar!==undefined);
+        //console.log("id2RefTars:",id2RefTars)
+
+        let retR=id2RefTars.reduce((hasLoop,refTar)=>hasLoop?hasLoop:
+        refChainHasLoop(tar1,refTar,infoList,treeDepth+1,treeDepthMax),false);
+        //console.log("retR:",retR,"  treeDepth:",treeDepth)
+        return retR;
+      }
       UIArr.push(<BASE_COM.Button
         key="setAdditional"
         addClass="layout black vbox HX0_5"
@@ -572,6 +757,9 @@ class APP_DEFCONF_MODE extends React.Component{
         {
           UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
           dict={EC_zh_TW}
+          additionalData={{
+            shape_list
+          }}
           dictTheme = {edit_tar.type}
             key="BASE_COM.JsonEditBlock"
             renderLib={renderMethods}
@@ -584,6 +772,17 @@ class APP_DEFCONF_MODE extends React.Component{
               angleDeg:"input-number",
               margin:"input-number",
 
+              calc_f:{
+                __OBJ__:renderMethods.Measure_Calc_Editor,
+                measure_list:shape_list.filter(s=>
+                  (s.type==UIAct.SHAPE_TYPE.measure) 
+                  && !refChainHasLoop(edit_tar,s,shape_list)
+                  ),
+                ref_keyTrace_callback:(keyTrace)=>{
+                  ACT_EDIT_TAR_ELE_TRACE_UPDATE(keyTrace);
+                },
+                ref:edit_tar.ref
+              },
               value:"input-number",
               USL:"ULRangeSetup",
               LSL:"ULRangeSetup",
@@ -601,7 +800,9 @@ class APP_DEFCONF_MODE extends React.Component{
               importance:"input-number",
               docheck:"checkbox",
               width:"input-number",
-              ref:{__OBJ__:"div",
+              ref:(edit_tar.subtype===UIAct.SHAPE_TYPE.measure_subtype.calc)?
+                undefined:
+                {__OBJ__:"div",
                 ...[0,1,2].reduce((acc,key)=>{
                   acc[key+""]=
                     {__OBJ__:"btn",
@@ -1212,35 +1413,31 @@ class APP_DEFCONF_MODE extends React.Component{
       
       if(this.props.edit_tar_info!=null)
       {
-        console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info);
-
+        let subType=this.props.edit_tar_info.subtype;
+        console.log("BASE_COM.JsonEditBlock:",this.props.edit_tar_info,subType);
         MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={EC_zh_TW}
           key="BASE_COM.JsonEditBlock"
+          renderLib={renderMethods}
           whiteListKey={{
             //id:"div",
             name:"input",
             //pt1:null,
             subtype:"div",
-            calc_f:{
-              __OBJ__:(param)=>{
-                // log.info(param);
-                // let target = param.target;
-                // let ele = GetObjElement(target.obj,target.keyTrace);
-                // return <input key={this.props.id} className={this.props.className} type="number" step="0.1" pattern="^[-+]?[0-9]*(\.[0-9]*)?" 
-                //   value={translateValue}
-                //   onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
-                return <Measure_Calc_Editor {...param} measure_list={this.props.shape_list.filter(s=>s.type==UIAct.SHAPE_TYPE.measure)}/>
-              }
-            },
-            ref:{__OBJ__:"div",
-              ...[0,1,2,3,4,5,6,7,8,9].reduce((acc,key)=>{
-                acc[key+""]=
-                  {__OBJ__:"btn",
-                  id:"div",
-                  element:"div"};
-                return acc;
-              },{})
-            },
+            // calc_f:{
+            //   __OBJ__:renderMethods.Measure_Calc_Editor,
+            //   measure_list:this.props.shape_list.filter(s=>s.type==UIAct.SHAPE_TYPE.measure)
+            // },
+            ref:(subType===UIAct.SHAPE_TYPE.measure_subtype.calc)?
+                undefined:
+                {__OBJ__:"div",
+                ...[0,1,2,3,4,5,6,7,8,9].reduce((acc,key)=>{
+                  acc[key+""]=
+                    {__OBJ__:"btn",
+                    id:"div",
+                    element:"div"};
+                  return acc;
+                },{})
+              },
             ref_baseLine:{
               __OBJ__:"btn",
               id:"div",
@@ -1287,14 +1484,14 @@ class APP_DEFCONF_MODE extends React.Component{
         }
       
         let tar_info = this.props.edit_tar_info;
-        console.log(tar_info.ref);
+
         if(tar_info.ref!==undefined)
         {
-          let notFullSet=false;
-          tar_info.ref.forEach((ref_data)=>{
-            if(ref_data.id === undefined)notFullSet=true;
-          });
-          if(!notFullSet)
+          // let notFullSet=false;
+          // tar_info.ref.forEach((ref_data)=>{
+          //   if(ref_data.id === undefined)notFullSet=true;
+          // });
+          // if(!notFullSet)
           {
             MenuSet.push(<BASE_COM.Button
               key="ADD_BTN"
