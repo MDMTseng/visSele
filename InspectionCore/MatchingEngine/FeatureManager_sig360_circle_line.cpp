@@ -432,18 +432,243 @@ int FeatureManager_sig360_circle_line::ParseLocatePosition(FeatureReport_sig360_
 }
 
 
+int string_find_count(const char* str,char ch)
+{
+  int count=0;
+  for(int i=0;str[i];i++)
+  {
+    if(str[i]==ch)
+    {
+      count++;
+    }
+  }
+  return count;
+}
+
+
+int parse_CALC_Id(const char * post_exp)
+{
+  if(post_exp[0]!='[')return -1;
+  int idx=0;
+  for(int i=1;post_exp[i];i++)
+  {
+    char cc=post_exp[i];
+    if( (cc<'0') || (cc>'9') )
+      break;
+    idx=idx*10+cc-'0';
+  }
+  return idx;
+}
+
+bool isParamsCache(const char* exp)
+{
+  if(*exp!='$')return false;
+  for(int i=1;exp[i];i+=2)
+  {
+    if(exp[i  ]!=',')return false;
+    if(exp[i+1]!='$')return false;
+  }
+
+  return true;
+}
+
+bool strMatchExact(const char* src, const char* pat)
+{
+  for(int i=0;;i++)
+  {
+    if(src[i]!=pat[i])return false;
+    if(src[i]=='\0')break;
+  }
+  return true;
+}
+int functionExec_(const char* exp,float *params,int paramL,float *ret_result)
+{
+  for(int i=0;i<paramL;i++)
+  {
+    printf("[%d]:%f   ",i,params[i]);
+  }
+  printf("\n");
+  if(ret_result)*ret_result=0;
+  if(strMatchExact(exp,"$+$")){
+    if( paramL!=2)
+      return -1;
+    *ret_result =  params[0]+params[1];
+    return 0;
+  }else if(strMatchExact(exp,"$-$")){
+    
+    if( paramL!=2)
+      return -1;
+    *ret_result =  params[0]-params[1];
+    return 0;
+  }else if(strMatchExact(exp,"$*$")){
+
+    if( paramL!=2)
+      return -1;
+    *ret_result =  params[0]*params[1];
+    return 0;
+  }else if(strMatchExact(exp,"$/$")){
+
+    if( paramL!=2)
+      return -1;
+    *ret_result =  params[0]/params[1];
+    return 0;
+  }else if(strMatchExact(exp,"max$")){
+    float max = params[0];
+    for(int i=1;i<paramL;i++)
+    {
+      if(max<params[i])max=params[i];
+    }
+    *ret_result = max;
+    return 0;
+  }else if(strMatchExact(exp,"min$")){
+    float min = params[0];
+    for(int i=1;i<paramL;i++)
+    {
+      if(min>params[i])min=params[i];
+    }
+    *ret_result = min;
+    return 0;
+  }
+
+  return -2;
+}
+
+int judge_CALC(FeatureReport_sig360_circle_line_single &reports,FeatureReport_judgeDef &judge,float *ret_result)
+{
+  vector<float> calcStack;
+
+  //funcParamHeadIdx indicates the function params starts from
+  //exp: [5,64,11]
+  int funcParamCount=0;
+
+  //"exp": "max(sin([3]*3),0)",
+  //"post_exp": ["[3]","3","$*$","sin$","0","$,$","max$"]
+  for(int i=0;i<judge.data.CALC.post_exp.size();i++)
+  {
+    const string post_exp= judge.data.CALC.post_exp[i];
+    //LOGI("post_exp[%d]:%s",i,post_exp.c_str());
+    
+    int id_exp = parse_CALC_Id(post_exp.c_str());
+    if(id_exp>=0)
+    {//it's an id refence(  [4] means the result of judge report with id=4)
+      int found_idx=-1;
+      for(int j=0;j<reports.judgeReports->size();j++)
+      {
+        int id = (*reports.judgeReports)[j].def->id;
+        if(id==id_exp)
+        {
+          found_idx=j;
+        }
+        else  continue;
+      }
+      
+      float val; 
+      if(found_idx>=0)
+      {
+        int found_status=(*reports.judgeReports)[found_idx].status;
+        if(found_status==FeatureReport_sig360_circle_line_single::STATUS_NA || 
+        found_status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+        {
+          if(ret_result)*ret_result=NAN;
+          return -2;
+        }
+        else
+          val = (*reports.judgeReports)[found_idx].measured_val;
+      }
+      else
+      {//If there is no measure is found
+        //val=NAN;
+        if(ret_result)*ret_result=NAN;
+        return -2;
+      }
+      calcStack.push_back(val);
+      //(*reports.judgeReports)[]
+    }
+    else{//if it's not an id refence
+      int paramSymbolCount = string_find_count(post_exp.c_str(),'$');
+      if(paramSymbolCount>0)
+      {//if it's a function (sin$, cos$, max$)
+        
+        if(isParamsCache(post_exp.c_str()))
+        {//If it's  $,$,.... just save the funcParamCount
+
+          //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount); 
+          funcParamCount=paramSymbolCount;
+        }
+        else
+        {
+          if(funcParamCount>1)
+          {
+            paramSymbolCount=funcParamCount;
+          }
+          funcParamCount=1;
+
+          //LOGI("isParamsCache:%s>>>%d",post_exp.c_str(),paramSymbolCount); 
+          float res;
+          int err_code= 
+            functionExec_(
+              post_exp.c_str(),
+              &(calcStack[calcStack.size()-paramSymbolCount]),
+              paramSymbolCount,
+              &res);
+
+          //LOGI("%f, %d",res,err_code);     
+          if(err_code!=0)
+          {
+            if(ret_result)*ret_result=NAN;
+            return -50;
+          }
+          for(int k=0;k<paramSymbolCount;k++)
+          {
+            calcStack.pop_back();
+          }
+          calcStack.push_back(res);
+        }
+        
+      }
+      else
+      {//then it might be a number, try
+
+        float val; 
+        try{
+          val = std::stof(post_exp); 
+        }catch (...){
+          //val = NAN;
+          if(ret_result)*ret_result=NAN;
+          return -3;
+        }
+        calcStack.push_back(val);
+      }
+    }
+
+
+    // for(int k=0;k<calcStack.size();k++)
+    // {
+      
+    //   printf("%0.5f,",calcStack[k]);
+    // }
+    // printf("\n");
+  }
+  
+  
+  if(calcStack.size()!=1)
+  {
+    if(ret_result)*ret_result=NAN;
+    return -50;
+  }
+  if(ret_result)*ret_result=calcStack[0];
+  return 0;
+}
+
 FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
   (FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,
   FeatureReport_judgeDef &judge)
 {
-
-  //vector<FeatureReport_judgeReport> &judgeReport = *report.judgeReports;
   FeatureReport_judgeReport judgeReport={0};
   judgeReport.def = &judge;
   judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
   LOGV("judge:%s  OBJ1:%d, OBJ2:%d subtype:%d",judge.name,judge.OBJ1_id,judge.OBJ2_id,judge.measure_type);
-  //LOGV("OBJ1_type:%d idx:%d   OBJ2_type:%d idx:%d ",judge.OBJ1_type,judge.OBJ1_idx,judge.OBJ2_type,judge.OBJ2_idx);
   LOGV("val:%f  USL:%f,LSL:%f",judge.targetVal,judge.USL,judge.LSL);
 
   FEATURETYPE type1=FEATURETYPE::NA,type2=FEATURETYPE::NA;
@@ -547,8 +772,6 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
 
         notNA=true;
     }
-
-
     break;
     case FeatureReport_judgeDef::RADIUS :
     {
@@ -562,6 +785,31 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process
     case FeatureReport_judgeDef::SIGMA:
     {
       judgeReport.measured_val=0;
+    }
+    break;
+    case FeatureReport_judgeDef::CALC:
+    {
+      // for(int i=0;i<judge.data.CALC.post_exp.size();i++)
+      // {
+      //   (*report.judgeReports)[0].measured_val;
+      //   LOGI("post_exp[%d]:%s",i,judge.data.CALC.post_exp[i].c_str());
+      // }
+
+      judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+      float res;
+      int errCode=judge_CALC(report,judge,&res);
+      judgeReport.measured_val=res;
+      if(errCode==0)
+      {
+        if(res==res)
+        {
+          notNA=true;
+        }
+        else
+        {
+          judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_NA; 
+        }
+      }
     }
     break;
   }
@@ -1127,6 +1375,32 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
   {
     judge.measure_type=FeatureReport_judgeDef::DISTANCE;
   }
+  else if(strcmp(subtype, "calc")==0 )
+  {
+    judge.measure_type=FeatureReport_judgeDef::CALC;
+
+    judge.data.CALC.exp.assign("");
+    judge.data.CALC.post_exp.clear();
+
+    //BLOCK exp
+    {
+      char* exp=JFetch_STRING(judge_obj,"calc_f.exp");
+      if(exp!=NULL)
+      {
+        judge.data.CALC.exp.assign(exp);
+      }
+    }
+
+    for(int k=0;k<100;k++)
+    {
+      char tmpStr[50];
+      sprintf(tmpStr,"calc_f.post_exp[%d]",k);
+      char* pexp=JFetch_STRING(judge_obj,tmpStr);
+      if(pexp==NULL)break;
+      judge.data.CALC.post_exp.push_back(pexp);
+      //LOGI("[%d]:%s",k,pexp);
+    }
+  }
   else if(strcmp(subtype, "angle")==0 )
   {
     judge.measure_type=FeatureReport_judgeDef::ANGLE;
@@ -1171,7 +1445,10 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON * judge_obj)
     judge.LSL_b=*JxNUM(judge_obj,"LSL_b");
   }
 
-  judge.OBJ1_id = (int)*JxNUM(judge_obj,"ref[0].id");
+  pnum = JFetch_NUMBER(judge_obj,"ref[0].id");
+  if(pnum == NULL)judge.OBJ1_id = -1;
+  else {judge.OBJ1_id = *pnum;}
+
 
   pnum = JFetch_NUMBER(judge_obj,"ref[1].id");//It's fine if we don't have OBJ2(ref[1])
   if(pnum == NULL)judge.OBJ2_id = -1;
@@ -2637,14 +2914,49 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           detectedAuxPoints[j].pt=
             acvVecMult(detectedAuxPoints[j].pt,mmpp);
         }
-
-        for(int j=0;j<judgeList.size();j++)
+        
         {
-          FeatureReport_judgeDef judge= judgeList[j];
+          for(int j=0;j<judgeList.size();j++)
+          {
+            FeatureReport_judgeDef judge= judgeList[j];
+            
+            FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judge);
+            report.def = &(judgeList[j]);
+            judgeReports.push_back(report);
+          }
+
+          //Since the CALC might bring unset result, we need to try to clean up the unset state
+          //(exp:[CALC1 CALC2 CALC3] and CALC1 might wanna use CALC3 value, 
+          //but in execution order the execution of CALC3 will happend after CALC1's ececution)
           
-          FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judge);
-          report.def = &(judgeList[j]);
-          judgeReports.push_back(report);
+          
+          while(true)
+          {
+            int unsetResolveCount=0;
+            for(int j=0;j<judgeList.size();j++)
+            {
+              FeatureReport_judgeDef judge= judgeList[j];
+              FeatureReport_judgeReport pre_report= judgeReports[j];
+              if(pre_report.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+                continue;
+              
+              FeatureReport_judgeReport report= measure_process(singleReport,cached_sin,cached_cos,flip_f,judge);
+              if(report.status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+                continue;//if it's still unset 
+
+              unsetResolveCount++;
+              report.def = &(judgeList[j]);
+              judgeReports[j]=report;
+            }
+            if(unsetResolveCount==0)break;
+          }
+
+          // for(int j=0;j<judgeList.size();j++)
+          // {
+          //   FeatureReport_judgeReport pre_report= judgeReports[j];
+          //   LOGE("[%d].st=%d",j,pre_report.status);
+          // }
+
         }
       }
      

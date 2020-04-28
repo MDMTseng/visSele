@@ -123,7 +123,8 @@ typedef struct FeatureReport_judgeDef{
     SIGMA,
     ANGLE,
     DISTANCE,
-    RADIUS
+    RADIUS,
+    CALC
   } measure_type;
   int OBJ1_id;
   int OBJ2_id;
@@ -136,10 +137,14 @@ typedef struct FeatureReport_judgeDef{
   float USL_b,LSL_b;
   float UCL_b,LCL_b;
   
-  union data{
+  struct data{
     struct ANGLE{
       int quadrant;
     }ANGLE;
+    struct CALC{
+      string exp;
+      vector<string> post_exp;
+    }CALC;
   }data;
 }FeatureReport_judgeDef;
 
@@ -201,6 +206,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   char *targetName;
   
   enum FeatureReport_FeatureStatus{
+      STATUS_UNSET=-100,
       STATUS_NA=-128,
       STATUS_SUCCESS=0,
       STATUS_FAILURE=-1,
