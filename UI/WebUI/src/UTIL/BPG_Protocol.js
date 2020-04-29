@@ -121,6 +121,7 @@ let objbarr2raw=(type,prop,pgID,obj,barr=null)=>{
 
 export const INSPECTION_STATUS = {
   NA:-128,
+  UNSET:-100,
   SUCCESS:0,
   FAILURE:-1,
 };

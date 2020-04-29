@@ -15,6 +15,7 @@ let log = logX.getLogger("InspectionEditorLogic");
 
 export const MEASURERSULTRESION=
 {
+  UNSET:"UNSET",
   NA:"NA",
   UOK:"UOK",
   LOK:"LOK",
@@ -34,6 +35,7 @@ export const MEASURERSULTRESION=
 export const MEASURERSULTRESION_priority=
 {
   [MEASURERSULTRESION.NA]:0,
+  [MEASURERSULTRESION.UNSET]:0,
 
   [MEASURERSULTRESION.LSNG]:1,
   [MEASURERSULTRESION.USNG]:1,
@@ -110,9 +112,14 @@ export class InspectionEditorLogic
     }
     this.inspreport.reports.forEach(report=>report.judgeReports.forEach((measure)=>{
       let measureDef = this.shapeList.find((feature)=>feature.id ==measure.id);
-      if(measureDef===undefined || measure.status === INSPECTION_STATUS.NA)
+      console.log(measure,measureDef);
+      if(measureDef===undefined || measure.status === INSPECTION_STATUS.NA )
       {
         measure.detailStatus=MEASURERSULTRESION.NA;
+      }
+      else if( measure.status === INSPECTION_STATUS.UNSET)
+      {
+        measure.detailStatus=MEASURERSULTRESION.UNSET;
       }
       else if(measure.value<measureDef.LSL)
       {
@@ -600,6 +607,7 @@ export class InspectionEditorLogic
         case SHAPE_TYPE.measure:
         {
           eObject.inspection_value=inspAdjObj.value;
+          console.log(eObject);
         }
         break;
       }

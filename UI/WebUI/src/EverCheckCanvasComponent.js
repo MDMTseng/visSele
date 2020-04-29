@@ -20,6 +20,7 @@ import {EV_UI_Canvas_Mouse_Location} from 'REDUX_STORE_SRC/actions/UIAct';
 import Color from 'color';
 
 export const MEASURE_RESULT_VISUAL_INFO = {
+  [MEASURERSULTRESION.UNSET]:{COLOR:"rgba(128,128,128,0.5)",TEXT:MEASURERSULTRESION.UNSET},
   [MEASURERSULTRESION.NA]:{COLOR:"rgba(128,128,128,0.5)",TEXT:MEASURERSULTRESION.NA},
   [MEASURERSULTRESION.UOK]:{COLOR:"rgba(128,200,128,0.7)",TEXT:MEASURERSULTRESION.UOK},
   [MEASURERSULTRESION.LOK]:{COLOR:"rgba(128,200,128,0.7)",TEXT:MEASURERSULTRESION.LOK},
@@ -99,6 +100,7 @@ class renderUTIL
       inspection_Pass:"rgba(0,255,0,0.1)",
       inspection_production_Fail:"rgba(128,128,0,0.1)",
       inspection_Fail:"rgba(255,0,0,0.1)",
+      inspection_UNSET:"rgba(128,128,128,0.1)",
       inspection_NA:"rgba(128,128,128,0.1)",
       editShape:"rgba(255,0,0,0.7)",
       measure_info:"rgba(128,128,200,0.7)"
@@ -972,50 +974,77 @@ class renderUTIL
               let fontPx = this.getFontHeightPx()*this.getFixSizingReg();
               ctx.font=this.getFontStyle(1);
 
-
-
               ctx.strokeStyle="black";
-              ctx.lineWidth=this.getIndicationLineSize()/3;
-              let Y_offset=0;
-              this.draw_Text(ctx,eObject.name,fontPx,
-                eObject.pt1.x,eObject.pt1.y+Y_offset);
+              if(eObject.inspection_value!==undefined)
+              {
 
-              Y_offset+=fontPx;
 
-              let text = "C"+eObject.value.toFixed(3)+unitConvert.unit;
-        
-              this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
-              fontPx/=2;
-              Y_offset+=fontPx;
+                  let Y_offset=0;
 
-              text = "L:"+eObject.LSL*unitConvert.mult.toFixed(3)+unitConvert.unit+" U:"+eObject.USL*unitConvert.mult.toFixed(3)+unitConvert.unit;
-              this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
-              Y_offset+=fontPx;
+                  
+                  this.draw_Text(ctx,eObject.name,fontPx,
+                    eObject.pt1.x,eObject.pt1.y+Y_offset);
 
-              // function ExpCalcBasic(postExp_,funcSet) {
-              //   let postExp=postExp_.filter(exp=>exp!="$")
-              //   funcSet = {
-              //     min$: arr => Math.min(...arr),
-              //     max$: arr => Math.max(...arr),
-              //     "$+$": vals => vals[0] + vals[1],
-              //     "$-$": vals => vals[0] - vals[1],
-              //     "$*$": vals => vals[0] * vals[1],
-              //     "$/$": vals => vals[0] / vals[1],
-              //     "$^$": vals => Math.pow(vals[0] , vals[1]),
-              //     "$": vals => vals,
-              //     ...funcSet,
-              //     //default:_=>false
-              //   };
-              
-              //   return PostfixExpCalc(postExp, funcSet)[0];
-              // }
-              
+                  Y_offset+=fontPx;
+                  let text = "C"+(eObject.inspection_value*unitConvert.mult).toFixed(3)+unitConvert.unit;
+                  // let marginPC = (eObject.inspection_value>eObject.value)?
+                  // (eObject.inspection_value-eObject.value)/(eObject.USL-eObject.value):
+                  // -(eObject.inspection_value-eObject.value)/(eObject.LSL-eObject.value);
+                  // text +=":"+(marginPC*100).toFixed(1)+"%";
 
-              // PostfixExpCalc(eObject.post_exp,,,,);
-              text = "Now:"+">>";//(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(3)+unitConvert.unit;
-              this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+                  ctx.lineWidth=this.getIndicationLineSize()/3;
+
+                  this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+                  
+                  Y_offset+=fontPx;
+              }
+              else
+              {
+
+                ctx.strokeStyle="black";
+                ctx.lineWidth=this.getIndicationLineSize()/3;
+                let Y_offset=0;
+                this.draw_Text(ctx,eObject.name,fontPx,
+                  eObject.pt1.x,eObject.pt1.y+Y_offset);
+  
+                Y_offset+=fontPx;
+  
+                let text = "C"+eObject.value.toFixed(3)+unitConvert.unit;
+          
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+                fontPx/=2;
+                Y_offset+=fontPx;
+  
+                text = "L:"+eObject.LSL*unitConvert.mult.toFixed(3)+unitConvert.unit+" U:"+eObject.USL*unitConvert.mult.toFixed(3)+unitConvert.unit;
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
+                Y_offset+=fontPx;
+  
+                // function ExpCalcBasic(postExp_,funcSet) {
+                //   let postExp=postExp_.filter(exp=>exp!="$")
+                //   funcSet = {
+                //     min$: arr => Math.min(...arr),
+                //     max$: arr => Math.max(...arr),
+                //     "$+$": vals => vals[0] + vals[1],
+                //     "$-$": vals => vals[0] - vals[1],
+                //     "$*$": vals => vals[0] * vals[1],
+                //     "$/$": vals => vals[0] / vals[1],
+                //     "$^$": vals => Math.pow(vals[0] , vals[1]),
+                //     "$": vals => vals,
+                //     ...funcSet,
+                //     //default:_=>false
+                //   };
+                
+                //   return PostfixExpCalc(postExp, funcSet)[0];
+                // }
+                
+
+                // PostfixExpCalc(eObject.post_exp,,,,);
+                text = "Now:"+">>";//(Math.hypot(point.x-point_on_line.x,point.y-point_on_line.y)*unitConvert.mult).toFixed(3)+unitConvert.unit;
+                this.draw_Text(ctx,text,fontPx,eObject.pt1.x,eObject.pt1.y+Y_offset);
 
             
+
+              }
               break;
             }
           }
@@ -1718,10 +1747,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         inspection_Pass:"rgba(0,255,0,0.1)",
         inspection_production_Fail:"rgba(128,128,0,0.3)",
         inspection_Fail:"rgba(255,0,0,0.1)",
+        inspection_UNSET:"rgba(128,128,128,0.1)",
         inspection_NA:"rgba(64,64,64,0.1)",
 
           
         color_NA:"rgba(128,128,128,0.5)",
+          
+        color_UNSET:"rgba(128,128,128,0.5)",
         color_SUCCESS:this.colorSet.measure_info,
         color_FAILURE_opt:{
           submargin1:"rgba(255,255,0,0.5)",
@@ -1777,7 +1809,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
   {
     let judgeReports = objReport.judgeReports;
     let ret_status = judgeReports.reduce((res,obj)=>{
-      if(res==INSPECTION_STATUS.NA)return res;
+      if(res==INSPECTION_STATUS.NA || res==INSPECTION_STATUS.UNSET )return res;
       if(res==INSPECTION_STATUS.FAILURE)
       {
         if(obj.status==INSPECTION_STATUS.NA)return INSPECTION_STATUS.NA;
@@ -1878,10 +1910,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature,5);
         
         let ret_res = this.inspectionResult(report);
+        console.log(ret_res,report);
         switch(ret_res)
         {
           case INSPECTION_STATUS.NA:
             ctx.fillStyle=this.colorSet.inspection_NA;
+          break;
+          case INSPECTION_STATUS.UNSET:
+            ctx.fillStyle=this.colorSet.inspection_UNSET;
           break;
           case INSPECTION_STATUS.SUCCESS:
           {
@@ -1928,11 +1964,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone,report);
         
         listClone.forEach((eObj)=>{
-          //log.debug(eObj);
+          log.info(eObj.inspection_status);
           switch(eObj.inspection_status)
           {
             case INSPECTION_STATUS.NA:
               eObj.color=this.colorSet.color_NA;
+            break;
+            case INSPECTION_STATUS.UNSET:
+              eObj.color=this.colorSet.color_UNSET;
             break;
             case INSPECTION_STATUS.SUCCESS:
             {
@@ -1956,6 +1995,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto{
 
           }
         });
+        console.log(listClone);
         this.rUtil.drawInspectionShapeList(ctx,listClone,null,[],listClone,unitConvert,false);
       }
     });
