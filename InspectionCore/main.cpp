@@ -429,7 +429,7 @@ cJSON *cJSON_DirFiles(const char* path,cJSON *jObj_to_W,int depth=0)
 }
 
 machine_hash machine_h={0};
-void AttachStaticInfo(cJSON *reportJson)
+void AttachStaticInfo(cJSON *reportJson,DatCH_CallBack_BPG *cb)
 {
   if(reportJson==NULL)return;
   char tmpStr[128];
@@ -441,6 +441,12 @@ void AttachStaticInfo(cJSON *reportJson)
       tmpStr_ptr+=sprintf(tmpStr_ptr,"%02X",machine_h.machine[i]);
     }
     cJSON_AddStringToObject(reportJson, "machine_hash", tmpStr);
+
+    if(cb&&cb->cameraFramesLeft>=0)
+    {
+      LOGI("cb->cameraFramesLeft:%d",cb->cameraFramesLeft);
+      cJSON_AddNumberToObject(reportJson, "frames_left", cb->cameraFramesLeft);
+    }
   }
 
 }
@@ -1204,13 +1210,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
         
         do{
             
-            char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
-            if (deffile == NULL)
-            {
-            snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
-            LOGE("%s",err_str);
-            break;
-            }
+
+
             char* imgSrcPath =(char* )JFetch(json,"imgsrc",cJSON_String);
             LOGI("Load Image from %s",imgSrcPath);
             acvImage *srcImg=NULL;
@@ -1249,50 +1250,80 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
 
         
 
+        
 
+
+            char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
+
+
+            cJSON* defInfo =JFetch_OBJECT(json,"definfo");
+
+            if (deffile == NULL && defInfo==NULL)
+            {
+              LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ",__LINE__,deffile,defInfo);
+              cb->cameraFramesLeft=0;
+              camera->TriggerMode(1);
+              break;
+            }
+
+            char *jsonStr=NULL;
+            if(defInfo)
+            {
+              jsonStr = cJSON_Print(defInfo);
+            }
+            else
+            {
+              
+              jsonStr = ReadText(deffile);
+              if(jsonStr == NULL)
+              {
+                snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",deffile,__LINE__);
+                LOGE("%s",err_str);
+                break;
+              }
+              LOGI("Read deffile:%s",deffile);
+            }
+
+            
             DatCH_Data datCH_BPG=
             BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
 
-            try {
-                char *jsonStr = ReadText(deffile);
-                if(jsonStr == NULL)
-                {
-                snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",deffile,__LINE__);
-                LOGE("%s",err_str);
-                break;
-                }
-                LOGI("Read deffile:%s",deffile);
-                bpg_dat=GenStrBPGData("DF", jsonStr);
-                bpg_dat.pgID=dat->pgID;
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+            bpg_dat=GenStrBPGData("DF", jsonStr);
+            bpg_dat.pgID=dat->pgID;
+            datCH_BPG.data.p_BPG_data=&bpg_dat;
+            self->SendData(datCH_BPG);
 
-                int ret = ImgInspection_JSONStr(matchingEng,srcImg,1,jsonStr);
-                free(jsonStr);
+            int ret = ImgInspection_JSONStr(matchingEng,srcImg,1,jsonStr);
+            free(jsonStr);
+
+
+
+
+            try {
                 //SaveIMGFile("data/buff.bmp",&test1_buff);
 
                 const FeatureReport * report = matchingEng.GetReport();
 
                 if(report!=NULL)
                 {
-                cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                AttachStaticInfo(jobj);
-                char * jstr  = cJSON_Print(jobj);
-                cJSON_Delete(jobj);
+                  cJSON* jobj = matchingEng.FeatureReport2Json(report);
+                  AttachStaticInfo(jobj,cb);
+                  char * jstr  = cJSON_Print(jobj);
+                  cJSON_Delete(jobj);
 
-                //LOGI("__\n %s  \n___",jstr);
-                bpg_dat=GenStrBPGData("RP", jstr);
-                bpg_dat.pgID=dat->pgID;
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+                  //LOGI("__\n %s  \n___",jstr);
+                  bpg_dat=GenStrBPGData("RP", jstr);
+                  bpg_dat.pgID=dat->pgID;
+                  datCH_BPG.data.p_BPG_data=&bpg_dat;
+                  self->SendData(datCH_BPG);
 
-                delete jstr;
-                session_ACK=true;
+                  delete jstr;
+                  session_ACK=true;
                 }
                 else
                 {
-                session_ACK=false;
+                  session_ACK=false;
                 }
             }
             catch (std::invalid_argument iaex) {
@@ -1322,7 +1353,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
         {
         do{
 
-            
+
+            double* frame_count =JFetch_NUMBER(json,"frame_count");
+            cb->cameraFramesLeft=(frame_count!=NULL)?((int)(*frame_count)):-1;
+            LOGI("cb->cameraFramesLeft:%d frame_count:%p",cb->cameraFramesLeft,frame_count);
+
             if (json == NULL)
             {
             snprintf(err_str,sizeof(err_str),"JSON parse failed LINE:%04d",__LINE__);
@@ -1333,14 +1368,29 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
              cb->CI_pgID = dat->pgID;
 
             char* deffile =(char* )JFetch(json,"deffile",cJSON_String);
-            if (deffile == NULL)
-            {
-            snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
-            LOGE("%s",err_str);
-            cb->cameraFeedTrigger=false;
+            // if (deffile == NULL)
+            // {
+            // snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
+            // LOGE("%s",err_str);
+            // cb->cameraFeedTrigger=false;
             
-            camera->TriggerMode(1);
-            break;
+            // camera->TriggerMode(1);
+            // break;
+            // }
+
+            cJSON* defInfo =JFetch_OBJECT(json,"definfo");
+
+            if (deffile == NULL && defInfo==NULL)
+            {
+              
+              LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ",__LINE__,deffile,defInfo);
+
+
+
+              cb->cameraFramesLeft=0;
+              
+              camera->TriggerMode(1);
+              break;
             }
 
             try {
@@ -1348,28 +1398,32 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 DatCH_Data datCH_BPG=
                 BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-                char *jsonStr = ReadText(deffile);
-                if(jsonStr == NULL)
-                {
-                snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",jsonStr,__LINE__);
-                LOGE("%s",err_str);
-                cb->cameraFeedTrigger=false;
-                
-                break;
-                }
+                char *jsonStr = NULL;
 
-                LOGI("Read deffile:%s",deffile);
-                bpg_dat=GenStrBPGData("DF", jsonStr);
-                bpg_dat.pgID=dat->pgID;
-                datCH_BPG.data.p_BPG_data=&bpg_dat;
-                self->SendData(datCH_BPG);
+                if(defInfo!=NULL)
+                {
+                  jsonStr = cJSON_Print(defInfo);
+                  //jsonStr=jstr;
+                }
+                
+                if(jsonStr==NULL)
+                {
+                  jsonStr = ReadText(deffile);
+                  if(jsonStr == NULL)
+                  {
+                  snprintf(err_str,sizeof(err_str),"Cannot read defFile from:%s LINE:%04d",jsonStr,__LINE__);
+                  LOGE("%s",err_str);
+                  cb->cameraFramesLeft=0;
+                  
+                  break;
+                  }
+                  LOGI("Read deffile:%s",deffile);
+                }
 
                                 
                 matchingEng.ResetFeature();
                 matchingEng.AddMatchingFeature(jsonStr);
 
-
-                free(jsonStr);
                 
                 //TODO: HACK: this sleep is to wait for the gap in between def config file arriving and inspection result arriving.
                 //If the inspection result arrives without def config file then webUI will generate(by design) an statemachine error event.
@@ -1387,9 +1441,28 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                   doImgProcessThread=true;
                 }
                 
-                cb->cameraFeedTrigger=true;
+
+                if(cb->cameraFramesLeft>0)
+                {
+                  
+                  mainThreadLock.unlock();
+                  while(cb->cameraFramesLeft>0)
+                  {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                  }
+                  
+                  mainThreadLock.lock();
+                  camera->TriggerMode(1);
+                }
                 //SaveIMGFile("data/buff.bmp",&test1_buff);
         
+
+                bpg_dat=GenStrBPGData("DF", jsonStr);
+                bpg_dat.pgID=dat->pgID;
+                datCH_BPG.data.p_BPG_data=&bpg_dat;
+                self->SendData(datCH_BPG);
+
+                free(jsonStr);
                 session_ACK=true;
             }
             catch (std::invalid_argument iaex) {
@@ -1461,7 +1534,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void* c
                 if(report!=NULL)
                 {
                 cJSON* jobj = matchingEng.FeatureReport2Json(report);
-                AttachStaticInfo(jobj);
+                AttachStaticInfo(jobj,cb);
+                
                 char * jstr  = cJSON_Print(jobj);
                 cJSON_Delete(jobj);
 
@@ -1866,7 +1940,7 @@ int ImgInspection_DefRead(MatchingEngine &me ,acvImage *test1,int repeatTime,cha
 }
 
 
-int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam param,int repeatTime)
+int ImgInspection(MatchingEngine &me ,acvImage *test1,acvRadialDistortionParam param,int repeatTime=1)
 {
 
   LOGI("============w:%d h:%d====================",test1->GetWidth(),test1->GetHeight());
@@ -2027,7 +2101,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
     }
   }
   pframeT=t;
-  LOGV("cb->cameraFeedTrigger:%d",cb->cameraFeedTrigger); 
+  LOGV("cb->cameraFramesLeft:%d",cb->cameraFramesLeft); 
   CameraLayer &cl_GMV=*((CameraLayer*)&cl_obj);
   
   acvImage &capImg=*cl_GMV.GetFrame();
@@ -2067,14 +2141,14 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void* context)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 { 
-  
-
-  if(!cb->cameraFeedTrigger)
+  if(cb->cameraFramesLeft==0)
   {
     LOGE( "unlock");
     mainThreadLock.unlock();
     return;
   }
+  if(cb->cameraFramesLeft>0)
+    cb->cameraFramesLeft--;
   
 
 
@@ -2087,9 +2161,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       LOGE( "try lock");
       counter++;
       //Still locked
-      if(counter>1 || !cb->cameraFeedTrigger)//If the flag is closed then, exit
+      if(counter>1 || cb->cameraFramesLeft==0)//If the flag is closed then, exit
       {
-        LOGE( "cb->cameraFeedTrigger is off return..");
+        LOGE( "cb->cameraFramesLeft is off return..");
         return;
       }
     }
@@ -2271,7 +2345,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         if(report!=NULL)
         {
           cJSON* jobj = matchingEng.FeatureReport2Json(report);
-          AttachStaticInfo(jobj);
+          AttachStaticInfo(jobj,cb);
           char * jstr  = cJSON_Print(jobj);
           cJSON_Delete(jobj);
 
@@ -2327,7 +2401,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
 
 
-    sprintf(tmp,"{\"start\":false, \"continue\":%s,\"ACK\":true}",(cb->cameraFeedTrigger)?"true":"false");
+    sprintf(tmp,"{\"start\":false, \"framesLeft\":%s,\"ACK\":true}",(cb->cameraFramesLeft)?"true":"false");
     bpg_dat=DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
     bpg_dat.pgID= cb->CI_pgID;
     datCH_BPG.data.p_BPG_data=&bpg_dat;
@@ -2335,11 +2409,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
-    if(cb->cameraFeedTrigger)
+    if(cb->cameraFramesLeft)
     {
-      LOGV("cb->cameraFeedTrigger:%d Get Next frame...",cb->cameraFeedTrigger);
+      LOGV("cb->cameraFramesLeft:%d Get Next frame...",cb->cameraFramesLeft);
       //std::this_thread::sleep_for(std::chrono::milliseconds(100));
       //cl_GMV.Trigger();
+    }
+    else
+    {
+      
     }
   }while(false);
 
@@ -2442,7 +2520,7 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
 
         printf("CLOSING peer %s:%d\n",
         inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
-        cb->cameraFeedTrigger=false;
+        cb->cameraFramesLeft=0;
         camera->TriggerMode(1);
         cb->delete_MicroInsp_FType();
         cb->delete_Ext_Util_API();
@@ -2689,7 +2767,7 @@ int simpleTest(char *imgName, char *defName)
   if(report!=NULL)
   {
     cJSON* jobj = matchingEng.FeatureReport2Json(report);
-    AttachStaticInfo(jobj);
+    AttachStaticInfo(jobj,cb);
     char * jstr  = cJSON_Print(jobj);
     cJSON_Delete(jobj);
     LOGI("...\n%s\n...",jstr);
@@ -2745,6 +2823,39 @@ acvCalibMap* parseCM_info(PerifProt::Pak pakCM)
 
 int testCode()
 {
+  return 0;
+  {
+
+    char *string = ReadText("data/stageLightCalib.json");
+    matchingEng.ResetFeature();
+    matchingEng.AddMatchingFeature(string);
+
+    
+    acvImage bw_img;
+    int ret = LoadIMGFile(&bw_img,"data/BMP_carousel_test/BG.BMP");
+
+    ret = ImgInspection(matchingEng,&bw_img,param_default,1);
+    const FeatureReport * report = matchingEng.GetReport();
+    delete(string);
+    
+    if(report!=NULL)
+    {
+      cJSON* jobj = matchingEng.FeatureReport2Json(report);
+      AttachStaticInfo(jobj,cb);
+      //cJSON_AddNumberToObject(jobj, "session_id", session_id);
+      char * jstr  = cJSON_Print(jobj);
+      cJSON_Delete(jobj);
+
+      LOGI("__\n %s  \n___",jstr);
+
+      delete jstr;
+    }
+    
+    return 1;
+
+  }
+  
+
   return 0;
   RingBuf <int> rbx(new int[10],10);
   for(int i=0;i<100;i++)
@@ -2844,7 +2955,7 @@ int main(int argc, char** argv)
     if(report!=NULL)
     {
       cJSON* jobj = matchingEng.FeatureReport2Json(report);
-      AttachStaticInfo(jobj);
+      AttachStaticInfo(jobj,cb);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char * jstr  = cJSON_Print(jobj);
       cJSON_Delete(jobj);

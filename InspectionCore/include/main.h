@@ -42,7 +42,7 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   public:
 
   uint16_t CI_pgID;
-  bool cameraFeedTrigger=false;
+  int cameraFramesLeft=0;
 
   DatCH_BPG1_0 *self;
   acvImage tmp_buff;
