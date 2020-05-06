@@ -15,6 +15,7 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
+import BackLightCalibUI_rdx from './BackLightCalibUI';
 
 import  InputNumber  from 'antd/lib/input-number';
 import {xstate_GetCurrentMainState,GetObjElement,Calibration_MMPP_offset} from 'UTIL/MISC_Util';
@@ -474,6 +475,8 @@ function CustomDisplayUI({BPG_Channel,defaultFolderPath }) {
     </Layout> 
   );
 }
+
+
  
 class APPMain extends React.Component{
 
@@ -863,6 +866,13 @@ class APPMain extends React.Component{
               }
               
             }
+          },
+          
+          BackLightCalib:{
+            icon:"scan",
+            content:<BackLightCalibUI_rdx 
+              BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} />,
+            onSelected:genericMenuItemCBsCB
           },
           SDD:{
             icon:"database" ,

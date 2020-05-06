@@ -78,12 +78,24 @@ class APPMasterX extends React.Component{
   }
 
 
+  WSDataDispatch(pkts)
+  {
+    let acts={
+      type:"ATBundle",
+      ActionThrottle_type:"express",
+      data:pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
+      //rawData:req_pkt
+    };
+    console.log(pkts,acts);
+    this.props.DISPATCH(acts)
+  }
+
   constructor(props) {
     super(props);
     //this.state={};
     //this.state.do_splash=true;
 
-
+    this.WSDataDispatch=this.WSDataDispatch.bind(this);
     this.BPG_WS={
       reqWindow:{},
       pgIDCounter:0,
@@ -218,17 +230,18 @@ class APPMasterX extends React.Component{
               }
               if(req_pkt.promiseCBs!==undefined)
               {
-                req_pkt.promiseCBs.resolve(req_pkt.pkts);
+                req_pkt.promiseCBs.resolve(stacked_pkts,this.WSDataDispatch);
               }
               else
               {
-                let acts={
-                  type:"ATBundle",
-                  ActionThrottle_type:"express",
-                  data:stacked_pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
-                  rawData:req_pkt
-                };
-                this.props.DISPATCH(acts)
+                // let acts={
+                //   type:"ATBundle",
+                //   ActionThrottle_type:"express",
+                //   data:stacked_pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
+                //   rawData:req_pkt
+                // };
+                // this.props.DISPATCH(acts)
+                this.WSDataDispatch(stacked_pkts);
                 // req_pkt.pkts.forEach((pkt)=>
                 // {
                 //   let act=map_BPG_Packet2Act(pkt);

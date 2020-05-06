@@ -26,7 +26,9 @@ function Edit_info_reset(newState)
 {
   console.log("Edit_info_reset");
   let empty_edit_info ={
+    stage_light_report:undefined,
     inspReport:undefined,
+
     reportStatisticState:{
       trackingWindow:[],
       historyReport:[],
@@ -376,363 +378,376 @@ function StateReducer(newState,action)
 
   function EVENT_Inspection_Report(newState,action)
   {
-    let statSetting = newState.edit_info.statSetting;
-    let inspOptionalTag = ""+newState.edit_info.inspOptionalTag;
-    if(newState.DefFileTag!==undefined && newState.DefFileTag.length!=0)
-    {
-      inspOptionalTag=newState.edit_info.DefFileTag+","+inspOptionalTag;
-    }
-    if(newState.MachTag!==undefined && newState.MachTag.length!=0)
-    {
-      inspOptionalTag=newState.MachTag+","+inspOptionalTag;
-    }
-    let currentDate = action.date;
-    let currentTime_ms = currentDate.getTime();
-
-    let camParam = newState.edit_info._obj.cameraParam;
-   // let mmpcampix = newState..cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+    let repType=GetObjElement(action,["data","type"]);
     
-    let mmpcampix ;
-    if(camParam===undefined)
-    {
-      mmpcampix=undefined;
-    }
-    else
-    {
-      mmpcampix = camParam.mmpb2b/camParam.ppb2b;
-    }
-
-    let subFeatureDefSha1 = action.data.subFeatureDefSha1;
-    let machine_hash = action.data.machine_hash;
-    // if(typeof subFeatureDefSha1 == "string")
-    // {
-    //   if(subFeatureDefSha1.length>8)
-    //   {
-    //     subFeatureDefSha1 =  subFeatureDefSha1.substring(0,8);
-    //   }
-    // }
-
-    if(action.data.type === "binary_processing_group")
-    {
-      action.data.reports.forEach((report)=>
+    if(repType===undefined)return;
+    switch(repType){
+      case "binary_processing_group":
       {
-        switch(report.type)
+        let statSetting = newState.edit_info.statSetting;
+        let inspOptionalTag = ""+newState.edit_info.inspOptionalTag;
+        if(newState.DefFileTag!==undefined && newState.DefFileTag.length!=0)
         {
-          case "sig360_extractor":
-          case "sig360_circle_line":
+          inspOptionalTag=newState.edit_info.DefFileTag+","+inspOptionalTag;
+        }
+        if(newState.MachTag!==undefined && newState.MachTag.length!=0)
+        {
+          inspOptionalTag=newState.MachTag+","+inspOptionalTag;
+        }
+        let currentDate = action.date;
+        let currentTime_ms = currentDate.getTime();
+
+        let camParam = newState.edit_info._obj.cameraParam;
+      // let mmpcampix = newState..cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
+        
+        let mmpcampix ;
+        if(camParam===undefined)
+        {
+          mmpcampix=undefined;
+        }
+        else
+        {
+          mmpcampix = camParam.mmpb2b/camParam.ppb2b;
+        }
+
+        let subFeatureDefSha1 = action.data.subFeatureDefSha1;
+        let machine_hash = action.data.machine_hash;
+        // if(typeof subFeatureDefSha1 == "string")
+        // {
+        //   if(subFeatureDefSha1.length>8)
+        //   {
+        //     subFeatureDefSha1 =  subFeatureDefSha1.substring(0,8);
+        //   }
+        // }
+
+        action.data.reports.forEach((report)=>
+        {
+          
+          switch(report.type)
           {
-            newState.edit_info={...newState.edit_info};
-            //newState.report=action.data;
-            newState.edit_info._obj.SetInspectionReport(report);
-
-            let inspReport = newState.edit_info._obj.inspreport;
-
-            newState.edit_info.inspReport = inspReport;
-            inspReport.time_ms = currentTime_ms;
-
-            if(mmpcampix===undefined)
+            case "sig360_extractor":
+            case "sig360_circle_line":
             {
-              break;
-            }
-            
-            //let overallStat = reportStatisticState.overallStat;
+              newState.edit_info={...newState.edit_info};
+              //newState.report=action.data;
+              newState.edit_info._obj.SetInspectionReport(report);
+
+              let inspReport = newState.edit_info._obj.inspreport;
+
+              newState.edit_info.inspReport = inspReport;
+              inspReport.time_ms = currentTime_ms;
+
+              if(mmpcampix===undefined)
+              {
+                break;
+              }
+              
+              //let overallStat = reportStatisticState.overallStat;
 
 
 
 
-            let reportStatisticState = newState.edit_info.reportStatisticState;
+              let reportStatisticState = newState.edit_info.reportStatisticState;
 
-            reportStatisticState.newAddedReport=[];
- 
-            //Reset the current object property, then we will check if there's a new similar report object as it.
-            reportStatisticState.trackingWindow.forEach((srep_inWindow)=>{
-              srep_inWindow.isCurObj=false;
-             });
-
-            //Check if the trackingWindow object is timeout(from tracking window)
-            reportStatisticState.trackingWindow = 
-              reportStatisticState.trackingWindow.filter((srep_inWindow)=>
-                {
-                  let tdiff = currentTime_ms - srep_inWindow.time_ms;
-                  if(tdiff<statSetting.keepInTrackingTime_ms)
-                  {
-                    return true;
-                  }
-                  //if the time is longer than 4s then remove it from matchingWindow
-                  if(srep_inWindow.repeatTime>statSetting.minReportRepeat
-                    && srep_inWindow.headSkipTime==0)
-                  {
-                    reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
-                    
-                    reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
-                    //limit historyReport length to 2000
-                    if(reportStatisticState.historyReport.length>statSetting.historyReportlimit)
-                    {
-                      reportStatisticState.historyReport=
-                      reportStatisticState.historyReport.slice(Math.max(reportStatisticState.historyReport.length - 1000, 1));
-                    }
-                    reportStatisticState.newAddedReport.push(srep_inWindow);
-                  }
-                  else
-                  {
-                    log.error("the current data only gets few samples, ignore",
-                    "this error case is to remove abnormal sample that's caused by air blow");
-                    log.error("repeatTime:",srep_inWindow.repeatTime)
-                    log.error("headSkipTime:",srep_inWindow.headSkipTime)
-                  }
-                  return false;
-                });
-            
-            if(inspReport.reports === undefined)
-            {
-              break;
-            }
-            
-            {//Do matching in tracking_window
-
-
-              //new inspection report >
-              //  [update/insert]> tracking_window >
-              //     [if no update after 4s]> historyReport
-              inspReport.reports.forEach((singleReport)=>{
-                
-                let closeRep = reportStatisticState.trackingWindow.reduce((closeRep,srep_inWindow)=>{
-                  if(closeRep!==undefined)return closeRep;
-                  //Check direction consistency
-                  if(singleReport.isFlipped != srep_inWindow.isFlipped)
-                  {
-                    return closeRep;
-                  }
-
-                  //Check area consistency
-                  let areaDiff = singleReport.area/srep_inWindow.area;
-                  if(areaDiff>1.2 || areaDiff < 1/1.2)
-                  {
-                    return closeRep;
-                  }
-
-                  //Check retation consistency
-                  let angleDiff = singleReport.rotate - srep_inWindow.rotate;
-                  if(angleDiff>180)angleDiff=angleDiff-360;
-                  if(angleDiff>5 || angleDiff<-5)
-                  {
-                    return closeRep;
-                  }
-
-                  //Check position consistency
-                  let distance = Math.hypot(singleReport.cx - srep_inWindow.cx,singleReport.cy - srep_inWindow.cy);
-                
-                  if(distance>mmpcampix/2)
-                  {
-                    return closeRep;
-                  }
-                  //If we get here, which means the information is very similar.
-                  //return/mark the current object as same report object
-                  return srep_inWindow;
-                },undefined);
-                function valueAveIn(ave,new_val,datCount_before)
-                {
-
-                  ave+=(1/(datCount_before+1))*(new_val-ave);
-                  return ave;
-                }
-                if(closeRep !== undefined)
-                {
-                  //blend the report with the existed report in tracking window  
-
-                  //log.info(">>>>>",closeRep,singleReport);
-
-
-
-                  
-                  closeRep.area=valueAveIn(closeRep.area,singleReport.area,closeRep.repeatTime);
-                  closeRep.cx=valueAveIn(closeRep.cx,singleReport.cx,closeRep.repeatTime);
-                  closeRep.cy=valueAveIn(closeRep.cy,singleReport.cy,closeRep.repeatTime);
-                  //closeRep.area+=(1/(closeRep.repeatTime+1))*(sjrep.area-cjrep.area);
-
-                  closeRep.detectedLines.forEach((clrep)=>{
-                    
-                    if(clrep.status==INSPECTION_STATUS.NA)return;
-                    let id = clrep.id;
-                    let slrep = singleReport.detectedLines.find((slrep)=>slrep.id==id);
-                    if(slrep===undefined || slrep.status==INSPECTION_STATUS.NA)
-                    {
-                      clrep.status = INSPECTION_STATUS.NA;
-                      return;
-                    }
-                    
-                    clrep.cx=valueAveIn(clrep.cx,slrep.cx,closeRep.repeatTime);
-                    clrep.cy=valueAveIn(clrep.cy,slrep.cy,closeRep.repeatTime);
-                    clrep.vx=valueAveIn(clrep.vx,slrep.vx,closeRep.repeatTime);
-                    clrep.vy=valueAveIn(clrep.vy,slrep.vy,closeRep.repeatTime);
-                  });
-
-                  
-                  closeRep.detectedCircles.forEach((ccrep)=>{
-                    if(ccrep.status==INSPECTION_STATUS.NA)return;
-                    let id = ccrep.id;
-                    let screp = singleReport.detectedCircles.find((screp)=>screp.id==id);
-                    if(screp===undefined || screp.status==INSPECTION_STATUS.NA)
-                    {
-                      ccrep.status = INSPECTION_STATUS.NA;
-                      return;
-                    }
-                    //TODO: average the arc info
-                    //the arc info uses three points
-                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
-                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
-                    ccrep.r=valueAveIn(ccrep.r,screp.r,closeRep.repeatTime);
-                    ccrep.s=valueAveIn(ccrep.s,screp.s,closeRep.repeatTime);
-                  });
-
-                  
-                  closeRep.searchPoints.forEach((ccrep)=>{
-                    if(ccrep.status==INSPECTION_STATUS.NA)return;
-                    let id = ccrep.id;
-                    let screp = singleReport.searchPoints.find((screp)=>screp.id==id);
-                    if(screp===undefined || screp.status==INSPECTION_STATUS.NA)
-                    {
-                      ccrep.status = INSPECTION_STATUS.NA;
-                      return;
-                    }
-                    //TODO: average the arc info
-                    //the arc info uses three points
-                    ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
-                    ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
-                  });
-
-                  closeRep.judgeReports.forEach((cjrep)=>{
-                    
-                    if(cjrep==INSPECTION_STATUS.NA)
-                    {
-                      cjrep.value=NaN;
-                      return;
-                    }
-                    let id = cjrep.id;
-                    let sjrep = singleReport.judgeReports.find((sjrep)=>sjrep.id==id);
-                    if(sjrep===undefined)return;
-                    if(sjrep.status==INSPECTION_STATUS.NA)
-                    {
-                      cjrep.status=INSPECTION_STATUS.NA;
-                      cjrep.value=NaN;
-                      return;
-                    }
-
-
-                    if(cjrep.value==cjrep.value)//if original value is NOT NAN
-                    {
-                      let dataDiff = sjrep.value-cjrep.value;
-                      if(cjrep.subtype===SHAPE_TYPE.measure_subtype.angle)
-                      {
-                        if(dataDiff>Math.PI)dataDiff-=Math.PI;
-                        if(dataDiff<-Math.PI)dataDiff+=Math.PI;
-                        //console.log(dataDiff);
-                      }
-                      if(dataDiff==dataDiff)
-                        cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
+              reportStatisticState.newAddedReport=[];
   
-                    }
-                    else//if original value is NAN
-                      cjrep.value=sjrep.value;
+              //Reset the current object property, then we will check if there's a new similar report object as it.
+              reportStatisticState.trackingWindow.forEach((srep_inWindow)=>{
+                srep_inWindow.isCurObj=false;
+              });
 
-                    let defInfo = newState.edit_info.list;
-                    let sj_def = defInfo.find((sj_def)=>sj_def.id==id);
-                    if(sj_def===undefined)return;
-
-
-
-
-                    if(cjrep.value !== cjrep.value)//NAN
+              //Check if the trackingWindow object is timeout(from tracking window)
+              reportStatisticState.trackingWindow = 
+                reportStatisticState.trackingWindow.filter((srep_inWindow)=>
+                  {
+                    let tdiff = currentTime_ms - srep_inWindow.time_ms;
+                    if(tdiff<statSetting.keepInTrackingTime_ms)
                     {
-                      cjrep.status=INSPECTION_STATUS.NA;
+                      return true;
                     }
-                    else if(cjrep.value<sj_def.USL && cjrep.value>sj_def.LSL)
+                    //if the time is longer than 4s then remove it from matchingWindow
+                    if(srep_inWindow.repeatTime>statSetting.minReportRepeat
+                      && srep_inWindow.headSkipTime==0)
                     {
-                      cjrep.status=INSPECTION_STATUS.SUCCESS;
+                      reportStatisticState.statisticValue = statReducer(reportStatisticState.statisticValue,srep_inWindow);
+                      
+                      reportStatisticState.historyReport.push(srep_inWindow);//And put it into the historyReport
+                      //limit historyReport length to 2000
+                      if(reportStatisticState.historyReport.length>statSetting.historyReportlimit)
+                      {
+                        reportStatisticState.historyReport=
+                        reportStatisticState.historyReport.slice(Math.max(reportStatisticState.historyReport.length - 1000, 1));
+                      }
+                      reportStatisticState.newAddedReport.push(srep_inWindow);
                     }
                     else
                     {
-                      cjrep.status=INSPECTION_STATUS.FAILURE;
+                      log.error("the current data only gets few samples, ignore",
+                      "this error case is to remove abnormal sample that's caused by air blow");
+                      log.error("repeatTime:",srep_inWindow.repeatTime)
+                      log.error("headSkipTime:",srep_inWindow.headSkipTime)
                     }
+                    return false;
                   });
+              
+              if(inspReport.reports === undefined)
+              {
+                break;
+              }
+              
+              {//Do matching in tracking_window
 
-                  //closeRep.seq.push(singleReport);//Push current report into the sequence
-                  closeRep.time_ms = currentTime_ms;
-                  closeRep.repeatTime+=1;
-                  if(closeRep.headSkipTime>0)
-                  {
-                    closeRep.headSkipTime--;
-                    //When down to zero, reset repeatTime
-                    //Zero repeatTime will let next incoming data to overwrite current data
-                    if(closeRep.headSkipTime==0)
-                    {
-                      closeRep.repeatTime=0;
-                    }
-                  }
-                  closeRep.isCurObj=true;
-                }
-                else
-                {
 
-                  //If there is no report in tracking window similar to the current report
-                  //Add into the trackingWindow
-                  let treport = dclone(singleReport);
-                  treport.time_ms = currentTime_ms;
-                  treport.add_time_ms = currentTime_ms;
-                  treport.subFeatureDefSha1=subFeatureDefSha1;
-                  treport.tag=inspOptionalTag;
-                  treport.machine_hash=machine_hash;
-                  treport.repeatTime=1;
-                  treport.headSkipTime=statSetting.headReportSkip;
+                //new inspection report >
+                //  [update/insert]> tracking_window >
+                //     [if no update after 4s]> historyReport
+                inspReport.reports.forEach((singleReport)=>{
                   
-                  //treport.seq=[singleReport];
-                  treport.isCurObj=true;
-                  reportStatisticState.trackingWindow.push(treport);
-                }
+                  let closeRep = reportStatisticState.trackingWindow.reduce((closeRep,srep_inWindow)=>{
+                    if(closeRep!==undefined)return closeRep;
+                    //Check direction consistency
+                    if(singleReport.isFlipped != srep_inWindow.isFlipped)
+                    {
+                      return closeRep;
+                    }
+
+                    //Check area consistency
+                    let areaDiff = singleReport.area/srep_inWindow.area;
+                    if(areaDiff>1.2 || areaDiff < 1/1.2)
+                    {
+                      return closeRep;
+                    }
+
+                    //Check retation consistency
+                    let angleDiff = singleReport.rotate - srep_inWindow.rotate;
+                    if(angleDiff>180)angleDiff=angleDiff-360;
+                    if(angleDiff>5 || angleDiff<-5)
+                    {
+                      return closeRep;
+                    }
+
+                    //Check position consistency
+                    let distance = Math.hypot(singleReport.cx - srep_inWindow.cx,singleReport.cy - srep_inWindow.cy);
+                  
+                    if(distance>mmpcampix/2)
+                    {
+                      return closeRep;
+                    }
+                    //If we get here, which means the information is very similar.
+                    //return/mark the current object as same report object
+                    return srep_inWindow;
+                  },undefined);
+                  function valueAveIn(ave,new_val,datCount_before)
+                  {
+
+                    ave+=(1/(datCount_before+1))*(new_val-ave);
+                    return ave;
+                  }
+                  if(closeRep !== undefined)
+                  {
+                    //blend the report with the existed report in tracking window  
+
+                    //log.info(">>>>>",closeRep,singleReport);
 
 
-              });
 
-              //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
-              //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
-              reportStatisticState.trackingWindow=
-                reportStatisticState.trackingWindow.
-                filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>=statSetting.minReportRepeat));
-            }
+                    
+                    closeRep.area=valueAveIn(closeRep.area,singleReport.area,closeRep.repeatTime);
+                    closeRep.cx=valueAveIn(closeRep.cx,singleReport.cx,closeRep.repeatTime);
+                    closeRep.cy=valueAveIn(closeRep.cy,singleReport.cy,closeRep.repeatTime);
+                    //closeRep.area+=(1/(closeRep.repeatTime+1))*(sjrep.area-cjrep.area);
 
-            
-            if(false){
-              let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
-              let measure1 = newState.edit_info.reportStatisticState.measure1;
-              if(measure1 === undefined)measure1=[];
-              measure1.push({
-                genre: "G"+Math.random(), sold:Math.random()
-              })
-              if(measure1.length>20)measure1.shift();
-              newState.edit_info.reportStatisticState=Object.assign({},
-                newState.edit_info.reportStatisticState,
-                {
-                  measure1:measure1
+                    closeRep.detectedLines.forEach((clrep)=>{
+                      
+                      if(clrep.status==INSPECTION_STATUS.NA)return;
+                      let id = clrep.id;
+                      let slrep = singleReport.detectedLines.find((slrep)=>slrep.id==id);
+                      if(slrep===undefined || slrep.status==INSPECTION_STATUS.NA)
+                      {
+                        clrep.status = INSPECTION_STATUS.NA;
+                        return;
+                      }
+                      
+                      clrep.cx=valueAveIn(clrep.cx,slrep.cx,closeRep.repeatTime);
+                      clrep.cy=valueAveIn(clrep.cy,slrep.cy,closeRep.repeatTime);
+                      clrep.vx=valueAveIn(clrep.vx,slrep.vx,closeRep.repeatTime);
+                      clrep.vy=valueAveIn(clrep.vy,slrep.vy,closeRep.repeatTime);
+                    });
+
+                    
+                    closeRep.detectedCircles.forEach((ccrep)=>{
+                      if(ccrep.status==INSPECTION_STATUS.NA)return;
+                      let id = ccrep.id;
+                      let screp = singleReport.detectedCircles.find((screp)=>screp.id==id);
+                      if(screp===undefined || screp.status==INSPECTION_STATUS.NA)
+                      {
+                        ccrep.status = INSPECTION_STATUS.NA;
+                        return;
+                      }
+                      //TODO: average the arc info
+                      //the arc info uses three points
+                      ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
+                      ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
+                      ccrep.r=valueAveIn(ccrep.r,screp.r,closeRep.repeatTime);
+                      ccrep.s=valueAveIn(ccrep.s,screp.s,closeRep.repeatTime);
+                    });
+
+                    
+                    closeRep.searchPoints.forEach((ccrep)=>{
+                      if(ccrep.status==INSPECTION_STATUS.NA)return;
+                      let id = ccrep.id;
+                      let screp = singleReport.searchPoints.find((screp)=>screp.id==id);
+                      if(screp===undefined || screp.status==INSPECTION_STATUS.NA)
+                      {
+                        ccrep.status = INSPECTION_STATUS.NA;
+                        return;
+                      }
+                      //TODO: average the arc info
+                      //the arc info uses three points
+                      ccrep.x=valueAveIn(ccrep.x,screp.x,closeRep.repeatTime);
+                      ccrep.y=valueAveIn(ccrep.y,screp.y,closeRep.repeatTime);
+                    });
+
+                    closeRep.judgeReports.forEach((cjrep)=>{
+                      
+                      if(cjrep==INSPECTION_STATUS.NA)
+                      {
+                        cjrep.value=NaN;
+                        return;
+                      }
+                      let id = cjrep.id;
+                      let sjrep = singleReport.judgeReports.find((sjrep)=>sjrep.id==id);
+                      if(sjrep===undefined)return;
+                      if(sjrep.status==INSPECTION_STATUS.NA)
+                      {
+                        cjrep.status=INSPECTION_STATUS.NA;
+                        cjrep.value=NaN;
+                        return;
+                      }
+
+
+                      if(cjrep.value==cjrep.value)//if original value is NOT NAN
+                      {
+                        let dataDiff = sjrep.value-cjrep.value;
+                        if(cjrep.subtype===SHAPE_TYPE.measure_subtype.angle)
+                        {
+                          if(dataDiff>Math.PI)dataDiff-=Math.PI;
+                          if(dataDiff<-Math.PI)dataDiff+=Math.PI;
+                          //console.log(dataDiff);
+                        }
+                        if(dataDiff==dataDiff)
+                          cjrep.value+=(1/(closeRep.repeatTime+1))*(dataDiff);
+    
+                      }
+                      else//if original value is NAN
+                        cjrep.value=sjrep.value;
+
+                      let defInfo = newState.edit_info.list;
+                      let sj_def = defInfo.find((sj_def)=>sj_def.id==id);
+                      if(sj_def===undefined)return;
+
+
+
+
+                      if(cjrep.value !== cjrep.value)//NAN
+                      {
+                        cjrep.status=INSPECTION_STATUS.NA;
+                      }
+                      else if(cjrep.value<sj_def.USL && cjrep.value>sj_def.LSL)
+                      {
+                        cjrep.status=INSPECTION_STATUS.SUCCESS;
+                      }
+                      else
+                      {
+                        cjrep.status=INSPECTION_STATUS.FAILURE;
+                      }
+                    });
+
+                    //closeRep.seq.push(singleReport);//Push current report into the sequence
+                    closeRep.time_ms = currentTime_ms;
+                    closeRep.repeatTime+=1;
+                    if(closeRep.headSkipTime>0)
+                    {
+                      closeRep.headSkipTime--;
+                      //When down to zero, reset repeatTime
+                      //Zero repeatTime will let next incoming data to overwrite current data
+                      if(closeRep.headSkipTime==0)
+                      {
+                        closeRep.repeatTime=0;
+                      }
+                    }
+                    closeRep.isCurObj=true;
+                  }
+                  else
+                  {
+
+                    //If there is no report in tracking window similar to the current report
+                    //Add into the trackingWindow
+                    let treport = dclone(singleReport);
+                    treport.time_ms = currentTime_ms;
+                    treport.add_time_ms = currentTime_ms;
+                    treport.subFeatureDefSha1=subFeatureDefSha1;
+                    treport.tag=inspOptionalTag;
+                    treport.machine_hash=machine_hash;
+                    treport.repeatTime=1;
+                    treport.headSkipTime=statSetting.headReportSkip;
+                    
+                    //treport.seq=[singleReport];
+                    treport.isCurObj=true;
+                    reportStatisticState.trackingWindow.push(treport);
+                  }
+
+
                 });
-              ;
+
+                //Remove the non-Current object with repeatTime<=1, which suggests it's a noise
+                //In other word, in order to stay, you need to be a CurObj/ repeatTime>2
+                reportStatisticState.trackingWindow=
+                  reportStatisticState.trackingWindow.
+                  filter((srep_inWindow)=>(srep_inWindow.isCurObj || srep_inWindow.repeatTime>=statSetting.minReportRepeat));
+              }
+
+              
+              if(false){
+                let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report=>report.judgeReports);
+                let measure1 = newState.edit_info.reportStatisticState.measure1;
+                if(measure1 === undefined)measure1=[];
+                measure1.push({
+                  genre: "G"+Math.random(), sold:Math.random()
+                })
+                if(measure1.length>20)measure1.shift();
+                newState.edit_info.reportStatisticState=Object.assign({},
+                  newState.edit_info.reportStatisticState,
+                  {
+                    measure1:measure1
+                  });
+                ;
+              }
             }
+            break;
+            case "camera_calibration":
+              if(report.error!==undefined &&report.error == 0)
+              {
+                newState.edit_info._obj.SetCameraParamInfo(report);
+                newState.edit_info.camera_calibration_report = action.data;
+              }
+              else
+              {
+                newState.edit_info._obj.SetCameraParamInfo(undefined);
+                newState.edit_info.camera_calibration_report = undefined;
+              }
+            break;
           }
-          break;
-          case "camera_calibration":
-            if(report.error!==undefined &&report.error == 0)
-            {
-              newState.edit_info._obj.SetCameraParamInfo(report);
-              newState.edit_info.camera_calibration_report = action.data;
-            }
-            else
-            {
-              newState.edit_info._obj.SetCameraParamInfo(undefined);
-              newState.edit_info.camera_calibration_report = undefined;
-            }
-          break;
-        }
-        
-      });
+          
+        });
+      }
+      break;
+      
+      case "stage_light_report":
+      {
+        newState.edit_info.stage_light_report=action.data;
+      }
+      break;
     }
     //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
   }
