@@ -29,6 +29,7 @@ char* _SubString_Align(const char* str,int Count);
 #define LOGD(fmt,...) //logd("%s%04d %s:d " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
 #define LOGI(fmt,...) logi("%s%04d %s:i " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
 #define LOGE(fmt,...) loge("%s%04d %s:e " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
+#define LOGS(buf,fmt,...) sprintf(buf,"%s%04d %s:$ " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__LINE__,__func__ VA_ARGS(__VA_ARGS__))
 #else
 #define LOGV(fmt,...) logv("%s %s:v " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__func__ VA_ARGS(__VA_ARGS__))
 #define LOGD(fmt,...) logd("%s %s:d " fmt "\n",_SubString_Align(__FILENAME__,LOG_FILENAME_L),__func__ VA_ARGS(__VA_ARGS__))

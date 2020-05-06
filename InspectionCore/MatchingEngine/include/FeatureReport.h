@@ -247,6 +247,24 @@ typedef struct FeatureReport_camera_calibration{
   FeatureReport_ERROR error;
 };
 
+typedef struct stage_light_grid_node_info{
+  acv_XY nodeLocation;
+  acv_XY nodeIndex;
+  float backLightMax;
+  float backLightMin;
+  float backLightMean;
+  float backLightSigma;
+
+  float imageMax;
+  float imageMin;
+  float sampRate;
+  int error;
+}stage_light_grid_node_info;
+
+typedef struct FeatureReport_stage_light_report{
+  vector<stage_light_grid_node_info> *gridInfo;
+  int targetImageDim[2];
+}FeatureReport_stage_light_report;
 
 typedef struct FeatureReport
 {
@@ -256,6 +274,7 @@ typedef struct FeatureReport
     sig360_extractor,
     sig360_circle_line,
     camera_calibration,
+    stage_light_report,
     END
   } type;
   string name;
@@ -265,6 +284,7 @@ typedef struct FeatureReport
     FeatureReport_sig360_extractor        sig360_extractor;
     FeatureReport_sig360_circle_line      sig360_circle_line;
     FeatureReport_camera_calibration      camera_calibration;
+    FeatureReport_stage_light_report      stage_light_report;
   }data;
   string info;
 }FeatureReport;

@@ -599,7 +599,7 @@ void acvVMidianFilter(acvImage *OutPic, acvImage *OriPic)
         }
 }
 
-void acvSobelFilter(acvImage *res, acvImage *src)
+void acvSobelFilter(acvImage *res, acvImage *src, int div)
 {
     int i, j;
     int TmpPixelH, TmpPixelV;
@@ -615,16 +615,17 @@ void acvSobelFilter(acvImage *res, acvImage *src)
 
             TmpPixelH = (L1[-3] + 2 * L1[0] + L1[+3]) -
                         (L3[-3] + 2 * L3[0] + L3[+3]); //Get gradient in direction ^
-            TmpPixelH = div_round(TmpPixelH, 8);       //TmpPixelH>>3;
-            if (TmpPixelH == 128)
-                TmpPixelH = 127;
+            TmpPixelH = div_round(TmpPixelH, div);       //TmpPixelH>>3;
+            if(TmpPixelH>127)TmpPixelH=127;
+            if(TmpPixelH<-127)TmpPixelH=-127;
             res->CVector[i][3 * j] = (char)TmpPixelH;
 
             TmpPixelV = (L1[-3] + 2 * L2[-3] + L3[-3]) -
                         (L1[3] + 2 * L2[3] + L3[+3]); //Get gradient in direction <
-            TmpPixelV = div_round(TmpPixelV, 8);
-            if (TmpPixelV == 128)
-                TmpPixelV = 127;
+            TmpPixelV = div_round(TmpPixelV, div);
+            
+            if(TmpPixelV>127)TmpPixelV=127;
+            if(TmpPixelV<-127)TmpPixelV=-127;
             res->CVector[i][3 * j + 1] = (char)TmpPixelV;
             res->CVector[i][3 * j + 2] = L2[0];
         }

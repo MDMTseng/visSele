@@ -1,5 +1,7 @@
 #include "FeatureReport_UTIL.h"
 #include "FeatureManager_sig360_circle_line.h"
+#include "FeatureManager_stage_light_report.h"
+
 #include "FM_camera_calibration.h"
 #include <logctrl.h>
 
@@ -270,6 +272,16 @@ int cameraCalib2JSON(cJSON* jobj,acvRadialDistortionParam param)
 }
 
 
+cJSON* genXYObject(acv_XY xy)
+{
+  
+  cJSON* jxy = cJSON_CreateObject();
+  cJSON_AddNumberToObject(jxy, "x", xy.X);
+  cJSON_AddNumberToObject(jxy, "y", xy.Y);
+  return jxy;
+}
+
+
 cJSON* MatchingReport2JSON(const FeatureReport *report )
 {
 
@@ -389,6 +401,50 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       {
         cameraCalib2JSON(report_jobj,report->data.camera_calibration.param);
       }
+
+    }
+    break;    
+    case FeatureReport::stage_light_report:
+    {
+      cJSON_AddStringToObject(report_jobj, "type", FeatureManager_stage_light_report::GetFeatureTypeName());
+
+      cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
+
+      const FeatureReport_stage_light_report &rep=report->data.stage_light_report;
+
+      {
+        acv_XY xy={X: (float)rep.targetImageDim[0],Y:(float)rep.targetImageDim[1]};
+        cJSON_AddItemToObject(report_jobj,"target_image_dim",genXYObject(xy));
+      }
+
+
+      {
+        vector<stage_light_grid_node_info> &gridInfo=*rep.gridInfo;
+
+        
+
+        cJSON* jgridInfo = cJSON_CreateArray();
+
+        for(int j=0;j<gridInfo.size();j++)
+        {
+          
+          cJSON* nodeInfo = cJSON_CreateObject();
+          
+          cJSON_AddItemToObject(nodeInfo,"location",genXYObject(gridInfo[j].nodeLocation));
+          cJSON_AddItemToObject(nodeInfo,"index",genXYObject(gridInfo[j].nodeIndex));
+          
+          cJSON_AddNumberToObject(nodeInfo, "sigma",gridInfo[j].backLightSigma);
+          cJSON_AddNumberToObject(nodeInfo, "mean",gridInfo[j].backLightMean);
+          cJSON_AddNumberToObject(nodeInfo, "error",gridInfo[j].error);
+          cJSON_AddNumberToObject(nodeInfo, "samp_rate",gridInfo[j].sampRate);
+          cJSON_AddItemToArray(jgridInfo, nodeInfo );
+        }
+
+        cJSON_AddNumberToObject(report_jobj, "error", 0);
+        cJSON_AddItemToObject(report_jobj,"grid_info",jgridInfo);
+      
+      }
+
 
     }
     break;

@@ -1,6 +1,7 @@
 #include "MatchingEngine.h"
 #include "include_priv/MatchingCore.h"
 #include "FeatureManager_sig360_circle_line.h"
+#include "FeatureManager_stage_light_report.h"
 #include "FeatureManager_platingCheck.h"
 #include "logctrl.h"
 #include <common_lib.h>
@@ -56,6 +57,12 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     LOGI("FeatureManager_binary_processing_group is the type...");
     featureSet = new FeatureManager_binary_processing_group(json_str);
   }
+  else if(strcmp(FeatureManager_stage_light_report::GetFeatureTypeName(),str) == 0)
+  {
+
+    LOGI("FeatureManager_stage_light_report is the type...");
+    featureSet = new FeatureManager_stage_light_report(json_str);
+  }
   else if(strcmp(FeatureManager_platingCheck::GetFeatureTypeName(),str) == 0)
   {
 
@@ -67,7 +74,7 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
     /*char * jstr  = cJSON_Print(root);
     LOGE("Cannot find a corresponding type:[%s]...",jstr);
     delete jstr;*/
-    LOGE("Cannot find a corresponding type...");
+    LOGE("Cannot find a corresponding type (%s)...",str);
   }
   cJSON_Delete(root);
   return AddMatchingFeature(featureSet);

@@ -23,7 +23,7 @@ void acvIIROrder1FilterX(acvImage *res,acvImage *src,int shifter);
 void acvIIROrder1FilterY(acvImage *res,acvImage *src,int shifter);
 void acvIIROrder1Filter(acvImage *BuffPic,acvImage *Pic,int shifter);
 void acvMasking(acvImage *OutPic,acvImage *OriPic,unsigned char size,char** Mask);
-void acvSobelFilter(acvImage *res,acvImage *src);
+void acvSobelFilter(acvImage *res,acvImage *src, int div=8);
 void acvSobelFilterX(acvImage *res,acvImage *src);
 void acvHarrisCornorResponse(acvImage *buff,acvImage *src);
 void acvDistanceTransform_Chamfer(acvImage *src,int dist,int distX);
