@@ -181,11 +181,11 @@ int LoadIMGFile(acvImage *ret_img,const  char *filename)
   int retVal;
   if(dot)
   {
-    if(strcmp(dot, ".bmp")==0)
+    if(strcmp(dot, ".bmp")==0||strcmp(dot, ".BMP")==0)
     {
       return acvLoadBitmapFile(ret_img,filename);
     }
-    if(strcmp(dot, ".png")==0)
+    if(strcmp(dot, ".png")==0||strcmp(dot, ".PNG")==0)
     {
       return LoadPNGFile(ret_img,filename);
     }
