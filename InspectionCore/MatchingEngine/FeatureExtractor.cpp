@@ -5,51 +5,46 @@
 #include <common_lib.h>
 #include <FeatureManager_binary_processing.h>
 
-
-
-FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *json_str): FeatureManager_binary_processing(json_str)
+FeatureManager_sig360_extractor::FeatureManager_sig360_extractor(const char *json_str) : FeatureManager_binary_processing(json_str)
 {
-  root= NULL;
+  root = NULL;
   int ret = reload(json_str);
-  if(ret)
-    throw std::invalid_argument( "Error:FeatureManager_sig360_extractor failed... " );
+  if (ret)
+    throw std::invalid_argument("Error:FeatureManager_sig360_extractor failed... ");
 }
 
 int FeatureManager_sig360_extractor::parse_jobj()
 {
-  cJSON *subObj = cJSON_GetObjectItem(root,"type");
-  const char *type_str = subObj?subObj->valuestring:NULL;
-  subObj = cJSON_GetObjectItem(root,"ver");
-  const char *ver_str = subObj?subObj->valuestring:NULL;
-  const double *mmpp  = JFetch_NUMBER(root,"mmpp");
-  if(type_str==NULL||ver_str==NULL||mmpp==NULL)
+  cJSON *subObj = cJSON_GetObjectItem(root, "type");
+  const char *type_str = subObj ? subObj->valuestring : NULL;
+  subObj = cJSON_GetObjectItem(root, "ver");
+  const char *ver_str = subObj ? subObj->valuestring : NULL;
+  const double *mmpp = JFetch_NUMBER(root, "mmpp");
+  if (type_str == NULL || ver_str == NULL || mmpp == NULL)
   {
-    LOGE("ptr: type:<%p>  ver:<%p>  mmpp(number):<%p>",type_str,ver_str,mmpp);
+    LOGE("ptr: type:<%p>  ver:<%p>  mmpp(number):<%p>", type_str, ver_str, mmpp);
     return -1;
   }
-  LOGI("type:<%s>  ver:<%s>  mmpp(number):<%f>",type_str,ver_str,*mmpp);
-
-
+  LOGI("type:<%s>  ver:<%s>  mmpp(number):<%f>", type_str, ver_str, *mmpp);
 
   return 0;
 }
 
-
 int FeatureManager_sig360_extractor::reload(const char *json_str)
 {
-  if(root)
+  if (root)
   {
     cJSON_Delete(root);
   }
 
   root = cJSON_Parse(json_str);
-  if(root==NULL)
+  if (root == NULL)
   {
     LOGE("cJSON parse failed");
     return -1;
   }
   int ret_err = parse_jobj();
-  if(ret_err!=0)
+  if (ret_err != 0)
   {
     reload("");
     return -2;
@@ -61,70 +56,64 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 {
   acvImage *buff = &_buff;
   buff->ReSize(img);
-  vector<acv_LabeledData> &ldData=*this->_ldData;
+  vector<acv_LabeledData> &ldData = *this->_ldData;
   signature.resize(360);
   detectedCircles.resize(0);
   detectedLines.resize(0);
-  int idx=-1;
-  int maxArea=0;
-  for(int i=1;i<ldData.size();i++)
+  int idx = -1;
+  int maxArea = 0;
+  for (int i = 1; i < ldData.size(); i++)
   {
-    if(ldData[i].area<=0)continue;
-    if(maxArea<ldData[i].area)
+    if (ldData[i].area <= 0)
+      continue;
+    if (maxArea < ldData[i].area)
     {
       idx = i;
-      maxArea=ldData[i].area;
+      maxArea = ldData[i].area;
     }
   }
-  if(idx==-1)
+  if (idx == -1)
   {
     LOGE("Cannot find one component for extractor");
     report.data.sig360_extractor.error =
-    FeatureReport_ERROR::ONLY_ONE_COMPONENT_IS_ALLOWED;
+        FeatureReport_ERROR::ONLY_ONE_COMPONENT_IS_ALLOWED;
     return -1;
   }
-  acv_XY center=ldData[idx].Center;
-  LOGI("Find the component => idx:%d",idx);
-  LOGI(">>>Center X:%f Y:%f...",ldData[idx].Center.X,ldData[idx].Center.Y);
-  LOGI(">>>LTBound X:%f Y:%f...",ldData[idx].LTBound.X,ldData[idx].LTBound.Y);
-  LOGI(">>>RBBound X:%f Y:%f...",ldData[idx].RBBound.X,ldData[idx].RBBound.Y);
+  acv_XY center = ldData[idx].Center;
+  LOGI("Find the component => idx:%d", idx);
+  LOGI(">>>Center X:%f Y:%f...", ldData[idx].Center.X, ldData[idx].Center.Y);
+  LOGI(">>>LTBound X:%f Y:%f...", ldData[idx].LTBound.X, ldData[idx].LTBound.Y);
+  LOGI(">>>RBBound X:%f Y:%f...", ldData[idx].RBBound.X, ldData[idx].RBBound.Y);
   acvContourCircleSignature(img, ldData[idx], idx, signature);
-  acvCloneImage( img,buff, -1);
+  acvCloneImage(img, buff, -1);
   //MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
 
-  LOGI(">>>detectedCircles:%d",detectedCircles.size());
-  LOGI(">>>detectedLines:%d",detectedLines.size());
+  LOGI(">>>detectedCircles:%d", detectedCircles.size());
+  LOGI(">>>detectedLines:%d", detectedLines.size());
 
-
-  
-  {//convert pixel unit to mm
-    float mmpp=bacpac->sampler->mmpp;
-    for(int i=0;i<signature.size();i++)
+  { //convert pixel unit to mm
+    float mmpp = bacpac->sampler->mmpp;
+    for (int i = 0; i < signature.size(); i++)
     {
-      signature[i].X*=mmpp;
-
+      signature[i].X *= mmpp;
     }
-    ldData[idx].LTBound=acvVecMult(ldData[idx].LTBound,mmpp);
-    ldData[idx].RBBound=acvVecMult(ldData[idx].RBBound,mmpp);
-    ldData[idx].Center=acvVecMult(ldData[idx].Center,mmpp);
-    ldData[idx].area*=mmpp*mmpp;//area
+    ldData[idx].LTBound = acvVecMult(ldData[idx].LTBound, mmpp);
+    ldData[idx].RBBound = acvVecMult(ldData[idx].RBBound, mmpp);
+    ldData[idx].Center = acvVecMult(ldData[idx].Center, mmpp);
+    ldData[idx].area *= mmpp * mmpp; //area
   }
 
-
-
-
   {
-    report.data.sig360_extractor.LTBound=ldData[idx].LTBound;
-    report.data.sig360_extractor.RBBound=ldData[idx].RBBound;
-    report.data.sig360_extractor.Center=ldData[idx].Center;
-    report.data.sig360_extractor.area=ldData[idx].area;
+    report.data.sig360_extractor.LTBound = ldData[idx].LTBound;
+    report.data.sig360_extractor.RBBound = ldData[idx].RBBound;
+    report.data.sig360_extractor.Center = ldData[idx].Center;
+    report.data.sig360_extractor.area = ldData[idx].area;
 
     report.type = FeatureReport::sig360_extractor;
     report.data.sig360_extractor.signature = &signature;
     report.data.sig360_extractor.detectedCircles = &detectedCircles;
     report.data.sig360_extractor.detectedLines = &detectedLines;
   }
-
 
 #if 0
   for(int i=0;i<detectedCircles.size();i++)
@@ -188,25 +177,24 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   return 0;
 }
 
-const FeatureReport* FeatureManager_sig360_extractor::GetReport()
+const FeatureReport *FeatureManager_sig360_extractor::GetReport()
 {
   report.type = FeatureReport::sig360_extractor;
 
   report.data.sig360_extractor.signature = &signature;
   report.data.sig360_extractor.detectedCircles = &detectedCircles;
   report.data.sig360_extractor.detectedLines = &detectedLines;
-  
+
   report.data.sig360_extractor.mmpp = bacpac->sampler->mmpp;
   report.data.sig360_extractor.sampler = bacpac->sampler;
 
   return &report;
 }
 
-
 void FeatureManager_sig360_extractor::ClearReport()
 {
   report.type = FeatureReport::sig360_extractor;
-  report.data.sig360_extractor.error=FeatureReport_ERROR::NONE;
+  report.data.sig360_extractor.error = FeatureReport_ERROR::NONE;
   signature.resize(0);
   detectedCircles.resize(0);
   detectedLines.resize(0);
