@@ -114,12 +114,12 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
     LOGI("FeatureManager_sig360_extractor is the type...");
     newFeature = new FeatureManager_sig360_extractor(cJSON_Print(subFeature));
   }
-  else if(strcmp(FM_camera_calibration::GetFeatureTypeName(),str) == 0)
-  {
+  // else if(strcmp(FM_camera_calibration::GetFeatureTypeName(),str) == 0)
+  // {
 
-    LOGI("FeatureManager_camera_calibration is the type...");
-    newFeature = new FM_camera_calibration(cJSON_Print(subFeature));
-  }
+  //   LOGI("FeatureManager_camera_calibration is the type...");
+  //   newFeature = new FM_camera_calibration(cJSON_Print(subFeature));
+  // }
   else
   {
     LOGE("Cannot find a corresponding type...");
@@ -206,7 +206,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     {
       binaryFeatureBundle[i]->setOriginalImage(img);
       binaryFeatureBundle[i]->setLabeledData(&ldData);
-      binaryFeatureBundle[i]->setRadialDistortionParam(param);
+      binaryFeatureBundle[i]->setBacPac(bacpac);
       binaryFeatureBundle[i]->FeatureMatching(&binary_img);
     }
   return 0;
@@ -230,7 +230,7 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.data.binary_processing_group.reports = &sub_reports;
   report.data.binary_processing_group.labeledData = &ldData;
   report.data.binary_processing_group.subFeatureDefSha1 = subFeatureDefSha1;
-  report.data.binary_processing_group.mmpp = param.mmpb2b/param.ppb2b;
+  report.data.binary_processing_group.mmpp = bacpac->sampler->mmpp;
   return &report;
 }
 
@@ -332,7 +332,7 @@ int FeatureManager_group::FeatureMatching(acvImage *img)
   for(int i=0;i<featureBundle.size();i++)
   {
     //featureBundle[i]->param;
-    featureBundle[i]->setRadialDistortionParam(param);
+    featureBundle[i]->setBacPac(bacpac);
     featureBundle[i]->FeatureMatching(img);
   }
   return 0;

@@ -308,8 +308,10 @@ int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f,FeatureRepor
         return -2;
       }
       acv_LineFit line = (*report.detectedLines)[idx].line;
-      acv_XY eneg= acvVecRadialDistortionApply(line.end_neg,param);
-      acv_XY epos= acvVecRadialDistortionApply(line.end_pos,param);
+      acv_XY eneg= line.end_neg;
+      bacpac->sampler->ideal2img(&eneg);
+      acv_XY epos= line.end_pos;
+      bacpac->sampler->ideal2img(&epos);
 
       acv_XY ppvec = acvVecNormalize(acvVecSub(eneg,epos));
       *vec = line.line.line_vec;
@@ -1630,8 +1632,8 @@ int FeatureManager_sig360_circle_line::parse_jobj()
 
   if(0){
     //It's in parsing stage, there is no cameraParam yet.
-    float ppmm =param.ppb2b/param.mmpb2b;//pixel 2 mm
-    LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
+    float ppmm =bacpac->sampler->mmpp;//pixel 2 mm
+    //LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
     //Convert mm to Pixel unit
     for(int i=0;i<featureLineList.size();i++)
     {
@@ -1945,7 +1947,7 @@ bool ptInfo_tmp_comp(const ContourFetch::ptInfo & a, const ContourFetch::ptInfo 
 
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
-  float ppmm =param.ppb2b/param.mmpb2b;//pixel per mm
+  float ppmm =bacpac->sampler->mmpp;//pixel per mm
   acvImage *buff_=&_buff;
   vector<acv_LabeledData> &ldData=*this->_ldData;
   int grid_size = 50;
@@ -2054,7 +2056,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
         continue;
       }
-      float mmpp = param.mmpb2b/param.ppb2b;//mm per pixel
+      float mmpp = bacpac->sampler->mmpp;//mm per pixel
       FeatureReport_sig360_circle_line_single singleReport=
       {
           .detectedCircles=reportDataPool[count].detectedCircles,
@@ -2075,7 +2077,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       };
       //singleReport.Center=acvVecRadialDistortionRemove(singleReport.Center,param);
       
-      acv_XY calibCen = acvVecRadialDistortionRemove(singleReport.Center,param);
+      acv_XY calibCen = singleReport.Center;
+      bacpac->sampler->img2ideal(&calibCen);
+      
       singleReport.Center=calibCen;
       singleReport.Center=acvVecMult(singleReport.Center,mmpp);
       singleReport.LTBound=acvVecMult(singleReport.LTBound,mmpp);
@@ -2115,13 +2119,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       edge_grid.RESET();
       
-      acvRadialDistortionParam param=this->param;
-      
       float thres = OTSU_Threshold(*smoothedImg,&ldData[i],3);
       LOGV("OTSU_Threshold:%f",thres);
 
       extractLabeledContourDataToContourGrid(originalImage,labeledBuff,i,ldData[i],thres,
-        grid_size,edge_grid,scanline_skip,param);
+        grid_size,edge_grid,scanline_skip,bacpac);
       
       
       if(drawDBG_IMG)//Draw debug image(curve and straight line)
@@ -2266,7 +2268,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         // Also, the point info in Contour grid are post-distortion removal. So the region will be misaligned.
         // So the solution is to apply acvVecRadialDistortionRemove for the init line_cand, that will compensate the problem.
         // Ideally, the line vector and region width should be compensated as well, but.... if the lens is really that bad, you better find a really good reason to use that.
-        line_cand.line_anchor=acvVecRadialDistortionRemove(line_cand.line_anchor,param);
+        
+        bacpac->sampler->img2ideal(&line_cand.line_anchor);
 
         float MatchingMarginX=line->MatchingMarginX*ppmm;
         float initMatchingMargin=line->initMatchingMargin*ppmm;
@@ -2431,7 +2434,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             if(0)for(int i=0;i<s_points.size();i++)
             {
               if(s_points[i].tmp>distThres)break;
-              acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
+              acv_XY p =s_points[i].pt;
+              
+              bacpac->sampler->ideal2img(&p);
+
               int X = round(p.X);
               int Y = round(p.Y);
 
@@ -2711,7 +2717,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         vector<ContourFetch::ptInfo> &s_points = m_sections[0].section;
         for(int i=0;i<s_points.size();i++)
         {
-          acv_XY p =acvVecRadialDistortionApply(s_points[i].pt,param);
+          acv_XY p =s_points[i].pt;
+          bacpac->sampler->ideal2img(&p);
           int X = round(p.X);
           int Y = round(p.Y);
           {
@@ -2967,7 +2974,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
 
   {//convert pixel unit to mm
-    float mmpp=param.mmpb2b/param.ppb2b;
+    float mmpp=bacpac->sampler->mmpp;
 
   }
 

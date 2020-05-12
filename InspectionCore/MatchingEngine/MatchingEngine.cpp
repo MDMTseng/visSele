@@ -85,7 +85,7 @@ int MatchingEngine::FeatureMatching(acvImage *img)
 {
   for(int i=0;i<featureBundle.size();i++)
   {
-    featureBundle[i]->setRadialDistortionParam(param);
+    featureBundle[i]->setBacPac(bacpac);
     featureBundle[i]->FeatureMatching(img);
   }
 

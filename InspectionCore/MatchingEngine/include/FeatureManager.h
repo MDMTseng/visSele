@@ -7,17 +7,23 @@ using namespace std;
 
 #include "cJSON.h"
 
+
+typedef struct FeatureManager_BacPac
+{
+  ImageSampler *sampler;
+}FeatureManager_BacPac;
+
 class FeatureManager {
   protected:
   FeatureReport report;
+  FeatureManager_BacPac *bacpac;
   cJSON *root;
   virtual int parse_jobj()=0;
-  acvRadialDistortionParam param;
   acvImage _buff;
 public :
   //static bool check(cJSON *root);
   FeatureManager(const char *json_str){};
-  void setRadialDistortionParam(acvRadialDistortionParam param){this->param=param;};
+  void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img)=0;
   virtual const FeatureReport* GetReport(){return NULL;};

@@ -96,11 +96,17 @@ int GaussianDistFitting(float *io_mean,float *io_sigma, int *pdf,int *cdf,int in
   float mean = *io_mean;
   float sigma= *io_sigma;
   int iter=0;
+
+  //LOGI("iter:%d sigma:%f mean:%f",iter,sigma,mean);
   for(iter=0;iter<iterMax;iter++)
   {
+
+    if(sigma<1)sigma=1;
     float mean_nxt=0;
     float sigma_nxt=0;
     float wsum=0;
+    float swsum=0;
+    //LOGI("iter:%d sigma:%f mean:%f",iter,sigma,mean);
    //float cutOffWindow=NormalDist(2*sigma,0,sigma);
     for(int i=0;i<infoL;i++)
     {
@@ -110,12 +116,13 @@ int GaussianDistFitting(float *io_mean,float *io_sigma, int *pdf,int *cdf,int in
       float wprob=window*prob;
 
       mean_nxt+=i*wprob;
-      sigma_nxt+=(i-mean)*(i-mean)*wprob;
-      wsum+=wprob;
-    }
+      sigma_nxt+=(i-mean)*(i-mean)*prob;
 
+      wsum+=wprob;
+      swsum+=prob;
+    }
     mean_nxt/=wsum;
-    sigma_nxt=sqrt(sigma_nxt/wsum);
+    sigma_nxt=sqrt(sigma_nxt/swsum);
     float diffX=abs(mean-mean_nxt)+abs(sigma_nxt-sigma);
     mean=mean_nxt;
     sigma=sigma_nxt;
@@ -126,6 +133,7 @@ int GaussianDistFitting(float *io_mean,float *io_sigma, int *pdf,int *cdf,int in
 
 
 
+  //LOGI("iter:%d sigma:%f mean:%f",iter,sigma,mean);
   *io_sigma=sigma;
   *io_mean=mean;
 
@@ -233,7 +241,7 @@ int backLightBlockCalc(acvImage *img,int X,int Y,int W,int H,stage_light_grid_no
   int maxSampCount=0;
   int iterCount=1;
   int samplingSpace = H*W;
-  int samplingCount=samplingSpace*100/iterCount/100;
+  int samplingCount=samplingSpace*100/iterCount/100/2;
   for(int iter=0;iter<iterCount;iter++)
   {
 
@@ -259,7 +267,9 @@ int backLightBlockCalc(acvImage *img,int X,int Y,int W,int H,stage_light_grid_no
       totalSampleCount++;
     }
     //LOGI("totalSampleCount:%d samplingCount:%d",totalSampleCount,samplingCount);
-    if(totalSampleCount<(samplingCount/2))
+
+    //LOGI("totalSampleCount:%d samplingCount:%d X:%d,Y:%d",totalSampleCount,samplingCount,X,Y);
+    if(totalSampleCount<(samplingCount/20))
     {
       continue;
     }
@@ -306,6 +316,15 @@ int backLightBlockCalc(acvImage *img,int X,int Y,int W,int H,stage_light_grid_no
         maxSum = segSum;
       }
     }
+    // if(X==0 && Y==0)
+    // {
+    //   for(int k=0;k<256;k++)
+
+    //     LOGI("CDF[%d]:%d",k,CDF[k]);
+      
+
+    //   LOGI("mC:%d mS:%d",maxSumCentral,maxSum);
+    // }
 
     //LOGI("maxSumCentral:%d segMaxSum:%d",maxSumCentral,maxSum);
 
@@ -316,7 +335,6 @@ int backLightBlockCalc(acvImage *img,int X,int Y,int W,int H,stage_light_grid_no
     float fsigma=segWidth/5;
     //LOGI("u:%f sigma:%f",fu,fsigma);
     GaussianDistFitting(&fu,&fsigma,backLightHisto,CDF,histoSteps,iterationMax);
-
     if(fsigma_min>fsigma)
     {
       fsigma_min=fsigma;

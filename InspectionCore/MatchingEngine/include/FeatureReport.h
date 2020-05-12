@@ -7,6 +7,7 @@
 #include "acvImage_BasicTool.hpp"
 #include <vector>
 #include <string>
+#include "ImageSampler.h"
 
 
 #define FeatureManager_NAME_LENGTH 32
@@ -234,7 +235,7 @@ typedef struct FeatureReport_sig360_extractor{
   float rotate;
   bool  isFlipped;
   float mmpp;
-  acvRadialDistortionParam calib_param;
+  ImageSampler *sampler;
   
   
   FeatureReport_ERROR error;
@@ -242,7 +243,7 @@ typedef struct FeatureReport_sig360_extractor{
 
 typedef struct FeatureReport_camera_calibration{
 
-  acvRadialDistortionParam param;
+  ImageSampler *sampler;
   
   FeatureReport_ERROR error;
 };

@@ -98,7 +98,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 
   
   {//convert pixel unit to mm
-    float mmpp=param.mmpb2b/param.ppb2b;
+    float mmpp=bacpac->sampler->mmpp;
     for(int i=0;i<signature.size();i++)
     {
       signature[i].X*=mmpp;
@@ -196,8 +196,8 @@ const FeatureReport* FeatureManager_sig360_extractor::GetReport()
   report.data.sig360_extractor.detectedCircles = &detectedCircles;
   report.data.sig360_extractor.detectedLines = &detectedLines;
   
-  report.data.sig360_extractor.mmpp = param.mmpb2b/param.ppb2b;
-  report.data.sig360_extractor.calib_param = param;
+  report.data.sig360_extractor.mmpp = bacpac->sampler->mmpp;
+  report.data.sig360_extractor.sampler = bacpac->sampler;
 
   return &report;
 }

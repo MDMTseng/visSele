@@ -1123,7 +1123,7 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   return 0;
 }
 
-void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,int grid_size,ContourFetch &edge_grid,int scanline_skip,acvRadialDistortionParam param)
+void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,int grid_size,ContourFetch &edge_grid,int scanline_skip,FeatureManager_BacPac *bacpac)
 {
 
   edge_grid.RESET();
@@ -1211,21 +1211,22 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               edge_grid.tmpXYSeq[k].pt=ret_point_opt;
               edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
 
-              acv_XY xy =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
-              if(param.angOffsetTable!=NULL)//Do angled offset
-              {
-                sobel=acvVecNormalize(sobel);
-                float angle = atan2(sobel.Y,sobel.X);
-                if(angle<0)angle+=M_PI*2;
+              //bacpac->sampler.
+              acv_XY xy=edge_grid.tmpXYSeq[k].pt;
+              
+              bacpac->sampler->img2ideal(&xy);// =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
+              
+              sobel=acvVecNormalize(sobel);
+              float angle = atan2(sobel.Y,sobel.X);
+              if(angle<0)angle+=M_PI*2;
 
-                float offset=param.angOffsetTable->sampleAngleOffset(angle);
-                // printf("ang:%f  XY:%f,%f offset:%f\n",
-                //   angle*180/M_PI,
-                //   edge_grid.tmpXYSeq[k].pt.X,
-                //   edge_grid.tmpXYSeq[k].pt.Y,
-                //   offset);
-                xy=acvVecAdd(xy,acvVecMult(sobel,offset));
-              }
+              float offset=bacpac->sampler->angOffsetTable->sampleAngleOffset(angle);
+              // printf("ang:%f  XY:%f,%f offset:%f\n",
+              //   angle*180/M_PI,
+              //   edge_grid.tmpXYSeq[k].pt.X,
+              //   edge_grid.tmpXYSeq[k].pt.Y,
+              //   offset);
+              xy=acvVecAdd(xy,acvVecMult(sobel,offset));
               edge_grid.tmpXYSeq[k].pt =xy;
             }
             

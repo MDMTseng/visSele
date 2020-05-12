@@ -21,6 +21,7 @@
 
 #include <MicroInsp_FType.hpp>
 #include <Ext_Util_API.hpp>
+#include <ImageSampler.h>
 
 
 class MicroInsp_FType:public SOCK_JSON_Flow

@@ -106,6 +106,12 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
     LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
     img.useExtBuffer(m_pFrameBuffer,maxBufferSize,width,height);
+
+    int retx= CameraSetExtTrigShutterType(m_hCamera,EXT_TRIG_EXP_GRR);
+    LOGI("CameraSetExtTrigShutterType: ret:%d",retx);
+    
+
+
 	  CameraPlay(m_hCamera);
     return CameraLayer::ACK;
 }

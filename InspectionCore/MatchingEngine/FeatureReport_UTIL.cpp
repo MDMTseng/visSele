@@ -257,16 +257,11 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   return report_jobj;
 }
 
-int cameraCalib2JSON(cJSON* jobj,acvRadialDistortionParam param)
+int cameraCalib2JSON(cJSON* jobj,ImageSampler *samp)
 {
   {
-    cJSON_AddNumberToObject(jobj, "K0", param.K0);
-    cJSON_AddNumberToObject(jobj, "K1", param.K1);
-    cJSON_AddNumberToObject(jobj, "K2", param.K2);
-    cJSON_AddNumberToObject(jobj, "ppb2b", param.ppb2b);
-    cJSON_AddNumberToObject(jobj, "mmpb2b", param.mmpb2b);
-    cJSON_AddNumberToObject(jobj, "RNormalFactor", param.RNormalFactor);
-    cJSON_AddItemToObject(jobj, "calibrationCenter", acv_acv_XY2JSON(param.calibrationCenter));
+    cJSON_AddNumberToObject(jobj, "ppb2b", 1);
+    cJSON_AddNumberToObject(jobj, "mmpb2b", samp->mmpp);
   }
   return 0;
 }
@@ -349,7 +344,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       {
         cJSON* cam_param = cJSON_CreateObject();
         cJSON_AddItemToObject(report_jobj, "cam_param", cam_param);
-        cameraCalib2JSON(cam_param,report->data.sig360_extractor.calib_param);
+        cameraCalib2JSON(cam_param,report->data.sig360_extractor.sampler);
       }
       
       const vector<acv_CircleFit> *detectedCircle =
@@ -391,19 +386,19 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
 
     }
     break;
-    case FeatureReport::camera_calibration:
-    {
-      cJSON_AddStringToObject(report_jobj, "type", FM_camera_calibration::GetFeatureTypeName());
+    // case FeatureReport::camera_calibration:
+    // {
+    //   cJSON_AddStringToObject(report_jobj, "type", FM_camera_calibration::GetFeatureTypeName());
 
-      cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
-      cJSON_AddNumberToObject(report_jobj, "error", report->data.camera_calibration.error);
-      if(report->data.camera_calibration.error==FeatureReport_ERROR::NONE)
-      {
-        cameraCalib2JSON(report_jobj,report->data.camera_calibration.param);
-      }
+    //   cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
+    //   cJSON_AddNumberToObject(report_jobj, "error", report->data.camera_calibration.error);
+    //   if(report->data.camera_calibration.error==FeatureReport_ERROR::NONE)
+    //   {
+    //     cameraCalib2JSON(report_jobj,report->data.camera_calibration.sampler);
+    //   }
 
-    }
-    break;    
+    // }
+    // break;    
     case FeatureReport::stage_light_report:
     {
       cJSON_AddStringToObject(report_jobj, "type", FeatureManager_stage_light_report::GetFeatureTypeName());

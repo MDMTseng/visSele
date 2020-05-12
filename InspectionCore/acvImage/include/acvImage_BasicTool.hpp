@@ -93,102 +93,6 @@ typedef struct acv_LineFit
 
 
 
-
-class acvCalibMapUtil
-{
-    public:
-
-    static float NumRatio(float a,float b,float ratio);
-    static int sample_vec(float* map,int width,int height,float mapfX,float mapfY,float sampleXY[2]);
-
-    static int map_vec(float* map,int width,int height,float mapfX,float mapfY,float xyVec[4], float *opt_det=NULL);
-    static float locateMapPosition(float* map,int width,int height,float tar_x,float tar_y,float mapSeed_ret[2],float maxError=0.01,int iterC=5);
-
-};
-class acvCalibMap
-{
-    float* fwdMap;
-    //the xy idx is in corrected mapping
-    //fwdMap(x,y) is the xy coord from original image
-    int downSizedMapW,downSizedMapH;
-    float* invMap;
-    int iw,ih;
-
-    int downScale=1;
-    float fmapScale=1;
-    public:
-    int fullFrameW,fullFrameH;
-    acv_XY origin_offset;  
-    acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
-    void generateInvMap(int iw_,int ih_);
-    float* generateExtInvMap(int iw_,int ih_);
-    int fwdMapDownScale(int dscale_idx);
-    void deleteInvMap();
-    ~acvCalibMap();
-    int i2c(float coord[2],bool useInvMap=true);
-    int c2i(float coord[2]);
-        
-    int i2c(acv_XY &coord,bool useInvMap=true);
-    int c2i(acv_XY &coord);
-};
-
-
-typedef struct angledOffsetG{
-  float angle_rad;
-  acv_XY angle_vec;
-  float offset;
-}angledOffsetG;
-
-class angledOffsetTable
-{
-  public:
-  std::vector<angledOffsetG> table;
-  bool sorted=false;
-  float preOffset=0;
-
-  int size();
-
-  int findRange(float angle_rad);
-
-  int findRange(acv_XY Vec);
-  float sampleAngleOffset(float angle_rad);
-
-  float sampleAngleOffset(acv_XY Vec);
-  int find(float angle_rad);
-  
-  void push_back(angledOffsetG aog);
-
-  void makeSymmetic();
-  
-  void applyPreOffset(float pOffset);
-  void sort();
-};
-
-
-
-
-typedef struct acvRadialDistortionParam{
-    acv_XY calibrationCenter;
-    double RNormalFactor;
-    double K0,K1,K2;
-	//r = r_image/RNormalFactor
-    //C1 = K1/K0
-    //C2 = K2/K0
-	//r"=r'/K0
-    //Forward: r' = r*(K0+K1*r^2+K2*r^4)
-    //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
-    //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
-    //r/r'=r*K0/r"
-    double ppb2b;//pixels per block 2 block	
-    double mmpb2b;//the distance between block and block
-    acvCalibMap* map;
-    angledOffsetTable* angOffsetTable;
-}acvRadialDistortionParam;
-
-
-acv_XY acvVecRadialDistortionRemove(acv_XY distortedVec,acvRadialDistortionParam param);//Forward
-acv_XY acvVecRadialDistortionApply(acv_XY Vec,acvRadialDistortionParam param);//Backward
-
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);
@@ -212,6 +116,7 @@ int acvLoadBitmapFile(acvImage *img,const char *filename);
 int acvSaveBitmapFile(const char *filename,unsigned char* pixData,int width,int height);
 int acvSaveBitmapFile(const char *filename,acvImage *img);
 #define div_round(dividend, divisor) (((int)(dividend) + ((int)(divisor) >>1)) / (int)(divisor))
+#define sh_round(dividend, shift) (((int)(dividend) + ((int)(1) <<(shift-1))) >>(shift))
 void acvImageAdd(acvImage *src,int num);
 #define DoubleRoundInt(Num) ((int)round(Num))
 void acvInnerFramePixCopy(acvImage *Pic,int FrameX);

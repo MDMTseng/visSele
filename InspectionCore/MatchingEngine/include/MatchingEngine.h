@@ -13,10 +13,10 @@ using namespace std;
 class MatchingEngine {
 protected:
   vector<FeatureManager*> featureBundle;
-  acvRadialDistortionParam param;
+  FeatureManager_BacPac *bacpac;
 public:
   int ResetFeature();
-  void setRadialDistortionParam(acvRadialDistortionParam param){this->param=param;};
+  void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   int AddMatchingFeature(const char *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
   int FeatureMatching(acvImage *img);
