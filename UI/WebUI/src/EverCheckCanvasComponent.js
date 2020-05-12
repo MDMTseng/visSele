@@ -2683,7 +2683,7 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto{
   draw()
   {
 
-    console.log(this.ERROR_LOCK, this.edit_DB_info);
+    //console.log(this.ERROR_LOCK, this.edit_DB_info);
     if(this.ERROR_LOCK || this.edit_DB_info==null )
     {
       return;
@@ -2747,8 +2747,10 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto{
             y:node.location.y*mmpp,
           }
           
-          
-          this.drawpoint(ctx, pos,this.rUtil.getPointSize()*(2*node.sigma),
+          let sigma=node.sigma;
+          if(sigma>8)
+            sigma=8;
+          this.drawpoint(ctx, pos,this.rUtil.getPointSize()*(2*sigma),
             "rgb("+node.mean+","+node.mean+","+node.mean+")")
           //console.log(this.stage_light_report)
         })

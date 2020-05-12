@@ -1,4 +1,4 @@
-import React , { useState,useEffect,useContext } from 'react';
+import React , { useState,useEffect,useContext,useRef } from 'react';
 import * as logX from 'loglevel';
 let log = logX.getLogger("InspectionUI");
 
@@ -128,14 +128,40 @@ const CanvasComponent_rdx = connect(
     mapDispatchToProps_CanvasComponent)(CanvasComponent);
 
 
+function stage_light_report_maxMean(stage_light_report)
+{
+  console.log(stage_light_report);
+  let maxMean=stage_light_report.grid_info.reduce((max,slr)=>{
 
+    return (slr.mean>max)?slr.mean:max;
+    if(slr.mean!=slr.mean)return mixMean;
+    if(mixMean.mean>max)
+    {
+      return max;
+    }
+  },0);
+  return maxMean;
+}
 
 export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) {
   const [imageInfo, setImageInfo] = useState(undefined);
   const [inspReport, setInspReport] = useState(undefined);
   const todoList = useSelector(state => state.todoList);
-  useEffect(() => {
+
+  let staticObj = useRef({
+    targetBri:200,
+    briPreDiffSign:0,
+    adjAlpha:1,
+    fCount:0,
+    finalRep:undefined
+  });
+  let c=staticObj.current;
+  function ImgStageBackLightCalib()
+  {
     
+    clearTimeout(c.triggerTimeout);
+    c.triggerTimeout=null;
+    console.log(">>>>");
     BPG_Channel( "CI", 0, 
       {
         _PGID_:10004,
@@ -145,34 +171,71 @@ export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) 
           "grid_size":[10,10],
           "nonBG_thres":20,
           "nonBG_spread_thres":180
-        },
-        //frame_count:1
+        }
       },undefined,
       {
         resolve:(darr,mainFlow)=>{
+          if(c.triggerTimeout===undefined)return;
           mainFlow(darr);
-          //console.log(darr);
+          console.log(darr);
           let reportInfo = darr.find(data=>data.type==="RP");
           //setInspReport(reportInfo);
+          if(reportInfo==undefined)return;
+          c.fCount++;
+          if((c.fCount%2)!=0)return;
+          c.finalRep=reportInfo.data;
 
-          if(reportInfo!==undefined&&  reportInfo.data.frames_left==0)
+          let maxMean=
+            stage_light_report_maxMean(reportInfo.data);
+          if(maxMean<50)maxMean=50;
+          //console.log(reportInfo);
+
+          if(c.briPreDiffSign*(maxMean-c.targetBri)<0)
+          {//There is a diff sign crossing 
+            c.adjAlpha*=0.8;
+          }
+
+          c.briPreDiffSign=(maxMean-c.targetBri);
+
+          let exposure=reportInfo.data.exposure_time;
+          if(exposure<100)exposure=100;
+          exposure*=
+            (((1-c.adjAlpha)*1+(c.adjAlpha)*c.targetBri/maxMean));
+          console.log(exposure);
+          BPG_Channel("ST",0,{CameraSetting:{exposure}});
+
+
+          if(false&&reportInfo!==undefined&&  reportInfo.data.frames_left==0)
           {
             //BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
-            var enc = new TextEncoder();
-            BPG_Channel("SV",0,
-                {filename:"data/stageLightReport.json"},
-                enc.encode(JSON.stringify(reportInfo.data, null, 2)))
+            // var enc = new TextEncoder();
+            // BPG_Channel("SV",0,
+            //     {filename:"data/stageLightReport.json"},
+            //     enc.encode(JSON.stringify(finalCalibrationReport, null, 2)))
+
+            // if(onCalibFinished!==undefined)
+            // {
+
+            // }
           }
         },
         reject:(e)=>{
-        
+          clearTimeout(c.triggerTimeout);
+          c.triggerTimeout=null;
         }
       }
       );
-    return () => {
+  }
+  useEffect(() => {
+    BPG_Channel("ST",0,{CameraSetting:{exposure:1000}});
+    // ImgStageBackLightCalib();
+    ImgStageBackLightCalib();
+    return ()=>{
+      onCalibFinished(c.finalRep);
+      //console.log(c.finalRep);
       BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+    }
 
-    };
   }, [])
 
 

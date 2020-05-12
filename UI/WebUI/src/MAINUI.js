@@ -768,15 +768,15 @@ class APPMain extends React.Component{
               {(mmpp===undefined)?null:
                 <Button  key="mmpp"  size="large"  onClick={()=>{
                   
-                  let LoadCameraSetup_Path = "data/";
-                  //LoadCameraSetup_Path+="S0886/";
+                  let CameraSettingFromFile_Path = "data/";
+                  //CameraSettingFromFile_Path+="S0886/";
                   
                   this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
-                    {LoadCameraSetup:LoadCameraSetup_Path});
+                    {CameraSettingFromFileSetup:CameraSettingFromFileSetup_Path});
                     
                     
                   this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
-                    {filename:LoadCameraSetup_Path+"default_camera_param.json"});
+                    {filename:CameraSettingFromFileSetup_Path+"default_camera_param.json"});
 
                 }}><Icon type="camera" /> {"mmpp:"+mmpp}</Button>}
  */}
@@ -871,7 +871,18 @@ class APPMain extends React.Component{
           BackLightCalib:{
             icon:"scan",
             content:<BackLightCalibUI_rdx 
-              BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} />,
+              BPG_Channel={(...args)=>this.props.ACT_WS_SEND(this.props.WS_ID,...args)} 
+              onCalibFinished={(finalReport)=>{
+
+                console.log(">>>>>>>>>")
+                setTimeout(()=>{
+                  var enc = new TextEncoder();
+                  this.props.ACT_WS_SEND(this.props.WS_ID,"SV",0,
+                    {filename:"data/stageLightReport.json"},
+                    enc.encode(JSON.stringify(finalReport, null, 2)))
+                  console.log(finalReport)
+                },100)
+              }}/>,
             onSelected:genericMenuItemCBsCB
           },
           SDD:{

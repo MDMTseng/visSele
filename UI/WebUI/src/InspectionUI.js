@@ -1936,7 +1936,7 @@ class APP_INSP_MODE extends React.Component {
           text={""}
           onClick={() => 
             this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
-            {LoadCameraSetup:"data/"})
+            {CameraSettingFromFile:"data/"})
           }/>);
         
         const menu_ = (

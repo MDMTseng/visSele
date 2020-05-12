@@ -86,7 +86,7 @@ class APPMasterX extends React.Component{
       data:pkts.map(pkt=>BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act=>act!==undefined),
       //rawData:req_pkt
     };
-    console.log(pkts,acts);
+    //console.log(pkts,acts);
     this.props.DISPATCH(acts)
   }
 

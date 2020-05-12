@@ -703,7 +703,7 @@ export class BPG_FileBrowser_proto extends React.Component{
 
       {
         (this.props.searchDepth>=0 || this.props.searchDepth===undefined)?
-          <Input.Search key={"Search"} className="width3"  allowClear disable={true}
+          <Input.Search key={"Search"} className="width3"  allowClear
           size="small" value={this.state.searchText} placeholder="Search" 
           onChange={(evt)=>{
             if(this.state.searchFolderStruct===undefined)
