@@ -107,7 +107,9 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d",m_pFrameBuffer,m_hCamera,width,height);
     img.useExtBuffer(m_pFrameBuffer,maxBufferSize,width,height);
 
-    int retx= CameraSetExtTrigShutterType(m_hCamera,EXT_TRIG_EXP_GRR);
+    //EXT_TRIG_EXP_GRR might cause the image brightness from manual trigger much brighter
+    //TODO: do extensive EXT_TRIG_EXP_GRR test in the future..
+    int retx= CameraSetExtTrigShutterType(m_hCamera,EXT_TRIG_EXP_STANDARD);
     LOGI("CameraSetExtTrigShutterType: ret:%d",retx);
     
 
