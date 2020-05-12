@@ -119,12 +119,12 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status SetExposureTime(double time_ms)
+    virtual CameraLayer::status SetExposureTime(double time_us)
     {
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status GetExposureTime(double *ret_time_ms)
+    virtual CameraLayer::status GetExposureTime(double *ret_time_us)
     {
         return CameraLayer::NAK;
     }

@@ -13,6 +13,9 @@ class CameraLayer_BMP : public CameraLayer{
     std::vector <int> gaussianNoiseTable_M;
 
     protected:
+    const float exp_time_100ExpUs=5000;
+    float exp_time_us;
+    float a_gain;
     float ROI_X,ROI_Y,ROI_W,ROI_H;
     int MIRROR_X,MIRROR_Y;
     public:
@@ -22,6 +25,10 @@ class CameraLayer_BMP : public CameraLayer{
     std::string GetCurrentFileName(){return this->fileName;}
     status SetMirror(int Dir,int en);
     status SetROI(float x, float y, float w, float h,int zw,int zh);
+    
+    status SetAnalogGain(int gain);
+    status SetExposureTime(double time_us);
+    status GetExposureTime(double *ret_time_us);
 };
 
 
@@ -47,6 +54,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status LoadNext();
     status TriggerMode(int mode);
     ~CameraLayer_BMP_carousel();
+
 };
 
 

@@ -17,6 +17,8 @@ CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLa
         float x = sqrt(-2 * log(u)) * cos(2 * M_PI * v);
         gaussianNoiseTable_M[i]=(int)(x*1000000);//million scale up
     }
+    a_gain=1;
+    SetExposureTime(exp_time_100ExpUs);
 }
 
 CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
@@ -102,7 +104,8 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       int newH = tmpH;
       int newW = tmpW;
 
-
+      int tExp=(1<<10)*exp_time_us*a_gain/exp_time_100ExpUs;
+      LOGI("tExp:%d",tExp);
       img.ReSize(newW,newH);
       for(int i=0;i<img.GetHeight();i++)//Add noise
       {
@@ -112,44 +115,58 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         {
           int lj=j+newX;
           if(lj<0 || lj>=img_load.GetWidth())continue;
-          img.CVector[i][j*3]=img_load.CVector[li][lj*3];
-          img.CVector[i][j*3+1]=img_load.CVector[li][lj*3+1];
-          img.CVector[i][j*3+2]=img_load.CVector[li][lj*3+2];
+          // img.CVector[i][j*3]=img_load.CVector[li][lj*3];
+          // img.CVector[i][j*3+1]=img_load.CVector[li][lj*3+1];
+          // img.CVector[i][j*3+2]=img_load.CVector[li][lj*3+2];
+
+
+          int d = (img_load.CVector[li][lj*3]*tExp)>>10;
+          
+          if(i==img.GetHeight()/2&&j==img_load.GetWidth()/2)
+            LOGI("%d>>>%d",img.CVector[li][lj*3],d);
+
+          if(d<0)d=0;
+          else if(d>255)d=255;
+          
+          img.CVector[li][lj*3] = 
+          img.CVector[li][lj*3+1] =
+          img.CVector[li][lj*3+2] = d;
+
         }
       }
 
-        if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
-        {
-            for(int j=0;j<img.GetWidth();j++)
-            {
-                int u = rand()%(gaussianNoiseTable_M.size());
-                int x = gaussianNoiseTable_M[u] * 10/1000000 + 0;
+      if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
+      {
+          for(int j=0;j<img.GetWidth();j++)
+          {
+              int u = rand()%(gaussianNoiseTable_M.size());
+              int x = gaussianNoiseTable_M[u] * 3/1000000 + 0;
 
-                int d = img.CVector[i][j*3];
-                d+=x;
-                if(d<0)d=0;
-                else if(d>255)d=255;
-                
-                img.CVector[i][j*3] = d;
-                img.CVector[i][j*3+1] = d;
-                img.CVector[i][j*3+2] = d;
+              int d = img.CVector[i][j*3];
+              d+=x;
+              if(d<0)d=0;
+              else if(d>255)d=255;
+              
+              img.CVector[i][j*3] = d;
+              img.CVector[i][j*3+1] = d;
+              img.CVector[i][j*3+2] = d;
 
-            }
-        }
+          }
+      }
 
 
-        ret_status=ACK;
-        struct timeval tp;
-        gettimeofday(&tp, NULL);
-        long int _100us = tp.tv_sec * 10000 + tp.tv_usec / 100; //get current timestamp in milliseconds
+      ret_status=ACK;
+      struct timeval tp;
+      gettimeofday(&tp, NULL);
+      long int _100us = tp.tv_sec * 10000 + tp.tv_usec / 100; //get current timestamp in milliseconds
 
-        CameraLayer::frameInfo fi_={
-          timeStamp_100us:(uint64_t)_100us,
-          width:(uint32_t)img.GetWidth(),
-          height:(uint32_t)img.GetHeight(),
-        };
-        fi = fi_;
-        callback(*this,CameraLayer::EV_IMG,context);
+      CameraLayer::frameInfo fi_={
+        timeStamp_100us:(uint64_t)_100us,
+        width:(uint32_t)img.GetWidth(),
+        height:(uint32_t)img.GetHeight(),
+      };
+      fi = fi_;
+      callback(*this,CameraLayer::EV_IMG,context);
     }
     m.unlock();
     return ret_status;
@@ -178,6 +195,31 @@ CameraLayer::status CameraLayer_BMP::SetMirror(int Dir,int en)
   return CameraLayer::ACK;
 }
 
+
+CameraLayer::status CameraLayer_BMP::SetAnalogGain(int gain)
+{
+  a_gain=gain;
+  return CameraLayer::ACK;
+}
+
+
+CameraLayer::status CameraLayer_BMP::SetExposureTime(double time_us)
+{
+  //default 5ms as 100% exposure
+  exp_time_us=time_us;
+
+  return CameraLayer::ACK;
+}
+
+CameraLayer::status CameraLayer_BMP::GetExposureTime(double *ret_time_us)
+{
+  if(ret_time_us)
+  {
+    *ret_time_us=exp_time_us;
+    return CameraLayer::ACK;
+  }
+  return CameraLayer::NAK;
+}
 
 CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName):
     CameraLayer_BMP(cb,context)

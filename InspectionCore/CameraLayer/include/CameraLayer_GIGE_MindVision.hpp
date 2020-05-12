@@ -49,8 +49,8 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     CameraLayer::status SetFrameRateMode(int mode);
     CameraLayer::status GetAnalogGain(int *ret_gain);
-    CameraLayer::status SetExposureTime(double time_ms);
-    CameraLayer::status GetExposureTime(double *ret_time_ms);
+    CameraLayer::status SetExposureTime(double time_us);
+    CameraLayer::status GetExposureTime(double *ret_time_us);
     void ContTriggerThread();
     void ContTriggerThreadTermination();
     acvImage* GetFrame();

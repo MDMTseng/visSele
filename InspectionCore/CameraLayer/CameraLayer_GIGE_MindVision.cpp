@@ -356,9 +356,9 @@ CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_gain)
     return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetExposureTime(double time_ms)
+CameraLayer::status CameraLayer_GIGE_MindVision::SetExposureTime(double time_us)
 {
-    if (CameraSetExposureTime(m_hCamera,time_ms)!= CAMERA_STATUS_SUCCESS)
+    if (CameraSetExposureTime(m_hCamera,time_us)!= CAMERA_STATUS_SUCCESS)
     {
 		LOGE("Failed...");
         return CameraLayer::NAK;
