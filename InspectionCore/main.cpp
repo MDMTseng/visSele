@@ -300,16 +300,23 @@ int X=-1,int Y=-1,int W=-1, int H=-1)
 
       if(1)
       {
-        float coord[]={(float)src_j,(float)src_i};
         float bri =0;
         if(sampler)
         {
+          float coord[]={(float)src_j,(float)src_i};
           bri=sampler->sampleImage_IdealCoord(&src,coord);
+          if(bri>255)bri=255;
+          BSum+=bri;
+          GSum+=bri;
+          RSum+=bri;
+        }
+        else
+        {
+          BSum=src.CVector[src_i][(src_j)*3+0];
+          GSum=src.CVector[src_i][(src_j)*3+1];
+          RSum=src.CVector[src_i][(src_j)*3+2];
         }
         
-        BSum+=bri;
-        GSum+=bri;
-        RSum+=bri;
         
       }
       else if(1)
