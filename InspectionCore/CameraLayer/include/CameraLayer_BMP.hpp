@@ -42,7 +42,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     std::string folderName;
     std::string fileName;
     std::vector<std::string> files_in_folder;
-
+    bool isThreadWorking;
     void ContTriggerThread();
     public:
     

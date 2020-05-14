@@ -227,6 +227,7 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void*
     updateFolder(folderName);
     fileIdx=0;
     cameraThread=NULL;
+    isThreadWorking=false;
 }
 
 CameraLayer_BMP_carousel::~CameraLayer_BMP_carousel()
@@ -278,13 +279,14 @@ CameraLayer::status CameraLayer_BMP_carousel::Trigger()
 {
     imageTakingCount+=1;
     
-    LOGV("imageTakingCount:%d",imageTakingCount);
+    LOGI("imageTakingCount:%d",imageTakingCount);
     if(imageTakingCount==0)imageTakingCount=1;
     return TriggerMode(-1);
 }
 
 void CameraLayer_BMP_carousel::ContTriggerThread( )
 {
+  isThreadWorking=true;
     //The logic here is you always stay in the loop,
     //and execute LoadNext when imageTakingCount >0
     int idle_loop_interval_ms =100;
@@ -330,6 +332,7 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
     }
     //ThreadTerminationFlag = 0;
 
+  isThreadWorking=false;
 }
 
 
@@ -356,7 +359,14 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
     }
     if(mode==0 || mode==-1 )
     {
+      LOGI("ThreadTerminationFlag:%d cameraThread:%p>>>",ThreadTerminationFlag,cameraThread);
         ThreadTerminationFlag = 0;
+        if(isThreadWorking==false && cameraThread!=NULL)//Try to clean up the thread
+        {
+          cameraThread->join();
+          delete cameraThread;
+          cameraThread = NULL;
+        }
         if(cameraThread == NULL)
         {
             cameraThread = new std::thread(&CameraLayer_BMP_carousel::ContTriggerThread, this);
