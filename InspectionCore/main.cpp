@@ -2640,7 +2640,7 @@ CameraLayer *getCamera(int initCameraType)
   LOGV("TriggerMode(1)");
   camera->TriggerMode(1);
   camera->SetExposureTime(12570.5110);
-  camera->SetAnalogGain(2);
+  camera->SetAnalogGain(1);
 
   // LOGV("Loading data/default_camera_setting.json....");
   // int ret = LoadCameraSetting(*camera, "data/default_camera_setting.json");

@@ -104,7 +104,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       int newH = tmpH;
       int newW = tmpW;
 
-      int tExp=(1<<10)*exp_time_us*a_gain/exp_time_100ExpUs;
+      int tExp=(1<<11)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       img.ReSize(newW,newH);
       for(int i=0;i<img.GetHeight();i++)//Add noise
@@ -120,10 +120,10 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           // img.CVector[i][j*3+2]=img_load.CVector[li][lj*3+2];
 
 
-          int d = (img_load.CVector[li][lj*3]*tExp)>>10;
+          int d = (img_load.CVector[li][lj*3]*tExp)>>11;
           
-          if(i==img.GetHeight()/2&&j==img_load.GetWidth()/2)
-            LOGI("%d>>>%d",img.CVector[li][lj*3],d);
+          // if(i==img.GetHeight()/2&&j==img_load.GetWidth()/2)
+          //   LOGI("%d>>>%d",img.CVector[li][lj*3],d);
 
           if(d<0)d=0;
           else if(d>255)d=255;
