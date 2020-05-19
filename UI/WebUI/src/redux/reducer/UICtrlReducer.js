@@ -401,6 +401,11 @@ function StateReducer(newState, action) {
 
             switch (report.type) {
               case "sig360_extractor":
+                newState.edit_info = Object.assign({}, newState.edit_info);
+                console.log(action.data);
+                newState.edit_info._obj.Setsig360info(action.data);
+                newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
+              break;
               case "sig360_circle_line":
                 {
                   newState.edit_info = { ...newState.edit_info };
@@ -755,6 +760,17 @@ function StateReducer(newState, action) {
               newState.edit_info.mouseLocation = action.data;
             }
             break;
+
+            
+          case UISEV.SIG360_Report_Update:
+            case UISEV.SIG360_Extraction:
+              newState.edit_info = Object.assign({}, newState.edit_info);
+              console.log(action.data);
+              newState.edit_info._obj.Setsig360info(action.data);
+              newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
+              break;
+  
+  
           case UISEV.Inspection_Report:
             {
               EVENT_Inspection_Report(newState, action);
@@ -926,15 +942,6 @@ function StateReducer(newState, action) {
               });
             }
             break;
-          case UISEV.SIG360_Report_Update:
-          case UISEV.SIG360_Extraction:
-            newState.edit_info = Object.assign({}, newState.edit_info);
-            console.log(action.data);
-            newState.edit_info._obj.Setsig360info(action.data);
-            newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
-            break;
-
-
 
           case DefConfAct.EVENT.Shape_List_Update:
             newState.edit_info._obj.SetShapeList(action.data);

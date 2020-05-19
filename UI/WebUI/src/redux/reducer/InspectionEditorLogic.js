@@ -106,7 +106,7 @@ export class InspectionEditorLogic {
     }
     this.inspreport.reports.forEach(report => report.judgeReports.forEach((measure) => {
       let measureDef = this.shapeList.find((feature) => feature.id == measure.id);
-      console.log(measure, measureDef);
+      //console.log(measure, measureDef);
       if (measureDef === undefined || measure.status === INSPECTION_STATUS.NA) {
         measure.detailStatus = MEASURERSULTRESION.NA;
       }
@@ -552,7 +552,7 @@ export class InspectionEditorLogic {
         case SHAPE_TYPE.measure:
           {
             eObject.inspection_value = inspAdjObj.value;
-            console.log(eObject);
+            //console.log(eObject);
           }
           break;
       }

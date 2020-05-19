@@ -54,6 +54,7 @@ int FeatureManager_sig360_extractor::reload(const char *json_str)
 
 int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 {
+  report.bacpac=bacpac;
   acvImage *buff = &_buff;
   buff->ReSize(img);
   vector<acv_LabeledData> &ldData = *this->_ldData;
@@ -92,7 +93,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   LOGI(">>>detectedLines:%d", detectedLines.size());
 
   { //convert pixel unit to mm
-    float mmpp = bacpac->sampler->mmpp;
+    float mmpp = bacpac->sampler->mmpP_ideal();
     for (int i = 0; i < signature.size(); i++)
     {
       signature[i].X *= mmpp;
@@ -185,8 +186,8 @@ const FeatureReport *FeatureManager_sig360_extractor::GetReport()
   report.data.sig360_extractor.detectedCircles = &detectedCircles;
   report.data.sig360_extractor.detectedLines = &detectedLines;
 
-  report.data.sig360_extractor.mmpp = bacpac->sampler->mmpp;
-  report.data.sig360_extractor.sampler = bacpac->sampler;
+  report.data.sig360_extractor.mmpp = bacpac->sampler->mmpP_ideal();;
+  //report.data.sig360_extractor.sampler = bacpac->sampler;
 
   return &report;
 }

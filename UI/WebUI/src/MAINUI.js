@@ -852,8 +852,8 @@ class APPMain extends React.Component {
           content: <BackLightCalibUI_rdx
             BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
             onCalibFinished={(finalReport) => {
-
-              console.log(">>>>>>>>>")
+              console.log(">>>>>>>>>",finalReport)
+              if(finalReport===undefined)return;
               setTimeout(() => {
                 var enc = new TextEncoder();
                 this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,

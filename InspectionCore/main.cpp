@@ -72,7 +72,6 @@ RingBuf<image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSize
 //main.cpp  1061 main:v K: 0.989226 0.0101698 0.000896734 RNormalFactor:1296
 //main.cpp  1062 main:v Center: 1295,971
 
-acvImage proBG;
 
 FeatureManager_BacPac default_bacpac = {0};
 // acvRadialDistortionParam default_bacpac={
@@ -503,13 +502,11 @@ BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
   return info;
 }
 
-int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *ret_param)
+int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
 {
 
   if (ret_param == NULL)
-    return -1;
-  ret_param->mmpp = *JFetEx_NUMBER(root, "reports[0].mmpb2b") / (*JFetEx_NUMBER(root, "reports[0].ppb2b"));
-
+    return -1;  
   if (root == NULL)
     return -1;
 
@@ -565,13 +562,13 @@ int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *r
     angledOffsetTable *angOffsetTable = ret_param->angOffsetTable;
     int testN = 100;
 
-    LOGI("size:%d", angOffsetTable->size());
-    for (int i = 0; i < testN; i++)
-    {
-      float angle = 2 * M_PI * i / testN;
-      float offset = angOffsetTable->sampleAngleOffset(angle);
-      LOGI("a:%f o:%f", angle * 180 / M_PI, offset);
-    }
+    LOGI("angOffsetTable.size:%d", angOffsetTable->size());
+    // for (int i = 0; i < testN; i++)
+    // {
+    //   float angle = 2 * M_PI * i / testN;
+    //   float offset = angOffsetTable->sampleAngleOffset(angle);
+    //   LOGI("a:%f o:%f", angle * 180 / M_PI, offset);
+    // }
     //exit(-1);
   }
 
@@ -596,7 +593,9 @@ int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *r
         throw new std::runtime_error("ReadByte return NULL");
       }
       PerifProt::Pak p1 = PerifProt::parse(bDat);
-      parseCM_info(p1, ret_param->map);
+      int pret=parseCM_info(p1, ret_param->map);
+      LOGI("parseCM_info::ret:%d", pret);
+
       delete bDat;
     }
     else
@@ -604,6 +603,13 @@ int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *r
       //throw new std::runtime_error("ReadByte return NULL");
       //return -1;
     }
+  }
+  
+  //ret_param->mmpp = *JFetEx_NUMBER(root, "reports[0].mmpb2b") / (*JFetEx_NUMBER(root, "reports[0].ppb2b"));
+  if(JFetEx_NUMBER(root, "reports[0].mmpb2b")!=NULL)
+  {
+    ret_param->map->calibmmpB=*JFetEx_NUMBER(root, "reports[0].mmpb2b");
+    LOGI("Override calibmmpB:%f",ret_param->map->calibmmpB);
   }
 
   do
@@ -639,7 +645,7 @@ int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *r
     }
 
     stageLightInfo->RESET();
-    double *expTime_us = JFetch_NUMBER(sl_json, "exposure_time");
+    double *expTime_us = JFetch_NUMBER(sl_json, "cam_param.exposure_time");
 
     if (expTime_us)
     {
@@ -653,6 +659,13 @@ int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *r
     {
       stageLightInfo->tarImgW = *imDimW;
       stageLightInfo->tarImgH = *imDimH;
+    }
+
+    
+    double *p_back_light_target = JFetch_NUMBER(sl_json, "cam_param.back_light_target");
+    if(p_back_light_target)
+    {
+      stageLightInfo->back_light_target=*p_back_light_target;
     }
 
     stageLightInfo->BG_nodes.clear();
@@ -683,9 +696,9 @@ int jObject2acvRadialDistortionParam(char *dirName, cJSON *root, ImageSampler *r
       //   idx,info.mean,idx,info.index.X,idx,info.index.Y,info.location.X,idx,info.location.Y,stageLightInfo->BG_nodes.size());
     }
 
+    LOGE("exposure_time:");
     stageLightInfo->nodesIdxWHSetup();
 
-    LOGE("exposure_time:%f", *expTime_us);
   } while (false);
   return 0;
 }
@@ -835,7 +848,7 @@ int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
 
     //json
 
-    int ret = jObject2acvRadialDistortionParam(folder_name, json, ret_cam_param);
+    int ret = loadCameraCalibParam(folder_name, json, ret_cam_param);
     if (ret)
       executionError = true;
   }
@@ -979,8 +992,27 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     //     self->SendData(datCH_BPG);
     // }
     bpg_dat.pgID = dat->pgID;
+    
 
+    // using Ms = std::chrono::milliseconds;
+    // for (int retryC=0;!mainThreadLock.try_lock_for(Ms(100));retryC++) //Lock and wait 100 ms
+    // {
+    //   LOGE("try lock:%d",retryC);
+    //   //Still locked
+    //   if (retryC > 1) //If the flag is closed then, exit
+    //   {
+    //     LOGE("retryC");
+    //     exit(-1);
+    //   }
+    // }
+
+
+    LOGI("Locking");
     mainThreadLock.lock();
+
+    LOGI("Locked");
+
+
     if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
@@ -1145,6 +1177,27 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           else if (strcmp(itemType, "XXXX") == 0)
           {
             cJSON_AddStringToObject(retArr, itemType, "XXXX");
+          }
+          else if (strcmp(itemType, "camera_info") == 0)
+          {
+
+            cJSON* cam_info_jarr = cJSON_CreateArray();
+            
+            
+            //LOGI("CAM_INFO..\n%s",default_bacpac.cam->getCameraJsonInfo());
+            cJSON* cam_1 = cJSON_Parse(cb->camera->getCameraJsonInfo().c_str());
+            if(cam_1==NULL)
+            {
+              cam_1=cJSON_CreateObject();
+            }
+            cJSON_AddNumberToObject(cam_1, "mmpp",default_bacpac.sampler->mmpP_ideal());
+            cJSON_AddNumberToObject(cam_1, "cur_width",default_bacpac.sampler->map->fullFrameW);
+            cJSON_AddNumberToObject(cam_1, "cur_height",default_bacpac.sampler->map->fullFrameH);
+            
+            cJSON_AddItemToArray(cam_info_jarr,cam_1);
+            
+            cJSON_AddItemToObject(retArr,  itemType, cam_info_jarr);
+
           }
         }
 
@@ -1418,6 +1471,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         cb->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
+        int frameCount=(int)cb->cameraFramesLeft;
         LOGI("cb->cameraFramesLeft:%d frame_count:%p", cb->cameraFramesLeft, frame_count);
 
         if (json == NULL)
@@ -1490,8 +1544,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
           if (dat->tl[0] == 'C')
           {
-            camera->TriggerMode(0);
-            camera->Trigger();
+            if(false&&frameCount==1)
+            {
+              camera->TriggerMode(1);//Manual trigger
+            }
+            else
+            {
+              camera->TriggerMode(0);
+            }
+            
             doImgProcessThread = false;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
@@ -1944,9 +2005,15 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
 
   if (default_bacpac.sampler)
   {
+    stageLightParam *stageLightInfo=default_bacpac.sampler->stageLightInfo;
+    LOGI("SetExposureTime from bacpac:%f us", stageLightInfo->exposure_us);
+    camera->SetExposureTime(stageLightInfo->exposure_us);
+    //stageLightInfo->back_light_target=back_light_target;
+    
 
-    LOGI("SetExposureTime from bacpac:%f us", default_bacpac.sampler->stageLightInfo->exposure_us);
-    camera->SetExposureTime(default_bacpac.sampler->stageLightInfo->exposure_us);
+    LOGI("mmpB:%f  calibPpB:%f", default_bacpac.sampler->map->calibmmpB, default_bacpac.sampler->map->calibPpB);
+    LOGI("scaled ppb2b:%f", default_bacpac.sampler->map->calibmmpB/default_bacpac.sampler->mmpP_ideal());
+    LOGI("mmpp:%.9f", default_bacpac.sampler->mmpP_ideal());
   }
 
   return 0;
@@ -1961,7 +2028,7 @@ int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, c
   return ret;
 }
 
-int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *bacpac, int repeatTime = 1)
+int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *bacpac,CameraLayer* cam, int repeatTime = 1)
 {
 
   LOGI("============w:%d h:%d====================", test1->GetWidth(), test1->GetHeight());
@@ -1970,6 +2037,7 @@ int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *ba
     return -1;
   }
   clock_t t = clock();
+  bacpac->cam=cam;
   for (int i = 0; i < repeatTime; i++)
   {
     me.setBacPac(bacpac);
@@ -1989,7 +2057,7 @@ int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, c
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
-  ImgInspection(me, test1, &default_bacpac, repeatTime);
+  ImgInspection(me, test1, &default_bacpac,NULL, repeatTime);
   return 0;
 }
 
@@ -2100,6 +2168,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe);
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
+  
+    LOGI("===============\n");
   if (type != CameraLayer::EV_IMG)
     return;
   static clock_t pframeT;
@@ -2227,11 +2297,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
     //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
 
-    ret = ImgInspection(matchingEng, &imgStackRes, bacpac, 1);
+    ret = ImgInspection(matchingEng, &imgStackRes, bacpac,imgPipe->camLayer, 1);
   }
   else
   {
-    ret = ImgInspection(matchingEng, &capImg, bacpac, 1);
+    ret = ImgInspection(matchingEng, &capImg, bacpac,imgPipe->camLayer, 1);
     // if(stackingC==0)
     // {
 
@@ -2338,10 +2408,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         cJSON *jobj = matchingEng.FeatureReport2Json(report);
         AttachStaticInfo(jobj, cb);
         double expTime = NAN;
-        if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
-        {
-          cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
-        }
+        // if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
+        // {
+        //   cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
+        // }
         char *jstr = cJSON_Print(jobj);
         cJSON_Delete(jobj);
 
@@ -2594,7 +2664,7 @@ int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
   return CL_bmpc == NULL ? -1 : 0;
 }
 
-CameraLayer *getCamera(int initCameraType)
+CameraLayer *getCamera(int initCameraType=0)
 {
 
   CameraLayer *camera = NULL;
@@ -2622,7 +2692,7 @@ CameraLayer *getCamera(int initCameraType)
       camera = NULL;
     }
   }
-  LOGV("camera ptr:%p", camera);
+  LOGI("camera ptr:%p", camera);
 
   if (camera == NULL && (initCameraType == 0 || initCameraType == 2))
   {
@@ -2689,6 +2759,7 @@ int mainLoop(bool realCamera = false)
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       camera = getCamera(CamInitStyle);
     }
+    default_bacpac.cam=camera;
     LOGI("DatCH_BPG1_0 camera :%p", camera);
 
     CameraSettingFromFile(camera, "data/");
@@ -2784,6 +2855,23 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
   if (ret < 0)
     return -5;
 
+  PerifProt::Pak CB_pak, OB_pak;
+  PerifProt::Pak MB_pak;
+  {
+    ret = PerifProt::fetch(&pakCM, "CB", &CB_pak);
+    if (ret < 0)
+      return -6;
+    ret = PerifProt::fetch(&pakCM, "OB", &OB_pak);
+    if (ret < 0)
+      return -7;
+
+    ret = PerifProt::fetch(&pakCM, "MB", &MB_pak);
+    if (ret < 0)
+      return -7;
+  }
+
+  LOGI("CB:%f  OB:%f",((double *)CB_pak.data)[0],((double *)OB_pak.data)[0]);
+
   uint64_t *dim = (uint64_t *)DM_pak.data;  //the original dimension
   uint64_t *dimS = (uint64_t *)DS_pak.data; //Downscaled dimension(the forwardCalibMap)
   double *MX_data = (double *)MX_pak.data;
@@ -2791,18 +2879,11 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
 
   setObj->RESET();
   setObj->SET(MX_data, MY_data, dimS[0], dimS[1], dim[0], dim[1]);
-  //cm_x.generateInvMap(dim[0],dim[1]);
-  // for(int i=0;i<7;i++)
-  // {
-  //   float coord[]={1017,  377};
-  //   cm_x->i2c(coord);
-  //   LOGI("i2c:={%f,%f}",coord[0],coord[1]);
-  //   cm_x->c2i(coord);
-  //   LOGI("c2i:={%f,%f}",coord[0],coord[1]);
-  //   //cm_x->fwdMapDownScale(1);
-  //   //cm_x.generateInvMap(dim[0],dim[1]);
-  // }
-  //exit(0);
+
+  setObj->calibPpB=((double *)CB_pak.data)[0];
+  setObj->calibmmpB=((double *)MB_pak.data)[0];
+  
+  LOGI("calibmmpB:%f",setObj->calibmmpB);
   return 0;
 }
 
@@ -2810,15 +2891,19 @@ int testCode()
 {
   {
 
+    CameraLayer *cam=getCamera(0);
     int ret = LoadCameraCalibrationFile("data/default_camera_param.json", default_bacpac.sampler);
 
-    acv_XY loca = {X : 0, Y : 0};
+
+    LOGI("mmpB:%f  calibPpB:%f", default_bacpac.sampler->map->calibmmpB, default_bacpac.sampler->map->calibPpB);
+    LOGI("mmpp:%.9f", default_bacpac.sampler->mmpP_ideal());
+    acv_XY loca = {X : 10, Y : 10};
     LOGI("0__ %f  %f ___", loca.X, loca.Y);
     default_bacpac.sampler->img2ideal(&loca);
     LOGI("1__ %f  %f ___", loca.X, loca.Y);
     default_bacpac.sampler->ideal2img(&loca);
     LOGI("2__ %f  %f ___", loca.X, loca.Y);
-
+    return -1;
     char *string = ReadText("data/stageLightCalib.json");
     matchingEng.ResetFeature();
     matchingEng.AddMatchingFeature(string);
@@ -2826,7 +2911,7 @@ int testCode()
     acvImage bw_img;
     ret = LoadIMGFile(&bw_img, "data/BG.BMP");
 
-    ret = ImgInspection(matchingEng, &bw_img, &default_bacpac, 1);
+    ret = ImgInspection(matchingEng, &bw_img, &default_bacpac,NULL, 1);
     const FeatureReport *report = matchingEng.GetReport();
     delete (string);
 

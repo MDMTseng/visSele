@@ -1792,7 +1792,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
 
         let ret_res = this.inspectionResult(report);
-        console.log(ret_res, report);
+        //console.log(ret_res, report);
         switch (ret_res) {
           case INSPECTION_STATUS.NA:
             ctx.fillStyle = this.colorSet.inspection_NA;
@@ -1843,7 +1843,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
 
         listClone.forEach((eObj) => {
-          log.info(eObj.inspection_status);
+          //log.info(eObj.inspection_status);
           switch (eObj.inspection_status) {
             case INSPECTION_STATUS.NA:
               eObj.color = this.colorSet.color_NA;
@@ -1872,7 +1872,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
           }
         });
-        console.log(listClone);
+        //console.log(listClone);
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
       }
     });

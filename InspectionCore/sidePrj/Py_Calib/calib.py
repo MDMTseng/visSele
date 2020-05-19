@@ -184,7 +184,7 @@ def findMainVecInfo(cornors,seedIdx=None):
     for i in range(0,6):
         distRatio = distArr[i+2]["dist"]/distArr[i+0]["dist"]
         
-        print("distRatio:",distRatio)
+        #print("distRatio:",distRatio)
         if(minDistRatio>distRatio):
             minDistRatio=distRatio
             minDistRatioIdx=i
@@ -252,7 +252,7 @@ def close2one(num):
 
     
 
-def genCornorsCoord(cornors):
+def genCornorsCoord(cornors,coordEstThres=0.9):
 
     mainVecInfo=None
     interCount=0
@@ -277,68 +277,120 @@ def genCornorsCoord(cornors):
     vec1=mainVecInfo["vec1"]["vec"]
     vec2=mainVecInfo["vec2"]["vec"]
 
-    print("\n\nvec1:   ",vec1,"\nvec2:   ",vec2,"\n\n")
     magVec1=math.hypot(vec1[0],vec1[1])
-    nnvec1=[vec1[0]/magVec1/magVec1,vec1[1]/magVec1/magVec1]
+    nnvec1=[vec1[0]/magVec1,vec1[1]/magVec1]
     magVec2=math.hypot(vec2[0],vec2[1])
-    nnvec2=[vec2[0]/magVec2/magVec2,vec2[1]/magVec2/magVec2]
+    nnvec2=[vec2[0]/magVec2,vec2[1]/magVec2]
+
+    print("\n\nnvec1:   ",nnvec1,"\nnvec2:   ",nnvec2,"\n\n")
+
 
     searchList=[seedIdx]
-
+    distInfo=[{"dist1":None,"dist2":None,"vec1":None,"vec2":None,"vec1_set":0,"vec2_set":0} for i in range(len(cornors))]
+    distInfo[seedIdx]={
+      "dist1":magVec1,"dist2":magVec2,
+      "vec1":nnvec1,"vec2":nnvec2,
+      "vec1_set":1,"vec2_set":1}
 
     advScale=1
     coordArr[seedIdx]=[0,0]
 
-    coordEstThres=0.98
-
     count=0
     while len(searchList)>0:
         curSListL=len(searchList)
+        print("curSListL:",curSListL)
         for i in range(0, curSListL):
             cur_search_idx=searchList[i]
             centPt = cornors[cur_search_idx][0]
+            cur_dist_info=distInfo[cur_search_idx]
+            xcount=0
             for j in range(0, len(cornors)):
-                if not coordArr[j]==None:
-                    continue
+                if(xcount>=2):break
+                obj_dist_info=distInfo[j]
+                if(obj_dist_info["vec1_set"]!=0 and obj_dist_info["vec2_set"]!=0 ):
+                  continue
+                
                 cpt = cornors[j][0]
                 vec = [cpt[0]-centPt[0],cpt[1]-centPt[1]]
+
                 dist = math.hypot(vec[0],vec[1])
-                distRatio=dist/mainVecInfo["vec1"]["dist"]
-                if(distRatio>1):distRatio=1/distRatio
-                if(distRatio>coordEstThres):
+                vec[0]/=dist
+                vec[1]/=dist
+                
+                if obj_dist_info["vec1_set"]==0:
+                  distRatio=close2one(dist/cur_dist_info["dist1"])
+                  if(distRatio>coordEstThres):
+                      nndot1=cur_dist_info["vec1"][0]*vec[0]+cur_dist_info["vec1"][1]*vec[1]
+                      c_one=close2one(math.fabs(nndot1))
+                      if(c_one>coordEstThres):
+                        #infect the initial vec2 data, need to be set when new data is avaliable
+                        
+                        if(obj_dist_info["dist2"]==None):
+                          obj_dist_info["dist2"]=cur_dist_info["dist2"]
+                          obj_dist_info["vec2"]=cur_dist_info["vec2"]
+                          obj_dist_info["vec2_set"]=0
 
-                    nndot1=nnvec1[0]*vec[0]+nnvec1[1]*vec[1]
-                    c_one=close2one(math.fabs(nndot1))
+                        if(nndot1<0):
+                          vec[0]*=-1
+                          vec[1]*=-1
 
-                    if(nndot1>0 and c_one>coordEstThres):
-                        coordArr[j]=coordArr[cur_search_idx].copy()
-                        coordArr[j][0]+=advScale
-                        searchList.append(j)
-                        continue
+                        #set the vec1 data as current distance
+                        obj_dist_info["dist1"]=dist
+                        obj_dist_info["vec1"]=vec
+                        obj_dist_info["vec1_set"]+=1
+                        if(cur_dist_info["vec1_set"]==0):
+                          cur_dist_info["dist1"]=dist
+                          cur_dist_info["vec1"]=vec
+                          cur_dist_info["vec1_set"]+=1
 
-                    if(nndot1<0 and c_one>coordEstThres):
-                        coordArr[j]=coordArr[cur_search_idx].copy()
-                        coordArr[j][0]-=advScale
-                        searchList.append(j)
-                        continue
+                        # print('v1-cur_dist_info,',cur_dist_info," cur_search_idx:",cur_search_idx)
+                        # print('   obj_dist_info,',obj_dist_info," j:",j)
+                        # print('\n')
 
 
-                distRatio=dist/mainVecInfo["vec2"]["dist"]
-                if(distRatio>1):distRatio=1/distRatio
-                if(distRatio>coordEstThres):
-                    nndot2=nnvec2[0]*vec[0]+nnvec2[1]*vec[1]
-                    c_one=close2one(math.fabs(nndot2))
-                    if(nndot2>0 and c_one>coordEstThres):
-                        coordArr[j]=coordArr[cur_search_idx].copy()
-                        coordArr[j][1]+=advScale
-                        searchList.append(j)
-                        continue
+                        if(coordArr[j] == None):
+                          coordArr[j]=coordArr[cur_search_idx].copy()
+                          coordArr[j][0]+=advScale if(nndot1>0) else -advScale
+                          searchList.append(j)
+                          xcount+=1
+                          continue
 
-                    if(nndot2<0 and c_one>coordEstThres):
-                        coordArr[j]=coordArr[cur_search_idx].copy()
-                        coordArr[j][1]-=advScale
-                        searchList.append(j)
-                        continue
+                if obj_dist_info["vec2_set"]==0:
+                  distRatio=close2one(dist/cur_dist_info["dist2"])
+                  if(distRatio>coordEstThres):
+                      nndot2=cur_dist_info["vec2"][0]*vec[0]+cur_dist_info["vec2"][1]*vec[1]
+                      c_one=close2one(math.fabs(nndot2))
+                      
+                      if(c_one>coordEstThres):
+                        #ref the initial vec2 data, need to be set when new data is avaliable
+                        if(obj_dist_info["dist1"]==None):
+                          obj_dist_info["dist1"]=cur_dist_info["dist1"]
+                          obj_dist_info["vec1"]=cur_dist_info["vec1"]
+                          obj_dist_info["vec1_set"]=0
+                        if(nndot2<0):
+                          vec[0]*=-1
+                          vec[1]*=-1
+
+                        obj_dist_info["dist2"]=dist
+                        obj_dist_info["vec2_set"]+=1
+                        obj_dist_info["vec2"]=vec
+                        
+                        if(cur_dist_info["vec2_set"]==0):
+                          cur_dist_info["vec2_set"]+=1
+                          cur_dist_info["dist2"]=dist
+                          cur_dist_info["vec2"]=vec
+
+                        # print('v2-cur_dist_info,',cur_dist_info," cur_search_idx:",cur_search_idx)
+                        # print('   obj_dist_info,',obj_dist_info," j:",j)
+                        # print('\n') 
+                        if(coordArr[j] == None):
+                          coordArr[j]=coordArr[cur_search_idx].copy()
+
+                          coordArr[j][1]+=advScale if(nndot2>0) else -advScale
+                          searchList.append(j)
+                          xcount+=1
+                          continue
+                                
         count+=1             
         searchList=searchList[curSListL:len(searchList)]
 
@@ -366,7 +418,7 @@ def obj_img_Shuffle(objpoints, imgpoints):
     objpoints_rand=[]
     imgpoints_rand=[]
 
-    for i in range(0,len(objpoints)):
+    for i in range(0,len(objpoints)):#for exch image fo shuffle
         combined = list(zip(objpoints[i], imgpoints[i]))
         random.shuffle(combined)
         objpoints_randX, imgpoints_randX = zip(*combined)
@@ -384,7 +436,7 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=1,pickPercentag
     objpoints_shuf,imgpoints_shuf = obj_img_Shuffle(objpoints,imgpoints)
     objpoints_pick=[]
     imgpoints_pick=[]
-    for i in range(0,len(objpoints_shuf)):
+    for i in range(0,len(objpoints_shuf)):#for each image's point pair
         datPtLen=len(objpoints_shuf[i])
         datPtPorp=round(datPtLen*pickPercentage)
         if( datPtPorp>minLen):
@@ -394,17 +446,22 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=1,pickPercentag
             objpoints_pick[i]=[]
             imgpoints_pick[i]=[]
     #print(objpoints_pick)
+    #randomly pick a set of point pairs, do camera calibration
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_pick, imgpoints_pick, img_size,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
+    print("ret, mtx, dist, rvecs, tvecs:\n",ret, mtx, dist, rvecs, tvecs)
     inBoundThres=thres
 
     objpoints_inBound=[]
     imgpoints_inBound=[]
+    error_inBound=[]
     totLen=0
     availLen=0
     errorSum=0
     errorMax=0
-    for i in range(0,len(objpoints_shuf)):
+
+    #use the calibration info to exam how many points(in all) satisfy the calibration projection
+    for i in range(0,len(objpoints_shuf)):#for each image's point shuffled pair
         imgpoints2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
         #error = cv2.norm(imgpoints[i],imgpoints2, cv2.NORM_INF)#/len(imgpoints2)
         checked_img_points=[]
@@ -418,10 +475,15 @@ def cameraCalibPointsRuleOut(objpoints, imgpoints,img_size,thres=1,pickPercentag
                 checked_obj_points.append(objpoints[i][j])
                 errorSum+=dist
                 if(errorMax<dist):errorMax=dist
-        totLen+=len(imgpoints2)
-        availLen+=len(checked_obj_points)
+      
+        tL=len(imgpoints2)
+        totLen+=tL
+        aL=len(checked_obj_points)
+        availLen+=aL
+        # print("tL:",tL," aL:",aL)
         objpoints_inBound.append(np.asarray(checked_obj_points, dtype= np.float32))
         imgpoints_inBound.append(np.asarray(checked_img_points, dtype= np.float32))
+        #error_inBound.append()
 
     #print(availLen,":",totLen)
     if availLen>0:
@@ -473,6 +535,7 @@ def chessBoardCalibsss(image_path):
     imgpoints = [] # 2d points in image plane.
 
     images = glob.glob(image_path)
+    print("GO..image_path:",image_path," images:",images)
 
     #fast = cv2.FastFeatureDetector_create(threshold=25,nonmaxSuppression = True)
     if len(images) == 0 :
@@ -480,6 +543,7 @@ def chessBoardCalibsss(image_path):
 
     images_trusted=[]
     mainVecInfo_list=[]
+    
     for fname in images:
 
         print("IMG:",fname)
@@ -513,7 +577,7 @@ def chessBoardCalibsss(image_path):
         coord=[]
         mainVecInfo=None
         xxCount=0
-        for j in range(0,25):
+        for j in range(0,5):
 
             new_coord,_mainVecInfo = genCornorsCoord(corners_fine)
             
@@ -527,10 +591,8 @@ def chessBoardCalibsss(image_path):
                 maxMeaningfulCoordCount=meaningfulCoordCount
                 coord=new_coord
                 mainVecInfo = _mainVecInfo
-            if(new_coord!=None):
-                xxCount+=1
-                if(xxCount>5):
-                    break
+
+            if(meaningfulCoordCount>len(corners_fine)*0.8):break
         mainVecInfo_list.append(mainVecInfo)
 
 
@@ -553,7 +615,7 @@ def chessBoardCalibsss(image_path):
         objpoints.append(np.asarray(coord_trusted, dtype= np.float32))
         
         images_trusted.append(fname)
-        
+        print("END... IMG:",fname)
 
         # for j in range(0, len(corners_trusted)):
         #     loc = corners_trusted[j][0]
@@ -571,39 +633,58 @@ def chessBoardCalibsss(image_path):
     imageSize = gray.shape[::-1]
 
     #refine....
-    maxMatchingRatio=0.8
+    maxMatchingRatio=0.0
     maxMatchingAvailLen=0
     objpoints_Match=None
     imgpoints_Match=None
-    for x in range(100):
-        thres = 0.2
-        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres)
+    print("---imgpoints:\n  ",len(imgpoints[0])) #real cornor points from all availiable images
+    print("---objpoints:\n  ",len(objpoints[0])) #XY index grid from real cornor points 
+    for x in range(20):
+        thres = 0.1
+        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres*2,0.2)
         print("  ",x," availLen>",availLen," totLen>",totLen," error:",error)
+
+        
         if(maxMatchingRatio<availLen/totLen):
+            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres,1)
+            print("2nd:",x," availLen>",availLen," _totLen>",_totLen," error:",error)
             maxMatchingRatio = availLen/totLen
             maxMatchingAvailLen=availLen
             objpoints_Match = objpoints_
             imgpoints_Match = imgpoints_
+            if(maxMatchingRatio>0.8):break
     
     # objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,1000)
     print("maxMatchingRatio:",maxMatchingRatio)
     print("maxMatchingAvailLen:",maxMatchingAvailLen)
-    if(maxMatchingRatio<0.8):
+    if(maxMatchingRatio<0.8 and maxMatchingAvailLen<1000):
         return None
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_Match, imgpoints_Match, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
 
-    matArr=[]
+    affine_matArr=[]
     no_dist=np.asarray([0]*5, dtype= np.float32)
-    for i in range(0,len(objpoints)):
+    for i in range(0,len(objpoints)):#Map keypoints to ideal grid points 
         rvec=rvecs[i]
         tvec=tvecs[i]
-        # rvec=np.asarray([[0]*3], dtype= np.float32)
-        # tvec=np.asarray([[0]*3], dtype= np.float32)
-        imgpoints2, _ = cv2.projectPoints(objpoints[i], rvec,tvec, mtx, no_dist)
-        mat,ret2=cv2.findHomography(objpoints[i], imgpoints2)
+
+        #objpoints[i]: ideal grid points
+        #
+        #projectPoints includes distortion compensation 
+        semi_imgpoints2, _ = cv2.projectPoints(objpoints[i], rvec,tvec, mtx, no_dist)
+        
+        #imgpoints2: semi real keypoint's location includes distortion
+        # rvec,tvec= calibrateCamera(real points) 
+        # semi real points=projectPoints(ideal points,rvec,tvec)
+        #--semi real points might not 100% equal to real points
+        #  But semi real points is the best effert recovery from current "cv.calibrateCamera" 
+
+
+        #findHomography will give linear transform
+        mat,ret2=cv2.findHomography(objpoints[i], semi_imgpoints2)
         print( "----",i,"---\n",mat)
-        matArr.append(mat)
+        #print("objpoints:",objpoints[i],"semi_imgpoints2:", semi_imgpoints2)
+        affine_matArr.append(mat)
 
         # img = cv2.imread(images_trusted[i]) 
         # width,height = gray.shape[::-1]
@@ -620,7 +701,7 @@ def chessBoardCalibsss(image_path):
 
 
 
-    # divmat = cv2.divide(matArr[5],matArr[1])
+    # divmat = cv2.divide(affine_matArr[5],affine_matArr[1])
     # print( "----divmat---\n",divmat)
 
     print( "-------")
@@ -633,44 +714,45 @@ def chessBoardCalibsss(image_path):
 
 
 
-    for i in range(0, len(imgpoints)):
-        print(rvecs[i], tvecs[i])
-        img = cv2.imread(images_trusted[i])
-        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-        width,height = gray.shape[::-1]
-        for j in range(0, len(imgpoints[i])):
-            x,y = imgpoints[i][j].ravel()
-            coord = objpoints[i][j]
-            cv2.circle(img,(x,y),3,128,-1)
-            cv2.putText(img, str(int(coord[0])), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-            cv2.putText(img, str(int(coord[1])), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        cv2.imshow('img',img)
-        cv2.waitKey()
-        cv2.imwrite(images_trusted[i]+'_output.jpg', img)
+    # for i in range(0, len(imgpoints_Match)):
+    #     print("......",rvecs[i], tvecs[i])
+    #     img = cv2.imread(images_trusted[i])
+    #     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    #     width,height = gray.shape[::-1]
+    #     for j in range(0, len(imgpoints_Match[i])):
+    #         x,y = imgpoints_Match[i][j].ravel()
+    #         coord = objpoints_Match[i][j]
+    #         cv2.circle(img,(x,y),3,128,-1)
+    #         cv2.putText(img, str(int(coord[0])), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+    #         cv2.putText(img, str(int(coord[1])), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+    #     cv2.imshow('img',img)
+    #     cv2.waitKey()
+    #     #cv2.imwrite(images_trusted[i]+'_output.jpg', img)
 
 
 
 
-    #newcameramtx=matArr[0]
-    #np.linalg.inv( matArr[0])
+    #newcameramtx=affine_matArr[0]
+    #np.linalg.inv( affine_matArr[0])
     calibImg_idx=0
     img = cv2.imread(images[calibImg_idx])
-
     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    print("matArr[",calibImg_idx,"]:\n",matArr[calibImg_idx])
+    print("affine_matArr[",calibImg_idx,"]:\n",affine_matArr[calibImg_idx])
 
-    newcameramtx=np.matmul(np.linalg.inv( matArr[calibImg_idx]),mtx)
+    affineCalibInvMatrix=np.linalg.inv( affine_matArr[calibImg_idx])
+    print(">>>affineCalibInvMatrix>>>>\n",affineCalibInvMatrix)
+    affineCalibInvMatrix[0][2]=0#zero the affine offset
+    affineCalibInvMatrix[1][2]=0
 
-    coorOriginLoc = imgpoints[calibImg_idx][0][0]
+
+
+    print("sqrt(det(camMtx):\n",math.sqrt(np.linalg.det(mtx))," sqrt(det(affineMtx):",math.sqrt(np.linalg.det(affineCalibInvMatrix)))
+    newcameramtx=np.matmul(affineCalibInvMatrix,mtx)
+
     print(imageSize)
     
-    print("mtx:\n",mtx," det:",math.sqrt(np.linalg.det(newcameramtx)))
-    offsetX=0
+    print("mtx:\n",mtx," sqrt(det):",math.sqrt(np.linalg.det(newcameramtx)))
 
-    offsetY=imageSize[1]/math.sqrt(np.linalg.det(newcameramtx))
-    mult=20
-
-    rotation=0*np.pi/180
 
     keepAlive=True
 
@@ -678,32 +760,66 @@ def chessBoardCalibsss(image_path):
     if(downSamp==0):
         downSamp=1
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
+
+
+    print("downSamp:",downSamp,"\n")
+
+
+
+
+
+    rotaVec=np.matmul(affineCalibInvMatrix, np.array([1, 0,1]))
+    print(">>>rotaVec>>>>\n",rotaVec, "theta:",math.atan2(rotaVec[1],rotaVec[0]))
+    baseRotation=-math.atan2(rotaVec[1],rotaVec[0])
+
+    sqrt_det_affineMat=math.sqrt(np.linalg.det(affineCalibInvMatrix))
+    baseMult=1/downSamp/sqrt_det_affineMat
+    
+    offsetX=0
+    offsetY=0
+
+
+
+    # baseRotation=0
+    # baseMult=1
+
+    rotation=0
+    mult=1
+
+    stepSize=1
+    stepScale=2
+    stepRotation=0.01
+
+    #create the Undistort map (the map is in ideal coord, each xy in map indicates the location in original map)
+     
     while keepAlive:
+        newcameramtx_=newcameramtx
+        newcameramtx_=np.matmul(rotationMatrix(rotation+baseRotation),newcameramtx_)
+        
         newcameramtx_=np.matmul(np.matrix(
             [[1, 0,offsetX], [0, 1,offsetY], [0,0,1]]
-            ),newcameramtx)
-
+            ),newcameramtx_)
         newcameramtx_=np.matmul(np.matrix(
-            [[mult, 0,0], [0, mult,0], [0,0,1]]
+            [[mult*baseMult, 0,0], [0, mult*baseMult,0], [0,0,1]]
             ),newcameramtx_)
 
-        newcameramtx_=np.matmul(rotationMatrix(rotation),newcameramtx_)
-        
+
 
         #print("newcameramtx:\n",newcameramtx_)
         if(False):
             dst = cv2.undistort(gray, mtx, dist, None, newcameramtx_)
         else:
             mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,newcameramtx_,dispSize,5)
+            
+            #print(">>>mapx,mapy>>>>\n",mapx,mapy)
             dst = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
         #print(mapx)
         
-        print("grid2realPix:",downSamp*mult, "pix2grid",1.0/mult)
-        
+        print(" sqrt_det_affineMat:",sqrt_det_affineMat," tot:",1/baseMult/mult)
+        #if(True):break
         cv2.imshow('img',dst)
         #cv2.imwrite("./cat2_.png", dst, [int(cv2.IMWRITE_PNG_COMPRESSION), 9])
         key = cv2.waitKey()
-        stepSize=0.2
         if  (key ==ord('d')):
             offsetX+=stepSize
         elif(key ==ord('a')):
@@ -713,13 +829,30 @@ def chessBoardCalibsss(image_path):
         elif(key ==ord('s')):
             offsetY+=stepSize
         elif(key ==ord('i')):
-            mult*=1.01
+            mult*=stepScale
         elif(key ==ord('k')):
-            mult/=1.01
+            mult/=stepScale
         elif(key ==ord('j')):
-            rotation+=0.001
+            rotation+=stepRotation
         elif(key ==ord('l')):
-            rotation-=0.001
+            rotation-=stepRotation
+        elif(key ==ord('0')):
+            rotation=0
+            mult=1
+            offsetY=0
+            offsetX=0
+        elif(key ==ord('1')):
+            stepSize=1/100
+            stepScale=1+0.1/50
+            stepRotation=0.01/50
+        elif(key ==ord('2')):
+            stepSize=1/10
+            stepScale=1+0.1/10
+            stepRotation=0.01/10
+        elif(key ==ord('3')):
+            stepSize=1
+            stepScale=1.1
+            stepRotation=0.01
         elif(key ==27):
             break
     
@@ -728,15 +861,22 @@ def chessBoardCalibsss(image_path):
     #     np.hstack(mapx),
     #     np.hstack(mapy)
     # ])
-
     output_file = open("CalibMap.bin", 'wb')
 
     INFO = genProtoPakNum("IF", "INFO")
     DIM = genProtoPakNum("DM", [imageSize[0],imageSize[1]],'L')
     DIM_S = genProtoPakNum("DS", [dispSize[0],dispSize[1]],'L')
+    
+    pack_OriginPixPerBlock = genProtoPakNum("OB",[sqrt_det_affineMat],'d')
+    pack_MapPixPerBlock = genProtoPakNum("CB",[1/baseMult/mult],'d')
+    pack_mmPerBlock = genProtoPakNum("MB",[0.5],'d')
+    
     packArrX = genProtoPakNum("MX",np.hstack(mapx),'d')
     packArrY = genProtoPakNum("MY",np.hstack(mapy),'d')
-    packArr = genProtoPakProtoPak("CM",INFO+DIM+DIM_S+packArrX+packArrY)
+    packArr = genProtoPakProtoPak("CM",
+      INFO+DIM+DIM_S+
+      pack_OriginPixPerBlock+pack_MapPixPerBlock+pack_mmPerBlock+
+      packArrX+packArrY)
     for pack in packArr:
         pack.tofile(output_file)
     

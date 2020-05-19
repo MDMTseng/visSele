@@ -878,7 +878,7 @@ void spline9_max(float *f,int fL,int div,float *ret_maxf,float *ret_maxf_x)
     *ret_maxf = maxf;
 
 }
-int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response)
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response,FeatureManager_BacPac *bacpac=NULL)
 {
   if(ret_point_opt==NULL)return -1;
   
@@ -891,7 +891,7 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
   gradVec = acvVecNormalize(gradVec);
 
   
-  const int nM=1;
+  const int nM=3;
   acv_XY nvec = {X:gradVec.Y,Y:-gradVec.X};
   acv_XY nvecBM = acvVecMult(nvec,-(float)(nM-1)/2);
   
@@ -908,10 +908,26 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
     for(int j=0;j<nM;j++)
     {
       ptn+= acvUnsignedMap1Sampling(graylevelImg, tmpCurPt, 0);
+
       tmpCurPt = acvVecAdd(tmpCurPt,nvec);
     }
     //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
-    gradTable[i] = ptn/nM;
+    float lightComp=1;
+    if(bacpac && bacpac->sampler)
+    {
+      
+      acv_XY tmpCurPt=curpoint;
+      tmpCurPt.X+=nvec.X*nvec.X*((nM-1)/2);
+      tmpCurPt.Y+=nvec.Y*nvec.Y*((nM-1)/2);
+
+      stageLightParam *slP=bacpac->sampler->stageLightInfo;
+      lightComp=slP->back_light_target/slP->factorSampling(tmpCurPt);
+    }
+    // bacpac->sampler->
+
+
+
+    gradTable[i] = lightComp*ptn/nM;
 
     curpoint = acvVecAdd(curpoint,gradVec);
   }
@@ -1204,7 +1220,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               //   edge_grid.tmpXYSeq[k].pt,3,thres,&ret_point_opt,&edgeResponse);
 
               int ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,edge_grid.tmpXYSeq[k].pt,
-                &ret_point_opt,&edgeResponse);
+                &ret_point_opt,&edgeResponse,bacpac);//,FeatureManager_BacPac *bacpac
 
 
 

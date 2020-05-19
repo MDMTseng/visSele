@@ -3,6 +3,7 @@
 using namespace std;
 
 #include "FeatureReport.h"
+#include "CameraLayer.hpp"
 #include "acvImage_ComponentLabelingTool.hpp"
 
 #include "cJSON.h"
@@ -11,6 +12,7 @@ using namespace std;
 typedef struct FeatureManager_BacPac
 {
   ImageSampler *sampler;
+  CameraLayer *cam;
 }FeatureManager_BacPac;
 
 class FeatureManager {

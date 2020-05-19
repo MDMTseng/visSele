@@ -4,6 +4,7 @@ MODULE_NAME=$(notdir $(basename $(CURDIR)))
 IDIR= ./include_priv/ \
 			./include/ \
 			./MorphEngine/include/ \
+			$(MODULE_CameraLayer)/include \
 			$(MODULE_cJSON) \
 			$(MODULE_acvImage)/include \
 			$(MODULE_common_lib)/include \

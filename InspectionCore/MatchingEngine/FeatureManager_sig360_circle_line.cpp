@@ -913,7 +913,7 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
 
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(acvImage *grayLevelImg, acvImage *labeledImg, int labelId, acv_LabeledData labeledData, FeatureReport_sig360_circle_line_single &report,
                                                                                        float sine, float cosine, float flip_f, float thres,
-                                                                                       featureDef_searchPoint &def, acvImage *dbgImg)
+                                                                                       featureDef_searchPoint &def,acvImage *dbgImg)
 {
   FeatureReport_searchPointReport rep;
   rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
@@ -1620,7 +1620,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
   if (0)
   {
     //It's in parsing stage, there is no cameraParam yet.
-    float ppmm = bacpac->sampler->mmpp; //pixel 2 mm
+    float ppmm = bacpac->sampler->mmpP_ideal();; //pixel 2 mm
     //LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
     //Convert mm to Pixel unit
     for (int i = 0; i < featureLineList.size(); i++)
@@ -1927,7 +1927,9 @@ bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::ptInfo &
 
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
-  float ppmm = bacpac->sampler->mmpp; //pixel per mm
+  report.bacpac=bacpac;
+  float ppmm =1/bacpac->sampler->mmpP_ideal();; //pixel per mm
+
   acvImage *buff_ = &_buff;
   vector<acv_LabeledData> &ldData = *this->_ldData;
   int grid_size = 50;
@@ -1996,6 +1998,23 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     bool isInv;
     float angle;
 
+    // LOGI(">>feature_signature");
+    // for(int i=0;i<feature_signature.size();i++)
+    // {
+    //   acv_XY xy=feature_signature[i];
+      
+    //   printf("%4.1f ",hypot(xy. X,xy.Y));
+    // }
+    // LOGI(">>=================");
+    // for(int i=0;i<tmp_signature.size();i++)
+    // {
+    //   acv_XY xy=tmp_signature[i];
+      
+    //   printf("%4.1f ",hypot(xy.X,xy.Y));
+    // }
+    // LOGI(">>=================");
+
+
     float error = SignatureMinMatching(tmp_signature, feature_signature,
                                        //M_PI/2,M_PI/10,-1,
                                        //M_PI/2,M_PI*1.01/4,-1,
@@ -2031,7 +2050,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       continue;
     }
-    float mmpp = bacpac->sampler->mmpp; //mm per pixel
+    float mmpp = bacpac->sampler->mmpP_ideal();; //mm per pixel
     FeatureReport_sig360_circle_line_single singleReport =
         {
             .detectedCircles = reportDataPool[count].detectedCircles,
@@ -2048,7 +2067,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             .rotate = angle,
             .isFlipped = isInv,
             .scale = 1,
-            .targetName = NULL,
+            .targetName = NULL
         };
     //singleReport.Center=acvVecRadialDistortionRemove(singleReport.Center,param);
 
@@ -2071,6 +2090,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
     vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
+  
     detectedCircles.resize(0);
     detectedLines.resize(0);
     detectedAuxPoints.resize(0);
@@ -2848,6 +2868,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
 
       {
+
         for (int j = 0; j < judgeList.size(); j++)
         {
           FeatureReport_judgeDef judge = judgeList[j];
@@ -2893,7 +2914,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   }
 
   { //convert pixel unit to mm
-    float mmpp = bacpac->sampler->mmpp;
+    float mmpp = bacpac->sampler->mmpP_ideal();;
   }
 
   //LOGI(">>>>>>>>");

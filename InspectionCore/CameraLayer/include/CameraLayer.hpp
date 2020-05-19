@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 #include <acvImage.hpp>
-
+#include <string>
 
 class CameraLayer{
 
@@ -47,6 +47,7 @@ class CameraLayer{
     uint32_t frameTimeTag;
     int maxWidth,maxHeight;
     frameInfo fi;
+    std::string cam_json_info;
     public:
     
 
@@ -95,7 +96,11 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-    
+    virtual std::string getCameraJsonInfo()
+    {
+        return cam_json_info;
+    }
+
     virtual CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh)
     {
         return CameraLayer::NAK;

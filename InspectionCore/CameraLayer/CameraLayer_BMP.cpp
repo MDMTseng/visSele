@@ -104,7 +104,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       int newH = tmpH;
       int newW = tmpW;
 
-      int tExp=(1<<11)*exp_time_us*a_gain/exp_time_100ExpUs;
+      int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       img.ReSize(newW,newH);
       for(int i=0;i<img.GetHeight();i++)//Add noise
@@ -120,7 +120,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           // img.CVector[i][j*3+2]=img_load.CVector[li][lj*3+2];
 
 
-          int d = (img_load.CVector[li][lj*3]*tExp)>>11;
+          int d = (img_load.CVector[li][lj*3]*tExp)>>13;
           
           // if(i==img.GetHeight()/2&&j==img_load.GetWidth()/2)
           //   LOGI("%d>>>%d",img.CVector[li][lj*3],d);
@@ -228,6 +228,16 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void*
     fileIdx=0;
     cameraThread=NULL;
     isThreadWorking=false;
+
+
+    char buff[300];
+    snprintf(buff, sizeof(buff),
+    "{\
+      \"type\":\"CameraLayer_BMP_carousel\",\
+      \"folder_name\":\"%s\"\
+    }",folderName.c_str());
+    cam_json_info.assign(buff);
+    LOGI(">>>%s",cam_json_info.c_str());
 }
 
 CameraLayer_BMP_carousel::~CameraLayer_BMP_carousel()

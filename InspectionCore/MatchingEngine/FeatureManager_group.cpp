@@ -135,7 +135,7 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
 
 int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 {
-  
+  report.bacpac=bacpac;
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
@@ -230,7 +230,7 @@ const FeatureReport* FeatureManager_binary_processing_group::GetReport()
   report.data.binary_processing_group.reports = &sub_reports;
   report.data.binary_processing_group.labeledData = &ldData;
   report.data.binary_processing_group.subFeatureDefSha1 = subFeatureDefSha1;
-  report.data.binary_processing_group.mmpp = bacpac->sampler->mmpp;
+  report.data.binary_processing_group.mmpp = bacpac->sampler->mmpP_ideal();
   return &report;
 }
 

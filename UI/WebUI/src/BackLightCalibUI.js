@@ -197,7 +197,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) 
 
           c.briPreDiffSign=(maxMean-c.targetBri);
 
-          let exposure=reportInfo.data.exposure_time;
+          let exposure=reportInfo.data.cam_param.exposure_time;
           if(exposure<100)exposure=100;
           exposure*=
             (((1-c.adjAlpha)*1+(c.adjAlpha)*c.targetBri/maxMean));

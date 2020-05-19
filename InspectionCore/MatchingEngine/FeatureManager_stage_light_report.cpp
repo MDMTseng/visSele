@@ -352,8 +352,78 @@ int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_gr
   return 0;
 }
 
+int backLightNonBackGroundExclusion(acvImage *img,acvImage *backGround,acvImage *buffer,
+  int nonBG_thres,int nonBG_spread_thres)
+{
+  backGround->ReSize(img);
+  buffer->ReSize(img);
+
+  acvCloneImage(img,buffer, -1);
+  
+  {
+    acvBoxFilter(backGround, buffer, 1);
+    acvBoxFilter(backGround, buffer, 1);
+    acvSobelFilter(backGround, buffer, 1);
+
+    //CH1 Y dir, 
+    //CH2 X dir 
+    //CH3 grayLevel
+
+    acvImage *sobelImg = backGround;
+    for (int i = 0; i < sobelImg->GetHeight(); i++)
+    {
+      for (int j = 0; j < sobelImg->GetWidth(); j++)
+      {
+        int sobelY = (int8_t)sobelImg->CVector[i][j * 3];
+        int sobelX = (int8_t)sobelImg->CVector[i][j * 3 + 1];
+        int bri = sobelImg->CVector[i][j * 3 + 2];
+
+        int edgeResp = sobelX * sobelX + sobelY * sobelY;
+
+        if (edgeResp > nonBG_thres) //edgeRegion
+        {
+          sobelImg->CVector[i][j * 3] =0;
+        }
+        else
+        {
+          sobelImg->CVector[i][j * 3] =255;
+        }
+      }
+    }
+
+  }
+  {
+    //backGround
+    //CH1 BG/non BG, 
+    //CH2 X dir 
+    //CH3 grayLevel
+    acvBoxFilter(buffer, backGround, 2); //spread the black area
+    acvBoxFilter(buffer, backGround, 2); //spread the black area
+
+    for (int i = 0; i < backGround->GetHeight(); i++)
+      for (int j = 0; j < backGround->GetWidth(); j++)
+      {
+        int bri;
+        if (backGround->CVector[i][j * 3] < nonBG_spread_thres) //edgeRegion
+        {
+          bri=0;
+        }
+        else
+        {
+          bri = backGround->CVector[i][j * 3 + 2];
+        }
+
+        backGround->CVector[i][j * 3]=
+        backGround->CVector[i][j * 3+1]=
+        backGround->CVector[i][j * 3+2]=bri;
+      }
+  }
+}
+
+
 int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
 {
+  report.bacpac=bacpac;
   LOGI("T,nonBG_thres:%f  this:%p", this->nonBG_thres, this);
   report.type = FeatureReport::stage_light_report;
   report.data.stage_light_report.gridInfo->clear();
@@ -362,77 +432,14 @@ int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
   report.data.stage_light_report.targetImageDim[0] = p_img->GetWidth();
   report.data.stage_light_report.targetImageDim[1] = p_img->GetHeight();
   LOGI("T0");
-  cacheImage.ReSize(p_img);
-  cacheImage2.ReSize(p_img);
-  cacheImage3.ReSize(p_img);
-  acvCloneImage(p_img, &cacheImage2, -1);
-  LOGI("T1");
-
-  bool doFilterNonBG = true;
-  if (doFilterNonBG)
-  {
-    acvImage &sobelImg = cacheImage;
-    acvBoxFilter(&cacheImage3, &cacheImage2, 1);
-    acvBoxFilter(&cacheImage3, &cacheImage2, 1);
-    acvSobelFilter(&sobelImg, &cacheImage2, 1);
-    // for(int i=0;i<5;i++)
-    // {
-    //   acvBoxFilter(&cacheImage3, &cacheImage, 1);
-    //   if(i==0)
-    //   {
-    //     acvCloneImage(&cacheImage,&cacheImage2,0);
-    //   }
-    // }
-    LOGI("T2");
-
-    for (int i = 0; i < sobelImg.GetHeight(); i++)
-      for (int j = 0; j < sobelImg.GetWidth(); j++)
-      {
-        int sobelY = (int8_t)sobelImg.CVector[i][j * 3];
-        int sobelX = (int8_t)sobelImg.CVector[i][j * 3 + 1];
-        int bri = sobelImg.CVector[i][j * 3 + 2];
-
-        int edgeResp = sobelX * sobelX + sobelY * sobelY;
-
-        if (edgeResp > nonBG_thres) //edgeRegion
-        {
-          cacheImage2.CVector[i][j * 3] =
-              cacheImage2.CVector[i][j * 3 + 1] =
-                  cacheImage2.CVector[i][j * 3 + 2] = 0;
-        }
-        else
-        {
-          cacheImage2.CVector[i][j * 3] =
-              cacheImage2.CVector[i][j * 3 + 1] =
-                  cacheImage2.CVector[i][j * 3 + 2] = 255;
-        }
-      }
-
-    acvBoxFilter(&cacheImage3, &cacheImage2, 2); //spread the black area
-    acvBoxFilter(&cacheImage3, &cacheImage2, 2); //spread the black area
-
-    for (int i = 0; i < cacheImage2.GetHeight(); i++)
-      for (int j = 0; j < cacheImage2.GetWidth(); j++)
-      {
-        int bri = sobelImg.CVector[i][j * 3 + 2];
-
-        if (cacheImage2.CVector[i][j * 3] < nonBG_spread_thres) //edgeRegion
-        {
-          cacheImage2.CVector[i][j * 3] = 0;
-        }
-        else
-        {
-          cacheImage2.CVector[i][j * 3] = bri;
-        }
-        cacheImage2.CVector[i][j * 3 + 1] =
-            cacheImage2.CVector[i][j * 3 + 2] = bri;
-      }
-
-    LOGI("T3,nonBG_thres:%f", this->nonBG_thres);
-  }
 
   acvImage &img_wo_edge = cacheImage2;
-  //acvSaveBitmapFile("data/ttttBG.bmp",&img_wo_edge);
+  backLightNonBackGroundExclusion(
+    p_img,
+    &img_wo_edge,
+    &cacheImage,
+    nonBG_thres, nonBG_spread_thres);
+  
 
   int Width = img_wo_edge.GetRealWidth();
   int Height = img_wo_edge.GetRealHeight();

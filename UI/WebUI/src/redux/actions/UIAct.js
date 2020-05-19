@@ -79,6 +79,7 @@ export const UI_SM_EVENT = {
   Insp_Mode:"Insp_Mode",
   Analysis_Mode:"Analysis_Mode",
   Inspection_Report:"Inspection_Report",
+  Camera_Info_Update:"Camera_Info_Update",
   Image_Update:"Image_Update",
   StatSettingParam_Update:"StatSettingParam_Update",
   Define_File_Update:"Define_File_Update",
@@ -228,7 +229,12 @@ export function EV_StatSettingParam_Update(statSettingParam)
   }
 }
 
-
+export function EV_Camera_Info_Update(info)
+{
+  return {
+    type: UI_SM_EVENT.Camera_Info_Update ,data:info
+  }
+}
 
 export function EV_WS_Define_File_Update(DFData)
 {

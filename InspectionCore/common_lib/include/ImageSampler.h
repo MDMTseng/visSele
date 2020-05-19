@@ -62,6 +62,7 @@ class stageLightParam{
   float exposure_us;
   int tarImgW,tarImgH;
   int idxW,idxH;
+  int back_light_target;
   int RESET();
   void nodesIdxWHSetup();
   void CLONE(stageLightParam* obj){};
@@ -80,23 +81,35 @@ class acvCalibMapUtil
     static float NumRatio(float a,float b,float ratio);
     static int sample_vec(float* map,int width,int height,float mapfX,float mapfY,float sampleXY[2]);
 
+    //map_vec the vec is to find the local xy axis in the map
     static int map_vec(float* map,int width,int height,float mapfX,float mapfY,float xyVec[4], float *opt_det=NULL);
-    static float locateMapPosition(float* map,int width,int height,float tar_x,float tar_y,float mapSeed_ret[2],float maxError=0.01,int iterC=5);
+    static float locateMapPosition(float* map,int width,int height,float tar_x,float tar_y,float mapSeed_ret[2],float maxError=0.01,float stepSize=1,int iterC=5);
 
 };
 class acvCalibMap
 {
     float* fwdMap;
-    //the xy idx is in corrected mapping
-    //fwdMap(x,y) is the xy coord from original image
+    //(x',y')=fwdMap(x,y) 
+    //x,y is in calibrated coord, ie semi-ideal map
+    //x',y' is the location from oriignal image to sample
+    //the size of fwdMap might be downsized
     int downSizedMapW,downSizedMapH;
-    float* invMap;
-    int iw,ih;
+    //iw & ih is the dimension of fwdMap
 
+    float* invMap;//it's to quickly sample the inverse map
+    //(x,y)=fwdMap(x',y') 
+    //x,y is in calibrated coord, ie semi-ideal map
+    //x',y' is the location from oriignal image to sample
+    int iw,ih;
+    //iw & ih is the dimension of invMap
+    float map_loca_scale=1;
     int downScale=1;
-    float fmapScale=1;
+    float reMapMtx[4];
     public:
+    float calibPpB=1;
+    float calibmmpB=1;
     int fullFrameW,fullFrameH;
+    //fullFrameW,fullFrameH is the dimension of original image
     acv_XY origin_offset;  
     acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
     acvCalibMap();
@@ -108,6 +121,10 @@ class acvCalibMap
     int fwdMapDownScale(int dscale_idx);
     void deleteInvMap();
     ~acvCalibMap();
+    float get_PpB_ideal();
+    float get_mmpP_ideal();
+
+    void reMap(int type);
     int i2c(float coord[2],bool useInvMap=true);
     int c2i(float coord[2]);
         
@@ -124,7 +141,6 @@ class ImageSampler
 {
   public:
   acvCalibMap *map;
-  float mmpp;
   angledOffsetTable *angOffsetTable;
   stageLightParam *stageLightInfo;
   ImageSampler(){
@@ -132,6 +148,11 @@ class ImageSampler
     map=new acvCalibMap();
     angOffsetTable=new angledOffsetTable();
     stageLightInfo=new stageLightParam();
+  }
+  
+  float mmpP_ideal()
+  {
+    return map->get_mmpP_ideal();
   }
   
   void RESET()
@@ -168,7 +189,7 @@ class ImageSampler
     int ret = ideal2img(idealVec);
     acv_XY xy={X:idealVec[0],Y:idealVec[1]};
     float f=stageLightInfo->factorSampling(xy);
-    return sampleImage_ImgCoord(img, idealVec)*200/f;
+    return sampleImage_ImgCoord(img, idealVec)*stageLightInfo->back_light_target/f;
   }
   float sampleImage_IdealCoord(acvImage *img,acv_XY pos)
   {
@@ -178,8 +199,8 @@ class ImageSampler
 
   float sampleImage_ImgCoord(acvImage *img,acv_XY pos)
   {
+    //float bri = acvUnsignedMap1Sampling(img, pos,0);
     float bri = acvUnsignedMap1Sampling_Nearest(img, pos,0);
-
     return bri;
   }
   float sampleImage_ImgCoord(acvImage *img,float imgPos[2])

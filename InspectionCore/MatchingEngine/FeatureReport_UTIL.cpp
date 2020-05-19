@@ -1,4 +1,5 @@
 #include "FeatureReport_UTIL.h"
+#include "FeatureReport.h"
 #include "FeatureManager_sig360_circle_line.h"
 #include "FeatureManager_stage_light_report.h"
 
@@ -257,11 +258,22 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
   return report_jobj;
 }
 
-int cameraCalib2JSON(cJSON* jobj,ImageSampler *samp)
+int cameraCalib2JSON(cJSON* jobj,FeatureManager_BacPac *bacpac)
 {
+  if(bacpac==NULL || bacpac->sampler==NULL)return -1;
   {
     cJSON_AddNumberToObject(jobj, "ppb2b", 1);
-    cJSON_AddNumberToObject(jobj, "mmpb2b", samp->mmpp);
+    cJSON_AddNumberToObject(jobj, "mmpb2b", bacpac->sampler->mmpP_ideal());
+    cJSON_AddNumberToObject(jobj, "back_light_target", bacpac->sampler->stageLightInfo->back_light_target);
+    if(bacpac->cam!=NULL)
+    {
+      double expTime;
+      if (CameraLayer::ACK == bacpac->cam->GetExposureTime(&expTime))
+      {
+        cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
+      }
+    }
+
   }
   return 0;
 }
@@ -344,7 +356,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       {
         cJSON* cam_param = cJSON_CreateObject();
         cJSON_AddItemToObject(report_jobj, "cam_param", cam_param);
-        cameraCalib2JSON(cam_param,report->data.sig360_extractor.sampler);
+        cameraCalib2JSON(cam_param,report->bacpac);
       }
       
       const vector<acv_CircleFit> *detectedCircle =
@@ -373,6 +385,11 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
 
+      {
+        cJSON* cam_param = cJSON_CreateObject();
+        cJSON_AddItemToObject(report_jobj, "cam_param", cam_param);
+        cameraCalib2JSON(cam_param,report->bacpac);
+      }
       cJSON_AddNumberToObject(report_jobj, "error", report->data.sig360_circle_line.error);
       cJSON* reports_jarr = cJSON_CreateArray();
       cJSON_AddItemToObject(report_jobj,"reports",reports_jarr);
@@ -405,6 +422,12 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
 
       cJSON_AddStringToObject(report_jobj, "ver", "0.0.0.0");
 
+      {
+        cJSON* cam_param = cJSON_CreateObject();
+        cJSON_AddItemToObject(report_jobj, "cam_param", cam_param);
+        cameraCalib2JSON(cam_param,report->bacpac);
+      }
+      
       const FeatureReport_stage_light_report &rep=report->data.stage_light_report;
 
       {

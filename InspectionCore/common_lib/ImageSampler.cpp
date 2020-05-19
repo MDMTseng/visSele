@@ -1,6 +1,7 @@
 #include <acvImage_BasicTool.hpp>
 #include <ImageSampler.h>
 #include <vector>
+#include "logctrl.h"
 
 //acvCalibMap
 acvCalibMap::acvCalibMap(double *MX_data, double *MY_data,
@@ -22,7 +23,8 @@ acvCalibMap::acvCalibMap()
   iw = ih = 0;
 
   downScale = 1;
-  fmapScale = 1;
+  //fmapScale = 1;
+  calibPpB=1;
 }
 
 void acvCalibMap::RESET()
@@ -30,6 +32,8 @@ void acvCalibMap::RESET()
   CLEAR();
 }
 //acvCalibMap
+
+//downSizedMapWH is the Map WH, it's usually smaller than fullFrameW(full original dim)
 void acvCalibMap::SET(double *MX_data, double *MY_data,
                       int downSizedMapW, int downSizedMapH, int fullFrameW, int fullFrameH)
 {
@@ -74,7 +78,8 @@ void acvCalibMap::SET(double *MX_data, double *MY_data,
     //   printf("%4.1f,%4.1f_  ",fwdMap[i*2],fwdMap[i*2+1]);
     // }
   }
-
+  reMap(1);
+  
   // acvSaveBitmapFile("data/ddddd.bmp", &img);
   // exit(0);
   // printf("\n");
@@ -82,28 +87,68 @@ void acvCalibMap::SET(double *MX_data, double *MY_data,
   //Find the relative scale factor(fmapScale) between down sized map to real image space
   //pa is for sparse sampling factor, just to accelerate compute process,
   //the absolute accuracy isn't crucial.
-  int pa = 4;
-  int detC = 0;
-  float detSum = 0;
-  for (int i = downSizedMapH / pa; i < downSizedMapH * (pa - 1) / pa; i++)
-  {
-    for (int j = downSizedMapW / pa; j < downSizedMapW * (pa - 1) / pa; j++)
-    {
-      float xyVec[4];
-      float det;
-      int ret = acvCalibMapUtil::map_vec(fwdMap, downSizedMapW, downSizedMapH, j, i, xyVec, &det);
-      if (ret == 0)
-      {
-        detSum += det;
-        detC++;
-      }
-    }
-  }
-  float aveDet = detSum / detC;
-  fmapScale = sqrt(aveDet);
+  // int pa = 4;
+  // int detC = 0;
+  // float detSum = 0;
+  // for (int i = downSizedMapH / pa; i < downSizedMapH * (pa - 1) / pa; i++)
+  // {
+  //   for (int j = downSizedMapW / pa; j < downSizedMapW * (pa - 1) / pa; j++)
+  //   {
+  //     float xyVec[4];
+  //     float det;
+  //     int ret = acvCalibMapUtil::map_vec(fwdMap, downSizedMapW, downSizedMapH, j, i, xyVec, &det);
+  //     if (ret == 0)
+  //     {
+  //       detSum += det;
+  //       detC++;
+  //     }
+  //   }
+  // }
+  // float aveDet = detSum / detC;
+  // fmapScale = sqrt(aveDet);
   //fmapScale=1;
   //fmapScale is to find a mapping searching jump factor,
   //the search will start from image center then compute real jumping distance = fmapScale*distance
+}
+
+float acvCalibMap::get_PpB_ideal()//Pixels per Block
+{
+  return map_loca_scale/calibPpB;
+}
+
+float acvCalibMap::get_mmpP_ideal()//mm per pix
+{
+  return calibmmpB/get_PpB_ideal();
+}
+
+
+void acvCalibMap::reMap(int type)
+{
+  switch(type)
+  {
+    case 1:
+    {
+
+      float mapLoc_00[2]={NAN};
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, 0,0, mapLoc_00,0.0001,1, 200);
+
+      float mapLoc_W0[2]={NAN};
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, fullFrameW,0, mapLoc_W0,0.0001,1, 200);
+      //Just to get 00 and W0
+      //
+      //(0,0)o
+      //      \
+      //       \
+      //        \
+      //         \
+      //          o(W,0)
+      map_loca_scale= fullFrameW/hypot(mapLoc_W0[0] - mapLoc_00[0], mapLoc_W0[1] - mapLoc_00[1]);
+    }
+    break;
+    default: 
+      map_loca_scale=1;
+
+  }
 }
 void acvCalibMap::generateInvMap(int iw_, int ih_)
 {
@@ -229,9 +274,9 @@ int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calib
   else
   {
     ret = 0;
-    //printf("coord:%d %d\n",fw,fh);
     float x = coord[0], y = coord[1];
     coord[0] = coord[1] = 0;
+    //printf("----: %f %f\n",x,y);
     float error = acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, x, y, coord);
     //printf("----: %f %f\n",coord[0],coord[1]);
     if (error > 0.01 || error != error)
@@ -240,8 +285,8 @@ int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calib
 
   if (ret == 0)
   {
-    coord[0] *= downScale * fmapScale;
-    coord[1] *= downScale * fmapScale;
+    coord[0] *= downScale*map_loca_scale;
+    coord[1] *= downScale*map_loca_scale;
   }
   else
   {
@@ -272,8 +317,8 @@ int acvCalibMap::c2i(float coord[2]) //calibrated coord to real image coord
     return 0;
   }
   //printf("\ndownScale:%d fmapScale:%f\n",downScale,fmapScale);
-  coord[0] /= downScale * fmapScale;
-  coord[1] /= downScale * fmapScale;
+  coord[0] /= downScale*map_loca_scale;
+  coord[1] /= downScale*map_loca_scale;
   int ret = acvCalibMapUtil::sample_vec(fwdMap, downSizedMapW, downSizedMapH, coord[0], coord[1], coord);
   coord[0] -= origin_offset.X;
   coord[1] -= origin_offset.Y;
@@ -290,7 +335,6 @@ int acvCalibMap::c2i(acv_XY &coord)
 
 acvCalibMap *acvCalibMap::CLONE()
 {
-
   acvCalibMap *obj = new acvCalibMap();
   int ret = CLONE(obj);
   if (ret)
@@ -324,9 +368,9 @@ int acvCalibMap::CLONE(acvCalibMap *dst, acvCalibMap *src)
     dst->iw = src->iw;
     dst->ih = src->ih;
   }
-
-  dst->downScale = src->downScale;
-  dst->fmapScale = src->fmapScale;
+  dst->calibPpB = src->calibPpB;
+  // dst->downScale = src->downScale;
+  // dst->fmapScale = src->fmapScale;
 
   dst->fullFrameH = src->fullFrameH;
   dst->fullFrameW = src->fullFrameW;
@@ -342,11 +386,12 @@ int acvCalibMapUtil::sample_vec(float *map, int width, int height, float mapfX, 
 {
 
   sampleXY[0] = sampleXY[1] = NAN;
-  if (mapfX > width - 2 || mapfY > height - 2 || mapfX < 0 || mapfY < 0)
+  if (mapfX > width - 2 || mapfY > height - 2 || mapfX < 0 || mapfY < 0 || mapfX!=mapfX || mapfY!=mapfY)
   {
 
     return -1;
   }
+
   //printf("_______%d %d %f %f %f %f\n",width,height,mapfX,mapfY,sampleXY[0],sampleXY[1]);
   int mapX = mapfX;
   int mapY = mapfY;
@@ -355,9 +400,9 @@ int acvCalibMapUtil::sample_vec(float *map, int width, int height, float mapfX, 
   float ratioY = mapfY - mapY;
 
   int idxLT = (mapY)*width + mapX;
-  int idxRT = (mapY)*width + mapX + 1;
-  int idxLB = (mapY + 1) * width + mapX;
-  int idxRB = (mapY + 1) * width + mapX + 1;
+  int idxRT = idxLT + 1;
+  int idxLB = idxLT+ width;
+  int idxRB = idxLB + 1;
   /*
     LT  RT
     
@@ -432,46 +477,57 @@ int acvCalibMapUtil::map_vec(float *map, int width, int height, float mapfX, flo
   return 0;
 }
 
-float acvCalibMapUtil::locateMapPosition(float *map, int width, int height, float tar_x, float tar_y, float mapSeed_ret[2], float maxError, int iterC)
+float acvCalibMapUtil::locateMapPosition(float *map, int width, int height, float tar_x, float tar_y, float mapSeed_ret[2], float maxError,float stepSize, int iterC)
 {
 
-  float sampleXY[2];
+  float sampleXY[2]={0};
   float x = tar_x, y = tar_y;
-  float error = hypot(sampleXY[0] - x, sampleXY[1] - y);
+  float error;// = hypot(sampleXY[0] - x, sampleXY[1] - y);
+  if(mapSeed_ret[0]!=mapSeed_ret[0])
+    mapSeed_ret[0]=width/2;
+  if(mapSeed_ret[1]!=mapSeed_ret[1])
+    mapSeed_ret[1]=height/2;
+    
+  sample_vec(map, width, height, mapSeed_ret[0], mapSeed_ret[1], sampleXY);
   for (int i = 0; i < iterC; i++)
   {
 
-    sample_vec(map, width, height, mapSeed_ret[0], mapSeed_ret[1], sampleXY);
-    error = hypot(sampleXY[0] - x, sampleXY[1] - y);
+    float xyVec[4];
+    int ret = map_vec(map, width, height, mapSeed_ret[0], mapSeed_ret[1], xyVec);
 
+    float diffXY[2] = {
+        x - sampleXY[0],
+        y - sampleXY[1]};
+    float stepVec[2]={
+      diffXY[0] * xyVec[0] + diffXY[1] * xyVec[2],
+      diffXY[0] * xyVec[1] + diffXY[1] * xyVec[3]};
+
+    int err;
+    for(int j=0;j<iterC;j++)//Try current stepSize, if the step surpass the boundary, make step smaller and try again
+    {
+      float xx=mapSeed_ret[0]+stepVec[0]*stepSize;
+      float yy=mapSeed_ret[1]+stepVec[1]*stepSize;
+      err=sample_vec(map, width, height, xx,yy, sampleXY);
+
+      //LOGI("xx:%f yy:%f err:%d",xx,yy,err);
+      if(err==0)break;
+      stepSize*=0.8;
+    }
+
+    mapSeed_ret[0] += stepVec[0]*stepSize;
+    mapSeed_ret[1] += stepVec[1]*stepSize;
+
+    error = hypot(sampleXY[0] - x, sampleXY[1] - y);
     if (error < maxError)
       return error;
     if (error != error)
     {
       mapSeed_ret[0] =
-          mapSeed_ret[1] = NAN;
+      mapSeed_ret[1] = NAN;
       return NAN;
     }
-    // LOGI("mapSeed_ret:%f  %f",mapSeed_ret[0],mapSeed_ret[1]);
-    // LOGI("xy:%f  %f",x,y);
-    // LOGI("sample_vec:%f  %f",sampleXY[0],sampleXY[1]);
-    float diffXY[2] = {
-        x - sampleXY[0],
-        y - sampleXY[1]};
-
-    float xyVec[4];
-
-    int ret = map_vec(map, width, height, mapSeed_ret[0], mapSeed_ret[1], xyVec);
-    // LOGI("%f  %f",xyVec[0],xyVec[1]);
-    // LOGI("%f  %f",xyVec[2],xyVec[3]);
-
-    mapSeed_ret[0] += diffXY[0] * xyVec[0] + diffXY[1] * xyVec[2];
-    mapSeed_ret[1] += diffXY[0] * xyVec[1] + diffXY[1] * xyVec[3];
   }
 
-  sample_vec(map, width, height, mapSeed_ret[0], mapSeed_ret[1], sampleXY);
-
-  error = hypot(sampleXY[0] - x, sampleXY[1] - y);
   return error;
 }
 
@@ -678,7 +734,6 @@ void stageLightParam::nodesIdxWHSetup()
     int exIdx = (node.index.X + 1) + (node.index.Y + 1) * (idxW + 2);
     BG_exnodes[exIdx] = node;
   }
-
   { //Fill out frame
     for (int i = 0; i < idxW; i++)
     {
@@ -783,6 +838,7 @@ int stageLightParam::RESET()
   tarImgW = 0;
   tarImgH = 0;
   idxW = 0, idxH = 0;
+  back_light_target=200;
   return 0;
 }
 

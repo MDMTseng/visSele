@@ -2,17 +2,17 @@
 #define FeatureREPORT_HPP
 
 
-#include "FeatureManager.h"
 #include "acvImage_ComponentLabelingTool.hpp"
 #include "acvImage_BasicTool.hpp"
 #include <vector>
 #include <string>
 #include "ImageSampler.h"
+#include "FeatureManager.h"
 
 
 #define FeatureManager_NAME_LENGTH 32
 
-
+class FeatureManager_BacPac;
 enum FeatureReport_ERROR {
   NONE                            = 0,
   GENERIC                         = 1,
@@ -235,16 +235,11 @@ typedef struct FeatureReport_sig360_extractor{
   float rotate;
   bool  isFlipped;
   float mmpp;
-  ImageSampler *sampler;
-  
-  
   FeatureReport_ERROR error;
 };
 
 typedef struct FeatureReport_camera_calibration{
 
-  ImageSampler *sampler;
-  
   FeatureReport_ERROR error;
 };
 
@@ -279,6 +274,7 @@ typedef struct FeatureReport
     END
   } type;
   string name;
+  FeatureManager_BacPac *bacpac;
   union{
     void* raw;
     FeatureReport_binary_processing_group binary_processing_group;

@@ -80,6 +80,31 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
 		LOGE("There is a camera hdl:&d..... INIT can only be done once", m_hCamera);
 		return CameraLayer::NAK;
     }
+
+
+  {
+    char buff[1000];
+    snprintf(buff, sizeof(buff),
+    "{\
+      \"type\":\"CameraLayer_GIGE_MindVision\",\
+      \"friendly_name\":\"%s\",\
+      \"line_name\":\"%s\",\
+      \"port_type\":\"%s\",\
+      \"product_name\":\"%s\",\
+      \"product_series\":\"%s\",\
+      \"sensor_type\":\"%s\",\
+      \"Sn\":\"%s\",\
+    }",
+      devInfo->acFriendlyName,
+      devInfo->acLinkName,
+      devInfo->acPortType,
+      devInfo->acProductName,
+      devInfo->acProductSeries,
+      devInfo->acSensorType,
+      devInfo->acSn
+    );
+    cam_json_info.assign(buff);
+  }
 	CameraSdkStatus status;
 	tSdkCameraCapbility sCameraInfo;
     

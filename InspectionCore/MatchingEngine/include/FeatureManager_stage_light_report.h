@@ -9,7 +9,10 @@
 #include "cJSON.h"
 #include <string>
 
+int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_grid_node_info *ret_info);
 
+int backLightNonBackGroundExclusion(acvImage *img,acvImage *backGround,acvImage *buffer,
+  int nonBG_thres=20,int nonBG_spread_thres=100);
 class FeatureManager_stage_light_report:public FeatureManager {
 
 protected:
