@@ -2868,9 +2868,10 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
     ret = PerifProt::fetch(&pakCM, "MB", &MB_pak);
     if (ret < 0)
       return -7;
+    LOGI("CB:%f  OB:%f",((double *)CB_pak.data)[0],((double *)OB_pak.data)[0]);
+    LOGI("MB:%f ",((double *)MB_pak.data)[0]);
   }
 
-  LOGI("CB:%f  OB:%f",((double *)CB_pak.data)[0],((double *)OB_pak.data)[0]);
 
   uint64_t *dim = (uint64_t *)DM_pak.data;  //the original dimension
   uint64_t *dimS = (uint64_t *)DS_pak.data; //Downscaled dimension(the forwardCalibMap)

@@ -418,6 +418,8 @@ int backLightNonBackGroundExclusion(acvImage *img,acvImage *backGround,acvImage 
         backGround->CVector[i][j * 3+2]=bri;
       }
   }
+
+  return 0;
 }
 
 

@@ -128,12 +128,14 @@ void acvCalibMap::reMap(int type)
   {
     case 1:
     {
-
+      float shrinkScale=0.8;
       float mapLoc_00[2]={NAN};
-      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, 0,0, mapLoc_00,0.0001,1, 200);
+      acv_XY start={fullFrameW*(1-shrinkScale)/2,fullFrameH*(1-shrinkScale)/2};
+      acv_XY end={fullFrameW*(1-(1-shrinkScale)/2),fullFrameH*(1-(1-shrinkScale)/2)};
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, start.X,start.Y, mapLoc_00,0.0001,1, 200);
 
       float mapLoc_W0[2]={NAN};
-      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, fullFrameW,0, mapLoc_W0,0.0001,1, 200);
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, end.X,end.Y, mapLoc_W0,0.0001,1, 200);
       //Just to get 00 and W0
       //
       //(0,0)o
@@ -142,7 +144,7 @@ void acvCalibMap::reMap(int type)
       //        \
       //         \
       //          o(W,0)
-      map_loca_scale= fullFrameW/hypot(mapLoc_W0[0] - mapLoc_00[0], mapLoc_W0[1] - mapLoc_00[1]);
+      map_loca_scale= hypot(fullFrameW,fullFrameH)*(shrinkScale)/hypot(mapLoc_W0[0] - mapLoc_00[0], mapLoc_W0[1] - mapLoc_00[1]);
     }
     break;
     default: 
