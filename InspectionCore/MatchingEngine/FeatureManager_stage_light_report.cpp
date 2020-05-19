@@ -478,4 +478,5 @@ const FeatureReport *FeatureManager_stage_light_report::GetReport()
 
 void FeatureManager_stage_light_report::ClearReport()
 {
+  FeatureManager::ClearReport();
 }

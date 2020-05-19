@@ -21,6 +21,8 @@ FeatureManager_sig360_circle_line::FeatureManager_sig360_circle_line(const char 
   int ret = reload(json_str);
   if (ret)
     throw std::invalid_argument("Error:FeatureManager_sig360_circle_line failed... ");
+  
+  ClearReport();
 }
 
 double *json_get_num(cJSON *root, char *path, char *dbg_str)
@@ -1804,10 +1806,13 @@ const FeatureReport *FeatureManager_sig360_circle_line::GetReport()
 
 void FeatureManager_sig360_circle_line::ClearReport()
 {
-  report.type = FeatureReport::sig360_circle_line;
+  
   report.data.sig360_circle_line.error = FeatureReport_ERROR::NONE;
   reports.resize(0);
   report.data.sig360_circle_line.reports = &reports;
+  FeatureManager_binary_processing::ClearReport();
+  
+  LOGI("bacpac:<%p>  report.type:%p", bacpac,report.type);
 }
 
 float OTSU_Threshold(acvImage &graylevelImg, acv_LabeledData *ldata, int skip = 5)

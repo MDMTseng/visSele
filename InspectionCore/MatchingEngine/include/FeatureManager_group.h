@@ -13,7 +13,9 @@
 
 class FeatureManager_group_proto:public FeatureManager {
 public :
-  FeatureManager_group_proto(const char *json_str): FeatureManager(json_str){};
+  FeatureManager_group_proto(const char *json_str): FeatureManager(json_str){
+    ClearReport();
+  };
   int reload(const char *json_str) override;
 protected:
   vector<const FeatureReport*> sub_reports;

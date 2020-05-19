@@ -82,6 +82,8 @@ FeatureManager_binary_processing_group::FeatureManager_binary_processing_group(c
   int ret = reload(json_str);
   if(ret)
     throw std::invalid_argument( "Error:FeatureManager_sig360_circle_line failed... " );
+  
+  ClearReport();
 }
 
 int FeatureManager_binary_processing_group::clearFeatureGroup()
@@ -285,6 +287,9 @@ FeatureManager_group::FeatureManager_group(const char *json_str):
   int ret = reload(json_str);
   if(ret)
     throw std::invalid_argument( "Error:FeatureManager_sig360_circle_line failed... " );
+  
+  ClearReport();
+  
 }
 
 int FeatureManager_group::clearFeatureGroup()

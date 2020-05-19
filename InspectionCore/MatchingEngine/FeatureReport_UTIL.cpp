@@ -260,7 +260,11 @@ cJSON* acv_FeatureReport_sig360_circle_line_single2JSON(const FeatureReport_sig3
 
 int cameraCalib2JSON(cJSON* jobj,FeatureManager_BacPac *bacpac)
 {
-  if(bacpac==NULL || bacpac->sampler==NULL)return -1;
+  if(jobj==NULL||bacpac==NULL || bacpac->sampler==NULL)
+  {
+  
+    return -1;
+  }
   {
     cJSON_AddNumberToObject(jobj, "ppb2b", 1);
     cJSON_AddNumberToObject(jobj, "mmpb2b", bacpac->sampler->mmpP_ideal());
@@ -385,6 +389,7 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
       vector<FeatureReport_sig360_circle_line_single> &scl_reports =
         *report->data.sig360_circle_line.reports;
 
+      if(report->bacpac!=NULL)
       {
         cJSON* cam_param = cJSON_CreateObject();
         cJSON_AddItemToObject(report_jobj, "cam_param", cam_param);

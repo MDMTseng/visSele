@@ -32,7 +32,7 @@ public :
   const FeatureReport* GetReport();
   int FeatureMatching(acvImage *img);
   void setOriginalImage(acvImage *oriImage){this->originalImage = oriImage;};
-  void ClearReport();
+  virtual void ClearReport() override;
 };
 
 #endif

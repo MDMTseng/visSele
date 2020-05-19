@@ -24,12 +24,18 @@ class FeatureManager {
   acvImage _buff;
 public :
   //static bool check(cJSON *root);
-  FeatureManager(const char *json_str){};
+  FeatureManager(const char *json_str){
+    ClearReport();
+  };
   void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img)=0;
   virtual const FeatureReport* GetReport(){return NULL;};
-  virtual void ClearReport(){};
+  virtual void ClearReport(){
+    bacpac=NULL;
+    report.type=FeatureReport::NONE;
+    report.bacpac=bacpac;
+  };
   static const char* GetFeatureTypeName(){return NULL;};
   virtual ~FeatureManager(){};
 

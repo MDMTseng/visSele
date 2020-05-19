@@ -1,6 +1,7 @@
 #include <acvImage_BasicTool.hpp>
 #include <ImageSampler.h>
 #include <vector>
+#include <algorithm>
 #include "logctrl.h"
 
 //acvCalibMap

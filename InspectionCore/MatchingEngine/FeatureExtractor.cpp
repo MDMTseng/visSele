@@ -181,21 +181,17 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
 const FeatureReport *FeatureManager_sig360_extractor::GetReport()
 {
   report.type = FeatureReport::sig360_extractor;
-
   report.data.sig360_extractor.signature = &signature;
   report.data.sig360_extractor.detectedCircles = &detectedCircles;
   report.data.sig360_extractor.detectedLines = &detectedLines;
-
   report.data.sig360_extractor.mmpp = bacpac->sampler->mmpP_ideal();;
   //report.data.sig360_extractor.sampler = bacpac->sampler;
-
   return &report;
 }
 
 void FeatureManager_sig360_extractor::ClearReport()
 {
-  report.type = FeatureReport::sig360_extractor;
-  report.data.sig360_extractor.error = FeatureReport_ERROR::NONE;
+  FeatureManager_binary_processing::ClearReport();
   signature.resize(0);
   detectedCircles.resize(0);
   detectedLines.resize(0);

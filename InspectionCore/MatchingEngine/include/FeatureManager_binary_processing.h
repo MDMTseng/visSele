@@ -13,10 +13,13 @@ protected:
   acvImage *originalImage;
   vector<acv_LabeledData> *_ldData;
 public :
-  FeatureManager_binary_processing(const char *json_str):FeatureManager(json_str){};
+  FeatureManager_binary_processing(const char *json_str):FeatureManager(json_str){
+  ClearReport();};
   virtual int reload(const char *json_str)=0;
   void setOriginalImage(acvImage *oriImage){this->originalImage = oriImage;};
   void setLabeledData(vector<acv_LabeledData> *ldData){this->_ldData = ldData;};
+  
+  void ClearReport(){FeatureManager::ClearReport();};
 };
 
 
