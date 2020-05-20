@@ -3,7 +3,7 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React, { useState, useEffect } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx, essentialTags, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,TagDisplay_rdx, essentialTags, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
@@ -600,7 +600,7 @@ class APPMain extends React.Component {
           key=">"
           onClick={() => {
             this.props.ACT_Insp_Mode_Update("CI");
-          }}>品管</Button>
+          }}>檢測</Button>
 
       </div>
     }
@@ -699,7 +699,8 @@ class APPMain extends React.Component {
               </Title>
 
               <div className="s width8 HXA">
-                <TagOptions_rdx className="s width12 HXA" />
+              
+                <TagDisplay_rdx className="s width12 HXA" />
                 <Button size="large" onClick={() => {
 
                   let popUpUIInfo = {
@@ -729,7 +730,9 @@ class APPMain extends React.Component {
                     }} />
                   }
                   this.setState({ popUpUIInfo });
-                }}>機台設定選擇</Button>
+                  }}>機台設定選擇</Button>
+
+                <TagOptions_rdx className="s width12 HXA" />
               </div>
               {
                 (isString(InspectionMonitor_URL)) ?
@@ -847,29 +850,12 @@ class APPMain extends React.Component {
           }
         },
 
-        BackLightCalib: {
-          icon: "scan",
-          content: <BackLightCalibUI_rdx
-            BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-            onCalibFinished={(finalReport) => {
-              console.log(">>>>>>>>>",finalReport)
-              if(finalReport===undefined)return;
-              setTimeout(() => {
-                var enc = new TextEncoder();
-                this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
-                  { filename: "data/stageLightReport.json" },
-                  enc.encode(JSON.stringify(finalReport, null, 2)))
-                console.log(finalReport)
-              }, 100)
-            }} />,
-          onSelected: genericMenuItemCBsCB
-        },
-        SDD: {
-          icon: "database",
-          content: <CustomDisplayUI
-            BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)} />,
-          onSelected: genericMenuItemCBsCB
-        },
+        // SDD: {
+        //   icon: "database",
+        //   content: <CustomDisplayUI
+        //     BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)} />,
+        //   onSelected: genericMenuItemCBsCB
+        // },
         // STA:{
         //     icon:"bar-chart",
         //     content:null,
@@ -1089,6 +1075,24 @@ class APPMain extends React.Component {
               fileFilter={this.state.fileSelectFilter}
             />
           </div>,
+          onSelected: genericMenuItemCBsCB
+        },
+        
+        BackLightCalib: {
+          icon: "scan",
+          content: <BackLightCalibUI_rdx
+            BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
+            onCalibFinished={(finalReport) => {
+              console.log(">>>>>>>>>",finalReport)
+              if(finalReport===undefined)return;
+              setTimeout(() => {
+                var enc = new TextEncoder();
+                this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
+                  { filename: "data/stageLightReport.json" },
+                  enc.encode(JSON.stringify(finalReport, null, 2)))
+                console.log(finalReport)
+              }, 100)
+            }} />,
           onSelected: genericMenuItemCBsCB
         },
         Collapse: {

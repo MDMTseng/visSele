@@ -88,6 +88,47 @@ export function CustomDisplaySelectUI({onSelect}) {
 }
 
 export const essentialTags=["01首件熱前","02首件熱後","11沖壓成形","21真空熱處理","31滾電金","31滾電錫","35清洗封孔","36連續鍍"];
+
+class TagDisplay extends React.Component{
+
+  constructor(props) {
+    super(props);
+    this.state={
+    }
+  }
+
+  render()
+  {
+    return <div className={this.props.className}>
+      <Tag className="large InspTag fixed" key="MACH">{this.props.MachTag}</Tag>
+      {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed" key={tag+"_dfTag"}>{tag}</Tag>)}
+
+      {this.props.inspOptionalTag.map(curTag=>
+        <Tag closable className="large InspTag optional"  key={curTag+"_inspOptTag"} onClose={(e)=>{
+          e.preventDefault();
+          let tagToDelete=curTag;
+          let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
+          //console.log(e.target,NewOptionalTag);
+          this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
+          }}>{curTag}</Tag>)}
+      <br/>
+    </div>
+  }
+   
+}
+
+export const TagDisplay_rdx = connect(
+  (state) =>({
+    inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
+    defFileTag:state.UIData.edit_info.DefFileTag,
+    MachTag:state.UIData.MachTag,
+  }),
+  (dispatch, ownProps) => ({ 
+    ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
+  })
+)(TagDisplay);
+
+
 class TagOptions extends React.Component{
 
   constructor(props) {
@@ -99,19 +140,6 @@ class TagOptions extends React.Component{
   {
     console.log(this.props.defFileTag)
     return <div className={this.props.className}>
-      <Tag className="large InspTag fixed" key="MACH">{this.props.MachTag}</Tag>
-      {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed" key={tag+"_dfTag"}>{tag}</Tag>)}
-                
-      {this.props.inspOptionalTag.map(curTag=>
-        <Tag closable className="large InspTag optional"  key={curTag+"_inspOptTag"} onClose={(e)=>{
-          e.preventDefault();
-          let tagToDelete=curTag;
-          let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
-          //console.log(e.target,NewOptionalTag);
-          this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
-          }}>{curTag}</Tag>)}
-      <br/>
-
       {
         essentialTags.map((ele,idx,arr)=>
         <Tag className="large InspTag optional fixed" key={ele+"_essTag"} 
