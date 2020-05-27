@@ -1351,20 +1351,23 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           }
         }
 
+
         if (srcImg == NULL)
         {
-          mainThreadLock.unlock();
-          LOGV("Do camera Fetch..");
+          mainThreadLock.unlock();//
+          LOGI("Do camera Fetch..");
           camera->TriggerMode(1);
-          LOGV("LOCK...");
+          LOGI("LOCK...");
           mainThreadLock.lock();
           camera->Trigger();
-          LOGV("LOCK BLOCK...");
+          LOGI("LOCK BLOCK...");
           mainThreadLock.lock();
 
-          LOGV("unlock");
+          LOGI("unlock");
           mainThreadLock.unlock();
           srcImg = camera->GetFrame();
+
+          //SaveIMGFile("data/test1.bmp",srcImg);
         }
 
         if (srcImg == NULL)
@@ -1449,17 +1452,26 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           break;
         }
 
-        bpg_dat = GenStrBPGData("IM", NULL);
-        BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : 2};
-        //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+        cJSON *img_property = JFetch_OBJECT(json, "img_property");
+        if(img_property)
+        {
+          int _scale=2;
+          double *pscale=JFetch_NUMBER(img_property, "scale");
+          if(pscale)
+          {
+            _scale=(int)*pscale;
+          }
+          bpg_dat = GenStrBPGData("IM", NULL);
+          BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
+          //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
-        ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, default_bacpac.sampler);
-        bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-        bpg_dat.callback = DatCH_BPG_acvImage_Send;
-        bpg_dat.pgID = dat->pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        self->SendData(datCH_BPG);
-
+          ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, default_bacpac.sampler);
+          bpg_dat.callbackInfo = (uint8_t *)&iminfo;
+          bpg_dat.callback = DatCH_BPG_acvImage_Send;
+          bpg_dat.pgID = dat->pgID;
+          datCH_BPG.data.p_BPG_data = &bpg_dat;
+          self->SendData(datCH_BPG);
+        }
         session_ACK = true;
 
       } while (false);

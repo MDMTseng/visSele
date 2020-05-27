@@ -912,7 +912,13 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
   }
   return rep;
 }
+float checkPtNoise(ContourFetch::ptInfo pt)
+{
+//(abs(pti.curvature) < 0.05)
+  //if(abs(pt.curvature)<M_PI/10)return 0;
 
+  return pt.contourDir.Y*pt.sobel.Y+pt.contourDir.X*pt.sobel.X;
+}
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(acvImage *grayLevelImg, acvImage *labeledImg, int labelId, acv_LabeledData labeledData, FeatureReport_sig360_circle_line_single &report,
                                                                                        float sine, float cosine, float flip_f, float thres,
                                                                                        featureDef_searchPoint &def,acvImage *dbgImg)
@@ -1022,7 +1028,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     }
     LOGI("nearestDist:%f", nearestDist);
 
-    if (nearestDist < 99999999 && best_section_info != NULL)
+    if (nearestDist < 9999999 && best_section_info != NULL)
     {
       float accC = 0;
       nearestPt = acvVecMult(nearestPt, 0);
@@ -1032,24 +1038,41 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         float reng = 2;
         if (nearestDist + reng > dist)
         {
+          
+          // float n = checkPtNoise(pt_info);
+          // float abs_sobel=hypot(pt_info.sobel.X,pt_info.sobel.Y);
+          // LOGI(">>>noise:%f  cur:%f |sobel|:%f",n,pt_info.curvature,n/abs_sobel);
+          // if(abs(n/abs_sobel)>0.1)continue;
+          
           float W = 1 - (dist - nearestDist) / reng;
 
           nearestPt = acvVecAdd(nearestPt, acvVecMult(pt_info.pt, W));
           accC += W;
 
-          acv_XY tmpPt = acvVecMult(nearestPt, 1.0 / accC);
+          //acv_XY tmpPt = acvVecMult(nearestPt, 1.0 / accC);
+
 
           // LOGI("X:%f Y:%f D:%f W:%f",pt_info.pt.X,pt_info.pt.Y,dist,W);
-          // LOGI(">>>X:%f Y:%f",tmpPt.X,tmpPt.Y);
+          // LOGI(">>>X:%f Y:%f noise:%f",tmpPt.X,tmpPt.Y,n);
         }
       }
-      nearestPt = acvVecMult(nearestPt, 1.0 / accC);
 
-      float ret_rsp;
-      // LOGI("nearestPt:%f %f",nearestPt.X,nearestPt.Y);
-      //rep.pt = acvVecRadialDistortionRemove(nearestPt,param);
-      rep.pt = nearestPt;
-      rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+      if(accC==0)
+      {
+        rep.pt.X=NAN;
+        rep.pt.Y=NAN;
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+      }
+      else
+      {
+        nearestPt = acvVecMult(nearestPt, 1.0 / accC);
+
+        float ret_rsp;
+        // LOGI("nearestPt:%f %f",nearestPt.X,nearestPt.Y);
+        //rep.pt = acvVecRadialDistortionRemove(nearestPt,param);
+        rep.pt = nearestPt;
+        rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+      }
     }
     else
     {
@@ -2665,6 +2688,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       acv_CircleFit cf;
       FeatureReport_circleReport cr;
+      cr.def=&cdef;
       if (m_sections.size() == 0) //check NaN
       {
 

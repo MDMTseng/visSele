@@ -225,6 +225,12 @@ int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_gr
     LOGE("Out of bound, X:%d Y:%d X2:%d Y2:%d im_W:%d im_H:%d", X, Y, X + W, Y + H, img->GetWidth(), img->GetHeight());
     return -3;
   }
+  
+  ret_info->backLightMean = 0;
+  ret_info->backLightSigma = 0;
+  ret_info->sampRate = 0;
+
+
   const int histoSteps = 256;
   ret_info->nodeLocation.X = X + W / 2.0;
   ret_info->nodeLocation.Y = Y + H / 2.0;
@@ -344,7 +350,7 @@ int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_gr
 
   if (maxSampCount == 0)
     return -3;
-  //LOGI("Min u:%f sigma:%f sigmaDiff:%f",fu_mins,fsigma_min, fsigma_max-fsigma_min);
+  LOGI("Min u:%f sigma:%f sigmaDiff:%f",fu_mins,fsigma_min, fsigma_max-fsigma_min);
 
   ret_info->backLightMean = fu_mins;
   ret_info->backLightSigma = fsigma_min;
