@@ -278,7 +278,9 @@ int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calib
   {
     ret = 0;
     float x = coord[0], y = coord[1];
-    coord[0] = coord[1] = 0;
+    // coord[0] = coord[0]*downSizedMapW/fullFrameW;
+    // coord[1] = coord[0]*downSizedMapH/fullFrameH;
+    coord[0]=coord[1]=NAN;
     //printf("----: %f %f\n",x,y);
     float error = acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, x, y, coord);
     //printf("----: %f %f\n",coord[0],coord[1]);

@@ -959,6 +959,7 @@ BPG_data DatCH_CallBack_BPG::GenStrBPGData(char *TL, char *jsonStr)
 int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *callback_param)
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
+  bool doExit=false;
   switch (data.type)
   {
   case DatCH_Data::DataType_error:
@@ -1172,6 +1173,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           if (strcmp(itemType, "binary_path") == 0)
           {
             realfullPath(_argv[0], chBuff);
+            cJSON_AddStringToObject(retArr, itemType, chBuff);
+          }
+          else if (strcmp(itemType, "data_path") == 0)
+          {
+            realfullPath("./", chBuff);
             cJSON_AddStringToObject(retArr, itemType, chBuff);
           }
           else if (strcmp(itemType, "XXXX") == 0)
@@ -1941,6 +1947,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
   default:
     LOGI("type:%d, UNKNOWN type", data.type);
+  }
+
+  if(doExit)
+  {
+    exit(0);
   }
 
   return 0;
@@ -2884,13 +2895,50 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
     LOGI("MB:%f ",((double *)MB_pak.data)[0]);
   }
 
+  //The dimension of image
+  uint32_t dim[2];//the original dimension
+  {
+    int bytes_per_data=DM_pak.length/2;
+    
+    if(bytes_per_data==4)
+    {
+      uint32_t* tmp=(uint32_t *)DM_pak.data;
+      dim[0]=tmp[0];
+      dim[1]=tmp[1];
+    }
+    else if(bytes_per_data==8)
+    {
+      uint32_t* tmp=(uint32_t *)DM_pak.data;
+      dim[0]=tmp[0];
+      dim[1]=tmp[1];
+    }
+  }
 
-  uint64_t *dim = (uint64_t *)DM_pak.data;  //the original dimension
-  uint64_t *dimS = (uint64_t *)DS_pak.data; //Downscaled dimension(the forwardCalibMap)
+  //The dimension of calib map
+  //Downscaled dimension(the forwardCalibMap)
+  uint32_t dimS[2];
+    {
+    int bytes_per_data=DS_pak.length/2;
+    
+    if(bytes_per_data==4)
+    {
+      uint32_t* tmp=(uint32_t *)DS_pak.data;
+      dimS[0]=tmp[0];
+      dimS[1]=tmp[1];
+    }
+    else if(bytes_per_data==8)
+    {
+      uint32_t* tmp=(uint32_t *)DS_pak.data;
+      dimS[0]=tmp[0];
+      dimS[1]=tmp[1];
+    }
+  }
+
   double *MX_data = (double *)MX_pak.data;
   double *MY_data = (double *)MY_pak.data;
 
   setObj->RESET();
+  LOGI("MX_data:%p  MY_data:%p dimS:%d %d dim:%d %d..",MX_data,MY_data,dimS[0],dimS[1], dim[0], dim[1]);
   setObj->SET(MX_data, MY_data, dimS[0], dimS[1], dim[0], dim[1]);
 
   setObj->calibPpB=((double *)CB_pak.data)[0];
@@ -2910,7 +2958,7 @@ int testCode()
 
     LOGI("mmpB:%f  calibPpB:%f", default_bacpac.sampler->map->calibmmpB, default_bacpac.sampler->map->calibPpB);
     LOGI("mmpp:%.9f", default_bacpac.sampler->mmpP_ideal());
-    acv_XY loca = {X : 10, Y : 10};
+    acv_XY loca = {X : 1000, Y : 10};
     LOGI("0__ %f  %f ___", loca.X, loca.Y);
     default_bacpac.sampler->img2ideal(&loca);
     LOGI("1__ %f  %f ___", loca.X, loca.Y);
