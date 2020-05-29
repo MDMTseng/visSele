@@ -514,6 +514,27 @@ class CameraCtrl {
   }
 
 
+  setImageCropParam(cropWindow,downSampleFactor=8) {
+
+
+    let obj={};
+    if(cropWindow!==undefined)
+    {
+      obj.ImageTransferSetup={
+        crop:cropWindow
+      };
+    }
+    
+    if(downSampleFactor!==undefined)
+    {
+      obj.CameraSetting={
+        down_samp_level:downSampleFactor
+      };
+    }
+    this.ws_ch(obj);
+  }
+
+
 
   setSpeedSwitchingCount(speedSwitchingCount = 1000) {
     this.data.speedSwitchingCount = speedSwitchingCount;
@@ -1636,7 +1657,8 @@ class APP_INSP_MODE extends React.Component {
 
 
     this.CameraCtrl.setCameraImageTransfer(true);
-
+    
+    this.CameraCtrl.setImageCropParam(undefined,4);
 
     if (this.props.inspMode == "FI") {
       this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, deffile: this.props.defModelPath + "." + DEF_EXTENSION }, undefined);

@@ -143,17 +143,24 @@ class APPMasterX extends React.Component {
               }, 1000);
 
 
-              this.props.ACT_WS_SEND(this.props.WS_ID, "GS", 0, { items: ["binary_path","camera_info"] },
+              this.props.ACT_WS_SEND(this.props.WS_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
                 undefined, {
                 resolve: (data) => {
                   console.log(data)
                   if (data[0].type == "GS") {
+
                     let path = data[0].data["binary_path"];
+                    if(path!==undefined)
+                    {
+                      
+                    }
+
                     let camera_info = data[0].data["camera_info"];
                     if(camera_info!==undefined)
                     {
                       this.props.ACT_CAMERA_INFO_UPDATE(camera_info);
                     }
+
                   }
                 }, reject: (err) => {
                   log.error(err);

@@ -488,91 +488,96 @@ export class InspectionEditorLogic {
     return undefined;
   }
 
-  ShapeListAdjustsWithInspectionResult(shapeList, InspResult, oriBase = false) {
+  
+  ShapeAdjustsWithInspectionResult(shape, InspResult, oriBase = false){
     let cos_v = Math.cos(-InspResult.rotate);
     let sin_v = Math.sin(-InspResult.rotate);
     let flip_f = (InspResult.isFlipped) ? -1 : 1;
-    shapeList.forEach((eObject) => {
-      if (eObject == null) return;
 
-      let inspAdjObj = this.FindInspShapeObject(eObject.id, InspResult);
-      if (InspResult != undefined && inspAdjObj == undefined) {
-        return;
-      }
-      eObject.inspection_status = inspAdjObj.status;
+    let eObject=shape;
+    if (eObject == null) return;
 
-
-
-      ["pt1", "pt2", "pt3"].forEach((key) => {
-        if (eObject[key] === undefined) return;
-        eObject[key] = PtRotate2d_sc(eObject[key], sin_v, cos_v, flip_f);
-        eObject[key].x += InspResult.cx;
-        eObject[key].y += InspResult.cy;
-      });
-
-      switch (eObject.type) {
-        case SHAPE_TYPE.line:
-          {
-            ["pt1", "pt2"].forEach((key) => {
-              eObject[key] = closestPointOnLine(inspAdjObj, eObject[key]);
-            });
-            if (InspResult.isFlipped) {
-              let tmp = eObject.pt1;
-              eObject.pt1 = eObject.pt2;
-              eObject.pt2 = tmp;
-            }
-
-          }
-          break;
+    let inspAdjObj = this.FindInspShapeObject(eObject.id, InspResult);
+    if (InspResult != undefined && inspAdjObj == undefined) {
+      return;
+    }
+    eObject.inspection_status = inspAdjObj.status;
 
 
-        case SHAPE_TYPE.arc:
-          {
-            ["pt1", "pt2", "pt3"].forEach((key) => {
-              eObject[key].x -= inspAdjObj.x;
-              eObject[key].y -= inspAdjObj.y;
-              let mag = Math.hypot(eObject[key].x, eObject[key].y);
-              eObject[key].x = eObject[key].x * inspAdjObj.r / mag + inspAdjObj.x;
-              eObject[key].y = eObject[key].y * inspAdjObj.r / mag + inspAdjObj.y;
-            });
 
-          }
-          break;
-
-        case SHAPE_TYPE.search_point:
-          {
-            eObject.pt1.x = inspAdjObj.x;
-            eObject.pt1.y = inspAdjObj.y;
-            if (InspResult.isFlipped)
-              eObject.angleDeg = -eObject.angleDeg;
-          }
-          break;
-
-
-        case SHAPE_TYPE.measure:
-          {
-            eObject.inspection_value = inspAdjObj.value;
-            //console.log(eObject);
-          }
-          break;
-      }
-      if (oriBase)//rotate back to original orientation
-      {
-        ["pt1", "pt2", "pt3"].forEach((key) => {
-          if (eObject[key] === undefined) return;
-          eObject[key].x -= InspResult.cx;
-          eObject[key].y -= InspResult.cy;
-          if (flip_f < 0) {
-            eObject[key] = PtRotate2d_sc(eObject[key], sin_v, cos_v, -1);
-          }
-          else {
-            eObject[key] = PtRotate2d_sc(eObject[key], -sin_v, cos_v, 1);
-          }
-        });
-      }
+    ["pt1", "pt2", "pt3"].forEach((key) => {
+      if (eObject[key] === undefined) return;
+      eObject[key] = PtRotate2d_sc(eObject[key], sin_v, cos_v, flip_f);
+      eObject[key].x += InspResult.cx;
+      eObject[key].y += InspResult.cy;
     });
 
+    switch (eObject.type) {
+      case SHAPE_TYPE.line:
+        {
+          ["pt1", "pt2"].forEach((key) => {
+            eObject[key] = closestPointOnLine(inspAdjObj, eObject[key]);
+          });
+          // if (InspResult.isFlipped) {
+          //   let tmp = eObject.pt1;
+          //   eObject.pt1 = eObject.pt2;
+          //   eObject.pt2 = tmp;
+          // }
 
+        }
+        break;
+
+
+      case SHAPE_TYPE.arc:
+        {
+          ["pt1", "pt2", "pt3"].forEach((key) => {
+            eObject[key].x -= inspAdjObj.x;
+            eObject[key].y -= inspAdjObj.y;
+            let mag = Math.hypot(eObject[key].x, eObject[key].y);
+            eObject[key].x = eObject[key].x * inspAdjObj.r / mag + inspAdjObj.x;
+            eObject[key].y = eObject[key].y * inspAdjObj.r / mag + inspAdjObj.y;
+          });
+
+        }
+        break;
+
+      case SHAPE_TYPE.search_point:
+        {
+          eObject.pt1.x = inspAdjObj.x;
+          eObject.pt1.y = inspAdjObj.y;
+          // if (InspResult.isFlipped)
+          //   eObject.angleDeg = -eObject.angleDeg;
+        }
+        break;
+
+
+      case SHAPE_TYPE.measure:
+        {
+          eObject.inspection_value = inspAdjObj.value;
+          //console.log(eObject);
+        }
+        break;
+    }
+    if (oriBase)//rotate back to original orientation
+    {
+      ["pt1", "pt2", "pt3"].forEach((key) => {
+        if (eObject[key] === undefined) return;
+        eObject[key].x -= InspResult.cx;
+        eObject[key].y -= InspResult.cy;
+        if (flip_f < 0) {
+          eObject[key] = PtRotate2d_sc(eObject[key], sin_v, cos_v, -1);
+        }
+        else {
+          eObject[key] = PtRotate2d_sc(eObject[key], -sin_v, cos_v, 1);
+        }
+      });
+    }
+  }
+
+  ShapeListAdjustsWithInspectionResult(shapeList, InspResult, oriBase = false) {
+    shapeList.forEach((eObject) => {
+      this.ShapeAdjustsWithInspectionResult(eObject, InspResult, oriBase)
+    });
   }
 
 

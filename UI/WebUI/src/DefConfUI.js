@@ -1043,7 +1043,45 @@ class APP_DEFCONF_MODE extends React.Component {
     return UIArr;
   }
 
+  defFileGeneration(edit_info)
+  {
 
+    let feature_sig360_circle_line = edit_info._obj.GenerateFeature_sig360_circle_line();
+    let preloadedDefFile = edit_info.loadedDefFile;
+    if (preloadedDefFile === undefined) preloadedDefFile = {};
+    let report = {
+      ...preloadedDefFile,
+      type: "binary_processing_group",
+      intrusionSizeLimitRatio: edit_info.intrusionSizeLimitRatio,
+      featureSet: [feature_sig360_circle_line]
+    };
+    delete report["featureSet_sha1"];
+
+    report.name = edit_info.DefFileName;
+    report.tag = edit_info.DefFileTag;
+
+    report.featureSet[0].matching_angle_margin_deg = edit_info.matching_angle_margin_deg;
+    report.featureSet[0].matching_angle_offset_deg = edit_info.matching_angle_offset_deg;
+    report.featureSet[0].matching_face = edit_info.matching_face;
+
+    let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+    report.featureSet[0]["__decorator"] = this.props.Info_decorator;
+    report.featureSet_sha1 = sha1_info_in_json;
+    //this.props.ACT_DefFileHash_Update(sha1_info_in_json);
+
+    report.featureSet_sha1_pre = edit_info.DefFileHash;
+
+    if (edit_info.DefFileHash_root === undefined) {
+      if (edit_info.featureSet_sha1_pre === undefined)
+        report.featureSet_sha1_root = sha1_info_in_json;
+      else
+        report.featureSet_sha1_root = edit_info.featureSet_sha1_pre;
+    }
+    else
+      report.featureSet_sha1_root = edit_info.DefFileHash_root;
+
+    return report;
+  }
 
   render() {
 
@@ -1137,41 +1175,9 @@ class APP_DEFCONF_MODE extends React.Component {
                     console.log(fileNamePath);
 
                     var enc = new TextEncoder();
+                    let report = this.defFileGeneration(this.props.edit_info);
 
-                    let feature_sig360_circle_line = this.props.edit_info._obj.GenerateFeature_sig360_circle_line();
-                    let preloadedDefFile = this.props.edit_info.loadedDefFile;
-                    if (preloadedDefFile === undefined) preloadedDefFile = {};
-                    let report = {
-                      ...preloadedDefFile,
-                      type: "binary_processing_group",
-                      intrusionSizeLimitRatio: this.props.edit_info.intrusionSizeLimitRatio,
-                      featureSet: [feature_sig360_circle_line]
-                    };
-                    delete report["featureSet_sha1"];
-
-                    report.name = this.props.edit_info.DefFileName;
-                    report.tag = this.props.edit_info.DefFileTag;
-
-                    report.featureSet[0].matching_angle_margin_deg = this.props.edit_info.matching_angle_margin_deg;
-                    report.featureSet[0].matching_angle_offset_deg = this.props.edit_info.matching_angle_offset_deg;
-                    report.featureSet[0].matching_face = this.props.edit_info.matching_face;
-
-                    let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
-                    report.featureSet[0]["__decorator"] = this.props.Info_decorator;
-                    report.featureSet_sha1 = sha1_info_in_json;
-                    this.props.ACT_DefFileHash_Update(sha1_info_in_json);
-
-                    report.featureSet_sha1_pre = this.props.edit_info.DefFileHash;
-
-                    if (this.props.edit_info.DefFileHash_root === undefined) {
-                      if (this.props.edit_info.featureSet_sha1_pre === undefined)
-                        report.featureSet_sha1_root = sha1_info_in_json;
-                      else
-                        report.featureSet_sha1_root = this.props.edit_info.featureSet_sha1_pre;
-                    }
-                    else
-                      report.featureSet_sha1_root = this.props.edit_info.DefFileHash_root;
-
+                    this.props.ACT_DefFileHash_Update(report.featureSet_sha1);
                     console.log("ACT_Report_Save");
                     this.props.ACT_Report_Save(this.props.WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
                     console.log("ACT_Cache_Img_Save");
@@ -1310,6 +1316,9 @@ class APP_DEFCONF_MODE extends React.Component {
               this.setState({
                 ...this.state, modal_view: {
                   onOk: () => {
+
+
+
                     new Promise((resolve, reject) => {
                       this.props.ACT_WS_SEND(this.props.WS_ID, "EX", 0, {},
                         undefined, { resolve, reject });
@@ -1326,6 +1335,57 @@ class APP_DEFCONF_MODE extends React.Component {
                         log.info(err);
                       })
                     this.props.ACT_Shape_List_Reset();
+
+
+
+
+                    
+
+                    // this.props.ACT_WS_SEND(this.props.WS_ID,
+                    //   "CI", 0, 
+                    // {
+                    //   _PGID_:10004,
+                    //   _PGINFO_:{keep:true},
+                    //   definfo: {
+                    //     "type":"binary_processing_group",
+                    //     "intrusionSizeLimitRatio":1,
+                    //     "featureSet":[
+                    //       {
+                    //         "type":"sig360_extractor",
+                    //         "ver":"0.0.0.0",
+                    //         "unit":"mm",
+                    //         "mmpp":100
+                    //       }
+                    //     ]
+                    //   },
+                    //   frame_count:1
+                    // },undefined,
+                    // {
+                    //   resolve:(darr,mainFlow)=>{
+                    //     console.log(darr);
+                        
+                    //     this.props.ACT_WS_SEND(this.props.WS_ID,
+                    //       "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+                        
+                    //     let reportInfo = darr.find(data=>data.type==="RP");
+                    //     if(reportInfo===undefined)return;
+                    //     reportInfo.type="SG";
+                    //     this.props.DISPATCH({
+                    //             type: "ATBundle",
+                    //             ActionThrottle_type: "express",
+                    //             data: darr.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+                    //           })
+
+                    //   },
+                    //   reject:(e)=>{
+                    //     this.props.ACT_WS_SEND(this.props.WS_ID,
+                    //       "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+                    //   }
+                    // }
+                    // );
+
+
+
                   },
                   onCancel: () => { console.log("onCancel") },
                   title: "WARNING",
@@ -1333,6 +1393,65 @@ class APP_DEFCONF_MODE extends React.Component {
                 }
               })
             }} />,
+
+
+
+
+          <BASE_COM.IconButton
+            iconType="INST_CHECK"
+            dict={EC_zh_TW}
+            addClass="layout palatte-purple-8 vbox"
+            key="INST_CHECK"
+            text="INST_CHECK" onClick={() => {
+
+              let deffile = this.defFileGeneration(this.props.edit_info);
+              console.log(deffile);
+
+              this.props.ACT_WS_SEND(this.props.WS_ID,"II", 0, 
+              {
+                _PGID_:10104,
+                _PGINFO_:{keep:true},
+                definfo:deffile,
+                img_property:{
+                  scale:2
+                }
+              },undefined,
+              {
+                resolve:(darr,mainFlow)=>{
+                  console.log(darr);
+                  let RP=darr.find(pkt=>pkt.type=="RP");
+                  if(RP!==undefined)
+                  {
+                    let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
+                    console.log(insp_reports);
+                    if(insp_reports.length>0)
+                    {
+                      let insp_rep = insp_reports[0];
+                      this.props.shape_list.forEach((shape,idx)=>{
+                        let mod_shape=dclone(shape);
+                        
+                        this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape, insp_rep,true);
+                        //Make sure the status is not NA
+                        if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
+                        {
+                          this.props.shape_list[idx]=mod_shape;
+                        }
+                        delete this.props.shape_list[idx]["inspection_value"]
+                        delete this.props.shape_list[idx]["inspection_status"]
+                        // delete mod_shape["inspection_value"]
+                        // delete mod_shape["inspection_status"]
+                        console.log(shape,mod_shape);
+                      })
+                    }
+                  }
+
+                },
+                reject:(e)=>{
+                }
+              }
+              );
+            }} />,
+
 
         ];
 
@@ -1682,7 +1801,56 @@ class APP_DEFCONF_MODE extends React.Component {
               }} />);
 
 
+            MenuSet.push(<BASE_COM.Button
+              key="CHECK"
+              addClass="layout blue vbox"
+              text="CHECK" onClick={() =>{
 
+                let deffile = this.defFileGeneration(this.props.edit_info);
+                console.log(deffile);
+  
+                this.props.ACT_WS_SEND(this.props.WS_ID,"II", 0, 
+                {
+                  _PGID_:10104,
+                  _PGINFO_:{keep:true},
+                  definfo:deffile,
+                  img_property:{
+                    scale:2
+                  }
+                },undefined,
+                {
+                  resolve:(darr,mainFlow)=>{
+                    console.log(darr);
+                    let RP=darr.find(pkt=>pkt.type=="RP");
+                    if(RP!==undefined)
+                    {
+                      let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
+                      console.log(insp_reports);
+                      if(insp_reports.length>0)
+                      {
+                        let insp_rep = insp_reports[0];
+                        let mod_shape=dclone(this.props.edit_tar_info);
+                        
+                        this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape, insp_rep,true);
+                        //Make sure the status is not NA
+                        if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
+                        {
+                          //this.props.shape_list[idx]=mod_shape;
+                          
+                          delete mod_shape["inspection_value"]
+                          delete mod_shape["inspection_status"]
+                          this.ec_canvas.SetShape(mod_shape, mod_shape.id);
+                        }
+                        
+                        //console.log(shape,mod_shape);
+                        
+                      }
+                    }
+                  },
+                  reject:(e)=>{
+                  }
+                });
+              }} />);
           }
 
         }

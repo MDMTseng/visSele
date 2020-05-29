@@ -1073,6 +1073,7 @@ function StateReducer(newState, action) {
               //ID is defined and shaped is defiend - Modify an existed shape if it's in the list
               //ID is defined and shaped is null   - delete  an existed shape if it's in the list
 
+              if(action.data.shape!=null && action.data.shape!=undefined )
               {
                 let shape = action.data.shape;
                 if (shape.subtype === "calc") {
