@@ -631,10 +631,10 @@ let renderMethods = {
 
 class APP_DEFCONF_MODE extends React.Component {
 
+  loadDefFile(defModelPath)
+  {
 
-  componentDidMount() {
-    let defModelPath = this.props.edit_info.defModelPath;
-
+    this.props.ACT_DefConf_Lock_Level_Update(0);
     new Promise((resolve, reject) => {
       this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
         {
@@ -645,17 +645,31 @@ class APP_DEFCONF_MODE extends React.Component {
       setTimeout(() => reject("Timeout"), 5000)
     })
       .then((pkts) => {
+
         this.props.DISPATCH({
           type: "ATBundle",
           ActionThrottle_type: "express",
           data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
         })
+        let SS=pkts.find(pkt=>pkt.type==="SS");
+        if(SS!==undefined)
+        {
+          let success=GetObjElement(SS,["data","ACK"]);
+          if(success==true)
+          {
+            this.props.ACT_DefConf_Lock_Level_Update(1);
+          }
+        }
       })
       .catch((err) => {
         log.info(err);
       })
 
 
+  }
+  componentDidMount() {
+    let defModelPath = this.props.edit_info.defModelPath;
+    this.loadDefFile(defModelPath);
     let _ws = new websocket_autoReconnect("ws://hyv.decade.tw:8080/insert/def", 10000);
     this.WS_DEF_DB_Insert = new websocket_reqTrack(_ws);
 
@@ -669,12 +683,13 @@ class APP_DEFCONF_MODE extends React.Component {
     this.WS_DEF_DB_Insert.onconnectiontimeout = () => log.info("WS_DEF_DB_Insert:onconnectiontimeout");
     this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
     this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
-    this.props.ACT_DefConf_Lock_Level_Update(1);
   }
 
   componentWillUnmount() {
     this.WS_DEF_DB_Insert.close();
     this.props.ACT_ClearImage();
+    
+    this.props.ACT_DefConf_Lock_Level_Update(0);
   }
   constructor(props) {
     super(props);
@@ -1192,9 +1207,7 @@ class APP_DEFCONF_MODE extends React.Component {
                   let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
                   console.log(fileNamePath);
                   this.props.ACT_Def_Model_Path_Update(fileNamePath);
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
-                    { deffile: fileNamePath + '.' + DEF_EXTENSION, imgsrc: fileNamePath });
-
+                  this.loadDefFile(fileNamePath);
                   this.setState({ ...this.state, fileSelectedCallBack: undefined });
                 }
               });
