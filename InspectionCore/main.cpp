@@ -73,8 +73,9 @@ RingBuf<image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSize
 //main.cpp  1062 main:v Center: 1295,971
 
 
-FeatureManager_BacPac default_bacpac = {0};
-// acvRadialDistortionParam default_bacpac={
+FeatureManager_BacPac calib_bacpac = {0};
+FeatureManager_BacPac neutral_bacpac = {0};
+// acvRadialDistortionParam calib_bacpac={
 //     calibrationCenter:{1295,971},
 //     RNormalFactor:1296,
 //     K0:0.999783,
@@ -99,9 +100,9 @@ char *ReadFile(char *filename);
 int CameraSettingFromFile(CameraLayer *camera, char *path);
 
 CameraLayer *getCamera(int initCameraType); //0 for real First, then fake one, 1 for real camera only, 2 for fake only
-int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr);
+int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr,FeatureManager_BacPac *bacpac);
 
-int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename);
+int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename,FeatureManager_BacPac *bacpac);
 
 typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
 
@@ -471,11 +472,11 @@ void AttachStaticInfo(cJSON *reportJson, DatCH_CallBack_BPG *cb)
     }
   }
 }
-// int backPackLoad(FeatureManager_BacPac &default_bacpac,cJSON *from)
+// int backPackLoad(FeatureManager_BacPac &calib_bacpac,cJSON *from)
 // {
 // }
 
-// int backPackDump(FeatureManager_BacPac &default_bacpac,cJSON *dumoTo)
+// int backPackDump(FeatureManager_BacPac &calib_bacpac,cJSON *dumoTo)
 // {
 // }
 
@@ -522,7 +523,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
       mult = *p_mult;
     }
 
-    ret_param->angOffsetTable->RESET();
+    ret_param->getAngOffsetTable()->RESET();
     cJSON *current_element = angledOffsetObj->child;
 
     for (cJSON *current_element = angledOffsetObj->child;
@@ -543,23 +544,23 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
                                angle_rad : (float)(tagNum * M_PI / 180),
                                offset : mult * (float)*val
       };
-      ret_param->angOffsetTable->push_back(newPair);
+      ret_param->getAngOffsetTable()->push_back(newPair);
     }
 
     void *target;
     int type = getDataFromJson(angledOffsetObj, "symmetric", &target);
     if (type == cJSON_True)
     {
-      ret_param->angOffsetTable->makeSymmetic();
+      ret_param->getAngOffsetTable()->makeSymmetic();
     }
 
     double *preOffset = JFetch_NUMBER(angledOffsetObj, "preOffset");
     if (preOffset)
     {
-      ret_param->angOffsetTable->applyPreOffset(*preOffset);
+      ret_param->getAngOffsetTable()->applyPreOffset(*preOffset);
     }
 
-    angledOffsetTable *angOffsetTable = ret_param->angOffsetTable;
+    angledOffsetTable *angOffsetTable = ret_param->getAngOffsetTable();
     int testN = 100;
 
     LOGI("angOffsetTable.size:%d", angOffsetTable->size());
@@ -583,7 +584,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     LOGE("calibMapPath:%s", calibMapPath);
     int datL = 0;
     uint8_t *bDat = ReadByte(calibMapPath, &datL);
-    ret_param->map->RESET();
+    ret_param->getCalibMap()->RESET();
     if (bDat)
     {
       int count = PerifProt::countValidArr(bDat, datL);
@@ -593,7 +594,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
         throw new std::runtime_error("ReadByte return NULL");
       }
       PerifProt::Pak p1 = PerifProt::parse(bDat);
-      int pret=parseCM_info(p1, ret_param->map);
+      int pret=parseCM_info(p1, ret_param->getCalibMap());
       LOGI("parseCM_info::ret:%d", pret);
 
       delete bDat;
@@ -608,14 +609,14 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
   //ret_param->mmpp = *JFetEx_NUMBER(root, "reports[0].mmpb2b") / (*JFetEx_NUMBER(root, "reports[0].ppb2b"));
   if(JFetEx_NUMBER(root, "reports[0].mmpb2b")!=NULL)
   {
-    ret_param->map->calibmmpB=*JFetEx_NUMBER(root, "reports[0].mmpb2b");
-    LOGI("Override calibmmpB:%f",ret_param->map->calibmmpB);
+    ret_param->getCalibMap()->calibmmpB=*JFetEx_NUMBER(root, "reports[0].mmpb2b");
+    LOGI("Override calibmmpB:%f",ret_param->getCalibMap()->calibmmpB);
   }
 
   do
   {
 
-    stageLightParam *stageLightInfo = ret_param->stageLightInfo;
+    stageLightParam *stageLightInfo = ret_param->getStageLightInfo();
     char default_SLCalibPath[] = "stageLightReport.json";
     char *SLCalibPath = JFetch_STRING(root, "reports[0].StageLightReportPath");
     if (SLCalibPath == NULL)
@@ -1190,15 +1191,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             cJSON* cam_info_jarr = cJSON_CreateArray();
             
             
-            //LOGI("CAM_INFO..\n%s",default_bacpac.cam->getCameraJsonInfo());
+            //LOGI("CAM_INFO..\n%s",calib_bacpac.cam->getCameraJsonInfo());
             cJSON* cam_1 = cJSON_Parse(cb->camera->getCameraJsonInfo().c_str());
             if(cam_1==NULL)
             {
               cam_1=cJSON_CreateObject();
             }
-            cJSON_AddNumberToObject(cam_1, "mmpp",default_bacpac.sampler->mmpP_ideal());
-            cJSON_AddNumberToObject(cam_1, "cur_width",default_bacpac.sampler->map->fullFrameW);
-            cJSON_AddNumberToObject(cam_1, "cur_height",default_bacpac.sampler->map->fullFrameH);
+            cJSON_AddNumberToObject(cam_1, "mmpp",calib_bacpac.sampler->mmpP_ideal());
+            cJSON_AddNumberToObject(cam_1, "cur_width",calib_bacpac.sampler->getCalibMap()->fullFrameW);
+            cJSON_AddNumberToObject(cam_1, "cur_height",calib_bacpac.sampler->getCalibMap()->fullFrameH);
             
             cJSON_AddItemToArray(cam_info_jarr,cam_1);
             
@@ -1421,7 +1422,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         datCH_BPG.data.p_BPG_data = &bpg_dat;
         self->SendData(datCH_BPG);
 
-        int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr);
+        int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr,&calib_bacpac);
         free(jsonStr);
 
         try
@@ -1471,7 +1472,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
           //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
-          ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, default_bacpac.sampler);
+          ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler);
           bpg_dat.callbackInfo = (uint8_t *)&iminfo;
           bpg_dat.callback = DatCH_BPG_acvImage_Send;
           bpg_dat.pgID = dat->pgID;
@@ -1656,13 +1657,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           mainThreadLock.unlock();
           srcImg = camera->GetFrame();
           cacheImage.ReSize(srcImg);
-          acvCloneImage(srcImg, &cacheImage, -1);
+          //acvCloneImage(srcImg, &cacheImage, -1);
+          ImageDownSampling(cacheImage, *srcImg,1, calib_bacpac.sampler);
           //SaveIMGFile("data/test1.bmp",srcImg);
         }
 
         try
         {
-          ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json");
+
+          ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json",&calib_bacpac);
           const FeatureReport *report = matchingEng.GetReport();
 
           if (report != NULL)
@@ -1699,7 +1702,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         bpg_dat = GenStrBPGData("IM", NULL);
         BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : 2};
         //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, default_bacpac.sampler);
+        ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler);
         bpg_dat.callbackInfo = (uint8_t *)&iminfo;
         bpg_dat.callback = DatCH_BPG_acvImage_Send;
         bpg_dat.pgID = dat->pgID;
@@ -2017,7 +2020,7 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
 
   sprintf(tmpStr, "%s/default_camera_param.json", path);
 
-  ret = LoadCameraCalibrationFile(tmpStr, default_bacpac.sampler);
+  ret = LoadCameraCalibrationFile(tmpStr, calib_bacpac.sampler);
 
   if (ret)
   {
@@ -2026,27 +2029,27 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
     //throw new std::runtime_error("LoadCameraCalibrationFile ERROR");
   }
 
-  if (default_bacpac.sampler)
+  if (calib_bacpac.sampler)
   {
-    stageLightParam *stageLightInfo=default_bacpac.sampler->stageLightInfo;
+    stageLightParam *stageLightInfo=calib_bacpac.sampler->getStageLightInfo();
     LOGI("SetExposureTime from bacpac:%f us", stageLightInfo->exposure_us);
     camera->SetExposureTime(stageLightInfo->exposure_us);
     //stageLightInfo->back_light_target=back_light_target;
     
 
-    LOGI("mmpB:%f  calibPpB:%f", default_bacpac.sampler->map->calibmmpB, default_bacpac.sampler->map->calibPpB);
-    LOGI("scaled ppb2b:%f", default_bacpac.sampler->map->calibmmpB/default_bacpac.sampler->mmpP_ideal());
-    LOGI("mmpp:%.9f", default_bacpac.sampler->mmpP_ideal());
+    LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
+    LOGI("scaled ppb2b:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB/calib_bacpac.sampler->mmpP_ideal());
+    LOGI("mmpp:%.9f", calib_bacpac.sampler->mmpP_ideal());
   }
 
   return 0;
 }
 
-int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename)
+int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, char *defFilename,FeatureManager_BacPac *bacpac)
 {
   char *string = ReadText(defFilename);
   //printf("%s\n%s\n",string,defFilename);
-  int ret = ImgInspection_JSONStr(me, test1, repeatTime, string);
+  int ret = ImgInspection_JSONStr(me, test1, repeatTime, string,bacpac);
   free(string);
   return ret;
 }
@@ -2075,12 +2078,12 @@ int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *ba
   //SaveIMGFile("data/target_buff.bmp",&test1_buff);
 }
 
-int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr)
+int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, char *jsonStr,FeatureManager_BacPac *bacpac)
 {
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
-  ImgInspection(me, test1, &default_bacpac,NULL, repeatTime);
+  ImgInspection(me, test1,bacpac,NULL, repeatTime);
   return 0;
 }
 
@@ -2228,7 +2231,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 
   acvCloneImage(&capImg, &(headImgPipe->img), -1);
 
-  headImgPipe->bacpac = &default_bacpac;
+  headImgPipe->bacpac = &calib_bacpac;
   headImgPipe->fi = cl_GMV.GetFrameInfo();
 
   if (doImgProcessThread)
@@ -2304,8 +2307,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   {
 
-    bacpac->sampler->map->origin_offset.X = fi.offset_x;
-    bacpac->sampler->map->origin_offset.Y = fi.offset_y;
+    bacpac->sampler->getCalibMap()->origin_offset.X = fi.offset_x;
+    bacpac->sampler->getCalibMap()->origin_offset.Y = fi.offset_y;
   }
   //if(stackingC!=0)return;
   if (0)
@@ -2782,7 +2785,7 @@ int mainLoop(bool realCamera = false)
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       camera = getCamera(CamInitStyle);
     }
-    default_bacpac.cam=camera;
+    calib_bacpac.cam=camera;
     LOGI("DatCH_BPG1_0 camera :%p", camera);
 
     CameraSettingFromFile(camera, "data/");
@@ -2835,7 +2838,7 @@ int simpleTest(char *imgName, char *defName)
     LOGE("LoadBMP failed: ret:%d", ret);
     return -1;
   }
-  ImgInspection_DefRead(matchingEng, &newImg, 1, defName);
+  ImgInspection_DefRead(matchingEng, &newImg, 1, defName,&calib_bacpac);
 
   const FeatureReport *report = matchingEng.GetReport();
 
@@ -2953,16 +2956,16 @@ int testCode()
   {
 
     CameraLayer *cam=getCamera(0);
-    int ret = LoadCameraCalibrationFile("data/default_camera_param.json", default_bacpac.sampler);
+    int ret = LoadCameraCalibrationFile("data/default_camera_param.json", calib_bacpac.sampler);
 
 
-    LOGI("mmpB:%f  calibPpB:%f", default_bacpac.sampler->map->calibmmpB, default_bacpac.sampler->map->calibPpB);
-    LOGI("mmpp:%.9f", default_bacpac.sampler->mmpP_ideal());
+    LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
+    LOGI("mmpp:%.9f", calib_bacpac.sampler->mmpP_ideal());
     acv_XY loca = {X : 1000, Y : 10};
     LOGI("0__ %f  %f ___", loca.X, loca.Y);
-    default_bacpac.sampler->img2ideal(&loca);
+    calib_bacpac.sampler->img2ideal(&loca);
     LOGI("1__ %f  %f ___", loca.X, loca.Y);
-    default_bacpac.sampler->ideal2img(&loca);
+    calib_bacpac.sampler->ideal2img(&loca);
     LOGI("2__ %f  %f ___", loca.X, loca.Y);
     return -1;
     char *string = ReadText("data/stageLightCalib.json");
@@ -2972,7 +2975,7 @@ int testCode()
     acvImage bw_img;
     ret = LoadIMGFile(&bw_img, "data/BG.BMP");
 
-    ret = ImgInspection(matchingEng, &bw_img, &default_bacpac,NULL, 1);
+    ret = ImgInspection(matchingEng, &bw_img, &calib_bacpac,NULL, 1);
     const FeatureReport *report = matchingEng.GetReport();
     delete (string);
 
@@ -3023,11 +3026,11 @@ int testCode()
 #include <vector>
 int main(int argc, char **argv)
 {
-  default_bacpac.sampler = new ImageSampler();
+  calib_bacpac.sampler = new ImageSampler();
 
-  // int sret = LoadCameraCalibrationFile("data/default_camera_param.json",default_bacpac.sampler);
+  // int sret = LoadCameraCalibrationFile("data/default_camera_param.json",calib_bacpac.sampler);
   // acv_XY xy={20,30};
-  // float ddd = default_bacpac.sampler->stageLightInfo->factorSampling(xy);
+  // float ddd = calib_bacpac.sampler->getStageLightInfo()->factorSampling(xy);
   // LOGI("ddd:%f",ddd);
   // return 0;
   //if(testCode()!=0)return -1;
@@ -3088,7 +3091,7 @@ int main(int argc, char **argv)
     int ret_val = LoadIMGFile(&calibImage, "data/calibImg.BMP");
     if (ret_val != 0)
       return -1;
-    ImgInspection_DefRead(matchingEng, &calibImage, 1, "data/cameraCalibration.json");
+    ImgInspection_DefRead(matchingEng, &calibImage, 1, "data/cameraCalibration.json",&calib_bacpac);
 
     const FeatureReport *report = matchingEng.GetReport();
 

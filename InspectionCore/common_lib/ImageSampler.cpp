@@ -129,23 +129,43 @@ void acvCalibMap::reMap(int type)
   {
     case 1:
     {
+
+      //Now we gonna find the size scale between calib map pixel  and original pixel 
+      //it's to find how can we generate a complete corrected image under different sized calib map(usually downscaled)
+      //
+      /*  
+      For example, 
+      [O]original image dim: 500x500
+      [C]calib image dim:100x100 
+      the relationship between O and C isn't just 1/5
+      because the calib map may include certain scale factor and out of image pixels(by unwarping)
+      therefore we need a simple way to grasp the approx pixel size scale between O and C
+
+      in here, we have two position OP_00 and OP_WH on calib map 
+      and find CP_00=inv_calib_map(OP_00) ,CP_WH=inv_calib_map(OP_HW) 
+      and the scale is 
+      scale=|OP_HW-OP_00|/|CP_WH-CP_00|;
+
+      the reason why I do this is to let calib user have a more or less similar position scale, 
+      which is not nessasary logically but to make calibrated image easier
+      */
       float shrinkScale=0.8;
       float mapLoc_00[2]={NAN};
       acv_XY start={fullFrameW*(1-shrinkScale)/2,fullFrameH*(1-shrinkScale)/2};
       acv_XY end={fullFrameW*(1-(1-shrinkScale)/2),fullFrameH*(1-(1-shrinkScale)/2)};
       acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, start.X,start.Y, mapLoc_00,0.0001,1, 200);
 
-      float mapLoc_W0[2]={NAN};
-      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, end.X,end.Y, mapLoc_W0,0.0001,1, 200);
+      float mapLoc_WH[2]={NAN};
+      acvCalibMapUtil::locateMapPosition(fwdMap, downSizedMapW, downSizedMapH, end.X,end.Y, mapLoc_WH,0.0001,1, 200);
       //Just to get 00 and W0
-      //
+      //Diagnal scale
       //(0,0)o
       //      \
       //       \
       //        \
       //         \
-      //          o(W,0)
-      map_loca_scale= hypot(fullFrameW,fullFrameH)*(shrinkScale)/hypot(mapLoc_W0[0] - mapLoc_00[0], mapLoc_W0[1] - mapLoc_00[1]);
+      //          o(W,H)
+      map_loca_scale= hypot(fullFrameW,fullFrameH)*(shrinkScale)/hypot(mapLoc_WH[0] - mapLoc_00[0], mapLoc_WH[1] - mapLoc_00[1]);
     }
     break;
     default: 

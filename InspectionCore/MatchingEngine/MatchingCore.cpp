@@ -916,12 +916,10 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
     if(bacpac && bacpac->sampler)
     {
       
-      acv_XY tmpCurPt=curpoint;
-      tmpCurPt.X+=nvec.X*nvec.X*((nM-1)/2);
-      tmpCurPt.Y+=nvec.Y*nvec.Y*((nM-1)/2);
-
-      stageLightParam *slP=bacpac->sampler->stageLightInfo;
-      lightComp=slP->back_light_target/slP->factorSampling(tmpCurPt);
+      acv_XY CenterCurPt=curpoint;
+      CenterCurPt.X+=nvec.X*nvec.X*((nM-1)/2);
+      CenterCurPt.Y+=nvec.Y*nvec.Y*((nM-1)/2);//set to center position
+      lightComp=bacpac->sampler->sampleBackLightFactor_ImgCoord(CenterCurPt);
     }
     // bacpac->sampler->
 
@@ -1236,7 +1234,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               float angle = atan2(sobel.Y,sobel.X);
               if(angle<0)angle+=M_PI*2;
 
-              float offset=bacpac->sampler->angOffsetTable->sampleAngleOffset(angle);
+              float offset=bacpac->sampler->sampleAngleOffset(angle);
               // printf("ang:%f  XY:%f,%f offset:%f\n",
               //   angle*180/M_PI,
               //   edge_grid.tmpXYSeq[k].pt.X,

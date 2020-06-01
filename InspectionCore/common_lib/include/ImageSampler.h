@@ -139,17 +139,43 @@ class acvCalibMap
 
 class ImageSampler
 {
-  public:
+  protected:
+  bool _ignoreCorrdCalib=false;
+  bool _ignoreStageLightCalib=false;
+  bool _ignoreAngleOffset=false;
+  
   acvCalibMap *map;
   angledOffsetTable *angOffsetTable;
   stageLightParam *stageLightInfo;
+  public:
   ImageSampler(){
     //map=new acvCalibMap();
     map=new acvCalibMap();
     angOffsetTable=new angledOffsetTable();
     stageLightInfo=new stageLightParam();
   }
-  
+  stageLightParam *getStageLightInfo(){return stageLightInfo;}
+  angledOffsetTable *getAngOffsetTable(){return angOffsetTable;}
+  acvCalibMap *getCalibMap(){return map;}
+  void ignoreCalib(bool d)
+  {
+    ignoreCoordCalib(d);
+    ignoreStageLightCalib(d);
+    ignoreAngleOffset(d);
+  }
+  void ignoreCoordCalib(bool d)
+  {
+    _ignoreCorrdCalib=d;
+  }
+  void ignoreStageLightCalib(bool d)
+  {
+    _ignoreStageLightCalib=d;
+  }
+  void ignoreAngleOffset(bool d)
+  {
+    _ignoreAngleOffset=d;
+  }
+
   float mmpP_ideal()
   {
     return map->get_mmpP_ideal();
@@ -157,6 +183,7 @@ class ImageSampler
   
   void RESET()
   { 
+    ignoreCalib(false);
     map->RESET();
     angOffsetTable->RESET();
     stageLightInfo->RESET();
@@ -164,6 +191,7 @@ class ImageSampler
 
   int img2ideal(acv_XY *distortedVec)
   {
+    if(_ignoreCorrdCalib)return 0;
     return map->i2c(*distortedVec);
   }
 
@@ -171,25 +199,35 @@ class ImageSampler
 
   int img2ideal(float distortedVec[2])
   {
+    if(_ignoreCorrdCalib)return 0;
     return map->i2c(distortedVec);
   }
 
   int ideal2img(acv_XY *idealVec)
   {
+    if(_ignoreCorrdCalib)return 0;
     return map->c2i(*idealVec);
   }
 
   int ideal2img(float idealVec[2])
   {
+    if(_ignoreCorrdCalib)return 0;
     return map->c2i(idealVec);
   }
+  float sampleBackLightFactor_ImgCoord(acv_XY pos)
+  {
+    if(_ignoreStageLightCalib)
+      return 1;
+    return stageLightInfo->back_light_target/stageLightInfo->factorSampling(pos);
+  }
+
 
   float sampleImage_IdealCoord(acvImage *img,float idealVec[2])
   {
     int ret = ideal2img(idealVec);
     acv_XY xy={X:idealVec[0],Y:idealVec[1]};
-    float f=stageLightInfo->factorSampling(xy);
-    return sampleImage_ImgCoord(img, idealVec)*stageLightInfo->back_light_target/f;
+    float sampPix=sampleImage_ImgCoord(img, idealVec);
+    return sampPix;
   }
   float sampleImage_IdealCoord(acvImage *img,acv_XY pos)
   {
@@ -197,11 +235,17 @@ class ImageSampler
     return sampleImage_ImgCoord(img, pos);
   }
 
-  float sampleImage_ImgCoord(acvImage *img,acv_XY pos)
+  float sampleImage_ImgCoord(acvImage *img,acv_XY pos,int samp_type=1)
   {
     //float bri = acvUnsignedMap1Sampling(img, pos,0);
-    float bri = acvUnsignedMap1Sampling_Nearest(img, pos,0);
-    return bri;
+    float bri;
+    
+    if(samp_type==1)
+      bri= acvUnsignedMap1Sampling_Nearest(img, pos,0);
+    else if (samp_type==0)
+      bri= acvUnsignedMap1Sampling(img, pos,0);
+    
+    return bri*sampleBackLightFactor_ImgCoord(pos);
   }
   float sampleImage_ImgCoord(acvImage *img,float imgPos[2])
   {
@@ -209,7 +253,11 @@ class ImageSampler
     return sampleImage_ImgCoord(img,pos);
   }
 
-
+  float sampleAngleOffset(float angle)
+  {
+    if(_ignoreAngleOffset)return 0;
+    return angOffsetTable->sampleAngleOffset(angle);
+  }
 };
 
 

@@ -2078,7 +2078,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
       continue;
     }
-    float mmpp = bacpac->sampler->mmpP_ideal();; //mm per pixel
+    float mmpp = bacpac->sampler->mmpP_ideal(); //mm per pixel
     FeatureReport_sig360_circle_line_single singleReport =
         {
             .detectedCircles = reportDataPool[count].detectedCircles,
