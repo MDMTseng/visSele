@@ -1,5 +1,6 @@
+#!/bin/sh
 EXPORT_PATH=${1:-"../../release_export/"}
-
-mkdir -p $EXPORT_PATH/WebUI/
-
-cp  -r index.html dist resource $EXPORT_PATH/WebUI/
+echo $EXPORT_PATH
+cp  -r dist $EXPORT_PATH
+cp  -r index.html $EXPORT_PATH
+cp  -r resource $EXPORT_PATH
