@@ -617,16 +617,16 @@ def chessBoardCalibsss(image_path):
         images_trusted.append(fname)
         print("END... IMG:",fname)
 
-        # for j in range(0, len(corners_trusted)):
-        #     loc = corners_trusted[j][0]
-        #     coord = coord_trusted[j]
-        #     x=int(loc[0])
-        #     y=int(loc[1])
-        #     cv2.circle(img,(x,y),3,255,-1)
-        #     cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-        #     cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-        # cv2.imshow('img',img)
-        # cv2.waitKey()
+        for j in range(0, len(corners_trusted)):
+            loc = corners_trusted[j][0]
+            coord = coord_trusted[j]
+            x=int(loc[0])
+            y=int(loc[1])
+            cv2.circle(img,(x,y),3,255,-1)
+            cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.imshow('img',img)
+        cv2.waitKey()
 
 
 
@@ -640,13 +640,13 @@ def chessBoardCalibsss(image_path):
     print("---imgpoints:\n  ",len(imgpoints[0])) #real cornor points from all availiable images
     print("---objpoints:\n  ",len(objpoints[0])) #XY index grid from real cornor points 
     for x in range(20):
-        thres = 0.1
+        thres = 10
         objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres*2,0.2)
         print("  ",x," availLen>",availLen," totLen>",totLen," error:",error)
 
         
         if(maxMatchingRatio<availLen/totLen):
-            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres,1)
+            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres*2,0.2)
             print("2nd:",x," availLen>",availLen," _totLen>",_totLen," error:",error)
             maxMatchingRatio = availLen/totLen
             maxMatchingAvailLen=availLen
@@ -657,7 +657,7 @@ def chessBoardCalibsss(image_path):
     # objpoints, imgpoints,err = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,1000)
     print("maxMatchingRatio:",maxMatchingRatio)
     print("maxMatchingAvailLen:",maxMatchingAvailLen)
-    if(maxMatchingRatio<0.8 and maxMatchingAvailLen<1000):
+    if(maxMatchingRatio<0.5  and maxMatchingAvailLen<1000):
         return None
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_Match, imgpoints_Match, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
@@ -714,20 +714,20 @@ def chessBoardCalibsss(image_path):
 
 
 
-    # for i in range(0, len(imgpoints_Match)):
-    #     print("......",rvecs[i], tvecs[i])
-    #     img = cv2.imread(images_trusted[i])
-    #     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    #     width,height = gray.shape[::-1]
-    #     for j in range(0, len(imgpoints_Match[i])):
-    #         x,y = imgpoints_Match[i][j].ravel()
-    #         coord = objpoints_Match[i][j]
-    #         cv2.circle(img,(x,y),3,128,-1)
-    #         cv2.putText(img, str(int(coord[0])), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
-    #         cv2.putText(img, str(int(coord[1])), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
-    #     cv2.imshow('img',img)
-    #     cv2.waitKey()
-    #     #cv2.imwrite(images_trusted[i]+'_output.jpg', img)
+    for i in range(0, len(imgpoints_Match)):
+        print("......",rvecs[i], tvecs[i])
+        img = cv2.imread(images_trusted[i])
+        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        width,height = gray.shape[::-1]
+        for j in range(0, len(imgpoints_Match[i])):
+            x,y = imgpoints_Match[i][j].ravel()
+            coord = objpoints_Match[i][j]
+            cv2.circle(img,(x,y),3,128,-1)
+            cv2.putText(img, str(int(coord[0])), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(int(coord[1])), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        cv2.imshow('img',img)
+        cv2.waitKey()
+        #cv2.imwrite(images_trusted[i]+'_output.jpg', img)
 
 
 
@@ -756,7 +756,7 @@ def chessBoardCalibsss(image_path):
 
     keepAlive=True
 
-    downSamp=imageSize[0]//500
+    downSamp=imageSize[0]//200
     if(downSamp==0):
         downSamp=1
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
