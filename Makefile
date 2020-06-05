@@ -1,6 +1,6 @@
 domake:build export
 
-
+.PHONY:build export
 
 
 build: 
@@ -15,3 +15,4 @@ export:
 	cd UI/WebUI; sh export.sh ../../$(EXPFolder)/WebUI
 	-@mkdir -p $(EXPFolder)/Core
 	make -C $(abspath .)/InspectionCore export EXPORT_PATH=$(abspath .)/$(EXPFolder)/Core
+	cp -r scripts $(EXPFolder)
