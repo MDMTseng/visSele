@@ -8,6 +8,7 @@ import json
 import subprocess
 import ntpath
 import os
+from time import sleep
 from datetime import datetime
 
 path_env=os.path.abspath("./")
@@ -65,10 +66,13 @@ def parse_argv(argv):
       'packPath=',
 
       'type=',
+      'pre_wait_ms=',
+      'port=',
+      'env_path='
     ])
   except getopt.GetoptError as err:
     # print help information and exit:
-    print("ERROR") 
+    print("ERROR",err) 
     #print(err)  # will print something like "option -a not recognized"
     #usage()
     return None
@@ -167,6 +171,8 @@ def exe_update_file(update_info,file_dir_path="./"):
 
   shutil.rmtree(tmp_folder, ignore_errors=True)
 
+  shutil.move(file_dir_path+"/"+update_info["exeDir"]/scripts/boot_script.py, 
+    path_local) 
 
 
   # print(file_dir_path, update_info["exeDir"],file_name)
@@ -185,15 +191,22 @@ def cmd_exec(cmd):
     update_info=update_param_check(cmd)
     if update_info is not None:
       ACK=exe_update_file(update_info)
+    #if(ACK==0):
+      #replace the boot_script
+      
   elif _type == "validation":
     # print("os.path.isdir("+Core_Path+"):",os.path.isdir(Core_Path))
     # print("os.path.isdir("+WebUI_Path+"):",os.path.isdir(WebUI_Path))
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
       ACK=0
   elif _type == "launch_core":
-    subprocess.call('core/visele')
-  elif _type == "launch_program":
-    subprocess.call('core/visele')
+
+    env_path=cmd.get("env_path", "./")
+
+    ret=os.system("cd "+env_path+"; "+Core_Path+'/visSele&')
+    #os.spawnl(os.P_DETACH,"cd "+env_path+"; "+Core_Path+'/visSele')
+  elif _type == "rerun":
+    pass
 
   elif _type == "EXIT":
     termination=True
@@ -258,15 +271,36 @@ def fileDownload(url,file_path):
 
 
 if __name__ == "__main__":
+
   obj= parse_argv(sys.argv)
-  _type=obj["type"]
+  _type=obj.get("type", None)
   if _type == "websocket-server":
-    start_server = websockets.serve(main_logic, 'localhost', 5678)
+  
+    try:
+      pre_wait_ms=int(obj.get("pre_wait_ms", ""))
+      print("pre_wait_ms:",pre_wait_ms," ms")
+      sleep(pre_wait_ms/1000.0)
+    except ValueError:
+      pass
+    
+    port = 5678
+    try:
+      port=int(obj.get("port", ""))
+      print("port:",port)
+    except ValueError:
+      pass
+
+
+    print("server Open: 'localhost',",port)
+    start_server = websockets.serve(main_logic, 'localhost', port)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(start_server)
     loop.run_forever()
-  else:
+  elif  _type is not None:
     retx=cmd_exec(obj)
     print(retx)
     sys.exit(retx)
+  else:
+    sys.exit(-33)
+
 
