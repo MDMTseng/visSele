@@ -68,7 +68,8 @@ def parse_argv(argv):
       'type=',
       'pre_wait_ms=',
       'port=',
-      'env_path='
+      'env_path=',
+      'dst_path='
     ])
   except getopt.GetoptError as err:
     # print help information and exit:
@@ -169,6 +170,11 @@ def exe_update_file(update_info,file_dir_path="./"):
   print("CALL:",ret)
   if(ret!= 0):
     return -5
+
+  ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=deploy --dst_path="+file_dir_path+"/"+update_info["exeDir"])
+  print("CALL:",ret)
+  if(ret!= 0):
+    return -6
   #Step 3, put current binary to backup folder
   if(doPackageBK):
     backup_folder=file_dir_path+"BK"
@@ -190,9 +196,10 @@ def exe_update_file(update_info,file_dir_path="./"):
     dest = shutil.move(file_dir_path+"/"+update_info["old_exeDir"], bk_dst) #move current package to BK folder
 
 
+    
   #Step 3.1 move newly updated binary to cur_local path
 
-  shutil.move(tmp_binary_folder, file_dir_path+"/"+update_info["exeDir"]) 
+  shutil.move(tmp_binary_folder, file_dir_path+"/"+update_info["exeDir"])  #don't do deploy here
 
   print("CC:",CC)
   CC+=1
@@ -224,11 +231,19 @@ def cmd_exec(cmd):
     #if(ACK==0):
       #replace the boot_script
       
-  elif _type == "validation":
+  elif _type == "deploy":
     print("check:"+WebUI_Path)
     print("check:"+Core_Path)
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
       ACK=os.system("chmod +x "+Core_Path+"/visSele")
+    else:
+      pass
+    
+  elif _type == "validation":
+    print("check:"+WebUI_Path)
+    print("check:"+Core_Path)
+    if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
+      ACK=0
     else:
       print("validation FAILED")
   elif _type == "launch_core":
