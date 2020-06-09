@@ -269,10 +269,11 @@ def cmd_exec(cmd):
     else:
       ACK=-30
 
-  elif _type == "EXIT":
-    termination=True
+  if _type == "reload":
     ACK=0
-
+  elif _type == "EXIT":
+    ACK=0
+  
   
   return ACK,infoObj
 
@@ -296,14 +297,25 @@ async def recv_msg(websocket):
 
       _type=recv_json.get("type", None)
 
+      if _type == "reload":
+        ACK=True
+
       if _type == "EXIT":
-        termination=True
         ACK=True
 
       ret_json=json.dumps({'ACK': ACK, 'cmd_id': cmd_id,**info})
       response_text = ret_json
       await websocket.send(response_text)
-      if termination:
+
+      
+      if _type == "reload":
+        websocket.close()
+        #TODO: the os.execv doesn't seem to reload the file content, so it might not work as we want
+        #supposedly the script sould be reloaded with updated "file"
+        os.execv(__file__, sys.argv)
+        break
+
+      if _type == "EXIT":
         websocket.close()
         break
 

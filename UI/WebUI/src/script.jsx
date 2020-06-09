@@ -420,7 +420,19 @@ class APPMasterX extends React.Component {
                   .catch((err)=>{
                     console.log(err)
                   })
-              }}>UPDATE</div>
+              }}>UPDATE</div>,
+              
+              <div className="layout button width3 height2" onClick=
+              {() =>{
+                let x = {"type":"EXIT"}
+                this.boot_daemon_ws.send_obj(x)
+                  .then((data)=>{
+                    console.log("EXIT:",data)
+                  })
+                  .catch((err)=>{
+                    console.log(err)
+                  })
+              }}>TERM</div>
             ]
             :
             <div className="layout width11 height12">
