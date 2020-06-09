@@ -104,7 +104,7 @@ export class websocket_autoReconnect{
   onerror(ev){}
   onclose(ev){}
 
-  onreconnection(reconnectionCounter){}
+  onreconnection(reconnectionCounter){return true;}
   onconnectiontimeout(){}
 
   setWebsocketCallbackUndefined(ws)
@@ -115,15 +115,17 @@ export class websocket_autoReconnect{
     ws.onclose=undefined;
   }
   _connect(url) {
+    console.log("_connect");
     if(this.wsclose)return;
     
-    console.log("_connect");
+    console.log("_connect:GO");
     this.url=url;
     if(this.websocket!==undefined)
     {
         this.reconnectionCounter++;
         let doconnection = this.onreconnection(this.reconnectionCounter);
-        if(doconnection!==undefined && doconnection!=true)
+        console.log("doconnection:",doconnection)
+        if(doconnection==undefined || doconnection!=true)
         {
           this.websocket=undefined;
           return;
@@ -135,15 +137,16 @@ export class websocket_autoReconnect{
     this.connectionTimer=undefined;
 
     this.websocket = new WebSocket(url);
-    this.OPEN=this.websocket.OPEN;
-    this.CONNECTING=this.websocket.CONNECTING;
-    this.CLOSED=this.websocket.CLOSED;
-    this.CLOSING=this.websocket.CLOSING;
+    this.OPEN=WebSocket.OPEN;
+    this.CONNECTING=WebSocket.CONNECTING;
+    this.CLOSED=WebSocket.CLOSED;
+    this.CLOSING=WebSocket.CLOSING;
     
     this.onNewState(this.CONNECTING);
     this.connectionTimer = setTimeout(()=>{
         this.close();
         this.onconnectiontimeout();
+        setTimeout(()=>this.reconnect(url),this.reconnectGap_ms);
     },this.connectionTimeout_ms);
     // this.state.WS_DB_Insert.binaryType = "arraybuffer";
 
@@ -176,7 +179,7 @@ export class websocket_autoReconnect{
     {
       if(this.websocket.readyState!=this.websocket.OPEN)
       {
-        setWebsocketCallbackUndefined(this.websocket);
+        this.setWebsocketCallbackUndefined(this.websocket);
         this.websocket=undefined;
         this._connect(this.url);
       }
@@ -221,12 +224,12 @@ export class websocket_autoReconnect{
 }
 
 export class websocket_reqTrack{
-  constructor(websocket) {
+  constructor(websocket,trackKey="req_id") {
     let onopen = websocket.onopen;
     let onmessage = websocket.onmessage;
     let onerror = websocket.onerror;
     let onclose = websocket.onclose;
-
+    this.trackKey=trackKey;
     this.trackWindow={};
 
     websocket.onopen=(ev)=>{
@@ -235,39 +238,40 @@ export class websocket_reqTrack{
       this.onopen(ev);
     };
     websocket.onclose=(ev)=>{
+      Object.keys(this.trackWindow).forEach(key=>{
+        if(this.trackWindow[key].reject!==undefined)
+          this.trackWindow[key].reject()
+      })
       this.trackWindow={};
       this.readyState=this.websocket.readyState;
       this.onclose(ev);
     };
     websocket.onmessage=(ev)=>{
       this.readyState=this.websocket.readyState;
+      console.log(ev)
       let p = JSON.parse(ev.data);
+      
+      let ACK_info=p.ACK;
       let type=p.type;
-      if(type=="ACK" || type=="NAK")
+
+      if(ACK_info!==undefined)
       {
-        let req_id=p.req_id;
-        if(req_id!==undefined)
+        let tKey=p[this.trackKey];
+        if(tKey!==undefined)
         {
-          let tobj = this.trackWindow[req_id];
+          let tobj = this.trackWindow[tKey];
           if(tobj!==undefined)
           {
-            delete this.trackWindow[req_id];
-            if(type=="ACK")
-            {
-              tobj.resolve(p);
-            }
-            else
-            {
-              tobj.reject(p);
-            }
+            delete this.trackWindow[tKey];
+            tobj.resolve(p);
           }
           else
           {
-            req_id=undefined;
+            tKey=undefined;
           }
         }
         
-        if(req_id===undefined){
+        if(tKey===undefined){
           
           this.onTrackError({
             type:"ACK_TRACK_ERR",
@@ -275,10 +279,15 @@ export class websocket_reqTrack{
           });
         }
       }
-      this.onmessage(ev,p);
+      else
+        this.onmessage(ev,p);
     };
     websocket.onerror=(ev)=>{
-      
+
+      Object.keys(this.trackWindow).forEach(key=>{
+        if(this.trackWindow[key].reject!==undefined)
+          this.trackWindow[key].reject()
+      })
       this.trackWindow={};
       this.readyState=this.websocket.readyState;
       this.onerror(ev);
@@ -301,16 +310,16 @@ export class websocket_reqTrack{
 
   send_obj(data,replacer){
 
-    let req_id = data.req_id;
+    let tKey = data[this.trackKey];
 
-    while(req_id===undefined||
-      Object.keys(this.trackWindow).reduce((match,id)=>match||id === req_id,false))
+    while(tKey===undefined||
+      Object.keys(this.trackWindow).reduce((match,id)=>match||id === tKey,false))
       //Check existance
     {
-      //if req_id is undefined / exists in the lookup table
-      req_id = Math.floor(Math.random()*16777215).toString(16);
+      //if tKey is undefined / exists in the lookup table
+      tKey = Math.floor(Math.random()*16777215).toString(16);
     }
-    data.req_id = req_id;
+    data[this.trackKey] = tKey;
 
 
     this.websocket.send(JSON.stringify(data,replacer));
@@ -322,7 +331,7 @@ export class websocket_reqTrack{
       data:data,
       rsp:undefined
     };
-    this.trackWindow[req_id]=trackObj;
+    this.trackWindow[tKey]=trackObj;
     return new Promise((resolve, reject)=>{
       trackObj.resolve=resolve;
       trackObj.reject=reject;

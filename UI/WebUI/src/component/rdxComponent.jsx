@@ -183,7 +183,7 @@ class TagOptions extends React.Component{
         className={"width3 "+((this.props.inspOptionalTag.find((str)=>str==this.state.newTagStr))?"error":"")}
         allowClear
         value={this.state.newTagStr}
-        prefix={<Icon type="tags"/>}
+        // prefix={<Icon type="tags"/>}
       />
       </div>
   }

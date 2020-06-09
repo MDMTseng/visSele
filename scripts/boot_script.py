@@ -18,6 +18,9 @@ path_local=os.path.abspath(sys.argv[0])
 print("path_env=",path_env)
 print("path_local=",path_local)
 
+
+BIN_DIR="Xception"
+
 WebUI_Path=path_env+"/WebUI"
 Core_Path=path_env+"/Core"
 
@@ -59,17 +62,14 @@ def parse_argv(argv):
   try:
     opts, args = getopt.getopt(argv[1:], "", 
     [
-      'exeDir=',
-      'old_exeDir=',
-      'old_exeDir_bkName=', 
+      'bk_name_append=', 
       'update_URL=', 
-      'packPath=',
 
       'type=',
       'pre_wait_ms=',
       'port=',
       'env_path=',
-      'dst_path='
+      'dst_dir='
     ])
   except getopt.GetoptError as err:
     # print help information and exit:
@@ -92,11 +92,7 @@ def ddd():
 def update_param_check(obj):
   update_info={}
   try:
-    obj["exeDir"]
-    obj["old_exeDir"]
-    obj["old_exeDir_bkName"]
-    # obj["update_URL"]
-    # obj["packPath"]
+    obj["bk_name_append"]
   except Exception as inst:
     print(type(inst))       # the exception instance
     print(inst.args)        # arguments stored in .args
@@ -115,7 +111,7 @@ def exe_update_file(update_info,file_dir_path="./"):
   CC=0
 
   doPackageBK=True
-  if not os.path.isdir(update_info["old_exeDir"]):
+  if not os.path.isdir(BIN_DIR):
     doPackageBK=False
 
 
@@ -171,16 +167,12 @@ def exe_update_file(update_info,file_dir_path="./"):
   if(ret!= 0):
     return -5
 
-  ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=deploy --dst_path="+file_dir_path+"/"+update_info["exeDir"])
-  print("CALL:",ret)
-  if(ret!= 0):
-    return -6
   #Step 3, put current binary to backup folder
   if(doPackageBK):
     backup_folder=file_dir_path+"BK"
 
     os.makedirs(backup_folder, exist_ok=True)
-    bk_dst=backup_folder+"/"+update_info["old_exeDir_bkName"]
+    bk_dst=backup_folder+"/"+BIN_DIR+update_info["bk_name_append"]
     retryC=0
     while True:
       if(retryC!=0):
@@ -193,29 +185,28 @@ def exe_update_file(update_info,file_dir_path="./"):
         bk_dst=tmp_name
         break
       
-    dest = shutil.move(file_dir_path+"/"+update_info["old_exeDir"], bk_dst) #move current package to BK folder
+    dest = shutil.move(file_dir_path+"/"+BIN_DIR, bk_dst) #move current package to BK folder
 
 
     
   #Step 3.1 move newly updated binary to cur_local path
 
-  shutil.move(tmp_binary_folder, file_dir_path+"/"+update_info["exeDir"])  #don't do deploy here
+  ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=deploy --dst_dir="+os.path.abspath(file_dir_path)+"/")
+  print("CALL:",ret)
+  if(ret!= 0):
+    return -6
+  #shutil.move(tmp_binary_folder, file_dir_path+"/"+update_info["exeDir"])  #don't do deploy here
 
-  print("CC:",CC)
-  CC+=1
+  #print("CC:",CC)
+  #CC+=1
 
   #Clean up tmp_folder
 
   shutil.rmtree(tmp_folder, ignore_errors=True)
 
-  shutil.move(file_dir_path+"/"+update_info["exeDir"]+"/scripts/boot_script.py", 
-    path_local) 
+  # shutil.move(file_dir_path+"/"+update_info["exeDir"]+"/scripts/boot_script.py", 
+  #   path_local) 
 
-
-  # print(file_dir_path, update_info["exeDir"],file_name)
-  # shutil.move(os.path.splitext(file_name)[0], update_info["exeDir"]) 
-  # #shutil.rmtree(file_name, ignore_errors=True)
-  # os.remove(file_name)  
 
   return 0
 
@@ -231,13 +222,16 @@ def cmd_exec(cmd):
     #if(ACK==0):
       #replace the boot_script
       
+  elif _type == "un_deploy":#in case of deploy error, roll back
+    pass
+    
   elif _type == "deploy":
-    print("check:"+WebUI_Path)
-    print("check:"+Core_Path)
+    print("dst_dir:",cmd["dst_dir"])
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
       ACK=os.system("chmod +x "+Core_Path+"/visSele")
-    else:
-      pass
+      shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
+      shutil.move(path_env, cmd["dst_dir"]+"/"+BIN_DIR)
+      ACK=0
     
   elif _type == "validation":
     print("check:"+WebUI_Path)
@@ -250,10 +244,7 @@ def cmd_exec(cmd):
     global CORE_PIPE
     if(CORE_PIPE is None):
       env_path=cmd.get("env_path", "./")
-      #await runProgX(env_path,Core_Path+'/visSele')
-      #os.spawnl(os.P_DETACH,"cd "+env_path+"; "+Core_Path+'/visSele')
-
-      CORE_PIPE = subprocess.Popen([path_env+"/Xception/Core/visSele"], cwd=env_path)
+      CORE_PIPE = subprocess.Popen([path_env+"/"+BIN_DIR+"/Core/visSele"], cwd=env_path)
       print("==================RUN==================")
       
       ACK=0

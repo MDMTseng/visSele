@@ -15,7 +15,8 @@ import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 
-import { xstate_GetCurrentMainState } from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, websocket_autoReconnect,
+  websocket_reqTrack} from 'UTIL/MISC_Util';
 import { MWWS_EVENT } from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
 import LocaleProvider from 'antd/lib/locale-provider';
@@ -94,7 +95,13 @@ class APPMasterX extends React.Component {
     super(props);
     //this.state={};
     //this.state.do_splash=true;
+    this.state={
+      BOOT_DAEMON_readyState:WebSocket.CLOSED
+    };
 
+
+
+    
     this.WSDataDispatch = this.WSDataDispatch.bind(this);
     this.BPG_WS = {
       reqWindow: {},
@@ -320,7 +327,35 @@ class APPMasterX extends React.Component {
       this.props.ACT_WS_CONNECT(this.props.WS_ID, "ws://localhost:4090", this.BPG_WS)
       , 100);
 
+    let rec_ws=new websocket_autoReconnect("ws://localhost:5678", 4000);
+    // rec_ws.onreconnection = (reconnectionCounter) => {
+    //   log.info("onreconnection" + reconnectionCounter);
+    //   this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
+    //   return true;
+    // };
+    // rec_ws.onconnectiontimeout = () =>{ 
+    //   log.info("boot_daemon_ws:onconnectiontimeout");
+    //   this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
+    // }
+    this.boot_daemon_ws = new websocket_reqTrack(rec_ws,"cmd_id");
 
+    this.boot_daemon_ws.onmessage =(data)=>{
+      log.info(data)
+    };
+
+    this.boot_daemon_ws.onopen = (obj) => {
+      log.info("boot_daemon_ws.onopen", obj);
+      this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
+      return true;
+    };
+    this.boot_daemon_ws.onclose = () =>{
+      log.info("boot_daemon_ws:onclose");
+      this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
+    }
+    this.boot_daemon_ws.onerror = () => {
+      log.info("boot_daemon_ws:onerror");
+      this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
+    }
 
   }
   render() {
@@ -339,12 +374,67 @@ class APPMasterX extends React.Component {
         </BASE_COM.CardFrameWarp>
 
     } else {
-      xstateG = null;
+      xstateG =
+      <BASE_COM.CardFrameWarp 
+        addClass={"width7 height10 overlay SMGraph "} 
+        fixedFrame={true}>
+        {
+          this.state.BOOT_DAEMON_readyState==WebSocket.OPEN?
+            [
+              <div className="layout width3 height2">
+                readyState:{this.state.BOOT_DAEMON_readyState}
+              </div>,
+              <div className="layout button width3 height2" onClick=
+              {() =>{
+                this.boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
+              }}>RUN</div>,
+              <div className="layout button width3 height2" onClick=
+              {() =>{
+                this.boot_daemon_ws.send_obj({"type":"kill_core"})
+              }}>Stop</div>,
+              <div className="layout button width3 height2" onClick=
+              {() =>{
+                this.boot_daemon_ws.send_obj({"type":"poll_core"})
+                  .then((data)=>{
+                    console.log("poll.then:",data)
+                  })
+                  .catch((err)=>{
+                    console.log(err)
+                  })
+              }}>POLL</div>,
+              <div className="layout button width3 height2" onClick=
+              {() =>{
+                let current_datetime = new Date()
+                let formatted_date = 
+                  current_datetime.getDate() + "_" + 
+                  (current_datetime.getMonth() + 1) + "_" + 
+                  current_datetime.getFullYear()
+                  
+                let x = {"type":"update", 
+                  "bk_name_append":formatted_date
+                }
+                this.boot_daemon_ws.send_obj(x)
+                  .then((data)=>{
+                    console.log("Update:",data)
+                  })
+                  .catch((err)=>{
+                    console.log(err)
+                  })
+              }}>UPDATE</div>
+            ]
+            :
+            <div className="layout width11 height12">
+              CLOSED
+            </div>
+        }
+        {/* <div className="layout width11 height12">
+          readyState:{this.state.BOOT_DAEMON_readyState}
+        </div> */}
+      </BASE_COM.CardFrameWarp>
     }
     return (
       <div className="HXF">
 
-        {xstateG}
 
         {
           (this.props.showSplash) ?
@@ -362,6 +452,7 @@ class APPMasterX extends React.Component {
             </div>
             : <APPMain_rdx key="APP" />
         }
+        {xstateG}
       </div>
     );
   }
