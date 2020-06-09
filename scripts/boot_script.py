@@ -7,6 +7,7 @@ import asyncio
 import json
 import subprocess
 import ntpath
+import signal
 import os
 from time import sleep
 from datetime import datetime
@@ -17,9 +18,9 @@ path_local=os.path.abspath(sys.argv[0])
 print("path_env=",path_env)
 print("path_local=",path_local)
 
-
-WebUI_Path=path_env+"/WebUI"
-Core_Path=path_env+"/Core"
+PPP="Xception"
+WebUI_Path=path_env+"/"+PPP+"/WebUI"
+Core_Path=path_env+"/"+PPP+"/Core"
 
 
 def path_leaf(path):
@@ -182,9 +183,9 @@ def exe_update_file(update_info,file_dir_path="./"):
 
   return 0
 
-
+CORE_PIPE=None
 def cmd_exec(cmd):
-
+  infoObj={}
   _type=cmd.get("type", None)
   ACK=-10
   if _type == "update":
@@ -195,25 +196,46 @@ def cmd_exec(cmd):
       #replace the boot_script
       
   elif _type == "validation":
-    # print("os.path.isdir("+Core_Path+"):",os.path.isdir(Core_Path))
-    # print("os.path.isdir("+WebUI_Path+"):",os.path.isdir(WebUI_Path))
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
       ACK=0
   elif _type == "launch_core":
+    global CORE_PIPE
+    if(CORE_PIPE is None):
+      env_path=cmd.get("env_path", "./")
+      #await runProgX(env_path,Core_Path+'/visSele')
+      #os.spawnl(os.P_DETACH,"cd "+env_path+"; "+Core_Path+'/visSele')
 
-    env_path=cmd.get("env_path", "./")
+      CORE_PIPE = subprocess.Popen([Core_Path+'/visSele'], cwd=env_path)
+      print("==================RUN==================")
+      
+      ACK=0
+    else:
+      ACK=-30
 
-    ret=os.system("cd "+env_path+"; "+Core_Path+'/visSele&')
-    #os.spawnl(os.P_DETACH,"cd "+env_path+"; "+Core_Path+'/visSele')
-  elif _type == "rerun":
-    pass
+  elif _type == "kill_core":
+    if(CORE_PIPE is not None):
+      CORE_PIPE.send_signal(signal.SIGTERM)
+      CORE_PIPE.terminate()
+      CORE_PIPE.kill()
+      #os.killpg(os.getpgid(CORE_PIPE.pid), signal.SIGTERM)
+      CORE_PIPE=None
+      ACK=0
+    else:
+      ACK=-30
+  elif _type == "poll_core":
+    if(CORE_PIPE is not None):
+      infoObj["poll_code"]=CORE_PIPE.poll()
+      infoObj["pid"]=CORE_PIPE.pid
+      ACK=0
+    else:
+      ACK=-30
 
   elif _type == "EXIT":
     termination=True
     ACK=0
 
   
-  return ACK
+  return ACK,infoObj
 
 
 async def recv_msg(websocket):
@@ -227,7 +249,7 @@ async def recv_msg(websocket):
 
 
       cmd_id=recv_json.get("cmd_id", None)
-      ret_err=cmd_exec(recv_json)
+      ret_err,info=cmd_exec(recv_json)
       if(ret_err == 0):
         ACK = True
       else:
@@ -239,7 +261,7 @@ async def recv_msg(websocket):
         termination=True
         ACK=True
 
-      ret_json=json.dumps({'ACK': ACK, 'cmd_id': cmd_id})
+      ret_json=json.dumps({'ACK': ACK, 'cmd_id': cmd_id,**info})
       response_text = ret_json
       await websocket.send(response_text)
       if termination:
@@ -297,7 +319,7 @@ if __name__ == "__main__":
     loop.run_until_complete(start_server)
     loop.run_forever()
   elif  _type is not None:
-    retx=cmd_exec(obj)
+    retx,info=cmd_exec(obj)
     print(retx)
     sys.exit(retx)
   else:
