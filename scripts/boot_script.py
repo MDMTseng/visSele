@@ -18,9 +18,8 @@ path_local=os.path.abspath(sys.argv[0])
 print("path_env=",path_env)
 print("path_local=",path_local)
 
-PPP="Xception"
-WebUI_Path=path_env+"/"+PPP+"/WebUI"
-Core_Path=path_env+"/"+PPP+"/Core"
+WebUI_Path=path_env+"/WebUI"
+Core_Path=path_env+"/Core"
 
 
 def path_leaf(path):
@@ -86,6 +85,8 @@ def parse_argv(argv):
 
   return obj
 
+def ddd():
+  pass
 
 def update_param_check(obj):
   update_info={}
@@ -93,8 +94,8 @@ def update_param_check(obj):
     obj["exeDir"]
     obj["old_exeDir"]
     obj["old_exeDir_bkName"]
-    obj["update_URL"]
-    obj["packPath"]
+    # obj["update_URL"]
+    # obj["packPath"]
   except Exception as inst:
     print(type(inst))       # the exception instance
     print(inst.args)        # arguments stored in .args
@@ -116,8 +117,6 @@ def exe_update_file(update_info,file_dir_path="./"):
   if not os.path.isdir(update_info["old_exeDir"]):
     doPackageBK=False
 
-  file_name=file_dir_path+path_leaf(update_info["update_URL"])
-
 
   #Step 1, download new update to tmp folder
   tmp_folder=file_dir_path+"/TMP"
@@ -126,19 +125,49 @@ def exe_update_file(update_info,file_dir_path="./"):
 
   os.makedirs(tmp_folder, exist_ok=True)
 
-  if(not fileDownload_w_progress(update_info["update_URL"],tmp_folder+"/"+file_name)==True):
-    return -1
-  with zipfile.ZipFile(tmp_folder+"/"+file_name) as zf:
-    zf.extractall(tmp_folder)
+  if "update_URL" in update_info:
+    upzip_path=update_info["update_URL"]
+  else:
+    upzip_path=None
+  if(upzip_path is not None and upzip_path.startswith( 'http' )):
+    file_name=file_dir_path+path_leaf(upzip_path)
+    if(not fileDownload_w_progress(upzip_path,tmp_folder+"/"+file_name)==True):
+      return -1
+    with zipfile.ZipFile(tmp_folder+"/"+file_name) as zf:
+      zf.extractall(tmp_folder)
+  else:
+    if(upzip_path is None):
+      upzip_path=path_env
+      
+    if os.path.isdir(upzip_path):
+      upzip_path+="/update.zip"
+    
+    if not os.path.isfile(upzip_path):
+      return -2
+
+    file_name="update"
+    dest = shutil.move(upzip_path, tmp_folder+"/"+file_name+".zip") 
+    
+    try:
+      with zipfile.ZipFile(tmp_folder+"/"+file_name+".zip") as zf:
+        zf.extractall(tmp_folder)
+    except zipfile.BadZipFile:
+      return -3
+    
+    #check if the path_env has a update.zip
+    
+    
+
 
   tmp_binary_folder=os.path.splitext(tmp_folder+"/"+file_name)[0]
 
 
   #Step 2, update validation
   #assume it's a pass
+  print("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
   ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
   print("CALL:",ret)
-  if(ret):
+  if(ret!= 0):
     return -5
   #Step 3, put current binary to backup folder
   if(doPackageBK):
@@ -172,7 +201,7 @@ def exe_update_file(update_info,file_dir_path="./"):
 
   shutil.rmtree(tmp_folder, ignore_errors=True)
 
-  shutil.move(file_dir_path+"/"+update_info["exeDir"]/scripts/boot_script.py, 
+  shutil.move(file_dir_path+"/"+update_info["exeDir"]+"/scripts/boot_script.py", 
     path_local) 
 
 
@@ -196,8 +225,12 @@ def cmd_exec(cmd):
       #replace the boot_script
       
   elif _type == "validation":
+    print("check:"+WebUI_Path)
+    print("check:"+Core_Path)
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
-      ACK=0
+      ACK=os.system("chmod +x "+Core_Path+"/visSele")
+    else:
+      print("validation FAILED")
   elif _type == "launch_core":
     global CORE_PIPE
     if(CORE_PIPE is None):
@@ -205,7 +238,7 @@ def cmd_exec(cmd):
       #await runProgX(env_path,Core_Path+'/visSele')
       #os.spawnl(os.P_DETACH,"cd "+env_path+"; "+Core_Path+'/visSele')
 
-      CORE_PIPE = subprocess.Popen([Core_Path+'/visSele'], cwd=env_path)
+      CORE_PIPE = subprocess.Popen([path_env+"/Xception/Core/visSele"], cwd=env_path)
       print("==================RUN==================")
       
       ACK=0
