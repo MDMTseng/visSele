@@ -63,12 +63,17 @@ module.exports = {
       {
 
         test: /.js.?$/,
-        loader: 'babel-loader',
         exclude: /node_modules/,
-        query: {
-          cacheDirectory: true, //important for performance
-          presets: ['es2015', 'react']
+        use: {
+          loader: 'babel-loader',
+          options: {
+            presets: ["@babel/preset-env", "@babel/preset-react"]
+          }
         }
+        // query: {
+        //   cacheDirectory: true, //important for performance
+        //   presets: ['es2015', 'react']
+        // }
       },
       { test: /\.css$/, use:  [
                     'style-loader',  // 這個會後執行 (順序很重要)
@@ -85,14 +90,10 @@ module.exports = {
         }, {  
           loader: 'less-loader', // compiles Less to CSS
           options: {
-            javascriptEnabled: true,
-            modifyVars: {//Antd less modification
-              //'primary-color': '#1DA57A',
-              //'link-color': '#1DA57A',
-              //'border-radius-base': '2px',
-              'font-size-base': '20px'
+            lessOptions: {
+              javascriptEnabled: true
             }
-          },
+          }
         }]
       }]
   },
