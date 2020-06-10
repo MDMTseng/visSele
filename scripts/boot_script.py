@@ -14,13 +14,17 @@ from datetime import datetime
 import platform
 
 path_env=os.path.abspath("./")
-path_local=os.path.abspath(sys.argv[0])
+path_script=os.path.abspath(sys.argv[0])
+path_local=os.path.dirname(os.path.dirname(path_script))
 
 print("path_env=",path_env)
+print("path_script=",path_script)
 print("path_local=",path_local)
 
 
 BIN_DIR="Xception"
+
+
 
 WebUI_Path=path_env+"/WebUI"
 Core_Path=path_env+"/Core"
@@ -230,6 +234,8 @@ def gen_avaliable_new_folder_name(path):
       break
   return path_Name
 
+
+
 CORE_PIPE=None
 def cmd_exec(cmd):
   infoObj={}
@@ -239,8 +245,8 @@ def cmd_exec(cmd):
     update_info=update_param_check(cmd)
     if update_info is not None:
       ACK=exe_update_file(update_info,path_env)
-    #if(ACK==0):
-      #replace the boot_script
+      if(ACK==0):
+        infoObj
       
   elif _type == "un_deploy":#in case of deploy error, roll back
     pass
@@ -279,11 +285,14 @@ def cmd_exec(cmd):
       ACK=0
     else:
       print("validation FAILED")
+  elif _type == "get_UI_url":
+    infoObj["url"]=path_local+"/WebUI/index.html"
+    ACK=0
   elif _type == "launch_core":
     global CORE_PIPE
     if(CORE_PIPE is None):
       env_path=cmd.get("env_path", "./")
-      CORE_PIPE = subprocess.Popen([path_env+"/"+BIN_DIR+"/Core/visSele"], cwd=env_path)
+      CORE_PIPE = subprocess.Popen([path_local+"/Core/visSele"], cwd=env_path)
       print("==================RUN==================")
       
       ACK=0

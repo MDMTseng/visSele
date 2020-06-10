@@ -432,7 +432,27 @@ class APPMasterX extends React.Component {
                   .catch((err)=>{
                     console.log(err)
                   })
+
+
+
               }}>reload</div>
+
+              ,
+              
+              <div className="layout button width3 height2" onClick=
+              {() =>{
+                let x = {"type":"get_UI_url"}
+                this.boot_daemon_ws.send_obj(x)
+                  .then((data)=>{
+                    console.log("get_UI_url:",data)
+                  })
+                  .catch((err)=>{
+                    console.log(err)
+                  })
+
+
+
+              }}>get_UI_url</div>
             ]
             :
             <div className="layout width11 height12">
