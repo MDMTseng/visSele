@@ -238,7 +238,7 @@ def cmd_exec(cmd):
   if _type == "update":
     update_info=update_param_check(cmd)
     if update_info is not None:
-      ACK=exe_update_file(update_info)
+      ACK=exe_update_file(update_info,path_env)
     #if(ACK==0):
       #replace the boot_script
       
@@ -251,11 +251,18 @@ def cmd_exec(cmd):
       if(platform.system()!="Windows"):
         ACK=os.system("chmod +x "+Core_Path+"/visSele")
       availPath = gen_avaliable_new_folder_name(cmd["dst_dir"]+"/"+BIN_DIR)
-      shutil.move(path_env, availPath)
+      availPath = availPath.replace('\\', "/")
       with open("scripts/router_template.py", "rt") as fin:
         with open(cmd["dst_dir"]+"/router.py", "wt") as fout:
             for line in fin:
                 fout.write(line.replace('$TARGET_PATH_NAME$', availPath))
+      _path_env=os.path.abspath("./").replace("\\","/")
+      availPath=availPath.replace("\\","/")
+      print("_path_env:",_path_env)
+      print("availPath:",availPath)
+      
+      #os.makedirs(availPath, exist_ok=True)
+      shutil.move(path_env, availPath)
       #shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
       ACK=0
     
