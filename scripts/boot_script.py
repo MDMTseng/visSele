@@ -152,7 +152,7 @@ def exe_update_file(update_info,file_dir_path=""):
     except zipfile.BadZipFile:
       return -3
     
-    #check if the path_env has a update.zip
+    #check if the path_env has an update.zip
     
     
 
@@ -162,39 +162,38 @@ def exe_update_file(update_info,file_dir_path=""):
 
   #Step 2, update validation
   #assume it's a pass
-  print("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
   #ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
   
-  ret = subprocess.call(["python", tmp_binary_folder+"/scripts/boot_script.py", "--type=validation"], cwd=tmp_binary_folder)
+  shutil.copy2( tmp_binary_folder+"/scripts/boot_script.py", tmp_folder)
+  ret = subprocess.call(["python", tmp_folder+"/boot_script.py", "--type=validation"], cwd=tmp_binary_folder)
   print("CALL:",ret)
   if(ret!= 0):
     return -5
 
   #Step 3, put current binary to backup folder
-  if(doPackageBK):
-    backup_folder=file_dir_path+"BK"
+  # if(doPackageBK):
+  #   backup_folder=file_dir_path+"BK"
 
-    os.makedirs(backup_folder, exist_ok=True)
-    bk_dst=backup_folder+"/"+BIN_DIR+update_info["bk_name_append"]
-    retryC=0
-    while True:
-      if(retryC!=0):
-        tmp_name=bk_dst+"_"+str(retryC)
-      else:
-        tmp_name=bk_dst
-      retryC+=1
-      print(tmp_name+"\n")
-      if not os.path.isdir(tmp_name):
-        bk_dst=tmp_name
-        break
+  #   os.makedirs(backup_folder, exist_ok=True)
+  #   bk_dst=backup_folder+"/"+BIN_DIR+update_info["bk_name_append"]
+  #   retryC=0
+  #   while True:
+  #     if(retryC!=0):
+  #       tmp_name=bk_dst+"_"+str(retryC)
+  #     else:
+  #       tmp_name=bk_dst
+  #     retryC+=1
+  #     print(tmp_name+"\n")
+  #     if not os.path.isdir(tmp_name):
+  #       bk_dst=tmp_name
+  #       break
       
-    dest = shutil.move(file_dir_path+"/"+BIN_DIR, bk_dst) #move current package to BK folder
+  #   dest = shutil.move(file_dir_path+"/"+BIN_DIR, bk_dst) #move current package to BK folder
 
 
     
   #Step 3.1 move newly updated binary to cur_local path
-
-  ret = subprocess.call(["python", tmp_binary_folder+"/scripts/boot_script.py", "--type=deploy", '--dst_dir='+os.path.abspath(file_dir_path)+"/"], cwd=tmp_binary_folder)
+  ret = subprocess.call(["python", tmp_folder+"/boot_script.py", "--type=deploy", '--dst_dir='+os.path.abspath(file_dir_path)+"/"], cwd=tmp_binary_folder)
 
   print("CALL:",ret)
   if(ret!= 0):
@@ -213,6 +212,23 @@ def exe_update_file(update_info,file_dir_path=""):
 
 
   return 0
+
+
+
+def gen_avaliable_new_folder_name(path):
+  retryC=0
+  path_Name=path
+  while True:
+    if(retryC!=0):
+      tmp_name=path_Name+"_"+str(retryC)
+    else:
+      tmp_name=path_Name
+    retryC+=1
+    print(tmp_name+"\n")
+    if not os.path.isdir(tmp_name):
+      path_Name=tmp_name
+      break
+  return path_Name
 
 CORE_PIPE=None
 def cmd_exec(cmd):
@@ -234,9 +250,13 @@ def cmd_exec(cmd):
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
       if(platform.system()!="Windows"):
         ACK=os.system("chmod +x "+Core_Path+"/visSele")
-      print("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
-      shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
-      shutil.move(path_env, cmd["dst_dir"]+"/"+BIN_DIR)
+      availPath = gen_avaliable_new_folder_name(cmd["dst_dir"]+"/"+BIN_DIR)
+      shutil.move(path_env, availPath)
+      with open("scripts/router_template.py", "rt") as fin:
+        with open(cmd["dst_dir"]+"/router.py", "wt") as fout:
+            for line in fin:
+                fout.write(line.replace('$TARGET_PATH_NAME$', availPath))
+      #shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
       ACK=0
     
   elif _type == "validation":
@@ -318,7 +338,19 @@ async def recv_msg(websocket):
         websocket.close()
         #TODO: the os.execv doesn't seem to reload the file content, so it might not work as we want
         #supposedly the script sould be reloaded with updated "file"
-        os.execv(__file__, sys.argv)
+
+        global CORE_PIPE
+        if(CORE_PIPE is not None):
+          CORE_PIPE.send_signal(signal.SIGTERM)
+          CORE_PIPE.terminate()
+          CORE_PIPE.kill()
+          #os.killpg(os.getpgid(CORE_PIPE.pid), signal.SIGTERM)
+          CORE_PIPE=None
+
+
+        arg_call=sys.argv[:]
+        arg_call[0]=path_env+"/router.py"
+        os.execl(sys.executable,sys.executable, *arg_call[:])
         break
 
       if _type == "EXIT":
