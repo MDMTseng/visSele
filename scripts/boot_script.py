@@ -256,13 +256,19 @@ def cmd_exec(cmd):
         with open(cmd["dst_dir"]+"/router.py", "wt") as fout:
             for line in fin:
                 fout.write(line.replace('$TARGET_PATH_NAME$', availPath))
-      _path_env=os.path.abspath("./").replace("\\","/")
-      availPath=availPath.replace("\\","/")
+
+      
+      if(platform.system()=="Windows"):
+        _path_env=os.path.abspath("./").replace("/","\\").replace("\\\\","\\")
+        availPath=availPath.replace("/","\\").replace("\\\\","\\")
+      else:
+        _path_env=os.path.abspath("./").replace("\\","/").replace("//","/")
+        availPath=availPath.replace("\\","/")
       print("_path_env:",_path_env)
       print("availPath:",availPath)
       
       #os.makedirs(availPath, exist_ok=True)
-      shutil.move(path_env, availPath)
+      shutil.copytree(path_env, availPath)
       #shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
       ACK=0
     
