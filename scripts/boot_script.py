@@ -11,6 +11,7 @@ import signal
 import os
 from time import sleep
 from datetime import datetime
+import platform
 
 path_env=os.path.abspath("./")
 path_local=os.path.abspath(sys.argv[0])
@@ -105,7 +106,7 @@ def update_param_check(obj):
 # "old_exeDir_bkName":"Xception", "packPath":"", 
 # "update_URL":"https://github.com/MDMTseng/visSele/releases/download/pre_v1.0_hotfix-2/release_export.zip", 
 # "cmd_id":3}
-def exe_update_file(update_info,file_dir_path="./"):
+def exe_update_file(update_info,file_dir_path=""):
 
   print(update_info)
   CC=0
@@ -162,7 +163,9 @@ def exe_update_file(update_info,file_dir_path="./"):
   #Step 2, update validation
   #assume it's a pass
   print("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
-  ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
+  #ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=validation ")
+  
+  ret = subprocess.call(["python", tmp_binary_folder+"/scripts/boot_script.py", "--type=validation"], cwd=tmp_binary_folder)
   print("CALL:",ret)
   if(ret!= 0):
     return -5
@@ -191,7 +194,8 @@ def exe_update_file(update_info,file_dir_path="./"):
     
   #Step 3.1 move newly updated binary to cur_local path
 
-  ret=os.system("cd "+tmp_binary_folder+"; python scripts/boot_script.py --type=deploy --dst_dir="+os.path.abspath(file_dir_path)+"/")
+  ret = subprocess.call(["python", tmp_binary_folder+"/scripts/boot_script.py", "--type=deploy", '--dst_dir='+os.path.abspath(file_dir_path)+"/"], cwd=tmp_binary_folder)
+
   print("CALL:",ret)
   if(ret!= 0):
     return -6
@@ -228,7 +232,9 @@ def cmd_exec(cmd):
   elif _type == "deploy":
     print("dst_dir:",cmd["dst_dir"])
     if os.path.isdir(WebUI_Path) and os.path.isdir(Core_Path):
-      ACK=os.system("chmod +x "+Core_Path+"/visSele")
+      if(platform.system()!="Windows"):
+        ACK=os.system("chmod +x "+Core_Path+"/visSele")
+      print("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
       shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
       shutil.move(path_env, cmd["dst_dir"]+"/"+BIN_DIR)
       ACK=0
