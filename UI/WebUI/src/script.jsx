@@ -424,15 +424,15 @@ class APPMasterX extends React.Component {
               
               <div className="layout button width3 height2" onClick=
               {() =>{
-                let x = {"type":"EXIT"}
+                let x = {"type":"reload"}
                 this.boot_daemon_ws.send_obj(x)
                   .then((data)=>{
-                    console.log("EXIT:",data)
+                    console.log("reload:",data)
                   })
                   .catch((err)=>{
                     console.log(err)
                   })
-              }}>TERM</div>
+              }}>reload</div>
             ]
             :
             <div className="layout width11 height12">
