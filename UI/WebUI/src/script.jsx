@@ -4,7 +4,7 @@
 import styles from 'STYLE/basis.css'
 import sp_style from 'STYLE/sp_style.css'
 import { Provider, connect } from 'react-redux'
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 
@@ -44,6 +44,148 @@ let zhTW = Object.assign({}, zh_TW, EC_zh_TW);
 
 
 let StoreX = ReduxStoreSetUp({});
+
+
+function Boot_CTRL_UI({URL}) {
+
+  
+  const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
+  const [boot_daemon_ws, setBoot_daemon_ws] = useState(undefined);
+  useEffect(() => {
+    let rec_ws=new websocket_autoReconnect(URL,4000);
+    // rec_ws.onreconnection = (reconnectionCounter) => {
+    //   log.info("onreconnection" + reconnectionCounter);
+    //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
+    //   return true;
+    // };
+    // rec_ws.onconnectiontimeout = () =>{ 
+    //   log.info("boot_daemon_ws:onconnectiontimeout");
+    //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
+    // }
+    let _boot_daemon_ws = new websocket_reqTrack(rec_ws,"cmd_id");
+
+    _boot_daemon_ws.onmessage =(data)=>{
+      log.info(data)
+    };
+
+    _boot_daemon_ws.onopen = (obj) => {
+      log.info("boot_daemon_ws.onopen", obj);
+      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
+      return true;
+    };
+    _boot_daemon_ws.onclose = () =>{
+      log.info("boot_daemon_ws:onclose");
+      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
+    }
+    _boot_daemon_ws.onerror = () => {
+      log.info("boot_daemon_ws:onerror");
+      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
+    }
+    setBoot_daemon_ws(_boot_daemon_ws)
+    return () => {
+      _boot_daemon_ws.close()
+      setBOOT_DAEMON_readyState(WebSocket.CLOSED)
+      setBoot_daemon_ws(undefined)
+    }
+    // Your code here
+  }, []);
+
+  let wopn=BOOT_DAEMON_readyState==WebSocket.OPEN;
+  return (
+  <BASE_COM.CardFrameWarp 
+    addClass={"width7 height10 overlay SMGraph "+(wopn?"":"hide")} 
+    fixedFrame={true}>
+    {
+      wopn?
+        [
+          <div className="layout width3 height2">
+            readyState:{BOOT_DAEMON_readyState}
+          </div>,
+          <div className="layout button width3 height2" onClick=
+          {() =>{
+            boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
+          }}>RUN</div>,
+          <div className="layout button width3 height2" onClick=
+          {() =>{
+            boot_daemon_ws.send_obj({"type":"kill_core"})
+          }}>Stop</div>,
+          <div className="layout button width3 height2" onClick=
+          {() =>{
+            boot_daemon_ws.send_obj({"type":"poll_core"})
+              .then((data)=>{
+                console.log("poll.then:",data)
+              })
+              .catch((err)=>{
+                console.log(err)
+              })
+          }}>POLL</div>,
+          <div className="layout button width3 height2" onClick=
+          {() =>{
+            let current_datetime = new Date()
+            let formatted_date = 
+              current_datetime.getDate() + "_" + 
+              (current_datetime.getMonth() + 1) + "_" + 
+              current_datetime.getFullYear()
+              
+            let x = {"type":"update", 
+              "bk_name_append":formatted_date
+            }
+            boot_daemon_ws.send_obj(x)
+              .then((data)=>{
+                console.log("Update:",data)
+              })
+              .catch((err)=>{
+                console.log(err)
+              })
+          }}>UPDATE</div>,
+          
+          <div className="layout button width3 height2" onClick=
+          {() =>{
+            let x = {"type":"reload"}
+            boot_daemon_ws.send_obj(x)
+              .then((data)=>{
+                console.log("reload:",data)
+              })
+              .catch((err)=>{
+                console.log(err)
+              })
+
+
+
+          }}>reload</div>
+
+          ,
+          
+          <div className="layout button width3 height2" onClick=
+          {() =>{
+            let x = {"type":"get_UI_url"}
+            boot_daemon_ws.send_obj(x)
+              .then((data)=>{
+                console.log("get_UI_url:",data)
+                window.location.href=("file:///"+data.url);
+              })
+              .catch((err)=>{
+                console.log(err)
+              })
+
+
+
+          }}>get_UI_url</div>
+        ]
+        :
+        <div className="layout width11 height12">
+          CLOSED
+        </div>
+    }
+    {/* <div className="layout width11 height12">
+      readyState:{BOOT_DAEMON_readyState}
+    </div> */}
+  </BASE_COM.CardFrameWarp>)
+
+}
+
+
+
 
 class APPMasterX extends React.Component {
 
@@ -95,12 +237,6 @@ class APPMasterX extends React.Component {
     super(props);
     //this.state={};
     //this.state.do_splash=true;
-    this.state={
-      BOOT_DAEMON_readyState:WebSocket.CLOSED
-    };
-
-
-
     
     this.WSDataDispatch = this.WSDataDispatch.bind(this);
     this.BPG_WS = {
@@ -327,41 +463,12 @@ class APPMasterX extends React.Component {
       this.props.ACT_WS_CONNECT(this.props.WS_ID, "ws://localhost:4090", this.BPG_WS)
       , 100);
 
-    let rec_ws=new websocket_autoReconnect("ws://localhost:5678", 4000);
-    // rec_ws.onreconnection = (reconnectionCounter) => {
-    //   log.info("onreconnection" + reconnectionCounter);
-    //   this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
-    //   return true;
-    // };
-    // rec_ws.onconnectiontimeout = () =>{ 
-    //   log.info("boot_daemon_ws:onconnectiontimeout");
-    //   this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
-    // }
-    this.boot_daemon_ws = new websocket_reqTrack(rec_ws,"cmd_id");
-
-    this.boot_daemon_ws.onmessage =(data)=>{
-      log.info(data)
-    };
-
-    this.boot_daemon_ws.onopen = (obj) => {
-      log.info("boot_daemon_ws.onopen", obj);
-      this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
-      return true;
-    };
-    this.boot_daemon_ws.onclose = () =>{
-      log.info("boot_daemon_ws:onclose");
-      this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
-    }
-    this.boot_daemon_ws.onerror = () => {
-      log.info("boot_daemon_ws:onerror");
-      this.setState({BOOT_DAEMON_readyState:this.boot_daemon_ws.readyState});
-    }
 
   }
   render() {
     log.debug("APPMasterX render", this.props);
 
-    let xstateG;
+    let xstateG=null;
     if (false && this.props.stateMachine != null) {
       xstateG =
         <BASE_COM.CardFrameWarp addClass={"width7 height10 overlay SMGraph " + ((this.props.showSM_graph) ? "" : "hide")} fixedFrame={true}>
@@ -373,97 +480,13 @@ class APPMasterX extends React.Component {
             {() => this.props.ACT_Ctrl_SM_Panel(!this.props.showSM_graph)}></div>
         </BASE_COM.CardFrameWarp>
 
-    } else {
-      xstateG =
-      <BASE_COM.CardFrameWarp 
-        addClass={"width7 height10 overlay SMGraph "} 
-        fixedFrame={true}>
-        {
-          this.state.BOOT_DAEMON_readyState==WebSocket.OPEN?
-            [
-              <div className="layout width3 height2">
-                readyState:{this.state.BOOT_DAEMON_readyState}
-              </div>,
-              <div className="layout button width3 height2" onClick=
-              {() =>{
-                this.boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
-              }}>RUN</div>,
-              <div className="layout button width3 height2" onClick=
-              {() =>{
-                this.boot_daemon_ws.send_obj({"type":"kill_core"})
-              }}>Stop</div>,
-              <div className="layout button width3 height2" onClick=
-              {() =>{
-                this.boot_daemon_ws.send_obj({"type":"poll_core"})
-                  .then((data)=>{
-                    console.log("poll.then:",data)
-                  })
-                  .catch((err)=>{
-                    console.log(err)
-                  })
-              }}>POLL</div>,
-              <div className="layout button width3 height2" onClick=
-              {() =>{
-                let current_datetime = new Date()
-                let formatted_date = 
-                  current_datetime.getDate() + "_" + 
-                  (current_datetime.getMonth() + 1) + "_" + 
-                  current_datetime.getFullYear()
-                  
-                let x = {"type":"update", 
-                  "bk_name_append":formatted_date
-                }
-                this.boot_daemon_ws.send_obj(x)
-                  .then((data)=>{
-                    console.log("Update:",data)
-                  })
-                  .catch((err)=>{
-                    console.log(err)
-                  })
-              }}>UPDATE</div>,
-              
-              <div className="layout button width3 height2" onClick=
-              {() =>{
-                let x = {"type":"reload"}
-                this.boot_daemon_ws.send_obj(x)
-                  .then((data)=>{
-                    console.log("reload:",data)
-                  })
-                  .catch((err)=>{
-                    console.log(err)
-                  })
-
-
-
-              }}>reload</div>
-
-              ,
-              
-              <div className="layout button width3 height2" onClick=
-              {() =>{
-                let x = {"type":"get_UI_url"}
-                this.boot_daemon_ws.send_obj(x)
-                  .then((data)=>{
-                    console.log("get_UI_url:",data)
-                  })
-                  .catch((err)=>{
-                    console.log(err)
-                  })
-
-
-
-              }}>get_UI_url</div>
-            ]
-            :
-            <div className="layout width11 height12">
-              CLOSED
-            </div>
-        }
-        {/* <div className="layout width11 height12">
-          readyState:{this.state.BOOT_DAEMON_readyState}
-        </div> */}
-      </BASE_COM.CardFrameWarp>
     }
+    else
+    {
+      xstateG = <Boot_CTRL_UI URL="ws://localhost:5678"/>
+    }
+
+
     return (
       <div className="HXF">
 

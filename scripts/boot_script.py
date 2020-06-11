@@ -160,9 +160,9 @@ def exe_update_file(update_info,file_dir_path=""):
     
     
 
-
   tmp_binary_folder=os.path.splitext(tmp_folder+"/"+file_name)[0]
 
+  print("TTT::",tmp_folder,file_name,tmp_binary_folder)
 
   #Step 2, update validation
   #assume it's a pass
@@ -258,10 +258,17 @@ def cmd_exec(cmd):
         ACK=os.system("chmod +x "+Core_Path+"/visSele")
       availPath = gen_avaliable_new_folder_name(cmd["dst_dir"]+"/"+BIN_DIR)
       availPath = availPath.replace('\\', "/")
+
+      common_prefix = os.path.commonprefix([path_env, availPath])
+      print("path_env:",path_env,"  availPath:",availPath)
+      print("Before rel availPath:",availPath)
+      rel_availPath = os.path.relpath(availPath, common_prefix)
+      print("After  rel availPath:",rel_availPath)
+
       with open("scripts/router_template.py", "rt") as fin:
         with open(cmd["dst_dir"]+"/router.py", "wt") as fout:
             for line in fin:
-                fout.write(line.replace('$TARGET_PATH_NAME$', availPath))
+                fout.write(line.replace('$TARGET_PATH_NAME$', rel_availPath))
 
       
       if(platform.system()=="Windows"):
@@ -274,7 +281,7 @@ def cmd_exec(cmd):
       print("availPath:",availPath)
       
       #os.makedirs(availPath, exist_ok=True)
-      shutil.copytree(path_env, availPath)
+      shutil.copytree(_path_env, availPath)
       #shutil.copy2("scripts/boot_script.py", cmd["dst_dir"]+"/boot_script.py")
       ACK=0
     
