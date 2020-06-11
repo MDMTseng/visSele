@@ -259,7 +259,17 @@ def cmd_exec(cmd):
       availPath = gen_avaliable_new_folder_name(cmd["dst_dir"]+"/"+BIN_DIR)
       availPath = availPath.replace('\\', "/")
 
-      common_prefix = os.path.commonprefix([path_env, availPath])
+
+      if(platform.system()=="Windows"):
+        _path_env=os.path.abspath("./").replace("/","\\").replace("\\\\","\\")
+        availPath=availPath.replace("/","\\").replace("\\\\","\\")
+      else:
+        _path_env=os.path.abspath("./").replace("\\","/").replace("//","/")
+        availPath=availPath.replace("\\","/")
+
+
+      common_prefix = os.path.commonprefix([_path_env, availPath])
+      print("common_prefix:",common_prefix)
       print("path_env:",path_env,"  availPath:",availPath)
       print("Before rel availPath:",availPath)
       rel_availPath = os.path.relpath(availPath, common_prefix)
@@ -271,12 +281,6 @@ def cmd_exec(cmd):
                 fout.write(line.replace('$TARGET_PATH_NAME$', rel_availPath))
 
       
-      if(platform.system()=="Windows"):
-        _path_env=os.path.abspath("./").replace("/","\\").replace("\\\\","\\")
-        availPath=availPath.replace("/","\\").replace("\\\\","\\")
-      else:
-        _path_env=os.path.abspath("./").replace("\\","/").replace("//","/")
-        availPath=availPath.replace("\\","/")
       print("_path_env:",_path_env)
       print("availPath:",availPath)
       
