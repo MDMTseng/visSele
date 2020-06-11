@@ -12,6 +12,7 @@ import os
 from time import sleep
 from datetime import datetime
 import platform
+import requests
 
 path_env=os.path.abspath("./")
 path_script=os.path.abspath(sys.argv[0])
@@ -298,6 +299,13 @@ def cmd_exec(cmd):
       print("validation FAILED")
   elif _type == "get_UI_url":
     infoObj["url"]=path_local+"/WebUI/index.html"
+    ACK=0
+  elif _type == "http_get":
+    ret = requests.get(cmd["url"])
+    print(ret)
+    infoObj["status_code"]=ret.status_code
+    infoObj["text"]=ret.text
+    infoObj["encoding"]=ret.encoding
     ACK=0
   elif _type == "launch_core":
     global CORE_PIPE

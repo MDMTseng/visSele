@@ -46,13 +46,33 @@ let zhTW = Object.assign({}, zh_TW, EC_zh_TW);
 let StoreX = ReduxStoreSetUp({});
 
 
+function getRandom(min = 0, max = 1000000) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+};
 function Boot_CTRL_UI({URL}) {
 
   
   const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
   const [boot_daemon_ws, setBoot_daemon_ws] = useState(undefined);
+  const [UI_url, setUI_url] = useState(undefined);
+  
+  const [latestReleaseInfo, setLatestReleaseInfo] = useState(undefined);
   useEffect(() => {
-    let rec_ws=new websocket_autoReconnect(URL,4000);
+
+
+
+    
+    let url = "http://hyv.idcircle.me"
+    url += "/version.jsonp?rand=" + getRandom();
+
+    jsonp(url, { name: "hyv_version_map" }, (err, data) => {
+      console.log(data)
+    });
+
+
+
+
+    let rec_ws=new websocket_autoReconnect(URL,1000);
     // rec_ws.onreconnection = (reconnectionCounter) => {
     //   log.info("onreconnection" + reconnectionCounter);
     //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
@@ -71,10 +91,42 @@ function Boot_CTRL_UI({URL}) {
     _boot_daemon_ws.onopen = (obj) => {
       log.info("boot_daemon_ws.onopen", obj);
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
+
+
+
+
+
+      _boot_daemon_ws.send_obj({"type":"get_UI_url"})
+        .then((data)=>{
+          console.log("get_UI_url:",data)
+          let url="file:///"+data.url;
+          if(window.location.href!==url)
+          {
+            setUI_url(url);
+          }
+        })
+        .catch((err)=>{
+          console.log(err)
+        })
+
+      _boot_daemon_ws.send_obj({"type":"http_get","url":"https://api.github.com/repos/MDMTseng/visSele/releases/latest"})
+        .then((data)=>{
+          console.log("http_get:",data)
+          console.log("text:",data.text)
+          setLatestReleaseInfo(data);
+          let info = JSON.parse(data.text);
+          setLatestReleaseInfo(info);
+        })
+        .catch((err)=>{
+          console.log("http_get err:",err)
+        })
+  
+
+
       return true;
     };
-    _boot_daemon_ws.onclose = () =>{
-      log.info("boot_daemon_ws:onclose");
+    _boot_daemon_ws.onclose = (e) =>{
+      log.info("boot_daemon_ws:onclose,",e);
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
     }
     _boot_daemon_ws.onerror = () => {
@@ -156,21 +208,8 @@ function Boot_CTRL_UI({URL}) {
 
           ,
           
-          <div className="layout button width3 height2" onClick=
-          {() =>{
-            let x = {"type":"get_UI_url"}
-            boot_daemon_ws.send_obj(x)
-              .then((data)=>{
-                console.log("get_UI_url:",data)
-                window.location.href=("file:///"+data.url);
-              })
-              .catch((err)=>{
-                console.log(err)
-              })
-
-
-
-          }}>get_UI_url</div>
+          UI_url===undefined?null:
+          <a href={UI_url}>{UI_url}</a>
         ]
         :
         <div className="layout width11 height12">
@@ -265,9 +304,6 @@ class APPMasterX extends React.Component {
             {
               {
                 let HR = BPG_Protocol.raw2obj(evt);
-                function getRandom(min = 0, max = 1000000) {
-                  return Math.floor(Math.random() * (max - min + 1)) + min;
-                };
                 let url = HR.data.webUI_resource;
                 if (url === undefined) url = "http://hyv.idcircle.me"
                 url += "/version.jsonp?rand=" + getRandom();
