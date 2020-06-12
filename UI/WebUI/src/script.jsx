@@ -33,6 +33,7 @@ import { default as AntButton } from 'antd/lib/button';
 import Collapse from 'antd/lib/collapse';
 import Menu from 'antd/lib/menu';
 
+import Button from 'antd/lib/button';
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
@@ -56,6 +57,7 @@ function Boot_CTRL_UI({URL}) {
   const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
   const [boot_daemon_ws, setBoot_daemon_ws] = useState(undefined);
   const [UI_url, setUI_url] = useState(undefined);
+  const [hidePanel, setHidePanel] = useState(false);
   
   const [latestReleaseInfo, setLatestReleaseInfo] = useState(undefined);
   useEffect(() => {
@@ -105,24 +107,32 @@ function Boot_CTRL_UI({URL}) {
           }
           data[1].obj=JSON.parse(data[1].text);
 
-          console.log(" local_version:",data[0].version)
-          console.log("remote_version:",data[1].obj.name)
+          let lv=data[0].version;
+          if(lv===undefined)
+          {
+            lv="0.0.0"
+          }
+          let rv=semver.clean(data[1].obj.name);
+
+          console.log(" local_version:",lv)
+          console.log("remote_version:",rv)
           console.log("remote_info:",data[1].obj)
-          setLatestReleaseInfo(data[1].obj);
+          console.log("gt lt:",semver.gt(rv, lv),semver.lt(rv, lv))
+          if(semver.gt(rv, lv))
+          {
+            setLatestReleaseInfo(data[1].obj);
+          }
+          return
+          // let maxV = versions
+          //   .map(ver => semver.clean(ver))
+          //   .reduce((maxV, ver) => semver.gt(maxV, ver) ? maxV : ver);
+          // let hasNewVer = semver.gt(maxV, localV);
+
 
         })
         .catch((err)=>{
           console.log(err)
         })
-
-
-      // _boot_daemon_ws.send_obj({"type":"get_version"})
-      //   .then((data)=>{
-      //     console.log("get_version:",data)
-      //   })
-      //   .catch((err)=>{
-      //     console.log(err)
-      //   })
 
 
       _boot_daemon_ws.send_obj({"type":"get_UI_url"})
@@ -146,23 +156,6 @@ function Boot_CTRL_UI({URL}) {
           console.log(err)
         })
 
-
-
-
-      // _boot_daemon_ws.send_obj({"type":"http_get","url":"https://api.github.com/repos/MDMTseng/visSele/releases/latest"})
-      //   .then((data)=>{
-      //     console.log("http_get:",data)
-      //     console.log("text:",data.text)
-      //     setLatestReleaseInfo(data);
-      //     let info = JSON.parse(data.text);
-      //     setLatestReleaseInfo(info);
-      //   })
-      //   .catch((err)=>{
-      //     console.log("http_get err:",err)
-      //   })
-  
-
-
       return true;
     };
     _boot_daemon_ws.onclose = (e) =>{
@@ -185,34 +178,39 @@ function Boot_CTRL_UI({URL}) {
   let wopn=BOOT_DAEMON_readyState==WebSocket.OPEN;
   return (
   <BASE_COM.CardFrameWarp 
-    addClass={"width7 height10 overlay SMGraph "+(wopn?"":"hide")} 
+    addClass={"width7 height10 overlay SMGraph "+((!hidePanel)?"":"hide")} 
     fixedFrame={true}>
+    <div className={"s width11 height12"}>
     {
       wopn?
         [
           // <div className="layout width3 height2">
           //   readyState:{BOOT_DAEMON_readyState}
           // </div>,
-          <div className="layout button width3 height2" onClick=
-          {() =>{
-            boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
-          }}>RUN</div>,
-          <div className="layout button width3 height2" onClick=
-          {() =>{
-            boot_daemon_ws.send_obj({"type":"kill_core"})
-          }}>Stop</div>,
-          <div className="layout button width3 height2" onClick=
-          {() =>{
-            boot_daemon_ws.send_obj({"type":"poll_core"})
+          
+          <Button key={"RUN_Button"} 
+            onClick={() => {
+              boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
+            }}>RUN</Button>
+          ,
+          <Button key={"Stop_Button"} 
+            onClick={() => {
+              boot_daemon_ws.send_obj({"type":"kill_core"})
+            }}>Stop</Button>,
+
+          
+          <Button key={"Local UPDATE"} 
+            onClick={() => {
+              boot_daemon_ws.send_obj({"type":"poll_core"})
               .then((data)=>{
                 console.log("poll.then:",data)
               })
               .catch((err)=>{
                 console.log(err)
               })
-          }}>POLL</div>,
-          <div className="layout button width3 height2" onClick=
-          {() =>{
+            }}>POLL</Button>,
+            <Button key={"1_Button"} 
+            onClick={() => {
             let current_datetime = new Date()
             let formatted_date = 
               current_datetime.getDate() + "_" + 
@@ -229,10 +227,11 @@ function Boot_CTRL_UI({URL}) {
               .catch((err)=>{
                 console.log(err)
               })
-          }}>UPDATE</div>,
-          
-          <div className="layout button width3 height2" onClick=
-          {() =>{
+          }}>Local UPDATE</Button>,
+
+          latestReleaseInfo===undefined?null:
+          <Button key={"Remote UPDATE"} 
+            onClick={() => {
             let url=latestReleaseInfo.assets[0].browser_download_url;
             //if(latestReleaseInfo.)
             let current_datetime = new Date()
@@ -243,25 +242,38 @@ function Boot_CTRL_UI({URL}) {
             boot_daemon_ws.send_obj(x)
               .then((data)=>{
                 console.log("Update:",data)
+                if(data.ACK)
+                {
+                  let x = {"type":"reload"}
+                  boot_daemon_ws.send_obj(x)
+                    .then((data)=>{
+                      console.log("reload:",data)
+                    })
+                    .catch((err)=>{
+                      console.log(err)
+                    })
+      
+                }
               })
               .catch((err)=>{
                 console.log(err)
               })
-          }}>UPDATE2</div>,
-          <div className="layout button width3 height2" onClick=
-          {() =>{
-            let x = {"type":"reload"}
-            boot_daemon_ws.send_obj(x)
-              .then((data)=>{
-                console.log("reload:",data)
-              })
-              .catch((err)=>{
-                console.log(err)
-              })
+              
+            }}>Remote UPDATE {latestReleaseInfo.name}</Button>
+          // <div className="layout button width3 height2" onClick=
+          // {() =>{
+          //   let x = {"type":"reload"}
+          //   boot_daemon_ws.send_obj(x)
+          //     .then((data)=>{
+          //       console.log("reload:",data)
+          //     })
+          //     .catch((err)=>{
+          //       console.log(err)
+          //     })
 
 
 
-          }}>reload</div>
+          // }}>reload</div>
 
           // ,
           
@@ -273,6 +285,9 @@ function Boot_CTRL_UI({URL}) {
           CLOSED
         </div>
     }
+    </div>
+    <div className="layout button width1 height12" onClick=
+      {() => setHidePanel(!hidePanel)}></div>
     {/* <div className="layout width11 height12">
       readyState:{BOOT_DAEMON_readyState}
     </div> */}
