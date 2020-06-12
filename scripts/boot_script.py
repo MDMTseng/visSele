@@ -382,9 +382,9 @@ async def recv_msg(websocket):
   while True:
     try:
       recv_text = await websocket.recv()
-      print("recv_text:",recv_text) 
+      #print("recv_text:",recv_text) 
       recv_json = json.loads(recv_text)
-      print("recv_text:",recv_text, "json:",recv_json) 
+      #print("recv_text:",recv_text, "json:",recv_json) 
 
 
       cmd_id=recv_json.get("cmd_id", None)
