@@ -471,7 +471,7 @@ if __name__ == "__main__":
   if _type == "websocket-server" or _type == "app-launch" :
   
     if(_type == "app-launch"):
-      webb.open("file:///Users/mdm/workspace/data/TestFolder/Xception0.2.0/WebUI/index.html", new=0, autoraise=True)
+      webb.open("file:///"+path_local+"/WebUI/index.html", new=0, autoraise=True)
     try:
       pre_wait_ms=int(obj.get("pre_wait_ms", ""))
       print("pre_wait_ms:",pre_wait_ms," ms")
