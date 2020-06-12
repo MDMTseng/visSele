@@ -2,12 +2,12 @@ from subprocess import Popen
 import os
 import shutil
 import sys
-path_env=os.path.abspath("./")
-path_local=os.path.abspath(sys.argv[0])
-
-path_env=os.path.abspath("./")
 path_script=os.path.abspath(sys.argv[0])
 path_local=os.path.dirname(path_script)
+os.chdir(path_local)
+path_env=os.path.abspath("./")
+
+
 
 print("path_env=",path_env)
 print("path_script=",path_script)

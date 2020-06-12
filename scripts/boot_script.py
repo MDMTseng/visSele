@@ -13,11 +13,12 @@ from time import sleep
 from datetime import datetime
 import platform
 import requests
+import webbrowser as webb
 
 path_env=os.path.abspath("./")
 path_script=os.path.abspath(sys.argv[0])
 path_local=os.path.dirname(os.path.dirname(path_script))
-
+path_data=os.path.abspath("./")
 print("path_env=",path_env)
 print("path_script=",path_script)
 print("path_local=",path_local)
@@ -25,8 +26,9 @@ print("path_local=",path_local)
 
 BIN_DIR="Xception"
 
-_VERSION_="0.0.1-RC1"
+_VERSION_="0.2.0"
 
+BIN_DIR+=_VERSION_
 
 WebUI_Path=path_env+"/WebUI"
 Core_Path=path_env+"/Core"
@@ -75,8 +77,8 @@ def parse_argv(argv):
       'type=',
       'pre_wait_ms=',
       'port=',
-      'env_path=',
-      'dst_dir='
+      'dst_dir=',
+      'data_path='
     ])
   except getopt.GetoptError as err:
     # print help information and exit:
@@ -340,8 +342,11 @@ def cmd_exec(cmd):
   elif _type == "launch_core":
     global CORE_PIPE
     if(CORE_PIPE is None):
-      env_path=cmd.get("env_path", "./")
-      CORE_PIPE = subprocess.Popen([path_local+"/Core/visSele"], cwd=env_path)
+      
+      data_path=cmd.get("data_path", path_data)
+      print("cwd2:",data_path)
+      print("path_data:",path_data)
+      CORE_PIPE = subprocess.Popen([path_local+"/Core/visSele"], cwd=data_path)
       print("==================RUN==================")
       
       ACK=0
@@ -457,9 +462,16 @@ def fileDownload(url,file_path):
 if __name__ == "__main__":
 
   obj= parse_argv(sys.argv)
-  _type=obj.get("type", None)
-  if _type == "websocket-server":
+
+
+  path_data=obj.get("data_path", os.path.abspath("./")) 
   
+  print("path_data=",path_data)
+  _type=obj.get("type", None)
+  if _type == "websocket-server" or _type == "app-launch" :
+  
+    if(_type == "app-launch"):
+      webb.open("file:///Users/mdm/workspace/data/TestFolder/Xception0.2.0/WebUI/index.html", new=0, autoraise=True)
     try:
       pre_wait_ms=int(obj.get("pre_wait_ms", ""))
       print("pre_wait_ms:",pre_wait_ms," ms")

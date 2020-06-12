@@ -267,6 +267,18 @@ function Boot_CTRL_UI({URL}) {
             boot_daemon_ws.send_obj(x)
               .then((data)=>{
                 console.log("Update:",data)
+                if(data.ACK)
+                {
+                  let x = {"type":"reload"}
+                  boot_daemon_ws.send_obj(x)
+                    .then((data)=>{
+                      console.log("reload:",data)
+                    })
+                    .catch((err)=>{
+                      console.log(err)
+                    })
+      
+                }
               })
               .catch((err)=>{
                 console.log(err)
