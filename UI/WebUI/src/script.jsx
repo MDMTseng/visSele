@@ -46,7 +46,7 @@ let zhTW = Object.assign({}, zh_TW, EC_zh_TW);
 
 
 let StoreX = ReduxStoreSetUp({});
-
+console.log(navigator)
 
 function getRandom(min = 0, max = 1000000) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -107,6 +107,28 @@ function Boot_CTRL_UI({URL}) {
           }
           data[1].obj=JSON.parse(data[1].text);
 
+
+          
+          let plat = navigator.platform.toLowerCase();
+          let tar_asset=undefined;
+          if(plat=="macintel")
+          {
+            tar_asset=data[1].obj.assets.find(asset=>asset.name.endsWith("mac.zip"))
+          }
+          else if(plat=="win32" || plat=="win64")
+          {
+            tar_asset=data[1].obj.assets.find(asset=>asset.name.endsWith("win.zip"))
+          }
+
+          if(tar_asset===undefined)
+          {
+            //No supported OS
+            return;
+          }
+          data[1].obj.tar_asset=tar_asset;
+          
+
+
           let lv=data[0].version;
           if(lv===undefined)
           {
@@ -118,6 +140,7 @@ function Boot_CTRL_UI({URL}) {
           console.log("remote_version:",rv)
           console.log("remote_info:",data[1].obj)
           console.log("gt lt:",semver.gt(rv, lv),semver.lt(rv, lv))
+          
           if(semver.gt(rv, lv))
           {
             setLatestReleaseInfo(data[1].obj);
@@ -232,7 +255,8 @@ function Boot_CTRL_UI({URL}) {
           latestReleaseInfo===undefined?null:
           <Button key={"Remote UPDATE"} 
             onClick={() => {
-            let url=latestReleaseInfo.assets[0].browser_download_url;
+            console.log(latestReleaseInfo)
+            let url=latestReleaseInfo.tar_asset.browser_download_url;
             //if(latestReleaseInfo.)
             let current_datetime = new Date()
             let x = {"type":"update", 
