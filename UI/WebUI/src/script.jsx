@@ -52,10 +52,12 @@ function getRandom(min = 0, max = 1000000) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
 function Boot_CTRL_UI({URL}) {
-
+  const comp_info = React.useRef({});
   
   const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
-  const [boot_daemon_ws, setBoot_daemon_ws] = useState(undefined);
+  
+  const boot_daemon_ws = comp_info.current._boot_daemon_ws;
+
   const [UI_url, setUI_url] = useState(undefined);
   const [hidePanel, setHidePanel] = useState(false);
   
@@ -63,6 +65,33 @@ function Boot_CTRL_UI({URL}) {
   useEffect(() => {
 
 
+    comp_info.current.queryRunningTimer=setInterval(()=>{
+
+      if(comp_info.current._boot_daemon_ws.readyState!==WebSocket.OPEN)return
+      comp_info.current._boot_daemon_ws.send_obj({"type":"poll_core"})
+      .then((data)=>{
+        //if(data.)
+        //console.log("poll.then:",data)
+        if(data.ACK)
+        {
+          if(data.poll_code===undefined||data.poll_code===null)
+          {//The code will be set if the program exit with return code
+            console.log("RUNING")
+          }
+          else
+          {
+            console.log("STOPPED")
+          }
+        }
+        else
+        {
+          console.log("STOPPED")
+        }
+      })
+      .catch((err)=>{
+        console.log(err)
+      })
+    },5000)
 
     
     let url = "http://hyv.idcircle.me"
@@ -189,11 +218,13 @@ function Boot_CTRL_UI({URL}) {
       log.info("boot_daemon_ws:onerror");
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
     }
-    setBoot_daemon_ws(_boot_daemon_ws)
+    comp_info.current._boot_daemon_ws=_boot_daemon_ws;
     return () => {
       _boot_daemon_ws.close()
       setBOOT_DAEMON_readyState(WebSocket.CLOSED)
-      setBoot_daemon_ws(undefined)
+      comp_info.current._boot_daemon_ws = (undefined)
+      clearInterval(comp_info.current.queryRunningTimer);
+      comp_info.current.queryRunningTimer=undefined
     }
     // Your code here
   }, []);
@@ -222,16 +253,6 @@ function Boot_CTRL_UI({URL}) {
             }}>Stop</Button>,
 
           
-          <Button key={"Local UPDATE"} 
-            onClick={() => {
-              boot_daemon_ws.send_obj({"type":"poll_core"})
-              .then((data)=>{
-                console.log("poll.then:",data)
-              })
-              .catch((err)=>{
-                console.log(err)
-              })
-            }}>POLL</Button>,
             <Button key={"1_Button"} 
             onClick={() => {
             let current_datetime = new Date()

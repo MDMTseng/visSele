@@ -248,7 +248,7 @@ export class websocket_reqTrack{
     };
     websocket.onmessage=(ev)=>{
       this.readyState=this.websocket.readyState;
-      console.log(ev)
+      //console.log(ev)
       let p = JSON.parse(ev.data);
       
       let ACK_info=p.ACK;
