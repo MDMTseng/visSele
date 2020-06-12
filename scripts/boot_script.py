@@ -25,7 +25,7 @@ print("path_local=",path_local)
 
 BIN_DIR="Xception"
 
-_VERSION_="0.2.0"
+_VERSION_="0.0.1-RC1"
 
 
 WebUI_Path=path_env+"/WebUI"
