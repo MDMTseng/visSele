@@ -28,6 +28,7 @@ import EC_zh_TW from './languages/zh_TW';
 import * as log from 'loglevel';
 import jsonp from 'jsonp';
 
+import semver from 'semver'
 import { default as AntButton } from 'antd/lib/button';
 import Collapse from 'antd/lib/collapse';
 import Menu from 'antd/lib/menu';
@@ -72,7 +73,7 @@ function Boot_CTRL_UI({URL}) {
 
 
 
-    let rec_ws=new websocket_autoReconnect(URL,1000);
+    let rec_ws=new websocket_autoReconnect(URL,3000);
     // rec_ws.onreconnection = (reconnectionCounter) => {
     //   log.info("onreconnection" + reconnectionCounter);
     //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
@@ -93,33 +94,72 @@ function Boot_CTRL_UI({URL}) {
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
 
 
+      Promise.all([
+        _boot_daemon_ws.send_obj({"type":"get_version"}),
+        _boot_daemon_ws.send_obj({"type":"http_get","url":"https://api.github.com/repos/MDMTseng/visSele/releases/latest"})])
+        .then((data)=>{
+          console.log(" >>>>>>:",data);
+          if(data[0].ACK ==false || data[1].ACK ==false )
+          {
+            return;
+          }
+          data[1].obj=JSON.parse(data[1].text);
 
+          console.log(" local_version:",data[0].version)
+          console.log("remote_version:",data[1].obj.name)
+          console.log("remote_info:",data[1].obj)
+          setLatestReleaseInfo(data[1].obj);
+
+        })
+        .catch((err)=>{
+          console.log(err)
+        })
+
+
+      // _boot_daemon_ws.send_obj({"type":"get_version"})
+      //   .then((data)=>{
+      //     console.log("get_version:",data)
+      //   })
+      //   .catch((err)=>{
+      //     console.log(err)
+      //   })
 
 
       _boot_daemon_ws.send_obj({"type":"get_UI_url"})
         .then((data)=>{
           console.log("get_UI_url:",data)
           let url="file:///"+data.url;
-          if(window.location.href!==url)
+          
+          console.log(window.location.href+">>>"+url)
+          let curUrl=window.location.href;
+          let dstUrl=url;
+          curUrl=curUrl.replace(/file:\/+/, "");
+          dstUrl=dstUrl.replace(/file:\/+/, "");
+
+          if(curUrl!==dstUrl)
           {
             setUI_url(url);
+            window.location.href=url
           }
         })
         .catch((err)=>{
           console.log(err)
         })
 
-      _boot_daemon_ws.send_obj({"type":"http_get","url":"https://api.github.com/repos/MDMTseng/visSele/releases/latest"})
-        .then((data)=>{
-          console.log("http_get:",data)
-          console.log("text:",data.text)
-          setLatestReleaseInfo(data);
-          let info = JSON.parse(data.text);
-          setLatestReleaseInfo(info);
-        })
-        .catch((err)=>{
-          console.log("http_get err:",err)
-        })
+
+
+
+      // _boot_daemon_ws.send_obj({"type":"http_get","url":"https://api.github.com/repos/MDMTseng/visSele/releases/latest"})
+      //   .then((data)=>{
+      //     console.log("http_get:",data)
+      //     console.log("text:",data.text)
+      //     setLatestReleaseInfo(data);
+      //     let info = JSON.parse(data.text);
+      //     setLatestReleaseInfo(info);
+      //   })
+      //   .catch((err)=>{
+      //     console.log("http_get err:",err)
+      //   })
   
 
 
@@ -150,9 +190,9 @@ function Boot_CTRL_UI({URL}) {
     {
       wopn?
         [
-          <div className="layout width3 height2">
-            readyState:{BOOT_DAEMON_readyState}
-          </div>,
+          // <div className="layout width3 height2">
+          //   readyState:{BOOT_DAEMON_readyState}
+          // </div>,
           <div className="layout button width3 height2" onClick=
           {() =>{
             boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
@@ -193,6 +233,23 @@ function Boot_CTRL_UI({URL}) {
           
           <div className="layout button width3 height2" onClick=
           {() =>{
+            let url=latestReleaseInfo.assets[0].browser_download_url;
+            //if(latestReleaseInfo.)
+            let current_datetime = new Date()
+            let x = {"type":"update", 
+              "bk_name_append":"",
+              "update_URL":url
+            }
+            boot_daemon_ws.send_obj(x)
+              .then((data)=>{
+                console.log("Update:",data)
+              })
+              .catch((err)=>{
+                console.log(err)
+              })
+          }}>UPDATE2</div>,
+          <div className="layout button width3 height2" onClick=
+          {() =>{
             let x = {"type":"reload"}
             boot_daemon_ws.send_obj(x)
               .then((data)=>{
@@ -206,10 +263,10 @@ function Boot_CTRL_UI({URL}) {
 
           }}>reload</div>
 
-          ,
+          // ,
           
-          UI_url===undefined?null:
-          <a href={UI_url}>{UI_url}</a>
+          // UI_url===undefined?null:
+          // <a href={UI_url}>{UI_url}</a>
         ]
         :
         <div className="layout width11 height12">

@@ -25,6 +25,7 @@ print("path_local=",path_local)
 
 BIN_DIR="Xception"
 
+_VERSION_="0.2.0"
 
 
 WebUI_Path=path_env+"/WebUI"
@@ -107,6 +108,28 @@ def update_param_check(obj):
   return obj
   #fileDownload_w_progress("https://github.com/MDMTseng/visSele/releases/download/pre_v1.0_hotfix-2/release_export.zip","release_export.zip")
     
+
+
+def findSubDir(underDir):
+  filenames= os.listdir (underDir) # get all files' and folders' names in the current directory
+  result = []
+  for filename in filenames: # loop through all the files and folders
+    relP=underDir+"/"+filename
+    if os.path.isdir(relP): # check whether the current object is a folder or not
+      result.append(relP)
+  return result
+
+def findFile_w_ext(underDir,extension):
+  filenames= os.listdir (underDir) # get all files' and folders' names in the current directory
+  result = []
+  for filename in filenames: # loop through all the files and folders
+    if filename.endswith(extension):
+      relP=underDir+"/"+filename
+     # check whether the current object is a folder or not
+      result.append(relP)
+  return result
+    
+        
 #{"type":"update", "exeDir":"Xception", "old_exeDir":"Xception", 
 # "old_exeDir_bkName":"Xception", "packPath":"", 
 # "update_URL":"https://github.com/MDMTseng/visSele/releases/download/pre_v1.0_hotfix-2/release_export.zip", 
@@ -133,7 +156,9 @@ def exe_update_file(update_info,file_dir_path=""):
   else:
     upzip_path=None
   if(upzip_path is not None and upzip_path.startswith( 'http' )):
-    file_name=file_dir_path+path_leaf(upzip_path)
+    file_name=path_leaf(upzip_path)
+    print("file_name:",file_name)
+    print("tmp_folder:",tmp_folder)
     if(not fileDownload_w_progress(upzip_path,tmp_folder+"/"+file_name)==True):
       return -1
     with zipfile.ZipFile(tmp_folder+"/"+file_name) as zf:
@@ -159,11 +184,13 @@ def exe_update_file(update_info,file_dir_path=""):
     
     #check if the path_env has an update.zip
     
-    
+  #findFile_w_ext(underDir,"")
+  print("tmp_folder::",tmp_folder,"  sub:",findSubDir(tmp_folder))
+  tmp_binary_folder=findSubDir(tmp_folder)[0]
 
-  tmp_binary_folder=os.path.splitext(tmp_folder+"/"+file_name)[0]
+  #tmp_binary_folder=os.path.splitext(tmp_folder+"/"+file_name)[0]
 
-  print("TTT::",tmp_folder,file_name,tmp_binary_folder)
+  #print("TTT::",tmp_folder,file_name,tmp_binary_folder)
 
   #Step 2, update validation
   #assume it's a pass
@@ -301,12 +328,15 @@ def cmd_exec(cmd):
     infoObj["url"]=path_local+"/WebUI/index.html"
     ACK=0
   elif _type == "http_get":
-    ret = requests.get(cmd["url"])
-    print(ret)
-    infoObj["status_code"]=ret.status_code
-    infoObj["text"]=ret.text
-    infoObj["encoding"]=ret.encoding
-    ACK=0
+    try:
+      ret = requests.get(cmd["url"])
+      print(ret)
+      infoObj["status_code"]=ret.status_code
+      infoObj["text"]=ret.text
+      infoObj["encoding"]=ret.encoding
+      ACK=0
+    except requests.exceptions.ConnectionError as err:
+      pass
   elif _type == "launch_core":
     global CORE_PIPE
     if(CORE_PIPE is None):
@@ -335,7 +365,9 @@ def cmd_exec(cmd):
       ACK=0
     else:
       ACK=-30
-
+  elif _type == "get_version":
+    infoObj["version"]=_VERSION_
+    ACK=0
   if _type == "reload":
     ACK=0
   elif _type == "EXIT":
