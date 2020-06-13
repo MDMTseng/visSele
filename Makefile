@@ -19,9 +19,19 @@ export:
 
 
 	
-UPDATE_FILE_NAME=update
+UPDATE_FILE_NAME=
+
+ifeq ($(OS),Windows_NT)
+	UPDATE_FILE_NAME=update_win
+else
+	UNAME_S := $(shell uname -s)
+	ifeq ($(UNAME_S),Darwin)
+		UPDATE_FILE_NAME=update_mac
+	endif
+endif
+
+
+
 zip_update:
 	-@rm -r $(UPDATE_FILE_NAME) $(UPDATE_FILE_NAME).zip
-	cp -r $(EXPFolder) $(UPDATE_FILE_NAME)
-	python MakeUtil.py --type=zip --src_dir=$(UPDATE_FILE_NAME) --dst_path=$(UPDATE_FILE_NAME).zip
-	-@rm -r $(UPDATE_FILE_NAME)
+	python MakeUtil.py --type=zip --src_dir=$(EXPFolder) --dst_path=$(UPDATE_FILE_NAME).zip
