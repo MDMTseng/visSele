@@ -136,7 +136,7 @@ def findFile_w_ext(underDir,extension):
 # "old_exeDir_bkName":"Xception", "packPath":"", 
 # "update_URL":"https://github.com/MDMTseng/visSele/releases/download/pre_v1.0_hotfix-2/release_export.zip", 
 # "cmd_id":3}
-def exe_update_file(update_info,file_dir_path=""):
+def exe_update_file(update_info,file_dir_path="",dontDoDeploy=False):
 
   print(update_info)
   CC=0
@@ -166,12 +166,9 @@ def exe_update_file(update_info,file_dir_path=""):
     with zipfile.ZipFile(tmp_folder+"/"+file_name) as zf:
       zf.extractall(tmp_folder)
   else:
-    if(upzip_path is None):
-      upzip_path=path_env
+    if(upzip_path is not None):
+      upzip_path=path_env+"/"+upzip_path
       
-    if os.path.isdir(upzip_path):
-      upzip_path+="/update.zip"
-    
     if not os.path.isfile(upzip_path):
       return -2
 
@@ -226,12 +223,13 @@ def exe_update_file(update_info,file_dir_path=""):
 
 
     
-  #Step 3.1 move newly updated binary to cur_local path
-  ret = subprocess.call(["python", tmp_folder+"/boot_script.py", "--type=deploy", '--dst_dir='+os.path.abspath(file_dir_path)+"/"], cwd=tmp_binary_folder)
+  if(not dontDoDeploy):
+    #Step 3.1 move newly updated binary to cur_local path
+    ret = subprocess.call(["python", tmp_folder+"/boot_script.py", "--type=deploy", '--dst_dir='+os.path.abspath(file_dir_path)+"/"], cwd=tmp_binary_folder)
 
-  print("CALL:",ret)
-  if(ret!= 0):
-    return -6
+    print("CALL:",ret)
+    if(ret!= 0):
+      return -6
   #shutil.move(tmp_binary_folder, file_dir_path+"/"+update_info["exeDir"])  #don't do deploy here
 
   #print("CC:",CC)
@@ -278,6 +276,12 @@ def cmd_exec(cmd):
       if(ACK==0):
         infoObj
       
+  elif _type == "check_update":
+    update_info=update_param_check(cmd)
+    if update_info is not None:
+      ACK=exe_update_file(update_info,path_env)
+      if(ACK==0):
+        infoObj
   elif _type == "un_deploy":#in case of deploy error, roll back
     pass
     

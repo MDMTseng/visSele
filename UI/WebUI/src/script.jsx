@@ -62,12 +62,27 @@ function Boot_CTRL_UI({URL}) {
   const [hidePanel, setHidePanel] = useState(false);
   
   const [latestReleaseInfo, setLatestReleaseInfo] = useState(undefined);
+
+  const coreStates={
+    UNKNOWN:"UNKNOWN",
+    RUNNING:"RUNNING",
+    EXIT:"EXIT",
+    TERMINATED:"TERMINATED"
+  }
+  const [coreState, setCoreState] = useState(coreStates.UNKNOWN);
+
+
   useEffect(() => {
 
 
     comp_info.current.queryRunningTimer=setInterval(()=>{
 
-      if(comp_info.current._boot_daemon_ws.readyState!==WebSocket.OPEN)return
+      if(comp_info.current._boot_daemon_ws.readyState!==WebSocket.OPEN)
+      {
+        if(coreState!==coreStates.UNKNOWN)
+          setCoreState(coreStates.UNKNOWN);
+        return
+      }
       comp_info.current._boot_daemon_ws.send_obj({"type":"poll_core"})
       .then((data)=>{
         //if(data.)
@@ -76,16 +91,20 @@ function Boot_CTRL_UI({URL}) {
         {
           if(data.poll_code===undefined||data.poll_code===null)
           {//The code will be set if the program exit with return code
-            console.log("RUNING")
+            
+            if(coreState!==coreStates.RUNNING)
+              setCoreState(coreStates.RUNNING);
           }
           else
           {
-            console.log("STOPPED")
+            if(coreState!==coreStates.EXIT)
+             setCoreState(coreStates.EXIT);
           }
         }
         else
         {
-          console.log("STOPPED")
+          if(coreState!==coreStates.TERMINATED)
+            setCoreState(coreStates.TERMINATED);
         }
       })
       .catch((err)=>{
@@ -105,11 +124,12 @@ function Boot_CTRL_UI({URL}) {
 
 
     let rec_ws=new websocket_autoReconnect(URL,3000);
-    // rec_ws.onreconnection = (reconnectionCounter) => {
-    //   log.info("onreconnection" + reconnectionCounter);
-    //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
-    //   return true;
-    // };
+    rec_ws.onreconnection = (reconnectionCounter) => {
+      log.info("onreconnection" + reconnectionCounter);
+      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
+      
+      return true;
+    }; 
     // rec_ws.onconnectiontimeout = () =>{ 
     //   log.info("boot_daemon_ws:onconnectiontimeout");
     //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
@@ -230,6 +250,37 @@ function Boot_CTRL_UI({URL}) {
   }, []);
 
   let wopn=BOOT_DAEMON_readyState==WebSocket.OPEN;
+
+
+
+  let APPLaunchCtrlBtn=null;
+  switch(coreState)
+  {
+    case coreStates.RUNNING:
+    case coreStates.EXIT:
+      
+      APPLaunchCtrlBtn=<Button key={"APP_TERMINATION_Button"}  danger
+        onClick={() => {
+          boot_daemon_ws.send_obj({"type":"kill_core"})
+          setCoreState(coreStates.UNKNOWN)
+        }}>TERMINATION</Button>
+      break;
+    case coreStates.TERMINATED:
+    
+      APPLaunchCtrlBtn=<Button key={"APP_LAUNCH_Button"}  type="primary"
+        onClick={() => {
+          boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
+          setCoreState(coreStates.UNKNOWN)
+        }}>APP RUN</Button>
+      break;
+    
+    case coreStates.UNKNOWN:
+  
+      APPLaunchCtrlBtn=<Button key={"APP_UNKNOWN_Button"}  loading
+        onClick={() => {
+        }}>APP UNKNOWN</Button>
+      break;
+  }
   return (
   <BASE_COM.CardFrameWarp 
     addClass={"width7 height10 overlay SMGraph "+((!hidePanel)?"":"hide")} 
@@ -242,15 +293,7 @@ function Boot_CTRL_UI({URL}) {
           //   readyState:{BOOT_DAEMON_readyState}
           // </div>,
           
-          <Button key={"RUN_Button"} 
-            onClick={() => {
-              boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
-            }}>RUN</Button>
-          ,
-          <Button key={"Stop_Button"} 
-            onClick={() => {
-              boot_daemon_ws.send_obj({"type":"kill_core"})
-            }}>Stop</Button>,
+          APPLaunchCtrlBtn,
 
           
             <Button key={"1_Button"} 
@@ -261,8 +304,23 @@ function Boot_CTRL_UI({URL}) {
               (current_datetime.getMonth() + 1) + "_" + 
               current_datetime.getFullYear()
               
+
+              
+          
+            let plat = navigator.platform.toLowerCase();
+            let updateFileName="update"
+            if(plat=="macintel")
+            {
+              updateFileName+="_mac.zip";
+            }
+            else if(plat=="win32" || plat=="win64")
+            {
+              updateFileName+="_win.zip";
+            }
+            
             let x = {"type":"update", 
-              "bk_name_append":formatted_date
+              "bk_name_append":formatted_date,
+              "update_URL":updateFileName
             }
             boot_daemon_ws.send_obj(x)
               .then((data)=>{
@@ -317,25 +375,6 @@ function Boot_CTRL_UI({URL}) {
               })
               
             }}>Remote UPDATE {latestReleaseInfo.name}</Button>
-          // <div className="layout button width3 height2" onClick=
-          // {() =>{
-          //   let x = {"type":"reload"}
-          //   boot_daemon_ws.send_obj(x)
-          //     .then((data)=>{
-          //       console.log("reload:",data)
-          //     })
-          //     .catch((err)=>{
-          //       console.log(err)
-          //     })
-
-
-
-          // }}>reload</div>
-
-          // ,
-          
-          // UI_url===undefined?null:
-          // <a href={UI_url}>{UI_url}</a>
         ]
         :
         <div className="layout width11 height12">
