@@ -88,16 +88,37 @@ export function DictConv(key,dict,dictTheme)
 
 
 export class websocket_autoReconnect{
+  
   constructor(url,timeout=5000) {
       this.url=undefined;
-      this.wsclose=false;
       this.reconnectionCounter=0;
       this.reconnectGap_ms=5000;
       this.connectionTimeout_ms=timeout;
       this.connectionTimer=null;
       this.readyState=undefined;
+      this.aR_states={
+        IDLE:0,
+        READY2RECONN:100,
+        CONNECTING:1,
+        TIMEOUT:2,
+        CONNECTED:3,
+        DISCONNECTED_FROM_REMOTE:4,
+        DISCONNECTED_FROM_LOCAL:5,
+        ERROR:6
+      }
+      this.aR_state=this.aR_states.IDLE;
+      this._set_aRState(this.aR_states.IDLE);
+
       this._connect(url);
-    
+      
+      // this.aR_action={
+      //   CONNECTING:1,
+      //   CONNECTING_TIMEOUT:2,
+      //   CONNECTING_ERROR:3,
+      //   CONNECTED:4,
+      //   CONNECTED_ERROR:5,
+      //   CONNECTED_ERROR:5,
+      // }
   }
   onopen(ev){}
   onmessage(ev){}
@@ -114,83 +135,225 @@ export class websocket_autoReconnect{
     ws.onerror=
     ws.onclose=undefined;
   }
-  _connect(url) {
-    console.log("_connect");
-    if(this.wsclose)return;
+
+  _set_aRState(newState)
+  {
+    console.log("cur s:",this.aR_state, " ns:",newState);
+    this.aR_state=newState;
+  }
+  _get_aRState()
+  {
     
-    console.log("_connect:GO");
-    this.url=url;
-    if(this.websocket!==undefined)
-    {
-        this.reconnectionCounter++;
-        let doconnection = this.onreconnection(this.reconnectionCounter);
-        console.log("doconnection:",doconnection)
-        if(doconnection==undefined || doconnection!=true)
-        {
-          this.websocket=undefined;
-          return;
-        }
-    }
-
-    if(this.connectionTimer!==undefined)
-      clearTimeout(this.connectionTimer);
-    this.connectionTimer=undefined;
-
-    this.websocket = new WebSocket(url);
-    this.OPEN=WebSocket.OPEN;
-    this.CONNECTING=WebSocket.CONNECTING;
-    this.CLOSED=WebSocket.CLOSED;
-    this.CLOSING=WebSocket.CLOSING;
-    
-    this.onNewState(this.CONNECTING);
-    this.connectionTimer = setTimeout(()=>{
-        this.close();
-        this.onconnectiontimeout();
-        setTimeout(()=>this.reconnect(url),this.reconnectGap_ms);
-    },this.connectionTimeout_ms);
-    // this.state.WS_DB_Insert.binaryType = "arraybuffer";
-
-    this.websocket.onopen = (ev)=>{
-      this.readyState=this.websocket.readyState;
-      this.onNewState(this.readyState);
-      clearTimeout(this.connectionTimer);
-      this.connectionTimer=undefined;
-      return this.onopen(ev);
-    };
-    this.websocket.onmessage =(ev)=> this.onmessage(ev);
-    this.websocket.onerror =(ev)=>{
-      this.readyState=this.websocket.readyState;
-      this.onNewState(this.readyState);
-      //setTimeout(()=>this._connect(url),10);
-      return this.onerror(ev);
-    }
-    this.websocket.onclose =(ev)=>{
-      this.readyState=this.websocket.readyState;
-      this.onNewState(this.readyState);
-      setTimeout(()=>this._connect(url),this.reconnectGap_ms);
-      return this.onclose(ev);
-    }
+    return this.aR_state;
   }
   
-  reconnect() {
-    console.log(    this.wsclose,this.websocket);
-    this.wsclose=false;
-    if(this.websocket!==undefined)
+  _action_local_disconnection()
+  {
+    switch(this._get_aRState())
     {
-      if(this.websocket.readyState!=this.websocket.OPEN)
-      {
-        this.setWebsocketCallbackUndefined(this.websocket);
-        this.websocket=undefined;
-        this._connect(this.url);
-      }
-      else
-        this.websocket.close();//this should trigger _connect affter close/error event
+      case this.aR_states.CONNECTED:
+      case this.aR_states.CONNECTING:
+      this._set_aRState(this.aR_states.DISCONNECTED_FROM_LOCAL);
+      this._action_enter_idle(); 
+      
+      this.reconnectionCounter=0;
+      //this._action_connect();
+      return true;
     }
-    else
-    {
-      this._connect(this.url);
-    }
+    return false;
   }
+  
+  _action_enter_idle()
+  {
+    switch(this._get_aRState())
+    {
+      case this.aR_states.ERROR:
+      case this.aR_states.DISCONNECTED_FROM_REMOTE:
+      case this.aR_states.DISCONNECTED_FROM_LOCAL:
+      case this.aR_states.TIMEOUT:
+      case this.aR_states.READY2RECONN:
+        if(this.websocket!==undefined)
+        {
+          this.setWebsocketCallbackUndefined(this.websocket);
+          this.websocket.close();
+          this.websocket=undefined;
+          // if(this.websocket.readyState!=this.websocket.OPEN)
+          // {
+          //   this._connect(this.url);
+          // }
+          // // else
+          // //   this.websocket.close();//this should trigger _connect affter close/error event
+        }
+        if(this.connectionTimer!==undefined)
+        {
+          clearTimeout(this.connectionTimer);
+          this.connectionTimer=undefined;
+        }
+        this._set_aRState(this.aR_states.IDLE);
+
+        
+        return true;
+      
+      case this.aR_states.IDLE:
+
+
+
+        //When In idle
+        return true;
+    }
+    return false;
+  }
+
+  
+  _action_error(ev)
+  {
+    this._set_aRState(this.aR_states.ERROR);
+    return this._action_RECONN();
+  }
+
+  _action_remote_disconnection(ev)
+  {
+    switch(this._get_aRState())
+    {
+      case this.aR_states.CONNECTED:
+      this._set_aRState(this.aR_states.DISCONNECTED_FROM_REMOTE);
+      this._action_RECONN();
+      return true;
+    }
+    return false;
+  }
+
+  _action_connection_timeout()
+  {
+    switch(this._get_aRState())
+    {
+      case this.aR_states.CONNECTING:
+        this._set_aRState(this.aR_states.TIMEOUT);
+        this._action_RECONN();
+      return true;
+    }
+    return false;
+  }
+  _action_RECONN()
+  {
+    //console.log("try enter _action_RECONN curr state:",this.aR_state);
+    switch(this._get_aRState())
+    {
+      case this.aR_states.ERROR:
+      case this.aR_states.DISCONNECTED_FROM_REMOTE:
+      case this.aR_states.TIMEOUT:
+
+        //console.log("enter _action_RECONN >>");
+      //Clean up
+        if(this.websocket!==undefined)
+        {
+          this.setWebsocketCallbackUndefined(this.websocket);
+          this.websocket.close();
+          this.websocket=undefined;
+        }
+        if(this.connectionTimer!==undefined)
+        {
+          clearTimeout(this.connectionTimer);
+          this.connectionTimer=undefined;
+        }
+
+
+        //Be in READY2RECONN, and setTimeout to reconn
+        this._set_aRState(this.aR_states.READY2RECONN);
+        
+        this.reconnectionCounter++;
+        
+        if(this.onreconnection(this.reconnectionCounter)==true)
+        {
+          setTimeout(()=>{
+            this._action_connect(this.url);
+          },this.reconnectGap_ms)
+          
+        }
+        else
+        {
+          this._action_enter_idle();
+        }
+        
+        return true;
+    }
+    return false;
+  }
+  
+  _action_connection_open()
+  {
+    switch(this._get_aRState())
+    {
+      case this.aR_states.CONNECTING:
+
+        this.reconnectionCounter=0;
+        this._set_aRState(this.aR_states.CONNECTED);
+        clearTimeout(this.connectionTimer);
+        this.connectionTimer=undefined;
+      return true;
+    }
+    return false;
+  }
+
+  _action_connect(url)
+  {
+    switch(this._get_aRState())
+    {
+      case this.aR_states.IDLE:
+      case this.aR_states.READY2RECONN:
+
+
+        this.url=url;
+        this.websocket = new WebSocket(url);
+        this.OPEN=WebSocket.OPEN;
+        this.CONNECTING=WebSocket.CONNECTING;
+        this.CLOSED=WebSocket.CLOSED;
+        this.CLOSING=WebSocket.CLOSING;
+        
+        this.onNewState(this.CONNECTING);
+        this.connectionTimer = setTimeout(()=>{
+            this._action_connection_timeout();
+
+            this.onconnectiontimeout();
+            
+        },this.connectionTimeout_ms);
+        // this.state.WS_DB_Insert.binaryType = "arraybuffer";
+    
+        this.websocket.onopen = (ev)=>{
+          
+          this.readyState=this.websocket.readyState;
+          this.onNewState(this.readyState);
+          this._action_connection_open();
+          return this.onopen(ev);
+        };
+        this.websocket.onmessage =(ev)=> this.onmessage(ev);
+        this.websocket.onerror =(ev)=>{
+          this.readyState=this.websocket.readyState;
+          this.onNewState(this.readyState);
+          //setTimeout(()=>this._connect(url),10);
+          this._action_error(ev);
+          return this.onerror(ev);
+        }
+        this.websocket.onclose =(ev)=>{
+          this.readyState=this.websocket.readyState;
+          this.onNewState(this.readyState);
+          this._action_remote_disconnection(ev)
+          return this.onclose(ev);
+        }
+        this._set_aRState(this.aR_states.CONNECTING);
+        //When In idle
+        return true;
+    }
+    return false;
+  }
+
+  _connect(url) {
+    //console.log("_connect: curState:",this.aR_state);
+    if(this._get_aRState()==this.aR_states.IDLE)
+      return this._action_connect(url);
+    return false;
+  }
+  
   
   onNewState(state){
     //console.log(this.curState,state);
@@ -206,16 +369,7 @@ export class websocket_autoReconnect{
   }
 
   close() {
-    this.wsclose=true;
-    
-    if(this.connectionTimer!==undefined)
-      clearTimeout(this.connectionTimer);
-    this.connectionTimer=undefined;
-    if(this.websocket!==undefined)
-    {
-        this.websocket.close();
-
-    }
+    this._action_local_disconnection();
   }
 
   send(data){
