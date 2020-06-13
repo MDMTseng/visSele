@@ -463,8 +463,7 @@ if __name__ == "__main__":
 
   obj= parse_argv(sys.argv)
 
-
-  path_data=obj.get("data_path", os.path.abspath("./")) 
+  path_data= os.path.abspath(obj.get("data_path", "./")) 
   
   print("path_data=",path_data)
   _type=obj.get("type", None)
