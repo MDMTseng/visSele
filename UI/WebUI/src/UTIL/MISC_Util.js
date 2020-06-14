@@ -138,7 +138,7 @@ export class websocket_autoReconnect{
 
   _set_aRState(newState)
   {
-    console.log("cur s:",this.aR_state, " ns:",newState);
+    //console.log("cur s:",this.aR_state, " ns:",newState);
     this.aR_state=newState;
   }
   _get_aRState()

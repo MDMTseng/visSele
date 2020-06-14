@@ -108,6 +108,7 @@ typedef struct featureDef_searchPoint{
       acv_XY position;
       int target_id;
       float angleDeg;
+      int search_style;
     }anglefollow;
   }data;
 }featureDef_searchPoint;

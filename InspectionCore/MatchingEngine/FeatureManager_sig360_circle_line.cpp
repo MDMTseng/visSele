@@ -962,6 +962,31 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     float margin = def.margin;
 
     vec = acvVecNormalize(vec);
+
+
+
+    int searchDir=1;
+    int searchDir_NA_FLAG=-9999;
+    
+    switch(def.data.anglefollow.search_style)
+    {
+      case 0:
+      //Find the closest point
+      break;
+      case 1:
+      //Find the furtherest point on the direct face edge
+        vec.X*=-1;
+        vec.Y*=-1;
+        searchDir=-1;
+      break;
+      default:
+        searchDir=searchDir_NA_FLAG;
+      break;
+    }
+
+
+
+
     acv_XY searchVec_nor = vec;
     acv_XY searchVec = acvVecNormal(vec);
 
@@ -994,10 +1019,14 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     start_line.line_anchor = acvVecMult(searchVec, -999);                         //back margin vector
     start_line.line_anchor = acvVecAdd(start_line.line_anchor, line.line_anchor); //add line_anchor
 
-    edge_grid.getContourPointsWithInLineContour(line,
-                                                width / 2,
-                                                margin,
-                                                0, m_sections, 999999);
+
+    LOGI("line vec x:%f y:%f, search_style:%d",line.line_vec.X,line.line_vec.Y,def.data.anglefollow.search_style);
+
+    if(searchDir!=searchDir_NA_FLAG)
+      edge_grid.getContourPointsWithInLineContour(line,
+                                                  width / 2,
+                                                  margin,
+                                                  searchDir, m_sections, 999999);
 
     float nearestDist = 99999999;
     acv_XY nearestPt;
@@ -1131,6 +1160,13 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
         *JFetEx_NUMBER(jobj, "pt1.x");
     searchPoint.data.anglefollow.position.Y =
         *JFetEx_NUMBER(jobj, "pt1.y");
+
+    double *search_style=JFetch_NUMBER(jobj, "search_style");
+    
+    if(search_style)
+      searchPoint.data.anglefollow.search_style=(int)*search_style;
+    else 
+      searchPoint.data.anglefollow.search_style=0;
 
     LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
          searchPoint.data.anglefollow.position.X,

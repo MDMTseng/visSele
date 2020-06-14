@@ -462,6 +462,7 @@ class OK_NG_BOX extends React.Component {
   }
 
   render() {
+    console.log(this.props.detailStatus)
     return (
       <div style={{ 'display': 'inline-block' }}>
         <Tag style={{ 'fontSize': 20 }}
@@ -606,11 +607,13 @@ class ObjInfoList extends React.Component {
       optiona_id_order = IR_decotrator.list_id_order;
     }
 
-
     resultMenu = curObjList.map((singleReport, idx) => {
       let reportDetail = [];
       let judgeReports = singleReport.judgeReports;
-
+      if(judgeReports===undefined||judgeReports.length==0)
+      {
+        return null;
+      }
       if (optiona_id_order !== undefined) {
         judgeReports = optiona_id_order.
           map(id => judgeReports.find(judge => judge.id == id)).
@@ -629,7 +632,6 @@ class ObjInfoList extends React.Component {
       }
         , undefined);
 
-      // log.info("judgeReports>>", judgeReports);
       return (
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
           title={

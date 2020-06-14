@@ -125,7 +125,7 @@ function Boot_CTRL_UI({URL}) {
 
     let rec_ws=new websocket_autoReconnect(URL,3000);
     rec_ws.onreconnection = (reconnectionCounter) => {
-      log.info("onreconnection" + reconnectionCounter);
+      //log.info("onreconnection" + reconnectionCounter);
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
       
       return true;
@@ -235,7 +235,7 @@ function Boot_CTRL_UI({URL}) {
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
     }
     _boot_daemon_ws.onerror = () => {
-      log.info("boot_daemon_ws:onerror");
+      //log.info("boot_daemon_ws:onerror");
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
     }
     comp_info.current._boot_daemon_ws=_boot_daemon_ws;

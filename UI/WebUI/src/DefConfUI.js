@@ -767,6 +767,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 angleDeg: "input-number",
                 margin: "input-number",
 
+                search_style: "input-number",
                 calc_f: {
                   __OBJ__: renderMethods.Measure_Calc_Editor,
                   measure_list: shape_list.filter(s =>
