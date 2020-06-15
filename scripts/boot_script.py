@@ -78,7 +78,8 @@ def parse_argv(argv):
       'pre_wait_ms=',
       'port=',
       'dst_dir=',
-      'data_path='
+      'data_path=',
+      'core_argv=',
     ])
   except getopt.GetoptError as err:
     # print help information and exit:
@@ -263,9 +264,26 @@ def gen_avaliable_new_folder_name(path):
   return path_Name
 
 
+def launch_core(cmd={}):
+  global CORE_PIPE
+  if(CORE_PIPE is None):
+    
+    data_path=cmd.get("data_path", path_data)
+    argv=cmd.get("core_argv", "")
+
+    print("cwd2:",data_path)
+    print("path_data:",path_data)
+    CORE_PIPE = subprocess.Popen([path_local+"/Core/visSele",argv], cwd=data_path)
+    print("==================RUN==================")
+    
+    return 0
+  else:
+    return -1
+
 
 CORE_PIPE=None
 def cmd_exec(cmd):
+  global CORE_PIPE
   infoObj={}
   _type=cmd.get("type", None)
   ACK=-10
@@ -344,18 +362,7 @@ def cmd_exec(cmd):
     except requests.exceptions.ConnectionError as err:
       pass
   elif _type == "launch_core":
-    global CORE_PIPE
-    if(CORE_PIPE is None):
-      
-      data_path=cmd.get("data_path", path_data)
-      print("cwd2:",data_path)
-      print("path_data:",path_data)
-      CORE_PIPE = subprocess.Popen([path_local+"/Core/visSele"], cwd=data_path)
-      print("==================RUN==================")
-      
-      ACK=0
-    else:
-      ACK=-30
+    ACK=launch_core(cmd)
 
   elif _type == "kill_core":
     if(CORE_PIPE is not None):
@@ -475,13 +482,14 @@ if __name__ == "__main__":
   
     if(_type == "app-launch"):
       webb.open("file:///"+path_local+"/WebUI/index.html", new=0, autoraise=True)
+      launch_core(obj)
+    
     try:
       pre_wait_ms=int(obj.get("pre_wait_ms", ""))
       print("pre_wait_ms:",pre_wait_ms," ms")
       sleep(pre_wait_ms/1000.0)
     except ValueError:
       pass
-    
     port = 5678
     try:
       port=int(obj.get("port", ""))
