@@ -42,6 +42,19 @@ import Popover from 'antd/lib/Popover';
 import EC_zh_TW from './languages/zh_TW';
 
 
+import { 
+  CloseOutlined,
+  PlusOutlined,
+  FormOutlined,
+  EditOutlined,
+  SaveOutlined,
+  ExportOutlined,
+  SettingOutlined,
+  CameraOutlined,
+
+
+} from '@ant-design/icons';
+
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
@@ -610,7 +623,7 @@ let renderMethods = {
 
       DelBtn = <BASE_COM.IconButton
         addClass="HX0_5 width6"
-        iconType="close"
+        iconType={<CloseOutlined/>}
         onClick={() => {
           let dim = dclone(dimensions);
           console.log(dimensions, dimIdx);
@@ -626,7 +639,7 @@ let renderMethods = {
 
     let AddNewBtn = <BASE_COM.IconButton
       addClass="HX0_5 width6"
-      iconType="plus"
+      iconType={<PlusOutlined/>}
       onClick={() => {
         let dim = dclone(dimensions);
         let refDimVal = (dimensions.length > 0) ? dimensions[dimIdx] : {};
@@ -1210,7 +1223,7 @@ class APP_DEFCONF_MODE extends React.Component {
             key="SPOINT"
             text="spoint" onClick={() => this.props.ACT_Search_Point_Add_Mode()} />,
           <BASE_COM.IconButton
-            iconType="form"
+            //iconType={<FormOutlined/>}
             addClass="layout palatte-blue-8"
             key="MEASURE"
             dict={EC_zh_TW}
@@ -1218,14 +1231,14 @@ class APP_DEFCONF_MODE extends React.Component {
             onClick={() => this.props.ACT_Measure_Add_Mode()}>
           </BASE_COM.IconButton>,
           <BASE_COM.IconButton
-            iconType="edit"
+            iconType={<EditOutlined/>}
             dict={EC_zh_TW}
             addClass="layout palatte-blue-5 vbox"
             key="EDIT"
             text="edit" onClick={() => this.props.ACT_Shape_Edit_Mode()} />,
           (this.props.defConf_lock_level > 2) ? null :
             <BASE_COM.IconButton
-              iconType="save"
+              iconType={<SaveOutlined/>}
               dict={EC_zh_TW}
               addClass="layout palatte-gold-7 vbox"
               key="SAVE"
@@ -1267,7 +1280,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
               }} />,
           <BASE_COM.IconButton
-            iconType="export"
+            iconType={<ExportOutlined/>}
             dict={EC_zh_TW}
             addClass="layout palatte-gold-7 vbox"
             key="LOAD"
@@ -1286,7 +1299,7 @@ class APP_DEFCONF_MODE extends React.Component {
             }} />,
           <BASE_COM.IconButton
             dict={EC_zh_TW}
-            iconType="setting"
+            iconType={<SettingOutlined/>}
             addClass="layout palatte-gray-8 vbox"
             key="setting"
             text="setting" onClick={() => this.setState({
@@ -1372,7 +1385,7 @@ class APP_DEFCONF_MODE extends React.Component {
               }
             })} />,
           <BASE_COM.IconButton
-            iconType="camera"
+            iconType={<CameraOutlined/>}
             dict={EC_zh_TW}
             addClass="layout palatte-purple-8 vbox"
             key="TAKE"
@@ -1463,7 +1476,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
           <BASE_COM.IconButton
-            iconType="INST_CHECK"
+            // iconType="INST_CHECK"
             dict={EC_zh_TW}
             addClass="layout palatte-purple-8 vbox"
             key="INST_CHECK"

@@ -51,7 +51,7 @@ console.log(navigator)
 function getRandom(min = 0, max = 1000000) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
-function Boot_CTRL_UI({URL}) {
+function Boot_CTRL_UI({URL,triggerHide}) {
   const comp_info = React.useRef({});
   
   const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
@@ -71,6 +71,9 @@ function Boot_CTRL_UI({URL}) {
   }
   const [coreState, setCoreState] = useState(coreStates.UNKNOWN);
 
+  useEffect(() => {
+    setHidePanel(true);
+  },[triggerHide])
 
   useEffect(() => {
 
@@ -687,7 +690,7 @@ class APPMasterX extends React.Component {
     }
     else
     {
-      xstateG = <Boot_CTRL_UI URL="ws://localhost:5678"/>
+      xstateG = <Boot_CTRL_UI triggerHide={this.props.showSplash} URL="ws://localhost:5678"/>
     }
 
 

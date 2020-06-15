@@ -32,7 +32,22 @@ import PageHeader from 'antd/lib/page-header';
 import Typography from 'antd/lib/typography';
 import Collapse from 'antd/lib/collapse';
 import Divider from 'antd/lib/divider';
-import Icon from 'antd/lib/icon';
+
+
+import { 
+  FolderOpenOutlined,
+  InfoCircleOutlined,
+  EditOutlined,
+  CloudDownloadOutlined,
+  LeftOutlined,
+  RightOutlined,
+  LinkOutlined,
+  DisconnectOutlined,
+  ScanOutlined,
+  SettingOutlined,
+  DatabaseOutlined } from '@ant-design/icons';
+
+
 import Menu from 'antd/lib/menu';
 import Button from 'antd/lib/button';
 import Layout from 'antd/lib/layout';
@@ -465,8 +480,6 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
   );
 }
 
-
-
 class APPMain extends React.Component {
 
 
@@ -643,7 +656,7 @@ class APPMain extends React.Component {
         //     onSelected: genericMenuItemCBsCB
         // },
         Overview: {
-          icon: "info-circle",
+          icon: <InfoCircleOutlined />,
           content: <div style={{ padding: 24, background: '#fff', height: "100%" }}>
             <div className="s black">{this.props.WebUI_info.version}</div>
 
@@ -691,7 +704,7 @@ class APPMain extends React.Component {
                   let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
                   this.setState({ fileSelectedCallBack, fileSelectFilter, fileGroups });
                 }}>
-                <Icon type="file-add" />
+                <FolderOpenOutlined />
                 {this.props.defModelPath}
               </Button>
               <Title level={2} >
@@ -795,12 +808,12 @@ class APPMain extends React.Component {
           onSelected: genericMenuItemCBsCB
         },
         EDIT: {
-          icon: "edit",
+          icon: <EditOutlined />,
           content: null,
           onSelected: this.props.EV_UI_Edit_Mode
         },
         Inspect: {
-          icon: "scan",
+          icon: <ScanOutlined />,
           content: null,
           onSelected: () => {
 
@@ -850,19 +863,19 @@ class APPMain extends React.Component {
           }
         },
 
-        // SDD: {
-        //   icon: "database",
-        //   content: <CustomDisplayUI
-        //     BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)} />,
-        //   onSelected: genericMenuItemCBsCB
-        // },
+        SDD: {
+          icon: <DatabaseOutlined />,
+          content: <CustomDisplayUI
+            BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)} />,
+          onSelected: genericMenuItemCBsCB
+        },
         // STA:{
         //     icon:"bar-chart",
         //     content:null,
         //     onSelected:this.props.EV_UI_Analysis_Mode
         // },
         Setting: {
-          icon: "setting",
+          icon: <SettingOutlined />,
           content: <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
 
             <Divider orientation="left">MISC</Divider>
@@ -892,7 +905,7 @@ class APPMain extends React.Component {
             <Button.Group>
 
               <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
-                icon="link"
+                icon={<LinkOutlined />}
                 onClick={() => {
                   new Promise((resolve, reject) => {
                     this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
@@ -908,7 +921,7 @@ class APPMain extends React.Component {
                     })
                 }}>(re)Connect</Button>
               <Button type="danger" key="Disconnect uInsp" disabled={!this.props.uInspData.connected}
-                icon="disconnect"
+                icon={<DisconnectOutlined />}
                 onClick={() => {
                   new Promise((resolve, reject) => {
                     this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
@@ -1079,7 +1092,7 @@ class APPMain extends React.Component {
         },
         
         BackLightCalib: {
-          icon: "scan",
+          icon:<ScanOutlined />,
           content: <BackLightCalibUI_rdx
             BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
             onCalibFinished={(finalReport) => {
@@ -1096,7 +1109,7 @@ class APPMain extends React.Component {
           onSelected: genericMenuItemCBsCB
         },
         Collapse: {
-          icon: this.state.menuCollapsed ? "right" : "left",
+          icon: this.state.menuCollapsed ? <RightOutlined /> :<LeftOutlined />,
           content: null,
           onSelected: () => this.setState({ ...this.state, menuCollapsed: !this.state.menuCollapsed })
         }
@@ -1108,7 +1121,7 @@ class APPMain extends React.Component {
 
       if (recommend_URL !== undefined && (recommend_URL.indexOf()) == -1) {
         MenuItem.UPDATE = {
-          icon: "cloud-download",
+          icon: <CloudDownloadOutlined />,
           content: null,
           onSelected: () => {
             window.location.href = recommend_URL;
@@ -1130,7 +1143,7 @@ class APPMain extends React.Component {
               {
                 Object.keys(MenuItem).map(itemKey => (
                   <Menu.Item key={itemKey} >
-                    <Icon type={MenuItem[itemKey].icon} />
+                    {MenuItem[itemKey].icon}
                     <span>{itemKey}</span>
                   </Menu.Item>
                 ))

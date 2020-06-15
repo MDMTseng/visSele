@@ -11,7 +11,18 @@ import EC_zh_TW from "../languages/zh_TW";
 import  {default as AntButton}  from 'antd/lib/button';
 import  Modal  from 'antd/lib/modal';
 import  Table  from 'antd/lib/table';
-import  Icon  from 'antd/lib/icon';
+import { 
+  FolderOpenOutlined,
+  InfoCircleOutlined,
+  EditOutlined,
+  CloudDownloadOutlined,
+  LeftOutlined,
+  RightOutlined,
+  LinkOutlined,
+  DisconnectOutlined,
+  FileOutlined,
+  FolderOutlined } from '@ant-design/icons';
+
 import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
 import { parse } from 'semver';
@@ -568,8 +579,8 @@ export class BPG_FileBrowser_proto extends React.Component{
       }));
       
       columns[0].render=(text, record) => {
-        let iconType=(text=="DIR")?"folder":"file"
-        return <Icon type={iconType} />
+        let iconType=(text=="DIR")?<FolderOutlined />:<FileOutlined />
+        return iconType
       }
       columns[0].width=64;
       
@@ -601,8 +612,8 @@ export class BPG_FileBrowser_proto extends React.Component{
       }));
       
       columns[0].render=(text, record) => {
-        let iconType=(text=="DIR")?"folder":"file"
-        return <Icon type={iconType} />
+        let iconType=(text=="DIR")?<FolderOutlined />:<FileOutlined />
+        return iconType
       }
       columns[0].width=64;
       
@@ -618,8 +629,8 @@ export class BPG_FileBrowser_proto extends React.Component{
       }));
   
       columns[0].render=(text, record) => {
-        let iconType=(text=="DIR")?"folder":"file"
-        return <Icon type={iconType} />
+        let iconType=(text=="DIR")?<FolderOutlined />:<FileOutlined />
+        return iconType
       }
       columns[0].width=64;
   
@@ -648,7 +659,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       pathSplitBtns=<div>
         <AntButtonGroup>
           <AntButton type="primary"  onClick={()=>this.goDir()}>
-            <Icon type="left" />
+            <LeftOutlined />
           </AntButton>
         </AntButtonGroup>
         &nbsp;&nbsp;&nbsp;
@@ -908,15 +919,15 @@ export let IconButton = React_createClass({
     {
       translation = this.props.text;
     }
-
+    //console.log(this.props.iconType)
     return <div
         onClick={this.handleClick}
-        className={className}>
+        className={className+" icon_btn"}>
 
         {
           (this.props.iconType === undefined)?
             null:
-            <Icon className="layout iconButtonSize veleY" type={this.props.iconType}/>
+            this.props.iconType
         }
 
         <p className={"layout veleY iconTextPadding"}>
