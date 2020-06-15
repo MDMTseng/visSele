@@ -864,6 +864,8 @@ int stageLightParam::RESET()
   tarImgH = 0;
   idxW = 0, idxH = 0;
   back_light_target=200;
+  origin_offset.X=0;
+  origin_offset.Y=0;
   return 0;
 }
 
@@ -878,6 +880,8 @@ BGLightNodeInfo *stageLightParam::fetchIdx(int X, int Y)
 }
 float stageLightParam::factorSampling(acv_XY pos)
 {
+  pos.X+=origin_offset.X;
+  pos.Y+=origin_offset.Y;
   float alphaX = (pos.X * idxW / tarImgW) - 0.5;
   float alphaY = (pos.Y * idxH / tarImgH) - 0.5;
   int leadX = floor(alphaX);

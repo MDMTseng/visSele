@@ -662,7 +662,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
       stageLightInfo->tarImgH = *imDimH;
     }
 
-    
+    stageLightInfo->back_light_target=200;//Default
     double *p_back_light_target = JFetch_NUMBER(sl_json, "cam_param.back_light_target");
     if(p_back_light_target)
     {
@@ -2309,6 +2309,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
     bacpac->sampler->getCalibMap()->origin_offset.X = fi.offset_x;
     bacpac->sampler->getCalibMap()->origin_offset.Y = fi.offset_y;
+
+    
+    bacpac->sampler->getStageLightInfo()->origin_offset.X = fi.offset_x;
+    bacpac->sampler->getStageLightInfo()->origin_offset.Y = fi.offset_y;
   }
   //if(stackingC!=0)return;
   if (0)
@@ -2911,7 +2915,7 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
     }
     else if(bytes_per_data==8)
     {
-      uint32_t* tmp=(uint64_t *)DM_pak.data;
+      uint64_t* tmp=(uint64_t *)DM_pak.data;
       dim[0]=tmp[0];
       dim[1]=tmp[1];
     }

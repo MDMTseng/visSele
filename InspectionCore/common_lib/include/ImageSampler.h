@@ -63,6 +63,7 @@ class stageLightParam{
   int tarImgW,tarImgH;
   int idxW,idxH;
   int back_light_target;
+  acv_XY origin_offset;  
   int RESET();
   void nodesIdxWHSetup();
   void CLONE(stageLightParam* obj){};
@@ -244,7 +245,7 @@ class ImageSampler
       bri= acvUnsignedMap1Sampling_Nearest(img, pos,0);
     else if (samp_type==0)
       bri= acvUnsignedMap1Sampling(img, pos,0);
-    
+
     return bri*sampleBackLightFactor_ImgCoord(pos);
   }
   float sampleImage_ImgCoord(acvImage *img,float imgPos[2])
