@@ -2911,7 +2911,7 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
     }
     else if(bytes_per_data==8)
     {
-      uint32_t* tmp=(uint32_t *)DM_pak.data;
+      uint32_t* tmp=(uint64_t *)DM_pak.data;
       dim[0]=tmp[0];
       dim[1]=tmp[1];
     }
