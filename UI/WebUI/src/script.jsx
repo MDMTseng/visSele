@@ -63,6 +63,9 @@ function Boot_CTRL_UI({URL,triggerHide}) {
   
   const [latestReleaseInfo, setLatestReleaseInfo] = useState(undefined);
 
+  const [updateRunning, setUpdateRunning] = useState(false);
+
+
   const coreStates={
     UNKNOWN:"UNKNOWN",
     RUNNING:"RUNNING",
@@ -144,6 +147,8 @@ function Boot_CTRL_UI({URL,triggerHide}) {
     };
 
     _boot_daemon_ws.onopen = (obj) => {
+      
+      setUpdateRunning(false)
       log.info("boot_daemon_ws.onopen", obj);
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
 
@@ -299,8 +304,9 @@ function Boot_CTRL_UI({URL,triggerHide}) {
           APPLaunchCtrlBtn,
 
           
-            <Button key={"1_Button"} 
+            <Button key={"1_Button"}   loading={updateRunning}
             onClick={() => {
+            setUpdateRunning(true)
             let current_datetime = new Date()
             let formatted_date = 
               current_datetime.getDate() + "_" + 
@@ -327,6 +333,8 @@ function Boot_CTRL_UI({URL,triggerHide}) {
             }
             boot_daemon_ws.send_obj(x)
               .then((data)=>{
+                
+                setUpdateRunning(false)
                 console.log("Update:",data)
                 if(data.ACK)
                 {
@@ -347,8 +355,9 @@ function Boot_CTRL_UI({URL,triggerHide}) {
           }}>Local UPDATE</Button>,
 
           latestReleaseInfo===undefined?null:
-          <Button key={"Remote UPDATE"} 
+          <Button key={"Remote UPDATE"} loading={updateRunning}
             onClick={() => {
+            setUpdateRunning(true)
             console.log(latestReleaseInfo)
             let url=latestReleaseInfo.tar_asset.browser_download_url;
             //if(latestReleaseInfo.)
@@ -359,6 +368,8 @@ function Boot_CTRL_UI({URL,triggerHide}) {
             }
             boot_daemon_ws.send_obj(x)
               .then((data)=>{
+                
+                setUpdateRunning(false)
                 console.log("Update:",data)
                 if(data.ACK)
                 {
