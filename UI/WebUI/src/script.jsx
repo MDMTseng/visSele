@@ -218,8 +218,8 @@ function Boot_CTRL_UI({URL,triggerHide}) {
           console.log(window.location.href+">>>"+url)
           let curUrl=window.location.href;
           let dstUrl=url;
-          curUrl=curUrl.replace(/file:\/+/, "");
-          dstUrl=dstUrl.replace(/file:\/+/, "");
+          curUrl=curUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
+          dstUrl=dstUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
 
           if(curUrl!==dstUrl)
           {
