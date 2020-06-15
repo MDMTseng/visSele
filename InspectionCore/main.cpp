@@ -2920,7 +2920,7 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
   //The dimension of calib map
   //Downscaled dimension(the forwardCalibMap)
   uint32_t dimS[2];
-    {
+  {
     int bytes_per_data=DS_pak.length/2;
     
     if(bytes_per_data==4)
@@ -2931,7 +2931,7 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
     }
     else if(bytes_per_data==8)
     {
-      uint32_t* tmp=(uint32_t *)DS_pak.data;
+      uint64_t* tmp=(uint64_t *)DS_pak.data;
       dimS[0]=tmp[0];
       dimS[1]=tmp[1];
     }
