@@ -3,18 +3,8 @@
 import getopt, sys
 import zipfile
 import shutil
-import urllib.request
-import websockets
-import asyncio
-import json
-import subprocess
 import ntpath
-import signal
 import os
-from time import sleep
-from datetime import datetime
-import platform
-import requests
 
 path_env=os.path.abspath("./")
 path_script=os.path.abspath(sys.argv[0])
