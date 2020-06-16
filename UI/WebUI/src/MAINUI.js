@@ -509,6 +509,23 @@ class APPMain extends React.Component {
 
     this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
 
+
+    setTimeout(()=>
+      new Promise((resolve, reject) => {
+        console.log(">>>")
+        this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+          { filename: "data/machine_setting.json" },
+          undefined, { resolve, reject });
+      }).then((data) => {
+        if (data[0].type == "FL") {
+          let info = data[0].data;
+          
+          this.props.ACT_Machine_Custom_Setting_Update(info);
+        }
+      }).catch((err) => {
+        console.log(err);
+      }),1000);
+    
     new Promise((resolve, reject) => {
       this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
         { filename: "data/machine_info" },
@@ -528,6 +545,7 @@ class APPMain extends React.Component {
   }
 
   shouldComponentUpdate(nextProps, nextState) {
+    
     return true;
   }
 
@@ -615,6 +633,14 @@ class APPMain extends React.Component {
             this.props.ACT_Insp_Mode_Update("CI");
           }}>檢測</Button>
 
+
+
+<Button
+          size="large"
+          key="DISS"
+          onClick={() => {
+            this.props.ACT_WS_DISCONNECT(this.props.WS_ID);
+          }}>DISS..</Button>
       </div>
     }
 
@@ -748,7 +774,9 @@ class APPMain extends React.Component {
                 <TagOptions_rdx className="s width12 HXA" />
               </div>
               {
-                (isString(InspectionMonitor_URL)) ?
+                
+                (isString(InspectionMonitor_URL) && 
+                (this.props.machine_custom_setting.inspection_db_ws_url!==undefined) ) ?
                   <QR_Canvas className="s width4 HXA"
                     onClick={() => window.open(InspectionMonitor_URL)}
                     QR_Content={InspectionMonitor_URL} /> :
@@ -1192,8 +1220,9 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     ACT_InspOptionalTag_Update: (newTag) => { dispatch(DefConfAct.InspOptionalTag_Update(newTag)) },
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
-
+    ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
+    ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
     ACT_Report_Save: (id, fileName, content) => {
       let act = UIAct.EV_WS_SEND(id, "SV", 0,
         { filename: fileName },
@@ -1223,6 +1252,7 @@ const mapStateToProps_APPMain = (state) => {
 
     statSetting: state.UIData.edit_info.statSetting,
     inspMode: state.UIData.inspMode,
+    machine_custom_setting: state.UIData.machine_custom_setting,
   }
 }
 

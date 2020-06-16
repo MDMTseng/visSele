@@ -202,8 +202,10 @@ class RAW_InspectionReportPull extends React.Component {
 
 
   websocketClose() {
-    this.WS_DB_Insert.close();
-    this.WS_DB_Query.close();
+    if(this.WS_DB_Insert!==undefined)
+      this.WS_DB_Insert.close();
+    if(this.WS_DB_Query!==undefined)
+      this.WS_DB_Query.close();
   }
 
   onConnectionStateUpdate(cur, pre) {
@@ -213,8 +215,11 @@ class RAW_InspectionReportPull extends React.Component {
     }
 
   }
-  websocketConnect(url = "ws://hyv.decade.tw:8080/") {
-
+  websocketConnect(url) {
+    if(url===undefined)
+    {
+      return;
+    }
 
     if (this.WS_DB_Insert === undefined) {
       log.info("[init][WS]" + url + "insert/insp");
@@ -1986,7 +1991,7 @@ class APP_INSP_MODE extends React.Component {
           onDBInsertFail={(data, info) => {
             log.error(data, info);
           }}
-          url="ws://hyv.decade.tw:8080/"
+          url={this.props.machine_custom_setting.inspection_db_ws_url}
           pull_skip={(this.props.inspMode == "FI") ? 10 : 1} />
         <$CSSTG transitionName="fadeIn">
           <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height}
@@ -2045,6 +2050,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     info_decorator: state.UIData.edit_info.__decorator,
     defModelName: state.UIData.edit_info.DefFileName,
     defModelTag: state.UIData.edit_info.DefFileTag,
+    machine_custom_setting: state.UIData.machine_custom_setting,
     machTag: state.UIData.MachTag,
     inspOptionalTag: state.UIData.edit_info.inspOptionalTag,
     defModelPath: state.UIData.edit_info.defModelPath,

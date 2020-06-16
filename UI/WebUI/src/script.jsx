@@ -12,6 +12,9 @@ import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
+
+import CSSTransitionGroup from 'react-transition-group/CSSTransitionGroup';
+let $CTG=CSSTransitionGroup;
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 
@@ -706,25 +709,33 @@ class APPMasterX extends React.Component {
 
 
     return (
-      <div className="HXF">
+      <div className="HXF sp_Style">
 
-
+        <APPMain_rdx key="APP" />
+        <CSSTransitionGroup
+          transitionName={"logoFrame"}
+          transitionEnter={true}
+          transitionLeave={true}
+          transitionEnterTimeout={1500}
+          transitionLeaveTimeout={1500}
+          >
         {
           (this.props.showSplash) ?
             <div key="LOGO" className="s HXF WXF overlay veleXY logoFrame white">
               <div className="veleXY width6 height6">
-                <img className="height8 LOGOImg " src="resource/image/NotiMon.svg"></img>
+                <img className="height8 LOGOImg veleX" src="resource/image/Ｃ_WLOGO.svg"/>
                 <div className="HX0_5" />
-                <div className="s">
+                <div className="s HX2">
                   <div className="TitleTextCon showOverFlow HX4">
-                    <h1 className="Title">HY</h1>
-                    <h1 className="Title">Vision</h1>
+                    <h1 className="Title HX2">By Xception</h1>
+                    <h1 className="Title HX2">SAMP</h1>
                   </div>
                 </div>
               </div>
             </div>
-            : <APPMain_rdx key="APP" />
+            : null
         }
+        </CSSTransitionGroup>
         {xstateG}
       </div>
     );

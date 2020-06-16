@@ -747,23 +747,29 @@ class APP_DEFCONF_MODE extends React.Component {
   componentDidMount() {
     let defModelPath = this.props.edit_info.defModelPath;
     this.loadDefFile(defModelPath);
-    let _ws = new websocket_autoReconnect("ws://hyv.decade.tw:8080/insert/def", 10000);
-    this.WS_DEF_DB_Insert = new websocket_reqTrack(_ws);
+    let db_url = this.props.machine_custom_setting.inspection_db_ws_url;
+    if(db_url!==undefined)
+    {
 
-    this.WS_DEF_DB_Insert.onreconnection = (reconnectionCounter) => {
-      log.info("onreconnection" + reconnectionCounter);
-      if (reconnectionCounter > 10) return false;
-      return true;
-    };
-    this.WS_DEF_DB_Insert.onopen = () => log.info("WS_DEF_DB_Insert:onopen");
-    this.WS_DEF_DB_Insert.onmessage = (msg) => log.info("WS_DEF_DB_Insert:onmessage::", msg);
-    this.WS_DEF_DB_Insert.onconnectiontimeout = () => log.info("WS_DEF_DB_Insert:onconnectiontimeout");
-    this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
-    this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
+      let _ws = new websocket_autoReconnect(db_url+"/insert/def", 10000);
+      this.WS_DEF_DB_Insert = new websocket_reqTrack(_ws);
+  
+      this.WS_DEF_DB_Insert.onreconnection = (reconnectionCounter) => {
+        log.info("onreconnection" + reconnectionCounter);
+        if (reconnectionCounter > 10) return false;
+        return true;
+      };
+      this.WS_DEF_DB_Insert.onopen = () => log.info("WS_DEF_DB_Insert:onopen");
+      this.WS_DEF_DB_Insert.onmessage = (msg) => log.info("WS_DEF_DB_Insert:onmessage::", msg);
+      this.WS_DEF_DB_Insert.onconnectiontimeout = () => log.info("WS_DEF_DB_Insert:onconnectiontimeout");
+      this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
+      this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
+    }
   }
 
   componentWillUnmount() {
-    this.WS_DEF_DB_Insert.close();
+    if(this.WS_DEF_DB_Insert!==undefined)
+      this.WS_DEF_DB_Insert.close();
     this.props.ACT_ClearImage();
     
     this.props.ACT_DefConf_Lock_Level_Update(0);
@@ -2079,7 +2085,8 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     Info_decorator: state.UIData.edit_info.__decorator,
     WS_ID: state.UIData.WS_ID,
     edit_info: state.UIData.edit_info,
-    defConf_lock_level: state.UIData.defConf_lock_level
+    defConf_lock_level: state.UIData.defConf_lock_level,
+    machine_custom_setting: state.UIData.machine_custom_setting,
   }
 };
 

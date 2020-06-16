@@ -95,7 +95,7 @@ function Default_UICtrlReducer() {
   let defState = {
     MENU_EXPEND: false,
 
-
+    machine_custom_setting:{},
     showSplash: true,
     showSM_graph: false,
     WS_CH: undefined,
@@ -973,6 +973,13 @@ function StateReducer(newState, action) {
           case UISEV.EC_Save_Def_Config:
             {
               if (newState.WS_CH == undefined) break;
+            }
+            break;
+          
+          case UISEV.machine_custom_setting_Update:
+            {
+              newState.machine_custom_setting ={...newState.machine_custom_setting ,...action.data};
+              
             }
             break;
           case DefConfAct.EVENT.DefFileName_Update:

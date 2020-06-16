@@ -140,11 +140,11 @@ body.sp_Style.blockS  {
   transform: rotateY(00deg);
   z-index: 2;
 }
-.sp_Style.blockS .MenuAnim.fadeIn-leave{
+.MenuAnim.fadeIn-leave{
   opacity: 1;
   z-index: 1;
 }
-.sp_Style.blockS .MenuAnim.fadeIn-leave.fadeIn-leave-active{
+.MenuAnim.fadeIn-leave.fadeIn-leave-active{
   opacity: 0;
   z-index: 1;
 }
@@ -169,6 +169,7 @@ body.sp_Style.blockS  {
   font-family: 'roboto_med';
   color: #000;
   font-size: 30pt;
+  margin:0;
 }
 
 .sp_Style.blockS .logoFrame .TitleTextCon{
@@ -191,8 +192,6 @@ body.sp_Style.blockS  {
   transform-origin: 50% 50%;
   animation-duration: 0.4s;
   animation-timing-function: ease-in-out;
-  -webkit-filter: grayscale(100%);
-  transform: rotateZ(-360deg);
 }
 
 .sp_Style.blockS .logoFrame-leave-active .LOGOImg{
@@ -207,7 +206,6 @@ body.sp_Style.blockS  {
   }
 
   100% {
-      transform: none;
       -webkit-filter: none;
   }
 }

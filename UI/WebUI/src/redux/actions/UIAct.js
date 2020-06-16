@@ -71,6 +71,7 @@ export const UI_SM_EVENT = {
   ERROR:"ERROR",
 
   Version_Map_Update:"Version_Map_Update",
+  machine_custom_setting_Update:"machine_custom_setting_Update",
   Insp_Mode_Update:"InspMode_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
   WS_channel:"WS_channel",
@@ -114,6 +115,15 @@ export function EV_WS_ChannelUpdate(WS_CH)
     type: UI_SM_EVENT.WS_channel ,data:WS_CH
   }
 }
+
+export function EV_machine_custom_setting_Update(info)
+{
+  return {
+    type: UI_SM_EVENT.machine_custom_setting_Update,
+    data:info
+  }
+}
+
 
 export function EV_UI_EC_Save_Def_Config(info)
 {
@@ -285,4 +295,12 @@ export function EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs){
       promiseCBs
     }
   });
+}
+
+export function EV_WS_Disconnect(id)
+{
+  return {
+    type: "MWWS_DISCONNECT" ,data:{id}
+  }
+
 }
