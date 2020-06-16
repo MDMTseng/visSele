@@ -635,12 +635,12 @@ class APPMain extends React.Component {
 
 
 
-<Button
+        {/* <Button
           size="large"
           key="DISS"
           onClick={() => {
             this.props.ACT_WS_DISCONNECT(this.props.WS_ID);
-          }}>DISS..</Button>
+          }}>DISS..</Button> */}
       </div>
     }
 
