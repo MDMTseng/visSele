@@ -37,7 +37,13 @@ import Popover from 'antd/lib/popover';
 
 import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
+import Steps from 'antd/lib/Steps';
+import EC_zh_TW from './languages/zh_TW';
+
+import { useSelector,useDispatch } from 'react-redux';
+let LANG_DICT=EC_zh_TW;
 const { Meta } = Card;
+const { Step } = Steps;
 
 import { 
   FolderOpenOutlined,
@@ -176,8 +182,6 @@ const mapStateToProps_CanvasComponent = (state) => {
 
   }
 }
-
-
 
 const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => {
   return {}
@@ -493,38 +497,39 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
 
 
 
-class DefFileLoader extends React.Component {
+const DefFileLoadUI=()=>{
 
-  constructor(props) {
-    super(props);
-    this.QR_Content = "";
-    this.state = {
-    };
+}
+
+const InspectionDataPrepare = () => {
+  // 使用 useSelector 取出 Store 保管的 state
+  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
+  const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
+  const DefFileHash = useSelector(state => state.UIData.edit_info.DefFileHash);
+  
+  const dispatch = useDispatch();
+  const ACT_Def_Model_Path_Update= (path) => dispatch(UIAct.Def_Model_Path_Update(path));
+  const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
+ 
+  
+  const [machineSetPopUp,setMachineSetPopUp]=useState(undefined);
+  const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
+
+  
+  let InspectionMonitor_URL;
+  let DefFileFolder;
+
+  if (isString(DefFileHash) && DefFileHash.length > 5) {
+    InspectionMonitor_URL = InspectionMonitor_URL +
+      "?v=" + 0 + "&name=" + DefFileName + "&hash=" + DefFileHash;
+    InspectionMonitor_URL = encodeURI(InspectionMonitor_URL);
   }
+  DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
 
-  componentDidMount() {
-    this.setState({ ...this.state, canvas: this.refs.canvas });
-  }
-  onResize(width, height) {
-  }
-  componentDidUpdate(prevProps, prevState) {
-  }
-
-  render() {
-
-    let InspectionMonitor_URL;
-
-    if (isString(this.props.defModelHash) && this.props.defModelHash.length > 5) {
-      InspectionMonitor_URL = this.props.InspectionMonitor_URL +
-        "?v=" + 0 + "&name=" + this.props.defModelName + "&hash=" + this.props.defModelHash;
-      InspectionMonitor_URL = encodeURI(InspectionMonitor_URL);
-    }
-    let DefFileFolder = this.props.defModelPath.substr(0, this.props.defModelPath.lastIndexOf('/') + 1);
-
-
-    return(
-      
-      <Row gutter={18} className="height8 width12 ">
+  return(
+    
+    <Row gutter={18} className="height8 width12 ">
       <Col span={12}>
       
         <Card 
@@ -556,9 +561,9 @@ class DefFileLoader extends React.Component {
                   }
 
                   filePath = filePath.replace("." + DEF_EXTENSION, "");
-                  this.setState({ fileSelectedCallBack: undefined });
-                  this.props.ACT_Def_Model_Path_Update(filePath);
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+                  setFileSelectorInfo(undefined);
+                  ACT_Def_Model_Path_Update(filePath);
+                  ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
                 }
 
 
@@ -572,7 +577,12 @@ class DefFileLoader extends React.Component {
                 { name: "history", list: LocalS_RecentDefFiles }
               ];
               let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
-              this.setState({ fileSelectedCallBack, fileSelectFilter, fileGroups });
+
+              setFileSelectorInfo({
+                callBack:fileSelectedCallBack,
+                filter:fileSelectFilter,
+                groups:fileGroups
+              });
             }}/>,
             <Popover content={
               <QR_Canvas className="veleX" style={{height:"100%"}}
@@ -584,11 +594,11 @@ class DefFileLoader extends React.Component {
           {
             <CanvasComponent_rdx className="s HXF"  style={{height:"500px","a":1}}/>
           }
-          {/* {(this.props.defModelName===undefined)?"OPEN":this.props.defModelName} */}
+          {/* {(defModelName===undefined)?"OPEN":defModelName} */}
         </Card>
       </Col>
       <Col span={12}>
-        <Card title="Card title" bordered={false}
+        <Card bordered={false}
         
         cover={
           [
@@ -605,9 +615,9 @@ class DefFileLoader extends React.Component {
                   let filePath = tarDef.path;
                   if (filePath === undefined) return;
                   filePath = filePath.replace("." + DEF_EXTENSION, "");
-                  this.setState({ popUpUIInfo: undefined });
-                  this.props.ACT_Def_Model_Path_Update(filePath);
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+                  setMachineSetPopUp(undefined);
+                  ACT_Def_Model_Path_Update(filePath);
+                  ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
 
                   let setTags = [];
                   try {
@@ -617,64 +627,78 @@ class DefFileLoader extends React.Component {
                   catch (e) {
                     setTags = [];
                   }
-                  this.props.ACT_InspOptionalTag_Update(setTags)
+                  ACT_InspOptionalTag_Update(setTags)
 
                 }} />
               }
-              this.setState({ popUpUIInfo });
+              setMachineSetPopUp(popUpUIInfo);
               }}>機台設定選擇</Button>,
 
               <TagOptions_rdx className="s width12 HXA" />]} >
           
         </Card>
       </Col>
-      
       <BPG_FileBrowser key="BPG_FileBrowser"
         searchDepth={4}
-        path={DefFileFolder} visible={this.state.fileSelectedCallBack !== undefined}
-        BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
+        path={DefFileFolder} visible={fileSelectorInfo !== undefined}
+        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
         onFileSelected={(filePath, fileInfo) => {
-          this.setState({ ...this.state, fileSelectedCallBack: undefined });
-          this.state.fileSelectedCallBack(filePath, fileInfo);
+          setFileSelectorInfo(undefined);
+          fileSelectorInfo.callBack(filePath, fileInfo);
         }}
         onCancel={() => {
-          this.setState({ ...this.state, fileSelectedCallBack: undefined });
+          setFileSelectorInfo(undefined);
         }}
         
-        fileGroups={this.state.fileGroups}
-        fileFilter={this.state.fileSelectFilter} />
+        fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
+        fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
+
+      <Modal
+        title={machineSetPopUp === undefined ? "" : machineSetPopUp.title}
+        visible={machineSetPopUp !== undefined}
+        onOk={() => {
+          machineSetPopUp.onOK();
+          setMachineSetPopUp(undefined);
+        }}
+        onCancel={() => {
+          machineSetPopUp.onCancel();
+          setMachineSetPopUp(undefined);
+        }}
+      >
+        {machineSetPopUp === undefined ?
+          null : machineSetPopUp.content}
+      </Modal>
+
+    </Row>
+
+  );
+};
 
 
-      </Row>
 
-    );
-  }
+function InspSetupUI({})
+{
+  // const todoList = useSelector(state => state.todoList);
+
+
+  return (
+    <div style={{ padding: 24, background: '#fff', height: "100%" }}>
+
+      <Steps current={1}>
+        <Step title={LANG_DICT.mainui.select_deffile} description={LANG_DICT.mainui.select_deffile_detail} onClick={()=>console.log("dsfsdf")} />
+        <Step title={LANG_DICT.mainui.set_insp_tags} description={LANG_DICT.mainui.set_insp_tags_detail} />
+        <Step title={LANG_DICT.mainui.test} description={LANG_DICT.mainui.test_detail} />
+      </Steps>
+      {/* <div className="s black">{this.props.WebUI_info.version}</div> */}
+      <InspectionDataPrepare/>
+
+    </div>
+
+
+
+
+  );
 }
-
-const mapStateToProps_DefFileLoader = (state) => {
-  //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
-  return {
-    WS_CH: state.UIData.WS_CH,
-    WS_ID: state.UIData.WS_ID,
-    defModelPath: state.UIData.edit_info.defModelPath,
-    defModelName: state.UIData.edit_info.DefFileName,
-    defModelHash: state.UIData.edit_info.DefFileHash,
-
-  }
-}
-const mapDispatchToProps_DefFileLoader = (dispatch, ownProps) => {
-  return {
-    
-    ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
-    ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
-    
-  }
-}
-const DefFileLoader_rdx = connect(
-  mapStateToProps_DefFileLoader,
-  mapDispatchToProps_DefFileLoader)(DefFileLoader);
-
-
 
 
 class APPMain extends React.Component {
@@ -873,45 +897,7 @@ class APPMain extends React.Component {
         // },
         Overview: {
           icon: <InfoCircleOutlined />,
-          content: <div style={{ padding: 24, background: '#fff', height: "100%" }}>
-            {/* <div className="s black">{this.props.WebUI_info.version}</div> */}
-            <DefFileLoader_rdx/>
-
-            {/*               
-              {(mmpp===undefined)?null:
-                <Button  key="mmpp"  size="large"  onClick={()=>{
-                  
-                  let CameraSettingFromFile_Path = "data/";
-                  //CameraSettingFromFile_Path+="S0886/";
-                  
-                  this.props.ACT_WS_SEND(this.props.WS_ID,"ST",0,
-                    {CameraSettingFromFileSetup:CameraSettingFromFileSetup_Path});
-                    
-                    
-                  this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,
-                    {filename:CameraSettingFromFileSetup_Path+"default_camera_param.json"});
-
-                }}><Icon type="camera" /> {"mmpp:"+mmpp}</Button>}
- */}
-
-
-            <Modal
-              title={this.state.popUpUIInfo === undefined ? "" : this.state.popUpUIInfo.title}
-              visible={this.state.popUpUIInfo !== undefined}
-              onOk={() => {
-                this.state.popUpUIInfo.onOK();
-                this.setState({ popUpUIInfo: undefined });
-              }}
-              onCancel={() => {
-                this.state.popUpUIInfo.onCancel();
-                this.setState({ popUpUIInfo: undefined });
-              }}
-            >
-              {this.state.popUpUIInfo === undefined ?
-                null : this.state.popUpUIInfo.content}
-            </Modal>
-            {this.state.additionalUI}
-          </div>,
+          content: <InspSetupUI/>,
           onSelected: genericMenuItemCBsCB
         },
         EDIT: {
@@ -1293,12 +1279,9 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Edit_Mode: (arg) => { dispatch(UIAct.EV_UI_Edit_Mode()) },
     EV_UI_Insp_Mode: () => { dispatch(UIAct.EV_UI_Insp_Mode()) },
     EV_UI_Analysis_Mode: () => { dispatch(UIAct.EV_UI_Analysis_Mode()) },
-    ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
     ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
 
-    ACT_InspOptionalTag_Update: (newTag) => { dispatch(DefConfAct.InspOptionalTag_Update(newTag)) },
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
-    ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
     ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
@@ -1314,11 +1297,9 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
 }
 const mapStateToProps_APPMain = (state) => {
   return {
-    defModelName: state.UIData.edit_info.DefFileName,
     defFileTag: state.UIData.edit_info.DefFileTag,
     inspOptionalTag: state.UIData.edit_info.inspOptionalTag,
     defModelPath: state.UIData.edit_info.defModelPath,
-    defModelHash: state.UIData.edit_info.DefFileHash,
     c_state: state.UIData.c_state,
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     isp_db: state.UIData.edit_info._obj,

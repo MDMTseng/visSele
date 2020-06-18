@@ -68,6 +68,14 @@ export default {
       docheck:"必要判定",
       quadrant:"量測象限"
     }
-
+    ,
+    mainui:{
+      select_deffile:"選擇定義檔",
+      select_deffile_detail:"就是選擇定義檔",
+      set_insp_tags:"設定檢測標籤",
+      set_insp_tags_detail:"就是設定檢測標籤",
+      test:"Test",
+      test_detail:"就是Test",
+    }
 
 };
