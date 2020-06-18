@@ -171,7 +171,9 @@ body.sp_Style.blockS  {
   font-size: 30pt;
   margin:0;
 }
-
+.small_padding_card .ant-card-body{
+  padding:5px;
+}
 .sp_Style.blockS .logoFrame .TitleTextCon{
   transform: translate(0%,-50%);
 }

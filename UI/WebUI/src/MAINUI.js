@@ -32,7 +32,12 @@ import PageHeader from 'antd/lib/page-header';
 import Typography from 'antd/lib/typography';
 import Collapse from 'antd/lib/collapse';
 import Divider from 'antd/lib/divider';
+import Card from 'antd/lib/card';
+import Popover from 'antd/lib/popover';
 
+import Row from 'antd/lib/Row';
+import Col from 'antd/lib/Col';
+const { Meta } = Card;
 
 import { 
   FolderOpenOutlined,
@@ -45,7 +50,9 @@ import {
   DisconnectOutlined,
   ScanOutlined,
   SettingOutlined,
-  DatabaseOutlined } from '@ant-design/icons';
+  DatabaseOutlined,
+  QrcodeOutlined,
+  FundOutlined } from '@ant-design/icons';
 
 
 import Menu from 'antd/lib/menu';
@@ -106,9 +113,11 @@ class CanvasComponent extends React.Component {
   render() {
 
     return (
-      <div className={this.props.className}>
+      <div className={this.props.className}  style={this.props.style}>
         <canvas ref="canvas" className="width12 HXF" />
-        <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
+        {(this.props.disable_resize_detector===true)?
+          null:
+          <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />}
       </div>
     );
   }
@@ -149,9 +158,11 @@ class QR_Canvas extends React.Component {
         console.log('success!');
       })
     return (
-      <div className={this.props.className}>
-        <canvas ref="canvas" className="width12 HXF" onClick={this.props.onClick} />
-        <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
+      <div className={this.props.className} style={this.props.style}>
+        <canvas ref="canvas" className="width12 HXF veleX" onClick={this.props.onClick} />
+        {(this.props.disable_resize_detector===true)?
+          null:
+          <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />}
       </div>
     );
   }
@@ -480,6 +491,192 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
   );
 }
 
+
+
+class DefFileLoader extends React.Component {
+
+  constructor(props) {
+    super(props);
+    this.QR_Content = "";
+    this.state = {
+    };
+  }
+
+  componentDidMount() {
+    this.setState({ ...this.state, canvas: this.refs.canvas });
+  }
+  onResize(width, height) {
+  }
+  componentDidUpdate(prevProps, prevState) {
+  }
+
+  render() {
+
+    let InspectionMonitor_URL;
+
+    if (isString(this.props.defModelHash) && this.props.defModelHash.length > 5) {
+      InspectionMonitor_URL = this.props.InspectionMonitor_URL +
+        "?v=" + 0 + "&name=" + this.props.defModelName + "&hash=" + this.props.defModelHash;
+      InspectionMonitor_URL = encodeURI(InspectionMonitor_URL);
+    }
+    let DefFileFolder = this.props.defModelPath.substr(0, this.props.defModelPath.lastIndexOf('/') + 1);
+
+
+    return(
+      
+      <Row gutter={18} className="height8 width12 ">
+      <Col span={12}>
+      
+        <Card 
+          cover={null}
+          hoverable
+          className="small_padding_card"
+          actions={[
+            <FolderOpenOutlined key="setting" onClick={() => {
+              let fileSelectedCallBack =
+                (filePath, fileInfo) => {
+                  if (localStorage !== undefined) {
+                    let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
+                    try {
+                      LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+                    } catch (e) {
+                      LocalS_RecentDefFiles = [];
+                    }
+                    if (!(LocalS_RecentDefFiles instanceof Array)) {
+                      LocalS_RecentDefFiles = [];
+                    }
+                    //console.log(LocalS_RecentDefFiles);
+                    LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
+                      (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
+
+                    LocalS_RecentDefFiles.unshift(fileInfo);
+                    LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
+                    localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
+                    //console.log(localStorage.getItem("RecentDefFiles"));
+                  }
+
+                  filePath = filePath.replace("." + DEF_EXTENSION, "");
+                  this.setState({ fileSelectedCallBack: undefined });
+                  this.props.ACT_Def_Model_Path_Update(filePath);
+                  this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+                }
+
+
+              let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
+              try {
+                LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+              } catch (e) {
+                LocalS_RecentDefFiles = [];
+              }
+              let fileGroups = [
+                { name: "history", list: LocalS_RecentDefFiles }
+              ];
+              let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
+              this.setState({ fileSelectedCallBack, fileSelectFilter, fileGroups });
+            }}/>,
+            <Popover content={
+              <QR_Canvas className="veleX" style={{height:"100%"}}
+                      onClick={() => window.open(InspectionMonitor_URL)} QR_Content={InspectionMonitor_URL} />} title="QR" trigger="hover">
+              <QrcodeOutlined key="edit"/>
+            </Popover>
+          ]}
+          >
+          {
+            <CanvasComponent_rdx className="s HXF"  style={{height:"500px","a":1}}/>
+          }
+          {/* {(this.props.defModelName===undefined)?"OPEN":this.props.defModelName} */}
+        </Card>
+      </Col>
+      <Col span={12}>
+        <Card title="Card title" bordered={false}
+        
+        cover={
+          [
+            <TagDisplay_rdx className="s width12 HXA" />,
+            <Button size="large" onClick={() => {
+
+              let popUpUIInfo = {
+                title: "機台設定",
+                onOK: () => { },
+                onCancel: () => { },
+                content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
+
+                  let tarDef = cusDispInfo.targetDeffiles[0];
+                  let filePath = tarDef.path;
+                  if (filePath === undefined) return;
+                  filePath = filePath.replace("." + DEF_EXTENSION, "");
+                  this.setState({ popUpUIInfo: undefined });
+                  this.props.ACT_Def_Model_Path_Update(filePath);
+                  this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+
+                  let setTags = [];
+                  try {
+                    setTags = tarDef.tags.split(",");
+
+                  }
+                  catch (e) {
+                    setTags = [];
+                  }
+                  this.props.ACT_InspOptionalTag_Update(setTags)
+
+                }} />
+              }
+              this.setState({ popUpUIInfo });
+              }}>機台設定選擇</Button>,
+
+              <TagOptions_rdx className="s width12 HXA" />]} >
+          
+        </Card>
+      </Col>
+      
+      <BPG_FileBrowser key="BPG_FileBrowser"
+        searchDepth={4}
+        path={DefFileFolder} visible={this.state.fileSelectedCallBack !== undefined}
+        BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
+        onFileSelected={(filePath, fileInfo) => {
+          this.setState({ ...this.state, fileSelectedCallBack: undefined });
+          this.state.fileSelectedCallBack(filePath, fileInfo);
+        }}
+        onCancel={() => {
+          this.setState({ ...this.state, fileSelectedCallBack: undefined });
+        }}
+        
+        fileGroups={this.state.fileGroups}
+        fileFilter={this.state.fileSelectFilter} />
+
+
+      </Row>
+
+    );
+  }
+}
+
+const mapStateToProps_DefFileLoader = (state) => {
+  //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
+  return {
+    WS_CH: state.UIData.WS_CH,
+    WS_ID: state.UIData.WS_ID,
+    defModelPath: state.UIData.edit_info.defModelPath,
+    defModelName: state.UIData.edit_info.DefFileName,
+    defModelHash: state.UIData.edit_info.DefFileHash,
+
+  }
+}
+const mapDispatchToProps_DefFileLoader = (dispatch, ownProps) => {
+  return {
+    
+    ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
+    ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
+    
+  }
+}
+const DefFileLoader_rdx = connect(
+  mapStateToProps_DefFileLoader,
+  mapDispatchToProps_DefFileLoader)(DefFileLoader);
+
+
+
+
 class APPMain extends React.Component {
 
 
@@ -659,13 +856,6 @@ class APPMain extends React.Component {
       }
 
 
-      let InspectionMonitor_URL;
-
-      if (isString(this.props.defModelHash) && this.props.defModelHash.length > 5) {
-        InspectionMonitor_URL = this.props.InspectionMonitor_URL +
-          "?v=" + 0 + "&name=" + this.props.defModelName + "&hash=" + this.props.defModelHash;
-        InspectionMonitor_URL = encodeURI(InspectionMonitor_URL);
-      }
 
       let calibInfo = this.state.calibCalcInfo;
       console.log(calibInfo);
@@ -684,107 +874,8 @@ class APPMain extends React.Component {
         Overview: {
           icon: <InfoCircleOutlined />,
           content: <div style={{ padding: 24, background: '#fff', height: "100%" }}>
-            <div className="s black">{this.props.WebUI_info.version}</div>
-
-            <div className="s height11">
-              <Button size="large"
-                onClick={() => {
-                  let fileSelectedCallBack =
-                    (filePath, fileInfo) => {
-                      if (localStorage !== undefined) {
-                        let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-                        try {
-                          LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-                        } catch (e) {
-                          LocalS_RecentDefFiles = [];
-                        }
-                        if (!(LocalS_RecentDefFiles instanceof Array)) {
-                          LocalS_RecentDefFiles = [];
-                        }
-                        //console.log(LocalS_RecentDefFiles);
-                        LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
-                          (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
-
-                        LocalS_RecentDefFiles.unshift(fileInfo);
-                        LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
-                        localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
-                        //console.log(localStorage.getItem("RecentDefFiles"));
-                      }
-
-                      filePath = filePath.replace("." + DEF_EXTENSION, "");
-                      this.setState({ fileSelectedCallBack: undefined });
-                      this.props.ACT_Def_Model_Path_Update(filePath);
-                      this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
-                    }
-
-
-                  let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-                  try {
-                    LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-                  } catch (e) {
-                    LocalS_RecentDefFiles = [];
-                  }
-                  let fileGroups = [
-                    { name: "history", list: LocalS_RecentDefFiles }
-                  ];
-                  let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
-                  this.setState({ fileSelectedCallBack, fileSelectFilter, fileGroups });
-                }}>
-                <FolderOpenOutlined />
-                {this.props.defModelPath}
-              </Button>
-              <Title level={2} >
-                {this.props.defModelName}
-              </Title>
-
-              <div className="s width8 HXA">
-              
-                <TagDisplay_rdx className="s width12 HXA" />
-                <Button size="large" onClick={() => {
-
-                  let popUpUIInfo = {
-                    title: "機台設定",
-                    onOK: () => { },
-                    onCancel: () => { },
-                    content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
-
-                      let tarDef = cusDispInfo.targetDeffiles[0];
-                      let filePath = tarDef.path;
-                      if (filePath === undefined) return;
-                      filePath = filePath.replace("." + DEF_EXTENSION, "");
-                      this.setState({ popUpUIInfo: undefined });
-                      this.props.ACT_Def_Model_Path_Update(filePath);
-                      this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
-
-                      let setTags = [];
-                      try {
-                        setTags = tarDef.tags.split(",");
-
-                      }
-                      catch (e) {
-                        setTags = [];
-                      }
-                      this.props.ACT_InspOptionalTag_Update(setTags)
-
-                    }} />
-                  }
-                  this.setState({ popUpUIInfo });
-                  }}>機台設定選擇</Button>
-
-                <TagOptions_rdx className="s width12 HXA" />
-              </div>
-              {
-                
-                (isString(InspectionMonitor_URL) && 
-                (this.props.machine_custom_setting.inspection_db_ws_url!==undefined) ) ?
-                  <QR_Canvas className="s width4 HXA"
-                    onClick={() => window.open(InspectionMonitor_URL)}
-                    QR_Content={InspectionMonitor_URL} /> :
-                  null
-              }
-              <CanvasComponent_rdx className="height9" />
-
-            </div>
+            {/* <div className="s black">{this.props.WebUI_info.version}</div> */}
+            <DefFileLoader_rdx/>
 
             {/*               
               {(mmpp===undefined)?null:
@@ -803,18 +894,6 @@ class APPMain extends React.Component {
                 }}><Icon type="camera" /> {"mmpp:"+mmpp}</Button>}
  */}
 
-            <BPG_FileBrowser key="BPG_FileBrowser"
-              searchDepth={4}
-              path={DefFileFolder} visible={this.state.fileSelectedCallBack !== undefined}
-              BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-              onFileSelected={this.state.fileSelectedCallBack}
-              fileGroups={this.state.fileGroups}
-
-              onCancel={() => {
-                this.setState({ ...this.state, fileSelectedCallBack: undefined });
-              }}
-              fileFilter={this.state.fileSelectFilter}
-            />
 
             <Modal
               title={this.state.popUpUIInfo === undefined ? "" : this.state.popUpUIInfo.title}

@@ -723,7 +723,7 @@ class APPMasterX extends React.Component {
           (this.props.showSplash) ?
             <div key="LOGO" className="s HXF WXF overlay veleXY logoFrame white">
               <div className="veleXY width6 height6">
-                <img className="height8 LOGOImg veleX" src="resource/image/Ｃ_WLOGO.svg"/>
+                <img className="height8 LOGOImg" src="resource/image/Ｃ_LOGO.svg"/>
                 <div className="HX0_5" />
                 <div className="s HX2">
                   <div className="TitleTextCon showOverFlow HX4">
