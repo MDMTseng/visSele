@@ -12,6 +12,10 @@ import  Tabs  from 'antd/lib/tabs';
 import { useSelector,useDispatch } from 'react-redux';
 
 
+import { WarningOutlined,CheckOutlined } from '@ant-design/icons';
+const { CheckableTag } = Tag;
+import Divider from 'antd/lib/divider';
+
 const { TabPane } = Tabs;
 
 function Array_NtoM(N,M)
@@ -108,7 +112,7 @@ class TagDisplay extends React.Component{
   render()
   {
     return <div className={this.props.className}>
-      <Tag className="large InspTag fixed" key="MACH">{this.props.MachTag}</Tag>
+      {this.props.MachTag!==undefined?<Tag className="large InspTag fixed" key="MACH">{this.props.MachTag}</Tag>:null}
       {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed" key={tag+"_dfTag"}>{tag}</Tag>)}
 
       {this.props.inspOptionalTag.map(curTag=>
@@ -146,24 +150,25 @@ export const tagGroupsPreset=[
   },
   {
     name:"檢測方式",
-    tags:["測試","全檢"]
+    tags:["抽檢","全檢","測試"]
   }
 
 ]
 
 
 
-function setupGroupSelectInfo(groups)
+function setupGroupSelectInfoInit(groups,currentTags)
 {
   let info=groups.map(group=>{
     return {
       selectIndexes:[],
-      g:group
+      group:group,
+      passed:false
     }
   })
   return info
 }
-export const TagOptions_rdx = ({className}) => {
+export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
   const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
   const MachTag = useSelector(state => state.UIData.MachTag);
@@ -173,22 +178,63 @@ export const TagOptions_rdx = ({className}) => {
   
   const [newTagStr,setNewTagStr]=useState([]);
 
+  
+  const [groupsSelectInfo,setGroupsSelectInfo]=useState(setupGroupSelectInfoInit(tagGroups));
+  let warnIcon =<WarningOutlined style={{color:"#ff8b20"}}/>;
+  let acceptIcon =<CheckOutlined style={{color:"#5191a5"}}/>;
   return <div className={className}>
     {
+    tagGroups.map((group)=>{
+      let matchCount=inspOptionalTag.reduce((count,tag)=>(group.tags.indexOf(tag)>-1)?count+1:count,0);
+      let isFullFill=true;
+      if(group.maxCount!==undefined && matchCount>group.maxCount)
+      {
+        isFullFill=false;
+      }
+      if(group.minCount!==undefined && matchCount<group.minCount)
+      {
+        isFullFill=false;
+      }
+      return[
+      <Divider orientation="left">{isFullFill?acceptIcon:warnIcon}{"  "}{group.name}</Divider>,
+        group.tags.map((tag,tag_idx)=>{
+          let idxOf= inspOptionalTag.indexOf(tag);
+          let is_cur_checked =idxOf > -1;
+          
+          
+          return <Tag key={tag+"_essTag"} 
+            checked={is_cur_checked}
+            color= {is_cur_checked?"#108ee9":"default"}
+            onClick={()=>{
+              console.log(tag);
+              let checked =!is_cur_checked;
+              if(checked)
+              {
+                if(group.maxCount===undefined || matchCount+1<=group.maxCount)
+                {
+                  let newTags=[...inspOptionalTag,tag];
+                  ACT_InspOptionalTag_Update(newTags);
+                }
+                else
+                {
+                  //Over size pass
+                }
+              }
+              else
+              {
+                let newTags=[...inspOptionalTag];
+                console.log(newTags);
+                console.log(idxOf,tag,checked);
+                newTags.splice(idxOf, 1)
+                console.log(newTags); 
+                ACT_InspOptionalTag_Update(newTags)
+              }
+
+            }}>{tag}</Tag>})
+      ]})
+
     }
-    {
-
-
-
-      essentialTags.map((ele,idx,arr)=>
-      <Tag className="large InspTag optional fixed" key={ele+"_essTag"} 
-        onClick={()=>{
-          var array3 = inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
-          ACT_InspOptionalTag_Update([...array3,ele])
-        }}>{ele}</Tag>
-      )}
-    }
-
+    <Divider orientation="left"></Divider>
     <Input placeholder="新標籤"
       onChange={(e)=>{
         let newStr=e.target.value;

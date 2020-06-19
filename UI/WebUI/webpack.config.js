@@ -91,8 +91,15 @@ module.exports = {
           loader: 'less-loader', // compiles Less to CSS
           options: {
             lessOptions: {
+              modifyVars: {
+                'primary-color': '#82CBCB',
+                'link-color': '#1DA57A',
+                'border-radius-base': '2px',
+              },
               javascriptEnabled: true
             }
+
+              
           }
         }]
       }]

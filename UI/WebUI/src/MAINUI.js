@@ -629,7 +629,7 @@ const InspectionDataPrepare = () => {
           
           
           <Button className={"antd-icon-sizing  "+(defFileOK?"HW100":"HW50")} size="large"
-            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
+            style={{"pointer-events": "auto","color":(defFileOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
             onClick={()=>stepInc()}/>
 
 
