@@ -1437,6 +1437,7 @@ class EverCheckCanvasComponent_proto {
   }
 
   resize(width, height) {
+    if(Math.abs(this.canvas.height - height)+Math.abs(this.canvas.width - width)<5)return;
     this.canvas.width = width;
     this.canvas.height = height;
     //this.ctrlLogic();

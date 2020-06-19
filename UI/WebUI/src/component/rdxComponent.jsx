@@ -9,6 +9,9 @@ import  Tag  from 'antd/lib/tag';
 import  Dropdown  from 'antd/lib/dropdown';
 import {CusDisp_DB} from 'UTIL/DB_Query';
 import  Tabs  from 'antd/lib/tabs';
+import { useSelector,useDispatch } from 'react-redux';
+
+
 const { TabPane } = Tabs;
 
 function Array_NtoM(N,M)
@@ -89,6 +92,11 @@ export function CustomDisplaySelectUI({onSelect}) {
 
 export const essentialTags=["01首件熱前","02首件熱後","11沖壓成形","21真空熱處理","31滾電金","31滾電錫","35清洗封孔","36連續鍍"];
 
+
+
+
+
+
 class TagDisplay extends React.Component{
 
   constructor(props) {
@@ -129,73 +137,76 @@ export const TagDisplay_rdx = connect(
 )(TagDisplay);
 
 
-class TagOptions extends React.Component{
-
-  constructor(props) {
-      super(props);
-      this.state={
-      }
-  }
-  render()
+export const tagGroupsPreset=[
   {
-    console.log(this.props.defFileTag)
-    return <div className={this.props.className}>
-      {
-        essentialTags.map((ele,idx,arr)=>
-        <Tag className="large InspTag optional fixed" key={ele+"_essTag"} 
-          onClick={()=>{
-            var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
-            this.props.ACT_InspOptionalTag_Update([...array3,ele])
-          }}>{ele}</Tag>
-        )}
-      }
-      {
-        // [
-        // //   {type:"成形",subtype:["[11]巡檢","[12]首件"]},
-        // // {type:"熱處理",subtype:["[21]熱處理"]},
-        // // {type:"表面處理",subtype:["[31]電鍍","[32]電著","[33]攻牙","[34]震動研磨"]},
-        // {type:"機台",subtype:[...(Array_NtoM(1,40).map(n=>"M"+n)),null,...(Array_NtoM(7,15).map(n=>"P"+n))]},
-        // ].map(catg=>
-        //   <Dropdown overlay={  <Menu>{
-        //         catg.subtype.map((ele,idx,arr)=>ele===null?<br/>:
-        //           <Tag className="xlarge InspTag optional fixed"  
-        //             onClick={()=>{
-        //               var array3 = this.props.inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
-        //               this.props.ACT_InspOptionalTag_Update([...array3,ele])
-        //             }}>{ele}</Tag>
-        //         )}
-        //       </Menu>} placement="bottomLeft">
-        //         <Button>{catg.type}</Button>
-        //   </Dropdown>)
-      }
-      <Input placeholder="新標籤"
-        onChange={(e)=>{
-          let newStr=e.target.value;
-          //e.target.setSelectionRange(0, newStr.length)
-          this.setState({...this.state,newTagStr:newStr});
-        }}
-        onPressEnter={(e)=>{
-          let newTag=e.target.value.split(",");
-          let newTags=[...this.props.inspOptionalTag,...newTag];
-          this.props.ACT_InspOptionalTag_Update(newTags);
-          this.setState({...this.state,newTagStr:""});
-        }}
-        className={"width3 "+((this.props.inspOptionalTag.find((str)=>str==this.state.newTagStr))?"error":"")}
-        allowClear
-        value={this.state.newTagStr}
-        // prefix={<Icon type="tags"/>}
-      />
-      </div>
+    name:"製程",
+    maxCount:1,
+    minCount:1,
+    tags:["01首件熱前","02首件熱後","11沖壓成形","21真空熱處理","31滾電金","31滾電錫","35清洗封孔","36連續鍍"]
+  },
+  {
+    name:"檢測方式",
+    tags:["測試","全檢"]
   }
+
+]
+
+
+
+function setupGroupSelectInfo(groups)
+{
+  let info=groups.map(group=>{
+    return {
+      selectIndexes:[],
+      g:group
+    }
+  })
+  return info
+}
+export const TagOptions_rdx = ({className}) => {
+  const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
+  const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
+  const MachTag = useSelector(state => state.UIData.MachTag);
+  const dispatch = useDispatch();
+  const ACT_InspOptionalTag_Update= (newTag) => dispatch(dispatch(DefConfAct.InspOptionalTag_Update(newTag)));
+ 
+  
+  const [newTagStr,setNewTagStr]=useState([]);
+
+  return <div className={className}>
+    {
+    }
+    {
+
+
+
+      essentialTags.map((ele,idx,arr)=>
+      <Tag className="large InspTag optional fixed" key={ele+"_essTag"} 
+        onClick={()=>{
+          var array3 = inspOptionalTag.filter((obj)=>arr.indexOf(obj) == -1);
+          ACT_InspOptionalTag_Update([...array3,ele])
+        }}>{ele}</Tag>
+      )}
+    }
+
+    <Input placeholder="新標籤"
+      onChange={(e)=>{
+        let newStr=e.target.value;
+        //e.target.setSelectionRange(0, newStr.length)
+        setNewTagStr(newStr)
+      }}
+      onPressEnter={(e)=>{
+        let newTag=e.target.value.split(",");
+        let newTags=[...inspOptionalTag,...newTag];
+        ACT_InspOptionalTag_Update(newTags);
+        this.setState({...this.state,newTagStr:""});
+      }}
+      className={"width3 "+((inspOptionalTag.find((str)=>str==newTagStr))?"error":"")}
+      allowClear
+      value={newTagStr}
+      // prefix={<Icon type="tags"/>}
+    />
+    </div>
+  
 }
 
-export const TagOptions_rdx = connect(
-  (state) =>({
-    inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
-    defFileTag:state.UIData.edit_info.DefFileTag,
-    MachTag:state.UIData.MachTag,
-  }),
-  (dispatch, ownProps) => ({ 
-    ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
-  })
-)(TagOptions);

@@ -1,7 +1,7 @@
 
 import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx,TagDisplay_rdx, essentialTags, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 
@@ -33,7 +33,9 @@ import Typography from 'antd/lib/typography';
 import Collapse from 'antd/lib/collapse';
 import Divider from 'antd/lib/divider';
 import Card from 'antd/lib/card';
+import Carousel from 'antd/lib/carousel';
 import Popover from 'antd/lib/popover';
+import Affix from 'antd/lib/Affix';
 
 import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
@@ -58,7 +60,8 @@ import {
   SettingOutlined,
   DatabaseOutlined,
   QrcodeOutlined,
-  FundOutlined } from '@ant-design/icons';
+  FundOutlined,
+  CaretRightOutlined } from '@ant-design/icons';
 
 
 import Menu from 'antd/lib/menu';
@@ -77,6 +80,7 @@ const Panel = Collapse.Panel;
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
+    this.counttt==0;
   }
   ec_canvas_EmitEvent(event) {
   }
@@ -502,7 +506,9 @@ const DefFileLoadUI=()=>{
 }
 
 const InspectionDataPrepare = () => {
-  // 使用 useSelector 取出 Store 保管的 state
+  const caruselRef = useRef(undefined);
+
+
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
@@ -515,10 +521,12 @@ const InspectionDataPrepare = () => {
   
   const [machineSetPopUp,setMachineSetPopUp]=useState(undefined);
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
+  
+  const [stepIdx,setStepIdx]=useState(0);
 
   
-  let InspectionMonitor_URL;
-  let DefFileFolder;
+  let InspectionMonitor_URL=undefined;
+  let DefFileFolder=undefined;
 
   if (isString(DefFileHash) && DefFileHash.length > 5) {
     InspectionMonitor_URL = InspectionMonitor_URL +
@@ -527,118 +535,217 @@ const InspectionDataPrepare = () => {
   }
   DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
 
-  return(
-    
-    <Row gutter={18} className="height8 width12 ">
-      <Col span={12}>
+  const moveStepIdxBack=(toIdx)=>{
+    if(toIdx<=stepIdx)
+    {
+      setStepIdx(toIdx);
       
-        <Card 
-          cover={null}
-          hoverable
-          className="small_padding_card"
-          actions={[
-            <FolderOpenOutlined key="setting" onClick={() => {
-              let fileSelectedCallBack =
-                (filePath, fileInfo) => {
-                  if (localStorage !== undefined) {
-                    let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-                    try {
-                      LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-                    } catch (e) {
-                      LocalS_RecentDefFiles = [];
-                    }
-                    if (!(LocalS_RecentDefFiles instanceof Array)) {
-                      LocalS_RecentDefFiles = [];
-                    }
-                    //console.log(LocalS_RecentDefFiles);
-                    LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
-                      (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
+      return true;
+    }
+    return false;
+  }
+  if(caruselRef.current!==undefined)
+  {
+    caruselRef.current.goTo(stepIdx);
+  }
+  const stepInc=()=>{
+    setStepIdx(stepIdx+1);
+  }
 
-                    LocalS_RecentDefFiles.unshift(fileInfo);
-                    LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
-                    localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
-                    //console.log(localStorage.getItem("RecentDefFiles"));
+  
+
+
+  let defFileOK=InspectionMonitor_URL!==undefined;
+  let UI_Stack=[];
+
+
+  {//1st page
+    UI_Stack.push(
+      <BASE_COM.CardFrameWarp key="UI_Step0" addClass="width12 height12 overlayCon" fixedFrame={true}>
+        
+        <CanvasComponent_rdx className="s height12" />
+        <div className="overlay" style={{right:"15px",bottom:"15px"}}>
+          {/* <Button style={{"pointer-events": "auto"}}>120px to affix top</Button> */}
+
+          <Button className={"antd-icon-sizing "+(defFileOK?"HW50":"HW100")} size="large"
+            style={{"pointer-events": "auto"}} icon={<FolderOpenOutlined/> } type="text"
+            onClick={() => {
+            let fileSelectedCallBack =
+              (filePath, fileInfo) => {
+                if (localStorage !== undefined) {
+                  let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
+                  try {
+                    LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+                  } catch (e) {
+                    LocalS_RecentDefFiles = [];
                   }
+                  if (!(LocalS_RecentDefFiles instanceof Array)) {
+                    LocalS_RecentDefFiles = [];
+                  }
+                  //console.log(LocalS_RecentDefFiles);
+                  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
+                    (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
 
-                  filePath = filePath.replace("." + DEF_EXTENSION, "");
-                  setFileSelectorInfo(undefined);
-                  ACT_Def_Model_Path_Update(filePath);
-                  ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+                  LocalS_RecentDefFiles.unshift(fileInfo);
+                  LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
+                  localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
+                  //console.log(localStorage.getItem("RecentDefFiles"));
                 }
 
-
-              let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-              try {
-                LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-              } catch (e) {
-                LocalS_RecentDefFiles = [];
+                filePath = filePath.replace("." + DEF_EXTENSION, "");
+                setFileSelectorInfo(undefined);
+                ACT_Def_Model_Path_Update(filePath);
+                ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
               }
-              let fileGroups = [
-                { name: "history", list: LocalS_RecentDefFiles }
-              ];
-              let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
 
-              setFileSelectorInfo({
-                callBack:fileSelectedCallBack,
-                filter:fileSelectFilter,
-                groups:fileGroups
-              });
-            }}/>,
-            <Popover content={
-              <QR_Canvas className="veleX" style={{height:"100%"}}
-                      onClick={() => window.open(InspectionMonitor_URL)} QR_Content={InspectionMonitor_URL} />} title="QR" trigger="hover">
-              <QrcodeOutlined key="edit"/>
-            </Popover>
-          ]}
-          >
-          {
-            <CanvasComponent_rdx className="s HXF"  style={{height:"500px","a":1}}/>
-          }
-          {/* {(defModelName===undefined)?"OPEN":defModelName} */}
-        </Card>
-      </Col>
-      <Col span={12}>
-        <Card bordered={false}
-        
-        cover={
-          [
-            <TagDisplay_rdx className="s width12 HXA" />,
-            <Button size="large" onClick={() => {
 
-              let popUpUIInfo = {
-                title: "機台設定",
-                onOK: () => { },
-                onCancel: () => { },
-                content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
+            let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
+            try {
+              LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+            } catch (e) {
+              LocalS_RecentDefFiles = [];
+            }
+            let fileGroups = [
+              { name: "history", list: LocalS_RecentDefFiles }
+            ];
+            let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
 
-                  let tarDef = cusDispInfo.targetDeffiles[0];
-                  let filePath = tarDef.path;
-                  if (filePath === undefined) return;
-                  filePath = filePath.replace("." + DEF_EXTENSION, "");
-                  setMachineSetPopUp(undefined);
-                  ACT_Def_Model_Path_Update(filePath);
-                  ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+            setFileSelectorInfo({
+              callBack:fileSelectedCallBack,
+              filter:fileSelectFilter,
+              groups:fileGroups
+            });
+          }}/>
+          <Popover 
+            style={{"pointer-events": "auto"}}
+            content={
+            !defFileOK?null:
+            <QR_Canvas className="veleX" style={{height:"100%"}}
+                    onClick={() => window.open(InspectionMonitor_URL)} QR_Content={InspectionMonitor_URL} />} 
+                    trigger={!defFileOK?"??":"hover"}>
+            <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!defFileOK} icon={<QrcodeOutlined/> }/>
+          </Popover>
 
-                  let setTags = [];
-                  try {
-                    setTags = tarDef.tags.split(",");
-
-                  }
-                  catch (e) {
-                    setTags = [];
-                  }
-                  ACT_InspOptionalTag_Update(setTags)
-
-                }} />
-              }
-              setMachineSetPopUp(popUpUIInfo);
-              }}>機台設定選擇</Button>,
-
-              <TagOptions_rdx className="s width12 HXA" />]} >
           
-        </Card>
-      </Col>
-      <BPG_FileBrowser key="BPG_FileBrowser"
+          
+          <Button className={"antd-icon-sizing  "+(defFileOK?"HW100":"HW50")} size="large"
+            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
+            onClick={()=>stepInc()}/>
+
+
+
+        </div>
+      </BASE_COM.CardFrameWarp>
+    );
+  }
+
+
+  {  
+    UI_Stack.push(
+      <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
+
+        <TagDisplay_rdx className="s width12 HXA" />
+        <Button size="large" onClick={() => {
+
+          let popUpUIInfo = {
+            title: "機台設定",
+            onOK: () => { },
+            onCancel: () => { },
+            content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
+
+              let tarDef = cusDispInfo.targetDeffiles[0];
+              let filePath = tarDef.path;
+              if (filePath === undefined) return;
+              filePath = filePath.replace("." + DEF_EXTENSION, "");
+              setMachineSetPopUp(undefined);
+              ACT_Def_Model_Path_Update(filePath);
+              ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+
+              let setTags = [];
+              try {
+                setTags = tarDef.tags.split(",");
+
+              }
+              catch (e) {
+                setTags = [];
+              }
+              ACT_InspOptionalTag_Update(setTags)
+
+            }} />
+          }
+          setMachineSetPopUp(popUpUIInfo);
+          }}>機台設定選擇</Button>
+
+        <TagOptions_rdx className="s width12 HXA" />
+        <div className="overlay" style={{right:"15px",bottom:"15px"}}>
+
+          <Button className="width12"
+            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined /> } type="text" disabled={!defFileOK}
+            onClick={()=>stepInc()}/>
+
+
+          
+          <Button className={"antd-icon-sizing  "+(defFileOK?"HW100":"HW50")} size="large"
+            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
+            onClick={()=>stepInc()}/>
+
+        </div>
+      </BASE_COM.CardFrameWarp>
+    );
+  }
+      
+  UI_Stack.push(
+      <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
+        ID:2
+      
+        <div className="overlay" style={{right:"15px",bottom:"15px"}}>
+
+          <Button className="width12"
+            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
+            onClick={()=>stepInc()}/>
+
+        </div>
+      </BASE_COM.CardFrameWarp>
+  );
+
+  // if(stepIdx>=1)
+  // {
+  //   UI_Stack.push(
+  //     <Card bordered={false}
+  //       key="UI_Step2"
+  //       className="small_padding_card overlay height12"
+  //       style={{background:"#FFF"}}
+  //       cover={
+  //         [
+  //           ]} >
+          
+  //     </Card>
+  //   );
+  // }
+  return(
+    
+  <div style={{ padding: 24, background: '#fff', height: "100%",
+    display: "flex",
+    flexFlow: "column"
+   }} >
+      
+    <Steps current={stepIdx} size="small"  onChange={moveStepIdxBack} style={{flex:" 0 1 auto"}}>
+      <Step title={LANG_DICT.mainui.select_deffile} description={LANG_DICT.mainui.select_deffile_detail}/>
+      <Step title={LANG_DICT.mainui.set_insp_tags} description={LANG_DICT.mainui.set_insp_tags_detail} />
+      <Step title={LANG_DICT.mainui.GOGOGO} description={LANG_DICT.mainui.GOGOGO_detail} />
+    </Steps>
+
+
+    <div className=" width12 ant-carousel_Con_WH100" style={{flex:" 1 1 auto"}} >
+      
+      <Carousel ref={caruselRef} className="width12 height12 " dots={false}>
+      {UI_Stack}
+      </Carousel>
+    </div>
+
+
+
+    <BPG_FileBrowser key="BPG_FileBrowser"
         searchDepth={4}
         path={DefFileFolder} visible={fileSelectorInfo !== undefined}
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
@@ -669,36 +776,11 @@ const InspectionDataPrepare = () => {
           null : machineSetPopUp.content}
       </Modal>
 
-    </Row>
+  </div>
 
   );
 };
 
-
-
-function InspSetupUI({})
-{
-  // const todoList = useSelector(state => state.todoList);
-
-
-  return (
-    <div style={{ padding: 24, background: '#fff', height: "100%" }}>
-
-      <Steps current={1}>
-        <Step title={LANG_DICT.mainui.select_deffile} description={LANG_DICT.mainui.select_deffile_detail} onClick={()=>console.log("dsfsdf")} />
-        <Step title={LANG_DICT.mainui.set_insp_tags} description={LANG_DICT.mainui.set_insp_tags_detail} />
-        <Step title={LANG_DICT.mainui.test} description={LANG_DICT.mainui.test_detail} />
-      </Steps>
-      {/* <div className="s black">{this.props.WebUI_info.version}</div> */}
-      <InspectionDataPrepare/>
-
-    </div>
-
-
-
-
-  );
-}
 
 
 class APPMain extends React.Component {
@@ -897,7 +979,7 @@ class APPMain extends React.Component {
         // },
         Overview: {
           icon: <InfoCircleOutlined />,
-          content: <InspSetupUI/>,
+          content: <InspectionDataPrepare/>,
           onSelected: genericMenuItemCBsCB
         },
         EDIT: {
