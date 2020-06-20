@@ -3,7 +3,7 @@ import 'antd/dist/antd.less';
 import { connect } from 'react-redux'
 import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx,TagDisplay_rdx, essentialTags, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
@@ -505,9 +505,10 @@ const DefFileLoadUI=()=>{
 
 }
 
-const InspectionDataPrepare = () => {
+const InspectionDataPrepare = ({onPrepareOK}) => {
   const caruselRef = useRef(undefined);
 
+  const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
 
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
@@ -524,9 +525,14 @@ const InspectionDataPrepare = () => {
   
   const [stepIdx,setStepIdx]=useState(0);
 
-  
   let InspectionMonitor_URL=undefined;
   let DefFileFolder=undefined;
+
+  useEffect(()=>{
+    ACT_WS_SEND(WS_ID, "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
+
+  },[])
+
 
   if (isString(DefFileHash) && DefFileHash.length > 5) {
     InspectionMonitor_URL = InspectionMonitor_URL +
@@ -547,6 +553,8 @@ const InspectionDataPrepare = () => {
   if(caruselRef.current!==undefined)
   {
     caruselRef.current.goTo(stepIdx);
+    
+    caruselRef.current.slick.innerSlider.swipeMove=()=>{};
   }
   const stepInc=()=>{
     setStepIdx(stepIdx+1);
@@ -555,11 +563,13 @@ const InspectionDataPrepare = () => {
   
 
 
-  let defFileOK=InspectionMonitor_URL!==undefined;
   let UI_Stack=[];
 
+  let isOK;
 
   {//1st page
+    
+    isOK=InspectionMonitor_URL!==undefined;
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step0" addClass="width12 height12 overlayCon" fixedFrame={true}>
         
@@ -567,7 +577,7 @@ const InspectionDataPrepare = () => {
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
           {/* <Button style={{"pointer-events": "auto"}}>120px to affix top</Button> */}
 
-          <Button className={"antd-icon-sizing "+(defFileOK?"HW50":"HW100")} size="large"
+          <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
             style={{"pointer-events": "auto"}} icon={<FolderOpenOutlined/> } type="text"
             onClick={() => {
             let fileSelectedCallBack =
@@ -619,17 +629,17 @@ const InspectionDataPrepare = () => {
           <Popover 
             style={{"pointer-events": "auto"}}
             content={
-            !defFileOK?null:
+            !isOK?null:
             <QR_Canvas className="veleX" style={{height:"100%"}}
                     onClick={() => window.open(InspectionMonitor_URL)} QR_Content={InspectionMonitor_URL} />} 
-                    trigger={!defFileOK?"??":"hover"}>
-            <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!defFileOK} icon={<QrcodeOutlined/> }/>
+                    trigger={!isOK?"??":"hover"}>
+            <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!isOK} icon={<QrcodeOutlined/> }/>
           </Popover>
 
           
           
-          <Button className={"antd-icon-sizing  "+(defFileOK?"HW100":"HW50")} size="large"
-            style={{"pointer-events": "auto","color":(defFileOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
+          <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
+            style={{"pointer-events": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
             onClick={()=>stepInc()}/>
 
 
@@ -639,8 +649,10 @@ const InspectionDataPrepare = () => {
     );
   }
 
+  console.log(stepIdx,UI_Stack.length,isOK);
 
   {  
+    isOK=isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
 
@@ -679,32 +691,25 @@ const InspectionDataPrepare = () => {
         <TagOptions_rdx className="s width12 HXA" />
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
 
-          <Button className="width12"
-            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined /> } type="text" disabled={!defFileOK}
-            onClick={()=>stepInc()}/>
+            
+          <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
+            style={{"pointer-events": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
+            onClick={()=>{
+              stepInc()
+              }}/>
 
 
-          
-          <Button className={"antd-icon-sizing  "+(defFileOK?"HW100":"HW50")} size="large"
-            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
-            onClick={()=>stepInc()}/>
 
         </div>
       </BASE_COM.CardFrameWarp>
     );
   }
       
+  
   UI_Stack.push(
-      <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
-        ID:2
-      
-        <div className="overlay" style={{right:"15px",bottom:"15px"}}>
-
-          <Button className="width12"
-            style={{"pointer-events": "auto"}} icon={<CaretRightOutlined/> } type="text" disabled={!defFileOK}
-            onClick={()=>stepInc()}/>
-
-        </div>
+      <BASE_COM.CardFrameWarp key="UI_Step2" addClass="width12 height12" fixedFrame={true}>
+        {/* <Title className="veleXY">GO GO GO</Title> */}
+        <ScanOutlined  className="veleXY antd-icon-sizing" style={{width:"100px",height:"100px"}}/>
       </BASE_COM.CardFrameWarp>
   );
 
@@ -722,6 +727,7 @@ const InspectionDataPrepare = () => {
   //     </Card>
   //   );
   // }
+  console.log(caruselRef)
   return(
     
   <div style={{ padding: 24, background: '#fff', height: "100%",
@@ -738,7 +744,31 @@ const InspectionDataPrepare = () => {
 
     <div className=" width12 ant-carousel_Con_WH100" style={{flex:" 1 1 auto"}} >
       
-      <Carousel ref={caruselRef} className="width12 height12 " dots={false}>
+      <Carousel ref={caruselRef} className="width12 height12 " 
+      dots={false} draggable={false}
+      afterChange={(current)=>{
+        console.log(current,stepIdx);
+        if(current>stepIdx)
+        {
+          //caruselRef.current.goTo(stepIdx);
+
+          caruselRef.current.slick.slickGoTo(stepIdx)
+          return;
+        }
+        if(current==2&&onPrepareOK!==undefined)
+        {
+          onPrepareOK()
+          
+          setStepIdx(0);
+          
+          return;
+        }
+        if(current<stepIdx)
+        {
+          setStepIdx(current);
+          caruselRef.current.goTo(current);
+        }
+      }}>
       {UI_Stack}
       </Carousel>
     </div>
@@ -809,8 +839,6 @@ class APPMain extends React.Component {
 
   componentDidMount() {
     let defModelPath = this.props.defModelPath;
-
-    this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
 
 
     setTimeout(()=>
@@ -979,7 +1007,7 @@ class APPMain extends React.Component {
         // },
         Overview: {
           icon: <InfoCircleOutlined />,
-          content: <InspectionDataPrepare/>,
+          content: <InspectionDataPrepare onPrepareOK={this.props.EV_UI_Insp_Mode}/>,
           onSelected: genericMenuItemCBsCB
         },
         EDIT: {
@@ -991,50 +1019,7 @@ class APPMain extends React.Component {
           icon: <ScanOutlined />,
           content: null,
           onSelected: () => {
-
-            console.log(this.state.menuSelect);
-            if (this.state.menuSelect !== "Overview") return;
-            if (this.props.inspOptionalTag.reduce((hasEss, tag) => hasEss || essentialTags.includes(tag), false)) {
-              this.props.EV_UI_Insp_Mode();
-            }
-            else {
-              this.setState({
-                additionalUI: [
-                  <Modal
-                    title={"警告"}
-                    visible={true}
-                    onOk={() => {
-                      this.setState({ additionalUI: [] });
-                      //this.props.EV_UI_Insp_Mode();
-                    }}
-                    onCancel={() => {
-                      this.setState({ additionalUI: [] });
-                      //this.props.EV_UI_Insp_Mode();
-                    }}
-                    cancelButtonProps={{ style: { display: 'none' } }}
-                  //okButtonProps={{ disabled: true }}
-                  // onCancel={()=>{
-                  //   this.setState({additionalUI:[]});
-                  // }}
-                  >
-                    <div style={{ height: "auto" }}>
-                      警告：沒有設定 必要Tag
-                    <br />
-                    必要Tag 如下
-                    <br />
-
-                      {
-                        essentialTags.map((ele, idx, arr) =>
-                          <Tag className=" InspTag optional fixed" key={ele + "_ele"}>{ele}</Tag>)
-                      }
-
-                      {/* <TagOptions_rdx className="s width12 HXA"/> */}
-                    </div>
-                  </Modal>
-                ]
-              });
-            }
-
+            this.props.EV_UI_Insp_Mode();
           }
         },
 

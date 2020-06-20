@@ -94,12 +94,6 @@ export function CustomDisplaySelectUI({onSelect}) {
   );
 }
 
-export const essentialTags=["01首件熱前","02首件熱後","11沖壓成形","21真空熱處理","31滾電金","31滾電錫","35清洗封孔","36連續鍍"];
-
-
-
-
-
 
 class TagDisplay extends React.Component{
 
@@ -157,18 +151,24 @@ export const tagGroupsPreset=[
 
 
 
-function setupGroupSelectInfoInit(groups,currentTags)
+export function isTagFulFillRequrement(tags,tagGroupsInfo)
 {
-  let info=groups.map(group=>{
-    return {
-      selectIndexes:[],
-      group:group,
-      passed:false
+  
+  return tagGroupsInfo.reduce((isFulFill,group)=>{
+    if(!isFulFill)return isFulFill;
+    let matchCount=tags.reduce((count,tag)=>(group.tags.indexOf(tag)>-1)?count+1:count,0);
+    if(group.maxCount!==undefined && matchCount>group.maxCount)
+    {
+      return false
     }
-  })
-  return info
+    if(group.minCount!==undefined && matchCount<group.minCount)
+    {
+      return false
+    }
+    return true
+  },true)
 }
-export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset}) => {
+export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
   const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
   const MachTag = useSelector(state => state.UIData.MachTag);
@@ -178,11 +178,10 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset}) => {
   
   const [newTagStr,setNewTagStr]=useState([]);
 
-  
-  const [groupsSelectInfo,setGroupsSelectInfo]=useState(setupGroupSelectInfoInit(tagGroups));
   let warnIcon =<WarningOutlined style={{color:"#ff8b20"}}/>;
   let acceptIcon =<CheckOutlined style={{color:"#5191a5"}}/>;
-  return <div className={className}>
+
+  let returnUI= <div className={className}>
     {
     tagGroups.map((group)=>{
       let matchCount=inspOptionalTag.reduce((count,tag)=>(group.tags.indexOf(tag)>-1)?count+1:count,0);
@@ -195,6 +194,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset}) => {
       {
         isFullFill=false;
       }
+
       return[
       <Divider orientation="left">{isFullFill?acceptIcon:warnIcon}{"  "}{group.name}</Divider>,
         group.tags.map((tag,tag_idx)=>{
@@ -254,5 +254,6 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset}) => {
     />
     </div>
   
+  return returnUI;
 }
 
