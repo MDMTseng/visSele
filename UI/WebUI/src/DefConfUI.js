@@ -42,6 +42,7 @@ import Popover from 'antd/lib/Popover';
 import EC_zh_TW from './languages/zh_TW';
 
 
+import { useSelector,useDispatch } from 'react-redux';
 import { 
   CloseOutlined,
   PlusOutlined,
@@ -706,6 +707,423 @@ let renderMethods = {
   }
 }
 
+
+function DEFCONF_MODE_NEUTRAL_UI({})
+{
+  
+  const dispatch = useDispatch();
+  const ACT_EXIT=(arg) =>dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT)) ;
+
+
+  const ACT_Line_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create)) };
+  const ACT_Arc_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create)) };
+  const ACT_Search_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create)) };
+  const ACT_Aux_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) };
+  const ACT_Aux_Line_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create)) };
+  const ACT_Shape_Edit_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) };
+  const ACT_Measure_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) };
+
+  const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
+  const ACT_Cache_Img_Save= (id, fileName) =>
+    dispatch(UIAct.EV_WS_SEND(id, "SV", 0,
+      { filename: fileName, type: "__CACHE_IMG__" }
+    ))
+
+  const ACT_DefFileName_Update=(newName) => { dispatch(DefConfAct.DefFileName_Update(newName)) };
+  const ACT_DefFileTag_Update=(newInfo) => { dispatch(DefConfAct.DefFileTag_Update(newInfo)) };
+  const ACT_DefFileHash_Update= (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) };
+
+  const ACT_Def_Model_Path_Update= (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) };
+  const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
+    
+  const ACT_Report_Save=(id, fileName, content) => {
+    let act = UIAct.EV_WS_SEND(id, "SV", 0,
+      { filename: fileName },
+      content
+    )
+    console.log(act);
+  };
+  const ACT_Matching_Angle_Margin_Deg_Update= (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) };
+  const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
+    
+  const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(...args));
+
+  const edit_info = useSelector(state => state.UIData.edit_info);
+  const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
+  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const shape_list = useSelector(state => state.UIData.edit_info.list);
+  const defModelPath = edit_info.defModelPath;
+
+  const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
+  const [fileSavingCallBack,setFileSavingCallBack]=useState(undefined);
+  const [modal_view,setModal_view]=useState(undefined);
+  let MenuSet= [
+    <BASE_COM.IconButton
+      dict={EC_zh_TW}
+      key="<"
+      addClass="layout black vbox"
+      text="<" onClick={() => ACT_EXIT()} />,
+
+    <BASE_COM.JsonEditBlock object={{ DefFileName: edit_info.DefFileName }}
+      dict={EC_zh_TW}
+      key="this.props.edit_info.DefFileName"
+      jsonChange={(original_obj, target, type, evt) => {
+        ACT_DefFileName_Update(evt.target.value);
+      }}
+      whiteListKey={{ DefFileName: "input", }} />,
+
+    <BASE_COM.JsonEditBlock object={{ DefFileTag: edit_info.DefFileTag.join(",") }}
+      dict={EC_zh_TW}
+      key="this.props.edit_info.DefFileTag"
+      jsonChange={(original_obj, target, type, evt) => {
+        ACT_DefFileTag_Update(evt.target.value.split(","));
+      }}
+      whiteListKey={{ DefFileTag: "input", }} />,
+
+
+    <BASE_COM.IconButton
+      dict={EC_zh_TW}
+      addClass="layout palatte-blue-8 vbox"
+      key="LINE"
+      text="line" onClick={() => ACT_Line_Add_Mode()} />,
+    <BASE_COM.IconButton
+      dict={EC_zh_TW}
+      addClass="layout palatte-blue-8 vbox"
+      key="ARC"
+      text="arc" onClick={() => ACT_Arc_Add_Mode()} />,
+    <BASE_COM.IconButton
+      dict={EC_zh_TW}
+      addClass="layout palatte-blue-8 vbox"
+      key="APOINT"
+      text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
+
+    // <BASE_COM.IconButton
+    //   dict={EC_zh_TW}
+    //   addClass="layout palatte-blue-8 vbox"
+    //   key="ALINE"
+    //   text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
+    <BASE_COM.IconButton
+      dict={EC_zh_TW}
+      addClass="layout palatte-blue-8 vbox"
+      key="SPOINT"
+      text="spoint" onClick={() => ACT_Search_Point_Add_Mode()} />,
+    <BASE_COM.IconButton
+      //iconType={<FormOutlined/>}
+      addClass="layout palatte-blue-8"
+      key="MEASURE"
+      dict={EC_zh_TW}
+      text="measure"
+      onClick={() => ACT_Measure_Add_Mode()}>
+    </BASE_COM.IconButton>,
+    <BASE_COM.IconButton
+      iconType={<EditOutlined/>}
+      dict={EC_zh_TW}
+      addClass="layout palatte-blue-5 vbox"
+      key="EDIT"
+      text="edit" onClick={() => ACT_Shape_Edit_Mode()} />,
+    (defConf_lock_level > 2) ? null :
+      <BASE_COM.IconButton
+        iconType={<SaveOutlined/>}
+        dict={EC_zh_TW}
+        addClass="layout palatte-gold-7 vbox"
+        key="SAVE"
+        text="save" onClick={() => {
+          if (defConf_lock_level > 2) return;
+          console.log("setFileSavingCallBack.....")
+          setFileSavingCallBack( (folderInfo, fileName, existed) => {
+
+              let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
+
+              console.log(fileNamePath);
+
+              var enc = new TextEncoder();
+              let report = this.defFileGeneration(edit_info);
+
+              ACT_DefFileHash_Update(report.featureSet_sha1);
+              console.log("ACT_Report_Save");
+              ACT_Report_Save(WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
+              console.log("ACT_Cache_Img_Save");
+              ACT_Cache_Img_Save(WS_ID, fileNamePath);
+
+
+              ACT_Def_Model_Path_Update(fileNamePath);
+              setFileSavingCallBack(undefined);
+
+
+              var msg_obj = {
+                dbcmd: { "db_action": "insert" },
+                data: report
+              };
+              this.WS_DEF_DB_Insert.send_obj(msg_obj).
+                then((ret) => console.log('then', ret)).
+                catch((ret) => console.log("catch", ret));
+
+            });
+          console.log("setFileSavingCallBack..end...")
+
+        }} />,
+    <BASE_COM.IconButton
+      iconType={<ExportOutlined/>}
+      dict={EC_zh_TW}
+      addClass="layout palatte-gold-7 vbox"
+      key="LOAD"
+      text="load" onClick={() => {
+        setFileSelectedCallBack((filePath) => {
+          let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
+          console.log(fileNamePath);
+          ACT_Def_Model_Path_Update(fileNamePath);
+          this.loadDefFile(fileNamePath);
+          this.setState({ ...this.state, fileSelectedCallBack: undefined });
+        })
+
+      }} />,
+    <BASE_COM.IconButton
+      dict={EC_zh_TW}
+      iconType={<SettingOutlined/>}
+      addClass="layout palatte-gray-8 vbox"
+      key="setting"
+      text="setting" onClick={() => this.setState({
+        ...this.state, modal_view:
+        {
+          title: "Setup",
+          view_update: () => {
+            return [
+              <Checkbox
+                checked={edit_info.matching_angle_margin_deg == 90}
+
+                onChange={(ev) => {
+                  if (edit_info.matching_angle_margin_deg == 90)
+                    ACT_Matching_Angle_Margin_Deg_Update(180);
+                  else
+                    ACT_Matching_Angle_Margin_Deg_Update(90);
+                }}
+              >
+                {dictLookUp("matchingAngleLimit180", EC_zh_TW)}
+              </Checkbox>,
+              <br />,
+              <Checkbox
+                checked={edit_info.matching_face == 1}
+                onChange={(ev) => {
+
+                  if (edit_info.matching_face == 1)
+                    ACT_Matching_Face_Update(0);
+                  else
+                    ACT_Matching_Face_Update(1);
+
+                  console.log(ev.target.checked)
+                }
+                }
+              >
+                {dictLookUp("matchingFaceFrontOnly", EC_zh_TW)}
+              </Checkbox>,
+
+
+
+              <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
+              <Slider
+                min={0}
+                step={0.01}
+                max={1}
+                included={true}
+                marks={
+                  {
+                    0: '',
+                    0.01: '',
+                    0.05: '',
+                    0.1: '0.1',
+                    0.3: '0.2',
+                    0.5: '0.5',
+                    1: '',
+                  }
+                }
+                onChange={ACT_IntrusionSizeLimitRatio_Update}
+                value={edit_info.intrusionSizeLimitRatio}
+              />,
+              <InputNumber
+                min={0}
+                max={1}
+                value={edit_info.intrusionSizeLimitRatio}
+                onChange={ACT_IntrusionSizeLimitRatio_Update}
+              />,
+
+              <Divider orientation="left">MISC</Divider>,
+
+              <Checkbox
+                checked={defConf_lock_level != 0}
+                onChange={(ev) => {
+                  ACT_DefConf_Lock_Level_Update(
+                    (defConf_lock_level == 0) ? 1 : 0
+                  );
+                }}
+              >
+                {<Icon type={(defConf_lock_level != 0) ? "lock" : "unlock"} />}
+                {" 鎖等級:" + defConf_lock_level}
+              </Checkbox>
+            ]
+          }
+
+        }
+      })} />,
+    <BASE_COM.IconButton
+      iconType={<CameraOutlined/>}
+      dict={EC_zh_TW}
+      addClass="layout palatte-purple-8 vbox"
+      key="TAKE"
+      text="take" onClick={() => {
+
+        setModal_view({
+            onOk: () => {
+
+
+
+              new Promise((resolve, reject) => {
+                ACT_WS_SEND(WS_ID, "EX", 0, {},
+                  undefined, { resolve, reject });
+                setTimeout(() => reject("Timeout"), 3000)
+              })
+                .then((pkts) => {
+                  dispatch({
+                    type: "ATBundle",
+                    ActionThrottle_type: "express",
+                    data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+                  })
+                })
+                .catch((err) => {
+                  log.info(err);
+                })
+              ACT_Shape_List_Reset();
+              
+            },
+            onCancel: () => { console.log("onCancel") },
+            title: "WARNING",
+            view_update: () => "確定要重新設定嗎？"
+          })
+      }} />,
+
+    <BASE_COM.IconButton
+      // iconType="INST_CHECK"
+      dict={EC_zh_TW}
+      addClass="layout palatte-purple-8 vbox"
+      key="INST_CHECK"
+      text="INST_CHECK" onClick={() => {
+
+        let deffile = this.defFileGeneration(edit_info);
+        console.log(deffile);
+
+        ACT_WS_SEND(WS_ID,"II", 0, 
+        {
+          _PGID_:10104,
+          _PGINFO_:{keep:true},
+          definfo:deffile,
+          img_property:{
+            scale:2
+          }
+        },undefined,
+        {
+          resolve:(darr,mainFlow)=>{
+            console.log(darr);
+            let RP=darr.find(pkt=>pkt.type=="RP");
+            if(RP!==undefined)
+            {
+              let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
+              console.log(insp_reports);
+              if(insp_reports.length>0)
+              {
+                let insp_rep = insp_reports[0];
+                shape_list.forEach((shape,idx)=>{
+                  let mod_shape=dclone(shape);
+                  
+                  edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape, insp_rep,true);
+                  //Make sure the status is not NA
+                  if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
+                  {
+                    shape_list[idx]=mod_shape;
+                  }
+                  delete shape_list[idx]["inspection_value"]
+                  delete shape_list[idx]["inspection_status"]
+                  // delete mod_shape["inspection_value"]
+                  // delete mod_shape["inspection_status"]
+                  console.log(shape,mod_shape);
+                })
+              }
+            }
+
+          },
+          reject:(e)=>{
+          }
+        }
+        );
+      }} />,
+
+
+  ];
+
+
+  let DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
+  if (fileSelectedCallBack !== undefined) {
+    MenuSet.push(
+      <BPG_FileBrowser key="BPG_FileBrowser"
+        searchDepth={4}
+        path={DefFileFolder} visible={fileSelectedCallBack !== undefined}
+        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        onFileSelected={(filePath, fileInfo) => {
+          fileSelectedCallBack(filePath, fileInfo);
+        }}
+        onOk={(folderPath) => {
+          console.log(folderPath);
+        }}
+        onCancel={() => {
+          setFileSelectedCallBack(undefined)
+        }}
+        fileFilter={(fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes('.' + DEF_EXTENSION)}
+      />);
+
+  }
+  if (fileSavingCallBack !== undefined) {
+    let defaultName = defModelPath.substr(defModelPath.lastIndexOf('/') + 1);
+    console.log("BPG_FileSavingBrowser browser..");
+    MenuSet.push(
+      <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+        searchDepth={4}
+        path={DefFileFolder} visible={fileSavingCallBack !== undefined}
+        defaultName={defaultName}
+        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+
+        onOk={(folderInfo, fileName, existed) => {
+          fileSavingCallBack(folderInfo, fileName, existed);
+
+        }}
+        onCancel={() => {
+          setFileSavingCallBack(undefined);
+        }}
+        fileFilter={(fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes('.' + DEF_EXTENSION)}
+      />);
+
+  }
+
+  MenuSet.push(
+    <Modal
+      {...modal_view}
+      visible={modal_view !== undefined}
+      onCancel={(param) => {
+        if (modal_view.onCancel !== undefined) {
+          modal_view.onCancel(param);
+        }
+        setModal_view(undefined)
+      }}
+
+      onOk={(param) => {
+        if (modal_view.onOk !== undefined) {
+          modal_view.onOk(param);
+        }
+        setModal_view(undefined)
+      }}>
+      {modal_view === undefined ? null : modal_view.view_update()}
+    </Modal>);
+  return MenuSet;
+}
+
+
 class APP_DEFCONF_MODE extends React.Component {
 
   loadDefFile(defModelPath)
@@ -1177,410 +1595,9 @@ class APP_DEFCONF_MODE extends React.Component {
     let defModelPath = this.props.edit_info.defModelPath;
     switch (substate) {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
+        
         menu_height = "HXA";
-        MenuSet = [
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            key="<"
-            addClass="layout black vbox"
-            text="<" onClick={() => this.props.ACT_EXIT()} />,
-
-          <BASE_COM.JsonEditBlock object={{ DefFileName: this.props.edit_info.DefFileName }}
-            dict={EC_zh_TW}
-            key="this.props.edit_info.DefFileName"
-            jsonChange={(original_obj, target, type, evt) => {
-              this.props.ACT_DefFileName_Update(evt.target.value);
-            }}
-            whiteListKey={{ DefFileName: "input", }} />,
-
-          <BASE_COM.JsonEditBlock object={{ DefFileTag: this.props.edit_info.DefFileTag.join(",") }}
-            dict={EC_zh_TW}
-            key="this.props.edit_info.DefFileTag"
-            jsonChange={(original_obj, target, type, evt) => {
-              this.props.ACT_DefFileTag_Update(evt.target.value.split(","));
-            }}
-            whiteListKey={{ DefFileTag: "input", }} />,
-
-
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="LINE"
-            text="line" onClick={() => this.props.ACT_Line_Add_Mode()} />,
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="ARC"
-            text="arc" onClick={() => this.props.ACT_Arc_Add_Mode()} />,
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="APOINT"
-            text="apoint" onClick={() => this.props.ACT_Aux_Point_Add_Mode()} />,
-
-          // <BASE_COM.IconButton
-          //   dict={EC_zh_TW}
-          //   addClass="layout palatte-blue-8 vbox"
-          //   key="ALINE"
-          //   text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            addClass="layout palatte-blue-8 vbox"
-            key="SPOINT"
-            text="spoint" onClick={() => this.props.ACT_Search_Point_Add_Mode()} />,
-          <BASE_COM.IconButton
-            //iconType={<FormOutlined/>}
-            addClass="layout palatte-blue-8"
-            key="MEASURE"
-            dict={EC_zh_TW}
-            text="measure"
-            onClick={() => this.props.ACT_Measure_Add_Mode()}>
-          </BASE_COM.IconButton>,
-          <BASE_COM.IconButton
-            iconType={<EditOutlined/>}
-            dict={EC_zh_TW}
-            addClass="layout palatte-blue-5 vbox"
-            key="EDIT"
-            text="edit" onClick={() => this.props.ACT_Shape_Edit_Mode()} />,
-          (this.props.defConf_lock_level > 2) ? null :
-            <BASE_COM.IconButton
-              iconType={<SaveOutlined/>}
-              dict={EC_zh_TW}
-              addClass="layout palatte-gold-7 vbox"
-              key="SAVE"
-              text="save" onClick={() => {
-                if (this.props.defConf_lock_level > 2) return;
-
-                this.setState({
-                  ...this.state, fileSavingCallBack: (folderInfo, fileName, existed) => {
-
-                    let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
-
-                    console.log(fileNamePath);
-
-                    var enc = new TextEncoder();
-                    let report = this.defFileGeneration(this.props.edit_info);
-
-                    this.props.ACT_DefFileHash_Update(report.featureSet_sha1);
-                    console.log("ACT_Report_Save");
-                    this.props.ACT_Report_Save(this.props.WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-                    console.log("ACT_Cache_Img_Save");
-                    this.props.ACT_Cache_Img_Save(this.props.WS_ID, fileNamePath);
-
-
-                    this.props.ACT_Def_Model_Path_Update(fileNamePath);
-                    this.setState({ ...this.state, fileSavingCallBack: undefined });
-
-
-                    var msg_obj = {
-                      dbcmd: { "db_action": "insert" },
-                      data: report
-                    };
-                    this.WS_DEF_DB_Insert.send_obj(msg_obj).
-                      then((ret) => console.log('then', ret)).
-                      catch((ret) => console.log("catch", ret));
-
-                  }, fileSelectFooter:
-                    <div>ddd</div>
-                });
-
-              }} />,
-          <BASE_COM.IconButton
-            iconType={<ExportOutlined/>}
-            dict={EC_zh_TW}
-            addClass="layout palatte-gold-7 vbox"
-            key="LOAD"
-            text="load" onClick={() => {
-
-              this.setState({
-                ...this.state, fileSelectedCallBack: (filePath) => {
-                  let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
-                  console.log(fileNamePath);
-                  this.props.ACT_Def_Model_Path_Update(fileNamePath);
-                  this.loadDefFile(fileNamePath);
-                  this.setState({ ...this.state, fileSelectedCallBack: undefined });
-                }
-              });
-
-            }} />,
-          <BASE_COM.IconButton
-            dict={EC_zh_TW}
-            iconType={<SettingOutlined/>}
-            addClass="layout palatte-gray-8 vbox"
-            key="setting"
-            text="setting" onClick={() => this.setState({
-              ...this.state, modal_view:
-              {
-                title: "Setup",
-                view_update: () => {
-                  return [
-                    <Checkbox
-                      checked={this.props.edit_info.matching_angle_margin_deg == 90}
-
-                      onChange={(ev) => {
-                        if (this.props.edit_info.matching_angle_margin_deg == 90)
-                          this.props.ACT_Matching_Angle_Margin_Deg_Update(180);
-                        else
-                          this.props.ACT_Matching_Angle_Margin_Deg_Update(90);
-                      }}
-                    >
-                      {dictLookUp("matchingAngleLimit180", EC_zh_TW)}
-                    </Checkbox>,
-                    <br />,
-                    <Checkbox
-                      checked={this.props.edit_info.matching_face == 1}
-                      onChange={(ev) => {
-
-                        if (this.props.edit_info.matching_face == 1)
-                          this.props.ACT_Matching_Face_Update(0);
-                        else
-                          this.props.ACT_Matching_Face_Update(1);
-
-                        console.log(ev.target.checked)
-                      }
-                      }
-                    >
-                      {dictLookUp("matchingFaceFrontOnly", EC_zh_TW)}
-                    </Checkbox>,
-
-
-
-                    <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
-                    <Slider
-                      min={0}
-                      step={0.01}
-                      max={1}
-                      included={true}
-                      marks={
-                        {
-                          0: '',
-                          0.01: '',
-                          0.05: '',
-                          0.1: '0.1',
-                          0.3: '0.2',
-                          0.5: '0.5',
-                          1: '',
-                        }
-                      }
-                      onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
-                      value={this.props.edit_info.intrusionSizeLimitRatio}
-                    />,
-                    <InputNumber
-                      min={0}
-                      max={1}
-                      value={this.props.edit_info.intrusionSizeLimitRatio}
-                      onChange={this.props.ACT_IntrusionSizeLimitRatio_Update}
-                    />,
-
-                    <Divider orientation="left">MISC</Divider>,
-
-                    <Checkbox
-                      checked={this.props.defConf_lock_level != 0}
-                      onChange={(ev) => {
-                        this.props.ACT_DefConf_Lock_Level_Update(
-                          (this.props.defConf_lock_level == 0) ? 1 : 0
-                        );
-                      }}
-                    >
-                      {<Icon type={(this.props.defConf_lock_level != 0) ? "lock" : "unlock"} />}
-                      {" 鎖等級:" + this.props.defConf_lock_level}
-                    </Checkbox>
-                  ]
-                }
-
-              }
-            })} />,
-          <BASE_COM.IconButton
-            iconType={<CameraOutlined/>}
-            dict={EC_zh_TW}
-            addClass="layout palatte-purple-8 vbox"
-            key="TAKE"
-            text="take" onClick={() => {
-
-              this.setState({
-                ...this.state, modal_view: {
-                  onOk: () => {
-
-
-
-                    new Promise((resolve, reject) => {
-                      this.props.ACT_WS_SEND(this.props.WS_ID, "EX", 0, {},
-                        undefined, { resolve, reject });
-                      setTimeout(() => reject("Timeout"), 3000)
-                    })
-                      .then((pkts) => {
-                        this.props.DISPATCH({
-                          type: "ATBundle",
-                          ActionThrottle_type: "express",
-                          data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
-                        })
-                      })
-                      .catch((err) => {
-                        log.info(err);
-                      })
-                    this.props.ACT_Shape_List_Reset();
-
-
-
-
-                    
-
-                    // this.props.ACT_WS_SEND(this.props.WS_ID,
-                    //   "CI", 0, 
-                    // {
-                    //   _PGID_:10004,
-                    //   _PGINFO_:{keep:true},
-                    //   definfo: {
-                    //     "type":"binary_processing_group",
-                    //     "intrusionSizeLimitRatio":1,
-                    //     "featureSet":[
-                    //       {
-                    //         "type":"sig360_extractor",
-                    //         "ver":"0.0.0.0",
-                    //         "unit":"mm",
-                    //         "mmpp":100
-                    //       }
-                    //     ]
-                    //   },
-                    //   frame_count:1
-                    // },undefined,
-                    // {
-                    //   resolve:(darr,mainFlow)=>{
-                    //     console.log(darr);
-                        
-                    //     this.props.ACT_WS_SEND(this.props.WS_ID,
-                    //       "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
-                        
-                    //     let reportInfo = darr.find(data=>data.type==="RP");
-                    //     if(reportInfo===undefined)return;
-                    //     reportInfo.type="SG";
-                    //     this.props.DISPATCH({
-                    //             type: "ATBundle",
-                    //             ActionThrottle_type: "express",
-                    //             data: darr.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
-                    //           })
-
-                    //   },
-                    //   reject:(e)=>{
-                    //     this.props.ACT_WS_SEND(this.props.WS_ID,
-                    //       "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
-                    //   }
-                    // }
-                    // );
-
-
-
-                  },
-                  onCancel: () => { console.log("onCancel") },
-                  title: "WARNING",
-                  view_update: () => "確定要重新設定嗎？"
-                }
-              })
-            }} />,
-
-
-
-
-          <BASE_COM.IconButton
-            // iconType="INST_CHECK"
-            dict={EC_zh_TW}
-            addClass="layout palatte-purple-8 vbox"
-            key="INST_CHECK"
-            text="INST_CHECK" onClick={() => {
-
-              let deffile = this.defFileGeneration(this.props.edit_info);
-              console.log(deffile);
-
-              this.props.ACT_WS_SEND(this.props.WS_ID,"II", 0, 
-              {
-                _PGID_:10104,
-                _PGINFO_:{keep:true},
-                definfo:deffile,
-                img_property:{
-                  scale:2
-                }
-              },undefined,
-              {
-                resolve:(darr,mainFlow)=>{
-                  console.log(darr);
-                  let RP=darr.find(pkt=>pkt.type=="RP");
-                  if(RP!==undefined)
-                  {
-                    let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
-                    console.log(insp_reports);
-                    if(insp_reports.length>0)
-                    {
-                      let insp_rep = insp_reports[0];
-                      this.props.shape_list.forEach((shape,idx)=>{
-                        let mod_shape=dclone(shape);
-                        
-                        this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape, insp_rep,true);
-                        //Make sure the status is not NA
-                        if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
-                        {
-                          this.props.shape_list[idx]=mod_shape;
-                        }
-                        delete this.props.shape_list[idx]["inspection_value"]
-                        delete this.props.shape_list[idx]["inspection_status"]
-                        // delete mod_shape["inspection_value"]
-                        // delete mod_shape["inspection_status"]
-                        console.log(shape,mod_shape);
-                      })
-                    }
-                  }
-
-                },
-                reject:(e)=>{
-                }
-              }
-              );
-            }} />,
-
-
-        ];
-
-
-        let DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
-        if (this.state.fileSelectedCallBack !== undefined) {
-          MenuSet.push(
-            <BPG_FileBrowser key="BPG_FileBrowser"
-              searchDepth={4}
-              path={DefFileFolder} visible={this.state.fileSelectedCallBack !== undefined}
-              BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-              onFileSelected={(filePath, fileInfo) => {
-                this.state.fileSelectedCallBack(filePath, fileInfo);
-              }}
-              onOk={(folderPath) => {
-                console.log(folderPath);
-              }}
-              onCancel={() => {
-                this.setState({ ...this.state, fileSelectedCallBack: undefined });
-              }}
-              fileFilter={(fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes('.' + DEF_EXTENSION)}
-            />);
-
-        }
-        if (this.state.fileSavingCallBack !== undefined) {
-          let defaultName = defModelPath.substr(defModelPath.lastIndexOf('/') + 1);
-          MenuSet.push(
-            <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
-              searchDepth={4}
-              path={DefFileFolder} visible={this.state.fileSavingCallBack !== undefined}
-              defaultName={defaultName}
-              BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-
-              onOk={(folderInfo, fileName, existed) => {
-                this.state.fileSavingCallBack(folderInfo, fileName, existed);
-
-              }}
-              onCancel={() => {
-                this.setState({ ...this.state, fileSavingCallBack: undefined });
-              }}
-              fileFilter={(fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes('.' + DEF_EXTENSION)}
-            />);
-
-        }
-
+        MenuSet=<DEFCONF_MODE_NEUTRAL_UI/>
 
         break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
@@ -2023,13 +2040,6 @@ class APP_DEFCONF_MODE extends React.Component {
 
 const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
   return {
-    ACT_Line_Add_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create)) },
-    ACT_Arc_Add_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create)) },
-    ACT_Search_Point_Add_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create)) },
-    ACT_Aux_Point_Add_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Point_Create)) },
-    ACT_Aux_Line_Add_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Aux_Line_Create)) },
-    ACT_Shape_Edit_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Shape_Edit)) },
-    ACT_Measure_Add_Mode: (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Measure_Create)) },
     ACT_DefFileName_Update: (newName) => { dispatch(DefConfAct.DefFileName_Update(newName)) },
     ACT_DefFileTag_Update: (newInfo) => { dispatch(DefConfAct.DefFileTag_Update(newInfo)) },
 
