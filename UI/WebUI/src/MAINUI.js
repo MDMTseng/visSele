@@ -317,6 +317,7 @@ function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel }) {
     )}
     {fileBrowserInfo === undefined ? null :
       <BPG_FileBrowser key="BPG_FileBrowser"
+        className="width8 modal-sizing"
         searchDepth={4}
         path={fileBrowserInfo.path}
         visible={true}
@@ -776,6 +777,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
     <BPG_FileBrowser key="BPG_FileBrowser"
+        className="width8 modal-sizing"
         searchDepth={4}
         path={DefFileFolder} visible={fileSelectorInfo !== undefined}
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
@@ -1230,6 +1232,7 @@ class APPMain extends React.Component {
 
 
             <BPG_FileBrowser key="BPG_FileBrowser"
+              className="width8 modal-sizing"
               searchDepth={4}
               path={DefFileFolder} visible={this.state.fileSelectedCallBack !== undefined}
               BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
@@ -1243,6 +1246,7 @@ class APPMain extends React.Component {
               fileFilter={this.state.fileSelectFilter} />
 
             <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+              className="width8 modal-sizing"
               searchDepth={4}
               path={DefFileFolder} visible={this.state.fileSavingCallBack !== undefined}
               defaultName={""}

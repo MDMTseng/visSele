@@ -1160,6 +1160,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
     MenuSet.push(
       <BPG_FileBrowser key="BPG_FileBrowser"
         searchDepth={4}
+        className="width8 modal-sizing"
         path={DefFileFolder} visible={fileSelectedCallBack !== undefined}
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
         onFileSelected={(filePath, fileInfo) => {
@@ -1180,6 +1181,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
     console.log("BPG_FileSavingBrowser browser..");
     MenuSet.push(
       <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
+        className="width8 modal-sizing"
         searchDepth={4}
         path={DefFileFolder} visible={fileSavingCallBack !== undefined}
         defaultName={defaultName}

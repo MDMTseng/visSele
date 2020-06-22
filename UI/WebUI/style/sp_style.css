@@ -21,6 +21,22 @@
   color:#5191a5;
 }
 
+.ant-modal.modal-sizing{
+  width:80%  !important;
+  height:80%  !important;
+}
+
+.ant-modal.modal-sizing .ant-modal-content{
+  height: 100%;
+}
+
+.ant-modal.modal-sizing .ant-modal-body{
+  height:90%  !important;
+}
+.ant-modal.modal-sizing .ant-modal-body>div{
+  height:100%  !important;
+}
+
 
 
 .HW100{

@@ -767,7 +767,9 @@ export class BPG_FileBrowser_proto extends React.Component{
         <Modal
           title={titleRender}
           visible={this.props.visible}
-          width={this.props.width===undefined?900:this.props.width}
+          //width={this.props.width===undefined?900:this.props.width}
+          style={this.props.style}
+          className={this.props.className}
           onCancel={this.props.onCancel}
           onOk={this.props.onOk}
           footer={this.props.footer}
