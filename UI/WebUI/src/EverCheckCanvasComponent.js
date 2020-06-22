@@ -1187,6 +1187,8 @@ class EverCheckCanvasComponent_proto {
             break;
 
           case 22://in pinch motion
+          
+            var rect = this.canvas.getBoundingClientRect();
             let pts_pre = this.multiTouchInfo.pinchInfo.pts_cur;
             let pts_cur = ti.touchStatus;
             this.multiTouchInfo.pinchInfo = {
@@ -1199,8 +1201,8 @@ class EverCheckCanvasComponent_proto {
               Math.hypot(pts_pre[0].clientX - pts_pre[1].clientX, pts_pre[0].clientY - pts_pre[1].clientY);
 
             let center = {
-              x: (pts_pre[0].clientX + pts_pre[1].clientX) / 2,
-              y: (pts_pre[0].clientY + pts_pre[1].clientY) / 2,
+              x: (pts_pre[0].clientX + pts_pre[1].clientX) / 2-rect.left,
+              y: (pts_pre[0].clientY + pts_pre[1].clientY) / 2-rect.top,
             }
             this.scaleCanvas(center, 1, scale);
             break;
