@@ -707,10 +707,184 @@ let renderMethods = {
   }
 }
 
+function defFileGeneration(edit_info)
+{
 
-function DEFCONF_MODE_NEUTRAL_UI({})
+  let feature_sig360_circle_line = edit_info._obj.GenerateFeature_sig360_circle_line();
+  let preloadedDefFile = edit_info.loadedDefFile;
+  if (preloadedDefFile === undefined) preloadedDefFile = {};
+  let report = {
+    ...preloadedDefFile,
+    type: "binary_processing_group",
+    intrusionSizeLimitRatio: edit_info.intrusionSizeLimitRatio,
+    featureSet: [feature_sig360_circle_line]
+  };
+  delete report["featureSet_sha1"];
+
+  report.name = edit_info.DefFileName;
+  report.tag = edit_info.DefFileTag;
+
+  report.featureSet[0].matching_angle_margin_deg = edit_info.matching_angle_margin_deg;
+  report.featureSet[0].matching_angle_offset_deg = edit_info.matching_angle_offset_deg;
+  report.featureSet[0].matching_face = edit_info.matching_face;
+
+  let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+  report.featureSet[0]["__decorator"] = edit_info.__decorator;
+  report.featureSet_sha1 = sha1_info_in_json;
+  //this.props.ACT_DefFileHash_Update(sha1_info_in_json);
+
+  report.featureSet_sha1_pre = edit_info.DefFileHash;
+
+  if (edit_info.DefFileHash_root === undefined) {
+    if (edit_info.featureSet_sha1_pre === undefined)
+      report.featureSet_sha1_root = sha1_info_in_json;
+    else
+      report.featureSet_sha1_root = edit_info.featureSet_sha1_pre;
+  }
+  else
+    report.featureSet_sha1_root = edit_info.DefFileHash_root;
+
+  return report;
+}
+
+
+function SettingUI({})
+{
+  const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
+  
+  const edit_info = useSelector(state => state.UIData.edit_info);
+  const dispatch = useDispatch();
+  const ACT_IntrusionSizeLimitRatio_Update=(ratio) =>dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio));
+
+  const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
+  const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
+  
+  const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
+    
+  console.log(defConf_lock_level);
+  return [
+    <Checkbox
+      checked={edit_info.matching_angle_margin_deg == 90}
+
+      onChange={(ev) => {
+        if (edit_info.matching_angle_margin_deg == 90)
+          ACT_Matching_Angle_Margin_Deg_Update(180);
+        else
+          ACT_Matching_Angle_Margin_Deg_Update(90);
+      }}
+    >
+      {dictLookUp("matchingAngleLimit180", EC_zh_TW)}
+    </Checkbox>,
+    <br />,
+    <Checkbox
+      checked={edit_info.matching_face == 1}
+      onChange={(ev) => {
+
+        if (edit_info.matching_face == 1)
+          ACT_Matching_Face_Update(0);
+        else
+          ACT_Matching_Face_Update(1);
+
+        console.log(ev.target.checked)
+      }
+      }
+    >
+      {dictLookUp("matchingFaceFrontOnly", EC_zh_TW)}
+    </Checkbox>,
+
+
+
+    <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
+    <Slider
+      min={0}
+      step={0.01}
+      max={1}
+      included={true}
+      marks={
+        {
+          0: '',
+          0.01: '',
+          0.05: '',
+          0.1: '0.1',
+          0.3: '0.2',
+          0.5: '0.5',
+          1: '',
+        }
+      }
+      onChange={ACT_IntrusionSizeLimitRatio_Update}
+      value={edit_info.intrusionSizeLimitRatio}
+    />,
+    <InputNumber
+      min={0}
+      max={1}
+      value={edit_info.intrusionSizeLimitRatio}
+      onChange={ACT_IntrusionSizeLimitRatio_Update}
+    />,
+
+    <Divider orientation="left">MISC</Divider>,
+
+    <Checkbox
+      checked={defConf_lock_level != 0}
+      onChange={(ev) => {
+        ACT_DefConf_Lock_Level_Update(
+          (defConf_lock_level == 0) ? 1 : 0
+        );
+      }}
+    >
+      {<Icon type={(defConf_lock_level != 0) ? "lock" : "unlock"} />}
+      {" 鎖等級:" + defConf_lock_level}
+    </Checkbox>
+  ]
+}
+
+
+  
+function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID)
+{
+
+  ACT_DefConf_Lock_Level_Update(0);
+  new Promise((resolve, reject) => {
+    console.log(defModelPath,DEF_EXTENSION,WS_ID)
+    ACT_WS_SEND(WS_ID, "LD", 0,
+      {
+        deffile: defModelPath + '.' + DEF_EXTENSION,
+        imgsrc: defModelPath
+      },
+      undefined, { resolve, reject });
+    setTimeout(() => reject("Timeout"), 5000)
+  })
+    .then((pkts) => {
+
+      console.log("COME")
+      dispatch({
+        type: "ATBundle",
+        ActionThrottle_type: "express",
+        data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+      })
+      let SS=pkts.find(pkt=>pkt.type==="SS");
+      if(SS!==undefined)
+      {
+        let success=GetObjElement(SS,["data","ACK"]);
+        if(success==true)
+        {
+          ACT_DefConf_Lock_Level_Update(1);
+        }
+      }
+    })
+    .catch((err) => {
+      log.info(err);
+    })
+
+
+}
+
+
+function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 {
   
+  console.log("setFileSavingCallBack..useState...")
+  const [fileSavingCallBack,setFileSavingCallBack]=useState(undefined);
+  console.log("setFileSavingCallBack..useState..end.")
   const dispatch = useDispatch();
   const ACT_EXIT=(arg) =>dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT)) ;
 
@@ -729,6 +903,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       { filename: fileName, type: "__CACHE_IMG__" }
     ))
 
+
+  const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_DefFileName_Update=(newName) => { dispatch(DefConfAct.DefFileName_Update(newName)) };
   const ACT_DefFileTag_Update=(newInfo) => { dispatch(DefConfAct.DefFileTag_Update(newInfo)) };
   const ACT_DefFileHash_Update= (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) };
@@ -741,7 +917,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       { filename: fileName },
       content
     )
-    console.log(act);
+    dispatch(act);
   };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) };
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
@@ -755,8 +931,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const defModelPath = edit_info.defModelPath;
 
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
-  const [fileSavingCallBack,setFileSavingCallBack]=useState(undefined);
+  
+  
   const [modal_view,setModal_view]=useState(undefined);
+
+
   let MenuSet= [
     <BASE_COM.IconButton
       dict={EC_zh_TW}
@@ -830,14 +1009,14 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         text="save" onClick={() => {
           if (defConf_lock_level > 2) return;
           console.log("setFileSavingCallBack.....")
-          setFileSavingCallBack( (folderInfo, fileName, existed) => {
-
+          setFileSavingCallBack((prevs,props)=> (folderInfo, fileName, existed) => {
+              console.log(folderInfo, fileName, existed);
+              
               let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
-
               console.log(fileNamePath);
 
               var enc = new TextEncoder();
-              let report = this.defFileGeneration(edit_info);
+              let report = defFileGeneration(edit_info);
 
               ACT_DefFileHash_Update(report.featureSet_sha1);
               console.log("ACT_Report_Save");
@@ -854,7 +1033,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
                 dbcmd: { "db_action": "insert" },
                 data: report
               };
-              this.WS_DEF_DB_Insert.send_obj(msg_obj).
+              WS_DEF_DB_Insert.send_obj(msg_obj).
                 then((ret) => console.log('then', ret)).
                 catch((ret) => console.log("catch", ret));
 
@@ -868,12 +1047,13 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       addClass="layout palatte-gold-7 vbox"
       key="LOAD"
       text="load" onClick={() => {
-        setFileSelectedCallBack((filePath) => {
+        setFileSelectedCallBack(()=>(filePath) => {
           let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
           console.log(fileNamePath);
+
+          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID);
           ACT_Def_Model_Path_Update(fileNamePath);
-          this.loadDefFile(fileNamePath);
-          this.setState({ ...this.state, fileSelectedCallBack: undefined });
+          setFileSelectedCallBack(undefined);
         })
 
       }} />,
@@ -882,87 +1062,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       iconType={<SettingOutlined/>}
       addClass="layout palatte-gray-8 vbox"
       key="setting"
-      text="setting" onClick={() => this.setState({
-        ...this.state, modal_view:
-        {
+      text="setting" onClick={() => setModal_view({
           title: "Setup",
-          view_update: () => {
-            return [
-              <Checkbox
-                checked={edit_info.matching_angle_margin_deg == 90}
-
-                onChange={(ev) => {
-                  if (edit_info.matching_angle_margin_deg == 90)
-                    ACT_Matching_Angle_Margin_Deg_Update(180);
-                  else
-                    ACT_Matching_Angle_Margin_Deg_Update(90);
-                }}
-              >
-                {dictLookUp("matchingAngleLimit180", EC_zh_TW)}
-              </Checkbox>,
-              <br />,
-              <Checkbox
-                checked={edit_info.matching_face == 1}
-                onChange={(ev) => {
-
-                  if (edit_info.matching_face == 1)
-                    ACT_Matching_Face_Update(0);
-                  else
-                    ACT_Matching_Face_Update(1);
-
-                  console.log(ev.target.checked)
-                }
-                }
-              >
-                {dictLookUp("matchingFaceFrontOnly", EC_zh_TW)}
-              </Checkbox>,
-
-
-
-              <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
-              <Slider
-                min={0}
-                step={0.01}
-                max={1}
-                included={true}
-                marks={
-                  {
-                    0: '',
-                    0.01: '',
-                    0.05: '',
-                    0.1: '0.1',
-                    0.3: '0.2',
-                    0.5: '0.5',
-                    1: '',
-                  }
-                }
-                onChange={ACT_IntrusionSizeLimitRatio_Update}
-                value={edit_info.intrusionSizeLimitRatio}
-              />,
-              <InputNumber
-                min={0}
-                max={1}
-                value={edit_info.intrusionSizeLimitRatio}
-                onChange={ACT_IntrusionSizeLimitRatio_Update}
-              />,
-
-              <Divider orientation="left">MISC</Divider>,
-
-              <Checkbox
-                checked={defConf_lock_level != 0}
-                onChange={(ev) => {
-                  ACT_DefConf_Lock_Level_Update(
-                    (defConf_lock_level == 0) ? 1 : 0
-                  );
-                }}
-              >
-                {<Icon type={(defConf_lock_level != 0) ? "lock" : "unlock"} />}
-                {" 鎖等級:" + defConf_lock_level}
-              </Checkbox>
-            ]
-          }
-
-        }
+          view: <SettingUI></SettingUI>
       })} />,
     <BASE_COM.IconButton
       iconType={<CameraOutlined/>}
@@ -1118,58 +1220,37 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         }
         setModal_view(undefined)
       }}>
-      {modal_view === undefined ? null : modal_view.view_update()}
+      {modal_view === undefined ? null : modal_view.view}
     </Modal>);
+
   return MenuSet;
 }
 
+function urlConcat(base,add)
+{
+  let xbase=base;
+  while(xbase.charAt(xbase.length-1)=="/")
+    xbase=xbase.slice(0, xbase.length-1)
+    
+  let xadd=add;
+  while(xadd.charAt(0)=="/")
+    xadd=xadd.slice(1, xbase.length)
+  
+
+  return xbase+"/"+xadd;
+}
 
 class APP_DEFCONF_MODE extends React.Component {
 
-  loadDefFile(defModelPath)
-  {
-
-    this.props.ACT_DefConf_Lock_Level_Update(0);
-    new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
-        {
-          deffile: defModelPath + '.' + DEF_EXTENSION,
-          imgsrc: defModelPath
-        },
-        undefined, { resolve, reject });
-      setTimeout(() => reject("Timeout"), 5000)
-    })
-      .then((pkts) => {
-
-        this.props.DISPATCH({
-          type: "ATBundle",
-          ActionThrottle_type: "express",
-          data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
-        })
-        let SS=pkts.find(pkt=>pkt.type==="SS");
-        if(SS!==undefined)
-        {
-          let success=GetObjElement(SS,["data","ACK"]);
-          if(success==true)
-          {
-            this.props.ACT_DefConf_Lock_Level_Update(1);
-          }
-        }
-      })
-      .catch((err) => {
-        log.info(err);
-      })
-
-
-  }
   componentDidMount() {
+    
     let defModelPath = this.props.edit_info.defModelPath;
-    this.loadDefFile(defModelPath);
     let db_url = this.props.machine_custom_setting.inspection_db_ws_url;
     if(db_url!==undefined)
     {
 
-      let _ws = new websocket_autoReconnect(db_url+"/insert/def", 10000);
+      log.info("db_url::" + db_url);
+      let _ws = new websocket_autoReconnect(urlConcat(db_url,"/insert/def"), 10000);
       this.WS_DEF_DB_Insert = new websocket_reqTrack(_ws);
   
       this.WS_DEF_DB_Insert.onreconnection = (reconnectionCounter) => {
@@ -1183,6 +1264,7 @@ class APP_DEFCONF_MODE extends React.Component {
       this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
       this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
     }
+    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND,this.props.WS_ID);
   }
 
   componentWillUnmount() {
@@ -1545,45 +1627,6 @@ class APP_DEFCONF_MODE extends React.Component {
     return UIArr;
   }
 
-  defFileGeneration(edit_info)
-  {
-
-    let feature_sig360_circle_line = edit_info._obj.GenerateFeature_sig360_circle_line();
-    let preloadedDefFile = edit_info.loadedDefFile;
-    if (preloadedDefFile === undefined) preloadedDefFile = {};
-    let report = {
-      ...preloadedDefFile,
-      type: "binary_processing_group",
-      intrusionSizeLimitRatio: edit_info.intrusionSizeLimitRatio,
-      featureSet: [feature_sig360_circle_line]
-    };
-    delete report["featureSet_sha1"];
-
-    report.name = edit_info.DefFileName;
-    report.tag = edit_info.DefFileTag;
-
-    report.featureSet[0].matching_angle_margin_deg = edit_info.matching_angle_margin_deg;
-    report.featureSet[0].matching_angle_offset_deg = edit_info.matching_angle_offset_deg;
-    report.featureSet[0].matching_face = edit_info.matching_face;
-
-    let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
-    report.featureSet[0]["__decorator"] = this.props.Info_decorator;
-    report.featureSet_sha1 = sha1_info_in_json;
-    //this.props.ACT_DefFileHash_Update(sha1_info_in_json);
-
-    report.featureSet_sha1_pre = edit_info.DefFileHash;
-
-    if (edit_info.DefFileHash_root === undefined) {
-      if (edit_info.featureSet_sha1_pre === undefined)
-        report.featureSet_sha1_root = sha1_info_in_json;
-      else
-        report.featureSet_sha1_root = edit_info.featureSet_sha1_pre;
-    }
-    else
-      report.featureSet_sha1_root = edit_info.DefFileHash_root;
-
-    return report;
-  }
 
   render() {
 
@@ -1597,7 +1640,7 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
         
         menu_height = "HXA";
-        MenuSet=<DEFCONF_MODE_NEUTRAL_UI/>
+        MenuSet=<DEFCONF_MODE_NEUTRAL_UI WS_DEF_DB_Insert={this.WS_DEF_DB_Insert}/>
 
         break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:

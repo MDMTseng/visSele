@@ -56,6 +56,21 @@ const { Paragraph, Title } = Typography;
 // import Button from 'antd/lib/button';
 // import Icon from 'antd/lib/icon';
 
+
+function urlConcat(base,add)
+{
+  let xbase=base;
+  while(xbase.charAt(xbase.length-1)=="/")
+    xbase=xbase.slice(0, xbase.length-1)
+    
+  let xadd=add;
+  while(xadd.charAt(0)=="/")
+    xadd=xadd.slice(1, xbase.length)
+  
+
+  return xbase+"/"+xadd;
+}
+
 const ButtonGroup = Button.Group;
 
 const Option = Select.Option;
@@ -222,8 +237,8 @@ class RAW_InspectionReportPull extends React.Component {
     }
 
     if (this.WS_DB_Insert === undefined) {
-      log.info("[init][WS]" + url + "insert/insp");
-      let _ws = new websocket_autoReconnect(url + "insert/insp", 10000);
+      log.info("[init][WS]" +urlConcat(url,"insert/insp"));
+      let _ws = new websocket_autoReconnect(urlConcat(url,"insert/insp"), 10000);
       _ws.onStateUpdate = this.onConnectionStateUpdate.bind(this);
       this.WS_DB_Insert = new websocket_reqTrack(_ws);
 
@@ -242,9 +257,9 @@ class RAW_InspectionReportPull extends React.Component {
     }
 
     if (this.WS_DB_Query === undefined) {
-
-      log.info("[init][WS]" + url + "query/insp");
-      let _ws = new websocket_autoReconnect(url + "query/insp", 10000);
+      
+      log.info("[init][WS]" + urlConcat(url,"query/insp"));
+      let _ws = new websocket_autoReconnect(urlConcat(url,"query/insp"), 10000);
       this.WS_DB_Query = new websocket_reqTrack(_ws);
 
 
