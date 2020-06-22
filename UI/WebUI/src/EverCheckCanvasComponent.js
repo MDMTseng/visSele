@@ -324,7 +324,7 @@ class renderUTIL {
       }
 
 
-      ctx.setLineDash([0.3*this.getPrimitiveSize(), 1 * this.getPrimitiveSize()]);
+      ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
 
       this.drawReportLine(ctx, {
 
@@ -482,7 +482,7 @@ class renderUTIL {
 
             let point = this.db_obj.auxPointParse(eObject, shapeList);
             if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([0.3*this.getPrimitiveSize(), 1*this.getPrimitiveSize()]);
+              ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
 
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
@@ -513,8 +513,7 @@ class renderUTIL {
             if (eObject.id === undefined) break;
 
             if (subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([0.3*this.getPrimitiveSize(), 1 * this.getPrimitiveSize()]);
-
+              ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
 
               ctx.strokeStyle = "gray";
               ctx.beginPath();
@@ -747,7 +746,8 @@ class renderUTIL {
 
                   {
 
-                    ctx.setLineDash([0.3*this.getPrimitiveSize(), 1*this.getPrimitiveSize()])
+                    ctx.lineWidth = this.getIndicationLineSize();
+                    ctx.setLineDash([this.getPrimitiveSize(), 1*this.getPrimitiveSize()])
 
                     this.drawReportLine(ctx, {
                       x0: subObjs[0].pt1.x, y0: subObjs[0].pt1.y,
@@ -800,15 +800,17 @@ class renderUTIL {
                     this.draw_Text(ctx, eObject.name, fontPx, eObject.pt1.x, eObject.pt1.y);
                     Y_offset += fontPx;
 
+
+
                     let text = eObject.value.toFixed(3) + "º";
 
                     //log.info( eObject,ctx.measureText(text));
-                    this.draw_Text(ctx, text, fontPx, x, y + Y_offset);
+                    this.draw_Text(ctx, text, fontPx, eObject.pt1.x, eObject.pt1.y + Y_offset);
                     Y_offset += fontPx / 2;
                     fontPx /= 2;
 
                     text = "L:" + eObject.LSL.toFixed(3) + "º U:" + eObject.USL.toFixed(3) + "º";
-                    this.draw_Text(ctx, text, fontPx, x, y + Y_offset);
+                    this.draw_Text(ctx, text, fontPx, eObject.pt1.x, eObject.pt1.y + Y_offset);
                     Y_offset += fontPx;
 
 
@@ -823,7 +825,7 @@ class renderUTIL {
 
               case SHAPE_TYPE.measure_subtype.radius:
                 {
-                  ctx.lineWidth = this.getIndicationLineSize() / 3;
+                  ctx.lineWidth = this.getIndicationLineSize();
                   //ctx.strokeStyle=this.colorSet.measure_info; 
 
                   ctx.font = this.getFontStyle();
@@ -1058,8 +1060,8 @@ class renderUTIL {
             ctx.lineWidth = this.getIndicationLineSize();
             let point = this.db_obj.auxPointParse(eObject, shapeList);
             if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([0.3*this.getPrimitiveSize(), 1*this.getPrimitiveSize()]);
-
+              ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
+              
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
               ctx.lineTo(subObjs[0].pt1.x, subObjs[0].pt1.y);
