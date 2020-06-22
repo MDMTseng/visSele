@@ -515,6 +515,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
   const DefFileHash = useSelector(state => state.UIData.edit_info.DefFileHash);
   
+  const InspectionMonitor_URL= useSelector(state => state.UIData.InspectionMonitor_URL);
   const dispatch = useDispatch();
   const ACT_Def_Model_Path_Update= (path) => dispatch(UIAct.Def_Model_Path_Update(path));
   const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
@@ -525,7 +526,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   
   const [stepIdx,setStepIdx]=useState(0);
 
-  let InspectionMonitor_URL=undefined;
   let DefFileFolder=undefined;
 
   useEffect(()=>{
@@ -533,11 +533,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   },[])
 
-
+  let InspectionMonitor_URL_w_info=InspectionMonitor_URL;
   if (isString(DefFileHash) && DefFileHash.length > 5) {
-    InspectionMonitor_URL = InspectionMonitor_URL +
+    InspectionMonitor_URL_w_info = InspectionMonitor_URL_w_info +
       "?v=" + 0 + "&name=" + DefFileName + "&hash=" + DefFileHash;
-    InspectionMonitor_URL = encodeURI(InspectionMonitor_URL);
+      InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);
   }
   DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
 
@@ -569,7 +569,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   {//1st page
     
-    isOK=InspectionMonitor_URL!==undefined;
+    isOK=DefFileHash!==undefined;
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step0" addClass="width12 height12 overlayCon" fixedFrame={true}>
         
@@ -631,7 +631,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             content={
             !isOK?null:
             <QR_Canvas className="veleX" style={{height:"100%"}}
-                    onClick={() => window.open(InspectionMonitor_URL)} QR_Content={InspectionMonitor_URL} />} 
+                    onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_w_info} />} 
                     trigger={!isOK?"??":"hover"}>
             <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!isOK} icon={<QrcodeOutlined/> }/>
           </Popover>
@@ -841,7 +841,7 @@ class APPMain extends React.Component {
     let defModelPath = this.props.defModelPath;
 
 
-    setTimeout(()=>
+    setTimeout(()=>{
       new Promise((resolve, reject) => {
         console.log(">>>")
         this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
@@ -855,23 +855,33 @@ class APPMain extends React.Component {
         }
       }).catch((err) => {
         console.log(err);
-      }),1000);
-    
-    new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
-        { filename: "data/machine_info" },
-        undefined, { resolve, reject });
-    }).then((data) => {
-      if (data[0].type == "FL") {
-        let info = data[0].data;
-        if (info.length < 16) {
-          this.props.ACT_MachTag_Update(info);
+
+        
+      })
+      
+      
+
+
+        
+      console.log("data/machine_info");
+      new Promise((resolve, reject) => {
+        this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+          { filename: "data/machine_info" },
+          undefined, { resolve, reject });
+      }).then((data) => {
+        console.log(data);
+        if (data[0].type == "FL") {
+          let info = data[0].data;
+          if (info.length < 16) {
+            this.props.ACT_MachTag_Update(info);
+          }
         }
-        //console.log(info);
-      }
-    }).catch((err) => {
-      console.log(err);
-    })
+      }).catch((err) => {
+        console.log(err);
+      })
+
+    },1000);
+    
 
   }
 
