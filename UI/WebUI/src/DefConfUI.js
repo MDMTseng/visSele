@@ -839,7 +839,7 @@ function SettingUI({})
 
 
   
-function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID)
+function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID,dispatch)
 {
 
   ACT_DefConf_Lock_Level_Update(0);
@@ -855,7 +855,6 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
   })
     .then((pkts) => {
 
-      console.log("COME")
       dispatch({
         type: "ATBundle",
         ActionThrottle_type: "express",
@@ -882,9 +881,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
 function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 {
   
-  console.log("setFileSavingCallBack..useState...")
   const [fileSavingCallBack,setFileSavingCallBack]=useState(undefined);
-  console.log("setFileSavingCallBack..useState..end.")
   const dispatch = useDispatch();
   const ACT_EXIT=(arg) =>dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT)) ;
 
@@ -1008,7 +1005,6 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         key="SAVE"
         text="save" onClick={() => {
           if (defConf_lock_level > 2) return;
-          console.log("setFileSavingCallBack.....")
           setFileSavingCallBack((prevs,props)=> (folderInfo, fileName, existed) => {
               console.log(folderInfo, fileName, existed);
               
@@ -1038,8 +1034,6 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
                 catch((ret) => console.log("catch", ret));
 
             });
-          console.log("setFileSavingCallBack..end...")
-
         }} />,
     <BASE_COM.IconButton
       iconType={<ExportOutlined/>}
@@ -1051,7 +1045,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
           console.log(fileNamePath);
 
-          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID);
+          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
           setFileSelectedCallBack(undefined);
         })
@@ -1264,7 +1258,7 @@ class APP_DEFCONF_MODE extends React.Component {
       this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
       this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
     }
-    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND,this.props.WS_ID);
+    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND,this.props.WS_ID,this.props.DISPATCH);
   }
 
   componentWillUnmount() {
