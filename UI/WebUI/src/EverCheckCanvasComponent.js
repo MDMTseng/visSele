@@ -100,10 +100,10 @@ class renderUTIL {
     };
 
     this.renderParam = {
-      base_Size: 1,
+      base_Size: 5,
       size_Multiplier: 1,
       mmpp: 0.1,
-      font_Base_Size: 60,
+      font_Base_Size: 1,
       font_Style: "bold "
     };
   }
@@ -111,25 +111,25 @@ class renderUTIL {
     return this.renderParam.mmpp;
   }
   getPrimitiveSize() {
-    return this.renderParam.base_Size * this.renderParam.size_Multiplier * this.get_mmpp();
+    return this.renderParam.base_Size * this.renderParam.size_Multiplier/ this.camCtrl.GetCameraScale();;
   }
 
   getPointSize() {
-    return 8 * this.getPrimitiveSize();
+    return this.getPrimitiveSize();
   }
   getIndicationLineSize() {
-    return 8 * this.getPrimitiveSize();
+    return this.getPrimitiveSize();
   }
   getSearchDirectionLineSize() {
-    return 8 * this.getPrimitiveSize();
+    return this.getPrimitiveSize();
   }
 
   getFontHeightPx(size = this.renderParam.font_Base_Size) {
-    return size * this.renderParam.size_Multiplier * this.get_mmpp();
+    return size * this.renderParam.size_Multiplier*16/ this.camCtrl.GetCameraScale();;
   }
 
   getFixSizingReg() {
-    return 50 / this.camCtrl.GetCameraScale();
+    return 1;//50 / this.camCtrl.GetCameraScale();
   }
 
   getFontStyle(size_px = this.getFontHeightPx()) {
@@ -236,9 +236,12 @@ class renderUTIL {
 
     ctx.moveTo(tox, toy);
     ctx.lineTo(tox - headlen * Math.cos(angle - aangle), toy - headlen * Math.sin(angle - aangle));
-    ctx.moveTo(tox, toy);
+    //ctx.moveTo(tox, toy);
     ctx.lineTo(tox - headlen * Math.cos(angle + aangle), toy - headlen * Math.sin(angle + aangle));
+
+    ctx.closePath();
     ctx.stroke();
+    ctx.fill();
   }
 
   drawArcArrow(ctx, x, y, r, sAngle, eAngle, ccw = false) {
@@ -252,7 +255,7 @@ class renderUTIL {
     y += r * ay;
     let dirSign = (ccw) ? -1 : 1;
     dirSign *= this.getPrimitiveSize();
-    let arrowSize = 50 * this.getPrimitiveSize();
+    let arrowSize = 3 * this.getPrimitiveSize();
     this.canvas_arrow(ctx, x + dirSign * ay, y - dirSign * ax, x, y, arrowSize);
 
   }
@@ -260,13 +263,15 @@ class renderUTIL {
   }
 
   drawText(ctx, text, x, y) {
+    ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.01;
     ctx.fillText(text, x, y);
     ctx.strokeStyle = "black";
-    ctx.lineWidth = this.getIndicationLineSize();
+    ctx.lineWidth = 1;//this.getIndicationLineSize();
     ctx.strokeText(text, x, y);
   }
 
   draw_Text(ctx, text, scale, x, y) {
+    ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.01;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
@@ -319,7 +324,7 @@ class renderUTIL {
       }
 
 
-      ctx.setLineDash([5 * this.getPrimitiveSize(), 15 * this.getPrimitiveSize()]);
+      ctx.setLineDash([0.3*this.getPrimitiveSize(), 1 * this.getPrimitiveSize()]);
 
       this.drawReportLine(ctx, {
 
@@ -350,7 +355,7 @@ class renderUTIL {
       let fontPx = this.getFontHeightPx() * this.getFixSizingReg();
       ctx.font = this.getFontStyle(1);
       ctx.strokeStyle = "black";
-      ctx.lineWidth = this.getIndicationLineSize() / 3;
+      ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.01;
       let text;
       if (eObject.inspection_value !== undefined) {
 
@@ -362,7 +367,8 @@ class renderUTIL {
         let marginPC = (eObject.inspection_value > eObject.value) ?
           (eObject.inspection_value - eObject.value) / (eObject.USL - eObject.value) :
           -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
-        text += ":" + (marginPC * 100).toFixed(1) + "%";
+        if(marginPC==marginPC && isFinite(marginPC))
+          text += ":" + (marginPC * 100).toFixed(1) + "%";
 
         this.draw_Text(ctx, text, fontPx, eObject.pt1.x, eObject.pt1.y + Y_offset);
       }
@@ -476,7 +482,7 @@ class renderUTIL {
 
             let point = this.db_obj.auxPointParse(eObject, shapeList);
             if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([5 * this.getPrimitiveSize(), 15 * this.getPrimitiveSize()]);
+              ctx.setLineDash([0.3*this.getPrimitiveSize(), 1*this.getPrimitiveSize()]);
 
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
@@ -507,7 +513,7 @@ class renderUTIL {
             if (eObject.id === undefined) break;
 
             if (subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([5 * this.getPrimitiveSize(), 15 * this.getPrimitiveSize()]);
+              ctx.setLineDash([0.3*this.getPrimitiveSize(), 1 * this.getPrimitiveSize()]);
 
 
               ctx.strokeStyle = "gray";
@@ -741,7 +747,7 @@ class renderUTIL {
 
                   {
 
-                    ctx.setLineDash([5 * this.getPrimitiveSize(), 15 * this.getPrimitiveSize()]);
+                    ctx.setLineDash([0.3*this.getPrimitiveSize(), 1*this.getPrimitiveSize()])
 
                     this.drawReportLine(ctx, {
                       x0: subObjs[0].pt1.x, y0: subObjs[0].pt1.y,
@@ -779,7 +785,8 @@ class renderUTIL {
                     let marginPC = (eObject.inspection_value > eObject.value) ?
                       (eObject.inspection_value - eObject.value) / (eObject.USL - eObject.value) :
                       -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
-                    text += ":" + (marginPC * 100).toFixed(1) + "%";
+                    if(marginPC==marginPC && isFinite(marginPC))
+                      text += ":" + (marginPC * 100).toFixed(1) + "%";
 
 
                     this.draw_Text(ctx, text, fontPx,
@@ -831,14 +838,14 @@ class renderUTIL {
                     x0:arc.x+dispVec.x,y0:arc.y+dispVec.y,
                     x1:eObject.pt1.x,y1:eObject.pt1.y,
                   };*/
-                  let arrowSize = 50 * this.getPrimitiveSize();
+                  let arrowSize = 3 * this.getPrimitiveSize();
                   this.canvas_arrow(ctx, eObject.pt1.x, eObject.pt1.y, arc.x + dispVec.x, arc.y + dispVec.y, arrowSize);
                   //this.drawReportLine(ctx, lineInfo);
 
                   this.drawpoint(ctx, eObject.pt1);
 
-                  dispVec_normalized.x *= 40 * this.getPrimitiveSize();
-                  dispVec_normalized.y *= 40 * this.getPrimitiveSize();
+                  dispVec_normalized.x *= 5 * this.getPrimitiveSize();
+                  dispVec_normalized.y *= 5 * this.getPrimitiveSize();
 
 
 
@@ -852,7 +859,9 @@ class renderUTIL {
                     let marginPC = (eObject.inspection_value > eObject.value) ?
                       (eObject.inspection_value - eObject.value) / (eObject.USL - eObject.value) :
                       -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
-                    text += ":" + (marginPC * 100).toFixed(1) + "%";
+                      
+                    if(marginPC==marginPC && isFinite(marginPC))
+                      text += ":" + (marginPC * 100).toFixed(1) + "%";
 
                     ctx.strokeStyle = "black";
                     ctx.lineWidth = this.getIndicationLineSize() / 3;
@@ -1031,7 +1040,7 @@ class renderUTIL {
         case SHAPE_TYPE.search_point:
           {
             ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-            this.drawpoint(ctx, eObject.pt1, "cross", 150 * this.getPointSize() / this.camCtrl.GetCameraScale());
+            this.drawpoint(ctx, eObject.pt1, "cross", this.getPointSize());
 
             ctx.lineWidth = this.getIndicationLineSize();
           }
@@ -1049,7 +1058,7 @@ class renderUTIL {
             ctx.lineWidth = this.getIndicationLineSize();
             let point = this.db_obj.auxPointParse(eObject, shapeList);
             if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([5 * this.getPrimitiveSize(), 15 * this.getPrimitiveSize()]);
+              ctx.setLineDash([0.3*this.getPrimitiveSize(), 1*this.getPrimitiveSize()]);
 
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
