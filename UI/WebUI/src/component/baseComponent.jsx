@@ -404,7 +404,7 @@ export class BPG_FileSavingBrowser extends React.Component{
     footer={
       <div>
         <Input className="width9" placeholder="File Name" 
-        value={this.state.fileName}
+        value={this.state.fileName}  style={{float:"left"}}
         onChange={(ev)=>{
           let fileName = ev.target.value;
           if(this.isASCII(fileName))
@@ -413,13 +413,13 @@ export class BPG_FileSavingBrowser extends React.Component{
           }
           }}/>
         
-        <AntButtonGroup className="width2">
+        <AntButtonGroup className="width2"  style={{float:"left"}}>
           <AntButton onClick={this.props.onCancel}>Cancel</AntButton>
           <AntButton onClick={()=>this.props.onOk(this.state.folderInfo,this.state.fileName,isTarFileExist)} 
             type={isTarFileExist?"danger":"primary"}
             disabled={(this.state.fileName.length==0 || this.state.folderInfo===undefined)}>OK</AntButton>
         </AntButtonGroup>
-        </div>
+      </div>
     }
     onFolderLoaded={(folderStruct)=>{
         
@@ -774,7 +774,7 @@ export class BPG_FileBrowser_proto extends React.Component{
           onOk={this.props.onOk}
           footer={this.props.footer}
         >
-          <div style={{height:this.props.height===undefined?400:this.props.height}}>
+          <div style={{height:"100%"}}>
             {fv_UI}
           </div>
         </Modal>

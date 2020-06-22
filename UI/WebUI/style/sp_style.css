@@ -31,13 +31,30 @@
 }
 
 .ant-modal.modal-sizing .ant-modal-body{
-  height:90%  !important;
+  height:80%  !important;
 }
 .ant-modal.modal-sizing .ant-modal-body>div{
-  height:100%  !important;
+  /* height:100%  !important; */
 }
 
 
+.ant-modal.modal-sizing .ant-modal-content{
+  display: flex;
+  flex-flow: column;
+}
+
+
+.ant-modal.modal-sizing .ant-modal-content>.ant-modal-header{
+  flex: 0 2 auto  !important;
+}
+
+.ant-modal.modal-sizing .ant-modal-content>.ant-modal-body{
+  flex: 1 2 auto  !important;
+}
+
+.ant-modal.modal-sizing .ant-modal-content>.ant-modal-footer{
+  flex: 2 2 auto  !important;
+}
 
 .HW100{
   width:100px  !important;
