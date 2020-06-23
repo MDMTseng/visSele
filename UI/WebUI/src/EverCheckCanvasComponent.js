@@ -40,7 +40,7 @@ export const SHAPE_TYPE_COLOR={
   
   [SHAPE_TYPE.aux_line]:"hsl(48, 60%, 35%)",
   [SHAPE_TYPE.aux_point]:"hsl(220, 60%, 35%)",
-  [SHAPE_TYPE.measure]:"rgba(100,50,100)",
+  [SHAPE_TYPE.measure]:"hsl(290, 80%, 65%)",
   default:"rgba(100,50,100)"
 }
 
@@ -136,7 +136,7 @@ class renderUTIL {
   }
 
   getFontHeightPx(size = this.renderParam.font_Base_Size) {
-    return size * this.renderParam.size_Multiplier*16/ this.camCtrl.GetCameraScale();;
+    return 1.5*size * this.renderParam.size_Multiplier*16/ this.camCtrl.GetCameraScale();;
   }
 
   getFixSizingReg() {
@@ -284,7 +284,7 @@ class renderUTIL {
   }
 
   draw_Text(ctx, text, scale, x, y) {
-    ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.01;
+    ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.013;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
@@ -365,10 +365,10 @@ class renderUTIL {
       this.drawpoint(ctx, eObject.pt1);
 
 
-      let fontPx = this.getFontHeightPx() * this.getFixSizingReg();
+      let fontPx = this.getFontHeightPx();
       ctx.font = this.getFontStyle(1);
       ctx.strokeStyle = "black";
-      ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.01;
+      ctx.lineWidth = this.renderParam.base_Size * this.renderParam.size_Multiplier*0.02;
       let text;
       if (eObject.inspection_value !== undefined) {
 
@@ -660,8 +660,8 @@ class renderUTIL {
                 ctx.fillStyle = eObject.color;
               }
               else {
-                ctx.strokeStyle = this.colorSet.measure_info;
-                ctx.fillStyle = this.colorSet.measure_info;
+                ctx.strokeStyle = shapeColor;
+                ctx.fillStyle = shapeColor;
               }
             }
             else {
@@ -793,14 +793,18 @@ class renderUTIL {
                     ctx.lineWidth = this.getIndicationLineSize();
                     ctx.setLineDash([this.getPrimitiveSize(), 1*this.getPrimitiveSize()])
 
+                    let arcPt={x:srcPt.x + dist * Math.cos(ext_Angle1),y:srcPt.y + dist * Math.sin(ext_Angle1)};
+                    let closestPt=closestPointOnPoints(arcPt,[subObjs[0].pt1,subObjs[0].pt2]);
                     this.drawReportLine(ctx, {
-                      x0: subObjs[0].pt1.x, y0: subObjs[0].pt1.y,
-                      x1: srcPt.x + dist * Math.cos(ext_Angle1), y1: srcPt.y + dist * Math.sin(ext_Angle1)
+                      x0: closestPt.x, y0: closestPt.y,
+                      x1: arcPt.x, y1: arcPt.y
                     });
 
+                    arcPt={x:srcPt.x + dist * Math.cos(ext_Angle2),y:srcPt.y + dist * Math.sin(ext_Angle2)};
+                    closestPt=closestPointOnPoints(arcPt,[subObjs[1].pt1,subObjs[1].pt2]);
                     this.drawReportLine(ctx, {
-                      x0: subObjs[1].pt1.x, y0: subObjs[1].pt1.y,
-                      x1: srcPt.x + dist * Math.cos(ext_Angle2), y1: srcPt.y + dist * Math.sin(ext_Angle2)
+                      x0: closestPt, y0: closestPt,
+                      x1: arcPt.x, y1: arcPt.y
                     });
 
                     ctx.setLineDash([]);
@@ -811,7 +815,7 @@ class renderUTIL {
 
 
 
-                  let fontPx = this.getFontHeightPx() * this.getFixSizingReg();
+                  let fontPx = this.getFontHeightPx();
                   ctx.font = this.getFontStyle(1);
                   let text;
                   if (eObject.inspection_value !== undefined) {
@@ -872,7 +876,7 @@ class renderUTIL {
                   ctx.lineWidth = this.getIndicationLineSize();
                   //ctx.strokeStyle=this.colorSet.measure_info; 
 
-                  ctx.font = this.getFontStyle();
+                  ctx.font = this.getFontStyle(1);
                   let arc = threePointToArc(subObjs[0].pt1, subObjs[0].pt2, subObjs[0].pt3);
                   let dispVec = { x: eObject.pt1.x - arc.x, y: eObject.pt1.y - arc.y };
                   let mag = Math.hypot(dispVec.x, dispVec.y);
@@ -895,7 +899,7 @@ class renderUTIL {
 
 
 
-                  let fontPx = this.getFontHeightPx() * this.getFixSizingReg();
+                  let fontPx = this.getFontHeightPx();
                   ctx.font = this.getFontStyle(1);
                   let text;
                   if (eObject.inspection_value !== undefined) {
@@ -959,7 +963,7 @@ class renderUTIL {
                   this.drawpoint(ctx, eObject.pt1);
 
 
-                  let fontPx = this.getFontHeightPx() * this.getFixSizingReg();
+                  let fontPx = this.getFontHeightPx();
                   ctx.font = this.getFontStyle(1);
 
                   ctx.strokeStyle = "black";
