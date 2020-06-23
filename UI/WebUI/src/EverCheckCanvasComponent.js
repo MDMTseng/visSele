@@ -162,11 +162,13 @@ class renderUTIL {
 
 
   drawReportArc(ctx, arc_obj, offset = { x: 0, y: 0 }) {
+    let r=arc_obj.r;
+    if(r<0)r=-r;
     ctx.beginPath();
     if (arc_obj.thetaS === undefined || arc_obj.thetaE === undefined)
-      ctx.arc(arc_obj.x + offset.x, arc_obj.y + offset.y, arc_obj.r, 0, Math.PI * 2, false);
+      ctx.arc(arc_obj.x + offset.x, arc_obj.y + offset.y, r, 0, Math.PI * 2, false);
     else
-      ctx.arc(arc_obj.x + offset.x, arc_obj.y + offset.y, arc_obj.r, arc_obj.thetaS, arc_obj.thetaE, false);
+      ctx.arc(arc_obj.x + offset.x, arc_obj.y + offset.y, r, arc_obj.thetaS, arc_obj.thetaE, false);
     //ctx.closePath();
     ctx.stroke();
   }
@@ -542,6 +544,9 @@ class renderUTIL {
               marginOffset = -marginOffset;
             }
             arc.r += marginOffset;
+            console.log(arc);
+            if(arc.r<0.01)arc.r=0.01;
+
             this.drawReportArc(ctx, arc);
 
 
@@ -1396,8 +1401,10 @@ class EverCheckCanvasComponent_proto {
     this.mouseStatus.y = pos.y;
     let doDragging = false;
 
+    let doDraw=false;
     switch (this.state.substate) {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
+        doDraw=true;
         if (this.EditPoint != null) break;
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       case UI_SM_STATES.INSP_MODE_NEUTRAL:
@@ -1411,12 +1418,17 @@ class EverCheckCanvasComponent_proto {
 
     if (doDragging) {
       if (this.mouseStatus.status == 1) {
+        
+        doDraw=true;
         this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
       }
 
     }
-    this.ctrlLogic();
-    this.draw();
+    if(doDraw)
+    {
+      this.ctrlLogic();
+      this.draw();
+    }
   }
 
   onmousedown(evt) {
