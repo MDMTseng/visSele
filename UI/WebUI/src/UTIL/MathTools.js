@@ -3,6 +3,25 @@ export function distance_point_point(pt1, pt2)
 {
   return Math.hypot(pt1.x-pt2.x,pt1.y-pt2.y);
 }
+export function closestPointOnPoints(pt, pts)
+{
+  let dist;
+  let cpt;
+  pts.forEach(pt2 => {
+    if(dist===undefined){
+      dist=distance_point_point(pt, pt2);
+      cpt=pt2;
+      return;
+    }
+    let cur_dist=distance_point_point(pt, pt2);
+    if(cur_dist<dist){
+      dist=cur_dist;
+      cpt=pt2;
+    }
+    
+  });
+  return cpt;
+}
 
 
 export function distance_arc_point(arc, point)

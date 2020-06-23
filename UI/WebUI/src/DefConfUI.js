@@ -959,17 +959,20 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
     <BASE_COM.IconButton
       dict={EC_zh_TW}
-      addClass="layout palatte-blue-8 vbox"
+      addClass="layout vbox"
+      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.line]}}
       key="LINE"
       text="line" onClick={() => ACT_Line_Add_Mode()} />,
     <BASE_COM.IconButton
       dict={EC_zh_TW}
       addClass="layout palatte-blue-8 vbox"
+      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.arc]}}
       key="ARC"
       text="arc" onClick={() => ACT_Arc_Add_Mode()} />,
     <BASE_COM.IconButton
       dict={EC_zh_TW}
       addClass="layout palatte-blue-8 vbox"
+      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_point]}}
       key="APOINT"
       text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
 
@@ -981,12 +984,14 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
     <BASE_COM.IconButton
       dict={EC_zh_TW}
       addClass="layout palatte-blue-8 vbox"
+      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.search_point]}}
       key="SPOINT"
       text="spoint" onClick={() => ACT_Search_Point_Add_Mode()} />,
     <BASE_COM.IconButton
       //iconType={<FormOutlined/>}
       addClass="layout palatte-blue-8"
       key="MEASURE"
+      style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure]}}
       dict={EC_zh_TW}
       text="measure"
       onClick={() => ACT_Measure_Add_Mode()}>

@@ -10,7 +10,8 @@ import {
   threePointToArc,
   intersectPoint,
   LineCentralNormal,
-  closestPointOnLine
+  closestPointOnLine,
+  closestPointOnPoints
 } from 'UTIL/MathTools';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
@@ -31,7 +32,17 @@ export const MEASURE_RESULT_VISUAL_INFO = {
   [MEASURERSULTRESION.LSNG]: { COLOR: "rgba(255,0,0,0.5)", TEXT: MEASURERSULTRESION.LSNG },
 };
 
+export const SHAPE_TYPE_COLOR={
+  [SHAPE_TYPE.line]:"hsl(0, 60%, 35%)",
+  [SHAPE_TYPE.arc]:"hsl(48, 60%, 35%)",
+  [SHAPE_TYPE.search_point]:"hsl(180, 60%, 35%)",
 
+  
+  [SHAPE_TYPE.aux_line]:"hsl(48, 60%, 35%)",
+  [SHAPE_TYPE.aux_point]:"hsl(220, 60%, 35%)",
+  [SHAPE_TYPE.measure]:"rgba(100,50,100)",
+  default:"rgba(100,50,100)"
+}
 
 class CameraCtrl {
   constructor(canvasDOM) {
@@ -421,7 +432,8 @@ class renderUTIL {
     ctx.closePath();
     //ctx.stroke();
   }
-  drawShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false) {
+
+  drawShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false,inFullDisplay=true) {
     let next_ShapeColor = null
     if (ShapeColor !== undefined && ShapeColor !== null) {
       next_ShapeColor = Color(ShapeColor).desaturate(0.6).string()
@@ -441,20 +453,34 @@ class renderUTIL {
           ctx.strokeStyle = eObject.color;
 
       }
+      
+
+      let shapeColor=SHAPE_TYPE_COLOR[eObject.type];
+      if(shapeColor===undefined)
+      {
+        shapeColor=SHAPE_TYPE_COLOR.default;
+      }
+      shapeColor = Color(shapeColor).alpha(0.8);
       switch (eObject.type) {
         case SHAPE_TYPE.line:
           {
-            ctx.lineWidth = eObject.margin * 2;
+            let cnormal = LineCentralNormal(eObject);
+
+            let drawMargin=this.getSearchDirectionLineSize();
+            if(inFullDisplay)
+            {
+              drawMargin=eObject.margin;
+            }
+            ctx.lineWidth =drawMargin* 2;
             this.drawReportLine(ctx, {
               x0: eObject.pt1.x, y0: eObject.pt1.y,
               x1: eObject.pt2.x, y1: eObject.pt2.y,
             });
 
 
-            let cnormal = LineCentralNormal(eObject);
             ctx.lineWidth = this.getSearchDirectionLineSize();
-            ctx.strokeStyle = "rgba(100,50,100,0.8)";
-            let marginOffset = eObject.margin + ctx.lineWidth / 2;
+            ctx.strokeStyle = shapeColor;
+            let marginOffset = drawMargin+ ctx.lineWidth / 2;
             if (eObject.direction < 0) {
               marginOffset = -marginOffset;
             }
@@ -463,41 +489,48 @@ class renderUTIL {
               x1: eObject.pt2.x + cnormal.vx * marginOffset, y1: eObject.pt2.y + cnormal.vy * marginOffset,
             });
 
-
             ctx.strokeStyle = "gray";
             this.drawpoint(ctx, eObject.pt1);
             this.drawpoint(ctx, eObject.pt2);
-
           }
           break;
 
         case SHAPE_TYPE.aux_point:
           {
 
-            let db_obj = this.db_obj;
-            let subObjs = eObject.ref
-              .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
-              .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
-            if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs);
-            if (eObject.id === undefined) break;
+            if(true||inFullDisplay)
+            {
+              ctx.lineWidth = this.getSearchDirectionLineSize();
+              ctx.strokeStyle = shapeColor.alpha(1);
+              let db_obj = this.db_obj;
+              let subObjs = eObject.ref
+                .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
+                .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
+              if (drawSubObjs)
+                this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+              if (eObject.id === undefined) break;
 
-            let point = this.db_obj.auxPointParse(eObject, shapeList);
-            if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
-              ctx.setLineDash([this.getPrimitiveSize(), this.getPrimitiveSize()]);
+              let point = this.db_obj.auxPointParse(eObject, shapeList);
+              if (point !== undefined && subObjs.length == 2) {//Draw crosssect line
+                ctx.setLineDash([2*this.getPrimitiveSize(), this.getPrimitiveSize()]);
 
-              ctx.beginPath();
-              ctx.moveTo(point.x, point.y);
-              ctx.lineTo(subObjs[0].pt1.x, subObjs[0].pt1.y);
-              ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(point.x, point.y);
 
-              ctx.beginPath();
-              ctx.moveTo(point.x, point.y);
-              ctx.lineTo(subObjs[1].pt1.x, subObjs[1].pt1.y);
-              ctx.stroke();
-              ctx.setLineDash([]);
-              ctx.strokeStyle = "gray";
-              this.drawpoint(ctx, point);
+                let closestPt=closestPointOnPoints(point,[subObjs[0].pt1,subObjs[0].pt2]);
+                ctx.lineTo(closestPt.x,closestPt.y);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(point.x, point.y);
+                
+                closestPt=closestPt=closestPointOnPoints(point,[subObjs[1].pt1,subObjs[1].pt2]);
+                ctx.lineTo(closestPt.x,closestPt.y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.strokeStyle = "gray";
+                this.drawpoint(ctx, point);
+              }
             }
           }
           break;
@@ -511,7 +544,7 @@ class renderUTIL {
               .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
               .map((idx) => { return idx >= 0 ? shapeList[idx] : null });
             if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs);
+              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
             if (eObject.id === undefined) break;
 
             if (subObjs.length == 2) {//Draw crosssect line
@@ -531,21 +564,25 @@ class renderUTIL {
 
         case SHAPE_TYPE.arc:
           {
-            //ctx.strokeStyle=eObject.color; 
             let arc = threePointToArc(eObject.pt1, eObject.pt2, eObject.pt3);
-            ctx.lineWidth = eObject.margin * 2;
+            let margin=this.getSearchDirectionLineSize()
+            if(inFullDisplay){
+              margin=eObject.margin
+            }
+            //ctx.strokeStyle=eObject.color; 
+            ctx.lineWidth = margin * 2;
             this.drawReportArc(ctx, arc);
 
             ctx.lineWidth = this.getSearchDirectionLineSize();
-            ctx.strokeStyle = "rgba(100,50,100,0.8)";
+            ctx.strokeStyle = shapeColor;
 
-            let marginOffset = eObject.margin + ctx.lineWidth / 2;
+            let marginOffset = margin + ctx.lineWidth / 2;
             if (eObject.direction < 0) {
               marginOffset = -marginOffset;
             }
             arc.r += marginOffset;
-            console.log(arc);
-            if(arc.r<0.01)arc.r=0.01;
+            //console.log(arc);
+            if(arc.r<0.0001)arc.r=0.0001;
 
             this.drawReportArc(ctx, arc);
 
@@ -554,13 +591,11 @@ class renderUTIL {
             this.drawpoint(ctx, eObject.pt1);
             this.drawpoint(ctx, eObject.pt2);
             this.drawpoint(ctx, eObject.pt3);
-
           }
           break;
 
         case SHAPE_TYPE.search_point:
           {
-
             let db_obj = this.db_obj;
             let subObjs = eObject.ref
               .map((ref) => db_obj.FindShape("id", ref.id, shapeList))
@@ -576,10 +611,12 @@ class renderUTIL {
             vector.x *= mag;
             vector.y *= mag;
 
+            let margin=this.getSearchDirectionLineSize()
+            if(inFullDisplay){
+              margin=eObject.margin
+            }
 
-
-
-            ctx.lineWidth = eObject.margin * 2;
+            ctx.lineWidth = margin * 2;
             this.drawReportLine(ctx, {
               x0: eObject.pt1.x - vector.x, y0: eObject.pt1.y - vector.y,
               x1: eObject.pt1.x + vector.x, y1: eObject.pt1.y + vector.y,
@@ -587,8 +624,8 @@ class renderUTIL {
 
 
             ctx.lineWidth = this.getSearchDirectionLineSize();
-            ctx.strokeStyle = "rgba(100,50,100,0.8)";
-            let marginOffset = eObject.margin + ctx.lineWidth / 2;
+            ctx.strokeStyle = shapeColor;
+            let marginOffset = margin + ctx.lineWidth / 2;
             this.drawReportLine(ctx, {
               x0: eObject.pt1.x - vector.x + cnormal.x * marginOffset, y0: eObject.pt1.y - vector.y + cnormal.y * marginOffset,
               x1: eObject.pt1.x + vector.x + cnormal.x * marginOffset, y1: eObject.pt1.y + vector.y + cnormal.y * marginOffset,
@@ -596,10 +633,12 @@ class renderUTIL {
 
 
             if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs);
+              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
 
             ctx.strokeStyle = "gray";
             this.drawpoint(ctx, eObject.pt1);
+
+
 
           }
           break;
@@ -611,7 +650,7 @@ class renderUTIL {
               .map((ref) => db_obj.FindShapeObject("id", ref.id, shapeList));
 
             if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs);
+              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
             let subObjs_valid = subObjs.reduce((acc, cur) => acc && (cur !== undefined), true);
             if (!subObjs_valid) break;
 
@@ -1069,12 +1108,14 @@ class renderUTIL {
               
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
-              ctx.lineTo(subObjs[0].pt1.x, subObjs[0].pt1.y);
+              let closestPt=closestPointOnPoints(point,[subObjs[0].pt1,subObjs[0].pt2]);
+              ctx.lineTo(closestPt.x,closestPt.y);
               ctx.stroke();
 
               ctx.beginPath();
               ctx.moveTo(point.x, point.y);
-              ctx.lineTo(subObjs[1].pt1.x, subObjs[1].pt1.y);
+              closestPt=closestPointOnPoints(point,[subObjs[1].pt1,subObjs[1].pt2]);
+              ctx.lineTo(closestPt.x,closestPt.y);
               ctx.stroke();
               ctx.setLineDash([]);
               ctx.strokeStyle = "gray";
@@ -1089,7 +1130,7 @@ class renderUTIL {
       }
     });
 
-    this.drawShapeList(ctx, normalRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs);
+    this.drawShapeList(ctx, normalRenderGroup, ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
 
   }
 
@@ -1402,6 +1443,7 @@ class EverCheckCanvasComponent_proto {
     let doDragging = false;
 
     let doDraw=false;
+    //console.log("this.state.substate:",this.state.substate);
     switch (this.state.substate) {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         doDraw=true;
@@ -1409,6 +1451,11 @@ class EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
       case UI_SM_STATES.INSP_MODE_NEUTRAL:
         doDragging = true;
+        break;
+      
+      case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
+      case UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
+        doDraw=true;
         break;
     }
 
@@ -1643,7 +1690,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     let skipDrawIdxs = [];
 
-    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert);
+    this.rUtil.drawShapeList(ctx, this.edit_DB_info.list, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert,false,false);
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
 
   }
@@ -2190,7 +2237,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       skipDrawIdxs.push(this.EditShape.id);
 
       ctx.strokeStyle = this.colorSet.editShape;
-      this.rUtil.drawShapeList(ctx, [this.EditShape], this.colorSet.editShape, [], this.edit_DB_info.list, unitConvert, true);
+      this.rUtil.drawShapeList(ctx, [this.EditShape], this.colorSet.editShape, [], this.edit_DB_info.list, unitConvert, true,true);
     }
 
     if (this.CandEditPointInfo != null) {
@@ -2204,16 +2251,16 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
         skipDrawIdxs.push(candPtInfo.shape.id);
         let dcolor = "rgba(255,0,255,0.5)"
         ctx.strokeStyle = dcolor;
-        this.rUtil.drawShapeList(ctx, [candPtInfo.shape], dcolor, [], this.edit_DB_info.list, unitConvert, true);
+        this.rUtil.drawShapeList(ctx, [candPtInfo.shape], dcolor, [], this.edit_DB_info.list, unitConvert, true,true);
       }
     }
 
     if (displayShape != this.edit_DB_info.list)//draw all
     {
-      this.rUtil.drawShapeList(ctx, displayShape, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert);
+      this.rUtil.drawShapeList(ctx, displayShape, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert,false,false);
     }
     else if (!drawFocusItem) {
-      this.rUtil.drawShapeList(ctx, this.edit_DB_info.list, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert);
+      this.rUtil.drawShapeList(ctx, this.edit_DB_info.list, null, skipDrawIdxs, this.edit_DB_info.list, unitConvert,false,false);
     }
 
     this.rUtil.drawInherentShapeList(ctx, this.edit_DB_info.inherentShapeList);
@@ -2603,4 +2650,4 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
 
-export default { Preview_CanvasComponent, INSP_CanvasComponent, SLCALIB_CanvasComponent, DEFCONF_CanvasComponent }
+export default { Preview_CanvasComponent, INSP_CanvasComponent, SLCALIB_CanvasComponent, DEFCONF_CanvasComponent,SHAPE_TYPE_COLOR }

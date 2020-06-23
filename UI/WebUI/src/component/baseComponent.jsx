@@ -924,6 +924,7 @@ export let IconButton = React_createClass({
     //console.log(this.props.iconType)
     return <div
         onClick={this.handleClick}
+        style={this.props.style}
         className={className+" icon_btn"}>
 
         {
