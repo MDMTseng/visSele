@@ -1048,7 +1048,7 @@ class renderUTIL {
 
 
 
-  drawInspectionShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false) {
+  drawInspectionShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false,inFullDisplay=true) {
     let normalRenderGroup = [];
     eObjects.forEach((eObject) => {
       if (eObject == null) return;
@@ -1323,6 +1323,16 @@ class EverCheckCanvasComponent_proto {
   }
 
 
+  zoomToCurSignature()
+  {
+    let center = { x: 0, y: 0 };
+    this.camera.SetOffset({
+      x: -center.x,
+      y: -center.y
+    });
+    
+  }
+
   resourceClean() {
     this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
     log.debug("resourceClean......")
@@ -1330,6 +1340,7 @@ class EverCheckCanvasComponent_proto {
 
   SetImg(img_info) {
     if (img_info == null || img_info == this.img_info) return;
+    //this.zoomToCurSignature();
     this.img_info = img_info;
     let img = img_info.img;
     this.secCanvas.width = img.width;
@@ -1446,7 +1457,7 @@ class EverCheckCanvasComponent_proto {
     this.mouseStatus.y = pos.y;
     let doDragging = false;
 
-    let doDraw=false;
+    let doDraw=true;
     //console.log("this.state.substate:",this.state.substate);
     switch (this.state.substate) {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
@@ -1511,6 +1522,7 @@ class EverCheckCanvasComponent_proto {
       this.onmouseup(evt);
     }
   }
+
 
   resize(width, height) {
     if(Math.abs(this.canvas.height - height)+Math.abs(this.canvas.width - width)<5)return;
@@ -1791,6 +1803,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     return ret_status;
   }
+  
 
   draw() {
     this.draw_INSP();

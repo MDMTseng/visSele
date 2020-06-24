@@ -2009,17 +2009,19 @@ class APP_DEFCONF_MODE extends React.Component {
           }
           MenuSet.push(<div className="s HXA" key="DragSortableList_con" >
             <DragSortableList
-              items={shapeListInOrder.map((shape, id) => ({
-                content: (
-                  <div
-                    key={"shape_listing_" + shape.id}
-                    className="button lred"
-                    style={{ height: "40px" }}
-                    onClick={() => this.props.ACT_EDIT_TAR_UPDATE(shape)}>
-                    {shape.name}
-                  </div>),
-                shape_id: shape.id
-              }))}
+              items={shapeListInOrder.map((shape, id) =>{ 
+                return{
+                  content: (
+                    <div
+                      key={"shape_listing_" + shape.id}
+                      className="button"
+                      style={{ height: "40px",backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[shape.type] }}
+                      onClick={() => this.props.ACT_EDIT_TAR_UPDATE(shape)}>
+                      {shape.name}
+                    </div>),
+                  shape_id: shape.id
+                }
+              })}
 
               onSort={(newContentOrder) => {
                 let idOrder = newContentOrder.map(ele => ele.shape_id);
