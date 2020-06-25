@@ -623,7 +623,7 @@ let renderMethods = {
       </div>
 
       DelBtn = <BASE_COM.IconButton
-        addClass="HX0_5 width6"
+        addClass="HX0_5 width6 "
         iconType={<CloseOutlined/>}
         onClick={() => {
           let dim = dclone(dimensions);
@@ -959,19 +959,19 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
     <BASE_COM.IconButton
       dict={EC_zh_TW}
-      addClass="layout vbox"
+      addClass="layout vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.line]}}
       key="LINE"
       text="line" onClick={() => ACT_Line_Add_Mode()} />,
     <BASE_COM.IconButton
       dict={EC_zh_TW}
-      addClass="layout palatte-blue-8 vbox"
+      addClass="layout palatte-blue-8 vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.arc]}}
       key="ARC"
       text="arc" onClick={() => ACT_Arc_Add_Mode()} />,
     <BASE_COM.IconButton
       dict={EC_zh_TW}
-      addClass="layout palatte-blue-8 vbox"
+      addClass="layout palatte-blue-8 vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_point]}}
       key="APOINT"
       text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
@@ -983,13 +983,13 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
     //   text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
     <BASE_COM.IconButton
       dict={EC_zh_TW}
-      addClass="layout palatte-blue-8 vbox"
+      addClass="layout palatte-blue-8 vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.search_point]}}
       key="SPOINT"
       text="spoint" onClick={() => ACT_Search_Point_Add_Mode()} />,
     <BASE_COM.IconButton
       //iconType={<FormOutlined/>}
-      addClass="layout palatte-blue-8"
+      addClass="layout palatte-blue-8  btn-swipe"
       key="MEASURE"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure]}}
       dict={EC_zh_TW}
@@ -999,7 +999,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
     <BASE_COM.IconButton
       iconType={<EditOutlined/>}
       dict={EC_zh_TW}
-      addClass="layout palatte-blue-5 vbox"
+      addClass="layout palatte-blue-5 vbox  btn-swipe"
       key="EDIT"
       text="edit" onClick={() => ACT_Shape_Edit_Mode()} />,
     (defConf_lock_level > 2) ? null :
@@ -2014,7 +2014,7 @@ class APP_DEFCONF_MODE extends React.Component {
                   content: (
                     <div
                       key={"shape_listing_" + shape.id}
-                      className="button"
+                      className="button   btn-swipe"
                       style={{ height: "40px",backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[shape.type] }}
                       onClick={() => this.props.ACT_EDIT_TAR_UPDATE(shape)}>
                       {shape.name}
