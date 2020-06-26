@@ -282,10 +282,14 @@ void acvCalibMap::CLEAR()
 int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calibrated coord
 {
 
-  if (downSizedMapW + downSizedMapH == 0)
+  if (fwdMap==NULL && invMap==NULL)//In unset state
   {
-    return 0;
+    return 0;//No mapping would be performed
   }
+  // if (downSizedMapW + downSizedMapH == 0)
+  // {
+  //   return 0;
+  // }
   int ret;
 
   coord[0] += origin_offset.X;
@@ -337,6 +341,13 @@ int acvCalibMap::c2i(float coord[2]) //calibrated coord to real image coord
   //   printf("1:%d");
   // }
   // XX++;
+
+
+  if (fwdMap==NULL && invMap==NULL)//In unset state
+  {
+    return 0;//No mapping would be performed
+  }
+
   if (downSizedMapW + downSizedMapH == 0)
   {
     return 0;

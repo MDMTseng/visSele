@@ -2111,7 +2111,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       //     X,Y,
       //     8,255,100,255,8);
       // }
-
+      LOGE("error:%f",error);
       continue;
     }
     float mmpp = bacpac->sampler->mmpP_ideal(); //mm per pixel
@@ -2746,18 +2746,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
 
       vector<ContourFetch::ptInfo> &s_points = m_sections[0].section;
-      for (int i = 0; i < s_points.size(); i++)
-      {
-        acv_XY p = s_points[i].pt;
-        bacpac->sampler->ideal2img(&p);
-        int X = round(p.X);
-        int Y = round(p.Y);
-        {
-          originalImage->CVector[Y][X * 3] = 100;
-          originalImage->CVector[Y][X * 3 + 1] = 255;
-          originalImage->CVector[Y][X * 3 + 2] = 255;
-        }
-      }
+      // for (int i = 0; i < s_points.size(); i++)
+      // {
+      //   acv_XY p = s_points[i].pt;
+      //   bacpac->sampler->ideal2img(&p);
+      //   int X = round(p.X);
+      //   int Y = round(p.Y);
+      //   {
+      //     originalImage->CVector[Y][X * 3] = 100;
+      //     originalImage->CVector[Y][X * 3 + 1] = 255;
+      //     originalImage->CVector[Y][X * 3 + 2] = 255;
+      //   }
+      // }
 
       LOGV("s_points.size():%d", s_points.size());
       circleRefine(s_points, s_points.size(), &cf);

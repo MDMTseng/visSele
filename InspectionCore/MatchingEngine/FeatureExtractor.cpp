@@ -82,7 +82,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   }
   acv_XY center = ldData[idx].Center;
   LOGI("Find the component => idx:%d", idx);
-  LOGI(">>>Center X:%f Y:%f...", ldData[idx].Center.X, ldData[idx].Center.Y);
+  LOGI(">>> Center X:%f Y:%f...", ldData[idx].Center.X, ldData[idx].Center.Y);
   LOGI(">>>LTBound X:%f Y:%f...", ldData[idx].LTBound.X, ldData[idx].LTBound.Y);
   LOGI(">>>RBBound X:%f Y:%f...", ldData[idx].RBBound.X, ldData[idx].RBBound.Y);
   acvContourCircleSignature(img, ldData[idx], idx, signature);

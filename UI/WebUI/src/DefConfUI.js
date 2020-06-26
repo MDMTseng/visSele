@@ -1107,17 +1107,21 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       addClass="layout palatte-purple-8 vbox"
       key="INST_CHECK"
       text="INST_CHECK" onClick={() => {
-
-        let deffile = this.defFileGeneration(edit_info);
+        let deffile = defFileGeneration(edit_info);
         console.log(deffile);
-
+        deffile.intrusionSizeLimitRatio=1;
         ACT_WS_SEND(WS_ID,"II", 0, 
         {
           _PGID_:10104,
           _PGINFO_:{keep:true},
           definfo:deffile,
+          imgsrc:"__CACHE_IMG__",
           img_property:{
-            scale:2
+            calibInfo:{
+              type:"disable",
+              mmpp:deffile.featureSet[0].mmpp
+            },
+            //scale:1,
           }
         },undefined,
         {
@@ -1134,7 +1138,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
                 shape_list.forEach((shape,idx)=>{
                   let mod_shape=dclone(shape);
                   
-                  edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape, insp_rep,true);
+                  edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,shape_list, insp_rep,true);
                   //Make sure the status is not NA
                   if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
                   {
@@ -1147,6 +1151,18 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
                   console.log(shape,mod_shape);
                 })
               }
+            }
+            {
+
+              let IM=darr.find(pkt=>pkt.type=="IM");
+              if(IM!==undefined)
+              {
+                let act = BPG_Protocol.map_BPG_Packet2Act(IM);
+                console.log(IM,act)
+                if (act !== undefined)
+                  dispatch(act);
+              }
+                
             }
 
           },
@@ -1951,16 +1967,23 @@ class APP_DEFCONF_MODE extends React.Component {
               addClass="layout blue vbox"
               text="CHECK" onClick={() =>{
 
-                let deffile = this.defFileGeneration(this.props.edit_info);
+                let deffile = defFileGeneration(this.props.edit_info);
                 console.log(deffile);
+                deffile.intrusionSizeLimitRatio=1;
   
+
                 this.props.ACT_WS_SEND(this.props.WS_ID,"II", 0, 
                 {
                   _PGID_:10104,
                   _PGINFO_:{keep:true},
                   definfo:deffile,
+                  imgsrc:"__CACHE_IMG__",
                   img_property:{
-                    scale:2
+                    calibInfo:{
+                      type:"disable",
+                      mmpp:deffile.featureSet[0].mmpp
+                    },
+                    //scale:1,
                   }
                 },undefined,
                 {
@@ -1976,7 +1999,7 @@ class APP_DEFCONF_MODE extends React.Component {
                         let insp_rep = insp_reports[0];
                         let mod_shape=dclone(this.props.edit_tar_info);
                         
-                        this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape, insp_rep,true);
+                        this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,this.props.shape_list, insp_rep,true);
                         //Make sure the status is not NA
                         if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
                         {

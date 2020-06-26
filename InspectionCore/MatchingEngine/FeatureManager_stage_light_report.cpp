@@ -350,7 +350,7 @@ int backLightBlockCalc(acvImage *img, int X, int Y, int W, int H, stage_light_gr
 
   if (maxSampCount == 0)
     return -3;
-  LOGI("Min u:%f sigma:%f sigmaDiff:%f",fu_mins,fsigma_min, fsigma_max-fsigma_min);
+  //LOGI("Min u:%f sigma:%f sigmaDiff:%f",fu_mins,fsigma_min, fsigma_max-fsigma_min);
 
   ret_info->backLightMean = fu_mins;
   ret_info->backLightSigma = fsigma_min;

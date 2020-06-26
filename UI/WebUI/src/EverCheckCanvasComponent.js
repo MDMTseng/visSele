@@ -1852,7 +1852,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX - 0.5) / scale, (this.img_info.offsetY - 0.5) / scale);
+        ctx.translate((this.img_info.offsetX +0.5) / scale, (this.img_info.offsetY +0.5) / scale);
       }
       ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       ctx.drawImage(this.secCanvas, 0, 0);
@@ -1871,6 +1871,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }, []);
       }
 
+      if(false)
       inspectionReportList.forEach((report, idx) => {
         ctx.save();
         ctx.translate(report.cx, report.cy);
@@ -2217,11 +2218,15 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
+
+      let mmpp_mult = scale * mmpp;
       ctx.scale(scale * mmpp, scale * mmpp);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate(this.img_info.offsetX / scale, this.img_info.offsetY / scale);
+        ctx.translate((this.img_info.offsetX-0.5) / scale, (this.img_info.offsetY-0.5) / scale);
       }
-
+      //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
+      
+      
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }

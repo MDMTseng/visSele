@@ -223,35 +223,35 @@ class ImageSampler
   }
 
 
-  float sampleImage_IdealCoord(acvImage *img,float idealVec[2])
+  float sampleImage_IdealCoord(acvImage *img,float idealVec[2],int doNearest=1)
   {
     int ret = ideal2img(idealVec);
     acv_XY xy={X:idealVec[0],Y:idealVec[1]};
-    float sampPix=sampleImage_ImgCoord(img, idealVec);
+    float sampPix=sampleImage_ImgCoord(img, idealVec,doNearest);
     return sampPix;
   }
-  float sampleImage_IdealCoord(acvImage *img,acv_XY pos)
+  float sampleImage_IdealCoord(acvImage *img,acv_XY pos,int doNearest=1)
   {
     int ret = ideal2img(&pos);
-    return sampleImage_ImgCoord(img, pos);
+    return sampleImage_ImgCoord(img, pos,doNearest);
   }
 
-  float sampleImage_ImgCoord(acvImage *img,acv_XY pos,int samp_type=1)
+  float sampleImage_ImgCoord(acvImage *img,acv_XY pos,int doNearest=1)
   {
     //float bri = acvUnsignedMap1Sampling(img, pos,0);
     float bri;
     
-    if(samp_type==1)
+    if(doNearest==1)
       bri= acvUnsignedMap1Sampling_Nearest(img, pos,0);
-    else if (samp_type==0)
+    else if (doNearest==0)
       bri= acvUnsignedMap1Sampling(img, pos,0);
 
     return bri*sampleBackLightFactor_ImgCoord(pos);
   }
-  float sampleImage_ImgCoord(acvImage *img,float imgPos[2])
+  float sampleImage_ImgCoord(acvImage *img,float imgPos[2],int doNearest=1)
   {
     acv_XY pos={imgPos[0],imgPos[1]};
-    return sampleImage_ImgCoord(img,pos);
+    return sampleImage_ImgCoord(img,pos,doNearest);
   }
 
   float sampleAngleOffset(float angle)

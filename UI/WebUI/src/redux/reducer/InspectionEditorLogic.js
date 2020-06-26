@@ -489,7 +489,7 @@ export class InspectionEditorLogic {
   }
 
   
-  ShapeAdjustsWithInspectionResult(shape, InspResult, oriBase = false){
+  ShapeAdjustsWithInspectionResult(shape,shapeList ,InspResult, oriBase = false){
     let cos_v = Math.cos(-InspResult.rotate);
     let sin_v = Math.sin(-InspResult.rotate);
     let flip_f = (InspResult.isFlipped) ? -1 : 1;
@@ -543,8 +543,21 @@ export class InspectionEditorLogic {
 
       case SHAPE_TYPE.search_point:
         {
-          eObject.pt1.x = inspAdjObj.x;
-          eObject.pt1.y = inspAdjObj.y;
+          let vec = this.shapeVectorParse(eObject, shapeList);
+          eObject.o_pt1={
+            x:inspAdjObj.x,
+            y:inspAdjObj.y
+          };
+          let line ={
+            cx:inspAdjObj.x,
+            cy:inspAdjObj.y,
+            vx:vec.x,
+            vy:vec.y,
+          }
+          eObject.pt1 = closestPointOnLine(line, eObject.pt1);
+          // eObject.pt1.x = inspAdjObj.x;
+          // eObject.pt1.y = inspAdjObj.y;
+
           // if (InspResult.isFlipped)
           //   eObject.angleDeg = -eObject.angleDeg;
         }
@@ -576,8 +589,10 @@ export class InspectionEditorLogic {
 
   ShapeListAdjustsWithInspectionResult(shapeList, InspResult, oriBase = false) {
     shapeList.forEach((eObject) => {
-      this.ShapeAdjustsWithInspectionResult(eObject, InspResult, oriBase)
+      this.ShapeAdjustsWithInspectionResult(eObject,shapeList, InspResult, oriBase)
     });
+
+    
   }
 
 

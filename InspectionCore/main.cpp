@@ -251,7 +251,7 @@ int SaveIMGFile(const char *filename, acvImage *img)
   return -1;
 }
 
-void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler *sampler, bool doMap = true,
+void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler *sampler,int doNearest=1,
                        int X = -1, int Y = -1, int W = -1, int H = -1)
 {
   int X2 = src.GetWidth() - 1;
@@ -305,7 +305,9 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
         if (sampler)
         {
           float coord[] = {(float)src_j, (float)src_i};
-          bri = sampler->sampleImage_IdealCoord(&src, coord);
+          
+          bri = sampler->sampleImage_IdealCoord(&src, coord,doNearest);
+
           if (bri > 255)
             bri = 255;
           BSum += bri;
@@ -1051,7 +1053,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           if (strcmp(type, "__CACHE_IMG__") == 0)
           {
             LOGE("__CACHE_IMG__ %d x %d", cacheImage.GetWidth(), cacheImage.GetHeight());
-            if (cacheImage.GetWidth() * cacheImage.GetHeight() > 10)
+            if (cacheImage.GetWidth() * cacheImage.GetHeight() > 10)//HACK: just a hacky way to make sure the cache image is there
             {
               SaveIMGFile(fileName, &cacheImage);
             }
@@ -1335,6 +1337,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     }
     else if (checkTL("II", dat)) //[I]mage [I]nspection
     {
+      calib_bacpac.sampler->ignoreCalib(false);
+      neutral_bacpac.sampler->ignoreCalib(true);
+      FeatureManager_BacPac *select_bacpac=&calib_bacpac;
+      
       if (json == NULL)
       {
         snprintf(err_str, sizeof(err_str), "JSON parse failed LINE:%04d", __LINE__);
@@ -1344,22 +1350,27 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
       do
       {
-
         char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
         LOGI("Load Image from %s", imgSrcPath);
         acvImage *srcImg = NULL;
+
+        
         if (imgSrcPath != NULL)
         {
-
-          int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
-          if (ret_val == 0)
+          if (strcmp(imgSrcPath, "__CACHE_IMG__") == 0)
           {
+            tmp_buff.ReSize(&cacheImage);
+            acvCloneImage(&cacheImage, &tmp_buff,-1);
             srcImg = &tmp_buff;
           }
+          else
+          {
+            int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
+            if (ret_val == 0)
+              srcImg = &tmp_buff;
+          }
         }
-
-
-        if (srcImg == NULL)
+        else if(srcImg == NULL)
         {
           mainThreadLock.unlock();//
           LOGI("Do camera Fetch..");
@@ -1396,10 +1407,62 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           break;
         }
 
+
+        
+        cJSON *img_property = JFetch_OBJECT(json, "img_property");
+        if(img_property)
+        {
+
+          char* calibInfo_type= JFetch_STRING(img_property,"calibInfo.type");
+          
+
+          LOGI("calibInfo_type:%s",calibInfo_type);
+          if(calibInfo_type==NULL)
+          {
+
+          }
+          else if (strcmp(calibInfo_type, "neutral") == 0 || strcmp(calibInfo_type, "disable") == 0 )
+          {
+            
+            double *mmpp=JFetch_NUMBER(img_property,"calibInfo.mmpp");//The mmpp has to be set
+            if(mmpp)
+            {
+              select_bacpac=&neutral_bacpac;
+              neutral_bacpac.sampler->getCalibMap()->calibPpB=(*mmpp);
+              neutral_bacpac.sampler->getCalibMap()->calibmmpB=1;
+            }
+            else
+            {
+              select_bacpac=NULL;
+              
+              break;
+            }
+          }
+          else if (true||strcmp(calibInfo_type, "default") == 0)//since it's default...
+          {
+            select_bacpac=&calib_bacpac;
+          } 
+        }
+
+
         char *jsonStr = NULL;
         if (defInfo)
         {
           jsonStr = cJSON_Print(defInfo);
+          
+          // {
+          //   neutral_bacpac.sampler->getCalibMap()->calibPpB=NAN;
+          //   double *tmpN=JFetch_NUMBER(defInfo,"featureSet[0].cam_param.ppb2b");
+          //   if(tmpN)
+          //     neutral_bacpac.sampler->getCalibMap()->calibPpB=*tmpN;
+          // }
+
+          // {
+          //   neutral_bacpac.sampler->getCalibMap()->calibmmpB=NAN;
+          //   double *tmpN=JFetch_NUMBER(defInfo,"featureSet[0].cam_param.mmpb2b");
+          //   if(tmpN)
+          //     neutral_bacpac.sampler->getCalibMap()->calibmmpB=*tmpN;
+          // }
         }
         else
         {
@@ -1417,12 +1480,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         DatCH_Data datCH_BPG =
             BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
 
-        bpg_dat = GenStrBPGData("DF", jsonStr);
-        bpg_dat.pgID = dat->pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        self->SendData(datCH_BPG);
+        // bpg_dat = GenStrBPGData("DF", jsonStr);
+        // bpg_dat.pgID = dat->pgID;
+        // datCH_BPG.data.p_BPG_data = &bpg_dat;
+        // self->SendData(datCH_BPG);
 
-        int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr,&calib_bacpac);
+        //SaveIMGFile("data/TMP__.png",srcImg);
+        int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr,select_bacpac);
         free(jsonStr);
 
         try
@@ -1459,7 +1523,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           break;
         }
 
-        cJSON *img_property = JFetch_OBJECT(json, "img_property");
         if(img_property)
         {
           int _scale=2;
@@ -1467,21 +1530,24 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           if(pscale)
           {
             _scale=(int)*pscale;
-          }
-          bpg_dat = GenStrBPGData("IM", NULL);
-          BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
-          //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+            
+            bpg_dat = GenStrBPGData("IM", NULL);
+            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
+            //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
-          ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler);
-          bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-          bpg_dat.callback = DatCH_BPG_acvImage_Send;
-          bpg_dat.pgID = dat->pgID;
-          datCH_BPG.data.p_BPG_data = &bpg_dat;
-          self->SendData(datCH_BPG);
+            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler);
+            bpg_dat.callbackInfo = (uint8_t *)&iminfo;
+            bpg_dat.callback = DatCH_BPG_acvImage_Send;
+            bpg_dat.pgID = dat->pgID;
+            datCH_BPG.data.p_BPG_data = &bpg_dat;
+            self->SendData(datCH_BPG);
+          }
         }
         session_ACK = true;
 
       } while (false);
+      
+      calib_bacpac.sampler->ignoreCalib(false);
     }
     else if (checkTL("CI", dat) || checkTL("FI", dat)) //[C]ontinuous [I]nspection / [F]ull [I]nspection
     {
@@ -1616,6 +1682,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     else if (checkTL("EX", dat))
     {
       LOGI("Trigger.......");
+      calib_bacpac.sampler->ignoreCalib(false);
 
       {
 
@@ -1658,14 +1725,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           srcImg = camera->GetFrame();
           cacheImage.ReSize(srcImg);
           //acvCloneImage(srcImg, &cacheImage, -1);
-          ImageDownSampling(cacheImage, *srcImg,1, calib_bacpac.sampler);
+          calib_bacpac.sampler->ignoreCalib(false);
+          ImageDownSampling(cacheImage, *srcImg,1, calib_bacpac.sampler,false);
           //SaveIMGFile("data/test1.bmp",srcImg);
         }
 
         try
         {
 
-          ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json",&calib_bacpac);
+          ImgInspection_DefRead(matchingEng, &cacheImage, 1, "data/featureDetect.json",&calib_bacpac);
           const FeatureReport *report = matchingEng.GetReport();
 
           if (report != NULL)
@@ -1702,13 +1770,17 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         bpg_dat = GenStrBPGData("IM", NULL);
         BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : 2};
         //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler);
+        
+        calib_bacpac.sampler->ignoreCalib(true);
+        ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler,true);
+        
         bpg_dat.callbackInfo = (uint8_t *)&iminfo;
         bpg_dat.callback = DatCH_BPG_acvImage_Send;
         bpg_dat.pgID = dat->pgID;
         datCH_BPG.data.p_BPG_data = &bpg_dat;
         BPG_protocol->SendData(datCH_BPG);
       }
+      calib_bacpac.sampler->ignoreCalib(false);
 
       session_ACK = true;
     }
@@ -2028,6 +2100,9 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
     return ret;
     //throw new std::runtime_error("LoadCameraCalibrationFile ERROR");
   }
+  neutral_bacpac.sampler->getCalibMap()->calibmmpB=calib_bacpac.sampler->getCalibMap()->calibmmpB;
+  neutral_bacpac.sampler->getCalibMap()->calibPpB=calib_bacpac.sampler->getCalibMap()->calibPpB;//set mmpp
+
 
   if (calib_bacpac.sampler)
   {
@@ -2485,8 +2560,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       int cropW = ImageCropW;
       int cropH = ImageCropH;
 
+      ImageSampler *sampler=(downSampWithCalib)?bacpac->sampler:NULL;
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff, capImg, iminfo.scale, bacpac->sampler, downSampWithCalib,
+      ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,0,
                         iminfo.offsetX, iminfo.offsetY, cropW, cropH);
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
       bpg_dat.callback = DatCH_BPG_acvImage_Send;
@@ -3031,6 +3107,7 @@ int testCode()
 int main(int argc, char **argv)
 {
   calib_bacpac.sampler = new ImageSampler();
+  neutral_bacpac.sampler = new ImageSampler();
 
   // int sret = LoadCameraCalibrationFile("data/default_camera_param.json",calib_bacpac.sampler);
   // acv_XY xy={20,30};

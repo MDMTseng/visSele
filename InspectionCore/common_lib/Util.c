@@ -54,6 +54,11 @@ int getDataFromJsonObj(cJSON * obj,const char *name,void **ret_ptr)
 
 int getDataFromJson(cJSON * obj,char *path,void **ret_ptr)
 {
+  void *dummy_target;
+  if(ret_ptr==NULL)
+  {
+    ret_ptr=&dummy_target;
+  }
   char buff[64];//HACK no check
   if(strlen(path)>sizeof(buff))return -1;
   strcpy(buff,path);
