@@ -2417,7 +2417,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           {
             float diff = acvDistance_Signed(tmp_line, s_points[i].pt);
             float abs_diff = (diff < 0) ? -diff : diff;
-            if (abs_diff > 2)
+            if (abs_diff > 5)
             {
               //s_points[j].edgeRsp=0;
               continue;
@@ -2463,8 +2463,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
           }
 
           std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp); //
-
+          LOGI("distThres:%f",s_points[s_points.size() / 3].tmp);
           float distThres = s_points[s_points.size() / 3].tmp + 3;
+          
+          // float distThres = s_points[s_points.size() / 3].tmp*1.1;
           LOGV("sort finish size:%d, distThres:%f", s_points.size(), distThres);
 
           // for(int n=s_points.size()/3;n<s_points.size();n++)

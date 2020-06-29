@@ -647,7 +647,7 @@ void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg
 
 }
 
-int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response);
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int jump,acv_XY *ret_point_opt,float *ret_edge_response);
 int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,float thres,acv_XY *ret_point_opt,float *ret_edge_response);
 
 void spline9X(float *f,float *x,int fL,float *s,float *h)
@@ -721,13 +721,31 @@ void spline9_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
     float h[L],a,b,c,d,s[L]={0},x[L];
     n = fL;
 
+
+    // for(i=0;i<n;i++)
+    // {
+    //   h[i]=f[i];
+    // }
+    
+    // float darkWeight=10;
+    // float brightWeight=0.1;
+
+    // for(i=1;i<n;i++)
+    // {
+    //   float boost=((h[i-1]+h[i])/2.0/255)*(brightWeight-darkWeight)+darkWeight;
+
+    //   f[i]=f[i-1]+(h[i]-h[i-1])*boost;
+    // }
+
+
     for(i=0;i<n;i++)
     {
         x[i]=i;
-        //printf("%f\n",f[i]);
+        // printf("(%f,%f) ",f[i],h[i]);
     }
+    // printf("\n>>");
 
-    spline9X(f,x,fL,s,h);
+    // spline9X(f,x,fL,s,h);
 
 
 
@@ -751,8 +769,6 @@ void spline9_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
           (6*a*c+4*b*b)/3 +
           (4*c*b)/2+
           (c*c)/1;//Integeral(pow(f',2),0,1)
-
-    
         float edgeCentral = 
           (9*a*a)/6 + 
           (12*a*b)/5 + 
@@ -780,8 +796,6 @@ void spline9_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
             //printf("cross: offset:%f\n",i+offset);
         }
     }
-
-
 
     float edgeSide1 = 0;
     float edgeSide2 = 0;
@@ -878,21 +892,90 @@ void spline9_max(float *f,int fL,int div,float *ret_maxf,float *ret_maxf_x)
     *ret_maxf = maxf;
 
 }
-int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_point_opt,float *ret_edge_response,FeatureManager_BacPac *bacpac=NULL)
+
+
+void simple_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
+{
+  if(ret_edge_response)*ret_edge_response=10;
+  float center=0;
+  if(edgeX)*edgeX=center;
+
+  float maxEdge=0;
+  float maxEdgeIdx=-1;
+  
+  float edgeBoostS=1;
+  float edgeBoostE=1;
+  for(int i=1;i<fL-1;i++)
+  {
+    float boost=(f[i]/255.0);
+    //boost=pow(boost,2);
+    boost= edgeBoostS+boost*(edgeBoostE-edgeBoostS);
+    float edge = (f[i+1]-f[i-1])*boost;//Positive edge only
+    if(maxEdge<edge)
+    {
+      maxEdge=edge;
+      maxEdgeIdx=i;
+    }
+  }
+
+  if(edgeX)*edgeX=maxEdgeIdx;
+  if(ret_edge_response)*ret_edge_response=maxEdge;
+}
+
+void smooth_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
+{
+  if(ret_edge_response)*ret_edge_response=10;
+  float center=0;
+  if(edgeX)*edgeX=center;
+
+  float maxEdge=0;
+  float maxEdgeIdx=-1;
+  
+  float edgeBoostS=1;
+  float edgeBoostE=1;
+  float weightSum=0;
+  float weightedEdgeSum=0;
+  for(int i=1;i<fL-1;i++)
+  {
+    float boost=(f[i]/255.0);
+    //boost=pow(boost,2);
+    boost= edgeBoostS+boost*(edgeBoostE-edgeBoostS);
+    float edge = (f[i+1]-f[i-1])*boost;//Positive edge only
+
+    weightedEdgeSum=edge*i;
+    weightSum+=edge;
+
+
+    if(maxEdge<edge)
+    {
+      maxEdge=edge;
+      maxEdgeIdx=i;
+    }
+  }
+  maxEdgeIdx=weightedEdgeSum/=weightSum;
+  maxEdge = weightedEdgeSum/(fL-2);
+  if(edgeX)*edgeX=maxEdgeIdx;
+  if(ret_edge_response)*ret_edge_response=maxEdge;
+}
+
+int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,float jump,acv_XY *ret_point_opt,float *ret_edge_response,FeatureManager_BacPac *bacpac=NULL)
 {
   if(ret_point_opt==NULL)return -1;
-  
   *ret_point_opt = point;
   *ret_edge_response = 1;
-  const int GradTableL=7;
+  const int GradTableL=(2*4)+1;
   float gradTable[GradTableL]={0};
 
   //curpoint = point -(GradTableL-1)*gVec/2
   gradVec = acvVecNormalize(gradVec);
-
+  gradVec.X*=jump;
+  gradVec.Y*=jump;
   
   const int nM=3;
   acv_XY nvec = {X:gradVec.Y,Y:-gradVec.X};
+  const float sideJump=1.5;
+  nvec.X*=sideJump;
+  nvec.Y*=sideJump;
   acv_XY nvecBM = acvVecMult(nvec,-(float)(nM-1)/2);
   
   //gradVec= acvVecMult(gradVec,1);
@@ -931,33 +1014,12 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,acv_XY *ret_
   }
 
   float edgeX;
-  spline9_edge(gradTable,GradTableL,&edgeX,ret_edge_response);
-
-
-  
-  /*for(int i=0;i<GradTableL;i++)
-  {
-    printf("%5.2f ",gradTable[i]);
-    //gradTable[i]=0;
-  }
-  printf("...edgeX:%f ret_edge_rsp:%f\n",edgeX,*ret_edge_response);
-  */
-  //LOGV("<<%f",edgeX);
+  simple_edge(gradTable,GradTableL,&edgeX,ret_edge_response);
   if(edgeX!=edgeX)//NAN
   {
     return -1;
   }
-  /*
-  LOGV("%f %f %f %f %f %f %f <= %f",
-  gradTable[0],
-  gradTable[1],
-  gradTable[2],
-  gradTable[3],
-  gradTable[4],
-  gradTable[5],
-  gradTable[6],
-  edgeX
-  );*/
+
   gradVec = acvVecMult(gradVec,edgeX);
   *ret_point_opt = acvVecAdd(bkpoint,gradVec);
 
@@ -1205,7 +1267,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
             {
 
               float edgeResponse;
-              acv_XY ret_point_opt;
+              acv_XY ret_point_opt={0};
               acv_XY sobel = pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,2);
               edge_grid.tmpXYSeq[k].sobel=sobel;
 
@@ -1217,10 +1279,13 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
               // int ret_val = EdgePointOpt2(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,
               //   edge_grid.tmpXYSeq[k].pt,3,thres,&ret_point_opt,&edgeResponse);
 
-              int ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,edge_grid.tmpXYSeq[k].pt,
+              int ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,edge_grid.tmpXYSeq[k].pt,1,
                 &ret_point_opt,&edgeResponse,bacpac);//,FeatureManager_BacPac *bacpac
 
-
+              // LOGI("(%f,%f)_",ret_point_opt.X,ret_point_opt.Y);
+              // ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,ret_point_opt,1,
+              //   &ret_point_opt,&edgeResponse,bacpac);//,FeatureManager_BacPac *bacpac
+              // LOGI("(%f,%f):edgeResponse:%f",ret_point_opt.X,ret_point_opt.Y,edgeResponse);
 
               edge_grid.tmpXYSeq[k].pt=ret_point_opt;
               edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
