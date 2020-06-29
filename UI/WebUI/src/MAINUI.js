@@ -1027,13 +1027,13 @@ class APPMain extends React.Component {
           content: null,
           onSelected: this.props.EV_UI_Edit_Mode
         },
-        Inspect: {
-          icon: <ScanOutlined />,
-          content: null,
-          onSelected: () => {
-            this.props.EV_UI_Insp_Mode();
-          }
-        },
+        // Inspect: {
+        //   icon: <ScanOutlined />,
+        //   content: null,
+        //   onSelected: () => {
+        //     this.props.EV_UI_Insp_Mode();
+        //   }
+        // },
 
         SDD: {
           icon: <DatabaseOutlined />,

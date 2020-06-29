@@ -1018,7 +1018,11 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
               var enc = new TextEncoder();
               let report = defFileGeneration(edit_info);
-
+              if(report.name===undefined || report.name.length==0)
+              {
+                report.name=fileName;
+                ACT_DefFileName_Update(fileName)
+              }
               ACT_DefFileHash_Update(report.featureSet_sha1);
               console.log("ACT_Report_Save");
               ACT_Report_Save(WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
