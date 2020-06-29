@@ -294,7 +294,7 @@ function AngleDegAcc({ value, onChange,target,lastKey, props }) {
     onChange(target, "input-number", { target: { value: ( num).toFixed(4) } })
   }
   let translateKey = GetObjElement(props.dict, [props.dictTheme, lastKey]);
-  log.info(props.dict,props.dictTheme,lastKey,translateKey);
+  //log.info(props.dict,props.dictTheme,lastKey,translateKey);
 
   if (translateKey === undefined) 
     translateKey = GetObjElement(props.dict, ["fallback", lastKey]);
