@@ -61,8 +61,9 @@ import {
   DatabaseOutlined,
   QrcodeOutlined,
   FundOutlined,
-  CaretRightOutlined } from '@ant-design/icons';
-
+  CaretRightOutlined,
+  CloudServerOutlined,
+  CloseCircleTwoTone } from '@ant-design/icons';
 
 import Menu from 'antd/lib/menu';
 import Button from 'antd/lib/button';
@@ -520,9 +521,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const dispatch = useDispatch();
   const ACT_Def_Model_Path_Update= (path) => dispatch(UIAct.Def_Model_Path_Update(path));
   const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
- 
+  const ACT_InspOptionalTag_Update= (newTags) => dispatch(DefConfAct.InspOptionalTag_Update(newTags));
   
-  const [machineSetPopUp,setMachineSetPopUp]=useState(undefined);
+  const [InfoPopUp,setInfoPopUp]=useState(undefined);
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   
   const [stepIdx,setStepIdx]=useState(0);
@@ -542,15 +543,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   }
   DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
 
-  const moveStepIdxBack=(toIdx)=>{
-    if(toIdx<=stepIdx)
-    {
-      setStepIdx(toIdx);
-      
-      return true;
-    }
-    return false;
-  }
   if(caruselRef.current!==undefined)
   {
     caruselRef.current.goTo(stepIdx);
@@ -562,22 +554,98 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   }
 
   
+  function loadMachineSettingPopUp()
+  {
+    
+    let popUpUIInfo = {
+      title: "機台設定",
+      onOK: undefined,
+      onCancel: undefined,
+      content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
 
+        let tarDef = cusDispInfo.targetDeffiles[0];
+        let filePath = tarDef.path;
+        if (filePath === undefined) return;
+        filePath = filePath.replace("." + DEF_EXTENSION, "");
+        setInfoPopUp(undefined);
+        ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },undefined,{
+          resolve:(stacked_pkts,action_channal)=>{
+            let SS=stacked_pkts.find(pkt=>pkt.type=="SS");
+            console.log(stacked_pkts,SS);
+            if(SS===undefined)return;
+            let DF=stacked_pkts.find(pkt=>pkt.type=="DF");
+            let IM=stacked_pkts.find(pkt=>pkt.type=="IM");
+            console.log(SS,DF,IM);
+            if(SS.data.ACK==true && DF!==undefined && IM!==undefined)
+            {
+              let setTags = [];
+              try {
+                setTags = tarDef.tags.split(",");
+
+              }
+              catch (e) {
+                setTags = [];
+              }
+              ACT_InspOptionalTag_Update(setTags)
+              ACT_Def_Model_Path_Update(filePath);
+              action_channal(stacked_pkts);
+              
+            }
+            else
+            {
+              
+              let errPopUpUIInfo = {
+                title: "錯誤",
+                onOK: undefined,
+                onCancel: undefined,
+              content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
+                <CloseCircleTwoTone twoToneColor="#FF0000"/>找不到檔案:{filePath}
+                </Title></div>
+              }
+              setTimeout(()=>setInfoPopUp(errPopUpUIInfo),100);
+            }
+          }, 
+          reject:()=>{
+
+          }
+        });
+
+      }} />
+    }
+    setInfoPopUp(popUpUIInfo);
+  }
 
   let UI_Stack=[];
 
   let isOK;
-
+  let isStillOK=true;
+  
+  let OKJumpTo=0;
+  const stepJump=(toIdx)=>{
+    if(toIdx>OKJumpTo)
+      return false;
+    setStepIdx(toIdx);
+    return true;
+  }
   {//1st page
     
     isOK=DefFileHash!==undefined;
+    if(!isOK)isStillOK=false;
+    else if(isStillOK)
+      OKJumpTo++;
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step0" addClass="width12 height12 overlayCon" fixedFrame={true}>
         
         <CanvasComponent_rdx className="s height12" />
+        
+        <div className="overlay" style={{left:"15px",top:"15px"}}>
+
+          <TagDisplay_rdx className="s width12 HXA" />
+        </div>
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
           {/* <Button style={{"pointer-events": "auto"}}>120px to affix top</Button> */}
-
+          
+          
           <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
             style={{"pointer-events": "auto"}} icon={<FolderOpenOutlined/> } type="text"
             onClick={() => {
@@ -627,6 +695,13 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               groups:fileGroups
             });
           }}/>
+
+
+          
+          <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
+            style={{"pointer-events": "auto"}} icon={<CloudServerOutlined/> } type="text"
+            onClick={loadMachineSettingPopUp}
+            ></Button>
           <Popover 
             style={{"pointer-events": "auto"}}
             content={
@@ -650,44 +725,19 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     );
   }
 
-  console.log(stepIdx,UI_Stack.length,isOK);
+  //console.log(stepIdx,UI_Stack.length,isOK);
 
   {  
     isOK=isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
+    
+    if(!isOK)isStillOK=false;
+    else if(isStillOK)
+      OKJumpTo++;
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
 
         <TagDisplay_rdx className="s width12 HXA" />
-        <Button size="large" onClick={() => {
-
-          let popUpUIInfo = {
-            title: "機台設定",
-            onOK: () => { },
-            onCancel: () => { },
-            content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
-
-              let tarDef = cusDispInfo.targetDeffiles[0];
-              let filePath = tarDef.path;
-              if (filePath === undefined) return;
-              filePath = filePath.replace("." + DEF_EXTENSION, "");
-              setMachineSetPopUp(undefined);
-              ACT_Def_Model_Path_Update(filePath);
-              ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
-
-              let setTags = [];
-              try {
-                setTags = tarDef.tags.split(",");
-
-              }
-              catch (e) {
-                setTags = [];
-              }
-              ACT_InspOptionalTag_Update(setTags)
-
-            }} />
-          }
-          setMachineSetPopUp(popUpUIInfo);
-          }}>機台設定選擇</Button>
+        <Button size="large" onClick={loadMachineSettingPopUp}>機台設定選擇</Button>
 
         <TagOptions_rdx className="s width12 HXA" />
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
@@ -707,6 +757,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   }
       
   
+  if(false)isStillOK=false;
+  else if(isStillOK)
+    OKJumpTo++;
   UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step2" addClass="width12 height12" fixedFrame={true}>
         {/* <Title className="veleXY">GO GO GO</Title> */}
@@ -736,7 +789,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     flexFlow: "column"
    }} >
       
-    <Steps current={stepIdx} size="small"  onChange={moveStepIdxBack} style={{flex:" 0 1 auto"}}>
+    <Steps current={stepIdx} size="small"  onChange={stepJump} style={{flex:" 0 1 auto"}}>
       <Step title={LANG_DICT.mainui.select_deffile} description={LANG_DICT.mainui.select_deffile_detail}/>
       <Step title={LANG_DICT.mainui.set_insp_tags} description={LANG_DICT.mainui.set_insp_tags_detail} />
       <Step title={LANG_DICT.mainui.GOGOGO} description={LANG_DICT.mainui.GOGOGO_detail} />
@@ -793,19 +846,21 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
 
       <Modal
-        title={machineSetPopUp === undefined ? "" : machineSetPopUp.title}
-        visible={machineSetPopUp !== undefined}
+        title={InfoPopUp === undefined ? "" : InfoPopUp.title}
+        visible={InfoPopUp !== undefined}
+        
+        footer={(InfoPopUp!==undefined && InfoPopUp.onOK===undefined &&  InfoPopUp.onCancel===undefined)?null:undefined}
         onOk={() => {
-          machineSetPopUp.onOK();
-          setMachineSetPopUp(undefined);
+          if(InfoPopUp.onOK!==undefined)InfoPopUp.onOK();
+          setInfoPopUp(undefined);
         }}
         onCancel={() => {
-          machineSetPopUp.onCancel();
-          setMachineSetPopUp(undefined);
+          if(InfoPopUp.onCancel!==undefined)InfoPopUp.onCancel();
+          setInfoPopUp(undefined);
         }}
       >
-        {machineSetPopUp === undefined ?
-          null : machineSetPopUp.content}
+        {InfoPopUp === undefined ?
+          null : InfoPopUp.content}
       </Modal>
 
   </div>

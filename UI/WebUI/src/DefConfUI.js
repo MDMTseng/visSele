@@ -439,13 +439,14 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
   function translateForward(text_id) {
     let translatedExp = text_id;
-    let regexMatchIdBlock = /\[([^\[^\]])+\]/g;
+    let regexMatchIdBlock = /\[([^\[^\]]+)\]/g;
     let idErrSet = [];
     let idOKSet = [];
     let matchInfo;
     while ((matchInfo = regexMatchIdBlock.exec(translatedExp)) !== null) {
       let idx_str = matchInfo[1];
       let idx_wBr = matchInfo[0];
+      
       let translateInfo = measureIDInfo.find(info => parseInt(idx_str) === info.id)//str is string, id is integer
 
       let setInfo = {
@@ -508,8 +509,8 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
     />
     <Button key="xx" className="s vbox black"
       onClick={_ => {
-
-        const { selectionStart, selectionEnd } = inputEl.current.textAreaRef;
+        console.log(inputEl)
+        const { selectionStart, selectionEnd } = inputEl.current;
         let true_idx = untranslatedIdx(translatedExp, selectionStart);
         staticObj.current.insertIdx = true_idx;
         //console.log(translatedExp,selectionStart,fxExp, true_idx);
@@ -999,7 +1000,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
     <BASE_COM.IconButton
       iconType={<EditOutlined/>}
       dict={EC_zh_TW}
-      addClass="layout palatte-blue-5 vbox  btn-swipe"
+      addClass="layout palatte-blue-5 vbox "
       key="EDIT"
       text="edit" onClick={() => ACT_Shape_Edit_Mode()} />,
     (defConf_lock_level > 2) ? null :
@@ -1733,7 +1734,10 @@ class APP_DEFCONF_MODE extends React.Component {
               MenuSet.push(<BASE_COM.IconButton
                 dict={EC_zh_TW}
                 key={"MSUB__" + key}
-                addClass="layout red vbox"
+                addClass="layout red vbox btn-swipe"
+                style={{ backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure] }}
+
+
                 text={key} onClick={(data, btn) => {
                   console.log(btn.props.text);
                   this.props.ACT_EDIT_TAR_ELE_CAND_UPDATE(btn.props.text);
