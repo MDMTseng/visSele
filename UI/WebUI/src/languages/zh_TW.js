@@ -43,7 +43,11 @@ export default {
         setting:"設定",
 
     },
-    
+    connection:{
+      server_connected:"已連結伺服器",
+      server_disconnected:"斷線!! 數據不會上傳",
+      connect:"連線"
+    },
     measure:{
 
       back_value_setup:"背面目標設定",

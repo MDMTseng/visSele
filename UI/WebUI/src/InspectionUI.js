@@ -37,7 +37,24 @@ import InputNumber from 'antd/lib/input-number';
 import Select from 'antd/lib/select';
 import Button, { default as AntButton } from 'antd/lib/button';
 import Menu from 'antd/lib/menu';
-import Icon from 'antd/lib/icon';
+
+
+import { 
+  DisconnectOutlined,
+  LinkOutlined,
+  TagsOutlined,
+  HeartTwoTone
+
+} from '@ant-design/icons';
+
+import { 
+  FullscreenOutlined,
+  PaperClipOutlined,
+  SettingOutlined,
+  CaretDownOutlined,
+  } from '@ant-design/icons';
+
+
 import Divider from 'antd/lib/divider';
 
 import Chart from 'chart.js';
@@ -50,6 +67,8 @@ import Dropdown from 'antd/lib/Dropdown'
 import Typography from 'antd/lib/typography';
 const { Paragraph, Title } = Typography;
 
+
+let _DICT_=EC_zh_TW;
 // import Tag from 'antd/lib/tag';
 // import Select from 'antd/lib/select';
 // import Menu from 'antd/lib/menu';
@@ -455,7 +474,7 @@ class InspectionResultDisplay extends React.Component {
     return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height: 70 }}>
       <div className="s width8  HXF">
         <div className="s vbox height4">
-          <Icon type="fullscreen" onClick={this.clickFullScreen.bind(this)} />
+          <FullscreenOutlined onClick={this.clickFullScreen.bind(this)} />
           {rep.name}
         </div>
         <div className="s vbox  height8" style={{ 'fontSize': 25 }}>
@@ -656,7 +675,7 @@ class ObjInfoList extends React.Component {
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
           title={
             <span>
-              <Icon type="paper-clip" />
+              <PaperClipOutlined />
               <span>
                 {idx} <OK_NG_BOX detailStatus={finalResult} />
               </span>
@@ -682,7 +701,7 @@ class ObjInfoList extends React.Component {
           // defaultOpenKeys={['functionMenu']}
           mode="inline">
           <SubMenu style={{ 'textAlign': 'left' }} key="functionMenu"
-            title={<span><Icon type="setting" />平台功能操作</span>}>
+            title={<span><SettingOutlined />平台功能操作</span>}>
             <MicroFullInspCtrl_rdx
               url={"ws://192.168.2.43:5213"}
             />
@@ -771,9 +790,10 @@ class MicroFullInspCtrl extends React.Component {
           onClick={() => {
             this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
               { msg: { type: "PING", id: 443 } });
-          }}>{this.props.uInspData.alive == 0 ?
-            <Icon type="heart" /> :
-            <Icon type="heart" theme="twoTone" twoToneColor="#eb2f96" />}</Button>
+          }}>
+            <HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?"#eb2f96":undefined}/>
+            
+        </Button>
       );
 
 
@@ -995,7 +1015,7 @@ class MicroFullInspCtrl extends React.Component {
               onClick={() => {
                 this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                   { ip: "192.168.2.43", port: 5213 });
-              }}>連線</Button>
+              }}>{_DICT_.connection.connect}</Button>
         }
 
 
@@ -1653,7 +1673,7 @@ class AngledCalibrationHelper extends React.Component {
         {this.state.target_measure === undefined ?
           "SELECT" :
           ">>>" + this.state.target_measure.name}
-        <Icon type="down" />
+        <CaretDownOutlined />
       </a>
     </Dropdown>
     return <div className={this.props.className}>
@@ -1846,10 +1866,10 @@ class APP_INSP_MODE extends React.Component {
         text="<" onClick={this.props.ACT_EXIT} />
       ,
       <BASE_COM.IconButton
-        iconType={this.state.DB_Conn_state == 1 ? "disconnect-outlined" : "link-outlined"}
+        iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
         key="LOADDef"
         addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
-        text={this.state.DB_Conn_state == 1 ? "已連結伺服器" : "斷線!! 數據不會上傳"}
+        text={this.state.DB_Conn_state == 1 ? _DICT_.connection.server_connected: _DICT_.connection.server_disconnected}
         onClick={() => { }} />
       ,
 
@@ -1857,7 +1877,7 @@ class APP_INSP_MODE extends React.Component {
         {<Tag className="large" color="red" key="MACH">{this.props.machTag}</Tag>}
         {this.props.defModelTag.map(tag => <Tag className="large" color="red">{tag}</Tag>)}
         {this.props.inspOptionalTag.map(tag => <Tag className="large" color="green">{tag}</Tag>)}
-        {<Tag className="large" color="gray" onClick={() => onTagEdit()}><Icon type="tags-o" /></Tag>}
+        {<Tag className="large" color="gray" onClick={() => onTagEdit()}><TagsOutlined /></Tag>}
       </div>
 
       ,
@@ -1959,7 +1979,7 @@ class APP_INSP_MODE extends React.Component {
     MenuSet_2nd.push(<Dropdown overlay={menu_}>
       <a className="HX1 layout palatte-blue-8 vbox width6" href="#">
         {this.state.ROI_key}
-        <Icon type="down" />
+        <CaretDownOutlined />
       </a>
     </Dropdown>);
 
@@ -2028,7 +2048,7 @@ class APP_INSP_MODE extends React.Component {
           <SubMenu key="sss"
             className="s overlay overlayright scroll HXA WXA"
             style={{ color: '#333' }}
-            title={<Icon type="setting" />}>
+            title={<SettingOutlined />}>
 
             <div key={"MENU"} className={"s HXA"}
               style={{ width: "250px" }}>
