@@ -114,7 +114,7 @@ class renderUTIL {
       base_Size: 5,
       size_Multiplier: 1,
       mmpp: 0.1,
-      font_Base_Size: 1,
+      font_Base_Size: 1.1,
       font_Style: "bold ",
       
 
@@ -225,6 +225,10 @@ class renderUTIL {
     ctx.lineWidth = size / 2;
     ctx.strokeStyle = strokeStyle_bk;
     this._drawpoint(ctx, point, type, 2 * size);
+  }
+  
+  drawcross(ctx, point, size = this.getPointSize()) {
+    this._drawpoint(ctx, point, "cross", 2 * size);
   }
 
   drawInherentShapeList(ctx, inherentShapeList) {
@@ -341,7 +345,7 @@ class renderUTIL {
       this.draw_Text(ctx, value, fontPx, 0, Y_offset);
     }
 
-    fontPx /= 2;
+    fontPx *=0.7;
 
     if(this.renderParam.measureInfoText.showLU==true)
     {
@@ -1116,7 +1120,7 @@ class renderUTIL {
         case SHAPE_TYPE.search_point:
           {
             ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
-            this.drawpoint(ctx, eObject.o_pt1, "cross", this.getPointSize());
+            this.drawcross(ctx, eObject.pt1, this.getPointSize()*3);
 
             ctx.lineWidth = this.getIndicationLineSize();
           }
@@ -1149,7 +1153,7 @@ class renderUTIL {
               ctx.stroke();
               ctx.setLineDash([]);
               ctx.strokeStyle = "gray";
-              this.drawpoint(ctx, point, "cross");
+              this.drawcross(ctx, point, this.getPointSize()*2);
             }
           }
           break;
@@ -2102,7 +2106,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   SetShape(shape_obj, id) {
-    console.log();
+    // console.log();
     this.tmp_EditShape_id = id;
     this.EmitEvent(DefConfAct.Shape_Set({ shape: shape_obj, id: id }));
   }
