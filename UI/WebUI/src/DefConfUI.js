@@ -52,6 +52,7 @@ import {
   ExportOutlined,
   SettingOutlined,
   CameraOutlined,
+  ArrowLeftOutlined,
 
 
 } from '@ant-design/icons';
@@ -879,6 +880,36 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
 }
 
 
+function modShapeCleanUp(mod_shape)
+{
+  if(mod_shape.inspection_status===BPG_Protocol.INSPECTION_STATUS.NA||
+    mod_shape.type===UIAct.SHAPE_TYPE.measure
+    )
+  {//if it's NA then ignore this
+    return undefined;
+  }
+
+  delete mod_shape["inspection_value"]
+  delete mod_shape["inspection_status"]
+  console.log(mod_shape);
+  if(mod_shape.type==UIAct.SHAPE_TYPE.search_point)
+  {
+    console.log(mod_shape.pt1,mod_shape.adj_pt1);
+    mod_shape.pt1.x=mod_shape.adj_pt1.x;
+    mod_shape.pt1.y=mod_shape.adj_pt1.y;
+    delete mod_shape["adj_pt1"]
+    delete mod_shape["o_pt1"]
+  }
+  return mod_shape;
+
+
+
+
+  
+}
+
+
+
 function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 {
   
@@ -886,7 +917,8 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   const dispatch = useDispatch();
   const ACT_EXIT=(arg) =>dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT)) ;
 
-
+  const ACT_Shape_List_Update=(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist));
+  
   const ACT_Line_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Line_Create)) };
   const ACT_Arc_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Arc_Create)) };
   const ACT_Search_Point_Add_Mode= (arg) => { dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.Search_Point_Create)) };
@@ -936,10 +968,11 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
   let MenuSet= [
     <BASE_COM.IconButton
+      iconType={<ArrowLeftOutlined/>}
       dict={EC_zh_TW}
       key="<"
       addClass="layout black vbox"
-      text="<" onClick={() => ACT_EXIT()} />,
+      onClick={() => ACT_EXIT()} />,
 
     <BASE_COM.JsonEditBlock object={{ DefFileName: edit_info.DefFileName }}
       dict={EC_zh_TW}
@@ -1133,30 +1166,39 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           resolve:(darr,mainFlow)=>{
             console.log(darr);
             let RP=darr.find(pkt=>pkt.type=="RP");
+
             if(RP!==undefined)
             {
               let insp_reports = GetObjElement(RP,["data","reports",0,"reports"]);
               console.log(insp_reports);
-              if(insp_reports.length>0)
+              if(insp_reports!==undefined&&  insp_reports.length>0)
               {
                 let insp_rep = insp_reports[0];
-                shape_list.forEach((shape,idx)=>{
+                let modList = shape_list.map((shape,idx)=>{
                   let mod_shape=dclone(shape);
                   
                   edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,shape_list, insp_rep,true);
-                  //Make sure the status is not NA
-                  if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
-                  {
-                    shape_list[idx]=mod_shape;
-                  }
-                  delete shape_list[idx]["inspection_value"]
-                  delete shape_list[idx]["inspection_status"]
-                  // delete mod_shape["inspection_value"]
-                  // delete mod_shape["inspection_status"]
-                  console.log(shape,mod_shape);
-                })
+
+                  mod_shape=modShapeCleanUp(mod_shape);
+                  if(mod_shape!==undefined)
+                    return mod_shape;
+                  else
+                    return dclone(shape)
+                });
+
+                console.log(modList);
+                ACT_Shape_List_Update(modList);
+                // dispatch(DefConfAct.Shape_List_Update([]))
+                // modList.forEach((adj_shape,index)=>{
+                //   // console.log(adj_shape,adj_shape.id);
+                //   // setTimeout(()=>
+                //   //   SetShape(adj_shape,adj_shape.id)
+                //   // ,100*index)
+                //   SetShape(adj_shape,adj_shape.id);
+                // })
               }
             }
+            
             {
 
               let IM=darr.find(pkt=>pkt.type=="IM");
@@ -1662,14 +1704,15 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
         
         menu_height = "HXA";
-        MenuSet=<DEFCONF_MODE_NEUTRAL_UI WS_DEF_DB_Insert={this.WS_DEF_DB_Insert}/>
+        MenuSet=<DEFCONF_MODE_NEUTRAL_UI WS_DEF_DB_Insert={this.WS_DEF_DB_Insert} />
 
         break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         MenuSet = [
-          <BASE_COM.Button
+          <BASE_COM.IconButton
+            iconType={<ArrowLeftOutlined/>}
             addClass="layout black vbox width4"
-            key="<" text="<" onClick={() => this.props.ACT_Fail()} />,
+            key="<" onClick={() => this.props.ACT_Fail()} />,
           <div key="MEASURE" className="s width8 lblue vbox">MEASURE</div>,
         ];
 
@@ -1769,9 +1812,10 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:
         MenuSet = [
           <BASE_COM.IconButton
+            iconType={<ArrowLeftOutlined/>}
             dict={EC_zh_TW}
             addClass="layout black vbox width4"
-            key="<" text="<" onClick={() => this.props.ACT_Fail()} />,
+            key="<" onClick={() => this.props.ACT_Fail()} />,
           <div key="LINE" className="s width8 lred vbox">LINE</div>,
         ];
 
@@ -1779,10 +1823,11 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:
         MenuSet = [
           <BASE_COM.IconButton
+            iconType={<ArrowLeftOutlined/>}
             dict={EC_zh_TW}
             addClass="layout black vbox width4"
             key="<"
-            text="<" onClick={() => this.props.ACT_Fail()} />,
+            onClick={() => this.props.ACT_Fail()} />,
           <div key="ARC" className="s width8 lred vbox">ARC</div>
         ];
         break;
@@ -1792,7 +1837,9 @@ class APP_DEFCONF_MODE extends React.Component {
           <BASE_COM.IconButton
             dict={EC_zh_TW}
             addClass="layout black vbox"
-            key="<" text="<" onClick={() => this.props.ACT_Fail()} />,
+            key="<" 
+            iconType={<ArrowLeftOutlined/>}
+            onClick={() => this.props.ACT_Fail()} />,
           <div key="SEARCH_POINT" className="s lred vbox">SPOINT</div>,
         ];
         if (this.props.edit_tar_info != null) {
@@ -1820,7 +1867,8 @@ class APP_DEFCONF_MODE extends React.Component {
           MenuSet = [
             <BASE_COM.Button
               addClass="layout black vbox"
-              key="<" text="<" onClick={() => this.props.ACT_Fail()} />,
+              key="<" 
+            iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
             <div key="AUX_POINT" className="s lred vbox">APOINT</div>,
           ];
 
@@ -1857,7 +1905,8 @@ class APP_DEFCONF_MODE extends React.Component {
           MenuSet = [
             <BASE_COM.Button
               addClass="layout black vbox"
-              key="<" text="<" onClick={() => this.props.ACT_Fail()} />,
+              key="<" 
+            iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
             <div key="AUX_POINT" className="s lred vbox">ALINE</div>,
           ];
 
@@ -1892,7 +1941,9 @@ class APP_DEFCONF_MODE extends React.Component {
           <BASE_COM.Button
             key="<"
             addClass="layout black vbox width4"
-            text="<" onClick={() => this.props.ACT_Fail()} />,
+            
+            iconType={<ArrowLeftOutlined/>}
+            onClick={() => this.props.ACT_Fail()} />,
 
           <div key="EDIT_Text" className="s width8 lblue vbox">EDIT</div>,
           <div key="HLINE" className="s HX0_1"></div>
@@ -2008,15 +2059,22 @@ class APP_DEFCONF_MODE extends React.Component {
                         let mod_shape=dclone(this.props.edit_tar_info);
                         
                         this.props.edit_info._obj.ShapeAdjustsWithInspectionResult(mod_shape,this.props.shape_list, insp_rep,true);
-                        //Make sure the status is not NA
-                        if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
+
+                        
+                        mod_shape=modShapeCleanUp(mod_shape);
+                        if(mod_shape!==undefined)
                         {
-                          //this.props.shape_list[idx]=mod_shape;
-                          
-                          delete mod_shape["inspection_value"]
-                          delete mod_shape["inspection_status"]
                           this.ec_canvas.SetShape(mod_shape, mod_shape.id);
                         }
+                        //Make sure the status is not NA
+                        // if(mod_shape.inspection_status!==BPG_Protocol.INSPECTION_STATUS.NA)
+                        // {
+                        //   //this.props.shape_list[idx]=mod_shape;
+                          
+                        //   delete mod_shape["inspection_value"]
+                        //   delete mod_shape["inspection_status"]
+                        //   this.ec_canvas.SetShape(mod_shape, mod_shape.id);
+                        // }
                         
                         //console.log(shape,mod_shape);
                         

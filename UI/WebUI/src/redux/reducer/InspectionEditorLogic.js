@@ -503,13 +503,31 @@ export class InspectionEditorLogic {
     }
     eObject.inspection_status = inspAdjObj.status;
 
+    function pointForwardTrans(_pt)
+    {
+      let pt={x:_pt.x,y:_pt.y};
+      pt = PtRotate2d_sc(pt, sin_v, cos_v, flip_f);
+      pt.x += InspResult.cx;
+      pt.y += InspResult.cy;
+      return pt;
+    }
 
-
+    function pointInvTrans(_pt)
+    {
+      let pt={x:_pt.x,y:_pt.y};
+      pt.x -= InspResult.cx;
+      pt.y -= InspResult.cy;
+      if (flip_f < 0) {
+        pt = PtRotate2d_sc(pt, sin_v, cos_v, flip_f);
+      }
+      else {
+        pt = PtRotate2d_sc(pt, -sin_v, cos_v, 1);
+      }
+      return pt;
+    }
     ["pt1", "pt2", "pt3"].forEach((key) => {
       if (eObject[key] === undefined) return;
-      eObject[key] = PtRotate2d_sc(eObject[key], sin_v, cos_v, flip_f);
-      eObject[key].x += InspResult.cx;
-      eObject[key].y += InspResult.cy;
+      eObject[key] = pointForwardTrans(eObject[key]);
     });
 
     switch (eObject.type) {
@@ -544,7 +562,7 @@ export class InspectionEditorLogic {
       case SHAPE_TYPE.search_point:
         {
           let vec = this.shapeVectorParse(eObject, shapeList);
-          eObject.o_pt1={
+          let o_pt1={
             x:inspAdjObj.x,
             y:inspAdjObj.y
           };
@@ -554,14 +572,31 @@ export class InspectionEditorLogic {
             vx:vec.x,
             vy:vec.y,
           }
-          eObject.pt1 = closestPointOnLine(line, eObject.pt1);
-          // eObject.pt1.x = inspAdjObj.x;
-          // eObject.pt1.y = inspAdjObj.y;
-
-          // if (InspResult.isFlipped)
-          //   eObject.angleDeg = -eObject.angleDeg;
+          eObject.adj_pt1 = closestPointOnLine(line, eObject.pt1);
+          
+          if (oriBase)//rotate back to original orientation
+          {
+            eObject.adj_pt1= pointInvTrans(eObject.adj_pt1);
+          }
+          eObject.pt1=o_pt1;
+          // {
+          //   let vec = this.shapeVectorParse(eObject, shapeList);
+          //   let line ={
+          //     cx:inspAdjObj.x,
+          //     cy:inspAdjObj.y,
+          //     vx:vec.x,
+          //     vy:vec.y,
+          //   }
+          //   // console.log({...eObject.pt1});
+          //   eObject.adj_pt1 = closestPointOnLine(line, eObject.pt1);
+          //   // console.log({...eObject.adj_pt1},{...inspAdjObj});
+          //   eObject.pt1.x=inspAdjObj.x;
+          //   eObject.pt1.y=inspAdjObj.y;
+          // }
         }
         break;
+
+        
 
 
       case SHAPE_TYPE.measure:
@@ -575,14 +610,8 @@ export class InspectionEditorLogic {
     {
       ["pt1", "pt2", "pt3"].forEach((key) => {
         if (eObject[key] === undefined) return;
-        eObject[key].x -= InspResult.cx;
-        eObject[key].y -= InspResult.cy;
-        if (flip_f < 0) {
-          eObject[key] = PtRotate2d_sc(eObject[key], sin_v, cos_v, -1);
-        }
-        else {
-          eObject[key] = PtRotate2d_sc(eObject[key], -sin_v, cos_v, 1);
-        }
+        
+        eObject[key] = pointInvTrans(eObject[key]);
       });
     }
   }

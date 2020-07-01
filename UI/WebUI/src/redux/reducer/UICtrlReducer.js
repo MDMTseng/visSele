@@ -1098,6 +1098,9 @@ function StateReducer(newState, action) {
               }
               let newID = action.data.id;
               //log.info("newID:",newID);
+              let ShapeOnId =
+                  newState.edit_info._obj.FindShapeIdx(newID);
+
               let shape = newState.edit_info._obj.SetShape(action.data.shape, newID);
               newState.edit_info.list = newState.edit_info._obj.shapeList;
 
@@ -1107,16 +1110,19 @@ function StateReducer(newState, action) {
               newState.edit_info.inherentShapeList =
                 newState.edit_info._obj.UpdateInherentShapeList();
               if (newID !== undefined) {//If this time it's not for adding new shape(ie, newID is not undefined)
-                let tmpTarIdx =
-                  newState.edit_info._obj.FindShapeIdx(newID);
-                //log.info(tmpTarIdx);
-                if (tmpTarIdx === undefined)//In this case we delete the shape in the list 
+                if(ShapeOnId===undefined)
                 {
-                  newState.edit_info.edit_tar_info = null;
-                }
-                else {//Otherwise, we deepcopy the shape
-                  newState.edit_info.edit_tar_info =
-                    dclone(newState.edit_info.list[tmpTarIdx]);
+                  let tmpTarIdx =
+                    newState.edit_info._obj.FindShapeIdx(newID);
+                  //log.info(tmpTarIdx);
+                  if (tmpTarIdx === undefined)//In this case we delete the shape in the list 
+                  {
+                    newState.edit_info.edit_tar_info = null;
+                  }
+                  else {//Otherwise, we deepcopy the shape
+                    newState.edit_info.edit_tar_info =
+                      dclone(newState.edit_info.list[tmpTarIdx]);
+                  }
                 }
               }
               else {//We just added a shape, set it as an edit target
