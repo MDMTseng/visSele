@@ -640,7 +640,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         
         <div className="overlay" style={{left:"15px",top:"15px"}}>
 
-          <TagDisplay_rdx className="s width12 HXA" />
+          <TagDisplay_rdx closable className="s width12 HXA" />
         </div>
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
           {/* <Button style={{"pointer-events": "auto"}}>120px to affix top</Button> */}
@@ -708,7 +708,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             !isOK?null:
             <QR_Canvas className="veleX" style={{height:"100%"}}
                     onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_w_info} />} 
-                    trigger={!isOK?"??":"hover"}>
+            trigger={!isOK?"??":"hover"}>
             <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!isOK} icon={<QrcodeOutlined/> }/>
           </Popover>
 
@@ -736,7 +736,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
 
-        <TagDisplay_rdx className="s width12 HXA" />
+        <TagDisplay_rdx closable className="s WXA HXA" />
         <Button size="large" onClick={loadMachineSettingPopUp}>機台設定選擇</Button>
 
         <TagOptions_rdx className="s width12 HXA" />

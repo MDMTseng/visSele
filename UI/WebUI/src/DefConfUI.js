@@ -1865,7 +1865,7 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_POINT_CREATE:
         {
           MenuSet = [
-            <BASE_COM.Button
+            <BASE_COM.IconButton
               addClass="layout black vbox"
               key="<" 
             iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
@@ -1903,7 +1903,7 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
         {
           MenuSet = [
-            <BASE_COM.Button
+            <BASE_COM.IconButton
               addClass="layout black vbox"
               key="<" 
             iconType={<ArrowLeftOutlined/>} onClick={() => this.props.ACT_Fail()} />,
@@ -1938,7 +1938,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         MenuSet = [
-          <BASE_COM.Button
+          <BASE_COM.IconButton
             key="<"
             addClass="layout black vbox width4"
             

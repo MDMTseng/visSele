@@ -18,6 +18,7 @@ import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'REDUX_STORE_SRC/
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
+import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 //import Plot from 'react-plotly.js';
 //import {Doughnut} from 'react-chartjs-2';
 
@@ -29,6 +30,7 @@ import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
 import Slider from 'antd/lib/Slider';
 
+import Popover from 'antd/lib/popover';
 import Table from 'antd/lib/table';
 import Switch from 'antd/lib/switch';
 import Tag from 'antd/lib/tag';
@@ -41,18 +43,18 @@ import Menu from 'antd/lib/menu';
 
 import { 
   DisconnectOutlined,
+  FileOutlined,
   LinkOutlined,
   TagsOutlined,
-  HeartTwoTone
-
-} from '@ant-design/icons';
-
-import { 
+  HeartTwoTone,
+  ArrowLeftOutlined,
   FullscreenOutlined,
   PaperClipOutlined,
   SettingOutlined,
   CaretDownOutlined,
-  } from '@ant-design/icons';
+
+} from '@ant-design/icons';
+
 
 
 import Divider from 'antd/lib/divider';
@@ -723,12 +725,11 @@ class MicroFullInspCtrl extends React.Component {
       settingPanelVisible: false
     }
     this.prevConnectedState = 0;
-
   }
   componentWillMount() {
     this.ping_interval = setInterval(() => {
 
-      if (this.props.uInspData.connected) {
+      if (false && this.props.uInspData.connected) {
         this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
           { msg: { type: "PING", id: 443 } });
       }
@@ -782,6 +783,7 @@ class MicroFullInspCtrl extends React.Component {
   render() {
 
     let ctrlPanel = [];
+    console.log(this.props.uInspMachineInfo,this.props.uInspData);
     if (this.props.uInspMachineInfo !== undefined && this.props.uInspData.connected) {
       let machineInfo = this.props.uInspMachineInfo;
 
@@ -791,7 +793,7 @@ class MicroFullInspCtrl extends React.Component {
             this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
               { msg: { type: "PING", id: 443 } });
           }}>
-            <HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?"#eb2f96":undefined}/>
+            <HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>
             
         </Button>
       );
@@ -1858,12 +1860,25 @@ class APP_INSP_MODE extends React.Component {
           </Modal>
         ]
       });
+
+    let shortedModelName=this.props.defModelName.length<23?
+      this.props.defModelName.length:
+      this.props.defModelName.substring(0, 20)+"..."
+    console.log(">>>>defModelName>>>>>"+this.props.defModelName);
     MenuSet = [
       <BASE_COM.IconButton
-        dict={EC_zh_TW}
+        iconType={<ArrowLeftOutlined />}
+        dict={_DICT_}
         key="<"
         addClass="layout black vbox"
-        text="<" onClick={this.props.ACT_EXIT} />
+        onClick={this.props.ACT_EXIT} />
+      ,
+      
+      <Popover content={<div>{this.props.defModelName} </div>}  placement="bottomLeft"  trigger="hover">
+        <div style={{backgroundColor:"#444"}}> <FileOutlined/> {shortedModelName} </div>
+       
+      </Popover>
+
       ,
       <BASE_COM.IconButton
         iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
@@ -1874,10 +1889,9 @@ class APP_INSP_MODE extends React.Component {
       ,
 
       <div className="s black width12 HXA">
-        {<Tag className="large" color="red" key="MACH">{this.props.machTag}</Tag>}
-        {this.props.defModelTag.map(tag => <Tag className="large" color="red">{tag}</Tag>)}
-        {this.props.inspOptionalTag.map(tag => <Tag className="large" color="green">{tag}</Tag>)}
-        {<Tag className="large" color="gray" onClick={() => onTagEdit()}><TagsOutlined /></Tag>}
+        <TagDisplay_rdx/>
+        
+        {/* {<Tag className="large" color="gray" onClick={() => onTagEdit()}><TagsOutlined /></Tag>} */}
       </div>
 
       ,
@@ -1924,7 +1938,7 @@ class APP_INSP_MODE extends React.Component {
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={EC_zh_TW}
+        dict={_DICT_}
         iconType="up-square"
         key="DoImageTransfer"
         addClass="layout palatte-blue-8 vbox"
@@ -1935,7 +1949,7 @@ class APP_INSP_MODE extends React.Component {
         } />);
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={EC_zh_TW}
+        dict={_DICT_}
         iconType="bar-chart"
         key="Info Graphs"
         addClass="layout black vbox"
@@ -1946,7 +1960,7 @@ class APP_INSP_MODE extends React.Component {
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={EC_zh_TW}
+        dict={_DICT_}
         iconType="up-square"
         key="ZOOM OUT"
         iconType="zoom-out"
@@ -2084,6 +2098,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     shape_list: state.UIData.edit_info.list,
     info_decorator: state.UIData.edit_info.__decorator,
     defModelName: state.UIData.edit_info.DefFileName,
+    
     defModelTag: state.UIData.edit_info.DefFileTag,
     machine_custom_setting: state.UIData.machine_custom_setting,
     machTag: state.UIData.MachTag,

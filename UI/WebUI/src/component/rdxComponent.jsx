@@ -110,7 +110,7 @@ class TagDisplay extends React.Component{
       {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed" key={tag+"_dfTag"}>{tag}</Tag>)}
 
       {this.props.inspOptionalTag.map(curTag=>
-        <Tag closable className="large InspTag optional"  key={curTag+"_inspOptTag"} onClose={(e)=>{
+        <Tag closable={this.props.closable} className="large InspTag optional"  key={curTag+"_inspOptTag"} onClose={(e)=>{
           e.preventDefault();
           let tagToDelete=curTag;
           let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
