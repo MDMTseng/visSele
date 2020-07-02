@@ -729,7 +729,7 @@ class MicroFullInspCtrl extends React.Component {
   componentWillMount() {
     this.ping_interval = setInterval(() => {
 
-      if (false && this.props.uInspData.connected) {
+      if (this.props.uInspData.connected) {
         this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
           { msg: { type: "PING", id: 443 } });
       }
