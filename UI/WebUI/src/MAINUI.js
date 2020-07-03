@@ -897,49 +897,6 @@ class APPMain extends React.Component {
   componentDidMount() {
     let defModelPath = this.props.defModelPath;
 
-
-    setTimeout(()=>{
-      new Promise((resolve, reject) => {
-        console.log(">>>")
-        this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
-          { filename: "data/machine_setting.json" },
-          undefined, { resolve, reject });
-      }).then((data) => {
-        if (data[0].type == "FL") {
-          let info = data[0].data;
-          
-          this.props.ACT_Machine_Custom_Setting_Update(info);
-        }
-      }).catch((err) => {
-        console.log(err);
-
-        
-      })
-      
-      
-
-
-        
-      console.log("data/machine_info");
-      new Promise((resolve, reject) => {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
-          { filename: "data/machine_info" },
-          undefined, { resolve, reject });
-      }).then((data) => {
-        console.log(data);
-        if (data[0].type == "FL") {
-          let info = data[0].data;
-          if (info.length < 16) {
-            this.props.ACT_MachTag_Update(info);
-          }
-        }
-      }).catch((err) => {
-        console.log(err);
-      })
-
-    },1000);
-    
-
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -1327,13 +1284,11 @@ class APPMain extends React.Component {
             onCalibFinished={(finalReport) => {
               console.log(">>>>>>>>>",finalReport)
               if(finalReport===undefined)return;
-              setTimeout(() => {
-                var enc = new TextEncoder();
-                this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
-                  { filename: "data/stageLightReport.json" },
-                  enc.encode(JSON.stringify(finalReport, null, 2)))
-                console.log(finalReport)
-              }, 100)
+              var enc = new TextEncoder();
+              this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
+                { filename: "data/stageLightReport.json" },
+                enc.encode(JSON.stringify(finalReport, null, 2)))
+              console.log(finalReport)
             }} />,
           onSelected: genericMenuItemCBsCB
         },
@@ -1415,12 +1370,10 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Edit_Mode: (arg) => { dispatch(UIAct.EV_UI_Edit_Mode()) },
     EV_UI_Insp_Mode: () => { dispatch(UIAct.EV_UI_Insp_Mode()) },
     EV_UI_Analysis_Mode: () => { dispatch(UIAct.EV_UI_Analysis_Mode()) },
-    ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
 
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
-    ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
     ACT_Report_Save: (id, fileName, content) => {
       let act = UIAct.EV_WS_SEND(id, "SV", 0,
         { filename: fileName },

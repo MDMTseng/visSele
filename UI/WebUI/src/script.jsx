@@ -430,6 +430,8 @@ class APPMasterX extends React.Component {
 
       ACT_Version_Map_Update: (mapInfo) => dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
 
+      ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
+      ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
     }
   }
   static mapStateToProps(state) {
@@ -502,9 +504,7 @@ class APPMasterX extends React.Component {
               this.props.ACT_WS_SEND(this.props.WS_ID, "HR", 0, { a: ["d"] });
               //Just for teesting
 
-              setTimeout(() => {
-                this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" });
-              }, 1000);
+              this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" });
 
 
               this.props.ACT_WS_SEND(this.props.WS_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
@@ -530,6 +530,33 @@ class APPMasterX extends React.Component {
                   log.error(err);
                 }
               });
+
+            
+                
+              this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+              { filename: "data/machine_setting.json" },
+              undefined, 
+              {resolve: (data) => {
+                console.log(data);
+                if (data[0].type == "FL") {
+                  let info = data[0].data;
+                  this.props.ACT_Machine_Custom_Setting_Update(info);
+                }
+              }});
+          
+              this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+                { filename: "data/machine_info" },
+                undefined, 
+                {resolve: (data) => {
+                  console.log(data);
+                  if (data[0].type == "FL") {
+                    let info = data[0].data;
+                    if (info.length < 16) {
+                      this.props.ACT_MachTag_Update(info);
+                    }
+                  }
+                }});
+              
             }
 
           case "SS":
@@ -646,7 +673,6 @@ class APPMasterX extends React.Component {
       onerror: (ev, ws_obj) => {
       },
       send: (data, ws_obj, promiseCBs) => {
-
 
         let PGID = undefined;
         let PGINFO = undefined;
