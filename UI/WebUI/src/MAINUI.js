@@ -643,11 +643,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <TagDisplay_rdx closable className="s width12 HXA" />
         </div>
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
-          {/* <Button style={{"pointer-events": "auto"}}>120px to affix top</Button> */}
+          {/* <Button style={{"pointerEvents": "auto"}}>120px to affix top</Button> */}
           
           
           <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
-            style={{"pointer-events": "auto"}} icon={<FolderOpenOutlined/> } type="text"
+            style={{"pointerEvents": "auto"}} icon={<FolderOpenOutlined/> } type="text"
             onClick={() => {
             let fileSelectedCallBack =
               (filePath, fileInfo) => {
@@ -699,11 +699,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
           
           <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
-            style={{"pointer-events": "auto"}} icon={<CloudServerOutlined/> } type="text"
+            style={{"pointerEvents": "auto"}} icon={<CloudServerOutlined/> } type="text"
             onClick={loadMachineSettingPopUp}
             ></Button>
           <Popover 
-            style={{"pointer-events": "auto"}}
+            style={{"pointerEvents": "auto"}}
             content={
             !isOK?null:
             <QR_Canvas className="veleX" style={{height:"100%"}}
@@ -715,7 +715,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           
           
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            style={{"pointer-events": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
+            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
             onClick={()=>stepInc()}/>
 
 
@@ -744,7 +744,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
             
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            style={{"pointer-events": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
+            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
             onClick={()=>{
               stepInc()
               }}/>

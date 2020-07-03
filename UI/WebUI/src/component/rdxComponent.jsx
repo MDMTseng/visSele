@@ -183,7 +183,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill}) 
 
   let returnUI= <div className={className}>
     {
-    tagGroups.map((group)=>{
+    tagGroups.map((group,g_idx)=>{
       let matchCount=inspOptionalTag.reduce((count,tag)=>(group.tags.indexOf(tag)>-1)?count+1:count,0);
       let isFullFill=true;
       if(group.maxCount!==undefined && matchCount>group.maxCount)
@@ -196,13 +196,13 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill}) 
       }
 
       return[
-      <Divider orientation="left">{isFullFill?acceptIcon:warnIcon}{"  "}{group.name}</Divider>,
-        group.tags.map((tag,tag_idx)=>{
-          let idxOf= inspOptionalTag.indexOf(tag);
-          let is_cur_checked =idxOf > -1;
-          
-          
-          return <Tag key={tag+"_essTag"} 
+      <Divider orientation="left" key={"divd_"+group.name+" "+g_idx}>
+        {isFullFill?acceptIcon:warnIcon}{"  "}{group.name}
+      </Divider>
+      ,group.tags.map((tag,tag_idx)=>{
+        let idxOf= inspOptionalTag.indexOf(tag);
+        let is_cur_checked =idxOf > -1;
+        return <Tag key={tag+"_essTag_"+tag_idx} 
             checked={is_cur_checked}
             color= {is_cur_checked?"#108ee9":"default"}
             onClick={()=>{

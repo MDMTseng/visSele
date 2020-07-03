@@ -218,43 +218,45 @@ function StateReducer(newState, action) {
 
 
     case UISEV.Version_Map_Update:
-      log.info("Version_Map_Update", action.data);
-      let version_map_info = action.data;
-      version_map_info.webUI_info = APP_INFO;
-
-      {
-        let core_info = version_map_info.core_info;
-        version_map_info.recommend_ver = {};
-        let coreVersion = core_info.version;
-        if (coreVersion === undefined) {
-          coreVersion = "0.0.0";
-        }
-        let WebUI_Version = version_map_info.core2wui[coreVersion];
-
-        if (WebUI_Version !== undefined && WebUI_Version.ver !== undefined) {
-          let versions = WebUI_Version.ver;
-
-          let webUI_resource = "http://hyv.idcircle.me";
-          if (core_info.webUI_resource !== undefined) webUI_resource = core_info.webUI_resource;
-
-          let localV = semver.clean(APP_INFO.version);
-
-          let maxV = versions
-            .map(ver => semver.clean(ver))
-            .reduce((maxV, ver) => semver.gt(maxV, ver) ? maxV : ver);
-          let hasNewVer = semver.gt(maxV, localV);
-
-          if (hasNewVer) {
-            version_map_info.recommend_info = {
-              versions,
-              url: webUI_resource + "/" + versions[versions.length - 1]
-            }
-          }
-        }
-
-      }
-      newState = { ...newState, version_map_info };
       return newState;
+      // log.info("Version_Map_Update");
+      // log.info(action.data);
+      // let version_map_info = action.data;
+      // version_map_info.webUI_info = APP_INFO;
+
+      // {
+      //   let core_info = version_map_info.core_info;
+      //   version_map_info.recommend_ver = {};
+      //   let coreVersion = core_info.version;
+      //   if (coreVersion === undefined) {
+      //     coreVersion = "0.0.0";
+      //   }
+      //   let WebUI_Version = version_map_info.core2wui[coreVersion];
+
+      //   if (WebUI_Version !== undefined && WebUI_Version.ver !== undefined) {
+      //     let versions = WebUI_Version.ver;
+
+      //     let webUI_resource = "http://hyv.idcircle.me";
+      //     if (core_info.webUI_resource !== undefined) webUI_resource = core_info.webUI_resource;
+
+      //     let localV = semver.clean(APP_INFO.version);
+
+      //     let maxV = versions
+      //       .map(ver => semver.clean(ver))
+      //       .reduce((maxV, ver) => semver.gt(maxV, ver) ? maxV : ver);
+      //     let hasNewVer = semver.gt(maxV, localV);
+
+      //     if (hasNewVer) {
+      //       version_map_info.recommend_info = {
+      //         versions,
+      //         url: webUI_resource + "/" + versions[versions.length - 1]
+      //       }
+      //     }
+      //   }
+
+      // }
+      // newState = { ...newState, version_map_info };
+      // return newState;
 
     case UISEV.Disonnected:
       newState.WS_CH = undefined;

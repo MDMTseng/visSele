@@ -17,12 +17,13 @@ import CSSTransitionGroup from 'react-transition-group/CSSTransitionGroup';
 let $CTG=CSSTransitionGroup;
 //import {XSGraph} from './xstate_visual';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
+import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
 import { xstate_GetCurrentMainState, websocket_autoReconnect,
   websocket_reqTrack} from 'UTIL/MISC_Util';
 import { MWWS_EVENT } from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
-import LocaleProvider from 'antd/lib/locale-provider';
+// import LocaleProvider from 'antd/lib/locale-provider';
 
 import APPMain_rdx from './MAINUI';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
@@ -54,7 +55,28 @@ console.log(navigator)
 function getRandom(min = 0, max = 1000000) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 };
+
+
+function checkUpdateInfo(updateInfo)
+{
+  console.log(updateInfo);
+  let plat = navigator.platform.toLowerCase();
+  let tar_asset=undefined;
+  if(plat=="macintel")
+  {
+    tar_asset=updateInfo.assets.find(asset=>asset.name.endsWith("mac.zip"))
+  }
+  else if(plat=="win32" || plat=="win64")
+  {
+    tar_asset=updateInfo.assets.find(asset=>asset.name.endsWith("win.zip"))
+  }
+  return tar_asset;
+}
+
+
 function Boot_CTRL_UI({URL,triggerHide}) {
+  
+  let url="https://api.github.com/repos/MDMTseng/visSele/releases/latest";
   const comp_info = React.useRef({});
   
   const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
@@ -122,16 +144,6 @@ function Boot_CTRL_UI({URL,triggerHide}) {
     },5000)
 
     
-    let url = "http://hyv.idcircle.me"
-    url += "/version.jsonp?rand=" + getRandom();
-
-    jsonp(url, { name: "hyv_version_map" }, (err, data) => {
-      console.log(data)
-    });
-
-
-
-
     let rec_ws=new websocket_autoReconnect(URL,3000);
     rec_ws.onreconnection = (reconnectionCounter) => {
       //log.info("onreconnection" + reconnectionCounter);
@@ -139,10 +151,7 @@ function Boot_CTRL_UI({URL,triggerHide}) {
       
       return true;
     }; 
-    // rec_ws.onconnectiontimeout = () =>{ 
-    //   log.info("boot_daemon_ws:onconnectiontimeout");
-    //   this.setState({BOOT_DAEMON_readyState:_boot_daemon_ws.readyState});
-    // }
+
     let _boot_daemon_ws = new websocket_reqTrack(rec_ws,"cmd_id");
 
     _boot_daemon_ws.onmessage =(data)=>{
@@ -156,9 +165,11 @@ function Boot_CTRL_UI({URL,triggerHide}) {
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
 
 
+
+      
       Promise.all([
         _boot_daemon_ws.send_obj({"type":"get_version"}),
-        _boot_daemon_ws.send_obj({"type":"http_get","url":"https://api.github.com/repos/MDMTseng/visSele/releases/latest"})])
+        _boot_daemon_ws.send_obj({"type":"http_get","url":url})])
         .then((data)=>{
           console.log(" >>>>>>:",data);
           if(data[0].ACK ==false || data[1].ACK ==false )
@@ -167,77 +178,43 @@ function Boot_CTRL_UI({URL,triggerHide}) {
           }
           data[1].obj=JSON.parse(data[1].text);
 
-
-          
-          let plat = navigator.platform.toLowerCase();
-          let tar_asset=undefined;
-          if(plat=="macintel")
-          {
-            tar_asset=data[1].obj.assets.find(asset=>asset.name.endsWith("mac.zip"))
-          }
-          else if(plat=="win32" || plat=="win64")
-          {
-            tar_asset=data[1].obj.assets.find(asset=>asset.name.endsWith("win.zip"))
-          }
-
+          let tar_asset=checkUpdateInfo(data[1].obj);
           if(tar_asset===undefined)
           {
             //No supported OS
             return;
           }
-          data[1].obj.tar_asset=tar_asset;
-          
-
-
-          let lv=data[0].version;
-          if(lv===undefined)
-          {
-            lv="0.0.0"
-          }
-          let rv=semver.clean(data[1].obj.name);
-
-          console.log(" local_version:",lv)
-          console.log("remote_version:",rv)
-          console.log("remote_info:",data[1].obj)
-          console.log("gt lt:",semver.gt(rv, lv),semver.lt(rv, lv))
-          
-          if(semver.gt(rv, lv))
-          {
-            setLatestReleaseInfo(data[1].obj);
-          }
+          setLatestReleaseInfo(data[1].obj);
           return
-          // let maxV = versions
-          //   .map(ver => semver.clean(ver))
-          //   .reduce((maxV, ver) => semver.gt(maxV, ver) ? maxV : ver);
-          // let hasNewVer = semver.gt(maxV, localV);
-
-
         })
         .catch((err)=>{
           console.log(err)
         })
+
+
+      
 
 
       _boot_daemon_ws.send_obj({"type":"get_UI_url"})
-        .then((data)=>{
-          console.log("get_UI_url:",data)
-          let url="file:///"+data.url;
-          
-          console.log(window.location.href+">>>"+url)
-          let curUrl=window.location.href;
-          let dstUrl=url;
-          curUrl=curUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
-          dstUrl=dstUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
+      .then((data)=>{
+        console.log("get_UI_url:",data)
+        let url="file:///"+data.url;
+        
+        console.log(window.location.href+">>>"+url)
+        let curUrl=window.location.href;
+        let dstUrl=url;
+        curUrl=curUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
+        dstUrl=dstUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
 
-          if(curUrl!==dstUrl)
-          {
-            setUI_url(url);
-            window.location.href=url
-          }
-        })
-        .catch((err)=>{
-          console.log(err)
-        })
+        if(curUrl!==dstUrl)
+        {
+          setUI_url(url);
+          window.location.href=url
+        }
+      })
+      .catch((err)=>{
+        console.log(err)
+      })
 
       return true;
     };
@@ -292,6 +269,29 @@ function Boot_CTRL_UI({URL,triggerHide}) {
         }}>APP UNKNOWN</Button>
       break;
   }
+
+
+
+
+      // data[1].obj.tar_asset=tar_asset;
+      // let lv=data[0].version;
+      // if(lv===undefined)
+      // {
+      //   lv="0.0.0"
+      // }
+      // let rv=semver.clean(data[1].obj.name);
+
+      // console.log(" local_version:",lv)
+      // console.log("remote_version:",rv)
+      // console.log("remote_info:",data[1].obj)
+      // console.log("gt lt:",semver.gt(rv, lv),semver.lt(rv, lv))
+      
+      // if(semver.gt(rv, lv))
+      // {
+      //   setLatestReleaseInfo(data[1].obj);
+      // }
+
+
   return (
   <BASE_COM.CardFrameWarp 
     addClass={"width7 height10 overlay SMGraph "+((!hidePanel)?"":"hide")} 
@@ -491,14 +491,14 @@ class APPMasterX extends React.Component {
             {
               {
                 let HR = BPG_Protocol.raw2obj(evt);
-                let url = HR.data.webUI_resource;
-                if (url === undefined) url = "http://hyv.idcircle.me"
-                url += "/version.jsonp?rand=" + getRandom();
+                // let url = HR.data.webUI_resource;
+                // if (url === undefined) url = "http://hyv.idcircle.me"
+                // url += "/version.jsonp?rand=" + getRandom();
 
-                jsonp(url, { name: "hyv_version_map" }, (err, data) => {
-                  data.core_info = HR.data;
-                  this.props.ACT_Version_Map_Update(data);
-                });
+                // jsonp(url, { name: "hyv_version_map" }, (err, data) => {
+                //   data.core_info = HR.data;
+                //   this.props.ACT_Version_Map_Update(data);
+                // });
               }
 
               this.props.ACT_WS_SEND(this.props.WS_ID, "HR", 0, { a: ["d"] });
@@ -774,9 +774,7 @@ log.info(zhTW);
 ReactDOM.render(
 
   <Provider store={StoreX}>
-    <LocaleProvider locale={zhTW}>
       <APPMasterX_rdx />
-    </LocaleProvider>
 
   </Provider>, document.getElementById('container'));
 
