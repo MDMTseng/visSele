@@ -503,7 +503,7 @@ class OK_NG_BOX extends React.Component {
   }
 
   render() {
-    console.log(this.props.detailStatus)
+    //console.log(this.props.detailStatus)
     return (
       <div style={{ 'display': 'inline-block' }}>
         <Tag style={{ 'fontSize': 20 }}
@@ -1862,9 +1862,9 @@ class APP_INSP_MODE extends React.Component {
       });
 
     let shortedModelName=this.props.defModelName.length<23?
-      this.props.defModelName.length:
+      this.props.defModelName:
       this.props.defModelName.substring(0, 20)+"..."
-    console.log(">>>>defModelName>>>>>"+this.props.defModelName);
+    //console.log(">>>>defModelName>>>>>"+this.props.defModelName);
     MenuSet = [
       <BASE_COM.IconButton
         iconType={<ArrowLeftOutlined />}
@@ -2002,7 +2002,7 @@ class APP_INSP_MODE extends React.Component {
       camera_calibration_report={this.props.camera_calibration_report} />);
 
     let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
-
+    //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
     MenuSet.push(
       <ObjInfoList
         IR={trackingWindowInfo}
