@@ -63,14 +63,15 @@ export const DEFAULT_UNIT = {
 }
 
 export const UI_SM_EVENT = {
-  Connected:"Connected",
-  Disonnected:"Disonnected",
+  REMOTE_SYSTEM_NOT_READY:"REMOTE_SYSTEM_NOT_READY",
+  REMOTE_SYSTEM_READY:"REMOTE_SYSTEM_READY",
   _SUCCESS:"_SUCCESS",
   _FAIL:"_FAIL",
   EXIT:"EXIT",
   ERROR:"ERROR",
 
   Version_Map_Update:"Version_Map_Update",
+  Core_Status_Update:"Core_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
   Insp_Mode_Update:"InspMode_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
@@ -148,6 +149,16 @@ export function EV_UI_Version_Map_Update(mapInfo)
   }
 }
 
+
+
+export function EV_Core_Status_Update(coreStatus)
+{
+  return {
+    type: UI_SM_EVENT.Core_Status_Update,
+    data: coreStatus
+  }
+}
+
 export function EV_UI_Insp_Mode_Update(mode)
 {
   return {
@@ -157,17 +168,32 @@ export function EV_UI_Insp_Mode_Update(mode)
 }
 
 
-export function EV_WS_Connected(ws_obj)
+// export function EV_WS_Connected(ws_obj)
+// {
+//   return {
+//     type: UI_SM_EVENT.Connected ,data:ws_obj
+//   }
+// }
+
+// export function EV_WS_Disconnected(peer)
+// {
+//   return {
+//     type: UI_SM_EVENT.Disonnected ,data:peer
+//   }
+// }
+
+export function EV_WS_REMOTE_SYSTEM_READY(ws_obj)
 {
+
   return {
-    type: UI_SM_EVENT.Connected ,data:ws_obj
+    type: UI_SM_EVENT.REMOTE_SYSTEM_READY ,data:ws_obj
   }
 }
 
-export function EV_WS_Disconnected(peer)
+export function EV_WS_REMOTE_SYSTEM_NOT_READY(peer)
 {
   return {
-    type: UI_SM_EVENT.Disonnected ,data:peer
+    type: UI_SM_EVENT.REMOTE_SYSTEM_NOT_READY ,data:peer
   }
 }
 

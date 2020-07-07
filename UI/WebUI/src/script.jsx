@@ -436,11 +436,12 @@ class APPMasterX extends React.Component {
   }
   static mapStateToProps(state) {
     return {
-      showSplash: state.UIData.showSplash,
+      coreConnected: state.UIData.coreConnected,
       showSM_graph: state.UIData.showSM_graph,
       stateMachine: state.UIData.sm,
       WS_CH: state.UIData.WS_CH,
-      WS_ID: state.UIData.WS_ID
+      WS_ID: state.UIData.WS_ID,
+      C_STATE: state.UIData.c_state
     }
   }
   static connect() {
@@ -469,10 +470,7 @@ class APPMasterX extends React.Component {
       reqWindow: {},
       pgIDCounter: 0,
       onopen: (ev, ws_obj) => {
-
-        StoreX.dispatch(UIAct.EV_WS_Connected(ws_obj));
-
-        //StoreX.dispatch(UIAct.EV_WS_ChannelUpdate(bpg_ws));
+        StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(ws_obj));
       },
       onmessage: (evt, ws_obj) => {
         //log.info("onMessage:::");
@@ -556,6 +554,8 @@ class APPMasterX extends React.Component {
                     }
                   }
                 }});
+              },1000)
+
               
             }
 
@@ -665,7 +665,7 @@ class APPMasterX extends React.Component {
         }
       },
       onclose: (ev, ws_obj) => {
-        this.props.DISPATCH(UIAct.EV_WS_Disconnected(ev));
+        StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
         setTimeout(() => {
           this.props.ACT_WS_CONNECT(this.props.WS_ID, "ws://localhost:4090", this.BPG_WS);
         }, 3000);
@@ -730,15 +730,19 @@ class APPMasterX extends React.Component {
     }
     else
     {
-      xstateG = <Boot_CTRL_UI triggerHide={this.props.showSplash} URL="ws://localhost:5678"/>
+      xstateG = <Side_Boot_CTRL_UI triggerHide={this.props.coreConnected} URL="ws://localhost:5678"/>
     }
 
 
+    console.log(this.props.C_STATE);
+
     return (
       <div className="HXF sp_Style">
-
+        <NullDOM_SystemStatusQuery onStatusChange={(status)=>{
+          console.log(status)
+        }}/>
         <APPMain_rdx key="APP" />
-        <CSSTransitionGroup
+        <CSSTransitionGroup //Splash Cover
           transitionName={"logoFrame"}
           transitionEnter={true}
           transitionLeave={true}
@@ -746,7 +750,7 @@ class APPMasterX extends React.Component {
           transitionLeaveTimeout={1500}
           >
         {
-          (this.props.showSplash) ?
+          (this.props.coreConnected) ?null:
             <div key="LOGO" className="s HXF WXF overlay veleXY logoFrame white">
               <div className="veleXY width6 height6">
                 <img className="height8 LOGOImg" src="resource/image/Ｃ_LOGO.svg"/>
@@ -759,7 +763,6 @@ class APPMasterX extends React.Component {
                 </div>
               </div>
             </div>
-            : null
         }
         </CSSTransitionGroup>
         {xstateG}

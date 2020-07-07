@@ -21,6 +21,7 @@ export const MWWebSocket = WSData => store => next => action => {
     id = info.url;
   }
   
+  //console.log(action.data.data);
   if(id === undefined)return next({type:MWWS_EVENT.ERROR,data:{str:"no id/url is found",info:info}});
 
 
@@ -67,6 +68,9 @@ export const MWWebSocket = WSData => store => next => action => {
     {
       if(WSData[id] === undefined )
       {
+        
+        if(info !== undefined && info.promiseCBs!==undefined && info.promiseCBs.reject!==undefined)
+          info.promiseCBs.reject({type:"error_connection_not_found",info:info});
         return next({type:MWWS_EVENT.MWWS_ERROR});
       }
 

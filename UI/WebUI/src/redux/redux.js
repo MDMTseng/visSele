@@ -79,24 +79,24 @@ const AnalysisStates = {
 let ST = {
     initial: UISTS.SPLASH,
     states: {
-      [UISTS.SPLASH]:    { on: { [UISEV.Connected]:   UISTS.MAIN } },
+      [UISTS.SPLASH]:    { on: { [UISEV.REMOTE_SYSTEM_READY]:   UISTS.MAIN } },
       [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.DEFCONF_MODE,
                                  [UISEV.Insp_Mode]:   UISTS.INSP_MODE,
                                  [UISEV.Analysis_Mode]:UISTS.ANALYSIS_MODE,
-                                 [UISEV.Disonnected]: UISTS.SPLASH, 
+                                 [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH, 
                                  [UISEV.EXIT]:        UISTS.SPLASH } },
       [UISTS.DEFCONF_MODE]: Object.assign(
-                 { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
+                 { on: { [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH , 
                          [UISEV.EXIT]:        UISTS.MAIN }},
                  EditStates),
       [UISTS.INSP_MODE]: Object.assign(
-                 { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
+                 { on: { [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH , 
                          [UISEV.ERROR]:       UISTS.MAIN , 
                          [UISEV.EXIT]:        UISTS.MAIN }},
                  InspectionStates),
     
       [UISTS.ANALYSIS_MODE]: Object.assign(
-                 { on: { [UISEV.Disonnected]: UISTS.SPLASH , 
+                 { on: { [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH , 
                     [UISEV.ERROR]:       UISTS.MAIN , 
                     [UISEV.EXIT]:        UISTS.MAIN }},
                   AnalysisStates)

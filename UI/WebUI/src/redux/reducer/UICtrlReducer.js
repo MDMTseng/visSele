@@ -96,7 +96,7 @@ function Default_UICtrlReducer() {
     MENU_EXPEND: false,
 
     machine_custom_setting:{},
-    showSplash: true,
+    coreConnected: false,
     showSM_graph: false,
     WS_CH: undefined,
     defConf_lock_level: 0,
@@ -150,6 +150,7 @@ function Default_UICtrlReducer() {
     inspMode: undefined,
     version_map_info: undefined,
     WebUI_info: APP_INFO,
+    Core_Status: undefined,
     sm: null,
     c_state: null,
     p_state: null,
@@ -205,7 +206,7 @@ function StateReducer(newState, action) {
   }
 
   switch (action.type) {
-    case UISEV.Connected:
+    case UISEV.REMOTE_SYSTEM_READY:
       newState.WS_CH = action.data;
       log.info("Connected", newState.WS_CH);
       return newState;
@@ -258,7 +259,7 @@ function StateReducer(newState, action) {
       // newState = { ...newState, version_map_info };
       // return newState;
 
-    case UISEV.Disonnected:
+    case UISEV.REMOTE_SYSTEM_NOT_READY:
       newState.WS_CH = undefined;
       return newState;
 
@@ -268,7 +269,7 @@ function StateReducer(newState, action) {
   }
   switch (newState.c_state.value) {
     case UISTS.SPLASH:
-      newState.showSplash = true;
+      newState.coreConnected = false;
       return newState;
   }
 
@@ -711,12 +712,13 @@ function StateReducer(newState, action) {
 
   switch (stateObj.state) {
     case UISTS.SPLASH:
-      newState.showSplash = true;
+      newState.coreConnected = false;
       return newState;
     case UISTS.MAIN:
     case UISTS.DEFCONF_MODE:
     case UISTS.INSP_MODE:
       {
+        newState.coreConnected = true;
 
 
         if (stateObj.state == UISTS.DEFCONF_MODE && newState.defConf_lock_level != 0) {
@@ -735,7 +737,6 @@ function StateReducer(newState, action) {
           }
         }
         //console.log(action.type,action);
-        newState.showSplash = false;
         switch (action.type) {
           case DefConfAct.EVENT.DefConf_Lock_Level_Update:
             newState = { ...newState, defConf_lock_level: action.data };
