@@ -379,13 +379,14 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
 }
 
 
-CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_gain)
+CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_min,int *ret_max)
 {
-    if (CameraGetAnalogGain(m_hCamera,ret_gain)!= CAMERA_STATUS_SUCCESS)
+    if (CameraGetAnalogGain(m_hCamera,ret_min)!= CAMERA_STATUS_SUCCESS)
     {
-		LOGE("Failed...");
-        return CameraLayer::NAK;
+		  LOGE("Failed...");
+      return CameraLayer::NAK;
     }
+    *ret_max=*ret_min;
     return CameraLayer::ACK;
 }
 

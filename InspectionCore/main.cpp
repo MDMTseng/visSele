@@ -1192,7 +1192,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
             cJSON* cam_info_jarr = cJSON_CreateArray();
             
-            
             //LOGI("CAM_INFO..\n%s",calib_bacpac.cam->getCameraJsonInfo());
             cJSON* cam_1 = cJSON_Parse(cb->camera->getCameraJsonInfo().c_str());
             if(cam_1==NULL)
@@ -1202,21 +1201,23 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             cJSON_AddNumberToObject(cam_1, "mmpp",calib_bacpac.sampler->mmpP_ideal());
             cJSON_AddNumberToObject(cam_1, "cur_width",calib_bacpac.sampler->getCalibMap()->fullFrameW);
             cJSON_AddNumberToObject(cam_1, "cur_height",calib_bacpac.sampler->getCalibMap()->fullFrameH);
-            
-            cJSON_AddItemToArray(cam_info_jarr,cam_1);
-            
-            cJSON_AddItemToObject(retArr,  itemType, cam_info_jarr);
 
+            int M_gain,m_gain;
+            CameraLayer::status g_ret = calib_bacpac.cam->GetAnalogGain(&m_gain,&M_gain);
+            cJSON_AddNumberToObject(cam_1, "cam_status",g_ret);
+
+            cJSON_AddItemToArray(cam_info_jarr,cam_1);
+            cJSON_AddItemToObject(retArr,  itemType, cam_info_jarr);
           }
         }
 
         char *jstr = cJSON_Print(retArr);
         cJSON_Delete(retArr);
         bpg_dat = GenStrBPGData("GS", jstr);
-        free(jstr);
         bpg_dat.pgID = dat->pgID;
         datCH_BPG.data.p_BPG_data = &bpg_dat;
         self->SendData(datCH_BPG);
+        free(jstr);
       }
     }
     else if (checkTL("LD", dat))
@@ -1815,7 +1816,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         LOGV("DatCH_BPG1_0");
         this->camera = camera;
         callbk_obj.camera = camera;
-      }
+        calib_bacpac.cam=camera;
+
+          }
 
       session_ACK = true;
     }
