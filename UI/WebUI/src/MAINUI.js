@@ -63,7 +63,8 @@ import {
   FundOutlined,
   CaretRightOutlined,
   CloudServerOutlined,
-  CloseCircleTwoTone } from '@ant-design/icons';
+  CloseCircleTwoTone,
+  LoadingOutlined } from '@ant-design/icons';
 
 import Menu from 'antd/lib/menu';
 import Button from 'antd/lib/button';
@@ -510,8 +511,10 @@ const DefFileLoadUI=()=>{
 const InspectionDataPrepare = ({onPrepareOK}) => {
   const caruselRef = useRef(undefined);
 
+  const DICT = useSelector(state => state.UIData.DICT);
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
-
+  const System_Connection_Status = useSelector(state => state.UIData.System_Connection_Status);
+  
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
@@ -524,12 +527,40 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const ACT_InspOptionalTag_Update= (newTags) => dispatch(DefConfAct.InspOptionalTag_Update(newTags));
   
   const [InfoPopUp,setInfoPopUp]=useState(undefined);
+  const [ErrorInfo,setErrorInfo]=useState(undefined);
+
+  
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   
   const [stepIdx,setStepIdx]=useState(0);
 
   let DefFileFolder=undefined;
 
+  useEffect(()=>{
+    let isSystemReadyForInsp=GetObjElement(System_Connection_Status,["camera"])==true;
+    if(!isSystemReadyForInsp)
+    {
+      setErrorInfo({
+        content:<div>
+          <div className="antd-icon-sizing" style={{height:"50px"}}>
+            <LoadingOutlined className="veleX"/>
+          </div>
+          <Title level={2} style={{textAlign:"center"}} >{
+            DICT.fallback.camera_reconnection_caption
+          }</Title>
+        </div>
+      });
+    }
+    else
+    {
+      if(ErrorInfo!==undefined)
+      {
+        setErrorInfo(undefined);
+      }
+    }
+  },[System_Connection_Status])
+
+  
   useEffect(()=>{
     ACT_WS_SEND(WS_ID, "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
 
@@ -617,6 +648,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   let UI_Stack=[];
 
+  let isSystemReadyForInsp=GetObjElement(System_Connection_Status,["camera"])==true;
   let isOK;
   let isStillOK=true;
   
@@ -629,7 +661,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   }
   {//1st page
     
-    isOK=DefFileHash!==undefined;
+    isOK=(DefFileHash!==undefined&&isSystemReadyForInsp);
     if(!isOK)isStillOK=false;
     else if(isStillOK)
       OKJumpTo++;
@@ -670,7 +702,6 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
                   //console.log(localStorage.getItem("RecentDefFiles"));
                 }
-
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
                 ACT_Def_Model_Path_Update(filePath);
@@ -715,7 +746,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           
           
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
+            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" 
+            disabled={!isOK}
             onClick={()=>stepInc()}/>
 
 
@@ -728,7 +760,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   //console.log(stepIdx,UI_Stack.length,isOK);
 
   {  
-    isOK=isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
+    
+    isOK=isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset)&&isSystemReadyForInsp;
     
     if(!isOK)isStillOK=false;
     else if(isStillOK)
@@ -744,7 +777,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
             
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" disabled={!isOK}
+            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" 
+            disabled={!isOK}
             onClick={()=>{
               stepInc()
               }}/>
@@ -863,6 +897,22 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           null : InfoPopUp.content}
       </Modal>
 
+    <Modal
+      closable={false}
+      visible={ErrorInfo !== undefined}
+      centered
+      title={ErrorInfo!=undefined?ErrorInfo.title:null}
+      footer={null}
+      onOk={() => {
+        ErrorInfo.onOK();
+      }}
+      onCancel={() => {
+        ErrorInfo.onCancel();
+      }}
+    >
+      {ErrorInfo === undefined ?
+        null : ErrorInfo.content}
+    </Modal>
   </div>
 
   );

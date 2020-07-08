@@ -636,7 +636,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
       s_.in_progress=true;
       ACT_CAMERA_RECONNECT()
       .then((pkts)=>{
-        console.log(pkts);
+        // console.log(pkts);
         s_.in_progress=false;
       })
       .catch((err)=>{
@@ -654,6 +654,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
       <Divider>{DICT.fallback.connection_status}</Divider>
       <System_Status_Display showText iconSize={30} gridSize={90} 
         onStatusTick={(sys_state)=>{
+          // console.log(sys_state);
           if(sys_state.camera==false)
           {
             Try_CAMERA_RECONNECT();
@@ -684,8 +685,8 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
         onClick_UploadDataBase={(sys_state)=>{}}/>
       <Divider>Update</Divider>
       <Boot_CTRL_UI URL={URL}/>
-      <Divider>ServicePanel</Divider>
-      <SystemServicePanel_UI/>
+      {/* <Divider>ServicePanel</Divider>
+      <SystemServicePanel_UI/> */}
     </div>)
 }
 
