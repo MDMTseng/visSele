@@ -65,6 +65,7 @@ export const DEFAULT_UNIT = {
 export const UI_SM_EVENT = {
   REMOTE_SYSTEM_NOT_READY:"REMOTE_SYSTEM_NOT_READY",
   REMOTE_SYSTEM_READY:"REMOTE_SYSTEM_READY",
+  System_Connection_Status_Update:"System_Connection_Status_Update",
   _SUCCESS:"_SUCCESS",
   _FAIL:"_FAIL",
   EXIT:"EXIT",
@@ -72,6 +73,7 @@ export const UI_SM_EVENT = {
 
   Version_Map_Update:"Version_Map_Update",
   Core_Status_Update:"Core_Status_Update",
+  Update_Status_Update:"Update_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
   Insp_Mode_Update:"InspMode_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
@@ -117,6 +119,15 @@ export function EV_WS_ChannelUpdate(WS_CH)
   }
 }
 
+
+export function EV_UI_System_Connection_Status_Update(Status)
+{
+  return {
+    type: UI_SM_EVENT.System_Connection_Status_Update ,data:Status
+  }
+}
+
+
 export function EV_machine_custom_setting_Update(info)
 {
   return {
@@ -133,6 +144,11 @@ export function EV_UI_EC_Save_Def_Config(info)
     data:info
   }
 }
+
+
+
+
+
 export function EV_UI_EC_Load_Def_Config(info)
 {
   return {
@@ -149,6 +165,15 @@ export function EV_UI_Version_Map_Update(mapInfo)
   }
 }
 
+
+
+export function EV_Update_Status_Update(updStatus)
+{
+  return {
+    type: UI_SM_EVENT.Update_Status_Update,
+    data: updStatus
+  }
+}
 
 
 export function EV_Core_Status_Update(coreStatus)
@@ -189,6 +214,7 @@ export function EV_WS_REMOTE_SYSTEM_READY(ws_obj)
     type: UI_SM_EVENT.REMOTE_SYSTEM_READY ,data:ws_obj
   }
 }
+
 
 export function EV_WS_REMOTE_SYSTEM_NOT_READY(peer)
 {

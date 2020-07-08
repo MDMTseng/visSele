@@ -14,6 +14,7 @@ import { loadavg } from 'os';
 import dateFormat from 'dateFormat';
 import JSum from 'jsum';
 import semver from 'semver'
+import EC_zh_TW from 'LANG/zh_TW';
 
 let log = logX.getLogger("UICtrlReducer");
 
@@ -151,12 +152,15 @@ function Default_UICtrlReducer() {
     version_map_info: undefined,
     WebUI_info: APP_INFO,
     Core_Status: undefined,
+    Update_Status:undefined,
+    System_Connection_Status:undefined,
     sm: null,
     c_state: null,
     p_state: null,
     state_count: 0,
     WS_ID: "EverCheckWS",
     InspectionMonitor_URL: "http://gitexp.idcircle.me/hyvision_monitor/0.0.0/",
+    DICT:EC_zh_TW
   }
 
   Edit_info_reset(defState);
@@ -218,46 +222,16 @@ function StateReducer(newState, action) {
       return newState;
 
 
+    case UISEV.Core_Status_Update:
+      newState.Core_Status=action.data;
+      return newState;
+    case UISEV.Update_Status_Update:
+      newState.Update_Status=action.data;
+      return newState;
+  
+
     case UISEV.Version_Map_Update:
       return newState;
-      // log.info("Version_Map_Update");
-      // log.info(action.data);
-      // let version_map_info = action.data;
-      // version_map_info.webUI_info = APP_INFO;
-
-      // {
-      //   let core_info = version_map_info.core_info;
-      //   version_map_info.recommend_ver = {};
-      //   let coreVersion = core_info.version;
-      //   if (coreVersion === undefined) {
-      //     coreVersion = "0.0.0";
-      //   }
-      //   let WebUI_Version = version_map_info.core2wui[coreVersion];
-
-      //   if (WebUI_Version !== undefined && WebUI_Version.ver !== undefined) {
-      //     let versions = WebUI_Version.ver;
-
-      //     let webUI_resource = "http://hyv.idcircle.me";
-      //     if (core_info.webUI_resource !== undefined) webUI_resource = core_info.webUI_resource;
-
-      //     let localV = semver.clean(APP_INFO.version);
-
-      //     let maxV = versions
-      //       .map(ver => semver.clean(ver))
-      //       .reduce((maxV, ver) => semver.gt(maxV, ver) ? maxV : ver);
-      //     let hasNewVer = semver.gt(maxV, localV);
-
-      //     if (hasNewVer) {
-      //       version_map_info.recommend_info = {
-      //         versions,
-      //         url: webUI_resource + "/" + versions[versions.length - 1]
-      //       }
-      //     }
-      //   }
-
-      // }
-      // newState = { ...newState, version_map_info };
-      // return newState;
 
     case UISEV.REMOTE_SYSTEM_NOT_READY:
       newState.WS_CH = undefined;
@@ -985,6 +959,14 @@ function StateReducer(newState, action) {
               
             }
             break;
+
+          case UISEV.System_Connection_Status_Update:
+            {
+              newState ={...newState ,System_Connection_Status:action.data};
+              //console.log(action);
+            }
+            break;
+
           case DefConfAct.EVENT.DefFileName_Update:
             {
               newState.edit_info = Object.assign({}, newState.edit_info, { DefFileName: action.data });

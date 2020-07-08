@@ -54,6 +54,7 @@ module.exports = {
     alias: {
       UTIL: path.resolve(__dirname, 'src/UTIL/'),
       JSSRCROOT: path.resolve(__dirname, 'src/'),
+      LANG: path.resolve(__dirname, 'src/languages'),
       REDUX_STORE_SRC: path.resolve(__dirname, 'src/redux/'),
       STYLE: path.resolve(__dirname, 'style/')
     }

@@ -65,6 +65,28 @@
   height:50px !important;
 }
 
+
+
+.color-online-anim {
+  color:#5191a5;
+  animation: color-online-anim-key 1s infinite;
+}
+
+@keyframes color-online-anim-key {
+  from {color: #5191a5;}
+  to {color: #2161a5;}
+}
+
+.color-offline-anim {
+  color:rgb(255, 28, 0);
+  animation: color-offline-anim-key 1s infinite;
+}
+
+@keyframes color-offline-anim-key {
+  from {color: rgb(255, 28, 0);}
+  to {color: rgb(100, 100, 100);}
+}
+
 .antd-icon-sizing button{
   width:100% !important;
   height:100% !important;

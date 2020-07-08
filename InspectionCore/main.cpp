@@ -1801,13 +1801,21 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         delete camera;
         camera = NULL;
 
-        camera = getCamera(CamInitStyle);
+        camera = getCamera(1);
 
-        for (int i = 0; camera == NULL; i++)
+        // for (int i = 0; camera == NULL; i++)
+        // {
+        //   LOGV("Camera init retry[%d]...", i);
+        //   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        //   camera = getCamera(CamInitStyle);
+        // }
+        if(camera!=NULL)
         {
-          LOGV("Camera init retry[%d]...", i);
-          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-          camera = getCamera(CamInitStyle);
+          session_ACK = true;
+        }
+        else
+        {
+          camera = getCamera(0);//Fallback BMP test folder
         }
         LOGV("DatCH_BPG1_0:%p", camera);
 
@@ -1818,9 +1826,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         callbk_obj.camera = camera;
         calib_bacpac.cam=camera;
 
-          }
+      }
 
-      session_ACK = true;
     }
     else if (checkTL("ST", dat))
     {

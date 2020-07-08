@@ -42,6 +42,25 @@ export default {
         matchingFaceFrontOnly:"僅正面",
         setting:"設定",
 
+
+        system_status:"系統狀態",
+        connection_status:"連線狀態",
+        core:"運算核心",
+        camera:"檢測相機",
+        boot_daemon:"啟動總管",
+        upload_database:"資料庫",
+
+        
+        update_status:"更新狀態",
+
+        force_update:"強制更新",
+        normal_update:"更新",
+
+
+        
+        disconnected:"已斷線",
+        connected:"已連線",
+
     },
     connection:{
       server_connected:"已連結伺服器",
