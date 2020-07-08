@@ -491,7 +491,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
           }
           else
           {
-            
+
           }
         }}>{updateInfo.newUpdateExist==true?DICT.fallback.normal_update:DICT.fallback.force_update} {updateInfo.remote.name}</Button>
       :null
@@ -555,8 +555,9 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
       >
         <LaptopOutlined/>
       </div>
-      {(showText)?DICT.fallback.core:null}
-      <br/>{systemConnectState.core?null:DICT.fallback.disconnected}
+          {(showText)?
+            [DICT.fallback.core,<br/>,systemConnectState.core?null:DICT.fallback.disconnected]
+            :null}
     </Button>,
 
     <Button size="large"  key="cam_stat" style={gridStyle} 
@@ -569,8 +570,9 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           >
             <CameraOutlined/>
           </div>
-          {(showText)?DICT.fallback.camera:null}
-          <br/>{systemConnectState.camera?null:DICT.fallback.disconnected}
+          {(showText)?
+            [DICT.fallback.camera,<br/>,systemConnectState.camera?null:DICT.fallback.disconnected]
+            :null}
         </Button>,
 
     <Button size="large"  key="db_stat" style={gridStyle} 
@@ -583,8 +585,10 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           >
             <DatabaseOutlined/>
           </div>
-          {(showText)?DICT.fallback.upload_database:null}
-          <br/>{systemConnectState.upload_database?null:DICT.fallback.disconnected}
+          {(showText)?
+            [DICT.fallback.upload_database,<br/>,systemConnectState.upload_database?null:DICT.fallback.disconnected]
+            :null}
+          
         </Button>
 
 
