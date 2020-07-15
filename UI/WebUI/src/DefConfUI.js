@@ -1114,7 +1114,8 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
             onOk: () => {
 
 
-
+              
+              ACT_DefConf_Lock_Level_Update(0);
               new Promise((resolve, reject) => {
                 ACT_WS_SEND(WS_ID, "EX", 0, {},
                   undefined, { resolve, reject });
@@ -1135,7 +1136,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
             },
             onCancel: () => { console.log("onCancel") },
             title: "WARNING",
-            view_update: () => "確定要重新設定嗎？"
+            view: "確定要重新設定嗎？"
           })
       }} />,
 
