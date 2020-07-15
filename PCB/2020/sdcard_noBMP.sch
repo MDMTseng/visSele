@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE eagle SYSTEM "eagle.dtd">
-<eagle version="9.2.2">
+<eagle version="9.6.0">
 <drawing>
 <settings>
 <setting alwaysvectorfont="no"/>
@@ -4060,21 +4060,6 @@ CONN_06
 <wire x1="145.62" y1="-52" x2="145.62" y2="-21.52" width="0.1524" layer="91"/>
 </segment>
 </net>
-<net name="N$9" class="0">
-<segment>
-<pinref part="R_5V_BUFF" gate="G$1" pin="2"/>
-<pinref part="JP1" gate="G$1" pin="1"/>
-<wire x1="105.82" y1="-33.22" x2="105.82" y2="-21.52" width="0.1524" layer="91"/>
-<wire x1="105.82" y1="-21.52" x2="138" y2="-21.52" width="0.1524" layer="91"/>
-<wire x1="105.82" y1="-33.22" x2="105.82" y2="-41.84" width="0.1524" layer="91"/>
-<junction x="105.82" y="-33.22"/>
-<pinref part="JP2" gate="G$1" pin="1"/>
-<wire x1="105.82" y1="-41.84" x2="138" y2="-41.84" width="0.1524" layer="91"/>
-<pinref part="JP3" gate="G$1" pin="3"/>
-<wire x1="138" y1="-41.84" x2="138" y2="-46.92" width="0.1524" layer="91"/>
-<junction x="138" y="-41.84"/>
-</segment>
-</net>
 <net name="N$14" class="0">
 <segment>
 <pinref part="R_GND_BUFF" gate="G$1" pin="2"/>
@@ -4092,14 +4077,6 @@ CONN_06
 <junction x="110.36" y="-44.38"/>
 <pinref part="JP3" gate="G$1" pin="1"/>
 <wire x1="135.46" y1="-57.08" x2="138" y2="-57.08" width="0.1524" layer="91"/>
-<wire x1="138" y1="-31.68" x2="140.54" y2="-31.68" width="0.1524" layer="91"/>
-<wire x1="140.54" y1="-31.68" x2="140.54" y2="-24.06" width="0.1524" layer="91"/>
-<junction x="138" y="-31.68"/>
-<pinref part="U$1" gate="G$1" pin="/SLP"/>
-<pinref part="U$1" gate="G$1" pin="/RST"/>
-<wire x1="155.7" y1="-26.6" x2="155.7" y2="-24.06" width="0.1524" layer="91"/>
-<wire x1="140.54" y1="-24.06" x2="155.7" y2="-24.06" width="0.1524" layer="91"/>
-<junction x="155.7" y="-24.06"/>
 <pinref part="JP4" gate="G$1" pin="3"/>
 <wire x1="122.76" y1="3.88" x2="110.06" y2="3.88" width="0.1524" layer="91"/>
 <wire x1="110.06" y1="3.88" x2="110.06" y2="-11.36" width="0.1524" layer="91"/>
@@ -4281,8 +4258,8 @@ CONN_06
 <net name="MD1_5V" class="0">
 <segment>
 <pinref part="J_MD1_5V" gate="JP1" pin="2"/>
-<wire x1="112" y1="-75" x2="111.08" y2="-75" width="0.1524" layer="91"/>
-<label x="113" y="-74" size="1.778" layer="95"/>
+<wire x1="119.62" y1="-75" x2="111.08" y2="-75" width="0.1524" layer="91"/>
+<label x="113" y="-76.54" size="1.778" layer="95"/>
 </segment>
 <segment>
 <pinref part="U$1" gate="G$1" pin="VDD"/>
@@ -4300,7 +4277,7 @@ CONN_06
 </segment>
 <segment>
 <pinref part="J_MD1_GND" gate="JP1" pin="2"/>
-<wire x1="111.08" y1="-63" x2="116" y2="-63" width="0.1524" layer="91"/>
+<wire x1="111.08" y1="-63" x2="118.54" y2="-63" width="0.1524" layer="91"/>
 <label x="116" y="-62" size="1.778" layer="95"/>
 </segment>
 <segment>
@@ -4635,6 +4612,29 @@ CONN_06
 <wire x1="-8.86" y1="44.84" x2="-17.78" y2="44.84" width="0.1524" layer="91"/>
 <wire x1="-17.78" y1="44.84" x2="-17.78" y2="43.18" width="0.1524" layer="91"/>
 <label x="17.78" y="43.18" size="1.778" layer="95"/>
+</segment>
+</net>
+<net name="N$1" class="0">
+<segment>
+<pinref part="U$1" gate="G$1" pin="/RST"/>
+<pinref part="U$1" gate="G$1" pin="/SLP"/>
+<wire x1="155.7" y1="-26.6" x2="155.7" y2="-24.06" width="0.1524" layer="91"/>
+<junction x="155.7" y="-24.06"/>
+<wire x1="140.54" y1="-24.06" x2="155.7" y2="-24.06" width="0.1524" layer="91"/>
+<pinref part="R_5V_BUFF" gate="G$1" pin="2"/>
+<pinref part="JP1" gate="G$1" pin="1"/>
+<wire x1="105.82" y1="-33.22" x2="105.82" y2="-21.52" width="0.1524" layer="91"/>
+<wire x1="105.82" y1="-21.52" x2="138" y2="-21.52" width="0.1524" layer="91"/>
+<wire x1="105.82" y1="-33.22" x2="105.82" y2="-41.84" width="0.1524" layer="91"/>
+<junction x="105.82" y="-33.22"/>
+<pinref part="JP2" gate="G$1" pin="1"/>
+<wire x1="105.82" y1="-41.84" x2="138" y2="-41.84" width="0.1524" layer="91"/>
+<pinref part="JP3" gate="G$1" pin="3"/>
+<wire x1="138" y1="-41.84" x2="138" y2="-46.92" width="0.1524" layer="91"/>
+<junction x="138" y="-41.84"/>
+<wire x1="155.7" y1="-24.06" x2="138" y2="-24.06" width="0.1524" layer="91"/>
+<wire x1="138" y1="-24.06" x2="138" y2="-21.52" width="0.1524" layer="91"/>
+<junction x="138" y="-21.52"/>
 </segment>
 </net>
 </nets>
