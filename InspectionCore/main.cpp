@@ -2142,7 +2142,7 @@ int ImgInspection_DefRead(MatchingEngine &me, acvImage *test1, int repeatTime, c
 int ImgInspection(MatchingEngine &me, acvImage *test1, FeatureManager_BacPac *bacpac,CameraLayer* cam, int repeatTime = 1)
 {
 
-  LOGI("============w:%d h:%d====================", test1->GetWidth(), test1->GetHeight());
+  LOGI("============w:%d h:%d====================cam:%p", test1->GetWidth(), test1->GetHeight(),cam);
   if (test1->GetWidth() * test1->GetHeight() == 0)
   {
     return -1;
@@ -2168,7 +2168,7 @@ int ImgInspection_JSONStr(MatchingEngine &me, acvImage *test1, int repeatTime, c
 
   me.ResetFeature();
   me.AddMatchingFeature(jsonStr);
-  ImgInspection(me, test1,bacpac,NULL, repeatTime);
+  ImgInspection(me, test1,bacpac,bacpac->cam, repeatTime);
   return 0;
 }
 
@@ -3065,7 +3065,7 @@ int testCode()
     acvImage bw_img;
     ret = LoadIMGFile(&bw_img, "data/BG.BMP");
 
-    ret = ImgInspection(matchingEng, &bw_img, &calib_bacpac,NULL, 1);
+    ret = ImgInspection(matchingEng, &bw_img, &calib_bacpac,calib_bacpac.cam, 1);
     const FeatureReport *report = matchingEng.GetReport();
     delete (string);
 
