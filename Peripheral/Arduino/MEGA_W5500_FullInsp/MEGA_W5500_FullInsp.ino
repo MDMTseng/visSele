@@ -972,6 +972,7 @@ void setup() {
   pinMode(AIR_BLOW_NG_PIN, OUTPUT);
   pinMode(BACK_LIGHT_PIN, OUTPUT);
   pinMode(GATE_PIN, INPUT);
+  digitalWrite(GATE_PIN, HIGH);//Pull high
   pinMode(FAKE_GATE_PIN, INPUT);
 
   pinMode(LED_PIN, OUTPUT);
