@@ -40,6 +40,19 @@ int FeatureManager_stage_light_report::parse_jobj()
   grid_size[0] = round(*_grid_size[0]);
   grid_size[1] = round(*_grid_size[1]);
   LOGI("grid:%d,%d", grid_size[0], grid_size[1]);
+
+
+  this->down_scale_factor =4;//4 by default
+  const double *down_scale_factor = JFetch_NUMBER(root, "down_scale_factor");
+  if (down_scale_factor != NULL)
+  {
+    int _down_scale_factor = (int)*down_scale_factor;
+    if(_down_scale_factor<=0)_down_scale_factor=1;
+
+    this->down_scale_factor = _down_scale_factor;
+  }
+
+
   const double *p_nonBG_thres = JFetch_NUMBER(root, "nonBG_thres");
   if (p_nonBG_thres != NULL)
   {
@@ -428,22 +441,39 @@ int backLightNonBackGroundExclusion(acvImage *img,acvImage *backGround,acvImage 
   return 0;
 }
 
+void imageDownScale(acvImage *imgDst,acvImage *imgSrc,int downSaleFactor,int sampType=0)
+{
+  imgDst->ReSize(imgSrc->GetWidth()/downSaleFactor,imgSrc->GetHeight()/downSaleFactor);
+
+  for(int i=0;i<imgDst->GetHeight();i++)for(int j=0;j<imgDst->GetWidth();j++)
+  {
+    int xi=i*downSaleFactor;
+    int xj=j*downSaleFactor;
+    imgDst->CVector[i][j*3+0]=imgSrc->CVector[xi][xj*3+0];
+    imgDst->CVector[i][j*3+1]=imgSrc->CVector[xi][xj*3+1];
+    imgDst->CVector[i][j*3+2]=imgSrc->CVector[xi][xj*3+2];
+  }
+}
 
 int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
 {
   report.bacpac=bacpac;
+  acvImage &img_downScale=cacheImage3;
+
+  imageDownScale(&img_downScale,p_img,this->down_scale_factor);
+
   LOGI("T,nonBG_thres:%f  this:%p", this->nonBG_thres, this);
   report.type = FeatureReport::stage_light_report;
   report.data.stage_light_report.gridInfo->clear();
   report.data.stage_light_report.gridInfo->reserve(grid_size[0] * grid_size[1]);
 
-  report.data.stage_light_report.targetImageDim[0] = p_img->GetWidth();
-  report.data.stage_light_report.targetImageDim[1] = p_img->GetHeight();
+  report.data.stage_light_report.targetImageDim[0] =img_downScale.GetWidth();
+  report.data.stage_light_report.targetImageDim[1] =img_downScale.GetHeight();
   LOGI("T0");
 
   acvImage &img_wo_edge = cacheImage2;
   backLightNonBackGroundExclusion(
-    p_img,
+    &img_downScale,
     &img_wo_edge,
     &cacheImage,
     nonBG_thres, nonBG_spread_thres);
@@ -470,6 +500,8 @@ int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
 
       //LOGI("Max:%f Min:%f",info.backLightMax,info.backLightMin);
       //LOGI("bl_sigma:%f bl_mean:%f",info.backLightSigma,info.backLightMean);
+      info.nodeLocation.X*=this->down_scale_factor;
+      info.nodeLocation.Y*=this->down_scale_factor;
       report.data.stage_light_report.gridInfo->push_back(info);
       //LOGI("                       X:%f Y:%f",info.nodeLocation.X,info.nodeLocation.Y);
     }

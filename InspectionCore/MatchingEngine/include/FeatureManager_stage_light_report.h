@@ -23,6 +23,7 @@ protected:
   int grid_size[2];
   float nonBG_thres;
   float nonBG_spread_thres;
+  int down_scale_factor;
 public :
   FeatureManager_stage_light_report(const char *json_str);//:FeatureManager(json_str)}{};
   ~FeatureManager_stage_light_report();//:FeatureManager(json_str)}{};
