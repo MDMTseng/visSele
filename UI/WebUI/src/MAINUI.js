@@ -1266,11 +1266,11 @@ const MainUI=()=>{
         onCalibFinished={(finalReport) => {
           console.log(">>>>>>>>>",finalReport)
           if(finalReport===undefined)return;
-          // var enc = new TextEncoder();
-          // ACT_WS_SEND(WS_ID, "SV", 0,
-          //   { filename: "data/stageLightReport.json" },
-          //   enc.encode(JSON.stringify(finalReport, null, 2)))
-          // console.log(finalReport)
+          var enc = new TextEncoder();
+          ACT_WS_SEND(WS_ID, "SV", 0,
+            { filename: "data/stageLightReport.json" },
+            enc.encode(JSON.stringify(finalReport, null, 2)))
+          console.log(finalReport)
         }} />);
 
       
