@@ -17,7 +17,7 @@
 
 
 .mainui_mode_select>.img{
-  filter: blur(2px) saturate(0.1);
+  filter: blur(4px) saturate(0.1);
   transform: scale(1.1);
   transition: 0.1s filter linear, transform 0.9s;
 }
@@ -27,10 +27,11 @@
 }
 
 .mainui_mode_select>.tint{
-  background-color: rgba(0,0,0,0.5);
+  background-color: rgba(130, 203, 203,0.5);
   transition: background-color 0.1s linear;
 }
 .mainui_mode_select:hover>.tint {
+  background-color: rgba(100, 170, 170,0.5);
 }
 
 .mainui_mode_select>.text{
