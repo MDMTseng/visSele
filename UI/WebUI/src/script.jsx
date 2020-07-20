@@ -486,7 +486,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
       <Button key={"Force Remote UPDATE"} loading={updateRunning}
         icon={<CloudUploadOutlined />} danger={updateInfo.newUpdateExist!==true}
         onClick={() => {
-          if(updateInfo.newUpdateExist==true)
+          //if(updateInfo.newUpdateExist==true)
           {
             updateTrigger(updateInfo.remote_res.browser_download_url);
           }
