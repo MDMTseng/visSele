@@ -1,4 +1,49 @@
 
+
+
+.xception-theme .theme_color_1 {
+  color:#82CBCB;
+}
+.xception-theme .theme_background_1 {
+  background:#82CBCB;
+}
+
+.xception-theme .theme_color_2 {
+  color:#5191a5;
+}
+.xception-theme .theme_background_2 {
+  background:#5191a5;
+}
+
+
+.mainui_mode_select>.img{
+  filter: blur(2px) saturate(0.1);
+  transform: scale(1.1);
+  transition: 0.1s filter linear, transform 0.9s;
+}
+.mainui_mode_select:hover>.img {
+  transform: scale(1.13);
+  filter: blur(0px) saturate(0.5)
+}
+
+.mainui_mode_select>.tint{
+  background-color: rgba(0,0,0,0.5);
+  transition: background-color 0.1s linear;
+}
+.mainui_mode_select:hover>.tint {
+}
+
+.mainui_mode_select>.text{
+  color:#FFF;
+  transition:color 0.1s linear;
+}
+
+/*.mainui_mode_select:hover>.text{
+  color:#5191a5;
+}*/
+
+
+
 .blockS .deepblue{
 
   background: #0081ee;
@@ -10,16 +55,6 @@
   animation: NAME-YOUR-ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
 }
 
-
-.xception-theme .theme-color_1 {
-  color:#82CBCB;
-
-}
-
-
-.xception-theme .theme_color_2 {
-  color:#5191a5;
-}
 
 .ant-modal.modal-sizing{
   width:80%  !important;
@@ -112,6 +147,7 @@
   width:50px;
   height:50px;
 }
+
 
 
 div.error > textarea{

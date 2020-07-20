@@ -100,6 +100,12 @@ export default {
       set_insp_tags_detail:"就是設定檢測標籤",
       GOGOGO:"GOGOGO",
       GOGOGO_detail:"就是GOGOGO",
+
+      MODE_SELECT_MAIN_MENU:"主選單",
+      MODE_SELECT_DEFCONF:"主選單",
+      MODE_SELECT_INSP_PREP:"檢驗準備",
+      MODE_SELECT_BACKLIGHT_CALIB:"背光校正",
+      MODE_SELECT_SETTING:"設定",
     }
 
 };

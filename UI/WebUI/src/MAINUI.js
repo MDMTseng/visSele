@@ -78,6 +78,11 @@ const SubMenu = Menu.SubMenu;
 const { Paragraph, Title } = Typography;
 const Panel = Collapse.Panel;
 
+import { 
+  ArrowLeftOutlined,
+
+
+} from '@ant-design/icons';
 
 class CanvasComponent extends React.Component {
   constructor(props) {
@@ -920,6 +925,412 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
 
+const Setui_UI=()=>{
+
+  const dispatch = useDispatch();
+  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
+  const ACT_Report_Save = (id, fileName, content) => {
+    let act = UIAct.EV_WS_SEND(id, "SV", 0,
+      { filename: fileName },
+      content
+    )
+    dispatch(act);
+  }
+  const uInspData = useSelector(state => state.Peripheral.uInsp);
+
+  const [calibCalcInfo, setCalibCalcInfo] = useState({
+    curMea1: 0.8,
+    calibMea1: 0.82,
+    curMea2: 0.4,
+    calibMea2: 0.44,
+  });
+
+
+
+  console.log(calibCalcInfo);
+  let newCalibData = Calibration_MMPP_offset(
+    calibCalcInfo.curMea1,
+    calibCalcInfo.calibMea1,
+    calibCalcInfo.curMea2,
+    calibCalcInfo.calibMea2,
+    mmpp, 0);
+
+  const isp_db = useSelector(state => state.UIData.edit_info._obj);
+
+  let mmpp = undefined;
+  if (isp_db !== undefined) {
+    let camParam = isp_db.cameraParam;
+    mmpp = camParam.mmpb2b / camParam.ppb2b;
+  }
+
+
+
+
+
+  return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
+
+    <Divider orientation="left">MISC</Divider>
+    <AntButton key="Reconnect CAM"
+      onClick={() => {
+        ACT_WS_SEND(WS_ID, "RC", 0, {
+          target: "camera_ez_reconnect"
+        });
+      }}>Reconnect CAM</AntButton>
+      &ensp;
+
+
+    <Divider orientation="left">µInsp</Divider>
+    <Button.Group>
+
+      <Button type="primary" key="Connect uInsp" disabled={uInspData.connected}
+        icon={<LinkOutlined />}
+        onClick={() => {
+          new Promise((resolve, reject) => {
+            ACT_WS_SEND(WS_ID, "PD", 0,
+              { ip: "192.168.2.2", port: 5213 },
+              undefined, { resolve, reject });
+            //setTimeout(()=>reject("Timeout"),1000)
+          })
+            .then((data) => {
+              console.log(data);
+            })
+            .catch((err) => {
+              console.log(err);
+            })
+        }}>(re)Connect</Button>
+      <Button type="danger" key="Disconnect uInsp" disabled={!uInspData.connected}
+        icon={<DisconnectOutlined />}
+        onClick={() => {
+          new Promise((resolve, reject) => {
+            ACT_WS_SEND(WS_ID, "PD", 0,
+              {},
+              undefined, { resolve, reject });
+            //setTimeout(()=>reject("Timeout"),1000)
+          })
+            .then((data) => {
+              console.log(data);
+            })
+            .catch((err) => {
+              console.log(err);
+            })
+        }}>Disconnect</Button>
+
+    </Button.Group>
+
+      &ensp;
+      <Button key="ping uInsp" disabled={!uInspData.connected}
+      onClick={() => {
+        new Promise((resolve, reject) => {
+          ACT_WS_SEND(WS_ID, "PD", 0,
+            { msg: { type: "PING", id: 443 } },
+            undefined, { resolve, reject });
+        })
+          .then((data) => {
+            console.log(data);
+          })
+          .catch((err) => {
+            console.log(err);
+          })
+      }}>
+      PING:{uInspData.alive}
+    </Button>
+
+      &ensp;
+      <Button key="get_setup" disabled={!uInspData.connected}
+      onClick={() => {
+        new Promise((resolve, reject) => {
+          ACT_WS_SEND(WS_ID, "PD", 0,
+            { msg: { type: "get_setup", id: 4423 } },
+            undefined, { resolve, reject });
+        })
+          .then((data) => {
+            console.log(data);
+          })
+          .catch((err) => {
+            console.log(err);
+          })
+      }}>
+      get_setup
+      </Button>
+
+      &ensp;
+      <Button key="set_setup" disabled={uInspData.machineInfo === undefined}
+      onClick={() => {
+        let machInfo = dclone(uInspData.machineInfo);
+        //machInfo.state_pulseOffset[0]+=1;
+        new Promise((resolve, reject) => {
+          ACT_WS_SEND(WS_ID, "PD", 0,
+            { msg: { ...machInfo, type: "set_setup", id: 356 } },
+            undefined, { resolve, reject });
+        })
+          .then((data) => {
+            console.log(data);
+          })
+          .catch((err) => {
+            console.log(err);
+          })
+      }}>
+      set_setup
+      </Button>
+
+
+
+    <Button key="save_setup" disabled={uInspData.machineInfo === undefined}
+      onClick={() => {
+        var enc = new TextEncoder();
+        ACT_Report_Save(WS_ID, "data/uInspSetting.json",
+          enc.encode(JSON.stringify(uInspData.machineInfo, null, 4)));
+      }}>
+      save_setup
+      </Button>
+
+
+
+
+    <Button key="file_set_setup" disabled={uInspData.machineInfo === undefined}
+      onClick={() => {
+        new Promise((resolve, reject) => {
+
+          ACT_WS_SEND(WS_ID, "LD", 0,
+            { filename: "data/uInspSetting.json" },
+            undefined, { resolve, reject }
+          );
+
+          setTimeout(() => reject("Timeout"), 5000)
+
+        })
+          .then((pkts) => {
+            if (pkts[0].type != "FL") return;
+            let machInfo = pkts[0].data;
+            ACT_WS_SEND(WS_ID, "PD", 0,
+              { msg: { ...machInfo, type: "set_setup", id: 356 } });
+          })
+          .catch((err) => {
+
+          })
+
+
+      }}>
+      file_set_setup
+      </Button>
+
+    {
+      //JSON.stringify(uInspData)
+    }
+
+    {/* <Divider orientation="left">SolveCalib</Divider>
+
+      CurMea1: <InputNumber size="large" defaultValue={calibCalcInfo.curMea1} step={0.001}
+      onChange={(val) => this.calibInfoUpdate({ curMea1: val })} />
+      &ensp;&ensp;CalibMea1:<InputNumber size="large" defaultValue={calibCalcInfo.calibMea1} step={0.001}
+      onChange={(val) => this.calibInfoUpdate({ calibMea1: val })} />
+    <br />
+      CurMea2:<InputNumber size="large" defaultValue={calibCalcInfo.curMea2} step={0.001}
+      onChange={(val) => this.calibInfoUpdate({ curMea2: val })} />
+      &ensp;&ensp;CalibMea2:<InputNumber size="large" defaultValue={calibCalcInfo.calibMea2} step={0.001}
+      onChange={(val) => this.calibInfoUpdate({ calibMea2: val })} />
+    <br />
+      --------------------------------
+      <br />
+      MMPP:{newCalibData.mmpp}
+    <br />
+      OFFSET:{newCalibData.offset} */}
+
+  </div>
+}
+
+const MainUI=()=>{
+
+
+  
+  const _REF = React.useRef({
+    statesTable:{
+
+      RootSelect:{
+        type:"RootSelect",
+        name:LANG_DICT.mainui.MODE_SELECT_MAIN_MENU,
+      },
+      
+      Inspection:{
+        type:"Inspection",
+        name:LANG_DICT.mainui.MODE_SELECT_INSP_PREP,
+      },
+      DeConf:{
+        type:"DeConf",
+        name:"DeConf"
+      },
+  
+      BackLightCalib:{
+        type:"BackLightCalib",
+        name:LANG_DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+      },
+      Setting:{
+        type:"Setting",
+        name:LANG_DICT.mainui.MODE_SELECT_SETTING,
+      },
+  
+    }
+
+  });
+  let s_statesTable=_REF.current.statesTable;
+  
+  const dispatch = useDispatch();
+  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  
+  const EV_UI_Edit_Mode=()=>dispatch(UIAct.EV_UI_Edit_Mode());
+  const EV_UI_Insp_Mode= () =>dispatch(UIAct.EV_UI_Insp_Mode());
+  const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
+  const ACT_Report_Save = (id, fileName, content) => {
+    let act = UIAct.EV_WS_SEND(id, "SV", 0,
+      { filename: fileName },
+      content
+    )
+    dispatch(act);
+  }
+  const uInspData = useSelector(state => state.Peripheral.uInsp);
+
+  const [UI_state, setUI_state] = useState(s_statesTable.RootSelect);
+
+  let UI=[];
+  
+  let siderUI_info=undefined;
+  //let siderUI=null;
+
+  let card_width=250;
+  let style_obj={
+    width: card_width,
+    height: card_width,
+    float: "left",
+    margin: "10px"
+  }
+  let bodyStyle={
+    padding:"3px",
+    width:"100%",
+    height:"100%",
+  }
+  switch(UI_state)
+  {
+    case s_statesTable.RootSelect:
+
+      siderUI_info={
+        title:UI_state.name
+      }
+
+
+
+
+      UI.push([{
+        title:s_statesTable.DeConf.name,
+        img_src:"resource/image/DefConf.png",
+        onClick:()=>EV_UI_Edit_Mode()
+      },{
+        title:LANG_DICT.mainui.MODE_SELECT_INSP_PREP,
+        //img_src:"resource/image/DefConf.png",
+        onClick:()=>setUI_state(s_statesTable.Inspection)
+      },{
+        title:LANG_DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+        //img_src:"resource/image/DefConf.png",
+        onClick:()=>setUI_state(s_statesTable.BackLightCalib)
+      }].map((ele)=>      
+      <Card hoverable style={style_obj} bodyStyle={bodyStyle} key={ele.title}
+        onClick={ele.onClick}>
+        <div className="height12 width12 overlayCon mainui_mode_select">
+          <img src={ele.img_src} className="width12 img"/>
+          <div className="height12 width12 overlay tint" style={{top:0}}/>
+          <Title level={2}  className="theme_color_1 overlay veleXY text">{ele.title}</Title>
+        </div>
+      </Card>))
+      break;
+  
+    case  s_statesTable.DeConf:
+      //UI=<EV_UI_Edit_Mode  onPrepareOK={EV_UI_Insp_Mode}/>;
+      break;
+    case  s_statesTable.Inspection:
+      
+    
+      siderUI_info={
+        title:UI_state.name,
+        
+        icons:[
+          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
+          
+        ]
+      }
+      UI.push(<InspectionDataPrepare  onPrepareOK={EV_UI_Insp_Mode}/>);
+      
+      break;
+    case  s_statesTable.BackLightCalib:
+      UI.push(<BackLightCalibUI_rdx
+        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        onCalibFinished={(finalReport) => {
+          console.log(">>>>>>>>>",finalReport)
+          if(finalReport===undefined)return;
+          // var enc = new TextEncoder();
+          // ACT_WS_SEND(WS_ID, "SV", 0,
+          //   { filename: "data/stageLightReport.json" },
+          //   enc.encode(JSON.stringify(finalReport, null, 2)))
+          // console.log(finalReport)
+        }} />);
+
+      
+      siderUI_info={
+        title:UI_state.name,
+        icons:[
+          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
+        ]
+      }
+      break;
+    case  s_statesTable.Setting:
+      UI=<Setui_UI/>;
+      break;
+  }
+
+  let siderUI=[];
+  if(siderUI_info!==undefined)
+  {
+    if(siderUI_info.title!==undefined)
+    {
+      siderUI.push(<div key="title" 
+        style={{width:"100%",height:"auto",background: "#FFF",
+        writingMode: "vertical-rl",textOrientation: "mixed",
+        alignItems: "center",display: "flex"}}>
+        <Title level={2} style={{margin: "15px"}}  className="theme_color_2">{siderUI_info.title}</Title>
+      </div>)
+    }
+
+
+    if(siderUI_info.icons!==undefined)
+    {
+      siderUI.push(<div className="HXA" key={"init_div"} style={{padding: "4px"}}/>)
+      siderUI_info.icons.forEach((icon,idx)=>{
+        siderUI.push(<div className="antd-icon-sizing" key={"icon_"+idx} style={{height:30,color:"#FFF"}}>{icon}</div>)
+        siderUI.push(<div className="HXA" style={{padding: "8px"}} key={"divi_"+idx}>
+          <Divider style={{margin:"0px",borderTop: "2px solid rgba(255,255,255,0.6)"}}/>
+        </div>)
+      })
+    }
+    
+  }
+
+  return <Layout className="HXF">
+    {siderUI==null?null:
+    <Sider collapsed width={30} className="theme_background_2" style={{padding:"5px"}}>
+      {siderUI}
+    </Sider>}
+    
+
+    <Layout>
+      <Content>
+        {UI}
+      </Content>
+    </Layout>
+  </Layout>;
+}
+
+
+
+
 class APPMain extends React.Component {
 
 
@@ -934,12 +1345,6 @@ class APPMain extends React.Component {
       menuSelect: "Overview",
       additionalUI: [],
       menuCollapsed: true,
-      calibCalcInfo: {
-        curMea1: 0.8,
-        calibMea1: 0.82,
-        curMea2: 0.4,
-        calibMea2: 0.44,
-      }
     }
   }
 
@@ -952,64 +1357,6 @@ class APPMain extends React.Component {
   shouldComponentUpdate(nextProps, nextState) {
     
     return true;
-  }
-
-  FrontDoor() {
-    const content = (
-      <div className="content">
-        <Paragraph>
-          HYVision 2019 is the most famous vision-check system in the world.
-                </Paragraph>
-        <Paragraph>
-          <p>HYVision 2019 - v1 (http://hyv.idcircle.me)</p>
-          <p>HYVision 2019 - v2 (http://hyv.idcircle.me)</p>
-          <p>HYVision 2019 - v3 (http://hyv.idcircle.me)</p>
-        </Paragraph>
-        <p className="contentLink">
-          <a>
-            <img
-              src="https://gw.alipayobjects.com/zos/rmsportal/MjEImQtenlyueSmVEfUD.svg"
-              alt="start"
-            /> Quick Start
-                    </a>
-          <a>
-            <img src="https://gw.alipayobjects.com/zos/rmsportal/NbuDUAuBlIApFuDvWiND.svg" alt="info" />
-                         Product Info
-                    </a>
-          <a>
-            <img src="https://gw.alipayobjects.com/zos/rmsportal/ohOEPSYdDTNnyMbGuyLb.svg" alt="doc" />
-                        Product Doc
-                    </a>
-        </p>
-      </div>
-    );
-
-    const extraContent = (
-      <img
-        src="https://gw.alipayobjects.com/mdn/mpaas_user/afts/img/A*KsfVQbuLRlYAAAAAAAAAAABjAQAAAQ/original"
-        alt="content"
-      />
-    );
-    const routes = [
-      {
-        path: 'index',
-        breadcrumbName: 'HYV',
-      },
-      {
-        path: 'first',
-        breadcrumbName: 'HOME',
-      },
-      {
-        path: 'second',
-        breadcrumbName: 'Manual',
-      },
-    ];
-    return (<PageHeader title="HYVision 2019" breadcrumb={{ routes }}>
-      <div className="wrap">
-        <div className="content">{content}</div>
-        <div className="extraContent">{extraContent}</div>
-      </div>
-    </PageHeader>);
   }
 
   calibInfoUpdate(newAddInfo) {
@@ -1053,7 +1400,12 @@ class APPMain extends React.Component {
 
 
     let stateObj = xstate_GetCurrentMainState(this.props.c_state);
-    if (stateObj.state === UIAct.UI_SM_STATES.MAIN) {
+    if (stateObj.state === UIAct.UI_SM_STATES.MAIN) 
+    {
+      UI=<MainUI/>;
+    }
+    else if(false)
+    {
       let DefFileFolder = this.props.defModelPath.substr(0, this.props.defModelPath.lastIndexOf('/') + 1);
       let genericMenuItemCBsCB = (selectInfo) => { this.setState({ ...this.state, menuSelect: selectInfo.key }) }
 
@@ -1063,22 +1415,7 @@ class APPMain extends React.Component {
         mmpp = camParam.mmpb2b / camParam.ppb2b;
       }
 
-
-
-      let calibInfo = this.state.calibCalcInfo;
-      console.log(calibInfo);
-      let newCalibData = Calibration_MMPP_offset(
-        calibInfo.curMea1,
-        calibInfo.calibMea1,
-        calibInfo.curMea2,
-        calibInfo.calibMea2,
-        mmpp, 0);
       let MenuItem = {
-        // HOME:{
-        //     icon:"home",
-        //     content:this.FrontDoor(),
-        //     onSelected: genericMenuItemCBsCB
-        // },
         Overview: {
           icon: <InfoCircleOutlined />,
           content: <InspectionDataPrepare onPrepareOK={this.props.EV_UI_Insp_Mode}/>,
@@ -1110,220 +1447,7 @@ class APPMain extends React.Component {
         // },
         Setting: {
           icon: <SettingOutlined />,
-          content: <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
-
-            <Divider orientation="left">MISC</Divider>
-            <AntButton key="Reconnect CAM"
-              onClick={() => {
-                this.props.ACT_WS_SEND(this.props.WS_ID, "RC", 0, {
-                  target: "camera_ez_reconnect"
-                });
-              }}>Reconnect CAM</AntButton>
-              &ensp;
-              <AntButton key="camera Calib"
-              onClick={() => {
-                let fileSelectedCallBack =
-                  (filePath, fileInfo) => {
-                    console.log(filePath, fileInfo);
-                    this.props.ACT_WS_SEND(this.props.WS_ID, "II", 0, {
-                      deffile: "data/cameraCalibration.json",
-                      imgsrc: filePath
-                    });
-
-                  }
-                this.setState({ ...this.state, fileSelectedCallBack });
-
-              }}>camera Calib</AntButton>
-
-            <Divider orientation="left">µInsp</Divider>
-            <Button.Group>
-
-              <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
-                icon={<LinkOutlined />}
-                onClick={() => {
-                  new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                      { ip: "192.168.2.2", port: 5213 },
-                      undefined, { resolve, reject });
-                    //setTimeout(()=>reject("Timeout"),1000)
-                  })
-                    .then((data) => {
-                      console.log(data);
-                    })
-                    .catch((err) => {
-                      console.log(err);
-                    })
-                }}>(re)Connect</Button>
-              <Button type="danger" key="Disconnect uInsp" disabled={!this.props.uInspData.connected}
-                icon={<DisconnectOutlined />}
-                onClick={() => {
-                  new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                      {},
-                      undefined, { resolve, reject });
-                    //setTimeout(()=>reject("Timeout"),1000)
-                  })
-                    .then((data) => {
-                      console.log(data);
-                    })
-                    .catch((err) => {
-                      console.log(err);
-                    })
-                }}>Disconnect</Button>
-
-            </Button.Group>
-
-              &ensp;
-              <Button key="ping uInsp" disabled={!this.props.uInspData.connected}
-              onClick={() => {
-                new Promise((resolve, reject) => {
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                    { msg: { type: "PING", id: 443 } },
-                    undefined, { resolve, reject });
-                })
-                  .then((data) => {
-                    console.log(data);
-                  })
-                  .catch((err) => {
-                    console.log(err);
-                  })
-              }}>
-              PING:{this.props.uInspData.alive}
-            </Button>
-
-              &ensp;
-              <Button key="get_setup" disabled={!this.props.uInspData.connected}
-              onClick={() => {
-                new Promise((resolve, reject) => {
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                    { msg: { type: "get_setup", id: 4423 } },
-                    undefined, { resolve, reject });
-                })
-                  .then((data) => {
-                    console.log(data);
-                  })
-                  .catch((err) => {
-                    console.log(err);
-                  })
-              }}>
-              get_setup
-              </Button>
-
-              &ensp;
-              <Button key="set_setup" disabled={this.props.uInspData.machineInfo === undefined}
-              onClick={() => {
-                let machInfo = dclone(this.props.uInspData.machineInfo);
-                //machInfo.state_pulseOffset[0]+=1;
-                new Promise((resolve, reject) => {
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                    { msg: { ...machInfo, type: "set_setup", id: 356 } },
-                    undefined, { resolve, reject });
-                })
-                  .then((data) => {
-                    console.log(data);
-                  })
-                  .catch((err) => {
-                    console.log(err);
-                  })
-              }}>
-              set_setup
-              </Button>
-
-
-
-            <Button key="save_setup" disabled={this.props.uInspData.machineInfo === undefined}
-              onClick={() => {
-                var enc = new TextEncoder();
-                this.props.ACT_Report_Save(this.props.WS_ID, "data/uInspSetting.json",
-                  enc.encode(JSON.stringify(this.props.uInspData.machineInfo, null, 4)));
-              }}>
-              save_setup
-              </Button>
-
-
-
-
-            <Button key="file_set_setup" disabled={this.props.uInspData.machineInfo === undefined}
-              onClick={() => {
-                new Promise((resolve, reject) => {
-
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
-                    { filename: "data/uInspSetting.json" },
-                    undefined, { resolve, reject }
-                  );
-
-                  setTimeout(() => reject("Timeout"), 5000)
-
-                })
-                  .then((pkts) => {
-                    if (pkts[0].type != "FL") return;
-                    let machInfo = pkts[0].data;
-                    this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                      { msg: { ...machInfo, type: "set_setup", id: 356 } });
-                  })
-                  .catch((err) => {
-
-                  })
-
-
-              }}>
-              file_set_setup
-              </Button>
-
-            {
-              //JSON.stringify(this.props.uInspData)
-            }
-
-            <Divider orientation="left">SolveCalib</Divider>
-
-              CurMea1: <InputNumber size="large" defaultValue={this.state.calibCalcInfo.curMea1} step={0.001}
-              onChange={(val) => this.calibInfoUpdate({ curMea1: val })} />
-              &ensp;&ensp;CalibMea1:<InputNumber size="large" defaultValue={this.state.calibCalcInfo.calibMea1} step={0.001}
-              onChange={(val) => this.calibInfoUpdate({ calibMea1: val })} />
-            <br />
-              CurMea2:<InputNumber size="large" defaultValue={this.state.calibCalcInfo.curMea2} step={0.001}
-              onChange={(val) => this.calibInfoUpdate({ curMea2: val })} />
-              &ensp;&ensp;CalibMea2:<InputNumber size="large" defaultValue={this.state.calibCalcInfo.calibMea2} step={0.001}
-              onChange={(val) => this.calibInfoUpdate({ calibMea2: val })} />
-            <br />
-              --------------------------------
-              <br />
-              MMPP:{newCalibData.mmpp}
-            <br />
-              OFFSET:{newCalibData.offset}
-
-
-            <BPG_FileBrowser key="BPG_FileBrowser"
-              className="width8 modal-sizing"
-              searchDepth={4}
-              path={DefFileFolder} visible={this.state.fileSelectedCallBack !== undefined}
-              BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-              onFileSelected={(filePath, fileInfo) => {
-                this.setState({ ...this.state, fileSelectedCallBack: undefined });
-                this.state.fileSelectedCallBack(filePath, fileInfo);
-              }}
-              onCancel={() => {
-                this.setState({ ...this.state, fileSelectedCallBack: undefined });
-              }}
-              fileFilter={this.state.fileSelectFilter} />
-
-            <BPG_FileSavingBrowser key="BPG_FileSavingBrowser"
-              className="width8 modal-sizing"
-              searchDepth={4}
-              path={DefFileFolder} visible={this.state.fileSavingCallBack !== undefined}
-              defaultName={""}
-              BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-
-              onOk={(folderInfo, fileName, existed) => {
-                this.state.fileSavingCallBack(folderInfo, fileName, existed);
-
-              }}
-              onCancel={() => {
-                this.setState({ ...this.state, fileSavingCallBack: undefined });
-              }}
-              fileFilter={this.state.fileSelectFilter}
-            />
-          </div>,
+          content: <Setui_UI/>,
           onSelected: genericMenuItemCBsCB
         },
         
@@ -1424,14 +1548,6 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
-    ACT_Report_Save: (id, fileName, content) => {
-      let act = UIAct.EV_WS_SEND(id, "SV", 0,
-        { filename: fileName },
-        content
-      )
-      console.log(act);
-      dispatch(act);
-    }
   }
 }
 const mapStateToProps_APPMain = (state) => {

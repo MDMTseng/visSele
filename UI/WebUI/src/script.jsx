@@ -661,7 +661,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
           }
         }}
         onStatusChange={(sys_state)=>{
-          
+          if(cur_state==null)return;
           setSys_state(sys_state);
           ACT_System_Connection_Status_Update(sys_state);
           let curState_EX=xstate_GetCurrentMainState(cur_state);
@@ -1043,7 +1043,7 @@ class APPMasterX extends React.Component {
 
     let localVersion=(this.props.Update_Status!==undefined)?this.props.Update_Status.localVersion:null;
     return (
-      <div className="HXF sp_Style">
+      <div className="HXF sp_Style xception-theme">
         <NullDOM_SystemStatusQuery onStatusChange={(status)=>{
           //console.log(status)
         }}/>
