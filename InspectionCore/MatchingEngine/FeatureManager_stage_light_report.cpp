@@ -449,9 +449,25 @@ void imageDownScale(acvImage *imgDst,acvImage *imgSrc,int downSaleFactor,int sam
   {
     int xi=i*downSaleFactor;
     int xj=j*downSaleFactor;
-    imgDst->CVector[i][j*3+0]=imgSrc->CVector[xi][xj*3+0];
-    imgDst->CVector[i][j*3+1]=imgSrc->CVector[xi][xj*3+1];
-    imgDst->CVector[i][j*3+2]=imgSrc->CVector[xi][xj*3+2];
+
+    int pixelC=0;
+    int RSum=0,GSum=0,BSum=0;
+
+    for(int ii=0;ii<downSaleFactor;ii++)
+    {
+      if(ii+xi>=imgSrc->GetHeight())break;
+      for(int jj=0;jj<downSaleFactor;jj++)
+      {
+        if(jj+xj>=imgSrc->GetWidth())break;
+        RSum+=imgSrc->CVector[xi+ii][(xj+jj)*3+0];
+        GSum+=imgSrc->CVector[xi+ii][(xj+jj)*3+1];
+        BSum+=imgSrc->CVector[xi+ii][(xj+jj)*3+2];
+        pixelC++;
+      }
+    }
+    imgDst->CVector[i][j*3+0]=RSum/pixelC;
+    imgDst->CVector[i][j*3+1]=GSum/pixelC;
+    imgDst->CVector[i][j*3+2]=BSum/pixelC;
   }
 }
 
@@ -467,8 +483,8 @@ int FeatureManager_stage_light_report::FeatureMatching(acvImage *p_img)
   report.data.stage_light_report.gridInfo->clear();
   report.data.stage_light_report.gridInfo->reserve(grid_size[0] * grid_size[1]);
 
-  report.data.stage_light_report.targetImageDim[0] =img_downScale.GetWidth();
-  report.data.stage_light_report.targetImageDim[1] =img_downScale.GetHeight();
+  report.data.stage_light_report.targetImageDim[0] =p_img->GetWidth();
+  report.data.stage_light_report.targetImageDim[1] =p_img->GetHeight();
   LOGI("T0");
 
   acvImage &img_wo_edge = cacheImage2;

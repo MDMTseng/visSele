@@ -1269,7 +1269,15 @@ const MainUI=()=>{
           var enc = new TextEncoder();
           ACT_WS_SEND(WS_ID, "SV", 0,
             { filename: "data/stageLightReport.json" },
-            enc.encode(JSON.stringify(finalReport, null, 2)))
+            enc.encode(JSON.stringify(finalReport, null, 2)),
+            {
+              resolve:(stacked_pkts,action_channal)=>{
+                
+                ACT_WS_SEND(WS_ID, "RC", 0, {
+                  target: "camera_ez_reconnect"
+                });
+              }
+            })
           console.log(finalReport)
         }} />);
 
