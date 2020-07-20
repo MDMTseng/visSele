@@ -47,6 +47,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
 
+let TEST_MODE=false;
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
@@ -529,7 +530,8 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   
   useEffect(() => {
     let cameraStatus = GetObjElement(coreStatus, ["camera_info",0,"cam_status"])===0;
-    //console.log(cameraStatus,systemConnectState);
+
+    if(TEST_MODE==true&&cameraStatus===false)cameraStatus=true; 
     let newStatus={...systemConnectState,camera:cameraStatus};
     if(systemConnectState.camera!=cameraStatus)
     {
