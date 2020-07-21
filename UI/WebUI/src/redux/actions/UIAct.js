@@ -19,6 +19,11 @@ export const UI_SM_STATES = {
   
   ANALYSIS_MODE:"ANALYSIS_MODE",
   ANALYSIS_MODE_NEUTRAL:"ANALYSIS_MODE_NEUTRAL",
+
+
+
+  INSTINSP_MODE:"INSTINSP_MODE",
+  INSTINSP_MODE_NEUTRAL:"INSTINSP_MODE_NEUTRAL",
 };
 
 
@@ -82,6 +87,7 @@ export const UI_SM_EVENT = {
   Edit_Mode:"Edit_Mode",
   Insp_Mode:"Insp_Mode",
   Analysis_Mode:"Analysis_Mode",
+  InstInsp_Mode:"InstInsp_Mode",
   Inspection_Report:"Inspection_Report",
   Camera_Info_Update:"Camera_Info_Update",
   Image_Update:"Image_Update",

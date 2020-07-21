@@ -1160,6 +1160,10 @@ const MainUI=()=>{
         type:"DeConf",
         name:"DeConf"
       },
+      InstInsp:{
+        type:"InstInsp",
+        name:LANG_DICT.mainui.MODE_SELECT_INST_INSP
+      },
   
       BackLightCalib:{
         type:"BackLightCalib",
@@ -1232,7 +1236,12 @@ const MainUI=()=>{
         title:LANG_DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
         //img_src:"resource/image/DefConf.png",
         onClick:()=>setUI_state(s_statesTable.BackLightCalib)
-      }].map((ele)=>      
+      },
+      {
+        title:LANG_DICT.mainui.MODE_SELECT_INST_INSP,
+        onClick:()=>setUI_state(s_statesTable.InstInsp)
+      }
+    ].map((ele)=>      
       <Card hoverable style={style_obj} bodyStyle={bodyStyle} key={ele.title}
         onClick={ele.onClick}>
         <div className="height12 width12 overlayCon mainui_mode_select">
@@ -1279,9 +1288,19 @@ const MainUI=()=>{
               }
             })
           console.log(finalReport)
+
         }} />);
 
       
+      siderUI_info={
+        title:UI_state.name,
+        icons:[
+          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
+        ]
+      }
+      break;    
+    case  s_statesTable.InstInsp:
+
       siderUI_info={
         title:UI_state.name,
         icons:[

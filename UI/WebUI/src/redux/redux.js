@@ -76,6 +76,16 @@ const AnalysisStates = {
   }
 };
 
+
+
+const InstInspStates = {
+  initial: UISTS.INSTINSP_MODE_NEUTRAL,
+  states: {
+    [UISTS.INSTINSP_MODE_NEUTRAL]
+            :  {on: {}}
+  }
+};
+
 let ST = {
     initial: UISTS.SPLASH,
     states: {
@@ -83,6 +93,7 @@ let ST = {
       [UISTS.MAIN]:      { on: { [UISEV.Edit_Mode]:   UISTS.DEFCONF_MODE,
                                  [UISEV.Insp_Mode]:   UISTS.INSP_MODE,
                                  [UISEV.Analysis_Mode]:UISTS.ANALYSIS_MODE,
+                                 [UISEV.InstInsp_Mode]:UISTS.INSTINSP_MODE,
                                  [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH, 
                                  [UISEV.EXIT]:        UISTS.SPLASH } },
       [UISTS.DEFCONF_MODE]: Object.assign(
@@ -99,7 +110,15 @@ let ST = {
                  { on: { [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH , 
                     [UISEV.ERROR]:       UISTS.MAIN , 
                     [UISEV.EXIT]:        UISTS.MAIN }},
-                  AnalysisStates)
+                  AnalysisStates),
+
+
+
+      [UISTS.INSTINSP_MODE]: Object.assign(
+                  { on: { [UISEV.REMOTE_SYSTEM_NOT_READY]: UISTS.SPLASH , 
+                      [UISEV.ERROR]:       UISTS.MAIN , 
+                      [UISEV.EXIT]:        UISTS.MAIN }},
+                    InstInspStates)
     }
   };
 

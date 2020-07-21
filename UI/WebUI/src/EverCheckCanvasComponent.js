@@ -2729,4 +2729,131 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
 
-export default { Preview_CanvasComponent, INSP_CanvasComponent, SLCALIB_CanvasComponent, DEFCONF_CanvasComponent,SHAPE_TYPE_COLOR }
+
+
+class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
+
+  constructor(canvasDOM) {
+    super(canvasDOM);
+    this.ERROR_LOCK = false;
+    this.edit_DB_info = null;
+    this.db_obj = null;
+    this.mouse_close_dist = 10;
+
+    this.colorSet =
+      Object.assign(this.colorSet,
+        {
+          inspection_Pass: "rgba(0,255,0,0.1)",
+          inspection_production_Fail: "rgba(128,128,0,0.3)",
+          inspection_Fail: "rgba(255,0,0,0.1)",
+          inspection_UNSET: "rgba(128,128,128,0.1)",
+          inspection_NA: "rgba(64,64,64,0.1)",
+
+
+          color_NA: "rgba(128,128,128,0.5)",
+
+          color_UNSET: "rgba(128,128,128,0.5)",
+          color_SUCCESS: this.colorSet.measure_info,
+          color_FAILURE_opt: {
+            submargin1: "rgba(255,255,0,0.5)",
+          },
+          color_FAILURE: "rgba(255,0,0,0.5)",
+        }
+      );
+
+
+    this.state = undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
+
+    this.EmitEvent = (event) => { log.info(event); };
+  }
+
+  EditDBInfoSync(edit_DB_info) {
+    this.edit_DB_info = edit_DB_info;
+    this.db_obj = edit_DB_info._obj;
+    this.stage_light_report = edit_DB_info.stage_light_report;
+    this.SetImg(edit_DB_info.img);
+    let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+    this.rUtil.renderParam.mmpp = mmpp;
+  }
+
+  onmousemove(evt) {
+    let pos = this.getMousePos(this.canvas, evt);
+    this.mouseStatus.x = pos.x;
+    this.mouseStatus.y = pos.y;
+    let doDragging = true;
+
+    if (doDragging) {
+      if (this.mouseStatus.status == 1) {
+        this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
+
+        this.ctrlLogic();
+        this.draw();
+      }
+
+    }
+  }
+
+
+
+
+
+  draw() {
+
+    //console.log(this.ERROR_LOCK, this.edit_DB_info);
+    if (this.ERROR_LOCK || this.edit_DB_info == null) {
+      return;
+    }
+    //let inspectionReport = this.edit_DB_info.inspReport;
+    //let inspectionReportList = this.edit_DB_info.inspReport.reports;
+
+
+    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
+    //this.edit_DB_info.inspReport.reports;
+
+
+    let unitConvert = {
+      unit: "mm",//"μm",
+      mult: 1
+    };
+
+    let ctx = this.canvas.getContext('2d');
+    let ctx2nd = this.secCanvas.getContext('2d');
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+    ctx.resetTransform();
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    let matrix = this.worldTransform();
+    ctx.setTransform(matrix.a, matrix.b, matrix.c,
+      matrix.d, matrix.e, matrix.f);
+    {//TODO:HACK: 4X4 times scale down for transmission speed
+
+      let mmpp = this.rUtil.get_mmpp();
+
+      let scale = 1;
+      if (this.img_info !== undefined && this.img_info.scale !== undefined)
+        scale = this.img_info.scale;
+      let mmpp_mult = scale * mmpp;
+
+      //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
+      ctx.save();
+
+      ctx.scale(mmpp_mult, mmpp_mult);
+      if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
+        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+      }
+      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+      ctx.drawImage(this.secCanvas, 0, 0);
+      ctx.restore();
+    }
+
+    //this.stage_light_report
+
+  }
+
+  ctrlLogic() {
+
+  }
+}
+
+
+
+export default { Preview_CanvasComponent, INSP_CanvasComponent, SLCALIB_CanvasComponent, DEFCONF_CanvasComponent,SHAPE_TYPE_COLOR,InstInsp_CanvasComponent }
