@@ -178,7 +178,7 @@ void task_gateSensing()
 {
   
   
-  uint8_t cur_Sense = digitalRead(GATE_PIN);
+  uint8_t cur_Sense = !digitalRead(GATE_PIN);
           
   if (cur_Sense != gateInfo.pre_Sense)
   {

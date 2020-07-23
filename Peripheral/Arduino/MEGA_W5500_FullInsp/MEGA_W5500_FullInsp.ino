@@ -15,6 +15,8 @@
 #include "websocket_FI.hpp"
 #include "include/RingBuf.hpp"
 
+#define TEST_MODE 
+
 
 
 enum class GEN_ERROR_CODE { 
@@ -97,8 +99,8 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 #define CAMERA_PIN 16
 #define FEEDER_PIN 14
 #define BACK_LIGHT_PIN 28
-#define AIR_BLOW_OK_PIN 18
-#define AIR_BLOW_NG_PIN 19
+#define AIR_BLOW_OK_PIN 24
+#define AIR_BLOW_NG_PIN 25
 #define GATE_PIN 30
 
 #define FAKE_GATE_PIN 31
@@ -126,7 +128,7 @@ void errorLOG(GEN_ERROR_CODE code,char* errorLog=NULL);
 
 uint32_t PRPC= perRevPulseCount;
 
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW/10;
+uint32_t tar_pulseHZ_ = perRevPulseCount_HW/10; 
 
 int offsetAir=80;
 int cam_angle=103;
@@ -143,7 +145,7 @@ uint32_t state_pulseOffset[] =
 //  
 //  PRPC*angle/360-blowPCount/2+offsetAir, PRPC*angle/360+blowPCount/2+offsetAir, //OK air blow
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
-{0, 654 ,657,659, 660,  697, 1450,   1475,1480,1573,1583};
+{0, 654 ,657,659, 660,  697, 750,  900,910,1073,1083};
 
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
@@ -941,20 +943,19 @@ class Websocket_FI:public Websocket_FI_proto{
 
 void showOff()
 {
-  int delayArr[]={40,40,80,40,40,80};
-  for(int i=20;i<30;i++)
+  int delayArr[]={140,140,360,140,140,360};
+  for(int i=0;i<sizeof(delayArr)/sizeof(*delayArr);i++)
   {
 
     digitalWrite(AIR_BLOW_OK_PIN, 1);
     digitalWrite(AIR_BLOW_NG_PIN, 1);
     digitalWrite(BACK_LIGHT_PIN, 1);
-    delay(1000/i);
 
-    
+    delay(10);
     digitalWrite(AIR_BLOW_OK_PIN, 0);
     digitalWrite(AIR_BLOW_NG_PIN, 0);
     digitalWrite(BACK_LIGHT_PIN, 0);
-    delay(1000/i);
+    delay(delayArr[i]);
   }
 }
 
@@ -983,6 +984,15 @@ void setup() {
 
   showOff();
   
+#ifdef TEST_MODE
+  tar_pulseHZ_ = perRevPulseCount_HW/3;
+  mode_info.mode=run_mode_info::TEST;
+  mode_info.misc_var=0;
+#else
+
+#endif
+
+
 }
 
 uint32_t ccc=0;
