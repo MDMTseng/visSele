@@ -34,6 +34,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float matching_angle_margin;
   float matching_angle_offset;
   int matching_face;
+  bool matching_without_signature;
 
 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
@@ -76,13 +77,20 @@ protected:
   FeatureReport_searchPointReport searchPoint_process(acvImage *grayLevelImg,acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
   FeatureReport_sig360_circle_line_single &report, 
   float sine,float cosine,float flip_f,float thres,
-  featureDef_searchPoint &def,acvImage *dbgImg);
+  featureDef_searchPoint &def);
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);
   int ParseMainVector(float flip_f,FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *vec);
   int ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt);
   int lineCrossPosition(float flip_f,FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt);
+
+
+  int SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
+  int lableIdx,acv_LabeledData *ldData,
+  int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
+  FeatureReport_sig360_circle_line_single &singleReport,float angle,float flip_f,
+  vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections);
 };
 
 
