@@ -345,6 +345,13 @@ machine_hash get_machine_hash()
   return hash_info;
 }
 
+int CheckFileExistance(const char *filename)
+{
+  if( access( filename, F_OK ) == -1 ) {
+    return -1;
+  }
+  return 0;
+}
 
 char* ReadText(const char *filename)
 {
@@ -383,7 +390,7 @@ char* ReadText(const char *filename)
        fclose(handler);
     }
 
-    return buffer;
+   return buffer;
 }
 
 uint8_t* ReadByte(const char *filename,int *length)

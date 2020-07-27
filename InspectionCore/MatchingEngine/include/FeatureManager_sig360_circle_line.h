@@ -9,6 +9,27 @@
 
 
 
+class ContourSignature
+{
+public :
+  vector<acv_XY>signature_data;
+  float mean;
+  float sigma;
+
+  ContourSignature(cJSON*);
+  ContourSignature(int Len=0);
+  int CalcInfo();
+  int RELOAD(cJSON*);
+
+  int RESET(int Len);
+
+  float match_min_error(ContourSignature &s,
+    float searchAngleOffset,float searchAngleRange,int facing,
+    bool *ret_isInv, float *ret_angle);
+
+};
+
+
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
 
   typedef enum FEATURETYPE {
@@ -27,8 +48,8 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   vector<featureDef_auxPoint> auxPointList;
   vector<featureDef_searchPoint> searchPointList;
   int signature_feature_id;
-  vector<acv_XY> feature_signature;
-  vector<acv_XY> tmp_signature;
+  ContourSignature feature_signature;
+  ContourSignature tmp_signature;
   ContourFetch edge_grid;
 
   float matching_angle_margin;

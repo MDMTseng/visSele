@@ -1328,12 +1328,6 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
 int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 {
 
-  if (feature_signature.size() != 0)
-  {
-    LOGE("feature_signature:size()=%d is set already. There can only be one signature feature.", feature_signature.size());
-    return -1;
-  }
-
   this->signature_feature_id = (int)*JFetEx_NUMBER(signature_obj, "id");
   cJSON *signature;
   if (!(getDataFromJsonObj(signature_obj, "signature", (void **)&signature) & cJSON_Object))
@@ -1342,53 +1336,8 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
     return -1;
   }
 
-  cJSON *signature_magnitude;
-  cJSON *signature_angle;
-  if (!(getDataFromJsonObj(signature, "magnitude", (void **)&signature_magnitude) & cJSON_Array))
-  {
-    LOGE("The signature_magnitude is not an cJSON_Array");
-    return -1;
-  }
 
-  if (!(getDataFromJsonObj(signature, "angle", (void **)&signature_angle) & cJSON_Array))
-  {
-    LOGE("The signature_angle is not an cJSON_Array");
-    return -1;
-  }
-
-  if (cJSON_GetArraySize(signature_magnitude) != cJSON_GetArraySize(signature_angle))
-  {
-    LOGE("The signature_angle and signature_magnitude doesn't have same length");
-    return -1;
-  }
-
-  if (cJSON_GetArraySize(signature_magnitude) != 360)
-  {
-    LOGE("The signature size(%d) is not equal to 360", cJSON_GetArraySize(signature_magnitude));
-    return -1;
-  }
-
-  for (int i = 0; i < cJSON_GetArraySize(signature_magnitude); i++)
-  {
-    double *pnum_mag;
-    if (!(getDataFromJsonObj(signature_magnitude, i, (void **)&pnum_mag) & cJSON_Number))
-    {
-      return -1;
-    }
-
-    double *pnum_ang;
-    if (!(getDataFromJsonObj(signature_angle, i, (void **)&pnum_ang) & cJSON_Number))
-    {
-      return -1;
-    }
-    acv_XY dat = {.X = (float)*pnum_mag, .Y = (float)*pnum_ang};
-
-    feature_signature.push_back(dat);
-    /*cJSON * feature = cJSON_GetArrayItem(signature, i);
-    LOGI(" %f",type_str,ver_str,unit_str);*/
-  }
-
-  LOGV("feature is a signature");
+  feature_signature.RELOAD(signature);
 
   return 0;
 }
@@ -1742,10 +1691,10 @@ int FeatureManager_sig360_circle_line::parse_jobj()
             acvVecMult(searchPointList[i].data.anglefollow.position, ppmm);
       }
     }
-
-    for (int i = 0; i < feature_signature.size(); i++)
+    
+    for (int i = 0; i < feature_signature.signature_data.size(); i++)
     {
-      feature_signature[i].X *= ppmm;
+      feature_signature.signature_data[i].X *= ppmm;
     }
   }
 
@@ -1765,7 +1714,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }*/
   }
 
-  if (this->matching_without_signature && feature_signature.size() == 0)
+  if (this->matching_without_signature && feature_signature.signature_data.size() == 0)
   {
     LOGE("No signature data");
     return -1;
@@ -1786,7 +1735,8 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
 
   auxPointList.resize(0);
   searchPointList.resize(0);
-  feature_signature.resize(0);
+
+  feature_signature.RESET(0);
 
   root = cJSON_Parse(json_str);
   if (root == NULL)
@@ -1799,7 +1749,7 @@ int FeatureManager_sig360_circle_line::reload(const char *json_str)
   {
     featureCircleList.resize(0);
     featureLineList.resize(0);
-    feature_signature.resize(0);
+    feature_signature.RESET(0);
     reload("");
     return -2;
   }
@@ -1998,7 +1948,8 @@ bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::ptInfo &
   return a.tmp < b.tmp;
 }
 
-int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
+int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
+  acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
   int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
   FeatureReport_sig360_circle_line_single &singleReport,float angle,float flip_f,
@@ -2836,6 +2787,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,ac
   
 }
 
+
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
   report.bacpac=bacpac;
@@ -2859,14 +2811,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   //acvBoxFilter(buff_,smoothedImg,2);
   //acvBoxFilter(buff_,smoothedImg,2);
 
-  float feature_signature_ave = 0;
-  for (int i = 0; i < feature_signature.size(); i++)
-  {
-    feature_signature_ave += feature_signature[i].X;
-  }
-  feature_signature_ave /= feature_signature.size();
-
-  tmp_signature.resize(feature_signature.size());
+  tmp_signature.RESET(feature_signature.signature_data.size());
+  
   reports.resize(0);
   int scanline_skip = 15;
 
@@ -2898,13 +2844,14 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
-    acvContourCircleSignature(img, ldData[i], i, tmp_signature);
+    acvContourCircleSignature(img, ldData[i], i, tmp_signature.signature_data);
 
     //the tmp_signature is in Pixel unit, convert it to mm
-    for (int j = 0; j < tmp_signature.size(); j++)
+    for (int j = 0; j < tmp_signature.signature_data.size(); j++)
     {
-      tmp_signature[j].X /= ppmm;
+      tmp_signature.signature_data[j].X /= ppmm;
     }
+    tmp_signature.CalcInfo();
 
     bool isInv;
     float angle;
@@ -2925,14 +2872,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     // }
     // LOGI(">>=================");
 
-
-    float error = SignatureMinMatching(tmp_signature, feature_signature,
-                                       //M_PI/2,M_PI/10,-1,
-                                       //M_PI/2,M_PI*1.01/4,-1,
-                                       this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
+    float error = feature_signature.match_min_error(
+      tmp_signature,this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
                                        &isInv, &angle);
 
-    error = sqrt(error) / feature_signature_ave;
+    error = sqrt(error);
     //if(i<10)
     {
       LOGI("======%d===X:%0.4f Y:%0.4f er:%f,inv:%d,angDeg:%f",
@@ -3024,4 +2968,100 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
   //LOGI(">>>>>>>>");
   return 0;
+}
+
+int ContourSignature::RESET(int Len)
+{
+  mean=NAN;
+  sigma=NAN;
+  signature_data.resize(Len);
+  return 0;
+}
+
+int ContourSignature::CalcInfo()
+{
+  mean=NAN;
+  sigma=NAN;
+  if(signature_data.size()==0)return -1;
+  float _mean=0;
+  float _sigma=0;
+  for (int i = 0; i < signature_data.size(); i++)
+  {
+    float x=signature_data[i].X;
+    _mean += x;
+    _sigma +=x*x;
+  }
+  _mean /= signature_data.size();
+  _sigma /= signature_data.size();
+  _sigma = sqrt(_sigma-_mean*_mean);
+  
+  mean=_mean;
+  sigma=_sigma;
+  return 0;
+}
+
+int ContourSignature::RELOAD(cJSON* sig_json)
+{
+  RESET(0);
+  cJSON *signature_magnitude;
+  cJSON *signature_angle;
+  if (!(getDataFromJsonObj(sig_json, "magnitude", (void **)&signature_magnitude) & cJSON_Array))
+  {
+    LOGE("The signature_magnitude is not an cJSON_Array");
+    return -1;
+  }
+
+  if (!(getDataFromJsonObj(sig_json, "angle", (void **)&signature_angle) & cJSON_Array))
+  {
+    LOGE("The signature_angle is not an cJSON_Array");
+    return -1;
+  }
+
+  if (cJSON_GetArraySize(signature_magnitude) != cJSON_GetArraySize(signature_angle))
+  {
+    LOGE("The signature_angle and signature_magnitude doesn't have same length");
+    return -1;
+  }
+
+  for (int i = 0; i < cJSON_GetArraySize(signature_magnitude); i++)
+  {
+    double *pnum_mag;
+    if (!(getDataFromJsonObj(signature_magnitude, i, (void **)&pnum_mag) & cJSON_Number))
+    {
+      return -1;
+    }
+
+    double *pnum_ang;
+    if (!(getDataFromJsonObj(signature_angle, i, (void **)&pnum_ang) & cJSON_Number))
+    {
+      return -1;
+    }
+    acv_XY dat = {.X = (float)*pnum_mag, .Y = (float)*pnum_ang};
+
+    signature_data.push_back(dat);
+  }
+
+  CalcInfo();
+  return 0;
+}
+
+ContourSignature::ContourSignature(cJSON* jsonObj)
+{
+  int ret_err = RELOAD(jsonObj);
+  if(ret_err)
+    throw std::invalid_argument( "The json signature data isn't correct {magnitude:[N numbers],angle:[N numbers]}" );
+}
+
+ContourSignature::ContourSignature(int len)
+{
+  RESET(len);
+}
+
+float ContourSignature::match_min_error(ContourSignature &s,
+    float searchAngleOffset,float searchAngleRange,int facing,
+    bool *ret_isInv, float *ret_angle)
+{
+  return SignatureMinMatching(s.signature_data, signature_data,
+    searchAngleOffset, searchAngleRange, facing,
+    ret_isInv, ret_angle);
 }

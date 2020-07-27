@@ -1017,7 +1017,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     LOGI("Locked");
 
 
-    if (checkTL("HR", dat))
+    if      (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
 
@@ -1827,6 +1827,165 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         calib_bacpac.cam=camera;
 
       }
+
+    }
+    else if (checkTL("_0", dat))//_0 spetial CMD 0
+    {
+      DatCH_Data datCH_BPG =
+          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
+
+
+      cJSON *retObj = cJSON_CreateObject();
+
+      char *cmd_type=JFetch_STRING(json, "type");
+      
+      if (strcmp(cmd_type, "files_existance_check") == 0)
+      {
+      }
+      if (strcmp(cmd_type, "signature_files_matching") == 0)
+      {
+        cJSON *jo_signature = JFetch_OBJECT(json, "signature");
+
+
+
+        //matching DefFiles
+
+        if(jo_signature!=NULL)
+        {        
+          ContourSignature tar_sig(jo_signature);
+          cJSON_AddNumberToObject(retObj, "mean", tar_sig.mean);
+          cJSON_AddNumberToObject(retObj, "sigma", tar_sig.sigma);
+          char keyBuff[]="___________[XXXXXXXXXXX]";
+          cJSON *retFileArr = cJSON_CreateArray();
+          int k=0;
+          for (k = 0;; k++)
+          {
+            sprintf(keyBuff, "files[%d]", k);
+            char *fileName = JFetch_STRING(json, keyBuff);
+            if(fileName==NULL)break;//Meaning the array reaches the end
+
+            char *fileStr = ReadText(fileName);
+            cJSON *sig_m_report = cJSON_CreateObject();
+            if (fileStr != NULL)
+            {
+              cJSON *signatureX=NULL;
+              
+              {
+                cJSON *fileJson = cJSON_Parse(fileStr);
+                cJSON *obj0 = JFetch_OBJECT(fileJson, "featureSet[0].inherentfeatures[0]");
+                if(obj0!=NULL)
+                {
+                  //signatureX = cJSON_DetachItemFromObject(obj0,"signature");
+                  signatureX = JFetch_OBJECT(obj0,"signature");
+
+                  
+                  ContourSignature cur_sig(signatureX);
+                  bool ret_isInv;
+                  float ret_angle=NAN;
+                  float matching_Error;
+                  matching_Error=tar_sig.match_min_error(cur_sig,0,360,1,&ret_isInv,&ret_angle);
+
+                  cJSON_AddNumberToObject(sig_m_report, "p_error", matching_Error);
+                  cJSON_AddNumberToObject(sig_m_report, "p_angle", ret_angle);
+                  
+                  matching_Error=tar_sig.match_min_error(cur_sig,0,360,-1,&ret_isInv,&ret_angle);
+                  
+                  cJSON_AddNumberToObject(sig_m_report, "n_error", matching_Error);
+                  cJSON_AddNumberToObject(sig_m_report, "n_angle", ret_angle);
+
+                  cJSON_AddNumberToObject(sig_m_report, "mean", cur_sig.mean);
+                  cJSON_AddNumberToObject(sig_m_report, "sigma", cur_sig.sigma);
+
+
+
+                }
+                cJSON_Delete(fileJson);
+              }
+
+              delete fileStr;
+            }
+            else
+            {//File reading error
+              //Fill nothing to sig_m_report...
+            }
+            cJSON_AddItemToArray(retFileArr,sig_m_report);
+          }
+          if(k==0)
+          {
+            cJSON_Delete(retFileArr);
+          }
+          else
+          {
+            cJSON_AddItemToObject(retObj, "files", retFileArr);
+          }
+          
+          
+          cJSON *retSignArr = cJSON_CreateArray();
+          for ( k = 0;; k++)
+          {
+            sprintf(keyBuff, "signatures[%d]", k);
+            cJSON *sign_obj = JFetch_OBJECT(json, keyBuff);
+            if(sign_obj==NULL)break;//Meaning the array reaches the end
+
+            cJSON *sig_m_report = cJSON_CreateObject();
+
+
+            {
+              ContourSignature cur_sig(sign_obj);
+              bool ret_isInv;
+              float ret_angle=NAN;
+              float matching_Error;
+              matching_Error=tar_sig.match_min_error(cur_sig,0,360,1,&ret_isInv,&ret_angle);
+
+              cJSON_AddNumberToObject(sig_m_report, "p_error", matching_Error);
+              cJSON_AddNumberToObject(sig_m_report, "p_angle", ret_angle);
+              
+              matching_Error=tar_sig.match_min_error(cur_sig,0,360,-1,&ret_isInv,&ret_angle);
+              
+              cJSON_AddNumberToObject(sig_m_report, "n_error", matching_Error);
+              cJSON_AddNumberToObject(sig_m_report, "n_angle", ret_angle);
+
+              cJSON_AddNumberToObject(sig_m_report, "mean", cur_sig.mean);
+              cJSON_AddNumberToObject(sig_m_report, "sigma", cur_sig.sigma);
+
+            }
+
+            
+            cJSON_AddItemToArray(retSignArr,sig_m_report);
+          }
+          
+          if(k==0)
+          {
+            cJSON_Delete(retSignArr);
+          }
+          else
+          {
+            cJSON_AddItemToObject(retObj, "signatures", retSignArr);
+          }
+        }
+        else
+        {
+          sprintf(err_str,"No signature info....");
+        }
+
+
+
+
+        
+
+      }
+      LOGI(">>>");
+      
+      char *jstr = cJSON_Print(retObj);
+      cJSON_Delete(retObj);
+
+      bpg_dat = GenStrBPGData("SR", jstr);//Special Return from cmd
+      bpg_dat.pgID = dat->pgID;
+      datCH_BPG.data.p_BPG_data = &bpg_dat;
+      self->SendData(datCH_BPG);
+
+      delete jstr;
+      session_ACK = true;
 
     }
     else if (checkTL("ST", dat))
