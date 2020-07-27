@@ -36,6 +36,7 @@ import Card from 'antd/lib/card';
 import Carousel from 'antd/lib/carousel';
 import Popover from 'antd/lib/popover';
 import Affix from 'antd/lib/Affix';
+import  Table  from 'antd/lib/table';
 
 import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
@@ -48,6 +49,7 @@ const { Meta } = Card;
 const { Step } = Steps;
 
 import { 
+  MonitorOutlined,
   FolderOpenOutlined,
   InfoCircleOutlined,
   EditOutlined,
@@ -206,308 +208,72 @@ function isString(data) {
   return (typeof data === 'string' || data instanceof String);
 }
 
-function SingleDisplayUI({ displayInfo }) {
-  const canvasRef = React.useRef(null)
+function checkFileInfo(fileInfo)
+{
 
-
-  return <div>
-    <Title level={2}>{displayInfo.name}</Title>
-    Name:{displayInfo.name}
-    <br />
-    Cat:{displayInfo.cat}
-    <br />
-    <pre>
-      {displayInfo.targetDeffiles.map((dfs, id) =>
-        "Def[" + id + "]:" + JSON.stringify(displayInfo.targetDeffiles[id], null, 2)
-      )}
-    </pre>
-  </div>
-}
-
-function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel }) {
-  const [displayEditInfo, setDisplayEditInfo] = useState(undefined);
-
-  let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
-  const [fileBrowserInfo, setFileBrowserInfo] = useState(undefined);
-
-  useEffect(() => {
-    setDisplayEditInfo(dclone(displayInfo));
-  }, [displayInfo]);
-  if (displayEditInfo === undefined) return null;
-  return <div>
-    <Input addonBefore="Name:" className="s width4" value={displayEditInfo.name}
-      onChange={e => {
-        let dcEI = dclone(displayEditInfo)
-        dcEI.name = e.target.value;
-        setDisplayEditInfo(dcEI)
-      }} />
-    <div className="s width6" />
-    <Input addonBefore="Cat:" className="s width2" value={displayEditInfo.cat}
-      onChange={e => {
-        let dcEI = dclone(displayEditInfo)
-        dcEI.cat = e.target.value;
-        setDisplayEditInfo(dcEI)
-      }} />
-    {displayEditInfo.targetDeffiles.map((dfs, id) => {
-
-      return [
-        <Input addonBefore="Tag:" value={dfs.tags} key={id + "_input"}
-          onChange={e => {
-
-            let dcEI = dclone(displayEditInfo);
-            let tarDef = dcEI.targetDeffiles[id];
-            tarDef.tags = e.target.value
-
-            setDisplayEditInfo(dcEI)
-          }} />,
-        "Def[" + id + "]:" + dfs.name + ":" + dfs.featureSet_sha1 + "  " + dfs.path,
-        <Button key={id + "_Button"}
-          onClick={() => {
-            let fileS =
-            {
-              path: "data/",
-              selected: (path, info) => {
-                console.log(path, info);
-
-                let PromArr = [
-                  new Promise((resolve, reject) => {
-                    BPG_Channel("LD", 0,
-                      { filename: path },
-                      undefined, { resolve, reject }
-                    );
-                    setTimeout(() => reject("Timeout"), 5000)
-                  }),
-                  new Promise((resolve, reject) => {
-                    BPG_Channel("FB", 0, {//"FB" is for file browsing
-                      path: "./",
-                      depth: 0,
-                    }, undefined, { resolve, reject });
-                    setTimeout(() => reject("Timeout"), 5000)
-                  })
-                ];
-                Promise.all(PromArr).
-                  then((pkts) => {
-                    console.log(pkts);
-                    if (pkts[0][0].type != "FL") return;
-                    if (pkts[1][0].type != "FS") return;
-                    let dataFolderPath = pkts[1][0].data.path;
-                    let machInfo = pkts[0][0].data;
-                    //console.log(pkts[0].data);
-                    let dcEI = dclone(displayEditInfo);
-                    let tarDef = dcEI.targetDeffiles[id];
-                    tarDef.hash = machInfo.featureSet_sha1;
-                    tarDef.featureSet_sha1 = machInfo.featureSet_sha1;
-                    tarDef.featureSet_sha1_pre = machInfo.featureSet_sha1_pre;
-                    tarDef.featureSet_sha1_root = machInfo.featureSet_sha1_root;
-
-
-                    tarDef.path = path.replace(dataFolderPath, "").replace(/^\//, "");
-                    tarDef.name = machInfo.name
-                    //console.log(dcEI);
-                    setDisplayEditInfo(dcEI)
-
-                  })
-                  .catch((err) => {
-                    console.log(err);
-                  })
-
-              },
-              filter: fileSelectFilter
-            }
-            setFileBrowserInfo(fileS);
-          }}
-          style={{ width: '30%' }}
-        >
-          loadDefFile
-        </Button>]
-    }
-    )}
-    {fileBrowserInfo === undefined ? null :
-      <BPG_FileBrowser key="BPG_FileBrowser"
-        className="width8 modal-sizing"
-        searchDepth={4}
-        path={fileBrowserInfo.path}
-        visible={true}
-        BPG_Channel={BPG_Channel}
-        onFileSelected={(filePath, fileInfo) => {
-          fileBrowserInfo.selected(filePath, fileInfo);
-          setFileBrowserInfo(undefined);
-        }}
-        onCancel={() => {
-          setFileBrowserInfo(undefined);
-        }}
-        fileFilter={fileBrowserInfo.filter} />
-    }
-
-
-
-    <Button key="onUpdate_btn"
-      onClick={() => onUpdate(displayEditInfo)}
-      style={{ width: '30%' }}
-    >
-      OK
-    </Button>
-
-
-    <Button key="onCancel_btn"
-      onClick={onCancel}
-      style={{ width: '30%' }}
-    >
-      Cancel
-    </Button>
-  </div>
-}
-
-function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
-  const [displayInfo, setDisplayInfo] = useState(undefined);
-  const [displayEle, setDisplayEle] = useState(undefined);
-
-  useEffect(() => {
-    setDisplayInfo(undefined);
-    CusDisp_DB.read(".").then(data => {
-      setDisplayInfo(data.prod);
-    }).catch(e => {
-      console.log(e);
-    });
-    return () => {
-      console.log("1,didUpdate ret::");
-    };
-  }, []);
-
-  // useEffect(() => {
-  //   console.log("2,count->useEffect>>");
-  // },[displayInfo]);
-
-  let UI = [];
-  if (displayInfo !== undefined) {
-    console.log(displayInfo);
-    UI = [];
-
-
-    if (displayEle === undefined) {
-
-      UI.push(displayInfo.map(info =>
-        <div>
-          <SingleDisplayUI displayInfo={info} />
-          <Button
-            onClick={() => {
-
-              setDisplayEle(info);
-            }}
-            style={{ width: '30%' }}
-          >
-            EDIT
-          </Button>
-          <Button type="dashed"
-            onClick={() => {
-              setDisplayInfo(undefined);
-              CusDisp_DB.delete(info._id).then(() => {
-
-                CusDisp_DB.read(".").then(data => {
-                  console.log(displayInfo);
-                  setDisplayInfo(data.prod);
-                }).catch(e => {
-                  console.log(e);
-                });
-              });
-            }}
-            style={{ width: '60%' }}
-          >
-            Ｘ
-          </Button>
-        </div>
-      ))
-
-      UI.push(
-        <Button type="dashed"
-          onClick={() => {
-            CusDisp_DB.create({ name: "新設定", targetDeffiles: [{}] }, undefined).then(() => {
-              CusDisp_DB.read(".").then(data => {
-                console.log(displayInfo);
-                setDisplayInfo(data.prod);
-
-                setDisplayEle(data.prod[data.prod.length - 1]);
-              }).catch(e => {
-                console.log(e);
-              });
-            });
-          }}
-          style={{ width: '60%' }}
-        >
-          Add field
-        </Button>)
-
-    }
-    else {
-
-
-      UI.push(
-        <div>
-          <SingleDisplayEditUI displayInfo={displayEle} BPG_Channel={BPG_Channel}
-            onUpdate={(updatedEle) => {
-              console.log(updatedEle);
-              CusDisp_DB.update(updatedEle, displayEle._id).then(() => {
-                CusDisp_DB.read(".").then(data => {
-                  console.log(displayInfo);
-                  setDisplayInfo(data.prod);
-                  setDisplayEle();
-                }).catch(e => {
-                  console.log(e);
-                });
-              });
-            }}
-
-            onCancel={() => {
-              setDisplayEle();
-            }} />
-
-        </div>
-      )
-
-      // UI.push(
-      // <Button  
-      //   onClick={() => {
-      //     CusDisp_DB.update({name:"OKOK",targetDeffiles:[{hash:""}]},displayEle._id).then(()=>{
-
-      //       CusDisp_DB.read(".").then(data=>{
-      //         console.log(displayInfo);
-      //         setDisplayInfo(data.prod);
-      //         setDisplayEle(undefined);
-      //       }).catch(e=>{
-      //         console.log(e);
-      //       });
-      //     });
-      //   }}
-      //   style={{ width: '30%' }}
-      // >
-      //   mod
-      // </Button>);
-
-
-    }
-
+  if (!(typeof fileInfo.name === 'string' || fileInfo.name instanceof String))
+  {
+    return false;
   }
-  return (
+  if (!(typeof fileInfo.path === 'string' || fileInfo.path instanceof String))
+  {
+    return false;
+  }
+  if (!(typeof fileInfo.type === 'string' || fileInfo.type instanceof String))
+  {
+    return false;
+  }
 
-    <Layout style={{ height: "100%" }}>
-      {/* <Layout.Header style={{ color: '#FFFFFF' }} >Header</Layout.Header> */}
-      {/* <Layout.Sider  style={{ color: '#FFFFFF' }} collapsible collapsed={collapsed} 
-        onCollapse={()=>setCollapsed(!collapsed)}
-        onMouseOut={()=>(collapsed)?null:setCollapsed(true)}
-        onMouseOver={()=>(collapsed)?setCollapsed(false):null}
-        >
-          Sider
-        </Layout.Sider> */}
-      <Layout>
-        <Layout.Content style={{ padding: '50px 50px', overflow: "scroll" }}>{UI}</Layout.Content>
-        <Layout.Footer>Custom UI v0.0.0</Layout.Footer>
-      </Layout>
-
-    </Layout>
-  );
+  if(typeof fileInfo.ctime_ms !== 'number'){
+    return false;
+  }
+  if(typeof fileInfo.mtime_ms !== 'number'){
+    return false;
+  }
+  if(typeof fileInfo.size_bytes !== 'number'){
+    return false;
+  }
+  return true;
 }
 
+function getLocalStorage_RecentFiles()
+{
 
+  if(localStorage===undefined)return [];
+  let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
+  try {
+    LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
+    if (!(LocalS_RecentDefFiles instanceof Array)) {
+      LocalS_RecentDefFiles = [];
+    }
+
+      
+    LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((fileInfo) =>checkFileInfo(fileInfo));
+  } catch (e) {
+    LocalS_RecentDefFiles = [];
+  }
+  return LocalS_RecentDefFiles;
+}
+
+function appendLocalStorage_RecentFiles(fileInfo)
+{
+  if(checkFileInfo(fileInfo)==false)
+  {
+    return false;
+  }
+  let LocalS_RecentDefFiles = getLocalStorage_RecentFiles();
+
+  //console.log(LocalS_RecentDefFiles);
+  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
+    (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
+
+  LocalS_RecentDefFiles.unshift(fileInfo);
+  LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
+  localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
+  //console.log(localStorage.getItem("RecentDefFiles"));
+
+  return true;
+}
 
 const DefFileLoadUI=()=>{
 
@@ -570,6 +336,37 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     ACT_WS_SEND(WS_ID, "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
 
   },[])
+
+
+
+  function SignatureTargetMatching(fileInfoList,onMatchingResult)
+  {
+    ACT_WS_SEND(WS_ID, "EX", 0, {},
+      undefined, { 
+      resolve:(pkts)=>{
+        let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
+        
+        ACT_WS_SEND(WS_ID, "SC", 0, {
+          type:"signature_files_matching",
+          signature: signature,
+          files:fileInfoList.map(fileInfo=>fileInfo.path)
+          },undefined,{
+          resolve:(pkts,defaultFlow)=>{
+            pkts[0].data.files.forEach((fileSigMatchingInfo)=>{
+              fileSigMatchingInfo.error = fileSigMatchingInfo.p_error<fileSigMatchingInfo.n_error?fileSigMatchingInfo.p_error:fileSigMatchingInfo.n_error;
+              fileSigMatchingInfo.file=fileInfoList[fileSigMatchingInfo.idx]
+            })
+            let sortedErrorList = pkts[0].data.files.sort((a, b)=> {
+              return a.error - b.error;
+            })
+            onMatchingResult(pkts[0].data);
+          }
+        })
+
+      }, reject:(pkts,__)=>{
+        
+      } });
+  }
 
   let InspectionMonitor_URL_w_info=InspectionMonitor_URL;
   if (isString(DefFileHash) && DefFileHash.length > 5) {
@@ -683,45 +480,102 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           {/* <Button style={{"pointerEvents": "auto"}}>120px to affix top</Button> */}
           
           
+          <Button className={"antd-icon-sizing HW50"} size="large"
+            style={{"pointerEvents": "auto"}} icon={<MonitorOutlined/> } type="text"
+            onClick={() => {
+
+              
+              let errPopUpUIInfo = {
+                title: "MATCH ing...",
+                onOK: undefined,
+                onCancel: undefined,
+                content:<div style={{width:"100%",height:"400px"}} className="scroll">
+                  
+                  <div className="antd-icon-sizing" style={{height:"50px"}}>
+                    <LoadingOutlined className="veleX"/>
+                  </div>
+                  <Title level={2} style={{textAlign:"center"}} >
+                    {DICT.mainui.FUNC_auto_recognition_running}
+                  </Title>
+                </div>
+              }
+              setInfoPopUp(errPopUpUIInfo)
+
+
+              SignatureTargetMatching(getLocalStorage_RecentFiles(),(matchingList)=>{
+
+                console.log(matchingList);
+
+
+                let columns = ['name','score','path'].map((info)=>({
+                  title: info,
+                  dataIndex: info,
+                  key:info,
+                }));
+
+                const dataSource = matchingList.files
+                .map(mat_info=>{
+                  mat_info.score = (1-(mat_info.error)/(mat_info.mean/4));
+                  return mat_info}).
+                filter(mat_info=>mat_info.score>0)
+                .map(mat_info=>{
+                  return {
+                    key:mat_info.file.path,
+                    name:mat_info.name,
+                    score:(100*mat_info.score).toFixed(1)+"%",
+                    path:mat_info.file.path,
+                    matchingInfo:mat_info
+                  }
+                })
+                
+                
+                let errPopUpUIInfo = {
+                  title: "MATCH",
+                  onOK: undefined,
+                  onCancel: undefined,
+                  content:<div style={{width:"100%",height:"400px"}} className="scroll">
+                
+                    <Table 
+                      onRow={(file) => ({
+                        onClick: (evt) => { 
+                          //console.log(file,evt);
+
+                          appendLocalStorage_RecentFiles(file.matchingInfo.file);
+
+                          let filePath = file.path.replace("." + DEF_EXTENSION, "");
+                          setInfoPopUp(undefined);
+                          ACT_Def_Model_Path_Update(filePath);
+                          ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+
+
+
+                        }})} 
+                      dataSource={dataSource} 
+                      columns={columns} 
+                      pagination={false}/>
+
+                  </div>
+                }
+                setInfoPopUp(errPopUpUIInfo)
+              })
+
+            }}/>
+          
           <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<FolderOpenOutlined/> } type="text"
             onClick={() => {
             let fileSelectedCallBack =
               (filePath, fileInfo) => {
-                if (localStorage !== undefined) {
-                  let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-                  try {
-                    LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-                  } catch (e) {
-                    LocalS_RecentDefFiles = [];
-                  }
-                  if (!(LocalS_RecentDefFiles instanceof Array)) {
-                    LocalS_RecentDefFiles = [];
-                  }
-                  //console.log(LocalS_RecentDefFiles);
-                  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
-                    (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
+                appendLocalStorage_RecentFiles(fileInfo);
 
-                  LocalS_RecentDefFiles.unshift(fileInfo);
-                  LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
-                  localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
-                  //console.log(localStorage.getItem("RecentDefFiles"));
-                }
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
                 ACT_Def_Model_Path_Update(filePath);
                 ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
               }
 
-
-            let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-            try {
-              LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-            } catch (e) {
-              LocalS_RecentDefFiles = [];
-            }
             let fileGroups = [
-              { name: "history", list: LocalS_RecentDefFiles }
+              { name: "history", list: getLocalStorage_RecentFiles() }
             ];
             let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
 
@@ -888,7 +742,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         title={InfoPopUp === undefined ? "" : InfoPopUp.title}
         visible={InfoPopUp !== undefined}
         
-        footer={(InfoPopUp!==undefined && InfoPopUp.onOK===undefined &&  InfoPopUp.onCancel===undefined)?null:undefined}
+        footer={(InfoPopUp===undefined || (InfoPopUp.onOK===undefined &&  InfoPopUp.onCancel===undefined))?null:undefined}
         onOk={() => {
           if(InfoPopUp.onOK!==undefined)InfoPopUp.onOK();
           setInfoPopUp(undefined);
@@ -1213,6 +1067,11 @@ const MainUI=()=>{
     width:"100%",
     height:"100%",
   }
+
+
+
+  
+
   switch(UI_state)
   {
     case s_statesTable.RootSelect:
@@ -1220,9 +1079,6 @@ const MainUI=()=>{
       siderUI_info={
         title:UI_state.name
       }
-
-
-
 
       UI.push([{
         title:s_statesTable.DeConf.name,

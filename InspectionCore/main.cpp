@@ -1690,7 +1690,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         char *imgSrcPath = NULL;
         if (json != NULL)
         {
-          imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
+          imgSrcPath = (char *)JFetch_STRING(json, "imgsrc");
           if (imgSrcPath == NULL)
           {
             snprintf(err_str, sizeof(err_str), "No entry:imgSrcPath in it LINE:%04d", __LINE__);
@@ -1726,7 +1726,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           srcImg = camera->GetFrame();
           cacheImage.ReSize(srcImg);
           //acvCloneImage(srcImg, &cacheImage, -1);
-          calib_bacpac.sampler->ignoreCalib(false);
+          calib_bacpac.sampler->ignoreCalib(false);//First, make the cacheImage to be a calibrated full res image
           ImageDownSampling(cacheImage, *srcImg,1, calib_bacpac.sampler,false);
           //SaveIMGFile("data/test1.bmp",srcImg);
         }
@@ -1734,7 +1734,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         try
         {
 
-          ImgInspection_DefRead(matchingEng, &cacheImage, 1, "data/featureDetect.json",&calib_bacpac);
+          ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json",&calib_bacpac);
           const FeatureReport *report = matchingEng.GetReport();
 
           if (report != NULL)
@@ -1768,18 +1768,42 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           LOGE("%s", err_str);
         }
 
-        bpg_dat = GenStrBPGData("IM", NULL);
-        BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : 2};
-        //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        
-        calib_bacpac.sampler->ignoreCalib(true);
-        ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler,true);
-        
-        bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-        bpg_dat.callback = DatCH_BPG_acvImage_Send;
-        bpg_dat.pgID = dat->pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        BPG_protocol->SendData(datCH_BPG);
+
+
+        int tar_down_samp_level=2;
+        bool transfer_img=false;
+
+        cJSON *img_property = JFetch_OBJECT(json, "img_property");
+        if(img_property)
+        {
+
+          double* DS_level= JFetch_NUMBER(img_property,"down_samp_level");
+          if(DS_level)
+          {
+            tar_down_samp_level=(int)*DS_level;
+            if(tar_down_samp_level<=0)tar_down_samp_level=1;
+          }
+          
+          transfer_img=true;
+
+        }
+
+        if(transfer_img)
+        {
+          //Down scale the calibrated cache image to make image transfer easier
+          bpg_dat = GenStrBPGData("IM", NULL);
+          BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
+          //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+          
+          calib_bacpac.sampler->ignoreCalib(true);
+          ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler,true);
+          
+          bpg_dat.callbackInfo = (uint8_t *)&iminfo;
+          bpg_dat.callback = DatCH_BPG_acvImage_Send;
+          bpg_dat.pgID = dat->pgID;
+          datCH_BPG.data.p_BPG_data = &bpg_dat;
+          BPG_protocol->SendData(datCH_BPG);
+        }
       }
       calib_bacpac.sampler->ignoreCalib(false);
 
@@ -1829,7 +1853,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       }
 
     }
-    else if (checkTL("_0", dat))//_0 spetial CMD 0
+    else if (checkTL("SC", dat))//[S]petial [C]MD
     {
       DatCH_Data datCH_BPG =
           BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -1865,9 +1889,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             if(fileName==NULL)break;//Meaning the array reaches the end
 
             char *fileStr = ReadText(fileName);
-            cJSON *sig_m_report = cJSON_CreateObject();
+            cJSON *sig_m_report=NULL;
             if (fileStr != NULL)
             {
+              sig_m_report = cJSON_CreateObject();
               cJSON *signatureX=NULL;
               
               {
@@ -1875,6 +1900,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
                 cJSON *obj0 = JFetch_OBJECT(fileJson, "featureSet[0].inherentfeatures[0]");
                 if(obj0!=NULL)
                 {
+                  char* name=JFetch_STRING(fileJson, "name");
+                  cJSON* tags_arr=cJSON_DetachItemFromObject(fileJson,"tag");
+
+                  cJSON_AddNumberToObject(sig_m_report, "idx", k);
                   //signatureX = cJSON_DetachItemFromObject(obj0,"signature");
                   signatureX = JFetch_OBJECT(obj0,"signature");
 
@@ -1885,6 +1914,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
                   float matching_Error;
                   matching_Error=tar_sig.match_min_error(cur_sig,0,360,1,&ret_isInv,&ret_angle);
 
+                  cJSON_AddStringToObject(sig_m_report, "FILE_N", fileName);
                   cJSON_AddNumberToObject(sig_m_report, "p_error", matching_Error);
                   cJSON_AddNumberToObject(sig_m_report, "p_angle", ret_angle);
                   
@@ -1896,6 +1926,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
                   cJSON_AddNumberToObject(sig_m_report, "mean", cur_sig.mean);
                   cJSON_AddNumberToObject(sig_m_report, "sigma", cur_sig.sigma);
 
+
+                  cJSON_AddStringToObject(sig_m_report, "name",name);
+                  cJSON_AddItemToObject(sig_m_report, "tags", tags_arr);
 
 
                 }
@@ -1932,6 +1965,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
             {
               ContourSignature cur_sig(sign_obj);
+              cJSON_AddNumberToObject(sig_m_report, "idx", k);
               bool ret_isInv;
               float ret_angle=NAN;
               float matching_Error;

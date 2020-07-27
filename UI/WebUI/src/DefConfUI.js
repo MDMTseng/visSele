@@ -1117,7 +1117,11 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
               
               ACT_DefConf_Lock_Level_Update(0);
               new Promise((resolve, reject) => {
-                ACT_WS_SEND(WS_ID, "EX", 0, {},
+                ACT_WS_SEND(WS_ID, "EX", 0, {
+                  img_property:{
+                    down_samp_level:2
+                  }
+                },
                   undefined, { resolve, reject });
                 setTimeout(() => reject("Timeout"), 3000)
               })

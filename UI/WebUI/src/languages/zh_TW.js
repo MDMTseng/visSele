@@ -91,8 +91,7 @@ export default {
       importance:"重要等級",
       docheck:"必要判定",
       quadrant:"量測象限"
-    }
-    ,
+    },
     mainui:{
       select_deffile:"選擇定義檔",
       select_deffile_detail:"就是選擇定義檔",
@@ -107,6 +106,10 @@ export default {
       MODE_SELECT_INST_INSP:"即檢",
       MODE_SELECT_BACKLIGHT_CALIB:"背光校正",
       MODE_SELECT_SETTING:"設定",
+
+
+      FUNC_auto_recognition:"自動比對",
+      FUNC_auto_recognition_running:"自動比對中",
     }
 
 };
