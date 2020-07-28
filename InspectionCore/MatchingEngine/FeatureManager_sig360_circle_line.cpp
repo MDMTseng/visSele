@@ -2883,25 +2883,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
            i, ldData[i].Center.X, ldData[i].Center.Y, error, isInv, angle * 180 / 3.14159);
     }
 
-    if (error > 0.2)
+    ;
+    if (error > 2 || ((error/feature_signature.mean)>0.3) )
     {
-
-      // char strdd[100];
-      // sprintf(strdd,"data/MVCamX%d.bmp",rand()%200);
-      // acvSaveBitmapFile("data/MVCamX.bmp",labeledBuff);
-      // exit(1);
-      // for(int j=0;j<tmp_signature.size();j++)
-      // {
-      //   float R = tmp_signature[j].X*ppmm;
-      //   float Theta = tmp_signature[j].Y;
-
-      //   int X = (int)(R*cos(Theta))+ldData[i].Center.X;
-      //   int Y = (int)(R*sin(Theta))+ldData[i].Center.Y;
-
-      //   acvDrawCrossX(originalImage,
-      //     X,Y,
-      //     8,255,100,255,8);
-      // }
       LOGE("error:%f",error);
       continue;
     }
