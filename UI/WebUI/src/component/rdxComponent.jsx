@@ -11,6 +11,8 @@ import {CusDisp_DB} from 'UTIL/DB_Query';
 import  Tabs  from 'antd/lib/tabs';
 import { useSelector,useDispatch } from 'react-redux';
 
+import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import dclone from 'clone';
 import Layout from 'antd/lib/layout';
 const { Header, Content, Footer, Sider } = Layout;
@@ -20,6 +22,9 @@ const { Paragraph, Title } = Typography;
 import { WarningOutlined,CheckOutlined } from '@ant-design/icons';
 const { CheckableTag } = Tag;
 import Divider from 'antd/lib/divider';
+
+import * as BASE_COM from 'JSSRCROOT/component/baseComponent.jsx';
+let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 
 const { TabPane } = Tabs;
 
@@ -186,13 +191,19 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
   const [displayInfo, setDisplayInfo] = useState(undefined);
   const [displayEle, setDisplayEle] = useState(undefined);
 
-  useEffect(() => {
+
+  function refreshData()
+  {
     setDisplayInfo(undefined);
     CusDisp_DB.read(".").then(data => {
       setDisplayInfo(data.prod);
     }).catch(e => {
       console.log(e);
     });
+  }
+
+  useEffect(() => {
+    refreshData();
     return () => {
       console.log("1,didUpdate ret::");
     };
@@ -210,6 +221,24 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
 
     if (displayEle === undefined) {
 
+      UI.push(
+        <Button type="dashed"
+          onClick={() => {
+            CusDisp_DB.create({ name: "新設定", targetDeffiles: [{}] }, undefined).then(() => {
+              CusDisp_DB.read(".").then(data => {
+                console.log(displayInfo);
+                setDisplayInfo(data.prod);
+
+                setDisplayEle(data.prod[data.prod.length - 1]);
+              }).catch(e => {
+                console.log(e);
+              });
+            });
+          }}
+          style={{ width: '60%' }}
+        >
+          Add field
+        </Button>)
       UI.push(displayInfo.map(info =>
         <div>
           <SingleDisplayUI displayInfo={info} />
@@ -242,24 +271,6 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
         </div>
       ))
 
-      UI.push(
-        <Button type="dashed"
-          onClick={() => {
-            CusDisp_DB.create({ name: "新設定", targetDeffiles: [{}] }, undefined).then(() => {
-              CusDisp_DB.read(".").then(data => {
-                console.log(displayInfo);
-                setDisplayInfo(data.prod);
-
-                setDisplayEle(data.prod[data.prod.length - 1]);
-              }).catch(e => {
-                console.log(e);
-              });
-            });
-          }}
-          style={{ width: '60%' }}
-        >
-          Add field
-        </Button>)
 
     }
     else {
@@ -275,6 +286,8 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
                   console.log(displayInfo);
                   setDisplayInfo(data.prod);
                   setDisplayEle();
+                  
+                  refreshData();
                 }).catch(e => {
                   console.log(e);
                 });
@@ -336,6 +349,7 @@ export function CustomDisplaySelectUI({onSelect}) {
   const [catSet, setCatSet] = useState(undefined);
   const [displayEle, setDisplayEle] = useState(undefined);
   
+  const dispatch = useDispatch();
   const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
   const WS_ID = useSelector(state => state.UIData.WS_ID);
 
@@ -395,7 +409,11 @@ export function CustomDisplaySelectUI({onSelect}) {
       )}
       <TabPane tab={"__SET__"} key={"SETUP"}>
       <CustomDisplayUI
-         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)} />
+         BPG_Channel={(...args) =>
+         {
+          console.log(">>>");
+         ACT_WS_SEND(WS_ID, ...args)
+         }} />
       </TabPane>
 
     </Tabs>
