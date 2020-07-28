@@ -2784,7 +2784,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
         // }
       }
     }
-  
+    return 0;
 }
 
 
