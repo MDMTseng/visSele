@@ -299,7 +299,6 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
       int RSum = 0, GSum = 0, BSum = 0;
       int src_j = j * downScale;
 
-      if (1)
       {
         float bri = 0;
         if (sampler)
@@ -320,43 +319,6 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
           GSum = src.CVector[src_i][(src_j)*3 + 1];
           RSum = src.CVector[src_i][(src_j)*3 + 2];
         }
-      }
-      else if (1)
-      {
-        float coord[] = {(float)src_j, (float)src_i};
-        int ret = 0;
-        if (sampler)
-        {
-          ret = sampler->ideal2img(coord);
-        }
-
-        if (ret == 0)
-        {
-          int x = round(coord[0]);
-          int y = round(coord[1]);
-          if (x >= 0 && x < src.GetWidth() && y >= 0 && y < src.GetHeight())
-          {
-            BSum += src.CVector[y][x * 3];
-            GSum += src.CVector[y][x * 3 + 1];
-            RSum += src.CVector[y][x * 3 + 2];
-          }
-        }
-      }
-      else
-      {
-        for (int m = 0; m < downScale; m++)
-        {
-          for (int n = 0; n < downScale; n++)
-          {
-            BSum += src.CVector[src_i + m][(src_j + n) * 3];
-            GSum += src.CVector[src_i + m][(src_j + n) * 3 + 1];
-            RSum += src.CVector[src_i + m][(src_j + n) * 3 + 2];
-          }
-        }
-
-        BSum /= (downScale * downScale);
-        GSum /= (downScale * downScale);
-        RSum /= (downScale * downScale);
       }
       uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);
       pix[0] = BSum;
