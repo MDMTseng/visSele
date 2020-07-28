@@ -47,7 +47,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
 
-let TEST_MODE=false;
+let TEST_MODE=true;
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
@@ -495,7 +495,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
           // {
 
           // }
-        }}>{updateInfo.newUpdateExist==true?DICT.fallback.normal_update:DICT.fallback.force_update} {updateInfo.remote.name}</Button>
+        }}>{updateInfo.newUpdateExist==true?DICT._.normal_update:DICT._.force_update} {updateInfo.remote.name}</Button>
       :null
     ]);
 
@@ -559,7 +559,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
         <LaptopOutlined/>
       </div>
           {(showText)?
-            [DICT.fallback.core,<br/>,systemConnectState.core?null:DICT.fallback.disconnected]
+            [DICT._.core,<br/>,systemConnectState.core?null:DICT._.disconnected]
             :null}
     </Button>,
 
@@ -574,7 +574,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
             <CameraOutlined/>
           </div>
           {(showText)?
-            [DICT.fallback.camera,<br/>,systemConnectState.camera?null:DICT.fallback.disconnected]
+            [DICT._.camera,<br/>,systemConnectState.camera?null:DICT._.disconnected]
             :null}
         </Button>,
 
@@ -589,7 +589,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
             <DatabaseOutlined/>
           </div>
           {(showText)?
-            [DICT.fallback.upload_database,<br/>,systemConnectState.upload_database?null:DICT.fallback.disconnected]
+            [DICT._.upload_database,<br/>,systemConnectState.upload_database?null:DICT._.disconnected]
             :null}
           
         </Button>
@@ -654,7 +654,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
   return (
     <div className="layout width12 height12">
       
-      <Divider>{DICT.fallback.connection_status}</Divider>
+      <Divider>{DICT._.connection_status}</Divider>
       <System_Status_Display showText iconSize={30} gridSize={90} 
         onStatusTick={(sys_state)=>{
           // console.log(sys_state);
@@ -1075,7 +1075,7 @@ class APPMasterX extends React.Component {
         }
         </CSSTransitionGroup>
         <Drawer
-          title={this.props.DICT.fallback.system_status+" "+localVersion}
+          title={this.props.DICT._.system_status+" "+localVersion}
           placement="right"
           closable={true}
           onClose={()=>{

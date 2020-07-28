@@ -39,8 +39,6 @@ import Dropdown from 'antd/lib/Dropdown'
 import Slider from 'antd/lib/Slider';
 import Popover from 'antd/lib/Popover';
 
-import EC_zh_TW from './languages/zh_TW';
-
 
 import { useSelector,useDispatch } from 'react-redux';
 import { 
@@ -298,7 +296,7 @@ function AngleDegAcc({ value, onChange,target,lastKey, props }) {
   //log.info(props.dict,props.dictTheme,lastKey,translateKey);
 
   if (translateKey === undefined) 
-    translateKey = GetObjElement(props.dict, ["fallback", lastKey]);
+    translateKey = GetObjElement(props.dict, ["_", lastKey]);
   
   if (translateKey === undefined) 
     translateKey = lastKey
@@ -558,7 +556,7 @@ let renderMethods = {
       SetupUI = <div>
         <BASE_COM.JsonEditBlock key="dimConfig" object={dimensions[dimIdx]}
           renderLib={renderMethods}
-          dict={EC_zh_TW}
+          dict={this.props.DICT}
           whiteListKey={{
             name: {
               __OBJ__: (param) => {
@@ -752,6 +750,8 @@ function defFileGeneration(edit_info)
 
 function SettingUI({})
 {
+  
+  
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   
   const edit_info = useSelector(state => state.UIData.edit_info);
@@ -763,6 +763,7 @@ function SettingUI({})
   
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
     
+  const DICT = useSelector(state => state.UIData.DICT);
   console.log(defConf_lock_level);
   return [
     <Checkbox
@@ -775,7 +776,7 @@ function SettingUI({})
           ACT_Matching_Angle_Margin_Deg_Update(90);
       }}
     >
-      {dictLookUp("matchingAngleLimit180", EC_zh_TW)}
+      {dictLookUp("matchingAngleLimit180", DICT)}
     </Checkbox>,
     <br />,
     <Checkbox
@@ -791,7 +792,7 @@ function SettingUI({})
       }
       }
     >
-      {dictLookUp("matchingFaceFrontOnly", EC_zh_TW)}
+      {dictLookUp("matchingFaceFrontOnly", DICT)}
     </Checkbox>,
 
 
@@ -912,6 +913,7 @@ function modShapeCleanUp(mod_shape)
 
 function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 {
+  const DICT = useSelector(state => state.UIData.DICT);
   
   const [fileSavingCallBack,setFileSavingCallBack]=useState(undefined);
   const dispatch = useDispatch();
@@ -969,13 +971,13 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   let MenuSet= [
     <BASE_COM.IconButton
       iconType={<ArrowLeftOutlined/>}
-      dict={EC_zh_TW}
+      dict={DICT}
       key="<"
       addClass="layout black vbox"
       onClick={() => ACT_EXIT()} />,
 
     <BASE_COM.JsonEditBlock object={{ DefFileName: edit_info.DefFileName }}
-      dict={EC_zh_TW}
+      dict={DICT}
       key="this.props.edit_info.DefFileName"
       jsonChange={(original_obj, target, type, evt) => {
         ACT_DefFileName_Update(evt.target.value);
@@ -983,7 +985,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       whiteListKey={{ DefFileName: "input", }} />,
 
     <BASE_COM.JsonEditBlock object={{ DefFileTag: edit_info.DefFileTag.join(",") }}
-      dict={EC_zh_TW}
+      dict={DICT}
       key="this.props.edit_info.DefFileTag"
       jsonChange={(original_obj, target, type, evt) => {
         ACT_DefFileTag_Update(evt.target.value.split(","));
@@ -992,31 +994,31 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
 
     <BASE_COM.IconButton
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.line]}}
       key="LINE"
       text="line" onClick={() => ACT_Line_Add_Mode()} />,
     <BASE_COM.IconButton
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-blue-8 vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.arc]}}
       key="ARC"
       text="arc" onClick={() => ACT_Arc_Add_Mode()} />,
     <BASE_COM.IconButton
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-blue-8 vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.aux_point]}}
       key="APOINT"
       text="apoint" onClick={() =>  ACT_Aux_Point_Add_Mode()} />,
 
     // <BASE_COM.IconButton
-    //   dict={EC_zh_TW}
+    //   dict={DICT}
     //   addClass="layout palatte-blue-8 vbox"
     //   key="ALINE"
     //   text="aline" onClick={()=>this.props.ACT_Aux_Line_Add_Mode()}/>,
     <BASE_COM.IconButton
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-blue-8 vbox  btn-swipe"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.search_point]}}
       key="SPOINT"
@@ -1026,20 +1028,20 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       addClass="layout palatte-blue-8  btn-swipe"
       key="MEASURE"
       style={{backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure]}}
-      dict={EC_zh_TW}
+      dict={DICT}
       text="measure"
       onClick={() => ACT_Measure_Add_Mode()}>
     </BASE_COM.IconButton>,
     <BASE_COM.IconButton
       iconType={<EditOutlined/>}
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-blue-5 vbox "
       key="EDIT"
       text="edit" onClick={() => ACT_Shape_Edit_Mode()} />,
     (defConf_lock_level > 2) ? null :
       <BASE_COM.IconButton
         iconType={<SaveOutlined/>}
-        dict={EC_zh_TW}
+        dict={DICT}
         addClass="layout palatte-gold-7 vbox"
         key="SAVE"
         text="save" onClick={() => {
@@ -1080,7 +1082,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         }} />,
     <BASE_COM.IconButton
       iconType={<ExportOutlined/>}
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-gold-7 vbox"
       key="LOAD"
       text="load" onClick={() => {
@@ -1095,7 +1097,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
       }} />,
     <BASE_COM.IconButton
-      dict={EC_zh_TW}
+      dict={DICT}
       iconType={<SettingOutlined/>}
       addClass="layout palatte-gray-8 vbox"
       key="setting"
@@ -1105,7 +1107,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       })} />,
     <BASE_COM.IconButton
       iconType={<CameraOutlined/>}
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-purple-8 vbox"
       key="TAKE"
       text="take" onClick={() => {
@@ -1146,7 +1148,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
     <BASE_COM.IconButton
       // iconType="INST_CHECK"
-      dict={EC_zh_TW}
+      dict={DICT}
       addClass="layout palatte-purple-8 vbox"
       key="INST_CHECK"
       text="INST_CHECK" onClick={() => {
@@ -1359,6 +1361,9 @@ class APP_DEFCONF_MODE extends React.Component {
 
 
   GenTarEditUI({ edit_tar_info, shape_list, Info_decorator, ec_canvas, ACT_Shape_Decoration_Extra_Info_Update, ACT_EDIT_TAR_ELE_TRACE_UPDATE }) {
+    
+    const DICT = useSelector(state => state.UIData.DICT);
+  
     let [uiType, setUIType] = useState("main");
     let edit_tar = edit_tar_info;
     let decorator = Info_decorator;
@@ -1403,7 +1408,7 @@ class APP_DEFCONF_MODE extends React.Component {
         case UIAct.SHAPE_TYPE.measure:
           {
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
-              dict={EC_zh_TW}
+              dict={DICT}
               additionalData={{
                 shape_list
               }}
@@ -1560,7 +1565,7 @@ class APP_DEFCONF_MODE extends React.Component {
         default:
           {
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
-              dict={EC_zh_TW}
+              dict={DICT}
               dictTheme={edit_tar.type}
               jsonChange={(original_obj, target, type, evt) => {
                 let lastKey = target.keyTrace[target.keyTrace.length - 1];
@@ -1634,7 +1639,7 @@ class APP_DEFCONF_MODE extends React.Component {
         }
 
         ModalUI.push(<BASE_COM.JsonEditBlock key="2ndConfigTable" object={extraTarInfo}
-          dict={EC_zh_TW}
+          dict={DICT}
           renderLib={renderMethods}
           dictTheme={edit_tar.type}
           whiteListKey={{
@@ -1725,7 +1730,7 @@ class APP_DEFCONF_MODE extends React.Component {
         if (this.props.edit_tar_info != null) {
           let subType = this.props.edit_tar_info.subtype;
           console.log("BASE_COM.JsonEditBlock:", this.props.edit_tar_info, subType);
-          MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={EC_zh_TW}
+          MenuSet.push(<BASE_COM.JsonEditBlock object={this.props.edit_tar_info} dict={this.props.DICT}
             key="BASE_COM.JsonEditBlock"
             renderLib={renderMethods}
             whiteListKey={{
@@ -1780,7 +1785,7 @@ class APP_DEFCONF_MODE extends React.Component {
               if (key == "NA") continue;
 
               MenuSet.push(<BASE_COM.IconButton
-                dict={EC_zh_TW}
+                dict={this.props.DICT}
                 key={"MSUB__" + key}
                 addClass="layout red vbox btn-swipe"
                 style={{ backgroundColor:EC_CANVAS_Ctrl.SHAPE_TYPE_COLOR[UIAct.SHAPE_TYPE.measure] }}
@@ -1818,7 +1823,7 @@ class APP_DEFCONF_MODE extends React.Component {
         MenuSet = [
           <BASE_COM.IconButton
             iconType={<ArrowLeftOutlined/>}
-            dict={EC_zh_TW}
+            dict={this.props.DICT}
             addClass="layout black vbox width4"
             key="<" onClick={() => this.props.ACT_Fail()} />,
           <div key="LINE" className="s width8 lred vbox">LINE</div>,
@@ -1829,7 +1834,7 @@ class APP_DEFCONF_MODE extends React.Component {
         MenuSet = [
           <BASE_COM.IconButton
             iconType={<ArrowLeftOutlined/>}
-            dict={EC_zh_TW}
+            dict={this.props.DICT}
             addClass="layout black vbox width4"
             key="<"
             onClick={() => this.props.ACT_Fail()} />,
@@ -1840,7 +1845,7 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE:
         MenuSet = [
           <BASE_COM.IconButton
-            dict={EC_zh_TW}
+            dict={this.props.DICT}
             addClass="layout black vbox"
             key="<" 
             iconType={<ArrowLeftOutlined/>}
@@ -2237,6 +2242,7 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     edit_info: state.UIData.edit_info,
     defConf_lock_level: state.UIData.defConf_lock_level,
     machine_custom_setting: state.UIData.machine_custom_setting,
+    DICT:state.UIData.DICT,
   }
 };
 

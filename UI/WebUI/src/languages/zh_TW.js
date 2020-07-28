@@ -1,6 +1,6 @@
 
 export default {
-    fallback:{
+    _:{
         ReconnectAirDevice:"重新連接噴氣裝置",
         line:"線段/Line",
         arc:"弧/Arc",

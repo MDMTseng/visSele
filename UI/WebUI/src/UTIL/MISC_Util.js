@@ -506,7 +506,7 @@ export function dictLookUp(key,dict,theme) {
     transVal=  GetObjElement(dict,key);
     return undefFallback(transVal,key[key.length-1]);
   }
-  let dictTheme=undefFallback(theme,"fallback");
+  let dictTheme=undefFallback(theme,"_");
   transVal = GetObjElement(dict,[dictTheme, key]);
   return  undefFallback(transVal,key);
 }

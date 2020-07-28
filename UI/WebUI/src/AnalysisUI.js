@@ -10,7 +10,6 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {round as roundX,GetObjElement} from 'UTIL/MISC_Util';
 
-import EC_zh_TW from './languages/zh_TW';
 
 import Table from 'antd/lib/table';
 import Button from 'antd/lib/button';
@@ -200,7 +199,7 @@ class APP_ANALYSIS_MODE extends React.Component{
       case UIAct.SHAPE_TYPE.measure:
       {
         return (<BASE_COM.JsonEditBlock object={edit_tar}
-        dict={EC_zh_TW}
+        dict={this.props.DICT}
         dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           whiteListKey={{
@@ -283,7 +282,7 @@ class APP_ANALYSIS_MODE extends React.Component{
       default:
       {
         return (<BASE_COM.JsonEditBlock object={edit_tar}
-          dict={EC_zh_TW}
+          dict={this.props.DICT}
           dictTheme = {edit_tar.type}
           key="BASE_COM.JsonEditBlock"
           jsonChange={(original_obj,target,type,evt)=>
@@ -327,14 +326,14 @@ class APP_ANALYSIS_MODE extends React.Component{
     let menu_height="HXA";//auto
     let MenuSet=[
       <BASE_COM.IconButton
-              dict={EC_zh_TW}
+              dict={this.props.DICT}
               key="<"
               addClass="layout black vbox"
               text="<" onClick={()=>this.props.ACT_EXIT()}/>];
     //if()
     /*MenuSet=this.state.dateRange.reduce((menu,date,idx)=>{
       menu.push(<BASE_COM.IconButton
-        dict={EC_zh_TW}
+        dict={this.props.DICT}
         key={"<"+idx}
         addClass="layout black vbox"
         text={date._d.getTime()} />);
@@ -445,6 +444,7 @@ const mapStateToProps_APP_ANALYSIS_MODE = (state) => {
     WS_ID:state.UIData.WS_ID,
     edit_info:state.UIData.edit_info,
     reportStatisticState:state.UIData.edit_info.reportStatisticState,
+    DICT:state.UIData.DICT,
   }
 };
 

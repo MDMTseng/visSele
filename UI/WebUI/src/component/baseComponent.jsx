@@ -6,8 +6,6 @@ import {GetObjElement} from 'UTIL/MISC_Util';
 import dclone from 'clone';
 import * as logX from 'loglevel';
 
-import EC_zh_TW from "../languages/zh_TW";
-
 import  {default as AntButton}  from 'antd/lib/button';
 import  Modal  from 'antd/lib/modal';
 import  Table  from 'antd/lib/table';
@@ -124,7 +122,7 @@ export class JsonElement extends React.Component{
 
       if(translateValue===undefined)
       {
-        translateValue = GetObjElement(this.props.dict,["fallback", text]);
+        translateValue = GetObjElement(this.props.dict,["_", text]);
       }
     }
 
@@ -213,7 +211,7 @@ export class JsonEditBlock extends React.Component{
 
         if(translateKey===undefined)
         {
-          translateKey = GetObjElement(this.props.dict,["fallback", key]);
+          translateKey = GetObjElement(this.props.dict,["_", key]);
         }
 
         if(translateKey===undefined)
@@ -867,35 +865,6 @@ export let DropDown = React_createClass({
     );
   }
 });
-export let AButton = React_createClass({
-
-  handleClick: function(event) {
-    this.props.onClick(event,this);
-  },
-  render: function() {
-
-    let translation = undefined;
-
-
-    translation = GetObjElement(this.props.dict,[this.props.dictTheme, this.props.text]);
-
-    if(translation===undefined)
-    {
-      translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
-    }
-
-    if(translation===undefined)
-    {
-      translation = this.props.text;
-    }
-
-    return <AntButton block type={this.props.type} shape="round" icon={this.props.icon} size={this.props.size} dict={EC_zh_TW}
-            onClick={this.handleClick}>
-      {translation}
-    </AntButton>;
-
-  }
-});
 export let IconButton = React_createClass({
 
   handleClick: function(event) {
@@ -914,7 +883,7 @@ export let IconButton = React_createClass({
   
       if(translation===undefined)
       {
-        translation = GetObjElement(this.props.dict,["fallback", this.props.text]);
+        translation = GetObjElement(this.props.dict,["_", this.props.text]);
       }
     }
     if(translation===undefined)

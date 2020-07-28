@@ -41,10 +41,8 @@ import  Table  from 'antd/lib/table';
 import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
 import Steps from 'antd/lib/Steps';
-import EC_zh_TW from './languages/zh_TW';
 
 import { useSelector,useDispatch } from 'react-redux';
-let LANG_DICT=EC_zh_TW;
 const { Meta } = Card;
 const { Step } = Steps;
 
@@ -317,7 +315,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             <LoadingOutlined className="veleX"/>
           </div>
           <Title level={2} style={{textAlign:"center"}} >{
-            DICT.fallback.camera_reconnection_caption
+            DICT._.camera_reconnection_caption
           }</Title>
         </div>
       });
@@ -683,9 +681,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
    }} >
       
     <Steps current={stepIdx} size="small"  onChange={stepJump} style={{flex:" 0 1 auto"}}>
-      <Step title={LANG_DICT.mainui.select_deffile} description={LANG_DICT.mainui.select_deffile_detail}/>
-      <Step title={LANG_DICT.mainui.set_insp_tags} description={LANG_DICT.mainui.set_insp_tags_detail} />
-      <Step title={LANG_DICT.mainui.GOGOGO} description={LANG_DICT.mainui.GOGOGO_detail} />
+      <Step title={DICT.mainui.select_deffile} description={DICT.mainui.select_deffile_detail}/>
+      <Step title={DICT.mainui.set_insp_tags} description={DICT.mainui.set_insp_tags_detail} />
+      <Step title={DICT.mainui.GOGOGO} description={DICT.mainui.GOGOGO_detail} />
     </Steps>
 
 
@@ -997,18 +995,19 @@ const Setui_UI=()=>{
 const MainUI=()=>{
 
 
+  const DICT = useSelector(state => state.UIData.DICT);
   
   const _REF = React.useRef({
     statesTable:{
 
       RootSelect:{
         type:"RootSelect",
-        name:LANG_DICT.mainui.MODE_SELECT_MAIN_MENU,
+        name:DICT.mainui.MODE_SELECT_MAIN_MENU,
       },
       
       Inspection:{
         type:"Inspection",
-        name:LANG_DICT.mainui.MODE_SELECT_INSP_PREP,
+        name:DICT.mainui.MODE_SELECT_INSP_PREP,
       },
       DeConf:{
         type:"DeConf",
@@ -1016,16 +1015,16 @@ const MainUI=()=>{
       },
       InstInsp:{
         type:"InstInsp",
-        name:LANG_DICT.mainui.MODE_SELECT_INST_INSP
+        name:DICT.mainui.MODE_SELECT_INST_INSP
       },
   
       BackLightCalib:{
         type:"BackLightCalib",
-        name:LANG_DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+        name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
       },
       Setting:{
         type:"Setting",
-        name:LANG_DICT.mainui.MODE_SELECT_SETTING,
+        name:DICT.mainui.MODE_SELECT_SETTING,
       },
   
     }
@@ -1085,16 +1084,16 @@ const MainUI=()=>{
         img_src:"resource/image/DefConf.png",
         onClick:()=>EV_UI_Edit_Mode()
       },{
-        title:LANG_DICT.mainui.MODE_SELECT_INSP_PREP,
+        title:DICT.mainui.MODE_SELECT_INSP_PREP,
         //img_src:"resource/image/DefConf.png",
         onClick:()=>setUI_state(s_statesTable.Inspection)
       },{
-        title:LANG_DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+        title:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
         //img_src:"resource/image/DefConf.png",
         onClick:()=>setUI_state(s_statesTable.BackLightCalib)
       },
       {
-        title:LANG_DICT.mainui.MODE_SELECT_INST_INSP,
+        title:DICT.mainui.MODE_SELECT_INST_INSP,
         onClick:()=>setUI_state(s_statesTable.InstInsp)
       }
     ].map((ele)=>      

@@ -12,7 +12,6 @@ import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue } from 'UTIL/MISC_Util';
-import EC_zh_TW from "./languages/zh_TW";
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -70,7 +69,6 @@ import Typography from 'antd/lib/typography';
 const { Paragraph, Title } = Typography;
 
 
-let _DICT_=EC_zh_TW;
 // import Tag from 'antd/lib/tag';
 // import Select from 'antd/lib/select';
 // import Menu from 'antd/lib/menu';
@@ -1017,7 +1015,7 @@ class MicroFullInspCtrl extends React.Component {
               onClick={() => {
                 this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                   { ip: "192.168.2.43", port: 5213 });
-              }}>{_DICT_.connection.connect}</Button>
+              }}>{this.props.DICT.connection.connect}</Button>
         }
 
 
@@ -1053,6 +1051,7 @@ const mapStateToProps_MicroFullInspCtrl = (state) => {
     error_codes: state.Peripheral.uInsp.error_codes,
     res_count: state.Peripheral.uInsp.res_count,
     uInspMachineInfo: state.Peripheral.uInsp.machineInfo,
+    DICT: state.UIData.DICT
   }
 }
 
@@ -1868,7 +1867,7 @@ class APP_INSP_MODE extends React.Component {
     MenuSet = [
       <BASE_COM.IconButton
         iconType={<ArrowLeftOutlined />}
-        dict={_DICT_}
+        dict={this.props.DICT}
         key="<"
         addClass="layout black vbox"
         onClick={this.props.ACT_EXIT} />
@@ -1884,7 +1883,7 @@ class APP_INSP_MODE extends React.Component {
         iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
         key="LOADDef"
         addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
-        text={this.state.DB_Conn_state == 1 ? _DICT_.connection.server_connected: _DICT_.connection.server_disconnected}
+        text={this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected}
         onClick={() => { }} />
       ,
 
@@ -1938,7 +1937,7 @@ class APP_INSP_MODE extends React.Component {
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={_DICT_}
+        dict={this.props.DICT}
         iconType="up-square"
         key="DoImageTransfer"
         addClass="layout palatte-blue-8 vbox"
@@ -1949,7 +1948,7 @@ class APP_INSP_MODE extends React.Component {
         } />);
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={_DICT_}
+        dict={this.props.DICT}
         iconType="bar-chart"
         key="Info Graphs"
         addClass="layout black vbox"
@@ -1960,7 +1959,7 @@ class APP_INSP_MODE extends React.Component {
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={_DICT_}
+        dict={this.props.DICT}
         iconType="up-square"
         key="ZOOM OUT"
         iconType="zoom-out"
@@ -2111,6 +2110,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     inspMode: state.UIData.inspMode,
 
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
+    DICT:state.UIData.DICT,
     //reportStatisticState:state.UIData.edit_info.reportStatisticState
   }
 };
