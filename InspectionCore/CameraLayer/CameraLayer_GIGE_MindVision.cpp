@@ -47,28 +47,41 @@ void CameraLayer_GIGE_MindVision::sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBu
 void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext)
 {
   
-  m.lock();
-    LOGV("INCOMING IMGE....%d.................",m_hCamera);
+  LOGI("snapFlag:%d",snapFlag);
+  if(snapFlag==0)
+    m.lock();
+  LOGV("INCOMING IMGE....%d.................",m_hCamera);
+  
+  int width = frameInfo->iWidth;
+  int height = frameInfo->iHeight;
+  //img.ReSize(width,height);
+  if(CameraImageProcess(hCamera, frameBuffer, m_pFrameBuffer, frameInfo)!=CAMERA_STATUS_SUCCESS)
+  {
+    CameraLayer_GIGE_MindVision::frameInfo fi_={
+      timeStamp_100us:0,
+      width:0,
+      height:0,
+      offset_x:0,
+      offset_y:0,
+    };
+    fi = fi_;
+    if(snapFlag==0)
+      callback(*this,CameraLayer::EV_ERROR,context);
+  }
+  else
+  {
+    CameraLayer_GIGE_MindVision::frameInfo fi_={
+      timeStamp_100us:(uint64_t)frameInfo->uiTimeStamp,
+      width:(uint32_t)frameInfo->iWidth,
+      height:(uint32_t)frameInfo->iHeight,
+      offset_x:ROI_x,
+      offset_y:ROI_y,
+    };
+    fi = fi_;
     
-    int width = frameInfo->iWidth;
-    int height = frameInfo->iHeight;
-    //img.ReSize(width,height);
-    if(CameraImageProcess(hCamera, frameBuffer, m_pFrameBuffer, frameInfo)!=CAMERA_STATUS_SUCCESS)
-    {
-        CameraLayer_GIGE_MindVision::frameInfo fi_={
-          timeStamp_100us:(uint64_t)frameInfo->uiTimeStamp,
-          width:(uint32_t)frameInfo->iWidth,
-          height:(uint32_t)frameInfo->iHeight,
-          offset_x:ROI_x,
-          offset_y:ROI_y,
-        };
-        fi = fi_;
-        callback(*this,CameraLayer::EV_ERROR,context);
-    }
-    else
-    {
-        callback(*this,CameraLayer::EV_IMG,context);
-    }
+    if(snapFlag==0)
+      callback(*this,CameraLayer::EV_IMG,context);
+  }
     
   m.unlock();
 }
@@ -378,6 +391,28 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
     return CameraLayer::ACK;
 }
 
+
+
+
+CameraLayer::status CameraLayer_GIGE_MindVision::SnapFrame()
+{
+  
+  
+
+  snapFlag=1;
+  TriggerMode(1);
+
+  LOGI("TRIGGER");
+  Trigger();
+
+  LOGI("LOCK");
+  m.lock();
+  LOGI("LOCK");
+  m.lock();
+  snapFlag=0;
+  m.unlock();
+  return CameraLayer::ACK;
+}
 
 CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_min,int *ret_max)
 {

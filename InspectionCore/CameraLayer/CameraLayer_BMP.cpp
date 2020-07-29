@@ -359,6 +359,10 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
     return CameraLayer::ACK;
 }
 
+CameraLayer::status CameraLayer_BMP_carousel::SnapFrame()
+{
+  return LoadNext();
+}
 
 CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 {

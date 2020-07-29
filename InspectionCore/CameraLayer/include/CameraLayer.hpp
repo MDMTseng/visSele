@@ -143,6 +143,14 @@ class CameraLayer{
     {
         return &img;
     }
+
+    
+    virtual CameraLayer::status SnapFrame()
+    {
+        return CameraLayer::NAK;
+    }
+
+
     virtual frameInfo GetFrameInfo()
     {
       return fi;

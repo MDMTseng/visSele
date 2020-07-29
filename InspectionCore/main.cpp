@@ -908,18 +908,8 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
 
 acvImage * getImage(CameraLayer *camera)
 {
-  
-  mainThreadLock.unlock();//
-  LOGI("Do camera Fetch..");
-  camera->TriggerMode(1);
-  LOGI("LOCK...");
-  mainThreadLock.lock();
-  camera->Trigger();
-  LOGI("LOCK BLOCK...");
-  mainThreadLock.lock();
-
-  LOGI("unlock");
-  mainThreadLock.unlock();
+  CameraLayer::status st=camera->SnapFrame();
+  LOGI("st:%d",st);
   return camera->GetFrame();
 }
 
