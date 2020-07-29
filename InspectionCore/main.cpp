@@ -833,7 +833,7 @@ bool DoImageTransfer = true;
 
 int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 {
-  ImgPipeLock.lock();
+  mainThreadLock.lock();
 
   int fd = getfd();
 
@@ -847,13 +847,13 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
   BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
   datCH_BPG.data.p_BPG_data = &bpg_dat;
   BPG_protocol->SendData(datCH_BPG);
-  ImgPipeLock.unlock();
+  mainThreadLock.unlock();
   return 0;
 }
 
 int MicroInsp_FType::ev_on_close()
 {
-  ImgPipeLock.lock();
+  mainThreadLock.lock();
   int fd = getfd();
   LOGE("fd:%d is disconnected", fd);
   DatCH_Data datCH_BPG =
@@ -866,7 +866,7 @@ int MicroInsp_FType::ev_on_close()
   datCH_BPG.data.p_BPG_data = &bpg_dat;
   BPG_protocol->SendData(datCH_BPG);
 
-  ImgPipeLock.unlock();
+  mainThreadLock.unlock();
 
   return 0;
 }
@@ -904,6 +904,26 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
     mift = NULL;
   }
 }
+
+
+acvImage * getImage(CameraLayer *camera)
+{
+  
+  mainThreadLock.unlock();//
+  LOGI("Do camera Fetch..");
+  camera->TriggerMode(1);
+  LOGI("LOCK...");
+  mainThreadLock.lock();
+  camera->Trigger();
+  LOGI("LOCK BLOCK...");
+  mainThreadLock.lock();
+
+  LOGI("unlock");
+  mainThreadLock.unlock();
+  return camera->GetFrame();
+}
+
+
 BPG_data DatCH_CallBack_BPG::GenStrBPGData(char *TL, char *jsonStr)
 {
   BPG_data BPG_dat = {0};
@@ -1335,20 +1355,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         }
         else if(srcImg == NULL)
         {
-          mainThreadLock.unlock();//
-          LOGI("Do camera Fetch..");
-          camera->TriggerMode(1);
-          LOGI("LOCK...");
-          mainThreadLock.lock();
-          camera->Trigger();
-          LOGI("LOCK BLOCK...");
-          mainThreadLock.lock();
-
-          LOGI("unlock");
-          mainThreadLock.unlock();
-          srcImg = camera->GetFrame();
-
-          //SaveIMGFile("data/test1.bmp",srcImg);
+          srcImg = getImage(camera);
         }
 
         if (srcImg == NULL)
@@ -1674,18 +1681,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         if (srcImg == NULL)
         {
-          mainThreadLock.unlock();
-          LOGI("Do camera Fetch..");
-          camera->TriggerMode(1);
-          LOGI("LOCK...");
-          mainThreadLock.lock();
-          camera->Trigger();
-          LOGI("LOCK BLOCK...");
-          mainThreadLock.lock();
-
-          LOGI("unlock");
-          mainThreadLock.unlock();
-          srcImg = camera->GetFrame();
+          
+          srcImg = getImage(camera);
           cacheImage.ReSize(srcImg);
           //acvCloneImage(srcImg, &cacheImage, -1);
           calib_bacpac.sampler->ignoreCalib(false);//First, make the cacheImage to be a calibrated full res image
