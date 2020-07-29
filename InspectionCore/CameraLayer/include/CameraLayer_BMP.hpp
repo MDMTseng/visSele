@@ -34,6 +34,7 @@ class CameraLayer_BMP : public CameraLayer{
 
 
 class CameraLayer_BMP_carousel : public CameraLayer_BMP{
+    int snapFlag=0;
     int frameInterval_ms=100;
     int ThreadTerminationFlag=0;
     int imageTakingCount=0;
@@ -53,7 +54,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     
     status SnapFrame();
     status Trigger();
-    status LoadNext();
+    status LoadNext(bool call_cb=true);
     status TriggerMode(int mode);
     ~CameraLayer_BMP_carousel();
 

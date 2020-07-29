@@ -156,17 +156,6 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 
 
       ret_status=ACK;
-      struct timeval tp;
-      gettimeofday(&tp, NULL);
-      long int _100us = tp.tv_sec * 10000 + tp.tv_usec / 100; //get current timestamp in milliseconds
-
-      CameraLayer::frameInfo fi_={
-        timeStamp_100us:(uint64_t)_100us,
-        width:(uint32_t)img.GetWidth(),
-        height:(uint32_t)img.GetHeight(),
-      };
-      fi = fi_;
-      callback(*this,CameraLayer::EV_IMG,context);
     }
     m.unlock();
     return ret_status;
@@ -273,7 +262,7 @@ CameraLayer::status CameraLayer_BMP_carousel::updateFolder(std::string folderNam
 }
 
 
-CameraLayer::status CameraLayer_BMP_carousel::LoadNext()
+CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
 {
     updateFolder(this->folderName);
     if(files_in_folder.size()==0)return NAK;
@@ -282,7 +271,37 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext()
     {
         fileIdx=0;
     }
-    return LoadBMP(files_in_folder[fileIdx]);
+
+
+    CameraLayer_BMP::status status=LoadBMP(files_in_folder[fileIdx]);
+    if(status==ACK)
+    {
+      struct timeval tp;
+      gettimeofday(&tp, NULL);
+      long int _100us = tp.tv_sec * 10000 + tp.tv_usec / 100; //get current timestamp in milliseconds
+
+      CameraLayer::frameInfo fi_={
+        timeStamp_100us:(uint64_t)_100us,
+        width:(uint32_t)img.GetWidth(),
+        height:(uint32_t)img.GetHeight(),
+      };
+      fi = fi_;
+
+      if(call_cb)
+        callback(*this,CameraLayer::EV_IMG,context);
+    }
+    else
+    {
+      CameraLayer::frameInfo fi_={
+        timeStamp_100us:0,
+        width:0,
+        height:0,
+      };
+      fi = fi_;
+      if(call_cb)
+        callback(*this,CameraLayer::EV_ERROR,context);
+    }
+    return status;
 }
 
 CameraLayer::status CameraLayer_BMP_carousel::Trigger()
@@ -361,7 +380,10 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
 
 CameraLayer::status CameraLayer_BMP_carousel::SnapFrame()
 {
-  return LoadNext();
+  snapFlag=1;
+  CameraLayer::status ret_s = LoadNext(false);
+  snapFlag=0;
+  return ret_s;
 }
 
 CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
