@@ -23,8 +23,6 @@
 
 #include <lodepng.h>
 std::timed_mutex mainThreadLock;
-std::timed_mutex ImgProcLock;
-std::timed_mutex ImgPipeLock;
 DatCH_WebSocket *websocket = NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
@@ -42,6 +40,19 @@ bool downSampWithCalib = false;
 bool doImgProcessThread = true;
 int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj);
 DatCH_BPG1_0 *BPG_protocol = new DatCH_BPG1_0(NULL);
+
+std::timed_mutex BPG_protocol_lock;
+
+void BPG_protocol_send(DatCH_Data dat)
+{
+  LOGI("SEND_LOCK");
+  BPG_protocol_lock.lock();
+  LOGI("SEND_ING");
+  BPG_protocol->SendData(dat);
+  LOGI("SEND_UNLOCK");
+  BPG_protocol_lock.unlock();
+  LOGI("SEND_END");
+}
 
 int _argc;
 char **_argv;
@@ -846,7 +857,7 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 
   BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
   datCH_BPG.data.p_BPG_data = &bpg_dat;
-  BPG_protocol->SendData(datCH_BPG);
+  BPG_protocol_send(datCH_BPG);
   mainThreadLock.unlock();
   return 0;
 }
@@ -864,7 +875,7 @@ int MicroInsp_FType::ev_on_close()
 
   BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
   datCH_BPG.data.p_BPG_data = &bpg_dat;
-  BPG_protocol->SendData(datCH_BPG);
+  BPG_protocol_send(datCH_BPG);
 
   mainThreadLock.unlock();
 
@@ -1751,7 +1762,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           bpg_dat.callback = DatCH_BPG_acvImage_Send;
           bpg_dat.pgID = dat->pgID;
           datCH_BPG.data.p_BPG_data = &bpg_dat;
-          BPG_protocol->SendData(datCH_BPG);
+          BPG_protocol_send(datCH_BPG);
         }
       }
       calib_bacpac.sampler->ignoreCalib(false);
@@ -2464,7 +2475,6 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   if (doImgProcessThread)
   {
     imagePipeBuffer.pushHead();
-    ImgProcLock.unlock();
   }
   else
   {
@@ -2472,9 +2482,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     { //Wait for ImgPipeProcessThread to complete
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    ImgPipeLock.lock();
     ImgPipeProcessCenter_imp(headImgPipe);
-    ImgPipeLock.unlock();
   }
 }
 
@@ -2581,7 +2589,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
     bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = cb->CI_pgID;
     datCH_BPG.data.p_BPG_data = &bpg_dat;
-    BPG_protocol->SendData(datCH_BPG);
+    BPG_protocol_send(datCH_BPG);
 
     try
     {
@@ -2676,7 +2684,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
         bpg_dat.pgID = cb->CI_pgID;
         datCH_BPG.data.p_BPG_data = &bpg_dat;
-        BPG_protocol->SendData(datCH_BPG);
+        BPG_protocol_send(datCH_BPG);
 
         delete jstr;
       }
@@ -2686,7 +2694,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", tmp);
         bpg_dat.pgID = cb->CI_pgID;
         datCH_BPG.data.p_BPG_data = &bpg_dat;
-        BPG_protocol->SendData(datCH_BPG);
+        BPG_protocol_send(datCH_BPG);
       }
     }
     catch (std::invalid_argument iaex)
@@ -2720,14 +2728,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       bpg_dat.callback = DatCH_BPG_acvImage_Send;
       bpg_dat.pgID = cb->CI_pgID;
       datCH_BPG.data.p_BPG_data = &bpg_dat;
-      BPG_protocol->SendData(datCH_BPG);
+      BPG_protocol_send(datCH_BPG);
     }
 
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"ACK\":true}", (cb->cameraFramesLeft) ? "true" : "false");
     bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = cb->CI_pgID;
     datCH_BPG.data.p_BPG_data = &bpg_dat;
-    BPG_protocol->SendData(datCH_BPG);
+    BPG_protocol_send(datCH_BPG);
 
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
@@ -2755,14 +2763,11 @@ void ImgPipeProcessThread(bool *terminationflag)
   using Ms = std::chrono::milliseconds;
   while (terminationflag && *terminationflag == false)
   {
-    ImgProcLock.try_lock_for(Ms(1000));
     image_pipe_info *headImgPipe = NULL;
     while (headImgPipe = imagePipeBuffer.getTail())
     {
 
-      ImgPipeLock.lock();
       ImgPipeProcessCenter_imp(headImgPipe);
-      ImgPipeLock.unlock();
       imagePipeBuffer.consumeTail();
     }
   }
@@ -2780,7 +2785,9 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
   if ((BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
   {
     LOGI("SEND>>>>>>..MatchPeer..\n");
-    BPG_protocol->SendData(data); // WS [here]-(prot)> App
+    
+    BPG_protocol->SendData(data);
+    //BPG_protocol_send(data); // WS [here]-(prot)> App
   }
 
   switch (ws_data.type)
@@ -2821,7 +2828,7 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
       BPG_dat.size = sizeof(tmp) - 1;
       BPG_dat.dat_raw = (uint8_t *)tmp;
       //App [here]-(prot)> WS
-      BPG_protocol->SendData(datCH_BPG);
+      BPG_protocol_send(datCH_BPG);
     }
     else
     {
