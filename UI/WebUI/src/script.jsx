@@ -680,7 +680,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
           console.log(sys_state)
         }}
         onClick_Camera={(sys_state)=>{
-          if(sys_state.camera==false)
+          //if(sys_state.camera==false)
           {
             Try_CAMERA_RECONNECT();
           }
