@@ -81,6 +81,7 @@ class RingBuf
   protected:
   std::timed_mutex headLock;
   std::timed_mutex tailLock;
+  std::timed_mutex counterLock;
   public:
   RingBufIdxCounter<RB_Idx_Type> RBC;
   RB_Type *buff;
@@ -92,66 +93,115 @@ class RingBuf
 
   RB_Idx_Type size()
   {
-    return RBC.size();
+    counterLock.lock();
+    int size=RBC.size();
+    counterLock.unlock();
+    return size;
   }
   
   void clear()
   {
-      RBC.clear();
+    counterLock.lock();
+    RBC.clear();
+    counterLock.unlock();
   }
 
 
   RB_Idx_Type getHead_Idx()
   {
-    return RBC.getHead();
+    
+    counterLock.lock();
+    int idx = RBC.getHead();
+    counterLock.unlock();
+    return idx;
   }
   RB_Idx_Type getTail_Idx()
   {
-    return RBC.getTail();
+    
+    counterLock.lock();
+    int idx = RBC.getTail();
+    counterLock.unlock();
+    return idx;
   }
   
   RB_Type* getHead()
   {
-    if(RBC.space()==0)return NULL;
-    return buff+RBC.getHead();
+
+    counterLock.lock();  
+    RB_Type* t=NULL;  
+    if(RBC.space()!=0)
+      t =buff+RBC.getHead();
+    counterLock.unlock();
+    return t;
   }
 
   RB_Idx_Type getTail_Idx(uint32_t idx)
   {
-    return RBC.getTail(idx);
+    counterLock.lock();
+    RB_Idx_Type t = RBC.getTail(idx);
+    counterLock.unlock();
+    return t;
   }
   RB_Type* getTail(uint32_t idx)
   {
-    if(idx>=RBC.size())return NULL;
-    return buff+RBC.getTail(idx);
+    counterLock.lock();
+    
+    RB_Type* t=NULL;  
+    if(RBC.size()!=0)
+      t = buff+RBC.getTail(idx);
+    counterLock.unlock();
+    return t;
   }
 
   RB_Type* getTail()
   {
-    if(RBC.size()==0)return NULL;
-    return buff+RBC.getTail();
+    counterLock.lock();  
+    RB_Type* t=NULL;  
+    if(RBC.size()!=0)
+      t = buff+RBC.getTail();
+    counterLock.unlock();
+    return t;
+  }
+
+  
+  RB_Type* getTail_block(int timeout_ms)
+  { 
+    using Ms = std::chrono::milliseconds;
+    
+    tailLock.lock();
+
+    
+    if(size()==0 )
+    {
+      tailLock.try_lock_for(Ms(timeout_ms));
+      if(size()==0)
+      {
+        tailLock.unlock();
+        return NULL;
+      }
+    }
+    tailLock.unlock();
+    counterLock.lock();  
+    RB_Type* t= buff+RBC.getTail();
+    counterLock.unlock();
+    return t;
   }
   
-  
-  int lockHead()
-  {
-    headLock.lock();
-  }
   int pushHead()
   {
+    counterLock.lock();
     int ret = RBC.pushHead();
-    headLock.unlock();
+    counterLock.unlock();
+    tailLock.unlock();
     return ret;
   }
 
-  int lockTail()
-  {
-    tailLock.lock();
-  }
   int consumeTail()
   {
+    counterLock.lock();
     int ret = RBC.consumeTail();
-    tailLock.unlock();
+    counterLock.unlock();
+
     return ret;
   }
 };

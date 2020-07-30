@@ -2452,38 +2452,49 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     }
   }
   pframeT = t;
-  LOGV("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
+  LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
+  LOGE(">>>>>");
   acvImage &capImg = *cl_GMV.GetFrame();
 
+  LOGE(">>>>>");
   image_pipe_info *headImgPipe = imagePipeBuffer.getHead();
   if (headImgPipe == NULL)
   {
+    LOGE("HEAD IMG pipe is NULL");
     return;
   }
+  
+  LOGE(">>>>>");
   headImgPipe->camLayer = &cl_obj;
   headImgPipe->type = type;
   headImgPipe->context = context;
   headImgPipe->img.ReSize(&capImg);
 
+  LOGE(">>>>>");
   acvCloneImage(&capImg, &(headImgPipe->img), -1);
 
+  LOGE(">>>>>");
   headImgPipe->bacpac = &calib_bacpac;
   headImgPipe->fi = cl_GMV.GetFrameInfo();
 
+  LOGE(">>>>>");
   if (doImgProcessThread)
   {
+  LOGE(">>>>>");
     imagePipeBuffer.pushHead();
   }
   else
   {
-    while (imagePipeBuffer.size() != 0)
+  LOGE(">>>>>");
+    while (imagePipeBuffer.size() == 0)
     { //Wait for ImgPipeProcessThread to complete
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     ImgPipeProcessCenter_imp(headImgPipe);
   }
+  LOGE(">>>>>");
 }
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
@@ -2761,12 +2772,24 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 void ImgPipeProcessThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
+  int delayStartCounter=10000;
   while (terminationflag && *terminationflag == false)
   {
-    image_pipe_info *headImgPipe = NULL;
-    while (headImgPipe = imagePipeBuffer.getTail())
+    
+    if(delayStartCounter>0)
     {
-
+      delayStartCounter--;
+    }
+    else
+    {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    image_pipe_info *headImgPipe = NULL;
+    
+    while (headImgPipe = imagePipeBuffer.getTail_block(1000))
+    {
+      LOGI(">>>");
+      delayStartCounter=10000;
       ImgPipeProcessCenter_imp(headImgPipe);
       imagePipeBuffer.consumeTail();
     }
