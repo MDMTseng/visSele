@@ -3,7 +3,7 @@
 #include <time.h>
 #include <signal.h>
 
-#include "MLNN.hpp"
+//#include "MLNN.hpp"
 #include "cJSON.h"
 #include "logctrl.h"
 #include "DatCH_Image.hpp"
@@ -2487,11 +2487,13 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   }
   else
   {
-  LOGE(">>>>>");
-    while (imagePipeBuffer.size() == 0)
-    { //Wait for ImgPipeProcessThread to complete
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+  // LOGE(">>>>>");
+  //   while (imagePipeBuffer.size() == 0)
+  //   { //Wait for ImgPipeProcessThread to complete
+  // LOGE(">>>>>");
+  //     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  //   }
+  // LOGE(">>>>>");
     ImgPipeProcessCenter_imp(headImgPipe);
   }
   LOGE(">>>>>");

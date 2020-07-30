@@ -23,14 +23,14 @@ public:
 
 class DatCH_BMP: public DatCH_acvImageInterface
 {
-    string fileName;
+    std::string fileName;
 public:
     DatCH_BMP(acvImage *buffer): DatCH_acvImageInterface(buffer)
     {
         fileName = "";
     }
 
-    void SetFileName(string fileName)
+    void SetFileName(std::string fileName)
     {
         this->fileName = fileName;
 
