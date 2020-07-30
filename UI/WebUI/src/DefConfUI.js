@@ -1125,7 +1125,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
                   }
                 },
                   undefined, { resolve, reject });
-                setTimeout(() => reject("Timeout"), 3000)
+                //setTimeout(() => reject("Timeout"), 3000)
               })
                 .then((pkts) => {
                   dispatch({
