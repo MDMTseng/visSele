@@ -379,6 +379,7 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
   const [fxExp, setFxExp] = useState(fx.exp);
 
+  const DICT = useSelector(state => state.UIData.DICT);
 
   function translatedExpChangeEvent(newExp) {
 
@@ -515,7 +516,7 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
         //console.log(translatedExp,selectionStart,fxExp, true_idx);
 
         ref_keyTrace_callback(["ref", 0]);
-      }}>++</Button>
+      }}>{DICT.defConf.calc_add_measure}</Button>
   </div>
 }
 
@@ -1787,7 +1788,6 @@ class APP_DEFCONF_MODE extends React.Component {
 
             for (var key in UIAct.SHAPE_TYPE.measure_subtype) {
               if (key == "NA") continue;
-
               MenuSet.push(<BASE_COM.IconButton
                 dict={this.props.DICT}
                 key={"MSUB__" + key}
@@ -1805,20 +1805,13 @@ class APP_DEFCONF_MODE extends React.Component {
           let tar_info = this.props.edit_tar_info;
 
           if (tar_info.ref !== undefined) {
-            // let notFullSet=false;
-            // tar_info.ref.forEach((ref_data)=>{
-            //   if(ref_data.id === undefined)notFullSet=true;
-            // });
-            // if(!notFullSet)
-            {
-              MenuSet.push(<BASE_COM.Button
-                key="ADD_BTN"
-                addClass="layout red vbox"
-                text="ADD" onClick={() => {
-                  this.ec_canvas.SetShape(this.props.edit_tar_info);
-                  this.props.ACT_SUCCESS();
-                }} />);
-            }
+            MenuSet.push(<BASE_COM.Button
+              key="ADD_BTN"
+              addClass="layout red vbox"
+              text="ADD" onClick={() => {
+                this.ec_canvas.SetShape(this.props.edit_tar_info);
+                this.props.ACT_SUCCESS();
+              }} />);
           }
         }
         break;

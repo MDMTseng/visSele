@@ -1,5 +1,10 @@
 
 export default {
+
+    defConf:{
+      calc_add_measure:"增加量測變數"
+    },
+
     _:{
         ReconnectAirDevice:"重新連接噴氣裝置",
         line:"線段/Line",

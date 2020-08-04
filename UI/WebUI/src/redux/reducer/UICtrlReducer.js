@@ -1068,7 +1068,7 @@ function StateReducer(newState, action) {
               if(action.data.shape!=null && action.data.shape!=undefined )
               {
                 let shape = action.data.shape;
-                if (shape.subtype === "calc") {
+                if (shape.subtype === SHAPE_TYPE.measure_subtype.calc) {
 
                   const regexp = /\[(\d+)\]/g;
                   const matches = shape.calc_f.exp.matchAll(regexp);
@@ -1276,8 +1276,8 @@ function StateReducer(newState, action) {
                     case SHAPE_TYPE.measure_subtype.calc:
                       newState.edit_info.edit_tar_info.ref = [];
                       newState.edit_info.edit_tar_info.calc_f = {
-                        exp: "",
-                        post_exp: []
+                        exp: "0",
+                        post_exp: ["0"]
                       };
                       break;
 

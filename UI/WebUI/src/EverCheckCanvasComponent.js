@@ -714,9 +714,17 @@ class renderUTIL {
             if (eObject.ref === undefined) break;
             let subObjs = eObject.ref
               .map((ref) => db_obj.FindShapeObject("id", ref.id, shapeList));
-
+            let subShapeValues;
             if (drawSubObjs)
-              this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+            {
+              subShapeValues = this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
+            }
+            if(subShapeValues===undefined)
+            {
+              subShapeValues=[];
+            }
+
+
             let subObjs_valid = subObjs.reduce((acc, cur) => acc && (cur !== undefined), true);
             if (!subObjs_valid) break;
 
@@ -1028,6 +1036,11 @@ class renderUTIL {
                         "$/$": vals => vals[0] / vals[1],
                         "$^$": vals => Math.pow(vals[0] , vals[1]),
                         "$": vals => vals,
+                        "$,$": vals => vals,
+                        "$,$,$": vals => vals,
+                        "$,$,$,$": vals => vals,
+                        "$,$,$,$,$": vals => vals,
+                        "$,$,$,$,$,$": vals => vals,
                         ...funcSet,
                         default:fallbackFunctionSet
                         //default:_=>false
@@ -1035,14 +1048,17 @@ class renderUTIL {
 
                       return PostfixExpCalc(postExp, funcSet)[0];
                     }
+                    let totalValueList = [...subShapeValues,...measureValueCache];
 
-                    
                     measureValue=ExpCalcBasic(
                       eObject.calc_f.post_exp,
-                      measureValueCache.reduce((set,ele)=>{
+                      totalValueList.reduce((set,ele)=>{
                         set["["+ele.id+"]"]=ele.value;
                         return set;
                       },{}));
+                    if(measureValue===undefined)
+                      measureValue=NaN;
+                    console.log(measureValueCache,eObject,measureValue);
                     this.drawDefMeasureInfoText(ctx,
                       eObject.name,
                       "C" + eObject.value.toFixed(3),
@@ -1072,6 +1088,7 @@ class renderUTIL {
           break;
       }
     });
+    return measureValueCache;
   }
 
 
