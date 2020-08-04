@@ -2498,7 +2498,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   if (doImgProcessThread)
   {
   LOGE(">>>>>");
-    imagePipeBuffer.pushHead();
+
+    int err=imagePipeBuffer.pushHead();
   }
   else
   {

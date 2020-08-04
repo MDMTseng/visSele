@@ -192,7 +192,8 @@ class RingBuf
     counterLock.lock();
     int ret = RBC.pushHead();
     counterLock.unlock();
-    tailLock.unlock();
+    if(ret ==0 )
+      tailLock.unlock();
     return ret;
   }
 
