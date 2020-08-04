@@ -228,6 +228,10 @@ export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) 
   }
   useEffect(() => {
     BPG_Channel("ST",0,{CameraSetting:{exposure:1000}});
+    
+    BPG_Channel( "ST", 0,
+    { CameraSetting: { ROI:[0,0,99999,99999] } })
+
     // ImgStageBackLightCalib();
     ImgStageBackLightCalib();
     return ()=>{
