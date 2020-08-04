@@ -1336,6 +1336,10 @@ class APP_DEFCONF_MODE extends React.Component {
       this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
     }
     loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND,this.props.WS_ID,this.props.DISPATCH);
+
+    
+    this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+    { CameraSetting: { ROI:[0,0,99999,99999] } });
   }
 
   componentWillUnmount() {
