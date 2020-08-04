@@ -535,8 +535,9 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill}) 
         let idxOf= inspOptionalTag.indexOf(tag);
         let is_cur_checked =idxOf > -1;
         return <Tag key={tag+"_essTag_"+tag_idx} 
+            className="large"
             checked={is_cur_checked}
-            color= {is_cur_checked?"#108ee9":"default"}
+            color= {is_cur_checked?"#5191a5":"#AAA"}
             onClick={()=>{
               console.log(tag);
               let checked =!is_cur_checked;
