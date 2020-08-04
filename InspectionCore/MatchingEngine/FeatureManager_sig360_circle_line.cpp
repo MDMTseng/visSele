@@ -727,29 +727,21 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       float eAngle = atan2(vec2.Y, vec2.X);
 
       float angleDiff = (eAngle - sAngle);
-
-      if (angleDiff > 2 * M_PI)
-        angleDiff -= 2 * M_PI;
-      else if (angleDiff < -2 * M_PI)
+      if (angleDiff < 0)
         angleDiff += 2 * M_PI;
 
-      LOGI("quadrant:%d ", quadrant);
-      LOGI("angleDiff:%f _________%f_%f_%f", angleDiff * 180 / M_PI, vec1.X, vec1.Y, atan2(vec1.Y, vec1.X) * 180 / M_PI);
-      LOGI("angleDiff:%f _________%f_%f_%f", angleDiff * 180 / M_PI, vec2.X, vec2.Y, atan2(vec2.Y, vec2.X) * 180 / M_PI);
-      while (angleDiff < 0) //Find diff angle 0~2PI
-      {
-        angleDiff += M_PI * 2;
-      }
+
+      if (angleDiff > M_PI)
+        angleDiff = angleDiff- M_PI;
+
       //The logic blow is to find angle in 4 quadrants (line1 as x axis, line2 as y axis)
       //So actually only 2 angles available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
       //quadrant 0 means quadrant 4 => quadrant n%2
 
       //If the angle is begger than PI(180) means the vector that we use to calculate angle is reversed
       //Like we use x axis and -y axis, the angle will be 270 instead of 90, so we will use
-      if (angleDiff > M_PI)
-      {
-        angleDiff -= M_PI;
-      }
+
+      //Find diff angle 0~PI
       //Now we have the quadrant 1 angle
 
       if ((quadrant % 2 == 0) ^ (flip_f != 1)) //if our target quadrant is 2 or 4..., find the complement angle
@@ -760,15 +752,15 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
 
       //HACK: the current method would have 0<->180 jumping back&forward issue
       //So warp around if the diff value is too much
-      float measureDiff = judgeReport.measured_val - judgeReport.def->targetVal;
-      if (measureDiff < -90)
-      {
-        judgeReport.measured_val += 180;
-      }
-      else if (measureDiff > 90)
-      {
-        judgeReport.measured_val -= 180;
-      }
+      // float measureDiff = judgeReport.measured_val - judgeReport.def->targetVal;
+      // if (measureDiff < -90)
+      // {
+      //   judgeReport.measured_val += 180;
+      // }
+      // else if (measureDiff > 90)
+      // {
+      //   judgeReport.measured_val -= 180;
+      // }
       notNA = true;
     }
 
