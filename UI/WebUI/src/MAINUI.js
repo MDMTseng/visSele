@@ -1138,8 +1138,9 @@ const MainUI=()=>{
               resolve:(stacked_pkts,action_channal)=>{
                 
                 ACT_WS_SEND(WS_ID, "RC", 0, {
-                  target: "camera_ez_reconnect"
+                  target: "camera_setting_refresh"
                 });
+
               }
             })
           console.log(finalReport)

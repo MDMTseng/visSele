@@ -1816,7 +1816,17 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         calib_bacpac.cam=camera;
 
       }
+      else if(strcmp(target, "camera_setting_refresh") == 0)
+      {
+        LOGV("DatCH_BPG1_0:%p", camera);
 
+        CameraSettingFromFile(camera, "data/");
+
+        LOGV("DatCH_BPG1_0");
+        this->camera = camera;
+        callbk_obj.camera = camera;
+        calib_bacpac.cam=camera;
+      }
     }
     else if (checkTL("SC", dat))//[S]petial [C]MD
     {
