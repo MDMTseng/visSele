@@ -56,6 +56,7 @@ typedef struct BGLightNodeInfo{
   float samp_rate;
 }BGLightNodeInfo;
 class stageLightParam{
+  acv_XY origin_offset;  
   public:
   std::vector <BGLightNodeInfo> BG_nodes;
   std::vector <BGLightNodeInfo> BG_exnodes;
@@ -63,7 +64,6 @@ class stageLightParam{
   int tarImgW,tarImgH;
   int idxW,idxH;
   int back_light_target;
-  acv_XY origin_offset;  
   int RESET();
   void nodesIdxWHSetup();
   void CLONE(stageLightParam* obj){};
@@ -89,6 +89,9 @@ class acvCalibMapUtil
 };
 class acvCalibMap
 {
+  protected:
+  
+    acv_XY origin_offset;  
     float* fwdMap;
     //(x',y')=fwdMap(x,y) 
     //x,y is in calibrated coord, ie semi-ideal map
@@ -111,7 +114,6 @@ class acvCalibMap
     float calibmmpB=1;
     int fullFrameW,fullFrameH;
     //fullFrameW,fullFrameH is the dimension of original image
-    acv_XY origin_offset;  
     acvCalibMap(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
     acvCalibMap();
     void RESET();
@@ -148,6 +150,7 @@ class ImageSampler
   acvCalibMap *map;
   angledOffsetTable *angOffsetTable;
   stageLightParam *stageLightInfo;
+  acv_XY origin_offset={0,0};
   public:
   ImageSampler(){
     //map=new acvCalibMap();
@@ -181,6 +184,11 @@ class ImageSampler
   {
     return map->get_mmpP_ideal();
   }
+
+  void setOriginOffset(acv_XY _origin_offset)
+  {
+    origin_offset=_origin_offset;
+  }
   
   void RESET()
   { 
@@ -193,7 +201,12 @@ class ImageSampler
   int img2ideal(acv_XY *distortedVec)
   {
     if(_ignoreCorrdCalib)return 0;
-    return map->i2c(*distortedVec);
+    distortedVec->X += origin_offset.X;
+    distortedVec->Y += origin_offset.Y;
+    int ret = map->c2i(*distortedVec);
+    distortedVec->X -= origin_offset.X;
+    distortedVec->Y -= origin_offset.Y;
+    return ret;
   }
 
 
@@ -201,19 +214,42 @@ class ImageSampler
   int img2ideal(float distortedVec[2])
   {
     if(_ignoreCorrdCalib)return 0;
-    return map->i2c(distortedVec);
+    distortedVec[0] += origin_offset.X;
+    distortedVec[1] += origin_offset.Y;
+    int ret = map->c2i(distortedVec);
+    distortedVec[0] -= origin_offset.X;
+    distortedVec[1] -= origin_offset.Y;
+    return ret;
   }
 
   int ideal2img(acv_XY *idealVec)
   {
+    
     if(_ignoreCorrdCalib)return 0;
-    return map->c2i(*idealVec);
+    idealVec->X += origin_offset.X;
+    idealVec->Y += origin_offset.Y;
+    int ret =  map->c2i(*idealVec);
+    idealVec->X -= origin_offset.X;
+    idealVec->Y -= origin_offset.Y;
+    return ret;
   }
 
+int CCCC=0;
   int ideal2img(float idealVec[2])
   {
     if(_ignoreCorrdCalib)return 0;
-    return map->c2i(idealVec);
+    
+    idealVec[0] += origin_offset.X;
+    idealVec[1] += origin_offset.Y;
+    // CCCC++;
+    // if(CCCC<10000)
+    // printf(">>>%f,%f",idealVec[0],idealVec[1]);
+    int ret = map->i2c(idealVec);
+    // if(CCCC<10000)
+    // printf(">>>%f,%f",idealVec[0],idealVec[1]);
+    idealVec[0] -= origin_offset.X;
+    idealVec[1] -= origin_offset.Y;
+    return ret;
   }
   float sampleBackLightFactor_ImgCoord(acv_XY pos)
   {
@@ -226,7 +262,6 @@ class ImageSampler
   float sampleImage_IdealCoord(acvImage *img,float idealVec[2],int doNearest=1)
   {
     int ret = ideal2img(idealVec);
-    acv_XY xy={X:idealVec[0],Y:idealVec[1]};
     float sampPix=sampleImage_ImgCoord(img, idealVec,doNearest);
     return sampPix;
   }
@@ -246,7 +281,12 @@ class ImageSampler
     else if (doNearest==0)
       bri= acvUnsignedMap1Sampling(img, pos,0);
 
-    return bri*sampleBackLightFactor_ImgCoord(pos);
+    acv_XY vecOffset=
+    {
+      X:pos.X+origin_offset.X,
+      Y:pos.Y+origin_offset.Y
+    };
+    return bri*sampleBackLightFactor_ImgCoord(vecOffset);
   }
   float sampleImage_ImgCoord(acvImage *img,float imgPos[2],int doNearest=1)
   {

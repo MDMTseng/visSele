@@ -54,6 +54,12 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
   
   int width = frameInfo->iWidth;
   int height = frameInfo->iHeight;
+
+  
+    
+
+  if(img.GetWidth()!=width || img.GetHeight()!=height)
+    img.useExtBuffer(m_pFrameBuffer,maxWidth*maxHeight*3,width,height);
   //img.ReSize(width,height);
   if(CameraImageProcess(hCamera, frameBuffer, m_pFrameBuffer, frameInfo)!=CAMERA_STATUS_SUCCESS)
   {
@@ -78,7 +84,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
       offset_y:ROI_y,
     };
     fi = fi_;
-    
+
     if(snapFlag==0)
       callback(*this,CameraLayer::EV_IMG,context);
   }
@@ -157,8 +163,13 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
 }
 CameraLayer::status CameraLayer_GIGE_MindVision::SetMirror(int Dir,int en)
 {
+  if(Dir<0 || Dir>1)
+  {
+    return CameraLayer::NAK;
+  }
   m.lock();
   CameraSetMirror(m_hCamera,Dir,en);
+  mirrorFlag[Dir]=en;
   m.unlock();
   return CameraLayer::ACK;
 }
@@ -234,6 +245,17 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
   ROI_y=(int)ROI_y;
   ROI_w=(int)ROI_w;
   ROI_h=(int)ROI_h;
+
+
+  // if(mirrorFlag[0])
+  // {
+  //   ROI_x = maxWidth-(ROI_x+ROI_w);
+  // }
+  
+  // if(mirrorFlag[1])
+  // {
+  //   ROI_y = maxHeight-(ROI_y+ROI_h);
+  // }
   LOGI("MAX:%d %d",maxWidth,maxHeight);
 
   LOGI("ROI:%f %f %f %f",ROI_x,ROI_y,ROI_w,ROI_h);
@@ -266,8 +288,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
 
   ROI_w=resInfo.iWidth;
   ROI_h=resInfo.iHeight;
-
-  img.useExtBuffer(m_pFrameBuffer,maxWidth*maxHeight*3,(int)ROI_w,(int)ROI_h);
+  LOGI("ret>>ROI:%f %f %f %f",ROI_x,ROI_y,ROI_w,ROI_h);
   return CameraLayer::ACK;
 }
 

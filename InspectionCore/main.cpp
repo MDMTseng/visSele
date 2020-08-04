@@ -727,23 +727,6 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     downSampWithCalib = true;
   }
 
-  cJSON *ROISetting = JFetch_ARRAY(&settingJson, "ROI");
-
-  if (ROISetting)
-  { //ROI set
-    double *roi_x = JFetch_NUMBER(&settingJson, "ROI[0]");
-    double *roi_y = JFetch_NUMBER(&settingJson, "ROI[1]");
-    double *roi_w = JFetch_NUMBER(&settingJson, "ROI[2]");
-    double *roi_h = JFetch_NUMBER(&settingJson, "ROI[3]");
-    LOGI("ROI ptr:%p %p %p %p", roi_x, roi_y, roi_w, roi_h);
-    if (roi_x && roi_y && roi_w && roi_h)
-    {
-      camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
-    }
-    else
-    {
-    }
-  }
 
   cJSON *MIRROR = JFetch_ARRAY(&settingJson, "mirror");
 
@@ -764,6 +747,28 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 
     camera.SetMirror(0, mirrorX);
     camera.SetMirror(1, mirrorY);
+  }
+
+  cJSON *ROISetting = JFetch_ARRAY(&settingJson, "ROI");
+
+  if (ROISetting)
+  { //ROI set
+    double *roi_x = JFetch_NUMBER(&settingJson, "ROI[0]");
+    double *roi_y = JFetch_NUMBER(&settingJson, "ROI[1]");
+    double *roi_w = JFetch_NUMBER(&settingJson, "ROI[2]");
+    double *roi_h = JFetch_NUMBER(&settingJson, "ROI[3]");
+    LOGI("ROI ptr:%p %p %p %p", roi_x, roi_y, roi_w, roi_h);
+    if (roi_x && roi_y && roi_w && roi_h)
+    {
+      camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
+      acv_XY offset_o={(float)*roi_x,(float)*roi_y};
+      calib_bacpac.sampler->setOriginOffset(offset_o);
+      //sampler
+      
+    }
+    else
+    {
+    }
   }
   return 0;
 }
@@ -2555,12 +2560,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   {
 
-    bacpac->sampler->getCalibMap()->origin_offset.X = fi.offset_x;
-    bacpac->sampler->getCalibMap()->origin_offset.Y = fi.offset_y;
+    // bacpac->sampler->getCalibMap()->origin_offset.X = fi.offset_x;
+    // bacpac->sampler->getCalibMap()->origin_offset.Y = fi.offset_y;
 
     
-    bacpac->sampler->getStageLightInfo()->origin_offset.X = fi.offset_x;
-    bacpac->sampler->getStageLightInfo()->origin_offset.Y = fi.offset_y;
+    // bacpac->sampler->getStageLightInfo()->origin_offset.X = fi.offset_x;
+    // bacpac->sampler->getStageLightInfo()->origin_offset.Y = fi.offset_y;
+    acv_XY offset = {
+      X: fi.offset_x,
+      Y: fi.offset_y};
+    bacpac->sampler->setOriginOffset(offset);
   }
   //if(stackingC!=0)return;
   if (0)

@@ -14,7 +14,7 @@
 class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     protected:
-    
+    int mirrorFlag[2]={0,0};
     int snapFlag=0;
     std::mutex m;
     CameraHandle    m_hCamera=0;	//the handle of the camera we use
