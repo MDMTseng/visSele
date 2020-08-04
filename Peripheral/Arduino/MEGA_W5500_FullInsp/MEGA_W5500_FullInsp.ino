@@ -114,7 +114,7 @@ uint8_t buff[600];//For websocket
 IPAddress _ip(192,168,2,43);
 IPAddress _gateway(192,168,1,1);
 IPAddress _subnet(255, 255, 0, 0);
-
+int _port = 5213;
 
 
 
@@ -964,7 +964,7 @@ uint32_t pulseHZ_step = 50;
 
 void setup() {
   Serial.begin(115200);
-  WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,5213,_gateway,_subnet);
+  WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,_port,_gateway,_subnet);
   if(WS_Server)setRetryTimeout(2, 100);
   setup_Stepper();
   
