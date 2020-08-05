@@ -134,7 +134,72 @@ int FeatureManager_binary_processing_group::addSubFeature(cJSON * subFeature)
   report.type = FeatureReport::binary_processing_group;
   return 0;
 }
+void binaryDownScale(acvImage *dst,acvImage *src,int ds_Factor)
+{
+  dst->ReSize(src->GetWidth()/ds_Factor,src->GetHeight()/ds_Factor);
+  for(int i=0;i<dst->GetHeight();i++)
+  {
+    for(int j=0;j<dst->GetWidth();j++)
+    {
+      uint8_t *d_pix=&(dst->CVector[i][j*3]);
+      uint8_t *s_pix=&(src->CVector[i*ds_Factor][j*3*ds_Factor]);
+      d_pix[0]=s_pix[0];
+      d_pix[1]=s_pix[1];
+      d_pix[2]=s_pix[2];
+    }
+  }
+}
 
+void labeledUpScale(acvImage *us_dst,acvImage *ds_src,int ds_Factor)
+{
+  // for(int i=0;i<ds_src->GetHeight();i++)
+  // {
+  //   for(int j=0;j<ds_src->GetWidth();j++)
+  //   {
+      
+  //     uint8_t *s_pix=&(ds_src->CVector[i][j*3]);
+  //     if(s_pix[0]!=255)
+  //       LOGI("[%d %d] :%d %d %d",j,i,s_pix[0],s_pix[1],s_pix[2]);
+  //   }
+  // }
+
+  uint8_t *s_pix00,*s_pix01,*s_pix10,*s_pix11;
+  int swidth=ds_src->GetWidth();
+  uint8_t *L_pix;
+  for(int i=0;i<us_dst->GetHeight()-ds_Factor;i++)
+  {
+
+    for(int j=0;j<us_dst->GetWidth();j++)
+    {
+      uint8_t *d_pix=&(us_dst->CVector[i][j*3]);
+      if(j%ds_Factor==0)
+      {
+        uint8_t *s_pix=&(ds_src->CVector[i/ds_Factor][(j/ds_Factor)*3]);
+        s_pix00=s_pix;
+        s_pix01=s_pix00+3;
+        s_pix10=s_pix00+swidth*3;
+        s_pix11=s_pix10+3;
+
+        if(s_pix00[2]!=255)
+          L_pix=s_pix00;
+        else if(s_pix01[2]!=255)
+          L_pix=s_pix01;
+        else if(s_pix10[2]!=255)
+          L_pix=s_pix10;
+        else if(s_pix11[2]!=255)
+          L_pix=s_pix11;
+      }
+      
+
+      if(d_pix[2]!=255)
+      {
+        d_pix[0]=L_pix[0];
+        d_pix[1]=L_pix[1];
+        d_pix[2]=L_pix[2];
+      }
+    }
+  }
+}
 int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 {
   report.bacpac=bacpac;
@@ -144,16 +209,28 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     
     acvCloneImage( img,&binary_img, -1);
     acvThreshold(&binary_img, 80, 0);
+
+    int downScaleF=1;//
+    acvImage *lableImg=&ds_binary_img;
+    if(downScaleF==1)
+    {
+      lableImg=&binary_img;
+    }
+    else
+    {
+      binaryDownScale(lableImg,&binary_img,downScaleF);
+    }
+
  
     //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
-    acvDrawBlock(&binary_img, 1, 1, binary_img.GetWidth() - 2, binary_img.GetHeight() - 2);
+    acvDrawBlock(lableImg, 1, 1, lableImg->GetWidth() - 2, lableImg->GetHeight() - 2);
 
-    int FENCE_AREA = (img->GetWidth()+img->GetHeight())*2-4;//External frame
+    int FENCE_AREA = (lableImg->GetWidth()+lableImg->GetHeight())*2-4;//External frame
     {
-      int xDist=15;
-      acvDrawBlock(&binary_img, xDist, xDist, binary_img.GetWidth() - xDist, binary_img.GetHeight() - xDist);
+      int xDist=15/downScaleF;
+      acvDrawBlock(lableImg, xDist, xDist, lableImg->GetWidth() - xDist, lableImg->GetHeight() - xDist);
       FENCE_AREA+=(img->GetWidth()-xDist+img->GetHeight()-xDist)*2-4;
-      uint8_t *line2Fill = binary_img.CVector[xDist+3];
+      uint8_t *line2Fill = lableImg->CVector[xDist+3];
       for(int i=1;i<xDist;i++)
       {
         line2Fill[i*3]=
@@ -166,11 +243,11 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
-    acvComponentLabeling(&binary_img);
-    acvLabeledRegionInfo(&binary_img, &ldData);
+    acvComponentLabeling(lableImg);
+    acvLabeledRegionInfo(lableImg, &ldData);
 
     //FENCE_AREA=110/100;
-    int CLimit = (img->GetWidth()*img->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
+    int CLimit = (lableImg->GetWidth()*lableImg->GetHeight())*intrusionSizeLimitRatio;//small object=> 1920×1080=>19*10
 
     int intrusionObjectArea = ldData[1].area - FENCE_AREA;
     LOGI("%d>OBJ:%d  CLimit:%d",ldData[1].area,intrusionObjectArea,CLimit);
@@ -184,6 +261,22 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
       }
       return 0;
     }
+
+    if(downScaleF!=1)
+    {
+      for(int i=2;i<ldData.size();i++)
+      {
+        ldData[i].area*=downScaleF*downScaleF;
+        ldData[i].Center=acvVecMult(ldData[i].Center,downScaleF);
+        ldData[i].LTBound=acvVecMult(ldData[i].LTBound,downScaleF);
+        ldData[i].RBBound=acvVecMult(ldData[i].RBBound,downScaleF);
+      }
+      labeledUpScale(&binary_img,lableImg,downScaleF);
+    }
+
+
+
+
     if(ldData.size()<=1)
     {
       error=FeatureReport_ERROR::GENERIC;
@@ -193,8 +286,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
       }
       return 0;
     }
-    ldData[1].area = 0;
 
+
+    ldData[1].area = 0;
 
     //Delete the object that has less than certain amount of area on ldData
     //acvRemoveRegionLessThan(img, &ldData, 120);
