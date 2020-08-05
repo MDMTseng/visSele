@@ -70,7 +70,7 @@ typedef struct image_pipe_info
   FeatureManager_BacPac *bacpac;
 } image_pipe_info;
 
-#define ImagePipeBufferSize 10
+#define ImagePipeBufferSize 20
 RingBuf<image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSize], ImagePipeBufferSize);
 //lens1
 //main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
@@ -2470,10 +2470,10 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
-  LOGE(">>>>>");
+  
   acvImage &capImg = *cl_GMV.GetFrame();
 
-  LOGE(">>>>>");
+  
   image_pipe_info *headImgPipe = imagePipeBuffer.getHead();
   if (headImgPipe == NULL)
   {
@@ -2481,38 +2481,38 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     return;
   }
   
-  LOGE(">>>>>");
+  
   headImgPipe->camLayer = &cl_obj;
   headImgPipe->type = type;
   headImgPipe->context = context;
   headImgPipe->img.ReSize(&capImg);
 
-  LOGE(">>>>>");
+  
   acvCloneImage(&capImg, &(headImgPipe->img), -1);
 
-  LOGE(">>>>>");
+  
   headImgPipe->bacpac = &calib_bacpac;
   headImgPipe->fi = cl_GMV.GetFrameInfo();
 
-  LOGE(">>>>>");
+  
   if (doImgProcessThread)
   {
-  LOGE(">>>>>");
+    
 
     int err=imagePipeBuffer.pushHead();
   }
   else
   {
-  // LOGE(">>>>>");
+  // 
   //   while (imagePipeBuffer.size() == 0)
   //   { //Wait for ImgPipeProcessThread to complete
-  // LOGE(">>>>>");
+  // 
   //     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   //   }
-  // LOGE(">>>>>");
+  // 
     ImgPipeProcessCenter_imp(headImgPipe);
   }
-  LOGE(">>>>>");
+  
 }
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
