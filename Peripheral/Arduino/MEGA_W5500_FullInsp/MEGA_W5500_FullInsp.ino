@@ -128,7 +128,7 @@ void errorLOG(GEN_ERROR_CODE code,char* errorLog=NULL);
 
 uint32_t PRPC= perRevPulseCount;
 
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW/10; 
+uint32_t tar_pulseHZ_ = 0*perRevPulseCount_HW/10; 
 
 int offsetAir=80;
 int cam_angle=103;
@@ -985,7 +985,7 @@ void setup() {
   showOff();
   
 #ifdef TEST_MODE
-  tar_pulseHZ_ = perRevPulseCount_HW/3;
+  tar_pulseHZ_ = 0;//perRevPulseCount_HW/3;
   mode_info.mode=run_mode_info::TEST;
   mode_info.misc_var=0;
 #else
