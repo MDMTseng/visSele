@@ -1058,7 +1058,7 @@ class renderUTIL {
                       },{}));
                     if(measureValue===undefined)
                       measureValue=NaN;
-                    console.log(measureValueCache,eObject,measureValue);
+                    //console.log(measureValueCache,eObject,measureValue);
                     this.drawDefMeasureInfoText(ctx,
                       eObject.name,
                       "C" + eObject.value.toFixed(3),
