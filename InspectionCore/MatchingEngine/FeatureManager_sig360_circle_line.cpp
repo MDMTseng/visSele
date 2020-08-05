@@ -2791,11 +2791,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   buff_->ReSize(img->GetWidth(), img->GetHeight());
   buff1.ReSize(img->GetWidth(), img->GetHeight());
   buff2.ReSize(img->GetWidth(), img->GetHeight());
-  acvImage *labeledBuff = &buff1;
-  acvImage *smoothedImg = &buff2;
+  acvImage *labeledBuff =img;
+  //acvImage *smoothedImg = &buff2;
   //acvCloneImage( img,buff_, -1);
-  acvCloneImage(img, labeledBuff, -1);
-  acvCloneImage(originalImage, smoothedImg, -1);
+  //acvCloneImage(img, labeledBuff, -1);
+  //acvCloneImage(originalImage, smoothedImg, -1);
   //acvBoxFilter(buff_,smoothedImg,7);
   //acvBoxFilter(buff_,smoothedImg,7);
   //acvBoxFilter(buff_,smoothedImg,7);

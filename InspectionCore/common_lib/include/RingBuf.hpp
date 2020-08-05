@@ -57,7 +57,7 @@ class RingBufIdxCounter
   }
 
   int pushHead(){
-    if(dataSize==RBLen)//queue is full.... ERROR
+    if(dataSize==RBLen-1)//queue is full.... ERROR
     {
       return -1;
     }

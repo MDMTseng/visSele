@@ -95,6 +95,7 @@ typedef struct acv_LineFit
 
 void acvThreshold(acvImage *Pic,BYTE Var);
 void acvThreshold(acvImage *Pic,BYTE Var,int channel);
+void acvThreshold(acvImage *dst,acvImage *src, BYTE Var, int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);
 void acvContrast(acvImage *dst, acvImage *src, int offset, int shift,int channel);
 void acvDeleteFrame(acvImage *Pic,int width);
