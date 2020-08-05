@@ -320,10 +320,10 @@ int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f, FeatureRepo
   {
     FeatureReport_searchPointReport sPoint = (*report.detectedSearchPoints)[idx];
 
-    if (sPoint.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
-    {
-      return -2;
-    }
+    // if (sPoint.status == FeatureReport_sig360_circle_line_single::STATUS_NA)
+    // {
+    //   return -2;
+    // }
     if (sPoint.def->subtype != featureDef_searchPoint::anglefollow)
       return -1;
     acv_XY line_vec;
@@ -709,9 +709,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   switch (judge.measure_type)
   {
   case FeatureReport_judgeDef::ANGLE:
-    if (type1 != FEATURETYPE::LINE || type2 != FEATURETYPE::LINE)
-      break;
-    else
+    if (((type1 == FEATURETYPE::LINE)||(type1 == FEATURETYPE::SEARCH_POINT)) &&
+        ((type2 == FEATURETYPE::LINE)||(type2 == FEATURETYPE::SEARCH_POINT)) )
     {
       acv_XY vec1, vec2;
 
@@ -1377,7 +1376,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
       }
     }
 
-    for (int k = 0; k < 100; k++)
+    for (int k = 0; k < 1000; k++)
     {
       char tmpStr[50];
       sprintf(tmpStr, "calc_f.post_exp[%d]", k);

@@ -111,10 +111,10 @@ class renderUTIL {
     };
 
     this.renderParam = {
-      base_Size: 5,
+      base_Size: 2,
       size_Multiplier: 1,
       mmpp: 0.1,
-      font_Base_Size: 1.1,
+      font_Base_Size: 0.7,
       font_Style: "bold ",
       
 
