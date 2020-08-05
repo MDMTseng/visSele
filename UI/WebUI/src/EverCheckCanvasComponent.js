@@ -754,8 +754,30 @@ class renderUTIL {
                 break;
               case SHAPE_TYPE.measure_subtype.angle:
                 {
+                  let obj0_pt2=subObjs[0].pt2;
+
+                  if(obj0_pt2===undefined)
+                  {
+                    
+                    obj0_pt2= db_obj.shapeVectorParse(subObjs[0], shapeList);
+                    obj0_pt2.x+=subObjs[0].pt1.x;
+                    obj0_pt2.y+=subObjs[0].pt1.y;
+                  }
+
+                  let obj1_pt2=subObjs[1].pt2;
+                  
+                  if(obj1_pt2===undefined)
+                  {
+                    
+                    obj1_pt2 = db_obj.shapeVectorParse(subObjs[1], shapeList);
+                    obj1_pt2.x+=subObjs[1].pt1.x;
+                    obj1_pt2.y+=subObjs[1].pt1.y;
+                  }
+                  //console.log(eObject,subObjs,obj0_pt2,obj1_pt2);
+
+                  
                   let srcPt =
-                    intersectPoint(subObjs[0].pt1, subObjs[0].pt2, subObjs[1].pt1, subObjs[1].pt2);
+                    intersectPoint(subObjs[0].pt1, obj0_pt2, subObjs[1].pt1, obj1_pt2);
 
                   ctx.lineWidth = this.getIndicationLineSize();
                   //ctx.strokeStyle=this.colorSet.measure_info; 
@@ -869,14 +891,14 @@ class renderUTIL {
                     ctx.setLineDash([this.getPrimitiveSize(), 1*this.getPrimitiveSize()])
 
                     let arcPt={x:srcPt.x + dist * Math.cos(ext_Angle1),y:srcPt.y + dist * Math.sin(ext_Angle1)};
-                    let closestPt=closestPointOnPoints(arcPt,[subObjs[0].pt1,subObjs[0].pt2]);
+                    let closestPt=closestPointOnPoints(arcPt,[subObjs[0].pt1,obj0_pt2]);
                     this.drawReportLine(ctx, {
                       x0: closestPt.x, y0: closestPt.y,
                       x1: arcPt.x, y1: arcPt.y
                     });
 
                     arcPt={x:srcPt.x + dist * Math.cos(ext_Angle2),y:srcPt.y + dist * Math.sin(ext_Angle2)};
-                    closestPt=closestPointOnPoints(arcPt,[subObjs[1].pt1,subObjs[1].pt2]);
+                    closestPt=closestPointOnPoints(arcPt,[subObjs[1].pt1,obj1_pt2]);
                     this.drawReportLine(ctx, {
                       x0: closestPt.x, y0: closestPt.y,
                       x1: arcPt.x, y1: arcPt.y
@@ -1017,7 +1039,7 @@ class renderUTIL {
                       
                     this.drawInspMeasureInfoText(ctx,
                       eObject.name,
-                      "C" + (eObject.inspection_value).toFixed(3),
+                      "C" + (eObject.inspection_value),
                       marginPC,fontPx);
                     measureValue=eObject.inspection_value;
                   }
@@ -2202,7 +2224,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             return shapeList.filter((shape) => shape.type !== SHAPE_TYPE.measure);
             break;
           case SHAPE_TYPE.measure_subtype.angle:
-            return shapeList.filter((shape) => shape.type === SHAPE_TYPE.line);
+            return shapeList.filter((shape) => shape.type === SHAPE_TYPE.line || shape.type === SHAPE_TYPE.search_point);
             break;
           case SHAPE_TYPE.measure_subtype.radius:
             return shapeList.filter((shape) => shape.type === SHAPE_TYPE.arc);
@@ -2284,7 +2306,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     {
       let center = this.db_obj.getsig360infoCenter();
-      //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
       ctx.translate(-center.x, -center.y);
 
@@ -2467,7 +2488,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   angleDeg: 90,
                   search_style:0,
                   margin: 0.15,
-                  width: 0.5,
+                  width: 5,
                   ref: [{
                     id: this.CandEditPointInfo.shape.id,
                     element: this.CandEditPointInfo.shape.type
