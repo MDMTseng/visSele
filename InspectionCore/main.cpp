@@ -487,7 +487,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     return -1;
 
   cJSON *angledOffsetObj = JFetEx_OBJECT(root, "reports[0].angledOffset");
-
+  ret_param->getAngOffsetTable()->RESET();
   if (angledOffsetObj != NULL)
   {
 
@@ -2499,6 +2499,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   {
     
 
+    LOGE("imagePipeBuffer.size:: %d before push",imagePipeBuffer.size());
     int err=imagePipeBuffer.pushHead();
   }
   else
@@ -2735,8 +2736,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       LOGE("Caught an error!");
     }
 
+
+    clock_t img_t = clock();
     //if(stackingC==0)
-    if (DoImageTransfer)
+    if (DoImageTransfer && (imagePipeBuffer.size()<ImagePipeBufferSize/2  ))
     {
 
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
@@ -2762,6 +2765,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       bpg_dat.pgID = cb->CI_pgID;
       datCH_BPG.data.p_BPG_data = &bpg_dat;
       BPG_protocol_send(datCH_BPG);
+      LOGI("img transfer(DL:%d) %fms \n",downSampLevel, ((double)clock() -img_t) / CLOCKS_PER_SEC * 1000);
     }
 
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"ACK\":true}", (cb->cameraFramesLeft) ? "true" : "false");
@@ -2810,7 +2814,7 @@ void ImgPipeProcessThread(bool *terminationflag)
     
     while (headImgPipe = imagePipeBuffer.getTail_block(1000))
     {
-      LOGI(">>>");
+      LOGI(">>>imagePipeBuffer.size:%d",imagePipeBuffer.size());
       delayStartCounter=10000;
       ImgPipeProcessCenter_imp(headImgPipe);
       imagePipeBuffer.consumeTail();
