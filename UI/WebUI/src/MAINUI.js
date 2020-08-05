@@ -339,6 +339,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   function SignatureTargetMatching(fileInfoList,onMatchingResult)
   {
+    
+    ACT_WS_SEND(WS_ID, "ST", 0,
+    { CameraSetting: { ROI:[0,0,99999,99999] } })
     ACT_WS_SEND(WS_ID, "EX", 0, {},
       undefined, { 
       resolve:(pkts)=>{
