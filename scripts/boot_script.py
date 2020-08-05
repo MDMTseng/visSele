@@ -26,7 +26,7 @@ print("path_local=",path_local)
 
 BIN_DIR="Xception"
 
-_VERSION_="0.2.7"
+_VERSION_="0.2.8"
 
 BIN_DIR+=_VERSION_
 
