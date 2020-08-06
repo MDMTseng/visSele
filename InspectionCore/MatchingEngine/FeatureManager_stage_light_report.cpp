@@ -381,7 +381,6 @@ int backLightNonBackGroundExclusion(acvImage *img,acvImage *backGround,acvImage 
   
   {
     acvBoxFilter(backGround, buffer, 1);
-    acvBoxFilter(backGround, buffer, 1);
     acvSobelFilter(backGround, buffer, 1);
 
     //CH1 Y dir, 

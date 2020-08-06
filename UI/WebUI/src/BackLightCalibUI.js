@@ -169,7 +169,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) 
         definfo: {
           "type":"stage_light_report",
           "grid_size":[10,10],
-          "nonBG_thres":20,
+          "nonBG_thres":60,
           "nonBG_spread_thres":180
         }
       },undefined,
