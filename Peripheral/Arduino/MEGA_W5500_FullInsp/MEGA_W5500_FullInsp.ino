@@ -538,6 +538,24 @@ class Websocket_FI:public Websocket_FI_proto{
     return MessageL;
   }
   
+  int readJsonScopeNumber(char* jsonStr,char* keyStr, int *ret_num)
+  {
+    uint8_t nbuffer[10];
+    int retL=10;
+    if((retL= findJsonScope(jsonStr,keyStr,nbuffer,sizeof(nbuffer)))<=0)
+      return -1;
+
+      
+    int readN;
+    int readL = sscanf(nbuffer, "%d", &readN);
+    if(readL!=1)
+    {
+      return -2;
+    }
+    if(ret_num)*ret_num=readN;
+    return 0;
+  }
+
   
   int MachToJson(char* jbuff,uint32_t jbuffL, int *ret_status)
   {
@@ -758,6 +776,54 @@ class Websocket_FI:public Websocket_FI_proto{
           ret_status=0;
         }
       }
+      else if(strstr ((char*)recv_cmd,"\"type\":\"test_action\"")!=NULL)
+      {
+        char *bufPtr = buff;
+        int retL;
+
+        if(strstr ((char*)recv_cmd,"\"sub_type\":\"trigger_test\"")!=NULL)
+        {
+          int trigger_count=10;
+          int trigger_duration=20;
+          int trigger_post_duration=80;
+          int backlight_extra_duration=20;
+          int tmpNum;
+
+          if(readJsonScopeNumber((char*)recv_cmd,"\"count\":", &tmpNum)==0)
+            trigger_count=tmpNum;
+
+          if(readJsonScopeNumber((char*)recv_cmd,"\"duration\":", &tmpNum)==0)
+            trigger_duration=tmpNum;
+
+           
+          if(readJsonScopeNumber((char*)recv_cmd,"\"post_duration\":", &tmpNum)==0)
+            trigger_post_duration=tmpNum;
+           
+          if(readJsonScopeNumber((char*)recv_cmd,"\"backlight_extra_duration\":", &tmpNum)==0)
+            backlight_extra_duration=tmpNum;
+
+
+          digitalWrite(CAMERA_PIN, 0);
+          digitalWrite(BACK_LIGHT_PIN, 0);
+          delay(100);
+          delay(trigger_post_duration);
+          for(int ix=0;ix<trigger_count;ix++)
+          {
+            
+            digitalWrite(BACK_LIGHT_PIN, 1);
+            digitalWrite(CAMERA_PIN, 1);
+            
+            delay(trigger_duration);
+            digitalWrite(CAMERA_PIN, 0);
+            delay(backlight_extra_duration);
+            digitalWrite(BACK_LIGHT_PIN, 0);
+            delay(trigger_post_duration);
+            
+          }
+          
+        }
+      }
+      
       else if(strstr ((char*)recv_cmd,"\"type\":\"get_setup\"")!=NULL)
       {
         int ret_st=0;
