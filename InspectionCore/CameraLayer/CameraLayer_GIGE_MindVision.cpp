@@ -50,7 +50,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
   LOGI("snapFlag:%d",snapFlag);
   if(snapFlag==0)
     m.lock();
-  LOGV("INCOMING IMGE....%d.................",m_hCamera);
+  LOGI("INCOMING IMGE....%d.................",m_hCamera);
   
   int width = frameInfo->iWidth;
   int height = frameInfo->iHeight;

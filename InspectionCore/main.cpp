@@ -2739,7 +2739,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
     clock_t img_t = clock();
     //if(stackingC==0)
-    if (DoImageTransfer && (imagePipeBuffer.size()<ImagePipeBufferSize/2  ))
+    if (DoImageTransfer && (imagePipeBuffer.size()<2  ))
     {
 
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
