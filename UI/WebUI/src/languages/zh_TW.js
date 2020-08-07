@@ -65,7 +65,8 @@ export default {
         
         disconnected:"已斷線",
         connected:"已連線",
-        camera_reconnection_caption:"相機已離線 重連中"
+        camera_reconnection_caption:"相機已離線 重連中",
+        manual_ROI_setup:"手動視野範圍(ROI)選擇"
 
     },
     connection:{

@@ -2,7 +2,9 @@
 
 
 import { connect } from 'react-redux';
-import React from 'react';
+import React, { useState, useEffect,useRef } from 'react';
+import { useSelector,useDispatch } from 'react-redux';
+
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
@@ -45,12 +47,14 @@ import {
   FileOutlined,
   LinkOutlined,
   TagsOutlined,
+  ExpandOutlined,
   HeartTwoTone,
   ArrowLeftOutlined,
   FullscreenOutlined,
   PaperClipOutlined,
   SettingOutlined,
   CaretDownOutlined,
+  BarChartOutlined
 
 } from '@ant-design/icons';
 
@@ -965,6 +969,18 @@ class MicroFullInspCtrl extends React.Component {
 
             <Divider orientation="left">MODE</Divider>
             <Button.Group key="MODE_G">
+
+                
+              <Button
+                  key="TEST_ACTION"
+                  onClick={() =>
+                    this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                      { msg: { type: "test_action", sub_type: "trigger_test",
+                      count:60,duration:10,backlight_extra_duration:10,post_duration:20} })
+                  }>TEST2
+              </Button>
+
+
               <Button
                 key="MODE:TEST"
                 onClick={() =>
@@ -1059,11 +1075,97 @@ let MicroFullInspCtrl_rdx = connect(mapStateToProps_MicroFullInspCtrl, mapDispat
 
 
 
+function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND,WS_ID,onCanvasInit})
+{
+  
+  const _s = useRef({windowSize:{}});
+  const dispatch = useDispatch();
+  
+  const ACT_EXIT= () => dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT));
+  const ACT_ERROR= (arg) => dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.ERROR));
+  
+
+  const c_state = useSelector(state => state.UIData.c_state);
+  const edit_info = useSelector(state => state.UIData.edit_info);
+
+
+  function ec_canvas_EmitEvent(event) {
+    switch (event.type) {
+      case DefConfAct.EVENT.ERROR:
+        log.error(event);
+        ACT_ERROR();
+        break;
+      case "asdasdas":
+        // log.error(event);
+        // this.props.ACT_ERROR();
+
+        let rep = this.props.camera_calibration_report.reports[0];
+        let mmpp = rep.mmpb2b / rep.ppb2b;
+
+        let crop = event.data.crop.map(val => val / mmpp);
+        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
+        if (down_samp_level <= 0) down_samp_level = 1;
+        else if (down_samp_level > 15) down_samp_level = 15;
+
+
+        //log.info(crop,down_samp_level);
+        ACT_WS_SEND(WS_ID, "ST", 0,
+          {
+            CameraSetting: {
+              down_samp_level
+            },
+            ImageTransferSetup: {
+              crop
+            }
+          });
+        break;
+
+    }
+  }
+
+  
+  useEffect(()=>{
+
+    let _this=_s.current;
+    _this.ec_canvas = new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
+    _this.ec_canvas.EmitEvent = ec_canvas_EmitEvent;
+    onCanvasInit(_this.ec_canvas);
+    this.updateCanvas(c_state);
+    return ()=>{
+      
+      _this.ec_canvas.resourceClean();
+    }
+  },[])
+
+  //const [InfoPopUp,setInfoPopUp]=useState(undefined);
+
+  //_s.current.windowSize;
+
+
+}
 
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
     this.windowSize = {};
+  }
+  triggerROISelect()
+  {
+
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.onROISettingCallBack !== this.props.onROISettingCallBack && this.ec_canvas !== undefined) {
+
+      if( this.props.onROISettingCallBack!==undefined)
+      {
+        this.ec_canvas.SetROISettingCallBack(this.props.onROISettingCallBack);
+      }
+      else
+      {
+        this.ec_canvas.SetROISettingCallBack(undefined);
+      }
+    }
   }
 
   ec_canvas_EmitEvent(event) {
@@ -1743,7 +1845,8 @@ class APP_INSP_MODE extends React.Component {
       ROIs: {},
       ROI_key: undefined,
       DB_Conn_state: undefined,
-      inspUploadedCount: 0
+      inspUploadedCount: 0,
+      onROISettingCallBack:undefined
     };
 
     this.CameraCtrl = new CameraCtrl({
@@ -1949,7 +2052,7 @@ class APP_INSP_MODE extends React.Component {
     MenuSet_2nd.push(
       <BASE_COM.IconButton
         dict={this.props.DICT}
-        iconType="bar-chart"
+        iconType={<BarChartOutlined />}
         key="Info Graphs"
         addClass="layout black vbox"
         text="Info Graphs" onClick={() => {
@@ -1959,16 +2062,40 @@ class APP_INSP_MODE extends React.Component {
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
-        dict={this.props.DICT}
-        iconType="up-square"
-        key="ZOOM OUT"
-        iconType="zoom-out"
-        addClass="layout palatte-blue-8 vbox width6"
-        text={""}
-        onClick={() =>
+        iconType={<ExpandOutlined />}
+        key="Manual ZOOM"
+        addClass="layout palatte-blue-8 vbox width10"
+        text={this.props.DICT._.manual_ROI_setup}
+        onClick={() =>{
+          
           this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-            { CameraSettingFromFile: "data/" })
-        } />);
+          { CameraSetting: { ROI:[0,0,99999,99999] } });
+          this.setState({ onROISettingCallBack:(ROI_setting)=>{
+            
+            let x = ROI_setting.start.pix.x;
+            let y = ROI_setting.start.pix.y;
+            
+            let w = ROI_setting.end.pix.x-x;
+            let h = ROI_setting.end.pix.y-y;
+            if(w<0)
+            {
+              x+=w;
+              w=-w;
+            }
+            if(h<0)
+            {
+              y+=h;
+              h=-h;
+            }
+            let ROI = [x,y,w,h];
+            this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+            {CameraSetting: { ROI}});
+
+          
+            console.log(ROI_setting,ROI);
+            this.setState(undefined);
+          }})
+        }} />);
 
     const menu_ = (
       <Menu onClick={(ev) => {
@@ -1990,15 +2117,15 @@ class APP_INSP_MODE extends React.Component {
       </Menu>
     );
     MenuSet_2nd.push(<Dropdown overlay={menu_}>
-      <a className="HX1 layout palatte-blue-8 vbox width6" href="#">
+      <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
         {this.state.ROI_key}
         <CaretDownOutlined />
       </a>
     </Dropdown>);
 
-    MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
-      reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
-      camera_calibration_report={this.props.camera_calibration_report} />);
+    // MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
+    //   reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
+    //   camera_calibration_report={this.props.camera_calibration_report} />);
 
     let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
     //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
@@ -2015,6 +2142,7 @@ class APP_INSP_MODE extends React.Component {
 
         {(CanvasWindowRatio <= 0) ? null :
           <CanvasComponent_rdx addClass={"layout WXF" + " height" + CanvasWindowRatio}
+            onROISettingCallBack={this.state.onROISettingCallBack}
             ACT_WS_SEND={this.props.ACT_WS_SEND}
             WS_ID={this.props.WS_ID}
             onCanvasInit={(canvas) => { this.ec_canvas = canvas }}

@@ -1837,7 +1837,124 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.CandEditPointInfo = null;
     this.EditPoint = null;
 
+    this.ROISettingCallBack = undefined;
     this.EmitEvent = (event) => { log.info(event); };
+    this.ROISettingInfo=undefined;
+  }
+
+  SetROISettingCallBack(callback)
+  {
+    this.ROISettingCallBack=callback;
+    if(this.ROISettingCallBack!==undefined)
+    {
+      this.ROISettingInfo={
+      };
+    }
+    else
+    {
+      this.ROISettingInfo=undefined;
+    }
+  }
+
+  ScreenCoordTo_mm_pix(coord)
+  {
+    let mmpp = this.rUtil.get_mmpp();
+    //let mmpp = this.rUtil.get_mmpp();
+    let wMat = this.worldTransform();
+    //log.debug("this.camera.matrix::",wMat);
+    let worldTransform = new DOMMatrix().setMatrixValue(wMat);
+    let worldTransform_inv = worldTransform.invertSelf();
+    //this.Mouse2SecCanvas = invMat;
+    let mouseOnCanvas = this.VecX2DMat(coord, worldTransform_inv);
+    return {
+      x_mm:mouseOnCanvas.x,
+      y_mm:mouseOnCanvas.y,
+      x_pix:mouseOnCanvas.x/mmpp,
+      y_pix:mouseOnCanvas.y/mmpp,
+    }
+  }
+  
+  onmousemove(evt) 
+  {
+    // 
+    super.onmousemove(evt);
+
+    if(this.ROISettingCallBack!==undefined)
+    {
+      
+
+      let mm_pix = this.ScreenCoordTo_mm_pix(this.mouseStatus);
+
+      
+      this.ROISettingInfo.current={};
+      let info = this.ROISettingInfo.current;
+      info.mm={
+        x:mm_pix.x_mm,
+        y:mm_pix.y_mm,
+      }
+      
+      info.pix={
+        x:mm_pix.x_pix,
+        y:mm_pix.x_pix,
+      }
+    }
+
+
+  }
+
+  
+  onmousedown(evt) 
+  {
+    if(this.ROISettingCallBack===undefined)
+      super.onmousedown(evt);
+    else
+    {
+      let pos = this.getMousePos(this.canvas, evt);
+      
+      let mm_pix = this.ScreenCoordTo_mm_pix(pos);
+      
+      this.ROISettingInfo.start={};
+      let info = this.ROISettingInfo.start;
+      info.mm={
+        x:mm_pix.x_mm,
+        y:mm_pix.y_mm,
+      }
+      
+      info.pix={
+        x:mm_pix.x_pix,
+        y:mm_pix.y_pix,
+      }
+
+    }
+  }
+
+  onmouseup(evt) 
+  {
+    if(this.ROISettingCallBack===undefined)
+      super.onmouseup(evt);
+    else
+    {
+      let pos = this.getMousePos(this.canvas, evt);
+      
+      let mm_pix = this.ScreenCoordTo_mm_pix(pos);
+      
+      this.ROISettingInfo.end={};
+      let info = this.ROISettingInfo.end;
+      info.mm={
+        x:mm_pix.x_mm,
+        y:mm_pix.y_mm,
+      }
+      
+      info.pix={
+        x:mm_pix.x_pix,
+        y:mm_pix.y_pix,
+      }
+
+      this.ROISettingCallBack(this.ROISettingInfo);
+      this.ROISettingInfo=undefined;
+      this.ROISettingCallBack=undefined;
+
+    }
   }
 
   SetState(state) {
@@ -2062,7 +2179,33 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
       }
     });
+    if(this.ROISettingInfo!==undefined && 
+      this.ROISettingInfo.current!==undefined && 
+      this.ROISettingInfo.start!==undefined)
+    {
+      let x=this.ROISettingInfo.start.mm.x;
+      let y=this.ROISettingInfo.start.mm.y;
+      let w=this.ROISettingInfo.current.mm.x-x;
+      let h=this.ROISettingInfo.current.mm.y-y;
 
+      if(w<0){
+        x+=w;
+        w=-w;
+      }
+      
+      if(h<0){
+        y+=h;
+        h=-h;
+      }
+      ctx.beginPath();
+      let LineSize = this.rUtil.getIndicationLineSize();
+      ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
+      ctx.strokeStyle = "rgba(51, 51, 51,30)";
+      ctx.lineWidth = LineSize*2;
+      ctx.rect(x, y, w, h);
+      ctx.stroke();
+      ctx.closePath();
+    }
   }
 
   ctrlLogic() {
