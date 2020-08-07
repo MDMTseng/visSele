@@ -15,6 +15,11 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
         return;
     }
 
+
+    int enable = 1;
+    setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+    setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));
     local.sin_family = AF_INET;
