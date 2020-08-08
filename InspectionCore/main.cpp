@@ -23,6 +23,50 @@
 
 #include <lodepng.h>
 std::timed_mutex mainThreadLock;
+
+
+#define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
+#define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
+
+int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms=0)
+{
+
+  if(try_lock_timeout_ms<=0)
+  {
+    LOGI("%s_%d: Locking ",msg,call_lineNumber);
+    mainThreadLock.lock();
+  }
+  else
+  {
+    using Ms = std::chrono::milliseconds;
+    
+    LOGI("%s_%d: Locking %dms",msg,call_lineNumber,try_lock_timeout_ms);
+    if(mainThreadLock.try_lock_for(Ms(try_lock_timeout_ms)))
+    {
+    }
+    else
+    {
+      LOGI("Lock failed");
+      return -1;
+    }
+  }
+  LOGI("%s_%d: Locked ",msg,call_lineNumber);
+
+  return 0;
+}
+
+
+int mainThreadLock_unlock(int call_lineNumber,char* msg="")
+{
+
+  LOGI("%s_%d: unLocking ",msg,call_lineNumber);
+  mainThreadLock.unlock();
+  LOGI("%s_%d: unLocked ",msg,call_lineNumber);
+
+  return 0;
+}
+
+
 DatCH_WebSocket *websocket = NULL;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
@@ -45,13 +89,13 @@ std::timed_mutex BPG_protocol_lock;
 
 void BPG_protocol_send(DatCH_Data dat)
 {
-  //LOGI("SEND_LOCK");
+  LOGI("SEND_LOCK");
   BPG_protocol_lock.lock();
-  //LOGI("SEND_ING");
+  LOGI("SEND_ING");
   BPG_protocol->SendData(dat);
-  //LOGI("SEND_UNLOCK");
+  LOGI("SEND_UNLOCK");
   BPG_protocol_lock.unlock();
-  //LOGI("SEND_END");
+  LOGI("SEND_END");
 }
 
 int _argc;
@@ -849,8 +893,7 @@ bool DoImageTransfer = true;
 
 int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 {
-  mainThreadLock.lock();
-
+  MT_LOCK();
   int fd = getfd();
 
   DatCH_Data datCH_BPG =
@@ -863,13 +906,14 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
   BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
   datCH_BPG.data.p_BPG_data = &bpg_dat;
   BPG_protocol_send(datCH_BPG);
-  mainThreadLock.unlock();
+  MT_UNLOCK();
   return 0;
 }
 
 int MicroInsp_FType::ev_on_close()
 {
-  mainThreadLock.lock();
+  
+  //MT_LOCK(); //the delete caller might come within main thread
   int fd = getfd();
   LOGE("fd:%d is disconnected", fd);
   DatCH_Data datCH_BPG =
@@ -882,7 +926,7 @@ int MicroInsp_FType::ev_on_close()
   datCH_BPG.data.p_BPG_data = &bpg_dat;
   BPG_protocol_send(datCH_BPG);
 
-  mainThreadLock.unlock();
+  //MT_UNLOCK();
 
   return 0;
 }
@@ -916,9 +960,11 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
 
   if (mift)
   {
+    LOGI("DELETING");
     delete mift;
     mift = NULL;
   }
+  LOGI("DELETED...");
 }
 
 
@@ -999,10 +1045,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     // }
 
 
-    //LOGI("Locking");
-    mainThreadLock.lock();
-
-    //LOGI("Locked");
+    MT_LOCK();
 
 
     if      (checkTL("HR", dat))
@@ -1614,7 +1657,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
               camera->TriggerMode(0);
             }
             
-            doImgProcessThread = false;
+            doImgProcessThread = true;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -1625,13 +1668,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           if (cb->cameraFramesLeft > 0)
           {
 
-            mainThreadLock.unlock();
+            MT_UNLOCK("SPACING LOCK");
             while (cb->cameraFramesLeft > 0)
             {
               std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
-            mainThreadLock.lock();
+            MT_LOCK("SPACING LOCK");
             camera->TriggerMode(1);
           }
           //SaveIMGFile("data/buff.bmp",&test1_buff);
@@ -2193,7 +2236,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     datCH_BPG.data.p_BPG_data = &bpg_dat;
     self->SendData(datCH_BPG);
 
-    mainThreadLock.unlock();
+    MT_UNLOCK();
     cJSON_Delete(json);
   }
   break;
@@ -2501,6 +2544,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 
     LOGE("imagePipeBuffer.size:: %d before push",imagePipeBuffer.size());
     int err=imagePipeBuffer.pushHead();
+    if(err)
+      exit(-1);
   }
   else
   {
@@ -2520,8 +2565,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 {
   if (cb->cameraFramesLeft == 0)
   {
-    LOGE("unlock");
-    mainThreadLock.unlock();
+    MT_UNLOCK();
     return;
   }
   if (cb->cameraFramesLeft > 0)
@@ -2529,9 +2573,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   {
 
-    using Ms = std::chrono::milliseconds;
     int counter = 0;
-    while (!mainThreadLock.try_lock_for(Ms(100))) //Lock and wait 100 ms
+    while (MT_LOCK("ImgPipeProcessCenter_imp lock",100)!=0) //Lock and wait 100 ms
     {
       LOGE("try lock");
       counter++;
@@ -2694,13 +2737,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
                           "{"
                           "\"type\":\"inspRep\",\"status\":%d,"
                           "\"idx\":%d,\"count\":%d,"
-                          "\"time_100us\":%d"
+                          "\"time_100us\":%lu"
                           "}",
                           stat, 1, count, fi.timeStamp_100us);
         cb->mift->send_data((uint8_t *)buffx, len);
         count = (count + 1) & 0xFF;
         LOGI("%s", buffx);
       }
+      LOGI(">>>>");
 
       if (report != NULL)
       {
@@ -2736,6 +2780,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       LOGE("Caught an error!");
     }
 
+      LOGI(">>>>");
 
     clock_t img_t = clock();
     //if(stackingC==0)
@@ -2756,10 +2801,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       int cropW = ImageCropW;
       int cropH = ImageCropH;
 
+      LOGI(">>>>");
       ImageSampler *sampler=(downSampWithCalib)?bacpac->sampler:NULL;
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,0,
                         iminfo.offsetX, iminfo.offsetY, cropW, cropH);
+                        
+      LOGI(">>>>");
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
       bpg_dat.callback = DatCH_BPG_acvImage_Send;
       bpg_dat.pgID = cb->CI_pgID;
@@ -2790,8 +2838,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
-  LOGE("unlock");
-  mainThreadLock.unlock();
+  MT_UNLOCK();
   //std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
@@ -2802,22 +2849,23 @@ void ImgPipeProcessThread(bool *terminationflag)
   while (terminationflag && *terminationflag == false)
   {
     
-    if(delayStartCounter>0)
-    {
-      delayStartCounter--;
-    }
-    else
-    {
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
+  //   if(delayStartCounter>0)
+  //   {
+  //     delayStartCounter--;
+  //   }
+  //   else
+  //   {
+  //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  //   }
     image_pipe_info *headImgPipe = NULL;
     
     while (headImgPipe = imagePipeBuffer.getTail_block(1000))
     {
       LOGI(">>>imagePipeBuffer.size:%d",imagePipeBuffer.size());
-      delayStartCounter=10000;
+      //delayStartCounter=10000;
       ImgPipeProcessCenter_imp(headImgPipe);
       imagePipeBuffer.consumeTail();
+      LOGI(">>>consumeTail finished");
     }
   }
 }
@@ -2928,12 +2976,7 @@ int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void 
   break;
 
   case DatCH_Data::DataType_websock_data:
-    //LOGI("%s:type:DatCH_Data::DataType_websock_data", __func__);
-    /*LOGV("lock");
-        mainThreadLock.lock();*/
     ret_val = DatCH_WS_callback(from, data, callback_param);
-    /*LOGV("unlock");
-        mainThreadLock.unlock();*/
     break;
 
   default:
