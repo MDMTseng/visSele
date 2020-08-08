@@ -3502,7 +3502,7 @@ int main(int argc, char **argv)
     return 0;
   }
   signal(SIGINT, sigroutine);
-  //signal(SIGPIPE, SIG_IGN);
+  signal(SIGPIPE, SIG_IGN);
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   return mainLoop(true);
 }
