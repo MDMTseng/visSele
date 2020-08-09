@@ -87,7 +87,6 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         tmpH=(int)(tmpH*img_load.GetHeight());
       }
 
-      LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
       if(tmpW+tmpX>img_load.GetWidth())
       {
         tmpW=img_load.GetWidth()-tmpX;
@@ -97,6 +96,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         tmpH=img_load.GetHeight()-tmpY;
       }
 
+      LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
 
 
 
@@ -128,9 +128,9 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           if(d<0)d=0;
           else if(d>255)d=255;
           
-          img.CVector[li][lj*3] = 
-          img.CVector[li][lj*3+1] =
-          img.CVector[li][lj*3+2] = d;
+          img.CVector[i][j*3] = 
+          img.CVector[i][j*3+1] =
+          img.CVector[i][j*3+2] = d;
 
         }
       }
