@@ -802,10 +802,12 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     double *roi_w = JFetch_NUMBER(&settingJson, "ROI[2]");
     double *roi_h = JFetch_NUMBER(&settingJson, "ROI[3]");
     LOGI("ROI ptr:%p %p %p %p", roi_x, roi_y, roi_w, roi_h);
-    if (roi_x && roi_y && roi_w && roi_h)
+    if (roi_x && roi_y && roi_w && roi_h && ((*roi_w)* (*roi_h))!=0)
     {
       camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
-      acv_XY offset_o={(float)*roi_x,(float)*roi_y};
+      float ox,oy;
+      camera.GetROI(&ox,&oy, NULL,NULL,NULL,NULL);
+      acv_XY offset_o={ox,oy};
       calib_bacpac.sampler->setOriginOffset(offset_o);
       //sampler
       
@@ -1657,7 +1659,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
               camera->TriggerMode(0);
             }
             
-            doImgProcessThread = true;
+            doImgProcessThread = false;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -2195,7 +2197,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             LOGI("delete_MicroInsp_FType()");
             delete_MicroInsp_FType();
             LOGI("delete_MicroInsp_FType() OK...");
-            mift = new MicroInsp_FType(IP, *port_number);
+            LOGI("CONN: %s:%d",IP, (int)*port_number);
+            mift = new MicroInsp_FType(IP, (int)*port_number);
 
             LOGI("new MicroInsp_FType OK...");
             mift->start_RECV_Thread();
@@ -2213,6 +2216,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           catch (int errN)
           {
             sprintf(err_str, "[PR] MicroInsp_FType init error:%d", errN);
+            LOGE("%s",err_str);
           }
         }
         else if (mift && IP == NULL && port_number == NULL)
@@ -3502,7 +3506,9 @@ int main(int argc, char **argv)
     return 0;
   }
   signal(SIGINT, sigroutine);
+#ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);
+#endif
   //printf(">>>>>>>BPG_END: callbk_BPG_obj:%p callbk_obj:%p \n",&callbk_BPG_obj,&callbk_obj);
   return mainLoop(true);
 }

@@ -48,6 +48,11 @@ class CameraLayer{
     int maxWidth,maxHeight;
     frameInfo fi;
     std::string cam_json_info;
+    
+    float ROI_x;
+    float ROI_y;
+    float ROI_w;
+    float ROI_h;
     public:
     
 
@@ -103,6 +108,12 @@ class CameraLayer{
 
     virtual CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh)
     {
+        return CameraLayer::NAK;
+    }
+    
+    virtual CameraLayer::status GetROI(float *x, float *y, float *w, float *h,int*zw,int *zh)
+    {
+        
         return CameraLayer::NAK;
     }
     virtual CameraLayer::status SetResolution(int width,int height)

@@ -201,14 +201,16 @@ SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
     }
 
     int enable = 1;
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(int)) < 0)
     {
       throw -3;
     }
-    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(int)) < 0)
+#ifdef SO_REUSEPORT
+    if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (char*)&enable, sizeof(int)) < 0)
     {
       throw -3;
     }
+#endif
 
     their_addr.sin_family = AF_INET;      /* host byte order */
     their_addr.sin_port = htons(port);    /* short, network byte order */
