@@ -247,15 +247,15 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
   ROI_h=(int)ROI_h;
 
 
-  // if(mirrorFlag[0])
-  // {
-  //   ROI_x = maxWidth-(ROI_x+ROI_w);
-  // }
+  if(mirrorFlag[0])
+  {
+    ROI_x = maxWidth-(ROI_x+ROI_w);
+  }
   
-  // if(mirrorFlag[1])
-  // {
-  //   ROI_y = maxHeight-(ROI_y+ROI_h);
-  // }
+  if(mirrorFlag[1])
+  {
+    ROI_y = maxHeight-(ROI_y+ROI_h);
+  }
   LOGI("MAX:%d %d",maxWidth,maxHeight);
 
   LOGI("ROI:%f %f %f %f",ROI_x,ROI_y,ROI_w,ROI_h);
@@ -288,10 +288,28 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
 
   ROI_w=resInfo.iWidth;
   ROI_h=resInfo.iHeight;
+  
+  if(mirrorFlag[0])
+  {
+    ROI_x = maxWidth-(ROI_x+ROI_w);
+  }
+  
+  if(mirrorFlag[1])
+  {
+    ROI_y = maxHeight-(ROI_y+ROI_h);
+  }
   LOGI("ret>>ROI:%f %f %f %f",ROI_x,ROI_y,ROI_w,ROI_h);
   return CameraLayer::ACK;
 }
 
+CameraLayer::status  CameraLayer_GIGE_MindVision::GetROI(float *x, float *y, float *w, float *h,int*zw,int *zh)
+{
+  if(x)*x=ROI_x;
+  if(y)*y=ROI_y;
+  if(w)*w=ROI_w;
+  if(h)*h=ROI_h;
+  return CameraLayer::ACK;
+}
 
 CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)
 {

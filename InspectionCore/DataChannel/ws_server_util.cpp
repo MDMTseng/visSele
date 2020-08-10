@@ -17,8 +17,18 @@ ws_server::ws_server(int port,ws_protocol_callback *cb):ws_protocol_callback(thi
 
 
     int enable = 1;
-    setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
-    setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int));
+    if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(int)) < 0)
+    {
+      //throw -3;
+    }
+#ifdef SO_REUSEPORT
+    if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEPORT, (char*)&enable, sizeof(int)) < 0)
+    {
+      //throw -3;
+    }
+#endif
+
+
 
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));

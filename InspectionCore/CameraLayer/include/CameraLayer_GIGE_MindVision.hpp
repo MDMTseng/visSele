@@ -27,11 +27,8 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     static void sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
     void GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
 
-    float ROI_x;
-    float ROI_y;
-    float ROI_w;
-    float ROI_h;
     public:
+    
     CameraLayer_GIGE_MindVision(CameraLayer_Callback cb,void* context);
     CameraLayer::status EnumerateDevice(tSdkCameraDevInfo * pCameraList,INT * piNums);
     CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
@@ -45,6 +42,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status SetAnalogGain(int gain);
     CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh);
 
+    CameraLayer::status GetROI(float *x, float *y, float *w, float *h,int*zw,int *zh);
     CameraLayer::status SnapFrame();
 
     
