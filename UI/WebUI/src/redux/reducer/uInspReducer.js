@@ -4,17 +4,13 @@ let UISEV = UI_SM_EVENT;
 let StateReducer = (state, action) => {
 
   switch (action.type) {
-    case "MWWS_SEND"://get PING trigger and alive count --1
-      if (action.data.id !== "EverCheckWS" || action.data.data === undefined) break;
-      let data = action.data.data;
-      if (data.data === undefined || data.data.msg === undefined) break;
-      if (data.tl == "PD" && data.data.msg.type == "PING") {
-        if (state.alive <= 0) {
-          state = { ...state, connected: false, alive: 0 }
-        }
-        else {
-          state = { ...state, alive: state.alive - 1 }
-        }
+    case UISEV.uInsp_PING_Sent://get PING trigger and alive count --1
+      
+      if (state.alive <= 0) {
+        state = { ...state, connected: false, alive: 0 }
+      }
+      else {
+        state = { ...state, alive: state.alive - 1 }
       }
       break;
     case UISEV.uInsp_Machine_Info_Update:

@@ -734,8 +734,9 @@ class MicroFullInspCtrl extends React.Component {
       if (this.props.uInspData.connected) {
         this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
           { msg: { type: "PING", id: 443 } });
+        this.props.ACT_Machine_PING_Sent();
       }
-    }, 3000);
+    }, 5000);
   }
 
   componentWillUnmount() {
@@ -794,6 +795,8 @@ class MicroFullInspCtrl extends React.Component {
           onClick={() => {
             this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
               { msg: { type: "PING", id: 443 } });
+              
+            this.props.ACT_Machine_PING_Sent();
           }}>
             <HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>
             
@@ -1049,7 +1052,7 @@ const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
   return {
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_Machine_Info_Update: (machineInfo) => dispatch(UIAct.EV_WS_uInsp_Machine_Info_Update(machineInfo)),
-
+    ACT_Machine_PING_Sent:()=>dispatch(UIAct.EV_WS_uInsp_PING_Sent()),
     ACT_Report_Save: (id, fileName, content) => {
       let act = UIAct.EV_WS_SEND(id, "SV", 0,
         { filename: fileName },

@@ -97,6 +97,7 @@ export const UI_SM_EVENT = {
   SIG360_Extraction:"SIG360_Extraction",
   PD_DATA_Update:"PD_DATA_Update",
   uInsp_Machine_Info_Update:"uInsp_Machine_Info_Update",
+  uInsp_PING_Sent:"uInsp_PING_Sent",
   Line_Create:"Line_Create",
   Arc_Create:"Arc_Create",
   Aux_Line_Create:"Aux_Line_Create",
@@ -338,6 +339,14 @@ export function EV_WS_uInsp_Machine_Info_Update(data)
     type: UI_SM_EVENT.uInsp_Machine_Info_Update ,data:data
   }
 }
+
+export function EV_WS_uInsp_PING_Sent()
+{
+  return {
+    type: UI_SM_EVENT.uInsp_PING_Sent
+  }
+}
+
 
 export function EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs){
   return ({
