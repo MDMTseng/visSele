@@ -504,7 +504,7 @@ class Websocket_FI:public Websocket_FI_proto{
       char * table_scope = findJsonScope((char*)recv_cmd,"\"state_pulseOffset\":",&table_scopeL);
       if(table_scope==NULL)
       {
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
+        //MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
         if(ret_status)*ret_status=-1;
         
         break;
@@ -527,7 +527,7 @@ class Websocket_FI:public Websocket_FI_proto{
       }
       else
       {
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"Table message length is not sufficient, expected length:%d\",",SARRL(state_pulseOffset));
+        //MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"Table message length is not sufficient, expected length:%d\",",SARRL(state_pulseOffset));
         if(ret_status)*ret_status=-1;
       }
   
@@ -936,7 +936,7 @@ class Websocket_FI:public Websocket_FI_proto{
           char * table_scope = findJsonScope((char*)recv_cmd,"\"table\":",&table_scopeL);
           if(table_scope==NULL)
           {
-            MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
+            //MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
             break;
           }
           
