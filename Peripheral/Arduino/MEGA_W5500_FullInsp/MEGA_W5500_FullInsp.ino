@@ -110,7 +110,6 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 
 RingBuf<typeof(*pbuff),uint8_t > RBuf(pbuff,SARRL(pbuff));
 
-uint8_t buff[600];//For websocket
 IPAddress _ip(192,168,2,43);
 IPAddress _gateway(192,168,1,1);
 IPAddress _subnet(255, 255, 0, 0);
@@ -576,11 +575,12 @@ class Websocket_FI:public Websocket_FI_proto{
     char numbuff[20];
     int retL = findJsonScope(jbuff,"\"pulse_hz\":",numbuff,sizeof(numbuff));
     
-    
-    DEBUG_print("\n pulse_hz: retL:");
-    DEBUG_println(retL);
-    DEBUG_println(numbuff);
     if(retL>0){
+      
+      
+//      DEBUG_print("\n pulse_hz: retL:");
+//      DEBUG_println(retL);
+//      DEBUG_println(numbuff);
       int newHZ=tar_pulseHZ_;
       sscanf(numbuff, "%d", &newHZ);
       tar_pulseHZ_=newHZ;
@@ -591,26 +591,13 @@ class Websocket_FI:public Websocket_FI_proto{
     return MessageL;
   }
 
-
-  int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
+  virtual int Json_CMDExec(WebSocketProtocol* WProt,uint8_t *recv_cmd, int cmdL,sending_buffer *send_pack,int data_in_pack_maxL)
   {
-    if(cmdL==NULL)
-    {
-      return 0;
-    }
-
-    unsigned int MessageL = 0; //echo
-    recv_cmd[cmdL]='\0';
-    uint8_t *offset_cmd=send_rsp+(rspMaxL-cmdL);
-    memcpy(offset_cmd,recv_cmd,cmdL+1);
-    recv_cmd = offset_cmd;
-    rspMaxL-=cmdL;
-    //DEBUG_println((char*)recv_cmd);
-
-    char *buff= (char*)send_rsp+rspMaxL/2;
-    int buffL = rspMaxL/2-cmdL;
+    char *send_rsp=send_pack->data;
+    int send_rspL=data_in_pack_maxL;
     
     
+    unsigned int MessageL = 0; //response Length
     
     {
       char *idStr = buff;
@@ -836,7 +823,7 @@ class Websocket_FI:public Websocket_FI_proto{
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_setup\"")!=NULL)
       {
         int ret_st=0;
-        DEBUG_print("set_setup::");
+        //DEBUG_print("set_setup::");
         MessageL+=JsonToMach(send_rsp+MessageL, buffL-MessageL,recv_cmd,cmdL, &ret_st);
 //        DEBUG_print("set_setupL::");
 //        DEBUG_println(MessageL);
@@ -1028,8 +1015,15 @@ void showOff()
 
 uint32_t pulseHZ_step = 50;
 
+int serial_putc( char c, struct __file * )
+{
+  Serial.write( c );
+  return c;
+}
+uint8_t buff[600];//For websocket
 void setup() {
   Serial.begin(115200);
+  fdevopen( &serial_putc, 0 );
   WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,_port,_gateway,_subnet);
   if(WS_Server)setRetryTimeout(2, 100);
   setup_Stepper();
@@ -1107,8 +1101,9 @@ void loop()
   {
     DEBUG_print("RBuf:");
     DEBUG_println(RBuf.size());
-
+  
     
+//    DEBUG_println((char*)WS_Server->json_sec_buffer);
     if(ERROR_HIST.size()!=0)
     {
       DEBUG_print("Error:");
