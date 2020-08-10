@@ -856,6 +856,7 @@ class MicroFullInspCtrl extends React.Component {
             }} />))
       }
 
+      if(this.state.settingPanelVisible)
       ctrlPanel.push(
         <Modal
           title="" key="settingModal"
@@ -2169,12 +2170,12 @@ class APP_INSP_MODE extends React.Component {
           }}
           url={this.props.machine_custom_setting.inspection_db_ws_url}
           pull_skip={(this.props.inspMode == "FI") ? 10 : 1} />
-        <$CSSTG transitionName="fadeIn">
+        {/* <$CSSTG transitionName="fadeIn"> */}
           <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height}
             style={{ opacity: menuOpacity, width: "250px" }}>
             {MenuSet}
           </div>
-        </$CSSTG>
+        {/* </$CSSTG> */}
 
 
         <Menu
