@@ -2545,7 +2545,24 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     LOGE("imagePipeBuffer.size:: %d before push",imagePipeBuffer.size());
     int err=imagePipeBuffer.pushHead();
     if(err)
-      exit(-1);
+    {
+      LOGE("imagePipeBuffer is full tell uInsp to mark in error mode");
+      imagePipeBuffer.clear();
+      
+      if (cb->mift)
+      {
+        LOGI("mift is here too!!");
+        char buffx[150];
+        static int count = 0;
+        int len = sprintf(buffx,
+                          "{"
+                          "\"type\":\"inspRep\",\"status\":%d,"
+                          "\"idx\":%d"
+                          "}",
+                          -10001, 1);
+        cb->mift->send_data((uint8_t *)buffx, len);
+      }
+    }
   }
   else
   {
