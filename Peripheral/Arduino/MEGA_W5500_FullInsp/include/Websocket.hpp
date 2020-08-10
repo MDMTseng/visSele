@@ -10,6 +10,10 @@ class Websocket_Server{
    
    uint32_t counter2Pin;
    uint8_t *retPackage;
+   typedef struct {
+     uint8_t header[8];
+     uint8_t data[0];
+   }sending_buffer;
   public:
   byte LiveClient = 0;
   
@@ -52,19 +56,11 @@ class Websocket_Server{
 
   WebSocketProtocol::WPFrameInfo retframeInfo;//={.opcode = 1, .isMasking = 0, .isFinal = 1 };
   
-  virtual int CMDExec(uint8_t *recv_cmd, int cmdL,uint8_t *send_rsp,int rspMaxL)
+  virtual int CMDExec(WebSocketProtocol* WProt,uint8_t *recv_cmd, int cmdL,sending_buffer *send_pack,int data_in_pack_maxL)
   {
     unsigned int MessageL = 0; //echo
     if (strcmp((char*)recv_cmd, "/cue/LEFT") == 0) {
-      MessageL = sprintf((char*)send_rsp, "/rsp/LEFT");
-    }
-    
-    if (MessageL == 0)
-    {
-      char *tmpX = (char*)send_rsp+200;
-      
-      strcpy(tmpX,(char*)recv_cmd);
-      MessageL = sprintf((char*)send_rsp, "UNKNOWN:%s",tmpX);
+      MessageL = sprintf(send_pack->data, "/rsp/LEFT");
     }
   
     return MessageL;
@@ -103,14 +99,43 @@ class Websocket_Server{
     retframeInfo.isMasking = 0; //no masking on server side
     retframeInfo.isFinal = 1; //is Final package
     //If RECVData is text message, it will end with '\0'
-    DEBUG_println(RECVData);
-    char *dataBuff = (char*)retPackage + 8;//write data after 8 bytes(8 bytes are for header)
-    unsigned int MessageL = CMDExec((uint8_t*)RECVData, RECVDataL,(uint8_t*)dataBuff,buffL-8);
+    //DEBUG_println(RECVData);
+    sending_buffer *send_rsp=(sending_buffer *)retPackage;
+    unsigned int MessageL = CMDExec(WProt,(uint8_t*)RECVData, RECVDataL,send_rsp,buffL-sizeof(sending_buffer));
     if(!MessageL)return 0;
     unsigned int totalPackageL;
-    char* retPkg = WProt->codeFrame(dataBuff, MessageL, &retframeInfo, &totalPackageL); //get complete package might have some shift compare to "retPackage"
+    char* retPkg = WProt->codeFrame(send_rsp->data, MessageL, &retframeInfo, &totalPackageL); //get complete package might have some shift compare to "retPackage"
     WProt->getClientOBJ().write(retPkg, totalPackageL);
-    if(!MessageL)return 0;
+    return 0;
+  }
+
+  virtual int SEND(WebSocketProtocol *WP,sending_buffer* data_buff, uint32_t data_inbuff_L, int isBinary)
+  {
+    if(WP==NULL)return -1;
+    retframeInfo.opcode = isBinary?2:1; //text
+    retframeInfo.isMasking = 0; //no masking on server side
+    retframeInfo.isFinal = 1; //is Final package
+    //If RECVData is text message, it will end with '\0'
+    uint8_t* dataBuff=(uint8_t*)(data_buff->data);
+
+    unsigned int totalPackageL;
+    char* retPkg=NULL;
+    
+    if (WP->alive())
+    {
+      if(WP->getState()==UNKNOWN_CONNECTED)
+      {
+        WP->getClientOBJ().write(dataBuff, data_inbuff_L);
+      }
+      else
+      {
+        if(!retPkg)
+          retPkg = WP->codeFrame(dataBuff, data_inbuff_L, &retframeInfo, &totalPackageL); 
+        //get complete package might have some shift compare to "retPackage"
+        WP->getClientOBJ().write(retPkg, totalPackageL);
+      }
+    }
+    return 0;
   }
   
   virtual int SEND_ALL(uint8_t* data, uint32_t dataL, int isBinary)
@@ -309,7 +334,10 @@ class Websocket_Server{
       //DEBUG_print(WSPptr->getRecvOPState());
       //DEBUG_println("UNKNOWN_CONNECTED");
       
-      int retL=  CMDExec(buff, KL,buff,buffL);
+
+      sending_buffer *send_rsp=(sending_buffer *)buff;
+
+      int retL=  CMDExec(WSPptr,buff, KL,send_rsp,buffL-sizeof(sending_buffer));
       WSPptr->getClientOBJ().write(buff, retL);
       return;
     }

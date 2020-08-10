@@ -447,11 +447,11 @@ ISR(TIMER1_COMPA_vect)
 
 }
 
-uint32_t pulseHZ = 50;
+uint32_t pulseHZ = 0;
 
 void setup_Stepper() {
   DEBUG_println(".....");
-  timer1Setup(1);
+  timer1Setup(50);
 }
 
 

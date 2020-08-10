@@ -1,7 +1,7 @@
 #ifndef WEBSOCKET_FI____
 #define WEBSOCKET_FI____
 
-#include "include/json_seg_parser.hpp"
+#include <json_seg_parser.hpp>
 
 
 class Websocket_FI_proto:public Websocket_Server{
@@ -152,7 +152,7 @@ class Websocket_FI_proto:public Websocket_Server{
   {
     
 
-    printf("R>::\n");
+    s
 //    {
 //      if(cmdL==0 ||recv_cmd==NULL )
 //      {
@@ -167,97 +167,45 @@ class Websocket_FI_proto:public Websocket_Server{
 //      return Json_CMDExec(recv_cmd,  cmdL,send_rsp, rspMaxL);
 //    }
 
-    sending_buffer *json_rsp_pack=(sending_buffer *)json_rsp_buffer;
-    
+    sending_buffer *json_rsp_pack =( sending_buffer *) json_rsp_buffer;
+    uint8_t *json_cmd_sec = json_sec_buffer;
+    uint16_t json_cmd_secL=cmdL;
 
-    char ch;
-  
-    char *pjson_stream=recv_cmd;
-    //printf("json_stream:::%s\n",json_stream);
-    for(int i=0;i<cmdL;i++)
+    uint16_t start_idx=0;
+    uint16_t end_idx=0;
+    for(uint16_t idx=0;idx<cmdL && json_sec_buffer_size==sizeof(json_sec_buffer);idx++)
     {
-      ch=*(pjson_stream++);
-      int ret = jsCMDparser.newChar(ch);
-      
-      // printf("%c:",ch);
-      // bin(ret,6);
-      // printf(" str:%d C:%d S:%d\n",jsp.jsonInStrState,jsp.jsonCurlyB_C,jsp.jsonSquareB_C);
-      bool isEnded=false;
-      bool isError=false;
-      
-      if(ret&JSON_SEG_PARSER_SEG_START)
-      {
-        if(json_sec_buffer_size>0)
-        {
-          json_sec_buffer[json_sec_buffer_size]='\0';
-          json_sec_buffer_size++;
-          printf("EEEE%d\n",__LINE__);
-          
-          int rspLen = Json_ERROR(WProt,json_sec_buffer,  json_sec_buffer_size,json_rsp_pack, sizeof(json_rsp_buffer)-sizeof(sending_buffer));
-          if(rspLen>0)
-            SEND(WProt,json_rsp_pack, rspLen, 0);
-        }
-        json_sec_buffer_size=0;
-        //printf("SEG_START\n");
-      }
-      if(ret&JSON_SEG_PARSER_SEG_END)
-      {
-        isEnded=true;
-        //printf("SEG_END\n");
-      }
-      if(ret&(JSON_SEG_PARSER_ERROR))
-      {
-        isEnded=true;
-        isError=true;
-  
-        //printf("ERROR\n");
-      }
-  
-      
-      json_sec_buffer[json_sec_buffer_size]=ch;
-      json_sec_buffer_size++;
-      if(isEnded)
+      char nch=recv_cmd[idx];
+      int pret = jsCMDparser.newChar(nch);
+      if(pret&JSON_SEG_PARSER_RESET)//ex:}{
       {
         
-        printf("EEEE%d\n",__LINE__);
-        json_sec_buffer[json_sec_buffer_size]='\0';
-        json_sec_buffer_size++;
-        if(isError)
-        {
-          int rspLen = Json_ERROR(WProt,json_sec_buffer,  json_sec_buffer_size,json_rsp_pack, sizeof(json_rsp_buffer)-sizeof(sending_buffer));
-          if(rspLen>0)
-            SEND(WProt,json_rsp_pack, rspLen, 0);
-          
-        }
-        else
-        {
-          char bkChar=json_sec_buffer[json_sec_buffer_size];
-          json_sec_buffer[json_sec_buffer_size]='\0';
-          printf("RECV>:::%s\n",recv_cmd);
-          printf(">>>:::%s\n",json_sec_buffer);
-          int rspLen = Json_CMDExec(WProt,json_sec_buffer,  json_sec_buffer_size,json_rsp_pack, sizeof(json_rsp_buffer)-sizeof(sending_buffer));
-          json_sec_buffer[json_sec_buffer_size]=bkChar;
-          if(rspLen>0)
-            SEND(WProt,json_rsp_pack, rspLen, 0);
-          
-          //
-        }
-        json_sec_buffer_size=0;
       }
-  
+      if(pret&JSON_SEG_PARSER_ERROR)//ex: {}}
+      {
+        
+      }
+      if(pret&JSON_SEG_PARSER_SEG_END)//ex: {{[[]]}}
+      {
+        end_idx=idx;
+      }
+      if(pret&JSON_SEG_PARSER_SEG_START)//{ or [
+      {
+        start_idx=idx;
+      }
+      json_sec_buffer[json_sec_buffer_size++]=nch;
+      
     }
-    
-
-
-
 
     
+    {
+      
+      int rspLen = Json_CMDExec(WProt,json_cmd_sec,  json_cmd_secL,json_rsp_pack, sizeof(json_rsp_buffer)-sizeof(sending_buffer));
+      if(rspLen>0)
+        SEND(WProt,send_pack, rspLen, 0);
+      
+    }
     return 0;//stop using lagacy way to send msg back
-  }
-  virtual int Json_ERROR(WebSocketProtocol* WProt,uint8_t *recv_error_seg, int segL,sending_buffer *send_pack,int data_in_pack_maxL)
-  {
-    
-    return -1;
   }
   
   virtual int Json_CMDExec(WebSocketProtocol* WProt,uint8_t *recv_cmd, int cmdL,sending_buffer *send_pack,int data_in_pack_maxL)
