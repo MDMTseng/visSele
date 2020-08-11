@@ -136,7 +136,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       }
       else
       {
-        rotate+=0.001;
+        rotate+=0.01;
       }
       acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
 
@@ -150,6 +150,10 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           pixCoord=acvVecAdd(pixCoord,rcenter);
           pixCoord=acvVecAdd(pixCoord,(acv_XY){(float)newX,(float)newY});
 
+          
+          pixCoord=acvVecSub((acv_XY){
+            MIRROR_X?(float)img_load.GetWidth():pixCoord.X*2,
+            MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
           float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
 
 
@@ -202,13 +206,17 @@ CameraLayer::status CameraLayer_BMP::SetROI(float x, float y, float w, float h,i
 }
 CameraLayer::status CameraLayer_BMP::SetMirror(int Dir,int en)
 {
-  if(Dir)
+  if(Dir==0)
   {
     MIRROR_X=en;
   }
-  else
+  else if(Dir==1)
   {
     MIRROR_Y=en;
+  }
+  else
+  {
+    return CameraLayer::NAK;
   }
   return CameraLayer::ACK;
 }
