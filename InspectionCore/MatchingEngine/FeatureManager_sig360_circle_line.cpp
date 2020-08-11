@@ -712,6 +712,9 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     if (((type1 == FEATURETYPE::LINE)||(type1 == FEATURETYPE::SEARCH_POINT)) &&
         ((type2 == FEATURETYPE::LINE)||(type2 == FEATURETYPE::SEARCH_POINT)) )
     {
+      
+      FEATURETYPE type1 = FEATURETYPE::NA, type2 = FEATURETYPE::NA;
+
       acv_XY vec1, vec2;
 
       if (ParseMainVector(flip_f, report, judge.OBJ1_id, &vec1) != 0 ||
@@ -720,19 +723,101 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         break;
       }
 
-      int quadrant = judge.data.ANGLE.quadrant;
+      acv_XY pt11, pt21;
+      if (ParseLocatePosition(report, judge.OBJ1_id, &pt11) != 0 ||
+          ParseLocatePosition(report, judge.OBJ2_id, &pt21) != 0)
+      {
+        break;
+      }
 
+      acv_XY pt12 = acvVecAdd(vec1, pt11);
+      acv_XY pt22 = acvVecAdd(vec2, pt21);
+
+      acv_XY interSectPt = acvIntersectPoint(pt11, pt12, pt21, pt22);
+      acv_XY pt_mid=acvRotation(sine, cosine, flip_f,judge.data.ANGLE.pt);
+      pt_mid=acvVecAdd(pt_mid,report.Center);
+
+  
+      acv_XY vec_mid=acvVecSub(pt_mid, interSectPt);
+
+      if(acv2DDotProduct(vec1,vec_mid)<0)
+      {
+        vec_mid=acvVecMult(vec_mid,-1);
+      }
+
+      if((acv2DCrossProduct(vec1,vec2)<0))
+      {
+        vec2=acvVecMult(vec2,-1);
+      }
       float sAngle = atan2(vec1.Y, vec1.X);
       float eAngle = atan2(vec2.Y, vec2.X);
 
+      float midwayAngle = atan2(vec_mid.Y, vec_mid.X);
       float angleDiff = (eAngle - sAngle);
-      if (angleDiff < 0)
-        angleDiff += 2 * M_PI;
+      float angleDiff_mid = (midwayAngle - sAngle);
+      if(angleDiff_mid>M_PI)
+      {
+        angleDiff_mid-=2*M_PI;
+      }
+      if(angleDiff_mid<-M_PI)
+      {
+        angleDiff_mid+=2*M_PI;
+      }
 
 
-      if (angleDiff > M_PI)
-        angleDiff = angleDiff- M_PI;
+      if(angleDiff<-M_PI)
+      {
+        angleDiff+=2*M_PI;
+      }
+      if(angleDiff>M_PI)
+      {
+        angleDiff-=M_PI;
+      }
+      
+      LOGI("angleDiff:%f ",angleDiff*180/M_PI);
+      LOGI("angleDiff_mid:%f",angleDiff_mid*180/M_PI);
+      
+      if(angleDiff_mid<0)
+      {
+        angleDiff=M_PI-angleDiff;
+      }
+      if(angleDiff<abs(angleDiff_mid))
+      {
+        angleDiff=M_PI-angleDiff;
+      }
+      
 
+      // if( (flip_f < 0) ^ (acv2DCrossProduct(vec1,vec_mid)<0))
+      // {
+      //   angleDiff=M_PI-angleDiff;
+      // }
+
+      // float angleDiff_mid = (midwayAngle - sAngle);
+      
+      // if(angleDiff_mid<0)
+      // {
+      //   angleDiff=M_PI-angleDiff;
+      // }
+
+      LOGI("pt_: %f %f   %f %f",pt11.X,pt11.Y,pt21.X,pt21.Y);
+      LOGI("pt_mid:%f %f   interSectPt:%f %f",pt_mid.X,pt_mid.Y,interSectPt.X,interSectPt.Y);
+      LOGI("sAngle:%f eAngle:%f midwayAngle:%f",sAngle*180/M_PI,eAngle*180/M_PI,midwayAngle*180/M_PI);
+      LOGI("angleDiff:%f ",angleDiff*180/M_PI);
+      LOGI("angleDiff_mid:%f",angleDiff_mid*180/M_PI);
+
+      // LOGI("vec_mid:%f %f",vec_mid.X,vec_mid.Y);
+      // LOGI("vec1:%f %f",vec1.X,vec1.Y);
+      // LOGI("vec2:%f %f",vec2.X,vec2.Y);
+      // LOGI("sAngle:%f eAngle:%f",sAngle*180/M_PI,eAngle*180/M_PI);
+      // float angleDiff = (eAngle - sAngle)+20 * M_PI;
+      // angleDiff=fmod(angleDiff, 2 * M_PI);
+
+      // LOGI("angleDiff:%f ",angleDiff*180/M_PI);
+
+      // if (angleDiff > M_PI)
+      //   angleDiff = 2*M_PI-angleDiff;
+
+      // LOGI("angleDiff:%f ",angleDiff*180/M_PI);
       //The logic blow is to find angle in 4 quadrants (line1 as x axis, line2 as y axis)
       //So actually only 2 angles available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
       //quadrant 0 means quadrant 4 => quadrant n%2
@@ -743,10 +828,6 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       //Find diff angle 0~PI
       //Now we have the quadrant 1 angle
 
-      if ((quadrant % 2 == 0) ^ (flip_f != 1)) //if our target quadrant is 2 or 4..., find the complement angle
-      {
-        angleDiff = M_PI - angleDiff;
-      }
       judgeReport.measured_val = 180 * angleDiff / M_PI; //Convert to degree
 
       //HACK: the current method would have 0<->180 jumping back&forward issue
@@ -1399,6 +1480,10 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
     {
       judge.data.ANGLE.quadrant = (int)*pnum;
     }
+
+    judge.data.ANGLE.pt.X= *JFetEx_NUMBER(judge_obj, "pt1.x");
+    judge.data.ANGLE.pt.Y= *JFetEx_NUMBER(judge_obj, "pt1.y");
+    
     LOGV("quadrant:%d", judge.data.ANGLE.quadrant);
   }
   else if (strcmp(subtype, "area") == 0)

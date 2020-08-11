@@ -142,6 +142,7 @@ typedef struct FeatureReport_judgeDef{
   struct data{
     struct ANGLE{
       int quadrant;
+      acv_XY pt;
     }ANGLE;
     struct CALC{
       string exp;
