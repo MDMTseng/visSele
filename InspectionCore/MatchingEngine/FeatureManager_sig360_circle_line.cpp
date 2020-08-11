@@ -2260,8 +2260,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
           }
 
           std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp); //
-          LOGI("distThres:%f",s_points[s_points.size() / 3].tmp);
-          float distThres = s_points[s_points.size() / 3].tmp + 3;
+          LOGI("distThres:%f",s_points[s_points.size()*2 / 3].tmp);
+          float distThres = s_points[s_points.size() *2/ 3].tmp + 3;
           
           // float distThres = s_points[s_points.size() / 3].tmp*1.1;
           LOGV("sort finish size:%d, distThres:%f", s_points.size(), distThres);
@@ -2609,7 +2609,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
         }
         std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
 
-        int usable_L = s_points.size() / 3;
+        int usable_L = s_points.size() *2/ 3;
         float distThres = s_points[usable_L].tmp + 1;
         LOGV("sort finish size:%d, distThres:%f", s_points.size(), distThres);
         for (int n = usable_L; n < s_points.size(); n++)
