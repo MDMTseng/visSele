@@ -179,11 +179,21 @@ function SingleDisplayUI({ displayInfo }) {
     <br />
     Cat:{displayInfo.cat}
     <br />
+   
+    {/* {displayInfo.targetDeffiles.map((dfs, id) =>
     <pre>
+      {"Def[" + id + "]:" + JSON.stringify(displayInfo.targetDeffiles[id], null, 2)}
+      </pre>
+    )} */}
       {displayInfo.targetDeffiles.map((dfs, id) =>
-        "Def[" + id + "]:" + JSON.stringify(displayInfo.targetDeffiles[id], null, 2)
-      )}
+        <pre>
+        {"Path[" + id + "]:" + dfs.path}
+        <br />
+        {"tags[" + id + "]:" + dfs.tags}
+
     </pre>
+      )}
+    
   </div>
 }
 
@@ -401,7 +411,7 @@ export function CustomDisplaySelectUI({onSelect}) {
       {Object.keys(catSet).map((cat,cat_idx)=>
         <TabPane tab={cat} key={""+cat_idx}>
           {catSet[cat].set.map(info=>
-            <Button onClick={()=>onSelect(info)}>
+            <Button onClick={()=>onSelect(info)} size="large">
               {info.name}
             </Button>
           )}
@@ -420,9 +430,7 @@ export function CustomDisplaySelectUI({onSelect}) {
     
   }
   return (
-    <div>
-    {UI}
-    </div>
+    UI
   );
 }
 
