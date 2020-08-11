@@ -1,5 +1,6 @@
 
 #include "CameraLayer_BMP.hpp"
+#include "acvImage_SpDomainTool.hpp"
 
 #include <logctrl.h> 
 #include <dirent.h> 
@@ -107,24 +108,52 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       img.ReSize(newW,newH);
+      // for(int i=0;i<img.GetHeight();i++)//Add noise
+      // {
+      //   int li=i+newY;
+      //   if(li<0 || li>=img_load.GetHeight())continue;
+      //   for(int j=0;j<img.GetWidth();j++)
+      //   {
+      //     int lj=j+newX;
+      //     if(lj<0 || lj>=img_load.GetWidth())continue;
+
+      //     int d = (img_load.CVector[li][lj*3]*tExp)>>13;
+          
+      //     if(d<0)d=0;
+      //     else if(d>255)d=255;
+          
+      //     img.CVector[i][j*3] = 
+      //     img.CVector[i][j*3+1] =
+      //     img.CVector[i][j*3+2] = d;
+
+      //   }
+      // }
+
+      static float rotate=0;
+      if(newX==0&&newY==0)
+      {
+        rotate=0;
+      }
+      else
+      {
+        rotate+=0.001;
+      }
+      acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
+
       for(int i=0;i<img.GetHeight();i++)//Add noise
       {
-        int li=i+newY;
-        if(li<0 || li>=img_load.GetHeight())continue;
         for(int j=0;j<img.GetWidth();j++)
         {
-          int lj=j+newX;
-          if(lj<0 || lj>=img_load.GetWidth())continue;
-          // img.CVector[i][j*3]=img_load.CVector[li][lj*3];
-          // img.CVector[i][j*3+1]=img_load.CVector[li][lj*3+1];
-          // img.CVector[i][j*3+2]=img_load.CVector[li][lj*3+2];
-
-
-          int d = (img_load.CVector[li][lj*3]*tExp)>>13;
+          acv_XY pixCoord=acvVecSub((acv_XY){(float)j,(float)i},rcenter);
           
-          // if(i==img.GetHeight()/2&&j==img_load.GetWidth()/2)
-          //   LOGI("%d>>>%d",img.CVector[li][lj*3],d);
+          pixCoord = acvRotation(rotate,pixCoord);
+          pixCoord=acvVecAdd(pixCoord,rcenter);
+          pixCoord=acvVecAdd(pixCoord,(acv_XY){(float)newX,(float)newY});
 
+          float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
+
+
+          int d = ((uint64_t)(pix*tExp))>>13;
           if(d<0)d=0;
           else if(d>255)d=255;
           
