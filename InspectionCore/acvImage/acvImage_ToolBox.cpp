@@ -424,42 +424,112 @@ inline int valueWarping(int v,int ringSize)
   v%=ringSize;
   return (v<0)?v+ringSize:v;
 }
-
-float SignatureMatchingError(const acv_XY *signature, int offset,
-                             const acv_XY *tar_signature, int arrsize, int stride)
+inline int valueWarping(float fv,int ringSize)
 {
+  fv+=10*ringSize;
+  return fmod(fv,ringSize);
+}
+
+
+
+int doPrint=0;
+inline float signatureSampling(const acv_XY *signature,int signSize,float fidx)
+{
+  int idx1 = (int)fidx;
+  
+  float sub_idx=fidx-idx1;
+  idx1=valueWarping(idx1,signSize);
+  int idx2=valueWarping(idx1+1,signSize);
+  float X1 = signature[idx1].X ;
+  float X2 = signature[idx2].X ;
+  return X1+(X2-X1)*sub_idx;
+}
+
+
+inline float signatureSampling2(const acv_XY *signature,int signSize,float fidx)
+{
+  float rad =fmod(2*M_PI* fidx/signSize,2*M_PI);
+  
+  int idx1 = (int)fidx;
+  int idx2;
+  float Y1 = signature[idx1].Y;
+  if(Y1<0)Y1+=2*M_PI;//0~2PI
+
+  if(rad<Y1)
+  {
+    idx2=idx1;
+    idx1--;
+  }
+  else
+  {
+    idx2=idx1+1;
+  }
+  
+
+  idx1=valueWarping(idx1,signSize);
+  idx2=valueWarping(idx2,signSize);
+  Y1 = signature[idx1].Y;
+  float Y2=signature[idx2].Y;
+  if(Y2<Y1)
+  {
+    if(rad<M_PI)
+    {
+      Y1-=2*M_PI;
+    }
+    else
+    {
+      Y2+=2*M_PI;
+    }
+  }
+  float sub_idx=(rad-Y1)/(Y2-Y1);
+
+  float X1 = signature[idx1].X ;
+  float X2 = signature[idx2].X ;
+  return X1+(X2-X1)*sub_idx;
+}
+
+float SignatureMatchingError(const acv_XY *signature, float offset,
+                             const acv_XY *tar_signature, int arrsize, int stride)//Single error result
+{
+  
+    //doPrint = (offset>-0.2 && offset<0.2 );
+      
     float errorSum = 0;
     if(offset<0)offset+=arrsize;
     float epsilon=0.01;
     for (int i=0; i < arrsize; i += stride)
     {
-        int oid0 = valueWarping(offset+i-1,arrsize);
-        int oid1 = valueWarping(offset+i+0,arrsize);
-        int oid2 = valueWarping(offset+i+1,arrsize);
+      float x1=signatureSampling(signature,arrsize,offset+i+0) ;
+      float x2=signatureSampling(tar_signature,arrsize,(float)i);
 
-        float error0 = signature[(oid0)].X - tar_signature[i].X;
-        float error1 = signature[(oid1)].X - tar_signature[i].X;
-        float error2 = signature[(oid2)].X - tar_signature[i].X;
-        error0*=error0;
-        error1*=error1;
-        error2*=error2;
-        error0+=epsilon;
-        error2+=epsilon;
-        //Find the smallest error
-        if(error0<error1)
-        {
-          errorSum += (error0<error2)?error0:error2;
-        }
-        else
-        {
-          errorSum += (error1<error2)?error1:error2;
-        }
+      float error1 = x1-x2 ;
+      error1*=error1;
+      errorSum+=error1;
+        // int oid0 = valueWarping(offset+i-1,arrsize);
+        // int oid1 = valueWarping(offset+i+0,arrsize);
+        // int oid2 = valueWarping(offset+i+1,arrsize);
+        // float error0 = signatureSampling(signature,arrsize,offset+i-1) - tar_signature[i].X;
+        // float error2 = signatureSampling(signature,arrsize,offset+i+1) - tar_signature[i].X;
+        // error0*=error0;
+        // error2*=error2;
+        // error0+=epsilon;
+        // error2+=epsilon;
+        // //Find the smallest error
+        // if(error0<error1)
+        // {
+        //   errorSum += (error0<error2)?error0:error2;
+        // }
+        // else
+        // {
+        //   errorSum += (error1<error2)?error1:error2;
+        // }
     }
+    // printf("errorSum:%f arrsize:%d\n",errorSum,arrsize);
     return errorSum/arrsize;
 }
 
-float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
-                             const std::vector<acv_XY> &tar_signature, int stride)
+float SignatureMatchingError(const std::vector<acv_XY> &signature, float offset,
+                             const std::vector<acv_XY> &tar_signature, int stride)//Single error result
 {
     return SignatureMatchingError(&(signature[0]), offset, &(tar_signature[0]), signature.size(), stride);
 }
@@ -503,7 +573,6 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
 {
     if (roughSearchSampleRate < 1)
         return -1;
-    int fineSreachRadious = roughSearchSampleRate - 1;
     int minErrOffset = 0;
     float minErr = FLT_MAX; 
 
@@ -516,27 +585,29 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
     for ( int i=0 ; i<roughSearchCount ; i++)
     {
         int idx=(startIdx+i*roughSearchSampleRate);
-        float error = SignatureMatchingError(signature, idx, tar_signature, roughSearchSampleRate);
+        float error = SignatureMatchingError(signature, (float)idx, tar_signature, roughSearchSampleRate);
+        
         if (minErr > error)
         {
             minErr = error;
             minErrOffset = idx;
         }
     }
-    
-    int searchHead = minErrOffset - fineSreachRadious;
-    minErr = FLT_MAX;
-    minErrOffset = -1;
+
+    float minErr = FLT_MAX;
+    int fineSreachRadious = 2*roughSearchSampleRate;
+    float searchCenter = minErrOffset;
 
     float error;
-    //fine search
-    for (int i = 0; i < 2 * fineSreachRadious + 1; i++, searchHead++)
+
+
+    for (float adv =-fineSreachRadious; adv < fineSreachRadious + 1; adv+=1)
     {
-        error = SignatureMatchingError(signature, searchHead, tar_signature, 1);
+        error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
         if (minErr > error)
         {
             minErr = error;
-            minErrOffset = searchHead;
+            minErrOffset = searchCenter+adv;
         }
     }
 
