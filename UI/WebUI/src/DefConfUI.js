@@ -55,6 +55,16 @@ import {
 
 } from '@ant-design/icons';
 
+function NumberAccInput({value,className,onChange,style})
+{
+  return (
+  <input className={className}
+  value={value} style={style}
+  type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
+  onChange={onChange}/>);
+}
+
+
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
@@ -224,6 +234,7 @@ class DList extends React.Component {
 function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
   const [offsetEditVisible, setOffsetEditVisible] = useState(false);
   function numberSet(num) {
+    console.log(num,RangeCValue,RangeCValue + num);
     onChange(target, "input-number", { target: { value: (RangeCValue + num).toFixed(4) } })
   }
   function numberPlus(num) {
@@ -234,37 +245,37 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
   const content =
     <Menu onClick={(ev) => {
     }}>
-      <Menu.Item key={4}>
-        <div className="s height12" style={{ width: "300px" }}>
+      <Menu.Item key={4} style={{height:"55px"}}>
+        <div className="s height12" style={{ width: "400px" }}>
           <div className="s  height12 width2 vbox black" style={{ color: "white" }} href="#">
             {RangeCValue}+
         </div>
-          <input key={"_" + lastKey + "_stxt"} className="s  height12 width4 vbox blackText"
+          <NumberAccInput key={"_" + lastKey + "_stxt"} className="s  height12 width5 vbox blackText"
             value={(value - RangeCValue).toFixed(4)}
-            type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
             onChange={(evt) => {
               console.log(target, evt);
-              numberSet(evt.target.value)
+              
+              numberSet(parseInt(evt.target.value))
 
             }}
           />
 
           <div key="acc" className="s width3  height12">
-            <Button key="plus100u" className="s height6 width6 vbox black" onClick={_ =>
+            <Button key="plus100u" className="s height6 width6  black" onClick={_ =>
               numberPlus(value + 0.1)
-            }>++</Button>
-            <Button key="plus10u" className="s  height6 width6 vbox black" onClick={_ =>
+            }>+10</Button>
+            <Button key="plus10u" className="s  height6 width6  black" onClick={_ =>
               numberPlus(value + 0.01)
-            }>+</Button>
-            <Button key="minus100u" className="s  height6 width6 vbox black" onClick={_ =>
+            }>+1</Button>
+            <Button key="minus100u" className="s  height6 width6  black" onClick={_ =>
               numberPlus(value - 0.1)
-            }>--</Button>
-            <Button key="minus10u" className="s  height6 width6 vbox black" onClick={_ =>
+            }>-10</Button>
+            <Button key="minus10u" className="s  height6 width6  black" onClick={_ =>
               numberPlus(value - 0.01)
-            }>-</Button>
+            }>-1</Button>
           </div>
 
-          <Button key="zero" className="s  height12 width2 vbox black" onClick={_ =>
+          <Button key="zero" className="s  height12 width2  black" onClick={_ =>
             numberPlus(RangeCValue)
           }>R</Button>
         </div>
@@ -273,6 +284,7 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
   let dropDownX =
     <Popover content={content} title={null} trigger="click"
       visible={offsetEditVisible}
+
       onVisibleChange={vis => {
         console.log(vis);
         setOffsetEditVisible(vis)
