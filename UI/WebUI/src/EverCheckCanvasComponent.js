@@ -111,7 +111,7 @@ class renderUTIL {
     };
 
     this.renderParam = {
-      base_Size: 2,
+      base_Size: 2.5,
       size_Multiplier: 1,
       mmpp: 0.1,
       font_Base_Size: 0.7,
@@ -136,7 +136,7 @@ class renderUTIL {
   }
 
   getPointSize() {
-    return this.getPrimitiveSize();
+    return this.getPrimitiveSize()*2;
   }
   getIndicationLineSize() {
     return this.getPrimitiveSize();
@@ -2076,9 +2076,15 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       inspectionReportList.forEach((report, idx) => {
         ctx.save();
         ctx.translate(report.cx, report.cy);
+        
+        // ctx.save();
         // ctx.rotate(-report.rotate);
         // if (report.isFlipped)
         //   ctx.scale(1, -1);
+        // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
+        // ctx.restore();
+        // 
+        
 
         // ctx.scale(sigScale, sigScale);
 
@@ -2089,7 +2095,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.013;
 
         // this.rUtil.draw_Text(ctx, idx,1, 0, 0);
-        
+
         // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
 
         let ret_res = this.inspectionResult(report);
