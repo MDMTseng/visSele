@@ -594,7 +594,7 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
         }
     }
 
-    float minErr = FLT_MAX;
+    minErr = FLT_MAX;
     int fineSreachRadious = 2*roughSearchSampleRate;
     float searchCenter = minErrOffset;
 
