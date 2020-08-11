@@ -293,7 +293,7 @@ DatCH_Data DatCH_BPG1_0::Process_websock_data(websock_data* p_websocket)
       break;
       case websock_data::DATA_FRAME:
 
-        LOGI(">>>>>>>>>>>>>DATA_FRAME");
+        // LOGI(">>>>>>>>>>>>>DATA_FRAME");
         uint8_t* raw = p_websocket->data.data_frame.raw;
         size_t rawL = p_websocket->data.data_frame.rawL;
         if(cb_obj!=NULL && p_websocket->data.data_frame.isFinal && rawL >= 9)

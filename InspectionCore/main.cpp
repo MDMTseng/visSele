@@ -33,24 +33,24 @@ int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms
 
   if(try_lock_timeout_ms<=0)
   {
-    LOGI("%s_%d: Locking ",msg,call_lineNumber);
+    //LOGI("%s_%d: Locking ",msg,call_lineNumber);
     mainThreadLock.lock();
   }
   else
   {
     using Ms = std::chrono::milliseconds;
     
-    LOGI("%s_%d: Locking %dms",msg,call_lineNumber,try_lock_timeout_ms);
+    //LOGI("%s_%d: Locking %dms",msg,call_lineNumber,try_lock_timeout_ms);
     if(mainThreadLock.try_lock_for(Ms(try_lock_timeout_ms)))
     {
     }
     else
     {
-      LOGI("Lock failed");
+      //LOGI("Lock failed");
       return -1;
     }
   }
-  LOGI("%s_%d: Locked ",msg,call_lineNumber);
+  //LOGI("%s_%d: Locked ",msg,call_lineNumber);
 
   return 0;
 }
@@ -59,9 +59,9 @@ int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms
 int mainThreadLock_unlock(int call_lineNumber,char* msg="")
 {
 
-  LOGI("%s_%d: unLocking ",msg,call_lineNumber);
+  //LOGI("%s_%d: unLocking ",msg,call_lineNumber);
   mainThreadLock.unlock();
-  LOGI("%s_%d: unLocked ",msg,call_lineNumber);
+  //LOGI("%s_%d: unLocked ",msg,call_lineNumber);
 
   return 0;
 }
@@ -2899,10 +2899,10 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
     return -1;
   DatCH_WebSocket *ws = (DatCH_WebSocket *)callback_param;
   websock_data ws_data = *data.data.p_websocket;
-  LOGI("SEND>>>>>>..websock_data..\n");
+  // LOGI("SEND>>>>>>..websock_data..\n");
   if ((BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
   {
-    LOGI("SEND>>>>>>..MatchPeer..\n");
+    // LOGI("SEND>>>>>>..MatchPeer..\n");
     
     BPG_protocol->SendData(data);
     //BPG_protocol_send(data); // WS [here]-(prot)> App
@@ -2978,7 +2978,7 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
 int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void *callback_param)
 {
 
-  LOGI("DatCH_CallBack_WSBPG:_______type:%d________", data.type);
+  // LOGI("DatCH_CallBack_WSBPG:_______type:%d________", data.type);
   int ret_val = 0;
   switch (data.type)
   {
