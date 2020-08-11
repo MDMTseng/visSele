@@ -567,13 +567,37 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             onClick={() => {
             let fileSelectedCallBack =
               (filePath, fileInfo) => {
-                appendLocalStorage_RecentFiles(fileInfo);
+
 
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
-                ACT_Def_Model_Path_Update(filePath);
-                ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
-              }
+                ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },
+                  undefined, { resolve:(pkts,action_channal)=>{
+                    let SS=pkts.find(pkt=>pkt.type=="SS");
+                    console.log(pkts);
+                    if(SS==undefined || SS.data.ACK==false)
+                    {
+                      
+                      let errPopUpUIInfo = {
+                        title: "錯誤",
+                        onOK: undefined,
+                        onCancel: undefined,
+                        content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
+                          <CloseCircleTwoTone twoToneColor="#FF0000"/>找不到檔案:{filePath}
+                          </Title></div>
+                      }
+                      setInfoPopUp(errPopUpUIInfo)
+                      return;
+                    }
+                      
+                    appendLocalStorage_RecentFiles(fileInfo);
+                    ACT_Def_Model_Path_Update(filePath);
+                    action_channal(pkts);
+                  }, reject:(e)=>{
+
+                  } });
+                }
+
 
             let fileGroups = [
               { name: "history", list: getLocalStorage_RecentFiles() }
