@@ -33,7 +33,7 @@ class Websocket_FI_proto:public Websocket_Server{
       for(;*jptr;jptr++)
       {
         int retVal = jsparser.newChar(*jptr);
-        if(retVal==JSON_SEG_PARSER_SEG_END)
+        if(retVal&JSON_SEG_PARSER_SEG_END)
         {
           break;
         }
