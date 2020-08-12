@@ -150,7 +150,7 @@ class Websocket_FI_proto:public Websocket_Server{
   
   virtual int CMDExec(WebSocketProtocol* WProt,uint8_t *recv_cmd, int cmdL, sending_buffer *send_pack,int data_in_pack_maxL)//the recv_cmd & send_rsp is using the same buffer, so use it carefully
   {
-    
+    sending_buffer *json_rsp_pack=(sending_buffer *)json_rsp_buffer;
 //    {
 //      if(cmdL==0 ||recv_cmd==NULL )
 //      {
@@ -164,8 +164,17 @@ class Websocket_FI_proto:public Websocket_Server{
 //      rspMaxL-=cmdL;
 //      return Json_CMDExec(recv_cmd,  cmdL,send_rsp, rspMaxL);
 //    }
-
-    sending_buffer *json_rsp_pack=(sending_buffer *)json_rsp_buffer;
+//
+//    return 0;
+//    
+//
+//    recv_cmd[cmdL]='\0';
+//    
+//    
+//    int rspLen = Json_CMDExec(WProt,recv_cmd,  cmdL,json_rsp_pack, sizeof(json_rsp_buffer)-sizeof(sending_buffer));
+//    if(rspLen>0)
+//      SEND(WProt,json_rsp_pack, rspLen, 0);
+//    return 0;
 
 
     bool doSplit=false;

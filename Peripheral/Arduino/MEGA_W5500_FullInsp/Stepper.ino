@@ -170,7 +170,7 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_THRES 5
+#define DEBOUNCE_THRES 10
 #define OBJECT_SEP_THRES (150/2)
 
 uint32_t step_thres_pulse_down=0;
@@ -451,7 +451,8 @@ uint32_t pulseHZ = 0;
 
 void setup_Stepper() {
   DEBUG_println(".....");
-  timer1Setup(50);
+  timer1Setup(1);
+  timer1_HZ(0);
 }
 
 

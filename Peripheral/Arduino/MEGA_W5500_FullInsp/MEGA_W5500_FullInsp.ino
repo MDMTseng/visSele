@@ -15,7 +15,7 @@
 #include "websocket_FI.hpp"
 #include "include/RingBuf.hpp"
 
-#define TEST_MODE 
+//#define TEST_MODE 
 
 
 
@@ -437,17 +437,24 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
 void errorLOG(GEN_ERROR_CODE code,char* errorLog)
 {
   GEN_ERROR_CODE* head_code = ERROR_HIST.getHead();
+  if (head_code == NULL)
+  {
+    ERROR_HIST.consumeTail();
+    head_code = ERROR_HIST.getHead();
+    
+  }
+  
   if (head_code != NULL)
   {
     *head_code=code;
     ERROR_HIST.pushHead();
 
-    errorActionType = errorActionTransition( errorActionType,code );
   
     DEBUG_print("errorLOG:");
     DEBUG_println((int)code);
     //errorAction(errorActionType);
   }
+  errorActionType = errorActionTransition( errorActionType,code );
 //
 //  if(0){
 //    uint8_t errBuff[100];
@@ -519,7 +526,7 @@ class Websocket_FI:public Websocket_FI_proto{
       uint32_t new_state_pulseOffset[SARRL(state_pulseOffset)];
   
       int adv_len = ParseNumberFromArr(table_scope,new_state_pulseOffset, SARRL(state_pulseOffset));//return parsed string length
-     
+      
       if(adv_len)
       {
         ret_status=0;
@@ -595,7 +602,7 @@ class Websocket_FI:public Websocket_FI_proto{
   {
     char *send_rsp=send_pack->data;
     int send_rspL=data_in_pack_maxL;
-    
+//    DEBUG_println((char*)recv_cmd);
     
     unsigned int MessageL = 0; //response Length
     
@@ -818,6 +825,7 @@ class Websocket_FI:public Websocket_FI_proto{
                                                       "\"ver\":\"0.0.0.0\",");
         MessageL+=MachToJson(send_rsp+MessageL, buffL-MessageL, &ret_st);
         DEBUG_print("get_setup:");
+        DEBUG_println(send_rsp);
         ret_status = ret_st;
       }
       else if(strstr ((char*)recv_cmd,"\"type\":\"set_setup\"")!=NULL)
@@ -996,7 +1004,8 @@ class Websocket_FI:public Websocket_FI_proto{
 
 void showOff()
 {
-  int delayArr[]={140,140,360,140,140,360};
+  //int delayArr[]={140,140,360,140,140,360};
+  int delayArr[]={360,140,140};
   for(int i=0;i<sizeof(delayArr)/sizeof(*delayArr);i++)
   {
 
