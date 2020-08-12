@@ -424,7 +424,7 @@ inline int valueWarping(int v,int ringSize)
   v%=ringSize;
   return (v<0)?v+ringSize:v;
 }
-inline int valueWarping(float fv,int ringSize)
+inline float valueWarping_f(float fv,int ringSize)
 {
   fv+=10*ringSize;
   return fmod(fv,ringSize);
@@ -505,6 +505,9 @@ float SignatureMatchingError(const acv_XY *signature, float offset,
       float error1 = x1-x2 ;
       error1*=error1;
       errorSum+=error1;
+
+
+      
         // int oid0 = valueWarping(offset+i-1,arrsize);
         // int oid1 = valueWarping(offset+i+0,arrsize);
         // int oid2 = valueWarping(offset+i+1,arrsize);
@@ -567,7 +570,7 @@ float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv
 
 
 #include <float.h>
-int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
+float SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate,
                              int startIdx,int stopIdx, float *min_error)
 {
@@ -595,29 +598,54 @@ int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
     }
 
     minErr = FLT_MAX;
-    int fineSreachRadious = 2*roughSearchSampleRate;
+    int fineSreachRadious = roughSearchSampleRate;
     float searchCenter = minErrOffset;
 
     float error;
 
-
+    float errSum=FLT_MAX;
+    float f_minErrOffset = 0;
     for (float adv =-fineSreachRadious; adv < fineSreachRadious + 1; adv+=1)
     {
         error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
-        if (minErr > error)
+
+        if (errSum > error)
         {
-            minErr = error;
-            minErrOffset = searchCenter+adv;
+            errSum = error;
+            f_minErrOffset = searchCenter+adv;
         }
+        
+        // printf("offset:%f  error:%f\n",(searchCenter+adv),error);
+    }
+    //errSum=FLT_MAX;
+    searchCenter=f_minErrOffset;
+    float offsetW=0;
+    f_minErrOffset=0;
+    for (float adv =-1.5; adv < 1.5+0.1; adv+=0.1)
+    {
+        error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
+        float W=1/(0.001+error);
+        W=W*W*W*W;
+        offsetW+=W;
+        f_minErrOffset+=(searchCenter+adv)*W;
+
+       // printf("offset:%f  error:%f  W:%f\n",(searchCenter+adv),error,W);
     }
 
-    if (minErrOffset < 0)
-        minErrOffset += tar_signature.size();
-    minErrOffset%=tar_signature.size();
+    f_minErrOffset/=offsetW;
+
+    //printf("===offset:%f \n",f_minErrOffset);
+
+    // f_minErrOffset/=offsetW;
+    // errSum/=offsetW;
+    // printf("f_minErrOffset:%f\n ",f_minErrOffset);
+    if (f_minErrOffset < 0)
+        f_minErrOffset += tar_signature.size();
+    f_minErrOffset=fmod(f_minErrOffset,tar_signature.size());
 
     if (min_error)
-        *min_error = minErr;
-    return minErrOffset;
+        *min_error = errSum;
+    return f_minErrOffset;
 }
 
 float SignatureAngleMatching(const std::vector<acv_XY> &signature,
@@ -648,18 +676,52 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
     while(stopIdx<0)stopIdx+=signature.size();
     stopIdx%=signature.size();
 
-    int matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate,startIdx,stopIdx, &error);
+    float matchingIdx = SignareIdxOffsetMatching(signature, tar_signature, roughSearchSampleRate,startIdx,stopIdx, &error);
 
 
     if(min_error)*min_error=error;
     //The offset apply to signature (array) means negative rotation.
     // f(x+5) means offset the graph negative (to left)
     float angle = -matchingIdx * 2 * M_PI / signature.size();
+    angle += 2 * M_PI;
     if (angle < -M_PI)
         angle += 2 * M_PI;
     else if (angle > M_PI)
         angle -= 2 * M_PI;
     return angle;
+}
+
+
+void SignatureSoften(std::vector<acv_XY> &signature,int windowR)
+{
+  std::vector<acv_XY> buffer(signature.size());
+
+  SignatureSoften(signature,buffer,windowR);
+}
+
+void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &buffer,int windowR)
+{
+  if(buffer.size()<signature.size())
+  {
+    buffer.resize(signature.size());
+  }
+  for(int i=0;i<signature.size();i++)
+  {
+    buffer[i].X=signature[i].X;
+  }
+
+  
+  for(int i=0;i<signature.size();i++)
+  {
+    float value=0;
+    for(int j=-windowR;j<windowR+1;j++)
+    {
+      value+=buffer[valueWarping(i+j,signature.size())].X;
+    }
+    value/=(2*windowR)+1;
+    signature[i].X=value;
+  }
+
 }
 
 void SignatureReverse_SWAP(std::vector<acv_XY> &sign)

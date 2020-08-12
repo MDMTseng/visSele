@@ -37,7 +37,7 @@ float SignatureMatchingError(const acv_XY *signature, int offset,
                              const acv_XY *tar_signature, int arrsize, int stride);
 float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
                              const std::vector<acv_XY> &tar_signature, int stride);
-int SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
+float SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature, int roughSearchSampleRate, float *min_error);
 
 //The return is the angle from signature to tar_signature
@@ -46,6 +46,10 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
                              const std::vector<acv_XY> &tar_signature,
                              float searchAngleOffset,float searchAngleMargin,
                              float *min_error);
+
+                             
+void SignatureSoften( std::vector<acv_XY> &signature,int windowR=1);
+void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &buffer,int windowR);
 void SignatureReverse(std::vector<acv_XY> &dst, std::vector<acv_XY> &src);
 
 

@@ -50,6 +50,8 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int signature_feature_id;
   ContourSignature feature_signature;
   ContourSignature tmp_signature;
+  
+  vector<acv_XY>signature_data_buffer;
   ContourFetch edge_grid;
 
   float matching_angle_margin;

@@ -1410,6 +1410,9 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 
 
   feature_signature.RELOAD(signature);
+  
+  
+  SignatureSoften(feature_signature.signature_data,signature_data_buffer,10);
 
   return 0;
 }
@@ -2929,6 +2932,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     }
     tmp_signature.CalcInfo();
 
+    SignatureSoften(tmp_signature.signature_data,signature_data_buffer,10);
     bool isInv;
     float angle;
 
