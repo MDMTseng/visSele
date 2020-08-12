@@ -614,6 +614,22 @@ class Websocket_FI:public Websocket_FI_proto{
     unsigned int MessageL = 0; //response Length
     
     {
+      char type_[30]; 
+      char *typeStr = type_;
+      int typeL=findJsonScope((char*)recv_cmd,"\"type\":",typeStr,sizeof(type_));
+      
+      if(typeL<0)typeStr=NULL; 
+      else
+      {
+        typeStr+=1;
+        typeL-=2;
+        typeStr[typeL]='\0';
+        DEBUG_print("typeStr:");
+        DEBUG_println(typeStr);
+      }
+      
+      
+      
       char *idStr = buff;
       int idStrL = findJsonScope((char*)recv_cmd,"\"id\":",idStr,buffL);
       if(idStrL<0)idStr=NULL;
@@ -631,8 +647,9 @@ class Websocket_FI:public Websocket_FI_proto{
 
       MessageL += sprintf( (char*)send_rsp+MessageL, "{");
       int ret_status=-1;
+
       
-      if(strstr ((char*)recv_cmd,"\"type\":\"inspRep\"")!=NULL)
+      if(strcmp (typeStr, "inspRep")==0)
       {
         char *buffX=buff;
         
@@ -747,8 +764,10 @@ class Websocket_FI:public Websocket_FI_proto{
         }
         return 0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"get_dev_info\"")!=NULL)
+      else if(strcmp (typeStr, "get_dev_info")==0)
       {
+        
+      
         MessageL += sprintf( (char*)send_rsp+MessageL, 
           "\"type\":\"dev_info\","
           "\"info\":{"
@@ -758,16 +777,18 @@ class Websocket_FI:public Websocket_FI_proto{
           "},",tar_pulseHZ_);
         ret_status=0;
       }      
-      else if(strstr ((char*)recv_cmd,"\"type\":\"PING\"")!=NULL)
+      else if(strcmp (typeStr, "PING")==0)
       {
+        
         //DEBUG_println("PING....");
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"PONG\",");
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
         ret_status=0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_hz\"")!=NULL)
+      else  if(strcmp (typeStr, "set_pulse_hz")==0)
       {
+       
         char *bufPtr = buff;
         int retL = findJsonScope((char*)recv_cmd,"\"pulse_hz\":",bufPtr,buffL);
         if(retL>0){
@@ -777,8 +798,9 @@ class Websocket_FI:public Websocket_FI_proto{
           ret_status=0;
         }
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"test_action\"")!=NULL)
+      else if(strcmp (typeStr, "test_action")==0)
       {
+         
         char *bufPtr = buff;
         int retL;
 
@@ -824,8 +846,8 @@ class Websocket_FI:public Websocket_FI_proto{
           
         }
       }
-      
-      else if(strstr ((char*)recv_cmd,"\"type\":\"get_setup\"")!=NULL)
+
+      else if(strcmp (typeStr, "get_setup")==0)
       {
         int ret_st=0;
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"get_setup_rsp\","
@@ -835,7 +857,8 @@ class Websocket_FI:public Websocket_FI_proto{
         DEBUG_println(send_rsp);
         ret_status = ret_st;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"set_setup\"")!=NULL)
+      
+      else if(strcmp (typeStr, "set_setup")==0)
       {
         int ret_st=0;
         //DEBUG_print("set_setup::");
@@ -847,26 +870,29 @@ class Websocket_FI:public Websocket_FI_proto{
         //MessageL=0;
         ret_status = ret_st;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"error_get\"")!=NULL)
+      
+      else if(strcmp (typeStr, "error_get")==0)
       {
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         ret_status = 0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"res_count_get\"")!=NULL)
+      
+      else if(strcmp (typeStr, "res_count_get")==0)
       {
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"res_count\",",idStr);
         MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
         ret_status = 0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"res_count_clear\"")!=NULL)
+      else if(strcmp (typeStr, "res_count_clear")==0)
       {
         memset(&inspResCount,0,sizeof(inspResCount));
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"res_count\",",idStr);
         MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
         ret_status = 0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"error_clear\"")!=NULL)
+      
+      else if(strcmp (typeStr, "error_clear")==0)
       {
         errorLOG(GEN_ERROR_CODE::RESET);
         ERROR_HIST.clear();
@@ -874,7 +900,8 @@ class Websocket_FI:public Websocket_FI_proto{
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
         ret_status = 0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"mode_set\"")!=NULL)
+      
+      else if(strcmp (typeStr, "mode_set")==0)
       {
         if(strstr ((char*)recv_cmd,"\"mode\":\"NORMAL\""))
         {
@@ -903,33 +930,37 @@ class Websocket_FI:public Websocket_FI_proto{
           ret_status = 0;
         }
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/ON\"")!=NULL)
+      else if(strcmp (typeStr, "MISC/BACK_LIGHT/ON")==0)
       {
+        
         digitalWrite(BACK_LIGHT_PIN,1);
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/BACK_LIGHT/OFF\"")!=NULL)
+      else if(strcmp (typeStr, "MISC/BACK_LIGHT/OFF")==0)
       {
         digitalWrite(BACK_LIGHT_PIN,0);
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/CAM_TRIGGER\"")!=NULL)
+      else if(strcmp (typeStr, "MISC/CAM_TRIGGER")==0)
       {
         digitalWrite(CAMERA_PIN,1);
         delay(10);
         digitalWrite(CAMERA_PIN,0);
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/OK_BLOW\"")!=NULL)
+      
+      else if(strcmp (typeStr, "MISC/OK_BLOW")==0)
       {
         digitalWrite(AIR_BLOW_OK_PIN, 1);
         delay(10);
         digitalWrite(AIR_BLOW_OK_PIN, 0);
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"MISC/NG_BLOW\"")!=NULL)
+      
+      else if(strcmp (typeStr, "MISC/NG_BLOW")==0)
       {
         digitalWrite(AIR_BLOW_NG_PIN, 1);
         delay(10);
         digitalWrite(AIR_BLOW_NG_PIN, 0);
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"get_pulse_offset_info\"")!=NULL)
+      
+      else if(strcmp (typeStr, "get_pulse_offset_info")==0)
       {
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"pulse_offset_info\",",idStr);
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"table\":[");
@@ -943,7 +974,8 @@ class Websocket_FI:public Websocket_FI_proto{
         
         ret_status=0;
       }
-      else if(strstr ((char*)recv_cmd,"\"type\":\"set_pulse_offset_info\"")!=NULL)
+      
+      else if(strcmp (typeStr, "set_pulse_offset_info")==0)
       {
         ret_status=-1;
         do{
