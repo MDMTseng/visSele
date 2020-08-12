@@ -50,6 +50,9 @@ run_mode_info mode_info={
   misc_info:0
 };
 
+
+
+uint32_t thres_skip_counter=0;
 #define insp_status_UNSET -1654
 
 #define insp_status_NA -334 //insp_status_NA is just for unknown insp result
@@ -478,6 +481,7 @@ void errorLOG(GEN_ERROR_CODE code,char* errorLog)
 
 
 class Websocket_FI:public Websocket_FI_proto{
+
   public:
   Websocket_FI(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
     Websocket_FI_proto(buff,buffL,ip,port,gateway,subnet){}
@@ -610,6 +614,11 @@ class Websocket_FI:public Websocket_FI_proto{
     char *send_rsp=send_pack->data;
     int send_rspL=data_in_pack_maxL;
 //    DEBUG_println((char*)recv_cmd);
+
+    char extBuff_[100];
+    char *extBuff=extBuff_;
+    int extBuffL=sizeof(extBuff_);
+    
     
     unsigned int MessageL = 0; //response Length
     
@@ -624,18 +633,19 @@ class Websocket_FI:public Websocket_FI_proto{
         typeStr+=1;
         typeL-=2;
         typeStr[typeL]='\0';
-        DEBUG_print("typeStr:");
-        DEBUG_println(typeStr);
+//        DEBUG_print("typeStr:");
+//        DEBUG_println(typeStr);
       }
       
       
       
-      char *idStr = buff;
-      int idStrL = findJsonScope((char*)recv_cmd,"\"id\":",idStr,buffL);
+      char *idStr = extBuff;
+      int idStrL = findJsonScope((char*)recv_cmd,"\"id\":",extBuff,extBuffL);
       if(idStrL<0)idStr=NULL;
 
-      buff+=idStrL+1;
-      buffL-=idStrL+1;
+      extBuff+=idStrL+1;
+      extBuffL-=idStrL+1;
+      
 
       bool isIdAStr=false;
       if(idStr && idStr[0]=='\"' && idStr[idStrL-1]=='\"')
@@ -651,8 +661,6 @@ class Websocket_FI:public Websocket_FI_proto{
       
       if(strcmp (typeStr, "inspRep")==0)
       {
-        char *buffX=buff;
-        
         if(mode_info.mode==run_mode_info::TEST)
         {
           return 0;
@@ -660,11 +668,13 @@ class Websocket_FI:public Websocket_FI_proto{
         
         int new_count=-99;  
         int pre_count=cur_insp_counter;//0~255
-        char *counter_str = buffX;
+        char *counter_str = extBuff;
         {
-          int retL = findJsonScope((char*)recv_cmd,"\"count\":",counter_str,10);
+          int retL = findJsonScope((char*)recv_cmd,"\"count\":",extBuff,extBuffL);
           if(retL>0)
-          {
+          {  
+//          extBuff+=retL+1;
+//          extBuffL-=retL+1;
             sscanf(counter_str, "%d", &new_count);
 
             if(new_count==-1)
@@ -692,8 +702,6 @@ class Websocket_FI:public Websocket_FI_proto{
           }
 
 
-          
-          buffX+=retL;
         }
         
         if(errorActionType!=ERROR_ACTION_TYPE::NOP)
@@ -713,23 +721,28 @@ class Websocket_FI:public Websocket_FI_proto{
         
 
         int insp_status=-99;
-        char *statusStr = buffX;
         {
-          int retL = findJsonScope((char*)recv_cmd,"\"status\":",statusStr,buffL);
+          char *statusStr = extBuff;
+          int retL = findJsonScope((char*)recv_cmd,"\"status\":",extBuff,extBuffL);
           if(retL<0)statusStr=NULL;
           else{
+//          extBuff+=retL+1;
+//          extBuffL-=retL+1;
             sscanf(statusStr, "%d", &insp_status);
             //DEBUG_print(">>status>>>>");
             //DEBUG_println(insp_status);
           }
-          buffX+=retL;
         }
         
-        char *time_100us_str = buffX;
+        char *time_100us_str = extBuff;
         {
-          int retL = findJsonScope((char*)recv_cmd,"\"time_100us\":",statusStr,buffL);
+          int retL = findJsonScope((char*)recv_cmd,"\"time_100us\":",extBuff,extBuffL);
           if(retL<0)time_100us_str=NULL;
-          buffX+=retL;
+          else
+          {
+            extBuff+=retL+1;
+            extBuffL-=retL+1;
+          }
         }
         
         noInterrupts();
@@ -782,15 +795,15 @@ class Websocket_FI:public Websocket_FI_proto{
         
         //DEBUG_println("PING....");
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"PONG\",");
-        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
-        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
+        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, send_rspL-MessageL);
+        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, send_rspL-MessageL,inspResCount);
         ret_status=0;
       }
       else  if(strcmp (typeStr, "set_pulse_hz")==0)
       {
-       
-        char *bufPtr = buff;
-        int retL = findJsonScope((char*)recv_cmd,"\"pulse_hz\":",bufPtr,buffL);
+      
+        char *bufPtr = extBuff;
+        int retL = findJsonScope((char*)recv_cmd,"\"pulse_hz\":",extBuff,extBuffL);
         if(retL>0){
           int newHZ=tar_pulseHZ_;
           sscanf(bufPtr, "%d", &newHZ);
@@ -800,8 +813,6 @@ class Websocket_FI:public Websocket_FI_proto{
       }
       else if(strcmp (typeStr, "test_action")==0)
       {
-         
-        char *bufPtr = buff;
         int retL;
 
         if(strstr ((char*)recv_cmd,"\"sub_type\":\"trigger_test\"")!=NULL)
@@ -852,7 +863,7 @@ class Websocket_FI:public Websocket_FI_proto{
         int ret_st=0;
         MessageL += sprintf( (char*)send_rsp+MessageL,"\"type\":\"get_setup_rsp\","
                                                       "\"ver\":\"0.0.0.0\",");
-        MessageL+=MachToJson(send_rsp+MessageL, buffL-MessageL, &ret_st);
+        MessageL+=MachToJson(send_rsp+MessageL, send_rspL-MessageL, &ret_st);
         DEBUG_print("get_setup:");
         DEBUG_println(send_rsp);
         ret_status = ret_st;
@@ -862,7 +873,7 @@ class Websocket_FI:public Websocket_FI_proto{
       {
         int ret_st=0;
         //DEBUG_print("set_setup::");
-        MessageL+=JsonToMach(send_rsp+MessageL, buffL-MessageL,recv_cmd,cmdL, &ret_st);
+        MessageL+=JsonToMach(send_rsp+MessageL, send_rspL-MessageL,recv_cmd,cmdL, &ret_st);
 //        DEBUG_print("set_setupL::");
 //        DEBUG_println(MessageL);
 //        DEBUG_println((char*)send_rsp);
@@ -874,21 +885,21 @@ class Websocket_FI:public Websocket_FI_proto{
       else if(strcmp (typeStr, "error_get")==0)
       {
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
-        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
+        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, send_rspL-MessageL);
         ret_status = 0;
       }
       
       else if(strcmp (typeStr, "res_count_get")==0)
       {
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"res_count\",",idStr);
-        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
+        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, send_rspL-MessageL,inspResCount);
         ret_status = 0;
       }
       else if(strcmp (typeStr, "res_count_clear")==0)
       {
         memset(&inspResCount,0,sizeof(inspResCount));
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"res_count\",",idStr);
-        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, buffL-MessageL,inspResCount);
+        MessageL += AddResultCountToJson( (char*)send_rsp+MessageL, send_rspL-MessageL,inspResCount);
         ret_status = 0;
       }
       
@@ -897,7 +908,7 @@ class Websocket_FI:public Websocket_FI_proto{
         errorLOG(GEN_ERROR_CODE::RESET);
         ERROR_HIST.clear();
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
-        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, buffL-MessageL);
+        MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, send_rspL-MessageL);
         ret_status = 0;
       }
       
@@ -960,57 +971,6 @@ class Websocket_FI:public Websocket_FI_proto{
         digitalWrite(AIR_BLOW_NG_PIN, 0);
       }
       
-      else if(strcmp (typeStr, "get_pulse_offset_info")==0)
-      {
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"pulse_offset_info\",",idStr);
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"table\":[");
-        for(int i=0;i<SARRL(state_pulseOffset);i++)
-          MessageL += sprintf( (char*)send_rsp+MessageL, "%d,",state_pulseOffset[i]);
-        MessageL--;//remove last ','
-        MessageL += sprintf( (char*)send_rsp+MessageL, "],");
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"perRevPulseCount\":%d,",perRevPulseCount);
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
-        MessageL += sprintf( (char*)send_rsp+MessageL, "\"pulse_hz\":%d,",tar_pulseHZ_);
-        
-        ret_status=0;
-      }
-      
-      else if(strcmp (typeStr, "set_pulse_offset_info")==0)
-      {
-        ret_status=-1;
-        do{
-          int table_scopeL=0;
-          char * table_scope = findJsonScope((char*)recv_cmd,"\"table\":",&table_scopeL);
-          if(table_scope==NULL)
-          {
-            //MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"There is no 'table' in the message\",");
-            break;
-          }
-          
-          if( table_scope[0]=='[' && table_scope[table_scopeL-1]==']' )
-          {
-            table_scope++;
-            table_scopeL-=2;
-          }
-
-          uint32_t new_state_pulseOffset[SARRL(state_pulseOffset)];
-
-          int adv_len = ParseNumberFromArr(table_scope,new_state_pulseOffset, SARRL(state_pulseOffset));//return parsed string length
-         
-          if(adv_len)
-          {
-            ret_status=0;
-            memcpy(state_pulseOffset,new_state_pulseOffset,sizeof(new_state_pulseOffset));
-          }
-          else
-          {
-            MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":\"Table message length is not sufficient, expected length:%d\",",SARRL(state_pulseOffset));
-          }
-
-          
-        }while(0);
-      }
-
 
       if(idStr)
       {
@@ -1068,11 +1028,11 @@ int serial_putc( char c, struct __file * )
   Serial.write( c );
   return c;
 }
-uint8_t buff[600];//For websocket
+uint8_t ws_buff[600];//For websocket
 void setup() {
   Serial.begin(115200);
   fdevopen( &serial_putc, 0 );
-  WS_Server = new Websocket_FI(buff,sizeof(buff),_ip,_port,_gateway,_subnet);
+  WS_Server = new Websocket_FI(ws_buff,sizeof(ws_buff),_ip,_port,_gateway,_subnet);
   if(WS_Server)setRetryTimeout(2, 100);
   setup_Stepper();
   
@@ -1149,6 +1109,8 @@ void loop()
   {
     DEBUG_print("RBuf:");
     DEBUG_println(RBuf.size());
+    DEBUG_print("thres_skip_counter:");
+    DEBUG_println(thres_skip_counter);
   
     
 //    DEBUG_println((char*)WS_Server->json_sec_buffer);

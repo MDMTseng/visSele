@@ -171,7 +171,7 @@ uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to mean
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
 #define DEBOUNCE_THRES 10
-#define OBJECT_SEP_THRES (150/2)
+uint32_t OBJECT_SEP_THRES=(perRevPulseCount/60);
 
 uint32_t step_thres_pulse_down=0;
 void task_gateSensing()
@@ -223,17 +223,18 @@ void task_gateSensing()
         bool accept_pulse=(step_thres_pulse_down==0);
         
         if(!accept_pulse)
-        {
-          //remove previous object
-          RBuf.pullHead();
-          pipeLineInfo* head = RBuf.getHead();
-          step_thres_pulse_down=0;
-        }
+          thres_skip_counter++;
+//        {
+//          //remove previous object
+//          RBuf.pullHead();
+//          //pipeLineInfo* head = RBuf.getHead();
+//          step_thres_pulse_down=0;
+//        }
         
         pipeLineInfo* head = RBuf.getHead();
         if (accept_pulse && head != NULL)
         {
-          accept_pulse=OBJECT_SEP_THRES;
+          step_thres_pulse_down=OBJECT_SEP_THRES;
           head->gate_pulse = middle_pulse;
           head->stage = 0;
           next_state(head);
