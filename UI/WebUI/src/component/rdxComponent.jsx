@@ -6,6 +6,7 @@ import  Menu  from 'antd/lib/menu';
 import  Button  from 'antd/lib/button';
 import  Input  from 'antd/lib/input';
 import  Tag  from 'antd/lib/tag';
+import Card from 'antd/lib/card';
 import  Dropdown  from 'antd/lib/dropdown';
 import {CusDisp_DB} from 'UTIL/DB_Query';
 import  Tabs  from 'antd/lib/tabs';
@@ -181,7 +182,7 @@ function SingleDisplayUI({ displayInfo }) {
     <br />
    
     {/* {displayInfo.targetDeffiles.map((dfs, id) =>
-    <pre>
+      <pre>
       {"Def[" + id + "]:" + JSON.stringify(displayInfo.targetDeffiles[id], null, 2)}
       </pre>
     )} */}
@@ -191,7 +192,7 @@ function SingleDisplayUI({ displayInfo }) {
         <br />
         {"tags[" + id + "]:" + dfs.tags}
 
-    </pre>
+        </pre>
       )}
     
   </div>
@@ -200,12 +201,12 @@ function SingleDisplayUI({ displayInfo }) {
 function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
   const [displayInfo, setDisplayInfo] = useState(undefined);
   const [displayEle, setDisplayEle] = useState(undefined);
-
+  const _mus = useSelector(state => state.UIData.machine_custom_setting);
 
   function refreshData()
   {
     setDisplayInfo(undefined);
-    CusDisp_DB.read(".").then(data => {
+    CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
       setDisplayInfo(data.prod);
     }).catch(e => {
       console.log(e);
@@ -234,8 +235,8 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
       UI.push(
         <Button type="dashed"
           onClick={() => {
-            CusDisp_DB.create({ name: "新設定", targetDeffiles: [{}] }, undefined).then(() => {
-              CusDisp_DB.read(".").then(data => {
+            CusDisp_DB.create(_mus.cusdisp_db_fetch_url,{ name: "新設定", targetDeffiles: [{}] }, undefined).then(() => {
+              CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
                 console.log(displayInfo);
                 setDisplayInfo(data.prod);
 
@@ -264,9 +265,9 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
           <Button type="dashed"
             onClick={() => {
               setDisplayInfo(undefined);
-              CusDisp_DB.delete(info._id).then(() => {
+              CusDisp_DB.delete(_mus.cusdisp_db_fetch_url,info._id).then(() => {
 
-                CusDisp_DB.read(".").then(data => {
+                CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
                   console.log(displayInfo);
                   setDisplayInfo(data.prod);
                 }).catch(e => {
@@ -291,8 +292,8 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
           <SingleDisplayEditUI displayInfo={displayEle} BPG_Channel={BPG_Channel}
             onUpdate={(updatedEle) => {
               console.log(updatedEle);
-              CusDisp_DB.update(updatedEle, displayEle._id).then(() => {
-                CusDisp_DB.read(".").then(data => {
+              CusDisp_DB.update(_mus.cusdisp_db_fetch_url,updatedEle, displayEle._id).then(() => {
+                CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
                   console.log(displayInfo);
                   setDisplayInfo(data.prod);
                   setDisplayEle();
@@ -362,11 +363,12 @@ export function CustomDisplaySelectUI({onSelect}) {
   const dispatch = useDispatch();
   const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
   const WS_ID = useSelector(state => state.UIData.WS_ID);
-
+  
+  const _mus = useSelector(state => state.UIData.machine_custom_setting);
   useEffect(() => {
     setDisplayInfo(undefined);
     setCatSet(undefined);
-    CusDisp_DB.read(".").then(data=>{
+    CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data=>{
       let dispInfo = data.prod;
       setDisplayInfo(dispInfo);
       let catArr=dispInfo.map(dispI=>dispI.cat).filter(cat=>cat!==undefined);

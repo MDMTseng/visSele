@@ -299,6 +299,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const [ErrorInfo,setErrorInfo]=useState(undefined);
 
   
+  const _mus = useSelector(state => state.UIData.machine_custom_setting);
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   
   const [stepIdx,setStepIdx]=useState(0);
@@ -369,7 +370,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       } });
   }
 
-  let InspectionMonitor_URL_w_info=InspectionMonitor_URL;
+  let InspectionMonitor_URL_w_info=_mus.inspection_monitor_url;
   if (isString(DefFileHash) && DefFileHash.length > 5) {
     InspectionMonitor_URL_w_info = InspectionMonitor_URL_w_info +
       "?v=" + 0 + "&name=" + DefFileName + "&hash=" + DefFileHash;
@@ -1472,7 +1473,6 @@ const mapStateToProps_APPMain = (state) => {
     WS_ID: state.UIData.WS_ID,
     version_map_info: state.UIData.version_map_info,
     WebUI_info: state.UIData.WebUI_info,
-    InspectionMonitor_URL: state.UIData.InspectionMonitor_URL,
     uInspData: state.Peripheral.uInsp,
 
     statSetting: state.UIData.edit_info.statSetting,

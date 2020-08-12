@@ -1,8 +1,7 @@
 import jsonp from 'jsonp';
 
 
-let db_url = "http://hyv.decade.tw:8080/";
-function defFileQuery(name,featureSet_sha1)
+function defFileQuery(db_url,name,featureSet_sha1)
 {
     
     let url = db_url+"query/deffile?";
@@ -24,9 +23,7 @@ function defFileQuery(name,featureSet_sha1)
         });
     });
 }
-
-
-function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100)
+function inspectionQuery(db_url,subFeatureDefSha1,date_start,date_end,limit=100)
 {	
     let TYPE="query/inspection";
     let url = db_url+TYPE+"?";
@@ -102,12 +99,12 @@ function pjsonp(url,timeout=5000,timeoutErrMsg="TIMEOUT")
   });
 }
 let CusDisp_DB={
-  read:(name)=>
+  read:(db_url,name)=>
   {
     let defFileData=undefined;
     
     return new Promise((res,rej)=>{
-      let url='http://hyv.decade.tw:8080/QUERY/customDisplay?name='+name
+      let url=db_url+'QUERY/customDisplay?name='+name
       url+='&projection={"name":1,"cat":1,"targetDeffiles":1}'
       
       pjsonp(url,null).then((data)=>{
@@ -117,11 +114,11 @@ let CusDisp_DB={
       })
     });
   },
-  create:(info,id)=>{
+  create:(db_url,info,id)=>{
     let defFileData=undefined;
     
     return new Promise((res,rej)=>{
-      let url='http://hyv.decade.tw:8080/insert/customdisplay?name='+info.name+
+      let url=db_url+'insert/customdisplay?name='+info.name+
         "&full="+JSON.stringify(info)
       if(id!==undefined)
       {
@@ -135,10 +132,10 @@ let CusDisp_DB={
       })
     });
   },
-  delete:(id)=>{
+  delete:(db_url,id)=>{
 
     return new Promise((res,rej)=>{
-      let url='http://hyv.decade.tw:8080/delete/customdisplay?_id='+id;
+      let url=db_url+'delete/customdisplay?_id='+id;
       pjsonp(url,null).then((data)=>{
         res(data);
       }).catch((err)=>{
@@ -147,13 +144,13 @@ let CusDisp_DB={
     });
   }
 }
-CusDisp_DB.update=(info,id)=>{
+CusDisp_DB.update=(db_url,info,id)=>{
   return new Promise((res,rej)=>{
     if(id===undefined)
     {
       return rej("Error:No id");
     }
-    CusDisp_DB.create(info,id).then((data)=>{
+    CusDisp_DB.create(db_url,info,id).then((data)=>{
       res(data);
     }).catch((err)=>{
       rej(err);

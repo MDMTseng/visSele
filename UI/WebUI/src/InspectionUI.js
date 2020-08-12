@@ -704,12 +704,15 @@ class ObjInfoList extends React.Component {
           defaultSelectedKeys={['functionMenu']}
           // defaultOpenKeys={['functionMenu']}
           mode="inline">
+
+          {this.props.uInsp_peripheral_url===undefined?null:       
           <SubMenu style={{ 'textAlign': 'left' }} key="functionMenu"
             title={<span><SettingOutlined />平台功能操作</span>}>
             <MicroFullInspCtrl_rdx
-              url={"ws://192.168.2.43:5213"}
+              url={this.props.uInsp_peripheral_url}
             />
-          </SubMenu>
+          </SubMenu>}
+
 
           {resultMenu}
 
@@ -2138,6 +2141,7 @@ class APP_INSP_MODE extends React.Component {
         IR={trackingWindowInfo}
         IR_decotrator={this.props.info_decorator}
         checkResult2AirAction={this.checkResult2AirAction}
+        uInsp_peripheral_url={this.props.machine_custom_setting.uInsp_peripheral_url}
         key="ObjInfoList"
         WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND(this.props.WS_ID, tl, prop, data, uintArr); }}
       />);
@@ -2243,6 +2247,10 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
 
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
+    
+    camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
+    machine_custom_setting:state.UIData.machine_custom_setting
+
     //reportStatisticState:state.UIData.edit_info.reportStatisticState
   }
 };

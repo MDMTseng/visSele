@@ -159,7 +159,6 @@ function Default_UICtrlReducer() {
     p_state: null,
     state_count: 0,
     WS_ID: "EverCheckWS",
-    InspectionMonitor_URL: "http://gitexp.idcircle.me/hyvision_monitor/0.0.0/",
     DICT:EC_zh_TW
   }
 
