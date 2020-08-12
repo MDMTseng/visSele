@@ -89,13 +89,13 @@ std::timed_mutex BPG_protocol_lock;
 
 void BPG_protocol_send(DatCH_Data dat)
 {
-  LOGI("SEND_LOCK");
+  //LOGI("SEND_LOCK");
   BPG_protocol_lock.lock();
-  LOGI("SEND_ING");
+  //LOGI("SEND_ING");
   BPG_protocol->SendData(dat);
-  LOGI("SEND_UNLOCK");
+  //LOGI("SEND_UNLOCK");
   BPG_protocol_lock.unlock();
-  LOGI("SEND_END");
+  //LOGI("SEND_END");
 }
 
 int _argc;
