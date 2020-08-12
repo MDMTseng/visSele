@@ -66,6 +66,10 @@ class Websocket_Server{
     return MessageL;
   }
   
+  virtual void onPeerDisconnect(WebSocketProtocol* WProt)
+  {
+    return;
+  }
   
   
   int RECVWebSocketPkg_binary(WebSocketProtocol* WProt, EthernetClient* client, char* RECVData)
@@ -211,6 +215,8 @@ class Websocket_Server{
         DEBUG_print(" state::");
         DEBUG_println(stat);
         Rc.stop();
+        
+        onPeerDisconnect(&WSP[i]);
         WSP[i].rmClientOBJ();
   
       }
@@ -304,6 +310,7 @@ class Websocket_Server{
     //DEBUG_println(">>>>");
     if (WSPptr == NULL)
     {
+      DEBUG_println("client.stop()");
       client.stop();
       return;
     }
@@ -356,6 +363,7 @@ class Websocket_Server{
       DEBUG_print("Normal close::");
       //DEBUG_println(client._sock);
       client.stop();
+      onPeerDisconnect(WSPptr);
       WSPptr->rmClientOBJ();
       return;
     }

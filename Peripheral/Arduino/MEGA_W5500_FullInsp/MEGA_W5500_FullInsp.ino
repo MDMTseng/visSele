@@ -482,6 +482,13 @@ class Websocket_FI:public Websocket_FI_proto{
   Websocket_FI(uint8_t* buff,uint32_t buffL,IPAddress ip,uint32_t port,IPAddress gateway,IPAddress subnet):
     Websocket_FI_proto(buff,buffL,ip,port,gateway,subnet){}
 
+  virtual void onPeerDisconnect(WebSocketProtocol* WProt)
+  {
+    DEBUG_println("onPeerDisconnect");
+    tar_pulseHZ_=0;
+    return;
+  }
+  
      
   int Mach_state_ToJson(char* jbuff,uint32_t jbuffL, int *ret_status)
   {
