@@ -169,7 +169,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
 
         return new Promise((resolve, reject) => {
           console.log(" >>>>>>:",data);
-          if(data[0].ACK !=true || data[1].ACK !=true )
+          if(data[0].type !="ACK" || data[1].type !="ACK" )
           {
             reject({
               data,
@@ -218,7 +218,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
       .then((data)=>{
         setUpdateRunning(false)
         console.log("Update:",data)
-        if(data.ACK)
+        if(data.type=="ACK")
         {
           let x = {"type":"reload"}
           boot_daemon_ws.send_obj(x)
@@ -252,7 +252,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
       .then((data)=>{
         //if(data.)
         //console.log("poll.then:",data)
-        if(data.ACK)
+        if(data.type=="ACK")
         {
           if(data.poll_code===undefined||data.poll_code===null)
           {//The code will be set if the program exit with return code
@@ -425,7 +425,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
           
           setUpdateRunning(false)
           console.log("Update:",data)
-          if(data.ACK)
+          if(data.type=="ACK")
           {
             let x = {"type":"reload"}
             boot_daemon_ws.send_obj(x)
