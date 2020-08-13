@@ -15,6 +15,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     protected:
     int mirrorFlag[2]={0,0};
+    int ROI_mirrorFlag[2]={0,0};
     int snapFlag=0;
     std::mutex m;
     CameraHandle    m_hCamera=0;	//the handle of the camera we use
@@ -47,6 +48,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     
     CameraLayer::status SetMirror(int Dir,int en);
+    CameraLayer::status SetROIMirror(int Dir,int en);
 
     CameraLayer::status SetFrameRateMode(int mode);
     CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max);
