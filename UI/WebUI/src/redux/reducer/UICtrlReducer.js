@@ -386,9 +386,7 @@ function StateReducer(newState, action) {
                 {
                   newState.edit_info = { ...newState.edit_info };
                   //newState.report=action.data;
-                  newState.edit_info._obj.SetInspectionReport(report);
-
-                  let inspReport = newState.edit_info._obj.inspreport;
+                  let inspReport = report;
 
                   newState.edit_info.inspReport = inspReport;
                   inspReport.time_ms = currentTime_ms;
@@ -468,7 +466,7 @@ function StateReducer(newState, action) {
                         //Check retation consistency
                         let angleDiff = singleReport.rotate - srep_inWindow.rotate;
                         if (angleDiff > 180) angleDiff = angleDiff - 360;
-                        if (angleDiff > 5 || angleDiff < -5) {
+                        if (angleDiff > 2 || angleDiff < -2) {
                           return closeRep;
                         }
 
@@ -549,55 +547,71 @@ function StateReducer(newState, action) {
                         });
 
                         closeRep.judgeReports.forEach((cjrep) => {
+                          
+                          let sjrep = singleReport.searchPoints.find((sjrep_) => sjrep_.id == cjrep.id);
 
-                          if (cjrep == INSPECTION_STATUS.NA) {
-                            cjrep.value = NaN;
+                          
+                          if (sjrep === undefined || sjrep.status == INSPECTION_STATUS.NA||sjrep.value!=sjrep.value) 
+                          {//Skip this value
                             return;
                           }
-                          let id = cjrep.id;
-                          let sjrep = singleReport.judgeReports.find((sjrep) => sjrep.id == id);
-                          if (sjrep === undefined) return;
-                          if (sjrep.status == INSPECTION_STATUS.NA) {
-                            cjrep.status = INSPECTION_STATUS.NA;
-                            cjrep.value = NaN;
+                          
+                          if (cjrep.status == INSPECTION_STATUS.NA||cjrep.value!=cjrep.value) {
+                            cjrep.status = sjrep.status;//If the original value is NA, replace it with the new one
+                            cjrep.value = sjrep.value;//Might be NA as well
                             return;
                           }
-
-
-                          if (cjrep.value == cjrep.value)//if original value is NOT NAN
-                          {
-                            let dataDiff = sjrep.value - cjrep.value;
-                            if (cjrep.subtype === SHAPE_TYPE.measure_subtype.angle) {
-                              if (dataDiff > Math.PI) dataDiff -= Math.PI;
-                              if (dataDiff < -Math.PI) dataDiff += Math.PI;
-                              //console.log(dataDiff);
-                            }
-                            if (dataDiff == dataDiff)
-                              cjrep.value += (1 / (closeRep.repeatTime + 1)) * (dataDiff);
-
-                          }
-                          else//if original value is NAN
-                            cjrep.value = sjrep.value;
+                          //The remaining is sjrep and cjrep are available
+                          
+                          cjrep.value += (1 / (closeRep.repeatTime + 1)) * (sjrep.value - cjrep.value);
 
                           let defInfo = newState.edit_info.list;
-                          let sj_def = defInfo.find((sj_def) => sj_def.id == id);
-                          if (sj_def === undefined) return;
-
-
-
-
-                          if (cjrep.value !== cjrep.value)//NAN
-                          {
+                          let sj_def = defInfo.find((sj_def) => sj_def.id == id);//find def info
+                          if (sj_def === undefined){//cehck inspection status
                             cjrep.status = INSPECTION_STATUS.NA;
-                          }
-                          else if (cjrep.value < sj_def.USL && cjrep.value > sj_def.LSL) {
+                          } else if (cjrep.value < sj_def.USL && cjrep.value > sj_def.LSL) {
                             cjrep.status = INSPECTION_STATUS.SUCCESS;
-                          }
-                          else {
+                          } else {
                             cjrep.status = INSPECTION_STATUS.FAILURE;
                           }
                         });
 
+                        
+                        closeRep.judgeReports.forEach((cjrep) => {
+                          
+                          let sjrep = singleReport.searchPoints.find((sjrep_) => sjrep_.id == cjrep.id);
+
+                          
+                          if (sjrep === undefined || sjrep.status == INSPECTION_STATUS.NA||sjrep.value!=sjrep.value) 
+                          {//Skip this value
+                            return;
+                          }
+                          
+                          if (cjrep.status == INSPECTION_STATUS.NA||cjrep.value!=cjrep.value) {
+                            cjrep.status = sjrep.status;//If the original value is NA, replace it with the new one
+                            cjrep.value = sjrep.value;//Might be NA as well
+                            return;
+                          }
+                          //The remaining is sjrep and cjrep are available
+                          
+                          cjrep.value += (1 / (closeRep.repeatTime + 1)) * (sjrep.value - cjrep.value);
+
+                          let defInfo = newState.edit_info.list;
+                          let sj_def = defInfo.find((sj_def) => sj_def.id == id);//find def info
+                          if (sj_def === undefined){//cehck inspection status
+                            cjrep.status = INSPECTION_STATUS.NA;
+                          } else if (cjrep.value < sj_def.USL && cjrep.value > sj_def.LSL) {
+                            cjrep.status = INSPECTION_STATUS.SUCCESS;
+                          } else {
+                            cjrep.status = INSPECTION_STATUS.FAILURE;
+                          }
+                        });
+
+                        
+                        closeRep.judgeReports.forEach((jud)=>{
+                          jud.detailStatus=
+                            newState.edit_info._obj.getMeasureGrading(jud);
+                        });
                         //closeRep.seq.push(singleReport);//Push current report into the sequence
                         closeRep.time_ms = currentTime_ms;
                         closeRep.repeatTime += 1;
@@ -616,6 +630,10 @@ function StateReducer(newState, action) {
                         //If there is no report in tracking window similar to the current report
                         //Add into the trackingWindow
                         let treport = dclone(singleReport);
+                        treport.judgeReports.forEach((jud)=>{
+                          jud.detailStatus=
+                            newState.edit_info._obj.getMeasureGrading(jud);
+                        });
                         treport.time_ms = currentTime_ms;
                         treport.add_time_ms = currentTime_ms;
                         treport.subFeatureDefSha1 = subFeatureDefSha1;

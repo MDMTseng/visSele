@@ -99,44 +99,49 @@ export class InspectionEditorLogic {
     log.info(sig360info);
     this.sig360info = sig360info;
   }
-  SetInspectionReport(inspreport) {
-    this.inspreport = inspreport;
-    if (this.inspreport.reports === undefined || this.inspreport.reports.length == 0) {
-      return;
-    }
-    this.inspreport.reports.forEach(report => report.judgeReports.forEach((measure) => {
-      let measureDef = this.shapeList.find((feature) => feature.id == measure.id);
-      //console.log(measure, measureDef);
-      if (measureDef === undefined || measure.status === INSPECTION_STATUS.NA) {
-        measure.detailStatus = MEASURERSULTRESION.NA;
-      }
-      else if (measure.status === INSPECTION_STATUS.UNSET) {
-        measure.detailStatus = MEASURERSULTRESION.UNSET;
-      }
-      else if (measure.value < measureDef.LSL) {
-        measure.detailStatus = MEASURERSULTRESION.LSNG;
-      }
-      else if (measure.value < measureDef.LCL) {
-        measure.detailStatus = MEASURERSULTRESION.LCNG;
-      }
-      else if (measure.value < measureDef.value) {
-        measure.detailStatus = MEASURERSULTRESION.LOK;
-      }
-      else if (measure.value < measureDef.UCL) {
-        measure.detailStatus = MEASURERSULTRESION.UOK;
-      }
-      else if (measure.value < measureDef.USL) {
-        measure.detailStatus = MEASURERSULTRESION.UCNG;
-      }
-      else {
-        measure.detailStatus = MEASURERSULTRESION.USNG;
-      }
 
-    })
-    );
+
+  getMeasureGrading(measureReport)
+  {
+    let measureDef = this.shapeList.find((feature) => feature.id == measureReport.id);
+    //console.log(measure, measureDef);
+    if (measureDef === undefined || measureReport.status === INSPECTION_STATUS.NA || measureReport.value!=measureReport.value) {
+      return MEASURERSULTRESION.NA;
+    }
+    else if (measureReport.status === INSPECTION_STATUS.UNSET) {
+      return MEASURERSULTRESION.UNSET;
+    }
+    else if (measureReport.value < measureDef.LSL) {
+      return MEASURERSULTRESION.LSNG;
+    }
+    else if (measureReport.value < measureDef.LCL) {
+      return MEASURERSULTRESION.LCNG;
+    }
+    else if (measureReport.value < measureDef.value) {
+      return MEASURERSULTRESION.LOK;
+    }
+    else if (measureReport.value < measureDef.UCL) {
+      return MEASURERSULTRESION.UOK;
+    }
+    else if (measureReport.value < measureDef.USL) {
+      return MEASURERSULTRESION.UCNG;
+    }
+    else {
+      return MEASURERSULTRESION.USNG;
+    }
 
   }
 
+  InspectionReportGrading(inspreport){
+    
+    if (inspreport.reports === undefined || inspreport.reports.length == 0) {
+      return;
+    }
+    inspreport.reports.forEach(report => report.judgeReports.forEach((measure) => {
+      measure.detailStatus = this.InspectionMeasureGrading(measure);
+    })
+    );
+  }
   getsig360info_mmpp() {
     try {
       //console.log(this.sig360info);
