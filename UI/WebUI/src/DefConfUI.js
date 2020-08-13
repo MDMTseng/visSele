@@ -987,7 +987,25 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       dict={DICT}
       key="<"
       addClass="layout black vbox"
-      onClick={() => ACT_EXIT()} />,
+      onClick={() =>{
+        let defFile_New=defFileGeneration(edit_info);
+        console.log(defFile_New);
+        if(defFile_New.featureSet_sha1===defFile_New.featureSet_sha1_pre)
+        {
+          ACT_EXIT();
+        }
+        else
+        {
+          setModal_view({
+            onOk: () => {
+              ACT_EXIT();
+            },
+            onCancel: () => { console.log("onCancel") },
+            title: DICT._.WARNING,
+            view: DICT.defConf.exit_warning_change_is_made
+          })
+        }
+      }} />,
 
     <BASE_COM.JsonEditBlock object={{ DefFileName: edit_info.DefFileName }}
       dict={DICT}
@@ -1003,9 +1021,11 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       jsonChange={(original_obj, target, type, evt) => {
         ACT_DefFileTag_Update(evt.target.value.split(","));
       }}
-      whiteListKey={{ DefFileTag: "input", }} />,
-
-
+      whiteListKey={{ DefFileTag: "input", }} />
+    ]
+  if(defConf_lock_level==0)
+  MenuSet=MenuSet.concat(
+    [
     <BASE_COM.IconButton
       dict={DICT}
       addClass="layout vbox  btn-swipe"
@@ -1044,7 +1064,9 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       dict={DICT}
       text="measure"
       onClick={() => ACT_Measure_Add_Mode()}>
-    </BASE_COM.IconButton>,
+    </BASE_COM.IconButton>]);
+      
+  MenuSet=MenuSet.concat([
     <BASE_COM.IconButton
       iconType={<EditOutlined/>}
       dict={DICT}
@@ -1052,47 +1074,47 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       key="EDIT"
       text="edit" onClick={() => ACT_Shape_Edit_Mode()} />,
     (defConf_lock_level > 2) ? null :
-      <BASE_COM.IconButton
-        iconType={<SaveOutlined/>}
-        dict={DICT}
-        addClass="layout palatte-gold-7 vbox"
-        key="SAVE"
-        text="save" onClick={() => {
-          if (defConf_lock_level > 2) return;
-          setFileSavingCallBack((prevs,props)=> (folderInfo, fileName, existed) => {
-              console.log(folderInfo, fileName, existed);
-              
-              let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
-              console.log(fileNamePath);
+    <BASE_COM.IconButton
+      iconType={<SaveOutlined/>}
+      dict={DICT}
+      addClass="layout palatte-gold-7 vbox"
+      key="SAVE"
+      text="save" onClick={() => {
+        if (defConf_lock_level > 2) return;
+        setFileSavingCallBack((prevs,props)=> (folderInfo, fileName, existed) => {
+            console.log(folderInfo, fileName, existed);
+            
+            let fileNamePath = folderInfo.path + "/" + fileName.replace('.' + DEF_EXTENSION, "");
+            console.log(fileNamePath);
 
-              var enc = new TextEncoder();
-              let report = defFileGeneration(edit_info);
-              if(report.name===undefined || report.name.length==0)
-              {
-                report.name=fileName;
-                ACT_DefFileName_Update(fileName)
-              }
-              ACT_DefFileHash_Update(report.featureSet_sha1);
-              console.log("ACT_Report_Save");
-              ACT_Report_Save(WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
-              console.log("ACT_Cache_Img_Save");
-              ACT_Cache_Img_Save(WS_ID, fileNamePath);
-
-
-              ACT_Def_Model_Path_Update(fileNamePath);
-              setFileSavingCallBack(undefined);
+            var enc = new TextEncoder();
+            let report = defFileGeneration(edit_info);
+            if(report.name===undefined || report.name.length==0)
+            {
+              report.name=fileName;
+              ACT_DefFileName_Update(fileName)
+            }
+            ACT_DefFileHash_Update(report.featureSet_sha1);
+            console.log("ACT_Report_Save");
+            ACT_Report_Save(WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
+            console.log("ACT_Cache_Img_Save");
+            ACT_Cache_Img_Save(WS_ID, fileNamePath);
 
 
-              var msg_obj = {
-                dbcmd: { "db_action": "insert" },
-                data: report
-              };
-              WS_DEF_DB_Insert.send_obj(msg_obj).
-                then((ret) => console.log('then', ret)).
-                catch((ret) => console.log("catch", ret));
+            ACT_Def_Model_Path_Update(fileNamePath);
+            setFileSavingCallBack(undefined);
 
-            });
-        }} />,
+
+            var msg_obj = {
+              dbcmd: { "db_action": "insert" },
+              data: report
+            };
+            WS_DEF_DB_Insert.send_obj(msg_obj).
+              then((ret) => console.log('then', ret)).
+              catch((ret) => console.log("catch", ret));
+
+          });
+      }} />,
     <BASE_COM.IconButton
       iconType={<ExportOutlined/>}
       dict={DICT}
@@ -1109,6 +1131,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         })
 
       }} />,
+    (defConf_lock_level !=0) ? null :
     <BASE_COM.IconButton
       dict={DICT}
       iconType={<SettingOutlined/>}
@@ -1154,11 +1177,11 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
               
             },
             onCancel: () => { console.log("onCancel") },
-            title: "WARNING",
-            view: "確定要重新設定嗎？"
+            title: DICT._.WARNING,
+            view: DICT.defConf.do_you_want_to_reset_def
           })
       }} />,
-
+    (defConf_lock_level !=0) ? null :
     <BASE_COM.IconButton
       // iconType="INST_CHECK"
       dict={DICT}
@@ -1237,10 +1260,8 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           }
         }
         );
-      }} />,
-
-
-  ];
+      }} />
+  ]);
 
 
   let DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
@@ -2147,7 +2168,8 @@ class APP_DEFCONF_MODE extends React.Component {
     let AddtionalInfo = null;
     if (this.props.defConf_lock_level != 0)
       AddtionalInfo =
-        <div key="AddtionalInfo" className={"s overlay overlayright HXA"} style={{ width: "100px", backgroundColor: "black" }}>
+        <div key="AddtionalInfo" className={"s overlay overlayright HXA"} style={{ width: "100px", backgroundColor: "black" }}
+          onClick={()=>this.props.ACT_DefConf_Lock_Level_Update(0)}>
           {<Icon type="lock" />}
           {" 鎖等級:" + this.props.defConf_lock_level}
         </div>
