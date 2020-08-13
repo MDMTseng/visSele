@@ -405,20 +405,21 @@ async def recv_msg(websocket):
 
       cmd_id=recv_json.get("cmd_id", None)
       ret_err,info=cmd_exec(recv_json)
+      NACK="NAK"
       if(ret_err == 0):
-        ACK = True
+        NACK = "ACK"
       else:
-        ACK = False
+        NACK = "NAK"
 
       _type=recv_json.get("type", None)
 
       if _type == "reload":
-        ACK=True
+        NACK = "ACK"
 
       if _type == "EXIT":
-        ACK=True
+        NACK = "ACK"
 
-      ret_json=json.dumps({'ACK': ACK, 'cmd_id': cmd_id,**info})
+      ret_json=json.dumps({'type': NACK, 'cmd_id': cmd_id,**info})
       response_text = ret_json
       await websocket.send(response_text)
 

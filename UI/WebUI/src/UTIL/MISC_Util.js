@@ -402,14 +402,10 @@ export class websocket_reqTrack{
     };
     websocket.onmessage=(ev)=>{
       this.readyState=this.websocket.readyState;
-      //console.log(ev)
       let p = JSON.parse(ev.data);
-      
-      let ACK_info=p.ACK;
-      let type=p.type;
-
-      if(ACK_info!==undefined)
+      if(p.type=="ACK")
       {
+        
         let tKey=p[this.trackKey];
         if(tKey!==undefined)
         {
