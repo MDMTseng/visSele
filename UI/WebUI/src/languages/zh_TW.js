@@ -2,10 +2,14 @@
 export default {
 
     defConf:{
-      calc_add_measure:"增加量測變數"
+      calc_add_measure:"增加量測變數",
+      
+      exit_warning_change_is_made:"設定已更動 確定要離開嗎？",
+      do_you_want_to_reset_def:"確定要重新設定嗎？"
     },
 
     _:{
+        WARNING:"警告",
         ReconnectAirDevice:"重新連接噴氣裝置",
         line:"線段/Line",
         arc:"弧/Arc",
@@ -66,7 +70,7 @@ export default {
         disconnected:"已斷線",
         connected:"已連線",
         camera_reconnection_caption:"相機已離線 重連中",
-        manual_ROI_setup:"手動視野範圍(ROI)選擇"
+        manual_ROI_setup:"手動視野範圍(ROI)選擇",
 
     },
     connection:{
@@ -107,7 +111,7 @@ export default {
       GOGOGO_detail:"就是GOGOGO",
 
       MODE_SELECT_MAIN_MENU:"主選單",
-      MODE_SELECT_DEFCONF:"主選單",
+      MODE_SELECT_DEFCONF:"量測設定",
       MODE_SELECT_INSP_PREP:"檢驗準備",
       MODE_SELECT_INST_INSP:"即檢",
       MODE_SELECT_BACKLIGHT_CALIB:"背光校正",

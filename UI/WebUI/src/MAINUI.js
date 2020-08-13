@@ -1039,7 +1039,7 @@ const MainUI=()=>{
       },
       DeConf:{
         type:"DeConf",
-        name:"DeConf"
+        name:DICT.mainui.MODE_SELECT_DEFCONF
       },
       InstInsp:{
         type:"InstInsp",
