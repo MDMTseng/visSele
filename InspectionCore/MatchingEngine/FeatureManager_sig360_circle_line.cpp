@@ -774,8 +774,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         angleDiff-=M_PI;
       }
       
-      LOGI("angleDiff:%f ",angleDiff*180/M_PI);
-      LOGI("angleDiff_mid:%f",angleDiff_mid*180/M_PI);
+      LOGV("angleDiff:%f ",angleDiff*180/M_PI);
+      LOGV("angleDiff_mid:%f",angleDiff_mid*180/M_PI);
       
       if(angleDiff_mid<0)
       {
@@ -787,23 +787,11 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       }
       
 
-      // if( (flip_f < 0) ^ (acv2DCrossProduct(vec1,vec_mid)<0))
-      // {
-      //   angleDiff=M_PI-angleDiff;
-      // }
-
-      // float angleDiff_mid = (midwayAngle - sAngle);
-      
-      // if(angleDiff_mid<0)
-      // {
-      //   angleDiff=M_PI-angleDiff;
-      // }
-
-      LOGI("pt_: %f %f   %f %f",pt11.X,pt11.Y,pt21.X,pt21.Y);
-      LOGI("pt_mid:%f %f   interSectPt:%f %f",pt_mid.X,pt_mid.Y,interSectPt.X,interSectPt.Y);
-      LOGI("sAngle:%f eAngle:%f midwayAngle:%f",sAngle*180/M_PI,eAngle*180/M_PI,midwayAngle*180/M_PI);
-      LOGI("angleDiff:%f ",angleDiff*180/M_PI);
-      LOGI("angleDiff_mid:%f",angleDiff_mid*180/M_PI);
+      // LOGI("pt_: %f %f   %f %f",pt11.X,pt11.Y,pt21.X,pt21.Y);
+      // LOGI("pt_mid:%f %f   interSectPt:%f %f",pt_mid.X,pt_mid.Y,interSectPt.X,interSectPt.Y);
+      // LOGI("sAngle:%f eAngle:%f midwayAngle:%f",sAngle*180/M_PI,eAngle*180/M_PI,midwayAngle*180/M_PI);
+      // LOGI("angleDiff:%f ",angleDiff*180/M_PI);
+      // LOGI("angleDiff_mid:%f",angleDiff_mid*180/M_PI);
 
       // LOGI("vec_mid:%f %f",vec_mid.X,vec_mid.Y);
       // LOGI("vec1:%f %f",vec1.X,vec1.Y);
@@ -812,35 +800,8 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       // float angleDiff = (eAngle - sAngle)+20 * M_PI;
       // angleDiff=fmod(angleDiff, 2 * M_PI);
 
-      // LOGI("angleDiff:%f ",angleDiff*180/M_PI);
-
-      // if (angleDiff > M_PI)
-      //   angleDiff = 2*M_PI-angleDiff;
-
-      // LOGI("angleDiff:%f ",angleDiff*180/M_PI);
-      //The logic blow is to find angle in 4 quadrants (line1 as x axis, line2 as y axis)
-      //So actually only 2 angles available ( quadrant 1 angle == quadrant 3 angle ) ( quadrant 2 angle == quadrant 4 angle )
-      //quadrant 0 means quadrant 4 => quadrant n%2
-
-      //If the angle is begger than PI(180) means the vector that we use to calculate angle is reversed
-      //Like we use x axis and -y axis, the angle will be 270 instead of 90, so we will use
-
-      //Find diff angle 0~PI
-      //Now we have the quadrant 1 angle
 
       judgeReport.measured_val = 180 * angleDiff / M_PI; //Convert to degree
-
-      //HACK: the current method would have 0<->180 jumping back&forward issue
-      //So warp around if the diff value is too much
-      // float measureDiff = judgeReport.measured_val - judgeReport.def->targetVal;
-      // if (measureDiff < -90)
-      // {
-      //   judgeReport.measured_val += 180;
-      // }
-      // else if (measureDiff > 90)
-      // {
-      //   judgeReport.measured_val -= 180;
-      // }
       notNA = true;
     }
 
