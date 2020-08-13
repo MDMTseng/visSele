@@ -1814,26 +1814,22 @@ class APP_INSP_MODE extends React.Component {
 
     if (this.props.inspMode == "FI") {
       this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, deffile: this.props.defModelPath + "." + DEF_EXTENSION }, undefined);
-      //TODO:HACK HACK make StatSettingParam action slower, 
-      //because the cmd "FI"/"CI" will send DefFile("DF") and that will reset StatSettingParam make make this action useless
-      setTimeout(() =>
-        this.props.ACT_StatSettingParam_Update({
-          keepInTrackingTime_ms: 0,
-          minReportRepeat: 0,
-          headReportSkip: 0,
-        }), 2000);
+
+      this.props.ACT_StatSettingParam_Update({
+        keepInTrackingTime_ms: 0,
+        minReportRepeat: 0,
+        headReportSkip: 0,
+      })
     }
     else if (this.props.inspMode == "CI") {
       this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, deffile: this.props.defModelPath + "." + DEF_EXTENSION }, undefined);
 
-
-      setTimeout(() =>
-        this.props.ACT_StatSettingParam_Update({
-          keepInTrackingTime_ms: 1000,
-          historyReportlimit: 2000,
-          minReportRepeat: 4,
-          headReportSkip: 4,
-        }), 2000);
+      this.props.ACT_StatSettingParam_Update({
+        keepInTrackingTime_ms: 1000,
+        historyReportlimit: 2000,
+        minReportRepeat: 4,
+        headReportSkip: 4,
+      })
     }
   }
 
