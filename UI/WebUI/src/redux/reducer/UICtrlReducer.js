@@ -546,42 +546,14 @@ function StateReducer(newState, action) {
                           ccrep.y = valueAveIn(ccrep.y, screp.y, closeRep.repeatTime);
                         });
 
-                        closeRep.judgeReports.forEach((cjrep) => {
-                          
-                          let sjrep = singleReport.searchPoints.find((sjrep_) => sjrep_.id == cjrep.id);
-
-                          
-                          if (sjrep === undefined || sjrep.status == INSPECTION_STATUS.NA||sjrep.value!=sjrep.value) 
-                          {//Skip this value
-                            return;
-                          }
-                          
-                          if (cjrep.status == INSPECTION_STATUS.NA||cjrep.value!=cjrep.value) {
-                            cjrep.status = sjrep.status;//If the original value is NA, replace it with the new one
-                            cjrep.value = sjrep.value;//Might be NA as well
-                            return;
-                          }
-                          //The remaining is sjrep and cjrep are available
-                          
-                          cjrep.value += (1 / (closeRep.repeatTime + 1)) * (sjrep.value - cjrep.value);
-
-                          let defInfo = newState.edit_info.list;
-                          let sj_def = defInfo.find((sj_def) => sj_def.id == id);//find def info
-                          if (sj_def === undefined){//cehck inspection status
-                            cjrep.status = INSPECTION_STATUS.NA;
-                          } else if (cjrep.value < sj_def.USL && cjrep.value > sj_def.LSL) {
-                            cjrep.status = INSPECTION_STATUS.SUCCESS;
-                          } else {
-                            cjrep.status = INSPECTION_STATUS.FAILURE;
-                          }
-                        });
 
                         
                         closeRep.judgeReports.forEach((cjrep) => {
                           
-                          let sjrep = singleReport.searchPoints.find((sjrep_) => sjrep_.id == cjrep.id);
+                          let sjrep = singleReport.judgeReports.find((sjrep_) => sjrep_.id == cjrep.id);
 
                           
+                          //console.log("=======",sjrep);
                           if (sjrep === undefined || sjrep.status == INSPECTION_STATUS.NA||sjrep.value!=sjrep.value) 
                           {//Skip this value
                             return;
@@ -597,7 +569,7 @@ function StateReducer(newState, action) {
                           cjrep.value += (1 / (closeRep.repeatTime + 1)) * (sjrep.value - cjrep.value);
 
                           let defInfo = newState.edit_info.list;
-                          let sj_def = defInfo.find((sj_def) => sj_def.id == id);//find def info
+                          let sj_def = defInfo.find((sj_def) => sj_def.id == cjrep.id);//find def info
                           if (sj_def === undefined){//cehck inspection status
                             cjrep.status = INSPECTION_STATUS.NA;
                           } else if (cjrep.value < sj_def.USL && cjrep.value > sj_def.LSL) {
