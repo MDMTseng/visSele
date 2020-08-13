@@ -1644,9 +1644,18 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           matchingEng.ResetFeature();
           matchingEng.AddMatchingFeature(jsonStr);
 
+          void *target;
+          if (getDataFromJson(json, "get_deffile", &target) == cJSON_True)
+          {
+            bpg_dat = GenStrBPGData("DF", jsonStr);
+            bpg_dat.pgID = dat->pgID;
+            datCH_BPG.data.p_BPG_data = &bpg_dat;
+            self->SendData(datCH_BPG);
+          }
+          free(jsonStr);
           //TODO: HACK: this sleep is to wait for the gap in between def config file arriving and inspection result arriving.
           //If the inspection result arrives without def config file then webUI will generate(by design) an statemachine error event.
-          std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+          // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
           if (dat->tl[0] == 'C')
           {
@@ -1681,12 +1690,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           }
           //SaveIMGFile("data/buff.bmp",&test1_buff);
 
-          bpg_dat = GenStrBPGData("DF", jsonStr);
-          bpg_dat.pgID = dat->pgID;
-          datCH_BPG.data.p_BPG_data = &bpg_dat;
-          self->SendData(datCH_BPG);
-
-          free(jsonStr);
           session_ACK = true;
         }
         catch (std::invalid_argument iaex)
