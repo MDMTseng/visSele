@@ -129,6 +129,10 @@ class CameraLayer{
     {
         return CameraLayer::NAK;
     }
+    virtual CameraLayer::status SetROIMirror(int Dir,int en)
+    {
+        return CameraLayer::NAK;
+    }
 
     virtual CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max)
     {

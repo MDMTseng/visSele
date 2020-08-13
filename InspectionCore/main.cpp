@@ -793,6 +793,26 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     camera.SetMirror(1, mirrorY);
   }
 
+  if (JFetch_ARRAY(&settingJson, "ROI_mirror"))
+  { //ROI set
+    int mirrorX = 0;
+    int mirrorY = 0;
+    double *_mirrorX = JFetch_NUMBER(&settingJson, "ROI_mirror[0]");
+    if (_mirrorX)
+    {
+      mirrorX = (int)*_mirrorX;
+    }
+    double *_mirrorY = JFetch_NUMBER(&settingJson, "ROI_mirror[1]");
+    if (_mirrorY)
+    {
+      mirrorY = (int)*_mirrorY;
+    }
+
+    camera.SetROIMirror(0, mirrorX);
+    camera.SetROIMirror(1, mirrorY);
+  }
+
+
   cJSON *ROISetting = JFetch_ARRAY(&settingJson, "ROI");
 
   if (ROISetting)

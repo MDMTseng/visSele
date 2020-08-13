@@ -156,8 +156,6 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     int retx= CameraSetExtTrigShutterType(m_hCamera,EXT_TRIG_EXP_STANDARD);
     LOGI("CameraSetExtTrigShutterType: ret:%d",retx);
     
-
-
 	  CameraPlay(m_hCamera);
     return CameraLayer::ACK;
 }
@@ -171,6 +169,11 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetMirror(int Dir,int en)
   CameraSetMirror(m_hCamera,Dir,en);
   mirrorFlag[Dir]=en;
   m.unlock();
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_GIGE_MindVision::SetROIMirror(int Dir,int en)
+{
+  ROI_mirrorFlag[Dir]=en;
   return CameraLayer::ACK;
 }
 
@@ -247,12 +250,12 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
   ROI_h=(int)ROI_h;
 
 
-  if(mirrorFlag[0])
+  if(ROI_mirrorFlag[0])
   {
     ROI_x = maxWidth-(ROI_x+ROI_w);
   }
   
-  if(mirrorFlag[1])
+  if(ROI_mirrorFlag[1])
   {
     ROI_y = maxHeight-(ROI_y+ROI_h);
   }
@@ -289,12 +292,12 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
   ROI_w=resInfo.iWidth;
   ROI_h=resInfo.iHeight;
   
-  if(mirrorFlag[0])
+  if(ROI_mirrorFlag[0])
   {
     ROI_x = maxWidth-(ROI_x+ROI_w);
   }
   
-  if(mirrorFlag[1])
+  if(ROI_mirrorFlag[1])
   {
     ROI_y = maxHeight-(ROI_y+ROI_h);
   }
