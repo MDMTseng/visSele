@@ -299,10 +299,10 @@ int AddResultCountToJson(char* send_rsp, uint32_t send_rspL,InspResCount &inspRe
   MessageL += sprintf( (char*)send_rsp+MessageL, "\"res_count\":{");
 
 
-  MessageL += sprintf( (char*)send_rsp+MessageL, "\"OK\":%d,",inspResCount.OK);
-  MessageL += sprintf( (char*)send_rsp+MessageL, "\"NG\":%d,",inspResCount.NG);
-  MessageL += sprintf( (char*)send_rsp+MessageL, "\"NA\":%d,",inspResCount.NA);
-  MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":%d,",inspResCount.ERR);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"OK\":%lu,",inspResCount.OK);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"NG\":%lu,",inspResCount.NG);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"NA\":%lu,",inspResCount.NA);
+  MessageL += sprintf( (char*)send_rsp+MessageL, "\"ERR\":%lu,",inspResCount.ERR);
 
   MessageL--;//remove the last comma',';
   MessageL += sprintf( (char*)send_rsp+MessageL, "},");
