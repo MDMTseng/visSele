@@ -225,7 +225,7 @@ function StateReducer(newState, action) {
       newState.Core_Status=action.data;
       return newState;
     case UISEV.Update_Status_Update:
-      newState.Update_Status=action.data;
+      newState.Update_Status={...newState.Update_Status,...action.data};
       return newState;
   
 

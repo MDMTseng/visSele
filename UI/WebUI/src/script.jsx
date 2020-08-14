@@ -41,6 +41,7 @@ import {
   LaptopOutlined,
   CameraOutlined,
   DatabaseOutlined,
+  CloudSyncOutlined,
   CloudUploadOutlined} from '@ant-design/icons';
 
 import { useSelector,useDispatch } from 'react-redux';
@@ -82,16 +83,16 @@ function checkUpdateInfo(updateInfo)
 }
 
 
-function isNewVersionExist(latestReleaseInfo,currentVersionInfo)
+function isNewVersionExist(latestVersion,currentVersion)
 {
-  if(latestReleaseInfo===undefined || currentVersionInfo===undefined)
+  if(latestVersion===undefined || currentVersion===undefined)
     return false;
-  let lv=currentVersionInfo.version;
+  let lv=semver.clean(currentVersion);
   if(lv===undefined)
   {
     lv="0.0.0"
   }
-  let rv=semver.clean(latestReleaseInfo.name);
+  let rv=semver.clean(latestVersion);
 
   console.log(" local_version:",lv)
   console.log("remote_version:",rv)
@@ -133,14 +134,18 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
 
   const dispatch = useDispatch();
   const ACT_Update_Status_Update= (upd_status) => dispatch(UIAct.EV_Update_Status_Update(upd_status));
+  const updateInfo = useSelector(state => state.UIData.Update_Status);
   
+
+
+
   const boot_daemon_ws = comp_info.current._boot_daemon_ws;
 
   const [UI_url, setUI_url] = useState(undefined);
   
-  const [updateInfo, _setUpdateInfo] = useState(undefined);
+  const [systemVersion, setSystemVersion] = useState(undefined);
+
   const setUpdateInfo=(uinfo)=>{
-    _setUpdateInfo(uinfo);
     ACT_Update_Status_Update(uinfo);
   }
 
@@ -158,18 +163,42 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
   }
   const [coreState, setCoreState] = useState(coreStates.UNKNOWN);
   
+
+  function fetchSystemVersion()
+  {
+    console.log("fetchSystemVersion")
+    const boot_daemon_ws = comp_info.current._boot_daemon_ws;
+    return boot_daemon_ws.send_obj({"type":"get_version"}).then((data)=>{
+      
+      console.log(data)
+      return new Promise((resolve, reject) => {
+        let cverinfo = data;
+        if(cverinfo.type !="ACK")
+        {
+          reject({
+            data,
+            info:"query has a nak"
+          });
+          return;
+        }
+
+        resolve({
+          local:cverinfo,
+          localVersion:cverinfo.version
+        })
+      })
+    });
+  }
+
   function fetchUpdateInfo(update_url)
   {
+    console.log("fetchUpdateInfo")
 
     const boot_daemon_ws = comp_info.current._boot_daemon_ws;
-    return Promise.all([
-      boot_daemon_ws.send_obj({"type":"get_version"}),
-      boot_daemon_ws.send_obj({"type":"http_get","url":update_url})])
+    return boot_daemon_ws.send_obj({"type":"http_get","url":update_url})
       .then((data)=>{
-
         return new Promise((resolve, reject) => {
-          console.log(" >>>>>>:",data);
-          if(data[0].type !="ACK" || data[1].type !="ACK" )
+          if(data.type !="ACK")
           {
             reject({
               data,
@@ -177,8 +206,7 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
             });
           }
 
-          let cverinfo=data[0];
-          let rinfo=JSON.parse(data[1].text);
+          let rinfo=JSON.parse(data.text);
           let tar_asset=checkUpdateInfo(rinfo);
           if(tar_asset===undefined)
           {
@@ -188,14 +216,10 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
             });
           }
 
-          let newUpdateExist = isNewVersionExist(rinfo,cverinfo);
           let _updateInfo = {
-            local:cverinfo,
-            localVersion:cverinfo.version,
             remote:rinfo,
             remoteVersion:rinfo.name,
-            remote_res:tar_asset,
-            newUpdateExist:newUpdateExist
+            remote_res:tar_asset
           }
           resolve(_updateInfo)
         })
@@ -236,6 +260,31 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
       
   }
 
+  useEffect(() => {
+    
+    let newUpdateInfo={...updateInfo};
+    if(newUpdateInfo.localVersion!==undefined && newUpdateInfo.remoteVersion!==undefined)
+    {
+      let newUpdateExist = isNewVersionExist(newUpdateInfo.remoteVersion,newUpdateInfo.localVersion);
+      if(newUpdateInfo.newUpdateExist!=newUpdateExist)
+      {
+        newUpdateInfo.newUpdateExist=newUpdateExist;
+        if(newUpdateExist)
+        {
+          setModalInfo({
+            title:"New Update!!!",
+            onCancel:()=>setModalInfo(),
+            onOk:()=>updateTrigger(updateInfo.remote_res.browser_download_url),
+            child:"New update:"+newUpdateInfo.remoteVersion+ "   current ver:"+newUpdateInfo.localVersion
+          }) 
+        }
+        
+        setUpdateInfo(newUpdateInfo);
+
+      }
+    }
+
+  },[updateInfo]);
 
   useEffect(() => {
 
@@ -299,22 +348,16 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
       log.info("boot_daemon_ws.onopen", obj);
       setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
       onReadyStateChange(_boot_daemon_ws.readyState);
-
+      
+      fetchSystemVersion().then((info)=>{
+        setUpdateInfo(info);
+      });
 
       fetchUpdateInfo(update_info_url)
         .then((info)=>{
-          console.log(info)
+          console.log(updateInfo)
+          
           setUpdateInfo(info);
-
-          if(info.newUpdateExist)
-          {
-            setModalInfo({
-              title:"New Update!!!",
-              onCancel:()=>setModalInfo(),
-              onOk:()=>setModalInfo(),
-              child:"New update:"+info.remoteVersion+ "   current ver:"+info.localVersion
-            }) 
-          }
         })
         .catch(err=>{
           console.log(err);
@@ -468,10 +511,16 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
       //APPLaunchCtrlBtn,
       //localUpdateBtn,
       <Button key={"refresh_Button"}   loading={updateRunning}
+        icon={<CloudSyncOutlined />}
         onClick={() => {
           
 
-          setUpdateInfo(undefined);
+          setUpdateInfo({
+            newUpdateExist:undefined,
+            remote:undefined,
+            remoteVersion:undefined,
+            remote_res:undefined
+          });
           fetchUpdateInfo(update_info_url)
           .then((info)=>{
             //console.log(info)
@@ -480,9 +529,9 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
           .catch(err=>{
             console.log(err);
           })
-        }}>refresh_Button</Button>,
+        }}/>,
 
-      updateInfo!==undefined?
+      updateInfo!==undefined && updateInfo.newUpdateExist!==undefined?
       <Button key={"Force Remote UPDATE"} loading={updateRunning}
         icon={<CloudUploadOutlined />} danger={updateInfo.newUpdateExist!==true}
         onClick={() => {
