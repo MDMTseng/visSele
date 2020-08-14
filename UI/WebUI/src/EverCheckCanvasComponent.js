@@ -2249,7 +2249,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     super(canvasDOM);
     this.edit_DB_info = null;
     this.db_obj = null;
-    this.mouse_close_dist = 10;
+    this.mouse_close_dist = 20;
 
 
 
