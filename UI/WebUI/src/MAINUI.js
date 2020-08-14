@@ -700,7 +700,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   //     </Card>
   //   );
   // }
-  console.log(caruselRef)
+  // console.log(caruselRef)
   return(
     
   <div style={{ padding: 24, background: '#fff', height: "100%",
@@ -1107,32 +1107,24 @@ const MainUI=()=>{
         title:UI_state.name
       }
 
-      UI.push([{
-        title:s_statesTable.DeConf.name,
-        img_src:"resource/image/DefConf.png",
-        onClick:()=>EV_UI_Edit_Mode()
-      },{
-        title:DICT.mainui.MODE_SELECT_INSP_PREP,
-        //img_src:"resource/image/DefConf.png",
-        onClick:()=>setUI_state(s_statesTable.Inspection)
-      },{
-        title:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
-        //img_src:"resource/image/DefConf.png",
-        onClick:()=>setUI_state(s_statesTable.BackLightCalib)
-      },
-      {
-        title:DICT.mainui.MODE_SELECT_INST_INSP,
-        onClick:()=>setUI_state(s_statesTable.InstInsp)
-      }
-    ].map((ele)=>      
-      <Card hoverable style={style_obj} bodyStyle={bodyStyle} key={ele.title}
-        onClick={ele.onClick}>
-        <div className="height12 width12 overlayCon mainui_mode_select">
-          <img src={ele.img_src} className="width12 img"/>
-          <div className="height12 width12 overlay tint" style={{top:0}}/>
-          <Title level={2}  className="theme_color_1 overlay veleXY text">{ele.title}</Title>
+
+      UI.push(<div style={{}} className="s HXA WXA veleXY" >
+
+        <div className="neumorphic variation2" onClick={()=>EV_UI_Edit_Mode()}>
+          <span><strong>{s_statesTable.DeConf.name}</strong></span>
         </div>
-      </Card>))
+        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.Inspection)}>
+          <span><strong>{DICT.mainui.MODE_SELECT_INSP_PREP}</strong></span>
+        </div>
+        <br/>
+        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
+          <span><strong>{DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB}</strong></span>
+        </div>
+        {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
+          <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
+        </div> */}
+        
+        </div>)
       break;
   
     case  s_statesTable.DeConf:
