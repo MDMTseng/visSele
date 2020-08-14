@@ -32,3 +32,4 @@ UI/InspectionMonitor/build/
 *.code-workspace
 export/
 UI/WebUI/dist/
+update_win.zip
