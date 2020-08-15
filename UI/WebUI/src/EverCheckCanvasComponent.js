@@ -547,9 +547,6 @@ class renderUTIL {
             ctx.lineWidth = this.getSearchDirectionLineSize();
             ctx.strokeStyle = shapeColor;
             let marginOffset = drawMargin+ ctx.lineWidth / 2;
-            if (eObject.direction < 0) {
-              marginOffset = -marginOffset;
-            }
             this.drawReportLine(ctx, {
               x0: eObject.pt1.x + cnormal.vx * marginOffset, y0: eObject.pt1.y + cnormal.vy * marginOffset,
               x1: eObject.pt2.x + cnormal.vx * marginOffset, y1: eObject.pt2.y + cnormal.vy * marginOffset,
@@ -2576,8 +2573,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               pt1: mouseOnCanvas2,
               pt2: pmouseOnCanvas2,
               margin: 0.3,
-              color: this.colorSet.unselected,
-              direction: 1
+              color: this.colorSet.unselected
             };
           }
           else {

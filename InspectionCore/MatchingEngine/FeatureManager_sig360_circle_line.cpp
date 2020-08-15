@@ -1269,7 +1269,7 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
 
   line.initMatchingMargin = (float)*JFetEx_NUMBER(line_obj, "margin");
 
-  double direction = *JFetEx_NUMBER(line_obj, "direction");
+  // double direction = *JFetEx_NUMBER(line_obj, "direction");
 
   if ((pnum = JSON_GET_NUM(line_obj, "MatchingMarginX")) == NULL)
   {
@@ -1307,10 +1307,10 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   line.lineTar.line_vec.Y = (p1.Y - p0.Y);
   line.lineTar.line_vec = acvVecNormalize(line.lineTar.line_vec);
 
-  if (direction < 0)
-  {
-    line.lineTar.line_vec = acvVecMult(line.lineTar.line_vec, -1);
-  }
+  // if (direction < 0)
+  // {
+  //   line.lineTar.line_vec = acvVecMult(line.lineTar.line_vec, -1);
+  // }
 
   acv_XY normal = acvVecNormal(line.lineTar.line_vec);
 

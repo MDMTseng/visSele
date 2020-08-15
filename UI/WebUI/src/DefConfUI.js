@@ -1499,10 +1499,9 @@ class APP_DEFCONF_MODE extends React.Component {
                 UCL_b: "ULRangeSetup",
                 LCL_b: "ULRangeSetup",
 
-                quadrant: "div",
-                back_value_setup: "checkbox",
+                back_value_setup: "switch",
                 importance: "input-number",
-                docheck: "checkbox",
+                docheck: "switch",
                 width: "input-number",
                 ref: (edit_tar.subtype === UIAct.SHAPE_TYPE.measure_subtype.calc) ?
                   undefined :
@@ -1583,7 +1582,7 @@ class APP_DEFCONF_MODE extends React.Component {
                         target.obj[lastKey] = evt.target.value;
                       }
                       break;
-                    case "checkbox":
+                    case "switch":
                       {
                         target.obj[lastKey] = evt.target.checked;
 
@@ -1615,6 +1614,18 @@ class APP_DEFCONF_MODE extends React.Component {
           break;
         default:
           {
+            let whiteListKey={
+              //id:"div",
+              type: "div",
+              subtype: "div",
+              name: "input",
+              margin: "input-number"
+            }
+            if(edit_tar.type==UIAct.SHAPE_TYPE.arc)
+            {//ignore the line direction
+              whiteListKey.direction= "switch";
+            }
+
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
               dict={DICT}
               dictTheme={edit_tar.type}
@@ -1624,25 +1635,14 @@ class APP_DEFCONF_MODE extends React.Component {
                   target.obj[lastKey] = parseFloat(evt.target.value);
                 else if (type == "input")
                   target.obj[lastKey] = evt.target.value;
+                else if (type == "switch")
+                  target.obj[lastKey] = evt.target.checked?-1:1;
 
                 console.log(target.obj);
                 let updated_obj = original_obj;
                 ec_canvas.SetShape(updated_obj, updated_obj.id);
               }}
-              whiteListKey={{
-                //id:"div",
-                type: "div",
-                subtype: "div",
-                name: "input",
-                margin: "input-number",
-                direction: "input-number",
-
-                /*pt1:{
-                  __OBJ__:"btn",
-                  x:"input-number",
-                  y:"input-number",
-                }*/
-              }} />);
+              whiteListKey={whiteListKey} />);
           }
           break;
 
