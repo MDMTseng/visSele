@@ -42,6 +42,7 @@ import Popover from 'antd/lib/Popover';
 
 import { useSelector,useDispatch } from 'react-redux';
 import { 
+  LockOutlined,
   CloseOutlined,
   PlusOutlined,
   FormOutlined,
@@ -2164,13 +2165,12 @@ class APP_DEFCONF_MODE extends React.Component {
         break;
     }
 
-
     let AddtionalInfo = null;
     if (this.props.defConf_lock_level != 0)
       AddtionalInfo =
         <div key="AddtionalInfo" className={"s overlay overlayright HXA"} style={{ width: "100px", backgroundColor: "black" }}
           onClick={()=>this.props.ACT_DefConf_Lock_Level_Update(0)}>
-          {<Icon type="lock" />}
+          {<LockOutlined />}
           {" 鎖等級:" + this.props.defConf_lock_level}
         </div>
 
