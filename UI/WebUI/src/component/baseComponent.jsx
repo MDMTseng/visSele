@@ -7,6 +7,7 @@ import dclone from 'clone';
 import * as logX from 'loglevel';
 
 import  {default as AntButton}  from 'antd/lib/button';
+import  Switch  from 'antd/lib/switch';
 import  Modal  from 'antd/lib/modal';
 import  Table  from 'antd/lib/table';
 import { 
@@ -156,6 +157,17 @@ export class JsonElement extends React.Component{
           className={this.props.className}
           onClick={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}>
           {translateValue}</button>
+
+      
+      case "switch":
+      {
+        let checked=(typeof translateValue === "boolean")?translateValue:(translateValue<0)
+        return <div className={this.props.className+" white"}>
+          <Switch checked={checked}
+            onChange={(checked)=>this.props.onChange(this.props.target,this.props.type,{target:{checked}})} />
+        </div>
+      }
+      
       case "div":
       default:
         if(this.props.renderLib!==undefined && this.props.renderLib[this.props.type]!==undefined)
@@ -163,7 +175,7 @@ export class JsonElement extends React.Component{
           let renderFunc = this.props.renderLib[this.props.type];
           return renderFunc(this.props);
         }
-        return <div key={this.props.id} className={this.props.className} >{translateValue} </div>
+        return <div key={this.props.id} className={this.props.className} style={{backgroundColor:"#DDD"}}>{translateValue} </div>
       
     }
   }
@@ -262,42 +274,31 @@ export class JsonEditBlock extends React.Component{
             />);
           continue;
         }
-        
-
-        switch(typeof ele)
+        else if(typeof ele === "object")
         {
-          case "string":
-          case "boolean":
-          case "number":
-            if(renderContext==null)renderContext="div";
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={renderContext}
-              target={{obj:obj,keyTrace:newkeyTrace}}
-              dict={this.props.dict}
-              onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
-          break;
-          case "object":
-          {
-            rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
-            let obj_disp_type = (renderContext==null)?"div":renderContext.__OBJ__;
-            if(obj_disp_type == undefined)obj_disp_type="div";
-            rows.push(<JsonElement key={idHeader+"_"+key+"_ele"}
-                                   dict={this.props.dict}
-              className="s HX1 WXF vbox black" type={obj_disp_type} 
-              onChange={this.onChangeX.bind(this)}
-              target={{obj:obj,keyTrace:newkeyTrace}}>{translateKey}</JsonElement>);
+          rows.push(<div key={idHeader+"_"+key+"_HL"} className="s HX0_1 WXF  vbox"></div>);
+          let obj_disp_type = (renderContext==null)?"div":renderContext.__OBJ__;
+          if(obj_disp_type == undefined)obj_disp_type="div";
+          rows.push(<JsonElement key={idHeader+"_"+key+"_ele"}
+                                 dict={this.props.dict}
+            className="s HX1 WXF vbox black" type={obj_disp_type} 
+            onChange={this.onChangeX.bind(this)}
+            target={{obj:obj,keyTrace:newkeyTrace}}>{translateKey}</JsonElement>);
 
-            rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
-            rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
-              this.composeObject(ele,renderContext,idHeader+"_"+key,newkeyTrace)
-            }</div>);
-            rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
-          }
-          break;
-          default:
-            rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width3 vbox black">{key}</div>);
-            rows.push(<div key={idHeader+"_"+key+"_XXX"} className="s HX1 width9 vbox lblue">Not supported</div>);
-          break;
+          rows.push(<div key={idHeader+"_"+key+"__"} className="s HX1 width1"></div>);
+          rows.push(<div key={idHeader+"_"+key+"_C"} className="s HXA width11">{
+            this.composeObject(ele,renderContext,idHeader+"_"+key,newkeyTrace)
+          }</div>);
+          rows.push(<div key={idHeader+"_"+key+"_HL2"} className="s HX0_1 WXF  vbox"></div>);
+        }
+        else
+        {
+          if(renderContext==null)renderContext="div";
+          rows.push(<div key={idHeader+"_"+key+"_txt"} className="s HX1 width4 vbox black">{translateKey}</div>);
+          rows.push(<JsonElement key={idHeader+"_"+key+"_ele"} className="s HX1 width8 vbox blackText" type={renderContext}
+            target={{obj:obj,keyTrace:newkeyTrace}}
+            dict={this.props.dict}
+            onChange={this.onChangeX.bind(this)}>{(ele)}</JsonElement>);
         }
     }
     return rows

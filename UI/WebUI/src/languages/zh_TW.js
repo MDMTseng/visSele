@@ -102,6 +102,9 @@ export default {
       docheck:"必要判定",
       quadrant:"量測象限"
     },
+    search_point:{
+      search_far:"近/遠"
+    },
     mainui:{
       select_deffile:"選擇定義檔",
       select_deffile_detail:"就是選擇定義檔",

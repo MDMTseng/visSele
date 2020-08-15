@@ -1440,6 +1440,18 @@ class APP_DEFCONF_MODE extends React.Component {
         text="..." onClick={() => {
           setUIType("deco");
         }} />);
+
+
+      if(edit_tar.type === UIAct.SHAPE_TYPE.search_point)
+      {// info upgrade
+        if(edit_tar.search_far===undefined)
+        {
+          edit_tar.search_far=(edit_tar.search_style!=0)?true:false;
+        }
+      }
+
+
+
       switch (edit_tar.type) {
         case UIAct.SHAPE_TYPE.aux_point:
         case UIAct.SHAPE_TYPE.aux_line:
@@ -1463,7 +1475,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 angleDeg: "AngleRangeSetup",
                 margin: "input-number",
 
-                search_style: "input-number",
+                search_far: "switch",
                 calc_f: {
                   __OBJ__: renderMethods.Measure_Calc_Editor,
                   measure_list: shape_list.filter(s =>

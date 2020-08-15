@@ -1000,24 +1000,16 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
     int searchDir=1;
     int searchDir_NA_FLAG=-9999;
-    
-    switch(def.data.anglefollow.search_style)
+    if(def.data.anglefollow.search_far==true)
     {
-      case 0:
-      //Find the closest point
-      break;
-      case 1:
-      //Find the furtherest point on the direct face edge
-        vec.X*=-1;
-        vec.Y*=-1;
-        searchDir=-1;
-      break;
-      default:
-        searchDir=searchDir_NA_FLAG;
-      break;
+      vec.X*=-1;
+      vec.Y*=-1;
+      searchDir=-1;
     }
+    else
+    {
 
-
+    }
 
 
     acv_XY searchVec_nor = vec;
@@ -1053,7 +1045,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     start_line.line_anchor = acvVecAdd(start_line.line_anchor, line.line_anchor); //add line_anchor
 
 
-    LOGI("line vec x:%f y:%f, search_style:%d",line.line_vec.X,line.line_vec.Y,def.data.anglefollow.search_style);
+    LOGI("line vec x:%f y:%f, search_far:%d",line.line_vec.X,line.line_vec.Y,def.data.anglefollow.search_far);
 
     if(searchDir!=searchDir_NA_FLAG)
       edge_grid.getContourPointsWithInLineContour(line,
@@ -1194,12 +1186,21 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
     searchPoint.data.anglefollow.position.Y =
         *JFetEx_NUMBER(jobj, "pt1.y");
 
-    double *search_style=JFetch_NUMBER(jobj, "search_style");
-    
-    if(search_style)
-      searchPoint.data.anglefollow.search_style=(int)*search_style;
-    else 
-      searchPoint.data.anglefollow.search_style=0;
+
+
+
+    void *target;
+    searchPoint.data.anglefollow.search_far=false;
+    int type = getDataFromJson(jobj, "search_far", &target);
+    if (type == cJSON_False)
+    {
+      searchPoint.data.anglefollow.search_far=false;
+    }
+    else if (type == cJSON_True)
+    {
+      searchPoint.data.anglefollow.search_far=true;
+    }
+
 
     LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
          searchPoint.data.anglefollow.position.X,

@@ -2635,7 +2635,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   type: SHAPE_TYPE.search_point,
                   pt1: { x: 0, y: 0 },
                   angleDeg: 90,
-                  search_style:0,
+                  search_far:false,
                   margin: 0.15,
                   width: 5,
                   ref: [{
