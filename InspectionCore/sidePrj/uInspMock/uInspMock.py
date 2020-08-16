@@ -132,7 +132,7 @@ serverSocket.listen(1)
 
 
 while 1:
-  print('The server is ready to receive')
+  print('The server is ready to receive port:',serverPort)
   connectionSocket,addr = serverSocket.accept()
   byteArray=bytearray(b'')
   while 1:
