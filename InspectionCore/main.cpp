@@ -2733,15 +2733,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
           if (srep.size() == 1) //only one detected objects in scence is allowed
           {
-            int pix_area = (*ldat)[srep[0].labeling_idx].area;
+            int insp_tar_area = (*ldat)[srep[0].labeling_idx].area;
 
             int totalArea = 0;
             for (int i = 1; i < ldat->size(); i++)
             {
               totalArea += (*ldat)[i].area;
             }
-            float extra_area_ratio = (float)(totalArea - pix_area) / totalArea;
-            LOGI("totalArea:%d rep_area:%d extra_area_ratio:%f", totalArea, pix_area, extra_area_ratio);
+            float extra_area_ratio = (float)(totalArea - insp_tar_area) / totalArea;
+            LOGI("totalArea:%d insp_tar_area:%d extra_area_ratio:%f", totalArea, insp_tar_area, extra_area_ratio);
             if (extra_area_ratio < 0.1)
             {
               vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
