@@ -1,3 +1,5 @@
+import JSum from 'jsum';
+
 
 
 export function Num2Str_padding(pad,num)
@@ -959,3 +961,47 @@ export class ConsumeQueue{
 //     }
 //   })
 // );
+
+
+
+
+export function defFileGeneration(edit_info)
+{
+
+  let feature_sig360_circle_line = edit_info._obj.GenerateFeature_sig360_circle_line();
+  let preloadedDefFile = edit_info.loadedDefFile;
+  if (preloadedDefFile === undefined) preloadedDefFile = {};
+  let report = {
+    ...preloadedDefFile,
+    type: "binary_processing_group",
+    intrusionSizeLimitRatio: edit_info.intrusionSizeLimitRatio,
+    featureSet: [feature_sig360_circle_line]
+  };
+  delete report["featureSet_sha1"];
+
+  report.name = edit_info.DefFileName;
+  report.tag = edit_info.DefFileTag;
+
+  report.featureSet[0].matching_angle_margin_deg = edit_info.matching_angle_margin_deg;
+  report.featureSet[0].matching_angle_offset_deg = edit_info.matching_angle_offset_deg;
+  report.featureSet[0].matching_face = edit_info.matching_face;
+
+  let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
+  report.featureSet[0]["__decorator"] = edit_info.__decorator;
+  report.featureSet_sha1 = sha1_info_in_json;
+  //this.props.ACT_DefFileHash_Update(sha1_info_in_json);
+
+  report.featureSet_sha1_pre = edit_info.DefFileHash;
+
+  if (edit_info.DefFileHash_root === undefined) {
+    if (edit_info.featureSet_sha1_pre === undefined)
+      report.featureSet_sha1_root = sha1_info_in_json;
+    else
+      report.featureSet_sha1_root = edit_info.featureSet_sha1_pre;
+  }
+  else
+    report.featureSet_sha1_root = edit_info.DefFileHash_root;
+
+  return report;
+}
+

@@ -13,7 +13,7 @@ import { TagOptions_rdx } from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue } from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -1816,8 +1816,14 @@ class APP_INSP_MODE extends React.Component {
     
     this.CameraCtrl.setImageCropParam(undefined,4);
 
+    
+    let deffile = defFileGeneration(this.props.edit_info);
     if (this.props.inspMode == "FI") {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, deffile: this.props.defModelPath + "." + DEF_EXTENSION }, undefined);
+
+      
+      deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
+
+      this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 0,
@@ -1826,7 +1832,8 @@ class APP_INSP_MODE extends React.Component {
       })
     }
     else if (this.props.inspMode == "CI") {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, deffile: this.props.defModelPath + "." + DEF_EXTENSION }, undefined);
+      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile
+      }, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 1000,
@@ -2230,6 +2237,8 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
 
 const mapStateToProps_APP_INSP_MODE = (state) => {
   return {
+    
+    edit_info :state.UIData.edit_info,
     c_state: state.UIData.c_state,
     shape_list: state.UIData.edit_info.list,
     info_decorator: state.UIData.edit_info.__decorator,
