@@ -797,35 +797,16 @@ class MicroFullInspCtrl extends React.Component {
     if (this.props.uInspMachineInfo !== undefined && this.props.uInspData.connected) {
       let machineInfo = this.props.uInspMachineInfo;
 
-      ctrlPanel.push(
-        <Button key="ping uInsp"
-          icon={<HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>}
-          onClick={() => {
-            this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-              { msg: { type: "PING", id: 443 } });
-              
-            this.props.ACT_Machine_PING_Sent();
-          }}/>
-      );
 
-
-      ctrlPanel.push(
-        <Button key="opt uInsp" icon={<SettingOutlined/>}
-          onClick={() => {
-            this.setState({ ...this.state, settingPanelVisible: true })
-          }} />);
-      <br />
-
-      ctrlPanel.push(<Divider orientation="left" key="divi"/>);
 
       if (this.props.res_count !== undefined) {
-        ctrlPanel.push(<Tag style={{ 'fontSize': 27 }}
+        ctrlPanel.push(<Tag style={{ 'fontSize': 25 }}
           color={OK_NG_BOX_COLOR_TEXT["OK"].COLOR}>{this.props.res_count.OK}
         </Tag>);
-        ctrlPanel.push(<Tag style={{ 'fontSize': 27 }}
+        ctrlPanel.push(<Tag style={{ 'fontSize': 25 }}
           color={OK_NG_BOX_COLOR_TEXT["NG"].COLOR}>{this.props.res_count.NG}
         </Tag>);
-        ctrlPanel.push(<Tag style={{ 'fontSize': 27 }}
+        ctrlPanel.push(<Tag style={{ 'fontSize': 25 }}
           color={OK_NG_BOX_COLOR_TEXT["NA"].COLOR}>{this.props.res_count.NA}
         </Tag>);
       }
@@ -846,6 +827,14 @@ class MicroFullInspCtrl extends React.Component {
             step={100}
           />);
       }
+      
+
+      ctrlPanel.push(
+        <Button key="opt uInsp" icon={<SettingOutlined/>}
+          onClick={() => {
+            this.setState({ ...this.state, settingPanelVisible: true })
+          }} />);
+      <br />
 
       if(this.state.settingPanelVisible)
       ctrlPanel.push(
@@ -858,6 +847,15 @@ class MicroFullInspCtrl extends React.Component {
         >
 
           <div style={{ height: "600px" }}>
+            
+            <Button key="ping uInsp"
+              icon={<HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>}
+              onClick={() => {
+                this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  { msg: { type: "PING", id: 443 } });
+                  
+                this.props.ACT_Machine_PING_Sent();
+              }}/>
             <Button.Group key="GGGG">
               <Button
               icon={<BulbOutlined />}
