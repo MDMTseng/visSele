@@ -111,13 +111,13 @@
 
 
 .color-online-anim {
-  color:#5191a5;
+  color:#198caf;
   animation: color-online-anim-key 1s infinite;
 }
 
 @keyframes color-online-anim-key {
-  from {color: #5191a5;}
-  to {color: #2161a5;}
+  from {color: #19bcee;}
+  to {color: #06315e;}
 }
 
 .color-offline-anim {

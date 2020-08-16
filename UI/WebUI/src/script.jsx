@@ -38,7 +38,7 @@ import Collapse from 'antd/lib/collapse';
 import Menu from 'antd/lib/menu';
 
 import { 
-  LaptopOutlined,
+  AimOutlined,
   CameraOutlined,
   DatabaseOutlined,
   CloudSyncOutlined,
@@ -605,7 +605,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
         className={"antd-icon-sizing veleX"} 
         style={iconStyle}
       >
-        <LaptopOutlined/>
+        <AimOutlined/>
       </div>
           {(showText)?
             [DICT._.core,<br/>,systemConnectState.core?null:DICT._.disconnected]
@@ -627,21 +627,21 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
             :null}
         </Button>,
 
-    <Button size="large"  key="db_stat" style={gridStyle} 
-        type="text" //disabled={!systemConnectState.upload_database}
-        className={"s HXA "+(systemConnectState.upload_database?"color-online-anim":"color-offline-anim")} 
-        onClick={()=>onClick_UploadDataBase(systemConnectState)}>
-          <div 
-            className={"antd-icon-sizing veleX"} 
-            style={iconStyle}
-          >
-            <DatabaseOutlined/>
-          </div>
-          {(showText)?
-            [DICT._.upload_database,<br/>,systemConnectState.upload_database?null:DICT._.disconnected]
-            :null}
+    // <Button size="large"  key="db_stat" style={gridStyle} 
+    //     type="text" //disabled={!systemConnectState.upload_database}
+    //     className={"s HXA "+(systemConnectState.upload_database?"color-online-anim":"color-offline-anim")} 
+    //     onClick={()=>onClick_UploadDataBase(systemConnectState)}>
+    //       <div 
+    //         className={"antd-icon-sizing veleX"} 
+    //         style={iconStyle}
+    //       >
+    //         <DatabaseOutlined/>
+    //       </div>
+    //       {(showText)?
+    //         [DICT._.upload_database,<br/>,systemConnectState.upload_database?null:DICT._.disconnected]
+    //         :null}
           
-        </Button>
+    //     </Button>
 
 
   ];
