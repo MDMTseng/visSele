@@ -765,13 +765,10 @@ function defFileGeneration(edit_info)
 function SettingUI({})
 {
   
-  
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   
   const edit_info = useSelector(state => state.UIData.edit_info);
   const dispatch = useDispatch();
-  const ACT_IntrusionSizeLimitRatio_Update=(ratio) =>dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio));
-
   const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
   
@@ -811,34 +808,34 @@ function SettingUI({})
 
 
 
-    <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
-    <Slider
-      min={0}
-      step={0.01}
-      max={1}
-      included={true}
-      marks={
-        {
-          0: '',
-          0.01: '',
-          0.05: '',
-          0.1: '0.1',
-          0.3: '0.2',
-          0.5: '0.5',
-          1: '',
-        }
-      }
-      onChange={ACT_IntrusionSizeLimitRatio_Update}
-      value={edit_info.intrusionSizeLimitRatio}
-    />,
-    <InputNumber
-      min={0}
-      max={1}
-      value={edit_info.intrusionSizeLimitRatio}
-      onChange={ACT_IntrusionSizeLimitRatio_Update}
-    />,
+    // <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
+    // <Slider
+    //   min={0}
+    //   step={0.01}
+    //   max={1}
+    //   included={true}
+    //   marks={
+    //     {
+    //       0: '',
+    //       0.01: '',
+    //       0.05: '',
+    //       0.1: '0.1',
+    //       0.3: '0.2',
+    //       0.5: '0.5',
+    //       1: '',
+    //     }
+    //   }
+    //   onChange={ACT_IntrusionSizeLimitRatio_Update}
+    //   value={edit_info.intrusionSizeLimitRatio}
+    // />,
+    // <InputNumber
+    //   min={0}
+    //   max={1}
+    //   value={edit_info.intrusionSizeLimitRatio}
+    //   onChange={ACT_IntrusionSizeLimitRatio_Update}
+    // />,
 
-    <Divider orientation="left">MISC</Divider>,
+    <Divider orientation="left"/>,
 
     <Checkbox
       checked={defConf_lock_level != 0}
@@ -849,7 +846,7 @@ function SettingUI({})
       }}
     >
       {<Icon type={(defConf_lock_level != 0) ? "lock" : "unlock"} />}
-      {" 鎖等級:" + defConf_lock_level}
+      {DICT.defConf.lock_level +":"+ defConf_lock_level}
     </Checkbox>
   ]
 }
@@ -1139,7 +1136,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       addClass="layout palatte-gray-8 vbox"
       key="setting"
       text="setting" onClick={() => setModal_view({
-          title: "Setup",
+          title: DICT.defConf.setup,
           view: <SettingUI></SettingUI>
       })} />,
     <BASE_COM.IconButton

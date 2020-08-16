@@ -47,6 +47,7 @@ import {
   FileOutlined,
   LinkOutlined,
   TagsOutlined,
+  CameraOutlined,
   ExpandOutlined,
   HeartTwoTone,
   ArrowLeftOutlined,
@@ -54,7 +55,10 @@ import {
   PaperClipOutlined,
   SettingOutlined,
   CaretDownOutlined,
-  BarChartOutlined
+  BarChartOutlined,
+  SaveOutlined,
+  BulbOutlined,
+  ReloadOutlined
 
 } from '@ant-design/icons';
 
@@ -705,11 +709,11 @@ class ObjInfoList extends React.Component {
           // defaultOpenKeys={['functionMenu']}
           mode="inline">
 
-          {this.props.uInsp_peripheral_url===undefined?null:       
+          {this.props.uInsp_peripheral_conn_info===undefined?null:       
           <SubMenu style={{ 'textAlign': 'left' }} key="functionMenu"
-            title={<span><SettingOutlined />平台功能操作</span>}>
+          title={<span><SettingOutlined />{this.props.DICT._.uInsp_ctrl}</span>}>
             <MicroFullInspCtrl_rdx
-              url={this.props.uInsp_peripheral_url}
+              conn_info={this.props.uInsp_peripheral_conn_info}
             />
           </SubMenu>}
 
@@ -795,36 +799,33 @@ class MicroFullInspCtrl extends React.Component {
 
       ctrlPanel.push(
         <Button key="ping uInsp"
+          icon={<HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>}
           onClick={() => {
             this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
               { msg: { type: "PING", id: 443 } });
               
             this.props.ACT_Machine_PING_Sent();
-          }}>
-            <HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>
-            
-        </Button>
+          }}/>
       );
 
 
       ctrlPanel.push(
-        <Button key="opt uInsp" icon="setting"
+        <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
             this.setState({ ...this.state, settingPanelVisible: true })
           }} />);
       <br />
-      ctrlPanel.push(
-        <Divider orientation="left" key="divi">uInsp</Divider>);
 
+      ctrlPanel.push(<Divider orientation="left" key="divi"/>);
 
       if (this.props.res_count !== undefined) {
-        ctrlPanel.push(<Tag style={{ 'fontSize': 30 }}
+        ctrlPanel.push(<Tag style={{ 'fontSize': 27 }}
           color={OK_NG_BOX_COLOR_TEXT["OK"].COLOR}>{this.props.res_count.OK}
         </Tag>);
-        ctrlPanel.push(<Tag style={{ 'fontSize': 30 }}
+        ctrlPanel.push(<Tag style={{ 'fontSize': 27 }}
           color={OK_NG_BOX_COLOR_TEXT["NG"].COLOR}>{this.props.res_count.NG}
         </Tag>);
-        ctrlPanel.push(<Tag style={{ 'fontSize': 30 }}
+        ctrlPanel.push(<Tag style={{ 'fontSize': 27 }}
           color={OK_NG_BOX_COLOR_TEXT["NA"].COLOR}>{this.props.res_count.NA}
         </Tag>);
       }
@@ -846,22 +847,6 @@ class MicroFullInspCtrl extends React.Component {
           />);
       }
 
-      if (machineInfo.state_pulseOffset !== undefined) {
-
-        ctrlPanel.push(
-          machineInfo.state_pulseOffset.map((pulseC, idx) =>
-            <InputNumber value={pulseC} size="small" key={"poff" + idx} onChange={(value) => {
-              let state_pulseOffset = dclone(machineInfo.state_pulseOffset);
-              state_pulseOffset[idx] = value;
-
-              this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                { msg: { state_pulseOffset, type: "set_setup", id: 356 } });
-
-              this.props.ACT_Machine_Info_Update({ state_pulseOffset });
-
-            }} />))
-      }
-
       if(this.state.settingPanelVisible)
       ctrlPanel.push(
         <Modal
@@ -875,6 +860,7 @@ class MicroFullInspCtrl extends React.Component {
           <div style={{ height: "600px" }}>
             <Button.Group key="GGGG">
               <Button
+              icon={<BulbOutlined />}
                 key="L_ON"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
@@ -891,35 +877,50 @@ class MicroFullInspCtrl extends React.Component {
                 }>OFF
             </Button>
 
-              <Button
-                icon="camera"
+              {/* <Button
+                icon={<CameraOutlined />}
                 key="CAM"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "MISC/CAM_TRIGGER" } })
-                } />
+                } /> */}
 
               <Button
-                icon="save"
+                icon={<SaveOutlined/>}
                 key="SaveToFile"
                 onClick={() => {
                   var enc = new TextEncoder();
                   this.props.ACT_Report_Save(this.props.WS_ID, "data/uInspSetting.json",
                     enc.encode(JSON.stringify(this.props.uInspMachineInfo, null, 4)));
-                }}>Save machine setting</Button>
+                }}>{this.props.DICT._.save_machine_setting}</Button>
 
 
-              <Button
+              {/* <Button
                 key="MachineSet"
                 onClick={() => {
 
                   this.LoaduInspSettingToMachine();
-                }}>MachineSet</Button>
+                }}>MachineSet</Button> */}
+            </Button.Group>
+
+
+            <Button.Group key="MISC_BB">
+
+              <Button
+                icon={<ReloadOutlined />}
+                key="res_count_clear"
+                onClick={() =>
+                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                    { msg: { type: "res_count_clear" } })
+                }>{this.props.DICT._.RESET_INSPECTION_COUNTER}
+            </Button>
+
             </Button.Group>
 
 
 
-            <Divider orientation="left" key="ERROR">ERROR</Divider>
+
+            <Divider orientation="left" key="ERROR">{this.props.DICT._.ERROR_INFO}</Divider>
 
             <Button.Group key="ERRORG">
               <Button
@@ -928,7 +929,7 @@ class MicroFullInspCtrl extends React.Component {
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "error_get" } })
                 }>
-                error_get:{this.props.error_codes}
+                {this.props.DICT._.ERROR_CODES}:{this.props.error_codes}
               </Button>
 
               <Button
@@ -936,7 +937,7 @@ class MicroFullInspCtrl extends React.Component {
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "error_clear" } })
-                }>error_clear
+                }>{this.props.DICT._.ERROR_CLEAR}
             </Button>
 
 
@@ -952,29 +953,31 @@ class MicroFullInspCtrl extends React.Component {
                       }
                     });
                 }
-                }>speed_set
+                }>{this.props.DICT._.SPEED_SET}:{machineInfo.pulse_hz}
             </Button>
             </Button.Group>
 
 
+            <Divider orientation="left">{this.props.DICT._.uInsp_ACTION_TRIGGER_TIMING}</Divider>
+            {
+              (machineInfo.state_pulseOffset === undefined)?null:
+              machineInfo.state_pulseOffset.map((pulseC, idx) =>
+                <InputNumber value={pulseC} size="small" key={"poff" + idx} onChange={(value) => {
+                  let state_pulseOffset = dclone(machineInfo.state_pulseOffset);
+                  state_pulseOffset[idx] = value;
 
-
-            <Divider orientation="left">MISC</Divider>
-            <Button.Group key="MISC_BB">
-
-              <Button
-                key="res_count_clear"
-                onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                    { msg: { type: "res_count_clear" } })
-                }>res_count_clear
-            </Button>
+                    { msg: { state_pulseOffset, type: "set_setup", id: 356 } });
 
-            </Button.Group>
+                  this.props.ACT_Machine_Info_Update({ state_pulseOffset });
+
+                }} />)
+            }
+
+            
 
 
-
-            <Divider orientation="left">MODE</Divider>
+          <Divider orientation="left">{this.props.DICT._.TEST_MODE}</Divider>
             <Button.Group key="MODE_G">
 
                 
@@ -984,7 +987,7 @@ class MicroFullInspCtrl extends React.Component {
                     this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                       { msg: { type: "test_action", sub_type: "trigger_test",
                       count:60,duration:10,backlight_extra_duration:10,post_duration:20} })
-                  }>TEST2
+                  }>{this.props.DICT._.TEST_MODE_NO_BLOW}
               </Button>
 
 
@@ -993,18 +996,18 @@ class MicroFullInspCtrl extends React.Component {
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST" } })
-                }>TEST
+                }>{this.props.DICT._.TEST_MODE_ALTER_BLOW}
             </Button>
               <Button
                 key="MODE:NORMAL"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "mode_set", mode: "NORMAL" } })
-                }>NORMAL
+                }>{this.props.DICT._.TEST_MODE_NORMAL}
             </Button>
 
               <Button type="danger" key="Disconnect uInsp"
-                icon="disconnect"
+                icon={<DisconnectOutlined/>}
                 onClick={() => {
                   new Promise((resolve, reject) => {
                     this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
@@ -1018,10 +1021,13 @@ class MicroFullInspCtrl extends React.Component {
                     .catch((err) => {
                       console.log(err);
                     })
-                }}>Disconnect</Button>
+                  }}>{this.props.DICT._.TEST_MODE_DISCONNECT}</Button>
 
 
             </Button.Group>
+          
+                
+          
           </div>
         </Modal>);
 
@@ -1034,10 +1040,10 @@ class MicroFullInspCtrl extends React.Component {
             null
             :
             <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
-              icon="link"
+              icon={<LinkOutlined/>}
               onClick={() => {
                 this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                  { ip: "192.168.2.43", port: 5213 });
+                this.props.conn_info);
               }}>{this.props.DICT.connection.connect}</Button>
         }
 
@@ -1074,7 +1080,7 @@ const mapStateToProps_MicroFullInspCtrl = (state) => {
     error_codes: state.Peripheral.uInsp.error_codes,
     res_count: state.Peripheral.uInsp.res_count,
     uInspMachineInfo: state.Peripheral.uInsp.machineInfo,
-    DICT: state.UIData.DICT
+    DICT: state.UIData.DICT,
   }
 }
 
@@ -2135,9 +2141,10 @@ class APP_INSP_MODE extends React.Component {
     MenuSet.push(
       <ObjInfoList
         IR={trackingWindowInfo}
+        DICT={this.props.DICT}
         IR_decotrator={this.props.info_decorator}
         checkResult2AirAction={this.checkResult2AirAction}
-        uInsp_peripheral_url={this.props.machine_custom_setting.uInsp_peripheral_url}
+        uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
         key="ObjInfoList"
         WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND(this.props.WS_ID, tl, prop, data, uintArr); }}
       />);

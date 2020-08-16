@@ -5,10 +5,14 @@ export default {
       calc_add_measure:"增加量測變數",
       
       exit_warning_change_is_made:"設定已更動 確定要離開嗎？",
-      do_you_want_to_reset_def:"確定要重新設定嗎？"
+      do_you_want_to_reset_def:"確定要重新設定嗎？",
+      lock_level:"鎖等級",
+      setup:"設定",
     },
 
     _:{
+        ERROR:"錯誤",
+        ERROR_INFO:"錯誤訊息",
         WARNING:"警告",
         ReconnectAirDevice:"重新連接噴氣裝置",
         line:"線段/Line",
@@ -66,12 +70,23 @@ export default {
         normal_update:"更新",
 
 
-        
+        save_machine_setting:"儲存機器設定",
         disconnected:"已斷線",
         connected:"已連線",
         camera_reconnection_caption:"相機已離線 重連中",
         manual_ROI_setup:"手動視野範圍(ROI)選擇",
+        uInsp_ctrl:"全檢機控制",
+        ERROR_CODES:"錯誤碼",
+        ERROR_CLEAR:"清除錯誤",
+        SPEED_SET:"速度設定",
+        RESET_INSPECTION_COUNTER:"重設檢測計數",
+        uInsp_ACTION_TRIGGER_TIMING:"檢測觸發時間",
 
+        TEST_MODE:"測試模式",
+        TEST_MODE_NORMAL:"回復正常",
+        TEST_MODE_NO_BLOW:"無噴氣",
+        TEST_MODE_ALTER_BLOW:"交錯噴氣",
+        TEST_MODE_DISCONNECT:"關閉連線"
     },
     connection:{
       server_connected:"已連結伺服器",
@@ -107,11 +122,11 @@ export default {
     },
     mainui:{
       select_deffile:"選擇定義檔",
-      select_deffile_detail:"就是選擇定義檔",
+      select_deffile_detail:"",
       set_insp_tags:"設定檢測標籤",
-      set_insp_tags_detail:"就是設定檢測標籤",
-      GOGOGO:"GOGOGO",
-      GOGOGO_detail:"就是GOGOGO",
+      set_insp_tags_detail:"",
+      GOGOGO:"執行檢測",
+      GOGOGO_detail:"",
 
       MODE_SELECT_MAIN_MENU:"主選單",
       MODE_SELECT_DEFCONF:"量測設定",
@@ -119,7 +134,7 @@ export default {
       MODE_SELECT_INST_INSP:"即檢",
       MODE_SELECT_BACKLIGHT_CALIB:"背光校正",
       MODE_SELECT_SETTING:"設定",
-
+      FILE_NOT_FOUNT:"找不到檔案",
 
       FUNC_auto_recognition:"自動比對",
       FUNC_auto_recognition_running:"自動比對中",

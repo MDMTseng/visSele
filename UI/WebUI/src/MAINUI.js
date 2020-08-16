@@ -580,11 +580,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                     {
                       
                       let errPopUpUIInfo = {
-                        title: "錯誤",
+                        title: DICT._.ERROR,
                         onOK: undefined,
                         onCancel: undefined,
                         content:<div style={{width:"100%",height:"200px"}}><Title className="veleXY">
-                          <CloseCircleTwoTone twoToneColor="#FF0000"/>找不到檔案:{filePath}
+                          <CloseCircleTwoTone twoToneColor="#FF0000"/>{DICT.mainui.FILE_NOT_FOUND}:{filePath}
                           </Title></div>
                       }
                       setInfoPopUp(errPopUpUIInfo)
@@ -1254,7 +1254,7 @@ class APPMain extends React.Component {
 
   componentDidMount() {
     let defModelPath = this.props.defModelPath;
-
+        
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -1447,7 +1447,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Edit_Mode: (arg) => { dispatch(UIAct.EV_UI_Edit_Mode()) },
     EV_UI_Insp_Mode: () => { dispatch(UIAct.EV_UI_Insp_Mode()) },
     EV_UI_Analysis_Mode: () => { dispatch(UIAct.EV_UI_Analysis_Mode()) },
-
+    
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
