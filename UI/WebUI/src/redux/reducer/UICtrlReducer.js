@@ -102,7 +102,7 @@ function Default_UICtrlReducer() {
     WS_CH: undefined,
     defConf_lock_level: 0,
     edit_info: {
-      defModelPath: "data/cache_def",
+      defModelPath: undefined,
       _obj: new InspectionEditorLogic(),
       inspReport: undefined,
       reportStatisticState: {
@@ -228,6 +228,10 @@ function StateReducer(newState, action) {
       newState.Update_Status={...newState.Update_Status,...action.data};
       return newState;
   
+    case UISEV.Def_Model_Path_Update:
+      newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
+      //Edit_info_reset(newState);
+      break;
 
     case UISEV.Version_Map_Update:
       return newState;
@@ -676,6 +680,7 @@ function StateReducer(newState, action) {
   switch (stateObj.state) {
     case UISTS.SPLASH:
       newState.coreConnected = false;
+      
       return newState;
     case UISTS.MAIN:
     case UISTS.DEFCONF_MODE:
@@ -717,10 +722,6 @@ function StateReducer(newState, action) {
             newState.edit_info = { ...newState.edit_info, img: action.data };
             break;
 
-          case UISEV.Def_Model_Path_Update:
-            newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
-            //Edit_info_reset(newState);
-            break;
           case UI_SM_EVENT.Canvas_Mouse_Location:
             {
               newState.edit_info.mouseLocation = action.data;

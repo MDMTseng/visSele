@@ -1254,7 +1254,22 @@ class APPMain extends React.Component {
 
   componentDidMount() {
     let defModelPath = this.props.defModelPath;
+    if(defModelPath===undefined)
+    {
+      let recent = getLocalStorage_RecentFiles();
+      
+      console.log(recent);
+      if(recent.length==0)
+      {
+        this.props.ACT_Def_Model_Path_Update("data/DEFAULT");
+      }
+      else
+      {
         
+        let fileNamePath =recent[0].path.replace('.' + DEF_EXTENSION, "");
+        this.props.ACT_Def_Model_Path_Update(fileNamePath);
+      }
+    }
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -1451,6 +1466,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
+    ACT_Def_Model_Path_Update: (path) => dispatch(UIAct.Def_Model_Path_Update(path)),
   }
 }
 const mapStateToProps_APPMain = (state) => {
