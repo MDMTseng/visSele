@@ -2914,9 +2914,27 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     // }
     // LOGI(">>=================");
 
-    float error = feature_signature.match_min_error(
-      tmp_signature,this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
-                                       &isInv, &angle);
+    bool confined_matching=true;
+    float error;
+    if(confined_matching)
+    {//this is acheived by limiting the matching range
+      error = feature_signature.match_min_error(
+        tmp_signature,this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
+                                        &isInv, &angle);
+    }
+    else
+    {//this will do full range matching then, see if the best matching out side the range
+      error = feature_signature.match_min_error(tmp_signature,0, 180, 0,&isInv, &angle);
+
+      if(this->matching_face!=0 && !((isInv>0)^(this->matching_face>0))  )
+      {
+        continue;
+      }
+
+      //TODO: angle filter rule..
+    }
+
+    
 
     error = sqrt(error);
     //if(i<10)
