@@ -45,7 +45,7 @@ function Edit_info_reset(newState) {
     matching_angle_margin_deg: 180,
     matching_angle_offset_deg: 0,
     matching_face: 0,
-    intrusionSizeLimitRatio: 0.001,
+    intrusionSizeLimitRatio: 0.1,
     img: null,
     DefFileName: "",
     DefFileTag: [],

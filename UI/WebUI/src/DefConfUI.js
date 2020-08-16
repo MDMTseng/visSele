@@ -771,7 +771,8 @@ function SettingUI({})
   const dispatch = useDispatch();
   const ACT_DefConf_Lock_Level_Update= (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) };
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) ;
-  
+  const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
+    
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
     
   const DICT = useSelector(state => state.UIData.DICT);
@@ -808,32 +809,32 @@ function SettingUI({})
 
 
 
-    // <Divider orientation="left">IntrusionSizeLimitRatio</Divider>,
-    // <Slider
-    //   min={0}
-    //   step={0.01}
-    //   max={1}
-    //   included={true}
-    //   marks={
-    //     {
-    //       0: '',
-    //       0.01: '',
-    //       0.05: '',
-    //       0.1: '0.1',
-    //       0.3: '0.2',
-    //       0.5: '0.5',
-    //       1: '',
-    //     }
-    //   }
-    //   onChange={ACT_IntrusionSizeLimitRatio_Update}
-    //   value={edit_info.intrusionSizeLimitRatio}
-    // />,
-    // <InputNumber
-    //   min={0}
-    //   max={1}
-    //   value={edit_info.intrusionSizeLimitRatio}
-    //   onChange={ACT_IntrusionSizeLimitRatio_Update}
-    // />,
+    <Divider orientation="left">{DICT.defConf.intrusion_size_limit_ratio}</Divider>,
+    <Slider
+      min={0}
+      step={0.01}
+      max={1}
+      included={true}
+      marks={
+        {
+          0: '',
+          0.01: '',
+          0.05: '',
+          0.1: '0.1',
+          0.3: '0.2',
+          0.5: '0.5',
+          1: '',
+        }
+      }
+      onChange={ACT_IntrusionSizeLimitRatio_Update}
+      value={edit_info.intrusionSizeLimitRatio}
+    />,
+    <InputNumber
+      min={0}
+      max={1}
+      value={edit_info.intrusionSizeLimitRatio}
+      onChange={ACT_IntrusionSizeLimitRatio_Update}
+    />,
 
     <Divider orientation="left"/>,
 

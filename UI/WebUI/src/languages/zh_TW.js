@@ -8,6 +8,7 @@ export default {
       do_you_want_to_reset_def:"確定要重新設定嗎？",
       lock_level:"鎖等級",
       setup:"設定",
+      intrusion_size_limit_ratio:"外部物件面積限制"
     },
 
     _:{
