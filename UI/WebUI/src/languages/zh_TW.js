@@ -85,6 +85,7 @@ export default {
 
         TEST_MODE:"測試模式",
         TEST_MODE_NORMAL:"回復正常",
+        TEST_MODE_INC:"逐項測試",
         TEST_MODE_NO_BLOW:"無噴氣",
         TEST_MODE_ALTER_BLOW:"交錯噴氣",
         TEST_MODE_DISCONNECT:"關閉連線"

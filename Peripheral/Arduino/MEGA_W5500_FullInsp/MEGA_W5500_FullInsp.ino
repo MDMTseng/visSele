@@ -170,19 +170,18 @@ int stage_action(pipeLineInfo* pli)
       {
         switch(mode_info.misc_var)
         {
+
+          
           case 0:
-            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NG;
-            mode_info.misc_var2++;
+            pli->insp_status=insp_status_NA;
           break;
           
           case 1:
-            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NA;
-            mode_info.misc_var2++;
+            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NG;
           break;
           
           case 2:
-            pli->insp_status=(mode_info.misc_var2&1)?insp_status_NA:insp_status_NG;
-            mode_info.misc_var2++;
+            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NA;
           break;
           
           case 3:
@@ -190,13 +189,18 @@ int stage_action(pipeLineInfo* pli)
           break;
           
           case 4:
+            pli->insp_status=(mode_info.misc_var2&1)?insp_status_NG:insp_status_NA;
+          break;
+          
+          case 5:
             pli->insp_status=insp_status_NG;
           break;
-
+          
           default:
             mode_info.misc_var=0;
         }
       
+        mode_info.misc_var2++;
       }
       break;
     
@@ -919,10 +923,9 @@ class Websocket_FI:public Websocket_FI_proto{
           mode_info.mode=run_mode_info::NORMAL;
           ret_status = 0;
         }
-        if(strstr ((char*)recv_cmd,"\"mode\":\"TEST\""))
+        
+        if(strstr ((char*)recv_cmd,"\"mode\":\"TEST_INC\""))
         {
-          
-            //errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
           if(mode_info.mode!=run_mode_info::TEST)
           {
             mode_info.mode=run_mode_info::TEST;
@@ -931,12 +934,33 @@ class Websocket_FI:public Websocket_FI_proto{
           else
           {
             mode_info.misc_var++;
+
+            mode_info.misc_var%=6;
           }
           ret_status = 0;
         }
+        
+        if(strstr ((char*)recv_cmd,"\"mode\":\"TEST_NO_BLOW\""))
+        {
+          if(mode_info.mode!=run_mode_info::TEST)
+          {
+            mode_info.mode=run_mode_info::TEST;
+          }
+          mode_info.misc_var=0;
+          ret_status = 0;
+        }
+        if(strstr ((char*)recv_cmd,"\"mode\":\"TEST_ALTER_BLOW\""))
+        {
+          if(mode_info.mode!=run_mode_info::TEST)
+          {
+            mode_info.mode=run_mode_info::TEST;
+          }
+          mode_info.misc_var=1;
+          ret_status = 0;
+        }
+        
         if(strstr ((char*)recv_cmd,"\"mode\":\"ERROR_TEST\""))
         {
-          
           errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
           ret_status = 0;
         }

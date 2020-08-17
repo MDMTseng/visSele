@@ -978,31 +978,45 @@ class MicroFullInspCtrl extends React.Component {
           <Divider orientation="left">{this.props.DICT._.TEST_MODE}</Divider>
             <Button.Group key="MODE_G">
 
-                
+{/*                 
               <Button
                   key="TEST_ACTION"
                   onClick={() =>
                     this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                       { msg: { type: "test_action", sub_type: "trigger_test",
                       count:60,duration:10,backlight_extra_duration:10,post_duration:20} })
-                  }>{this.props.DICT._.TEST_MODE_NO_BLOW}
-              </Button>
+                  }>Trigger Test
+              </Button> */}
+              <Button
+                key="TEST_ACTION"
+                onClick={() =>
+                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                    { msg: { type: "mode_set", mode: "TEST_INC" } })
+                }>{this.props.DICT._.TEST_MODE_INC}
+              </Button> 
 
+              <Button
+                key="TEST_ACTION"
+                onClick={() =>
+                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                    { msg: { type: "mode_set", mode: "TEST_NO_BLOW" } })
+                }>{this.props.DICT._.TEST_MODE_NO_BLOW}
+              </Button> 
 
               <Button
                 key="MODE:TEST"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
-                    { msg: { type: "mode_set", mode: "TEST" } })
+                    { msg: { type: "mode_set", mode: "TEST_ALTER_BLOW" } })
                 }>{this.props.DICT._.TEST_MODE_ALTER_BLOW}
-            </Button>
+              </Button>
               <Button
                 key="MODE:NORMAL"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "mode_set", mode: "NORMAL" } })
                 }>{this.props.DICT._.TEST_MODE_NORMAL}
-            </Button>
+              </Button>
 
               <Button type="danger" key="Disconnect uInsp"
                 icon={<DisconnectOutlined/>}
