@@ -193,7 +193,7 @@ def findMainVecInfo(cornors,seedIdx=None):
     nbInfo=distArr[minDistRatioIdx:4+minDistRatioIdx]
     print("nbInfo:",nbInfo,"\nminDistRatioIdx:",minDistRatioIdx,"minDistRatio:",minDistRatio)
     #find if the top 4 neighbors has similar distance
-    if(minDistRatio>1.3):
+    if(minDistRatio>1.1):
         return None
 
     for nbEleInfo in nbInfo:
@@ -252,7 +252,7 @@ def close2one(num):
 
     
 
-def genCornorsCoord(cornors,coordEstThres=0.9):
+def genCornorsCoord(cornors,coordEstThres=0.98):
 
     mainVecInfo=None
     interCount=0
