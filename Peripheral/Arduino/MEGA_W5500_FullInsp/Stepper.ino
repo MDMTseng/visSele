@@ -170,7 +170,7 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_THRES 10
+#define DEBOUNCE_THRES 5
 uint32_t OBJECT_SEP_THRES=(perRevPulseCount/60);
 
 uint32_t step_thres_pulse_down=0;
