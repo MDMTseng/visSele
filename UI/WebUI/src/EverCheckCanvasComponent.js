@@ -114,7 +114,7 @@ class renderUTIL {
       base_Size: 2.5,
       size_Multiplier: 1,
       mmpp: 0.1,
-      font_Base_Size: 0.7,
+      font_Base_Size: 1,
       font_Style: "bold ",
       
 
