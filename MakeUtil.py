@@ -71,7 +71,7 @@ def cmd_exec(cmd):
     else:
       # print("src_dir",cmd["src_dir"])
       # print("dst_path",cmd["dst_path"])
-      zf = zipfile.ZipFile(cmd["dst_path"], mode='w')
+      zf = zipfile.ZipFile(cmd["dst_path"], 'w' , zipfile.ZIP_DEFLATED)
       zip_add_dir(cmd["src_dir"],zf )
       zf.close()
       ACK=0
