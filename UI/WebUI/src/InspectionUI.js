@@ -2069,6 +2069,40 @@ class APP_INSP_MODE extends React.Component {
         </Row></div>);
 
 
+
+    MenuSet_2nd.push(
+      <BASE_COM.IconButton
+        key="SVX"
+        addClass="layout palatte-blue-8 vbox"
+        text="SVX"
+        onClick={() =>{
+          if(this.props.reportStatisticState.trackingWindow.length<=0)
+          {
+            //
+            return;
+          }
+          let repRepeatThresList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.repeatTime>2);
+
+          if(repRepeatThresList.length<=0)
+          {
+            //
+            return;
+          }
+          let path = "data/SSSSS"
+          this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
+          { filename: path+".png", type: "__STACKING_IMG__" })
+
+          let reportSave = {
+            reports:JSON.parse(JSON.stringify(repRepeatThresList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
+            defInfo:defFileGeneration(this.props.edit_info)
+          }
+          var enc = new TextEncoder();
+          this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
+          { filename: path+".xreps" },enc.encode(JSON.stringify(reportSave)))
+        }} />);
+
+
+
     MenuSet_2nd.push(
       <BASE_COM.IconButton
         dict={this.props.DICT}
