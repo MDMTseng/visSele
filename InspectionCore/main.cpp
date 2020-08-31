@@ -66,6 +66,145 @@ int mainThreadLock_unlock(int call_lineNumber,char* msg="")
   return 0;
 }
 
+class ImageStackAddUp
+{
+  public:
+  int stackingC = 0;
+  acvImage imgStacked;
+  acvImage imgExtract;
+
+  void acvImageAddUp_1CH(acvImage *imgOut, acvImage *imgIn)
+  {
+    for (int i = 0; i < imgOut->GetHeight(); i++)
+    {
+      for (int j = 0; j < imgOut->GetWidth(); j++)
+      {
+        // 3 channels will be used for number over flow
+        _24BitUnion *pixU=(_24BitUnion *) (imgOut->CVector[i]+j*3);
+        pixU->_3Byte.Num+=imgIn->CVector[i][j*3];
+      }
+    }
+  }
+
+  void acvImageSet_1CH(acvImage *imgOut, acvImage *imgIn)
+  {
+    for (int i = 0; i < imgOut->GetHeight(); i++)
+    {
+      for (int j = 0; j < imgOut->GetWidth(); j++)
+      {
+        // 3 channels will be used for number over flow
+        _24BitUnion *pixU=(_24BitUnion *) (imgOut->CVector[i]+j*3);
+        pixU->_3Byte.Num=imgIn->CVector[i][j*3];
+      }
+    }
+  }
+  void acvImageClear(acvImage *imgOut)
+  {
+    memset((void*)imgOut->CVector[0],0,imgOut->GetHeight()*imgOut->GetWidth()*3);
+  }
+
+  void ReSize(acvImage *ref)
+  {
+    imgStacked.ReSize(ref);
+    Reset();
+  }
+
+  void Reset()
+  {
+    stackingC=0;
+    //acvImageClear(&imgStacked);
+  }
+
+
+  void Add(acvImage *imgIn)
+  {
+    if(stackingC==0)
+    {
+      acvImageSet_1CH(&imgStacked,imgIn);
+      stackingC++;
+      return;
+    }
+    if(stackingC<100)
+    {
+      acvImageAddUp_1CH(&imgStacked,imgIn);
+      stackingC++;
+    }
+  }
+
+  void Export(acvImage *imgOut)
+  {
+    imgOut->ReSize(&imgStacked);
+    for (int i = 0; i < imgOut->GetHeight(); i++)
+    {
+      for (int j = 0; j < imgOut->GetWidth(); j++)
+      {
+        // 3 channels will be used for number over flow
+
+        _24BitUnion *pixU=(_24BitUnion *) (imgStacked.CVector[i]+j*3);
+        int pix=pixU->_3Byte.Num/stackingC;
+        if(pix>255)pix=255;
+        imgOut->CVector[i][j*3]=pix;
+        imgOut->CVector[i][j*3+1]=pix;
+        imgOut->CVector[i][j*3+2]=pix;
+      }
+    }
+
+  }
+
+  void Export()
+  {
+    Export(&imgExtract);
+  }
+
+  bool DiffBigger(acvImage *img2, float globalDiffThres, int localDiffThres, int skipSampling=10)
+  {
+    if (skipSampling < 1)
+      skipSampling = 1;
+
+    globalDiffThres*=globalDiffThres*(imgStacked.GetHeight()*imgStacked.GetWidth()/skipSampling/skipSampling);
+
+    localDiffThres*=localDiffThres;
+
+    // LOGI("%d %d   %d %d",imgStacked.GetHeight(),imgStacked.GetWidth(),img2->GetHeight(),img2->GetWidth());
+    uint64_t diffSum = 0;
+    int diffMax = 0;
+    int count = 0;
+    for (int i = 0; i < imgStacked.GetHeight(); i += skipSampling)
+    {
+      for (int j = 0; j < imgStacked.GetWidth(); j += skipSampling)
+      {
+
+        _24BitUnion *pixU=(_24BitUnion *) (imgStacked.CVector[i]+j*3);
+        // LOGI("im(%d,%d)",j,i);
+        int pix=stackingC==0?0:(pixU->_3Byte.Num/stackingC);
+        
+        count++;
+
+        // LOGI("im(%d,%d)=%d",j,i,pix);
+        int diff = pix- img2->CVector[i][j*3];
+        diff *= diff;
+        diffSum += diff;
+        if(diffSum>globalDiffThres)
+        {
+          return true;
+        }
+        if (diffMax < diff)
+        {
+          diffMax = diff;
+          if(diffMax>localDiffThres)
+          {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+};
+  
+ImageStackAddUp imstack;
 
 DatCH_WebSocket *websocket = NULL;
 MatchingEngine matchingEng;
@@ -1112,6 +1251,18 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             }
 
             //cacheImage.ReSize(1,1);
+          }
+          else if (strcmp(type, "__STACKING_IMG__") == 0)
+          {
+            tmp_buff.ReSize(&(imstack.imgStacked));
+            imstack.Export();
+            calib_bacpac.sampler->ignoreCalib(false);//First, make the cacheImage to be a calibrated full res image
+            ImageDownSampling(tmp_buff,imstack.imgExtract,1, calib_bacpac.sampler,false);
+                    
+            if (tmp_buff.GetWidth() * tmp_buff.GetHeight() > 10)
+            {
+              SaveIMGFile(fileName, &tmp_buff);
+            }
           }
         }
         else
@@ -2635,8 +2786,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   static acvImage test1_buff;
 
-  static int stackingC = 0;
-  static acvImage imgStackRes;
   acvImage &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
@@ -2645,47 +2794,37 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   //stackingC=0;
 
-  if (0 && stackingC != 0)
-  {
-    imgStackRes.ReSize(&capImg);
-    float diffMax = 0;
-    float diff = acvImageDiff(&imgStackRes, &capImg, &diffMax, 30);
-    LOGV("diff:%f  max:%f", diff, diffMax);
-    if (diff > 7 || diffMax > 30)
-    {
-      stackingC = 0;
-    }
-  }
-
   {
 
-    // bacpac->sampler->getCalibMap()->origin_offset.X = fi.offset_x;
-    // bacpac->sampler->getCalibMap()->origin_offset.Y = fi.offset_y;
-
-    
-    // bacpac->sampler->getStageLightInfo()->origin_offset.X = fi.offset_x;
-    // bacpac->sampler->getStageLightInfo()->origin_offset.Y = fi.offset_y;
     acv_XY offset = {
       X: fi.offset_x,
       Y: fi.offset_y};
     bacpac->sampler->setOriginOffset(offset);
   }
+
+
   //if(stackingC!=0)return;
-  if (0)
+  
+  if (1)
   {
-    static vector<int> imgStackRes_deep;
-    imgStackRes_deep.resize(capImg.GetWidth() * capImg.GetHeight());
+    if(imstack.imgStacked.GetHeight()!=capImg.GetHeight() || imstack.imgStacked.GetWidth()!=capImg.GetWidth() )
+    {
+      imstack.ReSize(&capImg);
+    }
+    else if(imstack.DiffBigger(&capImg,10, 30))
+  {
+      imstack.Reset();
+    }
 
-    LOGV("stackingC:%d", stackingC);
-    acvImageBlendIn(&imgStackRes, &(imgStackRes_deep[0]), &capImg, stackingC);
 
-    LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
-    //acvImageAve(&imgStackRes,imgStack,pre_stackingIdx+1);
+    LOGI("stackingC:%d", imstack.stackingC);
+    imstack.Add(&capImg);
+    // LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
-    ret = ImgInspection(matchingEng, &imgStackRes, bacpac,imgPipe->camLayer, 1);
   }
-  else
+
+
   {
     ret = ImgInspection(matchingEng, &capImg, bacpac,imgPipe->camLayer, 1);
     // if(stackingC==0)
@@ -2695,7 +2834,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
     // }
   }
-  stackingC++;
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
