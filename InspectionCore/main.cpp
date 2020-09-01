@@ -14,7 +14,7 @@
 #include <compat_dirent.h>
 #include <limits.h>
 #include <sys/stat.h>
-
+#include <libgen.h>
 #include <main.h>
 #include <playground.h>
 #include <stdexcept>
@@ -288,6 +288,23 @@ FeatureManager_BacPac neutral_bacpac = {0};
 //     mmpb2b:  0.630049821,
 //     map: NULL
 // };
+
+
+bool isDirExist(const char* dir_path)
+{
+  DIR* dir = opendir(dir_path);
+  if (dir) {
+      /* Directory exists. */
+      closedir(dir);
+      return true;
+  } else if (ENOENT == errno) {
+      /* Directory does not exist. */
+  } else {
+      /* opendir() failed for some other reason. */
+  }
+  return false;
+}
+
 
 char *ReadFile(char *filename);
 
@@ -1236,6 +1253,23 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           LOGE("%s", err_str);
           break;
         }
+
+
+        char* dir = dirname(fileName);
+        bool dirExist = isDirExist(dir);
+        
+        if (dirExist==false && getDataFromJson(json, "make_dir", NULL) == cJSON_True)
+        {
+          int ret = mkdir(dir, 0777);
+          dirExist = isDirExist(dir);
+        }
+        if(dirExist==false)
+        {
+          snprintf(err_str, sizeof(err_str), "No Dir %s exist",dir);
+          LOGE("%s", err_str);
+          break;
+        }
+        
         int strinL = strlen((char *)dat->dat_raw) + 1;
 
         if (dat->size - strinL == 0)
@@ -2789,7 +2823,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
   acvImage &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
-
+  
   int ret = 0;
 
   //stackingC=0;
@@ -2812,7 +2846,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       imstack.ReSize(&capImg);
     }
     else if(imstack.DiffBigger(&capImg,10, 30))
-  {
+    {
       imstack.Reset();
     }
 

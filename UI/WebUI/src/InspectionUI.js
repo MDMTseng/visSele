@@ -2068,8 +2068,6 @@ class APP_INSP_MODE extends React.Component {
           </Col>
         </Row></div>);
 
-
-
     MenuSet_2nd.push(
       <BASE_COM.IconButton
         key="SVX"
@@ -2081,20 +2079,38 @@ class APP_INSP_MODE extends React.Component {
             //
             return;
           }
-          let repRepeatThresList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.repeatTime>2);
+          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
 
-          if(repRepeatThresList.length<=0)
+          if(curList.length<=0)
           {
             //
             return;
           }
-          let path = "data/SSSSS"
+
+          
+          let earliestTimeStamp = curList.reduce((time,rep)=>{
+            if(time===undefined || time>rep.add_time_ms)return rep.add_time_ms;
+            return time;
+          },undefined);
+
+          // console.log(this.props.machine_custom_setting);
+
+          let deffile = defFileGeneration(this.props.edit_info);
+          let default_dst_Path=this.props.machine_custom_setting.Sample_Saving_Path;
+          if(default_dst_Path===undefined)
+          {
+            default_dst_Path="data"
+          }
+          
+          let tag_str = curList[0].tag;
+
+          let path = default_dst_Path+"/"+deffile.name+"-["+tag_str+"]-"+earliestTimeStamp;
           this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
-          { filename: path+".png", type: "__STACKING_IMG__" })
+          { filename: path+".png",make_dir:true, type: "__STACKING_IMG__" })
 
           let reportSave = {
-            reports:JSON.parse(JSON.stringify(repRepeatThresList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
-            defInfo:defFileGeneration(this.props.edit_info)
+            reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
+            defInfo:deffile
           }
           var enc = new TextEncoder();
           this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
