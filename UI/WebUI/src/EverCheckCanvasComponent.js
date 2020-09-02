@@ -109,7 +109,12 @@ class renderUTIL {
       editShape: "rgba(255,0,0,0.7)",
       measure_info: "rgba(128,128,200,0.7)"
     };
-
+    this.fixedDigit={
+      D:4,
+      R:4,
+      A:2,
+      _:4
+    }
     this.renderParam = {
       base_Size: 2.5,
       size_Multiplier: 1,
@@ -451,7 +456,7 @@ class renderUTIL {
         
         this.drawInspMeasureInfoText(ctx,
           eObject.name,
-          "D" + (eObject.inspection_value * unitConvert.mult).toFixed(3) + unitConvert.unit,
+          "D" + (eObject.inspection_value * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           marginPC,fontPx);
 
         measureValue=eObject.inspection_value;
@@ -463,10 +468,10 @@ class renderUTIL {
         
         this.drawDefMeasureInfoText(ctx,
           eObject.name,
-          "D" + eObject.value.toFixed(3) + unitConvert.unit,
-          "L:" + eObject.LSL * unitConvert.mult.toFixed(3) + unitConvert.unit + 
-          " U:" + eObject.USL * unitConvert.mult.toFixed(3) + unitConvert.unit,
-          "Now:" + (measureValue * unitConvert.mult).toFixed(3) + unitConvert.unit,
+          "D" + eObject.value.toFixed(this.fixedDigit.D) + unitConvert.unit,
+          "L:" + eObject.LSL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit + 
+          " U:" + eObject.USL * unitConvert.mult.toFixed(this.fixedDigit.D) + unitConvert.unit,
+          "Now:" + (measureValue * unitConvert.mult).toFixed(this.fixedDigit.D) + unitConvert.unit,
           fontPx)
 
       }
@@ -924,7 +929,7 @@ class renderUTIL {
                       -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
                     this.drawInspMeasureInfoText(ctx,
                       eObject.name,
-                      (eObject.inspection_value).toFixed(2) + "º",
+                      (eObject.inspection_value).toFixed(this.fixedDigit.A) + "º",
                       marginPC,fontPx);
                     measureValue=eObject.inspection_value;
                   }
@@ -933,9 +938,9 @@ class renderUTIL {
                     
                     this.drawDefMeasureInfoText(ctx,
                       eObject.name,
-                      ""+eObject.value.toFixed(3) + "º",
-                      "L:" + eObject.LSL.toFixed(3) + "º U:" + eObject.USL.toFixed(3) + "º",
-                      "Now:" + (measureDeg).toFixed(3) + "º",
+                      ""+eObject.value.toFixed(this.fixedDigit.A) + "º",
+                      "L:" + eObject.LSL.toFixed(this.fixedDigit.A) + "º U:" + eObject.USL.toFixed(this.fixedDigit.A) + "º",
+                      "Now:" + (measureDeg).toFixed(this.fixedDigit.A) + "º",
                       fontPx)
                     
                     measureValue=measureDeg;
@@ -990,7 +995,7 @@ class renderUTIL {
                       
                     this.drawInspMeasureInfoText(ctx,
                       eObject.name,
-                      "R" + (eObject.inspection_value * unitConvert.mult).toFixed(3) + unitConvert.unit,
+                      "R" + (eObject.inspection_value * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
                       marginPC,fontPx);
                     measureValue=eObject.inspection_value;
                   }
@@ -999,9 +1004,9 @@ class renderUTIL {
                     
                     this.drawDefMeasureInfoText(ctx,
                       eObject.name,
-                      "R" + eObject.value.toFixed(3) + unitConvert.unit,
-                      "L:" + (eObject.LSL * unitConvert.mult).toFixed(3) + unitConvert.unit + " U:" + (eObject.USL * unitConvert.mult).toFixed(3) + unitConvert.unit,
-                      "Now:" + (arc.r * unitConvert.mult).toFixed(3) + unitConvert.unit,
+                      "R" + eObject.value.toFixed(this.fixedDigit.R) + unitConvert.unit,
+                      "L:" + (eObject.LSL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit + " U:" + (eObject.USL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
+                      "Now:" + (arc.r * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
                       fontPx);
 
                     measureValue=arc.r;
@@ -1080,9 +1085,9 @@ class renderUTIL {
                     //console.log(measureValueCache,eObject,measureValue);
                     this.drawDefMeasureInfoText(ctx,
                       eObject.name,
-                      "C" + eObject.value.toFixed(3),
-                      "L:" + eObject.LSL.toFixed(3) + " U:" + eObject.USL.toFixed(3),
-                      "Now:" +measureValue.toFixed(5),
+                      "C" + eObject.value.toFixed(this.fixedDigit._),
+                      "L:" + eObject.LSL.toFixed(this.fixedDigit._) + " U:" + eObject.USL.toFixed(this.fixedDigit._),
+                      "Now:" +measureValue.toFixed(this.fixedDigit._),
                       fontPx);
                     
 
@@ -2087,9 +2092,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
 
-        ctx.textAlign = "center";
-        ctx.textBaseline = 'middle';
-        ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.013;
+        // ctx.textAlign = "center";
+        // ctx.textBaseline = 'middle';
+        // ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.013;
+
+
+
 
         // this.rUtil.draw_Text(ctx, idx,1, 0, 0);
 
@@ -2131,11 +2139,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
             break;
 
         }
-        ctx.fillText(idx, 0, 0);
-        ctx.strokeText(idx, 0, 0);
-        ctx.fill();
+        // let fontPx = this.getFontHeightPx();
+        
+        
+        this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
+        // ctx.fillText(idx, 0, 0);
+        // ctx.strokeText(idx, 0, 0);
+        // ctx.fill();
         ctx.restore();
-        ctx.strokeStyle = "black";
         //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"cross");
       });
     }
@@ -2460,9 +2471,9 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
         scale = this.img_info.scale;
 
       let mmpp_mult = scale * mmpp;
-      ctx.scale(scale * mmpp, scale * mmpp);
+      ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX) / scale-0.5, (this.img_info.offsetY) / scale-0.5);
+        ctx.translate((this.img_info.offsetX-0.5*(scale-1)) / scale, (this.img_info.offsetY-0.5*(scale-1)) / scale);
       }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
