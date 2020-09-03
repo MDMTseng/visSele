@@ -16,7 +16,7 @@ import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
-
+import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset } from 'UTIL/MISC_Util';
 
@@ -1050,6 +1050,10 @@ const MainUI=()=>{
         type:"BackLightCalib",
         name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
       },
+      RepDisplay:{
+        type:"RepDisplay",
+        name:DICT.mainui.MODE_SELECT_REP_DISPLAY,
+      },
       Setting:{
         type:"Setting",
         name:DICT.mainui.MODE_SELECT_SETTING,
@@ -1120,6 +1124,11 @@ const MainUI=()=>{
         <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
           <span><strong>{DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB}</strong></span>
         </div>
+
+        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.RepDisplay)}>
+          <span><strong>{DICT.mainui.MODE_SELECT_REP_DISPLAY}</strong></span>
+        </div>
+        
         {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
           <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
         </div> */}
@@ -1175,6 +1184,25 @@ const MainUI=()=>{
         ]
       }
       break;    
+
+
+
+
+      case  s_statesTable.RepDisplay:
+     
+        UI.push(<RepDisplayUI_rdx
+          BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+          onCalibFinished={(finalReport) => {
+            console.log(">>>>>>>>>",finalReport)
+          }} />);
+        
+        siderUI_info={
+          title:UI_state.name,
+          icons:[
+            <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
+          ]
+        }
+        break;  
     case  s_statesTable.InstInsp:
 
       siderUI_info={

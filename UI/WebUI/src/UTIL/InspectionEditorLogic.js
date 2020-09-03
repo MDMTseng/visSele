@@ -7,11 +7,15 @@ import {
   vecXY_addin
 } from 'UTIL/MathTools';
 
+import { isString } from 'UTIL/MISC_Util';
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import { SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/UIAct';
 import { GetObjElement } from 'UTIL/MISC_Util';
 import dclone from 'clone';
 import * as logX from 'loglevel';
+
+import JSum from 'jsum';
+import dateFormat from 'dateFormat';
 let log = logX.getLogger("InspectionEditorLogic");
 
 export const MEASURERSULTRESION =
@@ -101,6 +105,178 @@ export class InspectionEditorLogic {
   }
 
 
+
+  rootDefInfoLoading(root_defFile,edit_info,inspEditorLogic=this)
+  {
+    console.log(root_defFile,edit_info);
+    if (root_defFile.type === "binary_processing_group") {
+      let doExit = false;
+      let clone_featureSet = dclone(root_defFile.featureSet);
+      clone_featureSet.forEach((feature) => {//we ignore the key that starts with "__", two "_"
+        Object.keys(feature).
+          filter(key => key.startsWith("__")).
+          forEach((keyW__) => delete feature[keyW__]);
+      })
+  
+  
+      let sha1_info_in_json = JSum.digest(clone_featureSet, 'sha1', 'hex');
+      if (root_defFile.featureSet_sha1 !== undefined)//If there is a saved sha1, check integrity 
+      {
+        let sha1_info_in_file = root_defFile.featureSet_sha1;
+        if (sha1_info_in_file !== sha1_info_in_json) {
+          doExit = true;
+        }
+      }
+  
+      /*if(edit_info.DefFileHash==sha1_info_in_json)
+      {
+        //No need to wipe out the data;
+        break;
+      }*/
+      //Edit_info_reset(newState);
+  
+  
+      if (doExit) {
+        edit_info.DefFileHash = undefined;
+        return;
+      }
+      //console.log(dclone(edit_info))
+      edit_info.DefFileHash = sha1_info_in_json;
+      edit_info.DefFileHash_pre = root_defFile.featureSet_sha1_pre;
+      edit_info.DefFileHash_root = root_defFile.featureSet_sha1_root;
+  
+      if (root_defFile.name === undefined) {
+        var now = new Date();
+        var time = dateFormat(now, "yyyymmdd_HHMMss");
+        edit_info.DefFileName = "Sample_" + time;
+      }
+      else {
+        edit_info.DefFileName = root_defFile.name;
+      }
+  
+      if (root_defFile.tag !== undefined) {
+        let tagInfo = root_defFile.tag;
+        if (isString(tagInfo))
+          tagInfo = root_defFile.tag.split(",");
+  
+        if (Array.isArray(tagInfo)) {
+          edit_info.DefFileTag = tagInfo;
+        }
+      }
+  
+  
+      edit_info.loadedDefFile = dclone(root_defFile);
+  
+  
+      if (typeof root_defFile.intrusionSizeLimitRatio == 'number') {
+        edit_info.intrusionSizeLimitRatio =
+          root_defFile.intrusionSizeLimitRatio
+      }
+  
+      root_defFile.featureSet.forEach((report) => {
+        switch (report.type) {
+          case "sig360_extractor":
+          case "sig360_circle_line":
+            {
+              if (report.matching_angle_margin_deg !== undefined)
+                edit_info.matching_angle_margin_deg = report.matching_angle_margin_deg;
+              if (report.matching_angle_offset_deg !== undefined)
+                edit_info.matching_angle_offset_deg = report.matching_angle_offset_deg;
+              if (report.matching_face !== undefined)
+                edit_info.matching_face = report.matching_face;
+  
+  
+              edit_info = Object.assign({}, edit_info);
+  
+              inspEditorLogic.SetDefInfo(report);
+  
+  
+              let reportStatisticState = edit_info.reportStatisticState;
+  
+              edit_info.edit_tar_info = null;
+  
+              edit_info.list = inspEditorLogic.shapeList;
+              edit_info.__decorator = { ...edit_info.__decorator, ...report.__decorator };
+  
+              edit_info.__decorator.list_id_order =
+                UpdateListIDOrder(edit_info.__decorator.list_id_order, edit_info.list);
+  
+              edit_info.inherentShapeList = inspEditorLogic.UpdateInherentShapeList();
+  
+              log.info(edit_info.inherentShapeList);
+  
+              //reportStatisticState.statisticValue
+              let measureList =
+                dclone(edit_info.list.filter((feature) =>
+                  feature.type == SHAPE_TYPE.measure))
+                  .map((feature) => {
+                    //console.log(feature);
+                    feature.statistic = {
+                      count_stat:
+                      {
+                        NA: 0,
+                        UOK: 0,
+                        LOK: 0,
+  
+                        UCNG: 0,
+                        LCNG: 0,
+  
+                        USNG: 0,
+                        LSNG: 0,
+                      },
+                      histogram: {
+                        xmin: 1.2 * (feature.LSL - feature.value) + feature.value,
+                        xmax: 1.2 * (feature.USL - feature.value) + feature.value,
+                        histo: new Array(502).fill(0)//The first value and last value are the value excced xmin& xmax
+                      },
+                      count: 0,
+                      //those value should be undefined, but since the count is 0 so the following calc should ignore those value
+                      sum: 0,
+                      sqSum: 0,//E[X^2]*count
+                      mean: 0,//E[X]*count
+                      variance: 0,//E[X^2]-E[X]^2
+                      //deviation = Sigma = sqrt(variance)
+                      sigma: 0,
+                      //
+                      CP: 0,
+                      CK: 0,
+                      CPU: 0,
+                      CPL: 0,
+                      CPK: 0,
+                    }
+                    return feature;
+                  });
+              reportStatisticState.statisticValue = {
+  
+                measureList: measureList
+              }
+              log.info(reportStatisticState.statisticValue);
+            }
+            break;
+          case "camera_calibration":
+  
+            log.error(action);
+            /*if(report.error!==undefined &&report.error == 0)
+            {
+              edit_info.camera_calibration_report = root_report;
+            }
+            else
+            {
+              edit_info.camera_calibration_report = undefined;
+            }*/
+            break;
+        }
+  
+      });
+    }
+
+    
+    edit_info.list = this.shapeList;
+    edit_info.inherentShapeList = this.UpdateInherentShapeList();
+
+    return edit_info;
+  }
+  
   getMeasureGrading(measureReport)
   {
     let measureDef = this.shapeList.find((feature) => feature.id == measureReport.id);
@@ -817,4 +993,87 @@ export class InspectionEditorLogic {
     return undefined;
   }
 
+}
+
+
+
+
+export function UpdateListIDOrder(cur_listIDOrder, list) {
+  //remove disappeared shape id
+  let listIDOrder = cur_listIDOrder.filter(id => list.find(shape => shape.id == id));
+
+  let newIDs = list.//find new IDs to add in
+    filter(shape => listIDOrder.find(id => id == shape.id) === undefined).
+    map(shape => shape.id);
+
+  listIDOrder = [...listIDOrder, ...newIDs];
+  return listIDOrder;
+}
+
+
+
+const default_MinRepeatInspReport = 2;
+
+export function Edit_info_Empty() {
+  return {
+    stage_light_report: undefined,
+    inspReport: undefined,
+
+    reportStatisticState: {
+      trackingWindow: [],
+      historyReport: [],
+      newAddedReport: [],
+      statisticValue: undefined,
+      overallStat: {
+        OK: 0,
+        WARN: 0,
+        NG: 0,
+        lastTS: 0,
+        T: 0,
+        soft_T: 0,
+        softIdx: 0.1
+      }
+    },
+    statSetting: {
+      keepInTrackingTime_ms: 3000,
+      historyReportlimit: 2000,
+      minReportRepeat: default_MinRepeatInspReport,
+      headReportSkip: 3
+    },
+    sig360info: [],
+    matching_angle_margin_deg: 180,
+    matching_angle_offset_deg: 0,
+    matching_face: 0,
+    intrusionSizeLimitRatio: 0.1,
+    img: null,
+    DefFileName: "",
+    DefFileTag: [],
+    //inspOptionalTag:"",
+    DefFileHash: "",
+    list: [],
+    __decorator: {
+      list_id_order: [],
+      extra_info: []
+    },
+    inherentShapeList: [],
+
+    edit_tar_info: null,//It's for usual edit target
+
+    //It's the target element in edit target
+    //Example 
+    //edit_tar_info={iii:0,a:{b:[x,y,z,c]}}
+    //And our goal is to trace to c
+    //Then, edit_tar_ele_trace={obj:b, keyHist:["a","b",3]}
+    edit_tar_ele_trace: null,
+
+    //This is the cadidate info for target element content
+    edit_tar_ele_cand: null,
+    //camera_calibration_report:undefined // the camera calibration data shouldn't be reset
+    mouseLocation: undefined,
+    loadedDefFile: undefined,
+
+    DefFileHash: undefined,
+    DefFileHash_pre: undefined,
+    DefFileHash_root: undefined,
+  };
 }

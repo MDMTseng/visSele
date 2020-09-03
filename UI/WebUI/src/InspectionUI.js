@@ -15,7 +15,7 @@ import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
-import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'REDUX_STORE_SRC/reducer/InspectionEditorLogic';
+import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
@@ -2110,7 +2110,8 @@ class APP_INSP_MODE extends React.Component {
 
           let reportSave = {
             reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
-            defInfo:deffile
+            defInfo:deffile,
+            camera_param:this.props.edit_info._obj.cameraParam
           }
           var enc = new TextEncoder();
           this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,

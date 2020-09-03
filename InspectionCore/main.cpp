@@ -1466,6 +1466,16 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       do
       {
 
+        if (json == NULL)
+        {
+          snprintf(err_str, sizeof(err_str), "JSON parse failed LINE:%04d", __LINE__);
+          LOGE("%s", err_str);
+
+          break;
+        }
+
+
+
         char *filename = (char *)JFetch(json, "filename", cJSON_String);
         if (filename != NULL)
         {
@@ -1491,32 +1501,35 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             LOGE("%s", err_str);
           }
 
-          break;
         }
 
-        if (json == NULL)
-        {
-          snprintf(err_str, sizeof(err_str), "JSON parse failed LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
 
-          break;
-        }
-        char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
-        if (imgSrcPath == NULL)
-        {
-          snprintf(err_str, sizeof(err_str), "No entry:imgSrcPath in it LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
-          break;
-        }
+        
+
         char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
-        if (deffile == NULL)
+
+        try
         {
-          snprintf(err_str, sizeof(err_str), "No entry:'deffile' in it LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
-          break;
+          char *jsonStr = ReadText(deffile);
+          if (jsonStr != NULL)
+          {
+            LOGI("Read deffile:%s", deffile);
+            bpg_dat = GenStrBPGData("DF", jsonStr);
+            bpg_dat.pgID = dat->pgID;
+            datCH_BPG.data.p_BPG_data = &bpg_dat;
+            self->SendData(datCH_BPG);
+            free(jsonStr);
+          }
         }
+        catch (std::invalid_argument iaex)
+        {
+          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+          LOGE("%s", err_str);
+        }
+
 
         acvImage *srcImg = NULL;
+        char *imgSrcPath = (char *)JFetch(json, "imgsrc", cJSON_String);
         if (imgSrcPath != NULL)
         {
 
@@ -1526,49 +1539,35 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             srcImg = &tmp_buff;
             cacheImage.ReSize(srcImg);
             acvCloneImage(srcImg, &cacheImage, -1);
+
+
+            int default_scale=2;
+            
+            double* DS_level= JFetch_NUMBER(json,"down_samp_level");
+            if(DS_level){
+              default_scale=(int)*DS_level;
+              if(default_scale<=0)default_scale=1;
+            }
+            //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
+            bpg_dat = GenStrBPGData("IM", NULL);
+            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
+
+            //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
+            //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
+            bpg_dat.callbackInfo = (uint8_t *)&iminfo;
+            bpg_dat.callback = DatCH_BPG_acvImage_Send;
+
+            bpg_dat.pgID = dat->pgID;
+            datCH_BPG.data.p_BPG_data = &bpg_dat;
+            self->SendData(datCH_BPG);
+
           }
-        }
-        if (srcImg == NULL)
-        {
-          cacheImage.ReSize(1, 1);
-          break;
+
+
         }
 
-        try
-        {
-          char *jsonStr = ReadText(deffile);
-          if (jsonStr == NULL)
-          {
-            snprintf(err_str, sizeof(err_str), "Cannot read defFile from:%s LINE:%04d", deffile, __LINE__);
-            LOGE("%s", err_str);
-            break;
-          }
-          LOGI("Read deffile:%s", deffile);
-          bpg_dat = GenStrBPGData("DF", jsonStr);
-          bpg_dat.pgID = dat->pgID;
-          datCH_BPG.data.p_BPG_data = &bpg_dat;
-          self->SendData(datCH_BPG);
-          free(jsonStr);
-        }
-        catch (std::invalid_argument iaex)
-        {
-          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
-        }
 
-        //TODO:HACK: 4X4 times scale down for transmission speed, bpg_dat.scale is not used for now
-        bpg_dat = GenStrBPGData("IM", NULL);
-        BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : 2};
-
-        //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
-        //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
-        bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-        bpg_dat.callback = DatCH_BPG_acvImage_Send;
-
-        bpg_dat.pgID = dat->pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        self->SendData(datCH_BPG);
 
         session_ACK = true;
 
