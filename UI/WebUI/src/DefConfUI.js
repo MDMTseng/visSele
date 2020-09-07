@@ -814,34 +814,54 @@ function SettingUI({})
   
 function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID,dispatch)
 {
+  function actionGen_W_IGNORE_LOCK(pkts)
+  {
+    return{
+      type: "ATBundle",
+      ActionThrottle_type: "express",
+      
+      data: pkts.map(pkt =>{
+        let act = BPG_Protocol.map_BPG_Packet2Act(pkt)
+        if(act!==undefined)
+        {
+          act.IGNORE_DEFCONF_LOCK=true;
+        }
+        return act;
+      }).filter(act => act !== undefined)
+    }
+  }
 
-  ACT_DefConf_Lock_Level_Update(0);
+  ACT_DefConf_Lock_Level_Update(1);
   new Promise((resolve, reject) => {
     console.log(defModelPath,DEF_EXTENSION,WS_ID)
     ACT_WS_SEND(WS_ID, "LD", 0,
       {
         deffile: defModelPath + '.' + DEF_EXTENSION,
-        imgsrc: defModelPath
+        imgsrc: defModelPath,
+        down_samp_level:10
       },
       undefined, { resolve, reject });
     setTimeout(() => reject("Timeout"), 5000)
   })
     .then((pkts) => {
+      dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
-      dispatch({
-        type: "ATBundle",
-        ActionThrottle_type: "express",
-        data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+      new Promise((resolve, reject) => {
+        ACT_WS_SEND(WS_ID, "LD", 0,
+          {
+            imgsrc: defModelPath,
+            down_samp_level:1
+          },
+          undefined, { resolve, reject });
+        setTimeout(() => reject("Timeout"), 5000)
       })
-      let SS=pkts.find(pkt=>pkt.type==="SS");
-      if(SS!==undefined)
-      {
-        let success=GetObjElement(SS,["data","ACK"]);
-        if(success==true)
-        {
-          ACT_DefConf_Lock_Level_Update(1);
-        }
-      }
+        .then((pkts) => {
+          
+          dispatch(actionGen_W_IGNORE_LOCK(pkts))
+        })
+        .catch((err) => {
+          log.info(err);
+        })
     })
     .catch((err) => {
       log.info(err);
