@@ -639,14 +639,16 @@ def chessBoardCalibsss(image_path):
     imgpoints_Match=None
     print("---imgpoints:\n  ",len(imgpoints[0])) #real cornor points from all availiable images
     print("---objpoints:\n  ",len(objpoints[0])) #XY index grid from real cornor points 
+
+    pickPercentage=0.8
     for x in range(20):
         thres = 10
-        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres*2,0.2)
+        objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres*2,pickPercentage)
         print("  ",x," availLen>",availLen," totLen>",totLen," error:",error)
 
         
         if(maxMatchingRatio<availLen/totLen):
-            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres*2,0.2)
+            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres*2,pickPercentage)
             print("2nd:",x," availLen>",availLen," _totLen>",_totLen," error:",error)
             maxMatchingRatio = availLen/totLen
             maxMatchingAvailLen=availLen
