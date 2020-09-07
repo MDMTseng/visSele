@@ -988,10 +988,20 @@ export function defFileGeneration(edit_info)
 
   let sha1_info_in_json = JSum.digest(report.featureSet, 'sha1', 'hex');
   report.featureSet[0]["__decorator"] = edit_info.__decorator;
+
+
+
   report.featureSet_sha1 = sha1_info_in_json;
   //this.props.ACT_DefFileHash_Update(sha1_info_in_json);
-
+  //console.log(edit_info);
+  if(edit_info.DefFileHash===sha1_info_in_json)
+  {//means the main part of deffile is still the same, use same DefFileHash_pre
+    report.featureSet_sha1_pre = edit_info.DefFileHash_pre;
+  }
+  else
+  {
   report.featureSet_sha1_pre = edit_info.DefFileHash;
+  }
 
   if (edit_info.DefFileHash_root === undefined) {
     if (edit_info.featureSet_sha1_pre === undefined)
