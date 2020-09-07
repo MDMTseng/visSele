@@ -952,7 +952,8 @@ float checkPtNoise(ContourFetch::ptInfo pt)
 
   return pt.contourDir.Y*pt.sobel.Y+pt.contourDir.X*pt.sobel.X;
 }
-FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(acvImage *grayLevelImg, acvImage *labeledImg, int labelId, acv_LabeledData labeledData, FeatureReport_sig360_circle_line_single &report,
+FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(FeatureReport_sig360_circle_line_single &report,
+                                                                                       acv_XY center,
                                                                                        float sine, float cosine, float flip_f, float thres,
                                                                                        featureDef_searchPoint &def)
 {
@@ -986,7 +987,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     }
 
     acv_XY pt = acvRotation(sine, cosine, flip_f, def.data.anglefollow.position); //Rotate the default point
-    pt = acvVecAdd(pt, labeledData.Center);
+    pt = acvVecAdd(pt, center);
     if (flip_f > 0)
     {
       vec = acvVecMult(vec, -1);
@@ -1045,7 +1046,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     start_line.line_anchor = acvVecAdd(start_line.line_anchor, line.line_anchor); //add line_anchor
 
 
-    LOGI("line vec x:%f y:%f, search_far:%d",line.line_vec.X,line.line_vec.Y,def.data.anglefollow.search_far);
+    LOGI("line vec %f %f, search_far:%d",line.line_vec.X,line.line_vec.Y,def.data.anglefollow.search_far);
+    LOGI("line_anchor %f %f",line.line_anchor.X,line.line_anchor.Y);
 
     if(searchDir!=searchDir_NA_FLAG)
       edge_grid.getContourPointsWithInLineContour(line,
@@ -1318,8 +1320,8 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   line.searchDist = line.initMatchingMargin * 2;
 
   line.searchEstAnchor = line.lineTar.line_anchor;
-  line.searchEstAnchor.X -= normal.X * line.initMatchingMargin;
-  line.searchEstAnchor.Y -= normal.Y * line.initMatchingMargin;
+  // line.searchEstAnchor.X -= normal.X * line.initMatchingMargin;
+  // line.searchEstAnchor.Y -= normal.Y * line.initMatchingMargin;
 
   int keyPointCount = 2 + 3;
 
@@ -2061,19 +2063,23 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       acv_XY target_vec = {0};
       acv_Line line_cand;
 
+      line_cand.line_vec = acvRotation(cached_sin, cached_cos, flip_f, line->lineTar.line_vec);
+      //line_cand.line_vec = acvVecMult(line_cand.line_vec, ppmm); //convert to pixel unit
+
+      target_vec = line_cand.line_vec;
+      line_cand.line_anchor = acvRotation(cached_sin, cached_cos, flip_f, line->searchEstAnchor);
+      line_cand.line_anchor = acvVecMult(line_cand.line_anchor, ppmm); //convert to pixel unit
+      line_cand.line_anchor = acvVecAdd(line_cand.line_anchor, calibCen);
+
+      LOGI("pos:%f %f, vec: %f %f, ",
+        line_cand.line_anchor.X,line_cand.line_anchor.Y,
+        line_cand.line_vec.X,line_cand.line_vec.Y);
+      if(false)
       {
         //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
 
-        line_cand.line_vec = acvRotation(cached_sin, cached_cos, flip_f, line->lineTar.line_vec);
-        line_cand.line_vec = acvVecMult(line_cand.line_vec, ppmm); //convert to pixel unit
-
-        target_vec = line_cand.line_vec;
-        line_cand.line_anchor = acvRotation(cached_sin, cached_cos, flip_f, line->searchEstAnchor);
-        line_cand.line_anchor = acvVecMult(line_cand.line_anchor, ppmm); //convert to pixel unit
-
 
         //Offet to real image and backoff searchDist distance along with the searchVec as start
-        line_cand.line_anchor = acvVecAdd(line_cand.line_anchor, calibCen);
         LOGI("line[%d]->lineTar.line_vec: %f %f", j, line_cand.line_vec.X, line_cand.line_vec.Y);
         LOGI("line[%d]->lineTar.line_anchor: %f %f", j, line_cand.line_anchor.X, line_cand.line_anchor.Y);
 
@@ -2089,6 +2095,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
           skp.keyPt = acvVecMult(skp.keyPt, ppmm);
           skp.keyPt = acvVecAdd(skp.keyPt, calibCen);
 
+          bacpac->sampler->ideal2img(&skp.keyPt);
           float searchDist = line->searchDist * ppmm;
           if (drawDBG_IMG)
           {
@@ -2096,7 +2103,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
                           skp.keyPt.X, skp.keyPt.Y,
                           2, 2);
           }
-          //LOGV("skp.keyPt %f %f, searchDist:%f ppmm:%f",skp.keyPt.X,skp.keyPt.Y,searchDist,ppmm);
+          LOGI("searchVec %f %f, searchDist:%f ppmm:%f",searchVec.X,searchVec.Y,searchDist,ppmm);
           if (searchP(binarizedBuff, &skp.keyPt, searchVec, searchDist) != 0)
           {
             LOGI("Fail... keyPt: (%f,%f)", skp.keyPt.X, skp.keyPt.Y);
@@ -2112,6 +2119,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
           //LOGV("skp.keyPt %f %f <= found..",skp.keyPt.X,skp.keyPt.Y);
           ContourFetch::ptInfo pti = {pt : skp.keyPt};
 
+          
+
+          bacpac->sampler->img2ideal(&pti.pt);
           tmp_points.push_back(pti);
         }
 
@@ -2164,7 +2174,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       // So the solution is to apply acvVecRadialDistortionRemove for the init line_cand, that will compensate the problem.
       // Ideally, the line vector and region width should be compensated as well, but.... if the lens is really that bad, you better find a really good reason to use that.
 
-      bacpac->sampler->img2ideal(&line_cand.line_anchor);
+      // bacpac->sampler->img2ideal(&line_cand.line_anchor);
 
       float MatchingMarginX = line->MatchingMarginX * ppmm;
       float initMatchingMargin = line->initMatchingMargin * ppmm;
@@ -2184,7 +2194,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
 
                                                   //HACK:Kinda hack... the initial Margin is for initial keypoints search,
                                                   //But since we get the cadidate line already, no need for huge Margin
-                                                  initMatchingMargin / 2,
+                                                  initMatchingMargin,
                                                   flip_f, m_sections);
 
       if (m_sections.size() == 0)
@@ -2486,7 +2496,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
         line_cand.line_vec = acvVecMult(line_cand.line_vec, -1);
       }
 
-      LOGV("L=%d===anchor:%f,%f vec:%f,%f ,sigma:%f target_vec:%f,%f", j,
+      LOGI("L=%d===anchor:%f,%f vec:%f,%f ,sigma:%f target_vec:%f,%f,", j,
            line_cand.line_anchor.X,
            line_cand.line_anchor.Y,
            line_cand.line_vec.X,
@@ -2731,7 +2741,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       {
         spoint.data.anglefollow.position = acvVecMult(spoint.data.anglefollow.position, ppmm);
       }
-      FeatureReport_searchPointReport report = searchPoint_process(originalImage, binarizedBuff, lableIdx, ldData[lableIdx], singleReport, cached_sin, cached_cos, flip_f, thres, spoint);
+      FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint);
       LOGV("id:%d, %d", report.def->id, searchPointList[j].id);
       report.def = &(searchPointList[j]);
       detectedSearchPoints.push_back(report);
@@ -2885,7 +2895,20 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
-    acvContourCircleSignature(img, ldData[i], i, tmp_signature.signature_data);
+
+
+
+    bool isOK =  acvOuterContourExtraction(img, ldData[i], i,tmp_contour);
+
+    for (int i = 0; i < tmp_contour.size(); i++)
+    {
+      bacpac->sampler->img2ideal(&tmp_contour[i]);
+    }
+
+    acv_XY ideal_center = ldData[i].Center;
+    bacpac->sampler->img2ideal(&ideal_center);
+    acvContourCircleSignature(ideal_center,tmp_contour, tmp_signature.signature_data);
+
 
     //the tmp_signature is in Pixel unit, convert it to mm
     for (int j = 0; j < tmp_signature.signature_data.size(); j++)
@@ -2970,12 +2993,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
         };
     //singleReport.Center=acvVecRadialDistortionRemove(singleReport.Center,param);
 
-    acv_XY calibCen = singleReport.Center;
-    bacpac->sampler->img2ideal(&calibCen);
-
-    singleReport.Center = calibCen;
+    bacpac->sampler->img2ideal(&singleReport.Center);
     singleReport.Center = acvVecMult(singleReport.Center, mmpp);
+    bacpac->sampler->img2ideal(&singleReport.LTBound);
     singleReport.LTBound = acvVecMult(singleReport.LTBound, mmpp);
+    bacpac->sampler->img2ideal(&singleReport.RBBound);
     singleReport.RBBound = acvVecMult(singleReport.RBBound, mmpp);
     singleReport.area *= mmpp * mmpp;
 

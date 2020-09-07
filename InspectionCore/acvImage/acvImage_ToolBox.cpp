@@ -328,6 +328,86 @@ bool acvContourCircleSignature(std::vector<acv_XY> &contour,std::vector<acv_XY> 
     return true;
 
 }
+
+
+bool acvOuterContourExtraction(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &contour)
+{
+
+  int ret=-1;
+  contour.resize(0);
+
+  int X,Y;
+  int startX,startY;
+  X=(int)ldata.LTBound.X;
+  Y=(int)ldata.LTBound.Y;
+  for(int j=X; j<(int)ldata.RBBound.X; j++)
+  {
+    _24BitUnion *pix=(_24BitUnion*)&(LabeledPic->CVector[Y][j*3]);
+    if(pix->_3Byte.Num==labelIdx)
+    {
+        X=j;
+        startX=j;
+        startY=Y;
+        ret=0;
+        break;
+    }
+  }
+  if(ret!=0)return false;
+
+
+  int preIdx=-1;
+  int _1stIdx=-1;
+  //0|1|2
+  //7|X|3
+  //6|5|4
+  int dir =3;//>
+  do {
+      contour.push_back({X:(float)X,Y:(float)Y});
+
+      BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
+      dir-=2;
+
+      /* code */
+  } while(X!=startX||Y!=startY);
+
+  return true;
+}
+
+
+bool acvContourCircleSignature
+(acv_XY  center,std::vector<acv_XY> &contour,std::vector<acv_XY> &o_signature)
+{
+  if(contour.size()==0)return false;
+  
+  int preIdx=-1;
+  int _1stIdx=-1;
+  for( acv_XY copos: contour)
+  {
+    float diffY=copos.Y-center.Y;
+    float diffX=copos.X-center.X;
+    float theta=acvFAtan2(diffY,diffX);//-pi ~pi
+    //if(theta<0)theta+=2*M_PI;
+    int idx=round(o_signature.size()*theta/(2*M_PI));
+    if(idx<0)idx+=o_signature.size();
+    //if(idx>=signature.size())idx-=signature.size();
+    if(preIdx==-1)
+    {
+        _1stIdx=idx;
+        preIdx=idx;
+    }
+    float R=hypot(diffX,diffY);
+    if(o_signature[idx].X<R)
+    {
+        o_signature[idx].X=R;
+        o_signature[idx].Y=theta;
+        interpolateSignData(o_signature,preIdx,idx);
+    }
+    preIdx=idx;
+  }
+
+
+  return true;
+}
 //signature X: magnitude Y:angle
 bool acvContourCircleSignature
 (acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature)

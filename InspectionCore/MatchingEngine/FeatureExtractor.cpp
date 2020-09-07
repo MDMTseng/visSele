@@ -85,7 +85,18 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   LOGI(">>> Center X:%f Y:%f...", ldData[idx].Center.X, ldData[idx].Center.Y);
   LOGI(">>>LTBound X:%f Y:%f...", ldData[idx].LTBound.X, ldData[idx].LTBound.Y);
   LOGI(">>>RBBound X:%f Y:%f...", ldData[idx].RBBound.X, ldData[idx].RBBound.Y);
-  acvContourCircleSignature(img, ldData[idx], idx, signature);
+
+
+  bool isOK =  acvOuterContourExtraction(img,ldData[idx], idx,tmp_contour);
+
+  for (int i = 0; i < tmp_contour.size(); i++)
+  {
+    bacpac->sampler->img2ideal(&tmp_contour[i]);
+  }
+
+  acv_XY ideal_center = center;
+  bacpac->sampler->img2ideal(&ideal_center);
+  acvContourCircleSignature(ideal_center,tmp_contour, signature);
   acvCloneImage(img, buff, -1);
   //MatchingCore_CircleLineExtraction(img,buff,ldData,detectedCircles,detectedLines);
 
@@ -98,9 +109,11 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
     {
       signature[i].X *= mmpp;
     }
+    ldData[idx].Center = acvVecMult(ideal_center, mmpp);
+    bacpac->sampler->img2ideal(&ldData[idx].LTBound);
     ldData[idx].LTBound = acvVecMult(ldData[idx].LTBound, mmpp);
+    bacpac->sampler->img2ideal(&ldData[idx].RBBound);
     ldData[idx].RBBound = acvVecMult(ldData[idx].RBBound, mmpp);
-    ldData[idx].Center = acvVecMult(ldData[idx].Center, mmpp);
     ldData[idx].area *= mmpp * mmpp; //area
   }
 

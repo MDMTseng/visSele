@@ -51,6 +51,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   ContourSignature feature_signature;
   ContourSignature tmp_signature;
   
+  vector<acv_XY>tmp_contour;
   vector<acv_XY>signature_data_buffer;
   ContourFetch edge_grid;
 
@@ -97,8 +98,8 @@ protected:
   float sine,float cosine,float flip_f,
   featureDef_auxPoint &def);
 
-  FeatureReport_searchPointReport searchPoint_process(acvImage *grayLevelImg,acvImage *labeledImg,int labelId,acv_LabeledData labeledData,
-  FeatureReport_sig360_circle_line_single &report, 
+  FeatureReport_searchPointReport searchPoint_process(
+  FeatureReport_sig360_circle_line_single &report, acv_XY center,
   float sine,float cosine,float flip_f,float thres,
   featureDef_searchPoint &def);
 

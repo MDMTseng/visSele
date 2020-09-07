@@ -27,6 +27,7 @@ public :
 class FeatureManager_sig360_extractor:public FeatureManager_binary_processing {
 
   vector<acv_XY> signature;
+  vector<acv_XY> tmp_contour;
   vector<acv_CircleFit> detectedCircles;
   vector<acv_LineFit> detectedLines;
 public :

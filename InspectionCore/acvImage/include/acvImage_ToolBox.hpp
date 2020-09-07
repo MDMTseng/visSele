@@ -30,9 +30,16 @@ uint32_t acvSqMatchingError(acvImage  *Pic,acv_XY *PicPtList,acvImage *targetMap
 
 
 
+bool acvOuterContourExtraction(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &contour);
 bool acvContourExtract(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &contour);
 bool acvContourCircleSignature(std::vector<acv_XY> &contour,std::vector<acv_XY> &signature);
 bool acvContourCircleSignature(acvImage  *LabeledPic,acv_LabeledData ldata,int labelIdx,std::vector<acv_XY> &signature);
+
+
+bool acvContourCircleSignature
+(acv_XY  center,std::vector<acv_XY> &contour,std::vector<acv_XY> &o_signature);
+
+
 float SignatureMatchingError(const acv_XY *signature, int offset,
                              const acv_XY *tar_signature, int arrsize, int stride);
 float SignatureMatchingError(const std::vector<acv_XY> &signature, int offset,
