@@ -967,7 +967,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       onClick={() =>{
         let defFile_New=defFileGeneration(edit_info);
         console.log(defFile_New);
-        if(defFile_New.featureSet_sha1===defFile_New.featureSet_sha1_pre)
+        if(defFile_New.featureSet_sha1===edit_info.DefFileHash)
         {
           ACT_EXIT();
         }
