@@ -1990,8 +1990,10 @@ class APP_DEFCONF_MODE extends React.Component {
             //console.log(copy_shape);
             ["pt1", "pt2", "pt3"].forEach((pt_key) => {
               if (copy_shape[pt_key] === undefined) return;
-              copy_shape[pt_key].x += 1;
-              copy_shape[pt_key].y += 1;
+
+              let mmpp = this.props.edit_info._obj.getsig360info_mmpp();
+              copy_shape[pt_key].x += mmpp*100;
+              copy_shape[pt_key].y += mmpp*100;
             });
             let reNameCount = 1;
 

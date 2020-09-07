@@ -2557,6 +2557,25 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   }
 
+  round_number_to_significant(number,after_significant=0,countMax=10)
+  {
+    let idx_N=1.0;
+    let count=0;
+    for(idx_N=1.0;;idx_N/=10)
+    {
+      if(idx_N<number)
+      {
+        break;
+      }
+
+      count++;
+      if(count>countMax)return 0;
+    }
+
+    // console.log(number,count,number.toFixed(count),after_significant);
+    //return parseFloat(number.toFixed(count+after_significant));
+    return idx_N*10;
+  }
   ctrlLogic_DEFCONF() {
 
     let mmpp = this.rUtil.get_mmpp();
@@ -2573,16 +2592,18 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     let ifOnMouseLeftClickEdge = (this.mouseStatus.status != this.mouseStatus.pstatus);
 
+
     switch (this.state.substate) {
       case UI_SM_STATES.DEFCONF_MODE_LINE_CREATE:
         {
+          let mmpp_round=this.round_number_to_significant(mmpp);
 
           if (this.mouseStatus.status == 1) {
             this.EditShape = {
               type: SHAPE_TYPE.line,
               pt1: mouseOnCanvas2,
               pt2: pmouseOnCanvas2,
-              margin: 0.3,
+              margin: mmpp_round*20,
               color: this.colorSet.unselected
             };
           }
@@ -2598,6 +2619,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_ARC_CREATE:
         {
 
+          let mmpp_round=this.round_number_to_significant(mmpp);
           if (this.mouseStatus.status == 1) {
             let cnormal = LineCentralNormal({
               pt1: mouseOnCanvas2,
@@ -2612,7 +2634,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                 y: cnormal.y + cnormal.vy
               },
               pt3: pmouseOnCanvas2,
-              margin: 0.3,
+              margin: mmpp_round*20,
               color: this.colorSet.unselected,
               direction: 1
             };
@@ -2632,6 +2654,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_AUX_LINE_CREATE:
       case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         {
+          let mmpp_round=this.round_number_to_significant(mmpp);
 
           if (this.mouseStatus.status == 1) {
             if (ifOnMouseLeftClickEdge && this.CandEditPointInfo != null) {
@@ -2642,8 +2665,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                   pt1: { x: 0, y: 0 },
                   angleDeg: 90,
                   search_far:false,
-                  margin: 0.15,
-                  width: 5,
+                  margin: mmpp_round*30,
+                  width: mmpp_round*500,
                   ref: [{
                     id: this.CandEditPointInfo.shape.id,
                     element: this.CandEditPointInfo.shape.type
