@@ -20,6 +20,7 @@ import dclone from 'clone';
 
 import { EV_UI_Canvas_Mouse_Location } from 'REDUX_STORE_SRC/actions/UIAct';
 import Color from 'color';
+import { ConsoleSqlOutlined } from '@ant-design/icons';
 
 export const MEASURE_RESULT_VISUAL_INFO = {
   [MEASURERSULTRESION.UNSET]: { COLOR: "rgba(128,128,128,0.5)", TEXT: MEASURERSULTRESION.UNSET },
@@ -49,7 +50,7 @@ class CameraCtrl {
     this.matrix = new DOMMatrix();
     this.tmpMatrix = new DOMMatrix();
     this.identityMat = new DOMMatrix();
-    this.Scale(0.1);
+    this.Scale(1);
   }
 
   Scale(scale, center = { x: 0, y: 0 }) {
@@ -1423,6 +1424,21 @@ class EverCheckCanvasComponent_proto {
     log.debug("SetImg::: UPDATE", ctx2nd);
   }
 
+  
+
+  scaleImageToFitScreen(img_info=this.img_info) {
+    if(img_info===undefined)return;
+    let mmpp = this.rUtil.get_mmpp();
+    console.log(img_info.scale*img_info.width*mmpp);
+
+    let curScale = this.camera.GetCameraScale();
+    this.camera.Scale(1/curScale);
+    this.camera.Scale(this.canvas.width/(img_info.scale*img_info.width*mmpp));
+    
+    console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
+    this.camera.SetOffset({ x: -(img_info.scale*img_info.width*mmpp)/2, y: -(img_info.scale*img_info.height*mmpp)/2 });
+  }
+
   debounce(func, wait, immediate) {
     var timeout;
     return function () {
@@ -1530,6 +1546,8 @@ class EverCheckCanvasComponent_proto {
 
     let doDraw=true;
     //console.log("this.state.substate:",this.state.substate);
+    
+    // 
     switch (this.state.substate) {
       case UI_SM_STATES.DEFCONF_MODE_SHAPE_EDIT:
         doDraw=true;
@@ -1676,50 +1694,17 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     
     let mmpp = this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp = mmpp;
+    
+    this.scaleImageToFitScreen();
   }
 
 
-  fitCameraToShape(shape) {
-    if (shape == null || shape === undefined) return;
-    let center = { x: 0, y: 0 };
-    switch (shape.type) {
-      case SHAPE_TYPE.line:
-        center.x = (shape.pt1.x + shape.pt2.x) / 2;
-        center.y = (shape.pt1.y + shape.pt2.y) / 2;
-        break;
-      case SHAPE_TYPE.arc:
-        let arc = threePointToArc(shape.pt1, shape.pt2, shape.pt3);
-        if (arc.r > 500) {
-          center.x = (shape.pt1.x + shape.pt3.x) / 2;
-          center.y = (shape.pt1.y + shape.pt3.y) / 2;
-        }
-        else {
-          center.x = arc.x;
-          center.y = arc.y;
-        }
 
-        break;
-      case SHAPE_TYPE.aux_point:
-        let pt = this.db_obj.auxPointParse(shape);
-        if (pt == null) return;
-        center = pt;
-        break;
-      case SHAPE_TYPE.search_point:
-        {
-          center = shape.pt1;
-        }
-        break;
-      default:
-        return;
-    }
-
-    this.camera.SetOffset({
-      x: -center.x,
-      y: -center.y
-    });
+  SetImg(img_info) {
+    if(img_info==null)return;
+    // if(this.img_info==img_info)return;
+    super.SetImg(img_info);
   }
-
-
   ctrlLogic() {
   }
 
@@ -1746,11 +1731,8 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       matrix.d, matrix.e, matrix.f);
   
     {
-      let center = this.db_obj.getsig360infoCenter();
       //TODO:HACK: 4X4 times scale down for transmission speed
       ctx.save();
-      ctx.translate(-center.x, -center.y);
-
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
@@ -1767,6 +1749,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
+    
+    let center = this.db_obj.getsig360infoCenter();
+    ctx.translate(center.x, center.y);
+
 
 
 
@@ -1878,7 +1864,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   
   onmousemove(evt) 
   {
-    // 
     super.onmousemove(evt);
 
     if(this.ROISettingCallBack!==undefined)
@@ -2013,16 +1998,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
   draw_INSP() {
 
-    if (this.ERROR_LOCK || this.edit_DB_info == null ||
-      this.edit_DB_info.inspReport == null || this.edit_DB_info.inspReport == undefined) {
+    
+    console.log(">>ERROR_LOCK>>",this.ERROR_LOCK );
+    console.log(">>edit_DB_info>>",this.edit_DB_info );
+    if (this.ERROR_LOCK || this.edit_DB_info == null) {
       return;
     }
     //let inspectionReport = this.edit_DB_info.inspReport;
     //let inspectionReportList = this.edit_DB_info.inspReport.reports;
-
-
-    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
-    //this.edit_DB_info.inspReport.reports;
 
 
     let unitConvert;
@@ -2055,12 +2038,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX-0.5*(scale-1)) / scale, (this.img_info.offsetY-0.5*(scale-1)) / scale);
+        ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
       }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
+    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
+
     if (true) {
       let sigScale = 1;
 
@@ -2073,6 +2058,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
           return measureShape;
         }, []);
       }
+
+      
+
+    //this.edit_DB_info.inspReport.reports;
 
       if(true)
       inspectionReportList.forEach((report, idx) => {
@@ -2436,6 +2425,16 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
 
+  SetImg(img_info) {
+    if(img_info==null)return;
+    if(this.img_info==img_info)return;
+    super.SetImg(img_info);
+
+    // this.scaleImageToFitScreen();
+    // this.camera.SetOffset({ x:0, y: 0});
+  
+  }
+
 
   draw() {
     this.draw_DEFCONF();
@@ -2473,7 +2472,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       let mmpp_mult = scale * mmpp;
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX-0.5*(scale-1)) / scale, (this.img_info.offsetY-0.5*(scale-1)) / scale);
+        ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
       }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);
@@ -3093,6 +3092,8 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     if(edit_DB_info._obj===undefined)return;
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
+    
+    this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg(edit_DB_info.img);
     if(this.db_obj.cameraParam!==undefined)
     {
@@ -3118,8 +3119,13 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
   }
 
-
-
+  SetImg(img_info) {
+    if(img_info==null)return;
+    super.SetImg(img_info);
+    console.log(img_info);
+    if(img_info.IGNORE_IMAGE_FIT_TO_SCREEN!=true)
+      this.scaleImageToFitScreen();
+  }
 
 
   draw() {
@@ -3152,12 +3158,60 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
         ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
       }
+
+      
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
 
-    //this.stage_light_report
+
+    if(this.edit_DB_info!=null)
+    {
+
+      let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
+
+
+      inspectionReportList.forEach((report, idx) => 
+        {
+          let listClone = dclone(this.edit_DB_info.list);
+  
+          this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
+  
+          listClone.forEach((eObj) => {
+            //log.info(eObj.inspection_status);
+            switch (eObj.inspection_status) {
+              case INSPECTION_STATUS.NA:
+                eObj.color = this.colorSet.color_NA;
+                break;
+              case INSPECTION_STATUS.UNSET:
+                eObj.color = this.colorSet.color_UNSET;
+                break;
+              case INSPECTION_STATUS.SUCCESS:
+                {
+                  eObj.color = this.colorSet.color_SUCCESS;
+  
+                  if (eObj.type === SHAPE_TYPE.measure) {
+                    let targetID = eObj.id;
+                    let inspMeasureTar = report.judgeReports.find((measure) => measure.id === targetID);
+                    if (inspMeasureTar === undefined) break;
+  
+                    eObj.color = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
+  
+                  }
+  
+                }
+                break;
+              case INSPECTION_STATUS.FAILURE:
+                eObj.color = this.colorSet.color_FAILURE;
+                break;
+  
+            }
+          });
+          this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
+        });
+      //this.stage_light_report
+    }
 
   }
 

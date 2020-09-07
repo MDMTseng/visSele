@@ -258,6 +258,8 @@ function StateReducer(newState, action) {
             switch (report.type) {
               case "sig360_extractor":
                 newState.edit_info = Object.assign({}, newState.edit_info);
+                
+                Edit_info_reset(newState);
                 console.log(action.data);
                 newState.edit_info._obj.Setsig360info(action.data);
                 newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
@@ -564,8 +566,8 @@ function StateReducer(newState, action) {
       {
         newState.coreConnected = true;
 
-
-        if (stateObj.state == UISTS.DEFCONF_MODE && newState.defConf_lock_level != 0) {
+        //console.log(action);
+        if (stateObj.state == UISTS.DEFCONF_MODE && newState.defConf_lock_level != 0 && action.IGNORE_DEFCONF_LOCK!=true) {
           let level3Filter = [DefConfAct.EVENT.DefConf_Lock_Level_Update]
 
           let level2Filter = level3Filter.concat([DefConfAct.EVENT.Edit_Tar_Update]);
@@ -607,9 +609,11 @@ function StateReducer(newState, action) {
             
           case UISEV.SIG360_Report_Update:
             case UISEV.SIG360_Extraction:
-              newState.edit_info = Object.assign({}, newState.edit_info);
+              
+              Edit_info_reset(newState);
               console.log(action.data);
               newState.edit_info._obj.Setsig360info(action.data);
+              
               newState.edit_info.sig360info = newState.edit_info._obj.sig360info;
               break;
   

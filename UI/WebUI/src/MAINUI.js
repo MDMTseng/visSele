@@ -1216,16 +1216,28 @@ const MainUI=()=>{
 
     case  s_statesTable.RepDisplay:
     
-        UI.push(<RepDisplayUI_rdx
+      UI.push(<RepDisplayUI_rdx key="RepDisplayUI_rdx"
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
         onCalibFinished={(finalReport) => {
           console.log(">>>>>>>>>",finalReport)
-          }} />);
+        }} 
+        onExtraCtrlUpdate={extraCtrls=>{
+
+          let extraCtrlUI=[];
+          if(extraCtrls.browseNewFileToLoad!==undefined)
+          {
+            extraCtrlUI.push(<FolderOpenOutlined onClick={_=>extraCtrls.browseNewFileToLoad()}/>);
+          }
+          setExtraSideUI(extraCtrlUI);
+        }}/>
+        
+        );
       
       siderUI_info={
         title:UI_state.name,
         icons:[
-            <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
+          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
+          ...extraSideUI
         ]
       }
       break;  

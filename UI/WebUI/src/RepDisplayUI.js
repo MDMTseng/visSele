@@ -59,7 +59,7 @@ class CanvasComponent extends React.Component {
   }
 
   componentDidMount() {
-    this.ec_canvas = new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
+    this.ec_canvas = new EC_CANVAS_Ctrl.RepDisplay_CanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent = this.ec_canvas_EmitEvent.bind(this);
 
     if(this.props.onCanvasInit!==undefined)
@@ -83,7 +83,7 @@ class CanvasComponent extends React.Component {
         log.info("props.edit_info>>", props.edit_info);
         
 
-        this.ec_canvas.SetState({value:{[UI_SM_STATES.INSP_MODE]:UI_SM_STATES.DEFCONF_MODE_NEUTRAL}});
+        // this.ec_canvas.SetState({value:{[UI_SM_STATES.INSP_MODE]:UI_SM_STATES.INSP_MODE_NEUTRAL}});
         this.ec_canvas.draw();
       }
     }
@@ -118,7 +118,7 @@ class CanvasComponent extends React.Component {
 
 
 
-export default function RepDisplayUI_rdx({ BPG_Channel , onCalibFinished }) {
+export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
   
   // const DICT = useSelector(state => state.UIData.DICT);
@@ -131,16 +131,62 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onCalibFinished }) {
   // const _REF = React.useRef({
   //   iel: new InspectionEditorLogic(),
   // });
+  let xreps="xreps";
   
-  useEffect(()=>{
+  function LoadNewFile(filePath)
+  {
+
 
     let newEditInfo = {...editInfo}
     newEditInfo._obj=new InspectionEditorLogic();
     setEditInfo(newEditInfo)
+    filePath = filePath.replace("." + xreps, "");
+    BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:6 },undefined,
+    { resolve:(pkts,action_channal)=>{
+      let SS=pkts.find(pkt=>pkt.type=="SS");
+      let FL=pkts.find(pkt=>pkt.type=="FL");
+      let IM=pkts.find(pkt=>pkt.type=="IM");
+      // console.log(pkts,newEditInfo);
+      newEditInfo._obj.SetCameraParamInfo(FL.data.camera_param);
+      newEditInfo =newEditInfo._obj.rootDefInfoLoading(FL.data.defInfo,newEditInfo)
+
+      let reports = FL.data.reports;
+      newEditInfo.reportStatisticState.trackingWindow=reports;
+
+      let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
+
+      newEditInfo.img=img_pros.data;
+      // console.log(IM,img_pros);
+      setEditInfo({...newEditInfo})
+
+
+
+
+
+      setTON(true);
+    }, reject:(e)=>{
+
+    } });
+  
+
+    BPG_Channel( "LD", 0,{ imgsrc: filePath,down_samp_level:1 },undefined,
+    { resolve:(pkts,action_channal)=>{
+      let IM=pkts.find(pkt=>pkt.type=="IM");
+      let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
+      newEditInfo.img=img_pros.data;
+      newEditInfo.img.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+      setEditInfo({...newEditInfo})
+      setTON(true);
+    }, reject:(e)=>{
+
+    } });
+
+  }
+  function BrowseNewFileToLoad()
+  {
     let fileGroups = [
       // { name: "history", list: getLocalStorage_RecentFiles() }
     ];
-    let xreps="xreps";
     let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("."+xreps);
 
     setFileSelectorInfo({
@@ -149,34 +195,20 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onCalibFinished }) {
       callBack:(filePath, fileInfo) => {
         console.log(filePath, fileInfo,">>>");
 
-        
-        filePath = filePath.replace("." + xreps, "");
-        BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:4 },undefined,
-        { resolve:(pkts,action_channal)=>{
-          let SS=pkts.find(pkt=>pkt.type=="SS");
-          let FL=pkts.find(pkt=>pkt.type=="FL");
-          let IM=pkts.find(pkt=>pkt.type=="IM");
-          console.log(pkts,newEditInfo);
-          newEditInfo =newEditInfo._obj.rootDefInfoLoading(FL.data.defInfo,newEditInfo)
-          newEditInfo._obj.SetCameraParamInfo(FL.data.camera_param);
-          let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
-
-          console.log(newEditInfo);
-          newEditInfo.img=img_pros.data;
-          console.log(IM,img_pros);
-          setEditInfo({...newEditInfo})
-
-          setTON(true);
-        }, reject:(e)=>{
-
-        } });
-      
-
-
+        LoadNewFile(filePath);
 
       }
     });
 
+  }
+
+
+  useEffect(()=>{
+    onExtraCtrlUpdate({
+      browseNewFileToLoad:()=>BrowseNewFileToLoad(),
+      LoadNewFile:(filePath)=>LoadNewFile(filePath)
+    })
+    BrowseNewFileToLoad();
   },[]);
 
   return (<div  className="s width12 height12">
@@ -198,7 +230,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onCalibFinished }) {
       
       fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
       fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
-      <CanvasComponent edit_info={editInfo}/>
+      <CanvasComponent addClass="height12" edit_info={editInfo}/>
   </div>);
 }
  
