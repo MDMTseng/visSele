@@ -143,7 +143,7 @@ function stage_light_report_maxMean(stage_light_report)
   return maxMean;
 }
 
-export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) {
+export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate }) {
   const [imageInfo, setImageInfo] = useState(undefined);
   const [inspReport, setInspReport] = useState(undefined);
   const todoList = useSelector(state => state.todoList);
@@ -227,6 +227,9 @@ export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) 
       );
   }
   useEffect(() => {
+    onExtraCtrlUpdate({
+      currentReportExtract:()=>c.finalRep
+    })
     BPG_Channel("ST",0,{CameraSetting:{exposure:1000}});
     
     BPG_Channel( "ST", 0,
@@ -235,7 +238,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel , onCalibFinished }) 
     // ImgStageBackLightCalib();
     ImgStageBackLightCalib();
     return ()=>{
-      onCalibFinished(c.finalRep);
+      //onCalibFinished(c.finalRep);
       //console.log(c.finalRep);
       BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
     }

@@ -47,6 +47,7 @@ const { Meta } = Card;
 const { Step } = Steps;
 
 import { 
+  SelectOutlined,
   MonitorOutlined,
   FolderOpenOutlined,
   InfoCircleOutlined,
@@ -1079,8 +1080,17 @@ const MainUI=()=>{
   }
   const uInspData = useSelector(state => state.Peripheral.uInsp);
 
-  const [UI_state, setUI_state] = useState(s_statesTable.RootSelect);
+  const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
+  const [extraSideUI, setExtraSideUI] = useState([]);
 
+  function setUI_state(newUI_state)
+  {
+    if(s_statesTable.RootSelect==newUI_state)
+    {
+      setExtraSideUI([]);
+    }
+    _setUI_state(newUI_state);
+  }
   let UI=[];
   
   let siderUI_info=undefined;
@@ -1156,31 +1166,47 @@ const MainUI=()=>{
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
-        onCalibFinished={(finalReport) => {
-          console.log(">>>>>>>>>",finalReport)
-          if(finalReport===undefined)return;
-          var enc = new TextEncoder();
-          ACT_WS_SEND(WS_ID, "SV", 0,
-            { filename: "data/stageLightReport.json" },
-            enc.encode(JSON.stringify(finalReport, null, 2)),
-            {
-              resolve:(stacked_pkts,action_channal)=>{
-                
-                ACT_WS_SEND(WS_ID, "RC", 0, {
-                  target: "camera_setting_refresh"
-                });
 
-              }
-            })
-          console.log(finalReport)
 
-        }} />);
+        
+        onExtraCtrlUpdate={extraCtrls=>{
+
+          let extraCtrlUI=[];
+          if(extraCtrls.currentReportExtract!==undefined)
+          {
+            extraCtrlUI.push(<SelectOutlined onClick={_=>{
+
+              let report = extraCtrls.currentReportExtract();
+              if(report===undefined)return;
+              var enc = new TextEncoder();
+              ACT_WS_SEND(WS_ID, "SV", 0,
+                { filename: "data/stageLightReport.json" },
+                enc.encode(JSON.stringify(report, null, 2)),
+                {
+                  resolve:(stacked_pkts,action_channal)=>{
+                    
+                    ACT_WS_SEND(WS_ID, "RC", 0, {
+                      target: "camera_setting_refresh"
+                    });
+
+                  }
+                })
+              console.log(report)
+
+              
+            }}/>);
+          }
+          setExtraSideUI(extraCtrlUI);
+        }}
+
+         />);
 
       
       siderUI_info={
         title:UI_state.name,
         icons:[
-          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
+          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
+          ...extraSideUI
         ]
       }
       break;    
@@ -1188,21 +1214,21 @@ const MainUI=()=>{
 
 
 
-      case  s_statesTable.RepDisplay:
-     
+    case  s_statesTable.RepDisplay:
+    
         UI.push(<RepDisplayUI_rdx
-          BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
-          onCalibFinished={(finalReport) => {
-            console.log(">>>>>>>>>",finalReport)
+        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        onCalibFinished={(finalReport) => {
+          console.log(">>>>>>>>>",finalReport)
           }} />);
-        
-        siderUI_info={
-          title:UI_state.name,
-          icons:[
+      
+      siderUI_info={
+        title:UI_state.name,
+        icons:[
             <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
-          ]
-        }
-        break;  
+        ]
+      }
+      break;  
     case  s_statesTable.InstInsp:
 
       siderUI_info={
