@@ -263,16 +263,16 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
           <div key="acc" className="s width3  height12">
             <Button key="plus100u" className="s height6 width6  black" onClick={_ =>
               numberPlus(value + 0.1)
-            }>+10</Button>
+            }>+.1</Button>
             <Button key="plus10u" className="s  height6 width6  black" onClick={_ =>
               numberPlus(value + 0.01)
-            }>+1</Button>
+            }>+.01</Button>
             <Button key="minus100u" className="s  height6 width6  black" onClick={_ =>
               numberPlus(value - 0.1)
-            }>-10</Button>
+            }>-.1</Button>
             <Button key="minus10u" className="s  height6 width6  black" onClick={_ =>
               numberPlus(value - 0.01)
-            }>-1</Button>
+            }>-.01</Button>
           </div>
 
           <Button key="zero" className="s  height12 width2  black" onClick={_ =>
