@@ -385,6 +385,10 @@ bool acvContourCircleSignature
   {
     float diffY=copos.Y-center.Y;
     float diffX=copos.X-center.X;
+    if(diffX!=diffX||diffY!=diffY)
+    {
+        continue;
+    }
     float theta=acvFAtan2(diffY,diffX);//-pi ~pi
     //if(theta<0)theta+=2*M_PI;
     int idx=round(o_signature.size()*theta/(2*M_PI));
