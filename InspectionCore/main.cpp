@@ -548,6 +548,17 @@ void realfullPath(const char *curPath, char *ret_fullPath)
 #endif
 }
 
+
+int cross_mkdir(const char *path)
+{
+#ifdef _WIN32
+  return mkdir(path);
+#else
+  return mkdir(path, 0777);
+#endif
+}
+
+
 cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
 {
   if (path == NULL)
@@ -1255,21 +1266,27 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         }
 
 
-        char* dir = dirname(fileName);
-        bool dirExist = isDirExist(dir);
-        
-        if (dirExist==false && getDataFromJson(json, "make_dir", NULL) == cJSON_True)
         {
-          int ret = mkdir(dir, 0777);
-          dirExist = isDirExist(dir);
-        }
-        if(dirExist==false)
-        {
-          snprintf(err_str, sizeof(err_str), "No Dir %s exist",dir);
-          LOGE("%s", err_str);
-          break;
+
+          char dirPath[200];
+          strcpy(dirPath,fileName);
+          char* dir = dirname(dirPath);
+          bool dirExist = isDirExist(dir);
+          
+          if (dirExist==false && getDataFromJson(json, "make_dir", NULL) == cJSON_True)
+          {
+            int ret = cross_mkdir(dir);
+            dirExist = isDirExist(dir);
+          }
+          if(dirExist==false)
+          {
+            snprintf(err_str, sizeof(err_str), "No Dir %s exist",dir);
+            LOGE("%s", err_str);
+            break;
+          }
         }
         
+        LOGE("fileName: %s", fileName);
         int strinL = strlen((char *)dat->dat_raw) + 1;
 
         if (dat->size - strinL == 0)
@@ -1309,7 +1326,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           write_ptr = fopen(fileName, "wb"); // w for write, b for binary
           if (write_ptr == NULL)
           {
-            snprintf(err_str, sizeof(err_str), "File open failed");
+            snprintf(err_str, sizeof(err_str), "file:%s File open failed",fileName);
             LOGE("%s", err_str);
             break;
           }
