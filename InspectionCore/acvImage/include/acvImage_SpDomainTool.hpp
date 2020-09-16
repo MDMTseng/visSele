@@ -45,8 +45,8 @@ inline acv_XY acvSignedMap2Sampling(acvImage *signedMap2, const acv_XY &XY)
 
     if(rX<0 || rY <0 || rX+1 >signedMap2->GetWidth()-1 ||  rY+1 >signedMap2->GetHeight()-1)
     {
-      sample.X=0;
-      sample.Y=0;
+      sample.X=NAN;
+      sample.Y=NAN;
       return sample;
     }
 
@@ -82,7 +82,7 @@ inline float acvUnsignedMap1Sampling(acvImage *unsignedMap1, acv_XY XY, int chan
     float resX = XY.X - rX;
     float resY = XY.Y - rY;
     if(rX<0 || rY <0 || rX+1 >unsignedMap1->GetWidth()-1 ||  rY+1 >unsignedMap1->GetHeight()-1)
-      return 0;
+      return NAN;
     float c00, c10, c11, c01;
     c00 = unsignedMap1->CVector[rY][rX * 3+channel];
     c01 = unsignedMap1->CVector[rY][(rX + 1) * 3+channel];
@@ -104,8 +104,8 @@ inline acv_XY acvSignedMap2Sampling_Nearest(acvImage *signedMap2, const acv_XY &
 
     if(rX<0 || rY <0 || rX >signedMap2->GetWidth()-1 ||  rY >signedMap2->GetHeight()-1)
     {
-      sample.X=0;
-      sample.Y=0;
+      sample.X=NAN;
+      sample.Y=NAN;
       return sample;
     }
     sample.X = (int8_t)signedMap2->CVector[rY][rX * 3];
@@ -119,7 +119,7 @@ inline BYTE acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1, const acv_XY
     int rX = (int)round(XY.X);
     int rY = (int)round(XY.Y);
       if(rX<0 || rY <0 || rX >unsignedMap1->GetWidth()-1 ||  rY >unsignedMap1->GetHeight()-1)
-        return 0;
+        return NAN;
     return unsignedMap1->CVector[rY][rX * 3+channel];
 }
 

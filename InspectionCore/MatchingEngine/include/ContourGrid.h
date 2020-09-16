@@ -18,7 +18,9 @@ class ContourFetch{
       acv_XY pt;
       acv_XY sobel;
       acv_XY contourDir;
-      float curvature;
+      
+      acv_XY pt_img;
+      float curvature;//The angle
       float edgeRsp;
       float tmp;
     };
@@ -29,6 +31,7 @@ class ContourFetch{
       public:
       std::vector< ptInfo > section;
       float sigma;
+      float dist;
       int contourIdx;
     };
 
@@ -49,7 +52,7 @@ class ContourFetch{
       float epsilon,std::vector<contourMatchSec> &m_sec);
 
     void getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f,
-      std::vector<contourMatchSec> &m_sec,float lineCurvatureMax = 0.15);
+      std::vector<contourMatchSec> &m_sec,float lineCurvatureMax = 0.15,float cosSim=0.9);
 
 };
 

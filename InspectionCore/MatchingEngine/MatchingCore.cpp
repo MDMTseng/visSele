@@ -12,10 +12,21 @@ enum searchType_C
   searchType_C_B2W,
   searchType_C_W2B
 };
+
+
+
 inline int valueWarping(int v,int ringSize)
 {
   v%=ringSize;
   return (v<0)?v+ringSize:v;
+}
+
+inline int valueSaturation(int v,int ringSize)
+{
+  if(v<0)return 0;
+  if(v>ringSize-1)return ringSize-1;
+
+  return v;
 }
 
 int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType, vector<ContourFetch::ptInfo> &contour)
@@ -92,7 +103,7 @@ ContourGrid::ptInfo refineEdgeInfo(acvImage *grayLevel,ContourGrid::ptInfo ptinf
   return ptinfo;
 }
 
-void ContourFilter(acvImage *grayLevel,vector<ContourFetch::ptInfo> &contour)
+void ContourFilter(acvImage *grayLevel,vector<ContourFetch::ptInfo> &contour,float epsilon=0.05,int Dist=3)
 {
     const int L = contour.size();
     if(L==0)return;
@@ -106,11 +117,7 @@ void ContourFilter(acvImage *grayLevel,vector<ContourFetch::ptInfo> &contour)
 
     float crossP_LF_sum=0;
 
-    const int Dist=3;
     const int LP_hWindow=1;
-
-    float epsilon=0.05;
-
     float crossPHist[LP_hWindow*2];
     int crossPHist_head=0;
 
@@ -650,18 +657,26 @@ void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg
 int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int jump,acv_XY *ret_point_opt,float *ret_edge_response);
 int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,float thres,acv_XY *ret_point_opt,float *ret_edge_response);
 
-void spline9X(float *f,float *x,int fL,float *s,float *h)
+
+int spline_max40(float *f,float *x,int fL,float *s,float *h)
 {
     int n,i,j,k;
-    const int L = 9;
-    float a,b,c,d,sum,F[L],p,m[L][L]={0},temp;
+    
+    const int L_MAX = 40;
+    
+    if(fL>L_MAX)
+    {
+      return -1;
+    }
+    float a,b,c,d,sum,F[L_MAX],p,m[L_MAX][L_MAX]={0},temp;
     n = fL;
 
 
     for(i=n-1;i>0;i--)
     {
-        F[i]=(f[i]-f[i-1])/(x[i]-x[i-1]);
-        h[i-1]=x[i]-x[i-1];
+      float x_diff=(x==NULL)?1:x[i]-x[i-1];
+      F[i]=(f[i]-f[i-1])/x_diff;
+      h[i-1]=x_diff;
     }
     
     //*********** formation of h, s , f matrix **************//
@@ -714,185 +729,27 @@ void spline9X(float *f,float *x,int fL,float *s,float *h)
     }
 }
 
-void spline9_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
+int calc_pdf_mean_sigma(float *f,int fL,float *ret_mean,float *ret_sigma)
 {
-    int n,i,j,k;
-    const int L = 9;
-    float h[L],a,b,c,d,s[L]={0},x[L];
-    n = fL;
+    float sum=0;
+    float EX=0, var=0;
+    float EX2=0;
+    for (int i = 0; i < fL; i++) {
+        sum += f[i];
+        EX += i*f[i];
+        EX2+= i*i*f[i];
+    }
+    EX/=sum;
+    EX2/=sum;
 
 
-    // for(i=0;i<n;i++)
-    // {
-    //   h[i]=f[i];
-    // }
+
+    if(ret_mean)*ret_mean=EX;
+    if(ret_sigma)*ret_sigma=sqrt(EX2-EX*EX);
+
+    return 0;
     
-    // float darkWeight=10;
-    // float brightWeight=0.1;
-
-    // for(i=1;i<n;i++)
-    // {
-    //   float boost=((h[i-1]+h[i])/2.0/255)*(brightWeight-darkWeight)+darkWeight;
-
-    //   f[i]=f[i-1]+(h[i]-h[i-1])*boost;
-    // }
-
-
-    for(i=0;i<n;i++)
-    {
-        x[i]=i;
-        // printf("(%f,%f) ",f[i],h[i]);
-    }
-    // printf("\n>>");
-
-    // spline9X(f,x,fL,s,h);
-
-
-
-    float maxEdge_response = 0;
-    float maxEdge_offset=NAN;
-    
-    float edgePowerInt = 0;
-    float edgeCentralInt = 0;
-    for(i=0;i<n-1;i++)
-    {
-        a=(s[i+1]-s[i])/(6*h[i]);
-        b=s[i]/2;
-        c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
-        d=f[i];
-        
-        //f' = 3ax^2+2bx + c
-        //pow(f',2) = 9aax^4 + 12abx^3 + (6ac+4bb)x^2 + 4cbx +cc
-        float edgePower = 
-          (9*a*a)/5 + 
-          (12*a*b)/4 + 
-          (6*a*c+4*b*b)/3 +
-          (4*c*b)/2+
-          (c*c)/1;//Integeral(pow(f',2),0,1)
-        float edgeCentral = 
-          (9*a*a)/6 + 
-          (12*a*b)/5 + 
-          (6*a*c+4*b*b)/4 +
-          (4*c*b)/3+
-          (c*c)/2;//Integeral(pow(f'(x),2)x,0,1)
-        edgeCentral/=edgePower;
-        edgeCentralInt+=edgePower*(i+edgeCentral);
-
-        edgePowerInt+=edgePower;
-        bool zeroCross = (s[i+1]*s[i])<0;
-
-        if(zeroCross || (s[i]==0 && i!=0))
-        {
-            float offset = s[i]/(s[i]-s[i+1]);
-            float xi =offset;
-            float firDir = 3*a*xi*xi+2*b*xi+c;
-            float secDir = 6*a*xi+2*b;
-            float abs_firDir = abs(firDir);
-            if(maxEdge_response<abs_firDir)
-            {
-                maxEdge_response=abs_firDir;
-                maxEdge_offset = i+offset;
-            }
-            //printf("cross: offset:%f\n",i+offset);
-        }
-    }
-
-    float edgeSide1 = 0;
-    float edgeSide2 = 0;
-    for(i=0;i<n;i++)
-    {
-      if(i<maxEdge_offset)
-      {
-        edgeSide1+=f[i];
-      }
-      else
-      {
-        edgeSide2+=f[i];
-      }
-    }
-    edgeSide1/=(1+(int)maxEdge_offset);
-    edgeSide2/=(n-1-(int)maxEdge_offset);
-    float edgeSideDiff = edgeSide1-edgeSide2;
-
-    if(edgeSideDiff<0)edgeSideDiff=-edgeSideDiff;
-    //edgeSideDiff=edgeSideDiff*edgeSideDiff;
-    edgeSideDiff-=20;
-    if(edgeSideDiff<0)edgeSideDiff=0;
-
-    edgeCentralInt/=edgePowerInt;
-    float edgeRange=1;
-    float BGEdgePower = (edgePowerInt-maxEdge_response*maxEdge_response*edgeRange)/(n-1-edgeRange);
-    if(BGEdgePower<0)BGEdgePower=0;
-    BGEdgePower=sqrt(BGEdgePower);
-    float SNR = maxEdge_response/(BGEdgePower+0.1);
-    //printf("MAX rsp>>> %f %f %f\n",maxEdge_response,BGEdgePower, maxEdge_response/(BGEdgePower+0.1));
-    
-    //LOGV("%f %f %f %f %f %f %f --- %f:",f[0],f[1],f[2],f[3],f[4],f[5],f[6],edgeSideDiff);
-    //LOGV("edgeCentralInt::%f %f",edgeCentralInt,maxEdge_offset);
-    if(0)
-    {
-      *edgeX = edgeCentralInt;
-      *ret_edge_response = edgePowerInt;
-    }
-    else
-    {
-      *edgeX = edgeCentralInt;
-      *ret_edge_response = edgeSideDiff;
-    }
-
 }
-void spline9_max(float *f,int fL,int div,float *ret_maxf,float *ret_maxf_x)
-{
-    int n,i,j,k;
-    const int L = 9;
-    float h[L],a,b,c,d,s[L]={0},x[L];
-    n = fL;
-
-    for(i=0;i<n;i++)
-    {
-        x[i]=i;
-        //printf("%f\n",f[i]);
-    }
-
-    spline9X(f,x,fL,s,h);
-
-
-    
-    float maxf=f[0];
-    float maxf_x=0;
-    for(i=0;i<n-1;i++)
-    {
-        a=(s[i+1]-s[i])/(6*h[i]);
-        b=s[i]/2;
-        c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
-        d=f[i];
-        //f = ax^3 + bx^2 + cx + d
-        //f' = 3ax^2+2bx + c
-        //Find max f = 
-        if(maxf<f[i])
-        {
-          maxf=f[i];
-          maxf_x=i;
-        }
-        for(j=1;j<div;j++)
-        {
-          float x_=(float)j/div;
-
-          float val = a*x_*x_*x_ + b*x_*x_ + c*x_ +d;
-
-          if(maxf<val)
-          {
-            maxf=val;
-            maxf_x=i+x_;
-          }
-        }
-
-    }
-    *ret_maxf_x = maxf_x;
-    *ret_maxf = maxf;
-
-}
-
 
 void simple_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
 {
@@ -957,6 +814,76 @@ void smooth_edge(float *f,int fL,float *edgeX,float *ret_edge_response)
   if(edgeX)*edgeX=maxEdgeIdx;
   if(ret_edge_response)*ret_edge_response=maxEdge;
 }
+
+int EdgePointOpt_(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,float jump,acv_XY *ret_point_opt,float *ret_edge_response,FeatureManager_BacPac *bacpac=NULL)
+{
+  if(ret_point_opt==NULL)return -1;
+  *ret_point_opt = point;
+  *ret_edge_response = 1;
+  const int GradTableL=(2*4)+1;
+  float gradTable[GradTableL]={0};
+
+  //curpoint = point -(GradTableL-1)*gVec/2
+  gradVec = acvVecNormalize(gradVec);
+  gradVec.X*=jump;
+  gradVec.Y*=jump;
+  
+  const int nM=3;
+  acv_XY nvec = {X:gradVec.Y,Y:-gradVec.X};
+  const float sideJump=1.5;
+  nvec.X*=sideJump;
+  nvec.Y*=sideJump;
+  acv_XY nvecBM = acvVecMult(nvec,-(float)(nM-1)/2);
+  
+  //gradVec= acvVecMult(gradVec,1);
+  
+  acv_XY  curpoint= acvVecMult(gradVec,-(float)(GradTableL-1)/2);
+  curpoint = acvVecAdd(curpoint,point);
+  acv_XY bkpoint = curpoint;
+  curpoint = acvVecAdd(curpoint,nvecBM);
+  for(int i=0;i<GradTableL;i++)
+  {
+    float ptn = 0;
+    acv_XY tmpCurPt=curpoint;
+    for(int j=0;j<nM;j++)
+    {
+      ptn+= acvUnsignedMap1Sampling(graylevelImg, tmpCurPt, 0);
+
+      tmpCurPt = acvVecAdd(tmpCurPt,nvec);
+    }
+    //LOGV("%f<<%f,%f",ptn,curpoint.X,curpoint.Y);
+    float lightComp=1;
+    if(bacpac && bacpac->sampler)
+    {
+      
+      acv_XY CenterCurPt=curpoint;
+      CenterCurPt.X+=nvec.X*nvec.X*((nM-1)/2);
+      CenterCurPt.Y+=nvec.Y*nvec.Y*((nM-1)/2);//set to center position
+      lightComp=bacpac->sampler->sampleBackLightFactor_ImgCoord(CenterCurPt);
+    }
+    // bacpac->sampler->
+
+
+
+    gradTable[i] = lightComp*ptn/nM;
+
+    curpoint = acvVecAdd(curpoint,gradVec);
+  }
+
+  float edgeX;
+  simple_edge(gradTable,GradTableL,&edgeX,ret_edge_response);
+  if(edgeX!=edgeX)//NAN
+  {
+    return -1;
+  }
+
+  gradVec = acvVecMult(gradVec,edgeX);
+  *ret_point_opt = acvVecAdd(bkpoint,gradVec);
+
+
+  return 0;
+}
+
 
 int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,float jump,acv_XY *ret_point_opt,float *ret_edge_response,FeatureManager_BacPac *bacpac=NULL)
 {
@@ -1026,6 +953,8 @@ int EdgePointOpt(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,float jump,a
 
   return 0;
 }
+
+
 
 
 acv_XY pointSobel(acvImage *graylevelImg,acv_XY point,int range)
@@ -1199,6 +1128,410 @@ int EdgePointOpt2(acvImage *graylevelImg,acv_XY gradVec,acv_XY point,int range,f
   return 0;
 }
 
+float findMaxIdx_spline(float *f,int fL,float *ret_max)
+{
+
+    int n,i,j,k;
+    const int MaxL = 40;
+    if(fL>MaxL)return NAN;
+    float h[MaxL],s[MaxL]={0};
+    n = fL;
+
+    spline_max40(f,NULL,fL,s,h);
+
+    float max=__FLT_MIN__;
+    float max_idx=NAN;
+    for(int i=0;i<fL-1;i++)
+    {
+      float a=(s[i+1]-s[i])/(6*h[i]);
+      float b=s[i]/2;
+      float c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
+      float d=f[i];
+      
+
+      // printf("\n[%d]\n",i);
+      int len=40;
+      for(int j=0;j<len;j++)
+      {
+        float x=(float)j/(len-1);
+        float fex=x*(x*(x*a+b)+c)+d;
+        // printf("%.3f\n",fex);
+      }
+
+      //f  = ax^3+2bx^2 + cx+d
+      //f  = x*(x*(x*a+b)+x)
+      //f' = 3ax^2+2bx + c
+
+      //find f'=0
+
+      float jud=4*b*b-14*a*c;
+      //check 4bb-14ac
+      if(jud<0) //no zero crossing in real domain
+      {
+        continue;
+      }
+
+      float sqjud=sqrt(jud);
+      float s2 = (-2*b-sqjud)/(6*a);
+      float s1 = (-2*b+sqjud)/(6*a);
+      float epsilon=0.2;
+      {
+
+        if(s1>=-epsilon && s1<1+epsilon)
+        {
+          float x=s1;
+          float fex=x*(x*(x*a+b)+c)+d;
+          if(max<fex)
+          {
+            max=fex;
+            max_idx=x+i;
+          }
+        }
+      }
+
+
+      
+      {
+        if(s2>=-epsilon && s2<1+epsilon)
+        {
+          float x=s2;
+          float fex=x*(x*(x*a+b)+c)+d;
+          if(max<fex)
+          {
+            max=fex;
+            max_idx=x+i;
+          }
+        }
+      }
+      
+      // printf("\nmax:%f,idx:%f, sx:[%f,%f]\n",max,max_idx,s1,s2);
+    }
+    if(ret_max)*ret_max=max;
+    return max_idx;
+    //ax^3+bx^2+cx+d=y;
+
+}
+
+float findGradMaxIdx_spline(float *f,int fL,float *ret_max)
+{
+
+    int n,i,j,k;
+    const int MaxL = 40;
+    if(fL>MaxL)return NAN;
+    float h[MaxL],s[MaxL]={0};
+    n = fL;
+
+    spline_max40(f,NULL,fL,s,h);
+
+    float max=__FLT_MIN__;
+    float max_idx=NAN;
+    for(int i=0;i<fL-1;i++)
+    {
+      float a=(s[i+1]-s[i])/(6*h[i]);
+      float b=s[i]/2;
+      float c=(f[i+1]-f[i])/h[i]-(2*h[i]*s[i]+s[i+1]*h[i])/6;
+      float d=f[i];
+      
+
+      // printf("\n[%d]\n",i);
+      int len=40;
+      for(int j=0;j<len;j++)
+      {
+        float x=(float)j/(len-1);
+        float fex=x*(x*(x*a+b)+c)+d;
+        float dfex=x*(x*3*a+2*b)+c;
+        // printf("%.3f ,d:%.3f\n",fex,dfex);
+      }
+
+      //f  = ax^3+2bx^2 + cx+d
+      //f  = x*(x*(x*a+b)+x)
+      //f' = 3ax^2+2bx + c
+      //f'' = 6ax+2b
+      float zeroPoint=-b/(3*a);
+      
+      float epsilon=0.01;
+      {
+
+        if(zeroPoint>=-epsilon && zeroPoint<1+epsilon)
+        {
+          float x=zeroPoint;
+          float fex=(x*(x*3*a+2*b)+c);
+          if(max<fex)
+          {
+            max=fex;
+            max_idx=x+i;
+          }
+        }
+      }
+      
+      // printf("\nmax:%f,idx: %f, zeroPoint:%f\n",max,max_idx,zeroPoint);
+    }
+    if(ret_max)*ret_max=max;
+    return max_idx;
+    //ax^3+bx^2+cx+d=y;
+
+}
+
+
+edgeTracking::edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac)
+{
+  this->graylevelImg=graylevelImg;
+  this->bacpac=bacpac;
+}
+void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
+{
+  if(new_regionSideWidth>regionSideWidth)
+  {
+    new_regionSideWidth=regionSideWidth;
+  }
+  fbIndex=0;
+  gradIndex=0;
+  for(int i=-new_regionSideWidth;i<new_regionSideWidth+1;i++)//pre setup
+  {//idx:1 2
+  
+    int secidx = valueSaturation(i,section.section.size());
+    int widx = valueWarping(i,regionWidth);
+    contourPixExtraction(graylevelImg, section.section[secidx].pt_img,
+      section.section[secidx].sobel,gradIndex,stepDist,pixWidth,pixRegion[widx],bacpac);
+
+    // LOGI(":i:%d   XY:%f %f",i, section.section[secidx].pt_img.X,section.section[secidx].pt_img.Y);
+    // for(int j=0;j<pixWidth;j++)
+    // {
+    //   printf("%.4f ",pixRegion[widx][j]);
+    // }
+  }
+
+  
+  // LOGI("graylevelImg:%p",graylevelImg);
+  //[0' 0' 0'     0  1  2  3..... N-2  N-1      N-1' N-1' N-1'] 
+
+  pixSumReset=true;
+  PixSumReCalc();
+  
+  // LOGI("graylevelImg:%p",graylevelImg);
+  float mean_offset;
+  float sigma;
+  calc_info(&mean_offset,&sigma);
+
+  section.section[fbIndex].edgeRsp=0;
+  acv_XY dirX=acvVecMult(acvVecNormalize(section.section[fbIndex].sobel),mean_offset);
+  section.section[fbIndex].pt=acvVecAdd(dirX,section.section[fbIndex].pt_img);
+  bacpac->sampler->img2ideal(&section.section[fbIndex].pt);//pt in ideal coord
+  // LOGI("XY:%f  %f",section.section[0].pt.X,section.section[0].pt.Y);
+  // bacpac->sampler->img2ideal(&section.section[0].pt);//pt in ideal coord
+  // return;
+  // LOGI("graylevelImg:%p",graylevelImg);
+  runTracking (section,new_regionSideWidth);
+}
+
+
+void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
+{
+  // LOGI("RUN");
+  while(fbIndex<section.section.size()-1)
+  {
+  // LOGI("RUN");
+    goAdv (section,true,new_regionSideWidth);
+    LOGI("RUN:fbIndex:%d/%d",fbIndex,section.section.size());
+    float mean_offset;
+    float sigma;
+    calc_info(&mean_offset,&sigma);
+      
+    section.section[fbIndex].edgeRsp=0;
+    acv_XY dirX=acvVecMult(acvVecNormalize(section.section[fbIndex].sobel),mean_offset);
+    section.section[fbIndex].pt=acvVecAdd(dirX,section.section[fbIndex].pt_img);
+    
+    bacpac->sampler->img2ideal(&section.section[fbIndex].pt);//pt in ideal coord
+  }
+}
+
+
+void edgeTracking::PixSumReCalc()
+{
+  if(!pixSumReset)return;
+  
+  for(int j=0;j<pixWidth;j++)//pre setup
+  {//idx:1 2
+    pixSum[j]=0;
+  }
+  // printf("\nPixSumReCalc:");
+  for(int i=-regionSideWidth;i<regionSideWidth-1;i++)//load pre setup
+  {
+    int widx = valueWarping(i+fbIndex,regionWidth);
+    for(int j=0;j<pixWidth;j++)//pre setup
+    {//idx:1 2
+      pixSum[j]+=pixRegion[widx][j];
+      
+      // printf("%.4f ",pixRegion[widx][j]);
+    }
+    // printf("\n");
+  }
+
+  
+  // printf("\n");
+  // for(int j=0;j<pixWidth;j++)
+  // {
+  //   printf("%.4f ",pixSum[j]);
+  // }
+  // printf("\n");
+  pixSumReset=false;
+}
+
+
+int edgeTracking::contourPixExtraction(acvImage *graylevelImg, acv_XY center_point,acv_XY sobel,int stepJump,float stepDist,int steps,float *pixels,FeatureManager_BacPac *bacpac)
+{
+  sobel = acvVecNormalize(sobel);
+  
+  acv_XY  stepDir= acvVecMult(sobel,stepDist);
+
+  float stepsBack=-((float)(steps-1)/2);
+  // printf("stepDist:%f steps:%d stepsBack:%f stepJump:%d  \n",stepDist,steps,stepsBack,stepJump);
+  acv_XY  curpoint= acvVecMult(stepDir,stepsBack+stepJump);
+  curpoint = acvVecAdd(center_point,curpoint);
+  // printf("center_point:%f %f\n",center_point.X,center_point.Y);
+  
+  for(int i=0;i<steps;i++)
+  {
+    float lightComp=1;
+    if(bacpac && bacpac->sampler)
+    {
+      lightComp=bacpac->sampler->sampleBackLightFactor_ImgCoord(curpoint);
+    }
+    float ptn= acvUnsignedMap1Sampling(graylevelImg, curpoint, 0);
+    
+    // bacpac->sampler->
+    
+    pixels[valueWarping(i+stepJump,steps)] = lightComp*ptn;
+
+    curpoint = acvVecAdd(curpoint,stepDir);
+  }
+  return 0;
+} 
+
+
+
+float edgeTracking::pixFetch(acvImage *graylevelImg, acv_XY pt,FeatureManager_BacPac *bacpac)
+{
+  acv_XY  curpoint= pt;
+  
+  float lightComp=1;
+  if(bacpac && bacpac->sampler)
+  {
+    lightComp=bacpac->sampler->sampleBackLightFactor_ImgCoord(curpoint);
+  }
+  
+  float ptn= acvUnsignedMap1Sampling(graylevelImg, pt, 0);
+  // bacpac->sampler->
+  return lightComp*ptn;
+
+} 
+
+
+
+void edgeTracking::calc_info(float *mean_offset, float *sigma)
+{
+
+
+  for(int j=1;j<pixWidth-1;j++)
+  {
+    int pSHIdx=valueWarping(j+gradIndex+1,pixWidth);
+    int pSTIdx=valueWarping(j+gradIndex-1,pixWidth);
+    grad[j]=pixSum[pSHIdx]-pixSum[pSTIdx];
+  }
+
+  grad[0]=grad[1];
+  grad[pixWidth-1]=grad[pixWidth-2];
+
+  // printf("\n");
+  // for(int j=0;j<pixWidth;j++)
+  // {
+  //   printf("%.4f,",grad[j]);
+
+  // }
+  // printf("\n");
+
+  float _mean,_sigma;
+  float idealMeanCenter=pixSideWidth;//(pixWidth-1)/2;
+  calc_pdf_mean_sigma(grad,pixWidth,&_mean,&_sigma);
+  _mean-=idealMeanCenter+gradIndex;
+  // LOGI("idealMeanCenter:%f _mean:%f sigma:%f",idealMeanCenter,_mean,_sigma);
+  if(mean_offset)*mean_offset=_mean;
+  if(sigma)*sigma=_sigma;
+
+  // float mean_margin=mean/pixSideWidth;
+  // int stepJumpInc=0;
+  // if(mean_margin>0.3)//Jump forward
+  // {
+  //   stepJumpInc+=1;
+  // }
+  // else if(mean_margin<-0.3)//Jump backward
+  // {
+  //   stepJumpInc-=1;
+  // }
+
+}
+
+
+void edgeTracking::goSideShift (ContourFetch::contourMatchSec &section,bool goGradDir)
+{
+
+  if(goGradDir)
+    gradIndex++;
+  else
+    gradIndex--;
+
+  int gradFetchOffset=gradIndex+goGradDir?pixSideWidth:-pixSideWidth;
+  int newRowIdx=valueWarping(gradFetchOffset,pixWidth);
+
+  int regSum=0;
+
+  for(int i=-regionSideWidth;i<=regionSideWidth;i++)//pre setup
+  {//idx:1 2
+
+  
+    int secidx = valueSaturation(i+fbIndex,section.section.size());
+    int widx = valueWarping(i+fbIndex,regionWidth);
+
+    acv_XY pt = acvVecMult(section.section[secidx].sobel,gradFetchOffset);
+    pt=acvVecAdd(pt,section.section[secidx].pt_img);
+    float tmp = pixFetch(graylevelImg, pt,bacpac);
+    pixRegion[widx][newRowIdx]=tmp;
+    regSum+=tmp;
+  }
+
+  pixSum[newRowIdx]=regSum;
+}
+
+void edgeTracking::goAdv (ContourFetch::contourMatchSec &section,bool goForward,int new_regionSideWidth)
+{
+  if(goForward)
+    fbIndex++;
+  else
+    fbIndex--;
+
+  
+  // LOGI("graylevelImg:%p",graylevelImg);
+  int sideWidth_w_Dir=goForward?new_regionSideWidth:-new_regionSideWidth;
+  
+  int head_idx = valueWarping(fbIndex+sideWidth_w_Dir,regionWidth);
+  int tail_idx = valueWarping(fbIndex-sideWidth_w_Dir,regionWidth);
+  int sec_tail_idx = valueSaturation(fbIndex+sideWidth_w_Dir,section.section.size());
+
+  // LOGI("RUN,  sec_tail_idx:%d  head_idx:%d graylevelImg:%p",sec_tail_idx,head_idx,graylevelImg);
+  contourPixExtraction(graylevelImg, section.section[sec_tail_idx].pt_img,
+    section.section[sec_tail_idx].sobel,gradIndex,stepDist,pixWidth,pixRegion[head_idx],bacpac);
+
+  // LOGI("graylevelImg:%p",graylevelImg);
+  // LOGI("RUN");
+  for(int j=0;j<pixWidth;j++)
+  {
+    pixSum[j]+=pixRegion[head_idx][j]-pixRegion[tail_idx][j];
+  }
+
+  // LOGI("graylevelImg:%p",graylevelImg);
+}
+
+
 void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,int grid_size,ContourFetch &edge_grid,int scanline_skip,FeatureManager_BacPac *bacpac)
 {
 
@@ -1249,85 +1582,29 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
           }
         }
 
-        if(edge_grid.tmpXYSeq.size()!=0)
+
+        if(edge_grid.tmpXYSeq.size()>0)
         {
-          // for(int i=0;i<edge_grid.tmpXYSeq.size();i++)
-          // {
-            
-          //   edge_grid.tmpXYSeq[i].pt=
-          //     acvVecRadialDistortionRemove(
-          //       edge_grid.tmpXYSeq[i].pt,param);
-          // }
 
 
-
-          if(edge_grid.tmpXYSeq.size()>0)
+          for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
           {
-            for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
-            {
+            edge_grid.tmpXYSeq[k].sobel = pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,2);
 
-              float edgeResponse;
-              acv_XY ret_point_opt={0};
-              acv_XY sobel = pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,2);
-              edge_grid.tmpXYSeq[k].sobel=sobel;
-
-
-              
-              //Check sobel intensity
-              if(hypot(edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y)<100)continue;
-
-              // int ret_val = EdgePointOpt2(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,
-              //   edge_grid.tmpXYSeq[k].pt,3,thres,&ret_point_opt,&edgeResponse);
-
-              int ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,edge_grid.tmpXYSeq[k].pt,1,
-                &ret_point_opt,&edgeResponse,bacpac);//,FeatureManager_BacPac *bacpac
-
-              // LOGI("(%f,%f)_",ret_point_opt.X,ret_point_opt.Y);
-              // ret_val = EdgePointOpt(grayLevelImg,edge_grid.tmpXYSeq[k].sobel,ret_point_opt,1,
-              //   &ret_point_opt,&edgeResponse,bacpac);//,FeatureManager_BacPac *bacpac
-              // LOGI("(%f,%f):edgeResponse:%f",ret_point_opt.X,ret_point_opt.Y,edgeResponse);
-
-              edge_grid.tmpXYSeq[k].pt=ret_point_opt;
-              edge_grid.tmpXYSeq[k].edgeRsp = (edgeResponse<0)?-edgeResponse:edgeResponse;
-
-              //bacpac->sampler.
-              acv_XY xy=edge_grid.tmpXYSeq[k].pt;
-              
-              bacpac->sampler->img2ideal(&xy);// =acvVecRadialDistortionRemove( edge_grid.tmpXYSeq[k].pt,param);
-              
-              sobel=acvVecNormalize(sobel);
-              float angle = atan2(sobel.Y,sobel.X);
-              if(angle<0)angle+=M_PI*2;
-
-              float offset=bacpac->sampler->sampleAngleOffset(angle);
-              // printf("ang:%f  XY:%f,%f offset:%f\n",
-              //   angle*180/M_PI,
-              //   edge_grid.tmpXYSeq[k].pt.X,
-              //   edge_grid.tmpXYSeq[k].pt.Y,
-              //   offset);
-              xy=acvVecAdd(xy,acvVecMult(sobel,offset));
-              edge_grid.tmpXYSeq[k].pt =xy;
-            }
-            
-            ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
-            for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
-            {
-
-              // acv_XY p =edge_grid.tmpXYSeq[k].pt;
-              // int X = round(p.X);
-              // int Y = round(p.Y);
-              // {
-              //   grayLevelImg->CVector[Y][X*3+0]=0;
-              //   grayLevelImg->CVector[Y][X*3+1]=0;
-              //   grayLevelImg->CVector[Y][X*3+2]=255;
-              // }
-
-              edge_grid.push(contourIdx,edge_grid.tmpXYSeq[k]);
-            }
-            contourIdx++;
-            edge_grid.tmpXYSeq.resize(0);
+            edge_grid.tmpXYSeq[k].pt_img=edge_grid.tmpXYSeq[k].pt;//pt in image coord
+            bacpac->sampler->img2ideal(&edge_grid.tmpXYSeq[k].pt);//pt in ideal coord
+            edge_grid.tmpXYSeq[k].edgeRsp = 1;
           }
+          
+          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
+          for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
+          {
+            edge_grid.push(contourIdx,edge_grid.tmpXYSeq[k]);
+          }
+          contourIdx++;
+          edge_grid.tmpXYSeq.resize(0);
         }
+        
 
         pre_pix= cur_pix;
       }

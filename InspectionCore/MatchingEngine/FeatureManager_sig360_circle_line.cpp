@@ -955,7 +955,7 @@ float checkPtNoise(ContourFetch::ptInfo pt)
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(FeatureReport_sig360_circle_line_single &report,
                                                                                        acv_XY center,
                                                                                        float sine, float cosine, float flip_f, float thres,
-                                                                                       featureDef_searchPoint &def)
+                                                                                       featureDef_searchPoint &def,edgeTracking &eT)
 {
   FeatureReport_searchPointReport rep;
   rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
@@ -1071,6 +1071,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     ContourFetch::contourMatchSec *best_section_info = NULL;
     for (auto &section_info : m_sections)
     {
+      eT.initTracking(section_info,2);
       for (auto &pt_info : section_info.section)
       {
         float dist = acvDistance(start_line, pt_info.pt);
@@ -1940,10 +1941,10 @@ float OTSU_Threshold(acvImage &graylevelImg, acv_LabeledData *ldata, int skip = 
 
   int searchRange = 7;
   float sigmaBaseIdx = threshold - (searchRange - 1) / 2;
-  float retMaxF = 0;
-  float retMaxF_X = 0;
-  spline9_max(&(sigma[(int)sigmaBaseIdx]), searchRange, 10, &retMaxF, &retMaxF_X);
-  sigmaBaseIdx += retMaxF_X;
+  // float retMaxF = 0;
+  // float retMaxF_X = 0;
+  // spline9_max(&(sigma[(int)sigmaBaseIdx]), searchRange, 10, &retMaxF, &retMaxF_X);
+  // sigmaBaseIdx += retMaxF_X;
   //printf("\nthreshold value =s:%f i:%d  %f %f %f\n",max_sigma, threshold,retMaxF,sigmaBaseIdx,retMaxF_X);
 
   return sigmaBaseIdx;
@@ -2053,6 +2054,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
     // }
     LOGI("calibCen: %f %f", calibCen.X, calibCen.Y);
 
+    edgeTracking eT(originalImage,bacpac);
     acv_LineFit lf_zero = {0};
     for (int j = 0; j < featureLineList.size(); j++)
     {
@@ -2208,23 +2210,53 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
         continue;
       }
 
-      std::sort(m_sections.begin(), m_sections.end(),
-                [](const ContourFetch::contourMatchSec &a, const ContourFetch::contourMatchSec &b) -> bool {
-                  return a.sigma < b.sigma; //small to large
-                });
-      LOGI("MatchingMarginX:%f m_sections.size():%d initMatchingMargin:%f",
-           MatchingMarginX, m_sections.size(), initMatchingMargin, 0.5);
-      for (int k = 0; k < m_sections.size(); k++)
-      {
-        LOGI("sigma[%d]:%f", k, m_sections[k].sigma);
-      }
 
-      float section_sigma_thres = m_sections[0].sigma + 3;
+      // std::sort(m_sections.begin(), m_sections.end(),
+      //           [](const ContourFetch::contourMatchSec &a, const ContourFetch::contourMatchSec &b) -> bool {
+      //             return (a.dist*a.dist) < (b.dist*b.dist); //small to large
+      //           });
+      // LOGI("MatchingMarginX:%f m_sections.size():%d initMatchingMargin:%f",
+      //      MatchingMarginX, m_sections.size(), initMatchingMargin, 0.5);
+      // for (int k = 0; k < m_sections.size(); k++)
+      // {
+      //   LOGI("[%d]: dist:%f sigma:%f", k, m_sections[k].dist, m_sections[k].sigma);
+      // }
+
+      // for (int k = 0; k < m_sections.size(); k++)
+      // {
+      //   // m_sections[k]
+        
+      // }
+
+      
+      // int width=10;
+      // float averagePix[];
+      // for (int k = 0; k < m_sections.size(); k++)
+      // {
+      //   vector<ContourFetch::ptInfo> &section=m_sections[k].section;
+      //   for(int m = 0; m < section.size(); m++)
+      //   {
+      //     contourPixExtraction
+      //     section[m].pt_img.X;
+      //   }
+      //   // m_sections[k]
+        
+      // }
+
+      float section_sigma_thres = 9999;//m_sections[0].sigma + 3;
       vector<ContourFetch::ptInfo> &s_points = tmp_points;
       {
-        tmp_points.resize(0);
+        s_points.resize(0);
         for (int k = 0; k < m_sections.size(); k++)
         {
+          LOGI("initTracking");
+          eT.initTracking(m_sections[k]);
+          // LOGI("runTracking");
+          // eT.runTracking(m_sections[k]);
+          for(int i=0;false;i++)
+          {
+            //eT.
+          }
           if (m_sections[k].sigma > section_sigma_thres)
             continue;
           for (auto ptInfo : m_sections[k].section)
@@ -2234,7 +2266,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
         }
       }
 
-      if (s_points.size() > 10)
+      if (s_points.size() > 10 && false)
       {
         acv_XY lineNormal = {X : -line_cand.line_vec.Y, Y : line_cand.line_vec.X};
 
@@ -2242,17 +2274,18 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
 
         float minS_pts = 0;
         float minSigma = 99999;
+        
+        int sampleL = s_points.size() / 10 + 3;
+        if (sampleL > s_points.size())
+        {
+          sampleL = s_points.size() / 10;
+        }
+        if (sampleL > 20)
+        {
+          sampleL = 20;
+        }
         for (int m = 0; m < 17; m++) //RANSAC find a good starting line
         {
-          int sampleL = s_points.size() / 10 + 3;
-          if (sampleL > s_points.size())
-          {
-            sampleL = s_points.size() / 10;
-          }
-          if (sampleL > 20)
-          {
-            sampleL = 20;
-          }
           for (int k = 0; k < sampleL; k++) //Shuffle in
           {
             int idx2Swap = (rand() % (s_points.size() - k)) + k;
@@ -2263,6 +2296,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
             //s_points[j].edgeRsp=1;
           }
 
+          float sigma;
           acv_Line tmp_line;
           acvFitLine(
               &(s_points[0].pt), sizeof(ContourFetch::ptInfo),
@@ -2274,15 +2308,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
           {
             float diff = acvDistance_Signed(tmp_line, s_points[i].pt);
             float abs_diff = (diff < 0) ? -diff : diff;
-            if (abs_diff > 5)
-            {
-              //s_points[j].edgeRsp=0;
-              continue;
-            }
+            // if (abs_diff > 5)
+            // {
+            //   //s_points[j].edgeRsp=0;
+            //   continue;
+            // }
             sigma_count++;
             sigma_sum += diff * diff;
-
-            //s_points[j].edgeRsp=1/(abs_diff*abs_diff+1);
           }
           sigma_sum = sqrt(sigma_sum / sigma_count);
           if (minSigma > sigma_sum)
@@ -2475,6 +2507,10 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
           }
         }
 
+
+
+
+
         if (usable_L == 0)
           continue;
       }
@@ -2482,6 +2518,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       {
         acvFitLine(&(s_points[0].pt), sizeof(ContourFetch::ptInfo), NULL, 0, s_points.size(), &line_cand, &sigma);
       }
+
 
       /*acvDrawLine(buff_,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
@@ -2599,8 +2636,10 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
                   return a.sigma < b.sigma;
                 });
 
-      for (auto secInfo : m_sections)
+      for (auto &secInfo : m_sections)
       {
+        
+        eT.initTracking(secInfo);
         LOGI("secInfo.sigma:%f", secInfo.sigma);
       }
 
@@ -2741,7 +2780,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       {
         spoint.data.anglefollow.position = acvVecMult(spoint.data.anglefollow.position, ppmm);
       }
-      FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint);
+      FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint,eT);
       LOGV("id:%d, %d", report.def->id, searchPointList[j].id);
       report.def = &(searchPointList[j]);
       detectedSearchPoints.push_back(report);

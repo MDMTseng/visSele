@@ -45,6 +45,7 @@ IDIR=	include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_logctrl)/include \
 			$(MODULE_MatchingEngine)/include \
+			$(MODULE_MatchingEngine)/include_priv \
 			$(MODULE_MatchingEngine)/MorphEngine/include \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include\

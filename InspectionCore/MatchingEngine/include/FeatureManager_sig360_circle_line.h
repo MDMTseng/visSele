@@ -6,6 +6,7 @@
 
 #include "FeatureManager_binary_processing.h"
 #include <ContourGrid.h>
+#include <MatchingCore.h>
 
 
 
@@ -101,7 +102,9 @@ protected:
   FeatureReport_searchPointReport searchPoint_process(
   FeatureReport_sig360_circle_line_single &report, acv_XY center,
   float sine,float cosine,float flip_f,float thres,
-  featureDef_searchPoint &def);
+  featureDef_searchPoint &def,edgeTracking &eT);
+
+  
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);
