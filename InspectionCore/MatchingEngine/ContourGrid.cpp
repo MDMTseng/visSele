@@ -197,7 +197,7 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 
 
 void ContourFetch::getContourPointsWithInLineContour(
-  acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<contourMatchSec> &m_sec,float lineCurvatureMax)
+  acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<contourMatchSec> &m_sec,float lineCurvatureMax,float cosSim)
 {
   LOGV("test...");
   m_sec.resize(0);
@@ -227,6 +227,8 @@ void ContourFetch::getContourPointsWithInLineContour(
       //reverse rotate the target point to check if the point is in the margin(rotated box)
       pt = acvRotation(-line.line_vec.Y,line.line_vec.X,1,pt);
       if(pt.X<0)pt.X=-pt.X;
+
+      float dist = pt.Y;
       if(pt.Y<0)pt.Y=-pt.Y;
       bool ptInSection=false;
 
@@ -240,7 +242,7 @@ void ContourFetch::getContourPointsWithInLineContour(
         else
         {
           float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
-          if(dotP*flip_f>0.9)
+          if(dotP*flip_f>cosSim)
           {
             ptInSection=true;
           }
@@ -269,7 +271,9 @@ void ContourFetch::getContourPointsWithInLineContour(
           doMergeToIdx=m_sec.size()-1;
         }
         m_sec[endIdx].section.push_back(pti);
-        m_sec[endIdx].sigma+=pt.Y*pt.Y;
+
+        m_sec[endIdx].dist+=dist;
+        m_sec[endIdx].sigma+=dist*dist;
         
       }
       else
@@ -294,6 +298,7 @@ void ContourFetch::getContourPointsWithInLineContour(
       // LOGI("doMergeToIdx:%d,m_sec.size=%d",doMergeToIdx,m_sec.size());
       // LOGI("sec.size=%d  size=%d",m_sec[doMergeToIdx].section.size(),m_sec[m_sec.size()-1].section.size());
       contourConcatLastTo(m_sec,doMergeToIdx);
+
       
       // LOGI("doMergeToIdx:%d,m_sec.size=%d",doMergeToIdx,m_sec.size());
       // LOGI("sec.size=%d  size=%d",m_sec[doMergeToIdx].section.size(),m_sec[m_sec.size()-1].section.size());
@@ -303,9 +308,8 @@ void ContourFetch::getContourPointsWithInLineContour(
 
   for(int i=0;i<m_sec.size();i++)
   {
-    m_sec[i].sigma=sqrt(m_sec[i].sigma/m_sec[i].section.size());
-    
-    //LOGI("Sec[%d].sigma:%f......",i,m_sec[i].sigma);
+    m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
 
 

@@ -16,6 +16,8 @@ import APP_DEFCONF_MODE_rdx from './DefConfUI';
 import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
+import InstInspUI_rdx from './InstInspUI';
+
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset } from 'UTIL/MISC_Util';
@@ -47,6 +49,7 @@ const { Meta } = Card;
 const { Step } = Steps;
 
 import { 
+  MinusOutlined,
   SelectOutlined,
   MonitorOutlined,
   FolderOpenOutlined,
@@ -1055,6 +1058,10 @@ const MainUI=()=>{
         type:"RepDisplay",
         name:DICT.mainui.MODE_SELECT_REP_DISPLAY,
       },
+      PrecisionValidation:{
+        type:"PrecisionValidation",
+        name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
+      },
       Setting:{
         type:"Setting",
         name:DICT.mainui.MODE_SELECT_SETTING,
@@ -1111,7 +1118,7 @@ const MainUI=()=>{
 
 
 
-  
+  let siderWidth=80;
 
   switch(UI_state)
   {
@@ -1138,7 +1145,10 @@ const MainUI=()=>{
         <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.RepDisplay)}>
           <span><strong>{DICT.mainui.MODE_SELECT_REP_DISPLAY}</strong></span>
         </div>
-        
+        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.InstInsp)}>
+          <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
+        </div>
+
         {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
           <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
         </div> */}
@@ -1242,11 +1252,50 @@ const MainUI=()=>{
       }
       break;  
     case  s_statesTable.InstInsp:
+      siderWidth=120;
+      UI.push(<InstInspUI_rdx
+        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
 
+        onExtraCtrlUpdate={extraCtrls=>{
+
+          let extraCtrlUI=[];
+          // if(extraCtrls.takeNewImage!==undefined)
+          // {
+          //   //
+          //   extraCtrlUI.push(
+          //     <div className="antd-icon-sizing" key={"icon_s"} style={{height:30,color:"#FFF"}} onClick={_=>extraCtrls.takeNewImage()}>
+          //       dddd
+          //       {/* <MinusOutlined onClick={_=>extraCtrls.takeNewImage()}/> */}
+          //     </div>
+          //   );
+          // }
+          if(extraCtrls.clearMeasureSet!==undefined)
+          {
+            // extraCtrlUI.push(<MinusOutlined onClick={_=>extraCtrls.clearMeasureSet()}/>);
+            extraCtrlUI.push(
+            
+              <div className="antd-icon-sizing" key={"icon_s"} style={{height:30,color:"#FFF"}} onClick={_=>extraCtrls.clearMeasureSet()}>
+                clearMeasureSet
+              </div>
+            
+              );
+          }
+          if(extraCtrls.removeOneMeasureSet!==undefined)
+          {
+            extraCtrlUI.push(<MinusOutlined onClick={_=>extraCtrls.removeOneMeasureSet()}/>);
+          }
+
+          setExtraSideUI(extraCtrlUI);
+        }}
+
+         />);
+
+      
       siderUI_info={
         title:UI_state.name,
         icons:[
-          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>
+          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
+          ...extraSideUI
         ]
       }
       break;
@@ -1284,7 +1333,7 @@ const MainUI=()=>{
 
   return <Layout className="HXF">
     {siderUI==null?null:
-    <Sider collapsed width={30} className="theme_background_2" style={{padding:"5px"}}>
+    <Sider collapsed collapsedWidth={siderWidth} className="theme_background_2" style={{padding:"5px"}}>
       {siderUI}
     </Sider>}
     

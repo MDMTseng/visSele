@@ -259,6 +259,10 @@ typedef struct stage_light_grid_node_info{
   int error;
 }stage_light_grid_node_info;
 
+typedef struct FeatureReport_nop{
+
+};
+
 typedef struct FeatureReport_stage_light_report{
   vector<stage_light_grid_node_info> *gridInfo;
   int targetImageDim[2];
@@ -268,6 +272,7 @@ typedef struct FeatureReport
 {
   enum{
     NONE,
+    nop,
     binary_processing_group,
     sig360_extractor,
     sig360_circle_line,
@@ -279,6 +284,7 @@ typedef struct FeatureReport
   FeatureManager_BacPac *bacpac;
   union{
     void* raw;
+    FeatureReport_nop                     nop;
     FeatureReport_binary_processing_group binary_processing_group;
     FeatureReport_sig360_extractor        sig360_extractor;
     FeatureReport_sig360_circle_line      sig360_circle_line;

@@ -2949,12 +2949,12 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
 
-  constructor(canvasDOM) {
+  constructor(canvasDOM,cameraParam) {
     super(canvasDOM);
     this.ERROR_LOCK = false;
-    this.edit_DB_info = null;
-    this.db_obj = null;
-    this.mouse_close_dist = 10;
+    this.cameraParam = cameraParam;
+
+    this.markPoints=[];
 
     this.colorSet =
       Object.assign(this.colorSet,
@@ -2977,19 +2977,50 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
         }
       );
 
-
-    this.state = undefined;//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
-
     this.EmitEvent = (event) => { log.info(event); };
+
+
+    this.removeOneMarkSet=()=>
+    {
+      if(this.markPoints.length==0)return;
+      let removeCount=0;
+      if(this.markPoints.length%2==1)
+      {
+        removeCount=1;
+      }
+      else
+      {
+        removeCount=2;
+      }
+      this.markPoints.splice(this.markPoints.length-removeCount,removeCount);
+    }
+  
+    this.clearMarkSet=()=>
+    {
+      this.markPoints=[];
+    }
+  }
+
+
+  SetImg(img_info) {
+    if(img_info==null)return;
+    if(this.img_info==img_info)return;
+    super.SetImg(img_info);
+  
   }
 
   EditDBInfoSync(edit_DB_info) {
+    if(edit_DB_info._obj===undefined)return;
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
-    this.stage_light_report = edit_DB_info.stage_light_report;
+    
+    this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg(edit_DB_info.img);
-    let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
-    this.rUtil.renderParam.mmpp = mmpp;
+    if(this.db_obj.cameraParam!==undefined)
+    {
+      let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+      this.rUtil.renderParam.mmpp = mmpp;
+    }
   }
 
   onmousemove(evt) {
@@ -2998,33 +3029,27 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.mouseStatus.y = pos.y;
     let doDragging = true;
 
+    let doDraw=false;
+    //console.log("this.state.substate:",this.state.substate);
+    
     if (doDragging) {
       if (this.mouseStatus.status == 1) {
+        
+        doDraw=true;
         this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
-
-        this.ctrlLogic();
-        this.draw();
       }
 
     }
+    if(doDraw)
+    {
+      this.ctrlLogic();
+      this.draw();
+    }
   }
 
-
-
-
-
   draw() {
-
-    //console.log(this.ERROR_LOCK, this.edit_DB_info);
-    if (this.ERROR_LOCK || this.edit_DB_info == null) {
-      return;
-    }
     //let inspectionReport = this.edit_DB_info.inspReport;
     //let inspectionReportList = this.edit_DB_info.inspReport.reports;
-
-
-    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
-    //this.edit_DB_info.inspReport.reports;
 
 
     let unitConvert = {
@@ -3061,12 +3086,91 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.restore();
     }
 
+
+    this.markPoints.map(pt=>{
+      this.rUtil.drawpoint(ctx, pt);
+    })
+
+    for(let i=0;i<this.markPoints.length-1;i+=2)
+    {
+      let pt1 = this.markPoints[i];
+      let pt2 = this.markPoints[i+1];
+      
+      ctx.lineWidth = this.rUtil.getPrimitiveSize()*2;
+      
+      ctx.strokeStyle = new Color(this.colorSet.inspection_Pass).alpha(0.5);
+      ctx.setLineDash([this.rUtil.getPrimitiveSize(), this.rUtil.getPrimitiveSize()]);
+
+      this.rUtil.drawReportLine(ctx, {
+
+        x0:pt1.x, y0: pt1.y,
+        x1:pt2.x, y1: pt2.y,
+      });
+      ctx.setLineDash([]);
+      
+      
+      let fontPx = this.rUtil.getFontHeightPx();
+      ctx.font = this.rUtil.getFontStyle(1);
+      ctx.strokeStyle = "black";
+      ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.02;
+
+      let dist = Math.hypot(pt1.x-pt2.x,pt1.y-pt2.y);
+      this.rUtil.draw_Text(ctx, dist.toFixed(5)+"mm",  fontPx,(pt1.x+pt2.x)/2, (pt1.y+pt2.y)/2);
+
+    }
     //this.stage_light_report
 
   }
 
-  ctrlLogic() {
+  
+  // onmouseup(evt) {
+  //   let pos = this.getMousePos(this.canvas, evt);
+  //   this.mouseStatus.x = pos.x;
+  //   this.mouseStatus.y = pos.y;
+  //   this.mouseStatus.status = 0;
+  //   this.camera.EndDrag();
 
+  //   this.debounce_zoom_emit();
+  //   this.ctrlLogic();
+  //   this.draw();
+  // }
+
+  ctrlLogic() {
+    
+    let mmpp = this.rUtil.get_mmpp();
+    let wMat = this.worldTransform();
+    //log.debug("this.camera.matrix::",wMat);
+    let worldTransform = new DOMMatrix().setMatrixValue(wMat);
+    let worldTransform_inv = worldTransform.invertSelf();
+    //this.Mouse2SecCanvas = invMat;
+    let mPos = this.mouseStatus;
+    let mouseOnCanvas2 = this.VecX2DMat(mPos, worldTransform_inv);
+
+    let pmPos = { x: this.mouseStatus.px, y: this.mouseStatus.py };
+    let pmouseOnCanvas2 = this.VecX2DMat(pmPos, worldTransform_inv);
+
+    let ifOnMouseLeftClickEdge = (this.mouseStatus.status != this.mouseStatus.pstatus);
+    
+    if(ifOnMouseLeftClickEdge )
+    {
+      if(this.mouseStatus.status==1)
+      {
+        this.bk_mPos={...mPos};
+      }
+      else if(Math.hypot(this.bk_mPos.x-mPos.x,this.bk_mPos.y-mPos.y)<5)
+      {
+        // if(this.markPoints.length>=2)
+        // {
+        //   this.markPoints=[];
+        // }
+        this.markPoints.push(mouseOnCanvas2);
+        console.log(this.markPoints);
+      }
+    }
+    console.log(mouseOnCanvas2,pmouseOnCanvas2);
+
+    
+    this.mouseStatus.pstatus = this.mouseStatus.status;
   }
 }
 

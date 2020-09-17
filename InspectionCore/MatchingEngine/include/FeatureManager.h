@@ -30,7 +30,7 @@ public :
   void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   virtual int reload(const char *json_str)=0;
   virtual int FeatureMatching(acvImage *img)=0;
-  virtual const FeatureReport* GetReport(){return NULL;};
+  virtual const FeatureReport* GetReport(){return &report;};
   virtual void ClearReport(){
     bacpac=NULL;
     report.type=FeatureReport::NONE;

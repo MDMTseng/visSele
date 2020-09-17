@@ -168,13 +168,14 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         }
       }
 
-      if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
+      int noiseRange=5;
+      if(1)for(int i=0;i<img.GetHeight();i++)//Add noise
       {
           for(int j=0;j<img.GetWidth();j++)
           {
-              int u = rand()%(gaussianNoiseTable_M.size());
-              int x = gaussianNoiseTable_M[u] * 3/1000000 + 0;
-
+              // int u = rand()%(gaussianNoiseTable_M.size());
+              // int x = gaussianNoiseTable_M[u] * 3/1000000 + 0;
+              int x=(rand()%(2*noiseRange))-noiseRange;
               int d = img.CVector[i][j*3];
               d+=x;
               if(d<0)d=0;

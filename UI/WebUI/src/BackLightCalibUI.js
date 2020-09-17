@@ -146,8 +146,6 @@ function stage_light_report_maxMean(stage_light_report)
 export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate }) {
   const [imageInfo, setImageInfo] = useState(undefined);
   const [inspReport, setInspReport] = useState(undefined);
-  const todoList = useSelector(state => state.todoList);
-
   let staticObj = useRef({
     targetBri:200,
     briPreDiffSign:0,

@@ -6,17 +6,25 @@ import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 
 import ReactResizeDetector from 'react-resize-detector';
-import {useMappedState,useDispatch} from 'redux-react-hook';
 
 import { useSelector,connect } from 'react-redux' 
 
-class CanvasComponent extends React.Component {
-  constructor(props) {
-      super(props);
-      this.windowSize={};
-  }
+import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 
-  ec_canvas_EmitEvent(event) {
+
+
+
+function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate}) 
+{
+
+  const rdx_edit_info = useSelector(state => state.UIData.edit_info);
+  let _ = useRef({
+    canvas: undefined,
+    windowSize:{width:0,height:0}
+  });
+  const canvasRef = useRef(null);
+  
+  function ec_canvas_EmitEvent(event) {
     switch(event.type)
     { 
       case DefConfAct.EVENT.ERROR:
@@ -27,7 +35,7 @@ class CanvasComponent extends React.Component {
           // log.error(event);
           // this.props.ACT_ERROR();
 
-          let rep = this.props.camera_calibration_report.reports[0];
+          let rep = rdx_edit_info.camera_calibration_report.reports[0];
           let mmpp=rep.mmpb2b/rep.ppb2b;
 
           let crop = event.data.crop.map(val=>val/mmpp);
@@ -37,7 +45,7 @@ class CanvasComponent extends React.Component {
           
           
           //log.info(crop,down_samp_level);
-          this.props.BPG_Channel("ST",0,
+          BPG_Channel("ST",0,
           {
             CameraSetting:{
               down_samp_level
@@ -49,89 +57,92 @@ class CanvasComponent extends React.Component {
       break;
 
     }
-}
-
-
-  componentDidMount() {
-      this.ec_canvas = new EC_CANVAS_Ctrl.SLCALIB_CanvasComponent(this.refs.canvas);
-      this.ec_canvas.EmitEvent = this.ec_canvas_EmitEvent.bind(this);
-      this.props.onCanvasInit(this.ec_canvas);
-      this.updateCanvas(this.props.c_state);
   }
 
-  componentWillUnmount() {
-      this.ec_canvas.resourceClean();
-  }
-
-  updateCanvas(ec_state, props = this.props) {
-    if (this.ec_canvas === undefined)return;
-    this.ec_canvas.EditDBInfoSync(props.edit_info);
-    this.ec_canvas.draw();
-  }
-
-  onResize(width, height) {
-      if(Math.hypot(this.windowSize.width-width,this.windowSize.height-height)<5)return;
-      if (this.ec_canvas !== undefined) {
-          this.ec_canvas.resize(width, height);
-          this.windowSize={
-              width,height
-          }
-          this.updateCanvas(this.props.c_state);
+  useEffect(() => {
+    onExtraCtrlUpdate(
+      {
+        clearMeasureSet:()=>{
+          _.current.ec_canvas.clearMarkSet();
+          _.current.ec_canvas.draw();
+        },
+        removeOneMeasureSet:()=>{
+          _.current.ec_canvas.removeOneMarkSet();
+          _.current.ec_canvas.draw();
+        },
       }
+    )
+    return ()=>{
+    }
+
+  }, [])
+
+
+  useEffect(() => {
+    if(_.current.ec_canvas!==undefined)return;
+    _.current.ec_canvas=new EC_CANVAS_Ctrl.InstInsp_CanvasComponent(canvasRef.current);
+
+    _.current.ec_canvas.EditDBInfoSync(rdx_edit_info);
+    _.current.ec_canvas.EmitEvent =ec_canvas_EmitEvent;
+    
+    _.current.ec_canvas.resize(_.current.windowSize.width, _.current.windowSize.height);
+    _.current.ec_canvas.draw();
+    
+    // 
+    return ()=>{
+      //console.log(c.finalRep);
+      // BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+    }
+
+  }, [canvasRef])
+
+
+  useEffect(() => {
+    if(_.current.ec_canvas===undefined)return;
+    // console.log(image);
+    _.current.ec_canvas.SetImg(image);
+    _.current.ec_canvas.draw();
+
+  }, [image])
+
+  
+  function onResize(width, height) {
+    _.current.windowSize={width,height};
+
+    console.log("onResize::::::::");
+    if(_.current.ec_canvas!==undefined)
+    {
+      _.current.ec_canvas.resize(_.current.windowSize.width, _.current.windowSize.height);
+      _.current.ec_canvas.draw();
+    }
+
+    // if(Math.hypot(_.current.windowSize.width-width,_.current.windowSize.height-height)<5)return;
+    // if (this.ec_canvas !== undefined) {
+    //     this.ec_canvas.resize(width, height);
+    //     this.windowSize={
+    //         width,height
+    //     }
+    //     this.updateCanvas(this.props.c_state);
+    // }
   }
 
-  componentWillUpdate(nextProps, nextState) {
-      this.updateCanvas(nextProps.c_state, nextProps);
-  }
+  
+  return (
+    <div className={addClass}>
+        <canvas ref={canvasRef} className="width12 HXF"/>
+        <ReactResizeDetector handleWidth handleHeight onResize={onResize}/>
+    </div>
+  );
 
-  render() {
-
-      return (
-          <div className={this.props.addClass}>
-              <canvas ref="canvas" className="width12 HXF"/>
-              <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)}/>
-          </div>
-      );
-  }
 }
 
-
-
-
-const mapStateToProps_CanvasComponent = (state) => {
-  //console.log("mapStateToProps",JSON.stringify(state.UIData.c_state));
-  return {
-    c_state: state.UIData.c_state,
-    edit_info: state.UIData.edit_info,
-
-    camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
-  }
-}
-
-
-
-const mapDispatchToProps_CanvasComponent = (dispatch, ownProps) => 
-{ 
-  return{
-    ACT_SUCCESS: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.SUCCESS))},
-    ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
-    ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
-    ACT_EDIT_TAR_UPDATE: (targetObj) => {dispatch(DefConfAct.Edit_Tar_Update(targetObj))},
-    ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) =>  {dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj))},
-    ACT_EDIT_SHAPELIST_UPDATE: (shapeList) => {dispatch(DefConfAct.Shape_List_Update(shapeList))},
-    ACT_EDIT_SHAPE_SET: (shape_data) => {dispatch(DefConfAct.Shape_Set(shape_data))},
-    ACT_EDIT_TAR_ELE_TRACE_UPDATE: (keyTrace) => {dispatch(DefConfAct.Edit_Tar_Ele_Trace_Update(keyTrace))},
-  }
-}
-const CanvasComponent_rdx = connect(
-    mapStateToProps_CanvasComponent,
-    mapDispatchToProps_CanvasComponent)(CanvasComponent);
-
-
-export default function InstInspUI_rdx({ BPG_Channel  }) {
-  const [imageInfo, setImageInfo] = useState(undefined);
+export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
   const [inspReport, setInspReport] = useState(undefined);
+  const [imageInfo, setImageInfo] = useState(undefined);
+  const [canvExCtrl, setCanvExCtrl] = useState(undefined);
+  
 
+  // const ec_canvasRef = useRef(null);
   let staticObj = useRef({
     targetBri:200,
     briPreDiffSign:0,
@@ -148,15 +159,20 @@ export default function InstInspUI_rdx({ BPG_Channel  }) {
         _PGID_:10004,
         _PGINFO_:{keep:true},
         definfo: {
-          "type":"stage_light_report",
-          "grid_size":[10,10],
-          "nonBG_thres":20,
-          "nonBG_spread_thres":180
+          "type":"nop",
         }
       },undefined,
       {
-        resolve:(darr,mainFlow)=>{
-          if(c.triggerTimeout===undefined)return;
+        resolve:(pkts,mainFlow)=>{
+          // console.log(pkts);
+
+          let SS=pkts.find(pkt=>pkt.type=="SS");
+          let FL=pkts.find(pkt=>pkt.type=="FL");
+          let IM=pkts.find(pkt=>pkt.type=="IM");
+
+          let img_act= BPG_Protocol.map_BPG_Packet2Act(IM);
+          setImageInfo(img_act.data);
+          // newEditInfo.img=img_pros.data;
           
         },
         reject:(e)=>{
@@ -166,16 +182,57 @@ export default function InstInspUI_rdx({ BPG_Channel  }) {
   }
   useEffect(() => {
     ImgStageBackLightCalib();
+
+
+    onExtraCtrlUpdate({
+      takeNewImage:()=>{
+        console.log("takeNewImage")
+      },
+
+      clearMeasureSet:()=>{
+        canvExCtrl.clearMeasureSet();
+      },
+
+      removeOneMeasureSet:()=>{
+        canvExCtrl.removeOneMeasureSet();
+      }
+    })
     return ()=>{
       //console.log(c.finalRep);
       BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
     }
 
-  }, [])
+  }, [canvExCtrl])
 
+  const FancyButton = React.forwardRef((props, ref) => (
+    <button ref={ref} className="FancyButton">
+      {props.children}
+    </button>
+  ));
+  // useEffect(() => {
+  //   console.log(ec_canvasRef);
+
+  //   onExtraCtrlUpdate({
+  //     takeNewImage:()=>{
+  //       console.log("takeNewImage")
+  //     },
+
+  //     clearMeasureSet:()=>{
+  //       console.log("clearMeasureSet",ec_canvasRef)
+  //       ec_canvasRef.current.clearMeasureSet();
+  //     },
+
+  //     removeOneMeasureSet:()=>{
+  //       console.log("removeOneMeasureSet",ec_canvasRef)
+  //       ec_canvasRef.current.removeOneMeasureSet();
+  //     }
+  //   })
+  // }, [ec_canvasRef])
 
   return (<div  className="s width12 height12">
-    <CanvasComponent_rdx  addClass="s width12 height12"
+    <CanvasComponent  addClass="s width12 height12"
+     image={imageInfo} BPG_Channel={BPG_Channel} 
+     onExtraCtrlUpdate={setCanvExCtrl}
       onCanvasInit={_ => _} BPG_Channel={BPG_Channel}/>
     
   </div>);
