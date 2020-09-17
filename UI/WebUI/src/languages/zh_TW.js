@@ -20,10 +20,11 @@ export default {
         arc:"弧/Arc",
         spoint:"搜尋點/SPOINT",
         search_point:"搜尋點",
+        save_calibration:"儲存校正",
         
         apoint:"交點/APOINT",
         aux_point:"交點",
-        '<':"< 返回",
+        '<':"返回",
         measure:"測量/MEASURE",
         edit:"編輯測量/Edit",
         save:"儲存/SAVE",

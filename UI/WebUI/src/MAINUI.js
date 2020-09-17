@@ -49,6 +49,8 @@ const { Meta } = Card;
 const { Step } = Steps;
 
 import { 
+  RollbackOutlined,
+  DeleteOutlined,
   MinusOutlined,
   SelectOutlined,
   MonitorOutlined,
@@ -1075,6 +1077,8 @@ const MainUI=()=>{
   const dispatch = useDispatch();
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   
+  const [siderCollapse,setSiderCollapse] = useState(true);
+  
   const EV_UI_Edit_Mode=()=>dispatch(UIAct.EV_UI_Edit_Mode());
   const EV_UI_Insp_Mode= () =>dispatch(UIAct.EV_UI_Insp_Mode());
   const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
@@ -1118,7 +1122,6 @@ const MainUI=()=>{
 
 
 
-  let siderWidth=80;
 
   switch(UI_state)
   {
@@ -1142,9 +1145,9 @@ const MainUI=()=>{
           <span><strong>{DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB}</strong></span>
         </div>
 
-        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.RepDisplay)}>
+        {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.RepDisplay)}>
           <span><strong>{DICT.mainui.MODE_SELECT_REP_DISPLAY}</strong></span>
-        </div>
+        </div> */}
         <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.InstInsp)}>
           <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
         </div>
@@ -1164,11 +1167,15 @@ const MainUI=()=>{
     
       siderUI_info={
         title:UI_state.name,
-        
-        icons:[
-          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
-          
-        ]
+        menu:[
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>setUI_state(s_statesTable.RootSelect)
+            // subMenu:[]
+          }
+           
+        ],
       }
       UI.push(<InspectionDataPrepare  onPrepareOK={EV_UI_Insp_Mode}/>);
       
@@ -1176,35 +1183,32 @@ const MainUI=()=>{
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
-
-
-        
         onExtraCtrlUpdate={extraCtrls=>{
-
           let extraCtrlUI=[];
           if(extraCtrls.currentReportExtract!==undefined)
           {
-            extraCtrlUI.push(<SelectOutlined onClick={_=>{
+            extraCtrlUI.push({
+              icon:<SelectOutlined />,
+              text:DICT._.save_calibration,
+              onClick:_=>{
 
-              let report = extraCtrls.currentReportExtract();
-              if(report===undefined)return;
-              var enc = new TextEncoder();
-              ACT_WS_SEND(WS_ID, "SV", 0,
-                { filename: "data/stageLightReport.json" },
-                enc.encode(JSON.stringify(report, null, 2)),
-                {
-                  resolve:(stacked_pkts,action_channal)=>{
-                    
-                    ACT_WS_SEND(WS_ID, "RC", 0, {
-                      target: "camera_setting_refresh"
-                    });
-
-                  }
-                })
-              console.log(report)
-
-              
-            }}/>);
+                let report = extraCtrls.currentReportExtract();
+                if(report===undefined)return;
+                var enc = new TextEncoder();
+                ACT_WS_SEND(WS_ID, "SV", 0,
+                  { filename: "data/stageLightReport.json" },
+                  enc.encode(JSON.stringify(report, null, 2)),
+                  {
+                    resolve:(stacked_pkts,action_channal)=>{
+                      
+                      ACT_WS_SEND(WS_ID, "RC", 0, {
+                        target: "camera_setting_refresh"
+                      });
+  
+                    }
+                  })
+              }
+            });
           }
           setExtraSideUI(extraCtrlUI);
         }}
@@ -1214,10 +1218,16 @@ const MainUI=()=>{
       
       siderUI_info={
         title:UI_state.name,
-        icons:[
-          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
+        
+        menu:[
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>setUI_state(s_statesTable.RootSelect)
+            // subMenu:[]
+          },
           ...extraSideUI
-        ]
+        ],
       }
       break;    
 
@@ -1236,23 +1246,34 @@ const MainUI=()=>{
           let extraCtrlUI=[];
           if(extraCtrls.browseNewFileToLoad!==undefined)
           {
-            extraCtrlUI.push(<FolderOpenOutlined onClick={_=>extraCtrls.browseNewFileToLoad()}/>);
+            extraCtrlUI.push({
+              icon:<FolderOpenOutlined />,
+              text:DICT._.save_calibration,
+              onClick:_=>extraCtrls.browseNewFileToLoad()
+              // subMenu:[]
+            })
           }
           setExtraSideUI(extraCtrlUI);
         }}/>
         
         );
       
-      siderUI_info={
-        title:UI_state.name,
-        icons:[
-          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
-          ...extraSideUI
-        ]
-      }
+      
+        siderUI_info={
+          title:UI_state.name,
+          
+          menu:[
+            {
+              icon:<ArrowLeftOutlined />,
+              text:DICT._["<"],
+              onClick:_=>setUI_state(s_statesTable.RootSelect)
+              // subMenu:[]
+            },
+            ...extraSideUI
+          ],
+        }
       break;  
     case  s_statesTable.InstInsp:
-      siderWidth=120;
       UI.push(<InstInspUI_rdx
         BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
 
@@ -1271,19 +1292,22 @@ const MainUI=()=>{
           // }
           if(extraCtrls.clearMeasureSet!==undefined)
           {
-            // extraCtrlUI.push(<MinusOutlined onClick={_=>extraCtrls.clearMeasureSet()}/>);
-            extraCtrlUI.push(
-            
-              <div className="antd-icon-sizing" key={"icon_s"} style={{height:30,color:"#FFF"}} onClick={_=>extraCtrls.clearMeasureSet()}>
-                clearMeasureSet
-              </div>
-            
-              );
+            extraCtrlUI.push({
+              icon:<DeleteOutlined />,
+              text:"CLEAR",
+              onClick:_=>extraCtrls.clearMeasureSet()
+              // subMenu:[]
+            })
           }
-          if(extraCtrls.removeOneMeasureSet!==undefined)
-          {
-            extraCtrlUI.push(<MinusOutlined onClick={_=>extraCtrls.removeOneMeasureSet()}/>);
-          }
+          // if(extraCtrls.removeOneMeasureSet!==undefined)
+          // {
+          //   extraCtrlUI.push({
+          //     icon:<MinusOutlined />,
+          //     text:"",
+          //     onClick:_=>extraCtrls.removeOneMeasureSet()
+          //     // subMenu:[]
+          //   })
+          // }
 
           setExtraSideUI(extraCtrlUI);
         }}
@@ -1293,10 +1317,15 @@ const MainUI=()=>{
       
       siderUI_info={
         title:UI_state.name,
-        icons:[
-          <ArrowLeftOutlined onClick={_=>setUI_state(s_statesTable.RootSelect)}/>,
+        menu:[
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>setUI_state(s_statesTable.RootSelect)
+            // subMenu:[]
+          },
           ...extraSideUI
-        ]
+        ],
       }
       break;
     case  s_statesTable.Setting:
@@ -1310,30 +1339,29 @@ const MainUI=()=>{
     if(siderUI_info.title!==undefined)
     {
       siderUI.push(<div key="title" 
-        style={{width:"100%",height:"auto",background: "#FFF",
+        style={{height:"auto",background: "#FFF",margin: "5px",
         writingMode: "vertical-rl",textOrientation: "mixed",
         alignItems: "center",display: "flex"}}>
-        <Title level={2} style={{margin: "15px"}}  className="theme_color_2">{siderUI_info.title}</Title>
+        <Title level={2} style={{margin: "15px"}}  className="theme_color_2" onClick={()=>setSiderCollapse(!siderCollapse)}>{siderUI_info.title}</Title>
       </div>)
     }
 
 
-    if(siderUI_info.icons!==undefined)
+    if(siderUI_info.menu!==undefined)
     {
-      siderUI.push(<div className="HXA" key={"init_div"} style={{padding: "4px"}}/>)
-      siderUI_info.icons.forEach((icon,idx)=>{
-        siderUI.push(<div className="antd-icon-sizing" key={"icon_"+idx} style={{height:30,color:"#FFF"}}>{icon}</div>)
-        siderUI.push(<div className="HXA" style={{padding: "8px"}} key={"divi_"+idx}>
-          <Divider style={{margin:"0px",borderTop: "2px solid rgba(255,255,255,0.6)"}}/>
-        </div>)
-      })
+      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']} className="TEST">
+        {siderUI_info.menu.map(item=> <Menu.Item key="1" icon={item.icon} onClick={item.onClick}>{item.text}</Menu.Item>)}
+        </Menu>)
+      // siderUI_info.menu.forEach((menu,idx)=>{
+      //   siderUI.push(menu)
+      // })
     }
     
   }
 
   return <Layout className="HXF">
     {siderUI==null?null:
-    <Sider collapsed collapsedWidth={siderWidth} className="theme_background_2" style={{padding:"5px"}}>
+    <Sider collapsed={siderCollapse} className="theme_background_2">
       {siderUI}
     </Sider>}
     
