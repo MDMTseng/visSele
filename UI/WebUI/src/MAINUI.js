@@ -1294,11 +1294,32 @@ const MainUI=()=>{
           {
             extraCtrlUI.push({
               icon:<DeleteOutlined />,
-              text:"CLEAR",
-              onClick:_=>extraCtrls.clearMeasureSet()
+              text:"Remove",
+              onClick:_=>extraCtrls.removeOneMeasureSet()
               // subMenu:[]
             })
           }
+          
+          if(extraCtrls.setDistanceType!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<MinusOutlined />,
+              text:"距離模式",
+              onClick:_=>
+              {
+                if(_REF.current.distType===undefined)
+                {
+                  _REF.current.distType=0;
+                }
+                _REF.current.distType++;
+                _REF.current.distType%=3;
+                extraCtrls.setDistanceType(_REF.current.distType);
+              }
+              // subMenu:[]
+            })
+          }
+          
+          
           // if(extraCtrls.removeOneMeasureSet!==undefined)
           // {
           //   extraCtrlUI.push({
@@ -1350,7 +1371,7 @@ const MainUI=()=>{
     if(siderUI_info.menu!==undefined)
     {
       siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']} className="TEST">
-        {siderUI_info.menu.map(item=> <Menu.Item key="1" icon={item.icon} onClick={item.onClick}>{item.text}</Menu.Item>)}
+        {siderUI_info.menu.map((item,idx)=> <Menu.Item key={(item.key===undefined)?("idx:"+idx):item.key} icon={item.icon} onClick={item.onClick}>{item.text}</Menu.Item>)}
         </Menu>)
       // siderUI_info.menu.forEach((menu,idx)=>{
       //   siderUI.push(menu)

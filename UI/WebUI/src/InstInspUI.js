@@ -70,6 +70,10 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
           _.current.ec_canvas.removeOneMarkSet();
           _.current.ec_canvas.draw();
         },
+        setDistanceType:(type)=>{
+          _.current.ec_canvas.setDistanceType(type);
+          _.current.ec_canvas.draw();
+        },
       }
     )
     return ()=>{
@@ -180,28 +184,23 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
       }
       );
   }
+
+
   useEffect(() => {
     ImgStageBackLightCalib();
+  
+    return ()=>{
+      BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+    }}, [])
 
 
+  useEffect(() => {
     onExtraCtrlUpdate({
       takeNewImage:()=>{
         console.log("takeNewImage")
       },
-
-      clearMeasureSet:()=>{
-        canvExCtrl.clearMeasureSet();
-      },
-
-      removeOneMeasureSet:()=>{
-        canvExCtrl.removeOneMeasureSet();
-      }
+      ...canvExCtrl
     })
-    return ()=>{
-      //console.log(c.finalRep);
-      BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
-    }
-
   }, [canvExCtrl])
 
   const FancyButton = React.forwardRef((props, ref) => (

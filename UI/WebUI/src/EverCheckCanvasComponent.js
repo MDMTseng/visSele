@@ -1737,6 +1737,8 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
 
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
       ctx.scale(scale * mmpp, scale * mmpp);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
@@ -2031,6 +2033,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
 
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
@@ -2469,6 +2473,8 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
 
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
@@ -2896,6 +2902,8 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
 
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
@@ -2983,16 +2991,25 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.removeOneMarkSet=()=>
     {
       if(this.markPoints.length==0)return;
-      let removeCount=0;
-      if(this.markPoints.length%2==1)
-      {
-        removeCount=1;
-      }
-      else
-      {
-        removeCount=2;
-      }
+      let removeCount=1;
+      // if(this.markPoints.length%2==1)
+      // {
+      //   removeCount=1;
+      // }
+      // else
+      // {
+      //   removeCount=2;
+      // }
       this.markPoints.splice(this.markPoints.length-removeCount,removeCount);
+    }
+  
+    this.distanceType=0;
+    this.setDistanceType=(type=0)=>
+    {
+      this.distanceType=type;
+      //type 0 is XY distance
+      //type 1 is X distance
+      //type 2 is Y distance
     }
   
     this.clearMarkSet=()=>
@@ -3072,6 +3089,8 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
 
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
@@ -3101,11 +3120,47 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.strokeStyle = new Color(this.colorSet.inspection_Pass).alpha(0.5);
       ctx.setLineDash([this.rUtil.getPrimitiveSize(), this.rUtil.getPrimitiveSize()]);
 
-      this.rUtil.drawReportLine(ctx, {
+      let diatance=Math.NaN;
+      switch(this.distanceType)
+      {
+        case 1:
+          diatance=Math.abs(pt1.x-pt2.x);
+          this.rUtil.drawReportLine(ctx, {
+    
+            x0:pt1.x, y0: pt2.y,
+            x1:pt2.x, y1: pt2.y,
+          });
+          
+          ctx.strokeStyle = new Color(this.colorSet.inspection_NA).alpha(0.5);
+          this.rUtil.drawReportLine(ctx, {
+            x0:pt1.x, y0: pt1.y,
+            x1:pt1.x, y1: pt2.y,
+          });
+          break;
+        case 2:
+          diatance=Math.abs(pt1.y-pt2.y);
+          this.rUtil.drawReportLine(ctx, {
+            x0:pt2.x, y0: pt1.y,
+            x1:pt2.x, y1: pt2.y,
+          });
+          ctx.strokeStyle = new Color(this.colorSet.inspection_NA).alpha(0.5);
+          this.rUtil.drawReportLine(ctx, {
+            x1:pt1.x, y1: pt1.y,
+            x0:pt2.x, y0: pt1.y,
+          });
+          break;
+        
+        case 0:
+        default:
+          diatance=Math.hypot(pt1.x-pt2.x,pt1.y-pt2.y);
+          this.rUtil.drawReportLine(ctx, {
+    
+            x0:pt1.x, y0: pt1.y,
+            x1:pt2.x, y1: pt2.y,
+          });
+          break;
+      }
 
-        x0:pt1.x, y0: pt1.y,
-        x1:pt2.x, y1: pt2.y,
-      });
       ctx.setLineDash([]);
       
       
@@ -3114,8 +3169,7 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.strokeStyle = "black";
       ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.02;
 
-      let dist = Math.hypot(pt1.x-pt2.x,pt1.y-pt2.y);
-      this.rUtil.draw_Text(ctx, dist.toFixed(5)+"mm",  fontPx,(pt1.x+pt2.x)/2, (pt1.y+pt2.y)/2);
+      this.rUtil.draw_Text(ctx, diatance.toFixed(5)+"mm",  fontPx,pt2.x, pt2.y);
 
     }
     //this.stage_light_report
@@ -3276,6 +3330,10 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
+
+      
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
 
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
