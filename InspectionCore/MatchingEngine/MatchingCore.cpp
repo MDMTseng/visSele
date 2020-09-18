@@ -1314,9 +1314,11 @@ void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_
   calc_info(&mean_offset,&sigma);
 
   section.section[fbIndex].edgeRsp=0;
-  acv_XY dirX=acvVecMult(acvVecNormalize(section.section[fbIndex].sobel),mean_offset);
+  float aoffset = bacpac->sampler->sampleAngleOffset(0);//should calc angle.... but ...
+  acv_XY dirX=acvVecMult(acvVecNormalize(section.section[fbIndex].sobel),mean_offset+aoffset);
   section.section[fbIndex].pt=acvVecAdd(dirX,section.section[fbIndex].pt_img);
   bacpac->sampler->img2ideal(&section.section[fbIndex].pt);//pt in ideal coord
+  
   // LOGI("XY:%f  %f",section.section[0].pt.X,section.section[0].pt.Y);
   // bacpac->sampler->img2ideal(&section.section[0].pt);//pt in ideal coord
   // return;
@@ -1338,7 +1340,8 @@ void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_r
     calc_info(&mean_offset,&sigma);
       
     section.section[fbIndex].edgeRsp=0;
-    acv_XY dirX=acvVecMult(acvVecNormalize(section.section[fbIndex].sobel),mean_offset);
+    float aoffset = bacpac->sampler->sampleAngleOffset(0);//should calc angle.... but ...
+    acv_XY dirX=acvVecMult(acvVecNormalize(section.section[fbIndex].sobel),mean_offset+aoffset);
     section.section[fbIndex].pt=acvVecAdd(dirX,section.section[fbIndex].pt_img);
     
     bacpac->sampler->img2ideal(&section.section[fbIndex].pt);//pt in ideal coord
@@ -1595,7 +1598,6 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
             bacpac->sampler->img2ideal(&edge_grid.tmpXYSeq[k].pt);//pt in ideal coord
             edge_grid.tmpXYSeq[k].edgeRsp = 1;
           }
-          
           ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
           for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
           {
