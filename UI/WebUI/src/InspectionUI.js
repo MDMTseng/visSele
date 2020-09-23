@@ -2326,7 +2326,6 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
     
-    camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     machine_custom_setting:state.UIData.machine_custom_setting
 
     //reportStatisticState:state.UIData.edit_info.reportStatisticState

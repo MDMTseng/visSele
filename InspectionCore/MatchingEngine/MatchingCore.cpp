@@ -1647,7 +1647,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
   int sY = (int)ldat.LTBound.Y;
   int eX = (int)ldat.RBBound.X;
   int eY = (int)ldat.RBBound.Y;
-  LOGV("%d %d %d %d",sX,sY,eX,eY);
+  // LOGV("%d %d %d %d",sX,sY,eX,eY);
   BYTE *OutLine, *OriLine;
 
   _24BitUnion *lableConv;

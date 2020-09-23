@@ -199,7 +199,7 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 void ContourFetch::getContourPointsWithInLineContour(
   acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<contourMatchSec> &m_sec,float lineCurvatureMax,float cosSim)
 {
-  LOGV("test...");
+  // LOGV("test...");
   m_sec.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
   //exit(0);
@@ -207,6 +207,7 @@ void ContourFetch::getContourPointsWithInLineContour(
   const int gapCountMax=10;
   int gapCount=0;
   int init_gapCount=0;
+  // LOGI("===============");
   for(int i=0;i<contourSections.size();i++)
   {
     int idx = i;
@@ -214,11 +215,14 @@ void ContourFetch::getContourPointsWithInLineContour(
     bool inSection=false; 
     init_gapCount=0;
     gapCount=0;
+    // printf("sec:%d\n",i);
     for(int j=0;j<contourSections[idx].size();j++)
     {
   
       ptInfo pti = contourSections[idx][j];
       acv_XY pt=pti.pt;
+      
+      // printf("%.1f,%.1f,cur:%f>>>",pt.X,pt.Y,pti.curvature*180/3.14159);
       pt.X-=line.line_anchor.X;
       pt.Y-=line.line_anchor.Y;
       pti.edgeRsp=1;
@@ -248,6 +252,7 @@ void ContourFetch::getContourPointsWithInLineContour(
           }
         }
       }
+      // printf("%d>\n",ptInSection);
 
 
 
@@ -311,7 +316,8 @@ void ContourFetch::getContourPointsWithInLineContour(
     m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
     m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
-
+  
+  printf("\n");
 
 }
 
