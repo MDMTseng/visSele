@@ -2976,7 +2976,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         count = (count + 1) & 0xFF;
         LOGI("%s", buffx);
       }
-      LOGI(">>>>");
+      // LOGI(">>>>");
 
       if (report != NULL)
       {
@@ -3012,7 +3012,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       LOGE("Caught an error!");
     }
 
-      LOGI(">>>>");
+      // LOGI(">>>>");
 
     clock_t img_t = clock();
     //if(stackingC==0)
@@ -3033,13 +3033,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       int cropW = ImageCropW;
       int cropH = ImageCropH;
 
-      LOGI(">>>>");
+      // LOGI(">>>>");
       ImageSampler *sampler=(downSampWithCalib)?bacpac->sampler:NULL;
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,0,
                         iminfo.offsetX, iminfo.offsetY, cropW, cropH);
                         
-      LOGI(">>>>");
+      // LOGI(">>>>");
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
       bpg_dat.callback = DatCH_BPG_acvImage_Send;
       bpg_dat.pgID = cb->CI_pgID;
