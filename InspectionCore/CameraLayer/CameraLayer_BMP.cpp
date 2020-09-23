@@ -136,7 +136,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       }
       else
       {
-        rotate+=0.01;
+        rotate+=0.001;
       }
       acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
 
@@ -412,7 +412,7 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
         case 2:frameInterval_ms=10;break;
         case 3:frameInterval_ms=0;break;
     }
-    frameInterval_ms=150;
+    frameInterval_ms=50;
     return CameraLayer::ACK;
 }
 
