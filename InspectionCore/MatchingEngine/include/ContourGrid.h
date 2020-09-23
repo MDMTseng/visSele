@@ -52,7 +52,7 @@ class ContourFetch{
       float epsilon,std::vector<contourMatchSec> &m_sec);
 
     void getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f,
-      std::vector<contourMatchSec> &m_sec,float lineCurvatureMax = 0.15,float cosSim=0.9);
+      std::vector<contourMatchSec> &m_sec,float lineCurvatureMax = 0.15,float cosSim=0.8);
 
 };
 

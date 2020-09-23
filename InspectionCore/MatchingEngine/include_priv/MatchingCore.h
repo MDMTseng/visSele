@@ -65,7 +65,7 @@ class edgeTracking
 //    |
 
 
-  static const int pixSideWidth=5;
+  static const int pixSideWidth=10;
   static const int regionSideWidth=5;
   static const int pixWidth=1+2*pixSideWidth;
   static const int regionWidth=1+2*regionSideWidth;
@@ -82,11 +82,11 @@ class edgeTracking
   int fbIndex;
   int gradIndex;
   bool pixSumReset=false;
-  void initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth=pixSideWidth);
+  void initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth=regionSideWidth);
 
 
   void runTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth);
-  void PixSumReCalc();
+  void PixSumReCalc(int start,int end);
 
 
   int contourPixExtraction(acvImage *graylevelImg, acv_XY center_point,acv_XY sobel,int stepJump,float stepDist,int steps,float *pixels,FeatureManager_BacPac *bacpac);
