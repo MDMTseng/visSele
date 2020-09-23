@@ -1296,7 +1296,7 @@ edgeTracking::edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac
 }
 void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
 {
-  
+  if(section.section.size()==0)return;
   for(int i=0;i<section.section.size();i++ )//offset Test
   {
     acv_XY sobel = acvVecNormalize(section.section[i].sobel);
@@ -1502,12 +1502,12 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
     int pSHIdx=valueWarping(j+gradIndex+1,pixWidth);
     int pSTIdx=valueWarping(j+gradIndex-1,pixWidth);
     grad[j]=pixSum[pSHIdx]-pixSum[pSTIdx];
+    if(grad[j]<0)grad[j]=0;
   }
 
   grad[pixWidth-1]=grad[pixWidth-2];
   grad[0]=grad[1];
 
-  // printf("\n");
   // int xxdd=(pixWidth-1)/2;
   // for(int j=0;j<pixWidth;j++)
   // {
@@ -1527,7 +1527,7 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
   for(int j=0;j<10;j++)
   {
     
-    if(_mean<pixSideWidth/4||_mean>=pixSideWidth*3/4)
+    if(_mean<pixWidth/4||_mean>=pixWidth*3/4)
     {
       _mean=_mean_bk;
       _sigma=999;
@@ -1535,14 +1535,14 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
     }
 
     float _mean_pre=_mean;
-    calc_pdf_mean_sigma(grad,_mean-pixSideWidth/4,pixWidth/2,&_mean,&_sigma);
+    calc_pdf_mean_sigma(grad,_mean-pixWidth/4,pixWidth/2,&_mean,&_sigma);
     // LOGI("mean[%d]: %f",j,_mean);
     if(abs(_mean_pre-_mean)<0.1)break;
   }
 
 
   _mean-=idealMeanCenter+gradIndex;
-  // LOGI("idealMeanCenter:%f _mean:%f sigma:%f",idealMeanCenter,_mean,_sigma);
+  // LOGI("idealMeanCenter:%f _mean:%f sigma:%f, pixSideWidth:%d",idealMeanCenter,_mean,_sigma,pixSideWidth);
   if(mean_offset)*mean_offset=_mean;
   if(sigma)*sigma=_sigma;
 

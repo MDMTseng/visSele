@@ -2247,7 +2247,44 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       vector<ContourFetch::ptInfo> &s_points = tmp_points;
       {
         s_points.resize(0);
-        for (int k = 0; k < m_sections.size(); k++)
+        //for (int k = 0; k < m_sections.size(); k++)
+
+
+
+        float minFactor=9999999;
+        for(int tk=0;tk<m_sections.size();tk++)
+        {
+
+          
+          float factor=abs(m_sections[tk].dist);
+          factor*=(m_sections[tk].sigma+1);
+          // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
+
+          LOGI("dist:%f sigma:%f",m_sections[tk].dist,m_sections[tk].sigma);
+          if(minFactor>factor)
+          {
+            minFactor=factor;
+          }
+        }
+
+        // LOGI("minFactor:%f",minFactor);
+        for(int tk=0;tk<m_sections.size();tk++)
+        {
+
+          float factor=abs(m_sections[tk].dist);
+          factor*=(m_sections[tk].sigma+1);
+          // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
+          // LOGI("minFactor:%f factor:%f",minFactor,factor);
+          if(minFactor*1.5<factor)
+          {
+            m_sections[tk].section.clear();
+          }
+        }
+
+        // LOGI(">>>>>");
+
+
+        for(int k=0;k<m_sections.size();k++)
         {
           
           // printf("==k:%d===\n",k);
