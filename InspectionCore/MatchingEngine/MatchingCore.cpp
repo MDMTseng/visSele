@@ -1336,14 +1336,6 @@ void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_
   runTracking (section,new_regionSideWidth);
 }
 
-void DRAW(acvImage *img,acv_XY pt,int R,int G,int B)
-{
-  int X=round(pt.X);
-  int Y=round(pt.Y);
-  img->CVector[Y][3*X]=B;
-  img->CVector[Y][3*X+1]=G;
-  img->CVector[Y][3*X+2]=R;
-}
 
 void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
 {

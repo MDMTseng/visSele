@@ -196,6 +196,17 @@ void acvDrawLine_P(acvImage *Pic, int X1, int Y1, int X2, int Y2, BYTE LineR, BY
                     X2 - XVi, Y2 - YVi, LineR, LineG, LineB);
     }
 }
+
+
+void acvDrawDot(acvImage *img,acv_XY pt,int R,int G,int B)
+{
+  int X=round(pt.X);
+  int Y=round(pt.Y);
+  if(X<0 ||Y<0 || X>=img->GetWidth() || Y>=img->GetHeight())return;
+  img->CVector[Y][3*X]=B;
+  img->CVector[Y][3*X+1]=G;
+  img->CVector[Y][3*X+2]=R;
+}
 void acvDrawDots(acvImage *Pic, double *Dots, int XMin, int XMax, double YMin, double YMax, BYTE LineR, BYTE LineG, BYTE LineB)
 {
     int i, PicWidth, PicHeight, SampleDots;

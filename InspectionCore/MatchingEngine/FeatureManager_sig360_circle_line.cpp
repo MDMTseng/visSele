@@ -1053,7 +1053,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       edge_grid.getContourPointsWithInLineContour(line,
                                                   width / 2,
                                                   margin,
-                                                  searchDir, m_sections, 999999);
+                                                  searchDir, m_sections, 999999,-0.5);
 
     float nearestDist = 99999999;
     acv_XY nearestPt;
@@ -2076,7 +2076,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       // LOGI("pos:%f %f, vec: %f %f, ",
       //   line_cand.line_anchor.X,line_cand.line_anchor.Y,
       //   line_cand.line_vec.X,line_cand.line_vec.Y);
-      if(false)
+      //if(false)
       {
         //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
 
@@ -2257,7 +2257,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
 
           
           float factor=abs(m_sections[tk].dist);
-          factor*=(m_sections[tk].sigma+1);
+          factor+=(m_sections[tk].sigma+1);
           // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
 
           LOGI("dist:%f sigma:%f",m_sections[tk].dist,m_sections[tk].sigma);
@@ -2275,7 +2275,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
           factor*=(m_sections[tk].sigma+1);
           // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
           // LOGI("minFactor:%f factor:%f",minFactor,factor);
-          if(minFactor*1.5<factor)
+          if(minFactor*1.2<factor)
           {
             m_sections[tk].section.clear();
           }

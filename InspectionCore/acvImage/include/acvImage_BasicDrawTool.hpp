@@ -5,6 +5,7 @@
 int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE LineR,BYTE LineG,BYTE LineB);
 void acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE LineR,BYTE LineG,BYTE LineB,int LineWidth);
 void acvDrawLine_P(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE LineR,BYTE LineG,BYTE LineB,int LineWidth);
+void acvDrawDot(acvImage *img,acv_XY pt,int R,int G,int B);
 void acvDrawDots(acvImage *Pic,double* Dots,int XMin,int XMax,double YMin,double YMax,BYTE LineR,BYTE LineG,BYTE LineB);
 void acvDrawDots(acvImage *Pic,int* Dots,int XMin,int XMax,double YMin,double YMax,BYTE LineR,BYTE LineG,BYTE LineB);
 int acvDrawLine(acvImage *Pic,int X1,int Y1,int X2,int Y2);
