@@ -2311,7 +2311,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
         }
       }
 
-      if (s_points.size() > 10)
+      if (s_points.size() > 10 && false)
       {
         acv_XY lineNormal = {X : -line_cand.line_vec.Y, Y : line_cand.line_vec.X};
 
@@ -2688,7 +2688,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       LOGV("s_points.size():%d", s_points.size());
       circleRefine(s_points, s_points.size(), &cf);
 
-      if (s_points.size() > 30)
+      if (s_points.size() > 30 && false)
       {
         acv_CircleFit best_cf = cf;
         float minSigmaScore = 99999;
