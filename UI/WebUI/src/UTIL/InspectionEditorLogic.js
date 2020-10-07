@@ -288,9 +288,9 @@ export class InspectionEditorLogic {
     return edit_info;
   }
   
-  getMeasureGrading(measureReport)
+  getMeasureGrading(measureReport,control_Margin_table=this.shapeList)
   {
-    let measureDef = this.shapeList.find((feature) => feature.id == measureReport.id);
+    let measureDef = control_Margin_table.find((feature) => feature.id == measureReport.id);
     //console.log(measure, measureDef);
     if (measureDef === undefined || measureReport.status === INSPECTION_STATUS.NA || measureReport.value!=measureReport.value) {
       return MEASURERSULTRESION.NA;
@@ -614,7 +614,7 @@ export class InspectionEditorLogic {
     shape = { ...shape_obj, id };
     if (pre_shape == null) {
       if (shape.name === undefined) {
-        shape.name = "@" + shape.type + "_" + id;
+        shape.name = "["+id+"]";
       }
       this.shapeList.push(shape);
     }
@@ -1056,12 +1056,13 @@ export function Edit_info_Empty() {
     img: null,
     DefFileName: "",
     DefFileTag: [],
-    //inspOptionalTag:"",
+    inspOptionalTag:[],
     DefFileHash: "",
     list: [],
     __decorator: {
       list_id_order: [],
-      extra_info: []
+      extra_info: [],
+      control_margin_info:{}
     },
     inherentShapeList: [],
 

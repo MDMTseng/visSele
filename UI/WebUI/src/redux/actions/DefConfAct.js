@@ -8,6 +8,7 @@ export const EVENT = {
   Shape_Set:"Shape_Set",
   Shape_Decoration_ID_Order_Update:"Shape_Decoration_ID_Order_Update",
   Shape_Decoration_Extra_Info_Update:"Shape_Decoration_Extra_Info_Update",
+  Shape_Decoration_Control_Margin_Info_Update:"Shape_Decoration_Control_Margin_Info_Update",
   DefFileName_Update:"DefFileName_Update",
   DefFileHash_Update:"DefFileHash_Update",
   DefFileTag_Update:"DefFileTag_Update",
@@ -70,6 +71,13 @@ export function Shape_Decoration_Extra_Info_Update(extra_info)
 {
   return {
     type: EVENT.Shape_Decoration_Extra_Info_Update,data: extra_info
+  }
+}
+
+export function Shape_Decoration_Control_Margin_Info_Update(new_deco)
+{
+  return {
+    type: EVENT.Shape_Decoration_Control_Margin_Info_Update,data: new_deco
   }
 }
 

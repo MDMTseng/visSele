@@ -279,15 +279,14 @@ function appendLocalStorage_RecentFiles(fileInfo)
   return true;
 }
 
-const DefFileLoadUI=()=>{
-
-}
 
 const InspectionDataPrepare = ({onPrepareOK}) => {
   const caruselRef = useRef(undefined);
 
   const DICT = useSelector(state => state.UIData.DICT);
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
+
+  const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
   const System_Connection_Status = useSelector(state => state.UIData.System_Connection_Status);
   
   const WS_ID = useSelector(state => state.UIData.WS_ID);
@@ -650,8 +649,19 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   //console.log(stepIdx,UI_Stack.length,isOK);
 
-  {  
+  {     
     
+    let new_tagGroupsPreset=tagGroupsPreset;
+
+    if(Info_decorator!==undefined && Info_decorator.control_margin_info!==undefined)
+    {
+      new_tagGroupsPreset=[
+        {
+          name:"已設定範圍",
+          maxCount:1,
+          tags:Object.keys(Info_decorator.control_margin_info)
+        },...new_tagGroupsPreset]
+    }
     isOK=isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset)&&isSystemReadyForInsp;
     
     if(!isOK)isStillOK=false;
@@ -663,7 +673,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         <TagDisplay_rdx closable className="s WXA HXA" />
         <Button size="large" onClick={loadMachineSettingPopUp}>機台設定選擇</Button>
 
-        <TagOptions_rdx className="s width12 HXA" />
+        <TagOptions_rdx className="s width12 HXA" tagGroups={new_tagGroupsPreset}/>
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
 
             

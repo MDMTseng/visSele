@@ -3,7 +3,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import { xstate_GetCurrentMainState, GetObjElement, isString } from 'UTIL/MISC_Util';
-import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty } from 'UTIL/InspectionEditorLogic';
+import { InspectionEditorLogic,UpdateListIDOrder,Edit_info_Empty,MEASURERSULTRESION } from 'UTIL/InspectionEditorLogic';
 
 import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
 import APP_INFO from 'JSSRCROOT/info.js';
@@ -325,8 +325,58 @@ function StateReducer(newState, action) {
                   }
 
                   {//Do matching in tracking_window
+                    
+                    
+                    function MarginInfoExtraction(tags,control_margin_info=newState.edit_info.__decorator.control_margin_info)
+                    {
+                      if(control_margin_info===undefined)return undefined;
+                      return tags.reduce((marginInfo,tag)=>
+                        (control_margin_info[tag]!==undefined)?
+                          control_margin_info[tag]:marginInfo
+                        ,undefined);
+                    }
+                    function resultGrading(judgeReports,marginInfo,fallback_marginInfo)
+                    {
+                      ////marginInfo may be shapelist
+                      //it consists [{id,value,USL,LSL,UCL,LCL}....]
+                      
+                      let pfilled_marginInfo=fallback_marginInfo.map(fm=>{
+                        let loc_info=marginInfo.find(m=>m.id==fm.id);
+                        if(loc_info===undefined)
+                          return fm;
+                        return {...fm,...loc_info};
+                      });
+                      judgeReports.forEach((jud)=>{
+                        jud.detailStatus=
+                          newState.edit_info._obj.getMeasureGrading(jud,pfilled_marginInfo);
 
+                          
+                        if(jud.detailStatus==MEASURERSULTRESION.NA)
+                        {
+                          jud.status = INSPECTION_STATUS.NA;
+                        }
+                        else if(
+                          jud.detailStatus==MEASURERSULTRESION.USNG||
+                          jud.detailStatus==MEASURERSULTRESION.LSNG||
+                          jud.detailStatus==MEASURERSULTRESION.SNG||
+                          jud.detailStatus==MEASURERSULTRESION.NG)
+                        {
+                          jud.status = INSPECTION_STATUS.FAILURE;
+                        }
+                        else
+                        {
+                          jud.status = INSPECTION_STATUS.SUCCESS;
+                        }
+                      });
+                    }
 
+                    let root_MarginInfo=newState.edit_info._obj.shapeList;
+                    let cur_MarginInfo=MarginInfoExtraction(newState.edit_info.inspOptionalTag);
+                    if(cur_MarginInfo===undefined)
+                    {
+                      cur_MarginInfo=root_MarginInfo;
+                    }
+                    // console.log(cur_MarginInfo,newState.edit_info.inspOptionalTag);
                     //new inspection report >
                     //  [update/insert]> tracking_window >
                     //     [if no update after 4s]> historyReport
@@ -450,22 +500,9 @@ function StateReducer(newState, action) {
                           
                           cjrep.value += (1 / (closeRep.repeatTime + 1)) * (sjrep.value - cjrep.value);
 
-                          let defInfo = newState.edit_info.list;
-                          let sj_def = defInfo.find((sj_def) => sj_def.id == cjrep.id);//find def info
-                          if (sj_def === undefined){//cehck inspection status
-                            cjrep.status = INSPECTION_STATUS.NA;
-                          } else if (cjrep.value < sj_def.USL && cjrep.value > sj_def.LSL) {
-                            cjrep.status = INSPECTION_STATUS.SUCCESS;
-                          } else {
-                            cjrep.status = INSPECTION_STATUS.FAILURE;
-                          }
                         });
 
-                        
-                        closeRep.judgeReports.forEach((jud)=>{
-                          jud.detailStatus=
-                            newState.edit_info._obj.getMeasureGrading(jud);
-                        });
+                        resultGrading(closeRep.judgeReports,cur_MarginInfo,root_MarginInfo);
                         //closeRep.seq.push(singleReport);//Push current report into the sequence
                         closeRep.time_ms = currentTime_ms;
                         closeRep.repeatTime += 1;
@@ -484,10 +521,11 @@ function StateReducer(newState, action) {
                         //If there is no report in tracking window similar to the current report
                         //Add into the trackingWindow
                         let treport = dclone(singleReport);
-                        treport.judgeReports.forEach((jud)=>{
-                          jud.detailStatus=
-                            newState.edit_info._obj.getMeasureGrading(jud);
-                        });
+
+                        
+                        resultGrading(treport.judgeReports,cur_MarginInfo,root_MarginInfo);
+
+
                         treport.time_ms = currentTime_ms;
                         treport.add_time_ms = currentTime_ms;
                         treport.subFeatureDefSha1 = subFeatureDefSha1;
@@ -773,6 +811,14 @@ function StateReducer(newState, action) {
               break;
             }
 
+          case DefConfAct.EVENT.Shape_Decoration_Control_Margin_Info_Update:
+            {
+              //log.info("action.data:",action.data);
+
+              newState.edit_info.__decorator = { ...newState.edit_info.__decorator, control_margin_info: action.data };
+              console.log(newState.edit_info.__decorator );
+              break;
+            }
           case DefConfAct.EVENT.Shape_Set:
             {
               //Three cases
@@ -954,9 +1000,9 @@ function StateReducer(newState, action) {
                       }
                       break;
                     case SHAPE_TYPE.measure_subtype.angle://Has to be an line to measure
-                      if (cand.shape.type != SHAPE_TYPE.line) {
+                      if (cand.shape.type != SHAPE_TYPE.line&&cand.shape.type != SHAPE_TYPE.search_point) {
                         log.info("Error: " + subtype +
-                          " Only accepts line");
+                          " Only accepts line & spoint");
                         acceptData = false;
                       }
                       break;

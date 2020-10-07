@@ -2001,8 +2001,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   draw_INSP() {
 
     
-    console.log(">>ERROR_LOCK>>",this.ERROR_LOCK );
-    console.log(">>edit_DB_info>>",this.edit_DB_info );
+    // console.log(">>ERROR_LOCK>>",this.ERROR_LOCK );
+    // console.log(">>edit_DB_info>>",this.edit_DB_info );
     if (this.ERROR_LOCK || this.edit_DB_info == null) {
       return;
     }

@@ -5,7 +5,7 @@ import { connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
-import { TagOptions_rdx, essentialTags, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
+import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
@@ -29,9 +29,12 @@ import Modal from "antd/lib/modal";
 import Menu from "antd/lib/menu";
 import Button from "antd/lib/button";
 import Icon from 'antd/lib/icon';
+import Tag from 'antd/lib/tag';
+import Table  from 'antd/lib/table';
 import Checkbox from "antd/lib/checkbox";
 import InputNumber from 'antd/lib/input-number';
 import Input from 'antd/lib/input';
+const { CheckableTag } = Tag;
 const { TextArea } = Input;
 import Divider from 'antd/lib/divider';
 import Dropdown from 'antd/lib/Dropdown'
@@ -375,6 +378,418 @@ function parseCheckExpressionValid(postExp, idArr) {
   return ExpValidationBasic(postExp, funcSet);
 }
 
+
+function completeSingleCtrlMarginInfo(singleMarginInfo,measureInfo)
+{
+  measureInfo.forEach(shape=>{
+    // console.log(singleMarginInfo,measureInfo);
+    let singleMeasureMarginInfoIdx=singleMarginInfo.findIndex(mmMeasure=>mmMeasure.id==shape.id);
+
+
+
+    let mx={
+      id:shape.id,
+      name:shape.name,
+      subtype:shape.subtype,
+      value:shape.value,
+      USL:shape.USL,
+      LSL:shape.LSL,
+      UCL:shape.UCL,
+      LCL:shape.LCL,
+    }
+    if(singleMeasureMarginInfoIdx===-1)
+    {
+      singleMarginInfo.push({...mx});
+    }
+    else
+    {
+      singleMarginInfo[singleMeasureMarginInfoIdx]={...mx,...singleMarginInfo[singleMeasureMarginInfoIdx]};
+    }
+    // console.log(singleMarginInfo);
+
+  })
+}
+
+function completeCtrlMarginInfo(_control_margin_info,measureInfo)
+{
+  let control_margin_info=dclone(_control_margin_info);
+  console.log(control_margin_info,measureInfo);
+  Object.keys(control_margin_info).forEach((key)=>{
+    //let margininfo = control_margin_info[key];
+    control_margin_info[key] = completeSingleCtrlMarginInfo(control_margin_info[key],measureInfo);
+
+  })
+}
+
+function DisplayMarginSet({MarginInfo,DICT})
+{
+  const columns = [
+    {
+      key:"type",
+      title:DICT._.type
+    },{
+      key:"value",
+      edible:"input",
+      title:DICT.measure.value
+    },{
+      key:"USL",
+      edible:"input",
+      title:DICT.measure.USL
+    },{
+      key:"LSL",
+      edible:"input",
+      title:DICT.measure.LSL
+    },{
+      key:"UCL",
+      edible:"input",
+      title:DICT.measure.UCL
+    },{
+      key:"LCL",
+      edible:"input",
+      title:DICT.measure.LCL
+    }]
+    .map((t)=>{
+
+      let render=undefined;
+      switch(t.edible)
+      {
+        case "input":
+          render=(dara,A,idx,B) => {
+            return(
+              <Input style={{ width: '100%' }} value={dara} onChange={(nv)=>{
+                // console.log("",nv,dara,A,idx,B);
+              }} />)
+          }
+          break;
+        default:
+          render=(dara,A,idx,B) => (DICT._[dara]===undefined)?dara:DICT._[dara]
+          break;
+      }
+
+      let title=t.title!==undefined?t.title:
+          ((DICT._[t.key]===undefined)?t.key:DICT._[t.key]);
+      return {
+        title,
+        dataIndex: t.key,
+        key: t.key,
+        width: t.width,
+        render
+      }
+    });
+
+  return  <Table columns={columns} 
+  dataSource={MarginInfo} size="small" pagination={false}/>
+
+}
+
+function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpdate, onExitDump}) {
+  let _ = useRef({});
+  const [inputText, setInputText] = useState("");
+
+  const [_control_margin_info, set_control_margin_info] = useState({});
+  const [_measureInfo, set_MeasureInfo] = useState([1]);
+  const [displayInfoSet, setDisplayInfoSet] = useState([]);
+
+
+  _.current.DUMP={measureInfo:_measureInfo,control_margin_info:_control_margin_info,displayInfoSet:displayInfoSet};
+
+
+  function cleanUpDumpInfo()
+  {
+    let dump = {..._.current.DUMP};
+
+    console.log(dump);
+    {
+      //the control_margin_info in dump has complex info update and name property, so clean it up
+      let ctrlMarg = {...dump.control_margin_info};
+      Object.keys(ctrlMarg).forEach(key=>{
+  
+        ctrlMarg[key]=[...ctrlMarg[key]].map(m=>{
+          delete m.name;
+          delete m.update;
+          return m;
+        })
+      })
+    }
+
+    {
+      dump.measureInfo =[...dump.measureInfo].map(m=>{
+        delete m.update;
+        return m;
+      })
+    }
+
+
+    return dump;
+  }
+  useEffect(() => {
+    set_MeasureInfo(dclone(measureInfo));
+    //in the following deffile editing, some new measure might appear/delete
+    //adjust control_margin_info coording to it
+
+    if(control_margin_info!==undefined)
+      set_control_margin_info(control_margin_info);
+
+    if(typeof onExtraCtrlUpdate === "function")
+      onExtraCtrlUpdate({
+        getMarginInfo:cleanUpDumpInfo
+      });
+    return () => {
+      if(typeof onExitDump === "function")
+        onExitDump(cleanUpDumpInfo())
+    };
+  }, [])
+
+
+  function checkMarginInfoSufficient(tarInfo,sourceInfo)
+  {
+
+  }
+    
+
+
+
+  const columns = [
+    {
+      key:"name",
+      title:DICT._.name
+    },{
+      key:"subtype",
+      width: '80px',
+      title:DICT._.subtype
+    },
+    {
+      key:"rank",
+      edible:"input",
+      title:DICT.measure.rank
+    },{
+      key:"value",
+      edible:"input",
+      title:DICT.measure.value
+    },{
+      key:"USL",
+      edible:"input",
+      title:DICT.measure.USL
+    },{
+      key:"LSL",
+      edible:"input",
+      title:DICT.measure.LSL
+    },{
+      key:"UCL",
+      edible:"input",
+      title:DICT.measure.UCL
+    },{
+      key:"LCL",
+      edible:"input",
+      title:DICT.measure.LCL
+    }]
+    .map((col)=>{
+
+      let render=undefined;
+
+      switch(col.edible)
+      {
+        case "input":
+          render=(value,objInfo,idx) => {
+            if(objInfo.name!==undefined && objInfo.subtype===undefined && value===undefined)
+            {
+              let rootMInfo=_measureInfo.find(m=>m.id===objInfo.id);
+              let rootValue=rootMInfo[col.key];
+              console.log(_measureInfo,rootMInfo,objInfo,col.key,rootValue);
+              return <Button type="dashed" onClick={()=>{
+                let new_obj={...objInfo};
+                new_obj[col.key]=rootValue;
+                objInfo.update(new_obj);
+              }}>{rootValue}</Button>;
+            }
+
+            if(value===undefined)return undefined;
+
+            return <Input style={{ width: '100%' }} value={value} onChange={(nv)=>{
+              // console.log("",nv.target.value);
+              // console.log(value,objInfo,idx,col);
+              let new_obj={...objInfo};
+              let parseNum =parseFloat(nv.target.value);
+              
+              if(parseNum!=parseNum)
+              {
+                if(objInfo.subtype===undefined)
+                {
+                  new_obj[col.key]=undefined;
+                }
+
+              }
+              else
+              {
+                new_obj[col.key]=parseNum;
+              }
+              objInfo.update(new_obj);
+              // objInfo.update(new_obj);
+            }} />
+          }
+          break;
+
+
+        default:
+          render=(dara) => (DICT._[dara]===undefined)?dara:DICT._[dara]
+          break;
+      }
+
+      let title=col.title!==undefined?col.title:
+          ((DICT._[col.key]===undefined)?col.key:DICT._[col.key]);
+      return {
+        title,
+        dataIndex: col.key,
+        key: col.key,
+        width: col.width,
+        render
+      }
+    });
+
+  let measureX=_measureInfo
+    .map((shape,idx)=>{
+
+      let SelMarginInfo = Object.keys(displayInfoSet)
+        .map(text=>{
+          let info = _control_margin_info[text];
+          let obj=info.find(m=>m.id==shape.id);
+          if(obj===undefined)return obj;
+          obj={...obj};
+          obj.name=<><PlusOutlined/>{text}</>;
+          obj.update=(newObj)=>{
+            let newMarginInfo = {..._control_margin_info};
+            
+            let tarIdx=newMarginInfo[text].findIndex(m=>m.id==newObj.id);
+            if(tarIdx!==-1)
+            {
+              newMarginInfo[text][tarIdx]=newObj;
+            }
+            // console.log(_control_margin_info);
+            // console.log(newMarginInfo);
+            set_control_margin_info(newMarginInfo);
+          };
+          delete obj.subtype
+          // delete obj.rank
+          return obj;
+        }).filter(tt=>tt!==undefined);
+      
+      let arr=[{
+        id:shape.id,
+        name:shape.name,
+        subtype:shape.subtype,
+        key:shape.id,
+        value:shape.value,
+        rank:(shape.rank===undefined)?0:shape.rank,
+        USL:shape.USL,
+        LSL:shape.LSL,
+        UCL:shape.UCL,
+        LCL:shape.LCL,
+        
+        update:(newObj)=>{
+          let newMeasureInfo = [..._measureInfo];
+          newMeasureInfo[idx]={...shape,...newObj};
+          console.log(newMeasureInfo);
+          set_MeasureInfo(newMeasureInfo);
+        }
+  
+      },...SelMarginInfo,{}];
+      // console.log(arr)
+
+
+      return arr;
+    }).flat();
+    
+
+    const menu_ = (
+      <Menu onClick={(ev) => {
+        let cmI={..._control_margin_info}
+        if(cmI[ev.key]!==undefined)return;
+        cmI[ev.key]=[];
+        completeSingleCtrlMarginInfo(cmI[ev.key],_measureInfo);
+
+        
+        let _={...displayInfoSet};
+        _[ev.key]={};
+        setDisplayInfoSet(_)
+        // console.log(cmI);
+        set_control_margin_info(cmI);
+      }
+      }>
+        {tagGroupsPreset[0].tags.map((m, idx) =>
+          <Menu.Item key={m} idx={idx}>
+            <a target="_blank" rel="noopener noreferrer">
+              {m}
+            </a>
+          </Menu.Item>)}
+      </Menu>
+    );
+    return<>
+      {Object.keys(_control_margin_info).map(text=>(
+        <Tag color={displayInfoSet[text]===undefined?undefined:"#108ee9"}
+          key={text}
+          closable
+          onClose={() => {
+            let cmI={..._control_margin_info};
+            delete cmI[text];
+            console.log(_control_margin_info);
+            console.log(cmI);
+            set_control_margin_info(cmI);
+
+          }}
+          onClick={() =>{
+            let _={...displayInfoSet};
+            if(_[text]===undefined)
+            {
+              _[text]={};
+            }
+            else
+            {
+              delete _[text];
+            }
+            setDisplayInfoSet(_)
+          }}>{text}
+        </Tag>
+        ))}
+
+
+      <Dropdown overlay={menu_}>
+        <Input size="small" placeholder="Add Margin Cat" prefix={<PlusOutlined />} 
+          value={inputText} 
+          onChange={(text)=>setInputText(text.target.value)}
+          onPressEnter={(text)=>{
+            let v = text.target.value;
+            if(_control_margin_info[v]!==undefined || v.length==0)
+              return;
+            let cmI={..._control_margin_info}
+            cmI[v]=[]
+            completeSingleCtrlMarginInfo(cmI[v],_measureInfo);
+            
+            let _={...displayInfoSet};
+            _[v]={};
+            setDisplayInfoSet(_)
+            set_control_margin_info(cmI);
+
+            setInputText("");
+        }}/>
+      </Dropdown>
+
+      <Table columns={columns} 
+        expandable_={{ 
+          expandedRowRender:record => 
+          {
+            let AA = Object.keys(displayInfoSet)
+              .map(text=>_control_margin_info[text])
+              .map(info=>info.find(m=>m.id==record.id));
+            console.log(AA,_control_margin_info,displayInfoSet);
+            return <DisplayMarginSet MarginInfo={AA} DICT={DICT}/>;
+          }
+        }}
+        dataSource={measureX} 
+        size="small" 
+        pagination={false}
+      />
+    </>;
+}
 
 function Measure_Calc_Editor({ target, onChange, className, renderContext: { measure_list, ref_keyTrace_callback, ref } }) {
   let staticObj = useRef({
@@ -1368,6 +1783,7 @@ class APP_DEFCONF_MODE extends React.Component {
       fileSavingCallBack: undefined,
       modal_view: undefined
     }
+
   }
 
   shouldComponentUpdate(nextProps, nextState) {
@@ -1410,12 +1826,12 @@ class APP_DEFCONF_MODE extends React.Component {
         //console.log("retR:",retR,"  treeDepth:",treeDepth)
         return retR;
       }
-      UIArr.push(<BASE_COM.Button
-        key="setAdditional"
-        addClass="layout black vbox HX0_5"
-        text="..." onClick={() => {
-          setUIType("deco");
-        }} />);
+      // UIArr.push(<BASE_COM.Button
+      //   key="setAdditional"
+      //   addClass="layout black vbox HX0_5"
+      //   text="..." onClick={() => {
+      //     setUIType("deco");
+      //   }} />);
 
 
       if(edit_tar.type === UIAct.SHAPE_TYPE.search_point)
@@ -1443,7 +1859,7 @@ class APP_DEFCONF_MODE extends React.Component {
               key="BASE_COM.JsonEditBlock"
               renderLib={renderMethods}
               whiteListKey={{
-                id: "div",
+                // id: "div",
                 type: "div",
                 subtype: "div",
                 name: "input",
@@ -2127,6 +2543,45 @@ class APP_DEFCONF_MODE extends React.Component {
           if (this.props.Info_decorator.list_id_order.length == shapeListInOrder.length) {
             shapeListInOrder = this.props.Info_decorator.list_id_order.map(id => this.props.shape_list.find(shape => shape.id == id));
           }
+          MenuSet.push(<BASE_COM.Button
+            key="setAdditional"
+            addClass="layout black vbox HX0_5"
+            text="..." onClick={() => {
+
+
+              let measureShape=shapeListInOrder
+                .filter((shape)=>shape.type===UIAct.SHAPE_TYPE.measure);
+              this.setState({
+                ...this.state, modal_view: {
+
+                  title: "GOGOGO",
+                  onOk: () => {
+                    console.log("onOK")
+                  },
+                  onCancel: () => { console.log("onCancel") },
+                  view_update: () => {
+                    return <>
+
+                      <InspMarginEditor  
+                        control_margin_info={this.props.Info_decorator.control_margin_info}
+                        measureInfo={measureShape}
+                        DICT={this.props.DICT}
+                        onExitDump={(dumpInfo)=>{
+                          this.props.ACT_Shape_Decoration_Control_Margin_Info_Update(dumpInfo.control_margin_info);
+                          let originList = this.props.shape_list;
+                          let newList = originList.map(oshape=>{
+                            let newShape=dumpInfo.measureInfo.find(dshape=>dshape.id==oshape.id);
+                            if(newShape===undefined)return oshape;
+                            return {...oshape,...newShape};
+                          });
+                          this.props.ACT_Shape_List_Update(newList);
+                        }}
+                      />  
+                    </>
+                  }
+                }
+              })
+            }} />);
           MenuSet.push(<div className="s HXA" key="DragSortableList_con" >
             <DragSortableList
               items={shapeListInOrder.map((shape, id) =>{ 
@@ -2179,7 +2634,9 @@ class APP_DEFCONF_MODE extends React.Component {
             }
             this.setState({ ...this.state, modal_view: undefined });
           }}
-
+          height={"95%"}
+          width={"95%"}
+          style={{top:"30px"}}
           onOk={(param) => {
             if (this.state.modal_view.onOk !== undefined) {
               this.state.modal_view.onOk(param);
@@ -2213,6 +2670,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_EDIT_TAR_ELE_CAND_UPDATE: (targetObj) => { dispatch(DefConfAct.Edit_Tar_Ele_Cand_Update(targetObj)) },
     ACT_EDIT_TAR_UPDATE: (targetObj) => { dispatch(DefConfAct.Edit_Tar_Update(targetObj)) },
     ACT_Shape_List_Reset: () => { dispatch(DefConfAct.Shape_List_Update([])) },
+    ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
 
     ACT_Save_Def_Config: (info) => { dispatch(UIAct.EV_UI_EC_Save_Def_Config(info)) },
     ACT_Load_Def_Config: (info) => { dispatch(UIAct.EV_UI_EC_Load_Def_Config(info)) },
@@ -2228,6 +2686,8 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_ClearImage: () => { dispatch(UIAct.EV_WS_Image_Update(null)) },
     ACT_Shape_Decoration_ID_Order_Update: (shape_id_order) => { dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order)) },
     ACT_Shape_Decoration_Extra_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Extra_Info_Update(extra_info)) },
+    
+    ACT_Shape_Decoration_Control_Margin_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Control_Margin_Info_Update(extra_info)) },
     ACT_Matching_Angle_Margin_Deg_Update: (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) },
     ACT_Matching_Face_Update: (faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) },//-1(back)/0(both)/1(front)
     ACT_IntrusionSizeLimitRatio_Update: (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) },//0~1
