@@ -389,13 +389,6 @@ function completeSingleCtrlMarginInfo(singleMarginInfo,measureInfo)
 
     let mx={
       id:shape.id,
-      name:shape.name,
-      subtype:shape.subtype,
-      value:shape.value,
-      USL:shape.USL,
-      LSL:shape.LSL,
-      UCL:shape.UCL,
-      LCL:shape.LCL,
     }
     if(singleMeasureMarginInfoIdx===-1)
     {
@@ -653,7 +646,14 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
         .map(text=>{
           let info = _control_margin_info[text];
           let obj=info.find(m=>m.id==shape.id);
-          if(obj===undefined)return obj;
+          if(obj===undefined)
+          {
+            obj={
+              id:shape.id
+            }
+          }
+
+
           obj={...obj};
           obj.name=<><PlusOutlined/>{text}</>;
           obj.update=(newObj)=>{
@@ -671,7 +671,7 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
           delete obj.subtype
           // delete obj.rank
           return obj;
-        }).filter(tt=>tt!==undefined);
+        }).filter(_=>_!==undefined);
       
       let arr=[{
         id:shape.id,

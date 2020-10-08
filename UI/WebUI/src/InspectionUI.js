@@ -667,17 +667,23 @@ class ObjInfoList extends React.Component {
           filter(rep => rep !== undefined);
       }
 
-      reportDetail = judgeReports.map((rep, idx_) => {
-        return <InspectionResultDisplay key={"i" + idx + rep.name} key={idx_} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
-        // return <InspectionResultDisplay_FullScren key={"i"+idx+rep.name} key={idx_} singleInspection = {rep}/>
-      }
+      let judgeInRank = judgeReports
+      .filter(rep=>{
+        let rdef=this.props.shape_def.find(def=>def.id==rep.id);
+        if(rdef.rank===undefined)return true;
+        if(rdef.rank<=this.props.measureDisplayRank)return true;
+        return false;
+      });
+      reportDetail =judgeInRank
+        .map((rep, idx_) => (
+          <InspectionResultDisplay key={"i" + idx + rep.name} key={idx_} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
+        )
       );
 
 
-      let finalResult = judgeReports.reduce((res, obj) => {
+      let finalResult = judgeInRank.reduce((res, obj) => {
         return MEASURERSULTRESION_reducer(res, obj.detailStatus);
-      }
-        , undefined);
+      }, undefined);
 
       return (
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
@@ -1245,8 +1251,11 @@ class CanvasComponent extends React.Component {
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
         this.ec_canvas.SetState(ec_state);
+        this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
+
+        
       }
     }
   }
@@ -1490,7 +1499,7 @@ class DataStatsTable extends React.Component {
     }
     let measureList = statstate.statisticValue.measureList;
 
-    let measureReports = measureList.map((measure) =>
+    let measureReports = measureList.filter(m=>m.rank===undefined || m.rank<=this.props.measureDisplayRank).map((measure) =>
       ({
         id: measure.id,
         name: measure.name,
@@ -1820,6 +1829,50 @@ class AngledCalibrationHelper extends React.Component {
 
 }
 
+function MeasureRankEdit ({shape_list,initRank=0,onRankChange}){
+      
+  const [sliderV,setSliderV]=useState(0);
+  let measureList = shape_list
+    .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
+  let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
+  let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,100);
+  // console.log(rankMin,"----",rankMax);
+  if(rankMin==100)
+  {
+    rankMin=0;
+    rankMax=0;
+  }
+  let marks = {};
+  for(var i = rankMin; i <= rankMax; i++){
+    marks[i]=i+"";
+  }
+
+  useEffect(()=>{
+    setSliderV(initRank);
+    
+  },[])
+  useEffect(()=>{
+    if(onRankChange!==undefined)
+    {
+      onRankChange(sliderV);
+    }
+  },[sliderV])
+
+  return <>
+  
+    <Slider
+      min={rankMin}
+      max={rankMax}
+      onChange={setSliderV}
+      marks={marks}
+      value={sliderV}
+    />
+    {measureList.filter(m=>m.rank<=sliderV||m.rank===undefined).map(m=><Tag>{m.name}</Tag>)}
+  
+  </>;
+}
+
+
 class APP_INSP_MODE extends React.Component {
 
 
@@ -1876,8 +1929,12 @@ class APP_INSP_MODE extends React.Component {
       ROI_key: undefined,
       DB_Conn_state: undefined,
       inspUploadedCount: 0,
-      onROISettingCallBack:undefined
+      onROISettingCallBack:undefined,
+      measureDisplayRank:0
     };
+
+    
+
 
     this.CameraCtrl = new CameraCtrl({
       ws_ch: (STData, promiseCBs) => {
@@ -1913,6 +1970,29 @@ class APP_INSP_MODE extends React.Component {
     this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
   }
 
+  setInspectionRankUI()
+  {
+    this.setState({
+      additionalUI: [
+        <Modal
+        title={"檢測等級"}
+        visible={true}
+        onOk={() => {
+          this.setState({ additionalUI: [] });
+          this.props.EV_UI_inspMode();
+        }}
+        onCancel={() => {
+          this.setState({ additionalUI: [] });
+        }}
+      >
+        <MeasureRankEdit shape_list={this.props.shape_list} 
+          initRank={this.state.measureDisplayRank}
+          onRankChange={(rank)=>{
+            this.setState({measureDisplayRank: rank });
+          }}/>
+      </Modal>]
+    })
+  }
 
   render() {
 
@@ -2002,12 +2082,12 @@ class APP_INSP_MODE extends React.Component {
         iconType={<ArrowLeftOutlined />}
         dict={this.props.DICT}
         key="<"
-        addClass="layout black vbox"
+        addClass="layout black vbox width3"
         onClick={this.props.ACT_EXIT} />
       ,
       
-      <Popover content={<div>{this.props.defModelName} </div>}  placement="bottomLeft"  trigger="hover">
-        <div style={{backgroundColor:"#444"}}> <FileOutlined/> {shortedModelName} </div>
+      <Popover content={<div>{this.props.defModelName}<br/>{this.props.defModelPath} </div>}  placement="bottomLeft"  trigger="hover">
+        <div style={{backgroundColor:"#444"}} className="s layout vbox width9"> <FileOutlined/> {shortedModelName} </div>
        
       </Popover>
 
@@ -2016,19 +2096,29 @@ class APP_INSP_MODE extends React.Component {
         iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
         key="LOADDef"
         addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
-        text={this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected}
+        text={
+          (this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected)
+          +" "+this.state.inspUploadedCount
+        }
         onClick={() => { }} />
       ,
 
       <div className="s black width12 HXA">
         <TagDisplay_rdx/>
-        
-        {/* {<Tag className="large" color="gray" onClick={() => onTagEdit()}><TagsOutlined /></Tag>} */}
+        {/* <Tag className="large InspTag fixed" key="MACHX"
+         onClick={()=>
+          onTagEdit()}
+         >+</Tag> */}
+         <br/>
+        {<Tag className="large" color="gray" onClick={() =>{
+          this.setInspectionRankUI()
+        }}><SettingOutlined /></Tag>}
       </div>
 
       ,
       this.state.additionalUI
     ];
+
 
 
     switch (this.state.GraphUIDisplayMode) {
@@ -2052,20 +2142,6 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-
-
-    MenuSet.push(
-      <div className="s black width12 HXA">
-        <Row>
-          <Col span={6}>
-            <Paragraph style={{ color: "white" }}>已上傳：</Paragraph>
-          </Col>
-
-          <Col span={24 - 6}>
-            <Tag className="width9 large" color="gray" key="upC"
-              onClick={() => this.setState({ inspUploadedCount: 0 })}>{this.state.inspUploadedCount}</Tag>
-          </Col>
-        </Row></div>);
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
@@ -2214,9 +2290,11 @@ class APP_INSP_MODE extends React.Component {
       <ObjInfoList
         IR={trackingWindowInfo}
         DICT={this.props.DICT}
+        measureDisplayRank={this.state.measureDisplayRank}
         IR_decotrator={this.props.info_decorator}
         checkResult2AirAction={this.checkResult2AirAction}
         uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
+        shape_def={this.props.shape_list}
         key="ObjInfoList"
         WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND(this.props.WS_ID, tl, prop, data, uintArr); }}
       />);
@@ -2226,6 +2304,7 @@ class APP_INSP_MODE extends React.Component {
         {(CanvasWindowRatio <= 0) ? null :
           <CanvasComponent_rdx addClass={"layout WXF" + " height" + CanvasWindowRatio}
             onROISettingCallBack={this.state.onROISettingCallBack}
+            measureDisplayRank={this.state.measureDisplayRank}
             ACT_WS_SEND={this.props.ACT_WS_SEND}
             WS_ID={this.props.WS_ID}
             onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
@@ -2233,7 +2312,7 @@ class APP_INSP_MODE extends React.Component {
 
         {(CanvasWindowRatio >= 12) ? null :
           <DataStatsTable className={"s scroll WXF" + " height" + (12 - CanvasWindowRatio)}
-            reportStatisticState={this.props.reportStatisticState} />}
+            reportStatisticState={this.props.reportStatisticState} measureDisplayRank={this.state.measureDisplayRank}/>}
         <RAW_InspectionReportPull
           reportStatisticState={this.props.reportStatisticState}
           onConnectionStateUpdate={(cur, pre) => {

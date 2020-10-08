@@ -437,44 +437,33 @@ export function CustomDisplaySelectUI({onSelect}) {
 }
 
 
-class TagDisplay extends React.Component{
+export function TagDisplay_rdx({Tag_ClassName="large InspTag fixed",closable})
+{
+  
+  const inspOptionalTag = useSelector(state =>state.UIData.edit_info.inspOptionalTag);
+  const defFileTag = useSelector(state =>state.UIData.edit_info.DefFileTag);
+  
+  const MachTag = useSelector(state =>state.UIData.MachTag);
 
-  constructor(props) {
-    super(props);
-    this.state={
-    }
-  }
+  const dispatch = useDispatch();
+  const ACT_InspOptionalTag_Update= (newTag) => dispatch(dispatch(DefConfAct.InspOptionalTag_Update(newTag)));
+  // console.log(inspOptionalTag,defFileTag,MachTag);
+  return <>
+    {MachTag!==undefined?<Tag className={Tag_ClassName} key="MACH">{MachTag}</Tag>:null}
+    {defFileTag!==undefined?defFileTag.map(tag=><Tag className={Tag_ClassName} key={tag+"_dfTag"}>{tag}</Tag>):null}
 
-  render()
-  {
-    return <div className={this.props.className}>
-      {this.props.MachTag!==undefined?<Tag className="large InspTag fixed" key="MACH">{this.props.MachTag}</Tag>:null}
-      {this.props.defFileTag.map(tag=><Tag className="large InspTag fixed" key={tag+"_dfTag"}>{tag}</Tag>)}
+    {inspOptionalTag.map(curTag=>
+      <Tag closable={closable} className={Tag_ClassName+" optional"}  key={curTag+"_inspOptTag"} onClose={(e)=>{
+        e.preventDefault();
+        let tagToDelete=curTag;
+        let NewOptionalTag = inspOptionalTag.filter(tag=>tag!=tagToDelete);
+        //console.log(e.target,NewOptionalTag);
+        ACT_InspOptionalTag_Update(NewOptionalTag);
+        }}>{curTag}</Tag>)}
 
-      {this.props.inspOptionalTag.map(curTag=>
-        <Tag closable={this.props.closable} className="large InspTag optional"  key={curTag+"_inspOptTag"} onClose={(e)=>{
-          e.preventDefault();
-          let tagToDelete=curTag;
-          let NewOptionalTag = this.props.inspOptionalTag.filter(tag=>tag!=tagToDelete);
-          //console.log(e.target,NewOptionalTag);
-          this.props.ACT_InspOptionalTag_Update(NewOptionalTag);
-          }}>{curTag}</Tag>)}
-      <br/>
-    </div>
-  }
-   
+  </>
 }
 
-export const TagDisplay_rdx = connect(
-  (state) =>({
-    inspOptionalTag:state.UIData.edit_info.inspOptionalTag,
-    defFileTag:state.UIData.edit_info.DefFileTag,
-    MachTag:state.UIData.MachTag,
-  }),
-  (dispatch, ownProps) => ({ 
-    ACT_InspOptionalTag_Update:(newTag)=>{dispatch(DefConfAct.InspOptionalTag_Update(newTag))},
-  })
-)(TagDisplay);
 
 
 export const tagGroupsPreset=[

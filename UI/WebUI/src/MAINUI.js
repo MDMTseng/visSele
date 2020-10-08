@@ -480,8 +480,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         <CanvasComponent_rdx className="s height12" />
         
         <div className="overlay" style={{left:"15px",top:"15px"}}>
-
-          <TagDisplay_rdx closable className="s width12 HXA" />
+          <div className="s width12 HXA">
+          <TagDisplay_rdx closable />
+          </div>
         </div>
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
           {/* <Button style={{"pointerEvents": "auto"}}>120px to affix top</Button> */}
@@ -670,7 +671,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     UI_Stack.push(
       <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
 
-        <TagDisplay_rdx closable className="s WXA HXA" />
+
+        <div className="s WXA HXA">
+          <TagDisplay_rdx closable />
+        </div>
         <Button size="large" onClick={loadMachineSettingPopUp}>機台設定選擇</Button>
 
         <TagOptions_rdx className="s width12 HXA" tagGroups={new_tagGroupsPreset}/>

@@ -1846,6 +1846,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     }
   }
 
+  SetMeasureDisplayRank(rank)
+  {
+    this.measureDisplayRank=rank;
+  }
   ScreenCoordTo_mm_pix(coord)
   {
     let mmpp = this.rUtil.get_mmpp();
@@ -2152,6 +2156,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
         this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
 
+        listClone=listClone.filter(ff=>{
+          if(ff.rank===undefined)return true;
+          if(ff.rank<=this.measureDisplayRank)return true;
+          return false;
+        });
+
+
         listClone.forEach((eObj) => {
           //log.info(eObj.inspection_status);
           switch (eObj.inspection_status) {
@@ -2182,6 +2193,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
           }
         });
+        
         //console.log(listClone);
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
       }
