@@ -1906,9 +1906,10 @@ class APP_INSP_MODE extends React.Component {
       }, undefined);
 
       this.props.ACT_StatSettingParam_Update({
-        keepInTrackingTime_ms: 0,
-        minReportRepeat: 0,
-        headReportSkip: 0,
+        keepInTrackingTime_ms: 1000,
+        historyReportlimit: 2000,
+        minReportRepeat: 4,
+        headReportSkip: 4,
       })
     }
   }
