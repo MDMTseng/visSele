@@ -1870,7 +1870,22 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   
   onmousemove(evt) 
   {
-    super.onmousemove(evt);
+
+    let pos = this.getMousePos(this.canvas, evt);
+    this.mouseStatus.x = pos.x;
+    this.mouseStatus.y = pos.y;
+    let doDragging = true;
+
+    if (doDragging) {
+      if (this.mouseStatus.status == 1) {
+        this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
+
+        this.ctrlLogic();
+        this.draw();
+      }
+
+    }
+
 
     if(this.ROISettingCallBack!==undefined)
     {
@@ -2004,10 +2019,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
   draw_INSP() {
 
-    
-    // console.log(">>ERROR_LOCK>>",this.ERROR_LOCK );
+
     // console.log(">>edit_DB_info>>",this.edit_DB_info );
-    if (this.ERROR_LOCK || this.edit_DB_info == null) {
+    if (this.ERROR_LOCK || this.edit_DB_info == null ) {
       return;
     }
     //let inspectionReport = this.edit_DB_info.inspReport;
@@ -2051,7 +2065,27 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
+
+      if(this.db_obj.cameraParam.mask_radius!==undefined)
+      {
+
+        ctx.save();
+        ctx.scale(mmpp, mmpp);
+        // console.log(this.img_info.full_height);
+
+        ctx.beginPath();
+        
+        ctx.rect(0, 0, this.img_info.full_width, this.img_info.full_height);
+        ctx.arc(this.img_info.full_width/2,this.img_info.full_height/2, this.db_obj.cameraParam.mask_radius/mmpp, 0, 2 * Math.PI, false);
+        ctx.fillStyle = 'black';
+        ctx.fill("evenodd");
+        
+        ctx.stroke();
+        ctx.closePath();
+        ctx.restore();
+      }
     }
+    
     let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
 
     if (true) {

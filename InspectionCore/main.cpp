@@ -10,6 +10,7 @@
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"
+#include "MatchingCore.h"
 
 #include <compat_dirent.h>
 #include <limits.h>
@@ -1569,6 +1570,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             bpg_dat = GenStrBPGData("IM", NULL);
             BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
 
+
+            iminfo.fullHeight=srcImg->GetHeight();
+            iminfo.fullWidth=srcImg->GetWidth();
             //std::this_thread::sleep_for(std::chrono::milliseconds(4000));//SLOW load test
             //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
             ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
@@ -1777,6 +1781,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
+            iminfo.fullHeight=srcImg->GetHeight();
+            iminfo.fullWidth=srcImg->GetWidth();
             ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler,0);
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
             bpg_dat.callback = DatCH_BPG_acvImage_Send;
@@ -2032,6 +2038,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           calib_bacpac.sampler->ignoreCalib(true);
           ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler,true);
           
+          iminfo.fullHeight=cacheImage.GetHeight();
+          iminfo.fullWidth=cacheImage.GetWidth();
           bpg_dat.callbackInfo = (uint8_t *)&iminfo;
           bpg_dat.callback = DatCH_BPG_acvImage_Send;
           bpg_dat.pgID = dat->pgID;
@@ -3030,6 +3038,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
       iminfo.offsetX = (ImageCropX / iminfo.scale) * iminfo.scale;
       iminfo.offsetY = (ImageCropY / iminfo.scale) * iminfo.scale;
+
+      iminfo.fullHeight=capImg.GetHeight();
+      iminfo.fullWidth=capImg.GetWidth();
       int cropW = ImageCropW;
       int cropH = ImageCropH;
 

@@ -16,6 +16,8 @@ typedef struct BPG_data_acvImage_Send_info
     acvImage* img;
     uint16_t scale;
     uint16_t offsetX,offsetY;
+    uint16_t fullWidth,fullHeight;
+
 }BPG_data_acvImage_Send_info;
 
 

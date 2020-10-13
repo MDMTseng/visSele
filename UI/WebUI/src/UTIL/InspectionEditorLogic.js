@@ -108,6 +108,7 @@ export class InspectionEditorLogic {
       signatureInfoX.magnitude = signatureInfoX.magnitude.map((val) => Math.round(val * 100000) / 100000);//most 3 decimal places //to 0.001mm/1um
       signatureInfoX.angle = signatureInfoX.angle.map((val) => Math.round(val * 100000) / 100000);//most 3 decimal places// 0.001*180/pi=0.057 deg
 
+      this.sig360MaxMagnitude= signatureInfoX.magnitude.reduce((max,val) =>val>max?val:max ,0);
     }
 
 

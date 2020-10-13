@@ -233,6 +233,7 @@ function StateReducer(newState, action) {
           let currentTime_ms = currentDate.getTime();
 
           let camParam = newState.edit_info._obj.cameraParam;
+          let sig360MaxMagnitude = newState.edit_info._obj.sig360MaxMagnitude;
           // let mmpcampix = newState..cameraParam.mmpb2b/this.db_obj.cameraParam.ppb2b;
 
           let mmpcampix;
@@ -380,7 +381,27 @@ function StateReducer(newState, action) {
                     //new inspection report >
                     //  [update/insert]> tracking_window >
                     //     [if no update after 4s]> historyReport
+
+                    let imageW_mm=newState.edit_info.img.full_width*mmpcampix;
+                    let imageH_mm=newState.edit_info.img.full_height*mmpcampix;
+
+
                     inspReport.reports.forEach((singleReport) => {
+
+                      if(camParam.mask_radius!==undefined)
+                      {
+                        let dist= Math.hypot(singleReport.cx-imageW_mm/2,singleReport.cy-imageH_mm/2);
+                        
+                        // console.log(dist,sig360MaxMagnitude,camParam.mask_radius);
+                        let isOutOfCircleMaskRange=(dist+sig360MaxMagnitude)>(camParam.mask_radius);
+                        if(isOutOfCircleMaskRange)
+                        {
+  
+                          return;//ignore
+                        }
+  
+                      }
+
 
                       let closeRep = reportStatisticState.trackingWindow.reduce((closeRep, srep_inWindow) => {
                         if (closeRep !== undefined) return closeRep;
@@ -646,7 +667,7 @@ function StateReducer(newState, action) {
 
             
           case UISEV.SIG360_Report_Update:
-            case UISEV.SIG360_Extraction:
+          case UISEV.SIG360_Extraction:
               
               Edit_info_reset(newState);
               console.log(action.data);

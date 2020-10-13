@@ -56,7 +56,7 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   let ret_obj = raw2header(ws_evt, offset);
   if(ret_obj==null)return null;
 
-  let headerL=11;
+  let headerL=15;
   let headerArray = new Uint8ClampedArray(ws_evt.data,
     offset+BPG_header_L,headerL);
   ret_obj.camera_id=headerArray[0];
@@ -65,7 +65,13 @@ let raw2Obj_IM=(ws_evt, offset = 0)=>{
   ret_obj.offsetY=(headerArray[4]<<8)|headerArray[5];
   ret_obj.width=(headerArray[6]<<8)|headerArray[7];
   ret_obj.height=(headerArray[8]<<8)|headerArray[9];
+
+
   ret_obj.scale=headerArray[10];
+  ret_obj.full_width=(headerArray[11]<<8)|headerArray[12];
+  ret_obj.full_height=(headerArray[13]<<8)|headerArray[14];
+
+  // console.log(ret_obj,headerArray);
   let RGBA_pix_Num = 4*ret_obj.width*ret_obj.height;
   
   //console.log(headerArray,RGBA_pix_Num,ret_obj.length-headerL);
