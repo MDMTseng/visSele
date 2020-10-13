@@ -1835,6 +1835,59 @@ function MeasureRankEdit ({shape_list,initRank=0,onRankChange}){
   let measureList = shape_list
     .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
   let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
+  let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,0);
+  
+  // console.log(rankMin,"----",rankMax);
+  if(rankMin==1000)
+  {
+    rankMin=0;
+    rankMax=0;
+  }
+  if(rankMin==rankMax)
+  {
+    rankMin=0;
+  }
+  let marks = {};
+
+
+  marks[rankMin]=rankMin+"";
+  marks[rankMax]=rankMax+"";
+  measureList.forEach((m)=>{
+    if(m.rank!==undefined)
+    {
+      marks[m.rank]=m.rank+"";
+    }
+  });
+
+
+  useEffect(()=>{
+    setSliderV(initRank);
+    
+  },[])
+  useEffect(()=>{
+    if(onRankChange!==undefined)
+    {
+      onRankChange(sliderV);
+    }
+  },[sliderV])
+
+  return <>
+  
+    <Slider
+      min={rankMin}
+      max={rankMax}
+      onChange={setSliderV}
+      marks={marks}
+      value={sliderV}
+    />
+    {measureList.filter(m=>m.rank<=sliderV||m.rank===undefined).map(m=><Tag>{m.name}</Tag>)}
+  
+  </>;
+}
+  const [sliderV,setSliderV]=useState(0);
+  let measureList = shape_list
+    .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
+  let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
   let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,100);
   // console.log(rankMin,"----",rankMax);
   if(rankMin==100)
@@ -1976,7 +2029,7 @@ class APP_INSP_MODE extends React.Component {
     this.setState({
       additionalUI: [
         <Modal
-        title={"檢測等級"}
+        title={""}
         visible={true}
         onOk={() => {
           this.setState({ additionalUI: [] });
@@ -1986,6 +2039,10 @@ class APP_INSP_MODE extends React.Component {
           this.setState({ additionalUI: [] });
         }}
       >
+        
+        
+        <Divider orientation="left" key="div1">檢測等級</Divider>
+
         <MeasureRankEdit shape_list={this.props.shape_list} 
           initRank={this.state.measureDisplayRank}
           onRankChange={(rank)=>{

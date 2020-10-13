@@ -687,7 +687,14 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
         
         update:(newObj)=>{
           let newMeasureInfo = [..._measureInfo];
-          newMeasureInfo[idx]={...shape,...newObj};
+          newMeasureInfo[idx]={...shape,
+            value:newObj.value,
+            rank:newObj.rank,
+            USL:newObj.USL,
+            LSL:newObj.LSL,
+            UCL:newObj.UCL,
+            LCL:newObj.LCL,
+          };
           console.log(newMeasureInfo);
           set_MeasureInfo(newMeasureInfo);
         }
