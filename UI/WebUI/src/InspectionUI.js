@@ -1884,44 +1884,32 @@ function MeasureRankEdit ({shape_list,initRank=0,onRankChange}){
   
   </>;
 }
-  const [sliderV,setSliderV]=useState(0);
-  let measureList = shape_list
-    .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
-  let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
-  let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,100);
-  // console.log(rankMin,"----",rankMax);
-  if(rankMin==100)
-  {
-    rankMin=0;
-    rankMax=0;
-  }
-  let marks = {};
-  for(var i = rankMin; i <= rankMax; i++){
-    marks[i]=i+"";
-  }
 
+
+
+function RestrictiveCircleREdit ({initR,onRChanged}){
+      
+  let rankMin=0;
+  let rankMax=1000;
+  const [sliderV,setSliderV]=useState(initR===undefined?rankMax:initR);
+
+  
   useEffect(()=>{
-    setSliderV(initRank);
-    
-  },[])
-  useEffect(()=>{
-    if(onRankChange!==undefined)
+    if(onRChanged!==undefined)
     {
-      onRankChange(sliderV);
+      onRChanged(sliderV);
     }
   },[sliderV])
 
   return <>
   
     <Slider
+      step={10}
       min={rankMin}
       max={rankMax}
       onChange={setSliderV}
-      marks={marks}
       value={sliderV}
     />
-    {measureList.filter(m=>m.rank<=sliderV||m.rank===undefined).map(m=><Tag>{m.name}</Tag>)}
-  
   </>;
 }
 
