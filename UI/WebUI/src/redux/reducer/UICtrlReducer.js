@@ -281,9 +281,10 @@ function StateReducer(newState, action) {
                   //let overallStat = reportStatisticState.overallStat;
 
 
-
+                  
 
                   let reportStatisticState = newState.edit_info.reportStatisticState;
+                  reportStatisticState.reportCount++;
 
                   reportStatisticState.newAddedReport = [];
 

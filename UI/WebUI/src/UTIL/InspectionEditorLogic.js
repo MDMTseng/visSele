@@ -1032,6 +1032,7 @@ export function Edit_info_Empty() {
       trackingWindow: [],
       historyReport: [],
       newAddedReport: [],
+      reportCount:0,
       statisticValue: undefined,
       overallStat: {
         OK: 0,

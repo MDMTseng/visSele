@@ -2016,7 +2016,14 @@ class APP_INSP_MODE extends React.Component {
   componentDidUpdate() {
     this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
   }
-
+  shouldComponentUpdate(nextProps, nextState)
+  {
+    let pre_reportCount=nextProps.reportStatisticState.reportCount;
+    let isReportInc=pre_reportCount!==this.pre_reportCount
+    this.pre_reportCount=pre_reportCount;
+    // console.log("///",isReportInc);
+    return isReportInc;
+  }
   setInspectionRankUI()
   {
     this.setState({
