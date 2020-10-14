@@ -203,6 +203,11 @@ class RAW_InspectionReportPull extends React.Component {
 
   componentDidUpdate(prevProps, prevState, snapshot) {
     if (this.props.reportStatisticState.newAddedReport.length > 0) {
+      if(this._newAddedReport===this.props.reportStatisticState.newAddedReport)
+      {
+        return;
+      }
+      this._newAddedReport=this.props.reportStatisticState.newAddedReport;
       if (this.pull_skip_count == 0) {
         // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
         let x = this.props.reportStatisticState.newAddedReport;
