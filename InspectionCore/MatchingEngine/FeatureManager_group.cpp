@@ -208,7 +208,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
     // acvCloneImage( img,&binary_img, -1);
     // acvThreshold(&binary_img, 80, 0);
-    acvThreshold(&binary_img,img, 40, 0);
+    acvThreshold(&binary_img,img, 80, 0);
 
     int downScaleF=1;//
     acvImage *lableImg=&ds_binary_img;
