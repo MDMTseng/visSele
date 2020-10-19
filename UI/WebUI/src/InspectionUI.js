@@ -1216,11 +1216,11 @@ class CanvasComponent extends React.Component {
 
         let rep = this.props.camera_calibration_report.reports[0];
         let mmpp = rep.mmpb2b / rep.ppb2b;
-
+        event.data.down_samp_level*=0.6;
         let crop = event.data.crop.map(val => val / mmpp);
         let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
-        else if (down_samp_level > 15) down_samp_level = 15;
+        else if (down_samp_level > 7) down_samp_level = 7;
 
 
         //log.info(crop,down_samp_level);

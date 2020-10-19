@@ -499,7 +499,7 @@ export function isTagFulFillRequrement(tags,tagGroupsInfo)
     return true
   },true)
 }
-export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill}) => {
+export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,size="large"}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
   const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
   const MachTag = useSelector(state => state.UIData.MachTag);
@@ -534,7 +534,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill}) 
         let idxOf= inspOptionalTag.indexOf(tag);
         let is_cur_checked =idxOf > -1;
         return <Tag key={tag+"_essTag_"+tag_idx} 
-            className="large"
+            className={size}
             checked={is_cur_checked}
             color= {is_cur_checked?"#5191a5":"#AAA"}
             onClick={()=>{

@@ -18,16 +18,9 @@ html, body {
 }
 
 
-.vbox:before {/*invisible trick*/
-	content: '';
-	display: inline-block;
-	vertical-align: middle;
-	width: 0;
-	height: 100%;
-}
-.vbox > * {
-	vertical-align: middle;
-	display: inline-block;
+.vbox {/*invisible trick*/
+	justify-content: center;
+    align-items: center;
 }
 
 .vboxImg > * {

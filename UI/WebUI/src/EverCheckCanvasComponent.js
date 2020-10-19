@@ -1210,7 +1210,63 @@ class renderUTIL {
 
   }
 
+  drawImageBoundaryGrid(ctx,imgInfo={
+    offsetX:0,
+    offsetY:0,
+    width:undefined,
+    height:undefined,
+  },extendL=1000)
+  {
+    if(imgInfo.width===undefined||imgInfo.height===undefined)
+    {
 
+      // this.drawLine(ctx, {
+      //   pt1:{x:-extendL,y:0},
+      //   pt2:{x:extendL,y:0},
+      // },offset)
+  
+      // this.drawLine(ctx, {
+      //   pt1:{x:0,y:extendL},
+      //   pt2:{x:0,y:-extendL},
+      // },offset)
+
+      return;
+    }
+
+    this.drawLine(ctx, {
+      pt1:{x:-extendL+0,y:0},
+      pt2:{x:+extendL+imgInfo.width,y:0},
+    })
+      
+    this.drawLine(ctx, {
+      pt1:{x:-extendL+0,y:imgInfo.height},
+      pt2:{x:+extendL+imgInfo.width,y:imgInfo.height},
+    })
+
+
+    this.drawLine(ctx, {
+      pt1:{x:0,y:-extendL+0},
+      pt2:{x:0,y:+extendL+imgInfo.height},
+    })
+      
+    this.drawLine(ctx, {
+      pt1:{x:imgInfo.width,y:-extendL+0},
+      pt2:{x:imgInfo.width,y:+extendL+imgInfo.height},
+    })
+
+    // ctx.beginPath();
+    // ctx.moveTo(-10000,0);
+    // ctx.lineTo( 10000,0);
+    // ctx.closePath();
+    
+    // ctx.beginPath();
+    // ctx.moveTo(0,-10000);
+    // ctx.lineTo(0,10000);
+    // ctx.closePath();
+    // ctx.stroke();
+
+
+  }
 }
 
 
@@ -1663,10 +1719,15 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
+    this.ShowInspectionNote = false;
 
     this.EmitEvent = (event) => { log.debug(event); };
   }
 
+  SetShowInspectionNote(doShow=false)
+  {
+    this.ShowInspectionNote=doShow;
+  }
   SetState(state) {
     log.debug(state);
     let stateObj = xstate_GetCurrentMainState(state);
@@ -1685,6 +1746,32 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   }
 
+
+  scaleImageToFitScreen(img_info=this.img_info) {
+    if(img_info===undefined)return;
+    let mmpp = this.rUtil.get_mmpp();
+    let magArr = GetObjElement(this.edit_DB_info.inherentShapeList,[0,"signature","magnitude"]);
+    
+
+
+    let minCanvasWH=this.canvas.width<this.canvas.height?this.canvas.width:this.canvas.height;
+    let maxSig=(magArr===undefined)?
+      img_info.scale*img_info.width*mmpp:
+      magArr.reduce((max,mag)=>mag>max?mag:max,1)*2*1.1;
+    // maxSig=img_info.width*mmpp;
+    // console.log(maxSig,maxSig/mmpp,img_info.width*mmpp,img_info.width);
+
+
+    let curScale = this.camera.GetCameraScale();
+    this.camera.Scale(1/curScale);
+    this.camera.Scale(minCanvasWH/maxSig);
+
+    
+    let center = this.db_obj.getsig360infoCenter();
+
+    // console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
+    this.camera.SetOffset({ x: -center.x, y: -center.y });
+  }
   EditDBInfoSync(edit_DB_info) {
     this.edit_DB_info = edit_DB_info;
     this.db_obj = edit_DB_info._obj;
@@ -1696,6 +1783,7 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.rUtil.renderParam.mmpp = mmpp;
     
     this.scaleImageToFitScreen();
+
   }
 
 
@@ -1749,9 +1837,17 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
       
       
       ctx.drawImage(this.secCanvas, 0, 0);
+      
+      ctx.strokeStyle = "rgba(120, 120, 120,30)";
+      let curScale=this.camera.GetCameraScale();
+      ctx.lineWidth = 200/curScale/scale;
+      this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
       ctx.restore();
     }
     
+
+    if(this.ShowInspectionNote!=true)
+      return
     let center = this.db_obj.getsig360infoCenter();
     ctx.translate(center.x, center.y);
 
@@ -1797,7 +1893,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.edit_DB_info = null;
     this.db_obj = null;
     this.mouse_close_dist = 10;
-
+    this.doImageFitting=true;
     this.colorSet =
       Object.assign(this.colorSet,
         {
@@ -1980,9 +2076,16 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.db_obj = edit_DB_info._obj;
     this.rUtil.setEditor_db_obj(this.db_obj);
     this.SetImg(edit_DB_info.img);
-      let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
-      this.rUtil.renderParam.mmpp = mmpp;
+    let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
+    this.rUtil.renderParam.mmpp = mmpp;
+
+    if(this.doImageFitting!=false)
+    {
+      
+      this.scaleImageToFitScreen();
+      this.doImageFitting=false;
     }
+  }
 
 
 
@@ -2064,25 +2167,36 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       ctx.drawImage(this.secCanvas, 0, 0);
+      
+      ctx.strokeStyle = "rgba(120, 120, 120,30)";
+      
+      let curScale=this.camera.GetCameraScale();
+      ctx.lineWidth = 50/curScale;
+      this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
+
       ctx.restore();
 
       if(this.db_obj.cameraParam.mask_radius!==undefined)
       {
-
         ctx.save();
+        
+        ctx.lineWidth = 400/curScale;
+        ctx.strokeStyle = "rgba(150, 00, 00,30)";
         ctx.scale(mmpp, mmpp);
-        // console.log(this.img_info.full_height);
+        // console.log(this.db_obj.cameraParam.mask_radius);
 
         ctx.beginPath();
         
-        ctx.rect(0, 0, this.img_info.full_width, this.img_info.full_height);
-        ctx.arc(this.img_info.full_width/2,this.img_info.full_height/2, this.db_obj.cameraParam.mask_radius/mmpp, 0, 2 * Math.PI, false);
-        ctx.fillStyle = 'black';
-        ctx.fill("evenodd");
-        
+        ctx.arc(
+          this.img_info.full_width/2,
+          this.img_info.full_height/2, 
+          this.db_obj.cameraParam.mask_radius/mmpp, 
+          0, 2 * Math.PI);
+
+
         ctx.stroke();
-        ctx.closePath();
         ctx.restore();
+        
       }
     }
     
@@ -2531,6 +2645,12 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       
       
       ctx.drawImage(this.secCanvas, 0, 0);
+
+      
+      ctx.strokeStyle = "rgba(120, 120, 120,30)";
+      let curScale=this.camera.GetCameraScale();
+      ctx.lineWidth = 200/curScale/scale;
+      this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
       ctx.restore();
     }
 
@@ -2963,8 +3083,6 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.drawImage(this.secCanvas, 0, 0);
       ctx.restore();
     }
-
-
 
     {
       let mmpp = this.rUtil.get_mmpp();

@@ -57,6 +57,8 @@ import {
   FolderOpenOutlined,
   InfoCircleOutlined,
   EditOutlined,
+  TableOutlined,
+  ThunderboltOutlined,
   CloudDownloadOutlined,
   LeftOutlined,
   RightOutlined,
@@ -113,6 +115,8 @@ class CanvasComponent extends React.Component {
     if (this.ec_canvas !== undefined) {
       this.ec_canvas.EditDBInfoSync(props.edit_info);
       this.ec_canvas.SetState(ec_state);
+      this.ec_canvas.SetShowInspectionNote(props.showInspectionNote);
+      
       //this.ec_canvas.ctrlLogic();
       this.ec_canvas.draw();
     }
@@ -137,7 +141,7 @@ class CanvasComponent extends React.Component {
 
     return (
       <div className={this.props.className}  style={this.props.style}>
-        <canvas ref="canvas" className="width12 HXF" />
+        <canvas ref="canvas" className="s width12 height12" />
         {(this.props.disable_resize_detector===true)?
           null:
           <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />}
@@ -304,11 +308,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const [ErrorInfo,setErrorInfo]=useState(undefined);
 
   
+  const [showInspectionNote,setShowInspectionNote]=useState(false);
+
+  
   const _mus = useSelector(state => state.UIData.machine_custom_setting);
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   
   const [stepIdx,setStepIdx]=useState(0);
-
+  const [isVertical,setIsVertical]=useState(false);
   let DefFileFolder=undefined;
 
   useEffect(()=>{
@@ -345,7 +352,12 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   function SignatureTargetMatching(fileInfoList,onMatchingResult)
   {
-    
+    if(fileInfoList==undefined||fileInfoList.length==0)
+    {
+      onMatchingResult({files:[]});
+      return;
+    }
+    console.log(fileInfoList);
     ACT_WS_SEND(WS_ID, "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } })
     ACT_WS_SEND(WS_ID, "EX", 0, {},
@@ -359,6 +371,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           files:fileInfoList.map(fileInfo=>fileInfo.path)
           },undefined,{
           resolve:(pkts,defaultFlow)=>{
+            if(pkts[0].data.files===undefined)pkts[0].data.files=[];
             pkts[0].data.files.forEach((fileSigMatchingInfo)=>{
               fileSigMatchingInfo.error = fileSigMatchingInfo.p_error<fileSigMatchingInfo.n_error?fileSigMatchingInfo.p_error:fileSigMatchingInfo.n_error;
               fileSigMatchingInfo.file=fileInfoList[fileSigMatchingInfo.idx]
@@ -406,7 +419,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         let tarDef = cusDispInfo.targetDeffiles[0];
         let filePath = tarDef.path;
         if (filePath === undefined) return;
-        filePath = filePath.replace("." + DEF_EXTENSION, "");
+        filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
         ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },undefined,{
           resolve:(stacked_pkts,action_channal)=>{
@@ -426,10 +439,12 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
               catch (e) {
                 setTags = [];
               }
-              ACT_InspOptionalTag_Update(setTags)
+              
               ACT_Def_Model_Path_Update(filePath);
               action_channal(stacked_pkts);
               
+              // console.log(setTags);
+              ACT_InspOptionalTag_Update(setTags)
             }
             else
             {
@@ -470,104 +485,139 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   }
   {//1st page
     
-    isOK=(DefFileHash!==undefined&&isSystemReadyForInsp);
+    let new_tagGroupsPreset=tagGroupsPreset;
+
+    if(Info_decorator!==undefined && Info_decorator.control_margin_info!==undefined)
+    {
+      new_tagGroupsPreset=[
+        {
+          name:"已設定範圍",
+          maxCount:1,
+          tags:Object.keys(Info_decorator.control_margin_info)
+        },...new_tagGroupsPreset]
+    }
+
+    
+    isOK=(DefFileHash!==undefined&&isSystemReadyForInsp) && isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
     if(!isOK)isStillOK=false;
     else if(isStillOK)
       OKJumpTo++;
-    UI_Stack.push(
-      <BASE_COM.CardFrameWarp key="UI_Step0" addClass="width12 height12 overlayCon" fixedFrame={true}>
-        
-        <CanvasComponent_rdx className="s height12" />
-        
-        <div className="overlay" style={{left:"15px",top:"15px"}}>
-          <div className="s width12 HXA">
-          <TagDisplay_rdx closable />
+
+    let twoPanelClass1="s height12 width4";
+    let twoPanelClass2="s height12 width8";
+    if(isVertical)
+    {
+      twoPanelClass1="s height5 width12"
+      twoPanelClass2="s height7 width12"
+    }
+
+    function matchingAUTO_UI(fileInfoList)
+    {
+
+      let errPopUpUIInfo = {
+        title: "MATCH ing...",
+        onOK: undefined,
+        onCancel: undefined,
+        content:<div style={{width:"100%",height:"400px"}} className="scroll">
+          
+          <div className="antd-icon-sizing" style={{height:"50px"}}>
+            <LoadingOutlined className="veleX"/>
           </div>
+          <Title level={2} style={{textAlign:"center"}} >
+            {DICT.mainui.FUNC_auto_recognition_running}
+          </Title>
         </div>
+      }
+      setInfoPopUp(errPopUpUIInfo)
+
+
+      SignatureTargetMatching(fileInfoList,(matchingList)=>{
+
+        console.log(matchingList);
+
+
+        let columns = ['name','score','path'].map((info)=>({
+          title: info,
+          dataIndex: info,
+          key:info,
+        }));
+
+        const dataSource = matchingList.files
+        .map(mat_info=>{
+          mat_info.score = (1-(mat_info.error)/(mat_info.mean/4));
+          return mat_info}).
+        filter(mat_info=>mat_info.score>0)
+        .map(mat_info=>{
+          return {
+            key:mat_info.file.path,
+            name:mat_info.name,
+            score:(100*mat_info.score).toFixed(1)+"%",
+            path:mat_info.file.path,
+            matchingInfo:mat_info
+          }
+        })
+        
+        
+        let errPopUpUIInfo = {
+          title: "MATCH",
+          onOK: undefined,
+          onCancel: undefined,
+          content:<div style={{width:"100%",height:"400px"}} className="scroll">
+        
+            <Table 
+              onRow={(file) => ({
+                onClick: (evt) => { 
+                  //console.log(file,evt);
+
+                  appendLocalStorage_RecentFiles(file.matchingInfo.file);
+
+                  let filePath = file.path.replace("." + DEF_EXTENSION, "");
+                  setInfoPopUp(undefined);
+                  ACT_Def_Model_Path_Update(filePath);
+                  ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+
+                  setFileSelectorInfo(undefined);
+
+                }})} 
+              dataSource={dataSource} 
+              columns={columns} 
+              pagination={false}/>
+
+          </div>
+        }
+        setInfoPopUp(errPopUpUIInfo)
+      })
+
+    }
+
+
+    UI_Stack.push(
+      <div key="UI_Step0" className="s width12 height12 overlayCon" fixedFrame={true}  style={{background: "rgb(250,250,250)"}}>
+        
+        <div className={twoPanelClass1} style={{padding: "10px"}}>
+          
+          <TagDisplay_rdx closable/>
+          <TagOptions_rdx className="s width12 HXA" size="middle" tagGroups={new_tagGroupsPreset}/>
+        </div>
+        <CanvasComponent_rdx className={twoPanelClass2} showInspectionNote={showInspectionNote} />
+        
+        <ReactResizeDetector handleWidth handleHeight onResize={(width, height)=>{
+          if(width>height)//landscape
+          {
+            if(isVertical!=false)setIsVertical(false);
+          }
+          else
+          {
+            if(isVertical!=true)setIsVertical(true);
+          }
+        }} />
         <div className="overlay" style={{right:"15px",bottom:"15px"}}>
           {/* <Button style={{"pointerEvents": "auto"}}>120px to affix top</Button> */}
           
           
           <Button className={"antd-icon-sizing HW50"} size="large"
             style={{"pointerEvents": "auto"}} icon={<MonitorOutlined/> } type="text"
-            onClick={() => {
-
-              
-              let errPopUpUIInfo = {
-                title: "MATCH ing...",
-                onOK: undefined,
-                onCancel: undefined,
-                content:<div style={{width:"100%",height:"400px"}} className="scroll">
-                  
-                  <div className="antd-icon-sizing" style={{height:"50px"}}>
-                    <LoadingOutlined className="veleX"/>
-                  </div>
-                  <Title level={2} style={{textAlign:"center"}} >
-                    {DICT.mainui.FUNC_auto_recognition_running}
-                  </Title>
-                </div>
-              }
-              setInfoPopUp(errPopUpUIInfo)
-
-
-              SignatureTargetMatching(getLocalStorage_RecentFiles(),(matchingList)=>{
-
-                console.log(matchingList);
-
-
-                let columns = ['name','score','path'].map((info)=>({
-                  title: info,
-                  dataIndex: info,
-                  key:info,
-                }));
-
-                const dataSource = matchingList.files
-                .map(mat_info=>{
-                  mat_info.score = (1-(mat_info.error)/(mat_info.mean/4));
-                  return mat_info}).
-                filter(mat_info=>mat_info.score>0)
-                .map(mat_info=>{
-                  return {
-                    key:mat_info.file.path,
-                    name:mat_info.name,
-                    score:(100*mat_info.score).toFixed(1)+"%",
-                    path:mat_info.file.path,
-                    matchingInfo:mat_info
-                  }
-                })
-                
-                
-                let errPopUpUIInfo = {
-                  title: "MATCH",
-                  onOK: undefined,
-                  onCancel: undefined,
-                  content:<div style={{width:"100%",height:"400px"}} className="scroll">
-                
-                    <Table 
-                      onRow={(file) => ({
-                        onClick: (evt) => { 
-                          //console.log(file,evt);
-
-                          appendLocalStorage_RecentFiles(file.matchingInfo.file);
-
-                          let filePath = file.path.replace("." + DEF_EXTENSION, "");
-                          setInfoPopUp(undefined);
-                          ACT_Def_Model_Path_Update(filePath);
-                          ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
-
-
-
-                        }})} 
-                      dataSource={dataSource} 
-                      columns={columns} 
-                      pagination={false}/>
-
-                  </div>
-                }
-                setInfoPopUp(errPopUpUIInfo)
-              })
-
-            }}/>
+            onClick={() =>matchingAUTO_UI(getLocalStorage_RecentFiles())}/>
           
           <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<FolderOpenOutlined/> } type="text"
@@ -607,14 +657,26 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
             let fileGroups = [
-              { name: "history", list: getLocalStorage_RecentFiles() }
+              { name: "history", list: getLocalStorage_RecentFiles() },
+              
             ];
             let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
 
             setFileSelectorInfo({
               callBack:fileSelectedCallBack,
               filter:fileSelectFilter,
-              groups:fileGroups
+              groups:fileGroups,
+              additionalFuncs:[
+                { icon: <MonitorOutlined/>, 
+                  name:"資料夾比對",
+                  key:"matching",
+                  action: (state,props)=>{
+                  let files=state.folderStruct.files.filter(fileInfo=>fileInfo.type=="REG"&&props.fileFilter(fileInfo))
+                  console.log(files);
+                  if(files!==undefined && files.length>0)
+                    matchingAUTO_UI(files);
+                }},
+              ]
             });
           }}/>
 
@@ -639,133 +701,19 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
             style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" 
             disabled={!isOK}
-            onClick={()=>stepInc()}/>
+            onClick={onPrepareOK}/>
 
 
 
         </div>
-      </BASE_COM.CardFrameWarp>
+      </div>
     );
   }
 
-  //console.log(stepIdx,UI_Stack.length,isOK);
-
-  {     
-    
-    let new_tagGroupsPreset=tagGroupsPreset;
-
-    if(Info_decorator!==undefined && Info_decorator.control_margin_info!==undefined)
-    {
-      new_tagGroupsPreset=[
-        {
-          name:"已設定範圍",
-          maxCount:1,
-          tags:Object.keys(Info_decorator.control_margin_info)
-        },...new_tagGroupsPreset]
-    }
-    isOK=isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset)&&isSystemReadyForInsp;
-    
-    if(!isOK)isStillOK=false;
-    else if(isStillOK)
-      OKJumpTo++;
-    UI_Stack.push(
-      <BASE_COM.CardFrameWarp key="UI_Step1" addClass="width12 height12 overlayCon" fixedFrame={true}>
-
-
-        <div className="s WXA HXA">
-          <TagDisplay_rdx closable />
-        </div>
-        <Button size="large" onClick={loadMachineSettingPopUp}>機台設定選擇</Button>
-
-        <TagOptions_rdx className="s width12 HXA" tagGroups={new_tagGroupsPreset}/>
-        <div className="overlay" style={{right:"15px",bottom:"15px"}}>
-
-            
-          <Button className={"antd-icon-sizing  "+(isOK?"HW100":"HW50")} size="large"
-            style={{"pointerEvents": "auto","color":(isOK?"#5191a5":"__")}} icon={<CaretRightOutlined/> } type="text" 
-            disabled={!isOK}
-            onClick={()=>{
-              stepInc()
-              }}/>
-
-
-
-        </div>
-      </BASE_COM.CardFrameWarp>
-    );
-  }
-      
-  
-  if(false)isStillOK=false;
-  else if(isStillOK)
-    OKJumpTo++;
-  UI_Stack.push(
-      <BASE_COM.CardFrameWarp key="UI_Step2" addClass="width12 height12" fixedFrame={true}>
-        {/* <Title className="veleXY">GO GO GO</Title> */}
-        <ScanOutlined  className="veleXY antd-icon-sizing" style={{width:"100px",height:"100px"}}/>
-      </BASE_COM.CardFrameWarp>
-  );
-
-  // if(stepIdx>=1)
-  // {
-  //   UI_Stack.push(
-  //     <Card bordered={false}
-  //       key="UI_Step2"
-  //       className="small_padding_card overlay height12"
-  //       style={{background:"#FFF"}}
-  //       cover={
-  //         [
-  //           ]} >
-          
-  //     </Card>
-  //   );
-  // }
-  // console.log(caruselRef)
   return(
     
-  <div style={{ padding: 24, background: '#fff', height: "100%",
-    display: "flex",
-    flexFlow: "column"
-   }} >
-      
-    <Steps current={stepIdx} size="small"  onChange={stepJump} style={{flex:" 0 1 auto"}}>
-      <Step title={DICT.mainui.select_deffile} description={DICT.mainui.select_deffile_detail}/>
-      <Step title={DICT.mainui.set_insp_tags} description={DICT.mainui.set_insp_tags_detail} />
-      <Step title={DICT.mainui.GOGOGO} description={DICT.mainui.GOGOGO_detail} />
-    </Steps>
-
-
-    <div className=" width12 ant-carousel_Con_WH100" style={{flex:" 1 1 auto"}} >
-      
-      <Carousel ref={caruselRef} className="width12 height12 " 
-      dots={false} draggable={false}
-      afterChange={(current)=>{
-        console.log(current,stepIdx);
-        if(current>stepIdx)
-        {
-          //caruselRef.current.goTo(stepIdx);
-
-          caruselRef.current.slick.slickGoTo(stepIdx)
-          return;
-        }
-        if(current==2&&onPrepareOK!==undefined)
-        {
-          onPrepareOK()
-          
-          setStepIdx(0);
-          
-          return;
-        }
-        if(current<stepIdx)
-        {
-          setStepIdx(current);
-          caruselRef.current.goTo(current);
-        }
-      }}>
-      {UI_Stack}
-      </Carousel>
-    </div>
-
+  <>
+    {UI_Stack}
 
 
     <BPG_FileBrowser key="BPG_FileBrowser"
@@ -782,6 +730,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         }}
         
         fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
+        additionalFuncs={(fileSelectorInfo !== undefined)?fileSelectorInfo.additionalFuncs:undefined}
         fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
 
       <Modal
@@ -818,7 +767,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       {ErrorInfo === undefined ?
         null : ErrorInfo.content}
     </Modal>
-  </div>
+  </>
 
   );
 };
@@ -1135,63 +1084,67 @@ const MainUI=()=>{
   }
 
 
+  // UI.push(<div style={{}} className="s HXA WXA veleXY" >
 
+  // <div className="neumorphic variation2" onClick={()=>EV_UI_Edit_Mode()}>
+  //   <span><strong>{s_statesTable.DeConf.name}</strong></span>
+  // </div>
+  // <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.Inspection)}>
+  //   <span><strong>{DICT.mainui.MODE_SELECT_INSP_PREP}</strong></span>
+  // </div>
+  // <br/>
+  // <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
+  //   <span><strong>{DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB}</strong></span>
+  // </div>
+
+  // {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.RepDisplay)}>
+  //   <span><strong>{DICT.mainui.MODE_SELECT_REP_DISPLAY}</strong></span>
+  // </div> */}
+  // <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.InstInsp)}>
+  //   <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
+  // </div>
+
+  // {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
+  //   <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
+  // </div> */}
+  
+  // </div>)
 
   switch(UI_state)
   {
     case s_statesTable.RootSelect:
 
+
+    
       siderUI_info={
-        title:UI_state.name
+        title:UI_state.name,
+        menu:[
+          {
+            icon:<EditOutlined />,
+            text:DICT.mainui.MODE_SELECT_DEFCONF,
+            onClick:_=>EV_UI_Edit_Mode()
+          },
+          {
+            icon:<TableOutlined />,
+            text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+            onClick:_=>setUI_state(s_statesTable.BackLightCalib)
+          },
+          {
+            icon:<ThunderboltOutlined />,
+            text:DICT.mainui.MODE_SELECT_INST_INSP,
+            onClick:_=>setUI_state(s_statesTable.InstInsp)
+          }
+           
+        ],
       }
-
-
-      UI.push(<div style={{}} className="s HXA WXA veleXY" >
-
-        <div className="neumorphic variation2" onClick={()=>EV_UI_Edit_Mode()}>
-          <span><strong>{s_statesTable.DeConf.name}</strong></span>
-        </div>
-        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.Inspection)}>
-          <span><strong>{DICT.mainui.MODE_SELECT_INSP_PREP}</strong></span>
-        </div>
-        <br/>
-        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
-          <span><strong>{DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB}</strong></span>
-        </div>
-
-        {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.RepDisplay)}>
-          <span><strong>{DICT.mainui.MODE_SELECT_REP_DISPLAY}</strong></span>
-        </div> */}
-        <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.InstInsp)}>
-          <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
-        </div>
-
-        {/* <div className="neumorphic variation2" onClick={()=>setUI_state(s_statesTable.BackLightCalib)}>
-          <span><strong>{DICT.mainui.MODE_SELECT_INST_INSP}</strong></span>
-        </div> */}
-        
-        </div>)
+      UI.push(<InspectionDataPrepare  onPrepareOK={EV_UI_Insp_Mode}/>);
+      
       break;
   
     case  s_statesTable.DeConf:
       //UI=<EV_UI_Edit_Mode  onPrepareOK={EV_UI_Insp_Mode}/>;
       break;
     case  s_statesTable.Inspection:
-      
-    
-      siderUI_info={
-        title:UI_state.name,
-        menu:[
-          {
-            icon:<ArrowLeftOutlined />,
-            text:DICT._["<"],
-            onClick:_=>setUI_state(s_statesTable.RootSelect)
-            // subMenu:[]
-          }
-           
-        ],
-      }
-      UI.push(<InspectionDataPrepare  onPrepareOK={EV_UI_Insp_Mode}/>);
       
       break;
     case  s_statesTable.BackLightCalib:
@@ -1409,9 +1362,6 @@ const MainUI=()=>{
   </Layout>;
 }
 
-
-
-
 class APPMain extends React.Component {
 
 
@@ -1500,122 +1450,6 @@ class APPMain extends React.Component {
     {
       UI=<MainUI/>;
     }
-    else if(false)
-    {
-      let DefFileFolder = this.props.defModelPath.substr(0, this.props.defModelPath.lastIndexOf('/') + 1);
-      let genericMenuItemCBsCB = (selectInfo) => { this.setState({ ...this.state, menuSelect: selectInfo.key }) }
-
-      let mmpp = undefined;
-      if (this.props.camera_calibration_report !== undefined) {
-        let camParam = this.props.isp_db.cameraParam;
-        mmpp = camParam.mmpb2b / camParam.ppb2b;
-      }
-
-      let MenuItem = {
-        Overview: {
-          icon: <InfoCircleOutlined />,
-          content: <InspectionDataPrepare onPrepareOK={this.props.EV_UI_Insp_Mode}/>,
-          onSelected: genericMenuItemCBsCB
-        },
-        EDIT: {
-          icon: <EditOutlined />,
-          content: null,
-          onSelected: this.props.EV_UI_Edit_Mode
-        },
-        // Inspect: {
-        //   icon: <ScanOutlined />,
-        //   content: null,
-        //   onSelected: () => {
-        //     this.props.EV_UI_Insp_Mode();
-        //   }
-        // },
-
-        SDD: {
-          icon: <DatabaseOutlined />,
-          content: <CustomDisplayUI
-            BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)} />,
-          onSelected: genericMenuItemCBsCB
-        },
-        // STA:{
-        //     icon:"bar-chart",
-        //     content:null,
-        //     onSelected:this.props.EV_UI_Analysis_Mode
-        // },
-        Setting: {
-          icon: <SettingOutlined />,
-          content: <Setui_UI/>,
-          onSelected: genericMenuItemCBsCB
-        },
-        
-        BackLightCalib: {
-          icon:<ScanOutlined />,
-          content: <BackLightCalibUI_rdx
-            BPG_Channel={(...args) => this.props.ACT_WS_SEND(this.props.WS_ID, ...args)}
-            onCalibFinished={(finalReport) => {
-              console.log(">>>>>>>>>",finalReport)
-              if(finalReport===undefined)return;
-              var enc = new TextEncoder();
-              this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
-                { filename: "data/stageLightReport.json" },
-                enc.encode(JSON.stringify(finalReport, null, 2)))
-              console.log(finalReport)
-            }} />,
-          onSelected: genericMenuItemCBsCB
-        },
-        Collapse: {
-          icon: this.state.menuCollapsed ? <RightOutlined /> :<LeftOutlined />,
-          content: null,
-          onSelected: () => this.setState({ ...this.state, menuCollapsed: !this.state.menuCollapsed })
-        }
-      };
-
-
-      let ver_map = this.props.version_map_info;
-      let recommend_URL = GetObjElement(ver_map, ["recommend_info", "url"]);
-
-      if (recommend_URL !== undefined && (recommend_URL.indexOf()) == -1) {
-        MenuItem.UPDATE = {
-          icon: <CloudDownloadOutlined />,
-          content: null,
-          onSelected: () => {
-            window.location.href = recommend_URL;
-          }
-        };
-      }
-
-
-      UI.push(
-        <Layout className="HXF">
-          <Sider
-            trigger={null}
-            collapsible
-            collapsed={this.state.menuCollapsed}
-          //collapsed={this.state.collapsed}
-          >
-            <Menu theme="dark" mode="inline" defaultSelectedKeys={[this.state.menuSelect]}
-              onClick={(select) => MenuItem[select.key].onSelected(select)}>
-              {
-                Object.keys(MenuItem).map(itemKey => (
-                  <Menu.Item key={itemKey} >
-                    {MenuItem[itemKey].icon}
-                    <span>{itemKey}</span>
-                  </Menu.Item>
-                ))
-              }
-            </Menu>
-          </Sider>
-
-          <Layout>
-            <Content>
-              {
-
-                MenuItem[this.state.menuSelect].content
-              }
-            </Content>
-          </Layout>
-        </Layout>
-      )
-    }
     else if (stateObj.state === UIAct.UI_SM_STATES.DEFCONF_MODE) {
       UI = <APP_DEFCONF_MODE_rdx />;
     }
@@ -1628,9 +1462,11 @@ class APPMain extends React.Component {
     }
 
     return (
-      <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}>
+      <>
+      {/* // <BASE_COM.CardFrameWarp addClass="width12 height12" fixedFrame={true}> */}
         {UI}
-      </BASE_COM.CardFrameWarp>
+      {/* // </BASE_COM.CardFrameWarp> */}
+      </>
 
     );
   }

@@ -9,6 +9,8 @@ import * as logX from 'loglevel';
 import  {default as AntButton}  from 'antd/lib/button';
 import  Switch  from 'antd/lib/switch';
 import  Modal  from 'antd/lib/modal';
+import  Divider  from 'antd/lib/divider';
+
 import  Table  from 'antd/lib/table';
 import { 
   FolderOpenOutlined,
@@ -24,6 +26,9 @@ import {
 
 import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
+import Space from 'antd/lib/space'
+
+
 import { parse } from 'semver';
 const AntButtonGroup = AntButton.Group;
 
@@ -655,19 +660,17 @@ export class BPG_FileBrowser_proto extends React.Component{
         
   
 
-      pathSplitBtns=<div>
-        <AntButtonGroup>
-          <AntButton type="primary"  onClick={()=>this.goDir()}>
-            <LeftOutlined />
-          </AntButton>
-        </AntButtonGroup>
+      pathSplitBtns=<>
+        <AntButton type="primary" icon={<LeftOutlined />}  style={{float:"left"}} onClick={()=>this.goDir()}/>
         &nbsp;&nbsp;&nbsp;
-        <AntButtonGroup>
-          {curPathArr.map((folder,idx)=>
-            <AntButton key={folder.name+"_"+idx}   onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
-          )}
-        </AntButtonGroup>
-      </div>
+        
+        {curPathArr.map((folder,idx)=>
+          <>
+            <AntButton key={folder.name+"_"+idx}  type="link" onClick={()=>this.goDir(folder.path)}>{folder.name}</AntButton>
+            /
+          </>
+        )}
+      </>
     }
 
     if(tableWidthClass!=="width12")
@@ -708,13 +711,14 @@ export class BPG_FileBrowser_proto extends React.Component{
 
     }
 
-    titleRender=<div>
+    titleRender=<>
+    
       {pathSplitBtns}
-
+      <br/>
       {
         (this.props.searchDepth>=0 || this.props.searchDepth===undefined)?
-          <Input.Search key={"Search"} className="width3"  allowClear
-          size="small" value={this.state.searchText} placeholder="Search" 
+          <Input.Search key={"Search"} className="width3"  allowClear  style={{float:"left"}}
+          size="middle" value={this.state.searchText} placeholder="Search" 
           onChange={(evt)=>{
             if(this.state.searchFolderStruct===undefined)
             {
@@ -738,8 +742,22 @@ export class BPG_FileBrowser_proto extends React.Component{
             }
             this.setState({searchText:evt.target.value});
           }}/>:null
-        }
-    </div>
+      }
+      
+      <Divider type="vertical"  style={{float:"left"}}/>
+      <AntButtonGroup  style={{float:"left"}}>
+      {
+        this.props.additionalFuncs===undefined?null:
+        this.props.additionalFuncs.map((func,idx)=>
+          <AntButton key={func.key} icon={func.icon}  onClick={()=>{
+            func.action(this.state,this.props)
+          }}>
+            {func.name}
+          </AntButton>)
+      }
+      </AntButtonGroup>
+      
+    </>
 
 
 

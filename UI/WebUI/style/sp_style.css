@@ -198,7 +198,7 @@ div.error > textarea{
 
 body.sp_Style.blockS  {
   overflow: hidden;
-  padding: 15px;
+  /* padding: 15px; */
   background: #EAEBEE;
 }
 .sp_Style.blockS *.shadow1 {
@@ -242,6 +242,13 @@ body.sp_Style.blockS  {
 
 .sp_Style .ant-input-affix-wrapper.error input{
   background-color: #f99;
+} 
+
+
+
+.sp_Style .ant-tag.middle{
+  font-size:17px;margin-bottom: 6px;
+  padding: 4px;
 } 
 
 .sp_Style .ant-tag.large{
