@@ -2162,7 +2162,7 @@ class APP_INSP_MODE extends React.Component {
       ,
 
       <div className="s black width12 HXA">
-        <TagDisplay_rdx/>
+        <TagDisplay_rdx size="middle"/>
         {/* <Tag className="large InspTag fixed" key="MACHX"
          onClick={()=>
           onTagEdit()}

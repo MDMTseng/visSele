@@ -1777,12 +1777,13 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.db_obj = edit_DB_info._obj;
     if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
     this.rUtil.setEditor_db_obj(this.db_obj);
+    let imageChanged=edit_DB_info.img!=this.img_info;
     this.SetImg(edit_DB_info.img);
     
     let mmpp = this.db_obj.getsig360info_mmpp();
     this.rUtil.renderParam.mmpp = mmpp;
-    
-    this.scaleImageToFitScreen();
+    if(imageChanged)
+      this.scaleImageToFitScreen();
 
   }
 

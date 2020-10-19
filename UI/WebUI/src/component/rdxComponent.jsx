@@ -437,7 +437,7 @@ export function CustomDisplaySelectUI({onSelect}) {
 }
 
 
-export function TagDisplay_rdx({Tag_ClassName="large InspTag fixed",closable})
+export function TagDisplay_rdx({Tag_ClassName="InspTag fixed",closable, size="large"})
 {
   
   const inspOptionalTag = useSelector(state =>state.UIData.edit_info.inspOptionalTag);
@@ -448,12 +448,13 @@ export function TagDisplay_rdx({Tag_ClassName="large InspTag fixed",closable})
   const dispatch = useDispatch();
   const ACT_InspOptionalTag_Update= (newTag) => dispatch(dispatch(DefConfAct.InspOptionalTag_Update(newTag)));
   // console.log(inspOptionalTag,defFileTag,MachTag);
+  let mergeClassName=Tag_ClassName+" "+size;
   return <>
-    {MachTag!==undefined?<Tag className={Tag_ClassName} key="MACH">{MachTag}</Tag>:null}
-    {defFileTag!==undefined?defFileTag.map(tag=><Tag className={Tag_ClassName} key={tag+"_dfTag"}>{tag}</Tag>):null}
+    {MachTag!==undefined?<Tag className={mergeClassName} key="MACH">{MachTag}</Tag>:null}
+    {defFileTag!==undefined?defFileTag.map(tag=><Tag className={mergeClassName} key={tag+"_dfTag"}>{tag}</Tag>):null}
 
     {inspOptionalTag.map(curTag=>
-      <Tag closable={closable} className={Tag_ClassName+" optional"}  key={curTag+"_inspOptTag"} onClose={(e)=>{
+      <Tag closable={closable} className={mergeClassName+" optional"}  key={curTag+"_inspOptTag"} onClose={(e)=>{
         e.preventDefault();
         let tagToDelete=curTag;
         let NewOptionalTag = inspOptionalTag.filter(tag=>tag!=tagToDelete);

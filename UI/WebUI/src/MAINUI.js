@@ -39,7 +39,7 @@ import Carousel from 'antd/lib/carousel';
 import Popover from 'antd/lib/popover';
 import Affix from 'antd/lib/Affix';
 import  Table  from 'antd/lib/table';
-
+import Switch from 'antd/lib/switch';
 import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
 import Steps from 'antd/lib/Steps';
@@ -497,12 +497,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         },...new_tagGroupsPreset]
     }
 
+    let isFileOK=(DefFileHash!==undefined&&isSystemReadyForInsp) ;
     
-    isOK=(DefFileHash!==undefined&&isSystemReadyForInsp) && isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
-    if(!isOK)isStillOK=false;
-    else if(isStillOK)
-      OKJumpTo++;
-
+    isOK=isFileOK && isTagFulFillRequrement(inspOptionalTag,tagGroupsPreset);
     let twoPanelClass1="s height12 width4";
     let twoPanelClass2="s height12 width8";
     if(isVertical)
@@ -611,15 +608,23 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             if(isVertical!=true)setIsVertical(true);
           }
         }} />
-        <div className="overlay" style={{right:"15px",bottom:"15px"}}>
-          {/* <Button style={{"pointerEvents": "auto"}}>120px to affix top</Button> */}
-          
-          
+
+
+        <div className="overlay vbox" style={{
+          padding: "10px",
+          boxShadow:"inset 0px 0px 15px rgba(0,0,0,0.1), -0.5px 0.5px 2px 1px rgba(20,20,20,0.1)",
+          background: "rgba(255,255,255,.6)",
+          backdropFilter:" blur(5px)",
+          textAlign:"end",
+          right:"15px",
+          bottom:"15px"}}>
+
+          <Switch checkedChildren="測線" unCheckedChildren="純圖" checked={showInspectionNote} onChange={setShowInspectionNote} />
           <Button className={"antd-icon-sizing HW50"} size="large"
             style={{"pointerEvents": "auto"}} icon={<MonitorOutlined/> } type="text"
             onClick={() =>matchingAUTO_UI(getLocalStorage_RecentFiles())}/>
           
-          <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
+          <Button className={"antd-icon-sizing "+(isFileOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<FolderOpenOutlined/> } type="text"
             onClick={() => {
             let fileSelectedCallBack =
@@ -682,7 +687,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
           
-          <Button className={"antd-icon-sizing "+(isOK?"HW50":"HW100")} size="large"
+          <Button className={"antd-icon-sizing "+(isFileOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<CloudServerOutlined/> } type="text"
             onClick={loadMachineSettingPopUp}
             ></Button>
@@ -1168,9 +1173,9 @@ const MainUI=()=>{
                   {
                     resolve:(stacked_pkts,action_channal)=>{
                       
-                      ACT_WS_SEND(WS_ID, "RC", 0, {
-                        target: "camera_setting_refresh"
-                      });
+                      // ACT_WS_SEND(WS_ID, "RC", 0, {
+                      //   target: "camera_setting_refresh"
+                      // });
   
                     }
                   })
@@ -1190,7 +1195,14 @@ const MainUI=()=>{
           {
             icon:<ArrowLeftOutlined />,
             text:DICT._["<"],
-            onClick:_=>setUI_state(s_statesTable.RootSelect)
+            onClick:_=>
+            {
+              setUI_state(s_statesTable.RootSelect)
+              
+              ACT_WS_SEND(WS_ID, "RC", 0, {
+                target: "camera_setting_refresh"
+              });
+            }
             // subMenu:[]
           },
           ...extraSideUI
@@ -1337,7 +1349,10 @@ const MainUI=()=>{
 
     if(siderUI_info.menu!==undefined)
     {
-      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']} className="TEST">
+      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']} 
+      style={{
+        boxShadow: "inset -1px 0 9px -2px rgba(0,0,0,0.4)",
+        border: "0px"}}>
         {siderUI_info.menu.map((item,idx)=> <Menu.Item key={(item.key===undefined)?("idx:"+idx):item.key} icon={item.icon} onClick={item.onClick}>{item.text}</Menu.Item>)}
         </Menu>)
       // siderUI_info.menu.forEach((menu,idx)=>{
