@@ -3,6 +3,7 @@
 #include "FeatureManager_sig360_circle_line.h"
 #include "FeatureManager_stage_light_report.h"
 #include "FeatureManager_nop.h"
+#include "FeatureManager_gen.h"
 #include "FeatureManager_platingCheck.h"
 #include "logctrl.h"
 #include <common_lib.h>
@@ -69,6 +70,12 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
 
     LOGI("FeatureManager_platingCheck is the type...");
     featureSet = new FeatureManager_platingCheck(json_str);
+  }
+  else if(strcmp(FeatureManager_gen::GetFeatureTypeName(),str) == 0)
+  {
+
+    LOGI("FeatureManager_gen is the type...");
+    featureSet = new FeatureManager_gen(json_str);
   }
   else if(strcmp(FeatureManager_nop::GetFeatureTypeName(),str) == 0)
   {

@@ -104,7 +104,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       int newX=tmpX,newY=tmpY;
       int newH = tmpH;
       int newW = tmpW;
-
+      if(exp_time_us==0)exp_time_us=exp_time_100ExpUs;
       int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       img.ReSize(newW,newH);
@@ -154,22 +154,32 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           pixCoord=acvVecSub((acv_XY){
             MIRROR_X?(float)img_load.GetWidth():pixCoord.X*2,
             MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
-          float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
+          float pixB= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
+          float pixG= acvUnsignedMap1Sampling(&img_load, pixCoord, 1);
+          float pixR= acvUnsignedMap1Sampling(&img_load, pixCoord, 2);
 
 
-          int d = ((uint64_t)(pix*tExp))>>13;
+          int d = ((uint64_t)(pixB*tExp))>>13;
           if(d<0)d=0;
           else if(d>255)d=255;
-          
-          img.CVector[i][j*3] = 
-          img.CVector[i][j*3+1] =
           img.CVector[i][j*3+2] = d;
+
+          d = ((uint64_t)(pixG*tExp))>>13;
+          if(d<0)d=0;
+          else if(d>255)d=255;
+          img.CVector[i][j*3+1] =d;
+
+          
+          d = ((uint64_t)(pixR*tExp))>>13;
+          if(d<0)d=0;
+          else if(d>255)d=255;
+          img.CVector[i][j*3+0] =d;
 
         }
       }
 
       int noiseRange=5;
-      if(1)for(int i=0;i<img.GetHeight();i++)//Add noise
+      if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
       {
           for(int j=0;j<img.GetWidth();j++)
           {

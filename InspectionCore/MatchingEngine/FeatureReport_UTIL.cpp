@@ -300,6 +300,11 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
   {
     return NULL;
   }
+
+  if(report->type == FeatureReport::cjson)
+  {
+    return report->data.cjson_report.cjson;
+  }
   cJSON* report_jobj = cJSON_CreateObject();
   //for(int i=0;i<featureBundle.size();i++)
 

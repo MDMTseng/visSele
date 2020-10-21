@@ -527,9 +527,9 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
         }
         else
         {
-          BSum = src.CVector[src_i][(src_j)*3 + 0];
+          BSum = src.CVector[src_i][(src_j)*3 + 2];
           GSum = src.CVector[src_i][(src_j)*3 + 1];
-          RSum = src.CVector[src_i][(src_j)*3 + 2];
+          RSum = src.CVector[src_i][(src_j)*3 + 0];
         }
       }
       uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);
@@ -1746,7 +1746,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             cJSON *jobj = matchingEng.FeatureReport2Json(report);
             AttachStaticInfo(jobj, cb);
             char *jstr = cJSON_Print(jobj);
-            cJSON_Delete(jobj);
+            if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
 
             //LOGI("__\n %s  \n___",jstr);
             bpg_dat = GenStrBPGData("RP", jstr);
@@ -1983,7 +1983,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             AttachStaticInfo(jobj, cb);
 
             char *jstr = cJSON_Print(jobj);
-            cJSON_Delete(jobj);
+            if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
 
             //LOGI("__\n %s  \n___",jstr);
             bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
@@ -2863,7 +2863,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
   //if(stackingC!=0)return;
   
-  if (1)
+  if (0)
   {
     if(imstack.imgStacked.GetHeight()!=capImg.GetHeight() || imstack.imgStacked.GetWidth()!=capImg.GetWidth() )
     {
@@ -2990,13 +2990,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       {
         cJSON *jobj = matchingEng.FeatureReport2Json(report);
         AttachStaticInfo(jobj, cb);
-        double expTime = NAN;
+        // double expTime = NAN;
         // if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
         // {
         //   cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
         // }
         char *jstr = cJSON_Print(jobj);
-        cJSON_Delete(jobj);
+        if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
 
         //LOGI("__\n %s  \n___",jstr);
         bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
@@ -3421,7 +3421,7 @@ int simpleTest(char *imgName, char *defName)
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
     AttachStaticInfo(jobj, cb);
     char *jstr = cJSON_Print(jobj);
-    cJSON_Delete(jobj);
+    if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
     LOGI("...\n%s\n...", jstr);
   }
   printf("Start to send....\n");
@@ -3559,7 +3559,7 @@ int testCode()
       AttachStaticInfo(jobj, cb);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char *jstr = cJSON_Print(jobj);
-      cJSON_Delete(jobj);
+      if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
 
       LOGI("__\n %s  \n___", jstr);
 
@@ -3676,7 +3676,7 @@ int main(int argc, char **argv)
       AttachStaticInfo(jobj, cb);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char *jstr = cJSON_Print(jobj);
-      cJSON_Delete(jobj);
+      if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
 
       LOGI("__\n %s  \n___", jstr);
 

@@ -22,6 +22,6 @@ void acvDrawCross(acvImage *Pic,int X,int Y,int CrossSize,BYTE R,BYTE G,BYTE B,i
 void acvDrawBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2);
 void acvDrawBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2,BYTE R,BYTE G,BYTE B,int LineWidth);
 void acvDrawReverseFillBlock(acvImage *Pic,int X1,int Y1,int X2,int Y2);
-void acvDrawCircle(acvImage *Pic, float X, float Y, float radius,int section, BYTE R, BYTE G, BYTE B);
+void acvDrawCircle(acvImage *Pic, float X, float Y, float radius,int section, BYTE R, BYTE G, BYTE B, int LineWidth=3);
 
 #endif

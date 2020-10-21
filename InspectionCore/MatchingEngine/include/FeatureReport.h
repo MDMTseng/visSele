@@ -6,6 +6,7 @@
 #include "acvImage_BasicTool.hpp"
 #include <vector>
 #include <string>
+#include "cJSON.h"
 #include "ImageSampler.h"
 #include "FeatureManager.h"
 
@@ -215,6 +216,16 @@ typedef struct FeatureReport_sig360_circle_line_single{
       STATUS_FAILURE=-1,
   } ;
 };
+
+
+
+
+typedef struct FeatureReport_gen{
+  // vector<FM_gen_colorInfo> *detectedCircles;
+  cJSON *jsonReport;
+};
+
+
 typedef FeatureReport_sig360_circle_line_single FeatureReport_SCLS;
 
 
@@ -263,6 +274,10 @@ typedef struct FeatureReport_nop{
 
 };
 
+typedef struct FeatureReport_cjson_report{
+  cJSON *cjson;
+};
+
 typedef struct FeatureReport_stage_light_report{
   vector<stage_light_grid_node_info> *gridInfo;
   int targetImageDim[2];
@@ -278,6 +293,7 @@ typedef struct FeatureReport
     sig360_circle_line,
     camera_calibration,
     stage_light_report,
+    cjson,
     END
   } type;
   string name;
@@ -290,6 +306,7 @@ typedef struct FeatureReport
     FeatureReport_sig360_circle_line      sig360_circle_line;
     FeatureReport_camera_calibration      camera_calibration;
     FeatureReport_stage_light_report      stage_light_report;
+    FeatureReport_cjson_report                  cjson_report;
   }data;
   string info;
 }FeatureReport;

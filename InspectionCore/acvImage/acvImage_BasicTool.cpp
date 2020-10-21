@@ -78,6 +78,65 @@ void acvThreshold_single(acvImage *Pic, BYTE Var, int channel)
     }
 }
 
+
+void acvHSVThreshold(acvImage *Pic,int HFrom,int HTo,int SMax,int SMin,int VMax,int VMin)           //0V ~255  1S ~255  2H ~252
+{
+        int TmpPixel;
+        BYTE H,S,V,*BMPLine;
+        if(HFrom<HTo)
+                for(int i=Pic->GetROIOffsetY();i<Pic->GetHeight();i++)
+                {
+                        BMPLine=Pic->CVector[i];
+                        for(int j=Pic->GetROIOffsetX();j<Pic->GetWidth();j++)
+                        {
+                                V=BMPLine[0];
+                                S=BMPLine[1];
+                                H=BMPLine[2];
+
+                                if(V<=VMax&&V>=VMin&&
+                                   S<=SMax&&S>=SMin&&
+                                   H>=HFrom&&H<= HTo)
+                                {
+                                      *BMPLine++=255;
+                                      *BMPLine++=255;
+                                      *BMPLine++=255;
+                                }
+                                else
+                                {
+                                      *BMPLine++=0;
+                                      *BMPLine++=0;
+                                      *BMPLine++=0;
+                                }
+                        }
+                }
+        else     
+                for(int i=Pic->GetROIOffsetY();i<Pic->GetHeight();i++)
+                {
+                        BMPLine=Pic->CVector[i];
+                        for(int j=Pic->GetROIOffsetX();j<Pic->GetWidth();j++)
+                        {                    
+                                V=BMPLine[0];
+                                S=BMPLine[1];
+                                H=BMPLine[2];
+
+                                if(V<=VMax&&V>=VMin&&
+                                   S<=SMax&&S>=SMin&&
+                                  (H>=HFrom||H<= HTo))
+                                {
+                                      *BMPLine++=255;
+                                      *BMPLine++=255;
+                                      *BMPLine++=255;
+                                }
+                                else
+                                {
+                                      *BMPLine++=0;
+                                      *BMPLine++=0;
+                                      *BMPLine++=0;
+                                }
+                        }
+                }
+}
+
 void acvContrast(acvImage *dst, acvImage *src, int offset, int shift,int channel)
 {
     BYTE *srcLine,*dstLine;
