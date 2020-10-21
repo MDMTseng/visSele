@@ -1948,8 +1948,18 @@ class APP_INSP_MODE extends React.Component {
       })
     }
     else if (this.props.inspMode == "CI") {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile
-      }, undefined);
+      
+      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+       }, undefined);
+
+
+      // this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+      // { CameraSetting: { down_samp_w_calib:false } });
+
+      // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
+      //   type:"gen"
+      // }
+      // }, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 1000,
