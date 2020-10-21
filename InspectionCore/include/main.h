@@ -177,6 +177,5 @@ class PerifProt
 
 
 };
-
-
+int cp_main(int argc, char **argv);
 #endif
