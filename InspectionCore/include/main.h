@@ -24,6 +24,12 @@
 #include <ImageSampler.h>
 
 
+#include "DatCH_Image.hpp"
+#include "DatCH_BPG.hpp"
+#include "DatCH_CallBack_WSBPG.hpp"
+#include "MatchingCore.h"
+
+
 class MicroInsp_FType:public SOCK_JSON_Flow
 {
     public:
@@ -178,4 +184,5 @@ class PerifProt
 
 };
 int cp_main(int argc, char **argv);
+
 #endif
