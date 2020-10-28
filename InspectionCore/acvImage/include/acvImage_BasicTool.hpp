@@ -138,7 +138,7 @@ acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
 acv_XY acvRotation(float sine,float cosine,acv_XY input);
 acv_XY acvRotation(float angle,acv_XY input);
 
-
+acv_XY acvLineIntersect(acv_Line line1, acv_Line line2);
 acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line);
 float acvDistance_Signed(acv_Line line, acv_XY point);
 float acvDistance(acv_Line line, acv_XY point);

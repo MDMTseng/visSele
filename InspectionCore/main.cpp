@@ -3,9 +3,16 @@
 #include <main.h>
 #include "tmpCodes.hpp"
 
+
+
+
+
+
 int main(int argc, char **argv)
 {
-  printf(">>>");
-  return 0;//cp_main(argc, argv);
+  
+  // tmpMain();
+  // printf(">>>");
+  return cp_main(argc, argv);
 }
 

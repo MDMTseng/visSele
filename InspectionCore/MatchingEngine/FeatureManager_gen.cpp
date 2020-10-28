@@ -532,57 +532,142 @@ void LineParseCable(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float c
 }
 
 
+void colorCompare(colorInfo *arr1, colorInfo *arr2, int arrL,float *ret_maxDiff,int *ret_maxDiffIdx)
+{
+  float minScore=99;
+  float minBriRatio=1;
+  float maxDiffSq=0;
+  int maxDiffIdx=-1;
+  for(int i=0;i<arrL;i++)
+  {
+    float diffR=arr1[i].R-arr2[i].R;
+    float diffG=arr1[i].G-arr2[i].G;
+    float diffB=arr1[i].B-arr2[i].B;
+
+    float mean = (diffR+diffG+diffB)/3;
+    diffR-=mean;
+    diffG-=mean;
+    diffB-=mean;
+
+    float diffSq=diffR*diffR+diffG*diffG+diffB*diffB;
+    if(maxDiffSq<diffSq)
+    {
+      maxDiffSq=diffSq;
+      maxDiffIdx=i;
+    }
+
+
+    // float tarMag = tar_ci[i].R*tar_ci[i].R+tar_ci[i].G*tar_ci[i].G+tar_ci[i].B*tar_ci[i].B;
+    // float curMag = ci[i].R*ci[i].R+ci[i].G*ci[i].G+ci[i].B*ci[i].B;
+
+    // float briRatio=curMag/tarMag;
+    // if(briRatio>1)briRatio=1/briRatio;
+    // float dotP   =(tar_ci[i].R*ci[i].R+tar_ci[i].G*ci[i].G+tar_ci[i].B*ci[i].B)/sqrt(tarMag*curMag);
+
+    // if(minScore>dotP)
+    // {
+    //   minScore=dotP;
+    // }
+    // if(minBriRatio>briRatio )
+    // {
+    //   minBriRatio=briRatio;
+    // }
+    
+    // printf("{.R=%f,.G=%f, .B=%f}, maxDiffSq:%f\n",ci[i].R,ci[i].G,ci[i].B, sqrt(diffSq));
+  }
+  minBriRatio=sqrt(minBriRatio);
+  maxDiffSq=sqrt(maxDiffSq);
+  printf("\n");
+  LOGI("minScore=%f, minBriRatio=%f maxDiffSq=%f",minScore, minBriRatio,maxDiffSq);
+  if(ret_maxDiff)*ret_maxDiff=maxDiffSq;
+  if(ret_maxDiffIdx)*ret_maxDiffIdx=maxDiffIdx;
+}
+
 int FeatureManager_gen::FeatureMatching(acvImage *img)
 {
-
+  
   int HFrom=0;
   int HTo=256;
-  int SMax=90;
+  int SMax=100;
   int SMin=0;
   int VMax=255;
-  int VMin=110;
-  float minHeadArea=90*350*0.9;
+  int VMin=100;
+
+  int boxFilterSize=3;
+  int thres=30;
+
   float targetHeadWHRatio=4.0;
+  float minHeadArea=45*45*targetHeadWHRatio;//90*350*0.9;
   float targetHeadWHRatioMargin=1.2;
-  float FacingThreshold=1;
+  float FacingThreshold=1.2;
   
   float cableSeachingRatio=0.2;
 
 
   const int cableCount=12;
+
+  const int cableTableCount=2;
   colorInfo tar_ci_bk[]={
-{.R=25.000000,.G=27.000000, .B=47.000000}, 
-{.R=159.000000,.G=45.000000, .B=69.000000}, 
-{.R=154.000000,.G=99.000000, .B=46.000000}, 
-{.R=200.000000,.G=135.000000, .B=71.000000}, 
-{.R=176.000000,.G=61.000000, .B=89.000000}, 
-{.R=25.000000,.G=67.000000, .B=95.000000}, 
-{.R=28.000000,.G=42.000000, .B=115.000000}, 
-{.R=48.000000,.G=43.000000, .B=91.000000}, 
-{.R=96.000000,.G=113.000000, .B=181.000000}, 
-{.R=78.000000,.G=43.000000, .B=65.000000}, 
-{.R=19.000000,.G=20.000000, .B=34.000000}, 
-{.R=124.000000,.G=39.000000, .B=62.000000}, 
+    
+      {.R=17.000000,.G=18.000000, .B=27.000000}, 
+      {.R=84.000000,.G=28.000000, .B=39.000000}, 
+      {.R=32.000000,.G=33.000000, .B=53.000000}, 
+      {.R=114.000000,.G=82.000000, .B=34.000000}, 
+      {.R=100.000000,.G=40.000000, .B=51.000000}, 
+      {.R=19.000000,.G=39.000000, .B=55.000000}, 
+      {.R=18.000000,.G=27.000000, .B=67.000000}, 
+      {.R=30.000000,.G=28.000000, .B=54.000000}, 
+      {.R=64.000000,.G=77.000000, .B=113.000000}, 
+      {.R=52.000000,.G=31.000000, .B=38.000000}, 
+      {.R=16.000000,.G=17.000000, .B=25.000000}, 
+      {.R=82.000000,.G=29.000000, .B=38.000000}, 
+    
+      {.R=17.000000,.G=18.000000, .B=27.000000}, 
+      {.R=84.000000,.G=28.000000, .B=39.000000}, 
+      {.R=32.000000,.G=33.000000, .B=53.000000}, 
+      {.R=114.000000,.G=82.000000, .B=34.000000}, 
+      {.R=100.000000,.G=40.000000, .B=51.000000}, 
+      {.R=19.000000,.G=39.000000, .B=55.000000}, 
+      {.R=18.000000,.G=27.000000, .B=67.000000}, 
+      {.R=30.000000,.G=28.000000, .B=54.000000}, 
+      {.R=64.000000,.G=77.000000, .B=113.000000}, 
+      {.R=52.000000,.G=31.000000, .B=38.000000}, 
+      {.R=16.000000,.G=17.000000, .B=25.000000}, 
+      {.R=82.000000,.G=29.000000, .B=38.000000}, 
+    
   };
 
 
   colorInfo tar_ci_fr[]={
-{.R=23.000000,.G=25.000000, .B=41.000000}, 
-{.R=135.000000,.G=39.000000, .B=62.000000}, 
-{.R=196.000000,.G=136.000000, .B=69.000000}, 
-{.R=162.000000,.G=114.000000, .B=65.000000}, 
-{.R=169.000000,.G=57.000000, .B=82.000000}, 
-{.R=24.000000,.G=65.000000, .B=93.000000}, 
-{.R=26.000000,.G=41.000000, .B=114.000000}, 
-{.R=47.000000,.G=43.000000, .B=94.000000}, 
-{.R=103.000000,.G=122.000000, .B=195.000000}, 
-{.R=82.000000,.G=46.000000, .B=69.000000}, 
-{.R=26.000000,.G=29.000000, .B=48.000000}, 
-{.R=140.000000,.G=43.000000, .B=69.000000}, 
+    
+      {.R=17.000000,.G=17.000000, .B=28.000000}, 
+      {.R=72.000000,.G=21.000000, .B=29.000000}, 
+      {.R=37.000000,.G=40.000000, .B=65.000000}, 
+      {.R=88.000000,.G=68.000000, .B=29.000000}, 
+      {.R=97.000000,.G=33.000000, .B=40.000000}, 
+      {.R=9.000000,.G=31.000000, .B=42.000000}, 
+      {.R=12.000000,.G=18.000000, .B=53.000000}, 
+      {.R=21.000000,.G=18.000000, .B=40.000000}, 
+      {.R=58.000000,.G=71.000000, .B=103.000000}, 
+      {.R=38.000000,.G=21.000000, .B=28.000000}, 
+      {.R=47.000000,.G=15.000000, .B=22.000000}, 
+      {.R=50.000000,.G=26.000000, .B=42.000000},
 
+      {.R=17.000000,.G=18.000000, .B=26.000000}, 
+      {.R=82.000000,.G=25.000000, .B=31.000000}, 
+      {.R=30.000000,.G=33.000000, .B=50.000000}, 
+      {.R=98.000000,.G=79.000000, .B=29.000000}, 
+      {.R=106.000000,.G=41.000000, .B=45.000000}, 
+      {.R=14.000000,.G=39.000000, .B=52.000000}, 
+      {.R=15.000000,.G=24.000000, .B=61.000000}, 
+      {.R=28.000000,.G=27.000000, .B=53.000000}, 
+      {.R=62.000000,.G=77.000000, .B=107.000000}, 
+      {.R=47.000000,.G=28.000000, .B=34.000000}, 
+      {.R=18.000000,.G=18.000000, .B=24.000000}, 
+      {.R=81.000000,.G=31.000000, .B=38.000000},
 
   };  
-  float cableRatio=0.073;
+  float cableRatio=0.074;
   float maxDiffMargin=24;
 
 
@@ -618,8 +703,9 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
   // acvSaveBitmapFile("step0H.bmp", &buf2);
   // acvHSVThreshold(&buf2,0,256,256,128,255,50);
   acvHSVThreshold(&buf2,HFrom,HTo,SMax,SMin,VMax,VMin); //0V ~255  1S ~255  2H ~252
-  acvBoxFilter(&ImgOutput,&buf2,3);
-  acvThreshold(&buf2,30);
+
+  acvBoxFilter(&ImgOutput,&buf2,boxFilterSize);
+  acvThreshold(&buf2,thres);
   // acvSaveBitmapFile("step0.bmp", &buf2);
   acvTurn(&buf2);
 
@@ -786,10 +872,6 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
     }
 
 
-    // cJSON_AddItemToObject(jsonRep,"rect_origin",reports_jarr);
-    // cJSON_AddItemToObject(jsonRep,"rect_vlong",reports_jarr);
-    // cJSON_AddItemToObject(jsonRep,"rect_vshort",reports_jarr);
-
     cJSON_AddBoolToObject(singleRep, "front_facing", isFrontFace);
 
     
@@ -806,49 +888,35 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
 
       colorInfo ci[100];
       LineParseCable(img,&buf1,vec_p1,vec_p2,cableRatio,(1-cableRatio*cableCount)/2,cableCount,5,ci);
-      float minScore=99;
-      float minBriRatio=1;
-      float maxDiffSq=0;
-      for(int i=0;i<cableCount;i++)
+
+      printf("====================\n");
+      for(int j=0;j<cableCount;j++)
       {
-        float diffR=tar_ci[i].R-ci[i].R;
-        float diffG=tar_ci[i].G-ci[i].G;
-        float diffB=tar_ci[i].B-ci[i].B;
-
-        float mean = (diffR+diffG+diffB)/3;
-        diffR-=mean;
-        diffG-=mean;
-        diffB-=mean;
-
-        float tarMag = tar_ci[i].R*tar_ci[i].R+tar_ci[i].G*tar_ci[i].G+tar_ci[i].B*tar_ci[i].B;
-        float curMag = ci[i].R*ci[i].R+ci[i].G*ci[i].G+ci[i].B*ci[i].B;
-
-        float briRatio=curMag/tarMag;
-        if(briRatio>1)briRatio=1/briRatio;
-        float dotP   =(tar_ci[i].R*ci[i].R+tar_ci[i].G*ci[i].G+tar_ci[i].B*ci[i].B)/sqrt(tarMag*curMag);
-        float diffSq=diffR*diffR+diffG*diffG+diffB*diffB;
-        if(maxDiffSq<diffSq)
-        {
-          maxDiffSq=diffSq;
-        }
-        if(minScore>dotP)
-        {
-         minScore=dotP;
-        }
-        if(minBriRatio>briRatio )
-        {
-         minBriRatio=briRatio;
-        }
-        
-        printf("{.R=%f,.G=%f, .B=%f}, maxDiffSq:%f\n",ci[i].R,ci[i].G,ci[i].B, sqrt(diffSq));
+        printf("{.R=%f,.G=%f, .B=%f},\n",ci[j].R,ci[j].G,ci[j].B);
       }
-      minBriRatio=sqrt(minBriRatio);
-      maxDiffSq=sqrt(maxDiffSq);
-      printf("\n");
-      LOGI("minScore=%f, minBriRatio=%f maxDiffSq=%f",minScore, minBriRatio,maxDiffSq);
+      printf("====================\n");
+
+      float min_maxDiff=99999;
+      int min_maxDiffIdx=-1;
+
+      for(int j=0;j<cableTableCount;j++)
+      {
+        float _maxDiff;
+        int _maxDiffIdx=-1;
+        colorCompare(tar_ci+j*cableCount, ci, cableCount,&_maxDiff,&_maxDiffIdx);
+
+        if(min_maxDiff>_maxDiff)
+        {
+          min_maxDiff=_maxDiff;
+          min_maxDiffIdx=_maxDiffIdx;
+        }
+
+      }
+      LOGI("min_maxDiff:%f min_maxDiffIdx:%d",min_maxDiff,min_maxDiffIdx);
+
       acv_XY rect_center={pt_anchor.X+vec_short.X/2+vec_long.X/2,pt_anchor.Y+vec_short.Y/2+vec_long.Y/2};
       //if(minScore<0.90 || minBriRatio<0.5)
-      if(maxDiffSq>maxDiffMargin)
+      if(min_maxDiff>maxDiffMargin)
       {
         acvDrawCrossX(img,rect_center.X,rect_center.Y, 50, 0, 0,255, 10);
       }
@@ -856,7 +924,7 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
       {
         acvDrawCircle(img,rect_center.X,rect_center.Y, 50,10, 0, 255,0, 10);
       }
-      cJSON_AddNumberToObject(singleRep, "score", minScore);
+      cJSON_AddNumberToObject(singleRep, "maxDiff", min_maxDiff);
 
     }
 
@@ -882,14 +950,14 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
     //   statMoment[0],statMoment[1],statMoment[1]/statMoment[0]);
 
       //:5.313280
-    // for(int k=1;k<contour.size();k++)
-    // {
+    for(int k=1;k<contour.size();k++)
+    {
 
-    //   // LOGI("j:%d, %f %f",j,contour[j].X,contour[j].Y);
-    //   acvDrawLine(&buf2,
-    //   (int)contour[k-1].X,(int)contour[k-1].Y,
-    //   (int)contour[k].X,(int)contour[k].Y,0,255,255,3);
-    // }
+      // LOGI("j:%d, %f %f",j,contour[j].X,contour[j].Y);
+      acvDrawLine(&buf2,
+      (int)contour[k-1].X,(int)contour[k-1].Y,
+      (int)contour[k].X,(int)contour[k].Y,0,255,255,3);
+    }
   }
   // acvCloneImage(&buf2,img,-1);
   // acvSaveBitmapFile("srcImg.bmp", img);

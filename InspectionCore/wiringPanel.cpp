@@ -7,7 +7,6 @@
 #include "cJSON.h"
 #include "logctrl.h"
 #include "DatCH_Image.hpp"
-#include "tmpCodes.hpp"
 #include "DatCH_WebSocket.hpp"
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"

@@ -791,6 +791,19 @@ float acvVectorOrder(acv_XY p1,acv_XY p2,acv_XY p3)
   return acv2DCrossProduct(v1,v2);
 }
 
+
+acv_XY acvLineIntersect(acv_Line line1, acv_Line line2)
+{
+  acv_XY p1=line1.line_anchor;
+  float d1= acvDistance_Signed(line2, p1);
+
+  acv_XY p2=acvVecAdd(line1.line_anchor,line1.line_vec);
+  float d2= acvDistance_Signed(line2, p2);
+  
+  return acvVecInterp(p1,p2,d1/(d1-d2));
+}
+
+
 acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line)
 {
   line.line_vec=acvVecNormalize(line.line_vec);
