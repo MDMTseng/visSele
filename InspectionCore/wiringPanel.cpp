@@ -2112,7 +2112,21 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       ImageCropY = 0;
       ImageCropW = 999999999;
       ImageCropH = 999999999;
+      cJSON *InspectionParam = JFetch_ARRAY(json, "InspectionParam");
+      if (InspectionParam)
+      {
+        cJSON * retInfo =matchingEng.SetParam(InspectionParam);
 
+        char *jstr = cJSON_Print(retInfo);
+        cJSON_Delete(retInfo);
+
+        bpg_dat = GenStrBPGData("DT", jstr);//Special Return from cmd
+        bpg_dat.pgID = dat->pgID;
+        datCH_BPG.data.p_BPG_data = &bpg_dat;
+        self->SendData(datCH_BPG);
+        delete jstr;
+
+      }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
       if (ImTranseSetup)
       {

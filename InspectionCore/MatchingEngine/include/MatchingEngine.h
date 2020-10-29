@@ -8,6 +8,7 @@ using namespace std;
 #include "FeatureManager.h"
 #include "FeatureManager_group.h"
 
+#include "cJSON.h"
 
 
 class MatchingEngine {
@@ -18,6 +19,7 @@ public:
   int ResetFeature();
   void setBacPac(FeatureManager_BacPac *bacpac){this->bacpac=bacpac;};
   int AddMatchingFeature(const char *json_str);
+  cJSON * SetParam(cJSON *json_str);
   int AddMatchingFeature(FeatureManager *featureSet);
   int FeatureMatching(acvImage *img);
   const FeatureReport *GetReport();

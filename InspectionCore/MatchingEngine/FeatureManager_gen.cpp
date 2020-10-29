@@ -583,30 +583,82 @@ void colorCompare(colorInfo *arr1, colorInfo *arr2, int arrL,float *ret_maxDiff,
   if(ret_maxDiffIdx)*ret_maxDiffIdx=maxDiffIdx;
 }
 
+#define SETPARAM_INT_NUMBERTTT(json,pName) #pName
+
+#define SETPARAM_INT_NUMBER(json,pName) {double *tmpN; if((tmpN=JFetch_NUMBER(json,#pName)))pName=(int)*tmpN;}
+#define SETPARAM_DOU_NUMBER(json,pName) {double *tmpN; if((tmpN=JFetch_NUMBER(json,#pName)))pName=*tmpN;}
+
+
+#define RETPARAM_NUMBER(json,pName) {cJSON_AddNumberToObject(json, #pName, pName);}
+cJSON * FeatureManager_gen::SetParam(cJSON *jsonParam)
+{
+  char* jsonStr = cJSON_Print(jsonParam);
+  LOGI("%s..",jsonStr);
+  delete jsonStr;
+  // exit(-1);
+  // double *tmpN;
+  // if((tmpN=JFetch_NUMBER(jsonParam,"HFrom")))
+  //   HFrom=(int)*tmpN;
+  SETPARAM_INT_NUMBER(jsonParam,HFrom);
+  SETPARAM_INT_NUMBER(jsonParam,HTo);
+  SETPARAM_INT_NUMBER(jsonParam,SMax);
+  SETPARAM_INT_NUMBER(jsonParam,SMin);
+  SETPARAM_INT_NUMBER(jsonParam,VMax);
+  LOGI("VMax:%d::%s",VMax,SETPARAM_INT_NUMBERTTT(jsonParam,VMax));
+  SETPARAM_INT_NUMBER(jsonParam,VMin);
+
+
+
+  SETPARAM_INT_NUMBER(jsonParam,boxFilterSize);
+  SETPARAM_INT_NUMBER(jsonParam,thres);
+
+
+
+  SETPARAM_DOU_NUMBER(jsonParam,targetHeadWHRatio);
+  SETPARAM_DOU_NUMBER(jsonParam,minHeadArea);
+  SETPARAM_DOU_NUMBER(jsonParam,targetHeadWHRatioMargin);
+  SETPARAM_DOU_NUMBER(jsonParam,FacingThreshold);
+  
+
+  SETPARAM_DOU_NUMBER(jsonParam,cableSeachingRatio);
+  SETPARAM_INT_NUMBER(jsonParam,cableCount);
+  SETPARAM_INT_NUMBER(jsonParam,cableTableCount);
+
+
+  cJSON* ret_jobj = NULL;
+  if (getDataFromJson(jsonParam, "get_param", NULL) == cJSON_True)
+  {
+    ret_jobj = cJSON_CreateObject();
+    RETPARAM_NUMBER(ret_jobj,HFrom);
+    RETPARAM_NUMBER(ret_jobj,HTo);
+    RETPARAM_NUMBER(ret_jobj,SMax);
+    RETPARAM_NUMBER(ret_jobj,SMin);
+    RETPARAM_NUMBER(ret_jobj,VMax);
+    RETPARAM_NUMBER(ret_jobj,VMin);
+
+    RETPARAM_NUMBER(ret_jobj,boxFilterSize);
+    RETPARAM_NUMBER(ret_jobj,thres);
+
+    RETPARAM_NUMBER(ret_jobj,targetHeadWHRatio);
+    RETPARAM_NUMBER(ret_jobj,minHeadArea);
+    RETPARAM_NUMBER(ret_jobj,targetHeadWHRatioMargin);
+    RETPARAM_NUMBER(ret_jobj,FacingThreshold);
+
+    RETPARAM_NUMBER(ret_jobj,cableSeachingRatio);
+    RETPARAM_NUMBER(ret_jobj,cableCount);
+    RETPARAM_NUMBER(ret_jobj,cableTableCount);
+  }
+  // float cableSeachingRatio=0.2;
+
+
+  // const int cableCount=12;
+
+  // const int cableTableCount=2;
+  return ret_jobj;
+}
 int FeatureManager_gen::FeatureMatching(acvImage *img)
 {
   
-  int HFrom=0;
-  int HTo=256;
-  int SMax=100;
-  int SMin=0;
-  int VMax=255;
-  int VMin=100;
-
-  int boxFilterSize=3;
-  int thres=30;
-
-  float targetHeadWHRatio=4.0;
-  float minHeadArea=45*45*targetHeadWHRatio;//90*350*0.9;
-  float targetHeadWHRatioMargin=1.2;
-  float FacingThreshold=1.2;
-  
-  float cableSeachingRatio=0.2;
-
-
-  const int cableCount=12;
-
-  const int cableTableCount=2;
   colorInfo tar_ci_bk[]={
     
       {.R=17.000000,.G=18.000000, .B=27.000000}, 
@@ -703,7 +755,8 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
   // acvSaveBitmapFile("step0H.bmp", &buf2);
   // acvHSVThreshold(&buf2,0,256,256,128,255,50);
   acvHSVThreshold(&buf2,HFrom,HTo,SMax,SMin,VMax,VMin); //0V ~255  1S ~255  2H ~252
-
+  acvCloneImage(&buf2,img,-1);
+  return -1;
   acvBoxFilter(&ImgOutput,&buf2,boxFilterSize);
   acvThreshold(&buf2,thres);
   // acvSaveBitmapFile("step0.bmp", &buf2);

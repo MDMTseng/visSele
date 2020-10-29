@@ -8,6 +8,7 @@
 #include "logctrl.h"
 #include <common_lib.h>
 #include "FeatureReport_UTIL.h"
+#include "cJSON.h"
 
 int MatchingEngine::ResetFeature()
 {
@@ -93,6 +94,25 @@ int MatchingEngine::AddMatchingFeature(const char *json_str)
   return AddMatchingFeature(featureSet);
 }
 
+
+
+
+cJSON * MatchingEngine::SetParam(cJSON *json)
+{
+  if(!cJSON_IsArray(json))return NULL;
+  cJSON * retJson=cJSON_CreateArray();
+  for(int i=0;i<featureBundle.size();i++)
+  {
+    cJSON *json_param= cJSON_GetArrayItem(json,i);
+    if(json_param==NULL)break;
+    cJSON * retInfo = featureBundle[i]->SetParam(json_param);
+    if(retInfo==NULL)
+      retInfo = cJSON_CreateNull();
+    cJSON_AddItemToArray(retJson, retInfo);
+  }
+
+  return retJson;
+}
 
 int MatchingEngine::FeatureMatching(acvImage *img)
 {

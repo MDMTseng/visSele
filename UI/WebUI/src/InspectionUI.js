@@ -1949,17 +1949,17 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.inspMode == "CI") {
       
-      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
-       }, undefined);
+      // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+      //  }, undefined);
 
 
-      // this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-      // { CameraSetting: { down_samp_w_calib:false } });
+      this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+      { CameraSetting: { down_samp_w_calib:false } });
 
-      // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
-      //   type:"gen"
-      // }
-      // }, undefined);
+      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
+        type:"gen"
+      }
+      }, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 1000,
@@ -1987,7 +1987,8 @@ class APP_INSP_MODE extends React.Component {
       DB_Conn_state: undefined,
       inspUploadedCount: 0,
       onROISettingCallBack:undefined,
-      measureDisplayRank:0
+      measureDisplayRank:0,
+      isInSettingUI:false
     };
 
     
@@ -2031,6 +2032,9 @@ class APP_INSP_MODE extends React.Component {
     let pre_reportCount=nextProps.reportStatisticState.reportCount;
     let isReportInc=pre_reportCount!==this.pre_reportCount
     this.pre_reportCount=pre_reportCount;
+    if(this.state!==nextState){
+      return true;
+    }
     // console.log("///",isReportInc);
     return isReportInc;
   }
@@ -2147,48 +2151,112 @@ class APP_INSP_MODE extends React.Component {
     //console.log(">>>>defModelName>>>>>"+this.props.defModelName);
     MenuSet = [
       <BASE_COM.IconButton
-        iconType={<ArrowLeftOutlined />}
-        dict={this.props.DICT}
-        key="<"
-        addClass="layout black vbox width3"
-        onClick={this.props.ACT_EXIT} />
+      iconType={<ArrowLeftOutlined />}
+      dict={this.props.DICT}
+      key="<"
+      addClass="layout black vbox width3"
+      onClick={this.props.ACT_EXIT} />
       ,
-      
       <Popover content={<div>{this.props.defModelName}<br/>{this.props.defModelPath} </div>}  placement="bottomLeft"  trigger="hover">
         <div style={{backgroundColor:"#444"}} className="s layout vbox width9"> <FileOutlined/> {shortedModelName} </div>
-       
+      
       </Popover>
-
-      ,
-      <BASE_COM.IconButton
-        iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
-        key="LOADDef"
-        addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
-        text={
-          (this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected)
-          +" "+this.state.inspUploadedCount
-        }
-        onClick={() => { }} />
-      ,
-
-      <div className="s black width12 HXA">
-        <TagDisplay_rdx size="middle"/>
-        {/* <Tag className="large InspTag fixed" key="MACHX"
-         onClick={()=>
-          onTagEdit()}
-         >+</Tag> */}
-         <br/>
-        {<Tag className="large" color="gray" onClick={() =>{
-          this.setInspectionRankUI()
-        }}><SettingOutlined /></Tag>}
-      </div>
-
-      ,
-      this.state.additionalUI
     ];
 
+    MenuSet.push(
+      this.state.additionalUI
+    );
+
+    if(!this.state.isInSettingUI)
+    {
+      MenuSet.push([
+        
+        <BASE_COM.IconButton
+          iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
+          key="LOADDef"
+          addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
+          text={
+            (this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected)
+            +" "+this.state.inspUploadedCount
+          }
+          onClick={() => { }} />
+        ,
+
+        <div className="s black width12 HXA">
+          <TagDisplay_rdx size="middle"/>
+          {/* <Tag className="large InspTag fixed" key="MACHX"
+          onClick={()=>
+            onTagEdit()}
+          >+</Tag> */}
+          <br/>
+          <Tag className="large" color="gray" onClick={() =>{
+            this.setInspectionRankUI()
+          }}><SettingOutlined /></Tag>
+
+          {/* <Tag className="large" color="gray" onClick={() =>{
+            this.setState({isInSettingUI:true});
+          }}><SettingOutlined /></Tag> */}
+
+        </div>
+
+      ]);
+
+      let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
+      //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
+      MenuSet.push(
+        <ObjInfoList
+          IR={trackingWindowInfo}
+          DICT={this.props.DICT}
+          measureDisplayRank={this.state.measureDisplayRank}
+          IR_decotrator={this.props.info_decorator}
+          checkResult2AirAction={this.checkResult2AirAction}
+          uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
+          shape_def={this.props.shape_list}
+          key="ObjInfoList"
+          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND(this.props.WS_ID, tl, prop, data, uintArr); }}
+        />);
+    }
+    else
+    {
+      MenuSet.push(<>
+      
+        <Divider orientation="left" key="ERROR">OOOO</Divider>
+        <Slider key="speedSlider"
+          className="layout width12"
+          min={0}
+          max={255}
+          onChange={(value) => {
+            
 
 
+            new Promise((resolve, reject) => {
+              this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+              { 
+                InspectionParam:[{
+                  get_param:true,
+                  VMax:value
+                }]
+              },undefined, { resolve, reject })
+
+            }).then((pkts) => {
+        
+              log.info("ST", pkts);
+            })
+            // value
+
+
+
+          }}
+          
+          step={1}
+        />
+        <Divider orientation="left" key="ERROR">XXXX</Divider>
+        </>
+      );
+      MenuSet.push(
+
+      );
+    }
     switch (this.state.GraphUIDisplayMode) {
       case 0:
         CanvasWindowRatio = 12;
@@ -2352,20 +2420,7 @@ class APP_INSP_MODE extends React.Component {
     //   reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
     //   camera_calibration_report={this.props.camera_calibration_report} />);
 
-    let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
-    //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
-    MenuSet.push(
-      <ObjInfoList
-        IR={trackingWindowInfo}
-        DICT={this.props.DICT}
-        measureDisplayRank={this.state.measureDisplayRank}
-        IR_decotrator={this.props.info_decorator}
-        checkResult2AirAction={this.checkResult2AirAction}
-        uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
-        shape_def={this.props.shape_list}
-        key="ObjInfoList"
-        WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND(this.props.WS_ID, tl, prop, data, uintArr); }}
-      />);
+
     return (
       <div className="overlayCon HXF">
 
