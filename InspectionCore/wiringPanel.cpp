@@ -361,9 +361,9 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
         }
         else
         {
-          BSum = src.CVector[src_i][(src_j)*3 + 2];
+          BSum = src.CVector[src_i][(src_j)*3 + 0];
           GSum = src.CVector[src_i][(src_j)*3 + 1];
-          RSum = src.CVector[src_i][(src_j)*3 + 0];
+          RSum = src.CVector[src_i][(src_j)*3 + 2];
         }
       }
       uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);

@@ -162,7 +162,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           int d = ((uint64_t)(pixB*tExp))>>13;
           if(d<0)d=0;
           else if(d>255)d=255;
-          img.CVector[i][j*3+2] = d;
+          img.CVector[i][j*3+0] = d;
 
           d = ((uint64_t)(pixG*tExp))>>13;
           if(d<0)d=0;
@@ -173,7 +173,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           d = ((uint64_t)(pixR*tExp))>>13;
           if(d<0)d=0;
           else if(d>255)d=255;
-          img.CVector[i][j*3+0] =d;
+          img.CVector[i][j*3+2] =d;
 
         }
       }
