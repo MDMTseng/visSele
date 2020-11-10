@@ -11,6 +11,8 @@
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"
 #include "MatchingCore.h"
+#include "acvImage_BasicTool.hpp"
+
 
 #include <sys/stat.h>
 #include <libgen.h>
@@ -975,8 +977,11 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
 
 acvImage * getImage(CameraLayer *camera)
 {
-  CameraLayer::status st=camera->SnapFrame();
-  LOGI("st:%d",st);
+  for(int i=0;;i++)
+  {
+    if(camera->SnapFrame()==CameraLayer::ACK)break;
+    if(i>10)return NULL;
+  }
   return camera->GetFrame();
 }
 
@@ -1447,6 +1452,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         else if(srcImg == NULL)
         {
           srcImg = getImage(camera);
+          cacheImage.ReSize(srcImg);
+          
+          acvCloneImage(srcImg, &cacheImage, -1);
+
         }
 
         if (srcImg == NULL)
@@ -1455,6 +1464,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           LOGE("%s", err_str);
           break;
         }
+        // SaveIMGFile("data/test1.png",srcImg);
 
         char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
 
@@ -1469,7 +1479,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         }
 
 
-        
+        bool isCalibNA=false;
         cJSON *img_property = JFetch_OBJECT(json, "img_property");
         if(img_property)
         {
@@ -1478,9 +1488,12 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           
 
           LOGI("calibInfo_type:%s",calibInfo_type);
-          if(calibInfo_type==NULL)
+          if(strcmp(calibInfo_type, "NA") == 0 )
           {
-
+            isCalibNA=true;
+            select_bacpac=&neutral_bacpac;
+            neutral_bacpac.sampler->getCalibMap()->calibPpB=1;
+            neutral_bacpac.sampler->getCalibMap()->calibmmpB=1;
           }
           else if (strcmp(calibInfo_type, "neutral") == 0 || strcmp(calibInfo_type, "disable") == 0 )
           {
@@ -1561,8 +1574,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             cJSON *jobj = matchingEng.FeatureReport2Json(report);
             AttachStaticInfo(jobj, cb);
             char *jstr = cJSON_Print(jobj);
-            if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
-
+            cJSON_Delete(jobj);
+            
             //LOGI("__\n %s  \n___",jstr);
             bpg_dat = GenStrBPGData("RP", jstr);
             bpg_dat.pgID = dat->pgID;
@@ -1586,19 +1599,24 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         if(img_property)
         {
-          int _scale=2;
           double *pscale=JFetch_NUMBER(img_property, "scale");
           if(pscale)
           {
+            int _scale=2;
             _scale=(int)*pscale;
             
             bpg_dat = GenStrBPGData("IM", NULL);
             BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
+
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
+            
+
+            ImageSampler *sampler =isCalibNA?NULL:select_bacpac->sampler;
             iminfo.fullHeight=srcImg->GetHeight();
             iminfo.fullWidth=srcImg->GetWidth();
-            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, calib_bacpac.sampler,0);
+            ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, sampler,0);
+
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
             bpg_dat.callback = DatCH_BPG_acvImage_Send;
             bpg_dat.pgID = dat->pgID;
@@ -1798,7 +1816,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             AttachStaticInfo(jobj, cb);
 
             char *jstr = cJSON_Print(jobj);
-            if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
+            cJSON_Delete(jobj);
 
             //LOGI("__\n %s  \n___",jstr);
             bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
@@ -1920,7 +1938,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         calib_bacpac.cam=camera;
       }
     }
-    else if (checkTL("SC", dat))//[S]petial [C]MD
+    else if (checkTL("SC", dat))//[S]pecial [C]MD
     {
       DatCH_Data datCH_BPG =
           BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -2193,6 +2211,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       {
         CameraSetup(*camera, *camSettingObj);
       }
+
+
+
+      if (getDataFromJson(json, "CameraTriggerShutter", NULL) == cJSON_True)
+      {
+
+        camera->Trigger();
+      }
+
     }
     else if (checkTL("PR", dat))
     {
@@ -2645,8 +2672,10 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 {
+  
   if (cb->cameraFramesLeft == 0)
   {
+    // camera->TriggerMode(1);
     MT_UNLOCK();
     return;
   }
@@ -2825,7 +2854,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         //   cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
         // }
         char *jstr = cJSON_Print(jobj);
-        if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
+        cJSON_Delete(jobj);
 
         //LOGI("__\n %s  \n___",jstr);
         bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
@@ -2874,7 +2903,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       int cropH = ImageCropH;
 
       // LOGI(">>>>");
-      ImageSampler *sampler=(downSampWithCalib)?bacpac->sampler:NULL;
+      ImageSampler *sampler=(false)?bacpac->sampler:NULL;
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,0,
                         iminfo.offsetX, iminfo.offsetY, cropW, cropH);
@@ -3250,7 +3279,7 @@ int simpleTest(char *imgName, char *defName)
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
     AttachStaticInfo(jobj, cb);
     char *jstr = cJSON_Print(jobj);
-    if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
+    cJSON_Delete(jobj);
     LOGI("...\n%s\n...", jstr);
   }
   printf("Start to send....\n");
@@ -3387,7 +3416,7 @@ int testCode()
       AttachStaticInfo(jobj, cb);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char *jstr = cJSON_Print(jobj);
-      if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
+      cJSON_Delete(jobj);
 
       LOGI("__\n %s  \n___", jstr);
 
@@ -3548,7 +3577,7 @@ int cp_main(int argc, char **argv)
       AttachStaticInfo(jobj, cb);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char *jstr = cJSON_Print(jobj);
-      if(report->type!=FeatureReport::cjson)cJSON_Delete(jobj);
+      cJSON_Delete(jobj);
 
       LOGI("__\n %s  \n___", jstr);
 

@@ -1949,17 +1949,17 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.inspMode == "CI") {
       
-      // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
-      //  }, undefined);
+      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+       }, undefined);
 
 
-      this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-      { CameraSetting: { down_samp_w_calib:false } });
+      // this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+      // { CameraSetting: { down_samp_w_calib:false } });
 
-      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
-        type:"gen"
-      }
-      }, undefined);
+      // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
+      //   type:"gen"
+      // }
+      // }, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 1000,
@@ -1988,10 +1988,32 @@ class APP_INSP_MODE extends React.Component {
       inspUploadedCount: 0,
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
-      isInSettingUI:false
+      isInSettingUI:false,
+      SettingParamInfo:undefined
     };
 
     
+
+    new Promise((resolve, reject) => {
+      this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+      { 
+        InspectionParam:[{
+          get_param:true
+        }]
+      },undefined, { resolve, reject })
+
+    }).then((pkts) => {
+      let DT=pkts.find(pkt=>pkt.type=="DT");
+      console.log("-------DT",DT,"   pkts:",pkts);
+      if(DT!==undefined && DT.data!==undefined&& DT.data[0]!==undefined)
+      {
+        this.setState({SettingParamInfo:DT.data[0]});
+      }
+      else
+      {
+        this.setState({SettingParamInfo:undefined});
+      }
+    })
 
 
     this.CameraCtrl = new CameraCtrl({
@@ -2065,6 +2087,18 @@ class APP_INSP_MODE extends React.Component {
       </Modal>]
     })
   }
+
+
+  MatchingEnginParamSet(key,value)
+  {
+    this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+              { 
+                InspectionParam:[{
+                  [key]:value
+                }]
+              })
+  }
+
 
   render() {
 
@@ -2193,9 +2227,9 @@ class APP_INSP_MODE extends React.Component {
             this.setInspectionRankUI()
           }}><SettingOutlined /></Tag>
 
-          {/* <Tag className="large" color="gray" onClick={() =>{
+          <Tag className="large" color="gray" onClick={() =>{
             this.setState({isInSettingUI:true});
-          }}><SettingOutlined /></Tag> */}
+          }}><SettingOutlined /></Tag>
 
         </div>
 
@@ -2218,41 +2252,32 @@ class APP_INSP_MODE extends React.Component {
     }
     else
     {
-      MenuSet.push(<>
-      
-        <Divider orientation="left" key="ERROR">OOOO</Divider>
-        <Slider key="speedSlider"
-          className="layout width12"
-          min={0}
-          max={255}
-          onChange={(value) => {
-            
-
-
-            new Promise((resolve, reject) => {
-              this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-              { 
-                InspectionParam:[{
-                  get_param:true,
-                  VMax:value
-                }]
-              },undefined, { resolve, reject })
-
-            }).then((pkts) => {
-        
-              log.info("ST", pkts);
-            })
-            // value
-
-
-
-          }}
+      if(this.state.SettingParamInfo!==undefined)
+      {
+        let paramSet = this.state.SettingParamInfo;
+        //["HFrom","HTo","VMax","VMin","SMax","SMin","boxFilter1_Size","boxFilter1_thres","boxFilter2_Size","boxFilter2_thres"]
+        MenuSet.push(
+          Object.keys(paramSet).map(key=>[
+          <Divider orientation="left" key={key+"_div"}>{key+":"+paramSet[key]}</Divider>,
           
-          step={1}
-        />
-        <Divider orientation="left" key="ERROR">XXXX</Divider>
-        </>
-      );
+          <Slider key={key+"_slider"}
+            className="layout width12"
+            min={0}
+            max={255}
+            onChange={(value) => {
+              if(paramSet[key]===undefined)return;
+              this.MatchingEnginParamSet(key,value);
+
+              this.setState({SettingParamInfo:{...paramSet,[key]:value}});
+              
+            }}
+            value={paramSet[key]}
+            step={1}
+          />
+          ])
+        
+        );
+      }
       MenuSet.push(
 
       );

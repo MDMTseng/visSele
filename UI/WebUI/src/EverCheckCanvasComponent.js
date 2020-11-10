@@ -1469,6 +1469,7 @@ class EverCheckCanvasComponent_proto {
   SetImg(img_info) {
     if (img_info == null || img_info == this.img_info) return;
     //this.zoomToCurSignature();
+    console.log(img_info);
     this.img_info = img_info;
     let img = img_info.img;
     this.secCanvas.width = img.width;
@@ -3463,6 +3464,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
       }
 
     }
+
   }
 
   SetImg(img_info) {
@@ -3572,7 +3574,281 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
 
+export const CableWireDef_Canvas_mode={
+  neutral:"neutral",
+  cableHeadPointEdit:"cableHeadPointEdit",
+
+  cableRegionSetUp:"cableRegionSetUp",
+
+  default:"neutral"
+}
+class CableWireDef_CanvasComponent extends EverCheckCanvasComponent_proto {
+
+  constructor(canvasDOM) {
+    super(canvasDOM);
+    this.ERROR_LOCK = false;
+    this.edit_DB_info = null;
+    let mmpp=1;
+    this.db_obj = {
+      cameraParam:{
+        mmpb2b:1,
+        ppb2b:1
+      }
+    };
+    this.db_obj.cameraParam.mmpb2b=mmpp*this.db_obj.cameraParam.ppb2b;
+    this.rUtil.renderParam.mmpp = mmpp;
+    this.mouse_close_dist = 10;
+
+    this.colorSet =
+      Object.assign(this.colorSet,
+        {
+          inspection_Pass: "rgba(0,255,0,0.1)",
+          inspection_production_Fail: "rgba(128,128,0,0.3)",
+          inspection_Fail: "rgba(255,0,0,0.1)",
+          inspection_UNSET: "rgba(128,128,128,0.1)",
+          inspection_NA: "rgba(64,64,64,0.1)",
+
+
+          color_NA: "rgba(128,128,128,0.5)",
+
+          color_UNSET: "rgba(128,128,128,0.5)",
+          color_SUCCESS: this.colorSet.measure_info,
+          color_FAILURE_opt: {
+            submargin1: "rgba(255,255,0,0.5)",
+          },
+          color_FAILURE: "rgba(255,0,0,0.5)",
+        }
+      );
+
+
+    this.modeInfo = {
+      type:CableWireDef_Canvas_mode.neutral
+    };//UI_SM_STATES.DEFCONF_MODE_NEUTRAL;
+
+    this.EmitEvent = (event) => { log.info(event); };
+
+    this.cableRegionInfo={
+      regions:[]
+    };
+
+    this.cur_editRegion=undefined;
+  }
+
+
+  onmouseup(evt) {
+    let pos = this.getMousePos(this.canvas, evt);
+    this.mouseStatus.x = pos.x;
+    this.mouseStatus.y = pos.y;
+    this.mouseStatus.status = 0;
+    this.camera.EndDrag();
+
+    this.debounce_zoom_emit();
+    this.ctrlLogic();
+    this.draw();
+  }
+
+
+  onmousedown(evt) 
+  {
+    switch(this.modeInfo.type)
+    {
+      case CableWireDef_Canvas_mode.neutral:
+        super.onmousedown(evt);
+        break;
+      case CableWireDef_Canvas_mode.cableRegionSetUp:
+        super.onmousedown(evt);
+        this.doDragging=false;
+        break;
+    }
+
+  }
+
+  onmouseup(evt) 
+  {
+
+    
+    switch(this.modeInfo.type)
+    {
+      case CableWireDef_Canvas_mode.neutral:
+        super.onmouseup(evt);
+        break;
+      case CableWireDef_Canvas_mode.cableRegionSetUp:
+        super.onmouseup(evt);
+       
+        break;
+    }
+  }
+
+
+
+
+
+  onmousemove(evt) {
+    let pos = this.getMousePos(this.canvas, evt);
+    this.mouseStatus.x = pos.x;
+    this.mouseStatus.y = pos.y;
+
+
+    let doDragging = false;
+    switch(this.modeInfo.type)
+    {
+      case CableWireDef_Canvas_mode.neutral:
+        doDragging=true;
+        break;
+      case CableWireDef_Canvas_mode.cableRegionSetUp:
+        
+        this.ctrlLogic();
+        this.draw();
+        break;
+    }
+
+    
+
+    if (doDragging) {
+      if (this.mouseStatus.status == 1) {
+        this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
+
+        this.ctrlLogic();
+        this.draw();
+      }
+
+    }
+  }
+
+  SetImg(img_info) {
+    if(img_info==null)return;
+    super.SetImg(img_info);
+    console.log(img_info);
+    if(this.IGNORE_IMAGE_FIT_TO_SCREEN!=true)
+      this.scaleImageToFitScreen();
+    this.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+  }
+
+  SetIM(info_IM) {
+    super.SetImg(info_IM); 
+  }
+  SetRP(info_RP) {
+
+  }
+
+  SetOPModeInfo(modeInfo)
+  {
+    this.modeInfo=modeInfo;
+  }
+
+  draw() {
+    let unitConvert = {
+      unit: "mm",//"μm",
+      mult: 1
+    };
+    let ctx = this.canvas.getContext('2d');
+    let ctx2nd = this.secCanvas.getContext('2d');
+    ctx.lineWidth = this.rUtil.getIndicationLineSize();
+    ctx.resetTransform();
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    let matrix = this.worldTransform();
+    ctx.setTransform(matrix.a, matrix.b, matrix.c,
+      matrix.d, matrix.e, matrix.f);
+      
+    {//TODO:HACK: 4X4 times scale down for transmission speed
+
+      let mmpp = this.rUtil.get_mmpp();
+
+      let scale = 1;
+      if (this.img_info !== undefined && this.img_info.scale !== undefined)
+        scale = this.img_info.scale;
+
+      
+      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.webkitImageSmoothingEnabled = scale!=1;
+      let mmpp_mult = scale * mmpp;
+
+      //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
+      ctx.save();
+
+      ctx.scale(mmpp_mult, mmpp_mult);
+      if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
+        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
+      }
+
+      
+      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+      ctx.drawImage(this.secCanvas, 0, 0);
+      ctx.restore();
+    }
+
+
+    // console.log(this.modeInfo);
+    switch(this.modeInfo.type)
+    {
+      case CableWireDef_Canvas_mode.cableRegionSetUp:
+        if(this.cur_editRegion!==undefined)
+        {
+
+          this.rUtil.drawpoint(ctx, this.cur_editRegion.pt1);
+          this.rUtil.drawpoint(ctx, this.cur_editRegion.pt2);
+        }
+        this.cableRegionInfo.regions.forEach(reg=>{
+          
+          this.rUtil.drawpoint(ctx,reg.pt1,"cross");
+          this.rUtil.drawpoint(ctx,reg.pt2,"cross");
+        })
+
+        break;
+    }
+  }
+
+  ctrlLogic() {
+    
+    let wMat = this.worldTransform();
+    //log.debug("this.camera.matrix::",wMat);
+    let worldTransform = new DOMMatrix().setMatrixValue(wMat);
+    let worldTransform_inv = worldTransform.invertSelf();
+    //this.Mouse2SecCanvas = invMat;
+    let mPos = this.mouseStatus;
+    let mouseOnCanvas2 = this.VecX2DMat(mPos, worldTransform_inv);
+
+    let pmPos = { x: this.mouseStatus.px, y: this.mouseStatus.py };
+    let pmouseOnCanvas2 = this.VecX2DMat(pmPos, worldTransform_inv);
+
+    let ifOnMouseLeftClickEdge = (this.mouseStatus.status != this.mouseStatus.pstatus);
+    
+    if(ifOnMouseLeftClickEdge )
+    {
+      if(this.mouseStatus.status==1)
+      {
+        // this.mouseOnCanvas={...mouseOnCanvas2};
+      }
+    }
+
+    switch(this.modeInfo.type)
+    {
+      case CableWireDef_Canvas_mode.cableRegionSetUp:
+        if(this.mouseStatus.status==1)
+        {
+
+          // console.log(this.cur_editRegion);
+          if(ifOnMouseLeftClickEdge)this.cur_editRegion={pt1:{...mouseOnCanvas2}};
+          this.cur_editRegion.pt2={...mouseOnCanvas2};
+        }
+        else{
+          
+          if(ifOnMouseLeftClickEdge)
+          {
+            this.cableRegionInfo.regions.push({...this.cur_editRegion});
+            this.cur_editRegion=undefined;
+          }
+        }
+        break;
+    }
+    
+    this.mouseStatus.pstatus = this.mouseStatus.status;
+  }
+}
+
+
+
 
 export default { 
   Preview_CanvasComponent, INSP_CanvasComponent, SLCALIB_CanvasComponent, DEFCONF_CanvasComponent,
-  SHAPE_TYPE_COLOR,InstInsp_CanvasComponent,RepDisplay_CanvasComponent }
+  SHAPE_TYPE_COLOR,InstInsp_CanvasComponent,RepDisplay_CanvasComponent,CableWireDef_CanvasComponent,CableWireDef_Canvas_mode }

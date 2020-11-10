@@ -17,7 +17,7 @@ import APP_INSP_MODE_rdx from './InspectionUI';
 import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import InstInspUI_rdx from './InstInspUI';
-
+import CABLE_WIRE_CONF_MODE_rdx from './CableWireConfUI';
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset } from 'UTIL/MISC_Util';
@@ -53,6 +53,7 @@ import {
   DeleteOutlined,
   MinusOutlined,
   SelectOutlined,
+  SaveOutlined,
   MonitorOutlined,
   FolderOpenOutlined,
   InfoCircleOutlined,
@@ -66,6 +67,7 @@ import {
   DisconnectOutlined,
   ScanOutlined,
   SettingOutlined,
+  CameraOutlined,
   DatabaseOutlined,
   QrcodeOutlined,
   FundOutlined,
@@ -1019,7 +1021,10 @@ const MainUI=()=>{
         type:"InstInsp",
         name:DICT.mainui.MODE_SELECT_INST_INSP
       },
-  
+      CableWireConf:{
+        type:"CableWireConf",
+        name:"CableWireConf"
+      },
       BackLightCalib:{
         type:"BackLightCalib",
         name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
@@ -1151,6 +1156,65 @@ const MainUI=()=>{
       break;
     case  s_statesTable.Inspection:
       
+      break;
+    case  s_statesTable.CableWireConf:
+      UI.push(<CABLE_WIRE_CONF_MODE_rdx
+      
+        onExtraCtrlUpdate={extraCtrls=>{
+          
+          let extraCtrlUI=[];
+          
+          if(extraCtrls.open!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<FolderOpenOutlined />,
+              text:"OPEN",
+              onClick:_=>extraCtrls.open()
+              // subMenu:[]
+            })
+          }
+          
+          if(extraCtrls.save!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<SaveOutlined />,
+              text:"SAVE",
+              onClick:_=>extraCtrls.save()
+              // subMenu:[]
+            })
+          }
+          if(extraCtrls.take_new!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<CameraOutlined />,
+              text:"NewImg",
+              onClick:_=>extraCtrls.take_new()
+              // subMenu:[]
+            })
+          }
+
+
+          
+          setExtraSideUI(extraCtrlUI);
+        }}/>);
+
+      
+      siderUI_info={
+        title:UI_state.name,
+        
+        menu:[
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>
+            {
+              setUI_state(s_statesTable.RootSelect)
+              
+            }
+          },
+          ...extraSideUI
+        ],
+      }
       break;
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
@@ -1349,7 +1413,7 @@ const MainUI=()=>{
 
     if(siderUI_info.menu!==undefined)
     {
-      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']} 
+      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']}    selectable={false}
       style={{
         boxShadow: "inset -1px 0 9px -2px rgba(0,0,0,0.4)",
         border: "0px"}}>

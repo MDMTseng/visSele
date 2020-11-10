@@ -7,15 +7,19 @@ class FeatureManager_gen:public FeatureManager {
   acvImage buf1,buf2,ImgOutput;
 public :
   FeatureManager_gen(const char *json_str);
+  ~FeatureManager_gen();
   int reload(const char *json_str) override;
   int FeatureMatching(acvImage *img) override;
   
+
+  void ClearReport() override;
   cJSON * SetParam(cJSON *json_str) override;
   static const char* GetFeatureTypeName(){return "gen";};
 protected:
   int parse_jobj() override;
+  cJSON * root;
 
-
+  int inspectionStage=-1;
 
   int HFrom=100;
   int HTo=0;
@@ -24,8 +28,11 @@ protected:
   int VMax=255;
   int VMin=100;
 
-  int boxFilterSize=3;
-  int thres=30;
+  int boxFilter1_Size=3;
+  int boxFilter1_thres=30;
+  int boxFilter2_Size=3;
+  int boxFilter2_thres=30;
+
 
   float targetHeadWHRatio=4.0;
   float minHeadArea=45*45*targetHeadWHRatio;//90*350*0.9;

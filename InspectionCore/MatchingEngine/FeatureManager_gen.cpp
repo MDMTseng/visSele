@@ -4,11 +4,13 @@
 #include <common_lib.h>
 #include <MatchingCore.h>
 #include <acvImage_SpDomainTool.hpp>
+// #include <acvImage_.hpp>
 #include <rotCaliper.h>
 
 #include <algorithm>
 
 
+void LineState(acvImage *img,acv_XY pt1,acv_XY pt2,int steps,int ch,float statMoment[2]);
 /*
   FeatureManager_platingCheck Section
 */
@@ -16,20 +18,64 @@ FeatureManager_gen::FeatureManager_gen(const char *json_str): FeatureManager(jso
 {
 
   report.data.cjson_report.cjson=NULL;
+  reload(json_str);
 }
 
+FeatureManager_gen::~FeatureManager_gen()
+{
+  ClearReport();
+}
+void FeatureManager_gen::ClearReport()
+{
+  if(report.data.cjson_report.cjson!=NULL)
+  {
+    
+    cJSON_Delete(report.data.cjson_report.cjson);
+
+    report.data.cjson_report.cjson=NULL;
+  }
+
+  report.type=FeatureReport::cjson;
+
+
+
+}
 
 int FeatureManager_gen::parse_jobj()
 {
+  LOGI(">>>parse_jobj>>>");
+  SetParam(root);
 
+  LOGI(">>>inspectionStage:%d>>>",inspectionStage);
   return 0;
 }
 
 
 int FeatureManager_gen::reload(const char *json_str)
 {
- 
+  LOGI(">>>reload>>>");
   report.data.cjson_report.cjson=NULL;
+
+
+  root = cJSON_Parse(json_str);
+  // if (root == NULL)
+  // {
+  //   LOGE("cJSON parse failed");
+  //   return -1;
+  // }
+  // int ret_err = parse_jobj();
+  // if (ret_err != 0)
+  // {
+  //   featureCircleList.resize(0);
+  //   featureLineList.resize(0);
+  //   feature_signature.RESET(0);
+  //   reload("");
+  //   return -2;
+  // }
+  parse_jobj();
+
+  // cJSON_Delete(root);
+
   return 0;
 }
 
@@ -400,6 +446,14 @@ void majorColorTracing(acvImage *colorBuffer,int w,int h)
   }
 }
 
+uint8_t* pixFetching(acvImage *img,int x,int y,int shrink=0)
+{
+  if(x<shrink || y<shrink)return NULL;
+  if(x>=img->GetWidth()-shrink || y>=img->GetHeight()-shrink)return NULL;
+
+
+  return &(img->CVector[y][3*x]);
+}
 
 void LineParseCable(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float cableRatio,float startRatio,int cableCount,float stepWidth,colorInfo *info)
 {
@@ -436,7 +490,8 @@ void LineParseCable(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float c
         int X = round(region_pt.X);
         int Y = round(region_pt.Y);
 
-        uint8_t *pix = &(img->CVector[Y][3*X]);
+        uint8_t *pix = pixFetching(img,X,Y);
+        if(pix==NULL)continue;
         buffer->CVector[k][i*3]=pix[0];
         buffer->CVector[k][i*3+1]=pix[1];
         buffer->CVector[k][i*3+2]=pix[2];
@@ -482,7 +537,8 @@ void LineParseCable(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float c
           int X = round(region_pt.X);
           int Y = round(region_pt.Y);
 
-          uint8_t *pix = &(img->CVector[Y][3*X]);
+          uint8_t *pix = pixFetching(img,X,Y);
+          if(pix==NULL)continue;
           pix[0]=pix_ave[0];
           pix[1]=pix_ave[1];
           pix[2]=pix_ave[2];
@@ -583,8 +639,6 @@ void colorCompare(colorInfo *arr1, colorInfo *arr2, int arrL,float *ret_maxDiff,
   if(ret_maxDiffIdx)*ret_maxDiffIdx=maxDiffIdx;
 }
 
-#define SETPARAM_INT_NUMBERTTT(json,pName) #pName
-
 #define SETPARAM_INT_NUMBER(json,pName) {double *tmpN; if((tmpN=JFetch_NUMBER(json,#pName)))pName=(int)*tmpN;}
 #define SETPARAM_DOU_NUMBER(json,pName) {double *tmpN; if((tmpN=JFetch_NUMBER(json,#pName)))pName=*tmpN;}
 
@@ -599,18 +653,24 @@ cJSON * FeatureManager_gen::SetParam(cJSON *jsonParam)
   // double *tmpN;
   // if((tmpN=JFetch_NUMBER(jsonParam,"HFrom")))
   //   HFrom=(int)*tmpN;
+
+
+  
+  SETPARAM_INT_NUMBER(jsonParam,inspectionStage);
+  
   SETPARAM_INT_NUMBER(jsonParam,HFrom);
   SETPARAM_INT_NUMBER(jsonParam,HTo);
   SETPARAM_INT_NUMBER(jsonParam,SMax);
   SETPARAM_INT_NUMBER(jsonParam,SMin);
   SETPARAM_INT_NUMBER(jsonParam,VMax);
-  LOGI("VMax:%d::%s",VMax,SETPARAM_INT_NUMBERTTT(jsonParam,VMax));
   SETPARAM_INT_NUMBER(jsonParam,VMin);
 
 
 
-  SETPARAM_INT_NUMBER(jsonParam,boxFilterSize);
-  SETPARAM_INT_NUMBER(jsonParam,thres);
+  SETPARAM_INT_NUMBER(jsonParam,boxFilter1_Size);
+  SETPARAM_INT_NUMBER(jsonParam,boxFilter1_thres);
+  SETPARAM_INT_NUMBER(jsonParam,boxFilter2_Size);
+  SETPARAM_INT_NUMBER(jsonParam,boxFilter2_thres);
 
 
 
@@ -636,8 +696,10 @@ cJSON * FeatureManager_gen::SetParam(cJSON *jsonParam)
     RETPARAM_NUMBER(ret_jobj,VMax);
     RETPARAM_NUMBER(ret_jobj,VMin);
 
-    RETPARAM_NUMBER(ret_jobj,boxFilterSize);
-    RETPARAM_NUMBER(ret_jobj,thres);
+    RETPARAM_NUMBER(ret_jobj,boxFilter1_Size);
+    RETPARAM_NUMBER(ret_jobj,boxFilter1_thres);
+    RETPARAM_NUMBER(ret_jobj,boxFilter2_Size);
+    RETPARAM_NUMBER(ret_jobj,boxFilter2_thres);
 
     RETPARAM_NUMBER(ret_jobj,targetHeadWHRatio);
     RETPARAM_NUMBER(ret_jobj,minHeadArea);
@@ -656,6 +718,38 @@ cJSON * FeatureManager_gen::SetParam(cJSON *jsonParam)
   // const int cableTableCount=2;
   return ret_jobj;
 }
+
+
+float VEC_SAMP_REACHING_CABLE_MOMENT(acvImage *img,acv_XY v1,acv_XY v2,acv_XY pt_anchor,float len_btm,float reachingSpaceRatio,float *ret_statMoment2=NULL)
+{
+
+    
+
+  acv_XY v2Half=acvVecMult(v2,reachingSpaceRatio);
+  float scanSize=0.8;
+  acv_XY vec_p1=acvVecAdd(v2Half,pt_anchor);
+
+
+  
+  acv_XY vec_p2=acvVecAdd(vec_p1,v1);
+  acv_XY vecMiddle=acvVecMult( acvVecAdd(vec_p1,vec_p2),0.5);
+  acv_XY reachVec=acvVecMult(acvVecSub(vec_p2,vecMiddle),(1-scanSize)/2);
+
+  vec_p1=acvVecSub(vecMiddle,reachVec);
+  vec_p2=acvVecAdd(vecMiddle,reachVec);
+
+  float statMoment[2];
+  LineState(img,vec_p1,vec_p2,len_btm,0,statMoment);
+  float m2_side1=statMoment[1]/statMoment[0];
+  if(ret_statMoment2)
+  {
+    ret_statMoment2[0]=statMoment[0];
+    ret_statMoment2[1]=statMoment[1];
+  }
+  return statMoment[1];
+}
+
+
 int FeatureManager_gen::FeatureMatching(acvImage *img)
 {
   
@@ -723,26 +817,19 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
   float maxDiffMargin=24;
 
 
+  // inspectionStage=1;
 
-
-
-  report.type=FeatureReport::cjson;
-  if(report.data.cjson_report.cjson!=NULL)
-  {
-    
-    cJSON_Delete(report.data.cjson_report.cjson);
-
-    report.data.cjson_report.cjson=NULL;
-  }
+  ClearReport();
   cJSON *jsonRep=cJSON_CreateObject();
   
   cJSON_AddStringToObject(jsonRep, "type", GetFeatureTypeName());
   report.data.cjson_report.cjson=jsonRep;
-  LOGI("GOGOGOGOGOGGO....");
+  // LOGI("GOGOGOGOGOGGO....inspectionStage:%d",inspectionStage);
 
-
-
-
+  if(inspectionStage==0)
+  {
+    return -1;
+  }
 
   buf1.ReSize(img);
   buf2.ReSize(img);
@@ -751,14 +838,29 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
   buf1.RGBToHSV();
   acvCloneImage(&buf1,&buf2,-1);
 
+  if(inspectionStage==1)
+  {
+    acvCloneImage(&buf2,img,-1);
+    return -1;
+  }
 
   // acvSaveBitmapFile("step0H.bmp", &buf2);
   // acvHSVThreshold(&buf2,0,256,256,128,255,50);
   acvHSVThreshold(&buf2,HFrom,HTo,SMax,SMin,VMax,VMin); //0V ~255  1S ~255  2H ~252
-  acvCloneImage(&buf2,img,-1);
-  return -1;
-  acvBoxFilter(&ImgOutput,&buf2,boxFilterSize);
-  acvThreshold(&buf2,thres);
+
+
+  acvBoxFilter(&ImgOutput,&buf2,boxFilter1_Size);
+  acvThreshold(&buf2,boxFilter1_thres);
+  acvBoxFilter(&ImgOutput,&buf2,boxFilter2_Size);
+  acvThreshold(&buf2,boxFilter2_thres);
+
+  if(inspectionStage==2)
+  {
+    acvCloneImage(&buf2,img,-1);
+    return -1;
+  }
+  acvBoxFilter(&ImgOutput,&buf2,boxFilter1_Size);
+  acvThreshold(&buf2,boxFilter1_thres);
   // acvSaveBitmapFile("step0.bmp", &buf2);
   acvTurn(&buf2);
 
@@ -769,6 +871,14 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
   
   vector<acv_LabeledData> ldData;
   acvLabeledRegionInfo(&buf2, &ldData);
+
+
+
+  if(inspectionStage==3)
+  {
+    acvLabeledColorDispersion(img,&buf2,10);
+    return -1;
+  }
   // acvLabeledColorDispersion(&buf2,&buf2,5);
   // acvCloneImage(&buf2,img,-1);
   // acvLabeledColorDispersion(&ImgOutput,&buf2,105);
@@ -801,96 +911,126 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
     // LOGI("out:%f %f %f %f %f %f",out[0],out[1],out[2],out[3],out[4],out[5]);
 
 
-    float len_long=hypot(out[2],out[3]);
-    float len_short=hypot(out[4],out[5]);
+    float len_btm=hypot(out[2],out[3]);
+    float len_side=hypot(out[4],out[5]);
 
-    LOGI("GOGOGOGOGOGGO..[%d]..%f %f",i,len_long,len_short);
+    LOGI("GOGOGOGOGOGGO..[%d]..%f %f",i,len_btm,len_side);
     
-    if(len_long*len_short<minHeadArea)continue;
+    if(len_btm*len_side<minHeadArea)continue;
 
     acv_XY pt_anchor={out[0],out[1]};
-    acv_XY vec_long={out[2],out[3]};
-    acv_XY vec_short={out[4],out[5]};
-    if(len_short>len_long)
+    acv_XY vec_btm={out[2],out[3]};
+    acv_XY vec_side={out[4],out[5]};
+    if(len_side>len_btm)
     {
-      acv_XY tmp=vec_long;
-      vec_long=vec_short;
-      vec_short=tmp;
-      float tmpLen=len_long;
-      len_long=len_short;
-      len_short=tmpLen;
+      acv_XY tmp=vec_btm;
+      vec_btm=vec_side;
+      vec_side=tmp;
+      float tmpLen=len_btm;
+      len_btm=len_side;
+      len_side=tmpLen;
 
     }
 
-    float ratio = len_long/len_short;
-    ratio/=targetHeadWHRatio;//close to 4.0
-    if(ratio<1)ratio=1/ratio;
-    // printf("ratio:%f   len1:%f len_short:%f\n",ratio,len_long,len_short);
-
-    LOGI("GOGOGOGOGOGGO.ratio:%f targetHeadWHRatioMargin:%f...",ratio,targetHeadWHRatioMargin);
-    if(ratio>targetHeadWHRatioMargin)
     {
-      continue;
+      float ratio = len_btm/len_side;
+      ratio/=targetHeadWHRatio;//close to 4.0
+      if(ratio<1)ratio=1/ratio;
+      // printf("ratio:%f   len1:%f len_side:%f\n",ratio,len_btm,len_side);
+
+      LOGI("GOGOGOGOGOGGO.ratio:%f targetHeadWHRatioMargin:%f...",ratio,targetHeadWHRatioMargin);
+      // if(ratio>targetHeadWHRatioMargin)
+      // {
+      //   continue;
+      // }
+      
+      float m2=NAN;
+      {
+        acv_XY vec_sideHalf=acvVecMult(vec_side,0.5);
+        acv_XY vec_p1=acvVecAdd(vec_sideHalf,pt_anchor);
+        acv_XY vec_p2=acvVecAdd(vec_p1,vec_btm);
+
+        vec_p1=acvVecAdd(vec_p1,acvVecMult(vec_btm,0.2));
+        vec_p2=acvVecSub(vec_p2,acvVecMult(vec_btm,0.2));
+        float statMoment[2];
+
+
+        LineState(img,vec_p1,vec_p2,len_btm*2,0,statMoment);
+        m2=statMoment[1]/statMoment[0];
+      }
+
+
+      // float VEC_SAMP_REACHING_CABLE_MOMENT(acvImage *img,acv_XY v1,acv_XY v2,acv_XY pt_anchor,float len_btm,float reachingSpaceRatio,float *ret_statMoment2)
+      float m1_side1=VEC_SAMP_REACHING_CABLE_MOMENT(img,vec_side,vec_btm,pt_anchor,len_side,-cableSeachingRatio);
+      if(m1_side1!=m1_side1)m1_side1=0;
+      float m1_side2=VEC_SAMP_REACHING_CABLE_MOMENT(img,vec_side,vec_btm,pt_anchor,len_side,1+cableSeachingRatio);
+      if(m1_side2!=m1_side2)m1_side2=0;
+
+      float m1_sideMax=m1_side1>m1_side2?m1_side1:m1_side2;
+
+      float m2_side1=VEC_SAMP_REACHING_CABLE_MOMENT(img,vec_btm,vec_side,pt_anchor,len_btm,-cableSeachingRatio);
+      if(m2_side1!=m2_side1)m2_side1=0;
+
+      float m2_side2=VEC_SAMP_REACHING_CABLE_MOMENT(img,vec_btm,vec_side,pt_anchor,len_btm,1+cableSeachingRatio);
+      if(m2_side2!=m2_side2)m2_side2=0;
+
+      float m2_sideMax=m2_side1>m2_side2?m2_side1:m2_side2;
+
+      LOGI("m11:%f m12:%f  m21:%f  m22:%f\n",m1_side1,m1_side2,m2_side1,m2_side2);
+      // if(m1_sideMax<m2_sideMax)//gives the main direction
+      // {
+      //   if(len_side>len_btm)
+      //   {
+      //     acv_XY tmp=vec_btm;
+      //     vec_btm=vec_side;
+      //     vec_side=tmp;
+      //     float tmpLen=len_btm;
+      //     len_btm=len_side;
+      //     len_side=tmpLen;
+
+      //   }
+      //   m2_side1=m1_side1;
+      //   m2_side2=m1_side2;
+      // }
+      if(m1_sideMax<100 && m2_sideMax<100)
+      {
+        continue;
+      }
+      if(m1_sideMax>m2_sideMax)
+      {
+
+        acv_XY tmp=vec_btm;
+        vec_btm=vec_side;
+        vec_side=tmp;
+        float tmpLen=len_btm;
+        len_btm=len_side;
+        len_side=tmpLen;
+        m2_side1=m1_side1;
+        m2_side2=m1_side2;
+      }
+      if(m2_side1<m2_side2)
+      { //          ______     _____
+        //could be |        or      |
+        
+        pt_anchor=acvVecAdd(pt_anchor,vec_side);
+        vec_side=acvVecMult(vec_side,-1);
+        float tmp=m2_side1;
+        m2_side1=m2_side2;
+        m2_side2=tmp;//swap side info
+      }
+
+
     }
-    
+    bool isFrontFace=true;
+
     cJSON *singleRep=cJSON_CreateObject();
     
     cJSON_AddItemToArray(reports_jarr,singleRep);
-    float m2=NAN;
-    {
-      acv_XY vec_shortHalf=acvVecMult(vec_short,0.5);
-      acv_XY vec_p1=acvVecAdd(vec_shortHalf,pt_anchor);
-      acv_XY vec_p2=acvVecAdd(vec_p1,vec_long);
-
-      vec_p1=acvVecAdd(vec_p1,acvVecMult(vec_long,0.2));
-      vec_p2=acvVecSub(vec_p2,acvVecMult(vec_long,0.2));
-      float statMoment[2];
 
 
-      LineState(img,vec_p1,vec_p2,len_long*2,0,statMoment);
-      m2=statMoment[1]/statMoment[0];
-    }
-    bool isFrontFace=m2>FacingThreshold;
-
-    if(isFrontFace)
-      printf("FRONT\n");
-    else
-      printf("BACK\n");
-
-    float m2_side1=NAN;
-    {
-
-      acv_XY vec_shortHalf=acvVecMult(vec_short,-cableSeachingRatio);
-      acv_XY vec_p1=acvVecAdd(vec_shortHalf,pt_anchor);
-      acv_XY vec_p2=acvVecAdd(vec_p1,vec_long);
-      float statMoment[2];
-      LineState(img,vec_p1,vec_p2,len_long,0,statMoment);
-      m2_side1=statMoment[1]/statMoment[0];
-    }
-
-    float m2_side2=NAN;
-    {
-      acv_XY vec_shortHalf=acvVecMult(vec_short,1+cableSeachingRatio);
-      acv_XY vec_p1=acvVecAdd(vec_shortHalf,pt_anchor);
-      acv_XY vec_p2=acvVecAdd(vec_p1,vec_long);
-      float statMoment[2];
-      LineState(img,vec_p1,vec_p2,len_long,0,statMoment);
-      m2_side2=statMoment[1]/statMoment[0];
-    }
-
-    if(m2_side1<m2_side2)
-    { //          ______     _____
-      //could be |        or      |
-      
-      pt_anchor=acvVecAdd(pt_anchor,vec_short);
-      vec_short=acvVecMult(vec_short,-1);
-      float tmp=m2_side1;
-      m2_side1=m2_side2;
-      m2_side2=tmp;//swap side info
-    }
 
 
-    float axis_crossP=-1*acv2DCrossProduct(vec_long,vec_short);
+    float axis_crossP=-1*acv2DCrossProduct(vec_btm,vec_side);
 
 
     if(!isFrontFace)
@@ -915,8 +1055,8 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
       //could be |____    or _____|
       if(axis_crossP<0)
       {
-        pt_anchor=acvVecAdd(pt_anchor,vec_long);
-        vec_long=acvVecMult(vec_long,-1);
+        pt_anchor=acvVecAdd(pt_anchor,vec_btm);
+        vec_btm=acvVecMult(vec_btm,-1);
       }
       else
       {
@@ -927,7 +1067,6 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
 
     cJSON_AddBoolToObject(singleRep, "front_facing", isFrontFace);
 
-    
     {
 
 
@@ -935,9 +1074,9 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
 
 
 
-      acv_XY vec_shortHalf=acvVecMult(vec_short,-cableSeachingRatio);
-      acv_XY vec_p1=acvVecAdd(vec_shortHalf,pt_anchor);
-      acv_XY vec_p2=acvVecAdd(vec_p1,vec_long);
+      acv_XY vec_sideHalf=acvVecMult(vec_side,-cableSeachingRatio);
+      acv_XY vec_p1=acvVecAdd(vec_sideHalf,pt_anchor);
+      acv_XY vec_p2=acvVecAdd(vec_p1,vec_btm);
 
       colorInfo ci[100];
       LineParseCable(img,&buf1,vec_p1,vec_p2,cableRatio,(1-cableRatio*cableCount)/2,cableCount,5,ci);
@@ -967,7 +1106,7 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
       }
       LOGI("min_maxDiff:%f min_maxDiffIdx:%d",min_maxDiff,min_maxDiffIdx);
 
-      acv_XY rect_center={pt_anchor.X+vec_short.X/2+vec_long.X/2,pt_anchor.Y+vec_short.Y/2+vec_long.Y/2};
+      acv_XY rect_center={pt_anchor.X+vec_side.X/2+vec_btm.X/2,pt_anchor.Y+vec_side.Y/2+vec_btm.Y/2};
       //if(minScore<0.90 || minBriRatio<0.5)
       if(min_maxDiff>maxDiffMargin)
       {
@@ -981,22 +1120,43 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
 
     }
 
+    
+    {
+      cJSON* _vec_btm = cJSON_CreateObject();
+      cJSON_AddNumberToObject(_vec_btm, "x", vec_btm.X);
+      cJSON_AddNumberToObject(_vec_btm, "y", vec_btm.Y);
+      cJSON_AddItemToObjectCS(singleRep, "vec_btm", _vec_btm);
+    }
+    {
+      cJSON* _vec_side = cJSON_CreateObject();
+      cJSON_AddNumberToObject(_vec_side, "x", vec_side.X);
+      cJSON_AddNumberToObject(_vec_side, "y", vec_side.Y);
+      cJSON_AddItemToObjectCS(singleRep, "vec_side", _vec_side);
+    }
+    
+    {
+      cJSON* pt_cornor = cJSON_CreateObject();
+      cJSON_AddNumberToObject(pt_cornor, "x", pt_anchor.X);
+      cJSON_AddNumberToObject(pt_cornor, "y", pt_anchor.Y);
+      cJSON_AddItemToObjectCS(singleRep, "pt_cornor", pt_cornor);
+    }
+    
 
     acvDrawLine(img,
     (int)pt_anchor.X,(int)pt_anchor.Y,
-    (int)vec_long.X+pt_anchor.X,(int)vec_long.Y+pt_anchor.Y,0,0,255,6);
+    (int)vec_btm.X+pt_anchor.X,(int)vec_btm.Y+pt_anchor.Y,0,0,255,6);
     acvDrawLine(img,
     (int)pt_anchor.X,(int)pt_anchor.Y,
-    (int)vec_short.X+pt_anchor.X,(int)vec_short.Y+pt_anchor.Y,0,255,0,6);
+    (int)vec_side.X+pt_anchor.X,(int)vec_side.Y+pt_anchor.Y,0,255,0,6);
     acvDrawLine(&buf2,
     (int)pt_anchor.X,(int)pt_anchor.Y,
-    (int)vec_long.X+pt_anchor.X,(int)vec_long.Y+pt_anchor.Y,0,0,255,6);
+    (int)vec_btm.X+pt_anchor.X,(int)vec_btm.Y+pt_anchor.Y,0,0,255,6);
     acvDrawLine(&buf2,
     (int)pt_anchor.X,(int)pt_anchor.Y,
-    (int)vec_short.X+pt_anchor.X,(int)vec_short.Y+pt_anchor.Y,0,255,0,6);
+    (int)vec_side.X+pt_anchor.X,(int)vec_side.Y+pt_anchor.Y,0,255,0,6);
 
 
-    printf("m2:%f  m2_side1:%f  m2_side2:%f\n",m2,m2_side1,m2_side2);
+    // printf("m2:%f  m2_side1:%f  m2_side2:%f\n",m2,m2_side1,m2_side2);
     // printf("p1:%f %f  p2:%f %f   m:%f,%f rm:%f\n",
     //   vec_p1.X,vec_p1.Y,
     //   vec_p2.X,vec_p2.Y,

@@ -444,8 +444,9 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SnapFrame()
   snapFlag=1;
   TriggerMode(1);
 
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));//HACK sleep to fix trigger ignore issue
   LOGI("TRIGGER");
-  Trigger();
+  do{}while(Trigger()==CameraLayer::NAK);
 
   LOGI("LOCK");
   m.lock();

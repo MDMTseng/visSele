@@ -140,7 +140,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       }
       acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
 
-      for(int i=0;i<img.GetHeight();i++)//Add noise
+      if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
       {
         for(int j=0;j<img.GetWidth();j++)
         {
@@ -177,6 +177,11 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 
         }
       }
+      else
+      {
+        acvCloneImage(&img_load,&img,-1);
+      }
+      
 
       int noiseRange=5;
       if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
