@@ -1,10 +1,25 @@
 #ifndef FeatureManager_GEN_HPP
 #define FeatureManager_GEN_HPP
 
+
+
+
+
 #include "FeatureManager.h"
+
+
+typedef struct regionInfo_single{
+  acv_XY pt1,pt2;
+  acv_XY normalized_pt1,normalized_pt2;
+  float margin;
+  int id;
+}regionInfo_single;
+
 class FeatureManager_gen:public FeatureManager {
+  vector<regionInfo_single> regionInfo;
 
   acvImage buf1,buf2,ImgOutput;
+  acvImage backGroundTemplate;
 public :
   FeatureManager_gen(const char *json_str);
   ~FeatureManager_gen();
@@ -45,6 +60,9 @@ protected:
   int cableCount=12;
 
   int cableTableCount=2;
+
+
+
 };
 
 

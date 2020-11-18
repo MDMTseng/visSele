@@ -394,7 +394,7 @@ export class BPG_FileSavingBrowser extends React.Component{
   }
   render()
   {
-    let isTarFileExist = this.state.folderInfo!=undefined &&
+    let isTarFileExist = this.state.folderInfo!=undefined && this.state.folderInfo.files!==undefined&&
      ((this.state.folderInfo.files.find((file)=>file.name==this.state.fileName))!==undefined);
     
     console.log(isTarFileExist);

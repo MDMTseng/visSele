@@ -14,6 +14,15 @@ void LineState(acvImage *img,acv_XY pt1,acv_XY pt2,int steps,int ch,float statMo
 /*
   FeatureManager_platingCheck Section
 */
+
+uint8_t* pixFetching(acvImage *img,int x,int y,int shrink=0)
+{
+  if(x<shrink || y<shrink)return NULL;
+  if(x>=img->GetWidth()-shrink || y>=img->GetHeight()-shrink)return NULL;
+
+
+  return &(img->CVector[y][3*x]);
+}
 FeatureManager_gen::FeatureManager_gen(const char *json_str): FeatureManager(json_str)
 {
 
@@ -356,7 +365,14 @@ void LineState(acvImage *img,acv_XY pt1,acv_XY pt2,int steps,int ch,float statMo
   float sum=0,sq_sum=0;
   for(int i=0;i<steps;i++,cur_pt=acvVecAdd(cur_pt,advVec))
   {
-    float val = acvUnsignedMap1Sampling(img, cur_pt,ch);
+    // float val = acvUnsignedMap1Sampling(img, cur_pt,ch);
+
+
+    uint8_t *pix = pixFetching(img,(int)cur_pt.X,(int)cur_pt.Y);
+    if(pix==NULL)continue;
+    float val=(float)(pix[0]+pix[1]*2+pix[2])/4;
+
+
     // printf("%.1f,",val);
     sum+=val;
     sq_sum+=val*val;
@@ -446,14 +462,6 @@ void majorColorTracing(acvImage *colorBuffer,int w,int h)
   }
 }
 
-uint8_t* pixFetching(acvImage *img,int x,int y,int shrink=0)
-{
-  if(x<shrink || y<shrink)return NULL;
-  if(x>=img->GetWidth()-shrink || y>=img->GetHeight()-shrink)return NULL;
-
-
-  return &(img->CVector[y][3*x]);
-}
 
 void LineParseCable(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float cableRatio,float startRatio,int cableCount,float stepWidth,colorInfo *info)
 {
@@ -587,6 +595,55 @@ void LineParseCable(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float c
   // printf("\n");
 }
 
+void parseCable(acvImage *img,int W,int H,acv_XY seed)
+{
+}
+
+void LineParseCable2(acvImage *img,acvImage *buffer,acv_XY pt1,acv_XY pt2,float region_width,float start_ratio=0)
+{
+  float f_steps=acvDistance(pt1,pt2);
+
+  acv_XY advVec={(pt2.X-pt1.X),(pt2.Y-pt1.Y)};
+  advVec=acvVecNormalize(advVec);
+  acv_XY nor_advVec=acvVecNormal(advVec);
+
+  acv_XY cur_pt=acvVecInterp(pt1,pt2,start_ratio);
+  cur_pt=acvVecAdd(cur_pt,acvVecMult(nor_advVec,region_width/2));
+
+  int steps=(int)(f_steps*(1-start_ratio*2));
+  int cableW=(int)region_width;
+
+  for(int k=0;k<steps;k++)
+  {
+    acv_XY region_pt =acvVecAdd(cur_pt ,acvVecMult(advVec,k));
+
+    // LOGI("k:[%d]  region_pt:%f,%f",k,region_pt.X,region_pt.Y);
+    for(int i=0;i<cableW;i++)
+    {
+      int X = round(region_pt.X);
+      int Y = round(region_pt.Y);
+
+      uint8_t *pix = pixFetching(img,X,Y);
+      if(pix==NULL)continue;
+      buffer->CVector[k][i*3]=pix[0];
+      buffer->CVector[k][i*3+1]=pix[1];
+      buffer->CVector[k][i*3+2]=pix[2];
+      parseCable(buffer,cableW,steps,(acv_XY){0,0});
+      // pix[0]=0;
+
+      // printf("<%d,%d>",X,Y);
+      region_pt=acvVecSub(region_pt,nor_advVec);
+    }
+    // printf("\n");
+  }
+  // exit(-1);
+
+
+}
+
+
+
+
 
 void colorCompare(colorInfo *arr1, colorInfo *arr2, int arrL,float *ret_maxDiff,int *ret_maxDiffIdx)
 {
@@ -644,6 +701,25 @@ void colorCompare(colorInfo *arr1, colorInfo *arr2, int arrL,float *ret_maxDiff,
 
 
 #define RETPARAM_NUMBER(json,pName) {cJSON_AddNumberToObject(json, #pName, pName);}
+
+acv_XY readXY(cJSON *jsonParam)
+{
+  
+  acv_XY xy={NAN,NAN};
+  double* num=JFetch_NUMBER(jsonParam,"x");
+  if(num!=NULL)xy.X=*num;
+  else return xy;
+
+
+  num=JFetch_NUMBER(jsonParam,"y");
+  if(num!=NULL)xy.Y=*num;
+  else{
+    xy.X=xy.Y=NAN;
+    return xy;
+  }  
+  return xy;
+}
+
 cJSON * FeatureManager_gen::SetParam(cJSON *jsonParam)
 {
   char* jsonStr = cJSON_Print(jsonParam);
@@ -683,6 +759,49 @@ cJSON * FeatureManager_gen::SetParam(cJSON *jsonParam)
   SETPARAM_DOU_NUMBER(jsonParam,cableSeachingRatio);
   SETPARAM_INT_NUMBER(jsonParam,cableCount);
   SETPARAM_INT_NUMBER(jsonParam,cableTableCount);
+
+
+  acv_XY vec_btm =readXY(JFetch_OBJECT(jsonParam,"regionInfo.anchorInfo.vec_btm")); 
+  acv_XY vec_side =readXY(JFetch_OBJECT(jsonParam,"regionInfo.anchorInfo.vec_side")); 
+  acv_XY pt_cornor =readXY(JFetch_OBJECT(jsonParam,"regionInfo.anchorInfo.pt_cornor")); 
+
+
+  regionInfo.resize(0);
+  if(!isnan(vec_btm.X) && !isnan(vec_side.X) && !isnan(pt_cornor.X))
+  {
+    LOGI("GO................");
+    
+    float L_btm=hypot(vec_btm.Y,vec_btm.X);
+    float L_side=hypot(vec_side.Y,vec_side.X);
+    for(int i=0;;i++)
+    {
+      char tmpPath[50];
+      sprintf(tmpPath,"regionInfo.regions[%d]",i);
+      cJSON *region = JFetch_OBJECT(jsonParam,tmpPath);
+      if(region==NULL)break;
+      acv_XY pt1 =readXY(JFetch_OBJECT(region,"pt1")); 
+      acv_XY pt2 =readXY(JFetch_OBJECT(region,"pt2")); 
+      double* p_margin = JFetch_NUMBER(region,"margin");
+      double* p_id = JFetch_NUMBER(region,"id");
+      double margin=p_margin==NULL?NAN:*p_margin;
+      int id=p_id==NULL?-1:(int)*p_id;
+      regionInfo_single rIs;
+      rIs.normalized_pt1=rIs.pt1=pt1;
+      rIs.normalized_pt1.X/=L_btm;
+      rIs.normalized_pt1.Y/=L_side;
+
+      rIs.normalized_pt2=rIs.pt2=pt2;
+      rIs.normalized_pt2.X/=L_btm;
+      rIs.normalized_pt2.Y/=L_side;
+      rIs.margin=margin;
+      rIs.id=id;
+      regionInfo.push_back(rIs);
+      // LOGI("[%d]   ID:%d, margin:%f   %f,%f> %f,%f",i,id,margin,pt1.X,pt1.Y,pt2.X,pt2.Y);
+      LOGI("[%d]   ID:%d, margin:%f   %f,%f> %f,%f",i,id,margin,rIs.normalized_pt1.X,rIs.normalized_pt1.Y,rIs.normalized_pt2.X,rIs.normalized_pt2.Y);
+    }
+
+
+  }
 
 
   cJSON* ret_jobj = NULL;
@@ -1067,56 +1186,33 @@ int FeatureManager_gen::FeatureMatching(acvImage *img)
 
     cJSON_AddBoolToObject(singleRep, "front_facing", isFrontFace);
 
+
+
+
     {
-
-
-      colorInfo *tar_ci=isFrontFace?tar_ci_fr:tar_ci_bk;
-
-
-
-      acv_XY vec_sideHalf=acvVecMult(vec_side,-cableSeachingRatio);
-      acv_XY vec_p1=acvVecAdd(vec_sideHalf,pt_anchor);
-      acv_XY vec_p2=acvVecAdd(vec_p1,vec_btm);
-
-      colorInfo ci[100];
-      LineParseCable(img,&buf1,vec_p1,vec_p2,cableRatio,(1-cableRatio*cableCount)/2,cableCount,5,ci);
-
-      printf("====================\n");
-      for(int j=0;j<cableCount;j++)
+      acv_XY btm_center={pt_anchor.X+vec_btm.X/2,pt_anchor.Y+vec_btm.Y/2};
+      float L_btm=hypot(vec_btm.X,vec_btm.Y);
+      float L_side=hypot(vec_side.X,vec_side.Y);
+      float angle=atan2(vec_btm.Y,vec_btm.X);
+      float flipX=1;
+      for(int i=0;i<regionInfo.size();i++)
       {
-        printf("{.R=%f,.G=%f, .B=%f},\n",ci[j].R,ci[j].G,ci[j].B);
-      }
-      printf("====================\n");
-
-      float min_maxDiff=99999;
-      int min_maxDiffIdx=-1;
-
-      for(int j=0;j<cableTableCount;j++)
-      {
-        float _maxDiff;
-        int _maxDiffIdx=-1;
-        colorCompare(tar_ci+j*cableCount, ci, cableCount,&_maxDiff,&_maxDiffIdx);
-
-        if(min_maxDiff>_maxDiff)
-        {
-          min_maxDiff=_maxDiff;
-          min_maxDiffIdx=_maxDiffIdx;
-        }
+        acv_XY pt1=regionInfo[i].normalized_pt1;
+        pt1.Y*=L_side;
+        pt1.X*=L_btm*flipX;
+        pt1 =acvVecAdd(acvRotation(angle,pt1),btm_center);
+        acv_XY pt2=regionInfo[i].normalized_pt2;
+        pt2.Y*=L_side;
+        pt2.X*=L_btm*flipX;
+        pt2 = acvVecAdd(acvRotation(angle,pt2),btm_center);
+        
+        LineParseCable2(img,&buf1,pt1,pt2,regionInfo[i].margin);
+        
+        acvDrawLine(img,
+        (int)pt1.X,(int)pt1.Y,
+        (int)pt2.X,(int)pt2.Y,0,255,0,6);
 
       }
-      LOGI("min_maxDiff:%f min_maxDiffIdx:%d",min_maxDiff,min_maxDiffIdx);
-
-      acv_XY rect_center={pt_anchor.X+vec_side.X/2+vec_btm.X/2,pt_anchor.Y+vec_side.Y/2+vec_btm.Y/2};
-      //if(minScore<0.90 || minBriRatio<0.5)
-      if(min_maxDiff>maxDiffMargin)
-      {
-        acvDrawCrossX(img,rect_center.X,rect_center.Y, 50, 0, 0,255, 10);
-      }
-      else
-      {
-        acvDrawCircle(img,rect_center.X,rect_center.Y, 50,10, 0, 255,0, 10);
-      }
-      cJSON_AddNumberToObject(singleRep, "maxDiff", min_maxDiff);
 
     }
 
