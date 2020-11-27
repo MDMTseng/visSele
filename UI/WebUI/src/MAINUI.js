@@ -47,8 +47,9 @@ import Steps from 'antd/lib/Steps';
 import { useSelector,useDispatch } from 'react-redux';
 const { Meta } = Card;
 const { Step } = Steps;
-
 import { 
+  PauseOutlined,
+  SendOutlined,
   RollbackOutlined,
   DeleteOutlined,
   MinusOutlined,
@@ -1133,6 +1134,10 @@ const MainUI=()=>{
             icon:<EditOutlined />,
             text:DICT.mainui.MODE_SELECT_DEFCONF,
             onClick:_=>EV_UI_Edit_Mode()
+          },{
+            icon:<EditOutlined />,
+            text:"Cable_Wire_Conf",
+            onClick:_=>setUI_state(s_statesTable.CableWireConf)
           },
           {
             icon:<TableOutlined />,
@@ -1161,7 +1166,7 @@ const MainUI=()=>{
       UI.push(<CABLE_WIRE_CONF_MODE_rdx
       
         onExtraCtrlUpdate={extraCtrls=>{
-          
+          console.log(extraCtrls);
           let extraCtrlUI=[];
           
           if(extraCtrls.open!==undefined)
@@ -1192,7 +1197,15 @@ const MainUI=()=>{
               // subMenu:[]
             })
           }
-
+          if(extraCtrls.insp_state!==undefined && extraCtrls.set_insp_state!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:extraCtrls.insp_state==true?<PauseOutlined />:<SendOutlined />,
+              text:"insp:+"+extraCtrls.insp_state,
+              onClick:_=>extraCtrls.set_insp_state(extraCtrls.insp_state!=true)
+              // subMenu:[]
+            })
+          }
 
           
           setExtraSideUI(extraCtrlUI);

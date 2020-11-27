@@ -46,6 +46,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status GetROI(float *x, float *y, float *w, float *h,int*zw,int *zh);
     CameraLayer::status SnapFrame();
 
+    CameraLayer::status SetOnceWB();
     
     CameraLayer::status SetMirror(int Dir,int en);
     CameraLayer::status SetROIMirror(int Dir,int en);

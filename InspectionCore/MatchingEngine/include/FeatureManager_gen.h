@@ -13,6 +13,20 @@ typedef struct regionInfo_single{
   acv_XY normalized_pt1,normalized_pt2;
   float margin;
   int id;
+  float RGBA[4];
+  float sgRGBA[4];
+
+  struct {
+    
+    float RGBA[4];
+    float diff;
+    int count;
+    float max_window2wire_width_ratio;
+
+  }inspRes;
+
+//======= inspection return
+
 }regionInfo_single;
 
 class FeatureManager_gen:public FeatureManager {
@@ -20,21 +34,39 @@ class FeatureManager_gen:public FeatureManager {
 
   acvImage buf1,buf2,ImgOutput;
   acvImage backGroundTemplate;
+  bool backgroundFlag=false;
+
+
+  
+
+  struct{
+    acv_XY pos;
+    
+  }insp02;
+
 public :
   FeatureManager_gen(const char *json_str);
   ~FeatureManager_gen();
   int reload(const char *json_str) override;
   int FeatureMatching(acvImage *img) override;
   
+  int FeatureMatching0(acvImage *img);
+  int FeatureMatching1(acvImage *img);
 
   void ClearReport() override;
   cJSON * SetParam(cJSON *json_str) override;
+
+  cJSON * SetParam0(cJSON *json_str);
+  cJSON * SetParam1(cJSON *json_str);
+
+
   static const char* GetFeatureTypeName(){return "gen";};
 protected:
   int parse_jobj() override;
   cJSON * root;
 
   int inspectionStage=-1;
+  int inspectionType=0;
 
   int HFrom=100;
   int HTo=0;

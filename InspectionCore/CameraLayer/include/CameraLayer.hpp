@@ -89,6 +89,10 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
+    virtual CameraLayer::status SetOnceWB()
+    {
+        return CameraLayer::NAK;
+    }
     
     virtual CameraLayer::status Trigger()
     {

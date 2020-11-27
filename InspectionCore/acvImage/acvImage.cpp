@@ -366,7 +366,7 @@ void acvImage::HSVFromRGB(BYTE* OutData,BYTE* InData)
     if(Max==0)
     {
         OutData[1]=
-            OutData[2]=0;
+        OutData[2]=0;
         goto Exit;
     }
     else
@@ -448,7 +448,7 @@ void acvImage::RGBFromHSV(BYTE* OutData,BYTE* InData)
 {
     int i,f,R,G,B;
     i=InDataH /42;
-    f=InDataH -i*42;
+    f=InDataH %42;
 
     /*
             p=InDataV *(255-InDataS )/255
@@ -475,16 +475,16 @@ void acvImage::RGBFromHSV(BYTE* OutData,BYTE* InData)
     case 4:
         B = InDataV ;
         G = InDataV *(255-InDataS )/255;
-        R = InDataV *(6120-InDataS *(42-f))/6120;
+        R = InDataV *(10710-InDataS *(42-f))/10710;
         break;
     case 5:
-        B = InDataV *(6120-InDataS *f)/6120;
+        B = InDataV *(10710-InDataS *f)/10710;
         G = InDataV *(255-InDataS )/255;
         R = InDataV ;
         break;
     default: // case 0||6:
         B = InDataV *(255-InDataS )/255;
-        G = InDataV *(6120-InDataS *(42-f))/6120;
+        G = InDataV *(10710-InDataS *(42-f))/10710;
         R = InDataV ;
         break;
     }

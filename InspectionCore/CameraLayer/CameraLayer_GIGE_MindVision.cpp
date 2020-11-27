@@ -76,6 +76,14 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
   }
   else
   {
+
+    // for(int i=0;i<maxWidth*maxHeight*3;i+=3)
+    // {
+    //   int tmp=m_pFrameBuffer[i];
+    //   m_pFrameBuffer[i]=m_pFrameBuffer[i+2];
+    //   m_pFrameBuffer[i+2]=tmp;
+
+    // }
     CameraLayer_GIGE_MindVision::frameInfo fi_={
       timeStamp_100us:(uint64_t)frameInfo->uiTimeStamp,
       width:(uint32_t)frameInfo->iWidth,
@@ -155,7 +163,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     //TODO: do extensive EXT_TRIG_EXP_GRR test in the future..
     int retx= CameraSetExtTrigShutterType(m_hCamera,EXT_TRIG_EXP_STANDARD);
     LOGI("CameraSetExtTrigShutterType: ret:%d",retx);
-    
+    CameraSetIspOutFormat(m_hCamera,CAMERA_MEDIA_TYPE_BGR8);
 	  CameraPlay(m_hCamera);
     return CameraLayer::ACK;
 }
@@ -402,11 +410,19 @@ CameraLayer::status CameraLayer_GIGE_MindVision::L_SetFrameRateMode(int mode)
 {
     if (CameraSetFrameSpeed(m_hCamera,mode)!= CAMERA_STATUS_SUCCESS)
     {
-		LOGE("Failed...");
-        return CameraLayer::NAK;
+		  LOGE("Failed...");
+      return CameraLayer::NAK;
     }
     L_frameRateMode=mode;
     return CameraLayer::ACK;
+}
+
+
+
+CameraLayer::status CameraLayer_GIGE_MindVision::SetOnceWB()
+{
+  CameraSetClrTempMode(m_hCamera,CT_MODE_AUTO);
+  return CameraSetOnceWB(m_hCamera)==CAMERA_STATUS_SUCCESS?CameraLayer::ACK:CameraLayer::NAK;
 }
 
 

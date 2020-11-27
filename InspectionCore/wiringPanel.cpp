@@ -735,14 +735,21 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV = 0;
   }
 
+
+  if ( getDataFromJson(&settingJson, "set_once_WB",NULL)==cJSON_True)
+  {
+    CameraLayer::status  st= camera.SetOnceWB();
+    LOGI("SetOnceWB:%d", st);
+    retV = 0;
+  }
+
   val = JFetch_NUMBER(&settingJson, "down_samp_level");
   if (val)
   {
     downSampLevel = (int)*val;
   }
 
-  void *target;
-  int type = getDataFromJson(&settingJson, "down_samp_w_calib", &target);
+  int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
   if (type == cJSON_False)
   {
     downSampWithCalib = false;
