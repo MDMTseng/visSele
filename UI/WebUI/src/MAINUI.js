@@ -20,12 +20,12 @@ import InstInspUI_rdx from './InstInspUI';
 import CABLE_WIRE_CONF_MODE_rdx from './CableWireConfUI';
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
-import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset } from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools} from 'UTIL/MISC_Util';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
 
-import { BPG_FileBrowser, BPG_FileSavingBrowser } from './component/baseComponent.jsx';
+import { BPG_FileBrowser, BPG_FileSavingBrowser,BPG_FileBrowser_varify_info } from './component/baseComponent.jsx';
 // import fr_FR from 'antd/lib/locale-provider/fr_FR';
 
 import { default as AntButton } from 'antd/lib/button';
@@ -219,71 +219,22 @@ function isString(data) {
   return (typeof data === 'string' || data instanceof String);
 }
 
-function checkFileInfo(fileInfo)
-{
-
-  if (!(typeof fileInfo.name === 'string' || fileInfo.name instanceof String))
-  {
-    return false;
-  }
-  if (!(typeof fileInfo.path === 'string' || fileInfo.path instanceof String))
-  {
-    return false;
-  }
-  if (!(typeof fileInfo.type === 'string' || fileInfo.type instanceof String))
-  {
-    return false;
-  }
-
-  if(typeof fileInfo.ctime_ms !== 'number'){
-    return false;
-  }
-  if(typeof fileInfo.mtime_ms !== 'number'){
-    return false;
-  }
-  if(typeof fileInfo.size_bytes !== 'number'){
-    return false;
-  }
-  return true;
-}
-
 function getLocalStorage_RecentFiles()
 {
-
-  if(localStorage===undefined)return [];
-  let LocalS_RecentDefFiles = localStorage.getItem("RecentDefFiles");
-  try {
-    LocalS_RecentDefFiles = JSON.parse(LocalS_RecentDefFiles);
-    if (!(LocalS_RecentDefFiles instanceof Array)) {
-      LocalS_RecentDefFiles = [];
-    }
-
-      
-    LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((fileInfo) =>checkFileInfo(fileInfo));
-  } catch (e) {
-    LocalS_RecentDefFiles = [];
-  }
+  let LocalS_RecentDefFiles =LocalStorageTools.getlist("RecentDefFiles");
+  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter(BPG_FileBrowser_varify_info);
+  console.log(LocalS_RecentDefFiles);
   return LocalS_RecentDefFiles;
 }
 
 function appendLocalStorage_RecentFiles(fileInfo)
 {
-  if(checkFileInfo(fileInfo)==false)
-  {
-    return false;
-  }
-  let LocalS_RecentDefFiles = getLocalStorage_RecentFiles();
+  
+  return LocalStorageTools.appendlist("RecentDefFiles",fileInfo,
+    (ls_fileInfo,idx) =>
+      (idx<100)&&//Do list length limiting
+      (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
 
-  //console.log(LocalS_RecentDefFiles);
-  LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter((ls_fileInfo) =>
-    (ls_fileInfo.name != fileInfo.name || ls_fileInfo.path != fileInfo.path));
-
-  LocalS_RecentDefFiles.unshift(fileInfo);
-  LocalS_RecentDefFiles = LocalS_RecentDefFiles.slice(0, 100);
-  localStorage.setItem("RecentDefFiles", JSON.stringify(LocalS_RecentDefFiles));
-  //console.log(localStorage.getItem("RecentDefFiles"));
-
-  return true;
 }
 
 
@@ -1169,6 +1120,19 @@ const MainUI=()=>{
           console.log(extraCtrls);
           let extraCtrlUI=[];
           
+          if(extraCtrls.disableDefault!==true)
+          {
+            extraCtrlUI.push({
+              icon:<ArrowLeftOutlined />,
+              text:DICT._["<"],
+              onClick:_=>
+              {
+                setUI_state(s_statesTable.RootSelect)
+                
+              }
+            })
+          }
+
           if(extraCtrls.open!==undefined)
           {
             extraCtrlUI.push({
@@ -1216,15 +1180,7 @@ const MainUI=()=>{
         title:UI_state.name,
         
         menu:[
-          {
-            icon:<ArrowLeftOutlined />,
-            text:DICT._["<"],
-            onClick:_=>
-            {
-              setUI_state(s_statesTable.RootSelect)
-              
-            }
-          },
+          
           ...extraSideUI
         ],
       }

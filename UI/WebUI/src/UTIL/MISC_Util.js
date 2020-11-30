@@ -1015,3 +1015,42 @@ export function defFileGeneration(edit_info)
   return report;
 }
 
+
+
+
+export const LocalStorageTools={
+  getlist:(lsKey)=>
+  {
+  
+    if(localStorage===undefined)return [];
+    let LocalS_list = localStorage.getItem(lsKey);
+
+    try {
+      LocalS_list = JSON.parse(LocalS_list);
+      if (!(LocalS_list instanceof Array)) {
+        LocalS_list = [];
+      }
+  
+        
+    } catch (e) {
+      LocalS_list = [];
+    }
+    return LocalS_list;
+  },
+  setlist:(lsKey,list)=>localStorage.setItem(lsKey, JSON.stringify(list)),
+  appendlist:(lsKey,data,pre_removeFilter)=>
+  {
+    let LocalS_list = LocalStorageTools.getlist(lsKey);
+
+    if(pre_removeFilter!==undefined)
+    {
+      LocalS_list = LocalS_list.filter(pre_removeFilter);
+    }
+    LocalS_list.unshift(data);
+    LocalStorageTools.setlist(lsKey, LocalS_list)
+    return true;
+  }
+
+
+
+}

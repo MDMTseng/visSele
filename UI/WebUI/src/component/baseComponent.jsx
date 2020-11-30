@@ -370,6 +370,34 @@ export let DropDownWarp = React_createClass({
 
 
 
+export function BPG_FileBrowser_varify_info(fileInfo)
+{
+
+  if (!(typeof fileInfo.name === 'string' || fileInfo.name instanceof String))
+  {
+    return false;
+  }
+  if (!(typeof fileInfo.path === 'string' || fileInfo.path instanceof String))
+  {
+    return false;
+  }
+  if (!(typeof fileInfo.type === 'string' || fileInfo.type instanceof String))
+  {
+    return false;
+  }
+
+  if(typeof fileInfo.ctime_ms !== 'number'){
+    return false;
+  }
+  if(typeof fileInfo.mtime_ms !== 'number'){
+    return false;
+  }
+  if(typeof fileInfo.size_bytes !== 'number'){
+    return false;
+  }
+  return true;
+}
+
 
 
 export class BPG_FileBrowser extends React.Component{

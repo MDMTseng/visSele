@@ -41,7 +41,7 @@ class FeatureManager_gen:public FeatureManager {
 
   struct{
     acv_XY pos;
-    
+
   }insp02;
 
 public :
@@ -86,7 +86,7 @@ protected:
   float targetHeadWHRatioMargin=1.2;
   float FacingThreshold=1.2;
   
-  float cableSeachingRatio=0.2;
+  float cableSeachingRatio=0.3;
 
 
   int cableCount=12;

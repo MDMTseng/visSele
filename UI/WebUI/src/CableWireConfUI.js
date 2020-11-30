@@ -19,6 +19,7 @@ import { Machine } from 'xstate';
 
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
+let BPG_FileBrowser_varify_info = BASE_COM.BPG_FileBrowser_varify_info;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -31,7 +32,8 @@ import {
   round as roundX, websocket_autoReconnect,
   websocket_reqTrack, dictLookUp, undefFallback,
   GetObjElement, Exp2PostfixExp, PostfixExpCalc,
-  ExpCalcBasic, ExpValidationBasic,defFileGeneration,xstate_GetCurrentMainState
+  ExpCalcBasic, ExpValidationBasic,defFileGeneration,xstate_GetCurrentMainState,
+  LocalStorageTools
 } from 'UTIL/MISC_Util';
 
 let xState=xstate_GetCurrentMainState;
@@ -184,6 +186,31 @@ const CableSetupState = ({
 });
 
 
+
+
+const LOCALSTORAGE_KEY="CABLE.RecentDefFiles"
+
+
+function getLocalStorage_RecentFiles(key=LOCALSTORAGE_KEY)
+{
+  let LocalS_RecentDefFiles =LocalStorageTools.getlist(key);
+  // LocalS_RecentDefFiles = LocalS_RecentDefFiles.filter(BPG_FileBrowser_varify_info);
+  // console.log(LocalS_RecentDefFiles);
+  return LocalS_RecentDefFiles;
+}
+
+function appendLocalStorage_RecentFiles(key=LOCALSTORAGE_KEY,fileInfo)
+{
+  
+  return LocalStorageTools.appendlist(key,fileInfo,
+    (ls_fileInfo,idx) =>
+      (idx<100)&&//Do list length limiting
+      (ls_fileInfo.path != fileInfo.path));
+
+}
+
+
+
 class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasComponent_proto {
 
   constructor(canvasDOM) {
@@ -202,11 +229,44 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
     canvas.height = height;
   }
 
+
+  cameraResetByState(state=this.c_state)
+  {
+    if(state===undefined)return;
+    
+    let stateX=xState(state);
+
+    switch(stateX.state)
+    {
+      case states.cable_region_setup:
+        this.scaleHeadToFitScreen();
+        this.camera.Scale(0.3);
+      break;
+      default:
+        this.scaleImageToFitScreen();
+        
+        this.camera.Scale(0.7);
+        break;
+    }
+  }
+
   SetState(newState,data)
   {
     if(this.c_state===undefined || JSON.stringify(this.c_state.value) !==JSON.stringify(newState.value) )
     {
+      //New state setup
       this.color_ref_region_info=undefined;
+      
+      let c_stateX_state=this.c_state===undefined?undefined:xState(this.c_state).state;
+      let n_stateX_state=newState===undefined?undefined:xState(newState).state;
+      if(c_stateX_state!==n_stateX_state)//major state changed
+      {
+        this.cameraResetByState(newState);
+
+      }
+
+
+      
     }
     this.c_state=newState;
   }
@@ -270,7 +330,6 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
     this.draw();
   }
 
-
   scaleHeadToFitScreen()
   {
     console.log(this.singleReportInfo);
@@ -284,7 +343,7 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
 
       
       let curScale = this.camera.GetCameraScale();
-      this.camera.Scale(0.5*this.canvas.width/width/curScale);
+      this.camera.Scale(this.canvas.width/width/curScale);
     }
 
     
@@ -1379,9 +1438,14 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
   
   const dispatch = useDispatch();
   const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(WS_ID, ...args));
+
+
+
   
   const [CurIM,setCurIM_]=useState(undefined);
   const [CurRP,setCurRP_]=useState(undefined);
+
+
   const [fileSavingContext,setFileSavingContext]=useState(undefined);
   const [fileBrowsingContext,setFileBrowsingContext]=useState(undefined);
 
@@ -1393,18 +1457,15 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
     type:"gen",
   });
 
-  const [forceUpdate,setForceUpdate]=useState(0);
-
-
   const [editRegionInfo,setEditRegionInfo]=useState(undefined);
 
-  const [menuKey,setMenuKey]=useState([]);
 
   const [c_state,set_c_state]=useState(_this.sm.initialState);
 
 
   const [insp_state,set_insp_state]=useState(false);
   
+  let stateInfo=xState(c_state);
   
 
   function setCurRP(RP)
@@ -1440,10 +1501,12 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
     setCurRP(undefined);
     setFileSavingContext(undefined);
     setFileBrowsingContext(undefined);
+    state_transistion(actions.ACT_neutral);
     set_defInfo_({
       type:"gen",
     });
-    ecCanvas.reset();
+    if(ecCanvas!==undefined)
+      ecCanvas.reset();
   }
 
   function fetchParam()
@@ -1528,9 +1591,11 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
         setCurIM(img_pros.data);
 
         ecCanvas.SetIM(img_pros.data);
-        // ecCanvas.scaleImageToFitScreen();
 
-        set_c_state(_this.sm.initialState);
+        ecCanvas.draw();
+        // set_c_state(_this.sm.initialState);
+        // state_transistion(actions.ACT_neutral);
+        // ecCanvas.cameraResetByState();
         // setMenuKey([]);
         // setInterval(()=>{
         //   TriggerNewResult();
@@ -1579,12 +1644,12 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
         // s etCurRP(RP);
 
-// eee
 
         let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
         setCurIM(img_pros.data);
         ecCanvas.SetInspRP(RP);
         ecCanvas.SetIM(img_pros.data);
+
         // ecCanvas.scaleImageToFitScreen();
 
         // set_c_state(_this.sm.initialState);
@@ -1610,7 +1675,13 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
     _this.curStage=inspectionStage;
     TriggerNewResult(true,{inspectionStage},defInfo);
   }
+
+
+  //Init&final del
   useEffect(() => {
+
+
+
     return () => {
       LiveInspection();
     };
@@ -1644,6 +1715,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
           // let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
           // setCurIM(img_pros.data);
           setFileBrowsingContext(undefined);
+
           ecCanvas.SetCableRegionInfo(DF.data.regionInfo);
           InpectAgain(-1,DF.data);
         }
@@ -1709,17 +1781,43 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
           setFileBrowsingContext({
 
             onFileSelected:(file_path,file) => {
-              // console.log(">>",file_path,file);
+              console.log(">>",file_path,file);
               open(file_path);
+              
+              appendLocalStorage_RecentFiles(LOCALSTORAGE_KEY,{
+                path:file_path,
+                name:file.name
+              });
             },
             path:"data/"
           });
         },
 
         ctrlInfo.save=(path)=>{
+
+          let defaultFolderPath="data/";
+          let defaultFileName="default."+CABLE_DEF_EXT;
+          if(defPath!==undefined)
+          {
+            let idx=defPath.lastIndexOf('/');
+            if(idx!=-1)
+            {
+              defaultFolderPath = defPath.substring(0, idx);
+              defaultFileName = defPath.substring(idx+1, defPath.length);
+            }
+          }
+
           setFileSavingContext({
             onOK:(folderInfo, fileName, existed) => {
+
               let fileNamePath = folderInfo.path + "/" + fileName.replace("."+CABLE_DEF_EXT, "");
+
+              
+              appendLocalStorage_RecentFiles(LOCALSTORAGE_KEY,{
+                path:fileNamePath,
+                name:fileName
+              });
+
               setFileSavingContext(undefined);
               var enc = new TextEncoder();
   
@@ -1735,8 +1833,8 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
               ACT_Cache_Img_Save(fileNamePath+".png");
   
             },
-            path:"data/",
-            defaultName:"default."+CABLE_DEF_EXT
+            path:defaultFolderPath,
+            defaultName:defaultFileName
           });
         };
         ctrlInfo.take_new=()=>{
@@ -1744,7 +1842,14 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
           Reset();
           TakeNew(0);
         }
+        ctrlInfo.disableDefault=false;
+
   
+      }
+      else
+      {
+        
+        ctrlInfo.disableDefault=true;
       }
 
       onExtraCtrlUpdate(ctrlInfo)
@@ -1782,6 +1887,16 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
       }
     }
   
+
+    let recDefF=getLocalStorage_RecentFiles();
+    console.log(recDefF);
+    if(recDefF.length>0)
+    {
+      let latestFile=recDefF[0];
+      setDefPath(latestFile.path);
+      open(latestFile.path);
+    }
+
   }, [ecCanvas])
 
 
@@ -1815,12 +1930,10 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
     </div>
     ])
 
-
+    
 
 
   let CableRegionUI_gen=()=>{
-
-    let stateInfo=xState(ecCanvas.c_state);
     if(stateInfo.state!==states.cable_region_setup)return null;
     console.log(stateInfo);
     switch(stateInfo.substate)
@@ -1980,6 +2093,10 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
     return [H,S,V];
     
   }
+
+
+  let menuOpenKey=[stateInfo.state];
+
   // console.log(editRegionInfo);
   return <div className="overlayCon HXF">
     <CanvasComponent key="kk" addClass="height12" IM={CurIM} 
@@ -1992,6 +2109,9 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
         BPG_Channel={(...args) => ACT_WS_SEND(...args)}
 
         onOk={(folderInfo, fileName, existed) => {
+
+          console.log(folderInfo, fileName, existed);
+
           fileSavingContext.onOK(folderInfo, fileName, existed);
 
         }}
@@ -2025,26 +2145,22 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
         fileFilter={(fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes('.'+CABLE_DEF_EXT)}
       />}
 
-
-
-
-    
     <div className="s overlay overlay scroll HXA WXA" style={{top:0,width:255,background:"#EEE"}}>
       
       <Button onClick={camera_set_once_WB}>camera_set_once_WB</Button>
 
       <Button onClick={()=>insp_state?inspStage(0):InpectAgain(0)}>T0</Button>
+      <Button onClick={()=>insp_state?inspStage(1):InpectAgain(1)}>T1</Button>
       <Button onClick={()=>insp_state?inspStage(2 ):InpectAgain(2)}>T2</Button>
       <Button onClick={()=>insp_state?inspStage(3):InpectAgain(3)}>T3</Button>
       <Button onClick={()=>insp_state?inspStage(-1):InpectAgain(-1)}>TX</Button>
       {ecCanvas===undefined ||insp_state==true ?null:<>
 
-
       <Menu
         style={{ width: 256 }}
         defaultSelectedKeys={['1']}
         // defaultOpenKeys={['sub1']}
-        openKeys={menuKey}
+        openKeys={menuOpenKey}
         mode="inline"  selectable={false}
         onOpenChange={(openKeys)=>{
           // console.log(openKeys);
@@ -2052,17 +2168,12 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
           let lastKey = undefined
           if(openKeys.length>0)
             lastKey = openKeys[openKeys.length-1];
-          setMenuKey([lastKey]);
-
-
           switch(lastKey)
           {
             case states.head_locating:
-              ecCanvas.scaleImageToFitScreen();
               state_transistion(actions.ACT_head_locating);
               break;
             case states.cable_region_setup:
-              ecCanvas.scaleHeadToFitScreen();
               state_transistion(actions.ACT_cable_region_setup);
               break;
             default:
