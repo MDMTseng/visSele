@@ -9,6 +9,7 @@
 
 #include <xmmintrin.h>
 #include <pmmintrin.h>
+#include <immintrin.h>
 
 void FAST512(acvImage *src,acvImage *fast_map,int steps,int circleR, int circleR_segs,
  int (*FAST_MAP)(acvImage *img,int x,int y, std::vector <uint8_t* >&pixbuf, uint8_t* ret_PIX,void *params),
@@ -385,6 +386,28 @@ void SSE_Test()
 
   vector1 = _mm_shuffle_ps(vector1, vector1, _MM_SHUFFLE(0,1,2,3));
   // vector1 is now (1, 2, 3, 4) (above shuffle reversed it)
+
+
+
+  __m256i hello;
+  // Construction from scalars or literals.
+  __m256d a = _mm256_set_pd(1.0, 2.0, 3.0, 4.0);
+
+  // Does GCC generate the correct mov, or (better yet) elide the copy
+  // and pass two of the same register into the add? Let's look at the assembly.
+  __m256d b = a;
+
+  // Add the two vectors, interpreting the bits as 4 double-precision
+  // floats.
+  __m256d c = _mm256_add_pd(a, b);
+
+  // Do we ever touch DRAM or will these four be registers?
+  __attribute__ ((aligned (32))) double output[4];
+  _mm256_store_pd(output, c);
+
+  printf("%f %f %f %f\n",
+         output[0], output[1], output[2], output[3]);
+  return ;
 }
 
 int main(int argc, char** argv)
