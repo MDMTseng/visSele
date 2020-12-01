@@ -311,6 +311,9 @@ function StateReducer(newState, action) {
                           reportStatisticState.historyReport =
                             reportStatisticState.historyReport.slice(Math.max(reportStatisticState.historyReport.length - 1000, 1));
                         }
+                        delete srep_inWindow.headSkipTime;
+                        delete srep_inWindow.minReportRepeat;
+
                         reportStatisticState.newAddedReport.push(srep_inWindow);
                       }
                       else {
@@ -555,7 +558,8 @@ function StateReducer(newState, action) {
                         treport.machine_hash = machine_hash;
                         treport.repeatTime = 1;
                         treport.headSkipTime = statSetting.headReportSkip;
-
+                        
+                        treport.minReportRepeat = statSetting.minReportRepeat;
                         //treport.seq=[singleReport];
                         treport.isCurObj = true;
                         reportStatisticState.trackingWindow.push(treport);

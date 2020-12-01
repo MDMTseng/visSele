@@ -2343,6 +2343,39 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         
         
         this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
+
+        {
+          let ringR=this.rUtil.getFontHeightPx()*1;
+          let ringThickness=this.rUtil.getFontHeightPx()/4;
+          ctx.lineWidth = ringThickness;
+          ctx.beginPath();
+
+          let startAngle=0, endAngle=2 * Math.PI;
+          if(report.headSkipTime>0)
+          {
+            ctx.strokeStyle = "rgb(255, 0, 0)";
+            startAngle=-2 * Math.PI*report.headSkipTime/report.minReportRepeat;
+            endAngle=0;
+          }
+          else
+          {
+            if(report.repeatTime<report.minReportRepeat)
+            {
+              ctx.strokeStyle = "rgb(255, 255, 0)";
+              endAngle = 2 * Math.PI*report.repeatTime/report.minReportRepeat;
+            }
+            else if(report.repeatTime<report.minReportRepeat+1)
+            {
+              ctx.strokeStyle = "rgba(0, 255, 0,0.5)";
+            }
+            else
+            {
+              endAngle=0;
+            }
+          }
+          ctx.arc(0, 0,  ringR, startAngle,endAngle);
+          ctx.stroke();
+        }
         // ctx.fillText(idx, 0, 0);
         // ctx.strokeText(idx, 0, 0);
         // ctx.fill();

@@ -1085,11 +1085,12 @@ const MainUI=()=>{
             icon:<EditOutlined />,
             text:DICT.mainui.MODE_SELECT_DEFCONF,
             onClick:_=>EV_UI_Edit_Mode()
-          },{
-            icon:<EditOutlined />,
-            text:"Cable_Wire_Conf",
-            onClick:_=>setUI_state(s_statesTable.CableWireConf)
           },
+          // {
+          //   icon:<EditOutlined />,
+          //   text:"Cable_Wire_Conf",
+          //   onClick:_=>setUI_state(s_statesTable.CableWireConf)
+          // },
           {
             icon:<TableOutlined />,
             text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
