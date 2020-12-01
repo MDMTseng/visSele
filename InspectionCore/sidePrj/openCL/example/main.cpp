@@ -107,7 +107,7 @@ int main() {
   clock_t t = clock();
   printf("START.....\n");
 	// Launch kernel on the compute device.
-  for(int i=0;i<10000;i++)
+  for(int i=0;i<10;i++)
   {
   	queue.enqueueNDRangeKernel(add, cl::NullRange, N, cl::NullRange);
   }
