@@ -9,8 +9,7 @@
 
 #include <xmmintrin.h>
 #include <pmmintrin.h>
-__m128  axx; 
-__declspec(align(16)) float m_fArray[20];
+
 void FAST512(acvImage *src,acvImage *fast_map,int steps,int circleR, int circleR_segs,
  int (*FAST_MAP)(acvImage *img,int x,int y, std::vector <uint8_t* >&pixbuf, uint8_t* ret_PIX,void *params),
  void *params);
