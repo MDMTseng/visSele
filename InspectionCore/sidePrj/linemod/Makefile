@@ -32,6 +32,19 @@ EXT_OBJS= $(MODULE_cJSON)/cJSON.a \
 					$(MODULE_lodepng)/lodepng.a \
 
 
+
+SUB_MAKEFILES = $(MODULE_acvImage) \
+								# $(MODULE_common_lib) \
+								# $(MODULE_MLNN) \
+								# $(MODULE_circleFitting) \
+								# $(MODULE_cJSON) \
+								# $(MODULE_logctrl) \
+								# $(MODULE_MatchingEngine) \
+								# $(MODULE_GLACC) \
+								# $(MODULE_lodepng) \
+
+
+
 ifeq ($(OS)$(CC),Windows_NTcc)
 	FLAGS+= -D_MINGW -D_WINDOWS
 	
@@ -40,12 +53,12 @@ else
 endif
 
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
-
+STRICT_FLAGS+= -march=core2 -mtune=intel -fdeclspec
  
 export FLAGS+= -w -O3 $(STRICT_FLAGS)
 
 target_bin=linemod
 ODIR=obj
-_OBJ = linemod.o
+_OBJ = linemod.opp
 
 include $(MakeTemplate)

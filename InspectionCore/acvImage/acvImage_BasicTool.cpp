@@ -209,7 +209,7 @@ double acvFAtan2(double y, double x)
     }
 }
 
-void acvDeleteFrame(acvImage *Pic, int line_width)
+void acvDeleteFrame(acvImage *Pic, int line_width,int val)
 {
     int Xoffset = Pic->GetROIOffsetX(),
         Yoffset = Pic->GetROIOffsetY(),
@@ -224,7 +224,7 @@ void acvDeleteFrame(acvImage *Pic, int line_width)
                     Pic->CVector[i][3 * (Xoffset + k) + 2] =
                         Pic->CVector[i][3 * (Width - k) - 1] =
                             Pic->CVector[i][3 * (Width - k) - 2] =
-                                Pic->CVector[i][3 * (Width - k) - 3] = 255;
+                                Pic->CVector[i][3 * (Width - k) - 3] = val;
         }
         for (int i = Xoffset + line_width; i < Width - line_width; i++)
         {
@@ -233,13 +233,9 @@ void acvDeleteFrame(acvImage *Pic, int line_width)
                     Pic->CVector[Yoffset + k][3 * i + 2] =
                         Pic->CVector[Height - k - 1][3 * i + 1] =
                             Pic->CVector[Height - k - 1][3 * i + 0] =
-                                Pic->CVector[Height - k - 1][3 * i + 2] = 255;
+                                Pic->CVector[Height - k - 1][3 * i + 2] = val;
         }
     }
-}
-void acvDeleteFrame(acvImage *Pic)
-{
-    acvDeleteFrame(Pic, 1);
 }
 
 void acvInnerFramePixCopy(acvImage *Pic, int FrameX)

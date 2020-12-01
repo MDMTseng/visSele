@@ -362,7 +362,8 @@ bool acvOuterContourExtraction(acvImage  *LabeledPic,acv_LabeledData ldata,int l
   //6|5|4
   int dir =3;//>
   do {
-      contour.push_back({X:(float)X,Y:(float)Y});
+      acv_XY xy={(float)X,(float)Y};
+      contour.push_back(xy);
 
       BYTE* pix=acvContourWalk(LabeledPic,&X,&Y,&dir,1);
       dir-=2;

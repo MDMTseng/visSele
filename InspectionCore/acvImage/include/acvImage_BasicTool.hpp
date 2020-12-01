@@ -99,8 +99,7 @@ void acvThreshold(acvImage *dst,acvImage *src, BYTE Var, int channel);
 void acvThreshold_single(acvImage *Pic,BYTE Var,int channel);
 void acvHSVThreshold(acvImage *Pic,int HFrom,int HTo,int SMax,int SMin,int VMax,int VMin); //0V ~255  1S ~255  2H ~252
 void acvContrast(acvImage *dst, acvImage *src, int offset, int shift,int channel);
-void acvDeleteFrame(acvImage *Pic,int width);
-void acvDeleteFrame(acvImage *Pic);
+void acvDeleteFrame(acvImage *Pic,int width=1,int val=255);
 void acvClear(acvImage *Pic,BYTE Var);
 void acvClear(acvImage *Pic,int channel,BYTE Var);
 void acvTurn(acvImage *Pic);
