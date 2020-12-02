@@ -376,8 +376,198 @@ int SOBEL_CODING_RGB(acvImage *img,acvImage *sobel,int edgeDiffMin=5,int sobelSa
 }
 
 
+
+#define _ATTR_ALIGN16_ __attribute__ ((__aligned__ (16)))
+ 
+
+void *aligned_malloc(size_t required_bytes, size_t alignment) {
+  void *p1;
+  void **p2;
+  int offset=alignment-1+sizeof(void*);
+  p1 = malloc(required_bytes + offset);               // the line you are missing
+  p2=(void**)(((size_t)(p1)+offset)&~(alignment-1));  //line 5
+  p2[-1]=p1; //line 6
+  return p2;
+}
+
+void aligned_free( void* p ) {
+    void* p1 = ((void**)p)[-1];         // get the pointer to the buffer we allocated
+    free( p1 );
+}
+
+
+void _xx_algo_array( int16_t * dst, int16_t * src1, int16_t const * src2, size_t n )
+{
+  for(int i=0;i<n;i++)
+  {
+    int32_t m=(int32_t)src1[i]*src2[i];
+    src1[i]=m>>(15+1);
+    
+    if(i&1==1)
+      src1[i-1]=(src1[i-1]+src1[i]);
+
+    // printf("src1[%d]:%d, dst[%d]:%d\n",i,src1[i],i/2,dst[i/2]);
+  }
+   
+  // for(int i=0;i<n/2;i++)
+  // {
+  //   dst[i]=(src1[i*2]+src1[i*2+1]);
+  // }
+
+}
+void _mm_algo_array( int16_t * dst, int16_t * src1, int16_t const * src2, size_t n )
+{
+  __m128i half = _mm_set_epi16(INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2);
+  int count=n/8;
+  int16_t * src1_BK=src1;
+  for(  int i=0; i<count; i++,src1+=8,src2+=8)
+  {
+    *(__m128i*) src1 = _mm_mulhrs_epi16(*(__m128i*) src1, *(__m128i*) src2 );
+    *(__m128i*) src1 = _mm_mulhrs_epi16(*(__m128i*) src1, half );
+
+    if(i&1==1)
+    { 
+      // *(__m128i*) dst = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
+      // dst+=8;
+
+      *(__m128i*) src1 = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
+    }
+    // mulhrs
+  }
+  // src1=src1_BK;
+  // for(  int i=0; i<count/2;i++,dst+=8,src1+=16)
+  // {
+  //   *(__m128i*) dst = _mm_hadds_epi16(*(__m128i*) (src1), *(__m128i*) (src1+8) );
+  // }
+}
+
+
+
+
+void _xx_mul_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
+{
+  for(int i=0;i<n;i++)
+  {
+    // dst[i]=src1[0]+src2[0];
+    int32_t m=(int32_t)src1[i]*src2[i];
+    dst[i]=m>>15;
+  }
+}
+void _mm_mul_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
+{
+  for( int16_t const * end( dst + n ); dst != end; dst+=8,src1+=8,src2+=8)
+  {
+    // *(__m128i*) dst = _mm_add_epi16( *(__m128i*) src1, *(__m128i*) src2 );
+    *(__m128i*) dst = _mm_mulhrs_epi16(*(__m128i*) src1, *(__m128i*) src2 );
+    // mulhrs
+  }
+}
+
+
+
+void _xx_add_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
+{
+  for(int i=0;i<n;i++)
+  {
+    dst[i]=src1[i]+src2[i];
+  }
+}
+void _mm_add_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
+{
+  for( int16_t const * end( dst + n ); dst != end; dst+=8,src1+=8,src2+=8)
+  {
+    *(__m128i*) dst = _mm_add_epi16( *(__m128i*) src1, *(__m128i*) src2 );
+  }
+}
+
+
+void _xx_addin_array( int16_t * dst, int16_t const * src, size_t n )
+{
+  for(int i=0;i<n;i++)
+  {
+    dst[i]+=src[i];
+  }
+}
+void _mm_addin_array( int16_t * dst, int16_t const * src, size_t n )
+{
+  for( int16_t const * end( dst + n ); dst != end; dst+=8,src+=8)
+  {
+    *(__m128i*) dst = _mm_add_epi16( *(__m128i*) dst, *(__m128i*) src );
+  }
+}
+
 void SSE_Test()
 {
+  
+
+  {
+    // int INT16X8SET=5000000*2/8;//for 500M pixel
+    int INT16X8SET=640*480*2/8;//for 500M pixel
+    int16_t *input1=(int16_t*)aligned_malloc(16*8*INT16X8SET, 16);
+    int16_t *input2=(int16_t*)aligned_malloc(16*8*INT16X8SET, 16);
+    int16_t *output=(int16_t*)aligned_malloc(16*8*INT16X8SET, 16);
+    
+
+    
+    printf("input1_ptr:%p input2_ptr:%p output_ptr:%p\n",
+          input1,input2,output);
+    int loopTimes=360;//100000000/INT16X8SET;
+    {
+    
+      input1[0]=input1[2]=INT16_MAX;
+      input2[0]=input2[2]=INT16_MAX;
+      input1[1]=input1[3]=INT16_MAX*5/10;
+      input2[1]=input2[3]=INT16_MAX*5/10;
+      output[0]=3;
+
+
+      clock_t t = clock();
+      for(int i=0;i<loopTimes;i++)
+        _xx_algo_array(output, input1,input2,8*INT16X8SET);
+      printf("C   :%fms \n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+      
+      printf("%d %d %d %d\n",
+            input1[0], input1[1], input1[2], input1[3]);
+    }
+
+
+    {
+      input1[0]=input1[2]=INT16_MAX;
+      input2[0]=input2[2]=INT16_MAX;
+      input1[1]=input1[3]=INT16_MAX*5/10;
+      input2[1]=input2[3]=INT16_MAX*5/10;
+      output[0]=3;
+      clock_t t = clock();
+      for(int i=0;i<loopTimes;i++)
+        _mm_algo_array(output, input1,input2,8*INT16X8SET);
+      // _mm_add_array(output, input1,8*INT16X8SET);
+
+      printf("SSE :%fms \n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
+
+      printf("%d %d %d %d\n",
+            input1[0], input1[1], input1[2], input1[3]);
+    }
+
+    aligned_free( input1 );
+    aligned_free( input2 );
+    aligned_free( output );
+  }
+  //_mm_load_ps
+  {
+
+    float input1[4] _ATTR_ALIGN16_= { 1.2f, 3.5f, 1.7f, 2.8f };
+    float input2[4] _ATTR_ALIGN16_= { -0.7f, 2.6f, 3.3f, -0.8f };
+    float output[1000*1000]_ATTR_ALIGN16_;
+    __m128 a = _mm_load_ps(input1);
+    __m128 b = _mm_load_ps(input2);
+    __m128 t = _mm_add_ps(a, b);
+    _mm_store_ps(output, t);
+    _mm_store_ps(output+5, t);
+    printf("%f %f %f %f\n",
+          output[0], output[1], output[2], output[3]);
+
+    
+  }
 
   __m128 vector1 = _mm_set_ps(4.0, 3.0, 2.0, 1.0); // high element first, opposite of C array order.  Use _mm_setr_ps if you want "little endian" element order in the source.
   __m128 vector2 = _mm_set_ps(7.0, 8.0, 9.0, 0.0);
@@ -388,25 +578,24 @@ void SSE_Test()
   // vector1 is now (1, 2, 3, 4) (above shuffle reversed it)
 
 
+  // __m256i hello;
+  // // Construction from scalars or literals.
+  // __m256d a = _mm256_set_pd(1.0, 2.0, 3.0, 4.0);
 
-  __m256i hello;
-  // Construction from scalars or literals.
-  __m256d a = _mm256_set_pd(1.0, 2.0, 3.0, 4.0);
+  // // Does GCC generate the correct mov, or (better yet) elide the copy
+  // // and pass two of the same register into the add? Let's look at the assembly.
+  // __m256d b = a;
 
-  // Does GCC generate the correct mov, or (better yet) elide the copy
-  // and pass two of the same register into the add? Let's look at the assembly.
-  __m256d b = a;
+  // // Add the two vectors, interpreting the bits as 4 double-precision
+  // // floats.
+  // __m256d c = _mm256_add_pd(a, b);
 
-  // Add the two vectors, interpreting the bits as 4 double-precision
-  // floats.
-  __m256d c = _mm256_add_pd(a, b);
+  // // Do we ever touch DRAM or will these four be registers?
+  // __attribute__ ((aligned (32))) double output[4];
+  // _mm256_store_pd(output, c);
 
-  // Do we ever touch DRAM or will these four be registers?
-  __attribute__ ((aligned (32))) double output[4];
-  _mm256_store_pd(output, c);
-
-  printf("%f %f %f %f\n",
-         output[0], output[1], output[2], output[3]);
+  // printf("%f %f %f %f\n",
+  //        output[0], output[1], output[2], output[3]);
   return ;
 }
 

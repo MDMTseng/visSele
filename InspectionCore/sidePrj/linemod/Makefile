@@ -53,7 +53,7 @@ else
 endif
 
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
-STRICT_FLAGS+= -march=core2 -mtune=intel -fdeclspec  -mavx2
+STRICT_FLAGS+= -march=core2 -mtune=intel -msse4.2
  
 export FLAGS+= -w -O3 $(STRICT_FLAGS)
 
