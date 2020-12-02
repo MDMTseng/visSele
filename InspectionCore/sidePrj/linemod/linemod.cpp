@@ -403,8 +403,14 @@ void _xx_algo_array( int16_t * dst, int16_t * src1, int16_t const * src2, size_t
     int32_t m=(int32_t)src1[i]*src2[i];
     src1[i]=m>>(15+1);
     
-    if(i&1==1)
-      src1[i-1]=(src1[i-1]+src1[i]);
+    if((i&31)==31)
+    {
+      int ii=i-31;
+      for(int j=0;j<16;j++)
+      {
+        src1[ii+j]=(src1[ii+j*2]+src1[ii+j*2+1]);
+      }
+    }
 
     // printf("src1[%d]:%d, dst[%d]:%d\n",i,src1[i],i/2,dst[i/2]);
   }
@@ -430,7 +436,7 @@ void _mm_algo_array( int16_t * dst, int16_t * src1, int16_t const * src2, size_t
       // *(__m128i*) dst = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
       // dst+=8;
 
-      *(__m128i*) src1 = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
+      *(__m128i*) (src1-8) = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
     }
     // mulhrs
   }
