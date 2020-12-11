@@ -106,10 +106,6 @@ uint32_t mod_sim(uint32_t num,uint32_t mod_N)
 
 
 
-pipeLineInfo* actionExecTask[ SARRL(state_pulseOffset)];
-RingBuf<typeof(*actionExecTask),uint8_t > actionExecTaskQ(actionExecTask,SARRL(state_pulseOffset));
-
-
 int next_state(pipeLineInfo* pli);
 int next_state(pipeLineInfo* pli)
 {
@@ -134,12 +130,8 @@ typedef struct GateInfo {
   uint32_t end_pulse;
   uint8_t debunce;
   uint8_t pre_Sense;
-  uint8_t cur_Sense;
-  uint8_t Sense;
+  uint8_t track_Sense;
 } GateInfo;
-GateInfo gateInfo = {.state = 1};
-
-
 
 
 uint32_t pulse_distance(uint32_t curP,uint32_t tarP,uint32_t warp)
@@ -167,109 +159,134 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 }
 
 
-uint32_t next_processing_pulse=perRevPulseCount;//equal perRevPulseCount to means never hit processing pulse
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_THRES 5
-uint32_t OBJECT_SEP_THRES=(perRevPulseCount/60);
+#define DEBOUNCE_THRES (perRevPulseCount/480)
+uint32_t OBJECT_SEP_THRES=(perRevPulseCount/40);
 
-uint32_t step_thres_pulse_down=0;
-void task_gateSensing()
+uint32_t step_thres_pulse_down=0;//the count down from previous accepted object, to prevent two objects are too close
+
+
+GateInfo gateInfo;
+
+
+
+
+void RESET_GateSensing()
+{
+  step_thres_pulse_down=0;
+  
+  GateInfo ngateInfo = {0};
+  ngateInfo.state = 1;
+  ngateInfo.pre_Sense=128;
+  ngateInfo.start_pulse=~0;
+  gateInfo=ngateInfo;
+}
+
+
+void task_gateEvent(uint8_t curGateS,uint8_t preGateS);
+void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
   
-  
+  if(stage>stageLen)return;
   uint8_t cur_Sense = !digitalRead(GATE_PIN);
           
-  if (cur_Sense != gateInfo.pre_Sense)
+  if (cur_Sense != gateInfo.track_Sense)
   {
-    gateInfo.debunce = 0;
+    gateInfo.debunce = DEBOUNCE_THRES;
+    gateInfo.track_Sense=cur_Sense;
+    return;
   }
-  else if (gateInfo.debunce <= DEBOUNCE_THRES)gateInfo.debunce++;
 
-  if(step_thres_pulse_down!=0)
+  if(step_thres_pulse_down)//the count down from previous accepted object
   {
     step_thres_pulse_down--;
   }
 
-  if (gateInfo.debunce == DEBOUNCE_THRES)
+  if (gateInfo.debunce)gateInfo.debunce--;
+  else if (gateInfo.pre_Sense!=cur_Sense)
   {
-    if (cur_Sense == 0)
-    {
-      if (gateInfo.state != cur_Sense)
-      {
-        gateInfo.state = cur_Sense;
-        gateInfo.start_pulse = logicPulseCount;
-      }
-    }
-    else
-    {
-      if (gateInfo.state != cur_Sense)
-      {
-        gateInfo.end_pulse = logicPulseCount;
-        if (gateInfo.start_pulse > gateInfo.end_pulse)
-        {
-          gateInfo.end_pulse += perRevPulseCount;
-        }
-        uint32_t middle_pulse = (gateInfo.end_pulse + gateInfo.start_pulse) >> 1;
-        if(middle_pulse<DEBOUNCE_THRES)
-        {
-          middle_pulse = perRevPulseCount+middle_pulse-DEBOUNCE_THRES;
-        }
-        else
-        {
-          middle_pulse = mod_sim(middle_pulse-DEBOUNCE_THRES,perRevPulseCount);
-        }
+    task_gateEvent(cur_Sense,gateInfo.pre_Sense);
+    gateInfo.pre_Sense=cur_Sense;
+  }
+}
 
-        bool accept_pulse=(step_thres_pulse_down==0);
-        
-        if(!accept_pulse)
-          thres_skip_counter++;
+
+void task_gateEvent(uint8_t curGateS,uint8_t preGateS)
+{
+//  if(curGateS==preGateS)return;
+  if (curGateS == 0)
+  {
+    gateInfo.start_pulse = logicPulseCount;
+  }
+  else if((~gateInfo.start_pulse)!=0)
+  {
+    
+    gateInfo.end_pulse = logicPulseCount;
+    if (gateInfo.start_pulse > gateInfo.end_pulse)//the pulse wrapped around
+    {
+      gateInfo.end_pulse += perRevPulseCount;
+    }
+    if(gateInfo.end_pulse-gateInfo.start_pulse>(perRevPulseCount>>2))
+    {
+      return;
+    }
+    uint32_t middle_pulse = (gateInfo.end_pulse + gateInfo.start_pulse);//get middle pulse
+    if(middle_pulse&1)middle_pulse+=2;//round digit
+    middle_pulse>>=1;
+    middle_pulse = mod_sim(middle_pulse,perRevPulseCount);
+
+    bool accept_pulse=(step_thres_pulse_down==0);
+    
+    if(!accept_pulse)
+      thres_skip_counter++;
 //        {
 //          //remove previous object
 //          RBuf.pullHead();
 //          //pipeLineInfo* head = RBuf.getHead();
 //          step_thres_pulse_down=0;
 //        }
-        
-        pipeLineInfo* head = RBuf.getHead();
-        if (accept_pulse && head != NULL)
+    
+    pipeLineInfo* head = RBuf.getHead();
+    if (accept_pulse && head != NULL)
+    {//get a new object and find a space to log it
+      
+      TCount++;
+      step_thres_pulse_down=OBJECT_SEP_THRES;
+      head->gate_pulse = middle_pulse;
+      head->stage = 0;
+      next_state(head);//calc next trigger pulse
+      RBuf.pushHead();
+
+      actionExecTasks.clear();
+
+      //Do pulse distance check, if the new task is closer do fresh
+      if(0)
+      {
+        uint32_t exPulse = getMinDistTaskPulse(actionExecTasks);
+        uint32_t exDist = pulse_distance(logicPulseCount,exPulse,perRevPulseCount);
+        uint32_t newPulse = head->trigger_pulse;
+        uint32_t newDist= pulse_distance(logicPulseCount,newPulse,perRevPulseCount);
+        if(newDist<exDist)
         {
-          step_thres_pulse_down=OBJECT_SEP_THRES;
-          head->gate_pulse = middle_pulse;
-          head->stage = 0;
-          next_state(head);
-          RBuf.pushHead();
-
-
-
-          //Do pulse distance check, if the new task is closer do fresh
-          {
-            uint32_t exPulse = getMinDistTaskPulse(actionExecTaskQ);
-            uint32_t exDist = pulse_distance(logicPulseCount,exPulse,perRevPulseCount);
-            uint32_t newPulse = head->trigger_pulse;
-            uint32_t newDist= pulse_distance(logicPulseCount,newPulse,perRevPulseCount);
-            if(newDist<exDist)
-            {
-              actionExecTaskQ.clear();
-              
-              pipeLineInfo** newQhead = actionExecTaskQ.getHead();
-              if (newQhead != NULL)
-              {
-                *newQhead = head;
-                actionExecTaskQ.pushHead();
-              }
-            }
-          }
-
+          __newDist=newDist;
+          __exDist=exDist;
+          actionExecTasks.clear();
           
+          pipeLineInfo** newQhead = actionExecTasks.getHead();
+          if (newQhead != NULL)
+          {
+            *newQhead = head;
+            actionExecTasks.pushHead();
+          }
         }
       }
 
+      
     }
-    gateInfo.state = cur_Sense;
+  
+
   }
-  gateInfo.pre_Sense = gateInfo.cur_Sense;
-  gateInfo.cur_Sense = cur_Sense;
 
 }
 
@@ -286,45 +303,21 @@ void task_ExecuteMinDistTasks(uint8_t stage,uint8_t stageLen)
 {  
   if(stage!=0)return;
   pipeLineInfo** taskToDo =NULL;
-  while(taskToDo=actionExecTaskQ.getTail())
+  while(taskToDo=actionExecTasks.getTail())
   {
     
     pipeLineInfo* tail = (*taskToDo);
     if(tail==NULL)continue;
     if(tail->trigger_pulse!=logicPulseCount)break;
 
-
-//    if(tail->stage==7)
-//    {
-//      pipeLineInfo** Q_tail = taskToDo;
-//      for (int j = 0; j < RBuf.size() ; j++)
-//      {
-//        pipeLineInfo* RBuf_tail = RBuf.getTail(j);
-//        if(*Q_tail == RBuf_tail)
-//        {
-//          static int pX_idx=0;
-//          DEBUG_print("getTail_Idx:");
-//          int fidx = RBuf.getTail_Idx(j);
-//          DEBUG_print(fidx);
-//          DEBUG_print(" diff:");
-//          DEBUG_print(fidx - pX_idx);
-//          pX_idx=fidx;
-//          DEBUG_print(" stage:");
-//          DEBUG_println(RBuf_tail->stage);
-//          break;
-//        }
-//      }
-//    }
-
-
     int ret = next_state(tail);
     if (ret)
     {
       tail->stage = -3;
     }
-    actionExecTaskQ.consumeTail();
+    actionExecTasks.consumeTail();
   }
-  
+
 }
 
 
@@ -332,8 +325,7 @@ void task_ExecuteMinDistTasks(uint8_t stage,uint8_t stageLen)
 void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
 {
   if(stage>stageLen)return;
-  static int initSize=0;
-  static int processMult=0;
+  static int stageStep=0;
   static int proS=0;
   static int proE=0;
 
@@ -341,29 +333,21 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
   
   static uint32_t minDist;
 
+  
   if(stage==0)
   {
-    uint32_t minTaskPulse = getMinDistTaskPulse(actionExecTaskQ);
-    doCollection=(minTaskPulse>=perRevPulseCount);
+    doCollection=(actionExecTasks.size()==0);//If the actionExecTasks still have task means the closest task is still the same
+    minDist=perRevPulseCount;//set to maximum
+    stageStep=RBuf.size()/(stageLen)+1;
   }
+  proS=stageStep*stage;
+  proE=proS+stageStep;
+  
   if(!doCollection)
-  {
+  { 
     return;
   }
 
-  
-  proS=proE;
-  proE+=processMult;
-  if(stage==0)
-  {
-    minDist=perRevPulseCount;
-    initSize=RBuf.size();
-    processMult=initSize/(stageLen)+1;
-    actionExecTaskQ.clear();
-    proS=0;
-    proE=processMult;
-  }
-  
   if(proE>RBuf.size())
   {
     proE=RBuf.size();
@@ -377,22 +361,24 @@ void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
     uint32_t dist = pulse_distance(logicPulseCount,tail->trigger_pulse, perRevPulseCount);
     if(minDist>dist)
     {
-      actionExecTaskQ.clear();
+      actionExecTasks.clear();
       minDist=dist;
-      
-      
     }
 
     if(minDist==dist)
     {
       
-      pipeLineInfo** head = actionExecTaskQ.getHead();
+      pipeLineInfo** head = actionExecTasks.getHead();
       if (head != NULL)
       {
         *head = tail;
-        actionExecTaskQ.pushHead();
+        actionExecTasks.pushHead();
       }
     }
+  }
+  if(stage==stageLen-1 && actionExecTasks.size()!=0)
+  {
+    ExeUpdateCount++;
   }
 }
 
@@ -415,10 +401,16 @@ void task_CleanCompletedPipe(uint8_t stage,uint8_t stageLen)
 
 void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 {
-  //exp:stageLen=10
-  task_ExecuteMinDistTasks(stage,1);//0 only
-  task_CollectMinDistTasks(stage-1,stageLen-2);//1~stageLen-2 => 1~8
-  task_CleanCompletedPipe(stage-(stageLen-1),1);//stageLen-1 only => 9
+  //exp:stageLen=10  0~9
+  uint8_t stageBase=stage;
+  task_gateSensing(stageBase,1);//0 only
+  stageBase-=1;
+  task_CollectMinDistTasks(stageBase,stageLen-3);//1 len 7 => 1~7
+  
+  stageBase-=stageLen-3;
+  task_CleanCompletedPipe(stageBase,1);//1 len 1  only =>8
+  stageBase-=1;
+  task_ExecuteMinDistTasks(stageBase,1);//1 len 1 only =>9
 }
 
 
@@ -440,7 +432,6 @@ ISR(TIMER1_COMPA_vect)
       revCount++;
       EV_Axis0_Origin(revCount);
     }
-    task_gateSensing();
   }
 
 
@@ -452,6 +443,8 @@ uint32_t pulseHZ = 0;
 
 void setup_Stepper() {
   DEBUG_println(".....");
+  
+  RESET_GateSensing();
   timer1Setup(1);
   timer1_HZ(0);
 }

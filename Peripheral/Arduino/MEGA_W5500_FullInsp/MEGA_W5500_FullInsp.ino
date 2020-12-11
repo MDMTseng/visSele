@@ -16,7 +16,13 @@
 #include "include/RingBuf.hpp"
 
 //#define TEST_MODE 
-
+uint16_t TCount=0;
+uint16_t CCount=0;
+uint16_t ExeUpdateCount=0;
+uint16_t PassCount=0;
+uint16_t stageUpdated=0;
+uint16_t __newDist=0;
+uint16_t __exDist=0;
 
 
 enum class GEN_ERROR_CODE { 
@@ -93,6 +99,8 @@ GEN_ERROR_CODE errorBuf[20];
 RingBuf<typeof(*errorBuf),uint8_t > ERROR_HIST(errorBuf,SARRL(errorBuf));
 
 
+
+
 uint32_t logicPulseCount = 0;
 
 #define PIPE_INFO_LEN 60
@@ -149,13 +157,17 @@ uint32_t state_pulseOffset[] =
 //  PRPC*angle/360+20-blowPCount/2+offsetAir, PRPC*angle/360+20+blowPCount/2+offsetAir};//NG air blow
 {0, 654 ,657,659, 660,  697, 750,  900,910,1073,1083};
 
+
+
+pipeLineInfo* actionExecTask[ SARRL(state_pulseOffset)];
+RingBuf<typeof(*actionExecTask),uint8_t > actionExecTasks(actionExecTask,SARRL(state_pulseOffset));
+
 int stage_action(pipeLineInfo* pli);
 int stage_action(pipeLineInfo* pli)
 {
   pli->notifMark = 0;
   
   static int cctest=0;
-
 //  
 //  DEBUG_print("..");
 //  DEBUG_print(pli->gate_pulse);
@@ -164,6 +176,7 @@ int stage_action(pipeLineInfo* pli)
   switch (pli->stage)
   {
     case 0:
+  stageUpdated++;
       pli->stage++;
       pli->insp_status=insp_status_UNSET;
       if(mode_info.mode==run_mode_info::TEST)
@@ -212,6 +225,7 @@ int stage_action(pipeLineInfo* pli)
       digitalWrite(CAMERA_PIN, 1);
       pli->notifMark = 1;
       pli->stage++;
+      CCount++;
       break;
     case 3://Trigger shutter OFF
       digitalWrite(CAMERA_PIN, 0);
@@ -223,15 +237,19 @@ int stage_action(pipeLineInfo* pli)
       break;
 
     case 6://Last moment switch
-    
+      
+  stageUpdated++;
+      CCount--;
       if(pli->insp_status==insp_status_OK)//OK
       {
+        PassCount++;
         inspResCount.OK++;
         pli->stage=7;
         return 0;
       }
       if(pli->insp_status==insp_status_NG)//NG
       {
+        PassCount++;
         inspResCount.NG++;
         pli->stage=9;
         return 0;
@@ -240,7 +258,7 @@ int stage_action(pipeLineInfo* pli)
       
       if(pli->insp_status==insp_status_UNSET)
       {
-        
+        PassCount=0;
         inspResCount.ERR++;
         //Error:The inspection result isn't back
         //TODO: Send error msg and stop machine
@@ -249,7 +267,10 @@ int stage_action(pipeLineInfo* pli)
       } 
       else
       {
+        PassCount++;
         inspResCount.NA++;
+        
+        pli->stage=-pli->stage;
       }
       return -1;
       
@@ -260,6 +281,7 @@ int stage_action(pipeLineInfo* pli)
       return 0;
     case 8://Air Blow OK OFF
       digitalWrite(AIR_BLOW_OK_PIN, 0);
+      pli->stage=-pli->stage;
        //DEBUG_println("OK");
       return -1;
       
@@ -269,6 +291,7 @@ int stage_action(pipeLineInfo* pli)
       return 0;
     case 10://Air Blow NG OFF
       digitalWrite(AIR_BLOW_NG_PIN, 0);
+      pli->stage=-pli->stage;
       //DEBUG_println("NG");
       return -1;
   }
@@ -398,7 +421,8 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
         //if there is an error
         //clear plate
         RBuf.clear();
-        
+        RESET_GateSensing();
+        TCount=0;CCount=0;
          
         digitalWrite(AIR_BLOW_OK_PIN, 0);
         digitalWrite(AIR_BLOW_NG_PIN, 0);
@@ -431,7 +455,9 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
       //if there is an error
       //clear plate
       RBuf.clear();
+      RESET_GateSensing();
     
+      TCount=0;CCount=0;
       //set speed to zero
       tar_pulseHZ_=0; 
     break;
@@ -669,7 +695,6 @@ class Websocket_FI:public Websocket_FI_proto{
         {
           return 0;
         }
-        
         int new_count=-99;  
         int pre_count=cur_insp_counter;//0~255
         char *counter_str = extBuff;
@@ -733,8 +758,8 @@ class Websocket_FI:public Websocket_FI_proto{
 //          extBuff+=retL+1;
 //          extBuffL-=retL+1;
             sscanf(statusStr, "%d", &insp_status);
-            //DEBUG_print(">>status>>>>");
-            //DEBUG_println(insp_status);
+            DEBUG_print(">>status>>>>");
+            DEBUG_println(insp_status);
           }
         }
         
@@ -749,7 +774,9 @@ class Websocket_FI:public Websocket_FI_proto{
           }
         }
         
+        
         noInterrupts();
+        TCount--;
         for(int i=0;i<RBuf.size();i++)
         {
           pipeLineInfo* pipe=RBuf.getTail(i);
@@ -760,6 +787,7 @@ class Websocket_FI:public Websocket_FI_proto{
 //          }
           if(pipe->insp_status==insp_status_UNSET)
           {
+            
             pipe->insp_status=insp_status;
             ret_status=0;
             break;
@@ -1093,24 +1121,109 @@ uint32_t totalLoop=0;
 
 int emptyPlateCount=0;
 
-uint32_t feederX=0;
+uint32_t _rotl(uint32_t value, int shift) {
+    if ((shift &= 31) == 0)
+      return value;
+    return (value << shift) | (value >> (32 - shift));
+}
+uint32_t cmpCheckSum(int shift,int num_args, ...)
+{
+   uint32_t val = 0;
+   va_list ap;
+   int i;
+
+   va_start(ap, num_args);
+   for(i = 0; i < num_args; i++) 
+   {
+      val ^= _rotl(va_arg(ap, uint32_t),3);
+      val = _rotl(val,shift);
+   }
+   va_end(ap);
+ 
+   return val;
+}
+
+uint32_t pre_csum=0;
+void printDBGInfo()
+{
+  uint32_t c_sum = cmpCheckSum(7,6,
+    (uint32_t)RBuf.size() ,
+    (uint32_t)TCount,
+    (uint32_t)CCount,
+    PassCount,
+    stageUpdated,
+    ExeUpdateCount);
+  if(pre_csum!=c_sum)
+  {
+    pre_csum=c_sum;
+    
+    DEBUG_print(" T:");
+    DEBUG_print(TCount);
+    
+
+    DEBUG_print(" C:");
+    DEBUG_print(CCount);
+
+    DEBUG_print(" P:");
+    DEBUG_print(PassCount);
+    DEBUG_print(" E:");
+    DEBUG_print(ExeUpdateCount);
+
+
+
+
+    DEBUG_print(" pulse:");
+    DEBUG_print(logicPulseCount);
+
+
+    if(actionExecTasks.size()>0)
+    {
+      DEBUG_print(" exeP:");
+      
+      pipeLineInfo** taskToDo=actionExecTasks.getTail();
+      pipeLineInfo* tail = (*taskToDo);
+    
+      DEBUG_print(tail->trigger_pulse);
+        
+    }
+
+
+    
+    DEBUG_println();
+    for(int i=0;i<RBuf.size();i++)
+    {
+      pipeLineInfo* tail = RBuf.getTail(i);
+      
+      DEBUG_print("[");
+      DEBUG_print(i);
+      DEBUG_print("]:s:");
+      DEBUG_print(tail->stage);
+      DEBUG_print(" gp:");
+      DEBUG_print(tail->gate_pulse);
+      DEBUG_print(" tp:");
+      DEBUG_print(tail->trigger_pulse);
+
+      
+      DEBUG_println();
+    }
+
+
+    
+
+    
+  }
+
+}
 void loop() 
 {
+
+
+  
   if(WS_Server)
     WS_Server->loop_WS();
 
   totalLoop++;
 
-//  if(feederX<800)
-//  {
-//    digitalWrite(FEEDER_PIN, LOW);
-//  }
-//  else
-//  {
-//    digitalWrite(FEEDER_PIN, HIGH);
-//  }
-//  feederX=(feederX>20000)?0:feederX+1;
-  
   if( (totalLoop&0xF)==0)
   {
     uint32_t tar=tar_pulseHZ_;
@@ -1131,12 +1244,11 @@ void loop()
 
   if( (totalLoop&(0x7FFF>>1))==0)
   {
-    DEBUG_print("RBuf:");
-    DEBUG_println(RBuf.size());
-    DEBUG_print("thres_skip_counter:");
-    DEBUG_println(thres_skip_counter);
-  
-    
+//    DEBUG_print("RBuf:");
+//    DEBUG_println(RBuf.size());
+//    DEBUG_print("thres_skip_counter:");
+//    DEBUG_println(thres_skip_counter);
+ 
 //    DEBUG_println((char*)WS_Server->json_sec_buffer);
     if(ERROR_HIST.size()!=0)
     {
