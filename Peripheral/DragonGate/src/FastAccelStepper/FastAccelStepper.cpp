@@ -50,13 +50,13 @@ FastAccelStepper fas_stepper[MAX_STEPPER] = {FastAccelStepper(),
 //
 //*************************************************************************************************
 #if defined(ARDUINO_ARCH_ESP32)
-#define TASK_DELAY_10MS 10
+#define TASK_DELAY_4MS 4
 void StepperTask(void* parameter) {
   FastAccelStepperEngine* engine = (FastAccelStepperEngine*)parameter;
-  const TickType_t delay_10ms = TASK_DELAY_10MS / portTICK_PERIOD_MS;
+  const TickType_t delay_4ms = TASK_DELAY_4MS / portTICK_PERIOD_MS;
   while (true) {
     engine->manageSteppers();
-    vTaskDelay(delay_10ms);
+    vTaskDelay(delay_4ms);
   }
 }
 #endif
@@ -412,7 +412,7 @@ int FastAccelStepper::setDelayToEnable(uint32_t delay_us) {
 void FastAccelStepper::setDelayToDisable(uint16_t delay_ms) {
   uint16_t delay_count = 0;
 #if defined(ARDUINO_ARCH_ESP32)
-  delay_count = delay_ms / TASK_DELAY_10MS;
+  delay_count = delay_ms / TASK_DELAY_4MS;
 #endif
 #if defined(ARDUINO_ARCH_AVR)
   delay_count = delay_ms / (65536000 / TICKS_PER_S);

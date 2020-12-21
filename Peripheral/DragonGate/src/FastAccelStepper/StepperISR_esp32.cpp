@@ -17,7 +17,7 @@ static const struct mapping_s queue2mapping[NUM_QUEUES] = {
       mcpwm_unit : MCPWM_UNIT_0,
       timer : 0,
       pwm_output_pin : MCPWM0A,
-      pcnt_unit : PCNT_UNIT_1,
+      pcnt_unit : PCNT_UNIT_0,
       input_sig_index : PCNT_SIG_CH0_IN0_IDX,
       timer_tez_int_clr : MCPWM_TIMER0_TEZ_INT_CLR,
       timer_tez_int_ena : MCPWM_TIMER0_TEZ_INT_ENA
@@ -26,7 +26,7 @@ static const struct mapping_s queue2mapping[NUM_QUEUES] = {
       mcpwm_unit : MCPWM_UNIT_0,
       timer : 1,
       pwm_output_pin : MCPWM1A,
-      pcnt_unit : PCNT_UNIT_0,
+      pcnt_unit : PCNT_UNIT_1,
       input_sig_index : PCNT_SIG_CH0_IN1_IDX,
       timer_tez_int_clr : MCPWM_TIMER1_TEZ_INT_CLR,
       timer_tez_int_ena : MCPWM_TIMER1_TEZ_INT_ENA
@@ -75,7 +75,7 @@ void IRAM_ATTR next_command(StepperQueue *queue, struct queue_entry *e) {
   mcpwm_dev_t *mcpwm = mcpwm_unit == MCPWM_UNIT_0 ? &MCPWM0 : &MCPWM1;
   uint8_t timer = mapping->timer;
   uint8_t steps = e->steps;
-  PCNT.conf_unit[timer].conf2.cnt_h_lim = steps;  // is updated only on zero
+  PCNT.conf_unit[mapping->pcnt_unit].conf2.cnt_h_lim = steps;  // is updated only on zero
   if (e->toggle_dir) {
     uint8_t dirPin = queue->dirPin;
     digitalWrite(dirPin, digitalRead(dirPin) == HIGH ? LOW : HIGH);
@@ -94,8 +94,7 @@ void IRAM_ATTR next_command(StepperQueue *queue, struct queue_entry *e) {
   }
 }
 
-static void IRAM_ATTR pcnt_isr_service(void *arg) {
-  StepperQueue *q = (StepperQueue *)arg;
+static void IRAM_ATTR what_is_next(StepperQueue *q) {
   uint8_t rp = q->read_idx;
   if (rp != q->next_write_idx) {
     struct queue_entry *e = &q->entry[rp & QUEUE_LEN_MASK];
@@ -104,16 +103,22 @@ static void IRAM_ATTR pcnt_isr_service(void *arg) {
     next_command(q, e);
   } else {
     // no more commands: stop timer at period end
+	// Same as forceStop() => perhaps combine
     const struct mapping_s *mapping = q->mapping;
     mcpwm_unit_t mcpwm_unit = mapping->mcpwm_unit;
     mcpwm_dev_t *mcpwm = mcpwm_unit == MCPWM_UNIT_0 ? &MCPWM0 : &MCPWM1;
-    mcpwm->int_ena.val &= ~mapping->timer_tez_int_ena;
     uint8_t timer = mapping->timer;
     mcpwm->timer[timer].mode.start = 1;           // stop at TEP
     mcpwm->channel[timer].generator[0].utez = 1;  // low at zero
+    mcpwm->int_ena.val &= ~mapping->timer_tez_int_ena;
     q->isRunning = false;
     q->queue_end.ticks = TICKS_FOR_STOPPED_MOTOR;
   }
+}
+
+static void IRAM_ATTR pcnt_isr_service(void *arg) {
+  StepperQueue *q = (StepperQueue *)arg;
+  what_is_next(q);
 }
 
 // MCPWM_SERVICE is only used in case of pause
@@ -121,7 +126,7 @@ static void IRAM_ATTR pcnt_isr_service(void *arg) {
   if (mcpwm.int_st.timer##TIMER##_tez_int_st != 0) { \
     mcpwm.int_clr.timer##TIMER##_tez_int_clr = 1;    \
     StepperQueue *q = &fas_queue[pcnt];              \
-    pcnt_isr_service(q);                             \
+    what_is_next(q);                                 \
   }
 
 static void IRAM_ATTR mcpwm0_isr_service(void *arg) {
@@ -181,7 +186,7 @@ void StepperQueue::init(uint8_t queue_num, uint8_t step_pin) {
     mcpwm_isr_register(
         mcpwm_unit,
         mcpwm_unit == MCPWM_UNIT_0 ? mcpwm0_isr_service : mcpwm1_isr_service,
-        NULL, ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_EDGE, NULL);
+        NULL, ESP_INTR_FLAG_IRAM | ESP_INTR_FLAG_SHARED, NULL);
 
     mcpwm->clk_cfg.prescale = 10 - 1;  // 160 MHz/10  => 16 MHz
 
@@ -267,6 +272,7 @@ void StepperQueue::forceStop() {
   uint8_t timer = mapping->timer;
   mcpwm->timer[timer].mode.start = 1;           // stop at TEP
   mcpwm->channel[timer].generator[0].utez = 1;  // low at zero
+  mcpwm->int_ena.val &= ~mapping->timer_tez_int_ena;
   isRunning = false;
   queue_end.ticks = TICKS_FOR_STOPPED_MOTOR;
 }
