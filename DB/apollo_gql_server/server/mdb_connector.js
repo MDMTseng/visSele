@@ -1,9 +1,12 @@
 const mongoose =require('mongoose');
-const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
-const MDB_LOCAL="mongodb://localhost:27017/db_hy";
+// const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
+const MDB_ATLAS ="mongodb+srv://xceptionadmin:0982133498@xceptiondata.eqcea.mongodb.net/DB_HY?retryWrites=true&w=majority";
+
+
+// const MDB_LOCAL="mongodb://localhost:27017/db_hy";
 // let localStorage = require('localStorage');
 
-const {Inspection_With_TS_Schema,DefineFile_With_TS_Schema}=require('../schema/schema.js') ;
+const {Inspection_With_TS_Schema,DefineFile_With_TS_Schema,CustomDisplay_With_TS_Schema}=require('../schema/schema.js') ;
 mongoose.Promise = global.Promise;
 mongoose.connect(MDB_ATLAS, {useNewUrlParser: true});
 mongoose.pluralize(null);
@@ -20,24 +23,37 @@ db.on('open', function (ref) {
 
 let InspectionModel_A = db.model('Machine_A', Inspection_With_TS_Schema);
 let DefineFileModel_A = db.model('DefineFile_A', DefineFile_With_TS_Schema);
+// db.getCollection("DefineFile_A")
+// db.collections['DefineFile_A'].createIndex( { "DefineFile.featureSet_sha1":1 }, { unique: true } )
+// .then((ok)=>console.log(ok))
+// .catch((e)=>console.log(e))
+
+//DefineFileModel_A.ensureIndex( { "DefineFile.featureSet_sha1":1 }, { unique:true, dropDups:true } )
+let CustomDisplay_A = db.model('CustomDisplay_A', CustomDisplay_With_TS_Schema);
 //featureSet_sha1
 function CRUD_upsertOne(which,insertWhat){//return promise
  
-    /*if(which=='df'){
-        new DefineFileModel_A({DF:insertWhat}).findOneAndUpdate({"DF.data.featureSet_sha1":insertWhat.data.featureSet_sha1 }, insertWhat, {upsert:true}, function(err, doc){
-            if (err) {
-                handleError(err,insertWhat);
-            }
-        });
-    }*/
     return CRUD_insertOne(which,insertWhat);
 }
 function CRUD_insertOne(which,insertWhat){
     //Without callback it will return promise
     if(which=='df'){
-        return new DefineFileModel_A({DefineFile:insertWhat}).save();
+      return new DefineFileModel_A({DefineFile:insertWhat}).save();
     }else if(which=='Inspection'){
-        return new InspectionModel_A({InspectionData:insertWhat}).save();
+      return new InspectionModel_A({InspectionData:insertWhat}).save();
+    }else if(which=='CustomDisplay'){
+      //
+      if(insertWhat._id!==undefined)
+      {
+        return CustomDisplay_A.updateOne(
+          { _id: insertWhat._id },
+          { $set: insertWhat}
+        )
+      }
+      else
+      {
+        return new CustomDisplay_A(insertWhat).save();
+      }
     }
 }
 
@@ -72,11 +88,13 @@ function dropDB(db){
     db.dropDatabase();
 }
 function CRUD_deleteMany(which,queryCMD){
-    if(which=='df'){
-        return DefineFileModel_A.deleteMany(queryCMD);
-    }else if(which=='Inspection'){
-        return InspectionModel_A.deleteMany(queryCMD);
-    }
+  if(which=='df'){
+      return DefineFileModel_A.deleteMany(queryCMD);
+  }else if(which=='Inspection'){
+    return InspectionModel_A.deleteMany(queryCMD);
+  }else if(which=='CustomDisplay'){
+    return CustomDisplay_A.deleteMany(queryCMD);
+  }
 }
 
 function CRUD_query(which,queryCMD,projection,etc=[]){
@@ -84,14 +102,19 @@ function CRUD_query(which,queryCMD,projection,etc=[]){
 
     let cmd=[];
     cmd.push({ "$match" : queryCMD});
-    cmd.push({ "$project" :projection});
+    if(projection!==undefined)
+      cmd.push({ "$project" :projection});
     cmd=cmd.concat(etc);
     if(which=='df'){
-        return DefineFileModel_A.aggregate(cmd);
+        //return DefineFileModel_A.find(queryCMD,projection);
+      return DefineFileModel_A.aggregate(cmd);
     }else if(which=='Inspection'){
-        //return InspectionModel_A.find(queryCMD,projection);
-        return InspectionModel_A.aggregate(cmd)
+      //return InspectionModel_A.find(queryCMD,projection);
+      return InspectionModel_A.aggregate(cmd)
 
+    }else if(which=='CustomDisplay'){
+        //return InspectionModel_A.find(queryCMD,projection);
+      return CustomDisplay_A.aggregate(cmd)
     }
 
 

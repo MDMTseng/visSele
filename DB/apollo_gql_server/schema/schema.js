@@ -44,6 +44,25 @@ let DefineFile_With_TS_Schema = new mongoose.Schema(
     { timestamps: true }
 );
 
+var targetDeffiles_Schema  = new mongoose.Schema({ 
+  featureSet_sha1_root: String,
+  featureSet_sha1_pre: String,
+  featureSet_sha1: String, trackTree: Boolean,
+  path:String,
+  name: String,
+  tags:String
+});
+
+let CustomDisplay_With_TS_Schema = new mongoose.Schema(
+    {
+      name:  String,
+      cat:  String,  
+      targetDeffiles:[targetDeffiles_Schema],
+
+    },
+    { timestamps: true }
+);
+
 let ItemSchema = new mongoose.Schema({
     Inspection_Result: String,
     createTime: {
@@ -58,4 +77,4 @@ let ItemSchema = new mongoose.Schema({
     versionKey: false,
     timestamps: { createdAt: 'createTime', updatedAt: 'updateTime' }
 });
-module.exports = {DefineFile_With_TS_Schema,Inspection_With_TS_Schema,typeDefs,resolvers};
+module.exports = {DefineFile_With_TS_Schema,Inspection_With_TS_Schema,typeDefs,resolvers,CustomDisplay_With_TS_Schema};

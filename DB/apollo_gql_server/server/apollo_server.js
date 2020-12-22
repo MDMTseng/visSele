@@ -37,6 +37,12 @@ app.get('/', function(req, res, next){
     res.end();
 });
 
+
+function queryParamParse_P(req)
+{
+
+}
+
 function queryParamParse(req)
 {//http://hyv.decade.tw:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
   let tStart = parseInt(req.query.tStart);
@@ -75,9 +81,12 @@ app.get('/DELETE', function(req, res){
 
     mdb_connector.deleteMany("Inspection",qStr).
     then((result)=>{
-        
+      
+      res.send("DELETE OK");
     }).
     catch((err)=>{
+      
+      res.send("DELETE FAILED");
     });
 
 })
@@ -88,6 +97,11 @@ app.get('/query/deffile', function(req, res) {
     let projection=req.query.projection;
 
     try{
+      if(projection==="{}")
+      {
+        projection=undefined
+      }
+      else
         projection=JSON.parse(projection);
     }
     catch (e) 
@@ -106,11 +120,12 @@ app.get('/query/deffile', function(req, res) {
         qStr["DefineFile.featureSet_sha1"]={$regex:req.query.featureSet_sha1
         };
     }
+    
     let queryPage=parseInt(req.query.page);
     let queryLimit=parseInt(req.query.limit);
-    if(queryPage===undefined || queryPage<1)queryPage=1;
+    if(queryPage===undefined || queryPage!=queryPage || queryPage<1)queryPage=1;
 
-    if(queryLimit===undefined)queryLimit=100;
+    if(queryLimit===undefined || queryLimit!=queryLimit)queryLimit=100;
 
     if(qStr["DefineFile.name"]===undefined && qStr["DefineFile.featureSet_sha1"]===undefined )
     {
@@ -135,7 +150,7 @@ app.get('/query/deffile', function(req, res) {
 
     
 
-    console.log(qStr,queryPage,queryLimit);
+    //console.log(qStr,queryPage,queryLimit,(queryPage-1)*queryLimit,queryLimit);
     mdb_connector.query("df",qStr,projection,queryAggRules).skip((queryPage-1)*queryLimit).limit(queryLimit).
     then((result)=>{
         // console.log(result);
@@ -154,7 +169,7 @@ app.get('/query/deffile', function(req, res) {
     }).
     catch((err)=>{
         res.send("[X]Q by get Q FAIL!!");
-        console.log("[X]Q by get Q FAIL!!");
+        console.log("[X]Q by get Q FAIL!!",err);
     });
 
 
@@ -204,9 +219,9 @@ function inspection_result_query(req, res)
     let querySample=parseInt(req.query.sample);
 
 
-    if(queryPage===undefined || queryPage<1)queryPage=1;
+    if(queryPage===undefined || queryPage!=queryPage || queryPage<1)queryPage=1;
 
-    if(queryLimit===undefined || queryLimit!==queryLimit)queryLimit=1000;
+    if(queryLimit===undefined || queryLimit!=queryLimit)queryLimit=1000;
     //console.log("qStr",qStr);
     let queryAggRules=[];
     if(querySample==querySample)
@@ -251,7 +266,145 @@ function inspection_result_query(req, res)
 app.get('/query/inspection',inspection_result_query);
 app.get('/insp_time',inspection_result_query);
 
+function jsonStrAddPadding(jsonp_preFix,jsonStr)
+{
 
+  if(jsonp_preFix===undefined)//normal ajax
+  {
+    return jsonStr;
+  }
+  else
+  {
+    return jsonp_preFix+"("+jsonStr+")";
+  }
+
+}
+
+function customdisplay_QueryParamParse(queryObj)
+{
+  let recObj={};
+
+
+  if(queryObj._id!==undefined)
+  {
+    recObj._id=queryObj._id;
+  }
+  if(queryObj.name!==undefined)
+    recObj.name ={$regex:queryObj.name};
+  
+  if(queryObj.targetDefHash!==undefined)
+    recObj["targetDeffiles.hash"]=queryObj.targetDefHash;
+
+  
+  return recObj;
+}
+
+app.get('/insert/customdisplay',(req, res)=>{
+  let recObj=customdisplay_QueryParamParse(req.query);
+
+
+  try{
+    //recObj.name = req.query.name;
+    //recObj.targetDeffiles = JSON.parse(req.query.targetDeffiles);
+    recObj=JSON.parse(req.query.full);
+  }
+  catch(err)
+  {
+    let rspStr=JSON.stringify({
+        type:"NAK",
+        err:err,
+        misc:"targetDeffiles is not parsible"
+      });
+    
+    res.send(jsonStrAddPadding(req.query.callback,rspStr));
+
+    return;
+  }
+  mdb_connector.insertOne("CustomDisplay",recObj).
+    then((prod)=>{
+      let rspStr=JSON.stringify({
+        type:"ACK"
+      })
+  
+      res.send(jsonStrAddPadding(req.query.callback,rspStr));
+    }).
+    catch((err)=>{
+        console.log("[X]INSP InsertFailed!!",err);
+      
+      let rspStr=JSON.stringify({
+        type:"NAK",
+        err:err
+      });
+  
+      res.send(jsonStrAddPadding(req.query.callback,rspStr));
+    });
+});
+
+
+app.get('/delete/customdisplay',(req, res)=>{
+
+  let recObj=customdisplay_QueryParamParse(req.query);
+  if(recObj._id===undefined)
+  {
+    let rspStr=JSON.stringify({
+      type:"NAK"
+    });
+    res.send(jsonStrAddPadding(req.query.callback,rspStr));
+  }
+  mdb_connector.deleteMany("CustomDisplay",recObj).
+    then((prod)=>{
+
+      let delCount = prod.n;
+      let rspStr=JSON.stringify({
+        type:"ACK",
+        count:delCount
+      })
+  
+      res.send(jsonStrAddPadding(req.query.callback,rspStr));
+    }).
+    catch((err)=>{
+        console.log("[X]INSP Delete Failed!!",err);
+      
+      let rspStr=JSON.stringify({
+        type:"NAK",
+        err:err
+      });
+  
+      res.send(jsonStrAddPadding(req.query.callback,rspStr));
+    });
+
+})
+app.get('/query/customdisplay',(req, res)=>{
+  let recObj=customdisplay_QueryParamParse(req.query);
+
+  let projection=req.query.projection;
+
+  try{
+      projection=JSON.parse(projection);
+  }
+  catch (e) 
+  {
+      projection={"name":1,"targetDeffiles.hash":1};;
+  }
+
+  mdb_connector.query("CustomDisplay",recObj,projection).
+    then((prod)=>{
+      res.send(jsonStrAddPadding(req.query.callback,JSON.stringify({
+        type:"ACK",
+        prod
+      })));
+    }).
+    catch((err)=>{
+
+      res.send(jsonStrAddPadding(req.query.callback,JSON.stringify({
+        type:"NAK",
+        err:err
+      })));
+
+      console.log("[X]INSP InsertFailed!!",err);
+    });
+
+});
 
 
 
@@ -326,6 +479,7 @@ app.ws('/insert/insp', function(ws, req) {
                             ws.send(JSON.stringify({
                                 type:"ACK",
                                 req_id:req_id,
+                                _id:prod._id,
                                 dbcmd:RX_JSON.dbcmd
                             }));
                             console.log("[O]INSP InsertOK!!");
