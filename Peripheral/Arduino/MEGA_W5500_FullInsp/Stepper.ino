@@ -161,11 +161,11 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_THRES (perRevPulseCount/480)
+#define DEBOUNCE_THRES (perRevPulseCount/500)
 uint32_t OBJECT_SEP_THRES=(perRevPulseCount/40);
 
 uint32_t step_thres_pulse_down=0;//the count down from previous accepted object, to prevent two objects are too close
-
+bool justCloseSkip=false;
 
 GateInfo gateInfo;
 
@@ -180,6 +180,7 @@ void RESET_GateSensing()
   ngateInfo.state = 1;
   ngateInfo.pre_Sense=128;
   ngateInfo.start_pulse=~0;
+  ngateInfo.end_pulse=~0;
   gateInfo=ngateInfo;
 }
 
@@ -239,7 +240,16 @@ void task_gateEvent(uint8_t curGateS,uint8_t preGateS)
     bool accept_pulse=(step_thres_pulse_down==0);
     
     if(!accept_pulse)
+    {
       thres_skip_counter++;
+      
+      if(!justCloseSkip)
+      {
+        justCloseSkip=true;
+        RBuf.pullHead();
+      }
+      step_thres_pulse_down=OBJECT_SEP_THRES;
+    }
 //        {
 //          //remove previous object
 //          RBuf.pullHead();
@@ -250,7 +260,7 @@ void task_gateEvent(uint8_t curGateS,uint8_t preGateS)
     pipeLineInfo* head = RBuf.getHead();
     if (accept_pulse && head != NULL)
     {//get a new object and find a space to log it
-      
+      justCloseSkip=false;
       TCount++;
       step_thres_pulse_down=OBJECT_SEP_THRES;
       head->gate_pulse = middle_pulse;
