@@ -215,6 +215,7 @@ void acvDeleteFrame(acvImage *Pic, int line_width,int val)
         Yoffset = Pic->GetROIOffsetY(),
         Height = Yoffset + Pic->GetHeight(),
         Width = Xoffset + Pic->GetWidth();
+    int CHC=Pic->Channel;
     for (int k = 0; k < line_width; k++)
     {
         for (int i = Yoffset; i < Height; i++)

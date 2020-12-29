@@ -165,6 +165,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     LOGI("CameraSetExtTrigShutterType: ret:%d",retx);
     CameraSetIspOutFormat(m_hCamera,CAMERA_MEDIA_TYPE_BGR8);
 	  CameraPlay(m_hCamera);
+    CameraLoadParameter(m_hCamera,PARAMETER_TEAM_A);
     return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_GIGE_MindVision::SetMirror(int Dir,int en)
@@ -422,6 +423,8 @@ CameraLayer::status CameraLayer_GIGE_MindVision::L_SetFrameRateMode(int mode)
 CameraLayer::status CameraLayer_GIGE_MindVision::SetOnceWB()
 {
   CameraSetClrTempMode(m_hCamera,CT_MODE_AUTO);
+  CameraSetParameterMask(m_hCamera,~0);
+  CameraSaveParameter(m_hCamera,PARAMETER_TEAM_A);
   return CameraSetOnceWB(m_hCamera)==CAMERA_STATUS_SUCCESS?CameraLayer::ACK:CameraLayer::NAK;
 }
 

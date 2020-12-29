@@ -3,145 +3,14 @@
 #include <time.h>
 #include <signal.h>
 
-#include "acvImage_BasicTool.hpp"
+#include "IMG_UTIL.hpp"
 #include "common_lib.h"
 #include <math.h>
+
 
 #include <xmmintrin.h>
 #include <pmmintrin.h>
 #include <immintrin.h>
-
-void FAST512(acvImage *src,acvImage *fast_map,int steps,int circleR, int circleR_segs,
- int (*FAST_MAP)(acvImage *img,int x,int y, std::vector <uint8_t* >&pixbuf, uint8_t* ret_PIX,void *params),
- void *params);
-
- 
-
-void NShift(int v,int* max, int* sec, int* trd)
-{
-  if(*trd<v)
-  {
-    *trd=v;
-  }
-
-  if(*sec<v)
-  {
-    *trd=*sec;
-    *sec=v;
-  }
-
-  if(*max<v)
-  {
-    *sec=*max;
-    *max=v;
-  }
-}
-
-int FAST_MAP_t(acvImage *img,int x,int y, std::vector <uint8_t* >&pixbuf, uint8_t* ret_PIX,void *params)
-{
-  // ret_PIX[0]=x;
-  // ret_PIX[1]=y;
-  // ret_PIX[2]=x*y;
-
-  uint8_t *_centerPix = &(img->CVector[y][3*x]);
-  int unMod=0;
-  int count=0;
-
-  int maxCount[3]={0};
-  int secCount[3]={0};
-  int trdCount[3]={0};
-  int initMode=-1;
-  int initCount=0;
-  int smargin=15;
-
-  int centerPix=_centerPix[0];
-  for(int k=0;k<pixbuf.size();k++)
-  {
-
-    int curMod=0;
-    if(pixbuf[k][0]>centerPix+smargin)
-    {
-      curMod=1;
-    }
-    else if(pixbuf[k][0]<centerPix-smargin)
-    {
-      curMod=2;
-    }
-
-    if(unMod!=curMod)
-    {
-      if(initMode==-1 && maxCount[unMod]<count)
-      {
-        initMode=unMod;
-        initCount=count;
-      }
-      NShift(count,maxCount+unMod, secCount+unMod,trdCount+unMod);
-      unMod=curMod;
-      count=1;
-    }
-    else
-    {
-      count++;
-    }
-
-    // printf("(%d,%d,%d),",pixbuf[k],unMod,count);
-  }
-  // printf("\n");
-
-  if(unMod==initMode)
-  {
-    count+=initCount;
-  }
-
-  NShift(count,maxCount+unMod, secCount+unMod,trdCount+unMod);
-
-  int max = (maxCount[2]>maxCount[1]?maxCount[2]:maxCount[1]);
-  // max=(max>maxCount[0]?max:maxCount[0]);
-
-  if(max<pixbuf.size()*55/100)max=0;
-  // if(max>pixbuf.size()*95/100)max=0;
-
-
-  ret_PIX[0]=
-  ret_PIX[1]=max*255/pixbuf.size();
-  ret_PIX[2]=centerPix;//maxCount[2]*255/circleR_segs;
-
-
-  return -1;
-}
-
-
-
-
-int FAST_MAP_ts(acvImage *img,int x,int y, std::vector <uint8_t* >&pixbuf, uint8_t* ret_PIX,void *params)
-{
-  
-  uint8_t *_centerPix = &(img->CVector[y][3*x]);
-
-  int centerPix=_centerPix[0];
-
-  int smargin=15;
-  int sum=0;
-
-  for(int k=0;k<pixbuf.size();k++)
-  {
-    int diff = pixbuf[k][0]-centerPix;
-    if(diff<0)diff=-diff;
-    if(diff>smargin)
-      sum++;
-  }
-
-  if(sum<pixbuf.size()*3/5)sum=0;
-  if(sum>pixbuf.size()*9/10)sum=0;
-
-  ret_PIX[0]=
-  ret_PIX[1]=sum*2*255/pixbuf.size();//maxCount[1]*255/circleR_segs;
-  ret_PIX[2]=centerPix;//maxCount[2]*255/circleR_segs;
-
-
-  return -1;
-}
-
 
 
 int DIR_Coding_downShift(acvImage *dst,acvImage *src,int downScale)
@@ -164,27 +33,28 @@ int DIR_Coding_downShift(acvImage *dst,acvImage *src,int downScale)
 
 int DIR_Coding_Spread_shift1x1(acvImage *dst,acvImage *src)
 {
-  
   int space=0;
+  int CHC=src->Channel;
   for (int i = space; i < src->GetHeight()-space-2; i+=1)
   {
     for (int j = space; j < src->GetWidth()-space-2; j+=1)
     {
+
       uint8_t *dt=&dst->CVector[i][j*3];
       
       
-      uint8_t *scL0=&src->CVector[i][j*3];
-      uint8_t *scL1=&src->CVector[i+1][j*3];
-      uint8_t *scL2=&src->CVector[i+2][j*3];
+      uint8_t *scL0=&src->CVector[i][j*CHC];
+      uint8_t *scL1=&src->CVector[i+1][j*CHC];
+      uint8_t *scL2=&src->CVector[i+2][j*CHC];
 
       uint8_t cod=0;
-      cod =scL0[0]|scL0[3]|scL0[6];
+      cod =scL0[0]|scL0[CHC]|scL0[CHC*2];
 
-      cod|=scL1[0]|scL1[3]|scL1[6];
+      cod|=scL1[0]|scL1[CHC]|scL1[CHC*2];
 
-      dt[1]=scL1[4];
-      dt[2]=scL1[5];
-      cod|=scL2[0]|scL2[3]|scL2[6];
+      // dt[1]=scL1[4];
+      // dt[2]=scL1[5];
+      cod|=scL2[0]|scL2[CHC]|scL2[CHC*2];
       dt[0]=cod;
     }
   }
@@ -220,11 +90,8 @@ uint8_t SOBEL_to_DIR5_Coding(int X,int Y)
 }
 
 
-
-
-uint8_t SOBEL_to_DIR8_Coding(int X,int Y)
+uint8_t SOBEL_to_DIR8_Sec(int X,int Y)
 {
-
   if(Y<0)Y=-Y;
   bool XFlip=false;
   if(X<0)
@@ -239,7 +106,7 @@ uint8_t SOBEL_to_DIR8_Coding(int X,int Y)
     int Yt=X*tan22_5degX1024;
     if(Yk<Yt)
     {
-      return XFlip?1<<7:1<<0;
+      return XFlip?7:0;
     }
   }
 
@@ -249,7 +116,7 @@ uint8_t SOBEL_to_DIR8_Coding(int X,int Y)
     int Yt=X*tan45degX1024;
     if(Yk<Yt)
     {
-      return XFlip?1<<7:1<<0;
+      return XFlip?7:0;
     }
   }
   
@@ -259,21 +126,370 @@ uint8_t SOBEL_to_DIR8_Coding(int X,int Y)
     int Yt=X*tan67_5degX1024;
     if(Yk<Yt)
     {
-      return XFlip?1<<7:1<<0;
+      return XFlip?7:0;
     }
   }
 
-  return XFlip?1<<4:1<<3;
+  return XFlip?4:3;
+}
+
+
+uint8_t SOBEL_to_DIR8_Coding(int X,int Y)
+{
+
+  return 1<< SOBEL_to_DIR8_Sec(X,Y);
 }
 
 
 
-int SOBEL_CODING_RGB(acvImage *img,acvImage *sobel,int edgeDiffMin=5,int sobelSaveRec=2)
+
+// uint8_t* gen_MatchingCodeLUT(int sectionCount)
+// {
+//   uint8_t *matching_score_LUT;
+//   matching_score_LUT=new uint8_t[1<<sectionCount];
+//   uint8_t lowScan=1;
+//   uint8_t highScan=1<<(sectionCount-1);
+//   uint8_t maxScore=255;
+//   int scanCount=(sectionCount-1)/2;
+//   //When sectionCount==5 => scanCount==2  1 |2/3,1/3|
+//   //When sectionCount==6 => scanCount==2  1 |2/3,1/3| 0
+//   //section within |...| is the loop will assign, otherwise it's the fixed data, 
+//   //the first match is 1 and the last one is 0 if possible(the section might not in exact 90deg apart)
+
+//   for(int i=0;i<sizeof(matching_score_LUT);i++)
+//   {
+//     if(i&1)
+//     {
+//       matching_score_LUT[i]=maxScore;
+//       continue;
+//     }
+//     uint8_t _lS=lowScan;
+//     uint8_t _hS=highScan;
+//     matching_score_LUT[i]=0;
+//     for(int j=0;j<scanCount;j++)
+//     {
+//       if(i&(_lS|_hS))
+//       {
+//         matching_score_LUT[i]=maxScore*(scanCount-i)/(scanCount+1);
+//         break;
+//       }
+//       _lS<<=1;
+//       _hS>>=1;
+//     }
+//   }
+// }
+
+class LM_DirRspInfo
+{
+  public:
+  uint8_t *scoreLUT=NULL;
+  int scoreLUTMax=255;
+  int tarDir=-1;
+  int skipN;
+  int sectionCount=5;
+  std::vector<uint8_t*> respSet;
+  int bytesPerPix=2;
+  int cW,cH;
+  int dW,dH;
+  LM_DirRspInfo(acvImage *tarImg, int skipN ,int dir)
+  {
+    
+    RESET(tarImg,  skipN  , dir);
+  }
+  
+  static void *aligned_malloc(size_t required_bytes, size_t alignment) {
+    void *p1;
+    void **p2;
+    int offset=alignment-1+sizeof(void*);
+    p1 = malloc(required_bytes + offset);               // the line you are missing
+    p2=(void**)(((size_t)(p1)+offset)&~(alignment-1));  //line 5
+    p2[-1]=p1; //line 6
+    return p2;
+  }
+
+  static void aligned_free( void* p ) {
+      void* p1 = ((void**)p)[-1];         // get the pointer to the buffer we allocated
+      free( p1 );
+  }
+
+
+  static int pos_mod(int a, int b) { return (a % b + b) % b; }
+
+  static uint32_t MatchingCode2Score(uint32_t sectionCount,uint32_t maxScore,uint32_t sectionCoding, uint32_t secCenIdx=0)
+  {
+    if(secCenIdx<0)return -1;
+    sectionCoding=sectionCoding&((1<<sectionCount)-1);
+    uint32_t secCode=sectionCoding;
+    if(secCenIdx!=0)
+    {
+      secCenIdx=pos_mod(secCenIdx,sectionCount);
+      uint32_t LSec=sectionCoding&((1<<secCenIdx)-1);
+      uint32_t HSec=sectionCoding>>(secCenIdx);
+      secCode=(LSec<<(sectionCount-secCenIdx))|HSec;
+    }
+
+
+
+    if(secCode&1)
+    {
+      return maxScore;
+    }
+    
+    int scanCount=(sectionCount-1)/2;
+    uint32_t _lS=2;
+    uint32_t _hS=1<<(sectionCount-1);
+    int retScore=0;
+    for(int j=0;j<scanCount;j++)
+    {
+      if(secCode&(_lS|_hS))
+      {
+        return maxScore*(scanCount-j)/(scanCount+1);;
+      }
+      _lS<<=1;
+      _hS>>=1;
+    }
+
+    return retScore;
+  }
+  
+  void CLEANUP()
+  {
+    for(int i=0;i<respSet.size();i++)
+    {
+      aligned_free(respSet[i]);
+    }
+    respSet.resize(0);
+    if(scoreLUT)
+    {
+      delete scoreLUT;
+      scoreLUT=NULL;
+    }
+  }
+
+
+  void RESET(acvImage *tarImg, int skipN  ,int dir)
+  {
+    CLEANUP();
+    if(this->tarDir!=dir)
+    {
+      this->tarDir==dir;
+    }
+
+    cW=tarImg->GetWidth();
+    cH=tarImg->GetHeight();
+    dW=cW/skipN;
+    dH=cH/skipN;
+    
+    cW=dW*skipN;
+    cH=dH*skipN;
+    this->skipN=skipN;
+    for(int i=0;i<skipN*skipN;i++)
+    {
+      respSet.push_back((uint8_t*)aligned_malloc(dW*dH*bytesPerPix,16));
+    }
+
+    scoreLUT=new uint8_t[1<<sectionCount];
+
+
+    for(int i=0;i<(1<<sectionCount);i++)
+    {
+      scoreLUT[i]=MatchingCode2Score(sectionCount,scoreLUTMax,i,dir);
+    }
+  }
+
+
+
+  void linearize(acvImage *tarImg)
+  {
+    for(int i=0;i<respSet.size();i++)
+    {
+      int railX=i%skipN;
+      int railY=i/skipN;
+      int imgPixOffset=(railY*tarImg->GetWidth()+railX);
+      for(int j=0;j<dH;j++)
+      {
+        uint8_t *imgLine=tarImg->CVector[0]+(imgPixOffset+j*skipN*tarImg->GetWidth())*tarImg->Channel;
+        // printf("%d:%d\n",i,j);
+        for(int k=0;k<dW;k++)
+        {
+          uint32_t code=(*imgLine)&((1<<sectionCount)-1);
+          respSet[i][(j*dW+k)*bytesPerPix]=scoreLUT[code];
+          imgLine+=tarImg->Channel*skipN;
+          
+          // printf("    k:%d\n",k);
+        }
+      }
+      // break;
+    }
+  }
+
+  void* fetchLinearMemLine(int x,int y,int *ret_availLen,int *ret_dataSize)
+  {
+    if(x<0 || y<0)return NULL;
+
+    int rspY=y/skipN;
+    int rspX=x/skipN;
+    // printf("rspX:%d dW:%d\n",rspX,dW);
+    if(rspX>=dW || rspY>=dH)return NULL;
+
+    // printf("OK\n",rspX,dW);
+    
+    int setIdx=(y%skipN)*skipN;
+    int respIdx=setIdx+x%skipN;
+    int respOnIdx = (rspY*dW+rspX);
+    if(ret_availLen)
+    {
+      *ret_availLen=(dW*dH)-respOnIdx;
+    }
+    if(ret_dataSize)
+      *ret_dataSize=bytesPerPix;
+    return &respSet[respIdx][0];
+  }
+
+
+  void linearizeX(acvImage *tarImg)
+  {
+    for(int i=0;i<cH;i++)
+    {
+      int setIdx=(i%skipN)*skipN;
+      int onSetIdx = i/skipN;
+      for(int j=0;j<cW;j++)
+      {
+        int respIdx=setIdx+j%skipN;
+        int respOnIdx = (onSetIdx*dW+j/skipN)*bytesPerPix;
+        // printf("rIdx:%d rOIdx:%d\n",respIdx,respOnIdx);
+        uint32_t code=(tarImg->CVector[i][tarImg->Channel*j])&((1<<sectionCount)-1);
+        respSet[respIdx][respOnIdx]=scoreLUT[code];
+
+      }
+    }
+  }
+};
+class LM_LinearMemStorage
+{
+  public:
+  std::vector<LM_DirRspInfo*> dirSet;
+  int skipN;
+  LM_LinearMemStorage(acvImage *tarImg, int skipN  ,int dirCount)
+  {
+    dirSet.resize(0);
+    RESET(tarImg,skipN ,dirCount);
+  }
+
+
+  void CLEANUP()
+  {
+    for(int i=0;i<dirSet.size();i++)
+    {
+      delete dirSet[i];
+    }
+    dirSet.resize(0);
+  }
+
+  void RESET(acvImage *tarImg, int skipN ,int dirCount)
+  {
+    if(dirCount!=dirSet.size())
+    {
+      CLEANUP();
+      for(int i=0;i<dirCount;i++)
+      {
+        dirSet.push_back(new LM_DirRspInfo(tarImg,skipN,i));
+      }
+      return;
+    }
+    
+    for(int i=0;i<dirCount;i++)
+    {
+      dirSet[i]->RESET(tarImg,skipN,i);
+    }
+  }
+
+
+  void linearize(acvImage *tarImg)
+  {
+
+    for(int i=0;i<dirSet.size();i++)
+    {
+      dirSet[i]->linearize(tarImg);
+    }
+  }
+
+  void* fetchLinearMemLine(int x,int y, int dir,int *ret_availLen,int *ret_dataSize)
+  {
+    if(dir<0 || dir>dirSet.size()-1 )return NULL;
+    return dirSet[dir]->fetchLinearMemLine(x,y,ret_availLen,ret_dataSize);
+  }
+};
+
+class LM_Template
+{
+  public:
+  typedef struct feature
+  {
+    int X,Y;
+    int8_t gNX,gNY;
+    int8_t dir;
+    uint8_t *memLine;
+  };
+  std::vector<feature> features;
+  int mX=9999999,MX=0;
+  int mY=9999999,MY=0;
+  void updateInfo()
+  {
+    mX=9999999;MX=0;
+    mY=9999999;MY=0;
+    for(int i=0;i<features.size();i++)
+    {
+      if(mX>features[i].X)
+      {
+        mX=features[i].X;
+      }
+      if(MX<features[i].X)
+      {
+        MX=features[i].X;
+      }
+
+      if(mY>features[i].Y)
+      {
+        mY=features[i].Y;
+      }
+      if(MY<features[i].Y)
+      {
+        MY=features[i].Y;
+      }
+    }
+
+    for(int i=0;i<features.size();i++)
+    {
+      if(mX>features[i].X)
+      {
+        mX=features[i].X;
+      }
+      if(MX<features[i].X)
+      {
+        MX=features[i].X;
+      }
+
+      if(mY>features[i].Y)
+      {
+        mY=features[i].Y;
+      }
+      if(MY<features[i].Y)
+      {
+        MY=features[i].Y;
+      }
+    }
+
+  }
+  
+};
+
+int SOBEL_RGB(acvImage *img,acvImage *sobel,int edgeDiffMin=5)
 {
   int space=1;
   int gS=1;
   int edgeStrengthMin=edgeDiffMin*(4+4)*1.5;
-  // edgeStrengthMin=0;
+  int edgeStrengthMin_sq=edgeStrengthMin*edgeStrengthMin;
   for (int i = space; i < img->GetHeight()-space; i+=1)
   {
     for (int j = space; j < img->GetWidth()-space; j+=1)
@@ -346,374 +562,436 @@ int SOBEL_CODING_RGB(acvImage *img,acvImage *sobel,int edgeDiffMin=5,int sobelSa
         maxIdx=2;
       }
       int16_t mag=(int16_t)sqrt(mag_sq[maxIdx]);
-      uint8_t *sc=sobel->CVector[i]+(j)*3;
+      uint8_t *sc=(uint8_t*)sobel->CVector[i]+(j)*sobel->Channel;
 
-      sc[0]=(mag<edgeStrengthMin)?0: (SOBEL_to_DIR5_Coding(sobelX[maxIdx],sobelY[maxIdx]));
+      if(mag<edgeStrengthMin)
+      {
+        sc[0]=sc[1]=0;
+      }
+      else
+      {
+        int SX=sobelX[maxIdx];
+        int SY=sobelY[maxIdx];
+        SX=SX*127/mag;
+        SY=SY*127/mag;
+        sc[0]=(int8_t)SX;
+        sc[1]=(int8_t)SY;
+      }
+    }
+  }
 
-      // int sX=sobelX[maxIdx]/sobelSaveRec;//X
-      // if(sX>127)sX=127;
-      // if(sX<-127)sX=-127;
+  // acvDeleteFrame(sobel,1,0);
+  return 0;
+}
 
-      // int sY=sobelY[maxIdx]/sobelSaveRec;
-      // if(sY>127)sY=127;
-      // if(sY<-127)sY=-127;
 
-      // sc[1]=sX+128;
-      // sc[2]=sY+128;
-      // // sc[1]=sc[2]=0;
+int SOBEL_CODING_RGB(acvImage *img,acvImage *sobel,int edgeDiffMin=5,int sobelSaveRec=2)
+{
+  int gS=2;
+  int space=gS;
+  int edgeStrengthMin=edgeDiffMin*(4+4)*1.5;
+  int edgeStrengthMin_sq=edgeStrengthMin*edgeStrengthMin;
+  for (int i = space; i < img->GetHeight()-space; i+=1)
+  {
+    for (int j = space; j < img->GetWidth()-space; j+=1)
+    {
+      uint8_t *p0=img->CVector[i-gS]+(j-gS)*3;
+      uint8_t *p1=img->CVector[i-gS]+(j- 0)*3;
+      uint8_t *p2=img->CVector[i-gS]+(j+gS)*3;
+
+      uint8_t *p3=img->CVector[i- 0]+(j+gS)*3;
+
+      uint8_t *p4=img->CVector[i+gS]+(j+gS)*3;
+      uint8_t *p5=img->CVector[i+gS]+(j- 0)*3;
+      uint8_t *p6=img->CVector[i+gS]+(j-gS)*3;
+
+      uint8_t *p7=img->CVector[i- 0]+(j-gS)*3;
+
+      int sobelX[3]={0};
+      int sobelY[3]={0};
+
+      /*
+        -x-y   -2y   +x-y
+        [0]    [1]    [2]
+        -2x           +2x
+        [7]           [3]
+        -x+y    2y   +x+y
+        [6]    [5]    [4]
+      */
+
+
+      sobelX[0]+=-p0[0]        +p2[0];
+      sobelX[1]+=-p0[1]        +p2[1];
+      sobelX[2]+=-p0[2]        +p2[2];
+      sobelY[0]+=-p0[0]-2*p1[0]-p2[0];
+      sobelY[1]+=-p0[1]-2*p1[1]-p2[1];
+      sobelY[2]+=-p0[2]-2*p1[2]-p2[2];
+
+
+      sobelX[0]+=-2*p7[0]+2*p3[0];
+      sobelX[1]+=-2*p7[1]+2*p3[1];
+      sobelX[2]+=-2*p7[2]+2*p3[2];
+
+
+
+      sobelX[0]+=-p6[0]        +p4[0];
+      sobelX[1]+=-p6[1]        +p4[1];
+      sobelX[2]+=-p6[2]        +p4[2];
+      sobelY[0]+=+p6[0]+2*p5[0]+p4[0];
+      sobelY[1]+=+p6[1]+2*p5[1]+p4[1];
+      sobelY[2]+=+p6[2]+2*p5[2]+p4[2];
+
+      //ABS
+      // if(sobelX[0<0)sobelX[0=-sobelX[0;
+      // if(sobelX[1<0)sobelX[1=-sobelX[1;
+      // if(sobelX[2<0)sobelX[2=-sobelX[2;
+      // if(sobelX[0<0)sobelX[0=-sobelX[0;
+      // if(sobelX[1<0)sobelX[1=-sobelX[1;
+      // if(sobelX[2<0)sobelX[2=-sobelX[2;
+      int mag_sq[3]={
+        sobelX[0]*sobelX[0]+sobelY[0]*sobelY[0],
+        sobelX[1]*sobelX[1]+sobelY[1]*sobelY[1],
+        sobelX[2]*sobelX[2]+sobelY[2]*sobelY[2]};
+
+      int maxIdx=0;
+      if(mag_sq[maxIdx]<mag_sq[1])
+      {
+        maxIdx=1;
+      }
+      if(mag_sq[maxIdx]<mag_sq[2])
+      {
+        maxIdx=2;
+      }
+      // int16_t mag=(int16_t)sqrt(mag_sq[maxIdx]);
+      uint8_t *sc=(uint8_t*)sobel->CVector[i]+(j)*sobel->Channel;
+
+      // if(mag<edgeStrengthMin)
+      // {
+      //   sc[0]=sc[1]=0;
+      // }
+      // else
+      // {
+      //   int SX=sobelX[maxIdx];
+      //   int SY=sobelY[maxIdx];
+      //   SX=SX*127/mag;
+      //   SY=SY*127/mag;
+      //   sc[0]=(int8_t)SX;
+      //   sc[1]=(int8_t)SY;
+      // }
+
+      *(uint8_t*)sc=(mag_sq[maxIdx]<edgeStrengthMin_sq)?0: (SOBEL_to_DIR8_Coding(sobelX[maxIdx],sobelY[maxIdx]));
+
+      // // int sX=sobelX[maxIdx]/sobelSaveRec;//X
+      // // if(sX>127)sX=127;
+      // // if(sX<-127)sX=-127;
+
+      // // int sY=sobelY[maxIdx]/sobelSaveRec;
+      // // if(sY>127)sY=127;
+      // // if(sY<-127)sY=-127;
+
+      // // sc[1]=sX+128;
+      // // sc[2]=sY+128;
+      // // // sc[1]=sc[2]=0;
 
       
-      sc[1]=mag>>8;
-      sc[2]=mag;
+      // sc[1]=mag>>8;
+      // sc[2]=mag;
 
       // int16_t *scMag=(int16_t *)(&sc[1]);
       // *scMag=(int16_t)mag;
     }
   }
 
-  acvDeleteFrame(sobel,1,0);
+  // acvDeleteFrame(sobel,1,0);
   return 0;
 }
 
-
-
-#define _ATTR_ALIGN16_ __attribute__ ((__aligned__ (16)))
- 
-
-void *aligned_malloc(size_t required_bytes, size_t alignment) {
-  void *p1;
-  void **p2;
-  int offset=alignment-1+sizeof(void*);
-  p1 = malloc(required_bytes + offset);               // the line you are missing
-  p2=(void**)(((size_t)(p1)+offset)&~(alignment-1));  //line 5
-  p2[-1]=p1; //line 6
-  return p2;
-}
-
-void aligned_free( void* p ) {
-    void* p1 = ((void**)p)[-1];         // get the pointer to the buffer we allocated
-    free( p1 );
-}
-
-
-void _xx_algo_array( int16_t * dst, int16_t * src1, int16_t const * src2, size_t n )
+int SimpEdge_CODING_RGB(acvImage *img,acvImage *sobel,int edgeDiffMin=5,int sobelSaveRec=2)
 {
-  for(int i=0;i<n;i++)
+  int gS=1;
+  int space=gS;
+  int edgeStrengthMin=edgeDiffMin*(1+1)*1.5;
+  int edgeStrengthMin_sq=edgeStrengthMin*edgeStrengthMin;
+  for (int i = space; i < img->GetHeight()-space; i+=1)
   {
-    int32_t m=(int32_t)src1[i]*src2[i];
-    src1[i]=m>>(15+1);
-    
-    if((i&31)==31)
+    for (int j = space; j < img->GetWidth()-space; j+=1)
     {
-      int ii=i-31;
-      for(int j=0;j<16;j++)
+      
+      uint8_t *pc=img->CVector[i-  0]+(j   )*3;
+      uint8_t *px=img->CVector[i+  0]+(j+gS)*3;
+      uint8_t *py=img->CVector[i+ gS]+(j   )*3;
+
+
+      int sobelX[3]={0};
+      int sobelY[3]={0};
+
+
+      sobelX[0]=px[0]-pc[0];
+      sobelX[1]=px[1]-pc[1];
+      sobelX[2]=px[2]-pc[2];
+
+      sobelY[0]=py[0]-pc[0];
+      sobelY[1]=py[1]-pc[1];
+      sobelY[2]=py[2]-pc[2];
+
+      int mag_sq[3]={
+        sobelX[0]*sobelX[0]+sobelY[0]*sobelY[0],
+        sobelX[1]*sobelX[1]+sobelY[1]*sobelY[1],
+        sobelX[2]*sobelX[2]+sobelY[2]*sobelY[2]};
+
+      int maxIdx=0;
+      if(mag_sq[maxIdx]<mag_sq[1])
       {
-        src1[ii+j]=(src1[ii+j*2]+src1[ii+j*2+1]);
+        maxIdx=1;
+      }
+      if(mag_sq[maxIdx]<mag_sq[2])
+      {
+        maxIdx=2;
+      }
+      // int16_t mag=(int16_t)sqrt(mag_sq[maxIdx]);
+      uint8_t *sc=(uint8_t*)sobel->CVector[i]+(j)*sobel->Channel;
+
+      *(uint8_t*)sc=(mag_sq[maxIdx]<edgeStrengthMin_sq)?0: (SOBEL_to_DIR5_Coding(sobelX[maxIdx],sobelY[maxIdx]));
+
+    }
+  }
+
+  // acvDeleteFrame(sobel,1,0);
+  return 0;
+}
+
+void matchingXXXX(acvImage *res,acvImage *src,LM_Template *temp)
+{
+  // printf("matchingXXXX:CH2:%d,%d\n",res->Channel,src->Channel);
+  if(res->Channel!=2 || src->Channel!=2)return;
+  int Width=src->GetWidth()-temp->MX;
+  int Height=src->GetHeight()-temp->MY;
+
+  
+  int adv=128/8/res->Channel;
+
+  // printf("matchingXXXX:WH:%d,%d\n",Width,Height);
+
+
+    int skipIdx;
+    int offset_on_skipIdx;
+    // LM_Template::offset(src->GetWidth(),src->GetHeight(),1,temp->features[k].X,temp->features[k].Y,&skipIdx,&offset_on_skipIdx);
+    for(int i=0;i<Height;i++)
+    {
+      uint8_t* pixLine=src->CVector[i];
+      uint8_t* resLine=res->CVector[i];
+
+      for(int j=0;j<Width;j+=adv)
+      {  
+        for(int k=0;k<temp->features.size();k++)
+        {
+
+          // printf("pixLine:%p resLine:%p\n",pixLine,resLine);
+          // AA = _mm_mulhrs_epi16(AA, half );
+          volatile __m128i result = _mm_hadds_epi16(*(__m128i*) resLine,*(__m128i*) pixLine);
+
+          _mm_store_si128((__m128i*) resLine,result);
+          // printf("res->Channel:%d\n",res->Channel);
+          resLine+=res->Channel*adv;
+          pixLine+=src->Channel*adv;
+        }
+      }
+      // printf("sdsd\n");
+    }
+}
+
+void matchingXXXX2(acvImage *res,LM_Template *temp,LM_LinearMemStorage *lnMem)
+{
+  if(res->Channel!=2)return;
+  int Width=res->GetWidth()-temp->MX;
+  int Height=res->GetHeight()-temp->MY;
+  int shortestLen=INT_MAX;
+  int dataSize=-1;
+  for(int i=0;i<temp->features.size();i++)
+  {
+    int dir=SOBEL_to_DIR8_Sec(temp->features[i].gNX,temp->features[i].gNY);
+    int availLen=-1;
+    int _dataSize=-1;
+    temp->features[i].memLine=(uint8_t*)lnMem->fetchLinearMemLine(temp->features[i].X,temp->features[i].Y,dir,&availLen,&_dataSize);
+    
+    if(shortestLen>availLen)
+    {
+      shortestLen=availLen;
+    }
+    if(dataSize==-1)
+    {
+      dataSize=_dataSize;
+    }
+    else
+    {
+      
+      assert( dataSize==_dataSize);
+      if(dataSize!=_dataSize)
+      {
+        //ERROR !!!
       }
     }
-
-    // printf("src1[%d]:%d, dst[%d]:%d\n",i,src1[i],i/2,dst[i/2]);
   }
-   
-  // for(int i=0;i<n/2;i++)
-  // {
-  //   dst[i]=(src1[i*2]+src1[i*2+1]);
-  // }
 
-}
-void _mm_algo_array( int16_t * dst, int16_t * src1, int16_t const * src2, size_t n )
-{
-  __m128i half = _mm_set_epi16(INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2,INT16_MAX/2);
-  int count=n/8;
-  int16_t * src1_BK=src1;
-  for(  int i=0; i<count; i++,src1+=8,src2+=8)
-  {
-    *(__m128i*) src1 = _mm_mulhrs_epi16(*(__m128i*) src1, *(__m128i*) src2 );
-    *(__m128i*) src1 = _mm_mulhrs_epi16(*(__m128i*) src1, half );
-
-    if(i&1==1)
-    { 
-      // *(__m128i*) dst = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
-      // dst+=8;
-
-      *(__m128i*) (src1-8) = _mm_hadds_epi16(*(__m128i*) (src1-8), *(__m128i*) src1 );
-    }
-    // mulhrs
-  }
-  // src1=src1_BK;
-  // for(  int i=0; i<count/2;i++,dst+=8,src1+=16)
-  // {
-  //   *(__m128i*) dst = _mm_hadds_epi16(*(__m128i*) (src1), *(__m128i*) (src1+8) );
-  // }
-}
-
-
-
-
-void _xx_mul_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
-{
-  for(int i=0;i<n;i++)
-  {
-    // dst[i]=src1[0]+src2[0];
-    int32_t m=(int32_t)src1[i]*src2[i];
-    dst[i]=m>>15;
-  }
-}
-void _mm_mul_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
-{
-  for( int16_t const * end( dst + n ); dst != end; dst+=8,src1+=8,src2+=8)
-  {
-    // *(__m128i*) dst = _mm_add_epi16( *(__m128i*) src1, *(__m128i*) src2 );
-    *(__m128i*) dst = _mm_mulhrs_epi16(*(__m128i*) src1, *(__m128i*) src2 );
-    // mulhrs
-  }
-}
-
-
-
-void _xx_add_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
-{
-  for(int i=0;i<n;i++)
-  {
-    dst[i]=src1[i]+src2[i];
-  }
-}
-void _mm_add_array( int16_t * dst, int16_t const * src1, int16_t const * src2, size_t n )
-{
-  for( int16_t const * end( dst + n ); dst != end; dst+=8,src1+=8,src2+=8)
-  {
-    *(__m128i*) dst = _mm_add_epi16( *(__m128i*) src1, *(__m128i*) src2 );
-  }
-}
-
-
-void _xx_addin_array( int16_t * dst, int16_t const * src, size_t n )
-{
-  for(int i=0;i<n;i++)
-  {
-    dst[i]+=src[i];
-  }
-}
-void _mm_addin_array( int16_t * dst, int16_t const * src, size_t n )
-{
-  for( int16_t const * end( dst + n ); dst != end; dst+=8,src+=8)
-  {
-    *(__m128i*) dst = _mm_add_epi16( *(__m128i*) dst, *(__m128i*) src );
-  }
-}
-
-void SSE_Test()
-{
   
-
+  int adv=128/8;
+  // lnMem->fetchLinearMemLine
+  int byteCount = shortestLen*dataSize;
+  // printf("matchLen:%d\n",matchLen);
+  for(int i=0;i<temp->features.size();i++)
   {
-    // int INT16X8SET=5000000*2/8;//for 500M pixel
-    int INT16X8SET=640*480*2/8;//for 500M pixel
-    int16_t *input1=(int16_t*)aligned_malloc(16*8*INT16X8SET, 16);
-    int16_t *input2=(int16_t*)aligned_malloc(16*8*INT16X8SET, 16);
-    int16_t *output=(int16_t*)aligned_malloc(16*8*INT16X8SET, 16);
-    
-
-    
-    printf("input1_ptr:%p input2_ptr:%p output_ptr:%p\n",
-          input1,input2,output);
-    int loopTimes=360;//100000000/INT16X8SET;
+    uint8_t *resLine = res->CVector[0];
+    uint8_t *line=temp->features[i].memLine;
+    // printf("i:%d byteCount:%d adv:%d dataSize:%d \n",i,byteCount,adv,dataSize);
+    for(int j=0;j<byteCount;j+=adv)//pixel count
     {
-    
-      input1[0]=input1[2]=INT16_MAX;
-      input2[0]=input2[2]=INT16_MAX;
-      input1[1]=input1[3]=INT16_MAX*5/10;
-      input2[1]=input2[3]=INT16_MAX*5/10;
-      output[0]=3;
+      // if((j&0xFF)==0)
+      // printf("j:%d resLine:%p line:%p\n",j,resLine,line);
+      // printf("j:%d,  %d,%d,%d,%d,%d,%d\n",j,line[0],line[1],line[2],line[3],line[4],line[5]);
 
+      if(1)
+      {
+        *(__m128i*) (resLine) = _mm_hadds_epi16(*(__m128i*) (resLine), *(__m128i*) line );
+        line+=adv;
+        resLine+=adv;
 
-      clock_t t = clock();
-      for(int i=0;i<loopTimes;i++)
-        _xx_algo_array(output, input1,input2,8*INT16X8SET);
-      printf("C   :%fms \n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-      
-      printf("%d %d %d %d\n",
-            input1[0], input1[1], input1[2], input1[3]);
+      }
+      else
+      {
+
+        for(int d=0;d<adv;d+=2)
+        {
+          *(uint16_t*)resLine+=*(uint16_t*)line;
+          line+=2;
+          resLine+=2;
+        }
+      }
     }
-
-
-    {
-      input1[0]=input1[2]=INT16_MAX;
-      input2[0]=input2[2]=INT16_MAX;
-      input1[1]=input1[3]=INT16_MAX*5/10;
-      input2[1]=input2[3]=INT16_MAX*5/10;
-      output[0]=3;
-      clock_t t = clock();
-      for(int i=0;i<loopTimes;i++)
-        _mm_algo_array(output, input1,input2,8*INT16X8SET);
-      // _mm_add_array(output, input1,8*INT16X8SET);
-
-      printf("SSE :%fms \n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000);
-
-      printf("%d %d %d %d\n",
-            input1[0], input1[1], input1[2], input1[3]);
-    }
-
-    aligned_free( input1 );
-    aligned_free( input2 );
-    aligned_free( output );
-  }
-  //_mm_load_ps
-  {
-
-    float input1[4] _ATTR_ALIGN16_= { 1.2f, 3.5f, 1.7f, 2.8f };
-    float input2[4] _ATTR_ALIGN16_= { -0.7f, 2.6f, 3.3f, -0.8f };
-    float output[1000*1000]_ATTR_ALIGN16_;
-    __m128 a = _mm_load_ps(input1);
-    __m128 b = _mm_load_ps(input2);
-    __m128 t = _mm_add_ps(a, b);
-    _mm_store_ps(output, t);
-    _mm_store_ps(output+5, t);
-    printf("%f %f %f %f\n",
-          output[0], output[1], output[2], output[3]);
-
-    
   }
 
-  __m128 vector1 = _mm_set_ps(4.0, 3.0, 2.0, 1.0); // high element first, opposite of C array order.  Use _mm_setr_ps if you want "little endian" element order in the source.
-  __m128 vector2 = _mm_set_ps(7.0, 8.0, 9.0, 0.0);
+}
 
-  __m128 sum = _mm_add_ps(vector1, vector2); // result = vector1 + vector 2
-
-  vector1 = _mm_shuffle_ps(vector1, vector1, _MM_SHUFFLE(0,1,2,3));
-  // vector1 is now (1, 2, 3, 4) (above shuffle reversed it)
+int downScale(acvImage &dst,acvImage &src,int downFactor)
+{
+  dst.ReSize(src.GetWidth()/downFactor,src.GetHeight()/downFactor);
 
 
-  // __m256i hello;
-  // // Construction from scalars or literals.
-  // __m256d a = _mm256_set_pd(1.0, 2.0, 3.0, 4.0);
+  for(int i=0;i<dst.GetHeight();i++)
+  {
+    for(int j=0;j<dst.GetWidth();j++)
+    {
+      dst.CVector[i][j*3+0]=src.CVector[i*downFactor][j*downFactor*3+0];
+      dst.CVector[i][j*3+1]=src.CVector[i*downFactor][j*downFactor*3+1];
+      dst.CVector[i][j*3+2]=src.CVector[i*downFactor][j*downFactor*3+2];
+    }
+  }
 
-  // // Does GCC generate the correct mov, or (better yet) elide the copy
-  // // and pass two of the same register into the add? Let's look at the assembly.
-  // __m256d b = a;
+}
 
-  // // Add the two vectors, interpreting the bits as 4 double-precision
-  // // floats.
-  // __m256d c = _mm256_add_pd(a, b);
-
-  // // Do we ever touch DRAM or will these four be registers?
-  // __attribute__ ((aligned (32))) double output[4];
-  // _mm256_store_pd(output, c);
-
-  // printf("%f %f %f %f\n",
-  //        output[0], output[1], output[2], output[3]);
-  return ;
+void printBits(unsigned int num,int bits=8, char* spacing=NULL)
+{
+  unsigned int pin=1<<(bits-1);
+  for(int bit=0;bit<bits; bit++)
+  {
+    printf("%i%s", (num & pin)?1:0,spacing==NULL?" ":spacing);
+    pin = pin >> 1;
+  }
 }
 
 int main(int argc, char** argv)
 {
-  SSE_Test();
-  return 0;
+
+  // for(int i=0;i<256;i++)
+  // {
+  //   printf("%03d:",i);printBits(i,8,"");
+    
+  //   int score = LM_DirRspInfo::MatchingCode2Score(8,1000,i,3);
+  //   printf(" s:%d",score);
+  //   printf("\n");
+
+  // }
+  // return 0;
+  // SSE_Test();
+  // return 0;
   acvImage img;
-  LoadIMGFile(&img,"data/template.png");
+
+  acvImage buffer;
+  if(0)
+  {
+    LoadIMGFile(&buffer,"data/testImg.png");
+    downScale(img,buffer,4);
+  }
+  else
+  {
+    LoadIMGFile(&img,"data/testImg.png");
+  }
 
   if(1)
   {
-    
+    LM_Template temp;
     acvImage sobelMap;
-    sobelMap.ReSize(&img);
+    sobelMap.ReSize(&img,1);
+    
+    int channelC=2;
+    acvImage resultMap;
+    uint8_t *resultMap_buf=(uint8_t*)aligned_malloc(img.GetWidth()*img.GetHeight()*channelC,16);
+    resultMap.useExtBuffer(resultMap_buf,img.GetWidth()*img.GetHeight()*channelC,img.GetWidth(),img.GetHeight());//2 channel
 
+    for(int i=0;i<32;i++)
+    {
+      LM_Template::feature f;
+      f.X=rand()%100;
+      f.Y=rand()%100;
+      f.gNX=rand()%255;
+      f.gNY=rand()%255;
+      // uint8_t SOBEL_to_DIR5_Coding(int X,int Y);
+      temp.features.push_back(f);
+    }
+    temp.updateInfo();
+    // sobelMap.ReSize(&img);
+
+
+    printf("START  temp.features.size():%d  resultMap:%p\n",temp.features.size(),&resultMap.CVector[0][0]);
+    LM_LinearMemStorage LM(&sobelMap,8,8);
+    
+
+    clock_t t = clock();
+    int CompCount=50;
+    
     SOBEL_CODING_RGB(&img,&sobelMap);
-
     DIR_Coding_Spread_shift1x1(&sobelMap,&sobelMap);
-    SaveIMGFile("data/sobelMap.png",&sobelMap);
-  }
-  if(0)
-  {
-    acvImage fast_map;
-    int downSamp=3;
-    int rad=8;
-    fast_map.ReSize(img.GetWidth()/downSamp,img.GetHeight()/downSamp);
-    FAST512(&img,&fast_map,downSamp,rad, rad*4,FAST_MAP_t,NULL);
-    img.RGBToGray();
+    LM.linearize(&sobelMap);
+    for(int i=0;i<CompCount;i++)
+    {
 
-    SaveIMGFile("data/fast_map.png",&fast_map);
+      for(int k=0;k<360;k++)
+        matchingXXXX2(&resultMap,&temp,&LM);
+    }
+    // for(int i=0;i<10;i++)
+    // {
+
+      
+    //   for(int i=0;i<360;i++)
+    //     matchingXXXX(&resultMap,&sobelMap,&temp);
+    //     // printf("[%d]--  W:%d H:%d  skip:%d  fX:%d,fY:%d, skipIdx:%d  offset_on_skipIdx:%d\n",i,sobelMap.GetWidth(),sobelMap.GetHeight(),5,f.X,f.Y,skipIdx,offset_on_skipIdx);
+
+    // }
+
+    printf("SOBELX   :%fms per cycle\n", (double)(clock() - t) / CLOCKS_PER_SEC * 1000/CompCount);
+    aligned_free(resultMap_buf);
+    // SaveIMGFile("data/sobelMap.png",&sobelMap);
   }
+  // if(0)
+  // {
+  //   acvImage fast_map;
+  //   int downSamp=3;
+  //   int rad=8;
+  //   fast_map.ReSize(img.GetWidth()/downSamp,img.GetHeight()/downSamp);
+  //   FAST512(&img,&fast_map,downSamp,rad, rad*4,FAST_MAP_t,NULL);
+  //   img.RGBToGray();
+
+  //   SaveIMGFile("data/fast_map.png",&fast_map);
+  // }
   printf("END\n");
   return 0;
-}
-
-
-const int TABLE_SIN_512_LENGTH=512;
-#define IDXWarp_SIN512(idx) (idx&(TABLE_SIN_512_LENGTH-1))
-
-#define IDXWarp_COS512(idx) (IDXWarp_SIN512(idx+TABLE_SIN_512_LENGTH/4))
-int TABLE_SIN_512[]=
-{
-   0,   6,  12,  18,  25,  31,  37,  43,  50,  56,  62,  68,  75,  81,  87,  93,
-  99, 106, 112, 118, 124, 130, 136, 142, 148, 154, 160, 166, 172, 178, 184, 190,
- 195, 201, 207, 213, 218, 224, 230, 235, 241, 246, 252, 257, 263, 268, 273, 279,
- 284, 289, 294, 299, 304, 310, 314, 319, 324, 329, 334, 339, 343, 348, 353, 357,
- 362, 366, 370, 375, 379, 383, 387, 391, 395, 399, 403, 407, 411, 414, 418, 422,
- 425, 429, 432, 435, 439, 442, 445, 448, 451, 454, 457, 460, 462, 465, 468, 470,
- 473, 475, 477, 479, 482, 484, 486, 488, 489, 491, 493, 495, 496, 498, 499, 500,
- 502, 503, 504, 505, 506, 507, 508, 508, 509, 510, 510, 511, 511, 511, 511, 511,
- 512, 511, 511, 511, 511, 511, 510, 510, 509, 508, 508, 507, 506, 505, 504, 503,
- 502, 500, 499, 498, 496, 495, 493, 491, 489, 488, 486, 484, 482, 479, 477, 475,
- 473, 470, 468, 465, 462, 460, 457, 454, 451, 448, 445, 442, 439, 435, 432, 429,
- 425, 422, 418, 414, 411, 407, 403, 399, 395, 391, 387, 383, 379, 375, 370, 366,
- 362, 357, 353, 348, 343, 339, 334, 329, 324, 319, 314, 310, 304, 299, 294, 289,
- 284, 279, 273, 268, 263, 257, 252, 246, 241, 235, 230, 224, 218, 213, 207, 201,
- 195, 190, 184, 178, 172, 166, 160, 154, 148, 142, 136, 130, 124, 118, 112, 106,
-  99,  93,  87,  81,  75,  68,  62,  56,  50,  43,  37,  31,  25,  18,  12,   6,
-   0,  -6, -12, -18, -25, -31, -37, -43, -50, -56, -62, -68, -75, -81, -87, -93,
- -99,-106,-112,-118,-124,-130,-136,-142,-148,-154,-160,-166,-172,-178,-184,-190,
--195,-201,-207,-213,-218,-224,-230,-235,-241,-246,-252,-257,-263,-268,-273,-279,
--284,-289,-294,-299,-304,-310,-314,-319,-324,-329,-334,-339,-343,-348,-353,-357,
--362,-366,-370,-375,-379,-383,-387,-391,-395,-399,-403,-407,-411,-414,-418,-422,
--425,-429,-432,-435,-439,-442,-445,-448,-451,-454,-457,-460,-462,-465,-468,-470,
--473,-475,-477,-479,-482,-484,-486,-488,-489,-491,-493,-495,-496,-498,-499,-500,
--502,-503,-504,-505,-506,-507,-508,-508,-509,-510,-510,-511,-511,-511,-511,-511,
--512,-511,-511,-511,-511,-511,-510,-510,-509,-508,-508,-507,-506,-505,-504,-503,
--502,-500,-499,-498,-496,-495,-493,-491,-489,-488,-486,-484,-482,-479,-477,-475,
--473,-470,-468,-465,-462,-460,-457,-454,-451,-448,-445,-442,-439,-435,-432,-429,
--425,-422,-418,-414,-411,-407,-403,-399,-395,-391,-387,-383,-379,-375,-370,-366,
--362,-357,-353,-348,-343,-339,-334,-329,-324,-319,-314,-310,-304,-299,-294,-289,
--284,-279,-273,-268,-263,-257,-252,-246,-241,-235,-230,-224,-218,-213,-207,-201,
--195,-190,-184,-178,-172,-166,-160,-154,-148,-142,-136,-130,-124,-118,-112,-106,
- -99, -93, -87, -81, -75, -68, -62, -56, -50, -43, -37, -31, -25, -18, -12,  -6,
-};
-
-/* 
-*/
-
-void FAST512(acvImage *src,acvImage *fast_map,int steps,int circleR, int circleR_segs,
- int (*FAST_MAP)(acvImage *img,int x,int y, std::vector <uint8_t* >&pixbuf, uint8_t* ret_PIX,void *params),
- void *params)
-{
-  if(circleR_segs>512)circleR_segs=512;
-
-  int segs_div_4=circleR_segs/4;
-  std::vector <uint8_t* >pixbuf(circleR_segs);
-  int space=circleR+2;
-  for (int i = space; i < src->GetHeight()-space; i+=steps)
-  {
-    for (int j = space; j < src->GetWidth()-space; j+=steps)
-    {
-      uint8_t *_centerPix = &(src->CVector[i][3*j]);
-      uint8_t *fastMapPix =  &(fast_map->CVector[i/steps][(j/steps)*3]);
-      int centerPix=_centerPix[0];
-
-      for(int k=0;k<circleR_segs;k++)
-      {
-        int idx = k*TABLE_SIN_512_LENGTH/circleR_segs;
-        int sin512=TABLE_SIN_512[IDXWarp_SIN512(idx)]*circleR/512;
-        int cos512=TABLE_SIN_512[IDXWarp_COS512(idx)]*circleR/512;
-
-        uint8_t *circPix = &(src->CVector[sin512+i][3*(cos512+j)]);
-        pixbuf[k]=circPix;
-      }
-     
-      FAST_MAP(src,j,i,pixbuf,fastMapPix,params);
-      // fastMapPix[0]=(maxCount[2]>maxCount[1]?maxCount[2]:maxCount[1]);
-      // fastMapPix[2]=0;//maxCount[1]*255/circleR_segs;
-      // fastMapPix[1]=0;//maxCount[2]*255/circleR_segs;
-
-    }
-  }
 }

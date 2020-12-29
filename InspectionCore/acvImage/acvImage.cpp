@@ -1,6 +1,9 @@
 
 #include "acvImage.hpp"
 #include <stddef.h>
+
+
+
 acvImage::acvImage()
 {
     VarInit();
@@ -8,8 +11,7 @@ acvImage::acvImage()
 acvImage::acvImage(int SetWidth,int SetHeight,int SetChannel)
 {
     VarInit();
-    Channel=SetChannel;
-    RESIZE(SetWidth,SetHeight);
+    RESIZE(SetWidth,SetHeight,SetChannel);
 }
 void acvImage::VarInit(void)
 {
@@ -26,13 +28,13 @@ void acvImage::VarInit(void)
 
 }
 
-void acvImage::ReSize(int SetWidth,int SetHeight)
+void acvImage::ReSize(int SetWidth,int SetHeight,int SetChannel)
 {
-    RESIZE(SetWidth,SetHeight);
+    RESIZE(SetWidth,SetHeight,SetChannel);
 }
-void acvImage::ReSize(acvImage *refImg)
+void acvImage::ReSize(acvImage *refImg,int SetChannel)
 {
-    RESIZE(refImg->GetWidth(),refImg->GetHeight());
+    RESIZE(refImg->GetWidth(),refImg->GetHeight(),SetChannel);
 }
 int acvImage::SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight)
 {
@@ -91,7 +93,7 @@ acvImage::~acvImage()
 {
     FreeImage();
 }
-void acvImage::RESIZE(int SetWidth,int SetHeight)
+void acvImage::RESIZE(int SetWidth,int SetHeight,int SetChannel)
 {
     if(RealWidth==SetWidth && RealHeight==SetHeight)return;
     
@@ -99,6 +101,7 @@ void acvImage::RESIZE(int SetWidth,int SetHeight)
     
     ReSetROI();
 
+    Channel=SetChannel;
     
     //Check if we have enough sapce
     if(bufferDataLength<SetWidth*SetHeight*Channel)
@@ -134,14 +137,15 @@ void acvImage::RESIZE(int SetWidth,int SetHeight)
 
 int acvImage::useExtBuffer(BYTE *extBuffer,int extBufferLen,int SetWidth,int SetHeight)
 {
-    if(extBufferLen<SetWidth*SetHeight*Channel)return -1;
+    Channel=extBufferLen/SetWidth/SetHeight;
+    // if(extBufferLen<SetWidth*SetHeight)return -1;
     
     FreeImage();
     ImageData = bufferPtr = extBuffer;
     bufferDataLength=extBufferLen;
     isBufferInternal=false;
     
-    RESIZE(SetWidth,SetHeight);
+    RESIZE(SetWidth,SetHeight,Channel);
     
     return 0;
 }

@@ -2105,7 +2105,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
                           skp.keyPt.X, skp.keyPt.Y,
                           2, 2);
           }
-          LOGI("searchVec %f %f, searchDist:%f ppmm:%f",searchVec.X,searchVec.Y,searchDist,ppmm);
+          // LOGI("searchVec %f %f, searchDist:%f ppmm:%f",searchVec.X,searchVec.Y,searchDist,ppmm);
           if (searchP(binarizedBuff, &skp.keyPt, searchVec, searchDist) != 0)
           {
             LOGI("Fail... keyPt: (%f,%f)", skp.keyPt.X, skp.keyPt.Y);

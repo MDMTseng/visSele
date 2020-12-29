@@ -1,14 +1,6 @@
 
 MakeTemplate?=../../Makefile.in
 
-ifeq ($(OS)$(CC),Windows_NTcc)
-	export platform=win_x64
-	FLAGS+= -static -static-libgcc -static-libstdc++ -lws2_32
-else
-	LIBS+= -lz
-	export platform=mac_x64
-endif
-
 
 relPath=../../
 export MODULE_acvImage=$(abspath $(relPath)/acvImage)
@@ -19,7 +11,15 @@ export MODULE_common_lib=$(abspath $(relPath)/common_lib)
 export MODULE_lodepng=$(abspath $(relPath)/contrib/lodepng)
 
 
+export MODULE_openCV=/usr/local/Cellar/opencv/4.5.0_5
 
+
+ifeq ($(OS)$(CC),Windows_NTcc)
+	FLAGS+= -D_MINGW -D_WINDOWS
+	
+else
+	EXT_OBJS+=
+endif
 
 
 IDIR=	include/ \
@@ -28,7 +28,8 @@ IDIR=	include/ \
 			$(MODULE_cJSON) \
 			$(MODULE_logctrl)/include \
 			$(MODULE_Compat_dirent)/include \
-			$(MODULE_lodepng)
+			$(MODULE_lodepng) \
+			$(MODULE_openCV)/include/opencv4/
 
 
 
@@ -42,7 +43,7 @@ EXT_OBJS= $(MODULE_cJSON)/cJSON.a \
 
 
 SUB_MAKEFILES = $(MODULE_acvImage) \
-								$(MODULE_common_lib) \
+								# $(MODULE_common_lib) \
 								# $(MODULE_MLNN) \
 								# $(MODULE_circleFitting) \
 								# $(MODULE_cJSON) \
@@ -53,20 +54,17 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 
 
 
-ifeq ($(OS)$(CC),Windows_NTcc)
-	FLAGS+= -D_MINGW -D_WINDOWS
-	
-else
-	EXT_OBJS+=
-endif
+
 
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 STRICT_FLAGS+= -march=core2 -mtune=intel -msse4.2
- 
-export FLAGS+= -w -O3 $(STRICT_FLAGS) -std=c++11
 
-target_bin=linemod
+OPENCVLibs=-lopencv_ml -lopencv_dnn -lopencv_highgui -lopencv_superres -lopencv_objdetect -lopencv_stitching -lopencv_videostab -lopencv_calib3d -lopencv_features2d -lopencv_photo -lopencv_flann -lopencv_shape -lopencv_video -lopencv_videoio -lopencv_imgcodecs -lopencv_imgproc -lopencv_core
+ 
+export FLAGS+= -w -O3 -std=c++11 -L$(MODULE_openCV)/lib $(OPENCVLibs)  $(STRICT_FLAGS)
+
+target_bin=calibration
 ODIR=obj
-_OBJ = linemod.opp IMG_UTIL.opp SSEUTIL.opp
+_OBJ = calibration.opp
 
 include $(MakeTemplate)

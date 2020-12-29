@@ -1,0 +1,104 @@
+
+
+string Text = "This is some text.\nLine 2\nLine 3";
+
+int Result = dlgDialog("Hello") {
+ dlgLabel(Text,1);
+ dlgPushButton("+OK") {Text=Text;}
+
+ dlgVBoxLayout {
+ dlgLabel("&Edit the text");
+ dlgTextEdit(Text);
+ }
+ };
+int haveButton = 1;
+dlgDialog("Test") {
+ dlgLabel("Start");
+ if (haveButton)
+ dlgPushButton("Here") dlgAccept();
+ };
+
+
+
+string Names,result;
+int Number=0;
+
+string cmdBuf;
+string exitScript;
+string parts_scr;
+string nets_scr;
+
+
+string MARK="{$}";
+string REPLACE2="MOT_";
+
+
+
+string stringReplace(string str, string search, string replace)
+{
+	int offset = 0;
+  int start;
+	while((start = strstr(str, search, offset)) != -1)
+	{
+		int end = start + strlen(search);
+		string str1 = strsub(str, 0, start);
+		string str2 = strsub(str, end);
+		
+		offset = strlen(str1) + strlen(replace);
+
+		str = str1 + replace + str2;
+	}
+
+	return str;
+}
+
+schematic(S)
+{
+    S.parts(P)
+    {
+      if (ingroup(P)){
+        printf("Element %s is in the group\n", P.name);
+        sprintf(cmdBuf, "%s;\n", P.name);
+        parts_scr+=cmdBuf;
+      }
+      // int len = 0;
+      // int pos = strstr(P.name, MARK, 0);
+      // if (pos >= 0)
+      // {
+      //   Number++;
+      //   string wireName = stringReplace(P.name,MARK,REPLACE2);
+      //   sprintf(cmdBuf, "name %s %s;\n", P.name,wireName);
+      //   parts_scr+=cmdBuf;
+      //   Names+=P.name;
+      //   Names+=",";
+      // }
+
+    }
+
+    // S.sheets(SH) {  
+    // SH.nets(N) {  
+    //   int len = 0;
+    //   int pos = strstr(N.name, MARK, 0);
+    //     if (pos >= 0){
+    //       N.segments(SEG) {  
+    //         SEG.wires(W) {  
+    //           // sprintf(tmp, "NAME %s (%fin %fin);", argv[2],u2inch(W.x1),u2inch(W.y1)); 
+    //           string wireName = stringReplace(N.name,MARK,REPLACE2);
+    //           Number++;
+    //           sprintf(cmdBuf, "NAME %s (%fin %fin);\n",wireName,u2inch(W.x1),u2inch(W.y1));
+    //           nets_scr+=cmdBuf;
+    //           Names+=N.name;
+    //           Names+=",";
+    //         }  
+    //       }  
+    //     }  
+    // } }
+
+
+
+
+
+    exitScript=nets_scr+parts_scr;
+    sprintf(result,"%d Parts,  parts_scr:%s \n\n nets_scr:%s ",Number,parts_scr,nets_scr);
+    dlgMessageBox(result,"+OK");
+}
