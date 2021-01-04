@@ -34,3 +34,5 @@ export/
 UI/WebUI/dist/
 update_win.zip
 InspectionCore/sidePrj/linemod/linemod
+calibration
+OUT

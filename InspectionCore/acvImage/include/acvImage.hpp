@@ -31,13 +31,16 @@
 #define NCC_r  2
 typedef uint8_t BYTE;
 
-
+// typedef void* (*acvImage_MALLOC)(size_t size);
+// typedef void (*acvImage_FREE)(void*);
 
 
 class acvImage
 {
 
 private:
+    // acvImage_MALLOC amalloc;
+    // acvImage_FREE afree;
     unsigned char ColorType;
     BYTE*   ImLine;
     int ROIWidth,ROIHeight,RealWidth,RealHeight;
@@ -55,8 +58,8 @@ public:
     acvImage(int SetWidth,int SetHeight,int SetChannel);
     void VarInit(void);
 
-    void ReSize(int SetWidth,int SetHeight);
-    void ReSize(acvImage *refImg);
+    void ReSize(int SetWidth,int SetHeight,int SetChannel=3);
+    void ReSize(acvImage *refImg,int SetChannel=3);
     int useExtBuffer(BYTE *extBuffer,int extBufferLen,int SetWidth,int SetHeight);
     int SetROI(int SetOffsetX,int SetOffsetY,int SetWidth,int SetHeight);
     void ReSetROI();
@@ -67,7 +70,7 @@ public:
     ~acvImage();
 private:
 
-    void RESIZE(int SetWidth,int SetHeight);
+    void RESIZE(int SetWidth,int SetHeight,int SetChannel);
 
 public:
     void YUY2ToYUV();
