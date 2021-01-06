@@ -13,7 +13,7 @@ import { TagOptions_rdx } from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -636,7 +636,6 @@ class ObjInfoList extends React.Component {
     });
   }
   toggleFullscreen() {
-    log.info("[XLINX2]fullScreen=" + this.state.fullScreen);
     this.setState({
       ...this.state,
       fullScreen: !this.state.fullScreen,
@@ -1580,32 +1579,6 @@ class DataStatsTable extends React.Component {
   }
 }
 
-class MeasureStatList extends React.Component {
-
-  componentDidMount() {
-  }
-
-  componentWillUnmount() {
-  }
-
-  constructor(props) {
-    super(props);
-  }
-
-  render() {
-    //console.log(this.props.inspection_Info);
-    let statisticValue = this.props.inspection_Info.statisticValue;
-    if (statisticValue === undefined) {
-      return null;
-    }
-    let info = statisticValue.measureList
-      .map(measure => <div>{measure.statistic.mean}</div>)
-
-    return <div className={this.props.addClass}>{info}</div>
-  }
-}
-
-
 let skip_counter = 0;
 
 class AngledCalibrationHelper extends React.Component {
@@ -1834,14 +1807,14 @@ class AngledCalibrationHelper extends React.Component {
 
 }
 
-function MeasureRankEdit ({shape_list,initRank=0,onRankChange}){
+function MeasureRankEdit ({shape_list,info_decorator,initRank=0,onRankChange}){
       
   const [sliderV,setSliderV]=useState(0);
   let measureList = shape_list
     .filter(shape=>shape.type===UIAct.SHAPE_TYPE.measure);
   let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
   let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,0);
-  
+  console.log(shape_list,"----",info_decorator);
   // console.log(rankMin,"----",rankMax);
   if(rankMin==1000)
   {
@@ -1921,7 +1894,7 @@ function RestrictiveCircleREdit ({initR,onRChanged}){
 
 class APP_INSP_MODE extends React.Component {
 
-
+  
   componentDidMount() {
 
 
@@ -1929,7 +1902,50 @@ class APP_INSP_MODE extends React.Component {
     
     this.CameraCtrl.setImageCropParam(undefined,4);
 
-    
+    {
+
+      // this.props.shape_list//modify the shapeList measure info according to the __decorator and tag info
+
+      // this.props.info_decorator
+      // this.props.inspOptionalTag
+
+      console.log(this.props.shape_list,this.props.info_decorator,this.props.inspOptionalTag);
+
+
+      let ctrlMarginInfos=GetObjElement(this.props.info_decorator,["control_margin_info"]);
+
+      if(ctrlMarginInfos!==undefined)
+      {
+        let curMarginInfo_name=this.props.inspOptionalTag.find(tag=>ctrlMarginInfos[tag]!==undefined)//find the tag name that is in ctrlMarginInfo
+        let curMarginInfo=ctrlMarginInfos[curMarginInfo_name];
+        console.log(curMarginInfo_name,curMarginInfo);
+
+        if(curMarginInfo!==undefined)
+        {
+          let newShapeList = [...this.props.shape_list];
+          curMarginInfo.forEach(info=>{
+            let cur_shape_idx = newShapeList.findIndex(shape=>shape.id==info.id);
+            if(cur_shape_idx!==-1)
+            {
+              newShapeList[cur_shape_idx]=
+              {
+                ...newShapeList[cur_shape_idx],
+                ...info
+              }
+            }
+
+
+          });
+          this.props.ACT_Shape_List_Update(newShapeList);
+          console.log(newShapeList)
+        }
+
+      }
+
+    }
+
+
+
     let deffile = defFileGeneration(this.props.edit_info);
     if (this.props.inspMode == "FI") {
 
@@ -2080,6 +2096,7 @@ class APP_INSP_MODE extends React.Component {
         <Divider orientation="left" key="div1">檢測等級</Divider>
 
         <MeasureRankEdit shape_list={this.props.shape_list} 
+          info_decorator = {this.props.info_decorator}
           initRank={this.state.measureDisplayRank}
           onRankChange={(rank)=>{
             this.setState({measureDisplayRank: rank });
@@ -2101,7 +2118,7 @@ class APP_INSP_MODE extends React.Component {
 
 
   render() {
-
+    
     let inspectionReport = undefined;
     if (this.props.inspectionReport !== undefined) {
       inspectionReport = this.props.inspectionReport;
@@ -2526,6 +2543,8 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
     },
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
+    
+    ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
   }
 }
 
