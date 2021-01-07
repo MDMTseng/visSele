@@ -1152,15 +1152,18 @@ class APP_ANALYSIS_MODE extends React.Component{
             <hr style={{width:"80%"}}/>
             <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec}
               onTagStateChange={(tagState)=>{
+                  
+          
+                  let mustList = Object.keys(tagState).filter(key=>tagState[key]==1);
+                  let mustNotList = Object.keys(tagState).filter(key=>tagState[key]==-1);
 
-                  let selectedTrueTags = Object.keys(tagState).filter(key=>tagState[key]);
 
-                  var filterTagsBoolean;
-
-                  filterTagsBoolean = selectedTrueTags.length==0?this.state.inspectionRec:
+                  let filterTagsBoolean = 
                     this.state.inspectionRec.filter(function(item, index, array){
                         let tArr=item.tag.split(",");
-                        return selectedTrueTags.some((item)=>tArr.includes(item));
+                        let everyMust=mustList.every((item)=>tArr.includes(item));
+                        let someMustNot=mustNotList.some((item)=>tArr.includes(item));
+                        return everyMust && (!someMustNot);
                         //return selectedTrueTags.every((item)=>tArr.includes(item));
                     });
 
@@ -1189,53 +1192,8 @@ class APP_ANALYSIS_MODE extends React.Component{
     );
   }
 }
-function updateChart(fullStream2Tag,tagName,checked){
-    console.log("updateChart=",tagName,checked);
-    // this.inspectionRecGroup_Generate(fullStream2Tag,this.state.groupInterval,measureList);
 
-}
-class MyTag extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            checked: true
 
-        };
-        console.log("New");
-        // this.handleClick = this.handleClick.bind(this);
-    }
-    shouldComponentUpdate(nextProps, nextState) {
-        console.log("shouldComponentUpdate",nextProps,nextState);
-        if(nextProps.tagName===this.props.tagName)
-        {
-            updateChart(nextProps.fullStream2Tag,nextProps.tagName,nextState.checked);
-        }
-        return true;
-    }
-    componentWillReceiveProps(nextProps) {
-        //console.log(nextProps);
-        // if(this.props===nextProps)return;
-        //this.setState({...this.state,...nextProps});
-        //console.log("componentWillReceiveProps",nextProps);
-    }
-    handleChange2 = checked => {
-        this.setState({ checked });
-        console.log("handleChange=",this.props.tagName,checked);
-        //updateChart(this.props.key,checked);
-        this.props.handleChange(checked);
-    };
-
-    appendTagtitle(props) {
-        return <h1>{props.name}</h1>;
-    }
-
-    render() {
-        console.log("handleChange=",this.props.tagName,this.state.checked);
-        return (
-            <CheckableTag {...this.props} checked={this.state.checked} onChange={this.handleChange2} />
-        );
-    }
-}
 class RelatedUsageInfo extends React.Component{
 //http://hyv.decade.tw:8080/query/deffile?name=BOS-LT13BH3421&
 // http://localhost:3000/hyvision_monitor/0.0.0/?v=0&hash=9fa42a5e990e4da632070e95daf14ec50de8a112&name=BOS-LT13BH3421
@@ -1277,7 +1235,7 @@ class RelatedUsageInfo extends React.Component{
             });
             let tags2={};
             Array.from(uniSet2).forEach(function(key){
-                tags2[key]=true;
+                tags2[key]=0;
             });
 
             this.setState( {tags:tags2});
@@ -1308,7 +1266,7 @@ class RelatedUsageInfo extends React.Component{
             let tags2={...prevState.tags};
             Array.from(uniSet2).forEach(function(key){
               if(tags2[key]===undefined)
-                tags2[key]=true;
+                tags2[key]=0;
             });
 
             return {tags:tags2};
@@ -1319,8 +1277,21 @@ class RelatedUsageInfo extends React.Component{
 
     handleTagChange = (key,onoff) =>
     {
+        if(key===undefined)
+        {
+          return;
+        }
         let tags2={...this.state.tags};
-        tags2[key]=onoff;
+        if(key==null)
+        {
+          Object.keys(tags2).forEach((key)=>{
+            tags2[key]=onoff;
+          });
+        }
+        else
+        {
+          tags2[key]=onoff;
+        }
         this.props.onTagStateChange(tags2);
         this.setState( {tags:tags2});
     }
@@ -1329,21 +1300,39 @@ class RelatedUsageInfo extends React.Component{
         console.log("this.state.tags",this.state.tags);
 
         return (
+          <>
             <div>
-                <h6 style={{ marginRight: 8, display: 'inline' }}>Uni Categories:</h6>
-                {Object.keys(this.state.tags).map((key, index, array)=>{
+                <Tag color="#87d068" 
+                onClick={_=>this.handleTagChange(null,1)}
+                >O</Tag>:
+                {Object.keys(this.state.tags).map((key)=>{
 
-                    //this.state.tags[key]
-                    console.log("Array.from(uniSet2).map=",index+"="+key);
                     return (
-                        <MyTag tagIndex={index} tagName={key} key={key} handleChange={
-                            (onoff)=>this.handleTagChange(key,onoff)}>
-                            {key}
-                        </MyTag>
+                      <Tag color={(this.state.tags[key]==1)?"#87d068":undefined}
+                      key={key}
+                      onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=1)?1:0)}
+                      >{key}</Tag>
                     );
                 })
+                
+                }
+
+                <br/>
+                <Tag color="#f50"
+                onClick={_=>this.handleTagChange(null,-1)}
+                >X</Tag>:
+                {Object.keys(this.state.tags).map((key, index, array)=>{
+                    return (
+                      <Tag color={(this.state.tags[key]==-1)?"#f50":undefined}
+                      key={key}
+                      onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=-1)?-1:0)}
+                      >{key}</Tag>
+                    );
+                })
+                
                 }
             </div>
+          </>
         );
 
     }
