@@ -29,11 +29,12 @@ import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import {INSPECTION_STATUS} from './UTIL/BPG_Protocol';
 import Tag  from 'antd/lib/tag';
+
+// import { StarOutlined} from '@ant-design/icons';
 const { CheckableTag } = Tag;
 
 const { RangePicker } = DatePicker;
 const { Title, Paragraph, Text } = Typography;
-
 let log = logX.getLogger("AnalysisUI");
 
 
@@ -748,7 +749,7 @@ class ControlChart extends React.Component {
             let index = tooltipItem.index;
             let dataOnTip=data.datasets[datasetIndex].data[index];
             let stat = dataOnTip.stat;
-            if(stat==undefined)return dataOnTip.x;
+            if(stat===undefined)return dataOnTip.x;
 
             let groupSize = dataOnTip.data.group.length;
             if(groupSize==0)return dataOnTip.x;
@@ -959,11 +960,6 @@ class APP_ANALYSIS_MODE extends React.Component{
       controlChartOverlap:false
     };
     this.recStream=new InspRecStream();
-    //this.state.inspectionRec=dbInspectionQuery;
-    //this.state.defFile=defFile;
-
-//let IRG=InspectionRecordGrouping(dbInspectionQuery);
-//console.log(IRG,defFile);
   }
   
 
@@ -979,6 +975,7 @@ class APP_ANALYSIS_MODE extends React.Component{
   shouldComponentUpdate(nextProps, nextState) {
     if(nextProps.defFile!==this.props.defFile)
     {
+      console.log("shouldComponentUpdate");
       this.recStream.setDefFile(nextProps.defFile);
     }
     return true;
@@ -986,27 +983,37 @@ class APP_ANALYSIS_MODE extends React.Component{
   static getDerivedStateFromProps(nextProps, prevState)
   {
     if(nextProps.defFile===undefined)return null;
+    if(nextProps.defFile===prevState.__cached_defFile)return prevState;
     let defFile = dclone(nextProps.defFile);
     let features=defFile.featureSet[0].features;
     let __decorator=defFile.featureSet[0].__decorator;
+
+    //order the feature array according to the __decorator
     let featureInOrder=__decorator.list_id_order.map(id=>features.find(f=>f.id==id));
     defFile.featureSet[0].features=featureInOrder;
+
+    if(__decorator.control_margin_info===undefined)__decorator.control_margin_info={};
+
+    let __control_margin_info=__decorator.control_margin_info;
+
+    {//back up 
+      __control_margin_info["__DEFAULT__"]=dclone(defFile.featureSet[0].features);
+      // console.log(defFile);
+
+
+      
+    }
+
+
+
     // console.log(features,__decorator.list_id_order,featureInOrder);
-    return {...prevState,defFile};
+    return {...prevState,defFile,__cached_defFile:nextProps.defFile};
   }
   render() {
+    console.log(">>>>",this.state);
     if(this.state.defFile===undefined)return null;
     let menu_height="HXA";//auto
     let MenuSet=[];
-    //if()
-    /*MenuSet=this.state.dateRange.reduce((menu,date,idx)=>{
-      menu.push(<BASE_COM.IconButton
-        dict={EC_zh_TW}
-        key={"<"+idx}
-        addClass="layout black vbox"
-        text={date._d.getTime()} />);
-      return menu;
-    },MenuSet);*/
     let menuStyle={
       top:"0px",
       width:"100px"
@@ -1029,10 +1036,10 @@ class APP_ANALYSIS_MODE extends React.Component{
       this.props.DefFileHash.length>5;
 
     const dateFormat = 'YYYY/MM/DD';
-    console.log( this.state.defFile);
+    // console.log( this.state.defFile);
     let measureList = this.state.defFile.featureSet[0].features.filter(feature=>feature.type==="measure");
     
-    console.log(this.state.defFile);
+    // console.log(this.state.defFile);
     document.title = this.state.defFile.name; 
     let HEADER=<Typography>
       <Title>{this.state.defFile.name}</Title>
@@ -1067,6 +1074,7 @@ class APP_ANALYSIS_MODE extends React.Component{
             console.log("TimePicker",this.state.inspectionRec_TagFiltered);
             let inspectionRecGroup =
               inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,measureList);
+
             this.stateUpdate({inspectionRecGroup,groupInterval});
         }}/>,
         <Checkbox checked={this.state.controlChartOverlap} onChange={(ev)=>this.setState({controlChartOverlap:ev.target.checked})}>重疊顯示</Checkbox>,
@@ -1075,6 +1083,7 @@ class APP_ANALYSIS_MODE extends React.Component{
     }
 
     
+    console.log(measureList);
     let graphUI=null;
     if(this.state.controlChartOverlap)
     {
@@ -1151,12 +1160,35 @@ class APP_ANALYSIS_MODE extends React.Component{
             }} />
             <hr style={{width:"80%"}}/>
             <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec}
+              control_margin_set={this.state.defFile.featureSet[0].__decorator.control_margin_info}
               onTagStateChange={(tagState)=>{
                   
-          
+
+                  let updatedDefFile ={...this.state.defFile};
+                  // updatedDefFile
+                  let updatedDefFile_feature=updatedDefFile.featureSet[0];
+                  let __deco_control_margin_info=updatedDefFile_feature.__decorator.control_margin_info;
+                  let new_feature=dclone(__deco_control_margin_info["__DEFAULT__"]);
+
+                  console.log(updatedDefFile,new_feature);
+
+
                   let mustList = Object.keys(tagState).filter(key=>tagState[key]==1);
                   let mustNotList = Object.keys(tagState).filter(key=>tagState[key]==-1);
 
+                  let selKey=mustList.find(mustKey=>__deco_control_margin_info[mustKey]!==undefined);
+                  if(selKey!==undefined)
+                  {
+                    let curMargInfo = __deco_control_margin_info[selKey];
+                    new_feature = new_feature.map((fea)=>{
+                      let matched_cmi=curMargInfo.find(info=>info.id==fea.id);
+                      if(matched_cmi===undefined)return fea;
+                      
+                      return {...fea,...matched_cmi}
+                    });
+
+                  }
+                  updatedDefFile.featureSet[0].features=new_feature;
 
                   let filterTagsBoolean = 
                     this.state.inspectionRec.filter(function(item, index, array){
@@ -1167,13 +1199,14 @@ class APP_ANALYSIS_MODE extends React.Component{
                         //return selectedTrueTags.every((item)=>tArr.includes(item));
                     });
 
-
+                  console.log(updatedDefFile);
                   let inspectionRecGroup =
                       inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,measureList);
                   //console.log(filterTagsBoolean,inspectionRecGroup);
                   this.stateUpdate({
                       inspectionRecGroup:inspectionRecGroup,
-                      inspectionRec_TagFiltered:filterTagsBoolean
+                      inspectionRec_TagFiltered:filterTagsBoolean,
+                      defFile:updatedDefFile
                   });
 
 
@@ -1297,8 +1330,8 @@ class RelatedUsageInfo extends React.Component{
     }
 
     render() {
-        console.log("this.state.tags",this.state.tags);
-
+        // console.log("this.state.tags",this.state.tags);
+        // control_margin_set
         return (
           <>
             <div>
@@ -1306,12 +1339,17 @@ class RelatedUsageInfo extends React.Component{
                 onClick={_=>this.handleTagChange(null,1)}
                 >O</Tag>:
                 {Object.keys(this.state.tags).map((key)=>{
-
+                  let tagName=key;
+                  if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
+                  {
+                    tagName="["+key+"]";
+                  }
                     return (
-                      <Tag color={(this.state.tags[key]==1)?"#87d068":undefined}
+                      <Tag 
+                      color={(this.state.tags[key]==1)?"#87d068":undefined}
                       key={key}
                       onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=1)?1:0)}
-                      >{key}</Tag>
+                      >{tagName}</Tag>
                     );
                 })
                 
@@ -1322,11 +1360,16 @@ class RelatedUsageInfo extends React.Component{
                 onClick={_=>this.handleTagChange(null,-1)}
                 >X</Tag>:
                 {Object.keys(this.state.tags).map((key, index, array)=>{
+                    let tagName=key;
+                    if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
+                    {
+                      tagName="["+key+"]";
+                    }
                     return (
                       <Tag color={(this.state.tags[key]==-1)?"#f50":undefined}
                       key={key}
                       onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=-1)?-1:0)}
-                      >{key}</Tag>
+                      >{tagName}</Tag>
                     );
                 })
                 
