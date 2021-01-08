@@ -105,13 +105,21 @@ function datePrintSimple(date) {
 
   return [date.getFullYear(),mm,dd].join('/')+" "+h+":"+m+":"+s;
 };
-function convertInspInfo2CSV(reportName,measureList,inspRecGroup)
+function convertInspInfo2CSV(reportName,measureList,inspRecGroup,cur_tagState)
 {
   let converterV="0.0.1 Alpha"
   let ci=[];
   
   ci.push('"'+reportName+'"');
   ci.push(",\""+converterV+'"');
+
+  ci.push(',,"tags"');
+  
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==1).join(",")+'"');
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==0).join(",")+'"');
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==-1).join(",")+'"');
+  
+
   ci.push(",\n");
   console.log(measureList,inspRecGroup);
   function pushDataRow(arr,measureReports,trace,RowName=trace[trace.length-1])
@@ -481,6 +489,7 @@ class ControlChart extends React.Component {
             let val={
             x:new Date(rep.time_ms).toString(),
             y:measureValue,
+            tag:rep.tag
             };
             
 
@@ -541,7 +550,7 @@ class ControlChart extends React.Component {
           x:new Date(time).toString(),
         y:value,
           data:repG,
-        stat:this_id_stat
+          stat:this_id_stat
         };
 
       
@@ -658,6 +667,7 @@ class ControlChart extends React.Component {
           let value_target=_targetMeasure["value"];
     
           chart_data.data.forEach(dat=>{
+
             dat.original_y=dat.y
             dat.y=
               (N_USL)*this.dataPointNormalizer(dat.y,USL,value_target,LSL)});
@@ -742,6 +752,7 @@ class ControlChart extends React.Component {
             if(datasetIndex===undefined)return ""
             let index = tooltipItem.index;
 
+            console.log(data,data.datasets[datasetIndex]);
             return data.datasets[datasetIndex].data[index].original_y
           },
           afterLabel: function(tooltipItem, data) {
@@ -749,7 +760,7 @@ class ControlChart extends React.Component {
             let index = tooltipItem.index;
             let dataOnTip=data.datasets[datasetIndex].data[index];
             let stat = dataOnTip.stat;
-            if(stat===undefined)return dataOnTip.x;
+            if(stat===undefined)return dataOnTip.x+"\ntag:"+dataOnTip.tag;
 
             let groupSize = dataOnTip.data.group.length;
             if(groupSize==0)return dataOnTip.x;
@@ -1153,7 +1164,7 @@ class APP_ANALYSIS_MODE extends React.Component{
           onClick={
             ()=>{
               let ReportName=this.state.defFile.name+"_"+YYYYMMDD(new Date());
-              let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup);
+              let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup,this.state.tagState);
               let str = csv_arr.join('');
               //copyStringToClipboard(str);
               downloadString(csv_arr.join(''), "text/csv", ReportName+".csv");
@@ -1204,9 +1215,10 @@ class APP_ANALYSIS_MODE extends React.Component{
                       inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,measureList);
                   //console.log(filterTagsBoolean,inspectionRecGroup);
                   this.stateUpdate({
-                      inspectionRecGroup:inspectionRecGroup,
-                      inspectionRec_TagFiltered:filterTagsBoolean,
-                      defFile:updatedDefFile
+                    tagState,
+                    inspectionRecGroup:inspectionRecGroup,
+                    inspectionRec_TagFiltered:filterTagsBoolean,
+                    defFile:updatedDefFile
                   });
 
 
@@ -1310,11 +1322,25 @@ class RelatedUsageInfo extends React.Component{
 
     handleTagChange = (key,onoff) =>
     {
+      let tags2={...this.state.tags};
+      //if the special tag is set to SET, unset other special tags.
+      if(onoff==1 && this.props.control_margin_set!==undefined)
+      {
+        if(this.props.control_margin_set[key]!==undefined)
+        {
+          Object.keys(tags2).forEach((key)=>{
+            if(this.props.control_margin_set[key]!==undefined)
+            {
+              tags2[key]=0;
+            }
+          });
+        }
+      }
+
         if(key===undefined)
         {
           return;
         }
-        let tags2={...this.state.tags};
         if(key==null)
         {
           Object.keys(tags2).forEach((key)=>{
