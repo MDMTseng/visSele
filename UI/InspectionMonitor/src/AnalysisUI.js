@@ -1,8 +1,7 @@
 'use strict'
    
 
-import React from 'react';
-
+import React, { useState, useEffect,useRef } from 'react';
 import {round as roundX,GetObjElement} from './UTIL/MISC_Util';
 import 'antd/dist/antd.css';
 
@@ -951,6 +950,55 @@ class InspRecStream
 
 }
 
+function DisplayRankEdit ({shape_list,initRank=0,onDisplayListChange}){
+      
+  const [sliderV,setSliderV]=useState(initRank);
+  let measureList = shape_list
+    .filter(shape=>shape.type==="measure");
+  let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
+  let rankMin=measureList.reduce((min,m)=>min>m.rank?m.rank:min,0);
+
+  if(rankMin==1000)
+  {
+    rankMin=0;
+    rankMax=0;
+  }
+  if(rankMin==rankMax)
+  {
+    rankMin=0;
+  }
+  let marks = {};
+
+
+  marks[rankMin]=rankMin+"";
+  marks[rankMax]=rankMax+"";
+  measureList.forEach((m)=>{
+    if(m.rank!==undefined)
+    {
+      marks[m.rank]=m.rank+"";
+    }
+  });
+
+  useEffect(()=>{
+    if(onDisplayListChange==undefined)return;
+    onDisplayListChange(shape_list.filter(s=>s.rank<=sliderV).map(s=>s.id));
+  },[sliderV])
+
+  return <>
+  
+    <Slider
+      min={rankMin}
+      max={rankMax}
+      onChange={setSliderV}
+      marks={marks}
+      value={sliderV}
+    />
+    {measureList.filter(m=>m.rank<=sliderV||m.rank===undefined).map(m=><Tag>{m.name}</Tag>)}
+  
+  </>;
+}
+
+
 
 class APP_ANALYSIS_MODE extends React.Component{
 
@@ -968,7 +1016,9 @@ class APP_ANALYSIS_MODE extends React.Component{
       groupInterval:2*60*1000,//10 mins
       liveFeedMode:false,
       dataInSync:false,
-      controlChartOverlap:false
+      controlChartOverlap:false,
+      displayRank:0
+
     };
     this.recStream=new InspRecStream();
   }
@@ -1120,6 +1170,7 @@ class APP_ANALYSIS_MODE extends React.Component{
       </div>
     }
 
+
     
     return(
     <div className="HXF">
@@ -1161,8 +1212,7 @@ class APP_ANALYSIS_MODE extends React.Component{
             }} />
             
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
-          onClick={
-            ()=>{
+            onClick={()=>{
               let ReportName=this.state.defFile.name+"_"+YYYYMMDD(new Date());
               let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup,this.state.tagState);
               let str = csv_arr.join('');
@@ -1223,6 +1273,13 @@ class APP_ANALYSIS_MODE extends React.Component{
 
 
               }}/>
+
+
+            <DisplayRankEdit shape_list={measureList}
+            onRankChange={(value)=>{
+              console.log(value);
+            }}/>
+            
             <hr style={{width:"80%"}}/>
         </div>
 
@@ -1360,47 +1417,45 @@ class RelatedUsageInfo extends React.Component{
         // control_margin_set
         return (
           <>
-            <div>
-                <Tag color="#87d068" 
-                onClick={_=>this.handleTagChange(null,1)}
-                >O</Tag>:
-                {Object.keys(this.state.tags).map((key)=>{
-                  let tagName=key;
-                  if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
-                  {
-                    tagName="["+key+"]";
-                  }
-                    return (
-                      <Tag 
-                      color={(this.state.tags[key]==1)?"#87d068":undefined}
-                      key={key}
-                      onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=1)?1:0)}
-                      >{tagName}</Tag>
-                    );
-                })
-                
-                }
+            <Tag color="#87d068" 
+            onClick={_=>this.handleTagChange(null,1)}
+            >O</Tag>:
+            {Object.keys(this.state.tags).map((key)=>{
+              let tagName=key;
+              if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
+              {
+                tagName="["+key+"]";
+              }
+                return (
+                  <Tag 
+                  color={(this.state.tags[key]==1)?"#87d068":undefined}
+                  key={key}
+                  onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=1)?1:0)}
+                  >{tagName}</Tag>
+                );
+            })
+            
+            }
 
-                <br/>
-                <Tag color="#f50"
-                onClick={_=>this.handleTagChange(null,-1)}
-                >X</Tag>:
-                {Object.keys(this.state.tags).map((key, index, array)=>{
-                    let tagName=key;
-                    if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
-                    {
-                      tagName="["+key+"]";
-                    }
-                    return (
-                      <Tag color={(this.state.tags[key]==-1)?"#f50":undefined}
-                      key={key}
-                      onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=-1)?-1:0)}
-                      >{tagName}</Tag>
-                    );
-                })
-                
+            <br/>
+            <Tag color="#f50"
+            onClick={_=>this.handleTagChange(null,-1)}
+            >X</Tag>:
+            {Object.keys(this.state.tags).map((key, index, array)=>{
+                let tagName=key;
+                if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
+                {
+                  tagName="["+key+"]";
                 }
-            </div>
+                return (
+                  <Tag color={(this.state.tags[key]==-1)?"#f50":undefined}
+                  key={key}
+                  onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=-1)?-1:0)}
+                  >{tagName}</Tag>
+                );
+            })
+            
+            }
           </>
         );
 
