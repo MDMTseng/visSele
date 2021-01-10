@@ -950,9 +950,10 @@ class InspRecStream
 
 }
 
-function DisplayRankEdit ({shape_list,initRank=0,onDisplayListChange}){
+function ListInfoEditUI ({shape_list,initRank=0,onListInfoChange}){
       
   const [sliderV,setSliderV]=useState(initRank);
+  const [listInfo,setListInfo]=useState({});
   let measureList = shape_list
     .filter(shape=>shape.type==="measure");
   let rankMax=measureList.reduce((max,m)=>max<m.rank?m.rank:max,0);
@@ -979,21 +980,43 @@ function DisplayRankEdit ({shape_list,initRank=0,onDisplayListChange}){
     }
   });
 
+
   useEffect(()=>{
-    if(onDisplayListChange==undefined)return;
-    onDisplayListChange(shape_list.filter(s=>s.rank<=sliderV).map(s=>s.id));
-  },[sliderV])
+    if(onListInfoChange==undefined)return;
+    let new_list_info={};
+    shape_list.forEach((s)=>{
+      new_list_info[s.id]={
+        name:s.name,
+        selected:(s.rank===undefined)||(s.rank<=sliderV)};
+    });
+    setListInfo(new_list_info);
+    onListInfoChange(new_list_info);
+  },[sliderV]);
+
+
+  
 
   return <>
-  
     <Slider
       min={rankMin}
       max={rankMax}
       onChange={setSliderV}
       marks={marks}
       value={sliderV}
+      style={{width:"300px",    
+      marginLeft: "auto",
+      marginRight:"auto"}}
     />
-    {measureList.filter(m=>m.rank<=sliderV||m.rank===undefined).map(m=><Tag>{m.name}</Tag>)}
+    
+    {Object.keys(listInfo).map(key=><CheckableTag
+    checked={listInfo[key].selected}
+    onChange={(checked)=>{
+      let nLInfo={...listInfo};
+      nLInfo[key]={ ...nLInfo[key], selected:checked}
+      
+      setListInfo(nLInfo);
+      onListInfoChange(nLInfo);
+    }}>{listInfo[key].name}</CheckableTag>)}
   
   </>;
 }
@@ -1017,7 +1040,8 @@ class APP_ANALYSIS_MODE extends React.Component{
       liveFeedMode:false,
       dataInSync:false,
       controlChartOverlap:false,
-      displayRank:0
+      displayListInfo:{},
+
 
     };
     this.recStream=new InspRecStream();
@@ -1098,7 +1122,11 @@ class APP_ANALYSIS_MODE extends React.Component{
 
     const dateFormat = 'YYYY/MM/DD';
     // console.log( this.state.defFile);
-    let measureList = this.state.defFile.featureSet[0].features.filter(feature=>feature.type==="measure");
+    let measureList = this.state.defFile.featureSet[0].features
+      .filter(feature=>
+        (this.state.displayListInfo[feature.id]!==undefined) &&
+        (this.state.displayListInfo[feature.id].selected) &&
+        (feature.type==="measure"));
     
     // console.log(this.state.defFile);
     document.title = this.state.defFile.name; 
@@ -1275,9 +1303,10 @@ class APP_ANALYSIS_MODE extends React.Component{
               }}/>
 
 
-            <DisplayRankEdit shape_list={measureList}
-            onRankChange={(value)=>{
-              console.log(value);
+            <ListInfoEditUI shape_list={this.state.defFile.featureSet[0].features.filter(feature=>(feature.type==="measure"))}
+            onListInfoChange={(listInfo)=>{
+              console.log(listInfo);
+              this.setState({displayListInfo:listInfo})
             }}/>
             
             <hr style={{width:"80%"}}/>
