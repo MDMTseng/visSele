@@ -29,11 +29,12 @@ import Chart from 'chart.js';
 import 'chartjs-plugin-annotation';
 import {INSPECTION_STATUS} from './UTIL/BPG_Protocol';
 import Tag  from 'antd/lib/tag';
+
+// import { StarOutlined} from '@ant-design/icons';
 const { CheckableTag } = Tag;
 
 const { RangePicker } = DatePicker;
 const { Title, Paragraph, Text } = Typography;
-
 let log = logX.getLogger("AnalysisUI");
 
 
@@ -104,13 +105,21 @@ function datePrintSimple(date) {
 
   return [date.getFullYear(),mm,dd].join('/')+" "+h+":"+m+":"+s;
 };
-function convertInspInfo2CSV(reportName,measureList,inspRecGroup)
+function convertInspInfo2CSV(reportName,measureList,inspRecGroup,cur_tagState)
 {
   let converterV="0.0.1 Alpha"
   let ci=[];
   
   ci.push('"'+reportName+'"');
   ci.push(",\""+converterV+'"');
+
+  ci.push(',,"tags"');
+  
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==1).join(",")+'"');
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==0).join(",")+'"');
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==-1).join(",")+'"');
+  
+
   ci.push(",\n");
   console.log(measureList,inspRecGroup);
   function pushDataRow(arr,measureReports,trace,RowName=trace[trace.length-1])
@@ -480,6 +489,7 @@ class ControlChart extends React.Component {
             let val={
             x:new Date(rep.time_ms).toString(),
             y:measureValue,
+            tag:rep.tag
             };
             
 
@@ -540,7 +550,7 @@ class ControlChart extends React.Component {
           x:new Date(time).toString(),
         y:value,
           data:repG,
-        stat:this_id_stat
+          stat:this_id_stat
         };
 
       
@@ -657,6 +667,7 @@ class ControlChart extends React.Component {
           let value_target=_targetMeasure["value"];
     
           chart_data.data.forEach(dat=>{
+
             dat.original_y=dat.y
             dat.y=
               (N_USL)*this.dataPointNormalizer(dat.y,USL,value_target,LSL)});
@@ -741,6 +752,7 @@ class ControlChart extends React.Component {
             if(datasetIndex===undefined)return ""
             let index = tooltipItem.index;
 
+            console.log(data,data.datasets[datasetIndex]);
             return data.datasets[datasetIndex].data[index].original_y
           },
           afterLabel: function(tooltipItem, data) {
@@ -748,7 +760,7 @@ class ControlChart extends React.Component {
             let index = tooltipItem.index;
             let dataOnTip=data.datasets[datasetIndex].data[index];
             let stat = dataOnTip.stat;
-            if(stat==undefined)return dataOnTip.x;
+            if(stat===undefined)return dataOnTip.x+"\ntag:"+dataOnTip.tag;
 
             let groupSize = dataOnTip.data.group.length;
             if(groupSize==0)return dataOnTip.x;
@@ -959,11 +971,6 @@ class APP_ANALYSIS_MODE extends React.Component{
       controlChartOverlap:false
     };
     this.recStream=new InspRecStream();
-    //this.state.inspectionRec=dbInspectionQuery;
-    //this.state.defFile=defFile;
-
-//let IRG=InspectionRecordGrouping(dbInspectionQuery);
-//console.log(IRG,defFile);
   }
   
 
@@ -979,6 +986,7 @@ class APP_ANALYSIS_MODE extends React.Component{
   shouldComponentUpdate(nextProps, nextState) {
     if(nextProps.defFile!==this.props.defFile)
     {
+      console.log("shouldComponentUpdate");
       this.recStream.setDefFile(nextProps.defFile);
     }
     return true;
@@ -986,27 +994,37 @@ class APP_ANALYSIS_MODE extends React.Component{
   static getDerivedStateFromProps(nextProps, prevState)
   {
     if(nextProps.defFile===undefined)return null;
+    if(nextProps.defFile===prevState.__cached_defFile)return prevState;
     let defFile = dclone(nextProps.defFile);
     let features=defFile.featureSet[0].features;
     let __decorator=defFile.featureSet[0].__decorator;
+
+    //order the feature array according to the __decorator
     let featureInOrder=__decorator.list_id_order.map(id=>features.find(f=>f.id==id));
     defFile.featureSet[0].features=featureInOrder;
+
+    if(__decorator.control_margin_info===undefined)__decorator.control_margin_info={};
+
+    let __control_margin_info=__decorator.control_margin_info;
+
+    {//back up 
+      __control_margin_info["__DEFAULT__"]=dclone(defFile.featureSet[0].features);
+      // console.log(defFile);
+
+
+      
+    }
+
+
+
     // console.log(features,__decorator.list_id_order,featureInOrder);
-    return {...prevState,defFile};
+    return {...prevState,defFile,__cached_defFile:nextProps.defFile};
   }
   render() {
+    console.log(">>>>",this.state);
     if(this.state.defFile===undefined)return null;
     let menu_height="HXA";//auto
     let MenuSet=[];
-    //if()
-    /*MenuSet=this.state.dateRange.reduce((menu,date,idx)=>{
-      menu.push(<BASE_COM.IconButton
-        dict={EC_zh_TW}
-        key={"<"+idx}
-        addClass="layout black vbox"
-        text={date._d.getTime()} />);
-      return menu;
-    },MenuSet);*/
     let menuStyle={
       top:"0px",
       width:"100px"
@@ -1029,10 +1047,10 @@ class APP_ANALYSIS_MODE extends React.Component{
       this.props.DefFileHash.length>5;
 
     const dateFormat = 'YYYY/MM/DD';
-    console.log( this.state.defFile);
+    // console.log( this.state.defFile);
     let measureList = this.state.defFile.featureSet[0].features.filter(feature=>feature.type==="measure");
     
-    console.log(this.state.defFile);
+    // console.log(this.state.defFile);
     document.title = this.state.defFile.name; 
     let HEADER=<Typography>
       <Title>{this.state.defFile.name}</Title>
@@ -1067,6 +1085,7 @@ class APP_ANALYSIS_MODE extends React.Component{
             console.log("TimePicker",this.state.inspectionRec_TagFiltered);
             let inspectionRecGroup =
               inspectionRecGroup_Generate(this.state.inspectionRec_TagFiltered,groupInterval,measureList);
+
             this.stateUpdate({inspectionRecGroup,groupInterval});
         }}/>,
         <Checkbox checked={this.state.controlChartOverlap} onChange={(ev)=>this.setState({controlChartOverlap:ev.target.checked})}>重疊顯示</Checkbox>,
@@ -1075,6 +1094,7 @@ class APP_ANALYSIS_MODE extends React.Component{
     }
 
     
+    console.log(measureList);
     let graphUI=null;
     if(this.state.controlChartOverlap)
     {
@@ -1144,33 +1164,61 @@ class APP_ANALYSIS_MODE extends React.Component{
           onClick={
             ()=>{
               let ReportName=this.state.defFile.name+"_"+YYYYMMDD(new Date());
-              let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup);
+              let csv_arr= convertInspInfo2CSV(ReportName,measureList,this.state.inspectionRecGroup,this.state.tagState);
               let str = csv_arr.join('');
               //copyStringToClipboard(str);
               downloadString(csv_arr.join(''), "text/csv", ReportName+".csv");
             }} />
             <hr style={{width:"80%"}}/>
             <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec}
+              control_margin_set={this.state.defFile.featureSet[0].__decorator.control_margin_info}
               onTagStateChange={(tagState)=>{
+                  
 
-                  let selectedTrueTags = Object.keys(tagState).filter(key=>tagState[key]);
+                  let updatedDefFile ={...this.state.defFile};
+                  // updatedDefFile
+                  let updatedDefFile_feature=updatedDefFile.featureSet[0];
+                  let __deco_control_margin_info=updatedDefFile_feature.__decorator.control_margin_info;
+                  let new_feature=dclone(__deco_control_margin_info["__DEFAULT__"]);
 
-                  var filterTagsBoolean;
+                  console.log(updatedDefFile,new_feature);
 
-                  filterTagsBoolean = selectedTrueTags.length==0?this.state.inspectionRec:
+
+                  let mustList = Object.keys(tagState).filter(key=>tagState[key]==1);
+                  let mustNotList = Object.keys(tagState).filter(key=>tagState[key]==-1);
+
+                  let selKey=mustList.find(mustKey=>__deco_control_margin_info[mustKey]!==undefined);
+                  if(selKey!==undefined)
+                  {
+                    let curMargInfo = __deco_control_margin_info[selKey];
+                    new_feature = new_feature.map((fea)=>{
+                      let matched_cmi=curMargInfo.find(info=>info.id==fea.id);
+                      if(matched_cmi===undefined)return fea;
+                      
+                      return {...fea,...matched_cmi}
+                    });
+
+                  }
+                  updatedDefFile.featureSet[0].features=new_feature;
+
+                  let filterTagsBoolean = 
                     this.state.inspectionRec.filter(function(item, index, array){
                         let tArr=item.tag.split(",");
-                        return selectedTrueTags.some((item)=>tArr.includes(item));
+                        let everyMust=mustList.every((item)=>tArr.includes(item));
+                        let someMustNot=mustNotList.some((item)=>tArr.includes(item));
+                        return everyMust && (!someMustNot);
                         //return selectedTrueTags.every((item)=>tArr.includes(item));
                     });
 
-
+                  console.log(updatedDefFile);
                   let inspectionRecGroup =
                       inspectionRecGroup_Generate(filterTagsBoolean,this.state.groupInterval,measureList);
                   //console.log(filterTagsBoolean,inspectionRecGroup);
                   this.stateUpdate({
-                      inspectionRecGroup:inspectionRecGroup,
-                      inspectionRec_TagFiltered:filterTagsBoolean
+                    tagState,
+                    inspectionRecGroup:inspectionRecGroup,
+                    inspectionRec_TagFiltered:filterTagsBoolean,
+                    defFile:updatedDefFile
                   });
 
 
@@ -1189,53 +1237,8 @@ class APP_ANALYSIS_MODE extends React.Component{
     );
   }
 }
-function updateChart(fullStream2Tag,tagName,checked){
-    console.log("updateChart=",tagName,checked);
-    // this.inspectionRecGroup_Generate(fullStream2Tag,this.state.groupInterval,measureList);
 
-}
-class MyTag extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            checked: true
 
-        };
-        console.log("New");
-        // this.handleClick = this.handleClick.bind(this);
-    }
-    shouldComponentUpdate(nextProps, nextState) {
-        console.log("shouldComponentUpdate",nextProps,nextState);
-        if(nextProps.tagName===this.props.tagName)
-        {
-            updateChart(nextProps.fullStream2Tag,nextProps.tagName,nextState.checked);
-        }
-        return true;
-    }
-    componentWillReceiveProps(nextProps) {
-        //console.log(nextProps);
-        // if(this.props===nextProps)return;
-        //this.setState({...this.state,...nextProps});
-        //console.log("componentWillReceiveProps",nextProps);
-    }
-    handleChange2 = checked => {
-        this.setState({ checked });
-        console.log("handleChange=",this.props.tagName,checked);
-        //updateChart(this.props.key,checked);
-        this.props.handleChange(checked);
-    };
-
-    appendTagtitle(props) {
-        return <h1>{props.name}</h1>;
-    }
-
-    render() {
-        console.log("handleChange=",this.props.tagName,this.state.checked);
-        return (
-            <CheckableTag {...this.props} checked={this.state.checked} onChange={this.handleChange2} />
-        );
-    }
-}
 class RelatedUsageInfo extends React.Component{
 //http://hyv.decade.tw:8080/query/deffile?name=BOS-LT13BH3421&
 // http://localhost:3000/hyvision_monitor/0.0.0/?v=0&hash=9fa42a5e990e4da632070e95daf14ec50de8a112&name=BOS-LT13BH3421
@@ -1277,7 +1280,7 @@ class RelatedUsageInfo extends React.Component{
             });
             let tags2={};
             Array.from(uniSet2).forEach(function(key){
-                tags2[key]=true;
+                tags2[key]=0;
             });
 
             this.setState( {tags:tags2});
@@ -1308,7 +1311,7 @@ class RelatedUsageInfo extends React.Component{
             let tags2={...prevState.tags};
             Array.from(uniSet2).forEach(function(key){
               if(tags2[key]===undefined)
-                tags2[key]=true;
+                tags2[key]=0;
             });
 
             return {tags:tags2};
@@ -1319,31 +1322,86 @@ class RelatedUsageInfo extends React.Component{
 
     handleTagChange = (key,onoff) =>
     {
-        let tags2={...this.state.tags};
-        tags2[key]=onoff;
+      let tags2={...this.state.tags};
+      //if the special tag is set to SET, unset other special tags.
+      if(onoff==1 && this.props.control_margin_set!==undefined)
+      {
+        if(this.props.control_margin_set[key]!==undefined)
+        {
+          Object.keys(tags2).forEach((key)=>{
+            if(this.props.control_margin_set[key]!==undefined)
+            {
+              tags2[key]=0;
+            }
+          });
+        }
+      }
+
+        if(key===undefined)
+        {
+          return;
+        }
+        if(key==null)
+        {
+          Object.keys(tags2).forEach((key)=>{
+            tags2[key]=onoff;
+          });
+        }
+        else
+        {
+          tags2[key]=onoff;
+        }
         this.props.onTagStateChange(tags2);
         this.setState( {tags:tags2});
     }
 
     render() {
-        console.log("this.state.tags",this.state.tags);
-
+        // console.log("this.state.tags",this.state.tags);
+        // control_margin_set
         return (
+          <>
             <div>
-                <h6 style={{ marginRight: 8, display: 'inline' }}>Uni Categories:</h6>
-                {Object.keys(this.state.tags).map((key, index, array)=>{
-
-                    //this.state.tags[key]
-                    console.log("Array.from(uniSet2).map=",index+"="+key);
+                <Tag color="#87d068" 
+                onClick={_=>this.handleTagChange(null,1)}
+                >O</Tag>:
+                {Object.keys(this.state.tags).map((key)=>{
+                  let tagName=key;
+                  if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
+                  {
+                    tagName="["+key+"]";
+                  }
                     return (
-                        <MyTag tagIndex={index} tagName={key} key={key} handleChange={
-                            (onoff)=>this.handleTagChange(key,onoff)}>
-                            {key}
-                        </MyTag>
+                      <Tag 
+                      color={(this.state.tags[key]==1)?"#87d068":undefined}
+                      key={key}
+                      onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=1)?1:0)}
+                      >{tagName}</Tag>
                     );
                 })
+                
+                }
+
+                <br/>
+                <Tag color="#f50"
+                onClick={_=>this.handleTagChange(null,-1)}
+                >X</Tag>:
+                {Object.keys(this.state.tags).map((key, index, array)=>{
+                    let tagName=key;
+                    if(this.props.control_margin_set!==undefined && this.props.control_margin_set[key]!==undefined)
+                    {
+                      tagName="["+key+"]";
+                    }
+                    return (
+                      <Tag color={(this.state.tags[key]==-1)?"#f50":undefined}
+                      key={key}
+                      onClick={_=>this.handleTagChange(key,(this.state.tags[key]!=-1)?-1:0)}
+                      >{tagName}</Tag>
+                    );
+                })
+                
                 }
             </div>
+          </>
         );
 
     }

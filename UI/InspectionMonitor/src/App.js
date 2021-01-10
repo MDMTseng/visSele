@@ -711,7 +711,7 @@ class App extends React.Component{
     DB_Query.defFileQuery(info.name,info.hash).
       then((q)=>{
         if(q.length>0)
-          this.setState({...this.state,defFile:q[0].DefineFile});
+          this.setState({...this.state,defFile:q[q.length-1].DefineFile});
         console.log(q)
       });
   }
