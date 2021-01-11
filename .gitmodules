@@ -1,0 +1,3 @@
+[submodule "InspectionCore/contrib/shape_based_matching"]
+	path = InspectionCore/contrib/shape_based_matching
+	url = https://github.com/MDMTseng/shape_based_matching.git
