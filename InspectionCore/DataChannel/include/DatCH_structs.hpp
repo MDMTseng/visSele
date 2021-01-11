@@ -62,7 +62,7 @@ typedef struct DatCH_Data
     } data;
 } DatCH_Data;
 
-typedef int (*DatCH_Event_callback)(DatCH_Interface *interface, DatCH_Data data, void* callback_param);
+typedef int (*DatCH_Event_callback)(DatCH_Interface *iface, DatCH_Data data, void* callback_param);
 
 
 #endif

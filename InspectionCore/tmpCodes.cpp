@@ -790,10 +790,10 @@ acv_XY chessBoardPointRefine(acvImage *src,std::vector<gridsSort_ptInfo> &infoDa
   acv_Line l00,l01,l10,l11;
   if(0)
   {
-    acv_Line _l00={.line_anchor=initCross.cenPt,.line_anchor=acvVecSub(p00,initCross.cenPt)};
-    acv_Line _l01={.line_anchor=initCross.cenPt,.line_anchor=acvVecSub(p01,initCross.cenPt)};
-    acv_Line _l10={.line_anchor=initCross.cenPt,.line_anchor=acvVecSub(p10,initCross.cenPt)};
-    acv_Line _l11={.line_anchor=initCross.cenPt,.line_anchor=acvVecSub(p11,initCross.cenPt)};
+    acv_Line _l00={.line_vec=initCross.cenPt,.line_anchor=acvVecSub(p00,initCross.cenPt)};
+    acv_Line _l01={.line_vec=initCross.cenPt,.line_anchor=acvVecSub(p01,initCross.cenPt)};
+    acv_Line _l10={.line_vec=initCross.cenPt,.line_anchor=acvVecSub(p10,initCross.cenPt)};
+    acv_Line _l11={.line_vec=initCross.cenPt,.line_anchor=acvVecSub(p11,initCross.cenPt)};
     l00=_l00;
     l01=_l01;
     l10=_l10;

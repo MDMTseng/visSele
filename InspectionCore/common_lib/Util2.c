@@ -9,7 +9,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <libgen.h>
-#include <sys/errno.h>
+#include <errno.h>
 
 
 
