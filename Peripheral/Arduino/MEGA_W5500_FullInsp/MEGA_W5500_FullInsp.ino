@@ -14,6 +14,7 @@
 #include "include/Websocket.hpp"
 #include "websocket_FI.hpp"
 #include "include/RingBuf.hpp"
+#include <avr/wdt.h>
 
 //#define TEST_MODE 
 uint16_t TCount=0;
@@ -24,7 +25,7 @@ uint16_t stageUpdated=0;
 uint16_t __newDist=0;
 uint16_t __exDist=0;
 
-
+void(* resetFunc) (void) = 0;
 enum class GEN_ERROR_CODE { 
   RESET=0,
   INSP_RESULT_HAS_NO_OBJECT=1,
@@ -138,7 +139,7 @@ void errorLOG(GEN_ERROR_CODE code,char* errorLog=NULL);
 
 uint32_t PRPC= perRevPulseCount;
 
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW/3*0; 
+uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4; 
 
 int offsetAir=80;
 int cam_angle=103;
@@ -414,6 +415,7 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
     case ERROR_ACTION_TYPE::NOP:
     break;
     case ERROR_ACTION_TYPE::FREE_SPIN_2_REV:
+    case ERROR_ACTION_TYPE::ALL_STOP:
     {
       //DEBUG_println("FREE_SPIN_2_REV  IN p::");
       if(targetRevCount!=curRevCount)
@@ -450,16 +452,15 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
     }
     break;
 
-    case ERROR_ACTION_TYPE::ALL_STOP:
     default:
       //if there is an error
-      //clear plate
-      RBuf.clear();
-      RESET_GateSensing();
-    
-      TCount=0;CCount=0;
-      //set speed to zero
-      tar_pulseHZ_=0; 
+//      //clear plate
+//      RBuf.clear();
+//      RESET_GateSensing();
+//    
+//      TCount=0;CCount=0;
+//      //set speed to zero
+//      tar_pulseHZ_=0; 
     break;
   }
 
@@ -519,7 +520,7 @@ class Websocket_FI:public Websocket_FI_proto{
   virtual void onPeerDisconnect(WebSocketProtocol* WProt)
   {
     DEBUG_println("onPeerDisconnect");
-    tar_pulseHZ_=0;
+//    tar_pulseHZ_=0;
     return;
   }
   
@@ -1080,12 +1081,26 @@ int serial_putc( char c, struct __file * )
   Serial.write( c );
   return c;
 }
+
+
+
+
 uint8_t ws_buff[600];//For websocket
+void ETH_RESET()
+{
+  if(WS_Server!=NULL)
+    delete WS_Server;
+  WS_Server = new Websocket_FI(ws_buff,sizeof(ws_buff),_ip,_port,_gateway,_subnet);
+  
+  if(WS_Server)setRetryTimeout(2, 100);
+  delay(100);
+}
+
+
 void setup() {
   Serial.begin(115200);
   fdevopen( &serial_putc, 0 );
-  WS_Server = new Websocket_FI(ws_buff,sizeof(ws_buff),_ip,_port,_gateway,_subnet);
-  if(WS_Server)setRetryTimeout(2, 100);
+  ETH_RESET();
   setup_Stepper();
   
   pinMode(CAMERA_PIN, OUTPUT);
@@ -1104,13 +1119,13 @@ void setup() {
 
   showOff();
   
-#ifdef TEST_MODE
-  tar_pulseHZ_ = 0;//perRevPulseCount_HW/3;
-  mode_info.mode=run_mode_info::TEST;
-  mode_info.misc_var=0;
-#else
+//#ifdef TEST_MODE
+//  tar_pulseHZ_ = 0;//perRevPulseCount_HW/3;
+//  mode_info.mode=run_mode_info::TEST;
+//  mode_info.misc_var=0;
+//#else
 
-#endif
+//#endif
 
 
 }
@@ -1214,11 +1229,20 @@ void printDBGInfo()
   }
 
 }
+
+
+
+void HARD_RESET()
+{
+  cli();                  // Clear interrupts
+  wdt_enable(WDTO_15MS);      // Set the Watchdog to 15ms
+  while(1);            // Enter an infinite loop
+}
+
+
+int noConnectionTickCount=0;
 void loop() 
 {
-
-
-  
   if(WS_Server)
     WS_Server->loop_WS();
 
@@ -1226,6 +1250,7 @@ void loop()
 
   if( (totalLoop&0xF)==0)
   {
+    
     uint32_t tar=tar_pulseHZ_;
     if(0&&emptyPlateCount>14)
       tar/=5;
@@ -1244,6 +1269,21 @@ void loop()
 
   if( (totalLoop&(0x7FFF>>1))==0)
   {
+    
+    if(WS_Server->FindLiveClient()==0)//if no connection exist
+    {
+      noConnectionTickCount++;
+      if(noConnectionTickCount>20)//for quite a lon
+      {
+        noConnectionTickCount=0;
+        ETH_RESET();
+      }
+    }
+    else
+    {
+      noConnectionTickCount=0;
+    }
+  
 //    DEBUG_print("RBuf:");
 //    DEBUG_println(RBuf.size());
 //    DEBUG_print("thres_skip_counter:");
