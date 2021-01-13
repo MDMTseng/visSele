@@ -2056,6 +2056,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         x:mm_pix.x_pix,
         y:mm_pix.x_pix,
       }
+      
+      this.draw();
     }
 
 
@@ -2112,6 +2114,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       this.ROISettingCallBack(this.ROISettingInfo);
       this.ROISettingInfo=undefined;
       this.ROISettingCallBack=undefined;
+
+      this.ctrlLogic();
+      this.draw();
+
 
     }
   }
@@ -2455,7 +2461,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.beginPath();
       let LineSize = this.rUtil.getIndicationLineSize();
       ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
-      ctx.strokeStyle = "rgba(51, 51, 51,30)";
+      ctx.strokeStyle = "rgba(151, 51, 51,30)";
       ctx.lineWidth = LineSize*2;
       ctx.rect(x, y, w, h);
       ctx.stroke();
