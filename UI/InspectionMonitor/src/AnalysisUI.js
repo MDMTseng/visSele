@@ -1429,6 +1429,10 @@ class RelatedUsageInfo extends React.Component{
         }
         if(key==null)
         {
+          if(Object.keys(tags2).every(key=>tags2[key]==onoff))
+          {
+            onoff=0;
+          }
           Object.keys(tags2).forEach((key)=>{
             tags2[key]=onoff;
           });
