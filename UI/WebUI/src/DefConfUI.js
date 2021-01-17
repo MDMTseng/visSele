@@ -1845,7 +1845,14 @@ class APP_DEFCONF_MODE extends React.Component {
       {// info upgrade
         if(edit_tar.search_far===undefined)
         {
-          edit_tar.search_far=(edit_tar.search_style!=0)?true:false;
+          if(edit_tar.search_style===undefined)
+          {
+            edit_tar.search_far=false;
+          }
+          else
+          {
+            edit_tar.search_far=(edit_tar.search_style==1)?true:false;
+          }
         }
       }
 
