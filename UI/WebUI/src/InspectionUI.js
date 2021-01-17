@@ -2243,10 +2243,10 @@ class APP_INSP_MODE extends React.Component {
           <Tag className="large" color="gray" onClick={() =>{
             this.setInspectionRankUI()
           }}><SettingOutlined /></Tag>
-
+{/* 
           <Tag className="large" color="gray" onClick={() =>{
             this.setState({isInSettingUI:true});
-          }}><SettingOutlined /></Tag>
+          }}><SettingOutlined /></Tag> */}
 
         </div>
 
@@ -2320,7 +2320,7 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-
+    /*
     MenuSet_2nd.push(
       <BASE_COM.IconButton
         key="SVX"
@@ -2370,6 +2370,7 @@ class APP_INSP_MODE extends React.Component {
           this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
           { filename: path+".xreps" },enc.encode(JSON.stringify(reportSave)))
         }} />);
+        */
 
 
 

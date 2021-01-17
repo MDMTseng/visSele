@@ -588,7 +588,7 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
             {
               let rootMInfo=_measureInfo.find(m=>m.id===objInfo.id);
               let rootValue=rootMInfo[col.key];
-              console.log(_measureInfo,rootMInfo,objInfo,col.key,rootValue);
+              // console.log(_measureInfo,rootMInfo,objInfo,col.key,rootValue);
               return <Button type="dashed" onClick={()=>{
                 let new_obj={...objInfo};
                 new_obj[col.key]=rootValue;
@@ -2636,7 +2636,8 @@ class APP_DEFCONF_MODE extends React.Component {
           {...this.state.modal_view}
           visible={this.state.modal_view !== undefined}
           onCancel={(param) => {
-            if (this.state.modal_view.onCancel !== undefined) {
+            if (this.state.modal_view!==undefined && 
+              this.state.modal_view.onCancel !== undefined) {
               this.state.modal_view.onCancel(param);
             }
             this.setState({ ...this.state, modal_view: undefined });

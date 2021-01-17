@@ -3,10 +3,12 @@ var webpack = require('webpack');
 var WebpackShellPlugin = require('webpack-shell-plugin');
 const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
 const CompressionPlugin = require('compression-webpack-plugin');
-
+const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin')
 //console.log(process.env.FOO);
 //process.env.NODE_ENV = "production";
 
+
+const isDevelopment = process.env.NODE_ENV !== 'production'
 var PluginSets = [];
 var opt_minimizer = [];
 
@@ -34,6 +36,12 @@ if(process.env.NOTIMON_PRJ === "deploy")
     onBuildEnd: ['echo "Start to deploy to Android proj" && sh deployToAndroidUI.sh && echo "deploy OK"']
   }));
 }
+
+if(isDevelopment)
+{
+  PluginSets.push(new ReactRefreshWebpackPlugin());
+}
+
 
 module.exports = {
   cache: true,
@@ -63,13 +71,13 @@ module.exports = {
   module: {
     rules: [
       {
-
-        test: /.js.?$/,
+        test: /\.jsx?$/,
         exclude: /node_modules/,
         use: {
-          loader: 'babel-loader',
+          loader:require.resolve('babel-loader'),
           options: {
-            presets: ["@babel/preset-env", "@babel/preset-react"]
+            presets: ["@babel/preset-env", "@babel/preset-react"],
+            plugins: [isDevelopment && require.resolve('react-refresh/babel')].filter(Boolean),
           }
         }
         // query: {
