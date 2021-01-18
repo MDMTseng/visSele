@@ -1947,7 +1947,7 @@ class APP_INSP_MODE extends React.Component {
 
 
     let deffile = defFileGeneration(this.props.edit_info);
-    if (this.props.inspMode == "FI") {
+    if (this.props.machine_custom_setting.InspectionMode== "FI") {
 
       
       //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
@@ -1963,7 +1963,7 @@ class APP_INSP_MODE extends React.Component {
         headReportSkip: 0,
       })
     }
-    else if (this.props.inspMode == "CI") {
+    else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
       this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
        }, undefined);
@@ -2566,15 +2566,10 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     WS_ID: state.UIData.WS_ID,
     inspectionReport: state.UIData.edit_info.inspReport,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
-
-    inspMode: state.UIData.inspMode,
+    
 
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
-    
-    machine_custom_setting:state.UIData.machine_custom_setting
-
-    //reportStatisticState:state.UIData.edit_info.reportStatisticState
   }
 };
 

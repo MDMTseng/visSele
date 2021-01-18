@@ -1462,7 +1462,7 @@ class APPMain extends React.Component {
     let UI = [];
     if (this.props.c_state == null) return null;
 
-    if (this.props.inspMode === undefined) {
+    if (this.props.machine_custom_setting.InspectionMode === undefined) {
       return <div>
 
         <Button
@@ -1547,7 +1547,6 @@ const mapStateToProps_APPMain = (state) => {
     uInspData: state.Peripheral.uInsp,
 
     statSetting: state.UIData.edit_info.statSetting,
-    inspMode: state.UIData.inspMode,
     machine_custom_setting: state.UIData.machine_custom_setting,
   }
 }

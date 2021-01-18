@@ -39,7 +39,6 @@ function Default_UICtrlReducer() {
     WS_CH: undefined,
     defConf_lock_level: 0,
     edit_info: Edit_info_Empty(),
-    inspMode: undefined,
     version_map_info: undefined,
     WebUI_info: APP_INFO,
     Core_Status: undefined,
@@ -88,12 +87,6 @@ function StateReducer(newState, action) {
     case UISEV.REMOTE_SYSTEM_READY:
       newState.WS_CH = action.data;
       log.info("Connected", newState.WS_CH);
-      return newState;
-
-
-    case UISEV.Insp_Mode_Update:
-      newState.inspMode = action.data;
-      log.info("inspMode", action.data);
       return newState;
 
 

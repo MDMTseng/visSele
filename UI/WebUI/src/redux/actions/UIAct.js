@@ -80,7 +80,6 @@ export const UI_SM_EVENT = {
   Core_Status_Update:"Core_Status_Update",
   Update_Status_Update:"Update_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
-  Insp_Mode_Update:"InspMode_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
   WS_channel:"WS_channel",
 
