@@ -11,7 +11,7 @@ const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin'
 const isDevelopment = process.env.NODE_ENV !== 'production'
 var PluginSets = [];
 var opt_minimizer = [];
-
+let en_ReactFastRefresh=isDevelopment;
 if(process.env.NODE_ENV === "production")
 {
   PluginSets.push(new webpack.optimize.OccurrenceOrderPlugin());
@@ -37,7 +37,7 @@ if(process.env.NOTIMON_PRJ === "deploy")
   }));
 }
 
-if(isDevelopment)
+if(en_ReactFastRefresh)
 {
   PluginSets.push(new ReactRefreshWebpackPlugin());
 }
@@ -58,6 +58,11 @@ module.exports = {
       chunks: 'all',
     },
   },
+  watchOptions: {
+    poll: 1000,
+    aggregateTimeout: 5000,
+    ignored: ["node_modules"]
+  },
   resolve: {
     alias: {
       UTIL: path.resolve(__dirname, 'src/UTIL/'),
@@ -77,7 +82,7 @@ module.exports = {
           loader:require.resolve('babel-loader'),
           options: {
             presets: ["@babel/preset-env", "@babel/preset-react"],
-            plugins: [isDevelopment && require.resolve('react-refresh/babel')].filter(Boolean),
+            plugins: [en_ReactFastRefresh && require.resolve('react-refresh/babel')].filter(Boolean),
           }
         }
         // query: {
