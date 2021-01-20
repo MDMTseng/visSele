@@ -893,7 +893,21 @@ class APPMasterX extends React.Component {
                 {resolve: (data) => {
                   console.log(data);
                   if (data[0].type == "FL") {
-                    let info = data[0].data;
+                    let info = data[0].data;//complete the necessary info
+                    if(info.InspectionMode!="FI" && info.InspectionMode!="CI" )
+                    {
+                      info.InspectionMode="CI";
+                    }
+
+                    if(info.setting_directory==undefined)
+                    {
+                      info.setting_directory="data/";
+                    }
+
+
+                    info.__priv={
+                      path:"data/machine_setting.json"
+                    }
                     this.props.ACT_Machine_Custom_Setting_Update(info);
                   }
                 }});

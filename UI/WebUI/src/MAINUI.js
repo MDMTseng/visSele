@@ -4,9 +4,9 @@ import { connect } from 'react-redux'
 import React, { useState, useEffect,useRef } from 'react';
 import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx,TagDisplay_rdx,isTagFulFillRequrement, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
-
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import QRCode from 'qrcode'
+import JSum from 'jsum'
 import dclone from 'clone';
 import { CusDisp_DB } from 'UTIL/DB_Query';
 //import {XSGraph} from './xstate_visual';
@@ -60,6 +60,7 @@ import {
   InfoCircleOutlined,
   EditOutlined,
   TableOutlined,
+  DownOutlined,
   ThunderboltOutlined,
   CloudDownloadOutlined,
   LeftOutlined,
@@ -255,7 +256,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const InspectionMonitor_URL= useSelector(state => state.UIData.InspectionMonitor_URL);
   const dispatch = useDispatch();
   const ACT_Def_Model_Path_Update= (path) => dispatch(UIAct.Def_Model_Path_Update(path));
-  const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
+  const ACT_WS_SEND= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(WS_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_InspOptionalTag_Update= (newTags) => dispatch(DefConfAct.InspOptionalTag_Update(newTags));
   
   const [InfoPopUp,setInfoPopUp]=useState(undefined);
@@ -298,7 +299,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   
   useEffect(()=>{
-    ACT_WS_SEND(WS_ID, "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
+    ACT_WS_SEND( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
 
   },[])
 
@@ -312,14 +313,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       return;
     }
     console.log(fileInfoList);
-    ACT_WS_SEND(WS_ID, "ST", 0,
+    ACT_WS_SEND( "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } })
-    ACT_WS_SEND(WS_ID, "EX", 0, {},
+    ACT_WS_SEND( "EX", 0, {},
       undefined, { 
       resolve:(pkts)=>{
         let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
         
-        ACT_WS_SEND(WS_ID, "SC", 0, {
+        ACT_WS_SEND( "SC", 0, {
           type:"signature_files_matching",
           signature: signature,
           files:fileInfoList.map(fileInfo=>fileInfo.path)
@@ -375,7 +376,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         if (filePath === undefined) return;
         filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
-        ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },undefined,{
+        ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },undefined,{
           resolve:(stacked_pkts,action_channal)=>{
             let SS=stacked_pkts.find(pkt=>pkt.type=="SS");
             console.log(stacked_pkts,SS);
@@ -525,7 +526,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let filePath = file.path.replace("." + DEF_EXTENSION, "");
                   setInfoPopUp(undefined);
                   ACT_Def_Model_Path_Update(filePath);
-                  ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+                  ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
 
                   setFileSelectorInfo(undefined);
 
@@ -587,7 +588,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
-                ACT_WS_SEND(WS_ID, "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },
+                ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },
                   undefined, { resolve:(pkts,action_channal)=>{
                     let SS=pkts.find(pkt=>pkt.type=="SS");
                     console.log(pkts);
@@ -679,7 +680,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         className="width8 modal-sizing"
         searchDepth={4}
         path={DefFileFolder} visible={fileSelectorInfo !== undefined}
-        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND( ...args)}
         onFileSelected={(filePath, fileInfo) => {
           setFileSelectorInfo(undefined);
           fileSelectorInfo.callBack(filePath, fileInfo);
@@ -733,217 +734,87 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
 
-const Setui_UI=()=>{
+const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
 
   const dispatch = useDispatch();
   const WS_ID = useSelector(state => state.UIData.WS_ID);
-  const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
-  const ACT_Report_Save = (id, fileName, content) => {
-    let act = UIAct.EV_WS_SEND(id, "SV", 0,
-      { filename: fileName },
-      content
-    )
-    dispatch(act);
-  }
-  const uInspData = useSelector(state => state.Peripheral.uInsp);
+  const ACT_WS_SEND= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_Report_Save = (filename, content,promiseCBs) => {ACT_WS_SEND("SV", 0,{ filename},content,promiseCBs)};
 
-  const [calibCalcInfo, setCalibCalcInfo] = useState({
-    curMea1: 0.8,
-    calibMea1: 0.82,
-    curMea2: 0.4,
-    calibMea2: 0.44,
-  });
+  
 
-
-
-  console.log(calibCalcInfo);
-  let newCalibData = Calibration_MMPP_offset(
-    calibCalcInfo.curMea1,
-    calibCalcInfo.calibMea1,
-    calibCalcInfo.curMea2,
-    calibCalcInfo.calibMea2,
-    mmpp, 0);
-
-  const isp_db = useSelector(state => state.UIData.edit_info._obj);
-
-  let mmpp = undefined;
-  if (isp_db !== undefined) {
-    let camParam = isp_db.cameraParam;
-    mmpp = camParam.mmpb2b / camParam.ppb2b;
+  const [st_machine_custom_setting ,_set_st_machine_custom_setting] = useState(machCusSetting);
+  const [origin_machine_custom_setting,set_origin_machine_custom_setting] = useState(machCusSetting);
+  function set_st_machine_custom_setting(new_setting)
+  {
+    _set_st_machine_custom_setting(new_setting);
+    if(onMachCusSettingUpdate!==undefined)
+      onMachCusSettingUpdate(new_setting);
   }
 
-
-
-
-
-  return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
-
-    <Divider orientation="left">MISC</Divider>
-    <AntButton key="Reconnect CAM"
-      onClick={() => {
-        ACT_WS_SEND(WS_ID, "RC", 0, {
-          target: "camera_ez_reconnect"
-        });
-      }}>Reconnect CAM</AntButton>
-      &ensp;
-
-
-    <Divider orientation="left">µInsp</Divider>
-    <Button.Group>
-
-      <Button type="primary" key="Connect uInsp" disabled={uInspData.connected}
-        icon={<LinkOutlined />}
-        onClick={() => {
-          new Promise((resolve, reject) => {
-            ACT_WS_SEND(WS_ID, "PD", 0,
-              { ip: "192.168.2.2", port: 5213 },
-              undefined, { resolve, reject });
-            //setTimeout(()=>reject("Timeout"),1000)
-          })
-            .then((data) => {
-              console.log(data);
-            })
-            .catch((err) => {
-              console.log(err);
-            })
-        }}>(re)Connect</Button>
-      <Button type="danger" key="Disconnect uInsp" disabled={!uInspData.connected}
-        icon={<DisconnectOutlined />}
-        onClick={() => {
-          new Promise((resolve, reject) => {
-            ACT_WS_SEND(WS_ID, "PD", 0,
-              {},
-              undefined, { resolve, reject });
-            //setTimeout(()=>reject("Timeout"),1000)
-          })
-            .then((data) => {
-              console.log(data);
-            })
-            .catch((err) => {
-              console.log(err);
-            })
-        }}>Disconnect</Button>
-
-    </Button.Group>
-
-      &ensp;
-      <Button key="ping uInsp" disabled={!uInspData.connected}
-      onClick={() => {
-        new Promise((resolve, reject) => {
-          ACT_WS_SEND(WS_ID, "PD", 0,
-            { msg: { type: "PING", id: 443 } },
-            undefined, { resolve, reject });
-        })
-          .then((data) => {
-            console.log(data);
-          })
-          .catch((err) => {
-            console.log(err);
-          })
-      }}>
-      PING:{uInspData.alive}
-    </Button>
-
-      &ensp;
-      <Button key="get_setup" disabled={!uInspData.connected}
-      onClick={() => {
-        new Promise((resolve, reject) => {
-          ACT_WS_SEND(WS_ID, "PD", 0,
-            { msg: { type: "get_setup", id: 4423 } },
-            undefined, { resolve, reject });
-        })
-          .then((data) => {
-            console.log(data);
-          })
-          .catch((err) => {
-            console.log(err);
-          })
-      }}>
-      get_setup
-      </Button>
-
-      &ensp;
-      <Button key="set_setup" disabled={uInspData.machineInfo === undefined}
-      onClick={() => {
-        let machInfo = dclone(uInspData.machineInfo);
-        //machInfo.state_pulseOffset[0]+=1;
-        new Promise((resolve, reject) => {
-          ACT_WS_SEND(WS_ID, "PD", 0,
-            { msg: { ...machInfo, type: "set_setup", id: 356 } },
-            undefined, { resolve, reject });
-        })
-          .then((data) => {
-            console.log(data);
-          })
-          .catch((err) => {
-            console.log(err);
-          })
-      }}>
-      set_setup
-      </Button>
-
-
-
-    <Button key="save_setup" disabled={uInspData.machineInfo === undefined}
-      onClick={() => {
-        var enc = new TextEncoder();
-        ACT_Report_Save(WS_ID, "data/uInspSetting.json",
-          enc.encode(JSON.stringify(uInspData.machineInfo, null, 4)));
-      }}>
-      save_setup
-      </Button>
-
-
-
-
-    <Button key="file_set_setup" disabled={uInspData.machineInfo === undefined}
-      onClick={() => {
-        new Promise((resolve, reject) => {
-
-          ACT_WS_SEND(WS_ID, "LD", 0,
-            { filename: "data/uInspSetting.json" },
-            undefined, { resolve, reject }
-          );
-
-          setTimeout(() => reject("Timeout"), 5000)
-
-        })
-          .then((pkts) => {
-            if (pkts[0].type != "FL") return;
-            let machInfo = pkts[0].data;
-            ACT_WS_SEND(WS_ID, "PD", 0,
-              { msg: { ...machInfo, type: "set_setup", id: 356 } });
-          })
-          .catch((err) => {
-
-          })
-
-
-      }}>
-      file_set_setup
-      </Button>
-
+  function isUpdated()
+  {
+    if(origin_machine_custom_setting===undefined || st_machine_custom_setting===undefined)
     {
-      //JSON.stringify(uInspData)
+      return true;
     }
+    // console.log(origin_machine_custom_setting,st_machine_custom_setting);
+    return JSum.digest(origin_machine_custom_setting, 'sha1', 'hex')!==JSum.digest(st_machine_custom_setting, 'sha1', 'hex');
+  }
 
-    {/* <Divider orientation="left">SolveCalib</Divider>
+  
+  useEffect(() => {
+    set_origin_machine_custom_setting(machCusSetting);
+    _set_st_machine_custom_setting(machCusSetting);
+  }, [machCusSetting]);
+  useEffect(() => {
 
-      CurMea1: <InputNumber size="large" defaultValue={calibCalcInfo.curMea1} step={0.001}
-      onChange={(val) => this.calibInfoUpdate({ curMea1: val })} />
-      &ensp;&ensp;CalibMea1:<InputNumber size="large" defaultValue={calibCalcInfo.calibMea1} step={0.001}
-      onChange={(val) => this.calibInfoUpdate({ calibMea1: val })} />
-    <br />
-      CurMea2:<InputNumber size="large" defaultValue={calibCalcInfo.curMea2} step={0.001}
-      onChange={(val) => this.calibInfoUpdate({ curMea2: val })} />
-      &ensp;&ensp;CalibMea2:<InputNumber size="large" defaultValue={calibCalcInfo.calibMea2} step={0.001}
-      onChange={(val) => this.calibInfoUpdate({ calibMea2: val })} />
-    <br />
-      --------------------------------
-      <br />
-      MMPP:{newCalibData.mmpp}
-    <br />
-      OFFSET:{newCalibData.offset} */}
+    if(onExtraCtrlUpdate!==undefined)
+    {
+      let ctrlInfo={};
+
+      if(isUpdated())
+      {
+        ctrlInfo.fetchSetting=()=>st_machine_custom_setting;
+      }
+
+      ctrlInfo.isUpdated=isUpdated;
+
+
+      onExtraCtrlUpdate(ctrlInfo)
+    }
+  }, [st_machine_custom_setting]);
+
+
+
+  let InspectionModeOption={
+    CI:"檢驗",
+    FI:"全檢",
+  }
+  
+  const InspectionModeOptionMenu = (
+    <Menu>
+      {Object.keys(InspectionModeOption).map((key,idx)=>
+      <Menu.Item key={"m_"+InspectionModeOption[key]} onClick={()=>{
+        set_st_machine_custom_setting({...st_machine_custom_setting,InspectionMode:key});
+      }}>
+        {InspectionModeOption[key]}
+      </Menu.Item>)}
+
+    </Menu>
+  );
+  return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
+    
+    測量模式：
+    <Dropdown overlay={InspectionModeOptionMenu}>
+      <Button>
+        {InspectionModeOption[st_machine_custom_setting.InspectionMode]} <DownOutlined />
+      </Button>
+    </Dropdown>
+
+    <br/>
+    
+    {JSON.stringify(st_machine_custom_setting)}
 
   </div>
 }
@@ -1004,16 +875,22 @@ const MainUI=()=>{
   
   const [siderCollapse,setSiderCollapse] = useState(true);
   
+  const RDX_machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
+  const ACT_machine_custom_setting_Update= (setting) => dispatch(UIAct.EV_machine_custom_setting_Update(setting));
+
+
   const EV_UI_Edit_Mode=()=>dispatch(UIAct.EV_UI_Edit_Mode());
   const EV_UI_Insp_Mode= () =>dispatch(UIAct.EV_UI_Insp_Mode());
-  const ACT_WS_SEND= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs));
-  const ACT_Report_Save = (id, fileName, content) => {
-    let act = UIAct.EV_WS_SEND(id, "SV", 0,
-      { filename: fileName },
-      content
+  const ACT_WS_SEND= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_File_Save = (filePath, content,promiseCBs) => {
+    let act = UIAct.EV_WS_SEND(WS_ID, "SV", 0,
+      {filename:filePath},
+      content,promiseCBs
     )
     dispatch(act);
   }
+  
+  const [popUpInfo,setPopUpInfo] = useState(undefined);
   const uInspData = useSelector(state => state.Peripheral.uInsp);
 
   const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
@@ -1100,6 +977,11 @@ const MainUI=()=>{
             icon:<ThunderboltOutlined />,
             text:DICT.mainui.MODE_SELECT_INST_INSP,
             onClick:_=>setUI_state(s_statesTable.InstInsp)
+          },
+          {
+            icon:<SettingOutlined />,
+            text:DICT.mainui.MODE_SELECT_SETTING,
+            onClick:_=>setUI_state(s_statesTable.Setting)
           }
            
         ],
@@ -1188,7 +1070,7 @@ const MainUI=()=>{
       break;
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
-        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND(...args)}
         onExtraCtrlUpdate={extraCtrls=>{
           let extraCtrlUI=[];
           if(extraCtrls.currentReportExtract!==undefined)
@@ -1201,13 +1083,12 @@ const MainUI=()=>{
                 let report = extraCtrls.currentReportExtract();
                 if(report===undefined)return;
                 var enc = new TextEncoder();
-                ACT_WS_SEND(WS_ID, "SV", 0,
-                  { filename: "data/stageLightReport.json" },
+                ACT_File_Save("data/stageLightReport.json" ,
                   enc.encode(JSON.stringify(report, null, 2)),
                   {
                     resolve:(stacked_pkts,action_channal)=>{
                       
-                      // ACT_WS_SEND(WS_ID, "RC", 0, {
+                      // ACT_WS_SEND("RC", 0, {
                       //   target: "camera_setting_refresh"
                       // });
   
@@ -1233,7 +1114,7 @@ const MainUI=()=>{
             {
               setUI_state(s_statesTable.RootSelect)
               
-              ACT_WS_SEND(WS_ID, "RC", 0, {
+              ACT_WS_SEND("RC", 0, {
                 target: "camera_setting_refresh"
               });
             }
@@ -1244,13 +1125,10 @@ const MainUI=()=>{
       }
       break;    
 
-
-
-
     case  s_statesTable.RepDisplay:
     
       UI.push(<RepDisplayUI_rdx key="RepDisplayUI_rdx"
-        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND(...args)}
         onCalibFinished={(finalReport) => {
           console.log(">>>>>>>>>",finalReport)
         }} 
@@ -1288,7 +1166,7 @@ const MainUI=()=>{
       break;  
     case  s_statesTable.InstInsp:
       UI.push(<InstInspUI_rdx
-        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND( ...args)}
 
         onExtraCtrlUpdate={extraCtrls=>{
 
@@ -1363,7 +1241,109 @@ const MainUI=()=>{
       }
       break;
     case  s_statesTable.Setting:
-      UI=<Setui_UI/>;
+      UI=<Setui_UI machCusSetting={RDX_machine_custom_setting} 
+        
+        onExtraCtrlUpdate={extraCtrls=>{
+
+          let path =GetObjElement(RDX_machine_custom_setting,["__priv","path"]);
+
+          if(path===undefined)
+          {
+            path="data/machine_setting.json";
+          }
+          
+
+
+          function saveSetting(saveToFilePath,setting)
+          {
+            var enc = new TextEncoder();
+            saveToFilePath.SetState
+            let _setting={...setting};
+
+            Object.keys(_setting).forEach(key=>{
+              if(key.startsWith("_"))
+                delete _setting[key]
+            })
+            ACT_File_Save( saveToFilePath,
+              enc.encode(JSON.stringify(_setting, null, 2)),
+              {
+                resolve:(stacked_pkts,action_channal)=>{
+                  console.log("OK....");
+                  ACT_machine_custom_setting_Update(setting);
+                }
+              })
+          }
+          function saveSettingPopUp(saveToFilePath,setting,onOK,onCancel)
+          {
+            setPopUpInfo({
+              title:"CHECK",
+              onOK:()=>{
+                saveSetting(saveToFilePath,setting);
+                setPopUpInfo();
+                if(onOK!==undefined)onOK();
+              },
+              onCancel:()=>{
+                setPopUpInfo();
+                if(onCancel!==undefined)onOK();
+              },
+              content:"確定存檔？",
+
+              okText:"OK",
+              cancelText:"NO"
+            });
+          }
+          let extraCtrlUI=[];
+
+
+          
+          if(extraCtrls.isUpdated!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<ArrowLeftOutlined />,
+              text:DICT._["<"],
+              onClick:_=>{
+                if(extraCtrls.isUpdated()==true)
+                {
+                  let setting = extraCtrls.fetchSetting();
+                  saveSettingPopUp(path,setting,
+                    ()=>{
+                    setUI_state(s_statesTable.RootSelect)
+                  },()=>{
+                    setUI_state(s_statesTable.RootSelect)
+                  });
+                  
+                }
+                else
+                {
+                  
+                  setUI_state(s_statesTable.RootSelect);
+                }
+              }
+            });
+          }
+
+          if(extraCtrls.fetchSetting!==undefined)
+          {
+
+
+            extraCtrlUI.push({
+              icon:<SaveOutlined />,
+              text:"SAVE",
+              onClick:_=>{
+                let setting = extraCtrls.fetchSetting();
+                saveSettingPopUp(path,setting);
+
+              }
+              // subMenu:[]
+            })
+          }
+          setExtraSideUI(extraCtrlUI);
+        }}/>;
+
+      siderUI_info={
+        title:UI_state.name,
+        menu:extraSideUI,
+      }
       break;
   }
 
@@ -1408,6 +1388,26 @@ const MainUI=()=>{
         {UI}
       </Content>
     </Layout>
+
+
+
+    <Modal
+      closable={false}
+      visible={popUpInfo !== undefined}
+      centered
+      title={popUpInfo!=undefined?popUpInfo.title:null}
+      onOk={() => {
+        popUpInfo.onOK();
+      }}
+      onCancel={() => {
+        popUpInfo.onCancel();
+      }}
+      okText={popUpInfo!=undefined?popUpInfo.okText:undefined}
+      cancelText={popUpInfo!=undefined?popUpInfo.cancelText:undefined}
+    >
+      {popUpInfo === undefined ?
+        null : popUpInfo.content}
+    </Modal>
   </Layout>;
 }
 
@@ -1461,35 +1461,6 @@ class APPMain extends React.Component {
   render() {
     let UI = [];
     if (this.props.c_state == null) return null;
-
-    if (this.props.machine_custom_setting.InspectionMode === undefined) {
-      return <div>
-
-        <Button
-          size="large"
-          key="<"
-          onClick={() => {
-            this.props.ACT_Insp_Mode_Update("FI");
-          }}>全檢</Button>
-
-
-        <Button
-          size="large"
-          key=">"
-          onClick={() => {
-            this.props.ACT_Insp_Mode_Update("CI");
-          }}>檢測</Button>
-
-
-
-        {/* <Button
-          size="large"
-          key="DISS"
-          onClick={() => {
-            this.props.ACT_WS_DISCONNECT(this.props.WS_ID);
-          }}>DISS..</Button> */}
-      </div>
-    }
 
 
 

@@ -9,7 +9,7 @@ export const MWWS_EVENT = {
 
 export const MWWebSocket = WSData => store => next => action => {
 
-  if(action.type==undefined || !action.type.startsWith("MWWS_"))
+  if(action==undefined || action.type==undefined || !action.type.startsWith("MWWS_"))
   {
     return next(action);
   }
