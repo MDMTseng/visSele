@@ -285,7 +285,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Title level={2} style={{textAlign:"center"}} >{
             DICT._.camera_reconnection_caption
           }</Title>
-        </div>
+        </div>,
+        onCancel:()=>{},
+        onOK:()=>{}
       });
     }
     else

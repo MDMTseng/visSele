@@ -2974,6 +2974,35 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
         {
 
           let tar_ele_trace = this.edit_DB_info.edit_tar_ele_trace;
+
+          {
+              if ((tar_ele_trace === null || tar_ele_trace === undefined)
+              && this.EditShape != null && ifOnMouseLeftClickEdge) {
+
+              this.SetShape(this.EditShape, this.EditShape.id);
+            }
+
+            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
+
+            let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
+
+            let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
+            let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
+            if (pt_info.dist > pt_info2.dist) {
+              pt_info = pt_info2;
+            }
+
+            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+              this.CandEditPointInfo = pt_info;
+            }
+            else {
+              this.CandEditPointInfo = null;
+            }
+            console.log(this.CandEditPointInfo);
+          }
+
+
+
           if (this.mouseStatus.status == 1) {
             if (ifOnMouseLeftClickEdge) {
 
@@ -3012,28 +3041,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           }
           else {
             //the SetShape here is for EditPoint modification, so if the operation is for tar_ele_trace, skip it
-            if ((tar_ele_trace === null || tar_ele_trace === undefined)
-              && this.EditShape != null && ifOnMouseLeftClickEdge) {
 
-              this.SetShape(this.EditShape, this.EditShape.id);
-            }
-
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
-
-            let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
-
-            let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
-            let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
-            if (pt_info.dist > pt_info2.dist) {
-              pt_info = pt_info2;
-            }
-
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
-              this.CandEditPointInfo = pt_info;
-            }
-            else {
-              this.CandEditPointInfo = null;
-            }
           }
           break;
         }
