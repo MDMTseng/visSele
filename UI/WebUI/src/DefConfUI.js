@@ -1272,7 +1272,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
       {
         deffile: defModelPath + '.' + DEF_EXTENSION,
         imgsrc: defModelPath,
-        down_samp_level:10
+        down_samp_level:2
       },
       undefined, { resolve, reject });
     setTimeout(() => reject("Timeout"), 5000)
@@ -1280,22 +1280,22 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
     .then((pkts) => {
       dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
-      new Promise((resolve, reject) => {
-        ACT_WS_SEND(WS_ID, "LD", 0,
-          {
-            imgsrc: defModelPath,
-            down_samp_level:1
-          },
-          undefined, { resolve, reject });
-        setTimeout(() => reject("Timeout"), 5000)
-      })
-        .then((pkts) => {
+      // new Promise((resolve, reject) => {
+      //   ACT_WS_SEND(WS_ID, "LD", 0,
+      //     {
+      //       imgsrc: defModelPath,
+      //       down_samp_level:1
+      //     },
+      //     undefined, { resolve, reject });
+      //   setTimeout(() => reject("Timeout"), 5000)
+      // })
+      //   .then((pkts) => {
           
-          dispatch(actionGen_W_IGNORE_LOCK(pkts))
-        })
-        .catch((err) => {
-          log.info(err);
-        })
+      //     dispatch(actionGen_W_IGNORE_LOCK(pkts))
+      //   })
+      //   .catch((err) => {
+      //     log.info(err);
+      //   })
     })
     .catch((err) => {
       log.info(err);
