@@ -720,10 +720,12 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       title={ErrorInfo!=undefined?ErrorInfo.title:null}
       footer={null}
       onOk={() => {
-        ErrorInfo.onOK();
+        if(ErrorInfo!==undefined)
+          ErrorInfo.onOK();
       }}
       onCancel={() => {
-        ErrorInfo.onCancel();
+        if(ErrorInfo!==undefined)
+          ErrorInfo.onCancel();
       }}
     >
       {ErrorInfo === undefined ?
