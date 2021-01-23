@@ -845,10 +845,14 @@ class APPMasterX extends React.Component {
 
 
     let localUrl =window.location.href;
-    
+    let rootUrl="localhost";
+    if(localUrl.startsWith("file"))
+    {
     let matchRes = (/[\/]+(.+)(\:|\?.+)/gm).exec(localUrl);
     console.log(matchRes);
-    this.coreUrl="ws://"+matchRes[1]+":4090";
+      rootUrl=matchRes[1];
+    }
+    this.coreUrl="ws://"+rootUrl+":4090";
     this.sideBootUrl="ws://"+matchRes[1]+":5678";
     //this.state.do_splash=true;
     
