@@ -2998,7 +2998,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             else {
               this.CandEditPointInfo = null;
             }
-            console.log(this.CandEditPointInfo);
+            // console.log(this.CandEditPointInfo);
           }
 
 

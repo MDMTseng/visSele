@@ -28,6 +28,7 @@ import Menu from 'antd/lib/menu';
 import Input from 'antd/lib/input'
 import Space from 'antd/lib/space'
 
+import NumPad from 'react-numpad';
 
 import { parse } from 'semver';
 const AntButtonGroup = AntButton.Group;
@@ -142,12 +143,25 @@ export class JsonElement extends React.Component{
     {
       case "input-number":
         translateValue = translateValue+"";
-        return < InputNumber 
-          key={this.props.id} 
-          className={this.props.className} 
-          //defaultValue={translateValue}
-          value={translateValue}
-          onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
+
+        return  <NumPad.Number
+          key={this.props.id}
+          onChange={(value)=>this.props.onChange(this.props.target,this.props.type,{target:{value}})}
+          value={translateValue}>
+            < InputNumber 
+              className={this.props.className} 
+              value={translateValue}/>
+          </NumPad.Number>;
+        // return  <NumPad.Number
+        //   key={this.props.id}
+        //   onChange={(value)=>this.props.onChange(this.props.target,this.props.type,{target:{value}})}
+        //   value={translateValue}/>;
+        // return < InputNumber 
+        //   key={this.props.id} 
+        //   className={this.props.className} 
+        //   //defaultValue={translateValue}
+        //   value={translateValue}
+        //   onChange={(evt)=>this.props.onChange(this.props.target,this.props.type,evt)}/>
         
       case "input":
         return <input key={this.props.id} className={this.props.className} value={translateValue}

@@ -972,7 +972,33 @@ class MicroFullInspCtrl extends React.Component {
               machineInfo.state_pulseOffset.map((pulseC, idx) =>
                 <InputNumber value={pulseC} size="small" key={"poff" + idx} onChange={(value) => {
                   let state_pulseOffset = dclone(machineInfo.state_pulseOffset);
-                  state_pulseOffset[idx] = value;
+                  
+
+
+                  //[0,55,56,57,58,59] =(idx:3 set 59)=> [0,55,56,59,58,59]
+                  //push F => [0,55,56,59,60,61]
+
+                  //[0,55,56,57,58,59] =(idx:3 set 50)=> [0,55,56,50,58,59]
+                  //push B => [0,48,49,50,58,59]
+
+                  // state_pulseOffset[idx] = value;
+                  state_pulseOffset.forEach((v,_idx)=>{
+                    let tarOffset=value+(_idx-idx)*1;
+                    if(_idx==idx)
+                    {
+                      state_pulseOffset[_idx] = tarOffset;
+                    }
+                    else if(_idx<idx)//push back
+                    {
+                      if(state_pulseOffset[_idx]>tarOffset)
+                        state_pulseOffset[_idx]=tarOffset;
+                    }
+                    else//push forward
+                    {
+                      if(state_pulseOffset[_idx]<tarOffset)
+                        state_pulseOffset[_idx]=tarOffset;
+                    }
+                  });
 
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { state_pulseOffset, type: "set_setup", id: 356 } });

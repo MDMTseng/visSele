@@ -42,6 +42,7 @@ import Slider from 'antd/lib/Slider';
 import Popover from 'antd/lib/Popover';
 
 
+import NumPad from 'react-numpad';
 import { useSelector,useDispatch } from 'react-redux';
 import { 
   LockOutlined,
@@ -58,13 +59,25 @@ import {
 
 } from '@ant-design/icons';
 
+
+
+function toFixedNum(num,digit)
+{
+  if((typeof num === 'string' || num instanceof String))
+  {
+    num=parseFloat(num);
+  }
+  return (parseFloat(num.toFixed(digit)));
+}
+
 function NumberAccInput({value,className,onChange,style})
 {
-  return (
-  <input className={className}
-  value={value} style={style}
-  type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
-  onChange={onChange}/>);
+  return (<NumPad.Number onChange={(value)=>onChange({target:{value}})} value={toFixedNum(value,4)}>
+    <input className={className}
+    style={style}
+    type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
+    onChange={onChange}/>
+  </NumPad.Number>);
 }
 
 
@@ -258,7 +271,7 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
             onChange={(evt) => {
               console.log(target, evt);
               
-              numberSet(parseInt(evt.target.value))
+              numberSet(parseFloat(evt.target.value))
 
             }}
           />
@@ -449,7 +462,7 @@ function DisplayMarginSet({MarginInfo,DICT})
         case "input":
           render=(dara,A,idx,B) => {
             return(
-              <Input style={{ width: '100%' }} value={dara} onChange={(nv)=>{
+              <NumberAccInput style={{ width: '100%' }} value={dara} onChange={(nv)=>{
                 // console.log("",nv,dara,A,idx,B);
               }} />)
           }
@@ -534,13 +547,6 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
   }, [])
 
 
-  function checkMarginInfoSufficient(tarInfo,sourceInfo)
-  {
-
-  }
-    
-
-
 
   const columns = [
     {
@@ -598,27 +604,31 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
 
             if(value===undefined)return undefined;
 
-            return <Input style={{ width: '100%' }} value={value} onChange={(nv)=>{
-              // console.log("",nv.target.value);
-              // console.log(value,objInfo,idx,col);
-              let new_obj={...objInfo};
-              let parseNum =parseFloat(nv.target.value);
-              
-              if(parseNum!=parseNum)
-              {
-                if(objInfo.subtype===undefined)
+            return (
+              <NumPad.Number onChange={(value)=>{
+                
+                let new_obj={...objInfo};
+                let parseNum =value;
+                
+                if(parseNum!=parseNum)
                 {
-                  new_obj[col.key]=undefined;
-                }
+                  if(objInfo.subtype===undefined)
+                  {
+                    new_obj[col.key]=undefined;
+                  }
 
-              }
-              else
-              {
-                new_obj[col.key]=parseNum;
-              }
-              objInfo.update(new_obj);
-              // objInfo.update(new_obj);
-            }} />
+                }
+                else
+                {
+                  new_obj[col.key]=parseNum;
+                }
+                objInfo.update(new_obj);
+                // objInfo.update(new_obj);
+              }} value={value}>
+                <Input style={{ width: '100%' }} value={value}/>
+              </NumPad.Number>
+            );
+            return 
           }
           break;
 
@@ -639,12 +649,14 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       }
     });
 
+  console.log(_control_margin_info,displayInfoSet);
   let measureX=_measureInfo
     .map((shape,idx)=>{
 
-      let SelMarginInfo = Object.keys(displayInfoSet)
+      let SelMarginInfo = Object.keys(displayInfoSet).filter(key=>_control_margin_info[key]!==undefined)
         .map(text=>{
           let info = _control_margin_info[text];
+
           let obj=info.find(m=>m.id==shape.id);
           if(obj===undefined)
           {
@@ -1026,7 +1038,7 @@ let renderMethods = {
 
                 return [
                   dropDownX,
-                  <input key="dimName" className="s HX1 width8 vbox blackText" value={tar}
+                  <NumberAccInput key="dimName" className="s HX1 width8 vbox blackText" value={tar}
                     onChange={(evt) => param.onChange(param.target, "input", evt)} />
                 ]
 
@@ -1119,7 +1131,7 @@ let renderMethods = {
 
 
     retUI.push(<ULRangeAcc key={"_" + lastKey + "_ULRangeAcc"} {...{ target, value, lastKey, RangeCValue, onChange, props }} />);
-    retUI.push(<input key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
+    retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
       type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
       value={value.toFixed(4)}
       onChange={(evt) => onChange(target, "input-number", evt)} />);
@@ -1134,7 +1146,7 @@ let renderMethods = {
     let retUI = [];
 
     retUI.push(<AngleDegAcc key={"_" + lastKey + "_AngleDegAcc"} {...{ target,lastKey, value, onChange, props }} />);
-    retUI.push(<input key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
+    retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
       type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
       value={value.toFixed(4)}
       onChange={(evt) => onChange(target, "input-number", evt)} />);
@@ -1209,7 +1221,7 @@ function SettingUI({})
       onChange={ACT_IntrusionSizeLimitRatio_Update}
       value={edit_info.intrusionSizeLimitRatio}
     />,
-    <InputNumber
+    <NumberAccInput
       min={0}
       max={1}
       value={edit_info.intrusionSizeLimitRatio}

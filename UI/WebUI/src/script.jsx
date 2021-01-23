@@ -842,6 +842,14 @@ class APPMasterX extends React.Component {
     this.state={
       show_system_panel:true
     };
+
+
+    let localUrl =window.location.href;
+    
+    let matchRes = (/[\/]+(.+)(\:|\?.+)/gm).exec(localUrl);
+    console.log(matchRes);
+    this.coreUrl="ws://"+matchRes[1]+":4090";
+    this.sideBootUrl="ws://"+matchRes[1]+":5678";
     //this.state.do_splash=true;
     
     this.WSDataDispatch = this.WSDataDispatch.bind(this);
@@ -1037,7 +1045,7 @@ class APPMasterX extends React.Component {
       onclose: (ev, ws_obj) => {
         StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
         setTimeout(() => {
-          this.props.ACT_WS_CONNECT(this.props.WS_ID, "ws://localhost:4090", this.BPG_WS);
+          this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl, this.BPG_WS);
         }, 3000);
       },
       onerror: (ev, ws_obj) => {
@@ -1078,7 +1086,7 @@ class APPMasterX extends React.Component {
 
 
     setTimeout(() =>
-      this.props.ACT_WS_CONNECT(this.props.WS_ID, "ws://localhost:4090", this.BPG_WS)
+      this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl, this.BPG_WS)
       , 100);
 
 
@@ -1101,7 +1109,7 @@ class APPMasterX extends React.Component {
     }
     else
     {
-      xstateG =null// <Side_Boot_CTRL_UI triggerHide={this.props.coreConnected} URL="ws://localhost:5678"/>
+      xstateG =null// <Side_Boot_CTRL_UI triggerHide={this.props.coreConnected} URL={coreUrl}/>
     }
 
 
@@ -1146,7 +1154,7 @@ class APPMasterX extends React.Component {
           }}
           visible={this.state.show_system_panel}
         >
-          <Side_Boot_CTRL_UI URL="ws://localhost:5678"/>
+          <Side_Boot_CTRL_UI URL={this.sideBootUrl}/>
         </Drawer>
 
         <Button className="overlay" 

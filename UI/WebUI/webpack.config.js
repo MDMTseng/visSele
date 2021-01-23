@@ -73,6 +73,12 @@ module.exports = {
       STYLE: path.resolve(__dirname, 'style/')
     }
   },
+
+  devServer: {
+    host: '0.0.0.0',
+    port: 8080,
+    disableHostCheck: true,
+  },
   module: {
     rules: [
       {

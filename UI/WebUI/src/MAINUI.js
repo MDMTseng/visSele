@@ -815,8 +815,9 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     </Dropdown>
 
     <br/>
-    
-    {JSON.stringify(st_machine_custom_setting)}
+    <pre>
+    {JSON.stringify(st_machine_custom_setting, null, 4)}
+    </pre>
 
   </div>
 }
