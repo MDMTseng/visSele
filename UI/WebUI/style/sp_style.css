@@ -438,9 +438,9 @@ body.sp_Style.blockS  {
 	border: 1px solid #333333;
 }
 
-.sp_Style.blockS *:not(.nblockS *){
+/* .sp_Style.blockS *:not(.nblockS *){
 	font-size: 0.6cm;
-}
+} */
 
 .sp_Style.blockS .sFontSize{
 	font-size: 0.4cm;
