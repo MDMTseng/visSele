@@ -2010,69 +2010,7 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
       int mult = 100;
 
       acv_XY target_vec = {0};
-      if(0)
-      {
-        //line.lineTar.line_anchor = acvRotation(cached_sin,cached_cos,flip_f,line.lineTar.line_anchor);
-
-        //Offet to real image and backoff searchDist distance along with the searchVec as start
-        // LOGI("line[%d]->lineTar.line_vec: %f %f", j, line_cand.line_vec.X, line_cand.line_vec.Y);
-        // LOGI("line[%d]->lineTar.line_anchor: %f %f", j, line_cand.line_anchor.X, line_cand.line_anchor.Y);
-
-        acv_XY searchVec;
-        searchVec = acvRotation(cached_sin, cached_cos, flip_f, line->searchVec);
-
-        tmp_points.resize(0);
-        for (int k = 0; k < line->keyPtList.size(); k++)
-        {
-          featureDef_line::searchKeyPoint skp = line->keyPtList[k];
-
-          skp.keyPt = acvRotation(cached_sin, cached_cos, flip_f, skp.keyPt);
-          skp.keyPt = acvVecMult(skp.keyPt, ppmm);
-          skp.keyPt = acvVecAdd(skp.keyPt, calibCen);
-
-          skp.keyPt=meshMorph(skp.keyPt);
-          bacpac->sampler->ideal2img(&skp.keyPt);
-          float searchDist = line->searchDist * ppmm;
-          // LOGI("searchVec %f %f, searchDist:%f ppmm:%f",searchVec.X,searchVec.Y,searchDist,ppmm);
-          if (searchP(binarizedBuff, &skp.keyPt, searchVec, searchDist) != 0)
-          {
-            LOGI("Fail... keyPt: (%f,%f)", skp.keyPt.X, skp.keyPt.Y);
-            continue;
-          }
-          ContourFetch::ptInfo pti = {pt : skp.keyPt};
-
-          
-
-          bacpac->sampler->img2ideal(&pti.pt);
-          tmp_points.push_back(pti);
-        }
-
-        if (tmp_points.size() > 2)
-        {
-          //Use founded points to fit a candidate line
-          acvFitLine(&(tmp_points[0].pt), sizeof(ContourFetch::ptInfo), NULL, 0,
-                     tmp_points.size(), &line_cand, &sigma);
-
-          LOGV(" %f %f, %f %f", line_cand.line_vec.X, line_cand.line_vec.Y, target_vec.X, target_vec.Y);
-          LOGV("line_anchor: %f %f", line_cand.line_anchor.X, line_cand.line_anchor.Y);
-          if (acv2DDotProduct(line_cand.line_vec, target_vec) < 0)
-          {
-            line_cand.line_vec = acvVecMult(line_cand.line_vec, -1);
-          }
-        }
-        else if (tmp_points.size() == 1)
-        {
-          line_cand.line_anchor = tmp_points[0].pt;
-        }
-        else
-        {
-          LOGI("Not able to find starting point");
-          FeatureReport_lineReport lr=lr_NA;
-          lr.def = line;
-
-          return lr;
-        }
-      }
+      tmp_points.resize(0);
       // Apply distortion remove on init line candidate anchor(line 2335 Sig360_cir_lin..)
       // The init line candidate based on labeled image point scanning(5 init dots) and the labeled img is pre-distortion removal
       // Also, the point info in Contour grid are post-distortion removal. So the region will be misaligned.
@@ -2140,7 +2078,7 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         {
 
           float factor=abs(m_sections[tk].dist);
-          factor*=(m_sections[tk].sigma+1);
+          factor+=(m_sections[tk].sigma+1);
           // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
           // LOGI("minFactor:%f factor:%f",minFactor,factor);
           if(minFactor*1.2<factor)
@@ -2420,8 +2358,8 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         line_cand.line_vec = acvVecMult(line_cand.line_vec, -1);
       }
 
-      line_cand.line_anchor.X+=line_cand.line_vec.X;
-      line_cand.line_anchor.Y+=line_cand.line_vec.Y;
+      // line_cand.line_anchor.X+=line_cand.line_vec.X;
+      // line_cand.line_anchor.Y+=line_cand.line_vec.Y;
       // LOGI("L=%d===anchor:%f,%f vec:%f,%f ,sigma:%f target_vec:%f,%f,", j,
       //      line_cand.line_anchor.X,
       //      line_cand.line_anchor.Y,
@@ -2463,11 +2401,6 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
       lr.line.end_neg = acvClosestPointOnLine(lr.line.end_neg, line_cand);
       lr.line.end_pos = acvClosestPointOnLine(lr.line.end_pos, line_cand);
       
-      // LOGI("end_pos:%f,%f end_neg:%f,%f",
-      //      lf.end_pos.X,
-      //      lf.end_pos.Y,
-      //      lf.end_neg.X,
-      //      lf.end_neg.Y);
       return lr;
 
 
