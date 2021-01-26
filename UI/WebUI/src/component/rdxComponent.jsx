@@ -505,7 +505,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
   const defFileTag = useSelector(state => state.UIData.edit_info.DefFileTag);
   const MachTag = useSelector(state => state.UIData.MachTag);
   const dispatch = useDispatch();
-  const ACT_InspOptionalTag_Update= (newTag) => dispatch(dispatch(DefConfAct.InspOptionalTag_Update(newTag)));
+  const ACT_InspOptionalTag_Update= (newTag) => dispatch(DefConfAct.InspOptionalTag_Update(newTag));
  
   
   const [newTagStr,setNewTagStr]=useState([]);
