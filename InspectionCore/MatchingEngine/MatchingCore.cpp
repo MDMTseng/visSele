@@ -1687,7 +1687,7 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
             edge_grid.tmpXYSeq[k].sobel = pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,2);
             // LOGI(">>pt:%f %f sobel:%f,%f",edge_grid.tmpXYSeq[k].pt.X,edge_grid.tmpXYSeq[k].pt.Y,edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y);
             edge_grid.tmpXYSeq[k].pt_img=edge_grid.tmpXYSeq[k].pt;//pt in image coord
-            bacpac->sampler->img2ideal(&edge_grid.tmpXYSeq[k].pt);//pt in ideal coord
+            if(bacpac)bacpac->sampler->img2ideal(&edge_grid.tmpXYSeq[k].pt);//pt in ideal coord
             edge_grid.tmpXYSeq[k].edgeRsp = 1;
           }
           ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);

@@ -2863,7 +2863,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
         char *jstr = cJSON_Print(jobj);
         cJSON_Delete(jobj);
 
-        //LOGI("__\n %s  \n___",jstr);
+        // LOGI("__\n %s  \n___",jstr);
         bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
         bpg_dat.pgID = cb->CI_pgID;
         datCH_BPG.data.p_BPG_data = &bpg_dat;
@@ -2910,7 +2910,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       int cropH = ImageCropH;
 
       // LOGI(">>>>");
-      ImageSampler *sampler=(false)?bacpac->sampler:NULL;
+      ImageSampler *sampler=(true)?bacpac->sampler:NULL;
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
       ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,0,
                         iminfo.offsetX, iminfo.offsetY, cropW, cropH);
