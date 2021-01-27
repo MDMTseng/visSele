@@ -609,7 +609,7 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
                 
                 let new_obj={...objInfo};
                 let parseNum =value;
-                
+                parseNum=toFixedNum(parseNum,5);
                 if(parseNum!=parseNum)
                 {
                   if(objInfo.subtype===undefined)
@@ -1520,9 +1520,13 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
               dbcmd: { "db_action": "insert" },
               data: report
             };
-            WS_DEF_DB_Insert.send_obj(msg_obj).
+            if(WS_DEF_DB_Insert!==undefined)
+            {
+
+              WS_DEF_DB_Insert.send_obj(msg_obj).
               then((ret) => console.log('then', ret)).
               catch((ret) => console.log("catch", ret));
+            }
 
           });
       }} />,
