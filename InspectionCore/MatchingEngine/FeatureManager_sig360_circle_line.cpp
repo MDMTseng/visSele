@@ -488,6 +488,23 @@ bool strMatchExact(const char *src, const char *pat)
   }
   return true;
 }
+double JfetchStrNUM(cJSON *obj,char* path)
+{
+  double *num = JFetch_NUMBER(obj, path);
+  if(num)return *num;
+
+  char *str_num = JFetch_STRING(obj, path);
+  if(str_num==NULL)return NAN;
+  try {                                                                          
+    double dou = std::stod(str_num);
+    
+    return dou;
+
+  } catch (...) {                                          
+  }    
+  LOGI("EXP.....");
+  return NAN;
+}
 int functionExec_(const char *exp, float *params, int paramL, float *ret_result)
 {
   for (int i = 0; i < paramL; i++)
@@ -1468,18 +1485,18 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   }
   LOGV("feature is a measure/judge:%s id:%d subtype:%s", judge.name, judge.id, subtype);
 
-  judge.targetVal_b = judge.targetVal = *JxNUM(judge_obj, "value");
+  judge.targetVal_b = judge.targetVal = JfetchStrNUM(judge_obj, "value");
 
-  judge.USL_b = judge.USL = *JxNUM(judge_obj, "USL");
-  judge.LSL_b = judge.LSL = *JxNUM(judge_obj, "LSL");
+  judge.USL_b = judge.USL = JfetchStrNUM(judge_obj, "USL");
+  judge.LSL_b = judge.LSL = JfetchStrNUM(judge_obj, "LSL");
 
   void *target;
   int type = getDataFromJson(judge_obj, "back_value_setup", &target);
   if (type == cJSON_True)
   {
-    judge.targetVal_b = *JxNUM(judge_obj, "value_b");
-    judge.USL_b = *JxNUM(judge_obj, "USL_b");
-    judge.LSL_b = *JxNUM(judge_obj, "LSL_b");
+    judge.targetVal_b = JfetchStrNUM(judge_obj, "value_b");
+    judge.USL_b = JfetchStrNUM(judge_obj, "USL_b");
+    judge.LSL_b = JfetchStrNUM(judge_obj, "LSL_b");
   }
 
   pnum = JFetch_NUMBER(judge_obj, "ref[0].id");
