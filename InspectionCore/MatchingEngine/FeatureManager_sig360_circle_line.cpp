@@ -1341,21 +1341,6 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   // line.searchEstAnchor.X -= normal.X * line.initMatchingMargin;
   // line.searchEstAnchor.Y -= normal.Y * line.initMatchingMargin;
 
-  int keyPointCount = 2 + 3;
-
-  {
-    for (int i = 0; i < keyPointCount; i++)
-    {
-      featureDef_line::searchKeyPoint skeypt = {
-        keyPt : {
-          X : p0.X + i * (p1.X - p0.X) / (keyPointCount - 1) - normal.X * line.initMatchingMargin,
-          Y : p0.Y + i * (p1.Y - p0.Y) / (keyPointCount - 1) - normal.Y * line.initMatchingMargin
-        }
-      };
-      line.keyPtList.push_back(skeypt);
-    }
-  }
-
   LOGV("anchor.X:%f anchor.Y:%f vec.X:%f vec.Y:%f ,MatchingMargin:%f",
        line.lineTar.line_anchor.X,
        line.lineTar.line_anchor.Y,
@@ -1697,68 +1682,6 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     }
   }
 
-  if (0)
-  {
-    //It's in parsing stage, there is no cameraParam yet.
-    float ppmm = bacpac->sampler->mmpP_ideal();; //pixel 2 mm
-    //LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
-    //Convert mm to Pixel unit
-    for (int i = 0; i < featureLineList.size(); i++)
-    {
-      featureLineList[i].searchDist *= ppmm;
-      featureLineList[i].initMatchingMargin *= ppmm;
-      featureLineList[i].MatchingMarginX *= ppmm;
-
-      featureLineList[i].searchEstAnchor = acvVecMult(featureLineList[i].searchEstAnchor, ppmm);
-      //featureLineList[i].searchVec=acvVecMult(featureLineList[i].searchVec,ppmm);
-
-      vector<featureDef_line::searchKeyPoint> &keyPtList = featureLineList[i].keyPtList;
-      for (int j = 0; j < keyPtList.size(); j++)
-      {
-        keyPtList[j].keyPt = acvVecMult(keyPtList[j].keyPt, ppmm);
-      }
-    }
-
-    for (int i = 0; i < featureCircleList.size(); i++)
-    {
-      featureCircleList[i].outter_inner *= ppmm;
-      featureCircleList[i].initMatchingMargin *= ppmm;
-
-      featureCircleList[i].circleTar.circumcenter =
-          acvVecMult(featureCircleList[i].circleTar.circumcenter, ppmm);
-      featureCircleList[i].circleTar.radius *= ppmm;
-    }
-
-    for (int i = 0; i < judgeList.size(); i++)
-    {
-      judgeList[i].targetVal *= ppmm;
-      judgeList[i].LSL *= ppmm;
-      judgeList[i].USL *= ppmm;
-    }
-
-    for (int i = 0; i < auxPointList.size(); i++)
-    {
-      //No unit data to convert
-      //auxPointList[i].data.lineCross.
-    }
-
-    for (int i = 0; i < searchPointList.size(); i++)
-    {
-      searchPointList[i].margin *= ppmm;
-      searchPointList[i].width *= ppmm;
-      if (searchPointList[i].subtype == featureDef_searchPoint::anglefollow)
-      {
-        searchPointList[i].data.anglefollow.position =
-            acvVecMult(searchPointList[i].data.anglefollow.position, ppmm);
-      }
-    }
-    
-    for (int i = 0; i < feature_signature.signature_data.size(); i++)
-    {
-      feature_signature.signature_data[i].X *= ppmm;
-    }
-  }
-
   {
     for (int i = 0; i < featureLineList.size(); i++)
     {
@@ -2015,11 +1938,11 @@ acv_XY  meshMorph(acv_XY input)
 }
 const acv_LineFit lf_zero = {0};
 const FeatureReport_lineReport lr_NA={line:lf_zero,status:FeatureReport_sig360_circle_line_single::STATUS_NA};
+
 FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
-  featureDef_line *line,edgeTracking &eT,float cached_sin,float cached_cos,float ppmm,acv_XY calibCen,
-  acv_Line line_cand, ContourFetch &edge_grid, FeatureManager_BacPac *bacpac,
-  FeatureReport_sig360_circle_line_single &singleReport,float flip_f,
+  featureDef_line *line,edgeTracking &eT,float ppmm,
+  acv_Line line_cand, ContourFetch &edge_grid,float flip_f,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections)
   {
 
@@ -2064,6 +1987,21 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         lr.def = line;
         return lr;
       }
+
+      // for(int i=0;i<m_sections.size();i++)
+      // {
+        
+      //   LOGI("[%d]=================",i);
+      //   for(int j=0;j<m_sections[i].section.size();j++)
+      //   {
+      //     acv_XY pt=m_sections[i].section[j].pt;
+      //     // LOGI("[%d]:%.2f %.2f",j,pt.X,pt.Y);
+
+      //     originalImage->CVector[(int)pt.Y][(int)pt.X*3]=255;
+      //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+1]=255;
+      //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+2]=255;
+      //   }
+      // }
 
 
       float section_sigma_thres = 9999;//m_sections[0].sigma + 3;
@@ -2480,11 +2418,30 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
 
       FeatureReport_lineReport lr = SingleMatching_line(originalImage,
         labeledBuff,binarizedBuff,buffer_img,
-        line,eT,cached_sin, cached_cos, ppmm,calibCen,
-        line_cand, edge_grid, bacpac,singleReport, flip_f,tmp_points,m_sections);
+        line,eT, ppmm,
+        line_cand, edge_grid,flip_f,tmp_points,m_sections);
+
+
+
 
       detectedLines.push_back(lr);
 
+    }
+
+    
+    for (int j = 0; j < searchPointList.size(); j++)
+    {
+      featureDef_searchPoint spoint = searchPointList[j];
+      spoint.margin *= ppmm;
+      spoint.width *= ppmm;
+      if (spoint.subtype == featureDef_searchPoint::anglefollow)
+      {
+        spoint.data.anglefollow.position = acvVecMult(spoint.data.anglefollow.position, ppmm);
+      }
+      FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint,eT);
+      LOGV("id:%d, %d", report.def->id, searchPointList[j].id);
+      report.def = &(searchPointList[j]);
+      detectedSearchPoints.push_back(report);
     }
     // char strdd[100];
     // sprintf(strdd,"data//ttt/MVCamX%d.bmp",rand()%200);
@@ -2687,20 +2644,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *originalImage,
       detectedCircles.push_back(cr);
     }
 
-    for (int j = 0; j < searchPointList.size(); j++)
-    {
-      featureDef_searchPoint spoint = searchPointList[j];
-      spoint.margin *= ppmm;
-      spoint.width *= ppmm;
-      if (spoint.subtype == featureDef_searchPoint::anglefollow)
-      {
-        spoint.data.anglefollow.position = acvVecMult(spoint.data.anglefollow.position, ppmm);
-      }
-      FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint,eT);
-      LOGV("id:%d, %d", report.def->id, searchPointList[j].id);
-      report.def = &(searchPointList[j]);
-      detectedSearchPoints.push_back(report);
-    }
     
     for (int j = 0; j < auxPointList.size(); j++)
     {
