@@ -17,8 +17,8 @@ const createWindow = () => {
   });
 
   // and load the index.html of the app.
-  mainWindow.loadURL(`file://${__dirname}/index.html`);
-
+  // mainWindow.loadURL(`file://${__dirname}/index.html`);
+  mainWindow.loadURL("http://localhost:8080/");
   // Open the DevTools.
   mainWindow.webContents.openDevTools();
 
@@ -40,7 +40,7 @@ app.on('ready', createWindow);
 app.on('window-all-closed', () => {
   // On OS X it is common for applications and their menu bar
   // to stay active until the user quits explicitly with Cmd + Q
-  if (process.platform !== 'darwin') {
+  if (true||process.platform !== 'darwin') {
     app.quit();
   }
 });
