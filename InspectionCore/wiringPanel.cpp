@@ -2912,7 +2912,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
       // LOGI(">>>>");
       ImageSampler *sampler=(true)?bacpac->sampler:NULL;
       //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,0,
+      ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler,1,
                         iminfo.offsetX, iminfo.offsetY, cropW, cropH);
                         
       // LOGI(">>>>");

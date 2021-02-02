@@ -35,6 +35,8 @@ cJSON* acv_LineFit2JSON(cJSON* Line_jobj, const acv_LineFit line, acv_XY center_
   cJSON_AddNumberToObject(Line_jobj, "vx", line.line.line_vec.X);
   cJSON_AddNumberToObject(Line_jobj, "vy", line.line.line_vec.Y);
 
+  cJSON_AddItemToObject(Line_jobj,"pt1",acv_acv_XY2JSON(line.end_pt1));
+  cJSON_AddItemToObject(Line_jobj,"pt2",acv_acv_XY2JSON(line.end_pt2));
   return Line_jobj;
 }
 

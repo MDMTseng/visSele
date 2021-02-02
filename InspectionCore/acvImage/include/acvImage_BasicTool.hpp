@@ -85,8 +85,8 @@ typedef struct acv_LineFit
   acv_Line line;
   int matching_pts;
 
-  acv_XY end_pos;
-  acv_XY end_neg;
+  acv_XY end_pt1;
+  acv_XY end_pt2;
   float s;//sigma
 }acv_LineFit;
 

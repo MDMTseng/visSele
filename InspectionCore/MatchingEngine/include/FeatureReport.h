@@ -43,10 +43,14 @@ typedef struct featureDef_circle{
 typedef struct featureDef_line{
   int id;
   char name[FeatureManager_NAME_LENGTH];
+
+  
+  acv_XY p0,p1;
+  float initMatchingMargin;//It's the matching margin
+
   acv_Line lineTar;
   acv_XY searchVec;//The vector to searching the contour edge
   acv_XY searchEstAnchor;//The vector to searching the contour edge
-  float initMatchingMargin;//It's the matching margin
   float MatchingMarginX;//the length of the line itself
   /*
 
@@ -62,14 +66,6 @@ typedef struct featureDef_line{
   
   */
 
-
-  float searchDist;
-
-
-  typedef struct searchKeyPoint{
-    acv_XY keyPt;
-  };
-  vector<searchKeyPoint> keyPtList;
 }featureDef_line;
 
 

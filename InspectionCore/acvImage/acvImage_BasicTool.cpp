@@ -660,8 +660,9 @@ void acvImageAdd(acvImage *src, int num)
 acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input)
 {
   acv_XY output;
-  output.X = input.X*cosine-flip_f*input.Y*sine;
-  output.Y = input.X*sine  +flip_f*input.Y*cosine;
+  input.Y*=flip_f;
+  output.X = input.X*cosine-input.Y*sine;
+  output.Y = input.X*sine  +input.Y*cosine;
   return output;
 }
 acv_XY acvRotation(float sine,float cosine,acv_XY input)
