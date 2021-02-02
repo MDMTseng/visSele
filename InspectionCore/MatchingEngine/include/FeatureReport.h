@@ -46,6 +46,8 @@ typedef struct featureDef_line{
 
   
   acv_XY p0,p1;
+  float cache_r0,cache_r1;
+  
   float initMatchingMargin;//It's the matching margin
 
   acv_Line lineTar;

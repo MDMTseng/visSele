@@ -690,7 +690,7 @@ float SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
 
     float errSum=FLT_MAX;
     float f_minErrOffset = 0;
-    for (float adv =-fineSreachRadious; adv < fineSreachRadious + 1; adv+=1)
+    for (float adv =-fineSreachRadious; adv < fineSreachRadious + 1; adv+=2)
     {
         error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
 
@@ -702,28 +702,27 @@ float SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
         
         // printf("offset:%f  error:%f\n",(searchCenter+adv),error);
     }
-    //errSum=FLT_MAX;
-    searchCenter=f_minErrOffset;
-    float offsetW=0;
-    f_minErrOffset=0;
-    for (float adv =-1.5; adv < 1.5+0.1; adv+=0.1)
-    {
-        error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
-        float W=1/(0.001+error);
-        W=W*W*W*W;
-        offsetW+=W;
-        f_minErrOffset+=(searchCenter+adv)*W;
 
-       // printf("offset:%f  error:%f  W:%f\n",(searchCenter+adv),error,W);
-    }
 
-    f_minErrOffset/=offsetW;
+    // searchCenter=f_minErrOffset;
+    // float offsetW=0;
+    // f_minErrOffset=0;
+    // for (float adv =-1.5; adv < 1.5+0.1; adv+=0.1)
+    // {
+    //     error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
+    //     float W=1/(0.001+error);
+    //     W=W*W*W*W;
+    //     offsetW+=W;
+    //     f_minErrOffset+=(searchCenter+adv)*W;
 
-    //printf("===offset:%f \n",f_minErrOffset);
+    //    // printf("offset:%f  error:%f  W:%f\n",(searchCenter+adv),error,W);
+    // }
 
     // f_minErrOffset/=offsetW;
-    // errSum/=offsetW;
-    // printf("f_minErrOffset:%f\n ",f_minErrOffset);
+
+
+
+
     if (f_minErrOffset < 0)
         f_minErrOffset += tar_signature.size();
     f_minErrOffset=fmod(f_minErrOffset,tar_signature.size());
