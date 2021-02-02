@@ -724,8 +724,13 @@ export class InspectionEditorLogic {
       case SHAPE_TYPE.line:
         {
           ["pt1", "pt2"].forEach((key) => {
-            eObject[key] = closestPointOnLine(inspAdjObj, eObject[key]);
+            eObject["_"+key] = closestPointOnLine(inspAdjObj, eObject[key]);
           });
+
+          ["pt1", "pt2"].forEach((key) => {
+            eObject[key] = inspAdjObj[key];
+          });
+          console.log(dclone(eObject));
           // if (InspResult.isFlipped) {
           //   let tmp = eObject.pt1;
           //   eObject.pt1 = eObject.pt2;

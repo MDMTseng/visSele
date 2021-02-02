@@ -1164,7 +1164,7 @@ function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND
         let mmpp = rep.mmpb2b / rep.ppb2b;
 
         let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
+        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 3) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 15) down_samp_level = 15;
 

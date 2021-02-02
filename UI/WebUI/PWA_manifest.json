@@ -1,0 +1,17 @@
+{
+  "short_name": "INSP!",
+  "name": "Xception INSP",
+  "icons": [{
+    "src": "resource/image/APP_icon/mipmap-xhdpi/ic_launcher.png",
+    "sizes": "96x96",
+    "type": "image/png"
+  },{
+    "src": "resource/image/APP_icon/mipmap-xxhdpi/ic_launcher.png",
+    "sizes": "144x144",
+    "type": "image/png"
+  }],
+  "start_url": "http://localhost:8080/",
+  "background_color": "#000",
+  "theme_color": "#536878",
+  "display": "standalone"
+}
