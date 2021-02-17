@@ -1033,8 +1033,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
   {
     BPG_data *dat = data.data.p_BPG_data;
 
-    LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-         dat->pgID);
+    // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+    //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
     char err_str[100] = "\0";
     bool session_ACK = false;
@@ -1065,6 +1065,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     MT_LOCK();
 
 
+    if(checkTL("GS", dat)==false)
+      LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+          dat->pgID);
     if      (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
@@ -3041,10 +3044,10 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
     }
     break;
   case websock_data::eventType::DATA_FRAME:
-    printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
-           ws_data.data.data_frame.type,
-           ws_data.data.data_frame.rawL,
-           ws_data.data.data_frame.raw);
+    // printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
+    //        ws_data.data.data_frame.type,
+    //        ws_data.data.data_frame.rawL,
+    //        ws_data.data.data_frame.raw);
 
     break;
   case websock_data::eventType::CLOSING:

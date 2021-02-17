@@ -471,7 +471,7 @@ int ws_conn::doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen, enum 
               printf("%02x ",data[i]);
             }*/
 
-            printf("dataSize:%d isFinal:%d\n", dataSize, isFinal);
+            // printf("dataSize:%d isFinal:%d\n", dataSize, isFinal);
             event_WsRECV( data, dataSize, frameType, isFinal);
 
         }

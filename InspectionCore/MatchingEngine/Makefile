@@ -10,6 +10,7 @@ IDIR= ./include_priv/ \
 			$(MODULE_common_lib)/include \
 			$(MODULE_circleFitting) \
 			$(MODULE_logctrl)/include\
+			$(MODULE_polyfit)/include\
 			$(MODULE_zlib)/src
 
 VPATH = ./ ./MorphEngine

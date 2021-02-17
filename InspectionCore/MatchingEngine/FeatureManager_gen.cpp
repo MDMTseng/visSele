@@ -118,57 +118,6 @@ void RGBToHSV(acvImage &im)
 
 
 
-float CrossProduct(acv_XY p1,acv_XY p2,acv_XY p3)
-{
-  acv_XY v1=acvVecNormalize({.X=p2.X-p1.X,.Y=p2.Y-p1.Y});
-  acv_XY v2=acvVecNormalize({.X=p3.X-p2.X,.Y=p3.Y-p2.Y});
-
-  return acv2DCrossProduct(v1,v2);
-}
-
-
-void ComputeConvexHull2(const acv_XY *polygon,const int L)
-{
-	// The polygon needs to have at least three points
-	if (L < 3)
-	{
-		return ;
-	}
-
-	std::vector<int> upperIdx;
-	std::vector<int> lowerIdx;
-	upperIdx.push_back(0);
-	upperIdx.push_back(1);
-
-	/*
-	We piecewise construct the convex hull and combine them at the end of the method. Note that this could be
-	optimized by combing the while loops.
-	*/
-	for (size_t i = 2; i < L; i++)
-	{
-		while (upperIdx.size() > 1 && 
-    !CrossProduct(polygon[upperIdx[upperIdx.size() - 2]], polygon[upperIdx[upperIdx.size() - 1]], polygon[i])>0)
-		{
-			upperIdx.pop_back();
-		}
-		upperIdx.push_back(i);
-
-		while (lowerIdx.size() > 1 && 
-    !CrossProduct(polygon[lowerIdx[lowerIdx.size() - 2]], polygon[lowerIdx[lowerIdx.size() - 1]], polygon[L - i - 1])>0)
-		{
-			lowerIdx.pop_back();
-		}
-		lowerIdx.push_back(L - i - 1);
-	}
-	// upperIdx.insert(upperIdx.end(), lowerIdx.begin(), lowerIdx.end());
-  for(int idx:upperIdx)
-  {
-    LOGI("idx:%d",idx);
-  }
-	return;
-}
-
-
 
 float Point3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
 {

@@ -687,12 +687,17 @@ export class InspectionEditorLogic {
     let eObject=shape;
     if (eObject == null) return;
 
+    console.log(shape.inspection_status,INSPECTION_STATUS.NA,shape,shapeList ,InspResult);
     let inspAdjObj = this.FindInspShapeObject(eObject.id, InspResult);
     if (InspResult != undefined && inspAdjObj == undefined) {
       return;
     }
     eObject.inspection_status = inspAdjObj.status;
 
+    if(eObject.inspection_status==INSPECTION_STATUS.NA )
+    {
+      return;
+    }
     function pointForwardTrans(_pt)
     {
       let pt={x:_pt.x,y:_pt.y};

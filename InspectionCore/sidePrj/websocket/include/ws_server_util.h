@@ -200,7 +200,7 @@ class ws_conn{
             printf("%02x ",data[i]);
           }*/
 
-          printf("dataSize:%d isFinal:%d\n",dataSize,isFinal);
+          // printf("dataSize:%d isFinal:%d\n",dataSize,isFinal);
           event_WsRECV( data, dataSize, frameType, isFinal);
 
         }

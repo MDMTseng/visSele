@@ -32,6 +32,8 @@ void spline9_max(float *f,int fL,int div,float *ret_maxf,float *ret_maxf_x);
 
 
 
+float CrossProduct(acv_XY p1,acv_XY p2,acv_XY p3);
+void ComputeConvexHull2(const acv_XY *polygon,const int L);
 
 
 

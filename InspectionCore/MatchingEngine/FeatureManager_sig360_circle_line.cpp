@@ -7,6 +7,8 @@
 #include <MatchingCore.h>
 #include <stdio.h>
 #include <acvImage_SpDomainTool.hpp>
+#include "polyfit.h"
+
 
 static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
 
@@ -2343,6 +2345,108 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
 
   }
 
+#define TYPE_JUMP(type,ptr,jump) (*(type*)(((unsigned char*)ptr)+jump))
+
+float CrossProduct(acv_XY p1,acv_XY p2,acv_XY p3)
+{
+  acv_XY v1=(acvVecSub(p2,p1));
+  acv_XY v2=(acvVecSub(p2,p3));
+
+  return acv2DCrossProduct(v1,v2);
+}
+
+
+float CrossProduct_norm(acv_XY p1,acv_XY p2,acv_XY p3)
+{
+  acv_XY v1=acvVecNormalize(acvVecSub(p2,p1));
+  acv_XY v2=acvVecNormalize(acvVecSub(p2,p3));
+
+  return acv2DCrossProduct(v1,v2);
+}
+void ConvexVertex(const acv_XY *polygon,const int L,const int p_step,std::vector<int> &ret_idxes,float convexT=0,float mergeT=0)
+{
+	// The polygon needs to have at least three points
+	std::vector<int> &upperIdx=ret_idxes;
+  upperIdx.resize(0);
+	if (L < 3)
+	{
+		return;
+	}
+
+	upperIdx.push_back(0);
+	upperIdx.push_back(1);
+	/*
+	We piecewise construct the convex hull and combine them at the end of the method. Note that this could be
+	optimized by combing the while loops.
+	*/
+	for (size_t i = 2; i < L; i++)
+	{
+
+		while (upperIdx.size() >= 2)
+		{
+      
+      acv_XY p1=TYPE_JUMP(acv_XY,polygon,upperIdx[(upperIdx.size() - 2)]*p_step);
+      acv_XY p2=TYPE_JUMP(acv_XY,polygon,upperIdx[(upperIdx.size() - 1)]*p_step);
+      acv_XY p3=TYPE_JUMP(acv_XY,polygon,i*p_step);
+      float crossP=CrossProduct_norm(p1, p2,p3);
+      if( crossP>=-convexT)
+      {
+        // LOGI("pop: p1:%f %f  p2:%f %f  pc:%f %f      idx:%d",p1.X,p1.Y,p2.X,p2.Y,polygon[i].X,polygon[i].Y,upperIdx[(upperIdx.size() - 1)]);
+        upperIdx.pop_back();
+      }
+      else 
+      {
+        break;
+      }
+		}
+		upperIdx.push_back(i);
+	}
+
+  if(mergeT>0.0001)
+	while(1)
+	{
+    
+    int maxCP=-99999;
+    int maxCP_idx=-1;
+    for (size_t i = 1; i <upperIdx.size()-1; i++)
+    {
+      acv_XY p1=TYPE_JUMP(acv_XY,polygon,upperIdx[i-1]*p_step);
+      acv_XY pM=TYPE_JUMP(acv_XY,polygon,upperIdx[i-0]*p_step);
+      acv_XY p2=TYPE_JUMP(acv_XY,polygon,upperIdx[i+1]*p_step);
+      float crossP=CrossProduct_norm(p1, pM,p2);
+      LOGI("i:[%d]  -mergeT:%f crossP:%f",i,-mergeT,crossP);
+      if(-mergeT<crossP && maxCP<crossP)
+      {
+        maxCP=crossP;
+        maxCP_idx=i;
+      }
+    }
+    
+    if(maxCP_idx!=-1)
+    {
+      for (size_t i = maxCP_idx; i <upperIdx.size()-1; i++)
+      {
+        upperIdx[i]=upperIdx[i+1];
+      }
+      upperIdx.resize(upperIdx.size()-1);
+      //do vertex reduction
+    }
+
+    LOGI("upperIdx.size():%d",upperIdx.size());
+    if(maxCP_idx==-1 || upperIdx.size()<=2)break;
+	}
+
+  for (size_t i = 1; i <upperIdx.size()-1; i++)
+  {
+    acv_XY p1=TYPE_JUMP(acv_XY,polygon,upperIdx[i-1]*p_step);
+    acv_XY pM=TYPE_JUMP(acv_XY,polygon,upperIdx[i-0]*p_step);
+    acv_XY p2=TYPE_JUMP(acv_XY,polygon,upperIdx[i+1]*p_step);
+    float crossP=CrossProduct_norm(p1, pM,p2);
+    LOGI(">>i:[%d]  -mergeT:%f crossP:%f",i,-mergeT,crossP);
+  }
+	// upperIdx.insert(upperIdx.end(), lowerIdx.begin(), lowerIdx.end());
+	return;
+}
 float distRatioOnLine(acv_Line line,acv_XY sp1,acv_XY sp2,acv_XY px)
 {//  sp1...px......sp2 => return 3/9 => 0.3333
   

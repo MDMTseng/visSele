@@ -22,6 +22,7 @@ export MODULE_MatchingEngine=$(abspath MatchingEngine)
 export MODULE_common_lib=$(abspath common_lib)
 export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath contrib/SOIL)
+export MODULE_polyfit=$(abspath contrib/polyfit)
 export MODULE_lodepng=$(abspath contrib/lodepng)
 export MODULE_DataChannel=$(abspath DataChannel)
 export MODULE_CameraLayer=$(abspath CameraLayer)
@@ -52,6 +53,7 @@ IDIR=	include/ \
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_MindVision_GIGE)/include \
 			$(MODULE_Compat_dirent)/include \
+			$(MODULE_polyfit)/include \
 			$(MODULE_lodepng)
 
 
@@ -70,6 +72,7 @@ EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
 					$(MODULE_acvImage)/acvImage.a \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 					$(MODULE_lodepng)/lodepng.a \
+					$(MODULE_polyfit)/polyfit.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
@@ -110,6 +113,7 @@ else
 									$(MODULE_lodepng) \
 									$(MODULE_DataChannel) \
 									$(MODULE_CameraLayer) \
+									$(MODULE_polyfit) \
 									sidePrj
 endif
 
