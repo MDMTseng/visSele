@@ -69,6 +69,7 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
           
           sobel:{.X=0,.Y=0}
           };
+        pt.pt_img=pt.pt;
         pt.curvature=0;
         contour.push_back(pt);
         if (next[2] == 254)
@@ -1626,8 +1627,25 @@ void edgeTracking::goAdv (ContourFetch::contourMatchSec &section,bool goForward,
   // LOGI("graylevelImg:%p",graylevelImg);
 }
 
+void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,FeatureManager_BacPac *bacpac)
+{
+  for(int i=0;i<edge_grid.contourSections.size();i++)
+  {
+    vector<ContourFetch::ptInfo> &pts= edge_grid.contourSections[i];
+    for(int j=0;j<pts.size();j++)
+    {
+      pts[j].sobel = pointSobel(grayLevelImg,pts[j].pt,2);
+      // LOGI(">>pt:%f %f sobel:%f,%f",edge_grid.tmpXYSeq[k].pt.X,edge_grid.tmpXYSeq[k].pt.Y,edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y);
+      pts[j].pt_img=pts[j].pt;//pt in image coord
+      if(bacpac)bacpac->sampler->img2ideal(&pts[j].pt);//pt in ideal coord
+      pts[j].edgeRsp = 1;
+    }
+    ContourFilter(grayLevelImg,pts);
+  }
+}
 
-void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,int grid_size,ContourFetch &edge_grid,int scanline_skip,FeatureManager_BacPac *bacpac)
+
+void extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_LabeledData ldat,ContourFetch &edge_grid,int scanline_skip)
 {
 
   edge_grid.RESET();
@@ -1678,19 +1696,10 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
         }
 
 
+
+
         if(edge_grid.tmpXYSeq.size()>0)
         {
-
-
-          for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
-          {
-            edge_grid.tmpXYSeq[k].sobel = pointSobel(grayLevelImg,edge_grid.tmpXYSeq[k].pt,2);
-            // LOGI(">>pt:%f %f sobel:%f,%f",edge_grid.tmpXYSeq[k].pt.X,edge_grid.tmpXYSeq[k].pt.Y,edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y);
-            edge_grid.tmpXYSeq[k].pt_img=edge_grid.tmpXYSeq[k].pt;//pt in image coord
-            if(bacpac)bacpac->sampler->img2ideal(&edge_grid.tmpXYSeq[k].pt);//pt in ideal coord
-            edge_grid.tmpXYSeq[k].edgeRsp = 1;
-          }
-          ContourFilter(grayLevelImg,edge_grid.tmpXYSeq);
           for(int k=0;k<edge_grid.tmpXYSeq.size();k++)
           {
             edge_grid.push(contourIdx,edge_grid.tmpXYSeq[k]);
@@ -1698,7 +1707,8 @@ void extractLabeledContourDataToContourGrid(acvImage *grayLevelImg,acvImage *lab
           contourIdx++;
           edge_grid.tmpXYSeq.resize(0);
         }
-        
+
+
 
         pre_pix= cur_pix;
       }

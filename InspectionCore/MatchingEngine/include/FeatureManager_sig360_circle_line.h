@@ -52,7 +52,6 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   ContourSignature feature_signature;
   ContourSignature tmp_signature;
   
-  vector<acv_XY>tmp_contour;
   vector<acv_XY>signature_data_buffer;
   ContourFetch edge_grid;
 

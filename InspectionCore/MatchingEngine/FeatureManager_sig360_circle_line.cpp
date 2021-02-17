@@ -2540,9 +2540,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     float thres = 80;//OTSU_Threshold(*smoothedImg, &ldData[i], 3);
     //LOGV("OTSU_Threshold:%f", thres);
     
-
-    extractLabeledContourDataToContourGrid(originalImage, labeledBuff, lableIdx, ldData[lableIdx], thres,
-                                           grid_size, edge_grid, scanline_skip, bacpac);
+    contourGridGrayLevelRefine(originalImage,edge_grid,bacpac);
 
     LOGI("calibCen: %f %f", calibCen.X, calibCen.Y);
 
@@ -3079,6 +3077,48 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 }
 
 
+bool convertContourGrid2Signature
+(acv_XY  center,ContourFetch contour,std::vector<acv_XY> &o_signature,FeatureManager_BacPac *bacpac)
+{
+  if(contour.contourSections.size()==0)return false;
+  
+  int preIdx=-1;
+  int _1stIdx=-1;
+  for( ContourFetch::ptInfo ptinfo: contour.contourSections[0])
+  {
+    acv_XY copos=ptinfo.pt;
+    
+    bacpac->sampler->img2ideal(&copos);
+    float diffY=copos.Y-center.Y;
+    float diffX=copos.X-center.X;
+    if(diffX!=diffX||diffY!=diffY)
+    {
+        continue;
+    }
+    float theta=acvFAtan2(diffY,diffX);//-pi ~pi
+    //if(theta<0)theta+=2*M_PI;
+    int idx=round(o_signature.size()*theta/(2*M_PI));
+    if(idx<0)idx+=o_signature.size();
+    //if(idx>=signature.size())idx-=signature.size();
+    if(preIdx==-1)
+    {
+        _1stIdx=idx;
+        preIdx=idx;
+    }
+    float R=hypot(diffX,diffY);
+    if(o_signature[idx].X<R)
+    {
+        o_signature[idx].X=R;
+        o_signature[idx].Y=theta;
+        interpolateSignData(o_signature,preIdx,idx);
+    }
+    preIdx=idx;
+  }
+
+
+  return true;
+}
+
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
   report.bacpac=bacpac;
@@ -3136,18 +3176,15 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
 
-
-
-    bool isOK =  acvOuterContourExtraction(img, ldData[i], i,tmp_contour);
-
-    for (int i = 0; i < tmp_contour.size(); i++)
-    {
-      bacpac->sampler->img2ideal(&tmp_contour[i]);
-    }
-
     acv_XY ideal_center = ldData[i].Center;
+
+
     bacpac->sampler->img2ideal(&ideal_center);
-    acvContourCircleSignature(ideal_center,tmp_contour, tmp_signature.signature_data);
+
+    edge_grid.RESET();
+    extractLabeledContourDataToContourGrid(labeledBuff,i,ldData[i],edge_grid, scanline_skip);
+
+    convertContourGrid2Signature(ideal_center,edge_grid,tmp_signature.signature_data,bacpac);
 
 
     //the tmp_signature is in Pixel unit, convert it to mm
@@ -3257,7 +3294,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       flip_f = -1;
     }
     //Note, the flip_f here means to flip Y first then do rotation
-    edge_grid.RESET();
 
 
 

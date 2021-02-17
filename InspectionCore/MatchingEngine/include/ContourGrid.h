@@ -38,8 +38,8 @@ class ContourFetch{
     std::vector< ptInfo > tmpXYSeq;
     private:
 
-    std::vector< std::vector <ptInfo> > contourSections;
     public:
+    std::vector< std::vector <ptInfo> > contourSections;
     ContourFetch();
     void RESET();
     void push(int group,ptInfo data);

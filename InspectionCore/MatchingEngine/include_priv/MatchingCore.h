@@ -20,9 +20,13 @@ float findMaxIdx_spline(float *grad,int gradL,float *ret_max);
 float findGradMaxIdx_spline(float *f,int fL,float *ret_max);
 
 int calc_pdf_mean_sigma(float *f,int fL,float *ret_mean,float *ret_sigma);
-void extractLabeledContourDataToContourGrid(
-  acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,
-  int grid_size,ContourFetch &edge_curve_grid,int scanline_skip,FeatureManager_BacPac *bacpac);
+// void extractLabeledContourDataToContourGrid(
+//   acvImage *grayLevelImg,acvImage *labeledImg,int label,acv_LabeledData ldat,int thres,
+//   int grid_size,ContourFetch &edge_curve_grid,int scanline_skip,FeatureManager_BacPac *bacpac);
+
+  
+void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,FeatureManager_BacPac *bacpac);
+void extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_LabeledData ldat,ContourFetch &edge_grid,int scanline_skip);
 
 ContourFetch::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourFetch::ptInfo> &points);
 void circleRefine(std::vector<ContourFetch::ptInfo> &pointsInRange,int len,acv_CircleFit *circleF);
