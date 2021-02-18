@@ -2497,14 +2497,119 @@ acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt,float sin,float cosin, float f
   return acvVecAdd(acvVecMult(pt, 1/mmpp),objCenter_pix); //convert to pixel unit
 }
 
+//return 0 => two real roots
+//return 1 => single complex root => r0: real part r1: positive imaginary part
+int quadratic_roots(float a,float b,float c,float *r0,float*r1)
+{
+  double discriminant, root1, root2, realPart, imagPart;
+  // printf("Enter coefficients a, b and c: ");
+  // scanf("%lf %lf %lf", &a, &b, &c);
+
+  discriminant = b * b - 4 * a * c;
+
+  // condition for real and different roots
+  if (discriminant > 0) {
+      root1 = (-b + sqrt(discriminant)) / (2 * a);
+      root2 = (-b - sqrt(discriminant)) / (2 * a);
+      // printf("root1 = %.2lf and root2 = %.2lf", root1, root2);
+      *r0=root1;
+      *r1=root2;
+      return 0;
+  }
+
+  // // condition for real and equal roots
+  // else if (discriminant == 0) {
+  //     root1 = root2 = -b / (2 * a);
+  //     // printf("root1 = root2 = %.2lf;", root1);
+  //     return 0;
+  // }
+
+  // if roots are not real
+  else {
+      realPart = -b / (2 * a);
+      imagPart = sqrt(-discriminant) / (2 * a);
+      if(-imagPart)imagPart=-imagPart;//keep it positive
+      
+      *r0=realPart;
+      *r1=imagPart;
+      
+      return 1;
+      // printf("root1 = %.2lf+%.2lfi and root2 = %.2f-%.2fi", realPart, imagPart, realPart, imagPart);
+  }
+}
+
+
 float angle_offset=0;
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
   int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
-  FeatureReport_sig360_circle_line_single &singleReport,float angle,float flip_f,
+  FeatureReport_sig360_circle_line_single &singleReport,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections)
 {
+
+
+
+  bool isInv;
+  float angle;
+  bool confined_matching=true;
+  float error;
+  if(confined_matching)
+  {//this is acheived by limiting the matching range
+    error = feature_signature.match_min_error(
+      tmp_signature,this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
+                                      &isInv, &angle);
+  }
+  else
+  {//this will do full range matching then, see if the best matching out side the range
+    error = feature_signature.match_min_error(tmp_signature,0, 180, 0,&isInv, &angle);
+
+    if(this->matching_face!=0 && !((isInv>0)^(this->matching_face>0))  )
+    {
+      return -1;
+    }
+
+    //TODO: angle filter rule..
+  }
+
+  error = sqrt(error);
+  //if(i<10)
+  {
+    LOGI("======%d===X:%0.4f Y:%0.4f er:%f,inv:%d,angDeg:%f",
+          lableIdx, ldData[lableIdx].Center.X, ldData[lableIdx].Center.Y, error, isInv, angle * 180 / 3.14159);
+  }
+
+  if (error > 2 || ((error/feature_signature.mean)>0.3) )
+  {
+    LOGE("error:%f",error);
+    return -3;
+  }
+
+
+
+  singleReport.rotate = angle;
+  singleReport.isFlipped = isInv;
+  
+  //The angle we get from matching is current object rotates 'angle' to match target
+  //But now, we want to rotate feature set to match current object, so opposite direction
+  angle = -angle;
+  float flip_f = 1;
+  if (isInv)
+  {
+    flip_f = -1;
+  }
+  //Note, the flip_f here means to flip Y first then do rotation
+
+
+
+
+
+
+
+
+
+
+
   float sigma;
   // angle+=angle_offset*M_PI/180;
   // if(angle_offset>2)
@@ -3195,8 +3300,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     tmp_signature.CalcInfo();
 
     SignatureSoften(tmp_signature.signature_data,signature_data_buffer,10);
-    bool isInv;
-    float angle;
 
     // LOGI(">>feature_signature");
     // for(int i=0;i<feature_signature.size();i++)
@@ -3214,41 +3317,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     // }
     // LOGI(">>=================");
 
-    bool confined_matching=true;
-    float error;
-    if(confined_matching)
-    {//this is acheived by limiting the matching range
-      error = feature_signature.match_min_error(
-        tmp_signature,this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
-                                        &isInv, &angle);
-    }
-    else
-    {//this will do full range matching then, see if the best matching out side the range
-      error = feature_signature.match_min_error(tmp_signature,0, 180, 0,&isInv, &angle);
-
-      if(this->matching_face!=0 && !((isInv>0)^(this->matching_face>0))  )
-      {
-        continue;
-      }
-
-      //TODO: angle filter rule..
-    }
-
-    
-
-    error = sqrt(error);
-    //if(i<10)
-    {
-      LOGI("======%d===X:%0.4f Y:%0.4f er:%f,inv:%d,angDeg:%f",
-           i, ldData[i].Center.X, ldData[i].Center.Y, error, isInv, angle * 180 / 3.14159);
-    }
-
-    ;
-    if (error > 2 || ((error/feature_signature.mean)>0.3) )
-    {
-      LOGE("error:%f",error);
-      continue;
-    }
     float mmpp = bacpac->sampler->mmpP_ideal(); //mm per pixel
     FeatureReport_sig360_circle_line_single singleReport =
         {
@@ -3263,8 +3331,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             .area = (float)ldData[i].area,
             .pix_area = ldData[i].area,
             .labeling_idx = i,
-            .rotate = angle,
-            .isFlipped = isInv,
+            // .rotate = angle,
+            // .isFlipped = isInv,
             .scale = 1,
             .targetName = NULL
         };
@@ -3279,33 +3347,22 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     singleReport.area *= mmpp * mmpp;
 
     //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
-    reports.push_back(singleReport);
-
-
-    float cached_cos, cached_sin;
-    //The angle we get from matching is current object rotates 'angle' to match target
-    //But now, we want to rotate feature set to match current object, so opposite direction
-    angle = -angle;
-    cached_cos = cos(angle);
-    cached_sin = sin(angle);
-    float flip_f = 1;
-    if (isInv)
-    {
-      flip_f = -1;
-    }
-    //Note, the flip_f here means to flip Y first then do rotation
 
 
 
-    SingleMatching(originalImage,labeledBuff,img,buff_,
+
+
+    int ret = SingleMatching(originalImage,labeledBuff,img,buff_,
        i,&(ldData[0]),
        grid_size,edge_grid,scanline_skip, bacpac,
-      singleReport, angle, flip_f,
+      singleReport,
       tmp_points,m_sections);
+    if(ret==0)
+      reports.push_back(singleReport);
   }
 
   { //convert pixel unit to mm
-    float mmpp = bacpac->sampler->mmpP_ideal();;
+    float mmpp = bacpac->sampler->mmpP_ideal();
   }
 
   //LOGI(">>>>>>>>");
@@ -3406,4 +3463,18 @@ float ContourSignature::match_min_error(ContourSignature &s,
   return SignatureMinMatching(s.signature_data, signature_data,
     searchAngleOffset, searchAngleRange, facing,
     ret_isInv, ret_angle);
+}
+
+void ContourSignature::match_span(ContourSignature &s,
+    float offset1,float offset2,int count,vector<acv_XY> &error,float stride,bool flip)
+{
+  error.resize(0);
+  for(int i=0;i<count;i++)
+  {
+    float offset=offset1+(offset2-offset1)*i/(count-1);
+    float err = SignatureMatchingError(&(s.signature_data[0]), offset,&(signature_data[0]), signature_data.size(), stride,flip);
+    error.push_back((acv_XY){X:offset,Y:err});
+  }
+  
+  return; 
 }

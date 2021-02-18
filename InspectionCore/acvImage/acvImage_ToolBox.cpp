@@ -574,7 +574,7 @@ inline float signatureSampling2(const acv_XY *signature,int signSize,float fidx)
 }
 
 float SignatureMatchingError(const acv_XY *signature, float offset,
-                             const acv_XY *tar_signature, int arrsize, int stride)//Single error result
+                             const acv_XY *tar_signature, int arrsize, int stride,bool reverse)//Single error result
 {
   
     //doPrint = (offset>-0.2 && offset<0.2 );
@@ -582,14 +582,15 @@ float SignatureMatchingError(const acv_XY *signature, float offset,
     float errorSum = 0;
     if(offset<0)offset+=arrsize;
     float epsilon=0.01;
-    for (int i=0; i < arrsize; i += stride)
+    for (float i=0; i < arrsize; i += stride)
     {
-      float x1=signatureSampling(signature,arrsize,offset+i+0) ;
+      float sigidx=(offset+i);
+      if(reverse)sigidx=arrsize-sigidx;
+      float x1=signatureSampling(signature,arrsize,sigidx) ;
       float x2=signatureSampling(tar_signature,arrsize,(float)i);
 
       float error1 = x1-x2 ;
-      error1*=error1;
-      errorSum+=error1;
+      errorSum+=error1*error1;
 
 
       

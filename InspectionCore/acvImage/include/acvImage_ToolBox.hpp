@@ -54,6 +54,8 @@ float SignatureAngleMatching(const std::vector<acv_XY> &signature,
                              float searchAngleOffset,float searchAngleMargin,
                              float *min_error);
 
+float SignatureMatchingError(const acv_XY *signature, float offset,
+                             const acv_XY *tar_signature, int arrsize, int stride=1,bool reverse=false);
                              
 void SignatureSoften( std::vector<acv_XY> &signature,int windowR=1);
 void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &buffer,int windowR);
@@ -61,6 +63,7 @@ void SignatureReverse(std::vector<acv_XY> &dst, std::vector<acv_XY> &src);
 
 
 
+int interpolateSignData(std::vector<acv_XY> &signature,int start,int end);
 //The matching algo would use searchAngleOffset, searchAngleRange and facing to limit matching range
 //facing would use -1(back face only)/0(back and front face)/1(front face only)
 float SignatureMinMatching( std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature,

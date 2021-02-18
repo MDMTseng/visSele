@@ -28,6 +28,9 @@ public :
     float searchAngleOffset,float searchAngleRange,int facing,
     bool *ret_isInv, float *ret_angle);
 
+  void match_span(ContourSignature &s,
+    float offset1,float offset2,int count,vector<acv_XY> &error,float stride,bool flip);
+
 };
 
 
@@ -115,7 +118,7 @@ protected:
   int SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
   int grid_size, ContourFetch &edge_grid,int scanline_skip, FeatureManager_BacPac *bacpac,
-  FeatureReport_sig360_circle_line_single &singleReport,float angle,float flip_f,
+  FeatureReport_sig360_circle_line_single &singleReport,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections);
 };
 
