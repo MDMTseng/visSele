@@ -91,6 +91,7 @@ export const UI_SM_EVENT = {
   Camera_Info_Update:"Camera_Info_Update",
   Image_Update:"Image_Update",
   StatSettingParam_Update:"StatSettingParam_Update",
+  StatInfo_Clear:"StatInfo_Clear",
   Define_File_Update:"Define_File_Update",
   SIG360_Report_Update:"SIG360_Report_Update",
   SIG360_Extraction:"SIG360_Extraction",
@@ -296,6 +297,15 @@ export function EV_StatSettingParam_Update(statSettingParam)
     type: UI_SM_EVENT.StatSettingParam_Update ,data:statSettingParam
   }
 }
+
+export function EV_StatInfo_Clear()
+{
+  return {
+    type: UI_SM_EVENT.StatInfo_Clear
+  }
+}
+
+
 
 export function EV_Camera_Info_Update(info)
 {

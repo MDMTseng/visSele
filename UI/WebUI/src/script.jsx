@@ -48,7 +48,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
 
-let TEST_MODE=false;
+let TEST_MODE=true;
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
@@ -848,8 +848,8 @@ class APPMasterX extends React.Component {
     let rootUrl="localhost";
     if(!localUrl.startsWith("file"))
     {
-    let matchRes = (/[\/]+(.+)(\:|\?.+)/gm).exec(localUrl);
-    console.log(matchRes);
+      let matchRes = (/[\/]+(.+)(\:|\?.+)/gm).exec(localUrl);
+      console.log(matchRes);
       rootUrl=matchRes[1];
     }
     this.coreUrl="ws://"+rootUrl+":4090";

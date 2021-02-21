@@ -197,11 +197,23 @@ function StateReducer(newState, action) {
       stat.CK = (stat.mean - measure.value) / ((measure.USL - measure.LSL) / 2);
       stat.CPK = stat.CP * (1 - Math.abs(stat.CK));
 
+      if(!(stat.MIN<=nv_val))//consider MIN=NaN as init state
+      {
+        stat.MIN=nv_val;
+      }
+
+      if(!(stat.MAX>=nv_val))//consider MAX=NaN as init state
+      {
+        stat.MAX=nv_val;
+      }
+
+
 
       stat.histogram = histDataReducer(stat.histogram, nv_val);
       //log.info(stat);
 
     });
+
     return statistic;
   }
 
@@ -652,6 +664,14 @@ function StateReducer(newState, action) {
               ...action.data
             };
             console.log("StatSettingParam_Update", newState.edit_info.statSetting);
+            break;
+          case UISEV.StatInfo_Clear:
+
+          
+            console.log("StatInfo_Clear.........");
+            newState.edit_info = 
+            newState.edit_info._obj.resetStatisticState(newState.edit_info);
+
             break;
           case UISEV.Image_Update:
             newState.edit_info = { ...newState.edit_info, img: action.data };

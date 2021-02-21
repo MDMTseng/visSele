@@ -46,6 +46,7 @@ import {
   DisconnectOutlined,
   FileOutlined,
   LinkOutlined,
+  LineOutlined,
   TagsOutlined,
   CameraOutlined,
   ExpandOutlined,
@@ -1529,6 +1530,7 @@ class DataStatsTable extends React.Component {
     }
     let measureList = statstate.statisticValue.measureList;
 
+    // console.log(measureList);
     let measureReports = measureList.filter(m=>m.rank===undefined || m.rank<=this.props.measureDisplayRank).map((measure) =>
       ({
         id: measure.id,
@@ -1549,6 +1551,8 @@ class DataStatsTable extends React.Component {
         // CPL:round(measure.statistic.CPL,0.001),
         CP: round(measure.statistic.CP, 0.001),
         CPK: round(measure.statistic.CPK, 0.001),
+        MIN: round(measure.statistic.MIN, 0.001),
+        MAX: round(measure.statistic.MAX, 0.001),
       })
     );
 
@@ -1558,12 +1562,12 @@ class DataStatsTable extends React.Component {
 
     //statstate.historyReport.map((rep)=>rep.judgeReports[0]);
     const dataSource = measureReports;
-
-    const columns = ["name", "subtype", "count", "mean", "sigma",
-      "OK", "NG", "NA", "WARN",
+    const columns = ["name", "subtype", "count", "mean", 
+      "MIN", "MAX","OK", "NG", "CPK","sigma",
+      "NA", "WARN",
       "CK", "CP",
       //"CPU","CPL",
-      "CPK"]
+      ]
       .map((type) => ({ title: type, dataIndex: type, key: type }))
       .map((col) => (typeof measureReports[0][col.title] == 'number') ?//Find the first dataset and if it's number then add a sorter
         Object.assign(col, { sorter: (a, b) => a[col.title] - b[col.title] }) : col)
@@ -2003,11 +2007,11 @@ class APP_INSP_MODE extends React.Component {
       // }
       // }, undefined);
 
+
       this.props.ACT_StatSettingParam_Update({
-        keepInTrackingTime_ms: 1000,
-        historyReportlimit: 2000,
-        minReportRepeat: 4,
-        headReportSkip: 4,
+        keepInTrackingTime_ms: 0,
+        minReportRepeat: 0,
+        headReportSkip: 0,
       })
     }
   }
@@ -2127,6 +2131,14 @@ class APP_INSP_MODE extends React.Component {
           onRankChange={(rank)=>{
             this.setState({measureDisplayRank: rank });
           }}/>
+        
+        <Divider orientation="left" key="div2"></Divider>
+
+        <Button key="opt uInsp" icon={<SettingOutlined/>}
+          onClick={() => {
+            this.props.ACT_StatInfo_Clear();
+          }} >清空統計數據</Button>
+        
       </Modal>]
     })
   }
@@ -2411,16 +2423,25 @@ class APP_INSP_MODE extends React.Component {
           this.CameraCtrl.setCameraImageTransfer()
 
         } />);
-    MenuSet_2nd.push(
+    MenuSet_2nd.push(<>
       <BASE_COM.IconButton
         dict={this.props.DICT}
         iconType={<BarChartOutlined />}
         key="Info Graphs"
-        addClass="layout black vbox"
+        addClass="layout black vbox width8"
         text="Info Graphs" onClick={() => {
           this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
           this.setState(Object.assign({}, this.state));
-        }} />);
+        }} />
+      <BASE_COM.IconButton
+        iconType={<LineOutlined />}
+        key="X"
+        addClass="layout black vbox width2"
+        text="X" onClick={() => {
+          this.state.GraphUIDisplayMode = 0;
+          this.setState({...this.state});
+        }} />
+      </>);
 
     MenuSet_2nd.push(
       <BASE_COM.IconButton
@@ -2570,6 +2591,7 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
     },
     ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
+    ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     
     ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
   }

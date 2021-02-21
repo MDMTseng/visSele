@@ -116,7 +116,64 @@ export class InspectionEditorLogic {
     this.sig360info = sig360info;
   }
 
+  resetStatisticState(edit_info)
+  {
 
+  
+    //reportStatisticState.statisticValue
+    let measureList =
+      dclone(edit_info.list.filter((feature) =>
+        feature.type == SHAPE_TYPE.measure))
+        .map((feature) => {
+          //console.log(feature);
+          feature.statistic = {
+            count_stat:
+            {
+              NA: 0,
+              UOK: 0,
+              LOK: 0,
+
+              UCNG: 0,
+              LCNG: 0,
+
+              USNG: 0,
+              LSNG: 0,
+            },
+            histogram: {
+              xmin: 1.2 * (feature.LSL - feature.value) + feature.value,
+              xmax: 1.2 * (feature.USL - feature.value) + feature.value,
+              histo: new Array(502).fill(0)//The first value and last value are the value excced xmin& xmax
+            },
+            count: 0,
+            //those value should be undefined, but since the count is 0 so the following calc should ignore those value
+            sum: 0,
+            sqSum: 0,//E[X^2]*count
+            mean: 0,//E[X]*count
+            variance: 0,//E[X^2]-E[X]^2
+            //deviation = Sigma = sqrt(variance)
+            sigma: 0,
+            //
+            CP: 0,
+            CK: 0,
+            CPU: 0,
+            CPL: 0,
+            CPK: 0,
+            MIN:NaN,
+            MAX:NaN
+          }
+          return feature;
+        });
+    
+    console.log(edit_info.reportStatisticState);
+    edit_info.reportStatisticState={
+      ...edit_info.reportStatisticState,
+      historyReport: [],
+      statisticValue:{measureList},
+      reportCount:0
+    }
+
+    return edit_info;
+  }
 
   rootDefInfoLoading(root_defFile,edit_info,inspEditorLogic=this)
   {
@@ -203,8 +260,6 @@ export class InspectionEditorLogic {
               inspEditorLogic.SetDefInfo(report);
   
   
-              let reportStatisticState = edit_info.reportStatisticState;
-  
               edit_info.edit_tar_info = null;
   
               edit_info.list = inspEditorLogic.shapeList;
@@ -216,53 +271,8 @@ export class InspectionEditorLogic {
               edit_info.inherentShapeList = inspEditorLogic.UpdateInherentShapeList();
   
               log.info(edit_info.inherentShapeList);
-  
-              //reportStatisticState.statisticValue
-              let measureList =
-                dclone(edit_info.list.filter((feature) =>
-                  feature.type == SHAPE_TYPE.measure))
-                  .map((feature) => {
-                    //console.log(feature);
-                    feature.statistic = {
-                      count_stat:
-                      {
-                        NA: 0,
-                        UOK: 0,
-                        LOK: 0,
-  
-                        UCNG: 0,
-                        LCNG: 0,
-  
-                        USNG: 0,
-                        LSNG: 0,
-                      },
-                      histogram: {
-                        xmin: 1.2 * (feature.LSL - feature.value) + feature.value,
-                        xmax: 1.2 * (feature.USL - feature.value) + feature.value,
-                        histo: new Array(502).fill(0)//The first value and last value are the value excced xmin& xmax
-                      },
-                      count: 0,
-                      //those value should be undefined, but since the count is 0 so the following calc should ignore those value
-                      sum: 0,
-                      sqSum: 0,//E[X^2]*count
-                      mean: 0,//E[X]*count
-                      variance: 0,//E[X^2]-E[X]^2
-                      //deviation = Sigma = sqrt(variance)
-                      sigma: 0,
-                      //
-                      CP: 0,
-                      CK: 0,
-                      CPU: 0,
-                      CPL: 0,
-                      CPK: 0,
-                    }
-                    return feature;
-                  });
-              reportStatisticState.statisticValue = {
-  
-                measureList: measureList
-              }
-              log.info(reportStatisticState.statisticValue);
+              edit_info= this.resetStatisticState(edit_info);
+              // log.info(reportStatisticState.statisticValue);
             }
             break;
           case "camera_calibration":
@@ -687,7 +697,7 @@ export class InspectionEditorLogic {
     let eObject=shape;
     if (eObject == null) return;
 
-    console.log(shape.inspection_status,INSPECTION_STATUS.NA,shape,shapeList ,InspResult);
+    // console.log(shape.inspection_status,INSPECTION_STATUS.NA,shape,shapeList ,InspResult);
     let inspAdjObj = this.FindInspShapeObject(eObject.id, InspResult);
     if (InspResult != undefined && inspAdjObj == undefined) {
       return;
@@ -735,7 +745,7 @@ export class InspectionEditorLogic {
           ["pt1", "pt2"].forEach((key) => {
             eObject[key] = inspAdjObj[key];
           });
-          console.log(dclone(eObject));
+          // console.log(dclone(eObject));
           // if (InspResult.isFlipped) {
           //   let tmp = eObject.pt1;
           //   eObject.pt1 = eObject.pt2;
