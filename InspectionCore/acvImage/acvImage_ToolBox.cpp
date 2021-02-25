@@ -691,7 +691,7 @@ float SignareIdxOffsetMatching(const std::vector<acv_XY> &signature,
 
     float errSum=FLT_MAX;
     float f_minErrOffset = 0;
-    for (float adv =-fineSreachRadious; adv < fineSreachRadious + 1; adv+=2)
+    for (float adv =-fineSreachRadious; adv < fineSreachRadious + 1; adv+=1)
     {
         error = SignatureMatchingError(signature, (float)searchCenter+adv, tar_signature, 1);
 
