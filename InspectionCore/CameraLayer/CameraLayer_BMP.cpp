@@ -26,12 +26,14 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 {
     status ret_status;
     m.lock();
-    this->fileName = fileName;
 
     int ret = 0;
     
     //if(img.GetWidth()<100)//Just to skip image loading
+
+    if(this->fileName.compare(fileName)!=0)//check if the name isn't equal
     {
+      this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
         ret = acvLoadBitmapFile(&img_load, fileName.c_str());
     }
