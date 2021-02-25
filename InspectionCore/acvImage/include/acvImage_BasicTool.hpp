@@ -133,6 +133,12 @@ acv_XY acvVecInterp(acv_XY vec1,acv_XY vec2,float alpha);
 acv_XY acvVecAdd(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecSub(acv_XY vec1,acv_XY vec2);
 acv_XY acvVecMult(acv_XY vec1,float mult);
+
+
+acv_XY acvComplexAdd(acv_XY a,acv_XY b);//a+b
+acv_XY acvComplexSub(acv_XY a,acv_XY b);
+acv_XY acvComplexMult(acv_XY a,acv_XY b);//a*b
+acv_XY acvComplexDiv(acv_XY a,acv_XY b);//a/b
 acv_XY acvRotation(float sine,float cosine,float flip_f,acv_XY input);
 acv_XY acvRotation(float sine,float cosine,acv_XY input);
 acv_XY acvRotation(float angle,acv_XY input);

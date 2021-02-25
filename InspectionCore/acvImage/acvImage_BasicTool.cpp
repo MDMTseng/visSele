@@ -766,6 +766,29 @@ acv_XY acvVecMult(acv_XY vec1,float mult)
   return vec1;
 }
 
+
+
+acv_XY acvComplexAdd(acv_XY a,acv_XY b)
+{
+  return acvVecAdd(a,b);
+}
+acv_XY acvComplexSub(acv_XY a,acv_XY b)
+{
+  return acvVecSub(a,b);
+}
+
+acv_XY acvComplexMult(acv_XY a,acv_XY b)
+{
+  return {a.X*b.X-a.Y*b.Y,a.Y*b.X+a.X*b.Y};
+}
+
+acv_XY acvComplexDiv(acv_XY a,acv_XY b)
+{
+  float deno=b.X*b.X+b.Y*b.Y;
+  return {(a.X*b.X+a.Y*b.Y)/deno,(a.Y*b.X-a.X*b.Y)/deno};
+}
+
+
 float acvDistance(acv_XY p1,acv_XY p2)
 {
   return hypot(p2.X-p1.X,p2.Y-p1.Y);
