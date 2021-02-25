@@ -1870,6 +1870,11 @@ class APP_DEFCONF_MODE extends React.Component {
             edit_tar.search_far=(edit_tar.search_style==1)?true:false;
           }
         }
+        
+        if(edit_tar.locating_anchor!=true)
+        {
+          edit_tar.locating_anchor=false;
+        }
       }
 
 
@@ -1898,6 +1903,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 margin: "input-number",
 
                 search_far: "switch",
+                locating_anchor: "switch",
                 calc_f: {
                   __OBJ__: renderMethods.Measure_Calc_Editor,
                   measure_list: shape_list.filter(s =>

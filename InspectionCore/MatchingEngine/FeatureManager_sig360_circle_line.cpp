@@ -301,7 +301,6 @@ int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f, FeatureRepo
     return -1;
   case LINE:
   {
-
     if ((*report.detectedLines)[idx].status ==
         FeatureReport_sig360_circle_line_single::STATUS_NA)
     {
@@ -336,6 +335,43 @@ int FeatureManager_sig360_circle_line::ParseMainVector(float flip_f, FeatureRepo
   }
   return -1;
 }
+
+
+
+
+acv_XY FeatureManager_sig360_circle_line::ParseMainVector(featureDef_searchPoint *def_sp)
+{
+  
+  if(def_sp->subtype!= featureDef_searchPoint::anglefollow)
+  {
+    return (acv_XY){NAN,NAN};
+  }
+  int linedef_id = def_sp->data.anglefollow.target_id;
+
+  featureDef_line *defLine=NULL;
+  for(int i=0;i<featureLineList.size();i++)
+  {
+    if(linedef_id==featureLineList[i].id)
+    {
+      defLine=&(featureLineList[i]);
+      break;
+    }
+  }
+  if(defLine==NULL)
+  {
+    return (acv_XY){NAN,NAN};
+  }
+
+  acv_XY line_vec=acvVecSub(defLine->p1,defLine->p0);
+  
+  float angle = def_sp->data.anglefollow.angleDeg * M_PI / 180;
+
+  LOGI("line_p1:%f %f  p0:%f %f",defLine->p1.X,defLine->p1.Y,defLine->p0.X,defLine->p0.Y);
+  LOGI("line_vec:%f %f  angle:%f",line_vec.X,line_vec.Y,angle);
+  return acvRotation(sin(angle), cos(angle), 1, line_vec);
+}
+
+
 
 int FeatureManager_sig360_circle_line::lineCrossPosition(float flip_f, FeatureReport_sig360_circle_line_single &report, int obj1_id, int obj2_id, acv_XY *pt)
 {
@@ -1217,6 +1253,19 @@ int FeatureManager_sig360_circle_line::parse_searchPointData(cJSON *jobj)
     }
 
 
+    
+    searchPoint.data.anglefollow.locating_anchor=false;
+    type = getDataFromJson(jobj, "locating_anchor", &target);
+    if (type == cJSON_False)
+    {
+      searchPoint.data.anglefollow.locating_anchor=false;
+    }
+    else if (type == cJSON_True)
+    {
+      searchPoint.data.anglefollow.locating_anchor=true;
+    }
+
+
     LOGV("searchPoint.X:%f Y:%f angleDeg:%f tar_id:%d",
          searchPoint.data.anglefollow.position.X,
          searchPoint.data.anglefollow.position.Y,
@@ -1509,6 +1558,9 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     LOGE("ptr: type:<%p>  ver:<%p>  unit:<%p>", type_str, ver_str, unit_str);
     return -1;
   }
+
+
+  cm.clear();
   LOGI("type:<%s>  ver:<%s>  unit:<%s>", type_str, ver_str, unit_str);
 
   this->matching_angle_margin = M_PI; //+-PI => 2PI matching margin
@@ -1557,6 +1609,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     return -1;
   }
 
+  
   for (int i = 0; i < cJSON_GetArraySize(featureList); i++)
   {
     cJSON *feature = cJSON_GetArrayItem(featureList, i);
@@ -1625,6 +1678,19 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       return -1;
     }
   }
+
+  
+  for(int j=0;j<searchPointList.size();j++)
+  {
+    acv_XY pos = searchPointList[j].data.anglefollow.position;
+    acv_XY vec =ParseMainVector(&searchPointList[j]);
+    LOGI("XY:%f %f",vec.X,vec.Y);
+    vec=acvVecNormal(vec);
+    LOGI("XY:%f %f",vec.X,vec.Y);
+    cm.add(pos,pos,vec);
+  }
+
+
 
   if (inherentfeatureList == NULL)
   {
@@ -1918,12 +1984,11 @@ bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::ptInfo &
   return a.tmp < b.tmp;
 }
 
-acv_XY  meshMorph(acv_XY input)
-{
-  return input;
-}
 const acv_LineFit lf_zero = {0};
 const FeatureReport_lineReport lr_NA={line:lf_zero,status:FeatureReport_sig360_circle_line_single::STATUS_NA};
+
+bool drawDraw=false;
+
 
 FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
@@ -1948,7 +2013,6 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
 
       float MatchingMarginX = line->MatchingMarginX;
       float initMatchingMargin = line->initMatchingMargin;
-
       // {
       //   mult=MatchingMarginX;
       //   acvDrawLine(originalImage,
@@ -1974,21 +2038,6 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         lr.def = line;
         return lr;
       }
-
-      // for(int i=0;i<m_sections.size();i++)
-      // {
-        
-      //   LOGI("[%d]=================",i);
-      //   for(int j=0;j<m_sections[i].section.size();j++)
-      //   {
-      //     acv_XY pt=m_sections[i].section[j].pt;
-      //     // LOGI("[%d]:%.2f %.2f",j,pt.X,pt.Y);
-
-      //     originalImage->CVector[(int)pt.Y][(int)pt.X*3]=255;
-      //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+1]=255;
-      //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+2]=255;
-      //   }
-      // }
 
 
       float section_sigma_thres = 9999;//m_sections[0].sigma + 3;
@@ -2040,17 +2089,17 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         for(int k=0;k<m_sections.size();k++)
         {
           
-          eT.initTracking(m_sections[k],0);
-          for(int i=0;false;i++)
-          {
-            //eT.
-          }
+          // eT.initTracking(m_sections[k],0);
+          // for(int i=0;false;i++)
+          // {
+          //   //eT.
+          // }
           if (m_sections[k].sigma > section_sigma_thres)
             continue;
 
-          // int downCount=5;
+          // int downCount=15;
           // for( int i=0;i<m_sections[k].section.size();i++)//edge off
-          // {
+          // { 
           //   float ratio=1;//(float)i/downCount;
           //   if(i<downCount)
           //   {
@@ -2061,12 +2110,87 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
           //     ratio=(float)(m_sections[k].section.size()-i)/downCount;
           //   }
           //   // ratio*=ratio;
-          //   m_sections[k].section[i].edgeRsp=ratio;
+          //   // if(ratio<0.001)ratio=0.001;
+          //   // ratio=1/ratio;
+          //   // if(ratio==1)ratio=0;
+          //   m_sections[k].section[i].edgeRsp*=ratio;
+
           // }
+
+          float dEnd = (float)MatchingMarginX*0.8;
+          float fEdge = dEnd*3/5;
+          float fEdgeMargin = dEnd-fEdge;
+          float closestDist=9999;
+          for( int i=0;i<m_sections[k].section.size();i++)//edge off
+          {
+            
+            
+            acv_XY ptOnCandLine = acvClosestPointOnLine(m_sections[k].section[i].pt, line_cand);
+            float distance = acvDistance(ptOnCandLine,line_cand.line_anchor);
+
+            float fadeOutIdx=1;//(float)i/downCount;
+            float ratio;
+            if(distance<fEdge)
+            {
+              fadeOutIdx=0;
+              ratio=1;
+            }
+            else
+            {
+              fadeOutIdx= (distance-fEdge)/fEdgeMargin;
+              if(fadeOutIdx>1)fadeOutIdx=1;
+            }
+            ratio=(1+cos(fadeOutIdx*M_PI))/2;
+            // printf("%4.2f ",ratio);
+            // float ratio = 1-fadeOutIdx;
+            m_sections[k].section[i].edgeRsp*=ratio;
+
+          }
+
+
+          acv_Line pdLine=line_cand;
+          pdLine.line_vec=acvVecNormal(pdLine.line_vec);
+          pdLine.line_anchor = m_sections[k].section[0].pt;
+          float preDist = acvDistance_Signed(pdLine,m_sections[k].section[1].pt);
+          pdLine.line_anchor = m_sections[k].section[1].pt;
+          for( int i=2;i<m_sections[k].section.size()-1;i++)//even the points space
+          {
+            
+            float Dist = acvDistance(pdLine,m_sections[k].section[i].pt);
+            // printf("[%d]:%f",i,Dist);
+            pdLine.line_anchor = m_sections[k].section[i].pt;
+            m_sections[k].section[i-1].edgeRsp*=preDist+Dist/2;
+            preDist=Dist;
+          }
+          m_sections[k].section[0].edgeRsp=0;
+          m_sections[k].section[m_sections[k].section.size()-1].edgeRsp=0;
+
+
+          // printf("\n");
+
+          // line_cand.line_anchor
           for (auto ptInfo : m_sections[k].section)
           {
             s_points.push_back(ptInfo);
           }
+        }
+      }
+
+      
+
+      if(drawDraw)
+      for(int i=0;i<m_sections.size();i++)
+      {
+        
+        LOGI("[%d]=================",i);
+        for(int j=0;j<m_sections[i].section.size();j++)
+        {
+          acv_XY pt=m_sections[i].section[j].pt;
+          // LOGI("[%d]:%.2f %.2f",j,pt.X,pt.Y);
+
+          originalImage->CVector[(int)pt.Y][(int)pt.X*3]=255;
+          originalImage->CVector[(int)pt.Y][(int)pt.X*3+1]=255;
+          originalImage->CVector[(int)pt.Y][(int)pt.X*3+2]=255;
         }
       }
 
@@ -2480,7 +2604,7 @@ acv_XY ptOnLineRatio(acv_Line line,acv_XY sp1,acv_XY sp2,float ratio)
 
 acv_XY PixDomain_TO_TemplateDomain(acv_XY pix_pt,float sin,float cosin, float flip_f,acv_XY objCenter_pix, float mmpp)
 {//  sp1...ret......sp2 <= 0.3333
-  acv_XY pt = acvVecMult(acvVecSub(pt,objCenter_pix), mmpp);
+  acv_XY pt = acvVecMult(acvVecSub(pix_pt,objCenter_pix), mmpp);
   pt = acvRotation(-sin, cosin, pt);
   if(flip_f<0)
     pt.Y=-pt.Y;
@@ -2539,7 +2663,102 @@ int quadratic_roots(float a,float b,float c,float *r0,float*r1)
 }
 
 
-float angle_offset=0;
+acv_XY ConstrainMap::convert_polar(acv_XY from)
+{
+  float magSum=0;
+  float magWSum=0;
+
+  
+  acv_XY angSum={0,0};
+  float angWSum=0;
+
+  for(int i=0;i<anchorPairs.size();i++)
+  {
+    anchorPair pair = anchorPairs[i];
+    if(pair.to.X!=pair.to.X)//NAN
+    {
+      continue;
+    }
+    float distance=acvDistance(from,pair.from);
+    if(distance<0.01)distance=0.01;
+    float w=1/distance;
+    w*=w;
+    acv_XY vec_a=acvVecSub(pair.to,center);
+    acv_XY vec_b=acvVecSub(pair.from,center);
+    acv_XY shift = acvComplexDiv(vec_a,vec_b);
+    float shiftMag=hypot(shift.X,shift.Y);
+    LOGI("from:%f %f c:%f %f  to:%f %f",pair.from.X,pair.from.Y,center.X,center.Y,pair.constrainVector.X,pair.constrainVector.Y);
+    
+    float magDotP=acv2DDotProduct(acvVecNormalize(vec_b),pair.constrainVector);//the magnitude
+    if(magDotP<0)magDotP=-magDotP;
+    magWSum+=magDotP*w;
+    magSum+=shiftMag*magDotP*w;
+
+
+
+
+    acv_XY shiftAng=acvVecNormalize(shift);
+    float angDotP=sqrt(1-magDotP*magDotP);
+    angWSum+=angDotP*w;
+    angSum=acvVecAdd(angSum,acvVecMult(shiftAng,angDotP*w));
+  }
+
+  // magSum/=magWSum;
+  acv_XY wshift=acvVecMult(angSum,magSum/angWSum/magWSum);
+
+  // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
+
+  
+  // LOGI("vecAve:%f %f",vecSum.X,vecSum.Y); 
+  return acvComplexMult(from,wshift);
+}
+
+
+acv_XY ConstrainMap::convert(acv_XY from)
+{
+  return convert_polar(from);
+}
+acv_XY ConstrainMap::convert_vec(acv_XY from)
+{
+  acv_XY wvecSum={0,0};
+  acv_XY vecSum={0,0};
+
+  for(int i=0;i<anchorPairs.size();i++)
+  {
+    anchorPair pair = anchorPairs[i];
+    if(pair.to.X!=pair.to.X)//NAN
+    {
+      continue;
+    }
+    float distance=acvDistance(from,pair.from);
+    if(distance<0.01)distance=0.01;
+    float w=1/distance;
+    
+    // w*=w;
+    acv_XY wvec =  acvVecMult(pair.constrainVector,w);
+
+
+    acv_XY pos_wvec=wvec;
+    if(pos_wvec.X<0)pos_wvec.X=-pos_wvec.X;
+    if(pos_wvec.Y<0)pos_wvec.Y=-pos_wvec.Y;
+    
+
+    wvecSum=acvVecAdd(wvecSum,pos_wvec);
+
+    acv_XY vec=acvVecSub(pair.to,pair.from);
+    float dotP=acv2DDotProduct(vec,pair.constrainVector);
+    // LOGI("pos_wvec: %f %f  vec:%f %f",pos_wvec.X,pos_wvec.Y,vec.X,vec.Y);
+    LOGI("[%d] w:%f dotP:%f from: %f %f   vec: %f %f  wvec:%f %f  wvecSum:%f %f",i,w,dotP,pair.from.X,pair.from.Y,vec.X,vec.Y,wvec.X,wvec.Y ,wvecSum.X,wvecSum.Y);
+    vecSum=acvVecAdd(vecSum,acvVecMult(wvec,dotP));
+  }
+  // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
+  vecSum.X/=wvecSum.X;
+  vecSum.Y/=wvecSum.Y;
+  
+  LOGI("vecSum:%f %f  wvecSum:%f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
+  return acvVecAdd(vecSum,from);
+}
+
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
@@ -2547,13 +2766,109 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   FeatureReport_sig360_circle_line_single &singleReport,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections)
 {
-
+  drawDraw=false;
 
 
   bool isInv;
   float angle;
   bool confined_matching=true;
-  float error;
+  float error; 
+
+  error = feature_signature.match_min_error(
+    tmp_signature,this->matching_angle_offset, this->matching_angle_margin, 
+    this->matching_face,&isInv, &angle);
+
+
+  if(0) 
+  {  
+    vector<acv_XY> sigMatchErr;
+    feature_signature.match_span(tmp_signature,
+      0,359,360,sigMatchErr,tmp_signature.signature_data.size()/100,true);
+  
+    int minErrIdx = -1;
+    float minErr=999;
+    
+
+    for(int i=0;i<sigMatchErr.size();i++)
+    {
+      if(minErr>sigMatchErr[i].Y)
+      {
+        minErr=sigMatchErr[i].Y;
+        minErrIdx=i;
+      }
+    }
+    const int polyFitLen=360/5;
+    float errorArr[polyFitLen];
+
+    int zeroIdx=minErrIdx-polyFitLen/2;
+    if(zeroIdx<0)zeroIdx+=sigMatchErr.size();
+
+    for(int i=0;i<polyFitLen;i++)
+    {
+      errorArr[i]=sigMatchErr[(i+zeroIdx)%(sigMatchErr.size())].Y;
+      // LOGI("errorArr[%d]:%f",i,errorArr[i]);
+    }
+
+
+    // for(int i=0;i<sigMatchErr.size();i++)
+    // {
+    //   LOGI("[%d]:ang:%03.2f,diff:%03.2f",i,sigMatchErr[i].X,sigMatchErr[i].Y);
+    // }
+
+
+
+    float coefficients[4];
+    int polyRet = polyfit(NULL,errorArr,NULL,polyFitLen,3,coefficients);
+    
+    LOGI("coefficients  %f + %fx + %fx^2 + %fx^3 ",coefficients[0],coefficients[1],coefficients[2],coefficients[3]);
+    
+    for(int i=0;i<polyFitLen;i++)
+    {
+      double cc = polycalc(i, coefficients,4);
+      LOGI("errorArr[%d]:%f  ~~%f   diff:%f",i,errorArr[i],cc,errorArr[i]-cc);
+    }
+    float d_coefficients[3];
+
+    for(int i=0;i<3;i++)
+    {
+      d_coefficients[i]=coefficients[i+1]*(i+1);
+    }
+    float r0,r1;
+    
+
+
+
+    int rootType = quadratic_roots(d_coefficients[2],d_coefficients[1],d_coefficients[0],&r0,&r1);
+
+    float avRoot=NAN;
+    if(r0<polyFitLen && r0>=0)
+    {
+      avRoot=r0;
+    }
+    if(r1<polyFitLen && r1>=0)
+    {
+      avRoot=r1;
+    }
+
+    double cc = polycalc(avRoot, coefficients,4);
+    avRoot+=zeroIdx;
+
+
+    if(rootType==0)
+    {
+      
+      LOGI("ROOTS: %f   %f avRoot:%f calcVal:%f zeroIdx:%d  minErrIdx:%d",r0,r1, avRoot,cc,zeroIdx,minErrIdx);
+    } 
+    else
+    {
+      LOGI("ROOTS: %f+%f i   %f-%f i  ",r0,r1,r0,r1);
+    }
+    
+
+  }
+
+
+
   if(confined_matching)
   {//this is acheived by limiting the matching range
     error = feature_signature.match_min_error(
@@ -2610,7 +2925,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
 
 
-  float sigma;
+  // static float angle_offset=0;
+  // float sigma;
   // angle+=angle_offset*M_PI/180;
   // if(angle_offset>2)
   // {
@@ -2618,7 +2934,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   // }
   // else
   // {
-  //   angle_offset+=0.7;
+  //   angle_offset+=0.1;
   // }
   float mmpp = bacpac->sampler->mmpP_ideal(); //mm per pixel
   float ppmm =1/mmpp; //pixel per mm
@@ -2703,33 +3019,170 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       detectedSearchPoints.push_back(report);
     }
 
-
-    
-    for (int j = 0; j < featureLineList.size(); j++)//revisit
+    for(int i=0;i<1;i++)
     {
-
-      featureDef_line line = featureLineList[j];
-
-      acv_XY cp0= searchPointList[1].data.anglefollow.position;
-      acv_XY cp1= searchPointList[2].data.anglefollow.position;
     
-      acv_Line lineV;
-      lineV.line_vec=acvVecSub(line.p1,line.p0);
-      lineV.line_anchor=line.p0;
-      
+  // drawDraw=true;
+    cm.center=(acv_XY){0,0};
+    for (int j = 0; j < searchPointList.size(); j++)//Fill the ConstrainMap
+    {
+      cm.anchorPairs[j].to=(acv_XY){NAN,NAN};
+      if(searchPointList[j].data.anglefollow.locating_anchor==false)
       {
-        float ratio0 = distRatioOnLine(lineV,cp0,cp1,line.p0);
-        float ratio1 = distRatioOnLine(lineV,cp0,cp1,line.p1);
-        featureLineList[j].cache_r0=ratio0;//cache the ratio info, we will use this ratio for following revisiting locating
-        featureLineList[j].cache_r1=ratio1;
+        continue;
+      }
+      FeatureReport_searchPointReport &srep = detectedSearchPoints[j];
+      featureDef_searchPoint &sdef = *srep.def;
+
+      acv_XY tempVec = TemplateDomain_TO_PixDomain(cm.anchorPairs[j].from,cached_sin, cached_cos, flip_f,calibCen, mmpp);
+      
+
+      // if(srep.status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+      acv_XY locatedPtOnTemp=srep.pt;
+      locatedPtOnTemp = PixDomain_TO_TemplateDomain(locatedPtOnTemp,cached_sin, cached_cos, flip_f,calibCen, mmpp);
+      cm.anchorPairs[j].to=locatedPtOnTemp;
+
+      // acvDrawCrossX(originalImage,
+      //                 srep.pt.X, srep.pt.Y,
+      //                 3, 3);
+      // acvDrawCrossX(originalImage,
+      //                 tempVec.X, tempVec.Y,
+      //                 3, 3);
+
+
+      // {
+      //   locatedPtOnTemp = PixDomain_TO_TemplateDomain(srep.pt,cached_sin, cached_cos, flip_f,calibCen, mmpp);
+      //   locatedPtOnTemp = TemplateDomain_TO_PixDomain(locatedPtOnTemp,cached_sin, cached_cos, flip_f,calibCen, mmpp);
+      //   cm.anchorPairs[j].to=locatedPtOnTemp;
+      // }
+      
+      // LOGI("o:%f,%f(%f,%f) >(%f,%f)%f,%f ",
+      // cm.anchorPairs[j].from.X,
+      // cm.anchorPairs[j].from.Y,
+      // tempVec.X,
+      // tempVec.Y,
+
+      // srep.pt.X,
+      // srep.pt.Y,
+      // locatedPtOnTemp.X,
+      // locatedPtOnTemp.Y);
+      
+    }
+
+
+    for (int j = 0; j < featureLineList.size(); j++)
+    {
+      
+
         
+      featureDef_line line = featureLineList[j];
+      {
+        acv_XY temp_pt = cm.convert(line.p0);
+        LOGI("p0:%f %f( %f %f)",line.p0.X,line.p0.Y,temp_pt.X,temp_pt.Y);
+        temp_pt = cm.convert(line.p1);
+        LOGI("p1:%f %f( %f %f)",line.p1.X,line.p1.Y,temp_pt.X,temp_pt.Y);
       }
 
+
+
+      acv_XY tmp0 = TemplateDomain_TO_PixDomain(line.p0,cached_sin, cached_cos, flip_f,calibCen, mmpp);
+      acv_XY tmp1 = TemplateDomain_TO_PixDomain(line.p1,cached_sin, cached_cos, flip_f,calibCen, mmpp);
+
+      // acvDrawCrossX(originalImage,
+      //                 tmp0.X, tmp0.Y,
+      //                 5, 5);
+      // acvDrawCrossX(originalImage,
+      //                 tmp1.X, tmp1.Y,
+      //                 5, 5);
+      acv_XY tmpc0 = TemplateDomain_TO_PixDomain(cm.convert(line.p0),cached_sin, cached_cos, flip_f,calibCen, mmpp);
+      acv_XY tmpc1 = TemplateDomain_TO_PixDomain(cm.convert(line.p1),cached_sin, cached_cos, flip_f,calibCen, mmpp);
+
+
+      line.p0=tmpc0;
+      line.p1=tmpc1;
+      // acv_XY mid=acvVecMult(acvVecAdd(line.p0,line.p1), 0.5);//Just for testing
+      // line.p0 = acvVecAdd(acvVecMult(acvVecSub(line.p0,mid), 0.5),mid);
+      // line.p1 = acvVecAdd(acvVecMult(acvVecSub(line.p1,mid), 0.5),mid);
+
+      line = lineDefDataPrep(line);
+      
+      acv_Line line_cand;
+      line_cand.line_vec =  line.lineTar.line_vec;
+      line_cand.line_anchor = line.lineTar.line_anchor;
+      line.initMatchingMargin *= ppmm;
+
+
+      // acvDrawCrossX(originalImage,
+      //               line.lineTar.line_anchor.X, line.lineTar.line_anchor.Y,
+      //               5, 5);
+      // acvDrawCrossX(originalImage,
+      //                 tmpc0.X, tmpc0.Y,
+      //                 3, 3);
+      // acvDrawCrossX(originalImage,
+      //                 tmpc1.X, tmpc1.Y,
+      //                 3, 3);
+
+      FeatureReport_lineReport lr = SingleMatching_line(originalImage,
+        labeledBuff,binarizedBuff,buffer_img,
+        &line,eT, ppmm, calibCen,
+        line_cand, edge_grid,flip_f,tmp_points,m_sections);
+
+      lr.def=&(featureLineList[j]);
+      // lr.line.end_pt1=line.lineTar.line_anchor;
+      // lr.line.end_pt1=tmpc0;
+      // lr.line.end_pt2=tmpc1;
+      // lr.line.line=line_cand;
+
+      detectedLines[j]=(lr);
+
     }
+
+
+    for (int j = 0; j < searchPointList.size(); j++)
+    {
+      featureDef_searchPoint spoint = searchPointList[j];
+      spoint.margin *= ppmm;
+      spoint.width *= ppmm;
+      if (spoint.subtype == featureDef_searchPoint::anglefollow)
+      {
+        spoint.data.anglefollow.position = acvVecMult(spoint.data.anglefollow.position, ppmm);
+      }
+      
+      FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint,eT);
+      LOGV("id:%d, %d", report.def->id, searchPointList[j].id);
+      report.def = &(searchPointList[j]);
+      detectedSearchPoints[j]=report;
+    }
+    
+    }
+
+
+
 
     for(int i=0;i<0;i++)
     {
 
+      for (int j = 0; j < featureLineList.size(); j++)//revisit
+      {
+
+        featureDef_line line = featureLineList[j];
+
+        acv_XY cp0= searchPointList[1].data.anglefollow.position;
+        acv_XY cp1= searchPointList[2].data.anglefollow.position;
+      
+        acv_Line lineV;
+        lineV.line_vec=acvVecSub(line.p1,line.p0);
+        lineV.line_anchor=line.p0;
+        
+        {
+          float ratio0 = distRatioOnLine(lineV,cp0,cp1,line.p0);
+          float ratio1 = distRatioOnLine(lineV,cp0,cp1,line.p1);
+          featureLineList[j].cache_r0=ratio0;//cache the ratio info, we will use this ratio for following revisiting locating
+          featureLineList[j].cache_r1=ratio1;
+          
+        }
+
+      }
       for (int j = 0; j < featureLineList.size(); j++)//revisit
       {
         

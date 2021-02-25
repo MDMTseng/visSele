@@ -286,9 +286,36 @@ class renderUTIL {
     this._drawpoint(ctx, point, type, 2 * size);
   }
   
+  draw_aimcross(ctx, point, size = this.getPointSize(),ratio=0.2) {
+
+
+    
+    ctx.beginPath();
+    // ctx.moveTo(point.x - size / 2, point.y);
+    // ctx.lineTo(point.x + size / 2, point.y);
+
+    ctx.moveTo(point.x, point.y - size / 2);
+    ctx.lineTo(point.x, point.y - size / 2*ratio);
+
+
+    ctx.moveTo(point.x, point.y + size / 2);
+    ctx.lineTo(point.x, point.y + size / 2*ratio);
+
+    
+    ctx.moveTo(point.x - size / 2, point.y);
+    ctx.lineTo(point.x - size / 2*ratio, point.y);
+    ctx.moveTo(point.x + size / 2, point.y);
+    ctx.lineTo(point.x + size / 2*ratio, point.y);
+
+    ctx.stroke();
+    ctx.closePath();
+  }
+
+  
   drawcross(ctx, point, size = this.getPointSize()) {
     this._drawpoint(ctx, point, "cross", 2 * size);
   }
+
 
   drawInherentShapeList(ctx, inherentShapeList) {
     if (inherentShapeList === undefined || inherentShapeList == null) return;
@@ -754,13 +781,18 @@ class renderUTIL {
             });
 
 
+
+
             if (drawSubObjs)
               this.drawShapeList(ctx, subObjs, next_ShapeColor, skip_id_list, shapeList, unitConvert, drawSubObjs,inFullDisplay);
 
             ctx.strokeStyle = "gray";
             this.drawpoint(ctx, eObject.pt1);
-
-
+            if(eObject.locating_anchor)
+            {
+              ctx.strokeStyle = "red";
+              this.draw_aimcross(ctx, eObject.pt1, this.getPointSize()*3,0.3);
+            }
 
           }
           break;

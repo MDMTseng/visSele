@@ -108,6 +108,7 @@ typedef struct featureDef_searchPoint{
       int target_id;
       float angleDeg;
       bool search_far;
+      bool locating_anchor;
     }anglefollow;
   }data;
 }featureDef_searchPoint;

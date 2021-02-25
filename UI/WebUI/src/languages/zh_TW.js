@@ -121,7 +121,8 @@ export default {
       quadrant:"量測象限"
     },
     search_point:{
-      search_far:"近/遠"
+      search_far:"近/遠",
+      locating_anchor:"定位錨點"
     },
     mainui:{
       select_deffile:"選擇定義檔",

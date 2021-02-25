@@ -4,6 +4,7 @@
 #include "FeatureManager.h"
 #include "FeatureReport.h"
 
+#include "logctrl.h"
 #include "FeatureManager_binary_processing.h"
 #include <ContourGrid.h>
 #include <MatchingCore.h>
@@ -34,6 +35,96 @@ public :
 };
 
 
+class IMGMoment//TODO
+{
+  typedef struct PQ{
+    int P,Q,M;
+  }PQ;
+  vector<PQ> mSet;
+
+  IMGMoment()
+  {
+
+  }
+
+  void update(acvImage *img, acv_XY TL, acv_XY WH)
+  {
+
+  }
+
+
+};
+class ConstrainMap
+{
+  public:
+  typedef struct anchorPair{
+    acv_XY from;
+    acv_XY to;
+    acv_XY constrainVector;
+  }anchorPair;
+  
+  acv_XY center;
+  vector<anchorPair> anchorPairs;
+  ConstrainMap()
+  {
+
+  }
+
+  void add(acv_XY from,acv_XY to,acv_XY constrainVector)
+  {
+    anchorPairs.push_back((anchorPair){from:from,to:to,constrainVector:acvVecNormalize(constrainVector)});
+  }
+
+  int size()
+  {
+    return anchorPairs.size();
+  }
+  void clear()
+  {
+    anchorPairs.clear();
+  }
+
+
+
+  acv_XY convert_Ave(acv_XY from)
+  {
+    acv_XY wvecSum={0,0};
+    acv_XY vecSum={0,0};
+
+    for(int i=0;i<anchorPairs.size();i++)
+    {
+      anchorPair pair = anchorPairs[i];
+      if(pair.to.X!=pair.to.X)//NAN
+      {
+        continue;
+      }
+      float distance=acvDistance(from,pair.from);
+      if(distance<0.01)distance=0.01;
+      float w=1/distance;
+
+
+      wvecSum=acvVecAdd(wvecSum,(acv_XY){w,w});
+
+      acv_XY vec=acvVecSub(pair.to,pair.from);
+      vecSum=acvVecAdd(vecSum,acvVecMult(vec,w));
+    }
+    // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
+    vecSum.X/=wvecSum.X;
+    vecSum.Y/=wvecSum.Y;
+    
+    LOGI("vecAve:%f %f",vecSum.X,vecSum.Y); 
+    return acvVecAdd(from,vecSum);
+  }
+
+
+
+  acv_XY convert_polar(acv_XY from);
+
+  acv_XY convert_vec(acv_XY from);
+  acv_XY convert(acv_XY from);
+};
+
+
 class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing {
 
   typedef enum FEATURETYPE {
@@ -54,7 +145,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   int signature_feature_id;
   ContourSignature feature_signature;
   ContourSignature tmp_signature;
-  
+  ConstrainMap cm;
   vector<acv_XY>signature_data_buffer;
   ContourFetch edge_grid;
 
@@ -114,6 +205,7 @@ protected:
   int ParseLocatePosition(FeatureReport_sig360_circle_line_single &report,int feature_id, acv_XY *pt);
   int lineCrossPosition(float flip_f,FeatureReport_sig360_circle_line_single &report,int line1_id,int line2_id, acv_XY *pt);
 
+  acv_XY ParseMainVector(featureDef_searchPoint *def_sp);
 
   int SingleMatching(acvImage *originalImage,acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
