@@ -138,7 +138,15 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       }
       else
       {
-        rotate+=0.001;
+        // float baseAngle=32*M_PI/180;
+        // if(rotate<baseAngle)rotate=baseAngle;
+        // else if(rotate>36*M_PI/180)rotate=baseAngle;
+        // else
+        // {
+
+        //   rotate+=0.06*M_PI/180;
+        // }
+        rotate+=1*M_PI/180;
       }
       acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
 

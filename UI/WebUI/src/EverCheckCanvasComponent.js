@@ -64,8 +64,7 @@ class CameraCtrl {
     this.matrix.preMultiplySelf(mat);
   }
 
-  
-  Rotate(theta, center = { x: 0, y: 0 }) {
+  Rotate_matrix(theta, center = { x: 0, y: 0 }) {
     let mat = new DOMMatrix();
     mat.translateSelf(center.x, center.y);
     let sinT=Math.sin(theta);
@@ -87,9 +86,22 @@ class CameraCtrl {
     this.matrix.a = 
     this.matrix.d = scale;
 
-    this.matrix.preMultiplySelf(mat);
+    return mat;
+  }
+  
+  Rotate(theta, center = { x: 0, y: 0 }) {
+
+    this.matrix.preMultiplySelf(this.Rotate_matrix(theta, center ));
   }
 
+  ResetRotate(theta, center = { x: 0, y: 0 }) {
+
+    // this.matrix.preMultiplySelf(this.Rotate_matrix(theta, center ));
+  }
+  SetRotate(theta, center = { x: 0, y: 0 }) {
+
+    this.matrix=this.Rotate_matrix(theta, center );
+  }
   StartDrag(vector = { x: 0, y: 0 }) {
     this.tmpMatrix.setMatrixValue(this.identityMat);
     this.tmpMatrix.translateSelf(vector.x, vector.y);
@@ -104,6 +116,12 @@ class CameraCtrl {
     this.matrix.m41 = 0;
     this.matrix.m42 = 0;
     this.matrix.translateSelf(location.x, location.y);
+  }
+
+  GetCameraRotation(matrix = this.matrix) {
+    let rot = Math.atan2( matrix.m21-matrix.m12,matrix.m11 + matrix.m22);
+    // console.log(rot);
+    return rot;
   }
 
   GetCameraScale(matrix = this.matrix) {//It's an over simplified way to get scale for an matrix, change it if nesessary
@@ -1629,22 +1647,31 @@ class EverCheckCanvasComponent_proto {
   };
 
   zoom_emit() {
-    let alpha = 0.2;
-    let ViewPortX = -this.canvas.width * alpha;
-    let ViewPortY = -this.canvas.height * alpha;
-    let ViewPortW = this.canvas.width - 2 * ViewPortX;
-    let ViewPortH = this.canvas.height - 2 * ViewPortY;
+    // return this.zoom_full();
+    let cW=this.canvas.width;
+    let cH=this.canvas.height;
+
+    // let maxEdge=cW>cH?cW:cH;
+    // cW=cH=maxEdge;
+
+
+    let alpha = .2;
+    let ViewPort_expand= 0;
+    let ViewPortX = -cW * alpha-ViewPort_expand;
+    let ViewPortY = -cH * alpha-ViewPort_expand;
+    let ViewPortW = cW - 2 * ViewPortX;
+    let ViewPortH = cH - 2 * ViewPortY;
     let totalScale = this.camera.GetCameraScale();
     let offset = this.camera.GetCameraOffset();
 
 
 
     let crop = [
-      (ViewPortX - offset.x - this.canvas.width / 2) / totalScale,
-      (ViewPortY - offset.y - this.canvas.height / 2) / totalScale,
+      (ViewPortX - offset.x - cW / 2) / totalScale,
+      (ViewPortY - offset.y - cH / 2) / totalScale,
       ViewPortW / totalScale,
       ViewPortH / totalScale];
-    let down_samp_level = 1.0 * crop[2] / (this.canvas.width);
+    let down_samp_level = 1.0 * crop[2] / (cW)*0.3;
     this.EmitEvent(
       {
         type: "asdasdas",
@@ -1656,6 +1683,20 @@ class EverCheckCanvasComponent_proto {
     );
   }
 
+  zoom_full() {
+
+    let crop = [0,0,999999,999999];
+    let down_samp_level = 0.001;
+    this.EmitEvent(
+      {
+        type: "asdasdas",
+        data: {
+          down_samp_level,
+          crop
+        }
+      }
+    );
+  }
   onmouseswheel(evt) {
     //
     let ret_val = this.scaleCanvas(this.mouseStatus, evt.deltaY / 4);
@@ -2208,7 +2249,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     return ret_status;
   }
-  
+  rotateVector(vec, ang)
+  {
+      // not right!
+      return {
+          x:vec.x * Math.cos(ang) - vec.y * Math.sin(ang),
+          y:vec.x * Math.sin(ang) + vec.y * Math.cos(ang)
+      };
+  };
 
   draw() {
     this.draw_INSP();
@@ -2216,6 +2264,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   draw_INSP() {
 
 
+    let mmpp = this.rUtil.get_mmpp();
     // console.log(">>edit_DB_info>>",this.edit_DB_info );
     if (this.ERROR_LOCK || this.edit_DB_info == null ) {
       return;
@@ -2236,13 +2285,49 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.lineWidth = this.rUtil.getIndicationLineSize();
     ctx.resetTransform();
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+
+
+
+    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
+
+
+
+
+
     let matrix = this.worldTransform();
     ctx.setTransform(matrix.a, matrix.b, matrix.c,
       matrix.d, matrix.e, matrix.f);
 
+    if(false&&inspectionReportList.length==1)
+    {
+      let line_N=inspectionReportList[0].detectedLines[1];
+      let spoint_N=inspectionReportList[0].searchPoints[0];
+      
+      let centerPt={x:inspectionReportList[0].cx,y:inspectionReportList[0].cx}
+      // centerPt={x:(line_N.pt1.x+line_N.pt2.x)/2,y:(line_N.pt1.y+line_N.pt2.y)/2}
+      // centerPt={x:(spoint_N.x),y:(spoint_N.y)}
+      ctx.translate(centerPt.x,centerPt.y);//Move to the center of the secCanvas
+      
+
+      // let rot=inspectionReportList[0].rotate;
+      let rot=-Math.atan2(line_N.vy,line_N.vx);
+
+      ctx.rotate(rot);
+      if (inspectionReportList[0].isFlipped)
+        ctx.scale(1, -1);
+      
+      // ctx.translate(inspectionReportList[0].cx/mmpp,inspectionReportList[0].cy/mmpp);//Move to the center of the secCanvas
+      // console.log(inspectionReportList[0]);
+      
+      ctx.translate(-centerPt.x,-centerPt.y);//Move to the center of the secCanvas
+      
+    }
+  
+    
+    
     {//TODO:HACK: 4X4 times scale down for transmission speed
 
-      let mmpp = this.rUtil.get_mmpp();
 
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
@@ -2291,10 +2376,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         ctx.restore();
         
       }
+
+
     }
     
-    let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
-
     if (true) {
       let sigScale = 1;
 
@@ -2308,118 +2393,121 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         }, []);
       }
 
-      
 
     //this.edit_DB_info.inspReport.reports;
-
       if(true)
-      inspectionReportList.forEach((report, idx) => {
-        ctx.save();
-        ctx.translate(report.cx, report.cy);
-        
-        // ctx.save();
-        // ctx.rotate(-report.rotate);
-        // if (report.isFlipped)
-        //   ctx.scale(1, -1);
-        // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
-        // ctx.restore();
-        // 
-        
+      {
+        inspectionReportList.forEach((report, idx) => {
+          ctx.save();
+          ctx.translate(report.cx, report.cy);
+          
+          // ctx.save();
+          // ctx.rotate(-report.rotate);
+          // if (report.isFlipped)
+          //   ctx.scale(1, -1);
+          // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
+          // ctx.restore();
+          // 
+          
 
-        // ctx.scale(sigScale, sigScale);
-
-
-
-        // ctx.textAlign = "center";
-        // ctx.textBaseline = 'middle';
-        // ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.013;
+          // ctx.scale(sigScale, sigScale);
 
 
 
+          // ctx.textAlign = "center";
+          // ctx.textBaseline = 'middle';
+          // ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.013;
 
-        // this.rUtil.draw_Text(ctx, idx,1, 0, 0);
 
-        // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
 
-        let ret_res = this.inspectionResult(report);
-        //console.log(ret_res, report);
-        switch (ret_res) {
-          case INSPECTION_STATUS.NA:
-            ctx.fillStyle = this.colorSet.inspection_NA;
-            break;
-          case INSPECTION_STATUS.UNSET:
-            ctx.fillStyle = this.colorSet.inspection_UNSET;
-            break;
-          case INSPECTION_STATUS.SUCCESS:
-            {
-              ctx.fillStyle = this.colorSet.inspection_Pass;
 
+          // this.rUtil.draw_Text(ctx, idx,1, 0, 0);
+
+          // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
+
+          let ret_res = this.inspectionResult(report);
+          //console.log(ret_res, report);
+          switch (ret_res) {
+            case INSPECTION_STATUS.NA:
+              ctx.fillStyle = this.colorSet.inspection_NA;
+              break;
+            case INSPECTION_STATUS.UNSET:
+              ctx.fillStyle = this.colorSet.inspection_UNSET;
+              break;
+            case INSPECTION_STATUS.SUCCESS:
               {
-                let minViolationIdx = Number.MAX_VALUE;
-                this.edit_DB_info.list.forEach((eObj) => {
-                  if (eObj.type === SHAPE_TYPE.measure) {
-                    let targetID = eObj.id;
-                    let inspMeasureTar = report.judgeReports.find((measure) => (measure.id === targetID));
-                    if (inspMeasureTar === undefined) {
-                      return;
+                ctx.fillStyle = this.colorSet.inspection_Pass;
+
+                {
+                  let minViolationIdx = Number.MAX_VALUE;
+                  this.edit_DB_info.list.forEach((eObj) => {
+                    if (eObj.type === SHAPE_TYPE.measure) {
+                      let targetID = eObj.id;
+                      let inspMeasureTar = report.judgeReports.find((measure) => (measure.id === targetID));
+                      if (inspMeasureTar === undefined) {
+                        return;
+                      }
+
+                      ctx.fillStyle = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
                     }
+                  });
+                }
+                //ctx.fillStyle=this.colorSet.inspection_production_Fail;
 
-                    ctx.fillStyle = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
-                  }
-                });
               }
-              //ctx.fillStyle=this.colorSet.inspection_production_Fail;
+              break;
+            case INSPECTION_STATUS.FAILURE:
+              ctx.fillStyle = this.colorSet.inspection_Fail;
+              break;
 
-            }
-            break;
-          case INSPECTION_STATUS.FAILURE:
-            ctx.fillStyle = this.colorSet.inspection_Fail;
-            break;
-
-        }
-        // let fontPx = this.getFontHeightPx();
-        
-        
-        this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
-
-        {
-          let ringR=this.rUtil.getFontHeightPx()*1;
-          let ringThickness=this.rUtil.getFontHeightPx()/4;
-          ctx.lineWidth = ringThickness;
-          ctx.beginPath();
-
-          let startAngle=0, endAngle=2 * Math.PI;
-          if(report.headSkipTime>0)
-          {
-            ctx.strokeStyle = "rgb(255, 0, 0)";
-            startAngle=-2 * Math.PI*report.headSkipTime/report.minReportRepeat;
-            endAngle=0;
           }
-          else
+          // let fontPx = this.getFontHeightPx();
+          
+          
+          ctx.strokeStyle = "red";
+          this.rUtil.draw_aimcross(ctx, {x:0,y:0});
+          // this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
+
           {
-            if(report.repeatTime<report.minReportRepeat)
+            let ringR=this.rUtil.getFontHeightPx()*1;
+            let ringThickness=this.rUtil.getFontHeightPx()/4;
+            ctx.lineWidth = ringThickness;
+            ctx.beginPath();
+
+            let startAngle=0, endAngle=2 * Math.PI;
+            if(report.headSkipTime>0)
             {
-              ctx.strokeStyle = "rgb(255, 255, 0)";
-              endAngle = 2 * Math.PI*report.repeatTime/report.minReportRepeat;
-            }
-            else if(report.repeatTime<report.minReportRepeat+1)
-            {
-              ctx.strokeStyle = "rgba(0, 255, 0,0.5)";
+              ctx.strokeStyle = "rgb(255, 0, 0)";
+              startAngle=-2 * Math.PI*report.headSkipTime/report.minReportRepeat;
+              endAngle=0;
             }
             else
             {
-              endAngle=0;
+              if(report.repeatTime<report.minReportRepeat)
+              {
+                ctx.strokeStyle = "rgb(255, 255, 0)";
+                endAngle = 2 * Math.PI*report.repeatTime/report.minReportRepeat;
+              }
+              else if(report.repeatTime<report.minReportRepeat+1)
+              {
+                ctx.strokeStyle = "rgba(0, 255, 0,0.5)";
+              }
+              else
+              {
+                endAngle=0;
+              }
             }
+            ctx.arc(0, 0,  ringR, startAngle,endAngle);
+            ctx.stroke();
           }
-          ctx.arc(0, 0,  ringR, startAngle,endAngle);
-          ctx.stroke();
-        }
-        // ctx.fillText(idx, 0, 0);
-        // ctx.strokeText(idx, 0, 0);
-        // ctx.fill();
-        ctx.restore();
-        //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"cross");
-      });
+          // ctx.fillText(idx, 0, 0);
+          // ctx.strokeText(idx, 0, 0);
+          // ctx.fill();
+          ctx.restore();
+          //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"cross");
+        });
+      }
+
     }
 
     inspectionReportList.forEach((report, idx) => {
@@ -2472,6 +2560,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
       }
     });
+
+    
     if(this.ROISettingInfo!==undefined && 
       this.ROISettingInfo.current!==undefined && 
       this.ROISettingInfo.start!==undefined)
@@ -2502,6 +2592,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
 
   ctrlLogic() {
+
+
+
     if (
       this.edit_DB_info.inherentShapeList === null ||
       this.edit_DB_info.inherentShapeList === undefined ||

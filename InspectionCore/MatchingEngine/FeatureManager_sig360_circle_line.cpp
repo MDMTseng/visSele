@@ -2671,7 +2671,7 @@ acv_XY ConstrainMap::convert_polar(acv_XY from)
   
   acv_XY angSum={0,0};
   float angWSum=0;
-
+  bool doAdj=false;
   for(int i=0;i<anchorPairs.size();i++)
   {
     anchorPair pair = anchorPairs[i];
@@ -2679,15 +2679,35 @@ acv_XY ConstrainMap::convert_polar(acv_XY from)
     {
       continue;
     }
+    doAdj=true;
     float distance=acvDistance(from,pair.from);
     if(distance<0.01)distance=0.01;
     float w=1/distance;
-    w*=w;
+    // w*=w;
     acv_XY vec_a=acvVecSub(pair.to,center);
-    acv_XY vec_b=acvVecSub(pair.from,center);
+
+    acv_XY pFrom=pair.from;
+
+    if(0)//try to use pre_projected point for directional adjustment, but it doesn't work very well
+    {
+      acv_XY v_to2from=acvVecSub(pair.from,pair.to);
+      v_to2from=acvVecMult(pair.constrainVector,acv2DDotProduct(v_to2from,pair.constrainVector));
+      acv_XY pFrom=acvVecAdd(v_to2from,pair.to);
+    }
+    
+
+    //LOGI("pFrom:%f %f pair.to:%f %f pair.from:%f %f  cv:%f %f",pFrom.X,pFrom.Y,vec_a.X,vec_a.Y,pair.from.X,pair.from.Y,pair.constrainVector.X,pair.constrainVector.Y);
+    // pair.constrainVector
+
+    acv_XY vec_b=acvVecSub(pFrom,center);
+
+
+
     acv_XY shift = acvComplexDiv(vec_a,vec_b);
+
+
     float shiftMag=hypot(shift.X,shift.Y);
-    LOGI("from:%f %f c:%f %f  to:%f %f",pair.from.X,pair.from.Y,center.X,center.Y,pair.constrainVector.X,pair.constrainVector.Y);
+    // LOGI("from:%f %f c:%f %f  to:%f %f",pair.from.X,pair.from.Y,center.X,center.Y,pair.constrainVector.X,pair.constrainVector.Y);
     
     float magDotP=acv2DDotProduct(acvVecNormalize(vec_b),pair.constrainVector);//the magnitude
     if(magDotP<0)magDotP=-magDotP;
@@ -2702,7 +2722,7 @@ acv_XY ConstrainMap::convert_polar(acv_XY from)
     angWSum+=angDotP*w;
     angSum=acvVecAdd(angSum,acvVecMult(shiftAng,angDotP*w));
   }
-
+  if(!doAdj)return from;
   // magSum/=magWSum;
   acv_XY wshift=acvVecMult(angSum,magSum/angWSum/magWSum);
 
@@ -2902,6 +2922,19 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
 
 
+  // static float angle_offset=0;
+  // float sigma;
+  // angle+=angle_offset*M_PI/180;
+  // if(angle_offset>3)
+  // {
+  //   angle_offset=-3;
+  // }
+  // else
+  // {
+  //   angle_offset+=0.1;
+  // }
+
+
   singleReport.rotate = angle;
   singleReport.isFlipped = isInv;
   
@@ -2916,26 +2949,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   //Note, the flip_f here means to flip Y first then do rotation
 
 
-
-
-
-
-
-
-
-
-
-  // static float angle_offset=0;
-  // float sigma;
-  // angle+=angle_offset*M_PI/180;
-  // if(angle_offset>2)
-  // {
-  //   angle_offset=-2;
-  // }
-  // else
-  // {
-  //   angle_offset+=0.1;
-  // }
   float mmpp = bacpac->sampler->mmpP_ideal(); //mm per pixel
   float ppmm =1/mmpp; //pixel per mm
     acv_XY calibCen= singleReport.Center;
@@ -2952,6 +2965,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
   
+    // acvDrawCrossX(originalImage,
+    //   calibCen.X, calibCen.Y,
+    //   3, 3);
     detectedCircles.resize(0);
     detectedLines.resize(0);
     detectedAuxPoints.resize(0);
@@ -3734,13 +3750,28 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
 
+    edge_grid.RESET();
+    extractLabeledContourDataToContourGrid(labeledBuff,i,ldData[i],edge_grid, scanline_skip);
+
+
+
+    if(0)
+    {
+      static float rot=0;
+      rot+=10*3.14/180;
+      float mag=3;
+      ldData[i].Center=acvVecAdd(ldData[i].Center,(acv_XY){mag*sin(rot),mag*cos(rot)});
+    }
+
     acv_XY ideal_center = ldData[i].Center;
 
 
     bacpac->sampler->img2ideal(&ideal_center);
 
-    edge_grid.RESET();
-    extractLabeledContourDataToContourGrid(labeledBuff,i,ldData[i],edge_grid, scanline_skip);
+
+
+
+
 
     convertContourGrid2Signature(ideal_center,edge_grid,tmp_signature.signature_data,bacpac);
 
