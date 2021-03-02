@@ -2119,7 +2119,7 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         for(int k=0;k<m_sections.size();k++)
         {
           
-          // eT.initTracking(m_sections[k],0);
+          eT.initTracking(m_sections[k],0);
           // for(int i=0;false;i++)
           // {
           //   //eT.
@@ -3049,7 +3049,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
       detectedLines.push_back(lr);
 
-    }
+    }    
 
     
     for (int j = 0; j < searchPointList.size(); j++)
@@ -3067,7 +3067,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       report.def = &(searchPointList[j]);
       detectedSearchPoints.push_back(report);
     }
-
+    
     for(int i=0;i<1;i++)
     {
     
@@ -3119,18 +3119,19 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     }
 
 
+
     for (int j = 0; j < featureLineList.size(); j++)
     {
       
 
         
       featureDef_line line = featureLineList[j];
-      {
-        acv_XY temp_pt = cm.convert(line.p0);
-        LOGI("p0:%f %f( %f %f)",line.p0.X,line.p0.Y,temp_pt.X,temp_pt.Y);
-        temp_pt = cm.convert(line.p1);
-        LOGI("p1:%f %f( %f %f)",line.p1.X,line.p1.Y,temp_pt.X,temp_pt.Y);
-      }
+      // {
+      //   acv_XY temp_pt = cm.convert(line.p0);
+      //   LOGI("p0:%f %f( %f %f)",line.p0.X,line.p0.Y,temp_pt.X,temp_pt.Y);
+      //   temp_pt = cm.convert(line.p1);
+      //   LOGI("p1:%f %f( %f %f)",line.p1.X,line.p1.Y,temp_pt.X,temp_pt.Y);
+      // }
 
 
 
@@ -3292,6 +3293,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       for( int k=0;k<m_sections.size();k++)
       {
         
+        eT.initTracking(m_sections[k],0);
         vector<ContourFetch::ptInfo> &s_points = m_sections[k].section;
         // LOGI("secInfo[%d].sigma:%f size:%d",k, m_sections[k].sigma, m_sections[k].section.size());
         // for (int i = 0; i < s_points.size(); i++)

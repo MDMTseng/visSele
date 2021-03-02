@@ -979,6 +979,11 @@ acv_XY pointSobel(acvImage *graylevelImg,acv_XY point,int range)
   int X=point.X;
   int Y=point.Y;
   int offset=range;
+  if(X<offset || X+offset>= graylevelImg->GetWidth() ||
+  Y<offset || Y+offset>= graylevelImg->GetHeight())
+  {
+    return (acv_XY){0,0};
+  }
   int I11 = graylevelImg->CVector[Y-offset][(X-offset)*3];
   int I12 = graylevelImg->CVector[Y-offset][(X)*3];
   int I13 = graylevelImg->CVector[Y-offset][(X+offset)*3];

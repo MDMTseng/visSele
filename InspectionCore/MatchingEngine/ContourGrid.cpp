@@ -317,7 +317,7 @@ void ContourFetch::getContourPointsWithInLineContour(
     m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
   
-  printf("\n");
+  // printf("\n");
 
 }
 
