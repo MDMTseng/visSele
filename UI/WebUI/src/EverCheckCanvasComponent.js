@@ -1227,6 +1227,11 @@ class renderUTIL {
     let normalRenderGroup = [];
     eObjects.forEach((eObject) => {
       if (eObject == null) return;
+      
+      if(eObject.inspection_status==INSPECTION_STATUS.NA )
+      {
+        return;
+      }
       var found = skip_id_list.find(function (skip_id) {
         return eObject.id == skip_id;
       });
@@ -2326,9 +2331,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   
     
     
-    {//TODO:HACK: 4X4 times scale down for transmission speed
-
-
+    {
       let scale = 1;
       if (this.img_info !== undefined && this.img_info.scale !== undefined)
         scale = this.img_info.scale;
@@ -2463,10 +2466,11 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
           }
           // let fontPx = this.getFontHeightPx();
           
+          this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
           
           ctx.strokeStyle = "red";
-          this.rUtil.draw_aimcross(ctx, {x:0,y:0});
-          // this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
+          this.rUtil.draw_aimcross(ctx, {x:0,y:0},this.rUtil.getPointSize()*3,0.1);
+          
 
           {
             let ringR=this.rUtil.getFontHeightPx()*1;

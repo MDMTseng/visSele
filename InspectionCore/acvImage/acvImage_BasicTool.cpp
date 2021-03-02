@@ -835,6 +835,12 @@ acv_XY acvClosestPointOnLine(acv_XY point, acv_Line line)
   line.line_anchor.Y+=dist*line.line_vec.Y;
   return line.line_anchor;
 }
+acv_XY acvClosestPointOnCircle(acv_XY point, acv_Circle circle)
+{
+  acv_XY vec2pt=acvVecSub(point,circle.circumcenter);
+  float L=hypot(vec2pt.X,vec2pt.Y);
+  return acvVecAdd(circle.circumcenter,acvVecMult(vec2pt,circle.radius/L));
+}
 
 float acvDistance_Signed(acv_Circle cir, acv_XY point)
 {

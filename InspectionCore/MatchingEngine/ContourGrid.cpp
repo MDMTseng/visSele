@@ -179,7 +179,7 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 
     }
 
-    if(doMergeToIdx>=0)
+    if(doMergeToIdx>=0 && m_sec.size()>0)
     {
       contourConcatLastTo(m_sec,doMergeToIdx);
     }

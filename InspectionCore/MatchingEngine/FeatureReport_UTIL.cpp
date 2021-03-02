@@ -110,7 +110,14 @@ cJSON* acv_CircleFitVector2JSON(const vector< FeatureReport_circleReport> &vec, 
     cJSON_AddStringToObject(cfj, "name", vec[j].def->name);
     
     if(vec[j].status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
       acv_CircleFit2JSON(cfj,vec[j].circle,center_offset);
+      
+      cJSON_AddItemToObject(cfj,"pt1",acv_acv_XY2JSON(vec[j].pt1));
+      cJSON_AddItemToObject(cfj,"pt2",acv_acv_XY2JSON(vec[j].pt2));
+      cJSON_AddItemToObject(cfj,"pt3",acv_acv_XY2JSON(vec[j].pt3));
+    }
+
     cJSON_AddItemToArray(detectedCircles_jarr, cfj );
 
   }

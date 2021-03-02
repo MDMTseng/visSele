@@ -34,10 +34,8 @@ typedef struct {
 typedef struct featureDef_circle{
   int id;
   char name[FeatureManager_NAME_LENGTH];
-  acv_Circle circleTar;
+  acv_XY pt1,pt2,pt3;//three points arc, the root of all info
   float initMatchingMargin;
-  float sAngle;
-  float eAngle;
   float outter_inner;
 }featureDef_circle;
 typedef struct featureDef_line{
@@ -171,6 +169,8 @@ typedef struct FeatureReport_circleReport{
   featureDef_circle *def;
   acv_CircleFit circle;
   int status;
+  
+  acv_XY pt1,pt2,pt3;//mapped 3 pts on circle
 }FeatureReport_circleReport;
 
 

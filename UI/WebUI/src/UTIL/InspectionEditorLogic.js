@@ -759,13 +759,17 @@ export class InspectionEditorLogic {
       case SHAPE_TYPE.arc:
         {
           ["pt1", "pt2", "pt3"].forEach((key) => {
-            eObject[key].x -= inspAdjObj.x;
-            eObject[key].y -= inspAdjObj.y;
-            let mag = Math.hypot(eObject[key].x, eObject[key].y);
-            eObject[key].x = eObject[key].x * inspAdjObj.r / mag + inspAdjObj.x;
-            eObject[key].y = eObject[key].y * inspAdjObj.r / mag + inspAdjObj.y;
+            if(inspAdjObj[key]!==undefined)//if report has the data use it
+              eObject[key]= inspAdjObj[key];
+            else
+            {//or calculate it from define data 
+              eObject[key].x -= inspAdjObj.x;
+              eObject[key].y -= inspAdjObj.y;
+              let mag = Math.hypot(eObject[key].x, eObject[key].y);
+              eObject[key].x = eObject[key].x * inspAdjObj.r / mag + inspAdjObj.x;
+              eObject[key].y = eObject[key].y * inspAdjObj.r / mag + inspAdjObj.y;
+            }
           });
-
         }
         break;
 
