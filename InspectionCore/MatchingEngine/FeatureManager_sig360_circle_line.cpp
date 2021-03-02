@@ -3215,6 +3215,21 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       acv_XY m_pt2=cm.convert(cdef.pt2);
       acv_XY m_pt3=cm.convert(cdef.pt3);
       
+
+      m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
+      m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
+      m_pt3 = acvRotation(cached_sin, cached_cos, flip_f, m_pt3);
+
+
+      m_pt1 = acvVecMult(m_pt1, ppmm);
+      m_pt2 = acvVecMult(m_pt2, ppmm);
+      m_pt3 = acvVecMult(m_pt3, ppmm);
+
+      m_pt1 = acvVecAdd(m_pt1, calibCen);
+      m_pt2 = acvVecAdd(m_pt2, calibCen);
+      m_pt3 = acvVecAdd(m_pt3, calibCen);
+
+
       arc_data arcD =  convert3Pts2ArcData(m_pt1,m_pt2,m_pt3);
 
       float initMatchingMargin = cdef.initMatchingMargin * ppmm;
@@ -3222,35 +3237,19 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       
 
 
-      acv_XY center = acvRotation(cached_sin, cached_cos, flip_f, arcD.circleTar.circumcenter);
-
-
-      center = acvVecMult(center, ppmm);
 
       int matching_tor = initMatchingMargin;
-      center = acvVecAdd(center, calibCen);
+
+
+      //LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
+
+      acv_XY center = arcD.circleTar.circumcenter;
+      float sAngle=arcD.sAngle, eAngle=arcD.eAngle;
+      float radius = arcD.circleTar.radius;
 
       acvDrawCrossX(originalImage,
                     center.X, center.Y,
                     4, 255,255,255);
-
-      //LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
-      float sAngle=arcD.sAngle, eAngle=arcD.eAngle;
-      if (flip_f >= 0)
-      {
-        sAngle = sAngle + angle;
-        eAngle = eAngle + angle;
-      }
-      else
-      {
-        float _sAngle = -(eAngle) + angle;
-        float _eAngle = -(sAngle) + angle;
-
-        eAngle=_eAngle;
-        sAngle=_sAngle;
-      }
-      float radius = arcD.circleTar.radius * ppmm;
-
       // LOGI("flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f", flip_f, radius, sAngle, eAngle,center.X,
       //     center.Y);
       //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.X,center.Y,cdef.circleTar.radius,ppmm,radius);
@@ -3420,20 +3419,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f",
            j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius);
       
-
-      m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
-      m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
-      m_pt3 = acvRotation(cached_sin, cached_cos, flip_f, m_pt3);
-
-
-      m_pt1 = acvVecMult(m_pt1, ppmm);
-      m_pt2 = acvVecMult(m_pt2, ppmm);
-      m_pt3 = acvVecMult(m_pt3, ppmm);
-
-      m_pt1 = acvVecAdd(m_pt1, calibCen);
-      m_pt2 = acvVecAdd(m_pt2, calibCen);
-      m_pt3 = acvVecAdd(m_pt3, calibCen);
-
 
 
       cr.pt1=acvClosestPointOnCircle(m_pt1,cf.circle);
