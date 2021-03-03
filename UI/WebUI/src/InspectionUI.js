@@ -2006,16 +2006,13 @@ class APP_INSP_MODE extends React.Component {
       //   type:"gen"
       // }
       // }, undefined);
+
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 1000,
         historyReportlimit: 1000,
         minReportRepeat: 2,
         headReportSkip: 1,
-        keepInTrackingTime_ms: 0,
-        minReportRepeat: 0,
-        headReportSkip: 0,
       })
-      
     }
   }
 
