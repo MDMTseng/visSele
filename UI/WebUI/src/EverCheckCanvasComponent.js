@@ -1676,7 +1676,7 @@ class EverCheckCanvasComponent_proto {
       (ViewPortY - offset.y - cH / 2) / totalScale,
       ViewPortW / totalScale,
       ViewPortH / totalScale];
-    let down_samp_level = 1.0 * crop[2] / (cW)*0.3;
+    let down_samp_level = 1.0 * crop[2] / (cW);
     this.EmitEvent(
       {
         type: "asdasdas",
