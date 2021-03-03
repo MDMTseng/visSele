@@ -8,6 +8,11 @@
 #include <unistd.h>
 #include "FeatureManager.h"
 
+
+//return 0 => two real roots
+//return 1 => single complex root => r0: real part r1: positive imaginary part
+//aX^2+bx+c=0
+int quadratic_roots(float a,float b,float c,float *r0,float*r1);
 void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_XY> &tar_signature);
 void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
   std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines);

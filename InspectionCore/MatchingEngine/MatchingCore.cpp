@@ -6,12 +6,57 @@
 #include "circleFitting.h"
 #include <acvImage_SpDomainTool.hpp>
 
+#include "polyfit.h"
+
 using namespace std;
 enum searchType_C
 {
   searchType_C_B2W,
   searchType_C_W2B
 };
+
+
+//return 0 => two real roots
+//return 1 => single complex root => r0: real part r1: positive imaginary part
+//aX^2+bx+c=0
+int quadratic_roots(float a,float b,float c,float *r0,float*r1)
+{
+  double discriminant, root1, root2, realPart, imagPart;
+  // printf("Enter coefficients a, b and c: ");
+  // scanf("%lf %lf %lf", &a, &b, &c);
+
+  discriminant = b * b - 4 * a * c;
+
+  // condition for real and different roots
+  if (discriminant > 0) {
+      root1 = (-b + sqrt(discriminant)) / (2 * a);
+      root2 = (-b - sqrt(discriminant)) / (2 * a);
+      // printf("root1 = %.2lf and root2 = %.2lf", root1, root2);
+      *r0=root1;
+      *r1=root2;
+      return 0;
+  }
+
+  // // condition for real and equal roots
+  // else if (discriminant == 0) {
+  //     root1 = root2 = -b / (2 * a);
+  //     // printf("root1 = root2 = %.2lf;", root1);
+  //     return 0;
+  // }
+
+  // if roots are not real
+  else {
+      realPart = -b / (2 * a);
+      imagPart = sqrt(-discriminant) / (2 * a);
+      if(-imagPart)imagPart=-imagPart;//keep it positive
+      
+      *r0=realPart;
+      *r1=imagPart;
+      
+      return 1;
+      // printf("root1 = %.2lf+%.2lfi and root2 = %.2f-%.2fi", realPart, imagPart, realPart, imagPart);
+  }
+}
 
 
 
@@ -29,6 +74,9 @@ inline int valueSaturation(int v,int ringSize)
   return v;
 }
 
+//return 0 => two real roots
+//return 1 => single complex root => r0: real part r1: positive imaginary part
+int quadratic_roots(float a,float b,float c,float *r0,float*r1);
 int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char searchType, vector<ContourFetch::ptInfo> &contour)
 {
     int NowPos[2] = {FromX, FromY};
@@ -1522,7 +1570,7 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
   float idealMeanCenter=pixSideWidth;//(pixWidth-1)/2;
   calc_pdf_mean_sigma(grad,0,pixWidth,&_mean,&_sigma);
   float _mean_bk=_mean;
-  for(int j=0;j<10;j++)
+  for(int j=0;j<2;j++)
   {
     
     if(_mean<pixWidth/4||_mean>=pixWidth*3/4)
@@ -1538,6 +1586,13 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
     if(abs(_mean_pre-_mean)<0.1)break;
   }
 
+
+  // {
+  //   float coefficients[3];
+  //   int polyRet = polyfit(NULL,errorArr,NULL,polyFitLen,2,coefficients);
+  //   float ret_r0,ret_r1;
+  //   int rootRes= quadratic_roots(coefficients[2],coefficients[1],coefficients[0],&ret_r0,&ret_r1);
+  // }
 
   _mean-=idealMeanCenter+gradIndex;
   // LOGI("idealMeanCenter:%f _mean:%f sigma:%f, pixSideWidth:%d",idealMeanCenter,_mean,_sigma,pixSideWidth);

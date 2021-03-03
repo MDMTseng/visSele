@@ -15,6 +15,8 @@
 // OUTPUTS: coefficients[0..order] - indexed by term
 //               (the (coef*x^3) is coefficients[3])
 //
+// coefficients[n]=cn
+// y=SIGMA( cn*x^n  ,n)
 //----------------------------------------------------
 int polyfit(const float* const dependentValues,
             const float* const independentValues,

@@ -2652,48 +2652,6 @@ acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt,float sin,float cosin, float f
   return acvVecAdd(acvVecMult(pt, 1/mmpp),objCenter_pix); //convert to pixel unit
 }
 
-//return 0 => two real roots
-//return 1 => single complex root => r0: real part r1: positive imaginary part
-int quadratic_roots(float a,float b,float c,float *r0,float*r1)
-{
-  double discriminant, root1, root2, realPart, imagPart;
-  // printf("Enter coefficients a, b and c: ");
-  // scanf("%lf %lf %lf", &a, &b, &c);
-
-  discriminant = b * b - 4 * a * c;
-
-  // condition for real and different roots
-  if (discriminant > 0) {
-      root1 = (-b + sqrt(discriminant)) / (2 * a);
-      root2 = (-b - sqrt(discriminant)) / (2 * a);
-      // printf("root1 = %.2lf and root2 = %.2lf", root1, root2);
-      *r0=root1;
-      *r1=root2;
-      return 0;
-  }
-
-  // // condition for real and equal roots
-  // else if (discriminant == 0) {
-  //     root1 = root2 = -b / (2 * a);
-  //     // printf("root1 = root2 = %.2lf;", root1);
-  //     return 0;
-  // }
-
-  // if roots are not real
-  else {
-      realPart = -b / (2 * a);
-      imagPart = sqrt(-discriminant) / (2 * a);
-      if(-imagPart)imagPart=-imagPart;//keep it positive
-      
-      *r0=realPart;
-      *r1=imagPart;
-      
-      return 1;
-      // printf("root1 = %.2lf+%.2lfi and root2 = %.2f-%.2fi", realPart, imagPart, realPart, imagPart);
-  }
-}
-
-
 acv_XY ConstrainMap::convert_polar(acv_XY from)
 {
   float magSum=0;
