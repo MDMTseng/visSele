@@ -34,6 +34,7 @@ export default {
         subtype:"次類型",
         value:"出貨目標",
         margin:"範圍",
+        line_thickness_value:"線寬數值",
         submargin1:"生產目標",
         margin2:"次範圍",
         direction:"方向",
@@ -122,7 +123,7 @@ export default {
     },
     search_point:{
       search_far:"近/遠",
-      locating_anchor:"定位錨點"
+      locating_anchor:"定位錨點",
     },
     mainui:{
       select_deffile:"選擇定義檔",

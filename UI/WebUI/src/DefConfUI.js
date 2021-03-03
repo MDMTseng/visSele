@@ -318,6 +318,7 @@ function ULRangeAcc({ value, lastKey, onChange, RangeCValue, target, props }) {
 function AngleDegAcc({ value, onChange,target,lastKey, props }) {
   const [offsetEditVisible, setOffsetEditVisible] = useState(false);
   function numberSet(num) {
+    num%=360;
     onChange(target, "input-number", { target: { value: ( num).toFixed(4) } })
   }
   let translateKey = GetObjElement(props.dict, [props.dictTheme, lastKey]);
@@ -333,15 +334,20 @@ function AngleDegAcc({ value, onChange,target,lastKey, props }) {
     <Menu onClick={(ev) => {
     }}>
       <Menu.Item key={4}>
-        <div className="s height12" style={{ width: "300px" }}>
+        <div className="s height12" style={{ width: "300px", height:"auto" }}>
 
-          <Button key="plus10u" className="s  height12 width5 vbox black" onClick={_ =>
-            numberSet(value + 90)
-          }>+90</Button>
-          <Button key="minus10u" className="s  height12 width5 vbox black" onClick={_ =>
-            numberSet(value - 90)
-          }>-90</Button>
-
+          <Button key="plus30u" className="s  height12 width3 vbox black" onClick={_ =>
+            numberSet(value + 30)
+          }>+30</Button>
+          <Button key="minus30u" className="s  height12 width3 vbox black" onClick={_ =>
+            numberSet(value - 30)
+          }>-30</Button>
+          <Button key="plus5u" className="s  height12 width2 vbox black" onClick={_ =>
+            numberSet(value + 5)
+          }>+5</Button>
+          <Button key="minus5u" className="s  height12 width2 vbox black" onClick={_ =>
+            numberSet(value - 5)
+          }>-5</Button>
           <Button key="zero" className="s  height12 width2 vbox black" onClick={_ =>
             numberSet(0)
           }>0</Button>
@@ -364,6 +370,62 @@ function AngleDegAcc({ value, onChange,target,lastKey, props }) {
 
   return dropDownX;
 }
+
+
+function SimpleAcc({ value, onChange,target,lastKey, props }) {
+  const [offsetEditVisible, setOffsetEditVisible] = useState(false);
+  function numberSet(num) {
+    onChange(target, "input-number", { target: { value: ( num).toFixed(4) } })
+  }
+  let translateKey = GetObjElement(props.dict, [props.dictTheme, lastKey]);
+  //log.info(props.dict,props.dictTheme,lastKey,translateKey);
+
+  if (translateKey === undefined) 
+    translateKey = GetObjElement(props.dict, ["_", lastKey]);
+  
+  if (translateKey === undefined) 
+    translateKey = lastKey
+
+  const content =
+    <Menu onClick={(ev) => {
+    }}>
+      <Menu.Item key={4}>
+        <div className="s height12" style={{ width: "300px", height:"auto" }}>
+
+          <Button key="plus30u" className="s  height12 width3 vbox black" onClick={_ =>
+            numberSet(value*2)
+          }>x2</Button>
+          <Button key="minus30u" className="s  height12 width3 vbox black" onClick={_ =>
+            numberSet(value/2)
+          }>/2</Button>
+          <Button key="plus5u" className="s  height12 width3 vbox black" onClick={_ =>
+            numberSet(value + 1)
+          }>+1</Button>
+          <Button key="minus5u" className="s  height12 width3 vbox black" onClick={_ =>
+            numberSet(value - 1)
+          }>-1</Button>
+        </div>
+      </Menu.Item>
+    </Menu>
+  let dropDownX =
+    <Popover content={content} title={null} trigger="click"
+      visible={offsetEditVisible}
+      onVisibleChange={vis => {
+        console.log(vis);
+        setOffsetEditVisible(vis)
+      }}>
+
+      <a className="s HX1 width4 vbox black" style={{ color: "white" }} href="#">
+        {translateKey}
+        <Icon type="caret-down" />
+      </a>
+    </Popover>
+
+  return dropDownX;
+}
+
+
+
 
 function parseCheckExpressionValid(postExp, idArr) {
 
@@ -590,9 +652,10 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       {
         case "input":
           render=(value,objInfo,idx) => {
+
+            let rootMInfo=_measureInfo.find(m=>m.id===objInfo.id);
             if(objInfo.name!==undefined && objInfo.subtype===undefined && value===undefined)
             {
-              let rootMInfo=_measureInfo.find(m=>m.id===objInfo.id);
               let rootValue=rootMInfo[col.key];
               // console.log(_measureInfo,rootMInfo,objInfo,col.key,rootValue);
               return <Button type="dashed" onClick={()=>{
@@ -602,7 +665,11 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
               }}>{rootValue}</Button>;
             }
 
-            if(value===undefined)return undefined;
+            if(value===undefined)
+            {
+              console.log(col,value,objInfo,rootMInfo);
+              return undefined;
+            }
 
             return (
               <NumPad.Number onChange={(value)=>{
@@ -649,10 +716,9 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
       }
     });
 
-  console.log(_control_margin_info,displayInfoSet);
   let measureX=_measureInfo
     .map((shape,idx)=>{
-
+      let cur_rank=(shape.rank===undefined)?0:shape.rank;
       let SelMarginInfo = Object.keys(displayInfoSet).filter(key=>_control_margin_info[key]!==undefined)
         .map(text=>{
           let info = _control_margin_info[text];
@@ -667,6 +733,10 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
 
 
           obj={...obj};
+          if(obj.rank===undefined)
+          {
+            obj.rank=cur_rank;
+          }
           obj.name=<><PlusOutlined/>{text}</>;
           obj.update=(newObj)=>{
             let newMarginInfo = {..._control_margin_info};
@@ -691,7 +761,7 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
         subtype:shape.subtype,
         key:shape.id,
         value:shape.value,
-        rank:(shape.rank===undefined)?0:shape.rank,
+        rank:cur_rank,
         USL:shape.USL,
         LSL:shape.LSL,
         UCL:shape.UCL,
@@ -1146,6 +1216,21 @@ let renderMethods = {
     let retUI = [];
 
     retUI.push(<AngleDegAcc key={"_" + lastKey + "_AngleDegAcc"} {...{ target,lastKey, value, onChange, props }} />);
+    retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
+      type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
+      value={value.toFixed(4)}
+      onChange={(evt) => onChange(target, "input-number", evt)} />);
+    return retUI;
+  }
+  ,
+  SimpleSetup: ({ className, onChange, target, renderContext, props }) => {
+    let value = GetObjElement(target.obj, target.keyTrace);
+    let lastKey = target.keyTrace[target.keyTrace.length - 1];
+    //console.log(params_);
+    //let {className,onChange,target,renderContext,props} = params_;
+    let retUI = [];
+
+    retUI.push(<SimpleAcc key={"_" + lastKey + "_AngleDegAcc"} {...{ target,lastKey, value, onChange, props }} />);
     retUI.push(<NumberAccInput key={"_" + lastKey + "_stxt"} className="s HX1 width8 vbox blackText"
       type="number" step="0.1" pattern="^[-+]?[0-9]?(\.[0-9]*){0,1}$"
       value={value.toFixed(4)}
@@ -1875,6 +1960,11 @@ class APP_DEFCONF_MODE extends React.Component {
         {
           edit_tar.locating_anchor=false;
         }
+        
+        if(edit_tar.line_thickness_value!=true)
+        {
+          edit_tar.line_thickness_value=false;
+        }
       }
 
 
@@ -1900,10 +1990,11 @@ class APP_DEFCONF_MODE extends React.Component {
                 name: "input",
                 //pt1:null,
                 angleDeg: "AngleRangeSetup",
-                margin: "input-number",
+                margin: "SimpleSetup",
 
                 search_far: "switch",
                 locating_anchor: "switch",
+                line_thickness_value:"input-number",
                 calc_f: {
                   __OBJ__: renderMethods.Measure_Calc_Editor,
                   measure_list: shape_list.filter(s =>
@@ -1930,7 +2021,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 back_value_setup: "switch",
                 importance: "input-number",
                 docheck: "switch",
-                width: "input-number",
+                width: "SimpleSetup",
                 ref: (edit_tar.subtype === UIAct.SHAPE_TYPE.measure_subtype.calc) ?
                   undefined :
                   {
@@ -2047,7 +2138,7 @@ class APP_DEFCONF_MODE extends React.Component {
               type: "div",
               subtype: "div",
               name: "input",
-              margin: "input-number"
+              margin: "SimpleSetup"
             }
             if(edit_tar.type==UIAct.SHAPE_TYPE.arc)
             {//ignore the line direction
@@ -2057,6 +2148,7 @@ class APP_DEFCONF_MODE extends React.Component {
             UIArr.push(<BASE_COM.JsonEditBlock key="mainConfigTable" object={edit_tar}
               dict={DICT}
               dictTheme={edit_tar.type}
+              renderLib={renderMethods}
               jsonChange={(original_obj, target, type, evt) => {
                 let lastKey = target.keyTrace[target.keyTrace.length - 1];
                 if (type == "input-number")
