@@ -12,6 +12,95 @@
 
 static int searchP(acvImage *img, acv_XY *pos, acv_XY searchVec, float maxSearchDist);
 
+void acvXY_pts_smooth(vector<ContourFetch::ptInfo> &from,vector<ContourFetch::ptInfo> &to,int sideW=2)
+{
+  acv_XY CSum={0};
+  to.resize(0);
+  for(int i=0;i<sideW-1;i++)
+  {
+    CSum=acvVecAdd(CSum,from[i].pt);
+  }
+  int width=2*sideW+1;
+  
+  // for(int i=0;i<from.size();i++)
+  // {
+  //   int divC=
+  //   CSum=acvVecSub(acvVecAdd(CSum,),);
+  //   to.push_back(acvVecMult(CSum,1.0/width));
+  // }
+}
+
+void acvXY_pts_smooth(vector<acv_XY> &from,vector<acv_XY> &to)
+{
+  to.resize(from.size());
+  to[0]=from[0];
+  to[from.size()-1]=from[from.size()-1];
+  for(int i=1;i<from.size()-1;i++)
+  {
+    to[i].X=(from[i-1].X+from[i].X+from[i+1].X)/3;
+    to[i].Y=(from[i-1].Y+from[i].Y+from[i+1].Y)/3;
+  }
+}
+int roughness(vector<ContourFetch::ptInfo> &ptInfo,int smoothT,float *ret_MIN,float *ret_MAX,float *ret_RMSE)
+{
+  if(ptInfo.size()<3)return -1;
+  vector<acv_XY> buffPt1,buffPt2;
+  buffPt1.resize(ptInfo.size());
+  buffPt2.resize(ptInfo.size());
+  for(int i=0;i<ptInfo.size();i++)
+  {
+    buffPt1[i]=ptInfo[i].pt;
+  }
+  
+  vector<acv_XY> *smoothPt=&buffPt1;
+  vector<acv_XY> *buffPt=&buffPt2;
+  for(int i=0;i<smoothT;i++)
+  {
+    if((i&1)==0)
+    {
+      acvXY_pts_smooth(buffPt1,buffPt2);
+      smoothPt=&buffPt2;
+      buffPt=&buffPt1;
+    }
+    else
+    {
+      acvXY_pts_smooth(buffPt2,buffPt1);
+      smoothPt=&buffPt1;
+      buffPt=&buffPt2;
+    }
+  }
+  float max=-999999,min=999999;
+  float RMSE=0;
+  
+  for(int i=0;i<ptInfo.size();i++)
+  {
+    acv_Line line={line_anchor:ptInfo[i].pt,line_vec:(ptInfo[i].contourDir)};
+    
+    // if(i==0)
+    // {
+    //   LOGI("pt:%f,%f  dir:%f,%f",ptInfo[i].pt_img.X,ptInfo[i].pt_img.Y,ptInfo[i].contourDir.X,ptInfo[i].contourDir.Y);
+    // }
+    float distance = acvDistance_Signed(line,(*smoothPt)[i]);
+    //acvDistance(ptInfo[i].pt,(*smoothPt)[i]);
+    //acvDistance_Signed(line,(*smoothPt)[i]);
+    if(max<distance)
+    {
+      max=distance;
+    }
+    if(min>distance)
+    {
+      min=distance;
+    }
+    RMSE+=distance*distance;
+  }
+  RMSE=sqrt(RMSE/ptInfo.size());
+  if(ret_MIN)*ret_MIN=min;
+  if(ret_MAX)*ret_MAX=max;
+  if(ret_RMSE)*ret_RMSE=RMSE;
+  return 0;
+}
+
+
 /*
   FeatureManager_sig360_circle_line Section
 */
