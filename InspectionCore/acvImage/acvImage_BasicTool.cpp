@@ -864,14 +864,35 @@ float acvDistance_Signed(acv_Line line, acv_XY point)
 {
   // P1=(x1,y1)=line_anchor
   // P2=(x2,y2)=P1+line_vec then the distance of
-  // point = (x0,y0)
-  float denominator = hypot(line.line_vec.X,line.line_vec.Y);
-  float XX = +line.line_vec.Y*point.X
-             -line.line_vec.X*point.Y
-             +(line.line_vec.X+line.line_anchor.X)*line.line_anchor.Y
-             -(line.line_vec.Y+line.line_anchor.Y)*line.line_anchor.X ;
+  // point = (x0,y0)  
+  // float denominator = hypot(line.line_vec.X,line.line_vec.Y);
+  // float XX = +line.line_vec.Y*point.X
+  //            -line.line_vec.X*point.Y
+  //            +(line.line_vec.X+line.line_anchor.X)*line.line_anchor.Y
+  //            -(line.line_vec.Y+line.line_anchor.Y)*line.line_anchor.X ;
+  // XX/=denominator;
+  // return XX;
 
-  return XX/denominator;
+  //line form1: aX+bY+c=0
+  //line form2: v: Vx,Vy  Px,Pyx
+  //a=Vy b=Vx C=-(VyPx+VxPy)
+  //d=|aX0+bY0+c|/|a,b|
+
+
+  //opt2: pre shift  
+  //line form1: aX+bY=0
+  //line form2: v: Vx,Vy  Px,Py
+  //a=Vy b=Vx
+  //d=|a(X0-Px)+b(Y0-Py)|/|a,b|
+
+  float a=line.line_vec.Y;
+  float b=line.line_vec.X;
+  float X0=point.X-line.line_anchor.X;
+  float Y0=point.Y-line.line_anchor.Y;
+  float XX2=(a*X0+b*Y0)/hypot(a,b);
+  // if(abs(XX2-XX)>1)
+  //   printf("EEEEEERRRRRRROOOOOORRRRRR!!!!!!!!  XX:%f  XX2:%f diff:%f\n",XX,XX2,XX-XX2);
+  return (a*X0+b*Y0)/hypot(a,b);
 }
 
 float acvDistance(acv_Line line, acv_XY point)
