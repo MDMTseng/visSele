@@ -114,8 +114,13 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
     {
         ContourFetch::ptInfo pt={
           pt:{.X=(float)NowPos[0],.Y=(float)NowPos[1]},
-          
-          sobel:{.X=0,.Y=0}
+          edgeRsp:0,
+          curvature:NAN,
+          contourDir:NAN,
+          tmp:NAN,
+          sobel:{.X=NAN,.Y=NAN}
+          // sobel:{.X=0,.Y=0}
+
           };
         pt.pt_img=pt.pt;
         pt.curvature=0;
@@ -1351,13 +1356,13 @@ edgeTracking::edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac
 void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
 {
   if(section.section.size()==0)return;
-  for(int i=0;i<section.section.size();i++ )//offset Test
-  {
-    acv_XY sobel = acvVecNormalize(section.section[i].sobel);
-    sobel=acvVecMult(sobel,0);
-    section.section[i].pt_img=acvVecAdd(sobel,section.section[i].pt_img);
-    // section.section[i].pt_img.X-=2;
-  }
+  // for(int i=0;i<section.section.size();i++ )//offset Test
+  // {
+  //   acv_XY sobel = acvVecNormalize(section.section[i].sobel);
+  //   sobel=acvVecMult(sobel,0);
+  //   section.section[i].pt_img=acvVecAdd(sobel,section.section[i].pt_img);
+  //   // section.section[i].pt_img.X-=2;
+  // }
 
 
   if(new_regionSideWidth>regionSideWidth)
@@ -1395,26 +1400,34 @@ void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_r
 {
 
   
-  for(int i=0;i<section.section.size();i++ )//offset Test
-  {
-    acv_XY sobel = acvVecNormalize(section.section[i].sobel);
-    sobel=acvVecMult(sobel,0);
-    section.section[i].pt_img=acvVecAdd(sobel,section.section[i].pt_img);
-    // section.section[i].pt_img.X-=2;
-  }
+  // for(int i=0;i<section.section.size();i++ )//offset Test
+  // {
+  //   acv_XY sobel = acvVecNormalize(section.section[i].sobel);
+  //   sobel=acvVecMult(sobel,0);
+  //   section.section[i].pt_img=acvVecAdd(sobel,section.section[i].pt_img);
+  //   // section.section[i].pt_img.X-=2;
+  // }
   // acvImage FFKFKJDK;
   // FFKFKJDK.ReSize(graylevelImg);
   // acvCloneImage(graylevelImg,&FFKFKJDK,-1);
   do
   {
     // LOGI("RUN  fbIndex:%d",fbIndex);
+    
     goAdv (section,true,new_regionSideWidth);
     // LOGI("RUN  fbIndex:%d",fbIndex);
     float mean_offset;
     float sigma;
     calc_info(&mean_offset,&sigma);
-      
-    section.section[fbIndex].edgeRsp=1/sigma;
+    
+    if(sigma==sigma && sigma!=0)
+      section.section[fbIndex].edgeRsp=1/sigma;
+    else
+      section.section[fbIndex].edgeRsp=0;
+
+
+
+
     float aoffset = bacpac->sampler->sampleAngleOffset(0);//should calc angle.... but ...
     acv_XY sobelV = acvVecNormalize(section.section[fbIndex].sobel);
     // LOGI("RUN:idx:%d sobel:%f,%f  pt:%f,%f",fbIndex,
@@ -1430,7 +1443,7 @@ void edgeTracking::runTracking (ContourFetch::contourMatchSec &section,int new_r
     // DRAW(&FFKFKJDK,tmp,0,255,255);
     section.section[fbIndex].pt=acvVecAdd(dirX,section.section[fbIndex].pt_img);
     
-    section.section[fbIndex].pt_img=section.section[fbIndex].pt;
+    // section.section[fbIndex].pt_img=section.section[fbIndex].pt;
     acv_XY curPt = section.section[fbIndex].pt_img;
     
     // DRAW(&FFKFKJDK,section.section[fbIndex].pt_img,255,0,0);
@@ -1652,6 +1665,10 @@ void edgeTracking::goAdv (ContourFetch::contourMatchSec &section,bool goForward,
   {
     pixSum[j]-=pixRegion[tail_idx][j];
   }
+  // LOGI("sobel[%d]:%f,%f  << %f,%f",
+  // sec_tail_idx,
+  // section.section[sec_tail_idx].sobel.X,section.section[sec_tail_idx].sobel.Y,
+  // section.section[sec_tail_idx].pt_img.X,section.section[sec_tail_idx].pt_img.Y);
   contourPixExtraction(graylevelImg, section.section[sec_tail_idx].pt_img,
     section.section[sec_tail_idx].sobel,gradIndex,stepDist,pixWidth,pixRegion[head_idx],bacpac);
 
@@ -1694,13 +1711,21 @@ void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,F
     vector<ContourFetch::ptInfo> &pts= edge_grid.contourSections[i];
     for(int j=0;j<pts.size();j++)
     {
-      pts[j].sobel = pointSobel(grayLevelImg,pts[j].pt,2);
-      // LOGI(">>pt:%f %f sobel:%f,%f",edge_grid.tmpXYSeq[k].pt.X,edge_grid.tmpXYSeq[k].pt.Y,edge_grid.tmpXYSeq[k].sobel.X,edge_grid.tmpXYSeq[k].sobel.Y);
-      pts[j].pt_img=pts[j].pt;//pt in image coord
+      pts[j].sobel = pointSobel(grayLevelImg,pts[j].pt_img,2);
+
+     // LOGI("[%d]>>s:%f,%f i:%f,%f ",j,pts[j].sobel.X,pts[j].sobel.Y,pts[j].contourDir.X,pts[j].contourDir.Y);
+      // pts[j].pt_img=pts[j].pt;//pt in image coord
       if(bacpac)bacpac->sampler->img2ideal(&pts[j].pt);//pt in ideal coord
       pts[j].edgeRsp = 1;
     }
     ContourFilter(grayLevelImg,pts);
+    
+    for(int j=0;j<pts.size();j++)
+    {
+      if(pts[j].sobel.X==0 || pts[j].sobel.Y==0)//if somehow sobel is zero use contourDir as sobel
+        pts[j].sobel = (acv_XY){pts[j].contourDir.Y,-pts[j].contourDir.X};
+      // LOGI("[%d]>>s:%f,%f i:%f,%f ",j,pts[j].sobel.X,pts[j].sobel.Y,pts[j].contourDir.X,pts[j].contourDir.Y);
+    }
   }
 }
 

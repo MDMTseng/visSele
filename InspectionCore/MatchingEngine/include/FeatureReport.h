@@ -162,6 +162,9 @@ typedef struct FeatureReport_lineReport{
   featureDef_line *def;
   acv_LineFit line;
   int status;
+  float rough_RMSE;
+  float rough_MAX;
+  float rough_MIN;
 }FeatureReport_lineReport;
 
 

@@ -1178,7 +1178,9 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     {
 
     }
-
+    // acvDrawCrossX(originalImage,
+    //       (int)(pt_info.pt.X),(int)(pt_info.pt.Y),
+    //       2,255,100,255,2);
 
     acv_XY searchVec_nor = vec;
     acv_XY searchVec = acvVecNormal(vec);
@@ -1196,12 +1198,12 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
                   pt.Y + searchVec.Y * margin * 2,
                   20, 255, 128);
 
-      acvDrawLine(originalImage,
-                  pt.X + searchVec_nor.X * width / 2,
-                  pt.Y + searchVec_nor.Y * width / 2,
-                  pt.X - searchVec_nor.X * width / 2,
-                  pt.Y - searchVec_nor.Y * width / 2,
-                  20, 255, 128);
+      // acvDrawLine(originalImage,
+      //             pt.X + searchVec_nor.X * width / 2,
+      //             pt.Y + searchVec_nor.Y * width / 2,
+      //             pt.X - searchVec_nor.X * width / 2,
+      //             pt.Y - searchVec_nor.Y * width / 2,
+      //             20, 255, 128);
     }
 
     m_sections.resize(0);
@@ -1229,9 +1231,13 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     // {
     //   for( auto &pt_info:section_info.section)
     //   {
-    //     acvDrawCrossX(originalImage,
-    //       (int)(pt_info.pt.X),(int)(pt_info.pt.Y),
-    //       2,255,100,255,2);
+        
+    //     acv_XY pt=pt_info.pt_img;
+    //     // LOGI("[%d]:%.2f %.2f",j,pt.X,pt.Y);
+
+    //     // originalImage->CVector[(int)pt.Y][(int)pt.X*3]=255;
+    //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+1]=255;
+    //     // originalImage->CVector[(int)pt.Y][(int)pt.X*3+2]=255;
     //   }
     // }
 
@@ -1250,7 +1256,11 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         }
       }
     }
-    // LOGI("nearestDist:%f", nearestDist);
+
+    
+    float rMIN,rMAX,rRMSE;
+    roughness(best_section_info->section,5,&rMIN,&rMAX,&rRMSE);
+    LOGI("roughness: rMIN:%f,rMAX:%f,rRMSE:%f", rMIN,rMAX,rRMSE);
 
     if (nearestDist < 9999999 && best_section_info != NULL)
     {
@@ -1259,7 +1269,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       for (auto &pt_info : best_section_info->section)
       {
         float dist = acvDistance(start_line, pt_info.pt);
-        float reng = 3;
+        float reng = 2;
         if (nearestDist + reng > dist)
         {
           
@@ -1280,7 +1290,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
           // LOGI(">>>X:%f Y:%f noise:%f",tmpPt.X,tmpPt.Y,n);
         }
       }
-
+    
       if(accC==0)
       {
         rep.pt.X=NAN;
@@ -2196,8 +2206,6 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
           // LOGI("minFactor:%f factor:%f",minFactor,factor);
           if(minFactor+2<factor)
           {
-            
-            LOGI("[%d]  clear...",tk);
             m_sections[tk].section.clear();
           }
         }
@@ -2207,11 +2215,10 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
 
         for(int k=0;k<m_sections.size();k++)
         {
-          
           eT.initTracking(m_sections[k],0);
-          // for(int i=0;false;i++)
+          // for(int m=0;m<m_sections[k].section.size();m++)
           // {
-          //   //eT.
+          //   LOGI("a:%d:%f,%f>",m,m_sections[k].section[m].pt.X,m_sections[k].section[m].pt.Y);
           // }
           if (m_sections[k].sigma > section_sigma_thres)
             continue;
@@ -2308,9 +2315,7 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
           acv_XY pt=m_sections[i].section[j].pt;
           // LOGI("[%d]:%.2f %.2f",j,pt.X,pt.Y);
 
-          originalImage->CVector[(int)pt.Y][(int)pt.X*3]=255;
           originalImage->CVector[(int)pt.Y][(int)pt.X*3+1]=255;
-          originalImage->CVector[(int)pt.Y][(int)pt.X*3+2]=255;
         }
       }
 
@@ -2564,12 +2569,25 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
       //      sigma,
       //      target_vec.X, target_vec.Y);
 
+      float rMIN,rMAX,rRMSE;
+      roughness(s_points,5,&rMIN,&rMAX,&rRMSE);
 
+      // LOGI("L===anchor:%f,%f vec:%f,%f ,sigma:%f rMin:%f rMax:%f rRMSE:%f",
+          
+      //     line_cand.line_anchor.X,
+      //     line_cand.line_anchor.Y,
+      //     line_cand.line_vec.X,
+      //     line_cand.line_vec.Y,
+      //     sigma,
+      //     rMIN,rMAX,rRMSE);
       acv_LineFit lf;
       lf.line = line_cand;
       lf.matching_pts = s_points.size();
       lf.s = sigma;
       FeatureReport_lineReport lr;
+      lr.rough_RMSE=rRMSE;
+      lr.rough_MAX=rMAX;
+      lr.rough_MIN=rMIN;
       lr.line = lf;
       lr.def = line;
       lr.line.end_pt1 = acvClosestPointOnLine(line->p0, line_cand);
@@ -3295,9 +3313,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       float sAngle=arcD.sAngle, eAngle=arcD.eAngle;
       float radius = arcD.circleTar.radius;
 
-      acvDrawCrossX(originalImage,
-                    center.X, center.Y,
-                    4, 255,255,255);
+      // acvDrawCrossX(originalImage,
+      //               center.X, center.Y,
+      //               4, 255,255,255);
       // LOGI("flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f", flip_f, radius, sAngle, eAngle,center.X,
       //     center.Y);
       //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.X,center.Y,cdef.circleTar.radius,ppmm,radius);
@@ -3350,7 +3368,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         //   int X = round(p.X);
         //   int Y = round(p.Y);
         //   {
-        //     originalImage->CVector[Y][X * 3] = 255;
+        //     originalImage->CVector[Y][X * 3] = i*(k+1)*10;
         //     originalImage->CVector[Y][X * 3 + 1] = 255;
         //     originalImage->CVector[Y][X * 3 + 2] = 255;
         //   }
@@ -3362,8 +3380,12 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       }
       vector<ContourFetch::ptInfo> &s_points = tmp_points;
       
+      // LOGI("NAN:  C=%d==",j);
+      // for(int m=0;m<s_points.size();m++)
+      // {
+      //   LOGI("XY:%f %f  >> %f %f   edgeRsp:%f",s_points[m].sobel.X,s_points[m].sobel.Y,s_points[m].pt.X,s_points[m].pt.Y,s_points[m].edgeRsp);
+      // }
 
-      LOGV("s_points.size():%d", s_points.size());
       circleRefine(s_points, s_points.size(), &cf);
 
       if (s_points.size() > 30 && false)
@@ -3430,13 +3452,20 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       if (minTor < 1)
         minTor = 1;
 
+      // LOGI("s_points.size():%d  r:%f", s_points.size(),cf.circle.radius);
       cr.circle = cf;
       cr.def = &cdef;
+      
+      
+      // LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f",
+      //      j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius);
+      
+
       if (cf.circle.radius != cf.circle.radius) //check NaN
       {
 
-        LOGV("Circle search failed: resultR:%f defR:%f",
-             cf.circle.radius, cdef.circleTar.radius);
+        // LOGI("Circle search failed: resultR:%f defR:%f",
+        //      cf.circle.radius, cdef.circleTar.radius);
         cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
         detectedCircles.push_back(cr);
         continue;
@@ -3459,14 +3488,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
                       20, 255, 0, 0);
       }
 
-      LOGV("C=%d===%f,%f   => %f,%f, dist:%f matching_pts:%d",
-           j, cdef.circleTar.circumcenter.X * ppmm, cdef.circleTar.circumcenter.Y * ppmm,
-           center.X, center.Y,
-           hypot(cf.circle.circumcenter.X - center.X, cf.circle.circumcenter.Y - center.Y),
-           cf.matching_pts);
 
-      LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f",
-           j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius);
+      float rMIN,rMAX,rRMSE;
+      roughness(s_points,5,&rMIN,&rMAX,&rRMSE);
+
+      
+      LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
+           j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius,rMIN,rMAX,rRMSE);
       
 
 
@@ -3581,6 +3609,19 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         // }
       }
     }
+    
+    
+    
+
+    // acv_XY ttt = acvRotation(cached_sin, cached_cos, flip_f, (acv_XY){100,0});
+    
+    // acvDrawLine(originalImage,
+    //             calibCen.X,
+    //             calibCen.Y,
+    //             calibCen.X + ttt.X,
+    //             calibCen.Y + ttt.Y,
+    //             20, 255, 128);
+    // acvCloneImage(originalImage,originalImage,1);
     return 0;
 }
 
