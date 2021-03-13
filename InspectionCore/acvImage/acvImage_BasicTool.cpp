@@ -885,14 +885,14 @@ float acvDistance_Signed(acv_Line line, acv_XY point)
   //a=Vy b=Vx
   //d=|a(X0-Px)+b(Y0-Py)|/|a,b|
 
-  float a=line.line_vec.Y;
+  float a=-line.line_vec.Y;
   float b=line.line_vec.X;
   float X0=point.X-line.line_anchor.X;
   float Y0=point.Y-line.line_anchor.Y;
   float XX2=(a*X0+b*Y0)/hypot(a,b);
   // if(abs(XX2-XX)>1)
   //   printf("EEEEEERRRRRRROOOOOORRRRRR!!!!!!!!  XX:%f  XX2:%f diff:%f\n",XX,XX2,XX-XX2);
-  return (a*X0+b*Y0)/hypot(a,b);
+  return XX2;
 }
 
 float acvDistance(acv_Line line, acv_XY point)
