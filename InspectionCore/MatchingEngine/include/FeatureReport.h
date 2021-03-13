@@ -9,6 +9,7 @@
 #include "cJSON.h"
 #include "ImageSampler.h"
 #include "FeatureManager.h"
+#include "ContourGrid.h"
 
 
 #define FeatureManager_NAME_LENGTH 32
@@ -24,6 +25,13 @@ enum FeatureReport_ERROR {
 typedef struct FeatureReport;
 
 typedef struct {
+  int type;
+  int setup;
+  
+  float rough_threshold;
+} Roughness_INFO;
+
+typedef struct {
   vector<acv_LabeledData> *labeledData;
   vector<const FeatureReport*> *reports;
   FeatureReport_ERROR error;
@@ -37,6 +45,8 @@ typedef struct featureDef_circle{
   acv_XY pt1,pt2,pt3;//three points arc, the root of all info
   float initMatchingMargin;
   float outter_inner;
+  vector <ContourFetch::ptInfo> tmp_pt;
+  Roughness_INFO ri;
 }featureDef_circle;
 typedef struct featureDef_line{
   int id;
@@ -66,6 +76,8 @@ typedef struct featureDef_line{
   
   */
 
+  vector <ContourFetch::ptInfo> tmp_pt;
+  Roughness_INFO ri;
 }featureDef_line;
 
 
@@ -109,6 +121,8 @@ typedef struct featureDef_searchPoint{
       bool locating_anchor;
     }anglefollow;
   }data;
+  vector <ContourFetch::ptInfo> tmp_pt;
+  Roughness_INFO ri;
 }featureDef_searchPoint;
 
 
@@ -124,7 +138,8 @@ typedef struct FeatureReport_judgeDef{
     ANGLE,
     DISTANCE,
     RADIUS,
-    CALC
+    CALC,
+    ROUGHNESS,
   } measure_type;
   int OBJ1_id;
   int OBJ2_id;
@@ -162,9 +177,6 @@ typedef struct FeatureReport_lineReport{
   featureDef_line *def;
   acv_LineFit line;
   int status;
-  float rough_RMSE;
-  float rough_MAX;
-  float rough_MIN;
 }FeatureReport_lineReport;
 
 
@@ -214,6 +226,7 @@ typedef struct FeatureReport_sig360_circle_line_single{
   enum FeatureReport_FeatureStatus{
       STATUS_UNSET=-100,
       STATUS_NA=-128,
+      STATUS_BAD=-127,
       STATUS_SUCCESS=0,
       STATUS_FAILURE=-1,
   } ;

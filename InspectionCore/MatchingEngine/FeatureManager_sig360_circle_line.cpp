@@ -1119,6 +1119,40 @@ float checkPtNoise(ContourFetch::ptInfo pt)
 
   return pt.contourDir.Y*pt.sobel.Y+pt.contourDir.X*pt.sobel.X;
 }
+
+
+/*
+    <--epsilonX|epsilonX-->
+
+                 Y
+                 ^
+     ____________|_____________
+     |           |            |          ^epsilonY
+  ---|-----------|------------|--->X     | 
+     |___________|____________|          vepsilonY
+  
+*/
+float distance_from_cage(acv_Line line,float epsilonX, float epsilonY,acv_XY point)
+{
+  acv_XY lvec = acvVecNormalize(line.line_vec);
+  
+  acv_XY rPt = acvRotation(-lvec.Y,lvec.X,1,point);
+  if(rPt.X<0)rPt.X=-rPt.X;
+  if(rPt.Y<0)rPt.Y=-rPt.Y;
+  rPt.X-=epsilonX;
+  rPt.Y-=epsilonY;
+  // if(rPt.X < 0 && rPt.Y < 0)//inside the cage
+  // {
+  //   return rPt.X >rPt.Y?rPt.X :rPt.Y;
+  // }
+  // else
+  // {
+  // }
+  
+  return rPt.X >rPt.Y?rPt.X :rPt.Y;
+}
+
+
 FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_process(FeatureReport_sig360_circle_line_single &report,
                                                                                        acv_XY center,
                                                                                        float sine, float cosine, float flip_f, float thres,
@@ -1127,6 +1161,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
   FeatureReport_searchPointReport rep;
   rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
   rep.def = &def;
+  def.tmp_pt.size();
   switch (def.subtype)
   {
   case featureDef_searchPoint::anglefollow:
@@ -1153,8 +1188,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       LOGV("line vec:%f %f", vec.X, vec.Y);
     }
 
-    acv_XY pt = acvRotation(sine, cosine, flip_f, def.data.anglefollow.position); //Rotate the default point
-    pt = acvVecAdd(pt, center);
+    // acv_XY pt = acvRotation(sine, cosine, flip_f, def.data.anglefollow.position); //Rotate the default point
+    // pt = acvVecAdd(pt, center);
+    acv_XY pt=def.data.anglefollow.position;
+
     if (flip_f > 0)
     {
       vec = acvVecMult(vec, -1);
@@ -1208,7 +1245,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
     m_sections.resize(0);
 
-    acv_Line line = {searchVec_nor, pt};
+    acv_Line line = {line_vec: searchVec_nor,line_anchor: pt};
     acv_Line start_line = line;
 
     start_line.line_anchor = acvVecMult(searchVec, -999);                         //back margin vector
@@ -1242,28 +1279,50 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     // }
 
     ContourFetch::contourMatchSec *best_section_info = NULL;
+    int nearestPt_idx=-1;
     for (auto &section_info : m_sections)
     {
       eT.initTracking(section_info,0);
-      for (auto &pt_info : section_info.section)
+      for(int i=0;i<section_info.section.size();i++)
       {
+        auto &pt_info=section_info.section[i];
         float dist = acvDistance(start_line, pt_info.pt);
         if (nearestDist > dist)
         {
           nearestPt = pt;
+          nearestPt_idx=i;
           nearestDist = dist;
           best_section_info = &section_info;
         }
       }
     }
+    
+
+
 
     
-    float rMIN,rMAX,rRMSE;
-    roughness(best_section_info->section,5,&rMIN,&rMAX,&rRMSE);
-    LOGI("roughness: rMIN:%f,rMAX:%f,rRMSE:%f", rMIN,rMAX,rRMSE);
-
     if (nearestDist < 9999999 && best_section_info != NULL)
     {
+
+      {
+        // nearestPt
+
+        int distance=20;
+        int startIdx=nearestPt_idx-distance;
+        if(startIdx<0)startIdx=0;
+        int endIdx=nearestPt_idx+distance;
+        if(endIdx>=best_section_info->section.size())endIdx=best_section_info->section.size()-1;
+        def.tmp_pt.resize(0);
+        for(int i=startIdx;i<=endIdx;i++)
+        {
+          def.tmp_pt.push_back(best_section_info->section[i]);
+        }
+
+        float rMIN,rMAX,rRMSE;
+        roughness(def.tmp_pt,5,&rMIN,&rMAX,&rRMSE);
+        LOGI("roughness: rMIN:%f,rMAX:%f,rRMSE:%f", rMIN,rMAX,rRMSE);
+      }
+      
       float accC = 0;
       nearestPt = acvVecMult(nearestPt, 0);
       for (auto &pt_info : best_section_info->section)
@@ -2125,7 +2184,7 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
   acv_Line line_cand, ContourFetch &edge_grid,float flip_f,
   vector<ContourFetch::ptInfo > &tmp_points,vector<ContourFetch::contourMatchSec >&m_sections)
   {
-
+      line->tmp_pt.clear();
       float sigma;
       int mult = 100;
 
@@ -2545,7 +2604,6 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         
       }
 
-
       /*acvDrawLine(buff_,
           line_cand.line_anchor.X-mult*line_cand.line_vec.X,
           line_cand.line_anchor.Y-mult*line_cand.line_vec.Y,
@@ -2572,22 +2630,22 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
       float rMIN,rMAX,rRMSE;
       roughness(s_points,5,&rMIN,&rMAX,&rRMSE);
 
-      // LOGI("L===anchor:%f,%f vec:%f,%f ,sigma:%f rMin:%f rMax:%f rRMSE:%f",
+      LOGI("L===anchor:%f,%f vec:%f,%f ,sigma:%f rMin:%f rMax:%f rRMSE:%f",
           
-      //     line_cand.line_anchor.X,
-      //     line_cand.line_anchor.Y,
-      //     line_cand.line_vec.X,
-      //     line_cand.line_vec.Y,
-      //     sigma,
-      //     rMIN,rMAX,rRMSE);
+          line_cand.line_anchor.X,
+          line_cand.line_anchor.Y,
+          line_cand.line_vec.X,
+          line_cand.line_vec.Y,
+          sigma,
+          rMIN,rMAX,rRMSE);
       acv_LineFit lf;
       lf.line = line_cand;
       lf.matching_pts = s_points.size();
       lf.s = sigma;
       FeatureReport_lineReport lr;
-      lr.rough_RMSE=rRMSE;
-      lr.rough_MAX=rMAX;
-      lr.rough_MIN=rMIN;
+      // lr.rough_RMSE=rRMSE;
+      // lr.rough_MAX=rMAX;
+      // lr.rough_MIN=rMIN;
       lr.line = lf;
       lr.def = line;
       lr.line.end_pt1 = acvClosestPointOnLine(line->p0, line_cand);
@@ -2598,6 +2656,10 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
       }
       else
       {
+        for (auto ptInfo : s_points)
+        {
+          line->tmp_pt.push_back(ptInfo);
+        }
         lr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
       }
 
@@ -3124,7 +3186,10 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       spoint.width *= ppmm;
       if (spoint.subtype == featureDef_searchPoint::anglefollow)
       {
-        spoint.data.anglefollow.position = acvVecMult(spoint.data.anglefollow.position, ppmm);
+        
+        spoint.data.anglefollow.position=
+          TemplateDomain_TO_PixDomain(spoint.data.anglefollow.position,
+            cached_sin, cached_cos, flip_f,calibCen, mmpp);
       }
       
       FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint,eT);
@@ -3260,7 +3325,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       spoint.width *= ppmm;
       if (spoint.subtype == featureDef_searchPoint::anglefollow)
       {
-        spoint.data.anglefollow.position = acvVecMult(cm.convert(spoint.data.anglefollow.position), ppmm);
+        spoint.data.anglefollow.position=
+          TemplateDomain_TO_PixDomain(cm.convert(spoint.data.anglefollow.position),
+            cached_sin, cached_cos, flip_f,calibCen, mmpp);
       }
       
       FeatureReport_searchPointReport report = searchPoint_process(singleReport,calibCen,  cached_sin, cached_cos, flip_f, thres, spoint,eT);
@@ -3329,7 +3396,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       acv_CircleFit cf;
       FeatureReport_circleReport cr;
       
-
+      cdef.tmp_pt.clear();
       cr.pt1=cr.pt2=cr.pt3=(acv_XY){NAN,NAN};
       cr.def=&cdef;
       if (m_sections.size() ==0) //check NaN
@@ -3489,10 +3556,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       }
 
 
+      for(auto pt:s_points)
+      {
+        cdef.tmp_pt.push_back(pt);
+      }
       float rMIN,rMAX,rRMSE;
-      roughness(s_points,5,&rMIN,&rMAX,&rRMSE);
+      roughness(cdef.tmp_pt,5,&rMIN,&rMAX,&rRMSE);
 
-      
       LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
            j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius,rMIN,rMAX,rRMSE);
       
