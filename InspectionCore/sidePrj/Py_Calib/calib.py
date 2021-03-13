@@ -525,8 +525,11 @@ def genProtoPakProtoPak(type2B,array2save):
     headerArr+= array2save 
     return headerArr
 
-def chessBoardCalibsss(image_path):
-    # termination criteria
+
+
+
+def chessBoardImgPoints_(image_path):
+      # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
 
     # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
@@ -534,6 +537,7 @@ def chessBoardCalibsss(image_path):
     objpoints = [] # 3d point in real world space
     imgpoints = [] # 2d points in image plane.
 
+    images_trusted=[]
     images = glob.glob(image_path)
     print("GO..image_path:",image_path," images:",images)
 
@@ -541,9 +545,9 @@ def chessBoardCalibsss(image_path):
     if len(images) == 0 :
         return None
 
-    images_trusted=[]
     mainVecInfo_list=[]
     
+    imageSize=None
     for fname in images:
 
         print("IMG:",fname)
@@ -553,6 +557,7 @@ def chessBoardCalibsss(image_path):
         # img = blur
         #img = cv2.resize(img,  (0,0), fx=0.5, fy=0.5)
         gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        imageSize = gray.shape[::-1]
         width,height = gray.shape[::-1]
 
         corners=[]
@@ -563,6 +568,19 @@ def chessBoardCalibsss(image_path):
         if(ds_f>1):ds_f=1
         img_ds = cv2.resize(img,  (0,0), fx=ds_f, fy=ds_f)
         gray_ds = cv2.cvtColor(img_ds,cv2.COLOR_BGR2GRAY)
+
+        # if True:
+
+        #   fld = cv2.ximgproc.createFastLineDetector()
+        #   lines = fld.detect(gray_ds)
+        #   print(lines[1][0])
+        #   result_img = fld.drawSegments(gray_ds,lines)
+        #   #Show image
+        #   cv2.imshow("LSD",result_img )
+        #   cv2.waitKey(0)
+
+
+
         corners = cv2.goodFeaturesToTrack(gray_ds,3000,0.01,15,useHarrisDetector=True,k=0.1)
         for c in corners:
             c[0][0]/=ds_f
@@ -601,6 +619,9 @@ def chessBoardCalibsss(image_path):
         
         corners_trusted = [] # 3d point in real world space
         coord_trusted = [] # 2d points in image plane.
+
+        
+        print(">coord>",coord)
         for j in range(0, len(coord)):
             if(coord[j]!=None):
                 coord3=coord[j].copy()
@@ -610,7 +631,10 @@ def chessBoardCalibsss(image_path):
         
         # if(len(corners_trusted)/len(corners_fine)<0.8):
         #     continue
-        #print(corners_trusted)
+        print(">corners_trusted>",corners_trusted)
+        print(">coord_trusted>",coord_trusted)
+
+
         imgpoints.append(np.asarray(corners_trusted, dtype= np.float32))
         objpoints.append(np.asarray(coord_trusted, dtype= np.float32))
         
@@ -627,10 +651,122 @@ def chessBoardCalibsss(image_path):
             cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
         cv2.imshow('img',img)
         cv2.waitKey()
+    
+
+    return objpoints,imgpoints,images_trusted,imageSize
+    #print("END... XXXXX")
+
+
+def lineRefine(image,origin_line):
+  dist = math.hypot(origin_line[0]-origin_line[2],origin_line[1]-origin_line[2])
+
+  distL=math.floor(dist)
+  for n in range(distL):#print the elements using a for loop
+    ratio=n/distL
+    x=origin_line[0]+(origin_line[2]-origin_line[0])*ratio
+    y=origin_line[1]+(origin_line[3]-origin_line[1])*ratio
+    # img.shape
+    # print(n)
+  return origin_line
+
+
+def chessBoardImgPoints(image_path):
+      # termination criteria
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
+
+    # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
+    # Arrays to store object points and image points from all the images.
+    objpoints = [] # 3d point in real world space
+    imgpoints = [] # 2d points in image plane.
+
+    images_trusted=[]
+    images = glob.glob(image_path)
+    print("GO..image_path:",image_path," images:",images)
+
+    #fast = cv2.FastFeatureDetector_create(threshold=25,nonmaxSuppression = True)
+    if len(images) == 0 :
+        return None
+
+    mainVecInfo_list=[]
+    
+    imageSize=None
+    for fname in images:
+
+        print("IMG:",fname)
+        img = cv2.imread(fname)
+
+        # blur = cv2.GaussianBlur(img,(25,25),0)
+        # img = blur
+        #img = cv2.resize(img,  (0,0), fx=0.5, fy=0.5)
+        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        imageSize = gray.shape[::-1]
+        width,height = gray.shape[::-1]
+
+        corners=[]
+
+
+        #///////////////
+        ds_f=1000/width
+        if(ds_f>1):ds_f=1
+        img_ds = cv2.resize(img,  (0,0), fx=ds_f, fy=ds_f)
+        gray_ds = cv2.cvtColor(img_ds,cv2.COLOR_BGR2GRAY)
+
+        if True:
+
+          fld = cv2.ximgproc.createFastLineDetector()
+          lines = fld.detect(gray_ds)
+          print("lines[0][0]:")
+          
+          for line in lines:
+            line[0]=lineRefine(gray_ds,line[0])# [3.4070824e+01 ,6.5409986e-04, 300, line[0][3]]
+          # lines[0][0]=lineRefine(gray_ds,lines[0][0])#[3.4070824e+01 ,6.5409986e-04, 300, 209]
+          print(lines[0][0])
+          result_img = fld.drawSegments(gray_ds,lines)
+          #Show image
+          cv2.imshow("LSD",result_img )
+          cv2.waitKey(0)
 
 
 
-    imageSize = gray.shape[::-1]
+        corners = cv2.goodFeaturesToTrack(gray_ds,3000,0.01,15,useHarrisDetector=True,k=0.1)
+        for c in corners:
+            c[0][0]/=ds_f
+            c[0][1]/=ds_f
+        #///////////////
+
+        corners_fine = cv2.cornerSubPix(gray,corners,(21,21),(-1,-1),criteria)
+
+        corners_fine = [x for x in corners_fine if pixToEdgeDist(x[0],width,height)>10]#filter
+
+        print(corners_fine)
+        # for j in range(0, len(corners_trusted)):
+        #     loc = corners_trusted[j][0]
+        #     coord = coord_trusted[j]
+        #     x=int(loc[0])
+        #     y=int(loc[1])
+        #     cv2.circle(img,(x,y),3,255,-1)
+        #     cv2.putText(img, str(coord[0]), (x,y)  , cv2.FONT_HERSHEY_PLAIN,0.8, (0, 0, 255), 1, cv2.LINE_AA)
+        #     cv2.putText(img, str(coord[1]), (x,int(y+10)), cv2.FONT_HERSHEY_PLAIN,0.8, (0, 255, 0), 1, cv2.LINE_AA)
+        # cv2.imshow('img',img)
+        # cv2.waitKey()
+
+
+    return objpoints,imgpoints,images_trusted,imageSize
+    #print("END... XXXXX")
+
+
+def chessBoardCalibsss_(image_path):
+    images = glob.glob(image_path)
+    (objpoints,imgpoints,images_trusted,imageSize) = chessBoardImgPoints_(image_path)
+    #print("END... XXXXX")
+    print("objpoints",objpoints)
+
+
+def chessBoardCalibsss(image_path):
+    images = glob.glob(image_path)
+    (objpoints,imgpoints,images_trusted,imageSize) = chessBoardImgPoints_(image_path)
+    #print("END... XXXXX")
+
 
     #refine....
     maxMatchingRatio=0.0
@@ -640,15 +776,15 @@ def chessBoardCalibsss(image_path):
     print("---imgpoints:\n  ",len(imgpoints[0])) #real cornor points from all availiable images
     print("---objpoints:\n  ",len(objpoints[0])) #XY index grid from real cornor points 
 
-    pickPercentage=0.8
+    pickPercentage=0.4
     for x in range(20):
-        thres = 10
+        thres = 1
         objpoints_, imgpoints_, availLen,totLen,error = cameraCalibPointsRuleOut(objpoints, imgpoints,imageSize,thres*2,pickPercentage)
         print("  ",x," availLen>",availLen," totLen>",totLen," error:",error)
 
         
         if(maxMatchingRatio<availLen/totLen):
-            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres*2,pickPercentage)
+            objpoints_, imgpoints_, availLen,_totLen,error = cameraCalibPointsRuleOut(objpoints_, imgpoints_,imageSize,thres*2,1)
             print("2nd:",x," availLen>",availLen," _totLen>",_totLen," error:",error)
             maxMatchingRatio = availLen/totLen
             maxMatchingAvailLen=availLen
@@ -664,6 +800,7 @@ def chessBoardCalibsss(image_path):
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints_Match, imgpoints_Match, imageSize,None,None)#,flags=cv2.CALIB_RATIONAL_MODEL)
 
 
+    print("ret:",ret," mtx", mtx," dist:", dist," rvecs:", rvecs," tvecs:", tvecs)
     affine_matArr=[]
     no_dist=np.asarray([0]*5, dtype= np.float32)
     for i in range(0,len(objpoints)):#Map keypoints to ideal grid points 
@@ -758,7 +895,7 @@ def chessBoardCalibsss(image_path):
 
     keepAlive=True
 
-    downSamp=imageSize[0]//200
+    downSamp=imageSize[0]//400
     if(downSamp==0):
         downSamp=1
     dispSize=(imageSize[0]//downSamp,imageSize[1]//downSamp)
