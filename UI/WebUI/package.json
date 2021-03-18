@@ -80,6 +80,7 @@
     "start-electron": "electron .",
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "cross-env NODE_ENV=production webpack",
+    "build_dev": "cross-env NODE_ENV=dev webpack",
     "build-profile": "cross-env NODE_ENV=production webpack --profile --json > wstats.json",
     "bundle-analyzer": "webpack-bundle-analyzer wstats.json -m server",
     "export": "sh export.sh ../../release_export/",

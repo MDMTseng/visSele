@@ -104,62 +104,50 @@ def test1():
   # plt.show()
 
 
-
-class BoxFilter:
-  def __init__(self, size,defaltValue=0):
-    self.buffer=0
-    self.curSum=0
-    self.curIdx=0
-    self.set(size,defaltValue)
-  
-  def set(self,size,defaltValue=0):
-    self.buffer=np.linspace(defaltValue, defaltValue, size)
-    self.curSum=defaltValue*size
-    self.curIdx=0
-
-  def push(self,newValue):
-    self.curSum-=self.buffer[self.curIdx]
-    self.curSum+=newValue
-    self.buffer[self.curIdx]=newValue
-    self.curIdx=(self.curIdx+1)% len(self.buffer)
-
-  def h(self,newValue=None):
-    if newValue is not None:
-      self.push(newValue)
-    return self.curSum/len(self.buffer)
-    
-
-
-class BoxFilter_XYZ:
-  def __init__(self, size,defaltXYZ=[0,0,0]):
-    self.Filters=[]
-    self.set(size,defaltXYZ)
-  
-  def set(self,size,defaltXYZ=[0,0,0]):
-    self.Filters=[BoxFilter(size,defaltXYZ[0]),BoxFilter(size,defaltXYZ[1]),BoxFilter(size,defaltXYZ[2])]
-
-  def h(self,newValue=[None,None,None]):
-    # print(self)
-    return [self.Filters[0].h(newValue[0]),self.Filters[1].h(newValue[1]),self.Filters[2].h(newValue[2])]
-
 if __name__ == '__main__':
-  bF =BoxFilter(20)
-  print(bF.h(0))
-  print(bF.h(0))
-  print(bF.h(1))
 
-
+  fs=30
+  f0=1
+  secs=30
   
-  bF_XYZ =BoxFilter_XYZ(20)
-  print(bF_XYZ.h([1,1,1]))
-  print(bF_XYZ.h([10,10,10]))
-  print(bF_XYZ.h([10,10,10]))
-  print(bF_XYZ.h([10,10,10]))
-  print(bF_XYZ.h([1,1,1]))
-  bF_XYZ.set(20,[1,1,1])
-  print(bF_XYZ.h([50,50,50]))
-  print(bF_XYZ.h([1,1,1]))
-  print(bF_XYZ.h([50,50,50]))
-  print(bF_XYZ.h([1,1,1]))
-  print(bF_XYZ.h([1,1,1]))
-  print(bF_XYZ.h([1,1,1]))
+  abs_time=np.linspace(0, secs, secs*fs)
+  time=abs_time
+  # +((np.random.rand(secs*fs)-1)*(1/30))
+
+  inputX=100*( (time>3) & (time<7) )+30*np.sin(time*2*np.pi)+30*np.sin(f0*0.5*time*2*np.pi)
+  # inputX=1*(time>3)
+
+
+
+  w0=2*np.pi*f0/fs
+  chF = chase_filter(300/fs)
+  bF =BoxFilter(5)
+  nF =notch_filter(0.9,w0)
+  cf = cascadeFilter([chF,bF,nF])
+  # print(cf.h(0))
+  # print(cf.h(0))
+  # print(cf.h(1))
+  output=[cf.h(v) for v in inputX]
+
+  # plt.plot(abs_time,time)
+  plt.plot(abs_time,inputX)
+  plt.plot(abs_time,output)
+
+  plt.show()
+
+
+  # bF_XYZ=parallelFilter([BoxFilter(20),BoxFilter(20),BoxFilter(20)])
+  
+  # # bF_XYZ =BoxFilter_XYZ(20)
+  # print(bF_XYZ.h([1,1,1]))
+  # print(bF_XYZ.h([10,10,10]))
+  # print(bF_XYZ.h([10,10,10]))
+  # print(bF_XYZ.h([10,10,10]))
+  # print(bF_XYZ.h([1,1,1]))
+  # # bF_XYZ.setValue([1000,1000,1])
+  # print(bF_XYZ.h([50,50,50]))
+  # print(bF_XYZ.h([1,1,1]))
+  # print(bF_XYZ.h([50,50,50]))
+  # print(bF_XYZ.h([1,1,1]))
+  # print(bF_XYZ.h([1,1,1]))
+  # print(bF_XYZ.h([1,1,1]))
