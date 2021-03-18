@@ -447,6 +447,21 @@ function StateReducer(newState, action) {
                         ave += (1 / (datCount_before + 1)) * (new_val - ave);
                         return ave;
                       }
+                      
+                      
+                      //HACK:the core might return null in value and still give non-NA status HACK it, then fix it on Core
+                      singleReport.judgeReports.forEach(sjrep=>{
+                        if(sjrep.value === undefined || sjrep.value===null)
+                        {
+                          sjrep.status=INSPECTION_STATUS.NA;
+                        }
+
+
+                      });
+
+
+
+
                       if (closeRep !== undefined) {
                         //blend the report with the existed report in tracking window  
 
