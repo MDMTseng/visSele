@@ -11,16 +11,6 @@ export MODULE_common_lib=$(abspath $(relPath)/common_lib)
 export MODULE_lodepng=$(abspath $(relPath)/contrib/lodepng)
 
 
-export MODULE_openCV=/usr/local/Cellar/opencv/4.5.0_5
-
-
-ifeq ($(OS)$(CC),Windows_NTcc)
-	FLAGS+= -D_MINGW -D_WINDOWS
-	
-else
-	EXT_OBJS+=
-endif
-
 
 IDIR=	include/ \
 			$(MODULE_acvImage)/include/ \
@@ -29,8 +19,23 @@ IDIR=	include/ \
 			$(MODULE_logctrl)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_lodepng) \
-			$(MODULE_openCV)/include/opencv4/
 
+$(info $(OS)$(CC))
+
+ifeq ($(OS),Windows_NT)
+	FLAGS+= -D_MINGW -D_WINDOWS
+	export MODULE_openCV=/c/opencv
+	IDIR+= $(MODULE_openCV)/build/include
+	
+	OPENCVLibs=
+else
+	export MODULE_openCV=/usr/local/Cellar/opencv/4.5.0_5
+	EXT_OBJS+=
+	IDIR+= $(MODULE_openCV)/include/opencv4/
+	
+	OPENCVLibs=-lopencv_ml -lopencv_dnn -lopencv_highgui -lopencv_superres -lopencv_objdetect -lopencv_stitching -lopencv_videostab -lopencv_calib3d -lopencv_features2d -lopencv_photo -lopencv_flann -lopencv_shape -lopencv_video -lopencv_videoio -lopencv_imgcodecs -lopencv_imgproc -lopencv_core
+ 
+endif
 
 
 
@@ -39,6 +44,7 @@ EXT_OBJS= $(MODULE_cJSON)/cJSON.a \
 					$(MODULE_common_lib)/common_lib.a \
 					$(MODULE_acvImage)/acvImage.a \
 					$(MODULE_lodepng)/lodepng.a \
+					$(MODULE_openCV)/build/x64/mingw/lib/*.a \
 
 
 
@@ -59,9 +65,7 @@ SUB_MAKEFILES = $(MODULE_acvImage) \
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 STRICT_FLAGS+= -march=core2 -mtune=intel -msse4.2
 
-OPENCVLibs=-lopencv_ml -lopencv_dnn -lopencv_highgui -lopencv_superres -lopencv_objdetect -lopencv_stitching -lopencv_videostab -lopencv_calib3d -lopencv_features2d -lopencv_photo -lopencv_flann -lopencv_shape -lopencv_video -lopencv_videoio -lopencv_imgcodecs -lopencv_imgproc -lopencv_core
- 
-export FLAGS+= -w -O3 -std=c++11 -L$(MODULE_openCV)/lib $(OPENCVLibs)  $(STRICT_FLAGS)
+export FLAGS+= -w -O3 -std=c++11 $(OPENCVLibs)  $(STRICT_FLAGS)
 
 target_bin=calibration
 ODIR=obj
