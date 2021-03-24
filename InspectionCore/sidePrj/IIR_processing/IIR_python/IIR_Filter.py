@@ -6,7 +6,6 @@ def IIR():
 
 
 class calc_filter:
-  # 建構式
   def __init__(self):
     self.buffer=0
   
@@ -36,9 +35,6 @@ class delayFilter(calc_filter):
   def setValue(self,newValue=None):
     if newValue is not None:
       self.buffer=newValue
-
-
-
 
   def push(self,newValue):
     self.buffer[self.curIdx]=newValue
@@ -76,8 +72,6 @@ class ZFilter(calc_filter):
     if(gainDC1==True):
       dcGain=self.getDCGain()
       self.b=self.b/dcGain
-
-
 
   def setValue(self, value):
     b_sum=sum(self.b)
@@ -143,17 +137,23 @@ class notch_filter(calc_filter):
     return self.filter.h(newValue)
 
 
+class approach_filter(calc_filter):
+
+  def __init__(self,alpha=0.9):
+    b=np.array([1-alpha])
+    a=np.array([1,-alpha])
+    self.filter=ZFilter(b,a,True)
+
+  def setValue(self, value):
+    return self.filter.setValue(value)
+
+  
+  def h(self,newValue=None):
+    return self.filter.h(newValue)
+
+
 
 class chase_filter(calc_filter):
-
-  # /*
-  # notch filter
-  
-  # b = 1-2cos(w0)*z^-1+z^-2
-  # ----------------------
-  # a = 1-2r*cos(w0)*z^-1+r^2*z^-2
-  # */
-
   def __init__(self,step_max):
     self.pre_v=0
     self.step_max=0
@@ -215,25 +215,13 @@ class BoxFilter(calc_filter):
     return self.curSum/len(self.buffer)
     
 
-class calFilters(calc_filter):
-  def __init__(self,filters):
-    self.Filters=filters
-  
-  
-
-  def setValue(self, value):
-    idx=0
-    while(idx<len(self.Filters)):
-      self.Filters[idx].setValue(value[idx])
-      idx+=1
-
-  def h(self,newValue=[None,None,None]):
-    return  [self.Filters[i].h(v) for i,v in enumerate(newValue)]
 
 class parallelFilter(calc_filter):
   def __init__(self,filters):
     self.Filters=filters
   
+  def push(self,filter):
+    self.Filters.append(filter)
   
 
   def setValue(self, value):
@@ -242,13 +230,15 @@ class parallelFilter(calc_filter):
       self.Filters[idx].setValue(value[idx])
       idx+=1
 
-  def h(self,newValue=[None,None,None]):
+  def h(self,newValue=None):
+    if newValue is None:
+      return  [filt.h(None) for filt in self.Filters]
     return  [self.Filters[i].h(v) for i,v in enumerate(newValue)]
 
 
 
 class cascadeFilter(calc_filter):
-  def __init__(self,filters=[]):
+  def __init__(self,filters):
     self.Filters=filters
   
   
