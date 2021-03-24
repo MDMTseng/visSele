@@ -113,9 +113,8 @@ function convertInspInfo2CSV(reportName,measureList,inspRecGroup,cur_tagState)
   ci.push(",\""+converterV+'"');
 
   ci.push(',,"tags"');
-  
   ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==1).join(",")+'"');
-  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==0).join(",")+'"');
+  ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==0 || cur_tagState[key]===undefined).join(",")+'"');
   ci.push(",\""+Object.keys(cur_tagState).filter(key=>cur_tagState[key]==-1).join(",")+'"');
   
 
@@ -1041,7 +1040,7 @@ class APP_ANALYSIS_MODE extends React.Component{
       dataInSync:false,
       controlChartOverlap:false,
       displayListInfo:{},
-
+      tagState:{}
 
     };
     this.recStream=new InspRecStream();
@@ -1333,10 +1332,11 @@ class RelatedUsageInfo extends React.Component{
         this.state={
             tags:{
                 //"name":false
-            }
+            },
+            init:true
             // DefFileInfo:[],
         };
-
+        
         this.checkInspectionRec=undefined;
         // this.handleChange = this.handleChange.bind(this);
     }
@@ -1399,8 +1399,11 @@ class RelatedUsageInfo extends React.Component{
               if(tags2[key]===undefined)
                 tags2[key]=0;
             });
-
-            return {tags:tags2};
+            if(prevState.init==true)
+            {
+              props.onTagStateChange(tags2);
+            }
+            return {tags:tags2,init:false};
 
         }
         return null;
