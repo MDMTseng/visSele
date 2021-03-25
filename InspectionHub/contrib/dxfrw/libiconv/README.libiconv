@@ -1,9 +1,0 @@
-This is libiconv-1.13.1 with an upstream fix applied for an endless loop
-bug in the conversion to wchar_t, and compiled for Win64 (x64).
-
-This package was compiled against mingw-w64, using gcc-4.4.5-r161668/w64
-(sezero's toolchain dated 2010-07-02.)
-
-Package date: 2010-07-07.
-
---

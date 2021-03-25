@@ -1,5 +1,0 @@
-wsParseHandshake	KEYWORD2
-wsGetHandshakeAnswer	KEYWORD2
-wsMakeFrame	KEYWORD2
-wsParseInputFrame	KEYWORD2
-nullHandshake	KEYWORD2
