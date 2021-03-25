@@ -968,7 +968,27 @@ class MicroFullInspCtrl extends React.Component {
 
 
             <Divider orientation="left">{this.props.DICT._.uInsp_ACTION_TRIGGER_TIMING}</Divider>
+
+
+            預設不噴氣:
+            <Switch checked={(machineInfo.mode==="TEST_NO_BLOW")}
+            onChange={(checked)=>
+              {
+                let updatedInfo = {mode:checked?"TEST_NO_BLOW":"NORMAL"}
+                
+                this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                { msg: { ...updatedInfo, type: "set_setup"} });
+
+                this.props.ACT_Machine_Info_Update( 
+                  {...machineInfo,...updatedInfo})
+              }
+            } 
+            />
+            <br/>
+        
             {
+
+
               (machineInfo.state_pulseOffset === undefined)?null:
               machineInfo.state_pulseOffset.map((pulseC, idx) =>
                 <InputNumber value={pulseC} size="small" key={"poff" + idx} onChange={(value) => {
@@ -1025,7 +1045,7 @@ class MicroFullInspCtrl extends React.Component {
                   }>Trigger Test
               </Button> */}
               <Button
-                key="TEST_ACTION"
+                key="TEST_INC"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_INC" } })
@@ -1033,7 +1053,7 @@ class MicroFullInspCtrl extends React.Component {
               </Button> 
 
               <Button
-                key="TEST_ACTION"
+                key="TEST_NO_BLOW"
                 onClick={() =>
                   this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_NO_BLOW" } })

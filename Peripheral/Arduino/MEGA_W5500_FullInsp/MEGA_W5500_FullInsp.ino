@@ -538,6 +538,8 @@ class Websocket_FI:public Websocket_FI_proto{
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"perRevPulseCount\":%d,",perRevPulseCount);
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"pulse_hz\":%d,",tar_pulseHZ_);
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"mode\":\"%s\",",
+      mode_info.mode==run_mode_info::TEST?"TEST_NO_BLOW": "NORMAL");
 
     if(ret_status)*ret_status=0;
     return MessageL;      
@@ -621,20 +623,42 @@ class Websocket_FI:public Websocket_FI_proto{
     MessageL+=Json_state_pulseOffset_ToMach(send_rsp+MessageL,send_rspL-MessageL,jbuff,jbuffL,&retS);
 
     
-    char numbuff[20];
-    int retL = findJsonScope(jbuff,"\"pulse_hz\":",numbuff,sizeof(numbuff));
+    char scopebuff[20];
+    int retL = findJsonScope(jbuff,"\"pulse_hz\":",scopebuff,sizeof(scopebuff));
     
     if(retL>0){
       
       
 //      DEBUG_print("\n pulse_hz: retL:");
 //      DEBUG_println(retL);
-//      DEBUG_println(numbuff);
+//      DEBUG_println(scopebuff);
       int newHZ=tar_pulseHZ_;
-      sscanf(numbuff, "%d", &newHZ);
+      sscanf(scopebuff, "%d", &newHZ);
       tar_pulseHZ_=newHZ;
       retS=0;
     }
+
+
+    if(strstr (jbuff,"\"mode\":\"TEST_NO_BLOW\""))
+    {
+      mode_info.mode=run_mode_info::TEST;
+      mode_info.misc_var=0;
+    }
+    
+    if(strstr (jbuff,"\"mode\":\"NORMAL\""))
+    {
+      mode_info.mode=run_mode_info::NORMAL;
+      mode_info.misc_var=0;
+    }
+    
+    if(retL>0){
+
+      
+      retS=0;
+    }
+
+
+    
     
     if(ret_status)*ret_status=retS;
     return MessageL;
@@ -1288,7 +1312,7 @@ void loop()
 //    DEBUG_println(RBuf.size());
 //    DEBUG_print("thres_skip_counter:");
 //    DEBUG_println(thres_skip_counter);
- 
+//    printDBGInfo();
 //    DEBUG_println((char*)WS_Server->json_sec_buffer);
     if(ERROR_HIST.size()!=0)
     {
