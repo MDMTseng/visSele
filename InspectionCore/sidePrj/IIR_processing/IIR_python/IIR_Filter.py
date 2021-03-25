@@ -127,6 +127,30 @@ class notch_filter(calc_filter):
   def __init__(self, r,w0,dampingFactor=1):
     b=[1,  -2*np.cos(w0)*dampingFactor,  1*dampingFactor*dampingFactor]
     a=[1,-2*r*np.cos(w0)*dampingFactor,r*r*dampingFactor*dampingFactor]
+
+    self.filter=ZFilter(b,a,True)
+
+  def setValue(self, value):
+    return self.filter.setValue(value)
+
+  
+  def h(self,newValue=None):
+    return self.filter.h(newValue)
+
+
+class spike_filter(calc_filter):
+
+  # /*
+  # notch filter
+  
+  # b = 1-2cos(w0)*z^-1+z^-2
+  # ----------------------
+  # a = 1-2r*cos(w0)*z^-1+r^2*z^-2
+  # */
+
+  def __init__(self, r,w0,dampingFactor=1):
+    a=[1,  -2*np.cos(w0)*dampingFactor,  1*dampingFactor*dampingFactor]
+    b=[1,-2*r*np.cos(w0)*dampingFactor,r*r*dampingFactor*dampingFactor]
     self.filter=ZFilter(b,a,True)
 
   def setValue(self, value):
