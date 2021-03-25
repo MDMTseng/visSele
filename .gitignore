@@ -37,3 +37,4 @@ InspectionCore/sidePrj/linemod/linemod
 calibration
 OUT
 UI/ElectronApp/release-builds
+*.pyc
