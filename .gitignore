@@ -38,3 +38,7 @@ calibration
 OUT
 UI/ElectronApp/release-builds
 *.pyc
+InspectionCore/contrib/MJPEGWriter/CMakeFiles
+CMakeCache.txt
+MJPEGWriter_test
+InspHub
