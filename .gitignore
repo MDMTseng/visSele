@@ -44,3 +44,8 @@ MJPEGWriter_test
 InspHub
 *.dylib
 InspectionCore/contrib/MJPEGWriter/Makefile
+InspectionCore/contrib/wfqueue/CMakeFiles
+.travis.yml
+wfq_test_test
+InspectionCore/contrib/wfqueue/cmake_install.cmake
+InspectionCore/contrib/wfqueue/makefile
