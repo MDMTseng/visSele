@@ -41,6 +41,12 @@ endif()
 
 include_directories (${CMAKE_CURRENT_SOURCE_DIR})
 
+
+add_library(${PROJECT_NAME} SHARED MJPEGWriter.cpp)
+target_link_libraries(${PROJECT_NAME} ${OpenCV_LIBS})
+
+
 # test exe
-add_executable(${PROJECT_NAME}_test main.cpp MJPEGWriter.cpp)
-target_link_libraries(${PROJECT_NAME}_test ${OpenCV_LIBS})
+add_executable(${PROJECT_NAME}_test main.cpp)
+target_link_libraries(${PROJECT_NAME}_test ${OpenCV_LIBS} ${PROJECT_NAME})
+

@@ -42,3 +42,5 @@ InspectionCore/contrib/MJPEGWriter/CMakeFiles
 CMakeCache.txt
 MJPEGWriter_test
 InspHub
+*.dylib
+InspectionCore/contrib/MJPEGWriter/Makefile
