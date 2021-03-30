@@ -9,31 +9,35 @@ endif
 
 
 
+moduleRoot=../
 
-export MODULE_acvImage=$(abspath acvImage)
-export MODULE_MLNN=$(abspath MLNN)
-export MODULE_cwebsocket=$(abspath contrib/cwebsocket)
-export MODULE_circleFitting=$(abspath contrib/circleFitting)
-export MODULE_MindVision_GIGE=$(abspath contrib/MindVision_GIGE/$(platform))
-export MODULE_Compat_dirent=$(abspath contrib/Compat_dirent/$(platform))
-export MODULE_cJSON=$(abspath contrib/cJSON)
-export MODULE_logctrl=$(abspath logctrl)
-export MODULE_MatchingEngine=$(abspath MatchingEngine)
-export MODULE_common_lib=$(abspath common_lib)
-export MODULE_zlib=$(abspath contrib/zlib-1.2.11)
-export MODULE_SOIL=$(abspath contrib/SOIL)
-export MODULE_polyfit=$(abspath contrib/polyfit)
-export MODULE_lodepng=$(abspath contrib/lodepng)
-export MODULE_DataChannel=$(abspath DataChannel)
-export MODULE_CameraLayer=$(abspath CameraLayer)
+
+export MODULE_acvImage=$(abspath $(moduleRoot)/acvImage)
+export MODULE_cwebsocket=$(abspath $(moduleRoot)/contrib/cwebsocket)
+export MODULE_circleFitting=$(abspath $(moduleRoot)/contrib/circleFitting)
+export MODULE_MindVision_GIGE=$(abspath $(moduleRoot)/contrib/MindVision_GIGE/$(platform))
+export MODULE_Compat_dirent=$(abspath $(moduleRoot)/contrib/Compat_dirent/$(platform))
+export MODULE_cJSON=$(abspath $(moduleRoot)/contrib/cJSON)
+export MODULE_logctrl=$(abspath $(moduleRoot)/logctrl)
+export MODULE_common_lib=$(abspath $(moduleRoot)/common_lib)
+export MODULE_zlib=$(abspath $(moduleRoot)/contrib/zlib-1.2.11)
+export MODULE_SOIL=$(abspath $(moduleRoot)/contrib/SOIL)
+export MODULE_polyfit=$(abspath $(moduleRoot)/contrib/polyfit)
+export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
+export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
+export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
+
+
+export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
+export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
 
 export SO_EXPORT_PATH=$(abspath .)
 
 
 
-export GLEWSRCDir=$(abspath ../../glew-2.1.0)
-export GLFWSRCDir=$(abspath ../../glfw-3.2.1)
-export MODULE_GLACC=$(abspath GLAcc)
+export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
+export GLFWSRCDir=$(abspath ../../$(moduleRoot)/glfw-3.2.1)
+export MODULE_GLACC=$(abspath $(moduleRoot)/GLAcc)
 
 
 target_bin=visSele
@@ -62,7 +66,7 @@ _OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp tmpCodes.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= $(addprefix MLNN/obj/,$(MLNN_OBJS)) \
+EXT_OBJS= $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 					$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
@@ -101,25 +105,25 @@ else
 
 	ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
 	SUB_MAKEFILES = $(MODULE_acvImage) \
+									$(MODULE_zlib) \
 									$(MODULE_common_lib) \
-									$(MODULE_MLNN) \
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
 									$(MODULE_logctrl) \
 									$(MODULE_MatchingEngine) \
-									$(MODULE_zlib) \
 									$(MODULE_GLACC) \
 									$(MODULE_SOIL) \
 									$(MODULE_lodepng) \
 									$(MODULE_DataChannel) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
-									sidePrj
+									$(MODULE_MLNN) \
+									# sidePrj
 endif
 
 
 
-export MakeTemplate:= $(abspath Makefile.in)
+export MakeTemplate:= $(abspath ../Makefile.in)
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
