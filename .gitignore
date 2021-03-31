@@ -49,3 +49,6 @@ InspectionCore/contrib/wfqueue/CMakeFiles
 wfq_test_test
 InspectionCore/contrib/wfqueue/cmake_install.cmake
 InspectionCore/contrib/wfqueue/makefile
+InspectionCore/CoreHub/CMakeFiles
+cmake_install.cmake
+CORE_HUB
