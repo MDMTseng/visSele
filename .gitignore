@@ -52,3 +52,4 @@ InspectionCore/contrib/wfqueue/makefile
 InspectionCore/CoreHub/CMakeFiles
 cmake_install.cmake
 CORE_HUB
+InspectionCore/CoreHub/Makefile
