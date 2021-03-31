@@ -14,6 +14,21 @@ endif()
 
 
 
+# opencv
+set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /opt/ros/kinetic)
+find_package(OpenCV 4 REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+find_package(OpenMP)
+if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
+
+
+
+
 set ( MODULE_acvImage ${MWD}/acvImage)
 set ( MODULE_cwebsocket ${MWD}/contrib/cwebsocket)
 set ( MODULE_circleFitting ${MWD}/contrib/circleFitting)
@@ -26,6 +41,7 @@ set ( MODULE_zlib ${MWD}/contrib/zlib-1.2.11)
 set ( MODULE_SOIL ${MWD}/contrib/SOIL)
 set ( MODULE_polyfit ${MWD}/contrib/polyfit)
 set ( MODULE_lodepng ${MWD}/contrib/lodepng)
+set ( MODULE_shape_based_matching ${MWD}/contrib/shape_based_matching)
 set ( MODULE_DataChannel ${MWD}/DataChannel)
 set ( MODULE_CameraLayer ${MWD}/CameraLayer)
 
@@ -39,6 +55,7 @@ endif()
 
 
 include_directories (
+  ${INCLUDE_DIRECTORIES}
   "." 
   "./include"
   ${MODULE_acvImage}/include/ 
@@ -52,9 +69,13 @@ include_directories (
   ${MODULE_MindVision_GIGE}/include 
   ${MODULE_Compat_dirent}/include 
   ${MODULE_polyfit}/include 
+  ${MODULE_shape_based_matching}/include 
+  ${MODULE_shape_based_matching}/MIPP 
+  ${MODULE_shape_based_matching}
   ${MODULE_lodepng}
   ${OS_SP_inc}
   )
+  
 
 add_executable (${PROJECT_NAME} main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 
@@ -88,6 +109,9 @@ target_link_libraries(${PROJECT_NAME}
   ${MODULE_lodepng}/lodepng.a 
   ${MODULE_polyfit}/polyfit.a 
   ${MODULE_zlib}/staticlib/libz.a
+
+  ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
+  ${OpenCV_LIBS}
   
   )
