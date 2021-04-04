@@ -44,6 +44,7 @@ set ( MODULE_lodepng ${MWD}/contrib/lodepng)
 set ( MODULE_shape_based_matching ${MWD}/contrib/shape_based_matching)
 set ( MODULE_DataChannel ${MWD}/DataChannel)
 set ( MODULE_CameraLayer ${MWD}/CameraLayer)
+set ( MODULE_wfqueue ${MWD}/contrib/wfqueue)
 
 
 
@@ -71,11 +72,13 @@ include_directories (
   ${MODULE_polyfit}/include 
   ${MODULE_shape_based_matching}/include 
   ${MODULE_shape_based_matching}/MIPP 
-  ${MODULE_shape_based_matching}
+  ${MODULE_wfqueue}
   ${MODULE_lodepng}
   ${OS_SP_inc}
   )
   
+add_executable (helloTest helloTest.cpp )
+
 
 add_executable (${PROJECT_NAME} main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 
