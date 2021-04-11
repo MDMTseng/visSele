@@ -20,74 +20,18 @@
 #include <stdexcept>
 #include <compat_dirent.h>
 
-#include <RingBuf.hpp>
-
-std::timed_mutex mainThreadLock;
+#include <TSQueue.hpp>
 
 
-#define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
-#define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
-
-int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms=0)
-{
-
-  if(try_lock_timeout_ms<=0)
-  {
-    //LOGI("%s_%d: Locking ",msg,call_lineNumber);
-    mainThreadLock.lock();
-  }
-  else
-  {
-    using Ms = std::chrono::milliseconds;
-    
-    //LOGI("%s_%d: Locking %dms",msg,call_lineNumber,try_lock_timeout_ms);
-    if(mainThreadLock.try_lock_for(Ms(try_lock_timeout_ms)))
-    {
-    }
-    else
-    {
-      //LOGI("Lock failed");
-      return -1;
-    }
-  }
-  //LOGI("%s_%d: Locked ",msg,call_lineNumber);
-
-  return 0;
-}
+DatCH_BPG1_0 *BPG_protocol = new DatCH_BPG1_0(NULL);
+DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
+DatCH_CallBack_WSBPG callbk_obj;
 
 
-int mainThreadLock_unlock(int call_lineNumber,char* msg="")
-{
-
-  //LOGI("%s_%d: unLocking ",msg,call_lineNumber);
-  mainThreadLock.unlock();
-  //LOGI("%s_%d: unLocked ",msg,call_lineNumber);
-
-  return 0;
-}
 
 DatCH_WebSocket *websocket = NULL;
-CameraLayer *gen_camera;
-DatCH_CallBack_WSBPG callbk_obj;
-DatCH_BPG1_0 *BPG_protocol = new DatCH_BPG1_0(NULL);
 
-std::timed_mutex BPG_protocol_lock;
 
-void BPG_protocol_send(DatCH_Data dat)
-{
-  //LOGI("SEND_LOCK");
-  BPG_protocol_lock.lock();
-  //LOGI("SEND_ING");
-  BPG_protocol->SendData(dat);
-  //LOGI("SEND_UNLOCK");
-  BPG_protocol_lock.unlock();
-  //LOGI("SEND_END");
-}
-
-int _argc;
-char **_argv;
-
-DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
 
 typedef struct image_pipe_info
 {
@@ -98,638 +42,9 @@ typedef struct image_pipe_info
   CameraLayer::frameInfo fi;
 } image_pipe_info;
 
-#define ImagePipeBufferSize 20
-RingBuf<image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSize], ImagePipeBufferSize);
-//lens1
-//main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
-//main.cpp  1068 main:v Center: 1295,971
+int _argc;
+char **_argv;
 
-//main.cpp  1075 main:v K: 0.999783 0.00054474 -0.000394607 RNormalFactor:1296
-//main.cpp  1076 main:v Center: 1295,971
-
-//lens2
-//main.cpp  1061 main:v K: 0.989226 0.0101698 0.000896734 RNormalFactor:1296
-//main.cpp  1062 main:v Center: 1295,971
-
-
-// acvRadialDistortionParam calib_bacpac={
-//     calibrationCenter:{1295,971},
-//     RNormalFactor:1296,
-//     K0:0.999783,
-//     K1:0.00054474,
-//     K2:-0.000394607,
-//     //r = r_image/RNormalFactor
-//     //C1 = K1/K0
-//     //C2 = K2/K0
-//     //r"=r'/K0
-//     //Forward: r' = r*(K0+K1*r^2+K2*r^4)
-//     //         r"=r'/K0=r*(1+C1*r^2 + C2*r^4)
-//     //Backward:r  =r"(1-C1*r"^2 + (3*C1^2-C2)*r"^4)
-//     //r/r'=r*K0/r"
-
-//     ppb2b: 63.11896896362305,
-//     mmpb2b:  0.630049821,
-//     map: NULL
-// };
-
-CameraLayer *getCamera(int initCameraType); //0 for real First, then fake one, 1 for real camera only, 2 for fake only
-
-typedef size_t (*IMG_COMPRESS_FUNC)(uint8_t *dst, size_t dstLen, uint8_t *src, size_t srcLen);
-
-void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler *sampler,int doNearest=1,
-                       int X = -1, int Y = -1, int W = -1, int H = -1)
-{
-  int X2 = src.GetWidth() - 1;
-  int Y2 = src.GetHeight() - 1;
-
-  if (X < 0)
-    X = 0;
-  else if (X >= X2)
-    X = X2 - 1;
-
-  if (Y < 0)
-    Y = 0;
-  else if (Y >= Y2)
-    Y = Y2 - 1;
-
-  if (W > 0)
-  {
-    X2 = X + W;
-    if (X2 >= src.GetWidth())
-    {
-      X2 = src.GetWidth() - 1;
-    }
-  }
-
-  if (H > 0)
-  {
-    Y2 = Y + H;
-    if (Y2 >= src.GetHeight())
-    {
-      Y2 = src.GetHeight() - 1;
-    }
-  }
-  X /= downScale;
-  Y /= downScale;
-  X2 /= downScale;
-  Y2 /= downScale;
-  dst.ReSize((X2 - X + 1), (Y2 - Y + 1));
-  LOGI("X:%d Y:%d X2:%d Y2:%d", X, Y, X2, Y2);
-  //LOGI("map=%p",map);
-  for (int i = Y; i <= Y2; i++)
-  {
-    int src_i = i * downScale;
-    for (int j = X; j <= X2; j++)
-    {
-      int RSum = 0, GSum = 0, BSum = 0;
-      int src_j = j * downScale;
-
-      {
-        float bri = 0;
-        if (sampler)
-        {
-          float coord[] = {(float)src_j, (float)src_i};
-          
-          bri = sampler->sampleImage_IdealCoord(&src, coord,doNearest);
-
-          if (bri > 255)
-            bri = 255;
-          BSum += bri;
-          GSum += bri;
-          RSum += bri;
-        }
-        else
-        {
-          BSum = src.CVector[src_i][(src_j)*3 + 0];
-          GSum = src.CVector[src_i][(src_j)*3 + 1];
-          RSum = src.CVector[src_i][(src_j)*3 + 2];
-        }
-      }
-      uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);
-      pix[0] = BSum;
-      pix[1] = GSum;
-      pix[2] = RSum;
-    }
-  }
-}
-
-
-cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
-{
-  if (path == NULL)
-    return NULL;
-
-  DIR *d = opendir(path);
-
-  if (d == NULL)
-    return NULL;
-
-  cJSON *retObj = (jObj_to_W == NULL) ? cJSON_CreateObject() : jObj_to_W;
-  struct dirent *dir;
-  cJSON *dirFiles = cJSON_CreateArray();
-  char buf[PATH_MAX + 1];
-  realfullPath(path, buf);
-
-  cJSON_AddStringToObject(retObj, "path", buf);
-  cJSON_AddItemToObject(retObj, "files", dirFiles);
-
-  std::string folderPath(buf);
-
-  if (depth > 0)
-    while ((dir = readdir(d)) != NULL)
-    {
-      //if(dir->d_name[0]=='.')continue;
-      cJSON *fileInfo = cJSON_CreateObject();
-      cJSON_AddItemToArray(dirFiles, fileInfo);
-      cJSON_AddStringToObject(fileInfo, "name", dir->d_name);
-
-      char *type = NULL;
-      std::string fileName(dir->d_name);
-      std::string filePath = folderPath + "/" + fileName;
-
-      switch (dir->d_type)
-      {
-      case DT_REG:
-        type = "REG";
-        break;
-      case DT_DIR:
-      {
-        if (depth > 0 && dir->d_name != NULL && dir->d_name[0] != '\0' && dir->d_name[0] != '.')
-        {
-          cJSON *subFolderStruct = cJSON_DirFiles(filePath.c_str(), NULL, depth - 1);
-          if (subFolderStruct != NULL)
-          {
-            cJSON_AddItemToObject(fileInfo, "struct", subFolderStruct);
-          }
-        }
-        type = "DIR";
-        break;
-      }
-      // case DT_FIFO:
-      // case DT_SOCK:
-      // case DT_CHR:
-      // case DT_BLK:
-      // case DT_LNK:
-      case DT_UNKNOWN:
-      default:
-        type = "UNKNOWN";
-        break;
-      }
-      cJSON_AddStringToObject(fileInfo, "type", type);
-
-      struct stat st;
-      if (stat(filePath.c_str(), &st) == 0)
-      {
-        cJSON_AddNumberToObject(fileInfo, "size_bytes", st.st_size);
-        cJSON_AddNumberToObject(fileInfo, "mtime_ms", st.st_mtime * 1000);
-        cJSON_AddNumberToObject(fileInfo, "ctime_ms", st.st_ctime * 1000);
-        cJSON_AddNumberToObject(fileInfo, "atime_ms", st.st_atime * 1000);
-      }
-    }
-  closedir(d);
-
-  return retObj;
-}
-
-machine_hash machine_h = {0};
-void AttachStaticInfo(cJSON *reportJson, DatCH_CallBack_BPG *cb)
-{
-  if (reportJson == NULL)
-    return;
-  char tmpStr[128];
-
-  {
-    char *tmpStr_ptr = tmpStr;
-    for (int i = 0; i < sizeof(machine_h.machine); i++)
-    {
-      tmpStr_ptr += sprintf(tmpStr_ptr, "%02X", machine_h.machine[i]);
-    }
-    cJSON_AddStringToObject(reportJson, "machine_hash", tmpStr);
-
-    if (cb && cb->cameraFramesLeft >= 0)
-    {
-      LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
-      cJSON_AddNumberToObject(reportJson, "frames_left", cb->cameraFramesLeft);
-    }
-  }
-}
-// int backPackLoad(FeatureManager_BacPac &calib_bacpac,cJSON *from)
-// {
-// }
-
-// int backPackDump(FeatureManager_BacPac &calib_bacpac,cJSON *dumoTo)
-// {
-// }
-
-BGLightNodeInfo extractInfoFromJson(cJSON *nodeRoot) //have exception
-{
-  if (nodeRoot == NULL)
-  {
-    char ExpMsg[100];
-    sprintf(ExpMsg, "ERROR: extractInfoFromJson error, nodeRoot is NULL");
-    throw std::runtime_error(ExpMsg);
-  }
-
-  BGLightNodeInfo info;
-  info.location.X = *JFetEx_NUMBER(nodeRoot, "location.x");
-  info.location.Y = *JFetEx_NUMBER(nodeRoot, "location.y");
-  info.index.X = (int)*JFetEx_NUMBER(nodeRoot, "index.x");
-  info.index.Y = (int)*JFetEx_NUMBER(nodeRoot, "index.y");
-
-  info.sigma = *JFetEx_NUMBER(nodeRoot, "sigma");
-  info.samp_rate = *JFetEx_NUMBER(nodeRoot, "samp_rate");
-  info.mean = *JFetEx_NUMBER(nodeRoot, "mean");
-  info.error = *JFetEx_NUMBER(nodeRoot, "error");
-
-  return info;
-}
-
-int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
-{
-
-  if (ret_param == NULL)
-    return -1;  
-  if (root == NULL)
-    return -1;
-
-  cJSON *angledOffsetObj = JFetEx_OBJECT(root, "reports[0].angledOffset");
-  ret_param->getAngOffsetTable()->RESET();
-  if (angledOffsetObj != NULL)
-  {
-
-    float mult = 1;
-    double *p_mult = JFetch_NUMBER(angledOffsetObj, "mult");
-    if (p_mult)
-    {
-      mult = *p_mult;
-    }
-
-    ret_param->getAngOffsetTable()->RESET();
-    cJSON *current_element = angledOffsetObj->child;
-
-    for (cJSON *current_element = angledOffsetObj->child;
-         current_element != NULL;
-         current_element = current_element->next)
-    {
-      float tagNum;
-      char *name = current_element->string;
-      if (sscanf(name, "%f", &tagNum) != 1)
-        continue;
-      if (tagNum < 0 && tagNum >= 360)
-        continue;
-      double *val = JFetch_NUMBER(angledOffsetObj, name);
-      if (val == NULL)
-        continue;
-
-      angledOffsetG newPair = {//angle in rad
-                               angle_rad : (float)(tagNum * M_PI / 180),
-                               offset : mult * (float)*val
-      };
-      ret_param->getAngOffsetTable()->push_back(newPair);
-    }
-
-    void *target;
-    int type = getDataFromJson(angledOffsetObj, "symmetric", &target);
-    if (type == cJSON_True)
-    {
-      ret_param->getAngOffsetTable()->makeSymmetic();
-    }
-
-    double *preOffset = JFetch_NUMBER(angledOffsetObj, "preOffset");
-    if (preOffset)
-    {
-      ret_param->getAngOffsetTable()->applyPreOffset(*preOffset);
-    }
-
-    angledOffsetTable *angOffsetTable = ret_param->getAngOffsetTable();
-    int testN = 100;
-
-    LOGI("angOffsetTable.size:%d", angOffsetTable->size());
-    // for (int i = 0; i < testN; i++)
-    // {
-    //   float angle = 2 * M_PI * i / testN;
-    //   float offset = angOffsetTable->sampleAngleOffset(angle);
-    //   LOGI("a:%f o:%f", angle * 180 / M_PI, offset);
-    // }
-    //exit(-1);
-  }
-
-  //ret_param->mmpp = *JFetEx_NUMBER(root, "reports[0].mmpb2b") / (*JFetEx_NUMBER(root, "reports[0].ppb2b"));
-  if(JFetEx_NUMBER(root, "reports[0].mmpb2b")!=NULL)
-  {
-    ret_param->getCalibMap()->calibmmpB=*JFetEx_NUMBER(root, "reports[0].mmpb2b");
-    LOGI("Override calibmmpB:%f",ret_param->getCalibMap()->calibmmpB);
-  }
-
-  do
-  {
-
-    stageLightParam *stageLightInfo = ret_param->getStageLightInfo();
-    char default_SLCalibPath[] = "stageLightReport.json";
-    char *SLCalibPath = JFetch_STRING(root, "reports[0].StageLightReportPath");
-    if (SLCalibPath == NULL)
-      SLCalibPath = default_SLCalibPath;
-    char path[200];
-    sprintf(path, "%s/%s", dirName, SLCalibPath);
-    SLCalibPath = path;
-    LOGE("SLCalibPath:%s", SLCalibPath);
-
-    char *fileStr = ReadText(SLCalibPath);
-
-    if (fileStr == NULL)
-    {
-      LOGE("Cannot read defFile from:%s", SLCalibPath);
-      break;
-    }
-
-    //LOGE("fileStr:%s",fileStr);
-
-    cJSON *sl_json = cJSON_Parse(fileStr);
-
-    free(fileStr);
-    if (sl_json == NULL)
-    {
-      LOGE("File:%s is not a JSON...", SLCalibPath);
-      break;
-    }
-
-    stageLightInfo->RESET();
-    double *expTime_us = JFetch_NUMBER(sl_json, "cam_param.exposure_time");
-
-    if (expTime_us)
-    {
-      stageLightInfo->exposure_us = *expTime_us;
-    }
-
-    double *imDimW = JFetch_NUMBER(sl_json, "target_image_dim.x");
-    double *imDimH = JFetch_NUMBER(sl_json, "target_image_dim.y");
-
-    if (imDimW && imDimH)
-    {
-      stageLightInfo->tarImgW = *imDimW;
-      stageLightInfo->tarImgH = *imDimH;
-    }
-
-    stageLightInfo->back_light_target=200;//Default
-    double *p_back_light_target = JFetch_NUMBER(sl_json, "cam_param.back_light_target");
-    if(p_back_light_target)
-    {
-      stageLightInfo->back_light_target=*p_back_light_target;
-    }
-
-    stageLightInfo->BG_nodes.clear();
-    int idx = 0;
-    while (true)
-    {
-      char jsonKey[100];
-      sprintf(jsonKey, "grid_info[%d]", idx);
-      idx++;
-      cJSON *nodeObj = JFetch_OBJECT(sl_json, jsonKey);
-      if (nodeObj == NULL)
-        break;
-      BGLightNodeInfo info;
-      try
-      {
-
-        info = extractInfoFromJson(nodeObj);
-      }
-      catch (...)
-      {
-        stageLightInfo->BG_nodes.clear();
-        break;
-      }
-
-      stageLightInfo->BG_nodes.push_back(info);
-
-      // LOGI("node[%d]:mean:%f idx:%d:%d  xy:%f,%f  size:%d",
-      //   idx,info.mean,idx,info.index.X,idx,info.index.Y,info.location.X,idx,info.location.Y,stageLightInfo->BG_nodes.size());
-    }
-
-    LOGE("exposure_time:");
-    stageLightInfo->nodesIdxWHSetup();
-
-  } while (false);
-  return 0;
-}
-
-int CameraSetup(CameraLayer &camera, cJSON &settingJson)
-{
-  double *val = JFetch_NUMBER(&settingJson, "exposure");
-  int retV = -1;
-  if (val)
-  {
-    camera.SetExposureTime(*val);
-    LOGI("SetExposureTime:%f", *val);
-    retV = 0;
-  }
-  val = JFetch_NUMBER(&settingJson, "gain");
-  if (val)
-  {
-    camera.SetAnalogGain((int)*val);
-    LOGI("SetAnalogGain:%f", *val);
-    retV = 0;
-  }
-
-  val = JFetch_NUMBER(&settingJson, "framerate_mode");
-  if (val)
-  {
-    *val = (int)*val;
-    camera.SetFrameRateMode((int)*val);
-    LOGI("framerate_mode:%f", *val);
-    retV = 0;
-  }
-
-
-  if ( getDataFromJson(&settingJson, "set_once_WB",NULL)==cJSON_True)
-  {
-    CameraLayer::status  st= camera.SetOnceWB();
-    LOGI("SetOnceWB:%d", st);
-    retV = 0;
-  }
-
-
-  int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
-
-
-  cJSON *MIRROR = JFetch_ARRAY(&settingJson, "mirror");
-
-  if (MIRROR)
-  { //ROI set
-    int mirrorX = 0;
-    int mirrorY = 0;
-    double *_mirrorX = JFetch_NUMBER(&settingJson, "mirror[0]");
-    if (_mirrorX)
-    {
-      mirrorX = (int)*_mirrorX;
-    }
-    double *_mirrorY = JFetch_NUMBER(&settingJson, "mirror[1]");
-    if (_mirrorY)
-    {
-      mirrorY = (int)*_mirrorY;
-    }
-
-    camera.SetMirror(0, mirrorX);
-    camera.SetMirror(1, mirrorY);
-  }
-
-  if (JFetch_ARRAY(&settingJson, "ROI_mirror"))
-  { //ROI set
-    int mirrorX = 0;
-    int mirrorY = 0;
-    double *_mirrorX = JFetch_NUMBER(&settingJson, "ROI_mirror[0]");
-    if (_mirrorX)
-    {
-      mirrorX = (int)*_mirrorX;
-    }
-    double *_mirrorY = JFetch_NUMBER(&settingJson, "ROI_mirror[1]");
-    if (_mirrorY)
-    {
-      mirrorY = (int)*_mirrorY;
-    }
-
-    camera.SetROIMirror(0, mirrorX);
-    camera.SetROIMirror(1, mirrorY);
-  }
-
-
-  cJSON *ROISetting = JFetch_ARRAY(&settingJson, "ROI");
-
-  if (ROISetting)
-  { //ROI set
-    double *roi_x = JFetch_NUMBER(&settingJson, "ROI[0]");
-    double *roi_y = JFetch_NUMBER(&settingJson, "ROI[1]");
-    double *roi_w = JFetch_NUMBER(&settingJson, "ROI[2]");
-    double *roi_h = JFetch_NUMBER(&settingJson, "ROI[3]");
-    LOGI("ROI ptr:%p %p %p %p", roi_x, roi_y, roi_w, roi_h);
-    if (roi_x && roi_y && roi_w && roi_h && ((*roi_w)* (*roi_h))!=0)
-    {
-      camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
-      float ox,oy;
-      camera.GetROI(&ox,&oy, NULL,NULL,NULL,NULL);
-      acv_XY offset_o={ox,oy};
-      //sampler
-      
-    }
-    else
-    {
-    }
-  }
-  return 0;
-}
-
-int LoadCameraSetting(CameraLayer &camera, char *filename)
-{
-  char *fileStr = ReadText(filename);
-
-  if (fileStr == NULL)
-  {
-    LOGE("Cannot read defFile from:%s", filename);
-    return -1;
-  }
-
-  cJSON *json = cJSON_Parse(fileStr);
-
-  free(fileStr);
-  if (json == NULL)
-  {
-    LOGE("File:%s is not a JSON...", filename);
-    return -1;
-  }
-
-  int ret = CameraSetup(camera, *json);
-  cJSON_Delete(json);
-  return ret;
-}
-
-int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
-{
-  char *fileStr = ReadText(filename);
-
-  if (fileStr == NULL)
-  {
-    LOGE("Cannot read defFile from:%s", filename);
-    return -1;
-  }
-  LOGE("Read defFile from:%s", filename);
-
-  cJSON *json = cJSON_Parse(fileStr);
-
-  free(fileStr);
-  bool executionError = false;
-
-  try
-  {
-    char folder_name[200];
-    int strLen = strlen(filename);
-    strcpy(folder_name, filename);
-    for (int i = strLen; i; i--) //Find folder name
-    {
-      if (folder_name[i] == '/')
-      {
-        folder_name[i + 1] = '\0';
-        break;
-      }
-    }
-
-    //json
-
-    int ret = loadCameraCalibParam(folder_name, json, ret_cam_param);
-    if (ret)
-      executionError = true;
-  }
-  catch (const std::exception &ex)
-  {
-    LOGE("Exception:%s", ex.what());
-    executionError = true;
-  }
-  cJSON_Delete(json);
-
-  if (executionError)
-    return -1;
-  return 0;
-}
-
-bool DoImageTransfer = true;
-
-int MicroInsp_FType::recv_json(char *json_str, int json_strL)
-{
-  MT_LOCK();
-  int fd = getfd();
-
-  DatCH_Data datCH_BPG =
-      BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
-  char tmp[1024];
-  sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", json_str, fd);
-  LOGI("MSG:%s", tmp);
-
-  BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
-  datCH_BPG.data.p_BPG_data = &bpg_dat;
-  BPG_protocol_send(datCH_BPG);
-  MT_UNLOCK();
-  return 0;
-}
-
-int MicroInsp_FType::ev_on_close()
-{
-  
-  //MT_LOCK(); //the delete caller might come within main thread
-  int fd = getfd();
-  LOGE("fd:%d is disconnected", fd);
-  DatCH_Data datCH_BPG =
-      BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
-  char tmp[70];
-  sprintf(tmp, "{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}", getfd());
-
-  BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
-  datCH_BPG.data.p_BPG_data = &bpg_dat;
-  BPG_protocol_send(datCH_BPG);
-
-  //MT_UNLOCK();
-
-  return 0;
-}
 
 bool DatCH_CallBack_BPG::checkTL(const char *TL, const BPG_data *dat)
 {
@@ -852,7 +167,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     datCH_BPG.data.p_BPG_data = &bpg_dat;
     self->SendData(datCH_BPG);
 
-    MT_UNLOCK();
     cJSON_Delete(json);
   }
   break;
@@ -893,10 +207,97 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 {
 }
 
-void ImgPipeProcessThread(bool *terminationflag)
+
+
+int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
 {
 
+  tSdkCameraDevInfo sCameraList[10];
+  int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
+  CL_GIGE->EnumerateDevice(sCameraList, &retListL);
+
+  if (retListL <= 0)
+    return -1;
+  for (int i = 0; i < retListL; i++)
+  {
+    printf("CAM:%d======\n", i);
+    printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
+    printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
+    printf("acLinkName:%s\n", sCameraList[i].acLinkName);
+    printf("acPortType:%s\n", sCameraList[i].acPortType);
+    printf("acProductName:%s\n", sCameraList[i].acProductName);
+    printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
+    printf("acSensorType:%s\n", sCameraList[i].acSensorType);
+    printf("acSn:%s\n", sCameraList[i].acSn);
+    printf("\n\n\n\n");
+  }
+
+  if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
+  {
+    return 0;
+  }
+  return -1;
 }
+
+CameraLayer *getCamera(int initCameraType=0)
+{
+
+  CameraLayer *camera = NULL;
+  if (initCameraType == 0 || initCameraType == 1)
+  {
+    CameraLayer_GIGE_MindVision *camera_GIGE;
+    camera_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
+    LOGV("initCamera");
+
+    try
+    {
+      if (initCamera(camera_GIGE) == 0)
+      {
+        camera = camera_GIGE;
+      }
+      else
+      {
+        delete camera;
+        camera = NULL;
+      }
+    }
+    catch (std::exception &e)
+    {
+      delete camera;
+      camera = NULL;
+    }
+  }
+  LOGI("camera ptr:%p", camera);
+
+  if (camera == NULL && (initCameraType == 0 || initCameraType == 2))
+  {
+    CameraLayer_BMP_carousel *camera_BMP;
+    LOGI("CameraLayer_BMP_carousel");
+    camera_BMP = new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV, NULL, "data/BMP_carousel_test");
+    camera = camera_BMP;
+  }
+
+  if (camera == NULL)
+  {
+    return NULL;
+  }
+
+  LOGV("TriggerMode(1)");
+  camera->TriggerMode(1);
+  camera->SetExposureTime(12570.5110);
+  camera->SetAnalogGain(1);
+
+  // LOGV("Loading data/default_camera_setting.json....");
+  // int ret = LoadCameraSetting(*camera, "data/default_camera_setting.json");
+  // LOGV("ret:%d",ret);
+  return camera;
+}
+
+void BPG_protocol_send(DatCH_Data dat)
+{
+  BPG_protocol->SendData(dat);
+}
+
 
 int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void *callback_param)
 {
@@ -1017,94 +418,11 @@ int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void 
   return ret_val;
 }
 
-
-int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
+void ImgPipeProcessThread(bool *terminationflag)
 {
 
-  tSdkCameraDevInfo sCameraList[10];
-  int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
-  CL_GIGE->EnumerateDevice(sCameraList, &retListL);
-
-  if (retListL <= 0)
-    return -1;
-  for (int i = 0; i < retListL; i++)
-  {
-    printf("CAM:%d======\n", i);
-    printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
-    printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
-    printf("acLinkName:%s\n", sCameraList[i].acLinkName);
-    printf("acPortType:%s\n", sCameraList[i].acPortType);
-    printf("acProductName:%s\n", sCameraList[i].acProductName);
-    printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
-    printf("acSensorType:%s\n", sCameraList[i].acSensorType);
-    printf("acSn:%s\n", sCameraList[i].acSn);
-    printf("\n\n\n\n");
-  }
-
-  if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
-  {
-    return 0;
-  }
-  return -1;
-}
-int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
-{
-  return CL_bmpc == NULL ? -1 : 0;
 }
 
-CameraLayer *getCamera(int initCameraType=0)
-{
-
-  CameraLayer *camera = NULL;
-  if (initCameraType == 0 || initCameraType == 1)
-  {
-    CameraLayer_GIGE_MindVision *camera_GIGE;
-    camera_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
-    LOGV("initCamera");
-
-    try
-    {
-      if (initCamera(camera_GIGE) == 0)
-      {
-        camera = camera_GIGE;
-      }
-      else
-      {
-        delete camera;
-        camera = NULL;
-      }
-    }
-    catch (std::exception &e)
-    {
-      delete camera;
-      camera = NULL;
-    }
-  }
-  LOGI("camera ptr:%p", camera);
-
-  if (camera == NULL && (initCameraType == 0 || initCameraType == 2))
-  {
-    CameraLayer_BMP_carousel *camera_BMP;
-    LOGV("CameraLayer_BMP_carousel");
-    camera_BMP = new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV, NULL, "data/BMP_carousel_test");
-    camera = camera_BMP;
-  }
-
-  if (camera == NULL)
-  {
-    return NULL;
-  }
-
-  LOGV("TriggerMode(1)");
-  camera->TriggerMode(1);
-  camera->SetExposureTime(12570.5110);
-  camera->SetAnalogGain(1);
-
-  // LOGV("Loading data/default_camera_setting.json....");
-  // int ret = LoadCameraSetting(*camera, "data/default_camera_setting.json");
-  // LOGV("ret:%d",ret);
-  return camera;
-}
 
 
 bool terminationFlag=false;
@@ -1119,7 +437,7 @@ int mainLoop(bool realCamera = false)
   {
     try
     {
-      int port = 4090;
+      int port = 1407;
       LOGI("Try to open websocket... port:%d\n", port);
       websocket = new DatCH_WebSocket(port);
       pass = true;
@@ -1135,7 +453,6 @@ int mainLoop(bool realCamera = false)
 
   if (terminationFlag)
     return -1;
-  std::thread mThread(ImgPipeProcessThread, &terminationFlag);
   LOGI(">>>>>\n");
 
   {
@@ -1151,7 +468,6 @@ int mainLoop(bool realCamera = false)
     LOGI("DatCH_BPG1_0 camera :%p", camera);
 
     cb->camera = camera;
-    callbk_obj.camera = camera;
 
     BPG_protocol->SetEventCallBack(cb, NULL);
   }
@@ -1166,6 +482,8 @@ int mainLoop(bool realCamera = false)
 
   return 0;
 }
+
+
 
 
 void sigroutine(int dunno)

@@ -7,95 +7,37 @@
 #include <thread>
 #include <chrono>
 #include <iomanip>
-#include <wfqueue.h>
 #include <iostream>
 #include <vector>
+#include <queue>
 #include <RingBuf.hpp>
+#include <TSQueue.hpp>
 
 
 
 
 
-template<typename T>
-class resourcePool
-{
-  struct res_w_flag{
-    uint8_t flag;
-    T data;
-  };
-  public:
-  int rest_size;
-  std::mutex rsc_mutex;
-  std::vector <struct res_w_flag>pool;
-  resourcePool(int size)
-  {
-    pool.resize(size);
-    rest_size=size;
-  }
-
-  int fetchSrc(T** ret_data)
-  {
-    rsc_mutex.lock();
-
-    int retIdx=-1;
-    for(int i=0;i<pool.size();i++)
-    {
-      if(pool[i].flag==0)
-      {
-        retIdx=i;
-        break;
-      }
-    }
-    if(ret_data)
-        *ret_data=NULL;
-    if(retIdx!=-1)
-    {
-      pool[retIdx].flag=1;
-      rest_size--;
-      if(ret_data)
-        *ret_data=&(pool[retIdx].data);
-    }
-    rsc_mutex.unlock();
-    return retIdx;
-  }  
 
 
 
-  bool retSrc (int idx)
-  {
-    rsc_mutex.lock();
-    bool ifOK=false;
-    if(pool[idx].flag==1)
-    {
-      pool[idx].flag=0;
-      rest_size++;
-      ifOK=true;
-    }
-    rsc_mutex.unlock();
-    return ifOK;
-  }  
 
-};
+
 
 
 typedef struct TypeData{
   int XXX;
   int cameraID;
 }TypeData;
-typedef struct TypeX{
-  TypeData *data;
-  int resId;
-}TypeX;
-
-resourcePool<TypeData> rpool(30);
 
 
-tWaitFree::Queue<TypeX> myqueue(5);
+resourcePool<TypeData> rpool(11);
 
-
+TSQueue<TypeData*> tsQ(10);
 std::atomic_bool stopF(false);
 
 std::atomic_int64_t DatInSum(0);
+
+
 
 
 int CD_Wait_ms=5000;
@@ -104,7 +46,6 @@ int CD_Wait_ms=5000;
 int GenId=0;
 void thread_DataGen(){
   int id=GenId++;
-  tWaitFree::WfqEnqCtx<TypeX> enqCtx; // init 1 time in a thread only
   int counter=0;
   while(1)
   {
@@ -121,12 +62,11 @@ void thread_DataGen(){
 
 
 
-    TypeData *fetch_data;
-    int idx = rpool.fetchSrc(&fetch_data);
-    if(idx<0)
+    TypeData *fetch_data=rpool.fetchSrc_blocking();
+    if(fetch_data==NULL)
     {
       printf("W: resource EMPTY!!!!\n");
-      break;
+      continue;
     }
     int randX=(rand()%10000)+1;
     counter++;
@@ -134,20 +74,19 @@ void thread_DataGen(){
     int data=randX;
     fetch_data->XXX=data;
     fetch_data->cameraID=id;
-    TypeX tmp={resId:idx,data:fetch_data};
 
-    while(true)
+    // while(true)
     {
-
-      if(myqueue.tryEnq(tmp, enqCtx)) {
+      
+      if(tsQ.push(fetch_data)) {
         DatInSum^=data;
-        printf(">[%d]> id:%d  data:%d DatInSum:%d  ptr:%p\n",id,tmp.resId,tmp.data->XXX,(int)DatInSum,tmp.data);
-        break;
+        printf(">[%d]> data:%d DatInSum:%d  ptr:%p\n",id,fetch_data->XXX,(int)DatInSum,fetch_data);
+        // break;
       } else {
-        printf("%s  ptr:%p\n", "queue is full",tmp.data);
+        printf("%s  ptr:%p\n", "queue is full",fetch_data);
         // break;
 
-        // rpool.retSrc(idx);//toss away
+        rpool.retSrc(fetch_data);//toss away
         stopF=true;
         std::this_thread::sleep_for(std::chrono::milliseconds(CD_Wait_ms));//cool down
         stopF=false;
@@ -163,25 +102,22 @@ std::atomic_int64_t DatOutSum(0);
 int DrainId=0;
 void thread_DataDrain(){
   int id=DrainId++;
-  tWaitFree::WfqDeqCtx<TypeX> deqCtx; // init 1 time in a thread only
   while(1)
   {
 
-    TypeX data_out;
-    if(myqueue.tryDeq(data_out, deqCtx)) {
-
-      DatInSum^=data_out.data->XXX;
-      printf("<[%d]<  id:%d data:%d DatInSum:%d  ptr:%p \n",
-        id, data_out.resId, data_out.data->XXX, (int)DatInSum,data_out.data);
-      bool retOK = rpool.retSrc(data_out.resId);
-      // printf("retOK:%d \n",retOK);
-
+    TypeData* data_out;
+    
+    if(tsQ.pop_blocking(data_out)) {
+      DatInSum^=data_out->XXX;
+      printf("<[%d]<  data:%d DResd:%d ptr:%p\n",
+        id, data_out->XXX, (int)DatInSum,data_out);
+      bool retOK = rpool.retSrc(data_out);
 
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
     else
     {
-      // printf("W: Queue empty\n");
+      printf("W: Queue empty\n");
       // break;
 
       auto t1 = std::chrono::high_resolution_clock::now();
@@ -208,7 +144,7 @@ void thread_DataWatch()
   
 
     printf("poolSize:%d  QSize:%d   DatInSum:%d  DatOutSum:%d\n",
-      rpool.rest_size,myqueue.getSize(),
+      rpool.rest_size,tsQ.size(),
       (int)DatInSum,(int)DatOutSum
       );
   }
@@ -258,7 +194,7 @@ int main(void) {
   // printf("Hello! C World!\n");
   std::vector<std::thread *> dataGen;
   // std::thread *dataGen=new std::thread[5];
-  for(int i=0;i<1;i++)
+  for(int i=0;i<15;i++)
   {
     dataGen.push_back(new std::thread(thread_DataGen));
   }
@@ -266,7 +202,7 @@ int main(void) {
 
   std::vector<std::thread *> dataDrain;
 
-  for(int i=0;i<1;i++)
+  for(int i=0;i<15;i++)
   {
     dataDrain.push_back(new std::thread(thread_DataDrain));
   }
