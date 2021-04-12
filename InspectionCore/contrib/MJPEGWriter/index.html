@@ -7,6 +7,15 @@
 
 <img src='http://localhost:7777/live.mjpg'>
 
+<canvas id="player" style="background: #000;">
+  Your browser sucks.
+</canvas>
 </body>
+
+<script src="mjpeg.js"></script>
+<script>
+  var player = new MJPEG.Player("player", "http://localhost:7777/live.mjpg");
+  player.start();
+</script>
 </html>
 
