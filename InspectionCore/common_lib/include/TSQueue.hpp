@@ -6,18 +6,32 @@
 #include <mutex>
 #include <queue>
 
+
+#include <exception>
+using namespace std;
+
+struct TS_Termination_Exception : public exception {
+   const char * what () const throw () {
+      return "TS_Termination_Exception";
+   }
+};
+
 template<typename T>
 class TSQueue {
+
+protected:
   std::queue<T> queue_;
   mutable std::mutex mutex_;
  
   mutable std::mutex push_mutex_;
   mutable std::mutex pop_mutex_;
+  bool termination=false;
   int maxDataCount;
   // Moved out of public interface to prevent races between this
   // and pop().
   bool empty();
- public:
+  void termination_avalanche_and_throw_excption();
+public:
   TSQueue(int maxCount=-1);
   unsigned long size();
   bool pop(T& retDat);
@@ -27,6 +41,13 @@ class TSQueue {
 };
 
 
+template<typename T>
+void TSQueue<T>::termination_avalanche_and_throw_excption(){
+  mutex_.unlock();
+  push_mutex_.unlock();
+  pop_mutex_.unlock();
+  throw TS_Termination_Exception();
+}
 
 template<typename T>
 bool TSQueue<T>::empty() {
@@ -41,12 +62,16 @@ TSQueue<T>::TSQueue(int maxCount){
 
 template<typename T>
 unsigned long TSQueue<T>::size() {
+  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
+  if(termination)termination_avalanche_and_throw_excption();
   return queue_.size();
 }
 template<typename T>
 bool TSQueue<T>::pop(T& retDat) {
+  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
+  if(termination)termination_avalanche_and_throw_excption();
   if (queue_.empty()) {
     return false;
   }
@@ -59,8 +84,10 @@ bool TSQueue<T>::pop(T& retDat) {
 template<typename T>
 bool TSQueue<T>::pop_blocking(T& retDat) {
 
+  if(termination)termination_avalanche_and_throw_excption();
   while(pop(retDat)==false)
   {
+    if(termination)termination_avalanche_and_throw_excption();
     // printf("pop_blocking :: locked\n");
     pop_mutex_.lock();
     // printf("pop_blocking :: unlocked\n");
@@ -70,8 +97,10 @@ bool TSQueue<T>::pop_blocking(T& retDat) {
 }
 template<typename T>
 bool TSQueue<T>::push(const T &item) {
+  if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
 
+  if(termination)termination_avalanche_and_throw_excption();
   if(maxDataCount!=-1 && queue_.size()>=maxDataCount)
   {
     return false;
@@ -84,9 +113,11 @@ bool TSQueue<T>::push(const T &item) {
 template<typename T>
 bool TSQueue<T>::push_blocking(const T &item) {
 
+  if(termination)termination_avalanche_and_throw_excption();
   while(push(item)==false)
   {
     // printf("push_blocking :: locked\n");
+    if(termination)termination_avalanche_and_throw_excption();
     push_mutex_.lock();
     // printf("push_blocking :: unlocked\n");
   }
@@ -188,15 +219,17 @@ class resourcePool_naiive
 template<typename T>
 class resourcePool
 {
-  public:
-  int rest_size;
+  protected:
+  int _rest_size;
   std::mutex rsc_mutex;
   std::vector <T>pool;
   std::vector <T*>poolPtr;
   std::mutex fetch_mutex;
+  bool termination=false;
 
   mutable std::mutex fetch_mutex_;
 
+  public:
   resourcePool(int size)
   {
     pool.resize(size);
@@ -205,12 +238,20 @@ class resourcePool
     {
       poolPtr[i]=&(pool[i]);
     }
-    rest_size=size;
+    _rest_size=size;
   }
+  void termination_avalanche_and_throw_excption(){
 
+    fetch_mutex.unlock();
+    rsc_mutex.unlock();
+    throw TS_Termination_Exception();
+  }
+  int rest_size(){return _rest_size;}
   T* fetchSrc()
   {
+    if(termination)termination_avalanche_and_throw_excption();
     std::lock_guard<std::mutex> lock(rsc_mutex);
+    if(termination)termination_avalanche_and_throw_excption();
     int retIdx=-1;
     for(int i=0;i<pool.size();i++)
     {
@@ -225,22 +266,26 @@ class resourcePool
       return NULL;
     T* dat=poolPtr[retIdx];
     poolPtr[retIdx]=NULL;
-    rest_size--;
+    _rest_size--;
     return dat;
   }  
 
   T* fetchSrc_blocking(){
+    if(termination)termination_avalanche_and_throw_excption();
     T* fdat=NULL;
     while((fdat=fetchSrc())==NULL)
     {
       fetch_mutex.lock();
+      if(termination)termination_avalanche_and_throw_excption();
     }
 
     return fdat;
   }
   bool retSrc (T* ret_rsc)
   {
+    if(termination)termination_avalanche_and_throw_excption();
     std::lock_guard<std::mutex> lock(rsc_mutex);
+
     //check ret_rsc is in the pool
     T* head=&(pool[0]);
 
@@ -289,7 +334,7 @@ class resourcePool
     }
     poolPtr[resourceIdx]=&(pool[resourceIdx]);
 
-    rest_size++;
+    _rest_size++;
     fetch_mutex.unlock();
     //the ptr address is valid
     return true;
