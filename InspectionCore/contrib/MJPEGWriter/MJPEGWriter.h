@@ -43,6 +43,8 @@ class MJPEGWriter{
     int timeout;
     int quality; // jpeg compression [1..100]
     std::vector<int> clients;
+    std::map<std::string, std::vector<int>> URL_Groups;
+
     pthread_t thread_listen, thread_write;
     pthread_mutex_t mutex_client = PTHREAD_MUTEX_INITIALIZER;
     pthread_mutex_t mutex_cout = PTHREAD_MUTEX_INITIALIZER;
@@ -107,10 +109,16 @@ public:
         : sock(INVALID_SOCKET)
         , timeout(TIMEOUT_M)
         , quality(90)
-	, port(port)
+	      , port(port)
     {
         signal(SIGPIPE, SIG_IGN);
         FD_ZERO(&master);
+
+        std::vector<int> EptClient;
+        URL_Groups.insert(pair<std::string, std::vector<int>>("/", EptClient));
+        URL_Groups.insert(pair<std::string, std::vector<int>>("/live.mjpg", EptClient));
+
+        
         // if (port)
         //     open(port);
     }
@@ -131,6 +139,15 @@ public:
     bool open()
     {
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+        bool TRUE=true;
+        if (setsockopt(sock,SOL_SOCKET,SO_REUSEADDR,&TRUE,sizeof(int)) == -1)
+        {
+            perror("Setsockopt");
+            // exit(1);
+        }
+
+
 
         SOCKADDR_IN address;
         address.sin_addr.s_addr = INADDR_ANY;

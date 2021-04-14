@@ -232,6 +232,13 @@ class resourcePool
   public:
   resourcePool(int size)
   {
+    RESIZE( size);
+  }
+
+
+  void RESIZE(int size)
+  {
+
     pool.resize(size);
     poolPtr.resize(size);
     for(int i=0;i<pool.size();i++)

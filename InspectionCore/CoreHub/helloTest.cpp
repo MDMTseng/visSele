@@ -144,7 +144,7 @@ void thread_DataWatch()
   
 
     printf("poolSize:%d  QSize:%d   DatInSum:%d  DatOutSum:%d\n",
-      rpool.rest_size,tsQ.size(),
+      rpool.rest_size(),tsQ.size(),
       (int)DatInSum,(int)DatOutSum
       );
   }

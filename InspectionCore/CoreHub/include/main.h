@@ -26,6 +26,9 @@
 #include "DatCH_CallBack_WSBPG.hpp"
 
 
+#include "opencv2/opencv.hpp"
+#include <TSQueue.hpp>
+
 class MicroInsp_FType:public SOCK_JSON_Flow
 {
     public:
@@ -38,6 +41,24 @@ class MicroInsp_FType:public SOCK_JSON_Flow
     protected:
     int ev_on_close() override;
 };
+
+struct image_pipe_info;
+typedef struct camera_channel_info
+{
+  CameraLayer *camera;
+  resourcePool<struct image_pipe_info> *rp_ref;
+  CameraLayer::frameInfo fi;
+  void *context;
+  int id;
+} camera_channel_info;
+
+
+typedef struct image_pipe_info
+{
+  camera_channel_info* camchinfo;
+  acvImage img;
+  cv::Mat cvImg;
+} image_pipe_info;
 
 
 class DatCH_CallBack_BPG : public DatCH_CallBack
@@ -54,7 +75,10 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   MicroInsp_FType *mift=NULL;
   Ext_Util_API *exApi=NULL;
   
-  CameraLayer *camera=NULL;
+  std::vector<camera_channel_info> cameraArray;
+  std::vector<image_pipe_info> cameraArrayInfo;
+
+
   
   bool checkTL(const char *TL,const BPG_data *dat);
   uint16_t TLCode(const char *TL);

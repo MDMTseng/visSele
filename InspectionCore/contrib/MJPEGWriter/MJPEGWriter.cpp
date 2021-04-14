@@ -1,9 +1,13 @@
 #include "MJPEGWriter.h"
 #include <fstream>
+#include <regex>
+#include <map>
 void
 MJPEGWriter::Listener()
 {
 
+    std::regex rgx("GET\\s(.+)\\sHTTP");
+    std::cmatch match;
 	// send http header
     std::string header;
     header += "HTTP/1.0 200 OK\r\n";
@@ -44,11 +48,44 @@ MJPEGWriter::Listener()
                     cout << "new client " << client << endl;
                     char headers[4096] = "\0";
                     int readBytes = _read(client, headers);
+
                     cout << headers;
                     pthread_mutex_unlock(&mutex_cout);
                     pthread_mutex_lock(&mutex_client);
-                    _write(client, header_data, header_size);
-                    clients.push_back(client);
+
+
+                    
+                    if (std::regex_search(headers, headers+readBytes, match, rgx))
+                    {
+                        std::cout << "match: " << match[1] << '\n';
+                        auto iter=URL_Groups.find(match[1]);
+                        if(iter!=URL_Groups.end())
+                        {
+                          URL_Groups[match[1]].push_back(client);
+                          _write(client, header_data, header_size);
+                          clients.push_back(client);
+                        }
+                        else
+                        {
+
+                          // std::vector<int> EptClient;
+                          // URL_Groups.insert(pair<std::string, std::vector<int>>(match[1], EptClient));
+                          // URL_Groups[match[1]].push_back(client);
+                          // _write(client, header_data, header_size);
+                          // clients.push_back(client);
+                          close(client);
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "NO match!!!!\n";
+                        close(client);
+
+                    }
+                    
+
+
+
                     pthread_mutex_unlock(&mutex_client);
                 }
             }

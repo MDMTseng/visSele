@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <signal.h>
+#include <string>
 
 //#include "MLNN.hpp"
 #include "cJSON.h"
@@ -20,8 +21,6 @@
 #include <stdexcept>
 #include <compat_dirent.h>
 
-#include <TSQueue.hpp>
-
 
 DatCH_BPG1_0 *BPG_protocol = new DatCH_BPG1_0(NULL);
 DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
@@ -30,17 +29,18 @@ DatCH_CallBack_WSBPG callbk_obj;
 
 
 DatCH_WebSocket *websocket = NULL;
+cv::Mat frame;
 
 
 
-typedef struct image_pipe_info
-{
-  CameraLayer *camLayer;
-  int type;
-  void *context;
-  acvImage img;
-  CameraLayer::frameInfo fi;
-} image_pipe_info;
+TSQueue<image_pipe_info*> cam_(50);
+
+TSQueue<image_pipe_info*> cam_Q2(50);
+std::vector<std::thread *> stageThread1;
+std::vector<std::thread *> stageThread2;
+
+
+
 
 int _argc;
 char **_argv;
@@ -129,11 +129,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     DatCH_Data ret = websocket->SendData(data);
   }
   break;
-
   case DatCH_Data::DataType_BPG: // WS -(prot)>[here] App //Final stage of incoming data
   {
     BPG_data *dat = data.data.p_BPG_data;
-
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
@@ -194,17 +192,122 @@ int str_ends_with(const char *str, const char *suffix)
   return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
 }
 
+ 
+
+void ImageClone(cv::Mat &dst,acvImage &src)
+{
+  if(src.GetHeight()!=dst.rows || src.GetWidth()!=dst.cols)
+  {
+    LOGI("$$$$$$$$$$$$$$$$    RESIZE     $$$$$$$$$$$$$$$$");
+    dst.create(src.GetHeight(),src.GetWidth(), CV_8UC3); 
+  }
+
+  cv::Vec3b* ptr =dst.ptr<cv::Vec3b>(0);
+  uint8_t *pix=&ptr[0][0];
+
+  // memset(pix,128,dst.rows * dst.cols*3);
+
+  memcpy(pix,src.CVector[0],dst.rows * dst.cols*3);
+}
+
+
+ 
+ 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
-  
-  LOGI("===============\n");
+
+  LOGI("===============context:%p\n",context);
   if (type != CameraLayer::EV_IMG)
     return;
-  
+  CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
+
+
+  acvImage *img= cl_GMV.GetFrame();
+  LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
+  if((img->GetHeight()*img->GetWidth())==0)
+  {
+    // LOGI("EMPTY IMG:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
+    return;
+  }
+
+  camera_channel_info *chInfo=(camera_channel_info *)context;
+  LOGI("===============rp_ref:%p H:%d\n",chInfo->rp_ref,img->GetHeight());
+  image_pipe_info *pipe = chInfo->rp_ref->fetchSrc_blocking();
+  if(pipe!=NULL )
+  {
+    // pipe->img.ReSize(img);
+    // if()
+    ImageClone(pipe->cvImg,*img);
+    
+    // acvCloneImage(&pipe->img,img,-1);
+    // pipe->camchinfo=chInfo;
+    pipe->camchinfo=chInfo;
+    cam_.push_blocking(pipe);
+    // chInfo->rp_ref->retSrc(pipe);
+  }
+
 }
+
+
+int T1ID=0;
+void stageThread1_threads(){
+
+  // std::thread::id tid = std::this_thread::get_id();
+  int tid=T1ID++;
+  while(1)
+  {
+
+    image_pipe_info *pinfo;
+    if(cam_.pop_blocking(pinfo)!=true)
+    {
+      break;
+    }
+    LOGI("thread1:%d",tid);
+    
+    if(1)
+    {
+      cam_Q2.push_blocking(pinfo);
+    }
+    else
+    {
+      pinfo->camchinfo->rp_ref->retSrc(pinfo);//recycle
+    }
+  }
+
+}
+
+
+int T2ID=0;
+void stageThread2_threads(){  
+  int tid=T2ID++;
+  // std::thread::id tid = std::this_thread::get_id();
+
+  vector <image_pipe_info *> buffer;
+
+  
+  vector <image_pipe_info *> gatherSet;
+  while(1)
+  {
+
+    image_pipe_info *pinfo;
+    if(cam_Q2.pop_blocking(pinfo)!=true)
+    {
+      break;
+    }
+    LOGI("thread2:%d",tid);
+    // buffer.push_back(pinfo);
+
+    pinfo->camchinfo->rp_ref->retSrc(pinfo);//recycle
+  }
+
+
+
+}
+
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 {
+  
 }
 
 
@@ -239,14 +342,14 @@ int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
   return -1;
 }
 
-CameraLayer *getCamera(int initCameraType=0)
+CameraLayer *getCamera(int initCameraType=0,void * context=NULL,std::string bmpCPath="data/BMP_carousel_test")
 {
 
   CameraLayer *camera = NULL;
   if (initCameraType == 0 || initCameraType == 1)
   {
     CameraLayer_GIGE_MindVision *camera_GIGE;
-    camera_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
+    camera_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, context);
     LOGV("initCamera");
 
     try
@@ -273,7 +376,7 @@ CameraLayer *getCamera(int initCameraType=0)
   {
     CameraLayer_BMP_carousel *camera_BMP;
     LOGI("CameraLayer_BMP_carousel");
-    camera_BMP = new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV, NULL, "data/BMP_carousel_test");
+    camera_BMP = new CameraLayer_BMP_carousel(CameraLayer_Callback_GIGEMV, context, bmpCPath);
     camera = camera_BMP;
   }
 
@@ -429,7 +532,6 @@ bool terminationFlag=false;
 int mainLoop(bool realCamera = false)
 {
   /**/
-
   LOGI(">>>>>\n");
   bool pass = false;
   int retryCount = 0;
@@ -456,28 +558,68 @@ int mainLoop(bool realCamera = false)
   LOGI(">>>>>\n");
 
   {
+    // image_pipe_info *c1=new image_pipe_info();
 
-    CameraLayer *camera = getCamera(0);
-
-    for (int i = 0; camera == NULL; i++)
+    cb->cameraArray.resize(4);
+    for(int i=0;i<cb->cameraArray.size();i++)
     {
-      LOGI("Camera init retry[%d]...", i);
-      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-      camera = getCamera(0);
-    }
-    LOGI("DatCH_BPG1_0 camera :%p", camera);
+      camera_channel_info &ccinfo=cb->cameraArray[i];
 
-    cb->camera = camera;
+      std::string path="data/testBMP";
+      path+=std::to_string(i);
+      LOGI("path:%s", path.c_str());
+      ccinfo.camera= getCamera(0,&ccinfo,path.c_str());
+      ccinfo.id=i;
+      ccinfo.rp_ref=new resourcePool<image_pipe_info>(10);
+      LOGI("[%d]:ccinfo.rp_ref:%p",i,ccinfo.rp_ref);
+    }
+
+
 
     BPG_protocol->SetEventCallBack(cb, NULL);
   }
-  LOGI("Camera:%p", cb->camera);
+  // LOGI("Camera:%p", cb->camera1);
 
   websocket->SetEventCallBack(&callbk_obj, websocket);
+
+  for(int i=0;i<5;i++)
+  {
+    stageThread1.push_back(new std::thread(stageThread1_threads));
+  }
+
+  
+  for(int i=0;i<5;i++)
+  {
+    stageThread2.push_back(new std::thread(stageThread2_threads));
+  }
+
+
+  
+  for(int i=0;i<cb->cameraArray.size();i++)
+  {
+    cb->cameraArray[i].camera->TriggerMode(0);
+
+  }
+  // cb->camera1->TriggerMode(0);
+  // cb->camera2->TriggerMode(0);
+  // cb->camera3->TriggerMode(0);
+  // cb->camera4->TriggerMode(0);
 
   LOGI("SetEventCallBack is set...");
   while (websocket->runLoop(NULL) == 0)
   {
+  }
+
+
+  for(int i=0;i<stageThread1.size();i++)
+  {
+    stageThread1[i]->join();
+    delete(stageThread1[i]);
+  }
+  for(int i=0;i<stageThread2.size();i++)
+  {
+    stageThread2[i]->join();
+    delete(stageThread2[i]);
   }
 
   return 0;
