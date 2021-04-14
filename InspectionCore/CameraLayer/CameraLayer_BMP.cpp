@@ -189,6 +189,9 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       }
       else
       {
+        
+        // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
+        img.ReSize(&img_load);
         acvCloneImage(&img_load,&img,-1);
       }
       
