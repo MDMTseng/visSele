@@ -114,14 +114,16 @@ int acvContourExtraction(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BY
     {
         ContourFetch::ptInfo pt={
           pt:{.X=(float)NowPos[0],.Y=(float)NowPos[1]},
-          edgeRsp:0,
+          sobel:{.X=NAN,.Y=NAN},
+          contourDir:{.X=NAN,.Y=NAN},
+          pt_img:{.X=NAN,.Y=NAN},
           curvature:NAN,
-          contourDir:NAN,
+          edgeRsp:0,
           tmp:NAN,
-          sobel:{.X=NAN,.Y=NAN}
           // sobel:{.X=0,.Y=0}
 
           };
+
         pt.pt_img=pt.pt;
         pt.curvature=0;
         contour.push_back(pt);

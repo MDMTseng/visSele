@@ -74,7 +74,7 @@ int roughness(vector<ContourFetch::ptInfo> &ptInfo,int smoothT,float *ret_MIN,fl
   
   for(int i=0;i<ptInfo.size();i++)
   {
-    acv_Line line={line_anchor:ptInfo[i].pt,line_vec:(ptInfo[i].contourDir)};
+    acv_Line line={line_vec:(ptInfo[i].contourDir),line_anchor:ptInfo[i].pt,};
     
     // if(i==0)
     // {
