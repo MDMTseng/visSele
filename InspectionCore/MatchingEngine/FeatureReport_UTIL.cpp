@@ -73,6 +73,37 @@ cJSON* JudgeReport2JSON(const FeatureReport_judgeReport judge , acv_XY center_of
     case FeatureReport_judgeDef::RADIUS :
       cJSON_AddStringToObject(judge_jobj, "subtype", "radius");
     break;
+    
+    case FeatureReport_judgeDef::CIRCLE_INFO :
+      cJSON_AddStringToObject(judge_jobj, "subtype", "circle_info");
+
+      switch(judge.def->data.CIRCLE_INFO.info_type)
+      {
+        case FeatureReport_judgeDef::data::CIRCLE_INFO::MAX_DIAMETER  :
+          cJSON_AddStringToObject(judge_jobj, "info_type", "max_diameter");
+        break;
+        case FeatureReport_judgeDef::data::CIRCLE_INFO::MIN_DIAMETER  :
+          cJSON_AddStringToObject(judge_jobj, "info_type", "min_diameter");
+        break;
+        
+        case FeatureReport_judgeDef::data::CIRCLE_INFO::ROUGHNESS_MAX  :
+          cJSON_AddStringToObject(judge_jobj, "info_type", "roughness_max");
+        break;
+        case FeatureReport_judgeDef::data::CIRCLE_INFO::ROUGHNESS_MIN  :
+          cJSON_AddStringToObject(judge_jobj, "info_type", "roughness_min");
+        break;
+        case FeatureReport_judgeDef::data::CIRCLE_INFO::ROUGHNESS_RMSE  :
+          cJSON_AddStringToObject(judge_jobj, "info_type", "roughness_rmse");
+        break;
+
+        default:
+          cJSON_AddStringToObject(judge_jobj, "info_type", "NA");
+
+      }
+      
+
+
+    break;
     case FeatureReport_judgeDef::SIGMA :
       cJSON_AddStringToObject(judge_jobj, "subtype", "sigma");
     break;

@@ -55,6 +55,15 @@ export const SHAPE_TYPE = {
     angle:"angle",
     radius:"radius",
     calc:"calc",
+    circle_info:"circle_info"
+  },
+  _circle_info_type:{
+    NA:"NA",
+    max_diameter:"max_diameter",
+    min_diameter:"min_diameter",
+    roughness_max:"roughness_max",
+    roughness_min:"roughness_min",
+    roughness_rmse:"roughness_rmse"
   }
 
 };

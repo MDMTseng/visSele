@@ -55,6 +55,7 @@ import {
   SettingOutlined,
   CameraOutlined,
   ArrowLeftOutlined,
+  CaretDownOutlined,
 
 
 } from '@ant-design/icons';
@@ -1039,6 +1040,31 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
 let renderMethods = {
   Measure_Calc_Editor,
+  Dropdown_List:({ target, onChange, className, renderContext: { list } })=>{
+    let edit_target = GetObjElement(target.obj, target.keyTrace);
+    const menu_ = (
+      <Menu onClick={(ev) => {
+        onChange(target, "Dropdown_List",{ target: { value: list[ev.key] } } )
+        }}>
+        {list.map((m, idx) =>
+          <Menu.Item key={idx} idx={idx}>
+            <a target="_blank" rel="noopener noreferrer">
+              {m}
+            </a>
+          </Menu.Item>)}
+      </Menu>
+    );
+    let dropDownX =
+      <Dropdown overlay={menu_}>
+        <a className="HX0_5 layout palatte-blue-8 vbox width12" style={{ color: "white" }} href="#">
+          {edit_target}
+          <CaretDownOutlined />
+        </a>
+      </Dropdown>;
+
+
+    return dropDownX;
+  },
   SubDimEditUI: ({ className, onChange, target, renderContext }) => {
     let dimensions = GetObjElement(target.obj, target.keyTrace);
     const [dimIdx, setDimIdx] = useState(0);
@@ -1995,6 +2021,19 @@ class APP_DEFCONF_MODE extends React.Component {
                 search_far: "switch",
                 locating_anchor: "switch",
                 line_thickness_value:"input-number",
+                
+
+
+                
+                info_type: {
+                  __OBJ__: renderMethods.Dropdown_List,
+                  list:Object.keys(UIAct.SHAPE_TYPE._circle_info_type),
+                },
+
+
+
+
+
                 calc_f: {
                   __OBJ__: renderMethods.Measure_Calc_Editor,
                   measure_list: shape_list.filter(s =>
@@ -2097,6 +2136,7 @@ class APP_DEFCONF_MODE extends React.Component {
                       }
                       break;
                     case "input":
+                    case "Dropdown_List":
                       {
                         target.obj[lastKey] = evt.target.value;
                       }
@@ -2123,7 +2163,7 @@ class APP_DEFCONF_MODE extends React.Component {
                         }
                       }
                       break;
-                  }
+                    }
                   ec_canvas.SetShape(original_obj, original_obj.id);
                 }
               }} />);

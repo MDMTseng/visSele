@@ -221,7 +221,6 @@ function StateReducer(newState, action) {
 
   function EVENT_Inspection_Report(newState, action) {
     let repType = GetObjElement(action, ["data", "type"]);
-    
     if (repType === undefined) return;
     switch (repType) {
       case "binary_processing_group":
@@ -1047,6 +1046,7 @@ function StateReducer(newState, action) {
                       }
                       break;
                     case SHAPE_TYPE.measure_subtype.radius://Has to be an arc
+                    case SHAPE_TYPE.measure_subtype.circle_info://Has to be an arc
                       if (cand.shape.type != SHAPE_TYPE.arc) {
                         log.info("Error: " + subtype +
                           " Only accepts arc");
@@ -1086,6 +1086,11 @@ function StateReducer(newState, action) {
                     case SHAPE_TYPE.measure_subtype.sigma:
                     case SHAPE_TYPE.measure_subtype.radius:
                       newState.edit_info.edit_tar_info.ref = [{}];
+                      break;
+
+                    case SHAPE_TYPE.measure_subtype.circle_info:
+                      newState.edit_info.edit_tar_info.ref = [{}];
+                      newState.edit_info.edit_tar_info.info_type="NA";
                       break;
 
                     case SHAPE_TYPE.measure_subtype.calc:

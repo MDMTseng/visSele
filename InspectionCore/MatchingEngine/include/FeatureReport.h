@@ -139,6 +139,7 @@ typedef struct FeatureReport_judgeDef{
     DISTANCE,
     RADIUS,
     CALC,
+    CIRCLE_INFO,
     ROUGHNESS,
   } measure_type;
   int OBJ1_id;
@@ -161,6 +162,19 @@ typedef struct FeatureReport_judgeDef{
       string exp;
       vector<string> post_exp;
     }CALC;
+    struct CIRCLE_INFO{
+      
+      enum{
+        NONE,
+        MAX_DIAMETER,
+        MIN_DIAMETER,
+        ROUGHNESS_MAX,
+        ROUGHNESS_MIN,
+        ROUGHNESS_RMSE,
+      } info_type;
+      
+
+    }CIRCLE_INFO;
   }data;
 }FeatureReport_judgeDef;
 
@@ -184,6 +198,10 @@ typedef struct FeatureReport_circleReport{
   featureDef_circle *def;
   acv_CircleFit circle;
   int status;
+  float maxD,minD;
+  float roughness_MAX;
+  float roughness_MIN;
+  float roughness_RMSE;
   
   acv_XY pt1,pt2,pt3;//mapped 3 pts on circle
 }FeatureReport_circleReport;

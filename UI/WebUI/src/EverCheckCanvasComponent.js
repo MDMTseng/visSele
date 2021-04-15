@@ -760,7 +760,7 @@ class renderUTIL {
             this.drawpoint(ctx, eObject.pt3);
           }
           break;
-
+        
         case SHAPE_TYPE.search_point:
           {
             let db_obj = this.db_obj;
@@ -1118,9 +1118,105 @@ class renderUTIL {
                   ctx.restore();
 
                   break;
+                  
+                
+            
                 }
 
 
+                
+              case SHAPE_TYPE.measure_subtype.circle_info:
+              
+                {
+                  ctx.lineWidth = this.getIndicationLineSize();
+                  //ctx.strokeStyle=this.colorSet.measure_info; 
+
+                  ctx.font = this.getFontStyle(1);
+                  let arc = threePointToArc(subObjs[0].pt1, subObjs[0].pt2, subObjs[0].pt3);
+
+                  /*let lineInfo = {
+                    x0:arc.x+dispVec.x,y0:arc.y+dispVec.y,
+                    x1:eObject.pt1.x,y1:eObject.pt1.y,
+                  };*/
+                  let arrowSize = 3 * this.getPrimitiveSize();
+                  this.canvas_arrow(ctx, eObject.pt1.x, eObject.pt1.y, arc.x, arc.y, arrowSize);
+                  //this.drawReportLine(ctx, lineInfo);
+
+                  this.drawpoint(ctx, eObject.pt1);
+
+                  let fontPx = this.getFontHeightPx();
+                  ctx.font = this.getFontStyle(1);
+
+                  ctx.save();
+                  ctx.translate(eObject.pt1.x, eObject.pt1.y);
+                  
+
+                  let tagName="CI.";
+                  switch(eObject.info_type)
+                  {
+                    case SHAPE_TYPE._circle_info_type.max_diameter:
+                      tagName+="maxD";
+                      break;
+                      
+                    case SHAPE_TYPE._circle_info_type.min_diameter:
+                      tagName+="minD";
+
+                      break;
+                      
+                    case SHAPE_TYPE._circle_info_type.roughness_max:
+                      tagName+="roughnessMax";
+
+                      break;
+                      
+                    case SHAPE_TYPE._circle_info_type.roughness_min:
+                      tagName+="roughnessMin";
+
+                      break;
+                      
+                      
+                    case SHAPE_TYPE._circle_info_type.roughness_rmse:
+                      tagName+="roughnessRMSE";
+                      break;
+                    default:
+                      tagName+="NA";
+                      break;
+
+                  }
+
+                  ctx.strokeStyle = "black";
+                  if (eObject.inspection_value !== undefined) {
+
+                    let marginPC = (eObject.inspection_value > eObject.value) ?
+                      (eObject.inspection_value - eObject.value) / (eObject.USL - eObject.value) :
+                      -(eObject.inspection_value - eObject.value) / (eObject.LSL - eObject.value);
+                      
+                    this.drawInspMeasureInfoText(ctx,
+                      eObject.name,
+                      tagName + (eObject.inspection_value * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
+                      marginPC,fontPx);
+                    measureValue=eObject.inspection_value;
+                  }
+                  else {
+            
+                    
+                    this.drawDefMeasureInfoText(ctx,
+                      eObject.name,
+                      tagName + eObject.value.toFixed(this.fixedDigit.R) + unitConvert.unit,
+                      "L:" + (eObject.LSL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit + " U:" + (eObject.USL * unitConvert.mult).toFixed(this.fixedDigit.R) + unitConvert.unit,
+                      "",
+                      fontPx);
+
+                    measureValue=arc.r;
+                  }
+                  ctx.restore();
+
+                  break;
+                  
+                
+            
+                }
+
+              break;
 
               case SHAPE_TYPE.measure_subtype.calc:
                 {
@@ -2760,6 +2856,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             return shapeList.filter((shape) => shape.type === SHAPE_TYPE.line || shape.type === SHAPE_TYPE.search_point);
             break;
           case SHAPE_TYPE.measure_subtype.radius:
+          case SHAPE_TYPE.measure_subtype.circle_info:
             return shapeList.filter((shape) => shape.type === SHAPE_TYPE.arc);
             break;
           case SHAPE_TYPE.measure_subtype.calc:

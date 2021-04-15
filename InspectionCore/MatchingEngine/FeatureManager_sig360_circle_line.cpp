@@ -1012,6 +1012,49 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     
   }
   break;
+  
+  case FeatureReport_judgeDef::CIRCLE_INFO:
+  {
+    if (type1 != FEATURETYPE::ARC)
+      break;
+
+    FeatureReport_circleReport cir = (*report.detectedCircles)[idx1];
+
+    if(cir.status==FeatureReport_sig360_circle_line_single::STATUS_NA)
+    {
+      judgeReport.measured_val = NAN;
+      notNA = false;
+    }
+    else
+    {
+
+      
+      notNA = true;
+      switch (judge.data.CIRCLE_INFO.info_type)
+      {
+      case FeatureReport_judgeDef::data::CIRCLE_INFO::MAX_DIAMETER:
+        judgeReport.measured_val = cir.maxD;
+        break;
+      case FeatureReport_judgeDef::data::CIRCLE_INFO::MIN_DIAMETER:
+        judgeReport.measured_val = cir.minD;
+        break;
+      case FeatureReport_judgeDef::data::CIRCLE_INFO::ROUGHNESS_MAX :
+        judgeReport.measured_val = cir.roughness_MAX;
+        break;
+      case FeatureReport_judgeDef::data::CIRCLE_INFO::ROUGHNESS_MIN :
+        judgeReport.measured_val = cir.roughness_MIN;
+        break;
+      default:
+        judgeReport.measured_val = NAN;
+        notNA = false;
+        break;
+      }
+    
+    }
+
+    
+  }
+  break;
   case FeatureReport_judgeDef::SIGMA:
   {
     judgeReport.measured_val = 0;
@@ -1629,6 +1672,36 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   else if (strcmp(subtype, "radius") == 0)
   {
     judge.measure_type = FeatureReport_judgeDef::RADIUS;
+  }
+  else if (strcmp(subtype, "circle_info") == 0)
+  {
+    judge.measure_type = FeatureReport_judgeDef::CIRCLE_INFO;
+
+    char *infotype = JFetch_STRING(judge_obj, "info_type");
+    if (strcmp(infotype, "max_diameter") == 0)
+    {
+      judge.data.CIRCLE_INFO.info_type=judge.data.CIRCLE_INFO.MAX_DIAMETER;
+    }
+    else if (strcmp(infotype, "min_diameter") == 0)
+    {
+      judge.data.CIRCLE_INFO.info_type=judge.data.CIRCLE_INFO.MIN_DIAMETER;
+      
+    }
+    else if (strcmp(infotype, "roughness_max") == 0)
+    {
+      judge.data.CIRCLE_INFO.info_type=judge.data.CIRCLE_INFO.ROUGHNESS_MAX;
+    }
+    else if (strcmp(infotype, "roughness_min") == 0)
+    {
+      judge.data.CIRCLE_INFO.info_type=judge.data.CIRCLE_INFO.ROUGHNESS_MIN;
+    }
+    else if (strcmp(infotype, "roughness_rmse") == 0)
+    {
+      judge.data.CIRCLE_INFO.info_type=judge.data.CIRCLE_INFO.ROUGHNESS_RMSE;
+    }
+
+
+
   }
   else if (strcmp(subtype, "distance") == 0)
   {
@@ -3556,13 +3629,93 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       }
 
 
+      {//find the max & min  dist
+        acv_XY center = cf.circle.circumcenter;
+        const int angleRes=360;
+        float RArray[angleRes]={-1};
+        
+        for(int k=0;k<angleRes;k++)
+        {
+          RArray[k]=-1;
+        }
+        for(auto _pt :s_points)
+        {
+          // LOGI("pt:%0.2f,%0.2f,center:%0.2f,%0.2f",_pt.X,_pt.Y,center.X,center.Y);
+          acv_XY pt=acvVecSub(_pt.pt,center);
+          float theta_deg=atan2(pt.Y,pt.X)*180/M_PI;
+          if(theta_deg<0)
+          {
+            theta_deg+=360;
+          }
+          int thdegInt = (int)(theta_deg*angleRes/360);
+          if(thdegInt>=angleRes)thdegInt-=angleRes;
+          
+          float mag = hypot(pt.Y,pt.X);
+          if(RArray[thdegInt]<mag)
+          {
+            RArray[thdegInt]=mag;
+          }
+        } 
+
+        const float angleStep=2*M_PI/angleRes;
+        const int angleSweepHS=2;//-2 -1 0 1 2
+        // float cosTable[angleSweepHS+1];
+        // for(int k=0;k<=angleSweepHS;k++)
+        // {
+        //   cosTable[k]=cos(M_PI-k*angleStep);
+        // }
+
+        float maxDArray[angleRes/2]={-1};
+        float minDArray[angleRes/2]={-1};
+        float maxD=-1;
+        float minD=__FLT_MAX__;
+
+        //c^2=a^2+b^2-2ab cos(theda)
+        for(int k=0;k<angleRes/2;k++)
+        {
+          float a=RArray[k];
+          if(a<0)continue;
+          float maxC=-1;
+          float minC=__FLT_MAX__;
+          float _b=RArray[k+angleRes/2];
+          for(int m=-angleSweepHS;m<=angleSweepHS;m++)
+          {
+            int absm=m;
+            if(absm<0)absm=-absm;
+            int idx2=k+angleRes/2+m;
+            if(idx2>=angleRes)idx2-=angleRes;
+            float b=RArray[idx2];
+            if(b<0)continue;
+            // float c = sqrt(a*a+b*b+2*a*b*cosTable[absm]);
+            float c = a+b;
+            
+            // LOGI("a:%f,b:%f,c:%f",a,b,c);
+            if(maxC<c)maxC=c;
+            if(minC>c)minC=c;
+          }
+          // LOGI("maxC[%d]:%f  a:%f,b:%f",k,maxC,a,_b);
+          maxDArray[k]=maxC;
+          minDArray[k]=minC;
+          if(maxD<maxC)maxD=maxC;
+          if(minD>maxC)minD=maxC;
+        }
+
+        LOGI("C=%d===maxD:%f minD:%f",maxD,minD);
+
+        cr.maxD=maxD;
+        cr.minD=minD;
+      }
+
+
       for(auto pt:s_points)
       {
         cdef.tmp_pt.push_back(pt);
       }
       float rMIN,rMAX,rRMSE;
       roughness(cdef.tmp_pt,5,&rMIN,&rMAX,&rRMSE);
-
+      cr.roughness_MIN=rMIN;
+      cr.roughness_MAX=rMAX;
+      cr.roughness_RMSE=rRMSE;
       LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
            j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius,rMIN,rMAX,rRMSE);
       
@@ -3618,8 +3771,12 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         detectedCircles[j].circle.circle.circumcenter =
             acvVecMult(detectedCircles[j].circle.circle.circumcenter, mmpp);
         detectedCircles[j].circle.circle.radius *= mmpp;
-
+        detectedCircles[j].maxD*=mmpp;
+        detectedCircles[j].minD*=mmpp;
         
+        detectedCircles[j].roughness_MAX*=mmpp;
+        detectedCircles[j].roughness_MIN*=mmpp;
+        detectedCircles[j].roughness_RMSE*=mmpp;
         detectedCircles[j].pt1 = acvVecMult(detectedCircles[j].pt1, mmpp);
         detectedCircles[j].pt2 = acvVecMult(detectedCircles[j].pt2, mmpp);
         detectedCircles[j].pt3 = acvVecMult(detectedCircles[j].pt3, mmpp);
