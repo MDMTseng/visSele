@@ -4,7 +4,7 @@ domake:build export zip_update
 
 
 build: 
-	make -C $(abspath .)/InspectionCore domake
+	make -C $(abspath .)/InspectionCore/CORE0_1 domake
 	cd UI/WebUI; npm run build ;
 
 
@@ -14,7 +14,7 @@ export:
 	-@mkdir -p $(EXPFolder)/WebUI
 	cd UI/WebUI; sh export.sh ../../$(EXPFolder)/WebUI
 	-@mkdir -p $(EXPFolder)/Core
-	make -C $(abspath .)/InspectionCore export EXPORT_PATH=$(abspath .)/$(EXPFolder)/Core
+	make -C $(abspath .)/InspectionCore/CORE0_1 export EXPORT_PATH=$(abspath .)/$(EXPFolder)/Core
 	cp -r scripts $(EXPFolder)
 
 

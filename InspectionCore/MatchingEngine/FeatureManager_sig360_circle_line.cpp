@@ -1049,6 +1049,11 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
         notNA = false;
         break;
       }
+
+      if(judgeReport.measured_val!=judgeReport.measured_val)
+      {
+        notNA = false;
+      }
     
     }
 
@@ -3694,16 +3699,21 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
             if(minC>c)minC=c;
           }
           // LOGI("maxC[%d]:%f  a:%f,b:%f",k,maxC,a,_b);
-          maxDArray[k]=maxC;
-          minDArray[k]=minC;
-          if(maxD<maxC)maxD=maxC;
-          if(minD>maxC)minD=maxC;
+          if(maxC!=-1)
+          {
+            maxDArray[k]=maxC;
+            if(maxD<maxC)maxD=maxC;
+            if(minD>maxC)minD=maxC;
+          }
+          if(minC!=-1)
+          {
+            minDArray[k]=minC;
+          }
         }
 
-        LOGI("C=%d===maxD:%f minD:%f",maxD,minD);
-
-        cr.maxD=maxD;
-        cr.minD=minD;
+        cr.maxD=(maxD==-1)?NAN:maxD;
+        cr.minD=(minD==__FLT_MAX__)?NAN:minD;
+        LOGI("C=%d===maxD:%f minD:%f",j,cr.maxD,cr.minD);
       }
 
 
