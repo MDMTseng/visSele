@@ -72,6 +72,7 @@ export const DEFAULT_UNIT = {
   [SHAPE_TYPE.measure_subtype.distance]:"mm",
   [SHAPE_TYPE.measure_subtype.angle]:"º",
   [SHAPE_TYPE.measure_subtype.radius]:"mm",
+  [SHAPE_TYPE.measure_subtype.circle_info]:"mm",
   [SHAPE_TYPE.measure_subtype.calc]:"",
 
 }
