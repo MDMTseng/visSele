@@ -238,7 +238,6 @@ class resourcePool
 
   void RESIZE(int size)
   {
-
     pool.resize(size);
     poolPtr.resize(size);
     for(int i=0;i<pool.size();i++)
@@ -247,6 +246,15 @@ class resourcePool
     }
     _rest_size=size;
   }
+
+
+  void RESET()
+  {
+    std::lock_guard<std::mutex> lock(rsc_mutex);
+    RESIZE(pool.size());
+  }
+
+
   void termination_avalanche_and_throw_excption(){
 
     fetch_mutex.unlock();

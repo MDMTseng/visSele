@@ -28,6 +28,7 @@
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"
 #include "MatchingCore.h"
+#include <TSQueue.hpp>
 
 
 class MicroInsp_FType:public SOCK_JSON_Flow
@@ -42,6 +43,24 @@ class MicroInsp_FType:public SOCK_JSON_Flow
     protected:
     int ev_on_close() override;
 };
+
+
+typedef struct image_pipe_info
+{
+  CameraLayer *camLayer;
+  int type;
+  void *context;
+  acvImage img;
+  CameraLayer::frameInfo fi;
+  //acvRadialDistortionParam cam_param;
+  FeatureManager_BacPac *bacpac;
+
+  struct action_Info
+  {
+    int finspStatus;
+    cJSON *report_json;
+  }actInfo;
+} image_pipe_info;
 
 
 class DatCH_CallBack_BPG : public DatCH_CallBack
@@ -59,7 +78,9 @@ class DatCH_CallBack_BPG : public DatCH_CallBack
   Ext_Util_API *exApi=NULL;
   
   CameraLayer *camera=NULL;
-  
+  resourcePool<image_pipe_info> resPool;
+
+
   bool checkTL(const char *TL,const BPG_data *dat);
   uint16_t TLCode(const char *TL);
   DatCH_CallBack_BPG(DatCH_BPG1_0 *self);

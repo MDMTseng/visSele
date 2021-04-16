@@ -26,6 +26,9 @@
 std::timed_mutex mainThreadLock;
 
 
+int resourcePoolSize=20;
+TSQueue<image_pipe_info*> inspQueue(10);
+TSQueue<image_pipe_info*> actionQueue(10);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
@@ -222,6 +225,7 @@ int ImageCropH = 99999;
 bool downSampWithCalib = false;
 
 bool doImgProcessThread = true;
+bool doInspActionThread = true;
 int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj);
 DatCH_BPG1_0 *BPG_protocol = new DatCH_BPG1_0(NULL);
 
@@ -243,19 +247,9 @@ char **_argv;
 
 DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
 
-typedef struct image_pipe_info
-{
-  CameraLayer *camLayer;
-  int type;
-  void *context;
-  acvImage img;
-  CameraLayer::frameInfo fi;
-  //acvRadialDistortionParam cam_param;
-  FeatureManager_BacPac *bacpac;
-} image_pipe_info;
 
-#define ImagePipeBufferSize 20
-RingBuf<image_pipe_info> imagePipeBuffer(new image_pipe_info[ImagePipeBufferSize], ImagePipeBufferSize);
+
+
 //lens1
 //main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
 //main.cpp  1068 main:v Center: 1295,971
@@ -955,7 +949,7 @@ uint16_t DatCH_CallBack_BPG::TLCode(const char *TL)
 {
   return (((uint16_t)TL[0] << 8) | TL[1]);
 }
-DatCH_CallBack_BPG::DatCH_CallBack_BPG(DatCH_BPG1_0 *self)
+DatCH_CallBack_BPG::DatCH_CallBack_BPG(DatCH_BPG1_0 *self):resPool(resourcePoolSize)
 {
   this->self = self;
   cacheImage.ReSize(1, 1);
@@ -1738,7 +1732,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
               camera->TriggerMode(0);
             }
             
-            doImgProcessThread = false;
+            doImgProcessThread = true;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -2588,12 +2582,10 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
   return stat;
 }
 
-void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe);
+void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL);
 
 void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
-  
-    LOGI("===============\n");
   if (type != CameraLayer::EV_IMG)
     return;
   static clock_t pframeT;
@@ -2603,7 +2595,6 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   if (!doImgProcessThread)
   {
     int skip_int = 0;
-    LOGI("frameInterval:%fms \n", interval);
     LOGI("frameInterval:%fms t:%d pframeT:%d", interval, t, pframeT);
     if (interval < skip_int)
     {
@@ -2612,6 +2603,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     }
   }
   pframeT = t;
+  LOGI("=============== frameInterval:%fms \n", interval);
   LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
@@ -2619,7 +2611,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   acvImage &capImg = *cl_GMV.GetFrame();
 
   
-  image_pipe_info *headImgPipe = imagePipeBuffer.getHead();
+  image_pipe_info *headImgPipe = cb->resPool.fetchSrc_blocking();
   if (headImgPipe == NULL)
   {
     LOGE("HEAD IMG pipe is NULL");
@@ -2644,12 +2636,13 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   {
     
 
-    LOGE("imagePipeBuffer.size:: %d before push",imagePipeBuffer.size());
-    int err=imagePipeBuffer.pushHead();
-    if(err)
+    LOGE("cb->resPool.rest_size:: %d",cb->resPool.rest_size());
+    
+    if(inspQueue.push_blocking(headImgPipe)==false)
     {
-      LOGE("imagePipeBuffer is full tell uInsp to mark in error mode");
-      imagePipeBuffer.clear();
+      LOGE("NO resource can be used.....");
+      // imagePipeBuffer.clear();
+
       
       if (cb->mift)
       {
@@ -2675,15 +2668,18 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   //     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   //   }
   // 
-    ImgPipeProcessCenter_imp(headImgPipe);
+    bool doPassDown=false;
+    ImgPipeProcessCenter_imp(headImgPipe,&doPassDown);
+    if(!doPassDown)
+      cb->resPool.retSrc(headImgPipe);
   }
   
 }
 
-void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
+void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
 {
   
-  if (cb->cameraFramesLeft == 0)
+   if (cb->cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
     MT_UNLOCK();
@@ -2708,61 +2704,14 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
     }
   }
 
+  if(ret_pipe_pass_down)
+    *ret_pipe_pass_down=false;
+
   clock_t t = clock();
-
-  static acvImage test1_buff;
-
   acvImage &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
   
-  int ret = 0;
-
-  //stackingC=0;
-
-  {
-
-    acv_XY offset = {
-      X: fi.offset_x,
-      Y: fi.offset_y};
-    bacpac->sampler->setOriginOffset(offset);
-  }
-
-
-  //if(stackingC!=0)return;
-  
-  if (0)
-  {
-    if(imstack.imgStacked.GetHeight()!=capImg.GetHeight() || imstack.imgStacked.GetWidth()!=capImg.GetWidth() )
-    {
-      imstack.ReSize(&capImg);
-    }
-    else if(imstack.DiffBigger(&capImg,10, 30))
-    {
-      imstack.Reset();
-    }
-
-
-
-    LOGI("stackingC:%d", imstack.stackingC);
-    imstack.Add(&capImg);
-    // LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-
-  }
-
-
-  {
-    ret = ImgInspection(matchingEng, &capImg, bacpac,imgPipe->camLayer, 1);
-    // if(stackingC==0)
-    // {
-
-    //   acvCloneImage(&capImg,&imgStackRes,-1);
-
-    // }
-  }
-
-  LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
-
   BPG_data bpg_dat;
   do
   {
@@ -2778,64 +2727,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
 
     try
     {
-
-      const FeatureReport *report = matchingEng.GetReport();
-
-      int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
-      if (report->type == FeatureReport::binary_processing_group)
-      {
-        vector<const FeatureReport *> &reports =
-            *(report->data.binary_processing_group.reports);
-
-        vector<acv_LabeledData> *ldat = report->data.binary_processing_group.labeledData;
-
-        if (reports.size() == 1 && reports[0]->type == FeatureReport::sig360_circle_line)
-        {
-          vector<FeatureReport_sig360_circle_line_single> &srep =
-              *(reports[0]->data.sig360_circle_line.reports);
-          stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
-
-          if (srep.size() == 1) //only one detected objects in scence is allowed
-          {
-            int insp_tar_area = (*ldat)[srep[0].labeling_idx].area;
-
-            int totalArea = 0;
-            for (int i = 1; i < ldat->size(); i++)
-            {
-              totalArea += (*ldat)[i].area;
-            }
-            float extra_area_ratio = (float)(totalArea - insp_tar_area) / totalArea;
-            LOGI("totalArea:%d insp_tar_area:%d extra_area_ratio:%f", totalArea, insp_tar_area, extra_area_ratio);
-            if (extra_area_ratio < 0.1)
-            {
-              vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
-              stat = InspStatusReduce(jrep);
-            }
-          }
-          // for(int k=0;k<srep.size();k++)//For two or more objects in one scence
-          // {
-          //   vector<FeatureReport_judgeReport> &jrep= *(srep[k].judgeReports);
-
-          //   int cstat = InspStatusReduce(jrep);
-          //   LOGI("%d:stat:%d cstat:%d ",k,stat,cstat);
-          //   if(k==0)
-          //   {
-          //     stat = cstat;
-          //   }
-          //   else if(stat!=cstat)
-          //   {
-          //     stat=FeatureReport_sig360_circle_line_single::STATUS_NA;
-          //   }
-
-          //   if(stat == FeatureReport_sig360_circle_line_single::STATUS_NA)
-          //   {
-          //     break;
-          //   }
-          // }
-          // LOGI("FINAL stat:%d",stat);
-        }
-      }
-
       if (cb->mift)
       {
         LOGI("mift is here!!");
@@ -2847,41 +2738,30 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
                           "\"idx\":%d,\"count\":%d,"
                           "\"time_100us\":%lu"
                           "}",
-                          stat, 1, count, fi.timeStamp_100us);
+                          imgPipe->actInfo.finspStatus, 1, count, fi.timeStamp_100us);
         cb->mift->send_data((uint8_t *)buffx, len);
         count = (count + 1) & 0xFF;
         LOGI("%s", buffx);
       }
       // LOGI(">>>>");
 
-      if (report != NULL)
-      {
-        cJSON *jobj = matchingEng.FeatureReport2Json(report);
-        AttachStaticInfo(jobj, cb);
-        // double expTime = NAN;
-        // if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
-        // {
-        //   cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
-        // }
-        char *jstr = cJSON_Print(jobj);
-        cJSON_Delete(jobj);
+      cJSON *jobj=imgPipe->actInfo.report_json;
+      AttachStaticInfo(jobj, cb);
+      // double expTime = NAN;
+      // if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
+      // {
+      //   cJSON_AddNumberToObject(jobj, "exposure_time", expTime);
+      // }
+      char *jstr = cJSON_Print(jobj);
 
-        // LOGI("__\n %s  \n___",jstr);
-        bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
-        bpg_dat.pgID = cb->CI_pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        BPG_protocol_send(datCH_BPG);
+      // LOGI("__\n %s  \n___",jstr);
+      bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
+      bpg_dat.pgID = cb->CI_pgID;
+      datCH_BPG.data.p_BPG_data = &bpg_dat;
+      BPG_protocol_send(datCH_BPG);
 
-        delete jstr;
-      }
-      else
-      {
-        sprintf(tmp, "{}");
-        bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", tmp);
-        bpg_dat.pgID = cb->CI_pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        BPG_protocol_send(datCH_BPG);
-      }
+      delete jstr;
+      
     }
     catch (std::invalid_argument iaex)
     {
@@ -2889,11 +2769,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
     }
 
       // LOGI(">>>>");
-
     clock_t img_t = clock();
     //if(stackingC==0)
-    if (DoImageTransfer && (imagePipeBuffer.size()<2  ))
+    if (DoImageTransfer)
     {
+
+      static acvImage test1_buff;
+
 
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
@@ -2946,10 +2828,181 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe)
     }
   } while (false);
 
+  
+  cJSON_Delete(imgPipe->actInfo.report_json);
+  imgPipe->actInfo.report_json=NULL;
+
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
+  
   MT_UNLOCK();
+}
+
+
+void ImgPipeActionThread(bool *terminationflag)
+{
+  using Ms = std::chrono::milliseconds;
+  int delayStartCounter=10000;
+  while (terminationflag && *terminationflag == false)
+  {
+    
+  //   if(delayStartCounter>0)
+  //   {
+  //     delayStartCounter--;
+  //   }
+  //   else
+  //   {
+  //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  //   }
+    image_pipe_info *headImgPipe = NULL;
+    
+
+    
+    while (actionQueue.pop_blocking(headImgPipe))
+    {
+
+      bool doPassDown=false;
+      if(actionQueue.size()>1)
+      {
+        LOGI("water is full...  skip=======");
+      }
+      else
+      {
+        InspResultAction(headImgPipe,&doPassDown);
+      }
+      
+      //delayStartCounter=10000;
+      if(!doPassDown)
+        cb->resPool.retSrc(headImgPipe);
+    }
+  }
+
+}
+
+void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
+{
+  
+  // LOGI("============DO INSP");
+  if (cb->cameraFramesLeft == 0)
+  {
+    // camera->TriggerMode(1);
+    MT_UNLOCK();
+    return;
+  }
+  clock_t t = clock();
+
+  acvImage &capImg = imgPipe->img;
+  FeatureManager_BacPac *bacpac = imgPipe->bacpac;
+  CameraLayer::frameInfo &fi = imgPipe->fi;
+  
+  int ret = 0;
+
+  //stackingC=0;
+
+  {
+
+    acv_XY offset = {
+      X: fi.offset_x,
+      Y: fi.offset_y};
+    bacpac->sampler->setOriginOffset(offset);
+  }
+
+
+  //if(stackingC!=0)return;
+  
+  if (0)
+  {
+    if(imstack.imgStacked.GetHeight()!=capImg.GetHeight() || imstack.imgStacked.GetWidth()!=capImg.GetWidth() )
+    {
+      imstack.ReSize(&capImg);
+    }
+    else if(imstack.DiffBigger(&capImg,10, 30))
+    {
+      imstack.Reset();
+    }
+
+
+
+    LOGI("stackingC:%d", imstack.stackingC);
+    imstack.Add(&capImg);
+    // LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+
+  }
+
+
+  {
+    ret = ImgInspection(matchingEng, &capImg, bacpac,imgPipe->camLayer, 1);
+
+  }
+
+  {
+  
+    const FeatureReport *report = matchingEng.GetReport();
+
+
+
+    int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
+
+
+    if (report->type == FeatureReport::binary_processing_group)
+    {
+      vector<const FeatureReport *> &reports =
+          *(report->data.binary_processing_group.reports);
+
+      vector<acv_LabeledData> *ldat = report->data.binary_processing_group.labeledData;
+
+      if (reports.size() == 1 && reports[0]->type == FeatureReport::sig360_circle_line)
+      {
+        vector<FeatureReport_sig360_circle_line_single> &srep =
+            *(reports[0]->data.sig360_circle_line.reports);
+        stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
+
+        if (srep.size() == 1) //only one detected objects in scence is allowed
+        {
+          int insp_tar_area = (*ldat)[srep[0].labeling_idx].area;
+
+          int totalArea = 0;
+          for (int i = 1; i < ldat->size(); i++)
+          {
+            totalArea += (*ldat)[i].area;
+          }
+          float extra_area_ratio = (float)(totalArea - insp_tar_area) / totalArea;
+          LOGI("totalArea:%d insp_tar_area:%d extra_area_ratio:%f", totalArea, insp_tar_area, extra_area_ratio);
+          if (extra_area_ratio < 0.1)
+          {
+            vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
+            stat = InspStatusReduce(jrep);
+          }
+        }
+      }
+    }
+
+    
+    imgPipe->actInfo.finspStatus=stat;
+    
+    imgPipe->actInfo.report_json = matchingEng.FeatureReport2Json(report);
+  }
+
+  LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+
+
+  bool doPassDown=doInspActionThread;
+
+  if(doPassDown)
+  {
+    actionQueue.push_blocking(imgPipe);
+  }
+  else
+  {
+    InspResultAction(imgPipe,&doPassDown);
+    if(!doPassDown)
+      cb->resPool.retSrc(imgPipe);
+  }
+  if(ret_pipe_pass_down)
+    *ret_pipe_pass_down=doPassDown;
+
+
   //std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
@@ -2970,13 +3023,17 @@ void ImgPipeProcessThread(bool *terminationflag)
   //   }
     image_pipe_info *headImgPipe = NULL;
     
-    while (headImgPipe = imagePipeBuffer.getTail_block(1000))
+
+    
+    while (inspQueue.pop_blocking(headImgPipe))
     {
-      LOGI(">>>imagePipeBuffer.size:%d",imagePipeBuffer.size());
+      
+      // LOGI("============POP");
       //delayStartCounter=10000;
-      ImgPipeProcessCenter_imp(headImgPipe);
-      imagePipeBuffer.consumeTail();
-      LOGI(">>>consumeTail finished");
+      bool doPassDown=false;
+      ImgPipeProcessCenter_imp(headImgPipe,&doPassDown);
+      if(!doPassDown)
+        cb->resPool.retSrc(headImgPipe);
     }
   }
 }
@@ -3215,6 +3272,8 @@ int mainLoop(bool realCamera = false)
   if (terminationFlag)
     return -1;
   std::thread mThread(ImgPipeProcessThread, &terminationFlag);
+  
+  std::thread ActionThread(ImgPipeActionThread, &terminationFlag);
   LOGI(">>>>>\n");
 
   {
