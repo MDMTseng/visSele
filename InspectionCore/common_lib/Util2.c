@@ -53,7 +53,7 @@ int Save2PNG(uint8_t *data, int width, int height, int channelCount, const char 
   }
   state.info_raw.bitdepth = 8;
   // output color type
-  state.info_png.color.colortype = LCT_RGBA;
+  state.info_png.color.colortype = LCT_RGB;
   state.info_png.color.bitdepth = 8;
   state.encoder.auto_convert = 1; // without this, it would ignore the output color type specified above and choose an optimal one instead
 
@@ -123,7 +123,7 @@ int LoadIMGFile(acvImage *ret_img, const char *filename)
   return -1;
 }
 
-int SavePNGFile(const char *filename, acvImage *img)
+int SavePNGFile_(const char *filename, acvImage *img)
 {
   LOGE("SavePNGFile:%s", filename);
   int w = img->GetWidth();
@@ -141,6 +141,13 @@ int SavePNGFile(const char *filename, acvImage *img)
   }
 
   return Save2PNG(&(pix_arr[0]), img->GetWidth(), img->GetHeight(), 3, filename);
+}
+int SavePNGFile(const char *filename, acvImage *img)
+{
+  LOGE("SavePNGFile:%s", filename);
+  int w = img->GetWidth();
+
+  return Save2PNG(img->CVector[0], img->GetWidth(), img->GetHeight(), 3, filename);
 }
 
 int SaveIMGFile(const char *filename, acvImage *img)

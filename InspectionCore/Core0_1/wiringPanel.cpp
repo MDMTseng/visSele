@@ -32,9 +32,10 @@ cJSON* cache_deffile_JSON=NULL;
 
 cJSON* cache_camera_param=NULL;
 
-int resourcePoolSize=20;
+int resourcePoolSize=30;
 TSQueue<image_pipe_info*> inspQueue(10);
 TSQueue<image_pipe_info*> actionQueue(10);
+TSQueue<image_pipe_info*> inspSnapQueue(10);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
@@ -2746,7 +2747,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   
 }
 
-void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
+void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool skipImageTransfer , bool inspSnap,bool *ret_pipe_pass_down=NULL)
 {
   
    if (cb->cameraFramesLeft == 0)
@@ -2783,6 +2784,8 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
   CameraLayer::frameInfo &fi = imgPipe->fi;
   
   BPG_data bpg_dat;
+
+  if(skipInspDataTransfer==false)
   do
   {
     char tmp[100];
@@ -2824,7 +2827,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
       // }
       char *jstr = cJSON_Print(jobj);
 
-      LOGI("__\n %s  \n___",jstr);
+      // LOGI("__\n %s  \n___",jstr);
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
       bpg_dat.pgID = cb->CI_pgID;
       datCH_BPG.data.p_BPG_data = &bpg_dat;
@@ -2841,7 +2844,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
       // LOGI(">>>>");
     clock_t img_t = clock();
     //if(stackingC==0)
-    if (DoImageTransfer)
+    if (DoImageTransfer && skipInspDataTransfer==false)
     {
 
       static acvImage test1_buff;
@@ -2898,7 +2901,21 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
     }
   } while (false);
 
-  
+  if(inspSnap)
+  {
+    if(inspSnapQueue.push(imgPipe))
+    {
+      if(ret_pipe_pass_down)
+        *ret_pipe_pass_down=true;
+    }
+    else
+    {
+      LOGE("inspSnapQueue is full.... skip the save");
+      
+      if(ret_pipe_pass_down)
+        *ret_pipe_pass_down=false;
+    }
+  }
 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
@@ -2907,6 +2924,50 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
   MT_UNLOCK();
 }
 
+
+void InspSnapSaveThread(bool *terminationflag)
+{
+  using Ms = std::chrono::milliseconds;
+  int delayStartCounter=10000;
+  while (terminationflag && *terminationflag == false)
+  {
+    
+  //   if(delayStartCounter>0)
+  //   {
+  //     delayStartCounter--;
+  //   }
+  //   else
+  //   {
+  //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  //   }
+    image_pipe_info *headImgPipe = NULL;
+    
+
+    
+    while (inspSnapQueue.pop_blocking(headImgPipe))
+    {
+      LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->actInfo.report_json);
+      //report save
+      //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
+      {
+
+        
+        long ms= current_time_ms ();
+        std::string filePath("data/SAMP/S");
+        filePath+=std::to_string(ms);
+
+        saveInspectionSample(headImgPipe->actInfo.report_json,cache_camera_param, cache_deffile_JSON, &headImgPipe->img,filePath.c_str());
+
+      }
+      
+      cJSON_Delete(headImgPipe->actInfo.report_json);
+      headImgPipe->actInfo.report_json=NULL;
+      
+      cb->resPool.retSrc(headImgPipe);
+    
+    }
+  }
+}
 
 void ImgPipeActionThread(bool *terminationflag)
 {
@@ -2931,42 +2992,39 @@ void ImgPipeActionThread(bool *terminationflag)
     {
 
       bool doPassDown=false;
+      bool saveToSnap=(TEST_saveInspResCounterDown>0 && headImgPipe->actInfo.finspStatus!=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS);
+      if(saveToSnap)
+      {
+        TEST_saveInspResCounterDown--;
+      }
       if(actionQueue.size()>1)
       {
-        LOGI("water is full...  skip=======");
+        InspResultAction(headImgPipe,true,false,saveToSnap,&doPassDown);
       }
       else
       {
-        InspResultAction(headImgPipe,&doPassDown);
+        InspResultAction(headImgPipe,false,false,saveToSnap,&doPassDown);
       }
-      cJSON_Delete(headImgPipe->actInfo.report_json);
-      headImgPipe->actInfo.report_json=NULL;
       
       //delayStartCounter=10000;
       if(!doPassDown)
+      {
+        
+        cJSON_Delete(headImgPipe->actInfo.report_json);
+        headImgPipe->actInfo.report_json=NULL;
         cb->resPool.retSrc(headImgPipe);
+      }
     }
   }
 
 }
 
-long current_time_ms (void)
-{
-    long            ms; // Milliseconds
-    time_t          s;  // Seconds
-    struct timespec spec;
-
-    clock_gettime(CLOCK_REALTIME, &spec);
-
-    s  = spec.tv_sec;
-    ms = round(spec.tv_nsec / 1.0e3)+s*1000; // Convert nanoseconds to milliseconds
-    return ms;
-}
-
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
 {
   
-  // LOGI("============DO INSP");
+  LOGI("============DO INSP>> waterLvL: insp:%d/%d act:%d/%d  snap:%d/%d   poolSize:%d",
+  inspQueue.size(),10,actionQueue.size(),10,inspSnapQueue.size(),10,cb->resPool.rest_size()
+  );
   if (cb->cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
@@ -3066,23 +3124,6 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
     
     imgPipe->actInfo.report_json = matchingEng.FeatureReport2Json(report);
 
-    //report save
-    //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
-    if(TEST_saveInspResCounterDown>0 &&  //TEST TEST  
-      (stat==FeatureReport_sig360_circle_line_single::STATUS_FAILURE||
-       stat==FeatureReport_sig360_circle_line_single::STATUS_NA))
-    {
-
-      
-      long ms= current_time_ms ();
-      std::string filePath("data/SAMP/S");
-      filePath+=std::to_string(ms);
-
-      saveInspectionSample(imgPipe->actInfo.report_json,cache_camera_param, cache_deffile_JSON, &imgPipe->img,filePath.c_str());
-
-      TEST_saveInspResCounterDown--;
-    }
-    
   }
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -3096,13 +3137,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
   }
   else
   {
-    InspResultAction(imgPipe,&doPassDown);
+    InspResultAction(imgPipe,false,false,&doPassDown);
     
+    if(!doPassDown)//then, we need to recycle the resource here
+    {
     if(imgPipe->actInfo.report_json)
       cJSON_Delete(imgPipe->actInfo.report_json);
     imgPipe->actInfo.report_json=NULL;
-    if(!doPassDown)
       cb->resPool.retSrc(imgPipe);
+  }
   }
   if(ret_pipe_pass_down)
     *ret_pipe_pass_down=doPassDown;
@@ -3380,6 +3423,8 @@ int mainLoop(bool realCamera = false)
   
   std::thread ActionThread(ImgPipeActionThread, &terminationFlag);
   LOGI(">>>>>\n");
+
+  std::thread _inspSnapSaveThread(InspSnapSaveThread,&terminationFlag);
 
   {
 
