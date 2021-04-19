@@ -3796,7 +3796,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
   SetImg(img_info) {
     if(img_info==null)return;
     super.SetImg(img_info);
-    console.log(img_info);
+    // console.log(img_info);
     if(img_info.IGNORE_IMAGE_FIT_TO_SCREEN!=true)
       this.scaleImageToFitScreen();
   }
@@ -3816,8 +3816,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     let matrix = this.worldTransform();
     ctx.setTransform(matrix.a, matrix.b, matrix.c,
       matrix.d, matrix.e, matrix.f);
-    {//TODO:HACK: 4X4 times scale down for transmission speed
-
+    {
       let mmpp = this.rUtil.get_mmpp();
 
       let scale = 1;
@@ -3847,7 +3846,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     if(this.edit_DB_info!=null)
     {
 
-      let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow.filter((x) => x.isCurObj);
+      let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow;
 
 
       inspectionReportList.forEach((report, idx) => 

@@ -151,8 +151,10 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       newEditInfo =newEditInfo._obj.rootDefInfoLoading(FL.data.defInfo,newEditInfo)
 
       let reports = FL.data.reports;
+      if(Array.isArray(reports)==false)
+        reports=[reports]
       newEditInfo.reportStatisticState.trackingWindow=reports;
-
+      
       let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
 
       newEditInfo.img=img_pros.data;
@@ -230,7 +232,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       
       fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
       fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
-      <CanvasComponent addClass="height12" edit_info={editInfo}/>
+    <CanvasComponent addClass="height12" edit_info={editInfo}/>
   </div>);
 }
  

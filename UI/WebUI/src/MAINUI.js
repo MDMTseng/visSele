@@ -987,6 +987,11 @@ const MainUI=()=>{
             icon:<SettingOutlined />,
             text:DICT.mainui.MODE_SELECT_SETTING,
             onClick:_=>setUI_state(s_statesTable.Setting)
+          },
+          {
+            icon:<SettingOutlined />,
+            text:DICT.mainui.RepDisplay,
+            onClick:_=>setUI_state(s_statesTable.RepDisplay)
           }
            
         ],

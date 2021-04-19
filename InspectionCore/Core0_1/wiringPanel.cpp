@@ -26,6 +26,12 @@
 std::timed_mutex mainThreadLock;
 
 
+int TEST_saveInspResCounterDown=0;
+
+cJSON* cache_deffile_JSON=NULL;
+
+cJSON* cache_camera_param=NULL;
+
 int resourcePoolSize=20;
 TSQueue<image_pipe_info*> inspQueue(10);
 TSQueue<image_pipe_info*> actionQueue(10);
@@ -825,6 +831,54 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
+
+void saveInspectionSample(cJSON* inspectionReport,cJSON* camera_param, cJSON* deffile, acvImage* image,const char* fileName)
+{
+  
+  cJSON *reportsList = JFetch_ARRAY(inspectionReport, "reports[0].reports");
+  if(reportsList==NULL)return;
+
+  cJSON *camera_param_data = JFetch_OBJECT(camera_param, "reports[0]");
+  if(camera_param_data==NULL)return;
+  
+  std::string filePath(fileName);
+  SavePNGFile((filePath+".png").c_str(), image);  
+
+
+  cJSON* infoJObj= cJSON_CreateObject();
+
+  //somehow if I don't copy the data, the devil in 
+  //this function will remove the reportsList from inspectionReport in some weird way
+  //TODO: find the bug, this causes extra data copy cost
+  
+  reportsList=cJSON_Duplicate(reportsList,true);
+  camera_param_data=cJSON_Duplicate(camera_param_data,true);
+  cJSON_AddItemToObject(infoJObj,  "reports", reportsList);
+  cJSON_AddItemToObject(infoJObj,  "defInfo", deffile);
+  cJSON_AddItemToObject(infoJObj,  "camera_param", camera_param_data);
+  
+  char *jstr = cJSON_Print(infoJObj);
+  // cJSON_DetachItemViaPointer(infoJObj, reportsList); //since the data is copied let Delete to deal with it.
+  cJSON_DetachItemViaPointer(infoJObj, deffile);
+  
+  cJSON_Delete(infoJObj);
+
+  FILE *write_ptr;
+
+  write_ptr = fopen((filePath+".xreps").c_str(), "wb"); // w for write, b for binary
+  if (write_ptr != NULL)
+  {
+    fwrite(jstr, strlen(jstr), 1, write_ptr); // write 10 bytes from our buffer
+    fclose(write_ptr);
+  }
+
+  delete(jstr);
+
+  
+
+}
+
+
 int LoadCameraSetting(CameraLayer &camera, char *filename)
 {
   char *fileStr = ReadText(filename);
@@ -859,6 +913,14 @@ int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
     return -1;
   }
   LOGE("Read defFile from:%s", filename);
+
+  if(cache_camera_param)
+  {
+    cJSON_Delete(cache_camera_param);
+    cache_camera_param=NULL;
+  }
+  cache_camera_param=cJSON_Parse(fileStr);
+
 
   cJSON *json = cJSON_Parse(fileStr);
 
@@ -1705,8 +1767,16 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             LOGI("Read deffile:%s", deffile);
           }
 
+          if(cache_deffile_JSON)
+          {
+            cJSON_Delete(cache_deffile_JSON);
+            cache_deffile_JSON=NULL;
+          }
+          cache_deffile_JSON = cJSON_Parse(jsonStr);
+
           matchingEng.ResetFeature();
           matchingEng.AddMatchingFeature(jsonStr);
+
 
           void *target;
           if (getDataFromJson(json, "get_deffile", &target) == cJSON_True)
@@ -2754,7 +2824,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
       // }
       char *jstr = cJSON_Print(jobj);
 
-      // LOGI("__\n %s  \n___",jstr);
+      LOGI("__\n %s  \n___",jstr);
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
       bpg_dat.pgID = cb->CI_pgID;
       datCH_BPG.data.p_BPG_data = &bpg_dat;
@@ -2829,8 +2899,6 @@ void  InspResultAction(image_pipe_info *imgPipe,bool *ret_pipe_pass_down=NULL)
   } while (false);
 
   
-  cJSON_Delete(imgPipe->actInfo.report_json);
-  imgPipe->actInfo.report_json=NULL;
 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
@@ -2871,6 +2939,8 @@ void ImgPipeActionThread(bool *terminationflag)
       {
         InspResultAction(headImgPipe,&doPassDown);
       }
+      cJSON_Delete(headImgPipe->actInfo.report_json);
+      headImgPipe->actInfo.report_json=NULL;
       
       //delayStartCounter=10000;
       if(!doPassDown)
@@ -2878,6 +2948,19 @@ void ImgPipeActionThread(bool *terminationflag)
     }
   }
 
+}
+
+long current_time_ms (void)
+{
+    long            ms; // Milliseconds
+    time_t          s;  // Seconds
+    struct timespec spec;
+
+    clock_gettime(CLOCK_REALTIME, &spec);
+
+    s  = spec.tv_sec;
+    ms = round(spec.tv_nsec / 1.0e3)+s*1000; // Convert nanoseconds to milliseconds
+    return ms;
 }
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
@@ -2982,6 +3065,24 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
     imgPipe->actInfo.finspStatus=stat;
     
     imgPipe->actInfo.report_json = matchingEng.FeatureReport2Json(report);
+
+    //report save
+    //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
+    if(TEST_saveInspResCounterDown>0 &&  //TEST TEST  
+      (stat==FeatureReport_sig360_circle_line_single::STATUS_FAILURE||
+       stat==FeatureReport_sig360_circle_line_single::STATUS_NA))
+    {
+
+      
+      long ms= current_time_ms ();
+      std::string filePath("data/SAMP/S");
+      filePath+=std::to_string(ms);
+
+      saveInspectionSample(imgPipe->actInfo.report_json,cache_camera_param, cache_deffile_JSON, &imgPipe->img,filePath.c_str());
+
+      TEST_saveInspResCounterDown--;
+    }
+    
   }
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -2996,6 +3097,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
   else
   {
     InspResultAction(imgPipe,&doPassDown);
+    
+    if(imgPipe->actInfo.report_json)
+      cJSON_Delete(imgPipe->actInfo.report_json);
+    imgPipe->actInfo.report_json=NULL;
     if(!doPassDown)
       cb->resPool.retSrc(imgPipe);
   }
