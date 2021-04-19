@@ -62,7 +62,7 @@ void thread_DataGen(){
 
 
 
-    TypeData *fetch_data=rpool.fetchSrc_blocking();
+    TypeData *fetch_data=rpool.fetchResrc_blocking();
     if(fetch_data==NULL)
     {
       printf("W: resource EMPTY!!!!\n");
@@ -86,7 +86,7 @@ void thread_DataGen(){
         printf("%s  ptr:%p\n", "queue is full",fetch_data);
         // break;
 
-        rpool.retSrc(fetch_data);//toss away
+        rpool.retResrc(fetch_data);//toss away
         stopF=true;
         std::this_thread::sleep_for(std::chrono::milliseconds(CD_Wait_ms));//cool down
         stopF=false;
@@ -111,7 +111,7 @@ void thread_DataDrain(){
       DatInSum^=data_out->XXX;
       printf("<[%d]<  data:%d DResd:%d ptr:%p\n",
         id, data_out->XXX, (int)DatInSum,data_out);
-      bool retOK = rpool.retSrc(data_out);
+      bool retOK = rpool.retResrc(data_out);
 
       std::this_thread::sleep_for(std::chrono::milliseconds(30));
     }
@@ -158,7 +158,7 @@ int main(void) {
   // {
 
   //   TypeData *fetch_data;
-  //   int idx = rpool.fetchSrc(&fetch_data);
+  //   int idx = rpool.fetchResrc(&fetch_data);
   //   if(idx<0)
   //   {
   //     printf("W: resource FULL!!!!\n");
@@ -183,7 +183,7 @@ int main(void) {
   //   TypeX data_out;
   //   if(myqueue.tryDeq(data_out, deqCtx)) {
   //     printf("deque Done  id:%d  data:%d\n",data_out.resId,data_out.data->XXX);
-  //     rpool.retSrc(data_out.resId);
+  //     rpool.retResrc(data_out.resId);
   //   }
   //   else
   //   {

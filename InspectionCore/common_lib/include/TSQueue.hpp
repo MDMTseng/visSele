@@ -147,7 +147,7 @@ class resourcePool_naiive
     rest_size=size;
   }
 
-  int fetchSrc(T** ret_data)
+  int fetchResrc(T** ret_data)
   {
     std::lock_guard<std::mutex> lock(rsc_mutex);
 
@@ -173,7 +173,7 @@ class resourcePool_naiive
   }  
 
   protected:
-  bool _retSrc (int idx)
+  bool _retResrc (int idx)
   {
     bool ifOK=false;
     if(pool[idx].flag==1)
@@ -186,15 +186,15 @@ class resourcePool_naiive
   }  
 
   public:
-  bool retSrc (int idx)
+  bool retResrc (int idx)
   {
 
     std::lock_guard<std::mutex> lock(rsc_mutex);
-    return _retSrc (idx);
+    return _retResrc (idx);
   }  
 
 
-  bool retSrc (T* dataPtr)
+  bool retResrc (T* dataPtr)
   {
 
     std::lock_guard<std::mutex> lock(rsc_mutex);
@@ -204,7 +204,7 @@ class resourcePool_naiive
     {
       if( &(pool[i].data)==dataPtr)
       {
-        return _retSrc (i);
+        return _retResrc (i);
       }
     }
 
@@ -262,7 +262,7 @@ class resourcePool
     throw TS_Termination_Exception();
   }
   int rest_size(){return _rest_size;}
-  T* fetchSrc()
+  T* fetchResrc()
   {
     if(termination)termination_avalanche_and_throw_excption();
     std::lock_guard<std::mutex> lock(rsc_mutex);
@@ -285,10 +285,10 @@ class resourcePool
     return dat;
   }  
 
-  T* fetchSrc_blocking(){
+  T* fetchResrc_blocking(){
     if(termination)termination_avalanche_and_throw_excption();
     T* fdat=NULL;
-    while((fdat=fetchSrc())==NULL)
+    while((fdat=fetchResrc())==NULL)
     {
       fetch_mutex.lock();
       if(termination)termination_avalanche_and_throw_excption();
@@ -296,7 +296,7 @@ class resourcePool
 
     return fdat;
   }
-  bool retSrc (T* ret_rsc)
+  bool retResrc (T* ret_rsc)
   {
     if(termination)termination_avalanche_and_throw_excption();
     std::lock_guard<std::mutex> lock(rsc_mutex);

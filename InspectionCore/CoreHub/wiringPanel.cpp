@@ -232,7 +232,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 
   camera_channel_info *chInfo=(camera_channel_info *)context;
   LOGI("===============rp_ref:%p H:%d\n",chInfo->rp_ref,img->GetHeight());
-  image_pipe_info *pipe = chInfo->rp_ref->fetchSrc_blocking();
+  image_pipe_info *pipe = chInfo->rp_ref->fetchResrc_blocking();
   if(pipe!=NULL )
   {
     // pipe->img.ReSize(img);
@@ -243,7 +243,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     // pipe->camchinfo=chInfo;
     pipe->camchinfo=chInfo;
     cam_.push_blocking(pipe);
-    // chInfo->rp_ref->retSrc(pipe);
+    // chInfo->rp_ref->retResrc(pipe);
   }
 
 }
@@ -270,7 +270,7 @@ void stageThread1_threads(){
     }
     else
     {
-      pinfo->camchinfo->rp_ref->retSrc(pinfo);//recycle
+      pinfo->camchinfo->rp_ref->retResrc(pinfo);//recycle
     }
   }
 
@@ -297,7 +297,7 @@ void stageThread2_threads(){
     LOGI("thread2:%d",tid);
     // buffer.push_back(pinfo);
 
-    pinfo->camchinfo->rp_ref->retSrc(pinfo);//recycle
+    pinfo->camchinfo->rp_ref->retResrc(pinfo);//recycle
   }
 
 

@@ -26,7 +26,7 @@
 std::timed_mutex mainThreadLock;
 
 
-int TEST_saveInspResCounterDown=0;
+int TEST_saveInspResCounterDown=8;
 
 cJSON* cache_deffile_JSON=NULL;
 
@@ -2682,7 +2682,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   acvImage &capImg = *cl_GMV.GetFrame();
 
   
-  image_pipe_info *headImgPipe = cb->resPool.fetchSrc_blocking();
+  image_pipe_info *headImgPipe = cb->resPool.fetchResrc_blocking();
   if (headImgPipe == NULL)
   {
     LOGE("HEAD IMG pipe is NULL");
@@ -2742,7 +2742,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     bool doPassDown=false;
     ImgPipeProcessCenter_imp(headImgPipe,&doPassDown);
     if(!doPassDown)
-      cb->resPool.retSrc(headImgPipe);
+      cb->resPool.retResrc(headImgPipe);
   }
   
 }
@@ -2963,7 +2963,7 @@ void InspSnapSaveThread(bool *terminationflag)
       cJSON_Delete(headImgPipe->actInfo.report_json);
       headImgPipe->actInfo.report_json=NULL;
       
-      cb->resPool.retSrc(headImgPipe);
+      cb->resPool.retResrc(headImgPipe);
     
     }
   }
@@ -3012,7 +3012,7 @@ void ImgPipeActionThread(bool *terminationflag)
         
         cJSON_Delete(headImgPipe->actInfo.report_json);
         headImgPipe->actInfo.report_json=NULL;
-        cb->resPool.retSrc(headImgPipe);
+        cb->resPool.retResrc(headImgPipe);
       }
     }
   }
@@ -3141,11 +3141,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
     
     if(!doPassDown)//then, we need to recycle the resource here
     {
-    if(imgPipe->actInfo.report_json)
-      cJSON_Delete(imgPipe->actInfo.report_json);
-    imgPipe->actInfo.report_json=NULL;
-      cb->resPool.retSrc(imgPipe);
-  }
+      if(imgPipe->actInfo.report_json)
+        cJSON_Delete(imgPipe->actInfo.report_json);
+      imgPipe->actInfo.report_json=NULL;
+      cb->resPool.retResrc(imgPipe);
+    }
   }
   if(ret_pipe_pass_down)
     *ret_pipe_pass_down=doPassDown;
@@ -3181,7 +3181,7 @@ void ImgPipeProcessThread(bool *terminationflag)
       bool doPassDown=false;
       ImgPipeProcessCenter_imp(headImgPipe,&doPassDown);
       if(!doPassDown)
-        cb->resPool.retSrc(headImgPipe);
+        cb->resPool.retResrc(headImgPipe);
     }
   }
 }
