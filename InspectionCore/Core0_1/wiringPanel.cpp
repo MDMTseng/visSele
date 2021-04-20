@@ -26,7 +26,8 @@
 std::timed_mutex mainThreadLock;
 
 
-int TEST_saveInspResCounterDown=8;
+bool saveInspFailSnap=true;
+bool saveInspNASnap=true;
 
 cJSON* cache_deffile_JSON=NULL;
 
@@ -1701,7 +1702,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     {
       do
       {
-
+        saveInspFailSnap=false;
+        saveInspNASnap=false;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         cb->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
         int frameCount=(int)cb->cameraFramesLeft;
@@ -2785,9 +2787,33 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
   
   BPG_data bpg_dat;
 
-  if(skipInspDataTransfer==false)
   do
   {
+
+    
+    if (cb->mift)
+    {
+      LOGI("mift is here!!");
+      char buffx[150];
+      static int count = 0;
+      int len = sprintf(buffx,
+                        "{"
+                        "\"type\":\"inspRep\",\"status\":%d,"
+                        "\"idx\":%d,\"count\":%d,"
+                        "\"time_100us\":%lu"
+                        "}",
+                        imgPipe->actInfo.finspStatus, 1, count, fi.timeStamp_100us);
+      cb->mift->send_data((uint8_t *)buffx, len);
+      count = (count + 1) & 0xFF;
+      LOGI("%s", buffx);
+    }
+
+    if(skipInspDataTransfer==true)
+    {
+      break;
+    }
+
+
     char tmp[100];
     DatCH_Data datCH_BPG =
         BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -2800,22 +2826,6 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
 
     try
     {
-      if (cb->mift)
-      {
-        LOGI("mift is here!!");
-        char buffx[150];
-        static int count = 0;
-        int len = sprintf(buffx,
-                          "{"
-                          "\"type\":\"inspRep\",\"status\":%d,"
-                          "\"idx\":%d,\"count\":%d,"
-                          "\"time_100us\":%lu"
-                          "}",
-                          imgPipe->actInfo.finspStatus, 1, count, fi.timeStamp_100us);
-        cb->mift->send_data((uint8_t *)buffx, len);
-        count = (count + 1) & 0xFF;
-        LOGI("%s", buffx);
-      }
       // LOGI(">>>>");
 
       cJSON *jobj=imgPipe->actInfo.report_json;
@@ -2992,23 +3002,29 @@ void ImgPipeActionThread(bool *terminationflag)
     {
 
       bool doPassDown=false;
-      bool saveToSnap=(TEST_saveInspResCounterDown>0 && headImgPipe->actInfo.finspStatus!=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS);
-      if(saveToSnap)
+      bool saveToSnap=false;
+
+      if(saveInspFailSnap)
       {
-        TEST_saveInspResCounterDown--;
+        if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+        {
+          saveToSnap=true;
+        }
       }
-      if(actionQueue.size()>1)
+
+      if(saveInspNASnap)
       {
-        InspResultAction(headImgPipe,true,false,saveToSnap,&doPassDown);
+        if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
+        {
+          saveToSnap=true;
+        }
       }
-      else
-      {
-        InspResultAction(headImgPipe,false,false,saveToSnap,&doPassDown);
-      }
+      
+      InspResultAction(headImgPipe,actionQueue.size()>5,actionQueue.size()>1,saveToSnap,&doPassDown);
       
       //delayStartCounter=10000;
       if(!doPassDown)
-      {
+      {//there is the end, recycle the resource
         
         cJSON_Delete(headImgPipe->actInfo.report_json);
         headImgPipe->actInfo.report_json=NULL;

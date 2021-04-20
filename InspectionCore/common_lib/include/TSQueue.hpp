@@ -33,19 +33,29 @@ protected:
   void termination_avalanche_and_throw_excption();
 public:
   TSQueue(int maxCount=-1);
-  unsigned long size();
+  size_t size();
+  size_t capacity();
+  void termination_trigger();
+  bool resume_from_termination();
   bool pop(T& retDat);
   bool pop_blocking(T& retDat);
   bool push(const T &item);
   bool push_blocking(const T &item);
 };
 
-
 template<typename T>
-void TSQueue<T>::termination_avalanche_and_throw_excption(){
+void TSQueue<T>::termination_trigger(){
+  termination=true;
   mutex_.unlock();
   push_mutex_.unlock();
   pop_mutex_.unlock();
+
+}
+
+
+template<typename T>
+void TSQueue<T>::termination_avalanche_and_throw_excption(){
+  termination_trigger();
   throw TS_Termination_Exception();
 }
 
@@ -61,12 +71,26 @@ TSQueue<T>::TSQueue(int maxCount){
 };
 
 template<typename T>
-unsigned long TSQueue<T>::size() {
+size_t TSQueue<T>::size() {
   if(termination)termination_avalanche_and_throw_excption();
   std::lock_guard<std::mutex> lock(mutex_);
   if(termination)termination_avalanche_and_throw_excption();
   return queue_.size();
 }
+
+template<typename T>
+size_t TSQueue<T>::capacity() {
+  return maxDataCount;
+}
+
+template<typename T>
+bool TSQueue<T>::resume_from_termination()
+{
+  if(size()>0)return false;
+  termination=false;
+  return true;
+}
+
 template<typename T>
 bool TSQueue<T>::pop(T& retDat) {
   if(termination)termination_avalanche_and_throw_excption();
