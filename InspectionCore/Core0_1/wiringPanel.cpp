@@ -22,6 +22,7 @@
 #include <compat_dirent.h>
 
 #include <RingBuf.hpp>
+#include <ctime>
 
 std::timed_mutex mainThreadLock;
 
@@ -33,12 +34,17 @@ cJSON* cache_deffile_JSON=NULL;
 
 cJSON* cache_camera_param=NULL;
 
+const std::string InspSampleSavePath_DEFAULT("data/SAMPLE");
+std::string InspSampleSavePath=InspSampleSavePath_DEFAULT;
+
 int resourcePoolSize=30;
 TSQueue<image_pipe_info*> inspQueue(10);
 TSQueue<image_pipe_info*> actionQueue(10);
 TSQueue<image_pipe_info*> inspSnapQueue(10);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
+
+
 
 int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms=0)
 {
@@ -844,7 +850,6 @@ void saveInspectionSample(cJSON* inspectionReport,cJSON* camera_param, cJSON* de
   if(camera_param_data==NULL)return;
   
   std::string filePath(fileName);
-  SavePNGFile((filePath+".png").c_str(), image);  
 
 
   cJSON* infoJObj= cJSON_CreateObject();
@@ -858,23 +863,28 @@ void saveInspectionSample(cJSON* inspectionReport,cJSON* camera_param, cJSON* de
   cJSON_AddItemToObject(infoJObj,  "reports", reportsList);
   cJSON_AddItemToObject(infoJObj,  "defInfo", deffile);
   cJSON_AddItemToObject(infoJObj,  "camera_param", camera_param_data);
+  cJSON_AddNumberToObject(infoJObj, "time_ms", current_time_ms ());
   
   char *jstr = cJSON_Print(infoJObj);
   // cJSON_DetachItemViaPointer(infoJObj, reportsList); //since the data is copied let Delete to deal with it.
   cJSON_DetachItemViaPointer(infoJObj, deffile);
   
   cJSON_Delete(infoJObj);
-
-  FILE *write_ptr;
-
-  write_ptr = fopen((filePath+".xreps").c_str(), "wb"); // w for write, b for binary
-  if (write_ptr != NULL)
+  int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr),(filePath+".xreps").c_str());
+  delete(jstr);  
+  if(ret_write_Len<0)
   {
-    fwrite(jstr, strlen(jstr), 1, write_ptr); // write 10 bytes from our buffer
-    fclose(write_ptr);
+    return;
   }
 
-  delete(jstr);
+
+  int saveErr = SavePNGFile((filePath+".png").c_str(), image);  
+  if(saveErr!=0)
+  {
+    
+  }
+
+
 
   
 
@@ -959,6 +969,29 @@ int LoadCameraCalibrationFile(char *filename, ImageSampler *ret_cam_param)
   if (executionError)
     return -1;
   return 0;
+}
+
+
+void setup_machine_setting(cJSON* json_mac_setting)
+{
+
+  char* path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
+      LOGE("===========================");
+  if (path!=NULL)
+  {
+      LOGE("===========================");
+    string path_str(path);
+    if(rw_create_dir(path_str.c_str())==true && access(path_str.c_str(), W_OK)==0)
+    {
+      InspSampleSavePath=path_str;
+      LOGE("===========================");
+    }
+    else
+    {
+      LOGE("PATH:%s is not writable",path_str.c_str());
+      InspSampleSavePath=InspSampleSavePath_DEFAULT;
+    }
+  }
 }
 
 bool DoImageTransfer = true;
@@ -1702,7 +1735,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     {
       do
       {
-        saveInspFailSnap=false;
+        saveInspFailSnap=true;
         saveInspNASnap=false;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         cb->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
@@ -1840,7 +1873,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
       LOGE("//////");
     }
-    else if (checkTL("EX", dat))
+    else if (checkTL("EX", dat))//feature EXtraction
     {
       LOGI("Trigger.......");
       calib_bacpac.sampler->ignoreCalib(false);
@@ -1961,7 +1994,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
       session_ACK = true;
     }
-    else if (checkTL("RC", dat))
+    else if (checkTL("RC", dat))//[R]e[C]onnect
     {
 
       DatCH_Data datCH_BPG =
@@ -2024,7 +2057,20 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       cJSON *retObj = cJSON_CreateObject();
 
       char *cmd_type=JFetch_STRING(json, "type");
-      
+      if(strcmp(cmd_type, "exec") == 0)
+      {
+        char *cmd_=JFetch_STRING(json, "cmd");
+        if(cmd_)
+        {
+          std::string exec_ret= run_exe(cmd_);
+          
+          LOGI("CMD:%s", cmd_);
+          LOGI("==>:%s", exec_ret.c_str());
+          
+          cJSON_AddStringToObject(retObj, "cmd", cmd_);
+          cJSON_AddStringToObject(retObj, "output", exec_ret.c_str());
+        }
+      }
       if (strcmp(cmd_type, "files_existance_check") == 0)
       {
       }
@@ -2184,7 +2230,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       session_ACK = true;
 
     }
-    else if (checkTL("ST", dat))
+    else if (checkTL("ST", dat))//[S]e[T]ting
     {
 
       DatCH_Data datCH_BPG =
@@ -2289,16 +2335,14 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         CameraSetup(*camera, *camSettingObj);
       }
 
-
-
       if (getDataFromJson(json, "CameraTriggerShutter", NULL) == cJSON_True)
       {
-
         camera->Trigger();
       }
 
+      setup_machine_setting(json);
     }
-    else if (checkTL("PR", dat))
+    else if (checkTL("PR", dat))//for external application
     {
       DatCH_Data datCH_BPG =
           BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
@@ -2935,36 +2979,91 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
 }
 
 
+
+std::string& getTimeStr(const char*timeFormat="%d-%m-%Y %H:%M:%S") 
+{
+  time_t rawtime;
+  struct tm * timeinfo;
+  char buffer[80];
+
+  time (&rawtime);
+  timeinfo = localtime(&rawtime);
+
+  strftime(buffer,sizeof(buffer),timeFormat,timeinfo);
+  std::string str(buffer);
+  return str;
+}
+
 void InspSnapSaveThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
   int delayStartCounter=10000;
+  
+  std::string SEP=std::string(1,systemPathSEP());
   while (terminationflag && *terminationflag == false)
   {
-    
-  //   if(delayStartCounter>0)
-  //   {
-  //     delayStartCounter--;
-  //   }
-  //   else
-  //   {
-  //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  //   }
+
+    //   if(delayStartCounter>0)
+    //   {
+    //     delayStartCounter--;
+    //   }
+    //   else
+    //   {
+    //     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    //   }
     image_pipe_info *headImgPipe = NULL;
     
 
     
     while (inspSnapQueue.pop_blocking(headImgPipe))
     {
-      LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->actInfo.report_json);
+      // LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->actInfo.report_json);
       //report save
       //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
       {
-
         
-        long ms= current_time_ms ();
-        std::string filePath("data/SAMP/S");
-        filePath+=std::to_string(ms);
+        MT_LOCK();
+        std::string rootPath=InspSampleSavePath+SEP;//InspSampleSavePath might be changed by main thread
+        MT_UNLOCK();
+        //root/Date/Name/ms.xxx
+        std::string extPath=getTimeStr("%Y%m%d")+SEP;//Date
+        {
+
+          char *name = JFetch_STRING(cache_deffile_JSON, "name");
+          if(name!=NULL && name[0]!='\0')
+          {
+            extPath+=std::string(name)+SEP;
+          }
+          else
+          {
+            extPath+=std::string("_NoName_")+SEP;
+          }
+          
+          if(rw_create_dir((rootPath+extPath).c_str())==false)//recursive create folder if failed
+          {
+            std::string _path1 = rootPath+extPath;
+            LOGE("the path:%s cannot be created",_path1.c_str());
+            rootPath=InspSampleSavePath_DEFAULT;//try the default one
+            if(rw_create_dir((rootPath+extPath).c_str())==false)//should always work
+            {
+              std::string _path_d = rootPath+extPath;
+              LOGE("the default path:%s cannot be created.... exit",_path_d.c_str());
+              exit(-100);
+              //TODO: critical
+            }
+          }
+          // if(access((rootPath+extPath).c_str(),W_OK)==0)//should work
+          // {
+          //   std::string _path_d = rootPath+extPath;
+          //   LOGE("the path:%s is not accecible.... exit",_path_d.c_str());
+          //   exit(-101);
+          //   //TODO: critical
+          // }
+        }
+        
+        // rootPath
+        // std::string timeStamp= getTimeStr("%H:%M:%S") ;
+        std::string filePath=rootPath+extPath+std::to_string(current_time_ms ());
 
         saveInspectionSample(headImgPipe->actInfo.report_json,cache_camera_param, cache_deffile_JSON, &headImgPipe->img,filePath.c_str());
 
@@ -3465,6 +3564,19 @@ int mainLoop(bool realCamera = false)
   }
   LOGI("Camera:%p", cb->camera);
 
+
+  {
+    cJSON *json_mac_setting=ReadJson("data/machine_setting.json");
+    if(json_mac_setting)
+    {
+      setup_machine_setting(json_mac_setting);
+      cJSON_Delete(json_mac_setting);
+    }
+  }
+
+
+
+
   websocket->SetEventCallBack(&callbk_obj, websocket);
 
   LOGI("SetEventCallBack is set...");
@@ -3692,7 +3804,6 @@ int testCode()
 #include <vector>
 int cp_main(int argc, char **argv)
 {
-
   // {
     
   //   tmpMain();

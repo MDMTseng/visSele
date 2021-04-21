@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <errno.h>
+#include <string>
 
 
 
@@ -189,6 +190,53 @@ void realfullPath(const char *curPath, char *ret_fullPath)
 #endif
 }
 
+
+
+char **str_split(const char *in, size_t in_len, char delm, size_t *num_elm, size_t max)
+{
+    char   *parsestr;
+    char   **out;
+    size_t  cnt = 1;
+    size_t  i;
+
+    if (in == NULL || in_len == 0 || num_elm == NULL)
+        return NULL;
+
+    parsestr = (char   *)malloc(in_len+1);
+    memcpy(parsestr, in, in_len+1);
+    parsestr[in_len] = '\0';
+
+    *num_elm = 1;
+    for (i=0; i<in_len; i++) {
+        if (parsestr[i] == delm)
+            (*num_elm)++;
+        if (max > 0 && *num_elm == max)
+            break;
+    }
+
+    out    = (char   **)malloc(*num_elm * sizeof(*out));
+    out[0] = parsestr;
+    for (i=0; i<in_len && cnt<*num_elm; i++) {
+        if (parsestr[i] != delm)
+            continue;
+
+        /* Add the pointer to the array of elements */
+        parsestr[i] = '\0';
+        out[cnt] = parsestr+i+1;
+        cnt++;
+    }
+
+    return out;
+}
+void str_split_free(char **in, size_t num_elm)
+{
+    if (in == NULL)
+        return;
+    if (num_elm != 0)
+        free(in[0]);
+    free(in);
+}
+
 int cross_mkdir(const char *path)
 {
 #ifdef _WIN32
@@ -196,4 +244,97 @@ int cross_mkdir(const char *path)
 #else
   return mkdir(path, 0777);
 #endif
+}
+
+
+char systemPathSEP()
+{
+#ifdef _WIN32
+  return '\\';
+#else
+  return '/';
+#endif
+}
+
+bool rw_create_dir(const char *name)
+{
+  const char SEP =systemPathSEP();
+    char strBuffer[300]={0};
+    char *strPtr=strBuffer;
+    char          **parts;
+    size_t          num_parts;
+    size_t          i;
+    bool            ret = true;
+
+    if (name == NULL || *name == '\0')
+        return false;
+
+    parts = str_split(name, strlen(name), SEP, &num_parts, 0);
+    if (parts == NULL || num_parts == 0) {
+        str_split_free(parts, num_parts);
+        return false;
+    }
+    i  = 0;
+#ifdef _WIN32
+    /* If the first part has a ':' it's a drive. E.g 'C:'. We don't
+     * want to try creating it because we can't. We'll add it to base
+     * and move forward. The next part will be a directory we need
+     * to try creating. */
+    if (strchr(parts[0], ':')) {
+        i++;
+        strPtr+=sprintf(strPtr,"%s%c",parts[0],SEP);
+    }
+#else
+    if (*name == '/') {
+        strPtr+=sprintf(strPtr,"%c",SEP);
+    }
+#endif
+
+    for ( ; i<num_parts; i++) {
+        if (parts[i] == NULL || *(parts[i]) == '\0') {
+            continue;
+        }
+
+        strPtr+=sprintf(strPtr,"%s%c",parts[i],SEP);
+
+#ifdef _WIN32
+
+        if (CreateDirectory(strBuffer, NULL) == FALSE) {
+            if (GetLastError() != ERROR_ALREADY_EXISTS) {
+                ret = false;
+                goto done;
+            }
+        }
+#else
+        if (mkdir(strBuffer, 0774) != 0)
+            if (errno != EEXIST) {
+                ret = false;
+                goto done;
+            }
+#endif
+    }
+
+done:
+    str_split_free(parts, num_parts);
+    return ret;
+}
+
+
+
+
+
+
+
+
+std::string run_exe(const char* cmd) {
+    char buffer[128];
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer, sizeof(buffer)-1, pipe.get()) != nullptr) {
+        result += buffer;
+    }
+    return result;
 }

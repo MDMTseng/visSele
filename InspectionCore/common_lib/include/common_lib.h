@@ -44,6 +44,10 @@ size_t RGB2BW_collapse(uint8_t *dst_bw,size_t dstLen,uint8_t *src_rgb,size_t src
 size_t BW2RGB_uncollapse(uint8_t *dst_rgb,size_t dstLen,uint8_t *src_bw,size_t srcLen);
 
 char* ReadText(const char *filename);
+cJSON* ReadJson(const char* filename);
+int WriteBytesToFile(uint8_t *data,size_t dataL,const char* path);
+int SaveJson(cJSON* json,const char* path);
+
 int CheckFileExistance(const char *filename);
 
 uint8_t* ReadByte(const char *filename,int *length);
@@ -63,4 +67,7 @@ int Save2PNG(uint8_t *data, int width, int height, int channelCount, const char 
 bool isDirExist(const char* dir_path);
 void realfullPath(const char *curPath, char *ret_fullPath);
 int cross_mkdir(const char *path);
+char systemPathSEP();
+bool rw_create_dir(const char *name);
+std::string run_exe(const char* cmd);
 #endif

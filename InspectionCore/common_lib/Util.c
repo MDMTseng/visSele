@@ -427,3 +427,41 @@ uint8_t* ReadByte(const char *filename,int *length)
 
     return buffer;
 }
+
+
+cJSON* ReadJson(const char* filename)
+{
+  char* fileContent=ReadText(filename);
+  if(fileContent==NULL)return NULL;
+  
+  cJSON *sl_json = cJSON_Parse(fileContent);
+  delete fileContent;
+  return sl_json;
+}
+
+
+
+
+
+int WriteBytesToFile(uint8_t *data,size_t dataL,const char* path)
+{
+
+  FILE *write_ptr = fopen(path, "wb"); // w for write, b for binary
+  if (write_ptr != NULL)
+  {
+    fwrite(data, dataL, 1, write_ptr); // write 10 bytes from our buffer
+    fclose(write_ptr);
+    return dataL;
+  }
+  return -1;
+}
+
+
+int SaveJson(cJSON* json,const char* path)
+{
+  if(json==NULL)return -1;
+  char*jsonStr = cJSON_Print(json);
+  int ret = WriteBytesToFile((uint8_t*)jsonStr,strlen(jsonStr),path);
+  delete(jsonStr);
+  return (ret<0)?-1:0;
+}
