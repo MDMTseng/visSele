@@ -1,5 +1,36 @@
 import { app, BrowserWindow } from 'electron';
+const WebSocket = require('ws');
+const {dialog} = require('electron');
 
+const wss = new WebSocket.Server({ port: 8714 });
+
+wss.on('connection', function connection(ws) {
+  ws.on('message', function incoming(message) {
+    let p = JSON.parse(message);
+    let retData={
+      type:"NAK",
+      req_id:p.req_id,
+    }
+    if(p.type=="showOpenDialog")
+    {
+      console.log('cmd: %s', p);
+      dialog.showOpenDialog(p.option).then(function (response) {
+        if (!response.canceled) {
+          retData.type="ACK";
+          retData.filePaths=response.filePaths;
+        }
+        ws.send(JSON.stringify(retData));
+      }).catch((err)=>{
+        ws.send(JSON.stringify(retData));
+      })
+    }
+    else
+    {
+      // console.log('received: %s', message);
+      ws.send(JSON.stringify(retData));
+    }
+  });
+});
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) { // eslint-disable-line global-require
   app.quit();
@@ -14,7 +45,8 @@ const createWindow = () => {
   mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
-  });
+    webPreferences: { devTools: true }
+    });
 
   // and load the index.html of the app.
   // mainWindow.loadURL(`file://${__dirname}/index.html`);

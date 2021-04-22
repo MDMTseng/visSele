@@ -1,6 +1,41 @@
 // Modules to control application life and create native browser window
-const {app, BrowserWindow} = require('electron')
+const {app, BrowserWindow,dialog} = require('electron')
 const path = require('path')
+const WebSocket = require('ws');
+
+
+const wss = new WebSocket.Server({ port: 8714 });
+
+wss.on('connection', function connection(ws) {
+  ws.on('message', function incoming(message) {
+    let p = JSON.parse(message);
+    let retData={
+      type:"NAK",
+      req_id:p.req_id,
+    }
+    if(p.type=="showOpenDialog")
+    {
+      console.log('cmd: %s', p);
+      dialog.showOpenDialog(p.option).then(function (response) {
+        if (!response.canceled) {
+          retData.type="ACK";
+          retData.filePaths=response.filePaths;
+        }
+        ws.send(JSON.stringify(retData));
+      }).catch((err)=>{
+        ws.send(JSON.stringify(retData));
+      })
+    }
+    else
+    {
+      // console.log('received: %s', message);
+      ws.send(JSON.stringify(retData));
+    }
+  });
+});
+
+
+
 
 function createWindow () {
   // Create the browser window.
@@ -13,10 +48,19 @@ function createWindow () {
   })
 
   // and load the index.html of the app.
-  mainWindow.loadFile('index.html')
-
+  // mainWindow.loadFile("http://localhost:8080/")
+  mainWindow.loadURL("http://localhost:8080/")
   // Open the DevTools.
-  // mainWindow.webContents.openDevTools()
+  mainWindow.webContents.openDevTools()
+
+  
+  // Emitted when the window is closed.
+  mainWindow.on('closed', () => {
+    // Dereference the window object, usually you would store windows
+    // in an array if your app supports multi windows, this is the time
+    // when you should delete the corresponding element.
+    mainWindow = null;
+  });
 }
 
 // This method will be called when Electron has finished
