@@ -40,10 +40,22 @@ std::string InspSampleSavePath=InspSampleSavePath_DEFAULT;
 int resourcePoolSize=30;
 TSQueue<image_pipe_info*> inspQueue(10);
 TSQueue<image_pipe_info*> actionQueue(10);
-TSQueue<image_pipe_info*> inspSnapQueue(10);
+TSQueue<image_pipe_info*> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
 
+
+void setThreadPriority(std::thread &thread,int type, int priority)
+{
+
+  sched_param sch;
+  int policy; 
+  pthread_getschedparam(thread.native_handle(), &policy, &sch);
+  sch.sched_priority =priority;
+  if (pthread_setschedparam(thread.native_handle(), type, &sch)) {
+      // std::cout << "Failed to setschedparam: " << std::strerror(errno) << '\n';
+  }
+}
 
 
 int mainThreadLock_lock(int call_lineNumber,char* msg="",int try_lock_timeout_ms=0)
@@ -978,7 +990,7 @@ void setup_machine_setting(cJSON* json_mac_setting)
   char* path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
 
   
-      LOGE("setup_machine_setting::machine_setting.json path:%s",path);
+  LOGE("setup_machine_setting::machine_setting.json path:%s",path);
   if (path!=NULL)
   {
     LOGE("TRY to set InspSampleSavePath as %s",path);
@@ -994,6 +1006,7 @@ void setup_machine_setting(cJSON* json_mac_setting)
     }
     LOGE("InspSampleSavePath:%s is set!!",InspSampleSavePath.c_str());
   }
+
 }
 
 bool DoImageTransfer = true;
@@ -1737,7 +1750,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     {
       do
       {
-        saveInspFailSnap=true;
+        saveInspFailSnap=false;
         saveInspNASnap=false;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         cb->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
@@ -2347,6 +2360,28 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       {
         setup_machine_setting(machSetting_JSON);
       }
+
+
+      
+      auto INSP_NG_SNAP=getDataFromJson(json, "INSP_NG_SNAP", NULL);
+      if (INSP_NG_SNAP == cJSON_True)
+      {
+        saveInspFailSnap=true;
+      }
+      else if (INSP_NG_SNAP == cJSON_False)
+      {
+        saveInspFailSnap=false;
+      }
+      
+      auto INSP_NA_SNAP=getDataFromJson(json, "INSP_NA_SNAP", NULL);
+      if (INSP_NA_SNAP == cJSON_True)
+      {
+        saveInspNASnap=true;
+      }
+      else if (INSP_NA_SNAP == cJSON_False)
+      {
+        saveInspNASnap=false;
+      }
     }
     else if (checkTL("PR", dat))//for external application
     {
@@ -2852,7 +2887,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
                         "\"idx\":%d,\"count\":%d,"
                         "\"time_100us\":%lu"
                         "}",
-                        imgPipe->actInfo.finspStatus, 1, count, fi.timeStamp_100us);
+                        imgPipe->actInfo.uInspStatus, 1, count, fi.timeStamp_100us);
       cb->mift->send_data((uint8_t *)buffx, len);
       count = (count + 1) & 0xFF;
       LOGI("%s", buffx);
@@ -3111,19 +3146,20 @@ void ImgPipeActionThread(bool *terminationflag)
 
       if(saveInspFailSnap)
       {
-        if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+        if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_FAILURE || 
+          headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA)
         {
           saveToSnap=true;
         }
       }
 
-      if(saveInspNASnap)
-      {
-        if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
-        {
-          saveToSnap=true;
-        }
-      }
+      // if(saveInspNASnap)
+      // {
+      //   if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
+      //   {
+      //     saveToSnap=true;
+      //   }
+      // }
       
       InspResultAction(headImgPipe,actionQueue.size()>5,actionQueue.size()>1,saveToSnap,&doPassDown);
       
@@ -3144,7 +3180,10 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
 {
   
   LOGI("============DO INSP>> waterLvL: insp:%d/%d act:%d/%d  snap:%d/%d   poolSize:%d",
-  inspQueue.size(),10,actionQueue.size(),10,inspSnapQueue.size(),10,cb->resPool.rest_size()
+  inspQueue.size(),inspQueue.capacity(),
+  actionQueue.size(),actionQueue.capacity(),
+  inspSnapQueue.size(),inspSnapQueue.capacity(),
+  cb->resPool.rest_size()
   );
   if (cb->cameraFramesLeft == 0)
   {
@@ -3206,6 +3245,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
 
     int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
 
+    int stat_sec = FeatureReport_sig360_circle_line_single::STATUS_UNSET;
 
     if (report->type == FeatureReport::binary_processing_group)
     {
@@ -3235,13 +3275,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
           {
             vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
             stat = InspStatusReduce(jrep);
+            stat_sec=stat;
           }
         }
       }
     }
 
     
-    imgPipe->actInfo.finspStatus=stat;
+    imgPipe->actInfo.uInspStatus=stat;
+    imgPipe->actInfo.finspStatus=stat_sec;
     
     imgPipe->actInfo.report_json = matchingEng.FeatureReport2Json(report);
 
@@ -3540,12 +3582,14 @@ int mainLoop(bool realCamera = false)
 
   if (terminationFlag)
     return -1;
-  std::thread mThread(ImgPipeProcessThread, &terminationFlag);
-  
+  std::thread InspThread(ImgPipeProcessThread, &terminationFlag);
+  setThreadPriority(InspThread,SCHED_RR, 2);
   std::thread ActionThread(ImgPipeActionThread, &terminationFlag);
+  setThreadPriority(ActionThread,SCHED_RR, 1);
   LOGI(">>>>>\n");
 
   std::thread _inspSnapSaveThread(InspSnapSaveThread,&terminationFlag);
+  setThreadPriority(_inspSnapSaveThread,SCHED_RR, 0);
 
   {
 

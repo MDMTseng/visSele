@@ -72,6 +72,7 @@ typedef struct image_pipe_info
   struct action_Info
   {
     int finspStatus;
+    int uInspStatus;
     cJSON *report_json;
   }actInfo;
 } image_pipe_info;
