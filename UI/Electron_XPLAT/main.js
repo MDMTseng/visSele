@@ -4,7 +4,7 @@ const path = require('path')
 const WebSocket = require('ws');
 
 
-const wss = new WebSocket.Server({ port: 8714 });
+const wss = new WebSocket.Server({ port: 9714 });
 
 wss.on('connection', function connection(ws) {
   ws.on('message', function incoming(message) {
@@ -56,10 +56,7 @@ function createWindow () {
   
   // Emitted when the window is closed.
   mainWindow.on('closed', () => {
-    // Dereference the window object, usually you would store windows
-    // in an array if your app supports multi windows, this is the time
-    // when you should delete the corresponding element.
-    mainWindow = null;
+    app.quit();
   });
 }
 

@@ -53,3 +53,4 @@ InspectionCore/CoreHub/CMakeFiles
 cmake_install.cmake
 CORE_HUB
 InspectionCore/CoreHub/Makefile
+UI/Electron_XPLAT/release-builds

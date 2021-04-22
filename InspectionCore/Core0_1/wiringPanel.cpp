@@ -976,21 +976,23 @@ void setup_machine_setting(cJSON* json_mac_setting)
 {
 
   char* path = JFetch_STRING(json_mac_setting, "InspSampleSavePath");
-      LOGE("===========================");
+
+  
+      LOGE("setup_machine_setting::machine_setting.json path:%s",path);
   if (path!=NULL)
   {
-      LOGE("===========================");
+    LOGE("TRY to set InspSampleSavePath as %s",path);
     string path_str(path);
     if(rw_create_dir(path_str.c_str())==true && access(path_str.c_str(), W_OK)==0)
     {
       InspSampleSavePath=path_str;
-      LOGE("===========================");
     }
     else
     {
-      LOGE("PATH:%s is not writable",path_str.c_str());
+      LOGE("PATH:%s is not writable!! set to default",path_str.c_str());
       InspSampleSavePath=InspSampleSavePath_DEFAULT;
     }
+    LOGE("InspSampleSavePath:%s is set!!",InspSampleSavePath.c_str());
   }
 }
 
@@ -2339,8 +2341,12 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       {
         camera->Trigger();
       }
-
-      setup_machine_setting(json);
+      
+      cJSON *machSetting_JSON = JFetch_OBJECT(json, "MachineSetting");
+      if (machSetting_JSON)
+      {
+        setup_machine_setting(machSetting_JSON);
+      }
     }
     else if (checkTL("PR", dat))//for external application
     {

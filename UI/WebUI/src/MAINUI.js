@@ -20,7 +20,7 @@ import InstInspUI_rdx from './InstInspUI';
 import CABLE_WIRE_CONF_MODE_rdx from './CableWireConfUI';
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
-import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools} from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
 
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import ReactResizeDetector from 'react-resize-detector';
@@ -88,7 +88,32 @@ import Dropdown from 'antd/lib/dropdown';
 const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
 const { Paragraph, Title } = Typography;
-const Panel = Collapse.Panel;
+
+
+let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/"));
+
+ELECTRON_IPC.onreconnection = (reconnectionCounter) => {
+  console.log("onreconnection" + reconnectionCounter);
+  if (reconnectionCounter > 10) return false;
+  return true;
+};
+ELECTRON_IPC.onopen = () => 
+{
+  ELECTRON_IPC.send_obj({"type":"get_UI_url"})
+  .then((data)=>{
+    console.log(data)
+  })
+  .catch((err)=>{
+    console.log(err)
+  })
+
+  console.log("ELECTRON_IPC:onopen");
+}
+ELECTRON_IPC.onmessage = (msg) => console.log("ELECTRON_IPC:onmessage::", msg);
+ELECTRON_IPC.onconnectiontimeout = () => console.log("ELECTRON_IPC:onconnectiontimeout");
+ELECTRON_IPC.onclose = () => console.log("ELECTRON_IPC:onclose");
+ELECTRON_IPC.onerror = () => console.log("ELECTRON_IPC:onerror");
+
 
 import { 
   ArrowLeftOutlined,
@@ -810,17 +835,32 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
   return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
     
     測量模式：
-    <Dropdown overlay={InspectionModeOptionMenu}>
+    <Dropdown overlay={InspectionModeOptionMenu} trigger={['click']}>
       <Button>
         {InspectionModeOption[st_machine_custom_setting.InspectionMode]} <DownOutlined />
       </Button>
     </Dropdown>
 
     <br/>
+
+    檢測快照儲存位置：
+    <Button size="large" icon={<MonitorOutlined/> }  disabled={ELECTRON_IPC.readyState!=1}//Not open?
+        onClick={() =>{
+          ELECTRON_IPC.send_obj({"type":"showOpenDialog",option:{ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']}})
+          .then((data)=>{
+            set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:data.filePaths[0]});
+          })
+          .catch((err)=>{
+            console.log(err)
+          })
+        }}>{st_machine_custom_setting.InspSampleSavePath}</Button>
+    <br/>
+    <Divider>RAW</Divider>
     <pre>
     {JSON.stringify(st_machine_custom_setting, null, 4)}
     </pre>
 
+            
   </div>
 }
 
@@ -1289,6 +1329,10 @@ const MainUI=()=>{
               title:"CHECK",
               onOK:()=>{
                 saveSetting(saveToFilePath,setting);
+                  
+                ACT_WS_SEND( "ST", 0,
+                { MachineSetting: setting})
+
                 setPopUpInfo();
                 if(onOK!==undefined)onOK();
               },
