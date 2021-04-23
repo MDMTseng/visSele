@@ -2158,7 +2158,27 @@ class APP_INSP_MODE extends React.Component {
           onClick={() => {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
-        
+        <br/>
+        SAVE:
+        <Button key="opt uInsp" icon={<SettingOutlined/>}
+          onClick={() => {
+
+            this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+            { 
+              INSP_NG_SNAP:true
+            })
+
+          }} >O</Button>
+          
+        <Button key="opt uInsp" icon={<SettingOutlined/>}
+          onClick={() => {
+
+            this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+            { 
+              INSP_NG_SNAP:false
+            })
+
+          }} >X</Button>
       </Modal>]
     })
   }
