@@ -4,7 +4,7 @@
 #include "cJSON.h"
 #include "acvImage_BasicTool.hpp"
 #include "zlib.h"
-
+#include <string>
 typedef struct {
     uint8_t machine[8];
 }machine_hash;

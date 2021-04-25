@@ -11,7 +11,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include <string>
-
+#include <memory>
 
 
 bool isDirExist(const char* dir_path)
