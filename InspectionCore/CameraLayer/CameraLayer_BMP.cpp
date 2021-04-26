@@ -110,27 +110,6 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       img.ReSize(newW,newH);
-      // for(int i=0;i<img.GetHeight();i++)//Add noise
-      // {
-      //   int li=i+newY;
-      //   if(li<0 || li>=img_load.GetHeight())continue;
-      //   for(int j=0;j<img.GetWidth();j++)
-      //   {
-      //     int lj=j+newX;
-      //     if(lj<0 || lj>=img_load.GetWidth())continue;
-
-      //     int d = (img_load.CVector[li][lj*3]*tExp)>>13;
-          
-      //     if(d<0)d=0;
-      //     else if(d>255)d=255;
-          
-      //     img.CVector[i][j*3] = 
-      //     img.CVector[i][j*3+1] =
-      //     img.CVector[i][j*3+2] = d;
-
-      //   }
-      // }
-
       static float rotate=0;
       if(newX==0&&newY==0)
       {
@@ -192,7 +171,27 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         
         // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
         img.ReSize(&img_load);
-        acvCloneImage(&img_load,&img,-1);
+        acvCloneImage(&img_load,&img,-1);      
+        // for(int i=0;i<img.GetHeight();i++)//exposure add
+        // {
+        //   int li=i+newY;
+        //   if(li<0 || li>=img_load.GetHeight())continue;
+        //   for(int j=0;j<img.GetWidth();j++)
+        //   {
+        //     int lj=j+newX;
+        //     if(lj<0 || lj>=img_load.GetWidth())continue;
+
+        //     int d = (img.CVector[li][lj*3]*tExp)>>13;
+            
+        //     if(d<0)d=0;
+        //     else if(d>255)d=255;
+            
+        //     img.CVector[i][j*3] = 
+        //     img.CVector[i][j*3+1] =
+        //     img.CVector[i][j*3+2] = d;
+
+        //   }
+        // }
       }
       
 
