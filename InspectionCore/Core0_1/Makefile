@@ -28,23 +28,22 @@ export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 
 
-export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
+# export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
 export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
 
 export SO_EXPORT_PATH=$(abspath .)
 
 
 
-export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
-export GLFWSRCDir=$(abspath ../../$(moduleRoot)/glfw-3.2.1)
-export MODULE_GLACC=$(abspath $(moduleRoot)/GLAcc)
+# export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
+# export GLFWSRCDir=$(abspath ../../$(moduleRoot)/glfw-3.2.1)
+# export MODULE_GLACC=$(abspath $(moduleRoot)/GLAcc)
 
 
 target_bin=visSele
 ODIR=obj
 IDIR=	include/ \
 			$(MODULE_acvImage)/include/ \
-			$(MODULE_MLNN)/include/  \
 			$(MODULE_circleFitting) \
 			$(MODULE_common_lib)/include \
 			$(MODULE_cJSON) \
@@ -58,7 +57,8 @@ IDIR=	include/ \
 			$(MODULE_MindVision_GIGE)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
-			$(MODULE_lodepng)
+			$(MODULE_lodepng)\
+			# $(MODULE_MLNN)/include/  \
 
 
 
@@ -66,8 +66,7 @@ _OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp tmpCodes.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
-					$(MODULE_MatchingEngine)/MatchingEngine.a \
+EXT_OBJS= 			$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_logctrl)/logctrl.a \
@@ -77,6 +76,7 @@ EXT_OBJS= $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 					$(MODULE_lodepng)/lodepng.a \
 					$(MODULE_polyfit)/polyfit.a \
+					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
@@ -111,13 +111,13 @@ else
 									$(MODULE_cJSON) \
 									$(MODULE_logctrl) \
 									$(MODULE_MatchingEngine) \
-									$(MODULE_GLACC) \
+									# $(MODULE_GLACC) \
 									$(MODULE_SOIL) \
 									$(MODULE_lodepng) \
 									$(MODULE_DataChannel) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
-									$(MODULE_MLNN) \
+									# $(MODULE_MLNN) \
 									# sidePrj
 endif
 
