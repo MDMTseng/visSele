@@ -2761,7 +2761,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     }
   }
   pframeT = t;
-  LOGI("=============== frameInterval:%fms \n", interval);
+  LOGE("=============== frameInterval:%fms \n", interval);
   LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
@@ -3179,7 +3179,7 @@ void ImgPipeActionThread(bool *terminationflag)
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe,bool *ret_pipe_pass_down)
 {
   
-  LOGI("============DO INSP>> waterLvL: insp:%d/%d act:%d/%d  snap:%d/%d   poolSize:%d",
+  LOGE("============DO INSP>> waterLvL: insp:%d/%d act:%d/%d  snap:%d/%d   poolSize:%d",
   inspQueue.size(),inspQueue.capacity(),
   actionQueue.size(),actionQueue.capacity(),
   inspSnapQueue.size(),inspSnapQueue.capacity(),
