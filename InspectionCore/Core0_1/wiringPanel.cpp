@@ -2939,7 +2939,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
       // LOGI(">>>>");
     clock_t img_t = clock();
     //if(stackingC==0)
-    if (DoImageTransfer && skipInspDataTransfer==false)
+    if (DoImageTransfer && skipImageTransfer==false)
     {
 
       static acvImage test1_buff;
@@ -3021,7 +3021,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
 
 
 
-std::string& getTimeStr(const char*timeFormat="%d-%m-%Y %H:%M:%S") 
+std::string getTimeStr(const char*timeFormat="%d-%m-%Y %H:%M:%S") 
 {
   time_t rawtime;
   struct tm * timeinfo;
@@ -3080,14 +3080,15 @@ void InspSnapSaveThread(bool *terminationflag)
             extPath+=std::string("_NoName_")+SEP;
           }
           
-          if(rw_create_dir((rootPath+extPath).c_str())==false)//recursive create folder if failed
+          std::string _path1 = rootPath+extPath;
+          LOGE("create DIR",_path1.c_str());
+          if(rw_create_dir(_path1.c_str())==false)//recursive create folder if failed
           {
-            std::string _path1 = rootPath+extPath;
             LOGE("the path:%s cannot be created",_path1.c_str());
             rootPath=InspSampleSavePath_DEFAULT;//try the default one
-            if(rw_create_dir((rootPath+extPath).c_str())==false)//should always work
+            if(rw_create_dir(_path1.c_str())==false)//should always work
             {
-              std::string _path_d = rootPath+extPath;
+              std::string _path_d = _path1;
               LOGE("the default path:%s cannot be created.... exit",_path_d.c_str());
               exit(-100);
               //TODO: critical
@@ -3161,7 +3162,7 @@ void ImgPipeActionThread(bool *terminationflag)
       //   }
       // }
       
-      InspResultAction(headImgPipe,actionQueue.size()>5,actionQueue.size()>1,saveToSnap,&doPassDown);
+      InspResultAction(headImgPipe,false,actionQueue.size()>2,saveToSnap,&doPassDown);
       
       //delayStartCounter=10000;
       if(!doPassDown)

@@ -129,8 +129,9 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
       }
       acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
 
-      if(1)for(int i=0;i<img.GetHeight();i++)//Add noise
+      if(rotate!=0)
       {
+        for(int i=0;i<img.GetHeight();i++)//Add noise
         for(int j=0;j<img.GetWidth();j++)
         {
           acv_XY pixCoord=acvVecSub((acv_XY){(float)j,(float)i},rcenter);
@@ -172,26 +173,26 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
         img.ReSize(&img_load);
         acvCloneImage(&img_load,&img,-1);      
-        // for(int i=0;i<img.GetHeight();i++)//exposure add
-        // {
-        //   int li=i+newY;
-        //   if(li<0 || li>=img_load.GetHeight())continue;
-        //   for(int j=0;j<img.GetWidth();j++)
-        //   {
-        //     int lj=j+newX;
-        //     if(lj<0 || lj>=img_load.GetWidth())continue;
+        if(0)for(int i=0;i<img.GetHeight();i++)//exposure add
+        {
+          int li=i+newY;
+          if(li<0 || li>=img_load.GetHeight())continue;
+          for(int j=0;j<img.GetWidth();j++)
+          {
+            int lj=j+newX;
+            if(lj<0 || lj>=img_load.GetWidth())continue;
 
-        //     int d = (img.CVector[li][lj*3]*tExp)>>13;
+            int d = (img_load.CVector[li][lj*3]*tExp)>>13;
             
-        //     if(d<0)d=0;
-        //     else if(d>255)d=255;
+            if(d<0)d=0;
+            else if(d>255)d=255;
             
-        //     img.CVector[i][j*3] = 
-        //     img.CVector[i][j*3+1] =
-        //     img.CVector[i][j*3+2] = d;
+            img.CVector[i][j*3] = 
+            img.CVector[i][j*3+1] =
+            img.CVector[i][j*3+2] = d;
 
-        //   }
-        // }
+          }
+        }
       }
       
 

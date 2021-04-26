@@ -105,18 +105,18 @@ else
 
 	ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
 	SUB_MAKEFILES = $(MODULE_acvImage) \
-									$(MODULE_zlib) \
 									$(MODULE_common_lib) \
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
 									$(MODULE_logctrl) \
 									$(MODULE_MatchingEngine) \
-									# $(MODULE_GLACC) \
-									$(MODULE_SOIL) \
 									$(MODULE_lodepng) \
 									$(MODULE_DataChannel) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
+									# $(MODULE_SOIL) \
+									# $(MODULE_zlib) \
+									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \
 									# sidePrj
 endif
