@@ -7,6 +7,7 @@ IDIR=	./include/ \
 			$(MODULE_logctrl)/include \
 			$(MODULE_zlib)/src \
 			$(MODULE_lodepng) \
+			$(MODULE_mjpegLib)/include \
 			$(MODULE_Compat_dirent)/include \
 
 ODIR=obj

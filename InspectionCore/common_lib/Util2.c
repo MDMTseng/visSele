@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <string>
 #include <memory>
+#include "mjpegLib.h"
 
 
 bool isDirExist(const char* dir_path)
@@ -96,6 +97,21 @@ int LoadPNGFile(acvImage *img, const char *filename)
   return 0;
 }
 
+
+uint8_t* _buffer_request_callback(int W,int H,int channel,void* cb_param)
+{
+  acvImage *img=(acvImage *)cb_param;
+  img->ReSize(W, H);
+  return img->CVector[0];
+}
+
+
+
+int LoadJPEGFile(acvImage *img, const char *filename)
+{
+  return jpecLib_dec(filename ,_buffer_request_callback,(void*)img);
+}
+
 int LoadIMGFile(acvImage *ret_img, const char *filename)
 {
   const char *dot = strrchr(filename, '.');
@@ -112,14 +128,22 @@ int LoadIMGFile(acvImage *ret_img, const char *filename)
     {
       return LoadPNGFile(ret_img, filename);
     }
+    if (strcmp(dot, ".jpeg") == 0 || strcmp(dot, ".jpg") == 0)
+    {
+      return LoadPNGFile(ret_img, filename);
+    }
   }
 
   retVal = LoadPNGFile(ret_img, (fname_str + ".png").c_str());
   if (retVal == 0)
     return 0;
+  retVal = LoadJPEGFile(ret_img, (fname_str + ".jpg").c_str());
+  if (retVal == 0)
+    return 0;
   retVal = acvLoadBitmapFile(ret_img, (fname_str + ".bmp").c_str());
   if (retVal == 0)
     return 0;
+
 
   return -1;
 }
@@ -151,6 +175,51 @@ int SavePNGFile(const char *filename, acvImage *img)
   return Save2PNG(img->CVector[0], img->GetWidth(), img->GetHeight(), 3, filename);
 }
 
+
+
+struct JPEGSaveConfig
+{
+  const char* fileName;
+  int errorCode;
+};
+
+void jpeg_encoder_buffer_callback(const uint8_t *rawbuffer,int size, void*cb_param)
+{
+
+  struct JPEGSaveConfig *conf=(struct JPEGSaveConfig *)cb_param;
+  FILE *hs = fopen(conf->fileName,"w");
+  if( hs == NULL)
+  {
+      // fprintf(stderr,"Error writing to %s\n",filename);
+      conf->errorCode=-1;
+      return;
+  }
+  fwrite(rawbuffer, size, 1, hs);
+  fclose(hs);
+
+}
+
+
+
+
+int SaveJPEGFile(const char *filename, acvImage *img, int quality)
+{
+  // LOGE("SaveJPEGFile:%s", filename);
+  // struct JPEGSaveConfig conf={fileName:filename,errorCode:0};
+  // int ret = mjpecLib_enc(img->CVector[0],img->GetWidth(), img->GetHeight(), quality,jpeg_encoder_buffer_callback, &conf);
+  // if(ret==0)
+  // {
+  //   ret=conf.errorCode;
+  // }
+
+
+  return mjpecLib_enc(filename, img->CVector[0],img->GetWidth(), img->GetHeight(),quality);
+}
+
+
+
+
+
 int SaveIMGFile(const char *filename, acvImage *img)
 {
   const char *dot = strrchr(filename, '.');
@@ -172,6 +241,12 @@ int SaveIMGFile(const char *filename, acvImage *img)
     return SavePNGFile(filename, img);
   }
 
+  if (strcmp(dot, ".jpg") == 0 || strcmp(dot, ".JPG") == 0|| strcmp(dot, ".jpeg") == 0)
+  {
+    return SaveJPEGFile(filename, img, 90);
+  }
+
+  
   {
 
     std::string fname_str(filename);

@@ -18,6 +18,7 @@ export MODULE_circleFitting=$(abspath $(moduleRoot)/contrib/circleFitting)
 export MODULE_MindVision_GIGE=$(abspath $(moduleRoot)/contrib/MindVision_GIGE/$(platform))
 export MODULE_Compat_dirent=$(abspath $(moduleRoot)/contrib/Compat_dirent/$(platform))
 export MODULE_cJSON=$(abspath $(moduleRoot)/contrib/cJSON)
+export MODULE_mjpegLib=$(abspath $(moduleRoot)/contrib/mjpegLib)
 export MODULE_logctrl=$(abspath $(moduleRoot)/logctrl)
 export MODULE_common_lib=$(abspath $(moduleRoot)/common_lib)
 export MODULE_zlib=$(abspath $(moduleRoot)/contrib/zlib-1.2.11)
@@ -57,6 +58,7 @@ IDIR=	include/ \
 			$(MODULE_MindVision_GIGE)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
+			$(MODULE_mjpegLib)/include \
 			$(MODULE_lodepng)\
 			# $(MODULE_MLNN)/include/  \
 
@@ -75,6 +77,7 @@ EXT_OBJS= 			$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_acvImage)/acvImage.a \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 					$(MODULE_lodepng)/lodepng.a \
+					$(MODULE_mjpegLib)/mjpegLib.a \
 					$(MODULE_polyfit)/polyfit.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
@@ -114,6 +117,7 @@ else
 									$(MODULE_DataChannel) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
+									$(MODULE_mjpegLib) \
 									# $(MODULE_SOIL) \
 									# $(MODULE_zlib) \
 									# $(MODULE_GLACC) \

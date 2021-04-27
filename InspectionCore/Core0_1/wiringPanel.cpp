@@ -890,7 +890,7 @@ void saveInspectionSample(cJSON* inspectionReport,cJSON* camera_param, cJSON* de
   }
 
 
-  int saveErr = SavePNGFile((filePath+".png").c_str(), image);  
+  int saveErr = SaveIMGFile((filePath+".jpg").c_str(), image);  
   if(saveErr!=0)
   {
     
