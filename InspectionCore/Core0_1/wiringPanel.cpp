@@ -3584,13 +3584,13 @@ int mainLoop(bool realCamera = false)
   if (terminationFlag)
     return -1;
   std::thread InspThread(ImgPipeProcessThread, &terminationFlag);
-  setThreadPriority(InspThread,SCHED_RR, 2);
+  setThreadPriority(InspThread,SCHED_RR, -20);
   std::thread ActionThread(ImgPipeActionThread, &terminationFlag);
-  setThreadPriority(ActionThread,SCHED_RR, 1);
+  setThreadPriority(ActionThread,SCHED_RR, 0);
   LOGI(">>>>>\n");
 
   std::thread _inspSnapSaveThread(InspSnapSaveThread,&terminationFlag);
-  setThreadPriority(_inspSnapSaveThread,SCHED_RR, 0);
+  setThreadPriority(_inspSnapSaveThread,SCHED_RR, 19);
 
   {
 
