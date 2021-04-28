@@ -16,6 +16,7 @@ public:
     ws_conn_data *default_peer;
     DatCH_WebSocket(int port);
     ~DatCH_WebSocket();
+    int findMaxFd();
     int runLoop(struct timeval *tv);
 
     int ws_callback(websock_data data, void* param);

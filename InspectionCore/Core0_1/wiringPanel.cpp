@@ -12,7 +12,7 @@
 #include "DatCH_CallBack_WSBPG.hpp"
 #include "MatchingCore.h"
 #include "acvImage_BasicTool.hpp"
-
+#include "mjpegLib.h"
 
 #include <sys/stat.h>
 #include <libgen.h>
@@ -3631,8 +3631,30 @@ int mainLoop(bool realCamera = false)
   websocket->SetEventCallBack(&callbk_obj, websocket);
 
   LOGI("SetEventCallBack is set...");
-  while (websocket->runLoop(NULL) == 0)
+  while (1)
   {
+
+
+
+    int ws_maxfd=websocket->findMaxFd();
+
+    fd_set read_fds;
+ 
+
+    if (select(ws_maxfd+1, &read_fds, NULL, NULL, NULL) == -1) {
+      perror("select");
+      exit(4);
+    }
+
+
+    if(websocket->runLoop(NULL)==0)
+    {
+
+    }
+    else
+    {
+
+    }
   }
 
   return 0;

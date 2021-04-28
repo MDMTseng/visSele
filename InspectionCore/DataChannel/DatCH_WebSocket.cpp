@@ -18,6 +18,12 @@ DatCH_WebSocket::DatCH_WebSocket(int port): DatCH_Interface(),ws_protocol_callba
 }
 
 
+int DatCH_WebSocket::findMaxFd()
+{
+    
+    return server->findMaxFd();
+}
+
 int DatCH_WebSocket::runLoop(struct timeval *tv)
 {
     
