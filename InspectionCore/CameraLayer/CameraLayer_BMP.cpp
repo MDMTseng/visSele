@@ -172,8 +172,11 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         
         // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
         img.ReSize(&img_load);
-        acvCloneImage(&img_load,&img,-1);      
-        if(0)for(int i=0;i<img.GetHeight();i++)//exposure add
+        
+        if(0)
+          acvCloneImage(&img_load,&img,-1);      
+        else 
+          for(int i=0;i<img.GetHeight();i++)//exposure add
         {
           int li=i+newY;
           if(li<0 || li>=img_load.GetHeight())continue;
