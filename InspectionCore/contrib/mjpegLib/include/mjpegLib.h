@@ -11,6 +11,7 @@
 
 int mjpecLib_enc(const char* filename, uint8_t *img, uint16_t w, uint16_t h, int q);
 
+int mjpecLib_enc(uint8_t *img, uint16_t w, uint16_t h, int q, uint8_t **ret_buff, unsigned long *ret_buffLen);
 // typedef void (*encoder_buffer_callback)(const uint8_t *rawbuffer,int size, void*cb_param);
 
 // int mjpecLib_enc(const uint8_t *img, uint16_t w, uint16_t h, int q,encoder_buffer_callback enc_cb, void*cb_param);

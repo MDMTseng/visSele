@@ -122,6 +122,55 @@ int mjpecLib_enc(const char* filename, uint8_t *img, uint16_t w, uint16_t h, int
 }
 
 
+int mjpecLib_enc(uint8_t *img, uint16_t w, uint16_t h, int q, uint8_t **ret_buff, unsigned long *ret_buffLen)
+
+// std::pair<unsigned char*,unsigned long> CompressJPEG(
+{
+  if(ret_buff==NULL && ret_buffLen==NULL)
+  {
+    return -1;
+  }
+  // setup JPEG compression structure data
+  jpeg_compress_struct  jcInfo;
+  jpeg_error_mgr      jErr;  // JPEG error handler
+  jcInfo.err        = jpeg_std_error ( &jErr );
+  
+  // initialize JPEG compression object
+  jpeg_create_compress( &jcInfo );
+  
+  // specify data destination is memory
+  jpeg_mem_dest( &jcInfo, ret_buff,ret_buffLen);
+  
+  // image format
+  jcInfo.image_width    = w;
+  jcInfo.image_height    = h;
+  jcInfo.input_components  = 3;
+  jcInfo.in_color_space  = JCS_RGB;
+  
+  // set default compression parameters
+  jpeg_set_defaults( &jcInfo );
+   
+  // set image quality
+  jpeg_set_quality( &jcInfo, q, TRUE );
+  
+  // start compressor
+  jpeg_start_compress( &jcInfo, TRUE );
+  int  iRowStride = jcInfo.image_width * jcInfo.input_components;
+  while( jcInfo.next_scanline < jcInfo.image_height )  {
+    JSAMPROW pData = &( img[ jcInfo.next_scanline * iRowStride ] );
+    jpeg_write_scanlines( &jcInfo, &pData, 1 );
+  }
+  
+  // finish compression
+  jpeg_finish_compress( &jcInfo );
+  
+  // release JPEG compression object
+  jpeg_destroy_compress( &jcInfo );
+  
+  return 0;
+}
+
+
 /*
  * Sample routine for JPEG decompression.  We assume that the source file name
  * is passed in.  We want to return 1 on success, 0 on error.
