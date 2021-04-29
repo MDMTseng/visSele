@@ -3373,13 +3373,7 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
     printf("OPENING peer %s:%d  sock:%d\n",
            inet_ntoa(ws_data.peer->getAddr().sin_addr),
            ntohs(ws_data.peer->getAddr().sin_port), ws_data.peer->getSocket());
-    if (ws->default_peer == NULL)
-    {
-      ws->default_peer = ws_data.peer;
-    }
-    else
-    {
-    }
+
     break;
 
   case websock_data::eventType::HAND_SHAKING_FINISHED:
@@ -3389,7 +3383,13 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
          ws_data.data.hs_frame.origin,
          ws_data.data.hs_frame.key,
          ws_data.data.hs_frame.resource);
-
+    if (ws->default_peer == NULL)
+    {
+      ws->default_peer = ws_data.peer;
+    }
+    else
+    {
+    }
     if (ws->default_peer == ws_data.peer)
     {
       LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
@@ -3419,6 +3419,18 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
     //        ws_data.data.data_frame.raw);
 
     break;
+
+  case websock_data::eventType::TCP_CONNECTION_FINISHED:
+
+    break;
+
+
+  case websock_data::eventType::DATA_FRAME_TCP:
+
+    break;
+
+
+
   case websock_data::eventType::CLOSING:
 
     printf("CLOSING peer %s:%d\n",
@@ -3637,17 +3649,14 @@ int mainLoop(bool realCamera = false)
 
 
     int ws_maxfd=websocket->findMaxFd();
+    fd_set fset=websocket->get_fd_set();
 
-    fd_set read_fds;
- 
-
-    if (select(ws_maxfd+1, &read_fds, NULL, NULL, NULL) == -1) {
+    if (select(ws_maxfd+1, &fset, NULL, NULL, NULL) == -1) {
       perror("select");
       exit(4);
     }
 
-
-    if(websocket->runLoop(NULL)==0)
+    if(websocket->runLoop(fset,NULL)==0)
     {
 
     }

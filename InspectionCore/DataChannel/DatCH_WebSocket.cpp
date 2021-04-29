@@ -24,12 +24,15 @@ int DatCH_WebSocket::findMaxFd()
     return server->findMaxFd();
 }
 
-int DatCH_WebSocket::runLoop(struct timeval *tv)
-{
-    
-    return server->runLoop(tv);
+fd_set DatCH_WebSocket::get_fd_set()
+{    
+    return server->get_fd_set();
 }
 
+int DatCH_WebSocket:: runLoop(fd_set &read_fds,struct timeval *tv)
+{
+    return server->runLoop(read_fds,tv);
+}
 int DatCH_WebSocket::ws_callback(websock_data data, void* param)
 {
     // printf("%s:DatCH_WebSocket type:%d sock:%d\n",__func__,data.type,data.peer->getSocket());

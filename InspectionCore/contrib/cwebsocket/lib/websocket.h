@@ -87,13 +87,16 @@ enum wsFrameType { // errors starting from 0xF0
     WS_PING_FRAME = 0x09,
     WS_PONG_FRAME = 0x0A,
     WS_OPENING_FRAME = 0xF3,
-    WS_CLOSING_FRAME = 0x08
+    WS_CLOSING_FRAME = 0x08,
+    
+    TCP_BINARY_FRAME = 0xB2,
 };
     
 enum wsState {
     WS_STATE_OPENING,
     WS_STATE_NORMAL,
-    WS_STATE_CLOSING
+    WS_STATE_CLOSING,
+    WS_STATE_TCP
 };
 
 struct handshake {

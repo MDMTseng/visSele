@@ -92,6 +92,14 @@ int ws_server::get_socket()
 {
     return listenSocket;
 }
+
+
+
+fd_set ws_server::get_fd_set()
+{
+  return evtSet;
+}
+
 int ws_server::findMaxFd()
 {
     int max = listenSocket;
@@ -123,22 +131,26 @@ int ws_server::ws_callback(websock_data data, void* param)
   }
   return 0;
 }
+
+
 int ws_server::runLoop(struct timeval *tv)
 {
-    if (listenSocket == -1)
-    {
-        return -1;
-    }
-    fd_set read_fds = evtSet;
+
+  if(listenSocket == -1)
+  {
+    return -1;
+  }
+  fd_set read_fds = evtSet;
 
 
-    LOGV(">>>>>");
-    if (select(fdmax + 1, &read_fds, NULL, NULL, tv) == -1) {
-        LOGV("select failed...");
-        perror("select");
-        //exit(4);
-        return -1;
-    }
+  if (select(fdmax+1, &read_fds, NULL, NULL, tv) == -1) {
+    perror("select");
+    exit(4);
+  }
+  return runLoop(read_fds ,tv);
+}
+int ws_server::runLoop(fd_set &read_fds,struct timeval *tv)
+{
 
 
     LOGV(">>>>>");
@@ -565,6 +577,13 @@ int ws_conn::runLoop()
         return 0;
     }
 
+    if(ws_state == WS_STATE_TCP)
+    {
+      event_WsRECV( &(recvBuf[0]), readed, TCP_BINARY_FRAME, true);
+      return 0;
+    }
+
+
     accBufDataLen = 0;//accBufDataLen is for receving accumulation, only useful in normal mode
     if (ws_state == WS_STATE_OPENING)
     {
@@ -576,9 +595,12 @@ int ws_conn::runLoop()
         struct handshake hs;
         if (doHandShake(&(recvBuf[0]), readed, &hs) != 0 )
         {
-            printf("Error:Hand shake failed...");
-            ws_state = WS_STATE_CLOSING;
-            doClosing();
+            // printf("Error:Hand shake failed...");
+            // ws_state = WS_STATE_CLOSING;
+            // doClosing();
+            ws_state=WS_STATE_TCP;
+            event_WsRECV( &(recvBuf[0]), readed, TCP_BINARY_FRAME, true);
+
         }
         else
         {
@@ -619,6 +641,11 @@ int ws_conn::send_pkt(websock_data *packet)
 
         doClosing();
         return 0;
+    }
+
+    if(frameType==TCP_BINARY_FRAME)
+    {
+      return safeSend(sock,packet->data.data_frame.raw, packet->data.data_frame.rawL);
     }
 
     if(frameType!=WS_TEXT_FRAME && frameType!=WS_BINARY_FRAME

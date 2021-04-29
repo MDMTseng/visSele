@@ -33,7 +33,9 @@ typedef struct websock_data
         OPENING,
         HAND_SHAKING,
         HAND_SHAKING_FINISHED,
+        TCP_CONNECTION_FINISHED,
         DATA_FRAME,
+        DATA_FRAME_TCP,
         CLOSING,
         ERROR_EV,
     } type;
