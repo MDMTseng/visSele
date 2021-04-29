@@ -3162,7 +3162,7 @@ void ImgPipeActionThread(bool *terminationflag)
       //   }
       // }
       
-      InspResultAction(headImgPipe,false,actionQueue.size()>2,saveToSnap,&doPassDown);
+      InspResultAction(headImgPipe,false,actionQueue.size()>5,saveToSnap,&doPassDown);
       
       //delayStartCounter=10000;
       if(!doPassDown)

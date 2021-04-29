@@ -296,6 +296,7 @@ typedef void noreturn_t;
 #endif
 
 
+#define FAR
 /*
  * On a few systems, type boolean and/or its values FALSE, TRUE may appear
  * in standard header files.  Or you may have conflicts with application-
