@@ -43,6 +43,9 @@ public:
     int event_WsRECV(uint8_t *data, size_t dataSize,
       enum wsFrameType frameType, bool isFinal);
 
+      
+    int event_TCP_RECV(uint8_t *data, size_t dataSize);
+
     int doNormalRecv(void *buff, size_t buffLen,
       size_t *ret_restLen, enum wsFrameType *ret_lastFrameType);
 

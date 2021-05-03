@@ -457,6 +457,27 @@ int ws_conn::event_WsRECV(uint8_t *data, size_t dataSize, enum wsFrameType frame
     return 0;
 }
 
+
+int ws_conn::event_TCP_RECV(uint8_t *data, size_t dataSize)
+{
+    //BY default, echo
+    //size_t frameSize = sendBuf.size();
+    //int ret = wsMakeFrame2(data, dataSize, &(sendBuf[0]), &frameSize, frameType, isFinal);
+
+    if(cb!=NULL)
+    {
+      websock_data cb_data=genCallbackData(websock_data::eventType::DATA_FRAME_TCP);
+      cb_data.data.data_frame.type = TCP_BINARY_FRAME;
+      cb_data.data.data_frame.raw = data;
+      cb_data.data.data_frame.rawL = dataSize;
+      cb_data.data.data_frame.isFinal = true;
+      cb->ws_callback(cb_data);
+    }
+
+    return 0;
+}
+
+
 int ws_conn::doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen, enum wsFrameType *ret_lastFrameType)
 {
     int h_padding = 0;
@@ -579,7 +600,7 @@ int ws_conn::runLoop()
 
     if(ws_state == WS_STATE_TCP)
     {
-      event_WsRECV( &(recvBuf[0]), readed, TCP_BINARY_FRAME, true);
+      event_TCP_RECV( &(recvBuf[0]), readed);
       return 0;
     }
 
@@ -598,8 +619,12 @@ int ws_conn::runLoop()
             // printf("Error:Hand shake failed...");
             // ws_state = WS_STATE_CLOSING;
             // doClosing();
+            
+            websock_data ws_dat = genCallbackData(websock_data::eventType::TCP_CONNECTION_FINISHED);
+            cb->ws_callback(ws_dat);
+
             ws_state=WS_STATE_TCP;
-            event_WsRECV( &(recvBuf[0]), readed, TCP_BINARY_FRAME, true);
+            event_TCP_RECV( &(recvBuf[0]), readed);
 
         }
         else
