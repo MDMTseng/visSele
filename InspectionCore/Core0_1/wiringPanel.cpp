@@ -21,7 +21,6 @@
 #include <stdexcept>
 #include <compat_dirent.h>
 
-#include <RingBuf.hpp>
 #include <ctime>
 
 std::timed_mutex mainThreadLock;
@@ -237,6 +236,7 @@ class ImageStackAddUp
 ImageStackAddUp imstack;
 
 DatCH_WebSocket *websocket = NULL;
+MJPEG_Streamer *mjpegS;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
 DatCH_CallBack_WSBPG callbk_obj;
@@ -2836,7 +2836,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 
 void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool skipImageTransfer , bool inspSnap,bool *ret_pipe_pass_down=NULL)
 {
-  
+  static int frameActionID=0;
    if (cb->cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
@@ -2938,6 +2938,41 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
 
       // LOGI(">>>>");
     clock_t img_t = clock();
+
+
+    if(false && mjpegS && DoImageTransfer &&skipImageTransfer==false){
+
+      frameActionID++;
+      if(frameActionID>=256)frameActionID=0;
+      int tmp=frameActionID;
+      for(int i=0;i<8;i++)
+      {
+        if(tmp&1)
+        {
+          capImg.CVector[0][i*3]=
+          capImg.CVector[0][i*3+1]=
+          capImg.CVector[0][i*3+2]=255;
+        }
+        else
+        {
+          capImg.CVector[0][i*3]=
+          capImg.CVector[0][i*3+1]=
+          capImg.CVector[0][i*3+2]=0;
+        }
+        tmp>>=1;
+      }
+
+      uint8_t *encBuff=NULL;
+      unsigned long encBuffL=0;
+      if(mjpecLib_enc((uint8_t *)capImg.CVector[0], capImg.GetWidth(), capImg.GetHeight(), 93, &encBuff, &encBuffL)==0)
+      {
+        LOGI("ENC size:%d",encBuffL);
+        mjpegS->SendFrame(std::string("/live.mjpg"),encBuff,encBuffL);
+        delete(encBuff);
+        encBuff=NULL;
+        encBuffL=0;
+      }
+    }
     //if(stackingC==0)
     if (DoImageTransfer && skipImageTransfer==false)
     {
@@ -2977,7 +3012,7 @@ void  InspResultAction(image_pipe_info *imgPipe,bool skipInspDataTransfer,bool s
       LOGI("img transfer(DL:%d) %fms \n",downSampLevel, ((double)clock() -img_t) / CLOCKS_PER_SEC * 1000);
     }
 
-    sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"ACK\":true}", (cb->cameraFramesLeft) ? "true" : "false");
+    sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (cb->cameraFramesLeft) ? "true" : "false",frameActionID);
     bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = cb->CI_pgID;
     datCH_BPG.data.p_BPG_data = &bpg_dat;
@@ -3626,29 +3661,32 @@ int mainLoop(bool realCamera = false)
 
 
   websocket->SetEventCallBack(&callbk_obj, websocket);
-
+  mjpegS=new MJPEG_Streamer(7603);
   LOGI("SetEventCallBack is set...");
   while (1)
   {
 
 
 
-    int ws_maxfd=websocket->findMaxFd();
-    fd_set fset=websocket->get_fd_set();
+    int maxfd=websocket->findMaxFd();
+    int ms_maxfd=mjpegS->GetMaxfd();
+    if(maxfd<ms_maxfd)
+    {
+      maxfd=ms_maxfd;
+    }
 
-    if (select(ws_maxfd+1, &fset, NULL, NULL, NULL) == -1) {
+    fd_set fdset=websocket->get_fd_set();
+    mjpegS->setFdset(&fdset);
+
+
+    if (select(maxfd+1, &fdset, NULL, NULL, NULL) == -1) {
       perror("select");
       exit(4);
     }
 
-    if(websocket->runLoop(fset,NULL)==0)
-    {
+    websocket->runLoop(fdset,NULL);
+    mjpegS->fdEventFetch(fdset);
 
-    }
-    else
-    {
-
-    }
   }
 
   return 0;
@@ -3841,32 +3879,6 @@ int testCode()
   }
 
   return 0;
-  RingBuf<int> rbx(new int[10], 10);
-  for (int i = 0; i < 100; i++)
-  {
-    int *ptr = rbx.getHead();
-    if (ptr == NULL)
-      continue;
-    *ptr = i;
-    rbx.pushHead();
-  }
-
-  while (rbx.size())
-  {
-    LOGV(">>>%d", *rbx.getTail());
-    rbx.consumeTail();
-  }
-  return -1;
-
-  acvImage img;
-
-  acvImage bw_img;
-  int ret = LoadPNGFile(&img, "data/B5G-25X45X60.png");
-  bw_img.ReSize(&img);
-  acvThreshold(&bw_img, 80, 0);
-  ret = SavePNGFile("data/B5G-25X45X60__.png", &bw_img);
-
-  return -1;
 }
 #include <vector>
 int cp_main(int argc, char **argv)

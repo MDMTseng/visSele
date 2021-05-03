@@ -26,11 +26,11 @@ protected:
 
   struct MJPEG_Streamer_EVT_DATA
   {
-    const struct clientInfo *c;
+    const struct clientInfo *client;
 
     enum
     {
-      CONNECTED=500,
+      CONNECTED = 500,
       HTTP_INFO,
       DATA,
       DISCONNECTED_BY_REMOTE,
@@ -63,15 +63,17 @@ protected:
 
   virtual void EVT(struct MJPEG_Streamer_EVT_DATA ev_data);
 
-
   bool release();
   bool open(int port);
+
 public:
   MJPEG_Streamer(int port);
   ~MJPEG_Streamer();
   int GetMaxfd();
 
   fd_set GetFdset();
+  void setFdset(fd_set *dst);
+
   int SendFrame(string channel, uint8_t *jpeg_raw, size_t rawL);
   int fdEventFetch(fd_set &fd_set_flag);
 };

@@ -173,7 +173,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
         img.ReSize(&img_load);
         
-        if(0)
+        if(1)
           acvCloneImage(&img_load,&img,-1);      
         else 
           for(int i=0;i<img.GetHeight();i++)//exposure add
@@ -443,7 +443,7 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
         case 2:frameInterval_ms=10;break;
         case 3:frameInterval_ms=0;break;
     }
-    frameInterval_ms=50;
+    frameInterval_ms=0;
     return CameraLayer::ACK;
 }
 

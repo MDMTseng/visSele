@@ -7,13 +7,10 @@
 #include <arpa/inet.h>
 #include <logctrl.h>
 
-
-
 #define INVALID_SOCKET -1
 #define SOCKET_ERROR -1
 #define SOCKADDR struct sockaddr
 #define SOCKADDR_IN struct sockaddr_in
-
 
 int MJPEG_Streamer::CalcMaxfd()
 {
@@ -32,15 +29,26 @@ int MJPEG_Streamer::CalcMaxfd()
   return max_fd;
 }
 
+void MJPEG_Streamer::setFdset(fd_set *dst)
+{
+  
+  FD_SET(sock, dst);
+  for (int i = 0; i < clientTable.size(); i++)
+  {
+    FD_SET(clientTable[i].client_fd, dst);
+  }
+}
+
 MJPEG_Streamer::clientInfo MJPEG_Streamer::parse(uint8_t *data, size_t dataL)
 {
   std::cmatch res_match;
   std::cmatch orig_match;
   clientInfo cinfo;
   cinfo.waitForHttpInfo = true;
-  LOGI(">>>%s",(const char*)data);
+  LOGI(">>>%s", (const char *)data);
   if (std::regex_search((const char *)data, (const char *)data + dataL, res_match, res_rgx))
   {
+    // LOGI("RES:%s  host:%s",res_match[1],res_match[2]);
     // std::cout << "match: " << match[1] << '\n';
     cinfo.resource = std::string(res_match[1]);
     cinfo.host = std::string(res_match[2]);
@@ -172,10 +180,10 @@ bool MJPEG_Streamer::open(int port)
   if (listen(sock, 20) == SOCKET_ERROR)
   {
     LOGE("LISTEN FAILED!!!!!");
-      // cerr << "error : couldn't listen on sock " << sock << " on port " << port << " !" << endl;
-      // return release();
+    // cerr << "error : couldn't listen on sock " << sock << " on port " << port << " !" << endl;
+    // return release();
   }
-      
+
   // LOGI("OPEN!!!!:fd=%d",sock);
   FD_ZERO(&tracking_fdset);
   FD_SET(sock, &tracking_fdset);
@@ -183,23 +191,21 @@ bool MJPEG_Streamer::open(int port)
   return true;
 }
 
-
 int MJPEG_Streamer::SendFrame(string channel, uint8_t *jpeg_raw, size_t rawL)
 {
   string string_head = "--mjpegstream\r\nContent-Type: image/jpeg\r\nContent-Length: " + std::to_string(rawL) + "\r\n\r\n";
-
+  int clientCount = 0;
   for (int i = 0; i < clientTable.size(); i++)
   {
-    if (channel.compare(clientTable[i].resource) == 0)
-    {
-      s_send(clientTable[i].client_fd, (uint8_t *)string_head.c_str(), string_head.size());
-      int n = s_send(clientTable[i].client_fd, (uint8_t *)(jpeg_raw), rawL);
-      if (n < rawL)
-      {
+    if (channel.compare(clientTable[i].resource) != 0)
+      continue;
 
-        CLIENT_REMOVE_by_Idx(i);
-        i = -1;
-      }
+    s_send(clientTable[i].client_fd, (uint8_t *)string_head.c_str(), string_head.size());
+    int n = s_send(clientTable[i].client_fd, (uint8_t *)(jpeg_raw), rawL);
+    if (n < rawL)
+    {
+      CLIENT_REMOVE_by_Idx(i);
+      i = -1;
     }
   }
   return 0;
@@ -228,7 +234,7 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
     // LOGI("connected %s:%d sock:%d",
     //        inet_ntoa(cinfo.addr), ntohs(cinfo.addr.sin_port),cinfo.client_fd);
 
-    LOGI("NEW CONN sock:%d",cinfo.client_fd);
+    LOGI("NEW CONN sock:%d", cinfo.client_fd);
     FD_SET(NewSock, &tracking_fdset);
     if (NewSock > max_fd)
     {
@@ -236,11 +242,10 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
     }
     clientTable.push_back(cinfo);
     // printf("List size %d\n", ws_conn_pool.size());
-    
+
     struct MJPEG_Streamer_EVT_DATA ev_data = {
-      .c= &(cinfo),
-      .ev_type= MJPEG_Streamer_EVT_DATA::CONNECTED
-    };
+        .client = &(cinfo),
+        .ev_type = MJPEG_Streamer_EVT_DATA::CONNECTED};
     EVT(ev_data);
   }
   else
@@ -266,19 +271,17 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
               clientTable[i].host = cinfo.host;
 
               struct MJPEG_Streamer_EVT_DATA ev_data = {
-                .c= &(clientTable[i]),
-                .ev_type= MJPEG_Streamer_EVT_DATA::HTTP_INFO
-              };
+                  .client = &(clientTable[i]),
+                  .ev_type = MJPEG_Streamer_EVT_DATA::HTTP_INFO};
               EVT(ev_data);
-              s_send(clientTable[i].client_fd, (const uint8_t*)header.c_str(), header.length());
+              s_send(clientTable[i].client_fd, (const uint8_t *)header.c_str(), header.length());
             }
             else
             {
 
               struct MJPEG_Streamer_EVT_DATA ev_data = {
-                .c= &(clientTable[i]),
-                .ev_type= MJPEG_Streamer_EVT_DATA::DISCONNECTED_BY_LOCAL
-              };
+                  .client = &(clientTable[i]),
+                  .ev_type = MJPEG_Streamer_EVT_DATA::DISCONNECTED_BY_LOCAL};
               EVT(ev_data);
               CLIENT_REMOVE_by_Idx(i);
               i--;
@@ -289,8 +292,8 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
           {
 
             struct MJPEG_Streamer_EVT_DATA ev_data = {
-              .c= &(clientTable[i]),
-              .ev_type= MJPEG_Streamer_EVT_DATA::DATA,
+              .client = &(clientTable[i]),
+              .ev_type = MJPEG_Streamer_EVT_DATA::DATA,
               raw_data : &(recv_buffer[0]),
               raw_data_L : recv_len
             };
@@ -300,9 +303,8 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
         else
         {
           struct MJPEG_Streamer_EVT_DATA ev_data = {
-            .c= &(clientTable[i]),
-            .ev_type= MJPEG_Streamer_EVT_DATA::DISCONNECTED_BY_REMOTE
-          };
+              .client = &(clientTable[i]),
+              .ev_type = MJPEG_Streamer_EVT_DATA::DISCONNECTED_BY_REMOTE};
           EVT(ev_data);
           CLIENT_REMOVE_by_Idx(i);
           i--;
