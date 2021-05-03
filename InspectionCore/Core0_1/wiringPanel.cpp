@@ -3413,23 +3413,8 @@ int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH
     }
     break;
   case websock_data::eventType::DATA_FRAME:
-    // printf("DATA_FRAME >> frameType:%d frameL:%d data_ptr=%p\n",
-    //        ws_data.data.data_frame.type,
-    //        ws_data.data.data_frame.rawL,
-    //        ws_data.data.data_frame.raw);
 
     break;
-
-  case websock_data::eventType::TCP_CONNECTION_FINISHED:
-
-    break;
-
-
-  case websock_data::eventType::DATA_FRAME_TCP:
-
-    break;
-
-
 
   case websock_data::eventType::CLOSING:
 

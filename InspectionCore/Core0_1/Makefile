@@ -27,6 +27,7 @@ export MODULE_polyfit=$(abspath $(moduleRoot)/contrib/polyfit)
 export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
 export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
+export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
 
 
 # export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
@@ -59,6 +60,7 @@ IDIR=	include/ \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
 			$(MODULE_mjpegLib)/include \
+			$(MODULE_MJPEG_Streamer)/include \
 			$(MODULE_lodepng)\
 			# $(MODULE_MLNN)/include/  \
 
@@ -79,6 +81,7 @@ EXT_OBJS= 			$(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_lodepng)/lodepng.a \
 					$(MODULE_mjpegLib)/mjpegLib.a \
 					$(MODULE_polyfit)/polyfit.a \
+					$(MODULE_MJPEG_Streamer)/MJPEG_Streamer.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
@@ -118,6 +121,7 @@ else
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
 									$(MODULE_mjpegLib) \
+									$(MODULE_MJPEG_Streamer) \
 									# $(MODULE_SOIL) \
 									# $(MODULE_zlib) \
 									# $(MODULE_GLACC) \
