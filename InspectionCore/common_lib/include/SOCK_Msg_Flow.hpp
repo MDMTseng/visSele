@@ -2,11 +2,7 @@
 #define SOCK_Msg_Flow_HPP
 #include <thread>
 #include <unistd.h>
-#ifdef __WIN32__
-#include <winsock2.h>
-#else
-#include <netinet/in.h> /*htons*/
-#endif
+#include "XPlatAPI.h"
 #include <mutex>
 
 

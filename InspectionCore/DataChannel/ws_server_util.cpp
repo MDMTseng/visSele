@@ -95,9 +95,29 @@ int ws_server::get_socket()
 
 
 
+void ws_server::set_fd_set( fd_set *fdSet)
+{
+    FD_SET(listenSocket,fdSet);
+    std::vector <ws_conn*>* servers = ws_conn_pool.getServers();
+    for (int i = 0; i < (*servers).size(); i++)
+    {
+        if ((*servers)[i]->isOccupied())
+        {
+            FD_SET((*servers)[i]->getSocket(),fdSet);
+        }
+    }
+}
+
 fd_set ws_server::get_fd_set()
 {
-  return evtSet;
+    fd_set newSet;
+    FD_ZERO(&newSet);
+
+    set_fd_set(&newSet);
+    FD_SET(listenSocket,&newSet);
+    evtSet=newSet;
+
+    return evtSet;
 }
 
 int ws_server::findMaxFd()
@@ -147,15 +167,16 @@ int ws_server::runLoop(struct timeval *tv)
     perror("select");
     exit(4);
   }
-  return runLoop(read_fds ,tv);
+  return runLoop(&read_fds ,tv);
 }
-int ws_server::runLoop(fd_set &read_fds,struct timeval *tv)
+int ws_server::runLoop(fd_set *read_fds,struct timeval *tv)
 {
 
 
     LOGV(">>>>>");
-    if (FD_ISSET(listenSocket, &read_fds))
+    if (FD_ISSET(listenSocket,read_fds))
     {
+        FD_CLR(listenSocket, read_fds);
         LOGV("listenSocket");
         struct sockaddr_in remote;
         socklen_t sockaddrLen = sizeof(remote);
@@ -196,10 +217,11 @@ int ws_server::runLoop(fd_set &read_fds,struct timeval *tv)
         bool evt_trigger = false;
         for (int i = 0; i < (*servers).size(); i++)
         {
-            if ((*servers)[i]->isOccupied() && FD_ISSET((*servers)[i]->getSocket(), &read_fds))
+            int fd = (*servers)[i]->getSocket();
+            if ((*servers)[i]->isOccupied() && FD_ISSET(fd, read_fds))
             {
                 evt_trigger = true;
-                int fd = (*servers)[i]->getSocket();
+                FD_CLR(fd, read_fds);
                 (*servers)[i]->runLoop();
                 if (!(*servers)[i]->isOccupied())
                 {
@@ -407,7 +429,7 @@ int ws_conn::doHandShake(void *buff, ssize_t buffLen,struct handshake *p_hs)
 
     wsGetHandshakeAnswer(&hs, &sendBuf[0], &frameSize);
     //freeHandshake(&hs);
-    if (safeSend(sock, &sendBuf[0], frameSize) == EXIT_FAILURE)
+    if (safeSend(sock, &sendBuf[0], frameSize) != 0)
     {
         doClosing();
         return -1;
@@ -571,7 +593,7 @@ int ws_conn::runLoop()
         recvBuf.resize(recvBuf.size() + recvBufSizeInc);
     }
     ssize_t readed = recv(sock, (char*) (&(recvBuf[0]) + accBufDataLen), recvBuf.size() - accBufDataLen, 0);
-    if (!readed) {
+    if (readed<=0) {
         ws_state = WS_STATE_CLOSING;
         doClosing();
         return -1;
@@ -644,8 +666,10 @@ int ws_conn::runLoop()
     if (ws_state == WS_STATE_CLOSING)
     {
         doClosing();
+        return -1;
     }
 
+    return -1;
 }
 
 int ws_conn::send_pkt(websock_data *packet)

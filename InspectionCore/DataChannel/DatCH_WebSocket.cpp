@@ -29,7 +29,7 @@ fd_set DatCH_WebSocket::get_fd_set()
     return server->get_fd_set();
 }
 
-int DatCH_WebSocket:: runLoop(fd_set &read_fds,struct timeval *tv)
+int DatCH_WebSocket:: runLoop(fd_set *read_fds,struct timeval *tv)
 {
     return server->runLoop(read_fds,tv);
 }

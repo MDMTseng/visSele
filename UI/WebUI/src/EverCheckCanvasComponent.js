@@ -2164,6 +2164,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   {
     this.stream_img.src = url;
   }
+ 
+  resourceClean() {
+    this.canvas.removeEventListener('wheel', this.onmouseswheel.bind(this));
+    this.stream_img=null;
+    log.debug("resourceClean......")
+  }
+
 
   SetROISettingCallBack(callback)
   {

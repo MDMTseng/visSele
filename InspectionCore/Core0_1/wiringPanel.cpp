@@ -2852,8 +2852,8 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
     // LOGI(">>>>");
     clock_t img_t = clock();
-
-    if ( mjpegS && DoImageTransfer && skipImageTransfer == false)
+    bool sendJpg=true;
+    if ( sendJpg && mjpegS && DoImageTransfer && skipImageTransfer == false)
     {
 
       frameActionID++;
@@ -2878,18 +2878,19 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       }
 
       uint8_t *encBuff = NULL;
-      unsigned long encBuffL = 0;
-      if (mjpecLib_enc((uint8_t *)capImg.CVector[0], capImg.GetWidth(), capImg.GetHeight(), 93, &encBuff, &encBuffL) == 0)
+      unsigned long encBuffL = 0; 
+      if (mjpecLib_enc((uint8_t *)capImg.CVector[0], capImg.GetWidth(), capImg.GetHeight(), 85, &encBuff, &encBuffL) == 0)
       {
-        LOGI("ENC size:%d", encBuffL);
-        mjpegS->SendFrame(std::string("/CAM1.mjpg"), encBuff, encBuffL);
+        int sendCount = mjpegS->SendFrame(std::string("/CAM1.mjpg"), encBuff, encBuffL);
         delete (encBuff);
+        
+        LOGI("ENC size:%d sendCount:%d", encBuffL,sendCount);
         encBuff = NULL;
         encBuffL = 0;
       }
     }
     //if(stackingC==0)
-    if (false && DoImageTransfer && skipImageTransfer == false)
+    if ((!sendJpg) && DoImageTransfer && skipImageTransfer == false)
     {
 
       static acvImage test1_buff;
@@ -3547,7 +3548,7 @@ int mainLoop(bool realCamera = false)
   }
 
   websocket->SetEventCallBack(&callbk_obj, websocket);
-  mjpegS = new MJPEG_Streamer(7603);
+  mjpegS = new MJPEG_Streamer2(7603);
   LOGI("SetEventCallBack is set...");
   while (1)
   {
@@ -3567,9 +3568,9 @@ int mainLoop(bool realCamera = false)
       perror("select");
       exit(4);
     }
-
-    websocket->runLoop(fdset, NULL);
-    mjpegS->fdEventFetch(fdset);
+    LOGI("GO RECV");
+    websocket->runLoop(&fdset, NULL);
+    mjpegS->fdEventFetch(&fdset);
   }
 
   return 0;

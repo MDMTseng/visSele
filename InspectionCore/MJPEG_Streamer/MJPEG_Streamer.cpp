@@ -2,9 +2,6 @@
 
 #include <cstdlib>
 #include <ctime>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <logctrl.h>
 
 #define INVALID_SOCKET -1
@@ -67,7 +64,7 @@ int MJPEG_Streamer::s_send(int sock, const uint8_t *s, int len)
   {
     try
     {
-      int retval = ::send(sock, s, len, 0x4000);
+      int retval = ::send(sock, (const char*)s, len, 0x4000);
       return retval;
     }
     catch (int e)
@@ -80,7 +77,7 @@ int MJPEG_Streamer::s_send(int sock, const uint8_t *s, int len)
 int MJPEG_Streamer::s_read(int sock, uint8_t *buffer, int bufflen)
 {
   int result;
-  result = recv(sock, buffer, bufflen, 0);
+  result = recv(sock,  (char*)buffer, bufflen, 0);
   if (result < 0)
   {
     // cout << "An exception occurred. Exception Nr. " << result << '\n';
@@ -93,14 +90,14 @@ int MJPEG_Streamer::s_read(int sock, uint8_t *buffer, int bufflen)
 
 bool MJPEG_Streamer::CLIENT_REMOVE_by_Idx(int clientIdx)
 {
-
+  LOGI("CLIENT del id:%d fd:%d",clientIdx,clientTable[clientIdx].client_fd);
   ::shutdown(clientTable[clientIdx].client_fd, 2);
 
   FD_CLR(clientTable[clientIdx].client_fd, &tracking_fdset);
   clientTable.erase(clientTable.begin() + clientIdx);
 
   CalcMaxfd();
-  return false;
+  return true;
 }
 
 bool MJPEG_Streamer::CLIENT_REMOVE_by_fd(int clientFd)
@@ -122,10 +119,12 @@ MJPEG_Streamer::MJPEG_Streamer(int port)
     : sock(INVALID_SOCKET), port(port), res_rgx("GET\\s(.+)\\sHTTP.+\\r\\nHost:\\s(.+)\\r\\n"), orig_rgx("Origin\\s(.+)\n")
 {
 
+#ifdef SIGPIPE
   signal(SIGPIPE, SIG_IGN);
+#endif
   FD_ZERO(&tracking_fdset);
 
-  header = "HTTP/1.0 200 OK\r\n";
+  header  = "HTTP/1.0 200 OK\r\n";
   header += "Cache-Control: no-cache\r\n";
   header += "Pragma: no-cache\r\n";
   header += "Connection: close\r\n";
@@ -162,7 +161,7 @@ bool MJPEG_Streamer::open(int port)
   sock = socket(AF_INET, SOCK_STREAM, 0);
 
   bool _TRUE = true;
-  if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &_TRUE, sizeof(int)) == -1)
+  if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&_TRUE, sizeof(int)) == -1)
   {
     perror("Setsockopt");
     // exit(1);
@@ -197,10 +196,13 @@ int MJPEG_Streamer::SendFrame(string channel, uint8_t *jpeg_raw, size_t rawL)
   int clientCount = 0;
   for (int i = 0; i < clientTable.size(); i++)
   {
-    if (channel.compare(clientTable[i].resource) != 0)
+    int compRes=channel.compare(clientTable[i].resource);
+    LOGE("CH:%s res:%s comp:%d",channel.c_str(),clientTable[i].resource.c_str(),compRes);
+    if (compRes!= 0)
       continue;
 
     s_send(clientTable[i].client_fd, (uint8_t *)string_head.c_str(), string_head.size());
+    clientCount++;
     int n = s_send(clientTable[i].client_fd, (uint8_t *)(jpeg_raw), rawL);
     if (n < rawL)
     {
@@ -208,12 +210,12 @@ int MJPEG_Streamer::SendFrame(string channel, uint8_t *jpeg_raw, size_t rawL)
       i = -1;
     }
   }
-  return 0;
+  return clientCount;
 }
 
-int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
+int MJPEG_Streamer::fdEventFetch(fd_set *fd_set_flag)
 {
-  if (FD_ISSET(sock, &fd_set_flag))
+  if (FD_ISSET(sock, fd_set_flag))
   {
     struct sockaddr_in remote;
     socklen_t sockaddrLen = sizeof(remote);
@@ -234,13 +236,13 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
     // LOGI("connected %s:%d sock:%d",
     //        inet_ntoa(cinfo.addr), ntohs(cinfo.addr.sin_port),cinfo.client_fd);
 
-    LOGI("NEW CONN sock:%d", cinfo.client_fd);
     FD_SET(NewSock, &tracking_fdset);
     if (NewSock > max_fd)
     {
       max_fd = NewSock;
     }
     clientTable.push_back(cinfo);
+    LOGI("NEW CONN sock:%d  ;%d connections in list", cinfo.client_fd,clientTable.size());
     // printf("List size %d\n", ws_conn_pool.size());
 
     struct MJPEG_Streamer_EVT_DATA ev_data = {
@@ -253,13 +255,13 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
     int evt_counter = 0;
     for (int i = 0; i < clientTable.size(); i++)
     {
-      if (FD_ISSET(clientTable[i].client_fd, &fd_set_flag))
+      if (FD_ISSET(clientTable[i].client_fd, fd_set_flag))
       {
         evt_counter++;
         int fd = clientTable[i].client_fd;
-        FD_CLR(fd, &fd_set_flag);
-        size_t recv_len = recv(fd, &(recv_buffer[0]), recv_buffer.size(), 0);
-        if (recv_len >= 0)
+        FD_CLR(fd, fd_set_flag);
+        size_t recv_len = recv(fd, (char*)&(recv_buffer[0]), recv_buffer.size(), 0);
+        if (recv_len >0)
         {
           if (clientTable[i].waitForHttpInfo == true)
           {
@@ -274,6 +276,7 @@ int MJPEG_Streamer::fdEventFetch(fd_set &fd_set_flag)
                   .client = &(clientTable[i]),
                   .ev_type = MJPEG_Streamer_EVT_DATA::HTTP_INFO};
               EVT(ev_data);
+              LOGI("send RSP to %d:\n%s\nLEN:%d",clientTable[i].client_fd,header.c_str(), header.length());
               s_send(clientTable[i].client_fd, (const uint8_t *)header.c_str(), header.length());
             }
             else

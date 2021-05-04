@@ -39,7 +39,9 @@ int DatCH_BPG_acvImage_Send(DatCH_BPG1_0 &dch,struct BPG_data *data,uint8_t *cal
   ws_data.data.data_frame.isFinal=false;
   ws_data.data.data_frame.raw=header;
   ws_data.data.data_frame.rawL=sizeof(header);
-  dch.SendData(ws_data);
+  DatCH_Data retData= dch.SendData(ws_data);
+  if(retData.type!=DatCH_Data::DataType_ACK)
+    return -1;
 
   ws_data.data.data_frame.type=WS_DFT_CONT_FRAME;
 
@@ -71,7 +73,10 @@ int DatCH_BPG_acvImage_Send(DatCH_BPG1_0 &dch,struct BPG_data *data,uint8_t *cal
     ws_data.data.data_frame.raw=dch.buffer;
     //printf("L:%d\n",ws_data.data.data_frame.rawL);
 
-    dch.SendData(ws_data);
+    retData=dch.SendData(ws_data);
+    
+    if(retData.type!=DatCH_Data::DataType_ACK)
+      return -1;
   }
   return 0;
 
@@ -219,7 +224,10 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
         ws_data.data.data_frame.rawL =buffer_size;
         ws_data.data.data_frame.raw  =data.dat_raw+idxOffset;
         int ret = cb_obj->callback(this, ret_data, callback_param);
-        if(ret<0)break;
+        if(ret<0)
+        {
+          return GenMsgType(DatCH_Data::DataType_NAK);
+        }
       }
 
       ws_data.data.data_frame.isFinal=true;
@@ -227,6 +235,10 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
       ws_data.data.data_frame.raw  =data.dat_raw+idxOffset;
       int ret = cb_obj->callback(this, ret_data, callback_param);
 
+      if(ret!=0)
+      {
+        return GenMsgType(DatCH_Data::DataType_NAK);
+      }
 
     }
     else if(data.callback)
@@ -247,7 +259,11 @@ DatCH_Data DatCH_BPG1_0::SendData(BPG_data data)
       ws_data.data.data_frame.rawL=0;
       ws_data.data.data_frame.raw=NULL;
       ret_data.data.p_websocket = &ws_data;
-      cb_obj->callback(this, ret_data, callback_param);
+      int ret = cb_obj->callback(this, ret_data, callback_param);
+      if(ret!=0)
+      {
+        return GenMsgType(DatCH_Data::DataType_NAK);
+      }
     }
 
 

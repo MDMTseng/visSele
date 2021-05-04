@@ -5,7 +5,7 @@
 #include <string>
 #include <regex>
 
-#include <netinet/in.h>
+#include "XPlatAPI.h"
 
 #define SOCKET int
 using namespace std;
@@ -75,7 +75,7 @@ public:
   void setFdset(fd_set *dst);
 
   int SendFrame(string channel, uint8_t *jpeg_raw, size_t rawL);
-  int fdEventFetch(fd_set &fd_set_flag);
+  int fdEventFetch(fd_set *fd_set_flag);
 };
 
 #endif

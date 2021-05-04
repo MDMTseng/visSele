@@ -18,7 +18,7 @@ public:
     ~DatCH_WebSocket();
     int findMaxFd();
     fd_set get_fd_set();
-    int runLoop(fd_set &read_fds,struct timeval *tv);
+    int runLoop(fd_set *read_fds,struct timeval *tv);
 
     int ws_callback(websock_data data, void* param);
     DatCH_Data SendData(void* data, size_t dataL) override;
