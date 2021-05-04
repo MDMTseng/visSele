@@ -1,8 +1,7 @@
 
 
 
-function NewMPEGStream(url)
-{
+function NewMPEGStream(url) {
   let img = new Image();
   img.src = url;
   return img;
@@ -10,11 +9,11 @@ function NewMPEGStream(url)
 
 
 // namespace MJPEG { ...
-var MJPEG = (function(module) {
+var MJPEG = (function (module) {
   "use strict";
 
   // class Player { ...
-  module.Player = function(canvas, url, options) {
+  module.Player = function (canvas, url, options) {
 
     var self = this;
     if (typeof canvas === "string" || canvas instanceof String) {
@@ -24,12 +23,12 @@ var MJPEG = (function(module) {
 
 
     self.stream = NewMPEGStream(url);
-    
-    self.draw_stream=()=>{
+
+    self.draw_stream = () => {
       console.log(self.stream);
-      context.drawImage(self.stream,0,0);
+      context.drawImage(self.stream, 0, 0);
     }
-    canvas.addEventListener("click", function() {
+    canvas.addEventListener("click", function () {
       self.draw_stream();
     }, false);
 

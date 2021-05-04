@@ -2853,7 +2853,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     // LOGI(">>>>");
     clock_t img_t = clock();
 
-    if (false && mjpegS && DoImageTransfer && skipImageTransfer == false)
+    if ( mjpegS && DoImageTransfer && skipImageTransfer == false)
     {
 
       frameActionID++;
@@ -2882,14 +2882,14 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       if (mjpecLib_enc((uint8_t *)capImg.CVector[0], capImg.GetWidth(), capImg.GetHeight(), 93, &encBuff, &encBuffL) == 0)
       {
         LOGI("ENC size:%d", encBuffL);
-        mjpegS->SendFrame(std::string("/live.mjpg"), encBuff, encBuffL);
+        mjpegS->SendFrame(std::string("/CAM1.mjpg"), encBuff, encBuffL);
         delete (encBuff);
         encBuff = NULL;
         encBuffL = 0;
       }
     }
     //if(stackingC==0)
-    if (DoImageTransfer && skipImageTransfer == false)
+    if (false && DoImageTransfer && skipImageTransfer == false)
     {
 
       static acvImage test1_buff;

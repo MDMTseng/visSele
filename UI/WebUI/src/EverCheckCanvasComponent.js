@@ -2155,6 +2155,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.ROISettingCallBack = undefined;
     this.EmitEvent = (event) => { log.info(event); };
     this.ROISettingInfo=undefined;
+
+    this.stream_img = new Image(); 
+    this.stream_img.src = "http://localhost:7603/CAM1.mjpg";
+  }
+
+  SetStreamImageSrc(url)
+  {
+    this.stream_img.src = url;
   }
 
   SetROISettingCallBack(callback)
@@ -2438,19 +2446,36 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
 
-      ctx.scale(mmpp_mult, mmpp_mult);
-      if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
-      }
-      // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
-      ctx.drawImage(this.secCanvas, 0, 0);
-      
-      ctx.strokeStyle = "rgba(120, 120, 120,30)";
-      
-      let curScale=this.camera.GetCameraScale();
-      ctx.lineWidth = 50/curScale;
-      this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
+      if(false){
 
+        ctx.scale(mmpp_mult, mmpp_mult);
+        if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
+          ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
+        }
+        // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
+        ctx.drawImage(this.secCanvas, 0, 0);
+        
+        ctx.strokeStyle = "rgba(120, 120, 120,30)";
+        
+        let curScale=this.camera.GetCameraScale();
+        ctx.lineWidth = 50/curScale;
+        this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
+  
+      }
+      else
+      {
+        try{
+          ctx.imageSmoothingEnabled=false;
+          ctx.scale(mmpp, mmpp);
+          ctx.drawImage(this.stream_img, 0, 0);
+        } catch (error) {
+          console.error(this.stream_img,error);
+          // expected output: ReferenceError: nonExistentFunction is not defined
+          // Note - error messages will vary depending on browser
+        }
+        
+        
+      }
       ctx.restore();
 
       if(this.db_obj.cameraParam.mask_radius!==undefined)
