@@ -2156,13 +2156,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EmitEvent = (event) => { log.info(event); };
     this.ROISettingInfo=undefined;
 
-    this.stream_img = new Image(); 
-    this.stream_img.src = "http://localhost:7603/CAM1.mjpg";
+    // this.stream_img = new Image(); 
+    // this.stream_img.src = "http://localhost:7603/CAM1.mjpg";
   }
 
   SetStreamImageSrc(url)
   {
-    this.stream_img.src = url;
+    // this.stream_img.src = url;
   }
  
   resourceClean() {
@@ -2453,7 +2453,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
 
-      if(false){
+      if(true){
 
         ctx.scale(mmpp_mult, mmpp_mult);
         if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {

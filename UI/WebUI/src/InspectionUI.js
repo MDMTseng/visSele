@@ -1210,7 +1210,7 @@ function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND
 
     let _this=_s.current;
     _this.ec_canvas = new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
-    _this.ec_canvas.SetStreamImageSrc("http://localhost:7603/CAM1.mjpg");
+    // _this.ec_canvas.SetStreamImageSrc("http://localhost:7603/CAM1.mjpg");
     _this.ec_canvas.EmitEvent = ec_canvas_EmitEvent;
     onCanvasInit(_this.ec_canvas);
     this.updateCanvas(c_state);

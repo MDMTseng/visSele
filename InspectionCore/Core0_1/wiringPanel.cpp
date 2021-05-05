@@ -2852,10 +2852,34 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
     // LOGI(">>>>");
     clock_t img_t = clock();
-    bool sendJpg=true;
+    static acvImage test1_buff;
+
+    BPG_data_acvImage_Send_info iminfo;
+    bool sendJpg=false;
     if ( sendJpg && mjpegS && DoImageTransfer && skipImageTransfer == false)
     {
+      acvImage *sendImg=&capImg;
 
+      if(sendImg==NULL)
+      {
+        sendImg=&test1_buff;
+        iminfo = (BPG_data_acvImage_Send_info){img : &test1_buff, scale : 2};
+
+        iminfo.offsetX = (0 / iminfo.scale) * iminfo.scale;
+        iminfo.offsetY = (0 / iminfo.scale) * iminfo.scale;
+
+        iminfo.fullHeight = capImg.GetHeight();
+        iminfo.fullWidth = capImg.GetWidth();
+        int cropH = iminfo.fullHeight;
+        int cropW = iminfo.fullWidth;
+
+        // LOGI(">>>>");
+        ImageSampler *sampler = (false) ? bacpac->sampler : NULL;
+        //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+        ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
+                          iminfo.offsetX, iminfo.offsetY, cropW, cropH);
+
+      }
       frameActionID++;
       if (frameActionID >= 256)
         frameActionID = 0;
@@ -2864,22 +2888,22 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       {
         if (tmp & 1)
         {
-          capImg.CVector[0][i * 3] =
-              capImg.CVector[0][i * 3 + 1] =
-                  capImg.CVector[0][i * 3 + 2] = 255;
+          sendImg->CVector[0][i * 3] =
+              sendImg->CVector[0][i * 3 + 1] =
+                  sendImg->CVector[0][i * 3 + 2] = 255;
         }
         else
         {
-          capImg.CVector[0][i * 3] =
-              capImg.CVector[0][i * 3 + 1] =
-                  capImg.CVector[0][i * 3 + 2] = 0;
+          sendImg->CVector[0][i * 3] =
+              sendImg->CVector[0][i * 3 + 1] =
+                  sendImg->CVector[0][i * 3 + 2] = 0;
         }
         tmp >>= 1;
       }
 
       uint8_t *encBuff = NULL;
       unsigned long encBuffL = 0; 
-      if (mjpecLib_enc((uint8_t *)capImg.CVector[0], capImg.GetWidth(), capImg.GetHeight(), 85, &encBuff, &encBuffL) == 0)
+      if (mjpecLib_enc((uint8_t *)sendImg->CVector[0], sendImg->GetWidth(), sendImg->GetHeight(), 85, &encBuff, &encBuffL) == 0)
       {
         int sendCount = mjpegS->SendFrame(std::string("/CAM1.mjpg"), encBuff, encBuffL);
         delete (encBuff);
@@ -2893,30 +2917,32 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     if ((!sendJpg) && DoImageTransfer && skipImageTransfer == false)
     {
 
-      static acvImage test1_buff;
+      {
+        
+        iminfo = (BPG_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)downSampLevel};
+        if (iminfo.scale == 0)
+        {
+          iminfo.scale = 1;
+        }
+
+        iminfo.offsetX = (ImageCropX / iminfo.scale) * iminfo.scale;
+        iminfo.offsetY = (ImageCropY / iminfo.scale) * iminfo.scale;
+
+        iminfo.fullHeight = capImg.GetHeight();
+        iminfo.fullWidth = capImg.GetWidth();
+        int cropW = ImageCropW;
+        int cropH = ImageCropH;
+
+        // LOGI(">>>>");
+        ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
+        //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+        ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
+                          iminfo.offsetX, iminfo.offsetY, cropW, cropH);
+
+      }
 
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
       //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
-
-      BPG_data_acvImage_Send_info iminfo = {img : &test1_buff, scale : (uint16_t)downSampLevel};
-      if (iminfo.scale == 0)
-      {
-        iminfo.scale = 1;
-      }
-
-      iminfo.offsetX = (ImageCropX / iminfo.scale) * iminfo.scale;
-      iminfo.offsetY = (ImageCropY / iminfo.scale) * iminfo.scale;
-
-      iminfo.fullHeight = capImg.GetHeight();
-      iminfo.fullWidth = capImg.GetWidth();
-      int cropW = ImageCropW;
-      int cropH = ImageCropH;
-
-      // LOGI(">>>>");
-      ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
-      //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-      ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
-                        iminfo.offsetX, iminfo.offsetY, cropW, cropH);
 
       // LOGI(">>>>");
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
