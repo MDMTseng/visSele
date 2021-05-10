@@ -1,4 +1,5 @@
 #include"UTIL.h"
+#include"RingBuf.hpp"
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 const int potPin = 34;
@@ -12,7 +13,7 @@ hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 
-#define templateSIZE 256
+#define templateSIZE 100
 
 #define UINT16ARR_LEN(arr) (sizeof(arr)/sizeof(arr[0]))
 int16_t test_template[] = {540,
@@ -34,221 +35,457 @@ struct GLOB_FLAGS {
   bool printCurrentReading;
 };
 
+
+
+bool OK_NG_FLIP=false;
 GLOB_FLAGS GLOB_F;
 
 class profileInspData {
   public:
-    uint16_t BGValueH;
-    uint16_t NAValue;
-    uint8_t BG_TimeNoiseTolerance;
 
-    uint8_t BG_Time_Count;
 
     bool STATE_LOCK;
 
     mArray<mArray<int16_t>> tempCollection;
 
+#define ACT_TIMMING_BUFFER_SIZE 18
 
-    mArray<int16_t> record;
-    enum {
-      background,
-      in_detection,
-      perform_matching,
-      clean_state,
-    } detection_state;
+    uint16_t stepCounter;
+    RingBuf<uint16_t> act1TimingQ;
+    RingBuf<uint16_t> act2TimingQ;
+
+    
+    enum _detection_state{
+      S_RESET,
+      S_WAITING,
+      S_RECORDING,
+      S_CLEAN,
+    };
+    
+    enum _detection_action{
+      A_NA,
+      A_OK,
+      A_NG,
+      A_ER,
+    };
+
+
+
+    mArray<uint16_t> object_record;
+    struct _matching_subject{
+      uint16_t step_start;
+      uint16_t step_end;
+      enum{
+        NORMAL,
+        START_ONLY,
+        END_ONLY
+      } stepType;
+      typeof(object_record)* recordInfo;
+    };
+
+    RingBuf<_matching_subject> object_track;//to track object
+
+    struct{
+      uint16_t forwardSpace;
+      uint16_t BGValueH;
+      uint16_t NAValue;
+      uint8_t BG_TimeNoiseTolerance;
+
+      uint8_t state_Counter;
+      uint8_t utilCounter;
+      _detection_action act;
+      _detection_state state,pre_state;
+      uint16_t act1TimingQ_std_offset;
+      uint16_t act2TimingQ_std_offset;
+      _matching_subject cur_object;
+    }s_data;
 
     profileInspData()
     {
-      BGValueH = 400;
-      NAValue = 3500;
-      BG_TimeNoiseTolerance = 10;
-      detection_state = profileInspData::background;
-      
-
-      record.RESET(templateSIZE);
-//      tempCollection.arr[1].RESET(400);
-
-
+      object_record.RESET(templateSIZE);
+      act1TimingQ.RESET(ACT_TIMMING_BUFFER_SIZE);
+      act2TimingQ.RESET(ACT_TIMMING_BUFFER_SIZE);
+      object_track.RESET(5);
+      RESET();
     }
 
-    void writeCurrentRecIntoTemplate()
+    void RESET()
     {
       
+      s_data.BGValueH = 1480;
+      s_data.forwardSpace = 20;
+      s_data.NAValue = 3500;
+      s_data.BG_TimeNoiseTolerance = 4;
+      s_data.pre_state=
+      s_data.state = S_RESET;
+      stepCounter=0;
+
+      s_data.act1TimingQ_std_offset=172;
+      s_data.act2TimingQ_std_offset=175;
+
+      
+      object_record.resize(0);
+      act1TimingQ.clear();
+      act2TimingQ.clear();
+      object_track.clear();
     }
 
-    void timerRun() {
-      static uint16_t dbg_counter = 0;
-      dbg_counter++;
-
-      if (STATE_LOCK)
+    void stateSwitch(_detection_action action)
+    {
+      _detection_state new_detection_state=s_data.state;
+      switch (s_data.state) //state switch
       {
-        return;
+
+        case S_RESET:
+          if(action==A_OK)
+            new_detection_state=S_WAITING;
+          break;
+
+        case S_WAITING:
+          if(action==A_OK)
+            new_detection_state=S_RECORDING;
+          break;
+        case S_RECORDING:
+          if(action==A_OK)
+            new_detection_state=S_WAITING;
+          else if(action==A_ER)
+            new_detection_state=S_CLEAN;
+          break;
+        case S_CLEAN:
+          if(action==A_OK)
+            new_detection_state=S_WAITING;
+          break;
       }
 
-      int potValue = analogRead(potPin);
-
-      if (dbg_counter > 3000 / 2 && GLOB_F.printCurrentReading)
+      if(new_detection_state!=s_data.state)
       {
-        dbg_counter = 0;
+        s_data.pre_state=s_data.state;
+        s_data.state=new_detection_state;
+        stateAction(-1,s_data.state);//exit current state
+        s_data.state_Counter=-1;
+        stateAction(1,s_data.state);//enter new state
+        
+        Serial.print(s_data.pre_state);
+        Serial.print("+[");
+        Serial.print(action);
+        Serial.print("]=");
+        Serial.println(s_data.state);
+      }
+
+    }
+    
+    //exit_current_enter -1  state exit action
+    //exit_current_enter  0  state action
+    //exit_current_enter  1  state enter action
+    //stateAction SHOULD always be called by timer thread/interrupt
+    void stateAction(int exit_current_enter,_detection_state state)
+    {
+      s_data.state_Counter++;
+      const int ECE=exit_current_enter;
+      const int potValue = analogRead(potPin);
+      
+      if ((stepCounter&0x3FF)==0 && GLOB_F.printCurrentReading)
+      {
         Serial.print("INT AR: ");
         Serial.println(potValue);
       }
-
-      int pre_state = detection_state;
-
-      switch (detection_state) //state switch
+      switch (state) //state switch
       {
 
-        case profileInspData::clean_state:
-          if (BG_Time_Count > BG_TimeNoiseTolerance)
+        case S_RESET:
+        {//waiting for low state
+          if(ECE==-1)//exit
           {
-            record.setSize(0);
-            BG_Time_Count = 0;
-            detection_state = profileInspData::background;
+            break;
           }
-          break;
-        case profileInspData::background:
-          if (BG_Time_Count > BG_TimeNoiseTolerance)
+          if(ECE==1)
           {
-            BG_Time_Count = 0;
-            detection_state = profileInspData::in_detection;
-          }
-          break;
-        case profileInspData::in_detection:
-          if (record.size()== record.maxSize())
-          { //data overload
-            detection_state = profileInspData::clean_state;
-            BG_Time_Count = 0;
-            record.setSize(0);
-          }
-          else if (BG_Time_Count == BG_TimeNoiseTolerance)
-          {
-            BG_Time_Count = 0;
-            //        rec_head_idx=0;
-            record.setSize(record.size()-BG_TimeNoiseTolerance);
-            detection_state = profileInspData::perform_matching;
-            STATE_LOCK = true; //hand over to main thread to process the matching
-          }
-          break;
-        case profileInspData::perform_matching:
-
-          break;
-      }
-
-      bool state_change = pre_state != detection_state;
-      if (state_change && GLOB_F.printSTATEChange)
-      {
-        Serial.print("STATE: ");
-        Serial.println(detection_state);
-      }
-
-      switch (detection_state) //Action
-      {
-
-        case profileInspData::clean_state:
-          record.setSize(0);
-          if (potValue < BGValueH)
-          {
-            BG_Time_Count++;
+            s_data.utilCounter=0;
+            break;
           }
 
-          break;
 
-
-        case profileInspData::background:
-          record.push_back(potValue);
-          if (potValue > BGValueH)
+          if(potValue<s_data.BGValueH)//LOW state
           {
-            BG_Time_Count++;
+            
+            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            {
+              s_data.utilCounter++; 
+            }
+            else
+            {
+              stateSwitch(A_OK);
+            }
           }
           else
           {
-            BG_Time_Count = 0;
-            record.setSize(0);
-          }
+            s_data.utilCounter=0;
+          } 
+          
           break;
-
-
-        case profileInspData::in_detection:
-          record.push_back(potValue);
-          if (potValue < BGValueH)
+        }
+        case S_WAITING:
+        {//wait for stable high state and try to obtain available recorder
+          
+          if(ECE==-1)//state exit
           {
-            BG_Time_Count++;
+            break;
+          }
+          if(ECE==1)
+          {
+            s_data.utilCounter=0;
+            s_data.cur_object.step_start=0;
+            s_data.cur_object.step_end=0;
+            s_data.cur_object.stepType=_matching_subject::NORMAL;
+            s_data.cur_object.recordInfo=NULL;
+            
+            break;
+          }
+
+          
+
+          if(potValue>s_data.BGValueH)//HIGH state
+          {
+            
+            if(object_record.size()==0 && s_data.state_Counter>s_data.forwardSpace)//object_record is free, assign to cur_object
+            {
+              s_data.cur_object.recordInfo=&object_record;
+              
+            }
+            if(s_data.cur_object.recordInfo!=NULL)//if cur_object has recorder, push new reading data in
+            {
+              s_data.cur_object.recordInfo->push_back(potValue);
+            }
+
+            
+            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            {
+              s_data.utilCounter++; 
+            }
+            else
+            {//the high reading is stable, try to keep the step_start(where the high reading starts) info and put OK action into state machine
+              s_data.cur_object.step_start=stepCounter-s_data.BG_TimeNoiseTolerance;
+              stateSwitch(A_OK);
+            }
+          }
+          else
+          {//high reading stops, reset the counter
+            if(s_data.cur_object.recordInfo!=NULL)
+              s_data.cur_object.recordInfo->resize(0);
+            s_data.utilCounter=0;
+          } 
+          break;
+        }
+        case S_RECORDING:
+        {
+          //the recorder might not be here
+          //wait for stable low state
+          //and put 
+          if(ECE==1)
+          {
+            s_data.utilCounter=0;
+            break;
+          }
+          if(ECE==-1)
+          {
+            break;
+          }
+          
+          
+          if(s_data.cur_object.recordInfo!=NULL)//if cur_object has recorder
+          {
+            if(s_data.cur_object.recordInfo->push_back(potValue)==false)//false means the buffer is full => reset and release the recorder
+            {
+              s_data.cur_object.recordInfo->resize(0);//reset
+              s_data.cur_object.recordInfo=NULL;//release
+              
+              stateSwitch(A_ER);
+              break;
+            }
+          }
+          else if(s_data.state_Counter>(templateSIZE-s_data.BG_TimeNoiseTolerance))//if there was a recorder, will it be full?
+          {//if so put NA event
+            stateSwitch(A_ER);
+            break;
+          }
+          
+          if(potValue<s_data.BGValueH)//LOW state
+          {
+            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            {
+              s_data.utilCounter++; 
+            }
+            else
+            {//stable LOW state
+              if(s_data.cur_object.recordInfo!=NULL)
+              {
+                s_data.cur_object.recordInfo->resize(object_record.size()-s_data.BG_TimeNoiseTolerance);//roll back the BG_TimeNoiseTolerance steps
+              }
+              
+              s_data.cur_object.step_end=stepCounter-s_data.BG_TimeNoiseTolerance;//roll back the BG_TimeNoiseTolerance steps
+              object_track.pushHead(s_data.cur_object);//put current object into the tracking list
+              s_data.cur_object.step_end=s_data.cur_object.step_start=0;
+              s_data.cur_object.recordInfo=NULL;
+              
+              stateSwitch(A_OK);
+            }
           }
           else
           {
-            BG_Time_Count = 0;
-          }
+            s_data.utilCounter=0;
+          } 
           break;
+        }
+
+        
+        case S_CLEAN://Waiting for stable low
+        {
+          if(ECE==1)
+          {
+            s_data.utilCounter=0;
+            _matching_subject tmp={0};
+            if(s_data.cur_object.recordInfo!=NULL)
+            {
+              s_data.cur_object.recordInfo->resize(0);
+              s_data.cur_object.recordInfo=NULL;
+            }
+            tmp.recordInfo=NULL;
+            tmp.step_start=s_data.cur_object.step_start;
+            tmp.stepType=_matching_subject::START_ONLY;
+
+      
+            object_track.pushHead(tmp);//put current object into the tracking list
+            break;
+          }
+          if(ECE==-1)
+          {
+            break;
+          }
+          
+          if(potValue<s_data.BGValueH)//LOW state
+          {
+            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            {
+              s_data.utilCounter++; 
+            }
+            else
+            {//stable LOW state
+               _matching_subject tmp={0};
+               
+              tmp.recordInfo=NULL;
+              tmp.step_end=stepCounter-s_data.BG_TimeNoiseTolerance;//roll back the BG_TimeNoiseTolerance steps
+              tmp.stepType=_matching_subject::END_ONLY;
+              object_track.pushHead(tmp);//put current object into the tracking list
+              stateSwitch(A_OK);
+            }
+          }
+          else
+          {
+            s_data.utilCounter=0;
+          } 
+          
+        }
+        break;
       }
 
+    }
+    void timerRun() {
+      stepCounter++;
+      stateAction(0,s_data.state);  
+
+      //act queue
+
+      if(act1TimingQ.size()>0)
+      {
+        uint16_t timing =*act1TimingQ.getTail();
+        if(timing==stepCounter)//check if the step is here
+        {
+          //start air blow
+          
+//          Serial.println("A1");
+          digitalWrite(selectActPin, HIGH);
+          act1TimingQ.consumeTail();
+        }
+      }
+       
+      if(act2TimingQ.size()>0)
+      {
+        uint16_t timing =*act2TimingQ.getTail();
+        if(timing==stepCounter)
+        {
+          //stop air blow
+//          Serial.println("A2");
+          digitalWrite(selectActPin, LOW);
+          act2TimingQ.consumeTail();
+        }
+      }
+       
     }
 
     void mainLoop()
     {
-      if (detection_state == profileInspData::perform_matching)
+      if(object_track.size()!=0)
       {
-        //    delay(1000);
+        //process the head
+        _matching_subject* obj =object_track.getTail();
 
-        if (GLOB_F.printCurrentReading)
+//        Serial.print("obj->stepType:");
+//        Serial.println(obj->stepType);
+//        
+//        Serial.print("stepCounter:");
+//        Serial.print(stepCounter);
+//
+//        
+//        Serial.print(" :1>");
+//        Serial.print(obj->step_start+s_data.act1TimingQ_std_offset);
+//        Serial.print(" :2>");
+//        Serial.println(obj->step_end+s_data.act2TimingQ_std_offset);
+
+
+        Serial.print("A1Q:");
+        Serial.print(act1TimingQ.size());
+        Serial.print(" A2Q:");
+        Serial.print(act2TimingQ.size());
+        Serial.print(" OTQ:");
+        Serial.println(object_track.size());
+        
+        switch(obj->stepType)
         {
-          Serial.print(">>>");
-          for (int i = 0; i < record.size(); i++)
+          case _matching_subject::NORMAL:
           {
-            Serial.print((int)record.arr[i]);
-            Serial.print(',');
-            if ((i & 0x1F) == 0)Serial.println();
+            bool doPass=false;
+            /**/ 
+            if(obj->recordInfo!=NULL)
+            {
+//              delay(3);
+              
+//        Serial.print("recLen:");
+//        Serial.println(obj->recordInfo->size());
+//              doPass=OK_NG_FLIP;
+//              OK_NG_FLIP=!OK_NG_FLIP;
+              doPass=obj->recordInfo->size()<50*0;
+              obj->recordInfo->resize(0);
+            }
+    
+             
+//            Serial.println("NORMAL");
+            if(doPass==false)
+            {
+              act1TimingQ.pushHead(obj->step_start+s_data.act1TimingQ_std_offset);
+              act2TimingQ.pushHead(obj->step_end  +s_data.act2TimingQ_std_offset);
+            }
           }
-          Serial.println();
+
+          break;
+          case _matching_subject::START_ONLY:
+            act1TimingQ.pushHead(obj->step_start+s_data.act1TimingQ_std_offset);
+          break;
+          case _matching_subject::END_ONLY:
+            act2TimingQ.pushHead(obj->step_end  +s_data.act2TimingQ_std_offset);
+          break;
         }
-        bool isNG = true;
-        if (1)
-        {
-          int NA_Count = 0;
-          uint32_t diffSum = tempSAD2(
-                               record.arr,         record.size(),
-                               test_template,   UINT16ARR_LEN(test_template), NAValue, &NA_Count);
-
-          Serial.print("d1:");
-          Serial.print(diffSum);
-          Serial.print("(");
-          Serial.println(NA_Count);
-
-          int NA_Count2 = 0;
-          uint32_t diffSum2 = tempSAD2(
-                                record.arr,         record.size(),
-                                test_template2,   UINT16ARR_LEN(test_template2), NAValue, &NA_Count2);
-
-          if ( (NA_Count < 2 && diffSum < 100 ) || (NA_Count2 < 2 && diffSum2 < 100 ) )
-          {
-            isNG = false;
-          }
-
-          Serial.print("d2:");
-          Serial.print(diffSum2);
-          Serial.print("(");
-          Serial.println(NA_Count2);
-          if(isNG)
-          {
-            Serial.println("X     X");
-          }
-          else
-          {
-            Serial.println("OOOOOO");
-          }
-
-
-        }
-        if (isNG)
-        {
-          digitalWrite(selectActPin, HIGH);
-          delay(15);
-          digitalWrite(selectActPin, LOW);
-        }
-        detection_state = profileInspData::background;
-        STATE_LOCK = false;
+        object_track.consumeTail();
       }
-
     }
 };
 

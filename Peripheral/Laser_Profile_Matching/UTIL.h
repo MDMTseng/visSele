@@ -40,7 +40,7 @@ class mArray
   
   bool push_back(T d)
   {
-    if(!setSize(size()+1))
+    if(!resize(size()+1))
     {
       return false;
     }
@@ -49,7 +49,7 @@ class mArray
   }
 
 
-  bool setSize(int _size)
+  bool resize(int _size)
   {
     if(_size<0)return false;
     if(_size>max_size)return false;
