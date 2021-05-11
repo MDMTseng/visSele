@@ -1,5 +1,6 @@
 #include"UTIL.h"
 #include"RingBuf.hpp"
+#include"SimpPacketParse.hpp"
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 const int potPin = 34;
@@ -15,24 +16,17 @@ portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 #define templateSIZE 100
 
-#define UINT16ARR_LEN(arr) (sizeof(arr)/sizeof(arr[0]))
-int16_t test_template[] = {540,
-613,464,522,592,586,620,640,717,762,768,784,812,864,933,1006,1057,1111,864,672,681,488,496,550,650,778,905,994,1165,1314,1370,1398,1405,
-1398,1392,1136,756,678,728,774,824,836,612,130,120,112,228,292,320,576,858,920,960,1061,1138,1237,1201,848,1328,1616,1332,656,
-
-
-                          };
-int16_t test_template2[] = {450,
-528,608,640,704,740,552,792,821,822,768,914,1034,915,822,676,534,525,517,496,546,608,768,917,1066,1264,1369,1423,1477,1520,1345,1040,823,
-662,624,662,682,714,733,756,784,804,909,984,994,1056,1062,1072,1168,1281,1382,1428,1484,1535,1584,1510,1385,1296,732,
-
-                           };
-
+#define S_ARR_LEN(arr) (sizeof(arr)/sizeof(arr[0]))
+int16_t test_template[] = {1522,
+1668,1711,1729,1744,1744,1721,1706,1690,1649,1593,1668,1535,1527,1533,1759,1907,1977,2096,2134,1867,1732,2149,2608,2195,1766,1776,1809,1888,1889,1887,1770,1313,
+1402,1776,1907,1756,1443,1241,1294,1296,1251,1427,1871,1705,1296};
 
 
 struct GLOB_FLAGS {
   bool printSTATEChange;
   bool printCurrentReading;
+  int  copy2cache;
+  
 };
 
 
@@ -72,6 +66,8 @@ class profileInspData {
 
 
     mArray<uint16_t> object_record;
+    mArray<uint16_t> object_record_cache;
+    
     struct _matching_subject{
       uint16_t step_start;
       uint16_t step_end;
@@ -86,11 +82,12 @@ class profileInspData {
     RingBuf<_matching_subject> object_track;//to track object
 
     struct{
-      uint16_t forwardSpace;
+      uint16_t aheadSpace;
+      uint16_t tailSpace;
       uint16_t BGValueH;
       uint16_t NAValue;
-      uint8_t BG_TimeNoiseTolerance;
-
+      uint8_t LOW_STATE_DEBOUNCE_COUNTER;
+      uint8_t HIGH_STATE_DEBOUNCE_COUNTER;
       uint8_t state_Counter;
       uint8_t utilCounter;
       _detection_action act;
@@ -113,9 +110,12 @@ class profileInspData {
     {
       
       s_data.BGValueH = 1480;
-      s_data.forwardSpace = 20;
+      s_data.aheadSpace = 6;
+//      s_data.tailSpace = 15;
+      
       s_data.NAValue = 3500;
-      s_data.BG_TimeNoiseTolerance = 4;
+      s_data.HIGH_STATE_DEBOUNCE_COUNTER = 1;
+      s_data.LOW_STATE_DEBOUNCE_COUNTER = 3;
       s_data.pre_state=
       s_data.state = S_RESET;
       stepCounter=0;
@@ -164,12 +164,14 @@ class profileInspData {
         stateAction(-1,s_data.state);//exit current state
         s_data.state_Counter=-1;
         stateAction(1,s_data.state);//enter new state
-        
-        Serial.print(s_data.pre_state);
-        Serial.print("+[");
-        Serial.print(action);
-        Serial.print("]=");
-        Serial.println(s_data.state);
+        if(GLOB_F.printSTATEChange)
+        {
+          Serial.print(s_data.pre_state);
+          Serial.print("+[");
+          Serial.print(action);
+          Serial.print("]=");
+          Serial.println(s_data.state);
+        }
       }
 
     }
@@ -208,7 +210,7 @@ class profileInspData {
           if(potValue<s_data.BGValueH)//LOW state
           {
             
-            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            if(s_data.utilCounter<s_data.LOW_STATE_DEBOUNCE_COUNTER)
             {
               s_data.utilCounter++; 
             }
@@ -247,7 +249,7 @@ class profileInspData {
           if(potValue>s_data.BGValueH)//HIGH state
           {
             
-            if(object_record.size()==0 && s_data.state_Counter>s_data.forwardSpace)//object_record is free, assign to cur_object
+            if(object_record.size()==0 && s_data.state_Counter>s_data.aheadSpace)//object_record is free, assign to cur_object
             {
               s_data.cur_object.recordInfo=&object_record;
               
@@ -258,13 +260,13 @@ class profileInspData {
             }
 
             
-            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            if(s_data.utilCounter<s_data.HIGH_STATE_DEBOUNCE_COUNTER)
             {
               s_data.utilCounter++; 
             }
             else
             {//the high reading is stable, try to keep the step_start(where the high reading starts) info and put OK action into state machine
-              s_data.cur_object.step_start=stepCounter-s_data.BG_TimeNoiseTolerance;
+              s_data.cur_object.step_start=stepCounter-s_data.HIGH_STATE_DEBOUNCE_COUNTER;
               stateSwitch(A_OK);
             }
           }
@@ -303,7 +305,7 @@ class profileInspData {
               break;
             }
           }
-          else if(s_data.state_Counter>(templateSIZE-s_data.BG_TimeNoiseTolerance))//if there was a recorder, will it be full?
+          else if(s_data.state_Counter>(templateSIZE-s_data.LOW_STATE_DEBOUNCE_COUNTER))//if there was a recorder, will it be full?
           {//if so put NA event
             stateSwitch(A_ER);
             break;
@@ -311,7 +313,7 @@ class profileInspData {
           
           if(potValue<s_data.BGValueH)//LOW state
           {
-            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            if(s_data.utilCounter<s_data.LOW_STATE_DEBOUNCE_COUNTER)
             {
               s_data.utilCounter++; 
             }
@@ -319,10 +321,10 @@ class profileInspData {
             {//stable LOW state
               if(s_data.cur_object.recordInfo!=NULL)
               {
-                s_data.cur_object.recordInfo->resize(object_record.size()-s_data.BG_TimeNoiseTolerance);//roll back the BG_TimeNoiseTolerance steps
+                s_data.cur_object.recordInfo->resize(object_record.size()-s_data.LOW_STATE_DEBOUNCE_COUNTER);//roll back the LOW_STATE_DEBOUNCE_COUNTER steps
               }
               
-              s_data.cur_object.step_end=stepCounter-s_data.BG_TimeNoiseTolerance;//roll back the BG_TimeNoiseTolerance steps
+              s_data.cur_object.step_end=stepCounter-s_data.LOW_STATE_DEBOUNCE_COUNTER;//roll back the LOW_STATE_DEBOUNCE_COUNTER steps
               object_track.pushHead(s_data.cur_object);//put current object into the tracking list
               s_data.cur_object.step_end=s_data.cur_object.step_start=0;
               s_data.cur_object.recordInfo=NULL;
@@ -364,7 +366,7 @@ class profileInspData {
           
           if(potValue<s_data.BGValueH)//LOW state
           {
-            if(s_data.utilCounter<s_data.BG_TimeNoiseTolerance)
+            if(s_data.utilCounter<s_data.LOW_STATE_DEBOUNCE_COUNTER)
             {
               s_data.utilCounter++; 
             }
@@ -373,7 +375,7 @@ class profileInspData {
                _matching_subject tmp={0};
                
               tmp.recordInfo=NULL;
-              tmp.step_end=stepCounter-s_data.BG_TimeNoiseTolerance;//roll back the BG_TimeNoiseTolerance steps
+              tmp.step_end=stepCounter-s_data.LOW_STATE_DEBOUNCE_COUNTER;//roll back the LOW_STATE_DEBOUNCE_COUNTER steps
               tmp.stepType=_matching_subject::END_ONLY;
               object_track.pushHead(tmp);//put current object into the tracking list
               stateSwitch(A_OK);
@@ -442,12 +444,12 @@ class profileInspData {
 //        Serial.println(obj->step_end+s_data.act2TimingQ_std_offset);
 
 
-        Serial.print("A1Q:");
-        Serial.print(act1TimingQ.size());
-        Serial.print(" A2Q:");
-        Serial.print(act2TimingQ.size());
-        Serial.print(" OTQ:");
-        Serial.println(object_track.size());
+//        Serial.print("A1Q:");
+//        Serial.print(act1TimingQ.size());
+//        Serial.print(" A2Q:");
+//        Serial.print(act2TimingQ.size());
+//        Serial.print(" OTQ:");
+//        Serial.println(object_track.size());
         
         switch(obj->stepType)
         {
@@ -463,12 +465,52 @@ class profileInspData {
 //        Serial.println(obj->recordInfo->size());
 //              doPass=OK_NG_FLIP;
 //              OK_NG_FLIP=!OK_NG_FLIP;
-              doPass=obj->recordInfo->size()<50*0;
+              auto& record=*(obj->recordInfo);
+
+              int NA_Count = 0;
+              int16_t NA_Thres = 3000;
+              uint32_t diffSum = 999;
+              NA_Count=999;
+
+              const int scaleMult=7;
+              if((record.size()*10)>(S_ARR_LEN(test_template)*scaleMult) &&  (record.size()*scaleMult)<(S_ARR_LEN(test_template)*10)  )
+              {
+                diffSum = tempSAD2(
+                 (int16_t*)record.arr,      record.size(),
+                           test_template,   S_ARR_LEN(test_template), NA_Thres, &NA_Count);
+              }
+
+
+              if (GLOB_F.printCurrentReading)
+              {
+                Serial.print("@SE{\"RECORD\":[");
+                for (int i = 0; i < record.size(); i++)
+                {
+                  Serial.print((int)record.arr[i]);
+                  if(i!=record.size()-1)
+                    Serial.print(',');
+                  if ((i & 0x1F) == 0x1F)Serial.println();
+                }
+                
+                Serial.println("]}$");
+    
+                Serial.print("d1:");
+                Serial.print(diffSum);
+                Serial.print("(");
+                Serial.println(NA_Count);
+              }
+
+              if ( (NA_Count < 2 && diffSum < 100)  )
+              {
+                doPass = true;
+              }
+              doPass = false;
               obj->recordInfo->resize(0);
             }
     
              
 //            Serial.println("NORMAL");
+
             if(doPass==false)
             {
               act1TimingQ.pushHead(obj->step_start+s_data.act1TimingQ_std_offset);
@@ -498,17 +540,6 @@ void IRAM_ATTR onTimer()
 
 }
 
-void IRAM_ATTR onTimer_TEST()
-{
-  static uint8_t counter = 0;
-  counter++;
-  if (counter == 0)return;
-  Serial.print("INT AR: ");
-  int potValue = analogRead(potPin);
-  Serial.println(potValue);
-
-}
-
 void setup() {
   pinMode(selectActPin, OUTPUT);
 
@@ -525,31 +556,101 @@ void setup() {
 
 }
 
-void loop() {
-  while (Serial.available()) {
-    char inChar = (char)Serial.read();
+     
+int intArrayContent_ToJson(char* jbuff,uint32_t jbuffL, int16_t *intarray,int intarrayL)
+{
+  uint32_t MessageL=0;
+                                                
+  for(int i=0;i<intarrayL;i++)
+    MessageL += sprintf( (char*)jbuff+MessageL, "%d,",intarray[i]);
+  MessageL--;//remove the last comma',';
+  
+  return MessageL;      
+}
+
+
+buffered_print BP(200);
+
+SimpPacketParse SPP(500);
+int CMD_parse(SimpPacketParse &SPP,buffered_print* bp,int *ret_result=NULL)
+{
+  char* TLC=SPP.buffer;
+  char* DATA=SPP.buffer+2;
+  int dataLen=SPP.size()-2;
+//  Serial.print(TLC[0]);
+//  Serial.println(TLC[1]);
+//  Serial.println(DATA);
+
+  bool errorCode=-1;
+  int ret_len=0;
+  if(TLC[0]=='T'&&TLC[1]=='T')
+  {
+    
+    char inChar=DATA[0];
+      
     if (inChar == 'C')
     {
       GLOB_F.printCurrentReading = !GLOB_F.printCurrentReading;
-
-      Serial.print("printCurrentReading:");
-      Serial.println(GLOB_F.printCurrentReading);
+      bp->print("@ttprintCurrentReading:%d$",GLOB_F.printCurrentReading);
     }
 
     if (inChar == 'S')
     {
       GLOB_F.printSTATEChange = !GLOB_F.printSTATEChange;
-      Serial.print("printSTATEChange:");
-      Serial.println(GLOB_F.printSTATEChange);
+      bp->print("@ttprintSTATEChange:%d$",GLOB_F.printSTATEChange);
     }
 
     if (inChar == '?')
     {
-      Serial.print("print[C]urrentReading ");
-      Serial.print("print[S]TATEChange ");
-      Serial.println();
+      bp->print("@ttprint[C]urrentReading ",GLOB_F.printSTATEChange);
+      bp->print("print[S]TATEChange $",GLOB_F.printSTATEChange);
     }
+    errorCode=0;
+  }
+  else if(TLC[0]=='S'&&TLC[1]=='T')
+  {
+    int table_scopeL;
+    char * table_scope = SPP.findJsonScope(DATA,"ECHO\":",&table_scopeL); //@ST{"sss":4,"ECHO":{"AAA":{"fff":7}}}$
+    if(table_scope!=NULL)
+    {
+      char tmp = table_scope[table_scopeL];
+      table_scope[table_scopeL]='\0';
+      
+      bp->print("@tt%s$",table_scope);
+      table_scope[table_scopeL]=tmp;
+    }
+    
+//    ret_len+=intArrayContent_ToJson(ret_data+ret_len,ret_data_len-ret_len, int16_t *intarray,int intarrayL);
 
+    
+    errorCode=0;
+  }
+
+  if(bp->charAt(-1)== ',')
+  {
+    bp->resize(bp->size()-1);
+  }
+  if(ret_result)
+  {
+    *ret_result=errorCode;
+  }
+  return ret_len;
+  
+}
+
+
+void loop() {
+  
+  while (Serial.available()) {
+    char inChar = (char)Serial.read();
+    if(SPP.feed(inChar))
+    {
+      BP.resize(0);
+      CMD_parse(SPP,&BP);
+      
+      Serial.print(BP.buffer());
+      SPP.clean();
+    }
   }
 
   

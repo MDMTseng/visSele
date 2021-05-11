@@ -168,3 +168,108 @@ uint32_t tempSAD2(int16_t* temp1, uint16_t temp1L, int16_t* temp2, uint16_t temp
   }
   return diffSum / divCount;
 }
+
+
+
+int strMatching_lsum(char *target,char *str,int *ret_strLen)
+{
+  uint16_t strSum=0;
+  uint16_t targetSum=0;
+  int strLen=0;
+  for(strLen=0;;strLen++)
+  {
+    char strch=str[strLen];
+    char tarch=target[strLen];
+    if(strch=='\0')
+    {
+      break;
+    }
+    
+    if(tarch=='\0')
+    {
+      return -1;
+    }
+    strSum+=strch;
+    targetSum+=tarch;
+  }
+  if(ret_strLen)*ret_strLen=strLen;
+  if(strSum==targetSum)
+  {
+    return 0;
+  }
+  
+  for(int i=0;;i++)
+  {
+    strSum+=str[strLen];
+    
+  }
+  return -1;
+}
+
+
+
+class buffered_print
+{
+  char* buf;
+  int capacity;
+  int _size;
+  public:
+  buffered_print(int len)
+  {
+    buf=new char[len];
+    capacity=len;
+    _size=0;
+    resize(0);
+  }
+
+  int size()
+  {
+    return _size;
+  }
+
+  int resize(int size)
+  {
+    if(size>capacity)
+    {
+      return -1;
+    }
+    _size=size;
+    buf[_size+1]='\0';
+    return 0;
+  }
+
+  const char* buffer()
+  {
+    return buf;
+  }
+  char charAt(int idx)
+  {
+    if(idx>=0)
+    {
+      if(idx>=_size)
+        return '\0';
+      return buf[idx];
+    }
+
+    idx+=_size;
+    if(idx>=0)
+    {
+      if(idx>=_size)
+        return '\0';
+      return buf[idx];
+    }
+    
+    return '\0';
+  }
+
+  
+  int print(char *fmt, ...) 
+  {    
+    va_list argptr;
+    va_start(argptr,fmt);
+//    _size=snprintf(buf+_size,capacity-_size,fmt,argptr);
+    _size=vsnprintf(buf+_size,capacity-_size,fmt,argptr);
+    va_end(argptr);
+    return (_size==capacity)?-1:0;
+  }
+};
