@@ -1,46 +1,3 @@
-/*
- * Ring Buffer Library for Arduino
- *
- * Copyright Jean-Luc Béchennec 2018
- *
- * This software is distributed under the GNU Public Licence v2 (GPLv2)
- *
- * Please read the LICENCE file
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
- * DEALINGS IN THE SOFTWARE.
- */
-
- /*
-  * Note about interrupt safe implementation
-  *
-  * To be safe from interrupts, a sequence of C instructions must be framed
-  * by a pair of interrupt disable and enable instructions and ensure that the
-  * compiler will not move writing of variables to memory outside the protected
-  * area. This is called a critical section. Usually the manipulated variables
-  * receive the volatile qualifier so that any changes are immediately written
-  * to memory. Here the approach is different. First of all you have to know
-  * that volatile is useless if the variables are updated in a function and
-  * that this function is called within the critical section. Indeed, the
-  * semantics of the C language require that the variables in memory be updated
-  * before returning from the function. But beware of function inlining because
-  * the compiler may decide to delete a function call in favor of simply
-  * inserting its code in the caller. To force the compiler to use a real
-  * function call, __attribute__((noinline)) have been added to the push and
-  * pop functions. In this way the lockedPush and lockedPop functions ensure
-  * that in the critical section a push and pop function call respectively will
-  * be used by the compiler. This ensures that, because of the function call,
-  * the variables are written to memory in the critical section and also
-  * ensures that, despite the reorganization of the instructions due to
-  * optimizations, the critical section will be well opened and closed at the
-  * right place because function calls, due to potential side effects, are not
-  * subject to such reorganizations.
-  */
 
 #ifndef __RingBufX_H__
 #define __RingBufX_H__
@@ -151,10 +108,54 @@ class RingBuf
   public:
   RingBufIdxCounter<RB_Idx_Type> RBC;
   RB_Type *buff;
+  RB_Type *new_buff;
   RingBuf(RB_Type *buff,RB_Idx_Type len)
   {
+    RESET(buff,len);
+  }
+  
+  RingBuf(RB_Idx_Type len)
+  {
+    new_buff=buff=new RB_Type[len];
+    RBC.RESET(len);
+  }
+  
+  RingBuf()
+  {
+    new_buff=buff=NULL;
+    RBC.RESET(0);
+  }
+  void RESET(RB_Type *buff,RB_Idx_Type len)
+  {
+    if(new_buff)
+    {
+      delete(new_buff);
+      new_buff=NULL;
+    }
     this->buff=buff;
     RBC.RESET(len);
+  }
+
+  void RESET(RB_Idx_Type len)
+  {
+    if(new_buff)
+    {
+      delete(new_buff);
+      new_buff=NULL;
+    }
+    RB_Type *tmpBuff=new RB_Type[len];
+    RESET(tmpBuff,len);
+    new_buff=tmpBuff;
+  }
+  
+  ~RingBuf()
+  {
+    if(new_buff)
+    {
+      delete(new_buff);
+      new_buff=NULL;
+    }
+    buff=NULL;
   }
 
   RB_Idx_Type size()
@@ -200,6 +201,16 @@ class RingBuf
   }
   
   
+  int pushHead(RB_Type dat)
+  {
+    RB_Type* head=getHead();
+    if(head==NULL)
+    {
+       return -1;
+    }
+    *head=dat;
+    return RBC.pushHead();
+  }
   int pushHead()
   {
     return RBC.pushHead();
