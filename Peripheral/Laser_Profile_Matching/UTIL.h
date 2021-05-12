@@ -170,54 +170,16 @@ uint32_t tempSAD2(int16_t* temp1, uint16_t temp1L, int16_t* temp2, uint16_t temp
 }
 
 
-
-int strMatching_lsum(char *target,char *str,int *ret_strLen)
-{
-  uint16_t strSum=0;
-  uint16_t targetSum=0;
-  int strLen=0;
-  for(strLen=0;;strLen++)
-  {
-    char strch=str[strLen];
-    char tarch=target[strLen];
-    if(strch=='\0')
-    {
-      break;
-    }
-    
-    if(tarch=='\0')
-    {
-      return -1;
-    }
-    strSum+=strch;
-    targetSum+=tarch;
-  }
-  if(ret_strLen)*ret_strLen=strLen;
-  if(strSum==targetSum)
-  {
-    return 0;
-  }
-  
-  for(int i=0;;i++)
-  {
-    strSum+=str[strLen];
-    
-  }
-  return -1;
-}
-
-
-
 class buffered_print
 {
   char* buf;
-  int capacity;
+  int _capacity;
   int _size;
   public:
   buffered_print(int len)
   {
     buf=new char[len];
-    capacity=len;
+    _capacity=len;
     _size=0;
     resize(0);
   }
@@ -227,9 +189,17 @@ class buffered_print
     return _size;
   }
 
+  int capacity()
+  {
+    return _capacity;
+  }
+  int rest_capacity()
+  {
+    return _capacity-_size;
+  }
   int resize(int size)
   {
-    if(size>capacity)
+    if(size>_capacity)
     {
       return -1;
     }
@@ -238,7 +208,7 @@ class buffered_print
     return 0;
   }
 
-  const char* buffer()
+  char* buffer()
   {
     return buf;
   }
@@ -267,9 +237,9 @@ class buffered_print
   {    
     va_list argptr;
     va_start(argptr,fmt);
-//    _size=snprintf(buf+_size,capacity-_size,fmt,argptr);
-    _size=vsnprintf(buf+_size,capacity-_size,fmt,argptr);
+//    _size=snprintf(buf+_size,_capacity-_size,fmt,argptr);
+    _size=vsnprintf(buf+_size,_capacity-_size,fmt,argptr);
     va_end(argptr);
-    return (_size==capacity)?-1:0;
+    return (_size==_capacity)?-1:0;
   }
 };

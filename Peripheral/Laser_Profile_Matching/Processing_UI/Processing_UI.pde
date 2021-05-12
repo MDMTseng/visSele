@@ -49,12 +49,13 @@ int UI_SelectBaudrate(int defaultBaud)
  
 void setup() {
 
+  size(800, 600);
   try {
     if(debug) printArray(Serial.list());
-    String portName = UI_SelectSerialPortName("SLAB");
+    String portName = "/dev/tty.SLAB_USBtoUART";//UI_SelectSerialPortName("SLAB");
     if(debug) println(portName);
     if(portName!=null){
-      int selBaud=UI_SelectBaudrate(115200);
+      int selBaud=115200;//UI_SelectBaudrate(115200);
       if(selBaud==-1)selBaud=115200;
       myPort = new Serial(this, portName, selBaud); // change baud rate to your liking
       myPort.bufferUntil('\n'); // buffer until CR/LF appears, but not required..
@@ -72,6 +73,11 @@ void setup() {
   }
 }
 
+
+
+
+float []cacheRec=new float[1000];
+final int reqRecID=456;
 
 void CMD_parse(SimpPacketParse sBuffer)
 {
@@ -101,15 +107,52 @@ void CMD_parse(SimpPacketParse sBuffer)
   if(TLC0=='j' && TLC1=='s')
   {
     int offset =2;//start char+2 TLC mark
-    String CMD = new String(sBuffer.buffer,offset,sBuffer.size()-offset);
+    String CMD = new String(sBuffer.buffer,offset,sBuffer.size()-offset-1);
    
-    JSONObject json= loadJSONObject(CMD);
-    if (json == null) {
+    //println("CMD:"+CMD);
+    JSONObject json= parseJSONObject(CMD);
+    if (json != null) {
+      println("CMD:"+CMD);
+      
+      int id = json.getInt("id");
+      
+      switch(id)
+      {
+        case reqRecID:
+        {
+          
+          JSONArray recArr = json.getJSONArray("rec");
+          for (int i = 0; i < recArr.size(); i++) {
+            cacheRec[i]=(recArr.getInt(i));
+          }
+           
+          if(recArr.size()>0)
+          {
+            pushMatrix();
+            background(255);
+            smooth();
+            
+            rectMode(CENTER); // show bounding boxes
+            println(recArr.size());
+            println(cacheRec[0]);
+            translate(0, height/2);
+            drawGraph(cacheRec,recArr.size(),1200,width,-0.1);
+            popMatrix();
+          }
+        }
+        break;
+      }
+      
+  //size(300, 200);
+  //background(255);
+  //smooth();
+  
+  //rectMode(CENTER); // show bounding boxes
+  //drawGraph(ssdsd,ssdsd[0],width,0.08);
     }
     else
     {
       
-      println("CMD:"+CMD);
     }
   }
 }
@@ -118,13 +161,15 @@ SimpPacketParse sBuffer = new SimpPacketParse(1024);
 
 
 void mouseClicked() {
-  JSONObject json= new JSONObject();
+  //JSONObject json= new JSONObject();
   
-  json.setInt("id", 0);
-  json.setString("species", "Panthera leo");
-  json.setString("name", "Lion");
-  json.setString("ECHO", "LionSS");
-  String fd="@ST"+json.toString()+"$";
+  //json.setInt("id", 0);
+  //json.setString("species", "Panthera leo");
+  //json.setString("name", "Lion");
+  //json.setString("ECHO", "LionSS");
+  //String fd="@ST"+json.toString()+"$";
+  
+  String fd="@JS{\"id\":"+reqRecID+",\"type\":\"get_cache_rec\"}$@JS{\"id\":567,\"type\":\"empty_cache_rec\"}$";
   println(fd);
   myPort.write(fd);
 }
@@ -164,17 +209,17 @@ void setup_() {
   smooth();
   
   rectMode(CENTER); // show bounding boxes
-  drawGraph(ssdsd,ssdsd[0],width,0.08);
+  drawGraph(ssdsd,ssdsd.length,ssdsd[0],width,0.08);
 }
 
 
-void drawGraph(float[]arr,float xcenter,int printWidth,float mult)
+void drawGraph(float[]arr,int length,float xcenter,int printWidth,float mult)
 {
-  for(int i=1;i<arr.length;i++)
+  for(int i=1;i<length;i++)
   {
-    int X0=(i-1)*printWidth/arr.length;
+    int X0=(i-1)*printWidth/length;
     float Y0=(arr[i-1]-xcenter)*mult;
-    int X1=i*printWidth/arr.length;
+    int X1=i*printWidth/length;
     float Y1=(arr[i]-xcenter)*mult;
     line(X0, Y0, X1, Y1);
   }

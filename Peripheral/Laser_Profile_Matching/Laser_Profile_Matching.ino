@@ -1,7 +1,7 @@
 #include"UTIL.h"
 #include"RingBuf.hpp"
 #include"SimpPacketParse.hpp"
-
+#include <ArduinoJson.h>
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 const int potPin = 34;
 
@@ -25,7 +25,7 @@ int16_t test_template[] = {1522,
 struct GLOB_FLAGS {
   bool printSTATEChange;
   bool printCurrentReading;
-  int  copy2cache;
+  int  rec_copy2cache;
   
 };
 
@@ -100,6 +100,7 @@ class profileInspData {
     profileInspData()
     {
       object_record.RESET(templateSIZE);
+      object_record_cache.RESET(templateSIZE*2);
       act1TimingQ.RESET(ACT_TIMMING_BUFFER_SIZE);
       act2TimingQ.RESET(ACT_TIMMING_BUFFER_SIZE);
       object_track.RESET(5);
@@ -109,19 +110,20 @@ class profileInspData {
     void RESET()
     {
       
-      s_data.BGValueH = 1480;
+      s_data.BGValueH = 1200;
       s_data.aheadSpace = 6;
 //      s_data.tailSpace = 15;
       
       s_data.NAValue = 3500;
       s_data.HIGH_STATE_DEBOUNCE_COUNTER = 1;
-      s_data.LOW_STATE_DEBOUNCE_COUNTER = 3;
+      s_data.LOW_STATE_DEBOUNCE_COUNTER = 10;
       s_data.pre_state=
       s_data.state = S_RESET;
       stepCounter=0;
 
       s_data.act1TimingQ_std_offset=172;
       s_data.act2TimingQ_std_offset=175;
+      
 
       
       object_record.resize(0);
@@ -185,6 +187,8 @@ class profileInspData {
       s_data.state_Counter++;
       const int ECE=exit_current_enter;
       const int potValue = analogRead(potPin);
+
+      object_record_cache.push_back(potValue);
       
       if ((stepCounter&0x3FF)==0 && GLOB_F.printCurrentReading)
       {
@@ -459,13 +463,22 @@ class profileInspData {
             /**/ 
             if(obj->recordInfo!=NULL)
             {
-//              delay(3);
-              
+                
 //        Serial.print("recLen:");
 //        Serial.println(obj->recordInfo->size());
 //              doPass=OK_NG_FLIP;
 //              OK_NG_FLIP=!OK_NG_FLIP;
               auto& record=*(obj->recordInfo);
+//              delay(3);
+
+//              if(object_record_cache.size()==0)
+//              {
+//                for (int i = 0; i < record.size(); i++)
+//                {
+//                  object_record_cache.arr[i]=record.arr[i];
+//                }
+//                object_record_cache.resize(record.size());
+//              }
 
               int NA_Count = 0;
               int16_t NA_Thres = 3000;
@@ -539,7 +552,8 @@ void IRAM_ATTR onTimer()
   pID.timerRun();
 
 }
-
+StaticJsonDocument<1024> recv_doc;
+DynamicJsonDocument ret_doc(4096);
 void setup() {
   pinMode(selectActPin, OUTPUT);
 
@@ -569,10 +583,10 @@ int intArrayContent_ToJson(char* jbuff,uint32_t jbuffL, int16_t *intarray,int in
 }
 
 
-buffered_print BP(200);
+buffered_print BP(1024);
 
 SimpPacketParse SPP(500);
-int CMD_parse(SimpPacketParse &SPP,buffered_print* bp,int *ret_result=NULL)
+int CMD_parse(SimpPacketParse &SPP,buffered_print* bp, JsonDocument &ret_djd,int *ret_result=NULL)
 {
   char* TLC=SPP.buffer;
   char* DATA=SPP.buffer+2;
@@ -583,6 +597,8 @@ int CMD_parse(SimpPacketParse &SPP,buffered_print* bp,int *ret_result=NULL)
 
   bool errorCode=-1;
   int ret_len=0;
+
+  char retTLC[3];
   if(TLC[0]=='T'&&TLC[1]=='T')
   {
     
@@ -609,27 +625,75 @@ int CMD_parse(SimpPacketParse &SPP,buffered_print* bp,int *ret_result=NULL)
   }
   else if(TLC[0]=='S'&&TLC[1]=='T')
   {
-    int table_scopeL;
-    char * table_scope = SPP.findJsonScope(DATA,"ECHO\":",&table_scopeL); //@ST{"sss":4,"ECHO":{"AAA":{"fff":7}}}$
-    if(table_scope!=NULL)
-    {
-      char tmp = table_scope[table_scopeL];
-      table_scope[table_scopeL]='\0';
-      
-      bp->print("@tt%s$",table_scope);
-      table_scope[table_scopeL]=tmp;
-    }
+
     
-//    ret_len+=intArrayContent_ToJson(ret_data+ret_len,ret_data_len-ret_len, int16_t *intarray,int intarrayL);
+
+    {//@ST{"sss":4,"ECHO":{"AAA":{"fff":7}}}$
+      
+      deserializeJson(recv_doc, DATA);
+      
+      const char* sensor = recv_doc["ECHO"];
+      if(sensor!=NULL)
+      {
+        
+        bp->print("@tt%s$",sensor);
+      }
+
+      recv_doc.clear();
+    }
+    errorCode=0;
+  }
+  else if(TLC[0]=='J'&&TLC[1]=='S')//@JS{"id":566,"type":"get_cache_rec"}$@JS{"id":566,"type":"empty_cache_rec"}$
+  {
+    sprintf(retTLC,"js");
+    deserializeJson(recv_doc, DATA);
+    ret_djd.clear();
+
+    
+    auto idObj=recv_doc["id"];
+    ret_djd["id"]=idObj;
+
+
+      
+    auto typeObj=recv_doc["type"];
+    if(typeObj.is<char*>())
+    {
+      const char* type = typeObj.as<char*>();
+      if(strcmp(type,"get_cache_rec") == 0) {
+        JsonArray rec = ret_djd.createNestedArray("rec");
+        if(pID.object_record_cache.size()!=0)
+        {
+          for (int i = 0; i < pID.object_record_cache.size(); i++)
+          {
+            rec.add(pID.object_record_cache.arr[i]);
+          }
+        }
+
+      }
+      else if(strcmp(type,"empty_cache_rec") == 0) {
+        pID.object_record_cache.resize(0);
+      }
+      
+    }
+    recv_doc.clear();
 
     
     errorCode=0;
   }
-
-  if(bp->charAt(-1)== ',')
+  else
   {
-    bp->resize(bp->size()-1);
+    
   }
+
+
+  if(BP.size()==0)
+  {
+    bp->print("@%s",retTLC);
+    size_t s =serializeJson(ret_djd, bp->buffer()+bp->size(), bp->rest_capacity());
+    BP.resize(bp->size()+s);
+    bp->print("$");
+  }
+
   if(ret_result)
   {
     *ret_result=errorCode;
@@ -646,8 +710,7 @@ void loop() {
     if(SPP.feed(inChar))
     {
       BP.resize(0);
-      CMD_parse(SPP,&BP);
-      
+      CMD_parse(SPP,&BP,ret_doc);
       Serial.print(BP.buffer());
       SPP.clean();
     }
