@@ -712,7 +712,7 @@ class ObjInfoList extends React.Component {
     return (
       <div>
         <Menu
-          onClick={this.handleClick}
+          // onClick={this.handleClick}
           // selectedKeys={[this.current]}
           selectable={true}
           // style={{align: 'left', width: 200}}
@@ -2594,7 +2594,7 @@ class APP_INSP_MODE extends React.Component {
 
 
         <Menu
-          onClick={this.handleClick}
+          // onClick={this.handleClick}
           // selectedKeys={[this.current]}
           selectable={true}
           // style={{align: 'left', width: 200}}
@@ -2607,7 +2607,7 @@ class APP_INSP_MODE extends React.Component {
             style={{ color: '#333' }}
             title={<SettingOutlined />}>
 
-            <div key={"MENU"} className={"s HXA"}
+            <div key={"MENU"}
               style={{ width: "250px" }}>
               {MenuSet_2nd}
             </div>
