@@ -12,6 +12,7 @@ import thunk from 'redux-thunk';
 import {UI_SM_STATES,UI_SM_EVENT} from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
+import reduxCatch from 'redux-catch';
 
 let UISTS = UI_SM_STATES;
 let UISEV = UI_SM_EVENT;
@@ -124,6 +125,18 @@ let ST = {
 
 
 
+
+ 
+  
+function errorHandler(error, getState, lastAction, dispatch) {
+  console.error(error);
+  console.debug('current state', getState());
+  console.debug('last action was', lastAction);
+  // optionally dispatch an action due to the error using the dispatch parameter
+}
+
+
+
 export function ReduxStoreSetUp(presistStore){
 
   const reducer_C = combineReducers({
@@ -138,6 +151,7 @@ export function ReduxStoreSetUp(presistStore){
     new MWWebSocket({}),
     new ECStateMachine({ev_state_update:"ev_state_update",state_config:ST}),
     new ActionThrottle({time:100,posEdge:true}),
+    reduxCatch(errorHandler)
     );
 
   return createStore(reducer_C,presistStore,middleware);

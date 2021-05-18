@@ -305,7 +305,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       setErrorInfo({
         content:<div>
           <div className="antd-icon-sizing" style={{height:"50px"}}>
-            <LoadingOutlined className="veleX"/>
+            <LoadingOutlined/>
           </div>
           <Title level={2} style={{textAlign:"center"}} >{
             DICT._.camera_reconnection_caption

@@ -851,6 +851,15 @@ class renderUTIL {
             }
             ctx.lineWidth = this.getIndicationLineSize();
             let measureValue;
+            if (eObject.inspection_value !== undefined) {
+              if(typeof num1 === 'number'){
+                //good
+              }
+              else
+              {
+                eObject.inspection_value=Number.NaN;
+              }
+            }
             switch (eObject.subtype) {
               case SHAPE_TYPE.measure_subtype.distance:
                 {
