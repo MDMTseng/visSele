@@ -852,7 +852,7 @@ class renderUTIL {
             ctx.lineWidth = this.getIndicationLineSize();
             let measureValue;
             if (eObject.inspection_value !== undefined) {
-              if(typeof num1 === 'number'){
+              if(typeof eObject.inspection_value === 'number'){
                 //good
               }
               else
