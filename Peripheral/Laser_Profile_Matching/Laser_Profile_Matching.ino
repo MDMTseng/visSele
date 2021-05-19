@@ -14,7 +14,7 @@ hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
 
-#define templateSIZE 100
+#define templateSIZE 150
 
 #define S_ARR_LEN(arr) (sizeof(arr)/sizeof(arr[0]))
 int16_t test_template[] = {1522,
@@ -44,7 +44,7 @@ class profileInspData {
 
 #define ACT_TIMMING_BUFFER_SIZE 18
 
-    uint16_t stepCounter;
+    uint16_t G_stepCounter;
     RingBuf<uint16_t> act1TimingQ;
     RingBuf<uint16_t> act2TimingQ;
 
@@ -86,8 +86,13 @@ class profileInspData {
       uint16_t tailSpace;
       uint16_t BGValueH;
       uint16_t NAValue;
-      uint8_t LOW_STATE_DEBOUNCE_COUNTER;
-      uint8_t HIGH_STATE_DEBOUNCE_COUNTER;
+      
+      uint8_t LOW_STATE_DEBOUNCE_COUNT;
+      uint8_t HIGH_STATE_DEBOUNCE_COUNT;
+      uint8_t debounceCounter;
+      uint8_t debounceOutput;
+
+      
       uint8_t state_Counter;
       uint8_t utilCounter;
       _detection_action act;
@@ -100,7 +105,7 @@ class profileInspData {
     profileInspData()
     {
       object_record.RESET(templateSIZE);
-      object_record_cache.RESET(templateSIZE*2);
+      object_record_cache.RESET(templateSIZE);
       act1TimingQ.RESET(ACT_TIMMING_BUFFER_SIZE);
       act2TimingQ.RESET(ACT_TIMMING_BUFFER_SIZE);
       object_track.RESET(5);
@@ -115,11 +120,17 @@ class profileInspData {
 //      s_data.tailSpace = 15;
       
       s_data.NAValue = 3500;
-      s_data.HIGH_STATE_DEBOUNCE_COUNTER = 1;
-      s_data.LOW_STATE_DEBOUNCE_COUNTER = 10;
+      s_data.HIGH_STATE_DEBOUNCE_COUNT = 1;
+      s_data.LOW_STATE_DEBOUNCE_COUNT = 10;
       s_data.pre_state=
       s_data.state = S_RESET;
-      stepCounter=0;
+
+
+      s_data.debounceCounter =0;
+      s_data.debounceOutput =0;
+
+      
+      G_stepCounter=0;
 
       s_data.act1TimingQ_std_offset=172;
       s_data.act2TimingQ_std_offset=175;
@@ -188,9 +199,42 @@ class profileInspData {
       const int ECE=exit_current_enter;
       const int potValue = analogRead(potPin);
 
-      object_record_cache.push_back(potValue);
+      if(s_data.debounceOutput==0)
+      {//in low state
+        if(potValue>s_data.BGValueH)
+        {
+          s_data.debounceCounter++;
+          if(s_data.debounceCounter>s_data.HIGH_STATE_DEBOUNCE_COUNT)
+          {
+            s_data.debounceOutput=1;
+            s_data.debounceCounter=0;
+          }
+        }
+        else
+        {
+          s_data.debounceCounter=0;
+        }
+      }
+      else
+      {//in high state
+        if(potValue<s_data.BGValueH)
+        {
+          s_data.debounceCounter++;
+          if(s_data.debounceCounter>s_data.LOW_STATE_DEBOUNCE_COUNT)
+          {
+            s_data.debounceOutput=0;
+            s_data.debounceCounter=0;
+          }
+        }
+        else
+        {
+          s_data.debounceCounter=0;
+        }
+      }
+
       
-      if ((stepCounter&0x3FF)==0 && GLOB_F.printCurrentReading)
+      
+      if ((G_stepCounter&0x3FF)==0 && GLOB_F.printCurrentReading)
       {
         Serial.print("INT AR: ");
         Serial.println(potValue);
@@ -211,22 +255,10 @@ class profileInspData {
           }
 
 
-          if(potValue<s_data.BGValueH)//LOW state
+          if(s_data.debounceOutput==0)//LOW state
           {
-            
-            if(s_data.utilCounter<s_data.LOW_STATE_DEBOUNCE_COUNTER)
-            {
-              s_data.utilCounter++; 
-            }
-            else
-            {
-              stateSwitch(A_OK);
-            }
+            stateSwitch(A_OK);
           }
-          else
-          {
-            s_data.utilCounter=0;
-          } 
           
           break;
         }
@@ -249,37 +281,27 @@ class profileInspData {
           }
 
           
-
-          if(potValue>s_data.BGValueH)//HIGH state
+          if(s_data.cur_object.recordInfo!=NULL)//if cur_object has recorder, push new reading data in
           {
-            
-            if(object_record.size()==0 && s_data.state_Counter>s_data.aheadSpace)//object_record is free, assign to cur_object
+            s_data.cur_object.recordInfo->push_back(potValue);
+          }
+          
+          if(s_data.debounceOutput==1)//HIGH state
+          {
+            s_data.cur_object.step_start=G_stepCounter-s_data.HIGH_STATE_DEBOUNCE_COUNT;
+            stateSwitch(A_OK);
+          }
+          else if(s_data.debounceCounter==0)
+          {
+
+            if(object_record.size()==0)//object_record is free, assign to cur_object
             {
               s_data.cur_object.recordInfo=&object_record;
               
             }
-            if(s_data.cur_object.recordInfo!=NULL)//if cur_object has recorder, push new reading data in
-            {
-              s_data.cur_object.recordInfo->push_back(potValue);
-            }
-
-            
-            if(s_data.utilCounter<s_data.HIGH_STATE_DEBOUNCE_COUNTER)
-            {
-              s_data.utilCounter++; 
-            }
-            else
-            {//the high reading is stable, try to keep the step_start(where the high reading starts) info and put OK action into state machine
-              s_data.cur_object.step_start=stepCounter-s_data.HIGH_STATE_DEBOUNCE_COUNTER;
-              stateSwitch(A_OK);
-            }
-          }
-          else
-          {//high reading stops, reset the counter
             if(s_data.cur_object.recordInfo!=NULL)
               s_data.cur_object.recordInfo->resize(0);
-            s_data.utilCounter=0;
-          } 
+          }
           break;
         }
         case S_RECORDING:
@@ -297,49 +319,46 @@ class profileInspData {
             break;
           }
           
-          
-          if(s_data.cur_object.recordInfo!=NULL)//if cur_object has recorder
+          if(s_data.cur_object.recordInfo!=NULL)//if cur_object has recorder, push new reading data in
           {
-            if(s_data.cur_object.recordInfo->push_back(potValue)==false)//false means the buffer is full => reset and release the recorder
+            s_data.cur_object.recordInfo->push_back(potValue);
+          }
+          
+          if(s_data.debounceOutput==0)//stable LOW state=> recording end
+          {
+
+            if(s_data.cur_object.recordInfo!=NULL)
             {
-              s_data.cur_object.recordInfo->resize(0);//reset
-              s_data.cur_object.recordInfo=NULL;//release
-              
+              s_data.cur_object.recordInfo->resize(s_data.cur_object.recordInfo->size()-s_data.LOW_STATE_DEBOUNCE_COUNT);//roll back the LOW_STATE_DEBOUNCE_COUNT steps
+            }
+            
+            s_data.cur_object.step_end=G_stepCounter-s_data.LOW_STATE_DEBOUNCE_COUNT;//roll back the LOW_STATE_DEBOUNCE_COUNT steps
+            object_track.pushHead(s_data.cur_object);//put current object into the tracking list
+            s_data.cur_object.step_end=s_data.cur_object.step_start=0;
+            s_data.cur_object.recordInfo=NULL;
+            
+            stateSwitch(A_OK);
+            
+          }
+          else
+          {//in debounce high state
+            
+            // record length = HIGH_STATE_DEBOUNCE_COUN(from previous state) + state_Counter
+            if(s_data.state_Counter>=(templateSIZE-s_data.HIGH_STATE_DEBOUNCE_COUNT))//if there was a recorder, will it be full?
+            {//if so put NA event
+
+              if(s_data.cur_object.recordInfo!=NULL)//false means the buffer is full => reset and release the recorder
+              {
+                s_data.cur_object.recordInfo->resize(0);//reset
+                s_data.cur_object.recordInfo=NULL;//release
+              }
+
               stateSwitch(A_ER);
               break;
             }
-          }
-          else if(s_data.state_Counter>(templateSIZE-s_data.LOW_STATE_DEBOUNCE_COUNTER))//if there was a recorder, will it be full?
-          {//if so put NA event
-            stateSwitch(A_ER);
-            break;
+            
           }
           
-          if(potValue<s_data.BGValueH)//LOW state
-          {
-            if(s_data.utilCounter<s_data.LOW_STATE_DEBOUNCE_COUNTER)
-            {
-              s_data.utilCounter++; 
-            }
-            else
-            {//stable LOW state
-              if(s_data.cur_object.recordInfo!=NULL)
-              {
-                s_data.cur_object.recordInfo->resize(object_record.size()-s_data.LOW_STATE_DEBOUNCE_COUNTER);//roll back the LOW_STATE_DEBOUNCE_COUNTER steps
-              }
-              
-              s_data.cur_object.step_end=stepCounter-s_data.LOW_STATE_DEBOUNCE_COUNTER;//roll back the LOW_STATE_DEBOUNCE_COUNTER steps
-              object_track.pushHead(s_data.cur_object);//put current object into the tracking list
-              s_data.cur_object.step_end=s_data.cur_object.step_start=0;
-              s_data.cur_object.recordInfo=NULL;
-              
-              stateSwitch(A_OK);
-            }
-          }
-          else
-          {
-            s_data.utilCounter=0;
-          } 
           break;
         }
 
@@ -367,28 +386,19 @@ class profileInspData {
           {
             break;
           }
-          
-          if(potValue<s_data.BGValueH)//LOW state
-          {
-            if(s_data.utilCounter<s_data.LOW_STATE_DEBOUNCE_COUNTER)
-            {
-              s_data.utilCounter++; 
-            }
-            else
-            {//stable LOW state
-               _matching_subject tmp={0};
-               
-              tmp.recordInfo=NULL;
-              tmp.step_end=stepCounter-s_data.LOW_STATE_DEBOUNCE_COUNTER;//roll back the LOW_STATE_DEBOUNCE_COUNTER steps
-              tmp.stepType=_matching_subject::END_ONLY;
-              object_track.pushHead(tmp);//put current object into the tracking list
-              stateSwitch(A_OK);
-            }
+
+
+
+
+          if(s_data.debounceOutput==0)//LOW state
+          { 
+            _matching_subject tmp={0};
+            tmp.recordInfo=NULL;
+            tmp.step_end=G_stepCounter-s_data.LOW_STATE_DEBOUNCE_COUNT;//roll back the LOW_STATE_DEBOUNCE_COUNT steps
+            tmp.stepType=_matching_subject::END_ONLY;
+            object_track.pushHead(tmp);//put current object into the tracking list
+            stateSwitch(A_OK);
           }
-          else
-          {
-            s_data.utilCounter=0;
-          } 
           
         }
         break;
@@ -396,7 +406,7 @@ class profileInspData {
 
     }
     void timerRun() {
-      stepCounter++;
+      G_stepCounter++;
       stateAction(0,s_data.state);  
 
       //act queue
@@ -404,7 +414,7 @@ class profileInspData {
       if(act1TimingQ.size()>0)
       {
         uint16_t timing =*act1TimingQ.getTail();
-        if(timing==stepCounter)//check if the step is here
+        if(timing==G_stepCounter)//check if the step is here
         {
           //start air blow
           
@@ -417,7 +427,7 @@ class profileInspData {
       if(act2TimingQ.size()>0)
       {
         uint16_t timing =*act2TimingQ.getTail();
-        if(timing==stepCounter)
+        if(timing==G_stepCounter)
         {
           //stop air blow
 //          Serial.println("A2");
@@ -438,8 +448,8 @@ class profileInspData {
 //        Serial.print("obj->stepType:");
 //        Serial.println(obj->stepType);
 //        
-//        Serial.print("stepCounter:");
-//        Serial.print(stepCounter);
+//        Serial.print("G_stepCounter:");
+//        Serial.print(G_stepCounter);
 //
 //        
 //        Serial.print(" :1>");
@@ -471,14 +481,16 @@ class profileInspData {
               auto& record=*(obj->recordInfo);
 //              delay(3);
 
-//              if(object_record_cache.size()==0)
-//              {
+              if(object_record_cache.size()==0)
+              {
+                memcpy(object_record_cache.arr,record.arr,record.size()*sizeof(record.arr[0]));
+                object_record_cache.resize(record.size());
 //                for (int i = 0; i < record.size(); i++)
 //                {
 //                  object_record_cache.arr[i]=record.arr[i];
 //                }
 //                object_record_cache.resize(record.size());
-//              }
+              }
 
               int NA_Count = 0;
               int16_t NA_Thres = 3000;
@@ -565,7 +577,7 @@ void setup() {
 
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
-  timerAlarmWrite(timer, 2000, true);
+  timerAlarmWrite(timer, 4000, true);
   timerAlarmEnable(timer);
 
 }

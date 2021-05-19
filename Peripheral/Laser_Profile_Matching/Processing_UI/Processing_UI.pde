@@ -136,7 +136,7 @@ void CMD_parse(SimpPacketParse sBuffer)
             println(recArr.size());
             println(cacheRec[0]);
             translate(0, height/2);
-            drawGraph(cacheRec,recArr.size(),1200,width,-0.1);
+            drawGraph(cacheRec,recArr.size(),1200,width,-0.4);
             popMatrix();
           }
         }
@@ -202,16 +202,6 @@ float []ssdsd=new float[]{
 662,624,662,682,714,733,756,784,804,909,984,994,1056,1062,1072,1168,1281,1382,1428,1484,1535,1584,1510,1385,1296,732,
 
 };
-
-void setup_() {
-  size(300, 200);
-  background(255);
-  smooth();
-  
-  rectMode(CENTER); // show bounding boxes
-  drawGraph(ssdsd,ssdsd.length,ssdsd[0],width,0.08);
-}
-
 
 void drawGraph(float[]arr,int length,float xcenter,int printWidth,float mult)
 {
