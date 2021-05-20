@@ -2751,6 +2751,28 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   }
 }
 
+
+void sendResultTo_mift(int uInspStatus,uint64_t timeStamp)
+{
+
+    if (cb->mift)
+    {
+      LOGI("mift is here!!");
+      char buffx[150];
+      static int count = 0;
+      int len = sprintf(buffx,
+                        "{"
+                        "\"type\":\"inspRep\",\"status\":%d,"
+                        "\"idx\":%d,\"count\":%d,"
+                        "\"time_100us\":%lu"
+                        "}",
+                        uInspStatus, 1, count,timeStamp );
+      cb->mift->send_data((uint8_t *)buffx, len);
+      count = (count + 1) & 0xFF;
+      LOGI("%s", buffx);
+    }
+}
+
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL)
 {
   static int frameActionID = 0;
@@ -2791,23 +2813,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   do
   {
-
-    if (cb->mift)
-    {
-      LOGI("mift is here!!");
-      char buffx[150];
-      static int count = 0;
-      int len = sprintf(buffx,
-                        "{"
-                        "\"type\":\"inspRep\",\"status\":%d,"
-                        "\"idx\":%d,\"count\":%d,"
-                        "\"time_100us\":%lu"
-                        "}",
-                        imgPipe->actInfo.uInspStatus, 1, count, fi.timeStamp_100us);
-      cb->mift->send_data((uint8_t *)buffx, len);
-      count = (count + 1) & 0xFF;
-      LOGI("%s", buffx);
-    }
+    // sendResultTo_mift(imgPipe->actInfo.uInspStatus,fi.timeStamp_100us);
 
     if (skipInspDataTransfer == true)
     {
@@ -3250,6 +3256,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   bool doPassDown = doInspActionThread;
 
+  //taking the short cut
+  sendResultTo_mift(imgPipe->actInfo.uInspStatus,imgPipe->fi.timeStamp_100us);
   if (doPassDown)
   {
     actionQueue.push_blocking(imgPipe);
