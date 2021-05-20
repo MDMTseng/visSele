@@ -162,8 +162,10 @@ struct ACT_SCH{
     ACT_BACKLight1L,
     ACT_CAM1,
     ACT_SWITCH,
-    ACT_SEL1,
-    ACT_SEL2;
+    ACT_SEL1H,
+    ACT_SEL1L,
+    ACT_SEL2H,
+    ACT_SEL2L;
 };
 
 ACT_SCH act_S;
@@ -308,31 +310,33 @@ int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
   );
 
 
-  ACT_TRY_RUN_TASK(acts->ACT_SEL1, cur_pulse, 
+  ACT_TRY_RUN_TASK(acts->ACT_SEL1H, cur_pulse, 
 
     // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
 
-    if(task->info==1)
-    {      
-      digitalWrite(AIR_BLOW_OK_PIN, 1);
-    }
-    else if(task->info==2)
-    {
-      digitalWrite(AIR_BLOW_OK_PIN, 0);
-    }
+    digitalWrite(AIR_BLOW_OK_PIN, 1);
   );
-  ACT_TRY_RUN_TASK(acts->ACT_SEL2, cur_pulse, 
-    // DEBUG_printf("SEL2 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+  
+  ACT_TRY_RUN_TASK(acts->ACT_SEL1L, cur_pulse, 
 
+    // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
 
-    if(task->info==1)
-    {      
-      digitalWrite(AIR_BLOW_NG_PIN, 1);
-    }
-    else if(task->info==2)
-    {
-      digitalWrite(AIR_BLOW_NG_PIN, 0);
-    }
+    digitalWrite(AIR_BLOW_OK_PIN, 0);
+  );
+
+  
+  ACT_TRY_RUN_TASK(acts->ACT_SEL2H, cur_pulse, 
+
+    // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+
+    digitalWrite(AIR_BLOW_NG_PIN, 1);
+  );
+  
+  ACT_TRY_RUN_TASK(acts->ACT_SEL2L, cur_pulse, 
+
+    // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+
+    digitalWrite(AIR_BLOW_NG_PIN, 0);
   );
 
   ACT_TRY_RUN_TASK(acts->ACT_SWITCH, cur_pulse, 
@@ -347,16 +351,19 @@ int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
     switch(pli->insp_status)
     {
       case insp_status_OK:
-        ACT_PUSH_TASK (act_S.ACT_SEL1, pli, state_pulseOffset[7], 1,);
-        ACT_PUSH_TASK (act_S.ACT_SEL1, pli, state_pulseOffset[8], 2,);
+        ACT_PUSH_TASK (act_S.ACT_SEL1H, pli, state_pulseOffset[7], 1,);
+        ACT_PUSH_TASK (act_S.ACT_SEL1L, pli, state_pulseOffset[8], 2,);
+        inspResCount.OK++;
       break;
       case insp_status_NG:
-        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[9], 1,);
-        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[10],2,);
+        ACT_PUSH_TASK (act_S.ACT_SEL2H, pli, state_pulseOffset[9], 1,);
+        ACT_PUSH_TASK (act_S.ACT_SEL2L, pli, state_pulseOffset[10],2,);
+        inspResCount.NG++;
       break;
       case insp_status_NA:
-        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[9], 1,);
-        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[10],2,);
+        ACT_PUSH_TASK (act_S.ACT_SEL2H, pli, state_pulseOffset[9], 1,);
+        ACT_PUSH_TASK (act_S.ACT_SEL2L, pli, state_pulseOffset[10],2,);
+        inspResCount.NA++;
       break;
 
       case insp_status_DEL://ERROR
@@ -533,8 +540,10 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
         act_S.ACT_BACKLight1H.clear();
         act_S.ACT_BACKLight1L.clear();
         act_S.ACT_CAM1.clear();
-        act_S.ACT_SEL1.clear();
-        act_S.ACT_SEL2.clear();
+        act_S.ACT_SEL1H.clear();
+        act_S.ACT_SEL1L.clear();
+        act_S.ACT_SEL2H.clear();
+        act_S.ACT_SEL2L.clear();
         act_S.ACT_SWITCH.clear();
         RESET_GateSensing();
         TCount=0;CCount=0;
