@@ -162,6 +162,10 @@ class RingBuf
   {
     return RBC.size();
   }
+  RB_Idx_Type size_left()
+  {
+    return RBC.space();
+  }
   
   void clear()
   {
@@ -226,5 +230,24 @@ class RingBuf
     return RBC.consumeTail();
   }
 };
+
+
+
+template <
+  typename RB_Type, unsigned N ,typename RB_Idx_Type=uint32_t
+>
+class RingBuf_Static:public RingBuf<RB_Type,RB_Idx_Type>
+{
+
+  public:
+  RB_Type array[N];
+  RingBuf_Static():RingBuf<RB_Type,RB_Idx_Type>(array,N)
+  {
+
+  }
+};
+
+
+
 
 #endif /* __RingBufX_H__ */

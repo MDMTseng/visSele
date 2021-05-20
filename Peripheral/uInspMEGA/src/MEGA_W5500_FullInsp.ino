@@ -60,9 +60,10 @@ run_mode_info mode_info={
 
 
 uint32_t thres_skip_counter=0;
-#define insp_status_UNSET -1654
+#define insp_status_UNSET -2000
+#define insp_status_DEL 0xFE
 
-#define insp_status_NA -334 //insp_status_NA is just for unknown insp result
+#define insp_status_NA -128 //insp_status_NA is just for unknown insp result
 #define insp_status_OK 0 //insp_status_NA is just for unknown insp result
 #define insp_status_NG -1 //insp_status_NA is just for unknown insp result
 
@@ -96,7 +97,6 @@ RingBuf<typeof(*errorBuf),uint8_t > ERROR_HIST(errorBuf,SARRL(errorBuf));
 uint32_t logicPulseCount = 0;
 
 #define PIPE_INFO_LEN 30
-pipeLineInfo pbuff[PIPE_INFO_LEN];
 
 #define LED_PIN 13
 #define CAMERA_PIN 16
@@ -111,13 +111,12 @@ pipeLineInfo pbuff[PIPE_INFO_LEN];
 
 //The index type uint8_t would be enough if the buffersize<255
 
-RingBuf<typeof(*pbuff),uint8_t > RBuf(pbuff,SARRL(pbuff));
+RingBuf_Static<pipeLineInfo,PIPE_INFO_LEN,uint8_t > RBuf;
 
 IPAddress _ip(192,168,2,43);
 IPAddress _gateway(192,168,1,1);
 IPAddress _subnet(255, 255, 0, 0);
 int _port = 5213;
-
 
 
 const uint32_t subPulseSkipCount=16;//We don't do task processing for every hardware pulse, so we can save computing power for other things
@@ -150,157 +149,264 @@ uint32_t state_pulseOffset[] =
 {0, 654 ,657,659, 660,  697, 750,  900,910,1073,1083};
 
 
+struct ACT_INFO{
+  pipeLineInfo* src;
+  int info;
+  uint32_t targetPulse;
+};
 
-pipeLineInfo* actionExecTask[ SARRL(state_pulseOffset)];
-RingBuf<typeof(*actionExecTask),uint8_t > actionExecTasks(actionExecTask,SARRL(state_pulseOffset));
 
-int stage_action(pipeLineInfo* pli);
-int stage_action(pipeLineInfo* pli)
-{
-  pli->notifMark = 0;
-  
-  static int cctest=0;
+struct ACT_SCH{
+  RingBuf_Static<ACT_INFO,PIPE_INFO_LEN > 
+    ACT_BACKLight1H,
+    ACT_BACKLight1L,
+    ACT_CAM1,
+    ACT_SWITCH,
+    ACT_SEL1,
+    ACT_SEL2;
+};
 
-  // if(pli->stage!=0)
-  // {
-  //   DEBUG_print("..");
-  //   DEBUG_print("buf_S:");
-  //   DEBUG_print( RBuf.size());
-  //   DEBUG_print("-");
-  //   DEBUG_print(pli->gate_pulse);
-  //   DEBUG_print("-");
-  //   DEBUG_println(pli->stage);
+ACT_SCH act_S;
 
-  // }
-
-  switch (pli->stage)
-  {
-    case 0:
-    // DEBUG_print("pause:");
-    // DEBUG_println(pli->gate_pulse);
-  stageUpdated++;
-      pli->stage++;
-      pli->insp_status=insp_status_UNSET;
-      if(mode_info.mode==run_mode_info::TEST)
-      {
-        switch(mode_info.misc_var)
-        {
-
-          
-          case 0:
-            pli->insp_status=insp_status_NA;
-          break;
-          
-          case 1:
-            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NG;
-          break;
-          
-          case 2:
-            pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NA;
-          break;
-          
-          case 3:
-            pli->insp_status=insp_status_OK;
-          break;
-          
-          case 4:
-            pli->insp_status=(mode_info.misc_var2&1)?insp_status_NG:insp_status_NA;
-          break;
-          
-          case 5:
-            pli->insp_status=insp_status_NG;
-          break;
-          
-          default:
-            mode_info.misc_var=0;
+#define ACT_PUSH_TASK(rb, plinfo, pulseOffset, _info,cusCode_task) \
+        {\
+          ACT_INFO *task;\
+          task=(rb).getHead();\
+          if(task){\
+            task->targetPulse=mod_sim(plinfo->gate_pulse + pulseOffset,perRevPulseCount);\
+            task->src=plinfo;\
+            task->info=_info;\
+            cusCode_task \
+            (rb).pushHead();\
+          }\
         }
-      
-        mode_info.misc_var2++;
-      }
-      break;
-    
-    case 1://BackLight ON
-      digitalWrite(BACK_LIGHT_PIN, 1);
-      pli->stage++;
-      break;
-    case 2://Trigger shutter ON
-      digitalWrite(CAMERA_PIN, 1);
-      pli->notifMark = 1;
-      pli->stage++;
-      CCount++;
-      break;
-    case 3://Trigger shutter OFF
-      digitalWrite(CAMERA_PIN, 0);
-      pli->stage++;
-      break;
-    case 4://BackLight OFF
-      digitalWrite(BACK_LIGHT_PIN, 0);
-      pli->stage=6;
-      break;
 
-    case 6://Last moment switch
-      
-  stageUpdated++;
-      CCount--;
-      if(pli->insp_status==insp_status_OK)//OK
-      {
-        PassCount++;
-        inspResCount.OK++;
-        pli->stage=7;
-        return 0;
-      }
-      if(pli->insp_status==insp_status_NG)//NG
-      {
-        PassCount++;
-        inspResCount.NG++;
-        pli->stage=9;
-        return 0;
-      }
+
+int ActRegister_pipeLineInfo(pipeLineInfo* pli)
+{
+  if(mode_info.mode==run_mode_info::TEST)
+  {
+    switch(mode_info.misc_var)
+    {
 
       
-      if(pli->insp_status==insp_status_UNSET)
-      {
-        PassCount=0;
-        inspResCount.ERR++;
-        //Error:The inspection result isn't back
-        //TODO: Send error msg and stop machine
-        errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-
-      } 
-      else
-      {
-        PassCount++;
-        inspResCount.NA++;
-        
-        pli->stage=-pli->stage;
-      }
-      return -1;
+      case 0:
+        pli->insp_status=insp_status_NA;
+      break;
       
-
-    case 7://Air Blow OK ON
-      digitalWrite(AIR_BLOW_OK_PIN, 1);
-      pli->stage++;
-      return 0;
-    case 8://Air Blow OK OFF
-      digitalWrite(AIR_BLOW_OK_PIN, 0);
-      pli->stage=-pli->stage;
-       //DEBUG_println("OK");
-      return -1;
+      case 1:
+        pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NG;
+      break;
       
-    case 9://Air Blow NG ON
-      digitalWrite(AIR_BLOW_NG_PIN, 1);
-      pli->stage++;
-      return 0;
-    case 10://Air Blow NG OFF
-      digitalWrite(AIR_BLOW_NG_PIN, 0);
-      pli->stage=-pli->stage;
-      //DEBUG_println("NG");
-      return -1;
+      case 2:
+        pli->insp_status=(mode_info.misc_var2&1)?insp_status_OK:insp_status_NA;
+      break;
+      
+      case 3:
+        pli->insp_status=insp_status_OK;
+      break;
+      
+      case 4:
+        pli->insp_status=(mode_info.misc_var2&1)?insp_status_NG:insp_status_NA;
+      break;
+      
+      case 5:
+        pli->insp_status=insp_status_NG;
+      break;
+      
+      default:
+        mode_info.misc_var=0;
+    }
+  
+    mode_info.misc_var2++;
   }
-  return 0;
+
+
+
+
+
+  if(act_S.ACT_BACKLight1H.size_left()>=1 &&act_S.ACT_BACKLight1L.size_left()>=1 && 
+  act_S.ACT_CAM1.size_left()>=2 && act_S.ACT_SWITCH.size_left()>=1)
+  {
+    DEBUG_printf(">>>>src:%p gate_pulse:%d ",pli,pli->gate_pulse);
+    DEBUG_printf("s:%d ",pli->s_pulse);
+    DEBUG_printf("e:%d ",pli->e_pulse);
+    DEBUG_printf("cur:%d\n",logicPulseCount);
+
+    ACT_PUSH_TASK (act_S.ACT_BACKLight1H, pli, state_pulseOffset[1],1,
+    );
+    ACT_PUSH_TASK (act_S.ACT_BACKLight1L, pli, state_pulseOffset[4], 2,
+    );
+
+    ACT_PUSH_TASK (act_S.ACT_CAM1, pli, state_pulseOffset[2], 1,
+    );
+    ACT_PUSH_TASK (act_S.ACT_CAM1, pli, state_pulseOffset[3], 2,
+    );
+
+    ACT_PUSH_TASK (act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2,
+    );
+
+
+    return 0;
+    // pli->insp_status=insp_status_OK;
+  }
+  return -1;
 }
 
 
+
+#define ACT_TRY_RUN_TASK(act_rb, cur_pulse, cmd_task) \
+        {\
+           ACT_INFO *task=act_rb.getTail();\
+          if(task && task->targetPulse==cur_pulse)\
+          {\
+            cmd_task\
+            act_rb.consumeTail();\
+          }\
+        }
+
+int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
+{
+  // static uint32_t pre_pulse=0;
+
+  // uint32_t diff = cur_pulse-pre_pulse;
+  // if(diff!=1)
+  // {
+  //   DEBUG_printf("pre_pulse:%d ",pre_pulse);
+  //   DEBUG_printf("cur_pulse:%d \n",cur_pulse);
+  // }
+  // pre_pulse=cur_pulse;
+    
+  ACT_TRY_RUN_TASK(acts->ACT_BACKLight1H, cur_pulse, 
+
+      // DEBUG_printf("BL1 src:%p tp:%d ",task->src,task->targetPulse);
+      // DEBUG_printf("info:%d\n",task->info);
+
+    digitalWrite(BACK_LIGHT_PIN, 1);
+  );
+
+  ACT_TRY_RUN_TASK(acts->ACT_BACKLight1L, cur_pulse, 
+
+      // DEBUG_printf("BL1 src:%p tp:%d ",task->src,task->targetPulse);
+      // DEBUG_printf("info:%d\n",task->info);
+
+    digitalWrite(BACK_LIGHT_PIN, 0);
+  );
+
+
+  ACT_TRY_RUN_TASK(acts->ACT_CAM1, cur_pulse, 
+
+    // DEBUG_printf("CAM1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+    if(task->info==1)
+    {
+      digitalWrite(CAMERA_PIN, 1);
+    }
+    else if(task->info==2)
+    {
+      digitalWrite(CAMERA_PIN, 0);
+    }
+  );
+
+
+  ACT_TRY_RUN_TASK(acts->ACT_SEL1, cur_pulse, 
+
+    // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+
+    if(task->info==1)
+    {      
+      digitalWrite(AIR_BLOW_OK_PIN, 1);
+    }
+    else if(task->info==2)
+    {
+      digitalWrite(AIR_BLOW_OK_PIN, 0);
+    }
+  );
+  ACT_TRY_RUN_TASK(acts->ACT_SEL2, cur_pulse, 
+    // DEBUG_printf("SEL2 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+
+
+    if(task->info==1)
+    {      
+      digitalWrite(AIR_BLOW_NG_PIN, 1);
+    }
+    else if(task->info==2)
+    {
+      digitalWrite(AIR_BLOW_NG_PIN, 0);
+    }
+  );
+
+  ACT_TRY_RUN_TASK(acts->ACT_SWITCH, cur_pulse, 
+    
+    DEBUG_printf("SW src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+
+
+    pipeLineInfo* pli=task->src;
+    // DEBUG_print("insp_status:");
+    // DEBUG_println(pli->insp_status);
+
+    switch(pli->insp_status)
+    {
+      case insp_status_OK:
+        ACT_PUSH_TASK (act_S.ACT_SEL1, pli, state_pulseOffset[7], 1,);
+        ACT_PUSH_TASK (act_S.ACT_SEL1, pli, state_pulseOffset[8], 2,);
+      break;
+      case insp_status_NG:
+        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[9], 1,);
+        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[10],2,);
+      break;
+      case insp_status_NA:
+        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[9], 1,);
+        ACT_PUSH_TASK (act_S.ACT_SEL2, pli, state_pulseOffset[10],2,);
+      break;
+
+      case insp_status_DEL://ERROR
+      break;
+
+      case insp_status_UNSET:
+      default:
+        inspResCount.ERR++;
+        errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+
+
+
+        // PassCount=0;
+        // inspResCount.ERR++;
+        // //Error:The inspection result isn't back
+        // //TODO: Send error msg and stop machine
+        // errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+
+      break;
+    }
+    // 
+    if(RBuf.getTail()==task->src)
+    {
+      task->src->insp_status=insp_status_DEL;
+      task->src->insp_status=insp_status_DEL;
+      task->src=NULL;
+      RBuf.consumeTail();
+    
+    }
+    // while(1)//remove the DEL tag
+    // {
+    //   pipeLineInfo* pipe=RBuf.getTail();
+    //   if(pipe==NULL)break;
+
+    //   if(pipe->insp_status==insp_status_DEL)
+    //   {
+    //     RBuf.consumeTail();
+    //   }
+    //   else
+    //   {
+    //     break;
+    //   }
+    // }
+
+  );
+
+
+
+  
+}
 
   
 int AddErrorCodesToJson(char* send_rsp, uint32_t send_rspL)
@@ -424,6 +530,12 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
         //if there is an error
         //clear plate
         RBuf.clear();
+        act_S.ACT_BACKLight1H.clear();
+        act_S.ACT_BACKLight1L.clear();
+        act_S.ACT_CAM1.clear();
+        act_S.ACT_SEL1.clear();
+        act_S.ACT_SEL2.clear();
+        act_S.ACT_SWITCH.clear();
         RESET_GateSensing();
         TCount=0;CCount=0;
          
@@ -784,8 +896,8 @@ class Websocket_FI:public Websocket_FI_proto{
 //          extBuff+=retL+1;
 //          extBuffL-=retL+1;
             sscanf(statusStr, "%d", &insp_status);
-            DEBUG_print(">>status>>>>");
-            DEBUG_println(insp_status);
+            // DEBUG_print(">>status>>>>");
+            // DEBUG_println(insp_status);
           }
         }
         
@@ -803,23 +915,48 @@ class Websocket_FI:public Websocket_FI_proto{
         
         noInterrupts();
         TCount--;
+        int search_i=-1;
+        int len = RBuf.size();
         for(int i=0;i<RBuf.size();i++)
         {
           pipeLineInfo* pipe=RBuf.getTail(i);
           if(pipe==NULL)break;
-//          if(pipe->stage<3)//No object in ready to select field
-//          {
-//            break;
-//          }
+
           if(pipe->insp_status==insp_status_UNSET)
           {
-            
+            // DEBUG_printf("Get insp_status:%d c:%d\n",insp_status,cur_insp_counter);
             pipe->insp_status=insp_status;
             ret_status=0;
+            search_i=len-1-i;
             break;
           }
         }
+
         interrupts();
+
+
+  
+
+        // DEBUG_print("bklh.s:");
+        // DEBUG_print(act_S.ACT_BACKLight1H.size());
+        // DEBUG_print(" bkll.s:");
+        // DEBUG_print(act_S.ACT_BACKLight1L.size());
+
+        // DEBUG_print(" cam.s:");
+        // DEBUG_print(act_S.ACT_CAM1.size());
+
+        // DEBUG_print(" actsw.s:");
+        // DEBUG_println(act_S.ACT_SWITCH.size());
+
+        DEBUG_printf("RBuf.s:%d ========s:%d===\n",RBuf.size(),search_i);
+
+        // for(uint8_t i=0;i<RBuf.size();i++)
+        // {
+        //   pipeLineInfo* tail = RBuf.getTail(i);
+
+        //   DEBUG_printf("%d:%p,\n",tail->insp_status,tail);
+        // }
+
 
 
         
@@ -1215,19 +1352,6 @@ void printDBGInfo()
     DEBUG_print(" pulse:");
     DEBUG_print(logicPulseCount);
 
-
-    if(actionExecTasks.size()>0)
-    {
-      DEBUG_print(" exeP:");
-      
-      pipeLineInfo** taskToDo=actionExecTasks.getTail();
-      pipeLineInfo* tail = (*taskToDo);
-    
-      DEBUG_print(tail->trigger_pulse);
-        
-    }
-
-
     
     DEBUG_println();
     for(int i=0;i<RBuf.size();i++)
@@ -1273,12 +1397,14 @@ void loop()
 
   totalLoop++;
 
-  if( (totalLoop&0xF)==0)
+  if( (totalLoop&0x3F)==0)
   {
     
     uint32_t tar=tar_pulseHZ_;
     if(0&&emptyPlateCount>14)
       tar/=5;
+
+
      
     
     uint32_t cur = loop_Stepper(tar,pulseHZ_step);
@@ -1290,6 +1416,25 @@ void loop()
     {
       digitalWrite(FEEDER_PIN, HIGH);
     }
+  }
+
+
+  if( (totalLoop&0xFFF)==0)
+  {
+    static uint32_t nextPulseN=0;
+    
+
+    uint32_t dist = pulse_distance(nextPulseN,logicPulseCount,perRevPulseCount);
+    if(dist<(perRevPulseCount>>1))
+    {
+      DEBUG_printf("curSTEP:%d\n",logicPulseCount);
+      nextPulseN+=perRevPulseCount>>2;
+      if(nextPulseN>=perRevPulseCount)
+      {
+        nextPulseN=0;
+      }
+    }
+
   }
 
   if( (totalLoop&(0x7FFF>>1))==0)
@@ -1308,7 +1453,6 @@ void loop()
     {
       noConnectionTickCount=0;
     }
-  
 //    DEBUG_print("RBuf:");
 //    DEBUG_println(RBuf.size());
 //    DEBUG_print("thres_skip_counter:");

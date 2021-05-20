@@ -2,11 +2,6 @@
 #include "include/UTIL.hpp"
 
 #define DEBUG_
-boolean stepM_seq_a[] = {1, 1, 0, 0, 0, 0, 0, 1};
-boolean stepM_seq_b[] = {0, 1, 1, 1, 0, 0, 0, 0};
-boolean stepM_seq_c[] = {0, 0, 0, 1, 1, 1, 0, 0};
-boolean stepM_seq_d[] = {0, 0, 0, 0, 0, 1, 1, 1};
-
 
 #define TIMER_SET_ISR(TN,PRE_SCALER) \
   void timer##TN##_HZ(int HZ){\
@@ -64,69 +59,11 @@ class StepperMotor
       digitalWrite(p1, LOW);
 
     }
-    void OneStep_Original(bool dir) {
-
-
-      digitalWrite(p1, stepM_seq_a[stepX_number]);
-      digitalWrite(p2, stepM_seq_b[stepX_number]);
-      digitalWrite(p3, stepM_seq_c[stepX_number]);
-      digitalWrite(p4, stepM_seq_d[stepX_number]);
-      if (dir)
-      {
-        stepX_number++;
-        if (stepX_number == sizeof(stepM_seq_a)) {
-          stepX_number = 0;
-        }
-      }
-      else
-      {
-
-        if (stepX_number == 0) {
-          stepX_number = sizeof(stepM_seq_a) - 1;
-        }
-        else
-          stepX_number--;
-      }
-    }
 };
 
 
 StepperMotor stepperMotor(22, 23, 24, 25);
 
-
-//StepperMotor stepperMotorDRV8825(22,23,24,25);
-uint32_t mod_sim(uint32_t num,uint32_t mod_N)
-{
-  while(num>=mod_N)
-  {
-    num-=mod_N;
-  }
-  return num;
-}
-
-
-
-
-int next_state(pipeLineInfo* pli);
-int next_state(pipeLineInfo* pli)
-{
-  if (pli->stage < 0 || 
-    pli->stage > SARRL(state_pulseOffset) ||
-    stage_action(pli) < 0)
-  {
-    pli->gate_pulse=perRevPulseCount;
-    pli->stage=-1;//termination
-    return -1;
-  }
-  
-  pli->trigger_pulse = mod_sim(pli->gate_pulse + state_pulseOffset[pli->stage],perRevPulseCount);
-
-  // DEBUG_print("GP:");
-  // DEBUG_print(pli->gate_pulse);
-  // DEBUG_print("  TP:");
-  // DEBUG_println(pli->trigger_pulse);
-  return 0;
-}
 
 
 typedef struct GateInfo {
@@ -166,8 +103,9 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_L_THRES (perRevPulseCount/50)
-#define DEBOUNCE_H_THRES (perRevPulseCount/500)
+#define DEBOUNCE_L_THRES (6)
+//(perRevPulseCount/50)
+#define DEBOUNCE_H_THRES (2)
 
 GateInfo gateInfo;
 
@@ -243,11 +181,12 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
     if(!new_Sense)
     {//a pulse is completed
 
-      uint32_t diff=RING_SUB(gateInfo.end_pulse,gateInfo.start_pulse,perRevPulseCount);
-      diff>>=1;
-      uint32_t middlePulse=mod_sim(gateInfo.start_pulse+diff,perRevPulseCount);
-      
-      task_newPulseEvent(middlePulse);
+      task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse);
+      gateInfo.start_pulse=logicPulseCount;
+    }
+    else
+    {
+      gateInfo.end_pulse=logicPulseCount;
     }
 
     gateInfo.cur_Sense=new_Sense;
@@ -258,130 +197,50 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
 
 }
 
-int task_newPulseEvent(uint32_t middle_pulse)
+int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse)
 {
     
   pipeLineInfo* head = RBuf.getHead();
   if (head == NULL)return -1;
+
+  uint32_t diff=RING_SUB(end_pulse,start_pulse,perRevPulseCount);
+  diff>>=1;
+  uint32_t middle_pulse=mod_sim(start_pulse+diff,perRevPulseCount);
+      
+
   //get a new object and find a space to log it
   // TCount++;
+  head->s_pulse=start_pulse;
+  head->e_pulse=end_pulse;
   head->gate_pulse = middle_pulse;
-  head->stage = 0;
-  next_state(head);//calc next trigger pulse
-  RBuf.pushHead();
+  head->insp_status=insp_status_UNSET;
+  if(ActRegister_pipeLineInfo(head)==0)
+  {
+    RBuf.pushHead();
+  }
   return 0;
-  // actionExecTasks.clear();
-
-      
 }
 
-
-typedef struct pulseStageInfo
-{
-  uint32_t minDist;
-  uint32_t minDist_Pulse;
-  
-}pulseStageInfo;
-
-
-void task_ExecuteMinDistTasks(uint8_t stage,uint8_t stageLen)
-{  
-  if(stage!=0)return;
-  pipeLineInfo** taskToDo =NULL;
-  while(taskToDo=actionExecTasks.getTail())
-  {
-    
-    pipeLineInfo* tail = (*taskToDo);
-    if(tail==NULL)continue;
-    if(tail->trigger_pulse!=logicPulseCount)break;
-
-    int ret = next_state(tail);
-    if (ret)
-    {
-      tail->stage = -3;
-    }
-    actionExecTasks.consumeTail();
-  }
-
-}
-
-
-
-void task_CollectMinDistTasks(uint8_t stage,uint8_t stageLen)
-{
-  if(stage>stageLen)return;
-  static int stageStep=0;
-  static int proS=0;
-  static int proE=0;
-
-  static int doCollection;
-  
-  static uint32_t minDist;
-
-  
-  if(stage==0)
-  {
-    doCollection=(actionExecTasks.size()==0);//If the actionExecTasks still have task means the closest task is still the same
-    minDist=perRevPulseCount;//set to maximum
-    stageStep=RBuf.size()/(stageLen)+1;
-  }
-  proS=stageStep*stage;
-  proE=proS+stageStep;
-  
-  if(!doCollection)
-  { 
-    return;
-  }
-
-  if(proE>RBuf.size())
-  {
-    proE=RBuf.size();
-  }
-  
-  for (int i = proS; i < proE ; i++) //Check if trigger pulse is hit, then do action/ mark deletion
-  {
-    pipeLineInfo* tail = RBuf.getTail(i);
-    if(tail->stage<0)continue;
-
-    uint32_t dist = pulse_distance(logicPulseCount,tail->trigger_pulse, perRevPulseCount);
-    if(minDist>dist)
-    {
-      actionExecTasks.clear();
-      minDist=dist;
-    }
-
-    if(minDist==dist)
-    {
-      
-      pipeLineInfo** head = actionExecTasks.getHead();
-      if (head != NULL)
-      {
-        *head = tail;
-        actionExecTasks.pushHead();
-      }
-    }
-  }
-  if(stage==stageLen-1 && actionExecTasks.size()!=0)
-  {
-    ExeUpdateCount++;
-  }
-}
 
 
 void task_CleanCompletedPipe(uint8_t stage,uint8_t stageLen)
 {
-  if(stage!=0)return;
-  pipeLineInfo* tail;
-  while (tail = RBuf.getTail()) //Clean completed tail tasks
+
+
+  while(1)//remove the DEL tag
   {
-    if (tail->stage < 0)
+    pipeLineInfo* pipe=RBuf.getTail();
+    if(pipe==NULL)break;
+
+    if(pipe->insp_status==insp_status_DEL)
     {
       RBuf.consumeTail();
-      continue;
     }
-    break;
+    else
+    {
+      break;
+    }
   }
-
 }
 
 void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
@@ -390,12 +249,12 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
   uint8_t stageBase=stage;
   task_gateSensing(stageBase,1);//0 only
   stageBase-=1;
-  task_CollectMinDistTasks(stageBase,stageLen-3);//1 len 7 => 1~7
+  // task_CollectMinDistTasks(stageBase,stageLen-3);//1 len 7 => 1~7
   
-  stageBase-=stageLen-3;
-  task_CleanCompletedPipe(stageBase,1);//1 len 1  only =>8
-  stageBase-=1;
-  task_ExecuteMinDistTasks(stageBase,1);//1 len 1 only =>9
+  if(stage==stageLen-1)
+  {
+    Run_ACTS(&act_S,logicPulseCount);
+  }
 }
 
 
