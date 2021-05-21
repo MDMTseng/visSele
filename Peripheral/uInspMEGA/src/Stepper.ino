@@ -64,6 +64,7 @@ class StepperMotor
 
 StepperMotor stepperMotor(22, 23, 24, 25);
 
+uint32_t pulseHZ = 0;
 
 
 typedef struct GateInfo {
@@ -119,22 +120,35 @@ void RESET_GateSensing()
 }
 
 
+void skip_pulse_showS(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
+{
+  pipeLineInfo X;
+  pipeLineInfo *head=&X;
+  head->s_pulse=start_pulse;
+  head->e_pulse=end_pulse;
+  head->pulse_width=pulse_width;
+  head->gate_pulse = middle_pulse;
+  head->insp_status=insp_status_UNSET;
+  skip_pulse_show(head);
+}
 
 #define RING_SUB(A,B,MAX) ( ((A)>(B)) ? ((A)-(B))  : ((A)+(MAX)-(B)) )
 int task_newPulseEvent(uint32_t middle_pulse);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
-  
-  const int  maxWidth = 20;
+  const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
   const int  minWidth = 3;
-  const int  DEBOUNCE_L_THRES = 6;
-  const int  DEBOUNCE_H_THRES = 2;
+  const int  maxWidth = 1+20000/SINGLE_PULSE_DIST_um;
+  
+  const int  DEBOUNCE_L_THRES = 1+6000/SINGLE_PULSE_DIST_um;//object inner connection
+  const int  DEBOUNCE_H_THRES = 1;
   //(perRevPulseCount/50)
   if(stage>=stageLen)return;
   uint8_t new_Sense = digitalRead(GATE_PIN);
     
   bool flip=false;
 
+  
   if(gateInfo.cur_Sense)
   {//H
     if(!new_Sense)//L
@@ -180,6 +194,12 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
     }
   }
 
+  
+  static uint32_t pulseDist_B2M=0;
+  static uint32_t pre_pulseDist_B2M=0;
+  if(pulseDist_B2M!=10000)
+    pulseDist_B2M++;
+
   if(flip)
   {
     if(!new_Sense)
@@ -189,7 +209,31 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
       if( diff>minWidth && diff<maxWidth )
       {
         uint32_t middle_pulse=mod_sim(gateInfo.start_pulse+(diff>>1),perRevPulseCount);
-        task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
+
+        uint32_t minPulseDist=pulseHZ/subPulseSkipCount/g_max_frame_rate;
+        // uint32_t avg_PD_B2M=(pre_pulseDist_B2M+pulseDist_B2M)>>1;
+        // if(pulseDist_B2M>(minPulseDist*2/3) && avg_PD_B2M>minPulseDist)
+        if(pulseDist_B2M>minPulseDist)
+        {
+          pre_pulseDist_B2M=pulseDist_B2M;
+          pulseDist_B2M=0;
+          task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
+        }
+        else
+        {
+          // skip_pulse_showS(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
+          //skip the pulse : too fast in time
+          //control by pulseHZ/subPulseSkipCount/g_max_frame_rate;
+        }
+  
+      }
+      else
+      {
+          //skip the pulse : the pulse width is not in the valid range
+          //this might be caused by too large object > typ:2cm
+          //or there are multiple objects too close to each other 
+          //control by   minWidth,maxWidth,      
+          //also effected DEBOUNCE_L_THRES,DEBOUNCE_H_THRES(these two are to control what is a complete pulse high time, low time)
       }
       gateInfo.start_pulse=logicPulseCount;
     }
@@ -228,36 +272,12 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
   return 0;
 }
 
-
-
-void task_CleanCompletedPipe(uint8_t stage,uint8_t stageLen)
-{
-
-
-  while(1)//remove the DEL tag
-  {
-    pipeLineInfo* pipe=RBuf.getTail();
-    if(pipe==NULL)break;
-
-    if(pipe->insp_status==insp_status_DEL)
-    {
-      RBuf.consumeTail();
-    }
-    else
-    {
-      break;
-    }
-  }
-}
-
 void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 {
   //exp:stageLen=10  0~9
   uint8_t stageBase=stage;
   task_gateSensing(stageBase,1);//0 only
   stageBase-=1;
-  // task_CollectMinDistTasks(stageBase,stageLen-3);//1 len 7 => 1~7
-  
   if(stage==stageLen-1)
   {
     Run_ACTS(&act_S,logicPulseCount);
@@ -290,7 +310,6 @@ ISR(TIMER1_COMPA_vect)
 
 }
 
-uint32_t pulseHZ = 0;
 
 void setup_Stepper() {
   DEBUG_println(".....");

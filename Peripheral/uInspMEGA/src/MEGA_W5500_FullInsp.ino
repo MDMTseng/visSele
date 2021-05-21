@@ -131,6 +131,9 @@ uint32_t PRPC= perRevPulseCount;
 
 uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4; 
 
+uint8_t g_max_frame_rate=15;
+
+
 int offsetAir=80;
 int cam_angle=103;
 int angle=149;
@@ -184,6 +187,14 @@ ACT_SCH act_S;
         }
 
 
+int skip_pulse_show(pipeLineInfo* pli)
+{
+
+    ACT_PUSH_TASK (act_S.ACT_BACKLight1H, pli, state_pulseOffset[1],1,
+    );
+    ACT_PUSH_TASK (act_S.ACT_BACKLight1L, pli, state_pulseOffset[1]+1, 2,
+    );
+}
 int ActRegister_pipeLineInfo(pipeLineInfo* pli)
 {
   if(mode_info.mode==run_mode_info::TEST)
@@ -230,10 +241,10 @@ int ActRegister_pipeLineInfo(pipeLineInfo* pli)
   if(act_S.ACT_BACKLight1H.size_left()>=1 &&act_S.ACT_BACKLight1L.size_left()>=1 && 
   act_S.ACT_CAM1.size_left()>=2 && act_S.ACT_SWITCH.size_left()>=1)
   {
-    DEBUG_printf(">>>>src:%p gate_pulse:%d ",pli,pli->gate_pulse);
-    DEBUG_printf("s:%d ",pli->s_pulse);
-    DEBUG_printf("e:%d ",pli->e_pulse);
-    DEBUG_printf("cur:%d\n",logicPulseCount);
+    // DEBUG_printf(">>>>src:%p gate_pulse:%d ",pli,pli->gate_pulse);
+    // DEBUG_printf("s:%d ",pli->s_pulse);
+    // DEBUG_printf("e:%d ",pli->e_pulse);
+    // DEBUG_printf("cur:%d\n",logicPulseCount);
 
     ACT_PUSH_TASK (act_S.ACT_BACKLight1H, pli, state_pulseOffset[1],1,
     );
@@ -298,9 +309,10 @@ int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
 
   ACT_TRY_RUN_TASK(acts->ACT_CAM1, cur_pulse, 
 
-    // DEBUG_printf("CAM1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+    // 
     if(task->info==1)
     {
+      DEBUG_printf("CAM1 s:%p tp:%d\n",task->src,task->targetPulse);
       digitalWrite(CAMERA_PIN, 1);
     }
     else if(task->info==2)
@@ -341,7 +353,7 @@ int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
 
   ACT_TRY_RUN_TASK(acts->ACT_SWITCH, cur_pulse, 
     
-    DEBUG_printf("SW src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
+    // DEBUG_printf("SW src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
 
 
     pipeLineInfo* pli=task->src;
