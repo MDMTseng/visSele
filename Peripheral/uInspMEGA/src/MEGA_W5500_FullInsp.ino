@@ -1406,7 +1406,7 @@ void loop()
 
   totalLoop++;
 
-  if( (totalLoop&0x3F)==0)
+  if( (totalLoop&0x1F)==0 )
   {
     
     uint32_t tar=tar_pulseHZ_;

@@ -103,9 +103,6 @@ uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
 
 //uint32_t logicPulseCount = 0;
 uint32_t countSkip = 0;
-#define DEBOUNCE_L_THRES (6)
-//(perRevPulseCount/50)
-#define DEBOUNCE_H_THRES (2)
 
 GateInfo gateInfo;
 
@@ -121,11 +118,18 @@ void RESET_GateSensing()
   gateInfo=ngateInfo;
 }
 
+
+
 #define RING_SUB(A,B,MAX) ( ((A)>(B)) ? ((A)-(B))  : ((A)+(MAX)-(B)) )
 int task_newPulseEvent(uint32_t middle_pulse);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
   
+  const int  maxWidth = 20;
+  const int  minWidth = 3;
+  const int  DEBOUNCE_L_THRES = 6;
+  const int  DEBOUNCE_H_THRES = 2;
+  //(perRevPulseCount/50)
   if(stage>=stageLen)return;
   uint8_t new_Sense = digitalRead(GATE_PIN);
     
@@ -181,7 +185,12 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
     if(!new_Sense)
     {//a pulse is completed
 
-      task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse);
+      uint32_t diff=RING_SUB(gateInfo.end_pulse,gateInfo.start_pulse,perRevPulseCount);
+      if( diff>minWidth && diff<maxWidth )
+      {
+        uint32_t middle_pulse=mod_sim(gateInfo.start_pulse+(diff>>1),perRevPulseCount);
+        task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
+      }
       gateInfo.start_pulse=logicPulseCount;
     }
     else
@@ -197,21 +206,19 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
 
 }
 
-int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse)
+
+
+int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
     
   pipeLineInfo* head = RBuf.getHead();
   if (head == NULL)return -1;
 
-  uint32_t diff=RING_SUB(end_pulse,start_pulse,perRevPulseCount);
-  diff>>=1;
-  uint32_t middle_pulse=mod_sim(start_pulse+diff,perRevPulseCount);
-      
-
   //get a new object and find a space to log it
   // TCount++;
   head->s_pulse=start_pulse;
   head->e_pulse=end_pulse;
+  head->pulse_width=pulse_width;
   head->gate_pulse = middle_pulse;
   head->insp_status=insp_status_UNSET;
   if(ActRegister_pipeLineInfo(head)==0)
