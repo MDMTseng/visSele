@@ -1142,9 +1142,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
     MT_LOCK();
 
-    if (checkTL("GS", dat) == false)
-      LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-           dat->pgID);
+    // if (checkTL("GS", dat) == false)
+    //   LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+    //        dat->pgID);
     if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
@@ -2359,7 +2359,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       {
         char *msgjstr = cJSON_PrintUnformatted(msg_obj);
         int ret = mift->send_data((uint8_t *)msgjstr, strlen(msgjstr));
-        LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
+        // LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
         delete msgjstr;
         session_ACK = true;
       }
@@ -3602,7 +3602,7 @@ int mainLoop(bool realCamera = false)
       perror("select");
       exit(4);
     }
-    LOGI("GO RECV");
+    // LOGI("GO RECV");
     websocket->runLoop(&fdset, NULL);
     mjpegS->fdEventFetch(&fdset);
   }
