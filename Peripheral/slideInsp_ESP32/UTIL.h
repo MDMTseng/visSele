@@ -178,7 +178,7 @@ class buffered_print
   public:
   buffered_print(int len)
   {
-    buf=new char[len];
+    buf=new char[len+1];//with NULL end
     _capacity=len;
     _size=0;
     resize(0);
@@ -232,13 +232,16 @@ class buffered_print
     return '\0';
   }
 
+  int write(char ch) 
+  {    
+    return this->printf("%c",ch) ;
+  }
   
-  int print(char *fmt, ...) 
+  int printf(char *fmt, ...) 
   {    
     va_list argptr;
     va_start(argptr,fmt);
-//    _size=snprintf(buf+_size,_capacity-_size,fmt,argptr);
-    _size=vsnprintf(buf+_size,_capacity-_size,fmt,argptr);
+    _size+=vsnprintf(buf+_size,_capacity-_size,fmt,argptr);
     va_end(argptr);
     return (_size==_capacity)?-1:0;
   }

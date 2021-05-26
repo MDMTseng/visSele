@@ -355,22 +355,23 @@ void IRAM_ATTR onTimer()
   tGS.timerRun();
 }
 StaticJsonDocument<1024> recv_doc;
-DynamicJsonDocument ret_doc(4096);
+StaticJsonDocument<1024> ret_doc;
 void setup()
 {
   pinMode(O_CameraPin, OUTPUT);
   pinMode(O_LED_Status, OUTPUT);
   pinMode(O_BackLight, OUTPUT);
 
-  digitalWrite(O_LED_Status, 1);
-  digitalWrite(O_BackLight, 1);
+  // digitalWrite(O_LED_Status, 1);
+  // digitalWrite(O_BackLight, 1);
 
-  digitalWrite(O_CameraPin, 0);
-  delay(10);
-  digitalWrite(O_CameraPin, 1);
+  // digitalWrite(O_CameraPin, 0);
+  // delay(10);
+  // digitalWrite(O_CameraPin, 1);
 
   Serial.begin(921600);
 
+  setup_comm();
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 100, true);
@@ -393,9 +394,8 @@ int intArrayContent_ToJson(char *jbuff, uint32_t jbuffL, int16_t *intarray, int 
   return MessageL;
 }
 
-buffered_print BP(1024);
 
-int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, int *ret_result = NULL)
+int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, int *ret_result = NULL)
 {
   char *TLC = SPP.buffer;
   char *DATA = SPP.buffer + 2;
@@ -404,32 +404,13 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, i
   //  Serial.println(TLC[1]);
   //  Serial.println(DATA);
 
+  ret_doc.clear();
   bool errorCode = -1;
   int ret_len = 0;
 
   char retTLC[3];
   if (TLC[0] == 'T' && TLC[1] == 'T')
   {
-
-    char inChar = DATA[0];
-
-    if (inChar == 'C')
-    {
-      GLOB_F.printCurrentReading = !GLOB_F.printCurrentReading;
-      bp->print("@ttprintCurrentReading:%d$", GLOB_F.printCurrentReading);
-    }
-
-    if (inChar == 'S')
-    {
-      GLOB_F.printSTATEChange = !GLOB_F.printSTATEChange;
-      bp->print("@ttprintSTATEChange:%d$", GLOB_F.printSTATEChange);
-    }
-
-    if (inChar == '?')
-    {
-      bp->print("@ttprint[C]urrentReading ", GLOB_F.printSTATEChange);
-      bp->print("print[S]TATEChange $", GLOB_F.printSTATEChange);
-    }
     errorCode = 0;
   }
   else if (TLC[0] == 'S' && TLC[1] == 'T')
@@ -442,8 +423,7 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, i
       const char *sensor = recv_doc["ECHO"];
       if (sensor != NULL)
       {
-
-        bp->print("@tt%s$", sensor);
+        bp->printf("tt%s", DATA);
       }
 
       recv_doc.clear();
@@ -454,9 +434,10 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, i
   {
     sprintf(retTLC, "js");
     deserializeJson(recv_doc, DATA);
+    ret_doc.clear();
 
     auto idObj = recv_doc["id"];
-    ret_djd["id"] = idObj;
+    ret_doc["id"] = idObj;
 
     auto typeObj = recv_doc["type"];
     if (typeObj.is<char *>())
@@ -464,17 +445,7 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, i
       const char *type = typeObj.as<char *>();
       if (strcmp(type, "get_cache_rec") == 0)
       {
-        // JsonArray rec = ret_djd.createNestedArray("rec");
-        // if(pID.object_record_cache.size()!=0)
-        // {
-        //   for (int i = 0; i < pID.object_record_cache.size(); i++)
-        //   {
-        //     rec.add(pID.object_record_cache.arr[i]);
-        //   }
-        // }
-      }
-      else if (strcmp(type, "empty_cache_rec") == 0)
-      {
+
       }
     }
     recv_doc.clear();
@@ -485,12 +456,11 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, i
   {
   }
 
-  if (BP.size() == 0)
+  if (bp->size() == 0)
   {
-    bp->print("@%s", retTLC);
-    size_t s = serializeJson(ret_djd, bp->buffer() + bp->size(), bp->rest_capacity());
-    BP.resize(bp->size() + s);
-    bp->print("$");
+    bp->printf("%s", retTLC);
+    size_t s = serializeJson(ret_doc, bp->buffer() + bp->size(), bp->rest_capacity());
+    bp->resize(bp->size() + s);
   }
 
   if (ret_result)
@@ -503,4 +473,5 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, JsonDocument &ret_djd, i
 void loop()
 {
   tGS.mainLoop();
+  loop_comm();
 }

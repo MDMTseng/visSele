@@ -2,17 +2,30 @@
 #define SimpPacketParse_HPP___
 class SimpPacketParse{
   int cur_size;
-  
-public:
-  static const char _START_='@';
-  static const char _END_='$';
-  char *buffer;
-  SimpPacketParse(int size)
+
+private:
+  void init_ONCE(int size,char startCharSym,char endCharSym)
   {
     buffer=new char[size];
     cur_size=0;
+    _START_=startCharSym;
+    _END_=endCharSym;
   }
-  
+public:
+  char _START_='@';
+  char _END_='$';
+  char *buffer;
+
+  SimpPacketParse(int size,char startCharSym,char endCharSym)
+  {
+    init_ONCE(size,startCharSym,endCharSym);
+  }
+  SimpPacketParse(int size)
+  {
+    init_ONCE(size,'@','$');
+  }
+  char sChar(){return _START_;}
+  char eChar(){return _END_;}
   void add(char ch)
   {
     buffer[cur_size]=ch;
@@ -70,6 +83,9 @@ public:
 
 
 };
+
+
+
 
 
 #endif
