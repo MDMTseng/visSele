@@ -1,70 +1,14 @@
 #pragma once
 #include <Arduino.h>
 
+#include <WiFi.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 
-class comm_interface{
-  public:
-  char name[30];
-  // char version[30];
-  virtual void onConnected()
-  {
-
-  }
-
-  virtual void onError()
-  {
-    
-  }
-
-  virtual void onClosed()
-  {
-    
-  }
-
-  virtual void onMesssage(uint8_t *data, size_t len)
-  {
-
-  }
-
-  virtual void sendMesssage(uint8_t *data, size_t len)
-  {
-
-  }
-
-};
-
-class Serial_interface:public comm_interface{
-
-};
-class IP_interface:public comm_interface{
-  public:
-  // char version[30];
-  virtual void onConnected()
-  {
-
-  }
-
-  virtual void onError()
-  {
-    
-  }
-
-  virtual void onClosed()
-  {
-    
-  }
-
-  virtual void onMesssage(uint8_t *data, size_t len)
-  {
-
-  }
-
-  virtual void sendMesssage(uint8_t *data, size_t len)
-  {
-
-  }
-
-};
+#include "UTIL.h"
+#include "RingBuf.hpp"
+#include "SimpPacketParse.hpp"
+#include <ArduinoJson.h>
 
 
 

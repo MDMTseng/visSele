@@ -1,12 +1,86 @@
-<!DOCTYPE HTML><html>
+<html ng-app="app">
 <head>
-  <title>ESP Web Server</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="data:,">
-  <style>
-  </style>
+    <script type="text/javascript">
+
+    var myWebSocket;
+
+    function TA_print(msg) {
+      document.getElementById("eventWindow").value += msg;
+    }
+    function TA_println(msg) {
+      document.getElementById("eventWindow").value += msg+"\n";
+    }
+
+    function connectToWS() {
+        var endpoint = document.getElementById("endpoint").value;
+        if (myWebSocket !== undefined) {
+            myWebSocket.close()
+        }
+
+        myWebSocket = new WebSocket(endpoint);
+
+        myWebSocket.onmessage = function(event) {
+            var leng;
+            if (event.data.size === undefined) {
+                leng = event.data.length
+            } else {
+                leng = event.data.size
+            }
+            TA_println("<<" + event.data);
+
+        }
+
+        myWebSocket.onopen = function(evt) {
+          TA_println("onopen.");
+        };
+
+        myWebSocket.onclose = function(evt) {
+          TA_println("onclose.");
+        };
+
+        myWebSocket.onerror = function(evt) {
+          TA_println("Error!");
+        };
+    }
+
+    function sendMsg() {
+        var message = document.getElementById("myMessage").value;
+
+        TA_println(">" + message);
+        myWebSocket.send(message);
+    }
+
+    function closeConn() {
+        myWebSocket.close();
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById("myMessage").value='@ST{"ECHO":"1234"}$';
+    }, false);
+
+    </script>
 </head>
 <body>
-  Web server
+
+    <form>
+        connection to: <input type="text" id="endpoint" name="endpoint" value="ws://192.168.69.193/ws"  style="width: 200px" ><br>
+    </form>
+
+    <input type="button" onclick="connectToWS()" value="connect to WebSocket endpoint" /><br><br>
+
+    <form>
+        message: 
+        <textarea id="myMessage" rows="2" cols="50"></textarea>
+        
+        <br>
+    </form>
+
+    <input type="button" onclick="sendMsg()" value="Send message" />
+
+    <input type="button" onclick="closeConn()" value="Close connection" />
+    <br/>
+    <br/>
+    <textarea id="eventWindow" rows="20" cols="50"></textarea>
+
 </body>
 </html>

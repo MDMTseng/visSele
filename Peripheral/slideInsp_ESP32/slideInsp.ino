@@ -1,7 +1,5 @@
-#include "UTIL.h"
-#include "RingBuf.hpp"
-#include "SimpPacketParse.hpp"
-#include <ArduinoJson.h>
+
+#include "main.hpp"
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
 const int O_CameraPin = 5;
@@ -423,7 +421,7 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, int *ret_result = NULL)
       const char *sensor = recv_doc["ECHO"];
       if (sensor != NULL)
       {
-        bp->printf("tt%s", DATA);
+        bp->printf("tt%s", sensor);
       }
 
       recv_doc.clear();

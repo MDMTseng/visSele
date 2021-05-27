@@ -1,5 +1,13 @@
 #ifndef SimpPacketParse_HPP___
 #define SimpPacketParse_HPP___
+
+
+class SimpJSONPacketParse{
+  int cur_size;
+  
+};
+
+
 class SimpPacketParse{
   int cur_size;
 

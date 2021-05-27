@@ -1,8 +1,6 @@
 
 
-#include <WiFi.h>
-#include <AsyncTCP.h>
-#include <ESPAsyncWebServer.h>
+#include "main.hpp"
 
 // #include "esp_wifi.h"
 
@@ -23,80 +21,100 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType 
 AsyncWebSocket ws("/ws");
 
 
+
+
+
+
 void connectToWiFi(const char * ssid, const char * pwd)
 {
+
   byte mac[6] = {0,0,0,0,0,0};
   WiFi.macAddress(mac);
   Serial.printf("MAC address: %02X:%02X:%02X:%02X:%02X:%02X\r\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     
 
-    Serial.println("scan start");
+  Serial.println("scan start");
 
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
-  delay(200);
-  // WiFi.scanNetworks will return the number of networks found
-  if(0){
-    int n = WiFi.scanNetworks();
-    Serial.println("scan done");
-    if (n == 0) {
-        Serial.println("no networks found");
-    } else {
-        Serial.print(n);
-        Serial.println(" networks found");
-        for (int i = 0; i < n; ++i) {
-            // Print SSID and RSSI for each network found
-            Serial.print(i + 1);
-            Serial.print(": ");
-            Serial.print(WiFi.SSID(i));
-            Serial.print(" (");
-            Serial.print(WiFi.RSSI(i));
-            Serial.print(")");
-            Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
-            delay(10);
-        }
-    }
-    Serial.println("");
 
 
-  }
-
-
-  Serial.println("Connecting to WiFi network: " + String(ssid));
-  WiFi.begin(ssid, pwd);
-  Serial.println("Connecting");
-  while (WiFi.status() != WL_CONNECTED) 
+  while(true)
   {
+    
+    WiFi.disconnect();
     delay(1000);
-    // Serial.print(".");
-    // Blink LED while we're connecting:
-    Serial.println("Connecting.. status: " + String(WiFi.status()));
+    // WiFi.scanNetworks will return the number of networks found
+    if(1){
+      int n = WiFi.scanNetworks();
+      Serial.println("scan done");
+      if (n == 0) {
+          Serial.println("no networks found");
+      } else {
+          Serial.print(n);
+          Serial.println(" networks found");
+          for (int i = 0; i < n; ++i) {
+              // Print SSID and RSSI for each network found
+              Serial.print(i + 1);
+              Serial.print(": ");
+              Serial.print(WiFi.SSID(i));
+              Serial.print(" (");
+              Serial.print(WiFi.RSSI(i));
+              Serial.print(")");
+              Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
+              delay(10);
+          }
+      }
+      Serial.println("");
+
+
+    }
+
+
+    Serial.println("Connecting to WiFi network: " + String(ssid));
+    WiFi.begin(ssid, pwd);
+    delay(2000);
+    int waitingCountDown=5;
+    
+    while (WiFi.status() != WL_CONNECTED) 
+    {
+      Serial.printf("%d,",WiFi.status());
+      if(--waitingCountDown==0)
+      {
+        break;
+      }
+      delay(2000);
+    }
+    Serial.printf("%d",WiFi.status());
+    Serial.println();
+    if(WiFi.status() == WL_CONNECTED)
+    {
+      break;
+    }
+
+    Serial.println("retry connection");
+
   }
 
-  Serial.println();
+
   Serial.println("WiFi connected!");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
+
+void WiFiStationDisconnected(WiFiEvent_t event, WiFiEventInfo_t info){
+
+  server.end();
+  connectToWiFi(ssid,password);
+}
+
 extern const char index_html[] asm("_binary_resource_webapp_index_html_start");
 extern const char index_html_end[] asm("_binary_resource_webapp_index_html_end");
-void setup_comm() {
 
-  int retry = 0;
-  Serial.printf("%s:%d:",__func__,__LINE__);
-  connectToWiFi(ssid,password);
-  Serial.println("Connected!!\n");
-
-  // Print ESP Local IP Address
-  Serial.println(WiFi.localIP());
-
+void WiFiStationConnected(WiFiEvent_t event, WiFiEventInfo_t info){
 
   // Start server
   server.begin();
-
-
-
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 
@@ -105,10 +123,29 @@ void setup_comm() {
   });
 }
 
+void setup_comm() {
+
+  int retry = 0;
+  Serial.printf("%s:%d:",__func__,__LINE__);
+
+  WiFi.onEvent(WiFiStationDisconnected, SYSTEM_EVENT_STA_DISCONNECTED);
+  WiFi.onEvent(WiFiStationConnected, SYSTEM_EVENT_STA_CONNECTED);
+
+  connectToWiFi(ssid,password);
+  Serial.println("Connected!!\n");
+
+  // Print ESP Local IP Address
+  Serial.println(WiFi.localIP());
+
+}
+
 void loop_comm()
 {
-
-  ws.cleanupClients();
+  // if(WiFi.status() != WL_CONNECTED)
+  // {
+  //   connectToWiFi(ssid,password);
+  // }
+  // ws.cleanupClients();
 
   while (Serial.available()) {
     char inChar = (char)Serial.read();
