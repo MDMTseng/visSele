@@ -145,7 +145,7 @@ void loop_comm()
   // {
   //   connectToWiFi(ssid,password);
   // }
-  // ws.cleanupClients();
+  ws.cleanupClients();
 
   while (Serial.available()) {
     char inChar = (char)Serial.read();
