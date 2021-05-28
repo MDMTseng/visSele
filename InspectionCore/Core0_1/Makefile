@@ -15,6 +15,7 @@ moduleRoot=../
 export MODULE_acvImage=$(abspath $(moduleRoot)/acvImage)
 export MODULE_cwebsocket=$(abspath $(moduleRoot)/contrib/cwebsocket)
 export MODULE_circleFitting=$(abspath $(moduleRoot)/contrib/circleFitting)
+export MODULE_aravis=$(abspath $(moduleRoot)/contrib/aravis/$(platform))
 export MODULE_MindVision_GIGE=$(abspath $(moduleRoot)/contrib/MindVision_GIGE/$(platform))
 export MODULE_Compat_dirent=$(abspath $(moduleRoot)/contrib/Compat_dirent/$(platform))
 export MODULE_cJSON=$(abspath $(moduleRoot)/contrib/cJSON)
@@ -70,7 +71,7 @@ _OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp tmpCodes.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= 			$(MODULE_MatchingEngine)/MatchingEngine.a \
+EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_logctrl)/logctrl.a \

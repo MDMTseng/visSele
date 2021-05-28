@@ -7,7 +7,7 @@ glib_20_Dir=$(shell pkg-config --variable prefix glib-2.0)
 # $(info $(glib_20_Dir))
 
 FLAGS=`pkg-config --cflags glib-2.0`
-LIBS=`pkg-config --libs glib-2.0` -lgmodule-2.0 -lgobject-2.0 -lgthread-2.0  libaravis-0.8.0.dylib  -Wl,-rpath .
+LIBS=`pkg-config --libs glib-2.0` -lgobject-2.0  libaravis-0.8.0.dylib  -Wl,-rpath .
 # /usr/lib/libiconv.dylib
 
 # EXT_OBJS= $(glib_20_Dir)/lib/libgobject-2.0.a

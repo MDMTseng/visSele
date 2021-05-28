@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include "CameraLayer_BMP.hpp"
 #include "CameraLayer_GIGE_MindVision.hpp"
+#include "CameraLayer_Aravis.hpp"
 #include "acvImage_MophologyTool.hpp"
 
 #include <MicroInsp_FType.hpp>
