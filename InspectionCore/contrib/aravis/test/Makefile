@@ -1,6 +1,6 @@
 
 ODIR=obj
-IDIR= ../include/ ../mac_x64/src
+IDIR= ../mac_x64/include/ ../mac_x64/src
 _OBJ = arvcameratest.o
 
 glib_20_Dir=$(shell pkg-config --variable prefix glib-2.0)

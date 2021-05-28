@@ -58,6 +58,8 @@ IDIR=	include/ \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_MindVision_GIGE)/include \
+			$(MODULE_aravis)/include \
+			$(MODULE_aravis)/src \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
 			$(MODULE_mjpegLib)/include \
@@ -136,7 +138,7 @@ export MakeTemplate:= $(abspath ../Makefile.in)
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
-export FLAGS+= -w -O3 $(STRICT_FLAGS)
+export FLAGS+= -w -O3 -std=c++11 $(STRICT_FLAGS) `pkg-config --cflags glib-2.0`
 
 include $(MakeTemplate)
 
