@@ -55,7 +55,8 @@ void CameraLayer_Aravis::s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_A
 void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 {
 
-
+  if(takeCount>=0)
+    LOGI(">>>>>takeCount:%d",takeCount);
   ArvBuffer *buffer= arv_stream_try_pop_buffer (stream);
   if (buffer == NULL)
   {
@@ -70,7 +71,8 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     return;
   }
 
-  if (arv_buffer_get_status (buffer) == ARV_BUFFER_STATUS_SUCCESS) {
+  int bufferStatus=arv_buffer_get_status (buffer);
+  if (bufferStatus == ARV_BUFFER_STATUS_SUCCESS) {
 
 
     size_t img_size = 0;
@@ -112,9 +114,6 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 
     snapFlag=0;
 
-  } else {
-    // data->error_count++;
-  }
   if(takeCount>0)
   {
     takeCount--;
@@ -125,6 +124,21 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     arv_camera_stop_acquisition(camera, NULL);
   }
   conV.notify_one();
+  } 
+  else {
+    LOGE("bufferStatus:%d",bufferStatus);
+    // data->error_count++;
+    frameInfo _fi = {
+      timeStamp_us : 0,
+      width : 0,
+      height : 0,
+      offset_x : 0,
+      offset_y : 0,
+    };
+    fi = _fi;
+    if (snapFlag == 0)
+      callback(*this, CameraLayer::EV_ERROR, context);
+  }
   arv_stream_push_buffer (stream, buffer);
   // LOGI("buffer status:%d has chunks:%d",arv_buffer_get_status (buffer),arv_buffer_has_chunks (buffer));
   // if (arv_buffer_get_status (buffer) == ARV_BUFFER_STATUS_SUCCESS) {
@@ -481,7 +495,8 @@ CameraLayer::status CameraLayer_Aravis::TriggerCount(int count)
 CameraLayer::status CameraLayer_Aravis::Trigger()
 {
   GError *err=NULL;
-  takeCount++;
+  if(takeCount>=0)
+    takeCount++;
   // arv_camera_software_trigger (camera,&err);
 
   arv_camera_start_acquisition (camera, NULL);
@@ -553,15 +568,14 @@ CameraLayer::status CameraLayer_Aravis::SnapFrame()
 {
   
   TriggerMode(1);
-
+  snapFlag=1;
+  //trigger reset;
   LOGI("TRIGGER");
-
-
-  LOGI("go lock");
   {
     std::unique_lock<std::mutex> lock(m);
 
-    for(int i=0;Trigger() == CameraLayer::NAK;i++)
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    for(int i=0;TriggerCount(1) == CameraLayer::NAK;i++)
     {
       if(i>5)
       {
