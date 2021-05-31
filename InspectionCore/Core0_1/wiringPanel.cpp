@@ -3257,7 +3257,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   bool doPassDown = doInspActionThread;
 
   //taking the short cut
-  sendResultTo_mift(imgPipe->actInfo.uInspStatus,imgPipe->fi.timeStamp_100us);
+  sendResultTo_mift(imgPipe->actInfo.uInspStatus,imgPipe->fi.timeStamp_us);
   if (doPassDown)
   {
     actionQueue.push_blocking(imgPipe);
@@ -3424,35 +3424,79 @@ int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void 
   return ret_val;
 }
 
-int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
+// int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
+// {
+
+//   tSdkCameraDevInfo sCameraList[10];
+//   int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
+//   CL_GIGE->EnumerateDevice(sCameraList, &retListL);
+
+//   if (retListL <= 0)
+//     return -1;
+//   for (int i = 0; i < retListL; i++)
+//   {
+//     printf("CAM:%d======\n", i);
+//     printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
+//     printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
+//     printf("acLinkName:%s\n", sCameraList[i].acLinkName);
+//     printf("acPortType:%s\n", sCameraList[i].acPortType);
+//     printf("acProductName:%s\n", sCameraList[i].acProductName);
+//     printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
+//     printf("acSensorType:%s\n", sCameraList[i].acSensorType);
+//     printf("acSn:%s\n", sCameraList[i].acSn);
+//     printf("\n\n\n\n");
+//   }
+
+//   if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
+//   {
+//     return 0;
+//   }
+//   return -1;
+// }
+
+
+CameraLayer_Aravis* initCamera_Aravis(std::string targetIdContains="")
 {
-
-  tSdkCameraDevInfo sCameraList[10];
-  int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
-  CL_GIGE->EnumerateDevice(sCameraList, &retListL);
-
-  if (retListL <= 0)
-    return -1;
-  for (int i = 0; i < retListL; i++)
+  vector<CameraLayer_Aravis::cam_info> infoList;
+  CameraLayer_Aravis::listDevices(infoList,true);
+  if(infoList.size()>0)
   {
-    printf("CAM:%d======\n", i);
-    printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
-    printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
-    printf("acLinkName:%s\n", sCameraList[i].acLinkName);
-    printf("acPortType:%s\n", sCameraList[i].acPortType);
-    printf("acProductName:%s\n", sCameraList[i].acProductName);
-    printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
-    printf("acSensorType:%s\n", sCameraList[i].acSensorType);
-    printf("acSn:%s\n", sCameraList[i].acSn);
-    printf("\n\n\n\n");
+    for(int i=0;i<infoList.size();i++){
+      if(targetIdContains.length()>0 &&infoList[i].id.find(targetIdContains)== string::npos)
+      {
+        continue;
+      }
+      
+      try{
+        if(infoList[i].available)
+        {//try to find first available camera 
+        
+          LOGI("=======CAM OPEN========");
+          CameraLayer_Aravis *camera=new CameraLayer_Aravis(infoList[i].id.c_str(),CameraLayer_Callback_GIGEMV, NULL);
+          CameraLayer_Aravis::cam_info ci=camera->getCameraInfo();
+          LOGI("=======CAM OPEN========");
+          LOGI("id:%s",ci.id.c_str());
+          LOGI("physical_id:%s",ci.physical_id.c_str());
+          LOGI("address:%s",ci.address.c_str());
+          LOGI("model:%s",ci.model.c_str());
+          LOGI("protocol:%s",ci.protocol.c_str());
+          LOGI("serial_nbr:%s",ci.serial_nbr.c_str());
+          LOGI("vendor:%s",ci.vendor.c_str());
+          LOGI("available:%d",ci.available);
+          return camera;
+        }
+      }
+      catch(const std::exception& ex){
+      }
+    }
   }
 
-  if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
-  {
-    return 0;
-  }
-  return -1;
+  return NULL;
 }
+
+
+
+
 int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
   return CL_bmpc == NULL ? -1 : 0;
@@ -3462,30 +3506,34 @@ CameraLayer *getCamera(int initCameraType = 0)
 {
 
   CameraLayer *camera = NULL;
-  if (initCameraType == 0 || initCameraType == 1)
-  {
-    CameraLayer_GIGE_MindVision *camera_GIGE;
-    camera_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
-    LOGV("initCamera");
+  // if (initCameraType == 0 || initCameraType == 1)
+  // {
+  //   CameraLayer_GIGE_MindVision *camera_GIGE;
+  //   camera_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
+  //   LOGV("initCamera");
 
-    try
-    {
-      if (initCamera(camera_GIGE) == 0)
-      {
-        camera = camera_GIGE;
-      }
-      else
-      {
-        delete camera;
-        camera = NULL;
-      }
-    }
-    catch (std::exception &e)
-    {
-      delete camera;
-      camera = NULL;
-    }
-  }
+  //   try
+  //   {
+  //     if (initCamera(camera_GIGE) == 0)
+  //     {
+  //       camera = camera_GIGE;
+  //     }
+  //     else
+  //     {
+  //       delete camera;
+  //       camera = NULL;
+  //     }
+  //   }
+  //   catch (std::exception &e)
+  //   {
+  //     delete camera;
+  //     camera = NULL;
+  //   }
+  // }
+  
+  LOGI(">>>>>\n");
+  camera=initCamera_Aravis("MindVision-040010720303");
+
   LOGI("camera ptr:%p", camera);
 
   if (camera == NULL && (initCameraType == 0 || initCameraType == 2))

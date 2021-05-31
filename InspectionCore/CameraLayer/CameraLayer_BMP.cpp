@@ -347,10 +347,10 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
     {
       struct timeval tp;
       gettimeofday(&tp, NULL);
-      long int _100us = tp.tv_sec * 10000 + tp.tv_usec / 100; //get current timestamp in milliseconds
+      uint64_t _100us = tp.tv_sec * 1000000 + tp.tv_usec; //get current timestamp in milliseconds
 
       CameraLayer::frameInfo fi_={
-        timeStamp_100us:(uint64_t)_100us,
+        timeStamp_us:(uint64_t)_100us,
         width:(uint32_t)img.GetWidth(),
         height:(uint32_t)img.GetHeight(),
       };
@@ -362,7 +362,7 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
     else
     {
       CameraLayer::frameInfo fi_={
-        timeStamp_100us:0,
+        timeStamp_us:0,
         width:0,
         height:0,
       };

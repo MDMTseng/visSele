@@ -11,7 +11,7 @@ class CameraLayer{
     public:
     
     typedef struct {
-      uint64_t timeStamp_100us;
+      uint64_t timeStamp_us;
       uint32_t width;
       uint32_t height;
       float offset_x;

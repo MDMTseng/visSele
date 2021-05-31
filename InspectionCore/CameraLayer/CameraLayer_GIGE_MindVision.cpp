@@ -57,7 +57,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
   if (CameraImageProcess(hCamera, frameBuffer, m_pFrameBuffer, frameInfo) != CAMERA_STATUS_SUCCESS)
   {
     CameraLayer_GIGE_MindVision::frameInfo fi_ = {
-      timeStamp_100us : 0,
+      timeStamp_us : 0,
       width : 0,
       height : 0,
       offset_x : 0,
@@ -78,7 +78,7 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
 
     // }
     CameraLayer_GIGE_MindVision::frameInfo fi_ = {
-      timeStamp_100us : (uint64_t)frameInfo->uiTimeStamp,
+      timeStamp_us : (uint64_t)frameInfo->uiTimeStamp*100,
       width : (uint32_t)frameInfo->iWidth,
       height : (uint32_t)frameInfo->iHeight,
       offset_x : ROI_x,

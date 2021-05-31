@@ -3,7 +3,7 @@ ifeq ($(OS)$(CC),Windows_NTcc)
 	export platform=win_x64
 	FLAGS+= -static -static-libgcc -static-libstdc++ -lws2_32
 else
-	LIBS+= -lz
+	LIBS+= -lz 
 	export platform=mac_x64
 endif
 
@@ -93,7 +93,8 @@ ifeq ($(OS)$(CC),Windows_NTcc)
 	FLAGS+= -D_MINGW -D_WINDOWS
 	
 else
-	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
+	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/  
+	LIBS+=`pkg-config --libs glib-2.0` -lgobject-2.0  $(MODULE_aravis)/src/libaravis-0.8.0.dylib  -Wl,-rpath .
 	EXT_OBJS+=
 endif
 
@@ -112,7 +113,7 @@ else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
 else
 
-	ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
+	# ESS_TRACK= $(addsuffix /*.h* ,$(IDIR))
 	SUB_MAKEFILES = $(MODULE_acvImage) \
 									$(MODULE_common_lib) \
 									$(MODULE_circleFitting) \
