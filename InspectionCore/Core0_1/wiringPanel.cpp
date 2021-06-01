@@ -3924,9 +3924,6 @@ int cp_main(int argc, char **argv)
     LOGI("WIN32 WSAStartup ret:%d", iResult);
   }
 
-  char buffer[256]; //force output run with buffer mode(print when buffer is full) instead of line buffered mode
-  //this speeds up windows print dramaticlly
-  setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 #endif
 
   _argc = argc;

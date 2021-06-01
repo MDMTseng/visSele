@@ -20,6 +20,10 @@
 #ifdef FEATURE_COMPILE_W_ARAVIS
 #include "CameraLayer_Aravis.hpp"
 #endif
+#ifdef FEATURE_COMPILE_W_HIKVISION_CAMERA_SDK
+#include "MvCameraControl.h"
+#endif
+
 
 #include "acvImage_MophologyTool.hpp"
 
@@ -35,6 +39,9 @@
 
 #include "MJPEG_Streamer.hpp"
 
+
+
+int demomain(int argc, char **argv);
 class MJPEG_Streamer2 : public MJPEG_Streamer
 {
 
