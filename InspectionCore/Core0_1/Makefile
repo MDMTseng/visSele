@@ -37,6 +37,8 @@ export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
 export SO_EXPORT_PATH=$(abspath .)
 
 
+export FEATURE_COMPILE_W_ARAVIS=0
+
 
 # export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
 # export GLFWSRCDir=$(abspath ../../$(moduleRoot)/glfw-3.2.1)
@@ -58,8 +60,6 @@ IDIR=	include/ \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_MindVision_GIGE)/include \
-			$(MODULE_aravis)/include \
-			$(MODULE_aravis)/src \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
 			$(MODULE_mjpegLib)/include \
@@ -93,11 +93,12 @@ ifeq ($(OS)$(CC),Windows_NTcc)
 	FLAGS+= -D_MINGW -D_WINDOWS
 	
 else
-	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/  
-	LIBS+=`pkg-config --libs glib-2.0` -lgobject-2.0  $(MODULE_aravis)/src/libaravis-0.8.0.dylib  -Wl,-rpath .
+	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
 	EXT_OBJS+=
-endif
+	FEATURE_COMPILE_W_ARAVIS=1
+	
 
+endif
 
 
 ESS_TRACK=
@@ -139,7 +140,14 @@ export MakeTemplate:= $(abspath ../Makefile.in)
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
-export FLAGS+= -w -O3 -std=c++11 $(STRICT_FLAGS) `pkg-config --cflags glib-2.0`
+ifeq ($(FEATURE_COMPILE_W_ARAVIS),1)
+	FLAGS+= -D FEATURE_COMPILE_W_ARAVIS `pkg-config --cflags glib-2.0` 
+	IDIR+=$(MODULE_aravis)/include $(MODULE_aravis)/src 
+	LIBS+=`pkg-config --libs glib-2.0` -lgobject-2.0  $(MODULE_aravis)/src/libaravis-0.8.0.dylib  -Wl,-rpath .
+endif
+
+
+export FLAGS+= -w -O3 $(STRICT_FLAGS) 
 
 include $(MakeTemplate)
 
