@@ -95,17 +95,15 @@ public:
 protected:
   void *handle;
 
-
   cam_info self_info;
   int takeCount;
   bool bDevConnected;
   bool threadRunningState;
   std::thread grabThread;
 
-  
   std::mutex m;
   std::condition_variable conV;
-  bool snapFlag=false;
+  bool snapFlag = false;
 
   // std::mutex m;
   // std::condition_variable conV;
@@ -135,10 +133,10 @@ protected:
 
   int SetIntValue_w_Check(const char *strKey, int64_t target)
   {
-    MVCC_INTVALUE_EX intValInfo={0};
+    MVCC_INTVALUE_EX intValInfo = {0};
     GetIntValue(strKey, &intValInfo);
-    int value = leastSatiValue(target,intValInfo);
-    return SetIntValue(strKey,value);
+    int value = leastSatiValue(target, intValInfo);
+    return SetIntValue(strKey, value);
   }
 
   int GetEnumValue(const char *strKey, MVCC_ENUMVALUE *pEnumValue)
@@ -191,12 +189,14 @@ protected:
     return MV_CC_SetCommandValue(handle, strKey);
   }
 
-  static int leastSatiValue(int target,MVCC_INTVALUE_EX range)
+  static int leastSatiValue(int target, MVCC_INTVALUE_EX range)
   {
-    if(target<range.nMin)return range.nMin;
-    if(target>range.nMax)return range.nMax;
-    int value=range.nMin+((target-range.nMin)/range.nInc)*range.nInc;
-    return (target>value)?value+range.nInc:value;
+    if (target < range.nMin)
+      return range.nMin;
+    if (target > range.nMax)
+      return range.nMax;
+    int value = range.nMin + ((target - range.nMin) / range.nInc) * range.nInc;
+    return (target > value) ? value + range.nInc : value;
   }
 
   void grabThreadFunc()
@@ -216,7 +216,7 @@ protected:
       else
       {
         
-        LOGI("MV_:::%X",nRet);
+        LOGI("MV_:::%X", nRet);
         // if (MV_TRIGGER_MODE_ON == m_nTriggerMode)
         // {
         //   Sleep(5);
@@ -236,7 +236,7 @@ public:
   CameraLayer::status Trigger();
   CameraLayer::status SnapFrame();
 
-  int getXML(char* buffer,int bufferSize);
+  int getXML(char *buffer, int bufferSize);
   
   CameraLayer::status SetROI(int x, int y, int w, int h, int zw, int zh);
 
@@ -267,74 +267,75 @@ public:
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
-  int max_w,max_h;
+  int max_w, max_h;
   
-  MVCC_INTVALUE_EX WInfo={0};
+  MVCC_INTVALUE_EX WInfo = {0};
   GetIntValue("Width", &WInfo);
-  MVCC_INTVALUE_EX HInfo={0};
+  MVCC_INTVALUE_EX HInfo = {0};
   GetIntValue("Height", &HInfo);
-  max_w=WInfo.nMax;
-  max_h=HInfo.nMax;
-  if(x>=max_w || y>=max_h || w<0 || h<0)
+  max_w = WInfo.nMax;
+  max_h = HInfo.nMax;
+  if (x >= max_w || y >= max_h || w < 0 || h < 0)
   {
     return CameraLayer::NAK;
   }
-  if(x<0)
+  if (x < 0)
   {
-    w+=x;
-    x=0;
+    w += x;
+    x = 0;
   }
-  if(y<0)
+  if (y < 0)
   {
-    h+=y;
-    y=0;
-  }
-
-
-  if(x+w>max_w)
-  {
-    w=max_w-x;
+    h += y;
+    y = 0;
   }
 
-  if(y+h>max_h)
+  if (x + w > max_w)
   {
-    h=max_h-y;
+    w = max_w - x;
+  }
+
+  if (y + h > max_h)
+  {
+    h = max_h - y;
   }
 
   MV_CC_StopGrabbing(handle);
   SetIntValue_w_Check("OffsetX", (int)x);
   SetIntValue_w_Check("OffsetY", (int)y);
   SetIntValue_w_Check("Width", (int)w);
-  SetIntValue_w_Check("Height",(int)h);
+  SetIntValue_w_Check("Height", (int)h);
   MV_CC_StartGrabbing(handle);
-
 
   return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
-  MVCC_INTVALUE_EX WInfo={0};
+  MVCC_INTVALUE_EX WInfo = {0};
   GetIntValue("Width", &WInfo);
-  MVCC_INTVALUE_EX HInfo={0};
+  MVCC_INTVALUE_EX HInfo = {0};
   GetIntValue("Height", &HInfo);
-  MVCC_INTVALUE_EX OXInfo={0};
+  MVCC_INTVALUE_EX OXInfo = {0};
   GetIntValue("OffsetX", &OXInfo);
-  MVCC_INTVALUE_EX OYInfo={0};
+  MVCC_INTVALUE_EX OYInfo = {0};
   GetIntValue("OffsetY", &OYInfo);
 
-  if(x)*x=OXInfo.nCurValue;
-  if(y)*y=OYInfo.nCurValue;
-  if(w)*w=WInfo.nCurValue;
-  if(h)*h=HInfo.nCurValue;
+  if (x)
+    *x = OXInfo.nCurValue;
+  if (y)
+    *y = OYInfo.nCurValue;
+  if (w)
+    *w = WInfo.nCurValue;
+  if (h)
+    *h = HInfo.nCurValue;
   return CameraLayer::ACK;
 }
 
-
-int CameraLayer_HikRobot_Camera::getXML(char* buffer,int bufferSize)
+int CameraLayer_HikRobot_Camera::getXML(char *buffer, int bufferSize)
 {
   unsigned int nXMLDataLen = 0; 
-  int nRet = MV_XML_GetGenICamXML(handle, (unsigned char*)buffer, bufferSize, &nXMLDataLen); 
-  if(buffer==NULL && bufferSize==0)
+  int nRet = MV_XML_GetGenICamXML(handle, (unsigned char *)buffer, bufferSize, &nXMLDataLen);
+  if (buffer == NULL && bufferSize == 0)
   {
     return nXMLDataLen;
   }
@@ -363,25 +364,27 @@ void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_
 
 void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo)
 {
-  uint32_t tstH=pFrameInfo->nDevTimeStampHigh;
-  uint32_t tstL=pFrameInfo->nDevTimeStampLow;
-  uint64_t nDevTimeStamp=(((uint64_t)tstH)<<32)|tstL;//10ns
-  uint64_t nHostTimeStamp=pFrameInfo->nHostTimeStamp;//1ms
+  uint32_t tstH = pFrameInfo->nDevTimeStampHigh;
+  uint32_t tstL = pFrameInfo->nDevTimeStampLow;
+  uint64_t nDevTimeStamp = (((uint64_t)tstH) << 32) | tstL; //10ns
+  uint64_t nHostTimeStamp = pFrameInfo->nHostTimeStamp;     //1ms
 
-  uint64_t nDevTimeStamp_us=nDevTimeStamp/100;
-  uint64_t nHostTimeStamp_us=nHostTimeStamp*1000;
+  uint64_t nDevTimeStamp_us = nDevTimeStamp / 100;
+  uint64_t nHostTimeStamp_us = nHostTimeStamp * 1000;
   
-  MvGvspPixelType pType=pFrameInfo->enPixelType;
+  MvGvspPixelType pType = pFrameInfo->enPixelType;
   LOGI("ImageCallBack:%d,%d %dx%d type:%0X len:%d  %d,%d,%d nDevTimeStamp:%lu host:%lu",
-    pFrameInfo->nOffsetX,pFrameInfo->nOffsetY,
-    pFrameInfo->nWidth,pFrameInfo->nHeight,
-    pType,pFrameInfo->nFrameLen,
-    pData[0],pData[1],pData[2],nDevTimeStamp_us,nHostTimeStamp_us);
+       pFrameInfo->nOffsetX, pFrameInfo->nOffsetY,
+       pFrameInfo->nWidth, pFrameInfo->nHeight,
+       pType, pFrameInfo->nFrameLen,
+       pData[0], pData[1], pData[2], nDevTimeStamp_us, nHostTimeStamp_us);
 
+  LOGI("nUnparsedChunkNum:%d nLostPacket:%d nChunkWH:%d,%d",
+       pFrameInfo->nUnparsedChunkNum,pFrameInfo->nLostPacket,pFrameInfo->nChunkWidth,pFrameInfo->nChunkHeight);
 
-  if(snapFlag)
+  if (snapFlag)
   {
-    snapFlag=0;
+    snapFlag = 0;
 
     conV.notify_one();
   } 
@@ -460,24 +463,33 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   {
   }
 
+  if (0)
   {
     
-    MVCC_INTVALUE_EX intValInfo={0};
+    MVCC_INTVALUE_EX intValInfo = {0};
     GetIntValue("OffsetX", &intValInfo);
-    LOGI("%d<[%d]<%d....%d",intValInfo.nMin,intValInfo.nCurValue,intValInfo.nMax,intValInfo.nInc);
-
+    LOGI("%d<[%d]<%d....%d", intValInfo.nMin, intValInfo.nCurValue, intValInfo.nMax, intValInfo.nInc);
   }
 
+  {
+
+    nRet = MV_CC_SetBoolValue(handle, "ChunkModeActive", true);
+    nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Exposure");
+    nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
+    nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Timestamp");
+    nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
+
+  }
 
   // SetROI(1000,1000,200,200,0,0);
 
   MV_IMAGE_BASIC_INFO img_basic_info;
   MV_CC_GetImageInfo(handle, &img_basic_info);
   TriggerMode(1);
+  threadRunningState = true;
+
+  SetROI(0, 0, 999999, 999999, 0, 0);
   MV_CC_StartGrabbing(handle);
-  threadRunningState=true;
-  
-  SetROI(0,0,99999,99999,0,0);
   // grabThread = std::thread(&CameraLayer_HikRobot_Camera::grabThreadFunc, this);
 }
 
@@ -485,24 +497,24 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SnapFrame()
 {
   
   TriggerMode(1);
-  snapFlag=1;
+  snapFlag = 1;
   //trigger reset;
   LOGI("TRIGGER");
   {
     std::unique_lock<std::mutex> lock(m);
-    for(int i=0;Trigger() == CameraLayer::NAK;i++)
+    for (int i = 0; Trigger() == CameraLayer::NAK; i++)
     {
-      if(i>5)
+      if (i > 5)
       {
         return CameraLayer::NAK;
       }
     }
-    conV.wait(lock, [this] { return this->snapFlag==0; });
+    conV.wait(lock, [this]
+              { return this->snapFlag == 0; });
   }
   LOGI("END");
   return CameraLayer::ACK;
 }
-
 
 void CameraLayer_HikRobot_Camera::CLOSE()
 {
@@ -591,16 +603,14 @@ int demomain(int argc, char **argv)
     if(0)
     {
       
-      size_t xmlSize=camera1.getXML(NULL,0);
-      LOGI("XML size:%d",xmlSize);
-      char* xmlBuffer=new char[xmlSize+1];
-      camera1.getXML(xmlBuffer,xmlSize+1);
+      size_t xmlSize = camera1.getXML(NULL, 0);
+      LOGI("XML size:%d", xmlSize);
+      char *xmlBuffer = new char[xmlSize + 1];
+      camera1.getXML(xmlBuffer, xmlSize + 1);
       
-      WriteBytesToFile((uint8_t*)xmlBuffer,xmlSize+1,"data/XML_camera.xml");
+      WriteBytesToFile((uint8_t *)xmlBuffer, xmlSize + 1, "data/XML_camera.xml");
       printf("==================\n");
-      delete(xmlBuffer);
-
-
+      delete (xmlBuffer);
     }
 
     camera1.SetROI(1000,1000,500,500,0,0);
