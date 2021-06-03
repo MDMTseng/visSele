@@ -24,11 +24,11 @@ class CameraLayer_BMP : public CameraLayer{
     status LoadBMP(std::string fileName);
     std::string GetCurrentFileName(){return this->fileName;}
     status SetMirror(int Dir,int en);
-    status SetROI(float x, float y, float w, float h,int zw,int zh);
+    status SetROI(int x, int y, int w, int h,int zw,int zh);
     
-    status SetAnalogGain(int gain);
-    status SetExposureTime(double time_us);
-    status GetExposureTime(double *ret_time_us);
+    status SetAnalogGain(float gain);
+    status SetExposureTime(float time_us);
+    status GetExposureTime(float *ret_time_us);
 };
 
 

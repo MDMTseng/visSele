@@ -40,10 +40,10 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status Trigger();
     CameraLayer::status RUN();
     CameraLayer::status SetResolution(int width,int height);
-    CameraLayer::status SetAnalogGain(int gain);
-    CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh);
+    CameraLayer::status SetAnalogGain(float gain);
+    CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh);
 
-    CameraLayer::status GetROI(float *x, float *y, float *w, float *h,int*zw,int *zh);
+    CameraLayer::status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
     CameraLayer::status SnapFrame();
 
     CameraLayer::status SetOnceWB();
@@ -53,8 +53,8 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     CameraLayer::status SetFrameRateMode(int mode);
     CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max);
-    CameraLayer::status SetExposureTime(double time_us);
-    CameraLayer::status GetExposureTime(double *ret_time_us);
+    CameraLayer::status SetExposureTime(float time_us);
+    CameraLayer::status GetExposureTime(float *ret_time_us);
     void ContTriggerThread();
     void ContTriggerThreadTermination();
     acvImage* GetFrame();

@@ -731,7 +731,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   val = JFetch_NUMBER(&settingJson, "gain");
   if (val)
   {
-    camera.SetAnalogGain((int)*val);
+    camera.SetAnalogGain(*val);
     LOGI("SetAnalogGain:%f", *val);
     retV = 0;
   }

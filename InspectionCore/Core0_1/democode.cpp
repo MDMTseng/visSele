@@ -238,9 +238,9 @@ public:
 
   int getXML(char* buffer,int bufferSize);
   
-  CameraLayer::status SetROI(float x, float y, float w, float h, int zw, int zh);
+  CameraLayer::status SetROI(int x, int y, int w, int h, int zw, int zh);
 
-  CameraLayer::status GetROI(float *x, float *y, float *w, float *h, int *zw, int *zh);
+  CameraLayer::status GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh);
 
   // CameraLayer::status SetResolution(int width, int height);
 
@@ -255,8 +255,8 @@ public:
   // CameraLayer::status SetFrameRate(float frame_rate);
   // CameraLayer::status SetFrameRateMode(int mode);
   // CameraLayer::status GetAnalogGain(int *ret_min, int *ret_max);
-  // CameraLayer::status SetExposureTime(double time_us);
-  // CameraLayer::status GetExposureTime(double *ret_time_us);
+  // CameraLayer::status SetExposureTime(float time_us);
+  // CameraLayer::status GetExposureTime(float *ret_time_us);
   // void ContTriggerThread();
   // void ContTriggerThreadTermination();
   // acvImage *GetFrame();
@@ -264,8 +264,7 @@ public:
   ~CameraLayer_HikRobot_Camera();
 };
 
-
-CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(float x, float y, float w, float h, int zw, int zh)
+CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
   int max_w,max_h;
@@ -312,7 +311,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(float x, float y, float 
 
   return CameraLayer::ACK;
 }
-CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(float *x, float *y, float *w, float *h, int *zw, int *zh)
+CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
   MVCC_INTVALUE_EX WInfo={0};
   GetIntValue("Width", &WInfo);

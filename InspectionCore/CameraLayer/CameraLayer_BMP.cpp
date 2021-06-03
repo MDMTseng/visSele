@@ -228,7 +228,7 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
 
 
 
-CameraLayer::status CameraLayer_BMP::SetROI(float x, float y, float w, float h,int zw,int zh)
+CameraLayer::status CameraLayer_BMP::SetROI(int x, int y, int w, int h,int zw,int zh)
 {
   ROI_X=x;
   ROI_Y=y;
@@ -254,14 +254,14 @@ CameraLayer::status CameraLayer_BMP::SetMirror(int Dir,int en)
 }
 
 
-CameraLayer::status CameraLayer_BMP::SetAnalogGain(int gain)
+CameraLayer::status CameraLayer_BMP::SetAnalogGain(float gain)
 {
   a_gain=gain;
   return CameraLayer::ACK;
 }
 
 
-CameraLayer::status CameraLayer_BMP::SetExposureTime(double time_us)
+CameraLayer::status CameraLayer_BMP::SetExposureTime(float time_us)
 {
   //default 5ms as 100% exposure
   exp_time_us=time_us;
@@ -269,7 +269,7 @@ CameraLayer::status CameraLayer_BMP::SetExposureTime(double time_us)
   return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_BMP::GetExposureTime(double *ret_time_us)
+CameraLayer::status CameraLayer_BMP::GetExposureTime(float *ret_time_us)
 {
   if(ret_time_us)
   {

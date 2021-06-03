@@ -387,7 +387,7 @@ CameraLayer::status CameraLayer_Aravis::SetROIMirror(int Dir, int en)
 }
 
 
-CameraLayer::status CameraLayer_Aravis::SetROI(float x, float y, float w, float h, int zw, int zh)
+CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
   int max_w,max_h;
@@ -434,7 +434,7 @@ CameraLayer::status CameraLayer_Aravis::SetROI(float x, float y, float w, float 
 
   return CameraLayer::ACK;
 }
-CameraLayer::status CameraLayer_Aravis::GetROI(float *x, float *y, float *w, float *h, int *zw, int *zh)
+CameraLayer::status CameraLayer_Aravis::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
   GError *err=NULL;
   int _x,_y,_w,_h;
@@ -513,7 +513,7 @@ CameraLayer::status CameraLayer_Aravis::SetResolution(int width, int height)
 
   return CameraLayer::NAK;
 }
-CameraLayer::status CameraLayer_Aravis::SetAnalogGain(int gain)
+CameraLayer::status CameraLayer_Aravis::SetAnalogGain(float gain)
 {
   GError *err=NULL;
   bool isAva=arv_camera_is_gain_available (camera,&err);
@@ -612,7 +612,7 @@ CameraLayer::status CameraLayer_Aravis::GetAnalogGain(int *ret_min, int *ret_max
   return CameraLayer::NAK;
 }
 
-CameraLayer::status CameraLayer_Aravis::SetExposureTime(double time_us)
+CameraLayer::status CameraLayer_Aravis::SetExposureTime(float time_us)
 {
   GError *err=NULL;
   arv_camera_set_exposure_time (camera,time_us,&err);
@@ -624,7 +624,7 @@ CameraLayer::status CameraLayer_Aravis::SetExposureTime(double time_us)
   return CameraLayer::NAK;
 }
 
-CameraLayer::status CameraLayer_Aravis::GetExposureTime(double *ret_time_ms)
+CameraLayer::status CameraLayer_Aravis::GetExposureTime(float *ret_time_ms)
 {
   GError *err=NULL;
   double time=arv_camera_get_exposure_time (camera,&err);

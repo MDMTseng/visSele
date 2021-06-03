@@ -110,12 +110,12 @@ class CameraLayer{
         return cam_json_info;
     }
 
-    virtual CameraLayer::status SetROI(float x, float y, float w, float h,int zw,int zh)
+    virtual CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh)
     {
         return CameraLayer::NAK;
     }
     
-    virtual CameraLayer::status GetROI(float *x, float *y, float *w, float *h,int*zw,int *zh)
+    virtual CameraLayer::status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh)
     {
         
         return CameraLayer::NAK;
@@ -124,7 +124,7 @@ class CameraLayer{
     {
         return CameraLayer::NAK;
     }
-    virtual CameraLayer::status SetAnalogGain(int gain)
+    virtual CameraLayer::status SetAnalogGain(float gain)
     {
         return CameraLayer::NAK;
     }
@@ -143,12 +143,12 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status SetExposureTime(double time_us)
+    virtual CameraLayer::status SetExposureTime(float time_us)
     {
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status GetExposureTime(double *ret_time_us)
+    virtual CameraLayer::status GetExposureTime(float *ret_time_us)
     {
         return CameraLayer::NAK;
     }

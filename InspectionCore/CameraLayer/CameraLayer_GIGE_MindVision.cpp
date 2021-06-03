@@ -192,7 +192,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::L_TriggerMode(int type)
   return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float w, float h, int zw, int zh)
+CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
   if (x < 0)
@@ -311,7 +311,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(float x, float y, float 
   return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::GetROI(float *x, float *y, float *w, float *h, int *zw, int *zh)
+CameraLayer::status CameraLayer_GIGE_MindVision::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
 {
   if (x)
     *x = ROI_x;
@@ -392,10 +392,10 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetResolution(int width, int he
 {
   return CameraLayer::NAK;
 }
-CameraLayer::status CameraLayer_GIGE_MindVision::SetAnalogGain(int gain)
+CameraLayer::status CameraLayer_GIGE_MindVision::SetAnalogGain(float gain)
 {
   //CameraSetGain(m_hCamera,gain,gain,gain);
-  if (CameraSetAnalogGain(m_hCamera, gain) != CAMERA_STATUS_SUCCESS)
+  if (CameraSetAnalogGain(m_hCamera, (int)gain) != CAMERA_STATUS_SUCCESS)
   {
     LOGE("Failed...");
     return CameraLayer::NAK;
@@ -476,7 +476,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_min, int
   return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetExposureTime(double time_us)
+CameraLayer::status CameraLayer_GIGE_MindVision::SetExposureTime(float time_us)
 {
   if (CameraSetExposureTime(m_hCamera, time_us) != CAMERA_STATUS_SUCCESS)
   {
@@ -486,13 +486,15 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetExposureTime(double time_us)
   return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::GetExposureTime(double *ret_time_ms)
+CameraLayer::status CameraLayer_GIGE_MindVision::GetExposureTime(float *ret_time_ms)
 {
-  if (CameraGetExposureTime(m_hCamera, ret_time_ms) != CAMERA_STATUS_SUCCESS)
+  double ret_d_time_ms;
+  if (CameraGetExposureTime(m_hCamera, &ret_d_time_ms) != CAMERA_STATUS_SUCCESS)
   {
     LOGE("Failed...");
     return CameraLayer::NAK;
   }
+  if(ret_time_ms)*ret_time_ms=ret_d_time_ms;
   return CameraLayer::ACK;
 }
 
