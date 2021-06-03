@@ -130,8 +130,8 @@ else
 									$(MODULE_polyfit) \
 									$(MODULE_mjpegLib) \
 									$(MODULE_MJPEG_Streamer) \
+									$(MODULE_zlib) \
 									# $(MODULE_SOIL) \
-									# $(MODULE_zlib) \
 									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \
 									# sidePrj
