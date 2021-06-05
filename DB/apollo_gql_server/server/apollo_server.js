@@ -11,8 +11,6 @@ const express = require('express');
 const app = express();
 const useApolloEmbedExpress=true;
 
-
-
 // if(useApolloEmbedExpress){
 //     server.listen().then(({ url }) => {
 //         console.log(`🚀  Appplo Server ready at ${url}`);
@@ -44,7 +42,7 @@ function queryParamParse_P(req)
 }
 
 function queryParamParse(req)
-{//http://hyv.decade.tw:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
+{//http://db.xception.tech:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
   let tStart = parseInt(req.query.tStart);
   if(tStart!==tStart)tStart = req.query.tStart
   let tEnd = parseInt(req.query.tEnd);
@@ -70,7 +68,19 @@ function queryParamParse(req)
     qStr["InspectionData.repeatTime"]={$lt:repeatTime};
   }
 
+  //http://hyv.decade.tw:8080/query/inspection?tStart=Fri%20Jun%2004%202021%2003:54:42%20GMT+0800%20(%E5%8F%B0%E5%8C%97%E6%A8%99%E6%BA%96%E6%99%82%E9%96%93)&tEnd=Sun%20Jun%2006%202021%2003:54:42%20GMT+0800%20(%E5%8F%B0%E5%8C%97%E6%A8%99%E6%BA%96%E6%99%82%E9%96%93)&limit=10000000&page=1&subFeatureDefSha1=174e9024490bb113384d00454fdf702f671c7c03&projection={%22_id%22:0,%22InspectionData.time_ms%22:1,%22InspectionData.judgeReports.id%22:1,%22InspectionData.judgeReports.value%22:1,%22InspectionData.judgeReports.status%22:1,%22createdAt%22:1,%22updatedAt%22:1,%22InspectionData.tag%22:1}&callback=__jp2&time_ms_mod=2&time_ms_rem=0
+  {
+    let mod = parseInt(req.query.time_ms_mod);
+    let remainder = parseInt(req.query.time_ms_rem);
+    if(mod==mod && remainder==remainder)
+    {
+      console.log(mod , remainder)
+      return { $and: [ qStr,{"InspectionData.time_ms":{ $mod: [ mod, remainder]}}] };
+    }
 
+  }
+  
+//   return { $and: [ qStr,{"InspectionData.time_ms":{ $mod: [ 1000, 0 ]}}] };
   return qStr;
 }
 
@@ -93,7 +103,7 @@ app.get('/DELETE', function(req, res){
 
 
 app.get('/query/deffile', function(req, res) {
-    //http://hyv.decade.tw:8080/query/deffile?name=Test1|FC.&limit=1000
+    //http://db.xception.tech:8080/query/deffile?name=Test1|FC.&limit=1000
     let projection=req.query.projection;
 
     try{
@@ -187,12 +197,12 @@ function inspection_result_query(req, res)
     //http://localhost:8080/insp_time?tStart=2019/5/15/0:0:0&tEnd=2019/5/15/0:0:1
     //{InspectionData.time_ms : {$gt:1556640000000}}
     //http://localhost:8080/insp_time?tStart=2019/5/15/9:59:0&subFeatureDefSha1=.42a5.
-    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1} only return time
-    //http://hyv.decade.tw:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
+    //http://db.xception.tech:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1} only return time
+    //http://db.xception.tech:8080/insp_time?tStart=2019/5/27/9:59:0&projection={"_id":0,"InspectionData.time_ms":1,"InspectionData.judgeReports":1}
     //Return time and judgeReports
 
     //Find the count of certain subFeatureDefSha1/comb
-    //http://hyv.decade.tw:8080/query/inspection?tStart=0&tEnd=2581663256894&subFeatureDefSha1=497298a734229971|012a3ef713a9124d6799ac&projection={"_id":0,"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","tl": {"$sum":1}}}]
+    //http://db.xception.tech:8080/query/inspection?tStart=0&tEnd=2581663256894&subFeatureDefSha1=497298a734229971|012a3ef713a9124d6799ac&projection={"_id":0,"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","tl": {"$sum":1}}}]
 
 
     //param list
