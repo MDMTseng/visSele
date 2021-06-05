@@ -245,7 +245,7 @@ function inspection_result_query(req, res)
     
     mdb_connector.query("Inspection",qStr,projection,queryAggRules).limit(queryLimit).skip((queryPage-1)*queryLimit).
     then((result)=>{
-       console.log(result);
+      //  console.log(result);
         if(req.query.callback===undefined)//normal ajax
         {
             res.send(result);
