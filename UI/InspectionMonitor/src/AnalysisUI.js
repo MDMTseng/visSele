@@ -546,7 +546,7 @@ class ControlChart extends React.Component {
       acc_chart_data.data.push(val);
       return acc_chart_data;
     }, { 
-      type: "scatter",
+      type: "line",
       borderColor:"rgba(100, 255, 100,1)",
       lineTension: 0,data:[],
       pointBackgroundColor:[],} );
