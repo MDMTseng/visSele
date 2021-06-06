@@ -6,6 +6,22 @@ export function Num2Str_padding(pad,num)
   return str.substr(-pad);
 }
 
+
+
+
+export function datePrintSimple(date) {
+  function addZero(i) {
+    return (i < 10)?"0" + i:i;
+  }
+  var mm = addZero(date.getMonth() + 1); // getMonth() is zero-based
+  var dd = addZero(date.getDate());
+  var h = addZero(date.getHours());
+  var m = addZero(date.getMinutes());
+  var s = addZero(date.getSeconds());
+
+  return [date.getFullYear(),mm,dd].join('/')+" "+h+":"+m+":"+s;
+};
+
 export function round(num,round_nor=1)
 {
   let tmp = (1/round_nor);

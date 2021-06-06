@@ -3,6 +3,8 @@
 
 import React, { useState, useEffect,useRef } from 'react';
 import {round as roundX,GetObjElement} from './UTIL/MISC_Util';
+
+import {datePrintSimple} from './UTIL/MISC_Util';
 import 'antd/dist/antd.css';
 
 import dclone from 'clone';
@@ -37,6 +39,7 @@ const { Title, Paragraph, Text } = Typography;
 let log = logX.getLogger("AnalysisUI");
 
 
+let src_url="http://db.xception.tech:8080";
 
 Chart.pluginService.register({
   afterDraw: function(chart) {
@@ -90,20 +93,6 @@ function isString (value) {
   return typeof value === 'string' || value instanceof String;
 }
 
-
-
-function datePrintSimple(date) {
-  function addZero(i) {
-    return (i < 10)?"0" + i:i;
-  }
-  var mm = addZero(date.getMonth() + 1); // getMonth() is zero-based
-  var dd = addZero(date.getDate());
-  var h = addZero(date.getHours());
-  var m = addZero(date.getMinutes());
-  var s = addZero(date.getSeconds());
-
-  return [date.getFullYear(),mm,dd].join('/')+" "+h+":"+m+":"+s;
-};
 function convertInspInfo2CSV(reportName,measureList,inspRecGroup,cur_tagState)
 {
   let converterV="0.0.1 Alpha"
@@ -485,7 +474,7 @@ class ControlChart extends React.Component {
           }
 
             let val={
-            x:new Date(rep.time_ms).toString(),
+            x:datePrintSimple(new Date(rep.time_ms)),
             y:measureValue,
             tag:rep.tag
             };
@@ -545,7 +534,7 @@ class ControlChart extends React.Component {
       }
       let pointColor=(color===undefined)?"rgba(0,255,0,1)":color;
         let val={
-          x:new Date(time).toString(),
+          x:datePrintSimple(new Date(time)),
         y:value,
           data:repG,
           stat:this_id_stat
@@ -1145,7 +1134,7 @@ class APP_ANALYSIS_MODE extends React.Component{
               [this.state.inspectionRec[0].time_ms-1000, 
               this.state.inspectionRec[this.state.inspectionRec.length-1].time_ms+1000]} 
           step={1000*60*5}
-          tipFormatter={(time)=>new Date(time).toString()}
+          tipFormatter={(time)=>datePrintSimple(new Date(time))}
           onChange={(data)=>this.stateUpdate({displayRange:data})}
         />,
         <Checkbox checked={this.state.liveFeedMode} onChange={(ev)=>this.liveFeedMode_ctrl(ev.target.checked)}>LIVE</Checkbox>,
@@ -1325,7 +1314,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
 
 class RelatedUsageInfo extends React.Component{
-//http://hyv.decade.tw:8080/query/deffile?name=BOS-LT13BH3421&
+///query/deffile?name=BOS-LT13BH3421&
 // http://localhost:3000/hyvision_monitor/0.0.0/?v=0&hash=9fa42a5e990e4da632070e95daf14ec50de8a112&name=BOS-LT13BH3421
     constructor(props){
         super(props);

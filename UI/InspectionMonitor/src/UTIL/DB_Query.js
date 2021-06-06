@@ -1,7 +1,7 @@
 import jsonp from 'jsonp';
 
 
-let db_url = "http://hyv.decade.tw:8080/";
+let db_url="http://db.xception.tech:8080";
 
 function defFileQueryStr(name,featureSet_sha1,projection)
 {
@@ -24,7 +24,7 @@ function defFileQueryStr(name,featureSet_sha1,projection)
 function defFileQuery(name,featureSet_sha1,projection)
 {
     
-    let url = db_url+"query/deffile?";
+    let url = db_url+"/query/deffile?";
     
     url+="limit=1000";
     url+=defFileQueryStr(name,featureSet_sha1,projection);
@@ -43,7 +43,7 @@ function defFileQuery(name,featureSet_sha1,projection)
 
 function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100)
 {	
-    let TYPE="query/inspection";
+    let TYPE="/query/inspection";
     let url = db_url+TYPE+"?";
 
     url+="tStart="+date_start.toString()+"&tEnd="+date_end.toString()+"&";
