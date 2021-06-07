@@ -465,7 +465,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         key: 'Date_End',
         render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
         sorter: (a, b) => a.Date_End - b.Date_End,
-        sortOrder:'descend'
+        defaultSortOrder:'descend'
       },
       {
         title: 'Tags',
