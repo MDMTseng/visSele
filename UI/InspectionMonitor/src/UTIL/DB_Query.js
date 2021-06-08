@@ -1,7 +1,7 @@
 import jsonp from 'jsonp';
 
 
-let db_url="http://db.xception.tech:8080";
+export let db_url="http://db.xception.tech:8080";
 
 function defFileQueryStr(name,featureSet_sha1,projection)
 {
@@ -41,15 +41,21 @@ function defFileQuery(name,featureSet_sha1,projection)
 }
 
 
-function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100)
+function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100,sample=undefined,prjection=undefined,agg=undefined)
 {	
     let TYPE="/query/inspection";
     let url = db_url+TYPE+"?";
 
-    url+="tStart="+date_start.toString()+"&tEnd="+date_end.toString()+"&";
-    url+="limit="+limit+"&page=1&"
     url+="subFeatureDefSha1="+subFeatureDefSha1+"&"
-    if(true)
+    url+="tStart="+date_start+"&tEnd="+date_end+"&";
+    if(limit!==undefined)
+        url+="limit="+limit+"&page=1&"
+    if(sample!==undefined)
+        url+="sample="+sample+"&"
+    if(agg!=undefined)
+        url+="agg="+JSON.stringify(agg)+"&"
+
+    if(prjection===undefined)
     {
         url+="projection="+JSON.stringify(
             {"_id":0,"InspectionData.time_ms":1,
@@ -64,11 +70,11 @@ function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100)
     }
     else{
         
-        url+="projection="+JSON.stringify(
-            {"_id":0,"InspectionData.time_ms":1,
-            "InspectionData.judgeReports":1}
-            );
+        url+="projection="+JSON.stringify(prjection);
     }
+
+
+
     url+="";
     
 
