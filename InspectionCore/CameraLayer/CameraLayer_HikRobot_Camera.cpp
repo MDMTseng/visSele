@@ -1,0 +1,383 @@
+
+#include "CameraLayer_HikRobot_Camera.hpp"
+
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
+{
+
+  int max_w, max_h;
+
+  MVCC_INTVALUE_EX WInfo = {0};
+  GetIntValue("Width", &WInfo);
+  MVCC_INTVALUE_EX HInfo = {0};
+  GetIntValue("Height", &HInfo);
+  max_w = WInfo.nMax;
+  max_h = HInfo.nMax;
+  if (x >= max_w || y >= max_h || w < 0 || h < 0)
+  {
+    return CameraLayer::NAK;
+  }
+  if (x < 0)
+  {
+    w += x;
+    x = 0;
+  }
+  if (y < 0)
+  {
+    h += y;
+    y = 0;
+  }
+
+  if (x + w > max_w)
+  {
+    w = max_w - x;
+  }
+
+  if (y + h > max_h)
+  {
+    h = max_h - y;
+  }
+
+  
+  if (ROI_mirrorFlag[0])
+  {
+    x = max_w - (x + h);
+  }
+
+  if (ROI_mirrorFlag[1])
+  {
+    y = max_h - (y + h);
+  }
+
+  MV_CC_StopGrabbing(handle);
+  SetIntValue_w_Check("OffsetX", (int)x);
+  SetIntValue_w_Check("OffsetY", (int)y);
+  SetIntValue_w_Check("Width", (int)w);
+  SetIntValue_w_Check("Height", (int)h);
+  MV_CC_StartGrabbing(handle);
+
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
+{
+  MVCC_INTVALUE_EX WInfo = {0};
+  GetIntValue("Width", &WInfo);
+  MVCC_INTVALUE_EX HInfo = {0};
+  GetIntValue("Height", &HInfo);
+  MVCC_INTVALUE_EX OXInfo = {0};
+  GetIntValue("OffsetX", &OXInfo);
+  MVCC_INTVALUE_EX OYInfo = {0};
+  GetIntValue("OffsetY", &OYInfo);
+
+  if (x)
+    *x = OXInfo.nCurValue;
+  if (y)
+    *y = OYInfo.nCurValue;
+  if (w)
+    *w = WInfo.nCurValue;
+  if (h)
+    *h = HInfo.nCurValue;
+  return CameraLayer::ACK;
+}
+
+int CameraLayer_HikRobot_Camera::getXML(char *buffer, int bufferSize)
+{
+  unsigned int nXMLDataLen = 0;
+  int nRet = MV_XML_GetGenICamXML(handle, (unsigned char *)buffer, bufferSize, &nXMLDataLen);
+  if (buffer == NULL && bufferSize == 0)
+  {
+    return nXMLDataLen;
+  }
+  if (MV_OK != nRet)
+  {
+    return -1;
+  }
+  return nXMLDataLen;
+}
+
+void CameraLayer_HikRobot_Camera::sExceptionCallBack(unsigned int nMsgType, void *context)
+{
+  CameraLayer_HikRobot_Camera *cl = (CameraLayer_HikRobot_Camera *)context;
+  cl->ExceptionCallBack(nMsgType);
+}
+
+void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
+{
+  LOGI("ExceptionCallBack");
+}
+void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context)
+{
+  CameraLayer_HikRobot_Camera *cl = (CameraLayer_HikRobot_Camera *)context;
+  cl->ImageCallBack(pData, pFrameInfo);
+}
+
+void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo)
+{
+  uint32_t tstH = pFrameInfo->nDevTimeStampHigh;
+  uint32_t tstL = pFrameInfo->nDevTimeStampLow;
+  uint64_t nDevTimeStamp = (((uint64_t)tstH) << 32) | tstL; //10ns
+  uint64_t nHostTimeStamp = pFrameInfo->nHostTimeStamp;     //1ms
+
+  uint64_t nDevTimeStamp_us = nDevTimeStamp / 100;
+  uint64_t nHostTimeStamp_us = nHostTimeStamp * 1000;
+
+  MvGvspPixelType pType = pFrameInfo->enPixelType;
+  LOGI("ImageCallBack:%d,%d %dx%d type:%0X len:%d  %d,%d,%d nDevTimeStamp:%lu host:%lu",
+       pFrameInfo->nOffsetX, pFrameInfo->nOffsetY,
+       pFrameInfo->nWidth, pFrameInfo->nHeight,
+       pType, pFrameInfo->nFrameLen,
+       pData[0], pData[1], pData[2], nDevTimeStamp_us, nHostTimeStamp_us);
+
+  LOGI("nUnparsedChunkNum:%d nLostPacket:%d nChunkWH:%d,%d",
+       pFrameInfo->nUnparsedChunkNum,pFrameInfo->nLostPacket,pFrameInfo->nChunkWidth,pFrameInfo->nChunkHeight);
+
+  if (snapFlag)
+  {
+    snapFlag = 0;
+
+    conV.notify_one();
+  }
+}
+
+int32_t CameraLayer_HikRobot_Camera::listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList)
+{
+  if (stDeviceList == NULL)
+    return MV_E_PARAMETER;
+  memset(stDeviceList, 0, sizeof(MV_CC_DEVICE_INFO_LIST));
+
+  int nRet = MV_CC_EnumDevices(MV_GIGE_DEVICE | MV_USB_DEVICE, stDeviceList);
+
+  return nRet;
+}
+
+CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devInfo, CameraLayer_Callback cb, void *context)
+    : CameraLayer(cb, context)
+{
+  bDevConnected = false;
+  if (devInfo == NULL)
+  {
+    throw std::invalid_argument("NULL devInfo");
+  }
+
+  HIKERR nRet = MV_CC_CreateHandle(&handle, devInfo);
+  if (MV_OK != nRet)
+  {
+    string excpMsg = "target device handle creation failed";
+    throw std::invalid_argument(excpMsg);
+  }
+
+  if (devInfo->nTLayerType == MV_GIGE_DEVICE)
+  { //if it's GIGE device, try detect Optimal Packet Size
+    //And configure it
+
+    do
+    {
+      int32_t nRet = MV_CC_GetOptimalPacketSize(handle);
+      if (nRet < MV_OK)
+      {
+        break;
+      }
+
+      int32_t pOptimalPacketSize = (int32_t)nRet;
+
+      nRet = MV_CC_SetIntValueEx(handle, "GevSCPSPacketSize", pOptimalPacketSize);
+      if (nRet != MV_OK)
+      {
+        break;
+      }
+    } while (0);
+  }
+
+  nRet = MV_CC_OpenDevice(handle);
+
+  if (MV_OK != nRet)
+  {
+    CLOSE();
+    string excpMsg = "target device open/connect failed";
+    throw std::invalid_argument(excpMsg);
+  }
+  bDevConnected = true;
+
+  nRet = MV_CC_RegisterImageCallBackEx(handle, sImageCallBack, this);
+  if (MV_OK != nRet)
+  {
+
+    CLOSE();
+    string excpMsg = "RegisterImageCallBack failed";
+    throw std::invalid_argument(excpMsg);
+  }
+
+  nRet = MV_CC_RegisterExceptionCallBack(handle, sExceptionCallBack, this);
+  if (MV_OK != nRet)
+  {
+  }
+
+  if (0)
+  {
+
+    MVCC_INTVALUE_EX intValInfo = {0};
+    GetIntValue("OffsetX", &intValInfo);
+    LOGI("%d<[%d]<%d....%d", intValInfo.nMin, intValInfo.nCurValue, intValInfo.nMax, intValInfo.nInc);
+  }
+
+  {
+
+    nRet = MV_CC_SetBoolValue(handle, "ChunkModeActive", true);
+    nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Exposure");
+    nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
+    nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Timestamp");
+    nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
+    
+  }
+
+  // SetROI(1000,1000,200,200,0,0);
+
+  MV_IMAGE_BASIC_INFO img_basic_info;
+  MV_CC_GetImageInfo(handle, &img_basic_info);
+  TriggerMode(1);
+  threadRunningState = true;
+
+  SetROI(0, 0, 999999, 999999, 0, 0);
+  MV_CC_StartGrabbing(handle);
+  // grabThread = std::thread(&CameraLayer_HikRobot_Camera::grabThreadFunc, this);
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SnapFrame()
+{
+
+  TriggerMode(1);
+  snapFlag = 1;
+  //trigger reset;
+  LOGI("TRIGGER");
+  {
+    std::unique_lock<std::mutex> lock(m);
+    for (int i = 0; Trigger() == CameraLayer::NAK; i++)
+    {
+      if (i > 5)
+      {
+        return CameraLayer::NAK;
+      }
+    }
+    conV.wait(lock, [this]
+              { return this->snapFlag == 0; });
+  }
+  LOGI("END");
+  return CameraLayer::ACK;
+}
+
+void CameraLayer_HikRobot_Camera::CLOSE()
+{
+  if (bDevConnected)
+  {
+    MV_CC_CloseDevice(handle);
+    bDevConnected = false;
+  }
+  if (handle != NULL)
+  {
+    MV_CC_DestroyHandle(handle);
+    handle = NULL;
+  }
+}
+CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
+{
+  CLOSE();
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
+{
+  if (type == 0) //continuous
+  {
+    int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF);
+    SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_SOFTWARE);
+    return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
+  }
+
+  int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_ON);
+
+  // MV_CC_StopGrabbing(handle);
+  if (type == 1) //software trigger
+  {
+    int nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_SOFTWARE);
+    return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
+  }
+
+  if (type == 2) //hardware trigger
+  {
+    int nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
+    return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
+  }
+
+  return CameraLayer::NAK;
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::Trigger()
+{
+
+  int nRet = CommandExecute("TriggerSoftware");
+  return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetAnalogGain(float gain)
+{
+  return (MV_OK == SetFloatValue("Gain",gain)) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
+{
+  if (Dir < 0 || Dir > 1)
+  {
+    return CameraLayer::NAK;
+  }
+  m.lock();
+  bool ben=en!=0;
+  if(Dir==0)
+  {
+    GetBoolValue("ReverseX", &ben);
+  }
+  else if(Dir==1)
+  {
+    GetBoolValue("ReverseY", &ben);
+  }
+  mirrorFlag[Dir] = en;
+  m.unlock();
+  return CameraLayer::ACK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::SetROIMirror(int Dir, int en)
+{
+  ROI_mirrorFlag[Dir] = en;
+  return CameraLayer::ACK;
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
+{
+  
+  return (MV_OK == SetFloatValue("AcquisitionFrameRate",frame_rate)) ? CameraLayer::ACK : CameraLayer::NAK;
+  
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRateMode(int mode)
+{
+  float tar_fr=30;
+  switch(mode)
+  {
+      case 0:tar_fr=30;break;
+      case 1:tar_fr=20;break;
+      case 2:tar_fr=10;break;
+      case 3:tar_fr=1;break;
+  }
+  return SetFrameRate(tar_fr);
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetExposureTime(float time_us)
+{
+  return (MV_OK == SetFloatValue("ExposureTime",time_us)) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::GetExposureTime(float *ret_time_us)
+{
+  MVCC_FLOATVALUE retV;
+  int ret = GetFloatValue("ExposureTime",&retV);
+  if(ret_time_us)*ret_time_us=retV.fCurValue;
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
+}

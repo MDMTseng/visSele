@@ -31,7 +31,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     public:
     
     CameraLayer_GIGE_MindVision(CameraLayer_Callback cb,void* context);
-    CameraLayer::status EnumerateDevice(tSdkCameraDevInfo * pCameraList,INT * piNums);
+    static CameraLayer::status EnumerateDevice(tSdkCameraDevInfo * pCameraList,INT * piNums);
     CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
 
     CameraLayer::status TriggerMode(int type);
