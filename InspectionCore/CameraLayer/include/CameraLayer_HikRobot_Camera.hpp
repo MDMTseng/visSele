@@ -1,0 +1,215 @@
+#ifndef CAMERALAYER_HIKROBOT_CAMERA_HPP
+#define CAMERALAYER_HIKROBOT_CAMERA_HPP
+#ifdef __WIN32__
+#include <windows.h>
+#endif
+#include <CameraLayer.hpp>
+
+
+#include "MvCameraControl.h"
+
+#include "logctrl.h"
+#include <cstring>
+#include <vector>
+#include <stdexcept>
+// #include "common_lib.h"
+
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+using namespace std;
+
+
+typedef uint32_t HIKERR;
+
+class CameraLayer_HikRobot_Camera : public CameraLayer
+{
+
+public:
+  struct cam_info
+  {
+    std::string id;
+    std::string physical_id;
+    std::string address;
+    std::string vendor;
+    std::string model;
+    std::string serial_nbr;
+    std::string protocol;
+    bool available;
+  };
+
+protected:
+  void *handle;
+
+  cam_info self_info;
+  int takeCount;
+  bool bDevConnected;
+  bool threadRunningState;
+  std::thread grabThread;
+
+  int mirrorFlag[2]={0,0};
+  int ROI_mirrorFlag[2]={0,0};
+  std::mutex m;
+  std::condition_variable conV;
+  bool snapFlag = false;
+
+  // std::mutex m;
+  // std::condition_variable conV;
+  // bool snapFlag=false;
+  // static void s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self);
+  // void STREAM_NEW_BUFFER_CB(ArvStream *stream);
+  // static void s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self);
+  // void STREAM_CONTROL_LOST_CB(ArvStream *stream);
+
+  static void sExceptionCallBack(unsigned int nMsgType, void *context);
+  void ExceptionCallBack(unsigned int nMsgType);
+
+  static void sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context);
+  void ImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo);
+
+  void CLOSE();
+
+  int GetIntValue(const char *strKey, MVCC_INTVALUE_EX *pIntValue)
+  {
+    return MV_CC_GetIntValueEx(handle, strKey, pIntValue);
+  }
+
+  int SetIntValue(const char *strKey, int64_t nValue)
+  {
+    return MV_CC_SetIntValueEx(handle, strKey, nValue);
+  }
+
+  int SetIntValue_w_Check(const char *strKey, int64_t target)
+  {
+    MVCC_INTVALUE_EX intValInfo = {0};
+    GetIntValue(strKey, &intValInfo);
+    int value = leastSatiValue(target, intValInfo);
+    return SetIntValue(strKey, value);
+  }
+
+  int GetEnumValue(const char *strKey, MVCC_ENUMVALUE *pEnumValue)
+  {
+    return MV_CC_GetEnumValue(handle, strKey, pEnumValue);
+  }
+
+  int SetEnumValue(const char *strKey, unsigned int nValue)
+  {
+    return MV_CC_SetEnumValue(handle, strKey, nValue);
+  }
+
+  int SetEnumValueByString(const char *strKey, const char *sValue)
+  {
+    return MV_CC_SetEnumValueByString(handle, strKey, sValue);
+  }
+
+  int GetFloatValue(const char *strKey, MVCC_FLOATVALUE *pFloatValue)
+  {
+    return MV_CC_GetFloatValue(handle, strKey, pFloatValue);
+  }
+
+  int SetFloatValue(const char *strKey, float fValue)
+  {
+    return MV_CC_SetFloatValue(handle, strKey, fValue);
+  }
+
+  int GetBoolValue(const char *strKey, bool *pbValue)
+  {
+    return MV_CC_GetBoolValue(handle, strKey, pbValue);
+  }
+
+  int SetBoolValue(const char *strKey, bool bValue)
+  {
+    return MV_CC_SetBoolValue(handle, strKey, bValue);
+  }
+
+  int GetStringValue(const char *strKey, MVCC_STRINGVALUE *pStringValue)
+  {
+    return MV_CC_GetStringValue(handle, strKey, pStringValue);
+  }
+
+  int SetStringValue(const char *strKey, const char *strValue)
+  {
+    return MV_CC_SetStringValue(handle, strKey, strValue);
+  }
+
+  int CommandExecute(const char *strKey)
+  {
+    return MV_CC_SetCommandValue(handle, strKey);
+  }
+
+  static int leastSatiValue(int target, MVCC_INTVALUE_EX range)
+  {
+    if (target < range.nMin)
+      return range.nMin;
+    if (target > range.nMax)
+      return range.nMax;
+    int value = range.nMin + ((target - range.nMin) / range.nInc) * range.nInc;
+    return (target > value) ? value + range.nInc : value;
+  }
+
+  void grabThreadFunc()
+  {
+
+    MV_FRAME_OUT stImageInfo = {0};
+    MV_DISPLAY_FRAME_INFO stDisplayInfo = {0};
+    int nRet = MV_OK;
+    while (threadRunningState)
+    {
+
+      nRet = MV_CC_GetImageBuffer(handle, &stImageInfo, 1000);
+      if (nRet == MV_OK)
+      {
+        LOGI("MV_OK");
+      }
+      else
+      {
+
+        LOGI("MV_:::%X", nRet);
+        // if (MV_TRIGGER_MODE_ON == m_nTriggerMode)
+        // {
+        //   Sleep(5);
+        // }
+      }
+    }
+  }
+
+public:
+  CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devInfo, CameraLayer_Callback cb, void *context);
+
+  // CameraLayer::status EnumerateDevice(tSdkCameraDevInfo *pCameraList, INT *piNums);
+  // CameraLayer::status InitCamera(tSdkCameraDevInfo *devInfo);
+  static int32_t listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList);
+
+  CameraLayer::status TriggerMode(int type);
+  CameraLayer::status Trigger();
+  CameraLayer::status SnapFrame();
+
+  int getXML(char *buffer, int bufferSize);
+
+  CameraLayer::status SetROI(int x, int y, int w, int h, int zw, int zh);
+
+  CameraLayer::status GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh);
+
+  // CameraLayer::status SetResolution(int width, int height);
+
+  // CameraLayer::status TriggerCount(int count);
+  // CameraLayer::status RUN();
+  CameraLayer::status SetAnalogGain(float gain);
+  // CameraLayer::status SetOnceWB();
+
+  CameraLayer::status SetMirror(int Dir, int en);
+  CameraLayer::status SetROIMirror(int Dir, int en);
+  CameraLayer::status SetFrameRate(float frame_rate);
+  CameraLayer::status SetFrameRateMode(int mode);
+  CameraLayer::status SetExposureTime(float time_us);
+  CameraLayer::status GetExposureTime(float *ret_time_us);
+  // void ContTriggerThread();
+  // void ContTriggerThreadTermination();
+  // acvImage *GetFrame();
+
+  ~CameraLayer_HikRobot_Camera();
+};
+
+
+
+#endif

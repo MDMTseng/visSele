@@ -364,6 +364,19 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
         {
           float coord[] = {(float)src_j, (float)src_i};
 
+          // if(i==(Y2/2) && j>200 && j< 400)
+          // {
+            
+          //   float coord2[] = {coord[0], coord[1]};
+          //   // int ret = sampler->ideal2img(coord2);
+          //   bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
+            
+          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0],coord2[1],coord[0],coord[1],sampler);
+          // }else
+          // {
+
+          // }
+
           bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
 
           if (bri > 255)
@@ -379,6 +392,7 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
           RSum = src.CVector[src_i][(src_j)*3 + 2];
         }
       }
+      
       uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);
       pix[0] = BSum;
       pix[1] = GSum;
@@ -824,9 +838,12 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     if (roi_x && roi_y && roi_w && roi_h && ((*roi_w) * (*roi_h)) != 0)
     {
       camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
-      float ox, oy;
+      // LOGI("ROI v:%f %f %f %f", *roi_x, *roi_y, *roi_w, *roi_h);
+      int ox, oy;
       camera.GetROI(&ox, &oy, NULL, NULL, NULL, NULL);
-      acv_XY offset_o = {ox, oy};
+      
+      // LOGI("ROI v:%d %d", ox, oy);
+      acv_XY offset_o = {(float)ox, (float)oy};
       calib_bacpac.sampler->setOriginOffset(offset_o);
       //sampler
     }
@@ -1061,16 +1078,31 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
   LOGI("DELETED...");
 }
 
-acvImage *getImage(CameraLayer *camera)
+
+
+CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
+{  
+  if (type != CameraLayer::EV_IMG)
+    return CameraLayer::NAK;
+  acvImage *img=(acvImage*)obj;
+
+  CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
+  LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
+  img->ReSize(finfo.width,finfo.height,3);
+
+  return cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+}
+
+int getImage(CameraLayer *camera,acvImage *dst_img)
 {
   for (int i = 0;; i++)
   {
-    if (camera->SnapFrame() == CameraLayer::ACK)
+    if (camera->SnapFrame(SNAP_Callback,(void*)dst_img) == CameraLayer::ACK)
       break;
     if (i > 10)
-      return NULL;
+      return -1;
   }
-  return camera->GetFrame();
+  return 0;
 }
 
 BPG_data DatCH_CallBack_BPG::GenStrBPGData(char *TL, char *jsonStr)
@@ -1113,6 +1145,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
   {
     BPG_data *dat = data.data.p_BPG_data;
 
+    acv_XY loca = {X : 1000, Y : 10};
+    calib_bacpac.sampler->img2ideal(&loca);
+    LOGI("calib_bacpac TEST:%f %f", loca.X,loca.Y);
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
@@ -1524,10 +1559,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         }
         else if (srcImg == NULL)
         {
-          srcImg = getImage(camera);
-          cacheImage.ReSize(srcImg);
-
-          acvCloneImage(srcImg, &cacheImage, -1);
+          int ret_val = getImage(camera,&tmp_buff);
+          if (ret_val == 0)
+          {
+            srcImg = &tmp_buff;
+            cacheImage.ReSize(srcImg);
+            acvCloneImage(srcImg, &cacheImage, -1);
+          }
         }
 
         if (srcImg == NULL)
@@ -1871,91 +1909,108 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         if (srcImg == NULL)
         {
 
-          srcImg = getImage(camera);
-          cacheImage.ReSize(srcImg);
-          //acvCloneImage(srcImg, &cacheImage, -1);
-          calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
-          ImageDownSampling(cacheImage, *srcImg, 1, calib_bacpac.sampler, false);
-          //SaveIMGFile("data/test1.bmp",srcImg);
+          int ret_val = getImage(camera,&tmp_buff);
+          if (ret_val == 0)
+          {
+            srcImg = &tmp_buff;
+            
+            cacheImage.ReSize(srcImg);
+            //acvCloneImage(srcImg, &cacheImage, -1);
+            calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
+            ImageDownSampling(cacheImage, *srcImg, 1, calib_bacpac.sampler, false);
+
+          }
         }
 
-        try
+        if (srcImg == NULL)
+        {
+          
+          session_ACK = false;
+
+        }
+        else
         {
 
-          ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
-          const FeatureReport *report = matchingEng.GetReport();
 
-          if (report != NULL)
+          try
           {
-            cJSON *jobj = matchingEng.FeatureReport2Json(report);
-            AttachStaticInfo(jobj, cb);
 
-            char *jstr = cJSON_Print(jobj);
-            cJSON_Delete(jobj);
+            ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
+            const FeatureReport *report = matchingEng.GetReport();
 
-            //LOGI("__\n %s  \n___",jstr);
-            bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
+            if (report != NULL)
+            {
+              cJSON *jobj = matchingEng.FeatureReport2Json(report);
+              AttachStaticInfo(jobj, cb);
+
+              char *jstr = cJSON_Print(jobj);
+              cJSON_Delete(jobj);
+
+              //LOGI("__\n %s  \n___",jstr);
+              bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
+              bpg_dat.pgID = dat->pgID;
+              datCH_BPG.data.p_BPG_data = &bpg_dat;
+              self->SendData(datCH_BPG);
+
+              delete jstr;
+            }
+            else
+            {
+              sprintf(tmp, "{}");
+              bpg_dat = GenStrBPGData("SG", tmp);
+              bpg_dat.pgID = dat->pgID;
+              datCH_BPG.data.p_BPG_data = &bpg_dat;
+              self->SendData(datCH_BPG);
+            }
+          }
+          catch (std::invalid_argument iaex)
+          {
+            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+            LOGE("%s", err_str);
+          }
+
+          int tar_down_samp_level = 2;
+          bool transfer_img = false;
+
+          cJSON *img_property = JFetch_OBJECT(json, "img_property");
+          if (img_property)
+          {
+
+            double *DS_level = JFetch_NUMBER(img_property, "down_samp_level");
+            if (DS_level)
+            {
+              tar_down_samp_level = (int)*DS_level;
+              if (tar_down_samp_level <= 0)
+                tar_down_samp_level = 1;
+            }
+
+            transfer_img = true;
+          }
+
+          if (transfer_img)
+          {
+            //Down scale the calibrated cache image to make image transfer easier
+            bpg_dat = GenStrBPGData("IM", NULL);
+            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
+            //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+
+            calib_bacpac.sampler->ignoreCalib(true);
+            ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler, true);
+
+            iminfo.fullHeight = cacheImage.GetHeight();
+            iminfo.fullWidth = cacheImage.GetWidth();
+            bpg_dat.callbackInfo = (uint8_t *)&iminfo;
+            bpg_dat.callback = DatCH_BPG_acvImage_Send;
             bpg_dat.pgID = dat->pgID;
             datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
-
-            delete jstr;
+            BPG_protocol_send(datCH_BPG);
           }
-          else
-          {
-            sprintf(tmp, "{}");
-            bpg_dat = GenStrBPGData("SG", tmp);
-            bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
-          }
-        }
-        catch (std::invalid_argument iaex)
-        {
-          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
-        }
-
-        int tar_down_samp_level = 2;
-        bool transfer_img = false;
-
-        cJSON *img_property = JFetch_OBJECT(json, "img_property");
-        if (img_property)
-        {
-
-          double *DS_level = JFetch_NUMBER(img_property, "down_samp_level");
-          if (DS_level)
-          {
-            tar_down_samp_level = (int)*DS_level;
-            if (tar_down_samp_level <= 0)
-              tar_down_samp_level = 1;
-          }
-
-          transfer_img = true;
-        }
-
-        if (transfer_img)
-        {
-          //Down scale the calibrated cache image to make image transfer easier
-          bpg_dat = GenStrBPGData("IM", NULL);
-          BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
-          //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-
-          calib_bacpac.sampler->ignoreCalib(true);
-          ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler, true);
-
-          iminfo.fullHeight = cacheImage.GetHeight();
-          iminfo.fullWidth = cacheImage.GetWidth();
-          bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-          bpg_dat.callback = DatCH_BPG_acvImage_Send;
-          bpg_dat.pgID = dat->pgID;
-          datCH_BPG.data.p_BPG_data = &bpg_dat;
-          BPG_protocol_send(datCH_BPG);
+          calib_bacpac.sampler->ignoreCalib(false);
+          session_ACK = true;
         }
       }
-      calib_bacpac.sampler->ignoreCalib(false);
+        
 
-      session_ACK = true;
     }
     else if (checkTL("RC", dat)) //[R]e[C]onnect
     {
@@ -2486,7 +2541,7 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
   char tmpStr[200];
 
   sprintf(tmpStr, "%s/default_camera_setting.json", path);
-  LOGV("Loading %s", tmpStr);
+  LOGI("Loading %s", tmpStr);
   int ret = LoadCameraSetting(*camera, tmpStr);
   LOGV("ret:%d", ret);
 
@@ -2668,10 +2723,10 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down = NULL);
 
-void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
+CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
   if (type != CameraLayer::EV_IMG)
-    return;
+    return CameraLayer::NAK;
   static clock_t pframeT;
   clock_t t = clock();
 
@@ -2683,7 +2738,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     if (interval < skip_int)
     {
       LOGI("interval:%f is less than skip_int:%d ms", interval, skip_int);
-      return; //if the interval less than 70ms then... skip this frame
+      return CameraLayer::NAK; //if the interval less than 70ms then... skip this frame
     }
   }
   pframeT = t;
@@ -2691,7 +2746,8 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
-  acvImage &capImg = *cl_GMV.GetFrame();
+
+  
 
   // if(inspQueue.size()>0)//for responsiveness
   // {//toss image if the queue is not empty
@@ -2705,18 +2761,20 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   if (headImgPipe == NULL)
   {
     LOGE("HEAD IMG pipe is NULL");
-    return;
+    return CameraLayer::NAK;
   }
 
   headImgPipe->camLayer = &cl_obj;
   headImgPipe->type = type;
   headImgPipe->context = context;
-  headImgPipe->img.ReSize(&capImg);
-
-  acvCloneImage(&capImg, &(headImgPipe->img), -1);
+  CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
+  headImgPipe->fi = finfo;
+  
+  LOGE("finfo.wh:%d,%d \n", finfo.width,finfo.height);
+  headImgPipe->img.ReSize(finfo.width,finfo.height,3);
+  cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
 
   headImgPipe->bacpac = &calib_bacpac;
-  headImgPipe->fi = cl_GMV.GetFrameInfo();
 
   if (doImgProcessThread)
   {
@@ -2757,28 +2815,28 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     if (!doPassDown)
       cb->resPool.retResrc(headImgPipe);
   }
+  return CameraLayer::ACK;
 }
 
-
-void sendResultTo_mift(int uInspStatus,uint64_t timeStamp)
+void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
 {
 
-    if (cb->mift)
-    {
-      LOGI("mift is here!!");
-      char buffx[150];
-      static int count = 0;
-      int len = sprintf(buffx,
-                        "{"
-                        "\"type\":\"inspRep\",\"status\":%d,"
-                        "\"idx\":%d,\"count\":%d,"
-                        "\"time_100us\":%lu"
-                        "}",
-                        uInspStatus, 1, count,timeStamp );
-      cb->mift->send_data((uint8_t *)buffx, len);
-      count = (count + 1) & 0xFF;
-      LOGI("%s", buffx);
-    }
+  if (cb->mift)
+  {
+    LOGI("mift is here!!");
+    char buffx[150];
+    static int count = 0;
+    int len = sprintf(buffx,
+                      "{"
+                      "\"type\":\"inspRep\",\"status\":%d,"
+                      "\"idx\":%d,\"count\":%d,"
+                      "\"time_100us\":%lu"
+                      "}",
+                      uInspStatus, 1, count, timeStamp);
+    cb->mift->send_data((uint8_t *)buffx, len);
+    count = (count + 1) & 0xFF;
+    LOGI("%s", buffx);
+  }
 }
 
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL)
@@ -2869,14 +2927,14 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     static acvImage test1_buff;
 
     BPG_data_acvImage_Send_info iminfo;
-    bool sendJpg=false;
-    if ( sendJpg && mjpegS && DoImageTransfer && skipImageTransfer == false)
+    bool sendJpg = false;
+    if (sendJpg && mjpegS && DoImageTransfer && skipImageTransfer == false)
     {
-      acvImage *sendImg=&capImg;
+      acvImage *sendImg = &capImg;
 
-      if(sendImg==NULL)
+      if (sendImg == NULL)
       {
-        sendImg=&test1_buff;
+        sendImg = &test1_buff;
         iminfo = (BPG_data_acvImage_Send_info){img : &test1_buff, scale : 2};
 
         iminfo.offsetX = (0 / iminfo.scale) * iminfo.scale;
@@ -2892,7 +2950,6 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
         //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
         ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
-
       }
       frameActionID++;
       if (frameActionID >= 256)
@@ -2916,13 +2973,13 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       }
 
       uint8_t *encBuff = NULL;
-      unsigned long encBuffL = 0; 
+      unsigned long encBuffL = 0;
       if (mjpecLib_enc((uint8_t *)sendImg->CVector[0], sendImg->GetWidth(), sendImg->GetHeight(), 85, &encBuff, &encBuffL) == 0)
       {
         int sendCount = mjpegS->SendFrame(std::string("/CAM1.mjpg"), encBuff, encBuffL);
         delete (encBuff);
-        
-        LOGI("ENC size:%d sendCount:%d", encBuffL,sendCount);
+
+        LOGI("ENC size:%d sendCount:%d", encBuffL, sendCount);
         encBuff = NULL;
         encBuffL = 0;
       }
@@ -2932,7 +2989,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     {
 
       {
-        
+
         iminfo = (BPG_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)downSampLevel};
         if (iminfo.scale == 0)
         {
@@ -2952,7 +3009,6 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
         //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
         ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
-
       }
 
       bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
@@ -3277,7 +3333,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   bool doPassDown = doInspActionThread;
 
   //taking the short cut
-  sendResultTo_mift(imgPipe->actInfo.uInspStatus,imgPipe->fi.timeStamp_us);
+  sendResultTo_mift(imgPipe->actInfo.uInspStatus, imgPipe->fi.timeStamp_us);
   if (doPassDown)
   {
     actionQueue.push_blocking(imgPipe);
@@ -3444,70 +3500,73 @@ int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void 
   return ret_val;
 }
 
-// int initCamera(CameraLayer_GIGE_MindVision *CL_GIGE)
-// {
+CameraLayer_GIGE_MindVision *initCamera_MindVision()
+{
 
-//   tSdkCameraDevInfo sCameraList[10];
-//   int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
-//   CL_GIGE->EnumerateDevice(sCameraList, &retListL);
+  tSdkCameraDevInfo sCameraList[10];
+  int retListL = sizeof(sCameraList) / sizeof(sCameraList[0]);
+  CameraLayer_GIGE_MindVision::EnumerateDevice(sCameraList, &retListL);
 
-//   if (retListL <= 0)
-//     return -1;
-//   for (int i = 0; i < retListL; i++)
-//   {
-//     printf("CAM:%d======\n", i);
-//     printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
-//     printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
-//     printf("acLinkName:%s\n", sCameraList[i].acLinkName);
-//     printf("acPortType:%s\n", sCameraList[i].acPortType);
-//     printf("acProductName:%s\n", sCameraList[i].acProductName);
-//     printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
-//     printf("acSensorType:%s\n", sCameraList[i].acSensorType);
-//     printf("acSn:%s\n", sCameraList[i].acSn);
-//     printf("\n\n\n\n");
-//   }
-
-//   if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
-//   {
-//     return 0;
-//   }
-//   return -1;
-// }
-
+  if (retListL <= 0)
+    return NULL;
+  for (int i = 0; i < retListL; i++)
+  {
+    printf("CAM:%d======\n", i);
+    printf("acDriverVersion:%s\n", sCameraList[i].acDriverVersion);
+    printf("acFriendlyName:%s\n", sCameraList[i].acFriendlyName);
+    printf("acLinkName:%s\n", sCameraList[i].acLinkName);
+    printf("acPortType:%s\n", sCameraList[i].acPortType);
+    printf("acProductName:%s\n", sCameraList[i].acProductName);
+    printf("acProductSeries:%s\n", sCameraList[i].acProductSeries);
+    printf("acSensorType:%s\n", sCameraList[i].acSensorType);
+    printf("acSn:%s\n", sCameraList[i].acSn);
+    printf("\n\n\n\n");
+  }
+  CameraLayer_GIGE_MindVision *CL_GIGE = new CameraLayer_GIGE_MindVision(CameraLayer_Callback_GIGEMV, NULL);
+  if (CL_GIGE->InitCamera(&(sCameraList[0])) == CameraLayer::ACK)
+  {
+    return CL_GIGE;
+  }
+  delete CL_GIGE;
+  return NULL;
+}
 
 #ifdef FEATURE_COMPILE_W_ARAVIS
-CameraLayer_Aravis* initCamera_Aravis(std::string targetIdContains="")
+CameraLayer_Aravis *initCamera_Aravis(std::string targetIdContains = "")
 {
   vector<CameraLayer_Aravis::cam_info> infoList;
-  CameraLayer_Aravis::listDevices(infoList,true);
-  if(infoList.size()>0)
+  CameraLayer_Aravis::listDevices(infoList, true);
+  if (infoList.size() > 0)
   {
-    for(int i=0;i<infoList.size();i++){
-      if(targetIdContains.length()>0 &&infoList[i].id.find(targetIdContains)== string::npos)
+    for (int i = 0; i < infoList.size(); i++)
+    {
+      if (targetIdContains.length() > 0 && infoList[i].id.find(targetIdContains) == string::npos)
       {
         continue;
       }
-      
-      try{
-        if(infoList[i].available)
-        {//try to find first available camera 
-        
+
+      try
+      {
+        if (infoList[i].available)
+        { //try to find first available camera
+
           LOGI("=======CAM OPEN========");
-          CameraLayer_Aravis *camera=new CameraLayer_Aravis(infoList[i].id.c_str(),CameraLayer_Callback_GIGEMV, NULL);
-          CameraLayer_Aravis::cam_info ci=camera->getCameraInfo();
+          CameraLayer_Aravis *camera = new CameraLayer_Aravis(infoList[i].id.c_str(), CameraLayer_Callback_GIGEMV, NULL);
+          CameraLayer_Aravis::cam_info ci = camera->getCameraInfo();
           LOGI("=======CAM OPEN========");
-          LOGI("id:%s",ci.id.c_str());
-          LOGI("physical_id:%s",ci.physical_id.c_str());
-          LOGI("address:%s",ci.address.c_str());
-          LOGI("model:%s",ci.model.c_str());
-          LOGI("protocol:%s",ci.protocol.c_str());
-          LOGI("serial_nbr:%s",ci.serial_nbr.c_str());
-          LOGI("vendor:%s",ci.vendor.c_str());
-          LOGI("available:%d",ci.available);
+          LOGI("id:%s", ci.id.c_str());
+          LOGI("physical_id:%s", ci.physical_id.c_str());
+          LOGI("address:%s", ci.address.c_str());
+          LOGI("model:%s", ci.model.c_str());
+          LOGI("protocol:%s", ci.protocol.c_str());
+          LOGI("serial_nbr:%s", ci.serial_nbr.c_str());
+          LOGI("vendor:%s", ci.vendor.c_str());
+          LOGI("available:%d", ci.available);
           return camera;
         }
       }
-      catch(const std::exception& ex){
+      catch (const std::exception &ex)
+      {
       }
     }
   }
@@ -3516,13 +3575,109 @@ CameraLayer_Aravis* initCamera_Aravis(std::string targetIdContains="")
 }
 
 #else
-CameraLayer* initCamera_Aravis(std::string targetIdContains="")
+CameraLayer *initCamera_Aravis(std::string targetIdContains = "")
 {
+  LOGE("NO driver.... skip");
   return NULL;
 }
 #endif
 
+#ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
 
+bool PrintDeviceInfo(MV_CC_DEVICE_INFO *pstMVDevInfo)
+{
+  if (NULL == pstMVDevInfo)
+  {
+    printf("The Pointer of pstMVDevInfo is NULL!\n");
+    return false;
+  }
+  if (pstMVDevInfo->nTLayerType == MV_GIGE_DEVICE)
+  {
+    printf("chUserDefinedName: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chUserDefinedName);
+    printf("chModelName: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chModelName);
+    printf("chDeviceVersion: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chDeviceVersion);
+    printf("chManufacturerSpecificInfo: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chManufacturerSpecificInfo);
+    printf("chManufacturerName: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chManufacturerName);
+    printf("Serial Number: [%s]\n", pstMVDevInfo->SpecialInfo.stGigEInfo.chSerialNumber);
+  }
+  else if (pstMVDevInfo->nTLayerType == MV_USB_DEVICE)
+  {
+    printf("chUserDefinedName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chUserDefinedName);
+    printf("chVendorName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chVendorName);
+    printf("chModelName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chModelName);
+    printf("chFamilyName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chFamilyName);
+    printf("chDeviceVersion: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chDeviceVersion);
+    printf("chManufacturerName: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chManufacturerName);
+    printf("Serial Number: [%s]\n", pstMVDevInfo->SpecialInfo.stUsb3VInfo.chSerialNumber);
+  }
+  else
+  {
+    printf("Not support.\n");
+  }
+
+  return true;
+}
+
+CameraLayer_HikRobot_Camera *initCamera_HikRobot_Camera(std::string targetIdContains = "")
+{
+  MV_CC_DEVICE_INFO_LIST stDeviceList;
+  CameraLayer_HikRobot_Camera::listDevices(&stDeviceList);
+
+  MV_CC_DEVICE_INFO *tar_pstMVDevInfo = NULL;
+  for (unsigned int i = 0; i < stDeviceList.nDeviceNum; i++)
+  {
+    printf("[device %d]:\n", i);
+    MV_CC_DEVICE_INFO *pstMVDevInfo = stDeviceList.pDeviceInfo[i];
+    if (NULL == pstMVDevInfo)
+    {
+      continue;
+    }
+
+    PrintDeviceInfo(pstMVDevInfo);
+    std::string UserDefinedName;
+    if (pstMVDevInfo->nTLayerType == MV_GIGE_DEVICE)
+    {
+      UserDefinedName = std::string((const char *)pstMVDevInfo->SpecialInfo.stGigEInfo.chUserDefinedName);
+    }
+    if (pstMVDevInfo->nTLayerType == MV_USB_DEVICE)
+    {
+      UserDefinedName = std::string((const char *)pstMVDevInfo->SpecialInfo.stUsb3VInfo.chUserDefinedName);
+    }
+    if (UserDefinedName.find(targetIdContains) == string::npos)
+    {
+      continue;
+    }
+    tar_pstMVDevInfo = pstMVDevInfo;
+    // void *handle = NULL;
+    // nRet = MV_CC_CreateHandle(&handle, pstMVDevInfo);
+    // if (MV_OK == nRet)
+    // {
+    //   cameraHandles.push_back(handle);
+    // }
+  }
+
+  if (tar_pstMVDevInfo == NULL)
+    return NULL;
+
+  CameraLayer_HikRobot_Camera *extractCam = NULL;
+  try
+  {
+    return new CameraLayer_HikRobot_Camera(tar_pstMVDevInfo, CameraLayer_Callback_GIGEMV, NULL);
+  }
+  catch (const std::exception &e)
+  {
+    LOGE("catch an E:%s", e.what());
+  }
+  return NULL;
+}
+
+#else
+CameraLayer *initCamera_HikRobot_Camera(std::string targetIdContains = "")
+{
+  LOGE("NO driver.... skip");
+  return NULL;
+}
+#endif
 
 int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
@@ -3557,9 +3712,22 @@ CameraLayer *getCamera(int initCameraType = 0)
   //     camera = NULL;
   //   }
   // }
-  
-  LOGI(">>>>>\n");
-  camera=initCamera_Aravis("");
+
+  std::string target_name_part = "";
+  if (camera == NULL)
+  {
+    camera = initCamera_MindVision();
+  }
+  if (camera == NULL)
+  {
+    LOGI(">>>>>\n");
+    camera = initCamera_Aravis(target_name_part);
+  }
+  if (camera == NULL)
+  {
+    LOGI(">>>>>\n");
+    camera = initCamera_HikRobot_Camera(target_name_part);
+  }
 
   LOGI("camera ptr:%p", camera);
 
@@ -3943,6 +4111,10 @@ int cp_main(int argc, char **argv)
 
     LOGI("WIN32 WSAStartup ret:%d", iResult);
   }
+
+  char buffer[256]; //force output run with buffer mode(print when buffer is full) instead of line buffered mode
+  //this speeds up windows print dramaticlly
+  setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 
 #endif
 

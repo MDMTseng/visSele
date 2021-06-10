@@ -20,8 +20,10 @@
 #ifdef FEATURE_COMPILE_W_ARAVIS
 #include "CameraLayer_Aravis.hpp"
 #endif
-#ifdef FEATURE_COMPILE_W_HIKVISION_CAMERA_SDK
+
+#ifdef FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
 #include "MvCameraControl.h"
+#include "CameraLayer_HikRobot_Camera.hpp"
 #endif
 
 

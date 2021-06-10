@@ -20,6 +20,11 @@ ifeq ($(FEATURE_COMPILE_W_ARAVIS),1)
 	_OBJ+= CameraLayer_Aravis.opp
 endif
 
+ifeq ($(FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK),1)
+	IDIR+=$(MODULE_hikrobot_camera_sdk)/includes
+	_OBJ+=CameraLayer_HikRobot_Camera.opp
+endif
+
 
 
 target_a = CameraLayer.a

@@ -72,14 +72,12 @@ int_fast32_t testPolyFit()
 int main(int argc, char **argv)
 {
   
-  // char buffer[256]; //force output run with buffer mode(print when buffer is full) instead of line buffered mode
-  // //this speeds up windows print dramaticlly
-  // setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
-  demomain(argc,argv);
-  return 0;
+
+  // return demomain(argc,argv);
+  // return 0;
   // return testPolyFit();
   // tmpMain();
   // printf(">>>");
-  // return cp_main(argc, argv);
+  return cp_main(argc, argv);
 }
 

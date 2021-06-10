@@ -7,12 +7,12 @@
 #include <vector>
 #include <thread>
 class CameraLayer_BMP : public CameraLayer{
-
     std::mutex m;
     std::string fileName;
     std::vector <int> gaussianNoiseTable_M;
 
     protected:
+    acvImage img_load;
     const float exp_time_100ExpUs=5000;
     float exp_time_us;
     float a_gain;
@@ -26,15 +26,20 @@ class CameraLayer_BMP : public CameraLayer{
     status SetMirror(int Dir,int en);
     status SetROI(int x, int y, int w, int h,int zw,int zh);
     
+    status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
+    status CalcROI(int* X,int* Y,int* W,int* H);
     status SetAnalogGain(float gain);
     status SetExposureTime(float time_us);
     status GetExposureTime(float *ret_time_us);
+    
+    status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount);
 };
 
 
 
 class CameraLayer_BMP_carousel : public CameraLayer_BMP{
-    int snapFlag=0;
+
+
     int frameInterval_ms=100;
     int ThreadTerminationFlag=0;
     int imageTakingCount=0;
@@ -52,7 +57,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status updateFolder(std::string folderName);
     status SetFrameRateMode(int mode);
     
-    status SnapFrame();
+    status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
     status Trigger();
     status LoadNext(bool call_cb=true);
     status TriggerMode(int mode);
