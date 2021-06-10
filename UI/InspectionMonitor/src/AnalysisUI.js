@@ -3,6 +3,8 @@
 
 import React, { useState, useEffect,useRef } from 'react';
 import {round as roundX,GetObjElement} from './UTIL/MISC_Util';
+
+import {datePrintSimple} from './UTIL/MISC_Util';
 import 'antd/dist/antd.css';
 
 import dclone from 'clone';
@@ -29,13 +31,16 @@ import 'chartjs-plugin-annotation';
 import {INSPECTION_STATUS} from './UTIL/BPG_Protocol';
 import Tag  from 'antd/lib/tag';
 
+import Modal  from 'antd/lib/modal';
+
+
+
 // import { StarOutlined} from '@ant-design/icons';
 const { CheckableTag } = Tag;
 
 const { RangePicker } = DatePicker;
 const { Title, Paragraph, Text } = Typography;
 let log = logX.getLogger("AnalysisUI");
-
 
 
 Chart.pluginService.register({
@@ -90,20 +95,6 @@ function isString (value) {
   return typeof value === 'string' || value instanceof String;
 }
 
-
-
-function datePrintSimple(date) {
-  function addZero(i) {
-    return (i < 10)?"0" + i:i;
-  }
-  var mm = addZero(date.getMonth() + 1); // getMonth() is zero-based
-  var dd = addZero(date.getDate());
-  var h = addZero(date.getHours());
-  var m = addZero(date.getMinutes());
-  var s = addZero(date.getSeconds());
-
-  return [date.getFullYear(),mm,dd].join('/')+" "+h+":"+m+":"+s;
-};
 function convertInspInfo2CSV(reportName,measureList,inspRecGroup,cur_tagState)
 {
   let converterV="0.0.1 Alpha"
@@ -371,7 +362,7 @@ class ControlChart extends React.Component {
                           time:{
                             displayFormat:true,
                             displayFormats:{
-                              hour: "MMM D, h:mm:ss"
+                              hour: "M/D h:mm:ss"
                             },
                             minUnit:"hour"
                           }
@@ -485,7 +476,7 @@ class ControlChart extends React.Component {
           }
 
             let val={
-            x:new Date(rep.time_ms).toString(),
+            x:datePrintSimple(new Date(rep.time_ms)),
             y:measureValue,
             tag:rep.tag
             };
@@ -545,7 +536,7 @@ class ControlChart extends React.Component {
       }
       let pointColor=(color===undefined)?"rgba(0,255,0,1)":color;
         let val={
-          x:new Date(time).toString(),
+          x:datePrintSimple(new Date(time)),
         y:value,
           data:repG,
           stat:this_id_stat
@@ -557,7 +548,7 @@ class ControlChart extends React.Component {
       acc_chart_data.data.push(val);
       return acc_chart_data;
     }, { 
-      type: "scatter",
+      type: "line",
       borderColor:"rgba(100, 255, 100,1)",
       lineTension: 0,data:[],
       pointBackgroundColor:[],} );
@@ -894,7 +885,7 @@ class InspRecStream
     return this.liveFeedMode=enable;
   }
 
-  liveQueryInspRec(timeRange,maxResults)
+  liveQueryInspRec(timeRange,maxResults,sampleCount)
   {
     if(timeRange==undefined)
     {
@@ -902,7 +893,7 @@ class InspRecStream
       {
         let lastMsInRec = this.rec[this.rec.length-1].time_ms;
         timeRange=[moment(lastMsInRec)._d.getTime(), moment(Date_addDay(new Date(),1))._d.getTime()];
-        console.log(moment(lastMsInRec));
+        // console.log(lastMsInRec,moment(lastMsInRec));
       }
       else
       {
@@ -912,12 +903,8 @@ class InspRecStream
         return undefined;
       }
     }
-    if(maxResults==undefined)
-    {
-      maxResults=10;
-    }
     console.log("timeRange="+timeRange);
-    return DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],maxResults)
+    return DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],maxResults,sampleCount)
     .then((queryResult)=>{
       let inspectionRec = queryResult.map(res=>res.InspectionData[0]);
       this.newStreamFeed(inspectionRec);
@@ -933,7 +920,7 @@ class InspRecStream
       return inspectionRec;
     })
   }
-  queryInspRec(timeRange=[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))])
+  queryInspRec(timeRange=[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))],sampleCount=undefined)
   {
     if(this.defFile===undefined)return false;
     this.passiveQueryRange = timeRange;
@@ -943,8 +930,21 @@ class InspRecStream
     {
       this.resetStreamInfo();
     }
-    return this.liveQueryInspRec(timeRange,10000000);
+    return this.liveQueryInspRec(timeRange,undefined,sampleCount);
   }
+
+
+  queryInspRecSize(timeRange=[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))])
+  {
+    return DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],undefined,undefined,
+      {
+        "_id":1,
+      },
+      {
+        $count: "count"
+      })
+  }
+
 
 
 }
@@ -993,9 +993,13 @@ function ListInfoEditUI ({shape_list,initRank=0,onListInfoChange}){
   },[sliderV]);
 
 
-  
+  if(rankMin==0 && rankMax==0)
+  {
+    return null;
+  }
 
-  return <>
+  return <div>
+    <div>Rank:</div>
     <Slider
       min={rankMin}
       max={rankMax}
@@ -1017,7 +1021,7 @@ function ListInfoEditUI ({shape_list,initRank=0,onListInfoChange}){
       onListInfoChange(nLInfo);
     }}>{listInfo[key].name}</CheckableTag>)}
   
-  </>;
+  </div>;
 }
 
 
@@ -1040,8 +1044,8 @@ class APP_ANALYSIS_MODE extends React.Component{
       dataInSync:false,
       controlChartOverlap:false,
       displayListInfo:{},
-      tagState:{}
-
+      tagState:{},
+      modalInfo:undefined
     };
     this.recStream=new InspRecStream();
   }
@@ -1145,7 +1149,7 @@ class APP_ANALYSIS_MODE extends React.Component{
               [this.state.inspectionRec[0].time_ms-1000, 
               this.state.inspectionRec[this.state.inspectionRec.length-1].time_ms+1000]} 
           step={1000*60*5}
-          tipFormatter={(time)=>new Date(time).toString()}
+          tipFormatter={(time)=>datePrintSimple(new Date(time))}
           onChange={(data)=>this.stateUpdate({displayRange:data})}
         />,
         <Checkbox checked={this.state.liveFeedMode} onChange={(ev)=>this.liveFeedMode_ctrl(ev.target.checked)}>LIVE</Checkbox>,
@@ -1198,6 +1202,12 @@ class APP_ANALYSIS_MODE extends React.Component{
     }
 
 
+    let modalDisplay=this.state.modalInfo===undefined?null:
+    <Modal title={this.state.modalInfo.title} visible={this.state.modalInfo.visible}  maskClosable={false} closable={false}
+      onOk={this.state.modalInfo.onOK} okText={this.state.modalInfo.okText}
+      onCancel={this.state.modalInfo.onCancel} cancelText={this.state.modalInfo.cancelText}>
+      {this.state.modalInfo.content}
+    </Modal>;
     
     return(
     <div className="HXF">
@@ -1231,11 +1241,59 @@ class APP_ANALYSIS_MODE extends React.Component{
                   }
                 }
               this.stateUpdate({dataInSync:true});
-              this.recStream.queryInspRec(dateRange).then(result=>{
-                this.stateUpdate({dataInSync:false});
+
+              this.recStream.queryInspRecSize(dateRange.map(d=>d.getTime())).then(result=>{
+
+                let dataCount=result[0].count;
+                console.log(dataCount)
+                let warn_limit=20000;
+                if(dataCount<warn_limit)
+                {
+                  this.recStream.queryInspRec(dateRange.map(d=>d.getTime())).then(result=>{
+                    this.stateUpdate({dataInSync:false});
+                  }).catch(err=>{
+                    this.stateUpdate({dataInSync:false});
+                  });
+                }
+                else
+                {
+                  
+                  this.stateUpdate({modalInfo:{
+                    title:"警告",
+                    visible:true,
+                    onOK:()=>{
+                      
+                      this.recStream.queryInspRec(dateRange.map(d=>d.getTime())).then(result=>{
+                        this.stateUpdate({dataInSync:false});
+                      }).catch(err=>{
+                        this.stateUpdate({dataInSync:false});
+                      });
+                      this.stateUpdate({modalInfo:undefined});
+                    },
+                    onCancel:()=>{
+                      // this.stateUpdate({modalInfo:undefined,dataInSync:false});
+                      
+                      this.recStream.queryInspRec(dateRange.map(d=>d.getTime()),warn_limit).then(result=>{
+                        this.stateUpdate({dataInSync:false});
+                      }).catch(err=>{
+                        this.stateUpdate({dataInSync:false});
+                      });
+                      this.stateUpdate({modalInfo:undefined});
+                    },
+                    content:"查詢結果數量:"+dataCount+" > "+warn_limit+" 取樣下載"+warn_limit+"個資料? 或是仍要全下載?",
+                    okText:"全下載",
+                    cancelText:"取樣下載"+warn_limit+"個資料"
+                  }});
+                  
+                }
+
+
+
+                // this.stateUpdate({dataInSync:false});
               }).catch(err=>{
                 this.stateUpdate({dataInSync:false});
               });
+
             }} />
             
           <Button type="primary" icon="download" disabled={!dateRangeReady || !defFileReady || this.state.inspectionRec.length===0} 
@@ -1246,6 +1304,9 @@ class APP_ANALYSIS_MODE extends React.Component{
               //copyStringToClipboard(str);
               downloadString(csv_arr.join(''), "text/csv", ReportName+".csv");
             }} />
+
+          {modalDisplay}
+          資料數:{this.state.inspectionRec_TagFiltered.length}
             <hr style={{width:"80%"}}/>
             <RelatedUsageInfo fullStream2Tag={this.state.inspectionRec}
               control_margin_set={this.state.defFile.featureSet[0].__decorator.control_margin_info}
@@ -1325,7 +1386,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
 
 class RelatedUsageInfo extends React.Component{
-//http://hyv.decade.tw:8080/query/deffile?name=BOS-LT13BH3421&
+///query/deffile?name=BOS-LT13BH3421&
 // http://localhost:3000/hyvision_monitor/0.0.0/?v=0&hash=9fa42a5e990e4da632070e95daf14ec50de8a112&name=BOS-LT13BH3421
     constructor(props){
         super(props);

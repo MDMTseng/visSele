@@ -7,6 +7,8 @@ import  Modal  from 'antd/lib/modal';
 import QrScanner from 'qr-scanner';
 import jsonp from 'jsonp';
 
+import {datePrintSimple} from './UTIL/MISC_Util';
+
 import  Typography  from 'antd/lib/typography';
 import Input from 'antd/lib/input';
 import Button from 'antd/lib/button';
@@ -17,6 +19,7 @@ import Row from 'antd/lib/row';
 //import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import Layout from 'antd/lib/layout';
 QrScanner.WORKER_PATH = "./qr-scanner-worker.min.js";
+// import { WarningOutlined} from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
 class WebCam_SQScan extends React.Component{
@@ -144,7 +147,7 @@ function fetchDeffileInfo(name)
   let defFileData=undefined;
   
   return new Promise((res,rej)=>{
-    let url='http://hyv.decade.tw:8080/query/deffile?name='+name+'&limit=1000'
+    let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'
     
     pjsonp(url,null).then((data)=>{
 
@@ -162,7 +165,7 @@ function fetchDeffileInfo(name)
       });
       let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
 
-      let url='http://hyv.decade.tw:8080/query/inspection?';
+      let url=DB_Query.db_url+'/query/inspection?';
       url+='tStart=0&tEnd=2581663256894&limit=999999999&';
       url+='subFeatureDefSha1='+hashRegx+'&'
       url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
@@ -218,13 +221,13 @@ function fetchDeffileInfo(name)
   });
 }
 
-//http://hyv.decade.tw:8080/query/inspection?tStart=1583942400000&tEnd=1584639131675&subFeatureDefSha1_regex=.&projection={"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","sum":{"$sum":1}}}]
+///query/inspection?tStart=1583942400000&tEnd=1584639131675&subFeatureDefSha1_regex=.&projection={"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","sum":{"$sum":1}}}]
 
 function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
 {
   let dataSet_Formatted;
   return new Promise((res,rej)=>{
-    let url="http://hyv.decade.tw:8080/query/inspection?tStart="+start_ms+"&tEnd="+end_ms+
+    let url=DB_Query.db_url+"/query/inspection?tStart="+start_ms+"&tEnd="+end_ms+
     '&projection={"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}'+
     '&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
       '"count":{"$sum":1},'+
@@ -258,8 +261,8 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
       let hashRegx = Object.keys(dataSet_Formatted).reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
 
       console.log(dataSet,dataSet_Formatted,hashRegx);
-      //'http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx
-      let url='http://hyv.decade.tw:8080/query/deffile?featureSet_sha1='+hashRegx+
+      //'/query/deffile?featureSet_sha1='+hashRegx
+      let url=DB_Query.db_url+'/query/deffile?featureSet_sha1='+hashRegx+
       '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"createdAt":1}'
       
       return pjsonp(url,null)
@@ -308,7 +311,7 @@ let CusDisp_DB={
     let defFileData=undefined;
     
     return new Promise((res,rej)=>{
-      let url='http://hyv.decade.tw:8080/QUERY/customDisplay?name='+name
+      let url=DB_Query.db_url+'/QUERY/customDisplay?name='+name
       url+='&projection={"name":1,"targetDeffiles":1}'
       
       pjsonp(url,null).then((data)=>{
@@ -322,7 +325,7 @@ let CusDisp_DB={
     let defFileData=undefined;
     
     return new Promise((res,rej)=>{
-      let url='http://hyv.decade.tw:8080/insert/customdisplay?name='+info.name+
+      let url=DB_Query.db_url+'/insert/customdisplay?name='+info.name+
         "&targetDeffiles="+JSON.stringify(info.targetDeffiles)
       if(id!==undefined)
       {
@@ -339,7 +342,7 @@ let CusDisp_DB={
   delete:(id)=>{
 
     return new Promise((res,rej)=>{
-      let url='http://hyv.decade.tw:8080/delete/customdisplay?_id='+id;
+      let url=DB_Query.db_url+'/delete/customdisplay?_id='+id;
       pjsonp(url,null).then((data)=>{
         res(data);
       }).catch((err)=>{
@@ -361,7 +364,7 @@ CusDisp_DB.update=(info,id)=>{
     })
   });
 }
-//http://hyv.decade.tw:8080/delete/customDisplay?_id=5e782cddf40281013bedd142
+///delete/customDisplay?_id=5e782cddf40281013bedd142
 // fetchCustomDisplayInfo("Machine");
 //CusDisp_DB.create({name:"><>",targetDeffiles:[{hash:"sdiosdjciojsdoi"}]},undefined);
 //CusDisp_DB.delete("5e771c388b25286acf112810");
@@ -369,13 +372,14 @@ function getUrlPath()
 {
   return window.location.href.substring(window.location.protocol.length).split('?')[0]
 }
+
 function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
   
-  useEffect(() => {
-    console.log("1,didUpdate");
+  function recentQuery()
+  {
     var cur_ms = new Date().getTime();
-    fetchDeffileInfo_in_insp_time_range(cur_ms-2*24*60*60*1000,cur_ms+1000000).
+    fetchDeffileInfo_in_insp_time_range(cur_ms-7*24*60*60*1000,cur_ms+1000000).
     then((res)=>{
 
       setFetchedRecord(res);
@@ -385,6 +389,12 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
       if(onQueryRej!==undefined)
         onQueryRej(e)
     });
+  }
+
+
+  useEffect(() => {
+    console.log("1,didUpdate");
+    recentQuery();
 
     return () => {
       console.log("1,didUpdate ret::");
@@ -394,17 +404,36 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   let searchBox=<Input placeholder={placeholder} defaultValue={defaultValue}
     onPressEnter={(e)=>{
     console.log(e.target.value)
-    setFetchedRecord();
-    fetchDeffileInfo(e.target.value).
-      then((res)=>{
-
-        setFetchedRecord(res);
-        onQueryRes(res);
-      }).catch((e)=>{
-        setFetchedRecord([]);
-        if(onQueryRej!==undefined)
-          onQueryRej(e)
+    if(e.target.value=="")
+    {
+      recentQuery();
+    }
+    else if(e.target.value.length<2)
+    {
+      
+      Modal.confirm({
+        // icon: <WarningOutlined/>,
+        content: "請輸入大於兩個字",
+        onOk() {
+        },
+        onCancel() {
+        },
       });
+    }
+    else
+    {
+      setFetchedRecord();
+      fetchDeffileInfo(e.target.value).
+        then((res)=>{
+  
+          setFetchedRecord(res);
+          onQueryRes(res);
+        }).catch((e)=>{
+          setFetchedRecord([]);
+          if(onQueryRej!==undefined)
+            onQueryRej(e)
+        });
+    }
   }} ></Input>
   let fetchBtn=fetchedRecord===undefined?null:
   <div>
@@ -447,15 +476,16 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Date_Start',
         dataIndex: 'Date_Start',
         key: 'Date_Start',
-        render: milliSec => <div>{new Date(milliSec)+""}</div>,
+        render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
         sorter: (a, b) => a.Date_Start - b.Date_Start,
       },
       {
         title: 'Date_End',
         dataIndex: 'Date_End',
         key: 'Date_End',
-        render: milliSec => <div>{new Date(milliSec)+""}</div>,
+        render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
         sorter: (a, b) => a.Date_End - b.Date_End,
+        defaultSortOrder:'descend'
       },
       {
         title: 'Tags',
@@ -639,7 +669,7 @@ function DBDupMan({ }) {
     let dataSet_Formatted;
     return new Promise((res,rej)=>{
 
-    let url='http://hyv.decade.tw:8080/query/deffile?name='+""+'&limit=100'+
+    let url=DB_Query.db_url+'/query/deffile?name='+""+'&limit=1000'+
       '&agg=[{"$group":{"_id":"$DefineFile.featureSet_sha1",'+
         '"count":{"$sum":1}'+
       '}}]';

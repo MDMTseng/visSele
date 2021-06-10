@@ -29,6 +29,7 @@ export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
 export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
+export MODULE_hikrobot_camera_sdk=$(abspath $(moduleRoot)/contrib/hikrobot_camera_sdk)
 
 
 # export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
@@ -36,6 +37,9 @@ export MODULE_MatchingEngine=$(abspath $(moduleRoot)/MatchingEngine)
 
 export SO_EXPORT_PATH=$(abspath .)
 
+
+export FEATURE_COMPILE_W_ARAVIS=0
+export FEATURE_COMPILE_W_hikrobot_CAMERA_SDK=0
 
 
 # export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
@@ -58,8 +62,6 @@ IDIR=	include/ \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_MindVision_GIGE)/include \
-			$(MODULE_aravis)/include \
-			$(MODULE_aravis)/src \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
 			$(MODULE_mjpegLib)/include \
@@ -69,7 +71,7 @@ IDIR=	include/ \
 
 
 
-_OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp tmpCodes.opp wiringPanel.opp
+_OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp tmpCodes.opp wiringPanel.opp democode.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
@@ -91,13 +93,15 @@ ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
 			   $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
 	FLAGS+= -D_MINGW -D_WINDOWS
+	FEATURE_COMPILE_W_hikrobot_CAMERA_SDK=1
 	
 else
-	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/  
-	LIBS+=`pkg-config --libs glib-2.0` -lgobject-2.0  $(MODULE_aravis)/src/libaravis-0.8.0.dylib  -Wl,-rpath .
+	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
 	EXT_OBJS+=
-endif
+	FEATURE_COMPILE_W_ARAVIS=1
+	
 
+endif
 
 
 ESS_TRACK=
@@ -126,8 +130,8 @@ else
 									$(MODULE_polyfit) \
 									$(MODULE_mjpegLib) \
 									$(MODULE_MJPEG_Streamer) \
+									$(MODULE_zlib) \
 									# $(MODULE_SOIL) \
-									# $(MODULE_zlib) \
 									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \
 									# sidePrj
@@ -139,7 +143,19 @@ export MakeTemplate:= $(abspath ../Makefile.in)
 STRICT_FLAGS= -Wall -Wextra -Werror -Wreturn-type -Werror=return-type
 
  
-export FLAGS+= -w -O3 -std=c++11 $(STRICT_FLAGS) `pkg-config --cflags glib-2.0`
+ifeq ($(FEATURE_COMPILE_W_ARAVIS),1)
+	FLAGS+= -D FEATURE_COMPILE_W_ARAVIS `pkg-config --cflags glib-2.0` 
+	IDIR+=$(MODULE_aravis)/include $(MODULE_aravis)/src 
+	LIBS+=`pkg-config --libs glib-2.0` -lgobject-2.0  $(MODULE_aravis)/src/libaravis-0.8.0.dylib  -Wl,-rpath .
+endif
+
+ifeq ($(FEATURE_COMPILE_W_hikrobot_CAMERA_SDK),1)
+	FLAGS+= -D FEATURE_COMPILE_W_hikrobot_CAMERA_SDK
+	IDIR+=$(MODULE_hikrobot_camera_sdk)/includes
+	LIBS+=$(MODULE_hikrobot_camera_sdk)/libraries/win64/MvCameraControl.lib
+endif
+
+export FLAGS+= -w -O3 $(STRICT_FLAGS) 
 
 include $(MakeTemplate)
 

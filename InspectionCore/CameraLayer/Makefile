@@ -10,9 +10,17 @@ IDIR = include \
 			$(MODULE_aravis)/include \
 			$(MODULE_aravis)/src \
 
-FLAGS= -std=c++11 `pkg-config --cflags glib-2.0`
 
-_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_GIGE_MindVision.opp CameraLayer_Aravis.opp
+_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_GIGE_MindVision.opp
+
+FLAGS= -std=c++11 
+ifeq ($(FEATURE_COMPILE_W_ARAVIS),1)
+	FLAGS+=  `pkg-config --cflags glib-2.0`
+	IDIR+=$(MODULE_aravis)/include $(MODULE_aravis)/src 
+	_OBJ+= CameraLayer_Aravis.opp
+endif
+
+
 
 target_a = CameraLayer.a
 

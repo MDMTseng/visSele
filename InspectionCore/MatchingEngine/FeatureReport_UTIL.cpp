@@ -311,7 +311,7 @@ int cameraCalib2JSON(cJSON* jobj,FeatureManager_BacPac *bacpac)
     cJSON_AddNumberToObject(jobj, "back_light_target", bacpac->sampler->getStageLightInfo()->back_light_target);
     if(bacpac->cam!=NULL)
     {
-      double expTime;
+      float expTime;
       if (CameraLayer::ACK == bacpac->cam->GetExposureTime(&expTime))
       {
         cJSON_AddNumberToObject(jobj, "exposure_time", expTime);

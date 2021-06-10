@@ -731,7 +731,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   val = JFetch_NUMBER(&settingJson, "gain");
   if (val)
   {
-    camera.SetAnalogGain((int)*val);
+    camera.SetAnalogGain(*val);
     LOGI("SetAnalogGain:%f", *val);
     retV = 0;
   }
@@ -3475,6 +3475,7 @@ int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void 
 // }
 
 
+#ifdef FEATURE_COMPILE_W_ARAVIS
 CameraLayer_Aravis* initCamera_Aravis(std::string targetIdContains="")
 {
   vector<CameraLayer_Aravis::cam_info> infoList;
@@ -3514,6 +3515,12 @@ CameraLayer_Aravis* initCamera_Aravis(std::string targetIdContains="")
   return NULL;
 }
 
+#else
+CameraLayer* initCamera_Aravis(std::string targetIdContains="")
+{
+  return NULL;
+}
+#endif
 
 
 
@@ -3937,9 +3944,6 @@ int cp_main(int argc, char **argv)
     LOGI("WIN32 WSAStartup ret:%d", iResult);
   }
 
-  char buffer[256]; //force output run with buffer mode(print when buffer is full) instead of line buffered mode
-  //this speeds up windows print dramaticlly
-  setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 #endif
 
   _argc = argc;
