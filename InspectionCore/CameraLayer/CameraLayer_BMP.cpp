@@ -22,94 +22,25 @@ CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLa
     SetExposureTime(exp_time_100ExpUs);
 }
 
-CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
+
+
+CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount)
 {
-    status ret_status;
-    m.lock();
 
-    int ret = 0;
-    
-    //if(img.GetWidth()<100)//Just to skip image loading
+      int newX,newY;
+      int newW,newH;
 
-    if(this->fileName.compare(fileName)!=0)//check if the name isn't equal
-    {
-      this->fileName = fileName;
-        LOGI("Loading:%s",fileName.c_str());
-        ret = acvLoadBitmapFile(&img_load, fileName.c_str());
-    }
-    if(ret!=0)
-    {
-        ret_status=NAK;
-        callback(*this,CameraLayer::EV_ERROR,context);
-    }
-    else
-    {
+      CalcROI(&newX,&newY,&newW,&newH);
 
-      float tmpW=ROI_W;
-      float tmpH=ROI_H;
-      float tmpX=ROI_X;
-      float tmpY=ROI_Y;
-
-      LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
-      if(tmpX<0){
-        tmpX=0;
-      }
-      if(tmpY<0){
-        tmpY=0;
-      }
-      if(tmpX<1)
+      // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+      if(pixelCount<newW*newH*channelCount)
       {
-        tmpX=(int)(tmpX*img_load.GetWidth());
-      }
-      if(tmpY<1)
-      {
-        tmpY=(int)(tmpY*img_load.GetHeight());
+        return NAK;
       }
 
-      if(tmpX>=img_load.GetWidth()-5)
-      {
-        tmpX=img_load.GetWidth()-5-1;
-      }
-      if(tmpY>=img_load.GetHeight()-5)
-      {
-        tmpY=img_load.GetHeight()-5-1;
-      }
-
-      if(tmpW<0){
-        tmpW=0;
-      }
-      if(tmpH<0){
-        tmpH=0;
-      }
-      if(tmpW<1)
-      {
-        tmpW=(int)(tmpW*img_load.GetWidth());
-      }
-      if(tmpH<1)
-      {
-        tmpH=(int)(tmpH*img_load.GetHeight());
-      }
-
-      if(tmpW+tmpX>img_load.GetWidth())
-      {
-        tmpW=img_load.GetWidth()-tmpX;
-      }
-      if(tmpH+tmpY>img_load.GetHeight())
-      {
-        tmpH=img_load.GetHeight()-tmpY;
-      }
-
-      LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
-
-
-
-      int newX=tmpX,newY=tmpY;
-      int newH = tmpH;
-      int newW = tmpW;
       if(exp_time_us==0)exp_time_us=exp_time_100ExpUs;
       int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
-      img.ReSize(newW,newH);
       static float rotate=0;
       if(newX==0&&newY==0)
       {
@@ -127,12 +58,14 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
         // }
         rotate+=1*M_PI/180;
       }
-      acv_XY rcenter={X:(float)img.GetWidth()/2,Y:(float)img.GetHeight()/2};
+      
+      // img.ReSize(newW,newH);
+      acv_XY rcenter={X:newW/2,Y:newH/2};
 
       if(rotate!=0)
       {
-        for(int i=0;i<img.GetHeight();i++)//Add noise
-        for(int j=0;j<img.GetWidth();j++)
+        for(int i=0;i<newH;i++)//Add noise
+        for(int j=0;j<newW;j++)
         {
           acv_XY pixCoord=acvVecSub((acv_XY){(float)j,(float)i},rcenter);
           
@@ -144,43 +77,36 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
           pixCoord=acvVecSub((acv_XY){
             MIRROR_X?(float)img_load.GetWidth():pixCoord.X*2,
             MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
-          float pixB= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
-          float pixG= acvUnsignedMap1Sampling(&img_load, pixCoord, 1);
-          float pixR= acvUnsignedMap1Sampling(&img_load, pixCoord, 2);
 
 
-          int d = ((uint64_t)(pixB*tExp))>>13;
-          if(d<0)d=0;
-          else if(d>255)d=255;
-          img.CVector[i][j*3+0] = d;
+          for(int k=0;k<channelCount;k++)
+          {
+            float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, k);
+            int d = ((uint64_t)(pix*tExp))>>13;
+            if(d<0)d=0;
+            else if(d>255)d=255;
+            
+            imgBuffer[(i*newW+j)*channelCount+k]=d;
 
-          d = ((uint64_t)(pixG*tExp))>>13;
-          if(d<0)d=0;
-          else if(d>255)d=255;
-          img.CVector[i][j*3+1] =d;
-
-          
-          d = ((uint64_t)(pixR*tExp))>>13;
-          if(d<0)d=0;
-          else if(d>255)d=255;
-          img.CVector[i][j*3+2] =d;
-
+          }
         }
       }
       else
       {
         
         // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
-        img.ReSize(&img_load);
-        
-        if(1)
-          acvCloneImage(&img_load,&img,-1);      
-        else 
-          for(int i=0;i<img.GetHeight();i++)//exposure add
+        // if(1)
+        // {
+        //   memcpy(imgBuffer,img_load.CVector[0],);
+        //   acvCloneImage(&img_load,&img,-1);    
+
+        // }  
+        // else 
+        for(int i=0;i<newH;i++)//exposure add
         {
           int li=i+newY;
           if(li<0 || li>=img_load.GetHeight())continue;
-          for(int j=0;j<img.GetWidth();j++)
+          for(int j=0;j<newW;j++)
           {
             int lj=j+newX;
             if(lj<0 || lj>=img_load.GetWidth())continue;
@@ -190,37 +116,143 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
             if(d<0)d=0;
             else if(d>255)d=255;
             
-            img.CVector[i][j*3] = 
-            img.CVector[i][j*3+1] =
-            img.CVector[i][j*3+2] = d;
+            imgBuffer[(i*newW+j)*channelCount+0]=
+            imgBuffer[(i*newW+j)*channelCount+1]=
+            imgBuffer[(i*newW+j)*channelCount+2]=d;
+            // img.CVector[i][j*3] = 
+            // img.CVector[i][j*3+1] =
+            // img.CVector[i][j*3+2] = d;
 
           }
         }
       }
       
 
-      int noiseRange=5;
-      if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
-      {
-          for(int j=0;j<img.GetWidth();j++)
-          {
-              // int u = rand()%(gaussianNoiseTable_M.size());
-              // int x = gaussianNoiseTable_M[u] * 3/1000000 + 0;
-              int x=(rand()%(2*noiseRange))-noiseRange;
-              int d = img.CVector[i][j*3];
-              d+=x;
-              if(d<0)d=0;
-              else if(d>255)d=255;
+      // int noiseRange=5;
+      // if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
+      // {
+      //     for(int j=0;j<img.GetWidth();j++)
+      //     {
+      //         // int u = rand()%(gaussianNoiseTable_M.size());
+      //         // int x = gaussianNoiseTable_M[u] * 3/1000000 + 0;
+      //         int x=(rand()%(2*noiseRange))-noiseRange;
+      //         int d = img.CVector[i][j*3];
+      //         d+=x;
+      //         if(d<0)d=0;
+      //         else if(d>255)d=255;
               
-              img.CVector[i][j*3] = d;
-              img.CVector[i][j*3+1] = d;
-              img.CVector[i][j*3+2] = d;
+      //         img.CVector[i][j*3] = d;
+      //         img.CVector[i][j*3+1] = d;
+      //         img.CVector[i][j*3+2] = d;
 
-          }
-      }
+      //     }
+      // }
 
 
+  return ACK;
+}
+
+CameraLayer_BMP::status CameraLayer_BMP::CalcROI(int* X,int* Y,int* W,int* H)
+{
+  
+  int tmpW=ROI_W;
+  int tmpH=ROI_H;
+  int tmpX=ROI_X;
+  int tmpY=ROI_Y;
+
+  // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+  if(tmpX<0){
+    tmpX=0;
+  }
+  if(tmpY<0){
+    tmpY=0;
+  }
+  if(tmpX<1)
+  {
+    tmpX=(int)(tmpX*img_load.GetWidth());
+  }
+  if(tmpY<1)
+  {
+    tmpY=(int)(tmpY*img_load.GetHeight());
+  }
+
+  if(tmpX>=img_load.GetWidth()-5)
+  {
+    tmpX=img_load.GetWidth()-5-1;
+  }
+  if(tmpY>=img_load.GetHeight()-5)
+  {
+    tmpY=img_load.GetHeight()-5-1;
+  }
+
+  if(tmpW<0){
+    tmpW=0;
+  }
+  if(tmpH<0){
+    tmpH=0;
+  }
+  if(tmpW<1)
+  {
+    tmpW=(int)(tmpW*img_load.GetWidth());
+  }
+  if(tmpH<1)
+  {
+    tmpH=(int)(tmpH*img_load.GetHeight());
+  }
+
+  if(tmpW+tmpX>img_load.GetWidth())
+  {
+    tmpW=img_load.GetWidth()-tmpX;
+  }
+  if(tmpH+tmpY>img_load.GetHeight())
+  {
+    tmpH=img_load.GetHeight()-tmpY;
+  }
+  if(X)*X=tmpX;
+  if(Y)*Y=tmpY;
+  if(W)*W=tmpW;
+  if(H)*H=tmpH;
+
+  return ACK;
+}
+CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
+{
+    status ret_status;
+    m.lock();
+
+    int ret = 0;
+    
+    //if(img.GetWidth()<100)//Just to skip image loading
+
+    if(this->fileName.compare(fileName)!=0)//check if the name isn't equal
+    {
+      this->fileName = fileName;
+        LOGI("Loading:%s",fileName.c_str());
+        ret = acvLoadBitmapFile(&img_load, fileName.c_str());
+    }
+    if(ret!=0)
+    {
+      ret_status=NAK;
+      callback(*this,CameraLayer::EV_ERROR,context);
+    }
+    else
+    {
       ret_status=ACK;
+      // ret_status=NAK;
+
+      // int X,Y,W,H;
+
+      // CalcROI(&X,&Y,&W,&H);
+
+      
+      // CameraLayer::frameInfo fi_={
+      //   timeStamp_us:0,
+      //   width:(uint32_t)W,
+      //   height:(uint32_t)H,
+      // };
+
+      // callback(*this,CameraLayer::EV_IMG,context);
+
     }
     m.unlock();
     return ret_status;
@@ -349,10 +381,14 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
       gettimeofday(&tp, NULL);
       uint64_t _100us = tp.tv_sec * 1000000 + tp.tv_usec; //get current timestamp in milliseconds
 
+      int newX,newY;
+      int newW,newH;
+      CalcROI(&newX,&newY,&newW,&newH);
+
       CameraLayer::frameInfo fi_={
         timeStamp_us:(uint64_t)_100us,
-        width:(uint32_t)img.GetWidth(),
-        height:(uint32_t)img.GetHeight(),
+        width:newW,
+        height:newH,
       };
       fi = fi_;
 

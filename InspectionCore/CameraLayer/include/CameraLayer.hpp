@@ -41,7 +41,6 @@ class CameraLayer{
     //void *cameraInst;
     typedef void (*CameraLayer_Callback)(
         CameraLayer &cl_obj, int type, void* context);
-    acvImage img,img_load;
     CameraLayer_Callback callback;
     void* context;
     uint32_t frameTimeTag;
@@ -158,9 +157,14 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     
-    virtual acvImage* GetFrame()
+    virtual CameraLayer::status GetCurrentFrameDimension(int *ret_W,int *ret_H,int *ret_CH)
     {
-        return &img;
+        return CameraLayer::NAK;
+    }
+
+    virtual CameraLayer::status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount)
+    {
+        return CameraLayer::NAK;
     }
 
     
