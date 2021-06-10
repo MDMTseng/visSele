@@ -33,10 +33,10 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       CalcROI(&newX,&newY,&newW,&newH);
 
       // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
-      if(pixelCount<newW*newH*channelCount)
+      if(pixelCount<newW*newH)
       {
         return NAK;
-      }
+      }      
 
       if(exp_time_us==0)exp_time_us=exp_time_100ExpUs;
       int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
@@ -60,7 +60,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       }
       
       // img.ReSize(newW,newH);
-      acv_XY rcenter={X:newW/2,Y:newH/2};
+      acv_XY rcenter={X:(float)(newW/2),Y:(float)(newH/2)};
 
       if(rotate!=0)
       {
@@ -268,6 +268,11 @@ CameraLayer::status CameraLayer_BMP::SetROI(int x, int y, int w, int h,int zw,in
   ROI_H=h;
   return CameraLayer::ACK;
 }
+
+CameraLayer::status CameraLayer_BMP::GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh)
+{
+  return CalcROI(x,y,w,h);
+}
 CameraLayer::status CameraLayer_BMP::SetMirror(int Dir,int en)
 {
   if(Dir==0)
@@ -384,14 +389,14 @@ CameraLayer::status CameraLayer_BMP_carousel::LoadNext(bool call_cb)
       int newX,newY;
       int newW,newH;
       CalcROI(&newX,&newY,&newW,&newH);
-
+      
       CameraLayer::frameInfo fi_={
         timeStamp_us:(uint64_t)_100us,
-        width:newW,
-        height:newH,
+        width:(uint32_t)newW,
+        height:(uint32_t)newH,
       };
       fi = fi_;
-
+      
       if(call_cb)
         callback(*this,CameraLayer::EV_IMG,context);
     }
@@ -483,11 +488,18 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
     return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_BMP_carousel::SnapFrame()
+
+CameraLayer::status CameraLayer_BMP_carousel::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
 {
-  snapFlag=1;
-  CameraLayer::status ret_s = LoadNext(false);
-  snapFlag=0;
+  
+  CameraLayer_Callback _callback=callback;
+  void* _context=context;//replace the callback
+  callback=snap_cb;
+  context=cb_param;
+  CameraLayer::status ret_s = LoadNext();
+
+  callback=_callback;
+  context=_context;//recover the callback
   return ret_s;
 }
 

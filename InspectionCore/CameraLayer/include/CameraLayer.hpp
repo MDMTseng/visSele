@@ -6,6 +6,10 @@
 #include <acvImage.hpp>
 #include <string>
 
+
+
+
+
 class CameraLayer{
 
     public:
@@ -17,7 +21,6 @@ class CameraLayer{
       float offset_x;
       float offset_y;
     }frameInfo;
-    protected:
     /*// Camera's device information
     typedef struct
     {
@@ -37,24 +40,6 @@ class CameraLayer{
         return ACK;
     };*/
                 
-
-    //void *cameraInst;
-    typedef void (*CameraLayer_Callback)(
-        CameraLayer &cl_obj, int type, void* context);
-    CameraLayer_Callback callback;
-    void* context;
-    uint32_t frameTimeTag;
-    int maxWidth,maxHeight;
-    frameInfo fi;
-    std::string cam_json_info;
-    
-    float ROI_x;
-    float ROI_y;
-    float ROI_w;
-    float ROI_h;
-    public:
-    
-
     typedef enum {
         ACK,
         NAK,
@@ -68,6 +53,28 @@ class CameraLayer{
         EV_ERROR
     }ev_type;
 
+
+    protected:
+
+    //void *cameraInst;
+    typedef CameraLayer::status (*CameraLayer_Callback)(
+        CameraLayer &cl_obj, int type, void* context);
+
+
+
+    CameraLayer_Callback callback;
+    void* context;
+    uint32_t frameTimeTag;
+    int maxWidth,maxHeight;
+    frameInfo fi;
+    std::string cam_json_info;
+    
+    float ROI_x;
+    float ROI_y;
+    float ROI_w;
+    float ROI_h;
+    public:
+    
 
 
 
@@ -168,7 +175,7 @@ class CameraLayer{
     }
 
     
-    virtual CameraLayer::status SnapFrame()
+    virtual CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
     {
         return CameraLayer::NAK;
     }

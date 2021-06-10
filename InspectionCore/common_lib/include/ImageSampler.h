@@ -234,19 +234,14 @@ class ImageSampler
     return ret;
   }
 
-int CCCC=0;
   int ideal2img(float idealVec[2])
   {
     if(_ignoreCorrdCalib)return 0;
     
     idealVec[0] += origin_offset.X;
     idealVec[1] += origin_offset.Y;
-    // CCCC++;
-    // if(CCCC<10000)
-    // printf(">>>%f,%f",idealVec[0],idealVec[1]);
+
     int ret = map->i2c(idealVec);
-    // if(CCCC<10000)
-    // printf(">>>%f,%f",idealVec[0],idealVec[1]);
     idealVec[0] -= origin_offset.X;
     idealVec[1] -= origin_offset.Y;
     return ret;

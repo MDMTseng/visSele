@@ -14,6 +14,7 @@
 class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     protected:
+    acvImage img;
     int mirrorFlag[2]={0,0};
     int ROI_mirrorFlag[2]={0,0};
     int snapFlag=0;

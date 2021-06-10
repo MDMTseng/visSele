@@ -6,11 +6,11 @@
 #include <CameraLayer.hpp>
 #include <string>
 #include <vector>
-#include <acvImage_BasicTool.hpp>
 #include <mutex>
 #include <queue>
 #include <thread>
 #include <arv.h>
+
 class CameraLayer_Aravis : public CameraLayer
 {
 
@@ -45,7 +45,11 @@ protected:
   static void s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self);
   void STREAM_CONTROL_LOST_CB(ArvStream *stream);
 
+  ArvBuffer *_frame_cache_buffer;
   
+  static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
+  CameraLayer_Callback _snap_cb;
+
 public:
   CameraLayer_Aravis(const char* deviceID,CameraLayer_Callback cb, void *context);
   // CameraLayer::status EnumerateDevice(tSdkCameraDevInfo *pCameraList, INT *piNums);
@@ -61,8 +65,9 @@ public:
   CameraLayer::status SetAnalogGain(float gain);
   CameraLayer::status SetROI(int x, int y, int w, int h, int zw, int zh);
 
+  CameraLayer::status ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount);
   CameraLayer::status GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh);
-  CameraLayer::status SnapFrame();
+  CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
 
   CameraLayer::status SetOnceWB();
 
@@ -75,8 +80,6 @@ public:
   CameraLayer::status GetExposureTime(float *ret_time_us);
   void ContTriggerThread();
   void ContTriggerThreadTermination();
-  acvImage *GetFrame();
-
   CameraLayer::status L_TriggerMode(int type);
   CameraLayer::status L_SetFrameRateMode(int type);
 

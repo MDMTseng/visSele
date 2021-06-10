@@ -364,6 +364,19 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
         {
           float coord[] = {(float)src_j, (float)src_i};
 
+          // if(i==(Y2/2) && j>200 && j< 400)
+          // {
+            
+          //   float coord2[] = {coord[0], coord[1]};
+          //   // int ret = sampler->ideal2img(coord2);
+          //   bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
+            
+          //   LOGI("X:%d,%d bri:%f %f,%f=>%f,%f  samp:%p", j, i,bri,coord2[0],coord2[1],coord[0],coord[1],sampler);
+          // }else
+          // {
+
+          // }
+
           bri = sampler->sampleImage_IdealCoord(&src, coord, doNearest);
 
           if (bri > 255)
@@ -379,6 +392,7 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
           RSum = src.CVector[src_i][(src_j)*3 + 2];
         }
       }
+      
       uint8_t *pix = &(dst.CVector[i - Y][(j - X) * 3 + 0]);
       pix[0] = BSum;
       pix[1] = GSum;
@@ -824,9 +838,12 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     if (roi_x && roi_y && roi_w && roi_h && ((*roi_w) * (*roi_h)) != 0)
     {
       camera.SetROI(*roi_x, *roi_y, *roi_w, *roi_h, 0, 0);
+      // LOGI("ROI v:%f %f %f %f", *roi_x, *roi_y, *roi_w, *roi_h);
       int ox, oy;
       camera.GetROI(&ox, &oy, NULL, NULL, NULL, NULL);
-      acv_XY offset_o = {ox, oy};
+      
+      // LOGI("ROI v:%d %d", ox, oy);
+      acv_XY offset_o = {(float)ox, (float)oy};
       calib_bacpac.sampler->setOriginOffset(offset_o);
       //sampler
     }
@@ -1061,16 +1078,31 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
   LOGI("DELETED...");
 }
 
-acvImage *getImage(CameraLayer *camera)
+
+
+CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
+{  
+  if (type != CameraLayer::EV_IMG)
+    return CameraLayer::NAK;
+  acvImage *img=(acvImage*)obj;
+
+  CameraLayer::frameInfo finfo= cl_obj.GetFrameInfo();
+  LOGI("finfo:WH:%d,%d",finfo.width,finfo.height);
+  img->ReSize(finfo.width,finfo.height,3);
+
+  return cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
+}
+
+int getImage(CameraLayer *camera,acvImage *dst_img)
 {
   for (int i = 0;; i++)
   {
-    if (camera->SnapFrame() == CameraLayer::ACK)
+    if (camera->SnapFrame(SNAP_Callback,(void*)dst_img) == CameraLayer::ACK)
       break;
     if (i > 10)
-      return NULL;
+      return -1;
   }
-  return camera->GetFrame();
+  return 0;
 }
 
 BPG_data DatCH_CallBack_BPG::GenStrBPGData(char *TL, char *jsonStr)
@@ -1113,6 +1145,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
   {
     BPG_data *dat = data.data.p_BPG_data;
 
+    acv_XY loca = {X : 1000, Y : 10};
+    calib_bacpac.sampler->img2ideal(&loca);
+    LOGI("calib_bacpac TEST:%f %f", loca.X,loca.Y);
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
@@ -1524,10 +1559,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         }
         else if (srcImg == NULL)
         {
-          srcImg = getImage(camera);
-          cacheImage.ReSize(srcImg);
-
-          acvCloneImage(srcImg, &cacheImage, -1);
+          int ret_val = getImage(camera,&tmp_buff);
+          if (ret_val == 0)
+          {
+            srcImg = &tmp_buff;
+            cacheImage.ReSize(srcImg);
+            acvCloneImage(srcImg, &cacheImage, -1);
+          }
         }
 
         if (srcImg == NULL)
@@ -1871,91 +1909,108 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         if (srcImg == NULL)
         {
 
-          srcImg = getImage(camera);
-          cacheImage.ReSize(srcImg);
-          //acvCloneImage(srcImg, &cacheImage, -1);
-          calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
-          ImageDownSampling(cacheImage, *srcImg, 1, calib_bacpac.sampler, false);
-          //SaveIMGFile("data/test1.bmp",srcImg);
+          int ret_val = getImage(camera,&tmp_buff);
+          if (ret_val == 0)
+          {
+            srcImg = &tmp_buff;
+            
+            cacheImage.ReSize(srcImg);
+            //acvCloneImage(srcImg, &cacheImage, -1);
+            calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
+            ImageDownSampling(cacheImage, *srcImg, 1, calib_bacpac.sampler, false);
+
+          }
         }
 
-        try
+        if (srcImg == NULL)
+        {
+          
+          session_ACK = false;
+
+        }
+        else
         {
 
-          ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
-          const FeatureReport *report = matchingEng.GetReport();
 
-          if (report != NULL)
+          try
           {
-            cJSON *jobj = matchingEng.FeatureReport2Json(report);
-            AttachStaticInfo(jobj, cb);
 
-            char *jstr = cJSON_Print(jobj);
-            cJSON_Delete(jobj);
+            ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
+            const FeatureReport *report = matchingEng.GetReport();
 
-            //LOGI("__\n %s  \n___",jstr);
-            bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
+            if (report != NULL)
+            {
+              cJSON *jobj = matchingEng.FeatureReport2Json(report);
+              AttachStaticInfo(jobj, cb);
+
+              char *jstr = cJSON_Print(jobj);
+              cJSON_Delete(jobj);
+
+              //LOGI("__\n %s  \n___",jstr);
+              bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
+              bpg_dat.pgID = dat->pgID;
+              datCH_BPG.data.p_BPG_data = &bpg_dat;
+              self->SendData(datCH_BPG);
+
+              delete jstr;
+            }
+            else
+            {
+              sprintf(tmp, "{}");
+              bpg_dat = GenStrBPGData("SG", tmp);
+              bpg_dat.pgID = dat->pgID;
+              datCH_BPG.data.p_BPG_data = &bpg_dat;
+              self->SendData(datCH_BPG);
+            }
+          }
+          catch (std::invalid_argument iaex)
+          {
+            snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
+            LOGE("%s", err_str);
+          }
+
+          int tar_down_samp_level = 2;
+          bool transfer_img = false;
+
+          cJSON *img_property = JFetch_OBJECT(json, "img_property");
+          if (img_property)
+          {
+
+            double *DS_level = JFetch_NUMBER(img_property, "down_samp_level");
+            if (DS_level)
+            {
+              tar_down_samp_level = (int)*DS_level;
+              if (tar_down_samp_level <= 0)
+                tar_down_samp_level = 1;
+            }
+
+            transfer_img = true;
+          }
+
+          if (transfer_img)
+          {
+            //Down scale the calibrated cache image to make image transfer easier
+            bpg_dat = GenStrBPGData("IM", NULL);
+            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
+            //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
+
+            calib_bacpac.sampler->ignoreCalib(true);
+            ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler, true);
+
+            iminfo.fullHeight = cacheImage.GetHeight();
+            iminfo.fullWidth = cacheImage.GetWidth();
+            bpg_dat.callbackInfo = (uint8_t *)&iminfo;
+            bpg_dat.callback = DatCH_BPG_acvImage_Send;
             bpg_dat.pgID = dat->pgID;
             datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
-
-            delete jstr;
+            BPG_protocol_send(datCH_BPG);
           }
-          else
-          {
-            sprintf(tmp, "{}");
-            bpg_dat = GenStrBPGData("SG", tmp);
-            bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
-          }
-        }
-        catch (std::invalid_argument iaex)
-        {
-          snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
-          LOGE("%s", err_str);
-        }
-
-        int tar_down_samp_level = 2;
-        bool transfer_img = false;
-
-        cJSON *img_property = JFetch_OBJECT(json, "img_property");
-        if (img_property)
-        {
-
-          double *DS_level = JFetch_NUMBER(img_property, "down_samp_level");
-          if (DS_level)
-          {
-            tar_down_samp_level = (int)*DS_level;
-            if (tar_down_samp_level <= 0)
-              tar_down_samp_level = 1;
-          }
-
-          transfer_img = true;
-        }
-
-        if (transfer_img)
-        {
-          //Down scale the calibrated cache image to make image transfer easier
-          bpg_dat = GenStrBPGData("IM", NULL);
-          BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
-          //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-
-          calib_bacpac.sampler->ignoreCalib(true);
-          ImageDownSampling(dataSend_buff, cacheImage, iminfo.scale, calib_bacpac.sampler, true);
-
-          iminfo.fullHeight = cacheImage.GetHeight();
-          iminfo.fullWidth = cacheImage.GetWidth();
-          bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-          bpg_dat.callback = DatCH_BPG_acvImage_Send;
-          bpg_dat.pgID = dat->pgID;
-          datCH_BPG.data.p_BPG_data = &bpg_dat;
-          BPG_protocol_send(datCH_BPG);
+          calib_bacpac.sampler->ignoreCalib(false);
+          session_ACK = true;
         }
       }
-      calib_bacpac.sampler->ignoreCalib(false);
+        
 
-      session_ACK = true;
     }
     else if (checkTL("RC", dat)) //[R]e[C]onnect
     {
@@ -2486,7 +2541,7 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
   char tmpStr[200];
 
   sprintf(tmpStr, "%s/default_camera_setting.json", path);
-  LOGV("Loading %s", tmpStr);
+  LOGI("Loading %s", tmpStr);
   int ret = LoadCameraSetting(*camera, tmpStr);
   LOGV("ret:%d", ret);
 
@@ -2668,10 +2723,10 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down = NULL);
 
-void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
+CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 {
   if (type != CameraLayer::EV_IMG)
-    return;
+    return CameraLayer::NAK;
   static clock_t pframeT;
   clock_t t = clock();
 
@@ -2683,7 +2738,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     if (interval < skip_int)
     {
       LOGI("interval:%f is less than skip_int:%d ms", interval, skip_int);
-      return; //if the interval less than 70ms then... skip this frame
+      return CameraLayer::NAK; //if the interval less than 70ms then... skip this frame
     }
   }
   pframeT = t;
@@ -2691,24 +2746,27 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
   LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
-  acvImage &capImg = *cl_GMV.GetFrame();
+
+  
 
   image_pipe_info *headImgPipe = cb->resPool.fetchResrc_blocking();
   if (headImgPipe == NULL)
   {
     LOGE("HEAD IMG pipe is NULL");
-    return;
+    return CameraLayer::NAK;
   }
 
   headImgPipe->camLayer = &cl_obj;
   headImgPipe->type = type;
   headImgPipe->context = context;
-  headImgPipe->img.ReSize(&capImg);
-
-  acvCloneImage(&capImg, &(headImgPipe->img), -1);
+  CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
+  headImgPipe->fi = finfo;
+  
+  LOGE("finfo.wh:%d,%d \n", finfo.width,finfo.height);
+  headImgPipe->img.ReSize(finfo.width,finfo.height,3);
+  cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
 
   headImgPipe->bacpac = &calib_bacpac;
-  headImgPipe->fi = cl_GMV.GetFrameInfo();
 
   if (doImgProcessThread)
   {
@@ -2749,6 +2807,7 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
     if (!doPassDown)
       cb->resPool.retResrc(headImgPipe);
   }
+  return CameraLayer::ACK;
 }
 
 void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)

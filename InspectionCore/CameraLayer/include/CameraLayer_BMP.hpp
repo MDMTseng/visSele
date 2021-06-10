@@ -26,6 +26,7 @@ class CameraLayer_BMP : public CameraLayer{
     status SetMirror(int Dir,int en);
     status SetROI(int x, int y, int w, int h,int zw,int zh);
     
+    status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
     status CalcROI(int* X,int* Y,int* W,int* H);
     status SetAnalogGain(float gain);
     status SetExposureTime(float time_us);
@@ -37,7 +38,8 @@ class CameraLayer_BMP : public CameraLayer{
 
 
 class CameraLayer_BMP_carousel : public CameraLayer_BMP{
-    int snapFlag=0;
+
+
     int frameInterval_ms=100;
     int ThreadTerminationFlag=0;
     int imageTakingCount=0;
@@ -55,7 +57,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status updateFolder(std::string folderName);
     status SetFrameRateMode(int mode);
     
-    status SnapFrame();
+    status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
     status Trigger();
     status LoadNext(bool call_cb=true);
     status TriggerMode(int mode);
