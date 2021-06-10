@@ -2693,6 +2693,14 @@ void CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, void *context)
 
   acvImage &capImg = *cl_GMV.GetFrame();
 
+  // if(inspQueue.size()>0)//for responsiveness
+  // {//toss image if the queue is not empty
+  //   return;
+  // }
+
+
+  
+
   image_pipe_info *headImgPipe = cb->resPool.fetchResrc_blocking();
   if (headImgPipe == NULL)
   {
@@ -3099,6 +3107,7 @@ void ImgPipeActionThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
   int delayStartCounter = 10000;
+  bool imgSendState=true;
   while (terminationflag && *terminationflag == false)
   {
 
@@ -3135,7 +3144,18 @@ void ImgPipeActionThread(bool *terminationflag)
       //   }
       // }
 
-      InspResultAction(headImgPipe, false, actionQueue.size() > 5, saveToSnap, &doPassDown);
+      if(imgSendState==false)
+      {
+        if(actionQueue.size() <3)
+          imgSendState=true;
+      }
+      else
+      {
+        if(actionQueue.size() >5)
+          imgSendState=false;
+      }
+
+      InspResultAction(headImgPipe, false, !imgSendState , saveToSnap, &doPassDown);
 
       //delayStartCounter=10000;
       if (!doPassDown)
@@ -3532,7 +3552,7 @@ CameraLayer *getCamera(int initCameraType = 0)
   // }
   
   LOGI(">>>>>\n");
-  camera=initCamera_Aravis("MindVision-040010720303");
+  camera=initCamera_Aravis("");
 
   LOGI("camera ptr:%p", camera);
 

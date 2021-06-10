@@ -75,9 +75,11 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   if (bufferStatus == ARV_BUFFER_STATUS_SUCCESS) {
 
 
+    ArvBufferPayloadType dataType =  arv_buffer_get_payload_type (buffer);
+
     size_t img_size = 0;
     uint8_t* img_dat=(uint8_t*)arv_buffer_get_data (buffer, &img_size);
-    LOGI("img.size:%d ",img_size);
+    LOGI("img.size:%d dataType:%d",img_size,dataType);
 
     gint x,y,w,h;
     arv_buffer_get_image_region		(buffer, &x,&y,&w,&h);
@@ -182,7 +184,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
 
 void CameraLayer_Aravis::s_STREAM_CONTROL_LOST_CB(ArvStream *stream, CameraLayer_Aravis *self)
 {
-  self->STREAM_NEW_BUFFER_CB(stream);
+  self->STREAM_CONTROL_LOST_CB(stream);
 }
 
 void CameraLayer_Aravis::STREAM_CONTROL_LOST_CB(ArvStream *stream)
@@ -306,7 +308,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(const char* deviceID,CameraLayer_Callback
         G_CALLBACK (s_STREAM_CONTROL_LOST_CB), NULL);
 
   arv_camera_set_acquisition_mode (camera, ARV_ACQUISITION_MODE_CONTINUOUS, NULL);
-
+  arv_camera_set_exposure_time_auto (camera,ARV_AUTO_OFF,NULL);
   
   // arv_c  amera_get_binning (camera, &dx, &dy, NULL);
 
