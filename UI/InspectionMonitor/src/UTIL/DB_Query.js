@@ -41,7 +41,7 @@ function defFileQuery(name,featureSet_sha1,projection)
 }
 
 
-function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100,sample=undefined,prjection=undefined,agg=undefined)
+function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100*10000,sample=undefined,prjection=undefined,agg=undefined)
 {	
     let TYPE="/query/inspection";
     let url = db_url+TYPE+"?";

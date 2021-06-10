@@ -936,7 +936,7 @@ class InspRecStream
 
   queryInspRecSize(timeRange=[moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))])
   {
-    return DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],undefined,undefined,
+    return DB_Query.inspectionQuery(this.defFile.featureSet_sha1,timeRange[0],timeRange[1],100*10000,undefined,
       {
         "_id":1,
       },
