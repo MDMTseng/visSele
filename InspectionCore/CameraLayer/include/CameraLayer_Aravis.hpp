@@ -35,7 +35,7 @@ protected:
   int payloadSize;
   cam_info self_info;
   int takeCount;
-  
+  bool acquisition_started;
   std::mutex m;
   std::condition_variable conV;
   bool snapFlag=false;

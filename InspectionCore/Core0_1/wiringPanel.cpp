@@ -1145,9 +1145,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
   {
     BPG_data *dat = data.data.p_BPG_data;
 
-    acv_XY loca = {X : 1000, Y : 10};
-    calib_bacpac.sampler->img2ideal(&loca);
-    LOGI("calib_bacpac TEST:%f %f", loca.X,loca.Y);
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);

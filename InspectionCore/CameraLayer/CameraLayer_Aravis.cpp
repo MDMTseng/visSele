@@ -130,6 +130,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   if (takeCount == 0)
   {
     arv_camera_stop_acquisition(camera, NULL);
+    acquisition_started=false;
     empty_stream(stream);
     return;
   }
@@ -142,7 +143,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
   }
 
   int bufferStatus = arv_buffer_get_status(buffer);
-  if (bufferStatus == ARV_BUFFER_STATUS_SUCCESS)
+  if (bufferStatus == ARV_BUFFER_STATUS_SUCCESS || bufferStatus == ARV_BUFFER_STATUS_SIZE_MISMATCH)
   {
 
     _frame_cache_buffer = buffer;
@@ -168,6 +169,7 @@ void CameraLayer_Aravis::STREAM_NEW_BUFFER_CB(ArvStream *stream)
     if (takeCount == 0)
     {
       arv_camera_stop_acquisition(camera, NULL);
+      acquisition_started=false;
     }
   }
   else
@@ -270,6 +272,7 @@ CameraLayer_Aravis::CameraLayer_Aravis(const char *deviceID, CameraLayer_Callbac
     throw std::invalid_argument(excpMsg);
   }
 
+  // SetROI(0,0,200,200,0,0);
   if (arv_camera_is_uv_device(camera))
   {
     guint min, max;
@@ -326,7 +329,9 @@ CameraLayer_Aravis::CameraLayer_Aravis(const char *deviceID, CameraLayer_Callbac
       }
     }
   }
-  SetROI(0, 0, 99999999, 99999999, 0, 0); //reset the ROI
+  // SetROI(20, 20, 500, 500, 0, 0); //reset the ROI
+  
+  SetROI(0,0,999999,999999,0,0);
   payloadSize = arv_camera_get_payload(camera, NULL);
 
   LOGI("payloadSize:%d", payloadSize);
@@ -348,7 +353,6 @@ CameraLayer_Aravis::CameraLayer_Aravis(const char *deviceID, CameraLayer_Callbac
   g_signal_connect(stream, "new-buffer", G_CALLBACK(s_STREAM_NEW_BUFFER_CB), this);
 
   arv_stream_set_emit_signals(stream, TRUE);
-
   g_signal_connect(arv_camera_get_device(camera), "control-lost",
                    G_CALLBACK(s_STREAM_CONTROL_LOST_CB), NULL);
 
@@ -431,8 +435,14 @@ CameraLayer::status CameraLayer_Aravis::SetROIMirror(int Dir, int en)
   return CameraLayer::NAK;
 }
 
+// bool lockXXX=false;
 CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
+
+  // if(lockXXX)return ACK;
+  // lockXXX=true;
+
+
 
   int max_w, max_h;
   arv_camera_get_sensor_size(camera, &max_w, &max_h, NULL);
@@ -461,17 +471,73 @@ CameraLayer::status CameraLayer_Aravis::SetROI(int x, int y, int w, int h, int z
   {
     h = max_h - y;
   }
+  // x=0;
+  // // y=0;
+  // w=max_w;
 
   GError *err = NULL;
+
+  if(acquisition_started)
+  {
+    arv_camera_stop_acquisition (camera, &err);
+    if (err)
+    {
+      LOGI("ERR code:%d msg:%s", err->code, err->message);
+      g_clear_error(&err);
+    }
+    // sleep(1);
+    this_thread::sleep_for(chrono::milliseconds(100) );
+  }
+
+  gint	xo_inc = arv_camera_get_x_offset_increment	(camera,NULL);
+  gint	yo_inc = arv_camera_get_y_offset_increment	(camera,NULL);
+  gint	w_inc = arv_camera_get_width_increment	(camera,NULL);
+  gint	h_inc = arv_camera_get_height_increment	(camera,NULL);
+
+  x=x/xo_inc*xo_inc;
+  y=y/yo_inc*yo_inc;
+  w=w/w_inc*w_inc;
+  h=h/h_inc*h_inc;
+
+
+
+  LOGI("xywh:%d,%d %d,%d >+>%d,%d %d,%d ", x, y, w, h,xo_inc,yo_inc,w_inc,h_inc);
+
+
+
   arv_camera_set_region(camera, (int)x, (int)y, (int)w, (int)h, &err);
   if (err)
   {
+    LOGI("ERR code:%d msg:%s", err->code, err->message);
     g_clear_error(&err);
+    
+    
+    if(acquisition_started)
+    {
+      arv_camera_start_acquisition (camera, &err);
+      if (err)
+      {
+        LOGI("ERR code:%d msg:%s", err->code, err->message);
+        g_clear_error(&err);
+      }
+    }
     return CameraLayer::NAK;
   }
 
   GetROI(&x, &y, &w, &h, NULL, NULL);
-  LOGI("xywh:%f,%f %f,%f", x, y, w, h);
+  LOGI("xywh:%d,%d %d,%d", x, y, w, h);
+
+
+    
+  if(acquisition_started)
+  {
+    arv_camera_start_acquisition (camera, &err);
+    if (err)
+    {
+      LOGI("ERR code:%d msg:%s", err->code, err->message);
+      g_clear_error(&err);
+    }
+  }
 
   return CameraLayer::ACK;
 }
@@ -506,10 +572,12 @@ CameraLayer::status CameraLayer_Aravis::TriggerMode(int type)
   if (type == 0)
   {
     arv_camera_start_acquisition(camera, NULL);
+    acquisition_started=true;
   }
   else
   {
     arv_camera_stop_acquisition(camera, NULL);
+    acquisition_started=false;
   }
 
   if (type == 1)
@@ -545,6 +613,7 @@ CameraLayer::status CameraLayer_Aravis::Trigger()
   // arv_camera_software_trigger (camera,&err);
 
   arv_camera_start_acquisition(camera, NULL);
+  acquisition_started=true;
   if (err == NULL)
   {
     return CameraLayer::ACK;
