@@ -149,7 +149,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
   let staticObj = useRef({
     targetBri:200,
     briPreDiffSign:0,
-    adjAlpha:1,
+    adjAlpha:0.5,
     fCount:0,
     finalRep:undefined
   });
@@ -180,7 +180,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
           //setInspReport(reportInfo);
           if(reportInfo==undefined)return;
           c.fCount++;
-          if((c.fCount%2)!=0)return;
+          if((c.fCount%5)!=0)return;
           c.finalRep=reportInfo.data;
 
           let maxMean=
@@ -199,6 +199,10 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
           if(exposure<100)exposure=100;
           exposure*=
             (((1-c.adjAlpha)*1+(c.adjAlpha)*c.targetBri/maxMean));
+          if(exposure>1000*1000)
+          {
+            exposure=1000*1000;
+          }
           console.log(exposure);
           BPG_Channel("ST",0,{CameraSetting:{exposure}});
 

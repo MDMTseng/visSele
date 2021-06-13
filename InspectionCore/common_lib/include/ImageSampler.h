@@ -248,8 +248,9 @@ class ImageSampler
   }
   float sampleBackLightFactor_ImgCoord(acv_XY pos)
   {
-    if(_ignoreStageLightCalib)
+    if(_ignoreStageLightCalib || stageLightInfo->exposure_us!=stageLightInfo->exposure_us)
       return 1;
+
     return stageLightInfo->back_light_target/stageLightInfo->factorSampling(pos);
   }
 
@@ -275,13 +276,12 @@ class ImageSampler
       bri= acvUnsignedMap1Sampling_Nearest(img, pos,0);
     else if (doNearest==0)
       bri= acvUnsignedMap1Sampling(img, pos,0);
-
-    acv_XY vecOffset=
-    {
-      X:pos.X+origin_offset.X,
-      Y:pos.Y+origin_offset.Y
-    };
-    return bri*sampleBackLightFactor_ImgCoord(vecOffset);
+    // if(CCC%3001==0)
+    // {
+    //   LOGI("pos:%f,%f offset:%f,%f",pos.X,pos.Y,origin_offset.X,origin_offset.Y);
+    // }CCC++;
+    pos=acvVecAdd(pos,origin_offset);
+    return bri*sampleBackLightFactor_ImgCoord(pos);
   }
   float sampleImage_ImgCoord(acvImage *img,float imgPos[2],int doNearest=1)
   {

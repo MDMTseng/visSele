@@ -45,7 +45,6 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh);
 
     CameraLayer::status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
-    CameraLayer::status SnapFrame();
 
     CameraLayer::status SetOnceWB();
     
@@ -65,6 +64,9 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status L_TriggerMode(int type);
     CameraLayer::status L_SetFrameRateMode(int type);
 
+
+    CameraLayer::status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount){return NAK;}
+    CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param){return NAK;}
     ~CameraLayer_GIGE_MindVision();
 };
 

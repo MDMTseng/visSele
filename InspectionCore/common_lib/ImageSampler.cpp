@@ -891,6 +891,7 @@ BGLightNodeInfo *stageLightParam::fetchIdx(int X, int Y)
 }
 float stageLightParam::factorSampling(acv_XY pos)
 {
+  
   pos.X+=origin_offset.X;
   pos.Y+=origin_offset.Y;
   float alphaX = (pos.X * idxW / tarImgW) - 0.5;

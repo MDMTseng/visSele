@@ -26,13 +26,15 @@ class CameraLayer_BMP : public CameraLayer{
     status SetMirror(int Dir,int en);
     status SetROI(int x, int y, int w, int h,int zw,int zh);
     
+    status TriggerMode(int mode){return NAK;}
+    status Trigger(){return NAK;}
+    status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount);
+    status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param){return NAK;}
     status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
     status CalcROI(int* X,int* Y,int* W,int* H);
     status SetAnalogGain(float gain);
     status SetExposureTime(float time_us);
     status GetExposureTime(float *ret_time_us);
-    
-    status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount);
 };
 
 

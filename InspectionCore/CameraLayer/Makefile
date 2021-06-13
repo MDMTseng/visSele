@@ -5,13 +5,10 @@ MODULE_MindVision_GIGE?=../contrib/MindVision_GIGE
 MODULE_aravis?=../contrib/aravis/mac_x64
 IDIR = include \
 			$(MODULE_acvImage)/include/ \
-			$(MODULE_MindVision_GIGE)/include/ \
 			$(MODULE_logctrl)/include \
-			$(MODULE_aravis)/include \
-			$(MODULE_aravis)/src \
 
 
-_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_GIGE_MindVision.opp
+_OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_BMP_carousel.opp 
 
 FLAGS= -std=c++11 
 ifeq ($(FEATURE_COMPILE_W_ARAVIS),1)
@@ -25,6 +22,11 @@ ifeq ($(FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK),1)
 	_OBJ+=CameraLayer_HikRobot_Camera.opp
 endif
 
+
+ifeq ($(FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK),1)
+	IDIR+=$(MODULE_MindVision_GIGE)/include
+	_OBJ+=CameraLayer_GIGE_MindVision.opp
+endif
 
 
 target_a = CameraLayer.a

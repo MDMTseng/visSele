@@ -348,7 +348,7 @@ void ImageDownSampling(acvImage &dst, acvImage &src, int downScale, ImageSampler
   X2 /= downScale;
   Y2 /= downScale;
   dst.ReSize((X2 - X + 1), (Y2 - Y + 1));
-  LOGI("X:%d Y:%d X2:%d Y2:%d", X, Y, X2, Y2);
+  // LOGI("X:%d Y:%d X2:%d Y2:%d", X, Y, X2, Y2);
   //LOGI("map=%p",map);
   for (int i = Y; i <= Y2; i++)
   {
@@ -659,6 +659,8 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     if (fileStr == NULL)
     {
       LOGE("Cannot read defFile from:%s", SLCalibPath);
+      
+      stageLightInfo->RESET();
       break;
     }
 
@@ -1397,7 +1399,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             cJSON_AddNumberToObject(cam_1, "cur_height", calib_bacpac.sampler->getCalibMap()->fullFrameH);
 
             int M_gain, m_gain;
-            CameraLayer::status g_ret = calib_bacpac.cam->GetAnalogGain(&m_gain, &M_gain);
+            CameraLayer::status g_ret = calib_bacpac.cam->isInOperation();
             cJSON_AddNumberToObject(cam_1, "cam_status", g_ret);
 
             cJSON_AddItemToArray(cam_info_jarr, cam_1);
@@ -2562,7 +2564,8 @@ int CameraSettingFromFile(CameraLayer *camera, char *path)
   {
     stageLightParam *stageLightInfo = calib_bacpac.sampler->getStageLightInfo();
     LOGI("SetExposureTime from bacpac:%f us", stageLightInfo->exposure_us);
-    camera->SetExposureTime(stageLightInfo->exposure_us);
+    if(stageLightInfo->exposure_us==stageLightInfo->exposure_us)
+      camera->SetExposureTime(stageLightInfo->exposure_us);
     //stageLightInfo->back_light_target=back_light_target;
 
     LOGI("mmpB:%f  calibPpB:%f", calib_bacpac.sampler->getCalibMap()->calibmmpB, calib_bacpac.sampler->getCalibMap()->calibPpB);
@@ -3245,13 +3248,13 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   int ret = 0;
 
   //stackingC=0;
-
-  {
-
+  if(0){
+    
     acv_XY offset = {
       X : fi.offset_x,
       Y : fi.offset_y
     };
+    LOGI("offset:%f,%f", offset.X,offset.Y);
     bacpac->sampler->setOriginOffset(offset);
   }
 
@@ -3497,7 +3500,8 @@ int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void 
   return ret_val;
 }
 
-CameraLayer_GIGE_MindVision *initCamera_MindVision()
+#ifdef FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK
+CameraLayer_GIGE_MindVision *initCamera_MindVision(std::string targetIdContains = "")
 {
 
   tSdkCameraDevInfo sCameraList[10];
@@ -3527,6 +3531,13 @@ CameraLayer_GIGE_MindVision *initCamera_MindVision()
   delete CL_GIGE;
   return NULL;
 }
+#else
+CameraLayer *initCamera_MindVision(std::string targetIdContains = "")
+{
+  LOGE("NO driver.... skip");
+  return NULL;
+}
+#endif
 
 #ifdef FEATURE_COMPILE_W_ARAVIS
 CameraLayer_Aravis *initCamera_Aravis(std::string targetIdContains = "")
@@ -3676,6 +3687,10 @@ CameraLayer *initCamera_HikRobot_Camera(std::string targetIdContains = "")
 }
 #endif
 
+
+
+
+
 int initCamera(CameraLayer_BMP_carousel *CL_bmpc)
 {
   return CL_bmpc == NULL ? -1 : 0;
@@ -3713,7 +3728,7 @@ CameraLayer *getCamera(int initCameraType = 0)
   std::string target_name_part = "";
   if (camera == NULL)
   {
-    camera = initCamera_MindVision();
+    camera = initCamera_MindVision(target_name_part);
   }
   if (camera == NULL)
   {
@@ -4109,7 +4124,7 @@ int cp_main(int argc, char **argv)
     LOGI("WIN32 WSAStartup ret:%d", iResult);
   }
 
-  char buffer[256]; //force output run with buffer mode(print when buffer is full) instead of line buffered mode
+  char buffer[512]; //force output run with buffer mode(print when buffer is full) instead of line buffered mode
   //this speeds up windows print dramaticlly
   setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
 

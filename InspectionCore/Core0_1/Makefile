@@ -40,6 +40,7 @@ export SO_EXPORT_PATH=$(abspath .)
 
 export FEATURE_COMPILE_W_ARAVIS=0
 export FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=0
+export FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=0
 
 
 # export GLEWSRCDir=$(abspath ../../$(moduleRoot)/glew-2.1.0)
@@ -61,7 +62,6 @@ IDIR=	include/ \
 			$(MODULE_zlib)/src \
 			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
-			$(MODULE_MindVision_GIGE)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
 			$(MODULE_mjpegLib)/include \
@@ -90,17 +90,16 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
-	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a \
-			   $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
+	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
 	FLAGS+= -D_MINGW -D_WINDOWS
 	FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK=1
-	
+	# FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
 else
-	FLAGS+= -lmvsdk  -std=c++11 -L$(MODULE_MindVision_GIGE)/lib/
+	FLAGS+=  -std=c++11
 	EXT_OBJS+=
 	FEATURE_COMPILE_W_ARAVIS=1
 	
-
+	# FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=1
 endif
 
 
@@ -157,6 +156,21 @@ ifeq ($(FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK),1)
 	FLAGS+= -D FEATURE_COMPILE_W_HIKROBOT_CAMERA_SDK
 	IDIR+=$(MODULE_hikrobot_camera_sdk)/includes
 	LIBS+=$(MODULE_hikrobot_camera_sdk)/libraries/win64/MvCameraControl.lib
+
+endif
+
+
+ifeq ($(FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK),1)
+
+	FLAGS+= -D FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK
+	IDIR+=$(MODULE_MindVision_GIGE)/include
+
+
+	ifeq ($(OS)$(CC),Windows_NTcc)
+		EXT_OBJS+= $(MODULE_MindVision_GIGE)/lib/MVCAMSDK.lib
+	else
+		FLAGS+=-L$(MODULE_MindVision_GIGE)/lib/ -lmvsdk 
+	endif
 
 endif
 

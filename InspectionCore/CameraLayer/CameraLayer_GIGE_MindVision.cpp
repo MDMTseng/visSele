@@ -444,26 +444,26 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
   return CameraLayer::ACK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SnapFrame()
-{
+// CameraLayer::status CameraLayer_GIGE_MindVision::SnapFrame()
+// {
 
-  snapFlag = 1;
-  TriggerMode(1);
+//   snapFlag = 1;
+//   TriggerMode(1);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(50)); //HACK sleep to fix trigger ignore issue
-  LOGI("TRIGGER");
-  do
-  {
-  } while (Trigger() == CameraLayer::NAK);
+//   std::this_thread::sleep_for(std::chrono::milliseconds(50)); //HACK sleep to fix trigger ignore issue
+//   LOGI("TRIGGER");
+//   do
+//   {
+//   } while (Trigger() == CameraLayer::NAK);
 
-  LOGI("LOCK");
-  m.lock();
-  LOGI("LOCK");
-  m.lock();
-  snapFlag = 0;
-  m.unlock();
-  return CameraLayer::ACK;
-}
+//   LOGI("LOCK");
+//   m.lock();
+//   LOGI("LOCK");
+//   m.lock();
+//   snapFlag = 0;
+//   m.unlock();
+//   return CameraLayer::ACK;
+// }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_min, int *ret_max)
 {

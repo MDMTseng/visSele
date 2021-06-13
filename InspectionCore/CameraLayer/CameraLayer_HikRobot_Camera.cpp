@@ -6,14 +6,15 @@
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
+  MV_CC_StopGrabbing(handle);
   int max_w, max_h;
 
   MVCC_INTVALUE_EX WInfo = {0};
-  GetIntValue("Width", &WInfo);
+  GetIntValue("WidthMax", &WInfo);
   MVCC_INTVALUE_EX HInfo = {0};
-  GetIntValue("Height", &HInfo);
-  max_w = WInfo.nMax;
-  max_h = HInfo.nMax;
+  GetIntValue("HeightMax", &HInfo);
+  max_w = WInfo.nCurValue;
+  max_h = HInfo.nCurValue;
   if (x >= max_w || y >= max_h || w < 0 || h < 0)
   {
     return CameraLayer::NAK;
@@ -49,12 +50,16 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   {
     y = max_h - (y + h);
   }
-
-  MV_CC_StopGrabbing(handle);
-  SetIntValue_w_Check("OffsetX", (int)x);
-  SetIntValue_w_Check("OffsetY", (int)y);
-  SetIntValue_w_Check("Width", (int)w);
-  SetIntValue_w_Check("Height", (int)h);
+  // std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  SetIntValue_w_Check("OffsetX", 0);
+  SetIntValue_w_Check("OffsetY", 0);
+  int wret=SetIntValue_w_Check("Width", (int)w);
+  int hret=SetIntValue_w_Check("Height", (int)h);
+  int xret=SetIntValue_w_Check("OffsetX", (int)x);
+  int yret=SetIntValue_w_Check("OffsetY", (int)y);
+  // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d max.wh:%d,%d",x,y,w,h, xret,yret,wret,hret,max_w,max_h);
+  GetROI(&x, &y, &w, &h, NULL,NULL);
+  // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d",x,y,w,h, xret,yret,wret,hret);
   MV_CC_StartGrabbing(handle);
 
   return CameraLayer::ACK;
@@ -104,6 +109,7 @@ void CameraLayer_HikRobot_Camera::sExceptionCallBack(unsigned int nMsgType, void
 
 void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
 {
+  inNoError=false;
   LOGI("ExceptionCallBack");
 }
 void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context)
@@ -112,8 +118,76 @@ void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_
   cl->ImageCallBack(pData, pFrameInfo);
 }
 
+
+CameraLayer::status CameraLayer_HikRobot_Camera::isInOperation()
+{
+  return inNoError?ACK:NAK;
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
+{
+
+  if (_cached_pData == NULL || _cached_frame_info==NULL)
+  {
+    return NAK;
+  }
+  
+  MvGvspPixelType pType = _cached_frame_info->enPixelType;
+
+  if(pType == PixelType_Gvsp_Mono8)
+  {
+    
+    int w=_cached_frame_info->nWidth;
+    int h=_cached_frame_info->nHeight;
+    for(int i=0;i<h;i++)
+    {
+      uint8_t* src_Pix_Gray=_cached_pData+i*w;
+      uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
+      for(int j=0;j<w;j++)
+      {
+        for(int k=0;k<channelCount;k++)
+        {
+          *tar_Pix=*src_Pix_Gray;
+          tar_Pix++;
+        }
+        src_Pix_Gray++;
+      }
+    }
+    // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
+    // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
+
+    // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+    return ACK;
+
+  }
+  else
+  {
+    return NAK;
+  }
+  // LOGI("img.size:%d ", img_size);
+
+
+  return ACK;
+}
+
 void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo)
 {
+
+
+  // if (takeCount >= 0)
+  //   LOGI(">>>>>takeCount:%d", takeCount);
+
+  if (takeCount == 0)
+  {
+    
+    // MV_CC_StopGrabbing(handle);
+    // acquisition_started=false;
+    return;
+  }
+
+
+
+
   uint32_t tstH = pFrameInfo->nDevTimeStampHigh;
   uint32_t tstL = pFrameInfo->nDevTimeStampLow;
   uint64_t nDevTimeStamp = (((uint64_t)tstH) << 32) | tstL; //10ns
@@ -123,14 +197,38 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
   uint64_t nHostTimeStamp_us = nHostTimeStamp * 1000;
 
   MvGvspPixelType pType = pFrameInfo->enPixelType;
-  LOGI("ImageCallBack:%d,%d %dx%d type:%0X len:%d  %d,%d,%d nDevTimeStamp:%lu host:%lu",
-       pFrameInfo->nOffsetX, pFrameInfo->nOffsetY,
-       pFrameInfo->nWidth, pFrameInfo->nHeight,
-       pType, pFrameInfo->nFrameLen,
-       pData[0], pData[1], pData[2], nDevTimeStamp_us, nHostTimeStamp_us);
+  // LOGI("ImageCallBack:%d,%d %dx%d type:%0X len:%d  %d,%d,%d nDevTimeStamp:%lu host:%lu",
+  //      pFrameInfo->nOffsetX, pFrameInfo->nOffsetY,
+  //      pFrameInfo->nWidth, pFrameInfo->nHeight,
+  //      pType, pFrameInfo->nFrameLen,
+  //      pData[0], pData[1], pData[2], nDevTimeStamp_us, nHostTimeStamp_us);
 
-  LOGI("nUnparsedChunkNum:%d nLostPacket:%d nChunkWH:%d,%d",
-       pFrameInfo->nUnparsedChunkNum,pFrameInfo->nLostPacket,pFrameInfo->nChunkWidth,pFrameInfo->nChunkHeight);
+  // LOGI("nUnparsedChunkNum:%d nLostPacket:%d nChunkWH:%d,%d",
+  //      pFrameInfo->nUnparsedChunkNum,pFrameInfo->nLostPacket,pFrameInfo->nChunkWidth,pFrameInfo->nChunkHeight);
+  _cached_pData=(uint8_t*)pData;
+  _cached_frame_info=pFrameInfo;
+
+
+  frameInfo _fi;
+  _fi.timeStamp_us = nDevTimeStamp_us;
+  _fi.offset_x =  pFrameInfo->nOffsetX;
+  _fi.offset_y =  pFrameInfo->nOffsetY;
+  _fi.width =  pFrameInfo->nWidth;
+  _fi.height = pFrameInfo->nHeight;
+  fi=_fi;
+  callback(*this, CameraLayer::EV_IMG, context);
+
+  if (takeCount > 0)
+  {
+    takeCount--;
+  }
+
+  if (takeCount == 0)
+  {
+    // MV_CC_StopGrabbing(handle);
+    // acquisition_started=false;
+  }
+
 
   if (snapFlag)
   {
@@ -138,6 +236,9 @@ void CameraLayer_HikRobot_Camera::ImageCallBack(unsigned char *pData, MV_FRAME_O
 
     conV.notify_one();
   }
+
+  _cached_pData=NULL;
+  _cached_frame_info=NULL;
 }
 
 int32_t CameraLayer_HikRobot_Camera::listDevices(MV_CC_DEVICE_INFO_LIST *stDeviceList)
@@ -240,31 +341,10 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
 
   SetROI(0, 0, 999999, 999999, 0, 0);
   MV_CC_StartGrabbing(handle);
+  inNoError=true;
   // grabThread = std::thread(&CameraLayer_HikRobot_Camera::grabThreadFunc, this);
 }
 
-CameraLayer::status CameraLayer_HikRobot_Camera::SnapFrame()
-{
-
-  TriggerMode(1);
-  snapFlag = 1;
-  //trigger reset;
-  LOGI("TRIGGER");
-  {
-    std::unique_lock<std::mutex> lock(m);
-    for (int i = 0; Trigger() == CameraLayer::NAK; i++)
-    {
-      if (i > 5)
-      {
-        return CameraLayer::NAK;
-      }
-    }
-    conV.wait(lock, [this]
-              { return this->snapFlag == 0; });
-  }
-  LOGI("END");
-  return CameraLayer::ACK;
-}
 
 void CameraLayer_HikRobot_Camera::CLOSE()
 {
@@ -284,10 +364,67 @@ CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
   CLOSE();
 }
 
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
+{  
+
+  CameraLayer_HikRobot_Camera &Cam=*((CameraLayer_HikRobot_Camera*)(&cl_obj));
+  CameraLayer::status ret_st=Cam._snap_cb(cl_obj,type,obj);
+  Cam.snapFlag=0;
+
+  Cam.conV.notify_one();
+  return ret_st;
+}
+
+CameraLayer::status CameraLayer_HikRobot_Camera::TriggerCount(int count)
+{
+  takeCount = count - 1;
+  return Trigger();
+}
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
+{
+
+  TriggerMode(1);
+  snapFlag = 1;
+  //trigger reset;
+  {
+    std::unique_lock<std::mutex> lock(m);
+
+    CameraLayer_Callback _callback=callback;
+    void* _context=context;//replace the callback
+    _snap_cb=snap_cb;
+    callback=SNAP_Callback;
+    context=cb_param;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    
+    for (int i = 0; TriggerCount(1) == CameraLayer::NAK; i++)
+    {
+      if (i > 5)
+      {
+        return CameraLayer::NAK;
+      }
+    }
+    
+    conV.wait(lock, [this]
+              { return this->snapFlag == 0; });
+    
+      
+    callback=_callback;
+    context=_context;//recover the callback
+    _snap_cb=NULL;
+  }
+  return CameraLayer::ACK;
+}
+
 CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
 {
+  // LOGI(">>>>type:%d",type);
   if (type == 0) //continuous
   {
+    takeCount=-1;
     int nRet = SetEnumValue("TriggerMode", MV_TRIGGER_MODE_OFF);
     SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_SOFTWARE);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
@@ -298,12 +435,14 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
   // MV_CC_StopGrabbing(handle);
   if (type == 1) //software trigger
   {
+    takeCount=0;
     int nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_SOFTWARE);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
 
   if (type == 2) //hardware trigger
   {
+    takeCount=-1;
     int nRet = SetEnumValue("TriggerSource", MV_TRIGGER_SOURCE_LINE0);
     return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
   }
@@ -313,8 +452,13 @@ CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
 
 CameraLayer::status CameraLayer_HikRobot_Camera::Trigger()
 {
+  if (takeCount >= 0)
+    takeCount++;
+  // arv_camera_software_trigger (camera,&err);
 
   int nRet = CommandExecute("TriggerSoftware");
+  acquisition_started=true;
+  
   return (MV_OK == nRet) ? CameraLayer::ACK : CameraLayer::NAK;
 }
 

@@ -84,11 +84,7 @@ class CameraLayer{
         this->context = context;
     }
 
-    virtual CameraLayer::status TriggerMode(int type)
-    {
-        return CameraLayer::NAK;
-    }
-
+    virtual CameraLayer::status TriggerMode(int type){return NAK;}
 
     virtual CameraLayer::status TriggerCount(int TYPE)
     {
@@ -100,10 +96,7 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     
-    virtual CameraLayer::status Trigger()
-    {
-        return CameraLayer::NAK;
-    }
+    virtual CameraLayer::status Trigger(){return NAK;}
 
 
     virtual CameraLayer::status RUN()
@@ -116,29 +109,16 @@ class CameraLayer{
         return cam_json_info;
     }
 
-    virtual CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh)
-    {
-        return CameraLayer::NAK;
-    }
+    virtual CameraLayer::status SetROI(int x, int y, int w, int h,int zw,int zh){return NAK;}
     
-    virtual CameraLayer::status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh)
-    {
-        
-        return CameraLayer::NAK;
-    }
+    virtual CameraLayer::status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh){return NAK;}
     virtual CameraLayer::status SetResolution(int width,int height)
     {
         return CameraLayer::NAK;
     }
-    virtual CameraLayer::status SetAnalogGain(float gain)
-    {
-        return CameraLayer::NAK;
-    }
+    virtual CameraLayer::status SetAnalogGain(float gain){return NAK;}
 
-    virtual CameraLayer::status SetMirror(int Dir,int en)
-    {
-        return CameraLayer::NAK;
-    }
+    virtual CameraLayer::status SetMirror(int Dir,int en){return NAK;}
     virtual CameraLayer::status SetROIMirror(int Dir,int en)
     {
         return CameraLayer::NAK;
@@ -149,10 +129,7 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status SetExposureTime(float time_us)
-    {
-        return CameraLayer::NAK;
-    }
+    virtual CameraLayer::status SetExposureTime(float time_us){return NAK;}
 
     virtual CameraLayer::status GetExposureTime(float *ret_time_us)
     {
@@ -169,21 +146,18 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount)
+    virtual CameraLayer::status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount){return NAK;}
+
+    virtual CameraLayer::status isInOperation()
     {
         return CameraLayer::NAK;
     }
-
     
-    virtual CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
-    {
-        return CameraLayer::NAK;
-    }
-
+    virtual CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param){return NAK;}
 
     virtual frameInfo GetFrameInfo()
     {
-      return fi;
+        return fi;
     }
 
     virtual  ~CameraLayer(){}
