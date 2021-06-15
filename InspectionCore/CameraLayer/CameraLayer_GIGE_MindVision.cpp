@@ -5,6 +5,7 @@
 CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer_Callback cb, void *context) : CameraLayer(cb, context)
 {
   m.unlock();
+  _cached_frame_info=NULL;
 }
 
 CameraLayer_GIGE_MindVision::~CameraLayer_GIGE_MindVision()
@@ -43,16 +44,14 @@ void CameraLayer_GIGE_MindVision::sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBu
 void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead *frameInfo, PVOID pContext)
 {
 
-  LOGI("snapFlag:%d", snapFlag);
-  if (snapFlag == 0)
-    m.lock();
-  LOGI("INCOMING IMGE....%d.................", m_hCamera);
-
+  // LOGI("snapFlag:%d", snapFlag);
+  m.lock();
+  _cached_frame_info=frameInfo;
   int width = frameInfo->iWidth;
   int height = frameInfo->iHeight;
 
-  if (img.GetWidth() != width || img.GetHeight() != height)
-    img.useExtBuffer(m_pFrameBuffer, maxWidth * maxHeight * 3, width, height);
+  // if (img.GetWidth() != width || img.GetHeight() != height)
+  //   img.useExtBuffer(m_pFrameBuffer, maxWidth * maxHeight * 3, width, height);
   //img.ReSize(width,height);
   if (CameraImageProcess(hCamera, frameBuffer, m_pFrameBuffer, frameInfo) != CAMERA_STATUS_SUCCESS)
   {
@@ -64,12 +63,12 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
       offset_y : 0,
     };
     fi = fi_;
-    if (snapFlag == 0)
-      callback(*this, CameraLayer::EV_ERROR, context);
+    callback(*this, CameraLayer::EV_ERROR, context);
   }
   else
   {
 
+    LOGI("INCOMING IMGE....%d.................", m_hCamera);
     // for(int i=0;i<maxWidth*maxHeight*3;i+=3)
     // {
     //   int tmp=m_pFrameBuffer[i];
@@ -86,12 +85,66 @@ void CameraLayer_GIGE_MindVision::GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuf
     };
     fi = fi_;
 
-    if (snapFlag == 0)
-      callback(*this, CameraLayer::EV_IMG, context);
+    callback(*this, CameraLayer::EV_IMG, context);
   }
+  _cached_frame_info=NULL;
 
   m.unlock();
 }
+
+
+CameraLayer::status CameraLayer_GIGE_MindVision::ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount)
+{
+
+  if (_cached_frame_info == NULL)
+  {
+    return NAK;
+  }
+  //if(pType == PixelType_Gvsp_Mono8)
+  {//for now it's only BGR
+    
+    int w=_cached_frame_info->iWidth;
+    int h=_cached_frame_info->iHeight;
+
+    int src_CH_COUNT=3;
+    if(channelCount==src_CH_COUNT)
+    {
+      memcpy(imgBuffer,m_pFrameBuffer,w*h*src_CH_COUNT);
+    }
+    else
+    {
+      
+      for(int i=0;i<h;i++)
+      {
+        uint8_t* src_Pix_Gray=m_pFrameBuffer+i*w*src_CH_COUNT;
+        uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
+        for(int j=0;j<w;j++)
+        {
+          for(int k=0;k<channelCount;k++)
+          {
+            int src_pix_ch=k>=src_CH_COUNT?(src_CH_COUNT-1):k;
+            *tar_Pix=src_Pix_Gray[src_pix_ch];
+            tar_Pix++;
+          }
+          src_Pix_Gray+=src_CH_COUNT;
+        }
+      }
+    }
+
+    // LOGI("fi.timeStamp_us:%llu",fi.timeStamp_us);
+    // LOGI("xywh:%d,%d %d,%d",x,y,w,h);
+
+    // LOGI("%f %f %f %f",tmpX,tmpY,tmpW,tmpH);
+    return ACK;
+
+  }
+  // LOGI("img.size:%d ", img_size);
+
+
+  return ACK;
+}
+
+
 
 CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *devInfo)
 {
@@ -148,7 +201,6 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
   int maxBufferSize = width * height * 3;
   m_pFrameBuffer = (BYTE *)CameraAlignMalloc(maxBufferSize, 16);
   LOGV("m_pFrameBuffer:%p m_hCamera:%d>>W:%d H:%d", m_pFrameBuffer, m_hCamera, width, height);
-  img.useExtBuffer(m_pFrameBuffer, maxBufferSize, width, height);
 
   //EXT_TRIG_EXP_GRR might cause the image brightness from manual trigger much brighter
   //TODO: do extensive EXT_TRIG_EXP_GRR test in the future..
@@ -267,6 +319,11 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int
   LOGI("MAX:%d %d", maxWidth, maxHeight);
 
   LOGI("ROI:%f %f %f %f", ROI_x, ROI_y, ROI_w, ROI_h);
+
+  ROI_x=(int)ROI_x/16*16;//just to guess the inc value, usually 2 or 4 or 16
+  ROI_y=(int)ROI_y/16*16;
+  ROI_w=(int)ROI_w/16*16;
+  ROI_h=(int)ROI_h/16*16;
   tSdkImageResolution resInfo = {
     iIndex : 0xFF,
     uBinSumMode : 0,
@@ -283,9 +340,14 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int
     iHeightZoomHd : 0,
     iWidthZoomSw : 0,
     iHeightZoomSw : 0
-  };
+  }; 
 
   CameraSdkStatus camst = CameraSetImageResolution(m_hCamera, &resInfo);
+  
+  // LOGI("ret>>ROI:%d %d, %d %d, %d %d", 
+  //   resInfo.iHOffsetFOV,  resInfo.iVOffsetFOV  
+  //   ,resInfo.iWidthFOV,resInfo.iWidth 
+  //   ,resInfo.iHeightFOV,resInfo.iHeight);
   if (camst)
     return CameraLayer::NAK;
   camst = CameraGetImageResolution(m_hCamera, &resInfo);
@@ -297,6 +359,30 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int
 
   ROI_w = resInfo.iWidth;
   ROI_h = resInfo.iHeight;
+
+  if(0)
+  {
+    // LOGI("ROI:%f %f %f %f", ROI_x, ROI_y, ROI_w, ROI_h);
+    tSdkImageResolution resInfo = {
+      iIndex : 0xFF,
+      uBinSumMode : 0,
+      uBinAverageMode : 0,
+      uSkipMode : 0,
+      uResampleMask : 0,
+      iHOffsetFOV : (int)ROI_x,
+      iVOffsetFOV : (int)ROI_y,
+      iWidthFOV : (int)ROI_w,
+      iHeightFOV : (int)ROI_h,
+      iWidth : (int)ROI_w,
+      iHeight : (int)ROI_h,
+      iWidthZoomHd : 0,
+      iHeightZoomHd : 0,
+      iWidthZoomSw : 0,
+      iHeightZoomSw : 0
+    };
+
+    CameraSdkStatus camst = CameraSetImageResolution(m_hCamera, &resInfo);
+  }
 
   if (ROI_mirrorFlag[0])
   {
@@ -326,31 +412,14 @@ CameraLayer::status CameraLayer_GIGE_MindVision::GetROI(int *x, int *y, int *w, 
 
 CameraLayer::status CameraLayer_GIGE_MindVision::TriggerMode(int type)
 {
-  eff_triggerMode = type;
 
-  if (eff_triggerMode == 0 && L_frameRateMode == 0)
-  {
-    if (L_triggerMode != 1)
-      L_TriggerMode(1);
-    if (cameraTriggerThread == NULL)
-      cameraTriggerThread = new std::thread(&CameraLayer_GIGE_MindVision::ContTriggerThread, this);
-    return CameraLayer::ACK;
-  }
-  else
-  {
-    ContTriggerThreadTermination();
-  }
   return L_TriggerMode(type);
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::TriggerCount(int count)
 {
-  if (CameraSetTriggerCount(m_hCamera, count) != CAMERA_STATUS_SUCCESS)
-  {
-    LOGE("Failed...");
-    return CameraLayer::NAK;
-  }
-  return CameraLayer::ACK;
+  takeCount = count - 1;
+  return Trigger();
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::Trigger()
@@ -368,24 +437,11 @@ CameraLayer::status CameraLayer_GIGE_MindVision::RUN()
   return CameraLayer::NAK;
 }
 
-void CameraLayer_GIGE_MindVision::ContTriggerThread()
+CameraLayer::status CameraLayer_GIGE_MindVision::isInOperation()
 {
-  LOGI("ContTriggerThread: fr:%d eff_tm:%d", L_frameRateMode, eff_triggerMode);
-  while (L_frameRateMode == 0 && eff_triggerMode == 0)
-  {
-    Trigger();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-  }
-}
+  int min,max;
 
-void CameraLayer_GIGE_MindVision::ContTriggerThreadTermination()
-{
-  if (cameraTriggerThread)
-  {
-    cameraTriggerThread->join();
-    delete cameraTriggerThread;
-    cameraTriggerThread = NULL;
-  }
+  return GetAnalogGain(&min, &max);
 }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::SetResolution(int width, int height)
@@ -424,46 +480,60 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetOnceWB()
 
 CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
 {
-  L_SetFrameRateMode(mode);
-  L_frameRateMode = mode;
+  return L_SetFrameRateMode(mode);
+}
 
-  if (eff_triggerMode == 0 && L_frameRateMode == 0)
-  {
-    if (L_triggerMode != 1)
-      L_TriggerMode(1);
-    if (cameraTriggerThread == NULL)
-      cameraTriggerThread = new std::thread(&CameraLayer_GIGE_MindVision::ContTriggerThread, this);
-    return CameraLayer::ACK;
-  }
-  else
-  {
-    ContTriggerThreadTermination();
-    L_TriggerMode(eff_triggerMode);
-  }
+CameraLayer::status CameraLayer_GIGE_MindVision::SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
+{  
 
+  LOGI(">>>>");
+  CameraLayer_GIGE_MindVision &Cam=*((CameraLayer_GIGE_MindVision*)(&cl_obj));
+  CameraLayer::status ret_st=Cam._snap_cb(cl_obj,type,obj);
+  Cam.snapFlag=0;
+
+  LOGI(">>>>");
+  Cam.conV.notify_one();
+  return ret_st;
+}
+
+CameraLayer::status CameraLayer_GIGE_MindVision::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
+{
+
+  TriggerMode(1);
+  snapFlag = 1;
+  //trigger reset;
+  {
+    std::unique_lock<std::mutex> lock(m);
+    LOGI(">>>>");
+    CameraLayer_Callback _callback=callback;
+    void* _context=context;//replace the callback
+    _snap_cb=snap_cb;
+    callback=SNAP_Callback;
+    context=cb_param;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    
+    LOGI(">>>>");
+    for (int i = 0; TriggerCount(1) == CameraLayer::NAK; i++)
+    {
+      if (i > 5)
+      {
+        return CameraLayer::NAK;
+      }
+    }
+    
+    LOGI(">>>>");
+    conV.wait(lock, [this]
+              { return this->snapFlag == 0; });
+    
+      
+    callback=_callback;
+    context=_context;//recover the callback
+    _snap_cb=NULL;
+  }
   return CameraLayer::ACK;
 }
 
-// CameraLayer::status CameraLayer_GIGE_MindVision::SnapFrame()
-// {
 
-//   snapFlag = 1;
-//   TriggerMode(1);
-
-//   std::this_thread::sleep_for(std::chrono::milliseconds(50)); //HACK sleep to fix trigger ignore issue
-//   LOGI("TRIGGER");
-//   do
-//   {
-//   } while (Trigger() == CameraLayer::NAK);
-
-//   LOGI("LOCK");
-//   m.lock();
-//   LOGI("LOCK");
-//   m.lock();
-//   snapFlag = 0;
-//   m.unlock();
-//   return CameraLayer::ACK;
-// }
 
 CameraLayer::status CameraLayer_GIGE_MindVision::GetAnalogGain(int *ret_min, int *ret_max)
 {
@@ -496,9 +566,4 @@ CameraLayer::status CameraLayer_GIGE_MindVision::GetExposureTime(float *ret_time
   }
   if(ret_time_ms)*ret_time_ms=ret_d_time_ms;
   return CameraLayer::ACK;
-}
-
-acvImage *CameraLayer_GIGE_MindVision::GetFrame()
-{
-  return &img;
 }
