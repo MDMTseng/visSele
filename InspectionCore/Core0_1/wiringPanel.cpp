@@ -1609,8 +1609,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             if (mmpp)
             {
               select_bacpac = &neutral_bacpac;
-              neutral_bacpac.sampler->getCalibMap()->calibPpB = (*mmpp);
-              neutral_bacpac.sampler->getCalibMap()->calibmmpB = 1;
+              neutral_bacpac.sampler->getCalibMap()->calibPpB = 1;
+              neutral_bacpac.sampler->getCalibMap()->calibmmpB = (*mmpp);
             }
             else
             {
