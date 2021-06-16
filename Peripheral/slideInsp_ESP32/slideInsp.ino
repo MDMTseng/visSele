@@ -148,12 +148,12 @@ public:
         plInfo->gate_pulse = g1.mid_pulse;
         plInfo->pulse_width = g1.start_pulse - g1.end_pulse;
         objTrack.pushHead();
-        Serial.printf("pulseAdd objTrack.s:%d  \n", objTrack.size());
+        // Serial.printf("pulseAdd objTrack.s:%d  \n", objTrack.size());
 
 
-        uint32_t targetOffset=0;//;
-        ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,  0+targetOffset, 1, );
-        ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,  10+targetOffset, 2, );
+        // uint32_t targetOffset=0;//;
+        // ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,  0+targetOffset, 1, );
+        // ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,  10+targetOffset, 2, );
       }
     }
 
@@ -178,12 +178,18 @@ public:
 
 
           uint32_t targetOffset=pulseDiff;//;
-          int flashOffset=0;//esp:150(10us?)
+          int flashOffset=1;//esp:150(10us?)
+          
+          int camOffset=1;//esp:150(10us?)
+          int camTime=10;
+
           int flashTime=1;
           
           ACT_PUSH_TASK(act_S.ACT_BACKLight1H, plInfo, flashOffset+ targetOffset, 0, );
           ACT_PUSH_TASK(act_S.ACT_BACKLight1L, plInfo, flashOffset+flashTime+ targetOffset, 0,);
 
+          ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,          camOffset+targetOffset, 1, );
+          ACT_PUSH_TASK(act_S.ACT_CAM1, plInfo,  camTime+camOffset+targetOffset, 2, );
           Serial.printf("pulseDiff: %u pulse:%d \n", pulseDiff, plInfo->gate_pulse);
 
           Serial.printf("BKL.s:%d BKH.s:%d CAM.s:%d\n",
@@ -213,7 +219,7 @@ public:
   void timerRun()
   {
     _timerCount++;
-    int subTick = (_timerCount & 7);
+    int subTick = (_timerCount & 0b11);
     if (subTick == 0)
     {
       timerGateSensingRun(_timerCount);
@@ -243,7 +249,7 @@ public:
     }
   }
 
-  const int minWidth = 3;
+  const int minWidth = 0;
   const int maxWidth = 50;
 
   const int DEBOUNCE_L_THRES = 5; //object inner connection
@@ -369,7 +375,7 @@ void setup()
 
   Serial.begin(921600);
 
-  setup_comm();
+  // setup_comm();
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 100, true);
@@ -471,5 +477,5 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, int *ret_result = NULL)
 void loop()
 {
   tGS.mainLoop();
-  loop_comm();
+  // loop_comm();
 }
