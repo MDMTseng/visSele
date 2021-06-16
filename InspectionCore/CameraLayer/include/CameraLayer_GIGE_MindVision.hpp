@@ -17,20 +17,15 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     protected:
     int mirrorFlag[2]={0,0};
     int ROI_mirrorFlag[2]={0,0};
-    int snapFlag=0;
-    std::mutex m;
     int takeCount=0;
-    std::condition_variable conV;
     CameraHandle    m_hCamera=0;	//the handle of the camera we use
     int L_frameRateMode=2;
     int L_triggerMode=1;
-    CameraLayer_Callback _snap_cb;
 
     BYTE*           m_pFrameBuffer=NULL;
     static void sGIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
     void GIGEMV_CB(CameraHandle hCamera, BYTE *frameBuffer, tSdkFrameHead* frameInfo,PVOID pContext);
-    static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
-    
+     
     tSdkFrameHead *_cached_frame_info;
     public:
     
@@ -65,7 +60,6 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
 
     CameraLayer::status isInOperation();
     CameraLayer::status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount);
-    CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
     ~CameraLayer_GIGE_MindVision();
 };
 

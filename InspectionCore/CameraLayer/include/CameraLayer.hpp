@@ -5,7 +5,10 @@
 
 #include <acvImage.hpp>
 #include <string>
+#include <condition_variable>
 
+#include <thread>
+#include <mutex>
 
 
 
@@ -73,6 +76,13 @@ class CameraLayer{
     float ROI_y;
     float ROI_w;
     float ROI_h;
+
+    
+    std::mutex m;
+    CameraLayer_Callback _snap_cb;
+    int snapFlag=0;
+    std::condition_variable conV;
+    static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
     public:
     
 
@@ -99,7 +109,11 @@ class CameraLayer{
     virtual CameraLayer::status Trigger(){return NAK;}
 
 
-    virtual CameraLayer::status RUN()
+    virtual CameraLayer::status StartAquisition()
+    {
+        return CameraLayer::NAK;
+    }
+    virtual CameraLayer::status StopAquisition()
     {
         return CameraLayer::NAK;
     }
@@ -117,6 +131,10 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     virtual CameraLayer::status SetAnalogGain(float gain){return NAK;}
+
+    virtual CameraLayer::status SetBalckLevel(float blvl){return NAK;}
+
+    virtual CameraLayer::status SetGamma(float Gamma){return NAK;}
 
     virtual CameraLayer::status SetMirror(int Dir,int en){return NAK;}
     virtual CameraLayer::status SetROIMirror(int Dir,int en)
@@ -153,7 +171,10 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
     
-    virtual CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param){return NAK;}
+    virtual CameraLayer::status SnapAbort(int timeout_ms=-1);
+
+    virtual CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param,int type=0, int timeout_ms=-1);
+
 
     virtual frameInfo GetFrameInfo()
     {

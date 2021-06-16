@@ -36,9 +36,6 @@ protected:
   cam_info self_info;
   int takeCount;
   bool acquisition_started;
-  std::mutex m;
-  std::condition_variable conV;
-  bool snapFlag=false;
 
   static void s_STREAM_NEW_BUFFER_CB(ArvStream *stream, CameraLayer_Aravis *self);
   void STREAM_NEW_BUFFER_CB(ArvStream *stream);
@@ -46,9 +43,6 @@ protected:
   void STREAM_CONTROL_LOST_CB(ArvStream *stream);
 
   ArvBuffer *_frame_cache_buffer;
-  
-  static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
-  CameraLayer_Callback _snap_cb;
 
 public:
   CameraLayer_Aravis(const char* deviceID,CameraLayer_Callback cb, void *context);
@@ -67,8 +61,6 @@ public:
 
   CameraLayer::status ExtractFrame(uint8_t *imgBuffer, int channelCount, size_t pixelCount);
   CameraLayer::status GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh);
-  CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
-
   CameraLayer::status SetOnceWB();
 
   CameraLayer::status SetMirror(int Dir, int en);

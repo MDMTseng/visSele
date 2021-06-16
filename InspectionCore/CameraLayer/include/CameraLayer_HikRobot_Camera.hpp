@@ -14,9 +14,6 @@
 #include <stdexcept>
 // #include "common_lib.h"
 
-#include <thread>
-#include <mutex>
-#include <condition_variable>
 using namespace std;
 
 
@@ -46,15 +43,11 @@ protected:
   bool bDevConnected;
   bool threadRunningState;
   std::thread grabThread;
-  CameraLayer_Callback _snap_cb;
   bool acquisition_started=false;
   int mirrorFlag[2]={0,0};
   int ROI_mirrorFlag[2]={0,0};
   bool inNoError;
-  std::mutex m;
   
-  std::condition_variable conV;
-  bool snapFlag = false;
   uint8_t* _cached_pData=NULL;
   MV_FRAME_OUT_INFO_EX* _cached_frame_info=NULL;
 
@@ -169,16 +162,11 @@ protected:
       {
 
         LOGI("MV_:::%X", nRet);
-        // if (MV_TRIGGER_MODE_ON == m_nTriggerMode)
-        // {
-        //   Sleep(5);
-        // }
       }
     }
   }
 
   
-  static CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj);
 
 public:
   CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devInfo, CameraLayer_Callback cb, void *context);
@@ -211,7 +199,15 @@ public:
   CameraLayer::status SetExposureTime(float time_us);
   CameraLayer::status GetExposureTime(float *ret_time_us);
   
-  CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
+  CameraLayer::status SetBalckLevel(float blvl);
+
+  CameraLayer::status SetGamma(float Gamma);
+
+  CameraLayer::status StartAquisition();
+  CameraLayer::status StopAquisition();
+  
+  // CameraLayer::status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
+  // CameraLayer::status SnapFrame(int type,CameraLayer_Callback snap_cb,void *cb_param);
   // void ContTriggerThread();
   // void ContTriggerThreadTermination();
   // acvImage *GetFrame();

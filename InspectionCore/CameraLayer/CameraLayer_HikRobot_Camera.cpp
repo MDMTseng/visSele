@@ -6,7 +6,7 @@
 CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int h, int zw, int zh)
 {
 
-  MV_CC_StopGrabbing(handle);
+  StopAquisition();
   int max_w, max_h;
 
   MVCC_INTVALUE_EX WInfo = {0};
@@ -60,8 +60,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d max.wh:%d,%d",x,y,w,h, xret,yret,wret,hret,max_w,max_h);
   GetROI(&x, &y, &w, &h, NULL,NULL);
   // LOGI("SET:%d,%d,%d,%d,  ret:%d,%d,%d,%d",x,y,w,h, xret,yret,wret,hret);
-  MV_CC_StartGrabbing(handle);
-
+  // StartAquisition();
   return CameraLayer::ACK;
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::GetROI(int *x, int *y, int *w, int *h, int *zw, int *zh)
@@ -340,7 +339,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   threadRunningState = true;
 
   SetROI(0, 0, 999999, 999999, 0, 0);
-  MV_CC_StartGrabbing(handle);
+  StartAquisition();
   inNoError=true;
   // grabThread = std::thread(&CameraLayer_HikRobot_Camera::grabThreadFunc, this);
 }
@@ -366,57 +365,10 @@ CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
 
 
 
-CameraLayer::status CameraLayer_HikRobot_Camera::SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
-{  
-
-  CameraLayer_HikRobot_Camera &Cam=*((CameraLayer_HikRobot_Camera*)(&cl_obj));
-  CameraLayer::status ret_st=Cam._snap_cb(cl_obj,type,obj);
-  Cam.snapFlag=0;
-
-  Cam.conV.notify_one();
-  return ret_st;
-}
-
 CameraLayer::status CameraLayer_HikRobot_Camera::TriggerCount(int count)
 {
   takeCount = count - 1;
   return Trigger();
-}
-
-
-CameraLayer::status CameraLayer_HikRobot_Camera::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
-{
-
-  TriggerMode(1);
-  snapFlag = 1;
-  //trigger reset;
-  {
-    std::unique_lock<std::mutex> lock(m);
-
-    CameraLayer_Callback _callback=callback;
-    void* _context=context;//replace the callback
-    _snap_cb=snap_cb;
-    callback=SNAP_Callback;
-    context=cb_param;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
-    for (int i = 0; TriggerCount(1) == CameraLayer::NAK; i++)
-    {
-      if (i > 5)
-      {
-        return CameraLayer::NAK;
-      }
-    }
-    
-    conV.wait(lock, [this]
-              { return this->snapFlag == 0; });
-    
-      
-    callback=_callback;
-    context=_context;//recover the callback
-    _snap_cb=NULL;
-  }
-  return CameraLayer::ACK;
 }
 
 CameraLayer::status CameraLayer_HikRobot_Camera::TriggerMode(int type)
@@ -524,4 +476,41 @@ CameraLayer::status CameraLayer_HikRobot_Camera::GetExposureTime(float *ret_time
   int ret = GetFloatValue("ExposureTime",&retV);
   if(ret_time_us)*ret_time_us=retV.fCurValue;
   return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::SetBalckLevel(float blvl)
+{
+  int ret = SetIntValue("BlackLevel",(int)blvl);
+  // LOGI("BlackLevel set ret:%x,%d",ret,ret);
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::SetGamma(float gamma)
+{
+  int ret;
+  if(gamma!=gamma)
+  {
+    return (MV_OK == SetBoolValue("GammaEnable",false)) ? CameraLayer::ACK : CameraLayer::NAK;
+  }
+  ret=SetBoolValue("GammaEnable",true);
+  // LOGI("GammaEnable set ret:%x,%d",ret,ret);
+  if(MV_OK != ret)
+  {
+    return CameraLayer::NAK;
+  }
+
+  ret= SetFloatValue("Gamma",gamma);
+  // LOGI("ExposureTime set ret:%x,%d",ret,ret);
+  return (MV_OK ==ret) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+
+
+
+CameraLayer::status CameraLayer_HikRobot_Camera::StartAquisition()
+{
+  return (MV_OK == MV_CC_StartGrabbing(handle)) ? CameraLayer::ACK : CameraLayer::NAK;
+}
+CameraLayer::status CameraLayer_HikRobot_Camera::StopAquisition()
+{
+  return (MV_OK == MV_CC_StopGrabbing(handle)) ? CameraLayer::ACK : CameraLayer::NAK;
 }

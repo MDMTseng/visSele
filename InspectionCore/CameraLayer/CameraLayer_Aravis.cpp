@@ -686,58 +686,6 @@ CameraLayer::status CameraLayer_Aravis::SetFrameRateMode(int mode)
   return SetFrameRate(tar_fr);
 }
 
-
-
-
-CameraLayer::status CameraLayer_Aravis::SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
-{  
-
-  CameraLayer_Aravis &araCam=*((CameraLayer_Aravis*)(&cl_obj));
-  CameraLayer::status ret_st=araCam._snap_cb(cl_obj,type,obj);
-  araCam.snapFlag=0;
-
-  araCam.conV.notify_one();
-  return ret_st;
-}
-
-
-CameraLayer::status CameraLayer_Aravis::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
-{
-
-  TriggerMode(1);
-  snapFlag = 1;
-  //trigger reset;
-  {
-    std::unique_lock<std::mutex> lock(m);
-
-    CameraLayer_Callback _callback=callback;
-    void* _context=context;//replace the callback
-    _snap_cb=snap_cb;
-    callback=SNAP_Callback;
-    context=cb_param;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    
-    for (int i = 0; TriggerCount(1) == CameraLayer::NAK; i++)
-    {
-      if (i > 5)
-      {
-        return CameraLayer::NAK;
-      }
-    }
-    
-    LOGE(">>");
-    conV.wait(lock, [this]
-              { return this->snapFlag == 0; });
-    
-    LOGE(">>");
-      
-    callback=_callback;
-    context=_context;//recover the callback
-    _snap_cb=NULL;
-  }
-  return CameraLayer::ACK;
-}
-
 CameraLayer::status CameraLayer_Aravis::GetAnalogGain(int *ret_min, int *ret_max)
 {
   GError *err = NULL;
