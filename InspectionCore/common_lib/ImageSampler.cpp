@@ -114,7 +114,7 @@ void acvCalibMap::SET(double *MX_data, double *MY_data,
 
 float acvCalibMap::get_PpB_ideal()//Pixels per Block
 {
-  return map_loca_scale/calibPpB;
+  return map_loca_scale*calibPpB;
 }
 
 float acvCalibMap::get_mmpP_ideal()//mm per pix

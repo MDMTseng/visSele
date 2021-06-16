@@ -4000,8 +4000,9 @@ int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj)
   setObj->RESET();
   LOGI("MX_data:%p  MY_data:%p dimS:%d %d dim:%d %d..", MX_data, MY_data, dimS[0], dimS[1], dim[0], dim[1]);
   setObj->SET(MX_data, MY_data, dimS[0], dimS[1], dim[0], dim[1]);
-
-  setObj->calibPpB = ((double *)CB_pak.data)[0];
+  
+  LOGI("CB:%f  MB:%f", ((double *)CB_pak.data)[0],((double *)MB_pak.data)[0]);
+  setObj->calibPpB = 1/((double *)CB_pak.data)[0];
   setObj->calibmmpB = ((double *)MB_pak.data)[0];
 
   LOGI("calibmmpB:%f", setObj->calibmmpB);
