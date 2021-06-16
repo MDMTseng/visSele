@@ -1451,6 +1451,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   const DICT = useSelector(state => state.UIData.DICT);
   
   const [fileSavingCallBack,setFileSavingCallBack]=useState(undefined);
+  const [waitForSnapFlag,setWaitForSnapFlag]=useState(false);
   const dispatch = useDispatch();
   const ACT_EXIT=(arg) =>dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT)) ;
 
@@ -1496,6 +1497,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const shape_list = useSelector(state => state.UIData.edit_info.list);
   const defModelPath = edit_info.defModelPath;
+  
 
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
   
@@ -1521,8 +1523,10 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           setModal_view({
             onOk: () => {
               ACT_EXIT();
+              
+              setModal_view(undefined);
             },
-            onCancel: () => { console.log("onCancel") },
+            onCancel: () => { console.log("onCancel");setModal_view(undefined); },
             title: DICT._.WARNING,
             view: DICT.defConf.exit_warning_change_is_made
           })
@@ -1674,35 +1678,83 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
       key="TAKE"
       text="take" onClick={() => {
 
-        setModal_view({
-            onOk: () => {
-
-
+        function setModal_viewAsWait()
+        {
+          setModal_view({
+            onCancel:()=>{},//disable the cancel
+            footer:[],
               
-              ACT_DefConf_Lock_Level_Update(0);
-              new Promise((resolve, reject) => {
-                ACT_WS_SEND(WS_ID, "EX", 0, {
-                  img_property:{
-                    down_samp_level:2
-                  }
-                },
-                  undefined, { resolve, reject });
-                //setTimeout(() => reject("Timeout"), 3000)
-              })
-                .then((pkts) => {
-                  dispatch({
-                    type: "ATBundle",
-                    ActionThrottle_type: "express",
-                    data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+            view:"請稍後...."
+            })
+        }
+
+        function triggerSnapExam(trigger_type=0,timeout=-1)
+        {
+          
+          setModal_viewAsWait();
+          ACT_DefConf_Lock_Level_Update(0);
+          new Promise((resolve, reject) => {
+            ACT_WS_SEND(WS_ID, "EX", 0, {
+              trigger_type,
+              timeout,
+              img_property:{
+                down_samp_level:2
+              }
+            },
+              undefined, { resolve, reject });
+            //setTimeout(() => reject("Timeout"), 3000)
+          })
+            .then((pkts) => {
+              
+              let SS=pkts.find(pkt=>pkt.type=="SS");
+              if(SS.data.ACK==true)
+              {              
+                dispatch({
+                  type: "ATBundle",
+                  ActionThrottle_type: "express",
+                  data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+                })
+                setModal_view(undefined);
+              }
+              else
+              {
+                setModal_view({
+                  footer:[],
+                  view:"圖像獲取失敗"
                   })
+              }
+
+            })
+            .catch((err) => {
+              log.info(err);
+
+              setModal_view({
+                footer:[],
+                view:"圖像獲取異常"
                 })
-                .catch((err) => {
-                  log.info(err);
-                })
-              ACT_Shape_List_Reset();
+            })
+          ACT_Shape_List_Reset();
+        }
+
+        let triggerTimeout=5000;
+        setModal_view({
+          footer:[
+              <Button key="back" onClick={()=>{triggerSnapExam()}}>
+                立即
+              </Button>,
+              <Button key="trigger5S" type="primary" onClick={()=>{triggerSnapExam(2,triggerTimeout)}}>
+                {triggerTimeout/1000}s內觸發
+              </Button>,
+              <Button danger onClick={()=>setModal_view(undefined)}>
+                取消
+              </Button>,
+            ],
+            onOk: () => {
+              setModal_view(undefined);
+
               
             },
-            onCancel: () => { console.log("onCancel") },
+            onCancel: () => { console.log("onCancel");setModal_view(undefined);},
             title: DICT._.WARNING,
             view: DICT.defConf.do_you_want_to_reset_def
           })
@@ -1842,14 +1894,20 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         if (modal_view.onCancel !== undefined) {
           modal_view.onCancel(param);
         }
-        setModal_view(undefined)
+        else
+        {
+          setModal_view(undefined);
+        }
       }}
 
       onOk={(param) => {
         if (modal_view.onOk !== undefined) {
           modal_view.onOk(param);
         }
-        setModal_view(undefined)
+        else
+        {
+          setModal_view(undefined);
+        }
       }}>
       {modal_view === undefined ? null : modal_view.view}
     </Modal>);
