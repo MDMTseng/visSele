@@ -70,7 +70,7 @@ BYTE *acvContourWalk(acvImage *Pic, int *X_io, int *Y_io, int *dir_io, int dirin
     return NULL;
 }
 //#include <unistd.h>
-int acvDrawContour(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char InitDir)
+int acvDrawContour(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, char InitDir,int *ret_contour_size=NULL)
 {
     int NowPos[2] = {FromX, FromY};
 
@@ -97,8 +97,10 @@ int acvDrawContour(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, 
 
     int hitExistedLabel = 0;
     //NowWalkDir=InitDir;
+    int counter=0;
     while (1)
     {
+        counter++;
         if (next[2] == 254)
         {
             break;
@@ -128,7 +130,7 @@ int acvDrawContour(acvImage *Pic, int FromX, int FromY, BYTE B, BYTE G, BYTE R, 
         next = acvContourWalk(Pic, &NowPos[0], &NowPos[1], &NowWalkDir, searchDir);
     }
     next[2] = R;
-
+    if(ret_contour_size)*ret_contour_size=counter;
     return hitExistedLabel ? -1 : 0;
 }
 
@@ -238,7 +240,56 @@ void acvComponentLabeling(acvImage *Pic,int lineSkip) //,DyArray<int> * Informat
                 Pic->CVector[i][3 * j + 2] = Pic->CVector[i][3 * (j - 1) + 2];
             }
         }
+    if(lineSkip>1)
+    {
+        
+        _24BitUnion prePix;
+        _24BitUnion curPix;
+        int i_start=Pic->GetROIOffsetY() + 1;
+        for (int i = i_start; i < Pic_H; i++, State = 0)
+        {
+            int idiff=i-i_start;
+            if(idiff%lineSkip==0)
+            {
+                continue;
+            }
+            int j=Pic->GetROIOffsetX() + 1;
+            
+            if (Pic->CVector[i][3 * j + 2] == 255)
+            {
+                State = 0;
+            }
+            else
+            {
+                State = 1;
+            }
+            j++;
+            for (; j < Pic_W; j++)
+            {
+
+                if (Pic->CVector[i][3 * j + 2] == 255)
+                {
+                    State = 0;
+                    continue;
+                }
+
+                if(State==0)
+                {
+                    State=1;
+                }
+                else
+                {
+                    Pic->CVector[i][3 * j] = Pic->CVector[i][3 * (j - 1)];
+                    Pic->CVector[i][3 * j + 1] = Pic->CVector[i][3 * (j - 1) + 1];
+                    Pic->CVector[i][3 * j + 2] = Pic->CVector[i][3 * (j - 1) + 2];
+                }
+            }
+        }
+    }
+
+
 }
+
 
 int acvRemoveRegionLessThan(acvImage *LabeledPic, std::vector<acv_LabeledData> *list, int threshold)
 {
