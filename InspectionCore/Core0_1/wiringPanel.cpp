@@ -736,6 +736,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
 
 int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 {
+  camera.StopAquisition();
   double *val = JFetch_NUMBER(&settingJson, "exposure");
   int retV = -1;
   if (val)
@@ -752,6 +753,27 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV = 0;
   }
 
+  {
+    
+    val = JFetch_NUMBER(&settingJson, "blacklevel");
+    if (val)
+    {
+      CameraLayer::status ret=camera.SetBalckLevel(*val);
+      LOGI("SetBalckLevel:%f  ret:%d", *val,ret);
+      retV = 0;
+    }
+  }
+
+  {
+    
+    val = JFetch_NUMBER(&settingJson, "gamma");
+    if (val)
+    {
+      CameraLayer::status ret=camera.SetGamma(*val);
+      LOGI("SetGamma:%f  ret:%d", *val,ret);
+      retV = 0;
+    }
+  }
   val = JFetch_NUMBER(&settingJson, "framerate_mode");
   if (val)
   {
@@ -853,6 +875,8 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     {
     }
   }
+  
+  camera.StartAquisition();
   return 0;
 }
 
@@ -1095,16 +1119,9 @@ CameraLayer::status SNAP_Callback(CameraLayer &cl_obj, int type, void* obj)
   return cl_obj.ExtractFrame(img->CVector[0],3,finfo.width*finfo.height);
 }
 
-int getImage(CameraLayer *camera,acvImage *dst_img)
+int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_ms=-1)
 {
-  for (int i = 0;; i++)
-  {
-    if (camera->SnapFrame(SNAP_Callback,(void*)dst_img) == CameraLayer::ACK)
-      break;
-    if (i > 10)
-      return -1;
-  }
-  return 0;
+  return (camera->SnapFrame(SNAP_Callback,(void*)dst_img,trig_type,timeout_ms) == CameraLayer::ACK)?0:-1;
 }
 
 BPG_data DatCH_CallBack_BPG::GenStrBPGData(char *TL, char *jsonStr)
@@ -1907,8 +1924,20 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         if (srcImg == NULL)
         {
+          int trigger_type=0;
+          int imageFetchTimeout=-1;
 
-          int ret_val = getImage(camera,&tmp_buff);
+          {
+            double *val = JFetch_NUMBER(json, "trigger_type");
+            if(val)trigger_type=(int)*val;
+          }
+
+          {
+            double *val = JFetch_NUMBER(json, "timeout");
+            if(val)imageFetchTimeout=(int)*val;
+          }
+
+          int ret_val = getImage(camera,&tmp_buff,trigger_type,imageFetchTimeout);
           if (ret_val == 0)
           {
             srcImg = &tmp_buff;
@@ -3872,7 +3901,9 @@ void sigroutine(int dunno)
     LOGE("Get a signal -- SIGINT \n");
     LOGE("Tear down websocket.... \n");
     delete websocket;
+    
     terminationFlag = true;
+    LOGE("SIGINT exit.... \n");
     break;
   }
   return;

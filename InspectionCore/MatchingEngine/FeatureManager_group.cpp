@@ -243,7 +243,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     //The labeling starts from (1 1) => (W-2,H-2), ie. it will not touch the outmost pixel to simplify the boundary condition
     //You need to draw a black/white cage to work(not crash).
     //The advantage of black cage is you can know which area touches the boundary then we can exclude it
-    acvComponentLabeling(lableImg);
+    acvComponentLabeling(lableImg,50);
     acvLabeledRegionInfo(lableImg, &ldData);
 
     //FENCE_AREA=110/100;
