@@ -252,9 +252,23 @@ public:
   const int minWidth = 0;
   const int maxWidth = 50;
 
-  const int DEBOUNCE_L_THRES = 5; //object inner connection
-  const int DEBOUNCE_H_THRES = 1;
+  const int DEBOUNCE_L_THRES = 5; //the keep L length to stablize as L state, object inner connection
+  const int DEBOUNCE_H_THRES = 1; //the keep H length to stablize as H state 
 
+  //example Set: 
+  //H_THRES 4 
+  //L_THRES 8
+  //
+  //                    V the H signal is too short 
+  //raw        0000011111100111111111111000000000000000000111000000 note: H234v-> H state pass. H23x->H state debounce
+  //                H234v L2x           L2345678v         H23x      note: L2x  -> H state too short.
+  //debounce   0000000001111111111111111111111111000000000000000000 
+  //                <H4-                <---L8---                    note: offset time according to HL debounce length 
+  //offset     0000011111111111111111111000000000000000000000000000  
+  //                |---Width--(20)----|
+  //                ^start_pulse       ^end_pulse
+  //  The width will need to pass the width filter to determin the final acceptance of this pulse
+  
   void task_gateSensing(GateInfo *ginfo,uint32_t cur_tick)
   {
     //(perRevPulseCount/50)
