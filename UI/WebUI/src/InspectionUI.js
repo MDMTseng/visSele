@@ -163,7 +163,7 @@ class RAW_InspectionReportPull extends React.Component {
           reject("Timeout");
           if (this.props.onDBInsertFail !== undefined)
             this.props.onDBInsertFail(data, "Timeout");
-        }, 3000);
+        }, 5000);
 
         //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
         this.WS_DB_Insert.send_obj(msg_obj, (key, val) => val.toFixed ? Number(val.toFixed(5)) : val).
@@ -1269,7 +1269,7 @@ class CanvasComponent extends React.Component {
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 7) down_samp_level = 7;
 
-
+        // down_samp_level=1;
         //log.info(crop,down_samp_level);
         this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
           {
@@ -2297,6 +2297,8 @@ class APP_INSP_MODE extends React.Component {
       this.state.additionalUI
     );
 
+    let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 1 : 10;
+    // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
       MenuSet.push([
@@ -2307,7 +2309,7 @@ class APP_INSP_MODE extends React.Component {
           addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
           text={
             (this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected)
-            +" "+this.state.inspUploadedCount
+            +" "+this.state.inspUploadedCount+":"+this.props.reportStatisticState.historyReport.length+"/"+InspectionReportPullSkip
           }
           onClick={() => { }} />
         ,
@@ -2551,7 +2553,6 @@ class APP_INSP_MODE extends React.Component {
     //   reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
     //   camera_calibration_report={this.props.camera_calibration_report} />);
 
-
     return (
       <div className="overlayCon HXF">
 
@@ -2570,21 +2571,19 @@ class APP_INSP_MODE extends React.Component {
         <RAW_InspectionReportPull
           reportStatisticState={this.props.reportStatisticState}
           onConnectionStateUpdate={(cur, pre) => {
-            //console.log(">>>>>>>>>>",cur,pre);
+            // console.log(">>>>>>>>>>",cur,pre);
             this.setState({ DB_Conn_state: cur });
           }}
           onDBInsertSuccess={(data, info) => {
-            log.info(data, info);
-
+            // log.info(data, info);
             this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
-
           }}
 
           onDBInsertFail={(data, info) => {
             log.error(data, info);
           }}
           url={this.props.machine_custom_setting.inspection_db_ws_url}
-          pull_skip={(this.props.inspMode == "FI") ? 10 : 1} />
+          pull_skip={InspectionReportPullSkip} />
         {/* <$CSSTG transitionName="fadeIn"> */}
           <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height}
             style={{ opacity: menuOpacity, width: "250px" }}>

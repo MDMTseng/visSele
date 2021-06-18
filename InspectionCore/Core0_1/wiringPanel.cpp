@@ -1030,7 +1030,7 @@ bool DoImageTransfer = true;
 
 int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 {
-  MT_LOCK();
+  MT_LOCK("");
   int fd = getfd();
 
   DatCH_Data datCH_BPG =
@@ -1043,14 +1043,14 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
   BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
   datCH_BPG.data.p_BPG_data = &bpg_dat;
   BPG_protocol_send(datCH_BPG);
-  MT_UNLOCK();
+  MT_UNLOCK("");
   return 0;
 }
 
 int MicroInsp_FType::ev_on_close()
 {
 
-  //MT_LOCK(); //the delete caller might come within main thread
+  //MT_LOCK(""); //the delete caller might come within main thread
   int fd = getfd();
   LOGE("fd:%d is disconnected", fd);
   DatCH_Data datCH_BPG =
@@ -1063,7 +1063,7 @@ int MicroInsp_FType::ev_on_close()
   datCH_BPG.data.p_BPG_data = &bpg_dat;
   BPG_protocol_send(datCH_BPG);
 
-  //MT_UNLOCK();
+  //MT_UNLOCK("");
 
   return 0;
 }
@@ -1191,7 +1191,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     //   }
     // }
 
-    MT_LOCK();
+    MT_LOCK("");
 
     // if (checkTL("GS", dat) == false)
     //   LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
@@ -2501,7 +2501,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     datCH_BPG.data.p_BPG_data = &bpg_dat;
     self->SendData(datCH_BPG);
 
-    MT_UNLOCK();
+    MT_UNLOCK("");
     cJSON_Delete(json);
   }
   break;
@@ -2874,7 +2874,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   if (cb->cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
-    MT_UNLOCK();
+    MT_UNLOCK("");
     return;
   }
   if (cb->cameraFramesLeft > 0)
@@ -3090,7 +3090,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
   t = clock();
 
-  MT_UNLOCK();
+  MT_UNLOCK("");
 }
 
 std::string getTimeStr(const char *timeFormat = "%d-%m-%Y %H:%M:%S")
@@ -3133,9 +3133,9 @@ void InspSnapSaveThread(bool *terminationflag)
       //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
       {
 
-        MT_LOCK();
+        MT_LOCK("");
         std::string rootPath = InspSampleSavePath + SEP; //InspSampleSavePath might be changed by main thread
-        MT_UNLOCK();
+        MT_UNLOCK("");
         //root/Date/Name/ms.xxx
         std::string extPath = getTimeStr("%Y%m%d") + SEP; //Date
         {
@@ -3265,7 +3265,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   if (cb->cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
-    MT_UNLOCK();
+    MT_UNLOCK("");
     return;
   }
   clock_t t = clock();

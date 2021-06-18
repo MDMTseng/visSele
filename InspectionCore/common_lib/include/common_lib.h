@@ -5,6 +5,11 @@
 #include "acvImage_BasicTool.hpp"
 #include "zlib.h"
 #include <string>
+
+
+// #ifndef M_PI
+// #define M_PI (3.14159265358979323846)
+// #endif
 typedef struct {
     uint8_t machine[8];
 }machine_hash;

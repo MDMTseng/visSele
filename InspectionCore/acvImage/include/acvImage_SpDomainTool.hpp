@@ -119,7 +119,7 @@ inline BYTE acvUnsignedMap1Sampling_Nearest(acvImage *unsignedMap1, const acv_XY
     int rX = (int)round(XY.X);
     int rY = (int)round(XY.Y);
       if(rX<0 || rY <0 || rX >unsignedMap1->GetWidth()-1 ||  rY >unsignedMap1->GetHeight()-1)
-        return NAN;
+        return 0;
     return unsignedMap1->CVector[rY][rX * 3+channel];
 }
 

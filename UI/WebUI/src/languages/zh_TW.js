@@ -95,6 +95,7 @@ export default {
     connection:{
       server_connected:"已連結伺服器",
       server_disconnected:"斷線!! 數據不會上傳",
+      server_disconnecting:"嘗試連線中",
       connect:"連線"
     },
     measure:{

@@ -3145,12 +3145,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
   error = sqrt(error);
   //if(i<10)
+
   {
-    LOGI("======%d===X:%0.4f Y:%0.4f er:%f,inv:%d,angDeg:%f",
-          lableIdx, ldData[lableIdx].Center.X, ldData[lableIdx].Center.Y, error, isInv, angle * 180 / 3.14159);
+    LOGI("======%d===XY:%0.4f,%0.4f AREA:%d er:%f,inv:%d,angDeg:%f ",
+          lableIdx, ldData[lableIdx].Center.X, ldData[lableIdx].Center.Y,  ldData[lableIdx].area, error, isInv, angle * 180 / 3.14159);
   }
 
-  if (error > 2 || ((error/feature_signature.mean)>0.3) )
+  if (error > 2 || ((error/feature_signature.mean)>1) )
   {
     LOGE("error:%f",error);
     return -3;
@@ -3956,7 +3957,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   LOGV("ldData.size()=%d", ldData.size());
   for (int i = 2; i < ldData.size(); i++, count++)
   { // idx 0 is not a label, idx 1 is for outer frame and connected objects
-    if (ldData[i].area < 120)//HACK: no particular reason, just a hack filter
+    if (ldData[i].area < 3000)//HACK: no particular reason, just a hack filter
       continue;
 
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
@@ -3979,11 +3980,6 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
 
     bacpac->sampler->img2ideal(&ideal_center);
-
-
-
-
-
 
     convertContourGrid2Signature(ideal_center,edge_grid,tmp_signature.signature_data,bacpac);
 

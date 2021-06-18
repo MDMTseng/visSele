@@ -7,6 +7,9 @@
 #include <thread>
 
 #include<sys/time.h>
+#ifndef M_PI
+#define M_PI (3.14159265358979323846)
+#endif
 
 CameraLayer_BMP::CameraLayer_BMP(CameraLayer_Callback cb,void* context):CameraLayer(cb,context)
 {
