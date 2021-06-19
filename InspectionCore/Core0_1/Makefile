@@ -30,6 +30,7 @@ export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
 export MODULE_hikrobot_camera_sdk=$(abspath $(moduleRoot)/contrib/hikrobot_camera_sdk)
+export MODULE_smem_channel=$(abspath $(moduleRoot)/contrib/smem_channel)
 
 
 # export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
@@ -67,6 +68,7 @@ IDIR=	include/ \
 			$(MODULE_mjpegLib)/include \
 			$(MODULE_MJPEG_Streamer)/include \
 			$(MODULE_lodepng)\
+			$(MODULE_smem_channel)\
 			# $(MODULE_MLNN)/include/  \
 
 
@@ -87,6 +89,7 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_mjpegLib)/mjpegLib.a \
 					$(MODULE_polyfit)/polyfit.a \
 					$(MODULE_MJPEG_Streamer)/MJPEG_Streamer.a \
+					$(MODULE_smem_channel)/smem_channel.a\
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
@@ -112,6 +115,9 @@ ifeq ($(BUILDONLY),ME)
 else ifeq ($(BUILDONLY),CL)
 	SUB_MAKEFILES=$(MODULE_CameraLayer) \
 
+else ifeq ($(BUILDONLY),TT)
+	SUB_MAKEFILES=$(MODULE_smem_channel)\
+
 else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
 else
@@ -130,6 +136,7 @@ else
 									$(MODULE_mjpegLib) \
 									$(MODULE_MJPEG_Streamer) \
 									$(MODULE_zlib) \
+									$(MODULE_smem_channel)\
 									# $(MODULE_SOIL) \
 									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \
