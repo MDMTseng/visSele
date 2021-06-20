@@ -24,7 +24,7 @@ int createSharedMemory(std::string name, size_t maxSize, ShareMemoryInfo *ret_in
 		return -1;
 	}
 
-	void *ptr = MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, (int64_t)maxSize);
+	void *ptr = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, (int64_t)maxSize);
 	if (ptr == nullptr)
 	{
 		CloseHandle(mapping);
@@ -59,7 +59,7 @@ int connSharedMemory(std::string name, size_t maxSize, ShareMemoryInfo *ret_info
 		return -1;
 	}
 
-	void *ptr = MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, (int64_t)maxSize);
+	void *ptr = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, 0);
 	if (ptr == nullptr)
 	{
 		CloseHandle(mapping);

@@ -20,8 +20,11 @@
 #include <playground.h>
 #include <stdexcept>
 #include <compat_dirent.h>
-
+#include <smem_channel.hpp>
 #include <ctime>
+
+smem_channel *clientSMEM_SEND_CH=NULL;
+
 
 std::timed_mutex mainThreadLock;
 
@@ -3865,9 +3868,24 @@ int mainLoop(bool realCamera = false)
     }
   }
 
+  // while(1)
+  // {
+  //   try{
+  //     clientSMEM_SEND_CH=new smem_channel("AACXXX",1000,false);
+  //     break;
+  //   }
+  //   catch(std::exception &ex)
+  //   {
+
+  //   }
+  //   LOGI(">>>");
+  // }
+
   websocket->SetEventCallBack(&callbk_obj, websocket);
   mjpegS = new MJPEG_Streamer2(7603);
   LOGI("SetEventCallBack is set...");
+
+  int count=0;
   while (1)
   {
 
@@ -3886,6 +3904,13 @@ int mainLoop(bool realCamera = false)
       perror("select");
       exit(4);
     }
+
+    // if(clientSMEM_SEND_CH)
+    // {
+    //   sprintf((char*)clientSMEM_SEND_CH->getPtr(),">>>%d",count++);
+    //   clientSMEM_SEND_CH->s_post();
+    //   clientSMEM_SEND_CH->s_wait_remote();
+    // }
     // LOGI("GO RECV");
     websocket->runLoop(&fdset, NULL);
     mjpegS->fdEventFetch(&fdset);

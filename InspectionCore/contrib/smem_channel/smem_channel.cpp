@@ -15,23 +15,23 @@ smem_channel::smem_channel(const std::string name,
   this->memSize = memSize;
 
   this->name = name;
-  printf(">>>%d\n",__LINE__);
+  // printf(">>>%d\n",__LINE__);
   if (create_or_conn)  // create
   {
     ShareMemoryInfo _info;
-  printf(">>>%d\n",__LINE__);
+  // printf(">>>%d\n",__LINE__);
     int ret = createSharedMemory(name,memSize,&_info);
     if(ret!=0)
     {
       throw std::invalid_argument("createSharedMemory failed....");
     }
-  printf(">>>%d\n",__LINE__);
+  // printf(">>>%d\n",__LINE__);
     shm_id = _info.handle;
     ptr = _info.ptr;
     info=_info;
-  printf(">>>%d\n",__LINE__);
+  // printf(">>>%d\n",__LINE__);
     sem=createSemaphore(name);
-  printf(">>>%d\n",__LINE__);
+  // printf(">>>%d\n",__LINE__);
     // sem = sem_open((name+"_sem").c_str(), O_CREAT, 0644, 0);
     // if (sem == SEM_FAILED) {
     //   throw std::invalid_argument("sem_open failed....");
