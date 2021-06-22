@@ -1,6 +1,13 @@
 {
-  "exposure":10000.5110,
-  "gain":2,
+  "exposure":50,
+  "gain":17,
+  "blacklevel":350,
+  "gamma":0.4,
+
+
+
+
+
   "ROI":[0,0,9990,9990],
   "ROIs":{
     "ROIss":[0,30,1200,1200],
@@ -15,6 +22,7 @@
     "full":[0,0,9990,9990]
   },
   "mirror":[0,0],
+  "ROI_mirror":[0,1],
   "ROI_before_mirror":true,
   "down_samp_level":4
 }
