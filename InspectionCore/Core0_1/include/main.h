@@ -37,7 +37,6 @@
 #include <Ext_Util_API.hpp>
 #include <ImageSampler.h>
 
-#include "DatCH_Image.hpp"
 #include "DatCH_BPG.hpp"
 #include "DatCH_CallBack_WSBPG.hpp"
 #include "MatchingCore.h"
