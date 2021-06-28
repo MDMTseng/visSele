@@ -3885,7 +3885,7 @@ int mainLoop(bool realCamera = false)
   // }
 
   websocket->SetEventCallBack(&callbk_obj, websocket);
-  mjpegS = new MJPEG_Streamer2(7603);
+  // mjpegS = new MJPEG_Streamer2(7603);
   LOGI("SetEventCallBack is set...");
 
   int count=0;
@@ -3893,13 +3893,16 @@ int mainLoop(bool realCamera = false)
   {
 
     int maxfd = websocket->findMaxFd();
-    int ms_maxfd = mjpegS->GetMaxfd();
+    int ms_maxfd = maxfd;
+    // int ms_maxfd = mjpegS->GetMaxfd();
     if (maxfd < ms_maxfd)
     {
       maxfd = ms_maxfd;
     }
 
     fd_set fdset = websocket->get_fd_set();
+
+
     mjpegS->setFdset(&fdset);
 
     if (select(maxfd + 1, &fdset, NULL, NULL, NULL) == -1)
@@ -3916,7 +3919,7 @@ int mainLoop(bool realCamera = false)
     // }
     // LOGI("GO RECV");
     websocket->runLoop(&fdset, NULL);
-    mjpegS->fdEventFetch(&fdset);
+    // mjpegS->fdEventFetch(&fdset);
   }
 
   return 0;

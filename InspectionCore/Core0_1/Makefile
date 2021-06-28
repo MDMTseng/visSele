@@ -116,7 +116,7 @@ else ifeq ($(BUILDONLY),CL)
 	SUB_MAKEFILES=$(MODULE_CameraLayer) \
 
 else ifeq ($(BUILDONLY),TT)
-	SUB_MAKEFILES=$(MODULE_smem_channel)\
+	SUB_MAKEFILES=$(MODULE_DataChannel)\
 
 else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
