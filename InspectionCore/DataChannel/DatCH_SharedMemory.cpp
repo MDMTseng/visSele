@@ -31,87 +31,40 @@
 // }
 
 using namespace std;
-class DatCH_SharedMemory: public DatCH_Interface
+class DatCH_SharedMemory
 {
 protected:
     smem_channel* sendCh;
     smem_channel* recvCh;
 
-    //Just to provide a fd styled recv event
-    FILE *tmpFile=NULL;
-    int tmpFilefd=-1;
-
-    bool app_recved_flag;
-    condition_variable app_recved_cond_var;
-
-    //=========
-
-
-
-    thread *recv_Thread;
-
-
-    
-    void _RECV_THREAD()
-    {
-        while(1)
-        {
-            recvCh->r_wait();
-            uint8_t* data=(uint8_t*)recvCh->getPtr();
-            _write(tmpFilefd, " ", 1);
-            //the data should have length info to let following code know how long is this data
-            
-            // while (!ready) {
-            //     app_recved_cond_var.wait(lock);
-            // }
-            recvCh->r_release();
-        }
-    }
+    uint8_t* hold_data=NULL;
 public:         
-  
-    // void setFdset(fd_set *dst)
-    // {
-    
-    //     FD_SET(sock, dst);
-    //     for (int i = 0; i < clientTable.size(); i++)
-    //     {
-    //         FD_SET(clientTable[i].client_fd, dst);
-    //     }
-    // }
-
-    
-    // int runLoop(fd_set *read_fds,struct timeval *tv)
-    // {
-    //     return server->runLoop(read_fds,tv);
-    // }
-
 
     DatCH_SharedMemory(std::string name,size_t max_size){
-        tmpFile = tmpfile();
-        tmpFilefd = fileno(tmpFile);
-        app_recved_flag=false;
-
-
         sendCh=new smem_channel("s_"+name,max_size,true);
         recvCh=new smem_channel("r_"+name,max_size,true);
-        recv_Thread=new thread(&_RECV_THREAD,this);
 //         char dataInMemory[] = "This is some data in memory";
 // FILE * fileDescriptor = fmemopen(dataInMemory, sizeof(dataInMemory), "r");
     }
 
+    void recv_wait()
+    {
+      recvCh->r_wait();
+      hold_data=(uint8_t*)recvCh->getPtr();
+    }
+
+    void recv_release()
+    {
+      hold_data=NULL;
+      recvCh->r_release();
+    }
+
+
     ~DatCH_SharedMemory()
     {
-        if(tmpFile)
-        {
-            fclose(tmpFile);
-            tmpFilefd=-1;
-            tmpFile=NULL;
-        }
         delete recvCh;
+        delete sendCh;
 
-        recv_Thread->join();
-        // recv_Thread->stop();
-        delete recv_Thread;
     }
 
 

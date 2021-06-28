@@ -1,17 +1,31 @@
-#pragma once
-#include <semaphore.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <string>
-typedef int SHM_HDL
+
+#include <sp.hpp>
 
 
-struct ShareMemoryInfo
+
+SEM_HDL createSemaphore(std::string name)
 {
-    std::string name;
-    SHM_HDL handle;
-	void* ptr;
-};
+  return sem_open(name.c_str(), O_CREAT | O_EXCL, 0644, 0);
+}
+bool IncSemaphore(SEM_HDL hdl)
+{
+  sem_post(hdl);
+  return true;
+}
+bool DecSemaphore(SEM_HDL hdl)
+{
+  sem_wait(hdl);
+  return true;
+}
+
+bool deleteSemaphore(std::string name,SEM_HDL hdl)
+{
+  sem_close(hdl);
+  sem_unlink(name.c_str());
+  return true;
+}
+
+
 
 
 
@@ -32,7 +46,7 @@ int createSharedMemory(std::string name,size_t maxSize,ShareMemoryInfo *ret_info
     SHM_HDL shm_id = shm_open(
         name.c_str(), O_RDWR | O_CREAT, 0644); /*第一步:建立共享記憶體區*/
     if (shm_id == -1) {
-      return -2
+      return -2;
     }
     ftruncate(shm_id, maxSize);
 
@@ -68,7 +82,7 @@ int connSharedMemory(std::string name,size_t maxSize,ShareMemoryInfo *ret_info)
     SHM_HDL shm_id = shm_open(name.c_str(), O_RDWR, 0); /*第一步:開啟共享記憶體區*/
    
     if (shm_id == -1) {
-      return -2
+      return -2;
     }
     void *ptr = mmap(NULL,
                         maxSize,
@@ -79,11 +93,11 @@ int connSharedMemory(std::string name,size_t maxSize,ShareMemoryInfo *ret_info)
 
 	ret_info->handle = shm_id;
 	ret_info->ptr = ptr;
-    ret_info->name=name;
+  ret_info->name=name;
 	return 0;
 }
-bool deleteSharedMemory(ShareMemoryInfo info)
+bool deleteSharedMemory(ShareMemoryInfo *info)
 {
 	
-	return shm_unlink(info->name);
+	return shm_unlink(info->name.c_str());
 }
