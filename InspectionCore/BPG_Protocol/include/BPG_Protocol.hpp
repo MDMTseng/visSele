@@ -1,0 +1,41 @@
+#ifndef _BPG_Protocol_HPP
+#define _BPG_Protocol_HPP
+
+#include <vector>
+#include <string>
+#include <BPG_Link_Interface.hpp>
+#include <regex>
+using namespace std;
+
+class BPG_Link_Interface;
+typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
+
+struct BPG_protocol_data
+{
+  char tl[2]; //Two letter
+  uint8_t prop;
+  uint16_t pgID;
+  uint32_t size; //32bit
+  uint8_t *dat_raw;
+  BPG_protocol_data_feed_callback callback; //For bulk data transfer
+  void *callbackInfo;
+};
+
+class BPG_Protocol_Interface
+{
+protected:
+  vector<uint8_t> cached_data_recv;
+  vector<uint8_t> cached_data_send;
+  BPG_Link_Interface *linkCH;
+
+public:
+  BPG_Protocol_Interface();
+  void setLink(BPG_Link_Interface *link) { linkCH = link; }
+  uint8_t *requestSendingBuffer(size_t len);
+  virtual int toUpperLayer(BPG_protocol_data bpgdat) = 0;
+  int fromUpperLayer(BPG_protocol_data bpgdat);
+  int fromLinkLayer(uint8_t *dat, size_t len, bool FIN = true);
+  int toLinkLayer(uint8_t *dat, size_t len, bool FIN = true);
+};
+
+#endif
