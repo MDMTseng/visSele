@@ -10,7 +10,7 @@ using namespace std;
 class BPG_Link_Interface;
 typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 
-struct BPG_protocol_data
+struct BPG_protocol_data//Binary pack group
 {
   char tl[2]; //Two letter
   uint8_t prop;
@@ -27,8 +27,9 @@ protected:
   vector<uint8_t> cached_data_recv;
   vector<uint8_t> cached_data_send;
   BPG_Link_Interface *linkCH;
-
 public:
+  static int getHeaderSize();
+  static int headerSetup(uint8_t *buff, size_t len, BPG_protocol_data bpg_dat);
   BPG_Protocol_Interface();
   void setLink(BPG_Link_Interface *link) { linkCH = link; }
   uint8_t *requestSendingBuffer(size_t len);

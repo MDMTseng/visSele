@@ -37,12 +37,13 @@
 #include <Ext_Util_API.hpp>
 #include <ImageSampler.h>
 
-#include "DatCH_BPG.hpp"
-#include "DatCH_CallBack_WSBPG.hpp"
+// #include "DatCH_BPG.hpp"
+// #include "DatCH_CallBack_WSBPG.hpp"
 #include "MatchingCore.h"
 #include <TSQueue.hpp>
 
 #include "MJPEG_Streamer.hpp"
+#include "BPG_Protocol.hpp"
 
 
 
@@ -115,13 +116,29 @@ typedef struct image_pipe_info
   } actInfo;
 } image_pipe_info;
 
-class DatCH_CallBack_BPG : public DatCH_CallBack
+
+int BPG_prot_cb_acvImage_Send(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
+//typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
+
+
+
+typedef struct BPG_protocol_data_acvImage_Send_info
+{
+    acvImage* img;
+    uint16_t scale;
+    uint16_t offsetX,offsetY;
+    uint16_t fullWidth,fullHeight;
+
+}BPG_protocol_data_acvImage_Send_info;
+
+class m_BPG_Protocol_Interface : public BPG_Protocol_Interface
 {
 public:
+
+  m_BPG_Protocol_Interface();
   uint16_t CI_pgID;
   int cameraFramesLeft = 0;
 
-  DatCH_BPG1_0 *self;
   acvImage tmp_buff;
   acvImage cacheImage;
   acvImage dataSend_buff;
@@ -130,17 +147,29 @@ public:
 
   CameraLayer *camera = NULL;
   resourcePool<image_pipe_info> resPool;
-
-  bool checkTL(const char *TL, const BPG_data *dat);
+  int toUpperLayer(BPG_protocol_data bpgdat) override;
+  bool checkTL(const char *TL, const BPG_protocol_data *dat);
   uint16_t TLCode(const char *TL);
-  DatCH_CallBack_BPG(DatCH_BPG1_0 *self);
-
   void delete_Ext_Util_API();
   void delete_MicroInsp_FType();
-  static BPG_data GenStrBPGData(char *TL, char *jsonStr);
-
-  int callback(DatCH_Interface *from, DatCH_Data data, void *callback_param);
+  static BPG_protocol_data GenStrBPGData(char *TL, char *jsonStr);
+  
+  static int SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 };
+
+
+
+
+class m_BPG_Link_Interface_WebSocket : public BPG_Link_Interface_WebSocket
+{
+  public:
+
+  m_BPG_Link_Interface_WebSocket(int port):BPG_Link_Interface_WebSocket(port){};
+  m_BPG_Link_Interface_WebSocket():BPG_Link_Interface_WebSocket(){};
+  int ws_callback(websock_data data, void *param) override;
+};
+
+
 
 class PerifProt
 {

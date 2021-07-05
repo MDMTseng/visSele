@@ -18,13 +18,13 @@ int BPG_Link_Interface::toUpperLayer(uint8_t *dat, size_t len, bool FIN)
 }
 
 //st1 ok
-static int getHeaderSize()
+int BPG_Protocol_Interface::getHeaderSize()
 {
   return 9;
 }
 
 //st1 ok
-static int headerSetup(uint8_t *buff, size_t len, BPG_protocol_data bpg_dat) //for protocol_data to uint8_t buffer for link layer transmission
+int BPG_Protocol_Interface::headerSetup(uint8_t *buff, size_t len, BPG_protocol_data bpg_dat) //for protocol_data to uint8_t buffer for link layer transmission
 {
 
   buff[0] = bpg_dat.tl[0];
@@ -159,6 +159,6 @@ int BPG_Protocol_Interface::toLinkLayer(uint8_t *dat, size_t len, bool FIN)
   if (linkCH == NULL)
     return -1;
 
-  LOGI("<<<<>>>>");
+  // LOGI("<<<<>>>>");
   return linkCH->fromUpperLayer(dat, len, FIN);
 }

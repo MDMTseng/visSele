@@ -6,11 +6,12 @@ ESS_TRACK= $(wildcard include/*)
 IDIR=./include/ ./include_priv	\
 	$(MODULE_logctrl)/include \
 	$(MODULE_common_lib)/include  \
+	$(MODULE_smem_channel)\
 	$(MODULE_cwebsocket)/lib/ 
 
 VPATH = $(MODULE_cwebsocket)/lib/
 ODIR=obj
-_OBJ = BPG_Protocol.opp IPC_Channel.opp BPG_Link_Interface_WebSocket.opp ws_server_util.opp
+_OBJ = BPG_Protocol.opp IPC_Channel.opp BPG_Link_Interface_WebSocket.opp ws_server_util.opp BPG_Link_Interface_SharedMemoryChannel.opp websocket.o 
 
 target_a = BPG_Protocol.a
 

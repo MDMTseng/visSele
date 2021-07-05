@@ -26,11 +26,13 @@ export MODULE_zlib=$(abspath $(moduleRoot)/contrib/zlib-1.2.11)
 export MODULE_SOIL=$(abspath $(moduleRoot)/contrib/SOIL)
 export MODULE_polyfit=$(abspath $(moduleRoot)/contrib/polyfit)
 export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
-export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
+# export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
 export MODULE_hikrobot_camera_sdk=$(abspath $(moduleRoot)/contrib/hikrobot_camera_sdk)
 export MODULE_smem_channel=$(abspath $(moduleRoot)/contrib/smem_channel)
+
+export MODULE_BPG_Protocol=$(abspath $(moduleRoot)/BPG_Protocol)
 
 
 # export MODULE_MLNN=$(abspath $(moduleRoot)/MLNN)
@@ -61,14 +63,15 @@ IDIR=	include/ \
 			$(MODULE_MatchingEngine)/include_priv \
 			$(MODULE_MatchingEngine)/MorphEngine/include \
 			$(MODULE_zlib)/src \
-			$(MODULE_DataChannel)/include\
 			$(MODULE_CameraLayer)/include \
 			$(MODULE_Compat_dirent)/include \
 			$(MODULE_polyfit)/include \
 			$(MODULE_mjpegLib)/include \
 			$(MODULE_MJPEG_Streamer)/include \
+			$(MODULE_BPG_Protocol)/include \
 			$(MODULE_lodepng)\
 			$(MODULE_smem_channel)\
+			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
 
 
@@ -82,7 +85,6 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_logctrl)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
-					$(MODULE_DataChannel)/DataChannel.a \
 					$(MODULE_acvImage)/acvImage.a \
 					$(MODULE_CameraLayer)/CameraLayer.a \
 					$(MODULE_lodepng)/lodepng.a \
@@ -90,6 +92,8 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_polyfit)/polyfit.a \
 					$(MODULE_MJPEG_Streamer)/MJPEG_Streamer.a \
 					$(MODULE_smem_channel)/smem_channel.a\
+					$(MODULE_BPG_Protocol)/BPG_Protocol.a \
+					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
@@ -116,7 +120,7 @@ else ifeq ($(BUILDONLY),CL)
 	SUB_MAKEFILES=$(MODULE_CameraLayer) \
 
 else ifeq ($(BUILDONLY),TT)
-	SUB_MAKEFILES=$(MODULE_DataChannel)\
+	SUB_MAKEFILES=$(MODULE_BPG_Protocol)\
 
 else ifeq ($(BUILDONLY),NONE)
 	SUB_MAKEFILES=
@@ -130,13 +134,14 @@ else
 									$(MODULE_logctrl) \
 									$(MODULE_MatchingEngine) \
 									$(MODULE_lodepng) \
-									$(MODULE_DataChannel) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
 									$(MODULE_mjpegLib) \
 									$(MODULE_MJPEG_Streamer) \
 									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
+									$(MODULE_BPG_Protocol)\
+									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
 									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \

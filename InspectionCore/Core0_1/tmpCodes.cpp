@@ -29,11 +29,10 @@ public:
   }
 };
 
-// DatCH_CallBack_WSBPG callbk_obj;
-BPG_Link_Interface_WebSocket ifwebsocket(7714);
-m_BPG_Protocol_Interface bpg_pi;
 int tmpMain()
 {
+  BPG_Link_Interface_WebSocket ifwebsocket(7714);
+  m_BPG_Protocol_Interface bpg_pi;
   ifwebsocket.setUpperLayer(&bpg_pi);
   bpg_pi.setLink(&ifwebsocket);
   while (1)

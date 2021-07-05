@@ -10,6 +10,10 @@
 #include <exception>
 #include <stdexcept>
 
+
+
+
+
 BPG_Link_Interface_WebSocket::BPG_Link_Interface_WebSocket() : ws_protocol_callback(this)
 {
   init(5714);
@@ -77,62 +81,54 @@ int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool 
 
 int BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 {
-  // LOGI(">>>>data.type:%d",data.type);
-  // printf("%s:BPG_Link_Interface_WebSocket type:%d sock:%d\n",__func__,data.type,data.peer->getSocket());
-  if (data.type == websock_data::CLOSING || data.type == websock_data::ERROR_EV)
-  {
-    if (data.peer == default_peer)
-      default_peer = NULL;
-  }
-  else if (default_peer != NULL && default_peer != data.peer && data.type == websock_data::HAND_SHAKING_FINISHED) //do not accept second connection
-  {
-    server->disconnect(data.peer->getSocket());
-    return 1;
-  }
-  if (data.type == websock_data::HAND_SHAKING_FINISHED)
-  {
-    if (default_peer == NULL)
-      default_peer = data.peer;
-  }
 
-  if (data.type == websock_data::DATA_FRAME)
+  switch(data.type)
   {
-    data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
-    // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
-    websock_data packet = data;
-    packet.type = websock_data::DATA_FRAME;
-
-    if (bpg_prot)
+    case websock_data::CLOSING:
+    case websock_data::ERROR_EV: 
     {
-      toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal);
+      if (data.peer == default_peer)
+        default_peer = NULL;
+    }
+    return 0;
 
-      // server->send_pkt(&data);
-      // if(1)
-      // {
-      //   char asdasd[128];
-      //   packet.data.data_frame.rawL=sprintf(asdasd,">>>>>><<<<<<<")-1;
-      //   packet.data.data_frame.raw=(uint8_t*)asdasd;
-      //   packet.data.data_frame.isFinal=false;
-      //   packet.data.data_frame.type=WS_DFT_TEXT_FRAME;
-      //   server->send_pkt(&packet);
-      //   packet.data.data_frame.isFinal=true;
-      //   packet.data.data_frame.type=WS_DFT_CONT_FRAME;
-      //   server->send_pkt(&packet);
-      // }
-    }
-    else
+    case websock_data::HAND_SHAKING_FINISHED:
     {
-      return -1;
+      if (default_peer != NULL && default_peer != data.peer)
+      {
+        disconnect(data.peer->getSocket());
+        return 1;
+      }
+      
+      if (default_peer == NULL)
+        default_peer = data.peer;
     }
+    return 0;
+
+
+
+    case websock_data::DATA_FRAME:
+
+    {
+      data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
+      // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
+      websock_data packet = data;
+      packet.type = websock_data::DATA_FRAME;
+
+      if (bpg_prot)
+      {
+        toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal);
+      }
+      else
+      {
+        return -1;
+      }
+    }
+    return 0;
+
   }
-  // if(cb_obj)
-  // {
-  //     DatCH_Data ws_data;
-  //     ws_data.type = DatCH_Data::DataType_websock_data;
-  //     ws_data.data.p_websocket = &data;
-  //     cb_obj->callback(this, ws_data, callback_param);
-  // }
-  return 0;
+
+  return -3;
 }
 
 int BPG_Link_Interface_WebSocket::disconnect(int sock)

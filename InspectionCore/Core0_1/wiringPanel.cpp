@@ -7,9 +7,6 @@
 #include "cJSON.h"
 #include "logctrl.h"
 
-#include "DatCH_WebSocket.hpp"
-#include "DatCH_BPG.hpp"
-#include "DatCH_CallBack_WSBPG.hpp"
 #include "MatchingCore.h"
 #include "acvImage_BasicTool.hpp"
 #include "mjpegLib.h"
@@ -22,9 +19,6 @@
 #include <compat_dirent.h>
 #include <smem_channel.hpp>
 #include <ctime>
-
-smem_channel *clientSMEM_SEND_CH=NULL;
-
 
 std::timed_mutex mainThreadLock;
 
@@ -233,11 +227,12 @@ public:
 
 ImageStackAddUp imstack;
 
-DatCH_WebSocket *websocket = NULL;
+m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
+m_BPG_Protocol_Interface bpg_pi;
+
 MJPEG_Streamer *mjpegS;
 MatchingEngine matchingEng;
 CameraLayer *gen_camera;
-DatCH_CallBack_WSBPG callbk_obj;
 int CamInitStyle = 0;
 
 int downSampLevel = 4;
@@ -251,16 +246,16 @@ bool downSampWithCalib = false;
 bool doImgProcessThread = true;
 bool doInspActionThread = true;
 int parseCM_info(PerifProt::Pak pakCM, acvCalibMap *setObj);
-DatCH_BPG1_0 *BPG_protocol = new DatCH_BPG1_0(NULL);
 
 std::timed_mutex BPG_protocol_lock;
 
-void BPG_protocol_send(DatCH_Data dat)
+void BPG_protocol_send(BPG_protocol_data dat)
 {
   //LOGI("SEND_LOCK");
   BPG_protocol_lock.lock();
   //LOGI("SEND_ING");
-  BPG_protocol->SendData(dat);
+  bpg_pi.fromUpperLayer(dat);
+  // BPG_protocol->SendData(dat);
   //LOGI("SEND_UNLOCK");
   BPG_protocol_lock.unlock();
   //LOGI("SEND_END");
@@ -268,8 +263,6 @@ void BPG_protocol_send(DatCH_Data dat)
 
 int _argc;
 char **_argv;
-
-DatCH_CallBack_BPG *cb = new DatCH_CallBack_BPG(BPG_protocol);
 
 //lens1
 //main.cpp  1067 main:v K: 1.00096 -0.00100092 -9.05316e-05 RNormalFactor:1296
@@ -482,7 +475,7 @@ cJSON *cJSON_DirFiles(const char *path, cJSON *jObj_to_W, int depth = 0)
 }
 
 machine_hash machine_h = {0};
-void AttachStaticInfo(cJSON *reportJson, DatCH_CallBack_BPG *cb)
+void AttachStaticInfo(cJSON *reportJson, m_BPG_Protocol_Interface *BPG_prot_if)
 {
   if (reportJson == NULL)
     return;
@@ -496,10 +489,10 @@ void AttachStaticInfo(cJSON *reportJson, DatCH_CallBack_BPG *cb)
     }
     cJSON_AddStringToObject(reportJson, "machine_hash", tmpStr);
 
-    if (cb && cb->cameraFramesLeft >= 0)
+    if (BPG_prot_if && BPG_prot_if->cameraFramesLeft >= 0)
     {
-      LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
-      cJSON_AddNumberToObject(reportJson, "frames_left", cb->cameraFramesLeft);
+      LOGI("BPG_prot_if->cameraFramesLeft:%d", BPG_prot_if->cameraFramesLeft);
+      cJSON_AddNumberToObject(reportJson, "frames_left", BPG_prot_if->cameraFramesLeft);
     }
   }
 }
@@ -1029,6 +1022,26 @@ void setup_machine_setting(cJSON *json_mac_setting)
   }
 }
 
+
+
+BPG_protocol_data m_BPG_Protocol_Interface::GenStrBPGData(char *TL, char *jsonStr)
+{
+  BPG_protocol_data BPG_dat = {0};
+  BPG_dat.tl[0] = TL[0];
+  BPG_dat.tl[1] = TL[1];
+  if (jsonStr == NULL)
+  {
+    BPG_dat.size = 0;
+  }
+  else
+  {
+    BPG_dat.size = strlen(jsonStr);
+  }
+  BPG_dat.dat_raw = (uint8_t *)jsonStr;
+
+  return BPG_dat;
+}
+
 bool DoImageTransfer = true;
 
 int MicroInsp_FType::recv_json(char *json_str, int json_strL)
@@ -1036,16 +1049,12 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
   MT_LOCK("");
   int fd = getfd();
 
-  DatCH_Data datCH_BPG =
-      BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
   char tmp[1024];
   sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", json_str, fd);
   LOGI("MSG:%s", tmp);
 
-  BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
-  datCH_BPG.data.p_BPG_data = &bpg_dat;
-  BPG_protocol_send(datCH_BPG);
+  BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+  BPG_protocol_send(bpg_dat);
   MT_UNLOCK("");
   return 0;
 }
@@ -1056,38 +1065,32 @@ int MicroInsp_FType::ev_on_close()
   //MT_LOCK(""); //the delete caller might come within main thread
   int fd = getfd();
   LOGE("fd:%d is disconnected", fd);
-  DatCH_Data datCH_BPG =
-      BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
   char tmp[70];
   sprintf(tmp, "{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}", getfd());
 
-  BPG_data bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("PD", tmp);
-  datCH_BPG.data.p_BPG_data = &bpg_dat;
-  BPG_protocol_send(datCH_BPG);
-
+  BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+  BPG_protocol_send(bpg_dat);
   //MT_UNLOCK("");
 
   return 0;
 }
 
-bool DatCH_CallBack_BPG::checkTL(const char *TL, const BPG_data *dat)
+bool m_BPG_Protocol_Interface::checkTL(const char *TL, const BPG_protocol_data *dat)
 {
   if (TL == NULL)
     return false;
   return (TL[0] == dat->tl[0] && TL[1] == dat->tl[1]);
 }
-uint16_t DatCH_CallBack_BPG::TLCode(const char *TL)
+uint16_t m_BPG_Protocol_Interface::TLCode(const char *TL)
 {
   return (((uint16_t)TL[0] << 8) | TL[1]);
 }
-DatCH_CallBack_BPG::DatCH_CallBack_BPG(DatCH_BPG1_0 *self) : resPool(resourcePoolSize)
+m_BPG_Protocol_Interface::m_BPG_Protocol_Interface() : resPool(resourcePoolSize)
 {
-  this->self = self;
   cacheImage.ReSize(1, 1);
 }
 
-void DatCH_CallBack_BPG::delete_Ext_Util_API()
+void m_BPG_Protocol_Interface::delete_Ext_Util_API()
 {
   if (exApi)
   {
@@ -1095,7 +1098,7 @@ void DatCH_CallBack_BPG::delete_Ext_Util_API()
     exApi = NULL;
   }
 }
-void DatCH_CallBack_BPG::delete_MicroInsp_FType()
+void m_BPG_Protocol_Interface::delete_MicroInsp_FType()
 {
 
   if (mift)
@@ -1106,6 +1109,89 @@ void DatCH_CallBack_BPG::delete_MicroInsp_FType()
   }
   LOGI("DELETED...");
 }
+
+
+
+
+std::vector<uint8_t> image_send_buffer(40000);
+int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo)
+{
+  if(callbackInfo==NULL)return -1;
+  BPG_protocol_data send_dat;
+
+  BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
+
+  acvImage *img=img_info->img;
+
+  uint8_t header[]={
+    0,0,
+    
+    (uint8_t)(img_info->offsetX >>8),
+    (uint8_t)(img_info->offsetX),
+    (uint8_t)(img_info->offsetY >>8),
+    (uint8_t)(img_info->offsetY),
+
+    (uint8_t)(img->GetWidth()>>8),
+    (uint8_t)(img->GetWidth()),
+    (uint8_t)(img->GetHeight()>>8),
+    (uint8_t)(img->GetHeight()),
+    (uint8_t)(img_info->scale),
+    
+    (uint8_t)(img_info->fullWidth >>8),
+    (uint8_t)(img_info->fullWidth),
+    (uint8_t)(img_info->fullHeight >>8),
+    (uint8_t)(img_info->fullHeight),
+  };
+
+  {
+    image_send_buffer.resize(dch.getHeaderSize()+sizeof(header));
+    dch.headerSetup(&image_send_buffer[0], image_send_buffer.size(), data);
+
+    memcpy(&image_send_buffer[dch.getHeaderSize()], header, sizeof(header));
+    dch.toLinkLayer(&image_send_buffer[0], dch.getHeaderSize()+sizeof(header), false);
+
+  }
+
+  image_send_buffer.resize(10000);
+  
+
+  int rest_len =
+    img->GetWidth()*
+    img->GetHeight();
+
+  uint8_t *img_pix_ptr=img->CVector[0];
+
+  for(bool isKeepGoing=true;isKeepGoing && rest_len;)
+  {
+    int sendL = 0;
+    for(int i=0;i<image_send_buffer.size()-4;i+=4,img_pix_ptr+=3)
+    {
+      image_send_buffer[i]=img_pix_ptr[2];
+      image_send_buffer[i+1]=img_pix_ptr[1];
+      image_send_buffer[i+2]=img_pix_ptr[0];
+      image_send_buffer[i+3]=255;
+      sendL+=4;
+      rest_len--;
+      if(rest_len==0)
+      {
+        isKeepGoing=false;
+        break;
+      }
+    }
+    // LOGI("b[..]:%d %d %d %d... sendL:%d isKeepGoing:%d"
+    // ,image_send_buffer[0]
+    // ,image_send_buffer[1]
+    // ,image_send_buffer[2]
+    // ,image_send_buffer[3]
+    // ,sendL,isKeepGoing);
+    
+    dch.toLinkLayer(&image_send_buffer[0], sendL, isKeepGoing==false);
+  }
+  return 0;
+
+}
+
+
 
 
 
@@ -1127,45 +1213,14 @@ int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_m
   return (camera->SnapFrame(SNAP_Callback,(void*)dst_img,trig_type,timeout_ms) == CameraLayer::ACK)?0:-1;
 }
 
-BPG_data DatCH_CallBack_BPG::GenStrBPGData(char *TL, char *jsonStr)
-{
-  BPG_data BPG_dat = {0};
-  BPG_dat.tl[0] = TL[0];
-  BPG_dat.tl[1] = TL[1];
-  if (jsonStr == NULL)
-  {
-    BPG_dat.size = 0;
-  }
-  else
-  {
-    BPG_dat.size = strlen(jsonStr);
-  }
-  BPG_dat.dat_raw = (uint8_t *)jsonStr;
 
-  return BPG_dat;
-}
-int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *callback_param)
+
+int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
-  bool doExit = false;
-  switch (data.type)
+  do
   {
-  case DatCH_Data::DataType_error:
-  {
-    LOGE("error code:%d..........", data.data.error.code);
-  }
-  break;
-
-  //Connection layer of the BPG protocol
-  case DatCH_Data::DataType_websock_data: //App -(prot)>[here] WS //Final stage of outcoming data
-  {
-    DatCH_Data ret = websocket->SendData(data);
-  }
-  break;
-
-  case DatCH_Data::DataType_BPG: // WS -(prot)>[here] App //Final stage of incoming data
-  {
-    BPG_data *dat = data.data.p_BPG_data;
+    BPG_protocol_data *dat = &bpgdat;
 
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
@@ -1173,11 +1228,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     char err_str[100] = "\0";
     bool session_ACK = false;
     char tmp[200];    //For string construct json reply
-    BPG_data bpg_dat; //Empty
+    BPG_protocol_data bpg_dat; //Empty
     // {
     //     sprintf(tmp,"{\"session_id\":%d, \"start\":true, \"PACKS\":[\"DF\",\"IM\"]}",session_id);
     //     bpg_dat=GenStrBPGData("SS", tmp);
-    //     datCH_BPG.data.p_BPG_data=&bpg_dat;
+    //     datCH_BPG.data.p_BPG_protocol_data=&bpg_dat;
     //     self->SendData(datCH_BPG);
     // }
     bpg_dat.pgID = dat->pgID;
@@ -1197,8 +1252,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     MT_LOCK("");
 
     // if (checkTL("GS", dat) == false)
-    //   LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-    //        dat->pgID);
+    // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+    //       dat->pgID);
     if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
@@ -1302,9 +1357,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     else if (checkTL("FB", dat)) //[F]ile [B]rowsing
     {
 
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       do
       {
 
@@ -1354,8 +1406,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
           bpg_dat = GenStrBPGData("FS", fileStructStr); //[F]older [S]truct
           bpg_dat.pgID = dat->pgID;
-          datCH_BPG.data.p_BPG_data = &bpg_dat;
-          self->SendData(datCH_BPG);
+          fromUpperLayer(bpg_dat);
           if (fileStructStr)
             free(fileStructStr);
           cJSON_Delete(cjFileStruct);
@@ -1373,10 +1424,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
       }
       else
       {
-
-        DatCH_Data datCH_BPG =
-            BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
         session_ACK = true;
 
         cJSON *retArr = cJSON_CreateObject();
@@ -1409,7 +1456,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             cJSON *cam_info_jarr = cJSON_CreateArray();
 
             //LOGI("CAM_INFO..\n%s",calib_bacpac.cam->getCameraJsonInfo());
-            cJSON *cam_1 = cJSON_Parse(cb->camera->getCameraJsonInfo().c_str());
+            cJSON *cam_1 = cJSON_Parse(camera->getCameraJsonInfo().c_str());
             if (cam_1 == NULL)
             {
               cam_1 = cJSON_CreateObject();
@@ -1431,16 +1478,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         cJSON_Delete(retArr);
         bpg_dat = GenStrBPGData("GS", jstr);
         bpg_dat.pgID = dat->pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        self->SendData(datCH_BPG);
+        
+        fromUpperLayer(bpg_dat);
         free(jstr);
       }
     }
     else if (checkTL("LD", dat))
     {
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       do
       {
 
@@ -1467,8 +1511,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             LOGI("Read deffile:%s", filename);
             bpg_dat = GenStrBPGData("FL", fileStr);
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            
+            fromUpperLayer(bpg_dat);
             free(fileStr);
           }
           catch (std::invalid_argument iaex)
@@ -1488,8 +1532,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             LOGI("Read deffile:%s", deffile);
             bpg_dat = GenStrBPGData("DF", jsonStr);
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            fromUpperLayer(bpg_dat);
             free(jsonStr);
           }
         }
@@ -1522,7 +1565,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             }
             //TODO:HACK: 4 times scale down for transmission speed, bpg_dat.scale is not used for now
             bpg_dat = GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
+            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)default_scale};
 
             iminfo.fullHeight = srcImg->GetHeight();
             iminfo.fullWidth = srcImg->GetWidth();
@@ -1530,11 +1573,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             //acvThreshold(srcImdg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
             ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, NULL);
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-            bpg_dat.callback = DatCH_BPG_acvImage_Send;
+
+            bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
 
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            fromUpperLayer(bpg_dat);
           }
         }
 
@@ -1602,7 +1645,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         if (deffile == NULL && defInfo == NULL)
         {
           LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
-          cb->cameraFramesLeft = 0;
+          this->cameraFramesLeft = 0;
           camera->TriggerMode(1);
           break;
         }
@@ -1676,13 +1719,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           }
           LOGI("Read deffile:%s", deffile);
         }
-
-        DatCH_Data datCH_BPG =
-            BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
         // bpg_dat = GenStrBPGData("DF", jsonStr);
         // bpg_dat.pgID = dat->pgID;
-        // datCH_BPG.data.p_BPG_data = &bpg_dat;
+        // datCH_BPG.data.p_BPG_protocol_data = &bpg_dat;
         // self->SendData(datCH_BPG);
 
         //SaveIMGFile("data/TMP__.png",srcImg);
@@ -1698,15 +1737,15 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           if (report != NULL)
           {
             cJSON *jobj = matchingEng.FeatureReport2Json(report);
-            AttachStaticInfo(jobj, cb);
+            AttachStaticInfo(jobj, this);
             char *jstr = cJSON_Print(jobj);
             cJSON_Delete(jobj);
 
             //LOGI("__\n %s  \n___",jstr);
             bpg_dat = GenStrBPGData("RP", jstr);
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            
+            fromUpperLayer(bpg_dat);
 
             delete jstr;
             session_ACK = true;
@@ -1732,7 +1771,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             _scale = (int)*pscale;
 
             bpg_dat = GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
+            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)_scale};
 
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
@@ -1742,10 +1781,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             ImageDownSampling(dataSend_buff, *srcImg, iminfo.scale, sampler, 0);
 
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-            bpg_dat.callback = DatCH_BPG_acvImage_Send;
+            bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            
+            fromUpperLayer(bpg_dat);
           }
         }
         session_ACK = true;
@@ -1761,9 +1800,9 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         saveInspFailSnap = false;
         saveInspNASnap = false;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
-        cb->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
-        int frameCount = (int)cb->cameraFramesLeft;
-        LOGI("cb->cameraFramesLeft:%d frame_count:%p", cb->cameraFramesLeft, frame_count);
+        this->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
+        int frameCount = (int)this->cameraFramesLeft;
+        LOGI("this->cameraFramesLeft:%d frame_count:%p", this->cameraFramesLeft, frame_count);
 
         if (json == NULL)
         {
@@ -1772,14 +1811,14 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           break;
         }
 
-        cb->CI_pgID = dat->pgID;
+        this->CI_pgID = dat->pgID;
 
         char *deffile = (char *)JFetch(json, "deffile", cJSON_String);
         // if (deffile == NULL)
         // {
         // snprintf(err_str,sizeof(err_str),"No entry:'deffile' in it LINE:%04d",__LINE__);
         // LOGE("%s",err_str);
-        // cb->cameraFeedTrigger=false;
+        // this->cameraFeedTrigger=false;
 
         // camera->TriggerMode(1);
         // break;
@@ -1792,7 +1831,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
           LOGE("No entry:'deffile':%p OR 'definfo(json)':%p ", __LINE__, deffile, defInfo);
 
-          cb->cameraFramesLeft = 0;
+          this->cameraFramesLeft = 0;
 
           camera->TriggerMode(1);
           break;
@@ -1800,10 +1839,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         try
         {
-
-          DatCH_Data datCH_BPG =
-              BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
           char *jsonStr = NULL;
 
           if (defInfo != NULL)
@@ -1819,7 +1854,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             {
               snprintf(err_str, sizeof(err_str), "Cannot read defFile from:%s LINE:%04d", jsonStr, __LINE__);
               LOGE("%s", err_str);
-              cb->cameraFramesLeft = 0;
+              this->cameraFramesLeft = 0;
 
               break;
             }
@@ -1841,8 +1876,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           {
             bpg_dat = GenStrBPGData("DF", jsonStr);
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            
+            fromUpperLayer(bpg_dat);
           }
           free(jsonStr);
           //TODO: HACK: this sleep is to wait for the gap in between def config file arriving and inspection result arriving.
@@ -1868,11 +1903,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             doImgProcessThread = true;
           }
 
-          if (cb->cameraFramesLeft > 0)
+          if (this->cameraFramesLeft > 0)
           {
 
             MT_UNLOCK("SPACING LOCK");
-            while (cb->cameraFramesLeft > 0)
+            while (this->cameraFramesLeft > 0)
             {
               std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
@@ -1912,9 +1947,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             LOGE("%s", err_str);
           }
         }
-        DatCH_Data datCH_BPG =
-            BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
         acvImage *srcImg = NULL;
         if (imgSrcPath != NULL)
         {
@@ -1972,7 +2004,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             if (report != NULL)
             {
               cJSON *jobj = matchingEng.FeatureReport2Json(report);
-              AttachStaticInfo(jobj, cb);
+              AttachStaticInfo(jobj, this);
 
               char *jstr = cJSON_Print(jobj);
               cJSON_Delete(jobj);
@@ -1980,8 +2012,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
               //LOGI("__\n %s  \n___",jstr);
               bpg_dat = GenStrBPGData("SG", jstr); //SG report : signature360
               bpg_dat.pgID = dat->pgID;
-              datCH_BPG.data.p_BPG_data = &bpg_dat;
-              self->SendData(datCH_BPG);
+              
+              fromUpperLayer(bpg_dat);
 
               delete jstr;
             }
@@ -1990,8 +2022,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
               sprintf(tmp, "{}");
               bpg_dat = GenStrBPGData("SG", tmp);
               bpg_dat.pgID = dat->pgID;
-              datCH_BPG.data.p_BPG_data = &bpg_dat;
-              self->SendData(datCH_BPG);
+              
+              fromUpperLayer(bpg_dat);
             }
           }
           catch (std::invalid_argument iaex)
@@ -2022,7 +2054,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
           {
             //Down scale the calibrated cache image to make image transfer easier
             bpg_dat = GenStrBPGData("IM", NULL);
-            BPG_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
+            BPG_protocol_data_acvImage_Send_info iminfo = {img : &dataSend_buff, scale : (uint16_t)tar_down_samp_level};
             //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
 
             calib_bacpac.sampler->ignoreCalib(true);
@@ -2031,10 +2063,10 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             iminfo.fullHeight = cacheImage.GetHeight();
             iminfo.fullWidth = cacheImage.GetWidth();
             bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-            bpg_dat.callback = DatCH_BPG_acvImage_Send;
+            bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
             bpg_dat.pgID = dat->pgID;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            BPG_protocol_send(datCH_BPG);
+            
+            fromUpperLayer(bpg_dat);
           }
           calib_bacpac.sampler->ignoreCalib(false);
           session_ACK = true;
@@ -2045,10 +2077,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     }
     else if (checkTL("RC", dat)) //[R]e[C]onnect
     {
-
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       char *target = (char *)JFetch(json, "target", cJSON_String);
       if (target == NULL)
       {
@@ -2081,7 +2109,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         LOGV("DatCH_BPG1_0");
         this->camera = camera;
-        callbk_obj.camera = camera;
         calib_bacpac.cam = camera;
       }
       else if (strcmp(target, "camera_setting_refresh") == 0)
@@ -2092,15 +2119,11 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         LOGV("DatCH_BPG1_0");
         this->camera = camera;
-        callbk_obj.camera = camera;
         calib_bacpac.cam = camera;
       }
     }
     else if (checkTL("SC", dat)) //[S]pecial [C]MD
     {
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       cJSON *retObj = cJSON_CreateObject();
 
       char *cmd_type = JFetch_STRING(json, "type");
@@ -2256,18 +2279,13 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
       bpg_dat = GenStrBPGData("SR", jstr); //Special Return from cmd
       bpg_dat.pgID = dat->pgID;
-      datCH_BPG.data.p_BPG_data = &bpg_dat;
-      self->SendData(datCH_BPG);
-
+      
+      fromUpperLayer(bpg_dat);
       delete jstr;
       session_ACK = true;
     }
     else if (checkTL("ST", dat)) //[S]e[T]ting
     {
-
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       void *target;
       int type = getDataFromJson(json, "DoImageTransfer", &target);
       if (type == cJSON_False)
@@ -2295,8 +2313,7 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
 
         bpg_dat = GenStrBPGData("DT", jstr); //Special Return from cmd
         bpg_dat.pgID = dat->pgID;
-        datCH_BPG.data.p_BPG_data = &bpg_dat;
-        self->SendData(datCH_BPG);
+        fromUpperLayer(bpg_dat);
         delete jstr;
       }
       cJSON *ImTranseSetup = JFetch_OBJECT(json, "ImageTransferSetup");
@@ -2399,9 +2416,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     }
     else if (checkTL("PR", dat)) //for external application
     {
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       void *target;
       char *IP = JFetch_STRING(json, "ip");
       double *port_number = JFetch_NUMBER(json, "port");
@@ -2436,10 +2450,6 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
     }
     else if (checkTL("PD", dat)) //Peripheral device
     {
-
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
       cJSON *msg_obj = JFetch_OBJECT(json, "msg");
       if (msg_obj && mift)
       {
@@ -2474,8 +2484,8 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
             sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", fd);
             bpg_dat = GenStrBPGData("PD", tmp);
             bpg_dat.pgID = -1;
-            datCH_BPG.data.p_BPG_data = &bpg_dat;
-            self->SendData(datCH_BPG);
+            
+            fromUpperLayer(bpg_dat);
           }
           catch (int errN)
           {
@@ -2494,64 +2504,23 @@ int DatCH_CallBack_BPG::callback(DatCH_Interface *from, DatCH_Data data, void *c
         }
       }
     }
-    DatCH_Data datCH_BPG =
-        BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
     sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);
     bpg_dat = GenStrBPGData("SS", tmp);
     bpg_dat.pgID = dat->pgID;
-    datCH_BPG.data.p_BPG_data = &bpg_dat;
-    self->SendData(datCH_BPG);
 
+    fromUpperLayer(bpg_dat);
     MT_UNLOCK("");
     cJSON_Delete(json);
   }
-  break;
+  while(0);
 
-  default:
-    LOGI("type:%d, UNKNOWN type", data.type);
-  }
-
-  if (doExit)
-  {
-    exit(0);
-  }
+  // if (doExit)
+  // {
+  //   exit(0);
+  // }
 
   return 0;
-}
-
-void zlibDeflate_testX(acvImage *img, acvImage *buff, IMG_COMPRESS_FUNC collapse_func, IMG_COMPRESS_FUNC uncollapse_func)
-{
-
-  int tLen = img->GetHeight() * img->GetWidth();
-  int imgc_Len = 3 * img->GetHeight() * img->GetWidth();
-
-  if (collapse_func)
-  {
-    imgc_Len = collapse_func(img->CVector[0], 3 * img->GetHeight() * img->GetWidth(),
-                             img->CVector[0], 3 * img->GetHeight() * img->GetWidth());
-  }
-
-  size_t compresSize = 3 * buff->GetHeight() * buff->GetWidth();
-
-  compresSize = zlibDeflate(buff->CVector[0], 3 * buff->GetHeight() * buff->GetWidth(),
-                            img->CVector[0], imgc_Len, 5);
-
-  printf("Compressed size is: %lu/%lu:%.5f\n", compresSize, imgc_Len, (float)compresSize / (imgc_Len));
-
-  size_t unCompresSize = zlibInflate(img->CVector[0], 3 * img->GetHeight() * img->GetWidth(),
-                                     buff->CVector[0], compresSize);
-  printf("Uncompressed size is: %lu\n", unCompresSize);
-
-  imgc_Len = unCompresSize;
-  if (uncollapse_func)
-  {
-    imgc_Len = uncollapse_func(img->CVector[0], 3 * img->GetHeight() * img->GetWidth(),
-                               img->CVector[0], unCompresSize);
-  }
-
-  printf("imgc_Len size is: %lu\n", imgc_Len);
 }
 
 int str_ends_with(const char *str, const char *suffix)
@@ -2775,7 +2744,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   }
   pframeT = t;
   LOGE("=============== frameInterval:%fms \n", interval);
-  LOGI("cb->cameraFramesLeft:%d", cb->cameraFramesLeft);
+  LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
 
@@ -2789,7 +2758,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 
   
 
-  image_pipe_info *headImgPipe = cb->resPool.fetchResrc_blocking();
+  image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc_blocking();
   if (headImgPipe == NULL)
   {
     LOGE("HEAD IMG pipe is NULL");
@@ -2811,14 +2780,14 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   if (doImgProcessThread)
   {
 
-    LOGE("cb->resPool.rest_size:: %d", cb->resPool.rest_size());
+    LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
 
     if (inspQueue.push_blocking(headImgPipe) == false)
     {
       LOGE("NO resource can be used.....");
       // imagePipeBuffer.clear();
 
-      if (cb->mift)
+      if (bpg_pi.mift)
       {
         LOGI("mift is here too!!");
         char buffx[150];
@@ -2829,7 +2798,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
                           "\"idx\":%d"
                           "}",
                           -10001, 1);
-        cb->mift->send_data((uint8_t *)buffx, len);
+        bpg_pi.mift->send_data((uint8_t *)buffx, len);
       }
     }
   }
@@ -2845,7 +2814,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     bool doPassDown = false;
     ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
     if (!doPassDown)
-      cb->resPool.retResrc(headImgPipe);
+      bpg_pi.resPool.retResrc(headImgPipe);
   }
   return CameraLayer::ACK;
 }
@@ -2853,7 +2822,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
 {
 
-  if (cb->mift)
+  if (bpg_pi.mift)
   {
     LOGI("mift is here!!");
     char buffx[150];
@@ -2865,7 +2834,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
                       "\"time_100us\":%lu"
                       "}",
                       uInspStatus, 1, count, timeStamp);
-    cb->mift->send_data((uint8_t *)buffx, len);
+    bpg_pi.mift->send_data((uint8_t *)buffx, len);
     count = (count + 1) & 0xFF;
     LOGI("%s", buffx);
   }
@@ -2874,14 +2843,14 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL)
 {
   static int frameActionID = 0;
-  if (cb->cameraFramesLeft == 0)
+  if (bpg_pi.cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
     MT_UNLOCK("");
     return;
   }
-  if (cb->cameraFramesLeft > 0)
-    cb->cameraFramesLeft--;
+  if (bpg_pi.cameraFramesLeft > 0)
+    bpg_pi.cameraFramesLeft--;
 
   {
 
@@ -2891,9 +2860,9 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       LOGE("try lock");
       counter++;
       //Still locked
-      if (counter > 1 || cb->cameraFramesLeft == 0) //If the flag is closed then, exit
+      if (counter > 1 || bpg_pi.cameraFramesLeft == 0) //If the flag is closed then, exit
       {
-        LOGE("cb->cameraFramesLeft is off return..");
+        LOGE("bpg_pi.cameraFramesLeft is off return..");
         return;
       }
     }
@@ -2907,7 +2876,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
 
-  BPG_data bpg_dat;
+  BPG_protocol_data bpg_dat;
 
   do
   {
@@ -2919,21 +2888,18 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     }
 
     char tmp[100];
-    DatCH_Data datCH_BPG =
-        BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
     sprintf(tmp, "{\"start\":true}");
-    bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
-    bpg_dat.pgID = cb->CI_pgID;
-    datCH_BPG.data.p_BPG_data = &bpg_dat;
-    BPG_protocol_send(datCH_BPG);
+    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
+    bpg_dat.pgID = bpg_pi.CI_pgID;
+    
+    bpg_pi.fromUpperLayer(bpg_dat);
 
     try
     {
       // LOGI(">>>>");
 
       cJSON *jobj = imgPipe->actInfo.report_json;
-      AttachStaticInfo(jobj, cb);
+      AttachStaticInfo(jobj, &bpg_pi);
       // double expTime = NAN;
       // if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
       // {
@@ -2942,10 +2908,10 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       char *jstr = cJSON_Print(jobj);
 
       // LOGI("__\n %s  \n___",jstr);
-      bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("RP", jstr);
-      bpg_dat.pgID = cb->CI_pgID;
-      datCH_BPG.data.p_BPG_data = &bpg_dat;
-      BPG_protocol_send(datCH_BPG);
+      bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("RP", jstr);
+      bpg_dat.pgID = bpg_pi.CI_pgID;
+      
+      bpg_pi.fromUpperLayer(bpg_dat);
 
       delete jstr;
     }
@@ -2958,7 +2924,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     clock_t img_t = clock();
     static acvImage test1_buff;
 
-    BPG_data_acvImage_Send_info iminfo;
+    BPG_protocol_data_acvImage_Send_info iminfo;
     bool sendJpg = false;
     if (sendJpg && mjpegS && DoImageTransfer && skipImageTransfer == false)
     {
@@ -2967,7 +2933,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       if (sendImg == NULL)
       {
         sendImg = &test1_buff;
-        iminfo = (BPG_data_acvImage_Send_info){img : &test1_buff, scale : 2};
+        iminfo = (BPG_protocol_data_acvImage_Send_info){img : &test1_buff, scale : 2};
 
         iminfo.offsetX = (0 / iminfo.scale) * iminfo.scale;
         iminfo.offsetY = (0 / iminfo.scale) * iminfo.scale;
@@ -3022,7 +2988,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
       {
 
-        iminfo = (BPG_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)downSampLevel};
+        iminfo = (BPG_protocol_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)downSampLevel};
         if (iminfo.scale == 0)
         {
           iminfo.scale = 1;
@@ -3043,29 +3009,29 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
       }
 
-      bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("IM", NULL);
-      //BPG_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
+      bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("IM", NULL);
+      //BPG_protocol_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
 
       // LOGI(">>>>");
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
-      bpg_dat.callback = DatCH_BPG_acvImage_Send;
-      bpg_dat.pgID = cb->CI_pgID;
-      datCH_BPG.data.p_BPG_data = &bpg_dat;
-      BPG_protocol_send(datCH_BPG);
+      bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
+      bpg_dat.pgID = bpg_pi.CI_pgID;
+      
+      bpg_pi.fromUpperLayer(bpg_dat);
       LOGI("img transfer(DL:%d) %fms \n", downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
     }
 
-    sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (cb->cameraFramesLeft) ? "true" : "false", frameActionID);
-    bpg_dat = DatCH_CallBack_BPG::GenStrBPGData("SS", tmp);
-    bpg_dat.pgID = cb->CI_pgID;
-    datCH_BPG.data.p_BPG_data = &bpg_dat;
-    BPG_protocol_send(datCH_BPG);
+    sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
+    bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
+    bpg_dat.pgID = bpg_pi.CI_pgID;
+    
+    bpg_pi.fromUpperLayer(bpg_dat);
 
     //SaveIMGFile("data/MVCamX.bmp",&test1_buff);
     //exit(0);
-    if (cb->cameraFramesLeft)
+    if (bpg_pi.cameraFramesLeft)
     {
-      LOGV("cb->cameraFramesLeft:%d Get Next frame...", cb->cameraFramesLeft);
+      LOGV("bpg_pi.cameraFramesLeft:%d Get Next frame...", bpg_pi.cameraFramesLeft);
       //std::this_thread::sleep_for(std::chrono::milliseconds(100));
       //cl_GMV.Trigger();
     }
@@ -3186,7 +3152,7 @@ void InspSnapSaveThread(bool *terminationflag)
       cJSON_Delete(headImgPipe->actInfo.report_json);
       headImgPipe->actInfo.report_json = NULL;
 
-      cb->resPool.retResrc(headImgPipe);
+      bpg_pi.resPool.retResrc(headImgPipe);
     }
   }
 }
@@ -3251,7 +3217,7 @@ void ImgPipeActionThread(bool *terminationflag)
 
         cJSON_Delete(headImgPipe->actInfo.report_json);
         headImgPipe->actInfo.report_json = NULL;
-        cb->resPool.retResrc(headImgPipe);
+        bpg_pi.resPool.retResrc(headImgPipe);
       }
     }
   }
@@ -3264,8 +3230,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
        inspQueue.size(), inspQueue.capacity(),
        actionQueue.size(), actionQueue.capacity(),
        inspSnapQueue.size(), inspSnapQueue.capacity(),
-       cb->resPool.rest_size());
-  if (cb->cameraFramesLeft == 0)
+       bpg_pi.resPool.rest_size());
+  if (bpg_pi.cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
     MT_UNLOCK("");
@@ -3379,7 +3345,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       if (imgPipe->actInfo.report_json)
         cJSON_Delete(imgPipe->actInfo.report_json);
       imgPipe->actInfo.report_json = NULL;
-      cb->resPool.retResrc(imgPipe);
+      bpg_pi.resPool.retResrc(imgPipe);
     }
   }
   if (ret_pipe_pass_down)
@@ -3413,124 +3379,81 @@ void ImgPipeProcessThread(bool *terminationflag)
       bool doPassDown = false;
       ImgPipeProcessCenter_imp(headImgPipe, &doPassDown);
       if (!doPassDown)
-        cb->resPool.retResrc(headImgPipe);
+        bpg_pi.resPool.retResrc(headImgPipe);
     }
   }
 }
 
-int DatCH_CallBack_WSBPG::DatCH_WS_callback(DatCH_Interface *ch_interface, DatCH_Data data, void *callback_param)
+
+int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 {
-  //first stage of incoming data
-  //and first stage of outcoming data if needed
-  if (data.type != DatCH_Data::DataType_websock_data)
-    return -1;
-  DatCH_WebSocket *ws = (DatCH_WebSocket *)callback_param;
-  websock_data ws_data = *data.data.p_websocket;
-  // LOGI("SEND>>>>>>..websock_data..\n");
-  if ((BPG_protocol->MatchPeer(NULL) || BPG_protocol->MatchPeer(ws_data.peer)))
-  {
-    // LOGI("SEND>>>>>>..MatchPeer..\n");
+  // LOGI(">>>>data.type:%d",data.type);
+  // printf("%s:BPG_Link_Interface_WebSocket type:%d sock:%d\n",__func__,data.type,data.peer->getSocket());
 
-    BPG_protocol->SendData(data);
-    //BPG_protocol_send(data); // WS [here]-(prot)> App
+
+
+  switch(data.type)
+  {
+    case websock_data::CLOSING:
+    case websock_data::ERROR_EV: 
+    {
+      if (data.peer == default_peer)
+        default_peer = NULL;
+
+
+      LOGI("CLOSING peer %s:%d\n",
+            inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
+      bpg_pi.cameraFramesLeft = 0;
+      bpg_pi.camera->TriggerMode(1);
+      bpg_pi.delete_MicroInsp_FType();
+      bpg_pi.delete_Ext_Util_API();
+    }
+    return 0;
+
+    case websock_data::HAND_SHAKING_FINISHED:
+    {
+      if (default_peer != NULL && default_peer != data.peer)
+      {
+        disconnect(data.peer->getSocket());
+        return 1;
+      }
+      
+      LOGI("OPENING peer %s:%d  sock:%d\n",
+           inet_ntoa(data.peer->getAddr().sin_addr),
+           ntohs(data.peer->getAddr().sin_port), data.peer->getSocket());
+
+      if (default_peer == NULL)
+      {
+        default_peer = data.peer;
+        
+        BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", NULL); //[F]older [S]truct
+        bpg_dat.pgID = 0xFF;
+        bpg_pi.fromUpperLayer(bpg_dat);
+      }
+    }
+    return 0;
+
+    case websock_data::DATA_FRAME:
+    {
+      data.data.data_frame.raw[data.data.data_frame.rawL] = '\0';
+      // LOGI(">>>>data raw:%s", data.data.data_frame.raw);
+      if (bpg_prot)
+      {
+        toUpperLayer(data.data.data_frame.raw, data.data.data_frame.rawL, data.data.data_frame.isFinal);
+      }
+      else
+      {
+        return -1;
+      }
+    }
+    return 0;
+
   }
 
-  switch (ws_data.type)
-  {
-  case websock_data::eventType::OPENING:
-    printf("OPENING peer %s:%d  sock:%d\n",
-           inet_ntoa(ws_data.peer->getAddr().sin_addr),
-           ntohs(ws_data.peer->getAddr().sin_port), ws_data.peer->getSocket());
-
-    break;
-
-  case websock_data::eventType::HAND_SHAKING_FINISHED:
-
-    LOGI("HAND_SHAKING: host:%s orig:%s key:%s res:%s\n",
-         ws_data.data.hs_frame.host,
-         ws_data.data.hs_frame.origin,
-         ws_data.data.hs_frame.key,
-         ws_data.data.hs_frame.resource);
-    if (ws->default_peer == NULL)
-    {
-      ws->default_peer = ws_data.peer;
-    }
-    else
-    {
-    }
-    if (ws->default_peer == ws_data.peer)
-    {
-      LOGI("SEND>>>>>>..HAND_SHAKING_FINISHED..\n");
-      DatCH_Data datCH_BPG =
-          BPG_protocol->GenMsgType(DatCH_Data::DataType_BPG);
-
-      LOGI("SEND>>>>>>..GenMsgType..\n");
-      BPG_data BPG_dat;
-      datCH_BPG.data.p_BPG_data = &BPG_dat;
-      BPG_dat.tl[0] = 'H';
-      BPG_dat.tl[1] = 'R';
-      char tmp[] = "{\"AA\":5}";
-      BPG_dat.size = sizeof(tmp) - 1;
-      BPG_dat.dat_raw = (uint8_t *)tmp;
-      //App [here]-(prot)> WS
-      BPG_protocol_send(datCH_BPG);
-    }
-    else
-    {
-      ws->disconnect(ws_data.peer->getSocket());
-    }
-    break;
-  case websock_data::eventType::DATA_FRAME:
-
-    break;
-
-  case websock_data::eventType::CLOSING:
-
-    printf("CLOSING peer %s:%d\n",
-           inet_ntoa(ws_data.peer->getAddr().sin_addr), ntohs(ws_data.peer->getAddr().sin_port));
-    cb->cameraFramesLeft = 0;
-    camera->TriggerMode(1);
-    cb->delete_MicroInsp_FType();
-    cb->delete_Ext_Util_API();
-
-    break;
-  default:
-    return -1;
-  }
-  return 0;
+  return -3;
 }
-int DatCH_CallBack_WSBPG::callback(DatCH_Interface *from, DatCH_Data data, void *callback_param)
-{
 
-  // LOGI("DatCH_CallBack_WSBPG:_______type:%d________", data.type);
-  int ret_val = 0;
-  switch (data.type)
-  {
-  case DatCH_Data::DataType_error:
-  {
-    LOGE("error code:%d..........", data.data.error.code);
-  }
-  break;
-  case DatCH_Data::DataType_BMP_Read:
-  {
 
-    //acvImage *test1 = data.data.BMP_Read.img;
-
-    //ImgInspection(matchingEng,test1,&test1_buff,1,"data/target.json");
-  }
-  break;
-
-  case DatCH_Data::DataType_websock_data:
-    ret_val = DatCH_WS_callback(from, data, callback_param);
-    break;
-
-  default:
-
-    LOGI("type:%d, UNKNOWN type", data.type);
-  }
-
-  return ret_val;
-}
 
 #ifdef FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK
 CameraLayer_GIGE_MindVision *initCamera_MindVision(std::string targetIdContains = "")
@@ -3816,7 +3739,9 @@ int mainLoop(bool realCamera = false)
     {
       int port = 4090;
       LOGI("Try to open websocket... port:%d\n", port);
-      websocket = new DatCH_WebSocket(port);
+      ifwebsocket=new m_BPG_Link_Interface_WebSocket(port);
+
+      //
       pass = true;
     }
     catch (exception &e)
@@ -3855,12 +3780,9 @@ int mainLoop(bool realCamera = false)
     CameraSettingFromFile(camera, "data/");
 
     LOGI("CameraSettingFromFile OK");
-    cb->camera = camera;
-    callbk_obj.camera = camera;
-
-    BPG_protocol->SetEventCallBack(cb, NULL);
+    bpg_pi.camera = camera;
   }
-  LOGI("Camera:%p", cb->camera);
+  LOGI("Camera:%p", bpg_pi.camera);
 
   {
     cJSON *json_mac_setting = ReadJson("data/machine_setting.json");
@@ -3884,7 +3806,8 @@ int mainLoop(bool realCamera = false)
   //   LOGI(">>>");
   // }
 
-  websocket->SetEventCallBack(&callbk_obj, websocket);
+  ifwebsocket->setUpperLayer(&bpg_pi);
+  bpg_pi.setLink(ifwebsocket);
   // mjpegS = new MJPEG_Streamer2(7603);
   LOGI("SetEventCallBack is set...");
 
@@ -3892,24 +3815,6 @@ int mainLoop(bool realCamera = false)
   while (1)
   {
 
-    int maxfd = websocket->findMaxFd();
-    int ms_maxfd = maxfd;
-    // int ms_maxfd = mjpegS->GetMaxfd();
-    if (maxfd < ms_maxfd)
-    {
-      maxfd = ms_maxfd;
-    }
-
-    fd_set fdset = websocket->get_fd_set();
-
-
-    mjpegS->setFdset(&fdset);
-
-    if (select(maxfd + 1, &fdset, NULL, NULL, NULL) == -1)
-    {
-      perror("select");
-      exit(4);
-    }
 
     // if(clientSMEM_SEND_CH)
     // {
@@ -3918,8 +3823,18 @@ int mainLoop(bool realCamera = false)
     //   clientSMEM_SEND_CH->s_wait_remote();
     // }
     // LOGI("GO RECV");
-    websocket->runLoop(&fdset, NULL);
     // mjpegS->fdEventFetch(&fdset);
+
+    // LOGI("WAIT..");
+    fd_set fd_s = ifwebsocket->get_fd_set();
+    int maxfd = ifwebsocket->findMaxFd();
+    if (select(maxfd + 1, &fd_s, NULL, NULL, NULL) == -1)
+    {
+      perror("select");
+      exit(4);
+    }
+
+    ifwebsocket->runLoop(&fd_s, NULL);
   }
 
   return 0;
@@ -3931,7 +3846,7 @@ void sigroutine(int dunno)
   case SIGINT:
     LOGE("Get a signal -- SIGINT \n");
     LOGE("Tear down websocket.... \n");
-    delete websocket;
+    delete ifwebsocket;
     
     terminationFlag = true;
     LOGE("SIGINT exit.... \n");
@@ -3964,7 +3879,7 @@ int simpleTest(char *imgName, char *defName)
   if (report != NULL)
   {
     cJSON *jobj = matchingEng.FeatureReport2Json(report);
-    AttachStaticInfo(jobj, cb);
+    AttachStaticInfo(jobj, &bpg_pi);
     char *jstr = cJSON_Print(jobj);
     cJSON_Delete(jobj);
     LOGI("...\n%s\n...", jstr);
@@ -4100,7 +4015,7 @@ int testCode()
     if (report != NULL)
     {
       cJSON *jobj = matchingEng.FeatureReport2Json(report);
-      AttachStaticInfo(jobj, cb);
+      AttachStaticInfo(jobj, &bpg_pi);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char *jstr = cJSON_Print(jobj);
       cJSON_Delete(jobj);
@@ -4237,7 +4152,7 @@ int cp_main(int argc, char **argv)
     if (report != NULL)
     {
       cJSON *jobj = matchingEng.FeatureReport2Json(report);
-      AttachStaticInfo(jobj, cb);
+      AttachStaticInfo(jobj, &bpg_pi);
       //cJSON_AddNumberToObject(jobj, "session_id", session_id);
       char *jstr = cJSON_Print(jobj);
       cJSON_Delete(jobj);
