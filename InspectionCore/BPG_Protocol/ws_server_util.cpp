@@ -193,6 +193,7 @@ int ws_server::runLoop(fd_set *read_fds, struct timeval *tv)
          inet_ntoa(conn->getAddr().sin_addr), ntohs(conn->getAddr().sin_port), conn->getSocket());
 
     conn->setCallBack(this);
+    conn->triggerEV_OPENING();
 
     FD_SET(NewSock, &evtSet);
     if (NewSock > fdmax)
@@ -347,7 +348,13 @@ void ws_conn::setCallBack(ws_protocol_callback *cb)
 {
   this->cb = cb;
 }
-
+void ws_conn::triggerEV_OPENING()
+{
+  if (cb != NULL)
+  {
+    cb->ws_callback(genCallbackData(websock_data::eventType::OPENING));
+  }
+}
 void ws_conn::RESET()
 {
   cb = NULL;
@@ -521,7 +528,6 @@ int ws_conn::doNormalRecv(void *buff, size_t buffLen, size_t *ret_restLen, enum 
             {
               printf("%02x ",data[i]);
             }*/
-      printf("CONT dataSize:%d\n", dataSize);
 
       event_WsRECV(data, dataSize, frameType, isFinal);
     }
@@ -585,7 +591,6 @@ int ws_conn::runLoop()
   }
   accBufDataLen += readed;
 
-  //printf("readed:%d\n",readed);
 
   /*if(accBufDataLen==recvBuf.size())
     {
@@ -617,7 +622,7 @@ int ws_conn::runLoop()
 
     if (cb != NULL)
     {
-      cb->ws_callback(genCallbackData(websock_data::eventType::OPENING));
+      cb->ws_callback(genCallbackData(websock_data::eventType::MSG_1st));
     }
     struct handshake hs;
     if (doHandShake(&(recvBuf[0]), readed, &hs) != 0)

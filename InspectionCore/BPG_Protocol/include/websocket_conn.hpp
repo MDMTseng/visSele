@@ -31,6 +31,7 @@ typedef struct websock_data
   enum eventType
   {
     OPENING,
+    MSG_1st,
     HAND_SHAKING,
     HAND_SHAKING_FINISHED,
     TCP_CONNECTION_FINISHED,
@@ -88,7 +89,7 @@ class ws_conn_data
 {
 
 protected:
-  const int recvBufSizeInc = 1024;
+  const int recvBufSizeInc = 1024*10;
   int ws_state;
   size_t accBufDataLen;
   int sock;

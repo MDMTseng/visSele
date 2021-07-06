@@ -3394,13 +3394,19 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
 
   switch(data.type)
   {
+    case websock_data::OPENING:
+      if (default_peer != NULL && default_peer != data.peer)
+      {
+        disconnect(data.peer->getSocket());
+        return 1;
+      }
+    break;  
     case websock_data::CLOSING:
     case websock_data::ERROR_EV: 
     {
       if (data.peer == default_peer)
+      {
         default_peer = NULL;
-
-
       LOGI("CLOSING peer %s:%d\n",
             inet_ntoa(data.peer->getAddr().sin_addr), ntohs(data.peer->getAddr().sin_port));
       bpg_pi.cameraFramesLeft = 0;
@@ -3408,15 +3414,13 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       bpg_pi.delete_MicroInsp_FType();
       bpg_pi.delete_Ext_Util_API();
     }
+
+
+    }
     return 0;
 
     case websock_data::HAND_SHAKING_FINISHED:
     {
-      if (default_peer != NULL && default_peer != data.peer)
-      {
-        disconnect(data.peer->getSocket());
-        return 1;
-      }
       
       LOGI("OPENING peer %s:%d  sock:%d\n",
            inet_ntoa(data.peer->getAddr().sin_addr),

@@ -108,14 +108,15 @@ static BPG_protocol_data convert(uint8_t *dat, size_t len)
       ((uint32_t)dat[7] << 8) |
       (uint32_t)dat[8];
   // bpgdat.size= len-9;
-  if (bpgdat.size + 9 != len)
-  {
+  
+  // if (bpgdat.size + 9 != len)
+  // {
 
-    LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, len);
+  //   LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, len);
 
-    BPG_protocol_data errDat = {0}; //TODO
-    return errDat;
-  }
+  //   BPG_protocol_data errDat = {0}; //TODO
+  //   return errDat;
+  // }
   bpgdat.tl[0] = dat[0];
   bpgdat.tl[1] = dat[1];
   bpgdat.prop = dat[2];
@@ -125,32 +126,65 @@ static BPG_protocol_data convert(uint8_t *dat, size_t len)
   return bpgdat;
 }
 
+int BPG_Protocol_Interface::_fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
+{  
+  if (cached_data_recv.size()>=getHeaderSize())//might be a complete packet
+  {
+    BPG_protocol_data bpgdat = convert(&(cached_data_recv[0]), cached_data_recv.size());
+
+    int packetOffset=getHeaderSize()+bpgdat.size;
+    if(cached_data_recv.size()<packetOffset)//the packet content is not complete
+    {
+      return 1;
+    }
+    LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, cached_data_recv.size());
+    int ret = toUpperLayer(bpgdat);
+    
+    bool shiftRest=true;
+    if(shiftRest)
+    {
+      int restBufferSize=cached_data_recv.size()-packetOffset;
+      for(int i=0;i<restBufferSize;i++)//shift rest buffer to position 0 
+      {
+        cached_data_recv[i]=cached_data_recv[i+packetOffset];
+      }
+      
+      cached_data_recv.resize(restBufferSize);
+      if(cached_data_recv.size()>0)//Still have dat in buffer, try decode
+      {
+        ret= _fromLinkLayer(dat, len, FIN);//assume the pakcet stacking would not be deep
+      }
+
+    }
+    else
+    {
+      cached_data_recv.resize(0);
+    }
+
+    return ret;
+  }
+  return 1;
+}
+
 //st1 ok
 int BPG_Protocol_Interface::fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
 { //assemble to BPG_protocol_data
 
-  if (FIN == true && cached_data_recv.size() == 0)
-  {
-    BPG_protocol_data bpgdat = convert(dat, len);
-    if (bpgdat.tl[0] == 0)
-    {
-      return -1;
-    }
-    return toUpperLayer(bpgdat);
-  }
+  LOGI("<<<len:%d  FIN:%d<<<<<", len,FIN);
+  // if (FIN == true && cached_data_recv.size() == 0)
+  // {
+  //   BPG_protocol_data bpgdat = convert(dat, len);
+  //   LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, len);
+    
+  //   return toUpperLayer(bpgdat);
+  // }
 
+  //Just accumulate
   int headIdx = cached_data_recv.size();
   cached_data_recv.resize(cached_data_recv.size() + len);
   memcpy(&(cached_data_recv[headIdx]), dat, len);
 
-  if (FIN == true)
-  {
-    BPG_protocol_data bpgdat = convert(&(cached_data_recv[0]), cached_data_recv.size());
-    int ret = toUpperLayer(bpgdat);
-    cached_data_recv.resize(0);
-    return ret;
-  }
-  return 1;
+  return _fromLinkLayer(dat, len, FIN);//kick event
 }
 
 //st1 ok

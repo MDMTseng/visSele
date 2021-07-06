@@ -27,6 +27,8 @@ protected:
   vector<uint8_t> cached_data_recv;
   vector<uint8_t> cached_data_send;
   BPG_Link_Interface *linkCH;
+  
+  int _fromLinkLayer(uint8_t *dat, size_t len, bool FIN);
 public:
   static int getHeaderSize();
   static int headerSetup(uint8_t *buff, size_t len, BPG_protocol_data bpg_dat);

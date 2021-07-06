@@ -36,7 +36,7 @@ public:
 
   static int strcpy_m(char *dst, int dstMaxSize, char *src);
   int doHandShake(void *buff, ssize_t buffLen, struct handshake *p_hs);
-
+  void triggerEV_OPENING();
   int doClosing();
 
   int event_WsRECV(uint8_t *data, size_t dataSize,
