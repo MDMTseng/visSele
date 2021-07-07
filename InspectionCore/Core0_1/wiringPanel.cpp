@@ -3162,6 +3162,7 @@ void ImgPipeActionThread(bool *terminationflag)
   using Ms = std::chrono::milliseconds;
   int delayStartCounter = 10000;
   bool imgSendState=true;
+  static int forceImageSendCounter=20;
   while (terminationflag && *terminationflag == false)
   {
 
@@ -3209,6 +3210,20 @@ void ImgPipeActionThread(bool *terminationflag)
           imgSendState=false;
       }
 
+      if(imgSendState==false)
+      {
+        forceImageSendCounter++;
+        if(forceImageSendCounter>20)// Imge send skips too much, force it to send 
+        {
+          imgSendState=true;
+        }
+      }
+      
+      if(imgSendState==true)
+      {
+        forceImageSendCounter=0;
+      }
+      // imgSendState=true;
       InspResultAction(headImgPipe, false, !imgSendState , saveToSnap, &doPassDown);
 
       //delayStartCounter=10000;

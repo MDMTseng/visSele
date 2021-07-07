@@ -63,7 +63,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       }
       
       // img.ReSize(newW,newH);
-      acv_XY rcenter={X:(float)(newW/2),Y:(float)(newH/2)};
+      acv_XY rcenter={.X=(float)(newW/2),.Y=(float)(newH/2)};
 
       if(rotate!=0)
       {
@@ -94,7 +94,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           }
         }
       }
-      else
+      else if(1)
       {
         
         // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
@@ -128,6 +128,11 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
           }
         }
+      }
+      else
+      {
+        // acvCloneImage(&img_load,&img,-1);
+        memcpy(imgBuffer,img_load.CVector[0],newH*newW*channelCount);
       }
       
 
