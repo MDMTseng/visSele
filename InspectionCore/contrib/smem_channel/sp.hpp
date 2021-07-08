@@ -41,7 +41,7 @@ struct ShareMemoryInfo
 // sem_t *sem_open(const char *name, int oflag);
 int createSharedMemory(std::string name,size_t maxSize,ShareMemoryInfo *ret_info);
 int connSharedMemory(std::string name,size_t maxSize,ShareMemoryInfo *ret_info);
-bool deleteSharedMemory(ShareMemoryInfo *info);
+bool deleteSharedMemory(ShareMemoryInfo info);
 
 
 SEM_HDL createSemaphore(std::string name);

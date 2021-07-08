@@ -96,8 +96,8 @@ int connSharedMemory(std::string name,size_t maxSize,ShareMemoryInfo *ret_info)
   ret_info->name=name;
 	return 0;
 }
-bool deleteSharedMemory(ShareMemoryInfo *info)
+bool deleteSharedMemory(ShareMemoryInfo info)
 {
 	
-	return shm_unlink(info->name.c_str());
+	return shm_unlink(info.name.c_str());
 }
