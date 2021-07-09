@@ -9,13 +9,37 @@ const ipc = require('electron').ipcRenderer
 try {
   require('electron-reloader')(module)
 } catch (_) {}
-let buffer = new Uint8Array(8);
-buffer[0]=1;
-ipc.send('r2m',buffer)
+
+
+
+
+// if(false){
+//   let buffer = new Uint8Array(4*500*10000/(Math.pow(1,2)));
+//   buffer[0]=1;
+  
+  
+//   setTimeout(()=>{
+  
+//     for(let i=0;i<100;i++)
+//     {
+//       ipc.send('r2m',buffer)
+//     }
+//   },3000);
+
+// }
 // buffer[0]=2;
 
 
+let preTime=Date.now();
 
 ipc.on('m2r', function (event, arg) {
-  console.log('m2r',arg)
+
+
+  let curTime=Date.now();
+
+  // console.log('m2r',arg)
+  // console.log('m2r',curTime)
+  
+  console.log("time_ms:",curTime-preTime)
+  preTime=curTime;
 })

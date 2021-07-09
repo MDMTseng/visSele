@@ -5,43 +5,33 @@ const path = require('path')
 const WebSocket = require('ws');
 let mainWindow = undefined;
 
+let preTime=Date.now();
 ipc.on('r2m', function (event, arg) {
-    console.log("r2m>",arg)
+    // console.log("r2m>",arg)
     // event.sender.send('m2r',arg)
-    mainWindow.webContents.send('m2r',arg);
+  let curTime=Date.now();
+
+  console.log("time_ms:",curTime-preTime)
+  // mainWindow.webContents.send('m2r',arg);
+  
+  preTime=curTime;
 })
 
 
-const wss = new WebSocket.Server({ port: 9714 });
 
-wss.on('connection', function connection(ws) {
-  ws.on('message', function incoming(message) {
-    let p = JSON.parse(message);
-    let retData={
-      type:"NAK",
-      req_id:p.req_id,
-    }
-    if(p.type=="showOpenDialog")
-    {
-      console.log('cmd: %s', p);
-      dialog.showOpenDialog(p.option).then(function (response) {
-        if (!response.canceled) {
-          retData.type="ACK";
-          retData.filePaths=response.filePaths;
-        }
-        ws.send(JSON.stringify(retData));
-      }).catch((err)=>{
-        ws.send(JSON.stringify(retData));
-      })
-    }
-    else
-    {
-      // console.log('received: %s', message);
-      ws.send(JSON.stringify(retData));
-    }
-  });
-});
+// if(true){
+//   let buffer = new Uint8Array(4*500*10000/(Math.pow(2,2)));
+//   buffer[0]=1;
+  
+  
+//   setTimeout(()=>{
+//     for(let i=0;i<100;i++)
+//     {
+//       mainWindow.webContents.send('m2r',buffer);
+//     }
+//   },3000);
 
+// }
 
 
 
@@ -68,6 +58,7 @@ function createWindow () {
   mainWindow.on('closed', () => {
     app.quit();
   });
+
 }
 
 // This method will be called when Electron has finished
@@ -92,3 +83,35 @@ app.on('window-all-closed', function () {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
+
+
+
+// const wss = new WebSocket.Server({ port: 9714 });
+
+// wss.on('connection', function connection(ws) {
+//   ws.on('message', function incoming(message) {
+//     let p = JSON.parse(message);
+//     let retData={
+//       type:"NAK",
+//       req_id:p.req_id,
+//     }
+//     if(p.type=="showOpenDialog")
+//     {
+//       console.log('cmd: %s', p);
+//       dialog.showOpenDialog(p.option).then(function (response) {
+//         if (!response.canceled) {
+//           retData.type="ACK";
+//           retData.filePaths=response.filePaths;
+//         }
+//         ws.send(JSON.stringify(retData));
+//       }).catch((err)=>{
+//         ws.send(JSON.stringify(retData));
+//       })
+//     }
+//     else
+//     {
+//       // console.log('received: %s', message);
+//       ws.send(JSON.stringify(retData));
+//     }
+//   });
+// });
