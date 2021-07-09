@@ -1,7 +1,15 @@
 // Modules to control application life and create native browser window
 const {app, BrowserWindow,dialog} = require('electron')
+const ipc = require('electron').ipcMain
 const path = require('path')
 const WebSocket = require('ws');
+let mainWindow = undefined;
+
+ipc.on('r2m', function (event, arg) {
+    console.log("r2m>",arg)
+    // event.sender.send('m2r',arg)
+    mainWindow.webContents.send('m2r',arg);
+})
 
 
 const wss = new WebSocket.Server({ port: 9714 });
@@ -39,17 +47,19 @@ wss.on('connection', function connection(ws) {
 
 function createWindow () {
   // Create the browser window.
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 800,
     height: 600,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: true,
+      contextIsolation: false,
     }
   })
 
   // and load the index.html of the app.
-  // mainWindow.loadFile("http://localhost:8080/")
-  mainWindow.loadURL("http://localhost:8080/")
+  mainWindow.loadFile("index.html")
+  // mainWindow.loadURL("http://localhost:8080/")
   // Open the DevTools.
   mainWindow.webContents.openDevTools()
 
