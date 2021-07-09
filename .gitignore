@@ -55,4 +55,4 @@ CORE_HUB
 InspectionCore/CoreHub/Makefile
 UI/Electron_XPLAT/release-builds
 InspectionCore/contrib/aravis/test/arvTool/arvtool
-InspectionCore/contrib/smem_channel/test/electron_napi/build/
+InspectionCore/contrib/smem_channel/test/node_napi/build/
