@@ -40,6 +40,6 @@ ipc.on('m2r', function (event, arg) {
   // console.log('m2r',arg)
   // console.log('m2r',curTime)
   
-  console.log("time_ms:",curTime-preTime)
+  console.log("time_ms:",curTime-preTime,arg[0])
   preTime=curTime;
 })

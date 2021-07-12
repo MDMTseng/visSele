@@ -1,20 +1,19 @@
 // Modules to control application life and create native browser window
-const {app, BrowserWindow,dialog} = require('electron')
+const { app, BrowserWindow, dialog } = require('electron')
 const ipc = require('electron').ipcMain
 const path = require('path')
 const WebSocket = require('ws');
 let mainWindow = undefined;
-
-let preTime=Date.now();
+let preTime = Date.now();
 ipc.on('r2m', function (event, arg) {
-    // console.log("r2m>",arg)
-    // event.sender.send('m2r',arg)
-  let curTime=Date.now();
+  // console.log("r2m>",arg)
+  // event.sender.send('m2r',arg)
+  let curTime = Date.now();
 
-  console.log("time_ms:",curTime-preTime)
+  console.log("time_ms:", curTime - preTime)
   // mainWindow.webContents.send('m2r',arg);
-  
-  preTime=curTime;
+
+  preTime = curTime;
 })
 
 
@@ -22,8 +21,8 @@ ipc.on('r2m', function (event, arg) {
 // if(true){
 //   let buffer = new Uint8Array(4*500*10000/(Math.pow(2,2)));
 //   buffer[0]=1;
-  
-  
+
+
 //   setTimeout(()=>{
 //     for(let i=0;i<100;i++)
 //     {
@@ -33,9 +32,51 @@ ipc.on('r2m', function (event, arg) {
 
 // }
 
+function ipc_bridge_connection()
+{
+  const addon = require('bindings')('IPC_BRIDGE')
+  const EventEmitter = require('events').EventEmitter
+  const emitter = new EventEmitter()
+  emitter.on('start', () => {
+    console.log('### START ...')
+  })
+
+  let preTime = Date.now();
+  let buffer_RECV = undefined;
+  let buffer_SEND = undefined;
 
 
-function createWindow () {
+  emitter.on('buffer_RECV', (evt) => {
+    buffer_RECV = evt;
+  })
+
+  emitter.on('buffer_SEND', (evt) => {
+    buffer_SEND = evt;
+  })
+
+
+  emitter.on('data', (evt) => {
+    let curTime = Date.now();
+    mainWindow.webContents.send('m2r',buffer_RECV);
+    // console.log(curTime - preTime, buffer_RECV);
+    // let i=0;
+    // for(i=0;i<1000;i++)
+    // {
+    //   console.log(buffer_RECV[i]);
+    // }
+    preTime = curTime;
+  })
+
+  emitter.on('end', () => {
+    console.log('### END ###')
+  })
+
+  addon.callEmit(emitter.emit.bind(emitter))
+
+}
+
+
+function createWindow() {
   // Create the browser window.
   mainWindow = new BrowserWindow({
     width: 800,
@@ -53,12 +94,12 @@ function createWindow () {
   // Open the DevTools.
   mainWindow.webContents.openDevTools()
 
-  
+
   // Emitted when the window is closed.
   mainWindow.on('closed', () => {
     app.quit();
   });
-
+  ipc_bridge_connection();
 }
 
 // This method will be called when Electron has finished
@@ -66,7 +107,7 @@ function createWindow () {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   createWindow()
-  
+
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
