@@ -100,6 +100,7 @@ export default {
     },
     measure:{
       value_adjust:"數值微調",
+      value_adjust_b:"數值微調(背)",
       back_value_setup:"背面目標設定",
       value_b:"目標(背)",
       USL_b:"規格上限(背)",

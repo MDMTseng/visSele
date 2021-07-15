@@ -2084,6 +2084,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 UCL: "ULRangeSetup",
                 LCL: "ULRangeSetup",
 
+                value_adjust_b: "input-number",
                 value_b: "input-number",
                 USL_b: "ULRangeSetup",
                 LSL_b: "ULRangeSetup",
@@ -2181,12 +2182,15 @@ class APP_DEFCONF_MODE extends React.Component {
                         if (lastKey == "back_value_setup") {
                           if (evt.target.checked == false) {
                             delete target.obj["value_b"];
+                            delete target.obj["value_adjust_b"];
                             delete target.obj["USL_b"];
                             delete target.obj["LSL_b"];
                             delete target.obj["UCL_b"];
                             delete target.obj["LCL_b"];
                           }
                           else {
+                            
+                            target.obj["value_adjust_b"] = target.obj["value_adjust_b"];
                             target.obj["value_b"] = target.obj["value"];
                             target.obj["USL_b"] = target.obj["USL"];
                             target.obj["LSL_b"] = target.obj["LSL"];
