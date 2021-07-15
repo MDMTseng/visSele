@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import { TagOptions_rdx, tagGroupsPreset, CustomDisplaySelectUI } from './component/rdxComponent.jsx';
+import { Shape_Attr_Fill } from 'UTIL/InspectionEditorLogic';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
@@ -2025,34 +2026,7 @@ class APP_DEFCONF_MODE extends React.Component {
       //     setUIType("deco");
       //   }} />);
 
-
-      if(edit_tar.type === UIAct.SHAPE_TYPE.search_point)
-      {// info upgrade
-        if(edit_tar.search_far===undefined)
-        {
-          if(edit_tar.search_style===undefined)
-          {
-            edit_tar.search_far=false;
-          }
-          else
-          {
-            edit_tar.search_far=(edit_tar.search_style==1)?true:false;
-          }
-        }
-        
-        if(edit_tar.locating_anchor!=true)
-        {
-          edit_tar.locating_anchor=false;
-        }
-        
-        if(edit_tar.line_thickness_value!=true)
-        {
-          edit_tar.line_thickness_value=false;
-        }
-      }
-
-
-
+      edit_tar=Shape_Attr_Fill(edit_tar);
       switch (edit_tar.type) {
         case UIAct.SHAPE_TYPE.aux_point:
         case UIAct.SHAPE_TYPE.aux_line:
@@ -2103,6 +2077,7 @@ class APP_DEFCONF_MODE extends React.Component {
                   },
                   ref: edit_tar.ref
                 },
+                value_adjust: "input-number",
                 value: "input-number",
                 USL: "ULRangeSetup",
                 LSL: "ULRangeSetup",

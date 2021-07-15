@@ -78,6 +78,52 @@ export function MEASURERSULTRESION_reducer(res, measure_result_region) {
   return measure_result_region;
 }
 
+export function Shape_Attr_Fill(shapeObject)
+{
+
+
+  switch(shapeObject.type)
+  {
+    // case UIAct.SHAPE_TYPE.line:
+    // case UIAct.SHAPE_TYPE.arc:
+    // break;
+    case SHAPE_TYPE.search_point:
+    {
+      shapeObject={...shapeObject}
+      if(shapeObject.search_far===undefined)
+      {
+        if(shapeObject.search_style===undefined)
+        {
+          shapeObject.search_far=false;
+        }
+        else
+        {
+          shapeObject.search_far=(shapeObject.search_style==1)?true:false;
+        }
+      }
+      
+      if(shapeObject.locating_anchor!=true)
+      {
+        shapeObject.locating_anchor=false;
+      }
+      
+      if(shapeObject.line_thickness_value!=true)
+      {
+        shapeObject.line_thickness_value=false;
+      }
+    }
+    break;
+    case SHAPE_TYPE.measure:
+      if(shapeObject.value_adjust===undefined)
+      {
+        shapeObject={...shapeObject}
+        shapeObject.value_adjust=0;
+      }
+    break;
+
+  }
+  return shapeObject;
+}
 
 export class InspectionEditorLogic {
   constructor() {

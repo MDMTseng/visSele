@@ -99,7 +99,7 @@ export default {
       connect:"連線"
     },
     measure:{
-
+      value_adjust:"數值微調",
       back_value_setup:"背面目標設定",
       value_b:"目標(背)",
       USL_b:"規格上限(背)",
