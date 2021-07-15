@@ -579,15 +579,20 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
 
   
   useEffect(() => {
+    
+    let newStatus={...systemConnectState};
     let cameraStatus = GetObjElement(coreStatus, ["camera_info",0,"cam_status"])===0;
 
     if(TEST_MODE==true&&cameraStatus===false)cameraStatus=true; 
-    let newStatus={...systemConnectState,camera:cameraStatus};
-    if(systemConnectState.camera!=cameraStatus)
+    newStatus.camera=cameraStatus;
+
+
+    if(systemConnectState.camera!=cameraStatus)//JUST for TEST mode force to use fake camera
     {
       setSystemConnectState(newStatus);
       onStatusChange(newStatus)
     }
+
     onStatusTick(newStatus)
   },[coreStatus])
 
@@ -596,55 +601,28 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   let gridStyle={...style,width:(gridSize)+"px" };
   
   let iconStyle={width:iconSize+"px",height:iconSize+"px"};
+
+  
   return [
-    <Button size="large" key="core_stat" style={gridStyle} 
-    type="text" //disabled={!systemConnectState.core}
-    className={"s HXA "+(systemConnectState.core?"color-online-anim":"color-offline-anim")} 
-    onClick={()=>onClick_Core(systemConnectState)}>
-      <div 
-        className={"antd-icon-sizing veleX"} 
-        style={iconStyle}
-      >
-        <AimOutlined/>
-      </div>
-          {(showText)?
-            [DICT._.core,<br/>,systemConnectState.core?null:DICT._.disconnected]
-            :null}
-    </Button>,
+    [DICT._.core,   systemConnectState.core,   onClick_Core,   <AimOutlined/>],
+    [DICT._.camera, systemConnectState.camera, onClick_Camera, <CameraOutlined/>],
+    // ["資料庫", systemConnectState.upload_database, onClick_Camera, <CloudUploadOutlined/>],
+    ].map(([textName, connection_status, onClickEvent, icon])=>
+      <Button size="large" key={"stat"+textName} style={gridStyle} 
+      type="text" //disabled={!systemConnectState.core}
+      className={"s HXA "+(connection_status?"color-online-anim":"color-offline-anim")} 
+      onClick={()=>onClickEvent(systemConnectState)}>
+        <div 
+          className={"antd-icon-sizing veleX"} 
+          style={iconStyle}
+        >
+          {icon}
+        </div>
+            {(showText)?
+              [textName,<br/>,connection_status?null:DICT._.disconnected]
+              :null}
+      </Button>)
 
-    <Button size="large"  key="cam_stat" style={gridStyle} 
-    type="text" //disabled={!systemConnectState.camera}
-        className={"s HXA "+(systemConnectState.camera?"color-online-anim":"color-offline-anim")} 
-        onClick={()=>onClick_Camera(systemConnectState)}>
-          <div 
-            className={"antd-icon-sizing veleX"} 
-            style={iconStyle}
-          >
-            <CameraOutlined/>
-          </div>
-          {(showText)?
-            [DICT._.camera,<br/>,systemConnectState.camera?null:DICT._.disconnected]
-            :null}
-        </Button>,
-
-    // <Button size="large"  key="db_stat" style={gridStyle} 
-    //     type="text" //disabled={!systemConnectState.upload_database}
-    //     className={"s HXA "+(systemConnectState.upload_database?"color-online-anim":"color-offline-anim")} 
-    //     onClick={()=>onClick_UploadDataBase(systemConnectState)}>
-    //       <div 
-    //         className={"antd-icon-sizing veleX"} 
-    //         style={iconStyle}
-    //       >
-    //         <DatabaseOutlined/>
-    //       </div>
-    //       {(showText)?
-    //         [DICT._.upload_database,<br/>,systemConnectState.upload_database?null:DICT._.disconnected]
-    //         :null}
-          
-    //     </Button>
-
-
-  ];
 }
 
 function Query_Camera_Info(ACT_WS_SEND,WS_ID)
