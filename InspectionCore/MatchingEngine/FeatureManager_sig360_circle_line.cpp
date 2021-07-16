@@ -1093,6 +1093,20 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   break;
   }
 
+  {//Add adjust value
+    if(flip_f>=0)
+    {
+      judgeReport.measured_val+=judgeReport.def->value_adjust; 
+    }
+    else
+    {
+      judgeReport.measured_val+=judgeReport.def->value_adjust_b;
+    }
+
+  }
+
+
+
   if (notNA)
   {
     float USL = flip_f < 0 ? judgeReport.def->USL_b : judgeReport.def->USL;
@@ -1772,6 +1786,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   LOGV("feature is a measure/judge:%s id:%d subtype:%s", judge.name, judge.id, subtype);
 
   judge.targetVal_b = judge.targetVal = JfetchStrNUM(judge_obj, "value");
+  judge.value_adjust_b = judge.value_adjust = JfetchStrNUM(judge_obj, "value_adjust");
 
   judge.USL_b = judge.USL = JfetchStrNUM(judge_obj, "USL");
   judge.LSL_b = judge.LSL = JfetchStrNUM(judge_obj, "LSL");
@@ -1780,6 +1795,7 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   int type = getDataFromJson(judge_obj, "back_value_setup", &target);
   if (type == cJSON_True)
   {
+    judge.value_adjust_b = JfetchStrNUM(judge_obj, "value_adjust_b");
     judge.targetVal_b = JfetchStrNUM(judge_obj, "value_b");
     judge.USL_b = JfetchStrNUM(judge_obj, "USL_b");
     judge.LSL_b = JfetchStrNUM(judge_obj, "LSL_b");
