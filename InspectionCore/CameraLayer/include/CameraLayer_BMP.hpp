@@ -28,7 +28,7 @@ class CameraLayer_BMP : public CameraLayer{
     
     status TriggerMode(int mode){return NAK;}
     status Trigger(){return NAK;}
-    status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount);
+    status ExtractFrame(uint8_t* imgBuffer,int channelCount,size_t pixelCount) override;
     status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param){return NAK;}
     status GetROI(int *x, int *y, int *w, int *h,int*zw,int *zh);
     status CalcROI(int* X,int* Y,int* W,int* H);
