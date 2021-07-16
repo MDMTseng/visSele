@@ -180,6 +180,12 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
 }
 
 
+CameraLayer::status CameraLayer_BMP_carousel::TriggerCount(int count)
+{
+  imageTakingCount = count - 1;
+  return Trigger();
+}
+
 CameraLayer::status CameraLayer_BMP_carousel::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
 {
   
