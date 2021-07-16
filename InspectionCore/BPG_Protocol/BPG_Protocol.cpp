@@ -137,7 +137,7 @@ int BPG_Protocol_Interface::_fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
     {
       return 1;
     }
-    LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, cached_data_recv.size());
+    // LOGI("<<<size:%d  len:%d<<<<<", bpgdat.size, cached_data_recv.size());
     int ret = toUpperLayer(bpgdat);
     
     bool shiftRest=true;
@@ -170,7 +170,7 @@ int BPG_Protocol_Interface::_fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
 int BPG_Protocol_Interface::fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
 { //assemble to BPG_protocol_data
 
-  LOGI("<<<len:%d  FIN:%d<<<<<", len,FIN);
+  // LOGI("<<<len:%d  FIN:%d<<<<<", len,FIN);
   // if (FIN == true && cached_data_recv.size() == 0)
   // {
   //   BPG_protocol_data bpgdat = convert(dat, len);
