@@ -3650,7 +3650,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
                       20, 255, 0, 0);
       }
 
-
+      if(1)
       {//find the max & min  dist
         acv_XY center = cf.circle.circumcenter;
         const int angleRes=360;
@@ -3731,21 +3731,24 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         cr.maxD=(maxD==-1)?NAN:maxD;
         cr.minD=(minD==__FLT_MAX__)?NAN:minD;
         LOGI("C=%d===maxD:%f minD:%f",j,cr.maxD,cr.minD);
-      }
 
 
-      for(auto pt:s_points)
-      {
-        cdef.tmp_pt.push_back(pt);
+        
+
+        for(auto pt:s_points)
+        {
+          cdef.tmp_pt.push_back(pt);
+        }
+        float rMIN,rMAX,rRMSE;
+        roughness(cdef.tmp_pt,5,&rMIN,&rMAX,&rRMSE);
+        cr.roughness_MIN=rMIN;
+        cr.roughness_MAX=rMAX;
+        cr.roughness_RMSE=rRMSE;
+        LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
+            j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius,rMIN,rMAX,rRMSE);
+        
+
       }
-      float rMIN,rMAX,rRMSE;
-      roughness(cdef.tmp_pt,5,&rMIN,&rMAX,&rRMSE);
-      cr.roughness_MIN=rMIN;
-      cr.roughness_MAX=rMAX;
-      cr.roughness_RMSE=rRMSE;
-      LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
-           j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius,rMIN,rMAX,rRMSE);
-      
 
 
       cr.pt1=acvClosestPointOnCircle(m_pt1,cf.circle);
