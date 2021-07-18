@@ -2,6 +2,8 @@
 const { app, BrowserWindow, dialog } = require('electron')
 const ipc = require('electron').ipcMain
 const path = require('path')
+const {spawn, execFile,exec } = require('child_process');
+
 const WebSocket = require('ws');
 let mainWindow = undefined;
 let preTime = Date.now();
@@ -17,6 +19,8 @@ ipc.on('r2m', function (event, arg) {
 })
 
 
+
+console.log("getAppPath:",app.getAppPath());
 
 // if(true){
 //   let buffer = new Uint8Array(4*500*10000/(Math.pow(2,2)));
@@ -77,6 +81,11 @@ function ipc_bridge_connection()
 
 
 function createWindow() {
+  const gotTheLock = app.requestSingleInstanceLock();
+  if (!gotTheLock) {
+    app.quit()
+    return;
+  }
   // Create the browser window.
   mainWindow = new BrowserWindow({
     width: 800,
@@ -89,7 +98,8 @@ function createWindow() {
   })
 
   // and load the index.html of the app.
-  mainWindow.loadFile("index.html")
+  // mainWindow.loadFile("index.html")
+  mainWindow.loadFile("./res/WebUI/index.html")
   // mainWindow.loadURL("http://localhost:8080/")
   // Open the DevTools.
   mainWindow.webContents.openDevTools()
@@ -99,7 +109,70 @@ function createWindow() {
   mainWindow.on('closed', () => {
     app.quit();
   });
-  ipc_bridge_connection();
+  // ipc_bridge_connection();
+
+  // execFile('res/Core/visSele', [], (error, stdout, stderr) => {
+  //   if (error) {
+  //       console.error(`error: ${error}`);
+  //       return;
+  //   }
+  //   console.log(`stdout: ${stdout}`);
+  //   console.error(`stderr: ${stderr}`);
+  // });
+  // execFile('visSele', [], { cwd: 'res/Core/' });
+
+  if(false)
+  {
+    const spawnX = exec('res/Core/visSele', function (error, stdout, stderr) {
+      if (error) {
+        console.log(error.stack);
+        console.log('Error code: '+error.code);
+        console.log('Signal received: '+error.signal);
+      }
+      console.log('Child Process STDOUT: '+stdout);
+      console.log('Child Process STDERR: '+stderr);
+    });
+    spawnX.stdout.pipe(process.stdout);
+    
+    spawnX.on('exit', function (code) {
+      console.log('Child process exited with exit code '+code);
+    });
+
+  }
+  else
+  {
+    var spawnX;
+    if(process.platform === "win32")
+    {
+      spawnX = spawn('./visSele.exe', [],{
+        cwd: "./res/Core/win32/",
+        env: process.env,
+        stdio: 'inherit'});   
+    }
+    else //if(process.platform === "darwin  ")
+    {
+      spawnX = spawn('./visSele', ["chdir=/Users/mdm/visSele/InspectionCore/Core0_1"],{
+        cwd: "/Users/mdm/visSele/InspectionCore/Core0_1",
+        env: process.env,
+        stdio: 'inherit'});   
+    }
+
+
+    // spawnX.stdout.pipe(process.stdout);
+    // spawnX.stdout.setEncoding('utf8');
+    // spawnX.stdout.on('data', function (data) {
+    //   console.log('stdout: ' + data.toString());
+    // });
+
+    // spawnX.stderr.on('data', function (data) {
+    //   console.log('stderr: ' + data.toString());
+    // });
+
+    spawnX.on('exit', function (code) {
+      console.log('child process exited with code ' + code.toString());
+    });
+  }
+   
 }
 
 // This method will be called when Electron has finished
@@ -127,32 +200,32 @@ app.on('window-all-closed', function () {
 
 
 
-// const wss = new WebSocket.Server({ port: 9714 });
+const wss = new WebSocket.Server({ port: 9714 });
 
-// wss.on('connection', function connection(ws) {
-//   ws.on('message', function incoming(message) {
-//     let p = JSON.parse(message);
-//     let retData={
-//       type:"NAK",
-//       req_id:p.req_id,
-//     }
-//     if(p.type=="showOpenDialog")
-//     {
-//       console.log('cmd: %s', p);
-//       dialog.showOpenDialog(p.option).then(function (response) {
-//         if (!response.canceled) {
-//           retData.type="ACK";
-//           retData.filePaths=response.filePaths;
-//         }
-//         ws.send(JSON.stringify(retData));
-//       }).catch((err)=>{
-//         ws.send(JSON.stringify(retData));
-//       })
-//     }
-//     else
-//     {
-//       // console.log('received: %s', message);
-//       ws.send(JSON.stringify(retData));
-//     }
-//   });
-// });
+wss.on('connection', function connection(ws) {
+  ws.on('message', function incoming(message) {
+    let p = JSON.parse(message);
+    let retData={
+      type:"NAK",
+      req_id:p.req_id,
+    }
+    if(p.type=="showOpenDialog")
+    {
+      console.log('cmd: %s', p);
+      dialog.showOpenDialog(p.option).then(function (response) {
+        if (!response.canceled) {
+          retData.type="ACK";
+          retData.filePaths=response.filePaths;
+        }
+        ws.send(JSON.stringify(retData));
+      }).catch((err)=>{
+        ws.send(JSON.stringify(retData));
+      })
+    }
+    else
+    {
+      // console.log('received: %s', message);
+      ws.send(JSON.stringify(retData));
+    }
+  });
+});

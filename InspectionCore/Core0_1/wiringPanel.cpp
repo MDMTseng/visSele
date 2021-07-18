@@ -4049,6 +4049,20 @@ int testCode()
 
   return 0;
 }
+
+
+char* PatternRest(char *str, const char *pattern)
+{
+  for(;;str++,pattern++)
+  { 
+    if(*pattern=='\0')return str;//pattern ends... return
+    if(*str != *pattern)return NULL;//if str NOT equal to pattern ( including *str=='\0')
+    else  continue;
+  }
+  return NULL;
+}
+
+
 #include <vector>
 int cp_main(int argc, char **argv)
 {
@@ -4131,28 +4145,42 @@ int cp_main(int argc, char **argv)
   _argv = argv;
   for (int i = 0; i < argc; i++)
   {
-    bool doMatch = true;
-    if (strcmp(argv[i], "CamInitStyle=0") == 0)
+    bool doMatch = false;
+    char *str = PatternRest(argv[i], "CamInitStyle=");//CamInitStyle={str}
+    if(str)
     {
-      CamInitStyle = 0;
+      
+      if (strcmp(str, "0") == 0)
+      {
+        doMatch=true;
+        CamInitStyle = 0;
+      }
+      else if (strcmp(str, "1") == 0)
+      {
+        doMatch=true;
+        CamInitStyle = 1;
+      }
+      else if (strcmp(str, "1") == 0)
+      {
+        doMatch=true;
+        CamInitStyle = 2;
+      }
     }
-    else if (strcmp(argv[i], "CamInitStyle=1") == 0)
+
+    str = PatternRest(argv[i], "chdir=");
+    if(str!=NULL)
     {
-      CamInitStyle = 1;
-    }
-    else if (strcmp(argv[i], "CamInitStyle=2") == 0)
-    {
-      CamInitStyle = 2;
-    }
-    else
-    {
-      doMatch = false;
-      LOGE("unknown param[%d]:%s", i, argv[i]);
+      doMatch=true;
+      chdir(str);
     }
 
     if (doMatch)
     {
       LOGE("CMD param[%d]:%s ...OK", i, argv[i]);
+    }
+    else
+    {
+      LOGE("unknown param[%d]:%s", i, argv[i]);
     }
   }
 

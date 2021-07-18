@@ -89,30 +89,30 @@ const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
 const { Paragraph, Title } = Typography;
 
-let ELECTRON_IPC={readyState:0};
-// let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/"));
+// let ELECTRON_IPC={readyState:0};
+let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/"));
 
-// ELECTRON_IPC.onreconnection = (reconnectionCounter) => {
-//   console.log("onreconnection" + reconnectionCounter);
-//   if (reconnectionCounter > 10) return false;
-//   return true;
-// };
-// ELECTRON_IPC.onopen = () => 
-// {
-//   ELECTRON_IPC.send_obj({"type":"get_UI_url"})
-//   .then((data)=>{
-//     console.log(data)
-//   })
-//   .catch((err)=>{
-//     console.log(err)
-//   })
+ELECTRON_IPC.onreconnection = (reconnectionCounter) => {
+  console.log("onreconnection" + reconnectionCounter);
+  if (reconnectionCounter > 10) return false;
+  return true;
+};
+ELECTRON_IPC.onopen = () => 
+{
+  ELECTRON_IPC.send_obj({"type":"get_UI_url"})
+  .then((data)=>{
+    console.log(data)
+  })
+  .catch((err)=>{
+    console.log(err)
+  })
 
-//   console.log("ELECTRON_IPC:onopen");
-// }
-// ELECTRON_IPC.onmessage = (msg) => console.log("ELECTRON_IPC:onmessage::", msg);
-// ELECTRON_IPC.onconnectiontimeout = () => console.log("ELECTRON_IPC:onconnectiontimeout");
-// ELECTRON_IPC.onclose = () => console.log("ELECTRON_IPC:onclose");
-// ELECTRON_IPC.onerror = () => console.log("ELECTRON_IPC:onerror");
+  console.log("ELECTRON_IPC:onopen");
+}
+ELECTRON_IPC.onmessage = (msg) => console.log("ELECTRON_IPC:onmessage::", msg);
+ELECTRON_IPC.onconnectiontimeout = () => console.log("ELECTRON_IPC:onconnectiontimeout");
+ELECTRON_IPC.onclose = () => console.log("ELECTRON_IPC:onclose");
+ELECTRON_IPC.onerror = () => console.log("ELECTRON_IPC:onerror");
 
 
 import { 
