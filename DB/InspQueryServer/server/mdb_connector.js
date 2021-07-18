@@ -101,7 +101,8 @@ function CRUD_query(which,queryCMD,projection,etc=[]){
     //Without callback it will return promise
 
     let cmd=[];
-    cmd.push({ "$match" : queryCMD});
+    if(queryCMD!==undefined)
+      cmd.push({ "$match" : queryCMD});
     if(projection!==undefined)
       cmd.push({ "$project" :projection});
     cmd=cmd.concat(etc);

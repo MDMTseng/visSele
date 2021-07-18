@@ -1,30 +1,10 @@
-// import * as MDB from './server/mdb_connector.js';
 
-// const {typeDefs,resolvers}=require('../schema/schema.js') ;
-// const { ApolloServer ,qgl} = require('apollo-server');
-// const { ApolloServer, gql } = require('apollo-server-express');//for use express server self define
-// const server = new ApolloServer({ typeDefs, resolvers });
 const mdb_connector = require('./mdb_connector.js');
-const idb_connector = require('./idb_connector.js');
 
 const express = require('express');
 const app = express();
-const useApolloEmbedExpress=true;
-
-// if(useApolloEmbedExpress){
-//     server.listen().then(({ url }) => {
-//         console.log(`🚀  Appplo Server ready at ${url}`);
-//     });
-// }else{
-//     server.applyMiddleware({ app }); // app is from an existing express app
-//     app.listen({ port: 4000 }, () =>
-//         console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`)
-//     )
-// }
-
-
-
 var expressWs = require('express-ws')(app);
+
 app.use(function (req, res, next) {
     console.log('middleware');
     req.testing = Date.now();
@@ -34,12 +14,6 @@ app.get('/', function(req, res, next){
     console.log('get route', req.testing);
     res.end();
 });
-
-
-function queryParamParse_P(req)
-{
-
-}
 
 function queryParamParse(req)
 {//http://db.xception.tech:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
@@ -74,8 +48,31 @@ function queryParamParse(req)
     let remainder = parseInt(req.query.time_ms_rem);
     if(mod==mod && remainder==remainder)
     {
-      console.log(mod , remainder)
-      return { $and: [ qStr,{"InspectionData.time_ms":{ $mod: [ mod, remainder]}}] };
+    //   console.log(mod , remainder)
+    //   return { $and: [ qStr,{"InspectionData.time_ms":{ $mod: [ mod, remainder]}}] };
+
+        return { $and: [ 
+            qStr,
+            {
+                "InspectionData.time_ms":
+                { 
+                    $mod: [ 
+                        mod, 
+                        remainder
+                    ]
+                },
+                
+                // $expr: {$gt:[{$floor: {$divide: [{$arrayElemAt:["$InspectionData",0,"time_ms"]}, 100] } },8] }
+                // $expr: {$gt:["$InspectionData.time_ms",8] }
+                
+                // $expr: { $lt:[ {$mod: ["$InspectionData.time_ms",mod]}, remainder] }
+                // $expr: { $function: {
+                //     body: (time_ms)=> true,
+                //     args: [ "$InspectionData.time_ms" ],
+                //     lang: "js"
+                // } },
+            }
+        ] };
     }
 
   }
@@ -242,7 +239,9 @@ function inspection_result_query(req, res)
       queryAggRules=queryAggRules.concat(agg);
     }
 
-    
+    // console.log(qStr);
+    // console.log(projection);
+    // console.log(queryAggRules);
     mdb_connector.query("Inspection",qStr,projection,queryAggRules).limit(queryLimit).skip((queryPage-1)*queryLimit).
     then((result)=>{
       //  console.log(result);
@@ -261,7 +260,7 @@ function inspection_result_query(req, res)
     }).
     catch((err)=>{
         res.send("[X]Q by get Q FAIL!!");
-        console.log("[X]Q by get Q FAIL!!");
+        console.log("[X]Q by get Q FAIL!!",err);
     });
 
 
@@ -651,6 +650,6 @@ function JSONTryParse(input) {
 
     return false;
 };
-app.listen(8080);
+app.listen(8081);
 
 
