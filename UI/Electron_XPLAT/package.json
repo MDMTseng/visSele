@@ -6,8 +6,9 @@
   "gypfile": true,
   "scripts": {
     "start": "electron .",
-    "package-mac": "electron-packager ./ --overwrite --platform=darwin --arch=x64 --prune=true --out=release-builds",
-    "package": "electron-packager ./ --overwrite --arch=x64 --prune=true --out=release-builds"
+    "packaging": "run-script-os",
+    "packaging:macos": "electron-packager ./ --overwrite --platform=darwin --arch=x64 --prune=true --out=release-builds",
+    "packaging:windows": "electron-packager ./ --overwrite --arch=x64 --prune=true --out=release-builds"
   },
   "repository": "https://github.com/electron/electron-quick-start",
   "keywords": [
@@ -22,11 +23,15 @@
   "devDependencies": {
     "electron": "^12.0.4",
     "electron-packager": "^15.2.0",
-    "electron-reloader": "^1.2.1"
+    "electron-reloader": "^1.2.1",
+    "run-script-os": "^1.1.6"
   },
   "dependencies": {
     "bindings": "*",
+    "express": "^4.17.1",
+    "mongoose": "^5.13.3",
     "node-addon-api": "*",
+    "unzipper": "^0.10.11",
     "ws": "^7.4.5"
   }
 }
