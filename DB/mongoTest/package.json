@@ -1,0 +1,32 @@
+
+{
+  "name": "Xception_INSP",
+  "version": "1.0.0",
+  "description": "A minimal Electron application",
+  "main": "main.js",
+  "scripts": {
+    "run": "node main.js"
+  },
+  "repository": "https://github.com/electron/electron-quick-start",
+  "keywords": [
+    "Electron",
+    "quick",
+    "start",
+    "tutorial",
+    "demo"
+  ],
+  "author": "GitHub",
+  "license": "CC0-1.0",
+  "devDependencies": {
+    "electron": "^12.0.4",
+    "electron-packager": "^15.2.0",
+    "electron-reloader": "^1.2.1",
+    "run-script-os": "^1.1.6"
+  },
+  "dependencies": {
+
+    "mongoose": "^5.13.3",
+    "express": "^4.17.1",
+    "ws": "^7.4.5"
+  }
+}
