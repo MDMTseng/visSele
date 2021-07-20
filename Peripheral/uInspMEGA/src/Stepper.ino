@@ -132,11 +132,11 @@ void skip_pulse_showS(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_
   skip_pulse_show(head);
 }
 
+const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
 #define RING_SUB(A,B,MAX) ( ((A)>(B)) ? ((A)-(B))  : ((A)+(MAX)-(B)) )
 int task_newPulseEvent(uint32_t middle_pulse);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
-  const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
   const int  minWidth = 3;
   const int  maxWidth = 1+20000/SINGLE_PULSE_DIST_um;
   
