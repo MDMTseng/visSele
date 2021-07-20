@@ -8,7 +8,8 @@ const path = require('path')
 const child_process = require('child_process');
 
 const fs = require('fs');
-const WebSocket = require('ws');
+
+
 let preTime = Date.now();
 ipc.on('r2m', function (event, arg) {
   // console.log("r2m>",arg)
@@ -137,9 +138,10 @@ function ipc_bridge_connection()
 
   console.log("tar_launcher",tar_launcher);
 
-
-
-  tar_launcher.setup({electron,APP_INFO_FILE_PATH,WebSocket});
+  tar_launcher.setup({electron,APP_INFO_FILE_PATH,
+    WebSocket:require('ws'),
+    express:require('express'),
+    mongoose :require('mongoose')});
 }
 
 
