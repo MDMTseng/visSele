@@ -317,8 +317,21 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int
     ROI_y = maxHeight - (ROI_y + ROI_h);
   }
   LOGI("MAX:%d %d", maxWidth, maxHeight);
-
   LOGI("ROI:%f %f %f %f", ROI_x, ROI_y, ROI_w, ROI_h);
+
+  ROI_w=(int)ROI_w/16*16;
+  ROI_h=(int)ROI_h/16*16;
+
+  if(ROI_w<16)ROI_w=16;
+  if(ROI_h<16)ROI_h=16;
+  if(ROI_x>maxWidth-ROI_w)
+  {
+    ROI_x=maxWidth-ROI_w;
+  }
+  if(ROI_y>maxHeight-ROI_h)
+  {
+    ROI_y=maxHeight-ROI_h;
+  }
 
   ROI_x=(int)ROI_x/16*16;//just to guess the inc value, usually 2 or 4 or 16
   ROI_y=(int)ROI_y/16*16;
@@ -384,11 +397,13 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetROI(int x, int y, int w, int
     CameraSdkStatus camst = CameraSetImageResolution(m_hCamera, &resInfo);
   }
 
+      LOGI(">>>>");
   if (ROI_mirrorFlag[0])
   {
     ROI_x = maxWidth - (ROI_x + ROI_w);
   }
 
+      LOGI(">>>>");
   if (ROI_mirrorFlag[1])
   {
     ROI_y = maxHeight - (ROI_y + ROI_h);
