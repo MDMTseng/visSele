@@ -1094,15 +1094,17 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   }
 
   {//Add adjust value
+    float va=NAN;
     if(flip_f>=0)
     {
-      judgeReport.measured_val+=judgeReport.def->value_adjust; 
+      va=judgeReport.def->value_adjust;
     }
     else
     {
-      judgeReport.measured_val+=judgeReport.def->value_adjust_b;
+      va=judgeReport.def->value_adjust_b;
     }
-
+    if(va=!va)va=0;
+    judgeReport.measured_val+=va;
   }
 
 
