@@ -2052,7 +2052,7 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 search_far: "switch",
                 locating_anchor: "switch",
-                line_thickness_value:"input-number",
+                // line_thickness_value:"input-number",
                 
 
 

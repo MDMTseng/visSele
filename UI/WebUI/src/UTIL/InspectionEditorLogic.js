@@ -106,10 +106,9 @@ export function Shape_Attr_Fill(shapeObject)
       {
         shapeObject.locating_anchor=false;
       }
-      
-      if(shapeObject.line_thickness_value!=true)
+      if(typeof shapeObject.line_thickness_value!= 'number')
       {
-        shapeObject.line_thickness_value=false;
+        shapeObject.line_thickness_value=0;
       }
     }
     break;
