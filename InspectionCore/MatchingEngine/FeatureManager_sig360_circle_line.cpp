@@ -3978,7 +3978,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   LOGV("ldData.size()=%d", ldData.size());
   for (int i = 2; i < ldData.size(); i++, count++)
   { // idx 0 is not a label, idx 1 is for outer frame and connected objects
-    if (ldData[i].area < 3000)//HACK: no particular reason, just a hack filter
+    if (ldData[i].area < 300)//HACK: no particular reason, just a hack filter
       continue;
 
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
