@@ -249,16 +249,24 @@ int wsMakeFrame2(const uint8_t *data, size_t dataLength,
         memcpy(&outFrame[2], &payloadLength16b, 2);
         headerLen = 4;
     } else {
+
         //implementation for 64bit systems
         outFrame[1] = 127;
         //dataLength = htonll(dataLength);
-        memcpy(&outFrame[2], &dataLength, 8);
+        // memcpy(&outFrame[2], &dataLength, 8);
+        size_t _dataLength= dataLength;
+        for(int i=0;i<8;i++)
+        {
+          outFrame[2+7-i]=_dataLength&0xFF;
+          _dataLength>>=8;
+        }
         headerLen = 10;
     }
     if(headerLen + dataLength > *outLength)
     {
+      *outLength=0;
         //Over the sizeof buffer
-        return -1;
+      return -1;
     }
     if(&outFrame[headerLen] != data)
         memcpy(&outFrame[headerLen], data, dataLength);
@@ -268,6 +276,77 @@ int wsMakeFrame2(const uint8_t *data, size_t dataLength,
 
     return 0;
 }
+
+
+uint8_t* wsMakeFrame_HeaderBack(const uint8_t *data, size_t dataLength,
+                 uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal)
+{
+    assert(outFrame && *outLength);
+    assert(frameType < 0x10);
+    if (dataLength > 0)
+        assert(data);
+    
+    const int maxWSHeaderSize=10;
+
+    if(maxWSHeaderSize + dataLength > *outLength)
+    {
+      *outLength=0;
+        //Over the sizeof buffer
+      return NULL;
+    }
+    //copy to maxmum position
+    if(&outFrame[maxWSHeaderSize] != data)
+    {
+      // printf("COPY!!!\n");
+        memcpy(&outFrame[maxWSHeaderSize], data, dataLength);
+    }
+    else
+    {
+      // printf("REF!!!\n");
+    }
+
+
+    //offset Frame[0] position
+    if (dataLength <= 125) {
+      outFrame=outFrame+(maxWSHeaderSize-2);
+    } else if (dataLength <= 0xFFFF) {
+      outFrame=outFrame+(maxWSHeaderSize-4);//offset
+    } else {
+      outFrame=outFrame+(maxWSHeaderSize-maxWSHeaderSize);//offset
+
+    }
+    outFrame[0] = (isFinal?0x80:0x0) | frameType;
+    
+    int headerLen=0;
+    if (dataLength <= 125) {
+        outFrame[1] = dataLength;
+        headerLen = 2;
+    } else if (dataLength <= 0xFFFF) {
+        outFrame[1] = 126;
+        uint16_t payloadLength16b = htons(dataLength);
+        memcpy(&outFrame[2], &payloadLength16b, 2);
+        headerLen = 4;
+    } else {
+        //implementation for 64bit systems
+        outFrame[1] = 127;
+        //dataLength = htonll(dataLength);
+        // memcpy(&outFrame[2], &dataLength, 8);
+        size_t _dataLength= dataLength;
+        for(int i=0;i<8;i++)
+        {
+          outFrame[2+7-i]=_dataLength&0xFF;
+          _dataLength>>=8;
+        }
+        headerLen = 10;
+    }
+
+
+    *outLength = headerLen+dataLength;
+
+
+    return outFrame;
+}
+
 
 size_t getPayloadLength(const uint8_t *inputFrame, size_t inputLength,
                                uint8_t *payloadFieldExtraBytes, enum wsFrameType *frameType) 

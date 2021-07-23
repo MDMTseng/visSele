@@ -50,6 +50,7 @@ typedef struct websock_data
       uint8_t *raw;
       size_t rawL;
       bool isFinal;
+      int extraHeaderRoom;
     } data_frame;
 
     struct _HS_FRAME

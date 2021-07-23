@@ -690,28 +690,65 @@ int ws_conn::send_pkt(websock_data *packet)
   if (frameType != WS_TEXT_FRAME && frameType != WS_BINARY_FRAME && frameType != WS_PING_FRAME && frameType != WS_PONG_FRAME && frameType != WS_CONT_FRAME)
     return -3;
 
-  return send_pkt(packet->data.data_frame.raw, packet->data.data_frame.rawL, frameType, packet->data.data_frame.isFinal);
+  return send_pkt(packet->data.data_frame.raw, packet->data.data_frame.rawL, frameType, packet->data.data_frame.isFinal,packet->data.data_frame.extraHeaderRoom);
 }
-
-int ws_conn::send_pkt(const uint8_t *packet, size_t pkt_size, int type, bool isFinal)
+#define WS_MAX_HEADERSIZE 10
+uint8_t* ws_conn::request_data_buffer(size_t req_size)
 {
   size_t frameSize = sendBuf.size();
-
-  int saveSpaceMargin = 150;
-  if (frameSize < pkt_size + saveSpaceMargin)
+  if (frameSize < WS_MAX_HEADERSIZE+req_size)
   {
-    int tmp = (pkt_size + saveSpaceMargin - frameSize) / recvBufSizeInc;
-
-    sendBuf.resize(frameSize + (tmp + 1) * recvBufSizeInc);
+    sendBuf.resize(WS_MAX_HEADERSIZE+req_size);
     frameSize = sendBuf.size();
   }
+  return &(sendBuf[WS_MAX_HEADERSIZE]);
+}
 
-  int ret = wsMakeFrame2(packet, pkt_size,
-                         &(sendBuf[0]), &frameSize, (enum wsFrameType)type, isFinal);
-  if (ret)
+int ws_conn::send_pkt(uint8_t *packet, size_t pkt_size, int type, bool isFinal,int extraHeaderRoom)
+{
+
+  uint8_t* frameBuffer=NULL;
+  
+  size_t frameSize = -1;
+
+  // printf(">pkt_size:%d MHSize:%d> extraHeaderRoom:%d\n",pkt_size,WS_MAX_HEADERSIZE,extraHeaderRoom);
+  if(extraHeaderRoom>=WS_MAX_HEADERSIZE)
   {
-    printf("wsMakeFrame2 error:%d\n", ret);
-    //return -1;
+    frameBuffer=packet-WS_MAX_HEADERSIZE;
+    size_t frameSize = pkt_size+WS_MAX_HEADERSIZE;
   }
-  return safeSend(sock, &sendBuf[0], frameSize);
+  else
+  {
+    frameSize = sendBuf.size();
+
+    if (frameSize < WS_MAX_HEADERSIZE+pkt_size)
+    {
+      sendBuf.resize(WS_MAX_HEADERSIZE+pkt_size);
+      frameSize = sendBuf.size();
+    }
+    frameBuffer=&(sendBuf[0]);
+
+  }
+    // printf("sendBuf.size:%d\n", sendBuf.size());
+
+
+  uint8_t * sendData=wsMakeFrame_HeaderBack(packet, pkt_size,
+                         frameBuffer, &frameSize, (enum wsFrameType)type, isFinal);
+  if(sendData==NULL) 
+  {
+    printf("wsMakeFrame2 error:\n");
+    return -1;
+  }
+
+  return safeSend(sock, sendData, frameSize);
+
+  
+  // int ret = wsMakeFrame2(packet, pkt_size,
+  //                        &(sendBuf[0]), &frameSize, (enum wsFrameType)type, isFinal);
+  // if (ret)
+  // {
+  //   printf("wsMakeFrame2 error:%d\n", ret);
+  //   return -1;
+  // }
+  // return safeSend(sock, &sendBuf[0], frameSize);
 }

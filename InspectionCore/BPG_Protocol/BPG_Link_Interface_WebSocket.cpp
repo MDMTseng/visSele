@@ -56,7 +56,7 @@ int BPG_Link_Interface_WebSocket::runLoop(fd_set *read_fds, struct timeval *tv)
   return server->runLoop(read_fds, tv);
 }
 
-int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool FIN)
+int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool FIN,int extraHeaderRoom, int extraFooterRoom)
 {
   // if(isInContPktState)
   // {
@@ -71,7 +71,15 @@ int BPG_Link_Interface_WebSocket::fromUpperLayer(uint8_t *dat, size_t len, bool 
   packet.data.data_frame.raw = dat;
   packet.data.data_frame.isFinal = FIN;
   packet.data.data_frame.type = (isInContPktState == false) ? WS_DFT_BINARY_FRAME : WS_DFT_CONT_FRAME;
-
+  int maxWsHeaderSize=10;
+  if(extraHeaderRoom>=maxWsHeaderSize)//bigger than maxmum header size
+  {
+    packet.data.data_frame.extraHeaderRoom=extraHeaderRoom;
+  }
+  else
+  {
+    packet.data.data_frame.extraHeaderRoom=0;
+  }
   // LOGI("<<<<FINAL:%d  type:%d>>>>",packet.data.data_frame.isFinal,packet.data.data_frame.type);
   server->send_pkt(&packet);
 

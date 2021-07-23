@@ -188,11 +188,11 @@ int BPG_Protocol_Interface::fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
 }
 
 //st1 ok
-int BPG_Protocol_Interface::toLinkLayer(uint8_t *dat, size_t len, bool FIN)
+int BPG_Protocol_Interface::toLinkLayer(uint8_t *dat, size_t len, bool FIN,int extraHeaderRoom, int extraFooterRoom)
 {
   if (linkCH == NULL)
     return -1;
 
   // LOGI("<<<<>>>>");
-  return linkCH->fromUpperLayer(dat, len, FIN);
+  return linkCH->fromUpperLayer(dat, len, FIN,extraHeaderRoom,extraFooterRoom);
 }

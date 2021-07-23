@@ -137,6 +137,10 @@ struct handshake {
 
     int wsMakeFrame2(const uint8_t *data, size_t dataLength,
                  uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal);
+
+                 
+    uint8_t* wsMakeFrame_HeaderBack(const uint8_t *data, size_t dataLength,
+                 uint8_t *outFrame, size_t *outLength, enum wsFrameType frameType, bool isFinal);
     /**
      *
      * @param inputFrame Pointer to input frame. Frame will be modified.

@@ -17,7 +17,9 @@ public:
   BPG_Link_Interface();
 
   void interfaceEvent();
-  virtual int fromUpperLayer(uint8_t *dat, size_t len, bool FIN) = 0;
+  int headerMaxSize(){return 0;}
+  int footerMaxSize(){return 0;}
+  virtual int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, int extraHeaderRoom, int extraFooterRoom) = 0;
   virtual int toUpperLayer(uint8_t *dat, size_t len, bool FIN);
 };
 
@@ -37,7 +39,7 @@ public:
 
   void setUpperLayer(BPG_Protocol_Interface *ulayer) { bpg_prot = ulayer; }
 
-  int fromUpperLayer(uint8_t *dat, size_t len, bool FIN);
+  int fromUpperLayer(uint8_t *dat, size_t len, bool FIN, int extraHeaderRoom, int extraFooterRoom);
 
   ~BPG_Link_Interface_WebSocket();
   int findMaxFd();

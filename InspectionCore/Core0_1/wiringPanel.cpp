@@ -1118,7 +1118,6 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
 {
   if(callbackInfo==NULL)return -1;
   BPG_protocol_data send_dat;
-
   BPG_protocol_data_acvImage_Send_info *img_info = (BPG_protocol_data_acvImage_Send_info*)callbackInfo;
 
   acvImage *img=img_info->img;
@@ -1152,7 +1151,8 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
 
   }
 
-  image_send_buffer.resize(10000);
+  const int headerOffset=10;
+  image_send_buffer.resize(headerOffset+10000);
   
 
   int rest_len =
@@ -1163,13 +1163,15 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
 
   for(bool isKeepGoing=true;isKeepGoing && rest_len;)
   {
+    int imgBufferDataSize=image_send_buffer.size()-headerOffset;
+    uint8_t* imgBufferDataPtr=&image_send_buffer[headerOffset];
     int sendL = 0;
-    for(int i=0;i<image_send_buffer.size()-4;i+=4,img_pix_ptr+=3)
+    for(int i=0;i<imgBufferDataSize-4;i+=4,img_pix_ptr+=3)
     {
-      image_send_buffer[i]=img_pix_ptr[2];
-      image_send_buffer[i+1]=img_pix_ptr[1];
-      image_send_buffer[i+2]=img_pix_ptr[0];
-      image_send_buffer[i+3]=255;
+      imgBufferDataPtr[i]=img_pix_ptr[2];
+      imgBufferDataPtr[i+1]=img_pix_ptr[1];
+      imgBufferDataPtr[i+2]=img_pix_ptr[0];
+      imgBufferDataPtr[i+3]=255;
       sendL+=4;
       rest_len--;
       if(rest_len==0)
@@ -1184,12 +1186,11 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     // ,image_send_buffer[2]
     // ,image_send_buffer[3]
     // ,sendL,isKeepGoing);
-    
-    dch.toLinkLayer(&image_send_buffer[0], sendL, isKeepGoing==false);
+    dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false,headerOffset,0);
   }
   return 0;
 
-}
+} 
 
 
 
@@ -1382,7 +1383,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           depth = (int)*p_depth;
         }
-
+        LOGI("DEPTH:%d",depth);
         {
           cJSON *cjFileStruct = cJSON_DirFiles(pathStr, NULL, depth);
 
@@ -1405,6 +1406,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           fileStructStr = cJSON_Print(cjFileStruct);
 
           bpg_dat = GenStrBPGData("FS", fileStructStr); //[F]older [S]truct
+          // LOGI("size:%d,raw=>\n%s",bpg_dat.size,bpg_dat.dat_raw);
           bpg_dat.pgID = dat->pgID;
           fromUpperLayer(bpg_dat);
           if (fileStructStr)

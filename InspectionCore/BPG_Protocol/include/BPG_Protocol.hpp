@@ -38,7 +38,9 @@ public:
   virtual int toUpperLayer(BPG_protocol_data bpgdat) = 0;
   int fromUpperLayer(BPG_protocol_data bpgdat);
   int fromLinkLayer(uint8_t *dat, size_t len, bool FIN = true);
-  int toLinkLayer(uint8_t *dat, size_t len, bool FIN = true);
+  //enough header&footer room would allow lower layer use the buffer and fill the header in dat
+  //[extraHeaderRoom][dat:len][extraFooterRoom]
+  int toLinkLayer(uint8_t *dat, size_t len, bool FIN = true,int extraHeaderRoom=0, int extraFooterRoom=0);
 };
 
 #endif

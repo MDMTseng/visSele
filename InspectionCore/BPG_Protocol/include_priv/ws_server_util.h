@@ -49,9 +49,9 @@ public:
 
   enum wsFrameType lastPktType;
   int runLoop();
-
+  uint8_t* request_data_buffer(size_t req_size);
   int send_pkt(websock_data *packet);
-  int send_pkt(const uint8_t *packet, size_t pkt_size, int type, bool isFinal);
+  int send_pkt(uint8_t *packet, size_t pkt_size, int type, bool isFinal,int extraHeaderRoom);
 };
 
 class ws_conn_entity_pool
