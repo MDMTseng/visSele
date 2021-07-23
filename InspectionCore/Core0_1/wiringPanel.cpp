@@ -34,7 +34,7 @@ std::string InspSampleSavePath = InspSampleSavePath_DEFAULT;
 
 int resourcePoolSize = 30;
 TSQueue<image_pipe_info *> inspQueue(10);
-TSQueue<image_pipe_info *> actionQueue(10);
+TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
@@ -1186,6 +1186,9 @@ int m_BPG_Protocol_Interface::SEND_acvImage(BPG_Protocol_Interface &dch, struct 
     // ,image_send_buffer[2]
     // ,image_send_buffer[3]
     // ,sendL,isKeepGoing);
+
+    //gives linklayer enough(according to linklayer's requirment 
+    //can be much bigger(find possible maximum size header of all linklayer types))
     dch.toLinkLayer(imgBufferDataPtr, sendL, isKeepGoing==false,headerOffset,0);
   }
   return 0;
@@ -2882,7 +2885,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   do
   {
-    // sendResultTo_mift(imgPipe->actInfo.uInspStatus,fi.timeStamp_100us);
+    // sendResultTo_mift(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
 
     if (skipInspDataTransfer == true)
     {
@@ -2900,7 +2903,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     {
       // LOGI(">>>>");
 
-      cJSON *jobj = imgPipe->actInfo.report_json;
+      cJSON *jobj = imgPipe->datViewInfo.report_json;
       AttachStaticInfo(jobj, &bpg_pi);
       // double expTime = NAN;
       // if (CameraLayer::ACK == imgPipe->camLayer->GetExposureTime(&expTime))
@@ -3099,7 +3102,7 @@ void InspSnapSaveThread(bool *terminationflag)
 
     while (inspSnapQueue.pop_blocking(headImgPipe))
     {
-      // LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->actInfo.report_json);
+      // LOGI(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>report_json:%p",headImgPipe->datViewInfo.report_json);
       //report save
       //TODO: when need to save the inspection result run this, but there is a data saving latancy issue need to be solved
       {
@@ -3148,18 +3151,18 @@ void InspSnapSaveThread(bool *terminationflag)
         // std::string timeStamp= getTimeStr("%H:%M:%S") ;
         std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
 
-        saveInspectionSample(headImgPipe->actInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
+        saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
       }
 
-      cJSON_Delete(headImgPipe->actInfo.report_json);
-      headImgPipe->actInfo.report_json = NULL;
+      cJSON_Delete(headImgPipe->datViewInfo.report_json);
+      headImgPipe->datViewInfo.report_json = NULL;
 
       bpg_pi.resPool.retResrc(headImgPipe);
     }
   }
 }
 
-void ImgPipeActionThread(bool *terminationflag)
+void ImgPipeDatViewThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
   int delayStartCounter = 10000;
@@ -3178,7 +3181,7 @@ void ImgPipeActionThread(bool *terminationflag)
     //   }
     image_pipe_info *headImgPipe = NULL;
 
-    while (actionQueue.pop_blocking(headImgPipe))
+    while (datViewQueue.pop_blocking(headImgPipe))
     {
 
       bool doPassDown = false;
@@ -3186,8 +3189,8 @@ void ImgPipeActionThread(bool *terminationflag)
 
       if (saveInspFailSnap)
       {
-        if (headImgPipe->actInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE ||
-            headImgPipe->actInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
+        if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE ||
+            headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
         {
           saveToSnap = true;
         }
@@ -3195,7 +3198,7 @@ void ImgPipeActionThread(bool *terminationflag)
 
       // if(saveInspNASnap)
       // {
-      //   if(headImgPipe->actInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
+      //   if(headImgPipe->datViewInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
       //   {
       //     saveToSnap=true;
       //   }
@@ -3203,12 +3206,12 @@ void ImgPipeActionThread(bool *terminationflag)
 
       if(imgSendState==false)
       {
-        if(actionQueue.size() <3)
+        if(datViewQueue.size() <3)
           imgSendState=true;
       }
       else
       {
-        if(actionQueue.size() >5)
+        if(datViewQueue.size() >5)
           imgSendState=false;
       }
 
@@ -3232,8 +3235,8 @@ void ImgPipeActionThread(bool *terminationflag)
       if (!doPassDown)
       { //there is the end, recycle the resource
 
-        cJSON_Delete(headImgPipe->actInfo.report_json);
-        headImgPipe->actInfo.report_json = NULL;
+        cJSON_Delete(headImgPipe->datViewInfo.report_json);
+        headImgPipe->datViewInfo.report_json = NULL;
         bpg_pi.resPool.retResrc(headImgPipe);
       }
     }
@@ -3243,9 +3246,9 @@ void ImgPipeActionThread(bool *terminationflag)
 void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down)
 {
 
-  LOGE("============DO INSP>> waterLvL: insp:%d/%d act:%d/%d  snap:%d/%d   poolSize:%d",
+  LOGE("============DO INSP>> waterLvL: insp:%d/%d dview:%d/%d  snap:%d/%d   poolSize:%d",
        inspQueue.size(), inspQueue.capacity(),
-       actionQueue.size(), actionQueue.capacity(),
+       datViewQueue.size(), datViewQueue.capacity(),
        inspSnapQueue.size(), inspSnapQueue.capacity(),
        bpg_pi.resPool.rest_size());
   if (bpg_pi.cameraFramesLeft == 0)
@@ -3337,21 +3340,37 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
       }
     }
 
-    imgPipe->actInfo.uInspStatus = stat;
-    imgPipe->actInfo.finspStatus = stat_sec;
+    imgPipe->datViewInfo.uInspStatus = stat;
+    imgPipe->datViewInfo.finspStatus = stat_sec;
 
-    imgPipe->actInfo.report_json = matchingEng.FeatureReport2Json(report);
+    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
   }
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
 
   bool doPassDown = doInspActionThread;
 
-  //taking the short cut
-  sendResultTo_mift(imgPipe->actInfo.uInspStatus, imgPipe->fi.timeStamp_us);
+  //taking the short cut, mift(inspection machine) needs 100% of data
+  sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us);
   if (doPassDown)
   {
-    actionQueue.push_blocking(imgPipe);
+    if(datViewQueue.size()==datViewQueue.capacity())
+    {
+      //full, skip the most important data is send to mift(inspection machine)
+      
+      LOGI("SKIP datViewQueue!! info recycle");
+      //recycle the resource here
+      if (imgPipe->datViewInfo.report_json)
+        cJSON_Delete(imgPipe->datViewInfo.report_json);
+      imgPipe->datViewInfo.report_json = NULL;
+      bpg_pi.resPool.retResrc(imgPipe);
+      //do not wait here
+      //TODO: make skip counter let data view queue know
+    }
+    else
+    {
+      datViewQueue.push_blocking(imgPipe);
+    }
   }
   else
   {
@@ -3359,9 +3378,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     if (!doPassDown) //then, we need to recycle the resource here
     {
-      if (imgPipe->actInfo.report_json)
-        cJSON_Delete(imgPipe->actInfo.report_json);
-      imgPipe->actInfo.report_json = NULL;
+      if (imgPipe->datViewInfo.report_json)
+        cJSON_Delete(imgPipe->datViewInfo.report_json);
+      imgPipe->datViewInfo.report_json = NULL;
       bpg_pi.resPool.retResrc(imgPipe);
     }
   }
@@ -3778,7 +3797,7 @@ int mainLoop(bool realCamera = false)
     return -1;
   std::thread InspThread(ImgPipeProcessThread, &terminationFlag);
   setThreadPriority(InspThread, SCHED_RR, -20);
-  std::thread ActionThread(ImgPipeActionThread, &terminationFlag);
+  std::thread ActionThread(ImgPipeDatViewThread, &terminationFlag);
   setThreadPriority(ActionThread, SCHED_RR, 0);
   LOGI(">>>>>\n");
 

@@ -108,12 +108,12 @@ typedef struct image_pipe_info
   //acvRadialDistortionParam cam_param;
   FeatureManager_BacPac *bacpac;
 
-  struct action_Info
+  struct datView_Info
   {
     int finspStatus;
     int uInspStatus;
     cJSON *report_json;
-  } actInfo;
+  } datViewInfo;
 } image_pipe_info;
 
 
