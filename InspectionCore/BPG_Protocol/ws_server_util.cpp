@@ -714,8 +714,9 @@ int ws_conn::send_pkt(uint8_t *packet, size_t pkt_size, int type, bool isFinal,i
   // printf(">pkt_size:%d MHSize:%d> extraHeaderRoom:%d\n",pkt_size,WS_MAX_HEADERSIZE,extraHeaderRoom);
   if(extraHeaderRoom>=WS_MAX_HEADERSIZE)
   {
+  // printf(">\n");
     frameBuffer=packet-WS_MAX_HEADERSIZE;
-    size_t frameSize = pkt_size+WS_MAX_HEADERSIZE;
+    frameSize = pkt_size+WS_MAX_HEADERSIZE;
   }
   else
   {
