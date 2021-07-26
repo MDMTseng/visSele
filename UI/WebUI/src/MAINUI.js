@@ -91,7 +91,7 @@ const { Paragraph, Title } = Typography;
 
 const IMG_LOAD_DOWNSAMP_LEVEL=1;
 // let ELECTRON_IPC={readyState:0};
-let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/"));
+let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/",5*1000));
 
 ELECTRON_IPC.onreconnection = (reconnectionCounter) => {
   console.log("onreconnection" + reconnectionCounter);

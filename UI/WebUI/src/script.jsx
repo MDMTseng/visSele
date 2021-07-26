@@ -1028,7 +1028,7 @@ class APPMasterX extends React.Component {
         StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
         setTimeout(() => {
           this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl, this.BPG_WS);
-        }, 3000);
+        }, 10*1000);
       },
       onerror: (ev, ws_obj) => {
       },
