@@ -89,6 +89,7 @@ const { Header, Content, Footer, Sider } = Layout;
 const SubMenu = Menu.SubMenu;
 const { Paragraph, Title } = Typography;
 
+const IMG_LOAD_DOWNSAMP_LEVEL=1;
 // let ELECTRON_IPC={readyState:0};
 let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/"));
 
@@ -326,7 +327,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   
   useEffect(()=>{
-    ACT_WS_SEND( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath });
+    ACT_WS_SEND( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,
+    down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
 
   },[])
 
@@ -403,7 +405,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         if (filePath === undefined) return;
         filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
-        ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },undefined,{
+        ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
+        down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },undefined,{
           resolve:(stacked_pkts,action_channal)=>{
             let SS=stacked_pkts.find(pkt=>pkt.type=="SS");
             console.log(stacked_pkts,SS);
@@ -553,7 +556,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let filePath = file.path.replace("." + DEF_EXTENSION, "");
                   setInfoPopUp(undefined);
                   ACT_Def_Model_Path_Update(filePath);
-                  ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath });
+                  ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath ,
+                  down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
 
                   setFileSelectorInfo(undefined);
 
@@ -615,7 +619,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
-                ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath },
+                ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
+                down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },
                   undefined, { resolve:(pkts,action_channal)=>{
                     let SS=pkts.find(pkt=>pkt.type=="SS");
                     console.log(pkts);

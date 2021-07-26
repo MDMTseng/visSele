@@ -62,6 +62,7 @@ import {
 } from '@ant-design/icons';
 
 
+const IMG_LOAD_DOWNSAMP_LEVEL=1;
 
 function toFixedNum(num,digit)
 {
@@ -1384,7 +1385,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
       {
         deffile: defModelPath + '.' + DEF_EXTENSION,
         imgsrc: defModelPath,
-        down_samp_level:2
+        down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
       },
       undefined, { resolve, reject });
     setTimeout(() => reject("Timeout"), 5000)
@@ -1396,7 +1397,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
       //   ACT_WS_SEND(WS_ID, "LD", 0,
       //     {
       //       imgsrc: defModelPath,
-      //       down_samp_level:1
+      //       down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
       //     },
       //     undefined, { resolve, reject });
       //   setTimeout(() => reject("Timeout"), 5000)
@@ -1699,7 +1700,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
               trigger_type,
               timeout,
               img_property:{
-                down_samp_level:2
+                down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
               }
             },
               undefined, { resolve, reject });
