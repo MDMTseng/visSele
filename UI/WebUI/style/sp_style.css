@@ -56,12 +56,25 @@
 
   background: #0081ee;
 }
-.BK_Blink {
-  -webkit-animation: NAME-YOUR-ANIMATION 1s infinite;  /* Safari 4+ */
-  -moz-animation: NAME-YOUR-ANIMATION 1s infinite;  /* Fx 5+ */
-  -o-animation: NAME-YOUR-ANIMATION 1s infinite;  /* Opera 12+ */
-  animation: NAME-YOUR-ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
+.DISCONNECT_Blink {
+  animation: DISCONNECT_Blink_ANIMATION 1s infinite;  /* IE 10+, Fx 29+ */
 }
+
+@keyframes DISCONNECT_Blink_ANIMATION {
+  0%, 49% {
+    background-color: #400000;
+  }
+  49%, 50% {
+      background-color: #e50000;
+  }
+  50%, 99% {
+    background-color: #a50000;
+  }
+  99%, 100% {
+    background-color: #a50000;
+  }
+}
+
 
 
 .ant-modal.modal-sizing{
@@ -167,21 +180,6 @@
 div.error > textarea{
   background-color:#fff1f0;
 }
-@-webkit-keyframes NAME-YOUR-ANIMATION {
-  0%, 49% {
-    background-color: #400000;
-  }
-  49%, 50% {
-      background-color: #e50000;
-  }
-  50%, 99% {
-    background-color: #a50000;
-  }
-  99%, 100% {
-    background-color: #a50000;
-  }
-}
-
 /*Start of ANT COlor*/
 
 

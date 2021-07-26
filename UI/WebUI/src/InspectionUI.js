@@ -2306,7 +2306,7 @@ class APP_INSP_MODE extends React.Component {
         <BASE_COM.IconButton
           iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
           key="LOADDef"
-          addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "BK_Blink")}
+          addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
           text={
             (this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected)
             +" "+this.state.inspUploadedCount+":"+this.props.reportStatisticState.historyReport.length+"/"+InspectionReportPullSkip
