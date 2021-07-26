@@ -831,8 +831,19 @@ export class InspectionEditorLogic {
             vx:vec.x,
             vy:vec.y,
           }
-          eObject.adj_pt1 = closestPointOnLine(line, eObject.pt1);
-          
+
+          if(eObject.locating_anchor==true)
+          {
+            eObject.adj_pt1={
+              x:inspAdjObj.x,
+              y:inspAdjObj.y,
+            }
+          }
+          else
+          {
+            eObject.adj_pt1 = closestPointOnLine(line, eObject.pt1);
+          }
+
           if (oriBase)//rotate back to original orientation
           {
             eObject.adj_pt1= pointInvTrans(eObject.adj_pt1);
