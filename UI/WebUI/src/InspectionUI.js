@@ -1263,9 +1263,9 @@ class CanvasComponent extends React.Component {
 
         let rep = this.props.camera_calibration_report.reports[0];
         let mmpp = rep.mmpb2b / rep.ppb2b;
-        event.data.down_samp_level*=0.6;
+        // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
+        let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp * 2) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 7) down_samp_level = 7;
 
@@ -2056,7 +2056,8 @@ class APP_INSP_MODE extends React.Component {
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
       isInSettingUI:false,
-      SettingParamInfo:undefined
+      SettingParamInfo:undefined,
+      down_samp_factor:1
     };
 
     
@@ -2107,7 +2108,8 @@ class APP_INSP_MODE extends React.Component {
       if (typeof cam_setting.ROIs !== 'object') return;
       let ROIs = cam_setting.ROIs;
       console.log(">>>>", ROIs);
-      this.setState({ ROIs, ROI_key: undefined });
+      let down_samp_factor =cam_setting.down_samp_factor===undefined? 1:cam_setting.down_samp_factor;
+      this.setState({ ROIs, ROI_key: undefined,down_samp_factor});
     }).catch((err) => { })
 
   }
@@ -2562,6 +2564,7 @@ class APP_INSP_MODE extends React.Component {
             measureDisplayRank={this.state.measureDisplayRank}
             ACT_WS_SEND={this.props.ACT_WS_SEND}
             WS_ID={this.props.WS_ID}
+            downSampleFactor={this.state.down_samp_factor}
             onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
             camera_calibration_report={this.props.camera_calibration_report} />}
 
