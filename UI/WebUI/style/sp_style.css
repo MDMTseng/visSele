@@ -46,9 +46,28 @@
   transition:color 0.1s linear;
 }
 
-/*.mainui_mode_select:hover>.text{
-  color:#5191a5;
-}*/
+.flex_section {
+  display: flex;
+  flex-flow: column;
+  height: 100vh;
+}
+
+.flex_header {
+  /* no flex rules, it will grow */
+}
+
+.flex_div {
+  flex: 1;
+  /* 1 and it will fill whole space left if no flex value are set to other children*/
+  /* background: gold; */
+  overflow: auto;
+}
+
+.flex_footer {
+  /* background: lightgreen; */
+  min-height: 60px;
+  /* min-height has its purpose :) , unless you meant height*/
+}
 
 
 

@@ -20,6 +20,7 @@ import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
+// import { PageHeader } from 'antd/lib/page-header';
 //import Plot from 'react-plotly.js';
 //import {Doughnut} from 'react-chartjs-2';
 
@@ -30,7 +31,7 @@ let log = logX.getLogger("InspectionUI");
 import Row from 'antd/lib/Row';
 import Col from 'antd/lib/Col';
 import Slider from 'antd/lib/Slider';
-
+import Checkbox from 'antd/lib/checkbox'
 import Popover from 'antd/lib/popover';
 import Table from 'antd/lib/table';
 import Switch from 'antd/lib/switch';
@@ -1313,7 +1314,8 @@ class CanvasComponent extends React.Component {
   }
 
   onResize(width, height) {
-    if (Math.hypot(this.windowSize.width - width, this.windowSize.height - height) < 5) return;
+    
+    if (Math.hypot(this.windowSize.width - width, this.windowSize.height - height) < 15) return;
     if (this.ec_canvas !== undefined) {
       this.ec_canvas.resize(width, height);
       this.windowSize = {
@@ -2282,42 +2284,22 @@ class APP_INSP_MODE extends React.Component {
       this.props.defModelName.substring(0, 20)+"..."
     //console.log(">>>>defModelName>>>>>"+this.props.defModelName);
     MenuSet = [
-      <BASE_COM.IconButton
-      iconType={<ArrowLeftOutlined />}
-      dict={this.props.DICT}
-      key="<"
-      addClass="layout black vbox width3"
-      onClick={this.props.ACT_EXIT} />
-      ,
-      <Popover content={<div>{this.props.defModelName}<br/>{this.props.defModelPath} </div>}  placement="bottomLeft"  trigger="hover">
-        <div style={{backgroundColor:"#444"}} className="s layout vbox width9"> <FileOutlined/> {shortedModelName} </div>
-      
-      </Popover>
+
     ];
 
-    MenuSet.push(
-      this.state.additionalUI
-    );
+    // MenuSet.push(
+      
+    // );
 
     let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 1 : 10;
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
       MenuSet.push([
-        
-        <BASE_COM.IconButton
-          iconType={this.state.DB_Conn_state == 1 ? <LinkOutlined/>:<DisconnectOutlined/>}
-          key="LOADDef"
-          addClass={"blockS layout gray-1 vbox " + ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
-          text={
-            (this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected: this.props.DICT.connection.server_disconnected)
-            +" "+this.state.inspUploadedCount+":"+this.props.reportStatisticState.historyReport.length+"/"+InspectionReportPullSkip
-          }
-          onClick={() => { }} />
         ,
 
         <div className="s black width12 HXA">
-          <TagDisplay_rdx size="middle"/>
+          
           {/* <Tag className="large InspTag fixed" key="MACHX"
           onClick={()=>
             onTagEdit()}
@@ -2378,9 +2360,6 @@ class APP_INSP_MODE extends React.Component {
         
         );
       }
-      MenuSet.push(
-
-      );
     }
     switch (this.state.GraphUIDisplayMode) {
       case 0:
@@ -2457,73 +2436,6 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-    MenuSet_2nd.push(
-      <BASE_COM.IconButton
-        dict={this.props.DICT}
-        iconType="up-square"
-        key="DoImageTransfer"
-        addClass="layout palatte-blue-8 vbox"
-        text={"傳輸相機影像(I): " + ((this.CameraCtrl.data.DoImageTransfer) ? "暫停" : "啟動")}
-        onClick={() =>
-          this.CameraCtrl.setCameraImageTransfer()
-
-        } />);
-    MenuSet_2nd.push(<>
-      <BASE_COM.IconButton
-        dict={this.props.DICT}
-        iconType={<BarChartOutlined />}
-        key="Info Graphs"
-        addClass="layout black vbox width8"
-        text="Info Graphs" onClick={() => {
-          this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
-          this.setState(Object.assign({}, this.state));
-        }} />
-      <BASE_COM.IconButton
-        iconType={<LineOutlined />}
-        key="X"
-        addClass="layout black vbox width2"
-        text="X" onClick={() => {
-          this.state.GraphUIDisplayMode = 0;
-          this.setState({...this.state});
-        }} />
-      </>);
-
-    MenuSet_2nd.push(
-      <BASE_COM.IconButton
-        iconType={<ExpandOutlined />}
-        key="Manual ZOOM"
-        addClass="layout palatte-blue-8 vbox width10"
-        text={this.props.DICT._.manual_ROI_setup}
-        onClick={() =>{
-          
-          this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-          { CameraSetting: { ROI:[0,0,99999,99999] } });
-          this.setState({ onROISettingCallBack:(ROI_setting)=>{
-            
-            let x = ROI_setting.start.pix.x;
-            let y = ROI_setting.start.pix.y;
-            
-            let w = ROI_setting.end.pix.x-x;
-            let h = ROI_setting.end.pix.y-y;
-            if(w<0)
-            {
-              x+=w;
-              w=-w;
-            }
-            if(h<0)
-            {
-              y+=h;
-              h=-h;
-            }
-            let ROI = [x,y,w,h];
-            this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-            {CameraSetting: { ROI}});
-
-          
-            console.log(ROI_setting,ROI);
-            this.setState(undefined);
-          }})
-        }} />);
 
     const menu_ = (
       <Menu onClick={(ev) => {
@@ -2551,75 +2463,163 @@ class APP_INSP_MODE extends React.Component {
       </a>
     </Dropdown>);
 
+    let headerUI = 
+    <>
+      
+      <Button type="primary" size={"large"} onClick={this.props.ACT_EXIT}>
+        <ArrowLeftOutlined />
+      </Button>
+
+      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="hover">
+        <FileOutlined /> {shortedModelName}
+      </Popover>
+      <TagDisplay_rdx size="middle"/>
+      {this.state.additionalUI}
+
+      
+      <Button type="primary" size={"large"} 
+      className={ ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
+      icon={this.state.DB_Conn_state == 1 ? <LinkOutlined /> : <DisconnectOutlined />} >
+          {(this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected : this.props.DICT.connection.server_disconnected)
+          + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
+      </Button>
+
+      <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
+      onChange={(ev)=>
+          {
+            this.CameraCtrl.setCameraImageTransfer(ev.target.checked);
+            this.setState({});//just to kick update
+          }
+        } >{
+          this.CameraCtrl.data.DoImageTransfer?"相機影像開啟":"相機影像關閉"
+        }</Checkbox>
+      
+      <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}
+      onClick={() => {
+        this.state.GraphUIDisplayMode = (this.state.GraphUIDisplayMode + 1) % 3;
+        this.setState(Object.assign({}, this.state));
+      }}
+      >資料圖表</Button>
+
+      <Button type="primary" key="Manual ZOOM" size={"large"}
+        onClick={() => {
+        this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+        { CameraSetting: { ROI:[0,0,99999,99999] } });
+        this.setState({ onROISettingCallBack:(ROI_setting)=>{
+          
+          let x = ROI_setting.start.pix.x;
+          let y = ROI_setting.start.pix.y;
+          
+          let w = ROI_setting.end.pix.x-x;
+          let h = ROI_setting.end.pix.y-y;
+          if(w<0)
+          {
+            x+=w;
+            w=-w;
+          }
+          if(h<0)
+          {
+            y+=h;
+            h=-h;
+          }
+          let ROI = [x,y,w,h];
+          this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+          {CameraSetting: { ROI}});
+
+        
+          console.log(ROI_setting,ROI);
+          this.setState(undefined);
+        }})
+      }} ><ExpandOutlined /></Button>
+    </>
+
+/*
+    </>;*/
+
+
+
+
     // MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
     //   reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
     //   camera_calibration_report={this.props.camera_calibration_report} />);
 
     return (
-      <div className="overlayCon HXF">
-
-        {(CanvasWindowRatio <= 0) ? null :
-          <CanvasComponent_rdx addClass={"layout WXF" + " height" + CanvasWindowRatio}
-            onROISettingCallBack={this.state.onROISettingCallBack}
-            measureDisplayRank={this.state.measureDisplayRank}
-            ACT_WS_SEND={this.props.ACT_WS_SEND}
-            WS_ID={this.props.WS_ID}
-            downSampleFactor={this.state.down_samp_factor}
-            onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
-            camera_calibration_report={this.props.camera_calibration_report} />}
-
-        {(CanvasWindowRatio >= 12) ? null :
-          <DataStatsTable className={"s scroll WXF" + " height" + (12 - CanvasWindowRatio)}
-            reportStatisticState={this.props.reportStatisticState} measureDisplayRank={this.state.measureDisplayRank}/>}
-        <RAW_InspectionReportPull
-          reportStatisticState={this.props.reportStatisticState}
-          onConnectionStateUpdate={(cur, pre) => {
-            // console.log(">>>>>>>>>>",cur,pre);
-            this.setState({ DB_Conn_state: cur });
-          }}
-          onDBInsertSuccess={(data, info) => {
-            // log.info(data, info);
-            this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
-          }}
-
-          onDBInsertFail={(data, info) => {
-            log.error(data, info);
-          }}
-          url={this.props.machine_custom_setting.inspection_db_ws_url}
-          pull_skip={InspectionReportPullSkip} />
-        {/* <$CSSTG transitionName="fadeIn"> */}
-          <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height}
-            style={{ opacity: menuOpacity, width: "250px" }}>
-            {MenuSet}
-          </div>
-        {/* </$CSSTG> */}
+      <div className="HXF flex_section">
+        <div className="flex_header">{headerUI}</div>
 
 
-        <Menu
-          // onClick={this.handleClick}
-          // selectedKeys={[this.current]}
-          selectable={true}
-          // style={{align: 'left', width: 200}}
-          defaultSelectedKeys={['functionMenu']}
-          // defaultOpenKeys={['functionMenu']}
-          mode="inline">
 
-          <SubMenu key="sss"
-            className="s overlay overlayright scroll HXA WXA"
-            style={{ color: '#333' }}
-            title={<SettingOutlined />}>
-
-            <div key={"MENU"}
-              style={{ width: "250px" }}>
-              {MenuSet_2nd}
+        <div className="flex_div">
+          {/* <$CSSTG transitionName="fadeIn"> */}
+            <div key={"MENU"} className={"s overlay shadow1 scroll MenuAnim " + menu_height}
+              style={{ opacity: menuOpacity, width: "250px" }}>
+              {MenuSet}
             </div>
+          {/* </$CSSTG> */}
 
-          </SubMenu>
+          {(CanvasWindowRatio <= 0) ? null :
+            <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
+              onROISettingCallBack={this.state.onROISettingCallBack}
+              measureDisplayRank={this.state.measureDisplayRank}
+              ACT_WS_SEND={this.props.ACT_WS_SEND}
+              WS_ID={this.props.WS_ID}
+              downSampleFactor={this.state.down_samp_factor}
+              onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
+              camera_calibration_report={this.props.camera_calibration_report} />}
+
+          {(CanvasWindowRatio >= 12) ? null :
+            <DataStatsTable className={"s scroll WXF" + " height" + (12 - CanvasWindowRatio)}
+              reportStatisticState={this.props.reportStatisticState} measureDisplayRank={this.state.measureDisplayRank}/>}
 
 
-        </Menu>
+
+        </div>
+        <>  
 
 
+          {/* <Menu
+            // onClick={this.handleClick}
+            // selectedKeys={[this.current]}
+            selectable={true}
+            // style={{align: 'left', width: 200}}
+            defaultSelectedKeys={['functionMenu']}
+            // defaultOpenKeys={['functionMenu']}
+            mode="inline">
+
+            <SubMenu key="sss"
+              className="s overlay overlayright scroll HXA WXA"
+              style={{ color: '#333' }}
+              title={<SettingOutlined />}>
+
+              <div key={"MENU"}
+                style={{ width: "250px" }}>
+                {MenuSet_2nd}
+              </div>
+
+            </SubMenu>
+
+
+          </Menu> */}
+        </>
+
+
+        <RAW_InspectionReportPull
+        reportStatisticState={this.props.reportStatisticState}
+        onConnectionStateUpdate={(cur, pre) => {
+          // console.log(">>>>>>>>>>",cur,pre);
+          this.setState({ DB_Conn_state: cur });
+        }}
+        onDBInsertSuccess={(data, info) => {
+          // log.info(data, info);
+          this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
+        }}
+
+        onDBInsertFail={(data, info) => {
+          log.error(data, info);
+        }}
+        url={this.props.machine_custom_setting.inspection_db_ws_url}
+        pull_skip={InspectionReportPullSkip} />
+      
       </div>
     );
   }
