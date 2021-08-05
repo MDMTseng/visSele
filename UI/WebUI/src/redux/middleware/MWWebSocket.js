@@ -1,4 +1,5 @@
 
+import { websocket_reqTrack } from 'UTIL/MISC_Util';
 
 export const MWWS_EVENT = {
     ERROR:"MWWS_ERROR",
@@ -35,11 +36,18 @@ export const MWWebSocket = WSData => store => next => action => {
       }
       WSData[id] = undefined;
 
-      info.websocket= new WebSocket(info.url);
 
+      info.websocket= new WebSocket(info.url);
+  
       if(info.binaryType!==undefined)
         info.websocket.binaryType = info.binaryType; 
-      
+
+      if(info.doUseTrack==true)
+      {
+        info.websocket= new websocket_reqTrack(info.websocket);
+      }
+
+        
       info.websocket.onopen = function(ev)
       {
         this.onopen(ev,this);
@@ -60,6 +68,9 @@ export const MWWebSocket = WSData => store => next => action => {
         WSData[this.id]=undefined;
       }.bind(info);
 
+
+
+
       WSData[id]=info;
       break;
     }
@@ -71,7 +82,7 @@ export const MWWebSocket = WSData => store => next => action => {
         
         if(info !== undefined && info.promiseCBs!==undefined && info.promiseCBs.reject!==undefined)
           info.promiseCBs.reject({type:"error_connection_not_found",info:info});
-        return next({type:MWWS_EVENT.MWWS_ERROR});
+        return next({type:MWWS_EVENT.MWWS_ERROR,info:info});
       }
 
       if(WSData[id].send === undefined)
@@ -86,6 +97,16 @@ export const MWWebSocket = WSData => store => next => action => {
       break;
     }
 
+    case MWWS_EVENT.SEND_Tracking_Promise:
+    {
+      if(WSData[id] === undefined )
+      {
+        return next({type:MWWS_EVENT.MWWS_ERROR,info:info});
+      }
+
+      info.ret_promise(WSData[id].websocket.send_obj(info.data,info.replacer));
+      break;
+    }
     // User request to disconnect
     case MWWS_EVENT.DISCONNECT:
     {
