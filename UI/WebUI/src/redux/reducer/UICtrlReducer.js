@@ -49,6 +49,10 @@ function Default_UICtrlReducer() {
     p_state: null,
     state_count: 0,
     WS_ID: "EverCheckWS",
+
+    WS_defFileDataBase_W_ID: "WS_defFileDataBase_W_ID",
+    WS_InspDataBase_W_ID: "WS_InspDataBase_W_ID",
+    
     DICT:EC_zh_TW
   }
   defState.edit_info.defModelPath=undefined;

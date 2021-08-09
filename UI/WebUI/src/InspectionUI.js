@@ -2164,7 +2164,7 @@ class APP_INSP_MODE extends React.Component {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
         <br/>
-        SAVE:
+        {/* SAVE:
         <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
 
@@ -2183,7 +2183,7 @@ class APP_INSP_MODE extends React.Component {
               INSP_NG_SNAP:false
             })
 
-          }} >X</Button>
+          }} >X</Button> */}
       </Modal>]
     })
   }
@@ -2295,27 +2295,6 @@ class APP_INSP_MODE extends React.Component {
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
-      MenuSet.push([
-        ,
-
-        <div className="s black width12 HXA">
-          
-          {/* <Tag className="large InspTag fixed" key="MACHX"
-          onClick={()=>
-            onTagEdit()}
-          >+</Tag> */}
-          <br/>
-          <Tag className="large" color="gray" onClick={() =>{
-            this.setInspectionRankUI()
-          }}><SettingOutlined /></Tag>
-{/* 
-          <Tag className="large" color="gray" onClick={() =>{
-            this.setState({isInSettingUI:true});
-          }}><SettingOutlined /></Tag> */}
-
-        </div>
-
-      ]);
 
       let trackingWindowInfo = this.props.reportStatisticState.trackingWindow;
       //console.log(">>>>>>inspection_db_ws_url:",this.props.machine_custom_setting);
@@ -2474,6 +2453,10 @@ class APP_INSP_MODE extends React.Component {
         <FileOutlined /> {shortedModelName}
       </Popover>
       <TagDisplay_rdx size="middle"/>
+      
+      <Tag className="large" color="gray" onClick={() =>{
+            this.setInspectionRankUI()
+          }}><SettingOutlined /></Tag>
       {this.state.additionalUI}
 
       
