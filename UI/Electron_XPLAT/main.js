@@ -83,9 +83,74 @@ function ipc_bridge_connection()
 
 }
 
+const folderSelDialog = async (mainWindow) => {
+  try {
+   const chosenFolders = await electron.dialog.showOpenDialog(mainWindow, { properties: ['openDirectory'] });
+   if (chosenFolders && chosenFolders.canceled === false) {
 
+    return chosenFolders.filePaths;
+   }
+  } catch (err) {
+    throw new Error(err);
+  }
+
+  return undefined;
+ }
+
+
+
+electron.app.whenReady().then(() => {
+  setup()
+
+  electron.app.on('activate', function () {
+    // On macOS it's common to re-create a window in the app when the
+    // dock icon is clicked and there are no other windows open.
+    if (BrowserWindow.getAllWindows().length === 0) setup()
+  })
+})
+
+
+function setup()
 {
 
+
+  let mainWindow = new electron.BrowserWindow({
+    width: 800,
+    height: 600,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: true,
+      contextIsolation: false,
+      enableRemoteModule: true,
+      webSecurity:false
+    }
+  })
+
+  ipc.on('RUN_APP1', (event, arg) => {
+    // console.log(event,arg)
+
+    // arg
+
+    // APPDataDirPath: '/Users/mdm/visSele/export/scripts',
+    // APPContentPath: '/Users/mdm/visSele/export/v01'
+    
+    let rootAppInfo=arg.rootAppInfo;
+    let workspaceAppInfo=arg.workspaceAppInfo;
+    const tar_launcher = require(workspaceAppInfo.APPContentPath+"/scripts/launcher.js")
+    // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
+    tar_launcher.setup({
+      electron,
+      APP_INFO_FILE_PATH:rootAppInfo.APP_INFO_FILE_PATH,
+      mainWindow,
+      WebSocket:require('ws'),
+      express:require('express'),
+      mongoose :require('mongoose')});
+
+
+  })
+
+  mainWindow.loadFile("index.html")
+  mainWindow.webContents.openDevTools();
   const gotTheLock = electron.app.requestSingleInstanceLock();
   if (!gotTheLock) {
     app.quit()
@@ -93,55 +158,14 @@ function ipc_bridge_connection()
   }
 
 
+  let APP_INFO_FILE_NAME="app_setup_info.json";
   
   let APP_INFO_INFO ={//default
     "APPCorePath":"./res/Core/",
     "APPWebUIPath":"./res/WebUI/"
   };
-  let APP_INFO_FILE_PATH;
-  {
 
 
-
-    var appFolderBack="/";
-    if(process.platform === "win32")
-    {
-
-    }
-    else //if(process.platform === "darwin  ")
-    {
-      // appFolderBack="/../../../../"
-    }
-
-    APP_INFO_FILE_PATH=app.getAppPath()+appFolderBack+'app_setup_info.json';
-    
-    
-    while(true){
-      
-      let rawdata = fs.readFileSync(APP_INFO_FILE_PATH);
-      console.log("APP_INFO_FILE_PATH",APP_INFO_FILE_PATH);
-      APP_INFO_INFO = JSON.parse(rawdata);
-      if(APP_INFO_INFO.APP_INFO_FILE_PATH!==undefined)
-      {
-        APP_INFO_FILE_PATH=APP_INFO_INFO.APP_INFO_FILE_PATH;
-        console.log("APP_INFO_FILE_PATH",APP_INFO_FILE_PATH);
-        continue;
-      }
-      APP_INFO_INFO=APP_INFO_INFO;
-      break;
-    }
-
-  }
-  console.log("APP_INFO_INFO",APP_INFO_INFO);
-  
-  const tar_launcher = require(APP_INFO_INFO.APPContentPath+"/scripts/launcher.js")
-
-  console.log("tar_launcher",tar_launcher);
-
-  tar_launcher.setup({electron,APP_INFO_FILE_PATH,
-    WebSocket:require('ws'),
-    express:require('express'),
-    mongoose :require('mongoose')});
 }
 
 
