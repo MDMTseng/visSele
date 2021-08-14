@@ -59,7 +59,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
         //   rotate+=0.06*M_PI/180;
         // }
-        rotate+=1*M_PI/180;
+        rotate+=1*M_PI/180.1;
       }
       
       // img.ReSize(newW,newH);
@@ -105,6 +105,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
         // }  
         // else 
+        int noiseRange=5;
         for(int i=0;i<newH;i++)//exposure add
         {
           int li=i+newY;
@@ -113,8 +114,9 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
           {
             int lj=j+newX;
             if(lj<0 || lj>=img_load.GetWidth())continue;
-
-            int d = (img_load.CVector[li][lj*3]*tExp)>>13;
+            int N=0;
+            N= (rand()%(2*noiseRange))-noiseRange;
+            int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
             
             if(d<0)d=0;
             else if(d>255)d=255;
@@ -137,21 +139,21 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       
 
       // int noiseRange=5;
-      // if(0)for(int i=0;i<img.GetHeight();i++)//Add noise
+      // for(int i=0;i<newH;i++)//Add noise
       // {
-      //     for(int j=0;j<img.GetWidth();j++)
+      //     for(int j=0;j<newW;j++)
       //     {
       //         // int u = rand()%(gaussianNoiseTable_M.size());
       //         // int x = gaussianNoiseTable_M[u] * 3/1000000 + 0;
       //         int x=(rand()%(2*noiseRange))-noiseRange;
-      //         int d = img.CVector[i][j*3];
+      //         int d = imgBuffer[(i*newW+j)*channelCount+0];
       //         d+=x;
       //         if(d<0)d=0;
       //         else if(d>255)d=255;
               
-      //         img.CVector[i][j*3] = d;
-      //         img.CVector[i][j*3+1] = d;
-      //         img.CVector[i][j*3+2] = d;
+      //         imgBuffer[(i*newW+j)*channelCount+0] =
+      //         imgBuffer[(i*newW+j)*channelCount+1] =
+      //         imgBuffer[(i*newW+j)*channelCount+2] =d;
 
       //     }
       // }
