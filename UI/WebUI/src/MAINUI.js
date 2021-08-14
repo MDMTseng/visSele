@@ -90,7 +90,11 @@ const SubMenu = Menu.SubMenu;
 const { Paragraph, Title } = Typography;
 
 const IMG_LOAD_DOWNSAMP_LEVEL=1;
-let ELECTRON_IPC={readyState:0};
+
+var require=require||(()=>undefined);
+const electron = require('electron')
+const fs = require('fs');
+const path = require('path')
 // let ELECTRON_IPC = new websocket_reqTrack(new websocket_autoReconnect("ws://localhost:9714/",5*1000));
 
 // ELECTRON_IPC.onreconnection = (reconnectionCounter) => {
@@ -327,8 +331,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   
   useEffect(()=>{
+    let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
+    if(down_samp_level>3)down_samp_level=3;
     ACT_WS_SEND( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,
-    down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
+    down_samp_level});
 
   },[])
 
@@ -849,15 +855,26 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     <br/>
 
     檢測快照儲存位置：
-    <Button size="large" icon={<MonitorOutlined/> }  disabled={ELECTRON_IPC.readyState!=1}//Not open?
+    <Button size="large" icon={<MonitorOutlined/> }  disabled={fs===undefined}//Not open?
         onClick={() =>{
-          ELECTRON_IPC.send_obj({"type":"showOpenDialog",option:{ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']}})
-          .then((data)=>{
-            set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:data.filePaths[0]});
-          })
-          .catch((err)=>{
-            console.log(err)
-          })
+
+
+          electron.remote.dialog.showOpenDialog({
+            title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']
+          }).then((result) => {
+
+            set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:result.filePaths[0]});
+          }).catch(err => {
+          console.log(err)
+          }); 
+
+          // ELECTRON_IPC.send_obj({"type":"showOpenDialog",option:{ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']}})
+          // .then((data)=>{
+          //   set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:data.filePaths[0]});
+          // })
+          // .catch((err)=>{
+          //   console.log(err)
+          // })
         }}>{st_machine_custom_setting.InspSampleSavePath}</Button>
     <br/>
     <Divider>RAW</Divider>

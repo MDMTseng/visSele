@@ -2042,7 +2042,10 @@ class Preview_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   draw() {
     if (this.db_obj === undefined || this.db_obj == null || this.db_obj.cameraParam === undefined) return;
-    
+    if(this.img_info===undefined)
+    {
+      return;
+    }
 
     let mmpp = this.rUtil.get_mmpp();
 
@@ -2388,7 +2391,10 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   }
   draw_INSP() {
 
-
+    if(this.img_info===undefined)
+    {
+      return;
+    }
     let mmpp = this.rUtil.get_mmpp();
     // console.log(">>edit_DB_info>>",this.edit_DB_info );
     if (this.ERROR_LOCK || this.edit_DB_info == null ) {
@@ -2462,6 +2468,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
 
+      let curScale=this.camera.GetCameraScale();
       if(true){
 
         ctx.scale(mmpp_mult, mmpp_mult);
@@ -2473,7 +2480,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         
         ctx.strokeStyle = "rgba(120, 120, 120,30)";
         
-        let curScale=this.camera.GetCameraScale();
         ctx.lineWidth = 50/curScale;
         this.rUtil.drawImageBoundaryGrid(ctx,this.img_info,100000/curScale);
   
@@ -2540,14 +2546,14 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         inspectionReportList.forEach((report, idx) => {
           ctx.save();
           ctx.translate(report.cx, report.cy);
+          console.log(report.cx, report.cy,report);
+          ctx.save();
+          ctx.rotate(-report.rotate);
+          if (report.isFlipped)
+            ctx.scale(1, -1);
+          this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
+          ctx.restore();
           
-          // ctx.save();
-          // ctx.rotate(-report.rotate);
-          // if (report.isFlipped)
-          //   ctx.scale(1, -1);
-          // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
-          // ctx.restore();
-          // 
           
 
           // ctx.scale(sigScale, sigScale);

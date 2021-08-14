@@ -125,4 +125,18 @@ module.exports = {
         }]
       }]
   },
+  
+  externals: [
+    (function () {
+      var IGNORES = [
+        'electron','fs','path'//nodejs specific modules 
+      ];
+      return function (context, request, callback) {
+        if (IGNORES.indexOf(request) >= 0) {
+          return callback(null, "require('" + request + "')");
+        }
+        return callback();
+      };
+    })()
+  ]
 };

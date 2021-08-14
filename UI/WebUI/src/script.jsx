@@ -49,6 +49,15 @@ import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
 
 let TEST_MODE=false;
+
+
+
+var require=require||(()=>undefined);
+
+const electron = require('electron')
+const fs = require('fs');
+const path = require('path')
+
 log.setLevel("info");
 log.getLogger("InspectionEditorLogic").setLevel("INFO");
 log.getLogger("UICtrlReducer").setLevel("INFO");
@@ -681,7 +690,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
   return (
     <div className="layout width12 height12">
       
-      <Divider>{DICT._.connection_status}</Divider>
+      {/* <Divider>{DICT._.connection_status}</Divider> */}
       <System_Status_Display showText iconSize={30} gridSize={90} 
         onStatusTick={(sys_state)=>{
           // console.log(sys_state);
@@ -713,8 +722,8 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
           }
         }}
         onClick_UploadDataBase={(sys_state)=>{}}/>
-      <Divider>Update</Divider>
-      <Boot_CTRL_UI URL={URL}/>
+      {/* <Divider>Update</Divider> */}
+      {/* <Boot_CTRL_UI URL={URL}/> */}
       {/* <Divider>ServicePanel</Divider>
       <SystemServicePanel_UI/> */}
     </div>)
@@ -769,6 +778,7 @@ class APPMasterX extends React.Component {
     return {
       ACT_Ctrl_SM_Panel: (args) => dispatch({ type: UIAct.UI_SM_EVENT.Control_SM_Panel, data: args }),
       ACT_WS_CONNECT: (id, url, obj) => dispatch({ type: MWWS_EVENT.CONNECT, data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" }, obj) }),
+      ACT_WS_CONNECT_w_tracking: (id, url, obj) => dispatch({ type: MWWS_EVENT.CONNECT, data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" }, obj) , doUseTrack:true}),
       ACT_WS_DISCONNECT: (id) => dispatch({ type: MWWS_EVENT.DISCONNECT, data: { id: id } }),
       DISPATCH: (act) => {
         dispatch(act)
@@ -820,6 +830,11 @@ class APPMasterX extends React.Component {
     this.state={
       show_system_panel:true
     };
+
+    console.log("electron:",electron);
+    console.log("fs:",fs);
+    console.log("path:",path);
+
 
 
     let localUrl =window.location.href;
@@ -1072,7 +1087,82 @@ class APPMasterX extends React.Component {
       , 100);
 
 
+
+
+      
+    this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/",{
+      onopen: (ev, ws_obj) => {
+        console.log("onopen")
+      },
+      onmessage: (evt, ws_obj) => {
+
+        console.log("onmessage")
+      },
+      onclose: (ev, ws_obj) => {
+        
+        console.log("onclose")
+        return true;
+      },
+      onerror: (ev, ws_obj) => {
+        console.log("onerror",ev)
+      },
+      send: (data, ws_obj, promiseCBs) => {
+
+      }
+    },5000);
+
+
+
+
+      
+
   }
+
+
+  launchWSConnectionAction(ID,url,wsEventCBSet,delayReconnect_ms=5000)
+  {
+
+    let orig_onclose=wsEventCBSet.onclose;
+    wsEventCBSet.onclose= (ev, ws_obj) => {
+      let doRunDefault=true;
+      if(orig_onclose!==undefined)
+      {
+        doRunDefault=orig_onclose(ev, ws_obj);
+      }
+      if(doRunDefault==true && delayReconnect_ms>0)
+      {
+        setTimeout(() => {
+          this.props.ACT_WS_CONNECT(ID, url, wsEventCBSet);
+        }, delayReconnect_ms);
+      }
+    }
+    this.props.ACT_WS_CONNECT(ID, url, wsEventCBSet)
+
+    // this.DEFCONF_W_WS = {
+    //   onopen: (ev, ws_obj) => {
+    //   },
+    //   onmessage: (evt, ws_obj) => {
+
+    //   },
+    //   onclose: (ev, ws_obj) => {
+    //     StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
+    //     setTimeout(() => {
+    //       this.props.ACT_WS_CONNECT(ID, url, wsEventCBSet);
+    //     }, delayReconnect_ms);
+    //   },
+    //   onerror: (ev, ws_obj) => {
+    //   },
+    //   send: (data, ws_obj, promiseCBs) => {
+
+    //   }
+    // }
+
+
+
+
+  }
+
+
   render() {
     log.debug("APPMasterX render", this.props);
 
@@ -1128,7 +1218,7 @@ class APPMasterX extends React.Component {
         }
         </CSSTransitionGroup>
         <Drawer
-          title={this.props.DICT._.system_status+" "+localVersion}
+          title=""//{this.props.DICT._.system_status+" "+localVersion}
           placement="right"
           closable={true}
           onClose={()=>{
