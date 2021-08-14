@@ -3,6 +3,7 @@ const electron = require('electron')
 
 const { app } = electron
 
+var require=require||(()=>undefined);
 const ipc = require('electron').ipcMain
 const path = require('path')
 const child_process = require('child_process');
@@ -150,7 +151,7 @@ function setup()
   })
 
   mainWindow.loadFile("index.html")
-  mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools();
   const gotTheLock = electron.app.requestSingleInstanceLock();
   if (!gotTheLock) {
     app.quit()

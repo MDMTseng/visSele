@@ -42,6 +42,38 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
   var btn_RUN = document.getElementById('btn_RUN');
   btn_RUN.disabled=!isComp;
 
+  if(isComp)
+  {
+    // console.log(APP_RouterTxt)
+    // const tar_launcher = require(APP_RouterTxt+"/scripts/launcher.js")
+    // // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
+    // console.log(tar_launcher.update.getAppInfo());
+    // console.log(tar_launcher.update.getRemoteVersionList());
+
+    
+  }
+
+  if(false)
+  {
+    
+    var system_info = document.getElementById('system_info');
+    try {
+      let rawdata = fs.readFileSync(APP_RouterTxt+"/scripts/info.json");
+      info=JSON.parse(rawdata);
+      system_info.innerText=JSON.stringify(info);
+      return true;
+    } catch (err) {
+
+      system_info.innerText="NO Info...";
+    }
+
+    return false;
+
+
+  }
+
+  
+
 }
 function checkAPPINFO(rootAppInfo)
 {
@@ -93,6 +125,13 @@ function checkAPPInfo_isComplete(rootAppInfo,workspaceAppInfo)
     if(workspaceAppInfo.APPDataDirPath===undefined)return false;
     if(workspaceAppInfo.APPContentPath===undefined)return false;
 
+    let rawdata = fs.readFileSync(workspaceAppInfo.APPContentPath+"/scripts/info.json");
+
+    let info=JSON.parse(rawdata);
+    if(info.version===undefined)
+    {
+      return false;
+    }
     return true;
     
   } catch (err) {
