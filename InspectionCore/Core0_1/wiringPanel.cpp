@@ -25,6 +25,8 @@ std::timed_mutex mainThreadLock;
 bool saveInspFailSnap = true;
 bool saveInspNASnap = true;
 
+int imageQueueSkipSize = 0;
+
 cJSON *cache_deffile_JSON = NULL;
 
 cJSON *cache_camera_param = NULL;
@@ -1889,6 +1891,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           //If the inspection result arrives without def config file then webUI will generate(by design) an statemachine error event.
           // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
+          imageQueueSkipSize=inspQueue.capacity();//it will never hit the skip size
           if (dat->tl[0] == 'C')
           {
             if (false && frameCount == 1)
@@ -1901,6 +1904,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
 
             doImgProcessThread = true;
+            imageQueueSkipSize=inspQueue.capacity()/3;
+            if(imageQueueSkipSize<3)imageQueueSkipSize=3;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -2736,6 +2741,14 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   static clock_t pframeT;
   clock_t t = clock();
 
+
+  if(inspQueue.size()>imageQueueSkipSize)//for responsiveness
+  {//skip image if the queue is more than imageQueueSkipSize
+  
+    LOGE("skip image, inspQueue.size():%d>imageQueueSkipSize:%d\n", inspQueue.size(),imageQueueSkipSize);
+    return CameraLayer::NAK;
+  }
+
   double interval = (double)(t - pframeT) / CLOCKS_PER_SEC * 1000;
   if (!doImgProcessThread)
   {
@@ -2754,11 +2767,6 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
 
 
   
-
-  // if(inspQueue.size()>0)//for responsiveness
-  // {//toss image if the queue is not empty
-  //   return;
-  // }
 
 
   
@@ -4191,6 +4199,7 @@ int cp_main(int argc, char **argv)
     str = PatternRest(argv[i], "chdir=");
     if(str!=NULL)
     {
+      LOGI("parse....   chdir=%s",str);
       doMatch=true;
       chdir(str);
     }
