@@ -5,7 +5,7 @@ export const MWWS_EVENT = {
     ERROR:"MWWS_ERROR",
     CONNECT:"MWWS_CONNECT",
     DISCONNECT:"MWWS_DISCONNECT",
-    SEND:"MWWS_SEND",
+    SEND:"MWWS_SEND"
 };
 
 export const MWWebSocket = WSData => store => next => action => {
@@ -94,17 +94,6 @@ export const MWWebSocket = WSData => store => next => action => {
         WSData[id].send(info.data,WSData[id],info.promiseCBs);
         return;
       }
-      break;
-    }
-
-    case MWWS_EVENT.SEND_Tracking_Promise:
-    {
-      if(WSData[id] === undefined )
-      {
-        return next({type:MWWS_EVENT.MWWS_ERROR,info:info});
-      }
-
-      info.ret_promise(WSData[id].websocket.send_obj(info.data,info.replacer));
       break;
     }
     // User request to disconnect

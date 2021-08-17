@@ -367,7 +367,7 @@ export function EV_WS_uInsp_PING_Sent()
 }
 
 
-export function EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs){
+export function EV_WS_SEND_BPG(id,tl,prop,data,uintArr,promiseCBs){
   return ({
     type:"MWWS_SEND",
     data:{
@@ -378,6 +378,17 @@ export function EV_WS_SEND(id,tl,prop,data,uintArr,promiseCBs){
         data:data,
         uintArr:uintArr
       },
+      promiseCBs
+    }
+  });
+}
+
+export function EV_WS_SEND(id,data,promiseCBs){
+  return ({
+    type:"MWWS_SEND",
+    data:{
+      id,
+      data,
       promiseCBs
     }
   });

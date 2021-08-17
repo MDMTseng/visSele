@@ -1359,7 +1359,7 @@ function SettingUI({})
 
 
   
-function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID,dispatch)
+function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,WS_ID,dispatch)
 {
   function actionGen_W_IGNORE_LOCK(pkts)
   {
@@ -1381,7 +1381,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
   ACT_DefConf_Lock_Level_Update(1);
   new Promise((resolve, reject) => {
     console.log(defModelPath,DEF_EXTENSION,WS_ID)
-    ACT_WS_SEND(WS_ID, "LD", 0,
+    ACT_WS_SEND_BPG(WS_ID, "LD", 0,
       {
         deffile: defModelPath + '.' + DEF_EXTENSION,
         imgsrc: defModelPath,
@@ -1394,7 +1394,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_I
       dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
       // new Promise((resolve, reject) => {
-      //   ACT_WS_SEND(WS_ID, "LD", 0,
+      //   ACT_WS_SEND_BPG(WS_ID, "LD", 0,
       //     {
       //       imgsrc: defModelPath,
       //       down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
@@ -1469,7 +1469,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
   const ACT_Shape_List_Reset= () => { dispatch(DefConfAct.Shape_List_Update([])) };
   const ACT_Cache_Img_Save= (id, fileName) =>
-    dispatch(UIAct.EV_WS_SEND(id, "SV", 0,
+    dispatch(UIAct.EV_WS_SEND_BPG(id, "SV", 0,
       { filename: fileName, type: "__CACHE_IMG__" }
     ))
 
@@ -1483,7 +1483,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   const ACT_IntrusionSizeLimitRatio_Update= (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) };//0~1
     
   const ACT_Report_Save=(id, fileName, content) => {
-    let act = UIAct.EV_WS_SEND(id, "SV", 0,
+    let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
       { filename: fileName },
       content
     )
@@ -1492,7 +1492,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   const ACT_Matching_Angle_Margin_Deg_Update= (deg) => { dispatch(DefConfAct.Matching_Angle_Margin_Deg_Update(deg)) };
   const ACT_Matching_Face_Update=(faceSetup) => { dispatch(DefConfAct.Matching_Face_Update(faceSetup)) };//-1(back)/0(both)/1(front)
     
-  const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(...args));
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
   const edit_info = useSelector(state => state.UIData.edit_info);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
@@ -1657,7 +1657,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
           console.log(fileNamePath);
 
-          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND,WS_ID,dispatch);
+          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,WS_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
           setFileSelectedCallBack(undefined);
         })
@@ -1696,7 +1696,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           setModal_viewAsWait();
           ACT_DefConf_Lock_Level_Update(0);
           new Promise((resolve, reject) => {
-            ACT_WS_SEND(WS_ID, "EX", 0, {
+            ACT_WS_SEND_BPG(WS_ID, "EX", 0, {
               trigger_type,
               timeout,
               img_property:{
@@ -1771,7 +1771,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         let deffile = defFileGeneration(edit_info);
         console.log(deffile);
         deffile.intrusionSizeLimitRatio=1;
-        ACT_WS_SEND(WS_ID,"II", 0, 
+        ACT_WS_SEND_BPG(WS_ID,"II", 0, 
         {
           _PGID_:10104,
           _PGINFO_:{keep:true},
@@ -1851,7 +1851,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         searchDepth={4}
         className="width8 modal-sizing"
         path={DefFileFolder} visible={fileSelectedCallBack !== undefined}
-        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(WS_ID, ...args)}
         onFileSelected={(filePath, fileInfo) => {
           fileSelectedCallBack(filePath, fileInfo);
         }}
@@ -1874,7 +1874,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         searchDepth={4}
         path={DefFileFolder} visible={fileSavingCallBack !== undefined}
         defaultName={defaultName}
-        BPG_Channel={(...args) => ACT_WS_SEND(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(WS_ID, ...args)}
 
         onOk={(folderInfo, fileName, existed) => {
           fileSavingCallBack(folderInfo, fileName, existed);
@@ -1955,10 +1955,10 @@ class APP_DEFCONF_MODE extends React.Component {
       this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
       this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
     }
-    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND,this.props.WS_ID,this.props.DISPATCH);
+    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.WS_ID,this.props.DISPATCH);
 
     
-    this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+    this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } });
   }
 
@@ -2684,7 +2684,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 deffile.intrusionSizeLimitRatio=1;
   
 
-                this.props.ACT_WS_SEND(this.props.WS_ID,"II", 0, 
+                this.props.ACT_WS_SEND_BPG(this.props.WS_ID,"II", 0, 
                 {
                   _PGID_:10104,
                   _PGINFO_:{keep:true},
@@ -2889,7 +2889,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_DefConf_Lock_Level_Update: (level) => { dispatch(DefConfAct.DefConf_Lock_Level_Update(level)) },
 
     ACT_Def_Model_Path_Update: (path) => { dispatch(UIAct.Def_Model_Path_Update(path)) },
-    ACT_WS_SEND: (...args) => dispatch(UIAct.EV_WS_SEND(...args)),
+    ACT_WS_SEND_BPG: (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args)),
     ACT_ClearImage: () => { dispatch(UIAct.EV_WS_Image_Update(null)) },
     ACT_Shape_Decoration_ID_Order_Update: (shape_id_order) => { dispatch(DefConfAct.Shape_Decoration_ID_Order_Update(shape_id_order)) },
     ACT_Shape_Decoration_Extra_Info_Update: (extra_info) => { dispatch(DefConfAct.Shape_Decoration_Extra_Info_Update(extra_info)) },
@@ -2900,7 +2900,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
     ACT_IntrusionSizeLimitRatio_Update: (ratio) => { dispatch(DefConfAct.IntrusionSizeLimitRatio_Update(ratio)) },//0~1
     ACT_DefFileHash_Update: (hash) => { dispatch(DefConfAct.DefFileHash_Update(hash)) },
     ACT_Report_Save: (id, fileName, content) => {
-      let act = UIAct.EV_WS_SEND(id, "SV", 0,
+      let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
         { filename: fileName },
         content
       )
@@ -2908,7 +2908,7 @@ const mapDispatchToProps_APP_DEFCONF_MODE = (dispatch, ownProps) => {
       dispatch(act);
     },
     ACT_Cache_Img_Save: (id, fileName) => {
-      dispatch(UIAct.EV_WS_SEND(id, "SV", 0,
+      dispatch(UIAct.EV_WS_SEND_BPG(id, "SV", 0,
         { filename: fileName, type: "__CACHE_IMG__" }
       ));
     },

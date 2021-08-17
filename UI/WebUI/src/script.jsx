@@ -117,7 +117,7 @@ function SystemServicePanel_UI()
   
   const dispatch = useDispatch();
   const WS_ID = useSelector(state => state.UIData.WS_ID);
-  const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(...args));
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
 
 
@@ -125,7 +125,7 @@ function SystemServicePanel_UI()
     <Button onClick={()=>{
 
 
-      ACT_WS_SEND(WS_ID, "RC", 0, {
+      ACT_WS_SEND_BPG(WS_ID, "RC", 0, {
           target: "camera_ez_reconnect"
         });
       }}>EX_RECONN</Button>
@@ -571,7 +571,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     boot_daemon:false,
     core:false,
     camera:false,
-    upload_database:false,
+    insp_report_upload_database:false,
   });
 
   
@@ -615,7 +615,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   return [
     [DICT._.core,   systemConnectState.core,   onClick_Core,   <AimOutlined/>],
     [DICT._.camera, systemConnectState.camera, onClick_Camera, <CameraOutlined/>],
-    // ["資料庫", systemConnectState.upload_database, onClick_Camera, <CloudUploadOutlined/>],
+    ["檢測資料庫", systemConnectState.insp_report_upload_database, onClick_Camera, <CloudUploadOutlined/>],
     ].map(([textName, connection_status, onClickEvent, icon])=>
       <Button size="large" key={"stat"+textName} style={gridStyle} 
       type="text" //disabled={!systemConnectState.core}
@@ -628,16 +628,16 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           {icon}
         </div>
             {(showText)?
-              [textName,<br/>,connection_status?null:DICT._.disconnected]
+              [<span className="veleX">{textName}</span>,<br/>,connection_status?null:DICT._.disconnected]
               :null}
       </Button>)
 
 }
 
-function Query_Camera_Info(ACT_WS_SEND,WS_ID)
+function Query_Camera_Info(ACT_WS_SEND_BPG,WS_ID)
 {
   return new Promise((resolve, reject) => {
-    ACT_WS_SEND(WS_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
+    ACT_WS_SEND_BPG(WS_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
       undefined, {resolve, reject})
   });
 }
@@ -654,14 +654,14 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
   const dispatch = useDispatch();
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const cur_state = useSelector(state => state.UIData.c_state);
-  const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(...args));
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
   const ACT_EXIT= _ => dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT));
   const ACT_System_Connection_Status_Update= (st) => dispatch(UIAct.EV_UI_System_Connection_Status_Update(st));
 
 
   const ACT_CAMERA_RECONNECT=()=>  new Promise((resolve, reject) => {
-    ACT_WS_SEND(WS_ID, "RC", 0, {
+    ACT_WS_SEND_BPG(WS_ID, "RC", 0, {
       target: "camera_ez_reconnect"
     },
       undefined, { resolve, reject });
@@ -739,7 +739,9 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
   const ACT_CAMERA_STATUS_UPDATE= (camera_info) => dispatch(UIAct.EV_Core_Status_Update(camera_info));
   
   const WS_ID = useSelector(state => state.UIData.WS_ID);
-  const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(...args));
+  const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
+
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
   useEffect(() => {
     //return 
     //trigger start
@@ -747,7 +749,7 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
     {
       if(s_.inProgress==true)return;
       s_.inProgress=true;
-      Query_Camera_Info(ACT_WS_SEND,WS_ID)
+      Query_Camera_Info(ACT_WS_SEND_BPG,WS_ID)
         .then((pkts) => {
           s_.inProgress=false;
           let GS=pkts.find(pkt=>pkt.type=="GS")
@@ -764,6 +766,33 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
     }
       
     ,2000);
+
+  },[])
+
+  
+  useEffect(() => {
+    //return 
+    //trigger start
+    setInterval(()=>
+    {
+      Promise((resolve, reject) => {
+        ACT_WS_SEND_BPG(WS_InspDataBase_W_ID, "GS", 0, { items: [] },
+          undefined, {resolve, reject})
+      })
+      .then((pkts) => {
+        s_.inProgress=false;
+        let GS=pkts.find(pkt=>pkt.type=="GS")
+        if (GS!==undefined) {
+
+          onStatusChange(GS.data);
+          ACT_CAMERA_STATUS_UPDATE(GS.data);
+        }
+      })
+      .catch(err => {
+        s_.inProgress=false;
+        log.error(err);
+      })
+    },2000);
 
   },[])
 
@@ -788,7 +817,7 @@ class APPMasterX extends React.Component {
         dispatch(act)
       },
       ACT_CAMERA_INFO_UPDATE: (camera_info) => dispatch(UIAct.EV_UI_Version_Map_Update(camera_info)),
-      ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
+      ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
 
       ACT_Version_Map_Update: (mapInfo) => dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
 
@@ -803,6 +832,7 @@ class APPMasterX extends React.Component {
       stateMachine: state.UIData.sm,
       WS_CH: state.UIData.WS_CH,
       WS_ID: state.UIData.WS_ID,
+      WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
       C_STATE: state.UIData.c_state,
       
       Update_Status:state.UIData.Update_Status,
@@ -883,16 +913,16 @@ class APPMasterX extends React.Component {
                 // });
               }
 
-              this.props.ACT_WS_SEND(this.props.WS_ID, "HR", 0, { a: ["d"] });
+              this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "HR", 0, { a: ["d"] });
               
               setTimeout(()=>{
 
-                this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" });
+                this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" });
 
   
               
                   
-                this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+                this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "LD", 0,
                 { filename: "data/machine_setting.json" },
                 undefined, 
                 {resolve: (data) => {
@@ -917,7 +947,7 @@ class APPMasterX extends React.Component {
                   }
                 }});
             
-                this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+                this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "LD", 0,
                   { filename: "data/machine_info" },
                   undefined, 
                   {resolve: (data) => {
@@ -1087,12 +1117,21 @@ class APPMasterX extends React.Component {
       , 100);
 
 
-
-
-      
+    let connState=false;
+    let PING_Interval=undefined;
     this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/",{
       onopen: (ev, ws_obj) => {
         console.log("onopen")
+        connState=true;
+        if(PING_Interval===undefined)
+        {
+          PING_Interval=setTimeout(()=>{
+            if(connState)
+            {
+
+            }
+          },5000);
+        }
       },
       onmessage: (evt, ws_obj) => {
 
@@ -1101,18 +1140,45 @@ class APPMasterX extends React.Component {
       onclose: (ev, ws_obj) => {
         
         console.log("onclose")
+        connState=false;
         return true;
       },
       onerror: (ev, ws_obj) => {
         console.log("onerror",ev)
+        connState=false;
       },
       send: (data, ws_obj, promiseCBs) => {
 
       }
     },5000);
+    // if()
+    // {
 
-
-
+      
+    //   this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/",{
+    //     onopen: (ev, ws_obj) => {
+    //       console.log("onopen")
+    //     },
+    //     onmessage: (evt, ws_obj) => {
+  
+    //       console.log("onmessage")
+    //     },
+    //     onclose: (ev, ws_obj) => {
+          
+    //       console.log("onclose")
+    //       return true;
+    //     },
+    //     onerror: (ev, ws_obj) => {
+    //       console.log("onerror",ev)
+    //     },
+    //     send: (data, ws_obj, promiseCBs) => {
+  
+    //     }
+    //   },5000);
+  
+  
+  
+    // }
 
       
 

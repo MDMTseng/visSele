@@ -170,10 +170,10 @@ class APP_ANALYSIS_MODE extends React.Component{
 
   componentDidMount()
   {
-    //this.props.ACT_WS_SEND(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
+    //this.props.ACT_WS_SEND_BPG(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
     let defModelPath = this.props.edit_info.defModelPath;
 
-    //this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
+    //this.props.ACT_WS_SEND_BPG(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
   }
   constructor(props) {
     super(props);
@@ -420,16 +420,16 @@ const mapDispatchToProps_APP_ANALYSIS_MODE = (dispatch, ownProps) =>
     ACT_Fail: (arg) => {dispatch(UIAct.EV_UI_ACT(DefConfAct.EVENT.FAIL))},
     ACT_EXIT: (arg) => {dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))},
     
-    ACT_WS_SEND:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND(id,tl,prop,data,uintArr)),
+    ACT_WS_SEND_BPG:(id,tl,prop,data,uintArr)=>dispatch(UIAct.EV_WS_SEND_BPG(id,tl,prop,data,uintArr)),
     
     ACT_Report_Save:(id,fileName,content)=>{
-      dispatch(UIAct.EV_WS_SEND(id,"SV",0,
+      dispatch(UIAct.EV_WS_SEND_BPG(id,"SV",0,
           {filename:fileName},
           content
       ));
     },
     ACT_Cache_Img_Save:(id,fileName)=>{
-      dispatch(UIAct.EV_WS_SEND(id,"SV",0,
+      dispatch(UIAct.EV_WS_SEND_BPG(id,"SV",0,
           {filename:fileName, type:"__CACHE_IMG__"}
       ));
     },

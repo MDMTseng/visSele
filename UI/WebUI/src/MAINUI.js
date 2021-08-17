@@ -286,7 +286,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const InspectionMonitor_URL= useSelector(state => state.UIData.InspectionMonitor_URL);
   const dispatch = useDispatch();
   const ACT_Def_Model_Path_Update= (path) => dispatch(UIAct.Def_Model_Path_Update(path));
-  const ACT_WS_SEND= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_InspOptionalTag_Update= (newTags) => dispatch(DefConfAct.InspOptionalTag_Update(newTags));
   
   const [InfoPopUp,setInfoPopUp]=useState(undefined);
@@ -333,7 +333,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   useEffect(()=>{
     let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
     if(down_samp_level>3)down_samp_level=3;
-    ACT_WS_SEND( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,
+    ACT_WS_SEND_BPG( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,
     down_samp_level});
 
   },[])
@@ -348,14 +348,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       return;
     }
     console.log(fileInfoList);
-    ACT_WS_SEND( "ST", 0,
+    ACT_WS_SEND_BPG( "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } })
-    ACT_WS_SEND( "EX", 0, {},
+    ACT_WS_SEND_BPG( "EX", 0, {},
       undefined, { 
       resolve:(pkts)=>{
         let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
         
-        ACT_WS_SEND( "SC", 0, {
+        ACT_WS_SEND_BPG( "SC", 0, {
           type:"signature_files_matching",
           signature: signature,
           files:fileInfoList.map(fileInfo=>fileInfo.path)
@@ -411,7 +411,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         if (filePath === undefined) return;
         filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
-        ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
+        ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
         down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },undefined,{
           resolve:(stacked_pkts,action_channal)=>{
             let SS=stacked_pkts.find(pkt=>pkt.type=="SS");
@@ -562,7 +562,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let filePath = file.path.replace("." + DEF_EXTENSION, "");
                   setInfoPopUp(undefined);
                   ACT_Def_Model_Path_Update(filePath);
-                  ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath ,
+                  ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath ,
                   down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
 
                   setFileSelectorInfo(undefined);
@@ -625,7 +625,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
-                ACT_WS_SEND( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
+                ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
                 down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },
                   undefined, { resolve:(pkts,action_channal)=>{
                     let SS=pkts.find(pkt=>pkt.type=="SS");
@@ -718,7 +718,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         className="width8 modal-sizing"
         searchDepth={4}
         path={DefFileFolder} visible={fileSelectorInfo !== undefined}
-        BPG_Channel={(...args) => ACT_WS_SEND( ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG( ...args)}
         onFileSelected={(filePath, fileInfo) => {
           setFileSelectorInfo(undefined);
           fileSelectorInfo.callBack(filePath, fileInfo);
@@ -778,8 +778,8 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
 
   const dispatch = useDispatch();
   const WS_ID = useSelector(state => state.UIData.WS_ID);
-  const ACT_WS_SEND= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(WS_ID, tl, prop, data, uintArr, promiseCBs));
-  const ACT_Report_Save = (filename, content,promiseCBs) => {ACT_WS_SEND("SV", 0,{ filename},content,promiseCBs)};
+  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_Report_Save = (filename, content,promiseCBs) => {ACT_WS_SEND_BPG("SV", 0,{ filename},content,promiseCBs)};
 
   
 
@@ -948,9 +948,9 @@ const MainUI=()=>{
 
   const EV_UI_Edit_Mode=()=>dispatch(UIAct.EV_UI_Edit_Mode());
   const EV_UI_Insp_Mode= () =>dispatch(UIAct.EV_UI_Insp_Mode());
-  const ACT_WS_SEND= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_File_Save = (filePath, content,promiseCBs) => {
-    let act = UIAct.EV_WS_SEND(WS_ID, "SV", 0,
+    let act = UIAct.EV_WS_SEND_BPG(WS_ID, "SV", 0,
       {filename:filePath},
       content,promiseCBs
     )
@@ -1142,7 +1142,7 @@ const MainUI=()=>{
       break;
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
-        BPG_Channel={(...args) => ACT_WS_SEND(...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
         onExtraCtrlUpdate={extraCtrls=>{
           let extraCtrlUI=[];
           if(extraCtrls.currentReportExtract!==undefined)
@@ -1160,7 +1160,7 @@ const MainUI=()=>{
                   {
                     resolve:(stacked_pkts,action_channal)=>{
                       
-                      // ACT_WS_SEND("RC", 0, {
+                      // ACT_WS_SEND_BPG("RC", 0, {
                       //   target: "camera_setting_refresh"
                       // });
   
@@ -1186,7 +1186,7 @@ const MainUI=()=>{
             {
               setUI_state(s_statesTable.RootSelect)
               
-              ACT_WS_SEND("RC", 0, {
+              ACT_WS_SEND_BPG("RC", 0, {
                 target: "camera_setting_refresh"
               });
             }
@@ -1200,7 +1200,7 @@ const MainUI=()=>{
     case  s_statesTable.RepDisplay:
     
       UI.push(<RepDisplayUI_rdx key="RepDisplayUI_rdx"
-        BPG_Channel={(...args) => ACT_WS_SEND(...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
         onCalibFinished={(finalReport) => {
           console.log(">>>>>>>>>",finalReport)
         }} 
@@ -1238,7 +1238,7 @@ const MainUI=()=>{
       break;  
     case  s_statesTable.InstInsp:
       UI.push(<InstInspUI_rdx
-        BPG_Channel={(...args) => ACT_WS_SEND( ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG( ...args)}
 
         onExtraCtrlUpdate={extraCtrls=>{
 
@@ -1352,7 +1352,7 @@ const MainUI=()=>{
               onOK:()=>{
                 saveSetting(saveToFilePath,setting);
                   
-                ACT_WS_SEND( "ST", 0,
+                ACT_WS_SEND_BPG( "ST", 0,
                 { MachineSetting: setting})
 
                 setPopUpInfo();
@@ -1573,7 +1573,7 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Insp_Mode: () => { dispatch(UIAct.EV_UI_Insp_Mode()) },
     EV_UI_Analysis_Mode: () => { dispatch(UIAct.EV_UI_Analysis_Mode()) },
     
-    ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
+    ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
     ACT_Def_Model_Path_Update: (path) => dispatch(UIAct.Def_Model_Path_Update(path)),
