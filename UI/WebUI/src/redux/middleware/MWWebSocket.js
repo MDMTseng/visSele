@@ -29,6 +29,7 @@ export const MWWebSocket = WSData => store => next => action => {
   switch (action.type) {
     case MWWS_EVENT.CONNECT:
     {
+      // console.log(info);
       if(WSData[id] !== undefined )
       {//There is a connection session on this id
         //Disconnect it first
@@ -42,9 +43,9 @@ export const MWWebSocket = WSData => store => next => action => {
       if(info.binaryType!==undefined)
         info.websocket.binaryType = info.binaryType; 
 
-      if(info.doUseTrack==true)
+      if(info.trackKey!==undefined)
       {
-        info.websocket= new websocket_reqTrack(info.websocket);
+        info.websocket= new websocket_reqTrack(info.websocket,info.trackKey);
       }
 
         

@@ -457,7 +457,9 @@ export class websocket_reqTrack{
 
   
   close() {
-    return this.websocket.close();
+    let ret = this.websocket.close();
+    this.readyState=this.websocket.readyState;
+    return ret;
   }
 
   send_obj(data,replacer){

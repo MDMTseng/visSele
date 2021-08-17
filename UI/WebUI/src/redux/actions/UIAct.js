@@ -383,7 +383,7 @@ export function EV_WS_SEND_BPG(id,tl,prop,data,uintArr,promiseCBs){
   });
 }
 
-export function EV_WS_SEND(id,data,promiseCBs){
+export function EV_WS_SEND_PLAIN(id,data,promiseCBs){
   return ({
     type:"MWWS_SEND",
     data:{

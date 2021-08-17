@@ -118,6 +118,7 @@ function SystemServicePanel_UI()
   const dispatch = useDispatch();
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
+  // const ACT_WS_SEND_PLAIN= (...args) => dispatch(UIAct.EV_WS_SEND_PLAIN(...args));
 
 
 
@@ -807,7 +808,10 @@ class APPMasterX extends React.Component {
     return {
       ACT_Ctrl_SM_Panel: (args) => dispatch({ type: UIAct.UI_SM_EVENT.Control_SM_Panel, data: args }),
       ACT_WS_CONNECT: (id, url, obj) => dispatch({ type: MWWS_EVENT.CONNECT, data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" }, obj) }),
-      ACT_WS_CONNECT_w_tracking: (id, url, obj) => dispatch({ type: MWWS_EVENT.CONNECT, data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" }, obj) , doUseTrack:true}),
+      ACT_WS_CONNECT_w_tracking: (id, url, obj,trackKey) => dispatch({ 
+        type: MWWS_EVENT.CONNECT, 
+        data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" , trackKey}, obj) 
+      }),
       ACT_WS_DISCONNECT: (id) => dispatch({ type: MWWS_EVENT.DISCONNECT, data: { id: id } }),
       DISPATCH: (act) => {
         dispatch(act)
@@ -1117,70 +1121,71 @@ class APPMasterX extends React.Component {
       , 100);
 
 
-    let connState=false;
-    let PING_Interval=undefined;
-    this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/",{
+    let pingState=false;
+    let WS_CBs = {
       onopen: (ev, ws_obj) => {
-        console.log("onopen")
-        connState=true;
-        if(PING_Interval===undefined)
+        console.log(">>>onopen")
+        function try2Ping()
         {
-          PING_Interval=setTimeout(()=>{
-            if(connState)
+          if(ws_obj.websocket.readyState==1)
+          {
+            if(pingState==false)
             {
-
+              pingState=true;
+              ws_obj.send_obj({type:"PING"},ws_obj)
+              .then((dd)=>{
+                pingState=false;
+                console.log(dd)
+                
+              })
+              .catch(e=>{
+                console.log(e)
+              })
+              setTimeout(try2Ping,5000);
             }
-          },5000);
+            else
+            {
+              console.log(">>try close",ws_obj);
+              ws_obj.websocket.close();
+              ws_obj.onclose(undefined,ws_obj);
+            }
+            
+          }
+          else
+          {
+
+            console.log("Oh shit!!");
+          }
         }
+        try2Ping();
+
       },
       onmessage: (evt, ws_obj) => {
-
-        console.log("onmessage")
+        console.log(">>>onmessage",evt)
       },
       onclose: (ev, ws_obj) => {
         
-        console.log("onclose")
-        connState=false;
+        pingState=false;
+        console.log(">>>onclose")
+        // if(PING_Interval!==undefined)
+        //   clearInterval(PING_Interval);
+        // PING_Interval=undefined;
+        
         return true;
       },
       onerror: (ev, ws_obj) => {
-        console.log("onerror",ev)
-        connState=false;
+        console.log(">>>onerror",ev)
+        // if(PING_Interval!==undefined)
+        //   clearInterval(PING_Interval);
+        // PING_Interval=undefined;
       },
-      send: (data, ws_obj, promiseCBs) => {
-
+      send_obj: (data, ws_obj, promiseCBs) => {
+        console.log(">>>send",data)
+        return ws_obj.websocket.send_obj(data);
       }
-    },5000);
-    // if()
-    // {
-
-      
-    //   this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/",{
-    //     onopen: (ev, ws_obj) => {
-    //       console.log("onopen")
-    //     },
-    //     onmessage: (evt, ws_obj) => {
-  
-    //       console.log("onmessage")
-    //     },
-    //     onclose: (ev, ws_obj) => {
-          
-    //       console.log("onclose")
-    //       return true;
-    //     },
-    //     onerror: (ev, ws_obj) => {
-    //       console.log("onerror",ev)
-    //     },
-    //     send: (data, ws_obj, promiseCBs) => {
-  
-    //     }
-    //   },5000);
-  
-  
-  
-    // }
-
-      
+    }
+    //this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/insert/insp",WS_CBs,5000);
+    
 
   }
 
@@ -1189,41 +1194,22 @@ class APPMasterX extends React.Component {
   {
 
     let orig_onclose=wsEventCBSet.onclose;
-    wsEventCBSet.onclose= (ev, ws_obj) => {
-      let doRunDefault=true;
-      if(orig_onclose!==undefined)
-      {
-        doRunDefault=orig_onclose(ev, ws_obj);
-      }
-      if(doRunDefault==true && delayReconnect_ms>0)
-      {
-        setTimeout(() => {
-          this.props.ACT_WS_CONNECT(ID, url, wsEventCBSet);
-        }, delayReconnect_ms);
+    let newwsEventCBSet={...wsEventCBSet,
+      onclose:(ev, ws_obj) => {
+        let doRunDefault=true;
+        if(orig_onclose!==undefined)
+        {
+          doRunDefault=orig_onclose(ev, ws_obj);
+        }
+        if(doRunDefault==true && delayReconnect_ms>0)
+        {
+          setTimeout(() => {
+            this.props.ACT_WS_CONNECT_w_tracking(ID, url, newwsEventCBSet,"req_id");
+          }, delayReconnect_ms);
+        }
       }
     }
-    this.props.ACT_WS_CONNECT(ID, url, wsEventCBSet)
-
-    // this.DEFCONF_W_WS = {
-    //   onopen: (ev, ws_obj) => {
-    //   },
-    //   onmessage: (evt, ws_obj) => {
-
-    //   },
-    //   onclose: (ev, ws_obj) => {
-    //     StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
-    //     setTimeout(() => {
-    //       this.props.ACT_WS_CONNECT(ID, url, wsEventCBSet);
-    //     }, delayReconnect_ms);
-    //   },
-    //   onerror: (ev, ws_obj) => {
-    //   },
-    //   send: (data, ws_obj, promiseCBs) => {
-
-    //   }
-    // }
-
-
+    this.props.ACT_WS_CONNECT_w_tracking(ID, url, newwsEventCBSet,"req_id")
 
 
   }
