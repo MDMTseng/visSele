@@ -2546,7 +2546,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
         inspectionReportList.forEach((report, idx) => {
           ctx.save();
           ctx.translate(report.cx, report.cy);
-          console.log(report.cx, report.cy,report);
+          // console.log(report.cx, report.cy,report);
           ctx.save();
           ctx.rotate(-report.rotate);
           if (report.isFlipped)

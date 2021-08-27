@@ -1,6 +1,7 @@
 import { applyMiddleware, combineReducers, createStore } from "redux";
 import UICtrlReducer from "REDUX_STORE_SRC/reducer/UICtrlReducer";
 import uInspReducer from "REDUX_STORE_SRC/reducer/uInspReducer";
+import ConnectionInfoReducer from "REDUX_STORE_SRC/reducer/ConnectionInfoReducer";
 import InspDataReducer from "REDUX_STORE_SRC/reducer/InspDataReducer";
 import {ActionThrottle} from "REDUX_STORE_SRC/middleware/ActionThrottle";
 import {ECStateMachine} from "REDUX_STORE_SRC/middleware/ECStateMachine";
@@ -142,6 +143,7 @@ export function ReduxStoreSetUp(presistStore){
   const reducer_C = combineReducers({
     UIData:UICtrlReducer,
     InspData:InspDataReducer,
+    ConnInfo:ConnectionInfoReducer,
     Peripheral:combineReducers({
       uInsp:uInspReducer
     })

@@ -121,216 +121,111 @@ const selectAfter = (
 const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
-class RAW_InspectionReportPull extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
 
-    }
-    this.pull_skip_count = 0;
-    this.WS_DB_Inser = undefined;
-    this.WS_DB_Query = undefined;
-    this.retryQCount = 0;
-
-    this.cQ = new ConsumeQueue((cQ) => {
-      return new Promise((resolve, reject) => {//Implement consume rules
-        if (this.WS_DB_Insert === undefined ||
-          this.WS_DB_Insert.readyState !== WebSocket.OPEN ||
-          cQ.size() == 0
-        ) {//If no 
-          reject();
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(undefined, "DB/Connection issue/Data empty");
-          return;
-        }
-
-
-        let data = cQ.deQ();//get the latest element
-        if (data === undefined)//try next data
+function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=0})
         {
-          resolve();
 
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(undefined, "Data empty");
-          return;
-        }
-        var msg_obj = {
-          dbcmd: { "db_action": "insert", "checked": true },
-          data
-        };
-        let timeoutFlag = setTimeout(() => {
-          timeoutFlag = undefined;
-          console.log("consumeQueue>>timeout");
-          reject("Timeout");
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(data, "Timeout");
-        }, 5000);
+  const _s = useRef({sendCounter:0,sendedCounter:0,totalCounter:0,pre_newAddedReport:undefined});
 
-        //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
-        this.WS_DB_Insert.send_obj(msg_obj, (key, val) => val.toFixed ? Number(val.toFixed(5)) : val).
-          then((ret) => {
-            clearTimeout(timeoutFlag);
-            this.retryQCount = 0;
-            resolve();
-            this.props.onDBInsertSuccess(data, ret);
-          }).catch((e) => {//Failed retry....
-            clearTimeout(timeoutFlag);
-            this.retryQCount++;
-            // if(this.retryQCount>10)
-            // {
-            //   resolve();
-            //   //reject();
-            // }
-            // else
-            {
-              cQ.enQ(data);//failed.... put back
-              resolve();
-            }
+  let _this=_s.current;
+  // const c_state = useSelector(state => state.UIData.c_state);
+  const dispatch = useDispatch();
+  const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
+  const WS_InspDataBase_conn_info = useSelector(state => state.UIData.WS_InspDataBase_conn_info);
 
-            if (this.props.onDBInsertFail !== undefined)
-              this.props.onDBInsertFail(data, e);
-          });
-      })
-    });
-  }
-  componentWillUnmount() {
+  const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
 
-    this.websocketClose();
-  }
-  componentWillMount() {
+  let newAddedReport=GetObjElement(reportStatisticState,["newAddedReport"]);
 
-    this.websocketConnect(this.props.url);
-
-  }
-
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    if (this.props.reportStatisticState.newAddedReport.length > 0) {
-      if(this._newAddedReport===this.props.reportStatisticState.newAddedReport)
-      {
-        return;
-      }
-      this._newAddedReport=this.props.reportStatisticState.newAddedReport;
-      if (this.pull_skip_count == 0) {
-        // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
-        let x = this.props.reportStatisticState.newAddedReport;
-        //this.send2WS_Insert(x);
-        // this.WS_DB_Insert.send(BSON.serialize(x));
-
-        if (!this.cQ.enQ(x))//If enQ NOT success
-        {
-          //Just print
-          log.error("enQ failed size()=" + this.cQ.size());
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(x, "Cannot enQ the data");
-        }
-        if (this.cQ.size() > 0)
-          this.cQ.kick();//kick transmission
-      }
-      if (this.props.pull_skip !== undefined) {
-        this.pull_skip_count++;
-        if (this.pull_skip_count >= this.props.pull_skip) {
-          this.pull_skip_count = 0;
-        }
-      }
-    }
-  }
-
-  handleLocalStorage(insertWhat) {
-    if (localStorage) {
-      log.error("Local Storage: Supported");
-      localStorage.setItem("HYVision", JSON.stringify(insertWhat));
-      return localStorage.length;
-    } else {
-      console.log("Local Storage: Unsupported");
-    }
-    return 0;
-  }
-  send2WS_Query(msg) {
-    //this.state.WS_DB_Query.send("{date:2019}");
-  }
-
-
-  websocketClose() {
-    if(this.WS_DB_Insert!==undefined)
-      this.WS_DB_Insert.close();
-    if(this.WS_DB_Query!==undefined)
-      this.WS_DB_Query.close();
-  }
-
-  onConnectionStateUpdate(cur, pre) {
-    //log.info("dufkhiuefhirhgspiosfjoipfsjvoisfjd",cur,pre);
-    if (this.props.onConnectionStateUpdate !== undefined) {
-      this.props.onConnectionStateUpdate(cur, pre);
-    }
-
-  }
-  websocketConnect(url) {
-    if(url===undefined)
+  useEffect(()=>{
+    if(newAddedReport===undefined || 
+      _this.pre_newAddedReport===newAddedReport || 
+      Array.isArray(newAddedReport)==false ||
+      newAddedReport.length==0)//there is no new report
     {
+      console.log("no report...");
       return;
     }
 
-    if (this.WS_DB_Insert === undefined) {
-      log.info("[init][WS]" +urlConcat(url,"insert/insp"));
-      let _ws = new websocket_autoReconnect(urlConcat(url,"insert/insp"), 10000);
-      _ws.onStateUpdate = this.onConnectionStateUpdate.bind(this);
-      this.WS_DB_Insert = new websocket_reqTrack(_ws);
-
-      this.WS_DB_Insert.onreconnection = (reconnectionCounter) => {
-        log.info("onreconnection" + reconnectionCounter);
-        return true;
-      };
-      this.WS_DB_Insert.onconnectiontimeout = () => log.info("onconnectiontimeout");
-
-
-      this.WS_DB_Insert.onopen = this.onOpen.bind(this);
-      this.WS_DB_Insert.onmessage = this.onMessage.bind(this);
-      this.WS_DB_Insert.onclose = () => log.info("WS_DB_Insert:onclose");
-      this.WS_DB_Insert.onerror = () => this.onError.bind(this);
-
+    _this.pre_newAddedReport=newAddedReport;
+    console.log(newAddedReport,insert_skip);
+    
+    let res=_this.totalCounter%insert_skip;
+    _this.totalCounter++;
+    if(res!=0)
+    {
+      console.log("SKIP...");
+      return;
     }
 
-    if (this.WS_DB_Query === undefined) {
+    _this.sendCounter++;
+    WS_SEND(WS_InspDataBase_W_ID,newAddedReport)
+    .then(retInfo=>{
+      _this.sendedCounter++;
+      onDBInsertSuccess(retInfo);
+      console.log(retInfo);
+    })
+    .catch(err=>{
+
+    })
+  },[newAddedReport]);
+
+
+  useEffect(()=>{
+    console.log(WS_InspDataBase_conn_info);
+  },[WS_InspDataBase_conn_info]);
+
+
+  // let retx=
+  //   this.props.ACT_WS_GET_OBJ(this.props.WS_InspDataBase_W_ID, (obj)=>{
+
+  //     console.log(obj);
+  //     return obj.websocket.send_obj({type:"PING"});
+  //   })
+  //   .then(d=>{
+  //     console.log(d);
+  //   })
+  //   .catch(e=>{
+  //     console.log(e);
+
+  //   })
+
+  let isConnected=GetObjElement(WS_InspDataBase_conn_info,["data","ns"])==="CONNECTED";
+
       
-      log.info("[init][WS]" + urlConcat(url,"query/insp"));
-      let _ws = new websocket_autoReconnect(urlConcat(url,"query/insp"), 10000);
-      this.WS_DB_Query = new websocket_reqTrack(_ws);
+
+  // return null;
 
 
-      this.WS_DB_Query.onreconnection = (reconnectionCounter) => {
-        log.info("onreconnection" + reconnectionCounter);
-        return true;
-      };
-      this.WS_DB_Query.onconnectiontimeout = () => log.info("onconnectiontimeout");
-
-
-      this.WS_DB_Query.onopen = this.onOpen.bind(this);
-      this.WS_DB_Query.onmessage = this.onMessage.bind(this);
-      this.WS_DB_Query.onclose = () => log.info("WS_DB_Query:onclose");
-      this.WS_DB_Query.onerror = () => this.onError.bind(this);
-    }
-
-  }
-
-
-
-  onError(ev) {
-    //this.websocketConnect();
-    log.error("onError RAW_InspectionReportPull");
-  }
-  onOpen(ev) {
-    log.info("onOpen RAW_InspectionReportPull");
-
-  }
-  onMessage(ev) {
-    log.debug(ev);
-  }
-
-  render() {
-
-    return null;
-  }
+  return <Button type="primary" size={"large"} 
+    className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
+    icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
+        {(isConnected ? LANG_DICT.connection.server_connected : LANG_DICT.connection.server_disconnected)
+        + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip}
+    </Button>
 }
+
+
+
+// <InspectionReportInsert2DB 
+// reportStatisticState={this.props.reportStatisticState} 
+
+// // DBStatus,
+// // DBPushPromise,
+// onDBInsertSuccess={(data, info) => {
+//   // log.info(data, info);
+//   this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
+// }}
+// onDBInsertFail={(data, info) => {
+//   log.error(data, info);
+// }}
+// insert_skip={InspectionReportPullSkip}/>
+
+
+
+
+
+
 
 class DB extends React.Component {
   constructor(props) {
@@ -1144,7 +1039,6 @@ const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
 }
 const mapStateToProps_MicroFullInspCtrl = (state) => {
   return {
-    WS_CH: state.UIData.WS_CH,
     WS_ID: state.UIData.WS_ID,
     uInspData: state.Peripheral.uInsp,
     error_codes: state.Peripheral.uInsp.error_codes,
@@ -2053,7 +1947,6 @@ class APP_INSP_MODE extends React.Component {
       CanvasWindowRatio: 9,
       ROIs: {},
       ROI_key: undefined,
-      DB_Conn_state: undefined,
       inspUploadedCount: 0,
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
@@ -2254,7 +2147,7 @@ class APP_INSP_MODE extends React.Component {
     let CanvasWindowRatio = 12;
     let menuOpacity = 1;
 
-    let MenuSet_2nd = [];
+    // let MenuSet_2nd = [];
 
 
 
@@ -2279,9 +2172,11 @@ class APP_INSP_MODE extends React.Component {
         ]
       });
 
-    let shortedModelName=this.props.defModelName.length<23?
+    let maxTextLength=20;
+    let text_more="...";
+    let shortedModelName=this.props.defModelName.length<(maxTextLength+text_more.length)?
       this.props.defModelName:
-      this.props.defModelName.substring(0, 20)+"..."
+      this.props.defModelName.substring(0, maxTextLength)+text_more
     //console.log(">>>>defModelName>>>>>"+this.props.defModelName);
     MenuSet = [
 
@@ -2435,13 +2330,13 @@ class APP_INSP_MODE extends React.Component {
             </Menu.Item>)}
       </Menu>
     );
-    MenuSet_2nd.push(<Dropdown overlay={menu_}>
-      <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
-        {this.state.ROI_key}
-        <CaretDownOutlined />
-      </a>
-    </Dropdown>);
-
+    // MenuSet_2nd.push(<Dropdown overlay={menu_}>
+    //   <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
+    //     {this.state.ROI_key}
+    //     <CaretDownOutlined />
+    //   </a>
+    // </Dropdown>);
+    // console.log(this.props.reportStatisticState);
     let headerUI = 
     <>
       
@@ -2459,13 +2354,40 @@ class APP_INSP_MODE extends React.Component {
           }}><SettingOutlined /></Tag>
       {this.state.additionalUI}
 
+
+
+
       
-      <Button type="primary" size={"large"} 
+      {/* <Button type="primary" size={"large"} 
       className={ ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
       icon={this.state.DB_Conn_state == 1 ? <LinkOutlined /> : <DisconnectOutlined />} >
           {(this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected : this.props.DICT.connection.server_disconnected)
           + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
-      </Button>
+      </Button> */}
+
+
+      <InspectionReportInsert2DB 
+        // newAddedReport={this.props.reportStatisticState.newAddedReport} 
+        reportStatisticState={this.props.reportStatisticState}
+        LANG_DICT={this.props.DICT}
+        // DBStatus,
+        // DBPushPromise,
+        onDBInsertSuccess={(data, info) => {
+          // log.info(data, info);
+          this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
+        }}
+        onDBInsertFail={(data, info) => {
+          log.error(data, info);
+        }}
+        insert_skip={InspectionReportPullSkip*0+10}/>
+
+
+
+
+
+
+
+
 
       <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
       onChange={(ev)=>
@@ -2584,24 +2506,6 @@ class APP_INSP_MODE extends React.Component {
 
           </Menu> */}
         </>
-
-
-        <RAW_InspectionReportPull
-        reportStatisticState={this.props.reportStatisticState}
-        onConnectionStateUpdate={(cur, pre) => {
-          // console.log(">>>>>>>>>>",cur,pre);
-          this.setState({ DB_Conn_state: cur });
-        }}
-        onDBInsertSuccess={(data, info) => {
-          // log.info(data, info);
-          this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
-        }}
-
-        onDBInsertFail={(data, info) => {
-          log.error(data, info);
-        }}
-        url={this.props.machine_custom_setting.inspection_db_ws_url}
-        pull_skip={InspectionReportPullSkip} />
       
       </div>
     );
@@ -2638,6 +2542,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     inspOptionalTag: state.UIData.edit_info.inspOptionalTag,
     defModelPath: state.UIData.edit_info.defModelPath,
     WS_ID: state.UIData.WS_ID,
+    WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
     inspectionReport: state.UIData.edit_info.inspReport,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     

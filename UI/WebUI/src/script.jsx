@@ -19,8 +19,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { xstate_GetCurrentMainState, websocket_autoReconnect,GetObjElement,
-  websocket_reqTrack} from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
 import { MWWS_EVENT } from "REDUX_STORE_SRC/middleware/MWWebSocket";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -47,6 +46,7 @@ import {
 import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
+import { clearInterval } from 'timers';
 
 let TEST_MODE=false;
 
@@ -560,13 +560,23 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
 
 }
 
+
+
+
 function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onStatusChange=(status)=>{},onStatusTick=(status)=>{},
   onClick_Core=(sys_state)=>{},onClick_Camera=(sys_state)=>{},onClick_UploadDataBase=(sys_state)=>{}})
 {
+  const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
+  const WS_InspDataBase_conn_info = useSelector(state => state.UIData.WS_InspDataBase_conn_info);
   
   const DICT = useSelector(state => state.UIData.DICT);
   const coreConnected = useSelector(state => state.UIData.coreConnected);
   const coreStatus = useSelector(state => state.UIData.Core_Status);
+
+
+
+  
+  // ACT_WS_GET_OBJ: (id, callback)=>dispatch(UIAct.EV_WS_GET_OBJ(id,callback)),
   
   const [systemConnectState,setSystemConnectState] = useState({
     boot_daemon:false,
@@ -612,15 +622,55 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
   
   let iconStyle={width:iconSize+"px",height:iconSize+"px"};
 
+
+
   
+  function connectionStatus2CSSColor(status)
+  {
+    
+    if(status==-1 || status===undefined)
+    {
+      return "color-noresource-offline-anim";
+    }
+
+    if(status==true || status==0)
+    {
+      return "color-online-anim";
+    }
+
+    
+    if(status==false  || status==1)
+    {
+      return "color-offline-anim";
+    }
+
+    
+  }
+  function InspDataBase_conn_info_2_status(info)
+  {
+    if(info===undefined || info.data===undefined || info.data.ns=="ERROR")
+    {
+      return -1;
+    }
+    else if(info.data.ns=="CONNECTED")
+    {
+      return 0;
+    }
+    else
+    {
+      return 1;
+    }
+  }
+  
+  // console.log(WS_InspDataBase_conn_info);
   return [
-    [DICT._.core,   systemConnectState.core,   onClick_Core,   <AimOutlined/>],
+    [DICT._.core,   coreConnected,   onClick_Core,   <AimOutlined/>],
     [DICT._.camera, systemConnectState.camera, onClick_Camera, <CameraOutlined/>],
-    ["檢測資料庫", systemConnectState.insp_report_upload_database, onClick_Camera, <CloudUploadOutlined/>],
+    ["檢測資料庫", InspDataBase_conn_info_2_status(WS_InspDataBase_conn_info), ()=>{}, <CloudUploadOutlined/>],
     ].map(([textName, connection_status, onClickEvent, icon])=>
       <Button size="large" key={"stat"+textName} style={gridStyle} 
       type="text" //disabled={!systemConnectState.core}
-      className={"s HXA "+(connection_status?"color-online-anim":"color-offline-anim")} 
+      className={"s HXA "+connectionStatus2CSSColor(connection_status)} 
       onClick={()=>onClickEvent(systemConnectState)}>
         <div 
           className={"antd-icon-sizing veleX"} 
@@ -629,7 +679,11 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
           {icon}
         </div>
             {(showText)?
-              [<span className="veleX">{textName}</span>,<br/>,connection_status?null:DICT._.disconnected]
+              <>
+                <span className="veleX">{textName}</span>
+                <br/>
+                {connection_status===true?null:DICT._.disconnected}
+              </>
               :null}
       </Button>)
 
@@ -737,7 +791,7 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
   let _DDD = useRef({});
   let s_=_DDD.current;
   const dispatch = useDispatch();
-  const ACT_CAMERA_STATUS_UPDATE= (camera_info) => dispatch(UIAct.EV_Core_Status_Update(camera_info));
+  const ACT_CAMERA_STATUS_UPDATE= (camera_info) => dispatch(UIAct.EV_Core_Camera_Status_Update(camera_info));
   
   const WS_ID = useSelector(state => state.UIData.WS_ID);
   const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
@@ -756,8 +810,7 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
           let GS=pkts.find(pkt=>pkt.type=="GS")
           if (GS!==undefined) {
 
-            onStatusChange(GS.data);
-            ACT_CAMERA_STATUS_UPDATE(GS.data);
+            ACT_CAMERA_STATUS_UPDATE(GS.data.camera_info);
           }
         })
         .catch(err => {
@@ -771,35 +824,34 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
   },[])
 
   
-  useEffect(() => {
-    //return 
-    //trigger start
-    setInterval(()=>
-    {
-      Promise((resolve, reject) => {
-        ACT_WS_SEND_BPG(WS_InspDataBase_W_ID, "GS", 0, { items: [] },
-          undefined, {resolve, reject})
-      })
-      .then((pkts) => {
-        s_.inProgress=false;
-        let GS=pkts.find(pkt=>pkt.type=="GS")
-        if (GS!==undefined) {
+  // useEffect(() => {
+  //   //return 
+  //   //trigger start
+  //   setInterval(()=>
+  //   {
+  //     Promise((resolve, reject) => {
+  //       ACT_WS_SEND_BPG(WS_InspDataBase_W_ID, "GS", 0, { items: [] },
+  //         undefined, {resolve, reject})
+  //     })
+  //     .then((pkts) => {
+  //       s_.inProgress=false;
+  //       let GS=pkts.find(pkt=>pkt.type=="GS")
+  //       if (GS!==undefined) {
 
-          onStatusChange(GS.data);
-          ACT_CAMERA_STATUS_UPDATE(GS.data);
-        }
-      })
-      .catch(err => {
-        s_.inProgress=false;
-        log.error(err);
-      })
-    },2000);
+  //         onStatusChange(GS.data);
+  //         ACT_CAMERA_STATUS_UPDATE(GS.data);
+  //       }
+  //     })
+  //     .catch(err => {
+  //       s_.inProgress=false;
+  //       log.error(err);
+  //     })
+  //   },2000);
 
-  },[])
+  // },[])
 
   return null;
 }
-
 
 
 class APPMasterX extends React.Component {
@@ -807,12 +859,10 @@ class APPMasterX extends React.Component {
   static mapDispatchToProps(dispatch, ownProps) {
     return {
       ACT_Ctrl_SM_Panel: (args) => dispatch({ type: UIAct.UI_SM_EVENT.Control_SM_Panel, data: args }),
-      ACT_WS_CONNECT: (id, url, obj) => dispatch({ type: MWWS_EVENT.CONNECT, data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" }, obj) }),
-      ACT_WS_CONNECT_w_tracking: (id, url, obj,trackKey) => dispatch({ 
-        type: MWWS_EVENT.CONNECT, 
-        data: Object.assign({ id: id, url: url, binaryType: "arraybuffer" , trackKey}, obj) 
-      }),
-      ACT_WS_DISCONNECT: (id) => dispatch({ type: MWWS_EVENT.DISCONNECT, data: { id: id } }),
+      ACT_WS_REGISTER: (id, api)=>dispatch(UIAct.EV_WS_REGISTER(id,api)),
+      ACT_WS_GET_OBJ: (id, callback)=>dispatch(UIAct.EV_WS_GET_OBJ(id,callback)),
+      ACT_WS_CONNECT: (id, url,return_cb) =>dispatch(UIAct.EV_WS_CONNECT(id, url,return_cb)),
+      ACT_WS_CLOSE: (id)=>dispatch(UIAct.EV_WS_CLOSE(id)),
       DISPATCH: (act) => {
         dispatch(act)
       },
@@ -822,9 +872,7 @@ class APPMasterX extends React.Component {
       },
       ACT_CAMERA_INFO_UPDATE: (camera_info) => dispatch(UIAct.EV_UI_Version_Map_Update(camera_info)),
       ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
-
       ACT_Version_Map_Update: (mapInfo) => dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
-
       ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
       ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
     }
@@ -834,7 +882,6 @@ class APPMasterX extends React.Component {
       coreConnected: state.UIData.coreConnected,
       showSM_graph: state.UIData.showSM_graph,
       stateMachine: state.UIData.sm,
-      WS_CH: state.UIData.WS_CH,
       WS_ID: state.UIData.WS_ID,
       WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
       C_STATE: state.UIData.c_state,
@@ -859,6 +906,9 @@ class APPMasterX extends React.Component {
     this.props.DISPATCH(acts)
   }
 
+
+
+
   constructor(props) {
     super(props);
     this.state={
@@ -868,7 +918,6 @@ class APPMasterX extends React.Component {
     console.log("electron:",electron);
     console.log("fs:",fs);
     console.log("path:",path);
-
 
 
     let localUrl =window.location.href;
@@ -884,19 +933,287 @@ class APPMasterX extends React.Component {
     //this.state.do_splash=true;
     
     this.WSDataDispatch = this.WSDataDispatch.bind(this);
-    this.BPG_WS = {
-      reqWindow: {},
-      pgIDCounter: 0,
-      onopen: (ev, ws_obj) => {
-        StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(ws_obj));
-      },
-      onmessage: (evt, ws_obj) => {
+
+
+
+    let comp=this;
+
+
+    
+
+    class DB_WS
+    {
+
+
+
+      _insertOK(data,msg)
+      {
+        // console.log("OK",data,msg);
+      }
+      _insertFailed(data,msg)
+      {
+        // console.log("FAILED",data,msg);
+        
+      }
+
+      constructor()
+      {
+        this.QWindow= {};
+        this.pgIDCounter= 0;
+        this.websocket=undefined;
+        console.log(">>>>");
+        this.curr_ws_state=undefined;
+        
+        this.websocket=new websocket_aliveTracking({
+          onStateChange:(ns,os,act)=>
+          {
+            this.curr_ws_state=ns;
+            let info={
+              URL:this.websocket.getURL(),
+              ns,os,act
+            }
+            if(ns=="ERROR")
+            {
+              info.errorInfo=this.websocket.getErrorInfo();
+              comp.props.DISPATCH({type:"WS_ERROR",id:comp.props.WS_InspDataBase_W_ID,data:info})
+            }
+            else if(ns=="CONNECTED")//enter connection state
+            {
+              this.cQ.kick();//when connected kick start
+              comp.props.DISPATCH({type:"WS_CONNECTED",id:comp.props.WS_InspDataBase_W_ID,data:info})
+            }
+            else if(os=="CONNECTED")//exit connection state
+            {
+              comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.WS_InspDataBase_W_ID,data:info})
+            }
+            console.log(ns,"<=",os,"(",act,")")
+          },
+          binaryType:"arraybuffer"
+        });
+
+          
+        // this.websocket.onopen=(ev)=>{
+        //   console.log(ev);
+        // }
+        // this.websocket.onclose=(ev)=>{
+        //   console.log(ev);
+        //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.WS_InspDataBase_W_ID})
+        // }
+        // this.websocket.error=(ev)=>{
+        //   console.log(ev);
+        //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.WS_InspDataBase_W_ID})
+        // }
+        this.websocket.onmessage=(ev)=>{
+          // this.onmessage(ev);
+          console.log(ev);
+        }
+
+        let _this=this;
+        this.cQ = new ConsumeQueue(
+          (cQ) => 
+          new Promise((resolve, reject) => {//Implement consume rules
+            //resolve() will kick next consume
+            //reject will stop kick next consume you will need to do it manually
+
+            // this.websocket.send_obj(data)
+            if(_this.curr_ws_state!=="CONNECTED" || cQ.size() == 0)
+            {
+              reject();
+              _this._insertFailed(undefined, "DB/Connection issue/Data empty");
+              return;
+            }
+
+            // console.log(cQ.size());
+    
+            let dataInfo = cQ.head();//get the latest element
+            if (dataInfo === undefined)//try next data
+            {
+              resolve();
+              _this._insertFailed(undefined,  "Data empty");
+              return;
+            }
+
+
+            let data=dataInfo.data;
+
+            
+            var msg_obj = {
+              dbcmd: { "db_action": "insert", "checked": true },
+              data
+            };
+            let timeoutFlag = setTimeout(() => {//insert timeout will not continue push
+              timeoutFlag = undefined;
+              console.log("consumeQueue>>timeout");
+              reject("Timeout");
+              
+              _this._insertFailed(data, "Timeout");
+            }, 5000);
+            
+            //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
+            console.log("SEND::::",msg_obj);
+            _this.websocket.send_obj(msg_obj, (key, val) => val.toFixed ? Number(val.toFixed(5)) : val).
+              then((ret) => {
+                clearTimeout(timeoutFlag);
+                this.retryQCount = 0;
+                cQ.deQ();//pop one data out
+                resolve();
+                _this._insertOK(data, ret);
+                dataInfo.resolve(ret)
+              }).catch((e) => {//Failed retry....
+                clearTimeout(timeoutFlag);
+                this.retryQCount++;
+                // if(this.retryQCount>10)
+                // {
+                //   resolve();
+                //   //reject();
+                // }
+                // else
+                {
+                  // console.log("REQ::::",msg_obj);
+                  // cQ.enQ(dataInfo);//failed.... put it back and try again
+                  resolve();
+                }
+    
+                _this._insertFailed(dataInfo  , e);
+              });
+          })
+          ,5000,
+          (cQ)=>{//onTerminationState
+            //dump the data out
+            console.log("Termination dump",cQ);
+            while(true)
+            {
+              let data = cQ.deQ();
+              // console.log("dump deQ",data);
+              if(data===undefined)
+              {break;}
+              console.log(data)
+              data.reject("The Q is teminated....");
+            }
+          }
+        );
+
+
+        // setInterval(()=>{
+        //   this.send({
+        //     data:{type:"PING"}
+        //   })
+        //   .then(ret=>{
+        //     console.log(ret);
+        //   })
+        //   .catch(e=>{
+        //     console.log(e);
+        //   })
+        // },1000);
+
+
+        // setTimeout(()=>{
+        //   this.cQ.termination();
+        // },20000)
+      }
+
+      connect(info)
+      {
+
+        let url = info.url;
+        console.log(">>>>",info);
+        this.websocket.RESET(url);//the url may be undefined
+      }
+      onmessage(evt){
+
+      }
+
+
+
+      send(info)
+      {
+        
+        let data = info.data;
+        
+        // if(isInQueue==true)
+        {
+          let prom=new Promise((resolve, reject) => {
+            
+            // console.log("ENQ",data);
+            if (!this.cQ.enQ({data,resolve,reject}))//If enQ NOT success
+            {
+              //Just print
+              log.error("enQ failed size()=" + this.cQ.size());
+              this._insertFailed(x, "Cannot enQ the data");
+              reject("send insert failed");
+            }
+            else
+            {
+
+            }
+            if (this.cQ.size() > 0)
+              this.cQ.kick();//kick transmission
+
+
+          });
+          return prom;
+        }
+        // else
+        // {
+        //   return this.websocket.send_obj(data);
+        // }
+      }
+
+
+      close()
+      {
+        this.websocket.close();
+      }
+    }
+
+    this.props.ACT_WS_REGISTER(this.props.WS_InspDataBase_W_ID,new DB_WS());
+
+
+    class BPG_WS
+    {
+      constructor()
+      {
+        this.reqWindow= {};
+        this.pgIDCounter= 0;
+        this.websocket=undefined;
+        console.log(">>>>");
+      }
+
+      connect(info)
+      {
+        let url = info.url;
+        console.log(">>>>",info);
+        this.websocket=new WebSocket(url);
+
+        this.websocket.binaryType ="arraybuffer"; 
+
+        this.websocket.onopen=(ev)=>{
+          StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(this));
+        }
+        this.websocket.onclose=(ev)=>{
+
+          console.log("CLOSE::",ev);
+          StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
+          setTimeout(() => {
+            comp.props.ACT_WS_CONNECT(comp.props.WS_ID, url);
+          }, 10*1000);
+        }
+        
+        this.websocket.onerror=(er)=>{
+          console.log("ERROR::",er);
+        }
+        this.websocket.onmessage=(ev)=>{
+          this.onmessage(ev);
+        }
+      }
+
+      onmessage(evt){
         //log.info("onMessage:::");
         //log.info(evt);
         if (!(evt.data instanceof ArrayBuffer)) return;
 
         let header = BPG_Protocol.raw2header(evt);
-        //log.info("onMessage:["+header.type+"]");
+        // log.info("onMessage:["+header.type+"]");
         let pgID = header.pgID;
 
         let parsed_pkt = undefined;
@@ -907,27 +1224,25 @@ class APPMasterX extends React.Component {
             {
               {
                 let HR = BPG_Protocol.raw2obj(evt);
-                // let url = HR.data.webUI_resource;
-                // if (url === undefined) url = "http://hyv.idcircle.me"
-                // url += "/version.jsonp?rand=" + getRandom();
-
-                // jsonp(url, { name: "hyv_version_map" }, (err, data) => {
-                //   data.core_info = HR.data;
-                //   this.props.ACT_Version_Map_Update(data);
-                // });
               }
 
-              this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "HR", 0, { a: ["d"] });
+              comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "HR", 0, { a: ["d"] });
               
-              setTimeout(()=>{
+              {
 
-                this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" });
+                comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" },
+                undefined, 
+                {resolve: (data,action_channal) => {
+                  console.log(data);
+                  action_channal(data);
+                  
+                }});
 
   
               
-                  
-                this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "LD", 0,
-                { filename: "data/machine_setting.json" },
+                let machineSettingPath="data/machine_setting.json";
+                comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "LD", 0,
+                { filename: machineSettingPath },
                 undefined, 
                 {resolve: (data) => {
                   console.log(data);
@@ -945,13 +1260,28 @@ class APPMasterX extends React.Component {
 
 
                     info.__priv={
-                      path:"data/machine_setting.json"
+                      path:machineSettingPath
                     }
-                    this.props.ACT_Machine_Custom_Setting_Update(info);
+                    
+                    let url = info.inspection_db_ws_url;
+                    if(url!==undefined)
+                    {//the source url may have '/' at the end
+
+                      if(url.endsWith('/'))
+                      {//remove the last char
+                        url=url.slice(0, -1);
+                      }
+                      url+="/insert/insp";
+                    }
+                    comp.props.ACT_WS_CONNECT(comp.props.WS_InspDataBase_W_ID, url);
+                    
+
+
+                    comp.props.ACT_Machine_Custom_Setting_Update(info);
                   }
                 }});
             
-                this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "LD", 0,
+                comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "LD", 0,
                   { filename: "data/machine_info" },
                   undefined, 
                   {resolve: (data) => {
@@ -959,11 +1289,11 @@ class APPMasterX extends React.Component {
                     if (data[0].type == "FL") {
                       let info = data[0].data;
                       if (info.length < 16) {
-                        this.props.ACT_MachTag_Update(info);
+                        comp.props.ACT_MachTag_Update(info);
                       }
                     }
                   }});
-              },1000)
+              }
 
               
             }
@@ -1006,16 +1336,16 @@ class APPMasterX extends React.Component {
           if (pgID == 0)
             pgID = -1;
         }
-        //log.info(parsed_pkt,pgID,this.BPG_WS.reqWindow);
+        //log.info(parsed_pkt,pgID,comp.BPG_WS.reqWindow);
         if (pgID === -1) {//Not in tracking window, just Dispatch it
           if (parsed_pkt !== undefined) {
             let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
             if (act !== undefined)
-              this.props.DISPATCH(act);
+            comp.props.DISPATCH(act);
           }
         }
         else {
-          let req_pkt = this.BPG_WS.reqWindow[pgID];
+          let req_pkt = this.reqWindow[pgID];
 
           if (req_pkt !== undefined)//Find the tracking req
           {
@@ -1024,15 +1354,15 @@ class APPMasterX extends React.Component {
 
             if (!SS_start && header.type == "SS")//Get the termination session[SS] pkt
             {//remove tracking(reqWindow) info and Dispatch the pkt
-              let stacked_pkts = this.BPG_WS.reqWindow[pgID].pkts;
+              let stacked_pkts = this.reqWindow[pgID].pkts;
               if (req_pkt._PGINFO_ === undefined || req_pkt._PGINFO_.keep !== true) {
-                delete this.BPG_WS.reqWindow[pgID];
+                delete this.reqWindow[pgID];
               }
               else {
-                this.BPG_WS.reqWindow[pgID].pkts = [];
+                this.reqWindow[pgID].pkts = [];
               }
               if (req_pkt.promiseCBs !== undefined) {
-                req_pkt.promiseCBs.resolve(stacked_pkts, this.WSDataDispatch);
+                req_pkt.promiseCBs.resolve(stacked_pkts, comp.WSDataDispatch);
               }
               else {
                 // let acts={
@@ -1042,7 +1372,7 @@ class APPMasterX extends React.Component {
                 //   rawData:req_pkt
                 // };
                 // this.props.DISPATCH(acts)
-                this.WSDataDispatch(stacked_pkts);
+                comp.WSDataDispatch(stacked_pkts);
                 // req_pkt.pkts.forEach((pkt)=>
                 // {
                 //   let act=map_BPG_Packet2Act(pkt);
@@ -1059,7 +1389,7 @@ class APPMasterX extends React.Component {
           {
             if (SS_start)//And it's SS start, put the new tracking info
             {
-              this.BPG_WS.reqWindow[pgID] = {
+              this.reqWindow[pgID] = {
                 time: new Date().getTime(),
                 pkts: [parsed_pkt]
               };
@@ -1067,152 +1397,95 @@ class APPMasterX extends React.Component {
             else {
               let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
               if (act !== undefined)
-                this.props.DISPATCH(act);
+              comp.props.DISPATCH(act);
             }
           }
 
         }
-      },
-      onclose: (ev, ws_obj) => {
-        StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
-        setTimeout(() => {
-          this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl, this.BPG_WS);
-        }, 10*1000);
-      },
-      onerror: (ev, ws_obj) => {
-      },
-      send: (data, ws_obj, promiseCBs) => {
+      }
 
+      send(info)
+      {
         let PGID = undefined;
         let PGINFO = undefined;
-        if (data.data instanceof Object) {
-          PGID = data.data._PGID_;
-          PGINFO = data.data._PGINFO_;
-          delete data.data["_PGID_"];
-          delete data.data["_PGINFO_"];
+        if (info.data instanceof Object) {
+          PGID = info.data._PGID_;
+          PGINFO = info.data._PGINFO_;
+          delete info.data["_PGID_"];
+          delete info.data["_PGINFO_"];
         }
         if (PGID === undefined) {
-          PGID = this.BPG_WS.pgIDCounter;
-          this.BPG_WS.pgIDCounter++;
-          if (this.BPG_WS.pgIDCounter > 10000) this.BPG_WS.pgIDCounter = 0;
+          PGID = this.pgIDCounter++;
+          while(this.reqWindow[PGID]!==undefined)
+          {
+            PGID = this.pgIDCounter++;
+          }
         }
 
-        //console.log(data, ws_obj, promiseCBs);
 
-        if (data.data instanceof Uint8Array) {
-          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl, data.prop, PGID, null, data.data));
+        if (info.data instanceof Uint8Array) {
+          // ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl, data.prop, PGID, null, data.data));
+          console.log("");
+          throw new Error('Here is not allowed anymore');
         }
         else {
-          this.BPG_WS.reqWindow[PGID] = {
+          this.reqWindow[PGID] = {
             time: new Date().getTime(),
             pkts: [],
-            promiseCBs: promiseCBs,
+            promiseCBs:info.promiseCBs,
             _PGINFO_: PGINFO
           };
 
-          ws_obj.websocket.send(BPG_Protocol.objbarr2raw(data.tl, data.prop, PGID, data.data, data.uintArr));
+          this.websocket.send(BPG_Protocol.objbarr2raw(info.tl, info.prop, PGID, info.data, info.uintArr));
         }
+
+
+      }
+
+      close()
+      {
+        return this.websocket.close();
       }
     }
 
-
-    setTimeout(() =>
-      this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl, this.BPG_WS)
-      , 100);
+    this.props.ACT_WS_REGISTER(this.props.WS_ID,new BPG_WS());
+    this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl)
 
 
-    let pingState=false;
-    let WS_CBs = {
-      onopen: (ev, ws_obj) => {
-        console.log(">>>onopen")
-        function try2Ping()
-        {
-          if(ws_obj.websocket.readyState==1)
-          {
-            if(pingState==false)
-            {
-              pingState=true;
-              ws_obj.send_obj({type:"PING"},ws_obj)
-              .then((dd)=>{
-                pingState=false;
-                console.log(dd)
-                
-              })
-              .catch(e=>{
-                console.log(e)
-              })
-              setTimeout(try2Ping,5000);
-            }
-            else
-            {
-              console.log(">>try close",ws_obj);
-              ws_obj.websocket.close();
-              ws_obj.onclose(undefined,ws_obj);
-            }
-            
-          }
-          else
-          {
 
-            console.log("Oh shit!!");
-          }
-        }
-        try2Ping();
+    // setInterval(()=>{
+    //   let retx=
+    //     this.props.ACT_WS_GET_OBJ(this.props.WS_InspDataBase_W_ID, (obj)=>{
+          
+    //       console.log(obj);
+    //       return obj.websocket.send_obj({type:"PING"});
+    //     })
+    //     .then(d=>{
+    //       console.log(d);
+    //     })
+    //     .catch(e=>{
+    //       console.log(e);
 
-      },
-      onmessage: (evt, ws_obj) => {
-        console.log(">>>onmessage",evt)
-      },
-      onclose: (ev, ws_obj) => {
-        
-        pingState=false;
-        console.log(">>>onclose")
-        // if(PING_Interval!==undefined)
-        //   clearInterval(PING_Interval);
-        // PING_Interval=undefined;
-        
-        return true;
-      },
-      onerror: (ev, ws_obj) => {
-        console.log(">>>onerror",ev)
-        // if(PING_Interval!==undefined)
-        //   clearInterval(PING_Interval);
-        // PING_Interval=undefined;
-      },
-      send_obj: (data, ws_obj, promiseCBs) => {
-        console.log(">>>send",data)
-        return ws_obj.websocket.send_obj(data);
-      }
-    }
-    //this.launchWSConnectionAction(this.props.WS_InspDataBase_W_ID,"ws://db.xception.tech:8080/insert/insp",WS_CBs,5000);
-    
+    //     })
+    // },5000);
+
+
+
+    // let dd=new websocket_aliveTracking({
+    //   onStateChange:(ns,os,act)=>console.log(ns,"<=",os,"(",act,")"),
+    //   url:"ws://db.xception.tech:8080/insert/insp"
+    // });
+
+
+
+    // this.props.ACT_WS_CONNECT(this.props.WS_InspDataBase_W_ID, "ws://db.xception.tech:8080/insert/insp", new MW_CORE())
+
+  
+
+
 
   }
 
-
-  launchWSConnectionAction(ID,url,wsEventCBSet,delayReconnect_ms=5000)
-  {
-
-    let orig_onclose=wsEventCBSet.onclose;
-    let newwsEventCBSet={...wsEventCBSet,
-      onclose:(ev, ws_obj) => {
-        let doRunDefault=true;
-        if(orig_onclose!==undefined)
-        {
-          doRunDefault=orig_onclose(ev, ws_obj);
-        }
-        if(doRunDefault==true && delayReconnect_ms>0)
-        {
-          setTimeout(() => {
-            this.props.ACT_WS_CONNECT_w_tracking(ID, url, newwsEventCBSet,"req_id");
-          }, delayReconnect_ms);
-        }
-      }
-    }
-    this.props.ACT_WS_CONNECT_w_tracking(ID, url, newwsEventCBSet,"req_id")
-
-
-  }
 
 
   render() {

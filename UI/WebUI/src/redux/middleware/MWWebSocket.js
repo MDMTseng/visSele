@@ -2,112 +2,89 @@
 import { websocket_reqTrack } from 'UTIL/MISC_Util';
 
 export const MWWS_EVENT = {
-    ERROR:"MWWS_ERROR",
-    CONNECT:"MWWS_CONNECT",
-    DISCONNECT:"MWWS_DISCONNECT",
-    SEND:"MWWS_SEND"
+  REGISTER:"MWWS_REGISTER",
+  CALL:"MWWS_CALL",
+  GET_OBJ:"MWWS_GET_OBJ",
+  UNREGISTER:"MWWS_UNREGISTER",
+
+  ERROR:"MWWS_ERROR",
+
 };
 
 export const MWWebSocket = WSData => store => next => action => {
 
-  if(action==undefined || action.type==undefined || !action.type.startsWith("MWWS_"))
+  if(action===undefined || action.type===undefined  || !action.type.startsWith("MWWS_"))
   {
     return next(action);
   }
 
-  let info = action.data;
-  let id = info.id;
-  if(id === undefined )
-  {
-    id = info.url;
-  }
-  
-  //console.log(action.data.data);
-  if(id === undefined)return next({type:MWWS_EVENT.ERROR,data:{str:"no id/url is found",info:info}});
-
-
+  // console.log(action);
+  let api = action.api;
+  let id = action.id;
+  let api_in_store=WSData[id];
   switch (action.type) {
-    case MWWS_EVENT.CONNECT:
+    case MWWS_EVENT.REGISTER:
     {
-      // console.log(info);
-      if(WSData[id] !== undefined )
-      {//There is a connection session on this id
-        //Disconnect it first
-        store.dispatch({type:MWWS_EVENT.DISCONNECT,data:WSData[id]});
-      }
-      WSData[id] = undefined;
-
-
-      info.websocket= new WebSocket(info.url);
-  
-      if(info.binaryType!==undefined)
-        info.websocket.binaryType = info.binaryType; 
-
-      if(info.trackKey!==undefined)
+      
+      if(id===undefined)
       {
-        info.websocket= new websocket_reqTrack(info.websocket,info.trackKey);
+        return next({type:MWWS_EVENT.ERROR,data:{msg:`The id:${id} cannot be undefined`,action}});
       }
 
-        
-      info.websocket.onopen = function(ev)
+      if(api===undefined)
       {
-        this.onopen(ev,this);
-      }.bind(info);
-      info.websocket.onmessage = function(ev)
+        return next({type:MWWS_EVENT.ERROR,data:{msg:`The register action id:${id} has undefined api`,action}});
+      }
+      if(api_in_store!==undefined)
       {
-        this.onmessage(ev,this);
-      }.bind(info);
-      info.websocket.onclose = function(ev)
-      {
-        this.onclose(ev,this);
-        WSData[this.id]=undefined;
-      }.bind(info);
+        return next({type:MWWS_EVENT.ERROR,data:{msg:`The id:${id} is occupied`,action}});
+      }
 
-      info.websocket.onerror = function(ev)
-      {
-        this.onerror(ev,this);
-        WSData[this.id]=undefined;
-      }.bind(info);
+      api_in_store=
+      WSData[id]=api;
 
-
-
-
-      WSData[id]=info;
       break;
     }
 
-    case MWWS_EVENT.SEND:
+    case MWWS_EVENT.GET_OBJ:
     {
-      if(WSData[id] === undefined )
-      {
-        
-        if(info !== undefined && info.promiseCBs!==undefined && info.promiseCBs.reject!==undefined)
-          info.promiseCBs.reject({type:"error_connection_not_found",info:info});
-        return next({type:MWWS_EVENT.MWWS_ERROR,info:info});
-      }
-
-      if(WSData[id].send === undefined)
-      {
-        WSData[id].websocket.send(info.data);
-      }
-      else
-      {
-        WSData[id].send(info.data,WSData[id],info.promiseCBs);
-        return;
-      }
+      let return_cb = action.return_cb;
+      return return_cb(api_in_store);
       break;
     }
-    // User request to disconnect
-    case MWWS_EVENT.DISCONNECT:
+    case MWWS_EVENT.CALL:
     {
-      WSData[id].websocket.close();
+      if(api_in_store===undefined)
+      {
+        return next({type:MWWS_EVENT.ERROR,data:{msg:`The API of id:${id} is undefined`,action}});
+      }
+      let param = action.param;
+      let method=action.method;
+      if(method===undefined)
+      {
+        return next({type:MWWS_EVENT.ERROR,data:{msg:`The API of id:${id}. The target method is undefined`,action}});
+      }
+      let ret = api_in_store[method](param);
+      
+      return ret;
+      // return next({type:MWWS_EVENT.CALL,data:ret,action});
       break;
     }
 
-    default: // We don't really need the default but ...
-      break;
-  };
 
+
+    case MWWS_EVENT.UNREGISTER:
+    {
+
+      if(api_in_store===undefined)
+      {
+        return next({type:MWWS_EVENT.ERROR,data:{msg:`The API of id:${id} is undefined`,action}});
+      }
+      delete WSData[id];
+
+      break;
+    }
+  }
   return next(action);
 };
 

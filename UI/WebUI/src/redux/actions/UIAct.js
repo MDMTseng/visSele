@@ -88,6 +88,7 @@ export const UI_SM_EVENT = {
 
   Version_Map_Update:"Version_Map_Update",
   Core_Status_Update:"Core_Status_Update",
+  Core_Camera_Status_Update:"Core_Camera_Status_Update",
   Update_Status_Update:"Update_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
@@ -125,16 +126,6 @@ export const UI_SM_EVENT = {
   Control_SM_Panel:"Control_SM_Panel",
   Canvas_Mouse_Location:"Canvas_Mouse_Location"
 };
-
-
-
-
-export function EV_WS_ChannelUpdate(WS_CH)
-{
-  return {
-    type: UI_SM_EVENT.WS_channel ,data:WS_CH
-  }
-}
 
 
 export function EV_UI_System_Connection_Status_Update(Status)
@@ -197,6 +188,13 @@ export function EV_Core_Status_Update(coreStatus)
 {
   return {
     type: UI_SM_EVENT.Core_Status_Update,
+    data: coreStatus
+  }
+}
+export function EV_Core_Camera_Status_Update(coreStatus)
+{
+  return {
+    type: UI_SM_EVENT.Core_Camera_Status_Update,
     data: coreStatus
   }
 }
@@ -367,37 +365,67 @@ export function EV_WS_uInsp_PING_Sent()
 }
 
 
-export function EV_WS_SEND_BPG(id,tl,prop,data,uintArr,promiseCBs){
+
+
+export function EV_WS_REGISTER(id, api){
   return ({
-    type:"MWWS_SEND",
-    data:{
-      id:id,
-      data:{
-        tl:tl,
-        prop:prop,
-        data:data,
-        uintArr:uintArr
-      },
-      promiseCBs
-    }
+    type:"MWWS_REGISTER",
+    id,
+    api
   });
 }
 
-export function EV_WS_SEND_PLAIN(id,data,promiseCBs){
+
+export function EV_WS_CONNECT(id, url,return_cb){
   return ({
-    type:"MWWS_SEND",
-    data:{
-      id,
-      data,
-      promiseCBs
-    }
+    type:"MWWS_CALL",
+    id,
+    method:"connect",
+    param:{
+      url
+    },
+    return_cb
   });
 }
 
-export function EV_WS_Disconnect(id)
+
+
+export function EV_WS_GET_OBJ(id, return_cb){
+  return ({
+    type:"MWWS_GET_OBJ",
+    id,
+    return_cb
+  });
+}
+
+export function EV_WS_SEND_BPG(id,tl,prop,data,uintArr,promiseCBs,return_cb){
+  return ({
+    type:"MWWS_CALL",
+    id,
+    method:"send",
+    param:{
+      tl,
+      prop,
+      data,//json object
+      uintArr,
+      promiseCBs
+    },
+    return_cb
+  });
+}
+
+export function EV_WS_SEND_PLAIN(id,data,return_cb){
+  return EV_WS_SEND_BPG(id,undefined,undefined,data,undefined,undefined,return_cb);
+}
+
+export function EV_WS_CLOSE(id,return_cb)
 {
-  return {
-    type: "MWWS_DISCONNECT" ,data:{id}
-  }
-
+  return ({
+    type:"MWWS_CALL",
+    id,
+    method:"close",
+    param:{
+    },
+    return_cb
+  });
 }

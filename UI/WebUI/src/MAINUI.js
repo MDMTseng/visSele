@@ -150,7 +150,7 @@ class CanvasComponent extends React.Component {
       this.ec_canvas.EditDBInfoSync(props.edit_info);
       this.ec_canvas.SetState(ec_state);
       this.ec_canvas.SetShowInspectionNote(props.showInspectionNote);
-      
+      // console.log(props.edit_info,ec_state,props.showInspectionNote);
       //this.ec_canvas.ctrlLogic();
       this.ec_canvas.draw();
     }
@@ -331,10 +331,22 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   
   useEffect(()=>{
-    let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
-    if(down_samp_level>3)down_samp_level=3;
-    ACT_WS_SEND_BPG( "LD", 0, { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,
-    down_samp_level});
+    setTimeout(()=>{
+      
+      let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
+      if(down_samp_level>3)down_samp_level=3;
+      ACT_WS_SEND_BPG( "LD", 0, 
+      { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,down_samp_level},
+      undefined,{ 
+        resolve:(pkts,WSDataDispatch)=>{
+          console.log(pkts);
+          WSDataDispatch(pkts);
+  
+        }, reject:(pkts,__)=>{
+          
+        } 
+      });
+    },1000);
 
   },[])
 
@@ -581,7 +593,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
 
     UI_Stack.push(
-      <div key="UI_Step0" className="s width12 height12 overlayCon" fixedFrame={true}  style={{background: "rgb(250,250,250)"}}>
+      <div key="UI_Step0" className="s width12 height12 overlayCon" style={{background: "rgb(250,250,250)"}}>
         
         <div className={twoPanelClass1} style={{padding: "10px"}}>
           
@@ -1058,7 +1070,7 @@ const MainUI=()=>{
            
         ],
       }
-      UI.push(<InspectionDataPrepare  onPrepareOK={EV_UI_Insp_Mode}/>);
+      UI.push(<InspectionDataPrepare key="InspectionDataPrepare" onPrepareOK={EV_UI_Insp_Mode}/>);
       
       break;
   
@@ -1313,6 +1325,7 @@ const MainUI=()=>{
       }
       break;
     case  s_statesTable.Setting:
+      // console.log(RDX_machine_custom_setting)
       UI=<Setui_UI machCusSetting={RDX_machine_custom_setting} 
         
         onExtraCtrlUpdate={extraCtrls=>{
@@ -1439,7 +1452,7 @@ const MainUI=()=>{
 
     if(siderUI_info.menu!==undefined)
     {
-      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']}    selectable={false}
+      siderUI.push(<Menu mode="inline" defaultSelectedKeys={['1']}    selectable={false} key="MENU.."
       style={{
         boxShadow: "inset -1px 0 9px -2px rgba(0,0,0,0.4)",
         border: "0px"}}>
@@ -1574,7 +1587,6 @@ const mapDispatchToProps_APPMain = (dispatch, ownProps) => {
     EV_UI_Analysis_Mode: () => { dispatch(UIAct.EV_UI_Analysis_Mode()) },
     
     ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
-    ACT_WS_DISCONNECT: (id) => dispatch(UIAct.EV_WS_Disconnect(id)),
     ACT_Insp_Mode_Update: (mode) => dispatch(UIAct.EV_UI_Insp_Mode_Update(mode)),
     ACT_Def_Model_Path_Update: (path) => dispatch(UIAct.Def_Model_Path_Update(path)),
   }
@@ -1587,7 +1599,6 @@ const mapStateToProps_APPMain = (state) => {
     c_state: state.UIData.c_state,
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     isp_db: state.UIData.edit_info._obj,
-    WS_CH: state.UIData.WS_CH,
     WS_ID: state.UIData.WS_ID,
     version_map_info: state.UIData.version_map_info,
     WebUI_info: state.UIData.WebUI_info,
