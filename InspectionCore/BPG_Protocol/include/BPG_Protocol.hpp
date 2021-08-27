@@ -5,8 +5,9 @@
 #include <string>
 #include <BPG_Link_Interface.hpp>
 #include <regex>
-using namespace std;
+#include <mutex>
 
+using namespace std;
 class BPG_Link_Interface;
 typedef int (*BPG_protocol_data_feed_callback)(BPG_Protocol_Interface &dch, struct BPG_protocol_data data, void *callbackInfo);
 
@@ -28,13 +29,17 @@ protected:
   vector<uint8_t> cached_data_send;
   BPG_Link_Interface *linkCH;
   
+  std::mutex bufferLock;
+  std::mutex linkLayerLock;
   int _fromLinkLayer(uint8_t *dat, size_t len, bool FIN);
+  
 public:
   static int getHeaderSize();
   static int headerSetup(uint8_t *buff, size_t len, BPG_protocol_data bpg_dat);
   BPG_Protocol_Interface();
   void setLink(BPG_Link_Interface *link) { linkCH = link; }
   uint8_t *requestSendingBuffer(size_t len);
+  bool releaseSendingBuffer(uint8_t * buffer);
   virtual int toUpperLayer(BPG_protocol_data bpgdat) = 0;
   int fromUpperLayer(BPG_protocol_data bpgdat);
   int fromLinkLayer(uint8_t *dat, size_t len, bool FIN = true);

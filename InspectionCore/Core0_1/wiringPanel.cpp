@@ -56,7 +56,7 @@ void setThreadPriority(std::thread &thread, int type, int priority)
 
 int mainThreadLock_lock(int call_lineNumber, char *msg = "", int try_lock_timeout_ms = 0)
 {
-
+  return 0;
   if (try_lock_timeout_ms <= 0)
   {
     //LOGI("%s_%d: Locking ",msg,call_lineNumber);
@@ -84,6 +84,7 @@ int mainThreadLock_lock(int call_lineNumber, char *msg = "", int try_lock_timeou
 int mainThreadLock_unlock(int call_lineNumber, char *msg = "")
 {
 
+  return 0;
   //LOGI("%s_%d: unLocking ",msg,call_lineNumber);
   mainThreadLock.unlock();
   //LOGI("%s_%d: unLocked ",msg,call_lineNumber);
@@ -254,12 +255,12 @@ std::timed_mutex BPG_protocol_lock;
 void BPG_protocol_send(BPG_protocol_data dat)
 {
   //LOGI("SEND_LOCK");
-  BPG_protocol_lock.lock();
+  // BPG_protocol_lock.lock();
   //LOGI("SEND_ING");
   bpg_pi.fromUpperLayer(dat);
   // BPG_protocol->SendData(dat);
   //LOGI("SEND_UNLOCK");
-  BPG_protocol_lock.unlock();
+  // BPG_protocol_lock.unlock();
   //LOGI("SEND_END");
 }
 
@@ -1048,7 +1049,6 @@ bool DoImageTransfer = true;
 
 int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 {
-  MT_LOCK("");
   int fd = getfd();
 
   char tmp[1024];
@@ -1057,7 +1057,6 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 
   BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
   BPG_protocol_send(bpg_dat);
-  MT_UNLOCK("");
   return 0;
 }
 
@@ -1224,8 +1223,7 @@ int getImage(CameraLayer *camera,acvImage *dst_img,int trig_type=0,int timeout_m
 int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat) 
 {
   //LOGI("DatCH_CallBack_BPG:%s_______type:%d________", __func__,data.type);
-  do
-  {
+
     BPG_protocol_data *dat = &bpgdat;
 
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
@@ -1254,12 +1252,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     //     exit(-1);
     //   }
     // }
-
     MT_LOCK("");
+  do
+  {
 
     // if (checkTL("GS", dat) == false)
-    // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-    //       dat->pgID);
+    LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+          dat->pgID);
     if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
@@ -1492,6 +1491,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     else if (checkTL("LD", dat))
     {
+      // LOGI("DataType_BPG:[%c%c] data:\n%s", dat->tl[0], dat->tl[1],(char *)dat->dat_raw);
       do
       {
 
@@ -2520,11 +2520,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     bpg_dat.pgID = dat->pgID;
 
     fromUpperLayer(bpg_dat);
-    MT_UNLOCK("");
     cJSON_Delete(json);
   }
   while(0);
 
+  MT_UNLOCK("");
   // if (doExit)
   // {
   //   exit(0);
@@ -2859,27 +2859,13 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   if (bpg_pi.cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
-    MT_UNLOCK("");
+    //MT_UNLOCK("");
     return;
   }
   if (bpg_pi.cameraFramesLeft > 0)
     bpg_pi.cameraFramesLeft--;
 
-  {
-
-    int counter = 0;
-    while (MT_LOCK("ImgPipeProcessCenter_imp lock", 100) != 0) //Lock and wait 100 ms
-    {
-      LOGE("try lock");
-      counter++;
-      //Still locked
-      if (counter > 1 || bpg_pi.cameraFramesLeft == 0) //If the flag is closed then, exit
-      {
-        LOGE("bpg_pi.cameraFramesLeft is off return..");
-        return;
-      }
-    }
-  }
+  MT_LOCK("InspResultAction lock");
 
   if (ret_pipe_pass_down)
     *ret_pipe_pass_down = false;
@@ -2998,17 +2984,22 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     //if(stackingC==0)
     if ((!sendJpg) && DoImageTransfer && skipImageTransfer == false)
     {
+      int _downSampLevel=downSampLevel;
 
       {
 
-        iminfo = (BPG_protocol_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)downSampLevel};
-        if (iminfo.scale == 0)
+        if (_downSampLevel <= 0)
         {
-          iminfo.scale = 1;
+          _downSampLevel = 1;
         }
+        // if(downSampLevel==7)
+        //   downSampLevel=5;
+        // else
+        //   downSampLevel=7;
+        iminfo = (BPG_protocol_data_acvImage_Send_info){img : &test1_buff, scale : (uint16_t)_downSampLevel};
 
-        iminfo.offsetX = (ImageCropX / iminfo.scale) * iminfo.scale;
-        iminfo.offsetY = (ImageCropY / iminfo.scale) * iminfo.scale;
+        iminfo.offsetX = (ImageCropX / _downSampLevel) * _downSampLevel;
+        iminfo.offsetY = (ImageCropY / _downSampLevel) * _downSampLevel;
 
         iminfo.fullHeight = capImg.GetHeight();
         iminfo.fullWidth = capImg.GetWidth();
@@ -3018,20 +3009,20 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
         // LOGI(">>>>");
         ImageSampler *sampler = (true) ? bacpac->sampler : NULL;
         //acvThreshold(srcImg, 70);//HACK: the image should be the output of the inspection but we don't have that now, just hard code 70
-        ImageDownSampling(test1_buff, capImg, iminfo.scale, sampler, 1,
+        ImageDownSampling(test1_buff, capImg, _downSampLevel, sampler, 1,
                           iminfo.offsetX, iminfo.offsetY, cropW, cropH);
       }
 
       bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("IM", NULL);
       //BPG_protocol_data_acvImage_Send_info iminfo={img:&test1_buff,scale:4};
-
+      iminfo.scale=_downSampLevel;
       // LOGI(">>>>");
       bpg_dat.callbackInfo = (uint8_t *)&iminfo;
       bpg_dat.callback = m_BPG_Protocol_Interface::SEND_acvImage;
       bpg_dat.pgID = bpg_pi.CI_pgID;
       
       bpg_pi.fromUpperLayer(bpg_dat);
-      LOGI("img transfer(DL:%d) %fms \n", downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
+      LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
     }
 
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
@@ -3262,7 +3253,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   if (bpg_pi.cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
-    MT_UNLOCK("");
+    // MT_UNLOCK("");
     return;
   }
   clock_t t = clock();
