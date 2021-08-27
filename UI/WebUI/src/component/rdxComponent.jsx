@@ -362,7 +362,7 @@ export function CustomDisplaySelectUI({onSelect}) {
   
   const dispatch = useDispatch();
   const ACT_WS_SEND_BPG= (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs));
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   
   const _mus = useSelector(state => state.UIData.machine_custom_setting);
   useEffect(() => {
@@ -424,7 +424,7 @@ export function CustomDisplaySelectUI({onSelect}) {
          BPG_Channel={(...args) =>
          {
           console.log(">>>");
-         ACT_WS_SEND_BPG(WS_ID, ...args)
+         ACT_WS_SEND_BPG(CORE_ID, ...args)
          }} />
       </TabPane>
 

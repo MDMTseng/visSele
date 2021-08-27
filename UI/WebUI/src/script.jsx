@@ -116,7 +116,7 @@ function SystemServicePanel_UI()
 {
   
   const dispatch = useDispatch();
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
   // const ACT_WS_SEND_PLAIN= (...args) => dispatch(UIAct.EV_WS_SEND_PLAIN(...args));
 
@@ -126,7 +126,7 @@ function SystemServicePanel_UI()
     <Button onClick={()=>{
 
 
-      ACT_WS_SEND_BPG(WS_ID, "RC", 0, {
+      ACT_WS_SEND_BPG(CORE_ID, "RC", 0, {
           target: "camera_ez_reconnect"
         });
       }}>EX_RECONN</Button>
@@ -689,10 +689,10 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
 
 }
 
-function Query_Camera_Info(ACT_WS_SEND_BPG,WS_ID)
+function Query_Camera_Info(ACT_WS_SEND_BPG,CORE_ID)
 {
   return new Promise((resolve, reject) => {
-    ACT_WS_SEND_BPG(WS_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
+    ACT_WS_SEND_BPG(CORE_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
       undefined, {resolve, reject})
   });
 }
@@ -707,7 +707,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
   
   const [sys_state, setSys_state] = useState(undefined);
   const dispatch = useDispatch();
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const cur_state = useSelector(state => state.UIData.c_state);
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
@@ -716,7 +716,7 @@ function Side_Boot_CTRL_UI({URL,triggerHide}){
 
 
   const ACT_CAMERA_RECONNECT=()=>  new Promise((resolve, reject) => {
-    ACT_WS_SEND_BPG(WS_ID, "RC", 0, {
+    ACT_WS_SEND_BPG(CORE_ID, "RC", 0, {
       target: "camera_ez_reconnect"
     },
       undefined, { resolve, reject });
@@ -793,7 +793,7 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
   const dispatch = useDispatch();
   const ACT_CAMERA_STATUS_UPDATE= (camera_info) => dispatch(UIAct.EV_Core_Camera_Status_Update(camera_info));
   
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
 
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
@@ -804,7 +804,7 @@ function NullDOM_SystemStatusQuery({onStatusChange}){
     {
       if(s_.inProgress==true)return;
       s_.inProgress=true;
-      Query_Camera_Info(ACT_WS_SEND_BPG,WS_ID)
+      Query_Camera_Info(ACT_WS_SEND_BPG,CORE_ID)
         .then((pkts) => {
           s_.inProgress=false;
           let GS=pkts.find(pkt=>pkt.type=="GS")
@@ -882,7 +882,7 @@ class APPMasterX extends React.Component {
       coreConnected: state.UIData.coreConnected,
       showSM_graph: state.UIData.showSM_graph,
       stateMachine: state.UIData.sm,
-      WS_ID: state.UIData.WS_ID,
+      CORE_ID: state.ConnInfo.CORE_ID,
       WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
       C_STATE: state.UIData.c_state,
       
@@ -1195,7 +1195,7 @@ class APPMasterX extends React.Component {
           console.log("CLOSE::",ev);
           StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
           setTimeout(() => {
-            comp.props.ACT_WS_CONNECT(comp.props.WS_ID, url);
+            comp.props.ACT_WS_CONNECT(comp.props.CORE_ID, url);
           }, 10*1000);
         }
         
@@ -1226,11 +1226,11 @@ class APPMasterX extends React.Component {
                 let HR = BPG_Protocol.raw2obj(evt);
               }
 
-              comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "HR", 0, { a: ["d"] });
+              comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "HR", 0, { a: ["d"] });
               
               {
 
-                comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "LD", 0, { filename: "data/default_camera_param.json" },
+                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0, { filename: "data/default_camera_param.json" },
                 undefined, 
                 {resolve: (data,action_channal) => {
                   console.log(data);
@@ -1241,7 +1241,7 @@ class APPMasterX extends React.Component {
   
               
                 let machineSettingPath="data/machine_setting.json";
-                comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "LD", 0,
+                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0,
                 { filename: machineSettingPath },
                 undefined, 
                 {resolve: (data) => {
@@ -1281,7 +1281,7 @@ class APPMasterX extends React.Component {
                   }
                 }});
             
-                comp.props.ACT_WS_SEND_BPG(comp.props.WS_ID, "LD", 0,
+                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0,
                   { filename: "data/machine_info" },
                   undefined, 
                   {resolve: (data) => {
@@ -1448,8 +1448,8 @@ class APPMasterX extends React.Component {
       }
     }
 
-    this.props.ACT_WS_REGISTER(this.props.WS_ID,new BPG_WS());
-    this.props.ACT_WS_CONNECT(this.props.WS_ID, this.coreUrl)
+    this.props.ACT_WS_REGISTER(this.props.CORE_ID,new BPG_WS());
+    this.props.ACT_WS_CONNECT(this.props.CORE_ID, this.coreUrl)
 
 
 

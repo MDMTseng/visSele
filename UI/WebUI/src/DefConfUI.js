@@ -1359,7 +1359,7 @@ function SettingUI({})
 
 
   
-function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,WS_ID,dispatch)
+function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch)
 {
   function actionGen_W_IGNORE_LOCK(pkts)
   {
@@ -1380,8 +1380,8 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
 
   ACT_DefConf_Lock_Level_Update(1);
   new Promise((resolve, reject) => {
-    console.log(defModelPath,DEF_EXTENSION,WS_ID)
-    ACT_WS_SEND_BPG(WS_ID, "LD", 0,
+    console.log(defModelPath,DEF_EXTENSION,CORE_ID)
+    ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
       {
         deffile: defModelPath + '.' + DEF_EXTENSION,
         imgsrc: defModelPath,
@@ -1394,7 +1394,7 @@ function loadDefFile(defModelPath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,
       dispatch(actionGen_W_IGNORE_LOCK(pkts))
 
       // new Promise((resolve, reject) => {
-      //   ACT_WS_SEND_BPG(WS_ID, "LD", 0,
+      //   ACT_WS_SEND_BPG(CORE_ID, "LD", 0,
       //     {
       //       imgsrc: defModelPath,
       //       down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL
@@ -1496,7 +1496,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
 
   const edit_info = useSelector(state => state.UIData.edit_info);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const shape_list = useSelector(state => state.UIData.edit_info.list);
   const defModelPath = edit_info.defModelPath;
   
@@ -1624,9 +1624,9 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
             }
             ACT_DefFileHash_Update(report.featureSet_sha1);
             console.log("ACT_Report_Save");
-            ACT_Report_Save(WS_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
+            ACT_Report_Save(CORE_ID, fileNamePath + '.' + DEF_EXTENSION, enc.encode(JSON.stringify(report, null, 2)));
             console.log("ACT_Cache_Img_Save");
-            ACT_Cache_Img_Save(WS_ID, fileNamePath);
+            ACT_Cache_Img_Save(CORE_ID, fileNamePath);
 
 
             ACT_Def_Model_Path_Update(fileNamePath);
@@ -1657,7 +1657,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           let fileNamePath = filePath.replace("." + DEF_EXTENSION, "");
           console.log(fileNamePath);
 
-          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,WS_ID,dispatch);
+          loadDefFile(fileNamePath,ACT_DefConf_Lock_Level_Update,ACT_WS_SEND_BPG,CORE_ID,dispatch);
           ACT_Def_Model_Path_Update(fileNamePath);
           setFileSelectedCallBack(undefined);
         })
@@ -1696,7 +1696,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
           setModal_viewAsWait();
           ACT_DefConf_Lock_Level_Update(0);
           new Promise((resolve, reject) => {
-            ACT_WS_SEND_BPG(WS_ID, "EX", 0, {
+            ACT_WS_SEND_BPG(CORE_ID, "EX", 0, {
               trigger_type,
               timeout,
               img_property:{
@@ -1771,7 +1771,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         let deffile = defFileGeneration(edit_info);
         console.log(deffile);
         deffile.intrusionSizeLimitRatio=1;
-        ACT_WS_SEND_BPG(WS_ID,"II", 0, 
+        ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
         {
           _PGID_:10104,
           _PGINFO_:{keep:true},
@@ -1851,7 +1851,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         searchDepth={4}
         className="width8 modal-sizing"
         path={DefFileFolder} visible={fileSelectedCallBack !== undefined}
-        BPG_Channel={(...args) => ACT_WS_SEND_BPG(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(CORE_ID, ...args)}
         onFileSelected={(filePath, fileInfo) => {
           fileSelectedCallBack(filePath, fileInfo);
         }}
@@ -1874,7 +1874,7 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
         searchDepth={4}
         path={DefFileFolder} visible={fileSavingCallBack !== undefined}
         defaultName={defaultName}
-        BPG_Channel={(...args) => ACT_WS_SEND_BPG(WS_ID, ...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(CORE_ID, ...args)}
 
         onOk={(folderInfo, fileName, existed) => {
           fileSavingCallBack(folderInfo, fileName, existed);
@@ -1955,10 +1955,10 @@ class APP_DEFCONF_MODE extends React.Component {
       this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
       this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
     }
-    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.WS_ID,this.props.DISPATCH);
+    loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.CORE_ID,this.props.DISPATCH);
 
     
-    this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "ST", 0,
+    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } });
   }
 
@@ -2684,7 +2684,7 @@ class APP_DEFCONF_MODE extends React.Component {
                 deffile.intrusionSizeLimitRatio=1;
   
 
-                this.props.ACT_WS_SEND_BPG(this.props.WS_ID,"II", 0, 
+                this.props.ACT_WS_SEND_BPG(this.props.CORE_ID,"II", 0, 
                 {
                   _PGID_:10104,
                   _PGINFO_:{keep:true},
@@ -2926,7 +2926,7 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     edit_tar_info: state.UIData.edit_info.edit_tar_info,
     shape_list: state.UIData.edit_info.list,
     Info_decorator: state.UIData.edit_info.__decorator,
-    WS_ID: state.UIData.WS_ID,
+    CORE_ID: state.ConnInfo.CORE_ID,
     edit_info: state.UIData.edit_info,
     defConf_lock_level: state.UIData.defConf_lock_level,
     machine_custom_setting: state.UIData.machine_custom_setting,

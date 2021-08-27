@@ -1434,10 +1434,10 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
   });
   let _this=_cur.current;
 
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   
   const dispatch = useDispatch();
-  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, ...args));
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, ...args));
 
 
 
@@ -1619,7 +1619,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
   {
 
     
-    // this.props.ACT_WS_SEND_BPG(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+    // this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
     // }, undefined);
     console.log(defInfo);
     if(defInfo==undefined)

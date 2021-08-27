@@ -170,10 +170,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
   componentDidMount()
   {
-    //this.props.ACT_WS_SEND_BPG(this.props.WS_ID,"EX",0,{imgsrc:"data/test1.bmp"});
     let defModelPath = this.props.edit_info.defModelPath;
-
-    //this.props.ACT_WS_SEND_BPG(this.props.WS_ID,"LD",0,{deffile:defModelPath+".json",imgsrc:defModelPath+".bmp"});
   }
   constructor(props) {
     super(props);
@@ -441,7 +438,7 @@ const mapStateToProps_APP_ANALYSIS_MODE = (state) => {
     c_state: state.UIData.c_state,
     edit_tar_info:state.UIData.edit_info.edit_tar_info,
     shape_list:state.UIData.edit_info.list,
-    WS_ID:state.UIData.WS_ID,
+    CORE_ID:state.ConnInfo.CORE_ID,
     edit_info:state.UIData.edit_info,
     reportStatisticState:state.UIData.edit_info.reportStatisticState,
     DICT:state.UIData.DICT,

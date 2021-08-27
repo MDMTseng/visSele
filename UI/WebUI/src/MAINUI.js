@@ -278,7 +278,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
   const System_Connection_Status = useSelector(state => state.UIData.System_Connection_Status);
   
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
   const DefFileHash = useSelector(state => state.UIData.edit_info.DefFileHash);
@@ -286,7 +286,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const InspectionMonitor_URL= useSelector(state => state.UIData.InspectionMonitor_URL);
   const dispatch = useDispatch();
   const ACT_Def_Model_Path_Update= (path) => dispatch(UIAct.Def_Model_Path_Update(path));
-  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_InspOptionalTag_Update= (newTags) => dispatch(DefConfAct.InspOptionalTag_Update(newTags));
   
   const [InfoPopUp,setInfoPopUp]=useState(undefined);
@@ -789,8 +789,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
 
   const dispatch = useDispatch();
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
-  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_Report_Save = (filename, content,promiseCBs) => {ACT_WS_SEND_BPG("SV", 0,{ filename},content,promiseCBs)};
 
   
@@ -950,7 +950,7 @@ const MainUI=()=>{
   let s_statesTable=_REF.current.statesTable;
   
   const dispatch = useDispatch();
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   
   const [siderCollapse,setSiderCollapse] = useState(true);
   
@@ -960,9 +960,9 @@ const MainUI=()=>{
 
   const EV_UI_Edit_Mode=()=>dispatch(UIAct.EV_UI_Edit_Mode());
   const EV_UI_Insp_Mode= () =>dispatch(UIAct.EV_UI_Insp_Mode());
-  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(WS_ID, tl, prop, data, uintArr, promiseCBs));
+  const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_File_Save = (filePath, content,promiseCBs) => {
-    let act = UIAct.EV_WS_SEND_BPG(WS_ID, "SV", 0,
+    let act = UIAct.EV_WS_SEND_BPG(CORE_ID, "SV", 0,
       {filename:filePath},
       content,promiseCBs
     )
@@ -1599,7 +1599,7 @@ const mapStateToProps_APPMain = (state) => {
     c_state: state.UIData.c_state,
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     isp_db: state.UIData.edit_info._obj,
-    WS_ID: state.UIData.WS_ID,
+    CORE_ID: state.ConnInfo.CORE_ID,
     version_map_info: state.UIData.version_map_info,
     WebUI_info: state.UIData.WebUI_info,
     uInspData: state.Peripheral.uInsp,

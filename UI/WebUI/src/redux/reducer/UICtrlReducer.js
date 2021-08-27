@@ -52,7 +52,6 @@ function Default_UICtrlReducer() {
     c_state: null,
     p_state: null,
     state_count: 0,
-    WS_ID: "EverCheckWS",
     WS_defFileDataBase_W_ID,
     WS_defFileDataBase_conn_state:false,
     WS_InspDataBase_W_ID,
