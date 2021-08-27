@@ -646,7 +646,7 @@ class MicroFullInspCtrl extends React.Component {
     this.ping_interval = setInterval(() => {
 
       if (this.props.uInspData.connected) {
-        this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
           { msg: { type: "PING", id: 443 } });
         this.props.ACT_Machine_PING_Sent();
       }
@@ -664,7 +664,7 @@ class MicroFullInspCtrl extends React.Component {
         this.LoaduInspSettingToMachine();
 
         setTimeout(() => {
-          this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
             { msg: { type: "get_setup", id: 4423 } });
         }, 100);//to separate messages
 
@@ -680,7 +680,7 @@ class MicroFullInspCtrl extends React.Component {
     new Promise((resolve, reject) => {
 
       log.info("LoaduInspSettingToMachine step2");
-      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "LD", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
         { filename: filePath },
         undefined, { resolve, reject }
       );
@@ -690,7 +690,7 @@ class MicroFullInspCtrl extends React.Component {
       log.info("LoaduInspSettingToMachine>> step3", pkts);
       if (pkts[0].type != "FL") return;
       let machInfo = pkts[0].data;
-      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
         { msg: { ...machInfo, type: "set_setup", id: 356 } });
     }).catch((err) => {
 
@@ -726,7 +726,7 @@ class MicroFullInspCtrl extends React.Component {
             max={20000}
             onChange={(value) => {
               let xobj = { pulse_hz: value };
-              this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+              this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                 { msg: { ...xobj, type: "set_setup", id: 356 } });
               this.props.ACT_Machine_Info_Update(xobj);
             }}
@@ -758,7 +758,7 @@ class MicroFullInspCtrl extends React.Component {
             <Button key="ping uInsp"
               icon={<HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>}
               onClick={() => {
-                this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                   { msg: { type: "PING", id: 443 } });
                   
                 this.props.ACT_Machine_PING_Sent();
@@ -768,7 +768,7 @@ class MicroFullInspCtrl extends React.Component {
               icon={<BulbOutlined />}
                 key="L_ON"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "MISC/BACK_LIGHT/ON" } })
                 }>
                 ON
@@ -777,7 +777,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="L_OFF"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "MISC/BACK_LIGHT/OFF" } })
                 }>OFF
             </Button>
@@ -786,7 +786,7 @@ class MicroFullInspCtrl extends React.Component {
                 icon={<CameraOutlined />}
                 key="CAM"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "MISC/CAM_TRIGGER" } })
                 } /> */}
 
@@ -795,7 +795,7 @@ class MicroFullInspCtrl extends React.Component {
                 key="SaveToFile"
                 onClick={() => {
                   var enc = new TextEncoder();
-                  this.props.ACT_Report_Save(this.props.CORE_ID, "data/uInspSetting.json",
+                  this.props.ACT_Report_Save_CORE("data/uInspSetting.json",
                     enc.encode(JSON.stringify(this.props.uInspMachineInfo, null, 4)));
                 }}>{this.props.DICT._.save_machine_setting}</Button>
 
@@ -815,7 +815,7 @@ class MicroFullInspCtrl extends React.Component {
                 icon={<ReloadOutlined />}
                 key="res_count_clear"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "res_count_clear" } })
                 }>{this.props.DICT._.RESET_INSPECTION_COUNTER}
             </Button>
@@ -831,7 +831,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="error_get"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "error_get" } })
                 }>
                 {this.props.DICT._.ERROR_CODES}:{this.props.error_codes}
@@ -840,7 +840,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="error_clear"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "error_clear" } })
                 }>{this.props.DICT._.ERROR_CLEAR}
             </Button>
@@ -849,7 +849,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="speed_set"
                 onClick={() => {
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     {
                       msg: {
                         pulse_hz: machineInfo.pulse_hz,
@@ -872,7 +872,7 @@ class MicroFullInspCtrl extends React.Component {
               {
                 let updatedInfo = {mode:checked?"TEST_NO_BLOW":"NORMAL"}
                 
-                this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                 { msg: { ...updatedInfo, type: "set_setup"} });
 
                 this.props.ACT_Machine_Info_Update( 
@@ -917,7 +917,7 @@ class MicroFullInspCtrl extends React.Component {
                     }
                   });
 
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { state_pulseOffset, type: "set_setup", id: 356 } });
 
                   this.props.ACT_Machine_Info_Update({ state_pulseOffset });
@@ -935,7 +935,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                   key="TEST_ACTION"
                   onClick={() =>
-                    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                    this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                       { msg: { type: "test_action", sub_type: "trigger_test",
                       count:60,duration:10,backlight_extra_duration:10,post_duration:20} })
                   }>Trigger Test
@@ -943,7 +943,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="TEST_INC"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_INC" } })
                 }>{this.props.DICT._.TEST_MODE_INC}
               </Button> 
@@ -951,7 +951,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="TEST_NO_BLOW"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_NO_BLOW" } })
                 }>{this.props.DICT._.TEST_MODE_NO_BLOW}
               </Button> 
@@ -959,14 +959,14 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="MODE:TEST"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_ALTER_BLOW" } })
                 }>{this.props.DICT._.TEST_MODE_ALTER_BLOW}
               </Button>
               <Button
                 key="MODE:NORMAL"
                 onClick={() =>
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "NORMAL" } })
                 }>{this.props.DICT._.TEST_MODE_NORMAL}
               </Button>
@@ -975,7 +975,7 @@ class MicroFullInspCtrl extends React.Component {
                 icon={<DisconnectOutlined/>}
                 onClick={() => {
                   new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                    this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                       {},
                       undefined, { resolve, reject });
                     //setTimeout(()=>reject("Timeout"),1000)
@@ -1007,7 +1007,7 @@ class MicroFullInspCtrl extends React.Component {
             <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
               icon={<LinkOutlined/>}
               onClick={() => {
-                this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "PD", 0,
+                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                 this.props.conn_info);
               }}>{this.props.DICT.connection.connect}</Button>
         }
@@ -1024,7 +1024,7 @@ class MicroFullInspCtrl extends React.Component {
 
 const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
   return {
-    ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
+    ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_Machine_Info_Update: (machineInfo) => dispatch(UIAct.EV_WS_uInsp_Machine_Info_Update(machineInfo)),
     ACT_Machine_PING_Sent:()=>dispatch(UIAct.EV_WS_uInsp_PING_Sent()),
     ACT_Report_Save: (id, fileName, content) => {
@@ -1048,11 +1048,29 @@ const mapStateToProps_MicroFullInspCtrl = (state) => {
   }
 }
 
-let MicroFullInspCtrl_rdx = connect(mapStateToProps_MicroFullInspCtrl, mapDispatchToProps_MicroFullInspCtrl)(MicroFullInspCtrl);
+
+const mergeProps_MicroFullInspCtrl= (ownProps, mapProps, dispatchProps) => {
+  // console.log(ownProps, mapProps, dispatchProps);
+  return ({
+    ...ownProps,
+    ...mapProps,
+    ...dispatchProps,
+    ACT_WS_SEND_CORE_BPG: (tl, prop, data, uintArr, promiseCBs) => 
+      mapProps.ACT_WS_SEND_BPG(ownProps.CORE_ID, tl, prop, data, uintArr, promiseCBs),
+    ACT_Report_Save_CORE: (fileName, content) =>
+      mapProps.ACT_Report_Save(ownProps.CORE_ID, fileName, content),
+
+  })
+}
+let MicroFullInspCtrl_rdx = connect(
+  mapStateToProps_MicroFullInspCtrl, 
+  mapDispatchToProps_MicroFullInspCtrl,
+  mergeProps_MicroFullInspCtrl)(MicroFullInspCtrl);
 
 
 
-function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND_BPG,CORE_ID,onCanvasInit})
+
+function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND_CORE_BPG,onCanvasInit})
 {
   
   const _s = useRef({windowSize:{}});
@@ -1086,7 +1104,7 @@ function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND
 
 
         //log.info(crop,down_samp_level);
-        ACT_WS_SEND_BPG(CORE_ID, "ST", 0,
+        ACT_WS_SEND_CORE_BPG("ST", 0,
           {
             CameraSetting: {
               down_samp_level
@@ -1166,7 +1184,7 @@ class CanvasComponent extends React.Component {
 
         // down_samp_level=1;
         //log.info(crop,down_samp_level);
-        this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {
             CameraSetting: {
               down_samp_level
@@ -1902,7 +1920,7 @@ class APP_INSP_MODE extends React.Component {
       deffile.featureSet[0].matching_face=0;//By default, match two sides
       
 
-      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
+      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 0,
@@ -1912,14 +1930,14 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
-      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+      this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
        }, undefined);
 
 
-      // this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+      // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       // { CameraSetting: { down_samp_w_calib:false } });
 
-      // this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
+      // this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
       //   type:"gen"
       // }
       // }, undefined);
@@ -1934,7 +1952,7 @@ class APP_INSP_MODE extends React.Component {
   }
 
   componentWillUnmount() {
-    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: false } });
+    this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: false } });
 
   }
 
@@ -1958,7 +1976,7 @@ class APP_INSP_MODE extends React.Component {
     
 
     new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       { 
         InspectionParam:[{
           get_param:true
@@ -1981,7 +1999,7 @@ class APP_INSP_MODE extends React.Component {
 
     this.CameraCtrl = new CameraCtrl({
       ws_ch: (STData, promiseCBs) => {
-        this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0, STData, undefined, promiseCBs)
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, STData, undefined, promiseCBs)
       },
       ev_speedModeChange: (mode) => {
         console.log(mode);
@@ -1992,7 +2010,7 @@ class APP_INSP_MODE extends React.Component {
 
 
     new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "LD", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
         { filename: "data/default_camera_setting.json" },
         undefined, { resolve, reject }
       );
@@ -2061,7 +2079,7 @@ class APP_INSP_MODE extends React.Component {
         <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
 
-            this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
             { 
               INSP_NG_SNAP:true
             })
@@ -2071,7 +2089,7 @@ class APP_INSP_MODE extends React.Component {
         <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
 
-            this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
             { 
               INSP_NG_SNAP:false
             })
@@ -2084,7 +2102,7 @@ class APP_INSP_MODE extends React.Component {
 
   MatchingEnginParamSet(key,value)
   {
-    this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+    this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
               { 
                 InspectionParam:[{
                   [key]:value
@@ -2203,7 +2221,7 @@ class APP_INSP_MODE extends React.Component {
           uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
-          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, tl, prop, data, uintArr); }}
+          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
     }
     else
@@ -2294,7 +2312,7 @@ class APP_INSP_MODE extends React.Component {
           let tag_str = curList[0].tag;
 
           let path = default_dst_Path+"/"+deffile.name+"-["+tag_str+"]-"+earliestTimeStamp;
-          this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "SV", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
           { filename: path+".png",make_dir:true, type: "__STACKING_IMG__" })
 
           let reportSave = {
@@ -2303,7 +2321,7 @@ class APP_INSP_MODE extends React.Component {
             camera_param:this.props.edit_info._obj.cameraParam
           }
           var enc = new TextEncoder();
-          this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "SV", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
           { filename: path+".xreps" },enc.encode(JSON.stringify(reportSave)))
         }} />);
         */
@@ -2315,7 +2333,7 @@ class APP_INSP_MODE extends React.Component {
       <Menu onClick={(ev) => {
         console.log(ev);
         let ROI = this.state.ROIs[ev.key];
-        this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           { CameraSetting: { ROI } })
 
         this.setState({ ROI_key: ev.key });
@@ -2408,7 +2426,7 @@ class APP_INSP_MODE extends React.Component {
 
       <Button type="primary" key="Manual ZOOM" size={"large"}
         onClick={() => {
-        this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:[0,0,99999,99999] } });
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
@@ -2428,7 +2446,7 @@ class APP_INSP_MODE extends React.Component {
             h=-h;
           }
           let ROI = [x,y,w,h];
-          this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {CameraSetting: { ROI}});
 
         
@@ -2466,8 +2484,7 @@ class APP_INSP_MODE extends React.Component {
             <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
               onROISettingCallBack={this.state.onROISettingCallBack}
               measureDisplayRank={this.state.measureDisplayRank}
-              ACT_WS_SEND_BPG={this.props.ACT_WS_SEND_BPG}
-              CORE_ID={this.props.CORE_ID}
+              ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
               downSampleFactor={this.state.down_samp_factor}
               onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
               camera_calibration_report={this.props.camera_calibration_report} />}
@@ -2514,12 +2531,13 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
+const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
   return {
     ACT_EXIT: (arg) => {
       dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
     },
-    ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
+    ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => 
+      dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     
@@ -2552,8 +2570,21 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
   }
 };
 
+
+const mergeProps_APP_INSP_MODE = (ownProps, mapProps, dispatchProps) => {
+  // console.log(ownProps, mapProps, dispatchProps);
+  return ({
+    ...ownProps,
+    ...mapProps,
+    ...dispatchProps,
+    ACT_WS_SEND_CORE_BPG: (tl, prop, data, uintArr, promiseCBs) => 
+      mapProps.ACT_WS_SEND_BPG(ownProps.CORE_ID, tl, prop, data, uintArr, promiseCBs)
+  })
+}
+
 const APP_INSP_MODE_rdx = connect(
   mapStateToProps_APP_INSP_MODE,
-  mapDispatchToProps_APP_INSP_MODE)(APP_INSP_MODE);
+  mapDispatchToProps_APP_INSP_MODE,
+  mergeProps_APP_INSP_MODE)(APP_INSP_MODE);
 
 export default APP_INSP_MODE_rdx;
