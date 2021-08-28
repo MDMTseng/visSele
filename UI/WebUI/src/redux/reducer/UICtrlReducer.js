@@ -36,26 +36,15 @@ function Default_UICtrlReducer() {
   //ST = d;
   //log.info("ST...",JSON.stringify(ST));
   let defState = {
-    MENU_EXPEND: false,
-
     machine_custom_setting:{},
-    coreConnected: false,
     showSM_graph: false,
     defConf_lock_level: 0,
     edit_info: Edit_info_Empty(),
-    version_map_info: undefined,
     WebUI_info: APP_INFO,
-    Core_Status: undefined,
-    Update_Status:undefined,
-    System_Connection_Status:undefined,
     sm: null,
     c_state: null,
     p_state: null,
     state_count: 0,
-    WS_defFileDataBase_W_ID,
-    WS_defFileDataBase_conn_state:false,
-    WS_InspDataBase_W_ID,
-    WS_InspDataBase_conn_info:undefined,
     
     DICT:EC_zh_TW
   }
@@ -657,20 +646,6 @@ function StateReducer(newState, action) {
     //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
   }
 
-
-  switch (stateObj.state) {
-    case UISTS.SPLASH:
-      newState={...newState,coreConnected: false};
-      
-    case UISTS.MAIN:
-    case UISTS.DEFCONF_MODE:
-    case UISTS.INSP_MODE:
-      {
-        newState={...newState,coreConnected: true};
-        break;
-      }
-  }
-
   do{
         //console.log(action);
         if (stateObj.state == UISTS.DEFCONF_MODE && newState.defConf_lock_level != 0 && action.IGNORE_DEFCONF_LOCK!=true) {
@@ -780,13 +755,6 @@ function StateReducer(newState, action) {
             {
               newState.machine_custom_setting ={...newState.machine_custom_setting ,...action.data};
               
-            }
-            break;
-
-          case UISEV.System_Connection_Status_Update:
-            {
-              newState ={...newState ,System_Connection_Status:action.data};
-              //console.log(action);
             }
             break;
 

@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 
+import INFO from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 
@@ -47,8 +48,6 @@ import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
 import { clearInterval } from 'timers';
-
-let TEST_MODE=false;
 
 
 
@@ -563,58 +562,34 @@ function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) 
 
 
 
-function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onStatusChange=(status)=>{},onStatusTick=(status)=>{},
-  onClick_Core=(sys_state)=>{},onClick_Camera=(sys_state)=>{},onClick_UploadDataBase=(sys_state)=>{}})
+function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onItemClick=_=>_})
 {
-  const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
-  const WS_InspDataBase_conn_info = useSelector(state => state.UIData.WS_InspDataBase_conn_info);
+  // const Insp_DB_W_ID = useSelector(state => state.UIData.Insp_DB_W_ID);
+  // const WS_InspDataBase_conn_info = useSelector(state => state.UIData.WS_InspDataBase_conn_info);
   
   const DICT = useSelector(state => state.UIData.DICT);
-  const coreConnected = useSelector(state => state.UIData.coreConnected);
-  const coreStatus = useSelector(state => state.UIData.Core_Status);
+  const ConnInfo = useSelector(state => state.ConnInfo);
 
-
-
-  
-  // ACT_WS_GET_OBJ: (id, callback)=>dispatch(UIAct.EV_WS_GET_OBJ(id,callback)),
-  
-  const [systemConnectState,setSystemConnectState] = useState({
-    boot_daemon:false,
-    core:false,
-    camera:false,
-    insp_report_upload_database:false,
-  });
+  // console.log(ConnInfo);
 
   
-  useEffect(() => {
-    let newStatus={...systemConnectState,core:coreConnected};
-    if(systemConnectState.core!=coreConnected)
-    {
-      setSystemConnectState(newStatus);
-      onStatusChange(newStatus)
-    }
-    onStatusTick(newStatus)
-  },[coreConnected])
-
-
-  
-  useEffect(() => {
+  // useEffect(() => {
     
-    let newStatus={...systemConnectState};
-    let cameraStatus = GetObjElement(coreStatus, ["camera_info",0,"cam_status"])===0;
+  //   let newStatus={...systemConnectState};
+  //   let cameraStatus = GetObjElement(coreStatus, ["camera_info",0,"cam_status"])===0;
 
-    if(TEST_MODE==true&&cameraStatus===false)cameraStatus=true; 
-    newStatus.camera=cameraStatus;
+  //   if(DEV_MODE==true&&cameraStatus===false)cameraStatus=true; 
+  //   newStatus.camera=cameraStatus;
 
 
-    if(systemConnectState.camera!=cameraStatus)//JUST for TEST mode force to use fake camera
-    {
-      setSystemConnectState(newStatus);
-      onStatusChange(newStatus)
-    }
+  //   if(systemConnectState.camera!=cameraStatus)//JUST for TEST mode force to use fake camera
+  //   {
+  //     setSystemConnectState(newStatus);
+  //     onStatusChange(newStatus)
+  //   }
 
-    onStatusTick(newStatus)
-  },[coreStatus])
+  //   onStatusTick(newStatus)
+  // },[coreStatus])
 
   
   if(gridSize===undefined)gridSize=iconSize+50;
@@ -625,53 +600,41 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
 
 
   
-  function connectionStatus2CSSColor(status)
+  function connectionStatus2CSSColor(conn_info)
   {
+    let connType=GetObjElement(conn_info,["type"]);
+    // console.log(conn_info,connType);
+    switch(connType)
+    {
+      case "WS_CONNECTED":
+        return "color-online-anim";
+        break;
+      case "WS_DISCONNECTED":
+        return "color-offline-anim";
+        break;
+      case "WS_ERROR":
+        return "color-error-anim";
+        break;
+      default:
+        return "color-noresource-anim";
+        break;
+    }
     
-    if(status==-1 || status===undefined)
-    {
-      return "color-noresource-offline-anim";
-    }
-
-    if(status==true || status==0)
-    {
-      return "color-online-anim";
-    }
-
-    
-    if(status==false  || status==1)
-    {
-      return "color-offline-anim";
-    }
-
-    
-  }
-  function InspDataBase_conn_info_2_status(info)
-  {
-    if(info===undefined || info.data===undefined || info.data.ns=="ERROR")
-    {
-      return -1;
-    }
-    else if(info.data.ns=="CONNECTED")
-    {
-      return 0;
-    }
-    else
-    {
-      return 1;
-    }
   }
   
-  // console.log(WS_InspDataBase_conn_info);
+  // console.log(ConnInfo);
+
+
+
   return [
-    [DICT._.core,   coreConnected,   onClick_Core,   <AimOutlined/>],
-    [DICT._.camera, systemConnectState.camera, onClick_Camera, <CameraOutlined/>],
-    ["檢測資料庫", InspDataBase_conn_info_2_status(WS_InspDataBase_conn_info), ()=>{}, <CloudUploadOutlined/>],
-    ].map(([textName, connection_status, onClickEvent, icon])=>
+    [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,      <AimOutlined/>],
+    [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,      <CameraOutlined/>],
+    ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO, <CloudUploadOutlined/>],
+    ].map(([textName, conn_info, icon])=>
       <Button size="large" key={"stat"+textName} style={gridStyle} 
       type="text" //disabled={!systemConnectState.core}
-      className={"s HXA "+connectionStatus2CSSColor(connection_status)} 
-      onClick={()=>onClickEvent(systemConnectState)}>
+      className={"s HXA "+connectionStatus2CSSColor(conn_info)} 
+      onClick={()=>onItemClick(conn_info)}>
         <div 
           className={"antd-icon-sizing veleX"} 
           style={iconStyle}
@@ -682,7 +645,7 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
               <>
                 <span className="veleX">{textName}</span>
                 <br/>
-                {connection_status===true?null:DICT._.disconnected}
+                {conn_info===0?null:DICT._.disconnected}
               </>
               :null}
       </Button>)
@@ -696,163 +659,6 @@ function Query_Camera_Info(ACT_WS_SEND_BPG,CORE_ID)
       undefined, {resolve, reject})
   });
 }
-
-function Side_Boot_CTRL_UI({URL,triggerHide}){
-
-  const DICT = useSelector(state => state.UIData.DICT);
-
-  let _DDD = useRef({});
-  let s_=_DDD.current;
-  //const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
-  
-  const [sys_state, setSys_state] = useState(undefined);
-  const dispatch = useDispatch();
-  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
-  const cur_state = useSelector(state => state.UIData.c_state);
-  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
-
-  const ACT_EXIT= _ => dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT));
-  const ACT_System_Connection_Status_Update= (st) => dispatch(UIAct.EV_UI_System_Connection_Status_Update(st));
-
-
-  const ACT_CAMERA_RECONNECT=()=>  new Promise((resolve, reject) => {
-    ACT_WS_SEND_BPG(CORE_ID, "RC", 0, {
-      target: "camera_ez_reconnect"
-    },
-      undefined, { resolve, reject });
-  })
-  
-
-  function Try_CAMERA_RECONNECT()
-  {
-    if(s_.in_progress!=true)
-    {
-      s_.in_progress=true;
-      ACT_CAMERA_RECONNECT()
-      .then((pkts)=>{
-        // console.log(pkts);
-        s_.in_progress=false;
-      })
-      .catch((err)=>{
-        s_.in_progress=false;
-      })
-      return true;
-    }
-    
-    return false;
-  }
-
-  return (
-    <div className="layout width12 height12">
-      
-      {/* <Divider>{DICT._.connection_status}</Divider> */}
-      <System_Status_Display showText iconSize={30} gridSize={90} 
-        onStatusTick={(sys_state)=>{
-          // console.log(sys_state);
-          if(sys_state.camera==false)
-          {
-            Try_CAMERA_RECONNECT();
-          }
-        }}
-        onStatusChange={(sys_state)=>{
-          if(cur_state==null)return;
-          setSys_state(sys_state);
-          ACT_System_Connection_Status_Update(sys_state);
-          let curState_EX=xstate_GetCurrentMainState(cur_state);
-          console.log(cur_state,curState_EX.state,UIAct.UI_SM_STATES.INSP_MODE);
-          //console.log(sys_state);
-          if(sys_state.camera==false&&curState_EX.state==UIAct.UI_SM_STATES.INSP_MODE)
-          {
-            ACT_EXIT();
-          }
-          
-        }}
-        onClick_Core={(sys_state)=>{
-          console.log(sys_state)
-        }}
-        onClick_Camera={(sys_state)=>{
-          //if(sys_state.camera==false)
-          {
-            Try_CAMERA_RECONNECT();
-          }
-        }}
-        onClick_UploadDataBase={(sys_state)=>{}}/>
-      {/* <Divider>Update</Divider> */}
-      {/* <Boot_CTRL_UI URL={URL}/> */}
-      {/* <Divider>ServicePanel</Divider>
-      <SystemServicePanel_UI/> */}
-    </div>)
-}
-
-
-function NullDOM_SystemStatusQuery({onStatusChange}){
-
-  
-  let _DDD = useRef({});
-  let s_=_DDD.current;
-  const dispatch = useDispatch();
-  const ACT_CAMERA_STATUS_UPDATE= (camera_info) => dispatch(UIAct.EV_Core_Camera_Status_Update(camera_info));
-  
-  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
-  const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
-
-  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
-  useEffect(() => {
-    //return 
-    //trigger start
-    setInterval(()=>
-    {
-      if(s_.inProgress==true)return;
-      s_.inProgress=true;
-      Query_Camera_Info(ACT_WS_SEND_BPG,CORE_ID)
-        .then((pkts) => {
-          s_.inProgress=false;
-          let GS=pkts.find(pkt=>pkt.type=="GS")
-          if (GS!==undefined) {
-
-            ACT_CAMERA_STATUS_UPDATE(GS.data.camera_info);
-          }
-        })
-        .catch(err => {
-          s_.inProgress=false;
-          log.error(err);
-        })
-    }
-      
-    ,2000);
-
-  },[])
-
-  
-  // useEffect(() => {
-  //   //return 
-  //   //trigger start
-  //   setInterval(()=>
-  //   {
-  //     Promise((resolve, reject) => {
-  //       ACT_WS_SEND_BPG(WS_InspDataBase_W_ID, "GS", 0, { items: [] },
-  //         undefined, {resolve, reject})
-  //     })
-  //     .then((pkts) => {
-  //       s_.inProgress=false;
-  //       let GS=pkts.find(pkt=>pkt.type=="GS")
-  //       if (GS!==undefined) {
-
-  //         onStatusChange(GS.data);
-  //         ACT_CAMERA_STATUS_UPDATE(GS.data);
-  //       }
-  //     })
-  //     .catch(err => {
-  //       s_.inProgress=false;
-  //       log.error(err);
-  //     })
-  //   },2000);
-
-  // },[])
-
-  return null;
-}
-
 
 class APPMasterX extends React.Component {
 
@@ -879,11 +685,12 @@ class APPMasterX extends React.Component {
   }
   static mapStateToProps(state) {
     return {
-      coreConnected: state.UIData.coreConnected,
       showSM_graph: state.UIData.showSM_graph,
       stateMachine: state.UIData.sm,
       CORE_ID: state.ConnInfo.CORE_ID,
-      WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
+      Insp_DB_W_ID: state.ConnInfo.Insp_DB_W_ID,
+      CAM1_ID:state.ConnInfo.CAM1_ID,
+      CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       C_STATE: state.UIData.c_state,
       
       Update_Status:state.UIData.Update_Status,
@@ -975,16 +782,16 @@ class APPMasterX extends React.Component {
             if(ns=="ERROR")
             {
               info.errorInfo=this.websocket.getErrorInfo();
-              comp.props.DISPATCH({type:"WS_ERROR",id:comp.props.WS_InspDataBase_W_ID,data:info})
+              comp.props.DISPATCH({type:"WS_ERROR",id:comp.props.Insp_DB_W_ID,data:info})
             }
             else if(ns=="CONNECTED")//enter connection state
             {
               this.cQ.kick();//when connected kick start
-              comp.props.DISPATCH({type:"WS_CONNECTED",id:comp.props.WS_InspDataBase_W_ID,data:info})
+              comp.props.DISPATCH({type:"WS_CONNECTED",id:comp.props.Insp_DB_W_ID,data:info})
             }
             else if(os=="CONNECTED")//exit connection state
             {
-              comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.WS_InspDataBase_W_ID,data:info})
+              comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.Insp_DB_W_ID,data:info})
             }
             console.log(ns,"<=",os,"(",act,")")
           },
@@ -997,11 +804,11 @@ class APPMasterX extends React.Component {
         // }
         // this.websocket.onclose=(ev)=>{
         //   console.log(ev);
-        //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.WS_InspDataBase_W_ID})
+        //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.Insp_DB_W_ID})
         // }
         // this.websocket.error=(ev)=>{
         //   console.log(ev);
-        //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.WS_InspDataBase_W_ID})
+        //   comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.Insp_DB_W_ID})
         // }
         this.websocket.onmessage=(ev)=>{
           // this.onmessage(ev);
@@ -1051,7 +858,7 @@ class APPMasterX extends React.Component {
             
             //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
             console.log("SEND::::",msg_obj);
-            _this.websocket.send_obj(msg_obj, (key, val) => val.toFixed ? Number(val.toFixed(5)) : val).
+            _this.websocket.send_obj(msg_obj, (key, val) => typeof val === 'number' ? Number(val.toFixed(5)) : val).
               then((ret) => {
                 clearTimeout(timeoutFlag);
                 this.retryQCount = 0;
@@ -1134,7 +941,6 @@ class APPMasterX extends React.Component {
         {
           let prom=new Promise((resolve, reject) => {
             
-            // console.log("ENQ",data);
             if (!this.cQ.enQ({data,resolve,reject}))//If enQ NOT success
             {
               //Just print
@@ -1151,6 +957,7 @@ class APPMasterX extends React.Component {
 
 
           });
+          console.log("ENQ send",info);
           return prom;
         }
         // else
@@ -1166,7 +973,7 @@ class APPMasterX extends React.Component {
       }
     }
 
-    this.props.ACT_WS_REGISTER(this.props.WS_InspDataBase_W_ID,new DB_WS());
+    this.props.ACT_WS_REGISTER(this.props.Insp_DB_W_ID,new DB_WS());
 
 
     class BPG_WS
@@ -1188,12 +995,13 @@ class APPMasterX extends React.Component {
         this.websocket.binaryType ="arraybuffer"; 
 
         this.websocket.onopen=(ev)=>{
-          StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(this));
         }
         this.websocket.onclose=(ev)=>{
 
           console.log("CLOSE::",ev);
           StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
+          
+          StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CORE_ID,data:undefined});
           setTimeout(() => {
             comp.props.ACT_WS_CONNECT(comp.props.CORE_ID, url);
           }, 10*1000);
@@ -1224,6 +1032,9 @@ class APPMasterX extends React.Component {
             {
               {
                 let HR = BPG_Protocol.raw2obj(evt);
+                StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(HR));
+                
+                StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CORE_ID,data:HR});
               }
 
               comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "HR", 0, { a: ["d"] });
@@ -1273,7 +1084,7 @@ class APPMasterX extends React.Component {
                       }
                       url+="/insert/insp";
                     }
-                    comp.props.ACT_WS_CONNECT(comp.props.WS_InspDataBase_W_ID, url);
+                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, url);
                     
 
 
@@ -1406,6 +1217,14 @@ class APPMasterX extends React.Component {
 
       send(info)
       {
+        if(this.websocket.readyState!==WebSocket.OPEN)
+        {
+          if(info.promiseCBs!==undefined)
+          {
+            info.promiseCBs.reject("Not connected");
+          }
+          return false;
+        }
         let PGID = undefined;
         let PGINFO = undefined;
         if (info.data instanceof Object) {
@@ -1440,6 +1259,8 @@ class APPMasterX extends React.Component {
         }
 
 
+        return true;
+
       }
 
       close()
@@ -1453,9 +1274,132 @@ class APPMasterX extends React.Component {
 
 
 
+
+    class Cam_Stat_Query{
+      camDisconnectionAction()
+      {
+        // if(cur_state==null)return;
+        // let curState_EX=xstate_GetCurrentMainState(cur_state);
+        // console.log(cur_state,curState_EX.state,UIAct.UI_SM_STATES.INSP_MODE);
+        // //console.log(sys_state);
+        // if(sys_state.camera==false&&curState_EX.state==UIAct.UI_SM_STATES.INSP_MODE)
+        // {
+        //   ACT_EXIT();
+        // }
+          
+      }
+
+      reconnection()
+      {
+        if(this.isInReconn==true)
+        {
+          return false;
+        }
+        this.isInReconn=true;
+
+
+
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "RC", 0, {
+          target: "camera_ez_reconnect"
+        },
+        undefined, { 
+          resolve:(ret)=>{
+            console.log(ret);
+            this.isInReconn=false;
+          }, 
+          reject:()=>{
+            this.isInReconn=false;
+          } })
+
+      }
+
+      queryCam(timeout_ms=2000)
+      {
+        if(this.isInReconn==true)
+        {
+          //wait until reconnection action over
+          this.queryTimeOut=setTimeout(()=>{
+            this.queryCam(timeout_ms);
+          },timeout_ms*2);
+          return;
+        }
+        // comp.props.DISPATCH({
+        //   type:"MWWS_CALL",id,method:"send",
+        //   param:{
+            
+        //   }
+        // });
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "GS", 0, { items: ["camera_info"] },
+        undefined, 
+        {
+          resolve: (stacked_pkts,P) => {
+            
+            let GS=stacked_pkts.find(pkt=>pkt.type=="GS");
+            if(GS!==undefined)
+            {
+              let camInfo = GetObjElement(GS,["data","camera_info"]);
+
+
+              let cam0=GetObjElement(camInfo,[0,"type"]);
+              if(cam0===undefined || (INFO.FLAGS.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              {
+                StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
+                
+                this.camDisconnectionAction();
+                
+                this.reconnection();
+                
+                this.queryTimeOut=setTimeout(()=>{
+                  this.queryCam(timeout_ms);
+                },timeout_ms*2);
+              }
+              else
+              {
+                StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CAM1_ID,data:camInfo});
+
+                this.queryTimeOut=setTimeout(()=>{
+                  this.queryCam(timeout_ms);
+                },timeout_ms);
+              }
+              // console.log(camInfo);
+              
+            }
+            
+          },
+          reject:(e)=>{
+            console.log(e);
+            StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID,data:e});
+
+            this.camDisconnectionAction();
+            this.queryTimeOut=setTimeout(()=>{
+              this.queryCam(timeout_ms);
+            },timeout_ms);
+          }
+        });
+
+
+
+
+      }
+      constructor(id)
+      {
+        this.id=id;
+        this.isInReconn=false;
+
+        this.queryCam(5000);
+      }
+
+
+      
+
+    }
+    this.props.ACT_WS_REGISTER(this.props.CAM1_ID,new Cam_Stat_Query(this.props.CAM1_ID));
+
+
+
     // setInterval(()=>{
     //   let retx=
-    //     this.props.ACT_WS_GET_OBJ(this.props.WS_InspDataBase_W_ID, (obj)=>{
+    //     this.props.ACT_WS_GET_OBJ(this.props.Insp_DB_W_ID, (obj)=>{
           
     //       console.log(obj);
     //       return obj.websocket.send_obj({type:"PING"});
@@ -1478,7 +1422,7 @@ class APPMasterX extends React.Component {
 
 
 
-    // this.props.ACT_WS_CONNECT(this.props.WS_InspDataBase_W_ID, "ws://db.xception.tech:8080/insert/insp", new MW_CORE())
+    // this.props.ACT_WS_CONNECT(this.props.Insp_DB_W_ID, "ws://db.xception.tech:8080/insert/insp", new MW_CORE())
 
   
 
@@ -1506,18 +1450,18 @@ class APPMasterX extends React.Component {
     }
     else
     {
-      xstateG =null// <Side_Boot_CTRL_UI triggerHide={this.props.coreConnected} URL={coreUrl}/>
+      xstateG =null
     }
 
 
-    console.log(this.props.C_STATE);
+    console.log(this.props.C_STATE,this.props.CORE_ID_CONN_INFO);
 
     let localVersion=(this.props.Update_Status!==undefined)?this.props.Update_Status.localVersion:null;
     return (
       <div className="HXF sp_Style xception-theme">
-        <NullDOM_SystemStatusQuery onStatusChange={(status)=>{
+        {/* <NullDOM_SystemStatusQuery onStatusChange={(status)=>{
           //console.log(status)
-        }}/>
+        }}/> */}
         <APPMain_rdx key="APP" />
         <CSSTransitionGroup //Splash Cover
           transitionName={"logoFrame"}
@@ -1527,7 +1471,7 @@ class APPMasterX extends React.Component {
           transitionLeaveTimeout={1500}
           >
         {
-          (this.props.coreConnected) ?null:
+          (GetObjElement(this.props.CORE_ID_CONN_INFO,["type"])=="WS_CONNECTED") ?null:
             <div key="LOGO" className="s HXF WXF overlay veleXY logoFrame white">
               <div className="veleXY width6 height6">
                 <img className="height8 LOGOImg" src="resource/image/Ｃ_LOGO.svg"/>
@@ -1551,7 +1495,27 @@ class APPMasterX extends React.Component {
           }}
           visible={this.state.show_system_panel}
         >
-          <Side_Boot_CTRL_UI URL={this.sideBootUrl}/>
+          
+          <System_Status_Display showText iconSize={30} gridSize={90} 
+            onItemClick={(connInfo)=>{
+              console.log(connInfo);
+            }}
+          />
+          {INFO.FLAGS.DEV_MODE?
+          <>
+            <Divider>DEV MODE</Divider>
+            <pre>
+              {JSON.stringify(INFO, null, 1)}
+            </pre>
+            <Divider></Divider>
+          </>:
+          <>
+            <Divider>{INFO.version}</Divider>
+            <pre>
+              {JSON.stringify(INFO, (k,v)=>k=="FLAGS"?undefined:v, 1)}
+            </pre>
+            <Divider></Divider>
+          </>}
         </Drawer>
 
         <Button className="overlay" 

@@ -9,6 +9,7 @@ import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 
+import INFO from './info.js';
 import { TagOptions_rdx } from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
@@ -130,8 +131,8 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
   let _this=_s.current;
   // const c_state = useSelector(state => state.UIData.c_state);
   const dispatch = useDispatch();
-  const WS_InspDataBase_W_ID = useSelector(state => state.UIData.WS_InspDataBase_W_ID);
-  const WS_InspDataBase_conn_info = useSelector(state => state.UIData.WS_InspDataBase_conn_info);
+  const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
+  const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
 
@@ -159,7 +160,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
     }
 
     _this.sendCounter++;
-    WS_SEND(WS_InspDataBase_W_ID,newAddedReport)
+    WS_SEND(Insp_DB_W_ID,newAddedReport)
     .then(retInfo=>{
       _this.sendedCounter++;
       onDBInsertSuccess(retInfo);
@@ -169,11 +170,6 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
 
     })
   },[newAddedReport]);
-
-
-  useEffect(()=>{
-    console.log(WS_InspDataBase_conn_info);
-  },[WS_InspDataBase_conn_info]);
 
 
   // let retx=
@@ -190,7 +186,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
 
   //   })
 
-  let isConnected=GetObjElement(WS_InspDataBase_conn_info,["data","ns"])==="CONNECTED";
+  let isConnected=GetObjElement(Insp_DB_W_ID_CONN_INFO,["type"])==="WS_CONNECTED";
 
       
 
@@ -1941,13 +1937,23 @@ class APP_INSP_MODE extends React.Component {
       //   type:"gen"
       // }
       // }, undefined);
-
-      this.props.ACT_StatSettingParam_Update({
-        keepInTrackingTime_ms: 1000,
-        historyReportlimit: 1000,
-        minReportRepeat: 2,
-        headReportSkip: 1,
-      })
+      if(INFO.FLAGS.CI_INSP_DO_NOT_STACK_REPORT)
+      {
+        this.props.ACT_StatSettingParam_Update({
+          keepInTrackingTime_ms: 0,
+          minReportRepeat: 0,
+          headReportSkip: 0,
+        })
+      }
+      else
+      {
+        this.props.ACT_StatSettingParam_Update({
+          keepInTrackingTime_ms: 1000,
+          historyReportlimit: 1000,
+          minReportRepeat: 2,
+          headReportSkip: 1,
+        })
+      }
     }
   }
 
@@ -1965,7 +1971,6 @@ class APP_INSP_MODE extends React.Component {
       CanvasWindowRatio: 9,
       ROIs: {},
       ROI_key: undefined,
-      inspUploadedCount: 0,
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
       isInSettingUI:false,
@@ -2204,7 +2209,11 @@ class APP_INSP_MODE extends React.Component {
       
     // );
 
-    let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 1 : 10;
+    {//if the FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP is undefined it will use the default number
+    }
+    let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 
+      (INFO.FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP ||1) : 
+      10;
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
@@ -2329,25 +2338,25 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-    const menu_ = (
-      <Menu onClick={(ev) => {
-        console.log(ev);
-        let ROI = this.state.ROIs[ev.key];
-        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-          { CameraSetting: { ROI } })
+    // const menu_ = (
+    //   <Menu onClick={(ev) => {
+    //     console.log(ev);
+    //     let ROI = this.state.ROIs[ev.key];
+    //     this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+    //       { CameraSetting: { ROI } })
 
-        this.setState({ ROI_key: ev.key });
-      }
-      }>
-        {Object.keys(this.state.ROIs)
-          .map((ROI_key, idx) =>
-            <Menu.Item key={ROI_key}>
-              <a target="_blank" rel="noopener noreferrer">
-                {ROI_key}
-              </a>
-            </Menu.Item>)}
-      </Menu>
-    );
+    //     this.setState({ ROI_key: ev.key });
+    //   }
+    //   }>
+    //     {Object.keys(this.state.ROIs)
+    //       .map((ROI_key, idx) =>
+    //         <Menu.Item key={ROI_key}>
+    //           <a target="_blank" rel="noopener noreferrer">
+    //             {ROI_key}
+    //           </a>
+    //         </Menu.Item>)}
+    //   </Menu>
+    // );
     // MenuSet_2nd.push(<Dropdown overlay={menu_}>
     //   <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
     //     {this.state.ROI_key}
@@ -2392,12 +2401,11 @@ class APP_INSP_MODE extends React.Component {
         // DBPushPromise,
         onDBInsertSuccess={(data, info) => {
           // log.info(data, info);
-          this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
         }}
         onDBInsertFail={(data, info) => {
           log.error(data, info);
         }}
-        insert_skip={InspectionReportPullSkip*0+10}/>
+        insert_skip={InspectionReportPullSkip}/>
 
 
 
@@ -2414,7 +2422,7 @@ class APP_INSP_MODE extends React.Component {
             this.setState({});//just to kick update
           }
         } >{
-          this.CameraCtrl.data.DoImageTransfer?"相機影像開啟":"相機影像關閉"
+          "相機影像更新"
         }</Checkbox>
       
       <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}

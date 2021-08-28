@@ -276,8 +276,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const inspOptionalTag = useSelector(state => state.UIData.edit_info.inspOptionalTag);
 
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
-  const System_Connection_Status = useSelector(state => state.UIData.System_Connection_Status);
-  
+  const CAM1_ID_CONN_INFO = useSelector(state => state.ConnInfo.CAM1_ID_CONN_INFO);
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
@@ -304,7 +303,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   let DefFileFolder=undefined;
 
   useEffect(()=>{
-    let isSystemReadyForInsp=GetObjElement(System_Connection_Status,["camera"])==true;
+    let isSystemReadyForInsp=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
     if(!isSystemReadyForInsp)
     {
       setErrorInfo({
@@ -327,7 +326,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         setErrorInfo(undefined);
       }
     }
-  },[System_Connection_Status])
+  },[CAM1_ID_CONN_INFO])
 
   
   useEffect(()=>{
@@ -475,7 +474,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   let UI_Stack=[];
 
-  let isSystemReadyForInsp=GetObjElement(System_Connection_Status,["camera"])==true;
+  let isSystemReadyForInsp=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
   let isOK;
   let isStillOK=true;
   

@@ -80,7 +80,6 @@ export const DEFAULT_UNIT = {
 export const UI_SM_EVENT = {
   REMOTE_SYSTEM_NOT_READY:"REMOTE_SYSTEM_NOT_READY",
   REMOTE_SYSTEM_READY:"REMOTE_SYSTEM_READY",
-  System_Connection_Status_Update:"System_Connection_Status_Update",
   _SUCCESS:"_SUCCESS",
   _FAIL:"_FAIL",
   EXIT:"EXIT",
@@ -126,14 +125,6 @@ export const UI_SM_EVENT = {
   Control_SM_Panel:"Control_SM_Panel",
   Canvas_Mouse_Location:"Canvas_Mouse_Location"
 };
-
-
-export function EV_UI_System_Connection_Status_Update(Status)
-{
-  return {
-    type: UI_SM_EVENT.System_Connection_Status_Update ,data:Status
-  }
-}
 
 
 export function EV_machine_custom_setting_Update(info)

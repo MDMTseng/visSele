@@ -142,17 +142,17 @@
 
 
 
+
+@keyframes color-online-anim-key {
+  from {color: #19bcee;}
+  to {color: #06315e;}
+}
+
 .color-online-anim svg, .color-online-anim span{
   color:#198caf;
   /* transform: translate3d(0, 0, 0);
   will-change: transform; */
   /* animation: color-online-anim-key 1s infinite; */
-}
-
-
-@keyframes color-online-anim-key {
-  from {color: #19bcee;}
-  to {color: #06315e;}
 }
 
 .color-offline-anim svg, .color-offline-anim span
@@ -163,13 +163,18 @@
   animation: color-offline-anim-key 1s infinite; */
 }
 
-
-.color-noresource-offline-anim svg, .color-noresource-offline-anim span
+.color-error-anim svg, .color-error-anim span
 {
   color:rgb(255, 28, 0);
   /* transform: translate3d(0, 0, 0);
   will-change: transform;
   animation: color-offline-anim-key 1s infinite; */
+}
+
+.color-noresource-anim svg, .color-noresource-anim span
+{
+  color:rgb(100,100, 100);
+ 
 }
 
 
