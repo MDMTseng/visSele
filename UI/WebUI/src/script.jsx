@@ -21,7 +21,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
 import { xstate_GetCurrentMainState, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
-import { MWWS_EVENT } from "REDUX_STORE_SRC/middleware/MWWebSocket";
+import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
 
@@ -974,6 +974,7 @@ class APPMasterX extends React.Component {
     }
 
     this.props.ACT_WS_REGISTER(this.props.Insp_DB_W_ID,new DB_WS());
+    this.props.ACT_WS_REGISTER(this.props.DefFile_DB_W_ID,new DB_WS());
 
 
     class BPG_WS
@@ -1074,19 +1075,25 @@ class APPMasterX extends React.Component {
                       path:machineSettingPath
                     }
                     
-                    let url = info.inspection_db_ws_url;
-                    if(url!==undefined)
-                    {//the source url may have '/' at the end
+                    function URL_CONCAT(URL,ADD)
+                    {
 
-                      if(url.endsWith('/'))
-                      {//remove the last char
-                        url=url.slice(0, -1);
+                      let url = URL;
+                      if(url!==undefined)
+                      {//the source url may have '/' at the end
+                        if(url.endsWith('/'))
+                        {//remove the last char
+                          url=url.slice(0, -1);
+                        }
+                        url+=ADD;
+                        return url;
                       }
-                      url+="/insert/insp";
+                      return undefined;
                     }
-                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, url);
-                    
 
+                    
+                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, URL_CONCAT(info.inspection_db_ws_url,"/insert/insp"));
+                    comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, URL_CONCAT(info.inspection_db_ws_url,"/insert/def"));
 
                     comp.props.ACT_Machine_Custom_Setting_Update(info);
                   }
@@ -1324,7 +1331,7 @@ class APPMasterX extends React.Component {
           return;
         }
         // comp.props.DISPATCH({
-        //   type:"MWWS_CALL",id,method:"send",
+        //   type:"MW_API_CALL",id,method:"send",
         //   param:{
             
         //   }
@@ -1454,7 +1461,7 @@ class APPMasterX extends React.Component {
     }
 
 
-    console.log(this.props.C_STATE,this.props.CORE_ID_CONN_INFO);
+    // console.log(this.props.C_STATE,this.props.CORE_ID_CONN_INFO);
 
     let localVersion=(this.props.Update_Status!==undefined)?this.props.Update_Status.localVersion:null;
     return (

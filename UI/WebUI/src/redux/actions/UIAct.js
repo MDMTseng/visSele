@@ -360,7 +360,7 @@ export function EV_WS_uInsp_PING_Sent()
 
 export function EV_WS_REGISTER(id, api){
   return ({
-    type:"MWWS_REGISTER",
+    type:"MW_API_REGISTER",
     id,
     api
   });
@@ -369,7 +369,7 @@ export function EV_WS_REGISTER(id, api){
 
 export function EV_WS_CONNECT(id, url,return_cb){
   return ({
-    type:"MWWS_CALL",
+    type:"MW_API_CALL",
     id,
     method:"connect",
     param:{
@@ -383,7 +383,7 @@ export function EV_WS_CONNECT(id, url,return_cb){
 
 export function EV_WS_GET_OBJ(id, return_cb){
   return ({
-    type:"MWWS_GET_OBJ",
+    type:"MW_API_GET_OBJ",
     id,
     return_cb
   });
@@ -391,7 +391,7 @@ export function EV_WS_GET_OBJ(id, return_cb){
 
 export function EV_WS_SEND_BPG(id,tl,prop,data,uintArr,promiseCBs,return_cb){
   return ({
-    type:"MWWS_CALL",
+    type:"MW_API_CALL",
     id,
     method:"send",
     param:{
@@ -412,7 +412,7 @@ export function EV_WS_SEND_PLAIN(id,data,return_cb){
 export function EV_WS_CLOSE(id,return_cb)
 {
   return ({
-    type:"MWWS_CALL",
+    type:"MW_API_CALL",
     id,
     method:"close",
     param:{
