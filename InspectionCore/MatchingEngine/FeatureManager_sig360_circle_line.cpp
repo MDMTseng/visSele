@@ -2355,11 +2355,8 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         for(int tk=0;tk<m_sections.size();tk++)
         {
           float factor=m_sections[tk].dist;
-          if(factor<0)factor=-factor/3;
           factor+=(m_sections[tk].sigma/100);
-          // if(factor<0)factor=0;//-factor/3;
-          // factor+=(m_sections[tk].sigma/10+1);
-          // LOGI("[%d]   dist:%f sigma:%f factor:%f",tk,m_sections[tk].dist,m_sections[tk].sigma,factor);
+          
           if(minFactor>factor)
           {
             minFactor=factor;
@@ -2371,14 +2368,8 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         {
 
           float factor=m_sections[tk].dist;
-          if(factor<0)factor=-factor/3;
-          factor+=(m_sections[tk].sigma/100);
           
-          // 
-          // factor+=(m_sections[tk].sigma/10+1);
-          // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
-          // LOGI("minFactor:%f factor:%f",minFactor,factor);
-          if(minFactor+2<factor)
+          if(minFactor<factor)//only use the min one
           {
             m_sections[tk].section.clear();
           }
