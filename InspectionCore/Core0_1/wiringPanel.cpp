@@ -1257,8 +1257,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
   {
 
     // if (checkTL("GS", dat) == false)
-    LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
-          dat->pgID);
+    // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
+    //       dat->pgID);
     if (checkTL("HR", dat))
     {
       LOGI("DataType_BPG>>>>%s", dat->dat_raw);
