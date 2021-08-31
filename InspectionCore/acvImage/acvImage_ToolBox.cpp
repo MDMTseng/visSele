@@ -781,19 +781,32 @@ void SignatureSoften(std::vector<acv_XY> &signature,int windowR)
 {
   std::vector<acv_XY> buffer(signature.size());
 
-  SignatureSoften(signature,buffer,windowR);
-}
 
-void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &buffer,int windowR)
-{
-  if(buffer.size()<signature.size())
-  {
-    buffer.resize(signature.size());
-  }
   for(int i=0;i<signature.size();i++)
   {
-    buffer[i].X=signature[i].X;
+    buffer[i]=signature[i];
   }
+
+  SignatureSoften(buffer,signature,windowR);
+}
+
+
+void SignatureSharpen(std::vector<acv_XY> &signature,int windowR,float alpha)
+{
+  std::vector<acv_XY> soften_buffer(signature.size());
+
+
+  SignatureSoften(signature,soften_buffer,windowR);
+  
+  for(int i=0;i<signature.size();i++)
+  {
+    signature[i].X-=alpha*soften_buffer[i].X;
+  }
+}
+
+void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &output,int windowR)
+{
+  output.resize(signature.size());
 
   
   for(int i=0;i<signature.size();i++)
@@ -801,10 +814,11 @@ void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &buffer,
     float value=0;
     for(int j=-windowR;j<windowR+1;j++)
     {
-      value+=buffer[valueWarping(i+j,signature.size())].X;
+      value+=signature[valueWarping(i+j,signature.size())].X;
     }
     value/=(2*windowR)+1;
-    signature[i].X=value;
+    output[i].X=value/((2*windowR)+1);
+    output[i].Y=signature[i].Y;
   }
 
 }

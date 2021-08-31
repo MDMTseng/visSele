@@ -51,15 +51,17 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       }
       else
       {
-        // float baseAngle=32*M_PI/180;
+        // float baseAngle=173*M_PI/180;
         // if(rotate<baseAngle)rotate=baseAngle;
-        // else if(rotate>36*M_PI/180)rotate=baseAngle;
+        // else if(rotate>175*M_PI/180)rotate=baseAngle;
         // else
         // {
 
         //   rotate+=0.06*M_PI/180;
         // }
-        rotate+=1*M_PI/180.1;
+        rotate+=1*M_PI/180;
+        LOGI("ROTATE:%f",rotate*180/M_PI);
+        // 
       }
       
       // img.ReSize(newW,newH);

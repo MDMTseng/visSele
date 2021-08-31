@@ -1651,6 +1651,25 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   return 0;
 }
 
+
+
+
+void sign360_process( vector<acv_XY>&target, vector<acv_XY>&buffer)
+{
+  #define SIG_SOFT_SIZE 10
+  SignatureSoften(target,SIG_SOFT_SIZE);
+  // SignatureSoften(target,buffer,10);
+  // for(int i=0;i<target.size();i++)
+  // {
+  //   float diff =1*buffer[i].X;
+  //   LOGI("DIFF:%f-%f=%f ",target[i].X,diff,target[i].X-diff);
+  //   target[i].X-=diff;
+  // }
+}
+
+
+
+
 int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 {
 
@@ -1665,8 +1684,8 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 
   feature_signature.RELOAD(signature);
   
-  
-  SignatureSoften(feature_signature.signature_data,signature_data_buffer,10);
+  sign360_process( feature_signature.signature_data,signature_data_buffer );
+  // signature_data_buffer
 
   return 0;
 }
@@ -3033,6 +3052,63 @@ acv_XY ConstrainMap::convert_vec(acv_XY from)
   return acvVecAdd(vecSum,from);
 }
 
+inline int valueWarping(int v,int ringSize)
+{
+  v%=ringSize;
+  return (v<0)?v+ringSize:v;
+}
+void matchingErrorMin_Refine(vector<acv_XY> &sigMatchErr,vector<acv_XY> &minMatchErr)
+{
+  minMatchErr.resize(0);
+  for(int i=0;i<sigMatchErr.size();i++)
+  {
+    acv_XY pre=sigMatchErr[valueWarping(i-1,sigMatchErr.size())];
+    
+    acv_XY cur=sigMatchErr[i];
+    
+    acv_XY post=sigMatchErr[valueWarping(i+1,sigMatchErr.size())];
+
+
+    if(pre.Y>cur.Y && post.Y>cur.Y)
+    {
+      minMatchErr.push_back(sigMatchErr[i]);
+    }
+    
+  }
+}
+
+void xrefine(ContourSignature &tar,ContourSignature &src,float roughScanW,float fineScanW,vector<acv_XY> &minMatchErr, bool flip)
+{
+
+  int sparseScanLen=360/roughScanW+1;
+
+  vector<acv_XY> sigMatchErr(360);
+  int stride=3;
+  tar.match_span(src,0,359,sparseScanLen,sigMatchErr,stride,flip);
+    
+  matchingErrorMin_Refine(sigMatchErr,minMatchErr);
+
+  int fineScanCount=1+(2*roughScanW)/fineScanW;
+  for(int i=0;i<minMatchErr.size();i++)
+  {
+    acv_XY cAng = minMatchErr[i];
+
+    tar.match_span(src,cAng.X-roughScanW,cAng.X+roughScanW,fineScanCount,sigMatchErr,1,flip);
+
+    acv_XY minErr=sigMatchErr[0];
+    for(int j=1;j<sigMatchErr.size();j++)
+    {
+      if(minErr.Y>sigMatchErr[j].Y)
+      {
+        minErr=sigMatchErr[j];
+      }
+    }
+    minMatchErr[i]=minErr;
+  }
+}
+
+
+
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
@@ -3052,12 +3128,38 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     tmp_signature,this->matching_angle_offset, this->matching_angle_margin, 
     this->matching_face,&isInv, &angle);
 
+  if(0){
+
+    int scanWidth=10;
+    int sparseScanLen=360/scanWidth;
+    vector<acv_XY> sigMatchErr(sparseScanLen);
+
+
+    float scarScanWidth=10;
+    float fineScanWidth=.1;
+    vector<acv_XY> minMatchErr;
+    xrefine(feature_signature,tmp_signature,scarScanWidth,fineScanWidth,minMatchErr, false);
+    for(int i=0;i<minMatchErr.size();i++)
+    {
+      LOGI("%f>%f",minMatchErr[i].X,minMatchErr[i].Y);
+    }
+    vector<acv_XY> minMatchErr_bk;
+    xrefine(feature_signature,tmp_signature,scarScanWidth,fineScanWidth,minMatchErr_bk, true);
+    for(int i=0;i<minMatchErr_bk.size();i++)
+    {
+      LOGI("%f>%f",minMatchErr_bk[i].X,minMatchErr_bk[i].Y);
+    }
+    
+
+
+
+  }
+/*
 
   if(0) 
   {  
-    vector<acv_XY> sigMatchErr;
-    feature_signature.match_span(tmp_signature,
-      0,359,360,sigMatchErr,tmp_signature.signature_data.size()/100,true);
+
+
   
     int minErrIdx = -1;
     float minErr=999;
@@ -3141,7 +3243,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
   }
 
-
+  */
 
   if(confined_matching)
   {//this is acheived by limiting the matching range
@@ -4012,7 +4114,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     }
     tmp_signature.CalcInfo();
 
-    SignatureSoften(tmp_signature.signature_data,signature_data_buffer,10);
+    {//early intercept just to check mean and sigma
+      float meanRatio=tmp_signature.mean/feature_signature.mean;
+      if(meanRatio>1)meanRatio=1/meanRatio;
+      float sigmaRatio=tmp_signature.sigma/feature_signature.sigma;
+      if(sigmaRatio>1)sigmaRatio=1/sigmaRatio;
+
+      float stage1Sim=meanRatio*sigmaRatio;
+      LOGI("mR:%f  sR:%f stage1Sim:%f",meanRatio,sigmaRatio,stage1Sim);
+      if(meanRatio<0.8||stage1Sim<0.5)continue;
+    }
+
+    sign360_process(tmp_signature.signature_data,signature_data_buffer);
 
     // LOGI(">>feature_signature");
     // for(int i=0;i<feature_signature.size();i++)

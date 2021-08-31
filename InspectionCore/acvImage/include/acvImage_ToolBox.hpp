@@ -58,7 +58,8 @@ float SignatureMatchingError(const acv_XY *signature, float offset,
                              const acv_XY *tar_signature, int arrsize, int stride=1,bool reverse=false);
                              
 void SignatureSoften( std::vector<acv_XY> &signature,int windowR=1);
-void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &buffer,int windowR);
+void SignatureSoften(std::vector<acv_XY> &signature,std::vector<acv_XY> &output,int windowR);
+void SignatureSharpen(std::vector<acv_XY> &signature,int windowR,float alpha);
 void SignatureReverse(std::vector<acv_XY> &dst, std::vector<acv_XY> &src);
 
 
