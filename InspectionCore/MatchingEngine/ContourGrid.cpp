@@ -314,6 +314,7 @@ void ContourFetch::getContourPointsWithInLineContour(
   for(int i=0;i<m_sec.size();i++)
   {
     m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    if(flip_f<0)m_sec[i].dist*=-1;
     m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
   
