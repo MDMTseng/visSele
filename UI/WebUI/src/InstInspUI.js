@@ -173,7 +173,10 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
           let SS=pkts.find(pkt=>pkt.type=="SS");
           let FL=pkts.find(pkt=>pkt.type=="FL");
           let IM=pkts.find(pkt=>pkt.type=="IM");
-
+          if(IM===undefined)
+          {
+            throw "IM is undefined!";
+          }
           let img_act= BPG_Protocol.map_BPG_Packet2Act(IM);
           setImageInfo(img_act.data);
           // newEditInfo.img=img_pros.data;

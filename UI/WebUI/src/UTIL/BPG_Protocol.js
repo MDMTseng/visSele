@@ -138,6 +138,10 @@ export const INSPECTION_STATUS = {
 function map_BPG_Packet2Act(parsed_packet)
 {
   let acts=[];
+  if(parsed_packet===undefined)
+  {
+    return undefined;
+  }
   switch(parsed_packet.type )
   {
     case "HR":

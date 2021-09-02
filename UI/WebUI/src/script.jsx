@@ -132,436 +132,6 @@ function SystemServicePanel_UI()
   </div>
 }
 
-
-function Boot_CTRL_UI({URL,doPopUpUpdateWindow=true,onReadyStateChange=()=>{}}) {
-  
-  const comp_info = React.useRef({});
-  
-  const DICT = useSelector(state => state.UIData.DICT);
-  const [BOOT_DAEMON_readyState, setBOOT_DAEMON_readyState] = useState(WebSocket.CLOSED);
-
-
-  const dispatch = useDispatch();
-  const ACT_Update_Status_Update= (upd_status) => dispatch(UIAct.EV_Update_Status_Update(upd_status));
-  const updateInfo = useSelector(state => state.UIData.Update_Status);
-  
-
-
-
-  const boot_daemon_ws = comp_info.current._boot_daemon_ws;
-
-  const [UI_url, setUI_url] = useState(undefined);
-  
-  const [systemVersion, setSystemVersion] = useState(undefined);
-
-  const setUpdateInfo=(uinfo)=>{
-    ACT_Update_Status_Update(uinfo);
-  }
-
-
-  const [modalInfo, setModalInfo] = useState(undefined);
-
-  const [updateRunning, setUpdateRunning] = useState(false);
-  const update_info_url="https://api.github.com/repos/MDMTseng/visSele/releases/latest";
-
-  const coreStates={
-    UNKNOWN:"UNKNOWN",
-    RUNNING:"RUNNING",
-    EXIT:"EXIT",
-    TERMINATED:"TERMINATED"
-  }
-  const [coreState, setCoreState] = useState(coreStates.UNKNOWN);
-  
-
-  function fetchSystemVersion()
-  {
-    console.log("fetchSystemVersion")
-    const boot_daemon_ws = comp_info.current._boot_daemon_ws;
-    return boot_daemon_ws.send_obj({"type":"get_version"}).then((data)=>{
-      
-      console.log(data)
-      return new Promise((resolve, reject) => {
-        let cverinfo = data;
-        if(cverinfo.type !="ACK")
-        {
-          reject({
-            data,
-            info:"query has a nak"
-          });
-          return;
-        }
-
-        resolve({
-          local:cverinfo,
-          localVersion:cverinfo.version
-        })
-      })
-    });
-  }
-
-  function fetchUpdateInfo(update_url)
-  {
-    console.log("fetchUpdateInfo")
-
-    const boot_daemon_ws = comp_info.current._boot_daemon_ws;
-    return boot_daemon_ws.send_obj({"type":"http_get","url":update_url})
-      .then((data)=>{
-        return new Promise((resolve, reject) => {
-          if(data.type !="ACK")
-          {
-            reject({
-              data,
-              info:"query has a nak"
-            });
-          }
-
-          let rinfo=JSON.parse(data.text);
-          let tar_asset=checkUpdateInfo(rinfo);
-          if(tar_asset===undefined)
-          {
-            reject({
-              data,
-              info:"No supported OS"
-            });
-          }
-
-          let _updateInfo = {
-            remote:rinfo,
-            remoteVersion:rinfo.name,
-            remote_res:tar_asset
-          }
-          resolve(_updateInfo)
-        })
-
-        
-      })
-  }
-
-  function updateTrigger(url)
-  {
-    setUpdateRunning(true)
-    // console.log(setUpdateInfo)
-    //if(latestReleaseInfo.)
-    let current_datetime = new Date()
-    let x = {"type":"update", 
-      "bk_name_append":"",
-      "update_URL":url
-    }
-    boot_daemon_ws.send_obj(x)
-      .then((data)=>{
-        setUpdateRunning(false)
-        console.log("Update:",data)
-        if(data.type=="ACK")
-        {
-          let x = {"type":"reload"}
-          boot_daemon_ws.send_obj(x)
-            .then((data)=>{
-              console.log("reload:",data)
-            })
-            .catch((err)=>{
-              console.log(err)
-            })
-        }
-      })
-      .catch((err)=>{
-        console.log(err)
-      })
-      
-  }
-
-  useEffect(() => {
-    
-    let newUpdateInfo={...updateInfo};
-    if(newUpdateInfo.localVersion!==undefined && newUpdateInfo.remoteVersion!==undefined)
-    {
-      let newUpdateExist = isNewVersionExist(newUpdateInfo.remoteVersion,newUpdateInfo.localVersion);
-      if(newUpdateInfo.newUpdateExist!=newUpdateExist)
-      {
-        newUpdateInfo.newUpdateExist=newUpdateExist;
-        if(newUpdateExist)
-        {
-          setModalInfo({
-            title:"New Update!!!",
-            onCancel:()=>setModalInfo(),
-            onOk:()=>updateTrigger(updateInfo.remote_res.browser_download_url),
-            child:"New update:"+newUpdateInfo.remoteVersion+ "   current ver:"+newUpdateInfo.localVersion
-          }) 
-        }
-        
-        setUpdateInfo(newUpdateInfo);
-
-      }
-    }
-
-  },[updateInfo]);
-
-  useEffect(() => {
-
-
-    comp_info.current.queryRunningTimer=setInterval(()=>{
-      if(comp_info.current._boot_daemon_ws===undefined)return;
-      if(comp_info.current._boot_daemon_ws.readyState!==WebSocket.OPEN)
-      {
-        if(coreState!==coreStates.UNKNOWN)
-          setCoreState(coreStates.UNKNOWN);
-        return
-      }
-      comp_info.current._boot_daemon_ws.send_obj({"type":"poll_core"})
-      .then((data)=>{
-        //if(data.)
-        //console.log("poll.then:",data)
-        if(data.type=="ACK")
-        {
-          if(data.poll_code===undefined||data.poll_code===null)
-          {//The code will be set if the program exit with return code
-            
-            if(coreState!==coreStates.RUNNING)
-              setCoreState(coreStates.RUNNING);
-          }
-          else
-          {
-            if(coreState!==coreStates.EXIT)
-             setCoreState(coreStates.EXIT);
-          }
-        }
-        else
-        {
-          if(coreState!==coreStates.TERMINATED)
-            setCoreState(coreStates.TERMINATED);
-        }
-      })
-      .catch((err)=>{
-        console.log(err)
-      })
-    },5000)
-
-    
-    let rec_ws=new websocket_autoReconnect(URL,3000);
-    rec_ws.onreconnection = (reconnectionCounter) => {
-      //log.info("onreconnection" + reconnectionCounter);
-      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
-      onReadyStateChange(_boot_daemon_ws.readyState);
-      return true;
-    }; 
-
-    let _boot_daemon_ws = new websocket_reqTrack(rec_ws,"cmd_id");
-
-    _boot_daemon_ws.onmessage =(data)=>{
-      log.info(data)
-    };
-
-    _boot_daemon_ws.onopen = (obj) => {
-      
-      comp_info.current._boot_daemon_ws=_boot_daemon_ws;
-      setUpdateRunning(false)
-      log.info("boot_daemon_ws.onopen", obj);
-      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
-      onReadyStateChange(_boot_daemon_ws.readyState);
-      
-      fetchSystemVersion().then((info)=>{
-        setUpdateInfo(info);
-      });
-
-      fetchUpdateInfo(update_info_url)
-        .then((info)=>{
-          console.log(updateInfo)
-          
-          setUpdateInfo(info);
-        })
-        .catch(err=>{
-          console.log(err);
-        })
-
-      _boot_daemon_ws.send_obj({"type":"get_UI_url"})
-      .then((data)=>{
-        console.log("get_UI_url:",data)
-        let url="file:///"+data.url;
-        
-        console.log(window.location.href+">>>"+url)
-        let curUrl=window.location.href;
-        let dstUrl=url;
-        curUrl=curUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
-        dstUrl=dstUrl.replace(/file:\/+/, "").replace(/\\/g, "/");
-
-        if(curUrl!==dstUrl)
-        {
-          window.location.href=url
-          setUI_url(url);
-        }
-      })
-      .catch((err)=>{
-        console.log(err)
-      })
-
-      return true;
-    };
-    _boot_daemon_ws.onclose = (e) =>{
-      log.info("boot_daemon_ws:onclose,",e);
-      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
-      onReadyStateChange(_boot_daemon_ws.readyState);
-    }
-    _boot_daemon_ws.onerror = () => {
-      //log.info("boot_daemon_ws:onerror");
-      setBOOT_DAEMON_readyState(_boot_daemon_ws.readyState)
-      onReadyStateChange(_boot_daemon_ws.readyState);
-    }
-    return () => {
-      _boot_daemon_ws.close()
-      setBOOT_DAEMON_readyState(WebSocket.CLOSED)
-      onReadyStateChange(WebSocket.CLOSED);
-      comp_info.current._boot_daemon_ws = (undefined)
-      clearInterval(comp_info.current.queryRunningTimer);
-      comp_info.current.queryRunningTimer=undefined
-    }
-    // Your code here
-  }, []);
-
-  let APPLaunchCtrlBtn=null;
-  switch(coreState)
-  {
-    case coreStates.RUNNING:
-    case coreStates.EXIT:
-      
-      APPLaunchCtrlBtn=<Button key={"APP_TERMINATION_Button"}  danger
-        onClick={() => {
-          boot_daemon_ws.send_obj({"type":"kill_core"})
-          setCoreState(coreStates.UNKNOWN)
-        }}>TERMINATION</Button>
-      break;
-    case coreStates.TERMINATED:
-    
-      APPLaunchCtrlBtn=<Button key={"APP_LAUNCH_Button"}  type="primary"
-        onClick={() => {
-          boot_daemon_ws.send_obj({"type":"launch_core", "env_path":"./"})
-          setCoreState(coreStates.UNKNOWN)
-        }}>APP RUN</Button>
-      break;
-    
-    case coreStates.UNKNOWN:
-  
-      APPLaunchCtrlBtn=<Button key={"APP_UNKNOWN_Button"}  loading
-        onClick={() => {
-        }}>APP UNKNOWN</Button>
-      break;
-  }
-
-  let localUpdateBtn=null;
-  {
-    localUpdateBtn=  
-    <Button key={"1_Button"}   loading={updateRunning}
-      onClick={() => {
-      setUpdateRunning(true)
-      let current_datetime = new Date()
-      let formatted_date = 
-        current_datetime.getDate() + "_" + 
-        (current_datetime.getMonth() + 1) + "_" + 
-        current_datetime.getFullYear()
-        
-      let plat = navigator.platform.toLowerCase();
-      let updateFileName="update"
-      if(plat=="macintel")
-      {
-        updateFileName+="_mac.zip";
-      }
-      else if(plat=="win32" || plat=="win64")
-      {
-        updateFileName+="_win.zip";
-      }
-      
-      let x = {"type":"update", 
-        "bk_name_append":formatted_date,
-        "update_URL":updateFileName
-      }
-      boot_daemon_ws.send_obj(x)
-        .then((data)=>{
-          
-          setUpdateRunning(false)
-          console.log("Update:",data)
-          if(data.type=="ACK")
-          {
-            let x = {"type":"reload"}
-            boot_daemon_ws.send_obj(x)
-              .then((data)=>{
-                console.log("reload:",data)
-              })
-              .catch((err)=>{
-                console.log(err)
-              })
-
-          }
-        })
-        .catch((err)=>{
-          console.log(err)
-        })
-    }}>Local UPDATE</Button>
-
-  }
-  //console.log(updateInfo);
-
-
-  let popUpModal=modalInfo===undefined?null:
-  <Modal
-    key="UpdatePopModal"
-    title={modalInfo.title}
-    visible={true}
-    onCancel={modalInfo.onCancel}
-    onOk={modalInfo.onok}
-    footer={modalInfo.footer}
-  >
-    <div style={{height:"100%"}}>
-      {modalInfo.child}
-    </div>
-  </Modal>
-
-
-  if(BOOT_DAEMON_readyState!==WebSocket.OPEN)return null
-  return ([
-      popUpModal,
-      //APPLaunchCtrlBtn,
-      //localUpdateBtn,
-      <Button key={"refresh_Button"}   loading={updateRunning}
-        icon={<CloudSyncOutlined />}
-        onClick={() => {
-          
-
-          setUpdateInfo({
-            newUpdateExist:undefined,
-            remote:undefined,
-            remoteVersion:undefined,
-            remote_res:undefined
-          });
-          fetchUpdateInfo(update_info_url)
-          .then((info)=>{
-            //console.log(info)
-            setUpdateInfo(info);
-          })
-          .catch(err=>{
-            console.log(err);
-          })
-        }}/>,
-
-      updateInfo!==undefined && updateInfo.newUpdateExist!==undefined?
-      <Button key={"Force Remote UPDATE"} loading={updateRunning}
-        icon={<CloudUploadOutlined />} danger={updateInfo.newUpdateExist!==true}
-        onClick={() => {
-          updateTrigger(updateInfo.remote_res.browser_download_url);
-          //if(updateInfo.newUpdateExist==true)
-          // {
-          //   updateTrigger(updateInfo.remote_res.browser_download_url);
-          // }
-          // else
-          // {
-
-          // }
-        }}>{updateInfo.newUpdateExist==true?DICT._.normal_update:DICT._.force_update} {updateInfo.remote.name}</Button>
-      :null
-    ]);
-
-}
-
-
-
-
 function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,onItemClick=_=>_})
 {
   // const Insp_DB_W_ID = useSelector(state => state.UIData.Insp_DB_W_ID);
@@ -622,14 +192,15 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     
   }
   
-  // console.log(ConnInfo);
+  console.log(ConnInfo);
 
 
 
   return [
-    [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,      <AimOutlined/>],
-    [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,      <CameraOutlined/>],
-    ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO, <CloudUploadOutlined/>],
+    [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>],
+    [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>],
+    ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>],
+    ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>],
     ].map(([textName, conn_info, icon])=>
       <Button size="large" key={"stat"+textName} style={gridStyle} 
       type="text" //disabled={!systemConnectState.core}
@@ -645,20 +216,28 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
               <>
                 <span className="veleX">{textName}</span>
                 <br/>
-                {conn_info===0?null:DICT._.disconnected}
+                {GetObjElement(conn_info,["type"])==="WS_CONNECTED"?" ":DICT._.disconnected}
               </>
               :null}
       </Button>)
 
 }
 
-function Query_Camera_Info(ACT_WS_SEND_BPG,CORE_ID)
+                    
+function urlConcat(base,add)
 {
-  return new Promise((resolve, reject) => {
-    ACT_WS_SEND_BPG(CORE_ID, "GS", 0, { items: ["data_path","binary_path","camera_info"] },
-      undefined, {resolve, reject})
-  });
+  let xbase=base;
+  while(xbase.charAt(xbase.length-1)=="/")
+    xbase=xbase.slice(0, xbase.length-1)
+    
+  let xadd=add;
+  while(xadd.charAt(0)=="/")
+    xadd=xadd.slice(1, xbase.length)
+  
+
+  return xbase+"/"+xadd;
 }
+
 
 class APPMasterX extends React.Component {
 
@@ -676,9 +255,7 @@ class APPMasterX extends React.Component {
         act.ActionThrottle_type = "flush";
         dispatch(act)
       },
-      ACT_CAMERA_INFO_UPDATE: (camera_info) => dispatch(UIAct.EV_UI_Version_Map_Update(camera_info)),
       ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
-      ACT_Version_Map_Update: (mapInfo) => dispatch(UIAct.EV_UI_Version_Map_Update(mapInfo)),
       ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
       ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
     }
@@ -689,11 +266,11 @@ class APPMasterX extends React.Component {
       stateMachine: state.UIData.sm,
       CORE_ID: state.ConnInfo.CORE_ID,
       Insp_DB_W_ID: state.ConnInfo.Insp_DB_W_ID,
+      DefFile_DB_W_ID:state.ConnInfo.DefFile_DB_W_ID,
       CAM1_ID:state.ConnInfo.CAM1_ID,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       C_STATE: state.UIData.c_state,
       
-      Update_Status:state.UIData.Update_Status,
       DICT :state.UIData.DICT
     }
   }
@@ -763,8 +340,9 @@ class APPMasterX extends React.Component {
         
       }
 
-      constructor()
+      constructor(id)
       {
+        this.id=id;
         this.QWindow= {};
         this.pgIDCounter= 0;
         this.websocket=undefined;
@@ -782,16 +360,16 @@ class APPMasterX extends React.Component {
             if(ns=="ERROR")
             {
               info.errorInfo=this.websocket.getErrorInfo();
-              comp.props.DISPATCH({type:"WS_ERROR",id:comp.props.Insp_DB_W_ID,data:info})
+              comp.props.DISPATCH({type:"WS_ERROR",id,data:info})
             }
             else if(ns=="CONNECTED")//enter connection state
             {
               this.cQ.kick();//when connected kick start
-              comp.props.DISPATCH({type:"WS_CONNECTED",id:comp.props.Insp_DB_W_ID,data:info})
+              comp.props.DISPATCH({type:"WS_CONNECTED",id,data:info})
             }
             else if(os=="CONNECTED")//exit connection state
             {
-              comp.props.DISPATCH({type:"WS_DISCONNECTED",id:comp.props.Insp_DB_W_ID,data:info})
+              comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:info})
             }
             console.log(ns,"<=",os,"(",act,")")
           },
@@ -934,7 +512,7 @@ class APPMasterX extends React.Component {
 
       send(info)
       {
-        
+        console.log(info);
         let data = info.data;
         
         // if(isInQueue==true)
@@ -973,8 +551,8 @@ class APPMasterX extends React.Component {
       }
     }
 
-    this.props.ACT_WS_REGISTER(this.props.Insp_DB_W_ID,new DB_WS());
-    this.props.ACT_WS_REGISTER(this.props.DefFile_DB_W_ID,new DB_WS());
+    this.props.ACT_WS_REGISTER(this.props.Insp_DB_W_ID,new DB_WS(this.props.Insp_DB_W_ID));
+    this.props.ACT_WS_REGISTER(this.props.DefFile_DB_W_ID,new DB_WS(this.props.DefFile_DB_W_ID));
 
 
     class BPG_WS
@@ -1074,26 +652,10 @@ class APPMasterX extends React.Component {
                     info.__priv={
                       path:machineSettingPath
                     }
-                    
-                    function URL_CONCAT(URL,ADD)
-                    {
-
-                      let url = URL;
-                      if(url!==undefined)
-                      {//the source url may have '/' at the end
-                        if(url.endsWith('/'))
-                        {//remove the last char
-                          url=url.slice(0, -1);
-                        }
-                        url+=ADD;
-                        return url;
-                      }
-                      return undefined;
-                    }
 
                     
-                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, URL_CONCAT(info.inspection_db_ws_url,"/insert/insp"));
-                    comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, URL_CONCAT(info.inspection_db_ws_url,"/insert/def"));
+                    comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/insp"));
+                    comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/def"));
 
                     comp.props.ACT_Machine_Custom_Setting_Update(info);
                   }
@@ -1463,7 +1025,6 @@ class APPMasterX extends React.Component {
 
     // console.log(this.props.C_STATE,this.props.CORE_ID_CONN_INFO);
 
-    let localVersion=(this.props.Update_Status!==undefined)?this.props.Update_Status.localVersion:null;
     return (
       <div className="HXF sp_Style xception-theme">
         {/* <NullDOM_SystemStatusQuery onStatusChange={(status)=>{

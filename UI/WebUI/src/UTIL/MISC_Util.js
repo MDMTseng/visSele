@@ -702,7 +702,7 @@ export class websocket_aliveTracking
     {
       this.websocket.close();
     }
-    this.state=this.stateTransfer(this.state,this.acts.DISCONNECT);
+    this.state=this.stateTransfer(this.state,this.acts.DISCONNECT_DONE);
     this.websocket=undefined;
   }
 

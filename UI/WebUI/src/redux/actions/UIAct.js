@@ -85,10 +85,8 @@ export const UI_SM_EVENT = {
   EXIT:"EXIT",
   ERROR:"ERROR",
 
-  Version_Map_Update:"Version_Map_Update",
   Core_Status_Update:"Core_Status_Update",
   Core_Camera_Status_Update:"Core_Camera_Status_Update",
-  Update_Status_Update:"Update_Status_Update",
   machine_custom_setting_Update:"machine_custom_setting_Update",
   Def_Model_Path_Update:"Def_Model_Path_Update",
   WS_channel:"WS_channel",
@@ -155,25 +153,6 @@ export function EV_UI_EC_Load_Def_Config(info)
     data:info
   }
 }
-
-export function EV_UI_Version_Map_Update(mapInfo)
-{
-  return {
-    type: UI_SM_EVENT.Version_Map_Update,
-    data: mapInfo
-  }
-}
-
-
-
-export function EV_Update_Status_Update(updStatus)
-{
-  return {
-    type: UI_SM_EVENT.Update_Status_Update,
-    data: updStatus
-  }
-}
-
 
 export function EV_Core_Status_Update(coreStatus)
 {

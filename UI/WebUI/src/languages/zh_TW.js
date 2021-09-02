@@ -99,6 +99,9 @@ export default {
       connect:"連線"
     },
     measure:{
+      quality_essential:"品質必需",
+      orientation_essential:"朝向必需",
+
       value_adjust:"數值微調",
       value_adjust_b:"數值微調(背)",
       back_value_setup:"背面目標設定",

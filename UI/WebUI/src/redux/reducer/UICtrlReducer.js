@@ -99,17 +99,10 @@ function StateReducer(newState, action) {
       }
       newState.Core_Status={...newState.Core_Status,camera_info:action.data};
       return newState;
-    case UISEV.Update_Status_Update:
-      newState.Update_Status={...newState.Update_Status,...action.data};
-      return newState;
-  
     case UISEV.Def_Model_Path_Update:
       newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
       //Edit_info_reset(newState);
       break;
-
-    case UISEV.Version_Map_Update:
-      return newState;
 
     case UISEV.Control_SM_Panel:
       newState.showSM_graph = action.data;

@@ -113,10 +113,24 @@ export function Shape_Attr_Fill(shapeObject)
     }
     break;
     case SHAPE_TYPE.measure:
-      if(shapeObject.value_adjust===undefined)
+
+      if(typeof shapeObject.value_adjust != "number")
       {
         shapeObject={...shapeObject}
         shapeObject.value_adjust=0;
+      }
+
+      
+      if(typeof shapeObject.quality_essential != "boolean")
+      {
+        shapeObject={...shapeObject}
+        shapeObject.quality_essential=true;
+      }
+      
+      if(typeof shapeObject.orientation_essential != "boolean")
+      {
+        shapeObject={...shapeObject}
+        shapeObject.orientation_essential=false;
       }
     break;
 

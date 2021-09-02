@@ -1448,7 +1448,7 @@ function modShapeCleanUp(mod_shape)
 
 
 
-function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
+function DEFCONF_MODE_NEUTRAL_UI({})
 {
   const DICT = useSelector(state => state.UIData.DICT);
   
@@ -1497,6 +1497,8 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   const edit_info = useSelector(state => state.UIData.edit_info);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
+  const DefFile_DB_W_ID = useSelector(state => state.ConnInfo.DefFile_DB_W_ID);
+  const DefFile_DB_SEND= (data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(DefFile_DB_W_ID,data,return_cb));
   const shape_list = useSelector(state => state.UIData.edit_info.list);
   const defModelPath = edit_info.defModelPath;
   
@@ -1637,13 +1639,10 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
               dbcmd: { "db_action": "insert" },
               data: report
             };
-            if(WS_DEF_DB_Insert!==undefined)
-            {
 
-              WS_DEF_DB_Insert.send_obj(msg_obj).
-              then((ret) => console.log('then', ret)).
-              catch((ret) => console.log("catch", ret));
-            }
+            DefFile_DB_SEND(msg_obj).
+            then((ret) => console.log('then', ret)).
+            catch((ret) => console.log("catch", ret));
 
           });
       }} />,
@@ -1917,44 +1916,12 @@ function DEFCONF_MODE_NEUTRAL_UI({WS_DEF_DB_Insert})
   return MenuSet;
 }
 
-function urlConcat(base,add)
-{
-  let xbase=base;
-  while(xbase.charAt(xbase.length-1)=="/")
-    xbase=xbase.slice(0, xbase.length-1)
-    
-  let xadd=add;
-  while(xadd.charAt(0)=="/")
-    xadd=xadd.slice(1, xbase.length)
-  
-
-  return xbase+"/"+xadd;
-}
 
 class APP_DEFCONF_MODE extends React.Component {
 
   componentDidMount() {
     
     let defModelPath = this.props.edit_info.defModelPath;
-    let db_url = this.props.machine_custom_setting.inspection_db_ws_url;
-    if(db_url!==undefined)
-    {
-
-      log.info("db_url::" + db_url);
-      let _ws = new websocket_autoReconnect(urlConcat(db_url,"/insert/def"), 10000);
-      this.WS_DEF_DB_Insert = new websocket_reqTrack(_ws);
-  
-      this.WS_DEF_DB_Insert.onreconnection = (reconnectionCounter) => {
-        log.info("onreconnection" + reconnectionCounter);
-        if (reconnectionCounter > 10) return false;
-        return true;
-      };
-      this.WS_DEF_DB_Insert.onopen = () => log.info("WS_DEF_DB_Insert:onopen");
-      this.WS_DEF_DB_Insert.onmessage = (msg) => log.info("WS_DEF_DB_Insert:onmessage::", msg);
-      this.WS_DEF_DB_Insert.onconnectiontimeout = () => log.info("WS_DEF_DB_Insert:onconnectiontimeout");
-      this.WS_DEF_DB_Insert.onclose = () => log.info("WS_DEF_DB_Insert:onclose");
-      this.WS_DEF_DB_Insert.onerror = () => log.info("WS_DEF_DB_Insert:onerror");
-    }
     loadDefFile(defModelPath,this.props.ACT_DefConf_Lock_Level_Update,this.props.ACT_WS_SEND_BPG,this.props.CORE_ID,this.props.DISPATCH);
 
     
@@ -1963,8 +1930,6 @@ class APP_DEFCONF_MODE extends React.Component {
   }
 
   componentWillUnmount() {
-    if(this.WS_DEF_DB_Insert!==undefined)
-      this.WS_DEF_DB_Insert.close();
     this.props.ACT_ClearImage();
     
     this.props.ACT_DefConf_Lock_Level_Update(0);
@@ -2096,6 +2061,9 @@ class APP_DEFCONF_MODE extends React.Component {
                 importance: "input-number",
                 docheck: "switch",
                 width: "SimpleSetup",
+
+                quality_essential:"switch",
+                orientation_essential:"switch",
                 ref: (edit_tar.subtype === UIAct.SHAPE_TYPE.measure_subtype.calc) ?
                   undefined :
                   {
@@ -2363,7 +2331,7 @@ class APP_DEFCONF_MODE extends React.Component {
       case UIAct.UI_SM_STATES.DEFCONF_MODE_NEUTRAL:
         
         menu_height = "HXA";
-        MenuSet=<DEFCONF_MODE_NEUTRAL_UI WS_DEF_DB_Insert={this.WS_DEF_DB_Insert} />
+        MenuSet=<DEFCONF_MODE_NEUTRAL_UI/>
 
         break;
       case UIAct.UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
@@ -2929,7 +2897,6 @@ const mapStateToProps_APP_DEFCONF_MODE = (state) => {
     CORE_ID: state.ConnInfo.CORE_ID,
     edit_info: state.UIData.edit_info,
     defConf_lock_level: state.UIData.defConf_lock_level,
-    machine_custom_setting: state.UIData.machine_custom_setting,
     DICT:state.UIData.DICT,
   }
 };
