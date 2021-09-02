@@ -46,7 +46,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       LOGI("tExp:%d",tExp);
       static float rotate=0;
       
-      int noiseRange=2;
+      int noiseRange=15;
       if(newX==0&&newY==0)
       {
         rotate=0;
@@ -261,9 +261,10 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     int ret = 0;
     
     //if(img.GetWidth()<100)//Just to skip image loading
-
-    if(this->fileName.compare(fileName)!=0)//check if the name isn't equal
+    cacheUseCounter++;
+    if(this->fileName.compare(fileName)!=0 || cacheUseCounter>20)//check if the name isn't equal
     {
+      cacheUseCounter=0;
       this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
         ret = acvLoadBitmapFile(&img_load, fileName.c_str());
