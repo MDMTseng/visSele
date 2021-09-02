@@ -2727,6 +2727,7 @@ int InspStatusReduce(vector<FeatureReport_judgeReport> &jrep)
 
   for (int k = 0; k < jrep.size(); k++)
   {
+    if(jrep[k].def->quality_essential==true)
     stat = InspStatusReducer(stat, jrep[k].status);
   }
   return stat;

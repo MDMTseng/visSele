@@ -17,6 +17,7 @@ public :
   vector<acv_XY>signature_data;
   float mean;
   float sigma;
+  float angleOffset;
 
   ContourSignature(cJSON*);
   ContourSignature(int Len=0);
