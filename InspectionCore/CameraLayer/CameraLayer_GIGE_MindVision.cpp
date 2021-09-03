@@ -6,6 +6,7 @@ CameraLayer_GIGE_MindVision::CameraLayer_GIGE_MindVision(CameraLayer_Callback cb
 {
   m.unlock();
   _cached_frame_info=NULL;
+  
 }
 
 CameraLayer_GIGE_MindVision::~CameraLayer_GIGE_MindVision()
@@ -165,7 +166,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
       \"product_name\":\"%s\",\
       \"product_series\":\"%s\",\
       \"sensor_type\":\"%s\",\
-      \"Sn\":\"%s\",\
+      \"Sn\":\"%s\"\
     }",
              devInfo->acFriendlyName,
              devInfo->acLinkName,

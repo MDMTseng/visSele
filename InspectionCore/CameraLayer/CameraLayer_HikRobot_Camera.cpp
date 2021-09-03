@@ -342,6 +342,13 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   StartAquisition();
   inNoError=true;
   // grabThread = std::thread(&CameraLayer_HikRobot_Camera::grabThreadFunc, this);
+
+  
+  char buff[300];
+  snprintf(buff, sizeof(buff),
+  "{\"type\":\"CameraLayer_HikRobot_Camera\"}");
+  cam_json_info.assign(buff);
+  LOGI(">>>%s",cam_json_info.c_str());
 }
 
 
