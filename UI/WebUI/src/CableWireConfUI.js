@@ -1434,10 +1434,10 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
   });
   let _this=_cur.current;
 
-  const WS_ID = useSelector(state => state.UIData.WS_ID);
+  const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   
   const dispatch = useDispatch();
-  const ACT_WS_SEND= (...args) => dispatch(UIAct.EV_WS_SEND(WS_ID, ...args));
+  const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, ...args));
 
 
 
@@ -1511,7 +1511,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
   function fetchParam()
   {
-    ACT_WS_SEND( "ST", 0,
+    ACT_WS_SEND_BPG( "ST", 0,
       { 
         InspectionParam:[{
           get_param:true
@@ -1532,7 +1532,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
   }
   function inspStage(inspectionStage)
   {
-    ACT_WS_SEND( "ST", 0,
+    ACT_WS_SEND_BPG( "ST", 0,
       { 
         InspectionParam:[{
           inspectionStage
@@ -1545,7 +1545,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
   function camera_set_once_WB()
   {
-    ACT_WS_SEND( "ST", 0,
+    ACT_WS_SEND_BPG( "ST", 0,
       { 
         CameraSetting:{
           set_once_WB:true
@@ -1568,7 +1568,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
 
     // console.log(defInfo);
-    ACT_WS_SEND("II", 0, {
+    ACT_WS_SEND_BPG("II", 0, {
       imgsrc:(doTakeNew==false)?"__CACHE_IMG__":undefined,
       img_property:{
         down_samp_level:2,
@@ -1619,19 +1619,19 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
   {
 
     
-    // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+    // this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
     // }, undefined);
     console.log(defInfo);
     if(defInfo==undefined)
     {
       
       reloadIM(defPath);
-      ACT_WS_SEND("CI", 0, { _PGID_: 10007, _PGINFO_: { keep: false } });
+      ACT_WS_SEND_BPG("CI", 0, { _PGID_: 10007, _PGINFO_: { keep: false } });
       return;
     }
 
     console.log(defInfo);
-    ACT_WS_SEND("CI", 0, {_PGID_: 10007, _PGINFO_: { keep: true },
+    ACT_WS_SEND_BPG("CI", 0, {_PGID_: 10007, _PGINFO_: { keep: true },
       
       definfo:defInfo
     }, undefined,
@@ -1696,7 +1696,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
     let defModelPath = file_path.replace("."+CABLE_DEF_EXT, "");
   
-    ACT_WS_SEND("LD", 0,
+    ACT_WS_SEND_BPG("LD", 0,
       {
         deffile: defModelPath + '.' + CABLE_DEF_EXT,
         imgsrc: defModelPath,
@@ -1727,7 +1727,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
     let defModelPath = file_path.replace("."+CABLE_DEF_EXT, "");
   
-    ACT_WS_SEND("LD", 0,
+    ACT_WS_SEND_BPG("LD", 0,
       {
         imgsrc: defModelPath,
         down_samp_level:10
@@ -1902,9 +1902,9 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
 
 
 
-  const ACT_Cache_Img_Save= (fileName) => ACT_WS_SEND( "SV", 0,{ filename: fileName, type: "__CACHE_IMG__" } )
+  const ACT_Cache_Img_Save= (fileName) => ACT_WS_SEND_BPG( "SV", 0,{ filename: fileName, type: "__CACHE_IMG__" } )
   
-  const ACT_BIN_Save=( fileName, content)  => ACT_WS_SEND( "SV", 0,{ filename: fileName},content );
+  const ACT_BIN_Save=( fileName, content)  => ACT_WS_SEND_BPG( "SV", 0,{ filename: fileName},content );
 
 
   // console.log(_defInfo_);
@@ -2106,7 +2106,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
         searchDepth={4}
         path={fileSavingContext.path} visible={true}
         defaultName={fileSavingContext.defaultName}
-        BPG_Channel={(...args) => ACT_WS_SEND(...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
 
         onOk={(folderInfo, fileName, existed) => {
 
@@ -2131,7 +2131,7 @@ function CABLE_WIRE_CONF_MODE_rdx({onExtraCtrlUpdate})
         className="width8 modal-sizing"
         searchDepth={4}
         path={fileBrowsingContext.path} visible={true}
-        BPG_Channel={(...args) => ACT_WS_SEND(...args)}
+        BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}
         onFileSelected={fileBrowsingContext.onFileSelected}
         onCancel={() => {
           if(fileBrowsingContext.onCancel!==undefined)

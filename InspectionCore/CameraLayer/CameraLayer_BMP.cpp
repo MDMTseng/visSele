@@ -45,22 +45,28 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       static float rotate=0;
+      
+      int noiseRange=15;
       if(newX==0&&newY==0)
       {
         rotate=0;
       }
       else
       {
-        // float baseAngle=32*M_PI/180;
-        // if(rotate<baseAngle)rotate=baseAngle;
-        // else if(rotate>36*M_PI/180)rotate=baseAngle;
-        // else
-        // {
+        float baseAngle=0*M_PI/180;
+        float endAngle= 360*M_PI/180;
 
-        //   rotate+=0.06*M_PI/180;
-        // }
-        rotate+=1*M_PI/180.1;
+        if(rotate<baseAngle)rotate=baseAngle;
+        else if(rotate>endAngle)rotate=baseAngle;
+        else
+        {
+          rotate+=0.2*M_PI/180;
+        }
+        // rotate+=1*M_PI/180;
+        LOGI("ROTATE:%f",rotate*180/M_PI);
+        // 
       }
+
       
       // img.ReSize(newW,newH);
       acv_XY rcenter={.X=(float)(newW/2),.Y=(float)(newH/2)};
@@ -82,16 +88,38 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
 
 
-          for(int k=0;k<channelCount;k++)
-          {
-            float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, k);
-            int d = ((uint64_t)(pix*tExp))>>13;
-            if(d<0)d=0;
-            else if(d>255)d=255;
+          // for(int k=0;k<channelCount;k++)
+          // {
+          //   float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, k);
             
-            imgBuffer[(i*newW+j)*channelCount+k]=d;
+          //   int N=0;
+          //   if(noiseRange>0)
+          //     N= (rand()%(2*noiseRange+1))-noiseRange;
 
-          }
+          //   int d = N+ ((uint64_t)(pix*tExp))>>13;
+
+          //   if(d<0)d=0;
+          //   else if(d>255)d=255;
+            
+          //   imgBuffer[(i*newW+j)*channelCount+k]=d;
+
+          // }
+
+          float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
+          
+          int N=0;
+          if(noiseRange>0)
+            N= (rand()%(2*noiseRange+1))-noiseRange;
+
+          int d = N+ (((uint64_t)(pix*tExp))>>13);
+
+          if(d<0)d=0;
+          else if(d>255)d=255;
+          
+          imgBuffer[(i*newW+j)*channelCount+0]=
+          imgBuffer[(i*newW+j)*channelCount+1]=
+          imgBuffer[(i*newW+j)*channelCount+2]=d;
+
         }
       }
       else if(1)
@@ -105,7 +133,6 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
 
         // }  
         // else 
-        int noiseRange=5;
         for(int i=0;i<newH;i++)//exposure add
         {
           int li=i+newY;
@@ -115,7 +142,8 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
             int lj=j+newX;
             if(lj<0 || lj>=img_load.GetWidth())continue;
             int N=0;
-            N= (rand()%(2*noiseRange))-noiseRange;
+            if(noiseRange>0)
+              N= (rand()%(2*noiseRange+1))-noiseRange;
             int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
             
             if(d<0)d=0;
@@ -233,9 +261,10 @@ CameraLayer_BMP::status CameraLayer_BMP::LoadBMP(std::string fileName)
     int ret = 0;
     
     //if(img.GetWidth()<100)//Just to skip image loading
-
-    if(this->fileName.compare(fileName)!=0)//check if the name isn't equal
+    cacheUseCounter++;
+    if(this->fileName.compare(fileName)!=0 || cacheUseCounter>20)//check if the name isn't equal
     {
+      cacheUseCounter=0;
       this->fileName = fileName;
         LOGI("Loading:%s",fileName.c_str());
         ret = acvLoadBitmapFile(&img_load, fileName.c_str());

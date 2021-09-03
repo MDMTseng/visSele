@@ -9,8 +9,10 @@ import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 
+import INFO from './info.js';
 import { TagOptions_rdx } from './component/rdxComponent.jsx';
 import dclone from 'clone';
+import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
@@ -121,216 +123,106 @@ const selectAfter = (
 const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
-class RAW_InspectionReportPull extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
 
-    }
-    this.pull_skip_count = 0;
-    this.WS_DB_Inser = undefined;
-    this.WS_DB_Query = undefined;
-    this.retryQCount = 0;
-
-    this.cQ = new ConsumeQueue((cQ) => {
-      return new Promise((resolve, reject) => {//Implement consume rules
-        if (this.WS_DB_Insert === undefined ||
-          this.WS_DB_Insert.readyState !== WebSocket.OPEN ||
-          cQ.size() == 0
-        ) {//If no 
-          reject();
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(undefined, "DB/Connection issue/Data empty");
-          return;
-        }
-
-
-        let data = cQ.deQ();//get the latest element
-        if (data === undefined)//try next data
+function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=0})
         {
-          resolve();
 
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(undefined, "Data empty");
-          return;
-        }
-        var msg_obj = {
-          dbcmd: { "db_action": "insert", "checked": true },
-          data
-        };
-        let timeoutFlag = setTimeout(() => {
-          timeoutFlag = undefined;
-          console.log("consumeQueue>>timeout");
-          reject("Timeout");
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(data, "Timeout");
-        }, 5000);
+  const _s = useRef({sendCounter:0,sendedCounter:0,totalCounter:0,pre_newAddedReport:undefined});
 
-        //The second param is replacer for stringify, and we replace any value that has toFixed(basically 'Number') to replace it to toFixed(5)
-        this.WS_DB_Insert.send_obj(msg_obj, (key, val) => val.toFixed ? Number(val.toFixed(5)) : val).
-          then((ret) => {
-            clearTimeout(timeoutFlag);
-            this.retryQCount = 0;
-            resolve();
-            this.props.onDBInsertSuccess(data, ret);
-          }).catch((e) => {//Failed retry....
-            clearTimeout(timeoutFlag);
-            this.retryQCount++;
-            // if(this.retryQCount>10)
-            // {
-            //   resolve();
-            //   //reject();
-            // }
-            // else
-            {
-              cQ.enQ(data);//failed.... put back
-              resolve();
-            }
+  let _this=_s.current;
+  // const c_state = useSelector(state => state.UIData.c_state);
+  const dispatch = useDispatch();
+  const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
+  const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
 
-            if (this.props.onDBInsertFail !== undefined)
-              this.props.onDBInsertFail(data, e);
-          });
-      })
-    });
-  }
-  componentWillUnmount() {
+  const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
 
-    this.websocketClose();
-  }
-  componentWillMount() {
+  let newAddedReport=GetObjElement(reportStatisticState,["newAddedReport"]);
 
-    this.websocketConnect(this.props.url);
-
-  }
-
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    if (this.props.reportStatisticState.newAddedReport.length > 0) {
-      if(this._newAddedReport===this.props.reportStatisticState.newAddedReport)
-      {
-        return;
-      }
-      this._newAddedReport=this.props.reportStatisticState.newAddedReport;
-      if (this.pull_skip_count == 0) {
-        // let x=this.props.reportStatisticState.newAddedReport.map(e=>e);
-        let x = this.props.reportStatisticState.newAddedReport;
-        //this.send2WS_Insert(x);
-        // this.WS_DB_Insert.send(BSON.serialize(x));
-
-        if (!this.cQ.enQ(x))//If enQ NOT success
-        {
-          //Just print
-          log.error("enQ failed size()=" + this.cQ.size());
-          if (this.props.onDBInsertFail !== undefined)
-            this.props.onDBInsertFail(x, "Cannot enQ the data");
-        }
-        if (this.cQ.size() > 0)
-          this.cQ.kick();//kick transmission
-      }
-      if (this.props.pull_skip !== undefined) {
-        this.pull_skip_count++;
-        if (this.pull_skip_count >= this.props.pull_skip) {
-          this.pull_skip_count = 0;
-        }
-      }
-    }
-  }
-
-  handleLocalStorage(insertWhat) {
-    if (localStorage) {
-      log.error("Local Storage: Supported");
-      localStorage.setItem("HYVision", JSON.stringify(insertWhat));
-      return localStorage.length;
-    } else {
-      console.log("Local Storage: Unsupported");
-    }
-    return 0;
-  }
-  send2WS_Query(msg) {
-    //this.state.WS_DB_Query.send("{date:2019}");
-  }
-
-
-  websocketClose() {
-    if(this.WS_DB_Insert!==undefined)
-      this.WS_DB_Insert.close();
-    if(this.WS_DB_Query!==undefined)
-      this.WS_DB_Query.close();
-  }
-
-  onConnectionStateUpdate(cur, pre) {
-    //log.info("dufkhiuefhirhgspiosfjoipfsjvoisfjd",cur,pre);
-    if (this.props.onConnectionStateUpdate !== undefined) {
-      this.props.onConnectionStateUpdate(cur, pre);
-    }
-
-  }
-  websocketConnect(url) {
-    if(url===undefined)
+  useEffect(()=>{
+    if(newAddedReport===undefined || 
+      _this.pre_newAddedReport===newAddedReport || 
+      Array.isArray(newAddedReport)==false ||
+      newAddedReport.length==0)//there is no new report
     {
+      console.log("no report...");
       return;
     }
 
-    if (this.WS_DB_Insert === undefined) {
-      log.info("[init][WS]" +urlConcat(url,"insert/insp"));
-      let _ws = new websocket_autoReconnect(urlConcat(url,"insert/insp"), 10000);
-      _ws.onStateUpdate = this.onConnectionStateUpdate.bind(this);
-      this.WS_DB_Insert = new websocket_reqTrack(_ws);
-
-      this.WS_DB_Insert.onreconnection = (reconnectionCounter) => {
-        log.info("onreconnection" + reconnectionCounter);
-        return true;
-      };
-      this.WS_DB_Insert.onconnectiontimeout = () => log.info("onconnectiontimeout");
-
-
-      this.WS_DB_Insert.onopen = this.onOpen.bind(this);
-      this.WS_DB_Insert.onmessage = this.onMessage.bind(this);
-      this.WS_DB_Insert.onclose = () => log.info("WS_DB_Insert:onclose");
-      this.WS_DB_Insert.onerror = () => this.onError.bind(this);
-
+    _this.pre_newAddedReport=newAddedReport;
+    console.log(newAddedReport,insert_skip);
+    
+    let res=_this.totalCounter%insert_skip;
+    _this.totalCounter++;
+    if(res!=0)
+    {
+      console.log("SKIP...");
+      return;
     }
 
-    if (this.WS_DB_Query === undefined) {
+    _this.sendCounter++;
+    WS_SEND(Insp_DB_W_ID,newAddedReport)
+    .then(retInfo=>{
+      _this.sendedCounter++;
+      onDBInsertSuccess(retInfo);
+      console.log(retInfo);
+    })
+    .catch(err=>{
+
+    })
+  },[newAddedReport]);
+
+
+  // let retx=
+  //   this.props.ACT_WS_GET_OBJ(this.props.WS_InspDataBase_W_ID, (obj)=>{
+
+  //     console.log(obj);
+  //     return obj.websocket.send_obj({type:"PING"});
+  //   })
+  //   .then(d=>{
+  //     console.log(d);
+  //   })
+  //   .catch(e=>{
+  //     console.log(e);
+
+  //   })
+
+  let isConnected=GetObjElement(Insp_DB_W_ID_CONN_INFO,["type"])==="WS_CONNECTED";
+
       
-      log.info("[init][WS]" + urlConcat(url,"query/insp"));
-      let _ws = new websocket_autoReconnect(urlConcat(url,"query/insp"), 10000);
-      this.WS_DB_Query = new websocket_reqTrack(_ws);
+
+  // return null;
 
 
-      this.WS_DB_Query.onreconnection = (reconnectionCounter) => {
-        log.info("onreconnection" + reconnectionCounter);
-        return true;
-      };
-      this.WS_DB_Query.onconnectiontimeout = () => log.info("onconnectiontimeout");
-
-
-      this.WS_DB_Query.onopen = this.onOpen.bind(this);
-      this.WS_DB_Query.onmessage = this.onMessage.bind(this);
-      this.WS_DB_Query.onclose = () => log.info("WS_DB_Query:onclose");
-      this.WS_DB_Query.onerror = () => this.onError.bind(this);
-    }
-
-  }
-
-
-
-  onError(ev) {
-    //this.websocketConnect();
-    log.error("onError RAW_InspectionReportPull");
-  }
-  onOpen(ev) {
-    log.info("onOpen RAW_InspectionReportPull");
-
-  }
-  onMessage(ev) {
-    log.debug(ev);
-  }
-
-  render() {
-
-    return null;
-  }
+  return <Button type="primary" size={"large"} 
+    className={ (isConnected ? "blackText lgreen" : "DISCONNECT_Blink")}
+    icon={isConnected ? <LinkOutlined /> : <DisconnectOutlined />} >
+        {(isConnected ? LANG_DICT.connection.server_connected : LANG_DICT.connection.server_disconnected)
+        + " " + _this.sendedCounter+"<"+_this.sendCounter + ":" + _this.totalCounter + "/" + insert_skip}
+    </Button>
 }
+
+
+
+// <InspectionReportInsert2DB 
+// reportStatisticState={this.props.reportStatisticState} 
+
+// // DBStatus,
+// // DBPushPromise,
+// onDBInsertSuccess={(data, info) => {
+//   // log.info(data, info);
+//   this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
+// }}
+// onDBInsertFail={(data, info) => {
+//   log.error(data, info);
+// }}
+// insert_skip={InspectionReportPullSkip}/>
+
+
+
+
+
+
 
 class DB extends React.Component {
   constructor(props) {
@@ -485,21 +377,41 @@ class InspectionResultDisplay extends React.Component {
 
   render() {
     let rep = this.props.singleInspection;
+    let quality_essential = GetObjElement(rep,["def","quality_essential"]);
+
+
+    let COLOR=OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR;
+    if(quality_essential==false)
+      COLOR = Color(COLOR).desaturate(0.6).darken(0.5);
+
+    let height=70;
+    
+    let fontStyle={fontSize:25};
+
+    if(quality_essential==false)
+    {
+      height=70;
+      fontStyle={
+        fontSize:25,
+        // textDecoration: "line-through"
+        color:"#999"
+      }
+    }
     //console.log(rep);
-    return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height: 70 }}>
+    return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height:height}}>
       <div className="s width8  HXF">
         <div className="s vbox height4">
           <FullscreenOutlined onClick={this.clickFullScreen.bind(this)} />
           {rep.name}
         </div>
-        <div className="s vbox  height8" style={{ 'fontSize': 25 }}>
+        <div className="s vbox  height8" style={fontStyle}>
           {this.showResultValueCheck(rep) + DEFAULT_UNIT[rep.subtype]}
 
         </div>
       </div>
       <div className="s vbox width4 HXF">
         <Tag style={{ 'fontSize': 18 }}
-          color={OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR}>
+          color={COLOR}>
           {OK_NG_BOX_COLOR_TEXT[rep.detailStatus].TEXT}
         </Tag>
       </div>
@@ -673,22 +585,29 @@ class ObjInfoList extends React.Component {
           filter(rep => rep !== undefined);
       }
 
+
+
       let judgeInRank = judgeReports
+      .map(rep=>({...rep,def:this.props.shape_def.find(def=>def.id==rep.id)}))
       .filter(rep=>{
-        let rdef=this.props.shape_def.find(def=>def.id==rep.id);
+        let rdef=rep.def;
         if(rdef.rank===undefined)return true;
         if(rdef.rank<=this.props.measureDisplayRank)return true;
         return false;
       });
+
+
       reportDetail =judgeInRank
+        // .filter(rep=>rep.def.quality_essential!=false)//do not show quality_essential=false result
         .map((rep, idx_) => (
-          <InspectionResultDisplay key={"i" + idx + rep.name} key={idx_} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
+          <InspectionResultDisplay key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
         )
       );
 
-
-      let finalResult = judgeInRank.reduce((res, obj) => {
-        return MEASURERSULTRESION_reducer(res, obj.detailStatus);
+      // console.log(judgeInRank);
+      let finalResult = judgeInRank.reduce((res, rep) => {
+        if(rep.def.quality_essential==false)return res;
+        return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
 
       return (
@@ -751,7 +670,7 @@ class MicroFullInspCtrl extends React.Component {
     this.ping_interval = setInterval(() => {
 
       if (this.props.uInspData.connected) {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
           { msg: { type: "PING", id: 443 } });
         this.props.ACT_Machine_PING_Sent();
       }
@@ -769,7 +688,7 @@ class MicroFullInspCtrl extends React.Component {
         this.LoaduInspSettingToMachine();
 
         setTimeout(() => {
-          this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
             { msg: { type: "get_setup", id: 4423 } });
         }, 100);//to separate messages
 
@@ -785,7 +704,7 @@ class MicroFullInspCtrl extends React.Component {
     new Promise((resolve, reject) => {
 
       log.info("LoaduInspSettingToMachine step2");
-      this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
         { filename: filePath },
         undefined, { resolve, reject }
       );
@@ -795,7 +714,7 @@ class MicroFullInspCtrl extends React.Component {
       log.info("LoaduInspSettingToMachine>> step3", pkts);
       if (pkts[0].type != "FL") return;
       let machInfo = pkts[0].data;
-      this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
         { msg: { ...machInfo, type: "set_setup", id: 356 } });
     }).catch((err) => {
 
@@ -831,7 +750,7 @@ class MicroFullInspCtrl extends React.Component {
             max={20000}
             onChange={(value) => {
               let xobj = { pulse_hz: value };
-              this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+              this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                 { msg: { ...xobj, type: "set_setup", id: 356 } });
               this.props.ACT_Machine_Info_Update(xobj);
             }}
@@ -863,7 +782,7 @@ class MicroFullInspCtrl extends React.Component {
             <Button key="ping uInsp"
               icon={<HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>}
               onClick={() => {
-                this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                   { msg: { type: "PING", id: 443 } });
                   
                 this.props.ACT_Machine_PING_Sent();
@@ -873,7 +792,7 @@ class MicroFullInspCtrl extends React.Component {
               icon={<BulbOutlined />}
                 key="L_ON"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "MISC/BACK_LIGHT/ON" } })
                 }>
                 ON
@@ -882,7 +801,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="L_OFF"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "MISC/BACK_LIGHT/OFF" } })
                 }>OFF
             </Button>
@@ -891,7 +810,7 @@ class MicroFullInspCtrl extends React.Component {
                 icon={<CameraOutlined />}
                 key="CAM"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "MISC/CAM_TRIGGER" } })
                 } /> */}
 
@@ -900,7 +819,7 @@ class MicroFullInspCtrl extends React.Component {
                 key="SaveToFile"
                 onClick={() => {
                   var enc = new TextEncoder();
-                  this.props.ACT_Report_Save(this.props.WS_ID, "data/uInspSetting.json",
+                  this.props.ACT_Report_Save_CORE("data/uInspSetting.json",
                     enc.encode(JSON.stringify(this.props.uInspMachineInfo, null, 4)));
                 }}>{this.props.DICT._.save_machine_setting}</Button>
 
@@ -920,7 +839,7 @@ class MicroFullInspCtrl extends React.Component {
                 icon={<ReloadOutlined />}
                 key="res_count_clear"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "res_count_clear" } })
                 }>{this.props.DICT._.RESET_INSPECTION_COUNTER}
             </Button>
@@ -936,7 +855,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="error_get"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "error_get" } })
                 }>
                 {this.props.DICT._.ERROR_CODES}:{this.props.error_codes}
@@ -945,7 +864,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="error_clear"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "error_clear" } })
                 }>{this.props.DICT._.ERROR_CLEAR}
             </Button>
@@ -954,7 +873,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="speed_set"
                 onClick={() => {
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     {
                       msg: {
                         pulse_hz: machineInfo.pulse_hz,
@@ -977,7 +896,7 @@ class MicroFullInspCtrl extends React.Component {
               {
                 let updatedInfo = {mode:checked?"TEST_NO_BLOW":"NORMAL"}
                 
-                this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                 { msg: { ...updatedInfo, type: "set_setup"} });
 
                 this.props.ACT_Machine_Info_Update( 
@@ -1022,7 +941,7 @@ class MicroFullInspCtrl extends React.Component {
                     }
                   });
 
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { state_pulseOffset, type: "set_setup", id: 356 } });
 
                   this.props.ACT_Machine_Info_Update({ state_pulseOffset });
@@ -1040,7 +959,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                   key="TEST_ACTION"
                   onClick={() =>
-                    this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                    this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                       { msg: { type: "test_action", sub_type: "trigger_test",
                       count:60,duration:10,backlight_extra_duration:10,post_duration:20} })
                   }>Trigger Test
@@ -1048,7 +967,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="TEST_INC"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_INC" } })
                 }>{this.props.DICT._.TEST_MODE_INC}
               </Button> 
@@ -1056,7 +975,7 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="TEST_NO_BLOW"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_NO_BLOW" } })
                 }>{this.props.DICT._.TEST_MODE_NO_BLOW}
               </Button> 
@@ -1064,14 +983,14 @@ class MicroFullInspCtrl extends React.Component {
               <Button
                 key="MODE:TEST"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "TEST_ALTER_BLOW" } })
                 }>{this.props.DICT._.TEST_MODE_ALTER_BLOW}
               </Button>
               <Button
                 key="MODE:NORMAL"
                 onClick={() =>
-                  this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                     { msg: { type: "mode_set", mode: "NORMAL" } })
                 }>{this.props.DICT._.TEST_MODE_NORMAL}
               </Button>
@@ -1080,7 +999,7 @@ class MicroFullInspCtrl extends React.Component {
                 icon={<DisconnectOutlined/>}
                 onClick={() => {
                   new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                    this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                       {},
                       undefined, { resolve, reject });
                     //setTimeout(()=>reject("Timeout"),1000)
@@ -1112,7 +1031,7 @@ class MicroFullInspCtrl extends React.Component {
             <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
               icon={<LinkOutlined/>}
               onClick={() => {
-                this.props.ACT_WS_SEND(this.props.WS_ID, "PD", 0,
+                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
                 this.props.conn_info);
               }}>{this.props.DICT.connection.connect}</Button>
         }
@@ -1129,11 +1048,11 @@ class MicroFullInspCtrl extends React.Component {
 
 const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
   return {
-    ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
+    ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_Machine_Info_Update: (machineInfo) => dispatch(UIAct.EV_WS_uInsp_Machine_Info_Update(machineInfo)),
     ACT_Machine_PING_Sent:()=>dispatch(UIAct.EV_WS_uInsp_PING_Sent()),
     ACT_Report_Save: (id, fileName, content) => {
-      let act = UIAct.EV_WS_SEND(id, "SV", 0,
+      let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
         { filename: fileName },
         content
       )
@@ -1144,8 +1063,7 @@ const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
 }
 const mapStateToProps_MicroFullInspCtrl = (state) => {
   return {
-    WS_CH: state.UIData.WS_CH,
-    WS_ID: state.UIData.WS_ID,
+    CORE_ID: state.ConnInfo.CORE_ID,
     uInspData: state.Peripheral.uInsp,
     error_codes: state.Peripheral.uInsp.error_codes,
     res_count: state.Peripheral.uInsp.res_count,
@@ -1154,11 +1072,29 @@ const mapStateToProps_MicroFullInspCtrl = (state) => {
   }
 }
 
-let MicroFullInspCtrl_rdx = connect(mapStateToProps_MicroFullInspCtrl, mapDispatchToProps_MicroFullInspCtrl)(MicroFullInspCtrl);
+
+const mergeProps_MicroFullInspCtrl= (ownProps, mapProps, dispatchProps) => {
+  // console.log(ownProps, mapProps, dispatchProps);
+  return ({
+    ...ownProps,
+    ...mapProps,
+    ...dispatchProps,
+    ACT_WS_SEND_CORE_BPG: (tl, prop, data, uintArr, promiseCBs) => 
+      mapProps.ACT_WS_SEND_BPG(ownProps.CORE_ID, tl, prop, data, uintArr, promiseCBs),
+    ACT_Report_Save_CORE: (fileName, content) =>
+      mapProps.ACT_Report_Save(ownProps.CORE_ID, fileName, content),
+
+  })
+}
+let MicroFullInspCtrl_rdx = connect(
+  mapStateToProps_MicroFullInspCtrl, 
+  mapDispatchToProps_MicroFullInspCtrl,
+  mergeProps_MicroFullInspCtrl)(MicroFullInspCtrl);
 
 
 
-function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND,WS_ID,onCanvasInit})
+
+function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND_CORE_BPG,onCanvasInit})
 {
   
   const _s = useRef({windowSize:{}});
@@ -1186,13 +1122,13 @@ function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND
         let mmpp = rep.mmpb2b / rep.ppb2b;
 
         let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 3) + 1;
+        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp ) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 15) down_samp_level = 15;
 
 
         //log.info(crop,down_samp_level);
-        ACT_WS_SEND(WS_ID, "ST", 0,
+        ACT_WS_SEND_CORE_BPG("ST", 0,
           {
             CameraSetting: {
               down_samp_level
@@ -1266,13 +1202,13 @@ class CanvasComponent extends React.Component {
         let mmpp = rep.mmpb2b / rep.ppb2b;
         // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp * 2) + 1;
+        let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp ) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
-        else if (down_samp_level > 7) down_samp_level = 7;
+        else if (down_samp_level > 10) down_samp_level = 10;
 
         // down_samp_level=1;
         //log.info(crop,down_samp_level);
-        this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {
             CameraSetting: {
               down_samp_level
@@ -1490,7 +1426,7 @@ class ControlChart extends React.Component {
           label: {
             position: "right",
             enabled: true,
-            content: annotationTar.type
+            content: val
           }
         });
       });
@@ -2008,7 +1944,7 @@ class APP_INSP_MODE extends React.Component {
       deffile.featureSet[0].matching_face=0;//By default, match two sides
       
 
-      this.props.ACT_WS_SEND(this.props.WS_ID, "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
+      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 0,
@@ -2018,29 +1954,39 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
-      this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+      this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
        }, undefined);
 
 
-      // this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+      // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       // { CameraSetting: { down_samp_w_calib:false } });
 
-      // this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
+      // this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
       //   type:"gen"
       // }
       // }, undefined);
-
-      this.props.ACT_StatSettingParam_Update({
-        keepInTrackingTime_ms: 1000,
-        historyReportlimit: 1000,
-        minReportRepeat: 2,
-        headReportSkip: 1,
-      })
+      if(INFO.FLAGS.CI_INSP_DO_NOT_STACK_REPORT)
+      {
+        this.props.ACT_StatSettingParam_Update({
+          keepInTrackingTime_ms: 0,
+          minReportRepeat: 0,
+          headReportSkip: 0,
+        })
+      }
+      else
+      {
+        this.props.ACT_StatSettingParam_Update({
+          keepInTrackingTime_ms: 1000,
+          historyReportlimit: 1000,
+          minReportRepeat: 2,
+          headReportSkip: 1,
+        })
+      }
     }
   }
 
   componentWillUnmount() {
-    this.props.ACT_WS_SEND(this.props.WS_ID, "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: false } });
+    this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: false } });
 
   }
 
@@ -2053,8 +1999,6 @@ class APP_INSP_MODE extends React.Component {
       CanvasWindowRatio: 9,
       ROIs: {},
       ROI_key: undefined,
-      DB_Conn_state: undefined,
-      inspUploadedCount: 0,
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
       isInSettingUI:false,
@@ -2065,7 +2009,7 @@ class APP_INSP_MODE extends React.Component {
     
 
     new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       { 
         InspectionParam:[{
           get_param:true
@@ -2088,7 +2032,7 @@ class APP_INSP_MODE extends React.Component {
 
     this.CameraCtrl = new CameraCtrl({
       ws_ch: (STData, promiseCBs) => {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0, STData, undefined, promiseCBs)
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, STData, undefined, promiseCBs)
       },
       ev_speedModeChange: (mode) => {
         console.log(mode);
@@ -2099,7 +2043,7 @@ class APP_INSP_MODE extends React.Component {
 
 
     new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND(this.props.WS_ID, "LD", 0,
+      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
         { filename: "data/default_camera_setting.json" },
         undefined, { resolve, reject }
       );
@@ -2168,7 +2112,7 @@ class APP_INSP_MODE extends React.Component {
         <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
 
-            this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
             { 
               INSP_NG_SNAP:true
             })
@@ -2178,7 +2122,7 @@ class APP_INSP_MODE extends React.Component {
         <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
 
-            this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
             { 
               INSP_NG_SNAP:false
             })
@@ -2191,7 +2135,7 @@ class APP_INSP_MODE extends React.Component {
 
   MatchingEnginParamSet(key,value)
   {
-    this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+    this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
               { 
                 InspectionParam:[{
                   [key]:value
@@ -2238,13 +2182,13 @@ class APP_INSP_MODE extends React.Component {
           return result;
         }, undefined);
 
-        if (ret_status == INSPECTION_STATUS.SUCCESS) {
-          this.checkResult2AirAction = { direction: "right", ver: this.checkResult2AirAction.ver + 1 };
-        } else if (ret_status == INSPECTION_STATUS.FAILURE) {
-          this.checkResult2AirAction = { direction: "left", ver: this.checkResult2AirAction.ver + 1 };
-        } else {
-          //log.error("result NA...");
-        }
+        // if (ret_status == INSPECTION_STATUS.SUCCESS) {
+        //   this.checkResult2AirAction = { direction: "right", ver: this.checkResult2AirAction.ver + 1 };
+        // } else if (ret_status == INSPECTION_STATUS.FAILURE) {
+        //   this.checkResult2AirAction = { direction: "left", ver: this.checkResult2AirAction.ver + 1 };
+        // } else {
+        //   //log.error("result NA...");
+        // }
         //
       }
     }
@@ -2254,7 +2198,7 @@ class APP_INSP_MODE extends React.Component {
     let CanvasWindowRatio = 12;
     let menuOpacity = 1;
 
-    let MenuSet_2nd = [];
+    // let MenuSet_2nd = [];
 
 
 
@@ -2279,9 +2223,11 @@ class APP_INSP_MODE extends React.Component {
         ]
       });
 
-    let shortedModelName=this.props.defModelName.length<23?
+    let maxTextLength=20;
+    let text_more="...";
+    let shortedModelName=this.props.defModelName.length<(maxTextLength+text_more.length)?
       this.props.defModelName:
-      this.props.defModelName.substring(0, 20)+"..."
+      this.props.defModelName.substring(0, maxTextLength)+text_more
     //console.log(">>>>defModelName>>>>>"+this.props.defModelName);
     MenuSet = [
 
@@ -2291,7 +2237,11 @@ class APP_INSP_MODE extends React.Component {
       
     // );
 
-    let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 1 : 10;
+    {//if the FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP is undefined it will use the default number
+    }
+    let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 
+      (INFO.FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP ||1) : 
+      10;
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
@@ -2308,7 +2258,7 @@ class APP_INSP_MODE extends React.Component {
           uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
-          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND(this.props.WS_ID, tl, prop, data, uintArr); }}
+          WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
     }
     else
@@ -2399,7 +2349,7 @@ class APP_INSP_MODE extends React.Component {
           let tag_str = curList[0].tag;
 
           let path = default_dst_Path+"/"+deffile.name+"-["+tag_str+"]-"+earliestTimeStamp;
-          this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
           { filename: path+".png",make_dir:true, type: "__STACKING_IMG__" })
 
           let reportSave = {
@@ -2408,7 +2358,7 @@ class APP_INSP_MODE extends React.Component {
             camera_param:this.props.edit_info._obj.cameraParam
           }
           var enc = new TextEncoder();
-          this.props.ACT_WS_SEND(this.props.WS_ID, "SV", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
           { filename: path+".xreps" },enc.encode(JSON.stringify(reportSave)))
         }} />);
         */
@@ -2416,32 +2366,32 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-    const menu_ = (
-      <Menu onClick={(ev) => {
-        console.log(ev);
-        let ROI = this.state.ROIs[ev.key];
-        this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
-          { CameraSetting: { ROI } })
+    // const menu_ = (
+    //   <Menu onClick={(ev) => {
+    //     console.log(ev);
+    //     let ROI = this.state.ROIs[ev.key];
+    //     this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+    //       { CameraSetting: { ROI } })
 
-        this.setState({ ROI_key: ev.key });
-      }
-      }>
-        {Object.keys(this.state.ROIs)
-          .map((ROI_key, idx) =>
-            <Menu.Item key={ROI_key}>
-              <a target="_blank" rel="noopener noreferrer">
-                {ROI_key}
-              </a>
-            </Menu.Item>)}
-      </Menu>
-    );
-    MenuSet_2nd.push(<Dropdown overlay={menu_}>
-      <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
-        {this.state.ROI_key}
-        <CaretDownOutlined />
-      </a>
-    </Dropdown>);
-
+    //     this.setState({ ROI_key: ev.key });
+    //   }
+    //   }>
+    //     {Object.keys(this.state.ROIs)
+    //       .map((ROI_key, idx) =>
+    //         <Menu.Item key={ROI_key}>
+    //           <a target="_blank" rel="noopener noreferrer">
+    //             {ROI_key}
+    //           </a>
+    //         </Menu.Item>)}
+    //   </Menu>
+    // );
+    // MenuSet_2nd.push(<Dropdown overlay={menu_}>
+    //   <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
+    //     {this.state.ROI_key}
+    //     <CaretDownOutlined />
+    //   </a>
+    // </Dropdown>);
+    // console.log(this.props.reportStatisticState);
     let headerUI = 
     <>
       
@@ -2459,13 +2409,39 @@ class APP_INSP_MODE extends React.Component {
           }}><SettingOutlined /></Tag>
       {this.state.additionalUI}
 
+
+
+
       
-      <Button type="primary" size={"large"} 
+      {/* <Button type="primary" size={"large"} 
       className={ ((this.state.DB_Conn_state == 1) ? "blackText lgreen" : "DISCONNECT_Blink")}
       icon={this.state.DB_Conn_state == 1 ? <LinkOutlined /> : <DisconnectOutlined />} >
           {(this.state.DB_Conn_state == 1 ? this.props.DICT.connection.server_connected : this.props.DICT.connection.server_disconnected)
           + " " + this.state.inspUploadedCount + ":" + this.props.reportStatisticState.historyReport.length + "/" + InspectionReportPullSkip}
-      </Button>
+      </Button> */}
+
+
+      <InspectionReportInsert2DB 
+        // newAddedReport={this.props.reportStatisticState.newAddedReport} 
+        reportStatisticState={this.props.reportStatisticState}
+        LANG_DICT={this.props.DICT}
+        // DBStatus,
+        // DBPushPromise,
+        onDBInsertSuccess={(data, info) => {
+          // log.info(data, info);
+        }}
+        onDBInsertFail={(data, info) => {
+          log.error(data, info);
+        }}
+        insert_skip={InspectionReportPullSkip}/>
+
+
+
+
+
+
+
+
 
       <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
       onChange={(ev)=>
@@ -2474,7 +2450,7 @@ class APP_INSP_MODE extends React.Component {
             this.setState({});//just to kick update
           }
         } >{
-          this.CameraCtrl.data.DoImageTransfer?"相機影像開啟":"相機影像關閉"
+          "相機影像更新"
         }</Checkbox>
       
       <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}
@@ -2486,7 +2462,7 @@ class APP_INSP_MODE extends React.Component {
 
       <Button type="primary" key="Manual ZOOM" size={"large"}
         onClick={() => {
-        this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+        this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:[0,0,99999,99999] } });
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
@@ -2506,7 +2482,7 @@ class APP_INSP_MODE extends React.Component {
             h=-h;
           }
           let ROI = [x,y,w,h];
-          this.props.ACT_WS_SEND(this.props.WS_ID, "ST", 0,
+          this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {CameraSetting: { ROI}});
 
         
@@ -2544,8 +2520,7 @@ class APP_INSP_MODE extends React.Component {
             <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
               onROISettingCallBack={this.state.onROISettingCallBack}
               measureDisplayRank={this.state.measureDisplayRank}
-              ACT_WS_SEND={this.props.ACT_WS_SEND}
-              WS_ID={this.props.WS_ID}
+              ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
               downSampleFactor={this.state.down_samp_factor}
               onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
               camera_calibration_report={this.props.camera_calibration_report} />}
@@ -2584,24 +2559,6 @@ class APP_INSP_MODE extends React.Component {
 
           </Menu> */}
         </>
-
-
-        <RAW_InspectionReportPull
-        reportStatisticState={this.props.reportStatisticState}
-        onConnectionStateUpdate={(cur, pre) => {
-          // console.log(">>>>>>>>>>",cur,pre);
-          this.setState({ DB_Conn_state: cur });
-        }}
-        onDBInsertSuccess={(data, info) => {
-          // log.info(data, info);
-          this.setState({ inspUploadedCount: this.state.inspUploadedCount + 1 });
-        }}
-
-        onDBInsertFail={(data, info) => {
-          log.error(data, info);
-        }}
-        url={this.props.machine_custom_setting.inspection_db_ws_url}
-        pull_skip={InspectionReportPullSkip} />
       
       </div>
     );
@@ -2610,12 +2567,13 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps) => {
+const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
   return {
     ACT_EXIT: (arg) => {
       dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT))
     },
-    ACT_WS_SEND: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND(id, tl, prop, data, uintArr, promiseCBs)),
+    ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => 
+      dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
     
@@ -2637,7 +2595,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     machTag: state.UIData.MachTag,
     inspOptionalTag: state.UIData.edit_info.inspOptionalTag,
     defModelPath: state.UIData.edit_info.defModelPath,
-    WS_ID: state.UIData.WS_ID,
+    CORE_ID: state.ConnInfo.CORE_ID,
+    WS_InspDataBase_W_ID: state.UIData.WS_InspDataBase_W_ID,
     inspectionReport: state.UIData.edit_info.inspReport,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
@@ -2647,8 +2606,21 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
   }
 };
 
+
+const mergeProps_APP_INSP_MODE = (ownProps, mapProps, dispatchProps) => {
+  // console.log(ownProps, mapProps, dispatchProps);
+  return ({
+    ...ownProps,
+    ...mapProps,
+    ...dispatchProps,
+    ACT_WS_SEND_CORE_BPG: (tl, prop, data, uintArr, promiseCBs) => 
+      mapProps.ACT_WS_SEND_BPG(ownProps.CORE_ID, tl, prop, data, uintArr, promiseCBs)
+  })
+}
+
 const APP_INSP_MODE_rdx = connect(
   mapStateToProps_APP_INSP_MODE,
-  mapDispatchToProps_APP_INSP_MODE)(APP_INSP_MODE);
+  mapDispatchToProps_APP_INSP_MODE,
+  mergeProps_APP_INSP_MODE)(APP_INSP_MODE);
 
 export default APP_INSP_MODE_rdx;

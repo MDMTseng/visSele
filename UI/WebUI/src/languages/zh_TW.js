@@ -93,12 +93,15 @@ export default {
         TEST_MODE_DISCONNECT:"關閉連線"
     },
     connection:{
-      server_connected:"已連結伺服器",
+      server_connected:"已連結",
       server_disconnected:"斷線!! 數據不會上傳",
       server_disconnecting:"嘗試連線中",
       connect:"連線"
     },
     measure:{
+      quality_essential:"品質必需",
+      orientation_essential:"朝向必需",
+
       value_adjust:"數值微調",
       value_adjust_b:"數值微調(背)",
       back_value_setup:"背面目標設定",

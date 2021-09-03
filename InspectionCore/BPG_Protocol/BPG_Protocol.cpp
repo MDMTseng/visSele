@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <logctrl.h>
+#include <thread>
 
 BPG_Link_Interface::BPG_Link_Interface()
 {
@@ -68,14 +69,27 @@ BPG_Protocol_Interface::BPG_Protocol_Interface()
 //st1 ok
 uint8_t *BPG_Protocol_Interface::requestSendingBuffer(size_t len)
 {
+  bufferLock.lock();
   cached_data_send.resize(getHeaderSize() + len);
   return &cached_data_send[getHeaderSize()];
+}
+bool BPG_Protocol_Interface::releaseSendingBuffer(uint8_t * buffer)
+{
+  if(&cached_data_send[getHeaderSize()]!=buffer)
+  {
+    return false;
+  }
+
+  bufferLock.unlock();
+  return true;
 }
 
 //st1 ok
 int BPG_Protocol_Interface::fromUpperLayer(BPG_protocol_data bpgdat)
 { //serialize the BPG_protocol_data as byte stream
 
+  const std::lock_guard<std::mutex> lock(linkLayerLock);
+  // std::this_thread::sleep_for(std::chrono::milliseconds(100));
   if (bpgdat.dat_raw != NULL || (bpgdat.dat_raw == NULL && bpgdat.size == 0 && bpgdat.callback == NULL)) //Normal case
   {
     cached_data_send.resize(bpgdat.size + getHeaderSize());
@@ -193,6 +207,6 @@ int BPG_Protocol_Interface::toLinkLayer(uint8_t *dat, size_t len, bool FIN,int e
   if (linkCH == NULL)
     return -1;
 
-  // LOGI("<<<<>>>>");
+  // LOGI("DAT_PTR:%p LEN:%d FIN:%d",dat,len,FIN);
   return linkCH->fromUpperLayer(dat, len, FIN,extraHeaderRoom,extraFooterRoom);
 }

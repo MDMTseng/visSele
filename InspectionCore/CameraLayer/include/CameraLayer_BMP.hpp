@@ -12,6 +12,7 @@ class CameraLayer_BMP : public CameraLayer{
     std::vector <int> gaussianNoiseTable_M;
 
     protected:
+    int cacheUseCounter;
     acvImage img_load;
     const float exp_time_100ExpUs=5000;
     float exp_time_us;

@@ -138,14 +138,18 @@ export const INSPECTION_STATUS = {
 function map_BPG_Packet2Act(parsed_packet)
 {
   let acts=[];
+  if(parsed_packet===undefined)
+  {
+    return undefined;
+  }
   switch(parsed_packet.type )
   {
     case "HR":
     {
       /*//log.info(this.props.WS_CH);
-      this.props.ACT_WS_SEND(this.props.WS_ID,"HR",0,{a:["d"]});
+      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID,"HR",0,{a:["d"]});
       
-      this.props.ACT_WS_SEND(this.props.WS_ID,"LD",0,{filename:"data/default_camera_param.json"});
+      this.props.ACT_WS_SEND_BPG(this.props.CORE_ID,"LD",0,{filename:"data/default_camera_param.json"});
       break;*/
     }
 

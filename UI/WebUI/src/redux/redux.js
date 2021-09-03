@@ -1,10 +1,11 @@
 import { applyMiddleware, combineReducers, createStore } from "redux";
 import UICtrlReducer from "REDUX_STORE_SRC/reducer/UICtrlReducer";
 import uInspReducer from "REDUX_STORE_SRC/reducer/uInspReducer";
+import ConnectionInfoReducer from "REDUX_STORE_SRC/reducer/ConnectionInfoReducer";
 import InspDataReducer from "REDUX_STORE_SRC/reducer/InspDataReducer";
 import {ActionThrottle} from "REDUX_STORE_SRC/middleware/ActionThrottle";
 import {ECStateMachine} from "REDUX_STORE_SRC/middleware/ECStateMachine";
-import {MWWebSocket} from "REDUX_STORE_SRC/middleware/MWWebSocket";
+import {MW_API} from "REDUX_STORE_SRC/middleware/MW_API";
 
 import thunk from 'redux-thunk';
 
@@ -142,13 +143,14 @@ export function ReduxStoreSetUp(presistStore){
   const reducer_C = combineReducers({
     UIData:UICtrlReducer,
     InspData:InspDataReducer,
+    ConnInfo:ConnectionInfoReducer,
     Peripheral:combineReducers({
       uInsp:uInspReducer
     })
   })
 
   const middleware = applyMiddleware(thunk,
-    new MWWebSocket({}),
+    new MW_API({}),
     new ECStateMachine({ev_state_update:"ev_state_update",state_config:ST}),
     new ActionThrottle({time:100,posEdge:true}),
     reduxCatch(errorHandler)

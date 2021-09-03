@@ -10,10 +10,12 @@ import APP_INFO from 'JSSRCROOT/info.js';
 import * as logX from 'loglevel';
 import dclone from 'clone';
 import { loadavg } from 'os';
+import JSum from 'jsum'
 
 import dateFormat from 'dateFormat';
 import semver from 'semver'
 import EC_zh_TW from 'LANG/zh_TW';
+import { TrademarkCircleOutlined } from '@ant-design/icons';
 
 let log = logX.getLogger("UICtrlReducer");
 
@@ -27,31 +29,22 @@ function Edit_info_reset(newState) {
 }
 
 
+let WS_InspDataBase_W_ID="WS_InspDataBase_W_ID";
+
+let WS_defFileDataBase_W_ID= "WS_defFileDataBase_W_ID";
 function Default_UICtrlReducer() {
   //ST = d;
   //log.info("ST...",JSON.stringify(ST));
   let defState = {
-    MENU_EXPEND: false,
-
     machine_custom_setting:{},
-    coreConnected: false,
     showSM_graph: false,
-    WS_CH: undefined,
     defConf_lock_level: 0,
     edit_info: Edit_info_Empty(),
-    version_map_info: undefined,
     WebUI_info: APP_INFO,
-    Core_Status: undefined,
-    Update_Status:undefined,
-    System_Connection_Status:undefined,
     sm: null,
     c_state: null,
     p_state: null,
     state_count: 0,
-    WS_ID: "EverCheckWS",
-
-    WS_defFileDataBase_W_ID: "WS_defFileDataBase_W_ID",
-    WS_InspDataBase_W_ID: "WS_InspDataBase_W_ID",
     
     DICT:EC_zh_TW
   }
@@ -81,48 +74,53 @@ function StateReducer(newState, action) {
     }
   }
 
-
   if (action.type === UISEV.Control_SM_Panel) {
     newState.showSM_graph = action.data;
     return newState;
   }
 
   switch (action.type) {
-    case UISEV.REMOTE_SYSTEM_READY:
-      newState.WS_CH = action.data;
-      log.info("Connected", newState.WS_CH);
-      return newState;
 
+    // case UISEV.Core_Status_Update:
+    
+    //   newState.Core_Status=action.data;
+    //   return newState;
+    case UISEV.Core_Camera_Status_Update:
 
-    case UISEV.Core_Status_Update:
-      newState.Core_Status=action.data;
+      let oldCamJsum=undefined;
+      if(newState.Core_Status!==undefined)
+      {
+        oldCamJsum=JSum.digest(newState.Core_Status.camera_info, 'SHA256', 'hex');
+      }
+      let newCamJsum=JSum.digest(action.data, 'SHA256', 'hex');
+      if(oldCamJsum==newCamJsum)
+      {
+        return undefined;//no change required
+      }
+      newState.Core_Status={...newState.Core_Status,camera_info:action.data};
       return newState;
-    case UISEV.Update_Status_Update:
-      newState.Update_Status={...newState.Update_Status,...action.data};
-      return newState;
-  
     case UISEV.Def_Model_Path_Update:
       newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
       //Edit_info_reset(newState);
       break;
 
-    case UISEV.Version_Map_Update:
-      return newState;
-
-    case UISEV.REMOTE_SYSTEM_NOT_READY:
-      newState.WS_CH = undefined;
-      return newState;
-
     case UISEV.Control_SM_Panel:
       newState.showSM_graph = action.data;
       return newState;
-  }
-  switch (newState.c_state.value) {
-    case UISTS.SPLASH:
-      newState.coreConnected = false;
-      return newState;
-  }
 
+    case "WS_CONNECTED":
+    case "WS_DISCONNECTED":
+    case "WS_ERROR":
+    {
+      // console.log(action.type,action);
+      let ws_id=action.id;
+      if(ws_id===WS_InspDataBase_W_ID)
+      {
+        newState.WS_InspDataBase_conn_info=action;//{...action.data,type:action.type};
+      }
+      return newState;
+    }
+  }
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
   let substate = stateObj.substate;
 
@@ -682,18 +680,7 @@ function StateReducer(newState, action) {
     //newState.edit_info.inherentShapeList=newState.edit_info._obj.UpdateInherentShapeList();
   }
 
-
-  switch (stateObj.state) {
-    case UISTS.SPLASH:
-      newState.coreConnected = false;
-      
-      return newState;
-    case UISTS.MAIN:
-    case UISTS.DEFCONF_MODE:
-    case UISTS.INSP_MODE:
-      {
-        newState.coreConnected = true;
-
+  do{
         //console.log(action);
         if (stateObj.state == UISTS.DEFCONF_MODE && newState.defConf_lock_level != 0 && action.IGNORE_DEFCONF_LOCK!=true) {
           let level3Filter = [DefConfAct.EVENT.DefConf_Lock_Level_Update]
@@ -797,24 +784,11 @@ function StateReducer(newState, action) {
               (action.data == null) ? null : (action.data instanceof Object) ? Object.assign({}, action.data) : action.data;
             log.info("DEFCONF_MODE_Edit_Tar_Ele_Cand_Update", newState.edit_info.edit_tar_ele_cand);
             break;
-
-          case UISEV.EC_Save_Def_Config:
-            {
-              if (newState.WS_CH == undefined) break;
-            }
-            break;
           
           case UISEV.machine_custom_setting_Update:
             {
               newState.machine_custom_setting ={...newState.machine_custom_setting ,...action.data};
               
-            }
-            break;
-
-          case UISEV.System_Connection_Status_Update:
-            {
-              newState ={...newState ,System_Connection_Status:action.data};
-              //console.log(action);
             }
             break;
 
@@ -1208,9 +1182,17 @@ function StateReducer(newState, action) {
 
 
         return newState;
-      }
-  }
+    
+  }while(false);
   return newState;
+}
+
+
+function newStateUpdate(state,action)
+{
+  let ret_state = StateReducer(state, action);
+  if(ret_state===undefined)return state;
+  return {...ret_state}
 }
 
 
@@ -1218,23 +1200,19 @@ let UICtrlReducer = (state = Default_UICtrlReducer(), action) => {
 
 
   if (action.type === undefined || action.type.includes("@@redux/")) return state;
-  let newState = Object.assign({}, state);
+  let newState = state;
 
   var d = new Date();
 
   if (action.type === "ATBundle") {
-    newState = action.data.reduce((state, action) => {
+    return action.data.reduce((_state, action) => {
       action.date = d;
-      return StateReducer(state, action);
+      return newStateUpdate(_state,action);
     }, newState);
-
-    return newState;
   }
   else {
     action.date = d;
-    newState = StateReducer(newState, action);
-    log.debug(newState);
-    return newState;
+    return newStateUpdate(newState,action);;
   }
 
   return newState;

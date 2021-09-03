@@ -153,6 +153,9 @@ typedef struct FeatureReport_judgeDef{
   float USL_b,LSL_b;
   float UCL_b,LCL_b;
   
+  bool quality_essential;
+  bool orientation_essential;
+  
   struct data{
     struct ANGLE{
       int quadrant;

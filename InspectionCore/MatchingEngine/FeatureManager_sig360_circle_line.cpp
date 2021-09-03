@@ -1384,7 +1384,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
 
         float rMIN,rMAX,rRMSE;
         roughness(def.tmp_pt,5,&rMIN,&rMAX,&rRMSE);
-        LOGI("roughness: rMIN:%f,rMAX:%f,rRMSE:%f", rMIN,rMAX,rRMSE);
+        // LOGI("roughness: rMIN:%f,rMAX:%f,rRMSE:%f", rMIN,rMAX,rRMSE);
       }
       
       float accC = 0;
@@ -1651,6 +1651,25 @@ int FeatureManager_sig360_circle_line::parse_lineData(cJSON *line_obj)
   return 0;
 }
 
+
+
+
+void sign360_process( vector<acv_XY>&target, vector<acv_XY>&buffer)
+{
+  #define SIG_SOFT_SIZE 5
+  SignatureSoften(target,SIG_SOFT_SIZE);
+  // SignatureSoften(target,buffer,10);
+  // for(int i=0;i<target.size();i++)
+  // {
+  //   float diff =1*buffer[i].X;
+  //   LOGI("DIFF:%f-%f=%f ",target[i].X,diff,target[i].X-diff);
+  //   target[i].X-=diff;
+  // }
+}
+
+
+
+
 int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 {
 
@@ -1665,8 +1684,8 @@ int FeatureManager_sig360_circle_line::parse_sign360(cJSON *signature_obj)
 
   feature_signature.RELOAD(signature);
   
-  
-  SignatureSoften(feature_signature.signature_data,signature_data_buffer,10);
+  sign360_process( feature_signature.signature_data,signature_data_buffer );
+  // signature_data_buffer
 
   return 0;
 }
@@ -1681,6 +1700,40 @@ int FeatureManager_sig360_circle_line::parse_judgeData(cJSON *judge_obj)
   strcpy(judge.name, tmpstr);
 
   judge.id = (int)*JFetEx_NUMBER(judge_obj, "id");
+
+
+  judge.orientation_essential=false;//false by default
+  {
+
+    int vType = getDataFromJson(judge_obj, "orientation_essential", NULL);
+    if(vType==cJSON_True)
+    {
+      judge.orientation_essential=true;
+    }
+    else if(vType==cJSON_False)
+    {
+      judge.orientation_essential=false;
+    }
+
+  }
+
+  
+  judge.quality_essential=true;//true by default
+  {
+
+    int vType = getDataFromJson(judge_obj, "quality_essential", NULL);
+    if(vType==cJSON_True)
+    {
+      judge.quality_essential=true;
+    }
+    else if(vType==cJSON_False)
+    {
+      judge.quality_essential=false;
+    }
+
+  }
+
+  
 
   char *subtype = JFetEx_STRING(judge_obj, "subtype");
 
@@ -2336,11 +2389,11 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         for(int tk=0;tk<m_sections.size();tk++)
         {
           float factor=m_sections[tk].dist;
-          if(factor<0)factor=-factor/3;
-          factor+=(m_sections[tk].sigma/100);
-          // if(factor<0)factor=0;//-factor/3;
-          // factor+=(m_sections[tk].sigma/10+1);
-          // LOGI("[%d]   dist:%f sigma:%f factor:%f",tk,m_sections[tk].dist,m_sections[tk].sigma,factor);
+          // if(flip_f<0)factor*=-1;
+          // factor+=(m_sections[tk].sigma/100);
+
+          // LOGI("Sec,%f   f:%f",m_sections[tk].dist,factor);
+          
           if(minFactor>factor)
           {
             minFactor=factor;
@@ -2352,14 +2405,9 @@ FeatureReport_lineReport SingleMatching_line(acvImage *originalImage,
         {
 
           float factor=m_sections[tk].dist;
-          if(factor<0)factor=-factor/3;
-          factor+=(m_sections[tk].sigma/100);
+          // if(flip_f<0)factor*=-1;
           
-          // 
-          // factor+=(m_sections[tk].sigma/10+1);
-          // LOGI("distSum:%f dist_sigma:%f",distSum,dist_sigma);
-          // LOGI("minFactor:%f factor:%f",minFactor,factor);
-          if(minFactor+2<factor)
+          if(minFactor<factor)//only use the min one
           {
             m_sections[tk].section.clear();
           }
@@ -3033,6 +3081,110 @@ acv_XY ConstrainMap::convert_vec(acv_XY from)
   return acvVecAdd(vecSum,from);
 }
 
+inline int valueWarping(int v,int ringSize)
+{
+  v%=ringSize;
+  return (v<0)?v+ringSize:v;
+}
+void matchingErrorMin_Refine(vector<acv_XY> &sigMatchErr,vector<acv_XY> &minMatchErr)
+{
+  minMatchErr.resize(0);
+  for(int i=0;i<sigMatchErr.size();i++)
+  {
+    acv_XY pre=sigMatchErr[valueWarping(i-1,sigMatchErr.size())];
+    
+    acv_XY cur=sigMatchErr[i];
+    
+    acv_XY post=sigMatchErr[valueWarping(i+1,sigMatchErr.size())];
+
+
+    if(pre.Y>cur.Y && post.Y>cur.Y)
+    {
+      minMatchErr.push_back(sigMatchErr[i]);
+    }
+    
+  }
+}
+
+
+
+    
+
+void minSegRefine(ContourSignature &tar,ContourSignature &src,float ScanW,int ScanCount,vector<acv_XY> &minMatchErr, bool flip,int fineStride=1)
+{
+  vector<acv_XY> sigMatchErr(tar.signature_data.size());
+  for(int i=0;i<minMatchErr.size();i++)
+  {
+    acv_XY cAng = minMatchErr[i];
+
+    tar.match_span(src,cAng.X-ScanW,cAng.X+ScanW,ScanCount,sigMatchErr,fineStride,flip);
+
+    acv_XY minErr=sigMatchErr[0];
+    for(int j=1;j<sigMatchErr.size();j++)
+    {
+      if(minErr.Y>sigMatchErr[j].Y)
+      {
+        minErr=sigMatchErr[j];
+      }
+    }
+    minMatchErr[i]=minErr;
+  }
+
+}
+
+
+void xrefine(ContourSignature &tar,ContourSignature &src,float roughScanCount,vector<acv_XY> &minMatchErr, bool flip,int roughStride=3,int fineStride=1, float tarPrecision=1)
+{
+
+  vector<acv_XY> sigMatchErr(360);
+  tar.match_span(src,0,360,roughScanCount,sigMatchErr,roughStride,flip);
+  
+  // for(int i=0;i<sigMatchErr.size();i++)
+  // {
+  //   LOGI("%f,%f",sigMatchErr[i].X,sigMatchErr[i].Y);
+  // }
+
+  matchingErrorMin_Refine(sigMatchErr,minMatchErr);
+
+  // for(int i=0;i<minMatchErr.size();i++)
+  // {
+  //   LOGI("%f>%f",minMatchErr[i].X,minMatchErr[i].Y);
+  // }
+
+  float ScanW=1.5*360/roughScanCount;
+  float ScanCount=3;
+  for(int i=0;;i++)
+  {
+    int doScanCount=ScanCount*2;
+
+    float prec=2.0*ScanW/doScanCount;
+    minSegRefine(tar,src,ScanW,doScanCount,minMatchErr, flip,fineStride);//over scan
+
+    // LOGI("ScanW:%f,ScanCount:%f,prec:%f",ScanW,ScanCount,prec);
+    if(prec<tarPrecision)
+    {
+      break;
+    }
+    ScanW/=ScanCount;//shrink the scan width-> improve precision
+  }
+  
+
+  // for(int i=0;i<tar.signature_data.size();i++)
+  // {
+  //   LOGI("[%d]:%f  %f",i,tar.signature_data[i].Y*180/M_PI,src.signature_data[i].Y*180/M_PI);
+  // }
+
+  // LOGI("tarAO:%f,srcAO:%f",tar.angleOffset*180/M_PI,src.angleOffset*180/M_PI);
+  
+  // for(int i=0;i<minMatchErr.size();i++)
+  // {
+  //   LOGI("-%f>%f",minMatchErr[i].X,minMatchErr[i].Y);
+  // }
+
+}
+
+
+
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
@@ -3043,123 +3195,131 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   drawDraw=false;
 
 
-  bool isInv;
-  float angle;
-  bool confined_matching=true;
-  float error; 
 
-  error = feature_signature.match_min_error(
-    tmp_signature,this->matching_angle_offset, this->matching_angle_margin, 
-    this->matching_face,&isInv, &angle);
+    vector<FeatureReport_circleReport> &detectedCircles = *singleReport.detectedCircles;
+    vector<FeatureReport_lineReport> &detectedLines = *singleReport.detectedLines;
+
+    vector<FeatureReport_auxPointReport> &detectedAuxPoints = *singleReport.detectedAuxPoints;
+    vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
+    vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
 
-  if(0) 
+    // acvDrawCrossX(originalImage,
+    //   calibCen.X, calibCen.Y,
+    //   3, 3);
+
+    bool drawDBG_IMG=false;
+    float thres = 80;//OTSU_Threshold(*smoothedImg, &ldData[i], 3);
+    //LOGV("OTSU_Threshold:%f", thres);
+    
+    contourGridGrayLevelRefine(originalImage,edge_grid,bacpac);
+
+
+    edgeTracking eT(originalImage,bacpac);
+
+
+  bool isInv=false;
+  float angle=NAN;
+  vector<acv_XY> minMatchErr;
+  vector<acv_XY> minMatchErr_bk;
   {  
-    vector<acv_XY> sigMatchErr;
-    feature_signature.match_span(tmp_signature,
-      0,359,360,sigMatchErr,tmp_signature.signature_data.size()/100,true);
+
+    int scanWidth=10;
+    int sparseScanLen=360/scanWidth;
+
+    if(matching_face>=0)//front
+      xrefine(feature_signature,tmp_signature,36/3,minMatchErr, false,10,5,0.5);
   
-    int minErrIdx = -1;
-    float minErr=999;
+    if(matching_face<=0)//back
+      xrefine(feature_signature,tmp_signature,36/3,minMatchErr_bk, true,10,5,0.5);
     
 
-    for(int i=0;i<sigMatchErr.size();i++)
+
+    for(int i=0;i<minMatchErr.size();i++)
     {
-      if(minErr>sigMatchErr[i].Y)
-      {
-        minErr=sigMatchErr[i].Y;
-        minErrIdx=i;
+      LOGI(". %f>%f",minMatchErr[i].X,minMatchErr[i].Y);
+      // minMatchErr[i].Y+=0.005723;
       }
-    }
-    const int polyFitLen=360/5;
-    float errorArr[polyFitLen];
 
-    int zeroIdx=minErrIdx-polyFitLen/2;
-    if(zeroIdx<0)zeroIdx+=sigMatchErr.size();
-
-    for(int i=0;i<polyFitLen;i++)
+    for(int i=0;i<minMatchErr_bk.size();i++)
     {
-      errorArr[i]=sigMatchErr[(i+zeroIdx)%(sigMatchErr.size())].Y;
-      // LOGI("errorArr[%d]:%f",i,errorArr[i]);
+      LOGI("~%f>%f",minMatchErr_bk[i].X,minMatchErr_bk[i].Y);
+      // minMatchErr_bk[i].Y*=0.1;
+    }
     }
 
+  float error=NAN; 
 
-    // for(int i=0;i<sigMatchErr.size();i++)
+  float ignoreErr=100000;
+  // if(minMatchErr.size()>=1)
     // {
-    //   LOGI("[%d]:ang:%03.2f,diff:%03.2f",i,sigMatchErr[i].X,sigMatchErr[i].Y);
+  //   minMatchErr[0].Y=ignoreErr;
     // }
-
-
-
-    float coefficients[4];
-    int polyRet = polyfit(NULL,errorArr,NULL,polyFitLen,3,coefficients);
+  int defaultRetryCountDown=5;
+  int retryCountDown=defaultRetryCountDown;//max retry
+  while(true){
     
-    LOGI("coefficients  %f + %fx + %fx^2 + %fx^3 ",coefficients[0],coefficients[1],coefficients[2],coefficients[3]);
-    
-    for(int i=0;i<polyFitLen;i++)
+    if(retryCountDown==0)
     {
-      double cc = polycalc(i, coefficients,4);
-      LOGI("errorArr[%d]:%f  ~~%f   diff:%f",i,errorArr[i],cc,errorArr[i]-cc);
-    }
-    float d_coefficients[3];
-
-    for(int i=0;i<3;i++)
-    {
-      d_coefficients[i]=coefficients[i+1]*(i+1);
-    }
-    float r0,r1;
-    
-
-
-
-    int rootType = quadratic_roots(d_coefficients[2],d_coefficients[1],d_coefficients[0],&r0,&r1);
-
-    float avRoot=NAN;
-    if(r0<polyFitLen && r0>=0)
-    {
-      avRoot=r0;
-    }
-    if(r1<polyFitLen && r1>=0)
-    {
-      avRoot=r1;
-    }
-
-    double cc = polycalc(avRoot, coefficients,4);
-    avRoot+=zeroIdx;
-
-
-    if(rootType==0)
-    {
-      
-      LOGI("ROOTS: %f   %f avRoot:%f calcVal:%f zeroIdx:%d  minErrIdx:%d",r0,r1, avRoot,cc,zeroIdx,minErrIdx);
-    } 
-    else
-    {
-      LOGI("ROOTS: %f+%f i   %f-%f i  ",r0,r1,r0,r1);
-    }
-    
-
-  }
-
-
-
-  if(confined_matching)
-  {//this is acheived by limiting the matching range
-    error = feature_signature.match_min_error(
-      tmp_signature,this->matching_angle_offset, this->matching_angle_margin, this->matching_face,
-                                      &isInv, &angle);
-  }
-  else
-  {//this will do full range matching then, see if the best matching out side the range
-    error = feature_signature.match_min_error(tmp_signature,0, 180, 0,&isInv, &angle);
-
-    if(this->matching_face!=0 && !((isInv>0)^(this->matching_face>0))  )
-    {
+      LOGI("Retry count down(%d times) reached... giveup",defaultRetryCountDown);
+      //No min orientation was found
       return -1;
     }
 
-    //TODO: angle filter rule..
+    {
+      int targetIdx=-1;
+      acv_XY minErr={NAN,NAN};
+      minErr.Y=ignoreErr;
+
+
+      for(int i=0;i<minMatchErr.size();i++)
+      {
+        if(minErr.Y>minMatchErr[i].Y)
+        {
+          minErr=minMatchErr[i];
+          isInv=false;
+          targetIdx=i;
+        }
+      }
+
+      for(int i=0;i<minMatchErr_bk.size();i++)
+    {
+        if(minErr.Y>minMatchErr_bk[i].Y)
+        {
+          minErr=minMatchErr_bk[i];
+          isInv=true;
+          targetIdx=i;
+    }
+      }
+      if(targetIdx==-1)
+    {
+        LOGI("NO good angle was found!!");
+        //No min orientation was found
+        return -1;
+    }
+      if(isInv==false)//mark deletion
+    {
+        minMatchErr[targetIdx].Y=ignoreErr;
+    } 
+    else
+    {
+        minMatchErr_bk[targetIdx].Y=ignoreErr;
+    }
+    
+
+
+      angle=minErr.X*M_PI/180;
+      error = minErr.Y;
   }
+    retryCountDown--;
+
+
+    detectedCircles.resize(0);
+    detectedLines.resize(0);
+    detectedAuxPoints.resize(0);
+    detectedSearchPoints.resize(0);
+    judgeReports.resize(0);
+
 
   error = sqrt(error);
   //if(i<10)
@@ -3214,32 +3374,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     float cached_cos = cos(angle);
     float cached_sin = sin(angle);
   
-    vector<FeatureReport_circleReport> &detectedCircles = *singleReport.detectedCircles;
-    vector<FeatureReport_lineReport> &detectedLines = *singleReport.detectedLines;
-
-    vector<FeatureReport_auxPointReport> &detectedAuxPoints = *singleReport.detectedAuxPoints;
-    vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
-    vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
-
-  
-    // acvDrawCrossX(originalImage,
-    //   calibCen.X, calibCen.Y,
-    //   3, 3);
-    detectedCircles.resize(0);
-    detectedLines.resize(0);
-    detectedAuxPoints.resize(0);
-    detectedSearchPoints.resize(0);
-    judgeReports.resize(0);
-    bool drawDBG_IMG=false;
-    float thres = 80;//OTSU_Threshold(*smoothedImg, &ldData[i], 3);
-    //LOGV("OTSU_Threshold:%f", thres);
-    
-    contourGridGrayLevelRefine(originalImage,edge_grid,bacpac);
-
     LOGI("calibCen: %f %f", calibCen.X, calibCen.Y);
-
-    edgeTracking eT(originalImage,bacpac);
-
     for (int j = 0; j < featureLineList.size(); j++)
     {
       
@@ -3787,7 +3922,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       detectedAuxPoints.push_back(report);
     }
 
-    if (1)
+    
     {
       //Convert report to mm based unit
       for (int j = 0; j < detectedLines.size(); j++)
@@ -3823,13 +3958,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         detectedAuxPoints[j].pt =
             acvVecMult(detectedAuxPoints[j].pt, mmpp);
       }
+    }
 
       {
 
         for (int j = 0; j < judgeList.size(); j++)
         {
           FeatureReport_judgeDef judge = judgeList[j];
-
           FeatureReport_judgeReport report = measure_process(singleReport, cached_sin, cached_cos, flip_f, judge);
           report.def = &(judgeList[j]);
           judgeReports.push_back(report);
@@ -3838,7 +3973,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         //Since the CALC might bring unset result, we need to try to clean up the unset state
         //(exp:[CALC1 CALC2 CALC3] and CALC1 might wanna use CALC3 value,
         //but in execution order the execution of CALC3 will happend after CALC1's ececution)
-
+      //This is for CALC for now;
         while (true)
         {
           int unsetResolveCount = 0;
@@ -3861,15 +3996,41 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
             break;
         }
 
+      bool redo=false;
+      for (int j = 0; j < judgeList.size(); j++)
+      {
+        FeatureReport_judgeDef judge = judgeList[j];
+        if(judge.orientation_essential!=true)continue;
+        FeatureReport_judgeReport pre_report = judgeReports[j];
+        if(pre_report.status!=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+        {
+          
+          LOGI("NAME:%s",judge.name);
+          redo=true;
+          break;
+        }
+      }
+      if(redo)
+      {
+        LOGI(">>>>>REDO  REDO>>>>");
+        LOGI(">>>>>REDO  REDO>>>>");
+        LOGI(">>>>>REDO  REDO>>>>");
+        LOGI(">>>>>REDO  REDO>>>>");
+        LOGI(">>>>>REDO  REDO>>>>");
+        continue;
+      }
+
         // for(int j=0;j<judgeList.size();j++)
         // {
         //   FeatureReport_judgeReport pre_report= judgeReports[j];
         //   LOGE("[%d].st=%d",j,pre_report.status);
         // }
-      }
     }
     
+
+    break;
     
+  }
     
 
     // acv_XY ttt = acvRotation(cached_sin, cached_cos, flip_f, (acv_XY){100,0});
@@ -4012,7 +4173,18 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     }
     tmp_signature.CalcInfo();
 
-    SignatureSoften(tmp_signature.signature_data,signature_data_buffer,10);
+    {//early intercept just to check mean and sigma
+      float meanRatio=tmp_signature.mean/feature_signature.mean;
+      if(meanRatio>1)meanRatio=1/meanRatio;
+      float sigmaRatio=tmp_signature.sigma/feature_signature.sigma;
+      if(sigmaRatio>1)sigmaRatio=1/sigmaRatio;
+
+      float stage1Sim=meanRatio*sigmaRatio;
+      LOGI("mR:%f  sR:%f stage1Sim:%f",meanRatio,sigmaRatio,stage1Sim);
+      if(meanRatio<0.8||stage1Sim<0.5)continue;
+    }
+
+    sign360_process(tmp_signature.signature_data,signature_data_buffer);
 
     // LOGI(">>feature_signature");
     // for(int i=0;i<feature_signature.size();i++)
@@ -4097,16 +4269,29 @@ int ContourSignature::CalcInfo()
   if(signature_data.size()==0)return -1;
   float _mean=0;
   float _sigma=0;
+
+  float _Angleoffset=0;
   for (int i = 0; i < signature_data.size(); i++)
   {
     float x=signature_data[i].X;
     _mean += x;
     _sigma +=x*x;
+
+    float angleCenter=i*2*M_PI/signature_data.size();
+    float angleDiff=signature_data[i].Y-angleCenter;
+
+    
+    if(angleDiff>M_PI)angleDiff-=2*M_PI;
+    else if(angleDiff<-M_PI)angleDiff+=2*M_PI;
+    // LOGI("center:%f,angleDiff:%f",angleCenter,angleDiff);
+    _Angleoffset+=angleDiff;
   }
+
+  _Angleoffset/=signature_data.size();
   _mean /= signature_data.size();
   _sigma /= signature_data.size();
   _sigma = sqrt(_sigma-_mean*_mean);
-  
+  angleOffset=_Angleoffset;
   mean=_mean;
   sigma=_sigma;
   return 0;
@@ -4184,8 +4369,8 @@ void ContourSignature::match_span(ContourSignature &s,
   error.resize(0);
   for(int i=0;i<count;i++)
   {
-    float offset=offset1+(offset2-offset1)*i/(count-1);
-    float err = SignatureMatchingError(&(s.signature_data[0]), offset,&(signature_data[0]), signature_data.size(), stride,flip);
+    float offset=offset1+(offset2-offset1)*i/(count);
+    float err = SignatureMatchingError(&(signature_data[0]), offset,&(s.signature_data[0]), signature_data.size(), stride,flip);
     error.push_back((acv_XY){X:offset,Y:err});
   }
   
