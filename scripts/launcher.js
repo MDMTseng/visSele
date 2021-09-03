@@ -98,8 +98,8 @@ exports.setup = function (pak) {
 
     initWSTunnel();
 
-    // mainWindow.loadFile(APP_INFO.APPContentPath + "/WebUI/index.html")
-    mainWindow.loadURL("http://localhost:8080/")
+    mainWindow.loadFile(APP_INFO.APPContentPath + "/WebUI/index.html")
+    // mainWindow.loadURL("http://localhost:8080/")
     // mainWindow.webContents.openDevTools()
 
 
