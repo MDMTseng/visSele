@@ -379,7 +379,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   function recentQuery()
   {
     var cur_ms = new Date().getTime();
-    fetchDeffileInfo_in_insp_time_range(cur_ms-7*24*60*60*1000,cur_ms+1000000).
+    fetchDeffileInfo_in_insp_time_range(cur_ms-17*24*60*60*1000,cur_ms+1000000).
     then((res)=>{
 
       setFetchedRecord(res);

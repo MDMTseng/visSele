@@ -12,6 +12,7 @@ import ReactResizeDetector from 'react-resize-detector';
 import INFO from './info.js';
 import { TagOptions_rdx } from './component/rdxComponent.jsx';
 import dclone from 'clone';
+import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
@@ -376,21 +377,41 @@ class InspectionResultDisplay extends React.Component {
 
   render() {
     let rep = this.props.singleInspection;
+    let quality_essential = GetObjElement(rep,["def","quality_essential"]);
+
+
+    let COLOR=OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR;
+    if(quality_essential==false)
+      COLOR = Color(COLOR).desaturate(0.6).darken(0.5);
+
+    let height=70;
+    
+    let fontStyle={fontSize:25};
+
+    if(quality_essential==false)
+    {
+      height=70;
+      fontStyle={
+        fontSize:25,
+        // textDecoration: "line-through"
+        color:"#999"
+      }
+    }
     //console.log(rep);
-    return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height: 70 }}>
+    return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height:height}}>
       <div className="s width8  HXF">
         <div className="s vbox height4">
           <FullscreenOutlined onClick={this.clickFullScreen.bind(this)} />
           {rep.name}
         </div>
-        <div className="s vbox  height8" style={{ 'fontSize': 25 }}>
+        <div className="s vbox  height8" style={fontStyle}>
           {this.showResultValueCheck(rep) + DEFAULT_UNIT[rep.subtype]}
 
         </div>
       </div>
       <div className="s vbox width4 HXF">
         <Tag style={{ 'fontSize': 18 }}
-          color={OK_NG_BOX_COLOR_TEXT[rep.detailStatus].COLOR}>
+          color={COLOR}>
           {OK_NG_BOX_COLOR_TEXT[rep.detailStatus].TEXT}
         </Tag>
       </div>
@@ -564,22 +585,29 @@ class ObjInfoList extends React.Component {
           filter(rep => rep !== undefined);
       }
 
+
+
       let judgeInRank = judgeReports
+      .map(rep=>({...rep,def:this.props.shape_def.find(def=>def.id==rep.id)}))
       .filter(rep=>{
-        let rdef=this.props.shape_def.find(def=>def.id==rep.id);
+        let rdef=rep.def;
         if(rdef.rank===undefined)return true;
         if(rdef.rank<=this.props.measureDisplayRank)return true;
         return false;
       });
+
+
       reportDetail =judgeInRank
+        // .filter(rep=>rep.def.quality_essential!=false)//do not show quality_essential=false result
         .map((rep, idx_) => (
-          <InspectionResultDisplay key={"i" + idx + rep.name} key={idx_} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
+          <InspectionResultDisplay key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
         )
       );
 
-
-      let finalResult = judgeInRank.reduce((res, obj) => {
-        return MEASURERSULTRESION_reducer(res, obj.detailStatus);
+      // console.log(judgeInRank);
+      let finalResult = judgeInRank.reduce((res, rep) => {
+        if(rep.def.quality_essential==false)return res;
+        return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
 
       return (
@@ -2154,13 +2182,13 @@ class APP_INSP_MODE extends React.Component {
           return result;
         }, undefined);
 
-        if (ret_status == INSPECTION_STATUS.SUCCESS) {
-          this.checkResult2AirAction = { direction: "right", ver: this.checkResult2AirAction.ver + 1 };
-        } else if (ret_status == INSPECTION_STATUS.FAILURE) {
-          this.checkResult2AirAction = { direction: "left", ver: this.checkResult2AirAction.ver + 1 };
-        } else {
-          //log.error("result NA...");
-        }
+        // if (ret_status == INSPECTION_STATUS.SUCCESS) {
+        //   this.checkResult2AirAction = { direction: "right", ver: this.checkResult2AirAction.ver + 1 };
+        // } else if (ret_status == INSPECTION_STATUS.FAILURE) {
+        //   this.checkResult2AirAction = { direction: "left", ver: this.checkResult2AirAction.ver + 1 };
+        // } else {
+        //   //log.error("result NA...");
+        // }
         //
       }
     }
