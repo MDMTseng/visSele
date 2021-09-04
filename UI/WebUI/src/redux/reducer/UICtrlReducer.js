@@ -478,50 +478,91 @@ function StateReducer(newState, action) {
 
                         closeRep.detectedLines.forEach((clrep) => {
 
-                          if (clrep.status == INSPECTION_STATUS.NA) return;
                           let id = clrep.id;
                           let slrep = singleReport.detectedLines.find((slrep) => slrep.id == id);
-                          if (slrep === undefined || slrep.status == INSPECTION_STATUS.NA) {
-                            clrep.status = INSPECTION_STATUS.NA;
-                            return;
-                          }
+                          if (clrep.status == INSPECTION_STATUS.NA && slrep.status == INSPECTION_STATUS.NA) return;
+                          
 
-                          clrep.cx = valueAveIn(clrep.cx, slrep.cx, closeRep.repeatTime);
-                          clrep.cy = valueAveIn(clrep.cy, slrep.cy, closeRep.repeatTime);
-                          clrep.vx = valueAveIn(clrep.vx, slrep.vx, closeRep.repeatTime);
-                          clrep.vy = valueAveIn(clrep.vy, slrep.vy, closeRep.repeatTime);
+                          if (slrep.status == INSPECTION_STATUS.NA) {//new report is NA
+                            //don't do anything
+                          }
+                          else if(clrep.status == INSPECTION_STATUS.NA)//reports in history is NA 
+                          {
+                            
+                            clrep.cx = slrep.cx;
+                            clrep.cy = slrep.cy;
+                            clrep.vx = slrep.vx;
+                            clrep.vy = slrep.vy;
+                          }
+                          else
+                          {
+
+                            clrep.cx = valueAveIn(clrep.cx, slrep.cx, closeRep.repeatTime);
+                            clrep.cy = valueAveIn(clrep.cy, slrep.cy, closeRep.repeatTime);
+                            clrep.vx = valueAveIn(clrep.vx, slrep.vx, closeRep.repeatTime);
+                            clrep.vy = valueAveIn(clrep.vy, slrep.vy, closeRep.repeatTime);
+
+                          }
                         });
 
 
                         closeRep.detectedCircles.forEach((ccrep) => {
-                          if (ccrep.status == INSPECTION_STATUS.NA) return;
                           let id = ccrep.id;
                           let screp = singleReport.detectedCircles.find((screp) => screp.id == id);
-                          if (screp === undefined || screp.status == INSPECTION_STATUS.NA) {
-                            ccrep.status = INSPECTION_STATUS.NA;
-                            return;
+
+                          if (ccrep.status == INSPECTION_STATUS.NA && screp.status == INSPECTION_STATUS.NA) return;
+                          
+
+
+                          if (screp.status == INSPECTION_STATUS.NA) {//new report is NA
+                            //don't do anything
                           }
-                          //TODO: average the arc info
-                          //the arc info uses three points
-                          ccrep.x = valueAveIn(ccrep.x, screp.x, closeRep.repeatTime);
-                          ccrep.y = valueAveIn(ccrep.y, screp.y, closeRep.repeatTime);
-                          ccrep.r = valueAveIn(ccrep.r, screp.r, closeRep.repeatTime);
-                          ccrep.s = valueAveIn(ccrep.s, screp.s, closeRep.repeatTime);
+                          else if(ccrep.status == INSPECTION_STATUS.NA)//reports in history is NA 
+                          {
+                            
+                            ccrep.x = screp.x
+                            ccrep.y = screp.y
+                            ccrep.r = screp.r
+                            ccrep.s = screp.s
+                          }
+                          else
+                          {
+
+                            ccrep.x = valueAveIn(ccrep.x, screp.x, closeRep.repeatTime);
+                            ccrep.y = valueAveIn(ccrep.y, screp.y, closeRep.repeatTime);
+                            ccrep.r = valueAveIn(ccrep.r, screp.r, closeRep.repeatTime);
+                            ccrep.s = valueAveIn(ccrep.s, screp.s, closeRep.repeatTime);
+                          }
+
+
+
                         });
 
 
                         closeRep.searchPoints.forEach((ccrep) => {
-                          if (ccrep.status == INSPECTION_STATUS.NA) return;
                           let id = ccrep.id;
                           let screp = singleReport.searchPoints.find((screp) => screp.id == id);
-                          if (screp === undefined || screp.status == INSPECTION_STATUS.NA) {
-                            ccrep.status = INSPECTION_STATUS.NA;
-                            return;
+                          
+                          if (ccrep.status == INSPECTION_STATUS.NA && screp.status == INSPECTION_STATUS.NA) return;
+                          
+
+                          
+                          if (screp.status == INSPECTION_STATUS.NA) {//new report is NA
+                            //don't do anything
                           }
-                          //TODO: average the arc info
-                          //the arc info uses three points
-                          ccrep.x = valueAveIn(ccrep.x, screp.x, closeRep.repeatTime);
-                          ccrep.y = valueAveIn(ccrep.y, screp.y, closeRep.repeatTime);
+                          else if(ccrep.status == INSPECTION_STATUS.NA)//reports in history is NA 
+                          {
+                            
+                            ccrep.x = screp.x
+                            ccrep.y = screp.y
+                          }
+                          else
+                          {
+
+                            ccrep.x = valueAveIn(ccrep.x, screp.x, closeRep.repeatTime);
+                            ccrep.y = valueAveIn(ccrep.y, screp.y, closeRep.repeatTime);
+                          }
+
                         });
 
 

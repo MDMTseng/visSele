@@ -1,0 +1,6 @@
+{
+  "type":"stage_light_report",
+  "grid_size":[5,5],
+  "nonBG_thres":20,
+  "nonBG_spread_thres":180
+}

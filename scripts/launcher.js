@@ -38,7 +38,7 @@ exports.update={
 
 
 exports.setup = function (pak) {
-  console.log(pak);
+  // console.log(pak);
   let { WebSocket, mongoose, express } = pak;
   // // This method will be called when Electron has finished
   // // initialization and is ready to create browser windows.
@@ -84,6 +84,7 @@ exports.setup = function (pak) {
   }
 
   function init(pak) {
+    console.log("Launcher INIT!!!");
     let { APP_INFO_FILE_PATH,mainWindow } = pak;
     // {electron,APP_INFO_FILE_PATH,WebSocket}
 
@@ -97,8 +98,8 @@ exports.setup = function (pak) {
 
     initWSTunnel();
 
-    // mainWindow.loadFile(APP_INFO.APPContentPath + "/WebUI/index.html")
-    mainWindow.loadURL("http://0.0.0.0:8080/")
+    mainWindow.loadFile(APP_INFO.APPContentPath + "/WebUI/index.html")
+    // mainWindow.loadURL("http://localhost:8080/")
     // mainWindow.webContents.openDevTools()
 
 
@@ -107,24 +108,34 @@ exports.setup = function (pak) {
 
     var spawnX=undefined;
     if (process.platform === "win32") {
-      // spawnX = spawn('./visSele.exe', [],{
-      //   cwd: "./res/Core/win32/",
-      //   env: process.env,
-      //   stdio: 'inherit'});   
+      spawnX = spawn('./visSele', ["chdir=" + APP_INFO.APPDataDirPath], {
+        cwd: APP_INFO.APPContentPath + "/Core",
+        env: process.env,
+        // stdio: 'inherit'
+        stdio: [
+          'inherit', // StdIn.
+          'pipe',    // StdOut.
+          'pipe',    // StdErr.
+        ]
+      }); 
     }
     else //if(process.platform === "darwin  ")
     {
       spawnX = spawn('./visSele', ["chdir=" + APP_INFO.APPDataDirPath], {
         cwd: APP_INFO.APPContentPath + "/Core",
         env: process.env,
-        stdio: 'inherit'
+        stdio: 'inherit',
+        shell: true
       });
     }
 
     mainWindow.on('closed', () => {
+      console.log("MAIN WINDOW LOSED");
       if(spawnX!==undefined)
       {
         spawnX.kill('SIGINT');
+        spawn("taskkill", ["/pid", spawnX.pid, '/f', '/t']);
+        // spawnX.kill('SIGUP');
         spawnX=undefined;
       }
       else
@@ -134,11 +145,12 @@ exports.setup = function (pak) {
       electron.app.quit();
     });
 
+    // console.log(spawnX)
     // spawnX.stdout.pipe(process.stdout);
     // spawnX.stdout.setEncoding('utf8');
-    // spawnX.stdout.on('data', function (data) {
-    //   console.log('stdout: ' + data.toString());
-    // });
+    spawnX.stdout.on('data', function (data) {
+      console.log('stdout: ' + data.toString());
+    });
 
     // spawnX.stderr.on('data', function (data) {
     //   console.log('stderr: ' + data.toString());

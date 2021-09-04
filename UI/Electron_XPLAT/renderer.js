@@ -179,6 +179,9 @@ document.addEventListener('DOMContentLoaded', function() {
   
   var Splash = document.getElementById('Splash');
   let splashTimeout=setTimeout(()=>{
+
+    let Splash_text = document.getElementById('Splash_text');
+    Splash_text.innerHTML="GO...";
     if(isDataComplete)
     {
       RUN_APP();
@@ -191,7 +194,7 @@ document.addEventListener('DOMContentLoaded', function() {
         Splash=undefined;
       }
     }
-  },3000);
+  },2000);
   Splash.addEventListener('click', function(){
     clearTimeout(splashTimeout);
     splashTimeout=undefined;

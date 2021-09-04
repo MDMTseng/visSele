@@ -1,37 +1,65 @@
-domake:build export zip_update
-
-.PHONY:build export zip_update
+domake:build export_APP_Core zip_APP_Core
+domake_ALL:build export_APP_Core zip_APP_Core export_APP_Container zip_APP_Container
+.PHONY:build export_APP_Core export_APP_Container zip_APP_Core
 
 
 build: 
 	make -C $(abspath .)/InspectionCore/CORE0_1 domake
 	cd UI/WebUI; npm run build ;
+	cd UI/Electron_XPLAT; npm run packaging ;
 
 
 EXPFolder=export
-export:
+EXP_APP_Core_Folder=$(EXPFolder)/APP_Core
+export_APP_Core:
+	#del & make dir
 	-@rm -r $(EXPFolder)
-	-@mkdir -p $(EXPFolder)/WebUI
-	cd UI/WebUI; sh export.sh ../../$(EXPFolder)/WebUI
-	-@mkdir -p $(EXPFolder)/Core
-	make -C $(abspath .)/InspectionCore/CORE0_1 export EXPORT_PATH=$(abspath .)/$(EXPFolder)/Core
-	cp -r scripts $(EXPFolder)
+	-@mkdir -p $(EXP_APP_Core_Folder)
+
+	#Export WebUI 
+	-@mkdir -p $(EXP_APP_Core_Folder)/WebUI
+	cd UI/WebUI; sh export.sh ../../$(EXP_APP_Core_Folder)/WebUI
+	
+	#Export Core
+	-@mkdir -p $(EXP_APP_Core_Folder)/Core
+	make -C $(abspath .)/InspectionCore/CORE0_1 export EXPORT_PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core
+
+	
+	#Export scripts
+	cp -r scripts $(EXP_APP_Core_Folder)
+	
+	
+export_APP_Container:
+	#Export APP_Container
+	-@mkdir -p $(EXPFolder)/APP_Container
+	cd UI/Electron_XPLAT; sh export.sh ../../$(EXPFolder)/APP_Container
 
 
 	
-UPDATE_FILE_NAME=
+UPDATE_APP_Core_NAME=
+	
+UPDATE_APP_Container_NAME=
 
 ifeq ($(OS),Windows_NT)
-	UPDATE_FILE_NAME=update_win
+	UPDATE_APP_Core_NAME=update_win
+	UPDATE_APP_Container_NAME=APPC_win
 else
 	UNAME_S := $(shell uname -s)
 	ifeq ($(UNAME_S),Darwin)
-		UPDATE_FILE_NAME=update_mac
+		UPDATE_APP_Core_NAME=update_mac
+		UPDATE_APP_Container_NAME=APPC_mac
 	endif
 endif
 
 
 
-zip_update:
-	-@rm -r $(UPDATE_FILE_NAME) $(UPDATE_FILE_NAME).zip
-	python MakeUtil.py --type=zip --src_dir=$(EXPFolder) --dst_path=$(UPDATE_FILE_NAME).zip
+zip_APP_Core:
+
+	-@cd $(EXPFolder) ;rm -r $(UPDATE_APP_Core_NAME) $(UPDATE_APP_Core_NAME).zip
+	cd $(EXPFolder) ;python ../MakeUtil.py --type=zip --src_dir=APP_Core --dst_path=$(UPDATE_APP_Core_NAME).zip
+
+
+	
+zip_APP_Container:
+	-@cd $(EXPFolder) ; rm -r $(UPDATE_APP_Container_NAME) $(UPDATE_APP_Container_NAME).zip
+	cd $(EXPFolder) ;python ../MakeUtil.py --type=zip --src_dir=APP_Container --dst_path=$(UPDATE_APP_Container_NAME).zip

@@ -198,12 +198,7 @@ ifeq ($(EXPORT_PATH),)
 else
 	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir -p $(EXPORT_PATH) || true
 	cp $(target_bin)* $(EXPORT_PATH)/
-	cp $(MODULE_MindVision_GIGE)/lib/* $(EXPORT_PATH)/
-	-@[ ! -z "$(EXPORT_PATH)/data" ]&&mkdir $(EXPORT_PATH)/data || true
-	cd data ;cp featureDetect.json cameraCalibration.json $(EXPORT_PATH)/data
-	-@[ ! -z "$(EXPORT_PATH)/additional_data" ]&&mkdir $(EXPORT_PATH)/additional_data || true
-	cd data ;cp  machine_info default_camera_setting.json $(EXPORT_PATH)/additional_data
-
+	cp -r init_data $(EXPORT_PATH)/
 endif
 
 

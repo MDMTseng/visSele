@@ -226,6 +226,8 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
                     
 function urlConcat(base,add)
 {
+  if(base===undefined)return undefined;
+  
   let xbase=base;
   while(xbase.charAt(xbase.length-1)=="/")
     xbase=xbase.slice(0, xbase.length-1)
@@ -930,7 +932,7 @@ class APPMasterX extends React.Component {
                   this.queryCam(timeout_ms);
                 },timeout_ms);
               }
-              // console.log(camInfo);
+              console.log(camInfo);
               
             }
             
