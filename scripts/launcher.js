@@ -145,12 +145,17 @@ exports.setup = function (pak) {
       electron.app.quit();
     });
 
+
+    if(spawnX.stdout!=null)
+    {
+      spawnX.stdout.on('data', function (data) {
+        console.log('stdout: ' + data.toString());
+      });
+    }
     // console.log(spawnX)
     // spawnX.stdout.pipe(process.stdout);
     // spawnX.stdout.setEncoding('utf8');
-    spawnX.stdout.on('data', function (data) {
-      console.log('stdout: ' + data.toString());
-    });
+
 
     // spawnX.stderr.on('data', function (data) {
     //   console.log('stderr: ' + data.toString());
