@@ -1804,6 +1804,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     {
       do
       {
+        calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
         saveInspFailSnap = false;
         saveInspNASnap = false;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
@@ -1935,6 +1936,16 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           snprintf(err_str, sizeof(err_str), "Caught an error! LINE:%04d", __LINE__);
           LOGE("%s", err_str);
         }
+
+
+        if (cJSON_True == getDataFromJson(json, "IMG_ignore_calib", NULL))
+        {
+          calib_bacpac.sampler->ignoreCalib(true); 
+        }
+
+        
+        
+
 
       } while (false);
 
