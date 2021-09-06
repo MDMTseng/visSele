@@ -1,12 +1,20 @@
-domake:build export_APP_Core zip_APP_Core
+
+domake:CORE Container
+
+CORE:build_APP_Core export_APP_Core zip_APP_Core
+Container:build_APP_Container export_APP_Container zip_APP_Container
+
 domake_ALL:build export_APP_Core zip_APP_Core export_APP_Container zip_APP_Container
-.PHONY:build export_APP_Core export_APP_Container zip_APP_Core
+.PHONY:CORE Container export_APP_Core export_APP_Container zip_APP_Core
 
 
-build: 
+build_APP_Core: 
 	make -C $(abspath .)/InspectionCore/CORE0_1 domake
 	cd UI/WebUI; npm run build ;
+
+build_APP_Container: 
 	cd UI/Electron_XPLAT; npm run packaging ;
+
 
 
 EXPFolder=export

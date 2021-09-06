@@ -167,9 +167,10 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
         definfo: {
           "type":"stage_light_report",
           "grid_size":[10,10],
-          "nonBG_thres":60,
+          "nonBG_thres":100,
           "nonBG_spread_thres":180
-        }
+        },
+        IMG_ignore_calib:true
       },undefined,
       {
         resolve:(darr,mainFlow)=>{

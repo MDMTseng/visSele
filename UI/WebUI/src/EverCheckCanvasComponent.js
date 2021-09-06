@@ -1522,8 +1522,18 @@ class EverCheckCanvasComponent_proto {
     this.canvas = canvasDOM;
 
     this.canvas.onmousemove = this.onmousemove.bind(this);
-    this.canvas.onmousedown = this.onmousedown.bind(this);
-    this.canvas.onmouseup = this.onmouseup.bind(this);
+    this.canvas.onmousedown = (ev)=>{
+      ev.preventDefault();
+      // console.log("MD_CB:");
+      this.onmousedown(ev);
+    };
+    this.canvas.onmouseup = (ev)=>{
+      ev.preventDefault();
+
+      // console.log("MU_CB:");
+      this.onmouseup(ev);
+    };
+    
     this.canvas.onmouseout = this.onmouseout.bind(this);
 
 
@@ -1547,6 +1557,7 @@ class EverCheckCanvasComponent_proto {
 
 
       let touchStatus = (e) => {
+        e.preventDefault();
         let ti = this.multiTouchInfo;
         ti.ptouchStatus = ti.touchStatus;
         ti.touchStatus = this.copyTouchPositionInfo(e);
