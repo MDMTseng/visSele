@@ -380,6 +380,33 @@ CameraLayer_Aravis::CameraLayer_Aravis(const char *deviceID, CameraLayer_Callbac
     printf("gv packet size        = %d bytes\n", arv_camera_gv_get_packet_size(camera, NULL));
   }
 
+
+
+  {
+    char buff[1000];
+    snprintf(buff, sizeof(buff),
+             "{\
+      \"type\":\"CameraLayer_Aravis\",\
+      \"id\":\"%s\",\
+      \"physical_id\":\"%s\",\
+      \"address\":\"%s\",\
+      \"model\":\"%s\",\
+      \"protocol\":\"%s\",\
+      \"serial_nbr\":\"%s\",\
+      \"vendor\":\"%s\"\
+    }",
+            
+
+    self_info.id.c_str(),
+    self_info.physical_id.c_str(),
+    self_info.address.c_str(),
+    self_info.model.c_str(),
+    self_info.protocol.c_str(),
+    self_info.serial_nbr.c_str(),
+    self_info.vendor.c_str()
+    );
+    cam_json_info.assign(buff);
+  }
   //
 
   // CameraLayer_Aravis::cam_info &ci=self_info;
