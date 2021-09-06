@@ -1316,7 +1316,21 @@ const MainUI=()=>{
           {
             icon:<ArrowLeftOutlined />,
             text:DICT._["<"],
-            onClick:_=>setUI_state(s_statesTable.RootSelect)
+            onClick:_=>{
+              
+              ACT_WS_SEND_BPG("RC", 0, {
+                target: "camera_setting_refresh"
+              });
+
+              
+              ACT_WS_SEND_BPG("LD", 0, { filename: "data/default_camera_param.json" },
+              undefined, 
+              {resolve: (data,action_channal) => {
+                console.log(data);
+                action_channal(data);
+              }});
+              setUI_state(s_statesTable.RootSelect)
+            }
             // subMenu:[]
           },
           ...extraSideUI

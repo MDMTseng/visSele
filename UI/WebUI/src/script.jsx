@@ -1069,6 +1069,23 @@ class APPMasterX extends React.Component {
           <System_Status_Display showText iconSize={30} gridSize={90} 
             onItemClick={(connInfo)=>{
               console.log(connInfo);
+              switch(connInfo.id)
+              {
+                case this.props.CAM1_ID:
+                {
+                  
+                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "RC", 0, {target: "camera_ez_reconnect"},
+                  undefined, 
+                  {resolve: (data,action_channal) => {
+                    console.log(data);
+                    action_channal(data);
+                    
+                  }});
+
+
+                  break;
+                }
+              }
             }}
           />
           {INFO.FLAGS.DEV_MODE?
