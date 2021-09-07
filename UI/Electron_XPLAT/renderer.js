@@ -74,6 +74,8 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
               update_log.innerText=logText;
             })
           .then(result=>{
+
+
             console.log("OK:"+result)
           }).catch(e=>{
             console.log("ER:"+e)
@@ -85,6 +87,7 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
 
 
         btn.appendChild(document.createTextNode(ele.version));
+        update_select.innerHTML="";
         update_select.appendChild(btn);
       });
     
