@@ -1,29 +1,164 @@
-
+//launcher is in mainjs thread
 const { spawn, execFile, exec } = require('child_process');
 const electron = require('electron')
 // var electron;
 const fs = require('fs');
 const path = require('path')
-// const fetch = require('fetch')
+const https = require('https');
 
+let core_require=undefined;
+let unzipper;
+// const fetch = require('fetch')
 let mongoose;
+
+
+
+const download = (request,url, path, callback) => {
+  request.head(url, (err, res, body) => {
+    request(url)
+      .pipe(fs.createWriteStream(path))
+      .on('close', callback)
+  })
+}
+
 
 exports.update={
   // currentVersion:()=>{"0.2.8"},
   getAppInfo:()=>({
     "version":"0.2.8"
   }),
-  getRemoteVersionList:(url="https://api.github.com/repos/MDMTseng/visSele/releases/latest")=>{
-    fetch(url)
+  fetchRemoteVersionList:(url="https://api.github.com/repos/MDMTseng/visSele/releases/latest")=>{
+    return fetch(url)
     .then(res =>res.json())
     .then(res =>{ 
-        console.log(res)
-      
+
+      let updatePackAssets = res.assets;
+      console.log(res.assets)
+      switch(process.platform)
+      {
+        case "win_32":
+        {
+          updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("win"));
+          break;
+        }
+        case "darwin":
+        {
+          updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("mac"));
+          break;
+        }
+      }
+      updatePackAssets=updatePackAssets.map(asse=>{
+        let version=asse.browser_download_url;
+
+        let rule = /download\/(.+)\//g;
+
+        version= rule.exec(version);
+        version=(version[1]!==undefined)?version[1]:version.input;
+        return {...asse,version,url:asse.browser_download_url}
+      })
+
+      return updatePackAssets
       
     })
-    .catch(err => console.log(err));
+  },
+  updateWithRemoteInfo:(remoteInfo,APP_INFO_FILE_PATH,updateInfo_cb=_=>_,TargetName_prefix="Xception-")=>{
 
+    let unzipper=core_require("unzipper");
+    let request=core_require("request");
+    let TargetName=TargetName_prefix+remoteInfo.version
+    var APP_INFO_FILE_Folder = path.dirname(APP_INFO_FILE_PATH);
+    console.log(remoteInfo,APP_INFO_FILE_Folder,APP_INFO_FILE_PATH);
+    
+    let TargetName_zip=TargetName+".zip";
+
+
+    let tmpFolder = APP_INFO_FILE_Folder+"/TMP";
+    
+    updateInfo_cb('Create TMP folder')
+    if (!fs.existsSync(tmpFolder)) {
+      fs.mkdirSync(tmpFolder)
+    }
+
+
+    return new Promise((resolve, reject)=>{ 
+
+      updateInfo_cb('File downloading from:'+remoteInfo.url)
+      download(request,remoteInfo.url, tmpFolder+"/"+TargetName_zip, () => {
+        updateInfo_cb('File downloaded!')
+        resolve({...remoteInfo,TargetZipPath:tmpFolder+"/"+TargetName_zip,TargetName_zip});
+      })
+
+    }).then(info=>new Promise((resolve, reject)=>{
+      // 
+      const file_r = fs.createReadStream(info.TargetZipPath)
+      .pipe(unzipper.Extract({ path: tmpFolder+"/"+TargetName}))
+      .on('entry', entry => entry.autodrain())
+      .promise()
+      .then( () =>{
+
+        let postFix="";
+        let counter=0;
+        while(fs.existsSync(APP_INFO_FILE_Folder+"/"+TargetName+postFix))
+        {
+          postFix=`[${counter}]`;
+          counter++;
+        }
+        
+        updateInfo_cb(`Find Avalible name:${TargetName+postFix}`)
+        let dstFolderName = APP_INFO_FILE_Folder+"/"+TargetName+postFix;
+
+        let srcFolderName = tmpFolder+"/"+TargetName;
+        {
+
+          let folderStruct = fs.readdirSync(srcFolderName);
+          console.log(folderStruct);
+          if(folderStruct.length>0)
+          {
+            srcFolderName+="/"+folderStruct[0];
+          }
+          
+        }
+        
+        updateInfo_cb(`Move file ${srcFolderName}  => ${dstFolderName}`)
+        fs.renameSync(srcFolderName, dstFolderName);
+        
+        updateInfo_cb('DELETE TMP folder')
+        fs.rmdirSync(tmpFolder, { recursive: true });
+        updateInfo_cb("old ver update handling done...:",dstFolderName);
+        updateInfo_cb("new ver update handling GO:");
+
+
+        
+        const new_launcher = require(dstFolderName+"/scripts/launcher.js")
+        console.log(new_launcher);
+        new_launcher.set_core_require_function(core_require);
+        new_launcher.update.postUpdateWithRemoteInfo(remoteInfo,APP_INFO_FILE_PATH,updateInfo_cb)
+        .then(resolve)
+        .catch(reject)
+      }, e => reject);
+
+
+      //step2: unzip
+      
+    }))
+
+
+
+  },
+  postUpdateWithRemoteInfo:(remoteInfo,APP_INFO_FILE_PATH,updateInfo_cb=_=>_)=>{
+
+    updateInfo_cb("In new ver. Do post update process....");
+    const fs = core_require('fs');
+
+    let rawdata = fs.readFileSync(APP_INFO_FILE_PATH);
+    let APPINFO = JSON.parse(rawdata);
+
+    return new Promise((resolve, reject)=>{
+      updateInfo_cb("In new ver. post update process DONE");
+      resolve("new software!! is here");
+    });
   }
+  
 
 
 }
@@ -35,11 +170,18 @@ exports.update={
 //   // fs.mkdirSync(dir);
 //   console.log("<><><><");
 // }
-
+exports.set_core_require_function= function (core_require_fn) {
+  core_require = core_require_fn;
+}
 
 exports.setup = function (pak) {
   // console.log(pak);
+  
+  console.log(core_require);
   let { WebSocket, mongoose, express } = pak;
+  unzipper=pak.unzipper;
+  
+  console.log(pak);
   // // This method will be called when Electron has finished
   // // initialization and is ready to create browser windows.
   // // Some APIs can only be used after this event occurs.
@@ -87,7 +229,6 @@ exports.setup = function (pak) {
     console.log("Launcher INIT!!!");
     let { APP_INFO_FILE_PATH,mainWindow } = pak;
     // {electron,APP_INFO_FILE_PATH,WebSocket}
-
     let APP_INFO={};
     try {
       rawdata = fs.readFileSync(APP_INFO_FILE_PATH);
