@@ -132,7 +132,7 @@ exports.update={
         const new_launcher = require(dstFolderName+"/scripts/launcher.js")
         console.log(new_launcher);
         new_launcher.set_core_require_function(core_require);
-        new_launcher.update.postUpdateWithRemoteInfo(remoteInfo,APP_INFO_FILE_PATH,updateInfo_cb)
+        new_launcher.update.postUpdateWithRemoteInfo({...remoteInfo,new_core_path:dstFolderName},APP_INFO_FILE_PATH,updateInfo_cb)
         .then(resolve)
         .catch(reject)
       }, e => reject);
@@ -154,8 +154,25 @@ exports.update={
     let APPINFO = JSON.parse(rawdata);
 
     return new Promise((resolve, reject)=>{
-      updateInfo_cb("In new ver. post update process DONE");
-      resolve("new software!! is here");
+
+
+      updateInfo_cb("In new ver. post update process");
+      if(remoteInfo.new_core_path!==undefined)
+      {
+
+        updateInfo_cb('chmod +x '+remoteInfo.new_core_path+"/Core/visSele");
+        child = exec('chmod +x '+remoteInfo.new_core_path+"/Core/visSele",
+        function (error, stdout, stderr) {
+            console.log('stdout: ' + stdout);
+            console.log('stderr: ' + stderr);
+            if (error !== null) {
+                 console.log('exec error: ' + error);
+            }
+            resolve("new software!! is here");
+        });
+
+      }
+      
     });
   }
   
