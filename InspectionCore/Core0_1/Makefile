@@ -200,6 +200,12 @@ else
 	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir -p $(EXPORT_PATH) || true
 	cp $(target_bin)* $(EXPORT_PATH)/
 	cp -r init_data $(EXPORT_PATH)/
+
+ifeq ($(OS)$(CC),Windows_NTcc)
+else
+	cp -r *.dylib $(EXPORT_PATH)/
+endif
+
 endif
 
 
