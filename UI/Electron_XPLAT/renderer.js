@@ -223,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  
+  let splash_click_counter=0;
   var Splash = document.getElementById('Splash');
   let splashTimeout=setTimeout(()=>{
 
@@ -243,12 +243,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   },2000);
   Splash.addEventListener('click', function(){
-    clearTimeout(splashTimeout);
-    splashTimeout=undefined;
-    if(Splash!==undefined)
+    splash_click_counter++;
+    if(splash_click_counter>=3)
     {
-      Splash.remove();
-      Splash=undefined;
+      clearTimeout(splashTimeout);
+      splashTimeout=undefined;
+      if(Splash!==undefined)
+      {
+        Splash.remove();
+        Splash=undefined;
+      }
     }
   });
 
