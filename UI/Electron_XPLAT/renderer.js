@@ -15,12 +15,14 @@ try {
 
 
 
+
 function setUIInfo(root_APP_INFO,sub_APP_INFO)
 {
 
   let isNullSetup=root_APP_INFO===undefined||root_APP_INFO.APP_INFO_FILE_PATH===undefined;
   var RootInfoPath = document.getElementById('RootInfoPath');
-  RootInfoPath.innerHTML=root_APP_INFO.APP_INFO_FILE_PATH;
+  if(!isNullSetup)
+    RootInfoPath.innerHTML=root_APP_INFO.APP_INFO_FILE_PATH;
 
   let APP_RouterTxt=undefined;
   let Data_RouterTxt=undefined;
@@ -44,16 +46,61 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
 
   if(isComp)
   {
-    // console.log(APP_RouterTxt)
-    // const tar_launcher = require(APP_RouterTxt+"/scripts/launcher.js")
-    // // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
-    // console.log(tar_launcher.update.getAppInfo());
-    // console.log(tar_launcher.update.getRemoteVersionList());
+    console.log(APP_RouterTxt)
+    const tar_launcher = require(APP_RouterTxt+"/scripts/launcher.js")
+    tar_launcher.set_core_require_function(require);
+    // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
+    console.log(tar_launcher.update.getAppInfo());
 
+
+    tar_launcher.update.fetchRemoteVersionList()
+    .then(list=>{
+
+      console.log(list);
+
+      let logText="";
+      var update_log = document.getElementById('update_log');
+      
+      var update_select = document.getElementById('update_select');
+      list.forEach(ele=>{
+        
+        var btn = document.createElement("button");
+
+        btn.onclick = function () {
+          console.log(ele.url);
+          tar_launcher.update.updateWithRemoteInfo(ele,root_APP_INFO.APP_INFO_FILE_PATH,
+            (log)=>{
+              logText+=log+"\n";
+              update_log.innerText=logText;
+            })
+          .then(result=>{
+
+
+            console.log("OK:"+result)
+          }).catch(e=>{
+            console.log("ER:"+e)
+          });
+
+
+          //TODO: disable all other UI for update
+        };
+
+
+        btn.appendChild(document.createTextNode(ele.version));
+        update_select.innerHTML="";
+        update_select.appendChild(btn);
+      });
+    
+
+    })
+    .catch(e=>{
+      console.log(e)
+    })
+    
     
   }
 
-  if(false)
+  if(true)
   {
     
     var system_info = document.getElementById('system_info');
@@ -176,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  
+  let splash_click_counter=0;
   var Splash = document.getElementById('Splash');
   let splashTimeout=setTimeout(()=>{
 
@@ -196,12 +243,16 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   },2000);
   Splash.addEventListener('click', function(){
-    clearTimeout(splashTimeout);
-    splashTimeout=undefined;
-    if(Splash!==undefined)
+    splash_click_counter++;
+    if(splash_click_counter>=3)
     {
-      Splash.remove();
-      Splash=undefined;
+      clearTimeout(splashTimeout);
+      splashTimeout=undefined;
+      if(Splash!==undefined)
+      {
+        Splash.remove();
+        Splash=undefined;
+      }
     }
   });
 

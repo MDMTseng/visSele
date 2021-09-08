@@ -8,6 +8,7 @@ const ipc = require('electron').ipcMain
 const path = require('path')
 const child_process = require('child_process');
 
+const unzipper = require('unzipper');
 const fs = require('fs');
 
 
@@ -138,6 +139,8 @@ function setup()
     let rootAppInfo=arg.rootAppInfo;
     let workspaceAppInfo=arg.workspaceAppInfo;
     const tar_launcher = require(workspaceAppInfo.APPContentPath+"/scripts/launcher.js")
+    
+    tar_launcher.set_core_require_function(require);
     // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
     tar_launcher.setup({
       electron,
@@ -145,7 +148,8 @@ function setup()
       mainWindow,
       WebSocket:require('ws'),
       express:require('express'),
-      mongoose :require('mongoose')});
+      mongoose :require('mongoose'),
+      unzipper});
 
 
   })

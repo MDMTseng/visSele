@@ -1460,9 +1460,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
 
             cJSON *cam_info_jarr = cJSON_CreateArray();
-
-            //LOGI("CAM_INFO..\n%s",calib_bacpac.cam->getCameraJsonInfo());
-            cJSON *cam_1 = cJSON_Parse(camera->getCameraJsonInfo().c_str());
+            string jInfo=camera->getCameraJsonInfo();
+            LOGI("CAM_INFO..\n%s",jInfo.c_str());
+            cJSON *cam_1 = cJSON_Parse(jInfo.c_str());
             if (cam_1 == NULL)
             {
               cam_1 = cJSON_CreateObject();
@@ -3742,12 +3742,12 @@ CameraLayer *getCamera(int initCameraType = 0)
   if (camera == NULL)
   {
     LOGI(">>>>>\n");
-    camera = initCamera_Aravis(target_name_part);
+    camera = initCamera_HikRobot_Camera(target_name_part);
   }
   if (camera == NULL)
   {
     LOGI(">>>>>\n");
-    camera = initCamera_HikRobot_Camera(target_name_part);
+    camera = initCamera_Aravis(target_name_part);
   }
 
   LOGI("camera ptr:%p", camera);
