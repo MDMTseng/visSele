@@ -199,6 +199,22 @@ function SingleDisplayUI({ displayInfo }) {
 }
 
 function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
+  const [safeCheckUI, setSafeCheckUI] = useState({
+    content:<>
+      確認進入設定介面？
+      <br/>
+      <Button onClick={() => {safeCheckUI.onOK();}} style={{ width: '30%' }} >
+            OK
+      </Button>
+    </>,
+    onOK:()=>{
+      setSafeCheckUI(undefined);
+      refreshData();
+    }
+  });
+
+
+
   const [displayInfo, setDisplayInfo] = useState(undefined);
   const [displayEle, setDisplayEle] = useState(undefined);
   const _mus = useSelector(state => state.UIData.machine_custom_setting);
@@ -214,7 +230,6 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
   }
 
   useEffect(() => {
-    refreshData();
     return () => {
       console.log("1,didUpdate ret::");
     };
@@ -225,7 +240,7 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
   // },[displayInfo]);
 
   let UI = [];
-  if (displayInfo !== undefined) {
+  if (displayInfo !== undefined && safeCheckUI==undefined) {
     console.log(displayInfo);
     UI = [];
 
@@ -264,16 +279,44 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
           </Button>
           <Button type="dashed"
             onClick={() => {
-              setDisplayInfo(undefined);
-              CusDisp_DB.delete(_mus.cusdisp_db_fetch_url,info._id).then(() => {
 
-                CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
-                  console.log(displayInfo);
-                  setDisplayInfo(data.prod);
-                }).catch(e => {
-                  console.log(e);
-                });
-              });
+              let checkUI={
+                content:<>
+                  確認刪除？
+                  <br/>
+                  <Button onClick={() => {checkUI.onOK();}} style={{ width: '5%' }} >
+                        OK
+                  </Button>
+                  <Button onClick={() => {checkUI.onCancel();}} style={{ width: '50%' }} >
+                        Cancel
+                  </Button>
+                </>,
+                onOK:()=>{
+                  setSafeCheckUI(undefined);
+                  setDisplayInfo(undefined);
+                  CusDisp_DB.delete(_mus.cusdisp_db_fetch_url,info._id).then(() => {
+    
+                    CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
+                      console.log(displayInfo);
+                      setDisplayInfo(data.prod);
+                    }).catch(e => {
+                      console.log(e);
+                    });
+                  });
+    
+                },
+                onCancel:()=>{
+                  setSafeCheckUI(undefined);
+                }
+
+
+              }
+              
+
+              setSafeCheckUI(checkUI)
+
+
+
             }}
             style={{ width: '60%' }}
           >
@@ -335,6 +378,17 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
     }
 
   }
+  else if(safeCheckUI!==undefined)
+  {
+    UI=<>
+      {safeCheckUI.content}
+
+
+    </>
+  }
+
+
+
   return (
 
     <Layout style={{ height: "100%" }}>
@@ -412,7 +466,9 @@ export function CustomDisplaySelectUI({onSelect}) {
     <Tabs defaultActiveKey="0">
       {Object.keys(catSet).map((cat,cat_idx)=>
         <TabPane tab={cat} key={""+cat_idx}>
-          {catSet[cat].set.map(info=>
+          {catSet[cat].set
+          .sort((A,B)=>(A.name).localeCompare(B.name))
+          .map(info=>
             <Button onClick={()=>onSelect(info)} size="large">
               {info.name}
             </Button>
@@ -423,7 +479,7 @@ export function CustomDisplaySelectUI({onSelect}) {
       <CustomDisplayUI
          BPG_Channel={(...args) =>
          {
-          console.log(">>>");
+          // console.log(">>>");
          ACT_WS_SEND_BPG(CORE_ID, ...args)
          }} />
       </TabPane>
