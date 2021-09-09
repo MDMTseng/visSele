@@ -3185,6 +3185,24 @@ void xrefine(ContourSignature &tar,ContourSignature &src,float roughScanCount,ve
 
 
 
+inline float angle_0_to_pi(float ang)
+{
+  float _ang=fmod(ang,2*M_PI);
+  return (_ang<0)?_ang+2*M_PI:_ang;
+}
+
+bool isAngleInRegion(float angle,float from,float to)
+{
+  angle=angle_0_to_pi(angle);
+  from=angle_0_to_pi(from);
+  to=angle_0_to_pi(to);
+
+  if(to<from)to+=2*M_PI;
+  if(angle<from)angle+=2*M_PI;
+  return (angle>to);
+}
+
+
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
   acvImage *labeledBuff,acvImage *binarizedBuff,acvImage* buffer_img,
   int lableIdx,acv_LabeledData *ldData,
@@ -3218,6 +3236,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     edgeTracking eT(originalImage,bacpac);
 
 
+  float ignoreErr=100000;
   bool isInv=false;
   float angle=NAN;
   vector<acv_XY> minMatchErr;
@@ -3235,22 +3254,37 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     
 
 
+
+  
     for(int i=0;i<minMatchErr.size();i++)
     {
-      LOGI(". %f>%f",minMatchErr[i].X,minMatchErr[i].Y);
-      // minMatchErr[i].Y+=0.005723;
+
+      if(isAngleInRegion(minMatchErr[i].X*M_PI/180,this->matching_angle_offset-this->matching_angle_margin ,this->matching_angle_offset+this->matching_angle_margin ) )
+      {
+        minMatchErr[i].Y=ignoreErr;
+
       }
+
+
+      LOGI(". %f>%f",minMatchErr[i].X,minMatchErr[i].Y);
+
+    // minMatchErr[i].Y+=0.005723;
+    }
 
     for(int i=0;i<minMatchErr_bk.size();i++)
     {
-      LOGI("~%f>%f",minMatchErr_bk[i].X,minMatchErr_bk[i].Y);
       // minMatchErr_bk[i].Y*=0.1;
+      
+      if(isAngleInRegion(minMatchErr_bk[i].X*M_PI/180,this->matching_angle_offset-this->matching_angle_margin ,this->matching_angle_offset+this->matching_angle_margin ) )
+      {
+        minMatchErr_bk[i].Y=ignoreErr;
+      }
+      LOGI("~%f>%f",minMatchErr_bk[i].X,minMatchErr_bk[i].Y);
     }
-    }
+  }
 
   float error=NAN; 
 
-  float ignoreErr=100000;
   // if(minMatchErr.size()>=1)
     // {
   //   minMatchErr[0].Y=ignoreErr;
