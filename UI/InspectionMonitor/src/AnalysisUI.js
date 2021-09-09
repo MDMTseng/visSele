@@ -1246,7 +1246,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
                 let dataCount=result[0].count;
                 console.log(dataCount)
-                let warn_limit=20000;
+                let warn_limit=5000;
                 if(dataCount<warn_limit)
                 {
                   this.recStream.queryInspRec(dateRange.map(d=>d.getTime())).then(result=>{

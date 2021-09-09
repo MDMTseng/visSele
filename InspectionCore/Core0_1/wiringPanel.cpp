@@ -1054,8 +1054,12 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
   char tmp[1024];
   sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", json_str, fd);
   LOGI("MSG:%s", tmp);
-
   BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+  bpg_dat.pgID=conn_pgID;
+  BPG_protocol_send(bpg_dat);
+
+  bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
+  bpg_dat.pgID = conn_pgID;
   BPG_protocol_send(bpg_dat);
   return 0;
 }
@@ -1065,11 +1069,15 @@ int MicroInsp_FType::ev_on_close()
 
   //MT_LOCK(""); //the delete caller might come within main thread
   int fd = getfd();
-  LOGE("fd:%d is disconnected", fd);
+  LOGE("fd:%d is disconnected  conn_pgID:%d", fd,conn_pgID);
   char tmp[70];
-  sprintf(tmp, "{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}", getfd());
+  sprintf(tmp, "{\"type\":\"DISCONNECT\",\"CONN_ID\":%d}", fd);
 
   BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
+  bpg_dat.pgID=conn_pgID;
+  BPG_protocol_send(bpg_dat);
+  bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", "{}");
+  bpg_dat.pgID = conn_pgID;
   BPG_protocol_send(bpg_dat);
   //MT_UNLOCK("");
 
@@ -1229,7 +1237,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     // LOGI("DataType_BPG:[%c%c] pgID:%02X", dat->tl[0], dat->tl[1],
     //      dat->pgID);
     cJSON *json = cJSON_Parse((char *)dat->dat_raw);
-    char err_str[100] = "\0";
+    char err_str[1000] = "\0";
     bool session_ACK = false;
     char tmp[200];    //For string construct json reply
     BPG_protocol_data bpg_dat; //Empty
@@ -2471,30 +2479,51 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     else if (checkTL("PD", dat)) //Peripheral device
     {
-      cJSON *msg_obj = JFetch_OBJECT(json, "msg");
-      if (msg_obj && mift)
+      char *type = JFetch_STRING(json, "type");
+
+      double *_CONN_ID = JFetch_NUMBER(json, "CONN_ID");
+      int CONN_ID=-1;
+      if(_CONN_ID)
       {
-        char *msgjstr = cJSON_PrintUnformatted(msg_obj);
-        int ret = mift->send_data((uint8_t *)msgjstr, strlen(msgjstr));
-        // LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
-        delete msgjstr;
-        session_ACK = true;
+        CONN_ID=(int)*_CONN_ID;
       }
-      else
-      {
-        void *target;
-        char *IP = JFetch_STRING(json, "ip");
-        double *port_number = JFetch_NUMBER(json, "port");
-        if (IP != NULL && port_number != NULL)
+
+
+      do{
+        if(strcmp(type, "CONNECT") == 0)
         {
-          try
+          if(CONN_ID!=-1)
           {
-            LOGI("delete_MicroInsp_FType()");
-            delete_MicroInsp_FType();
-            LOGI("delete_MicroInsp_FType() OK...");
-            LOGI("CONN: %s:%d", IP, (int)*port_number);
+            sprintf(err_str, "CONNECT should not have CONN_ID(%d)", CONN_ID);
+            break;
+          }
+
+          
+          // if(mift!=NULL)
+          // {
+          //   sprintf(err_str, "mift still in connected state");
+          //   break;
+          // }
+
+          char *IP = JFetch_STRING(json, "ip");
+          double *port_number = JFetch_NUMBER(json, "port");
+          if (IP == NULL && port_number == NULL)
+          {
+            sprintf(err_str, "IP(%d) port_number(%d)", IP!=NULL,port_number!=NULL);
+            break;
+          }
+          
+
+          LOGI("delete_MicroInsp_FType()");
+          delete_MicroInsp_FType();
+          LOGI("delete_MicroInsp_FType() OK...");
+          LOGI("CONN: %s:%d", IP, (int)*port_number);
+
+          try{
+
             mift = new MicroInsp_FType(IP, (int)*port_number);
 
+            mift->conn_pgID = dat->pgID;
             LOGI("new MicroInsp_FType OK...");
             mift->start_RECV_Thread();
             LOGI("start_RECV_Thread...");
@@ -2504,26 +2533,70 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
             sprintf(tmp, "{\"type\":\"CONNECT\",\"CONN_ID\":%d}", fd);
             bpg_dat = GenStrBPGData("PD", tmp);
-            bpg_dat.pgID = -1;
+            bpg_dat.pgID = dat->pgID;
             
             fromUpperLayer(bpg_dat);
+
           }
-          catch (int errN)
+          catch(std::runtime_error &e){
+            session_ACK = false;
+            const char *exp_what = e.what();
+
+            LOGI("EXCEPTION:%s",exp_what);
+            sprintf(err_str, "EXCEPTION:");
+          }
+
+
+        }
+        else if(strcmp(type, "DISCONNECT") == 0)
+        {
+
+          if(mift==NULL || mift->getfd() != CONN_ID)
           {
-            sprintf(err_str, "[PR] MicroInsp_FType init error:%d", errN);
-            LOGE("%s", err_str);
+            sprintf(err_str, "CONN_ID(%d)  mift exist:%d or current mift has different CONN_ID", CONN_ID, mift!=NULL);
+            break;
           }
+          
+          if(CONN_ID==-1 || mift->getfd() == CONN_ID)
+          {//disconnect
+            delete_MicroInsp_FType();
+            session_ACK = true;
+          }
+          else
+          {
+            sprintf(err_str, "CONN_ID(%d)  dose not match ", CONN_ID);
+            break;
+          }
+
+
         }
-        else if (mift && IP == NULL && port_number == NULL)
+        else if(strcmp(type, "MESSAGE") == 0)
         {
-          delete_MicroInsp_FType();
-          session_ACK = true;
+          if(CONN_ID==-1 || mift==NULL || mift->getfd() != CONN_ID)
+          {
+            sprintf(err_str, "CONN_ID(%d)  mift exist:%d or current mift has different CONN_ID", CONN_ID, mift!=NULL);
+            break;
+          }
+
+          cJSON *msg_obj = JFetch_OBJECT(json, "msg");
+          if (msg_obj)
+          {
+            char *msgjstr = cJSON_PrintUnformatted(msg_obj);
+            int ret = mift->send_data((uint8_t *)msgjstr, strlen(msgjstr));
+            LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
+            delete msgjstr;
+            session_ACK = (ret==0);
+          }
+          else
+          {
+            session_ACK=true;//send nothing
+          }
+
+
         }
-        else
-        {
-          sprintf(err_str, "[PR] ip:%p port:%p", IP, port_number);
-        }
-      }
+      }while(false);
+
+
     }
     sprintf(tmp, "{\"start\":false,\"cmd\":\"%c%c\",\"ACK\":%s,\"errMsg\":\"%s\"}",
             dat->tl[0], dat->tl[1], (session_ACK) ? "true" : "false", err_str);

@@ -23,7 +23,6 @@ import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 // import { PageHeader } from 'antd/lib/page-header';
-//import Plot from 'react-plotly.js';
 //import {Doughnut} from 'react-chartjs-2';
 
 import { round } from 'UTIL/MISC_Util';
