@@ -414,8 +414,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     let popUpUIInfo = {
       title: "機台設定",
       onOK: undefined,
-      onCancel: undefined,
-      content: <CustomDisplaySelectUI onSelect={(cusDispInfo) => {
+      onCancel: undefined,//make sure it reloads everytime
+      content: <CustomDisplaySelectUI key={"CustomDisplaySelectUI_"+(new Date().getMilliseconds())} onSelect={(cusDispInfo) => {
 
         let tarDef = cusDispInfo.targetDeffiles[0];
         let filePath = tarDef.path;
