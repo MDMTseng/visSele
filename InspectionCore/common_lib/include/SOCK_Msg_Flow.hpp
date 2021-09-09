@@ -18,7 +18,7 @@ class SOCK_Msg_Flow
     std::timed_mutex sendLock;
 
     public:
-    SOCK_Msg_Flow(char *host,int port) throw(int);
+    SOCK_Msg_Flow(char *host,int port) throw(std::runtime_error);
     
     int buffLength(int length);
     virtual int start_RECV_Thread();
@@ -60,7 +60,7 @@ class SOCK_JSON_Flow:public SOCK_Msg_Flow
 
     std::timed_mutex syncLock;
 
-    SOCK_JSON_Flow(char *host,int port) throw(int);
+    SOCK_JSON_Flow(char *host,int port) throw(std::runtime_error);
 
     virtual int ev_on_close() override;
     virtual int recv_data_thread();
