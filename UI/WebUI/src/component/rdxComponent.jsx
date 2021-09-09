@@ -36,7 +36,7 @@ function Array_NtoM(N,M)
 }
 
 
-function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel }) {
+function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel,onDelete }) {
   const [displayEditInfo, setDisplayEditInfo] = useState(undefined);
 
   let fileSelectFilter = (fileInfo) => fileInfo.type == "DIR" || fileInfo.name.includes("." + DEF_EXTENSION);
@@ -167,6 +167,16 @@ function SingleDisplayEditUI({ displayInfo, onUpdate, onCancel, BPG_Channel }) {
     >
       Cancel
     </Button>
+
+    
+    <Divider/>
+       
+    <Button key="onDel_btn" danger
+      onClick={() => onDelete(displayInfo)}
+      style={{ width: '30%' }}
+    >
+      DEL
+    </Button>
   </div>
 }
 
@@ -198,7 +208,7 @@ function SingleDisplayUI({ displayInfo }) {
   </div>
 }
 
-function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
+function CustomDisplayUI({ BPG_Channel, defaultFolderPath, onChange=_=>_ }) {
   const [safeCheckUI, setSafeCheckUI] = useState({
     content:<>
       確認進入設定介面？
@@ -224,6 +234,7 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
     setDisplayInfo(undefined);
     CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
       setDisplayInfo(data.prod);
+      onChange(data);
     }).catch(e => {
       console.log(e);
     });
@@ -273,18 +284,44 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
 
               setDisplayEle(info);
             }}
-            style={{ width: '30%' }}
+            style={{ width: '60%' }}
           >
             EDIT
           </Button>
-          <Button type="dashed"
-            onClick={() => {
+        </div>
+      ))
 
+
+    }
+    else {
+
+
+      UI.push(
+        <div>
+          <SingleDisplayEditUI displayInfo={displayEle} BPG_Channel={BPG_Channel} key="SingleDisplayEditUI"
+            onUpdate={(updatedEle) => {
+              console.log(updatedEle);
+              CusDisp_DB.update(_mus.cusdisp_db_fetch_url,updatedEle, displayEle._id).then(() => {
+                CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
+                  console.log(displayInfo);
+                  setDisplayInfo(data.prod);
+                  setDisplayEle();
+                  
+                  refreshData();
+                }).catch(e => {
+                  console.log(e);
+                });
+              });
+            }
+            }
+
+            onDelete={(info)=>{
+                
               let checkUI={
                 content:<>
-                  確認刪除？
+                  確認刪除 {info.name}？
                   <br/>
-                  <Button onClick={() => {checkUI.onOK();}} style={{ width: '5%' }} >
+                  <Button danger onClick={() => {checkUI.onOK();}} style={{ width: '5%' }} >
                         OK
                   </Button>
                   <Button onClick={() => {checkUI.onCancel();}} style={{ width: '50%' }} >
@@ -294,6 +331,7 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
                 onOK:()=>{
                   setSafeCheckUI(undefined);
                   setDisplayInfo(undefined);
+                  setDisplayEle(undefined);
                   CusDisp_DB.delete(_mus.cusdisp_db_fetch_url,info._id).then(() => {
     
                     CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
@@ -315,37 +353,6 @@ function CustomDisplayUI({ BPG_Channel, defaultFolderPath }) {
 
               setSafeCheckUI(checkUI)
 
-
-
-            }}
-            style={{ width: '60%' }}
-          >
-            Ｘ
-          </Button>
-        </div>
-      ))
-
-
-    }
-    else {
-
-
-      UI.push(
-        <div>
-          <SingleDisplayEditUI displayInfo={displayEle} BPG_Channel={BPG_Channel}
-            onUpdate={(updatedEle) => {
-              console.log(updatedEle);
-              CusDisp_DB.update(_mus.cusdisp_db_fetch_url,updatedEle, displayEle._id).then(() => {
-                CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data => {
-                  console.log(displayInfo);
-                  setDisplayInfo(data.prod);
-                  setDisplayEle();
-                  
-                  refreshData();
-                }).catch(e => {
-                  console.log(e);
-                });
-              });
             }}
 
             onCancel={() => {
@@ -419,28 +426,40 @@ export function CustomDisplaySelectUI({onSelect}) {
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   
   const _mus = useSelector(state => state.UIData.machine_custom_setting);
+
+
+  function catSetUpdate()
+  {    
+    CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data=>{
+    let dispInfo = data.prod;
+    setDisplayInfo(dispInfo);
+    let catArr=dispInfo.map(dispI=>dispI.cat).filter(cat=>cat!==undefined);
+    let uniCat = [...new Set(catArr)].sort(); 
+    let icat={};
+    uniCat.forEach(cat=>{
+      let catInfo={
+        set:dispInfo.filter(dispI=>cat.includes(dispI.cat))
+      }
+      icat[cat]=catInfo
+    })
+
+
+    let undefSet = dispInfo.filter(dispI=>dispI.cat===undefined);
+
+    if(undefSet.length>0)
+      icat["undefined"]=undefSet;
+    setCatSet(icat);
+  }).catch(e=>{
+    console.log(e);
+  });
+
+  }
+
+
   useEffect(() => {
     setDisplayInfo(undefined);
     setCatSet(undefined);
-    CusDisp_DB.read(_mus.cusdisp_db_fetch_url,".").then(data=>{
-      let dispInfo = data.prod;
-      setDisplayInfo(dispInfo);
-      let catArr=dispInfo.map(dispI=>dispI.cat).filter(cat=>cat!==undefined);
-      let uniCat = [...new Set(catArr)].sort(); 
-      let icat={};
-      uniCat.forEach(cat=>{
-        let catInfo={
-          set:dispInfo.filter(dispI=>cat.includes(dispI.cat))
-        }
-        icat[cat]=catInfo
-      })
-      icat["undefined"]={
-        set:dispInfo.filter(dispI=>dispI.cat===undefined)
-      }
-      setCatSet(icat);
-    }).catch(e=>{
-      console.log(e);
-    });
+    catSetUpdate();
     return () => {
       console.log("1,didUpdate ret::");
     };
@@ -469,7 +488,7 @@ export function CustomDisplaySelectUI({onSelect}) {
           {catSet[cat].set
           .sort((A,B)=>(A.name).localeCompare(B.name))
           .map(info=>
-            <Button onClick={()=>onSelect(info)} size="large">
+            <Button key={info.name} onClick={()=>onSelect(info)} size="large">
               {info.name}
             </Button>
           )}
@@ -477,11 +496,12 @@ export function CustomDisplaySelectUI({onSelect}) {
       )}
       <TabPane tab={"__SET__"} key={"SETUP"}>
       <CustomDisplayUI
-         BPG_Channel={(...args) =>
-         {
-          // console.log(">>>");
-         ACT_WS_SEND_BPG(CORE_ID, ...args)
+         BPG_Channel={(...args) =>ACT_WS_SEND_BPG(CORE_ID, ...args)}
+         onChange={()=>{
+          // catSetUpdate();
          }} />
+
+      
       </TabPane>
 
     </Tabs>
