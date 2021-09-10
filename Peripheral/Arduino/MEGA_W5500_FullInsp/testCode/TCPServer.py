@@ -1,8 +1,10 @@
 import socket
 import select
 import json
+import schedule
+import time
 HEADER_LENGTH = 10
-
+import copy
 IP = "127.0.0.1"
 PORT = 1234
 
@@ -48,6 +50,55 @@ def receive_message(client_socket):
         # and that's also a cause when we receive an empty message
         return False
 
+
+machSetup = {
+  "type": "get_setup_rsp",
+  "ver": "0.0.0.0",
+  "state_pulseOffset": [
+    0,
+    654,
+    657,
+    659,
+    660,
+    697,
+    750,
+    900,
+    910,
+    1073,
+    1083
+  ],
+  "perRevPulseCount": 2400,
+  "subPulseSkipCount": 16,
+  "pulse_hz": 0,
+  "mode": "NORMAL",
+}
+
+machState={
+  "error_codes": [
+    2
+  ],
+  "res_count":{
+    "OK": 40,
+    "NG": 10,
+    "NA": 1,
+    "ERR": 1
+  }
+}
+
+
+def machUpdate_1s():
+  machState["res_count"]["NG"]+=1
+
+def machUpdate_10s():
+  if machState["error_codes"] is None:
+    machState["error_codes"]=[]
+  machState["error_codes"].append(2)
+  machState["res_count"]["NA"]+=1
+
+
+schedule.every(1).seconds.do(machUpdate_1s)
+schedule.every(10).seconds.do(machUpdate_10s)
+
 while True:
 
     # Calls Unix select() system call or Windows select() WinSock call with three parameters:
@@ -90,7 +141,6 @@ while True:
 
             # Receive message
             message = notified_socket.recv(999);
-            print(message)
             
             # If False, client disconnected, cleanup
             if len(message) == 0:
@@ -103,18 +153,47 @@ while True:
                 del clients[notified_socket]
 
                 continue
-
-            jmsg = json.loads(message)
-
-            # the result is a Python dictionary:
-            print(jmsg["id"])
-            # Get user by notified socket, so we will know who sent the message
+            schedule.run_pending()
             user = clients[notified_socket]
-            retMsg = {
-              "type": "PONG",
-              "id": jmsg["id"],
-            }
-            notified_socket.send(json.dumps(retMsg).encode("utf-8"))
+            jmsg = json.loads(message)
+            _id=None
+            if "id" in jmsg:
+              _id=jmsg["id"]
+            # the result is a Python dictionary:
+            msg_type=jmsg["type"]
+            retMsg={}
+            if msg_type == "PING":
+              retMsg=copy.copy(machState)
+              retMsg["type"]="PONG"
+            if msg_type == "inspRep":
+              _id=None
+              print(jmsg)
+            elif msg_type == "get_setup":
+              retMsg=copy.copy(machSetup)
+              retMsg["type"]="get_setup_rsp"
+            elif msg_type == "set_setup":
+              retMsg["type"]="set_setup_rsp"
+              if "mode" in jmsg:
+                machSetup["mode"]=jmsg["mode"]
+              if "state_pulseOffset" in jmsg:
+                machSetup["state_pulseOffset"]=jmsg["state_pulseOffset"]
+              if "pulse_hz" in jmsg:
+                machSetup["pulse_hz"]=jmsg["pulse_hz"]
+              print(jmsg)
+              print(machSetup)
+            elif msg_type == "res_count_clear":
+              machState["res_count"]={
+                  "OK": 0,
+                  "NG": 0,
+                  "NA": 0,
+                  "ERR": 0
+                }
+            elif msg_type == "error_clear":
+              machState["error_codes"]=None
+              
+            if _id is not None:
+              retMsg["id"]=_id
+              notified_socket.send(json.dumps(retMsg).encode("utf-8"))
             # print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
 
             # Iterate over connected clients and broadcast message
