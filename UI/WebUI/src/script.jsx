@@ -7,6 +7,7 @@ import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
+import {UINSP_UI} from './component/rdxComponent.jsx';
 
 import INFO from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -193,14 +194,14 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     
   }
   
-  console.log(ConnInfo);
+  // console.log(ConnInfo);
 
   return [
     [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
     [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
     ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
-    [undefined,            undefined,                         <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined],
+    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined],
     ["全檢機",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
     ["坡檢機",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
     ]
@@ -305,7 +306,8 @@ class APPMasterX extends React.Component {
   constructor(props) {
     super(props);
     this.state={
-      show_system_panel:true
+      show_system_panel:true,
+      modal_view:undefined
     };
 
     console.log("electron:",electron);
@@ -1003,6 +1005,82 @@ class APPMasterX extends React.Component {
         })
       }
 
+      cleanUpConnection()
+      {
+        this.cleanUpTrackingWindow();
+        
+      }
+
+      
+      saveMachineSetupIntoFile(filename = "data/uInspSetting.json")
+      {
+        
+        let act = comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
+          { filename: filename },
+          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
+          {
+            resolve:(res)=>{
+              console.log(res);
+            }, 
+            reject:(res)=>{
+              console.log(res);
+            }, 
+          }
+        )
+      }
+
+      
+
+      LoadFileToMachine(filename = "data/uInspSetting.json") {
+        new Promise((resolve, reject) => {
+
+          log.info("LoaduInspSettingToMachine step2");
+          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
+            { filename },
+            undefined, { resolve, reject }
+          );
+          setTimeout(() => reject("Timeout"), 1000)
+        }).then((pkts) => {
+
+          log.info("LoaduInspSettingToMachine>> step3", pkts);
+          if (pkts[0].type != "FL")
+          {
+            return;
+          }
+          let machInfo = pkts[0].data;
+          
+          this.machineSetupUpdate(machInfo,true);
+        }).catch((err) => {
+
+          log.info("LoaduInspSettingToMachine>> step3-error", err);
+        })
+      }
+
+      machineSetupUpdate(newMachineInfo,doReplace=false)
+      {
+
+        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
+        // console.log(this.machineSetup);
+        StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineSetup:this.machineSetup});
+        this.send({type:"set_setup",...newMachineInfo},
+        (ret)=>{
+          //HACK: just assume it will work
+          // this.machineSetup={...this.machineSetup,...newMachineInfo};
+          // console.log(ret);
+        },(e)=>console.log(e));
+      }
+      
+      machineSetupReSync() {
+        this.send({type:"get_setup"},
+        (ret)=>{
+          delete ret["type"];
+          delete ret["id"];
+          delete ret["st"];
+          this.machineSetup=ret;
+          // console.log(ret);
+          this.machineSetupUpdate(this.machineSetup,true);
+        },(e)=>console.log(e));
+      }
 
       connect(connInfo)
       {
@@ -1014,6 +1092,7 @@ class APPMasterX extends React.Component {
         StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
         this.connInfo=connInfo;
         this.inReconnection=true;
+        this.LoadFileToMachine();
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
         {
           resolve: (stacked_pkts,action_channal) => {
@@ -1033,20 +1112,34 @@ class APPMasterX extends React.Component {
                   let trwin=this.trackingWindow[msg_id];
                   if(trwin!==undefined)
                   {
-                    trwin.resolve(msg);
+                    if(trwin.resolve!==undefined)
+                      trwin.resolve(msg);
                     delete this.trackingWindow[msg_id];
                   }
                 }
                   break;
                 case "DISCONNECT":
                   this.CONN_ID=undefined;
-                  this.cleanUpTrackingWindow();
+                  this.cleanUpConnection();
                   StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:PD});
                   break;
                 case "CONNECT":
                   this.CONN_ID=PD_data.CONN_ID;
-                  this.cleanUpTrackingWindow();
                   StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.uInsp_API_ID,data:PD});
+
+                  if(this.machineSetup!==undefined)
+                  {
+                    this.send({type:"set_setup",...this.machineSetup},
+                    (ret)=>{
+                      this.machineSetupReSync();
+                      
+                    },(e)=>console.log(e));
+                  }
+                  else
+                  {
+                    this.machineSetupReSync();
+                  }
+                  
                   break;
               }
             }
@@ -1054,7 +1147,7 @@ class APPMasterX extends React.Component {
           reject:(e)=>{
             this.CONN_ID=undefined;
             this.inReconnection=false;
-            this.cleanUpTrackingWindow();
+            this.cleanUpConnection();
             console.log(e);
             StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
             
@@ -1075,6 +1168,8 @@ class APPMasterX extends React.Component {
         this.trackingWindow={};
         this.idCounter=10;
         this.PINGCount=0;
+
+        this.machineInfo=undefined;
       } 
       checkReConnection()
       {
@@ -1087,7 +1182,10 @@ class APPMasterX extends React.Component {
         // this.checkReconnectionTimeout=setTimeout(,);
       }
 
-
+      getMachineSetup()
+      {
+        return this.machineSetup;
+      }
 
       findAvailableID()
       {
@@ -1118,13 +1216,19 @@ class APPMasterX extends React.Component {
           return;
         }
         this.PINGCount++;
-        console.log(this.CONN_ID);
+        // console.log(this.CONN_ID);
 
 
         this.sendPing((ret)=>{
-          console.log(ret);
+          // console.log(ret);
+          delete ret["type"]
+          delete ret["id"]
+          delete ret["st"]
+          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus:ret});
           this.PINGCount=0;
         },errorInfo=>console.log(errorInfo));
+
+        // this.machineSetupUpdate({pulse_hz:0});
       }
       sendPing(resolve,reject)
       {
@@ -1148,10 +1252,7 @@ class APPMasterX extends React.Component {
         {
           data.id=this.findAvailableID();
         }
-
-        if(resolve!==undefined || reject!==undefined)
-          this.trackingWindow[data.id]=
-          {resolve,reject};
+        this.trackingWindow[data.id]={resolve,reject};
 
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, //just send
         {
@@ -1159,7 +1260,7 @@ class APPMasterX extends React.Component {
           CONN_ID:this.CONN_ID,
           type:"MESSAGE"
         },undefined, {
-          resolve:d=>console.log(d),
+          resolve:d=>d,
           reject:d=>console.log(d)
         });
         
@@ -1186,15 +1287,7 @@ class APPMasterX extends React.Component {
             break;
           case UISEV.PD_DATA_Update:
             let pd_data = action.data;
-            switch (pd_data.type) {
-              case "CONNECT":
-                console.log("CONNECT");
-                state = { ...state, connected: true, alive: 1 }
-                break;
-              case "DISCONNECT":
-                console.log("DISCONNECT");
-                state = { ...state, connected: false, alive: 0 }
-                break;
+            switch (pd_data.type) { 
               case "MESSAGE":
                 //console.log(pd_data.msg);
                 switch (pd_data.msg.type) {
@@ -1355,6 +1448,23 @@ class APPMasterX extends React.Component {
 
                   break;
                 }
+
+
+                case this.props.uInsp_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><UINSP_UI/>,
+                      title:"uInsp_API",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+
+
               }
             }}
           />
@@ -1377,7 +1487,7 @@ class APPMasterX extends React.Component {
 
         <Button className="overlay" 
           style={{
-            background: "white",
+            background: "rgba(255,255,255,0.4)",
             right:this.state.show_system_panel?"-50px":"-10px",
             margin:"10px",
             top:"100px",
@@ -1388,6 +1498,12 @@ class APPMasterX extends React.Component {
           <System_Status_Display 
             showText={false} iconSize={20} gridSize={30}/>
         </Button>
+
+        <Modal
+          {...this.state.modal_view}
+          visible={this.state.modal_view !== undefined}>
+          {this.state.modal_view === undefined ? null : this.state.modal_view.view_fn()}
+        </Modal>
       </div>
     );
   }

@@ -18,12 +18,16 @@ import dclone from 'clone';
 import Layout from 'antd/lib/layout';
 const { Header, Content, Footer, Sider } = Layout;
 
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
 import Typography from 'antd/lib/typography';
 const { Paragraph, Title } = Typography;
-import { WarningOutlined,CheckOutlined } from '@ant-design/icons';
+import { WarningOutlined,CheckOutlined,BulbOutlined,SaveOutlined,ReloadOutlined } from '@ant-design/icons';
 const { CheckableTag } = Tag;
 import Divider from 'antd/lib/divider';
+import Slider from 'antd/lib/Slider';
+import InputNumber from 'antd/lib/input-number';
 
+import Switch from 'antd/lib/switch';
 import * as BASE_COM from 'JSSRCROOT/component/baseComponent.jsx';
 let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 
@@ -666,3 +670,327 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
   return returnUI;
 }
 
+
+
+export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true})
+{
+  
+  const dispatch = useDispatch();
+  
+  const DICT = useSelector(state => state.UIData.DICT);
+  const uInsp_API_ID = useSelector(state => state.ConnInfo.uInsp_API_ID);
+  
+  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
+
+  const ACT_WS_GET_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(uInsp_API_ID,callback));
+
+  
+  // useEffect(()=>{
+  // },[])  
+
+
+  let machineStatus = uInsp_API_ID_CONN_INFO.machineStatus;
+  let machineSetup = uInsp_API_ID_CONN_INFO.machineSetup;
+  if(uInsp_API_ID_CONN_INFO.type!=="WS_CONNECTED" || machineStatus===undefined || machineSetup===undefined )
+  {
+    return "!!全檢儀器未連線!!";
+  }
+
+
+
+  let res_count=machineStatus.res_count||{OK:"_",NG:"_",NA:"_"};
+  let error_codes=machineStatus.error_codes||[];
+  let len = error_codes.length;
+  if(error_codes.length>10)
+  {
+    error_codes=error_codes.slice(-10);
+    
+    error_codes=`(${len}):...${error_codes}`
+  }
+  else
+  {
+    error_codes=`(${len}):${error_codes}`
+  }
+  let pulse_hz=machineSetup.pulse_hz||0;
+
+  // console.log(uInsp_API_ID_CONN_INFO);
+
+  let OKColor="#87d068";
+  let NGColor="#f50";
+  let NAColor="#aaa";
+
+  let insp_count=UI_INSP_Count==false?null:
+  <>
+    <Tag style={{ 'fontSize': 25 }}
+      color={OKColor}>{res_count.OK}
+      </Tag>
+    <Tag style={{ 'fontSize': 25 }}
+      color={NGColor}>{res_count.NG}
+    </Tag>
+    <Tag style={{ 'fontSize': 25 }}
+      color={NAColor}>{res_count.NA}
+    </Tag>
+    </>
+
+  let SpeedSlider=UI_Speed_Slider==false?null:
+  <>
+    <br/>
+    <Slider key="speedSlider"
+      min={0}
+      max={20000}
+      onChange={(value) => {
+        ACT_WS_GET_OBJ((api)=>{
+          api.machineSetupUpdate({pulse_hz:value});
+        })
+      }}
+      value={pulse_hz}
+      step={100}
+    />
+  </>
+
+  let detailSetup=UI_detail==false?null:<>
+    <Divider/>
+    <div style={{ height: "600px" }}>
+      
+      <Button.Group key="GGGG">
+        <Button
+          icon={<BulbOutlined />}
+            key="L_ON"
+            onClick={() =>
+              ACT_WS_GET_OBJ((api)=>{
+                api.send({type: "MISC/BACK_LIGHT/ON"},
+                (ret)=>{
+                },(e)=>console.log(e));
+              })
+            }>
+            ON
+        </Button>
+
+        <Button
+          key="L_OFF"
+          onClick={() =>
+            ACT_WS_GET_OBJ((api)=>{
+              api.send({type: "MISC/BACK_LIGHT/OFF"},
+              (ret)=>{console.log(ret)},(e)=>console.log(e));
+            })
+          }>OFF
+        </Button>
+
+        <Button
+          icon={<SaveOutlined/>}
+          key="SaveToFile"
+          onClick={() => {
+
+
+            ACT_WS_GET_OBJ((api)=>{
+              api.saveMachineSetupIntoFile();
+            })
+
+
+
+            
+          }}>{DICT._.save_machine_setting}</Button>
+
+
+      </Button.Group>
+
+
+      <Button.Group key="MISC_BB">
+
+        <Button
+          icon={<ReloadOutlined />}
+          key="res_count_clear"
+          onClick={() =>
+            ACT_WS_GET_OBJ((api)=>{
+              api.send({type: "res_count_clear"},
+              (ret)=>{console.log(ret)},(e)=>console.log(e));
+            })
+          }>{DICT._.RESET_INSPECTION_COUNTER}
+      </Button>
+
+      </Button.Group>
+
+
+
+
+      <Divider orientation="left" key="ERROR">{DICT._.ERROR_INFO}</Divider>
+
+      <Button.Group key="ERRORG">
+        <Button
+          key="error_get"
+          onClick={() =>{
+          }}>
+          {DICT._.ERROR_CODES}:{error_codes}
+        </Button>
+
+        <Button
+          key="error_clear"
+          onClick={() =>
+            
+
+            ACT_WS_GET_OBJ((api)=>{
+              api.send({type: "error_clear"})
+            })
+          }>{DICT._.ERROR_CLEAR}
+        </Button>
+
+
+        <Button
+          key="speed_set"
+          onClick={() => {
+            ACT_WS_GET_OBJ((api)=>{
+              api.machineSetupUpdate({pulse_hz: pulse_hz});
+            })
+          }
+          }>{DICT._.SPEED_SET}:{pulse_hz}
+      </Button>
+      </Button.Group>
+
+
+      <Divider orientation="left">{DICT._.uInsp_ACTION_TRIGGER_TIMING}</Divider>
+
+
+      預設不噴氣{machineSetup.mode}:
+      <Switch checked={(machineSetup.mode==="TEST_NO_BLOW")}
+      onChange={(checked)=>
+        {
+          
+          ACT_WS_GET_OBJ((api)=>{
+            api.machineSetupUpdate({mode:checked?"TEST_NO_BLOW":"NORMAL"});
+          })
+        }
+      } 
+      />
+      <br/>
+  
+      {
+
+
+        (machineSetup.state_pulseOffset === undefined)?null:
+        machineSetup.state_pulseOffset.map((pulseC, idx) =>
+          <InputNumber value={pulseC} size="small" key={"poff" + idx} onChange={(value) => {
+            let state_pulseOffset = dclone(machineSetup.state_pulseOffset);
+            
+
+
+            //[0,55,56,57,58,59] =(idx:3 set 59)=> [0,55,56,59,58,59]
+            //push F => [0,55,56,59,60,61]
+
+            //[0,55,56,57,58,59] =(idx:3 set 50)=> [0,55,56,50,58,59]
+            //push B => [0,48,49,50,58,59]
+
+            // state_pulseOffset[idx] = value;
+            state_pulseOffset.forEach((v,_idx)=>{
+              let tarOffset=value+(_idx-idx)*1;
+              if(_idx==idx)
+              {
+                state_pulseOffset[_idx] = tarOffset;
+              }
+              else if(_idx<idx)//push back
+              {
+                if(state_pulseOffset[_idx]>tarOffset)
+                  state_pulseOffset[_idx]=tarOffset;
+              }
+              else//push forward
+              {
+                if(state_pulseOffset[_idx]<tarOffset)
+                  state_pulseOffset[_idx]=tarOffset;
+              }
+            });
+
+            ACT_WS_GET_OBJ((api)=>{
+              api.machineSetupUpdate({state_pulseOffset});
+            })
+
+          }} />)
+      }
+
+
+    <Divider orientation="left">{DICT._.TEST_MODE}</Divider>
+      <Button.Group key="MODE_G">
+        <Button
+          key="TEST_INC"
+          onClick={() =>
+            ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "TEST_INC"})})
+
+          }>{DICT._.TEST_MODE_INC}
+        </Button> 
+
+        <Button
+          key="TEST_NO_BLOW"
+          onClick={() =>
+            ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "TEST_NO_BLOW"})})
+
+          }>{DICT._.TEST_MODE_NO_BLOW}
+        </Button> 
+
+        <Button
+          key="MODE:TEST"
+          onClick={() =>
+            ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "TEST_ALTER_BLOW"})})
+
+          }>{DICT._.TEST_MODE_ALTER_BLOW}
+        </Button>
+        <Button
+          key="MODE:NORMAL"
+          onClick={() =>
+            ACT_WS_GET_OBJ((api)=>{ api.send({type: "mode_set", mode: "NORMAL"})})
+          }>{DICT._.TEST_MODE_NORMAL}
+        </Button>
+
+        {/* <Button type="danger" key="Disconnect uInsp"
+          icon={<DisconnectOutlined/>}
+          onClick={() => {
+            new Promise((resolve, reject) => {
+              this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
+                {},
+                undefined, { resolve, reject });
+              //setTimeout(()=>reject("Timeout"),1000)
+            })
+              .then((data) => {
+                console.log(data);
+              })
+              .catch((err) => {
+                console.log(err);
+              })
+            }}>{DICT._.TEST_MODE_DISCONNECT}</Button> */}
+
+
+      </Button.Group> 
+    
+    </div>
+  </>
+
+
+  return <>
+    {insp_count}
+    {SpeedSlider}
+    {detailSetup}
+  </>
+
+  // console.log(JSON.stringify(uInsp_API_ID_CONN_INFO.machineSetup,null,2));
+  // console.log(JSON.stringify(uInsp_API_ID_CONN_INFO.machineStatus,null,2));
+
+  return <>
+    <Button 
+      onClick={()=>{
+        ACT_WS_GET_OBJ((api)=>{
+          api.machineSetupUpdate({pulse_hz:0});
+        })
+
+      }}>
+        Set 0
+    </Button>
+    
+    <Button 
+      onClick={()=>{
+
+        ACT_WS_GET_OBJ((api)=>{
+          
+          api.machineSetupUpdate({pulse_hz:10000});
+        })
+      }}>
+        Set 10000
+    </Button>
+  </>
+}

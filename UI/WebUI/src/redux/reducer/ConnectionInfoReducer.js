@@ -19,6 +19,7 @@ let StateReducer = (state, action) => {
   switch(action.type)
   {
     case "WS_CONNECTED":
+    case "WS_UPDATE":
     case "WS_DISCONNECTED":
     case "WS_ERROR":
     {
@@ -46,6 +47,11 @@ let StateReducer = (state, action) => {
 
         
         case uInsp_API_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,uInsp_API_ID_CONN_INFO:{...state.uInsp_API_ID_CONN_INFO,...action}}
+          }
           if(GetObjElement(state,["uInsp_API_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,uInsp_API_ID_CONN_INFO:action}
           break;
