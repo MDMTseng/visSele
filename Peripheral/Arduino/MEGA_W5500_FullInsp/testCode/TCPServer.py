@@ -87,13 +87,14 @@ machState={
 
 
 def machUpdate_1s():
-  machState["res_count"]["NG"]+=1
+  None
+  # machState["res_count"]["NG"]+=1
 
 def machUpdate_10s():
   if machState["error_codes"] is None:
     machState["error_codes"]=[]
   machState["error_codes"].append(2)
-  machState["res_count"]["NA"]+=1
+  # machState["res_count"]["NA"]+=1
 
 
 schedule.every(1).seconds.do(machUpdate_1s)
@@ -167,6 +168,14 @@ while True:
               retMsg["type"]="PONG"
             if msg_type == "inspRep":
               _id=None
+              if jmsg["status"]==0:
+                machState["res_count"]["OK"]+=1
+              elif jmsg["status"]==-1:
+                machState["res_count"]["NG"]+=1
+              else:
+                machState["res_count"]["NA"]+=1
+
+
               print(jmsg)
             elif msg_type == "get_setup":
               retMsg=copy.copy(machSetup)
