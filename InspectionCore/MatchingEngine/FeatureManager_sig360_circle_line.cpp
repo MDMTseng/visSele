@@ -3185,21 +3185,28 @@ void xrefine(ContourSignature &tar,ContourSignature &src,float roughScanCount,ve
 
 
 
-inline float angle_0_to_pi(float ang)
+inline float angle_0_to_2pi(float ang)
 {
   float _ang=fmod(ang,2*M_PI);
   return (_ang<0)?_ang+2*M_PI:_ang;
 }
+inline float angle_npi_to_pi(float ang)
+{
+  float _ang=angle_0_to_2pi(ang);
+  if(_ang>M_PI)_ang-=2*M_PI;
+  return _ang;
+}
 
 bool isAngleInRegion(float angle,float from,float to)
 {
-  angle=angle_0_to_pi(angle);
-  from=angle_0_to_pi(from);
-  to=angle_0_to_pi(to);
+  angle=angle_0_to_2pi(angle);
+  from=angle_0_to_2pi(from);
+  to=angle_0_to_2pi(to);
 
+  LOGI("a:%f f:%f t:%f",angle*180/M_PI,from*180/M_PI,to*180/M_PI);
   if(to<from)to+=2*M_PI;
   if(angle<from)angle+=2*M_PI;
-  return (angle>to);
+  return (angle>=to);
 }
 
 
@@ -3255,31 +3262,32 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
 
 
-  
+    float matching_angle_margin=this->matching_angle_margin;
+    // if(matching_angle_margin>M_PI-0.0001)
+    // {
+    //   matching_angle_margin=M_PI-0.0001;
+    // }
     for(int i=0;i<minMatchErr.size();i++)
     {
-
-      if(isAngleInRegion(minMatchErr[i].X*M_PI/180,this->matching_angle_offset-this->matching_angle_margin ,this->matching_angle_offset+this->matching_angle_margin ) )
+      float preErr = minMatchErr[i].Y;
+      if(matching_angle_margin<M_PI-0.001 &&isAngleInRegion(minMatchErr[i].X*M_PI/180,this->matching_angle_offset-matching_angle_margin ,this->matching_angle_offset+matching_angle_margin ) )
       {
         minMatchErr[i].Y=ignoreErr;
 
       }
-
-
-      LOGI(". %f>%f",minMatchErr[i].X,minMatchErr[i].Y);
+      LOGI("F %f: %f>%f",minMatchErr[i].X,preErr,minMatchErr[i].Y);
 
     // minMatchErr[i].Y+=0.005723;
     }
 
     for(int i=0;i<minMatchErr_bk.size();i++)
     {
-      // minMatchErr_bk[i].Y*=0.1;
-      
-      if(isAngleInRegion(minMatchErr_bk[i].X*M_PI/180,this->matching_angle_offset-this->matching_angle_margin ,this->matching_angle_offset+this->matching_angle_margin ) )
+      float preErr = minMatchErr_bk[i].Y;
+      if(matching_angle_margin<M_PI-0.001 &&isAngleInRegion(minMatchErr_bk[i].X*M_PI/180+M_PI,this->matching_angle_offset-matching_angle_margin ,this->matching_angle_offset+matching_angle_margin ) )
       {
         minMatchErr_bk[i].Y=ignoreErr;
       }
-      LOGI("~%f>%f",minMatchErr_bk[i].X,minMatchErr_bk[i].Y);
+      LOGI("B %f: %f>%f",minMatchErr_bk[i].X,preErr,minMatchErr_bk[i].Y);
     }
   }
 
@@ -3323,9 +3331,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
           minErr=minMatchErr_bk[i];
           isInv=true;
           targetIdx=i;
+        }
     }
-      }
-      if(targetIdx==-1)
+    if(targetIdx==-1)
     {
         LOGI("NO good angle was found!!");
         //No min orientation was found
