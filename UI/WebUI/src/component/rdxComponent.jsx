@@ -689,6 +689,11 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
   // },[])  
 
 
+  if(uInsp_API_ID_CONN_INFO===undefined )
+  {
+    return null;
+  }
+
   let machineStatus = uInsp_API_ID_CONN_INFO.machineStatus;
   let machineSetup = uInsp_API_ID_CONN_INFO.machineSetup;
   if(uInsp_API_ID_CONN_INFO.type!=="WS_CONNECTED" || machineStatus===undefined || machineSetup===undefined )
@@ -719,15 +724,20 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
   let NGColor="#f50";
   let NAColor="#aaa";
 
+  let tagStyle={
+    'fontSize': 25,
+
+  }
+  // text-align: center; display:block;
   let insp_count=UI_INSP_Count==false?null:
   <>
-    <Tag style={{ 'fontSize': 25 }}
+    <Tag style={tagStyle}
       color={OKColor}>{res_count.OK}
       </Tag>
-    <Tag style={{ 'fontSize': 25 }}
+    <Tag style={tagStyle}
       color={NGColor}>{res_count.NG}
     </Tag>
-    <Tag style={{ 'fontSize': 25 }}
+    <Tag style={tagStyle}
       color={NAColor}>{res_count.NA}
     </Tag>
     </>

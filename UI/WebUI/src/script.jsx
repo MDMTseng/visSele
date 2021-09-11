@@ -202,8 +202,8 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
     ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
     [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined],
-    ["全檢機",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
-    ["坡檢機",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
+    ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
+    ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
     ]
     .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
 
@@ -1267,61 +1267,6 @@ class APPMasterX extends React.Component {
 
 
       }
-
-      StateReducer(state, action){
-
-        switch (action.type) {
-          case UISEV.uInsp_PING_Sent://get PING trigger and alive count --1
-            
-            if (state.alive <= 0) {
-              state = { ...state, connected: false, alive: 0 }
-            }
-            else {
-              state = { ...state, alive: state.alive - 1 }
-            }
-            break;
-          case UISEV.uInsp_Machine_Info_Update:
-      
-            state = { ...state, machineInfo: { ...state.machineInfo, ...action.data } };
-            console.log(state)
-            break;
-          case UISEV.PD_DATA_Update:
-            let pd_data = action.data;
-            switch (pd_data.type) { 
-              case "MESSAGE":
-                //console.log(pd_data.msg);
-                switch (pd_data.msg.type) {
-                  case "PONG":
-                    state = {
-                      ...state, alive: 1,
-                      error_codes: pd_data.msg.error_codes,
-                      res_count: pd_data.msg.res_count
-                    };
-                    //console.log("PONG",state);
-                    break;
-                  case "error_info":
-                    state = { ...state, error_codes: pd_data.msg.error_codes };
-                    break;
-                  case "res_count":
-                    state = { ...state, res_count: pd_data.msg.res_count };
-                    break;
-                  case "get_setup_rsp":
-                    let machineInfo = pd_data.msg;
-                    delete machineInfo.id;
-                    delete machineInfo.type;
-                    delete machineInfo.st;
-                    state = { ...state, machineInfo }
-                    console.log("get_setup_rsp", state);
-                    break;
-                }
-                break;
-            }
-            break;
-        }
-        //logX.info(action)
-        return state;
-      }
-
       
     }
     this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));

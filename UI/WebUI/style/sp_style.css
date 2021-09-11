@@ -69,7 +69,15 @@
   /* min-height has its purpose :) , unless you meant height*/
 }
 
+.Antd_SubMenu_Title_AutoHeight,.Antd_SubMenu_Title_AutoHeight>div,.Antd_SubMenu_Title_AutoHeight>.ant-menu-submenu-title
+{
+  height:auto !important
+}
+.Antd_Divider_Small_Text_Tight
+{
+  font-size: 14px !important; 
 
+}
 
 .blockS .deepblue{
 

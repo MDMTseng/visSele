@@ -628,6 +628,18 @@ class ObjInfoList extends React.Component {
     let fullScreenMODAL = <InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
       onCancel={this.toggleFullscreen.bind(this)} width="90%" />;
 
+
+    let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
+    <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_SubMenu_Title_AutoHeight"
+      title={
+      <>
+        <Divider orientation="left" key="divi" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備</Divider>
+        <UINSP_UI UI_INSP_Count={true} UI_Speed_Slider={false} UI_detail={false}/>
+      </>}
+      >
+        <UINSP_UI UI_INSP_Count={false} UI_Speed_Slider={true} UI_detail={false}/>
+    </SubMenu>
+
     return (
       <>
         <Menu
@@ -638,13 +650,8 @@ class ObjInfoList extends React.Component {
           defaultSelectedKeys={['functionMenu']}
           // defaultOpenKeys={['functionMenu']}
           mode="inline">
-
-          <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" }
-            title={<UINSP_UI UI_INSP_Count={true} UI_Speed_Slider={false} UI_detail={false}/>}
-            >
-              <UINSP_UI UI_INSP_Count={false} UI_Speed_Slider={true} UI_detail={false}/>
-          </SubMenu>
-
+          {uInspUI}
+          
 
           {resultMenu}
 
@@ -1820,6 +1827,7 @@ class APP_INSP_MODE extends React.Component {
           uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
+          uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
           WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
     }
@@ -1962,7 +1970,7 @@ class APP_INSP_MODE extends React.Component {
       </Button>
 
       <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="hover">
-        <FileOutlined /> {shortedModelName}
+        <span style={{margin:"10px"}} ><FileOutlined /> {shortedModelName}</span>
       </Popover>
       <TagDisplay_rdx size="middle"/>
       
@@ -2162,6 +2170,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     inspectionReport: state.UIData.edit_info.inspReport,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
+    uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
 
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
