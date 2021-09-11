@@ -90,7 +90,7 @@ def machUpdate_1s():
   None
   # machState["res_count"]["NG"]+=1
 
-def machUpdate_10s():
+def machUpdate_100s():
   if machState["error_codes"] is None:
     machState["error_codes"]=[]
   machState["error_codes"].append(2)
@@ -98,7 +98,7 @@ def machUpdate_10s():
 
 
 schedule.every(1).seconds.do(machUpdate_1s)
-schedule.every(10).seconds.do(machUpdate_10s)
+schedule.every(100).seconds.do(machUpdate_100s)
 
 while True:
 
