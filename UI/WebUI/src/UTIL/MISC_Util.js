@@ -980,23 +980,11 @@ export class websocket_aliveTracking
 }
 
 
-
-
-export function undefFallback(val,fallback) {
-  return  val!==undefined?val:fallback;
-}
-
   
 export function dictLookUp(key,dict,theme) {
-  let transVal;
-  if(Array.isArray(key))
-  {
-    transVal=  GetObjElement(dict,key);
-    return undefFallback(transVal,key[key.length-1]);
-  }
-  let dictTheme=undefFallback(theme,"_");
-  transVal = GetObjElement(dict,[dictTheme, key]);
-  return  undefFallback(transVal,key);
+  return  Array.isArray(key)?
+  GetObjElement(dict,key)||key[key.length-1]:
+  GetObjElement(dict,[theme||"_", key])||key;
 }
 
 

@@ -15,7 +15,7 @@ import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -396,17 +396,36 @@ class InspectionResultDisplay extends React.Component {
         color:"#999"
       }
     }
-    //console.log(rep);
+
+
+    let resValue = this.showResultValueCheck(rep);
+    let bundary_ratio=resValue>rep.def.value?
+    (resValue-rep.def.value)/(rep.def.USL-rep.def.value):
+    (resValue-rep.def.value)/(rep.def.LSL-rep.def.value)*-1;
+
+    let detailInfo=<>
+    類型:{dictLookUp(rep.def.subtype,this.props.DICT)} <br/>
+    目標:{rep.def.value}<br/>
+    上限:{rep.def.USL}<br/>
+    下限:{rep.def.LSL}<br/>
+    檢測值:{resValue}<br/>
+    
+    界限比例:{bundary_ratio.toFixed(2)}<br/>
+    </>
+
+
+    console.log(rep);
     return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height:height}}>
       <div className="s width8  HXF">
         <div className="s vbox height4">
           <FullscreenOutlined onClick={this.clickFullScreen.bind(this)} />
           {rep.name}
         </div>
-        <div className="s vbox  height8" style={fontStyle}>
-          {this.showResultValueCheck(rep) + DEFAULT_UNIT[rep.subtype]}
-
-        </div>
+        <Popover content={detailInfo} placement="bottomLeft" trigger={["click","hover"]}>
+          <div className="s vbox  height8" style={fontStyle}>
+              {resValue + DEFAULT_UNIT[rep.subtype]}
+          </div>
+        </Popover>
       </div>
       <div className="s vbox width4 HXF">
         <Tag style={{ 'fontSize': 18 }}
@@ -599,7 +618,7 @@ class ObjInfoList extends React.Component {
       reportDetail =judgeInRank
         // .filter(rep=>rep.def.quality_essential!=false)//do not show quality_essential=false result
         .map((rep, idx_) => (
-          <InspectionResultDisplay key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
+          <InspectionResultDisplay DICT={this.props.DICT} key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
         )
       );
 
@@ -1969,7 +1988,7 @@ class APP_INSP_MODE extends React.Component {
         <ArrowLeftOutlined />
       </Button>
 
-      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="hover">
+      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="click">
         <span style={{margin:"10px"}} ><FileOutlined /> {shortedModelName}</span>
       </Popover>
       <TagDisplay_rdx size="middle"/>
