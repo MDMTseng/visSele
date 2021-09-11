@@ -2424,6 +2424,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     let ctx = this.canvas.getContext('2d');
     let ctx2nd = this.secCanvas.getContext('2d');
+    
+    ctx.font = this.rUtil.getFontStyle(1);
     ctx.lineWidth = this.rUtil.getIndicationLineSize();
     ctx.resetTransform();
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -2558,12 +2560,12 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
           ctx.save();
           ctx.translate(report.cx, report.cy);
           // console.log(report.cx, report.cy,report);
-          ctx.save();
-          ctx.rotate(-report.rotate);
-          if (report.isFlipped)
-            ctx.scale(1, -1);
-          this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
-          ctx.restore();
+          // ctx.save();
+          // ctx.rotate(-report.rotate);
+          // if (report.isFlipped)
+          //   ctx.scale(1, -1);
+          // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
+          // ctx.restore();
           
           
 
@@ -2619,8 +2621,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
           }
           // let fontPx = this.getFontHeightPx();
+          // console.log(report);
           
-          this.rUtil.draw_Text(ctx, idx, this.rUtil.getFontHeightPx(), 0,0);
+          this.rUtil.draw_Text(ctx, `${idx} ${report.isFlipped?"反":"正"}`, this.rUtil.getFontHeightPx(), 0,0);
           
           ctx.strokeStyle = "red";
           this.rUtil.draw_aimcross(ctx, {x:0,y:0},this.rUtil.getPointSize()*3,0.1);

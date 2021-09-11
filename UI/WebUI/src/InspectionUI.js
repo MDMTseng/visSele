@@ -414,7 +414,7 @@ class InspectionResultDisplay extends React.Component {
     </>
 
 
-    console.log(rep);
+    // console.log(rep);
     return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height:height}}>
       <div className="s width8  HXF">
         <div className="s vbox height4">
@@ -627,14 +627,14 @@ class ObjInfoList extends React.Component {
         if(rep.def.quality_essential==false)return res;
         return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
-
+      console.log(singleReport.isFlipped);
       return (
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
           title={
             <span>
               <PaperClipOutlined />
               <span>
-                {idx} <OK_NG_BOX detailStatus={finalResult} />
+                {`${idx}   ${singleReport.isFlipped?"反":"正"}`} <OK_NG_BOX detailStatus={finalResult} />
               </span>
             </span>}>
           {reportDetail}
