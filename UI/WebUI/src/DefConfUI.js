@@ -1710,10 +1710,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               let SS=pkts.find(pkt=>pkt.type=="SS");
               if(SS.data.ACK==true)
               {              
+                let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
                 dispatch({
                   type: "ATBundle",
                   ActionThrottle_type: "express",
-                  data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+                  data: acts
                 })
                 setModal_view(undefined);
               }
@@ -1796,6 +1797,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               if(insp_reports!==undefined&&  insp_reports.length>0)
               {
                 let insp_rep = insp_reports[0];
+                edit_info._obj.setsig360infoCenter({x:insp_rep.cx,y:insp_rep.cy});
                 let modList = shape_list.map((shape,idx)=>{
                   let mod_shape=dclone(shape);
                   

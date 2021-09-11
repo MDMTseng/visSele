@@ -3017,9 +3017,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.imageSmoothingEnabled = scale!=1;
       ctx.webkitImageSmoothingEnabled = scale!=1;
       let mmpp_mult = scale * mmpp;
+      
       ctx.scale(mmpp_mult, mmpp_mult);
       if (this.img_info !== undefined && this.img_info.offsetX !== undefined && this.img_info.offsetY !== undefined) {
-        ctx.translate((this.img_info.offsetX-0.5*(scale)) / scale, (this.img_info.offsetY-0.5*(scale)) / scale);
+        ctx.translate((this.img_info.offsetX / scale -0.5), (this.img_info.offsetY) / scale -0.5);
       }
       // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
       //ctx.translate(-1 * scale * mmpp, -1 * mmpp_mult);

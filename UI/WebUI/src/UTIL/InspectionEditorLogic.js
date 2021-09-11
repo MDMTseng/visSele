@@ -410,6 +410,11 @@ export class InspectionEditorLogic {
     return 1;
   }
 
+  setsig360infoCenter(center){
+    
+    this.sig360info.reports[0].cx=center.x;
+    this.sig360info.reports[0].cy=center.y;
+  }
   getsig360infoCenter() {
 
     let center = { x: 0, y: 0 };
