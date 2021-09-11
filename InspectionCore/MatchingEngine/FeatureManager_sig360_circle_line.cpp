@@ -3283,7 +3283,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     for(int i=0;i<minMatchErr_bk.size();i++)
     {
       float preErr = minMatchErr_bk[i].Y;
-      if(matching_angle_margin<M_PI-0.001 &&isAngleInRegion(minMatchErr_bk[i].X*M_PI/180+M_PI,this->matching_angle_offset-matching_angle_margin ,this->matching_angle_offset+matching_angle_margin ) )
+      float angle =  minMatchErr_bk[i].X*M_PI/180+M_PI;//the flip is along X axis, but in practice the flip should(in practice sense) be along Y axis
+      if(matching_angle_margin<M_PI-0.001 &&isAngleInRegion(angle,this->matching_angle_offset-matching_angle_margin ,this->matching_angle_offset+matching_angle_margin ) )
       {
         minMatchErr_bk[i].Y=ignoreErr;
       }
