@@ -155,55 +155,85 @@ while True:
 
                 continue
             schedule.run_pending()
+
+
             user = clients[notified_socket]
-            jmsg = json.loads(message)
-            _id=None
-            if "id" in jmsg:
-              _id=jmsg["id"]
-            # the result is a Python dictionary:
-            msg_type=jmsg["type"]
-            retMsg={}
-            if msg_type == "PING":
-              retMsg=copy.copy(machState)
-              retMsg["type"]="PONG"
-            if msg_type == "inspRep":
-              _id=None
-              if jmsg["status"]==0:
-                machState["res_count"]["OK"]+=1
-              elif jmsg["status"]==-1:
-                machState["res_count"]["NG"]+=1
-              else:
-                machState["res_count"]["NA"]+=1
 
 
-              print(jmsg)
-            elif msg_type == "get_setup":
-              retMsg=copy.copy(machSetup)
-              retMsg["type"]="get_setup_rsp"
-            elif msg_type == "set_setup":
-              retMsg["type"]="set_setup_rsp"
-              if "mode" in jmsg:
-                machSetup["mode"]=jmsg["mode"]
-              if "state_pulseOffset" in jmsg:
-                machSetup["state_pulseOffset"]=jmsg["state_pulseOffset"]
-              if "pulse_hz" in jmsg:
-                machSetup["pulse_hz"]=jmsg["pulse_hz"]
-              print(jmsg)
-              print(machSetup)
-            elif msg_type == "res_count_clear":
-              machState["res_count"]={
-                  "OK": 0,
-                  "NG": 0,
-                  "NA": 0,
-                  "ERR": 0
-                }
-            elif msg_type == "error_clear":
-              machState["error_codes"]=None
+            segIdxes=[-1]
+            isInString=False
+            pCounter=1
+            for idx in range(1, len(message)):
               
-            if _id is not None:
-              retMsg["id"]=_id
-              notified_socket.send(json.dumps(retMsg).encode("utf-8"))
-            # print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
+              # print(message[idx])
+              
+              if(message[idx]==ord('"')):#deal with the { or } in the  string
+                isInString=not isInString
+              if isInString==True:
+                continue
+
+              if(message[idx]==ord('{')):
+                pCounter+=1
+              elif (message[idx]==ord('}')):
+                pCounter-=1
+                if(pCounter==0):
+                  segIdxes.append(idx)
+              
+
+
+            print("\n")
+            
+            
+            for idx in range(1, len(segIdxes)):
+
+              jmsg = json.loads(message[segIdxes[idx-1]+1:segIdxes[idx]+1])
+              _id=None
+              if "id" in jmsg:
+                _id=jmsg["id"]
+              # the result is a Python dictionary:
+              msg_type=jmsg["type"]
+              retMsg={}
+              if msg_type == "PING":
+                retMsg=copy.copy(machState)
+                retMsg["type"]="PONG"
+              if msg_type == "inspRep":
+                _id=None
+                if jmsg["status"]==0:
+                  machState["res_count"]["OK"]+=1
+                elif jmsg["status"]==-1:
+                  machState["res_count"]["NG"]+=1
+                else:
+                  machState["res_count"]["NA"]+=1
+
+
+                print(jmsg)
+              elif msg_type == "get_setup":
+                retMsg=copy.copy(machSetup)
+                retMsg["type"]="get_setup_rsp"
+              elif msg_type == "set_setup":
+                retMsg["type"]="set_setup_rsp"
+                if "mode" in jmsg:
+                  machSetup["mode"]=jmsg["mode"]
+                if "state_pulseOffset" in jmsg:
+                  machSetup["state_pulseOffset"]=jmsg["state_pulseOffset"]
+                if "pulse_hz" in jmsg:
+                  machSetup["pulse_hz"]=jmsg["pulse_hz"]
+                print(jmsg)
+                print(machSetup)
+              elif msg_type == "res_count_clear":
+                machState["res_count"]={
+                    "OK": 0,
+                    "NG": 0,
+                    "NA": 0,
+                    "ERR": 0
+                  }
+              elif msg_type == "error_clear":
+                machState["error_codes"]=None
+                
+              if _id is not None:
+                retMsg["id"]=_id
+                notified_socket.send(json.dumps(retMsg).encode("utf-8"))
+              # print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
 
             # Iterate over connected clients and broadcast message
             for client_socket in clients:
