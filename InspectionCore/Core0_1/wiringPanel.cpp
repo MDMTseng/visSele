@@ -1627,6 +1627,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             acvCloneImage(&cacheImage, &tmp_buff, -1);
             srcImg = &tmp_buff;
           }
+          else if(strcmp(imgSrcPath, "__SNAP_TMP_IMG__") == 0)
+          {
+            int ret_val = getImage(camera,&tmp_buff);
+            if (ret_val == 0)
+            {
+              srcImg = &tmp_buff;
+            }
+          }
           else
           {
             int ret_val = LoadIMGFile(&tmp_buff, imgSrcPath);
