@@ -1503,7 +1503,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const DefFile_DB_SEND= (data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(DefFile_DB_W_ID,data,return_cb));
   const shape_list = useSelector(state => state.UIData.edit_info.list);
   const defModelPath = edit_info.defModelPath;
-  
+  const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
   
@@ -1512,6 +1512,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   const [cacheDef,setCacheDef]=useState(undefined);
   const [nowInspdata,setNowInspdata]=useState(undefined);
+
+
 
   let MenuSet= [
     <BASE_COM.IconButton
@@ -1858,7 +1860,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         console.log(deffile);
         deffile.intrusionSizeLimitRatio=1;
         setCacheDef(deffile);
-        ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
+
+        let inspMode = machine_custom_setting.InspectionMode||"CI";//FI/CI
+
+
+        ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
         { _PGID_: 11004, 
           _PGINFO_: { keep: true }, 
           definfo: deffile     
