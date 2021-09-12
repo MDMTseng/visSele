@@ -31,7 +31,7 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
           log.error(event);
           this.props.ACT_ERROR();
       break;
-      case "asdasdas":
+      case "down_samp_level_update":
           // log.error(event);
           // this.props.ACT_ERROR();
 

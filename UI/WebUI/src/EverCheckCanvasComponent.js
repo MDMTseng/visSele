@@ -1795,7 +1795,7 @@ class EverCheckCanvasComponent_proto {
     let down_samp_level = 1.0 * crop[2] / (cW);
     this.EmitEvent(
       {
-        type: "asdasdas",
+        type: "down_samp_level_update",
         data: {
           down_samp_level,
           crop
@@ -1810,7 +1810,7 @@ class EverCheckCanvasComponent_proto {
     let down_samp_level = 0.001;
     this.EmitEvent(
       {
-        type: "asdasdas",
+        type: "down_samp_level_update",
         data: {
           down_samp_level,
           crop
@@ -3918,7 +3918,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
           this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
   
           listClone.forEach((eObj) => {
-            //log.info(eObj.inspection_status);
+            // log.info(eObj.inspection_status);
             switch (eObj.inspection_status) {
               case INSPECTION_STATUS.NA:
                 eObj.color = this.colorSet.color_NA;
@@ -3929,15 +3929,15 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
               case INSPECTION_STATUS.SUCCESS:
                 {
                   eObj.color = this.colorSet.color_SUCCESS;
+                  // if (eObj.type === SHAPE_TYPE.measure) {
+                  //   let targetID = eObj.id;
+                  //   let inspMeasureTar = report.judgeReports.find((measure) => measure.id === targetID);
+                  //   if (inspMeasureTar === undefined) break;
   
-                  if (eObj.type === SHAPE_TYPE.measure) {
-                    let targetID = eObj.id;
-                    let inspMeasureTar = report.judgeReports.find((measure) => measure.id === targetID);
-                    if (inspMeasureTar === undefined) break;
+                  //   console.log(inspMeasureTar);
+                  //   eObj.color = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
   
-                    eObj.color = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
-  
-                  }
+                  // }
   
                 }
                 break;

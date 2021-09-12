@@ -60,6 +60,8 @@ import {
 
 
 } from '@ant-design/icons';
+import {RepDisplay} from './RepDisplayUI.js';
+
 
 
 const IMG_LOAD_DOWNSAMP_LEVEL=1;
@@ -1508,6 +1510,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   
   const [modal_view,setModal_view]=useState(undefined);
 
+  const [cacheDef,setCacheDef]=useState(undefined);
+  const [nowInspdata,setNowInspdata]=useState(undefined);
 
   let MenuSet= [
     <BASE_COM.IconButton
@@ -1841,7 +1845,100 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           }
         }
         );
-      }} />
+      }} />,
+
+    
+    <BASE_COM.IconButton
+      // iconType="INST_CHECK"
+      dict={DICT}
+      addClass="layout palatte-purple-8 vbox width12"
+      key="NOW"
+      text="即時檢驗" onClick={() => {
+        let deffile = defFileGeneration(edit_info);
+        console.log(deffile);
+        deffile.intrusionSizeLimitRatio=1;
+        setCacheDef(deffile);
+        ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
+        { _PGID_: 11004, 
+          _PGINFO_: { keep: true }, 
+          definfo: deffile     
+        }, undefined,{
+          resolve:(pkts,mainFlow)=>{
+            // console.log(pkts);
+
+            // nowInspdata
+
+            let RP=pkts.find(pkt=>pkt.type=="RP");
+            let IM=pkts.find(pkt=>pkt.type=="IM");
+            
+            let reports = GetObjElement(RP,["data","reports",0,"reports"]);
+            
+            
+
+            // let root_MarginInfo=edit_info._obj.shapeList;
+            // rep.reports.forEach(rep=>{
+            //   rep.judgeReports.forEach(jdg=>{
+            //     jdg.
+            //   })
+            // })
+            // console.log(rep.reports);
+            let image = undefined;
+            if(IM!==undefined)
+              image=BPG_Protocol.map_BPG_Packet2Act(IM).data;
+
+            
+            setNowInspdata({
+              cam_param:edit_info._obj.cameraParam,
+              reports:reports,
+              image:image,
+            });
+          },
+          reject:(e)=>{
+          }
+        });
+
+        function CancelNowInsp()
+        {
+          ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
+          { _PGID_: 11004, 
+            _PGINFO_: { keep: false }, 
+            definfo: undefined     
+          }, undefined,
+          {
+            resolve:(darr,mainFlow)=>{
+              console.log(darr);
+            },
+            reject:(e)=>{
+            }
+          });
+        }
+
+        setModal_view({
+          onOk: () => {
+            CancelNowInsp()
+            setModal_view(undefined);
+          },
+          onCancel: () => { 
+            CancelNowInsp()
+            setModal_view(undefined); 
+          },
+          
+          height:"80%",
+          width:"95%",
+          style:{top:"30px"},
+
+          className:"modal-sizing size95",
+          footer:null,
+          title: null,
+          ext_sec:"INST_Inspection"
+        })
+
+
+
+      }} />,
+
+
+
   ]);
 
 
@@ -1889,6 +1986,29 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   }
 
+  let modal_view_sec=null;
+
+  if(modal_view !== undefined && modal_view.ext_sec!==undefined)
+  {
+    switch(modal_view.ext_sec)
+    {
+      case "INST_Inspection":
+        let fallback_nowInspdata=nowInspdata||{}
+        // console.log(cacheDef,edit_info._obj.cameraParam,fallback_nowInspdata.reports,fallback_nowInspdata.image);
+        modal_view_sec=
+          <RepDisplay 
+            def={cacheDef} 
+            camera_param={fallback_nowInspdata.cam_param}  
+            reports={fallback_nowInspdata.reports} 
+            image={fallback_nowInspdata.image}
+            IGNORE_IMAGE_FIT_TO_SCREEN={true}
+            ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={true}
+            BPG_Channel={(...args)=>ACT_WS_SEND_BPG(CORE_ID, ...args) }
+            />;
+        // modal_view_sec="dd"
+        break;
+    }
+  }
   MenuSet.push(
     <Modal
       {...modal_view}
@@ -1912,7 +2032,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           setModal_view(undefined);
         }
       }}>
-      {modal_view === undefined ? null : modal_view.view}
+      {modal_view === undefined ? null : (typeof modal_view.view === 'function'? modal_view.view():modal_view.view )}
+      {modal_view_sec}
     </Modal>);
 
   return MenuSet;

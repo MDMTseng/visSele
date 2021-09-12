@@ -104,6 +104,22 @@
 
 
 
+.ant-modal.modal-sizing.size90{
+  width:90%  !important;
+  height:90%  !important;
+}
+.ant-modal.modal-sizing.size90 .ant-modal-body{
+  height:90%  !important;
+}
+
+.ant-modal.modal-sizing.size95{
+  width:95%  !important;
+  height:95%  !important;
+}
+.ant-modal.modal-sizing.size95 .ant-modal-body{
+  height:95%  !important;
+}
+
 .ant-modal.modal-sizing{
   width:80%  !important;
   height:80%  !important;

@@ -300,7 +300,7 @@ export class InspectionEditorLogic {
         edit_info.intrusionSizeLimitRatio =
           root_defFile.intrusionSizeLimitRatio
       }
-  
+      
       root_defFile.featureSet.forEach((report) => {
         switch (report.type) {
           case "sig360_extractor":
@@ -322,6 +322,7 @@ export class InspectionEditorLogic {
               edit_info.edit_tar_info = null;
   
               edit_info.list = inspEditorLogic.shapeList;
+              log.info(edit_info.list);
               edit_info.__decorator = { ...edit_info.__decorator, ...report.__decorator };
   
               edit_info.__decorator.list_id_order =
@@ -329,7 +330,6 @@ export class InspectionEditorLogic {
   
               edit_info.inherentShapeList = inspEditorLogic.UpdateInherentShapeList();
   
-              log.info(edit_info.inherentShapeList);
               edit_info= this.resetStatisticState(edit_info);
               // log.info(reportStatisticState.statisticValue);
             }

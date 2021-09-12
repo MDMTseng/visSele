@@ -702,7 +702,7 @@ function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND
         log.error(event);
         ACT_ERROR();
         break;
-      case "asdasdas":
+      case "down_samp_level_update":
         // log.error(event);
         // this.props.ACT_ERROR();
 
@@ -782,7 +782,7 @@ class CanvasComponent extends React.Component {
         log.error(event);
         this.props.ACT_ERROR();
         break;
-      case "asdasdas":
+      case "down_samp_level_update":
         // log.error(event);
         // this.props.ACT_ERROR();
 

@@ -785,9 +785,10 @@ class APPMasterX extends React.Component {
               };
             }
             else {
-              let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
-              if (act !== undefined)
-              comp.props.DISPATCH(act);
+              // let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
+              // if (act !== undefined)
+              // comp.props.DISPATCH(act);
+              console.log("LOSS TRACK pkts", parsed_pkt,this.reqWindow);
             }
           }
 

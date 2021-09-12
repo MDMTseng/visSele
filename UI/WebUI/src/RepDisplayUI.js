@@ -28,14 +28,16 @@ class CanvasComponent extends React.Component {
   }
 
   ec_canvas_EmitEvent(event) {
-    return;
     switch (event.type) {
-      case "asdasdas":
+      case "down_samp_level_update":
+        if(this.props.ALLOW_CONTROL_DOWN_SAMPLING_LEVEL!=true || this.props.BPG_Channel===undefined)
+          break;
         // log.error(event);
         // this.props.ACT_ERROR();
 
-        let rep = this.props.camera_calibration_report.reports[0];
-        let mmpp = rep.mmpb2b / rep.ppb2b;
+        
+        let cam_param = this.props.edit_info._obj.cameraParam;
+        let mmpp = cam_param.mmpb2b / cam_param.ppb2b;
 
         let crop = event.data.crop.map(val => val / mmpp);
         let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
@@ -44,7 +46,7 @@ class CanvasComponent extends React.Component {
 
 
         //log.info(crop,down_samp_level);
-        this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "ST", 0,
+        this.props.BPG_Channel("ST", 0,
           {
             CameraSetting: {
               down_samp_level
@@ -75,12 +77,12 @@ class CanvasComponent extends React.Component {
 
   updateCanvas(ec_state, props = this.props) {
 
-    log.info(this.ec_canvas,props.edit_info);
+    // log.info(this.ec_canvas,props.edit_info);
     if (this.ec_canvas !== undefined && props.edit_info!==undefined) {
 
       {
         this.ec_canvas.EditDBInfoSync(props.edit_info);
-        log.info("props.edit_info>>", props.edit_info);
+        // log.info("props.edit_info>>", props.edit_info);
         
 
         // this.ec_canvas.SetState({value:{[UI_SM_STATES.INSP_MODE]:UI_SM_STATES.INSP_MODE_NEUTRAL}});
@@ -103,7 +105,7 @@ class CanvasComponent extends React.Component {
 
   componentWillUpdate(nextProps, nextState) {
     this.updateCanvas(nextProps.c_state, nextProps);
-    console.log(">>>");
+    // console.log(">>>");
   }
 
   render() {
@@ -118,16 +120,129 @@ class CanvasComponent extends React.Component {
 
 
 
+
+export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel }) {
+
+  
+  const [editInfo,setEditInfo]=useState(Edit_info_Empty());
+
+  
+  const _REF = React.useRef({firstImageSet:true});
+  let _this=_REF.current;
+  // const [editInfo,setEditInfo]=useState(Edit_info_Empty());
+  
+  
+  function updateCamParam(newEditInfo,cam_param)
+  {
+    newEditInfo._obj.SetCameraParamInfo(cam_param);
+    return newEditInfo;
+  }
+  function updateDef(newEditInfo,_def)
+  {
+    newEditInfo =newEditInfo._obj.rootDefInfoLoading(_def,newEditInfo)
+    console.log(newEditInfo);
+    return newEditInfo;
+  }
+
+  function updateReport(newEditInfo,_reports)
+  {
+    if(Array.isArray(_reports)==false)
+      _reports=[_reports]
+    newEditInfo.reportStatisticState.trackingWindow=_reports;
+    return newEditInfo;
+  }
+  
+  function updateImage(newEditInfo,image)
+  {
+    return {...newEditInfo,img:image};
+  }
+
+  // useEffect(()=>{
+  //   let newEditInfo = editInfo;
+
+
+  //   if(def!==undefined)
+  //     newEditInfo = updateDef(newEditInfo,def);
+  //   if(image!==undefined)
+  //     newEditInfo = updateImage(newEditInfo,image);
+  //   if(camera_param!==undefined)
+  //     newEditInfo = updateCamParam(newEditInfo,camera_param);
+  //   if(reports!==undefined)
+  //     newEditInfo = updateReport(newEditInfo,reports);
+
+
+  //   setEditInfo(newEditInfo);
+  // },[])
+
+
+
+  useEffect(()=>{
+    let newEditInfo = editInfo;
+    if(newEditInfo._obj===undefined )
+      newEditInfo._obj=new InspectionEditorLogic();
+    if(def!==undefined && _this.def!=def)
+      newEditInfo = updateDef(newEditInfo,def);
+    if(image!==undefined && _this.image!=image)
+    {
+      
+      if(IGNORE_IMAGE_FIT_TO_SCREEN==true)
+      {
+        image.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+      }
+      else if(IGNORE_IMAGE_FIT_TO_SCREEN==false)
+      {
+        image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
+      }
+      if(_this.firstImageSet==true)
+      {
+        _this.firstImageSet=false;
+        image.IGNORE_IMAGE_FIT_TO_SCREEN=false;
+      }
+      newEditInfo = updateImage(newEditInfo,image);
+    }
+    if(camera_param!==undefined && _this.camera_param!=camera_param)
+      newEditInfo = updateCamParam(newEditInfo,camera_param);
+    if(reports!==undefined && _this.reports!=reports)
+      newEditInfo = updateReport(newEditInfo,reports);
+    
+    _this.def=def;
+    _this.image=image;
+    _this.camera_param=camera_param;
+    _this.reports=reports;
+    setEditInfo(newEditInfo);
+  },[def,image,camera_param,reports])
+
+
+  // console.log(editInfo);
+
+
+
+  return (<div  className="s width12 height12">
+    <CanvasComponent addClass="height12" edit_info={editInfo} ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL} BPG_Channel={BPG_Channel}/>
+  </div>);
+}
+ 
+
+
+
+
+
+
 export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
   
   // const DICT = useSelector(state => state.UIData.DICT);
   
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
-  const [editInfo,setEditInfo]=useState(Edit_info_Empty());
+  const [repImgInfo,SetRepImgInfo]=useState(undefined);
+  const [repDispInfo,setRepDispInfo]=useState(
+    {
 
-  const [TON,setTON]=useState(false);
-  
+      def:undefined,
+      camera_param:undefined,
+      reports:undefined
+    });
+
   // const _REF = React.useRef({
   //   iel: new InspectionEditorLogic(),
   // });
@@ -135,11 +250,6 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   
   function LoadNewFile(filePath)
   {
-
-
-    let newEditInfo = {...editInfo}
-    newEditInfo._obj=new InspectionEditorLogic();
-    setEditInfo(newEditInfo)
     filePath = filePath.replace("." + xreps, "");
     BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:6 },undefined,
     { resolve:(pkts,action_channal)=>{
@@ -147,25 +257,21 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       let FL=pkts.find(pkt=>pkt.type=="FL");
       let IM=pkts.find(pkt=>pkt.type=="IM");
       // console.log(pkts,newEditInfo);
-      newEditInfo._obj.SetCameraParamInfo(FL.data.camera_param);
-      newEditInfo =newEditInfo._obj.rootDefInfoLoading(FL.data.defInfo,newEditInfo)
 
       let reports = FL.data.reports;
       if(Array.isArray(reports)==false)
         reports=[reports]
-      newEditInfo.reportStatisticState.trackingWindow=reports;
-      
       let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
 
-      newEditInfo.img=img_pros.data;
-      // console.log(IM,img_pros);
-      setEditInfo({...newEditInfo})
+      setRepDispInfo({
+        camera_param:FL.data.camera_param,
+        reports:reports,
+        def:FL.data.defInfo
+      })
 
+      SetRepImgInfo(img_pros.data);
 
-
-
-
-      setTON(true);
+            
     }, reject:(e)=>{
 
     } });
@@ -175,10 +281,12 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     { resolve:(pkts,action_channal)=>{
       let IM=pkts.find(pkt=>pkt.type=="IM");
       let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
-      newEditInfo.img=img_pros.data;
-      newEditInfo.img.IGNORE_IMAGE_FIT_TO_SCREEN=true;
-      setEditInfo({...newEditInfo})
-      setTON(true);
+      // newEditInfo.img=img_pros.data;
+      // newEditInfo.img.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+      // setEditInfo({...newEditInfo})
+
+      SetRepImgInfo(img_pros.data);
+
     }, reject:(e)=>{
 
     } });
@@ -213,6 +321,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     BrowseNewFileToLoad();
   },[]);
 
+  console.log(repDispInfo,repImgInfo);
   return (<div  className="s width12 height12">
 
     <BPG_FileBrowser key="BPG_FileBrowser"
@@ -232,7 +341,8 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       
       fileGroups={(fileSelectorInfo !== undefined)?fileSelectorInfo.groups:undefined}
       fileFilter={(fileSelectorInfo !== undefined)?fileSelectorInfo.filter:undefined} />
-    <CanvasComponent addClass="height12" edit_info={editInfo}/>
+    {/* <CanvasComponent addClass="height12" edit_info={editInfo}/> */}
+    <RepDisplay {...repDispInfo} image={repImgInfo}/>
   </div>);
 }
  
