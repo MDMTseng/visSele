@@ -41,7 +41,7 @@ exports.update={
         console.log(res.assets)
         switch(process.platform)
         {
-          case "win_32":
+          case "win32":
           {
             updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("update_win.zip"));
             break;
