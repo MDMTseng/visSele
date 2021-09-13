@@ -1053,7 +1053,7 @@ int MicroInsp_FType::recv_json(char *json_str, int json_strL)
 
   char tmp[1024];
   sprintf(tmp, "{\"type\":\"MESSAGE\",\"msg\":%s,\"CONN_ID\":%d}", json_str, fd);
-  LOGI("MSG:%s", tmp);
+  // LOGI("MSG:%s", tmp);
   BPG_protocol_data bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("PD", tmp);
   bpg_dat.pgID=conn_pgID;
   BPG_protocol_send(bpg_dat);
@@ -2591,7 +2591,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             char *msgjstr = cJSON_PrintUnformatted(msg_obj);
             int ret = mift->send_data((uint8_t *)msgjstr, strlen(msgjstr));
-            LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
+            // LOGI("mift->send_data:%d,msgjstr:%s", ret, msgjstr);
             delete msgjstr;
             session_ACK = (ret==0);
           }
