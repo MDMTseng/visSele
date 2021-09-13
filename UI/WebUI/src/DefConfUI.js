@@ -1615,9 +1615,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     deffile.intrusionSizeLimitRatio=1;
     setCacheDef(deffile);
 
-
+    let _PGID_=11004;
     ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
-    { _PGID_: 11004, 
+    { _PGID_: _PGID_, 
       _PGINFO_: { keep: true }, 
       definfo: deffile     
     }, undefined,{
@@ -1658,7 +1658,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     function CancelNowInsp()
     {
       ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
-      { _PGID_: 11004, 
+      { _PGID_: _PGID_, 
         _PGINFO_: { keep: false }, 
         definfo: undefined     
       }, undefined,
@@ -1874,8 +1874,6 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         deffile.intrusionSizeLimitRatio=1;
         ACT_WS_SEND_BPG(CORE_ID,"II", 0, 
         {
-          _PGID_:10104,
-          _PGINFO_:{keep:true},
           definfo:deffile,
           imgsrc:"__CACHE_IMG__",
           img_property:{
@@ -2825,8 +2823,6 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 this.props.ACT_WS_SEND_BPG(this.props.CORE_ID,"II", 0, 
                 {
-                  _PGID_:10104,
-                  _PGINFO_:{keep:true},
                   definfo:deffile,
                   imgsrc:"__CACHE_IMG__",
                   img_property:{
