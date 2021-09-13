@@ -1658,8 +1658,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
     function CancelNowInsp()
     {
       ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
-      { _PGID_: _PGID_, 
-        _PGINFO_: { keep: false }, 
+      { 
+        _PGID_: _PGID_, 
+        _PGINFO_: { keep: true }, 
         definfo: undefined     
       }, undefined,
       {
@@ -1669,7 +1670,9 @@ function DEFCONF_MODE_NEUTRAL_UI({})
         reject:(e)=>{
         }
       });
+      
     }
+
 
     setModal_view({
       onOk: () => {
