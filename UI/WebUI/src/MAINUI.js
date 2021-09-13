@@ -277,6 +277,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   const Info_decorator = useSelector(state => state.UIData.edit_info.__decorator);
   const CAM1_ID_CONN_INFO = useSelector(state => state.ConnInfo.CAM1_ID_CONN_INFO);
+  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
@@ -301,9 +302,21 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const [stepIdx,setStepIdx]=useState(0);
   const [isVertical,setIsVertical]=useState(false);
   let DefFileFolder=undefined;
-
+  console.log(uInsp_API_ID_CONN_INFO);
   useEffect(()=>{
-    let isSystemReadyForInsp=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
+    let is_Cam_Ready=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
+    let is_uInsp_Ready=GetObjElement(uInsp_API_ID_CONN_INFO,["type"])=="WS_CONNECTED";
+    if(uInsp_API_ID_CONN_INFO===undefined)
+    {
+      is_uInsp_Ready=true;//if the uInsp is not set(maybe not the full inspection machine) ig nore it
+    }
+
+    let CamInfo=is_Cam_Ready?undefined:DICT._.camera_reconnection_caption;
+    let uInspInfo=is_uInsp_Ready?undefined:DICT._.uInsp_reconnection_caption;
+
+
+    let isSystemReadyForInsp=is_Cam_Ready && is_uInsp_Ready;
+    
     if(!isSystemReadyForInsp)
     {
       setErrorInfo({
@@ -311,9 +324,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <div className="antd-icon-sizing" style={{height:"50px"}}>
             <LoadingOutlined/>
           </div>
-          <Title level={2} style={{textAlign:"center"}} >{
-            DICT._.camera_reconnection_caption
-          }</Title>
+          {[CamInfo,uInspInfo]
+            .filter(info=>info!==undefined)
+            .map(info=>
+            <Title level={2} style={{textAlign:"center"}} >
+              {info}
+            </Title>
+          )}
+          
         </div>,
         onCancel:()=>{},
         onOK:()=>{}
@@ -326,7 +344,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         setErrorInfo(undefined);
       }
     }
-  },[CAM1_ID_CONN_INFO])
+  },[CAM1_ID_CONN_INFO,uInsp_API_ID_CONN_INFO])
 
   
   useEffect(()=>{

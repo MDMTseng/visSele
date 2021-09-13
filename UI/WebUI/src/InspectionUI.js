@@ -86,6 +86,7 @@ const { Paragraph, Title } = Typography;
 // import Button from 'antd/lib/button';
 // import Icon from 'antd/lib/icon';
 
+let stream_PGID_=10004;
 
 function urlConcat(base,add)
 {
@@ -1532,7 +1533,7 @@ class APP_INSP_MODE extends React.Component {
       deffile.featureSet[0].matching_face=0;//By default, match two sides
       
 
-      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
+      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
       this.props.ACT_StatSettingParam_Update({
         keepInTrackingTime_ms: 0,
@@ -1542,14 +1543,14 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
-      this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: deffile     
+      this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
        }, undefined);
 
 
       // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       // { CameraSetting: { down_samp_w_calib:false } });
 
-      // this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: true }, definfo: {
+      // this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: {
       //   type:"gen"
       // }
       // }, undefined);
@@ -1574,7 +1575,7 @@ class APP_INSP_MODE extends React.Component {
   }
 
   componentWillUnmount() {
-    this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: 10004, _PGINFO_: { keep: false } });
+    this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: false } });
 
   }
 

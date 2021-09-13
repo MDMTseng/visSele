@@ -200,13 +200,22 @@ int BPG_Protocol_Interface::fromLinkLayer(uint8_t *dat, size_t len, bool FIN)
 
   return _fromLinkLayer(dat, len, FIN);//kick event
 }
-
+uint8_t *tmp;
+bool pre_FIN;
+int skipLogCount;
 //st1 ok
 int BPG_Protocol_Interface::toLinkLayer(uint8_t *dat, size_t len, bool FIN,int extraHeaderRoom, int extraFooterRoom)
 {
   if (linkCH == NULL)
     return -1;
 
-  // LOGI("DAT_PTR:%p LEN:%d FIN:%d",dat,len,FIN);
+  // if(tmp!=dat || pre_FIN!=FIN)
+  // {
+  //   LOGI("DAT_PTR:%p LEN:%d FIN:%d skipLogCount:%d",dat,len,FIN,skipLogCount);
+  //   skipLogCount=0;
+  // }
+  // skipLogCount++;
+  // tmp=dat;
+  // pre_FIN=FIN;
   return linkCH->fromUpperLayer(dat, len, FIN,extraHeaderRoom,extraFooterRoom);
 }

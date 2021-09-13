@@ -3871,6 +3871,7 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
     };
 
     let ctx = this.canvas.getContext('2d');
+    ctx.font = this.rUtil.getFontStyle(1);
     let ctx2nd = this.secCanvas.getContext('2d');
     ctx.lineWidth = this.rUtil.getIndicationLineSize();
     ctx.resetTransform();
@@ -3947,6 +3948,23 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
   
             }
           });
+
+
+          {
+
+            ctx.save();
+            ctx.translate(report.cx, report.cy);
+
+
+            this.rUtil.draw_Text(ctx, `${idx} ${report.isFlipped?"反":"正"}`, this.rUtil.getFontHeightPx(), 0,0);
+          
+            ctx.strokeStyle = "red";
+            this.rUtil.draw_aimcross(ctx, {x:0,y:0},this.rUtil.getPointSize()*3,0.1);
+  
+            ctx.restore();
+          }
+          
+          
           this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
         });
       //this.stage_light_report

@@ -12,6 +12,7 @@ import { useSelector,connect } from 'react-redux'
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 
 
+let stream_PGID_=10005;
 
 
 function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate}) 
@@ -95,7 +96,7 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
     // 
     return ()=>{
       //console.log(c.finalRep);
-      // BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+      // BPG_Channel( "CI", 0, {_PGID_:stream_PGID_,_PGINFO_:{keep:false}});
     }
 
   }, [canvasRef])
@@ -160,7 +161,7 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
     
     BPG_Channel( "CI", 0, 
       {
-        _PGID_:10004,
+        _PGID_:stream_PGID_,
         _PGINFO_:{keep:true},
         definfo: {
           "type":"nop",
@@ -193,7 +194,7 @@ export default function InstInspUI_rdx({ BPG_Channel,onExtraCtrlUpdate  }) {
     ImgStageBackLightCalib();
   
     return ()=>{
-      BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+      BPG_Channel( "CI", 0, {_PGID_:stream_PGID_,_PGINFO_:{keep:false}});
     }}, [])
 
 

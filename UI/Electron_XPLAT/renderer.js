@@ -14,7 +14,9 @@ try {
 } catch (_) {}
 
 
-
+let LauncherInfo={
+  version:"0.1.001"
+}
 
 function setUIInfo(root_APP_INFO,sub_APP_INFO)
 {
@@ -223,6 +225,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  {
+    var launcher_info = document.getElementById('launcher_info');
+    launcher_info.innerHTML=JSON.stringify(LauncherInfo,null,2);
+  }
+
+  
   let splash_click_counter=0;
   var Splash = document.getElementById('Splash');
   let splashTimeout=setTimeout(()=>{
