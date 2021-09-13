@@ -7,6 +7,7 @@ import { Provider, connect } from 'react-redux'
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
+import {UINSP_UI} from './component/rdxComponent.jsx';
 
 import INFO from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
@@ -40,16 +41,17 @@ import Menu from 'antd/lib/menu';
 import { 
   AimOutlined,
   CameraOutlined,
+  MinusOutlined,
   DatabaseOutlined,
   CloudSyncOutlined,
-  CloudUploadOutlined} from '@ant-design/icons';
+  CloudUploadOutlined,
+  RobotOutlined,
+  StockOutlined} from '@ant-design/icons';
 
 import { useSelector,useDispatch } from 'react-redux';
 import Button from 'antd/lib/button';
 import Drawer from 'antd/lib/drawer';
 import { clearInterval } from 'timers';
-
-
 
 var require=require||(()=>undefined);
 
@@ -192,17 +194,21 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     
   }
   
-  console.log(ConnInfo);
-
-
+  // console.log(ConnInfo);
 
   return [
-    [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>],
-    [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>],
-    ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>],
-    ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>],
-    ].map(([textName, conn_info, icon])=>
-      <Button size="large" key={"stat"+textName} style={gridStyle} 
+    [DICT._.core,   ConnInfo.CORE_ID_CONN_INFO,        <AimOutlined/>,true],
+    [DICT._.camera, ConnInfo.CAM1_ID_CONN_INFO,        <CameraOutlined/>,true],
+    ["設定資料庫",    ConnInfo.DefFile_DB_W_ID_CONN_INFO,<CloudUploadOutlined/>,true],
+    ["檢測資料庫",    ConnInfo.Insp_DB_W_ID_CONN_INFO,   <CloudUploadOutlined/>,true],
+    [undefined,            undefined,                  <MinusOutlined />,ConnInfo.uInsp_API_ID_CONN_INFO!==undefined || ConnInfo.SLID_API_ID_CONN_INFO!==undefined],
+    ["全檢設備",       ConnInfo.uInsp_API_ID_CONN_INFO,   <RobotOutlined />,false],
+    ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
+    ]
+    .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
+
+    .map(([textName, conn_info, icon,froceAppear],idx)=>
+      <Button size="large" key={`stat ${textName} ${idx}`} style={gridStyle} 
       type="text" //disabled={!systemConnectState.core}
       className={"s HXA "+connectionStatus2CSSColor(conn_info)} 
       onClick={()=>onItemClick(conn_info)}>
@@ -271,6 +277,8 @@ class APPMasterX extends React.Component {
       DefFile_DB_W_ID:state.ConnInfo.DefFile_DB_W_ID,
       CAM1_ID:state.ConnInfo.CAM1_ID,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
+      uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+
       C_STATE: state.UIData.c_state,
       
       DICT :state.UIData.DICT
@@ -298,7 +306,8 @@ class APPMasterX extends React.Component {
   constructor(props) {
     super(props);
     this.state={
-      show_system_panel:true
+      show_system_panel:true,
+      modal_view:undefined
     };
 
     console.log("electron:",electron);
@@ -659,6 +668,17 @@ class APPMasterX extends React.Component {
                     comp.props.ACT_WS_CONNECT(comp.props.Insp_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/insp"));
                     comp.props.ACT_WS_CONNECT(comp.props.DefFile_DB_W_ID, urlConcat(info.inspection_db_ws_url,"/insert/def"));
 
+
+                    if(info.uInsp_peripheral_conn_info!==undefined)
+                    {
+
+                      comp.props.ACT_WS_GET_OBJ(comp.props.uInsp_API_ID, (obj)=>{
+                        obj.connect( info.uInsp_peripheral_conn_info);
+                      })
+                    }
+
+
+
                     comp.props.ACT_Machine_Custom_Setting_Update(info);
                   }
                 }});
@@ -684,7 +704,7 @@ class APPMasterX extends React.Component {
             {
               let SS = BPG_Protocol.raw2obj(evt);
 
-              if (SS.data.start) {
+              if (SS.data.start==true) {
                 SS_start = true;
               }
               else {
@@ -713,25 +733,13 @@ class APPMasterX extends React.Component {
             }
 
         }
-        if (header.type == "PD") {
-          //log.info(parsed_pkt,pgID);
-          if (pgID == 0)
-            pgID = -1;
-        }
-        //log.info(parsed_pkt,pgID,comp.BPG_WS.reqWindow);
-        if (pgID === -1) {//Not in tracking window, just Dispatch it
-          if (parsed_pkt !== undefined) {
-            let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
-            if (act !== undefined)
-            comp.props.DISPATCH(act);
-          }
-        }
-        else {
+
+        {
           let req_pkt = this.reqWindow[pgID];
 
           if (req_pkt !== undefined)//Find the tracking req
           {
-            if (parsed_pkt !== undefined)//There is a act, push into the req acts
+            if (parsed_pkt !== undefined)//There is an act, push into the req acts
               req_pkt.pkts.push(parsed_pkt);
 
             if (!SS_start && header.type == "SS")//Get the termination session[SS] pkt
@@ -777,9 +785,10 @@ class APPMasterX extends React.Component {
               };
             }
             else {
-              let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
-              if (act !== undefined)
-              comp.props.DISPATCH(act);
+              // let act = BPG_Protocol.map_BPG_Packet2Act(parsed_pkt);
+              // if (act !== undefined)
+              // comp.props.DISPATCH(act);
+              console.log("LOSS TRACK pkts", parsed_pkt,this.reqWindow);
             }
           }
 
@@ -805,11 +814,23 @@ class APPMasterX extends React.Component {
           delete info.data["_PGINFO_"];
         }
         if (PGID === undefined) {
+          let maxNum=10;
           PGID = this.pgIDCounter++;
+          
+          if(this.pgIDCounter>maxNum)
+          {
+            this.pgIDCounter=0;
+          }
           while(this.reqWindow[PGID]!==undefined)
           {
             PGID = this.pgIDCounter++;
+            
+            if(this.pgIDCounter>maxNum)
+            {
+              this.pgIDCounter=0;
+            }
           }
+
         }
 
 
@@ -932,7 +953,7 @@ class APPMasterX extends React.Component {
                   this.queryCam(timeout_ms);
                 },timeout_ms);
               }
-              console.log(camInfo);
+              // console.log(camInfo);
               
             }
             
@@ -965,6 +986,294 @@ class APPMasterX extends React.Component {
 
     }
     this.props.ACT_WS_REGISTER(this.props.CAM1_ID,new Cam_Stat_Query(this.props.CAM1_ID));
+
+
+
+
+    class  uInsp_API
+    {
+
+      cleanUpTrackingWindow()
+      {
+        let keyList = Object.keys(this.trackingWindow);
+        keyList.forEach(key=>{
+          let reject = this.trackingWindow[key].reject;
+          if(reject !==undefined)
+          {
+            reject("CONNECTION ERROR");
+          }
+          delete this.trackingWindow[key]
+        })
+      }
+
+      cleanUpConnection()
+      {
+        this.cleanUpTrackingWindow();
+        
+      }
+
+      
+      saveMachineSetupIntoFile(filename = "data/uInspSetting.json")
+      {
+        
+        let act = comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"SV", 0,
+          { filename: filename },
+          new TextEncoder().encode(JSON.stringify(this.machineSetup, null, 4)),
+          {
+            resolve:(res)=>{
+              console.log(res);
+            }, 
+            reject:(res)=>{
+              console.log(res);
+            }, 
+          }
+        )
+      }
+
+      
+
+      LoadFileToMachine(filename = "data/uInspSetting.json") {
+        new Promise((resolve, reject) => {
+
+          log.info("LoaduInspSettingToMachine step2");
+          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID,"LD", 0,
+            { filename },
+            undefined, { resolve, reject }
+          );
+          setTimeout(() => reject("Timeout"), 1000)
+        }).then((pkts) => {
+
+          log.info("LoaduInspSettingToMachine>> step3", pkts);
+          if (pkts[0].type != "FL")
+          {
+            return;
+          }
+          let machInfo = pkts[0].data;
+          
+          this.machineSetupUpdate(machInfo,true);
+        }).catch((err) => {
+
+          log.info("LoaduInspSettingToMachine>> step3-error", err);
+        })
+      }
+
+      machineSetupUpdate(newMachineInfo,doReplace=false)
+      {
+
+        this.machineSetup=doReplace==true?newMachineInfo:{...this.machineSetup,...newMachineInfo};
+        // console.log(this.machineSetup);
+        StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineSetup:this.machineSetup});
+        this.send({type:"set_setup",...newMachineInfo},
+        (ret)=>{
+          //HACK: just assume it will work
+          // this.machineSetup={...this.machineSetup,...newMachineInfo};
+          // console.log(ret);
+        },(e)=>console.log(e));
+      }
+      
+      machineSetupReSync() {
+        this.send({type:"get_setup"},
+        (ret)=>{
+          delete ret["type"];
+          delete ret["id"];
+          delete ret["st"];
+          this.machineSetup=ret;
+          // console.log(ret);
+          this.machineSetupUpdate(this.machineSetup,true);
+        },(e)=>console.log(e));
+      }
+
+      connect(connInfo)
+      {
+        if(this.inReconnection==true)
+        {//still in reconnection state, return
+          return false;
+        }
+        
+        StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
+        this.connInfo=connInfo;
+        this.inReconnection=true;
+        this.LoadFileToMachine();
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, {type:"CONNECT",...connInfo, _PGID_: this.pg_id_channel, _PGINFO_: { keep: true }},undefined,
+        {
+          resolve: (stacked_pkts,action_channal) => {
+            // console.log(stacked_pkts);
+            let PD=stacked_pkts.find(pkt=>pkt.type=="PD");
+            this.inReconnection=false;
+            if(PD!==undefined)
+            {
+              let PD_data=PD.data;
+              switch(PD_data.type)
+              {
+                case "MESSAGE":
+                {
+                  let CONN_ID = PD_data.CONN_ID;
+                  let msg = PD_data.msg;
+                  let msg_id = msg!==undefined? msg.id:undefined;
+                  let trwin=this.trackingWindow[msg_id];
+                  if(trwin!==undefined)
+                  {
+                    if(trwin.resolve!==undefined)
+                      trwin.resolve(msg);
+                    delete this.trackingWindow[msg_id];
+                  }
+                }
+                  break;
+                case "DISCONNECT":
+                  this.CONN_ID=undefined;
+                  this.cleanUpConnection();
+                  StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:PD});
+                  break;
+                case "CONNECT":
+                  this.CONN_ID=PD_data.CONN_ID;
+                  StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.uInsp_API_ID,data:PD});
+
+                  if(this.machineSetup!==undefined)
+                  {
+                    this.send({type:"set_setup",...this.machineSetup},
+                    (ret)=>{
+                      this.machineSetupReSync();
+                      
+                    },(e)=>console.log(e));
+                  }
+                  else
+                  {
+                    this.machineSetupReSync();
+                  }
+                  
+                  break;
+              }
+            }
+          },
+          reject:(e)=>{
+            this.CONN_ID=undefined;
+            this.inReconnection=false;
+            this.cleanUpConnection();
+            console.log(e);
+            StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
+            
+          }
+        });
+      }
+
+      constructor(id,pg_id_channel=10024)
+      {
+        this.CONN_ID=undefined;
+        this.pg_id_channel=pg_id_channel;
+        this.id=id;
+        this.connInfo=undefined;
+        this.inReconnection=false;
+        this.checkReconnectionInterval=setInterval(()=>this.checkReConnection(),3000);//watch dog to do reconnection
+        this.runPINGInterval=setInterval(()=>this._sendPing(),3000);//watch dog to do reconnection
+
+        this.trackingWindow={};
+        this.idCounter=10;
+        this.PINGCount=0;
+
+        this.machineInfo=undefined;
+      } 
+      checkReConnection()
+      {
+        // console.log(this.connInfo,this.connected,this.inReconnection);
+        if(this.connInfo===undefined ||this.CONN_ID!==undefined || this.inReconnection==true)
+        {
+          return;
+        }
+        this.connect(this.connInfo);
+        // this.checkReconnectionTimeout=setTimeout(,);
+      }
+
+      getMachineSetup()
+      {
+        return this.machineSetup;
+      }
+
+      findAvailableID()
+      {
+        let id=this.idCounter;
+        while(this.trackingWindow[id]!==undefined)
+        {
+          this.idCounter++;
+          if(this.idCounter>999999)
+          {
+            this.idCounter=0;
+          }
+          id=this.idCounter;
+        }
+        return id;
+      }
+      
+      _sendPing()
+      {
+        if(this.CONN_ID===undefined)return ;
+
+
+        if(this.PINGCount>=2)
+        {
+          //time to disconnect
+          this.PINGCount=0;
+          
+          this.connect(this.connInfo);
+          return;
+        }
+        this.PINGCount++;
+        // console.log(this.CONN_ID);
+
+
+        this.sendPing((ret)=>{
+          // console.log(ret);
+          delete ret["type"]
+          delete ret["id"]
+          delete ret["st"]
+          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus:ret});
+          this.PINGCount=0;
+        },errorInfo=>console.log(errorInfo));
+
+        // this.machineSetupUpdate({pulse_hz:0});
+      }
+      sendPing(resolve,reject)
+      {
+        return this.send({type:"PING"},resolve,reject);
+      }
+      send(data,resolve,reject)
+      {
+        if(this.CONN_ID===undefined)
+        {
+          reject("CONN ID is not set");
+          return ;
+        }
+
+
+        if(data.id!==undefined )
+        {
+          if(this.trackingWindow[data.id]!==undefined)
+            reject(`ID ${data.id} collision`);
+        }
+        else
+        {
+          data.id=this.findAvailableID();
+        }
+        this.trackingWindow[data.id]={resolve,reject};
+
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "PD", 0, //just send
+        {
+          msg:data,
+          CONN_ID:this.CONN_ID,
+          type:"MESSAGE"
+        },undefined, {
+          resolve:d=>d,
+          reject:d=>console.log(d)
+        });
+        
+
+
+      }
+      
+    }
+    this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
+
+    // StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
+
 
 
 
@@ -1085,6 +1394,23 @@ class APPMasterX extends React.Component {
 
                   break;
                 }
+
+
+                case this.props.uInsp_API_ID:
+                {
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><UINSP_UI/>,
+                      title:"uInsp_API",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+                  break;
+                }
+
+
               }
             }}
           />
@@ -1107,7 +1433,7 @@ class APPMasterX extends React.Component {
 
         <Button className="overlay" 
           style={{
-            background: "white",
+            background: "rgba(255,255,255,0.4)",
             right:this.state.show_system_panel?"-50px":"-10px",
             margin:"10px",
             top:"100px",
@@ -1118,6 +1444,12 @@ class APPMasterX extends React.Component {
           <System_Status_Display 
             showText={false} iconSize={20} gridSize={30}/>
         </Button>
+
+        <Modal
+          {...this.state.modal_view}
+          visible={this.state.modal_view !== undefined}>
+          {this.state.modal_view === undefined ? null : this.state.modal_view.view_fn()}
+        </Modal>
       </div>
     );
   }

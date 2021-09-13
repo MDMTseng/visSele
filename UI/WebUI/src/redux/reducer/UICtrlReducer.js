@@ -29,9 +29,6 @@ function Edit_info_reset(newState) {
 }
 
 
-let WS_InspDataBase_W_ID="WS_InspDataBase_W_ID";
-
-let WS_defFileDataBase_W_ID= "WS_defFileDataBase_W_ID";
 function Default_UICtrlReducer() {
   //ST = d;
   //log.info("ST...",JSON.stringify(ST));
@@ -74,31 +71,8 @@ function StateReducer(newState, action) {
     }
   }
 
-  if (action.type === UISEV.Control_SM_Panel) {
-    newState.showSM_graph = action.data;
-    return newState;
-  }
-
   switch (action.type) {
 
-    // case UISEV.Core_Status_Update:
-    
-    //   newState.Core_Status=action.data;
-    //   return newState;
-    case UISEV.Core_Camera_Status_Update:
-
-      let oldCamJsum=undefined;
-      if(newState.Core_Status!==undefined)
-      {
-        oldCamJsum=JSum.digest(newState.Core_Status.camera_info, 'SHA256', 'hex');
-      }
-      let newCamJsum=JSum.digest(action.data, 'SHA256', 'hex');
-      if(oldCamJsum==newCamJsum)
-      {
-        return undefined;//no change required
-      }
-      newState.Core_Status={...newState.Core_Status,camera_info:action.data};
-      return newState;
     case UISEV.Def_Model_Path_Update:
       newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
       //Edit_info_reset(newState);
@@ -108,18 +82,6 @@ function StateReducer(newState, action) {
       newState.showSM_graph = action.data;
       return newState;
 
-    case "WS_CONNECTED":
-    case "WS_DISCONNECTED":
-    case "WS_ERROR":
-    {
-      // console.log(action.type,action);
-      let ws_id=action.id;
-      if(ws_id===WS_InspDataBase_W_ID)
-      {
-        newState.WS_InspDataBase_conn_info=action;//{...action.data,type:action.type};
-      }
-      return newState;
-    }
   }
   let stateObj = xstate_GetCurrentMainState(newState.c_state);
   let substate = stateObj.substate;

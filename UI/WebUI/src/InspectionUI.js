@@ -10,12 +10,12 @@ import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
 
 import INFO from './info.js';
-import { TagOptions_rdx } from './component/rdxComponent.jsx';
+import { TagOptions_rdx,UINSP_UI } from './component/rdxComponent.jsx';
 import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -23,7 +23,6 @@ import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 // import { PageHeader } from 'antd/lib/page-header';
-//import Plot from 'react-plotly.js';
 //import {Doughnut} from 'react-chartjs-2';
 
 import { round } from 'UTIL/MISC_Util';
@@ -397,17 +396,36 @@ class InspectionResultDisplay extends React.Component {
         color:"#999"
       }
     }
-    //console.log(rep);
+
+
+    let resValue = this.showResultValueCheck(rep);
+    let bundary_ratio=resValue>rep.def.value?
+    (resValue-rep.def.value)/(rep.def.USL-rep.def.value):
+    (resValue-rep.def.value)/(rep.def.LSL-rep.def.value)*-1;
+
+    let detailInfo=<>
+    類型:{dictLookUp(rep.def.subtype,this.props.DICT)} <br/>
+    目標:{rep.def.value}<br/>
+    上限:{rep.def.USL}<br/>
+    下限:{rep.def.LSL}<br/>
+    檢測值:{resValue}<br/>
+    
+    界限比例:{bundary_ratio.toFixed(2)}<br/>
+    </>
+
+
+    // console.log(rep);
     return <div className="s black" style={{ "borderBottom": "6px solid #A9A9A9", height:height}}>
       <div className="s width8  HXF">
         <div className="s vbox height4">
           <FullscreenOutlined onClick={this.clickFullScreen.bind(this)} />
           {rep.name}
         </div>
-        <div className="s vbox  height8" style={fontStyle}>
-          {this.showResultValueCheck(rep) + DEFAULT_UNIT[rep.subtype]}
-
-        </div>
+        <Popover content={detailInfo} placement="bottomLeft" trigger={["click","hover"]}>
+          <div className="s vbox  height8" style={fontStyle}>
+              {resValue + DEFAULT_UNIT[rep.subtype]}
+          </div>
+        </Popover>
       </div>
       <div className="s vbox width4 HXF">
         <Tag style={{ 'fontSize': 18 }}
@@ -600,7 +618,7 @@ class ObjInfoList extends React.Component {
       reportDetail =judgeInRank
         // .filter(rep=>rep.def.quality_essential!=false)//do not show quality_essential=false result
         .map((rep, idx_) => (
-          <InspectionResultDisplay key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
+          <InspectionResultDisplay DICT={this.props.DICT} key={"i" + rep.name} singleInspection={rep} fullScreenToggleCallback={this.toggleFullscreen.bind(this)} />
         )
       );
 
@@ -609,14 +627,14 @@ class ObjInfoList extends React.Component {
         if(rep.def.quality_essential==false)return res;
         return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
-
+      console.log(singleReport.isFlipped);
       return (
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
           title={
             <span>
               <PaperClipOutlined />
               <span>
-                {idx} <OK_NG_BOX detailStatus={finalResult} />
+                {`${idx}   ${singleReport.isFlipped?"反":"正"}`} <OK_NG_BOX detailStatus={finalResult} />
               </span>
             </span>}>
           {reportDetail}
@@ -629,8 +647,20 @@ class ObjInfoList extends React.Component {
     let fullScreenMODAL = <InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
       onCancel={this.toggleFullscreen.bind(this)} width="90%" />;
 
+
+    let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
+    <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_SubMenu_Title_AutoHeight"
+      title={
+      <>
+        <Divider orientation="left" key="divi" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備</Divider>
+        <UINSP_UI UI_INSP_Count={true} UI_Speed_Slider={false} UI_detail={false}/>
+      </>}
+      >
+        <UINSP_UI UI_INSP_Count={false} UI_Speed_Slider={true} UI_detail={false}/>
+    </SubMenu>
+
     return (
-      <div>
+      <>
         <Menu
           // onClick={this.handleClick}
           // selectedKeys={[this.current]}
@@ -639,459 +669,17 @@ class ObjInfoList extends React.Component {
           defaultSelectedKeys={['functionMenu']}
           // defaultOpenKeys={['functionMenu']}
           mode="inline">
-
-          {this.props.uInsp_peripheral_conn_info===undefined?null:       
-          <SubMenu style={{ 'textAlign': 'left' }} key="functionMenu"
-          title={<span><SettingOutlined />{this.props.DICT._.uInsp_ctrl}</span>}>
-            <MicroFullInspCtrl_rdx
-              conn_info={this.props.uInsp_peripheral_conn_info}
-            />
-          </SubMenu>}
-
+          {uInspUI}
+          
 
           {resultMenu}
 
         </Menu>
         {fullScreenMODAL}
-      </div>
+      </>
     );
   }
 }
-
-class MicroFullInspCtrl extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      settingPanelVisible: false
-    }
-    this.prevConnectedState = 0;
-  }
-  componentWillMount() {
-    this.ping_interval = setInterval(() => {
-
-      if (this.props.uInspData.connected) {
-        this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-          { msg: { type: "PING", id: 443 } });
-        this.props.ACT_Machine_PING_Sent();
-      }
-    }, 5000);
-  }
-
-  componentWillUnmount() {
-    clearInterval(this.ping_interval);
-    this.ping_interval = undefined;
-  }
-
-  componentDidUpdate(prevProps, prevState, snapshot) {
-    if (this.props.uInspData.connected !== prevProps.uInspData.connected) {
-      if (this.props.uInspData.connected) {
-        this.LoaduInspSettingToMachine();
-
-        setTimeout(() => {
-          this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-            { msg: { type: "get_setup", id: 4423 } });
-        }, 100);//to separate messages
-
-      }
-      else {
-
-      }
-    }
-  }
-
-  LoaduInspSettingToMachine(filePath = "data/uInspSetting.json") {
-    log.info("LoaduInspSettingToMachine step1");
-    new Promise((resolve, reject) => {
-
-      log.info("LoaduInspSettingToMachine step2");
-      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
-        { filename: filePath },
-        undefined, { resolve, reject }
-      );
-      setTimeout(() => reject("Timeout"), 1000)
-    }).then((pkts) => {
-
-      log.info("LoaduInspSettingToMachine>> step3", pkts);
-      if (pkts[0].type != "FL") return;
-      let machInfo = pkts[0].data;
-      this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-        { msg: { ...machInfo, type: "set_setup", id: 356 } });
-    }).catch((err) => {
-
-      log.info("LoaduInspSettingToMachine>> step3-error", err);
-    })
-  }
-  render() {
-
-    let ctrlPanel = [];
-    console.log(this.props.uInspMachineInfo,this.props.uInspData);
-    if (this.props.uInspMachineInfo !== undefined && this.props.uInspData.connected) {
-      let machineInfo = this.props.uInspMachineInfo;
-
-
-
-      if (this.props.res_count !== undefined) {
-        ctrlPanel.push(<Tag style={{ 'fontSize': 25 }}
-          color={OK_NG_BOX_COLOR_TEXT["OK"].COLOR}>{this.props.res_count.OK}
-        </Tag>);
-        ctrlPanel.push(<Tag style={{ 'fontSize': 25 }}
-          color={OK_NG_BOX_COLOR_TEXT["NG"].COLOR}>{this.props.res_count.NG}
-        </Tag>);
-        ctrlPanel.push(<Tag style={{ 'fontSize': 25 }}
-          color={OK_NG_BOX_COLOR_TEXT["NA"].COLOR}>{this.props.res_count.NA}
-        </Tag>);
-      }
-
-
-      if (machineInfo.pulse_hz !== undefined) {
-        ctrlPanel.push(
-          <Slider key="speedSlider"
-            min={0}
-            max={20000}
-            onChange={(value) => {
-              let xobj = { pulse_hz: value };
-              this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                { msg: { ...xobj, type: "set_setup", id: 356 } });
-              this.props.ACT_Machine_Info_Update(xobj);
-            }}
-            value={machineInfo.pulse_hz}
-            step={100}
-          />);
-      }
-      
-
-      ctrlPanel.push(
-        <Button key="opt uInsp" icon={<SettingOutlined/>}
-          onClick={() => {
-            this.setState({ ...this.state, settingPanelVisible: true })
-          }} />);
-      <br />
-
-      if(this.state.settingPanelVisible)
-      ctrlPanel.push(
-        <Modal
-          title="" key="settingModal"
-          visible={this.state.settingPanelVisible}
-          onCancel={() => this.setState({ ...this.state, settingPanelVisible: false })}
-          onOk={() => this.setState({ ...this.state, settingPanelVisible: false })}
-          footer={null}
-        >
-
-          <div style={{ height: "600px" }}>
-            
-            <Button key="ping uInsp"
-              icon={<HeartTwoTone twoToneColor={this.props.uInspData.alive == 0 ?undefined:"#eb2f96"}/>}
-              onClick={() => {
-                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                  { msg: { type: "PING", id: 443 } });
-                  
-                this.props.ACT_Machine_PING_Sent();
-              }}/>
-            <Button.Group key="GGGG">
-              <Button
-              icon={<BulbOutlined />}
-                key="L_ON"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "MISC/BACK_LIGHT/ON" } })
-                }>
-                ON
-            </Button>
-
-              <Button
-                key="L_OFF"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "MISC/BACK_LIGHT/OFF" } })
-                }>OFF
-            </Button>
-
-              {/* <Button
-                icon={<CameraOutlined />}
-                key="CAM"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "MISC/CAM_TRIGGER" } })
-                } /> */}
-
-              <Button
-                icon={<SaveOutlined/>}
-                key="SaveToFile"
-                onClick={() => {
-                  var enc = new TextEncoder();
-                  this.props.ACT_Report_Save_CORE("data/uInspSetting.json",
-                    enc.encode(JSON.stringify(this.props.uInspMachineInfo, null, 4)));
-                }}>{this.props.DICT._.save_machine_setting}</Button>
-
-
-              {/* <Button
-                key="MachineSet"
-                onClick={() => {
-
-                  this.LoaduInspSettingToMachine();
-                }}>MachineSet</Button> */}
-            </Button.Group>
-
-
-            <Button.Group key="MISC_BB">
-
-              <Button
-                icon={<ReloadOutlined />}
-                key="res_count_clear"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "res_count_clear" } })
-                }>{this.props.DICT._.RESET_INSPECTION_COUNTER}
-            </Button>
-
-            </Button.Group>
-
-
-
-
-            <Divider orientation="left" key="ERROR">{this.props.DICT._.ERROR_INFO}</Divider>
-
-            <Button.Group key="ERRORG">
-              <Button
-                key="error_get"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "error_get" } })
-                }>
-                {this.props.DICT._.ERROR_CODES}:{this.props.error_codes}
-              </Button>
-
-              <Button
-                key="error_clear"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "error_clear" } })
-                }>{this.props.DICT._.ERROR_CLEAR}
-            </Button>
-
-
-              <Button
-                key="speed_set"
-                onClick={() => {
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    {
-                      msg: {
-                        pulse_hz: machineInfo.pulse_hz,
-                        type: "set_setup",
-                        id: 356
-                      }
-                    });
-                }
-                }>{this.props.DICT._.SPEED_SET}:{machineInfo.pulse_hz}
-            </Button>
-            </Button.Group>
-
-
-            <Divider orientation="left">{this.props.DICT._.uInsp_ACTION_TRIGGER_TIMING}</Divider>
-
-
-            預設不噴氣:
-            <Switch checked={(machineInfo.mode==="TEST_NO_BLOW")}
-            onChange={(checked)=>
-              {
-                let updatedInfo = {mode:checked?"TEST_NO_BLOW":"NORMAL"}
-                
-                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                { msg: { ...updatedInfo, type: "set_setup"} });
-
-                this.props.ACT_Machine_Info_Update( 
-                  {...machineInfo,...updatedInfo})
-              }
-            } 
-            />
-            <br/>
-        
-            {
-
-
-              (machineInfo.state_pulseOffset === undefined)?null:
-              machineInfo.state_pulseOffset.map((pulseC, idx) =>
-                <InputNumber value={pulseC} size="small" key={"poff" + idx} onChange={(value) => {
-                  let state_pulseOffset = dclone(machineInfo.state_pulseOffset);
-                  
-
-
-                  //[0,55,56,57,58,59] =(idx:3 set 59)=> [0,55,56,59,58,59]
-                  //push F => [0,55,56,59,60,61]
-
-                  //[0,55,56,57,58,59] =(idx:3 set 50)=> [0,55,56,50,58,59]
-                  //push B => [0,48,49,50,58,59]
-
-                  // state_pulseOffset[idx] = value;
-                  state_pulseOffset.forEach((v,_idx)=>{
-                    let tarOffset=value+(_idx-idx)*1;
-                    if(_idx==idx)
-                    {
-                      state_pulseOffset[_idx] = tarOffset;
-                    }
-                    else if(_idx<idx)//push back
-                    {
-                      if(state_pulseOffset[_idx]>tarOffset)
-                        state_pulseOffset[_idx]=tarOffset;
-                    }
-                    else//push forward
-                    {
-                      if(state_pulseOffset[_idx]<tarOffset)
-                        state_pulseOffset[_idx]=tarOffset;
-                    }
-                  });
-
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { state_pulseOffset, type: "set_setup", id: 356 } });
-
-                  this.props.ACT_Machine_Info_Update({ state_pulseOffset });
-
-                }} />)
-            }
-
-            
-
-
-          <Divider orientation="left">{this.props.DICT._.TEST_MODE}</Divider>
-            <Button.Group key="MODE_G">
-
-{/*                 
-              <Button
-                  key="TEST_ACTION"
-                  onClick={() =>
-                    this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                      { msg: { type: "test_action", sub_type: "trigger_test",
-                      count:60,duration:10,backlight_extra_duration:10,post_duration:20} })
-                  }>Trigger Test
-              </Button> */}
-              <Button
-                key="TEST_INC"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "mode_set", mode: "TEST_INC" } })
-                }>{this.props.DICT._.TEST_MODE_INC}
-              </Button> 
-
-              <Button
-                key="TEST_NO_BLOW"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "mode_set", mode: "TEST_NO_BLOW" } })
-                }>{this.props.DICT._.TEST_MODE_NO_BLOW}
-              </Button> 
-
-              <Button
-                key="MODE:TEST"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "mode_set", mode: "TEST_ALTER_BLOW" } })
-                }>{this.props.DICT._.TEST_MODE_ALTER_BLOW}
-              </Button>
-              <Button
-                key="MODE:NORMAL"
-                onClick={() =>
-                  this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                    { msg: { type: "mode_set", mode: "NORMAL" } })
-                }>{this.props.DICT._.TEST_MODE_NORMAL}
-              </Button>
-
-              <Button type="danger" key="Disconnect uInsp"
-                icon={<DisconnectOutlined/>}
-                onClick={() => {
-                  new Promise((resolve, reject) => {
-                    this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                      {},
-                      undefined, { resolve, reject });
-                    //setTimeout(()=>reject("Timeout"),1000)
-                  })
-                    .then((data) => {
-                      console.log(data);
-                    })
-                    .catch((err) => {
-                      console.log(err);
-                    })
-                  }}>{this.props.DICT._.TEST_MODE_DISCONNECT}</Button>
-
-
-            </Button.Group>
-          
-                
-          
-          </div>
-        </Modal>);
-
-    }
-
-    return (
-      <div>
-        {
-          this.props.uInspData.connected ?
-            null
-            :
-            <Button type="primary" key="Connect uInsp" disabled={this.props.uInspData.connected}
-              icon={<LinkOutlined/>}
-              onClick={() => {
-                this.props.ACT_WS_SEND_CORE_BPG( "PD", 0,
-                this.props.conn_info);
-              }}>{this.props.DICT.connection.connect}</Button>
-        }
-
-
-        {ctrlPanel}
-
-      </div>
-    );
-  }
-}
-
-
-
-const mapDispatchToProps_MicroFullInspCtrl = (dispatch, ownProps) => {
-  return {
-    ACT_WS_SEND_BPG: (id,tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
-    ACT_Machine_Info_Update: (machineInfo) => dispatch(UIAct.EV_WS_uInsp_Machine_Info_Update(machineInfo)),
-    ACT_Machine_PING_Sent:()=>dispatch(UIAct.EV_WS_uInsp_PING_Sent()),
-    ACT_Report_Save: (id, fileName, content) => {
-      let act = UIAct.EV_WS_SEND_BPG(id, "SV", 0,
-        { filename: fileName },
-        content
-      )
-      console.log(act);
-      dispatch(act);
-    }
-  }
-}
-const mapStateToProps_MicroFullInspCtrl = (state) => {
-  return {
-    CORE_ID: state.ConnInfo.CORE_ID,
-    uInspData: state.Peripheral.uInsp,
-    error_codes: state.Peripheral.uInsp.error_codes,
-    res_count: state.Peripheral.uInsp.res_count,
-    uInspMachineInfo: state.Peripheral.uInsp.machineInfo,
-    DICT: state.UIData.DICT,
-  }
-}
-
-
-const mergeProps_MicroFullInspCtrl= (ownProps, mapProps, dispatchProps) => {
-  // console.log(ownProps, mapProps, dispatchProps);
-  return ({
-    ...ownProps,
-    ...mapProps,
-    ...dispatchProps,
-    ACT_WS_SEND_CORE_BPG: (tl, prop, data, uintArr, promiseCBs) => 
-      mapProps.ACT_WS_SEND_BPG(ownProps.CORE_ID, tl, prop, data, uintArr, promiseCBs),
-    ACT_Report_Save_CORE: (fileName, content) =>
-      mapProps.ACT_Report_Save(ownProps.CORE_ID, fileName, content),
-
-  })
-}
-let MicroFullInspCtrl_rdx = connect(
-  mapStateToProps_MicroFullInspCtrl, 
-  mapDispatchToProps_MicroFullInspCtrl,
-  mergeProps_MicroFullInspCtrl)(MicroFullInspCtrl);
-
-
 
 
 function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND_CORE_BPG,onCanvasInit})
@@ -1114,7 +702,7 @@ function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND
         log.error(event);
         ACT_ERROR();
         break;
-      case "asdasdas":
+      case "down_samp_level_update":
         // log.error(event);
         // this.props.ACT_ERROR();
 
@@ -1194,7 +782,7 @@ class CanvasComponent extends React.Component {
         log.error(event);
         this.props.ACT_ERROR();
         break;
-      case "asdasdas":
+      case "down_samp_level_update":
         // log.error(event);
         // this.props.ACT_ERROR();
 
@@ -2258,6 +1846,7 @@ class APP_INSP_MODE extends React.Component {
           uInsp_peripheral_conn_info={this.props.machine_custom_setting.uInsp_peripheral_conn_info}
           shape_def={this.props.shape_list}
           key="ObjInfoList"
+          uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
           WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
     }
@@ -2399,8 +1988,8 @@ class APP_INSP_MODE extends React.Component {
         <ArrowLeftOutlined />
       </Button>
 
-      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="hover">
-        <FileOutlined /> {shortedModelName}
+      <Popover content={<div>{this.props.defModelName}<br />{this.props.defModelPath} </div>} placement="bottomLeft" trigger="click">
+        <span style={{margin:"10px"}} ><FileOutlined /> {shortedModelName}</span>
       </Popover>
       <TagDisplay_rdx size="middle"/>
       
@@ -2600,6 +2189,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     inspectionReport: state.UIData.edit_info.inspReport,
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
+    uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
 
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,

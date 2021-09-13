@@ -23,7 +23,7 @@ class CanvasComponent extends React.Component {
           log.error(event);
           this.props.ACT_ERROR();
       break;
-      case "asdasdas":
+      case "down_samp_level_update":
           // log.error(event);
           // this.props.ACT_ERROR();
 

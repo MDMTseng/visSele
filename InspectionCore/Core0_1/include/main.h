@@ -85,7 +85,8 @@ static long current_time_ms(void)
 class MicroInsp_FType : public SOCK_JSON_Flow
 {
 public:
-  MicroInsp_FType(char *host, int port) throw(int) : SOCK_JSON_Flow(host, port){};
+  uint16_t conn_pgID;
+  MicroInsp_FType(char *host, int port) throw(std::runtime_error) : SOCK_JSON_Flow(host, port){};
 
   virtual ~MicroInsp_FType() { DESTROY(); }
 

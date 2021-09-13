@@ -46,6 +46,9 @@ import Popover from 'antd/lib/Popover';
 import NumPad from 'react-numpad';
 import { useSelector,useDispatch } from 'react-redux';
 import { 
+  VerticalAlignTopOutlined,
+  ThunderboltOutlined,
+  StarOutlined,
   LockOutlined,
   CloseOutlined,
   PlusOutlined,
@@ -60,6 +63,8 @@ import {
 
 
 } from '@ant-design/icons';
+import {RepDisplay} from './RepDisplayUI.js';
+
 
 
 const IMG_LOAD_DOWNSAMP_LEVEL=1;
@@ -1501,12 +1506,16 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const DefFile_DB_SEND= (data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(DefFile_DB_W_ID,data,return_cb));
   const shape_list = useSelector(state => state.UIData.edit_info.list);
   const defModelPath = edit_info.defModelPath;
-  
+  const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
   const [fileSelectedCallBack,setFileSelectedCallBack]=useState(undefined);
   
   
   const [modal_view,setModal_view]=useState(undefined);
+
+  const [cacheDef,setCacheDef]=useState(undefined);
+  const [nowInspdata,setNowInspdata]=useState(undefined);
+
 
 
   let MenuSet= [
@@ -1596,6 +1605,98 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       onClick={() => ACT_Measure_Add_Mode()}>
     </BASE_COM.IconButton>]);
       
+
+  function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
+  {//FI/CI
+
+
+    let deffile = defFileGeneration(edit_info);
+    console.log(deffile);
+    deffile.intrusionSizeLimitRatio=1;
+    setCacheDef(deffile);
+
+
+    ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
+    { _PGID_: 11004, 
+      _PGINFO_: { keep: true }, 
+      definfo: deffile     
+    }, undefined,{
+      resolve:(pkts,mainFlow)=>{
+        // console.log(pkts);
+
+        // nowInspdata
+
+        let RP=pkts.find(pkt=>pkt.type=="RP");
+        let IM=pkts.find(pkt=>pkt.type=="IM");
+        
+        let reports = GetObjElement(RP,["data","reports",0,"reports"]);
+        
+        
+
+        // let root_MarginInfo=edit_info._obj.shapeList;
+        // rep.reports.forEach(rep=>{
+        //   rep.judgeReports.forEach(jdg=>{
+        //     jdg.
+        //   })
+        // })
+        // console.log(rep.reports);
+        let image = undefined;
+        if(IM!==undefined)
+          image=BPG_Protocol.map_BPG_Packet2Act(IM).data;
+
+        
+        setNowInspdata({
+          cam_param:edit_info._obj.cameraParam,
+          reports:reports,
+          image:image,
+        });
+      },
+      reject:(e)=>{
+      }
+    });
+
+    function CancelNowInsp()
+    {
+      ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
+      { _PGID_: 11004, 
+        _PGINFO_: { keep: false }, 
+        definfo: undefined     
+      }, undefined,
+      {
+        resolve:(darr,mainFlow)=>{
+          console.log(darr);
+        },
+        reject:(e)=>{
+        }
+      });
+    }
+
+    setModal_view({
+      onOk: () => {
+        CancelNowInsp()
+        setModal_view(undefined);
+      },
+      onCancel: () => { 
+        CancelNowInsp()
+        setModal_view(undefined); 
+      },
+      
+      height:"80%",
+      width:"95%",
+      style:{top:"30px"},
+
+      className:"modal-sizing size95",
+      footer:null,
+      title: null,
+      ext_sec:"INST_Inspection"
+    })
+
+
+
+  }
+
+
+
   MenuSet=MenuSet.concat([
     <BASE_COM.IconButton
       iconType={<EditOutlined/>}
@@ -1710,10 +1811,11 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               let SS=pkts.find(pkt=>pkt.type=="SS");
               if(SS.data.ACK==true)
               {              
+                let acts=pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined);
                 dispatch({
                   type: "ATBundle",
                   ActionThrottle_type: "express",
-                  data: pkts.map(pkt => BPG_Protocol.map_BPG_Packet2Act(pkt)).filter(act => act !== undefined)
+                  data: acts
                 })
                 setModal_view(undefined);
               }
@@ -1762,7 +1864,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }} />,
     (defConf_lock_level !=0) ? null :
     <BASE_COM.IconButton
-      // iconType="INST_CHECK"
+      iconType={<VerticalAlignTopOutlined />}
       dict={DICT}
       addClass="layout palatte-purple-8 vbox"
       key="INST_CHECK"
@@ -1796,6 +1898,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
               if(insp_reports!==undefined&&  insp_reports.length>0)
               {
                 let insp_rep = insp_reports[0];
+                edit_info._obj.setsig360infoCenter({x:insp_rep.cx,y:insp_rep.cy});
                 let modList = shape_list.map((shape,idx)=>{
                   let mod_shape=dclone(shape);
                   
@@ -1839,7 +1942,49 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           }
         }
         );
-      }} />
+      }} />,
+
+    
+    <BASE_COM.IconButton
+      iconType={<ThunderboltOutlined />}
+      dict={DICT}
+      addClass="layout palatte-purple-8 vbox width12"
+      key="NOW"
+      text="快速驗證" onClick={() => {
+
+        let InspectionModeOption={
+          CI:"檢驗",
+          FI:"全檢",
+        }
+        
+        setModal_view({
+          onOk: () => {
+            setModal_view(undefined);
+          },
+          onCancel: () => { 
+            setModal_view(undefined); 
+          },
+
+          footer:null,
+          title: "快速驗證",
+          view:<>
+
+            選擇模式
+            <Button key="CI_MODE" onClick={_ => startQuickInsp("CI")}>
+              檢驗{machine_custom_setting.InspectionMode=="CI"?<StarOutlined />:null}
+            </Button>
+            <Button key="FI_MODE" onClick={_ => startQuickInsp("FI")}>
+              全檢{machine_custom_setting.InspectionMode=="FI"?<StarOutlined />:null}
+            </Button>
+          </>
+        })
+
+
+
+      }} />,
+
+
+
   ]);
 
 
@@ -1887,6 +2032,29 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   }
 
+  let modal_view_sec=null;
+
+  if(modal_view !== undefined && modal_view.ext_sec!==undefined)
+  {
+    switch(modal_view.ext_sec)
+    {
+      case "INST_Inspection":
+        let fallback_nowInspdata=nowInspdata||{}
+        // console.log(cacheDef,edit_info._obj.cameraParam,fallback_nowInspdata.reports,fallback_nowInspdata.image);
+        modal_view_sec=
+          <RepDisplay 
+            def={cacheDef} 
+            camera_param={fallback_nowInspdata.cam_param}  
+            reports={fallback_nowInspdata.reports} 
+            image={fallback_nowInspdata.image}
+            IGNORE_IMAGE_FIT_TO_SCREEN={true}
+            ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={true}
+            BPG_Channel={(...args)=>ACT_WS_SEND_BPG(CORE_ID, ...args) }
+            />;
+        // modal_view_sec="dd"
+        break;
+    }
+  }
   MenuSet.push(
     <Modal
       {...modal_view}
@@ -1910,7 +2078,8 @@ function DEFCONF_MODE_NEUTRAL_UI({})
           setModal_view(undefined);
         }
       }}>
-      {modal_view === undefined ? null : modal_view.view}
+      {modal_view === undefined ? null : (typeof modal_view.view === 'function'? modal_view.view():modal_view.view )}
+      {modal_view_sec}
     </Modal>);
 
   return MenuSet;
@@ -2599,13 +2768,13 @@ class APP_DEFCONF_MODE extends React.Component {
             MenuSet.push(<BASE_COM.Button
               key="COPY_BTN"
               addClass="layout blue vbox"
-              text="COPY" onClick={() => on_COPY_Tar(this.props.edit_tar_info)} />);
+              text="複製" onClick={() => on_COPY_Tar(this.props.edit_tar_info)} />);
 
 
             MenuSet.push(<BASE_COM.Button
               key="DEL_BTN"
               addClass="layout red vbox"
-              text="DEL" onClick={() => {
+              text="刪除" onClick={() => {
                 let tarInfo = this.props.edit_tar_info;
                 let warningUI = "確定要刪除:" + tarInfo.name + " ?";
 
@@ -2642,7 +2811,9 @@ class APP_DEFCONF_MODE extends React.Component {
               }} />);
 
 
-            MenuSet.push(<BASE_COM.Button
+            MenuSet.push(<BASE_COM.IconButton
+            
+              iconType={<VerticalAlignTopOutlined />}
               key="CHECK"
               addClass="layout blue vbox"
               text="CHECK" onClick={() =>{

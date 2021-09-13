@@ -184,31 +184,31 @@ done:
 #endif
 
 
-SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
+SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(std::runtime_error)
 {
-
+  char EXP_INFO[200];
     sockfd=-1;
     this->bufL=100;
     this->buf=new uint8_t[this->bufL];
     if ((he=gethostbyname(host)) == NULL) {  /* get the host info */
         //herror("gethostbyname");
-        throw -1;
+        throw std::runtime_error("-1");
     }
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
         //perror("socket");
-        throw -1;
+        throw std::runtime_error("-1");
     }
 
     int enable = 1;
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char*)&enable, sizeof(int)) < 0)
     {
-      throw -3;
+      throw std::runtime_error("-3");
     }
 #ifdef SO_REUSEPORT
     if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (char*)&enable, sizeof(int)) < 0)
     {
-      throw -3;
+      throw std::runtime_error("-3");
     }
 #endif
 
@@ -225,8 +225,9 @@ SOCK_Msg_Flow::SOCK_Msg_Flow(char *host,int port) throw(int)
 
 
     if ((ret_val=connect_nonb( sockfd,(struct sockaddr *)&their_addr,sizeof(struct sockaddr), 1))!=0) {
-        //perror("connect");
-        throw ret_val;
+      //perror("connect");
+      sprintf(EXP_INFO,"ERROR ret:%d",ret_val);
+      throw std::runtime_error(EXP_INFO);
     }
     recvThread=NULL;
     
@@ -379,7 +380,7 @@ int json_seg_parser::newChar(char ch){
 
 
 
-SOCK_JSON_Flow::SOCK_JSON_Flow(char *host,int port) throw(int):
+SOCK_JSON_Flow::SOCK_JSON_Flow(char *host,int port) throw(std::runtime_error):
     SOCK_Msg_Flow(host,port),jsp()
 {
 }

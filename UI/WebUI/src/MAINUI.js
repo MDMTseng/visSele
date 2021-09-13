@@ -969,7 +969,6 @@ const MainUI=()=>{
   }
   
   const [popUpInfo,setPopUpInfo] = useState(undefined);
-  const uInspData = useSelector(state => state.Peripheral.uInsp);
 
   const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
   const [extraSideUI, setExtraSideUI] = useState([]);
@@ -1615,7 +1614,6 @@ const mapStateToProps_APPMain = (state) => {
     CORE_ID: state.ConnInfo.CORE_ID,
     version_map_info: state.UIData.version_map_info,
     WebUI_info: state.UIData.WebUI_info,
-    uInspData: state.Peripheral.uInsp,
 
     statSetting: state.UIData.edit_info.statSetting,
     machine_custom_setting: state.UIData.machine_custom_setting,
