@@ -124,8 +124,8 @@ exports.update={
         
         updateInfo_cb('DELETE TMP folder')
         fs.rmdirSync(tmpFolder, { recursive: true });
-        updateInfo_cb("old ver update handling done...:",dstFolderName);
-        updateInfo_cb("new ver update handling GO:");
+        updateInfo_cb("old APP update handling done...:",dstFolderName);
+        updateInfo_cb("new APP update handling GO:");
 
 
         
@@ -133,9 +133,26 @@ exports.update={
         console.log(new_launcher);
         new_launcher.set_core_require_function(core_require);
         new_launcher.update.postUpdateWithRemoteInfo({...remoteInfo,new_core_path:dstFolderName},APP_INFO_FILE_PATH,updateInfo_cb)
-        .then(resolve)
-        .catch(reject)
-      }, e => reject);
+        .then((d)=>{
+          updateInfo_cb("new APP update OK...");
+          updateInfo_cb(`new APP is ready at ${dstFolderName}`);
+          return resolve(d);
+        })
+        .catch((e)=>{
+          
+          updateInfo_cb("new APP update ERROR:");
+          updateInfo_cb(e);
+          updateInfo_cb(" Update failed");
+          return reject(d);
+        })
+      }, e =>{ 
+        
+        updateInfo_cb("APP update ERROR:");
+        updateInfo_cb(e);
+        updateInfo_cb(" Update failed");
+        return reject(e)
+
+      });
 
 
       //step2: unzip
@@ -147,7 +164,7 @@ exports.update={
   },
   postUpdateWithRemoteInfo:(remoteInfo,APP_INFO_FILE_PATH,updateInfo_cb=_=>_)=>{
 
-    updateInfo_cb("In new ver. Do post update process....");
+    updateInfo_cb("In new APP. Do post update process....");
     const fs = core_require('fs');
 
     let rawdata = fs.readFileSync(APP_INFO_FILE_PATH);
@@ -156,7 +173,7 @@ exports.update={
     return new Promise((resolve, reject)=>{
 
 
-      updateInfo_cb("In new ver. post update process");
+      updateInfo_cb("In new APP. post update process");
       if(remoteInfo.new_core_path!==undefined)
       {
 
@@ -169,6 +186,8 @@ exports.update={
                  console.log('exec error: ' + error);
             }
             resolve("new software!! is here");
+            
+            updateInfo_cb("In new APP. update process OK!!");
         });
 
       }
