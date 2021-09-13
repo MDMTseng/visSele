@@ -5,6 +5,7 @@ const electron = require('electron')
 const fs = require('fs');
 const path = require('path')
 const https = require('https');
+// const { map } = require('core-js/core/array');
 
 let core_require=undefined;
 let unzipper;
@@ -31,34 +32,36 @@ exports.update={
     return fetch(url)
     .then(res =>res.json())
     .then(res =>{ 
+      if(!Array.isArray(res))
+        res=[res]
 
-      let updatePackAssets = res.assets;
-      console.log(res.assets)
-      switch(process.platform)
-      {
-        case "win_32":
+      console.log(res)
+      return res.map(res=>{
+        let updatePackAssets = res.assets;
+        console.log(res.assets)
+        switch(process.platform)
         {
-          updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("win"));
-          break;
+          case "win_32":
+          {
+            updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("update_win.zip"));
+            break;
+          }
+          case "darwin":
+          {
+            updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("update_mac.zip"));
+            break;
+          }
         }
-        case "darwin":
-        {
-          updatePackAssets=updatePackAssets.filter(asse=>asse.name.includes("mac"));
-          break;
-        }
-      }
-      updatePackAssets=updatePackAssets.map(asse=>{
-        let version=asse.browser_download_url;
 
-        let rule = /download\/(.+)\//g;
-
-        version= rule.exec(version);
-        version=(version[1]!==undefined)?version[1]:version.input;
-        return {...asse,version,url:asse.browser_download_url}
+        let name = res.name;
+        let tag_name = res.tag_name;
+        updatePackAssets=updatePackAssets.map(asse=>{
+          return {...asse,version:name,url:asse.browser_download_url}
+        })
+        return updatePackAssets[0]
+        
       })
-
-      return updatePackAssets
-      
+      .filter(res=>res!==undefined)
     })
   },
   updateWithRemoteInfo:(remoteInfo,APP_INFO_FILE_PATH,updateInfo_cb=_=>_,TargetName_prefix="Xception-")=>{
