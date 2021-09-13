@@ -50,11 +50,14 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
   {
     console.log(APP_RouterTxt)
     const tar_launcher = require(APP_RouterTxt+"/scripts/launcher.js")
+    console.log("tar_launcher")
     tar_launcher.set_core_require_function(require);
     // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
     console.log(tar_launcher.update.getAppInfo());
 
+    var update_select = document.getElementById('update_select');
 
+    update_select.innerHTML="";
     tar_launcher.update.fetchRemoteVersionList()
     .then(list=>{
 
@@ -63,7 +66,6 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
       let logText="";
       var update_log = document.getElementById('update_log');
       
-      var update_select = document.getElementById('update_select');
       list.forEach(ele=>{
         
         var btn = document.createElement("button");
@@ -89,7 +91,6 @@ function setUIInfo(root_APP_INFO,sub_APP_INFO)
 
 
         btn.appendChild(document.createTextNode(ele.version));
-        update_select.innerHTML="";
         update_select.appendChild(btn);
       });
     
