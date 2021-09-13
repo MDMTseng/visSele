@@ -46,6 +46,9 @@ import Popover from 'antd/lib/Popover';
 import NumPad from 'react-numpad';
 import { useSelector,useDispatch } from 'react-redux';
 import { 
+  VerticalAlignTopOutlined,
+  ThunderboltOutlined,
+  StarOutlined,
   LockOutlined,
   CloseOutlined,
   PlusOutlined,
@@ -1602,6 +1605,98 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       onClick={() => ACT_Measure_Add_Mode()}>
     </BASE_COM.IconButton>]);
       
+
+  function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
+  {//FI/CI
+
+
+    let deffile = defFileGeneration(edit_info);
+    console.log(deffile);
+    deffile.intrusionSizeLimitRatio=1;
+    setCacheDef(deffile);
+
+
+    ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
+    { _PGID_: 11004, 
+      _PGINFO_: { keep: true }, 
+      definfo: deffile     
+    }, undefined,{
+      resolve:(pkts,mainFlow)=>{
+        // console.log(pkts);
+
+        // nowInspdata
+
+        let RP=pkts.find(pkt=>pkt.type=="RP");
+        let IM=pkts.find(pkt=>pkt.type=="IM");
+        
+        let reports = GetObjElement(RP,["data","reports",0,"reports"]);
+        
+        
+
+        // let root_MarginInfo=edit_info._obj.shapeList;
+        // rep.reports.forEach(rep=>{
+        //   rep.judgeReports.forEach(jdg=>{
+        //     jdg.
+        //   })
+        // })
+        // console.log(rep.reports);
+        let image = undefined;
+        if(IM!==undefined)
+          image=BPG_Protocol.map_BPG_Packet2Act(IM).data;
+
+        
+        setNowInspdata({
+          cam_param:edit_info._obj.cameraParam,
+          reports:reports,
+          image:image,
+        });
+      },
+      reject:(e)=>{
+      }
+    });
+
+    function CancelNowInsp()
+    {
+      ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
+      { _PGID_: 11004, 
+        _PGINFO_: { keep: false }, 
+        definfo: undefined     
+      }, undefined,
+      {
+        resolve:(darr,mainFlow)=>{
+          console.log(darr);
+        },
+        reject:(e)=>{
+        }
+      });
+    }
+
+    setModal_view({
+      onOk: () => {
+        CancelNowInsp()
+        setModal_view(undefined);
+      },
+      onCancel: () => { 
+        CancelNowInsp()
+        setModal_view(undefined); 
+      },
+      
+      height:"80%",
+      width:"95%",
+      style:{top:"30px"},
+
+      className:"modal-sizing size95",
+      footer:null,
+      title: null,
+      ext_sec:"INST_Inspection"
+    })
+
+
+
+  }
+
+
+
   MenuSet=MenuSet.concat([
     <BASE_COM.IconButton
       iconType={<EditOutlined/>}
@@ -1769,7 +1864,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }} />,
     (defConf_lock_level !=0) ? null :
     <BASE_COM.IconButton
-      // iconType="INST_CHECK"
+      iconType={<VerticalAlignTopOutlined />}
       dict={DICT}
       addClass="layout palatte-purple-8 vbox"
       key="INST_CHECK"
@@ -1851,92 +1946,37 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
     
     <BASE_COM.IconButton
-      // iconType="INST_CHECK"
+      iconType={<ThunderboltOutlined />}
       dict={DICT}
       addClass="layout palatte-purple-8 vbox width12"
       key="NOW"
-      text="即時檢驗" onClick={() => {
-        let deffile = defFileGeneration(edit_info);
-        console.log(deffile);
-        deffile.intrusionSizeLimitRatio=1;
-        setCacheDef(deffile);
+      text="快速驗證" onClick={() => {
 
-        let inspMode = machine_custom_setting.InspectionMode||"CI";//FI/CI
-
-
-        ACT_WS_SEND_BPG(CORE_ID, inspMode, 0, 
-        { _PGID_: 11004, 
-          _PGINFO_: { keep: true }, 
-          definfo: deffile     
-        }, undefined,{
-          resolve:(pkts,mainFlow)=>{
-            // console.log(pkts);
-
-            // nowInspdata
-
-            let RP=pkts.find(pkt=>pkt.type=="RP");
-            let IM=pkts.find(pkt=>pkt.type=="IM");
-            
-            let reports = GetObjElement(RP,["data","reports",0,"reports"]);
-            
-            
-
-            // let root_MarginInfo=edit_info._obj.shapeList;
-            // rep.reports.forEach(rep=>{
-            //   rep.judgeReports.forEach(jdg=>{
-            //     jdg.
-            //   })
-            // })
-            // console.log(rep.reports);
-            let image = undefined;
-            if(IM!==undefined)
-              image=BPG_Protocol.map_BPG_Packet2Act(IM).data;
-
-            
-            setNowInspdata({
-              cam_param:edit_info._obj.cameraParam,
-              reports:reports,
-              image:image,
-            });
-          },
-          reject:(e)=>{
-          }
-        });
-
-        function CancelNowInsp()
-        {
-          ACT_WS_SEND_BPG(CORE_ID, "CI", 0, 
-          { _PGID_: 11004, 
-            _PGINFO_: { keep: false }, 
-            definfo: undefined     
-          }, undefined,
-          {
-            resolve:(darr,mainFlow)=>{
-              console.log(darr);
-            },
-            reject:(e)=>{
-            }
-          });
+        let InspectionModeOption={
+          CI:"檢驗",
+          FI:"全檢",
         }
-
+        
         setModal_view({
           onOk: () => {
-            CancelNowInsp()
             setModal_view(undefined);
           },
           onCancel: () => { 
-            CancelNowInsp()
             setModal_view(undefined); 
           },
-          
-          height:"80%",
-          width:"95%",
-          style:{top:"30px"},
 
-          className:"modal-sizing size95",
           footer:null,
-          title: null,
-          ext_sec:"INST_Inspection"
+          title: "快速驗證",
+          view:<>
+
+            選擇模式
+            <Button key="CI_MODE" onClick={_ => startQuickInsp("CI")}>
+              檢驗{machine_custom_setting.InspectionMode=="CI"?<StarOutlined />:null}
+            </Button>
+            <Button key="FI_MODE" onClick={_ => startQuickInsp("FI")}>
+              全檢{machine_custom_setting.InspectionMode=="FI"?<StarOutlined />:null}
+            </Button>
+          </>
         })
 
 
@@ -2728,13 +2768,13 @@ class APP_DEFCONF_MODE extends React.Component {
             MenuSet.push(<BASE_COM.Button
               key="COPY_BTN"
               addClass="layout blue vbox"
-              text="COPY" onClick={() => on_COPY_Tar(this.props.edit_tar_info)} />);
+              text="複製" onClick={() => on_COPY_Tar(this.props.edit_tar_info)} />);
 
 
             MenuSet.push(<BASE_COM.Button
               key="DEL_BTN"
               addClass="layout red vbox"
-              text="DEL" onClick={() => {
+              text="刪除" onClick={() => {
                 let tarInfo = this.props.edit_tar_info;
                 let warningUI = "確定要刪除:" + tarInfo.name + " ?";
 
@@ -2771,7 +2811,9 @@ class APP_DEFCONF_MODE extends React.Component {
               }} />);
 
 
-            MenuSet.push(<BASE_COM.Button
+            MenuSet.push(<BASE_COM.IconButton
+            
+              iconType={<VerticalAlignTopOutlined />}
               key="CHECK"
               addClass="layout blue vbox"
               text="CHECK" onClick={() =>{
