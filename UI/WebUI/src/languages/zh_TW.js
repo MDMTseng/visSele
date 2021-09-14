@@ -49,7 +49,6 @@ export default {
         radius:"半徑/R",
         calc:"計算/C",
         name:"名稱",
-        docheck:"必要判定",
         importance:"重要等級",
         DefFileName:"設定檔名",
         DefFileTag:"標籤",
@@ -124,7 +123,6 @@ export default {
       LCT:"下管制公差",
 
       importance:"重要等級",
-      docheck:"必要判定",
       quadrant:"量測象限"
     },
     search_point:{

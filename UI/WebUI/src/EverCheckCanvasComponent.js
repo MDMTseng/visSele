@@ -179,6 +179,19 @@ class renderUTIL {
         showLU:false,
       }
     };
+
+    this.iconSet={};
+
+    {
+      let image = new Image();
+      image.src = "resource/image/antd-compass.svg";
+      this.iconSet.compass=image;
+    }
+    {
+      let image = new Image();
+      image.src = "resource/image/antd-eye-invisible.svg";
+      this.iconSet["eye_invisible"]=image;
+    }
   }
   get_mmpp() {
     return this.renderParam.mmpp;
@@ -830,6 +843,24 @@ class renderUTIL {
               subShapeValues=[];
             }
 
+            
+            let imgWH=this.getPointSize()*4;
+            let offsetR=this.getPointSize()*5;
+
+            if(eObject.orientation_essential)
+            {
+              let theta=180*Math.PI/180;
+              let compassOffset={x:offsetR*Math.cos(theta),y:offsetR*Math.sin(theta)};
+              ctx.drawImage(this.iconSet["compass"], eObject.pt1.x-imgWH/2+compassOffset.x,eObject.pt1.y-imgWH/2+compassOffset.y,imgWH,imgWH);
+            }
+            
+            if(eObject.quality_essential==false)
+            {
+              let theta=(180+45)*Math.PI/180;
+              let compassOffset={x:offsetR*Math.cos(theta),y:offsetR*Math.sin(theta)};
+              ctx.drawImage(this.iconSet["eye_invisible"], eObject.pt1.x-imgWH/2+compassOffset.x,eObject.pt1.y-imgWH/2+compassOffset.y,imgWH,imgWH);
+              // this.draw_aimcross(ctx, eObject.pt1, this.getPointSize()*3,0.3);
+            }
 
             let subObjs_valid = subObjs.reduce((acc, cur) => acc && (cur !== undefined), true);
             if (!subObjs_valid) break;
@@ -860,6 +891,7 @@ class renderUTIL {
                 eObject.inspection_value=Number.NaN;
               }
             }
+            // console.log(eObject);
             switch (eObject.subtype) {
               case SHAPE_TYPE.measure_subtype.distance:
                 {
@@ -1312,6 +1344,11 @@ class renderUTIL {
                   break;
                 }
             }
+
+
+            
+
+
             measureValueCache.push({
               id:eObject.id,
               obj:eObject,

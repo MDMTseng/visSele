@@ -2229,7 +2229,6 @@ class APP_DEFCONF_MODE extends React.Component {
 
                 back_value_setup: "switch",
                 importance: "input-number",
-                docheck: "switch",
                 width: "SimpleSetup",
 
                 quality_essential:"switch",
