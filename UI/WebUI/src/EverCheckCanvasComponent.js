@@ -25,14 +25,14 @@ import Color from 'color';
 import { ConsoleSqlOutlined } from '@ant-design/icons';
 
 export const MEASURE_RESULT_VISUAL_INFO = {
-  [MEASURERSULTRESION.UNSET]: { COLOR: "rgba(128,128,128,0.5)", TEXT: MEASURERSULTRESION.UNSET },
-  [MEASURERSULTRESION.NA]: { COLOR: "rgba(128,128,128,0.5)", TEXT: MEASURERSULTRESION.NA },
-  [MEASURERSULTRESION.UOK]: { COLOR: "rgba(128,200,128,0.7)", TEXT: MEASURERSULTRESION.UOK },
-  [MEASURERSULTRESION.LOK]: { COLOR: "rgba(128,200,128,0.7)", TEXT: MEASURERSULTRESION.LOK },
-  [MEASURERSULTRESION.UCNG]: { COLOR: "rgba(255,255,0,0.5)", TEXT: MEASURERSULTRESION.UCNG },
-  [MEASURERSULTRESION.LCNG]: { COLOR: "rgba(255,255,0,0.5)", TEXT: MEASURERSULTRESION.LCNG },
-  [MEASURERSULTRESION.USNG]: { COLOR: "rgba(255,0,0,0.5)", TEXT: MEASURERSULTRESION.USNG },
-  [MEASURERSULTRESION.LSNG]: { COLOR: "rgba(255,0,0,0.5)", TEXT: MEASURERSULTRESION.LSNG },
+  [MEASURERSULTRESION.UNSET]: { COLOR: "rgba(128,128,128,0.7)", TEXT: MEASURERSULTRESION.UNSET },
+  [MEASURERSULTRESION.NA]: { COLOR: "rgba(128,128,128,0.7)", TEXT: MEASURERSULTRESION.NA },
+  [MEASURERSULTRESION.UOK]: { COLOR: "rgba(128,200,128,1)", TEXT: MEASURERSULTRESION.UOK },
+  [MEASURERSULTRESION.LOK]: { COLOR: "rgba(128,200,128,1)", TEXT: MEASURERSULTRESION.LOK },
+  [MEASURERSULTRESION.UCNG]: { COLOR: "rgba(255,255,0,0.7)", TEXT: MEASURERSULTRESION.UCNG },
+  [MEASURERSULTRESION.LCNG]: { COLOR: "rgba(255,255,0,0.7)", TEXT: MEASURERSULTRESION.LCNG },
+  [MEASURERSULTRESION.USNG]: { COLOR: "rgba(255,0,0,0.7)", TEXT: MEASURERSULTRESION.USNG },
+  [MEASURERSULTRESION.LSNG]: { COLOR: "rgba(255,0,0,0.7)", TEXT: MEASURERSULTRESION.LSNG },
 };
 
 export const SHAPE_TYPE_COLOR={
@@ -154,13 +154,13 @@ class renderUTIL {
       inspection_UNSET: "rgba(128,128,128,0.1)",
       inspection_NA: "rgba(128,128,128,0.1)",
       editShape: "rgba(255,0,0,0.7)",
-      measure_info: "rgba(128,128,200,0.7)"
+      measure_info: "rgba(158,158,200,1)"
     };
     this.fixedDigit={
-      D:4,
-      R:4,
+      D:3,
+      R:3,
       A:2,
-      _:4
+      _:3
     }
     this.renderParam = {
       base_Size: 2.5,
@@ -197,14 +197,14 @@ class renderUTIL {
     return this.renderParam.mmpp;
   }
   getPrimitiveSize() {
-    return this.renderParam.base_Size * this.renderParam.size_Multiplier/ this.camCtrl.GetCameraScale();;
+    return this.renderParam.base_Size * this.renderParam.size_Multiplier/ this.camCtrl.GetCameraScale();
   }
 
   getPointSize() {
     return this.getPrimitiveSize()*2;
   }
   getIndicationLineSize() {
-    return this.getPrimitiveSize();
+    return this.getPrimitiveSize()*2;
   }
   getSearchDirectionLineSize() {
     return this.getPrimitiveSize();
@@ -611,7 +611,7 @@ class renderUTIL {
 
     }
     ctx.closePath();
-    //ctx.stroke();
+    ctx.stroke();
   }
 
   drawShapeList(ctx, eObjects, ShapeColor = undefined, skip_id_list = [], shapeList, unitConvert = { unit: "mm", mult: 1 }, drawSubObjs = false,inFullDisplay=true) {
@@ -1701,7 +1701,7 @@ class EverCheckCanvasComponent_proto {
       inspection_Pass: "rgba(0,255,0,0.1)",
       inspection_Fail: "rgba(255,0,0,0.1)",
       editShape: "rgba(255,0,0,0.7)",
-      measure_info: "rgba(128,128,200,0.7)"
+      measure_info: "rgba(128,128,255,0.7)"
     };
 
     this.rUtil = new renderUTIL(null, this.camera);
@@ -1747,13 +1747,13 @@ class EverCheckCanvasComponent_proto {
   scaleImageToFitScreen(img_info=this.img_info) {
     if(img_info===undefined)return;
     let mmpp = this.rUtil.get_mmpp();
-    console.log(img_info.scale*img_info.width*mmpp);
+    // console.log(img_info.scale*img_info.width*mmpp);
 
     let curScale = this.camera.GetCameraScale();
     this.camera.Scale(1/curScale);
     this.camera.Scale(this.canvas.width/(img_info.scale*img_info.width*mmpp));
     
-    console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
+    // console.log(this.canvas.width,(img_info.scale*img_info.width*mmpp));
     this.camera.SetOffset({ x: -(img_info.scale*img_info.width*mmpp)/2, y: -(img_info.scale*img_info.height*mmpp)/2 });
   }
 
@@ -2410,6 +2410,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   inspectionResult(objReport) {
     let judgeReports = objReport.judgeReports;
     let ret_status = judgeReports.reduce((res, obj) => {
+      // if(obj.quality_essential)
+      console.log(obj)
       if (res == INSPECTION_STATUS.NA || res == INSPECTION_STATUS.UNSET) return res;
       if (res == INSPECTION_STATUS.FAILURE) {
         if (obj.status == INSPECTION_STATUS.NA) return INSPECTION_STATUS.NA;
@@ -2576,141 +2578,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
     }
     
-    if (true) {
-      let sigScale = 1;
-
-
-      let measureShape = [];
-      if (this.edit_DB_info.list !== undefined) {
-        measureShape = this.edit_DB_info.list.reduce((measureShape, shape) => {
-          if (shape.type == SHAPE_TYPE.measure)
-            measureShape.push(shape)
-          return measureShape;
-        }, []);
-      }
-
-
-    //this.edit_DB_info.inspReport.reports;
-      if(true)
-      {
-        inspectionReportList.forEach((report, idx) => {
-          ctx.save();
-          ctx.translate(report.cx, report.cy);
-          // console.log(report.cx, report.cy,report);
-          // ctx.save();
-          // ctx.rotate(-report.rotate);
-          // if (report.isFlipped)
-          //   ctx.scale(1, -1);
-          // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
-          // ctx.restore();
-          
-          
-
-          // ctx.scale(sigScale, sigScale);
-
-
-
-          // ctx.textAlign = "center";
-          // ctx.textBaseline = 'middle';
-          // ctx.lineWidth = this.rUtil.renderParam.base_Size * this.rUtil.renderParam.size_Multiplier*0.013;
-
-
-
-
-          // this.rUtil.draw_Text(ctx, idx,1, 0, 0);
-
-          // this.rUtil.drawSignature(ctx, this.edit_DB_info.inherentShapeList[0].signature, 5);
-
-          let ret_res = this.inspectionResult(report);
-          //console.log(ret_res, report);
-          switch (ret_res) {
-            case INSPECTION_STATUS.NA:
-              ctx.fillStyle = this.colorSet.inspection_NA;
-              break;
-            case INSPECTION_STATUS.UNSET:
-              ctx.fillStyle = this.colorSet.inspection_UNSET;
-              break;
-            case INSPECTION_STATUS.SUCCESS:
-              {
-                ctx.fillStyle = this.colorSet.inspection_Pass;
-
-                {
-                  let minViolationIdx = Number.MAX_VALUE;
-                  this.edit_DB_info.list.forEach((eObj) => {
-                    if (eObj.type === SHAPE_TYPE.measure) {
-                      let targetID = eObj.id;
-                      let inspMeasureTar = report.judgeReports.find((measure) => (measure.id === targetID));
-                      if (inspMeasureTar === undefined) {
-                        return;
-                      }
-
-                      ctx.fillStyle = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
-                    }
-                  });
-                }
-                //ctx.fillStyle=this.colorSet.inspection_production_Fail;
-
-              }
-              break;
-            case INSPECTION_STATUS.FAILURE:
-              ctx.fillStyle = this.colorSet.inspection_Fail;
-              break;
-
-          }
-          // let fontPx = this.getFontHeightPx();
-          // console.log(report);
-          
-          this.rUtil.draw_Text(ctx, `${idx} ${report.isFlipped?"反":"正"}`, this.rUtil.getFontHeightPx(), 0,0);
-          
-          ctx.strokeStyle = "red";
-          this.rUtil.draw_aimcross(ctx, {x:0,y:0},this.rUtil.getPointSize()*3,0.1);
-          
-
-          {
-            let ringR=this.rUtil.getFontHeightPx()*1;
-            let ringThickness=this.rUtil.getFontHeightPx()/4;
-            ctx.lineWidth = ringThickness;
-            ctx.beginPath();
-
-            let startAngle=0, endAngle=2 * Math.PI;
-            if(report.headSkipTime>0)
-            {
-              ctx.strokeStyle = "rgb(255, 0, 0)";
-              startAngle=-2 * Math.PI*report.headSkipTime/report.minReportRepeat;
-              endAngle=0;
-            }
-            else
-            {
-              if(report.repeatTime<report.minReportRepeat)
-              {
-                ctx.strokeStyle = "rgb(255, 255, 0)";
-                endAngle = 2 * Math.PI*report.repeatTime/report.minReportRepeat;
-              }
-              else if(report.repeatTime<report.minReportRepeat+1)
-              {
-                ctx.strokeStyle = "rgba(0, 255, 0,0.5)";
-              }
-              else
-              {
-                endAngle=0;
-              }
-            }
-            ctx.arc(0, 0,  ringR, startAngle,endAngle);
-            ctx.stroke();
-          }
-          // ctx.fillText(idx, 0, 0);
-          // ctx.strokeText(idx, 0, 0);
-          // ctx.fill();
-          ctx.restore();
-          //this.rUtil.drawpoint(ctx, {x:report.cx,y:report.cy},"cross");
-        });
-      }
-
-    }
 
     inspectionReportList.forEach((report, idx) => {
       //let ret_res = this.inspectionResult(report);
       //if(ret_res == INSPECTION_STATUS.SUCCESS)
+
+
+      // let finalStatus=this.colorSet.color_SUCCESS
       {
         let listClone = dclone(this.edit_DB_info.list);
 
@@ -2724,7 +2598,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
         listClone.forEach((eObj) => {
-          //log.info(eObj.inspection_status);
+          // log.info(eObj,report);
           switch (eObj.inspection_status) {
             case INSPECTION_STATUS.NA:
               eObj.color = this.colorSet.color_NA;
@@ -2740,8 +2614,9 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
                   let targetID = eObj.id;
                   let inspMeasureTar = report.judgeReports.find((measure) => measure.id === targetID);
                   if (inspMeasureTar === undefined) break;
-
-                  eObj.color = MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
+                  eObj.detailStatus=inspMeasureTar.detailStatus;
+                  let tarColor= MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
+                  eObj.color = tarColor;
 
                 }
 
@@ -2752,8 +2627,67 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
               break;
 
           }
+
+          if(eObj.quality_essential==false)
+          {
+            eObj.color=Color(eObj.color).mix(Color("rgba(128,128,128,1)"),0.8).fade(0.5).string()
+          }
+
         });
+
         
+        ctx.save();
+        ctx.translate(report.cx, report.cy);
+        {
+          let overallStat = listClone
+          .reduce((res, listEle) => {
+            if( listEle.type!==SHAPE_TYPE.measure || listEle.quality_essential==false)return res;
+            return MEASURERSULTRESION_reducer(res, listEle.detailStatus);
+          }, MEASURERSULTRESION.UOK);
+
+          ctx.fillStyle =MEASURE_RESULT_VISUAL_INFO[overallStat].COLOR;
+        
+          // console.log(overallStat,ctx.fillStyle );
+
+          ctx.strokeStyle = "black";
+          this.rUtil.draw_Text(ctx, `${idx} ${report.isFlipped?"反":"正"}`, this.rUtil.getFontHeightPx(), 0,0);
+
+
+          ctx.strokeStyle = "red";
+          this.rUtil.draw_aimcross(ctx, {x:0,y:0},this.rUtil.getPointSize()*3,0.1);
+
+          let ringR=this.rUtil.getFontHeightPx()*1;
+          let ringThickness=this.rUtil.getFontHeightPx()/4;
+          ctx.lineWidth = ringThickness;
+          ctx.beginPath();
+
+          let startAngle=0, endAngle=2 * Math.PI;
+          if(report.headSkipTime>0)
+          {
+            ctx.strokeStyle = "rgb(255, 0, 0)";
+            startAngle=-2 * Math.PI*report.headSkipTime/report.minReportRepeat;
+            endAngle=0;
+          }
+          else
+          {
+            if(report.repeatTime<report.minReportRepeat)
+            {
+              ctx.strokeStyle = "rgb(255, 255, 0)";
+              endAngle = 2 * Math.PI*report.repeatTime/report.minReportRepeat;
+            }
+            else if(report.repeatTime<report.minReportRepeat+1)
+            {
+              ctx.strokeStyle = "rgba(0, 255, 0,0.5)";
+            }
+            else
+            {
+              endAngle=0;
+            }
+          }
+          ctx.arc(0, 0,  ringR, startAngle,endAngle);
+          ctx.stroke();
+        }
+        ctx.restore();
         //console.log(listClone);
         this.rUtil.drawInspectionShapeList(ctx, listClone, null, [], listClone, unitConvert, false);
       }
@@ -3948,25 +3882,34 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       let inspectionReportList = this.edit_DB_info.reportStatisticState.trackingWindow;
 
-
       inspectionReportList.forEach((report, idx) => 
         {
           let listClone = dclone(this.edit_DB_info.list);
   
           this.db_obj.ShapeListAdjustsWithInspectionResult(listClone, report);
-  
+          
+
+          let curStatus=INSPECTION_STATUS.SUCCESS;
+          let finalColor=MEASURE_RESULT_VISUAL_INFO[MEASURERSULTRESION.UOK].COLOR;
+
           listClone.forEach((eObj) => {
+            let tmpStatus=curStatus;
+            let tmpFinalColor=finalColor;
             // log.info(eObj.inspection_status);
             switch (eObj.inspection_status) {
               case INSPECTION_STATUS.NA:
                 eObj.color = this.colorSet.color_NA;
+                tmpStatus=eObj.inspection_status;
+                tmpFinalColor=eObj.color;
                 break;
               case INSPECTION_STATUS.UNSET:
                 eObj.color = this.colorSet.color_UNSET;
+                
                 break;
               case INSPECTION_STATUS.SUCCESS:
                 {
-                  eObj.color = this.colorSet.color_SUCCESS;
+                  eObj.color = MEASURE_RESULT_VISUAL_INFO[MEASURERSULTRESION.UOK].COLOR;
+
                   // if (eObj.type === SHAPE_TYPE.measure) {
                   //   let targetID = eObj.id;
                   //   let inspMeasureTar = report.judgeReports.find((measure) => measure.id === targetID);
@@ -3981,9 +3924,28 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
                 break;
               case INSPECTION_STATUS.FAILURE:
                 eObj.color = this.colorSet.color_FAILURE;
+                if(curStatus==INSPECTION_STATUS.SUCCESS)
+                {
+                  tmpStatus=eObj.inspection_status;
+                  tmpFinalColor=eObj.color;
+                }
                 break;
   
             }
+
+            
+
+            if(eObj.quality_essential==false)
+            {
+              eObj.color=Color(eObj.color).mix(Color("rgba(128,128,128,1)"),0.8).fade(0.5).string()
+            }
+            else if(eObj.type==SHAPE_TYPE.measure)
+            {
+              // console.log(eObj,tmpStatus,tmpFinalColor,curStatus,finalColor)
+              curStatus=tmpStatus;
+              finalColor=tmpFinalColor;
+            }
+
           });
 
 
@@ -3992,7 +3954,9 @@ class RepDisplay_CanvasComponent extends EverCheckCanvasComponent_proto {
             ctx.save();
             ctx.translate(report.cx, report.cy);
 
-
+            
+            ctx.strokeStyle = "black";
+            ctx.fillStyle = finalColor;
             this.rUtil.draw_Text(ctx, `${idx} ${report.isFlipped?"反":"正"}`, this.rUtil.getFontHeightPx(), 0,0);
           
             ctx.strokeStyle = "red";
