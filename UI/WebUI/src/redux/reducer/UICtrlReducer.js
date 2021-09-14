@@ -42,7 +42,7 @@ function Default_UICtrlReducer() {
     c_state: null,
     p_state: null,
     state_count: 0,
-    
+    FILE_default_camera_setting:{},
     DICT:EC_zh_TW
   }
   defState.edit_info.defModelPath=undefined;
@@ -76,6 +76,18 @@ function StateReducer(newState, action) {
     case UISEV.Def_Model_Path_Update:
       newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
       //Edit_info_reset(newState);
+      break;
+
+
+          
+
+    case "FILE_default_camera_setting":
+          
+      newState=
+      {
+        ...newState,
+        FILE_default_camera_setting:action.data
+      };
       break;
 
     case UISEV.Control_SM_Panel:
@@ -665,6 +677,7 @@ function StateReducer(newState, action) {
             newState = { ...newState, defConf_lock_level: action.data };
             //console.log(newState);
             break;
+
           case UISEV.StatSettingParam_Update:
             newState.edit_info.statSetting =
             {

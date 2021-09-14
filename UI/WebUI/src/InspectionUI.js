@@ -721,6 +721,7 @@ class CanvasComponent extends React.Component {
         let mmpp = rep.mmpb2b / rep.ppb2b;
         // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
+        // console.log(this.props.downSampleFactor);
         let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp ) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 10) down_samp_level = 10;
@@ -1411,12 +1412,6 @@ class APP_INSP_MODE extends React.Component {
     this.CameraCtrl.setImageCropParam(undefined,4);
 
     {
-
-      // this.props.shape_list//modify the shapeList measure info according to the __decorator and tag info
-
-      // this.props.info_decorator
-      // this.props.inspOptionalTag
-
       console.log(this.props.shape_list,this.props.info_decorator,this.props.inspOptionalTag);
 
 
@@ -1516,13 +1511,10 @@ class APP_INSP_MODE extends React.Component {
     this.state = {
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
-      ROIs: {},
-      ROI_key: undefined,
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
       isInSettingUI:false,
-      SettingParamInfo:undefined,
-      down_samp_factor:1
+      SettingParamInfo:undefined
     };
 
     
@@ -1561,21 +1553,25 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-    new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
-        { filename: "data/default_camera_setting.json" },
-        undefined, { resolve, reject }
-      );
-      setTimeout(() => reject("Timeout"), 2000)
-    }).then((pkts) => {
-      if (pkts[0].type != "FL") return;
-      let cam_setting = pkts[0].data;
-      if (typeof cam_setting.ROIs !== 'object') return;
-      let ROIs = cam_setting.ROIs;
-      console.log(">>>>", ROIs);
-      let down_samp_factor =cam_setting.down_samp_factor===undefined? 1:cam_setting.down_samp_factor;
-      this.setState({ ROIs, ROI_key: undefined,down_samp_factor});
-    }).catch((err) => { })
+    // new Promise((resolve, reject) => {
+    //   this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
+    //     { filename: "data/default_camera_setting.json" },
+    //     undefined, { resolve, reject }
+    //   );
+    //   setTimeout(() => reject("Timeout"), 2000)
+    // }).then((pkts) => {
+    //   if (pkts[0].type != "FL") return;
+    //   let cam_setting = pkts[0].data;
+    //   if (typeof cam_setting.ROIs !== 'object') return;
+    //   let ROIs = cam_setting.ROIs;
+    //   // console.log(">>>>", ROIs);
+    //   let down_samp_factor =cam_setting.down_samp_factor===undefined? 1:cam_setting.down_samp_factor;
+    //   this.setState({ ROIs, ROI_key: undefined,down_samp_factor});
+    // }).catch((err) => { })
+
+
+
+
 
   }
 
@@ -1885,33 +1881,6 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-
-    // const menu_ = (
-    //   <Menu onClick={(ev) => {
-    //     console.log(ev);
-    //     let ROI = this.state.ROIs[ev.key];
-    //     this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-    //       { CameraSetting: { ROI } })
-
-    //     this.setState({ ROI_key: ev.key });
-    //   }
-    //   }>
-    //     {Object.keys(this.state.ROIs)
-    //       .map((ROI_key, idx) =>
-    //         <Menu.Item key={ROI_key}>
-    //           <a target="_blank" rel="noopener noreferrer">
-    //             {ROI_key}
-    //           </a>
-    //         </Menu.Item>)}
-    //   </Menu>
-    // );
-    // MenuSet_2nd.push(<Dropdown overlay={menu_}>
-    //   <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
-    //     {this.state.ROI_key}
-    //     <CaretDownOutlined />
-    //   </a>
-    // </Dropdown>);
-    // console.log(this.props.reportStatisticState);
     let headerUI = 
     <>
       
@@ -2016,7 +1985,7 @@ class APP_INSP_MODE extends React.Component {
     </>;*/
 
 
-
+    // console.log(this.props.FILE_default_camera_setting)
 
     // MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
     //   reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
@@ -2041,7 +2010,7 @@ class APP_INSP_MODE extends React.Component {
               onROISettingCallBack={this.state.onROISettingCallBack}
               measureDisplayRank={this.state.measureDisplayRank}
               ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
-              downSampleFactor={this.state.down_samp_factor}
+              downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
               onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
               camera_calibration_report={this.props.camera_calibration_report} />}
 
@@ -2109,6 +2078,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     shape_list: state.UIData.edit_info.list,
     info_decorator: state.UIData.edit_info.__decorator,
     defModelName: state.UIData.edit_info.DefFileName,
+    FILE_default_camera_setting:state.UIData.FILE_default_camera_setting,
     
     defModelTag: state.UIData.edit_info.DefFileTag,
     machine_custom_setting: state.UIData.machine_custom_setting,
@@ -2121,7 +2091,6 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
     uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
-
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
   }

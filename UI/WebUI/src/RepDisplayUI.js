@@ -27,6 +27,8 @@ class CanvasComponent extends React.Component {
   componentDidUpdate(prevProps) {
   }
 
+
+
   ec_canvas_EmitEvent(event) {
     switch (event.type) {
       case "down_samp_level_update":
@@ -40,7 +42,8 @@ class CanvasComponent extends React.Component {
         let mmpp = cam_param.mmpb2b / cam_param.ppb2b;
 
         let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
+        let downSampleFactor=this.props.downSampleFactor||1;
+        let down_samp_level = Math.floor(event.data.down_samp_level*downSampleFactor / mmpp) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 15) down_samp_level = 15;
 
@@ -63,7 +66,6 @@ class CanvasComponent extends React.Component {
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.RepDisplay_CanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent = this.ec_canvas_EmitEvent.bind(this);
-
     if(this.props.onCanvasInit!==undefined)
       this.props.onCanvasInit(this.ec_canvas);
 
@@ -121,7 +123,7 @@ class CanvasComponent extends React.Component {
 
 
 
-export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel }) {
+export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel,downSampleFactor=1 }) {
 
   
   const [editInfo,setEditInfo]=useState(Edit_info_Empty());
@@ -218,7 +220,12 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
 
 
   return (<div  className="s width12 height12">
-    <CanvasComponent addClass="height12" edit_info={editInfo} ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL} BPG_Channel={BPG_Channel}/>
+    <CanvasComponent 
+      addClass="height12" 
+      edit_info={editInfo} 
+      ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL} 
+      BPG_Channel={BPG_Channel}
+      downSampleFactor={downSampleFactor}/>
   </div>);
 }
  

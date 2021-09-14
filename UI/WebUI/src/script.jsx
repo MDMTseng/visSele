@@ -639,11 +639,8 @@ class APPMasterX extends React.Component {
                   
                 }});
 
-  
-              
                 let machineSettingPath="data/machine_setting.json";
-                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0,
-                { filename: machineSettingPath },
+                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0,{ filename: machineSettingPath },
                 undefined, 
                 {resolve: (data) => {
                   console.log(data);
@@ -683,8 +680,7 @@ class APPMasterX extends React.Component {
                   }
                 }});
             
-                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0,
-                  { filename: "data/machine_info" },
+                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0, { filename: "data/machine_info" },
                   undefined, 
                   {resolve: (data) => {
                     console.log(data);
@@ -694,7 +690,21 @@ class APPMasterX extends React.Component {
                         comp.props.ACT_MachTag_Update(info);
                       }
                     }
-                  }});
+                }});
+
+
+                let filePath="data/default_camera_setting.json";
+                comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "LD", 0, { filename:filePath },
+                  undefined, 
+                  {resolve: (pkts) => {
+                    if (pkts[0].type != "FL") return;
+
+                    let cam_setting = pkts[0].data;
+                    console.log(cam_setting);
+                    comp.props.DISPATCH({type:"FILE_default_camera_setting",data:pkts[0].data})
+                }});
+
+
               }
 
               

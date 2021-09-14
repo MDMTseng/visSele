@@ -1500,6 +1500,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
   const ACT_WS_SEND_BPG= (...args) => dispatch(UIAct.EV_WS_SEND_BPG(...args));
 
   const edit_info = useSelector(state => state.UIData.edit_info);
+  const FILE_default_camera_setting = useSelector(state => state.UIData.FILE_default_camera_setting);
   const defConf_lock_level = useSelector(state => state.UIData.defConf_lock_level);
   const CORE_ID = useSelector(state => state.ConnInfo.CORE_ID);
   const DefFile_DB_W_ID = useSelector(state => state.ConnInfo.DefFile_DB_W_ID);
@@ -2051,6 +2052,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             IGNORE_IMAGE_FIT_TO_SCREEN={true}
             ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={true}
             BPG_Channel={(...args)=>ACT_WS_SEND_BPG(CORE_ID, ...args) }
+            downSampleFactor={FILE_default_camera_setting.down_samp_factor||1}
             />;
         // modal_view_sec="dd"
         break;
