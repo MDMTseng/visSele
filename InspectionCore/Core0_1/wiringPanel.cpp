@@ -628,6 +628,12 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     }
     else
     {
+      
+      if (JFetEx_NUMBER(root, "reports[0].ppb2b") != NULL)
+      {
+        ret_param->getCalibMap()->calibPpB = *JFetEx_NUMBER(root, "reports[0].ppb2b");
+        LOGI("Override calibPpB:%f", ret_param->getCalibMap()->calibPpB);
+      }
       //throw new std::runtime_error("ReadByte return NULL");
       //return -1;
     }
@@ -639,6 +645,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     ret_param->getCalibMap()->calibmmpB = *JFetEx_NUMBER(root, "reports[0].mmpb2b");
     LOGI("Override calibmmpB:%f", ret_param->getCalibMap()->calibmmpB);
   }
+  
 
   do
   {
@@ -2858,10 +2865,9 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
-
+  CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
   
-
-
+  LOGE("finfo.wh:%d,%d \n", finfo.width,finfo.height);
   
 
   image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc_blocking();
@@ -2874,10 +2880,8 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   headImgPipe->camLayer = &cl_obj;
   headImgPipe->type = type;
   headImgPipe->context = context;
-  CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
   headImgPipe->fi = finfo;
   
-  LOGE("finfo.wh:%d,%d \n", finfo.width,finfo.height);
   headImgPipe->img.ReSize(finfo.width,finfo.height,3);
   cl_GMV.ExtractFrame(headImgPipe->img.CVector[0],3,finfo.width*finfo.height);
 
