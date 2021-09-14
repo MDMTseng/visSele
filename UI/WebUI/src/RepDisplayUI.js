@@ -93,7 +93,7 @@ class CanvasComponent extends React.Component {
 
   onResize(width, height) {
     if (Math.hypot(this.windowSize.width - width, this.windowSize.height - height) < 20) return;
-    console.log(this.windowSize.width ,this.windowSize.height,width, height );
+    // console.log(this.windowSize.width ,this.windowSize.height,width, height );
     if (this.ec_canvas !== undefined) {
       this.ec_canvas.resize(width, height);
       this.windowSize = {

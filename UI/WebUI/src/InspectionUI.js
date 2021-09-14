@@ -145,7 +145,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
       Array.isArray(newAddedReport)==false ||
       newAddedReport.length==0)//there is no new report
     {
-      console.log("no report...");
+      // console.log("no report...");
       return;
     }
 
@@ -156,7 +156,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
     _this.totalCounter++;
     if(res!=0)
     {
-      console.log("SKIP...");
+      // console.log("SKIP...");
       return;
     }
 
@@ -628,7 +628,7 @@ class ObjInfoList extends React.Component {
         if(rep.def.quality_essential==false)return res;
         return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
-      console.log(singleReport.isFlipped);
+      // console.log(singleReport.isFlipped);
       return (
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
           title={
