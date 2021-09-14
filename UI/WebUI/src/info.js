@@ -11,7 +11,7 @@ export default {
     FLAGS:{
       DEV_MODE,
       ALLOW_SOFT_CAM:DEV_MODE,
-      CI_INSP_DO_NOT_STACK_REPORT:DEV_MODE,
+      CI_INSP_DO_NOT_STACK_REPORT:false,
       CI_INSP_SEND_REP_TO_DB_SKIP:DEV_MODE?100:undefined
     }
 };

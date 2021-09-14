@@ -398,7 +398,7 @@ function StateReducer(newState, action) {
                         //Check position consistency
                         let distance = Math.hypot(singleReport.cx - srep_inWindow.cx, singleReport.cy - srep_inWindow.cy);
 
-                        if (distance > mmpcampix / 2) {
+                        if (distance > mmpcampix*1.5) {
                           return closeRep;
                         }
                         //If we get here, which means the information is very similar.

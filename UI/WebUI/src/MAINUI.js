@@ -302,7 +302,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const [stepIdx,setStepIdx]=useState(0);
   const [isVertical,setIsVertical]=useState(false);
   let DefFileFolder=undefined;
-  console.log(uInsp_API_ID_CONN_INFO);
+  // console.log(uInsp_API_ID_CONN_INFO);
   useEffect(()=>{
     let is_Cam_Ready=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
     let is_uInsp_Ready=GetObjElement(uInsp_API_ID_CONN_INFO,["type"])=="WS_CONNECTED";

@@ -160,6 +160,7 @@ class renderUTIL {
       D:3,
       R:3,
       A:2,
+      C:6,
       _:3
     }
     this.renderParam = {
@@ -1282,7 +1283,7 @@ class renderUTIL {
                       
                     this.drawInspMeasureInfoText(ctx,
                       eObject.name,
-                      "C" + (eObject.inspection_value),
+                      "C" + (eObject.inspection_value).toFixed(this.fixedDigit.C),
                       marginPC,fontPx);
                     measureValue=eObject.inspection_value;
                   }
@@ -1326,9 +1327,9 @@ class renderUTIL {
                     //console.log(measureValueCache,eObject,measureValue);
                     this.drawDefMeasureInfoText(ctx,
                       eObject.name,
-                      "C" + eObject.value.toFixed(this.fixedDigit._),
-                      "L:" + eObject.LSL.toFixed(this.fixedDigit._) + " U:" + eObject.USL.toFixed(this.fixedDigit._),
-                      "Now:" +measureValue.toFixed(this.fixedDigit._),
+                      "C" + eObject.value.toFixed(this.fixedDigit.C),
+                      "L:" + eObject.LSL.toFixed(this.fixedDigit.C) + " U:" + eObject.USL.toFixed(this.fixedDigit.C),
+                      "Now:" +measureValue.toFixed(this.fixedDigit.C),
                       fontPx);
                     
 
