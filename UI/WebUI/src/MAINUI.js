@@ -68,6 +68,9 @@ import {
   LinkOutlined,
   DisconnectOutlined,
   ScanOutlined,
+  CaretUpOutlined,
+  CaretDownOutlined,
+  HistoryOutlined,
   SettingOutlined,
   CameraOutlined,
   DatabaseOutlined,
@@ -987,6 +990,7 @@ const MainUI=()=>{
   }
   
   const [popUpInfo,setPopUpInfo] = useState(undefined);
+  const [hideMachineSetting,setHideMachineSetting] = useState(true);
 
   const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
   const [extraSideUI, setExtraSideUI] = useState([]);
@@ -1062,7 +1066,27 @@ const MainUI=()=>{
           //   icon:<EditOutlined />,
           //   text:"Cable_Wire_Conf",
           //   onClick:_=>setUI_state(s_statesTable.CableWireConf)
-          // },
+          // },,
+          {
+            icon:<HistoryOutlined />,
+            text:DICT.mainui.RepDisplay,
+            onClick:_=>setUI_state(s_statesTable.RepDisplay)
+          },
+
+
+        ],
+      }
+
+      if(hideMachineSetting==false)
+      {
+        siderUI_info.menu=siderUI_info.menu.concat([
+
+
+          {
+            icon:<SettingOutlined />,
+            text:DICT.mainui.MODE_SELECT_SETTING,
+            onClick:_=>setUI_state(s_statesTable.Setting)
+          },
           {
             icon:<TableOutlined />,
             text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
@@ -1072,20 +1096,20 @@ const MainUI=()=>{
             icon:<ThunderboltOutlined />,
             text:DICT.mainui.MODE_SELECT_INST_INSP,
             onClick:_=>setUI_state(s_statesTable.InstInsp)
-          },
-          {
-            icon:<SettingOutlined />,
-            text:DICT.mainui.MODE_SELECT_SETTING,
-            onClick:_=>setUI_state(s_statesTable.Setting)
-          },
-          {
-            icon:<SettingOutlined />,
-            text:DICT.mainui.RepDisplay,
-            onClick:_=>setUI_state(s_statesTable.RepDisplay)
           }
            
-        ],
+
+        ]);
       }
+
+      siderUI_info.menu.push({
+        icon:hideMachineSetting?<CaretDownOutlined />:<CaretUpOutlined />,
+        text:hideMachineSetting?"打開機器設定":"隱藏機器設定",
+        onClick:_=>{
+          setHideMachineSetting(!hideMachineSetting)
+        }
+      });
+
       UI.push(<InspectionDataPrepare key="InspectionDataPrepare" onPrepareOK={EV_UI_Insp_Mode}/>);
       
       break;
@@ -1176,7 +1200,7 @@ const MainUI=()=>{
           if(extraCtrls.currentReportExtract!==undefined)
           {
             extraCtrlUI.push({
-              icon:<SelectOutlined />,
+              icon:<SaveOutlined />,
               text:DICT._.save_calibration,
               onClick:_=>{
 
