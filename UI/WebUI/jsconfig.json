@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "es2017",
+    "allowSyntheticDefaultImports": false,
+    "baseUrl": "./",
+    "paths": {
+      "UTIL/*": ["src/UTIL/*"],
+      "JSSRCROOT/*": ["src/*"],
+      "LANG/*": ["src/languages/*"],
+
+      "RES/*": ["resource/*"],
+      "REDUX_STORE_SRC/*": ["src/redux/*"],
+      "STYLE/*": ["style/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist"]
+} 
