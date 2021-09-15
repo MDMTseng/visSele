@@ -952,7 +952,7 @@ class APPMasterX extends React.Component {
 
 
               let cam0=GetObjElement(camInfo,[0,"type"]);
-              if(cam0===undefined || (INFO.FLAGS.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
               {
                 StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
                 
