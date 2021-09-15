@@ -1460,11 +1460,7 @@ class APP_INSP_MODE extends React.Component {
 
       this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
-      this.props.ACT_StatSettingParam_Update({
-        keepInTrackingTime_ms: 0,
-        minReportRepeat: 0,
-        headReportSkip: 0,
-      })
+      this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
@@ -1479,23 +1475,9 @@ class APP_INSP_MODE extends React.Component {
       //   type:"gen"
       // }
       // }, undefined);
-      if(INFO.FLAGS.CI_INSP_DO_NOT_STACK_REPORT)
-      {
-        this.props.ACT_StatSettingParam_Update({
-          keepInTrackingTime_ms: 0,
-          minReportRepeat: 0,
-          headReportSkip: 0,
-        })
-      }
-      else
-      {
-        this.props.ACT_StatSettingParam_Update({
-          keepInTrackingTime_ms: 1000,
-          historyReportlimit: 1000,
-          minReportRepeat: 2,
-          headReportSkip: 1,
-        })
-      }
+
+      this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
+
     }
   }
 
@@ -1755,8 +1737,7 @@ class APP_INSP_MODE extends React.Component {
     {//if the FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP is undefined it will use the default number
     }
     let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 
-      (INFO.FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP ||1) : 
-      10;
+    this.props.System_Setting.CI_MODE_UPLOAD_SKIP:this.props.System_Setting.FI_MODE_UPLOAD_SKIP;
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
@@ -2093,6 +2074,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
+    
+    System_Setting:state.UIData.System_Setting,
   }
 };
 

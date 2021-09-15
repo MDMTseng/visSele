@@ -9,7 +9,7 @@ import ReactDOM from 'react-dom';
 import * as BASE_COM from './component/baseComponent.jsx';
 import {UINSP_UI} from './component/rdxComponent.jsx';
 
-import INFO from './info.js';
+import {GetDefaultSystemSetting} from './info.js';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
 
@@ -266,6 +266,7 @@ class APPMasterX extends React.Component {
       ACT_WS_SEND_BPG: (id, tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
       ACT_MachTag_Update: (machTag) => { dispatch(DefConfAct.MachTag_Update(machTag)) },
       ACT_Machine_Custom_Setting_Update: (info) => dispatch(UIAct.EV_machine_custom_setting_Update(info)),
+      ACT_System_Setting_Update: (sysSetting) => dispatch({type:"System_Setting_Update",data:sysSetting}),
     }
   }
   static mapStateToProps(state) {
@@ -278,7 +279,7 @@ class APPMasterX extends React.Component {
       CAM1_ID:state.ConnInfo.CAM1_ID,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
-
+      System_Setting:state.UIData.System_Setting,
       C_STATE: state.UIData.c_state,
       
       DICT :state.UIData.DICT
@@ -329,7 +330,7 @@ class APPMasterX extends React.Component {
     
     this.WSDataDispatch = this.WSDataDispatch.bind(this);
 
-
+    this.props.ACT_System_Setting_Update(GetDefaultSystemSetting());
 
     let comp=this;
 
@@ -674,6 +675,14 @@ class APPMasterX extends React.Component {
                       })
                     }
 
+                    console.log(info.SystemSetting);
+                    if(info.SystemSetting!==undefined)
+                    {
+                      let newSetting={...comp.props.System_Setting,...info.SystemSetting}
+                      console.log(newSetting);
+                      comp.props.ACT_System_Setting_Update(newSetting);
+
+                    }
 
 
                     comp.props.ACT_Machine_Custom_Setting_Update(info);
@@ -1424,21 +1433,14 @@ class APPMasterX extends React.Component {
               }
             }}
           />
-          {INFO.FLAGS.DEV_MODE?
+          
           <>
-            <Divider>DEV MODE</Divider>
+            <Divider>DEV MODE{this.props.System_Setting.version}</Divider>
             <pre>
-              {JSON.stringify(INFO, null, 1)}
+              {JSON.stringify(this.props.System_Setting, null, 1)}
             </pre>
             <Divider></Divider>
-          </>:
-          <>
-            <Divider>{INFO.version}</Divider>
-            <pre>
-              {JSON.stringify(INFO, (k,v)=>k=="FLAGS"?undefined:v, 1)}
-            </pre>
-            <Divider></Divider>
-          </>}
+          </>
         </Drawer>
 
         <Button className="overlay" 

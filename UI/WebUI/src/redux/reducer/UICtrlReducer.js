@@ -12,6 +12,7 @@ import dclone from 'clone';
 import { loadavg } from 'os';
 import JSum from 'jsum'
 
+import {GetDefaultSystemSetting} from 'JSSRCROOT/info.js';
 import dateFormat from 'dateFormat';
 import semver from 'semver'
 import EC_zh_TW from 'LANG/zh_TW';
@@ -34,6 +35,7 @@ function Default_UICtrlReducer() {
   //log.info("ST...",JSON.stringify(ST));
   let defState = {
     machine_custom_setting:{},
+    System_Setting:GetDefaultSystemSetting(),
     showSM_graph: false,
     defConf_lock_level: 0,
     edit_info: Edit_info_Empty(),
@@ -79,7 +81,13 @@ function StateReducer(newState, action) {
       break;
 
 
-          
+    case "System_Setting_Update":
+      newState=
+      {
+        ...newState,
+        System_Setting:action.data
+      };
+    break;
 
     case "FILE_default_camera_setting":
           
