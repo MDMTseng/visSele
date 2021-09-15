@@ -75,7 +75,7 @@ import {
   CameraOutlined,
   DatabaseOutlined,
   QrcodeOutlined,
-  FundOutlined,
+  PlusSquareOutlined,
   CaretRightOutlined,
   CloudServerOutlined,
   CloseCircleTwoTone,
@@ -941,7 +941,7 @@ const MainUI=()=>{
       },
       InstInsp:{
         type:"InstInsp",
-        name:DICT.mainui.MODE_SELECT_INST_INSP
+        name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION
       },
       CableWireConf:{
         type:"CableWireConf",
@@ -991,7 +991,7 @@ const MainUI=()=>{
   
   const [popUpInfo,setPopUpInfo] = useState(undefined);
   const [hideMachineSetting,setHideMachineSetting] = useState(true);
-
+  
   const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
   const [extraSideUI, setExtraSideUI] = useState([]);
 
@@ -1093,11 +1093,12 @@ const MainUI=()=>{
             onClick:_=>setUI_state(s_statesTable.BackLightCalib)
           },
           {
-            icon:<ThunderboltOutlined />,
-            text:DICT.mainui.MODE_SELECT_INST_INSP,
+            icon:<PlusSquareOutlined />,
+            // text:DICT.mainui.MODE_SELECT_INST_INSP,
+            text:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
             onClick:_=>setUI_state(s_statesTable.InstInsp)
           }
-           
+
 
         ]);
       }
@@ -1315,24 +1316,25 @@ const MainUI=()=>{
             })
           }
           
-          if(extraCtrls.setDistanceType!==undefined)
+          if(extraCtrls.togglePointPairMMPPAdjust!==undefined)
           {
             extraCtrlUI.push({
-              icon:<MinusOutlined />,
-              text:"距離模式",
-              onClick:_=>
-              {
-                if(_REF.current.distType===undefined)
-                {
-                  _REF.current.distType=0;
-                }
-                _REF.current.distType++;
-                _REF.current.distType%=3;
-                extraCtrls.setDistanceType(_REF.current.distType);
-              }
+              icon:<SettingOutlined />,
+              text:"校正設定",
+              onClick:_=>extraCtrls.togglePointPairMMPPAdjust()
+              
               // subMenu:[]
             })
           }
+          if(extraCtrls.saveCameraParam!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<SaveOutlined />,
+              text:DICT._.save_calibration,
+              onClick:_=>extraCtrls.saveCameraParam()
+            });
+          }
+          
           
           
           // if(extraCtrls.removeOneMeasureSet!==undefined)

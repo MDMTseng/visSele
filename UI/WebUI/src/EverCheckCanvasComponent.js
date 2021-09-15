@@ -1709,7 +1709,7 @@ class EverCheckCanvasComponent_proto {
     this.rUtil.setColorSet(this.colorSet);
 
 
-    this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 100);
+    this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 500);
   }
 
 
@@ -3527,6 +3527,17 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
       //   removeCount=2;
       // }
       this.markPoints.splice(this.markPoints.length-removeCount,removeCount);
+
+      if(this.markPoints.length%2==0)//a point pair
+      this.EmitEvent(
+        {
+          type: "point_pair_update",
+          data: {
+            pts:this.markPoints.filter((pt,idx)=>idx%2==0).map((_,idx)=>[this.markPoints[2*idx],this.markPoints[2*idx+1]]),
+            pt:this.markPoints.slice(-2)
+          }
+        }
+      );
     }
   
     this.distanceType=0;
@@ -3549,6 +3560,9 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
     if(img_info==null)return;
     if(this.img_info==img_info)return;
     super.SetImg(img_info);
+    
+    if(img_info.IGNORE_IMAGE_FIT_TO_SCREEN==false)
+      this.scaleImageToFitScreen();
   
   }
 
@@ -3744,10 +3758,21 @@ class InstInsp_CanvasComponent extends EverCheckCanvasComponent_proto {
         //   this.markPoints=[];
         // }
         this.markPoints.push(mouseOnCanvas2);
-        console.log(this.markPoints);
+        // console.log(this.markPoints);
+
+        if(this.markPoints.length%2==0)//a point pair
+          this.EmitEvent(
+            {
+              type: "point_pair_update",
+              data: {
+                pts:this.markPoints.filter((pt,idx)=>idx%2==0).map((_,idx)=>[this.markPoints[2*idx],this.markPoints[2*idx+1]]),
+                pt:this.markPoints.slice(-2)
       }
     }
-    console.log(mouseOnCanvas2,pmouseOnCanvas2);
+          );
+      }
+    }
+    // console.log(mouseOnCanvas2,pmouseOnCanvas2);
 
     
     this.mouseStatus.pstatus = this.mouseStatus.status;
