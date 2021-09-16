@@ -250,6 +250,11 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       reports:undefined
     });
 
+
+
+    
+  const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
+
   // const _REF = React.useRef({
   //   iel: new InspectionEditorLogic(),
   // });
@@ -328,13 +333,14 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     BrowseNewFileToLoad();
   },[]);
 
+  let default_dst_Path=machine_custom_setting.Sample_Saving_Path||"data/";
   console.log(repDispInfo,repImgInfo);
   return (<div  className="s width12 height12">
 
     <BPG_FileBrowser key="BPG_FileBrowser"
       className="width8 modal-sizing"
       searchDepth={4}
-      path="data/" visible={fileSelectorInfo !== undefined}
+      path={default_dst_Path} visible={fileSelectorInfo !== undefined}
       BPG_Channel={BPG_Channel}
 
       onFileSelected={(filePath, fileInfo) => {
