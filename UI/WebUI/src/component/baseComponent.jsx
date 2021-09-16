@@ -3,6 +3,7 @@ import React, { useState,useEffect,useRef }from 'react';
 import React_createClass from 'create-react-class';
 import {GetObjElement} from 'UTIL/MISC_Util';
 
+var dateFormat = require("dateformat");
 import dclone from 'clone';
 import * as logX from 'loglevel';
 
@@ -616,20 +617,61 @@ export class BPG_FileBrowser_proto extends React.Component{
     let columns =[]
     let fileList;
     let tableWidthClass = "width10"
+
+    let Col_file_Type={
+      title: "type",
+      dataIndex: "type",
+      key:"type",
+      render:(text, record) => 
+        (text=="DIR")?<FolderOutlined />:<FileOutlined />,
+      width:64
+    }
+
+    let Col_file_Name={
+      title: 'name',
+      dataIndex: 'name',
+      key:'name',
+      sorter: (a, b) => (a.name).localeCompare(b.name),
+    }
+
+
+    let Col_file_Path={
+      title: 'path',
+      dataIndex: 'path',
+      key:'path',
+    }
+
+
+    let Col_file_modified_time_ms={
+      title: 'mtime_ms',
+      dataIndex: 'mtime_ms',
+      key:'mtime_ms',
+      render:(millisecond, record) => 
+        dateFormat(new Date(millisecond), "yyyy/mm/dd hh:mm:ss"),
+      sorter:(a, b) => a.mtime_ms>b.mtime_ms
+    }
+
+
+    let Col_file_Size={
+      title: 'size',
+      dataIndex: 'size',
+      key:'size',
+      sorter:(a, b) => a.size_bytes>b.size_bytes
+    }
+
+    
+
+
+
     if(this.state.searchText!==undefined && this.state.searchText.length>0)
     {
-      columns = ['type','name','path'].map((info)=>({
-        title: info,
-        dataIndex: info,
-        key:info,
-      }));
-      
-      columns[0].render=(text, record) => {
-        let iconType=(text=="DIR")?<FolderOutlined />:<FileOutlined />
-        return iconType
-      }
-      columns[0].width=64;
-      
+      columns = [
+        Col_file_Type,
+        Col_file_Name,
+        Col_file_modified_time_ms,
+        Col_file_Size,
+        Col_file_Path];
+
 
       if(this.state.selectedFileGroupInfo==undefined)
       {
@@ -651,35 +693,25 @@ export class BPG_FileBrowser_proto extends React.Component{
     }
     else if(this.state.selectedFileGroupInfo!==undefined)
     {
-      columns = ['type','name','path'].map((info)=>({
-        title: info,
-        dataIndex: info,
-        key:info,
-      }));
-      
-      columns[0].render=(text, record) => {
-        let iconType=(text=="DIR")?<FolderOutlined />:<FileOutlined />
-        return iconType
-      }
-      columns[0].width=64;
-      
+      columns = [
+        Col_file_Type,
+        Col_file_Name,
+        Col_file_modified_time_ms,
+        Col_file_Size,
+        Col_file_Path,];
+        
       fileList=this.state.selectedFileGroupInfo;
       tableWidthClass="width10"
     }
     else
     {
-      columns = ['type','name','size'].map((info)=>({
-        title: info,
-        dataIndex: info,
-        key:info,
-      }));
-  
-      columns[0].render=(text, record) => {
-        let iconType=(text=="DIR")?<FolderOutlined />:<FileOutlined />
-        return iconType
-      }
-      columns[0].width=64;
-  
+      
+      columns = [
+        Col_file_Type,
+        Col_file_Name,
+        Col_file_modified_time_ms,
+        Col_file_Size,];
+
 
       fileList =
       this.fList(this.state.folderStruct,(file)=>
@@ -720,7 +752,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       
       let customfileStruct=(this.props.fileGroups===undefined)?[]:[...this.props.fileGroups];
       
-      customfileStruct.push({name:"origin",path:"./"});
+      customfileStruct.push({name:"data",path:"./data/"});
     
     
       fv_UI.push(
@@ -828,7 +860,7 @@ export class BPG_FileBrowser_proto extends React.Component{
           visible={this.props.visible}
           //width={this.props.width===undefined?900:this.props.width}
           style={this.props.style}
-          className={this.props.className}
+          className={"modal-flex-justify-end "+this.props.className}
           onCancel={this.props.onCancel}
           onOk={this.props.onOk}
           footer={this.props.footer}

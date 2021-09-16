@@ -49,7 +49,6 @@ export default {
         radius:"半徑/R",
         calc:"計算/C",
         name:"名稱",
-        docheck:"必要判定",
         importance:"重要等級",
         DefFileName:"設定檔名",
         DefFileTag:"標籤",
@@ -124,7 +123,6 @@ export default {
       LCT:"下管制公差",
 
       importance:"重要等級",
-      docheck:"必要判定",
       quadrant:"量測象限"
     },
     search_point:{
@@ -143,7 +141,7 @@ export default {
       MODE_SELECT_DEFCONF:"量測設定",
       MODE_SELECT_INSP_PREP:"檢驗準備",
       MODE_SELECT_REP_DISPLAY:"檢驗回視",
-      MODE_SELECT_PRECISION_VALIDATION:"精度驗證",
+      MODE_SELECT_PRECISION_VALIDATION:"精度校正",
       MODE_SELECT_INST_INSP:"簡驗",
       MODE_SELECT_BACKLIGHT_CALIB:"背光校正",
       MODE_SELECT_SETTING:"設定",

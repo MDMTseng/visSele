@@ -8,7 +8,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
-
+var dateFormat = require("dateformat");
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI } from './component/rdxComponent.jsx';
 import dclone from 'clone';
@@ -145,7 +145,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
       Array.isArray(newAddedReport)==false ||
       newAddedReport.length==0)//there is no new report
     {
-      console.log("no report...");
+      // console.log("no report...");
       return;
     }
 
@@ -156,7 +156,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
     _this.totalCounter++;
     if(res!=0)
     {
-      console.log("SKIP...");
+      // console.log("SKIP...");
       return;
     }
 
@@ -628,7 +628,7 @@ class ObjInfoList extends React.Component {
         if(rep.def.quality_essential==false)return res;
         return MEASURERSULTRESION_reducer(res, rep.detailStatus);
       }, undefined);
-      console.log(singleReport.isFlipped);
+      // console.log(singleReport.isFlipped);
       return (
         <SubMenu style={{ 'textAlign': 'left' }} key={"sub1" + idx}
           title={
@@ -683,76 +683,6 @@ class ObjInfoList extends React.Component {
 }
 
 
-function CanvasComponent_rdx2()//({onROISettingCallBack,onCanvasInit,ACT_WS_SEND_CORE_BPG,onCanvasInit})
-{
-  
-  const _s = useRef({windowSize:{}});
-  const dispatch = useDispatch();
-  
-  const ACT_EXIT= () => dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.EXIT));
-  const ACT_ERROR= (arg) => dispatch(UIAct.EV_UI_ACT(UIAct.UI_SM_EVENT.ERROR));
-  
-
-  const c_state = useSelector(state => state.UIData.c_state);
-  const edit_info = useSelector(state => state.UIData.edit_info);
-
-
-  function ec_canvas_EmitEvent(event) {
-    switch (event.type) {
-      case DefConfAct.EVENT.ERROR:
-        log.error(event);
-        ACT_ERROR();
-        break;
-      case "down_samp_level_update":
-        // log.error(event);
-        // this.props.ACT_ERROR();
-
-        let rep = this.props.camera_calibration_report.reports[0];
-        let mmpp = rep.mmpb2b / rep.ppb2b;
-
-        let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp ) + 1;
-        if (down_samp_level <= 0) down_samp_level = 1;
-        else if (down_samp_level > 15) down_samp_level = 15;
-
-
-        //log.info(crop,down_samp_level);
-        ACT_WS_SEND_CORE_BPG("ST", 0,
-          {
-            CameraSetting: {
-              down_samp_level
-            },
-            ImageTransferSetup: {
-              crop
-            }
-          });
-        break;
-
-    }
-  }
-
-  
-  useEffect(()=>{
-
-    let _this=_s.current;
-    _this.ec_canvas = new EC_CANVAS_Ctrl.INSP_CanvasComponent(this.refs.canvas);
-    // _this.ec_canvas.SetStreamImageSrc("http://localhost:7603/CAM1.mjpg");
-    _this.ec_canvas.EmitEvent = ec_canvas_EmitEvent;
-    onCanvasInit(_this.ec_canvas);
-    this.updateCanvas(c_state);
-    return ()=>{
-      
-      _this.ec_canvas.resourceClean();
-    }
-  },[])
-
-  //const [InfoPopUp,setInfoPopUp]=useState(undefined);
-
-  //_s.current.windowSize;
-
-
-}
-
 class CanvasComponent extends React.Component {
   constructor(props) {
     super(props);
@@ -791,6 +721,7 @@ class CanvasComponent extends React.Component {
         let mmpp = rep.mmpb2b / rep.ppb2b;
         // event.data.down_samp_level*=this.props.downSampleFactor;
         let crop = event.data.crop.map(val => val / mmpp);
+        // console.log(this.props.downSampleFactor);
         let down_samp_level = Math.floor(event.data.down_samp_level*this.props.downSampleFactor / mmpp ) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 10) down_samp_level = 10;
@@ -1481,12 +1412,6 @@ class APP_INSP_MODE extends React.Component {
     this.CameraCtrl.setImageCropParam(undefined,4);
 
     {
-
-      // this.props.shape_list//modify the shapeList measure info according to the __decorator and tag info
-
-      // this.props.info_decorator
-      // this.props.inspOptionalTag
-
       console.log(this.props.shape_list,this.props.info_decorator,this.props.inspOptionalTag);
 
 
@@ -1535,11 +1460,7 @@ class APP_INSP_MODE extends React.Component {
 
       this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
-      this.props.ACT_StatSettingParam_Update({
-        keepInTrackingTime_ms: 0,
-        minReportRepeat: 0,
-        headReportSkip: 0,
-      })
+      this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
@@ -1554,24 +1475,12 @@ class APP_INSP_MODE extends React.Component {
       //   type:"gen"
       // }
       // }, undefined);
-      if(INFO.FLAGS.CI_INSP_DO_NOT_STACK_REPORT)
-      {
-        this.props.ACT_StatSettingParam_Update({
-          keepInTrackingTime_ms: 0,
-          minReportRepeat: 0,
-          headReportSkip: 0,
-        })
-      }
-      else
-      {
-        this.props.ACT_StatSettingParam_Update({
-          keepInTrackingTime_ms: 1000,
-          historyReportlimit: 1000,
-          minReportRepeat: 2,
-          headReportSkip: 1,
-        })
-      }
+
+      this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
+
     }
+
+    this.exitGate=false;
   }
 
   componentWillUnmount() {
@@ -1586,13 +1495,11 @@ class APP_INSP_MODE extends React.Component {
     this.state = {
       GraphUIDisplayMode: 0,
       CanvasWindowRatio: 9,
-      ROIs: {},
-      ROI_key: undefined,
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
       isInSettingUI:false,
       SettingParamInfo:undefined,
-      down_samp_factor:1
+      modalInfo:undefined
     };
 
     
@@ -1631,27 +1538,54 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-    new Promise((resolve, reject) => {
-      this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
-        { filename: "data/default_camera_setting.json" },
-        undefined, { resolve, reject }
-      );
-      setTimeout(() => reject("Timeout"), 2000)
-    }).then((pkts) => {
-      if (pkts[0].type != "FL") return;
-      let cam_setting = pkts[0].data;
-      if (typeof cam_setting.ROIs !== 'object') return;
-      let ROIs = cam_setting.ROIs;
-      console.log(">>>>", ROIs);
-      let down_samp_factor =cam_setting.down_samp_factor===undefined? 1:cam_setting.down_samp_factor;
-      this.setState({ ROIs, ROI_key: undefined,down_samp_factor});
-    }).catch((err) => { })
+    // new Promise((resolve, reject) => {
+    //   this.props.ACT_WS_SEND_CORE_BPG( "LD", 0,
+    //     { filename: "data/default_camera_setting.json" },
+    //     undefined, { resolve, reject }
+    //   );
+    //   setTimeout(() => reject("Timeout"), 2000)
+    // }).then((pkts) => {
+    //   if (pkts[0].type != "FL") return;
+    //   let cam_setting = pkts[0].data;
+    //   if (typeof cam_setting.ROIs !== 'object') return;
+    //   let ROIs = cam_setting.ROIs;
+    //   // console.log(">>>>", ROIs);
+    //   let down_samp_factor =cam_setting.down_samp_factor===undefined? 1:cam_setting.down_samp_factor;
+    //   this.setState({ ROIs, ROI_key: undefined,down_samp_factor});
+    // }).catch((err) => { })
+
+
+
+
 
   }
 
+  EXIT()
+  {
+    if(this.exitGate==false)
+    {//prevent double exit
+      this.exitGate=true;
+      this.props.ACT_EXIT();
+    }
+  }
 
   componentDidUpdate() {
     this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
+
+    if(this.props.uInsp_API_ID_CONN_INFO!==undefined)
+    {
+      if(this.props.uInsp_API_ID_CONN_INFO.type!=="WS_CONNECTED")
+      {
+        this.EXIT();
+      }
+    }
+    if(this.props.CAM1_ID_CONN_INFO!==undefined)
+    {
+      if(this.props.CAM1_ID_CONN_INFO.type!=="WS_CONNECTED")
+      {
+        this.EXIT();
+      }
+    }
   }
   shouldComponentUpdate(nextProps, nextState)
   {
@@ -1732,7 +1666,22 @@ class APP_INSP_MODE extends React.Component {
               })
   }
 
-
+  notifyPopUp(title,msg)
+  {
+    this.setState({
+      modalInfo:{
+        title:title,
+        onOk:()=>this.setState({modalInfo:undefined}),
+        onCancel:()=>this.setState({modalInfo:undefined}),
+        footer:null,
+        children:msg
+      }
+    })
+  }
+  warnPopUp(msg)
+  {
+    this.notifyPopUp("警告",msg)
+  }
   render() {
     
     let inspectionReport = undefined;
@@ -1826,11 +1775,157 @@ class APP_INSP_MODE extends React.Component {
       
     // );
 
+    
+    MenuSet.push(
+
+    //   <Button type="primary" icon={<SearchOutlined />}>
+    //   Search
+    // </Button>
+      <Button
+        icon={<SaveOutlined />}
+        key="SVX"
+        style={{width:"100%"}}
+        type="primary"
+        onClick={() =>{
+
+
+
+          
+
+          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
+
+          
+          let tag_str = (curList.length==0)?"":curList[0].tag;
+
+          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+          { stacking_count:5, type: "__START_STACKING_IMG__"},undefined,
+          {
+            resolve:(pkts,action_ch)=>{
+              console.log(pkts);
+            },
+            reject:(e)=>{
+
+              console.log(e);
+            }
+          })
+
+          let default_dst_Path=this.props.machine_custom_setting.Sample_Saving_Path;
+          
+          if(default_dst_Path===undefined)
+          {
+            default_dst_Path="data"
+          }
+
+          let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh:mm:ss_l");
+          this.setState({
+            modalInfo:{
+              title:"快照命名",
+              onOk:()=>{
+
+                this.setState({
+                  modalInfo:{...this.state.modalInfo,confirmLoading:true}})
+
+                
+                let name = this.state.modalInfo.targetName;
+                let path_name = default_dst_Path+"/"+name;
+                
+                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                { filename: path_name+".png",make_dir:true, type: "__STACKING_IMG__" },undefined,
+                {
+                  resolve:(pkts,action_ch)=>{
+
+                    
+                    let SS=pkts.find(pkt=>pkt.type=="SS");
+                    console.log(SS)
+                    if(SS.data.ACK==true)
+                    {
+                      let deffile = defFileGeneration(this.props.edit_info);
+
+                      let reportSave = {
+                        reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
+                        defInfo:deffile,
+                        camera_param:this.props.edit_info._obj.cameraParam
+                      }
+                      var enc = new TextEncoder();
+
+                      
+                
+          
+                      this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                      { filename: path_name+".xreps" },enc.encode(JSON.stringify(reportSave)),
+                      {
+                        resolve:(pkts,action_ch)=>{
+                          let SS=pkts.find(pkt=>pkt.type=="SS");
+                          if(SS.data.ACK==true)
+                          {
+                            // this.setState({modalInfo:undefined})
+
+                            // this.notifyPopUp(null,`儲存快照  ${ path_name }  成功`);
+                            
+                            this.setState({
+                              modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                            
+                            setTimeout(()=>{//close after 1s
+                              this.setState({modalInfo:undefined})
+                            },1000);
+
+                          }
+                          else
+                          {
+                            this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                          }
+                          // 
+                          
+                        },
+                        reject:(e)=>{
+                          this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                          // this.setState({modalInfo:undefined})
+                        }
+                      }
+                      
+                      )
+                    }
+                    else
+                    {
+                      this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                    }
+
+
+                    console.log(pkts);
+                  },
+                  reject:(e)=>{
+      
+                    this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                    console.log(e);
+                  }
+                })
+
+
+              },
+              onCancel:()=>this.setState({modalInfo:undefined}),
+
+              targetName:targetName,
+              children:(modalInfo)=><>
+              路徑:{default_dst_Path}<br/>
+              名稱:
+              <Input size="small"
+                value={modalInfo.targetName} 
+                onChange={(ev)=> this.setState({
+                  modalInfo:{...modalInfo,targetName:ev.target.value}})}
+              />
+              
+              </>
+            }
+          })
+          return;
+        }} >檢測快照</Button>);
+        
+
+
     {//if the FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP is undefined it will use the default number
     }
     let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 
-      (INFO.FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP ||1) : 
-      10;
+    this.props.System_Setting.CI_MODE_UPLOAD_SKIP:this.props.System_Setting.FI_MODE_UPLOAD_SKIP;
     // console.log(this.props.inspMode,InspectionReportPullSkip);
     if(!this.state.isInSettingUI)
     {
@@ -1901,91 +1996,13 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-    /*
-    MenuSet_2nd.push(
-      <BASE_COM.IconButton
-        key="SVX"
-        addClass="layout palatte-blue-8 vbox"
-        text="SVX"
-        onClick={() =>{
-          if(this.props.reportStatisticState.trackingWindow.length<=0)
-          {
-            //
-            return;
-          }
-          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
-
-          if(curList.length<=0)
-          {
-            //
-            return;
-          }
-
-          
-          let earliestTimeStamp = curList.reduce((time,rep)=>{
-            if(time===undefined || time>rep.add_time_ms)return rep.add_time_ms;
-            return time;
-          },undefined);
-
-          // console.log(this.props.machine_custom_setting);
-
-          let deffile = defFileGeneration(this.props.edit_info);
-          let default_dst_Path=this.props.machine_custom_setting.Sample_Saving_Path;
-          if(default_dst_Path===undefined)
-          {
-            default_dst_Path="data"
-          }
-          
-          let tag_str = curList[0].tag;
-
-          let path = default_dst_Path+"/"+deffile.name+"-["+tag_str+"]-"+earliestTimeStamp;
-          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-          { filename: path+".png",make_dir:true, type: "__STACKING_IMG__" })
-
-          let reportSave = {
-            reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
-            defInfo:deffile,
-            camera_param:this.props.edit_info._obj.cameraParam
-          }
-          var enc = new TextEncoder();
-          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-          { filename: path+".xreps" },enc.encode(JSON.stringify(reportSave)))
-        }} />);
-        */
 
 
 
-
-    // const menu_ = (
-    //   <Menu onClick={(ev) => {
-    //     console.log(ev);
-    //     let ROI = this.state.ROIs[ev.key];
-    //     this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-    //       { CameraSetting: { ROI } })
-
-    //     this.setState({ ROI_key: ev.key });
-    //   }
-    //   }>
-    //     {Object.keys(this.state.ROIs)
-    //       .map((ROI_key, idx) =>
-    //         <Menu.Item key={ROI_key}>
-    //           <a target="_blank" rel="noopener noreferrer">
-    //             {ROI_key}
-    //           </a>
-    //         </Menu.Item>)}
-    //   </Menu>
-    // );
-    // MenuSet_2nd.push(<Dropdown overlay={menu_}>
-    //   <a className="HX1 layout palatte-blue-8 vbox width2" href="#">
-    //     {this.state.ROI_key}
-    //     <CaretDownOutlined />
-    //   </a>
-    // </Dropdown>);
-    // console.log(this.props.reportStatisticState);
     let headerUI = 
     <>
       
-      <Button type="primary" size={"large"} onClick={this.props.ACT_EXIT}>
+      <Button type="primary" size={"large"} onClick={()=>this.EXIT()}>
         <ArrowLeftOutlined />
       </Button>
 
@@ -2032,7 +2049,7 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-
+{/* 
       <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
       onChange={(ev)=>
           {
@@ -2041,7 +2058,7 @@ class APP_INSP_MODE extends React.Component {
           }
         } >{
           "相機影像更新"
-        }</Checkbox>
+        }</Checkbox> */}
       
       <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}
       onClick={() => {
@@ -2086,7 +2103,7 @@ class APP_INSP_MODE extends React.Component {
     </>;*/
 
 
-
+    // console.log(this.props.FILE_default_camera_setting)
 
     // MenuSet_2nd.push(<AngledCalibrationHelper className="s width12 HXA"
     //   reportStatisticState={this.props.reportStatisticState} shape_list={this.props.shape_list}
@@ -2111,7 +2128,7 @@ class APP_INSP_MODE extends React.Component {
               onROISettingCallBack={this.state.onROISettingCallBack}
               measureDisplayRank={this.state.measureDisplayRank}
               ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
-              downSampleFactor={this.state.down_samp_factor}
+              downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
               onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
               camera_calibration_report={this.props.camera_calibration_report} />}
 
@@ -2122,8 +2139,15 @@ class APP_INSP_MODE extends React.Component {
 
 
         </div>
+        <Modal {...this.state.modalInfo} visible={this.state.modalInfo!==undefined}> 
+          {this.state.modalInfo===undefined?null:
+            ((typeof this.state.modalInfo.children === 'function')?
+            this.state.modalInfo.children(this.state.modalInfo):
+            this.state.modalInfo.children)
+          }
+        </Modal>
+        
         <>  
-
 
           {/* <Menu
             // onClick={this.handleClick}
@@ -2179,6 +2203,7 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     shape_list: state.UIData.edit_info.list,
     info_decorator: state.UIData.edit_info.__decorator,
     defModelName: state.UIData.edit_info.DefFileName,
+    FILE_default_camera_setting:state.UIData.FILE_default_camera_setting,
     
     defModelTag: state.UIData.edit_info.DefFileTag,
     machine_custom_setting: state.UIData.machine_custom_setting,
@@ -2191,9 +2216,12 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
     uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
-
+    CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
+    
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
+    
+    System_Setting:state.UIData.System_Setting,
   }
 };
 

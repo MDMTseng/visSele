@@ -68,16 +68,19 @@ import {
   LinkOutlined,
   DisconnectOutlined,
   ScanOutlined,
+  CaretUpOutlined,
+  CaretDownOutlined,
+  HistoryOutlined,
   SettingOutlined,
   CameraOutlined,
   DatabaseOutlined,
   QrcodeOutlined,
-  FundOutlined,
+  PlusSquareOutlined,
   CaretRightOutlined,
   CloudServerOutlined,
   CloseCircleTwoTone,
-  LoadingOutlined } from '@ant-design/icons';
-
+  LoadingOutlined,
+  WarningOutlined } from '@ant-design/icons';
 import Menu from 'antd/lib/menu';
 import Button from 'antd/lib/button';
 import Layout from 'antd/lib/layout';
@@ -302,7 +305,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const [stepIdx,setStepIdx]=useState(0);
   const [isVertical,setIsVertical]=useState(false);
   let DefFileFolder=undefined;
-  console.log(uInsp_API_ID_CONN_INFO);
+  // console.log(uInsp_API_ID_CONN_INFO);
   useEffect(()=>{
     let is_Cam_Ready=GetObjElement(CAM1_ID_CONN_INFO,["type"])=="WS_CONNECTED";
     let is_uInsp_Ready=GetObjElement(uInsp_API_ID_CONN_INFO,["type"])=="WS_CONNECTED";
@@ -368,8 +371,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   },[])
 
 
-
-  function SignatureTargetMatching(fileInfoList,onMatchingResult)
+  function SignatureTargetMatching(fileInfoList,onResultJudge,onMatchingResult,trigger_type=0,timeout=-1)
   {
     if(fileInfoList==undefined||fileInfoList.length==0)
     {
@@ -379,11 +381,21 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     console.log(fileInfoList);
     ACT_WS_SEND_BPG( "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } })
-    ACT_WS_SEND_BPG( "EX", 0, {},
+    ACT_WS_SEND_BPG( "EX", 0, {
+      
+        trigger_type,
+        timeout,
+      },
       undefined, { 
       resolve:(pkts)=>{
-        let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
         
+        let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
+
+        if(onResultJudge(pkts)!=true)
+        {
+          return;
+        }
+        // console.log(signature);
         ACT_WS_SEND_BPG( "SC", 0, {
           type:"signature_files_matching",
           signature: signature,
@@ -400,10 +412,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             })
             onMatchingResult(pkts[0].data);
           }
-        })
+        })  
 
-      }, reject:(pkts,__)=>{
-        
+      }, reject:(e)=>{
+        onResultJudge(undefined);
       } });
   }
 
@@ -528,7 +540,34 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       twoPanelClass2="s height7 width12"
     }
 
-    function matchingAUTO_UI(fileInfoList)
+    function matchingAUTO_AskTriggerType(fileInfoList,displayInfo)
+    {
+
+      let triggerTimeout=5000;
+      let errPopUpUIInfo = {
+        title: displayInfo,
+        onOK: undefined,
+        onCancel: undefined,
+        content:<div style={{width:"100%",height:"400px"}}>
+          選擇觸發模式<br/>
+          <Button key="back" onClick={()=>{matchingAUTO_UI(fileInfoList)}}>
+            立即
+          </Button>
+          <Button key="trigger5S" type="primary" onClick={()=>{matchingAUTO_UI(fileInfoList,2,triggerTimeout)}}>
+            {triggerTimeout/1000}s內觸發
+          </Button>
+          <Button danger onClick={()=>setInfoPopUp(undefined)}>
+            取消
+          </Button>
+        </div>
+      }
+      setInfoPopUp(errPopUpUIInfo)
+    }
+
+
+
+
+    function matchingAUTO_UI(fileInfoList,trigger_type=0,timeout=-1)
     {
 
       let errPopUpUIInfo = {
@@ -538,7 +577,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         content:<div style={{width:"100%",height:"400px"}} className="scroll">
           
           <div className="antd-icon-sizing" style={{height:"50px"}}>
-            <LoadingOutlined className="veleX"/>
+            <LoadingOutlined/>
           </div>
           <Title level={2} style={{textAlign:"center"}} >
             {DICT.mainui.FUNC_auto_recognition_running}
@@ -547,8 +586,58 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       }
       setInfoPopUp(errPopUpUIInfo)
 
+      SignatureTargetMatching(fileInfoList,
+        
+        (pkts)=>{
 
-      SignatureTargetMatching(fileInfoList,(matchingList)=>{
+          if(pkts===undefined)
+          {
+
+            console.log("onCapture Error")
+            
+            setInfoPopUp({content:<>
+              <div className="antd-icon-sizing" style={{height:"50px"}}>
+                <WarningOutlined/>
+              </div>
+              <Title level={2} style={{textAlign:"center"}} >
+                圖像獲取異常
+              </Title></>})
+            return false;
+          }
+          let SS=pkts.find(pkt=>pkt.type=="SS");
+
+          if(SS===undefined || SS.data.ACK!==true)
+          {   
+            console.log("onCapture NAK")
+            setInfoPopUp({content:<>
+              <div className="antd-icon-sizing" style={{height:"50px"}}>
+                <WarningOutlined/>
+              </div>
+              <Title level={2} style={{textAlign:"center"}} >
+                圖像獲取失敗
+              </Title></>})
+            return false;
+          }
+
+          let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
+          
+          if(signature===undefined)
+          {
+            setInfoPopUp({content:<>
+              <div className="antd-icon-sizing" style={{height:"50px"}}>
+                <WarningOutlined/>
+              </div>
+              <Title level={2} style={{textAlign:"center"}} >
+                圖像無目標
+              </Title></>})
+            console.log("onCapture empty signature")
+            return false;
+          }
+
+
+          return true;
+        },
+        (matchingList)=>{
 
         console.log(matchingList);
 
@@ -604,7 +693,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           </div>
         }
         setInfoPopUp(errPopUpUIInfo)
-      })
+        },
+        trigger_type,timeout
+      )
 
     }
 
@@ -643,7 +734,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Switch checkedChildren="測線" unCheckedChildren="純圖" checked={showInspectionNote} onChange={setShowInspectionNote} />
           <Button className={"antd-icon-sizing HW50"} size="large"
             style={{"pointerEvents": "auto"}} icon={<MonitorOutlined/> } type="text"
-            onClick={() =>matchingAUTO_UI(getLocalStorage_RecentFiles())}/>
+            onClick={() =>matchingAUTO_AskTriggerType(getLocalStorage_RecentFiles(),"近期檔案比對")}/>
           
           <Button className={"antd-icon-sizing "+(isFileOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<FolderOpenOutlined/> } type="text"
@@ -701,7 +792,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let files=state.folderStruct.files.filter(fileInfo=>fileInfo.type=="REG"&&props.fileFilter(fileInfo))
                   console.log(files);
                   if(files!==undefined && files.length>0)
-                    matchingAUTO_UI(files);
+                  {
+                    // console.log(state.folderStruct);
+                    matchingAUTO_AskTriggerType(files,<>資料夾比對<br/> {state.folderStruct.path}</>);
+                    setFileSelectorInfo();
+                  }
                 }},
               ]
             });
@@ -938,7 +1033,7 @@ const MainUI=()=>{
       },
       InstInsp:{
         type:"InstInsp",
-        name:DICT.mainui.MODE_SELECT_INST_INSP
+        name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION
       },
       CableWireConf:{
         type:"CableWireConf",
@@ -987,7 +1082,8 @@ const MainUI=()=>{
   }
   
   const [popUpInfo,setPopUpInfo] = useState(undefined);
-
+  const [hideMachineSetting,setHideMachineSetting] = useState(true);
+  
   const [UI_state, _setUI_state] = useState(s_statesTable.RootSelect);
   const [extraSideUI, setExtraSideUI] = useState([]);
 
@@ -1062,30 +1158,51 @@ const MainUI=()=>{
           //   icon:<EditOutlined />,
           //   text:"Cable_Wire_Conf",
           //   onClick:_=>setUI_state(s_statesTable.CableWireConf)
-          // },
+          // },,
           {
-            icon:<TableOutlined />,
-            text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
-            onClick:_=>setUI_state(s_statesTable.BackLightCalib)
+            icon:<HistoryOutlined />,
+            text:DICT.mainui.RepDisplay,
+            onClick:_=>setUI_state(s_statesTable.RepDisplay)
           },
-          {
-            icon:<ThunderboltOutlined />,
-            text:DICT.mainui.MODE_SELECT_INST_INSP,
-            onClick:_=>setUI_state(s_statesTable.InstInsp)
-          },
+
+
+        ],
+      }
+
+      if(hideMachineSetting==false)
+      {
+        siderUI_info.menu=siderUI_info.menu.concat([
+
+
           {
             icon:<SettingOutlined />,
             text:DICT.mainui.MODE_SELECT_SETTING,
             onClick:_=>setUI_state(s_statesTable.Setting)
           },
           {
-            icon:<SettingOutlined />,
-            text:DICT.mainui.RepDisplay,
-            onClick:_=>setUI_state(s_statesTable.RepDisplay)
+            icon:<TableOutlined />,
+            text:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
+            onClick:_=>setUI_state(s_statesTable.BackLightCalib)
+          },
+          {
+            icon:<PlusSquareOutlined />,
+            // text:DICT.mainui.MODE_SELECT_INST_INSP,
+            text:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION,
+            onClick:_=>setUI_state(s_statesTable.InstInsp)
           }
-           
-        ],
+
+
+        ]);
       }
+
+      siderUI_info.menu.push({
+        icon:hideMachineSetting?<CaretDownOutlined />:<CaretUpOutlined />,
+        text:hideMachineSetting?"打開機器設定":"隱藏機器設定",
+        onClick:_=>{
+          setHideMachineSetting(!hideMachineSetting)
+        }
+      });
+
       UI.push(<InspectionDataPrepare key="InspectionDataPrepare" onPrepareOK={EV_UI_Insp_Mode}/>);
       
       break;
@@ -1176,24 +1293,41 @@ const MainUI=()=>{
           if(extraCtrls.currentReportExtract!==undefined)
           {
             extraCtrlUI.push({
-              icon:<SelectOutlined />,
+              icon:<SaveOutlined />,
               text:DICT._.save_calibration,
               onClick:_=>{
 
                 let report = extraCtrls.currentReportExtract();
                 if(report===undefined)return;
+
                 var enc = new TextEncoder();
-                ACT_File_Save("data/stageLightReport.json" ,
-                  enc.encode(JSON.stringify(report, null, 2)),
-                  {
-                    resolve:(stacked_pkts,action_channal)=>{
-                      
-                      // ACT_WS_SEND_BPG("RC", 0, {
-                      //   target: "camera_setting_refresh"
-                      // });
-  
-                    }
-                  })
+                let info_binary =enc.encode(JSON.stringify(report, null, 2));
+                setPopUpInfo({
+                  title:null,
+                  onOK:()=>{
+                    
+                    ACT_File_Save("data/stageLightReport.json" ,info_binary,
+                      {
+                        resolve:(stacked_pkts,action_channal)=>{
+                          
+                          // ACT_WS_SEND_BPG("RC", 0, {
+                          //   target: "camera_setting_refresh"
+                          // });
+      
+                        }
+                      })
+                    setPopUpInfo();
+                  },
+                  onCancel:()=>{
+                    setPopUpInfo();
+                  },
+                  content:"確定存檔？",
+    
+                  okText:"OK",
+                  cancelText:"NO"
+                });
+
+
               }
             });
           }
@@ -1291,24 +1425,25 @@ const MainUI=()=>{
             })
           }
           
-          if(extraCtrls.setDistanceType!==undefined)
+          if(extraCtrls.togglePointPairMMPPAdjust!==undefined)
           {
             extraCtrlUI.push({
-              icon:<MinusOutlined />,
-              text:"距離模式",
-              onClick:_=>
-              {
-                if(_REF.current.distType===undefined)
-                {
-                  _REF.current.distType=0;
-                }
-                _REF.current.distType++;
-                _REF.current.distType%=3;
-                extraCtrls.setDistanceType(_REF.current.distType);
-              }
+              icon:<SettingOutlined />,
+              text:"校正設定",
+              onClick:_=>extraCtrls.togglePointPairMMPPAdjust()
+              
               // subMenu:[]
             })
           }
+          if(extraCtrls.saveCameraParam!==undefined)
+          {
+            extraCtrlUI.push({
+              icon:<SaveOutlined />,
+              text:DICT._.save_calibration,
+              onClick:_=>extraCtrls.saveCameraParam()
+            });
+          }
+          
           
           
           // if(extraCtrls.removeOneMeasureSet!==undefined)

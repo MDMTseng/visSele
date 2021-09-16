@@ -102,6 +102,9 @@
   }
 }
 
+.ant-modal.modal-flex-justify-end .ant-modal-content{
+  justify-content: flex-end;
+}
 
 
 .ant-modal.modal-sizing.size90{

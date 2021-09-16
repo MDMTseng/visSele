@@ -10,6 +10,8 @@ import {useMappedState,useDispatch} from 'redux-react-hook';
 
 import { useSelector,connect } from 'react-redux' 
 
+import Progress from 'antd/lib/progress';
+
 class CanvasComponent extends React.Component {
   constructor(props) {
       super(props);
@@ -143,9 +145,12 @@ function stage_light_report_maxMean(stage_light_report)
   return maxMean;
 }
 
+let BACKLIGHT_CALIB_PGID_=10104;
+
 export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate }) {
   const [imageInfo, setImageInfo] = useState(undefined);
   const [inspReport, setInspReport] = useState(undefined);
+  const [curBriDiff, setCurBriDiff] = useState(NaN);
   let staticObj = useRef({
     targetBri:200,
     briPreDiffSign:0,
@@ -162,7 +167,7 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
     console.log(">>>>");
     BPG_Channel( "CI", 0, 
       {
-        _PGID_:10004,
+        _PGID_:BACKLIGHT_CALIB_PGID_,
         _PGINFO_:{keep:true},
         definfo: {
           "type":"stage_light_report",
@@ -193,8 +198,8 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
           {//There is a diff sign crossing 
             c.adjAlpha*=0.8;
           }
-
           c.briPreDiffSign=(maxMean-c.targetBri);
+          setCurBriDiff(c.targetBri-maxMean);
 
           let exposure=reportInfo.data.cam_param.exposure_time;
           if(exposure<100)exposure=100;
@@ -243,16 +248,25 @@ export default function BackLightCalibUI_rdx({ BPG_Channel ,onExtraCtrlUpdate })
     return ()=>{
       //onCalibFinished(c.finalRep);
       //console.log(c.finalRep);
-      BPG_Channel( "CI", 0, {_PGID_:10004,_PGINFO_:{keep:false}});
+      BPG_Channel( "CI", 0, {_PGID_:BACKLIGHT_CALIB_PGID_,_PGINFO_:{keep:true}});
     }
 
   }, [])
 
-
-  return (<div  className="s width12 height12">
+  let diff = curBriDiff>0?curBriDiff:-curBriDiff;
+  diff-=5;//within +/- 5 range it's an OK
+  if(diff<0)diff=0;
+  let progress=(1-diff/150)*100;
+  if(progress<0)progress=0;
+  return (<div  className="s width12 height12 overlayCon">
     <CanvasComponent_rdx  addClass="s width12 height12"
       onCanvasInit={_ => _} BPG_Channel={BPG_Channel}/>
     
+    <div className={"s overlay"} style={{width:"auto", height:"auto"}}>
+      {/* {curBriDiff} */}
+      
+      <Progress type="circle" percent={progress.toFixed(1)} />
+    </div>
   </div>);
 }
  

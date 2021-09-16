@@ -12,6 +12,7 @@ import dclone from 'clone';
 import { loadavg } from 'os';
 import JSum from 'jsum'
 
+import {GetDefaultSystemSetting} from 'JSSRCROOT/info.js';
 import dateFormat from 'dateFormat';
 import semver from 'semver'
 import EC_zh_TW from 'LANG/zh_TW';
@@ -34,6 +35,7 @@ function Default_UICtrlReducer() {
   //log.info("ST...",JSON.stringify(ST));
   let defState = {
     machine_custom_setting:{},
+    System_Setting:GetDefaultSystemSetting(),
     showSM_graph: false,
     defConf_lock_level: 0,
     edit_info: Edit_info_Empty(),
@@ -42,7 +44,7 @@ function Default_UICtrlReducer() {
     c_state: null,
     p_state: null,
     state_count: 0,
-    
+    FILE_default_camera_setting:{},
     DICT:EC_zh_TW
   }
   defState.edit_info.defModelPath=undefined;
@@ -76,6 +78,24 @@ function StateReducer(newState, action) {
     case UISEV.Def_Model_Path_Update:
       newState.edit_info = { ...newState.edit_info, defModelPath: action.data };
       //Edit_info_reset(newState);
+      break;
+
+
+    case "System_Setting_Update":
+      newState=
+      {
+        ...newState,
+        System_Setting:action.data
+      };
+    break;
+
+    case "FILE_default_camera_setting":
+          
+      newState=
+      {
+        ...newState,
+        FILE_default_camera_setting:action.data
+      };
       break;
 
     case UISEV.Control_SM_Panel:
@@ -398,7 +418,7 @@ function StateReducer(newState, action) {
                         //Check position consistency
                         let distance = Math.hypot(singleReport.cx - srep_inWindow.cx, singleReport.cy - srep_inWindow.cy);
 
-                        if (distance > mmpcampix / 2) {
+                        if (distance > mmpcampix*1.5) {
                           return closeRep;
                         }
                         //If we get here, which means the information is very similar.
@@ -665,6 +685,7 @@ function StateReducer(newState, action) {
             newState = { ...newState, defConf_lock_level: action.data };
             //console.log(newState);
             break;
+
           case UISEV.StatSettingParam_Update:
             newState.edit_info.statSetting =
             {

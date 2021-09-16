@@ -27,6 +27,8 @@ class CanvasComponent extends React.Component {
   componentDidUpdate(prevProps) {
   }
 
+
+
   ec_canvas_EmitEvent(event) {
     switch (event.type) {
       case "down_samp_level_update":
@@ -40,7 +42,8 @@ class CanvasComponent extends React.Component {
         let mmpp = cam_param.mmpb2b / cam_param.ppb2b;
 
         let crop = event.data.crop.map(val => val / mmpp);
-        let down_samp_level = Math.floor(event.data.down_samp_level / mmpp * 2) + 1;
+        let downSampleFactor=this.props.downSampleFactor||1;
+        let down_samp_level = Math.floor(event.data.down_samp_level*downSampleFactor / mmpp) + 1;
         if (down_samp_level <= 0) down_samp_level = 1;
         else if (down_samp_level > 15) down_samp_level = 15;
 
@@ -63,7 +66,6 @@ class CanvasComponent extends React.Component {
   componentDidMount() {
     this.ec_canvas = new EC_CANVAS_Ctrl.RepDisplay_CanvasComponent(this.refs.canvas);
     this.ec_canvas.EmitEvent = this.ec_canvas_EmitEvent.bind(this);
-
     if(this.props.onCanvasInit!==undefined)
       this.props.onCanvasInit(this.ec_canvas);
 
@@ -93,7 +95,7 @@ class CanvasComponent extends React.Component {
 
   onResize(width, height) {
     if (Math.hypot(this.windowSize.width - width, this.windowSize.height - height) < 20) return;
-    console.log(this.windowSize.width ,this.windowSize.height,width, height );
+    // console.log(this.windowSize.width ,this.windowSize.height,width, height );
     if (this.ec_canvas !== undefined) {
       this.ec_canvas.resize(width, height);
       this.windowSize = {
@@ -121,7 +123,7 @@ class CanvasComponent extends React.Component {
 
 
 
-export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel }) {
+export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_SCREEN=false,ALLOW_CONTROL_DOWN_SAMPLING_LEVEL=false,BPG_Channel,downSampleFactor=1 }) {
 
   
   const [editInfo,setEditInfo]=useState(Edit_info_Empty());
@@ -218,7 +220,12 @@ export function RepDisplay({def,camera_param, reports,image,IGNORE_IMAGE_FIT_TO_
 
 
   return (<div  className="s width12 height12">
-    <CanvasComponent addClass="height12" edit_info={editInfo} ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL} BPG_Channel={BPG_Channel}/>
+    <CanvasComponent 
+      addClass="height12" 
+      edit_info={editInfo} 
+      ALLOW_CONTROL_DOWN_SAMPLING_LEVEL={ALLOW_CONTROL_DOWN_SAMPLING_LEVEL} 
+      BPG_Channel={BPG_Channel}
+      downSampleFactor={downSampleFactor}/>
   </div>);
 }
  
@@ -242,6 +249,11 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
       camera_param:undefined,
       reports:undefined
     });
+
+
+
+    
+  const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
   // const _REF = React.useRef({
   //   iel: new InspectionEditorLogic(),
@@ -321,13 +333,14 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     BrowseNewFileToLoad();
   },[]);
 
+  let default_dst_Path=machine_custom_setting.Sample_Saving_Path||"data/";
   console.log(repDispInfo,repImgInfo);
   return (<div  className="s width12 height12">
 
     <BPG_FileBrowser key="BPG_FileBrowser"
       className="width8 modal-sizing"
       searchDepth={4}
-      path="data/" visible={fileSelectorInfo !== undefined}
+      path={default_dst_Path} visible={fileSelectorInfo !== undefined}
       BPG_Channel={BPG_Channel}
 
       onFileSelected={(filePath, fileInfo) => {
