@@ -94,6 +94,7 @@ int mainThreadLock_unlock(int call_lineNumber, char *msg = "")
 
 class ImageStackAddUp
 {
+  std::timed_mutex lock;
 public:
   int stackingC = 0;
   acvImage imgStacked;
@@ -101,6 +102,7 @@ public:
 
   void acvImageAddUp_1CH(acvImage *imgOut, acvImage *imgIn)
   {
+    std::lock_guard<std::mutex> guard(lock);
     for (int i = 0; i < imgOut->GetHeight(); i++)
     {
       for (int j = 0; j < imgOut->GetWidth(); j++)
@@ -114,6 +116,7 @@ public:
 
   void acvImageSet_1CH(acvImage *imgOut, acvImage *imgIn)
   {
+    std::lock_guard<std::mutex> guard(lock);
     for (int i = 0; i < imgOut->GetHeight(); i++)
     {
       for (int j = 0; j < imgOut->GetWidth(); j++)
@@ -126,23 +129,27 @@ public:
   }
   void acvImageClear(acvImage *imgOut)
   {
+    std::lock_guard<std::mutex> guard(lock);
     memset((void *)imgOut->CVector[0], 0, imgOut->GetHeight() * imgOut->GetWidth() * 3);
   }
 
   void ReSize(acvImage *ref)
   {
+    std::lock_guard<std::mutex> guard(lock);
     imgStacked.ReSize(ref);
     Reset();
   }
 
   void Reset()
   {
+    std::lock_guard<std::mutex> guard(lock);
     stackingC = 0;
     //acvImageClear(&imgStacked);
   }
 
   void Add(acvImage *imgIn)
   {
+    std::lock_guard<std::mutex> guard(lock);
     if (stackingC == 0)
     {
       acvImageSet_1CH(&imgStacked, imgIn);
@@ -158,6 +165,7 @@ public:
 
   void Export(acvImage *imgOut)
   {
+    std::lock_guard<std::mutex> guard(lock);
     imgOut->ReSize(&imgStacked);
     for (int i = 0; i < imgOut->GetHeight(); i++)
     {
@@ -178,11 +186,13 @@ public:
 
   void Export()
   {
+    std::lock_guard<std::mutex> guard(lock);
     Export(&imgExtract);
   }
 
   bool DiffBigger(acvImage *img2, float globalDiffThres, int localDiffThres, int skipSampling = 10)
   {
+    std::lock_guard<std::mutex> guard(lock);
     if (skipSampling < 1)
       skipSampling = 1;
 
@@ -228,6 +238,7 @@ public:
   }
 };
 
+int imgStackingMaxCount=0;
 ImageStackAddUp imstack;
 
 m_BPG_Link_Interface_WebSocket *ifwebsocket=NULL;
@@ -1336,20 +1347,58 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             {
               SaveIMGFile(fileName, &cacheImage);
             }
+              session_ACK = false;
 
             //cacheImage.ReSize(1,1);
           }
+          else if (strcmp(type, "__START_STACKING_IMG__") == 0)
+          {
+            
+            imstack.Reset();
+            imgStackingMaxCount=1;
+
+            
+            double *stacking_count = JFetch_NUMBER(json, "stacking_count");
+            if (stacking_count)
+            {
+              imgStackingMaxCount=(int)*stacking_count;
+              if(imgStackingMaxCount<0)imgStackingMaxCount=-1;
+            }
+
+            
+          }
           else if (strcmp(type, "__STACKING_IMG__") == 0)
           {
-            tmp_buff.ReSize(&(imstack.imgStacked));
-            imstack.Export();
-            calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
-            ImageDownSampling(tmp_buff, imstack.imgExtract, 1, calib_bacpac.sampler, false);
-
-            if (tmp_buff.GetWidth() * tmp_buff.GetHeight() > 10)
+            int retry=10;
+            for(;retry>0;retry--)
             {
-              SaveIMGFile(fileName, &tmp_buff);
+              if(imstack.stackingC>=imgStackingMaxCount)break;
+              std::this_thread::sleep_for(std::chrono::milliseconds(200));
             }
+            
+            session_ACK = false;
+            if(retry==0)
+            {
+              //failed
+            }
+            else
+            {
+              tmp_buff.ReSize(&(imstack.imgStacked));
+              // acvCloneImage(&imstack.imgStacked,&tmp_buff,0);
+              // 
+              imstack.Export(&tmp_buff);
+              
+              // calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
+              // ImageDownSampling(tmp_buff, imstack.imgExtract, 1, calib_bacpac.sampler, false);
+
+              if (tmp_buff.GetWidth() * tmp_buff.GetHeight() > 10)//just a random check
+              {
+                LOGI("SAVE IMG:%s",fileName);
+                SaveIMGFile(fileName, &tmp_buff);
+                session_ACK = true;
+              }
+            }
+            
           }
         }
         else
@@ -1369,9 +1418,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           fwrite(dat->dat_raw + strinL, dat->size - strinL, 1, write_ptr); // write 10 bytes from our buffer
 
           fclose(write_ptr);
+          session_ACK = true;
         }
 
-        session_ACK = true;
       } while (false);
     }
     else if (checkTL("FB", dat)) //[F]ile [B]rowsing
@@ -3388,6 +3437,15 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     LOGI("stackingC:%d", imstack.stackingC);
     imstack.Add(&capImg);
     // LOGI("%fms \n", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
+  }
+  else
+  {
+    if(imstack.stackingC<imgStackingMaxCount)
+    {
+      imstack.ReSize(&capImg);
+      LOGI("Loading Image to imstack!!!!!");
+      imstack.Add(&capImg);
+    }
   }
 
   {
