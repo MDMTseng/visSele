@@ -1207,18 +1207,35 @@ const MainUI=()=>{
 
                 let report = extraCtrls.currentReportExtract();
                 if(report===undefined)return;
+
                 var enc = new TextEncoder();
-                ACT_File_Save("data/stageLightReport.json" ,
-                  enc.encode(JSON.stringify(report, null, 2)),
-                  {
-                    resolve:(stacked_pkts,action_channal)=>{
-                      
-                      // ACT_WS_SEND_BPG("RC", 0, {
-                      //   target: "camera_setting_refresh"
-                      // });
-  
-                    }
-                  })
+                let info_binary =enc.encode(JSON.stringify(report, null, 2));
+                setPopUpInfo({
+                  title:null,
+                  onOK:()=>{
+                    
+                    ACT_File_Save("data/stageLightReport.json" ,info_binary,
+                      {
+                        resolve:(stacked_pkts,action_channal)=>{
+                          
+                          // ACT_WS_SEND_BPG("RC", 0, {
+                          //   target: "camera_setting_refresh"
+                          // });
+      
+                        }
+                      })
+                    setPopUpInfo();
+                  },
+                  onCancel:()=>{
+                    setPopUpInfo();
+                  },
+                  content:"確定存檔？",
+    
+                  okText:"OK",
+                  cancelText:"NO"
+                });
+
+
               }
             });
           }

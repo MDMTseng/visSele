@@ -8,7 +8,7 @@ import { useSelector,useDispatch } from 'react-redux';
 import $CSSTG from 'react-addons-css-transition-group';
 import * as BASE_COM from './component/baseComponent.jsx';
 import ReactResizeDetector from 'react-resize-detector';
-
+var dateFormat = require("dateformat");
 import INFO from './info.js';
 import { TagOptions_rdx,UINSP_UI } from './component/rdxComponent.jsx';
 import dclone from 'clone';
@@ -1496,7 +1496,8 @@ class APP_INSP_MODE extends React.Component {
       onROISettingCallBack:undefined,
       measureDisplayRank:0,
       isInSettingUI:false,
-      SettingParamInfo:undefined
+      SettingParamInfo:undefined,
+      modalInfo:undefined
     };
 
     
@@ -1640,7 +1641,22 @@ class APP_INSP_MODE extends React.Component {
               })
   }
 
-
+  notifyPopUp(title,msg)
+  {
+    this.setState({
+      modalInfo:{
+        title:title,
+        onOk:()=>this.setState({modalInfo:undefined}),
+        onCancel:()=>this.setState({modalInfo:undefined}),
+        footer:null,
+        children:msg
+      }
+    })
+  }
+  warnPopUp(msg)
+  {
+    this.notifyPopUp("警告",msg)
+  }
   render() {
     
     let inspectionReport = undefined;
@@ -1734,6 +1750,152 @@ class APP_INSP_MODE extends React.Component {
       
     // );
 
+    
+    MenuSet.push(
+
+    //   <Button type="primary" icon={<SearchOutlined />}>
+    //   Search
+    // </Button>
+      <Button
+        icon={<SaveOutlined />}
+        key="SVX"
+        style={{width:"100%"}}
+        type="primary"
+        onClick={() =>{
+
+
+
+          
+
+          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
+
+          
+          let tag_str = (curList.length==0)?"":curList[0].tag;
+
+          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+          { stacking_count:5, type: "__START_STACKING_IMG__"},undefined,
+          {
+            resolve:(pkts,action_ch)=>{
+              console.log(pkts);
+            },
+            reject:(e)=>{
+
+              console.log(e);
+            }
+          })
+
+          let default_dst_Path=this.props.machine_custom_setting.Sample_Saving_Path;
+          
+          if(default_dst_Path===undefined)
+          {
+            default_dst_Path="data"
+          }
+
+          let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh:mm:ss_l");
+          this.setState({
+            modalInfo:{
+              title:"快照命名",
+              onOk:()=>{
+
+                this.setState({
+                  modalInfo:{...this.state.modalInfo,confirmLoading:true}})
+
+                
+                let name = this.state.modalInfo.targetName;
+                let path_name = default_dst_Path+"/"+name;
+                
+                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                { filename: path_name+".png",make_dir:true, type: "__STACKING_IMG__" },undefined,
+                {
+                  resolve:(pkts,action_ch)=>{
+
+                    
+                    let SS=pkts.find(pkt=>pkt.type=="SS");
+                    console.log(SS)
+                    if(SS.data.ACK==true)
+                    {
+                      let deffile = defFileGeneration(this.props.edit_info);
+
+                      let reportSave = {
+                        reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
+                        defInfo:deffile,
+                        camera_param:this.props.edit_info._obj.cameraParam
+                      }
+                      var enc = new TextEncoder();
+
+                      
+                
+          
+                      this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                      { filename: path_name+".xreps" },enc.encode(JSON.stringify(reportSave)),
+                      {
+                        resolve:(pkts,action_ch)=>{
+                          let SS=pkts.find(pkt=>pkt.type=="SS");
+                          if(SS.data.ACK==true)
+                          {
+                            // this.setState({modalInfo:undefined})
+
+                            // this.notifyPopUp(null,`儲存快照  ${ path_name }  成功`);
+                            
+                            this.setState({
+                              modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                            
+                            setTimeout(()=>{//close after 1s
+                              this.setState({modalInfo:undefined})
+                            },1000);
+
+                          }
+                          else
+                          {
+                            this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                          }
+                          // 
+                          
+                        },
+                        reject:(e)=>{
+                          this.warnPopUp(`儲存檔案  ${ path_name+".xreps" }   失敗`);
+                          // this.setState({modalInfo:undefined})
+                        }
+                      }
+                      
+                      )
+                    }
+                    else
+                    {
+                      this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                    }
+
+
+                    console.log(pkts);
+                  },
+                  reject:(e)=>{
+      
+                    this.warnPopUp(`儲存圖像  ${ path_name+".png" }   失敗`);
+                    console.log(e);
+                  }
+                })
+
+
+              },
+              onCancel:()=>this.setState({modalInfo:undefined}),
+
+              targetName:targetName,
+              children:(modalInfo)=><>
+              路徑:{default_dst_Path}<br/>
+              <Input size="small"
+                value={modalInfo.targetName} 
+                onChange={(ev)=> this.setState({
+                  modalInfo:{...modalInfo,targetName:ev.target.value}})}
+              />
+              
+              </>
+            }
+          })
+          return;
+        }} >檢測快照</Button>);
+        
+
+
     {//if the FLAGS.CI_INSP_SEND_REP_TO_DB_SKIP is undefined it will use the default number
     }
     let InspectionReportPullSkip=(this.props.machine_custom_setting.InspectionMode == "CI") ? 
@@ -1808,57 +1970,6 @@ class APP_INSP_MODE extends React.Component {
         menuOpacity = 0.3;
         break;
     }
-    /*
-    MenuSet_2nd.push(
-      <BASE_COM.IconButton
-        key="SVX"
-        addClass="layout palatte-blue-8 vbox"
-        text="SVX"
-        onClick={() =>{
-          if(this.props.reportStatisticState.trackingWindow.length<=0)
-          {
-            //
-            return;
-          }
-          let curList = this.props.reportStatisticState.trackingWindow.filter(rep=>rep.isCurObj==true);
-
-          if(curList.length<=0)
-          {
-            //
-            return;
-          }
-
-          
-          let earliestTimeStamp = curList.reduce((time,rep)=>{
-            if(time===undefined || time>rep.add_time_ms)return rep.add_time_ms;
-            return time;
-          },undefined);
-
-          // console.log(this.props.machine_custom_setting);
-
-          let deffile = defFileGeneration(this.props.edit_info);
-          let default_dst_Path=this.props.machine_custom_setting.Sample_Saving_Path;
-          if(default_dst_Path===undefined)
-          {
-            default_dst_Path="data"
-          }
-          
-          let tag_str = curList[0].tag;
-
-          let path = default_dst_Path+"/"+deffile.name+"-["+tag_str+"]-"+earliestTimeStamp;
-          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-          { filename: path+".png",make_dir:true, type: "__STACKING_IMG__" })
-
-          let reportSave = {
-            reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
-            defInfo:deffile,
-            camera_param:this.props.edit_info._obj.cameraParam
-          }
-          var enc = new TextEncoder();
-          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-          { filename: path+".xreps" },enc.encode(JSON.stringify(reportSave)))
-        }} />);
-        */
 
 
 
@@ -1912,7 +2023,7 @@ class APP_INSP_MODE extends React.Component {
 
 
 
-
+{/* 
       <Checkbox  checked={this.CameraCtrl.data.DoImageTransfer}
       onChange={(ev)=>
           {
@@ -1921,7 +2032,7 @@ class APP_INSP_MODE extends React.Component {
           }
         } >{
           "相機影像更新"
-        }</Checkbox>
+        }</Checkbox> */}
       
       <Button type="primary" key="Info Graphs" size={"large"} icon={<BarChartOutlined />}
       onClick={() => {
@@ -2002,8 +2113,15 @@ class APP_INSP_MODE extends React.Component {
 
 
         </div>
+        <Modal {...this.state.modalInfo} visible={this.state.modalInfo!==undefined}> 
+          {this.state.modalInfo===undefined?null:
+            ((typeof this.state.modalInfo.children === 'function')?
+            this.state.modalInfo.children(this.state.modalInfo):
+            this.state.modalInfo.children)
+          }
+        </Modal>
+        
         <>  
-
 
           {/* <Menu
             // onClick={this.handleClick}

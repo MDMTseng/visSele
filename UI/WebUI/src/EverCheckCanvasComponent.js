@@ -3384,14 +3384,16 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
 
 
   drawpoint(ctx, point, size = this.getPointSize(), color = "rgba(0,0,100,0.5)") {
-    ctx.lineWidth = size * 2;
-    ctx.strokeStyle = color;
+    ctx.lineWidth = size/5;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "black";
 
     ctx.beginPath();
 
     ctx.rect(point.x - size / 2, point.y - size / 2, size, size);
     ctx.stroke();
     ctx.closePath();
+    ctx.fill();
 
   }
 
@@ -3464,6 +3466,7 @@ class SLCALIB_CanvasComponent extends EverCheckCanvasComponent_proto {
             sigma = 8;
           this.drawpoint(ctx, pos, this.rUtil.getPointSize() * (2 * sigma),
             "rgb(" + node.mean + "," + node.mean + "," + node.mean + ")")
+          
           //console.log(this.stage_light_report)
         })
       }
