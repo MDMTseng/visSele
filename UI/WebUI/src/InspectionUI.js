@@ -1479,6 +1479,8 @@ class APP_INSP_MODE extends React.Component {
       this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
 
     }
+
+    this.exitGate=false;
   }
 
   componentWillUnmount() {
@@ -1558,9 +1560,32 @@ class APP_INSP_MODE extends React.Component {
 
   }
 
+  EXIT()
+  {
+    if(this.exitGate==false)
+    {//prevent double exit
+      this.exitGate=true;
+      this.props.ACT_EXIT();
+    }
+  }
 
   componentDidUpdate() {
     this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
+
+    if(this.props.uInsp_API_ID_CONN_INFO!==undefined)
+    {
+      if(this.props.uInsp_API_ID_CONN_INFO.type!=="WS_CONNECTED")
+      {
+        this.EXIT();
+      }
+    }
+    if(this.props.CAM1_ID_CONN_INFO!==undefined)
+    {
+      if(this.props.CAM1_ID_CONN_INFO.type!=="WS_CONNECTED")
+      {
+        this.EXIT();
+      }
+    }
   }
   shouldComponentUpdate(nextProps, nextState)
   {
@@ -1882,6 +1907,7 @@ class APP_INSP_MODE extends React.Component {
               targetName:targetName,
               children:(modalInfo)=><>
               路徑:{default_dst_Path}<br/>
+              名稱:
               <Input size="small"
                 value={modalInfo.targetName} 
                 onChange={(ev)=> this.setState({
@@ -1976,7 +2002,7 @@ class APP_INSP_MODE extends React.Component {
     let headerUI = 
     <>
       
-      <Button type="primary" size={"large"} onClick={this.props.ACT_EXIT}>
+      <Button type="primary" size={"large"} onClick={()=>this.EXIT()}>
         <ArrowLeftOutlined />
       </Button>
 
@@ -2190,6 +2216,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
     uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
+    CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
+    
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,
     DICT:state.UIData.DICT,
     
