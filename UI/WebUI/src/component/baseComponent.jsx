@@ -720,7 +720,7 @@ export class BPG_FileBrowser_proto extends React.Component{
       
       let customfileStruct=(this.props.fileGroups===undefined)?[]:[...this.props.fileGroups];
       
-      customfileStruct.push({name:"origin",path:"./"});
+      customfileStruct.push({name:"data",path:"./data/"});
     
     
       fv_UI.push(
@@ -828,7 +828,7 @@ export class BPG_FileBrowser_proto extends React.Component{
           visible={this.props.visible}
           //width={this.props.width===undefined?900:this.props.width}
           style={this.props.style}
-          className={this.props.className}
+          className={"modal-flex-justify-end "+this.props.className}
           onCancel={this.props.onCancel}
           onOk={this.props.onOk}
           footer={this.props.footer}
