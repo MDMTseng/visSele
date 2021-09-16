@@ -6,7 +6,7 @@ try{
 
 function undefVal(v,fallback){ return (v===undefined)?fallback:v}
 
-let current_version="1.1.001";
+let current_version="1.1.002";
 
 const default_FLAG={
   version:current_version,
