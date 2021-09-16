@@ -94,7 +94,7 @@ int mainThreadLock_unlock(int call_lineNumber, char *msg = "")
 
 class ImageStackAddUp
 {
-  std::timed_mutex lock;
+  std::mutex lock;
 public:
   int stackingC = 0;
   acvImage imgStacked;
