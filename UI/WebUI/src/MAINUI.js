@@ -79,8 +79,8 @@ import {
   CaretRightOutlined,
   CloudServerOutlined,
   CloseCircleTwoTone,
-  LoadingOutlined } from '@ant-design/icons';
-
+  LoadingOutlined,
+  WarningOutlined } from '@ant-design/icons';
 import Menu from 'antd/lib/menu';
 import Button from 'antd/lib/button';
 import Layout from 'antd/lib/layout';
@@ -371,8 +371,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   },[])
 
 
-
-  function SignatureTargetMatching(fileInfoList,onMatchingResult)
+  function SignatureTargetMatching(fileInfoList,onResultJudge,onMatchingResult,trigger_type=0,timeout=-1)
   {
     if(fileInfoList==undefined||fileInfoList.length==0)
     {
@@ -382,11 +381,21 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     console.log(fileInfoList);
     ACT_WS_SEND_BPG( "ST", 0,
     { CameraSetting: { ROI:[0,0,99999,99999] } })
-    ACT_WS_SEND_BPG( "EX", 0, {},
+    ACT_WS_SEND_BPG( "EX", 0, {
+      
+        trigger_type,
+        timeout,
+      },
       undefined, { 
       resolve:(pkts)=>{
-        let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
         
+        let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
+
+        if(onResultJudge(pkts)!=true)
+        {
+          return;
+        }
+        // console.log(signature);
         ACT_WS_SEND_BPG( "SC", 0, {
           type:"signature_files_matching",
           signature: signature,
@@ -403,10 +412,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             })
             onMatchingResult(pkts[0].data);
           }
-        })
+        })  
 
-      }, reject:(pkts,__)=>{
-        
+      }, reject:(e)=>{
+        onResultJudge(undefined);
       } });
   }
 
@@ -531,7 +540,34 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       twoPanelClass2="s height7 width12"
     }
 
-    function matchingAUTO_UI(fileInfoList)
+    function matchingAUTO_AskTriggerType(fileInfoList,displayInfo)
+    {
+
+      let triggerTimeout=5000;
+      let errPopUpUIInfo = {
+        title: displayInfo,
+        onOK: undefined,
+        onCancel: undefined,
+        content:<div style={{width:"100%",height:"400px"}}>
+          選擇觸發模式<br/>
+          <Button key="back" onClick={()=>{matchingAUTO_UI(fileInfoList)}}>
+            立即
+          </Button>
+          <Button key="trigger5S" type="primary" onClick={()=>{matchingAUTO_UI(fileInfoList,2,triggerTimeout)}}>
+            {triggerTimeout/1000}s內觸發
+          </Button>
+          <Button danger onClick={()=>setInfoPopUp(undefined)}>
+            取消
+          </Button>
+        </div>
+      }
+      setInfoPopUp(errPopUpUIInfo)
+    }
+
+
+
+
+    function matchingAUTO_UI(fileInfoList,trigger_type=0,timeout=-1)
     {
 
       let errPopUpUIInfo = {
@@ -541,7 +577,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         content:<div style={{width:"100%",height:"400px"}} className="scroll">
           
           <div className="antd-icon-sizing" style={{height:"50px"}}>
-            <LoadingOutlined className="veleX"/>
+            <LoadingOutlined/>
           </div>
           <Title level={2} style={{textAlign:"center"}} >
             {DICT.mainui.FUNC_auto_recognition_running}
@@ -550,8 +586,58 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       }
       setInfoPopUp(errPopUpUIInfo)
 
+      SignatureTargetMatching(fileInfoList,
+        
+        (pkts)=>{
 
-      SignatureTargetMatching(fileInfoList,(matchingList)=>{
+          if(pkts===undefined)
+          {
+
+            console.log("onCapture Error")
+            
+            setInfoPopUp({content:<>
+              <div className="antd-icon-sizing" style={{height:"50px"}}>
+                <WarningOutlined/>
+              </div>
+              <Title level={2} style={{textAlign:"center"}} >
+                圖像獲取異常
+              </Title></>})
+            return false;
+          }
+          let SS=pkts.find(pkt=>pkt.type=="SS");
+
+          if(SS===undefined || SS.data.ACK!==true)
+          {   
+            console.log("onCapture NAK")
+            setInfoPopUp({content:<>
+              <div className="antd-icon-sizing" style={{height:"50px"}}>
+                <WarningOutlined/>
+              </div>
+              <Title level={2} style={{textAlign:"center"}} >
+                圖像獲取失敗
+              </Title></>})
+            return false;
+          }
+
+          let signature = GetObjElement(pkts,[0,"data","reports",0,"signature"]);
+          
+          if(signature===undefined)
+          {
+            setInfoPopUp({content:<>
+              <div className="antd-icon-sizing" style={{height:"50px"}}>
+                <WarningOutlined/>
+              </div>
+              <Title level={2} style={{textAlign:"center"}} >
+                圖像無目標
+              </Title></>})
+            console.log("onCapture empty signature")
+            return false;
+          }
+
+
+          return true;
+        },
+        (matchingList)=>{
 
         console.log(matchingList);
 
@@ -607,7 +693,9 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           </div>
         }
         setInfoPopUp(errPopUpUIInfo)
-      })
+        },
+        trigger_type,timeout
+      )
 
     }
 
@@ -646,7 +734,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Switch checkedChildren="測線" unCheckedChildren="純圖" checked={showInspectionNote} onChange={setShowInspectionNote} />
           <Button className={"antd-icon-sizing HW50"} size="large"
             style={{"pointerEvents": "auto"}} icon={<MonitorOutlined/> } type="text"
-            onClick={() =>matchingAUTO_UI(getLocalStorage_RecentFiles())}/>
+            onClick={() =>matchingAUTO_AskTriggerType(getLocalStorage_RecentFiles(),"近期檔案比對")}/>
           
           <Button className={"antd-icon-sizing "+(isFileOK?"HW50":"HW100")} size="large"
             style={{"pointerEvents": "auto"}} icon={<FolderOpenOutlined/> } type="text"
@@ -704,7 +792,11 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let files=state.folderStruct.files.filter(fileInfo=>fileInfo.type=="REG"&&props.fileFilter(fileInfo))
                   console.log(files);
                   if(files!==undefined && files.length>0)
-                    matchingAUTO_UI(files);
+                  {
+                    // console.log(state.folderStruct);
+                    matchingAUTO_AskTriggerType(files,<>資料夾比對<br/> {state.folderStruct.path}</>);
+                    setFileSelectorInfo();
+                  }
                 }},
               ]
             });
