@@ -346,7 +346,13 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   
   char buff[300];
   snprintf(buff, sizeof(buff),
-  "{\"type\":\"CameraLayer_HikRobot_Camera\"}");
+  "{\
+    \"type\":\"CameraLayer_HikRobot_Camera\",\
+    \"name\":\"HikCam\",\
+  }");
+
+
+
   cam_json_info.assign(buff);
   LOGI(">>>%s",cam_json_info.c_str());
 }

@@ -20,6 +20,7 @@ CameraLayer_BMP_carousel::CameraLayer_BMP_carousel(CameraLayer_Callback cb,void*
     snprintf(buff, sizeof(buff),
     "{\
       \"type\":\"CameraLayer_BMP_carousel\",\
+      \"name\":\"BMP_CAM\",\
       \"folder_name\":\"%s\"\
     }",folderName.c_str());
     cam_json_info.assign(buff);
@@ -175,7 +176,7 @@ CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
         case 2:frameInterval_ms=10;break;
         case 3:frameInterval_ms=0;break;
     }
-    // frameInterval_ms=0;
+    // frameInterval_ms=500;
     return CameraLayer::ACK;
 }
 

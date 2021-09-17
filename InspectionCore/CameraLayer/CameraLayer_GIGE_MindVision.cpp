@@ -160,6 +160,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
     snprintf(buff, sizeof(buff),
              "{\
       \"type\":\"CameraLayer_GIGE_MindVision\",\
+      \"name\":\"%s\",\
       \"friendly_name\":\"%s\",\
       \"line_name\":\"%s\",\
       \"port_type\":\"%s\",\
@@ -168,6 +169,7 @@ CameraLayer::status CameraLayer_GIGE_MindVision::InitCamera(tSdkCameraDevInfo *d
       \"sensor_type\":\"%s\",\
       \"Sn\":\"%s\"\
     }",
+             devInfo->acFriendlyName,
              devInfo->acFriendlyName,
              devInfo->acLinkName,
              devInfo->acPortType,
