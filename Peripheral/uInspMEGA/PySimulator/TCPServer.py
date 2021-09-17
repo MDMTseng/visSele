@@ -229,7 +229,7 @@ while True:
                     "ERR": 0
                   }
               elif msg_type == "error_clear":
-                machState["error_codes"]=None
+                machState["error_codes"]=[]
                 
               if _id is not None:
                 retMsg["id"]=_id
