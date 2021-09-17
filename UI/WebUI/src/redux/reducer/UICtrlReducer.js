@@ -341,7 +341,7 @@ function StateReducer(newState, action) {
                       });
                       judgeReports.forEach((jud)=>{
                         jud.detailStatus=
-                          newState.edit_info._obj.getMeasureGrading(jud,pfilled_marginInfo);
+                          newState.edit_info._obj.getMeasure_detailStatus(jud,pfilled_marginInfo);
 
                           
                         if(jud.detailStatus==MEASURERSULTRESION.NA)
