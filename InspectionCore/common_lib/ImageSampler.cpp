@@ -279,6 +279,16 @@ void acvCalibMap::CLEAR()
     fwdMap = NULL;
   }
 }
+
+bool acvCalibMap::isPresent()
+{
+  if (fwdMap==NULL && invMap==NULL)//In unset state
+  {
+    return false;//No mapping would be performed
+  }
+  return true;
+}
+
 int acvCalibMap::i2c(float coord[2], bool useInvMap) //real image coord to calibrated coord
 {
 
