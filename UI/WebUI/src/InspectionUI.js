@@ -891,8 +891,15 @@ class ControlChart extends React.Component {
     ];
   }
 
-  componentWillUpdate(nextProps, nextState) {
 
+  componentWillUpdate(nextProps, nextState)
+  {
+
+  }
+
+  updateChart(nextProps)
+  {
+    if(this.charObj===undefined)return;
 
     //Make sure the data object is the same, don't change it/ you gonna set the data object to chart again
     this.state.chartOpt.data.labels = [];
@@ -965,6 +972,7 @@ class ControlChart extends React.Component {
     var ctx = document.getElementById(this.divID).getContext("2d");
 
     this.charObj = new Chart(ctx, this.state.chartOpt);
+    this.updateChart(this.props);
   }
   onResize(width, height) {
     //log.debug("G2HOT resize>>", width, height);
@@ -973,6 +981,7 @@ class ControlChart extends React.Component {
   }
 
   render() {
+    this.updateChart(this.props);
     return <div className={this.props.className}>
       <canvas id={this.divID} style={{ height: "400px" }} />
       <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
@@ -990,7 +999,13 @@ class DataStatsTable extends React.Component {
       drawList: []
     };
   }
-  shouldComponentUpdate(nextProps) {
+  shouldComponentUpdate(nextProps,nextState) {
+    
+    if(nextState!=this.state)
+    {
+      return true;
+    }
+
     let statstate = nextProps.reportStatisticState;
     if (statstate.historyReport === undefined) {
       return false;
@@ -1065,7 +1080,12 @@ class DataStatsTable extends React.Component {
         title: "Draw Toggle", key: "draw", fixed: "right",
         render: (text, record) => {
           return <Switch onChange={(val) => {
-            this.state.drawList[record.id] = val;
+            // this.state.drawList[record.id] = val;
+            let newDrawList = [...this.state.drawList];
+            newDrawList[record.id]=val;
+            this.setState({drawList:newDrawList});
+            
+            console.log("TRIGGER");
           }
           } />
         }
