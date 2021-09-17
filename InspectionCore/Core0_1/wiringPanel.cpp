@@ -20,6 +20,8 @@
 #include <smem_channel.hpp>
 #include <ctime>
 
+#define _VERSION_ "v1.0.1"
+
 std::timed_mutex mainThreadLock;
 
 bool saveInspFailSnap = true;
@@ -3496,6 +3498,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
+    LOGI("stat:%d stat_sec:%d",stat,stat_sec);
 
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
   }
@@ -3620,7 +3623,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       {
         default_peer = data.peer;
         
-        BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", NULL); //[F]older [S]truct
+        BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", "{\"version\":\"" _VERSION_ "\"}"); //[F]older [S]truct
         bpg_dat.pgID = 0xFF;
         bpg_pi.fromUpperLayer(bpg_dat);
       }
