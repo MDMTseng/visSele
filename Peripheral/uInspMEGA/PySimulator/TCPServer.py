@@ -91,9 +91,10 @@ def machUpdate_1s():
   # machState["res_count"]["NG"]+=1
 
 def machUpdate_100s():
-  if machState["error_codes"] is None:
-    machState["error_codes"]=[]
-  machState["error_codes"].append(2)
+  None
+  # if machState["error_codes"] is None:
+  #   machState["error_codes"]=[]
+  # machState["error_codes"].append(2)
   # machState["res_count"]["NA"]+=1
 
 
@@ -127,7 +128,7 @@ while True:
 
             print("NEW CONNECTION:")
             print(client_address)
-
+            machState["error_codes"].append(2)
 
             # Add accepted socket to select.select() list
             sockets_list.append(client_socket)
