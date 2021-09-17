@@ -32,15 +32,30 @@ let StateReducer = (state, action) => {
           return {...state,CORE_ID_CONN_INFO:action}
           break;
         case DefFile_DB_W_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,DefFile_DB_W_ID_CONN_INFO:{...state.DefFile_DB_W_ID_CONN_INFO,...action}}
+          }
           if(GetObjElement(state,["DefFile_DB_W_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,DefFile_DB_W_ID_CONN_INFO:action}
           break;
         case Insp_DB_W_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,Insp_DB_W_ID_CONN_INFO:{...state.Insp_DB_W_ID_CONN_INFO,...action}}
+          }
           if(GetObjElement(state,["Insp_DB_W_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,Insp_DB_W_ID_CONN_INFO:action}
           break;
           
         case CAM1_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,CAM1_ID_CONN_INFO:{...state.CAM1_ID_CONN_INFO,...action}}
+          }
           if(GetObjElement(state,["CAM1_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,CAM1_ID_CONN_INFO:action}
           break;

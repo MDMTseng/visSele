@@ -672,7 +672,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
 
 
 
-export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true})
+export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_Count_font_size=25,UI_Speed_Slider=false,UI_detail=false})
 {
   
   const dispatch = useDispatch();
@@ -688,7 +688,6 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
   // useEffect(()=>{
   // },[])  
 
-
   if(uInsp_API_ID_CONN_INFO===undefined )
   {
     return null;
@@ -701,9 +700,12 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
     return "!!全檢儀器未連線!!";
   }
 
+  function leftFillNum(num, targetLength) {
+    return num.toString().padStart(targetLength, 0);
+  }
 
+  let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
 
-  let res_count=machineStatus.res_count||{OK:"_",NG:"_",NA:"_"};
   let error_codes=machineStatus.error_codes||[];
   let len = error_codes.length;
   if(error_codes.length>10)
@@ -725,22 +727,38 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
   let NAColor="#aaa";
 
   let tagStyle={
-    'fontSize': 25,
+    'fontSize': UI_INSP_Count_font_size,
 
   }
   // text-align: center; display:block;
   let insp_count=UI_INSP_Count==false?null:
   <>
     <Tag style={tagStyle}
-      color={OKColor}>{res_count.OK}
+      color={OKColor}>{leftFillNum(res_count.OK,5)}
       </Tag>
     <Tag style={tagStyle}
-      color={NGColor}>{res_count.NG}
+      color={NGColor}>{leftFillNum(res_count.NG,5)}
     </Tag>
     <Tag style={tagStyle}
-      color={NAColor}>{res_count.NA}
+      color={NAColor}>{leftFillNum(res_count.NA,5)}
     </Tag>
     </>
+
+  let result_count_rate_recent=uInsp_API_ID_CONN_INFO.result_count_rate_recent||{OK:0,NG:0,NA:0};
+  let insp_count_rate=UI_INSP_Count_Rate==false?null:
+  <>
+    <Tag style={tagStyle}
+      color={OKColor}>{result_count_rate_recent.OK.toFixed(1)}
+      </Tag>
+    <Tag style={tagStyle}
+      color={NGColor}>{result_count_rate_recent.NG.toFixed(1)}
+    </Tag>
+    <Tag style={tagStyle}
+      color={NAColor}>{result_count_rate_recent.NA.toFixed(1)}
+    </Tag>
+  </>
+
+
 
   let SpeedSlider=UI_Speed_Slider==false?null:
   <>
@@ -974,6 +992,7 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
 
   return <>
     {insp_count}
+    {insp_count_rate}
     {SpeedSlider}
     {detailSetup}
   </>

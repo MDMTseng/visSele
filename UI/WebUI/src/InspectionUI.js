@@ -150,7 +150,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
     }
 
     _this.pre_newAddedReport=newAddedReport;
-    console.log(newAddedReport,insert_skip);
+    // console.log(newAddedReport,insert_skip);
     
     let res=_this.totalCounter%insert_skip;
     _this.totalCounter++;
@@ -648,16 +648,21 @@ class ObjInfoList extends React.Component {
     let fullScreenMODAL = <InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
       onCancel={this.toggleFullscreen.bind(this)} width="90%" />;
 
-
     let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
-    <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_SubMenu_Title_AutoHeight"
+    <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
       title={
       <>
-        <Divider orientation="left" key="divi" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備</Divider>
-        <UINSP_UI UI_INSP_Count={true} UI_Speed_Slider={false} UI_detail={false}/>
+        <Divider orientation="center" key="divi" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備</Divider>
+        <UINSP_UI UI_INSP_Count={true} UI_INSP_Count_font_size={15}/>
       </>}
-      >
-        <UINSP_UI UI_INSP_Count={false} UI_Speed_Slider={true} UI_detail={false}/>
+      > 
+        <div style={{margin:"15px"}}>
+          <Divider orientation="left" style={{ 'margin': '2px',fontSize: "12px"}} >全檢速度(pcs/s)</Divider>
+          <UINSP_UI UI_INSP_Count_Rate={true} UI_INSP_Count_font_size={15}/>
+          <Divider orientation="left" style={{ 'margin': '10px 2px 2px 2px',fontSize: "12px"}} >轉盤速度(pulse/s)</Divider>
+          <UINSP_UI UI_Speed_Slider={true}/>
+          
+        </div>
     </SubMenu>
 
     return (

@@ -1739,13 +1739,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
             ACT_Def_Model_Path_Update(fileNamePath);
             setFileSavingCallBack(undefined);
 
-
-            var msg_obj = {
-              dbcmd: { "db_action": "insert" },
-              data: report
-            };
-
-            DefFile_DB_SEND(msg_obj).
+            DefFile_DB_SEND(report).
             then((ret) => console.log('then', ret)).
             catch((ret) => console.log("catch", ret));
 

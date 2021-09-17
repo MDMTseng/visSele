@@ -140,7 +140,7 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
   const int  minWidth = 3;
   const int  maxWidth = 1+20000/SINGLE_PULSE_DIST_um;
   
-  const int  DEBOUNCE_L_THRES = 1+6000/SINGLE_PULSE_DIST_um;//object inner connection
+  const int  DEBOUNCE_L_THRES = 1+1000/SINGLE_PULSE_DIST_um;//object inner connection
   const int  DEBOUNCE_H_THRES = 1;
   //(perRevPulseCount/50)
   if(stage>=stageLen)return;

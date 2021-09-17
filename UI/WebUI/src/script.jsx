@@ -206,8 +206,9 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
     ["坡檢設備",       ConnInfo.SLID_API_ID_CONN_INFO,    <StockOutlined />,false],
     ]
     .filter(([textName, conn_info, icon,froceAppear])=> (froceAppear|| conn_info!==undefined) && !(showText && textName===undefined))
-
-    .map(([textName, conn_info, icon,froceAppear],idx)=>
+    .map(([textName, conn_info, icon,froceAppear],idx)=>{
+      let brief_info= GetObjElement(conn_info,["brief_info"]);
+      return(
       <Button size="large" key={`stat ${textName} ${idx}`} style={gridStyle} 
       type="text" //disabled={!systemConnectState.core}
       className={"s HXA "+connectionStatus2CSSColor(conn_info)} 
@@ -218,14 +219,12 @@ function System_Status_Display({ style={}, showText=false,iconSize=50,gridSize,o
         >
           {icon}
         </div>
-            {(showText)?
+            {(showText==false)?null:
               <>
-                <span className="veleX">{textName}</span>
-                <br/>
-                {GetObjElement(conn_info,["type"])==="WS_CONNECTED"?" ":DICT._.disconnected}
-              </>
-              :null}
-      </Button>)
+                <span className="veleX">{textName}<br/>{brief_info}<br/></span>
+                
+              </>}
+      </Button>)})
 
 }
 
@@ -277,6 +276,7 @@ class APPMasterX extends React.Component {
       Insp_DB_W_ID: state.ConnInfo.Insp_DB_W_ID,
       DefFile_DB_W_ID:state.ConnInfo.DefFile_DB_W_ID,
       CAM1_ID:state.ConnInfo.CAM1_ID,
+      CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
       System_Setting:state.UIData.System_Setting,
@@ -358,6 +358,7 @@ class APPMasterX extends React.Component {
         this.QWindow= {};
         this.pgIDCounter= 0;
         this.websocket=undefined;
+        this.dataSentCount=0;
         console.log(">>>>");
         this.curr_ws_state=undefined;
         
@@ -387,6 +388,12 @@ class APPMasterX extends React.Component {
           },
           binaryType:"arraybuffer"
         });
+
+        setInterval(()=>{
+          let info=`${this.getDataQueueCount()}>${this.getDataSentCount()}`;
+          // console.log(info);
+          comp.props.DISPATCH({type:"WS_UPDATE",id,brief_info:info});
+        },5000)
 
           
         // this.websocket.onopen=(ev)=>{
@@ -452,6 +459,7 @@ class APPMasterX extends React.Component {
               then((ret) => {
                 clearTimeout(timeoutFlag);
                 this.retryQCount = 0;
+                _this.dataSentCount++;
                 cQ.deQ();//pop one data out
                 resolve();
                 _this._insertOK(data, ret);
@@ -474,7 +482,7 @@ class APPMasterX extends React.Component {
                 _this._insertFailed(dataInfo  , e);
               });
           })
-          ,5000,
+          ,1000,
           (cQ)=>{//onTerminationState
             //dump the data out
             console.log("Termination dump",cQ);
@@ -520,7 +528,14 @@ class APPMasterX extends React.Component {
 
       }
 
-
+      getDataSentCount()
+      {
+        return this.dataSentCount;
+      }
+      getDataQueueCount()
+      {
+        return this.cQ.size();
+      }
 
       send(info)
       {
@@ -540,7 +555,7 @@ class APPMasterX extends React.Component {
             }
             else
             {
-
+              console.log("QQQ.len:",this.cQ.size());
             }
             if (this.cQ.size() > 0)
               this.cQ.kick();//kick transmission
@@ -623,9 +638,11 @@ class APPMasterX extends React.Component {
             {
               {
                 let HR = BPG_Protocol.raw2obj(evt);
+                console.log("HR:",HR);
                 StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_READY(HR));
                 
-                StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CORE_ID,data:HR});
+                let version = GetObjElement(HR,["data","version"])||"_";
+                StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CORE_ID,data:HR,brief_info:version});
               }
 
               comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "HR", 0, { a: ["d"] });
@@ -900,6 +917,67 @@ class APPMasterX extends React.Component {
           
       }
 
+      
+      _queryCam(resolve,reject)
+      {
+        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "GS", 0, { items: ["camera_info"] },
+        undefined, 
+        {
+          resolve: (stacked_pkts,P) => {
+            
+            let GS=stacked_pkts.find(pkt=>pkt.type=="GS");
+            if(GS!==undefined)
+            {
+              let camInfo = GetObjElement(GS,["data","camera_info"]);
+
+
+              let cam0=GetObjElement(camInfo,[0,"type"]);
+              if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              {
+                this.isConnected=false;
+                StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
+                
+                this.camDisconnectionAction();
+                
+                this.reconnection();
+                reject(stacked_pkts,P);
+                // this.queryTimeOut=setTimeout(()=>{
+                //   this.queryCam(timeout_ms);
+                // },timeout_ms*2);
+              }
+              else
+              {
+                
+                let camName=GetObjElement(camInfo,[0,"name"]);
+                // StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CAM1_ID,data:camInfo});
+                let ev_type=(this.isConnected===false)?"WS_CONNECTED":"WS_UPDATE";
+                comp.props.DISPATCH({type:ev_type,id:comp.props.CAM1_ID,data:camInfo,brief_info:camName});
+                this.isConnected=true;
+
+                resolve(stacked_pkts,P);
+
+              }
+              // console.log(camInfo);
+              
+            }
+            
+          },
+          reject:(e)=>{
+            console.log(e);
+            StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID,data:e});
+
+            this.isConnected=false;
+            this.camDisconnectionAction();
+
+            resolve(e);
+            // this.queryTimeOut=setTimeout(()=>{
+            //   this.queryCam(timeout_ms);
+            // },1000);
+          }
+        });
+
+      }
+
       reconnection()
       {
         if(this.isInReconn==true)
@@ -910,6 +988,8 @@ class APPMasterX extends React.Component {
 
 
 
+        StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID});
+        this.isConnected=false;
         comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "RC", 0, {
           target: "camera_ez_reconnect"
         },
@@ -917,13 +997,17 @@ class APPMasterX extends React.Component {
           resolve:(ret)=>{
             console.log(ret);
             this.isInReconn=false;
+
+            
+            this._queryCam(
+              ()=>{},
+              ()=>{})
           }, 
           reject:()=>{
             this.isInReconn=false;
           } })
 
       }
-
       queryCam(timeout_ms=2000)
       {
         if(this.isInReconn==true)
@@ -940,54 +1024,17 @@ class APPMasterX extends React.Component {
             
         //   }
         // });
-        comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "GS", 0, { items: ["camera_info"] },
-        undefined, 
-        {
-          resolve: (stacked_pkts,P) => {
-            
-            let GS=stacked_pkts.find(pkt=>pkt.type=="GS");
-            if(GS!==undefined)
-            {
-              let camInfo = GetObjElement(GS,["data","camera_info"]);
 
-
-              let cam0=GetObjElement(camInfo,[0,"type"]);
-              if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
-              {
-                StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
-                
-                this.camDisconnectionAction();
-                
-                this.reconnection();
-                
-                this.queryTimeOut=setTimeout(()=>{
-                  this.queryCam(timeout_ms);
-                },timeout_ms*2);
-              }
-              else
-              {
-                StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CAM1_ID,data:camInfo});
-
-                this.queryTimeOut=setTimeout(()=>{
-                  this.queryCam(timeout_ms);
-                },timeout_ms);
-              }
-              // console.log(camInfo);
-              
-            }
-            
-          },
-          reject:(e)=>{
-            console.log(e);
-            StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.CAM1_ID,data:e});
-
-            this.camDisconnectionAction();
-            this.queryTimeOut=setTimeout(()=>{
-              this.queryCam(timeout_ms);
-            },timeout_ms);
-          }
-        });
-
+        this._queryCam(()=>{
+          this.queryTimeOut=setTimeout(()=>{
+            this.queryCam(timeout_ms);
+          },timeout_ms);
+        },
+        ()=>{
+          this.queryTimeOut=setTimeout(()=>{
+            this.queryCam(timeout_ms);
+          },timeout_ms/2);
+        })
 
 
 
@@ -996,6 +1043,7 @@ class APPMasterX extends React.Component {
       {
         this.id=id;
         this.isInReconn=false;
+        this.isConnected=false;
 
         this.queryCam(5000);
       }
@@ -1190,6 +1238,17 @@ class APPMasterX extends React.Component {
         this.PINGCount=0;
 
         this.machineInfo=undefined;
+
+
+        this.pre_res_count=undefined;
+        this.res_count_start_time=undefined;
+        this.res_count_pre_time=undefined;
+
+        this.res_count_rate_overall=undefined;
+        this.res_count_rate_recent=undefined;
+
+
+        
       } 
       checkReConnection()
       {
@@ -1244,7 +1303,64 @@ class APPMasterX extends React.Component {
           delete ret["type"]
           delete ret["id"]
           delete ret["st"]
-          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus:ret});
+          let machineStatus={...ret};
+          let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
+
+          let currentTime_ms=new Date().getTime();
+          if(this.pre_res_count!==undefined)
+          {
+            if( this.pre_res_count.OK <= res_count.OK &&
+              this.pre_res_count.NG <= res_count.NG &&
+              this.pre_res_count.NA <= res_count.NA &&
+              this.res_count_pre_time!==undefined&&
+              this.res_count_start_time!==undefined
+              )
+            {
+              let period_s = (currentTime_ms-this.res_count_pre_time)/1000;
+              let period_overall_s = (currentTime_ms-this.res_count_start_time)/1000;
+              let period_pre_s=period_overall_s-period_s;
+              let OK_rate=(res_count.OK-this.pre_res_count.OK)/period_s;
+              let NG_rate=(res_count.NG-this.pre_res_count.NG)/period_s;
+              let NA_rate=(res_count.NA-this.pre_res_count.NA)/period_s;
+              // console.log(currentTime_ms,"<ms->>",OK_rate,NG_rate,NA_rate, period_overall_s,period_s)
+              this.res_count_rate_overall={
+                OK:(this.res_count_rate_overall.OK*period_pre_s+OK_rate*period_s)/period_overall_s,
+                NG:(this.res_count_rate_overall.NG*period_pre_s+NG_rate*period_s)/period_overall_s,
+                NA:(this.res_count_rate_overall.NA*period_pre_s+NA_rate*period_s)/period_overall_s,
+              }
+
+              let maxRange=15;
+              let offset=1;
+              let alpha=period_s>maxRange?1:((period_s+offset)/(maxRange+offset));
+              this.res_count_rate_recent={
+                OK:(this.res_count_rate_recent.OK*(1-alpha)+OK_rate*alpha),
+                NG:(this.res_count_rate_recent.NG*(1-alpha)+NG_rate*alpha),
+                NA:(this.res_count_rate_recent.NA*(1-alpha)+NA_rate*alpha),
+              }
+              this.res_count_pre_time=currentTime_ms;
+              this.pre_res_count={...res_count};
+            }
+            else
+            {
+              this.pre_res_count=undefined;
+            }
+          }
+
+
+          if(this.pre_res_count===undefined)
+          {
+            this.pre_res_count={...res_count};
+            this.res_count_start_time=
+            this.res_count_pre_time=currentTime_ms;
+            
+            this.res_count_rate_overall={OK:0,NG:0,NA:0};
+            this.res_count_rate_recent={OK:0,NG:0,NA:0};
+
+
+          }
+          // console.log(this.res_count_rate_overall,this.res_count_rate_recent);
+
+          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus,result_count_rate_recent:this.res_count_rate_recent});
           this.PINGCount=0;
         },errorInfo=>console.log(errorInfo));
 
@@ -1399,17 +1515,58 @@ class APPMasterX extends React.Component {
               console.log(connInfo);
               switch(connInfo.id)
               {
+                
                 case this.props.CAM1_ID:
                 {
                   
-                  this.props.ACT_WS_SEND_BPG(this.props.CORE_ID, "RC", 0, {target: "camera_ez_reconnect"},
-                  undefined, 
-                  {resolve: (data,action_channal) => {
-                    console.log(data);
-                    action_channal(data);
-                    
-                  }});
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><pre>
+                        {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
 
+                        <Button onClick={()=>{
+
+                          this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
+                            return obj.reconnection();
+                          })
+                        }}>重連</Button>
+
+                      </pre>,
+                      title:"Camera",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+
+                  break;
+                }
+
+
+                case this.props.CAM1_ID:
+                {
+                  
+
+                  console.log(this.props.CAM1_ID_CONN_INFO)
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=><pre>
+                        {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
+
+                        <Button onClick={()=>{
+
+                          this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
+                            return obj.reconnection();
+                          })
+                        }}>重連</Button>
+
+                      </pre>,
+                      title:"Camera",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
 
                   break;
                 }
@@ -1419,7 +1576,12 @@ class APPMasterX extends React.Component {
                 {
                   this.setState({
                     modal_view:{
-                      view_fn:()=><UINSP_UI/>,
+                      view_fn:()=><>
+                      檢測數<UINSP_UI UI_INSP_Count={true}/><br/>
+                      檢測速<UINSP_UI UI_INSP_Count_Rate={true}/><br/>
+                      <UINSP_UI UI_Speed_Slider={true} UI_detail={true}/>
+                      
+                      </>,
                       title:"uInsp_API",
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
@@ -1435,7 +1597,7 @@ class APPMasterX extends React.Component {
           />
           
           <>
-            <Divider>DEV MODE{this.props.System_Setting.version}</Divider>
+            <Divider>{this.props.System_Setting.version}</Divider>
             <pre>
               {JSON.stringify(this.props.System_Setting, null, 1)}
             </pre>
