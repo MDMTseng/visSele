@@ -131,13 +131,8 @@ uint32_t PRPC= perRevPulseCount;
 
 uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4; 
 
-uint8_t g_max_frame_rate=15;
+uint8_t g_max_frame_rate=25;
 
-
-int offsetAir=80;
-int cam_angle=103;
-int angle=149;
-int blowPCount=10;
 uint32_t state_pulseOffset[] = 
 //{
 //  0,//INIT
@@ -312,7 +307,7 @@ int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
     // 
     if(task->info==1)
     {
-      DEBUG_printf("CAM1 s:%p tp:%d\n",task->src,task->targetPulse);
+      // DEBUG_printf("CAM1 s:%p tp:%d\n",task->src,task->targetPulse);
       digitalWrite(CAMERA_PIN, 1);
     }
     else if(task->info==2)
@@ -373,8 +368,8 @@ int Run_ACTS(ACT_SCH *acts,uint32_t cur_pulse)
         inspResCount.NG++;
       break;
       case insp_status_NA:
-        ACT_PUSH_TASK (act_S.ACT_SEL2H, pli, state_pulseOffset[9], 1,);
-        ACT_PUSH_TASK (act_S.ACT_SEL2L, pli, state_pulseOffset[10],2,);
+        // ACT_PUSH_TASK (act_S.ACT_SEL2H, pli, state_pulseOffset[9], 1,);
+        // ACT_PUSH_TASK (act_S.ACT_SEL2L, pli, state_pulseOffset[10],2,);
         inspResCount.NA++;
       break;
 
@@ -969,7 +964,7 @@ class Websocket_FI:public Websocket_FI_proto{
         // DEBUG_print(" actsw.s:");
         // DEBUG_println(act_S.ACT_SWITCH.size());
 
-        DEBUG_printf("RBuf.s:%d ========s:%d===\n",RBuf.size(),search_i);
+        // DEBUG_printf("RBuf.s:%d ========s:%d===\n",RBuf.size(),search_i);
 
         // for(uint8_t i=0;i<RBuf.size();i++)
         // {
@@ -983,8 +978,8 @@ class Websocket_FI:public Websocket_FI_proto{
         
         if(ret_status)
         {
-          DEBUG_print("ERROR:ret_status=");
-          DEBUG_println(ret_status);
+          // DEBUG_print("ERROR:ret_status=");
+          // DEBUG_println(ret_status);
   
           errorLOG(GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT);
           //Error:The inspection result matches no object
@@ -1448,7 +1443,7 @@ void loop()
     uint32_t dist = pulse_distance(nextPulseN,logicPulseCount,perRevPulseCount);
     if(dist<(perRevPulseCount>>1))
     {
-      DEBUG_printf("curSTEP:%d\n",logicPulseCount);
+      // DEBUG_printf("curSTEP:%d\n",logicPulseCount);
       nextPulseN+=perRevPulseCount>>2;
       if(nextPulseN>=perRevPulseCount)
       {
@@ -1482,13 +1477,13 @@ void loop()
 //    DEBUG_println((char*)WS_Server->json_sec_buffer);
     if(ERROR_HIST.size()!=0)
     {
-      DEBUG_print("Error:");
-      DEBUG_println(ERROR_HIST.size());
+      // DEBUG_print("Error:");
+      // DEBUG_println(ERROR_HIST.size());
     }
     if(errorActionType!=ERROR_ACTION_TYPE::NOP)
     {
-      DEBUG_print("errorActionType:");
-      DEBUG_println((int)errorActionType);
+      // DEBUG_print("errorActionType:");
+      // DEBUG_println((int)errorActionType);
     }
 
     if(RBuf.size()==0)
