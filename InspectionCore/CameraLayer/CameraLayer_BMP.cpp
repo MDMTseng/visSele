@@ -60,7 +60,7 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
         else if(rotate>endAngle)rotate=baseAngle;
         else
         {
-          rotate+=0.2*M_PI/180;
+          rotate+=0*M_PI/180;
         }
         // rotate+=1*M_PI/180;
         LOGI("ROTATE:%f",rotate*180/M_PI);
