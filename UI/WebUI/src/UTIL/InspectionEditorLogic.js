@@ -58,6 +58,8 @@ export const MEASURERSULTRESION_priority =
 };
 
 export function MEASURERSULTRESION_reducer(res, measure_result_region) {
+  if(measure_result_region===undefined)
+    measure_result_region =MEASURERSULTRESION.NA;
   if (res == MEASURERSULTRESION.NA) return res;
 
   if (res == MEASURERSULTRESION.USNG || res == MEASURERSULTRESION.LSNG) {
@@ -358,7 +360,7 @@ export class InspectionEditorLogic {
     return edit_info;
   }
   
-  getMeasureGrading(measureReport,control_Margin_table=this.shapeList)
+  getMeasure_detailStatus(measureReport,control_Margin_table=this.shapeList)
   {
     let measureDef = control_Margin_table.find((feature) => feature.id == measureReport.id);
     //console.log(measure, measureDef);
@@ -389,16 +391,6 @@ export class InspectionEditorLogic {
 
   }
 
-  InspectionReportGrading(inspreport){
-    
-    if (inspreport.reports === undefined || inspreport.reports.length == 0) {
-      return;
-    }
-    inspreport.reports.forEach(report => report.judgeReports.forEach((measure) => {
-      measure.detailStatus = this.InspectionMeasureGrading(measure);
-    })
-    );
-  }
   getsig360info_mmpp() {
     try {
       //console.log(this.sig360info);
