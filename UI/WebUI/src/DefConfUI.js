@@ -2057,7 +2057,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       {...modal_view}
       visible={modal_view !== undefined}
       onCancel={(param) => {
-        if (modal_view.onCancel !== undefined) {
+        if (modal_view!==undefined && modal_view.onCancel !== undefined) {
           modal_view.onCancel(param);
         }
         else
@@ -2067,7 +2067,7 @@ function DEFCONF_MODE_NEUTRAL_UI({})
       }}
 
       onOk={(param) => {
-        if (modal_view.onOk !== undefined) {
+        if (modal_view!==undefined && modal_view.onOk !== undefined) {
           modal_view.onOk(param);
         }
         else
