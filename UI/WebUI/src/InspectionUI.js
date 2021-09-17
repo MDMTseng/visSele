@@ -1086,7 +1086,7 @@ class DataStatsTable extends React.Component {
 
     return (
       <div className={this.props.className}>
-        <Table key="dat_table" dataSource={dataSource} columns={columns} scroll={{ x: 1000 }} pagination={false} />
+        <Table key="dat_table" className="antd-table-small" dataSource={dataSource} columns={columns} size="small" scroll={{ x: 1000 }} pagination={false} />
         {graphX}
       </div>
     );

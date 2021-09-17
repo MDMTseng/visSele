@@ -68,12 +68,16 @@
   min-height: 60px;
   /* min-height has its purpose :) , unless you meant height*/
 }
-
+.antd-table-small .ant-table-cell
+{
+  padding:2px !important;
+}
 
 
 .Antd_Menu_Title_Padding_Left_small,.Antd_Menu_Title_AutoHeight>div,.Antd_Menu_Title_Padding_Left_small>.ant-menu-submenu-title
 {
-  padding-left: 5px !important
+  padding-left: 5px !important;
+  padding-right: 5px  !important;
 }
 
 .Antd_Menu_Title_AutoHeight,.Antd_Menu_Title_AutoHeight>div,.Antd_Menu_Title_AutoHeight>.ant-menu-submenu-title
