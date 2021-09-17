@@ -672,7 +672,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
 
 
 
-export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true})
+export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_Speed_Slider=false,UI_detail=false})
 {
   
   const dispatch = useDispatch();
@@ -687,7 +687,6 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
   
   // useEffect(()=>{
   // },[])  
-
 
   if(uInsp_API_ID_CONN_INFO===undefined )
   {
@@ -741,6 +740,22 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
       color={NAColor}>{res_count.NA}
     </Tag>
     </>
+
+  let result_count_rate_recent=uInsp_API_ID_CONN_INFO.result_count_rate_recent||{OK:0,NG:0,NA:0};
+  let insp_count_rate=UI_INSP_Count_Rate==false?null:
+  <>
+    <Tag style={tagStyle}
+      color={OKColor}>{result_count_rate_recent.OK.toFixed(1)}
+      </Tag>
+    <Tag style={tagStyle}
+      color={NGColor}>{result_count_rate_recent.NG.toFixed(1)}
+    </Tag>
+    <Tag style={tagStyle}
+      color={NAColor}>{result_count_rate_recent.NA.toFixed(1)}
+    </Tag>
+  </>
+
+
 
   let SpeedSlider=UI_Speed_Slider==false?null:
   <>
@@ -974,6 +989,7 @@ export function UINSP_UI({UI_INSP_Count=true,UI_Speed_Slider=true,UI_detail=true
 
   return <>
     {insp_count}
+    {insp_count_rate}
     {SpeedSlider}
     {detailSetup}
   </>

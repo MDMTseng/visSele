@@ -1190,6 +1190,17 @@ class APPMasterX extends React.Component {
         this.PINGCount=0;
 
         this.machineInfo=undefined;
+
+
+        this.pre_res_count=undefined;
+        this.res_count_start_time=undefined;
+        this.res_count_pre_time=undefined;
+
+        this.res_count_rate_overall=undefined;
+        this.res_count_rate_recent=undefined;
+
+
+        
       } 
       checkReConnection()
       {
@@ -1244,7 +1255,64 @@ class APPMasterX extends React.Component {
           delete ret["type"]
           delete ret["id"]
           delete ret["st"]
-          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus:ret});
+          let machineStatus={...ret};
+          let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
+
+          let currentTime_ms=new Date().getTime();
+          if(this.pre_res_count!==undefined)
+          {
+            if( this.pre_res_count.OK <= res_count.OK &&
+              this.pre_res_count.NG <= res_count.NG &&
+              this.pre_res_count.NA <= res_count.NA &&
+              this.res_count_pre_time!==undefined&&
+              this.res_count_start_time!==undefined
+              )
+            {
+              let period_s = (currentTime_ms-this.res_count_pre_time)/1000;
+              let period_overall_s = (currentTime_ms-this.res_count_start_time)/1000;
+              let period_pre_s=period_overall_s-period_s;
+              let OK_rate=(res_count.OK-this.pre_res_count.OK)/period_s;
+              let NG_rate=(res_count.NG-this.pre_res_count.NG)/period_s;
+              let NA_rate=(res_count.NA-this.pre_res_count.NA)/period_s;
+              // console.log(currentTime_ms,"<ms->>",OK_rate,NG_rate,NA_rate, period_overall_s,period_s)
+              this.res_count_rate_overall={
+                OK:(this.res_count_rate_overall.OK*period_pre_s+OK_rate*period_s)/period_overall_s,
+                NG:(this.res_count_rate_overall.NG*period_pre_s+NG_rate*period_s)/period_overall_s,
+                NA:(this.res_count_rate_overall.NA*period_pre_s+NA_rate*period_s)/period_overall_s,
+              }
+
+              let maxRange=15;
+              let offset=1;
+              let alpha=period_s>maxRange?1:((period_s+offset)/(maxRange+offset));
+              this.res_count_rate_recent={
+                OK:(this.res_count_rate_recent.OK*(1-alpha)+OK_rate*alpha),
+                NG:(this.res_count_rate_recent.NG*(1-alpha)+NG_rate*alpha),
+                NA:(this.res_count_rate_recent.NA*(1-alpha)+NA_rate*alpha),
+              }
+              this.res_count_pre_time=currentTime_ms;
+              this.pre_res_count={...res_count};
+            }
+            else
+            {
+              this.pre_res_count=undefined;
+            }
+          }
+
+
+          if(this.pre_res_count===undefined)
+          {
+            this.pre_res_count={...res_count};
+            this.res_count_start_time=
+            this.res_count_pre_time=currentTime_ms;
+            
+            this.res_count_rate_overall={OK:0,NG:0,NA:0};
+            this.res_count_rate_recent={OK:0,NG:0,NA:0};
+
+
+          }
+          // console.log(this.res_count_rate_overall,this.res_count_rate_recent);
+
+          StoreX.dispatch({type:"WS_UPDATE",id:comp.props.uInsp_API_ID,machineStatus,result_count_rate_recent:this.res_count_rate_recent});
           this.PINGCount=0;
         },errorInfo=>console.log(errorInfo));
 
@@ -1419,7 +1487,7 @@ class APPMasterX extends React.Component {
                 {
                   this.setState({
                     modal_view:{
-                      view_fn:()=><UINSP_UI/>,
+                      view_fn:()=><UINSP_UI UI_INSP_Count={true} UI_INSP_Count_Rate={true} UI_Speed_Slider={true} UI_detail={true}/>,
                       title:"uInsp_API",
                       onCancel:()=>this.setState({modal_view:undefined}),
                       onOk:()=>this.setState({modal_view:undefined}),
@@ -1435,7 +1503,7 @@ class APPMasterX extends React.Component {
           />
           
           <>
-            <Divider>DEV MODE{this.props.System_Setting.version}</Divider>
+            <Divider>{this.props.System_Setting.version}</Divider>
             <pre>
               {JSON.stringify(this.props.System_Setting, null, 1)}
             </pre>

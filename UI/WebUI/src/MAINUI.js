@@ -811,10 +811,10 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
           <Popover 
             style={{"pointerEvents": "auto"}}
             content={
-            !isOK?null:
+            
             <QR_Canvas className="veleX" style={{height:"100%"}}
                     onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_w_info} />} 
-            trigger={!isOK?"??":"hover"}>
+            trigger={"hover"}>
             <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!isOK} icon={<QrcodeOutlined/> }/>
           </Popover>
 

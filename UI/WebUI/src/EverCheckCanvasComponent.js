@@ -2615,9 +2615,19 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
                   let targetID = eObj.id;
                   let inspMeasureTar = report.judgeReports.find((measure) => measure.id === targetID);
                   if (inspMeasureTar === undefined) break;
+                  // try{
                   eObj.detailStatus=inspMeasureTar.detailStatus;
-                  let tarColor= MEASURE_RESULT_VISUAL_INFO[inspMeasureTar.detailStatus].COLOR;
+                  let dStatus=inspMeasureTar.detailStatus;
+                  // console.log(dStatus);
+                  let tarColor= MEASURE_RESULT_VISUAL_INFO[dStatus].COLOR;
                   eObj.color = tarColor;
+
+                  // }
+                  // catch(e)
+                  // {
+                  //   console.log(e);
+                  //   ctx.fillStyle=MEASURE_RESULT_VISUAL_INFO[MEASURERSULTRESION.NA].COLOR;
+                  // }
 
                 }
 
@@ -2646,8 +2656,23 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
             return MEASURERSULTRESION_reducer(res, listEle.detailStatus);
           }, MEASURERSULTRESION.UOK);
 
-          ctx.fillStyle =MEASURE_RESULT_VISUAL_INFO[overallStat].COLOR;
         
+          // try{
+           
+          // console.log(overallStat);
+          if(overallStat===undefined)
+            ctx.fillStyle =MEASURE_RESULT_VISUAL_INFO[MEASURERSULTRESION.NA].COLOR;
+          else
+          {
+            ctx.fillStyle =MEASURE_RESULT_VISUAL_INFO[overallStat].COLOR;
+          }
+
+          // }
+          // catch(e)
+          // {
+          //   console.log(e);
+          //   ctx.fillStyle=MEASURE_RESULT_VISUAL_INFO[MEASURERSULTRESION.NA].COLOR;
+          // }
           // console.log(overallStat,ctx.fillStyle );
 
           ctx.strokeStyle = "black";
