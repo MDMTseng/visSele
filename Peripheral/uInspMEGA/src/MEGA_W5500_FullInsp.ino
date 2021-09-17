@@ -131,7 +131,7 @@ uint32_t PRPC= perRevPulseCount;
 
 uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4; 
 
-uint8_t g_max_frame_rate=25;
+uint8_t g_max_frame_rate=40;
 
 uint32_t state_pulseOffset[] = 
 //{
