@@ -648,18 +648,17 @@ class ObjInfoList extends React.Component {
     let fullScreenMODAL = <InspectionResultDisplay_FullScren {...this.state} resultMenuCopy={resultMenu} IR={reports} visible={this.state.fullScreen}
       onCancel={this.toggleFullscreen.bind(this)} width="90%" />;
 
-
     let uInspUI=this.props.uInsp_API_ID_CONN_INFO===undefined? null:
-    <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_SubMenu_Title_AutoHeight"
+    <SubMenu style={{ 'textAlign': 'left' }} key={"uInsp" } className="Antd_Menu_Title_AutoHeight Antd_Menu_Title_Padding_Left_small"
       title={
       <>
         <Divider orientation="center" key="divi" style={{ 'margin': '5px'}} className="Antd_Divider_Small_Text_Tight">全檢設備</Divider>
-        <UINSP_UI UI_INSP_Count={true}/>
+        <UINSP_UI UI_INSP_Count={true} UI_INSP_Count_font_size={15}/>
       </>}
       > 
         <div style={{margin:"15px"}}>
           <Divider orientation="left" style={{ 'margin': '2px',fontSize: "12px"}} >全檢速度(pcs/s)</Divider>
-          <UINSP_UI UI_INSP_Count_Rate={true}/>
+          <UINSP_UI UI_INSP_Count_Rate={true} UI_INSP_Count_font_size={15}/>
           <Divider orientation="left" style={{ 'margin': '10px 2px 2px 2px',fontSize: "12px"}} >轉盤速度(pulse/s)</Divider>
           <UINSP_UI UI_Speed_Slider={true}/>
           

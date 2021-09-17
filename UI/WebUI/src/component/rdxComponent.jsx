@@ -672,7 +672,7 @@ export const TagOptions_rdx = ({className,tagGroups=tagGroupsPreset,onFulfill,si
 
 
 
-export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_Speed_Slider=false,UI_detail=false})
+export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_Count_font_size=25,UI_Speed_Slider=false,UI_detail=false})
 {
   
   const dispatch = useDispatch();
@@ -700,9 +700,12 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_Speed_
     return "!!全檢儀器未連線!!";
   }
 
+  function leftFillNum(num, targetLength) {
+    return num.toString().padStart(targetLength, 0);
+  }
 
+  let res_count=machineStatus.res_count||{OK:0,NG:0,NA:0};
 
-  let res_count=machineStatus.res_count||{OK:"_",NG:"_",NA:"_"};
   let error_codes=machineStatus.error_codes||[];
   let len = error_codes.length;
   if(error_codes.length>10)
@@ -724,20 +727,20 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_Speed_
   let NAColor="#aaa";
 
   let tagStyle={
-    'fontSize': 25,
+    'fontSize': UI_INSP_Count_font_size,
 
   }
   // text-align: center; display:block;
   let insp_count=UI_INSP_Count==false?null:
   <>
     <Tag style={tagStyle}
-      color={OKColor}>{res_count.OK}
+      color={OKColor}>{leftFillNum(res_count.OK,5)}
       </Tag>
     <Tag style={tagStyle}
-      color={NGColor}>{res_count.NG}
+      color={NGColor}>{leftFillNum(res_count.NG,5)}
     </Tag>
     <Tag style={tagStyle}
-      color={NAColor}>{res_count.NA}
+      color={NAColor}>{leftFillNum(res_count.NA,5)}
     </Tag>
     </>
 
