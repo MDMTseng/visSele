@@ -1929,6 +1929,16 @@ int FeatureManager_sig360_circle_line::parse_jobj()
       this->matching_without_signature = false;
     }
 
+    single_result_area_ratio=-1;
+    
+    double *ratio = JFetch_NUMBER(root, "single_result_area_ratio");
+    if (ratio != NULL)
+    {
+      this->single_result_area_ratio = (float)*ratio;
+      LOGI("single_result_area_ratio:%f",this->single_result_area_ratio);
+    }
+
+
   }
 
   cJSON *featureList = cJSON_GetObjectItem(root, "features");
@@ -4131,6 +4141,21 @@ bool convertContourGrid2Signature
   return true;
 }
 
+FeatureManager_sig360_circle_line::~FeatureManager_sig360_circle_line()
+{
+  
+  for (int i = 0; i < reportDataPool.size(); i++)
+  {
+    delete reportDataPool[i].detectedCircles;
+    delete reportDataPool[i].detectedLines;
+    delete reportDataPool[i].detectedAuxPoints;
+    delete reportDataPool[i].detectedSearchPoints;
+    delete reportDataPool[i].judgeReports;
+  }
+  reportDataPool.resize(0);
+  reports.resize(0);
+}
+
 int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 {
   report.bacpac=bacpac;
@@ -4157,16 +4182,79 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   tmp_signature.RESET(feature_signature.signature_data.size());
   
   reports.resize(0);
+
+
+
+
+  int onlyIdx=-1;
+  if(single_result_area_ratio>0 && ldData.size()>=3)
+  {
+    onlyIdx=0;
+    int totalArea = ldData[1].area;
+    
+    LOGI("AREA 0:%d    1:%d", ldData[0].area, ldData[1].area); 
+    int maxArea= 0;
+    for(int i=2;i<ldData.size();i++)
+    {
+
+      LOGI("AREA[%d]:%d", i,ldData[i].area); 
+      totalArea+=ldData[i].area;
+      if(maxArea<ldData[i].area)
+      {
+        onlyIdx=i;
+        maxArea=ldData[i].area;
+      }
+    }
+
+    float ratio = (float)maxArea/totalArea;
+    
+    LOGI("RATIO:maxArea:%d totalArea:%d  ratio:%f",maxArea,totalArea,ratio); 
+    if(ratio<single_result_area_ratio || onlyIdx==-1)
+    {
+
+      return -1;
+    }
+
+  }
+
+
+  
+  int avaliable_ld_size=0;
+  int maxArea= 0;
+  {
+    for(int i=2;i<ldData.size();i++)
+    {
+      if(maxArea<ldData[i].area)
+      {
+        maxArea=ldData[i].area;
+      }
+    }
+
+    for(int i=2;i<ldData.size();i++)
+    {
+      if(ldData[i].area<maxArea*7/10)
+      {
+        // ldData[i].area=0;
+        ldData[i].misc=-1;//mark ignore
+      }
+      else
+      {
+        ldData[i].misc=1;
+        avaliable_ld_size++;
+      }
+    }
+
+  }
+
   int scanline_skip = 15;
 
   float sigma;
-  int count = 0;
 
   {
-    if (reportDataPool.size() < ldData.size())
+    if (reportDataPool.size() < avaliable_ld_size)//only expand
     {
       int oriSize = reportDataPool.size();
-      reportDataPool.resize(ldData.size());
+      reportDataPool.resize(avaliable_ld_size);
 
       for (int i = oriSize; i < reportDataPool.size(); i++)
       {
@@ -4180,11 +4268,16 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   }
 
   LOGV("ldData.size()=%d", ldData.size());
-  for (int i = 2; i < ldData.size(); i++, count++)
+  for (int i = 2; i < ldData.size(); i++)
   { // idx 0 is not a label, idx 1 is for outer frame and connected objects
     if (ldData[i].area < 300)//HACK: no particular reason, just a hack filter
       continue;
-
+    if (ldData[i].misc ==-1)//the ignore mark
+      continue;
+    if(onlyIdx>0 && i!=onlyIdx)
+    {
+      continue;
+    }
     //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
 
@@ -4248,11 +4341,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     float mmpp = bacpac->sampler->mmpP_ideal(); //mm per pixel
     FeatureReport_sig360_circle_line_single singleReport =
         {
-            .detectedCircles = reportDataPool[count].detectedCircles,
-            .detectedLines = reportDataPool[count].detectedLines,
-            .detectedAuxPoints = reportDataPool[count].detectedAuxPoints,
-            .detectedSearchPoints = reportDataPool[count].detectedSearchPoints,
-            .judgeReports = reportDataPool[count].judgeReports,
+            .detectedCircles = reportDataPool[reports.size()].detectedCircles,
+            .detectedLines = reportDataPool[reports.size()].detectedLines,
+            .detectedAuxPoints = reportDataPool[reports.size()].detectedAuxPoints,
+            .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
+            .judgeReports = reportDataPool[reports.size()].judgeReports,
             .LTBound = ldData[i].LTBound,
             .RBBound = ldData[i].RBBound,
             .Center = ldData[i].Center,
@@ -4286,7 +4379,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       singleReport,
       tmp_points,m_sections);
     if(ret==0)
+    {
       reports.push_back(singleReport);
+    }
   }
 
   { //convert pixel unit to mm

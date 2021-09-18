@@ -288,7 +288,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     }
 
 
-    ldData[1].area = 0;
+    ldData[1].area =intrusionObjectArea;
 
     //Delete the object that has less than certain amount of area on ldData
     //acvRemoveRegionLessThan(img, &ldData, 120);

@@ -154,6 +154,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float matching_angle_offset;
   int matching_face;
   bool matching_without_signature;
+  float single_result_area_ratio;
 
 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
@@ -167,11 +168,13 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
+  ~FeatureManager_sig360_circle_line();
   int reload(const char *json_str) override;
   int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
+  
 protected:
 
   //int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
