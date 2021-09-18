@@ -1481,7 +1481,6 @@ class APP_INSP_MODE extends React.Component {
       //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
       deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
       deffile.featureSet[0].matching_face=0;//By default, match two sides
-      
 
       this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
@@ -1489,6 +1488,7 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
+      // deffile.featureSet[0].single_result_area_ratio=0.9;
       this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
        }, undefined);
 
