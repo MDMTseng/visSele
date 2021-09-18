@@ -201,7 +201,10 @@ protected:
   float sine,float cosine,float flip_f,float thres,
   featureDef_searchPoint &def,edgeTracking &eT);
 
-  
+  int LineMatching_ReportGen(featureDef_line *plineDef,edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f,
+  FeatureReport_lineReport *ret_lineReport
+  );
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);
