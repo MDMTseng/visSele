@@ -3124,12 +3124,27 @@ bool isAngleInRegion(float angle, float from, float to)
   from = angle_0_to_2pi(from);
   to = angle_0_to_2pi(to);
 
-  LOGI("a:%f f:%f t:%f", angle * 180 / M_PI, from * 180 / M_PI, to * 180 / M_PI);
+  // LOGI("a:%f f:%f t:%f", angle * 180 / M_PI, from * 180 / M_PI, to * 180 / M_PI);
   if (to < from)
     to += 2 * M_PI;
   if (angle < from)
     angle += 2 * M_PI;
   return (angle >= to);
+}
+
+//normalized_thres default value is obtained threshold by test no absolute reason
+bool isErrPass(float error,ContourSignature &sig,float normalized_thres=0.1)
+{
+  float errThres2nd=(error / sig.mean);
+  
+  LOGI("error:%f sig.mean:%f errThres2nd:%f",error,sig.mean,errThres2nd);
+  if ((errThres2nd > normalized_thres))
+  {
+    return false;
+  }
+
+  return true;
+
 }
 
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
@@ -3148,6 +3163,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
   vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
+  edgeTracking eT(originalImage, bacpac);
   // acvDrawCrossX(originalImage,
   //   calibCen.X, calibCen.Y,
   //   3, 3);
@@ -3155,11 +3171,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   bool drawDBG_IMG = false;
   float thres = 80; //OTSU_Threshold(*smoothedImg, &ldData[i], 3);
   //LOGV("OTSU_Threshold:%f", thres);
-
-  contourGridGrayLevelRefine(originalImage, edge_grid, bacpac);
-
-  edgeTracking eT(originalImage, bacpac);
-
+  float minErr=__FLT_MAX__;
   float ignoreErr = 100000;
   bool isInv = false;
   float angle = NAN;
@@ -3188,6 +3200,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       {
         minMatchErr[i].Y = ignoreErr;
       }
+      else
+      {
+        if(minErr>preErr)
+        {
+          minErr=preErr;
+        }
+      }
       LOGI("F %f: %f>%f", minMatchErr[i].X, preErr, minMatchErr[i].Y);
 
       // minMatchErr[i].Y+=0.005723;
@@ -3201,12 +3220,28 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       {
         minMatchErr_bk[i].Y = ignoreErr;
       }
+      else
+      {
+        if(minErr>preErr)
+        {
+          minErr=preErr;
+        }
+      }
       LOGI("B %f: %f>%f", minMatchErr_bk[i].X, preErr, minMatchErr_bk[i].Y);
     }
   }
 
-  float error = NAN;
 
+  if(isErrPass(sqrt(minErr),feature_signature)==false)//if the minimum err still not pass, then, early stop the following procesure
+  {
+    return -30;
+  }
+
+
+  contourGridGrayLevelRefine(originalImage, edge_grid, bacpac);
+
+
+  float error = NAN;
   // if(minMatchErr.size()>=1)
   // {
   //   minMatchErr[0].Y=ignoreErr;
@@ -3281,11 +3316,12 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
            lableIdx, ldData[lableIdx].Center.X, ldData[lableIdx].Center.Y, ldData[lableIdx].area, error, isInv, angle * 180 / 3.14159);
     }
 
-    if (error > 2 || ((error / feature_signature.mean) > 1))
+    if(isErrPass(error,feature_signature)==false)
     {
       LOGE("error:%f", error);
       return -3;
     }
+
 
     if (0) //test angle variation
     {
