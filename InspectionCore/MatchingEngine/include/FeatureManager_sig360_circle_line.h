@@ -192,9 +192,6 @@ protected:
   float sine,float cosine,float flip_f,
   FeatureReport_judgeDef &judge);
 
-  FeatureReport_auxPointReport auxPoint_process(FeatureReport_sig360_circle_line_single &report,
-  float sine,float cosine,float flip_f,
-  featureDef_auxPoint &def);
 
   FeatureReport_searchPointReport searchPoint_process(
   FeatureReport_sig360_circle_line_single &report, acv_XY center,
@@ -213,6 +210,18 @@ protected:
   edgeTracking &eT,
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
 
+
+  FeatureReport_auxPointReport APointMatching_ReportGen(
+  featureDef_auxPoint *def,
+  FeatureReport_sig360_circle_line_single &singleReport,
+  float sine,float cosine,float flip_f
+  );
+
+  FeatureReport_judgeReport Judge_ReportGen(
+    FeatureReport_judgeDef *def,
+    FeatureReport_sig360_circle_line_single &singleReport,
+    float sine,float cosine,float flip_f
+  );
 
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);

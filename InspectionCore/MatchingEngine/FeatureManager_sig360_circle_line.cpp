@@ -1122,22 +1122,49 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
   return judgeReport;
 }
 
-FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process(FeatureReport_sig360_circle_line_single &report,
-                                                                                 float sine, float cosine, float flip_f,
-                                                                                 featureDef_auxPoint &def)
+
+
+FeatureReport_judgeReport FeatureManager_sig360_circle_line::Judge_ReportGen(
+  FeatureReport_judgeDef *def,
+  FeatureReport_sig360_circle_line_single &singleReport,
+  float cached_sin,float cached_cos,float flip_f)
 {
 
+  FeatureReport_judgeDef judge = *def;
+  FeatureReport_judgeReport report = measure_process(singleReport, cached_sin, cached_cos, flip_f, judge);
+  report.def = def;
+  return report;
+}
+
+FeatureReport_auxPointReport FeatureManager_sig360_circle_line::APointMatching_ReportGen(  
+  featureDef_auxPoint *def,
+  FeatureReport_sig360_circle_line_single &singleReport,
+  float sine,float cosine,float flip_f
+  )
+{
+
+
+
+      // featureDef_auxPoint &apoint = *detectedAuxPoints[j].def;
+      // if (apoint.subtype == featureDef_auxPoint::lineCross)
+      // {
+      //   //No value to convert, id only
+      // }
+      // else if (apoint.subtype == featureDef_auxPoint::centre)
+      // {
+      //   //No value to convert, id only
+      // }
   FeatureReport_auxPointReport rep;
   rep.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
-  rep.def = &def;
-  switch (def.subtype)
+  rep.def = def;
+  switch (def->subtype)
   {
   case featureDef_auxPoint::lineCross:
   {
     acv_XY cross;
-    int ret = lineCrossPosition(flip_f, report,
-                                def.data.lineCross.line1_id,
-                                def.data.lineCross.line2_id, &cross);
+    int ret = lineCrossPosition(flip_f, singleReport,
+                                def->data.lineCross.line1_id,
+                                def->data.lineCross.line2_id, &cross);
     if (ret < 0)
     {
       return rep;
@@ -1150,14 +1177,14 @@ FeatureReport_auxPointReport FeatureManager_sig360_circle_line::auxPoint_process
 
   case featureDef_auxPoint::centre:
   {
-    if (this->signature_feature_id == def.data.centre.obj1_id)
+    if (this->signature_feature_id == def->data.centre.obj1_id)
     {
       rep.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-      rep.pt = report.Center;
+      rep.pt = singleReport.Center;
       return rep;
     }
     acv_XY retXY;
-    int ret_val = ParseLocatePosition(report, def.data.centre.obj1_id, &retXY);
+    int ret_val = ParseLocatePosition(singleReport, def->data.centre.obj1_id, &retXY);
     if (ret_val != 0)
     {
       return rep;
@@ -3843,19 +3870,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
     for (int j = 0; j < auxPointList.size(); j++)
     {
-      featureDef_auxPoint apoint = auxPointList[j];
-      if (apoint.subtype == featureDef_auxPoint::lineCross)
-      {
-        //No value to convert, id only
-      }
-      else if (apoint.subtype == featureDef_auxPoint::centre)
-      {
-        //No value to convert, id only
-      }
-
-      FeatureReport_auxPointReport report = auxPoint_process(singleReport, cached_sin, cached_cos, flip_f, apoint);
-      report.def = &(auxPointList[j]);
-      detectedAuxPoints[j]=report;
+      detectedAuxPoints[j] = APointMatching_ReportGen(detectedAuxPoints[j].def,singleReport, cached_sin, cached_cos, flip_f);
     }
 
     {
@@ -3897,12 +3912,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
     {
 
-      for (int j = 0; j < judgeList.size(); j++)
+      for (int j = 0; j < judgeReports.size(); j++)
       {
-        FeatureReport_judgeDef judge = judgeList[j];
-        FeatureReport_judgeReport report = measure_process(singleReport, cached_sin, cached_cos, flip_f, judge);
-        report.def = &(judgeList[j]);
-        judgeReports[j]=report;
+
+        judgeReports[j] = Judge_ReportGen(
+          judgeReports[j].def,
+          singleReport, cached_sin, cached_cos, flip_f);
+    
       }
 
       //Since the CALC might bring unset result, we need to try to clean up the unset state
