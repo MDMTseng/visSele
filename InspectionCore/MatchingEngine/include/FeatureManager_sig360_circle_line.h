@@ -226,6 +226,11 @@ protected:
     FeatureReport_sig360_circle_line_single &singleReport,
     float sine,float cosine,float flip_f
   );
+  
+  int TreeExecution(int id,
+    FeatureReport_sig360_circle_line_single &singleReport,
+    edgeTracking &eT,
+    acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
 
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);

@@ -3565,6 +3565,213 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
 
 
 
+int FeatureManager_sig360_circle_line::TreeExecution(int id,
+  FeatureReport_sig360_circle_line_single &singleReport,
+  edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f)
+{
+  LOGI("ID:%d",id);
+
+  
+  for(int i=0;i<singleReport.detectedLines->size();i++)
+  {
+    FeatureReport_lineReport &rep=(*singleReport.detectedLines)[i];
+    
+    if(rep.def->id!=id)continue;
+    if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+    {
+      LOGI("=>LI:%d:%d",id,rep.status);
+      return rep.status;
+    }
+
+    rep= LineMatching_ReportGen(
+      rep.def,eT,
+      calibCen, mmpp, cached_cos, cached_sin, flip_f);
+
+    LOGI("LI:%d:%d",id,rep.status);
+    return rep.status;
+    
+  }
+  for(int i=0;i<singleReport.detectedCircles->size();i++)
+  {
+    FeatureReport_circleReport &rep=(*singleReport.detectedCircles)[i];
+
+    if(rep.def->id!=id)continue;
+    if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+    {
+      LOGI("=>CI:%d:%d",id,rep.status);
+      return rep.status;
+    }
+
+    rep=CircleMatching_ReportGen(
+        rep.def,
+        eT,
+        calibCen,mmpp,cached_cos,cached_sin,flip_f);
+    LOGI("CI:%d:%d",id,rep.status);
+    return rep.status;
+  
+  }
+  
+  for(int i=0;i<singleReport.detectedAuxPoints->size();i++)
+  {
+    FeatureReport_auxPointReport &rep=(*singleReport.detectedAuxPoints)[i];
+
+    if(rep.def->id!=id)continue;
+    if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+    {
+      LOGI("=>AP:%d:%d",id,rep.status);
+      return rep.status;
+    }
+
+    switch(rep.def->subtype)
+    {
+      case featureDef_auxPoint::lineCross:
+      {
+        int id1_status=
+          TreeExecution(rep.def->data.lineCross.line1_id,
+            singleReport,eT,
+            calibCen, mmpp,cached_cos, cached_sin, flip_f);
+
+        int id2_status=
+          TreeExecution(rep.def->data.lineCross.line2_id,
+            singleReport,eT,
+            calibCen, mmpp,cached_cos, cached_sin, flip_f);
+        
+        break;
+      }
+      
+      case featureDef_auxPoint::centre:
+      {
+        int id1_status=
+          TreeExecution(rep.def->data.centre.obj1_id,
+            singleReport,eT,
+            calibCen, mmpp,cached_cos, cached_sin, flip_f);
+        break;
+      }
+    }
+
+
+
+    rep = APointMatching_ReportGen(rep.def,singleReport, cached_sin, cached_cos, flip_f);
+    LOGI("AP:%d:%d",id,rep.status);
+    return rep.status;
+  
+  }
+  
+  for(int i=0;i<singleReport.detectedSearchPoints->size();i++)
+  {
+    FeatureReport_searchPointReport &rep=(*singleReport.detectedSearchPoints)[i];
+    if(rep.def->id!=id)continue;
+    if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+    {
+      
+      LOGI("=>SP:%d:%d",id,rep.status);
+      return rep.status;
+    }
+    rep=
+      SPointMatching_ReportGen(
+        rep.def,
+        singleReport,
+        eT,
+        calibCen,mmpp,cached_cos,cached_sin,flip_f);
+
+
+    LOGI("SP:%d:%d",id,rep.status);
+    return rep.status;
+    
+  }
+  
+  for(int i=0;i<singleReport.judgeReports->size();i++)
+  {
+    FeatureReport_judgeReport &rep=(*singleReport.judgeReports)[i];
+    if(rep.def->id!=id)continue;
+    
+    if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+    {
+      LOGI("=>JU:%d:%d",id,rep.status);
+      return rep.status;
+    }
+
+    if(rep.def->OBJ1_id>=0){
+      TreeExecution(rep.def->OBJ1_id,
+        singleReport,eT,
+        calibCen, mmpp,cached_cos, cached_sin, flip_f);
+    }
+    if(rep.def->OBJ2_id>=0){
+      TreeExecution(rep.def->OBJ2_id,
+        singleReport,eT,
+        calibCen, mmpp,cached_cos, cached_sin, flip_f);
+    }
+
+
+    if(rep.def->id==id)
+    {
+      switch(rep.def->measure_type )
+      {
+        case FeatureReport_judgeDef::ANGLE:
+        break;
+        case FeatureReport_judgeDef::DISTANCE:
+        break;
+        case FeatureReport_judgeDef::RADIUS:
+        break;
+        case FeatureReport_judgeDef::CALC:
+          for (int j = 0; j < rep.def->data.CALC.post_exp.size(); j++)
+          {
+            const string post_exp = rep.def->data.CALC.post_exp[j];
+            //LOGI("post_exp[%d]:%s",i,post_exp.c_str());
+
+            int id_exp = parse_CALC_Id(post_exp.c_str());
+            if (id_exp >= 0)
+            {
+              LOGI("C_EXP[%d] __ID:%d  << %s",j,id_exp,post_exp.c_str());
+              TreeExecution(id_exp,
+                singleReport,eT,
+                calibCen, mmpp,cached_cos, cached_sin, flip_f);
+            }
+          }
+        break;
+        case FeatureReport_judgeDef::ROUGHNESS:
+          
+        break;
+        case FeatureReport_judgeDef::CIRCLE_INFO:
+          
+        break;
+    //         NA,
+    // AREA,
+    // SIGMA,
+    // DISTANCE,
+    // RADIUS,
+    // CALC,
+    // CIRCLE_INFO,
+    // ROUGHNESS,
+      }
+
+
+
+
+
+      rep= Judge_ReportGen(
+        rep.def,
+        singleReport, cached_sin, cached_cos, flip_f);
+  
+      LOGI("JU:%d:%d",id,rep.status);
+
+      return rep.status;
+
+
+
+
+    }
+  }
+  return FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+}
+
+
+
+
+
+
+
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
                                                       acvImage *labeledBuff, acvImage *binarizedBuff, acvImage *buffer_img,
                                                       int lableIdx, acv_LabeledData *ldData,
@@ -3837,6 +4044,9 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       }
     }
 
+
+    // TreeExecution(7,singleReport,eT,
+    //   calibCen, mmpp, cached_cos, cached_sin, flip_f);
     // for (int j = 0; j < detectedSearchPoints.size(); j++)
     // {
     //   featureDef_searchPoint spoint = *detectedSearchPoints[j].def;
