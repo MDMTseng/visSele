@@ -2890,6 +2890,10 @@ acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt, float sin, float cosin, float
 
 acv_XY ConstrainMap::convert_polar(acv_XY from)
 {
+  if(anchorPairs.size()==0)
+  {
+    return from;
+  }
   float magSum = 0;
   float magWSum = 0;
 
@@ -3161,6 +3165,337 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   report.def = def;
   return report;
 
+}
+
+
+
+FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_ReportGen(
+  featureDef_circle *plineDef,edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f)
+{
+
+  featureDef_circle &cdef = *plineDef;
+
+  float ppmm=1/mmpp;
+  acv_XY m_pt1 = cm.convert(cdef.pt1);
+  acv_XY m_pt2 = cm.convert(cdef.pt2);
+  acv_XY m_pt3 = cm.convert(cdef.pt3);
+
+  m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
+  m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
+  m_pt3 = acvRotation(cached_sin, cached_cos, flip_f, m_pt3);
+
+  m_pt1 = acvVecMult(m_pt1, ppmm);
+  m_pt2 = acvVecMult(m_pt2, ppmm);
+  m_pt3 = acvVecMult(m_pt3, ppmm);
+
+  m_pt1 = acvVecAdd(m_pt1, calibCen);
+  m_pt2 = acvVecAdd(m_pt2, calibCen);
+  m_pt3 = acvVecAdd(m_pt3, calibCen);
+
+  arc_data arcD = convert3Pts2ArcData(m_pt1, m_pt2, m_pt3);
+
+  float initMatchingMargin = cdef.initMatchingMargin / ppmm;
+
+  int matching_tor = initMatchingMargin;
+
+  //LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
+
+  acv_XY center = arcD.circleTar.circumcenter;
+  float sAngle = arcD.sAngle, eAngle = arcD.eAngle;
+  float radius = arcD.circleTar.radius;
+
+  // acvDrawCrossX(originalImage,
+  //               center.X, center.Y,
+  //               4, 255,255,255);
+  LOGI("flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f", flip_f, radius, sAngle, eAngle,center.X,
+      center.Y);
+  //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.X,center.Y,cdef.circleTar.radius,ppmm,radius);
+  edge_grid.getContourPointsWithInCircleContour(
+      center.X,
+      center.Y,
+      radius,
+      sAngle, eAngle, cdef.outter_inner,
+      matching_tor, m_sections);
+
+  acv_CircleFit cf;
+  FeatureReport_circleReport cr;
+
+  cdef.tmp_pt.clear();
+  cr.pt1 = cr.pt2 = cr.pt3 = (acv_XY){NAN, NAN};
+  cr.def = plineDef;
+  if (m_sections.size() == 0)
+  {
+
+    LOGE("Circle matching failed: resultR:%f defR:%f",
+          cf.circle.radius, arcD.circleTar.radius);
+    cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+    return cr;
+  }
+
+  std::sort(m_sections.begin(), m_sections.end(),
+            [](const ContourFetch::contourMatchSec &a, const ContourFetch::contourMatchSec &b) -> bool
+            {
+              return a.sigma < b.sigma;
+            });
+
+  // for (auto &secInfo : m_sections)
+  // {
+
+  //   eT.initTracking(secInfo,0);
+  //   // eT.initTracking(secInfo,3);
+  //   LOGI("secInfo.sigma:%f", secInfo.sigma);
+  // }
+  tmp_points.clear();
+  for (int k = 0; k < m_sections.size(); k++)
+  {
+
+    eT.initTracking(m_sections[k], 0);
+    vector<ContourFetch::ptInfo> &s_points = m_sections[k].section;
+    // LOGI("secInfo[%d].sigma:%f size:%d",k, m_sections[k].sigma, m_sections[k].section.size());
+    // for (int i = 0; i < s_points.size(); i++)
+    // {
+    //   acv_XY p = s_points[i].pt;
+    //   bacpac->sampler->ideal2img(&p);
+    //   int X = round(p.X);
+    //   int Y = round(p.Y);
+    //   {
+    //     originalImage->CVector[Y][X * 3] = i*(k+1)*10;
+    //     originalImage->CVector[Y][X * 3 + 1] = 255;
+    //     originalImage->CVector[Y][X * 3 + 2] = 255;
+    //   }
+    // }
+    for (int i = 0; i < s_points.size(); i++)
+    {
+      tmp_points.push_back(s_points[i]);
+    }
+  }
+  vector<ContourFetch::ptInfo> &s_points = tmp_points;
+
+  // LOGI("NAN:  C=%d==",j);
+  // for(int m=0;m<s_points.size();m++)
+  // {
+  //   LOGI("XY:%f %f  >> %f %f   edgeRsp:%f",s_points[m].sobel.X,s_points[m].sobel.Y,s_points[m].pt.X,s_points[m].pt.Y,s_points[m].edgeRsp);
+  // }
+
+  circleRefine(s_points, s_points.size(), &cf);
+
+  if (s_points.size() > 30 && false)
+  {
+    acv_CircleFit best_cf = cf;
+    float minSigmaScore = 99999;
+    for (int m = 0; m < 10; m++)
+    {
+      int sampleL = s_points.size() / 7 + 3;
+      for (int k = 0; k < sampleL; k++) //Shuffle in
+      {
+        int idx2Swap = (rand() % (s_points.size() - k)) + k;
+
+        ContourFetch::ptInfo tmp_pt = s_points[k];
+        s_points[k] = s_points[idx2Swap];
+        s_points[idx2Swap] = tmp_pt;
+        //s_points[j].edgeRsp=1;
+      }
+      circleRefine(s_points, sampleL, &cf);
+
+      int sigma_count = 0;
+      float sigma_sum = 0;
+      for (int k = 0; k < sampleL; k++) //Shuffle in
+      {
+        float dist = acvDistance(cf.circle, s_points[k].pt);
+        if (dist > 3)
+        {
+          //s_points[j].edgeRsp=0;
+          continue;
+        }
+        sigma_count++;
+        sigma_sum += dist * dist;
+      }
+      sigma_sum = sqrt(sigma_sum / sigma_count) / (sigma_count + 1);
+
+      if (minSigmaScore > sigma_sum)
+      {
+        minSigmaScore = sigma_sum;
+        best_cf = cf;
+      }
+    }
+    cf = best_cf;
+
+    for (int n = 0; n < s_points.size(); n++)
+    {
+      float dist = acvDistance_Signed(cf.circle, s_points[n].pt);
+      s_points[n].tmp = dist;
+    }
+    std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
+
+    int usable_L = s_points.size() * 2 / 3;
+    float distThres = s_points[usable_L].tmp + 1;
+    LOGV("sort finish size:%d, distThres:%f", s_points.size(), distThres);
+    for (int n = usable_L; n < s_points.size(); n++)
+    {
+      usable_L = n;
+      if (s_points[n].tmp > distThres)
+        break;
+    }
+    circleRefine(s_points, usable_L, &cf);
+  }
+
+  float minTor = matching_tor / 2;
+  if (minTor < 1)
+    minTor = 1;
+
+  // LOGI("s_points.size():%d  r:%f", s_points.size(),cf.circle.radius);
+  cr.circle = cf;
+  cr.def = &cdef;
+
+  // LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f",
+  //      j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius);
+
+  if (cf.circle.radius != cf.circle.radius) //check NaN
+  {
+    cr.def = plineDef;
+    // LOGI("Circle search failed: resultR:%f defR:%f",
+    //      cf.circle.radius, cdef.circleTar.radius);
+    cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
+    return cr;
+  }
+
+  // if (drawDBG_IMG)
+  // {
+
+  //   acvDrawCrossX(originalImage,
+  //                 center.X, center.Y,
+  //                 3, 3);
+
+  //   acvDrawCrossX(originalImage,
+  //                 cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
+  //                 5, 3);
+
+  //   acvDrawCircle(originalImage,
+  //                 cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
+  //                 cf.circle.radius,
+  //                 20, 255, 0, 0);
+  // }
+
+  if (1)
+  { //find the max & min  dist
+    acv_XY center = cf.circle.circumcenter;
+    const int angleRes = 360;
+    float RArray[angleRes] = {-1};
+
+    for (int k = 0; k < angleRes; k++)
+    {
+      RArray[k] = -1;
+    }
+    for (auto _pt : s_points)
+    {
+      // LOGI("pt:%0.2f,%0.2f,center:%0.2f,%0.2f",_pt.X,_pt.Y,center.X,center.Y);
+      acv_XY pt = acvVecSub(_pt.pt, center);
+      float theta_deg = atan2(pt.Y, pt.X) * 180 / M_PI;
+      if (theta_deg < 0)
+      {
+        theta_deg += 360;
+      }
+      int thdegInt = (int)(theta_deg * angleRes / 360);
+      if (thdegInt >= angleRes)
+        thdegInt -= angleRes;
+
+      float mag = hypot(pt.Y, pt.X);
+      if (RArray[thdegInt] < mag)
+      {
+        RArray[thdegInt] = mag;
+      }
+    }
+
+    const float angleStep = 2 * M_PI / angleRes;
+    const int angleSweepHS = 2; //-2 -1 0 1 2
+    // float cosTable[angleSweepHS+1];
+    // for(int k=0;k<=angleSweepHS;k++)
+    // {
+    //   cosTable[k]=cos(M_PI-k*angleStep);
+    // }
+
+    float maxDArray[angleRes / 2] = {-1};
+    float minDArray[angleRes / 2] = {-1};
+    float maxD = -1;
+    float minD = __FLT_MAX__;
+
+    //c^2=a^2+b^2-2ab cos(theda)
+    for (int k = 0; k < angleRes / 2; k++)
+    {
+      float a = RArray[k];
+      if (a < 0)
+        continue;
+      float maxC = -1;
+      float minC = __FLT_MAX__;
+      float _b = RArray[k + angleRes / 2];
+      for (int m = -angleSweepHS; m <= angleSweepHS; m++)
+      {
+        int absm = m;
+        if (absm < 0)
+          absm = -absm;
+        int idx2 = k + angleRes / 2 + m;
+        if (idx2 >= angleRes)
+          idx2 -= angleRes;
+        float b = RArray[idx2];
+        if (b < 0)
+          continue;
+        // float c = sqrt(a*a+b*b+2*a*b*cosTable[absm]);
+        float c = a + b;
+
+        // LOGI("a:%f,b:%f,c:%f",a,b,c);
+        if (maxC < c)
+          maxC = c;
+        if (minC > c)
+          minC = c;
+      }
+      // LOGI("maxC[%d]:%f  a:%f,b:%f",k,maxC,a,_b);
+      if (maxC != -1)
+      {
+        maxDArray[k] = maxC;
+        if (maxD < maxC)
+          maxD = maxC;
+        if (minD > maxC)
+          minD = maxC;
+      }
+      if (minC != -1)
+      {
+        minDArray[k] = minC;
+      }
+    }
+
+    cr.maxD = (maxD == -1) ? NAN : maxD;
+    cr.minD = (minD == __FLT_MAX__) ? NAN : minD;
+    LOGI("C===maxD:%f minD:%f", cr.maxD, cr.minD);
+
+    for (auto pt : s_points)
+    {
+      cdef.tmp_pt.push_back(pt);
+    }
+    float rMIN, rMAX, rRMSE;
+    roughness(cdef.tmp_pt, 5, &rMIN, &rMAX, &rRMSE);
+    cr.roughness_MIN = rMIN;
+    cr.roughness_MAX = rMAX;
+    cr.roughness_RMSE = rRMSE;
+    LOGI("C===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
+          cf.circle.radius, cf.circle.circumcenter.X, cf.circle.circumcenter.Y, radius, rMIN, rMAX, rRMSE);
+  }
+
+  cr.pt1 = acvClosestPointOnCircle(m_pt1, cf.circle);
+  cr.pt2 = acvClosestPointOnCircle(m_pt2, cf.circle);
+  cr.pt3 = acvClosestPointOnCircle(m_pt3, cf.circle);
+
+  if (cf.circle.radius < radius - initMatchingMargin ||
+      cf.circle.radius > radius + initMatchingMargin)
+  {
+    cr.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
+  }
+  else
+  {
+    cr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
+  }
+  cr.def = plineDef;
+  return cr;
 }
 
 FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportGen(
@@ -3544,328 +3879,12 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     for (int j = 0; j < featureCircleList.size(); j++)
     {
 
-      featureDef_circle &cdef = featureCircleList[j];
-      acv_XY m_pt1 = cm.convert(cdef.pt1);
-      acv_XY m_pt2 = cm.convert(cdef.pt2);
-      acv_XY m_pt3 = cm.convert(cdef.pt3);
+      detectedCircles[j]=CircleMatching_ReportGen(
+          detectedCircles[j].def,
+          eT,
+          calibCen,mmpp,cached_cos,cached_sin,flip_f);
 
-      m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
-      m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
-      m_pt3 = acvRotation(cached_sin, cached_cos, flip_f, m_pt3);
 
-      m_pt1 = acvVecMult(m_pt1, ppmm);
-      m_pt2 = acvVecMult(m_pt2, ppmm);
-      m_pt3 = acvVecMult(m_pt3, ppmm);
-
-      m_pt1 = acvVecAdd(m_pt1, calibCen);
-      m_pt2 = acvVecAdd(m_pt2, calibCen);
-      m_pt3 = acvVecAdd(m_pt3, calibCen);
-
-      arc_data arcD = convert3Pts2ArcData(m_pt1, m_pt2, m_pt3);
-
-      float initMatchingMargin = cdef.initMatchingMargin * ppmm;
-
-      int matching_tor = initMatchingMargin;
-
-      //LOGV("flip_f:%f angle:%f sAngle:%f  eAngle:%f",flip_f,angle,cdef.sAngle,cdef.eAngle);
-
-      acv_XY center = arcD.circleTar.circumcenter;
-      float sAngle = arcD.sAngle, eAngle = arcD.eAngle;
-      float radius = arcD.circleTar.radius;
-
-      // acvDrawCrossX(originalImage,
-      //               center.X, center.Y,
-      //               4, 255,255,255);
-      // LOGI("flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f", flip_f, radius, sAngle, eAngle,center.X,
-      //     center.Y);
-      //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.X,center.Y,cdef.circleTar.radius,ppmm,radius);
-      edge_grid.getContourPointsWithInCircleContour(
-          center.X,
-          center.Y,
-          radius,
-          sAngle, eAngle, cdef.outter_inner,
-          matching_tor, m_sections);
-
-      acv_CircleFit cf;
-      FeatureReport_circleReport cr;
-
-      cdef.tmp_pt.clear();
-      cr.pt1 = cr.pt2 = cr.pt3 = (acv_XY){NAN, NAN};
-      cr.def = &cdef;
-      if (m_sections.size() == 0) //check NaN
-      {
-
-        LOGE("Circle matching failed: resultR:%f defR:%f",
-             cf.circle.radius, arcD.circleTar.radius);
-        cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
-        detectedCircles.push_back(cr);
-        continue;
-      }
-
-      std::sort(m_sections.begin(), m_sections.end(),
-                [](const ContourFetch::contourMatchSec &a, const ContourFetch::contourMatchSec &b) -> bool
-                {
-                  return a.sigma < b.sigma;
-                });
-
-      // for (auto &secInfo : m_sections)
-      // {
-
-      //   eT.initTracking(secInfo,0);
-      //   // eT.initTracking(secInfo,3);
-      //   LOGI("secInfo.sigma:%f", secInfo.sigma);
-      // }
-      tmp_points.clear();
-      for (int k = 0; k < m_sections.size(); k++)
-      {
-
-        eT.initTracking(m_sections[k], 0);
-        vector<ContourFetch::ptInfo> &s_points = m_sections[k].section;
-        // LOGI("secInfo[%d].sigma:%f size:%d",k, m_sections[k].sigma, m_sections[k].section.size());
-        // for (int i = 0; i < s_points.size(); i++)
-        // {
-        //   acv_XY p = s_points[i].pt;
-        //   bacpac->sampler->ideal2img(&p);
-        //   int X = round(p.X);
-        //   int Y = round(p.Y);
-        //   {
-        //     originalImage->CVector[Y][X * 3] = i*(k+1)*10;
-        //     originalImage->CVector[Y][X * 3 + 1] = 255;
-        //     originalImage->CVector[Y][X * 3 + 2] = 255;
-        //   }
-        // }
-        for (int i = 0; i < s_points.size(); i++)
-        {
-          tmp_points.push_back(s_points[i]);
-        }
-      }
-      vector<ContourFetch::ptInfo> &s_points = tmp_points;
-
-      // LOGI("NAN:  C=%d==",j);
-      // for(int m=0;m<s_points.size();m++)
-      // {
-      //   LOGI("XY:%f %f  >> %f %f   edgeRsp:%f",s_points[m].sobel.X,s_points[m].sobel.Y,s_points[m].pt.X,s_points[m].pt.Y,s_points[m].edgeRsp);
-      // }
-
-      circleRefine(s_points, s_points.size(), &cf);
-
-      if (s_points.size() > 30 && false)
-      {
-        acv_CircleFit best_cf = cf;
-        float minSigmaScore = 99999;
-        for (int m = 0; m < 10; m++)
-        {
-          int sampleL = s_points.size() / 7 + 3;
-          for (int k = 0; k < sampleL; k++) //Shuffle in
-          {
-            int idx2Swap = (rand() % (s_points.size() - k)) + k;
-
-            ContourFetch::ptInfo tmp_pt = s_points[k];
-            s_points[k] = s_points[idx2Swap];
-            s_points[idx2Swap] = tmp_pt;
-            //s_points[j].edgeRsp=1;
-          }
-          circleRefine(s_points, sampleL, &cf);
-
-          int sigma_count = 0;
-          float sigma_sum = 0;
-          for (int k = 0; k < sampleL; k++) //Shuffle in
-          {
-            float dist = acvDistance(cf.circle, s_points[k].pt);
-            if (dist > 3)
-            {
-              //s_points[j].edgeRsp=0;
-              continue;
-            }
-            sigma_count++;
-            sigma_sum += dist * dist;
-          }
-          sigma_sum = sqrt(sigma_sum / sigma_count) / (sigma_count + 1);
-
-          if (minSigmaScore > sigma_sum)
-          {
-            minSigmaScore = sigma_sum;
-            best_cf = cf;
-          }
-        }
-        cf = best_cf;
-
-        for (int n = 0; n < s_points.size(); n++)
-        {
-          float dist = acvDistance_Signed(cf.circle, s_points[n].pt);
-          s_points[n].tmp = dist;
-        }
-        std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
-
-        int usable_L = s_points.size() * 2 / 3;
-        float distThres = s_points[usable_L].tmp + 1;
-        LOGV("sort finish size:%d, distThres:%f", s_points.size(), distThres);
-        for (int n = usable_L; n < s_points.size(); n++)
-        {
-          usable_L = n;
-          if (s_points[n].tmp > distThres)
-            break;
-        }
-        circleRefine(s_points, usable_L, &cf);
-      }
-
-      float minTor = matching_tor / 2;
-      if (minTor < 1)
-        minTor = 1;
-
-      // LOGI("s_points.size():%d  r:%f", s_points.size(),cf.circle.radius);
-      cr.circle = cf;
-      cr.def = &cdef;
-
-      // LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f",
-      //      j, cf.circle.radius,cf.circle.circumcenter.X ,cf.circle.circumcenter.Y,radius);
-
-      if (cf.circle.radius != cf.circle.radius) //check NaN
-      {
-
-        // LOGI("Circle search failed: resultR:%f defR:%f",
-        //      cf.circle.radius, cdef.circleTar.radius);
-        cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
-        detectedCircles.push_back(cr);
-        continue;
-      }
-
-      if (drawDBG_IMG)
-      {
-
-        acvDrawCrossX(originalImage,
-                      center.X, center.Y,
-                      3, 3);
-
-        acvDrawCrossX(originalImage,
-                      cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
-                      5, 3);
-
-        acvDrawCircle(originalImage,
-                      cf.circle.circumcenter.X, cf.circle.circumcenter.Y,
-                      cf.circle.radius,
-                      20, 255, 0, 0);
-      }
-
-      if (1)
-      { //find the max & min  dist
-        acv_XY center = cf.circle.circumcenter;
-        const int angleRes = 360;
-        float RArray[angleRes] = {-1};
-
-        for (int k = 0; k < angleRes; k++)
-        {
-          RArray[k] = -1;
-        }
-        for (auto _pt : s_points)
-        {
-          // LOGI("pt:%0.2f,%0.2f,center:%0.2f,%0.2f",_pt.X,_pt.Y,center.X,center.Y);
-          acv_XY pt = acvVecSub(_pt.pt, center);
-          float theta_deg = atan2(pt.Y, pt.X) * 180 / M_PI;
-          if (theta_deg < 0)
-          {
-            theta_deg += 360;
-          }
-          int thdegInt = (int)(theta_deg * angleRes / 360);
-          if (thdegInt >= angleRes)
-            thdegInt -= angleRes;
-
-          float mag = hypot(pt.Y, pt.X);
-          if (RArray[thdegInt] < mag)
-          {
-            RArray[thdegInt] = mag;
-          }
-        }
-
-        const float angleStep = 2 * M_PI / angleRes;
-        const int angleSweepHS = 2; //-2 -1 0 1 2
-        // float cosTable[angleSweepHS+1];
-        // for(int k=0;k<=angleSweepHS;k++)
-        // {
-        //   cosTable[k]=cos(M_PI-k*angleStep);
-        // }
-
-        float maxDArray[angleRes / 2] = {-1};
-        float minDArray[angleRes / 2] = {-1};
-        float maxD = -1;
-        float minD = __FLT_MAX__;
-
-        //c^2=a^2+b^2-2ab cos(theda)
-        for (int k = 0; k < angleRes / 2; k++)
-        {
-          float a = RArray[k];
-          if (a < 0)
-            continue;
-          float maxC = -1;
-          float minC = __FLT_MAX__;
-          float _b = RArray[k + angleRes / 2];
-          for (int m = -angleSweepHS; m <= angleSweepHS; m++)
-          {
-            int absm = m;
-            if (absm < 0)
-              absm = -absm;
-            int idx2 = k + angleRes / 2 + m;
-            if (idx2 >= angleRes)
-              idx2 -= angleRes;
-            float b = RArray[idx2];
-            if (b < 0)
-              continue;
-            // float c = sqrt(a*a+b*b+2*a*b*cosTable[absm]);
-            float c = a + b;
-
-            // LOGI("a:%f,b:%f,c:%f",a,b,c);
-            if (maxC < c)
-              maxC = c;
-            if (minC > c)
-              minC = c;
-          }
-          // LOGI("maxC[%d]:%f  a:%f,b:%f",k,maxC,a,_b);
-          if (maxC != -1)
-          {
-            maxDArray[k] = maxC;
-            if (maxD < maxC)
-              maxD = maxC;
-            if (minD > maxC)
-              minD = maxC;
-          }
-          if (minC != -1)
-          {
-            minDArray[k] = minC;
-          }
-        }
-
-        cr.maxD = (maxD == -1) ? NAN : maxD;
-        cr.minD = (minD == __FLT_MAX__) ? NAN : minD;
-        LOGI("C=%d===maxD:%f minD:%f", j, cr.maxD, cr.minD);
-
-        for (auto pt : s_points)
-        {
-          cdef.tmp_pt.push_back(pt);
-        }
-        float rMIN, rMAX, rRMSE;
-        roughness(cdef.tmp_pt, 5, &rMIN, &rMAX, &rRMSE);
-        cr.roughness_MIN = rMIN;
-        cr.roughness_MAX = rMAX;
-        cr.roughness_RMSE = rRMSE;
-        LOGI("C=%d===R:%f,pt:%f,%f , tarR:%f, rMIN:%f ,rMAX:%f ,rRMSE:%f",
-             j, cf.circle.radius, cf.circle.circumcenter.X, cf.circle.circumcenter.Y, radius, rMIN, rMAX, rRMSE);
-      }
-
-      cr.pt1 = acvClosestPointOnCircle(m_pt1, cf.circle);
-      cr.pt2 = acvClosestPointOnCircle(m_pt2, cf.circle);
-      cr.pt3 = acvClosestPointOnCircle(m_pt3, cf.circle);
-
-      if (cf.circle.radius < radius - initMatchingMargin ||
-          cf.circle.radius > radius + initMatchingMargin)
-      {
-        cr.status = FeatureReport_sig360_circle_line_single::STATUS_FAILURE;
-      }
-      else
-      {
-        cr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
-      }
-
-      detectedCircles[j]=cr;
     }
 
     for (int j = 0; j < auxPointList.size(); j++)

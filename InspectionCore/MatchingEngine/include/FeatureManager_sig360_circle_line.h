@@ -203,6 +203,11 @@ protected:
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
 
 
+  FeatureReport_circleReport CircleMatching_ReportGen(
+  featureDef_circle *plineDef,edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
+
 
   FeatureReport_searchPointReport SPointMatching_ReportGen(
   featureDef_searchPoint *def,
