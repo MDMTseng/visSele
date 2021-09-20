@@ -3162,6 +3162,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
 
   FeatureReport_searchPointReport report = searchPoint_process(singleReport, calibCen, cached_sin, cached_cos, flip_f, 0, spoint, eT);
 
+  report.pt =
+      acvVecMult(report.pt, mmpp);
   report.def = def;
   return report;
 
@@ -3498,6 +3500,28 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
   }
   cr.def = plineDef;
+
+
+  {
+    
+    cr.circle.s *= mmpp;
+    cr.circle.circle.circumcenter =
+        acvVecMult(cr.circle.circle.circumcenter, mmpp);
+    cr.circle.circle.radius *= mmpp;
+    cr.maxD *= mmpp;
+    cr.minD *= mmpp;
+
+    cr.roughness_MAX *= mmpp;
+    cr.roughness_MIN *= mmpp;
+    cr.roughness_RMSE *= mmpp;
+    cr.pt1 = acvVecMult(cr.pt1, mmpp);
+    cr.pt2 = acvVecMult(cr.pt2, mmpp);
+    cr.pt3 = acvVecMult(cr.pt3, mmpp);
+  }
+
+
+
+
   return cr;
 }
 
@@ -3531,6 +3555,10 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
                       line_cand, edge_grid, flip_f, tmp_points, m_sections);
   
 
+  Report.line.end_pt1 = acvVecMult(Report.line.end_pt1, mmpp);
+  Report.line.end_pt2 = acvVecMult(Report.line.end_pt2, mmpp);
+  Report.line.line.line_anchor = acvVecMult(Report.line.line.line_anchor, mmpp);
+  Report.line.s = Report.line.s * mmpp;
   Report.def=plineDef;
   return Report;
 }
@@ -3869,8 +3897,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
       for (int j = 0; j < searchPointList.size(); j++)
       {
-        detectedSearchPoints[j]=
-        SPointMatching_ReportGen(
+        detectedSearchPoints[j]=SPointMatching_ReportGen(
           detectedSearchPoints[j].def,
           singleReport,
           eT,
@@ -3893,42 +3920,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       detectedAuxPoints[j] = APointMatching_ReportGen(detectedAuxPoints[j].def,singleReport, cached_sin, cached_cos, flip_f);
     }
 
-    {
-      //Convert report to mm based unit
-      for (int j = 0; j < detectedLines.size(); j++)
-      {
-        detectedLines[j].line.end_pt1 = acvVecMult(detectedLines[j].line.end_pt1, mmpp);
-        detectedLines[j].line.end_pt2 = acvVecMult(detectedLines[j].line.end_pt2, mmpp);
-        detectedLines[j].line.line.line_anchor = acvVecMult(detectedLines[j].line.line.line_anchor, mmpp);
-        detectedLines[j].line.s = detectedLines[j].line.s * mmpp;
-      }
-      for (int j = 0; j < detectedCircles.size(); j++)
-      {
-        detectedCircles[j].circle.s *= mmpp;
-        detectedCircles[j].circle.circle.circumcenter =
-            acvVecMult(detectedCircles[j].circle.circle.circumcenter, mmpp);
-        detectedCircles[j].circle.circle.radius *= mmpp;
-        detectedCircles[j].maxD *= mmpp;
-        detectedCircles[j].minD *= mmpp;
-
-        detectedCircles[j].roughness_MAX *= mmpp;
-        detectedCircles[j].roughness_MIN *= mmpp;
-        detectedCircles[j].roughness_RMSE *= mmpp;
-        detectedCircles[j].pt1 = acvVecMult(detectedCircles[j].pt1, mmpp);
-        detectedCircles[j].pt2 = acvVecMult(detectedCircles[j].pt2, mmpp);
-        detectedCircles[j].pt3 = acvVecMult(detectedCircles[j].pt3, mmpp);
-      }
-      for (int j = 0; j < detectedSearchPoints.size(); j++)
-      {
-        detectedSearchPoints[j].pt =
-            acvVecMult(detectedSearchPoints[j].pt, mmpp);
-      }
-      for (int j = 0; j < detectedAuxPoints.size(); j++)
-      {
-        detectedAuxPoints[j].pt =
-            acvVecMult(detectedAuxPoints[j].pt, mmpp);
-      }
-    }
 
     {
 
