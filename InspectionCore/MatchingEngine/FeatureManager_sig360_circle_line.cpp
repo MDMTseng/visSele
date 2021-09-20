@@ -3177,9 +3177,9 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   featureDef_circle &cdef = *plineDef;
 
   float ppmm=1/mmpp;
-  acv_XY m_pt1 = cm.convert(cdef.pt1);
-  acv_XY m_pt2 = cm.convert(cdef.pt2);
-  acv_XY m_pt3 = cm.convert(cdef.pt3);
+  acv_XY m_pt1 = cdef.pt1;//cm.convert(cdef.pt1);
+  acv_XY m_pt2 = cdef.pt2;//cm.convert(cdef.pt2);
+  acv_XY m_pt3 = cdef.pt3;//cm.convert(cdef.pt3);
 
   m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
   m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
@@ -3195,7 +3195,7 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
 
   arc_data arcD = convert3Pts2ArcData(m_pt1, m_pt2, m_pt3);
 
-  float initMatchingMargin = cdef.initMatchingMargin / ppmm;
+  float initMatchingMargin = cdef.initMatchingMargin * ppmm;
 
   int matching_tor = initMatchingMargin;
 
@@ -3208,8 +3208,6 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   // acvDrawCrossX(originalImage,
   //               center.X, center.Y,
   //               4, 255,255,255);
-  LOGI("flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f", flip_f, radius, sAngle, eAngle,center.X,
-      center.Y);
   //LOGV("X:%f Y:%f r(%f)*ppmm(%f)=r(%f)",center.X,center.Y,cdef.circleTar.radius,ppmm,radius);
   edge_grid.getContourPointsWithInCircleContour(
       center.X,
@@ -3218,17 +3216,22 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
       sAngle, eAngle, cdef.outter_inner,
       matching_tor, m_sections);
 
+  LOGI("edge_grid:%p flip_f:%f radius:%f sAngle:%f  eAngle:%f   XY:%f,%f ppmm:%f mmpp:%f ",&edge_grid, flip_f, radius, sAngle, eAngle,center.X,
+  center.Y,ppmm,mmpp);
+  LOGI("matching_tor:%d initMatchingMargin:%f m_sections.size:%d",
+  matching_tor,cdef.initMatchingMargin,m_sections.size());
+
   acv_CircleFit cf;
   FeatureReport_circleReport cr;
 
   cdef.tmp_pt.clear();
   cr.pt1 = cr.pt2 = cr.pt3 = (acv_XY){NAN, NAN};
-  cr.def = plineDef;
   if (m_sections.size() == 0)
   {
 
     LOGE("Circle matching failed: resultR:%f defR:%f",
           cf.circle.radius, arcD.circleTar.radius);
+    cr.def = plineDef;
     cr.status = FeatureReport_sig360_circle_line_single::STATUS_NA;
     return cr;
   }
@@ -3875,7 +3878,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       }
     }
 
-    acv_CircleFit cf_zero = {0};
+
     for (int j = 0; j < featureCircleList.size(); j++)
     {
 
@@ -3883,8 +3886,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
           detectedCircles[j].def,
           eT,
           calibCen,mmpp,cached_cos,cached_sin,flip_f);
-
-
     }
 
     for (int j = 0; j < auxPointList.size(); j++)
