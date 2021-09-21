@@ -20,6 +20,7 @@ enum FeatureReport_ERROR {
   GENERIC                         = 1,
   ONLY_ONE_COMPONENT_IS_ALLOWED   = 2,
   EXTERNAL_INTRUSION_OBJECT       = 3,
+  DIRTY_BACKGROUND                = 4,
   END
 };
 typedef struct FeatureReport;

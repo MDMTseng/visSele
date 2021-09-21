@@ -2017,6 +2017,7 @@ int FeatureManager_sig360_circle_line::parse_jobj()
     cm.add(pos, pos, vec);
   }
 
+
   if (inherentfeatureList == NULL)
   {
     LOGE("inherentfeatures does not exists");
@@ -2344,7 +2345,6 @@ FeatureReport_lineReport SingleMatching_line(featureDef_line *line, edgeTracking
   //     line_cand.line_anchor.Y+mult*line_cand.line_vec.Y,
   //     20,255,128);
   // }
-
   edge_grid.getContourPointsWithInLineContour(line_cand,
                                               MatchingMarginX,
 
@@ -2870,6 +2870,17 @@ acv_XY ptOnLineRatio(acv_Line line, acv_XY sp1, acv_XY sp2, float ratio)
   return acvVecAdd(acvVecMult(vecF, ratio), sp1);
 }
 
+acv_XY Image_mm_Domain_TO_TemplateDomain(acv_XY im_mm_pt, float sin, float cosin, float flip_f, acv_XY objCenter_pix, float mmpp)
+{ //  sp1...ret......sp2 <= 0.3333
+  acv_XY pt = acvVecSub(im_mm_pt,acvVecMult( objCenter_pix, mmpp));
+
+
+  pt = acvRotation(-sin, cosin, pt);
+  if (flip_f < 0)
+    pt.Y = -pt.Y;
+
+  return pt;
+}
 acv_XY PixDomain_TO_TemplateDomain(acv_XY pix_pt, float sin, float cosin, float flip_f, acv_XY objCenter_pix, float mmpp)
 { //  sp1...ret......sp2 <= 0.3333
   acv_XY pt = acvVecMult(acvVecSub(pix_pt, objCenter_pix), mmpp);
@@ -2890,10 +2901,7 @@ acv_XY TemplateDomain_TO_PixDomain(acv_XY temp_pt, float sin, float cosin, float
 
 acv_XY ConstrainMap::convert_polar(acv_XY from)
 {
-  if(anchorPairs.size()==0)
-  {
-    return from;
-  }
+  // LOGI(">>>d  anchorPairs.size():%d", anchorPairs.size());
   float magSum = 0;
   float magWSum = 0;
 
@@ -2950,7 +2958,7 @@ acv_XY ConstrainMap::convert_polar(acv_XY from)
   // magSum/=magWSum;
   acv_XY wshift = acvVecMult(angSum, magSum / angWSum / magWSum);
 
-  // LOGI("vecSum:%f %f wvecSum: %f %f",vecSum.X,vecSum.Y,wvecSum.X,wvecSum.Y);
+  // LOGI("angSum:%f %f magSum: %f  angWSum:%f  magWSum:%f",angSum.X,angSum.Y,magSum,angWSum,magWSum);
 
   // LOGI("vecAve:%f %f",vecSum.X,vecSum.Y);
   return acvComplexMult(from, wshift);
@@ -3148,10 +3156,8 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::SPointMatchin
   featureDef_searchPoint spoint = *def;
   spoint.margin /= mmpp;
   spoint.width /= mmpp;
-  if(cm.anchorPairs.size()>0)
-  {
-    spoint.data.anglefollow.position=cm.convert(spoint.data.anglefollow.position);
-  }
+  spoint.data.anglefollow.position=cm.convert(spoint.data.anglefollow.position);
+
   if (spoint.subtype == featureDef_searchPoint::anglefollow)
   {
 
@@ -3179,9 +3185,9 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   featureDef_circle &cdef = *plineDef;
 
   float ppmm=1/mmpp;
-  acv_XY m_pt1 = cdef.pt1;//cm.convert(cdef.pt1);
-  acv_XY m_pt2 = cdef.pt2;//cm.convert(cdef.pt2);
-  acv_XY m_pt3 = cdef.pt3;//cm.convert(cdef.pt3);
+  acv_XY m_pt1 = cm.convert(cdef.pt1);
+  acv_XY m_pt2 = cm.convert(cdef.pt2);
+  acv_XY m_pt3 = cm.convert(cdef.pt3);
 
   m_pt1 = acvRotation(cached_sin, cached_cos, flip_f, m_pt1);
   m_pt2 = acvRotation(cached_sin, cached_cos, flip_f, m_pt2);
@@ -3532,24 +3538,27 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
   featureDef_line lineDef=*plineDef;
 
   // LOGI("p0:%f %f , p1:%f %f",line.p0.X,line.p0.Y,line.p1.X,line.p1.Y);
-  if(cm.anchorPairs.size()>0)
-  {
-    lineDef.p0=cm.convert(lineDef.p0);
-    lineDef.p1=cm.convert(lineDef.p1);
-  }
+
+  lineDef.p0=cm.convert(lineDef.p0);
+  lineDef.p1=cm.convert(lineDef.p1);
+  
   lineDef.p0 = TemplateDomain_TO_PixDomain(lineDef.p0, cached_sin, cached_cos, flip_f, calibCen, mmpp);
   lineDef.p1 = TemplateDomain_TO_PixDomain(lineDef.p1, cached_sin, cached_cos, flip_f, calibCen, mmpp);
-
+  LOGI("p0:%f %f, p1:%f,%f",
+    lineDef.p0.X,lineDef.p0.Y,
+    lineDef.p1.X,lineDef.p1.Y);
       // acv_XY mid=acvVecMult(acvVecAdd(line.p0,line.p1), 0.5);//Just for testing
       // line.p0 = acvVecAdd(acvVecMult(acvVecSub(line.p0,mid), 0.5),mid);
       // line.p1 = acvVecAdd(acvVecMult(acvVecSub(line.p1,mid), 0.5),mid);
 
   lineDef = lineDefDataPrep(lineDef);
+  
   acv_Line line_cand;
   line_cand.line_vec = lineDef.lineTar.line_vec;
   line_cand.line_anchor = lineDef.lineTar.line_anchor;
   lineDef.initMatchingMargin /= mmpp;
 
+  // LOGI("initMatchingMargin:%f MatchingMarginX:%f",initMatchingMargin,MatchingMarginX);
   FeatureReport_lineReport Report = SingleMatching_line(
                       &lineDef, eT, 1/mmpp, 
                       line_cand, edge_grid, flip_f, tmp_points, m_sections);
@@ -3565,22 +3574,66 @@ FeatureReport_lineReport FeatureManager_sig360_circle_line::LineMatching_ReportG
 
 
 
+int FeatureManager_sig360_circle_line::TreeExecution(
+  FeatureReport_sig360_circle_line_single &singleReport,
+  edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f)
+{
+  
+  for(int i=0;i<singleReport.detectedLines->size();i++)
+  {
+    TreeExecution((*singleReport.detectedLines)[i].def->id,
+      singleReport,eT,
+      calibCen, mmpp,cached_cos, cached_sin, flip_f);
+  }
+  
+  for(int i=0;i<singleReport.detectedCircles->size();i++)
+  {
+    TreeExecution((*singleReport.detectedCircles)[i].def->id,
+      singleReport,eT,
+      calibCen, mmpp,cached_cos, cached_sin, flip_f);
+
+
+
+  }
+  
+  for(int i=0;i<singleReport.detectedAuxPoints->size();i++)
+  {
+    TreeExecution((*singleReport.detectedAuxPoints)[i].def->id,
+      singleReport,eT,
+      calibCen, mmpp,cached_cos, cached_sin, flip_f);
+      }
+  for(int i=0;i<singleReport.detectedSearchPoints->size();i++)
+  {
+    TreeExecution((*singleReport.detectedSearchPoints)[i].def->id,
+      singleReport,eT,
+      calibCen, mmpp,cached_cos, cached_sin, flip_f);}
+  
+  for(int i=0;i<singleReport.judgeReports->size();i++)
+  {
+    TreeExecution((*singleReport.judgeReports)[i].def->id,
+      singleReport,eT,
+      calibCen, mmpp,cached_cos, cached_sin, flip_f);}
+  return 0;
+}
+
 int FeatureManager_sig360_circle_line::TreeExecution(int id,
   FeatureReport_sig360_circle_line_single &singleReport,
   edgeTracking &eT,
   acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f)
 {
-  LOGI("ID:%d",id);
+  bool doPrintDBG=false;
+  if(doPrintDBG)LOGI("ID:%d",id);
 
   
   for(int i=0;i<singleReport.detectedLines->size();i++)
   {
     FeatureReport_lineReport &rep=(*singleReport.detectedLines)[i];
     
-    if(rep.def->id!=id)continue;
+    if(rep.def->id!=id )continue;
     if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
     {
-      LOGI("=>LI:%d:%d",id,rep.status);
+      if(doPrintDBG)LOGI("=>LI:%d:%d",id,rep.status);
       return rep.status;
     }
 
@@ -3588,7 +3641,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
       rep.def,eT,
       calibCen, mmpp, cached_cos, cached_sin, flip_f);
 
-    LOGI("LI:%d:%d",id,rep.status);
+    if(doPrintDBG)LOGI("LI:%d:%d",id,rep.status);
     return rep.status;
     
   }
@@ -3599,7 +3652,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
     if(rep.def->id!=id)continue;
     if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
     {
-      LOGI("=>CI:%d:%d",id,rep.status);
+      if(doPrintDBG)LOGI("=>CI:%d:%d",id,rep.status);
       return rep.status;
     }
 
@@ -3607,7 +3660,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
         rep.def,
         eT,
         calibCen,mmpp,cached_cos,cached_sin,flip_f);
-    LOGI("CI:%d:%d",id,rep.status);
+    if(doPrintDBG)LOGI("CI:%d:%d",id,rep.status);
     return rep.status;
   
   }
@@ -3619,7 +3672,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
     if(rep.def->id!=id)continue;
     if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
     {
-      LOGI("=>AP:%d:%d",id,rep.status);
+      if(doPrintDBG)LOGI("=>AP:%d:%d",id,rep.status);
       return rep.status;
     }
 
@@ -3653,7 +3706,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
 
 
     rep = APointMatching_ReportGen(rep.def,singleReport, cached_sin, cached_cos, flip_f);
-    LOGI("AP:%d:%d",id,rep.status);
+    if(doPrintDBG)LOGI("AP:%d:%d",id,rep.status);
     return rep.status;
   
   }
@@ -3665,9 +3718,25 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
     if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
     {
       
-      LOGI("=>SP:%d:%d",id,rep.status);
+      if(doPrintDBG)LOGI("=>SP:%d:%d",id,rep.status);
       return rep.status;
     }
+
+
+    switch(rep.def->subtype)
+    {
+      case featureDef_searchPoint::anglefollow :
+      {
+        int id1_status=
+          TreeExecution(rep.def->data.anglefollow.target_id,
+            singleReport,eT,
+            calibCen, mmpp,cached_cos, cached_sin, flip_f);
+
+        break;
+      }
+    }
+
+
     rep=
       SPointMatching_ReportGen(
         rep.def,
@@ -3676,7 +3745,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
         calibCen,mmpp,cached_cos,cached_sin,flip_f);
 
 
-    LOGI("SP:%d:%d",id,rep.status);
+    if(doPrintDBG)LOGI("SP:%d:%d",id,rep.status);
     return rep.status;
     
   }
@@ -3688,7 +3757,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
     
     if(rep.status!=FeatureReport_sig360_circle_line_single::STATUS_UNSET)
     {
-      LOGI("=>JU:%d:%d",id,rep.status);
+      if(doPrintDBG)LOGI("=>JU:%d:%d",id,rep.status);
       return rep.status;
     }
 
@@ -3723,7 +3792,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
             int id_exp = parse_CALC_Id(post_exp.c_str());
             if (id_exp >= 0)
             {
-              LOGI("C_EXP[%d] __ID:%d  << %s",j,id_exp,post_exp.c_str());
+              // LOGI("C_EXP[%d] __ID:%d  << %s",j,id_exp,post_exp.c_str());
               TreeExecution(id_exp,
                 singleReport,eT,
                 calibCen, mmpp,cached_cos, cached_sin, flip_f);
@@ -3754,7 +3823,7 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
         rep.def,
         singleReport, cached_sin, cached_cos, flip_f);
   
-      LOGI("JU:%d:%d",id,rep.status);
+      // LOGI("JU:%d:%d",id,rep.status);
 
       return rep.status;
 
@@ -3768,9 +3837,72 @@ int FeatureManager_sig360_circle_line::TreeExecution(int id,
 
 
 
+void RESET_REPORT(FeatureReport_sig360_circle_line_single &srep)
+{
 
+    vector<FeatureReport_circleReport> &detectedCircles = *srep.detectedCircles;
+    vector<FeatureReport_lineReport> &detectedLines = *srep.detectedLines;
 
+    vector<FeatureReport_auxPointReport> &detectedAuxPoints = *srep.detectedAuxPoints;
+    vector<FeatureReport_searchPointReport> &detectedSearchPoints = *srep.detectedSearchPoints;
+    vector<FeatureReport_judgeReport> &judgeReports = *srep.judgeReports;
+    for (int j = 0; j < detectedLines.size(); j++)
+    {
+      detectedLines[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+    }
+    for (int j = 0; j < detectedCircles.size(); j++)
+    {
+      detectedCircles[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+    }
+    for (int j = 0; j < judgeReports.size(); j++)
+    {
+      judgeReports[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+    }
+    for (int j = 0; j < detectedAuxPoints.size(); j++)
+    {
+      detectedAuxPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+    }
+    for (int j = 0; j < detectedSearchPoints.size(); j++)
+    {
+      detectedSearchPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+    }
+}
 
+void SET_UNSET_REPORT_NA(FeatureReport_sig360_circle_line_single &srep)
+{
+
+    vector<FeatureReport_circleReport> &detectedCircles = *srep.detectedCircles;
+    vector<FeatureReport_lineReport> &detectedLines = *srep.detectedLines;
+
+    vector<FeatureReport_auxPointReport> &detectedAuxPoints = *srep.detectedAuxPoints;
+    vector<FeatureReport_searchPointReport> &detectedSearchPoints = *srep.detectedSearchPoints;
+    vector<FeatureReport_judgeReport> &judgeReports = *srep.judgeReports;
+    for (int j = 0; j < detectedLines.size(); j++)
+    {
+      if(detectedLines[j].status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+        detectedLines[j].status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+    for (int j = 0; j < detectedCircles.size(); j++)
+    {
+      if(detectedCircles[j].status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+        detectedCircles[j].status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+    for (int j = 0; j < judgeReports.size(); j++)
+    {
+      if(judgeReports[j].status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+        judgeReports[j].status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+    for (int j = 0; j < detectedAuxPoints.size(); j++)
+    {
+      if(detectedAuxPoints[j].status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+        detectedAuxPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+    for (int j = 0; j < detectedSearchPoints.size(); j++)
+    {
+      if(detectedSearchPoints[j].status==FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+        detectedSearchPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_NA;
+    }
+}
 
 int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistoriginalImage,
                                                       acvImage *labeledBuff, acvImage *binarizedBuff, acvImage *buffer_img,
@@ -3818,6 +3950,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     // {
     //   matching_angle_margin=M_PI-0.0001;
     // }
+    // minMatchErr[0].Y=0.01;
     for (int i = 0; i < minMatchErr.size(); i++)
     {
       float preErr = minMatchErr[i].Y;
@@ -3875,42 +4008,50 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
     
 
-
+    //assign def
     for (int j = 0; j < featureLineList.size(); j++)
     {
       detectedLines[j].def=&(featureLineList[j]);
-      detectedLines[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
     }
     for (int j = 0; j < featureCircleList.size(); j++)
     {
       detectedCircles[j].def=&(featureCircleList[j]);
-      detectedCircles[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
     }
     for (int j = 0; j < judgeList.size(); j++)
     {
       judgeReports[j].def=&(judgeList[j]);
-      judgeReports[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
     }
     for (int j = 0; j < auxPointList.size(); j++)
     {
       detectedAuxPoints[j].def=&(auxPointList[j]);
-      detectedAuxPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
     }
     for (int j = 0; j < searchPointList.size(); j++)
     {
       detectedSearchPoints[j].def=&(searchPointList[j]);
-      detectedSearchPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
     }
+    RESET_REPORT(singleReport);//Set to Unset state
   }
 
-  cm.clear();
   cm.center = (acv_XY){0, 0};
 
   float error = NAN;
-  // if(minMatchErr.size()>=1)
-  // {
-  //   minMatchErr[0].Y=ignoreErr;
-  // }
+
+  static float angle_offset = 0;
+  if (1) //test angle variation
+  {
+    float sigma;
+    // angle += angle_offset * M_PI / 180;
+    if (angle_offset >  3*M_PI/180)
+    {
+      angle_offset =  -3*M_PI/180;
+    }
+    else
+    {
+      angle_offset += 0.1*M_PI/180;
+    }
+  }
+
+
   int defaultRetryCountDown = 5;
   int retryCountDown = defaultRetryCountDown; //max retry
   while (true)
@@ -3981,21 +4122,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
       return -3;
     }
 
+    angle+=angle_offset;
 
-    if (0) //test angle variation
-    {
-      static float angle_offset = 0;
-      float sigma;
-      angle += angle_offset * M_PI / 180;
-      if (angle_offset > 3)
-      {
-        angle_offset = -3;
-      }
-      else
-      {
-        angle_offset += 0.1;
-      }
-    }
 
     singleReport.rotate = angle;
     singleReport.isFlipped = isInv;
@@ -4021,184 +4149,112 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     LOGI("calibCen: %f %f", calibCen.X, calibCen.Y);
 
 
-    {//reset status
-      for (int j = 0; j < detectedLines.size(); j++)
-      {
-        detectedLines[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
-      }
-      for (int j = 0; j < detectedCircles.size(); j++)
-      {
-        detectedCircles[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
-      }
-      for (int j = 0; j < judgeReports.size(); j++)
-      {
-        judgeReports[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
-      }
-      for (int j = 0; j < detectedAuxPoints.size(); j++)
-      {
-        detectedAuxPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
-      }
-      for (int j = 0; j < detectedSearchPoints.size(); j++)
-      {
-        detectedSearchPoints[j].status=FeatureReport_sig360_circle_line_single::STATUS_UNSET;
-      }
-    }
-
-
-    // TreeExecution(7,singleReport,eT,
-    //   calibCen, mmpp, cached_cos, cached_sin, flip_f);
-    // for (int j = 0; j < detectedSearchPoints.size(); j++)
-    // {
-    //   featureDef_searchPoint spoint = *detectedSearchPoints[j].def;
-    //   if(spoint.data.anglefollow.locating_anchor==false)
-    //   {
-    //     continue;
-    //   }
-      
-    // }
-
-    for (int j = 0; j < detectedLines.size(); j++)
+    
+    for (int j = 0; j < detectedSearchPoints.size(); j++) //reset the ConstrainMap
     {
-      detectedLines[j]= LineMatching_ReportGen(
-        detectedLines[j].def,eT,
-        calibCen, mmpp, cached_cos, cached_sin, flip_f);
+      cm.anchorPairs[j].to = (acv_XY){NAN, NAN};
     }
-
-    for (int j = 0; j < detectedSearchPoints.size(); j++)
+    for(int k=0;k<1;k++)//perform locating_anchor locating and adjust
     {
 
-      detectedSearchPoints[j]=
-      SPointMatching_ReportGen(
-        detectedSearchPoints[j].def,
-        singleReport,
-        eT,
-        calibCen,mmpp,cached_cos,cached_sin,flip_f);
-    }
-
-    for (int i = 0; i < 1; i++)
-    {
-
-      // drawDraw=true;
-      for (int j = 0; j < searchPointList.size(); j++) //Fill the ConstrainMap
+      RESET_REPORT(singleReport);//Set to Unset state
+      for (int j = 0; j < searchPointList.size(); j++) 
       {
-        cm.anchorPairs[j].to = (acv_XY){NAN, NAN};
+        // cm.anchorPairs[j].to = (acv_XY){NAN, NAN};
         if (searchPointList[j].data.anglefollow.locating_anchor == false)
         {
           continue;
         }
-        FeatureReport_searchPointReport &srep = detectedSearchPoints[j];
-        featureDef_searchPoint &sdef = *srep.def;
-
-        acv_XY tempVec = TemplateDomain_TO_PixDomain(cm.anchorPairs[j].from, cached_sin, cached_cos, flip_f, calibCen, mmpp);
-
-        // if(srep.status!=FeatureReport_sig360_circle_line_single::STATUS_NA)
-        acv_XY locatedPtOnTemp = srep.pt;
-        locatedPtOnTemp = PixDomain_TO_TemplateDomain(locatedPtOnTemp, cached_sin, cached_cos, flip_f, calibCen, mmpp);
-        cm.anchorPairs[j].to = locatedPtOnTemp;
-
+        LOGI("ID:%d", searchPointList[j].id);
+        
+        TreeExecution(searchPointList[j].id,singleReport,eT,
+          calibCen, mmpp, cached_cos, cached_sin, flip_f);//find all necessary anchor first
       }
 
-      for (int j = 0; j < detectedLines.size(); j++)
+
+      for (int j = 0; j < detectedSearchPoints.size(); j++) //Fill the ConstrainMap
       {
-        detectedLines[j]= LineMatching_ReportGen(
-          detectedLines[j].def,eT,
-          calibCen, mmpp, cached_cos, cached_sin, flip_f);
+        cm.anchorPairs[j].to = (acv_XY){NAN, NAN};
+        if (detectedSearchPoints[j].def->data.anglefollow.locating_anchor == false)
+        {
+          continue;
+        }
+
+        // LOGI("ID:%d=>%d",detectedSearchPoints[j].def->id, detectedSearchPoints[j].status);
+        if(detectedSearchPoints[j].status!= FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
+        {
+          continue;
+        }
+
+        acv_XY locatedPtOnTemplate = Image_mm_Domain_TO_TemplateDomain(
+          detectedSearchPoints[j].pt, 
+          cached_sin, 
+          cached_cos, 
+          flip_f, 
+          calibCen, 
+          mmpp);
+        cm.anchorPairs[j].to = locatedPtOnTemplate;
+
+        // acv_XY pos = ;
+        LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.X, cm.anchorPairs[j].from.Y, locatedPtOnTemplate.X, locatedPtOnTemplate.Y);
+
       }
 
-      for (int j = 0; j < searchPointList.size(); j++)
+    }
+
+    RESET_REPORT(singleReport);//Set to Unset state, and perform official measurment with locating anchor calibration 
+
+    bool reDo_orien=false;//check if retry the orientation needed,
+    for (int j = 0; j < judgeReports.size(); j++)
+    {
+      FeatureReport_judgeDef &def = *judgeReports[j].def;
+      if (def.orientation_essential != true)
+        continue;
+      int status =TreeExecution(def.id,singleReport,eT,
+        calibCen, mmpp, cached_cos, cached_sin, flip_f);
+      if(status!=FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
       {
-        detectedSearchPoints[j]=SPointMatching_ReportGen(
-          detectedSearchPoints[j].def,
-          singleReport,
-          eT,
-          calibCen,mmpp,cached_cos,cached_sin,flip_f);
+        reDo_orien=true;
+        break;
       }
     }
 
 
-    for (int j = 0; j < featureCircleList.size(); j++)
-    {
 
-      detectedCircles[j]=CircleMatching_ReportGen(
-          detectedCircles[j].def,
-          eT,
-          calibCen,mmpp,cached_cos,cached_sin,flip_f);
+    if(reDo_orien)
+    {
+      LOGI(">>>>>REDO  REDO>>>>");
+      LOGI(">>>>>REDO  REDO>>>>");
+      LOGI(">>>>>REDO  REDO>>>>");
+      LOGI(">>>>>REDO  REDO>>>>");
+      LOGI(">>>>>REDO  REDO>>>>");
+      continue;
     }
+    //if the orientation is correct, do the rest of judge 
 
-    for (int j = 0; j < auxPointList.size(); j++)
+
+    bool ignore_unnecessary_shape=true;
+    bool ignore_unnecessary_inspection=true;
+    if(ignore_unnecessary_shape==false)
     {
-      detectedAuxPoints[j] = APointMatching_ReportGen(detectedAuxPoints[j].def,singleReport, cached_sin, cached_cos, flip_f);
+      int status =TreeExecution(singleReport,eT,
+        calibCen, mmpp, cached_cos, cached_sin, flip_f);
     }
-
-
+    else
     {
-
       for (int j = 0; j < judgeReports.size(); j++)
       {
-
-        judgeReports[j] = Judge_ReportGen(
-          judgeReports[j].def,
-          singleReport, cached_sin, cached_cos, flip_f);
-    
-      }
-
-      //Since the CALC might bring unset result, we need to try to clean up the unset state
-      //(exp:[CALC1 CALC2 CALC3] and CALC1 might wanna use CALC3 value,
-      //but in execution order the execution of CALC3 will happend after CALC1's ececution)
-      //This is for CALC for now;
-      while (true)
-      {
-        int unsetResolveCount = 0;
-        for (int j = 0; j < judgeList.size(); j++)
-        {
-          FeatureReport_judgeDef judge = judgeList[j];
-          FeatureReport_judgeReport pre_report = judgeReports[j];
-          if (pre_report.status != FeatureReport_sig360_circle_line_single::STATUS_UNSET)
-            continue;
-
-          FeatureReport_judgeReport report = measure_process(singleReport, cached_sin, cached_cos, flip_f, judge);
-          if (report.status == FeatureReport_sig360_circle_line_single::STATUS_UNSET)
-            continue; //if it's still unset
-
-          unsetResolveCount++;
-          report.def = &(judgeList[j]);
-          judgeReports[j] = report;
-        }
-        if (unsetResolveCount == 0)
-          break;
-      }
-
-      bool redo = false;
-      for (int j = 0; j < judgeList.size(); j++)
-      {
-        FeatureReport_judgeDef judge = judgeList[j];
-        if (judge.orientation_essential != true)
+        FeatureReport_judgeDef &def = *judgeReports[j].def;
+        if(ignore_unnecessary_inspection==true && def.quality_essential==false)
+        {//not unnecessary
           continue;
-        FeatureReport_judgeReport pre_report = judgeReports[j];
-        if (pre_report.status != FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
-        {
-
-          LOGI("NAME:%s", judge.name);
-          redo = true;
-          break;
         }
+        int status =TreeExecution(def.id,singleReport,eT,
+          calibCen, mmpp, cached_cos, cached_sin, flip_f);
       }
-      if (redo)
-      {
-        LOGI(">>>>>REDO  REDO>>>>");
-        LOGI(">>>>>REDO  REDO>>>>");
-        LOGI(">>>>>REDO  REDO>>>>");
-        LOGI(">>>>>REDO  REDO>>>>");
-        LOGI(">>>>>REDO  REDO>>>>");
-        continue;
-      }
-
-      // for(int j=0;j<judgeList.size();j++)
-      // {
-      //   FeatureReport_judgeReport pre_report= judgeReports[j];
-      //   LOGE("[%d].st=%d",j,pre_report.status);
-      // }
     }
+
+    SET_UNSET_REPORT_NA(singleReport);
 
     break;
   }
