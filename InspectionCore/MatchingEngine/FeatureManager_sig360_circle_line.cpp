@@ -4456,7 +4456,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       continue;
     }
 
-    bool doCropStyle=true;
+    bool doCropStyle=false;
     int cx=0;
     int cy=0;
     int cw=labeledBuff->GetWidth();
