@@ -1350,11 +1350,14 @@ float findGradMaxIdx_spline(float *f,int fL,float *ret_max)
 }
 
 
-edgeTracking::edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac)
+edgeTracking::edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManager_BacPac *bacpac)
 {
   this->graylevelImg=graylevelImg;
   this->bacpac=bacpac;
+  this->imgOffset=imgOffset;
 }
+
+
 void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
 { 
   return;

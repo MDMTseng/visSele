@@ -3920,7 +3920,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
   vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
-  edgeTracking eT(originalImage, bacpac);
+  edgeTracking eT(p_cropImg,cropOffset, bacpac);
   // acvDrawCrossX(originalImage,
   //   calibCen.X, calibCen.Y,
   //   3, 3);
@@ -4018,8 +4018,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     detectedAuxPoints.resize(auxPointList.size());
     detectedSearchPoints.resize(searchPointList.size());
     judgeReports.resize(judgeList.size());
-
-    
 
     //assign def
     for (int j = 0; j < featureLineList.size(); j++)
@@ -4365,12 +4363,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   //acvBoxFilter(buff_,smoothedImg,2);
   //acvBoxFilter(buff_,smoothedImg,2);
 
-  LOGI(">>>>>");
   tmp_signature.RESET(feature_signature.signature_data.size());
 
   reports.resize(0);
 
-  LOGI(">>>>>");
   int onlyIdx = -1;
   if (single_result_area_ratio > 0 && ldData.size() >= 3)
   {
@@ -4400,8 +4396,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       return -1;
     }
   }
-  LOGI(">>>>>");
-
+  
   int avaliable_ld_size = 0;
   int maxArea = 0;
   {
@@ -4427,8 +4422,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
     }
   }
-  LOGI(">>>>>");
-
+  
   int scanline_skip = 15;
 
   float sigma;
@@ -4461,12 +4455,54 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     {
       continue;
     }
-    //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
+    bool doCropStyle=true;
+    int cx=0;
+    int cy=0;
+    int cw=labeledBuff->GetWidth();
+    int ch=labeledBuff->GetHeight();
+    if(doCropStyle)
+    {
+      p_cropImg=&_cropImg;
+      int margin=10;
+      cx=ldData[i].LTBound.X-margin;
+      cy=ldData[i].LTBound.Y-margin;
+      cw=ldData[i].RBBound.X+margin-cx;
+      ch=ldData[i].RBBound.Y+margin-cy;
+      LOGI("CROP:%d  %d  %d  %d",cx,cy,cw,ch);
+      acvCropImage(labeledBuff,p_cropImg,cx,cy,cw,ch);
+    }
+    else
+    {
+      p_cropImg=labeledBuff;
+    }
+    cropOffset.X=cx;
+    cropOffset.Y=cy;
+    acv_LabeledData curLableDat=(acv_LabeledData){
+      .area= ldData[i].area,
+      .Center=acvVecSub(ldData[i].Center,cropOffset),
+      .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
+      .RBBound=acvVecSub(ldData[i].RBBound,cropOffset),
+    };
     edge_grid.RESET();
-    extractLabeledContourDataToContourGrid(labeledBuff, i, ldData[i], edge_grid, scanline_skip);
-    // edge_grid.ptMult(dsampLevel/2);
 
+    extractLabeledContourDataToContourGrid(p_cropImg, i, curLableDat, edge_grid, scanline_skip);
+    // edge_grid.ptMult(dsampLevel/2);
+    
+
+     if(doCropStyle)
+    {
+
+      acvCropImage(originalImage,p_cropImg,cx,cy,cw,ch);
+    }
+    else
+    {
+      p_cropImg=originalImage;
+    }
+    // acvSaveBitmapFile("CROPIMG.BMP", &p_cropImg);
+
+
+    
     if (0)
     {
       static float rot = 0;
@@ -4475,7 +4511,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       ldData[i].Center = acvVecAdd(ldData[i].Center, (acv_XY){mag * sin(rot), mag * cos(rot)});
     }
 
-    acv_XY ideal_center = acvVecMult(ldData[i].Center,dsampLevel);
+    acv_XY ideal_center = acvVecMult(curLableDat.Center,dsampLevel);
 
     bacpac->sampler->img2ideal(&ideal_center);
 
@@ -4535,11 +4571,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             .detectedAuxPoints = reportDataPool[reports.size()].detectedAuxPoints,
             .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
             .judgeReports = reportDataPool[reports.size()].judgeReports,
-            .LTBound = acvVecMult(ldData[i].LTBound,dsampLevel),
-            .RBBound = acvVecMult(ldData[i].RBBound,dsampLevel),
-            .Center = acvVecMult(ldData[i].Center,dsampLevel),
-            .area = (float)ldData[i].area*dsampLevel*dsampLevel,
-            .pix_area = ldData[i].area*dsampLevel*dsampLevel,
+            .LTBound = acvVecMult(curLableDat.LTBound,dsampLevel),
+            .RBBound = acvVecMult(curLableDat.RBBound,dsampLevel),
+            .Center = acvVecMult(curLableDat.Center,dsampLevel),
+            .area = (float)curLableDat.area*dsampLevel*dsampLevel,
+            .pix_area = curLableDat.area*dsampLevel*dsampLevel,
             .labeling_idx = i,
             // .rotate = angle,
             // .isFlipped = isInv,

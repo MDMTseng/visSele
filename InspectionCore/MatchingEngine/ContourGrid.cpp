@@ -58,6 +58,7 @@ void ContourFetch::RESET()
 
 void ContourFetch::ptMult(float mul)
 {
+  if(mul==1)return;
   for(int i=0;i<contourSections.size();i++)
   {
     for(int j=0;j<contourSections[i].size();j++)
