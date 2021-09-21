@@ -3998,6 +3998,20 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
 
   contourGridGrayLevelRefine(originalImage, edge_grid, bacpac);
 
+  for(int i=0;i<edge_grid.contourSections.size();i++)
+  {
+    for(int j=0;j<edge_grid.contourSections[i].size();j++)
+    {
+      int X=edge_grid.contourSections[i][j].pt.X;
+      int Y=edge_grid.contourSections[i][j].pt.Y;
+      originalImage->CVector[Y][X*3]=255;
+      
+      X=edge_grid.contourSections[i][j].pt_img.X;
+      Y=edge_grid.contourSections[i][j].pt_img.Y;
+      
+      originalImage->CVector[Y][X*3]=0;
+    }
+  }
     
   {//pre-allocate
     detectedCircles.resize(featureCircleList.size());
@@ -4037,7 +4051,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   float error = NAN;
 
   static float angle_offset = 0;
-  if (1) //test angle variation
+  if (0) //test angle variation
   {
     float sigma;
     // angle += angle_offset * M_PI / 180;
@@ -4352,10 +4366,12 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   //acvBoxFilter(buff_,smoothedImg,2);
   //acvBoxFilter(buff_,smoothedImg,2);
 
+  LOGI(">>>>>");
   tmp_signature.RESET(feature_signature.signature_data.size());
 
   reports.resize(0);
 
+  LOGI(">>>>>");
   int onlyIdx = -1;
   if (single_result_area_ratio > 0 && ldData.size() >= 3)
   {
@@ -4385,6 +4401,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       return -1;
     }
   }
+  LOGI(">>>>>");
 
   int avaliable_ld_size = 0;
   int maxArea = 0;
@@ -4411,6 +4428,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
     }
   }
+  LOGI(">>>>>");
 
   int scanline_skip = 15;
 
@@ -4436,7 +4454,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   LOGV("ldData.size()=%d", ldData.size());
   for (int i = 2; i < ldData.size(); i++)
   {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects
-    if (ldData[i].area < 300) //HACK: no particular reason, just a hack filter
+    if (ldData[i].area < 100*dsampLevel*dsampLevel) //HACK: no particular reason, just a hack filter
       continue;
     if (ldData[i].misc == -1) //the ignore mark
       continue;
@@ -4448,6 +4466,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
 
     edge_grid.RESET();
     extractLabeledContourDataToContourGrid(labeledBuff, i, ldData[i], edge_grid, scanline_skip);
+    // edge_grid.ptMult(dsampLevel/2);
 
     if (0)
     {
@@ -4457,17 +4476,24 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       ldData[i].Center = acvVecAdd(ldData[i].Center, (acv_XY){mag * sin(rot), mag * cos(rot)});
     }
 
-    acv_XY ideal_center = ldData[i].Center;
+    acv_XY ideal_center = acvVecMult(ldData[i].Center,dsampLevel);
 
     bacpac->sampler->img2ideal(&ideal_center);
 
+    ideal_center = acvVecMult(ideal_center,1.0/dsampLevel);
+    LOGI(">>>>>%f  %f",ideal_center.X,ideal_center.Y);
     convertContourGrid2Signature(ideal_center, edge_grid, tmp_signature.signature_data, bacpac);
 
     //the tmp_signature is in Pixel unit, convert it to mm
     for (int j = 0; j < tmp_signature.signature_data.size(); j++)
     {
-      tmp_signature.signature_data[j].X /= ppmm;
+      tmp_signature.signature_data[j].X *=dsampLevel/ ppmm;
+      
+      // LOGI("%d=>%f",j,tmp_signature.signature_data[j].X);
     }
+    
+    // acvSaveBitmapFile("FFKFKJDK3.BMP", labeledBuff);
+    // exit(-1);
     tmp_signature.CalcInfo();
 
     { //early intercept just to check mean and sigma
@@ -4510,11 +4536,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             .detectedAuxPoints = reportDataPool[reports.size()].detectedAuxPoints,
             .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
             .judgeReports = reportDataPool[reports.size()].judgeReports,
-            .LTBound = ldData[i].LTBound,
-            .RBBound = ldData[i].RBBound,
-            .Center = ldData[i].Center,
-            .area = (float)ldData[i].area,
-            .pix_area = ldData[i].area,
+            .LTBound = acvVecMult(ldData[i].LTBound,dsampLevel),
+            .RBBound = acvVecMult(ldData[i].RBBound,dsampLevel),
+            .Center = acvVecMult(ldData[i].Center,dsampLevel),
+            .area = (float)ldData[i].area*dsampLevel*dsampLevel,
+            .pix_area = ldData[i].area*dsampLevel*dsampLevel,
             .labeling_idx = i,
             // .rotate = angle,
             // .isFlipped = isInv,
@@ -4529,7 +4555,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     bacpac->sampler->img2ideal(&singleReport.RBBound);
     singleReport.RBBound = acvVecMult(singleReport.RBBound, mmpp);
     singleReport.area *= mmpp * mmpp;
-
+    edge_grid.ptMult(dsampLevel);
     //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
     int ret = SingleMatching(originalImage, labeledBuff, img, buff_,

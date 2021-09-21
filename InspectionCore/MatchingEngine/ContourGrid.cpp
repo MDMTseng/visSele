@@ -56,7 +56,19 @@ void ContourFetch::RESET()
   }
 }
 
+void ContourFetch::ptMult(float mul)
+{
+  for(int i=0;i<contourSections.size();i++)
+  {
+    for(int j=0;j<contourSections[i].size();j++)
+    {
+      ptInfo pti = contourSections[i][j];
 
+      contourSections[i][j].pt=acvVecMult(contourSections[i][j].pt,mul);
+      contourSections[i][j].pt_img=acvVecMult(contourSections[i][j].pt_img,mul);
+    }
+  }
+}
 
 void ContourFetch::push(int group,ptInfo data)
 {
@@ -416,6 +428,7 @@ const ContourGrid::ptInfo* ContourGrid::get(int idx)
   }
   return NULL;
 }
+
 
 void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,
   std::vector<int> &intersectIdxs)

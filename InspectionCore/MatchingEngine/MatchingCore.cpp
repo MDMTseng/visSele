@@ -1356,7 +1356,8 @@ edgeTracking::edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac
   this->bacpac=bacpac;
 }
 void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
-{
+{ 
+  return;
   if(section.section.size()==0)return;
   // for(int i=0;i<section.section.size();i++ )//offset Test
   // {
@@ -1737,14 +1738,13 @@ void extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_L
 
   edge_grid.RESET();
 
-
   if(scanline_skip<0)return;
 
   int sX = (int)ldat.LTBound.X;
   int sY = (int)ldat.LTBound.Y;
   int eX = (int)ldat.RBBound.X;
   int eY = (int)ldat.RBBound.Y;
-  // LOGV("%d %d %d %d",sX,sY,eX,eY);
+  LOGI("%d %d %d %d",sX,sY,eX,eY);
   BYTE *OutLine, *OriLine;
 
   _24BitUnion *lableConv;
