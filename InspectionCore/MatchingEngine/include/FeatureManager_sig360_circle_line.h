@@ -163,6 +163,11 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   acvImage buff1;
   acvImage buff2;
   
+  acvImage *p_cropImg;
+  acvImage _cropImg;
+  acv_XY cropOffset;
+
+
   vector<ContourFetch::ptInfo > tmp_points;
   vector<ContourFetch::contourMatchSec > m_sections;
   

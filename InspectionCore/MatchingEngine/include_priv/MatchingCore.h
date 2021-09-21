@@ -86,16 +86,17 @@ class edgeTracking
   float pixSum[pixWidth]={0};
   float grad[pixWidth]={0};
   acvImage *graylevelImg;
+  acv_XY imgOffset;
   FeatureManager_BacPac *bacpac;
   public:
-  edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac=NULL);
+  edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManager_BacPac *bacpac=NULL);
 
   int fbIndex;
   int gradIndex;
   bool pixSumReset=false;
   void initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth=regionSideWidth);
 
-
+  protected:
   void runTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth);
   void PixSumReCalc(int start,int end);
 

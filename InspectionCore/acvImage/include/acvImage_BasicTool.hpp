@@ -108,6 +108,7 @@ double acvFAtan(double x);
 void acvFullB2W(acvImage *OriPic,acvImage *OutPic);
 void acvClone_B2Gray(acvImage *OriPic,acvImage *OutPic);
 void acvCloneImage(acvImage *OriPic,acvImage *OutPic,int Mode);
+void acvCropImage(acvImage *OriPic, acvImage *OutPic, int X,int Y,int W,int H);
 void acvCloneImage_single(acvImage *OriPic, int layer_ori, acvImage *OutPic, int layer_out);
 
 char *PrintHexArr_buff(char *strBuff,int strBuffL,char *data, int dataL);

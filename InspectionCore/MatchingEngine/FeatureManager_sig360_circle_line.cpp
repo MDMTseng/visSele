@@ -3920,7 +3920,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   vector<FeatureReport_searchPointReport> &detectedSearchPoints = *singleReport.detectedSearchPoints;
   vector<FeatureReport_judgeReport> &judgeReports = *singleReport.judgeReports;
 
-  edgeTracking eT(originalImage, bacpac);
+  edgeTracking eT(p_cropImg,cropOffset, bacpac);
   // acvDrawCrossX(originalImage,
   //   calibCen.X, calibCen.Y,
   //   3, 3);
@@ -3995,9 +3995,22 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     return -30;
   }
 
-
   contourGridGrayLevelRefine(originalImage, edge_grid, bacpac);
 
+  // for(int i=0;i<edge_grid.contourSections.size();i++)
+  // {
+  //   for(int j=0;j<edge_grid.contourSections[i].size();j++)
+  //   {
+  //     int X=edge_grid.contourSections[i][j].pt.X;
+  //     int Y=edge_grid.contourSections[i][j].pt.Y;
+  //     originalImage->CVector[Y][X*3]=255;
+      
+  //     // X=edge_grid.contourSections[i][j].pt_img.X;
+  //     // Y=edge_grid.contourSections[i][j].pt_img.Y;
+      
+  //     // originalImage->CVector[Y][X*3]=0;
+  //   }
+  // }
     
   {//pre-allocate
     detectedCircles.resize(featureCircleList.size());
@@ -4005,8 +4018,6 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     detectedAuxPoints.resize(auxPointList.size());
     detectedSearchPoints.resize(searchPointList.size());
     judgeReports.resize(judgeList.size());
-
-    
 
     //assign def
     for (int j = 0; j < featureLineList.size(); j++)
@@ -4037,13 +4048,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   float error = NAN;
 
   static float angle_offset = 0;
-  if (1) //test angle variation
+  // if (0) //test angle variation
   {
     float sigma;
     // angle += angle_offset * M_PI / 180;
-    if (angle_offset >  3*M_PI/180)
+    if (angle_offset >  5*M_PI/180)
     {
-      angle_offset =  -3*M_PI/180;
+      angle_offset =  -5*M_PI/180;
     }
     else
     {
@@ -4196,7 +4207,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         cm.anchorPairs[j].to = locatedPtOnTemplate;
 
         // acv_XY pos = ;
-        LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.X, cm.anchorPairs[j].from.Y, locatedPtOnTemplate.X, locatedPtOnTemplate.Y);
+        // LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.X, cm.anchorPairs[j].from.Y, locatedPtOnTemplate.X, locatedPtOnTemplate.Y);
 
       }
 
@@ -4233,8 +4244,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     //if the orientation is correct, do the rest of judge 
 
 
-    bool ignore_unnecessary_shape=true;
-    bool ignore_unnecessary_inspection=true;
+    bool ignore_unnecessary_shape=false;
+    bool ignore_unnecessary_inspection=false;
     if(ignore_unnecessary_shape==false)
     {
       int status =TreeExecution(singleReport,eT,
@@ -4385,7 +4396,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       return -1;
     }
   }
-
+  
   int avaliable_ld_size = 0;
   int maxArea = 0;
   {
@@ -4411,7 +4422,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       }
     }
   }
-
+  
   int scanline_skip = 15;
 
   float sigma;
@@ -4436,7 +4447,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   LOGV("ldData.size()=%d", ldData.size());
   for (int i = 2; i < ldData.size(); i++)
   {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects
-    if (ldData[i].area < 300) //HACK: no particular reason, just a hack filter
+    if (ldData[i].area < 100*dsampLevel*dsampLevel) //HACK: no particular reason, just a hack filter
       continue;
     if (ldData[i].misc == -1) //the ignore mark
       continue;
@@ -4444,11 +4455,54 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     {
       continue;
     }
-    //LOGI("Lable:%2d area:%d",i,ldData[i].area);
 
+    bool doCropStyle=false;
+    int cx=0;
+    int cy=0;
+    int cw=labeledBuff->GetWidth();
+    int ch=labeledBuff->GetHeight();
+    if(doCropStyle)
+    {
+      p_cropImg=&_cropImg;
+      int margin=10;
+      cx=ldData[i].LTBound.X-margin;
+      cy=ldData[i].LTBound.Y-margin;
+      cw=ldData[i].RBBound.X+margin-cx;
+      ch=ldData[i].RBBound.Y+margin-cy;
+      LOGI("CROP:%d  %d  %d  %d",cx,cy,cw,ch);
+      acvCropImage(labeledBuff,p_cropImg,cx,cy,cw,ch);
+    }
+    else
+    {
+      p_cropImg=labeledBuff;
+    }
+    cropOffset.X=cx;
+    cropOffset.Y=cy;
+    acv_LabeledData curLableDat=(acv_LabeledData){
+      .area= ldData[i].area,
+      .Center=acvVecSub(ldData[i].Center,cropOffset),
+      .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
+      .RBBound=acvVecSub(ldData[i].RBBound,cropOffset),
+    };
     edge_grid.RESET();
-    extractLabeledContourDataToContourGrid(labeledBuff, i, ldData[i], edge_grid, scanline_skip);
 
+    extractLabeledContourDataToContourGrid(p_cropImg, i, curLableDat, edge_grid, scanline_skip);
+    // edge_grid.ptMult(dsampLevel/2);
+    
+
+     if(doCropStyle)
+    {
+
+      acvCropImage(originalImage,p_cropImg,cx,cy,cw,ch);
+    }
+    else
+    {
+      p_cropImg=originalImage;
+    }
+    // acvSaveBitmapFile("CROPIMG.BMP", &p_cropImg);
+
+
+    
     if (0)
     {
       static float rot = 0;
@@ -4457,17 +4511,24 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       ldData[i].Center = acvVecAdd(ldData[i].Center, (acv_XY){mag * sin(rot), mag * cos(rot)});
     }
 
-    acv_XY ideal_center = ldData[i].Center;
+    acv_XY ideal_center = acvVecMult(curLableDat.Center,dsampLevel);
 
     bacpac->sampler->img2ideal(&ideal_center);
 
+    ideal_center = acvVecMult(ideal_center,1.0/dsampLevel);
+    LOGI(">>>>>%f  %f",ideal_center.X,ideal_center.Y);
     convertContourGrid2Signature(ideal_center, edge_grid, tmp_signature.signature_data, bacpac);
 
     //the tmp_signature is in Pixel unit, convert it to mm
     for (int j = 0; j < tmp_signature.signature_data.size(); j++)
     {
-      tmp_signature.signature_data[j].X /= ppmm;
+      tmp_signature.signature_data[j].X *=dsampLevel/ ppmm;
+      
+      // LOGI("%d=>%f",j,tmp_signature.signature_data[j].X);
     }
+    
+    // acvSaveBitmapFile("FFKFKJDK3.BMP", labeledBuff);
+    // exit(-1);
     tmp_signature.CalcInfo();
 
     { //early intercept just to check mean and sigma
@@ -4510,11 +4571,11 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
             .detectedAuxPoints = reportDataPool[reports.size()].detectedAuxPoints,
             .detectedSearchPoints = reportDataPool[reports.size()].detectedSearchPoints,
             .judgeReports = reportDataPool[reports.size()].judgeReports,
-            .LTBound = ldData[i].LTBound,
-            .RBBound = ldData[i].RBBound,
-            .Center = ldData[i].Center,
-            .area = (float)ldData[i].area,
-            .pix_area = ldData[i].area,
+            .LTBound = acvVecMult(curLableDat.LTBound,dsampLevel),
+            .RBBound = acvVecMult(curLableDat.RBBound,dsampLevel),
+            .Center = acvVecMult(curLableDat.Center,dsampLevel),
+            .area = (float)curLableDat.area*dsampLevel*dsampLevel,
+            .pix_area = curLableDat.area*dsampLevel*dsampLevel,
             .labeling_idx = i,
             // .rotate = angle,
             // .isFlipped = isInv,
@@ -4529,7 +4590,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     bacpac->sampler->img2ideal(&singleReport.RBBound);
     singleReport.RBBound = acvVecMult(singleReport.RBBound, mmpp);
     singleReport.area *= mmpp * mmpp;
-
+    edge_grid.ptMult(dsampLevel);
+    
+    edge_grid.ptSubdivision(dsampLevel);
     //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
     int ret = SingleMatching(originalImage, labeledBuff, img, buff_,

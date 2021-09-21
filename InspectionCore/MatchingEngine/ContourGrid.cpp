@@ -56,6 +56,68 @@ void ContourFetch::RESET()
   }
 }
 
+void ContourFetch::ptMult(float mul)
+{
+  if(mul==1)return;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    for(int j=0;j<contourSections[i].size();j++)
+    {
+      ptInfo pti = contourSections[i][j];
+
+      contourSections[i][j].pt=acvVecMult(contourSections[i][j].pt,mul);
+      contourSections[i][j].pt_img=acvVecMult(contourSections[i][j].pt_img,mul);
+    }
+  }
+}
+
+void ContourFetch::ptSubdivision(int times)
+{
+  if(times<=1)return;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    std::vector <ptInfo> &sec=contourSections[i];
+    int preSize=sec.size();
+    if(preSize==0)continue;
+    sec.resize(preSize*times);
+    // LOGI(">>>preSize:%d => %d",preSize,sec.size());
+    for(int j=preSize-1;j>=0;j--)//althought when j==0 can be skipped, but.... anyway
+    {
+      sec[j*times]=sec[j];
+    }
+
+    // LOGI(">>>");
+    //[0G .... 1G .... 2G .... 3G .....NG] .... 0G
+    for(int j=0;j<sec.size()-times;j++)
+    {
+      int grid=(j/times)*times;
+
+      if(j==grid)//on grid skip
+      {
+        continue;
+      }
+      int diff = j-grid;
+      sec[j].pt=
+        acvVecInterp(sec[grid].pt,sec[grid+times].pt,1.0*diff/times);
+      sec[j].pt_img=
+        acvVecInterp(sec[grid].pt_img,sec[grid+times].pt_img,1.0*diff/times);
+
+    }
+    // LOGI(">>>");
+
+    //0G .... 1G .... 2G .... 3G .....[NG....0G] loop back
+    for(int j=1;j<times;j++)//deal with last mile
+    {
+      sec[j].pt=
+        acvVecInterp(sec[(preSize-1)*times].pt,sec[0].pt,1.0*j/times);
+      sec[j].pt_img=
+        acvVecInterp(sec[(preSize-1)*times].pt_img,sec[0].pt_img,1.0*j/times);
+
+    }
+
+
+  }
+}
 
 
 void ContourFetch::push(int group,ptInfo data)
@@ -416,6 +478,7 @@ const ContourGrid::ptInfo* ContourGrid::get(int idx)
   }
   return NULL;
 }
+
 
 void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,
   std::vector<int> &intersectIdxs)

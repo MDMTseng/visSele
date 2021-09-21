@@ -436,6 +436,42 @@ defalut:
         }
     }
 }
+
+
+void acvCropImage(acvImage *OriPic, acvImage *OutPic, int X,int Y,int W,int H)
+{
+
+    BYTE *OutLine, *OriLine;
+    if(Y<0)
+    {
+      H+=Y;
+      Y=0;
+    }
+    if(X<0)
+    {
+      W+=X;
+      X=0;
+    }
+    if(Y+H>OriPic->GetHeight())
+    {
+      H=OriPic->GetHeight()-Y;
+    }
+    if(X+W>OriPic->GetWidth())
+    {
+      W=OriPic->GetWidth()-X;
+    }
+    OutPic->ReSize(W,H);
+    for (int i = 0; i <H; i++)
+    {
+        OutLine = OutPic->CVector[i];
+        OriLine = OriPic->CVector[i+Y]+3*X;
+        memcpy(OutLine, OriLine, W*3);
+    }
+
+
+}
+
+
 void acvCloneImage_single(acvImage *OriPic, int layer_ori, acvImage *OutPic, int layer_out)
 {
 
