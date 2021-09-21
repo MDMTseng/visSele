@@ -3995,23 +3995,22 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     return -30;
   }
 
-
   contourGridGrayLevelRefine(originalImage, edge_grid, bacpac);
 
-  for(int i=0;i<edge_grid.contourSections.size();i++)
-  {
-    for(int j=0;j<edge_grid.contourSections[i].size();j++)
-    {
-      int X=edge_grid.contourSections[i][j].pt.X;
-      int Y=edge_grid.contourSections[i][j].pt.Y;
-      originalImage->CVector[Y][X*3]=255;
+  // for(int i=0;i<edge_grid.contourSections.size();i++)
+  // {
+  //   for(int j=0;j<edge_grid.contourSections[i].size();j++)
+  //   {
+  //     int X=edge_grid.contourSections[i][j].pt.X;
+  //     int Y=edge_grid.contourSections[i][j].pt.Y;
+  //     originalImage->CVector[Y][X*3]=255;
       
-      X=edge_grid.contourSections[i][j].pt_img.X;
-      Y=edge_grid.contourSections[i][j].pt_img.Y;
+  //     // X=edge_grid.contourSections[i][j].pt_img.X;
+  //     // Y=edge_grid.contourSections[i][j].pt_img.Y;
       
-      originalImage->CVector[Y][X*3]=0;
-    }
-  }
+  //     // originalImage->CVector[Y][X*3]=0;
+  //   }
+  // }
     
   {//pre-allocate
     detectedCircles.resize(featureCircleList.size());
@@ -4051,13 +4050,13 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   float error = NAN;
 
   static float angle_offset = 0;
-  if (0) //test angle variation
+  // if (0) //test angle variation
   {
     float sigma;
     // angle += angle_offset * M_PI / 180;
-    if (angle_offset >  3*M_PI/180)
+    if (angle_offset >  5*M_PI/180)
     {
-      angle_offset =  -3*M_PI/180;
+      angle_offset =  -5*M_PI/180;
     }
     else
     {
@@ -4210,7 +4209,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
         cm.anchorPairs[j].to = locatedPtOnTemplate;
 
         // acv_XY pos = ;
-        LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.X, cm.anchorPairs[j].from.Y, locatedPtOnTemplate.X, locatedPtOnTemplate.Y);
+        // LOGI("XY:%f %f -> %f %f", cm.anchorPairs[j].from.X, cm.anchorPairs[j].from.Y, locatedPtOnTemplate.X, locatedPtOnTemplate.Y);
 
       }
 
@@ -4247,8 +4246,8 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     //if the orientation is correct, do the rest of judge 
 
 
-    bool ignore_unnecessary_shape=true;
-    bool ignore_unnecessary_inspection=true;
+    bool ignore_unnecessary_shape=false;
+    bool ignore_unnecessary_inspection=false;
     if(ignore_unnecessary_shape==false)
     {
       int status =TreeExecution(singleReport,eT,
@@ -4556,6 +4555,8 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     singleReport.RBBound = acvVecMult(singleReport.RBBound, mmpp);
     singleReport.area *= mmpp * mmpp;
     edge_grid.ptMult(dsampLevel);
+    
+    edge_grid.ptSubdivision(dsampLevel);
     //LOGV("======%d===er:%f,inv:%d,angDeg:%f",i,error,isInv,angle*180/3.14159);
 
     int ret = SingleMatching(originalImage, labeledBuff, img, buff_,

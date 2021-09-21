@@ -48,6 +48,7 @@ class ContourFetch{
 
     const ptInfo* get(int idx);
     void ptMult(float mul);
+    void ptSubdivision(int times);
 
     void getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
       float epsilon,std::vector<contourMatchSec> &m_sec);
