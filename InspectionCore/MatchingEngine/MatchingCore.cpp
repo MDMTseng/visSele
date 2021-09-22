@@ -1360,7 +1360,6 @@ edgeTracking::edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManag
 
 void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
 { 
-  return;
   if(section.section.size()==0)return;
   // for(int i=0;i<section.section.size();i++ )//offset Test
   // {
