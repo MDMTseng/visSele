@@ -3995,7 +3995,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     return -30;
   }
 
-  contourGridGrayLevelRefine(originalImage, edge_grid, bacpac);
+  contourGridGrayLevelRefine(p_cropImg, edge_grid, bacpac);
 
   // for(int i=0;i<edge_grid.contourSections.size();i++)
   // {
@@ -4048,7 +4048,7 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
   float error = NAN;
 
   static float angle_offset = 0;
-  // if (0) //test angle variation
+  if (0) //test angle variation
   {
     float sigma;
     // angle += angle_offset * M_PI / 180;
@@ -4464,7 +4464,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     if(doCropStyle)
     {
       p_cropImg=&_cropImg;
-      int margin=10;
+      int margin=20;
       cx=ldData[i].LTBound.X-margin;
       cy=ldData[i].LTBound.Y-margin;
       cw=ldData[i].RBBound.X+margin-cx;
