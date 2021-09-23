@@ -42,7 +42,11 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       }      
 
       if(exp_time_us==0)exp_time_us=exp_time_100ExpUs;
-      int tExp=(1<<13)*exp_time_us*a_gain/exp_time_100ExpUs;
+      float brightnessMult=((float)(rand()%2000)/1000)-1;//-1~1
+
+      brightnessMult=brightnessMult*0.2+1;
+      
+      int tExp=(1<<13)*brightnessMult*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
       static float rotate=0;
       
