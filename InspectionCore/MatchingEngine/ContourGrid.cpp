@@ -224,6 +224,7 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
           m_sec[endIdx].contourIdx=m_sec.size()-1;
           m_sec[endIdx].section.resize(0);
           m_sec[endIdx].sigma=0;
+          m_sec[endIdx].dist=0;
         }
         inSection=true;
         if(j<gapCountMax)
@@ -231,8 +232,33 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
           init_gapCount=gapCountMax-j;
           doMergeToIdx=m_sec.size()-1;
         }
-        float diff=dist-radius;
+
+
+/*
+
+                /  
+               /
+              |        
+      A       |       B        0
+              |
+               \
+                \
+
+  if(outter_inner>0) 
+    dist(A) = R-dist(A~0) //<0
+    dist(B) = R-dist(B~0) //>0
+  if(outter_inner<0) 
+    dist(A) = -(R-dist(A~0))  //>0
+    dist(B) = -(R-dist(B~0))  //<0
+
+*/
+      
+
+
+        float diff=radius-dist;
+        if(outter_inner<0)diff*=-1;
         m_sec[endIdx].section.push_back(pti);
+        m_sec[endIdx].dist+=diff;
         m_sec[endIdx].sigma+=diff*diff;
         lastPtIdxInSonSec=j;
       }
@@ -260,7 +286,7 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
       if(secPtIdxDist<gapCountMax)
       {
         contourConcatLastTo(m_sec,firstSectionInSonSec);
-    }
+      }
     }
     
 
@@ -268,7 +294,10 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 
   for(int i=0;i<m_sec.size();i++)
   {
-    m_sec[i].sigma=sqrt(m_sec[i].sigma/m_sec[i].section.size());
+    m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    m_sec[i].sigma=m_sec[i].sigma/m_sec[i].section.size();
+    LOGI("--m_sec[%d].dist=%f  size:%d------",i,m_sec[i].dist,m_sec[i].section.size());
+    m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
 
 }
@@ -404,6 +433,7 @@ void ContourFetch::getContourPointsWithInLineContour(
   for(int i=0;i<m_sec.size();i++)
   {
     m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    m_sec[i].sigma=m_sec[i].sigma/m_sec[i].section.size();
     // LOGI("--m_sec[%d].dist=%f  size:%d------",i,m_sec[i].dist,m_sec[i].section.size());
     if(flip_f<0)m_sec[i].dist*=-1;
     m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
@@ -820,7 +850,7 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
 
 void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points,float lineCurvatureMax)
 {
-  LOGV("test...");
+  // LOGV("test...");
   points.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
   GetSectionsWithinLineContour(line,epsilonX,epsilonY,intersectIdxs);

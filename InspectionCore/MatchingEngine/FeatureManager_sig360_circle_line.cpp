@@ -3234,6 +3234,8 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
 
   cdef.tmp_pt.clear();
   cr.pt1 = cr.pt2 = cr.pt3 = (acv_XY){NAN, NAN};
+
+
   if (m_sections.size() == 0)
   {
 
@@ -3244,11 +3246,41 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
     return cr;
   }
 
-  std::sort(m_sections.begin(), m_sections.end(),
-            [](const ContourFetch::contourMatchSec &a, const ContourFetch::contourMatchSec &b) -> bool
-            {
-              return a.sigma < b.sigma;
-            });
+
+  {
+    float minFactor = 9999999;
+    for (int tk = 0; tk < m_sections.size(); tk++)
+    {
+      float factor = m_sections[tk].dist;
+      // if(flip_f<0)factor*=-1;
+      // factor+=(m_sections[tk].sigma/100);
+
+      LOGI("Sec[%d].dist:%f   f:%f",tk,m_sections[tk].dist,factor);
+
+      if (minFactor > factor)
+      {
+        minFactor = factor;
+      }
+    }
+
+    // LOGI("minFactor:%f",minFactor);
+    for (int tk = 0; tk < m_sections.size(); tk++)
+    {
+
+      float factor = m_sections[tk].dist;
+      // if(flip_f<0)factor*=-1;
+
+      if (minFactor < factor) //only use the min one
+      {
+        m_sections[tk].section.clear();
+      }
+    }
+  }
+
+
+
+
+
 
   // for (auto &secInfo : m_sections)
   // {
@@ -3290,66 +3322,6 @@ FeatureReport_circleReport FeatureManager_sig360_circle_line::CircleMatching_Rep
   // }
 
   circleRefine(s_points, s_points.size(), &cf);
-
-  if (s_points.size() > 30 && false)
-  {
-    acv_CircleFit best_cf = cf;
-    float minSigmaScore = 99999;
-    for (int m = 0; m < 10; m++)
-    {
-      int sampleL = s_points.size() / 7 + 3;
-      for (int k = 0; k < sampleL; k++) //Shuffle in
-      {
-        int idx2Swap = (rand() % (s_points.size() - k)) + k;
-
-        ContourFetch::ptInfo tmp_pt = s_points[k];
-        s_points[k] = s_points[idx2Swap];
-        s_points[idx2Swap] = tmp_pt;
-        //s_points[j].edgeRsp=1;
-      }
-      circleRefine(s_points, sampleL, &cf);
-
-      int sigma_count = 0;
-      float sigma_sum = 0;
-      for (int k = 0; k < sampleL; k++) //Shuffle in
-      {
-        float dist = acvDistance(cf.circle, s_points[k].pt);
-        if (dist > 3)
-        {
-          //s_points[j].edgeRsp=0;
-          continue;
-        }
-        sigma_count++;
-        sigma_sum += dist * dist;
-      }
-      sigma_sum = sqrt(sigma_sum / sigma_count) / (sigma_count + 1);
-
-      if (minSigmaScore > sigma_sum)
-      {
-        minSigmaScore = sigma_sum;
-        best_cf = cf;
-      }
-    }
-    cf = best_cf;
-
-    for (int n = 0; n < s_points.size(); n++)
-    {
-      float dist = acvDistance_Signed(cf.circle, s_points[n].pt);
-      s_points[n].tmp = dist;
-    }
-    std::sort(s_points.begin(), s_points.end(), ptInfo_tmp_comp);
-
-    int usable_L = s_points.size() * 2 / 3;
-    float distThres = s_points[usable_L].tmp + 1;
-    LOGV("sort finish size:%d, distThres:%f", s_points.size(), distThres);
-    for (int n = usable_L; n < s_points.size(); n++)
-    {
-      usable_L = n;
-      if (s_points[n].tmp > distThres)
-        break;
-    }
-    circleRefine(s_points, usable_L, &cf);
-  }
 
   float minTor = matching_tor / 2;
   if (minTor < 1)
