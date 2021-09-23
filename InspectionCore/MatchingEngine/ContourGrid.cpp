@@ -254,9 +254,9 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 
     if(lastPtIdxInSonSec>=0 && firstPtIdxInSonSec>=0 && firstSectionInSonSec>=0)
     {
-      int secPtIdxDist=firstSectionInSonSec+ contourSections[idx].size()- lastPtIdxInSonSec;
+      int secPtIdxDist=firstPtIdxInSonSec+ contourSections[idx].size()- lastPtIdxInSonSec;
       
-      LOGI("secPtIdxDist:%d firstSectionInSonSec:%d",secPtIdxDist,firstSectionInSonSec);
+      // LOGI("secPtIdxDist:%d firstSectionInSonSec:%d",secPtIdxDist,firstSectionInSonSec);
       if(secPtIdxDist<gapCountMax)
       {
         contourConcatLastTo(m_sec,firstSectionInSonSec);
@@ -389,9 +389,10 @@ void ContourFetch::getContourPointsWithInLineContour(
     }
     if(lastPtIdxInSonSec>=0 && firstPtIdxInSonSec>=0 && firstSectionInSonSec>=0)
     {
-      int secPtIdxDist=firstSectionInSonSec+ contourSections[idx].size()- lastPtIdxInSonSec;
+      int secPtIdxDist=firstPtIdxInSonSec+ contourSections[idx].size()- lastPtIdxInSonSec;
       
-      LOGI("secPtIdxDist:%d firstSectionInSonSec:%d",secPtIdxDist,firstSectionInSonSec);
+      // LOGI("secPtIdxDist:%d lastPtIdxInSonSec:%d firstSectionInSonSec:%d",secPtIdxDist,lastPtIdxInSonSec,firstSectionInSonSec);
+      // LOGI("m_sec.size:%d firstSectionInSonSec:%d",m_sec.size(),firstSectionInSonSec);
       if(secPtIdxDist<gapCountMax)
       {
         contourConcatLastTo(m_sec,firstSectionInSonSec);
@@ -403,6 +404,7 @@ void ContourFetch::getContourPointsWithInLineContour(
   for(int i=0;i<m_sec.size();i++)
   {
     m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    // LOGI("--m_sec[%d].dist=%f  size:%d------",i,m_sec[i].dist,m_sec[i].section.size());
     if(flip_f<0)m_sec[i].dist*=-1;
     m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
