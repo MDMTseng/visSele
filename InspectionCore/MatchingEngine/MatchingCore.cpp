@@ -1572,6 +1572,28 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
   grad[pixWidth-1]=grad[pixWidth-2];
   grad[0]=grad[1];
 
+
+  if(0)
+  {//grad weight:experiment
+
+    float mean=0;//-2~2
+    float sigma=0;
+    for(int j=0;j<pixWidth;j++)
+    {
+      mean+=pixSum[j];
+      sigma+=pixSum[j]*pixSum[j];
+    }
+    mean/=pixWidth;
+    sigma/=pixWidth;
+    sigma=sqrt(sigma-mean*mean);
+    // LOGI("SIGMA:%f",sigma);
+    float beta=0;//-2~2
+    for(int j=0;j<pixWidth;j++)
+    {
+      // float alpha = pixSum[j]/255.0;
+      grad[j]*=beta*(pixSum[j]/255.0-0.5)+1;
+    }
+  }
   // int xxdd=(pixWidth-1)/2;
   // for(int j=0;j<pixWidth;j++)
   // {
