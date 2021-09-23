@@ -51,6 +51,7 @@ import {
   LineOutlined,
   TagsOutlined,
   CameraOutlined,
+  RedoOutlined,
   ExpandOutlined,
   HeartTwoTone,
   ArrowLeftOutlined,
@@ -768,7 +769,7 @@ class CanvasComponent extends React.Component {
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
-
+        this.ec_canvas.doRotateView=this.props.renderObjAlignRotate;
         
       }
     }
@@ -1524,7 +1525,8 @@ class APP_INSP_MODE extends React.Component {
       measureDisplayRank:0,
       isInSettingUI:false,
       SettingParamInfo:undefined,
-      modalInfo:undefined
+      modalInfo:undefined,
+      renderObjAlignRotate:false
     };
 
     
@@ -2069,6 +2071,11 @@ class APP_INSP_MODE extends React.Component {
 
 
 
+      <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
+        <RedoOutlined/>
+        {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
+      </Button>
+
 
 
 
@@ -2092,7 +2099,7 @@ class APP_INSP_MODE extends React.Component {
       }}
       >資料圖表</Button>
 
-      <Button type="primary" key="Manual ZOOM" size={"large"}
+      <Button type={"primary"} danger={this.state.onROISettingCallBack!==undefined} key="Manual ZOOM" size={"large"}
         onClick={() => {
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:[0,0,99999,99999] } });
@@ -2119,9 +2126,10 @@ class APP_INSP_MODE extends React.Component {
 
         
           console.log(ROI_setting,ROI);
-          this.setState(undefined);
+          this.setState({onROISettingCallBack:undefined});
         }})
-      }} ><ExpandOutlined /></Button>
+      }} ><ExpandOutlined />
+        {this.state.onROISettingCallBack===undefined?"設定ROI":"選擇ROI中"}</Button>
     </>
 
 /*
@@ -2155,6 +2163,7 @@ class APP_INSP_MODE extends React.Component {
               ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
               downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
               onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
+              renderObjAlignRotate={this.state.renderObjAlignRotate}
               camera_calibration_report={this.props.camera_calibration_report} />}
 
           {(CanvasWindowRatio >= 12) ? null :
