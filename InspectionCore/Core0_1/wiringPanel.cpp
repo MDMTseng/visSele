@@ -37,11 +37,15 @@ const std::string InspSampleSavePath_DEFAULT("data/SAMPLE");
 std::string InspSampleSavePath = InspSampleSavePath_DEFAULT;
 
 int resourcePoolSize = 30;
+
+std::timed_mutex lastDatViewCache_lock;
+image_pipe_info *lastDatViewCache=NULL;
 TSQueue<image_pipe_info *> inspQueue(10);
 TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL);
 
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
@@ -2457,7 +2461,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             ImageCropH = 10;
           }
         }
+        if(inspQueue.size()==0 && datViewQueue.size()==0)
+        {
+          lastDatViewCache_lock.lock();
 
+          InspResultAction(lastDatViewCache, true, false , false,NULL);
+
+          lastDatViewCache_lock.unlock();
+        }
         session_ACK = true;
       }
 
@@ -3001,7 +3012,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
   }
 }
 
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL)
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down)
 {
   static int frameActionID = 0;
   if (bpg_pi.cameraFramesLeft == 0)
@@ -3025,6 +3036,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   BPG_protocol_data bpg_dat;
 
+  char tmp[200];
   do
   {
     // sendResultTo_mift(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
@@ -3034,7 +3046,6 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       break;
     }
 
-    char tmp[100];
     sprintf(tmp, "{\"start\":true}");
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
@@ -3066,7 +3077,15 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     {
       LOGE("Caught an error!");
     }
+  } while (false);
 
+  do
+  {
+    
+    if (skipImageTransfer == true)
+    {
+      break;
+    }
     // LOGI(">>>>");
     clock_t img_t = clock();
     static acvImage test1_buff;
@@ -3173,6 +3192,10 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
     }
 
+  } while (false);
+  
+  do
+  {
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
@@ -3381,10 +3404,30 @@ void ImgPipeDatViewThread(bool *terminationflag)
       //delayStartCounter=10000;
       if (!doPassDown)
       { //there is the end, recycle the resource
-
-        cJSON_Delete(headImgPipe->datViewInfo.report_json);
-        headImgPipe->datViewInfo.report_json = NULL;
-        bpg_pi.resPool.retResrc(headImgPipe);
+        //the logic here is to preserve the last datView info, so that we can use it if it's the last frame
+        lastDatViewCache_lock.lock();
+        image_pipe_info *destroyObj=headImgPipe;
+        if(imgSendState==true)
+        {
+          if(lastDatViewCache==NULL)
+          {
+            destroyObj=NULL;
+          }
+          else
+          {
+            destroyObj=lastDatViewCache;
+          }
+          
+          lastDatViewCache=headImgPipe;
+        }
+        if(destroyObj!=NULL)
+        {
+          cJSON_Delete(destroyObj->datViewInfo.report_json);
+          destroyObj->datViewInfo.report_json = NULL;
+          bpg_pi.resPool.retResrc(destroyObj);
+        }
+        lastDatViewCache_lock.unlock();
+        
       }
     }
   }
