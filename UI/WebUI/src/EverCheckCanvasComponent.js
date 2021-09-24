@@ -2468,16 +2468,25 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       (ViewPortY - offset.y - cH / 2) / totalScale,
       ViewPortW / totalScale,
       ViewPortH / totalScale];
+    
     let down_samp_level = 1.0 * crop[2] / (cW);
-
-    if(this.doRotateView==true)//override
+    if(this.doRotateView==true)
     {
-      crop= [
-        0,0,
-        999999,
-        999999];
-      if(down_samp_level<5)down_samp_level=5;
+      let mmpp = this.rUtil.get_mmpp();
+      if(this.img_info!==undefined)
+      {
+        crop= [
+          0,0,
+          (this.img_info.full_height+100)*mmpp,
+          (this.img_info.full_width+100)*mmpp];
+          
+        let new_down_samp_level = 1.0 * crop[2] / (cW);
+        if(down_samp_level<new_down_samp_level)
+          down_samp_level=new_down_samp_level;
+      }
     }
+
+
     this.EmitEvent(
       {
         type: "down_samp_level_update",
@@ -2547,9 +2556,18 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       let rot=inspectionReportList[0].rotate;
       // let rot=-Math.atan2(line_N.vy,line_N.vx);
 
-      ctx.rotate(rot);
       if (inspectionReportList[0].isFlipped)
+      {
+        
+        ctx.rotate(-rot);
         ctx.scale(1, -1);
+        
+      }
+      else
+      {
+
+        ctx.rotate(rot);
+      }
       
       // ctx.translate(inspectionReportList[0].cx/mmpp,inspectionReportList[0].cy/mmpp);//Move to the center of the secCanvas
       // console.log(inspectionReportList[0]);
