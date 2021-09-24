@@ -1709,7 +1709,7 @@ class EverCheckCanvasComponent_proto {
     this.rUtil.setColorSet(this.colorSet);
 
 
-    this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 500);
+    this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 500,{trailing:true});
   }
 
 
@@ -1796,7 +1796,7 @@ class EverCheckCanvasComponent_proto {
           timeout = null;
         }
         previous = now;
-        result = func.apply(context, args);
+        // result = func.apply(context, args);
         if (!timeout) context = args = null;
       } else if (!timeout && options.trailing !== false) {
         timeout = setTimeout(later, remaining);
@@ -2184,6 +2184,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.db_obj = null;
     this.mouse_close_dist = 10;
     this.doImageFitting=true;
+    this.doRotateView=true;
     this.colorSet =
       Object.assign(this.colorSet,
         {
@@ -2440,6 +2441,55 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
   draw() {
     this.draw_INSP();
   }
+
+
+  zoom_emit() {
+    // return this.zoom_full();
+    let cW=this.canvas.width;
+    let cH=this.canvas.height;
+
+    // let maxEdge=cW>cH?cW:cH;
+    // cW=cH=maxEdge;
+
+
+    let alpha = .2;
+    let ViewPort_expand= 0;
+    let ViewPortX = -cW * alpha-ViewPort_expand;
+    let ViewPortY = -cH * alpha-ViewPort_expand;
+    let ViewPortW = cW - 2 * ViewPortX;
+    let ViewPortH = cH - 2 * ViewPortY;
+    let totalScale = this.camera.GetCameraScale();
+    let offset = this.camera.GetCameraOffset();
+
+
+
+    let crop = [
+      (ViewPortX - offset.x - cW / 2) / totalScale,
+      (ViewPortY - offset.y - cH / 2) / totalScale,
+      ViewPortW / totalScale,
+      ViewPortH / totalScale];
+    let down_samp_level = 1.0 * crop[2] / (cW);
+
+    if(this.doRotateView==true)//override
+    {
+      crop= [
+        0,0,
+        999999,
+        999999];
+      if(down_samp_level<5)down_samp_level=5;
+    }
+    this.EmitEvent(
+      {
+        type: "down_samp_level_update",
+        data: {
+          down_samp_level,
+          crop
+        }
+      }
+    );
+  }
+
+
   draw_INSP() {
 
     if(this.img_info===undefined)
@@ -2483,19 +2533,19 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.setTransform(matrix.a, matrix.b, matrix.c,
       matrix.d, matrix.e, matrix.f);
 
-    if(false&&inspectionReportList.length==1)
+    if(this.doRotateView==true && inspectionReportList.length>=1 )
     {
-      let line_N=inspectionReportList[0].detectedLines[1];
-      let spoint_N=inspectionReportList[0].searchPoints[0];
+      // let line_N=inspectionReportList[0].detectedLines[1];
+      // let spoint_N=inspectionReportList[0].searchPoints[0];
       
-      let centerPt={x:inspectionReportList[0].cx,y:inspectionReportList[0].cx}
-      // centerPt={x:(line_N.pt1.x+line_N.pt2.x)/2,y:(line_N.pt1.y+line_N.pt2.y)/2}
+      let centerPt={x:inspectionReportList[0].cx,y:inspectionReportList[0].cy}
+      // let centerPt={x:(line_N.pt1.x+line_N.pt2.x)/2,y:(line_N.pt1.y+line_N.pt2.y)/2}
       // centerPt={x:(spoint_N.x),y:(spoint_N.y)}
-      ctx.translate(centerPt.x,centerPt.y);//Move to the center of the secCanvas
+      // ctx.translate(centerPt.x,centerPt.y);//Move to the center of the secCanvas
       
 
-      // let rot=inspectionReportList[0].rotate;
-      let rot=-Math.atan2(line_N.vy,line_N.vx);
+      let rot=inspectionReportList[0].rotate;
+      // let rot=-Math.atan2(line_N.vy,line_N.vx);
 
       ctx.rotate(rot);
       if (inspectionReportList[0].isFlipped)
@@ -2507,7 +2557,6 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
       ctx.translate(-centerPt.x,-centerPt.y);//Move to the center of the secCanvas
       
     }
-  
     
     
     {

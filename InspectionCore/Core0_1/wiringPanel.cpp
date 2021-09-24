@@ -20,6 +20,8 @@
 #include <smem_channel.hpp>
 #include <ctime>
 
+#define _VERSION_ "v1.0.1"
+
 std::timed_mutex mainThreadLock;
 
 bool saveInspFailSnap = true;
@@ -35,11 +37,15 @@ const std::string InspSampleSavePath_DEFAULT("data/SAMPLE");
 std::string InspSampleSavePath = InspSampleSavePath_DEFAULT;
 
 int resourcePoolSize = 30;
+
+std::timed_mutex lastDatViewCache_lock;
+image_pipe_info *lastDatViewCache=NULL;
 TSQueue<image_pipe_info *> inspQueue(10);
 TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL);
 
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
@@ -2456,6 +2462,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
         }
 
+
         session_ACK = true;
       }
 
@@ -2506,6 +2513,35 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         saveInspNASnap = false;
       }
+
+
+
+      auto LAST_FRAME_RESEND = getDataFromJson(json, "LAST_FRAME_RESEND", NULL);
+      if (LAST_FRAME_RESEND == cJSON_True)
+      {  
+        static clock_t s_t=0;
+        
+        clock_t new_t = clock();
+        
+        double timeDiff_ms = (double)(new_t - s_t) / CLOCKS_PER_SEC * 1000;
+        LOGI("IMG resend  ms:%f timeDiff_ms:%f  iQ:%d dQ:%d",
+          (double)new_t*1000/CLOCKS_PER_SEC,
+          timeDiff_ms,
+          inspQueue.size(),
+          datViewQueue.size());
+        // LOGI("lisdfsdfijsdifjsdiofjisdfjsdjflsdjfl");
+        if(inspQueue.size()==0 && datViewQueue.size()==0)
+        {
+          lastDatViewCache_lock.lock();
+          LOGI("IMG resend !!!!");
+          InspResultAction(lastDatViewCache, true, false , false,NULL);
+
+          lastDatViewCache_lock.unlock();
+          s_t=new_t;
+        }
+      }
+
+
     }
     else if (checkTL("PR", dat)) //for external application
     {
@@ -2999,7 +3035,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
   }
 }
 
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL)
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down)
 {
   static int frameActionID = 0;
   if (bpg_pi.cameraFramesLeft == 0)
@@ -3023,6 +3059,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   BPG_protocol_data bpg_dat;
 
+  char tmp[200];
   do
   {
     // sendResultTo_mift(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
@@ -3032,7 +3069,6 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       break;
     }
 
-    char tmp[100];
     sprintf(tmp, "{\"start\":true}");
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
@@ -3064,7 +3100,15 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     {
       LOGE("Caught an error!");
     }
+  } while (false);
 
+  do
+  {
+    
+    if (skipImageTransfer == true)
+    {
+      break;
+    }
     // LOGI(">>>>");
     clock_t img_t = clock();
     static acvImage test1_buff;
@@ -3171,6 +3215,10 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
     }
 
+  } while (false);
+  
+  do
+  {
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
     bpg_dat.pgID = bpg_pi.CI_pgID;
@@ -3379,10 +3427,30 @@ void ImgPipeDatViewThread(bool *terminationflag)
       //delayStartCounter=10000;
       if (!doPassDown)
       { //there is the end, recycle the resource
-
-        cJSON_Delete(headImgPipe->datViewInfo.report_json);
-        headImgPipe->datViewInfo.report_json = NULL;
-        bpg_pi.resPool.retResrc(headImgPipe);
+        //the logic here is to preserve the last datView info, so that we can use it if it's the last frame
+        lastDatViewCache_lock.lock();
+        image_pipe_info *destroyObj=headImgPipe;
+        if(imgSendState==true)
+        {
+          if(lastDatViewCache==NULL)
+          {
+            destroyObj=NULL;
+          }
+          else
+          {
+            destroyObj=lastDatViewCache;
+          }
+          
+          lastDatViewCache=headImgPipe;
+        }
+        if(destroyObj!=NULL)
+        {
+          cJSON_Delete(destroyObj->datViewInfo.report_json);
+          destroyObj->datViewInfo.report_json = NULL;
+          bpg_pi.resPool.retResrc(destroyObj);
+        }
+        lastDatViewCache_lock.unlock();
+        
       }
     }
   }
@@ -3496,6 +3564,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
+    LOGI("stat:%d stat_sec:%d",stat,stat_sec);
 
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
   }
@@ -3620,7 +3689,7 @@ int m_BPG_Link_Interface_WebSocket::ws_callback(websock_data data, void *param)
       {
         default_peer = data.peer;
         
-        BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", NULL); //[F]older [S]truct
+        BPG_protocol_data bpg_dat = bpg_pi.GenStrBPGData("HR", "{\"version\":\"" _VERSION_ "\"}"); //[F]older [S]truct
         bpg_dat.pgID = 0xFF;
         bpg_pi.fromUpperLayer(bpg_dat);
       }

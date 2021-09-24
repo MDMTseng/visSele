@@ -154,6 +154,7 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   float matching_angle_offset;
   int matching_face;
   bool matching_without_signature;
+  float single_result_area_ratio;
 
 
   vector<FeatureReport_sig360_circle_line_single> reportDataPool;
@@ -162,16 +163,23 @@ class FeatureManager_sig360_circle_line:public FeatureManager_binary_processing 
   acvImage buff1;
   acvImage buff2;
   
+  acvImage *p_cropImg;
+  acvImage _cropImg;
+  acv_XY cropOffset;
+
+
   vector<ContourFetch::ptInfo > tmp_points;
   vector<ContourFetch::contourMatchSec > m_sections;
   
 public :
   FeatureManager_sig360_circle_line(const char *json_str);
+  ~FeatureManager_sig360_circle_line();
   int reload(const char *json_str) override;
   int FeatureMatching(acvImage *img) override;
   virtual const FeatureReport* GetReport() override;
   virtual void ClearReport() override;
   static const char* GetFeatureTypeName(){return "sig360_circle_line";};
+  
 protected:
 
   //int parse_search_key_points_Data(cJSON *kspArr_obj,vector<featureDef_line::searchKeyPoint> &skpsList);
@@ -189,16 +197,51 @@ protected:
   float sine,float cosine,float flip_f,
   FeatureReport_judgeDef &judge);
 
-  FeatureReport_auxPointReport auxPoint_process(FeatureReport_sig360_circle_line_single &report,
-  float sine,float cosine,float flip_f,
-  featureDef_auxPoint &def);
 
   FeatureReport_searchPointReport searchPoint_process(
   FeatureReport_sig360_circle_line_single &report, acv_XY center,
   float sine,float cosine,float flip_f,float thres,
   featureDef_searchPoint &def,edgeTracking &eT);
 
+  FeatureReport_lineReport LineMatching_ReportGen(
+  featureDef_line *plineDef,edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
+
+
+  FeatureReport_circleReport CircleMatching_ReportGen(
+  featureDef_circle *plineDef,edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
+  FeatureReport_searchPointReport SPointMatching_ReportGen(
+  featureDef_searchPoint *def,
+  FeatureReport_sig360_circle_line_single &singleReport,
+  edgeTracking &eT,
+  acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
+
+  FeatureReport_auxPointReport APointMatching_ReportGen(
+  featureDef_auxPoint *def,
+  FeatureReport_sig360_circle_line_single &singleReport,
+  float sine,float cosine,float flip_f
+  );
+
+  FeatureReport_judgeReport Judge_ReportGen(
+    FeatureReport_judgeDef *def,
+    FeatureReport_sig360_circle_line_single &singleReport,
+    float sine,float cosine,float flip_f
+  );
   
+  int TreeExecution(int id,
+    FeatureReport_sig360_circle_line_single &singleReport,
+    edgeTracking &eT,
+    acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
+  int TreeExecution(
+    FeatureReport_sig360_circle_line_single &singleReport,
+    edgeTracking &eT,
+    acv_XY calibCen,float mmpp,float cached_cos,float cached_sin,float flip_f);
+
 
   int FindFeatureDefIndex(int feature_id,FEATURETYPE *ret_type);
   int FindFeatureReportIndex(FeatureReport_sig360_circle_line_single &report,int feature_id,FEATURETYPE *ret_type);

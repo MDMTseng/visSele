@@ -301,6 +301,7 @@ function StateReducer(newState, action) {
                         }
                         delete srep_inWindow.headSkipTime;
                         delete srep_inWindow.minReportRepeat;
+                        delete srep_inWindow.maxReportRepeat;
 
                         reportStatisticState.newAddedReport.push(srep_inWindow);
                       }
@@ -341,7 +342,7 @@ function StateReducer(newState, action) {
                       });
                       judgeReports.forEach((jud)=>{
                         jud.detailStatus=
-                          newState.edit_info._obj.getMeasureGrading(jud,pfilled_marginInfo);
+                          newState.edit_info._obj.getMeasure_detailStatus(jud,pfilled_marginInfo);
 
                           
                         if(jud.detailStatus==MEASURERSULTRESION.NA)
@@ -442,10 +443,13 @@ function StateReducer(newState, action) {
 
                       });
 
-
-
-
-                      if (closeRep !== undefined) {
+                      let maxReportRepeat = statSetting.maxReportRepeat;
+                      if (closeRep !== undefined && maxReportRepeat!==undefined && closeRep.repeatTime>maxReportRepeat)
+                      {
+                        closeRep.time_ms = currentTime_ms;
+                        closeRep.isCurObj = true;
+                      }
+                      else if (closeRep !== undefined) {
                         //blend the report with the existed report in tracking window  
 
                         //log.info(">>>>>",closeRep,singleReport);
@@ -604,6 +608,7 @@ function StateReducer(newState, action) {
                         treport.headSkipTime = statSetting.headReportSkip;
                         
                         treport.minReportRepeat = statSetting.minReportRepeat;
+                        treport.maxReportRepeat = statSetting.maxReportRepeat;
                         //treport.seq=[singleReport];
                         treport.isCurObj = true;
                         reportStatisticState.trackingWindow.push(treport);

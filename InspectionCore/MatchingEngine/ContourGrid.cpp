@@ -56,6 +56,68 @@ void ContourFetch::RESET()
   }
 }
 
+void ContourFetch::ptMult(float mul)
+{
+  if(mul==1)return;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    for(int j=0;j<contourSections[i].size();j++)
+    {
+      ptInfo pti = contourSections[i][j];
+
+      contourSections[i][j].pt=acvVecMult(contourSections[i][j].pt,mul);
+      contourSections[i][j].pt_img=acvVecMult(contourSections[i][j].pt_img,mul);
+    }
+  }
+}
+
+void ContourFetch::ptSubdivision(int times)
+{
+  if(times<=1)return;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    std::vector <ptInfo> &sec=contourSections[i];
+    int preSize=sec.size();
+    if(preSize==0)continue;
+    sec.resize(preSize*times);
+    // LOGI(">>>preSize:%d => %d",preSize,sec.size());
+    for(int j=preSize-1;j>=0;j--)//althought when j==0 can be skipped, but.... anyway
+    {
+      sec[j*times]=sec[j];
+    }
+
+    // LOGI(">>>");
+    //[0G .... 1G .... 2G .... 3G .....NG] .... 0G
+    for(int j=0;j<sec.size()-times;j++)
+    {
+      int grid=(j/times)*times;
+
+      if(j==grid)//on grid skip
+      {
+        continue;
+      }
+      int diff = j-grid;
+      sec[j].pt=
+        acvVecInterp(sec[grid].pt,sec[grid+times].pt,1.0*diff/times);
+      sec[j].pt_img=
+        acvVecInterp(sec[grid].pt_img,sec[grid+times].pt_img,1.0*diff/times);
+
+    }
+    // LOGI(">>>");
+
+    //0G .... 1G .... 2G .... 3G .....[NG....0G] loop back
+    for(int j=1;j<times;j++)//deal with last mile
+    {
+      sec[j].pt=
+        acvVecInterp(sec[(preSize-1)*times].pt,sec[0].pt,1.0*j/times);
+      sec[j].pt_img=
+        acvVecInterp(sec[(preSize-1)*times].pt_img,sec[0].pt_img,1.0*j/times);
+
+    }
+
+
+  }
+}
 
 
 void ContourFetch::push(int group,ptInfo data)
@@ -87,6 +149,8 @@ void contourConcatLastTo(std::vector<ContourFetch::contourMatchSec> &m_sec,int t
     m_sec[toIdx].section[k]=ptI;
   }
   
+  m_sec[toIdx].dist+=m_sec[endIdx].dist;
+  m_sec[toIdx].sigma+=m_sec[endIdx].sigma;
   //remove the last section
   m_sec.erase(m_sec.end() - 1);
 }
@@ -115,6 +179,9 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 
     int doMergeToIdx=-1; 
     bool inSection=false; 
+    int firstSectionInSonSec=-1;
+    int firstPtIdxInSonSec=-1;
+    int lastPtIdxInSonSec=-1;
     for(int j=0;j<contourSections[idx].size();j++)
     {
       ptInfo pti = contourSections[idx][j];
@@ -149,9 +216,15 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
           
           m_sec.resize(m_sec.size()+1);
           endIdx = m_sec.size()-1;
+          if(firstSectionInSonSec==-1)
+          {
+            firstPtIdxInSonSec=j;
+            firstSectionInSonSec=endIdx;
+          }
           m_sec[endIdx].contourIdx=m_sec.size()-1;
           m_sec[endIdx].section.resize(0);
           m_sec[endIdx].sigma=0;
+          m_sec[endIdx].dist=0;
         }
         inSection=true;
         if(j<gapCountMax)
@@ -159,9 +232,35 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
           init_gapCount=gapCountMax-j;
           doMergeToIdx=m_sec.size()-1;
         }
-        float diff=dist-radius;
+
+
+/*
+
+                /  
+               /
+              |        
+      A       |       B        0
+              |
+               \
+                \
+
+  if(outter_inner>0) 
+    dist(A) = R-dist(A~0) //<0
+    dist(B) = R-dist(B~0) //>0
+  if(outter_inner<0) 
+    dist(A) = -(R-dist(A~0))  //>0
+    dist(B) = -(R-dist(B~0))  //<0
+
+*/
+      
+
+
+        float diff=radius-dist;
+        if(outter_inner<0)diff*=-1;
         m_sec[endIdx].section.push_back(pti);
+        m_sec[endIdx].dist+=diff;
         m_sec[endIdx].sigma+=diff*diff;
+        lastPtIdxInSonSec=j;
       }
       else
       {
@@ -179,16 +278,26 @@ void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float rad
 
     }
 
-    if(doMergeToIdx>=0 && m_sec.size()>0)
+    if(lastPtIdxInSonSec>=0 && firstPtIdxInSonSec>=0 && firstSectionInSonSec>=0)
     {
-      contourConcatLastTo(m_sec,doMergeToIdx);
+      int secPtIdxDist=firstPtIdxInSonSec+ contourSections[idx].size()- lastPtIdxInSonSec;
+      
+      // LOGI("secPtIdxDist:%d firstSectionInSonSec:%d",secPtIdxDist,firstSectionInSonSec);
+      if(secPtIdxDist<gapCountMax)
+      {
+        contourConcatLastTo(m_sec,firstSectionInSonSec);
+      }
     }
+    
 
   }
 
   for(int i=0;i<m_sec.size();i++)
   {
-    m_sec[i].sigma=sqrt(m_sec[i].sigma/m_sec[i].section.size());
+    m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    m_sec[i].sigma=m_sec[i].sigma/m_sec[i].section.size();
+    LOGI("--m_sec[%d].dist=%f  size:%d------",i,m_sec[i].dist,m_sec[i].section.size());
+    m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
 
 }
@@ -215,7 +324,10 @@ void ContourFetch::getContourPointsWithInLineContour(
     bool inSection=false; 
     init_gapCount=0;
     gapCount=0;
-    // printf("sec:%d\n",i);
+    
+    int firstSectionInSonSec=-1;
+    int firstPtIdxInSonSec=-1;
+    int lastPtIdxInSonSec=-1;
     for(int j=0;j<contourSections[idx].size();j++)
     {
   
@@ -268,6 +380,12 @@ void ContourFetch::getContourPointsWithInLineContour(
           m_sec[endIdx].contourIdx=m_sec.size()-1;
           m_sec[endIdx].section.resize(0);
           m_sec[endIdx].sigma=0;
+          m_sec[endIdx].dist=0;
+          if(firstSectionInSonSec==-1)
+          {
+            firstSectionInSonSec=endIdx;
+            firstPtIdxInSonSec=j;
+          }
         }
         inSection=true;
         if(j<gapCountMax)
@@ -279,6 +397,7 @@ void ContourFetch::getContourPointsWithInLineContour(
 
         m_sec[endIdx].dist+=dist;
         m_sec[endIdx].sigma+=dist*dist;
+        lastPtIdxInSonSec=j;
         
       }
       else
@@ -297,16 +416,16 @@ void ContourFetch::getContourPointsWithInLineContour(
 
 
     }
-    if(doMergeToIdx>=0)
+    if(lastPtIdxInSonSec>=0 && firstPtIdxInSonSec>=0 && firstSectionInSonSec>=0)
     {
-      // LOGI("________________");
-      // LOGI("doMergeToIdx:%d,m_sec.size=%d",doMergeToIdx,m_sec.size());
-      // LOGI("sec.size=%d  size=%d",m_sec[doMergeToIdx].section.size(),m_sec[m_sec.size()-1].section.size());
-      contourConcatLastTo(m_sec,doMergeToIdx);
-
+      int secPtIdxDist=firstPtIdxInSonSec+ contourSections[idx].size()- lastPtIdxInSonSec;
       
-      // LOGI("doMergeToIdx:%d,m_sec.size=%d",doMergeToIdx,m_sec.size());
-      // LOGI("sec.size=%d  size=%d",m_sec[doMergeToIdx].section.size(),m_sec[m_sec.size()-1].section.size());
+      // LOGI("secPtIdxDist:%d lastPtIdxInSonSec:%d firstSectionInSonSec:%d",secPtIdxDist,lastPtIdxInSonSec,firstSectionInSonSec);
+      // LOGI("m_sec.size:%d firstSectionInSonSec:%d",m_sec.size(),firstSectionInSonSec);
+      if(secPtIdxDist<gapCountMax)
+      {
+        contourConcatLastTo(m_sec,firstSectionInSonSec);
+      }
     }
 
   }
@@ -314,6 +433,8 @@ void ContourFetch::getContourPointsWithInLineContour(
   for(int i=0;i<m_sec.size();i++)
   {
     m_sec[i].dist=m_sec[i].dist/m_sec[i].section.size();
+    m_sec[i].sigma=m_sec[i].sigma/m_sec[i].section.size();
+    // LOGI("--m_sec[%d].dist=%f  size:%d------",i,m_sec[i].dist,m_sec[i].section.size());
     if(flip_f<0)m_sec[i].dist*=-1;
     m_sec[i].sigma=sqrt(m_sec[i].sigma-m_sec[i].dist*m_sec[i].dist);
   }
@@ -416,6 +537,7 @@ const ContourGrid::ptInfo* ContourGrid::get(int idx)
   }
   return NULL;
 }
+
 
 void ContourGrid::GetSectionsWithinCircleContour(float X,float Y,float radius,float epsilon,
   std::vector<int> &intersectIdxs)
@@ -728,7 +850,7 @@ void ContourGrid::GetSectionsWithinLineContour(acv_Line line,float epsilonX, flo
 
 void ContourGrid::getContourPointsWithInLineContour(acv_Line line, float epsilonX, float epsilonY,float flip_f, std::vector<int> &intersectIdxs,std::vector<ptInfo> &points,float lineCurvatureMax)
 {
-  LOGV("test...");
+  // LOGV("test...");
   points.resize(0);
   line.line_vec=acvVecNormalize(line.line_vec);
   GetSectionsWithinLineContour(line,epsilonX,epsilonY,intersectIdxs);

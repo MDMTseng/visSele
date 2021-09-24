@@ -1350,13 +1350,16 @@ float findGradMaxIdx_spline(float *f,int fL,float *ret_max)
 }
 
 
-edgeTracking::edgeTracking (acvImage *graylevelImg,FeatureManager_BacPac *bacpac)
+edgeTracking::edgeTracking (acvImage *graylevelImg,acv_XY imgOffset,FeatureManager_BacPac *bacpac)
 {
   this->graylevelImg=graylevelImg;
   this->bacpac=bacpac;
+  this->imgOffset=imgOffset;
 }
+
+
 void edgeTracking::initTracking (ContourFetch::contourMatchSec &section,int new_regionSideWidth)
-{
+{ 
   if(section.section.size()==0)return;
   // for(int i=0;i<section.section.size();i++ )//offset Test
   // {
@@ -1569,6 +1572,28 @@ void edgeTracking::calc_info(float *mean_offset, float *sigma)
   grad[pixWidth-1]=grad[pixWidth-2];
   grad[0]=grad[1];
 
+
+  if(0)
+  {//grad weight:experiment
+
+    float mean=0;//-2~2
+    float sigma=0;
+    for(int j=0;j<pixWidth;j++)
+    {
+      mean+=pixSum[j];
+      sigma+=pixSum[j]*pixSum[j];
+    }
+    mean/=pixWidth;
+    sigma/=pixWidth;
+    sigma=sqrt(sigma-mean*mean);
+    // LOGI("SIGMA:%f",sigma);
+    float beta=0;//-2~2
+    for(int j=0;j<pixWidth;j++)
+    {
+      // float alpha = pixSum[j]/255.0;
+      grad[j]*=beta*(pixSum[j]/255.0-0.5)+1;
+    }
+  }
   // int xxdd=(pixWidth-1)/2;
   // for(int j=0;j<pixWidth;j++)
   // {
@@ -1737,14 +1762,13 @@ void extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_L
 
   edge_grid.RESET();
 
-
   if(scanline_skip<0)return;
 
   int sX = (int)ldat.LTBound.X;
   int sY = (int)ldat.LTBound.Y;
   int eX = (int)ldat.RBBound.X;
   int eY = (int)ldat.RBBound.Y;
-  // LOGV("%d %d %d %d",sX,sY,eX,eY);
+  LOGI("%d %d %d %d",sX,sY,eX,eY);
   BYTE *OutLine, *OriLine;
 
   _24BitUnion *lableConv;

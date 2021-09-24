@@ -63,7 +63,7 @@ int FeatureManager_sig360_extractor::FeatureMatching(acvImage *img)
   detectedLines.resize(0);
   int idx = -1;
   int maxArea = 0;
-  for (int i = 1; i < ldData.size(); i++)
+  for (int i = 2; i < ldData.size(); i++)
   {
     if (ldData[i].area <= 0)
       continue;

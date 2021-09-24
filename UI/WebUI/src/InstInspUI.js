@@ -92,7 +92,8 @@ function CanvasComponent({ image,addClass,BPG_Channel,onExtraCtrlUpdate})
             },
             ImageTransferSetup:{
               crop
-            }
+            },
+            LAST_FRAME_RESEND:true
           });
       break;
 

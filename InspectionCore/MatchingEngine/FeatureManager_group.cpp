@@ -206,8 +206,6 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     error=FeatureReport_ERROR::NONE;
     ldData.resize(0);
     binary_img.ReSize(img->GetWidth(),img->GetHeight());
-    // acvCloneImage( img,&binary_img, -1);
-    // acvThreshold(&binary_img, 80, 0);
     acvThreshold(&binary_img,img, 80, 0);
 
     int downScaleF=1;//
@@ -220,9 +218,9 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     {
       binaryDownScale(lableImg,&binary_img,downScaleF);
     }
-
  
     //Draw a labeling black cage for labling algo, which is needed for acvComponentLabeling
+
     acvDrawBlock(lableImg, 1, 1, lableImg->GetWidth() - 2, lableImg->GetHeight() - 2);
 
     int FENCE_AREA = (lableImg->GetWidth()+lableImg->GetHeight())*2-4;//External frame
@@ -262,17 +260,18 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
       return 0;
     }
 
-    if(downScaleF!=1)
-    {
-      for(int i=2;i<ldData.size();i++)
-      {
-        ldData[i].area*=downScaleF*downScaleF;
-        ldData[i].Center=acvVecMult(ldData[i].Center,downScaleF);
-        ldData[i].LTBound=acvVecMult(ldData[i].LTBound,downScaleF);
-        ldData[i].RBBound=acvVecMult(ldData[i].RBBound,downScaleF);
-      }
-      labeledUpScale(&binary_img,lableImg,downScaleF);
-    }
+    // if(downScaleF!=1)
+    // {
+    //   for(int i=2;i<ldData.size();i++)
+    //   {
+    //     ldData[i].area*=downScaleF*downScaleF;
+    //     ldData[i].Center=acvVecMult(ldData[i].Center,downScaleF);
+    //     ldData[i].LTBound=acvVecMult(ldData[i].LTBound,downScaleF);
+    //     ldData[i].RBBound=acvVecMult(ldData[i].RBBound,downScaleF);
+    //   }
+    //   labeledUpScale(&binary_img,lableImg,downScaleF);
+    //   downScaleF=1;
+    // }
 
 
 
@@ -288,7 +287,7 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
     }
 
 
-    ldData[1].area = 0;
+    ldData[1].area =intrusionObjectArea;
 
     //Delete the object that has less than certain amount of area on ldData
     //acvRemoveRegionLessThan(img, &ldData, 120);
@@ -296,14 +295,17 @@ int FeatureManager_binary_processing_group::FeatureMatching(acvImage *img)
 
     //acvCloneImage( img,buff, -1);
 
-  
-    LOGV("_________  %f %f ",param.ppb2b,param.mmpb2b);
+    // return 0;
+    // LOGI("_________  %f %f ",param.ppb2b,param.mmpb2b);
+    
+    LOGI(">>>> ");
     for(int i=0;i<binaryFeatureBundle.size();i++)
     {
       binaryFeatureBundle[i]->setOriginalImage(img);
       binaryFeatureBundle[i]->setLabeledData(&ldData);
       binaryFeatureBundle[i]->setBacPac(bacpac);
-      binaryFeatureBundle[i]->FeatureMatching(&binary_img);
+      binaryFeatureBundle[i]->setLabelDownSampLevel(downScaleF);
+      binaryFeatureBundle[i]->FeatureMatching(lableImg);
     }
   return 0;
 }

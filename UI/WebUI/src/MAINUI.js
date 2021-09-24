@@ -703,7 +703,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
     UI_Stack.push(
       <div key="UI_Step0" className="s width12 height12 overlayCon" style={{background: "rgb(250,250,250)"}}>
         
-        <div className={twoPanelClass1} style={{padding: "10px"}}>
+        <div className={twoPanelClass1} style={{padding: "10px",overflow:"scroll"}}>
           
           <TagDisplay_rdx closable/>
           <TagOptions_rdx className="s width12 HXA" size="middle" tagGroups={new_tagGroupsPreset}/>

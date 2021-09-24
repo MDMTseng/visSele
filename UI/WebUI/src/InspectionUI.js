@@ -51,6 +51,7 @@ import {
   LineOutlined,
   TagsOutlined,
   CameraOutlined,
+  RedoOutlined,
   ExpandOutlined,
   HeartTwoTone,
   ArrowLeftOutlined,
@@ -740,7 +741,8 @@ class CanvasComponent extends React.Component {
             },
             ImageTransferSetup: {
               crop
-            }
+            },
+            LAST_FRAME_RESEND:true
           });
         break;
 
@@ -768,7 +770,7 @@ class CanvasComponent extends React.Component {
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         //this.ec_canvas.ctrlLogic();
         this.ec_canvas.draw();
-
+        this.ec_canvas.doRotateView=this.props.renderObjAlignRotate;
         
       }
     }
@@ -891,8 +893,15 @@ class ControlChart extends React.Component {
     ];
   }
 
-  componentWillUpdate(nextProps, nextState) {
 
+  componentWillUpdate(nextProps, nextState)
+  {
+
+  }
+
+  updateChart(nextProps)
+  {
+    if(this.charObj===undefined)return;
 
     //Make sure the data object is the same, don't change it/ you gonna set the data object to chart again
     this.state.chartOpt.data.labels = [];
@@ -965,6 +974,7 @@ class ControlChart extends React.Component {
     var ctx = document.getElementById(this.divID).getContext("2d");
 
     this.charObj = new Chart(ctx, this.state.chartOpt);
+    this.updateChart(this.props);
   }
   onResize(width, height) {
     //log.debug("G2HOT resize>>", width, height);
@@ -973,6 +983,7 @@ class ControlChart extends React.Component {
   }
 
   render() {
+    this.updateChart(this.props);
     return <div className={this.props.className}>
       <canvas id={this.divID} style={{ height: "400px" }} />
       <ReactResizeDetector handleWidth handleHeight onResize={this.onResize.bind(this)} />
@@ -990,7 +1001,13 @@ class DataStatsTable extends React.Component {
       drawList: []
     };
   }
-  shouldComponentUpdate(nextProps) {
+  shouldComponentUpdate(nextProps,nextState) {
+    
+    if(nextState!=this.state)
+    {
+      return true;
+    }
+
     let statstate = nextProps.reportStatisticState;
     if (statstate.historyReport === undefined) {
       return false;
@@ -1065,7 +1082,12 @@ class DataStatsTable extends React.Component {
         title: "Draw Toggle", key: "draw", fixed: "right",
         render: (text, record) => {
           return <Switch onChange={(val) => {
-            this.state.drawList[record.id] = val;
+            // this.state.drawList[record.id] = val;
+            let newDrawList = [...this.state.drawList];
+            newDrawList[record.id]=val;
+            this.setState({drawList:newDrawList});
+            
+            console.log("TRIGGER");
           }
           } />
         }
@@ -1086,7 +1108,7 @@ class DataStatsTable extends React.Component {
 
     return (
       <div className={this.props.className}>
-        <Table key="dat_table" dataSource={dataSource} columns={columns} scroll={{ x: 1000 }} pagination={false} />
+        <Table key="dat_table" className="antd-table-small" dataSource={dataSource} columns={columns} size="small" scroll={{ x: 1000 }} pagination={false} />
         {graphX}
       </div>
     );
@@ -1461,7 +1483,6 @@ class APP_INSP_MODE extends React.Component {
       //deffile.intrusionSizeLimitRatio=0.001;//By default, the intrusionSizeLimitRatio for Full insp should be as small as possible
       deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
       deffile.featureSet[0].matching_face=0;//By default, match two sides
-      
 
       this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
@@ -1469,6 +1490,7 @@ class APP_INSP_MODE extends React.Component {
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
+      // deffile.featureSet[0].single_result_area_ratio=0.9;
       this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
        }, undefined);
 
@@ -1504,7 +1526,8 @@ class APP_INSP_MODE extends React.Component {
       measureDisplayRank:0,
       isInSettingUI:false,
       SettingParamInfo:undefined,
-      modalInfo:undefined
+      modalInfo:undefined,
+      renderObjAlignRotate:false
     };
 
     
@@ -2049,6 +2072,11 @@ class APP_INSP_MODE extends React.Component {
 
 
 
+      <Button size={"large"} type={this.state.renderObjAlignRotate==true?"primary":"dashed"} onClick={()=>this.setState({renderObjAlignRotate:!this.state.renderObjAlignRotate})}>
+        <RedoOutlined/>
+        {this.state.renderObjAlignRotate==true?"旋轉標的":"不轉原圖"}
+      </Button>
+
 
 
 
@@ -2072,7 +2100,7 @@ class APP_INSP_MODE extends React.Component {
       }}
       >資料圖表</Button>
 
-      <Button type="primary" key="Manual ZOOM" size={"large"}
+      <Button type={"primary"} danger={this.state.onROISettingCallBack!==undefined} key="Manual ZOOM" size={"large"}
         onClick={() => {
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:[0,0,99999,99999] } });
@@ -2099,9 +2127,10 @@ class APP_INSP_MODE extends React.Component {
 
         
           console.log(ROI_setting,ROI);
-          this.setState(undefined);
+          this.setState({onROISettingCallBack:undefined});
         }})
-      }} ><ExpandOutlined /></Button>
+      }} ><ExpandOutlined />
+        {this.state.onROISettingCallBack===undefined?"設定ROI":"選擇ROI中"}</Button>
     </>
 
 /*
@@ -2135,6 +2164,7 @@ class APP_INSP_MODE extends React.Component {
               ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
               downSampleFactor={this.props.FILE_default_camera_setting.down_samp_factor||1}
               onCanvasInit={(canvas) => { this.ec_canvas = canvas }}
+              renderObjAlignRotate={this.state.renderObjAlignRotate}
               camera_calibration_report={this.props.camera_calibration_report} />}
 
           {(CanvasWindowRatio >= 12) ? null :

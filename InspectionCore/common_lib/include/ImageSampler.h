@@ -119,6 +119,7 @@ class acvCalibMap
     void RESET();
     void SET(double *MX_data, double *MY_data, int fw_,int fh_,int fullW,int fullH);
     void CLEAR();
+    bool isPresent();
     void generateInvMap(int iw_,int ih_);
     float* generateExtInvMap(int iw_,int ih_);
     int fwdMapDownScale(int dscale_idx);
@@ -257,7 +258,13 @@ class ImageSampler
 
   float sampleImage_IdealCoord(acvImage *img,float idealVec[2],int doNearest=1)
   {
-    int ret = ideal2img(idealVec);
+    if(map->isPresent())//if it's not loaded with calib map then skip...
+    {
+      int ret = ideal2img(idealVec);
+    }
+
+
+
     float sampPix=sampleImage_ImgCoord(img, idealVec,doNearest);
     return sampPix;
   }
