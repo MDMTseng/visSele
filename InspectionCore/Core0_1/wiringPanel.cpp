@@ -2461,14 +2461,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             ImageCropH = 10;
           }
         }
-        if(inspQueue.size()==0 && datViewQueue.size()==0)
-        {
-          lastDatViewCache_lock.lock();
 
-          InspResultAction(lastDatViewCache, true, false , false,NULL);
 
-          lastDatViewCache_lock.unlock();
-        }
         session_ACK = true;
       }
 
@@ -2519,6 +2513,35 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         saveInspNASnap = false;
       }
+
+
+
+      auto LAST_FRAME_RESEND = getDataFromJson(json, "LAST_FRAME_RESEND", NULL);
+      if (LAST_FRAME_RESEND == cJSON_True)
+      {  
+        static clock_t s_t=0;
+        
+        clock_t new_t = clock();
+        
+        double timeDiff_ms = (double)(new_t - s_t) / CLOCKS_PER_SEC * 1000;
+        LOGI("IMG resend  ms:%f timeDiff_ms:%f  iQ:%d dQ:%d",
+          (double)new_t*1000/CLOCKS_PER_SEC,
+          timeDiff_ms,
+          inspQueue.size(),
+          datViewQueue.size());
+        // LOGI("lisdfsdfijsdifjsdiofjisdfjsdjflsdjfl");
+        if(inspQueue.size()==0 && datViewQueue.size()==0)
+        {
+          lastDatViewCache_lock.lock();
+          LOGI("IMG resend !!!!");
+          InspResultAction(lastDatViewCache, true, false , false,NULL);
+
+          lastDatViewCache_lock.unlock();
+          s_t=new_t;
+        }
+      }
+
+
     }
     else if (checkTL("PR", dat)) //for external application
     {

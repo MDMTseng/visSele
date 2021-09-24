@@ -1709,7 +1709,7 @@ class EverCheckCanvasComponent_proto {
     this.rUtil.setColorSet(this.colorSet);
 
 
-    this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 500);
+    this.debounce_zoom_emit = this.throttle(this.zoom_emit.bind(this), 500,{trailing:true});
   }
 
 
@@ -1796,7 +1796,7 @@ class EverCheckCanvasComponent_proto {
           timeout = null;
         }
         previous = now;
-        result = func.apply(context, args);
+        // result = func.apply(context, args);
         if (!timeout) context = args = null;
       } else if (!timeout && options.trailing !== false) {
         timeout = setTimeout(later, remaining);

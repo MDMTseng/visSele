@@ -741,7 +741,8 @@ class CanvasComponent extends React.Component {
             },
             ImageTransferSetup: {
               crop
-            }
+            },
+            LAST_FRAME_RESEND:true
           });
         break;
 
