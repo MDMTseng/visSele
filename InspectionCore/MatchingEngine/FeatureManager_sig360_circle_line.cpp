@@ -4451,10 +4451,10 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     cropOffset.X=cx;
     cropOffset.Y=cy;
     acv_LabeledData curLableDat=(acv_LabeledData){
-      .area= ldData[i].area,
-      .Center=acvVecSub(ldData[i].Center,cropOffset),
       .LTBound=acvVecSub(ldData[i].LTBound,cropOffset),
       .RBBound=acvVecSub(ldData[i].RBBound,cropOffset),
+      .Center=acvVecSub(ldData[i].Center,cropOffset),
+      .area= ldData[i].area,
     };
     edge_grid.RESET();
 

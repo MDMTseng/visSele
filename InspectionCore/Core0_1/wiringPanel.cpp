@@ -20,7 +20,7 @@
 #include <smem_channel.hpp>
 #include <ctime>
 
-#define _VERSION_ "v1.0.1"
+#define _VERSION_ "1.1.003"
 
 std::timed_mutex mainThreadLock;
 
