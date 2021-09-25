@@ -7,6 +7,7 @@ import  Modal  from 'antd/lib/modal';
 import QrScanner from 'qr-scanner';
 import jsonp from 'jsonp';
 import moment from 'moment';
+import INFO from './info.js';
 
 import {datePrintSimple} from './UTIL/MISC_Util';
 
@@ -662,6 +663,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
           visible={modal_view !== undefined}>
           {modal_view === undefined ? null : modal_view.view_fn()}
       </Modal>
+      version:{INFO.version}
     </>
   );
 }
