@@ -536,7 +536,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Name',
         dataIndex: 'name',
         key: 'name',
-        render: (name,fetchRec) => <a href={getUrlPath()+"?v=0&hash="+fetchRec.info.hash} target="_blank">{name}</a>,
+        render: (name,fetchRec) => fetchRec.link===undefined?name:<a href={fetchRec.link} target="_blank">{name}</a>,
       },
       {
         title: 'count',
@@ -582,32 +582,58 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
 
     console.log(defFileGroup);
 
-
+    let dataSource = Object.keys(defFileGroup).map(g=>{
+      
       
 
-    let dataSource = fetchedRecord.filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>
-      ({
-        name:fetchRec.name,
-        count:fetchRec.count,
-        Date_Start:fetchRec.time_start[0],
-        Date_End:fetchRec.time_end[0],
-        Tags:fetchRec.tags,
-        info:fetchRec,
-        children: [{
-          
+      let groupInfo = defFileGroup[g].filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>
+        ({
+          level:1,
           name:fetchRec.name,
           count:fetchRec.count,
           Date_Start:fetchRec.time_start[0],
           Date_End:fetchRec.time_end[0],
           Tags:fetchRec.tags,
           info:fetchRec,
+          hash:fetchRec.hash,
+          link:getUrlPath()+"?v=0&hash="+fetchRec.hash,
+        })
+      )
+
+      let _ginfo = groupInfo.reduce((sumInfo,fetchRec)=>{
+        let newInfo={...sumInfo};
+        if(newInfo.Date_End<fetchRec.Date_End)
+        {
+          newInfo.name=fetchRec.name;
+          newInfo.Date_End=fetchRec.Date_End;
         }
-        ]
+        if(newInfo.Date_Start>fetchRec.Date_Start)
+        {
+          newInfo.Date_Start=fetchRec.Date_Start;
+        }
+        
+        newInfo.Tags=[...newInfo.Tags,...fetchRec.Tags];
+        newInfo.hash=[...newInfo.hash,fetchRec.hash];
+        newInfo.count+=fetchRec.count;
+        newInfo.count+=fetchRec.count;
+        return newInfo;
+      },{
+        level:0,
+        name:undefined,
+        count:0,
+        Date_End:0,
+        Date_Start:Number.MAX_VALUE,
+        hash:[],
+        Tags:[],
+        info:groupInfo,
+        children:groupInfo.length>1?groupInfo:undefined
       })
-    )
-
-
-
+      _ginfo.Tags = [...new Set(_ginfo.Tags)];//remove replicated hash]
+      _ginfo.hash = [...new Set(_ginfo.hash)];//remove replicated hash]
+      if(_ginfo.hash.length==1)
+        _ginfo.link=getUrlPath()+"?v=0&hash="+_ginfo.hash[0]
+      return _ginfo
+    }).filter(fetchRec=>fetchRec.count!==undefined &&fetchRec.count>0 )
     console.log(dataSource);
     displayInfo=<Table columns={columns} dataSource={dataSource} pagination={false}/>;
   }
