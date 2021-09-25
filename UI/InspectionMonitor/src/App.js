@@ -494,39 +494,6 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   let displayInfo=null
   if(fetchedRecord!==undefined)
   {
-
-    console.log(fetchedRecord);
-    let defFileGroup={};
-    fetchedRecord.forEach((defInfo)=>{
-      let sha1_root=defInfo.DefineFile.featureSet_sha1_root||"_";
-      if(defFileGroup[sha1_root]===undefined)
-      {
-        defFileGroup[sha1_root]=[];
-      }
-
-      defFileGroup[sha1_root].push(defInfo);
-      
-    });
-
-    console.log(defFileGroup);
-
-
-
-    // displayInfo = fetchedRecord.map(fetchRec=>{
-
-    //   let text = fetchRec.name+" ";
-    //   if(fetchRec.count!==undefined)
-    //   {
-    //     text+=",count:"+fetchRec.count;
-    //     var dateStart = new Date(fetchRec.time_start[0]);
-    //     var dateEnd = new Date(fetchRec.time_end[0]);
-    //     text+=","+datePrintSimple(dateStart)+"~"+datePrintSimple(dateEnd);
-    //     text+=",tags:"+fetchRec.tags;
-    //   }
-
-    //   return [
-    //     <a href={getUrlPath()+"?v=0&hash="+fetchRec.hash}>{text}</a>,
-    //     <br/>]})
     const columns = [
       {
         title: 'Name',
@@ -544,14 +511,14 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Date_Start',
         dataIndex: 'Date_Start',
         key: 'Date_Start',
-        render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
+        render: milliSec => datePrintSimple(new Date(milliSec)),
         sorter: (a, b) => a.Date_Start - b.Date_Start,
       },
       {
         title: 'Date_End',
         dataIndex: 'Date_End',
         key: 'Date_End',
-        render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
+        render: milliSec => datePrintSimple(new Date(milliSec)),
         sorter: (a, b) => a.Date_End - b.Date_End,
         defaultSortOrder:'descend'
       },
@@ -559,7 +526,27 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Tags',
         dataIndex: 'Tags',
         key: 'Tags',
+        render: tags => tags.join(","),
       }]
+
+
+    console.log(fetchedRecord);
+    let defFileGroup={};
+    fetchedRecord.forEach((defInfo)=>{
+      let sha1_root=defInfo.DefineFile.featureSet_sha1_root||"_";
+      if(defFileGroup[sha1_root]===undefined)
+      {
+        defFileGroup[sha1_root]=[];
+      }
+
+      defFileGroup[sha1_root].push(defInfo);
+      
+    });
+
+    console.log(defFileGroup);
+
+
+      
 
     let dataSource = fetchedRecord.filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>
       ({
@@ -567,10 +554,23 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         count:fetchRec.count,
         Date_Start:fetchRec.time_start[0],
         Date_End:fetchRec.time_end[0],
-        Tags:fetchRec.tags.join(","),
-        info:fetchRec
+        Tags:fetchRec.tags,
+        info:fetchRec,
+        children: [{
+          
+          name:fetchRec.name,
+          count:fetchRec.count,
+          Date_Start:fetchRec.time_start[0],
+          Date_End:fetchRec.time_end[0],
+          Tags:fetchRec.tags,
+          info:fetchRec,
+        }
+        ]
       })
     )
+
+
+
     console.log(dataSource);
     displayInfo=<Table columns={columns} dataSource={dataSource} pagination={false}/>;
   }
