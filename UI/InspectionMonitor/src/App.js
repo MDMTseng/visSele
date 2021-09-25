@@ -425,11 +425,33 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
   const [searchDateRange, setSearchDateRange] = useState([moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))]);//by default one week
   console.log(searchDateRange);
+  const [modal_view,setModal_view]=useState(undefined);
+
+  function pop_dataRetrive()
+  {
+
+    setModal_view({
+      view_fn:()=>"取得資料中",
+    })
+  }
+  function pop_dataRetriveFailed()
+  {
+
+    setModal_view({
+      view_fn:()=>"取得資料失敗",
+      title:"!",
+    })
+  }
+  function pop_disable()
+  {
+    
+    setModal_view();
+  }
 
   function recentQuery(dateRange=searchDateRange)
   {
     
-    fetchDeffileInfo_in_insp_time_range(dateRange[0]._d.getTime(),dateRange[1]._d.getTime()).
+    return fetchDeffileInfo_in_insp_time_range(dateRange[0]._d.getTime(),dateRange[1]._d.getTime()).
     then((res)=>{
 
       setFetchedRecord(res);
@@ -442,9 +464,17 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   }
 
 
+
   useEffect(() => {
     console.log("1,didUpdate");
-    recentQuery(searchDateRange);
+    pop_dataRetrive();
+    recentQuery(searchDateRange)
+    .then(_=>{
+      pop_disable();
+    })
+    .catch(_=>{
+      pop_dataRetriveFailed();
+    });
 
     return () => {
       console.log("1,didUpdate ret::");
@@ -456,29 +486,36 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     console.log(e.target.value)
     if(e.target.value=="")
     {
-      recentQuery(searchDateRange);
+      pop_dataRetrive();
+      recentQuery(searchDateRange)
+      .then(_=>{
+        pop_disable();
+      })
+      .catch(_=>{
+        pop_dataRetriveFailed();
+      });
     }
     else if(e.target.value.length<2)
     {
       
-      Modal.confirm({
-        // icon: <WarningOutlined/>,
-        content: "請輸入大於兩個字",
-        onOk() {
-        },
-        onCancel() {
-        },
-      });
+      setModal_view({
+        view_fn:()=>"請輸入大於兩個字",
+        title:"!",
+      })
     }
     else
     {
+      
+      pop_dataRetrive();
       setFetchedRecord();
       fetchDeffileInfo(e.target.value,[searchDateRange[0]._d.getTime(),searchDateRange[1]._d.getTime()]).
         then((res)=>{
-  
+          pop_disable();
           setFetchedRecord(res);
           onQueryRes(res);
         }).catch((e)=>{
+          
+          pop_dataRetriveFailed();
           setFetchedRecord([]);
           if(onQueryRej!==undefined)
             onQueryRej(e)
@@ -576,14 +613,23 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   }
   return (
 
-    <div>
+    <>
       {searchBox}
       
       <RangePicker key="RP"
             defaultValue={searchDateRange} 
             onChange={(date)=>setSearchDateRange(date)}/>
       {displayInfo}
-    </div>
+      
+      <Modal
+          footer={null}
+          onCancel={()=>setModal_view()}
+          onOk={()=>setModal_view()}
+          {...modal_view}
+          visible={modal_view !== undefined}>
+          {modal_view === undefined ? null : modal_view.view_fn()}
+      </Modal>
+    </>
   );
 }
 
