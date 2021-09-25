@@ -6,6 +6,7 @@ import * as DB_Query from './UTIL/DB_Query';
 import  Modal  from 'antd/lib/modal';
 import QrScanner from 'qr-scanner';
 import jsonp from 'jsonp';
+import moment from 'moment';
 
 import {datePrintSimple} from './UTIL/MISC_Util';
 
@@ -15,10 +16,16 @@ import Button from 'antd/lib/button';
 import Table from 'antd/lib/table';
 import Col from 'antd/lib/col';
 import Row from 'antd/lib/row';
+
+
+
+
+import DatePicker from 'antd/lib/date-picker';
 // import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons-react';
 //import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import Layout from 'antd/lib/layout';
 QrScanner.WORKER_PATH = "./qr-scanner-worker.min.js";
+const { RangePicker } = DatePicker;
 // import { WarningOutlined} from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
@@ -142,31 +149,54 @@ function pjsonp(url,timeout=5000,timeoutErrMsg="TIMEOUT")
   });
 }
 
-function fetchDeffileInfo(name)
+function fetchDeffileInfo(name,time_range_ms=[0,9999999999])
 {
   let defFileData=undefined;
   
+
+
+
   return new Promise((res,rej)=>{
-    let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'
+    let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'+
+    '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
+  
     
     pjsonp(url,null).then((data)=>{
 
       
       let hashArr = data.map(srec=>srec.DefineFile.featureSet_sha1)
-      hashArr = [...new Set(hashArr)];
+      hashArr = [...new Set(hashArr)];//remove replicated hash
 
       defFileData=hashArr.map((hash)=>{
-        let name = data.filter((defF)=>defF.DefineFile.featureSet_sha1==hash)
-          .map(defF=>defF.DefineFile.name)
-        return {hash,name}
-      }).map(defFInfo=>{
-        defFInfo.name=[...new Set(defFInfo.name)];
-        return defFInfo;
+        let newest_def = data.filter((defF)=>defF.DefineFile.featureSet_sha1==hash)
+                        .reduce((latest,def)=>
+                        {
+                          let p_createdAt = Date.parse(def.createdAt);
+                          if(latest===undefined)
+                          {
+                            return {p_createdAt,...def};
+                          }
+                          
+                          if(latest.p_createdAt<p_createdAt)
+                          {
+                            return latest;
+                          }
+                          return {p_createdAt,...def};
+                        });
+        
+        return {hash,...newest_def,name:newest_def.DefineFile.name}
       });
+
+      defFileData.forEach((def)=>{
+        if(def.p_createdAt===undefined)
+        {
+          def.p_createdAt=Date.parse(def.createdAt);
+        }
+      })
       let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
 
       let url=DB_Query.db_url+'/query/inspection?';
-      url+='tStart=0&tEnd=2581663256894&limit=999999999&';
+      url+='tStart='+time_range_ms[0]+'&tEnd='+time_range_ms[1]+'&limit=9999999&';
       url+='subFeatureDefSha1='+hashRegx+'&'
       url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
       url+='agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
@@ -263,14 +293,17 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
       console.log(dataSet,dataSet_Formatted,hashRegx);
       //'/query/deffile?featureSet_sha1='+hashRegx
       let url=DB_Query.db_url+'/query/deffile?featureSet_sha1='+hashRegx+
-      '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"createdAt":1}'
+      '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
       
       return pjsonp(url,null)
 
     }).then((defFileData)=>{
 
+
       console.log(defFileData);
-      defFileData = Object.values(defFileData.reduce((obj,df)=>{
+
+
+      let sha1_dict=defFileData.reduce((obj,df)=>{
         let sha1=df.DefineFile.featureSet_sha1;
         let time = Date.parse(df.createdAt);
         df.p_createdAt = time;
@@ -280,8 +313,11 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
         }
         
         return obj;
-      },{}))
+      },{})//find the latest featureSet_sha1 and ignore the ole one
+      console.log(sha1_dict);
+      defFileData = Object.values(sha1_dict)
 
+      // console.log(defFileData);
       defFileData.forEach((defF)=>{
         defF.hash=defF.DefineFile.featureSet_sha1;
         defF.name=[defF.DefineFile.name];
@@ -297,6 +333,9 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
         }
       })
       console.log(defFileData);
+
+
+
       res(defFileData)
     }).catch((err)=>{
       rej(err);
@@ -373,13 +412,24 @@ function getUrlPath()
   return window.location.href.substring(window.location.protocol.length).split('?')[0]
 }
 
+function Date_addDay(date,addDays)
+{
+  if( date===undefined)date=new Date();
+
+  return date.setDate(date.getDate() + addDays);
+}
+
+
+
 function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
-  
-  function recentQuery()
+  const [searchDateRange, setSearchDateRange] = useState([moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))]);//by default one week
+  console.log(searchDateRange);
+
+  function recentQuery(dateRange=searchDateRange)
   {
-    var cur_ms = new Date().getTime();
-    fetchDeffileInfo_in_insp_time_range(cur_ms-17*24*60*60*1000,cur_ms+1000000).
+    
+    fetchDeffileInfo_in_insp_time_range(dateRange[0]._d.getTime(),dateRange[1]._d.getTime()).
     then((res)=>{
 
       setFetchedRecord(res);
@@ -394,7 +444,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
 
   useEffect(() => {
     console.log("1,didUpdate");
-    recentQuery();
+    recentQuery(searchDateRange);
 
     return () => {
       console.log("1,didUpdate ret::");
@@ -406,7 +456,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     console.log(e.target.value)
     if(e.target.value=="")
     {
-      recentQuery();
+      recentQuery(searchDateRange);
     }
     else if(e.target.value.length<2)
     {
@@ -423,7 +473,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     else
     {
       setFetchedRecord();
-      fetchDeffileInfo(e.target.value).
+      fetchDeffileInfo(e.target.value,[searchDateRange[0]._d.getTime(),searchDateRange[1]._d.getTime()]).
         then((res)=>{
   
           setFetchedRecord(res);
@@ -444,6 +494,24 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   let displayInfo=null
   if(fetchedRecord!==undefined)
   {
+
+    console.log(fetchedRecord);
+    let defFileGroup={};
+    fetchedRecord.forEach((defInfo)=>{
+      let sha1_root=defInfo.DefineFile.featureSet_sha1_root||"_";
+      if(defFileGroup[sha1_root]===undefined)
+      {
+        defFileGroup[sha1_root]=[];
+      }
+
+      defFileGroup[sha1_root].push(defInfo);
+      
+    });
+
+    console.log(defFileGroup);
+
+
+
     // displayInfo = fetchedRecord.map(fetchRec=>{
 
     //   let text = fetchRec.name+" ";
@@ -464,7 +532,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Name',
         dataIndex: 'name',
         key: 'name',
-        render: fetchRec => <a href={getUrlPath()+"?v=0&hash="+fetchRec.hash} target="_blank">{fetchRec.name}</a>,
+        render: (name,fetchRec) => <a href={getUrlPath()+"?v=0&hash="+fetchRec.info.hash} target="_blank">{name}</a>,
       },
       {
         title: 'count',
@@ -493,23 +561,16 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         key: 'Tags',
       }]
 
-      let dataSource = fetchedRecord.filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>{
-        let retSrc={
-          name:fetchRec
-        }
-        if(fetchRec.count!==undefined)
-        {
-          retSrc.count=fetchRec.count;
-          // var dateStart = new Date(fetchRec.time_start[0]);
-          // var dateEnd = new Date(fetchRec.time_end[0]);
-
-          retSrc.Date_Start=fetchRec.time_start[0];
-          retSrc.Date_End=fetchRec.time_end[0];
-          retSrc.Tags=fetchRec.tags.join(",");
-        }
-  
-        return retSrc
+    let dataSource = fetchedRecord.filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>
+      ({
+        name:fetchRec.name,
+        count:fetchRec.count,
+        Date_Start:fetchRec.time_start[0],
+        Date_End:fetchRec.time_end[0],
+        Tags:fetchRec.tags.join(","),
+        info:fetchRec
       })
+    )
     console.log(dataSource);
     displayInfo=<Table columns={columns} dataSource={dataSource} pagination={false}/>;
   }
@@ -517,6 +578,10 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
 
     <div>
       {searchBox}
+      
+      <RangePicker key="RP"
+            defaultValue={searchDateRange} 
+            onChange={(date)=>setSearchDateRange(date)}/>
       {displayInfo}
     </div>
   );
