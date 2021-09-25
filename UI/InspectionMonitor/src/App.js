@@ -536,7 +536,11 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Name',
         dataIndex: 'name',
         key: 'name',
-        render: (name,fetchRec) => fetchRec.link===undefined?name:<a href={fetchRec.link} target="_blank">{name}</a>,
+        render: (name,fetchRec) => <>
+          {fetchRec.level==0?null:"⮑"}
+          {fetchRec.link===undefined?name:<a href={fetchRec.link} target="_blank">{name}</a>}  
+          {fetchRec.children===undefined?null:`:+${fetchRec.children.length}`}
+          </>,
       },
       {
         title: 'count',
@@ -582,7 +586,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
 
     console.log(defFileGroup);
 
-    let dataSource = Object.keys(defFileGroup).map(g=>{
+    let dataSource = Object.keys(defFileGroup).map((g,idx)=>{
       
       
 
@@ -596,6 +600,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
           Tags:fetchRec.tags,
           info:fetchRec,
           hash:fetchRec.hash,
+          key:fetchRec.hash,
           link:getUrlPath()+"?v=0&hash="+fetchRec.hash,
         })
       )
@@ -630,6 +635,8 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
       })
       _ginfo.Tags = [...new Set(_ginfo.Tags)];//remove replicated hash]
       _ginfo.hash = [...new Set(_ginfo.hash)];//remove replicated hash]
+      _ginfo.key="-"+_ginfo.hash[0];
+
       if(_ginfo.hash.length==1)
         _ginfo.link=getUrlPath()+"?v=0&hash="+_ginfo.hash[0]
       return _ginfo
