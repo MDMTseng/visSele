@@ -413,14 +413,18 @@ function Date_addDay(date,addDays)
   return date.setDate(date.getDate() + addDays);
 }
 
+function DateRange(dayCount1,dayCount2)
+{
+  return [moment(Date_addDay(new Date(),dayCount1)), moment(Date_addDay(new Date(),dayCount2))];
+}
 
 
 function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
-  const [searchDateRange, setSearchDateRange] = useState([moment(Date_addDay(new Date(),-7)), moment(Date_addDay(new Date(),1))]);//by default one week
+  const [searchDateRange, setSearchDateRange] = useState(DateRange(-7,1));//by default one week
+  
   console.log(searchDateRange);
   const [modal_view,setModal_view]=useState(undefined);
-
   function pop_dataRetrive()
   {
 
@@ -655,8 +659,23 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     <>
       {searchBox}
       
+      <Button key="_month"
+        onClick={() => {setSearchDateRange(DateRange(-30,1))}}>
+        月(-30)
+      </Button>
+
+      <Button key="half_month"
+        onClick={() => {setSearchDateRange(DateRange(-15,1))}}>
+        半月(-15)
+      </Button>
+      <Button key="week"
+        onClick={() => {setSearchDateRange(DateRange(-7,1))}}>
+        星期(-7)
+      </Button>
+
+
       <RangePicker key="RP"
-            defaultValue={searchDateRange} 
+            value={searchDateRange} 
             onChange={(date)=>setSearchDateRange(date)}/>
       {displayInfo}
       
