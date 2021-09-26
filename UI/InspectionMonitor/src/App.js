@@ -128,25 +128,24 @@ function isString(val){
   return (typeof val === 'string' || val instanceof String)
 }
 
-function pjsonp(url,timeout=5000,timeoutErrMsg="TIMEOUT")
+function pjsonp(url,timeout=10000)
 {
   return new Promise((res,rej)=>{
-    let timeoutFlag=undefined;
-    if(timeout>0)
-    {
-      timeoutFlag = setTimeout(()=>{
-        timeoutFlag=undefined;
-        rej(timeoutErrMsg)
-      },timeout);
-    }
+    try{
 
-    jsonp(url,  (err,data)=>{
-      clearTimeout(timeoutFlag);
-      if(err === null)
-          res(data);
-      else
-          rej(err)
-    });
+      jsonp(url,{
+        timeout
+      },  (err,data)=>{
+        if(err === null)
+            res(data);
+        else
+            rej(err)
+      });
+    }
+    catch(e)
+    {
+      rej(e)
+    }
   });
 }
 
@@ -154,102 +153,96 @@ function fetchDeffileInfo(name,time_range_ms=[0,9999999999])
 {
   let defFileData=undefined;
   
+  let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'+
+  '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
 
-
-
-  return new Promise((res,rej)=>{
-    let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'+
-    '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
-  
-    
-    pjsonp(url,null).then((data)=>{
+  return pjsonp(url).then((data)=>{
 
       
-      let hashArr = data.map(srec=>srec.DefineFile.featureSet_sha1)
-      hashArr = [...new Set(hashArr)];//remove replicated hash
+    let hashArr = data.map(srec=>srec.DefineFile.featureSet_sha1)
+    hashArr = [...new Set(hashArr)];//remove replicated hash
 
-      defFileData=hashArr.map((hash)=>{
-        let newest_def = data.filter((defF)=>defF.DefineFile.featureSet_sha1==hash)
-                        .reduce((latest,def)=>
+    defFileData=hashArr.map((hash)=>{
+      let newest_def = data.filter((defF)=>defF.DefineFile.featureSet_sha1==hash)
+                      .reduce((latest,def)=>
+                      {
+                        let p_createdAt = Date.parse(def.createdAt);
+                        if(latest===undefined)
                         {
-                          let p_createdAt = Date.parse(def.createdAt);
-                          if(latest===undefined)
-                          {
-                            return {p_createdAt,...def};
-                          }
-                          
-                          if(latest.p_createdAt<p_createdAt)
-                          {
-                            return latest;
-                          }
                           return {p_createdAt,...def};
-                        });
-        
-        return {hash,...newest_def,name:newest_def.DefineFile.name}
-      });
+                        }
+                        
+                        if(latest.p_createdAt<p_createdAt)
+                        {
+                          return latest;
+                        }
+                        return {p_createdAt,...def};
+                      });
+      
+      return {hash,...newest_def,name:newest_def.DefineFile.name}
+    });
 
-      defFileData.forEach((def)=>{
-        if(def.p_createdAt===undefined)
-        {
-          def.p_createdAt=Date.parse(def.createdAt);
-        }
-      })
-      let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
-
-      let url=DB_Query.db_url+'/query/inspection?';
-      url+='tStart='+time_range_ms[0]+'&tEnd='+time_range_ms[1]+'&limit=9999999&';
-      url+='subFeatureDefSha1='+hashRegx+'&'
-      url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
-      url+='agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
-      '"count": {"$sum":1},'+
-      '"time_start": {"$min":"$InspectionData.time_ms"},'+
-      '"time_end": {"$max":"$InspectionData.time_ms"},'+
-      '"tags": {"$addToSet":"$InspectionData.tag"}'+
-      '}}]';
-      return pjsonp(url,null)
-
-    }).then((dataSet)=>{
-
-      let dataSet_Formatted=
-      dataSet.map(data=>{
-        data._id=data._id[0]
-        return data
-      }).reduce((acc,data)=>{
-        let id=data._id;
-        if(acc[id]===undefined)
-        {
-          acc[id]=data;
-          delete acc[id]._id; 
-        }
-        else
-        {
-          acc[id].count+=data.count;
-          acc[id].time_start=[Math.min(acc[id].time_start[0],data.time_start[0])];
-          acc[id].time_end=[Math.max(acc[id].time_end[0],data.time_end[0])];
-        }
-        return acc;
-      },{})
-
-      //final aggregation
-      defFileData.forEach((defF)=>{
-        let tar = dataSet_Formatted[defF.hash];
-        if(tar!==undefined)
-        {
-          Object.assign(defF, tar)
-
-
-          defF.tags = defF.tags.flat(9)
-            .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
-            .flat(9)
-            .filter(tag=>tag.length>0)
-          defF.tags = [...new Set(defF.tags)];
-        }
-      })
-      res(defFileData)
-    }).catch((err)=>{
-      rej(err);
+    defFileData.forEach((def)=>{
+      if(def.p_createdAt===undefined)
+      {
+        def.p_createdAt=Date.parse(def.createdAt);
+      }
     })
-  });
+    let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
+
+    let url=DB_Query.db_url+'/query/inspection?';
+    url+='tStart='+time_range_ms[0]+'&tEnd='+time_range_ms[1]+'&limit=9999999&';
+    url+='subFeatureDefSha1='+hashRegx+'&'
+    url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
+    url+='agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
+    '"count": {"$sum":1},'+
+    '"time_start": {"$min":"$InspectionData.time_ms"},'+
+    '"time_end": {"$max":"$InspectionData.time_ms"},'+
+    '"tags": {"$addToSet":"$InspectionData.tag"}'+
+    '}}]';
+    return pjsonp(url)
+
+  }).then((dataSet)=>{
+
+    let dataSet_Formatted=
+    dataSet.map(data=>{
+      data._id=data._id[0]
+      return data
+    }).reduce((acc,data)=>{
+      let id=data._id;
+      if(acc[id]===undefined)
+      {
+        acc[id]=data;
+        delete acc[id]._id; 
+      }
+      else
+      {
+        acc[id].count+=data.count;
+        acc[id].time_start=[Math.min(acc[id].time_start[0],data.time_start[0])];
+        acc[id].time_end=[Math.max(acc[id].time_end[0],data.time_end[0])];
+      }
+      return acc;
+    },{})
+
+    //final aggregation
+    defFileData.forEach((defF)=>{
+      let tar = dataSet_Formatted[defF.hash];
+      if(tar!==undefined)
+      {
+        Object.assign(defF, tar)
+
+
+        defF.tags = defF.tags.flat(9)
+          .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
+          .flat(9)
+          .filter(tag=>tag.length>0)
+        defF.tags = [...new Set(defF.tags)];
+      }
+    })
+    return (defFileData)
+  }).catch((err)=>{
+    throw err;
+  })
 }
 
 ///query/inspection?tStart=1583942400000&tEnd=1584639131675&subFeatureDefSha1_regex=.&projection={"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","sum":{"$sum":1}}}]
@@ -268,7 +261,7 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
     '}}]';
 
 
-    pjsonp(url,null).then((dataSet)=>{
+    pjsonp(url).then((dataSet)=>{
 
       dataSet_Formatted=
       dataSet.map(data=>{
@@ -296,7 +289,7 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
       let url=DB_Query.db_url+'/query/deffile?featureSet_sha1='+hashRegx+
       '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
       
-      return pjsonp(url,null)
+      return pjsonp(url)
 
     }).then((defFileData)=>{
 
@@ -354,7 +347,7 @@ let CusDisp_DB={
       let url=DB_Query.db_url+'/QUERY/customDisplay?name='+name
       url+='&projection={"name":1,"targetDeffiles":1}'
       
-      pjsonp(url,null).then((data)=>{
+      pjsonp(url).then((data)=>{
         res(data);
       }).catch((err)=>{
         rej(err);
@@ -372,7 +365,7 @@ let CusDisp_DB={
         url+="&_id="+id;
         
       }
-      pjsonp(url,null).then((data)=>{
+      pjsonp(url).then((data)=>{
         res(data);
       }).catch((err)=>{
         rej(err);
@@ -383,7 +376,7 @@ let CusDisp_DB={
 
     return new Promise((res,rej)=>{
       let url=DB_Query.db_url+'/delete/customdisplay?_id='+id;
-      pjsonp(url,null).then((data)=>{
+      pjsonp(url).then((data)=>{
         res(data);
       }).catch((err)=>{
         rej(err);
@@ -459,8 +452,10 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
       onQueryRes(res);
     }).catch((e)=>{
       setFetchedRecord([]);
+      console.log(e);
       if(onQueryRej!==undefined)
         onQueryRej(e)
+      throw e;
     });
   }
 
@@ -469,13 +464,23 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   useEffect(() => {
     console.log("1,didUpdate");
     pop_dataRetrive();
-    recentQuery(searchDateRange)
-    .then(_=>{
-      pop_disable();
-    })
-    .catch(_=>{
+
+    try{
+      recentQuery(searchDateRange)
+      .then(_=>{
+        console.log(_)
+        pop_disable();
+      })
+      .catch(e=>{
+        console.log(e)
+        pop_dataRetriveFailed();
+      });
+    }
+    catch(e)
+    {
       pop_dataRetriveFailed();
-    });
+      console.log(e)
+    }
 
     return () => {
       console.log("1,didUpdate ret::");
@@ -821,7 +826,7 @@ function DBDupMan({ }) {
       '}}]';
   
   
-      pjsonp(url,null).then((dataSet)=>{
+      pjsonp(url).then((dataSet)=>{
         console.log(dataSet);
       }).catch((err)=>{
         rej(err);
