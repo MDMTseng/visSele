@@ -319,3 +319,13 @@ export class websocket_reqTrack{
     });
   }
 }
+
+
+export function getDayMillisec( fromStart_or_toTheEnd=true)
+{
+  let d=new Date();
+  let ms=
+    ( (d.getHours()*60+d.getMinutes())*60+  d.getSeconds())*1000+ d.getMilliseconds();
+
+    return fromStart_or_toTheEnd?ms:24*60*60*1000-ms;
+}

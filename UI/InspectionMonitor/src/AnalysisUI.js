@@ -48,7 +48,17 @@ Chart.pluginService.register({
   }
 });
 
+function branchBeizer(ctx,pt1,pt2,room=5,alpha=0.5)
+{
 
+  ctx.beginPath();
+  ctx.moveTo(pt1.x, pt1.y);
+  let c1x=alpha*(pt1.x-pt2.x)+pt2.x;
+  let c2x=alpha*(pt2.x-pt1.x)+pt1.x;
+  ctx.bezierCurveTo(c1x, pt1.y, c2x, pt2.y, pt2.x, pt2.y);
+  ctx.arc(pt2.x, pt2.y, 5, 0, 2 * Math.PI, true);
+  ctx.stroke(); 
+}
 
 function calcCpk(mean,sigma,USL,LSL,target)
 {
@@ -1097,6 +1107,31 @@ class APP_ANALYSIS_MODE extends React.Component{
     // console.log(features,__decorator.list_id_order,featureInOrder);
     return {...prevState,defFile,__cached_defFile:nextProps.defFile};
   }
+
+  popUp_downloading()
+  {
+    this.stateUpdate({modalInfo:{
+      title:null,
+      visible:true,
+      onOK:()=>{
+        // this.stateUpdate({modalInfo:undefined});
+      },
+      onCancel:()=>{
+        // this.stateUpdate({modalInfo:undefined});
+      },
+      content:"下載中....",
+      footer:null,
+    },dataInSync:true});
+  }
+  SetDateRange(dayCount1,dayCount2)
+  {
+    
+    function DateRange(dayCount1,dayCount2)
+    {
+      return [moment(Date_addDay(new Date(),dayCount1)), moment(Date_addDay(new Date(),dayCount2))];
+    }
+    return this.setState({dateRange:DateRange(dayCount1,dayCount2)});
+  }
   render() {
     console.log(">>>>",this.state);
     if(this.state.defFile===undefined)return null;
@@ -1203,12 +1238,17 @@ class APP_ANALYSIS_MODE extends React.Component{
 
 
     let modalDisplay=this.state.modalInfo===undefined?null:
-    <Modal title={this.state.modalInfo.title} visible={this.state.modalInfo.visible}  maskClosable={false} closable={false}
+    <Modal title={this.state.modalInfo.title} visible={this.state.modalInfo.visible}  
+      maskClosable={this.state.modalInfo.maskClosable==true} closable={this.state.modalInfo.closable==true}
       onOk={this.state.modalInfo.onOK} okText={this.state.modalInfo.okText}
-      onCancel={this.state.modalInfo.onCancel} cancelText={this.state.modalInfo.cancelText}>
+      onCancel={this.state.modalInfo.onCancel} cancelText={this.state.modalInfo.cancelText} footer={this.state.modalInfo.footer}> 
       {this.state.modalInfo.content}
     </Modal>;
     
+
+    
+
+
     return(
     <div className="HXF">
       
@@ -1217,12 +1257,33 @@ class APP_ANALYSIS_MODE extends React.Component{
         {HEADER}
         <div className="s height12">
 
+          <Button key="_month"
+            onClick={() => this.SetDateRange(-30,1)}>
+            月(-30)
+          </Button>
+
+          <Button key="half_month"
+            onClick={() => this.SetDateRange(-15,1)}>
+            半月(-15)
+          </Button>
+          <Button key="week"
+            onClick={() => this.SetDateRange(-7,1)}>
+            星期(-7)
+          </Button>
+          <Button key="day"
+            onClick={() => this.SetDateRange(-1,1)}>
+            一天(-1)
+          </Button>
           <RangePicker key="RP"
-            defaultValue={this.state.dateRange} 
+            value={this.state.dateRange} 
             onChange={(date)=>this.stateUpdate({dateRange:date})}/>
 
           <Button type="primary" icon="search" disabled={ (!dateRangeReady || !defFileReady) || (this.state.dataInSync)} onClick={
             ()=>{
+
+              this.popUp_downloading();
+
+
               this.recStream.newFeedCallBack=
                 (newStream,fullStream)=>{
                   if(newStream.length>0)
@@ -1240,19 +1301,22 @@ class APP_ANALYSIS_MODE extends React.Component{
                     //console.log("fullStream=",fullStream);
                   }
                 }
-              this.stateUpdate({dataInSync:true});
 
               this.recStream.queryInspRecSize(dateRange.map(d=>d.getTime())).then(result=>{
 
                 let dataCount=result[0].count;
                 console.log(dataCount)
-                let warn_limit=5000;
+                
+                let sample1=5000;
+                let sample2=1000;
+                let sample3=500;
+                let warn_limit=sample1;
                 if(dataCount<warn_limit)
                 {
                   this.recStream.queryInspRec(dateRange.map(d=>d.getTime())).then(result=>{
-                    this.stateUpdate({dataInSync:false});
+                    this.stateUpdate({dataInSync:false,modalInfo:undefined});
                   }).catch(err=>{
-                    this.stateUpdate({dataInSync:false});
+                    this.stateUpdate({dataInSync:false,modalInfo:undefined});
                   });
                 }
                 else
@@ -1263,26 +1327,48 @@ class APP_ANALYSIS_MODE extends React.Component{
                     visible:true,
                     onOK:()=>{
                       
-                      this.recStream.queryInspRec(dateRange.map(d=>d.getTime())).then(result=>{
-                        this.stateUpdate({dataInSync:false});
-                      }).catch(err=>{
-                        this.stateUpdate({dataInSync:false});
-                      });
-                      this.stateUpdate({modalInfo:undefined});
+                      this.stateUpdate({dataInSync:false,modalInfo:undefined});
+        
                     },
                     onCancel:()=>{
                       // this.stateUpdate({modalInfo:undefined,dataInSync:false});
                       
-                      this.recStream.queryInspRec(dateRange.map(d=>d.getTime()),warn_limit).then(result=>{
-                        this.stateUpdate({dataInSync:false});
-                      }).catch(err=>{
-                        this.stateUpdate({dataInSync:false});
-                      });
-                      this.stateUpdate({modalInfo:undefined});
+                      this.stateUpdate({dataInSync:false,modalInfo:undefined});
+        
                     },
-                    content:"查詢結果數量:"+dataCount+" > "+warn_limit+" 取樣下載"+warn_limit+"個資料? 或是仍要全下載?",
+                    content:"查詢結果數量:"+dataCount+" > "+warn_limit+" 取樣下載? 或是仍要全下載?",
                     okText:"全下載",
-                    cancelText:"取樣下載"+warn_limit+"個資料"
+
+                    footer:<>
+                      <Button key="_month"
+                        onClick={() =>{
+                          this.recStream.queryInspRec(dateRange.map(d=>d.getTime())).then(result=>{
+                            this.stateUpdate({dataInSync:false,modalInfo:undefined});
+                          }).catch(err=>{
+                            this.stateUpdate({dataInSync:false,modalInfo:undefined});
+                          });
+                          this.popUp_downloading();    
+                        }}>
+                        全下載
+                      </Button>
+                      <br/>
+                      取樣下載:
+                      {[sample1,sample2,sample3].map(count=>(
+                          <Button key={`samp_${count}`}
+                          onClick={() =>{
+                            this.recStream.queryInspRec(dateRange.map(d=>d.getTime()),count).then(result=>{
+                              this.stateUpdate({dataInSync:false,modalInfo:undefined});
+                            }).catch(err=>{
+                              this.stateUpdate({dataInSync:false,modalInfo:undefined});
+                            });
+                            this.popUp_downloading();
+              
+                          }}>
+                          {count}
+                        </Button>
+                      ))}
+                    </>,
+                    maskClosable:true
                   }});
                   
                 }
@@ -1291,7 +1377,7 @@ class APP_ANALYSIS_MODE extends React.Component{
 
                 // this.stateUpdate({dataInSync:false});
               }).catch(err=>{
-                this.stateUpdate({dataInSync:false});
+                this.stateUpdate({dataInSync:false,modalInfo:undefined});
               });
 
             }} />

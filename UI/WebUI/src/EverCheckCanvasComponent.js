@@ -2542,7 +2542,7 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
     ctx.setTransform(matrix.a, matrix.b, matrix.c,
       matrix.d, matrix.e, matrix.f);
 
-    if(this.doRotateView==true && inspectionReportList.length>=1 )
+    if(this.doRotateView==true && inspectionReportList.length>=1 && this.img_info!==undefined)
     {
       // let line_N=inspectionReportList[0].detectedLines[1];
       // let spoint_N=inspectionReportList[0].searchPoints[0];
@@ -2555,6 +2555,8 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
       let rot=inspectionReportList[0].rotate;
       // let rot=-Math.atan2(line_N.vy,line_N.vx);
+
+      ctx.translate(this.img_info.full_width/2*mmpp, this.img_info.full_height/2*mmpp);//Move to the center of the secCanvas
 
       if (inspectionReportList[0].isFlipped)
       {

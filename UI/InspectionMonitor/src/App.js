@@ -6,6 +6,8 @@ import * as DB_Query from './UTIL/DB_Query';
 import  Modal  from 'antd/lib/modal';
 import QrScanner from 'qr-scanner';
 import jsonp from 'jsonp';
+import moment from 'moment';
+import INFO from './info.js';
 
 import {datePrintSimple} from './UTIL/MISC_Util';
 
@@ -15,10 +17,16 @@ import Button from 'antd/lib/button';
 import Table from 'antd/lib/table';
 import Col from 'antd/lib/col';
 import Row from 'antd/lib/row';
+
+
+
+
+import DatePicker from 'antd/lib/date-picker';
 // import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons-react';
 //import PlusOutlined from '@ant-design/icons/PlusOutlined';
 import Layout from 'antd/lib/layout';
 QrScanner.WORKER_PATH = "./qr-scanner-worker.min.js";
+const { RangePicker } = DatePicker;
 // import { WarningOutlined} from '@ant-design/icons';
 
 const { Title, Paragraph, Text } = Typography;
@@ -120,105 +128,121 @@ function isString(val){
   return (typeof val === 'string' || val instanceof String)
 }
 
-function pjsonp(url,timeout=5000,timeoutErrMsg="TIMEOUT")
+function pjsonp(url,timeout=10000)
 {
   return new Promise((res,rej)=>{
-    let timeoutFlag=undefined;
-    if(timeout>0)
-    {
-      timeoutFlag = setTimeout(()=>{
-        timeoutFlag=undefined;
-        rej(timeoutErrMsg)
-      },timeout);
-    }
+    try{
 
-    jsonp(url,  (err,data)=>{
-      clearTimeout(timeoutFlag);
-      if(err === null)
-          res(data);
-      else
-          rej(err)
-    });
+      jsonp(url,{
+        timeout
+      },  (err,data)=>{
+        if(err === null)
+            res(data);
+        else
+            rej(err)
+      });
+    }
+    catch(e)
+    {
+      rej(e)
+    }
   });
 }
 
-function fetchDeffileInfo(name)
+function fetchDeffileInfo(name,time_range_ms=[0,9999999999])
 {
   let defFileData=undefined;
   
-  return new Promise((res,rej)=>{
-    let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'
-    
-    pjsonp(url,null).then((data)=>{
+  let url=DB_Query.db_url+'/query/deffile?name='+name+'&limit=1000'+
+  '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
+
+  return pjsonp(url).then((data)=>{
 
       
-      let hashArr = data.map(srec=>srec.DefineFile.featureSet_sha1)
-      hashArr = [...new Set(hashArr)];
+    let hashArr = data.map(srec=>srec.DefineFile.featureSet_sha1)
+    hashArr = [...new Set(hashArr)];//remove replicated hash
 
-      defFileData=hashArr.map((hash)=>{
-        let name = data.filter((defF)=>defF.DefineFile.featureSet_sha1==hash)
-          .map(defF=>defF.DefineFile.name)
-        return {hash,name}
-      }).map(defFInfo=>{
-        defFInfo.name=[...new Set(defFInfo.name)];
-        return defFInfo;
-      });
-      let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
+    defFileData=hashArr.map((hash)=>{
+      let newest_def = data.filter((defF)=>defF.DefineFile.featureSet_sha1==hash)
+                      .reduce((latest,def)=>
+                      {
+                        let p_createdAt = Date.parse(def.createdAt);
+                        if(latest===undefined)
+                        {
+                          return {p_createdAt,...def};
+                        }
+                        
+                        if(latest.p_createdAt<p_createdAt)
+                        {
+                          return latest;
+                        }
+                        return {p_createdAt,...def};
+                      });
+      
+      return {hash,...newest_def,name:newest_def.DefineFile.name}
+    });
 
-      let url=DB_Query.db_url+'/query/inspection?';
-      url+='tStart=0&tEnd=2581663256894&limit=999999999&';
-      url+='subFeatureDefSha1='+hashRegx+'&'
-      url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
-      url+='agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
-      '"count": {"$sum":1},'+
-      '"time_start": {"$min":"$InspectionData.time_ms"},'+
-      '"time_end": {"$max":"$InspectionData.time_ms"},'+
-      '"tags": {"$addToSet":"$InspectionData.tag"}'+
-      '}}]';
-      return pjsonp(url,null)
-
-    }).then((dataSet)=>{
-
-      let dataSet_Formatted=
-      dataSet.map(data=>{
-        data._id=data._id[0]
-        return data
-      }).reduce((acc,data)=>{
-        let id=data._id;
-        if(acc[id]===undefined)
-        {
-          acc[id]=data;
-          delete acc[id]._id; 
-        }
-        else
-        {
-          acc[id].count+=data.count;
-          acc[id].time_start=[Math.min(acc[id].time_start[0],data.time_start[0])];
-          acc[id].time_end=[Math.max(acc[id].time_end[0],data.time_end[0])];
-        }
-        return acc;
-      },{})
-
-      //final aggregation
-      defFileData.forEach((defF)=>{
-        let tar = dataSet_Formatted[defF.hash];
-        if(tar!==undefined)
-        {
-          Object.assign(defF, tar)
-
-
-          defF.tags = defF.tags.flat(9)
-            .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
-            .flat(9)
-            .filter(tag=>tag.length>0)
-          defF.tags = [...new Set(defF.tags)];
-        }
-      })
-      res(defFileData)
-    }).catch((err)=>{
-      rej(err);
+    defFileData.forEach((def)=>{
+      if(def.p_createdAt===undefined)
+      {
+        def.p_createdAt=Date.parse(def.createdAt);
+      }
     })
-  });
+    let hashRegx = hashArr.reduce((acc,hash)=>acc===undefined?hash:acc+"|"+hash,undefined)
+
+    let url=DB_Query.db_url+'/query/inspection?';
+    url+='tStart='+time_range_ms[0]+'&tEnd='+time_range_ms[1]+'&limit=9999999&';
+    url+='subFeatureDefSha1='+hashRegx+'&'
+    url+='projection={"_id":0,"InspectionData.subFeatureDefSha1":1,"InspectionData.time_ms":1,"InspectionData.tag":1}&'
+    url+='agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1",'+
+    '"count": {"$sum":1},'+
+    '"time_start": {"$min":"$InspectionData.time_ms"},'+
+    '"time_end": {"$max":"$InspectionData.time_ms"},'+
+    '"tags": {"$addToSet":"$InspectionData.tag"}'+
+    '}}]';
+    return pjsonp(url)
+
+  }).then((dataSet)=>{
+
+    let dataSet_Formatted=
+    dataSet.map(data=>{
+      data._id=data._id[0]
+      return data
+    }).reduce((acc,data)=>{
+      let id=data._id;
+      if(acc[id]===undefined)
+      {
+        acc[id]=data;
+        delete acc[id]._id; 
+      }
+      else
+      {
+        acc[id].count+=data.count;
+        acc[id].time_start=[Math.min(acc[id].time_start[0],data.time_start[0])];
+        acc[id].time_end=[Math.max(acc[id].time_end[0],data.time_end[0])];
+      }
+      return acc;
+    },{})
+
+    //final aggregation
+    defFileData.forEach((defF)=>{
+      let tar = dataSet_Formatted[defF.hash];
+      if(tar!==undefined)
+      {
+        Object.assign(defF, tar)
+
+
+        defF.tags = defF.tags.flat(9)
+          .map(tag=>tag.replace(/^\,+/g, "").replace(/\,{2,}/g, ",").split(","))
+          .flat(9)
+          .filter(tag=>tag.length>0)
+        defF.tags = [...new Set(defF.tags)];
+      }
+    })
+    return (defFileData)
+  }).catch((err)=>{
+    throw err;
+  })
 }
 
 ///query/inspection?tStart=1583942400000&tEnd=1584639131675&subFeatureDefSha1_regex=.&projection={"InspectionData.subFeatureDefSha1":1}&agg=[{"$group":{"_id":"$InspectionData.subFeatureDefSha1","sum":{"$sum":1}}}]
@@ -237,7 +261,7 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
     '}}]';
 
 
-    pjsonp(url,null).then((dataSet)=>{
+    pjsonp(url).then((dataSet)=>{
 
       dataSet_Formatted=
       dataSet.map(data=>{
@@ -263,14 +287,17 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
       console.log(dataSet,dataSet_Formatted,hashRegx);
       //'/query/deffile?featureSet_sha1='+hashRegx
       let url=DB_Query.db_url+'/query/deffile?featureSet_sha1='+hashRegx+
-      '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"createdAt":1}'
+      '&projection={"DefineFile.name":1,"DefineFile.featureSet_sha1":1,"DefineFile.featureSet_sha1_root":1,"DefineFile.featureSet_sha1_pre":1,"createdAt":1}'
       
-      return pjsonp(url,null)
+      return pjsonp(url)
 
     }).then((defFileData)=>{
 
+
       console.log(defFileData);
-      defFileData = Object.values(defFileData.reduce((obj,df)=>{
+
+
+      let sha1_dict=defFileData.reduce((obj,df)=>{
         let sha1=df.DefineFile.featureSet_sha1;
         let time = Date.parse(df.createdAt);
         df.p_createdAt = time;
@@ -280,8 +307,11 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
         }
         
         return obj;
-      },{}))
+      },{})//find the latest featureSet_sha1 and ignore the ole one
+      console.log(sha1_dict);
+      defFileData = Object.values(sha1_dict)
 
+      // console.log(defFileData);
       defFileData.forEach((defF)=>{
         defF.hash=defF.DefineFile.featureSet_sha1;
         defF.name=[defF.DefineFile.name];
@@ -297,6 +327,9 @@ function fetchDeffileInfo_in_insp_time_range(start_ms,end_ms)
         }
       })
       console.log(defFileData);
+
+
+
       res(defFileData)
     }).catch((err)=>{
       rej(err);
@@ -314,7 +347,7 @@ let CusDisp_DB={
       let url=DB_Query.db_url+'/QUERY/customDisplay?name='+name
       url+='&projection={"name":1,"targetDeffiles":1}'
       
-      pjsonp(url,null).then((data)=>{
+      pjsonp(url).then((data)=>{
         res(data);
       }).catch((err)=>{
         rej(err);
@@ -332,7 +365,7 @@ let CusDisp_DB={
         url+="&_id="+id;
         
       }
-      pjsonp(url,null).then((data)=>{
+      pjsonp(url).then((data)=>{
         res(data);
       }).catch((err)=>{
         rej(err);
@@ -343,7 +376,7 @@ let CusDisp_DB={
 
     return new Promise((res,rej)=>{
       let url=DB_Query.db_url+'/delete/customdisplay?_id='+id;
-      pjsonp(url,null).then((data)=>{
+      pjsonp(url).then((data)=>{
         res(data);
       }).catch((err)=>{
         rej(err);
@@ -373,28 +406,85 @@ function getUrlPath()
   return window.location.href.substring(window.location.protocol.length).split('?')[0]
 }
 
+function Date_addDay(date,addDays)
+{
+  if( date===undefined)date=new Date();
+
+  return date.setDate(date.getDate() + addDays);
+}
+
+function DateRange(dayCount1,dayCount2)
+{
+  return [moment(Date_addDay(new Date(),dayCount1)), moment(Date_addDay(new Date(),dayCount2))];
+}
+
+
 function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   const [fetchedRecord, setFetchedRecord] = useState([]);
+  const [searchDateRange, setSearchDateRange] = useState(DateRange(-7,1));//by default one week
   
-  function recentQuery()
+  console.log(searchDateRange);
+  const [modal_view,setModal_view]=useState(undefined);
+  function pop_dataRetrive()
   {
-    var cur_ms = new Date().getTime();
-    fetchDeffileInfo_in_insp_time_range(cur_ms-17*24*60*60*1000,cur_ms+1000000).
+
+    setModal_view({
+      view_fn:()=>"取得資料中",
+    })
+  }
+  function pop_dataRetriveFailed()
+  {
+
+    setModal_view({
+      view_fn:()=>"取得資料失敗",
+      title:"!",
+    })
+  }
+  function pop_disable()
+  {
+    
+    setModal_view();
+  }
+
+  function recentQuery(dateRange=searchDateRange)
+  {
+    
+    return fetchDeffileInfo_in_insp_time_range(dateRange[0]._d.getTime(),dateRange[1]._d.getTime()).
     then((res)=>{
 
       setFetchedRecord(res);
       onQueryRes(res);
     }).catch((e)=>{
       setFetchedRecord([]);
+      console.log(e);
       if(onQueryRej!==undefined)
         onQueryRej(e)
+      throw e;
     });
   }
 
 
+
   useEffect(() => {
     console.log("1,didUpdate");
-    recentQuery();
+    pop_dataRetrive();
+
+    try{
+      recentQuery(searchDateRange)
+      .then(_=>{
+        console.log(_)
+        pop_disable();
+      })
+      .catch(e=>{
+        console.log(e)
+        pop_dataRetriveFailed();
+      });
+    }
+    catch(e)
+    {
+      pop_dataRetriveFailed();
+      console.log(e)
+    }
 
     return () => {
       console.log("1,didUpdate ret::");
@@ -406,29 +496,36 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     console.log(e.target.value)
     if(e.target.value=="")
     {
-      recentQuery();
+      pop_dataRetrive();
+      recentQuery(searchDateRange)
+      .then(_=>{
+        pop_disable();
+      })
+      .catch(_=>{
+        pop_dataRetriveFailed();
+      });
     }
     else if(e.target.value.length<2)
     {
       
-      Modal.confirm({
-        // icon: <WarningOutlined/>,
-        content: "請輸入大於兩個字",
-        onOk() {
-        },
-        onCancel() {
-        },
-      });
+      setModal_view({
+        view_fn:()=>"請輸入大於兩個字",
+        title:"!",
+      })
     }
     else
     {
+      
+      pop_dataRetrive();
       setFetchedRecord();
-      fetchDeffileInfo(e.target.value).
+      fetchDeffileInfo(e.target.value,[searchDateRange[0]._d.getTime(),searchDateRange[1]._d.getTime()]).
         then((res)=>{
-  
+          pop_disable();
           setFetchedRecord(res);
           onQueryRes(res);
         }).catch((e)=>{
+          
+          pop_dataRetriveFailed();
           setFetchedRecord([]);
           if(onQueryRej!==undefined)
             onQueryRej(e)
@@ -444,27 +541,16 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
   let displayInfo=null
   if(fetchedRecord!==undefined)
   {
-    // displayInfo = fetchedRecord.map(fetchRec=>{
-
-    //   let text = fetchRec.name+" ";
-    //   if(fetchRec.count!==undefined)
-    //   {
-    //     text+=",count:"+fetchRec.count;
-    //     var dateStart = new Date(fetchRec.time_start[0]);
-    //     var dateEnd = new Date(fetchRec.time_end[0]);
-    //     text+=","+datePrintSimple(dateStart)+"~"+datePrintSimple(dateEnd);
-    //     text+=",tags:"+fetchRec.tags;
-    //   }
-
-    //   return [
-    //     <a href={getUrlPath()+"?v=0&hash="+fetchRec.hash}>{text}</a>,
-    //     <br/>]})
     const columns = [
       {
         title: 'Name',
         dataIndex: 'name',
         key: 'name',
-        render: fetchRec => <a href={getUrlPath()+"?v=0&hash="+fetchRec.hash} target="_blank">{fetchRec.name}</a>,
+        render: (name,fetchRec) => <>
+          {fetchRec.level==0?null:"⮑"}
+          {fetchRec.link===undefined?name:<a href={fetchRec.link} target="_blank">{name}</a>}  
+          {fetchRec.children===undefined?null:`:+${fetchRec.children.length}`}
+          </>,
       },
       {
         title: 'count',
@@ -476,14 +562,14 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Date_Start',
         dataIndex: 'Date_Start',
         key: 'Date_Start',
-        render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
+        render: milliSec => datePrintSimple(new Date(milliSec)),
         sorter: (a, b) => a.Date_Start - b.Date_Start,
       },
       {
         title: 'Date_End',
         dataIndex: 'Date_End',
         key: 'Date_End',
-        render: milliSec => <div>{datePrintSimple(new Date(milliSec))}</div>,
+        render: milliSec => datePrintSimple(new Date(milliSec)),
         sorter: (a, b) => a.Date_End - b.Date_End,
         defaultSortOrder:'descend'
       },
@@ -491,34 +577,118 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
         title: 'Tags',
         dataIndex: 'Tags',
         key: 'Tags',
+        render: tags => tags.join(","),
       }]
 
-      let dataSource = fetchedRecord.filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>{
-        let retSrc={
-          name:fetchRec
-        }
-        if(fetchRec.count!==undefined)
-        {
-          retSrc.count=fetchRec.count;
-          // var dateStart = new Date(fetchRec.time_start[0]);
-          // var dateEnd = new Date(fetchRec.time_end[0]);
 
-          retSrc.Date_Start=fetchRec.time_start[0];
-          retSrc.Date_End=fetchRec.time_end[0];
-          retSrc.Tags=fetchRec.tags.join(",");
+    console.log(fetchedRecord);
+    let defFileGroup={};
+    fetchedRecord.forEach((defInfo)=>{
+      let sha1_root=defInfo.DefineFile.featureSet_sha1_root||"_";
+      if(defFileGroup[sha1_root]===undefined)
+      {
+        defFileGroup[sha1_root]=[];
+      }
+
+      defFileGroup[sha1_root].push(defInfo);
+      
+    });
+
+    console.log(defFileGroup);
+
+    let dataSource = Object.keys(defFileGroup).map((g,idx)=>{
+      
+      
+
+      let groupInfo = defFileGroup[g].filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>
+        ({
+          level:1,
+          name:fetchRec.name,
+          count:fetchRec.count,
+          Date_Start:fetchRec.time_start[0],
+          Date_End:fetchRec.time_end[0],
+          Tags:fetchRec.tags,
+          info:fetchRec,
+          hash:fetchRec.hash,
+          key:fetchRec.hash,
+          link:getUrlPath()+"?v=0&hash="+fetchRec.hash,
+        })
+      )
+
+      let _ginfo = groupInfo.reduce((sumInfo,fetchRec)=>{
+        let newInfo={...sumInfo};
+        if(newInfo.Date_End<fetchRec.Date_End)
+        {
+          newInfo.name=fetchRec.name;
+          newInfo.Date_End=fetchRec.Date_End;
         }
-  
-        return retSrc
+        if(newInfo.Date_Start>fetchRec.Date_Start)
+        {
+          newInfo.Date_Start=fetchRec.Date_Start;
+        }
+        
+        newInfo.Tags=[...newInfo.Tags,...fetchRec.Tags];
+        newInfo.hash=[...newInfo.hash,fetchRec.hash];
+        newInfo.count+=fetchRec.count;
+        newInfo.count+=fetchRec.count;
+        return newInfo;
+      },{
+        level:0,
+        name:undefined,
+        count:0,
+        Date_End:0,
+        Date_Start:Number.MAX_VALUE,
+        hash:[],
+        Tags:[],
+        info:groupInfo,
+        children:groupInfo.length>1?groupInfo:undefined
       })
+      _ginfo.Tags = [...new Set(_ginfo.Tags)];//remove replicated hash]
+      _ginfo.hash = [...new Set(_ginfo.hash)];//remove replicated hash]
+      _ginfo.key="-"+_ginfo.hash[0];
+
+      if(_ginfo.hash.length==1)
+        _ginfo.link=getUrlPath()+"?v=0&hash="+_ginfo.hash[0]
+      return _ginfo
+    }).filter(fetchRec=>fetchRec.count!==undefined &&fetchRec.count>0 )
     console.log(dataSource);
     displayInfo=<Table columns={columns} dataSource={dataSource} pagination={false}/>;
   }
   return (
 
-    <div>
+    <>
       {searchBox}
+      
+      <Button key="_month"
+        onClick={() => {setSearchDateRange(DateRange(-30,1))}}>
+        月(-30)
+      </Button>
+
+      <Button key="half_month"
+        onClick={() => {setSearchDateRange(DateRange(-15,1))}}>
+        半月(-15)
+      </Button>
+      <Button key="week"
+        onClick={() => {setSearchDateRange(DateRange(-7,1))}}>
+        星期(-7)
+      </Button>
+
+
+      <RangePicker key="RP"
+            value={searchDateRange} 
+            onChange={(date)=>setSearchDateRange(date)}/>
       {displayInfo}
-    </div>
+      
+      <Modal
+          footer={null}
+          onCancel={()=>setModal_view()}
+          onOk={()=>setModal_view()}
+          {...modal_view}
+          visible={modal_view !== undefined}>
+          {modal_view === undefined ? null : modal_view.view_fn()}
+      </Modal>
+      version:{INFO.version}
+    </>
   );
 }
 
@@ -675,7 +845,7 @@ function DBDupMan({ }) {
       '}}]';
   
   
-      pjsonp(url,null).then((dataSet)=>{
+      pjsonp(url).then((dataSet)=>{
         console.log(dataSet);
       }).catch((err)=>{
         rej(err);
