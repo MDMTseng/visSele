@@ -2,8 +2,8 @@
 #include "main.hpp"
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
-const int O_CameraPin = 5;
-const int O_BackLight = 4;
+const int O_CameraPin = 26;
+const int O_BackLight = 27;
 const int O_LED_Status = 2;
 
 hw_timer_t *timer = NULL;
@@ -366,16 +366,310 @@ public:
   }
 };
 
-twoGateSense tGS;
+// twoGateSense tGS;
+
+class oneGateSense
+{
+public:
+  const int I_gate1Pin = 17;
+  const bool senseFlip = false;
+
+  const int pulseDiffMIN = 300;
+  const int pulseDiffMAX = 5000;
+  typedef struct GateInfo
+  {
+    uint32_t start_pulse;
+    uint32_t end_pulse;
+    uint32_t mid_pulse;
+    uint16_t debunce;
+    uint8_t cur_Sense;
+    uint8_t pin;
+    enum gateState
+    {
+      INIT = -1,
+      NORMAL = 0,
+      POS_EDGE = 1,
+      NEG_EDGE_OK = 2,
+      NEG_EDGE_NG = 3,
+    } state;
+  } GateInfo;
+
+  typedef struct pipeLineInfo
+  {
+    uint32_t gate_pulse;
+    uint32_t s_pulse;
+    uint32_t e_pulse;
+    uint32_t pulse_width;
+    int8_t stage;
+    int8_t sent_stage;
+    int8_t notifMark;
+    int16_t insp_status;
+  } pipeLineInfo;
+
+  struct ACT_INFO
+  {
+    // pipeLineInfo *src;
+    int info;
+    uint32_t targetPulse;
+  };
+
+  struct ACT_SCH
+  {
+    RingBuf_Static<ACT_INFO, TRACKING_LEN>
+        ACT_BACKLight1H,
+        ACT_BACKLight1L;
+
+    RingBuf_Static<ACT_INFO, (TRACKING_LEN * 2)>
+        ACT_CAM1;
+  } act_S;
+
+  GateInfo g1 = {0};
+  oneGateSense()
+  {
+
+    pinMode(I_gate1Pin, INPUT_PULLUP);
+    g1.pin = I_gate1Pin;
+    g1.state = GateInfo::INIT;
+  }
+
+#define ACT_PUSH_TASK(rb, plinfo, pulseOffset, _info, cusCode_task) \
+  {                                                                 \
+    ACT_INFO *task;                                                 \
+    task = (rb).getHead();                                          \
+    if (task)                                                       \
+    {                                                               \
+      task->targetPulse = plinfo->gate_pulse + pulseOffset;         \
+      task->info = _info;                                           \
+      cusCode_task(rb).pushHead();                                  \
+    }                                                               \
+  }
+
+#define ACT_TRY_RUN_TASK(act_rb, cur_pulse, cmd_task) \
+  {                                                   \
+    ACT_INFO *task = act_rb.getTail();                \
+    if (task)                                         \
+    {                                                 \
+      int32_t __diff = task->targetPulse - cur_pulse; \
+      if (__diff <= 0)                                \
+      {                                               \
+        cmd_task                                      \
+            act_rb.consumeTail();                     \
+      }                                               \
+    }                                                 \
+  }
+
+  void timerGateSensingRun(uint32_t cur_tick)
+  {
+    task_gateSensing(&g1,cur_tick);
+
+    if (g1.state == GateInfo::NEG_EDGE_OK)
+    {
+      twoGateSense::pipeLineInfo plInfo;
+
+      {
+        plInfo.e_pulse = g1.end_pulse;
+        plInfo.s_pulse = g1.start_pulse;
+        plInfo.gate_pulse = g1.mid_pulse;
+        plInfo.pulse_width = g1.start_pulse - g1.end_pulse;
+        // Serial.printf("pulseAdd objTrack.s:%d  \n", objTrack.size());
+
+
+        uint32_t targetOffset=1;//;
+        int flashOffset=1;//esp:150(10us?)
+        int flashTime=100;
+
+
+        int camOffset=1;//esp:150(10us?)
+        int camTime=100;
+
+
+
+
+
+        ACT_PUSH_TASK(act_S.ACT_BACKLight1H, (&plInfo), flashOffset+ targetOffset, 0, );
+        ACT_PUSH_TASK(act_S.ACT_BACKLight1L, (&plInfo), flashOffset+flashTime+ targetOffset, 0,);
+
+        ACT_PUSH_TASK(act_S.ACT_CAM1, (&plInfo),          camOffset+targetOffset, 1, );
+        ACT_PUSH_TASK(act_S.ACT_CAM1, (&plInfo),  camTime+camOffset+targetOffset, 2, );
+
+      }
+    
+    }
+  }
+
+  void cleanUpTimeoutTrackRun(uint32_t cur_tick)
+  {
+
+
+  }
+
+  uint32_t _timerCount = 0;
+  void timerRun()
+  {
+    _timerCount++;
+    int subTick = (_timerCount & 0b11);
+    if (subTick == 0)
+    {
+      timerGateSensingRun(_timerCount);
+    }
+    else if (subTick == 1)
+    {
+      cleanUpTimeoutTrackRun(_timerCount);
+    }
+
+    {
+
+      ACT_TRY_RUN_TASK(
+          act_S.ACT_CAM1, _timerCount,
+          // Serial.printf("ACT_CAM1:%d\n", task->info);
+          if (task->info == 1) {
+            digitalWrite(O_CameraPin, 1);
+          } else if (task->info == 2) {
+            digitalWrite(O_CameraPin, 0);
+          });
+
+      ACT_TRY_RUN_TASK(act_S.ACT_BACKLight1H, _timerCount,
+                       digitalWrite(O_BackLight, 1););
+
+      ACT_TRY_RUN_TASK(act_S.ACT_BACKLight1L, _timerCount,
+                       digitalWrite(O_BackLight, 0);
+                       Serial.printf("BKL off:%d\n", _timerCount););
+    }
+  }
+
+  const int minWidth = 0;
+  const int maxWidth = 500;
+
+  const int DEBOUNCE_L_THRES = 5; //the keep L length to stablize as L state, object inner connection
+  const int DEBOUNCE_H_THRES = 1; //the keep H length to stablize as H state 
+
+  //example Set: 
+  //H_THRES 4 
+  //L_THRES 8
+  //
+  //                    V the H signal is too short 
+  //raw        0000011111100111111111111000000000000000000111000000 note: H234v-> H state pass. H23x->H state debounce
+  //                H234v L2x           L2345678v         H23x      note: L2x  -> H state too short.
+  //debounce   0000000001111111111111111111111111000000000000000000 
+  //                <H4-                <---L8---                    note: offset time according to HL debounce length 
+  //offset     0000011111111111111111111000000000000000000000000000  
+  //                |---Width--(20)----|
+  //                ^start_pulse       ^end_pulse
+  //  The width will need to pass the width filter to determin the final acceptance of this pulse
+  
+  void task_gateSensing(GateInfo *ginfo,uint32_t cur_tick)
+  {
+    //(perRevPulseCount/50)
+    uint8_t new_Sense = digitalRead(ginfo->pin);
+    
+    // Serial.print(new_Sense);
+    if (senseFlip)
+    {
+      new_Sense = !new_Sense;
+    }
+
+    if (ginfo->state == GateInfo::INIT)
+    {
+      if (!new_Sense)
+      {
+        ginfo->debunce = DEBOUNCE_H_THRES;
+        ginfo->cur_Sense = new_Sense;
+        ginfo->start_pulse = cur_tick;
+        ginfo->state = GateInfo::NORMAL; //wait for first low
+      }
+      return;
+    }
+
+    bool flip = false;
+
+    if (ginfo->cur_Sense)
+    {                 //H
+      if (!new_Sense) //L
+      {
+        ginfo->debunce--;
+        if (ginfo->debunce == 0)
+        {
+          flip = true;
+          ginfo->end_pulse = cur_tick - DEBOUNCE_L_THRES;
+          ginfo->debunce = DEBOUNCE_H_THRES;
+        }
+      }
+      else
+      {
+        ginfo->debunce = DEBOUNCE_L_THRES;
+      }
+    }
+    else
+    {                //L cur_Sense
+      if (new_Sense) //H
+      {
+        ginfo->debunce--;
+        if (ginfo->debunce == 0)
+        {
+          flip = true;
+          ginfo->start_pulse = cur_tick - DEBOUNCE_H_THRES;
+          ginfo->debunce = DEBOUNCE_L_THRES;
+        }
+      }
+      else
+      {
+        ginfo->debunce = DEBOUNCE_H_THRES;
+      }
+    }
+
+    ginfo->state = GateInfo::NORMAL;
+
+    if (flip)
+    {
+
+      if (!new_Sense)
+      { //a pulse is completed
+        Serial.println("N pulse");
+        ginfo->state = GateInfo::NEG_EDGE_NG;
+        uint32_t diff = ginfo->end_pulse - ginfo->start_pulse;
+        ginfo->mid_pulse = ginfo->end_pulse;//ginfo->start_pulse + (diff >> 1);
+        if (diff > minWidth && diff < maxWidth)
+        {
+
+          Serial.println("OK_");
+          ginfo->state = GateInfo::NEG_EDGE_OK;
+        }
+        else
+        {
+          //skip the pulse : the pulse width is not in the valid range
+          //this might be caused by too large object > typ:2cm
+          //or there are multiple objects too close to each other
+          //control by   minWidth,maxWidth,
+          //also effected DEBOUNCE_L_THRES,DEBOUNCE_H_THRES(these two are to control what is a complete pulse high time, low time)
+        }
+      }
+      else
+      {
+        ginfo->state = GateInfo::POS_EDGE;
+      }
+
+      ginfo->cur_Sense = new_Sense;
+    }
+  }
+
+  void mainLoop()
+  {
+  }
+};
+
+
+
+oneGateSense oGS;
 
 void IRAM_ATTR onTimer()
 {
-  tGS.timerRun();
+  oGS.timerRun();
 }
 StaticJsonDocument<1024> recv_doc;
 StaticJsonDocument<1024> ret_doc;
 void setup()
 {
+
   pinMode(O_CameraPin, OUTPUT);
   pinMode(O_LED_Status, OUTPUT);
   pinMode(O_BackLight, OUTPUT);
@@ -389,14 +683,15 @@ void setup()
 
   Serial.begin(921600);
 
-  // setup_comm();
+  // // setup_comm();
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 100, true);
   timerAlarmEnable(timer);
 
-  delay(1000);
-  digitalWrite(O_LED_Status, 0);
+  digitalWrite(O_BackLight, 1);
+  digitalWrite(O_CameraPin, 1);
+  delay(3000);
   digitalWrite(O_BackLight, 0);
   digitalWrite(O_CameraPin, 0);
 }
@@ -490,6 +785,8 @@ int CMD_parse(SimpPacketParse &SPP, buffered_print *bp, int *ret_result = NULL)
 
 void loop()
 {
-  tGS.mainLoop();
+  oGS.mainLoop();
   // loop_comm();
+  delay(1000);
+  
 }
