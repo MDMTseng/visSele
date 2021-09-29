@@ -374,8 +374,9 @@ public:
   const int I_gate1Pin = 17;
   const bool senseFlip = false;
 
-  const int pulseDiffMIN = 300;
-  const int pulseDiffMAX = 5000;
+  unsigned long skipPulseCount = 0;
+  const uint32_t pulseSepMIN = 1000;
+  uint32_t preAcceptedPulse=0;
   typedef struct GateInfo
   {
     uint32_t start_pulse;
@@ -471,36 +472,39 @@ public:
         plInfo.s_pulse = g1.start_pulse;
         plInfo.gate_pulse = g1.mid_pulse;
         plInfo.pulse_width = g1.start_pulse - g1.end_pulse;
+
+        uint32_t diff = plInfo.gate_pulse-preAcceptedPulse;
+        bool accpeted=diff>pulseSepMIN;
+        if(accpeted)
+        {
+          preAcceptedPulse=plInfo.gate_pulse;
+          uint32_t targetOffset=1;//;
+          int flashOffset=80;//esp:150(10us?)
+          int flashTime=100;
+
+
+          int camOffset=flashOffset+5;//esp:150(10us?)
+          int camTime=100;
+
+          ACT_PUSH_TASK(act_S.ACT_BACKLight1H, (&plInfo), flashOffset+ targetOffset, 0, );
+          ACT_PUSH_TASK(act_S.ACT_BACKLight1L, (&plInfo), flashOffset+flashTime+ targetOffset, 0,);
+
+          ACT_PUSH_TASK(act_S.ACT_CAM1, (&plInfo),          camOffset+targetOffset, 1, );
+          ACT_PUSH_TASK(act_S.ACT_CAM1, (&plInfo),  camTime+camOffset+targetOffset, 2, );
+
+        }
+        else
+        {
+          skipPulseCount++;
+          Serial.printf("skip:%d  \n", skipPulseCount);
+        }
+
         // Serial.printf("pulseAdd objTrack.s:%d  \n", objTrack.size());
 
-
-        uint32_t targetOffset=1;//;
-        int flashOffset=80;//esp:150(10us?)
-        int flashTime=100;
-
-
-        int camOffset=flashOffset+5;//esp:150(10us?)
-        int camTime=100;
-
-
-
-
-
-        ACT_PUSH_TASK(act_S.ACT_BACKLight1H, (&plInfo), flashOffset+ targetOffset, 0, );
-        ACT_PUSH_TASK(act_S.ACT_BACKLight1L, (&plInfo), flashOffset+flashTime+ targetOffset, 0,);
-
-        ACT_PUSH_TASK(act_S.ACT_CAM1, (&plInfo),          camOffset+targetOffset, 1, );
-        ACT_PUSH_TASK(act_S.ACT_CAM1, (&plInfo),  camTime+camOffset+targetOffset, 2, );
 
       }
     
     }
-  }
-
-  void cleanUpTimeoutTrackRun(uint32_t cur_tick)
-  {
-
-
   }
 
   uint32_t _timerCount = 0;
@@ -514,7 +518,6 @@ public:
     }
     else if (subTick == 1)
     {
-      cleanUpTimeoutTrackRun(_timerCount);
     }
 
     {
@@ -623,14 +626,14 @@ public:
 
       if (!new_Sense)
       { //a pulse is completed
-        Serial.println("N pulse");
+        // Serial.println("N pulse");
         ginfo->state = GateInfo::NEG_EDGE_NG;
         uint32_t diff = ginfo->end_pulse - ginfo->start_pulse;
         ginfo->mid_pulse = ginfo->end_pulse;//ginfo->start_pulse + (diff >> 1);
         if (diff > minWidth && diff < maxWidth)
         {
 
-          Serial.println("OK_");
+          // Serial.println("OK_");
           ginfo->state = GateInfo::NEG_EDGE_OK;
         }
         else
