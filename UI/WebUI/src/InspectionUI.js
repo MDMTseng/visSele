@@ -449,11 +449,16 @@ class OK_NG_BOX extends React.Component {
 
   render() {
     //console.log(this.props.detailStatus)
+    let detailStatus=this.props.detailStatus;
+    if(detailStatus===undefined)
+    {
+      detailStatus=MEASURERSULTRESION.UNSET;
+    }
     return (
       <div style={{ 'display': 'inline-block' }}>
         <Tag style={{ 'fontSize': 20 }}
-          color={OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].COLOR}>
-          {OK_NG_BOX_COLOR_TEXT[this.props.detailStatus].TEXT}
+          color={OK_NG_BOX_COLOR_TEXT[detailStatus].COLOR}>
+          {OK_NG_BOX_COLOR_TEXT[detailStatus].TEXT}
         </Tag>
         {this.props.children}
       </div>
