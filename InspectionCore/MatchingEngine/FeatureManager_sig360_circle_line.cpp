@@ -4370,31 +4370,38 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
   }
   
   int avaliable_ld_size = 0;
-  int maxArea = 0;
+  int areaThres = 0;
+  if(0)
   {
     for (int i = 2; i < ldData.size(); i++)
     {
-      if (maxArea < ldData[i].area)
+      //LOGI("ldData[%d].area=%d",i,ldData[i].area);
+      if (areaThres < ldData[i].area)
       {
-        maxArea = ldData[i].area;
+        areaThres = ldData[i].area;
       }
     }
+    areaThres=areaThres*7/10;
+  }
+  else
+  {
+    areaThres= 100*dsampLevel*dsampLevel; //HACK:100 no particular reason, just a hack filter
+  }
 
-    for (int i = 2; i < ldData.size(); i++)
+  for (int i = 2; i < ldData.size(); i++)
+  {
+    if (ldData[i].area < areaThres )
     {
-      if (ldData[i].area < maxArea * 7 / 10)
-      {
-        // ldData[i].area=0;
-        ldData[i].misc = -1; //mark ignore
-      }
-      else
-      {
-        ldData[i].misc = 1;
-        avaliable_ld_size++;
-      }
+      // ldData[i].area=0;
+      ldData[i].misc = -1; //mark ignore
+    }
+    else
+    {
+      ldData[i].misc = 1;
+      avaliable_ld_size++;
     }
   }
-  
+
   int scanline_skip = 15;
 
   float sigma;
@@ -4416,11 +4423,9 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
     }
   }
 
-  LOGV("ldData.size()=%d", ldData.size());
+  LOGI("ldData.size()=%d onlyIdx:%d", ldData.size(),onlyIdx);
   for (int i = 2; i < ldData.size(); i++)
-  {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects
-    if (ldData[i].area < 100*dsampLevel*dsampLevel) //HACK: no particular reason, just a hack filter
-      continue;
+  {                           // idx 0 is not a label, idx 1 is for outer frame and connected objects(with the outter frame)
     if (ldData[i].misc == -1) //the ignore mark
       continue;
     if (onlyIdx > 0 && i != onlyIdx)
@@ -4428,6 +4433,7 @@ int FeatureManager_sig360_circle_line::FeatureMatching(acvImage *img)
       continue;
     }
 
+    LOGI("ldData[%d].area=%d",i,ldData[i].area);
     bool doCropStyle=false;
     int cx=0;
     int cy=0;
