@@ -348,7 +348,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   snprintf(buff, sizeof(buff),
   "{\
     \"type\":\"CameraLayer_HikRobot_Camera\",\
-    \"name\":\"HikCam\",\
+    \"name\":\"HikCam\"\
   }");
 
 
