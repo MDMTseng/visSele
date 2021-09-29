@@ -475,11 +475,11 @@ public:
 
 
         uint32_t targetOffset=1;//;
-        int flashOffset=1;//esp:150(10us?)
+        int flashOffset=80;//esp:150(10us?)
         int flashTime=100;
 
 
-        int camOffset=1;//esp:150(10us?)
+        int camOffset=flashOffset+5;//esp:150(10us?)
         int camTime=100;
 
 
@@ -532,8 +532,7 @@ public:
                        digitalWrite(O_BackLight, 1););
 
       ACT_TRY_RUN_TASK(act_S.ACT_BACKLight1L, _timerCount,
-                       digitalWrite(O_BackLight, 0);
-                       Serial.printf("BKL off:%d\n", _timerCount););
+                       digitalWrite(O_BackLight, 0););
     }
   }
 
@@ -692,7 +691,7 @@ void setup()
   digitalWrite(O_BackLight, 1);
   digitalWrite(O_CameraPin, 1);
   delay(3000);
-  digitalWrite(O_BackLight, 0);
+  // digitalWrite(O_BackLight, 0);
   digitalWrite(O_CameraPin, 0);
 }
 
@@ -787,6 +786,6 @@ void loop()
 {
   oGS.mainLoop();
   // loop_comm();
-  delay(1000);
+  // delay(1000);
   
 }
