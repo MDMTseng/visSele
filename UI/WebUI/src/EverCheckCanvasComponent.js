@@ -3275,7 +3275,22 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         {
           let mmpp_round=this.round_number_to_significant(mmpp);
-
+          {
+            
+            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
+            let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
+            let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
+            let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
+            if (pt_info.dist > pt_info2.dist) {
+              pt_info = pt_info2;
+            }
+            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+              this.CandEditPointInfo = pt_info;
+            }
+            else {
+              this.CandEditPointInfo = null;
+            }
+          }
           if (this.mouseStatus.status == 1) {
             if (ifOnMouseLeftClickEdge && this.CandEditPointInfo != null) {
               if (this.state.substate == UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE) {
@@ -3302,22 +3317,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
                 log.debug(ifOnMouseLeftClickEdge, this.CandEditPointInfo);
                 this.EmitEvent(DefConfAct.Edit_Tar_Ele_Cand_Update(this.CandEditPointInfo));
               }
-            }
-          }
-          else {
-
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
-            let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
-            let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
-            let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
-            if (pt_info.dist > pt_info2.dist) {
-              pt_info = pt_info2;
-            }
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
-              this.CandEditPointInfo = pt_info;
-            }
-            else {
-              this.CandEditPointInfo = null;
             }
           }
           break;
