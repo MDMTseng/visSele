@@ -5,7 +5,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { xstate_GetCurrentMainState, Exp2PostfixExp, PostfixExpCalc, GetObjElement } from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement } from 'UTIL/MISC_Util';
 import {
   threePointToArc,
   intersectPoint,
@@ -16,7 +16,7 @@ import {
 } from 'UTIL/MathTools';
 
 
-import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
+import { INSPECTION_STATUS,BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import * as log from 'loglevel';
 import dclone from 'clone';
 
@@ -1289,39 +1289,15 @@ class renderUTIL {
                   }
                   else {
 
-                    
-
-                    function ExpCalcBasic(postExp_,funcSet,fallbackFunctionSet) {
-                      let postExp=postExp_.filter(exp=>exp!="$")
-                      funcSet = {
-                        min$: arr => Math.min(...arr),
-                        max$: arr => Math.max(...arr),
-                        "$+$": vals => vals[0] + vals[1],
-                        "$-$": vals => vals[0] - vals[1],
-                        "$*$": vals => vals[0] * vals[1],
-                        "$/$": vals => vals[0] / vals[1],
-                        "$^$": vals => Math.pow(vals[0] , vals[1]),
-                        "$": vals => vals,
-                        "$,$": vals => vals,
-                        "$,$,$": vals => vals,
-                        "$,$,$,$": vals => vals,
-                        "$,$,$,$,$": vals => vals,
-                        "$,$,$,$,$,$": vals => vals,
-                        ...funcSet,
-                        default:fallbackFunctionSet
-                        //default:_=>false
-                      };
-
-                      return PostfixExpCalc(postExp, funcSet)[0];
-                    }
                     let totalValueList = [...subShapeValues,...measureValueCache];
 
-                    measureValue=ExpCalcBasic(
+                    measureValue=BPG_ExpCalc(
                       eObject.calc_f.post_exp,
                       totalValueList.reduce((set,ele)=>{
                         set["["+ele.id+"]"]=ele.value;
                         return set;
-                      },{}));
+                      },{}))[0];
+                    
                     if(measureValue===undefined)
                       measureValue=NaN;
                     //console.log(measureValueCache,eObject,measureValue);

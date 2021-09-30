@@ -11,7 +11,7 @@ let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
-import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION ,BPG_ExpCalc} from 'UTIL/BPG_Protocol';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
@@ -438,27 +438,17 @@ function SimpleAcc({ value, onChange,target,lastKey, props }) {
 function parseCheckExpressionValid(postExp, idArr) {
 
   let funcSet = {
-    "min$": 0,
-    "max$": 0,
-    "$+$": 0,
-    "$-$": 0,
-    "$*$": 0,
-    "$/$": 0,
-    "$^$": 0,
-    "$": 0,
-    "$,$": 0,
-    "$,$,$": 0,
-    "$,$,$,$": 0,
-    "$,$,$,$,$": 0,
-    "cos$": 0,
-    "sin$": 0,
     default: val => {
       return (parseFloat(val) == val);
     }
   }
   idArr.forEach(id => { funcSet[id] = 0 });
 
-  return ExpValidationBasic(postExp, funcSet);
+  let res = BPG_ExpCalc(postExp,funcSet,(exp,param)=>{
+    return parseFloat(exp);
+  });
+
+  return (res.length==1)&&res[0]==res[0];
 }
 
 
@@ -907,36 +897,40 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
   function translatedExpChangeEvent(newExp) {
 
-    let postExp = Exp2PostfixExp(newExp);
-
-    let aexp_to_del =
+    let postExp = [];
+    try{
+      postExp=Exp2PostfixExp(newExp);
+      
+      let aexp_to_del =
       postExp
         .filter(atom_exp => atom_exp.includes('"'));
 
-    if (aexp_to_del.length > 0)//If there is any content with unreplaced '"', replace it
-    {
-      aexp_to_del.forEach(to_del => {
-        newExp = newExp.replace(to_del, "");
-      });
-      postExp = Exp2PostfixExp(newExp);
+      if (aexp_to_del.length > 0)//If there is any content with unreplaced '"', replace it
+      {
+        aexp_to_del.forEach(to_del => {
+          newExp = newExp.replace(to_del, "");
+        });
+        postExp = Exp2PostfixExp(newExp);
 
-    }
-
-    //console.log(text,postExp);
-    //console.log(meaList);
-    let isAvail = parseCheckExpressionValid(postExp, measureIDInfo.map(info => info.id_exp));
-    if (isAvail) {
-      //onChange();
-      onChange(target, "input", {
-        target: {
-          value: {
-            exp: newExp,
-            post_exp: postExp
+      }
+      let isAvail = parseCheckExpressionValid(postExp, measureIDInfo.map(info => info.id_exp));
+      if (isAvail) {
+        //onChange();
+        onChange(target, "input", {
+          target: {
+            value: {
+              exp: newExp,
+              post_exp: postExp
+            }
           }
-        }
-      })
+        })
+      }
+      setFxOK(isAvail);
     }
-    setFxOK(isAvail);
+    catch(e)
+    {
+      setFxOK(false);
+    }
     setFxExp(newExp);
 
     //

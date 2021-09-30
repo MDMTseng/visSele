@@ -1144,7 +1144,8 @@ export function Exp2PostfixExp(exp_str) {//exp="Math.max(3+Math.tan(5-1/4*3)/3,1
       (pexp,exp)=>
        extractArith(pexp, exp, "$"),[exp]);
     //Assamble back with "(" ")"
-    let XXY = PostfixExpCalc(a_post_exp, postExpCalc_Func);
+    let XXY = PostfixExpCalc(a_post_exp, postExpCalc_Func,false);
+    
     return XXY[0].replace(/\#/g,"$");
   });
   //console.log("retA",retA);
@@ -1168,17 +1169,27 @@ export function Exp2PostfixExp(exp_str) {//exp="Math.max(3+Math.tan(5-1/4*3)/3,1
   return retA;
 }
 
-export function PostfixExpCalc(postExp, funcSet) {
+const regex_multi_group = /^\$(,\$)*$/gm;//match  $ or $,$ or $,$,$ or $,$,$,$ ...
+export function PostfixExpCalc(postExp, funcSet,handleMultiGroup=true) {
   let valStack = [];
-
   postExp.forEach(exp => {
     let valPush;
     
     if (exp.includes !== undefined && exp.includes("$")) {
       let groupFlagCount = exp.split("$").length - 1;
       let tmpArr = valStack.splice(valStack.length - groupFlagCount, 9999999);
-      if (funcSet[exp] !== undefined) valPush = funcSet[exp](tmpArr.flat());
-      else valPush = funcSet.default(exp, tmpArr.flat());
+      if (funcSet[exp] !== undefined) 
+      {
+        valPush = funcSet[exp](tmpArr.flat());
+      }
+      else if(handleMultiGroup&&exp.match(regex_multi_group)!=null)
+      {
+        valPush =tmpArr.flat();
+      }
+      else
+      {
+        valPush = funcSet.default(exp, tmpArr.flat());
+      }
 
     } else {
       if (funcSet[exp] !== undefined) {
@@ -1195,13 +1206,10 @@ export function PostfixExpCalc(postExp, funcSet) {
   return valStack;
 }
 
-function ExpCalc(exp, funcSet) {
-  let postExp_ = Exp2PostfixExp(exp);
-  
+
+function ExpCalcBasic(postExp_,funcSet,fallbackFunctionSet) {
   let postExp=postExp_.filter(exp=>exp!="$")
-  // console.log(postExp);
   funcSet = {
-    ...funcSet,
     min$: arr => Math.min(...arr),
     max$: arr => Math.max(...arr),
     "$+$": vals => vals[0] + vals[1],
@@ -1209,62 +1217,13 @@ function ExpCalc(exp, funcSet) {
     "$*$": vals => vals[0] * vals[1],
     "$/$": vals => vals[0] / vals[1],
     "$^$": vals => Math.pow(vals[0] , vals[1]),
-    "$": vals => vals,
-    //default:_=>false
-  };
-
-  return PostfixExpCalc(postExp, funcSet)[0];
-}
-
-
-
-export function ExpCalcBasic(postExp_,funcSet) {
-  let postExp=postExp_.filter(exp=>exp!="$")
-  funcSet = {
-    // min$: arr => Math.min(...arr),
-    // max$: arr => Math.max(...arr),
-    "$+$": vals => vals[0] + vals[1],
-    "$-$": vals => vals[0] - vals[1],
-    "$*$": vals => vals[0] * vals[1],
-    "$/$": vals => vals[0] / vals[1],
-    "$^$": vals => Math.pow(vals[0] , vals[1]),
-    "$": vals => vals,
     ...funcSet,
+    default:fallbackFunctionSet
     //default:_=>false
   };
 
   return PostfixExpCalc(postExp, funcSet)[0];
 }
-
-const _AndAll=arr=> arr.reduce((isVa,ele)=>(isVa&&ele),true);
-
-export function ExpValidationBasic(postExp, funcSet={}) {
-  let _postExp=postExp.filter(exp=>exp!="$")
-  // console.log(postExp);
-
-
-  funcSet = {
-    // "min$": andAll,
-    // "max$": andAll,
-    "$+$": _AndAll,
-    "$-$": _AndAll,
-    "$*$": _AndAll,
-    "$/$": _AndAll,
-    "$^$": _AndAll,
-    "$": _AndAll,
-    ...funcSet
-  };
-
-  Object.keys(funcSet).forEach((key)=>{
-    if(key!=="default")
-    {
-      funcSet[key]=key.includes("$")?_AndAll:true;
-    }
-  });
-
-  return PostfixExpCalc(_postExp, funcSet)[0];
-}
-
 
 
 export class CircularCounter{
