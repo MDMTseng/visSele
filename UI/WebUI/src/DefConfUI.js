@@ -961,7 +961,7 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
   }, [])
 
 
-  function translateForward(text_id) {
+  function translateForward(text_id) {    //[2]*[6] => "OBJAA"*"OBJBB"  note:[{name:"OBJAA",id:2},{name:"OBJBB",id:6}]
     let translatedExp = text_id;
     let regexMatchIdBlock = /\[([^\[^\]]+)\]/g;
     let idErrSet = [];
@@ -989,9 +989,25 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
       translatedExp = translatedExp.replace(idErr.match[0], "");
     });
 
-    idOKSet.forEach(idOK => {
-      translatedExp = translatedExp.replace(idOK.match[0], '"' + idOK.measure.name + '"');
+    if(idOKSet.length>0)
+    {
+
+      //{cat:"dog",dog:"goat",goat:"cat"};
+      var regexMapList=idOKSet.map(idOK=>{
+        let key = idOK.match[0];
+        let safekey=key.replace("[","\\[").replace("]","\\]");
+        let str='"' + idOK.measure.name + '"';
+        return {key,safekey,str}
+      })
+
+
+      var re = new RegExp(regexMapList.map(map=>map.safekey).join("|")
+        ,"gi");
+      translatedExp = translatedExp.replace(re, matched=>{
+        // console.log(matched,regexMapObj[matched]);
+        return regexMapList.find(map=>map.key==matched).str;
     });
+    }
     return translatedExp;
   }
   let translatedExp = translateForward(fxExp);
@@ -1002,11 +1018,7 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
   function translateBack(text_name) {
     measureIDInfo.forEach(idinfo => {//translate readable measure name to measure id
-      let pre_text = text_name;
-      do {
-        pre_text = text_name;
-        text_name = text_name.replace('"' + idinfo.name + '"', idinfo.id_exp);
-      } while (pre_text !== text_name);
+      text_name = text_name.replaceAll('"' + idinfo.name + '"', idinfo.id_exp);
     });
     return text_name;
   }
