@@ -2842,7 +2842,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
-
+    this.mouseTriggeredUpdate=false;
     this.EmitEvent = (event) => { log.debug(event); };
   }
 
@@ -2880,6 +2880,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     // console.log();
     this.tmp_EditShape_id = id;
     this.EmitEvent(DefConfAct.Shape_Set({ shape: shape_obj, id: id }));
+    this.mouseTriggeredUpdate=(this.mouseStatus.status != this.mouseStatus.pstatus);
   }
 
   SetEditShape(EditShape) {
@@ -3305,10 +3306,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           let tar_ele_trace = this.edit_DB_info.edit_tar_ele_trace;
 
           {
-              if ((tar_ele_trace === null || tar_ele_trace === undefined)
+            if ((tar_ele_trace === null || tar_ele_trace === undefined)
               && this.EditShape != null && ifOnMouseLeftClickEdge) {
-
-              this.SetShape(this.EditShape, this.EditShape.id);
+              if(this.mouseTriggeredUpdate==false)
+                this.SetShape(this.EditShape, this.EditShape.id);
             }
 
             let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
@@ -3329,6 +3330,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             }
             // console.log(this.CandEditPointInfo);
           }
+          this.mouseTriggeredUpdate=false;
 
 
 

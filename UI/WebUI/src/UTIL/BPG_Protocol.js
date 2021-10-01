@@ -224,7 +224,6 @@ export function BPG_ExpCalc(postExp_,funcSet,fallbackFunctionSet) {//no $ and # 
   funcSet = {
     min$: arr => Math.min(...arr),
     max$: arr =>{
-      console.log(arr)
       return Math.max(...arr)
     },
     "$+$": vals => vals[0] + vals[1],
@@ -233,7 +232,18 @@ export function BPG_ExpCalc(postExp_,funcSet,fallbackFunctionSet) {//no $ and # 
     "$/$": vals => vals[0] / vals[1],
     "$^$": vals => Math.pow(vals[0] , vals[1]),
     ...funcSet,
-    default:fallbackFunctionSet
+    default:(exp,param)=>{
+      if(fallbackFunctionSet!==undefined)
+      {
+        return fallbackFunctionSet(exp,param);
+      }
+      // if(exp=="pi")return Math.PI;
+      let parsedFloat=parseFloat(exp)
+      return parsedFloat==exp?parsedFloat:NaN;
+    }
+      
+    
+    
     //default:_=>false
   };
 

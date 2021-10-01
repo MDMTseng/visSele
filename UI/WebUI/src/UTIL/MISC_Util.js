@@ -1152,6 +1152,10 @@ export function Exp2PostfixExp(exp_str) {//exp="Math.max(3+Math.tan(5-1/4*3)/3,1
   //["(5)-(((1)/(4))*(3))", "(4)+(5)", "((3)+((Math.tan$)/(3))),((1)+((((2)*(3))/($))/(6)))", "Math.max$"]
   //Assamble back with "(" ")"
   retA = PostfixExpCalc(retA, postExpCalc_Func);
+  // console.log(retA)
+  // retA=retA.filter(A=>A!="$")
+
+  retA=retA.flat();
   
   
   //Now we have all the "(" ")" to do the 2nd pass Postfix exp converter
@@ -1197,7 +1201,7 @@ export function PostfixExpCalc(postExp, funcSet,handleMultiGroup=true) {
       } else if (funcSet.default !== undefined) {
         valPush = funcSet.default(exp);
       } else {
-        valPush = parseFloat(exp);
+        valPush = NaN;
       }
     }
 
