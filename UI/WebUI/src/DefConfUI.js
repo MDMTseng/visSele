@@ -1038,14 +1038,9 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
         let text = translateBack(ev.target.value);
         translatedExpChangeEvent(text);
       }}
-      onClick={(ev)=>{
+      onBlur={(ev)=>{
         // console.log(ev,inputEl.current);
         _this.selectionStart=ev.target.selectionStart;
-      }}
-      onKeyDown={(ev)=>{
-        // console.log(ev,inputEl.current);
-        _this.selectionStart=ev.target.selectionStart;
-
       }}
     />
     <Button key="xx" className="s vbox black"
