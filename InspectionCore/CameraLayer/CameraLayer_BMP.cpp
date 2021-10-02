@@ -48,127 +48,226 @@ CameraLayer::status CameraLayer_BMP::ExtractFrame(uint8_t* imgBuffer,int channel
       
       int tExp=(1<<13)*brightnessMult*exp_time_us*a_gain/exp_time_100ExpUs;
       LOGI("tExp:%d",tExp);
-      static float rotate=0;
-      
-      int noiseRange=15;
-      if(newX==0&&newY==0)
-      {
-        rotate=0;
-      }
-      else
-      {
-        float baseAngle=0*M_PI/180;
-        float endAngle= 360*M_PI/180;
-
-        if(rotate<baseAngle)rotate=baseAngle;
-        else if(rotate>endAngle)rotate=baseAngle;
-        else
-        {
-          rotate+=0*M_PI/180;
-        }
-        // rotate+=1*M_PI/180;
-        LOGI("ROTATE:%f",rotate*180/M_PI);
-        // 
-      }
 
       
       // img.ReSize(newW,newH);
       acv_XY rcenter={.X=(float)(newW/2),.Y=(float)(newH/2)};
 
-      if(rotate!=0)
+
+      if(1)
       {
-        for(int i=0;i<newH;i++)//Add noise
-        for(int j=0;j<newW;j++)
+        static float rotate=0;
+      
+        int noiseRange=15;
+        if(newX==0&&newY==0)
         {
-          acv_XY pixCoord=acvVecSub((acv_XY){(float)j,(float)i},rcenter);
-          
-          pixCoord = acvRotation(rotate,pixCoord);
-          pixCoord=acvVecAdd(pixCoord,rcenter);
-          pixCoord=acvVecAdd(pixCoord,(acv_XY){(float)newX,(float)newY});
-
-          
-          pixCoord=acvVecSub((acv_XY){
-            MIRROR_X?(float)img_load.GetWidth():pixCoord.X*2,
-            MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
-
-
-          // for(int k=0;k<channelCount;k++)
-          // {
-          //   float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, k);
-            
-          //   int N=0;
-          //   if(noiseRange>0)
-          //     N= (rand()%(2*noiseRange+1))-noiseRange;
-
-          //   int d = N+ ((uint64_t)(pix*tExp))>>13;
-
-          //   if(d<0)d=0;
-          //   else if(d>255)d=255;
-            
-          //   imgBuffer[(i*newW+j)*channelCount+k]=d;
-
-          // }
-
-          float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
-          
-          int N=0;
-          if(noiseRange>0)
-            N= (rand()%(2*noiseRange+1))-noiseRange;
-
-          int d = N+ (((uint64_t)(pix*tExp))>>13);
-
-          if(d<0)d=0;
-          else if(d>255)d=255;
-          
-          imgBuffer[(i*newW+j)*channelCount+0]=
-          imgBuffer[(i*newW+j)*channelCount+1]=
-          imgBuffer[(i*newW+j)*channelCount+2]=d;
-
+          rotate=0;
         }
-      }
-      else if(1)
-      {
-        
-        // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
-        // if(1)
-        // {
-        //   memcpy(imgBuffer,img_load.CVector[0],);
-        //   acvCloneImage(&img_load,&img,-1);    
-
-        // }  
-        // else 
-        for(int i=0;i<newH;i++)//exposure add
+        else
         {
-          int li=i+newY;
-          if(li<0 || li>=img_load.GetHeight())continue;
+          float baseAngle=0*M_PI/180;
+          float endAngle= 360*M_PI/180;
+
+          if(rotate<baseAngle)rotate=baseAngle;
+          else if(rotate>endAngle)rotate=baseAngle;
+          else
+          {
+            rotate+=0.5*M_PI/180;
+          }
+          // rotate+=1*M_PI/180;
+          LOGI("ROTATE:%f",rotate*180/M_PI);
+          // 
+        }
+
+
+
+        if(rotate!=0)
+        {
+          float offsetR=50;
+          float offsetY=-offsetR*sin(rotate);
+          float offsetX=0;//offsetR*cos(rotate);
+          acv_XY pixOffset=(acv_XY){offsetX,offsetY};
+
+          for(int i=0;i<newH;i++)//Add noise
           for(int j=0;j<newW;j++)
           {
-            int lj=j+newX;
-            if(lj<0 || lj>=img_load.GetWidth())continue;
+            acv_XY pixCoord=acvVecAdd((acv_XY){(float)j,(float)i},(acv_XY){(float)newX,(float)newY});
+            // pixCoord.Y-=offsetR;
+            pixCoord=acvVecAdd(pixCoord,pixOffset);
+            
+            float pix= acvUnsignedMap1Sampling_Nearest(&img_load, pixCoord, 0);
+            
             int N=0;
             if(noiseRange>0)
               N= (rand()%(2*noiseRange+1))-noiseRange;
-            int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
-            
+
+            int d = N+ (((uint64_t)(pix*tExp))>>13);
+
             if(d<0)d=0;
             else if(d>255)d=255;
             
             imgBuffer[(i*newW+j)*channelCount+0]=
             imgBuffer[(i*newW+j)*channelCount+1]=
             imgBuffer[(i*newW+j)*channelCount+2]=d;
-            // img.CVector[i][j*3] = 
-            // img.CVector[i][j*3+1] =
-            // img.CVector[i][j*3+2] = d;
 
           }
         }
+        else
+        {
+          // acvCloneImage(&img_load,&img,-1);
+          if(0)
+          {
+
+            memcpy(imgBuffer,img_load.CVector[0],newH*newW*channelCount);
+
+          }
+          else
+          {
+            for(int i=0;i<newH;i++)//exposure add
+            {
+              int li=i+newY;
+              if(li<0 || li>=img_load.GetHeight())continue;
+              for(int j=0;j<newW;j++)
+              {
+                int lj=j+newX;
+                if(lj<0 || lj>=img_load.GetWidth())continue;
+                int N=0;
+                if(noiseRange>0)
+                  N= (rand()%(2*noiseRange+1))-noiseRange;
+                int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
+                
+                if(d<0)d=0;
+                else if(d>255)d=255;
+                
+                imgBuffer[(i*newW+j)*channelCount+0]=
+                imgBuffer[(i*newW+j)*channelCount+1]=
+                imgBuffer[(i*newW+j)*channelCount+2]=d;
+                // img.CVector[i][j*3] = 
+                // img.CVector[i][j*3+1] =
+                // img.CVector[i][j*3+2] = d;
+
+              }
+            }
+          }
+        }
+        
       }
       else
-      {
-        // acvCloneImage(&img_load,&img,-1);
-        memcpy(imgBuffer,img_load.CVector[0],newH*newW*channelCount);
-      }
+      {      
+        static float rotate=0;
       
+        int noiseRange=15;
+        if(newX==0&&newY==0)
+        {
+          rotate=0;
+        }
+        else
+        {
+          float baseAngle=0*M_PI/180;
+          float endAngle= 360*M_PI/180;
+
+          if(rotate<baseAngle)rotate=baseAngle;
+          else if(rotate>endAngle)rotate=baseAngle;
+          else
+          {
+            rotate+=0.1*M_PI/180;
+          }
+          // rotate+=1*M_PI/180;
+          LOGI("ROTATE:%f",rotate*180/M_PI);
+          // 
+        }
+
+
+        if(rotate!=0)
+        {
+          for(int i=0;i<newH;i++)//Add noise
+          for(int j=0;j<newW;j++)
+          {
+            acv_XY pixCoord=acvVecSub((acv_XY){(float)j,(float)i},rcenter);
+            
+            pixCoord = acvRotation(rotate,pixCoord);
+            pixCoord=acvVecAdd(pixCoord,rcenter);
+            pixCoord=acvVecAdd(pixCoord,(acv_XY){(float)newX,(float)newY});
+
+            
+            pixCoord=acvVecSub((acv_XY){
+              MIRROR_X?(float)img_load.GetWidth():pixCoord.X*2,
+              MIRROR_Y?(float)img_load.GetHeight():pixCoord.Y*2},pixCoord);
+
+
+            // for(int k=0;k<channelCount;k++)
+            // {
+            //   float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, k);
+              
+            //   int N=0;
+            //   if(noiseRange>0)
+            //     N= (rand()%(2*noiseRange+1))-noiseRange;
+
+            //   int d = N+ ((uint64_t)(pix*tExp))>>13;
+
+            //   if(d<0)d=0;
+            //   else if(d>255)d=255;
+              
+            //   imgBuffer[(i*newW+j)*channelCount+k]=d;
+
+            // }
+
+            // float pix= acvUnsignedMap1Sampling(&img_load, pixCoord, 0);
+            float pix= acvUnsignedMap1Sampling_Nearest(&img_load, pixCoord, 0);
+            
+            int N=0;
+            if(noiseRange>0)
+              N= (rand()%(2*noiseRange+1))-noiseRange;
+
+            int d = N+ (((uint64_t)(pix*tExp))>>13);
+
+            if(d<0)d=0;
+            else if(d>255)d=255;
+            
+            imgBuffer[(i*newW+j)*channelCount+0]=
+            imgBuffer[(i*newW+j)*channelCount+1]=
+            imgBuffer[(i*newW+j)*channelCount+2]=d;
+
+          }
+        }
+        else if(1)
+        {
+          
+          // LOGI(">>>:::W:%d H:%d\n",img->GetWidth(),img->GetHeight());
+          // if(1)
+          // {
+          //   memcpy(imgBuffer,img_load.CVector[0],);
+          //   acvCloneImage(&img_load,&img,-1);    
+
+          // }  
+          // else 
+          for(int i=0;i<newH;i++)//exposure add
+          {
+            int li=i+newY;
+            if(li<0 || li>=img_load.GetHeight())continue;
+            for(int j=0;j<newW;j++)
+            {
+              int lj=j+newX;
+              if(lj<0 || lj>=img_load.GetWidth())continue;
+              int N=0;
+              if(noiseRange>0)
+                N= (rand()%(2*noiseRange+1))-noiseRange;
+              int d =N+ ((img_load.CVector[li][lj*3]*tExp)>>13);
+              
+              if(d<0)d=0;
+              else if(d>255)d=255;
+              
+              imgBuffer[(i*newW+j)*channelCount+0]=
+              imgBuffer[(i*newW+j)*channelCount+1]=
+              imgBuffer[(i*newW+j)*channelCount+2]=d;
+              // img.CVector[i][j*3] = 
+              // img.CVector[i][j*3+1] =
+              // img.CVector[i][j*3+2] = d;
+
+            }
+          }
+        }
+      }
 
       // int noiseRange=5;
       // for(int i=0;i<newH;i++)//Add noise
