@@ -24,6 +24,8 @@
 
 std::timed_mutex mainThreadLock;
 
+std::mutex matchingEnglock;
+
 bool saveInspFailSnap = true;
 bool saveInspNASnap = true;
 
@@ -1810,13 +1812,14 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         // self->SendData(datCH_BPG);
 
         //SaveIMGFile("data/TMP__.png",srcImg);
-        int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr, select_bacpac);
-        free(jsonStr);
 
         try
         {
           //SaveIMGFile("data/buff.bmp",&test1_buff);
 
+          LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+          int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr, select_bacpac);
+          free(jsonStr);
           const FeatureReport *report = matchingEng.GetReport();
 
           if (report != NULL)
@@ -1839,6 +1842,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           {
             session_ACK = false;
           }
+          
+          LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
         }
         catch (std::invalid_argument iaex)
         {
@@ -1954,9 +1959,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
           cache_deffile_JSON = cJSON_Parse(jsonStr);
 
+          LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
           matchingEng.ResetFeature();
           matchingEng.AddMatchingFeature(jsonStr);
 
+          LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           void *target;
           if (getDataFromJson(json, "get_deffile", &target) == cJSON_True)
           {
@@ -2097,6 +2104,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           try
           {
 
+            LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
             ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
             const FeatureReport *report = matchingEng.GetReport();
 
@@ -2124,6 +2132,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               
               fromUpperLayer(bpg_dat);
             }
+            
+            LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           }
           catch (std::invalid_argument iaex)
           {
@@ -2405,7 +2415,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       cJSON *InspectionParam = JFetch_ARRAY(json, "InspectionParam");
       if (InspectionParam)
       {
+        
+        LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
         cJSON *retInfo = matchingEng.SetParam(InspectionParam);
+
+
+        LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+
 
         char *jstr = cJSON_Print(retInfo);
         cJSON_Delete(retInfo);
@@ -3517,11 +3533,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
 
   {
+
+    LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
     ret = ImgInspection(matchingEng, &capImg, bacpac, imgPipe->camLayer, 1);
-  }
-
-  {
-
     const FeatureReport *report = matchingEng.GetReport();
 
     int stat = FeatureReport_sig360_circle_line_single::STATUS_NA;
@@ -3567,6 +3581,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     LOGI("stat:%d stat_sec:%d",stat,stat_sec);
 
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
+    
+    LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
@@ -4456,16 +4472,16 @@ int cp_main(int argc, char **argv)
     return 0;
   }
 
-  if (0)
-  {
-    char *imgName = "data/BMP_carousel_test/01-02-23-18-53-491.bmp";
-    char *defName = "data/calib_test_line.hydef";
+  // if (0)
+  // {
+  //   char *imgName = "data/BMP_carousel_test/01-02-23-18-53-491.bmp";
+  //   char *defName = "data/calib_test_line.hydef";
 
-    //char *imgName="data/calib_cam1_surfaceGo.bmp";
-    //char *defName = "data/cameraCalibration.json";
-    //
-    return simpleTest(imgName, defName);
-  }
+  //   //char *imgName="data/calib_cam1_surfaceGo.bmp";
+  //   //char *defName = "data/cameraCalibration.json";
+  //   //
+  //   return simpleTest(imgName, defName);
+  // }
 
   if (0) //GenBG map
   {
