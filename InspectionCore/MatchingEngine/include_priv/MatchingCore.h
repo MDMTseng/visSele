@@ -17,7 +17,7 @@ void ContourFeatureDetect(std::vector<acv_XY> &signature,const std::vector<acv_X
 void MatchingCore_CircleLineExtraction(acvImage *img,acvImage *buff,std::vector<acv_LabeledData> &ldData,
   std::vector<acv_CircleFit> &detectedCircles,std::vector<acv_LineFit> &detectedLines);
 
-void extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int grid_size,ContourGrid &edge_curve_grid,int scanline_skip);
+int extractContourDataToContourGrid(acvImage *grayLevelImg,acvImage *labeledImg,int grid_size,ContourGrid &edge_curve_grid,int scanline_skip);
 int contourPixExtraction(acvImage *graylevelImg, acv_XY center_point,acv_XY sobel,float stepDist,int steps,float *pixels,FeatureManager_BacPac *bacpac=NULL);
 
 float findMaxIdx_spline(float *grad,int gradL,float *ret_max);
@@ -31,7 +31,7 @@ int calc_pdf_mean_sigma(float *f,int fL,float *ret_mean,float *ret_sigma);
 
   
 void contourGridGrayLevelRefine(acvImage *grayLevelImg,ContourFetch &edge_grid,FeatureManager_BacPac *bacpac);
-void extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_LabeledData ldat,ContourFetch &edge_grid,int scanline_skip);
+int extractLabeledContourDataToContourGrid(acvImage *labeledImg,int label,acv_LabeledData ldat,ContourFetch &edge_grid,int scanline_skip);
 
 ContourFetch::ptInfo* findEndPoint(acv_Line line, int signedness, std::vector<ContourFetch::ptInfo> &points);
 void circleRefine(std::vector<ContourFetch::ptInfo> &pointsInRange,int len,acv_CircleFit *circleF);
