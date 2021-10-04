@@ -5,7 +5,7 @@ import { UI_SM_STATES, UI_SM_EVENT, SHAPE_TYPE } from 'REDUX_STORE_SRC/actions/U
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { xstate_GetCurrentMainState, Exp2PostfixExp, PostfixExpCalc, GetObjElement } from 'UTIL/MISC_Util';
+import { xstate_GetCurrentMainState, GetObjElement } from 'UTIL/MISC_Util';
 import {
   threePointToArc,
   intersectPoint,
@@ -16,7 +16,7 @@ import {
 } from 'UTIL/MathTools';
 
 
-import { INSPECTION_STATUS } from 'UTIL/BPG_Protocol';
+import { INSPECTION_STATUS,BPG_ExpCalc } from 'UTIL/BPG_Protocol';
 import * as log from 'loglevel';
 import dclone from 'clone';
 
@@ -1289,39 +1289,15 @@ class renderUTIL {
                   }
                   else {
 
-                    
-
-                    function ExpCalcBasic(postExp_,funcSet,fallbackFunctionSet) {
-                      let postExp=postExp_.filter(exp=>exp!="$")
-                      funcSet = {
-                        min$: arr => Math.min(...arr),
-                        max$: arr => Math.max(...arr),
-                        "$+$": vals => vals[0] + vals[1],
-                        "$-$": vals => vals[0] - vals[1],
-                        "$*$": vals => vals[0] * vals[1],
-                        "$/$": vals => vals[0] / vals[1],
-                        "$^$": vals => Math.pow(vals[0] , vals[1]),
-                        "$": vals => vals,
-                        "$,$": vals => vals,
-                        "$,$,$": vals => vals,
-                        "$,$,$,$": vals => vals,
-                        "$,$,$,$,$": vals => vals,
-                        "$,$,$,$,$,$": vals => vals,
-                        ...funcSet,
-                        default:fallbackFunctionSet
-                        //default:_=>false
-                      };
-
-                      return PostfixExpCalc(postExp, funcSet)[0];
-                    }
                     let totalValueList = [...subShapeValues,...measureValueCache];
 
-                    measureValue=ExpCalcBasic(
+                    measureValue=BPG_ExpCalc(
                       eObject.calc_f.post_exp,
                       totalValueList.reduce((set,ele)=>{
                         set["["+ele.id+"]"]=ele.value;
                         return set;
-                      },{}));
+                      },{}))[0];
+                    
                     if(measureValue===undefined)
                       measureValue=NaN;
                     //console.log(measureValueCache,eObject,measureValue);
@@ -2866,7 +2842,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     this.EditShape = null;
     this.CandEditPointInfo = null;
     this.EditPoint = null;
-
+    this.mouseTriggeredUpdate=false;
     this.EmitEvent = (event) => { log.debug(event); };
   }
 
@@ -2904,6 +2880,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
     // console.log();
     this.tmp_EditShape_id = id;
     this.EmitEvent(DefConfAct.Shape_Set({ shape: shape_obj, id: id }));
+    this.mouseTriggeredUpdate=(this.mouseStatus.status != this.mouseStatus.pstatus);
   }
 
   SetEditShape(EditShape) {
@@ -3275,7 +3252,22 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
       case UI_SM_STATES.DEFCONF_MODE_MEASURE_CREATE:
         {
           let mmpp_round=this.round_number_to_significant(mmpp);
-
+          {
+            
+            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
+            let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
+            let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
+            let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
+            if (pt_info.dist > pt_info2.dist) {
+              pt_info = pt_info2;
+            }
+            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
+              this.CandEditPointInfo = pt_info;
+            }
+            else {
+              this.CandEditPointInfo = null;
+            }
+          }
           if (this.mouseStatus.status == 1) {
             if (ifOnMouseLeftClickEdge && this.CandEditPointInfo != null) {
               if (this.state.substate == UI_SM_STATES.DEFCONF_MODE_SEARCH_POINT_CREATE) {
@@ -3304,22 +3296,6 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
               }
             }
           }
-          else {
-
-            let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
-            let pt_info = this.db_obj.FindClosestCtrlPointInfo(mouseOnCanvas2, displayShape);
-            let displayiShape = this.AvailableShapeFilter(this.edit_DB_info.inherentShapeList);
-            let pt_info2 = this.db_obj.FindClosestInherentPointInfo(mouseOnCanvas2, displayiShape);
-            if (pt_info.dist > pt_info2.dist) {
-              pt_info = pt_info2;
-            }
-            if (pt_info.pt != null && pt_info.dist < this.mouse_close_dist / this.camera.GetCameraScale()) {
-              this.CandEditPointInfo = pt_info;
-            }
-            else {
-              this.CandEditPointInfo = null;
-            }
-          }
           break;
         }
 
@@ -3330,10 +3306,10 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
           let tar_ele_trace = this.edit_DB_info.edit_tar_ele_trace;
 
           {
-              if ((tar_ele_trace === null || tar_ele_trace === undefined)
+            if ((tar_ele_trace === null || tar_ele_trace === undefined)
               && this.EditShape != null && ifOnMouseLeftClickEdge) {
-
-              this.SetShape(this.EditShape, this.EditShape.id);
+              if(this.mouseTriggeredUpdate==false)
+                this.SetShape(this.EditShape, this.EditShape.id);
             }
 
             let displayShape = this.AvailableShapeFilter(this.edit_DB_info.list);
@@ -3354,6 +3330,7 @@ class DEFCONF_CanvasComponent extends EverCheckCanvasComponent_proto {
             }
             // console.log(this.CandEditPointInfo);
           }
+          this.mouseTriggeredUpdate=false;
 
 
 

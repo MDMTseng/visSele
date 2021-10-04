@@ -764,8 +764,11 @@ function StateReducer(newState, action) {
             break;
 
           case DefConfAct.EVENT.Edit_Tar_Ele_Trace_Update:
-            newState.edit_info.edit_tar_ele_trace =
-              (action.data == null) ? null : action.data.slice();
+            let edit_tar_ele_trace=(action.data == null) ? null : action.data.slice();
+            // newState.edit_info.edit_tar_ele_trace =
+              // (action.data == null) ? null : action.data.slice();
+            newState={...newState,edit_info:{...newState.edit_info,edit_tar_ele_trace}}
+
             break;
           case DefConfAct.EVENT.Edit_Tar_Ele_Cand_Update:
             newState.edit_info.edit_tar_ele_cand =

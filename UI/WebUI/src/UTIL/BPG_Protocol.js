@@ -1,6 +1,9 @@
 
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 
+import {PostfixExpCalc} from 'UTIL/MISC_Util';
+
+
 const BPG_header_L = 9;
 let raw2header=(ws_evt, offset = 0)=>{
   if (( ws_evt.data instanceof ArrayBuffer) && ws_evt.data.byteLength>=BPG_header_L) {
@@ -216,6 +219,36 @@ function map_BPG_Packet2Act(parsed_packet)
 }
 
 
+export function BPG_ExpCalc(postExp_,funcSet,fallbackFunctionSet) {//no $ and # is allowed
+  let postExp=postExp_.filter(exp=>exp!="$")
+  funcSet = {
+    min$: arr => Math.min(...arr),
+    max$: arr =>{
+      return Math.max(...arr)
+    },
+    "$+$": vals => vals[0] + vals[1],
+    "$-$": vals => vals[0] - vals[1],
+    "$*$": vals => vals[0] * vals[1],
+    "$/$": vals => vals[0] / vals[1],
+    "$^$": vals => Math.pow(vals[0] , vals[1]),
+    ...funcSet,
+    default:(exp,param)=>{
+      if(fallbackFunctionSet!==undefined)
+      {
+        return fallbackFunctionSet(exp,param);
+      }
+      // if(exp=="pi")return Math.PI;
+      let parsedFloat=parseFloat(exp)
+      return parsedFloat==exp?parsedFloat:NaN;
+    }
+      
+    
+    
+    //default:_=>false
+  };
+
+  return PostfixExpCalc(postExp, funcSet);
+}
 
 export const DEF_EXTENSION = "hydef";
 

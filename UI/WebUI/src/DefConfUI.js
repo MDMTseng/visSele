@@ -11,7 +11,7 @@ let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
-import { DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION ,BPG_ExpCalc} from 'UTIL/BPG_Protocol';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
@@ -437,28 +437,18 @@ function SimpleAcc({ value, onChange,target,lastKey, props }) {
 
 function parseCheckExpressionValid(postExp, idArr) {
 
-  let funcSet = {
-    "min$": 0,
-    "max$": 0,
-    "$+$": 0,
-    "$-$": 0,
-    "$*$": 0,
-    "$/$": 0,
-    "$^$": 0,
-    "$": 0,
-    "$,$": 0,
-    "$,$,$": 0,
-    "$,$,$,$": 0,
-    "$,$,$,$,$": 0,
-    "cos$": 0,
-    "sin$": 0,
-    default: val => {
-      return (parseFloat(val) == val);
-    }
-  }
-  idArr.forEach(id => { funcSet[id] = 0 });
+  let funcSet = {}
 
-  return ExpValidationBasic(postExp, funcSet);
+  //the magic 333333+0.00001*idx is to prevent easy calc collision that causes NaN result
+  idArr.forEach((id,idx) => { funcSet[id] = 3337333+0.00001*idx });
+
+  let res = BPG_ExpCalc(postExp,funcSet);
+
+  
+  // console.log(res);
+  res=res.flat();
+  // console.log(postExp,res);
+  return (res.length==1)&&res[0]==res[0];
 }
 
 
@@ -890,8 +880,12 @@ function InspMarginEditor({measureInfo, control_margin_info ,DICT,onExtraCtrlUpd
 
 function Measure_Calc_Editor({ target, onChange, className, renderContext: { measure_list, ref_keyTrace_callback, ref } }) {
   let staticObj = useRef({
-    insertIdx: undefined
+    insertIdx: undefined,
+    ref_new_idx:9999
   });
+
+
+  let _this=staticObj.current;
   //console.log(target.obj.calc_f);
 
   let ele = GetObjElement(target.obj, target.keyTrace);
@@ -907,43 +901,48 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
 
   function translatedExpChangeEvent(newExp) {
 
-    let postExp = Exp2PostfixExp(newExp);
-
-    let aexp_to_del =
+    let postExp = [];
+    try{
+      postExp=Exp2PostfixExp(newExp);
+      let aexp_to_del =
       postExp
         .filter(atom_exp => atom_exp.includes('"'));
 
-    if (aexp_to_del.length > 0)//If there is any content with unreplaced '"', replace it
-    {
-      aexp_to_del.forEach(to_del => {
-        newExp = newExp.replace(to_del, "");
-      });
-      postExp = Exp2PostfixExp(newExp);
+      if (aexp_to_del.length > 0)//If there is any content with unreplaced '"', replace it
+      {
+        aexp_to_del.forEach(to_del => {
+          newExp = newExp.replace(to_del, "");
+        });
+        postExp = Exp2PostfixExp(newExp);
 
-    }
-
-    //console.log(text,postExp);
-    //console.log(meaList);
-    let isAvail = parseCheckExpressionValid(postExp, measureIDInfo.map(info => info.id_exp));
-    if (isAvail) {
-      //onChange();
-      onChange(target, "input", {
-        target: {
-          value: {
-            exp: newExp,
-            post_exp: postExp
+      }
+      let isAvail = parseCheckExpressionValid(postExp, measureIDInfo.map(info => info.id_exp));
+      if (isAvail) {
+        //onChange();
+        onChange(target, "input", {
+          target: {
+            value: {
+              exp: newExp,
+              post_exp: postExp
+            }
           }
-        }
-      })
+        })
+      }
+      setFxOK(isAvail);
     }
-    setFxOK(isAvail);
+    catch(e)
+    {
+      console.log(e)
+      setFxOK(false);
+    }
     setFxExp(newExp);
 
     //
   }
-  if (ref.length > 0 && staticObj.current.insertIdx !== undefined) {
+  if (ref.length > staticObj.current.ref_new_idx && staticObj.current.insertIdx !== undefined) {
     let iidx = staticObj.current.insertIdx;
-    var nfxExp = [fxExp.slice(0, iidx), "[", ref[0].id, "]", fxExp.slice(iidx)].join('');
+    var nfxExp =  fxExp.slice(0,iidx)+"["+ ref[staticObj.current.ref_new_idx].id+ "]"+fxExp.slice(iidx);
+    staticObj.current.ref_new_idx=9999;
     staticObj.current.insertIdx = undefined;
     translatedExpChangeEvent(nfxExp);
   }
@@ -961,7 +960,7 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
   }, [])
 
 
-  function translateForward(text_id) {
+  function translateForward(text_id) {    //[2]*[6] => "OBJAA"*"OBJBB"  note:[{name:"OBJAA",id:2},{name:"OBJBB",id:6}]
     let translatedExp = text_id;
     let regexMatchIdBlock = /\[([^\[^\]]+)\]/g;
     let idErrSet = [];
@@ -989,24 +988,33 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
       translatedExp = translatedExp.replace(idErr.match[0], "");
     });
 
-    idOKSet.forEach(idOK => {
-      translatedExp = translatedExp.replace(idOK.match[0], '"' + idOK.measure.name + '"');
+    if(idOKSet.length>0)
+    {
+
+      //{cat:"dog",dog:"goat",goat:"cat"};
+      var regexMapList=idOKSet.map(idOK=>{
+        let key = idOK.match[0];
+        let safekey=key.replace("[","\\[").replace("]","\\]");
+        let str='"' + idOK.measure.name + '"';
+        return {key,safekey,str}
+      })
+
+
+      var re = new RegExp(regexMapList.map(map=>map.safekey).join("|")
+        ,"gi");
+      translatedExp = translatedExp.replace(re, matched=>{
+        // console.log(matched,regexMapObj[matched]);
+        return regexMapList.find(map=>map.key==matched).str;
     });
+    }
     return translatedExp;
   }
   let translatedExp = translateForward(fxExp);
   //translate measure id to readable measure name
 
-
-
-
-  function translateBack(text_name) {
+  function translateBack(text_name) {//"OBJAA"*"OBJBB" => [2]*[6] note:[{name:"OBJAA",id:2},{name:"OBJBB",id:6}]
     measureIDInfo.forEach(idinfo => {//translate readable measure name to measure id
-      let pre_text = text_name;
-      do {
-        pre_text = text_name;
-        text_name = text_name.replace('"' + idinfo.name + '"', idinfo.id_exp);
-      } while (pre_text !== text_name);
+      text_name = text_name.replaceAll('"' + idinfo.name + '"', idinfo.id_exp);
     });
     return text_name;
   }
@@ -1030,16 +1038,20 @@ function Measure_Calc_Editor({ target, onChange, className, renderContext: { mea
         let text = translateBack(ev.target.value);
         translatedExpChangeEvent(text);
       }}
+      onBlur={(ev)=>{
+        // console.log(ev,inputEl.current);
+        _this.selectionStart=ev.target.selectionStart;
+      }}
     />
     <Button key="xx" className="s vbox black"
       onClick={_ => {
         console.log(inputEl)
-        const { selectionStart, selectionEnd } = inputEl.current;
-        let true_idx = untranslatedIdx(translatedExp, selectionStart);
+        let true_idx = untranslatedIdx(translatedExp, _this.selectionStart);
         staticObj.current.insertIdx = true_idx;
+        staticObj.current.ref_new_idx = ref.length;
         //console.log(translatedExp,selectionStart,fxExp, true_idx);
 
-        ref_keyTrace_callback(["ref", 0]);
+        ref_keyTrace_callback(["ref", ref.length]);
       }}>{DICT.defConf.calc_add_measure}</Button>
   </div>
 }
