@@ -441,14 +441,14 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetMirror(int Dir, int en)
     return CameraLayer::NAK;
   }
   m.lock();
-  bool ben=en!=0;
+  bool ben=(en!=0);
   if(Dir==0)
   {
-    GetBoolValue("ReverseX", &ben);
+    SetBoolValue("ReverseX", ben);
   }
   else if(Dir==1)
   {
-    GetBoolValue("ReverseY", &ben);
+    SetBoolValue("ReverseY", ben);
   }
   mirrorFlag[Dir] = en;
   m.unlock();
