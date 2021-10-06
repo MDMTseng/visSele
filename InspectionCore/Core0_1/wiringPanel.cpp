@@ -1817,7 +1817,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           //SaveIMGFile("data/buff.bmp",&test1_buff);
 
-          LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+          // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
           int ret = ImgInspection_JSONStr(matchingEng, srcImg, 1, jsonStr, select_bacpac);
           free(jsonStr);
           const FeatureReport *report = matchingEng.GetReport();
@@ -1843,7 +1843,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             session_ACK = false;
           }
           
-          LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+          // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
         }
         catch (std::invalid_argument iaex)
         {
@@ -1959,11 +1959,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           }
           cache_deffile_JSON = cJSON_Parse(jsonStr);
 
-          LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+          // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
           matchingEng.ResetFeature();
           matchingEng.AddMatchingFeature(jsonStr);
 
-          LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+          // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           void *target;
           if (getDataFromJson(json, "get_deffile", &target) == cJSON_True)
           {
@@ -2104,7 +2104,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           try
           {
 
-            LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+            // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
             ImgInspection_DefRead(matchingEng, srcImg, 1, "data/featureDetect.json", &calib_bacpac);
             const FeatureReport *report = matchingEng.GetReport();
 
@@ -2133,7 +2133,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
               fromUpperLayer(bpg_dat);
             }
             
-            LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+            // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
           }
           catch (std::invalid_argument iaex)
           {
@@ -2416,11 +2416,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       if (InspectionParam)
       {
         
-        LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+        // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
         cJSON *retInfo = matchingEng.SetParam(InspectionParam);
 
 
-        LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+        // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
 
 
         char *jstr = cJSON_Print(retInfo);
@@ -3534,7 +3534,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   {
 
-    LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
+    // LOGI("==>>");matchingEnglock.lock();LOGI("==>>");
     ret = ImgInspection(matchingEng, &capImg, bacpac, imgPipe->camLayer, 1);
     const FeatureReport *report = matchingEng.GetReport();
 
@@ -3582,7 +3582,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     
-    LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
+    // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
   LOGI("%fms \n---------------------", ((double)clock() - t) / CLOCKS_PER_SEC * 1000);
