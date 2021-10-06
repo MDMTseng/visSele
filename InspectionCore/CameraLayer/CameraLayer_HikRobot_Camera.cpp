@@ -329,6 +329,8 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
     nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Timestamp");
     nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
     
+    SetBoolValue("AcquisitionFrameRateEnable", false);
+    
   }
 
   // SetROI(1000,1000,200,200,0,0);
