@@ -22,15 +22,36 @@ uint16_t CCount=0;
 uint16_t ExeUpdateCount=0;
 uint16_t PassCount=0;
 uint16_t stageUpdated=0;
-uint16_t __newDist=0;
-uint16_t __exDist=0;
 
 void(* resetFunc) (void) = 0;
+uint32_t sys_status=0;
+enum class GEN_STATUS_CODE_32Bit { 
+  
+  STATUS_SPEED_INIT=0,
+  STATUS_SPEED_STABLE=3,
+  STATUS_INSP_RESULT_TIME_SYNCING=2,
+  STATUS_ERROR_ACTION_CLEAR_SPIN=8,
+};
+
+
+struct PulseTimeSyncInfo{
+  uint8_t state;
+  uint32_t basePulseCount;
+  uint32_t basePulse_us;
+  uint32_t us_per_1024_pulses;
+
+  uint32_t pre_basePulseCount;
+  uint32_t pre_basePulse_us;
+};
+
+struct PulseTimeSyncInfo pulseTimeSyncInfo={0};
+
 enum class GEN_ERROR_CODE { 
   RESET=0,
   INSP_RESULT_HAS_NO_OBJECT=1,
   OBJECT_HAS_NO_INSP_RESULT=2,
   INSP_RESULT_COUNTER_ERROR=3,
+  INSP_RESULT_TIME_UNMATCHED=4,
   };
 
 
@@ -94,7 +115,7 @@ RingBuf<typeof(*errorBuf),uint8_t > ERROR_HIST(errorBuf,SARRL(errorBuf));
 
 
 
-uint32_t logicPulseCount = 0;
+uint32_t logicPulseCount_ = 0;
 
 #define PIPE_INFO_LEN 30
 
@@ -127,7 +148,6 @@ const uint32_t perRevPulseCount = perRevPulseCount_HW/subPulseSkipCount;// the s
 void errorLOG(GEN_ERROR_CODE code,char* errorLog=NULL);
 
 
-uint32_t PRPC= perRevPulseCount;
 
 uint32_t tar_pulseHZ_ = perRevPulseCount_HW/4; 
 
@@ -173,7 +193,7 @@ ACT_SCH act_S;
           ACT_INFO *task;\
           task=(rb).getHead();\
           if(task){\
-            task->targetPulse=mod_sim(plinfo->gate_pulse + pulseOffset,perRevPulseCount);\
+            task->targetPulse=(plinfo->gate_pulse + pulseOffset);\
             task->src=plinfo;\
             task->info=_info;\
             cusCode_task \
@@ -182,14 +202,6 @@ ACT_SCH act_S;
         }
 
 
-int skip_pulse_show(pipeLineInfo* pli)
-{
-
-    ACT_PUSH_TASK (act_S.ACT_BACKLight1H, pli, state_pulseOffset[1],1,
-    );
-    ACT_PUSH_TASK (act_S.ACT_BACKLight1L, pli, state_pulseOffset[1]+1, 2,
-    );
-}
 int ActRegister_pipeLineInfo(pipeLineInfo* pli)
 {
   if(mode_info.mode==run_mode_info::TEST)
@@ -665,6 +677,7 @@ class Websocket_FI:public Websocket_FI_proto{
     MessageL--;//remove the last comma',';
     MessageL += sprintf( (char*)send_rsp+MessageL, "],");
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"perRevPulseCount\":%d,",perRevPulseCount);
+    MessageL += sprintf( (char*)send_rsp+MessageL, "\"maxFrameRate\":%d,",g_max_frame_rate);
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"subPulseSkipCount\":%d,",subPulseSkipCount);
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"pulse_hz\":%d,",tar_pulseHZ_);
     MessageL += sprintf( (char*)send_rsp+MessageL, "\"mode\":\"%s\",",
@@ -756,16 +769,21 @@ class Websocket_FI:public Websocket_FI_proto{
     int retL = findJsonScope(jbuff,"\"pulse_hz\":",scopebuff,sizeof(scopebuff));
     
     if(retL>0){
-      
-      
-//      DEBUG_print("\n pulse_hz: retL:");
-//      DEBUG_println(retL);
-//      DEBUG_println(scopebuff);
       int newHZ=tar_pulseHZ_;
       sscanf(scopebuff, "%d", &newHZ);
       tar_pulseHZ_=newHZ;
       retS=0;
     }
+
+    
+    retL = findJsonScope(jbuff,"\"maxFrameRate\":",scopebuff,sizeof(scopebuff));
+    if(retL>0){
+      int mfr=g_max_frame_rate;
+      sscanf(scopebuff, "%d", &mfr);
+      g_max_frame_rate=mfr;
+      retS=0;
+    }
+
 
 
     if(strstr (jbuff,"\"mode\":\"TEST_NO_BLOW\""))
@@ -792,6 +810,23 @@ class Websocket_FI:public Websocket_FI_proto{
     if(ret_status)*ret_status=retS;
     return MessageL;
   }
+
+  
+
+int convertStringToU64(const char* str,uint64_t *ret_val)   // char * preferred
+{
+  uint64_t val = 0;
+  for (int i = 0; str[i]!=NULL; i++)
+  {
+    val*=10;
+    int dig= str[i]-'0';
+    if(dig<0 || dig>9)return -1;
+    val+=dig;
+  }
+  if(ret_val)*ret_val=val;
+  return 0;
+}
+
 
   virtual int Json_CMDExec(WebSocketProtocol* WProt,uint8_t *recv_cmd, int cmdL,sending_buffer *send_pack,int data_in_pack_maxL)
   {
@@ -917,12 +952,19 @@ class Websocket_FI:public Websocket_FI_proto{
           }
         }
         
-        char *time_100us_str = extBuff;
+        uint64_t time_us=~0;
+        char *time_us_str = extBuff;
         {
-          int retL = findJsonScope((char*)recv_cmd,"\"time_100us\":",extBuff,extBuffL);
-          if(retL<0)time_100us_str=NULL;
+          int retL = findJsonScope((char*)recv_cmd,"\"time_us\":",extBuff,extBuffL);
+          if(retL<0)time_us_str=NULL;
           else
           {
+            
+            if(convertStringToU64(time_us_str,&time_us)==0)
+            {
+              //OK
+            }
+            // sscanf(statusStr, "%d", &insp_status);
             extBuff+=retL+1;
             extBuffL-=retL+1;
           }
@@ -1366,7 +1408,7 @@ void printDBGInfo()
 
 
     DEBUG_print(" pulse:");
-    DEBUG_print(logicPulseCount);
+    DEBUG_print(logicPulseCount_);
 
     
     DEBUG_println();
@@ -1440,16 +1482,7 @@ void loop()
     static uint32_t nextPulseN=0;
     
 
-    uint32_t dist = pulse_distance(nextPulseN,logicPulseCount,perRevPulseCount);
-    if(dist<(perRevPulseCount>>1))
-    {
-      // DEBUG_printf("curSTEP:%d\n",logicPulseCount);
-      nextPulseN+=perRevPulseCount>>2;
-      if(nextPulseN>=perRevPulseCount)
-      {
-        nextPulseN=0;
-      }
-    }
+    uint32_t dist = nextPulseN-logicPulseCount_;
 
   }
 
@@ -1459,7 +1492,7 @@ void loop()
     if(WS_Server->FindLiveClient()==0)//if no connection exist
     {
       noConnectionTickCount++;
-      if(noConnectionTickCount>20)//for quite a lon
+      if(noConnectionTickCount>20)//for quite a long time
       {
         noConnectionTickCount=0;
         ETH_RESET();

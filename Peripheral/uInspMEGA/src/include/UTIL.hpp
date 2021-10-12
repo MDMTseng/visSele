@@ -201,15 +201,5 @@ class mArray_Static:public mArray<T>
   }
 };
 
-uint32_t mod_sim(uint32_t num,uint32_t mod_N)
-{
-  while(num>=mod_N)
-  {
-    num-=mod_N;
-  }
-  return num;
-}
-
-
 
 #endif

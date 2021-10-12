@@ -63,7 +63,7 @@ class StepperMotor
 
 
 StepperMotor stepperMotor(22, 23, 24, 25);
-
+bool senseReverse=false;
 uint32_t pulseHZ = 0;
 
 
@@ -77,33 +77,9 @@ typedef struct GateInfo {
 } GateInfo;
 
 
-uint32_t pulse_distance(uint32_t curP,uint32_t tarP,uint32_t warp)
-{
-  if(tarP>=warp)return warp;
-  if(tarP>=curP)
-    return tarP-curP;
-  
-  return (warp+tarP)-curP;
-}
-
-
-
-uint32_t getMinDistTaskPulse(RingBuf<pipeLineInfo*,uint8_t > &queue)
-{
-  for(int i=0;i<queue.size();i++)
-  {
-    pipeLineInfo** taskToDo=queue.getTail(i);
-    if(taskToDo==NULL)break;
-    pipeLineInfo* tail = (*taskToDo);
-    if(tail==NULL)continue;
-    return tail->trigger_pulse;
-  }
-  return perRevPulseCount;
-}
-
 
 //uint32_t logicPulseCount = 0;
-uint32_t countSkip = 0;
+uint32_t SubPulseStage = 0;
 
 GateInfo gateInfo;
 
@@ -120,20 +96,7 @@ void RESET_GateSensing()
 }
 
 
-void skip_pulse_showS(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
-{
-  pipeLineInfo X;
-  pipeLineInfo *head=&X;
-  head->s_pulse=start_pulse;
-  head->e_pulse=end_pulse;
-  head->pulse_width=pulse_width;
-  head->gate_pulse = middle_pulse;
-  head->insp_status=insp_status_UNSET;
-  skip_pulse_show(head);
-}
-
 const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
-#define RING_SUB(A,B,MAX) ( ((A)>(B)) ? ((A)-(B))  : ((A)+(MAX)-(B)) )
 int task_newPulseEvent(uint32_t middle_pulse);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
@@ -145,8 +108,8 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
   //(perRevPulseCount/50)
   if(stage>=stageLen)return;
   uint8_t new_Sense = digitalRead(GATE_PIN);
-    
-  bool flip=false;
+  if(senseReverse)new_Sense=!new_Sense;
+  bool onSenseEdge=false;
 
   
   if(gateInfo.cur_Sense)
@@ -156,11 +119,7 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
       gateInfo.debunce--;
       if(gateInfo.debunce==0)
       {
-        flip=true;
-
-        // gateInfo.end_pulse=logicPulseCount;
-        // gateInfo.end_pulse=RING_SUB(logicPulseCount,DEBOUNCE_L_THRES,perRevPulseCount);
-        
+        onSenseEdge=true;
         gateInfo.debunce = DEBOUNCE_H_THRES;
       
       }
@@ -168,7 +127,7 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
     else
     {
       gateInfo.debunce = DEBOUNCE_L_THRES;
-      gateInfo.end_pulse=logicPulseCount;
+      gateInfo.end_pulse=logicPulseCount_;
     }
   }
   else
@@ -178,19 +137,14 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
       gateInfo.debunce--;
       if(gateInfo.debunce==0)
       {
-        flip=true;
-
-        //gateInfo.start_pulse=logicPulseCount;
-
-        //gateInfo.start_pulse=RING_SUB(logicPulseCount,DEBOUNCE_H_THRES,perRevPulseCount);
-        //
+        onSenseEdge=true;
         gateInfo.debunce = DEBOUNCE_L_THRES;
       }
     }
     else
     {
       gateInfo.debunce = DEBOUNCE_H_THRES;
-      gateInfo.start_pulse=logicPulseCount;
+      gateInfo.start_pulse=logicPulseCount_;
     }
   }
 
@@ -200,15 +154,15 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
   if(pulseDist_B2M!=10000)
     pulseDist_B2M++;
 
-  if(flip)
+  if(onSenseEdge)
   {
     if(!new_Sense)
     {//a pulse is completed
 
-      uint32_t diff=RING_SUB(gateInfo.end_pulse,gateInfo.start_pulse,perRevPulseCount);
+      uint32_t diff=gateInfo.end_pulse-gateInfo.start_pulse;
       if( diff>minWidth && diff<maxWidth )
       {
-        uint32_t middle_pulse=mod_sim(gateInfo.start_pulse+(diff>>1),perRevPulseCount);
+        uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
 
         uint32_t minPulseDist=pulseHZ/subPulseSkipCount/g_max_frame_rate;
         // uint32_t avg_PD_B2M=(pre_pulseDist_B2M+pulseDist_B2M)>>1;
@@ -235,11 +189,11 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
           //control by   minWidth,maxWidth,      
           //also effected DEBOUNCE_L_THRES,DEBOUNCE_H_THRES(these two are to control what is a complete pulse high time, low time)
       }
-      gateInfo.start_pulse=logicPulseCount;
+      gateInfo.start_pulse=logicPulseCount_;
     }
     else
     {
-      gateInfo.end_pulse=logicPulseCount;
+      gateInfo.end_pulse=logicPulseCount_;
     }
 
     gateInfo.cur_Sense=new_Sense;
@@ -280,33 +234,34 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
   stageBase-=1;
   if(stage==stageLen-1)
   {
-    Run_ACTS(&act_S,logicPulseCount);
+    Run_ACTS(&act_S,logicPulseCount_);
   }
 }
 
 
 uint32_t revCount = 0;
 TIMER_SET_ISR(1,8)
-
+uint32_t logicPulseCount_preRev=0;
 ISR(TIMER1_COMPA_vect) 
 {
   stepperMotor.OneStep(true);
 
   
-  countSkip = mod_sim(countSkip+1,subPulseSkipCount);
+  SubPulseStage = (SubPulseStage+1)&(subPulseSkipCount-1);
   
-  if (countSkip==0)
+  if (SubPulseStage==0)
   {
-    logicPulseCount = mod_sim(logicPulseCount+1,perRevPulseCount);
-    if(logicPulseCount==0)
+    logicPulseCount_ ++;
+    if(logicPulseCount_-logicPulseCount_preRev+1==perRevPulseCount)
     {
+      logicPulseCount_preRev=logicPulseCount_;
       revCount++;
       EV_Axis0_Origin(revCount);
     }
   }
 
 
-  task_pulseStageExec(countSkip,subPulseSkipCount);
+  task_pulseStageExec(SubPulseStage,subPulseSkipCount);
 
 }
 
