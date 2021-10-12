@@ -23,15 +23,6 @@ uint16_t ExeUpdateCount=0;
 uint16_t PassCount=0;
 uint16_t stageUpdated=0;
 
-void(* resetFunc) (void) = 0;
-uint32_t sys_status=0;
-enum class GEN_STATUS_CODE_32Bit { 
-  
-  SYS_STATUS_SPEED_INIT=0,
-  SYS_STATUS_SPEED_STABLE=3,
-  SYS_STATUS_INSP_RESULT_TIME_SYNCING=2,
-  SYS_STATUS_ERROR_ACTION_CLEAR_SPIN=8,
-};
 
 enum class PulseTimeSyncInfo_State { 
   
@@ -41,8 +32,42 @@ enum class PulseTimeSyncInfo_State {
   SETUP_BaseTime=3,
   SETUP_BasePulse=4,
   SETUP_DATA_CALC=5,
+  SETUP_Verify=6,
   READY=100,
 };
+
+
+
+// enum class SYS_STATUS_BIT { 
+  
+//   SPEED_INIT=0,
+//   SPEED_STABLE=3,
+//   INSP_RESULT_TIME_SYNCING=2,
+//   ERROR_ACTION_CLEAR_SPIN=8,
+// };
+
+// enum class SYS_STATE { 
+//   INIT=0,
+//   WAIT_FOR_CONNECTION=1,
+//   DATA_EXCHANGE=2,
+//   WAIT_FOR_PULSE_STABLE=3,
+//   PULSE_TIME_SYNCING=4,
+//   READY=100
+// };
+// struct SYS_INFO{
+
+//   SYS_STATE state;
+//   int status;
+// };
+
+
+// SYS_INFO sysinfo={
+//   .state=SYS_STATE::INIT,
+//   .status=0
+// };
+// SYS_STATE sys_state=SYS_STATE::INIT;
+
+
 struct PulseTimeSyncInfo{
   PulseTimeSyncInfo_State state;
   uint32_t basePulseCount;
@@ -61,7 +86,7 @@ enum class GEN_ERROR_CODE {
   INSP_RESULT_HAS_NO_OBJECT=1,
   OBJECT_HAS_NO_INSP_RESULT=2,
   INSP_RESULT_COUNTER_ERROR=3,
-  INSP_RESULT_TIME_UNMATCHED=4,
+  INSP_PULSE_TIME_OUT_OF_SYNC=4,
   };
 
 
@@ -69,6 +94,7 @@ enum class ERROR_ACTION_TYPE {
   NOP=0,
   ALL_STOP=1,
   FREE_SPIN_2_REV=2,
+  PULSE_TIME_RESYNC=3,
   };
 
 typedef struct run_mode_info{
@@ -91,12 +117,12 @@ run_mode_info mode_info={
 
 
 uint32_t thres_skip_counter=0;
-#define insp_status_UNSET -2000
-#define insp_status_DEL 0xFE
+#define insp_status_UNSET -2000 //mark the inspection result is yet arrive
+#define insp_status_DEL 0xFE // mark the object can be deleted
 
 #define insp_status_NA -128 //insp_status_NA is just for unknown insp result
-#define insp_status_OK 0 //insp_status_NA is just for unknown insp result
-#define insp_status_NG -1 //insp_status_NA is just for unknown insp result
+#define insp_status_OK 0 
+#define insp_status_NG -1
 
 
 typedef struct InspResCount{
@@ -216,6 +242,32 @@ ACT_SCH act_S;
         }
 
 
+ERROR_ACTION_TYPE errorActionType=ERROR_ACTION_TYPE::NOP;
+
+int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
+{
+  if(pulseTimeSyncInfo.state!=PulseTimeSyncInfo_State::READY || errorActionType!=ERROR_ACTION_TYPE::NOP)
+  {
+    return -10;
+  }
+  //   
+  pipeLineInfo* head = RBuf.getHead();
+  if (head == NULL)return -1;
+
+  //get a new object and find a space to log it
+  // TCount++;
+  head->s_pulse=start_pulse;
+  head->e_pulse=end_pulse;
+  head->pulse_width=pulse_width;
+  head->gate_pulse = middle_pulse;
+  head->insp_status=insp_status_UNSET;
+  if(ActRegister_pipeLineInfo(head)!=0)
+  {//register failed....
+    return -2;
+  }
+  RBuf.pushHead();
+  return 0;
+}
 int ActRegister_pipeLineInfo(pipeLineInfo* pli)
 {
   if(mode_info.mode==run_mode_info::TEST)
@@ -286,6 +338,54 @@ int ActRegister_pipeLineInfo(pipeLineInfo* pli)
   }
   return -1;
 }
+
+
+
+
+
+int task_Pulse_Time_Sync(uint32_t pulse)
+{
+
+  pipeLineInfo* head = RBuf.getHead();
+  if (head == NULL)return -1;
+
+  //get a new object and find a space to log it
+  // TCount++;
+  head->s_pulse=pulse;
+  head->e_pulse=pulse;
+  head->pulse_width=10;
+  head->gate_pulse = pulse;
+  head->insp_status=insp_status_UNSET;
+  if(ActRegister_Pulse_Time_Sync(head)!=0)
+  {//register failed....
+    return -2;
+  }
+  RBuf.pushHead();
+  return 0;
+}
+int ActRegister_Pulse_Time_Sync(pipeLineInfo* pli)
+{
+
+
+  if(act_S.ACT_BACKLight1H.size_left()>=1 &&act_S.ACT_BACKLight1L.size_left()>=1 && 
+  act_S.ACT_CAM1.size_left()>=2 && act_S.ACT_SWITCH.size_left()>=1)
+  {
+    ACT_PUSH_TASK (act_S.ACT_CAM1, pli, state_pulseOffset[2], 1,
+    );
+    ACT_PUSH_TASK (act_S.ACT_CAM1, pli, state_pulseOffset[3], 2,
+    );
+
+    ACT_PUSH_TASK (act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2,
+    );
+
+
+    return 0;
+    // pli->insp_status=insp_status_OK;
+  }
+  return -1;
+}
+
+
 
 
 
@@ -486,7 +586,6 @@ int AddResultCountToJson(char* send_rsp, uint32_t send_rspL,InspResCount &inspRe
 }
 
 
-ERROR_ACTION_TYPE errorActionType=ERROR_ACTION_TYPE::NOP;
 
 ERROR_ACTION_TYPE errorActionTransition(ERROR_ACTION_TYPE atype,GEN_ERROR_CODE code)
 {
@@ -516,6 +615,10 @@ ERROR_ACTION_TYPE errorActionTransition(ERROR_ACTION_TYPE atype,GEN_ERROR_CODE c
         ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
     break;
 
+    case GEN_ERROR_CODE::INSP_PULSE_TIME_OUT_OF_SYNC:
+      actionType=ERROR_ACTION_TYPE::PULSE_TIME_RESYNC;
+    break;
+
     default:
       actionType=ERROR_ACTION_TYPE::ALL_STOP;
     break;
@@ -542,6 +645,7 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
   
   static ERROR_ACTION_TYPE pre_action_type=ERROR_ACTION_TYPE::NOP;
   static uint32_t targetRevCount=0;
+  static uint32_t targetPulseCount=0;
   if(pre_action_type!=cur_action_type)
   {
     switch(cur_action_type)
@@ -551,6 +655,31 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
         
         DEBUG_print("targetRevCount::");
         DEBUG_println(targetRevCount);
+      break;
+      case ERROR_ACTION_TYPE::PULSE_TIME_RESYNC:
+        RBuf.clear();
+        act_S.ACT_BACKLight1H.clear();
+        act_S.ACT_BACKLight1L.clear();
+        act_S.ACT_CAM1.clear();
+        act_S.ACT_SEL1H.clear();
+        act_S.ACT_SEL1L.clear();
+        act_S.ACT_SEL2H.clear();
+        act_S.ACT_SEL2L.clear();
+        act_S.ACT_SWITCH.clear();
+        RESET_GateSensing();
+         
+        digitalWrite(AIR_BLOW_OK_PIN, 0);
+        digitalWrite(AIR_BLOW_NG_PIN, 0);
+        
+        digitalWrite(BACK_LIGHT_PIN, 1);
+
+        uint32_t cur_pulse = logicPulseCount_;
+        pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::INIT;
+        task_Pulse_Time_Sync(cur_pulse+200);
+        task_Pulse_Time_Sync(cur_pulse+400);
+        task_Pulse_Time_Sync(cur_pulse+300);
+
+        targetPulseCount=cur_pulse+2400*2;
       break;
     }
     pre_action_type=cur_action_type;
@@ -585,22 +714,30 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
         digitalWrite(AIR_BLOW_NG_PIN, 0);
         
         digitalWrite(BACK_LIGHT_PIN, 1);
-        //WarningLight
-        
-//        static uint16_t LED_C_TMP=0;
-//        if(LED_C_TMP&0xFF==0)
-//        {
-//          if(LED_C_TMP&0x100==0)
-//            digitalWrite(BACK_LIGHT_PIN, 1);
-//          else
-//            digitalWrite(BACK_LIGHT_PIN, 0);
-//        }
-//        LED_C_TMP++;
-        
       }
       else
       {
         DEBUG_println("FREE_SPIN_2_REV  REACH.... ending");
+        digitalWrite(BACK_LIGHT_PIN, 0);
+        errorActionType = errorActionTransition( errorActionType,GEN_ERROR_CODE::RESET );
+      }
+    }
+    break;
+
+
+
+    case ERROR_ACTION_TYPE::PULSE_TIME_RESYNC:
+    {
+      //DEBUG_println("FREE_SPIN_2_REV  IN p::");
+      // logicPulseCount_
+      
+      int32_t pdiff = targetPulseCount-logicPulseCount_;
+      if(pdiff>0)
+      {
+        
+      }
+      else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY)
+      {
         digitalWrite(BACK_LIGHT_PIN, 0);
         errorActionType = errorActionTransition( errorActionType,GEN_ERROR_CODE::RESET );
       }
@@ -1032,7 +1169,8 @@ void print_uint64_t(uint64_t n)
         
         uint32_t targetObjGatePulse=0;
         static int resetCount=0;
-        if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY)
+        if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_Verify || 
+        pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY)
         {
           if(time_us!=0)//has report time
           {
@@ -1097,7 +1235,8 @@ void print_uint64_t(uint64_t n)
         {
           pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;
         }
-        else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY)
+        else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY || 
+        pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_Verify )
         {
           int32_t diff = targetObjGatePulse-matched_obj_pulse;
           DEBUG_printf("targetObjGatePulse=%"PRIu32"\n==diff:%d==\n",targetObjGatePulse,diff);
@@ -1106,6 +1245,7 @@ void print_uint64_t(uint64_t n)
           {//update
             pulseTimeSyncInfo.basePulse_us=time_us;
             pulseTimeSyncInfo.basePulseCount=matched_obj_pulse;
+            pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::READY;
           }
           else
           {
@@ -1119,7 +1259,7 @@ void print_uint64_t(uint64_t n)
           uint64_t pulseTimeDiff=pulseTimeSyncInfo.basePulse_us-pulseTimeSyncInfo.pre_basePulse_us;
           pulseTimeSyncInfo.pulses_per_1048676us=((uint64_t)pulseDiff<<20)/pulseTimeDiff;
 
-          pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::READY;
+          pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::SETUP_Verify;
 
           DEBUG_printf("pulseDiff=%d ",pulseDiff);
           DEBUG_printf("timeDiff=");
@@ -1239,7 +1379,7 @@ void print_uint64_t(uint64_t n)
       else if(strcmp (typeStr, "set_setup")==0)
       {
         int ret_st=0;
-        //DEBUG_print("set_setup::");
+        DEBUG_print("set_setup:");
         MessageL+=JsonToMach(send_rsp+MessageL, send_rspL-MessageL,recv_cmd,cmdL, &ret_st);
 //        DEBUG_print("set_setupL::");
 //        DEBUG_println(MessageL);
@@ -1272,8 +1412,9 @@ void print_uint64_t(uint64_t n)
       
       else if(strcmp (typeStr, "error_clear")==0)
       {
-        pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;
+        
         errorLOG(GEN_ERROR_CODE::RESET);
+        errorLOG(GEN_ERROR_CODE::INSP_PULSE_TIME_OUT_OF_SYNC);
         ERROR_HIST.clear();
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);
         MessageL += AddErrorCodesToJson( (char*)send_rsp+MessageL, send_rspL-MessageL);

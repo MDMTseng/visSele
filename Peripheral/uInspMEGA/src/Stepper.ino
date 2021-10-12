@@ -75,7 +75,6 @@ typedef struct GateInfo {
 
 
 //uint32_t logicPulseCount = 0;
-uint32_t SubPulseStage = 0;
 
 GateInfo gateInfo;
 
@@ -93,16 +92,15 @@ void RESET_GateSensing()
 
 
 const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
-int task_newPulseEvent(uint32_t middle_pulse);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
+  if(stage>=stageLen)return;
   const int  minWidth = 3;
   const int  maxWidth = 1+20000/SINGLE_PULSE_DIST_um;
   
   const int  DEBOUNCE_L_THRES = 1+1000/SINGLE_PULSE_DIST_um;//object inner connection
   const int  DEBOUNCE_H_THRES = 1;
   //(perRevPulseCount/50)
-  if(stage>=stageLen)return;
   uint8_t new_Sense = digitalRead(GATE_PIN);
   if(senseReverse)new_Sense=!new_Sense;
   bool onSenseEdge=false;
@@ -202,39 +200,22 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
 
 
 
-int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
-{
-    
-  pipeLineInfo* head = RBuf.getHead();
-  if (head == NULL)return -1;
-
-  //get a new object and find a space to log it
-  // TCount++;
-  head->s_pulse=start_pulse;
-  head->e_pulse=end_pulse;
-  head->pulse_width=pulse_width;
-  head->gate_pulse = middle_pulse;
-  head->insp_status=insp_status_UNSET;
-  if(ActRegister_pipeLineInfo(head)==0)
-  {
-    RBuf.pushHead();
-  }
-  return 0;
-}
-
 void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
-{
+{//assume stageLen==5  
+ //0 1 2 3 4 0 1 2 3 4 
+ //P   E     P   E
+ //P for pulse detection
+ //E for action execution
   //exp:stageLen=10  0~9
-  uint8_t stageBase=stage;
-  task_gateSensing(stageBase-0,1);//0 only
-  stageBase-=1;
-  if(stage==stageLen-1)
+  task_gateSensing(stage-0,1);//only run at the first stage
+  if(stage==stageLen/2)//only run at the middle stage
   {
     Run_ACTS(&act_S,logicPulseCount_);
   }
 }
 
 
+uint32_t SubPulseStage = 0;
 uint32_t revCount = 0;
 TIMER_SET_ISR(1,8)
 uint32_t logicPulseCount_preRev=0;
