@@ -15,7 +15,7 @@
 #include "websocket_FI.hpp"
 #include "include/RingBuf.hpp"
 #include <avr/wdt.h>
-
+#include <inttypes.h>
 //#define TEST_MODE 
 uint16_t TCount=0;
 uint16_t CCount=0;
@@ -27,24 +27,34 @@ void(* resetFunc) (void) = 0;
 uint32_t sys_status=0;
 enum class GEN_STATUS_CODE_32Bit { 
   
-  STATUS_SPEED_INIT=0,
-  STATUS_SPEED_STABLE=3,
-  STATUS_INSP_RESULT_TIME_SYNCING=2,
-  STATUS_ERROR_ACTION_CLEAR_SPIN=8,
+  SYS_STATUS_SPEED_INIT=0,
+  SYS_STATUS_SPEED_STABLE=3,
+  SYS_STATUS_INSP_RESULT_TIME_SYNCING=2,
+  SYS_STATUS_ERROR_ACTION_CLEAR_SPIN=8,
 };
 
-
+enum class PulseTimeSyncInfo_State { 
+  
+  INIT=0,
+  SETUP_preBaseTime=1,
+  SETUP_preBasePulse=2,
+  SETUP_BaseTime=3,
+  SETUP_BasePulse=4,
+  SETUP_DATA_CALC=5,
+  READY=100,
+};
 struct PulseTimeSyncInfo{
-  uint8_t state;
+  PulseTimeSyncInfo_State state;
   uint32_t basePulseCount;
   uint32_t basePulse_us;
-  uint32_t us_per_1024_pulses;
+  // uint64_t us_per_1024_pulses;
+  uint64_t pulses_per_1048676us;//2^10
 
   uint32_t pre_basePulseCount;
-  uint32_t pre_basePulse_us;
+  uint64_t pre_basePulse_us;
 };
 
-struct PulseTimeSyncInfo pulseTimeSyncInfo={0};
+struct PulseTimeSyncInfo pulseTimeSyncInfo={.state=PulseTimeSyncInfo_State::INIT};
 
 enum class GEN_ERROR_CODE { 
   RESET=0,
@@ -118,6 +128,10 @@ RingBuf<typeof(*errorBuf),uint8_t > ERROR_HIST(errorBuf,SARRL(errorBuf));
 uint32_t logicPulseCount_ = 0;
 
 #define PIPE_INFO_LEN 30
+
+#define STEPPER_PLS_PIN 22
+#define STEPPER_DIR_PIN 23
+
 
 #define LED_PIN 13
 #define CAMERA_PIN 16
@@ -826,7 +840,27 @@ int convertStringToU64(const char* str,uint64_t *ret_val)   // char * preferred
   if(ret_val)*ret_val=val;
   return 0;
 }
+// void print_uint64_t(uint64_t num) {
 
+//   do{
+//     Serial.print((char)(num%10)+'0');
+//     num/=10;
+//   }while (num);
+// }
+void print_uint64_t(uint64_t n)
+{
+  uint8_t base = 10;
+  char buf[3 * sizeof(uint64_t) + 1];   // "big enough" buffer.
+  char *str = &buf[sizeof(buf) - 1];
+  *str = '\0';
+  do {
+    char c = n % base;
+    n /= base;
+    *--str =  c + '0';
+  } while(n);
+  
+  Serial.print(str);
+}
 
   virtual int Json_CMDExec(WebSocketProtocol* WProt,uint8_t *recv_cmd, int cmdL,sending_buffer *send_pack,int data_in_pack_maxL)
   {
@@ -952,17 +986,42 @@ int convertStringToU64(const char* str,uint64_t *ret_val)   // char * preferred
           }
         }
         
-        uint64_t time_us=~0;
+        uint64_t time_us=0;
         char *time_us_str = extBuff;
         {
-          int retL = findJsonScope((char*)recv_cmd,"\"time_us\":",extBuff,extBuffL);
-          if(retL<0)time_us_str=NULL;
+          int retL = findJsonScope((char*)recv_cmd,"\"time_100us\":",extBuff,extBuffL);
+          if(retL<0)
+          {
+            time_us_str=NULL;
+            pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;
+          }
           else
           {
             
             if(convertStringToU64(time_us_str,&time_us)==0)
             {
+              if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::INIT)
+              {
+                pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::SETUP_preBaseTime;
+              }
+
+
+              if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_preBaseTime)
+              {
+                pulseTimeSyncInfo.pre_basePulse_us=time_us;
+                pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::SETUP_preBasePulse;
+              }
+              else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_BaseTime)
+              {
+                pulseTimeSyncInfo.basePulse_us=time_us;
+                pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::SETUP_BasePulse;
+              }
+              // pulseTimeSyncInfo
               //OK
+            }
+            else
+            { 
+              pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;
             }
             // sscanf(statusStr, "%d", &insp_status);
             extBuff+=retL+1;
@@ -971,10 +1030,32 @@ int convertStringToU64(const char* str,uint64_t *ret_val)   // char * preferred
         }
         
         
+        uint32_t targetObjGatePulse=0;
+        static int resetCount=0;
+        if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY)
+        {
+          if(time_us!=0)//has report time
+          {
+            // uint32_t pulseDiff=gate_pulse-pulseTimeSyncInfo.basePulseCount;
+            uint64_t pulseTimeDiff=time_us-pulseTimeSyncInfo.basePulse_us;
+            uint64_t pulseDiff= (pulseTimeDiff*pulseTimeSyncInfo.pulses_per_1048676us)>>20;
+            targetObjGatePulse=pulseDiff+pulseTimeSyncInfo.basePulseCount;
+            
+            // DEBUG_printf("pulseDiff=");
+            // print_uint64_t(pulseDiff);
+            // DEBUG_print('\n');
+
+          }
+        }
+
         noInterrupts();
         TCount--;
         int search_i=-1;
         int len = RBuf.size();
+
+        pipeLineInfo* pipeTarget=NULL;
+
+        uint32_t matched_obj_pulse=0;
         for(int i=0;i<RBuf.size();i++)
         {
           pipeLineInfo* pipe=RBuf.getTail(i);
@@ -982,40 +1063,73 @@ int convertStringToU64(const char* str,uint64_t *ret_val)   // char * preferred
 
           if(pipe->insp_status==insp_status_UNSET)
           {
-            // DEBUG_printf("Get insp_status:%d c:%d\n",insp_status,cur_insp_counter);
-            pipe->insp_status=insp_status;
+            pipeTarget=pipe;
             ret_status=0;
-            search_i=len-1-i;
             break;
           }
         }
 
-        interrupts();
+        if(pipeTarget!=NULL)
+        {
+          
+          matched_obj_pulse=pipeTarget->gate_pulse;
+          if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_preBasePulse)
+          {
+            pulseTimeSyncInfo.pre_basePulseCount=matched_obj_pulse;
+            pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::SETUP_BaseTime;
+          }
+          else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_BasePulse)
+          {
+            pulseTimeSyncInfo.basePulseCount=matched_obj_pulse;
+            pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::SETUP_DATA_CALC;
+          }
+          // DEBUG_printf("Get insp_status:%d c:%d\n",insp_status,cur_insp_counter);
+          pipeTarget->insp_status=insp_status;
+        }
 
 
-  
 
-        // DEBUG_print("bklh.s:");
-        // DEBUG_print(act_S.ACT_BACKLight1H.size());
-        // DEBUG_print(" bkll.s:");
-        // DEBUG_print(act_S.ACT_BACKLight1L.size());
+        interrupts();//after pipeTarget do not touch pipeTarget since it might be deleted in timer thread
 
-        // DEBUG_print(" cam.s:");
-        // DEBUG_print(act_S.ACT_CAM1.size());
+        DEBUG_printf("matched_obj_pulse=%"PRIu32"  state:%d\n",matched_obj_pulse,pulseTimeSyncInfo.state);
+        
+        if(pipeTarget==NULL)
+        {
+          pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;
+        }
+        else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::READY)
+        {
+          int32_t diff = targetObjGatePulse-matched_obj_pulse;
+          DEBUG_printf("targetObjGatePulse=%"PRIu32"\n==diff:%d==\n",targetObjGatePulse,diff);
+          if(diff<0)diff=-diff;
+          if(diff<10)
+          {//update
+            pulseTimeSyncInfo.basePulse_us=time_us;
+            pulseTimeSyncInfo.basePulseCount=matched_obj_pulse;
+          }
+          else
+          {
+            pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;//unmatch..
+          }
+        }
+        else if(pulseTimeSyncInfo.state==PulseTimeSyncInfo_State::SETUP_DATA_CALC)
+        {
 
-        // DEBUG_print(" actsw.s:");
-        // DEBUG_println(act_S.ACT_SWITCH.size());
+          uint32_t pulseDiff=pulseTimeSyncInfo.basePulseCount-pulseTimeSyncInfo.pre_basePulseCount;
+          uint64_t pulseTimeDiff=pulseTimeSyncInfo.basePulse_us-pulseTimeSyncInfo.pre_basePulse_us;
+          pulseTimeSyncInfo.pulses_per_1048676us=((uint64_t)pulseDiff<<20)/pulseTimeDiff;
 
-        // DEBUG_printf("RBuf.s:%d ========s:%d===\n",RBuf.size(),search_i);
+          pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::READY;
 
-        // for(uint8_t i=0;i<RBuf.size();i++)
-        // {
-        //   pipeLineInfo* tail = RBuf.getTail(i);
+          DEBUG_printf("pulseDiff=%d ",pulseDiff);
+          DEBUG_printf("timeDiff=");
+          print_uint64_t(pulseTimeDiff);
+          DEBUG_print("\n");
+          DEBUG_printf("pulses_per_1048676us=");
+          print_uint64_t(pulseTimeSyncInfo.pulses_per_1048676us);
+          DEBUG_print("\n");
 
-        //   DEBUG_printf("%d:%p,\n",tail->insp_status,tail);
-        // }
-
-
+        }
 
         
         if(ret_status)
@@ -1158,6 +1272,7 @@ int convertStringToU64(const char* str,uint64_t *ret_val)   // char * preferred
       
       else if(strcmp (typeStr, "error_clear")==0)
       {
+        pulseTimeSyncInfo.state=PulseTimeSyncInfo_State::INIT;
         errorLOG(GEN_ERROR_CODE::RESET);
         ERROR_HIST.clear();
         MessageL += sprintf( (char*)send_rsp+MessageL, "\"type\":\"error_info\",",idStr);

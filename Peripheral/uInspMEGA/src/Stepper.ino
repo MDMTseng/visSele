@@ -32,18 +32,14 @@
 class StepperMotor
 {
   public:
-    int p1, p2, p3, p4;
+    int p1, p2;
 
-    StepperMotor(int p1, int p2, int p3, int p4){
+    StepperMotor(int p1, int p2){
 
       pinMode(p1, OUTPUT);
       pinMode(p2, OUTPUT);
-      pinMode(p3, OUTPUT);
-      pinMode(p4, OUTPUT);
       this->p1 = p1;
       this->p2 = p2;
-      this->p3 = p3;
-      this->p4 = p4;
     }
 
     int stepX_number = 0;
@@ -62,9 +58,9 @@ class StepperMotor
 };
 
 
-StepperMotor stepperMotor(22, 23, 24, 25);
+StepperMotor stepperMotor(STEPPER_PLS_PIN, STEPPER_DIR_PIN);
 bool senseReverse=false;
-uint32_t pulseHZ = 0;
+uint32_t pulseHZ = 0;//real current Pulse Hz
 
 
 typedef struct GateInfo {
@@ -230,7 +226,7 @@ void task_pulseStageExec(uint8_t stage,uint8_t stageLen)
 {
   //exp:stageLen=10  0~9
   uint8_t stageBase=stage;
-  task_gateSensing(stageBase,1);//0 only
+  task_gateSensing(stageBase-0,1);//0 only
   stageBase-=1;
   if(stage==stageLen-1)
   {
