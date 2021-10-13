@@ -2,8 +2,8 @@
 
 #ifndef UTILXXX_H_
 #define UTILXXX_H_
-
-
+#include <stdarg.h>
+#include <Arduino.h>
 //#define DEBUG_
 #ifdef DEBUG_
 #define DEBUG_print(A, ...) Serial.print(A,##__VA_ARGS__)
@@ -13,18 +13,7 @@
 #define DEBUG_println(A, ...)
 #endif
 
-
-void DEBUG_printf(const char * format, ...)
-{
-	char buff[200];
-	va_list list;
-	va_start(list, format);
-	vsnprintf(buff, sizeof(buff), format, list);
-	va_end(list);
-	DEBUG_print(buff);
-
-}
-
+void DEBUG_printf(const char * format, ...);
 
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
