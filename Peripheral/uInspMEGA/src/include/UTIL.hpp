@@ -4,7 +4,7 @@
 #define UTILXXX_H_
 #include <stdarg.h>
 #include <Arduino.h>
-//#define DEBUG_
+#define DEBUG_
 #ifdef DEBUG_
 #define DEBUG_print(A, ...) Serial.print(A,##__VA_ARGS__)
 #define DEBUG_println(A, ...) Serial.println(A,##__VA_ARGS__)
@@ -189,6 +189,7 @@ class mArray_Static:public mArray<T>
 
   }
 };
+uint32_t cmpCheckSum(int shift, int num_args, ...);
 
-
+void HARD_RESET();
 #endif

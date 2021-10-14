@@ -16,7 +16,6 @@ const uint32_t subPulseSkipCount = 16;                                     //We 
 const uint32_t perRevPulseCount_HW = (uint32_t)2400 * 16;                  //the real hardware pulse count per rev
 const uint32_t perRevPulseCount = perRevPulseCount_HW / subPulseSkipCount; // the software pulse count that processor really care
 
-const uint8_t g_max_frame_rate = 40;
 
 
 void RESET_GateSensing();
@@ -70,51 +69,64 @@ enum class SYS_STATUS_BIT
   ERROR_ACTION_CLEAR_SPIN = 8,
 };
 
-enum class SYS_STATE
-{
-  NOP = 200,
-  INIT = 0,
-  WAIT_FOR_CLIENT_CONNECTION = 1,
-  DATA_EXCHANGE = 2,
-  WAIT_FOR_PULSE_STABLE = 3,
-  PULSE_TIME_SYNCING = 4,
-  READY = 100
-};
 
-enum class SYS_STATE_ACT
-{
-  NOP = 200,
-  INIT_OK = 0,
-  CLIENT_CONNECTED = 1,
-  CLIENT_DISCONNECTED = 101,
-  DATA_EXCHANGE_OK = 2,
-  PULSE_STABLE = 3,
-  PULSE_UNSTABLE = 103,
-  PULSE_TIME_UNSYNC = 104,
-  PULSE_TIME_SYNC = 4
-};
+#define SMM_STATE_DECLARE(MACROX) \
+  MACROX(INIT                      ,   0,0) \
+  MACROX(WAIT_FOR_CLIENT_CONNECTION,   1,0) \
+  MACROX(             DATA_EXCHANGE,   2,0) \
+  MACROX(     WAIT_FOR_PULSE_STABLE,   3,0) \
+  MACROX(        PULSE_TIME_SYNCING,   4,0) \
+  MACROX(     INSPECTION_MODE_READY, 101,0) \
+  MACROX(     INSPECTION_MODE_ERROR, 112,0) \
+  MACROX(     INSPECTION_MODE_FATAL, 112,0) \
+  MACROX(                      IDLE, 100,0) \
+  MACROX(                       NOP, 200,0) \
 
+
+#define SMM_STATE_ACT_DECLARE(MACROX) \
+  MACROX(                               NOP, 200,0) \
+  MACROX(                           INIT_OK,   0,0) \
+  MACROX(                  CLIENT_CONNECTED,   1,0) \
+  MACROX(               CLIENT_DISCONNECTED, 101,0) \
+  MACROX(                  DATA_EXCHANGE_OK,   2,0) \
+  MACROX(  PREPARE_TO_ENTER_INSPECTION_MODE,   5,0) \
+  MACROX(              EXIT_INSPECTION_MODE, 105,0) \
+  MACROX(             INSPECTION_MODE_ERROR,   6,0) \
+  MACROX(        EXIT_INSPECTION_MODE_ERROR, 106,0) \
+  MACROX(             INSPECTION_MODE_FATAL,   7,0) \
+  MACROX(        EXIT_INSPECTION_MODE_FATAL, 107,0) \
+  MACROX(                      PULSE_STABLE,   3,0) \
+  MACROX(                    PULSE_UNSTABLE, 103,0) \
+  MACROX(                 PULSE_TIME_UNSYNC, 104,0) \
+  MACROX(                   PULSE_TIME_SYNC,   4,0) \
+
+
+#define SMM_GEN_ENUM_X(NAME,VALUE,X) NAME = VALUE ,
+#define SMM_GEN_ENUM(ENUM_NAME,DECLARE_X) \
+  enum class ENUM_NAME {\
+    DECLARE_X(SMM_GEN_ENUM_X) \
+  };\
+
+SMM_GEN_ENUM(SYS_STATE,SMM_STATE_DECLARE)
+
+
+SMM_GEN_ENUM(SYS_STATE_ACT,SMM_STATE_ACT_DECLARE)
+
+
+
+
+#define PULSE_TIME_SYNC_USSHIFT 25
 struct PulseTimeSyncInfo
 {
   PulseTimeSyncInfo_State state;
   uint32_t basePulseCount;
   uint32_t basePulse_us;
   // uint64_t us_per_1024_pulses;
-  uint64_t pulses_per_1048676us; //2^10
+  uint64_t pulses_per_1shiftXus;
 
   uint32_t pre_basePulseCount;
   uint64_t pre_basePulse_us;
 };
-
-struct SYS_INFO
-{
-
-  SYS_STATE pre_state;
-  SYS_STATE state;
-  int status;
-  struct PulseTimeSyncInfo PTSyncInfo;
-};
-
 
 
 
@@ -134,6 +146,20 @@ enum class ERROR_ACTION_TYPE
   FREE_SPIN_2_REV = 2,
   PULSE_TIME_RESYNC = 3,
 };
+
+struct SYS_INFO
+{
+
+  SYS_STATE pre_state;
+  SYS_STATE state;
+  int status;
+  struct PulseTimeSyncInfo PTSyncInfo;
+  
+  ERROR_ACTION_TYPE err_act;
+};
+
+
+
 
 typedef struct run_mode_info
 {
@@ -238,7 +264,7 @@ uint32_t get_Stepper_pulse_count();
 int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width);
 
 int EV_Axis0_Origin(uint32_t revCount);
-
+void ETH_RESET();
 
 
 #endif

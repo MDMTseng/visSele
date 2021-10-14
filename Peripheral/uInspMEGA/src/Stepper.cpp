@@ -70,6 +70,12 @@ void RESET_GateSensing()
 }
 
 
+
+void insert_fake_pulse()
+{
+}
+
+
 const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
@@ -122,11 +128,6 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
   }
 
   
-  static uint32_t pulseDist_B2M=0;
-  static uint32_t pre_pulseDist_B2M=0;
-  if(pulseDist_B2M!=10000)
-    pulseDist_B2M++;
-
   if(onSenseEdge)
   {
     if(!new_Sense)
@@ -137,21 +138,9 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
       {
         uint32_t middle_pulse=gateInfo.start_pulse+(diff>>1);
 
-        uint32_t minPulseDist=pulseHZ/subPulseSkipCount/g_max_frame_rate;
         // uint32_t avg_PD_B2M=(pre_pulseDist_B2M+pulseDist_B2M)>>1;
         // if(pulseDist_B2M>(minPulseDist*2/3) && avg_PD_B2M>minPulseDist)
-        if(pulseDist_B2M>minPulseDist)
-        {
-          pre_pulseDist_B2M=pulseDist_B2M;
-          pulseDist_B2M=0;
-          task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
-        }
-        else
-        {
-          // skip_pulse_showS(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
-          //skip the pulse : too fast in time
-          //control by pulseHZ/subPulseSkipCount/g_max_frame_rate;
-        }
+        task_newPulseEvent(gateInfo.start_pulse,gateInfo.end_pulse,middle_pulse,diff);
   
       }
       else

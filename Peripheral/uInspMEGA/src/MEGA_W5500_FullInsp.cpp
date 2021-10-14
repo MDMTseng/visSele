@@ -14,10 +14,14 @@
 #include "include/main.h"
 
 
-uint32_t tar_pulseHZ_ = perRevPulseCount_HW / 4;
+uint32_t tar_pulseHZ_ = 0;//perRevPulseCount_HW / 4;
+uint32_t cur_pulseHZ_ = tar_pulseHZ_;
 
+uint32_t curRevCount = 0;
 
+uint32_t pulseHZ_step = 50;
 
+uint8_t g_max_frame_rate = 30;
 
 //#define TEST_MODE
 uint16_t TCount = 0;
@@ -26,14 +30,60 @@ uint16_t ExeUpdateCount = 0;
 uint16_t PassCount = 0;
 uint16_t stageUpdated = 0;
 
+
+
+bool blockNewDetectedObject=false;
+
+GEN_ERROR_CODE errorBuf[20];
+RingBuf<typeof(*errorBuf), uint8_t> ERROR_HIST(errorBuf, SARRL(errorBuf));
+
 SYS_INFO sysinfo = {
     .pre_state = SYS_STATE::INIT,
     .state = SYS_STATE::INIT,
     .status = 0,
-    .PTSyncInfo = {.state = PulseTimeSyncInfo_State::INIT}
+    .PTSyncInfo = {.state = PulseTimeSyncInfo_State::INIT},
+    
+    .err_act = ERROR_ACTION_TYPE::NOP
   };
 
-void SYS_STATE_ChangeEv(SYS_STATE pre_sate, SYS_STATE new_state);
+
+
+run_mode_info mode_info = {
+  mode : run_mode_info::NORMAL,
+  misc_info : 0
+};
+
+InspResCount inspResCount = {0};
+
+int cur_insp_counter = -1;
+
+class Websocket_FI;
+Websocket_FI *WS_Server = NULL;
+
+
+//in libraries/Ethernet/src/utility/w5100.h CS pin is pin 10
+
+//The index type uint8_t would be enough if the buffersize<255
+
+RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
+
+IPAddress _ip(192, 168, 2, 43);
+IPAddress _gateway(192, 168, 1, 1);
+IPAddress _subnet(255, 255, 0, 0);
+int _port = 5213;
+
+uint32_t state_pulseOffset[] =
+    {0, 654, 657, 659, 660, 697, 750, 900, 910, 1073, 1083};
+
+
+
+struct ACT_SCH act_S;
+char* uint64_t_str(uint64_t n);
+char* uint32_t_str(uint32_t n);
+
+void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state);
+int task_Pulse_Time_Sync(uint32_t pulse);
+void errorAction(ERROR_ACTION_TYPE cur_action_type);
 
 void SYS_STATE_Transfer(SYS_STATE_ACT act)
 {
@@ -62,11 +112,25 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act)
       break;
 
     case SYS_STATE_ACT::DATA_EXCHANGE_OK: //Go next
-      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
+      state = SYS_STATE::IDLE;
       break;
     }
 
     break;
+
+  case SYS_STATE::IDLE:
+    switch (act)
+    {
+    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
+      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
+      break;
+
+    case SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE : //Go next
+      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
+      break;
+    }
+    break;
+  
   case SYS_STATE::WAIT_FOR_PULSE_STABLE:
     switch (act)
     {
@@ -76,6 +140,10 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act)
 
     case SYS_STATE_ACT::PULSE_STABLE: //Go next
       state = SYS_STATE::PULSE_TIME_SYNCING;
+      break;
+
+    case SYS_STATE_ACT::EXIT_INSPECTION_MODE : //Go next
+      state = SYS_STATE::IDLE;
       break;
     }
     break;
@@ -91,12 +159,15 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act)
       break;
 
     case SYS_STATE_ACT::PULSE_TIME_SYNC: //Go next
-      state = SYS_STATE::READY;
+      state = SYS_STATE::INSPECTION_MODE_READY;
+      break;
+    case SYS_STATE_ACT::EXIT_INSPECTION_MODE : //Go next
+      state = SYS_STATE::IDLE;
       break;
     }
     break;
 
-  case SYS_STATE::READY:
+  case SYS_STATE::INSPECTION_MODE_READY:
     switch (act)
     {
     case SYS_STATE_ACT::CLIENT_DISCONNECTED:
@@ -108,37 +179,81 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act)
     case SYS_STATE_ACT::PULSE_TIME_UNSYNC:
       state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
       break;
+    case SYS_STATE_ACT::EXIT_INSPECTION_MODE : //Go next
+      state = SYS_STATE::IDLE;
+      break;
+    }
+
+
+
+
+    
+  case SYS_STATE::INSPECTION_MODE_ERROR :
+    switch (act)
+    {
+    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
+      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
+      break;
+    case SYS_STATE_ACT::EXIT_INSPECTION_MODE_ERROR :
+      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
+      break;
+    case SYS_STATE_ACT::EXIT_INSPECTION_MODE :
+      state = SYS_STATE::IDLE;
+      break;
     }
     break;
   }
 
-  SYS_STATE_ChangeEv(sysinfo.state, state);
   if (sysinfo.state != state)
   { //state changed
     sysinfo.pre_state = sysinfo.state;
     sysinfo.state = state;
+    DEBUG_printf("=========s:%d=>%d\n",sysinfo.pre_state,sysinfo.state);
+    SYS_STATE_LIFECYCLE(sysinfo.pre_state, sysinfo.state );
   }
 }
 
-void SYS_STATE_ChangeEv(SYS_STATE pre_sate, SYS_STATE new_state)
+void SYS_STATE_LOOP()
 {
-  SYS_STATE states[3] = {SYS_STATE::NOP};
-  int is, ie;
+  SYS_STATE_LIFECYCLE(sysinfo.state,sysinfo.state);//same state means loop
+}
+
+
+void RESET_ALL_PIPELINE_QUEUE()
+{
+  
+  RBuf.clear();
+  act_S.ACT_BACKLight1H.clear();
+  act_S.ACT_BACKLight1L.clear();
+  act_S.ACT_CAM1.clear();
+  act_S.ACT_SEL1H.clear();
+  act_S.ACT_SEL1L.clear();
+  act_S.ACT_SEL2H.clear();
+  act_S.ACT_SEL2L.clear();
+  act_S.ACT_SWITCH.clear();
+  RESET_GateSensing();
+}
+
+uint32_t g_latest_sense_pulse=0;
+void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
+{
+  SYS_STATE states[3] = {SYS_STATE::NOP};//0: enter, 1:loop, 2:exit
+  int i_from, i_to;
   if (pre_sate == new_state)
   {
-    is = 1;
-    ie = 2;
+    i_from = 1;
+    i_to = 1;
     states[1] = new_state;
   }
   else
   {
-    is = 0;
-    ie = 3;
-    states[0] = pre_sate;
-    states[2] = new_state;
+    i_from = 2;
+    i_to = 0;
+    states[0] = new_state;
+    states[2] = pre_sate;
   }
-  for (int i = is; i < ie; i++)
-  { //0 for exit, 1 for enter
+  for (int i = i_from; i >= i_to; i--)//2(exit) -> 1(loop) -> 0(enter) the reversed order is to make sure exit(from old state) run first then run enter(to new state) block
+  {
 
     SYS_STATE state = states[i];
     switch (state)
@@ -147,17 +262,20 @@ void SYS_STATE_ChangeEv(SYS_STATE pre_sate, SYS_STATE new_state)
       break;
     case SYS_STATE::INIT:
       if (i == 2)
-      {
-      } //enter
-      else if (i == 1)
-      {
-      } //loop
-      else
-      {
+      {//For INIT state "EXIT"(i==2) is the first and last action that would run
+        blockNewDetectedObject=true;
       } //exit
       break;
     case SYS_STATE::WAIT_FOR_CLIENT_CONNECTION:
-      if (i == 2)
+      if(i==0)
+      {
+        blockNewDetectedObject=true;
+        RESET_ALL_PIPELINE_QUEUE();
+      }
+      //No action need to be done
+      break;
+    case SYS_STATE::DATA_EXCHANGE:
+      if (i == 0)
       {
       } //enter
       else if (i == 1)
@@ -167,102 +285,178 @@ void SYS_STATE_ChangeEv(SYS_STATE pre_sate, SYS_STATE new_state)
       {
       } //exit
       break;
-    case SYS_STATE::DATA_EXCHANGE:
-      if (i == 2)
+      
+    case SYS_STATE::IDLE:
+      if (i == 0)
       {
+        blockNewDetectedObject=true;//ignore all incoming real object
+        RESET_ALL_PIPELINE_QUEUE();
       } //enter
       else if (i == 1)
       {
+        
+        SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
       } //loop
       else
       {
       } //exit
       break;
     case SYS_STATE::WAIT_FOR_PULSE_STABLE:
-      if (i == 2)
+    {
+      static uint32_t enterPulse=0;
+      if (i == 0)
       {
+        blockNewDetectedObject=true;//ignore all incoming real object
+
+        RESET_ALL_PIPELINE_QUEUE();
+
+        enterPulse=get_Stepper_pulse_count();
+        digitalWrite(BACK_LIGHT_PIN, 0);
       } //enter
       else if (i == 1)
       {
+        // uint32_t cur_pulse = get_Stepper_pulse_count();//just a show off flashing
+        // uint32_t pulseDiff  = cur_pulse-enterPulse;
+        // digitalWrite(BACK_LIGHT_PIN, (pulseDiff>>3)&1);
       } //loop
       else
       {
+        
+        digitalWrite(BACK_LIGHT_PIN, 0);
       } //exit
       break;
+    }
 
     case SYS_STATE::PULSE_TIME_SYNCING:
-      if (i == 2)
+    {
+      static uint32_t checkPointPulse=0;
+      static uint32_t seqInitPulse=0;
+      static uint8_t innerState=0;
+      if (i == 0)
       {
-      } //enter
-      else if (i == 1)
-      {
-      } //loop
-      else
-      {
-      } //exit
-      break;
+        blockNewDetectedObject=true;//ignore all incoming real object
 
-    case SYS_STATE::READY:
-      if (i == 2)
-      {
+        DEBUG_printf(">>ENTER PULSE_TIME_SYNCING>>>");
+
+        RESET_ALL_PIPELINE_QUEUE();
+
+        digitalWrite(AIR_BLOW_OK_PIN, 0);
+        digitalWrite(AIR_BLOW_NG_PIN, 0);
+        digitalWrite(BACK_LIGHT_PIN, 0);
+        innerState=0;
       } //enter
       else if (i == 1)
       {
+        uint32_t cur_pulse = get_Stepper_pulse_count();
+        if(innerState==0)
+        {
+          task_Pulse_Time_Sync(cur_pulse + 0*cur_pulseHZ_/subPulseSkipCount/10);
+          task_Pulse_Time_Sync(cur_pulse + 5*cur_pulseHZ_/subPulseSkipCount/10);
+          uint32_t lastPulse = cur_pulse + 15*cur_pulseHZ_/subPulseSkipCount/10;
+          task_Pulse_Time_Sync(lastPulse);
+          sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
+          checkPointPulse = lastPulse+2400/2;
+          innerState=1;
+          seqInitPulse=cur_pulse;
+        }
+        else if(innerState==1)
+        {//wait for checkpoint
+          {
+            int32_t seqDiff_0_1sec = 10*(cur_pulse-seqInitPulse)*subPulseSkipCount/cur_pulseHZ_;
+            if(seqDiff_0_1sec<16)
+            {
+              uint16_t blinkSeq=0;
+              blinkSeq=(blinkSeq<<8)|0b11110111;
+              blinkSeq=(blinkSeq<<8)|0b11110111;
+              blinkSeq<<=(seqDiff_0_1sec);
+              digitalWrite(BACK_LIGHT_PIN, (blinkSeq&0x8000)?1:0);
+            }
+          }
+
+          
+
+
+
+          int32_t diff = cur_pulse-checkPointPulse;
+          if(diff>0)
+          {
+            DEBUG_printf("Oh shit!!");
+            innerState=0;
+          }
+        }
       } //loop
       else
       {
+
+        digitalWrite(BACK_LIGHT_PIN, 0);
+        g_latest_sense_pulse=get_Stepper_pulse_count();
       } //exit
       break;
+    }
+
+    case SYS_STATE::INSPECTION_MODE_READY:
+    {
+      static uint8_t loopDivCounter=0;// just to make the buzy loop not so buzy
+       
+      if (i == 0)
+      {
+        blockNewDetectedObject=false;
+      } //enter
+      else if (i == 1)
+      {
+        loopDivCounter++;
+        if((loopDivCounter&(0xFF))==0)
+        {
+          uint32_t cur_pulse = get_Stepper_pulse_count();
+          uint32_t pulse_diff = cur_pulse-g_latest_sense_pulse;
+          uint32_t pulseSep=20*cur_pulseHZ_/subPulseSkipCount;//every 20sec
+          // DEBUG_printf("diff:%d",pulse_diff);
+
+          if(pulse_diff>pulseSep)//give 4 rev time
+          {//if too long there is no new object incoming, to maintain pulse-time in sync we need to add a phantom pulse to sample camera system time info
+            DEBUG_printf("FAKE pulse:%s\n",uint32_t_str(cur_pulse));
+            task_newPulseEvent(cur_pulse, cur_pulse, cur_pulse, 10);
+          }
+        }
+      } //loop
+      else
+      {
+        blockNewDetectedObject=true;
+      } //exit
+      break;
+    }
     }
   }
 }
 
-run_mode_info mode_info = {
-  mode : run_mode_info::NORMAL,
-  misc_info : 0
-};
-
-InspResCount inspResCount = {0};
-
-int cur_insp_counter = -1;
-
-class Websocket_FI;
-Websocket_FI *WS_Server = NULL;
-
-GEN_ERROR_CODE errorBuf[20];
-RingBuf<typeof(*errorBuf), uint8_t> ERROR_HIST(errorBuf, SARRL(errorBuf));
-
-
-//in libraries/Ethernet/src/utility/w5100.h CS pin is pin 10
-
-//The index type uint8_t would be enough if the buffersize<255
-
-RingBuf_Static<pipeLineInfo, PIPE_INFO_LEN, uint8_t> RBuf;
-
-IPAddress _ip(192, 168, 2, 43);
-IPAddress _gateway(192, 168, 1, 1);
-IPAddress _subnet(255, 255, 0, 0);
-int _port = 5213;
 
 void errorLOG(GEN_ERROR_CODE code, char *errorLog = NULL);
 
 
-uint32_t state_pulseOffset[] =
-    {0, 654, 657, 659, 660, 697, 750, 900, 910, 1073, 1083};
-
-
-
-struct ACT_SCH act_S;
-
-ERROR_ACTION_TYPE errorActionType = ERROR_ACTION_TYPE::NOP;
 
 int ActRegister_pipeLineInfo(pipeLineInfo *pli);
+
+
+
 int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
-  if (sysinfo.PTSyncInfo.state != PulseTimeSyncInfo_State::READY || errorActionType != ERROR_ACTION_TYPE::NOP)
+  
+  uint32_t minPulseDist=cur_pulseHZ_/subPulseSkipCount/g_max_frame_rate;
+  if (blockNewDetectedObject)
   {
     return -10;
   }
+
+  {
+    uint32_t dist = middle_pulse-g_latest_sense_pulse;
+    if(dist<minPulseDist)
+    {
+      return -11;//pulse interval is too short
+    }
+    g_latest_sense_pulse=middle_pulse;
+  }
+
+  
   //
   pipeLineInfo *head = RBuf.getHead();
   if (head == NULL)
@@ -373,9 +567,7 @@ int ActRegister_Pulse_Time_Sync(pipeLineInfo *pli)
   {
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[2], 1, );
     ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[3], 2, );
-
     ACT_PUSH_TASK(act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2, );
-
     return 0;
     // pli->insp_status=insp_status_OK;
   }
@@ -425,7 +617,7 @@ int Run_ACTS(uint32_t cur_pulse)
       //
       if (task->info == 1)
       {
-        // DEBUG_printf("CAM1 s:%p tp:%d\n",task->src,task->targetPulse);
+        // DEBUG_println("C");
         digitalWrite(CAMERA_PIN, 1);
       } else if (task->info == 2)
       {
@@ -490,7 +682,7 @@ int Run_ACTS(uint32_t cur_pulse)
         default:
           inspResCount.ERR++;
           errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-
+          
           // PassCount=0;
           // inspResCount.ERR++;
           // //Error:The inspection result isn't back
@@ -559,7 +751,6 @@ int AddResultCountToJson(char *send_rsp, uint32_t send_rspL, struct InspResCount
   return MessageL;
 }
 
-void errorAction(ERROR_ACTION_TYPE cur_action_type);
 ERROR_ACTION_TYPE errorActionTransition(ERROR_ACTION_TYPE atype, GEN_ERROR_CODE code)
 {
   ERROR_ACTION_TYPE actionType = ERROR_ACTION_TYPE::NOP;
@@ -594,16 +785,6 @@ ERROR_ACTION_TYPE errorActionTransition(ERROR_ACTION_TYPE atype, GEN_ERROR_CODE 
   return actionType;
 }
 
-uint32_t curRevCount = 0;
-int EV_Axis0_Origin(uint32_t revCount)
-{
-  curRevCount = revCount;
-  if ((revCount & 7) == 0)
-  {
-    DEBUG_print("REV:");
-    DEBUG_println(curRevCount);
-  }
-}
 
 void errorAction(ERROR_ACTION_TYPE cur_action_type)
 {
@@ -620,31 +801,6 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
 
       DEBUG_print("targetRevCount::");
       DEBUG_println(targetRevCount);
-      break;
-    case ERROR_ACTION_TYPE::PULSE_TIME_RESYNC:
-      RBuf.clear();
-      act_S.ACT_BACKLight1H.clear();
-      act_S.ACT_BACKLight1L.clear();
-      act_S.ACT_CAM1.clear();
-      act_S.ACT_SEL1H.clear();
-      act_S.ACT_SEL1L.clear();
-      act_S.ACT_SEL2H.clear();
-      act_S.ACT_SEL2L.clear();
-      act_S.ACT_SWITCH.clear();
-      RESET_GateSensing();
-
-      digitalWrite(AIR_BLOW_OK_PIN, 0);
-      digitalWrite(AIR_BLOW_NG_PIN, 0);
-
-      digitalWrite(BACK_LIGHT_PIN, 1);
-
-      uint32_t cur_pulse = get_Stepper_pulse_count();
-      sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::INIT;
-      task_Pulse_Time_Sync(cur_pulse + 200);
-      task_Pulse_Time_Sync(cur_pulse + 400);
-      task_Pulse_Time_Sync(cur_pulse + 300);
-
-      targetPulseCount = cur_pulse + 2400 * 2;
       break;
     }
     pre_action_type = cur_action_type;
@@ -685,7 +841,7 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
     {
       DEBUG_println("FREE_SPIN_2_REV  REACH.... ending");
       digitalWrite(BACK_LIGHT_PIN, 0);
-      errorActionType = errorActionTransition(errorActionType, GEN_ERROR_CODE::RESET);
+      sysinfo.err_act = errorActionTransition(sysinfo.err_act, GEN_ERROR_CODE::RESET);
     }
   }
   break;
@@ -695,15 +851,7 @@ void errorAction(ERROR_ACTION_TYPE cur_action_type)
     //DEBUG_println("FREE_SPIN_2_REV  IN p::");
     // logicPulseCount_
 
-    int32_t pdiff = targetPulseCount - get_Stepper_pulse_count();
-    if (pdiff > 0)
-    {
-    }
-    else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::READY)
-    {
-      digitalWrite(BACK_LIGHT_PIN, 0);
-      errorActionType = errorActionTransition(errorActionType, GEN_ERROR_CODE::RESET);
-    }
+    sysinfo.err_act = errorActionTransition(sysinfo.err_act, GEN_ERROR_CODE::RESET);
   }
   break;
 
@@ -736,24 +884,9 @@ void errorLOG(GEN_ERROR_CODE code, char *errorLog)
 
     DEBUG_print("errorLOG:");
     DEBUG_println((int)code);
-    //errorAction(errorActionType);
+    //errorAction(sysinfo.err_act);
   }
-  errorActionType = errorActionTransition(errorActionType, code);
-  //
-  //  if(0){
-  //    uint8_t errBuff[100];
-  //    uint8_t errBuffL=0;
-  //    errBuffL+=sprintf(errBuff+errBuffL,"{");
-  //
-  //    errBuffL += sprintf( errBuff+errBuffL,"\"type\":\"error_notification\",");
-  //    errBuffL+=AddErrorCodesToJson(errBuff+errBuffL, 20);
-  //    if(errorLog)
-  //      errBuffL+= sprintf(errBuff+errBuffL,"\"log\":\"%s\",",errorLog);
-  //
-  //    errBuffL--;//remove the last ','
-  //    errBuffL+=sprintf(errBuff+errBuffL,"}");//give it an close
-  //    WS_Server->SEND_ALL(errBuff,errBuffL,0);
-  //  }
+  sysinfo.err_act = errorActionTransition(sysinfo.err_act, code);
 }
 
 class Websocket_FI : public Websocket_FI_proto
@@ -768,11 +901,15 @@ public:
     DEBUG_println("onPeerDisconnect");
     //    tar_pulseHZ_=0;
     peer = NULL;
+    
+    SYS_STATE_Transfer(SYS_STATE_ACT::CLIENT_DISCONNECTED);
     return;
   }
 
   virtual void onPeerConnect(WebSocketProtocol *WProt)
   {
+    DEBUG_println("onPeerConnect");
+    SYS_STATE_Transfer(SYS_STATE_ACT::CLIENT_CONNECTED);
     peer = WProt;
   }
 
@@ -934,38 +1071,19 @@ public:
       *ret_val = val;
     return 0;
   }
-  // void print_uint64_t(uint64_t num) {
-
-  //   do{
-  //     Serial.print((char)(num%10)+'0');
-  //     num/=10;
-  //   }while (num);
-  // }
-  void print_uint64_t(uint64_t n)
-  {
-    uint8_t base = 10;
-    char buf[3 * sizeof(uint64_t) + 1]; // "big enough" buffer.
-    char *str = &buf[sizeof(buf) - 1];
-    *str = '\0';
-    do
-    {
-      char c = n % base;
-      n /= base;
-      *--str = c + '0';
-    } while (n);
-
-    Serial.print(str);
-  }
 
   virtual int Json_CMDExec(WebSocketProtocol *WProt, uint8_t *recv_cmd, int cmdL, sending_buffer *send_pack, int data_in_pack_maxL)
   {
+    // DEBUG_printf(">>>s:%d\n",sysinfo.state);
+    
     if (peer == NULL)
     {
       onPeerConnect(WProt);
     }
+
     char *send_rsp = send_pack->data;
     int send_rspL = data_in_pack_maxL;
-    //    DEBUG_println((char*)recv_cmd);
+    // DEBUG_println((char*)recv_cmd);
 
     char extBuff_[100];
     char *extBuff = extBuff_;
@@ -1010,10 +1128,6 @@ public:
 
       if (strcmp(typeStr, "inspRep") == 0)
       {
-        if (mode_info.mode == run_mode_info::TEST)
-        {
-          return 0;
-        }
         int new_count = -99;
         int pre_count = cur_insp_counter; //0~255
         char *counter_str = extBuff;
@@ -1049,17 +1163,17 @@ public:
           }
         }
 
-        if (errorActionType != ERROR_ACTION_TYPE::NOP)
-        {
-          return 0;
-        }
+        // if (sysinfo.err_act != ERROR_ACTION_TYPE::NOP)
+        // {
+        //   return 0;
+        // }
 
-        if (counter_str == NULL)
-        {
+        // if (counter_str == NULL)
+        // {
 
-          errorLOG(GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
-          return 0;
-        }
+        //   errorLOG(GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
+        //   return 0;
+        // }
 
         int insp_status = -99;
         {
@@ -1091,6 +1205,7 @@ public:
 
             if (convertStringToU64(time_us_str, &time_us) == 0)
             {
+              time_us/=100;
               if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::INIT)
               {
                 sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_preBaseTime;
@@ -1128,12 +1243,10 @@ public:
           {
             // uint32_t pulseDiff=gate_pulse-sysinfo.PTSyncInfo.basePulseCount;
             uint64_t pulseTimeDiff = time_us - sysinfo.PTSyncInfo.basePulse_us;
-            uint64_t pulseDiff = (pulseTimeDiff * sysinfo.PTSyncInfo.pulses_per_1048676us) >> 20;
+            uint64_t pulseDiff = (pulseTimeDiff * sysinfo.PTSyncInfo.pulses_per_1shiftXus) >> (PULSE_TIME_SYNC_USSHIFT-1);
+            pulseDiff=(pulseDiff>>1)+((pulseDiff&1)?1:0);//binary round
             targetObjGatePulse = pulseDiff + sysinfo.PTSyncInfo.basePulseCount;
 
-            // DEBUG_printf("pulseDiff=");
-            // print_uint64_t(pulseDiff);
-            // DEBUG_print('\n');
           }
         }
 
@@ -1192,15 +1305,17 @@ public:
           DEBUG_printf("targetObjGatePulse=%" PRIu32 "\n==diff:%d==\n", targetObjGatePulse, diff);
           if (diff < 0)
             diff = -diff;
-          if (diff < 10)
+          if (diff < 5)
           { //update
             sysinfo.PTSyncInfo.basePulse_us = time_us;
             sysinfo.PTSyncInfo.basePulseCount = matched_obj_pulse;
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::READY;
+            SYS_STATE_Transfer(SYS_STATE_ACT::PULSE_TIME_SYNC);
           }
           else
           {
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT; //unmatch..
+            SYS_STATE_Transfer(SYS_STATE_ACT::PULSE_TIME_UNSYNC);
           }
         }
         else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_DATA_CALC)
@@ -1208,17 +1323,15 @@ public:
 
           uint32_t pulseDiff = sysinfo.PTSyncInfo.basePulseCount - sysinfo.PTSyncInfo.pre_basePulseCount;
           uint64_t pulseTimeDiff = sysinfo.PTSyncInfo.basePulse_us - sysinfo.PTSyncInfo.pre_basePulse_us;
-          sysinfo.PTSyncInfo.pulses_per_1048676us = ((uint64_t)pulseDiff << 20) / pulseTimeDiff;
 
+          uint64_t factor = ((uint64_t)pulseDiff << (PULSE_TIME_SYNC_USSHIFT+1)) / pulseTimeDiff;
+          sysinfo.PTSyncInfo.pulses_per_1shiftXus = (factor>>1)+((factor&1)?1:0);//binary round
+          // sysinfo.PTSyncInfo.pulses_per_1shiftXus+=1;
           sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_Verify;
 
           DEBUG_printf("pulseDiff=%d ", pulseDiff);
-          DEBUG_printf("timeDiff=");
-          print_uint64_t(pulseTimeDiff);
-          DEBUG_print("\n");
-          DEBUG_printf("pulses_per_1048676us=");
-          print_uint64_t(sysinfo.PTSyncInfo.pulses_per_1048676us);
-          DEBUG_print("\n");
+          DEBUG_printf("timeDiff=%s\n",uint64_t_str(pulseTimeDiff));
+          DEBUG_printf("pulses_per_1shiftXus=%s\n",uint64_t_str(sysinfo.PTSyncInfo.pulses_per_1shiftXus));
         }
 
         if (ret_status)
@@ -1325,7 +1438,7 @@ public:
       else if (strcmp(typeStr, "set_setup") == 0)
       {
         int ret_st = 0;
-        DEBUG_print("set_setup:");
+        // DEBUG_print("set_setup:");
         MessageL += JsonToMach(send_rsp + MessageL, send_rspL - MessageL, recv_cmd, cmdL, &ret_st);
         //        DEBUG_print("set_setupL::");
         //        DEBUG_println(MessageL);
@@ -1333,6 +1446,8 @@ public:
         //
         //MessageL=0;
         ret_status = ret_st;
+        
+        SYS_STATE_Transfer(SYS_STATE_ACT::DATA_EXCHANGE_OK);
       }
 
       else if (strcmp(typeStr, "error_get") == 0)
@@ -1473,6 +1588,77 @@ public:
   }
 };
 
+
+
+
+
+void loop()
+{
+  static int emptyPlateCount = 0;
+  static uint32_t totalLoop = 0;
+  static int noConnectionTickCount = 0;
+  if (WS_Server)
+    WS_Server->loop_WS();
+
+  totalLoop++;
+
+  if ((totalLoop & 0x1F) == 0)
+  {
+
+
+    cur_pulseHZ_ = loop_Stepper(tar_pulseHZ_, pulseHZ_step);
+    if (cur_pulseHZ_ * 20 < perRevPulseCount_HW)
+    {
+      digitalWrite(FEEDER_PIN, LOW);
+    }
+    else
+    {
+      digitalWrite(FEEDER_PIN, HIGH);
+    }
+    
+    SYS_STATE_Transfer(cur_pulseHZ_ == tar_pulseHZ_?SYS_STATE_ACT::PULSE_STABLE:SYS_STATE_ACT::PULSE_UNSTABLE);
+  }
+
+  SYS_STATE_LOOP();
+  // if ((totalLoop & 0xFFF) == 0)
+  // {
+  //   static uint32_t nextPulseN = 0;
+
+  //   uint32_t dist = nextPulseN - logicPulseCount_;
+  // }
+
+  if ((totalLoop & (0x7FFF >> 1)) == 0)
+  {
+
+    if (WS_Server->FindLiveClient() == 0) //if no connection exists
+    {
+      noConnectionTickCount++;
+      if (noConnectionTickCount > 20) //for quite a long time
+      {
+        noConnectionTickCount = 0;
+        ETH_RESET();
+      }
+    }
+    else
+    {
+      noConnectionTickCount = 0;
+    }
+
+    if (RBuf.size() == 0)
+    {
+      emptyPlateCount++;
+    }
+    else
+    {
+      emptyPlateCount = 0;
+    }
+  }
+
+
+}
+
+
+
 void showOff()
 {
   //int delayArr[]={140,140,360,140,140,360};
@@ -1492,7 +1678,6 @@ void showOff()
   }
 }
 
-uint32_t pulseHZ_step = 50;
 
 int serial_putc(char c, struct __file *)
 {
@@ -1542,36 +1727,21 @@ void setup()
   //#else
 
   //#endif
+  
+  SYS_STATE_Transfer(SYS_STATE_ACT::INIT_OK);
 }
 
-uint32_t ccc = 0;
 
-uint32_t totalLoop = 0;
-
-int emptyPlateCount = 0;
-
-uint32_t _rotl(uint32_t value, int shift)
+int EV_Axis0_Origin(uint32_t revCount)
 {
-  if ((shift &= 31) == 0)
-    return value;
-  return (value << shift) | (value >> (32 - shift));
-}
-uint32_t cmpCheckSum(int shift, int num_args, ...)
-{
-  uint32_t val = 0;
-  va_list ap;
-  int i;
-
-  va_start(ap, num_args);
-  for (i = 0; i < num_args; i++)
+  curRevCount = revCount;
+  if ((revCount & 7) == 0)
   {
-    val ^= _rotl(va_arg(ap, uint32_t), 3);
-    val = _rotl(val, shift);
+    DEBUG_print("REV:");
+    DEBUG_println(curRevCount);
   }
-  va_end(ap);
-
-  return val;
 }
+
 
 uint32_t pre_csum = 0;
 void printDBGInfo()
@@ -1620,145 +1790,39 @@ void printDBGInfo()
   }
 }
 
-void HARD_RESET()
+
+
+
+char* uint32_t_str(uint32_t n)
 {
-  cli();                 // Clear interrupts
-  wdt_enable(WDTO_15MS); // Set the Watchdog to 15ms
-  while (1)
-    ; // Enter an infinite loop
+  uint8_t base = 10;
+  static char buf[3 * sizeof(uint32_t) + 1]; // "big enough" buffer.
+  char *str = &buf[sizeof(buf) - 1];
+  *str = '\0';
+  do
+  {
+    char c = n % base;
+    n /= base;
+    *--str = c + '0';
+  } while (n);
+
+  // Serial.print(str);
+  return str;
 }
 
-int noConnectionTickCount = 0;
-void loop()
+char* uint64_t_str(uint64_t n)
 {
-  if (WS_Server)
-    WS_Server->loop_WS();
-
-  totalLoop++;
-
-  if ((totalLoop & 0x1F) == 0)
+  uint8_t base = 10;
+  static char buf[3 * sizeof(uint64_t) + 1]; // "big enough" buffer.
+  char *str = &buf[sizeof(buf) - 1];
+  *str = '\0';
+  do
   {
+    char c = n % base;
+    n /= base;
+    *--str = c + '0';
+  } while (n);
 
-    uint32_t tar = tar_pulseHZ_;
-    if (0 && emptyPlateCount > 14)
-      tar /= 5;
-
-    uint32_t cur = loop_Stepper(tar, pulseHZ_step);
-    if (cur * 20 < perRevPulseCount_HW)
-    {
-      digitalWrite(FEEDER_PIN, LOW);
-    }
-    else
-    {
-      digitalWrite(FEEDER_PIN, HIGH);
-    }
-
-    SYS_STATE_Transfer(cur == tar ? SYS_STATE_ACT::PULSE_STABLE : SYS_STATE_ACT::PULSE_UNSTABLE);
-  }
-
-  // if ((totalLoop & 0xFFF) == 0)
-  // {
-  //   static uint32_t nextPulseN = 0;
-
-  //   uint32_t dist = nextPulseN - logicPulseCount_;
-  // }
-
-  if ((totalLoop & (0x7FFF >> 1)) == 0)
-  {
-
-    if (WS_Server->FindLiveClient() == 0) //if no connection exist
-    {
-      noConnectionTickCount++;
-      if (noConnectionTickCount > 20) //for quite a long time
-      {
-        noConnectionTickCount = 0;
-        ETH_RESET();
-      }
-    }
-    else
-    {
-      noConnectionTickCount = 0;
-    }
-    //    DEBUG_print("RBuf:");
-    //    DEBUG_println(RBuf.size());
-    //    DEBUG_print("thres_skip_counter:");
-    //    DEBUG_println(thres_skip_counter);
-    //    printDBGInfo();
-    //    DEBUG_println((char*)WS_Server->json_sec_buffer);
-    if (ERROR_HIST.size() != 0)
-    {
-      // DEBUG_print("Error:");
-      // DEBUG_println(ERROR_HIST.size());
-    }
-    if (errorActionType != ERROR_ACTION_TYPE::NOP)
-    {
-      // DEBUG_print("errorActionType:");
-      // DEBUG_println((int)errorActionType);
-    }
-
-    if (RBuf.size() == 0)
-    {
-      emptyPlateCount++;
-    }
-    else
-    {
-      emptyPlateCount = 0;
-    }
-  }
-
-  if (totalLoop < 0xFFFF)
-  {
-    return;
-  }
-
-  //if(ERROR_HIST.size()!=0)//If there is at leaset an error, do errorAction.
-  if (errorActionType != ERROR_ACTION_TYPE::NOP)
-  {
-    errorAction(errorActionType);
-  }
-
-  //  //test Con
-  //  {
-  //
-  //    static uint8_t testE=1;
-  //    if(curRevCount==6 &&  testE)
-  //    {
-  //
-  //      DEBUG_print("Test Error Trigger::");
-  //      testE=0;
-  //      errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-  //    }
-  //
-  //  }
-
-  //for(uint32_t i=0;i!=1;i++)
-  //  {
-  //
-  //    //ddd%=3;
-  //    uint32_t dddx=(uint32_t)4400*2/100*10;
-  //    if(ccc++==dddx)
-  //    {
-  //      ccc=0;
-  //    }
-  //    if(ccc==0)
-  //        digitalWrite(FAKE_GATE_PIN, HIGH);
-  //    if(ccc==dddx/2)
-  //        digitalWrite(FAKE_GATE_PIN, LOW);
-  //  }
-
-  //  char tmp[40];
-  //  for(uint32_t i=0;i<RBuf.size();i++)
-  //  {
-  //    pipeLineInfo* tail = RBuf.getTail(i);
-  //    if(!tail)break;
-  //    if(tail->sent_stage!=tail->stage && tail->stage>0)
-  //    {
-  //      tail->sent_stage=tail->stage;
-  //      int len = sprintf(tmp,"{'type':'noti_obj_info','s':%d,'m':%d,'p':%d}",tail->stage,tail->notifMark,tail->gate_pulse);
-  //      DEBUG_println(tmp);
-  //      if(WS_Server)
-  //        WS_Server->SEND_ALL((uint8_t*)tmp,len,0);
-  //      break;
-  //    }
-  //  }
+  // Serial.print(str);
+  return str;
 }
