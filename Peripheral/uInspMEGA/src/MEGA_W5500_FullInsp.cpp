@@ -21,7 +21,7 @@ uint32_t curRevCount = 0;
 
 uint32_t pulseHZ_step = 50;
 
-uint8_t g_max_frame_rate = 30;
+uint8_t g_max_frame_rate = 50;
 
 //#define TEST_MODE
 uint16_t TCount = 0;
@@ -40,10 +40,9 @@ RingBuf<typeof(*errorBuf), uint8_t> ERROR_HIST(errorBuf, SARRL(errorBuf));
 SYS_INFO sysinfo = {
     .pre_state = SYS_STATE::INIT,
     .state = SYS_STATE::INIT,
+    .extra_code = 0,
     .status = 0,
     .PTSyncInfo = {.state = PulseTimeSyncInfo_State::INIT},
-    
-    .err_act = ERROR_ACTION_TYPE::NOP
   };
 
 
@@ -77,133 +76,62 @@ uint32_t state_pulseOffset[] =
 
 
 
+void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
+{
+  GEN_ERROR_CODE *head_code = ERROR_HIST.getHead();
+  if (head_code == NULL)
+  {
+    ERROR_HIST.consumeTail();
+    head_code = ERROR_HIST.getHead();
+  }
+
+  if (head_code != NULL)
+  {
+    *head_code = code;
+    ERROR_HIST.pushHead();
+
+    // DEBUG_print("errorLOG:");
+    // DEBUG_println((int)code);
+    // //errorAction(sysinfo.err_act);
+  }
+}
+
 struct ACT_SCH act_S;
 char* uint64_t_str(uint64_t n);
 char* uint32_t_str(uint32_t n);
 
 void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state);
 int task_Pulse_Time_Sync(uint32_t pulse);
-void errorAction(ERROR_ACTION_TYPE cur_action_type);
 
 void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
 {
   SYS_STATE state = sysinfo.state;
-  switch (state)
-  {
-  case SYS_STATE::INIT:
-  {
-    if (act == SYS_STATE_ACT::INIT_OK)
-    {
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-    }
-    break;
-  }
-  case SYS_STATE::WAIT_FOR_CLIENT_CONNECTION:
-    if (act == SYS_STATE_ACT::CLIENT_CONNECTED)
-    {
-      state = SYS_STATE::DATA_EXCHANGE;
-    }
-    break;
-  case SYS_STATE::DATA_EXCHANGE:
-    switch (act)
-    {
-    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-      break;
-
-    case SYS_STATE_ACT::DATA_EXCHANGE_OK: //Go next
-      state = SYS_STATE::IDLE;
-      break;
-    }
-
-    break;
-
-  case SYS_STATE::IDLE:
-    switch (act)
-    {
-    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-      break;
-
-    case SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE : //Go next
-      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
-      break;
-    }
-    break;
   
-  case SYS_STATE::WAIT_FOR_PULSE_STABLE:
-    switch (act)
-    {
-    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-      break;
 
-    case SYS_STATE_ACT::PULSE_STABLE: //Go next
-      state = SYS_STATE::PULSE_TIME_SYNCING;
-      break;
-
-    case SYS_STATE_ACT::EXIT_INSPECTION_MODE : //Go next
-      state = SYS_STATE::IDLE;
-      break;
-    }
-    break;
-
-  case SYS_STATE::PULSE_TIME_SYNCING:
-    switch (act)
-    {
-    case SYS_STATE_ACT::PULSE_UNSTABLE:
-      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
-      break;
-    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-      break;
-
-    case SYS_STATE_ACT::PULSE_TIME_SYNC: //Go next
-      state = SYS_STATE::INSPECTION_MODE_READY;
-      break;
-    case SYS_STATE_ACT::EXIT_INSPECTION_MODE : //Go next
-      state = SYS_STATE::IDLE;
-      break;
-    }
-    break;
-
-  case SYS_STATE::INSPECTION_MODE_READY:
-    switch (act)
-    {
-    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-      break;
-    case SYS_STATE_ACT::PULSE_UNSTABLE:
-      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
-      break;
-    case SYS_STATE_ACT::PULSE_TIME_UNSYNC:
-      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
-      break;
-    case SYS_STATE_ACT::EXIT_INSPECTION_MODE : //Go next
-      state = SYS_STATE::IDLE;
-      break;
-    }
-
-
-
-
-    
-  case SYS_STATE::INSPECTION_MODE_ERROR :
-    switch (act)
-    {
-    case SYS_STATE_ACT::CLIENT_DISCONNECTED:
-      state = SYS_STATE::WAIT_FOR_CLIENT_CONNECTION;
-      break;
-    case SYS_STATE_ACT::EXIT_INSPECTION_MODE_ERROR :
-      state = SYS_STATE::WAIT_FOR_PULSE_STABLE;
-      break;
-    case SYS_STATE_ACT::EXIT_INSPECTION_MODE :
-      state = SYS_STATE::IDLE;
-      break;
-    }
-    break;
+#define _MX1(CASE_STATE,CONTENT) \
+  case CASE_STATE :{\
+    switch(act){\
+      CONTENT\
+    }\
+    break;\
   }
+#define _MX2(CASE_ACT,NEW_STATE) \
+  case CASE_ACT :{\
+    state = NEW_STATE;\
+    break;\
+  }\
 
+  switch(state)
+  {
+    SMM_STATE_TRANSFER_DECLARE(
+      _MX1,
+      _MX2,
+      SYS_STATE,SYS_STATE_ACT
+    )
+  }
+  #undef _MX1
+  #undef _MX2
+  
   if (sysinfo.state != state)
   { //state changed
     sysinfo.pre_state = sysinfo.state;
@@ -276,15 +204,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       //No action need to be done
       break;
     case SYS_STATE::DATA_EXCHANGE:
-      if (i == 0)
-      {
-      } //enter
-      else if (i == 1)
-      {
-      } //loop
-      else
-      {
-      } //exit
+      
       break;
       
     case SYS_STATE::IDLE:
@@ -295,13 +215,30 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //enter
       else if (i == 1)
       {
-        
-        SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
+        SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
+        // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
       } //loop
       else
       {
       } //exit
       break;
+
+
+
+    case SYS_STATE::INSPECTION_MODE_TEST:
+      if (i == 0)
+      {
+        blockNewDetectedObject=false;
+      } //enter
+      else if (i == 1)
+      {
+        
+      } //loop
+      else
+      {
+      } //exit
+      break;
+    break;
     case SYS_STATE::WAIT_FOR_PULSE_STABLE:
     {
       static uint32_t enterPulse=0;
@@ -352,11 +289,11 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         if(innerState==0)
         {
           task_Pulse_Time_Sync(cur_pulse + 0*cur_pulseHZ_/subPulseSkipCount/10);
-          task_Pulse_Time_Sync(cur_pulse + 5*cur_pulseHZ_/subPulseSkipCount/10);
-          uint32_t lastPulse = cur_pulse + 15*cur_pulseHZ_/subPulseSkipCount/10;
+          task_Pulse_Time_Sync(cur_pulse + 15*cur_pulseHZ_/subPulseSkipCount/10);
+          uint32_t lastPulse = cur_pulse + 30*cur_pulseHZ_/subPulseSkipCount/10;
           task_Pulse_Time_Sync(lastPulse);
           sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
-          checkPointPulse = lastPulse+2400/2;
+          checkPointPulse = lastPulse+2400;
           innerState=1;
           seqInitPulse=cur_pulse;
         }
@@ -426,13 +363,48 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //exit
       break;
     }
+
+    case SYS_STATE::INSPECTION_MODE_ERROR:
+    {
+      static uint32_t targetPulse=0;
+      if (i == 0)
+      {
+        blockNewDetectedObject=true;
+        
+        DEBUG_printf(">>ENTER ERROR(%d)>>>\n",sysinfo.extra_code);
+
+        RESET_ALL_PIPELINE_QUEUE();
+
+        digitalWrite(AIR_BLOW_OK_PIN, 0);
+        digitalWrite(AIR_BLOW_NG_PIN, 0);
+        digitalWrite(BACK_LIGHT_PIN, 1);
+        targetPulse=get_Stepper_pulse_count()+perRevPulseCount;//in jail for one rev
+        ERROR_LOG_PUSH((GEN_ERROR_CODE)sysinfo.extra_code);
+      } //enter
+      else if (i == 1)
+      {
+        // switch()
+        // {
+          
+        // }
+        int32_t diff=get_Stepper_pulse_count()-targetPulse;
+        
+        if(diff>0)//times up
+        {
+          SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR_REDEEM);
+        }
+      }
+      else
+      {
+        digitalWrite(BACK_LIGHT_PIN, 0);
+      }
+    }
+
+
+    
     }
   }
 }
-
-
-void errorLOG(GEN_ERROR_CODE code, char *errorLog = NULL);
-
 
 
 int ActRegister_pipeLineInfo(pipeLineInfo *pli);
@@ -681,15 +653,7 @@ int Run_ACTS(uint32_t cur_pulse)
 
         case insp_status_UNSET:
         default:
-          inspResCount.ERR++;
-          errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-          
-          // PassCount=0;
-          // inspResCount.ERR++;
-          // //Error:The inspection result isn't back
-          // //TODO: Send error msg and stop machine
-          // errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
-
+          SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
           break;
       }
       //
@@ -750,144 +714,6 @@ int AddResultCountToJson(char *send_rsp, uint32_t send_rspL, struct InspResCount
   MessageL += sprintf((char *)send_rsp + MessageL, "},");
 
   return MessageL;
-}
-
-ERROR_ACTION_TYPE errorActionTransition(ERROR_ACTION_TYPE atype, GEN_ERROR_CODE code)
-{
-  ERROR_ACTION_TYPE actionType = ERROR_ACTION_TYPE::NOP;
-  switch (code)
-  {
-  case GEN_ERROR_CODE::RESET:
-    actionType = ERROR_ACTION_TYPE::NOP;
-    break;
-  case GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT:
-
-    actionType = (atype != ERROR_ACTION_TYPE::NOP) ? ERROR_ACTION_TYPE::ALL_STOP : ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
-    break;
-
-  case GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT:
-
-    actionType = (atype != ERROR_ACTION_TYPE::NOP) ? ERROR_ACTION_TYPE::ALL_STOP : ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
-    break;
-
-  case GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR:
-    actionType = (atype != ERROR_ACTION_TYPE::NOP) ? ERROR_ACTION_TYPE::ALL_STOP : ERROR_ACTION_TYPE::FREE_SPIN_2_REV;
-    break;
-
-  case GEN_ERROR_CODE::INSP_PULSE_TIME_OUT_OF_SYNC:
-    actionType = ERROR_ACTION_TYPE::PULSE_TIME_RESYNC;
-    break;
-
-  default:
-    actionType = ERROR_ACTION_TYPE::ALL_STOP;
-    break;
-  }
-  errorAction(actionType);
-  return actionType;
-}
-
-
-void errorAction(ERROR_ACTION_TYPE cur_action_type)
-{
-
-  static ERROR_ACTION_TYPE pre_action_type = ERROR_ACTION_TYPE::NOP;
-  static uint32_t targetRevCount = 0;
-  static uint32_t targetPulseCount = 0;
-  if (pre_action_type != cur_action_type)
-  {
-    switch (cur_action_type)
-    {
-    case ERROR_ACTION_TYPE::FREE_SPIN_2_REV:
-      targetRevCount = curRevCount + 2;
-
-      DEBUG_print("targetRevCount::");
-      DEBUG_println(targetRevCount);
-      break;
-    }
-    pre_action_type = cur_action_type;
-  }
-
-  switch (cur_action_type)
-  {
-
-  case ERROR_ACTION_TYPE::NOP:
-    break;
-  case ERROR_ACTION_TYPE::FREE_SPIN_2_REV:
-  case ERROR_ACTION_TYPE::ALL_STOP:
-  {
-    //DEBUG_println("FREE_SPIN_2_REV  IN p::");
-    if (targetRevCount != curRevCount)
-    {
-      //if there is an error
-      //clear plate
-      RBuf.clear();
-      act_S.ACT_BACKLight1H.clear();
-      act_S.ACT_BACKLight1L.clear();
-      act_S.ACT_CAM1.clear();
-      act_S.ACT_SEL1H.clear();
-      act_S.ACT_SEL1L.clear();
-      act_S.ACT_SEL2H.clear();
-      act_S.ACT_SEL2L.clear();
-      act_S.ACT_SWITCH.clear();
-      RESET_GateSensing();
-      TCount = 0;
-      CCount = 0;
-
-      digitalWrite(AIR_BLOW_OK_PIN, 0);
-      digitalWrite(AIR_BLOW_NG_PIN, 0);
-
-      digitalWrite(BACK_LIGHT_PIN, 1);
-    }
-    else
-    {
-      DEBUG_println("FREE_SPIN_2_REV  REACH.... ending");
-      digitalWrite(BACK_LIGHT_PIN, 0);
-      sysinfo.err_act = errorActionTransition(sysinfo.err_act, GEN_ERROR_CODE::RESET);
-    }
-  }
-  break;
-
-  case ERROR_ACTION_TYPE::PULSE_TIME_RESYNC:
-  {
-    //DEBUG_println("FREE_SPIN_2_REV  IN p::");
-    // logicPulseCount_
-
-    sysinfo.err_act = errorActionTransition(sysinfo.err_act, GEN_ERROR_CODE::RESET);
-  }
-  break;
-
-  default:
-    //if there is an error
-    //      //clear plate
-    //      RBuf.clear();
-    //      RESET_GateSensing();
-    //
-    //      TCount=0;CCount=0;
-    //      //set speed to zero
-    //      tar_pulseHZ_=0;
-    break;
-  }
-}
-
-void errorLOG(GEN_ERROR_CODE code, char *errorLog)
-{
-  GEN_ERROR_CODE *head_code = ERROR_HIST.getHead();
-  if (head_code == NULL)
-  {
-    ERROR_HIST.consumeTail();
-    head_code = ERROR_HIST.getHead();
-  }
-
-  if (head_code != NULL)
-  {
-    *head_code = code;
-    ERROR_HIST.pushHead();
-
-    DEBUG_print("errorLOG:");
-    DEBUG_println((int)code);
-    //errorAction(sysinfo.err_act);
-  }
-  sysinfo.err_act = errorActionTransition(sysinfo.err_act, code);
 }
 
 class Websocket_FI : public Websocket_FI_proto
@@ -1156,6 +982,8 @@ public:
               DEBUG_print(pre_count);
               DEBUG_print("<p  n>");
               DEBUG_println(new_count);
+              
+              SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
             }
           }
           else
@@ -1164,17 +992,6 @@ public:
           }
         }
 
-        // if (sysinfo.err_act != ERROR_ACTION_TYPE::NOP)
-        // {
-        //   return 0;
-        // }
-
-        // if (counter_str == NULL)
-        // {
-
-        //   errorLOG(GEN_ERROR_CODE::INSP_RESULT_COUNTER_ERROR);
-        //   return 0;
-        // }
 
         int insp_status = -99;
         {
@@ -1340,7 +1157,7 @@ public:
           // DEBUG_print("ERROR:ret_status=");
           // DEBUG_println(ret_status);
 
-          errorLOG(GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT);
+          SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_HAS_NO_OBJECT);
           //Error:The inspection result matches no object
           //TODO: Send error msg and stop machine
           return 0;
@@ -1474,9 +1291,6 @@ public:
 
       else if (strcmp(typeStr, "error_clear") == 0)
       {
-
-        errorLOG(GEN_ERROR_CODE::RESET);
-        errorLOG(GEN_ERROR_CODE::INSP_PULSE_TIME_OUT_OF_SYNC);
         ERROR_HIST.clear();
         MessageL += sprintf((char *)send_rsp + MessageL, "\"type\":\"error_info\",", idStr);
         MessageL += AddErrorCodesToJson((char *)send_rsp + MessageL, send_rspL - MessageL);
@@ -1528,7 +1342,8 @@ public:
 
         if (strstr((char *)recv_cmd, "\"mode\":\"ERROR_TEST\""))
         {
-          errorLOG(GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
+          
+          SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::OBJECT_HAS_NO_INSP_RESULT);
           ret_status = 0;
         }
       }
