@@ -30,6 +30,7 @@ uint16_t ExeUpdateCount = 0;
 uint16_t PassCount = 0;
 uint16_t stageUpdated = 0;
 
+uint16_t g_max_inspLatency = 0;
 
 
 bool blockNewDetectedObject=false;
@@ -270,6 +271,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       static uint32_t checkPointPulse=0;
       static uint32_t seqInitPulse=0;
       static uint8_t innerState=0;
+      static uint8_t preBackLight=0;
       if (i == 0)
       {
         blockNewDetectedObject=true;//ignore all incoming real object
@@ -280,7 +282,8 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
         digitalWrite(AIR_BLOW_OK_PIN, 0);
         digitalWrite(AIR_BLOW_NG_PIN, 0);
-        digitalWrite(BACK_LIGHT_PIN, 0);
+        preBackLight=0;
+        digitalWrite(BACK_LIGHT_PIN, preBackLight);
         innerState=0;
       } //enter
       else if (i == 1)
@@ -307,7 +310,12 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
               blinkSeq=(blinkSeq<<8)|0b11110111;
               blinkSeq=(blinkSeq<<8)|0b11110111;
               blinkSeq<<=(seqDiff_0_1sec);
-              digitalWrite(BACK_LIGHT_PIN, (blinkSeq&0x8000)?1:0);
+              uint8_t newLight= (blinkSeq&0x8000)?1:0;
+              if(preBackLight!=newLight)
+              {
+                preBackLight=newLight;
+                digitalWrite(BACK_LIGHT_PIN, preBackLight);
+              }
             }
           }
 
@@ -851,14 +859,14 @@ public:
       retS = 0;
     }
 
-    // retL = findJsonScope(jbuff, "\"maxFrameRate\":", scopebuff, sizeof(scopebuff));
-    // if (retL > 0)
-    // {
-    //   int mfr = g_max_frame_rate;
-    //   sscanf(scopebuff, "%d", &mfr);
-    //   g_max_frame_rate = mfr;
-    //   retS = 0;
-    // }
+    retL = findJsonScope(jbuff, "\"maxFrameRate\":", scopebuff, sizeof(scopebuff));
+    if (retL > 0)
+    {
+      int mfr = g_max_frame_rate;
+      sscanf(scopebuff, "%d", &mfr);
+      g_max_frame_rate = mfr;
+      retS = 0;
+    }
 
     if (strstr(jbuff, "\"mode\":\"TEST_NO_BLOW\""))
     {
@@ -955,6 +963,8 @@ public:
 
       if (strcmp(typeStr, "inspRep") == 0)
       {
+        
+        uint32_t reportRX_Pulse = get_Stepper_pulse_count();
         int new_count = -99;
         int pre_count = cur_insp_counter; //0~255
         char *counter_str = extBuff;
@@ -1105,10 +1115,9 @@ public:
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_DATA_CALC;
           }
           // DEBUG_printf("Get insp_status:%d c:%d\n",insp_status,cur_insp_counter);
-          pipeTarget->insp_status = insp_status;
         }
 
-        interrupts(); //after pipeTarget do not touch pipeTarget since it might be deleted in timer thread
+        interrupts();
 
         // DEBUG_printf("matched_obj_pulse=%" PRIu32 "  state:%d\n", matched_obj_pulse, sysinfo.PTSyncInfo.state);
 
@@ -1124,11 +1133,26 @@ public:
           if (diff < 0)
             diff = -diff;
           if (diff < 5)
-          { //update
+          { //Pulse sync error is in tolerable region
+            
+            pipeTarget->insp_status = insp_status;//accept the status
             sysinfo.PTSyncInfo.basePulse_us = time_us;
             sysinfo.PTSyncInfo.basePulseCount = matched_obj_pulse;
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::READY;
             SYS_STATE_Transfer(SYS_STATE_ACT::PULSE_TIME_SYNC);
+
+            uint16_t latency = reportRX_Pulse-matched_obj_pulse-state_pulseOffset[2];//Offset[2] is camera trigger
+            
+            if(g_max_inspLatency<latency)
+            {
+              g_max_inspLatency=latency;
+            }
+            else
+            {
+              g_max_inspLatency=(g_max_inspLatency*15+latency)>>4;
+            }
+            // DEBUG_printf("max_latency=%" PRIu16 "\n",g_max_inspLatency);
+            // g_max_inspLatency
           }
           else
           {
@@ -1184,6 +1208,9 @@ public:
         MessageL += sprintf((char *)send_rsp + MessageL, "\"type\":\"PONG\",");
         MessageL += AddErrorCodesToJson((char *)send_rsp + MessageL, send_rspL - MessageL);
         MessageL += AddResultCountToJson((char *)send_rsp + MessageL, send_rspL - MessageL, inspResCount);
+        
+        MessageL += sprintf((char *)send_rsp + MessageL, "\"latency\":%"PRIu16",",g_max_inspLatency);
+
         ret_status = 0;
       }
       else if (strcmp(typeStr, "set_pulse_hz") == 0)
@@ -1501,7 +1528,7 @@ int serial_putc(char c, struct __file *)
   return c;
 }
 
-uint8_t ws_buff[600]; //For websocket
+uint8_t ws_buff[300]; //if the buffer size less than 600 then websocket would not work (TCP would be fine tho)
 void ETH_RESET()
 {
   if (WS_Server != NULL)

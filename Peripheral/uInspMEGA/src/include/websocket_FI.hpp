@@ -9,9 +9,9 @@ class Websocket_FI_proto:public Websocket_Server{
   json_seg_parser jsCMDparser;
   protected:
   uint8_t json_sec_buffer_size=0;
-  uint8_t json_sec_buffer[200];
+  uint8_t json_sec_buffer[250];
   
-  uint8_t json_rsp_buffer[200];
+  uint8_t json_rsp_buffer[250];
 
   
   public:
@@ -231,7 +231,7 @@ class Websocket_FI_proto:public Websocket_Server{
       json_sec_buffer[json_sec_buffer_size]=ch;
       json_sec_buffer_size++;
 
-      if(json_sec_buffer_size==200 && ch!='{')
+      if(json_sec_buffer_size==sizeof(json_sec_buffer)-1 && ch!='{')
       {
         
           json_sec_buffer[json_sec_buffer_size-1]='\0';
