@@ -4,7 +4,7 @@
 #include "include/main.h"
 #define DEBUG_
 
-uint32_t _logicPulseCount_ = 0;
+uint32_t _logicPulseCount_ = -10000;
 bool _senseReverse_=false;
 
 uint32_t thres_skip_counter = 0;
@@ -197,7 +197,7 @@ ISR(TIMER1_COMPA_vect)
   if (SubPulseStage==0)
   {
     _logicPulseCount_ ++;
-    if(_logicPulseCount_-_logicPulseCount_preRev+1==perRevPulseCount)
+    if(_logicPulseCount_-_logicPulseCount_preRev+1>=perRevPulseCount)
     {
       _logicPulseCount_preRev=_logicPulseCount_;
       revCount++;

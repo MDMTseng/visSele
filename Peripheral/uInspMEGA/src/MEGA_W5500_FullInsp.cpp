@@ -85,7 +85,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state);
 int task_Pulse_Time_Sync(uint32_t pulse);
 void errorAction(ERROR_ACTION_TYPE cur_action_type);
 
-void SYS_STATE_Transfer(SYS_STATE_ACT act)
+void SYS_STATE_Transfer(SYS_STATE_ACT act,int extraCode=0)
 {
   SYS_STATE state = sysinfo.state;
   switch (state)
@@ -208,6 +208,7 @@ void SYS_STATE_Transfer(SYS_STATE_ACT act)
   { //state changed
     sysinfo.pre_state = sysinfo.state;
     sysinfo.state = state;
+    sysinfo.extra_code=extraCode;
     DEBUG_printf("=========s:%d=>%d\n",sysinfo.pre_state,sysinfo.state);
     SYS_STATE_LIFECYCLE(sysinfo.pre_state, sysinfo.state );
   }
@@ -1292,7 +1293,7 @@ public:
 
         interrupts(); //after pipeTarget do not touch pipeTarget since it might be deleted in timer thread
 
-        DEBUG_printf("matched_obj_pulse=%" PRIu32 "  state:%d\n", matched_obj_pulse, sysinfo.PTSyncInfo.state);
+        // DEBUG_printf("matched_obj_pulse=%" PRIu32 "  state:%d\n", matched_obj_pulse, sysinfo.PTSyncInfo.state);
 
         if (pipeTarget == NULL)
         {
@@ -1302,7 +1303,7 @@ public:
                  sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
         {
           int32_t diff = targetObjGatePulse - matched_obj_pulse;
-          DEBUG_printf("targetObjGatePulse=%" PRIu32 "\n==diff:%d==\n", targetObjGatePulse, diff);
+          // DEBUG_printf("matPulse=%" PRIu32 " tarPulse=%" PRIu32 " ==diff:%d==\n",matched_obj_pulse, targetObjGatePulse, diff);
           if (diff < 0)
             diff = -diff;
           if (diff < 5)

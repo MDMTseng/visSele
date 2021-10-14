@@ -152,7 +152,9 @@ struct SYS_INFO
 
   SYS_STATE pre_state;
   SYS_STATE state;
+  int extra_code;
   int status;
+
   struct PulseTimeSyncInfo PTSyncInfo;
   
   ERROR_ACTION_TYPE err_act;
