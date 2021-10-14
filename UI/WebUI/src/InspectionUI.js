@@ -539,7 +539,7 @@ class CameraCtrl {
     this.setCameraSpeedMode(0);
   }
 
-  updateInspectionReport(report) {
+  updateInspectionReportForPowerSaving(report) {
     if (report === undefined || report.reports.length == 0) {
       this.data.emptyResultCount++;
       if (this.data.emptyResultCount > this.data.speedSwitchingCount)
@@ -1603,7 +1603,8 @@ class APP_INSP_MODE extends React.Component {
   }
 
   componentDidUpdate() {
-    this.CameraCtrl.updateInspectionReport(this.props.inspectionReport);
+    if (this.props.machine_custom_setting.InspectionMode== "CI")
+      this.CameraCtrl.updateInspectionReportForPowerSaving(this.props.inspectionReport);
 
     if(this.props.uInsp_API_ID_CONN_INFO!==undefined)
     {
