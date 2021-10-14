@@ -114,7 +114,20 @@ void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
 void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context)
 {
   CameraLayer_HikRobot_Camera *cl = (CameraLayer_HikRobot_Camera *)context;
-  cl->ImageCallBack(pData, pFrameInfo);
+  // cl->ImageCallBack(pData, pFrameInfo);
+  hikFrameInfo info={
+    .pData=pData,
+    .frameInfo=*pFrameInfo,
+    .context=context
+  };
+  
+  try{
+    cl->imgQueue.push_blocking(info);
+  }
+  catch(TS_Termination_Exception e)
+  {
+    LOGI(">>>");
+  }
 }
 
 
@@ -144,11 +157,13 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
       uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
       for(int j=0;j<w;j++)
       {
-        for(int k=0;k<channelCount;k++)
-        {
-          *tar_Pix=*src_Pix_Gray;
-          tar_Pix++;
-        }
+        *tar_Pix=*src_Pix_Gray;
+        tar_Pix+=channelCount;
+        // for(int k=0;k<channelCount;k++)//Somehow it's super slow
+        // {
+        //   *tar_Pix=*src_Pix_Gray;
+        //   tar_Pix++;
+        // }
         src_Pix_Gray++;
       }
     }
@@ -252,7 +267,7 @@ int32_t CameraLayer_HikRobot_Camera::listDevices(MV_CC_DEVICE_INFO_LIST *stDevic
 }
 
 CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devInfo, CameraLayer_Callback cb, void *context)
-    : CameraLayer(cb, context)
+    : CameraLayer(cb, context),imgQueue(10)
 {
   bDevConnected = false;
   if (devInfo == NULL)
@@ -343,7 +358,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   SetROI(0, 0, 999999, 999999, 0, 0);
   StartAquisition();
   inNoError=true;
-  // grabThread = std::thread(&CameraLayer_HikRobot_Camera::grabThreadFunc, this);
+  imgQueueThread = std::thread(&CameraLayer_HikRobot_Camera::imgQThreadFunc,this);
 
   
   char buff[300];
@@ -359,6 +374,24 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
   LOGI(">>>%s",cam_json_info.c_str());
 }
 
+void CameraLayer_HikRobot_Camera::imgQThreadFunc()
+{
+  int nRet = MV_OK;
+  while (bDevConnected==true)
+  {
+    hikFrameInfo info;
+    try{
+      imgQueue.pop_blocking(info);
+
+    }
+    catch(TS_Termination_Exception e)
+    {
+      break;
+    }
+    ImageCallBack(info.pData, &info.frameInfo);
+  }
+  LOGI("Thread ended....");
+}
 
 void CameraLayer_HikRobot_Camera::CLOSE()
 {
@@ -375,7 +408,9 @@ void CameraLayer_HikRobot_Camera::CLOSE()
 }
 CameraLayer_HikRobot_Camera::~CameraLayer_HikRobot_Camera()
 {
+  imgQueue.termination_trigger();
   CLOSE();
+  imgQueueThread.join();
 }
 
 

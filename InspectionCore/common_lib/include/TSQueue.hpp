@@ -35,6 +35,7 @@ public:
   TSQueue(int maxCount=-1);
   size_t size();
   size_t capacity();
+  bool is_terminated();
   void termination_trigger();
   bool resume_from_termination();
   bool pop(T& retDat);
@@ -50,6 +51,12 @@ void TSQueue<T>::termination_trigger(){
   push_mutex_.unlock();
   pop_mutex_.unlock();
 
+}
+
+
+template<typename T>
+bool TSQueue<T>::is_terminated(){
+  return termination;
 }
 
 

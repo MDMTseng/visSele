@@ -329,7 +329,7 @@ exports.setup = function (pak) {
     if(spawnX.stdout!=null)
     {
       spawnX.stdout.on('data', function (data) {
-        console.log('stdout: ' + data.toString());
+        console.log(data.toString());
       });
     }
     // console.log(spawnX)

@@ -6,6 +6,7 @@ MODULE_aravis?=../contrib/aravis/mac_x64
 IDIR = include \
 			$(MODULE_acvImage)/include/ \
 			$(MODULE_logctrl)/include \
+			$(MODULE_common_lib)/include \
 
 
 _OBJ = CameraLayer.opp CameraLayer_BMP.opp CameraLayer_BMP_carousel.opp 
