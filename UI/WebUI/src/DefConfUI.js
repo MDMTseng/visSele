@@ -2975,10 +2975,11 @@ class APP_DEFCONF_MODE extends React.Component {
     console.log("APP_DEFCONF_MODE render");
     return (
       <div className="overlayCon HXF">
-
+        {this.state.modal_view === undefined?null:
         <Modal
+          key="<<>>O"
           {...this.state.modal_view}
-          visible={this.state.modal_view !== undefined}
+          visible={true}
           onCancel={(param) => {
             if (this.state.modal_view!==undefined && 
               this.state.modal_view.onCancel !== undefined) {
@@ -2996,7 +2997,7 @@ class APP_DEFCONF_MODE extends React.Component {
             this.setState({ ...this.state, modal_view: undefined });
           }}>
           {this.state.modal_view === undefined ? null : this.state.modal_view.view_update()}
-        </Modal>
+        </Modal>}
         <CanvasComponent_rdx addClass="layout width12" onCanvasInit={(canvas) => { this.ec_canvas = canvas }} />
 
         <div key={substate} className={"s overlay scroll shadow1 MenuAnim " + menu_height}>
