@@ -344,7 +344,7 @@ CameraLayer_HikRobot_Camera::CameraLayer_HikRobot_Camera(MV_CC_DEVICE_INFO *devI
     nRet = MV_CC_SetEnumValueByString(handle, "ChunkSelector", "Timestamp");
     nRet = MV_CC_SetBoolValue(handle, "ChunkEnable", true);
     
-    SetBoolValue("AcquisitionFrameRateEnable", false);
+    SetFrameRateMode(2);
     
   }
 
@@ -382,7 +382,6 @@ void CameraLayer_HikRobot_Camera::imgQThreadFunc()
     hikFrameInfo info;
     try{
       imgQueue.pop_blocking(info);
-
     }
     catch(TS_Termination_Exception e)
     {
@@ -505,14 +504,18 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
 }
 CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRateMode(int mode)
 {
+  if(mode>=2)
+  {//as fast as possible
+    return SetBoolValue("AcquisitionFrameRateEnable", false)==0?CameraLayer::ACK:CameraLayer::NAK;
+  }
   float tar_fr=30;
   switch(mode)
   {
-      case 0:tar_fr=30;break;
-      case 1:tar_fr=20;break;
-      case 2:tar_fr=10;break;
-      case 3:tar_fr=1;break;
+      case 0:tar_fr=1;break;
+      case 1:tar_fr=10;break;
   }
+  
+  SetBoolValue("AcquisitionFrameRateEnable", true);
   return SetFrameRate(tar_fr);
 }
 
