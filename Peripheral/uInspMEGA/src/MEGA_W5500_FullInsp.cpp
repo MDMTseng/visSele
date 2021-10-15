@@ -1237,19 +1237,6 @@ public:
         }
         return 0;
       }
-      else if (strcmp(typeStr, "get_dev_info") == 0)
-      {
-
-        MessageL += sprintf((char *)send_rsp + MessageL,
-                            "\"type\":\"dev_info\","
-                            "\"info\":{"
-                            "\"type\":\"uFullInsp\","
-                            "\"ver\":\"0.9.0.0\","
-                            "\"pulse_hz\":%d"
-                            "},",
-                            tar_pulseHZ_);
-        ret_status = 0;
-      }
       else if (strcmp(typeStr, "PING") == 0)
       {
 
@@ -1323,7 +1310,7 @@ public:
       {
         int ret_st = 0;
         MessageL += sprintf((char *)send_rsp + MessageL, "\"type\":\"get_setup_rsp\","
-                                                         "\"ver\":\"0.0.0.0\",");
+                                                         "\"ver\":\"0.9.8.0\",");
         MessageL += MachToJson(send_rsp + MessageL, send_rspL - MessageL, &ret_st);
         DEBUG_print("get_setup:");
         DEBUG_println(send_rsp);
