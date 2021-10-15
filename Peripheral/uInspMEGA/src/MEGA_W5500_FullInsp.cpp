@@ -211,7 +211,8 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
     case SYS_STATE::IDLE:
       if (i == 0)
       {
-        blockNewDetectedObject=true;//ignore all incoming real object
+        blockNewDetectedObject=false;//Accept pulse to trigger camera
+        //but in this state will not handle other event
         RESET_ALL_PIPELINE_QUEUE();
       } //enter
       else if (i == 1)
@@ -276,7 +277,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       {
         blockNewDetectedObject=true;//ignore all incoming real object
 
-        DEBUG_printf(">>ENTER PULSE_TIME_SYNCING>>>");
+        DEBUG_println(">>ENTER PULSE_TIME_SYNCING>>>");
 
         RESET_ALL_PIPELINE_QUEUE();
 
@@ -291,12 +292,12 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         uint32_t cur_pulse = get_Stepper_pulse_count();
         if(innerState==0)
         {
-          task_Pulse_Time_Sync(cur_pulse + 0*cur_pulseHZ_/subPulseSkipCount/10);
-          task_Pulse_Time_Sync(cur_pulse + 10*cur_pulseHZ_/subPulseSkipCount/10);
-          uint32_t lastPulse = cur_pulse + 15*cur_pulseHZ_/subPulseSkipCount/10;
+          task_Pulse_Time_Sync(cur_pulse + 0);
+          task_Pulse_Time_Sync(cur_pulse + 500);
+          uint32_t lastPulse = cur_pulse + 1000;
           task_Pulse_Time_Sync(lastPulse);
           sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
-          checkPointPulse = lastPulse+2400/2;
+          checkPointPulse = lastPulse+2000;
           innerState=1;
           seqInitPulse=cur_pulse;
         }
@@ -326,7 +327,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
           int32_t diff = cur_pulse-checkPointPulse;
           if(diff>0)
           {
-            DEBUG_printf("INIT Pulse time syncing Timeout!!! retry...");
+            DEBUG_println("INIT Pulse time syncing Timeout!!! retry...");
             innerState=0;
           }
         }
@@ -1152,9 +1153,11 @@ public:
                  sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
         {
           int32_t diff = targetObjGatePulse - matched_obj_pulse;
+          int32_t signed_diff=diff;
           // DEBUG_printf("matPulse=%" PRIu32 " tarPulse=%" PRIu32 " ==diff:%d==\n",matched_obj_pulse, targetObjGatePulse, diff);
           if (diff < 0)
             diff = -diff;
+            
           if (diff < 5)
           { //Pulse sync error is in tolerable region
             
@@ -1179,6 +1182,8 @@ public:
           }
           else
           {
+            DEBUG_printf("td:%" PRId32 "\n",signed_diff);
+          
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT; //unmatch..
 
             

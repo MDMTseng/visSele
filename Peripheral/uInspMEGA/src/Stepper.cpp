@@ -4,7 +4,7 @@
 #include "include/main.h"
 #define DEBUG_
 
-uint32_t _logicPulseCount_ = -10000;
+uint32_t _logicPulseCount_ = 0;
 bool _senseReverse_=false;
 
 uint32_t thres_skip_counter = 0;

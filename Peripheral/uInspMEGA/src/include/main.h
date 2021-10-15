@@ -171,7 +171,7 @@ struct PulseTimeSyncInfo
 {
   PulseTimeSyncInfo_State state;
   uint32_t basePulseCount;
-  uint32_t basePulse_us;
+  uint64_t basePulse_us;
   // uint64_t us_per_1024_pulses;
   uint64_t pulses_per_1shiftXus;
 
