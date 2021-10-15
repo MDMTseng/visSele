@@ -310,5 +310,5 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
 int EV_Axis0_Origin(uint32_t revCount);
 void ETH_RESET();
 
-
+bool* getSenseInvPtr();
 #endif

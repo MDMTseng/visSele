@@ -5,7 +5,11 @@
 #define DEBUG_
 
 uint32_t _logicPulseCount_ = 0;
-bool _senseReverse_=false;
+bool _senseInv_=false;
+bool* getSenseInvPtr()
+{
+  return &_senseInv_;
+}
 
 uint32_t thres_skip_counter = 0;
 
@@ -87,7 +91,7 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
   const int  DEBOUNCE_H_THRES = 1;
   //(perRevPulseCount/50)
   uint8_t new_Sense = digitalRead(GATE_PIN);
-  if(_senseReverse_)new_Sense=!new_Sense;
+  if(_senseInv_)new_Sense=!new_Sense;
   bool onSenseEdge=false;
 
   

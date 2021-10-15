@@ -766,6 +766,9 @@ public:
     MessageL += sprintf((char *)send_rsp + MessageL, "\"mode\":\"%s\",",
                         mode_info.mode == run_mode_info::TEST ? "TEST_NO_BLOW" : "NORMAL");
 
+                        
+    MessageL += sprintf((char *)send_rsp + MessageL, "\"senseInv\":%s,", *getSenseInvPtr()?"true":"false");
+
     if (ret_status)
       *ret_status = 0;
     return MessageL;
@@ -868,6 +871,22 @@ public:
       g_max_frame_rate = mfr;
       retS = 0;
     }
+
+    retL = findJsonScope(jbuff, "\"senseInv\":", scopebuff, sizeof(scopebuff));
+    if (retL > 0)
+    {
+      if (strstr(scopebuff, "true"))
+      {
+        *getSenseInvPtr()=true;
+      }
+      else if (strstr(scopebuff, "false"))
+      {
+        *getSenseInvPtr()=false;
+      }
+    }
+
+
+
 
     if (strstr(jbuff, "\"mode\":\"TEST_NO_BLOW\""))
     {
@@ -1225,7 +1244,7 @@ public:
                             "\"type\":\"dev_info\","
                             "\"info\":{"
                             "\"type\":\"uFullInsp\","
-                            "\"ver\":\"0.0.0.0\","
+                            "\"ver\":\"0.9.0.0\","
                             "\"pulse_hz\":%d"
                             "},",
                             tar_pulseHZ_);
@@ -1615,6 +1634,7 @@ void setup()
   //#endif
   
   SYS_STATE_Transfer(SYS_STATE_ACT::INIT_OK);
+  *getSenseInvPtr()=false;
 }
 
 
