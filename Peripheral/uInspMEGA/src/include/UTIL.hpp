@@ -2,9 +2,9 @@
 
 #ifndef UTILXXX_H_
 #define UTILXXX_H_
-
-
-//#define DEBUG_
+#include <stdarg.h>
+#include <Arduino.h>
+#define DEBUG_
 #ifdef DEBUG_
 #define DEBUG_print(A, ...) Serial.print(A,##__VA_ARGS__)
 #define DEBUG_println(A, ...) Serial.println(A,##__VA_ARGS__)
@@ -13,18 +13,7 @@
 #define DEBUG_println(A, ...)
 #endif
 
-
-void DEBUG_printf(const char * format, ...)
-{
-	char buff[200];
-	va_list list;
-	va_start(list, format);
-	vsnprintf(buff, sizeof(buff), format, list);
-	va_end(list);
-	DEBUG_print(buff);
-
-}
-
+void DEBUG_printf(const char * format, ...);
 
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
@@ -200,16 +189,7 @@ class mArray_Static:public mArray<T>
 
   }
 };
+uint32_t cmpCheckSum(int shift, int num_args, ...);
 
-uint32_t mod_sim(uint32_t num,uint32_t mod_N)
-{
-  while(num>=mod_N)
-  {
-    num-=mod_N;
-  }
-  return num;
-}
-
-
-
+void HARD_RESET();
 #endif
