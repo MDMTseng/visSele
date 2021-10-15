@@ -50,6 +50,7 @@ def receive_message(client_socket):
         # and that's also a cause when we receive an empty message
         return False
 
+doInInsp=False
 
 machSetup = {
   "type": "get_setup_rsp",
@@ -71,6 +72,8 @@ machSetup = {
   "subPulseSkipCount": 16,
   "pulse_hz": 0,
   "mode": "NORMAL",
+  "maxFrameRate":50
+
 }
 
 machState={
@@ -82,7 +85,8 @@ machState={
     "NG": 10,
     "NA": 1,
     "ERR": 1
-  }
+  },
+  "latency":200
 }
 
 
@@ -194,6 +198,8 @@ while True:
               # the result is a Python dictionary:
               msg_type=jmsg["type"]
               retMsg={}
+              
+              print(jmsg)
               if msg_type == "PING":
                 retMsg=copy.copy(machState)
                 retMsg["type"]="PONG"
@@ -205,9 +211,12 @@ while True:
                   machState["res_count"]["NG"]+=1
                 else:
                   machState["res_count"]["NA"]+=1
-
-
-                print(jmsg)
+              elif msg_type == "enter_inspection":
+                doInInsp=True
+                print("DO INSP")
+              elif msg_type == "exit_inspection":
+                doInInsp=False
+                print("EXIT INSP")
               elif msg_type == "get_setup":
                 retMsg=copy.copy(machSetup)
                 retMsg["type"]="get_setup_rsp"
@@ -219,6 +228,8 @@ while True:
                   machSetup["state_pulseOffset"]=jmsg["state_pulseOffset"]
                 if "pulse_hz" in jmsg:
                   machSetup["pulse_hz"]=jmsg["pulse_hz"]
+                if "maxFrameRate" in jmsg:
+                  machSetup["maxFrameRate"]=jmsg["maxFrameRate"]
                 print(jmsg)
                 print(machSetup)
               elif msg_type == "res_count_clear":
