@@ -3030,7 +3030,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   return CameraLayer::ACK;
 }
 
-void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
+void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
 {
 
   if (bpg_pi.mift)
@@ -3044,7 +3044,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp)
                       "\"idx\":%d,\"count\":%d,"
                       "\"time_100us\":%lu"
                       "}",
-                      uInspStatus, 1, count, timeStamp);
+                      uInspStatus, 1, count, timeStamp_100us);
     bpg_pi.mift->send_data((uint8_t *)buffx, len);
     count = (count + 1) & 0xFF;
     LOGI("%s", buffx);
@@ -3590,7 +3590,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   bool doPassDown = doInspActionThread;
 
   //taking the short cut, mift(inspection machine) needs 100% of data
-  sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us);
+  sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())

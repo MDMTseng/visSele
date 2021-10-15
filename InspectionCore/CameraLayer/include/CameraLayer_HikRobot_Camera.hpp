@@ -8,6 +8,8 @@
 
 #include "MvCameraControl.h"
 
+#include "TSQueue.hpp"
+
 #include "logctrl.h"
 #include <cstring>
 #include <vector>
@@ -35,6 +37,12 @@ public:
     bool available;
   };
 
+  struct hikFrameInfo
+  {
+    unsigned char *pData;
+    MV_FRAME_OUT_INFO_EX frameInfo;
+    void *context;
+  };
 protected:
   void *handle;
 
@@ -42,7 +50,9 @@ protected:
   int takeCount;
   bool bDevConnected;
   bool threadRunningState;
-  std::thread grabThread;
+  std::thread imgQueueThread;
+
+  TSQueue<hikFrameInfo> imgQueue;
   bool acquisition_started=false;
   int mirrorFlag[2]={0,0};
   int ROI_mirrorFlag[2]={0,0};
@@ -144,28 +154,8 @@ protected:
     return (target > value) ? value + range.nInc : value;
   }
 
-  void grabThreadFunc()
-  {
 
-    MV_FRAME_OUT stImageInfo = {0};
-    MV_DISPLAY_FRAME_INFO stDisplayInfo = {0};
-    int nRet = MV_OK;
-    while (threadRunningState)
-    {
-
-      nRet = MV_CC_GetImageBuffer(handle, &stImageInfo, 1000);
-      if (nRet == MV_OK)
-      {
-        LOGI("MV_OK");
-      }
-      else
-      {
-
-        LOGI("MV_:::%X", nRet);
-      }
-    }
-  }
-
+  void imgQThreadFunc();
   
 
 public:
