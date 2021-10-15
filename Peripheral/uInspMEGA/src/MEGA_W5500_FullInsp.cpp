@@ -216,7 +216,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       } //enter
       else if (i == 1)
       {
-        SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
+        // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
         // SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);//the event sould be issued by remote
       } //loop
       else
@@ -292,11 +292,11 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         if(innerState==0)
         {
           task_Pulse_Time_Sync(cur_pulse + 0*cur_pulseHZ_/subPulseSkipCount/10);
-          task_Pulse_Time_Sync(cur_pulse + 15*cur_pulseHZ_/subPulseSkipCount/10);
-          uint32_t lastPulse = cur_pulse + 30*cur_pulseHZ_/subPulseSkipCount/10;
+          task_Pulse_Time_Sync(cur_pulse + 10*cur_pulseHZ_/subPulseSkipCount/10);
+          uint32_t lastPulse = cur_pulse + 15*cur_pulseHZ_/subPulseSkipCount/10;
           task_Pulse_Time_Sync(lastPulse);
           sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
-          checkPointPulse = lastPulse+2400;
+          checkPointPulse = lastPulse+2400/2;
           innerState=1;
           seqInitPulse=cur_pulse;
         }
@@ -326,7 +326,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
           int32_t diff = cur_pulse-checkPointPulse;
           if(diff>0)
           {
-            DEBUG_printf("Oh shit!!");
+            DEBUG_printf("INIT Pulse time syncing Timeout!!! retry...");
             innerState=0;
           }
         }
@@ -964,10 +964,16 @@ public:
       if (strcmp(typeStr, "inspRep") == 0)
       {
         
+        if (mode_info.mode != run_mode_info::NORMAL)
+        {//ignore all
+          return;
+        }
         uint32_t reportRX_Pulse = get_Stepper_pulse_count();
         int new_count = -99;
         int pre_count = cur_insp_counter; //0~255
         char *counter_str = extBuff;
+
+        if(0)//skip the counter verification part
         {
           int retL = findJsonScope((char *)recv_cmd, "\"count\":", extBuff, extBuffL);
           if (retL > 0)
@@ -1022,43 +1028,61 @@ public:
         uint64_t time_us = 0;
         char *time_us_str = extBuff;
         {
-          int retL = findJsonScope((char *)recv_cmd, "\"time_100us\":", extBuff, extBuffL);
-          if (retL < 0)
-          {
-            time_us_str = NULL;
-            sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
-          }
-          else
-          {
 
-            if (convertStringToU64(time_us_str, &time_us) == 0)
+          
+          int retL;
+          retL = findJsonScope((char *)recv_cmd, "\"time_100us\":", extBuff, extBuffL);
+          if(retL>=0)
+          {
+            if(convertStringToU64(time_us_str, &time_us)==0)
             {
-              time_us/=100;
-              if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::INIT)
-              {
-                sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_preBaseTime;
-              }
-
-              if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_preBaseTime)
-              {
-                sysinfo.PTSyncInfo.pre_basePulse_us = time_us;
-                sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_preBasePulse;
-              }
-              else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_BaseTime)
-              {
-                sysinfo.PTSyncInfo.basePulse_us = time_us;
-                sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_BasePulse;
-              }
-              // pulseTimeSyncInfo
-              //OK
+              time_us*=100;
             }
             else
             {
-              sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
+              time_us=0;
             }
-            // sscanf(statusStr, "%d", &insp_status);
-            extBuff += retL + 1;
-            extBuffL -= retL + 1;
+          }
+
+          if(time_us==0)
+          {
+            
+            retL = findJsonScope((char *)recv_cmd, "\"time_us\":", extBuff, extBuffL);
+            if(retL>=0)
+            {
+              if(convertStringToU64(time_us_str, &time_us)==0)
+              {
+              }
+              else
+              {
+                time_us=0;
+              }
+            }
+          }
+
+          if(time_us==0)
+          {//no time info
+            sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT;
+            SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR,(int)GEN_ERROR_CODE::INSP_RESULT_HAS_NO_TIME_STAMP);
+            return 0;
+          }
+          else
+          {
+            if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::INIT)
+            {
+              sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_preBaseTime;
+            }
+
+            if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_preBaseTime)
+            {
+              sysinfo.PTSyncInfo.pre_basePulse_us = time_us;
+              sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_preBasePulse;
+            }
+            else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_BaseTime)
+            {
+              sysinfo.PTSyncInfo.basePulse_us = time_us;
+              sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::SETUP_BasePulse;
+            }
           }
         }
 
@@ -1067,15 +1091,14 @@ public:
         if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify ||
             sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::READY)
         {
-          if (time_us != 0) //has report time
-          {
-            // uint32_t pulseDiff=gate_pulse-sysinfo.PTSyncInfo.basePulseCount;
-            uint64_t pulseTimeDiff = time_us - sysinfo.PTSyncInfo.basePulse_us;
-            uint64_t pulseDiff = (pulseTimeDiff * sysinfo.PTSyncInfo.pulses_per_1shiftXus) >> (PULSE_TIME_SYNC_USSHIFT-1);
-            pulseDiff=(pulseDiff>>1)+((pulseDiff&1)?1:0);//binary round
-            targetObjGatePulse = pulseDiff + sysinfo.PTSyncInfo.basePulseCount;
+         
+          // uint32_t pulseDiff=gate_pulse-sysinfo.PTSyncInfo.basePulseCount;
+          uint64_t pulseTimeDiff = time_us - sysinfo.PTSyncInfo.basePulse_us;
+          uint64_t pulseDiff = (pulseTimeDiff * sysinfo.PTSyncInfo.pulses_per_1shiftXus) >> (PULSE_TIME_SYNC_USSHIFT-1);
+          pulseDiff=(pulseDiff>>1)+((pulseDiff&1)?1:0);//binary round
+          targetObjGatePulse = pulseDiff + sysinfo.PTSyncInfo.basePulseCount;
 
-          }
+          
         }
 
         noInterrupts();
@@ -1157,7 +1180,9 @@ public:
           else
           {
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT; //unmatch..
-            SYS_STATE_Transfer(SYS_STATE_ACT::PULSE_TIME_UNSYNC);
+
+            
+            SYS_STATE_Transfer(SYS_STATE_ACT::INSPECTION_ERROR ,(int)GEN_ERROR_CODE::INSP_RESULT_PULSE_TIME_OUT_OF_SYNC);
           }
         }
         else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_DATA_CALC)
@@ -1210,6 +1235,7 @@ public:
         MessageL += AddResultCountToJson((char *)send_rsp + MessageL, send_rspL - MessageL, inspResCount);
         
         MessageL += sprintf((char *)send_rsp + MessageL, "\"latency\":%"PRIu16",",g_max_inspLatency);
+        MessageL += sprintf((char *)send_rsp + MessageL, "\"sys_state\":%d,",sysinfo.state);
 
         ret_status = 0;
       }
@@ -1299,6 +1325,18 @@ public:
       {
         MessageL += sprintf((char *)send_rsp + MessageL, "\"type\":\"error_info\",", idStr);
         MessageL += AddErrorCodesToJson((char *)send_rsp + MessageL, send_rspL - MessageL);
+        ret_status = 0;
+      }
+
+      else if (strcmp(typeStr, "enter_inspection") == 0)
+      {
+        SYS_STATE_Transfer(SYS_STATE_ACT::PREPARE_TO_ENTER_INSPECTION_MODE);
+        ret_status = 0;
+      }
+      
+      else if (strcmp(typeStr, "exit_inspection") == 0)
+      {
+        SYS_STATE_Transfer(SYS_STATE_ACT::EXIT_INSPECTION_MODE);
         ret_status = 0;
       }
 
