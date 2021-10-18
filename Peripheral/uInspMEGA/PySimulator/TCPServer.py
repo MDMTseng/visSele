@@ -72,7 +72,8 @@ machSetup = {
   "subPulseSkipCount": 16,
   "pulse_hz": 0,
   "mode": "NORMAL",
-  "maxFrameRate":50
+  "maxFrameRate":50,
+  "senseInv":False
 
 }
 
@@ -199,7 +200,7 @@ while True:
               msg_type=jmsg["type"]
               retMsg={}
               
-              print(jmsg)
+              print(">>",jmsg)
               if msg_type == "PING":
                 retMsg=copy.copy(machState)
                 retMsg["type"]="PONG"
@@ -230,8 +231,10 @@ while True:
                   machSetup["pulse_hz"]=jmsg["pulse_hz"]
                 if "maxFrameRate" in jmsg:
                   machSetup["maxFrameRate"]=jmsg["maxFrameRate"]
-                print(jmsg)
-                print(machSetup)
+                if "senseInv" in jmsg:
+                  machSetup["senseInv"]=jmsg["senseInv"]
+                # print(jmsg)
+                # print(machSetup)
               elif msg_type == "res_count_clear":
                 machState["res_count"]={
                     "OK": 0,
@@ -244,6 +247,7 @@ while True:
                 
               if _id is not None:
                 retMsg["id"]=_id
+                print("<<",retMsg)
                 notified_socket.send(json.dumps(retMsg).encode("utf-8"))
               # print(f'Received message from {user["data"].decode("utf-8")}: {message["data"].decode("utf-8")}')
 
