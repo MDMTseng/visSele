@@ -29,7 +29,14 @@ std::mutex matchingEnglock;
 bool saveInspFailSnap = true;
 bool saveInspNASnap = true;
 
+
+bool SKIP_NA_DATA_VIEW=false;
+
 int imageQueueSkipSize = 0;
+int datViewQueueSkipSize = 0;
+int DATA_VIEW_MAX_FPS=20;
+bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
+
 
 cJSON *cache_deffile_JSON = NULL;
 
@@ -47,7 +54,7 @@ TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL);
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL, int datViewMaxFPS=DATA_VIEW_MAX_FPS);
 
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
@@ -1890,6 +1897,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         calib_bacpac.sampler->ignoreCalib(false); //First, make the cacheImage to be a calibrated full res image
         saveInspFailSnap = false;
         saveInspNASnap = false;
+        SKIP_NA_DATA_VIEW=false;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         this->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
         int frameCount = (int)this->cameraFramesLeft;
@@ -1978,6 +1986,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
           imageQueueSkipSize=inspQueue.capacity();//it will never hit the skip size
+          datViewQueueSkipSize=datViewQueue.capacity();
           if (dat->tl[0] == 'C')
           {
             if (false && frameCount == 1)
@@ -1990,14 +1999,17 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
 
             doImgProcessThread = true;
-            imageQueueSkipSize=inspQueue.capacity()/3;
-            if(imageQueueSkipSize<3)imageQueueSkipSize=3;
+            imageQueueSkipSize=1;
+            datViewQueueSkipSize=1;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
             camera->TriggerMode(2);
             doImgProcessThread = true;
+            
+            datViewQueueSkipSize=2;
           }
+
 
           if (this->cameraFramesLeft > 0)
           {
@@ -2531,30 +2543,32 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       }
 
 
+      double *maxImgStFPS = JFetch_NUMBER(json, "IMG_STREAMING_MAX_FPS");
+      if(maxImgStFPS)
+      {
+        DATA_VIEW_MAX_FPS=(int)*maxImgStFPS;
+      }
+
 
       auto LAST_FRAME_RESEND = getDataFromJson(json, "LAST_FRAME_RESEND", NULL);
       if (LAST_FRAME_RESEND == cJSON_True)
       {  
-        static clock_t s_t=0;
-        
-        clock_t new_t = clock();
-        
-        double timeDiff_ms = (double)(new_t - s_t) / CLOCKS_PER_SEC * 1000;
-        LOGI("IMG resend  ms:%f timeDiff_ms:%f  iQ:%d dQ:%d",
-          (double)new_t*1000/CLOCKS_PER_SEC,
-          timeDiff_ms,
-          inspQueue.size(),
-          datViewQueue.size());
-        // LOGI("lisdfsdfijsdifjsdiofjisdfjsdjflsdjfl");
-        if(inspQueue.size()==0 && datViewQueue.size()==0)
+        session_ACK=false;
+
+        if(inspQueue.size()!=0 || datViewQueue.size()!=0)
+        {
+          //No
+        }
+        else if(lastDatViewCache!=NULL)
         {
           lastDatViewCache_lock.lock();
           LOGI("IMG resend !!!!");
           InspResultAction(lastDatViewCache, true, false , false,NULL);
 
           lastDatViewCache_lock.unlock();
-          s_t=new_t;
+          session_ACK=true;
         }
+        
       }
 
 
@@ -3050,10 +3064,13 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
     LOGI("%s", buffx);
   }
 }
-
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down)
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, int datViewMaxFPS)
 {
   static int frameActionID = 0;
+  static clock_t lastImgSendTime=0;
+  if (ret_pipe_pass_down)
+    *ret_pipe_pass_down = false;
+
   if (bpg_pi.cameraFramesLeft == 0)
   {
     // camera->TriggerMode(1);
@@ -3062,13 +3079,32 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   }
   if (bpg_pi.cameraFramesLeft > 0)
     bpg_pi.cameraFramesLeft--;
-
+  
   MT_LOCK("InspResultAction lock");
 
-  if (ret_pipe_pass_down)
-    *ret_pipe_pass_down = false;
 
   clock_t t = clock();
+  
+
+  double timeDiff_ms = (double)(t - lastImgSendTime) / CLOCKS_PER_SEC * 1000;
+  bool withinMinInterval=timeDiff_ms>(1000/datViewMaxFPS);
+  if(withinMinInterval==false)//the interval is too short
+  {
+    // skipInspDataTransfer=
+    skipImageTransfer=true;
+  }
+
+  if(DoImageTransfer==false)
+  {
+    skipImageTransfer=false;
+  }
+
+  if(DATA_VIEW_INSP_DATA_MUST_WITH_IMG)
+  {
+    
+    skipInspDataTransfer=skipImageTransfer;
+  }
+
   acvImage &capImg = imgPipe->img;
   FeatureManager_BacPac *bacpac = imgPipe->bacpac;
   CameraLayer::frameInfo &fi = imgPipe->fi;
@@ -3076,14 +3112,11 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   BPG_protocol_data bpg_dat;
 
   char tmp[200];
+
+  if (skipInspDataTransfer == false)
   do
   {
     // sendResultTo_mift(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
-
-    if (skipInspDataTransfer == true)
-    {
-      break;
-    }
 
     sprintf(tmp, "{\"start\":true}");
     bpg_dat = m_BPG_Protocol_Interface::GenStrBPGData("SS", tmp);
@@ -3118,20 +3151,17 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     }
   } while (false);
 
+  if (skipImageTransfer == false)
   do
   {
-    
-    if (skipImageTransfer == true)
-    {
-      break;
-    }
     // LOGI(">>>>");
     clock_t img_t = clock();
     static acvImage test1_buff;
 
     BPG_protocol_data_acvImage_Send_info iminfo;
     bool sendJpg = false;
-    if (sendJpg && mjpegS && DoImageTransfer && skipImageTransfer == false)
+
+    if (sendJpg && mjpegS)
     {
       acvImage *sendImg = &capImg;
 
@@ -3188,7 +3218,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       }
     }
     //if(stackingC==0)
-    if ((!sendJpg) && DoImageTransfer && skipImageTransfer == false)
+    if ((!sendJpg))
     {
       int _downSampLevel=downSampLevel;
 
@@ -3229,10 +3259,13 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       
       bpg_pi.fromUpperLayer(bpg_dat);
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
+      
+      lastImgSendTime=t;
     }
 
   } while (false);
   
+  if( skipInspDataTransfer==false ||skipImageTransfer==false)//if any of them are sent
   do
   {
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
@@ -3376,6 +3409,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
   using Ms = std::chrono::milliseconds;
   int delayStartCounter = 10000;
   bool imgSendState=true;
+  bool reportSendState=true;
   static int forceImageSendCounter=20;
   while (terminationflag && *terminationflag == false)
   {
@@ -3396,12 +3430,30 @@ void ImgPipeDatViewThread(bool *terminationflag)
       bool doPassDown = false;
       bool saveToSnap = false;
 
-      if (saveInspFailSnap)
+
+      reportSendState=true;
+
+      if(datViewQueue.size()>datViewQueueSkipSize)
       {
-        if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE ||
-            headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
+        imgSendState=false;
+      }
+
+      if (saveInspFailSnap && headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+      {
+        saveToSnap = true;
+      }
+
+      if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
+      {
+        if(saveInspNASnap)
         {
           saveToSnap = true;
+        }
+
+        if(SKIP_NA_DATA_VIEW)
+        {
+          imgSendState=false;
+          reportSendState=false;
         }
       }
 
@@ -3413,38 +3465,17 @@ void ImgPipeDatViewThread(bool *terminationflag)
       //   }
       // }
 
-      if(imgSendState==false)
-      {
-        if(datViewQueue.size() <3)
-          imgSendState=true;
-      }
-      else
-      {
-        if(datViewQueue.size() >5)
-          imgSendState=false;
-      }
-
-      if(imgSendState==false)
-      {
-        forceImageSendCounter++;
-        if(forceImageSendCounter>20)// Imge send skips too much, force it to send 
-        {
-          imgSendState=true;
-        }
-      }
       
-      if(imgSendState==true)
-      {
-        forceImageSendCounter=0;
-      }
+
+      lastDatViewCache_lock.lock();
+      
       // imgSendState=true;
-      InspResultAction(headImgPipe, false, !imgSendState , saveToSnap, &doPassDown);
+      InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown);
 
       //delayStartCounter=10000;
       if (!doPassDown)
       { //there is the end, recycle the resource
         //the logic here is to preserve the last datView info, so that we can use it if it's the last frame
-        lastDatViewCache_lock.lock();
         image_pipe_info *destroyObj=headImgPipe;
         if(imgSendState==true)
         {
@@ -3465,9 +3496,11 @@ void ImgPipeDatViewThread(bool *terminationflag)
           destroyObj->datViewInfo.report_json = NULL;
           bpg_pi.resPool.retResrc(destroyObj);
         }
-        lastDatViewCache_lock.unlock();
         
       }
+    
+      
+      lastDatViewCache_lock.unlock();
     }
   }
 }
