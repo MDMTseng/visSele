@@ -304,14 +304,22 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         else if(innerState==1)
         {//wait for checkpoint
           {
-            int32_t seqDiff_0_1sec = 10*(cur_pulse-seqInitPulse)*subPulseSkipCount/cur_pulseHZ_;
+            int32_t seqDiff_0_1sec = 20*(cur_pulse-seqInitPulse)*subPulseSkipCount/cur_pulseHZ_;
             if(seqDiff_0_1sec<16)
             {
-              uint16_t blinkSeq=0;
-              blinkSeq=(blinkSeq<<8)|0b11110111;
-              blinkSeq=(blinkSeq<<8)|0b11110111;
-              blinkSeq<<=(seqDiff_0_1sec);
-              uint8_t newLight= (blinkSeq&0x8000)?1:0;
+              // uint16_t blinkSeq=0;
+              // blinkSeq=(blinkSeq<<8)|0b11110111;
+              // blinkSeq=(blinkSeq<<8)|0b11110111;
+              // blinkSeq<<=(seqDiff_0_1sec);
+              // uint8_t newLight= (blinkSeq&0x8000)?1:0;
+              // if(preBackLight!=newLight)
+              // {
+              //   preBackLight=newLight;
+              //   digitalWrite(BACK_LIGHT_PIN, preBackLight);
+              // }
+
+              
+              uint8_t newLight= (seqDiff_0_1sec&1)?1:0;
               if(preBackLight!=newLight)
               {
                 preBackLight=newLight;
@@ -380,6 +388,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       {
         blockNewDetectedObject=true;
         
+        RESET_ALL_PIPELINE_QUEUE();
         DEBUG_printf(">>ENTER ERROR(%d)>>>\n",sysinfo.extra_code);
 
         RESET_ALL_PIPELINE_QUEUE();
@@ -387,7 +396,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
         digitalWrite(AIR_BLOW_OK_PIN, 0);
         digitalWrite(AIR_BLOW_NG_PIN, 0);
         digitalWrite(BACK_LIGHT_PIN, 1);
-        targetPulse=get_Stepper_pulse_count()+perRevPulseCount;//in jail for one rev
+        targetPulse=get_Stepper_pulse_count()+perRevPulseCount/3;//in jail for a bit
         ERROR_LOG_PUSH((GEN_ERROR_CODE)sysinfo.extra_code);
       } //enter
       else if (i == 1)
@@ -460,41 +469,7 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
 }
 int ActRegister_pipeLineInfo(pipeLineInfo *pli)
 {
-  if (mode_info.mode == run_mode_info::TEST)
-  {
-    switch (mode_info.misc_var)
-    {
 
-    case 0:
-      pli->insp_status = insp_status_NA;
-      break;
-
-    case 1:
-      pli->insp_status = (mode_info.misc_var2 & 1) ? insp_status_OK : insp_status_NG;
-      break;
-
-    case 2:
-      pli->insp_status = (mode_info.misc_var2 & 1) ? insp_status_OK : insp_status_NA;
-      break;
-
-    case 3:
-      pli->insp_status = insp_status_OK;
-      break;
-
-    case 4:
-      pli->insp_status = (mode_info.misc_var2 & 1) ? insp_status_NG : insp_status_NA;
-      break;
-
-    case 5:
-      pli->insp_status = insp_status_NG;
-      break;
-
-    default:
-      mode_info.misc_var = 0;
-    }
-
-    mode_info.misc_var2++;
-  }
 
   if (act_S.ACT_BACKLight1H.size_left() >= 1 && act_S.ACT_BACKLight1L.size_left() >= 1 &&
       act_S.ACT_CAM1.size_left() >= 2 && act_S.ACT_SWITCH.size_left() >= 1)
@@ -983,11 +958,6 @@ public:
 
       if (strcmp(typeStr, "inspRep") == 0)
       {
-        
-        if (mode_info.mode != run_mode_info::NORMAL)
-        {//ignore all
-          return;
-        }
         uint32_t reportRX_Pulse = get_Stepper_pulse_count();
         int new_count = -99;
         int pre_count = cur_insp_counter; //0~255
@@ -1181,6 +1151,46 @@ public:
           { //Pulse sync error is in tolerable region
             
             pipeTarget->insp_status = insp_status;//accept the status
+
+            if (mode_info.mode == run_mode_info::TEST && 
+              (insp_status==insp_status_OK ||  insp_status==insp_status_NG))
+            {//if in test mode override the status
+              switch (mode_info.misc_var)
+              {
+
+              case 0:
+                pipeTarget->insp_status = insp_status_NA;
+                break;
+
+              case 1:
+                pipeTarget->insp_status = (mode_info.misc_var2 & 1) ? insp_status_OK : insp_status_NG;
+                break;
+
+              case 2:
+                pipeTarget->insp_status = (mode_info.misc_var2 & 1) ? insp_status_OK : insp_status_NA;
+                break;
+
+              case 3:
+                pipeTarget->insp_status = insp_status_OK;
+                break;
+
+              case 4:
+                pipeTarget->insp_status = (mode_info.misc_var2 & 1) ? insp_status_NG : insp_status_NA;
+                break;
+
+              case 5:
+                pipeTarget->insp_status = insp_status_NG;
+                break;
+
+              default:
+                mode_info.misc_var = 0;
+              }
+
+              mode_info.misc_var2++;
+            }
+
+
+
             sysinfo.PTSyncInfo.basePulse_us = time_us;
             sysinfo.PTSyncInfo.basePulseCount = matched_obj_pulse;
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::READY;

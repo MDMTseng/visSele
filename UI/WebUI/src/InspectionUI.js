@@ -1513,9 +1513,21 @@ class APP_INSP_MODE extends React.Component {
     }
 
     this.exitGate=false;
+
+    
+    this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
+      if(api===undefined)return;
+      api.send({type: "enter_inspection"},
+      (ret)=>{},(e)=>console.log(e));
+    })
   }
 
   componentWillUnmount() {
+    this.props.ACT_WS_GET_OBJ(this.props.uInsp_API_ID,(api)=>{
+      if(api===undefined)return;
+      api.send({type: "exit_inspection"},
+      (ret)=>{},(e)=>console.log(e));
+    })
     this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: false } });
 
   }
@@ -2231,8 +2243,8 @@ const mapDispatchToProps_APP_INSP_MODE = (dispatch, ownProps,ff) => {
       dispatch(UIAct.EV_WS_SEND_BPG(id, tl, prop, data, uintArr, promiseCBs)),
     ACT_StatSettingParam_Update: (arg) => dispatch(UIAct.EV_StatSettingParam_Update(arg)),
     ACT_StatInfo_Clear:()=>dispatch(UIAct.EV_StatInfo_Clear()),
-    
     ACT_Shape_List_Update:(newlist)=>dispatch(DefConfAct.Shape_List_Update(newlist)),
+    ACT_WS_GET_OBJ: (api_id,callback)=>dispatch(UIAct.EV_WS_GET_OBJ(api_id,callback))
   }
 }
 
@@ -2257,6 +2269,8 @@ const mapStateToProps_APP_INSP_MODE = (state) => {
     reportStatisticState: state.UIData.edit_info.reportStatisticState,
     
     uInsp_API_ID_CONN_INFO:state.ConnInfo.uInsp_API_ID_CONN_INFO,
+    uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+
     CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
     
     camera_calibration_report: state.UIData.edit_info.camera_calibration_report,

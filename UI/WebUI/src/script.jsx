@@ -1329,7 +1329,7 @@ class APPMasterX extends React.Component {
                 NA:(this.res_count_rate_overall.NA*period_pre_s+NA_rate*period_s)/period_overall_s,
               }
 
-              let maxRange=15;
+              let maxRange=20;
               let offset=1;
               let alpha=period_s>maxRange?1:((period_s+offset)/(maxRange+offset));
               this.res_count_rate_recent={
