@@ -35,7 +35,7 @@ bool SKIP_NA_DATA_VIEW=false;
 int imageQueueSkipSize = 0;
 int datViewQueueSkipSize = 0;
 int DATA_VIEW_MAX_FPS=20;
-bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
+bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=true;
 
 
 cJSON *cache_deffile_JSON = NULL;
@@ -2542,13 +2542,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         saveInspNASnap = false;
       }
 
-
       double *maxImgStFPS = JFetch_NUMBER(json, "IMG_STREAMING_MAX_FPS");
       if(maxImgStFPS)
       {
         DATA_VIEW_MAX_FPS=(int)*maxImgStFPS;
       }
 
+
+      auto IMG_STREAMING_SKIP_NA = getDataFromJson(json, "IMG_STREAMING_SKIP_NA",NULL);
+      if (IMG_STREAMING_SKIP_NA == cJSON_True)
+      {
+        SKIP_NA_DATA_VIEW = true;
+      }
+      else if (IMG_STREAMING_SKIP_NA == cJSON_False)
+      {
+        SKIP_NA_DATA_VIEW = false;
+      }
 
       auto LAST_FRAME_RESEND = getDataFromJson(json, "LAST_FRAME_RESEND", NULL);
       if (LAST_FRAME_RESEND == cJSON_True)
@@ -3064,10 +3073,12 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
     LOGI("%s", buffx);
   }
 }
+
+
+clock_t lastImgSendTime=0;
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, int datViewMaxFPS)
 {
   static int frameActionID = 0;
-  static clock_t lastImgSendTime=0;
   if (ret_pipe_pass_down)
     *ret_pipe_pass_down = false;
 
@@ -3088,6 +3099,9 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   double timeDiff_ms = (double)(t - lastImgSendTime) / CLOCKS_PER_SEC * 1000;
   bool withinMinInterval=timeDiff_ms>(1000/datViewMaxFPS);
+
+  
+  LOGI("skipRep:%d skipImg:%d timeDiff_ms:%f",skipInspDataTransfer,skipImageTransfer,timeDiff_ms);
   if(withinMinInterval==false)//the interval is too short
   {
     // skipInspDataTransfer=
@@ -3101,8 +3115,10 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   if(DATA_VIEW_INSP_DATA_MUST_WITH_IMG)
   {
-    
-    skipInspDataTransfer=skipImageTransfer;
+    if(skipInspDataTransfer==false)
+    {
+      skipInspDataTransfer=skipImageTransfer;
+    }
   }
 
   acvImage &capImg = imgPipe->img;
