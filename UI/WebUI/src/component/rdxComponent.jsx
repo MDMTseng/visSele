@@ -775,10 +775,9 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
       step={100}
     />
   </>
-
   let detailSetup=UI_detail==false?null:<>
     <Divider/>
-    <div style={{ height: "600px" }}>
+    <div style={{ height: "auto" }}>
       
       <Button.Group key="GGGG">
         <Button
@@ -840,7 +839,6 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
 
 
 
-
       <Divider orientation="left" key="ERROR">{DICT._.ERROR_INFO}</Divider>
 
       <Button.Group key="ERRORG">
@@ -876,6 +874,25 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
 
 
       <Divider orientation="left">{DICT._.uInsp_ACTION_TRIGGER_TIMING}</Divider>
+
+      
+
+      檢測延遲:{uInsp_API_ID_CONN_INFO.machineStatus.latency} pulses
+
+      <br/>
+
+      偵測反向:
+      <Switch checked={(uInsp_API_ID_CONN_INFO.machineSetup.senseInv==true)}
+      onChange={(checked)=>
+        {
+          
+          ACT_WS_GET_OBJ((api)=>{
+            api.machineSetupUpdate({senseInv:checked});
+          })
+        }
+      } 
+      />
+      <br/>
 
 
       預設不噴氣{machineSetup.mode}:
@@ -932,6 +949,15 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
 
           }} />)
       }
+      <br/>
+      最大觸發頻率:
+      <InputNumber value={uInsp_API_ID_CONN_INFO.machineSetup.maxFrameRate} size="small" key={"maxFrameRate"} 
+      onChange={(value) => {
+            ACT_WS_GET_OBJ((api)=>{
+              api.machineSetupUpdate({maxFrameRate:value});
+            })
+      }} />Hz
+    
 
 
     <Divider orientation="left">{DICT._.TEST_MODE}</Divider>
@@ -987,6 +1013,8 @@ export function UINSP_UI({UI_INSP_Count=false,UI_INSP_Count_Rate=false,UI_INSP_C
       </Button.Group> 
     
     </div>
+    
+    uInsp: v{uInsp_API_ID_CONN_INFO.machineSetup.ver}
   </>
 
 
