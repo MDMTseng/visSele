@@ -29,6 +29,9 @@ export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
 # export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
+
+export MODULE_shape_based_matching=$(abspath $(moduleRoot)/contrib/shape_based_matching)
+
 export MODULE_hikrobot_camera_sdk=$(abspath $(moduleRoot)/contrib/hikrobot_camera_sdk)
 export MODULE_smem_channel=$(abspath $(moduleRoot)/contrib/smem_channel)
 
@@ -71,6 +74,7 @@ IDIR=	include/ \
 			$(MODULE_BPG_Protocol)/include \
 			$(MODULE_lodepng)\
 			$(MODULE_smem_channel)\
+			$(MODULE_shape_based_matching)/include \
 			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
 
@@ -93,6 +97,7 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_MJPEG_Streamer)/MJPEG_Streamer.a \
 					$(MODULE_smem_channel)/smem_channel.a\
 					$(MODULE_BPG_Protocol)/BPG_Protocol.a \
+					$(MODULE_shape_based_matching)/libshape_based_matching.a \
 					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
 
@@ -142,6 +147,7 @@ else
 									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
 									$(MODULE_BPG_Protocol)\
+									$(MODULE_shape_based_matching)\
 									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
 									# $(MODULE_GLACC) \
