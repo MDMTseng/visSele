@@ -84,6 +84,7 @@ include_directories (
   ${MODULE_wfqueue}
   ${MODULE_lodepng}
   ${OS_SP_inc}
+  ${OpenCV_INCLUDE_DIRS}
   )
   
 # add_executable (helloTest helloTest.cpp )
