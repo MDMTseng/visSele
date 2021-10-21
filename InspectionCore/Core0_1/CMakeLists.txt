@@ -94,19 +94,12 @@ include_directories (
 
 add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 
-# add_custom_command(TARGET visSele
-
-#                   PRE_BUILD 
-#                   COMMAND make -f "${CMAKE_CURRENT_SOURCE_DIR}/Makefile_mods"
-#                   )
 
 add_custom_target(
     mod_target
     COMMAND make -f "${CMAKE_CURRENT_SOURCE_DIR}/Makefile_mods"
 )
 add_dependencies(visSele mod_target)
-
-
 
 if(MSVC OR MSYS OR MINGW)
   set (OS_DEP_LIB  
@@ -128,6 +121,7 @@ target_link_libraries(visSele
   ${MODULE_common_lib}/common_lib.a 
   ${MODULE_acvImage}/acvImage.a 
   ${MODULE_CameraLayer}/CameraLayer.a 
+  ${MODULE_circleFitting}/CircleFitting.a
   ${MODULE_lodepng}/lodepng.a 
   ${MODULE_polyfit}/polyfit.a 
   ${MODULE_zlib}/staticlib/libz.a
@@ -138,5 +132,5 @@ target_link_libraries(visSele
   ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
-  
+  wsock32 ws2_32
   )
