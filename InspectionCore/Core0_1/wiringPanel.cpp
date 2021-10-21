@@ -1999,8 +1999,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
 
             doImgProcessThread = true;
-            imageQueueSkipSize=1;
-            datViewQueueSkipSize=1;
+            imageQueueSkipSize=3;
+            datViewQueueSkipSize=2;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -3423,10 +3423,6 @@ void InspSnapSaveThread(bool *terminationflag)
 void ImgPipeDatViewThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
-  int delayStartCounter = 10000;
-  bool imgSendState=true;
-  bool reportSendState=true;
-  static int forceImageSendCounter=20;
   while (terminationflag && *terminationflag == false)
   {
 
@@ -3445,10 +3441,12 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       bool doPassDown = false;
       bool saveToSnap = false;
-
+          
+      bool imgSendState=true;
+      bool reportSendState=true;
 
       reportSendState=true;
-
+      LOGI("vqSize:%d  datViewQueueSkipSize:%d",datViewQueue.size(),datViewQueueSkipSize);
       if(datViewQueue.size()>datViewQueueSkipSize)
       {
         imgSendState=false;
@@ -3468,7 +3466,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
         if(SKIP_NA_DATA_VIEW)
         {
-          imgSendState=false;
+          // imgSendState=false;
           reportSendState=false;
         }
       }
@@ -3639,6 +3637,7 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   bool doPassDown = doInspActionThread;
 
   //taking the short cut, mift(inspection machine) needs 100% of data
+  // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
   sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
   if (doPassDown)
   {
