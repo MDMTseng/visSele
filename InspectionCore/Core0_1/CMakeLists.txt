@@ -13,6 +13,8 @@ else(APPLE)
 endif()
 
 
+set(OpenCV_DIR C:/OpenCV-MinGW)
+
 
 # opencv
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} /opt/ros/kinetic)
