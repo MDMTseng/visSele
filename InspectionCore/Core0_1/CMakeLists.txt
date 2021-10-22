@@ -8,6 +8,9 @@ set (MWD ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 if(MSVC OR MSYS OR MINGW)
   set ( platform win_x64)
+  
+  set (PLAT_LIBS wsock32 ws2_32)
+
 else(APPLE)
   set ( platform mac_x64)
 endif()
@@ -51,7 +54,7 @@ set ( MODULE_BPG_Protocol ${MWD}/BPG_Protocol)
 set ( MODULE_smem_channel ${MWD}/contrib/smem_channel)
 set ( MODULE_MJPEG_Streamer ${MWD}/MJPEG_Streamer)
 
-set (  MODULE_mjpegLib ${MWD}/contrib/mjpegLib)
+set ( MODULE_mjpegLib ${MWD}/contrib/mjpegLib)
 
 set ( OS_SP_inc )
 
@@ -132,5 +135,5 @@ target_link_libraries(visSele
   ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
-  wsock32 ws2_32
+  ${PLAT_LIBS}
   )
