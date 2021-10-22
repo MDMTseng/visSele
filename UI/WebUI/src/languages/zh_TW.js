@@ -13,7 +13,7 @@ export default {
 
     _:{
         ERROR:"錯誤",
-        ERROR_INFO:"錯誤訊息",
+        ERROR_INFO:"系統訊息",
         WARNING:"警告",
         ReconnectAirDevice:"重新連接噴氣裝置",
         line:"線段/Line",
@@ -79,8 +79,8 @@ export default {
         uInsp_reconnection_caption:"全檢設備重連中...",
         manual_ROI_setup:"手動視野範圍(ROI)選擇",
         uInsp_ctrl:"全檢機控制",
-        ERROR_CODES:"錯誤碼",
-        ERROR_CLEAR:"清除錯誤",
+        ERROR_CODES:"系統碼",
+        ERROR_CLEAR:"清除系統碼",
         SPEED_SET:"速度設定",
         RESET_INSPECTION_COUNTER:"重設檢測計數",
         uInsp_ACTION_TRIGGER_TIMING:"檢測觸發時間",
