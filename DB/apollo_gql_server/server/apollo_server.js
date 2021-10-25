@@ -1,29 +1,9 @@
-// import * as MDB from './server/mdb_connector.js';
 
-// const {typeDefs,resolvers}=require('../schema/schema.js') ;
-// const { ApolloServer ,qgl} = require('apollo-server');
-// const { ApolloServer, gql } = require('apollo-server-express');//for use express server self define
-// const server = new ApolloServer({ typeDefs, resolvers });
 const mdb_connector = require('./mdb_connector.js');
-const idb_connector = require('./idb_connector.js');
 
 const express = require('express');
 const { deflate } = require('zlib');
 const app = express();
-const useApolloEmbedExpress=true;
-
-// if(useApolloEmbedExpress){
-//     server.listen().then(({ url }) => {
-//         console.log(`🚀  Appplo Server ready at ${url}`);
-//     });
-// }else{
-//     server.applyMiddleware({ app }); // app is from an existing express app
-//     app.listen({ port: 4000 }, () =>
-//         console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`)
-//     )
-// }
-
-
 
 var expressWs = require('express-ws')(app);
 app.use(function (req, res, next) {
@@ -688,6 +668,6 @@ function JSONTryParse(input) {
 
     return false;
 };
-app.listen(8080);
+app.listen(8085);
 
 

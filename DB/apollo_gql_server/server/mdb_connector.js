@@ -1,7 +1,7 @@
 const mongoose =require('mongoose');
 // const MDB_ATLAS ="mongodb+srv://admin:0922923392@clusterhy-zqbuj.mongodb.net/DB_HY?retryWrites=true";
-const MDB_ATLAS ="mongodb+srv://xceptionadmin:0982133498@xceptiondata.eqcea.mongodb.net/DB_HY?retryWrites=true&w=majority";
-
+// const MDB_ATLAS ="mongodb+srv://xceptionadmin:0982133498@xceptiondata.eqcea.mongodb.net/DB_HY?retryWrites=true&w=majority";
+const MDB_ATLAS ="mongodb://192.168.209.142:27017/?retryWrites=true&w=majority";
 
 // const MDB_LOCAL="mongodb://localhost:27017/db_hy";
 // let localStorage = require('localStorage');
