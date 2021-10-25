@@ -133,7 +133,7 @@ target_link_libraries(visSele
   ${MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   ${MODULE_BPG_Protocol}/BPG_Protocol.a
 
-  ${MODULE_MatchingEngine}
+  ${MODULE_MatchingEngine}/libMachingEng.a
   ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
