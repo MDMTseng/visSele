@@ -95,15 +95,15 @@ include_directories (
 # add_executable (helloTest helloTest.cpp )
 
 
-add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
+add_subdirectory(${MODULE_MatchingEngine} ${MODULE_MatchingEngine})
+add_subdirectory(${MODULE_shape_based_matching} ${MODULE_shape_based_matching})
 
 
 add_custom_target(
     mod_target
     COMMAND make -f "${CMAKE_CURRENT_SOURCE_DIR}/Makefile_mods"
-)
-add_dependencies(visSele mod_target)
 
+)
 if(MSVC OR MSYS OR MINGW)
   set (OS_DEP_LIB  
     ${MODULE_MindVision_GIGE}/lib/MVCAMSDK.lib
@@ -114,11 +114,12 @@ else(APPLE)
      )
 endif()
 
+add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 
+add_dependencies(visSele mod_target)
 
 target_link_libraries(visSele
   ${MODULE_circleFitting}/CircleFitting.a 
-  ${MODULE_MatchingEngine}/MatchingEngine.a
   ${MODULE_cJSON}/cJSON.a 
   ${MODULE_logctrl}/logctrl.a 
   ${MODULE_common_lib}/common_lib.a 
@@ -132,6 +133,7 @@ target_link_libraries(visSele
   ${MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   ${MODULE_BPG_Protocol}/BPG_Protocol.a
 
+  ${MODULE_MatchingEngine}
   ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
