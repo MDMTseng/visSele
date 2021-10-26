@@ -9,7 +9,7 @@ let DefFile_DB_W_ID="DefFile_DB_W_ID";
 let Insp_DB_W_ID="Insp_DB_W_ID";
 let CORE_ID= "CORE_ID";
 let CAM1_ID= "CAM1_ID";
-
+let Platform_API_ID="Platform_API_ID";
 let uInsp_API_ID="uInsp_API_ID";
 let SLID_API_ID="SLID_API_ID";
 //TODO: Move inspection report reducer logic to here
@@ -49,6 +49,20 @@ let StateReducer = (state, action) => {
           if(GetObjElement(state,["Insp_DB_W_ID_CONN_INFO","type"]) == action.type)break;
           return {...state,Insp_DB_W_ID_CONN_INFO:action}
           break;
+
+        case Platform_API_ID:
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,Platform_API_ID_CONN_INFO:{...state.Platform_API_ID_CONN_INFO,...action}}
+          }
+          if(GetObjElement(state,["Platform_API_ID_CONN_INFO","type"]) == action.type)break;
+          return {...state,Platform_API_ID_CONN_INFO:action}
+          break;
+  
+
+
+
           
         case CAM1_ID:
           if(action.type=="WS_UPDATE")
@@ -115,6 +129,9 @@ let ConnectionInfoReducer = (state = {
 
   SLID_API_ID,
   SLID_API_ID_CONN_INFO:undefined,
+
+  Platform_API_ID,
+  Platform_API_ID_CONN_INFO:undefined,
 }, action) => {
   if (action.type === undefined || action.type.includes("@@redux/")) return state;
 

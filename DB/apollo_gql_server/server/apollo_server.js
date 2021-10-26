@@ -22,6 +22,18 @@ function queryParamParse_P(req)
 
 }
 
+
+// const MDB_ATLAS ="mongodb://192.168.51.142:27017/?retryWrites=true&w=majority";
+// mdb_connector.INIT(MDB_ATLAS).then(_=>{
+//   console.log("DB CONNECTED");
+// }).catch(e=>{
+//   console.log("DB CONNECTION Failed");
+//   // console.log(e);
+// })
+
+
+
+
 function queryParamParse(req)
 {//http://db.xception.tech:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
   let tStart = parseInt(req.query.tStart);
@@ -595,7 +607,7 @@ app.ws('/insert/def', function(ws, req) {
             switch(RX_JSON.dbcmd.db_action)
             {
                 case "insert":
-                    mdb_connector.upsertOne("df",RX_JSON.data).
+                    mdb_connector.insertOne("df",RX_JSON.data).
                         then((prod)=>{
                             ws.send(JSON.stringify({
                                 type:"ACK",
@@ -668,6 +680,15 @@ function JSONTryParse(input) {
 
     return false;
 };
-app.listen(8085);
 
 
+function serverInit(port) {
+  
+  return app.listen(8085);
+};
+
+module.exports = {
+  express_app:app,
+  db_connect:mdb_connector.INIT,
+  serverInit:serverInit
+};

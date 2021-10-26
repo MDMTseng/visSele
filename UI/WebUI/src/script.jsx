@@ -21,7 +21,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { xstate_GetCurrentMainState, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
+import { websocket_reqTrack, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
 import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -279,6 +279,8 @@ class APPMasterX extends React.Component {
       CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+      Platform_API_ID:state.ConnInfo.Platform_API_ID,
+
       System_Setting:state.UIData.System_Setting,
       C_STATE: state.UIData.c_state,
       
@@ -691,6 +693,20 @@ class APPMasterX extends React.Component {
                         obj.connect( info.uInsp_peripheral_conn_info);
                       })
                     }
+
+
+
+
+                    if(info.platform_api_conn_info!==undefined)
+                    {
+
+                      comp.props.ACT_WS_GET_OBJ(comp.props.Platform_API_ID, (obj)=>{
+                        //console.log(obj);
+                        obj.connect( info.platform_api_conn_info);
+                      })
+                    }
+
+
 
                     console.log(info.SystemSetting);
                     if(info.SystemSetting!==undefined)
@@ -1407,6 +1423,82 @@ class APPMasterX extends React.Component {
     }
     this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
 
+
+
+
+
+    class  Platform_API
+    {
+      constructor(id)
+      {
+        this.id=id;
+        this.websocket=undefined;
+        this.connected=false;
+
+      }
+
+      connect(info)
+      {
+        let id = this.id;
+        let url = info.url;
+        // console.log(">>>>",info);
+        if(this.websocket===undefined)
+        {
+          this.close();
+          this.websocket=undefined;
+        }
+
+
+        this.websocket=new websocket_reqTrack(new WebSocket(url));
+
+        console.log(this.showOpenDialog);
+        this.connected=false;
+        comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
+        this.websocket.onopen = (e)=> {
+          console.log(this.showOpenDialog);
+          comp.props.DISPATCH({type:"WS_CONNECTED",id,data:undefined})
+          this.connected=true;
+        };
+        
+        this.websocket.onclose=(e)=>{
+          
+          this.connected=false;
+          comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
+        };
+        
+        this.websocket.onerror=(e)=>{
+
+          this.connected=false;
+          comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
+        };
+      }
+
+      showOpenDialog(option={ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory'] })
+      {
+        if(this.connected==false)return false;
+        return this.websocket.send_obj({type:"showOpenDialog",option});
+      }
+
+      
+
+      close()
+      {
+        
+        console.log(this.showOpenDialog);
+        if(this.websocket!==undefined)
+          this.websocket.close();
+        
+        this.connected=false;
+      }
+    }
+
+    this.props.ACT_WS_REGISTER(this.props.Platform_API_ID,new Platform_API(this.props.Platform_API_ID));
+
+
+
+
+
+    
     // StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
 
 
