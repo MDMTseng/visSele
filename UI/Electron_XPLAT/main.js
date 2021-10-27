@@ -1,6 +1,6 @@
 // Modules to control application life and create native browser window
 const electron = require('electron')
-
+// const mongoose = require('mongoose')
 const { app } = electron
 
 var require=require||(()=>undefined);
@@ -143,6 +143,7 @@ function setup()
     tar_launcher.set_core_require_function(require);
     // console.log(tar_launcher,APP_INFO_FILE_PATH.APPContentPath);
     tar_launcher.setup({
+      _require_:require,
       electron,
       APP_INFO_FILE_PATH:rootAppInfo.APP_INFO_FILE_PATH,
       mainWindow,

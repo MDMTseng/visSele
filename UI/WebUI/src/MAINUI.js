@@ -285,6 +285,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
   const defModelPath = useSelector(state => state.UIData.edit_info.defModelPath);
   const DefFileName = useSelector(state => state.UIData.edit_info.DefFileName);
   const DefFileHash = useSelector(state => state.UIData.edit_info.DefFileHash);
+  const db_server_url = "localhost:8085";
   
   const InspectionMonitor_URL= useSelector(state => state.UIData.InspectionMonitor_URL);
   const dispatch = useDispatch();
@@ -421,9 +422,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
   let InspectionMonitor_URL_w_info=_mus.inspection_monitor_url;
   if (isString(DefFileHash) && DefFileHash.length > 5) {
-    InspectionMonitor_URL_w_info = InspectionMonitor_URL_w_info +
-      "?v=" + 0 + "&name=" + DefFileName + "&hash=" + DefFileHash;
-      InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);
+
+    if(InspectionMonitor_URL_w_info.includes("?")==false)
+    {
+      InspectionMonitor_URL_w_info+="?"
+    }
+    InspectionMonitor_URL_w_info+= "v=" + 0 + "&name=" + DefFileName + "&hash=" + DefFileHash;
+    
+    InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);
   }
   DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
 
@@ -905,6 +911,11 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
   const ACT_WS_SEND_BPG= (tl, prop, data, uintArr, promiseCBs) => dispatch(UIAct.EV_WS_SEND_BPG(CORE_ID, tl, prop, data, uintArr, promiseCBs));
   const ACT_Report_Save = (filename, content,promiseCBs) => {ACT_WS_SEND_BPG("SV", 0,{ filename},content,promiseCBs)};
 
+  const Platform_API_ID = useSelector(state => state.ConnInfo.Platform_API_ID);
+  const Platform_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.Platform_API_ID_CONN_INFO);
+  const ACT_PLAT_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(Platform_API_ID,callback));
+  console.log(Platform_API_ID_CONN_INFO);
+  
   
 
   const [st_machine_custom_setting ,_set_st_machine_custom_setting] = useState(machCusSetting);
@@ -967,6 +978,12 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
 
     </Menu>
   );
+
+
+  // const ACT_PLAT_OBJ= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(Platform_API_ID,callback));
+
+  let isPlatAPI_ready=Platform_API_ID_CONN_INFO!==undefined && Platform_API_ID_CONN_INFO.type=="WS_CONNECTED"
+
   return <div style={{ padding: 24, background: '#fff', minHeight: 360 }}>
     
     測量模式：
@@ -979,18 +996,20 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
     <br/>
 
     檢測快照儲存位置：
-    <Button size="large" icon={<MonitorOutlined/> }  disabled={fs===undefined}//Not open?
+    <Button size="large" icon={<MonitorOutlined/> }  disabled={!isPlatAPI_ready}//Not open?
         onClick={() =>{
 
-
-          electron.remote.dialog.showOpenDialog({
-            title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']
-          }).then((result) => {
-
-            set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:result.filePaths[0]});
-          }).catch(err => {
-          console.log(err)
-          }); 
+          ACT_PLAT_OBJ((obj)=>{
+            console.log(obj);
+            obj.showOpenDialog({
+              title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']
+            }).then((result) => {
+  
+              set_st_machine_custom_setting({...st_machine_custom_setting,InspSampleSavePath:result.filePaths[0]});
+            }).catch(err => {
+            console.log(err)
+            }); 
+          })
 
           // ELECTRON_IPC.send_obj({"type":"showOpenDialog",option:{ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory']}})
           // .then((data)=>{

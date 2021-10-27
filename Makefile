@@ -12,8 +12,11 @@ domake_ALL:build export_APP_Core zip_APP_Core export_APP_Launcher zip_APP_Launch
 
 
 build_APP_Core: 
-	make -C $(abspath .)/InspectionCore/CORE0_1 domake
-	cd UI/WebUI; npm run build ;
+	cmake --build $(abspath .)/InspectionCore/CORE0_1
+	# make -C $(abspath .)/InspectionCore/CORE0_1 domake
+	(cd UI/WebUI; npm run build )
+	(cd UI/InspectionMonitor/; npm run build )
+
 
 build_APP_Launcher: 
 	cd UI/Electron_XPLAT; npm run packaging ;
@@ -33,11 +36,22 @@ export_APP_Core:
 	
 	#Export Core
 	-@mkdir -p $(EXP_APP_Core_Folder)/Core
-	make -C $(abspath .)/InspectionCore/CORE0_1 export EXPORT_PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core
+	cmake -DCMAKE_INSTALL_PREFIX:PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core $(abspath .)/InspectionCore/CORE0_1 
+	make -C $(abspath .)/InspectionCore/CORE0_1 install
 
 	
 	#Export scripts
 	cp -r scripts $(EXP_APP_Core_Folder)
+	
+	-@mkdir -p $(EXP_APP_Core_Folder)/scripts/InspMonitor
+	cp -r UI/InspectionMonitor/build/* $(EXP_APP_Core_Folder)/scripts/InspMonitor
+
+	-@mkdir -p $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
+	cp -r DB/apollo_gql_server/schema $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
+	cp -r DB/apollo_gql_server/server $(EXP_APP_Core_Folder)/scripts/apollo_gql_server
+	cp -r DB/apollo_gql_server/node_modules $(EXP_APP_Core_Folder)/scripts/
+	
+
 	
 	
 export_APP_Launcher:

@@ -8,6 +8,9 @@ set (MWD ${CMAKE_CURRENT_SOURCE_DIR}/..)
 
 if(MSVC OR MSYS OR MINGW)
   set ( platform win_x64)
+  
+  set (PLAT_LIBS wsock32 ws2_32)
+
 else(APPLE)
   set ( platform mac_x64)
 endif()
@@ -51,7 +54,7 @@ set ( MODULE_BPG_Protocol ${MWD}/BPG_Protocol)
 set ( MODULE_smem_channel ${MWD}/contrib/smem_channel)
 set ( MODULE_MJPEG_Streamer ${MWD}/MJPEG_Streamer)
 
-set (  MODULE_mjpegLib ${MWD}/contrib/mjpegLib)
+set ( MODULE_mjpegLib ${MWD}/contrib/mjpegLib)
 
 set ( OS_SP_inc )
 
@@ -92,15 +95,15 @@ include_directories (
 # add_executable (helloTest helloTest.cpp )
 
 
-add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
+add_subdirectory(${MODULE_MatchingEngine} ${MODULE_MatchingEngine})
+add_subdirectory(${MODULE_shape_based_matching} ${MODULE_shape_based_matching})
 
 
 add_custom_target(
     mod_target
     COMMAND make -f "${CMAKE_CURRENT_SOURCE_DIR}/Makefile_mods"
-)
-add_dependencies(visSele mod_target)
 
+)
 if(MSVC OR MSYS OR MINGW)
   set (OS_DEP_LIB  
     ${MODULE_MindVision_GIGE}/lib/MVCAMSDK.lib
@@ -111,11 +114,12 @@ else(APPLE)
      )
 endif()
 
+add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 
+add_dependencies(visSele mod_target)
 
 target_link_libraries(visSele
   ${MODULE_circleFitting}/CircleFitting.a 
-  ${MODULE_MatchingEngine}/MatchingEngine.a
   ${MODULE_cJSON}/cJSON.a 
   ${MODULE_logctrl}/logctrl.a 
   ${MODULE_common_lib}/common_lib.a 
@@ -129,8 +133,13 @@ target_link_libraries(visSele
   ${MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   ${MODULE_BPG_Protocol}/BPG_Protocol.a
 
+  ${MODULE_MatchingEngine}/libMachingEng.a
   ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
-  wsock32 ws2_32
+  ${PLAT_LIBS}
   )
+
+  install (TARGETS visSele  DESTINATION .)
+  install (DIRECTORY init_data  DESTINATION .)
+  install (FILES ${OS_DEP_LIB}  DESTINATION .)

@@ -44,3 +44,7 @@ UI/Electron_XPLAT/app_setup_info.json
 InspectionCore/Core0_1/visSele
 InspectionCore/Core0_1/CMakeFiles/
 InspectionCore/Core0_1/Makefile
+InspectionCore/MatchingEngine/CMakeLists.txt
+InspectionCore/MatchingEngine/CMakeFiles/
+InspectionCore/MatchingEngine/Makefile
+InspectionCore/Core0_1/install_manifest.txt

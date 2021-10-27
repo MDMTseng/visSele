@@ -1,28 +1,9 @@
-// import * as MDB from './server/mdb_connector.js';
 
-// const {typeDefs,resolvers}=require('../schema/schema.js') ;
-// const { ApolloServer ,qgl} = require('apollo-server');
-// const { ApolloServer, gql } = require('apollo-server-express');//for use express server self define
-// const server = new ApolloServer({ typeDefs, resolvers });
 const mdb_connector = require('./mdb_connector.js');
-const idb_connector = require('./idb_connector.js');
 
 const express = require('express');
+const { deflate } = require('zlib');
 const app = express();
-const useApolloEmbedExpress=true;
-
-// if(useApolloEmbedExpress){
-//     server.listen().then(({ url }) => {
-//         console.log(`🚀  Appplo Server ready at ${url}`);
-//     });
-// }else{
-//     server.applyMiddleware({ app }); // app is from an existing express app
-//     app.listen({ port: 4000 }, () =>
-//         console.log(`🚀 Server ready at http://localhost:4000${server.graphqlPath}`)
-//     )
-// }
-
-
 
 var expressWs = require('express-ws')(app);
 app.use(function (req, res, next) {
@@ -40,6 +21,18 @@ function queryParamParse_P(req)
 {
 
 }
+
+
+// const MDB_ATLAS ="mongodb://192.168.51.142:27017/?retryWrites=true&w=majority";
+// mdb_connector.INIT(MDB_ATLAS).then(_=>{
+//   console.log("DB CONNECTED");
+// }).catch(e=>{
+//   console.log("DB CONNECTION Failed");
+//   // console.log(e);
+// })
+
+
+
 
 function queryParamParse(req)
 {//http://db.xception.tech:8080/query/inspection?tStart=0&tEnd=2580451909781&repeatTime=400&projection={%22_id%22:0,%22InspectionData.repeatTime%22:1}
@@ -432,42 +425,52 @@ app.ws('/query/insp', function(ws, req) {
         var RX_JSON=isJSON(msg);
         if(RX_JSON===false){
             console.log('[WS][RX][X_JSON],RX_MSG=', msg);
+
         }
         else{
-            let req_id = RX_JSON.req_id;
-            //console.log(RX_JSON.dbcmd.cmd);
-            switch(RX_JSON.dbcmd.db_action)
-            {
-                case "query":
-                    mdb_connector.query("inspection",RX_JSON.dbcmd.cmd).
-                        then((res)=>{
+          let req_id = RX_JSON.req_id;
+          //console.log(RX_JSON.dbcmd.cmd);
+          let retObj;
+          switch(RX_JSON.type)
+          {
+            case "PING":
+              retObj={type:"PONG"};
+              break;
 
-                            //console.log(res);
-                            ws.send(JSON.stringify({
-                                type:"ACK",
-                                req_id:req_id,
-                                dbcmd:RX_JSON.dbcmd,
-                                result:res
-                            }));
+
+            // case "DBCMD":
+            default:
+              switch(RX_JSON.dbcmd.db_action)
+              {
+                  case "query":
+                      mdb_connector.query("inspection",RX_JSON.dbcmd.cmd).
+                          then((res)=>{
+  
+                            retObj={
+                              type:"ACK",
+                              dbcmd:RX_JSON.dbcmd,
+                              result:res}
                             console.log("[O]INSP InsertOK!!");
-                        }).
-                        catch((err)=>{
-                            ws.send(JSON.stringify({
-                                type:"NAK",
-                                req_id:req_id,
-                                error:err,
-                                dbcmd:RX_JSON.dbcmd
-                            }));
-                            console.log("[X]DEF QueryFailed!!",err);
-                        });
-                break;
-                default:
-                    ws.send(JSON.stringify({
-                        type:"NAK",
-                        req_id:req_id,
-                    }));
-                break
-            }
+                          }).
+                          catch((err)=>{
+
+                            retObj={
+                              type:"NAK",
+                              error:err,
+                              dbcmd:RX_JSON.dbcmd}
+
+                              console.log("[X]DEF QueryFailed!!",err);
+                          });
+                  break;
+                  default:
+                    retObj={type:"NAK"}
+                  break
+              }
+              break;
+          }
+
+          retObj.req_id=req_id;
+          ws.send(JSON.stringify(retObj));
         }
     });
 });
@@ -479,8 +482,21 @@ app.ws('/insert/insp', function(ws, req) {
             console.log('[WS][RX][X_JSON],RX_MSG=', msg);
         }
         else{
-            let req_id = RX_JSON.req_id;
+          let req_id = RX_JSON.req_id;
+          let retObj;
+          switch(RX_JSON.type)
+          {
+            case "PING":
+              // console.log("PING");
+              ws.send(JSON.stringify({
+                type:"ACK",
+                req_id:req_id,
+              }));
+              break;
 
+
+            // case "DBCMD":
+            default:
             switch(RX_JSON.dbcmd.db_action)
             {
                 case "insert":
@@ -511,6 +527,8 @@ app.ws('/insert/insp', function(ws, req) {
                     }));
                 break
             }
+          }
+
         }
     });
 
@@ -574,11 +592,22 @@ app.ws('/insert/def', function(ws, req) {
         }
         else{
             let req_id = RX_JSON.req_id;
-
+            switch(RX_JSON.type)
+            {
+              case "PING":
+                // console.log("PING");
+                ws.send(JSON.stringify({
+                  type:"ACK",
+                  req_id:req_id,
+                }));
+                return;
+                break;
+    
+            }
             switch(RX_JSON.dbcmd.db_action)
             {
                 case "insert":
-                    mdb_connector.upsertOne("df",RX_JSON.data).
+                    mdb_connector.insertOne("df",RX_JSON.data).
                         then((prod)=>{
                             ws.send(JSON.stringify({
                                 type:"ACK",
@@ -651,6 +680,15 @@ function JSONTryParse(input) {
 
     return false;
 };
-app.listen(8080);
 
 
+function serverInit(port) {
+  
+  return app.listen(8085);
+};
+
+module.exports = {
+  express_app:app,
+  db_connect:mdb_connector.INIT,
+  serverInit:serverInit
+};

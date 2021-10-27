@@ -85,8 +85,7 @@ IDIR=	include/ \
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
-					$(MODULE_circleFitting)/CircleFitting.a \
+EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_logctrl)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
@@ -101,6 +100,7 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_shape_based_matching)/libshape_based_matching.a \
 					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
+          # $(MODULE_MatchingEngine)/MatchingEngine.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
@@ -139,7 +139,6 @@ else
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
 									$(MODULE_logctrl) \
-									$(MODULE_MatchingEngine) \
 									$(MODULE_lodepng) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
@@ -148,12 +147,14 @@ else
 									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
 									$(MODULE_BPG_Protocol)\
-									$(MODULE_shape_based_matching)\
+									# $(MODULE_shape_based_matching)\
 									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
 									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \
 									# sidePrj
+                  # $(MODULE_MatchingEngine) \
+
 endif
 
 ifeq ($(TEST),DEMO)

@@ -1,7 +1,16 @@
 import jsonp from 'jsonp';
 
 
-export let db_url="http://db.xception.tech:8080";
+export let db_url="";
+
+
+
+function setupDBUrl(_dburl)
+{
+  console.log(_dburl);
+  db_url=_dburl;
+}
+
 
 function defFileQueryStr(name,featureSet_sha1,projection)
 {
@@ -104,4 +113,4 @@ function inspectionQuery(subFeatureDefSha1,date_start,date_end,limit=100*10000,s
 }
 
 
-export {defFileQuery,inspectionQuery};
+export {defFileQuery,inspectionQuery,setupDBUrl};
