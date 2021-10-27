@@ -119,6 +119,7 @@ add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 add_dependencies(visSele mod_target)
 
 target_link_libraries(visSele
+  ${MODULE_MatchingEngine}/libMachingEng.a
   ${MODULE_circleFitting}/CircleFitting.a 
   ${MODULE_cJSON}/cJSON.a 
   ${MODULE_logctrl}/logctrl.a 
@@ -133,7 +134,6 @@ target_link_libraries(visSele
   ${MODULE_MJPEG_Streamer}/MJPEG_Streamer.a
   ${MODULE_BPG_Protocol}/BPG_Protocol.a
 
-  ${MODULE_MatchingEngine}/libMachingEng.a
   ${MODULE_shape_based_matching}/libshape_based_matching.a
   ${OS_DEP_LIB}
   ${OpenCV_LIBS}
