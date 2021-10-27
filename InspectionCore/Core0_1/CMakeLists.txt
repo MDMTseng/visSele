@@ -92,8 +92,18 @@ include_directories (
   ${OpenCV_INCLUDE_DIRS}
   )
   
-# add_executable (helloTest helloTest.cpp )
 
+  
+if(MSVC OR MSYS OR MINGW)
+  set (OS_DEP_LIB  ${MODULE_MindVision_GIGE}/lib/MVCAMSDK.lib )
+  
+  set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")
+else(APPLE)
+set (OS_DEP_LIB  
+  ${MODULE_MindVision_GIGE}/lib/libmvsdk.dylib
+   )
+endif()
+# add_executable (helloTest helloTest.cpp )
 
 add_subdirectory(${MODULE_MatchingEngine} ${MODULE_MatchingEngine})
 add_subdirectory(${MODULE_shape_based_matching} ${MODULE_shape_based_matching})
@@ -104,15 +114,6 @@ add_custom_target(
     COMMAND make -f "${CMAKE_CURRENT_SOURCE_DIR}/Makefile_mods"
 
 )
-if(MSVC OR MSYS OR MINGW)
-  set (OS_DEP_LIB  
-    ${MODULE_MindVision_GIGE}/lib/MVCAMSDK.lib
-    )
-else(APPLE)
-  set (OS_DEP_LIB  
-    ${MODULE_MindVision_GIGE}/lib/libmvsdk.dylib
-     )
-endif()
 
 add_executable (visSele main.cpp Ext_Util_API.cpp tmpCodes.cpp wiringPanel.cpp)
 
