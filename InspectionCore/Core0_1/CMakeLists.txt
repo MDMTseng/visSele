@@ -139,3 +139,7 @@ target_link_libraries(visSele
   ${OpenCV_LIBS}
   ${PLAT_LIBS}
   )
+
+  install (TARGETS visSele  DESTINATION .)
+  install (DIRECTORY init_data  DESTINATION .)
+  install (FILES ${OS_DEP_LIB}  DESTINATION .)
