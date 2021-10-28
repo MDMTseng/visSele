@@ -693,6 +693,10 @@ class APPMasterX extends React.Component {
                         obj.connect( info.uInsp_peripheral_conn_info);
                       })
                     }
+                    else
+                    {
+                      console.log("No uInsp_peripheral_conn_info:{url:xxxx}");
+                    }
 
 
 
@@ -705,6 +709,10 @@ class APPMasterX extends React.Component {
                         obj.connect( info.platform_api_conn_info);
                       })
                     }
+                    else
+                    {
+                      console.log("No platform_api_conn_info:{url:xxxx}");
+                    }
 
 
 
@@ -716,7 +724,19 @@ class APPMasterX extends React.Component {
                       comp.props.ACT_System_Setting_Update(newSetting);
 
                     }
+                    else
+                    {
+                      console.log("No SystemSetting:{...}");
+                    }
 
+
+
+                    // "inspection_db_ws_url": "ws://localhost:8085/",
+                    // "cusdisp_db_fetch_url": "http://localhost:8085/",
+                    // "inspection_monitor_url": "http://localhost:8085/inspMon/?db_server=localhost:8085&",
+                    // "platform_api_conn_info": {
+                    //   "url": "ws://localhost:8085/platform_api"
+                    // },
 
                     comp.props.ACT_Machine_Custom_Setting_Update(info);
                   }
@@ -1611,35 +1631,6 @@ class APPMasterX extends React.Component {
                 case this.props.CAM1_ID:
                 {
                   
-                  this.setState({
-                    modal_view:{
-                      view_fn:()=><pre>
-                        {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
-
-                        <Button onClick={()=>{
-
-                          this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
-                            return obj.reconnection();
-                          })
-                        }}>重連</Button>
-
-                      </pre>,
-                      title:"Camera",
-                      onCancel:()=>this.setState({modal_view:undefined}),
-                      onOk:()=>this.setState({modal_view:undefined}),
-                      footer:null
-                    }
-                  });
-
-                  break;
-                }
-
-
-                case this.props.CAM1_ID:
-                {
-                  
-
-                  console.log(this.props.CAM1_ID_CONN_INFO)
                   this.setState({
                     modal_view:{
                       view_fn:()=><pre>
