@@ -3446,7 +3446,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       bool doPassDown = false;
       bool saveToSnap = false;
 
-
+      imgSendState=true;
       reportSendState=true;
 
       if(datViewQueue.size()>datViewQueueSkipSize)
