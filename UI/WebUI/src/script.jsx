@@ -968,7 +968,22 @@ class APPMasterX extends React.Component {
 
 
               let cam0=GetObjElement(camInfo,[0,"type"]);
+
+
+              let isInOperation=true;
+
               if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              {
+                isInOperation=false;
+              }
+
+              
+              if(GetObjElement(camInfo,[0,"cam_status"])!=0)
+              {
+                isInOperation=false;
+              }
+
+              if(!isInOperation)
               {
                 this.isConnected=false;
                 StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
@@ -1081,7 +1096,7 @@ class APPMasterX extends React.Component {
         this.isInReconn=false;
         this.isConnected=false;
 
-        this.queryCam(5000);
+        this.queryCam(2000);
       }
 
 
