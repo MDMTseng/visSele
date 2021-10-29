@@ -142,8 +142,3 @@ include_directories (
   ${OpenCV_INCLUDE_DIRS}
   )
   
-
-
-install (TARGETS visSele  DESTINATION .)
-install (DIRECTORY init_data  DESTINATION .)
-install (FILES ${OS_DEP_LIB}  DESTINATION .)
