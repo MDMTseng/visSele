@@ -731,7 +731,19 @@ function StateReducer(newState, action) {
   
           case UISEV.Inspection_Report:
             {
-              EVENT_Inspection_Report(newState, action);
+              let reportSkip =false;
+              let inspMode=GetObjElement(newState,["machine_custom_setting","InspectionMode"]);
+              let uInspResult=GetObjElement(action,["data","uInspResult"]);
+
+              //when in Full inspection mode if the uInspResult(the final result sends to inspection machine)
+              //is NA/UNSET(may caused by dirty image/ non-single object...), when means to tell insp mach skip this one
+              //so we gonna skip the report to put in(even if there may be a result)
+              reportSkip=(inspMode=="FI")&&
+                ((uInspResult== INSPECTION_STATUS.NA)  ||  (uInspResult== INSPECTION_STATUS.UNSET))
+
+              
+              if(reportSkip==false)
+                EVENT_Inspection_Report(newState, action);
             }
             break;
 

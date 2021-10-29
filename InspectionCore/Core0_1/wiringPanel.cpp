@@ -3624,9 +3624,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
     LOGI("stat:%d stat_sec:%d",stat,stat_sec);
-
-    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     
+    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
@@ -3634,9 +3633,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   bool doPassDown = doInspActionThread;
 
+
+  if (bpg_pi.mift!=NULL)
+  {
+    sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
+
+    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
+
+  }
   //taking the short cut, mift(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
-  sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())
