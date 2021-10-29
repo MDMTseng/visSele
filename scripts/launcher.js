@@ -35,10 +35,10 @@ exports.update={
       if(!Array.isArray(res))
         res=[res]
 
-      console.log(res)
+      // console.log(res)
       return res.map(res=>{
         let updatePackAssets = res.assets;
-        console.log(res.assets)
+        // console.log(res.assets)
         switch(process.platform)
         {
           case "win32":
@@ -114,7 +114,7 @@ exports.update={
         {
 
           let folderStruct = fs.readdirSync(srcFolderName);
-          console.log(folderStruct);
+          // console.log(folderStruct);
           if(folderStruct.length>0)
           {
             srcFolderName+="/"+folderStruct[0];
@@ -133,7 +133,7 @@ exports.update={
 
         
         const new_launcher = require(dstFolderName+"/scripts/launcher.js")
-        console.log(new_launcher);
+        // console.log(new_launcher);
         new_launcher.set_core_require_function(core_require);
         new_launcher.update.postUpdateWithRemoteInfo({...remoteInfo,new_core_path:dstFolderName},APP_INFO_FILE_PATH,updateInfo_cb)
         .then((d)=>{
@@ -216,11 +216,11 @@ exports.set_core_require_function= function (core_require_fn) {
 exports.setup = function (pak) {
   // console.log(pak);
   
-  console.log(core_require);
+  // console.log(core_require);
   let { WebSocket, mongoose, express } = pak;
   unzipper=pak.unzipper;
   
-  console.log(pak);
+  // console.log(pak);
   // // This method will be called when Electron has finished
   // // initialization and is ready to create browser windows.
   // // Some APIs can only be used after this event occurs.
@@ -232,12 +232,11 @@ exports.setup = function (pak) {
 
 
 
-  function initWSTunnel() {
-
-    WSTunnel = new WebSocket.Server({ port: 9714 });
-
-    WSTunnel.on('connection', function connection(ws) {
+  function initWSTunnel(express) {
+    console.log("initWSTunnel");
+    express.ws('/platform_api', function connection(ws) {
       ws.on('message', function incoming(message) {
+        console.log(message);
         let p = JSON.parse(message);
         let retData = {
           type: "NAK",
@@ -260,13 +259,18 @@ exports.setup = function (pak) {
           ws.send(JSON.stringify(retData));
         }
       });
+      ws.on('open', function (ev){
+        console.log("OPEN..");
+      });
+
     });
 
   }
 
   function init(pak) {
+    
+    let { APP_INFO_FILE_PATH,mainWindow,_require_ } = pak;
     console.log("Launcher INIT!!!");
-    let { APP_INFO_FILE_PATH,mainWindow } = pak;
     // {electron,APP_INFO_FILE_PATH,WebSocket}
     let APP_INFO={};
     try {
@@ -276,7 +280,22 @@ exports.setup = function (pak) {
 
     }
 
-    initWSTunnel();
+    // initWSTunnel();
+    let serverApp = require('./apollo_gql_server/server/apollo_server.js');
+    // console.log(serverApp);
+    serverApp.express_app.use('/inspMon', express.static(path.join(__dirname, 'InspMonitor')))
+    initWSTunnel(serverApp.express_app);
+
+    serverApp.serverInit(8085);
+    const MDB_ATLAS ="mongodb://127.0.0.1:27017/?retryWrites=true&w=majority";//local
+
+
+    serverApp.db_connect(MDB_ATLAS).then(_=>{
+      console.log("DB CONNECTED");
+    }).catch(e=>{
+      console.log("DB CONNECTION Failed");
+      // console.log(e);
+    })
 
     mainWindow.loadFile(APP_INFO.APPContentPath + "/WebUI/index.html")
     // mainWindow.loadURL("http://localhost:8080/")

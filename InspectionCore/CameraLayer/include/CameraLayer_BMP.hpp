@@ -67,6 +67,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     status TriggerMode(int mode);
     ~CameraLayer_BMP_carousel();
 
+    status isInOperation();
 };
 
 

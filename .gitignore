@@ -42,3 +42,10 @@ InspectionCore/contrib/smem_channel/test/node_napi/build/
 UI/Electron_XPLAT/build
 UI/Electron_XPLAT/app_setup_info.json
 InspectionCore/Core0_1/visSele
+InspectionCore/Core0_1/CMakeFiles/
+InspectionCore/Core0_1/Makefile
+InspectionCore/MatchingEngine/CMakeLists.txt
+InspectionCore/MatchingEngine/CMakeFiles/
+InspectionCore/MatchingEngine/Makefile
+InspectionCore/Core0_1/install_manifest.txt
+InspectionCore/Core0_1/MODULE_MatchingEngine/

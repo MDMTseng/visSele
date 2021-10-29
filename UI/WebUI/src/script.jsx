@@ -21,7 +21,7 @@ let $CTG=CSSTransitionGroup;
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 
-import { xstate_GetCurrentMainState, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
+import { websocket_reqTrack, websocket_autoReconnect,GetObjElement,websocket_aliveTracking,ConsumeQueue} from 'UTIL/MISC_Util';
 import { MW_API } from "REDUX_STORE_SRC/middleware/MW_API";
 
 // import LocaleProvider from 'antd/lib/locale-provider';
@@ -279,6 +279,8 @@ class APPMasterX extends React.Component {
       CAM1_ID_CONN_INFO:state.ConnInfo.CAM1_ID_CONN_INFO,
       CORE_ID_CONN_INFO:state.ConnInfo.CORE_ID_CONN_INFO,
       uInsp_API_ID:state.ConnInfo.uInsp_API_ID,
+      Platform_API_ID:state.ConnInfo.Platform_API_ID,
+
       System_Setting:state.UIData.System_Setting,
       C_STATE: state.UIData.c_state,
       
@@ -691,6 +693,28 @@ class APPMasterX extends React.Component {
                         obj.connect( info.uInsp_peripheral_conn_info);
                       })
                     }
+                    else
+                    {
+                      console.log("No uInsp_peripheral_conn_info:{url:xxxx}");
+                    }
+
+
+
+
+                    if(info.platform_api_conn_info!==undefined)
+                    {
+
+                      comp.props.ACT_WS_GET_OBJ(comp.props.Platform_API_ID, (obj)=>{
+                        //console.log(obj);
+                        obj.connect( info.platform_api_conn_info);
+                      })
+                    }
+                    else
+                    {
+                      console.log("No platform_api_conn_info:{url:xxxx}");
+                    }
+
+
 
                     console.log(info.SystemSetting);
                     if(info.SystemSetting!==undefined)
@@ -700,7 +724,19 @@ class APPMasterX extends React.Component {
                       comp.props.ACT_System_Setting_Update(newSetting);
 
                     }
+                    else
+                    {
+                      console.log("No SystemSetting:{...}");
+                    }
 
+
+
+                    // "inspection_db_ws_url": "ws://localhost:8085/",
+                    // "cusdisp_db_fetch_url": "http://localhost:8085/",
+                    // "inspection_monitor_url": "http://localhost:8085/inspMon/?db_server=localhost:8085&",
+                    // "platform_api_conn_info": {
+                    //   "url": "ws://localhost:8085/platform_api"
+                    // },
 
                     comp.props.ACT_Machine_Custom_Setting_Update(info);
                   }
@@ -932,7 +968,22 @@ class APPMasterX extends React.Component {
 
 
               let cam0=GetObjElement(camInfo,[0,"type"]);
+
+
+              let isInOperation=true;
+
               if(cam0===undefined || (comp.props.System_Setting.ALLOW_SOFT_CAM==false && cam0.includes("CameraLayer_BMP")))
+              {
+                isInOperation=false;
+              }
+
+              
+              if(GetObjElement(camInfo,[0,"cam_status"])!=0)
+              {
+                isInOperation=false;
+              }
+
+              if(!isInOperation)
               {
                 this.isConnected=false;
                 StoreX.dispatch({type:"WS_ERROR",id:comp.props.CAM1_ID,data:camInfo});
@@ -1045,7 +1096,7 @@ class APPMasterX extends React.Component {
         this.isInReconn=false;
         this.isConnected=false;
 
-        this.queryCam(5000);
+        this.queryCam(2000);
       }
 
 
@@ -1407,6 +1458,82 @@ class APPMasterX extends React.Component {
     }
     this.props.ACT_WS_REGISTER(this.props.uInsp_API_ID,new uInsp_API(this.props.uInsp_API_ID));
 
+
+
+
+
+    class  Platform_API
+    {
+      constructor(id)
+      {
+        this.id=id;
+        this.websocket=undefined;
+        this.connected=false;
+
+      }
+
+      connect(info)
+      {
+        let id = this.id;
+        let url = info.url;
+        // console.log(">>>>",info);
+        if(this.websocket===undefined)
+        {
+          this.close();
+          this.websocket=undefined;
+        }
+
+
+        this.websocket=new websocket_reqTrack(new WebSocket(url));
+
+        console.log(this.showOpenDialog);
+        this.connected=false;
+        comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
+        this.websocket.onopen = (e)=> {
+          console.log(this.showOpenDialog);
+          comp.props.DISPATCH({type:"WS_CONNECTED",id,data:undefined})
+          this.connected=true;
+        };
+        
+        this.websocket.onclose=(e)=>{
+          
+          this.connected=false;
+          comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
+        };
+        
+        this.websocket.onerror=(e)=>{
+
+          this.connected=false;
+          comp.props.DISPATCH({type:"WS_DISCONNECTED",id,data:undefined})
+        };
+      }
+
+      showOpenDialog(option={ title: "Select Directory",defaultPath:"", properties: ['openDirectory','createDirectory'] })
+      {
+        if(this.connected==false)return false;
+        return this.websocket.send_obj({type:"showOpenDialog",option});
+      }
+
+      
+
+      close()
+      {
+        
+        console.log(this.showOpenDialog);
+        if(this.websocket!==undefined)
+          this.websocket.close();
+        
+        this.connected=false;
+      }
+    }
+
+    this.props.ACT_WS_REGISTER(this.props.Platform_API_ID,new Platform_API(this.props.Platform_API_ID));
+
+
+
+
+
+    
     // StoreX.dispatch({type:"WS_DISCONNECTED",id:comp.props.uInsp_API_ID,data:undefined});
 
 
@@ -1519,35 +1646,6 @@ class APPMasterX extends React.Component {
                 case this.props.CAM1_ID:
                 {
                   
-                  this.setState({
-                    modal_view:{
-                      view_fn:()=><pre>
-                        {JSON.stringify(this.props.CAM1_ID_CONN_INFO,null,2)}
-
-                        <Button onClick={()=>{
-
-                          this.props.ACT_WS_GET_OBJ(this.props.CAM1_ID, (obj)=>{
-                            return obj.reconnection();
-                          })
-                        }}>重連</Button>
-
-                      </pre>,
-                      title:"Camera",
-                      onCancel:()=>this.setState({modal_view:undefined}),
-                      onOk:()=>this.setState({modal_view:undefined}),
-                      footer:null
-                    }
-                  });
-
-                  break;
-                }
-
-
-                case this.props.CAM1_ID:
-                {
-                  
-
-                  console.log(this.props.CAM1_ID_CONN_INFO)
                   this.setState({
                     modal_view:{
                       view_fn:()=><pre>

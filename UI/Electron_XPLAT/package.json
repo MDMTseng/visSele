@@ -29,7 +29,7 @@
   "dependencies": {
     "bindings": "*",
     "express": "^4.17.1",
-    "mongoose": "^5.13.3",
+    "mongoose": "^5.13.12",
     "node-addon-api": "*",
     "request": "^2.88.2",
     "unzipper": "^0.10.11",

@@ -3444,8 +3444,6 @@ void ImgPipeDatViewThread(bool *terminationflag)
           
       bool imgSendState=true;
       bool reportSendState=true;
-
-      reportSendState=true;
       LOGI("vqSize:%d  datViewQueueSkipSize:%d",datViewQueue.size(),datViewQueueSkipSize);
       if(datViewQueue.size()>datViewQueueSkipSize)
       {
