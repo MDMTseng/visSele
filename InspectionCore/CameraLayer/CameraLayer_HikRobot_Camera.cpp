@@ -111,16 +111,63 @@ void CameraLayer_HikRobot_Camera::ExceptionCallBack(unsigned int nMsgType)
   inNoError=false;
   LOGI("ExceptionCallBack");
 }
+
+
+uint32_t CheckSumPush(uint32_t chSum,uint32_t val)
+{
+  const int shift=2;
+  uint64_t v=(chSum<<shift)+val;
+
+  uint64_t head=v>>32;
+  while(head)
+  {
+    v&=((uint64_t)1<<32)-1;//head cut off
+    v+=head;
+    head=v>>32;
+  }
+
+  return v;
+}
+
+uint32_t pDataCheckSum( unsigned char *pData,size_t length)
+{
+  uint32_t chSum=0;
+  int segs=20;
+  for(int i=0;i<segs;i++)
+  {
+    int idx=i*(length-1)/(segs-1);
+    chSum=CheckSumPush(chSum,pData[idx]);
+  }
+  return chSum;
+}
+
 void CameraLayer_HikRobot_Camera::sImageCallBack(unsigned char *pData, MV_FRAME_OUT_INFO_EX *pFrameInfo, void *context)
 {
   CameraLayer_HikRobot_Camera *cl = (CameraLayer_HikRobot_Camera *)context;
   // cl->ImageCallBack(pData, pFrameInfo);
+
+
+  
+  MvGvspPixelType pType =pFrameInfo->enPixelType;
+
+  int chNum=1;
+  if(pType == PixelType_Gvsp_Mono8)
+  {
+    chNum=1;
+  }
+
+  size_t datLength=pFrameInfo->nWidth*pFrameInfo->nHeight*chNum;
   hikFrameInfo info={
     .pData=pData,
+    .pDataL=datLength,
+    .sampleCheckSum= pDataCheckSum( pData,datLength),
     .frameInfo=*pFrameInfo,
     .context=context
   };
   
+  LOGI("sampleCheckSum:%x",info.sampleCheckSum);
+
+
   try{
     cl->imgQueue.push_blocking(info);
   }
@@ -382,6 +429,14 @@ void CameraLayer_HikRobot_Camera::imgQThreadFunc()
     hikFrameInfo info;
     try{
       imgQueue.pop_blocking(info);
+      uint32_t cur_chSum=pDataCheckSum( info.pData,info.pDataL);
+      if(info.sampleCheckSum!=cur_chSum)
+      {//check sum error
+        
+        LOGE("ERROR:skip  0x%X!=0x%X",info.sampleCheckSum,cur_chSum);
+        continue;
+      }
+
     }
     catch(TS_Termination_Exception e)
     {
