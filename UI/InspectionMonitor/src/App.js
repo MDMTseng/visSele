@@ -9,7 +9,7 @@ import jsonp from 'jsonp';
 import moment from 'moment';
 import INFO from './info.js';
 
-import {datePrintSimple} from './UTIL/MISC_Util';
+import {datePrintSimple,getAllUrlParams} from './UTIL/MISC_Util';
 
 import  Typography  from 'antd/lib/typography';
 import Input from 'antd/lib/input';
@@ -56,72 +56,6 @@ class WebCam_SQScan extends React.Component{
       <video ref="QR_WebCam" className={this.props.className} style={this.props.style} muted playsInline/>
     );
   }
-}
-
-function getAllUrlParams(url) {
-
-  // get query string from url (optional) or window
-  var queryString = url ? url.split('?')[1] : window.location.search.slice(1);
-
-  queryString = decodeURI(queryString);
-  // we'll store the parameters here
-  var obj = {};
-
-  // if query string exists
-  if (queryString) {
-
-    // stuff after # is not part of query string, so get rid of it
-    queryString = queryString.split('#')[0];
-
-    // split our query string into its component parts
-    var arr = queryString.split('&');
-
-    for (var i = 0; i < arr.length; i++) {
-      // separate the keys and the values
-      var a = arr[i].split('=');
-
-      // set parameter name and value (use 'true' if empty)
-      var paramName = a[0];
-      var paramValue = typeof (a[1]) === 'undefined' ? true : a[1];
-
-      // (optional) keep case consistent
-      //paramName = paramName.toLowerCase();
-      //if (typeof paramValue === 'string') paramValue = paramValue.toLowerCase();
-
-      // if the paramName ends with square brackets, e.g. colors[] or colors[2]
-      if (paramName.match(/\[(\d+)?\]$/)) {
-
-        // create key if it doesn't exist
-        var key = paramName.replace(/\[(\d+)?\]/, '');
-        if (!obj[key]) obj[key] = [];
-
-        // if it's an indexed array e.g. colors[2]
-        if (paramName.match(/\[\d+\]$/)) {
-          // get the index value and add the entry at the appropriate position
-          var index = /\[(\d+)\]/.exec(paramName)[1];
-          obj[key][index] = paramValue;
-        } else {
-          // otherwise add the value to the end of the array
-          obj[key].push(paramValue);
-        }
-      } else {
-        // we're dealing with a string
-        if (!obj[paramName]) {
-          // if it doesn't exist, create property
-          obj[paramName] = paramValue;
-        } else if (obj[paramName] && typeof obj[paramName] === 'string'){
-          // if property does exist and it's a string, convert it to an array
-          obj[paramName] = [obj[paramName]];
-          obj[paramName].push(paramValue);
-        } else {
-          // otherwise add the property
-          obj[paramName].push(paramValue);
-        }
-      }
-    }
-  }
-
-  return obj;
 }
 
 function isString(val){
@@ -599,6 +533,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
     let dataSource = Object.keys(defFileGroup).map((g,idx)=>{
       
       
+      let urlParam = getAllUrlParams();
 
       let groupInfo = defFileGroup[g].filter(fetchRec=>fetchRec.count!==undefined).map(fetchRec=>
         ({
@@ -611,7 +546,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
           info:fetchRec,
           hash:fetchRec.hash,
           key:fetchRec.hash,
-          link:getUrlPath()+"?v=0&hash="+fetchRec.hash,
+          link:getUrlPath()+"?v=0&hash="+fetchRec.hash+"&db_server="+urlParam.db_server,
         })
       )
 
@@ -648,7 +583,7 @@ function XQueryInput({ onQueryRes,onQueryRej,placeholder,defaultValue }) {
       _ginfo.key="-"+_ginfo.hash[0];
 
       if(_ginfo.hash.length==1)
-        _ginfo.link=getUrlPath()+"?v=0&hash="+_ginfo.hash[0]
+        _ginfo.link=getUrlPath()+"?v=0&hash="+_ginfo.hash[0]+"&db_server="+urlParam.db_server
       return _ginfo
     }).filter(fetchRec=>fetchRec.count!==undefined &&fetchRec.count>0 )
     console.log(dataSource);
@@ -884,6 +819,15 @@ class App extends React.Component{
 
     let urlParam = getAllUrlParams();
     console.log(urlParam);
+
+
+    if(urlParam.db_server!=undefined)
+    {
+      let url = urlParam.db_server;
+      DB_Query.setupDBUrl("http://"+url);
+    }
+
+
     if(urlParam.UI==="customDisplay")
     {
       this.setState({UI:this.UI_type.customDisplay});
@@ -929,8 +873,9 @@ class App extends React.Component{
         console.log(window.location.protocol);
         if(window.location.protocol === 'https:')
         {
+          let urlParam = getAllUrlParams();
           window.location.href = 'http:' + window.location.href.substring(window.location.protocol.length).split('?')[0]+
-            "?v="+res_obj.v+"&hash="+res_obj.hash;
+            "?v="+res_obj.v+"&hash="+res_obj.hash+"&db_server="+urlParam.db_server;
           
           console.log(window.location.href);
           this.setState({...this.state,allowQRScan:false});

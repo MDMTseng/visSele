@@ -3,8 +3,12 @@ import ReactDOM from 'react-dom';
 import './index.css';
 import App from './App';
 import * as serviceWorker from './serviceWorker';
+import * as DB_Query from './UTIL/DB_Query';
 // require('./server/apollo_server.js');
+// DB_Query.setupDBUrl("http://db.xception.tech:8080");
+// DB_Query.setupDBUrl("http://localhost:8085");
 ReactDOM.render(<App />, document.getElementById('root'));
+
 
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.

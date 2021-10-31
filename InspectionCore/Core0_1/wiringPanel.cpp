@@ -35,7 +35,7 @@ bool SKIP_NA_DATA_VIEW=false;
 int imageQueueSkipSize = 0;
 int datViewQueueSkipSize = 0;
 int DATA_VIEW_MAX_FPS=20;
-bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
+bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=true;
 
 
 cJSON *cache_deffile_JSON = NULL;
@@ -1999,8 +1999,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
 
             doImgProcessThread = true;
-            imageQueueSkipSize=1;
-            datViewQueueSkipSize=1;
+            imageQueueSkipSize=3;
+            datViewQueueSkipSize=2;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -2542,13 +2542,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         saveInspNASnap = false;
       }
 
-
       double *maxImgStFPS = JFetch_NUMBER(json, "IMG_STREAMING_MAX_FPS");
       if(maxImgStFPS)
       {
         DATA_VIEW_MAX_FPS=(int)*maxImgStFPS;
       }
 
+
+      auto IMG_STREAMING_SKIP_NA = getDataFromJson(json, "IMG_STREAMING_SKIP_NA",NULL);
+      if (IMG_STREAMING_SKIP_NA == cJSON_True)
+      {
+        SKIP_NA_DATA_VIEW = true;
+      }
+      else if (IMG_STREAMING_SKIP_NA == cJSON_False)
+      {
+        SKIP_NA_DATA_VIEW = false;
+      }
 
       auto LAST_FRAME_RESEND = getDataFromJson(json, "LAST_FRAME_RESEND", NULL);
       if (LAST_FRAME_RESEND == cJSON_True)
@@ -3064,10 +3073,12 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
     LOGI("%s", buffx);
   }
 }
+
+
+clock_t lastImgSendTime=0;
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, int datViewMaxFPS)
 {
   static int frameActionID = 0;
-  static clock_t lastImgSendTime=0;
   if (ret_pipe_pass_down)
     *ret_pipe_pass_down = false;
 
@@ -3088,6 +3099,9 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   double timeDiff_ms = (double)(t - lastImgSendTime) / CLOCKS_PER_SEC * 1000;
   bool withinMinInterval=timeDiff_ms>(1000/datViewMaxFPS);
+
+  
+  LOGI("skipRep:%d skipImg:%d timeDiff_ms:%f",skipInspDataTransfer,skipImageTransfer,timeDiff_ms);
   if(withinMinInterval==false)//the interval is too short
   {
     // skipInspDataTransfer=
@@ -3101,8 +3115,10 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   if(DATA_VIEW_INSP_DATA_MUST_WITH_IMG)
   {
-    
-    skipInspDataTransfer=skipImageTransfer;
+    if(skipInspDataTransfer==false)
+    {
+      skipInspDataTransfer=skipImageTransfer;
+    }
   }
 
   acvImage &capImg = imgPipe->img;
@@ -3407,10 +3423,6 @@ void InspSnapSaveThread(bool *terminationflag)
 void ImgPipeDatViewThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
-  int delayStartCounter = 10000;
-  bool imgSendState=true;
-  bool reportSendState=true;
-  static int forceImageSendCounter=20;
   while (terminationflag && *terminationflag == false)
   {
 
@@ -3429,10 +3441,10 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       bool doPassDown = false;
       bool saveToSnap = false;
-
-
-      reportSendState=true;
-
+          
+      bool imgSendState=true;
+      bool reportSendState=true;
+      LOGI("vqSize:%d  datViewQueueSkipSize:%d",datViewQueue.size(),datViewQueueSkipSize);
       if(datViewQueue.size()>datViewQueueSkipSize)
       {
         imgSendState=false;
@@ -3452,7 +3464,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
         if(SKIP_NA_DATA_VIEW)
         {
-          imgSendState=false;
+          // imgSendState=false;
           reportSendState=false;
         }
       }
@@ -3612,9 +3624,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
     LOGI("stat:%d stat_sec:%d",stat,stat_sec);
-
-    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     
+    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
@@ -3622,8 +3633,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   bool doPassDown = doInspActionThread;
 
+
+  if (bpg_pi.mift!=NULL)
+  {
+    sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
+
+    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
+
+  }
   //taking the short cut, mift(inspection machine) needs 100% of data
-  sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
+  // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())

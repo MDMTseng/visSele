@@ -29,6 +29,9 @@ export MODULE_lodepng=$(abspath $(moduleRoot)/contrib/lodepng)
 # export MODULE_DataChannel=$(abspath $(moduleRoot)/DataChannel)
 export MODULE_CameraLayer=$(abspath $(moduleRoot)/CameraLayer)
 export MODULE_MJPEG_Streamer=$(abspath $(moduleRoot)/MJPEG_Streamer)
+
+export MODULE_shape_based_matching=$(abspath $(moduleRoot)/contrib/shape_based_matching)
+
 export MODULE_hikrobot_camera_sdk=$(abspath $(moduleRoot)/contrib/hikrobot_camera_sdk)
 export MODULE_smem_channel=$(abspath $(moduleRoot)/contrib/smem_channel)
 
@@ -51,7 +54,7 @@ export FEATURE_COMPILE_W_MINDVISION_CAMERA_SDK=0
 # export MODULE_GLACC=$(abspath $(moduleRoot)/GLAcc)
 
 
-target_bin=visSele
+# target_bin=visSele
 ODIR=obj
 IDIR=	include/ \
 			$(MODULE_acvImage)/include/ \
@@ -71,17 +74,18 @@ IDIR=	include/ \
 			$(MODULE_BPG_Protocol)/include \
 			$(MODULE_lodepng)\
 			$(MODULE_smem_channel)\
+			$(MODULE_shape_based_matching)/include \
+      # /usr/local/include/opencv4
 			# $(MODULE_DataChannel)/include\
 			# $(MODULE_MLNN)/include/  \
 
 
 
-_OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp wiringPanel.opp
+# _OBJ = main.opp playground.opp MicroInsp_FType.opp Ext_Util_API.opp wiringPanel.opp
 
 MLNN_OBJS=MLNNUtil.opp MLNL.opp MLNN.opp MLOpt.opp
 
-EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
-					$(MODULE_circleFitting)/CircleFitting.a \
+EXT_OBJS= $(MODULE_circleFitting)/CircleFitting.a \
 					$(MODULE_cJSON)/cJSON.a \
 					$(MODULE_logctrl)/logctrl.a \
 					$(MODULE_common_lib)/common_lib.a \
@@ -93,8 +97,10 @@ EXT_OBJS= $(MODULE_MatchingEngine)/MatchingEngine.a \
 					$(MODULE_MJPEG_Streamer)/MJPEG_Streamer.a \
 					$(MODULE_smem_channel)/smem_channel.a\
 					$(MODULE_BPG_Protocol)/BPG_Protocol.a \
+					$(MODULE_shape_based_matching)/libshape_based_matching.a \
 					# $(MODULE_DataChannel)/DataChannel.a \
 					# $(addprefix $(MODULE_MLNN)/obj/,$(MLNN_OBJS)) \
+          # $(MODULE_MatchingEngine)/MatchingEngine.a \
 
 ifeq ($(OS)$(CC),Windows_NTcc)
 	EXT_OBJS+= $(MODULE_zlib)/staticlib/libz.a 
@@ -133,7 +139,6 @@ else
 									$(MODULE_circleFitting) \
 									$(MODULE_cJSON) \
 									$(MODULE_logctrl) \
-									$(MODULE_MatchingEngine) \
 									$(MODULE_lodepng) \
 									$(MODULE_CameraLayer) \
 									$(MODULE_polyfit) \
@@ -142,11 +147,14 @@ else
 									$(MODULE_zlib) \
 									$(MODULE_smem_channel)\
 									$(MODULE_BPG_Protocol)\
+									# $(MODULE_shape_based_matching)\
 									# $(MODULE_DataChannel) \
 									# $(MODULE_SOIL) \
 									# $(MODULE_GLACC) \
 									# $(MODULE_MLNN) \
 									# sidePrj
+                  # $(MODULE_MatchingEngine) \
+
 endif
 
 ifeq ($(TEST),DEMO)
@@ -215,3 +223,21 @@ domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a) $(target_
 release: 
 	make -C $(abspath .) domake
 	make -C $(abspath .) export EXPORT_PATH=$(abspath .)/../release_export/InspectionCore/$(platform)
+
+:
+
+.PHONY:export_binary
+export_binary:
+ifeq ($(EXPORT_PATH),)
+	$(error "No EXPORT_PATH was set")
+else
+	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir -p $(EXPORT_PATH) || true
+	cp visSele* $(EXPORT_PATH)/
+	cp $(MODULE_MindVision_GIGE)/lib/* $(EXPORT_PATH)/
+	cp -r init_data $(EXPORT_PATH)/
+
+endif
+
+runCMake: 
+	sh InitCMake.sh
+	make VERBOSE=1
