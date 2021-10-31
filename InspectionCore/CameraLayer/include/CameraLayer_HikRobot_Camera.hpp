@@ -40,6 +40,9 @@ public:
   struct hikFrameInfo
   {
     unsigned char *pData;
+    size_t pDataL;
+    uint32_t sampleCheckSum;
+
     MV_FRAME_OUT_INFO_EX frameInfo;
     void *context;
   };

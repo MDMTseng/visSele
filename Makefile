@@ -12,7 +12,8 @@ domake_ALL:build export_APP_Core zip_APP_Core export_APP_Launcher zip_APP_Launch
 
 
 build_APP_Core: 
-	cmake --build $(abspath .)/InspectionCore/CORE0_1
+	# cmake --build $(abspath .)/InspectionCore/CORE0_1
+	(cd $(abspath .)/InspectionCore/Core0_1/ ; make -f Makefile_mods runCMake)
 	# make -C $(abspath .)/InspectionCore/CORE0_1 domake
 	(cd UI/WebUI; npm run build )
 	(cd UI/InspectionMonitor/; npm run build )
@@ -36,8 +37,7 @@ export_APP_Core:
 	
 	#Export Core
 	-@mkdir -p $(EXP_APP_Core_Folder)/Core
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core $(abspath .)/InspectionCore/CORE0_1 
-	make -C $(abspath .)/InspectionCore/CORE0_1 install
+	(cd $(abspath .)/InspectionCore/Core0_1/ ; make -f Makefile_mods export_binary EXPORT_PATH=$(abspath .)/$(EXP_APP_Core_Folder)/Core)
 
 	
 	#Export scripts

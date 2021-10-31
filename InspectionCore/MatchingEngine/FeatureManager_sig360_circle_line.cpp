@@ -1097,8 +1097,10 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
     {
       va = judgeReport.def->value_adjust_b;
     }
-    if (va = !va)
+    if (va != va)
+    {
       va = 0;
+    }
     judgeReport.measured_val += va;
   }
 
@@ -1116,8 +1118,6 @@ FeatureReport_judgeReport FeatureManager_sig360_circle_line::measure_process(Fea
       judgeReport.status = FeatureReport_sig360_circle_line_single::STATUS_SUCCESS;
     }
   }
-
-  LOGV("===================");
 
   return judgeReport;
 }

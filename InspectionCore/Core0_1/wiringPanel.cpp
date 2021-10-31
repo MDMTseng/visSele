@@ -1999,8 +1999,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
 
             doImgProcessThread = true;
-            imageQueueSkipSize=1;
-            datViewQueueSkipSize=1;
+            imageQueueSkipSize=3;
+            datViewQueueSkipSize=2;
           }
           else if (dat->tl[0] == 'F') //"FI" is for full inspection
           {                           //no manual trigger and process in thread
@@ -3423,10 +3423,6 @@ void InspSnapSaveThread(bool *terminationflag)
 void ImgPipeDatViewThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
-  int delayStartCounter = 10000;
-  bool imgSendState=true;
-  bool reportSendState=true;
-  static int forceImageSendCounter=20;
   while (terminationflag && *terminationflag == false)
   {
 
@@ -3445,10 +3441,10 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       bool doPassDown = false;
       bool saveToSnap = false;
-
-
-      reportSendState=true;
-
+          
+      bool imgSendState=true;
+      bool reportSendState=true;
+      LOGI("vqSize:%d  datViewQueueSkipSize:%d",datViewQueue.size(),datViewQueueSkipSize);
       if(datViewQueue.size()>datViewQueueSkipSize)
       {
         imgSendState=false;
@@ -3468,7 +3464,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
         if(SKIP_NA_DATA_VIEW)
         {
-          imgSendState=false;
+          // imgSendState=false;
           reportSendState=false;
         }
       }
@@ -3628,9 +3624,8 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
     LOGI("stat:%d stat_sec:%d",stat,stat_sec);
-
-    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     
+    imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
     // LOGI("==<<");matchingEnglock.unlock();LOGI("==<<");
   }
 
@@ -3638,8 +3633,16 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
 
   bool doPassDown = doInspActionThread;
 
+
+  if (bpg_pi.mift!=NULL)
+  {
+    sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
+
+    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
+
+  }
   //taking the short cut, mift(inspection machine) needs 100% of data
-  sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
+  // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
   if (doPassDown)
   {
     if(datViewQueue.size()==datViewQueue.capacity())

@@ -223,3 +223,21 @@ domake: prepare  $(SUB_MAKEFILES) build_objs $(target_bin) $(target_a) $(target_
 release: 
 	make -C $(abspath .) domake
 	make -C $(abspath .) export EXPORT_PATH=$(abspath .)/../release_export/InspectionCore/$(platform)
+
+:
+
+.PHONY:export_binary
+export_binary:
+ifeq ($(EXPORT_PATH),)
+	$(error "No EXPORT_PATH was set")
+else
+	-@[ ! -z "$(EXPORT_PATH)" ]&&mkdir -p $(EXPORT_PATH) || true
+	cp visSele* $(EXPORT_PATH)/
+	cp $(MODULE_MindVision_GIGE)/lib/* $(EXPORT_PATH)/
+	cp -r init_data $(EXPORT_PATH)/
+
+endif
+
+runCMake: 
+	sh InitCMake.sh
+	make

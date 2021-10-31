@@ -187,6 +187,10 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerCount(int count)
   return Trigger();
 }
 
+CameraLayer::status CameraLayer_BMP_carousel::isInOperation()
+{
+    return CameraLayer::ACK;
+}
 CameraLayer::status CameraLayer_BMP_carousel::SnapFrame(CameraLayer_Callback snap_cb,void *cb_param)
 {
   

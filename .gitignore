@@ -48,3 +48,4 @@ InspectionCore/MatchingEngine/CMakeLists.txt
 InspectionCore/MatchingEngine/CMakeFiles/
 InspectionCore/MatchingEngine/Makefile
 InspectionCore/Core0_1/install_manifest.txt
+InspectionCore/Core0_1/MODULE_MatchingEngine/

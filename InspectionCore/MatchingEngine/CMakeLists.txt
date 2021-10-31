@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.8)
 set (CMAKE_CXX_STANDARD 14)
-project(MachingEng)
+project(MatchingEngine)
 
 
 include_directories (
@@ -8,15 +8,15 @@ include_directories (
   "." 
   "./include"
   "./MorphEngine/include/"
-  ${MODULE_CameraLayer}/include 
-  ${MODULE_cJSON} 
-  ${MODULE_acvImage}/include/ 
-  ${MODULE_common_lib}/include 
-  ${MODULE_circleFitting} 
-  ${MODULE_logctrl}/include 
-  ${MODULE_polyfit}/include 
-  ${MODULE_zlib}/src 
-  ${OpenCV_INCLUDE_DIRS}
+  $ENV{MODULE_CameraLayer}/include 
+  $ENV{MODULE_cJSON} 
+  $ENV{MODULE_acvImage}/include/ 
+  $ENV{MODULE_common_lib}/include 
+  $ENV{MODULE_circleFitting} 
+  $ENV{MODULE_logctrl}/include 
+  $ENV{MODULE_polyfit}/include 
+  $ENV{MODULE_zlib}/src 
+  $ENV{OpenCV_INCLUDE_DIRS}
   )
   
 
