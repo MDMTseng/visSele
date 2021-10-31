@@ -240,4 +240,4 @@ endif
 
 runCMake: 
 	sh InitCMake.sh
-	make
+	make VERBOSE=1
