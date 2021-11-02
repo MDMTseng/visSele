@@ -21,13 +21,10 @@
 #include <ctime>
 
 #define _VERSION_ "1.1.003"
-
+char* SNAP_FILE_EXTENSION=".xreps";
 std::timed_mutex mainThreadLock;
 
 std::mutex matchingEnglock;
-
-bool saveInspFailSnap = true;
-bool saveInspNASnap = true;
 
 
 bool SKIP_NA_DATA_VIEW=false;
@@ -42,10 +39,20 @@ cJSON *cache_deffile_JSON = NULL;
 
 cJSON *cache_camera_param = NULL;
 
+
+bool saveInspFailSnap = true;
+bool saveInspNASnap = true;
+int saveInspQFullSkipCount=0;
+int save_snap_folder_full_delete_count=0;
+
 const std::string InspSampleSavePath_DEFAULT("data/SAMPLE");
 std::string InspSampleSavePath = InspSampleSavePath_DEFAULT;
+int InspSampleSaveMaxCount = 1000;
 
-int resourcePoolSize = 30;
+
+
+
+const int resourcePoolSize = 30;
 
 std::timed_mutex lastDatViewCache_lock;
 image_pipe_info *lastDatViewCache=NULL;
@@ -912,7 +919,7 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
-void saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, acvImage *image, const char *fileName)
+void saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, acvImage *image, const char *fileName,const char* filename_extension)
 {
 
   cJSON *reportsList = JFetch_ARRAY(inspectionReport, "reports[0].reports");
@@ -943,7 +950,7 @@ void saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *d
   cJSON_DetachItemViaPointer(infoJObj, deffile);
 
   cJSON_Delete(infoJObj);
-  int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath + ".xreps").c_str());
+  int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath + (std::string)filename_extension).c_str());
   delete (jstr);
   if (ret_write_Len < 0)
   {
@@ -1531,9 +1538,37 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             realfullPath("./", chBuff);
             cJSON_AddStringToObject(retArr, itemType, chBuff);
           }
-          else if (strcmp(itemType, "XXXX") == 0)
+          else if (strcmp(itemType, "precess_queue_status") == 0)
           {
-            cJSON_AddStringToObject(retArr, itemType, "XXXX");
+            cJSON *robj = cJSON_CreateObject();
+            cJSON_AddItemToObject(retArr,itemType,robj);
+            {
+              cJSON *info = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj,"inspQueue",info);
+              cJSON_AddNumberToObject(info,"capacity",inspQueue.capacity());
+              cJSON_AddNumberToObject(info,"size",inspQueue.size());
+            }
+            {
+              cJSON *info = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj,"datViewQueue",info);
+              cJSON_AddNumberToObject(info,"capacity",datViewQueue.capacity());
+              cJSON_AddNumberToObject(info,"size",datViewQueue.size());
+            }
+            {
+              cJSON *info = cJSON_CreateObject();
+              cJSON_AddItemToObject(robj,"inspSnapQueue",info);
+              cJSON_AddNumberToObject(info,"capacity",inspSnapQueue.capacity());
+              cJSON_AddNumberToObject(info,"size",inspSnapQueue.size());
+            }
+
+          }
+          else if (strcmp(itemType, "snap_queue_skip_count") == 0)
+          {
+            cJSON_AddNumberToObject(retArr,itemType,saveInspQFullSkipCount);
+          }
+          else if (strcmp(itemType, "save_snap_folder_full_delete_count") == 0)
+          {
+            cJSON_AddNumberToObject(retArr,itemType,save_snap_folder_full_delete_count);
           }
           else if (strcmp(itemType, "camera_info") == 0)
           {
@@ -1898,6 +1933,8 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         saveInspFailSnap = false;
         saveInspNASnap = false;
         SKIP_NA_DATA_VIEW=false;
+        saveInspQFullSkipCount=0;
+        // save_snap_folder_full_delete_count=0;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         this->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
         int frameCount = (int)this->cameraFramesLeft;
@@ -2920,6 +2957,8 @@ void acvImageBlendIn(acvImage *imgOut, int *imgSArr, acvImage *imgB, int Num)
 
 int InspStatusReducer(int total_status, int new_status)
 {
+  if (total_status == FeatureReport_sig360_circle_line_single::STATUS_UNSET)
+    return new_status;
   if (total_status == FeatureReport_sig360_circle_line_single::STATUS_NA)
     return FeatureReport_sig360_circle_line_single::STATUS_NA;
 
@@ -3307,14 +3346,14 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   {
     if (inspSnapQueue.push(imgPipe))
     {
-      if (ret_pipe_pass_down)
+      if (ret_pipe_pass_down)//we passed the info into inspSnapQueue, so mark it
         *ret_pipe_pass_down = true;
     }
     else
     {
       LOGE("inspSnapQueue is full.... skip the save");
-
-      if (ret_pipe_pass_down)
+      saveInspQFullSkipCount++;
+      if (ret_pipe_pass_down)//since the image doesn't pass down ( for now recycle it at this pipeline)
         *ret_pipe_pass_down = false;
     }
   }
@@ -3337,6 +3376,132 @@ std::string getTimeStr(const char *timeFormat = "%d-%m-%Y %H:%M:%S")
   strftime(buffer, sizeof(buffer), timeFormat, timeinfo);
   std::string str(buffer);
   return str;
+}
+
+bool isEndsWith(const char *str, const char *suffix)
+{
+    if (!str || !suffix)
+        return 0;
+    size_t lenstr = strlen(str);
+    size_t lensuffix = strlen(suffix);
+    if (lensuffix >  lenstr)
+        return 0;
+    return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
+bool isStartsWith(const char *str, const char *prefix)
+{
+  int p_len = strlen(prefix);
+  int s_len = strlen(str);
+  if(s_len<p_len)return false;
+  return strncmp(str, prefix, p_len) == 0;
+}
+
+
+int getFileCountInFolder(const char* path,const char* ext)
+{
+  DIR *d = opendir(path);
+  if (d) {
+    int count=0;
+    struct dirent *dir;
+    while ((dir = readdir(d)) != NULL) {
+      if(dir->d_name[0]=='.')continue;//ignore all "." initial names(including . .. .xxxx)
+      if(isEndsWith(dir->d_name,ext))
+      {
+
+        count++;
+      }
+
+    }
+    closedir(d);
+    return count;
+  }
+  return -1;
+}
+
+
+int removeOldestRep(const char* path,const char* ext)
+{
+  //the rep has a define file and some other axiliry files(for now there is a companion Image file)
+
+  std::string path_ostr=path;
+
+  DIR *d = opendir(path);
+  if (d==NULL) {
+    return -1;
+  }
+
+  
+  std::string oldestFileName="";
+
+  {
+
+    time_t oldest_mtime=0;//oldest on latest modified time
+    struct dirent *dir;
+    int count=0;
+    while ((dir = readdir(d)) != NULL) {
+      
+      
+      // if(dir->d_type!=DT_REG)continue;//if not a file, next
+      if(dir->d_name[0]=='.')continue;//ignore all "." initial names(including . .. .xxxx)
+      
+      if(isEndsWith(dir->d_name,ext))//focus on the certain type(extension) of file
+      {
+        
+        std::string full_path=path_ostr+(std::string)dir->d_name;
+      // LOGI("path_ostr:%s",full_path.c_str());
+        struct stat st;
+        if (stat(full_path.c_str(), &st) != 0)continue;
+      // LOGI("mt:%d",st.st_mtime);
+
+        if(st.st_mtime<oldest_mtime||count==0)//is current file has mtime less than the record
+        {
+          oldestFileName=(std::string)dir->d_name;
+          oldest_mtime=st.st_mtime;
+        }
+        count++;
+      }
+
+    }
+    if(oldest_mtime==0)//there is zero target type file
+    {
+      closedir(d);
+      d=NULL;
+      return -2;
+    }
+
+  }
+
+  
+  rewinddir(d);
+  
+
+  std::string FILE_NAME = oldestFileName.substr (
+    0,  oldestFileName.length()-strlen(ext)); //remove extention 
+
+  // LOGI("oldestFileName:%s, FILE_NAME:%s",oldestFileName.c_str(),FILE_NAME.c_str());
+
+  {
+    int removeCount=0;
+    struct dirent *dir;
+    int count=0;
+    while ((dir = readdir(d)) != NULL) {
+      //if not a file, next
+      // if(dir->d_type!=DT_REG)continue;//not a file
+      if(dir->d_name[0]=='.')continue;//ignore all "." initial names(including . .. .xxxx)
+      if(isStartsWith(dir->d_name,FILE_NAME.c_str())==false)continue;//not starts with [FILE_NAME]
+
+      std::string full_path=path_ostr+(std::string)dir->d_name;
+      // LOGI("DLE: FILE_NAME:%s",full_path.c_str());
+      remove(full_path.c_str());//remove it
+      removeCount++;
+    }
+    closedir(d);
+    return removeCount;
+  }
+
+
+
+  return 0;
 }
 
 void InspSnapSaveThread(bool *terminationflag)
@@ -3407,9 +3572,24 @@ void InspSnapSaveThread(bool *terminationflag)
 
         // rootPath
         // std::string timeStamp= getTimeStr("%H:%M:%S") ;
-        std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
+        std::string folderPath = rootPath + extPath;
 
-        saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
+        int count =getFileCountInFolder(folderPath.c_str(),SNAP_FILE_EXTENSION);
+
+        LOGI("folderPath::%s  ,count:%d",folderPath.c_str(),count);
+        // while(count>=InspSampleSaveMaxCount)
+        if(count>=InspSampleSaveMaxCount)//only deal with one
+        {
+          int ret = removeOldestRep(folderPath.c_str(),SNAP_FILE_EXTENSION);
+          
+          LOGI("removeOldestRep ret:%d",ret);
+          count--;
+          save_snap_folder_full_delete_count++;
+        }
+        std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
+        LOGI("SAVE::%s",filePath.c_str());
+
+        saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str(),SNAP_FILE_EXTENSION);
       }
 
       cJSON_Delete(headImgPipe->datViewInfo.report_json);
@@ -3454,6 +3634,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
       {
         saveToSnap = true;
       }
+      // LOGI("saveInspFailSnap:%d saveToSnap:%d  finspStatus:%d",saveInspFailSnap,saveToSnap,headImgPipe->datViewInfo.finspStatus);
 
       if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
       {
@@ -3615,14 +3796,34 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
           {
             vector<FeatureReport_judgeReport> &jrep = *(srep[0].judgeReports);
             stat = InspStatusReduce(jrep);
-            stat_sec = stat;
+            stat_sec = stat;//full insp status
           }
         }
+
+    // LOGI(">>>>"); //overall status
+    //     int agg_stat= FeatureReport_sig360_circle_line_single::STATUS_UNSET;
+    //     for(int k=0;k<srep.size();k++)
+    //     {
+    // LOGI(">>>>");
+    //       vector<FeatureReport_judgeReport> &jrep = *(srep[k].judgeReports);
+    //       int stat = InspStatusReduce(jrep);
+    //       if(stat==FeatureReport_sig360_circle_line_single::STATUS_NA)
+    //       {
+    //         continue;
+    //       }
+    //       agg_stat = InspStatusReducer(agg_stat, stat);
+    // LOGI(">>>%d>%d",agg_stat,stat);
+    //     }
+    //     stat_sec=agg_stat;
+
+
+
       }
     }
 
     imgPipe->datViewInfo.uInspStatus = stat;
     imgPipe->datViewInfo.finspStatus = stat_sec;
+
     LOGI("stat:%d stat_sec:%d",stat,stat_sec);
     
     imgPipe->datViewInfo.report_json = matchingEng.FeatureReport2Json(report);
