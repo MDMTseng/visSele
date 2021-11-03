@@ -160,6 +160,11 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(frameInterval_ms-delay_time));
         }
+        if(modeTriggerSim_sleep>0)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(modeTriggerSim_sleep));
+          
+        }
     }
     //ThreadTerminationFlag = 0;
 
@@ -207,7 +212,13 @@ CameraLayer::status CameraLayer_BMP_carousel::SnapFrame(CameraLayer_Callback sna
 
 CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
 {
-    
+    modeTriggerSim_sleep=0;
+
+    if(mode==2)
+    {
+      mode=0;
+      modeTriggerSim_sleep=5000;
+    }
     if(mode>=0)
     {
         triggerMode = mode;

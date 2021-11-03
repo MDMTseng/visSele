@@ -42,7 +42,7 @@ class CameraLayer_BMP : public CameraLayer{
 
 class CameraLayer_BMP_carousel : public CameraLayer_BMP{
 
-
+    int modeTriggerSim_sleep=0;
     int frameInterval_ms=100;
     int ThreadTerminationFlag=0;
     int imageTakingCount=0;
