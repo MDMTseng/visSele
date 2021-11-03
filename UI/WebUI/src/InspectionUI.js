@@ -1855,8 +1855,9 @@ class APP_INSP_MODE extends React.Component {
           {
             default_dst_Path="data"
           }
-
-          let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh:mm:ss_l");
+          let targetName=this.props.edit_info.DefFileName+"-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
+          //the tag might have Chinease char and it breaks the file access function for hide it for now
+          // let targetName=this.props.edit_info.DefFileName+"-["+tag_str+"]-"+dateFormat(new Date(), "yyyymmdd-hh-mm-ss_l");
           this.setState({
             modalInfo:{
               title:"快照命名",
