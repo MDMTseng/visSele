@@ -1368,10 +1368,26 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             if (cacheImage.GetWidth() * cacheImage.GetHeight() > 10) //HACK: just a hacky way to make sure the cache image is there
             {
               SaveIMGFile(fileName, &cacheImage);
+              session_ACK=true;
             }
+            else
+            {
               session_ACK = false;
-
-            //cacheImage.ReSize(1,1);
+            }
+          }
+          else if (strcmp(type, "__LAST_DATA_VIEW_CACHE_IMG__") == 0)
+          {
+            if(lastDatViewCache==NULL)
+            {
+              session_ACK = false;
+            }
+            else
+            {
+              
+              SaveIMGFile(fileName, &lastDatViewCache->img);
+              session_ACK=true;
+            }
+            
           }
           else if (strcmp(type, "__START_STACKING_IMG__") == 0)
           {
@@ -2569,6 +2585,22 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         saveInspFailSnap = false;
       }
 
+
+      {
+
+        double *num = JFetch_NUMBER(json, "INSP_NG_SNAP_MAX_NUM");
+        if(num)
+        {
+          InspSampleSaveMaxCount=(int)*num;
+        }
+      }
+
+
+      
+
+
+
+
       auto INSP_NA_SNAP = getDataFromJson(json, "INSP_NA_SNAP", NULL);
       if (INSP_NA_SNAP == cJSON_True)
       {
@@ -2600,7 +2632,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       if (LAST_FRAME_RESEND == cJSON_True)
       {  
         session_ACK=false;
-
+        LOGI(">>>>>LAST_FRAME_RESEND>>>>>");
         if(inspQueue.size()!=0 || datViewQueue.size()!=0)
         {
           //No
@@ -2608,9 +2640,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         else if(lastDatViewCache!=NULL)
         {
           lastDatViewCache_lock.lock();
-          LOGI("IMG resend !!!!");
+          // LOGI("IMG resend !!!!");
           InspResultAction(lastDatViewCache, true, false , false,NULL);
 
+          // LOGI("IMG resend DONE....!!!!");
           lastDatViewCache_lock.unlock();
           session_ACK=true;
         }
@@ -3504,6 +3537,42 @@ int removeOldestRep(const char* path,const char* ext)
   return 0;
 }
 
+int pipeEleRecycle(image_pipe_info *targetEle)
+{
+  if(targetEle==lastDatViewCache)//same element
+  {
+    return -2;
+  }
+  lastDatViewCache_lock.lock();
+  image_pipe_info *destroyObj=targetEle;
+  //if(imgSendState==true)
+  {
+    if(lastDatViewCache==NULL)
+    {
+      destroyObj=NULL;
+    }
+    else
+    {
+      destroyObj=lastDatViewCache;
+    }
+    
+    lastDatViewCache=targetEle;
+  }
+  int ret=-1;
+  if(destroyObj!=NULL)
+  {
+    cJSON_Delete(destroyObj->datViewInfo.report_json);
+    destroyObj->datViewInfo.report_json = NULL;
+    bpg_pi.resPool.retResrc(destroyObj);
+    ret=0;
+  }
+  lastDatViewCache_lock.unlock();
+
+  return ret;
+}
+
+
+
 void InspSnapSaveThread(bool *terminationflag)
 {
   using Ms = std::chrono::milliseconds;
@@ -3592,13 +3661,13 @@ void InspSnapSaveThread(bool *terminationflag)
         saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str(),SNAP_FILE_EXTENSION);
       }
 
-      cJSON_Delete(headImgPipe->datViewInfo.report_json);
-      headImgPipe->datViewInfo.report_json = NULL;
 
-      bpg_pi.resPool.retResrc(headImgPipe);
+      
+      pipeEleRecycle(headImgPipe);
     }
   }
 }
+
 
 void ImgPipeDatViewThread(bool *terminationflag)
 {
@@ -3659,9 +3728,6 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // }
 
       
-
-      lastDatViewCache_lock.lock();
-      
       // imgSendState=true;
       InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown);
 
@@ -3669,31 +3735,10 @@ void ImgPipeDatViewThread(bool *terminationflag)
       if (!doPassDown)
       { //there is the end, recycle the resource
         //the logic here is to preserve the last datView info, so that we can use it if it's the last frame
-        image_pipe_info *destroyObj=headImgPipe;
-        if(imgSendState==true)
-        {
-          if(lastDatViewCache==NULL)
-          {
-            destroyObj=NULL;
-          }
-          else
-          {
-            destroyObj=lastDatViewCache;
-          }
-          
-          lastDatViewCache=headImgPipe;
-        }
-        if(destroyObj!=NULL)
-        {
-          cJSON_Delete(destroyObj->datViewInfo.report_json);
-          destroyObj->datViewInfo.report_json = NULL;
-          bpg_pi.resPool.retResrc(destroyObj);
-        }
-        
+        pipeEleRecycle(headImgPipe);
       }
     
       
-      lastDatViewCache_lock.unlock();
     }
   }
 }
