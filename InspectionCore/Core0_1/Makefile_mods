@@ -239,5 +239,5 @@ else
 endif
 
 runCMake: 
-	sh InitCMake.sh
+	-sh InitCMake.sh
 	make VERBOSE=1
