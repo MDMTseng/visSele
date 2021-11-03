@@ -296,7 +296,7 @@ exports.setup = function (pak) {
       console.log("DB CONNECTION Failed");
       // console.log(e);
     })
-
+    mainWindow.maximize();
     mainWindow.loadFile(APP_INFO.APPContentPath + "/WebUI/index.html")
     // mainWindow.loadURL("http://localhost:8080/")
     // mainWindow.webContents.openDevTools()
