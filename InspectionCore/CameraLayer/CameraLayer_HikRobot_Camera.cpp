@@ -204,7 +204,9 @@ CameraLayer::status CameraLayer_HikRobot_Camera::ExtractFrame(uint8_t *imgBuffer
       uint8_t* tar_Pix=imgBuffer+(i*w)*channelCount;
       for(int j=0;j<w;j++)
       {
-        *tar_Pix=*src_Pix_Gray;
+        tar_Pix[0]=
+        tar_Pix[1]=
+        tar_Pix[2]=*src_Pix_Gray;
         tar_Pix+=channelCount;
         // for(int k=0;k<channelCount;k++)//Somehow it's super slow
         // {

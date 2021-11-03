@@ -1,6 +1,6 @@
 #ifndef MAIN_HPP
 #define MAIN_HPP
-
+#include <chrono>
 #include "acvImage_ToolBox.hpp"
 #include "acvImage_BasicDrawTool.hpp"
 #include "acvImage_BasicTool.hpp"
@@ -69,17 +69,14 @@ public:
   using MJPEG_Streamer::MJPEG_Streamer;
   MJPEG_Streamer2(int port) : MJPEG_Streamer(port) {}
 };
-static long current_time_ms(void)
+using namespace std::chrono;
+static uint64_t current_time_ms(void)
 {
-  long ms;  // Milliseconds
-  time_t s; // Seconds
-  struct timespec spec;
 
-  clock_gettime(CLOCK_REALTIME, &spec);
-
-  s = spec.tv_sec;
-  ms = round(spec.tv_nsec / 1.0e3) + s * 1000; // Convert nanoseconds to milliseconds
-  return ms;
+  milliseconds ms = duration_cast< std::chrono::milliseconds >(
+      system_clock::now().time_since_epoch()
+  );
+  return (uint64_t)ms.count();
 }
 
 class MicroInsp_FType : public SOCK_JSON_Flow
