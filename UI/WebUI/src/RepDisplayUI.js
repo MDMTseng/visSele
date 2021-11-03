@@ -243,6 +243,8 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   
   const [fileSelectorInfo,setFileSelectorInfo]=useState(undefined);
   const [repImgInfo,SetRepImgInfo]=useState(undefined);
+  const [cachedXREPList,setCachedXREPList]=useState(undefined);
+  const [curIdx,setCurIdx]=useState(-1);
   const [repDispInfo,setRepDispInfo]=useState(
     {
 
@@ -256,6 +258,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     
   const machine_custom_setting = useSelector(state => state.UIData.machine_custom_setting);
 
+  const [curFolderPath,setCurFolderPath]=useState(machine_custom_setting.InspSampleSavePath||"data/");
   // const _REF = React.useRef({
   //   iel: new InspectionEditorLogic(),
   // });
@@ -264,7 +267,7 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
   function LoadNewFile(filePath)
   {
     filePath = filePath.replace("." + xreps, "");
-    BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:6 },undefined,
+    BPG_Channel( "LD", 0,{ filename: filePath+"." + xreps,imgsrc: filePath,down_samp_level:1 },undefined,
     { resolve:(pkts,action_channal)=>{
       let SS=pkts.find(pkt=>pkt.type=="SS");
       let FL=pkts.find(pkt=>pkt.type=="FL");
@@ -290,19 +293,19 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
     } });
   
 
-    BPG_Channel( "LD", 0,{ imgsrc: filePath,down_samp_level:1 },undefined,
-    { resolve:(pkts,action_channal)=>{
-      let IM=pkts.find(pkt=>pkt.type=="IM");
-      let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
-      // newEditInfo.img=img_pros.data;
-      // newEditInfo.img.IGNORE_IMAGE_FIT_TO_SCREEN=true;
-      // setEditInfo({...newEditInfo})
+    // BPG_Channel( "LD", 0,{ imgsrc: filePath,down_samp_level:1 },undefined,
+    // { resolve:(pkts,action_channal)=>{
+    //   let IM=pkts.find(pkt=>pkt.type=="IM");
+    //   let img_pros= BPG_Protocol.map_BPG_Packet2Act(IM);
+    //   // newEditInfo.img=img_pros.data;
+    //   // newEditInfo.img.IGNORE_IMAGE_FIT_TO_SCREEN=true;
+    //   // setEditInfo({...newEditInfo})
 
-      SetRepImgInfo(img_pros.data);
+    //   SetRepImgInfo(img_pros.data);
 
-    }, reject:(e)=>{
+    // }, reject:(e)=>{
 
-    } });
+    // } });
 
   }
   function BrowseNewFileToLoad()
@@ -327,25 +330,49 @@ export default function RepDisplayUI_rdx({ BPG_Channel , onExtraCtrlUpdate }) {
 
 
   useEffect(()=>{
-    onExtraCtrlUpdate({
-      browseNewFileToLoad:()=>BrowseNewFileToLoad(),
-      LoadNewFile:(filePath)=>LoadNewFile(filePath)
-    })
     BrowseNewFileToLoad();
   },[]);
 
-  let default_dst_Path=machine_custom_setting.Sample_Saving_Path||"data/";
+  
+  useEffect(()=>{
+    onExtraCtrlUpdate({
+      browseNewFileToLoad:()=>BrowseNewFileToLoad(),
+      LoadNewFile:(filePath)=>LoadNewFile(filePath),
+      loadNext:()=>{
+        let newIdx=(curIdx+1)%cachedXREPList.length;
+        setCurIdx(newIdx);
+        // console.log(cachedXREPList,newIdx);
+        LoadNewFile(cachedXREPList[newIdx].path);
+      },
+      loadPrev:()=>{ 
+        let newIdx=(curIdx-1);
+        if(newIdx<0)newIdx+=cachedXREPList.length;
+        setCurIdx(newIdx);
+        // console.log(cachedXREPList,newIdx);
+        LoadNewFile(cachedXREPList[newIdx].path);
+      }
+    })
+  },[cachedXREPList,curIdx]);
+
   console.log(repDispInfo,repImgInfo);
   return (<div  className="s width12 height12">
 
     <BPG_FileBrowser key="BPG_FileBrowser"
       className="width8 modal-sizing"
       searchDepth={4}
-      path={default_dst_Path} visible={fileSelectorInfo !== undefined}
+      path={curFolderPath} visible={fileSelectorInfo !== undefined}
       BPG_Channel={BPG_Channel}
 
-      onFileSelected={(filePath, fileInfo) => {
+      onFileSelected={(filePath, fileInfo,folderStruct) => {
+        let xrepLists=folderStruct.files
+          .filter(f=>(f.type=="REG"&&f.name.endsWith(xreps)))
+          .sort((f1,f2) => f1.ctime_ms>f2.ctime_ms);
+        setCurFolderPath(folderStruct.path);
+        setCachedXREPList(xrepLists);
         setFileSelectorInfo(undefined);
+        
+        let idx = xrepLists.findIndex((xrp)=>xrp.name==fileInfo.name);
+        setCurIdx(idx);
         fileSelectorInfo.callBack(filePath, fileInfo);
       }}
 

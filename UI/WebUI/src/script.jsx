@@ -609,7 +609,7 @@ class APPMasterX extends React.Component {
               
               let GS=stacked_pkts.find(pkt=>pkt.type=="GS");
               if(GS===undefined)return;
-              console.log(GS.data)
+              // console.log(GS.data)
 
 
               

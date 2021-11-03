@@ -30,6 +30,7 @@ import { BPG_FileBrowser, BPG_FileSavingBrowser,BPG_FileBrowser_varify_info } fr
 
 import { default as AntButton } from 'antd/lib/button';
 
+import NumPad from 'react-numpad';
 import PageHeader from 'antd/lib/page-header';
 import Typography from 'antd/lib/typography';
 import Collapse from 'antd/lib/collapse';
@@ -1020,6 +1021,23 @@ const Setui_UI=({machCusSetting,onMachCusSettingUpdate,onExtraCtrlUpdate})=>{
           // })
         }}>{st_machine_custom_setting.InspSampleSavePath}</Button>
     <br/>
+
+
+    全檢儲存NG： <Switch checked={st_machine_custom_setting.FI_INSP_NG_SNAP==true} onChange={(check)=>{
+      
+      set_st_machine_custom_setting({...st_machine_custom_setting,FI_INSP_NG_SNAP:check});
+    }} />
+
+    <br/>
+    全檢儲存NG最大數量： 
+    <NumPad.Number 
+      onChange={(value)=>
+        set_st_machine_custom_setting({...st_machine_custom_setting,FI_INSP_NG_SNAP_MAX_NUM:parseInt(value)})
+      } 
+      value={st_machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM}>
+      <InputNumber value={st_machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM} />
+    </NumPad.Number>
+
     <Divider>RAW</Divider>
     <pre>
     {JSON.stringify(st_machine_custom_setting, null, 4)}
@@ -1391,12 +1409,37 @@ const MainUI=()=>{
           if(extraCtrls.browseNewFileToLoad!==undefined)
           {
             extraCtrlUI.push({
+              key:"save_calibration",
               icon:<FolderOpenOutlined />,
-              text:DICT._.save_calibration,
+              text:"開啟",
               onClick:_=>extraCtrls.browseNewFileToLoad()
               // subMenu:[]
             })
           }
+
+          if(extraCtrls.loadPrev!==undefined)
+          {
+            extraCtrlUI.push({
+              key:"loadPrev",
+              icon:<CaretUpOutlined />,
+              text:"loadPrev",
+              onClick:_=>extraCtrls.loadPrev()
+              // subMenu:[]
+            })
+          }
+          if(extraCtrls.loadNext!==undefined)
+          {
+            extraCtrlUI.push({
+              key:"loadNext",
+              icon:<CaretDownOutlined />,
+              text:"loadNext",
+              onClick:_=>extraCtrls.loadNext()
+              // subMenu:[]
+            })
+          }
+
+
+
           setExtraSideUI(extraCtrlUI);
         }}/>
         

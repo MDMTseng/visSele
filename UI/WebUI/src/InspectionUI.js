@@ -1492,6 +1492,12 @@ class APP_INSP_MODE extends React.Component {
       this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
 
       this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
+      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+      { 
+        INSP_NG_SNAP:this.props.machine_custom_setting.FI_INSP_NG_SNAP==true,
+        INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||100
+      });
+          
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
@@ -1509,7 +1515,6 @@ class APP_INSP_MODE extends React.Component {
       // }, undefined);
 
       this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
-
     }
 
     this.exitGate=false;
@@ -1676,8 +1681,8 @@ class APP_INSP_MODE extends React.Component {
           onClick={() => {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
-        <br/>
-        {/* SAVE:
+        {/* <br/>
+        SAVE:
         <Button key="opt uInsp" icon={<SettingOutlined/>}
           onClick={() => {
 
@@ -1843,19 +1848,8 @@ class APP_INSP_MODE extends React.Component {
           
           let tag_str = (curList.length==0)?"":curList[0].tag;
 
-          this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-          { stacking_count:5, type: "__START_STACKING_IMG__"},undefined,
-          {
-            resolve:(pkts,action_ch)=>{
-              console.log(pkts);
-            },
-            reject:(e)=>{
 
-              console.log(e);
-            }
-          })
-
-          let default_dst_Path=this.props.machine_custom_setting.Sample_Saving_Path;
+          let default_dst_Path=this.props.machine_custom_setting.InspSampleSavePath;
           
           if(default_dst_Path===undefined)
           {
@@ -1876,7 +1870,7 @@ class APP_INSP_MODE extends React.Component {
                 let path_name = default_dst_Path+"/"+name;
                 
                 this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
-                { filename: path_name+".png",make_dir:true, type: "__STACKING_IMG__" },undefined,
+                { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
                 {
                   resolve:(pkts,action_ch)=>{
 
@@ -1886,9 +1880,9 @@ class APP_INSP_MODE extends React.Component {
                     if(SS.data.ACK==true)
                     {
                       let deffile = defFileGeneration(this.props.edit_info);
-
+                      // console.log(curList);
                       let reportSave = {
-                        reports:JSON.parse(JSON.stringify(curList,(key, val) => val.toFixed ? Number(val.toFixed(6)) : val  )),
+                        reports:JSON.parse(JSON.stringify(curList,(key, val) => val===undefined? undefined:(val.toFixed ? Number(val.toFixed(6)) : val  ))),
                         defInfo:deffile,
                         camera_param:this.props.edit_info._obj.cameraParam
                       }

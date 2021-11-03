@@ -842,7 +842,7 @@ export class BPG_FileBrowser_proto extends React.Component{
             onClick: (evt) => { 
               console.log(evt);
               if(file.type!="DIR")
-                this.props.onFileSelected(file.path,file);
+                this.props.onFileSelected(file.path,file,this.state.folderStruct);
               else
                 this.goDir(file.path);
               
