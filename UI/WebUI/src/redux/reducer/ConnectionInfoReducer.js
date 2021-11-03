@@ -27,6 +27,11 @@ let StateReducer = (state, action) => {
       {
         case CORE_ID:
           
+          if(action.type=="WS_UPDATE")
+          {
+            delete action["type"];
+            return {...state,CORE_ID_CONN_INFO:{...state.CORE_ID_CONN_INFO,...action}}
+          }
           if(GetObjElement(state,["CORE_ID_CONN_INFO","type"]) == action.type)break;
           console.log(action)
           return {...state,CORE_ID_CONN_INFO:action}

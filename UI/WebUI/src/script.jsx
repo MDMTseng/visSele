@@ -591,7 +591,35 @@ class APPMasterX extends React.Component {
         this.reqWindow= {};
         this.pgIDCounter= 0;
         this.websocket=undefined;
+        this.isConnected=false;
         console.log(">>>>");
+        this.systemStatusPull();
+      }
+
+
+      systemStatusPull()
+      {
+        setInterval(()=>{
+          if(this.isConnected==false)return;
+          
+          comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "GS", 0,  { items: ["precess_queue_status","snap_queue_skip_count","save_snap_folder_full_delete_count","binary_path","data_path"] },
+          undefined, 
+          {
+            resolve: (stacked_pkts,P) => {
+              
+              let GS=stacked_pkts.find(pkt=>pkt.type=="GS");
+              if(GS===undefined)return;
+              // console.log(GS.data)
+
+
+              
+              StoreX.dispatch({type:"WS_UPDATE",id:comp.props.CORE_ID,
+                info:GS.data});
+            },
+            reject:(e)=>{
+            }
+          });
+        },1000);
       }
 
       connect(info)
@@ -605,7 +633,7 @@ class APPMasterX extends React.Component {
         this.websocket.onopen=(ev)=>{
         }
         this.websocket.onclose=(ev)=>{
-
+          this.isConnected=false;
           console.log("CLOSE::",ev);
           StoreX.dispatch(UIAct.EV_WS_REMOTE_SYSTEM_NOT_READY(ev));
           
@@ -645,6 +673,8 @@ class APPMasterX extends React.Component {
                 
                 let version = GetObjElement(HR,["data","version"])||"_";
                 StoreX.dispatch({type:"WS_CONNECTED",id:comp.props.CORE_ID,data:HR,brief_info:version});
+                
+                this.isConnected=true;
               }
 
               comp.props.ACT_WS_SEND_BPG(comp.props.CORE_ID, "HR", 0, { a: ["d"] });
@@ -1643,6 +1673,38 @@ class APPMasterX extends React.Component {
               switch(connInfo.id)
               {
                 
+                case this.props.CORE_ID:
+                {
+                  
+                  this.setState({
+                    modal_view:{
+                      view_fn:()=>
+                      {
+                        let cinfo=this.props.CORE_ID_CONN_INFO;
+                        let info=GetObjElement(cinfo,["info"]);  
+                        let snap_queue_skip_count=GetObjElement(info,["snap_queue_skip_count"]);  
+                        let save_snap_folder_full_delete_count=GetObjElement(info,["save_snap_folder_full_delete_count"]);  
+
+                        return <pre>
+                        檢驗NG儲存略過數量：{snap_queue_skip_count}<br/>
+                        檢驗NG儲存資料夾滿後刪舊：{save_snap_folder_full_delete_count}<br/>
+                        {JSON.stringify(info,null,2)}
+                        </pre>
+                      },
+                      title:"Core",
+                      onCancel:()=>this.setState({modal_view:undefined}),
+                      onOk:()=>this.setState({modal_view:undefined}),
+                      footer:null
+                    }
+                  });
+
+                  break;
+                }
+
+
+
+                
+                
                 case this.props.CAM1_ID:
                 {
                   
@@ -1670,6 +1732,7 @@ class APPMasterX extends React.Component {
                 }
 
 
+
                 case this.props.uInsp_API_ID:
                 {
                   this.setState({
@@ -1688,6 +1751,7 @@ class APPMasterX extends React.Component {
                   });
                   break;
                 }
+                
 
 
               }
