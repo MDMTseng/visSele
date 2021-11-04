@@ -1553,7 +1553,22 @@ export const LocalStorageTools={
     LocalS_list.unshift(data);
     LocalStorageTools.setlist(lsKey, LocalS_list)
     return true;
-  }
+  },
+  getobj:(lsKey)=>
+  {
+  
+    if(localStorage===undefined)return undefined;
+    let LocalS_list = localStorage.getItem(lsKey);
+
+    try {
+      LocalS_list = JSON.parse(LocalS_list);
+     
+    } catch (e) {
+      LocalS_list = undefined;
+    }
+    return LocalS_list;
+  },
+  setobj:(lsKey,obj)=>localStorage.setItem(lsKey, JSON.stringify(obj)),
 
 
 

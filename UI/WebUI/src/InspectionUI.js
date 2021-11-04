@@ -15,7 +15,7 @@ import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
 import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
@@ -26,7 +26,6 @@ import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 //import {Doughnut} from 'react-chartjs-2';
 
 import { round } from 'UTIL/MISC_Util';
-let localStorage = require('localStorage');
 let log = logX.getLogger("InspectionUI");
 
 import Row from 'antd/lib/Row';
@@ -67,6 +66,7 @@ import {
 } from '@ant-design/icons';
 
 
+const LS_ROI_KEY="LS_ROI";
 
 import Divider from 'antd/lib/divider';
 
@@ -1517,6 +1517,16 @@ class APP_INSP_MODE extends React.Component {
       this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
     }
 
+    {
+      let LS_ROI=LocalStorageTools.getobj(LS_ROI_KEY);
+      
+      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+      {CameraSetting: { ROI:LS_ROI}});
+
+    
+      console.log(LS_ROI)
+    }
+
     this.exitGate=false;
 
     
@@ -2115,8 +2125,14 @@ class APP_INSP_MODE extends React.Component {
 
       <Button type={"primary"} danger={this.state.onROISettingCallBack!==undefined} key="Manual ZOOM" size={"large"}
         onClick={() => {
+
+
+        let FullSensorROI=[0,0,99999,99999];
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        { CameraSetting: { ROI:[0,0,99999,99999] } });
+        { CameraSetting: { ROI:FullSensorROI } });
+
+        LocalStorageTools.setobj(LS_ROI_KEY,FullSensorROI);
+        
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
           let x = ROI_setting.start.pix.x;
@@ -2134,9 +2150,17 @@ class APP_INSP_MODE extends React.Component {
             y+=h;
             h=-h;
           }
+          
           let ROI = [x,y,w,h];
+          if(w<10 || h<10 )
+          {
+            ROI=FullSensorROI;
+          }
+
+          
           this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {CameraSetting: { ROI}});
+          LocalStorageTools.setobj(LS_ROI_KEY,ROI);
 
         
           console.log(ROI_setting,ROI);
