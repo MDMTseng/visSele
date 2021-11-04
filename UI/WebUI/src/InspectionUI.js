@@ -66,7 +66,7 @@ import {
 } from '@ant-design/icons';
 
 
-const LS_ROI_KEY="LS_ROI";
+const LS_INSP_ROI_KEY="LS_INSP_ROI";
 
 import Divider from 'antd/lib/divider';
 
@@ -1518,7 +1518,7 @@ class APP_INSP_MODE extends React.Component {
     }
 
     {
-      let LS_ROI=LocalStorageTools.getobj(LS_ROI_KEY);
+      let LS_ROI=LocalStorageTools.getobj(LS_INSP_ROI_KEY);
       
       this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       {CameraSetting: { ROI:LS_ROI}});
@@ -2131,7 +2131,7 @@ class APP_INSP_MODE extends React.Component {
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
         { CameraSetting: { ROI:FullSensorROI } });
 
-        LocalStorageTools.setobj(LS_ROI_KEY,FullSensorROI);
+        LocalStorageTools.setobj(LS_INSP_ROI_KEY,FullSensorROI);
         
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
@@ -2160,7 +2160,7 @@ class APP_INSP_MODE extends React.Component {
           
           this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {CameraSetting: { ROI}});
-          LocalStorageTools.setobj(LS_ROI_KEY,ROI);
+          LocalStorageTools.setobj(LS_INSP_ROI_KEY,ROI);
 
         
           console.log(ROI_setting,ROI);
