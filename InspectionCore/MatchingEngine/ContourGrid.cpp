@@ -155,6 +155,24 @@ void contourConcatLastTo(std::vector<ContourFetch::contourMatchSec> &m_sec,int t
   m_sec.erase(m_sec.end() - 1);
 }
 
+const ContourFetch::ptInfo* ContourFetch::get(int idx)
+{
+  
+  int idx_count_down=idx;
+  for(int i=0;i<contourSections.size();i++)
+  {
+    if(idx_count_down<contourSections[i].size())
+    {
+      return &(contourSections[i][idx_count_down]);
+    }
+    else
+    {
+      idx_count_down-=contourSections[i].size();
+    }
+  }
+  return NULL;
+}
+
 
 void ContourFetch::getContourPointsWithInCircleContour(float X,float Y,float radius,float sAngle,float eAngle,float outter_inner,
   float epsilon,std::vector<contourMatchSec> &m_sec)
@@ -316,7 +334,7 @@ void ContourFetch::getContourPointsWithInLineContour(
   const int gapCountMax=10;
   int gapCount=0;
   int init_gapCount=0;
-  // LOGI("===============");
+  // LOGI("======%0.3f=======%0.3f===",line.line_vec.X,line.line_vec.Y);
   for(int i=0;i<contourSections.size();i++)
   {
     int idx = i;
@@ -357,7 +375,7 @@ void ContourFetch::getContourPointsWithInLineContour(
           ptInSection=true;
         else
         {
-          float dotP = pti.contourDir.X * line.line_vec.X + pti.contourDir.Y * line.line_vec.Y;
+          float dotP = pti.sobel.X * line.line_vec.Y - pti.sobel.Y * line.line_vec.X;
           if(dotP*flip_f>cosSim)
           {
             ptInSection=true;

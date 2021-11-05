@@ -1266,10 +1266,10 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
         angle = -angle; //depends on flip or not invert the angle
       }
 
-      LOGV("line vec:%f %f", vec.X, vec.Y);
+      // LOGI("spoint id:%d  line vec:%f %f",def.id, vec.X, vec.Y);
       vec = acvRotation(sin(angle), cos(angle), 1, vec); //No need to do the flip rotation
-      LOGV("Angle:%f", angle * 180 / M_PI);
-      LOGV("line vec:%f %f", vec.X, vec.Y);
+      // LOGI("Angle:%f", angle * 180 / M_PI);
+      // LOGI("line vec:%f %f", vec.X, vec.Y);
     }
 
     // acv_XY pt = acvRotation(sine, cosine, flip_f, def.data.anglefollow.position); //Rotate the default point
@@ -1339,7 +1339,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
       edge_grid.getContourPointsWithInLineContour(line,
                                                   width / 2,
                                                   margin,
-                                                  searchDir, m_sections, 999999, -0.5);
+                                                  searchDir, m_sections, 999999, 0);
 
     float nearestDist = 99999999;
     acv_XY nearestPt;
@@ -1353,7 +1353,7 @@ FeatureReport_searchPointReport FeatureManager_sig360_circle_line::searchPoint_p
     //     // LOGI("[%d]:%.2f %.2f",j,pt.X,pt.Y);
 
     //     // originalImage->CVector[(int)pt.Y][(int)pt.X*3]=255;
-    //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+1]=255;
+    //     originalImage->CVector[(int)pt.Y][(int)pt.X*3+0]=255;
     //     // originalImage->CVector[(int)pt.Y][(int)pt.X*3+2]=255;
     //   }
     // }
@@ -4242,6 +4242,16 @@ int FeatureManager_sig360_circle_line::SingleMatching(acvImage *searchDistorigin
     break;
   }
 
+
+
+  // for(int i=0;;i++)
+  // {
+  //   const ContourFetch::ptInfo* pinfo= edge_grid.get(i);
+  //   if(pinfo==NULL)break;
+  //   int X =(int)pinfo->pt.X;
+  //   int Y =(int)pinfo->pt.Y;
+  //   originalImage->CVector[Y][3*X]=255;
+  // }
   // acv_XY ttt = acvRotation(cached_sin, cached_cos, flip_f, (acv_XY){100,0});
 
   // acvDrawLine(originalImage,
