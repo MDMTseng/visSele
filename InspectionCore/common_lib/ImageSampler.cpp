@@ -746,7 +746,78 @@ int angledOffsetTable::CLONE(angledOffsetTable *dst, angledOffsetTable *src)
 int nodeInfoIdxCorrection(std::vector<BGLightNodeInfo> &infoArr, int targetIdx, int idxW)
 {
 }
-void stageLightParam::nodesIdxWHSetup()
+
+
+float stageLightParam::calcInterpolation(int X,int Y,BGLightNodeInfo *newNodeInfo)
+{
+  float fscore=0;
+  acv_XY pts[4];
+  BGLightNodeInfo *info[4];
+  for(int m=0;m<4;m++)//4 direction
+  {
+    int stepX=0;
+    int stepY=0;
+
+    switch(m)
+    {
+      case 0:stepX=1;break;
+      case 1:stepX=-1;break;
+      case 2:stepY=1;break;
+      case 3:stepY=-1;break;
+    }
+
+    int x=X;
+    int y=Y;
+    float fpoint=1;
+    while(1)
+    {
+      x+=stepX;
+      y+=stepY;
+      info[m]= fetchIdx(x,y);
+      if(info[m]==NULL)
+      {
+        break;
+      }
+      if(info[m]->error>=0)
+      {
+        pts[m].X=x;
+        pts[m].Y=y;
+        
+        pts[m].X = hypot(X-x,Y-y);//X as distance
+        break;
+      }
+      fpoint*=0.8;//score decay
+    }
+
+    if(info[m]!=NULL)
+    {
+      fscore+=fpoint;
+
+    }
+  }
+  if(fscore==0)return 0;
+
+  //simple distance based linear interpolation
+
+
+  BGLightNodeInfo nInfo;
+  nInfo.error=1;
+  nInfo.index.X=X;
+  nInfo.index.Y=Y;
+  nInfo.mean=0;
+  float distSum=0;
+  for(int m=0;m<4;m++)
+  {
+    if(info[m]==NULL)continue;
+    nInfo.mean+=info[m]->mean/pts[m].X;
+    distSum+=pts[m].X;
+  }
+  
+  nInfo.mean/=distSum;
+  *newNodeInfo=nInfo;
+  return fscore;
+}
+void stageLightParam::nodesUpdate()
 {
 
   printf("BG_nodes.size():%d\n", BG_nodes.size());
@@ -764,13 +835,14 @@ void stageLightParam::nodesIdxWHSetup()
   idxW++;
   idxH++;
   BG_exnodes.clear();
-  BG_exnodes.resize((idxW + 2) * (idxH + 2)); //expend
+  BG_exnodes.resize((idxW + 2) * (idxH + 2)); //expend, to cover the whole image
 
   for (int i = 0; i < idxH + 2; i++)
     for (int j = 0; j < idxW + 2; j++)
     {
       int eqIdx = j + i * (idxW + 2);
       BG_exnodes[eqIdx].mean = NAN; //Clear
+      BG_exnodes[eqIdx].error = -10; //set default error
     }
 
   for (BGLightNodeInfo &node : BG_nodes) //Fill data into correct location
@@ -778,8 +850,45 @@ void stageLightParam::nodesIdxWHSetup()
     if (node.mean != node.mean)
       continue;
     int exIdx = (node.index.X + 1) + (node.index.Y + 1) * (idxW + 2);
-    BG_exnodes[exIdx] = node;
+    BG_exnodes[exIdx] = node;//override
+
   }
+
+
+
+  while(1)
+  {
+    float maxFidalityScore=0.0;
+    BGLightNodeInfo maxFNodeInfo;
+    int maxFIdx=-1;
+    for(int i=0;i<BG_exnodes.size();i++)
+    {
+      BGLightNodeInfo &node=BG_exnodes[i];
+      if(node.error>=0)continue;
+
+      int X=((i)%(idxW + 2))-1;
+      int Y=((i)/(idxW + 2))-1;
+
+      BGLightNodeInfo newNodeInfo;
+      float fscore=calcInterpolation(X,Y,&newNodeInfo);
+      if(maxFidalityScore<fscore)
+      {
+        maxFidalityScore=fscore;
+        maxFIdx=i;
+        maxFNodeInfo=newNodeInfo;
+      }
+
+    }
+    if(maxFIdx!=-1)
+    {
+      // LOGI("maxFIdx:%d score:%f",maxFIdx,maxFidalityScore);
+      BG_exnodes[maxFIdx] = maxFNodeInfo;
+    }
+    else break;//no update
+  }
+
+
+  if(1)//the old way to fill the info
   { //Fill out frame
     for (int i = 0; i < idxW; i++)
     {
