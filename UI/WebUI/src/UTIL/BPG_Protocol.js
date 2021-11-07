@@ -4,6 +4,10 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import {PostfixExpCalc} from 'UTIL/MISC_Util';
 
 
+import * as logX from 'loglevel';
+let log = logX.getLogger("BPG_Protocol");
+
+
 const BPG_header_L = 9;
 let raw2header=(ws_evt, offset = 0)=>{
   if (( ws_evt.data instanceof ArrayBuffer) && ws_evt.data.byteLength>=BPG_header_L) {
@@ -251,6 +255,108 @@ export function BPG_ExpCalc(postExp_,funcSet,fallbackFunctionSet) {//no $ and # 
 }
 
 export const DEF_EXTENSION = "hydef";
+
+
+
+export class CameraCtrl {
+  constructor(setting) {
+    this.data = {
+      DoImageTransfer: true,
+      emptyResultCount: 0,
+      cameraFrameRate: 30,
+      speedSwitchingCount: 100,
+    };
+    this.ws_ch = setting.ws_ch;
+
+    this.ev_frameRateChange = setting.ev_frameRateChange;
+    if (this.ev_frameRateChange === undefined)
+      this.ev_frameRateChange = () => { };
+
+    this.ev_emptyResultCountChange = setting.ev_emptyResultCountChange;
+    if (this.ev_emptyResultCountChange === undefined)
+      this.ev_emptyResultCountChange = () => { };
+
+    this.setSpeedSwitchingCount(10);
+    this.setCameraSpeed_HIGH();
+  }
+
+
+
+  setCameraImageTransfer(doTransfer) {
+    if (doTransfer === undefined) doTransfer = !this.data.DoImageTransfer;
+    this.data.DoImageTransfer = doTransfer;
+    this.ws_ch({ DoImageTransfer: doTransfer });
+  }
+
+
+  setCameraFrameRate(framerate) {
+    if (this.data.framerate == framerate) return;
+    log.info("setCameraFrameRate:" + framerate);
+    this.data.framerate = framerate;
+
+    this.ev_frameRateChange(framerate);
+    this.ws_ch({ CameraSetting: { framerate: framerate } });
+  }
+
+
+  setImageCropParam(cropWindow,downSampleFactor=8) {
+
+
+    let obj={};
+    if(cropWindow!==undefined)
+    {
+      obj.ImageTransferSetup={
+        crop:cropWindow
+      };
+    }
+    
+    if(downSampleFactor!==undefined)
+    {
+      obj.CameraSetting={
+        down_samp_level:downSampleFactor
+      };
+    }
+    this.ws_ch(obj);
+  }
+
+
+
+  setSpeedSwitchingCount(speedSwitchingCount = 1000) {
+    this.data.speedSwitchingCount = speedSwitchingCount;
+  }
+
+  setCameraSpeed_HIGHEST() {
+    this.setCameraFrameRate(9999999);
+  }
+  setCameraSpeed_HIGH() {
+    this.setCameraFrameRate(60);
+  }
+  setCameraSpeed_LOW() {
+    this.setCameraFrameRate(2);
+  }
+
+  updateInspectionReportForPowerSaving(report) {
+    if (report === undefined || report.reports.length == 0) {
+      this.data.emptyResultCount++;
+      if (this.data.emptyResultCount > this.data.speedSwitchingCount)
+        this.setCameraSpeed_LOW();
+
+      this.ev_emptyResultCountChange(this.data.emptyResultCount);
+      return;
+    }
+
+    if (this.data.emptyResultCount != 0) {
+      this.ev_emptyResultCountChange(this.data.emptyResultCount);
+      this.data.emptyResultCount = 0;
+      this.setCameraSpeed_HIGH();
+    }
+  }
+
+}
+
+
+
+
 
 export default { raw2header, raw2obj_rawdata, raw2obj,raw2Obj_IM,objbarr2raw,INSPECTION_STATUS,map_BPG_Packet2Act }
 

@@ -18,7 +18,7 @@ import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
 import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
-import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { INSPECTION_STATUS, DEF_EXTENSION,CameraCtrl } from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -465,103 +465,6 @@ class OK_NG_BOX extends React.Component {
     )
   }
 }
-
-class CameraCtrl {
-  constructor(setting) {
-    this.data = {
-      DoImageTransfer: true,
-      emptyResultCount: 0,
-      cameraFrameRate: 30,
-      speedSwitchingCount: 100,
-    };
-    this.ws_ch = setting.ws_ch;
-
-    this.ev_frameRateChange = setting.ev_frameRateChange;
-    if (this.ev_frameRateChange === undefined)
-      this.ev_frameRateChange = () => { };
-
-    this.ev_emptyResultCountChange = setting.ev_emptyResultCountChange;
-    if (this.ev_emptyResultCountChange === undefined)
-      this.ev_emptyResultCountChange = () => { };
-
-    this.setSpeedSwitchingCount(10);
-    this.setCameraSpeed_HIGH();
-  }
-
-
-
-  setCameraImageTransfer(doTransfer) {
-    if (doTransfer === undefined) doTransfer = !this.data.DoImageTransfer;
-    this.data.DoImageTransfer = doTransfer;
-    this.ws_ch({ DoImageTransfer: doTransfer });
-  }
-
-
-  setCameraFrameRate(framerate) {
-    if (this.data.framerate == framerate) return;
-    log.info("setCameraFrameRate:" + framerate);
-    this.data.framerate = framerate;
-
-    this.ev_frameRateChange(framerate);
-    this.ws_ch({ CameraSetting: { framerate: framerate } });
-  }
-
-
-  setImageCropParam(cropWindow,downSampleFactor=8) {
-
-
-    let obj={};
-    if(cropWindow!==undefined)
-    {
-      obj.ImageTransferSetup={
-        crop:cropWindow
-      };
-    }
-    
-    if(downSampleFactor!==undefined)
-    {
-      obj.CameraSetting={
-        down_samp_level:downSampleFactor
-      };
-    }
-    this.ws_ch(obj);
-  }
-
-
-
-  setSpeedSwitchingCount(speedSwitchingCount = 1000) {
-    this.data.speedSwitchingCount = speedSwitchingCount;
-  }
-
-  setCameraSpeed_HIGHEST() {
-    this.setCameraFrameRate(9999999);
-  }
-  setCameraSpeed_HIGH() {
-    this.setCameraFrameRate(60);
-  }
-  setCameraSpeed_LOW() {
-    this.setCameraFrameRate(2);
-  }
-
-  updateInspectionReportForPowerSaving(report) {
-    if (report === undefined || report.reports.length == 0) {
-      this.data.emptyResultCount++;
-      if (this.data.emptyResultCount > this.data.speedSwitchingCount)
-        this.setCameraSpeed_LOW();
-
-      this.ev_emptyResultCountChange(this.data.emptyResultCount);
-      return;
-    }
-
-    if (this.data.emptyResultCount != 0) {
-      this.ev_emptyResultCountChange(this.data.emptyResultCount);
-      this.data.emptyResultCount = 0;
-      this.setCameraSpeed_HIGH();
-    }
-  }
-
-}
-
 
 class ObjInfoList extends React.Component {
   constructor(props) {
