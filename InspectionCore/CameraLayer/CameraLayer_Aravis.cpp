@@ -692,26 +692,6 @@ CameraLayer::status CameraLayer_Aravis::SetFrameRate(float frame_rate)
   g_clear_error(&err);
   return CameraLayer::NAK;
 }
-CameraLayer::status CameraLayer_Aravis::SetFrameRateMode(int mode)
-{
-  float tar_fr = 30;
-  switch (mode)
-  {
-  case 0:
-    tar_fr = 30;
-    break;
-  case 1:
-    tar_fr = 20;
-    break;
-  case 2:
-    tar_fr = 10;
-    break;
-  case 3:
-    tar_fr = 1;
-    break;
-  }
-  return SetFrameRate(tar_fr);
-}
 
 CameraLayer::status CameraLayer_Aravis::GetAnalogGain(int *ret_min, int *ret_max)
 {

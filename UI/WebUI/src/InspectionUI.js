@@ -471,20 +471,20 @@ class CameraCtrl {
     this.data = {
       DoImageTransfer: true,
       emptyResultCount: 0,
-      cameraSpeedMode: -1,
+      cameraFrameRate: 30,
       speedSwitchingCount: 100,
     };
     this.ws_ch = setting.ws_ch;
 
-    this.ev_speedModeChange = setting.ev_speedModeChange;
-    if (this.ev_speedModeChange === undefined)
-      this.ev_speedModeChange = () => { };
+    this.ev_frameRateChange = setting.ev_frameRateChange;
+    if (this.ev_frameRateChange === undefined)
+      this.ev_frameRateChange = () => { };
 
     this.ev_emptyResultCountChange = setting.ev_emptyResultCountChange;
     if (this.ev_emptyResultCountChange === undefined)
       this.ev_emptyResultCountChange = () => { };
 
-    this.setSpeedSwitchingCount(1000);
+    this.setSpeedSwitchingCount(10);
     this.setCameraSpeed_HIGH();
   }
 
@@ -496,13 +496,14 @@ class CameraCtrl {
     this.ws_ch({ DoImageTransfer: doTransfer });
   }
 
-  setCameraSpeedMode(mode) {
-    if (this.data.cameraSpeedMode == mode) return;
-    log.info("setCameraSpeedMode:" + mode);
-    this.data.cameraSpeedMode = mode;
 
-    this.ev_speedModeChange(mode);
-    this.ws_ch({ CameraSetting: { framerate_mode: mode } });
+  setCameraFrameRate(framerate) {
+    if (this.data.framerate == framerate) return;
+    log.info("setCameraFrameRate:" + framerate);
+    this.data.framerate = framerate;
+
+    this.ev_frameRateChange(framerate);
+    this.ws_ch({ CameraSetting: { framerate: framerate } });
   }
 
 
@@ -532,11 +533,14 @@ class CameraCtrl {
     this.data.speedSwitchingCount = speedSwitchingCount;
   }
 
+  setCameraSpeed_HIGHEST() {
+    this.setCameraFrameRate(9999999);
+  }
   setCameraSpeed_HIGH() {
-    this.setCameraSpeedMode(2);
+    this.setCameraFrameRate(60);
   }
   setCameraSpeed_LOW() {
-    this.setCameraSpeedMode(0);
+    this.setCameraFrameRate(2);
   }
 
   updateInspectionReportForPowerSaving(report) {
@@ -1497,7 +1501,7 @@ class APP_INSP_MODE extends React.Component {
         INSP_NG_SNAP:this.props.machine_custom_setting.FI_INSP_NG_SNAP==true,
         INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||100
       });
-          
+      this.CameraCtrl.setCameraSpeed_HIGHEST();
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
@@ -1590,8 +1594,8 @@ class APP_INSP_MODE extends React.Component {
       ws_ch: (STData, promiseCBs) => {
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, STData, undefined, promiseCBs)
       },
-      ev_speedModeChange: (mode) => {
-        console.log(mode);
+      ev_frameRateChange: (fps) => {
+        console.log(fps);
       }
     });
     // this.IR = undefined;

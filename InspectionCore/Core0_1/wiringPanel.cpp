@@ -767,7 +767,7 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
     }
 
     LOGE("exposure_time:");
-    stageLightInfo->nodesIdxWHSetup();
+    stageLightInfo->nodesUpdate();
 
   } while (false);
   return 0;
@@ -813,12 +813,11 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
       retV = 0;
     }
   }
-  val = JFetch_NUMBER(&settingJson, "framerate_mode");
+  val = JFetch_NUMBER(&settingJson, "framerate");
   if (val)
   {
-    *val = (int)*val;
-    camera.SetFrameRateMode((int)*val);
-    LOGI("framerate_mode:%f", *val);
+    camera.SetFrameRate((float)*val);
+    LOGI("framerate:%f", *val);
     retV = 0;
   }
 

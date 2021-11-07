@@ -49,7 +49,7 @@ class CameraLayer_GIGE_MindVision : public CameraLayer{
     CameraLayer::status SetMirror(int Dir,int en);
     CameraLayer::status SetROIMirror(int Dir,int en);
 
-    CameraLayer::status SetFrameRateMode(int mode);
+    CameraLayer::status SetFrameRate(float fps);
     CameraLayer::status GetAnalogGain(int *ret_min,int *ret_max);
     CameraLayer::status SetExposureTime(float time_us);
     CameraLayer::status GetExposureTime(float *ret_time_us);

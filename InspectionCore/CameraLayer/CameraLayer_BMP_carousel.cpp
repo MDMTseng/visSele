@@ -172,19 +172,12 @@ void CameraLayer_BMP_carousel::ContTriggerThread( )
 }
 
 
-CameraLayer::status CameraLayer_BMP_carousel::SetFrameRateMode(int mode)
+CameraLayer::status CameraLayer_BMP_carousel::SetFrameRate(float frame_rate)
 {
-    switch(mode)
-    {
-        case 0:frameInterval_ms=1000;break;
-        case 1:frameInterval_ms=100;break;
-        case 2:frameInterval_ms=10;break;
-        case 3:frameInterval_ms=0;break;
-    }
-    // frameInterval_ms=500;
-    return CameraLayer::ACK;
+  frameInterval_ms=1000/frame_rate;
+  // frameInterval_ms=500;
+  return CameraLayer::ACK;
 }
-
 
 CameraLayer::status CameraLayer_BMP_carousel::TriggerCount(int count)
 {
@@ -217,11 +210,11 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
     if(mode==2)
     {
       mode=0;
-      modeTriggerSim_sleep=5000;
+      modeTriggerSim_sleep=1000;
     }
     if(mode>=0)
     {
-        triggerMode = mode;
+      triggerMode = mode;
     }
     if(mode==0 || mode==-1 )
     {
