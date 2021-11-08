@@ -264,7 +264,7 @@ export class CameraCtrl {
       DoImageTransfer: true,
       emptyResultCount: 0,
       cameraFrameRate: 30,
-      speedSwitchingCount: 100,
+      speedSwitchingCount: 1000,
     };
     this.ws_ch = setting.ws_ch;
 
