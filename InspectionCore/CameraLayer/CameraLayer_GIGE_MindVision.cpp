@@ -496,8 +496,21 @@ CameraLayer::status CameraLayer_GIGE_MindVision::SetOnceWB()
   return CameraSetOnceWB(m_hCamera) == CAMERA_STATUS_SUCCESS ? CameraLayer::ACK : CameraLayer::NAK;
 }
 
-CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRateMode(int mode)
+CameraLayer::status CameraLayer_GIGE_MindVision::SetFrameRate(float frame_rate)
 {
+
+
+  int mode=2;
+  if(frame_rate<20)
+  {
+    mode=1;
+  }
+  
+  if(frame_rate<10)
+  {
+    mode=0;
+  }
+  
   return L_SetFrameRateMode(mode);
 }
 

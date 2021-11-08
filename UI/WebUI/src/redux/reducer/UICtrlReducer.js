@@ -203,7 +203,7 @@ function StateReducer(newState, action) {
 
 
 
-  function EVENT_Inspection_Report(newState, action) {
+  function EVENT_Inspection_Report(newState, action,ignoreInspData=false) {
     let repType = GetObjElement(action, ["data", "type"]);
     if (repType === undefined) return;
     switch (repType) {
@@ -314,7 +314,7 @@ function StateReducer(newState, action) {
                       return false;
                     });
 
-                  if (inspReport.reports === undefined) {
+                  if (ignoreInspData==true || inspReport.reports === undefined) {
                     break;
                   }
 
@@ -742,8 +742,8 @@ function StateReducer(newState, action) {
                 ((uInspResult== INSPECTION_STATUS.NA)  ||  (uInspResult== INSPECTION_STATUS.UNSET))
 
               
-              if(reportSkip==false)
-                EVENT_Inspection_Report(newState, action);
+              EVENT_Inspection_Report(newState, action,reportSkip);
+
             }
             break;
 

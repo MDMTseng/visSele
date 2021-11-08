@@ -58,8 +58,7 @@ class CameraLayer_BMP_carousel : public CameraLayer_BMP{
     int fileIdx;
     CameraLayer_BMP_carousel(CameraLayer_Callback cb,void* context,std::string folderName);
     status updateFolder(std::string folderName);
-    status SetFrameRateMode(int mode);
-    
+    status SetFrameRate(float frame_rate);
     status TriggerCount(int count);
     status SnapFrame(CameraLayer_Callback snap_cb,void *cb_param);
     status Trigger();

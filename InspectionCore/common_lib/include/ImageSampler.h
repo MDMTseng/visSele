@@ -65,11 +65,12 @@ class stageLightParam{
   int idxW,idxH;
   int back_light_target;
   int RESET();
-  void nodesIdxWHSetup();
+  void nodesUpdate();
   void CLONE(stageLightParam* obj){};
   stageLightParam* CLONE();
   float factorSampling(acv_XY xy);
   BGLightNodeInfo* fetchIdx(int X, int Y);
+  float calcInterpolation(int X,int Y,BGLightNodeInfo *newNodeInfo);
 };
 
 

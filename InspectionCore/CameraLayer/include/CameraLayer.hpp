@@ -154,7 +154,7 @@ class CameraLayer{
         return CameraLayer::NAK;
     }
 
-    virtual CameraLayer::status SetFrameRateMode(int mode)
+    virtual CameraLayer::status SetFrameRate(float mode)
     {
         return CameraLayer::NAK;
     }

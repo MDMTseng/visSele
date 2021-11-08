@@ -11,7 +11,7 @@ let BPG_FileBrowser = BASE_COM.BPG_FileBrowser;
 let BPG_FileSavingBrowser = BASE_COM.BPG_FileSavingBrowser;
 import DragSortableList from 'react-drag-sortable'
 import ReactResizeDetector from 'react-resize-detector';
-import { DEF_EXTENSION ,BPG_ExpCalc} from 'UTIL/BPG_Protocol';
+import { DEF_EXTENSION ,BPG_ExpCalc,CameraCtrl} from 'UTIL/BPG_Protocol';
 import BPG_Protocol from 'UTIL/BPG_Protocol.js';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import { ReduxStoreSetUp } from 'REDUX_STORE_SRC/redux';
@@ -1621,6 +1621,27 @@ function DEFCONF_MODE_NEUTRAL_UI({})
 
   function startQuickInsp(inspMode=machine_custom_setting.InspectionMode||"CI")
   {//FI/CI
+
+
+    let _CameraCtrl = new CameraCtrl({
+      ws_ch: (STData, promiseCBs) => {
+        console.log(STData);
+        ACT_WS_SEND_BPG(CORE_ID, "ST", 0, STData, undefined,promiseCBs);
+      },
+      ev_frameRateChange: (fps) => {
+      }
+    });
+    if(inspMode=="CI")
+    {
+      _CameraCtrl.setCameraFrameRate(15);
+    }
+    else if(inspMode=="FI")
+    {
+      _CameraCtrl.setCameraSpeed_HIGHEST();
+    }
+
+
+
 
 
     let deffile = defFileGeneration(edit_info);

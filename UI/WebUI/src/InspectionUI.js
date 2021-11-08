@@ -15,10 +15,10 @@ import dclone from 'clone';
 import Color from 'color';
 import EC_CANVAS_Ctrl from './EverCheckCanvasComponent';
 import * as UIAct from 'REDUX_STORE_SRC/actions/UIAct';
-import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
+import { websocket_autoReconnect, websocket_reqTrack, copyToClipboard, ConsumeQueue,LocalStorageTools ,defFileGeneration,GetObjElement,dictLookUp} from 'UTIL/MISC_Util';
 import { SHAPE_TYPE, DEFAULT_UNIT } from 'REDUX_STORE_SRC/actions/UIAct';
 import { MEASURERSULTRESION, MEASURERSULTRESION_reducer } from 'UTIL/InspectionEditorLogic';
-import { INSPECTION_STATUS, DEF_EXTENSION } from 'UTIL/BPG_Protocol';
+import { INSPECTION_STATUS, DEF_EXTENSION,CameraCtrl } from 'UTIL/BPG_Protocol';
 import * as logX from 'loglevel';
 import * as DefConfAct from 'REDUX_STORE_SRC/actions/DefConfAct';
 import {TagDisplay_rdx} from './component/rdxComponent.jsx';
@@ -26,7 +26,6 @@ import {TagDisplay_rdx} from './component/rdxComponent.jsx';
 //import {Doughnut} from 'react-chartjs-2';
 
 import { round } from 'UTIL/MISC_Util';
-let localStorage = require('localStorage');
 let log = logX.getLogger("InspectionUI");
 
 import Row from 'antd/lib/Row';
@@ -67,6 +66,7 @@ import {
 } from '@ant-design/icons';
 
 
+const LS_INSP_ROI_KEY="LS_INSP_ROI";
 
 import Divider from 'antd/lib/divider';
 
@@ -465,99 +465,6 @@ class OK_NG_BOX extends React.Component {
     )
   }
 }
-
-class CameraCtrl {
-  constructor(setting) {
-    this.data = {
-      DoImageTransfer: true,
-      emptyResultCount: 0,
-      cameraSpeedMode: -1,
-      speedSwitchingCount: 100,
-    };
-    this.ws_ch = setting.ws_ch;
-
-    this.ev_speedModeChange = setting.ev_speedModeChange;
-    if (this.ev_speedModeChange === undefined)
-      this.ev_speedModeChange = () => { };
-
-    this.ev_emptyResultCountChange = setting.ev_emptyResultCountChange;
-    if (this.ev_emptyResultCountChange === undefined)
-      this.ev_emptyResultCountChange = () => { };
-
-    this.setSpeedSwitchingCount(1000);
-    this.setCameraSpeed_HIGH();
-  }
-
-
-
-  setCameraImageTransfer(doTransfer) {
-    if (doTransfer === undefined) doTransfer = !this.data.DoImageTransfer;
-    this.data.DoImageTransfer = doTransfer;
-    this.ws_ch({ DoImageTransfer: doTransfer });
-  }
-
-  setCameraSpeedMode(mode) {
-    if (this.data.cameraSpeedMode == mode) return;
-    log.info("setCameraSpeedMode:" + mode);
-    this.data.cameraSpeedMode = mode;
-
-    this.ev_speedModeChange(mode);
-    this.ws_ch({ CameraSetting: { framerate_mode: mode } });
-  }
-
-
-  setImageCropParam(cropWindow,downSampleFactor=8) {
-
-
-    let obj={};
-    if(cropWindow!==undefined)
-    {
-      obj.ImageTransferSetup={
-        crop:cropWindow
-      };
-    }
-    
-    if(downSampleFactor!==undefined)
-    {
-      obj.CameraSetting={
-        down_samp_level:downSampleFactor
-      };
-    }
-    this.ws_ch(obj);
-  }
-
-
-
-  setSpeedSwitchingCount(speedSwitchingCount = 1000) {
-    this.data.speedSwitchingCount = speedSwitchingCount;
-  }
-
-  setCameraSpeed_HIGH() {
-    this.setCameraSpeedMode(2);
-  }
-  setCameraSpeed_LOW() {
-    this.setCameraSpeedMode(0);
-  }
-
-  updateInspectionReportForPowerSaving(report) {
-    if (report === undefined || report.reports.length == 0) {
-      this.data.emptyResultCount++;
-      if (this.data.emptyResultCount > this.data.speedSwitchingCount)
-        this.setCameraSpeed_LOW();
-
-      this.ev_emptyResultCountChange(this.data.emptyResultCount);
-      return;
-    }
-
-    if (this.data.emptyResultCount != 0) {
-      this.ev_emptyResultCountChange(this.data.emptyResultCount);
-      this.data.emptyResultCount = 0;
-      this.setCameraSpeed_HIGH();
-    }
-  }
-
-}
-
 
 class ObjInfoList extends React.Component {
   constructor(props) {
@@ -1497,7 +1404,7 @@ class APP_INSP_MODE extends React.Component {
         INSP_NG_SNAP:this.props.machine_custom_setting.FI_INSP_NG_SNAP==true,
         INSP_NG_SNAP_MAX_NUM:this.props.machine_custom_setting.FI_INSP_NG_SNAP_MAX_NUM||100
       });
-          
+      this.CameraCtrl.setCameraSpeed_HIGHEST();
     }
     else if (this.props.machine_custom_setting.InspectionMode == "CI") {
       
@@ -1515,6 +1422,16 @@ class APP_INSP_MODE extends React.Component {
       // }, undefined);
 
       this.props.ACT_StatSettingParam_Update(this.props.System_Setting.CI_MODE_StatSettingParam)
+    }
+
+    {
+      let LS_ROI=LocalStorageTools.getobj(LS_INSP_ROI_KEY);
+      
+      this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+      {CameraSetting: { ROI:LS_ROI}});
+
+    
+      console.log(LS_ROI)
     }
 
     this.exitGate=false;
@@ -1580,8 +1497,8 @@ class APP_INSP_MODE extends React.Component {
       ws_ch: (STData, promiseCBs) => {
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0, STData, undefined, promiseCBs)
       },
-      ev_speedModeChange: (mode) => {
-        console.log(mode);
+      ev_frameRateChange: (fps) => {
+        console.log(fps);
       }
     });
     // this.IR = undefined;
@@ -2115,8 +2032,14 @@ class APP_INSP_MODE extends React.Component {
 
       <Button type={"primary"} danger={this.state.onROISettingCallBack!==undefined} key="Manual ZOOM" size={"large"}
         onClick={() => {
+
+
+        let FullSensorROI=[0,0,99999,99999];
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
-        { CameraSetting: { ROI:[0,0,99999,99999] } });
+        { CameraSetting: { ROI:FullSensorROI } });
+
+        LocalStorageTools.setobj(LS_INSP_ROI_KEY,FullSensorROI);
+        
         this.setState({ onROISettingCallBack:(ROI_setting)=>{
           
           let x = ROI_setting.start.pix.x;
@@ -2134,9 +2057,17 @@ class APP_INSP_MODE extends React.Component {
             y+=h;
             h=-h;
           }
+          
           let ROI = [x,y,w,h];
+          if(w<10 || h<10 )
+          {
+            ROI=FullSensorROI;
+          }
+
+          
           this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {CameraSetting: { ROI}});
+          LocalStorageTools.setobj(LS_INSP_ROI_KEY,ROI);
 
         
           console.log(ROI_setting,ROI);

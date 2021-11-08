@@ -559,22 +559,22 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
   return (MV_OK == SetFloatValue("AcquisitionFrameRate",frame_rate)) ? CameraLayer::ACK : CameraLayer::NAK;
   
 }
-CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRateMode(int mode)
-{
-  if(mode>=2)
-  {//as fast as possible
-    return SetBoolValue("AcquisitionFrameRateEnable", false)==0?CameraLayer::ACK:CameraLayer::NAK;
-  }
-  float tar_fr=30;
-  switch(mode)
-  {
-      case 0:tar_fr=1;break;
-      case 1:tar_fr=10;break;
-  }
+// CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRateMode(int mode)
+// {
+//   if(mode>=2)
+//   {//as fast as possible
+//     return SetBoolValue("AcquisitionFrameRateEnable", false)==0?CameraLayer::ACK:CameraLayer::NAK;
+//   }
+//   float tar_fr=30;
+//   switch(mode)
+//   {
+//       case 0:tar_fr=1;break;
+//       case 1:tar_fr=10;break;
+//   }
   
-  SetBoolValue("AcquisitionFrameRateEnable", true);
-  return SetFrameRate(tar_fr);
-}
+//   SetBoolValue("AcquisitionFrameRateEnable", true);
+//   return SetFrameRate(tar_fr);
+// }
 
 CameraLayer::status CameraLayer_HikRobot_Camera::SetExposureTime(float time_us)
 {
