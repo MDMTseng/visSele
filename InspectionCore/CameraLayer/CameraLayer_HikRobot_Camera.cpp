@@ -43,7 +43,7 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROI(int x, int y, int w, int
   
   if (ROI_mirrorFlag[0])
   {
-    x = max_w - (x + h);
+    x = max_w - (x + w);
   }
 
   if (ROI_mirrorFlag[1])
