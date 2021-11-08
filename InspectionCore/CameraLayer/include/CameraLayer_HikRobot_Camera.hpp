@@ -188,7 +188,6 @@ public:
   CameraLayer::status SetMirror(int Dir, int en);
   CameraLayer::status SetROIMirror(int Dir, int en);
   CameraLayer::status SetFrameRate(float frame_rate);
-  CameraLayer::status SetFrameRateMode(int mode);
   CameraLayer::status SetExposureTime(float time_us);
   CameraLayer::status GetExposureTime(float *ret_time_us);
   
