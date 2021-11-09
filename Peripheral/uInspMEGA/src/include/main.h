@@ -16,6 +16,13 @@ const uint32_t subPulseSkipCount = 16;                                     //We 
 const uint32_t perRevPulseCount_HW = (uint32_t)2400 * 16;                  //the real hardware pulse count per rev
 const uint32_t perRevPulseCount = perRevPulseCount_HW / subPulseSkipCount; // the software pulse count that processor really care
 
+struct sharedInfo
+{
+  uint16_t skippedPulse;
+};
+
+
+struct sharedInfo* get_SharedInfo();
 
 
 void RESET_GateSensing();
@@ -244,7 +251,7 @@ typedef struct InspResCount
 
 
 
-#define PIPE_INFO_LEN 30
+#define PIPE_INFO_LEN 50
 
 #define STEPPER_PLS_PIN 22
 #define STEPPER_DIR_PIN 23

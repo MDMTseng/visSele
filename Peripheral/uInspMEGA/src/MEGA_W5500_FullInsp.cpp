@@ -32,7 +32,7 @@ uint16_t stageUpdated = 0;
 
 uint16_t g_max_inspLatency = 0;
 
-
+struct sharedInfo* p_sInfo= get_SharedInfo();
 bool blockNewDetectedObject=false;
 
 GEN_ERROR_CODE errorBuf[20];
@@ -455,9 +455,9 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
 
   //get a new object and find a space to log it
   // TCount++;
-  head->s_pulse = start_pulse;
-  head->e_pulse = end_pulse;
-  head->pulse_width = pulse_width;
+  // head->s_pulse = start_pulse;
+  // head->e_pulse = end_pulse;
+  // head->pulse_width = pulse_width;
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
   if (ActRegister_pipeLineInfo(head) != 0)
@@ -504,9 +504,9 @@ int task_Pulse_Time_Sync(uint32_t pulse)
 
   //get a new object and find a space to log it
   // TCount++;
-  head->s_pulse = pulse;
-  head->e_pulse = pulse;
-  head->pulse_width = 10;
+  // head->s_pulse = pulse;
+  // head->e_pulse = pulse;
+  // head->pulse_width = 10;
   head->gate_pulse = pulse;
   head->insp_status = insp_status_UNSET;
   if (ActRegister_Pulse_Time_Sync(head) != 0)
@@ -1149,7 +1149,7 @@ public:
             
           if (diff < 5)
           { //Pulse sync error is in tolerable region
-            
+            // DEBUG_printf("ist:%d\n",insp_status);
             pipeTarget->insp_status = insp_status;//accept the status
 
             if (mode_info.mode == run_mode_info::TEST && 
@@ -1211,7 +1211,6 @@ public:
           }
           else
           {
-            DEBUG_printf("td:%" PRId32 "\n",signed_diff);
           
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT; //unmatch..
 

@@ -11,6 +11,12 @@ bool* getSenseInvPtr()
   return &_senseInv_;
 }
 
+struct sharedInfo sInfo;
+struct sharedInfo* get_SharedInfo()
+{
+  return &sInfo;
+}
+
 uint32_t thres_skip_counter = 0;
 
 class StepperMotor
@@ -84,10 +90,10 @@ const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
   if(stage>=stageLen)return;
-  const int  minWidth = 3;
-  const int  maxWidth = 1+30000/SINGLE_PULSE_DIST_um;
+  const int  minWidth = 2;
+  const int  maxWidth = 1+40000/SINGLE_PULSE_DIST_um;
   
-  const int  DEBOUNCE_L_THRES = 1+1000/SINGLE_PULSE_DIST_um;//object inner connection
+  const int  DEBOUNCE_L_THRES = 1+3000/SINGLE_PULSE_DIST_um;//object inner connection
   const int  DEBOUNCE_H_THRES = 1;
   //(perRevPulseCount/50)
   uint8_t new_Sense = digitalRead(GATE_PIN);
@@ -149,6 +155,8 @@ void task_gateSensing(uint8_t stage,uint8_t stageLen)
       }
       else
       {
+
+        sInfo.skippedPulse++;
           //skip the pulse : the pulse width is not in the valid range
           //this might be caused by too large object > typ:2cm
           //or there are multiple objects too close to each other 
