@@ -555,8 +555,21 @@ CameraLayer::status CameraLayer_HikRobot_Camera::SetROIMirror(int Dir, int en)
 
 CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRate(float frame_rate)
 {
-  
-  return (MV_OK == SetFloatValue("AcquisitionFrameRate",frame_rate)) ? CameraLayer::ACK : CameraLayer::NAK;
+
+  if(frame_rate>1000)//Max FPS
+  {
+    return (MV_OK == MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", false)) ? CameraLayer::ACK : CameraLayer::NAK;
+  }
+  MV_CC_SetBoolValue(handle, "AcquisitionFrameRateEnable", true);
+  MVCC_FLOATVALUE resFPS;
+  int ret2 = GetFloatValue("ResultingFrameRate",&resFPS);
+
+  if(frame_rate>resFPS.fCurValue)frame_rate=resFPS.fMax;
+  int ret = SetFloatValue("AcquisitionFrameRate",frame_rate);
+  // LOGI(">%d> %f<%f<%f   ,%d",ret,resFPS.fMin,resFPS.fCurValue,resFPS.fMax,ret2);
+
+
+  return (MV_OK == ret) ? CameraLayer::ACK : CameraLayer::NAK;
   
 }
 // CameraLayer::status CameraLayer_HikRobot_Camera::SetFrameRateMode(int mode)
