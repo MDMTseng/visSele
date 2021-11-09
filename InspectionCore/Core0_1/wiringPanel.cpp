@@ -61,7 +61,7 @@ TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL, int datViewMaxFPS=DATA_VIEW_MAX_FPS);
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL, float datViewMaxFPS=DATA_VIEW_MAX_FPS);
 
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
@@ -2640,7 +2640,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           lastDatViewCache_lock.lock();
           // LOGI("IMG resend !!!!");
-          InspResultAction(lastDatViewCache, true, false , false,NULL);
+          InspResultAction(lastDatViewCache, true, false , false,NULL,0.8);
 
           // LOGI("IMG resend DONE....!!!!");
           lastDatViewCache_lock.unlock();
@@ -3056,13 +3056,13 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
     }
   }
   pframeT = t;
-  LOGE("=============== frameInterval:%fms \n", interval);
+  LOGI("=============== frameInterval:%fms \n", interval);
   LOGI("bpg_pi->cameraFramesLeft:%d", bpg_pi.cameraFramesLeft);
   CameraLayer &cl_GMV = *((CameraLayer *)&cl_obj);
 
   CameraLayer::frameInfo finfo = cl_GMV.GetFrameInfo();
   
-  LOGE("finfo.wh:%d,%d \n", finfo.width,finfo.height);
+  // LOGE("finfo.wh:%d,%d", finfo.width,finfo.height);
   
 
   image_pipe_info *headImgPipe = bpg_pi.resPool.fetchResrc_blocking();
@@ -3085,7 +3085,7 @@ CameraLayer::status CameraLayer_Callback_GIGEMV(CameraLayer &cl_obj, int type, v
   if (doImgProcessThread)
   {
 
-    LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
+    // LOGE("bpg_pi.resPool.rest_size:: %d", bpg_pi.resPool.rest_size());
 
     if (inspQueue.push_blocking(headImgPipe) == false)
     {
@@ -3147,7 +3147,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
 
 
 clock_t lastImgSendTime=0;
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, int datViewMaxFPS)
+void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
 {
   static int frameActionID = 0;
   if (ret_pipe_pass_down)
