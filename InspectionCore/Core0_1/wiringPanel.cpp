@@ -2641,10 +2641,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         else if(lastDatViewCache!=NULL)
         {
           lastDatViewCache_lock.lock();
-          // LOGI("IMG resend !!!!");
+          LOGI("IMG resend !!!!");
           InspResultAction(lastDatViewCache, true, false , false,NULL,0.8);
 
-          // LOGI("IMG resend DONE....!!!!");
+          LOGI("IMG resend DONE....!!!!");
           lastDatViewCache_lock.unlock();
           session_ACK=true;
         }
@@ -3148,7 +3148,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
 }
 
 
-clock_t lastImgSendTime=0;
+uint64_t lastImgSendTime=0;
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
 {
   static int frameActionID = 0;
@@ -3169,12 +3169,13 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   clock_t t = clock();
   
+  uint64_t cur_ms = current_time_ms();
+  uint64_t timeDiff_ms =cur_ms-lastImgSendTime;
 
-  double timeDiff_ms = (double)(t - lastImgSendTime) / CLOCKS_PER_SEC * 1000;
   bool withinMinInterval=timeDiff_ms>(1000/datViewMaxFPS);
 
   
-  LOGI("skipRep:%d skipImg:%d timeDiff_ms:%f",skipInspDataTransfer,skipImageTransfer,timeDiff_ms);
+  LOGI("skipRep:%d skipImg:%d timeDiff_ms:%d",skipInspDataTransfer,skipImageTransfer,timeDiff_ms);
   if(withinMinInterval==false)//the interval is too short
   {
     // skipInspDataTransfer=
@@ -3349,7 +3350,8 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       bpg_pi.fromUpperLayer(bpg_dat);
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
       
-      lastImgSendTime=t;
+      lastImgSendTime=cur_ms;
+      // lastImgSendTime=t;
     }
 
   } while (false);
