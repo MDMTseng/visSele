@@ -329,7 +329,7 @@ export class CameraCtrl {
     this.setCameraFrameRate(9999999);
   }
   setCameraSpeed_HIGH() {
-    this.setCameraFrameRate(60);
+    this.setCameraFrameRate(20);
   }
   setCameraSpeed_LOW() {
     this.setCameraFrameRate(2);
