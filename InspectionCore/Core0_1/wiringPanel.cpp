@@ -35,6 +35,8 @@ int DATA_VIEW_MAX_FPS=20;
 bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=true;
 
 
+
+
 cJSON *cache_deffile_JSON = NULL;
 
 cJSON *cache_camera_param = NULL;
@@ -3698,14 +3700,25 @@ void ImgPipeDatViewThread(bool *terminationflag)
         imgSendState=false;
       }
 
-      if (saveInspFailSnap && headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+
+      float maxFPS=10;
+
+      if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
       {
-        saveToSnap = true;
+        maxFPS=10;
+        if(saveInspFailSnap==true)
+          saveToSnap = true;
       }
       // LOGI("saveInspFailSnap:%d saveToSnap:%d  finspStatus:%d",saveInspFailSnap,saveToSnap,headImgPipe->datViewInfo.finspStatus);
 
-      if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
+      if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
       {
+        maxFPS=7;
+      }
+
+      if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA || headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_UNSET )
+      {
+        maxFPS=13;
         if(saveInspNASnap)
         {
           saveToSnap = true;
@@ -3718,6 +3731,11 @@ void ImgPipeDatViewThread(bool *terminationflag)
         }
       }
 
+
+
+
+
+
       // if(saveInspNASnap)
       // {
       //   if(headImgPipe->datViewInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
@@ -3728,7 +3746,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       
       // imgSendState=true;
-      InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown);
+      InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown,maxFPS);
 
       //delayStartCounter=10000;
       if (!doPassDown)
