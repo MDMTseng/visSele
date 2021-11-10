@@ -1755,11 +1755,11 @@ class EverCheckCanvasComponent_proto {
     let  timerId =  undefined;
 
     return function () {
-      console.log(timerId,wait);
+      // console.log(timerId,wait);
       if(timerId!==undefined)
         clearTimeout(timerId);
       timerId = setTimeout(()=>{
-        console.log("CALLLLL");
+        // console.log("CALLLLL");
         timerId=undefined;
         func();
       }, wait);
