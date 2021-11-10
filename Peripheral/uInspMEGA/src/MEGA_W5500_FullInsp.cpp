@@ -1098,7 +1098,12 @@ public:
 
         pipeLineInfo *pipeTarget = NULL;
 
+        int32_t diff;
+        int32_t signed_diff;
+
+
         uint32_t matched_obj_pulse = 0;
+        uint8_t re_search_range=4;
         for (int i = 0; i < RBuf.size(); i++)
         {
           pipeLineInfo *pipe = RBuf.getTail(i);
@@ -1107,9 +1112,44 @@ public:
 
           if (pipe->insp_status == insp_status_UNSET)
           {
-            pipeTarget = pipe;
-            ret_status = 0;
-            break;
+            if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::READY ||
+                sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
+            {
+
+              matched_obj_pulse = pipe->gate_pulse;
+              diff = targetObjGatePulse - matched_obj_pulse;
+              signed_diff=diff;
+              if (diff < 0)
+                diff = -diff;
+                
+              if (diff < 5)
+              {
+                
+                pipeTarget = pipe;
+                ret_status = 0;
+                break;
+              }
+              else
+              {
+                pipe->insp_status =insp_status_NA;//skip this one and try to find next match
+              }
+
+              if((--re_search_range)==0)
+              {
+                pipeTarget = pipe;
+                ret_status = -1;
+                break;
+              }
+            }
+
+            else
+            {
+              
+              pipeTarget = pipe;
+              ret_status = 0;
+              break;
+            }
+            continue;
           }
         }
 
@@ -1141,12 +1181,10 @@ public:
         else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::READY ||
                  sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
         {
-          int32_t diff = targetObjGatePulse - matched_obj_pulse;
-          int32_t signed_diff=diff;
-          // DEBUG_printf("matPulse=%" PRIu32 " tarPulse=%" PRIu32 " ==diff:%d==\n",matched_obj_pulse, targetObjGatePulse, diff);
-          if (diff < 0)
-            diff = -diff;
-            
+
+
+          
+          // DEBUG_printf("ser:%d\n",re_search_range);
           if (diff < 5)
           { //Pulse sync error is in tolerable region
             // DEBUG_printf("ist:%d\n",insp_status);
