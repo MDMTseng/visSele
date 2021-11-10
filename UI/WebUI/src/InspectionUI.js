@@ -648,9 +648,11 @@ class CanvasComponent extends React.Component {
         //log.info(crop,down_samp_level);
         this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
           {
-            CameraSetting: {
-              down_samp_level
-            },
+            
+            down_samp_level,
+            // CameraSetting: {
+              // down_samp_level
+            // },
             ImageTransferSetup: {
               crop
             },

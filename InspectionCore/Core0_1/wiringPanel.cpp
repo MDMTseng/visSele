@@ -775,8 +775,34 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
   return 0;
 }
 
+
+void downSampSetup(CameraLayer &camera, cJSON &settingJson)
+{
+  
+  double *val = JFetch_NUMBER(&settingJson, "down_samp_level");
+  if (val)
+  {
+    downSampLevel = (int)*val;
+  }
+
+  int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
+  if (type == cJSON_False)
+  {
+    downSampWithCalib = false;
+  }
+  else if (type == cJSON_True)
+  {
+    downSampWithCalib = true;
+  }
+  else
+  {
+    downSampWithCalib = true;
+  }
+}
+
 int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 {
+  downSampSetup(camera, settingJson);
   camera.StopAquisition();
   double *val = JFetch_NUMBER(&settingJson, "exposure");
   int retV = -1;
@@ -830,25 +856,6 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV = 0;
   }
 
-  val = JFetch_NUMBER(&settingJson, "down_samp_level");
-  if (val)
-  {
-    downSampLevel = (int)*val;
-  }
-
-  int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
-  if (type == cJSON_False)
-  {
-    downSampWithCalib = false;
-  }
-  else if (type == cJSON_True)
-  {
-    downSampWithCalib = true;
-  }
-  else
-  {
-    downSampWithCalib = true;
-  }
 
   cJSON *MIRROR = JFetch_ARRAY(&settingJson, "mirror");
 
@@ -2564,6 +2571,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         CameraSetup(*camera, *camSettingObj);
       }
+
+
+      downSampSetup(*camera, *json);
 
       if (getDataFromJson(json, "CameraTriggerShutter", NULL) == cJSON_True)
       {
