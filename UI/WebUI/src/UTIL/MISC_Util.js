@@ -918,7 +918,7 @@ export class websocket_aliveTracking
         // }
         break;
       case this.states.ERROR:
-        console.log("You stuck here");
+        // console.log("You stuck here");
         return this.states.ERROR;
         break;
       default:
