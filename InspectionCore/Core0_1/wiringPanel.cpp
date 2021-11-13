@@ -32,7 +32,7 @@ bool SKIP_NA_DATA_VIEW=false;
 int imageQueueSkipSize = 0;
 int datViewQueueSkipSize = 0;
 int DATA_VIEW_MAX_FPS=20;
-bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=true;
+bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
 
 
 
@@ -3158,6 +3158,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
 }
 
 
+float avgFPS=0;
 uint64_t lastImgSendTime=0;
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
 {
@@ -3180,12 +3181,14 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   clock_t t = clock();
   
   uint64_t cur_ms = current_time_ms();
-  uint64_t timeDiff_ms =cur_ms-lastImgSendTime;
+  int64_t timeDiff_ms =cur_ms-lastImgSendTime;
+  float cur_FPS=(1000.0/timeDiff_ms);
 
-  bool withinMinInterval=timeDiff_ms>(1000/datViewMaxFPS);
+  float cur_avgFPS=avgFPS+((int64_t)cur_FPS-avgFPS)*0.3;
+  bool withinMinInterval=cur_avgFPS<datViewMaxFPS;
 
   
-  LOGI("skipRep:%d skipImg:%d timeDiff_ms:%d",skipInspDataTransfer,skipImageTransfer,timeDiff_ms);
+  // LOGI("skipRep:%d skipImg:%d cur_avgFPS:%0.2f",skipInspDataTransfer,skipImageTransfer,cur_avgFPS);
   if(withinMinInterval==false)//the interval is too short
   {
     // skipInspDataTransfer=
@@ -3361,6 +3364,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
       
       lastImgSendTime=cur_ms;
+      avgFPS=cur_avgFPS;
       // lastImgSendTime=t;
     }
 

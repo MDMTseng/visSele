@@ -622,6 +622,18 @@ function StateReducer(newState, action) {
                     reportStatisticState.trackingWindow =
                       reportStatisticState.trackingWindow.
                         filter((srep_inWindow) => (srep_inWindow.isCurObj || srep_inWindow.repeatTime >= statSetting.minReportRepeat));
+                      
+                    if(action.data.__surpress_display==true)
+                    {
+                      reportStatisticState.trackingWindow.forEach(rep=>{
+                        rep.isCurObj = false;
+                      });
+                      reportStatisticState.hideTrackingWindowObj=true;
+                    }
+                    else
+                    {
+                      reportStatisticState.hideTrackingWindowObj=false;
+                    }
                   }
 
 

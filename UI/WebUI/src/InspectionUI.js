@@ -125,8 +125,8 @@ const SubMenu = Menu.SubMenu;
 const MenuItemGroup = Menu.ItemGroup;
 
 
-function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=0})
-        {
+function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,insert_skip=0})
+{
 
   const _s = useRef({sendCounter:0,sendedCounter:0,totalCounter:0,pre_newAddedReport:undefined});
 
@@ -135,6 +135,7 @@ function InspectionReportInsert2DB({reportStatisticState,onDBInsertSuccess,onDBI
   const dispatch = useDispatch();
   const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
   const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
+  const reportStatisticState = useSelector(state => state.UIData.edit_info.reportStatisticState);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
 
@@ -721,8 +722,6 @@ const mapStateToProps_CanvasComponent = (state) => {
   //log.info("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
-    edit_info: state.UIData.edit_info,
-
   }
 }
 
@@ -1388,7 +1387,18 @@ class APP_INSP_MODE extends React.Component {
 
     }
 
-
+    function insp_resolve(pkts,main_ch)
+    {
+      console.log(pkts)
+      
+      let RP=pkts.find(pkt=>pkt.type=="RP");
+      let IM=pkts.find(pkt=>pkt.type=="IM");
+      if(RP!==undefined && IM===undefined)
+      {
+        RP.data.__surpress_display=true;
+      }
+      main_ch(pkts);
+    }
 
     let deffile = defFileGeneration(this.props.edit_info);
     if (this.props.machine_custom_setting.InspectionMode== "FI") {
@@ -1398,8 +1408,13 @@ class APP_INSP_MODE extends React.Component {
       deffile.featureSet[0].matching_angle_margin_deg=180;//By default, match whole round -180~180
       deffile.featureSet[0].matching_face=0;//By default, match two sides
 
-      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}, undefined);
-
+      this.props.ACT_WS_SEND_CORE_BPG( "FI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile}
+      , undefined,{ 
+        resolve:insp_resolve, 
+        reject:(e)=>{
+          console.log(e)
+        } 
+      });
       this.props.ACT_StatSettingParam_Update(this.props.System_Setting.FI_MODE_StatSettingParam)
       this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
       { 
@@ -1412,7 +1427,12 @@ class APP_INSP_MODE extends React.Component {
       
       // deffile.featureSet[0].single_result_area_ratio=0.9;
       this.props.ACT_WS_SEND_CORE_BPG( "CI", 0, { _PGID_: stream_PGID_, _PGINFO_: { keep: true }, definfo: deffile     
-       }, undefined);
+       }, undefined, { 
+        resolve:insp_resolve, 
+        reject:(e)=>{
+          console.log(e)
+        } 
+      });
 
 
       // this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
@@ -1562,11 +1582,32 @@ class APP_INSP_MODE extends React.Component {
     let pre_reportCount=nextProps.reportStatisticState.reportCount;
     let isReportInc=pre_reportCount!==this.pre_reportCount
     this.pre_reportCount=pre_reportCount;
+
+
+    let doUpdate=true;
+    {
+      // console.log(">>>",props.edit_info);
+      let cur_hideTrackingWindowObj=nextProps.edit_info.reportStatisticState.hideTrackingWindowObj;
+      // console.log(cur_hideTrackingWindowObj,this.pre_hideTrackingWindowObj);
+      if( (cur_hideTrackingWindowObj==false) ||(this.pre_hideTrackingWindowObj==false) && this.cacheIM!=nextProps.edit_info.img)
+      {
+        doUpdate&=true;
+      }
+      else
+      {
+        doUpdate&=false;//skip this update
+      }
+  
+      this.pre_hideTrackingWindowObj=cur_hideTrackingWindowObj;
+      this.cacheIM=nextProps.edit_info.img;
+
+    }
+
     if(this.state!==nextState){
       return true;
     }
     // console.log("///",isReportInc);
-    return isReportInc;
+    return isReportInc & doUpdate;
   }
   setInspectionRankUI()
   {
@@ -1990,7 +2031,6 @@ class APP_INSP_MODE extends React.Component {
 
       <InspectionReportInsert2DB 
         // newAddedReport={this.props.reportStatisticState.newAddedReport} 
-        reportStatisticState={this.props.reportStatisticState}
         LANG_DICT={this.props.DICT}
         // DBStatus,
         // DBPushPromise,
@@ -2105,6 +2145,8 @@ class APP_INSP_MODE extends React.Component {
 
           {(CanvasWindowRatio <= 0) ? null :
             <CanvasComponent_rdx addClass={"layout WXF " + " height" + CanvasWindowRatio}
+
+              edit_info={this.props.edit_info}
               onROISettingCallBack={this.state.onROISettingCallBack}
               measureDisplayRank={this.state.measureDisplayRank}
               ACT_WS_SEND_CORE_BPG={this.props.ACT_WS_SEND_CORE_BPG}
