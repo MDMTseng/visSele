@@ -34,7 +34,9 @@ int datViewQueueSkipSize = 0;
 int DATA_VIEW_MAX_FPS=20;
 bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
 
-
+float OK_MAX_FPS=6;
+float NG_MAX_FPS=6;
+float NA_MAX_FPS=6;
 
 
 cJSON *cache_deffile_JSON = NULL;
@@ -1958,6 +1960,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         saveInspNASnap = false;
         SKIP_NA_DATA_VIEW=false;
         saveInspQFullSkipCount=0;
+
+        
+        OK_MAX_FPS=6;
+        NG_MAX_FPS=6;
+        NA_MAX_FPS=6;
         // save_snap_folder_full_delete_count=0;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         this->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
@@ -2548,6 +2555,33 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
           if (ImageCropH < 0)
           {
             ImageCropH = 10;
+          }
+        }
+
+
+        
+        {
+          double *num = JFetch_NUMBER(ImTranseSetup, "OK_MAX_FPS");
+          if(num)
+          {
+            OK_MAX_FPS=(float)*num;
+            // InspSampleSaveMaxCount=(int)*num;
+          }
+        }
+        {
+          double *num = JFetch_NUMBER(ImTranseSetup, "NG_MAX_FPS");
+          if(num)
+          {
+            NG_MAX_FPS=(float)*num;
+            // InspSampleSaveMaxCount=(int)*num;
+          }
+        }
+        {
+          double *num = JFetch_NUMBER(ImTranseSetup, "NA_MAX_FPS");
+          if(num)
+          {
+            NA_MAX_FPS=(float)*num;
+            // InspSampleSaveMaxCount=(int)*num;
           }
         }
 
@@ -3721,7 +3755,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
       {
-        maxFPS=10;
+        maxFPS=NG_MAX_FPS;
         if(saveInspFailSnap==true)
           saveToSnap = true;
       }
@@ -3729,12 +3763,12 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
       {
-        maxFPS=7;
+        maxFPS=OK_MAX_FPS;
       }
 
       if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA || headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_UNSET )
       {
-        maxFPS=13;
+        maxFPS=NA_MAX_FPS;
         if(saveInspNASnap)
         {
           saveToSnap = true;
@@ -3747,7 +3781,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
         }
       }
 
-
+      // LOGI("ONNGNA:%f %f %f",OK_MAX_FPS,NG_MAX_FPS,NA_MAX_FPS);
 
 
 
@@ -3917,9 +3951,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
     sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
 
-    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
 
   }
+  cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
   //taking the short cut, mift(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
   if (doPassDown)

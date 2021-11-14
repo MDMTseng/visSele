@@ -314,6 +314,14 @@ function StateReducer(newState, action) {
                       return false;
                     });
 
+                  if(action.data.__surpress_display==true)
+                  {
+                    reportStatisticState.__surpress_display=true;
+                  }
+                  else
+                  {
+                    reportStatisticState.__surpress_display=false;
+                  }
                   if (ignoreInspData==true || inspReport.reports === undefined) {
                     break;
                   }
@@ -628,11 +636,11 @@ function StateReducer(newState, action) {
                       reportStatisticState.trackingWindow.forEach(rep=>{
                         rep.isCurObj = false;
                       });
-                      reportStatisticState.hideTrackingWindowObj=true;
+                      reportStatisticState.__surpress_display=true;
                     }
                     else
                     {
-                      reportStatisticState.hideTrackingWindowObj=false;
+                      reportStatisticState.__surpress_display=false;
                     }
                   }
 

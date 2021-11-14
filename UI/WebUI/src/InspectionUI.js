@@ -1389,7 +1389,7 @@ class APP_INSP_MODE extends React.Component {
 
     function insp_resolve(pkts,main_ch)
     {
-      console.log(pkts)
+      // console.log(pkts)
       
       let RP=pkts.find(pkt=>pkt.type=="RP");
       let IM=pkts.find(pkt=>pkt.type=="IM");
@@ -1397,6 +1397,8 @@ class APP_INSP_MODE extends React.Component {
       {
         RP.data.__surpress_display=true;
       }
+      
+      // console.log(RP.data.__surpress_display);
       main_ch(pkts);
     }
 
@@ -1587,9 +1589,9 @@ class APP_INSP_MODE extends React.Component {
     let doUpdate=true;
     {
       // console.log(">>>",props.edit_info);
-      let cur_hideTrackingWindowObj=nextProps.edit_info.reportStatisticState.hideTrackingWindowObj;
-      // console.log(cur_hideTrackingWindowObj,this.pre_hideTrackingWindowObj);
-      if( (cur_hideTrackingWindowObj==false) ||(this.pre_hideTrackingWindowObj==false) && this.cacheIM!=nextProps.edit_info.img)
+      let cur__surpress_display=nextProps.edit_info.reportStatisticState.__surpress_display;
+      // console.log(cur__surpress_display,this.pre__surpress_display);
+      if( ((cur__surpress_display==false) ||(this.pre__surpress_display==false) )&& this.cacheIM!=nextProps.edit_info.img)
       {
         doUpdate&=true;
       }
@@ -1598,7 +1600,7 @@ class APP_INSP_MODE extends React.Component {
         doUpdate&=false;//skip this update
       }
   
-      this.pre_hideTrackingWindowObj=cur_hideTrackingWindowObj;
+      this.pre__surpress_display=cur__surpress_display;
       this.cacheIM=nextProps.edit_info.img;
 
     }
