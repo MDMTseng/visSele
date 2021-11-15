@@ -135,12 +135,10 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   const dispatch = useDispatch();
   const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
   const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
-  const reportStatisticState = useSelector(state => state.UIData.edit_info.reportStatisticState);
+  const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
-
-  let newAddedReport=GetObjElement(reportStatisticState,["newAddedReport"]);
-
+  
   useEffect(()=>{
     if(newAddedReport===undefined || 
       _this.pre_newAddedReport===newAddedReport || 
@@ -1643,6 +1641,59 @@ class APP_INSP_MODE extends React.Component {
           onClick={() => {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
+
+
+        <Divider orientation="left" key="img_tran_weight">圖像檢視側重</Divider>
+        <Button key="okf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:6,
+                NG_MAX_FPS:6,
+                NA_MAX_FPS:6,
+              }
+            })
+
+        }} >平均</Button>
+        <Button key="okf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:8,
+                NG_MAX_FPS:4,
+                NA_MAX_FPS:4,
+              }
+            })
+
+        }} >OK</Button>
+        <Button key="ngf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:4,
+                NG_MAX_FPS:8,
+                NA_MAX_FPS:4,
+              }
+            })
+        }} >NG</Button>
+        <Button key="naf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:4,
+                NG_MAX_FPS:4,
+                NA_MAX_FPS:8,
+              }
+            })
+        }} >NA</Button>
         {/* <br/>
         SAVE:
         <Button key="opt uInsp" icon={<SettingOutlined/>}

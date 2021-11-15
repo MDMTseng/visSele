@@ -644,7 +644,7 @@ function StateReducer(newState, action) {
                     }
                   }
 
-
+                  newState.edit_info.reportStatisticState={...reportStatisticState};
                   if (false) {
                     let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report => report.judgeReports);
                     let measure1 = newState.edit_info.reportStatisticState.measure1;
