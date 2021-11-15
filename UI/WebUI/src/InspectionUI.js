@@ -135,12 +135,10 @@ function InspectionReportInsert2DB({onDBInsertSuccess,onDBInsertFail,LANG_DICT,i
   const dispatch = useDispatch();
   const Insp_DB_W_ID = useSelector(state => state.ConnInfo.Insp_DB_W_ID);
   const Insp_DB_W_ID_CONN_INFO = useSelector(state => state.ConnInfo.Insp_DB_W_ID_CONN_INFO);
-  const reportStatisticState = useSelector(state => state.UIData.edit_info.reportStatisticState);
+  const newAddedReport = useSelector(state => state.UIData.edit_info.reportStatisticState.newAddedReport);
 
   const WS_SEND= (id,data,return_cb) => dispatch(UIAct.EV_WS_SEND_PLAIN(id,data,return_cb));
-
-  let newAddedReport=GetObjElement(reportStatisticState,["newAddedReport"]);
-
+  
   useEffect(()=>{
     if(newAddedReport===undefined || 
       _this.pre_newAddedReport===newAddedReport || 
