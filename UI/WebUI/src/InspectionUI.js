@@ -1641,6 +1641,59 @@ class APP_INSP_MODE extends React.Component {
           onClick={() => {
             this.props.ACT_StatInfo_Clear();
           }} >清空統計數據</Button>
+
+
+        <Divider orientation="left" key="img_tran_weight">圖像檢視側重</Divider>
+        <Button key="okf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:6,
+                NG_MAX_FPS:6,
+                NA_MAX_FPS:6,
+              }
+            })
+
+        }} >平均</Button>
+        <Button key="okf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:8,
+                NG_MAX_FPS:4,
+                NA_MAX_FPS:4,
+              }
+            })
+
+        }} >OK</Button>
+        <Button key="ngf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:4,
+                NG_MAX_FPS:8,
+                NA_MAX_FPS:4,
+              }
+            })
+        }} >NG</Button>
+        <Button key="naf"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:4,
+                NG_MAX_FPS:4,
+                NA_MAX_FPS:8,
+              }
+            })
+        }} >NA</Button>
         {/* <br/>
         SAVE:
         <Button key="opt uInsp" icon={<SettingOutlined/>}
