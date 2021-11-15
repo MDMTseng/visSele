@@ -314,6 +314,14 @@ function StateReducer(newState, action) {
                       return false;
                     });
 
+                  if(action.data.__surpress_display==true)
+                  {
+                    reportStatisticState.__surpress_display=true;
+                  }
+                  else
+                  {
+                    reportStatisticState.__surpress_display=false;
+                  }
                   if (ignoreInspData==true || inspReport.reports === undefined) {
                     break;
                   }
@@ -622,9 +630,21 @@ function StateReducer(newState, action) {
                     reportStatisticState.trackingWindow =
                       reportStatisticState.trackingWindow.
                         filter((srep_inWindow) => (srep_inWindow.isCurObj || srep_inWindow.repeatTime >= statSetting.minReportRepeat));
+                      
+                    if(action.data.__surpress_display==true)
+                    {
+                      reportStatisticState.trackingWindow.forEach(rep=>{
+                        rep.isCurObj = false;
+                      });
+                      reportStatisticState.__surpress_display=true;
+                    }
+                    else
+                    {
+                      reportStatisticState.__surpress_display=false;
+                    }
                   }
 
-
+                  newState.edit_info.reportStatisticState={...reportStatisticState};
                   if (false) {
                     let reportGroup = newState.edit_info.inspReport.reports[0].reports.map(report => report.judgeReports);
                     let measure1 = newState.edit_info.reportStatisticState.measure1;

@@ -1124,6 +1124,7 @@ export function Edit_info_Empty() {
       historyReport: [],
       newAddedReport: [],
       reportCount:0,
+      hideTrackingWindowObj:false,
       statisticValue: undefined,
       overallStat: {
         OK: 0,

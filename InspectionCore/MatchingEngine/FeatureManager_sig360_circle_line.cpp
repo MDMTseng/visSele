@@ -4282,6 +4282,10 @@ bool convertContourGrid2Signature(acv_XY center, ContourFetch contour, std::vect
     {
       continue;
     }
+    if (diffY<0.1 && diffY>-0.1)//prevent error/sensitive condition
+    {
+      continue;
+    }
     float theta = acvFAtan2(diffY, diffX); //-pi ~pi
     //if(theta<0)theta+=2*M_PI;
     int idx = round(o_signature.size() * theta / (2 * M_PI));

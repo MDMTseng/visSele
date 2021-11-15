@@ -32,7 +32,7 @@ uint16_t stageUpdated = 0;
 
 uint16_t g_max_inspLatency = 0;
 
-
+struct sharedInfo* p_sInfo= get_SharedInfo();
 bool blockNewDetectedObject=false;
 
 GEN_ERROR_CODE errorBuf[20];
@@ -455,9 +455,9 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
 
   //get a new object and find a space to log it
   // TCount++;
-  head->s_pulse = start_pulse;
-  head->e_pulse = end_pulse;
-  head->pulse_width = pulse_width;
+  // head->s_pulse = start_pulse;
+  // head->e_pulse = end_pulse;
+  // head->pulse_width = pulse_width;
   head->gate_pulse = middle_pulse;
   head->insp_status = insp_status_UNSET;
   if (ActRegister_pipeLineInfo(head) != 0)
@@ -504,9 +504,9 @@ int task_Pulse_Time_Sync(uint32_t pulse)
 
   //get a new object and find a space to log it
   // TCount++;
-  head->s_pulse = pulse;
-  head->e_pulse = pulse;
-  head->pulse_width = 10;
+  // head->s_pulse = pulse;
+  // head->e_pulse = pulse;
+  // head->pulse_width = 10;
   head->gate_pulse = pulse;
   head->insp_status = insp_status_UNSET;
   if (ActRegister_Pulse_Time_Sync(head) != 0)
@@ -1098,7 +1098,12 @@ public:
 
         pipeLineInfo *pipeTarget = NULL;
 
+        int32_t diff;
+        int32_t signed_diff;
+
+
         uint32_t matched_obj_pulse = 0;
+        uint8_t re_search_range=4;
         for (int i = 0; i < RBuf.size(); i++)
         {
           pipeLineInfo *pipe = RBuf.getTail(i);
@@ -1107,9 +1112,44 @@ public:
 
           if (pipe->insp_status == insp_status_UNSET)
           {
-            pipeTarget = pipe;
-            ret_status = 0;
-            break;
+            if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::READY ||
+                sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
+            {
+
+              matched_obj_pulse = pipe->gate_pulse;
+              diff = targetObjGatePulse - matched_obj_pulse;
+              signed_diff=diff;
+              if (diff < 0)
+                diff = -diff;
+                
+              if (diff < 5)
+              {
+                
+                pipeTarget = pipe;
+                ret_status = 0;
+                break;
+              }
+              else
+              {
+                pipe->insp_status =insp_status_NA;//skip this one and try to find next match
+              }
+
+              if((--re_search_range)==0)
+              {
+                pipeTarget = pipe;
+                ret_status = -1;
+                break;
+              }
+            }
+
+            else
+            {
+              
+              pipeTarget = pipe;
+              ret_status = 0;
+              break;
+            }
+            continue;
           }
         }
 
@@ -1141,15 +1181,13 @@ public:
         else if (sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::READY ||
                  sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
         {
-          int32_t diff = targetObjGatePulse - matched_obj_pulse;
-          int32_t signed_diff=diff;
-          // DEBUG_printf("matPulse=%" PRIu32 " tarPulse=%" PRIu32 " ==diff:%d==\n",matched_obj_pulse, targetObjGatePulse, diff);
-          if (diff < 0)
-            diff = -diff;
-            
+
+
+          
+          // DEBUG_printf("ser:%d\n",re_search_range);
           if (diff < 5)
           { //Pulse sync error is in tolerable region
-            
+            // DEBUG_printf("ist:%d\n",insp_status);
             pipeTarget->insp_status = insp_status;//accept the status
 
             if (mode_info.mode == run_mode_info::TEST && 
@@ -1211,7 +1249,6 @@ public:
           }
           else
           {
-            DEBUG_printf("td:%" PRId32 "\n",signed_diff);
           
             sysinfo.PTSyncInfo.state = PulseTimeSyncInfo_State::INIT; //unmatch..
 

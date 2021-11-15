@@ -32,7 +32,11 @@ bool SKIP_NA_DATA_VIEW=false;
 int imageQueueSkipSize = 0;
 int datViewQueueSkipSize = 0;
 int DATA_VIEW_MAX_FPS=20;
-bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=true;
+bool DATA_VIEW_INSP_DATA_MUST_WITH_IMG=false;
+
+float OK_MAX_FPS=6;
+float NG_MAX_FPS=6;
+float NA_MAX_FPS=6;
 
 
 cJSON *cache_deffile_JSON = NULL;
@@ -773,8 +777,34 @@ int loadCameraCalibParam(char *dirName, cJSON *root, ImageSampler *ret_param)
   return 0;
 }
 
+
+void downSampSetup(CameraLayer &camera, cJSON &settingJson)
+{
+  
+  double *val = JFetch_NUMBER(&settingJson, "down_samp_level");
+  if (val)
+  {
+    downSampLevel = (int)*val;
+  }
+
+  int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
+  if (type == cJSON_False)
+  {
+    downSampWithCalib = false;
+  }
+  else if (type == cJSON_True)
+  {
+    downSampWithCalib = true;
+  }
+  else
+  {
+    downSampWithCalib = true;
+  }
+}
+
 int CameraSetup(CameraLayer &camera, cJSON &settingJson)
 {
+  downSampSetup(camera, settingJson);
   camera.StopAquisition();
   double *val = JFetch_NUMBER(&settingJson, "exposure");
   int retV = -1;
@@ -828,25 +858,6 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
     retV = 0;
   }
 
-  val = JFetch_NUMBER(&settingJson, "down_samp_level");
-  if (val)
-  {
-    downSampLevel = (int)*val;
-  }
-
-  int type = getDataFromJson(&settingJson, "down_samp_w_calib", NULL);
-  if (type == cJSON_False)
-  {
-    downSampWithCalib = false;
-  }
-  else if (type == cJSON_True)
-  {
-    downSampWithCalib = true;
-  }
-  else
-  {
-    downSampWithCalib = true;
-  }
 
   cJSON *MIRROR = JFetch_ARRAY(&settingJson, "mirror");
 
@@ -1949,6 +1960,11 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         saveInspNASnap = false;
         SKIP_NA_DATA_VIEW=false;
         saveInspQFullSkipCount=0;
+
+        
+        OK_MAX_FPS=6;
+        NG_MAX_FPS=6;
+        NA_MAX_FPS=6;
         // save_snap_folder_full_delete_count=0;
         double *frame_count = JFetch_NUMBER(json, "frame_count");
         this->cameraFramesLeft = (frame_count != NULL) ? ((int)(*frame_count)) : -1;
@@ -2543,6 +2559,33 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         }
 
 
+        
+        {
+          double *num = JFetch_NUMBER(ImTranseSetup, "OK_MAX_FPS");
+          if(num)
+          {
+            OK_MAX_FPS=(float)*num;
+            // InspSampleSaveMaxCount=(int)*num;
+          }
+        }
+        {
+          double *num = JFetch_NUMBER(ImTranseSetup, "NG_MAX_FPS");
+          if(num)
+          {
+            NG_MAX_FPS=(float)*num;
+            // InspSampleSaveMaxCount=(int)*num;
+          }
+        }
+        {
+          double *num = JFetch_NUMBER(ImTranseSetup, "NA_MAX_FPS");
+          if(num)
+          {
+            NA_MAX_FPS=(float)*num;
+            // InspSampleSaveMaxCount=(int)*num;
+          }
+        }
+
+
         session_ACK = true;
       }
 
@@ -2562,6 +2605,9 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
       {
         CameraSetup(*camera, *camSettingObj);
       }
+
+
+      downSampSetup(*camera, *json);
 
       if (getDataFromJson(json, "CameraTriggerShutter", NULL) == cJSON_True)
       {
@@ -2639,10 +2685,10 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         else if(lastDatViewCache!=NULL)
         {
           lastDatViewCache_lock.lock();
-          // LOGI("IMG resend !!!!");
+          LOGI("IMG resend !!!!");
           InspResultAction(lastDatViewCache, true, false , false,NULL,0.8);
 
-          // LOGI("IMG resend DONE....!!!!");
+          LOGI("IMG resend DONE....!!!!");
           lastDatViewCache_lock.unlock();
           session_ACK=true;
         }
@@ -3146,7 +3192,8 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
 }
 
 
-clock_t lastImgSendTime=0;
+float avgInterval=0;
+uint64_t lastImgSendTime=0;
 void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
 {
   static int frameActionID = 0;
@@ -3167,12 +3214,21 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   clock_t t = clock();
   
+  uint64_t cur_ms = current_time_ms();
+  float cur_Interval =cur_ms-lastImgSendTime;
+  if(lastImgSendTime==0)
+  {
+    cur_Interval=1;
+    lastImgSendTime=cur_ms;
+  }
 
-  double timeDiff_ms = (double)(t - lastImgSendTime) / CLOCKS_PER_SEC * 1000;
-  bool withinMinInterval=timeDiff_ms>(1000/datViewMaxFPS);
+  float cur_avgInterval=avgInterval+(cur_Interval-avgInterval)*0.5;
+  float cur_FPS=1000.0/cur_avgInterval;
+  bool withinMinInterval=(cur_FPS)<datViewMaxFPS;
 
+  // LOGI("cur_avgInterval:%0.2f cur_FPS:%0.2f datViewMaxFPS:%0.2f",cur_avgInterval,cur_FPS,datViewMaxFPS);
   
-  LOGI("skipRep:%d skipImg:%d timeDiff_ms:%f",skipInspDataTransfer,skipImageTransfer,timeDiff_ms);
+  // LOGI("skipRep:%d skipImg:%d cur_avgFPS:%0.2f",skipInspDataTransfer,skipImageTransfer,cur_avgFPS);
   if(withinMinInterval==false)//the interval is too short
   {
     // skipInspDataTransfer=
@@ -3347,7 +3403,9 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
       bpg_pi.fromUpperLayer(bpg_dat);
       LOGI("img transfer(DL:%d) %fms \n", _downSampLevel, ((double)clock() - img_t) / CLOCKS_PER_SEC * 1000);
       
-      lastImgSendTime=t;
+      lastImgSendTime=cur_ms;
+      avgInterval=cur_avgInterval;
+      // lastImgSendTime=t;
     }
 
   } while (false);
@@ -3698,14 +3756,25 @@ void ImgPipeDatViewThread(bool *terminationflag)
         imgSendState=false;
       }
 
-      if (saveInspFailSnap && headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
+
+      float maxFPS=10;
+
+      if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_FAILURE)
       {
-        saveToSnap = true;
+        maxFPS=NG_MAX_FPS;
+        if(saveInspFailSnap==true)
+          saveToSnap = true;
       }
       // LOGI("saveInspFailSnap:%d saveToSnap:%d  finspStatus:%d",saveInspFailSnap,saveToSnap,headImgPipe->datViewInfo.finspStatus);
 
-      if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA)
+      if (headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_SUCCESS)
       {
+        maxFPS=OK_MAX_FPS;
+      }
+
+      if(headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_NA || headImgPipe->datViewInfo.finspStatus == FeatureReport_sig360_circle_line_single::STATUS_UNSET )
+      {
+        maxFPS=NA_MAX_FPS;
         if(saveInspNASnap)
         {
           saveToSnap = true;
@@ -3718,6 +3787,11 @@ void ImgPipeDatViewThread(bool *terminationflag)
         }
       }
 
+      // LOGI("ONNGNA:%f %f %f",OK_MAX_FPS,NG_MAX_FPS,NA_MAX_FPS);
+
+
+
+
       // if(saveInspNASnap)
       // {
       //   if(headImgPipe->datViewInfo.finspStatus==FeatureReport_sig360_circle_line_single::STATUS_NA && inspSnapQueue.size()>1)//only when the queue is free
@@ -3728,7 +3802,7 @@ void ImgPipeDatViewThread(bool *terminationflag)
 
       
       // imgSendState=true;
-      InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown);
+      InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown,maxFPS);
 
       //delayStartCounter=10000;
       if (!doPassDown)
@@ -3883,9 +3957,9 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   {
     sendResultTo_mift(imgPipe->datViewInfo.uInspStatus, imgPipe->fi.timeStamp_us/100);
 
-    cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
 
   }
+  cJSON_AddNumberToObject(imgPipe->datViewInfo.report_json, "uInspResult", imgPipe->datViewInfo.uInspStatus);
   //taking the short cut, mift(inspection machine) needs 100% of data
   // LOGI("timeStamp_us:%lu",imgPipe->fi.timeStamp_us);
   if (doPassDown)

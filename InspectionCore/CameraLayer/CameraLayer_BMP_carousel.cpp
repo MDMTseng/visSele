@@ -210,7 +210,7 @@ CameraLayer::status CameraLayer_BMP_carousel::TriggerMode(int mode)
     if(mode==2)
     {
       mode=0;
-      modeTriggerSim_sleep=1000;
+      modeTriggerSim_sleep=10000;
     }
     if(mode>=0)
     {

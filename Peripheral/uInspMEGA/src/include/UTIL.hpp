@@ -17,13 +17,11 @@ void DEBUG_printf(const char * format, ...);
 
 typedef struct pipeLineInfo{
   uint32_t gate_pulse;
-  uint32_t s_pulse;
-  uint32_t e_pulse;
-  uint32_t pulse_width;
+  // uint32_t s_pulse;
+  // uint32_t e_pulse;
+  // uint32_t pulse_width;
   uint32_t trigger_pulse;
   int8_t stage;
-  int8_t sent_stage;
-  int8_t notifMark;
   int16_t insp_status;
 }pipeLineInfo;
 
