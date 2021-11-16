@@ -1704,6 +1704,19 @@ class APP_INSP_MODE extends React.Component {
 
 
         <Divider orientation="left" key="img_tran_focus">圖像檢視專注</Divider>
+        <Button key="okngo"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:7,
+                NG_MAX_FPS:7,
+                NA_MAX_FPS:0.001,
+              }
+            })
+
+        }} >OK&NG</Button>
         <Button key="oko"
           onClick={() => {
 
