@@ -21,7 +21,8 @@
 #include <ctime>
 
 #define _VERSION_ "1.1.003"
-char* SNAP_FILE_EXTENSION=".xreps";
+char* SNAP_FILE_EXTENSION="xreps";
+char* SNAP_IMG_EXTENSION="jpg";
 std::timed_mutex mainThreadLock;
 
 std::mutex matchingEnglock;
@@ -65,8 +66,8 @@ TSQueue<image_pipe_info *> datViewQueue(10);
 TSQueue<image_pipe_info *> inspSnapQueue(5);
 #define MT_LOCK(...) mainThreadLock_lock(__LINE__ VA_ARGS(__VA_ARGS__))
 #define MT_UNLOCK(...) mainThreadLock_unlock(__LINE__ VA_ARGS(__VA_ARGS__))
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down = NULL, float datViewMaxFPS=DATA_VIEW_MAX_FPS);
 
+void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down = NULL, float datViewMaxFPS=DATA_VIEW_MAX_FPS);
 void setThreadPriority(std::thread &thread, int type, int priority)
 {
 
@@ -929,16 +930,16 @@ int CameraSetup(CameraLayer &camera, cJSON &settingJson)
   return 0;
 }
 
-void saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, acvImage *image, const char *fileName,const char* filename_extension)
+int saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *deffile, acvImage *image, const char *fileName,const char* filename_extension=SNAP_FILE_EXTENSION,const char* img_extension=SNAP_IMG_EXTENSION)
 {
 
   cJSON *reportsList = JFetch_ARRAY(inspectionReport, "reports[0].reports");
   if (reportsList == NULL)
-    return;
+    return -10;
 
   cJSON *camera_param_data = JFetch_OBJECT(camera_param, "reports[0]");
   if (camera_param_data == NULL)
-    return;
+    return -11;
 
   std::string filePath(fileName);
 
@@ -960,17 +961,20 @@ void saveInspectionSample(cJSON *inspectionReport, cJSON *camera_param, cJSON *d
   cJSON_DetachItemViaPointer(infoJObj, deffile);
 
   cJSON_Delete(infoJObj);
-  int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath + (std::string)filename_extension).c_str());
+  int ret_write_Len = WriteBytesToFile((uint8_t *)jstr, strlen(jstr), (filePath+"." + (std::string)filename_extension).c_str());
   delete (jstr);
   if (ret_write_Len < 0)
   {
-    return;
+    return -1;
   }
 
-  int saveErr = SaveIMGFile((filePath + ".jpg").c_str(), image);
+  int saveErr = SaveIMGFile((filePath+"." + (std::string)img_extension).c_str(), image);
   if (saveErr != 0)
   {
+    return -2;
   }
+
+  return 0;
 }
 
 int LoadCameraSetting(CameraLayer &camera, char *filename)
@@ -1448,6 +1452,28 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
             }
             
           }
+          else if (strcmp(type, "__LAST_DATA_VIEW_CACHE_INFO__") == 0)
+          {
+            char *report_extension = JFetch_STRING(json, "report_extension");
+            char *img_extension = JFetch_STRING(json, "img_extension");
+
+
+            lastDatViewCache_lock.lock();
+
+            int err = saveInspectionSample(lastDatViewCache->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &lastDatViewCache->img, fileName,
+              report_extension!=NULL?report_extension:SNAP_FILE_EXTENSION,
+              img_extension!=NULL?img_extension:SNAP_IMG_EXTENSION);
+            
+            if(err==0)
+            {
+              session_ACK=true;
+            }
+            lastDatViewCache_lock.unlock();
+          }
+
+          
+        
+        
         }
         else
         {
@@ -2686,7 +2712,13 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
         {
           lastDatViewCache_lock.lock();
           LOGI("IMG resend !!!!");
-          InspResultAction(lastDatViewCache, true, false , false,NULL,0.8);
+          bool skipInspDataTransfer=true;
+          bool skipImageTransfer=false;
+          bool inspSnap=false;
+
+
+
+          InspResultAction(lastDatViewCache, &skipInspDataTransfer, &skipImageTransfer , &inspSnap,NULL,0.8);
 
           LOGI("IMG resend DONE....!!!!");
           lastDatViewCache_lock.unlock();
@@ -3194,7 +3226,7 @@ void sendResultTo_mift(int uInspStatus, uint64_t timeStamp_100us)
 
 float avgInterval=0;
 uint64_t lastImgSendTime=0;
-void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool skipImageTransfer, bool inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
+void InspResultAction(image_pipe_info *imgPipe, bool *skipInspDataTransfer, bool *skipImageTransfer, bool *inspSnap, bool *ret_pipe_pass_down, float datViewMaxFPS)
 {
   static int frameActionID = 0;
   if (ret_pipe_pass_down)
@@ -3232,19 +3264,19 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
   if(withinMinInterval==false)//the interval is too short
   {
     // skipInspDataTransfer=
-    skipImageTransfer=true;
+    *skipImageTransfer=true;
   }
 
   if(DoImageTransfer==false)
   {
-    skipImageTransfer=false;
+    *skipImageTransfer=false;
   }
 
   if(DATA_VIEW_INSP_DATA_MUST_WITH_IMG)
   {
-    if(skipInspDataTransfer==false)
+    if(*skipInspDataTransfer==false)
     {
-      skipInspDataTransfer=skipImageTransfer;
+      *skipInspDataTransfer=*skipImageTransfer;
     }
   }
 
@@ -3256,7 +3288,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   char tmp[200];
 
-  if (skipInspDataTransfer == false)
+  if (*skipInspDataTransfer == false)
   do
   {
     // sendResultTo_mift(imgPipe->datViewInfo.uInspStatus,fi.timeStamp_100us);
@@ -3294,7 +3326,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     }
   } while (false);
 
-  if (skipImageTransfer == false)
+  if (*skipImageTransfer == false)
   do
   {
     // LOGI(">>>>");
@@ -3410,7 +3442,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
 
   } while (false);
   
-  if( skipInspDataTransfer==false ||skipImageTransfer==false)//if any of them are sent
+  if( *skipInspDataTransfer==false ||*skipImageTransfer==false)//if any of them are sent
   do
   {
     sprintf(tmp, "{\"start\":false, \"framesLeft\":%s,\"frameID\":%d,\"ACK\":true}", (bpg_pi.cameraFramesLeft) ? "true" : "false", frameActionID);
@@ -3432,7 +3464,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     }
   } while (false);
 
-  if (inspSnap)
+  if (*inspSnap==true)
   {
     if (inspSnapQueue.push(imgPipe))
     {
@@ -3441,6 +3473,7 @@ void InspResultAction(image_pipe_info *imgPipe, bool skipInspDataTransfer, bool 
     }
     else
     {
+      *inspSnap=false;
       LOGE("inspSnapQueue is full.... skip the save");
       saveInspQFullSkipCount++;
       if (ret_pipe_pass_down)//since the image doesn't pass down ( for now recycle it at this pipeline)
@@ -3566,7 +3599,7 @@ int removeOldestRep(const char* path,const char* ext)
   
 
   std::string FILE_NAME = oldestFileName.substr (
-    0,  oldestFileName.length()-strlen(ext)); //remove extention 
+    0,  oldestFileName.length()-1-strlen(ext)); //remove extention and the dot'.'
 
   // LOGI("oldestFileName:%s, FILE_NAME:%s",oldestFileName.c_str(),FILE_NAME.c_str());
 
@@ -3594,15 +3627,24 @@ int removeOldestRep(const char* path,const char* ext)
   return 0;
 }
 
-int pipeEleRecycle(image_pipe_info *targetEle)
+
+
+//if updateLastCache==false => del targetEle
+//if updateLastCache==true =>  del lastDatViewCache; lastDatViewCache=targetEle
+int pipeEleRecycle(image_pipe_info *targetEle, bool updateLastCache)
 {
+
+
   if(targetEle==lastDatViewCache)//same element
   {
     return -2;
   }
-  lastDatViewCache_lock.lock();
+
   image_pipe_info *destroyObj=targetEle;
-  //if(imgSendState==true)
+
+
+  lastDatViewCache_lock.lock();
+  if(updateLastCache==true)
   {
     if(lastDatViewCache==NULL)
     {
@@ -3715,12 +3757,12 @@ void InspSnapSaveThread(bool *terminationflag)
         std::string filePath = rootPath + extPath + std::to_string(current_time_ms());
         LOGI("SAVE::%s",filePath.c_str());
 
-        saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str(),SNAP_FILE_EXTENSION);
+        saveInspectionSample(headImgPipe->datViewInfo.report_json, cache_camera_param, cache_deffile_JSON, &headImgPipe->img, filePath.c_str());
       }
 
 
       
-      pipeEleRecycle(headImgPipe);
+      pipeEleRecycle(headImgPipe,false);
     }
   }
 }
@@ -3801,14 +3843,25 @@ void ImgPipeDatViewThread(bool *terminationflag)
       // }
 
       
+      
       // imgSendState=true;
-      InspResultAction(headImgPipe, !reportSendState, !imgSendState , saveToSnap, &doPassDown,maxFPS);
+
+      
+      bool skipInspDataTransfer=!reportSendState;
+      bool skipImageTransfer= !imgSendState;
+      bool inspSnap=saveToSnap;
+
+
+
+      InspResultAction(headImgPipe,&skipInspDataTransfer , &skipImageTransfer , &inspSnap, &doPassDown,maxFPS);
 
       //delayStartCounter=10000;
       if (!doPassDown)
       { //there is the end, recycle the resource
         //the logic here is to preserve the last datView info, so that we can use it if it's the last frame
-        pipeEleRecycle(headImgPipe);
+        //if skipImageTransfer==false => image is sent => we want to update the last cache image
+        bool doUpdateLastCache=(skipImageTransfer==false);
+        pipeEleRecycle(headImgPipe,doUpdateLastCache);
       }
     
       
@@ -3984,7 +4037,11 @@ void ImgPipeProcessCenter_imp(image_pipe_info *imgPipe, bool *ret_pipe_pass_down
   }
   else
   {
-    InspResultAction(imgPipe, false, false, &doPassDown);
+    
+    bool skipInspDataTransfer=false;
+    bool skipImageTransfer=false;
+    bool inspSnap=false;
+    InspResultAction(imgPipe, &skipInspDataTransfer, &skipImageTransfer,&inspSnap, &doPassDown);
 
     if (!doPassDown) //then, we need to recycle the resource here
     {
