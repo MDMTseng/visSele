@@ -1700,6 +1700,47 @@ class APP_INSP_MODE extends React.Component {
               }
             })
         }} >NA</Button>
+
+
+
+        <Divider orientation="left" key="img_tran_focus">圖像檢視專注</Divider>
+        <Button key="oko"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:8,
+                NG_MAX_FPS:0.001,
+                NA_MAX_FPS:0.001,
+              }
+            })
+
+        }} >OK</Button>
+        <Button key="ngo"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:0.001,
+                NG_MAX_FPS:8,
+                NA_MAX_FPS:0.001,
+              }
+            })
+        }} >NG</Button>
+        <Button key="nao"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:0.001,
+                NG_MAX_FPS:0.001,
+                NA_MAX_FPS:8,
+              }
+            })
+        }} >NA</Button>
         {/* <br/>
         SAVE:
         <Button key="opt uInsp" icon={<SettingOutlined/>}
