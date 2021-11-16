@@ -20,7 +20,7 @@
 #include <smem_channel.hpp>
 #include <ctime>
 
-#define _VERSION_ "1.1.003"
+#define _VERSION_ "1.1.103"
 char* SNAP_FILE_EXTENSION="xreps";
 char* SNAP_IMG_EXTENSION="jpg";
 std::timed_mutex mainThreadLock;
