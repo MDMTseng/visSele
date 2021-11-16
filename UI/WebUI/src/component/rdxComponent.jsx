@@ -448,10 +448,10 @@ export function CustomDisplaySelectUI({onSelect}) {
     })
 
 
-    let undefSet = dispInfo.filter(dispI=>dispI.cat===undefined);
+    let undefSet = dispInfo.filter(dispI=>dispI.cat===undefined || dispI.cat=="");
 
     if(undefSet.length>0)
-      icat["undefined"]=undefSet;
+      icat["-NA-"]={set:undefSet};
     setCatSet(icat);
   }).catch(e=>{
     console.log(e);
@@ -487,9 +487,17 @@ export function CustomDisplaySelectUI({onSelect}) {
     console.log(catSet);
     UI=
     <Tabs defaultActiveKey="0">
-      {Object.keys(catSet).map((cat,cat_idx)=>
-        <TabPane tab={cat} key={""+cat_idx}>
-          {catSet[cat].set
+      {Object.keys(catSet).map((cat,cat_idx)=>{
+
+
+        let catset = catSet[cat].set;
+        console.log(catSet,cat,catset);
+        if( (catset instanceof Array) == false)
+        {
+          catset=[];
+        }
+        return <TabPane tab={cat} key={""+cat_idx}>
+          {catset
           .sort((A,B)=>(A.name).localeCompare(B.name))
           .map(info=>
             <Button key={info.name} onClick={()=>onSelect(info)} size="large">
@@ -497,7 +505,7 @@ export function CustomDisplaySelectUI({onSelect}) {
             </Button>
           )}
         </TabPane>
-      )}
+      })}
       <TabPane tab={"__SET__"} key={"SETUP"}>
       <CustomDisplayUI
          BPG_Channel={(...args) =>ACT_WS_SEND_BPG(CORE_ID, ...args)}
