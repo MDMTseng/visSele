@@ -1890,6 +1890,43 @@ class APP_INSP_MODE extends React.Component {
                 let path_name = default_dst_Path+"/"+name;
                 
                 this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                { filename: path_name,
+                  report_extension:"xreps",
+                  img_extension:"png",
+                  make_dir:true, 
+                  type: "__LAST_DATA_VIEW_CACHE_INFO__" },undefined,
+                {
+                  resolve:(pkts,action_ch)=>{
+                    let SS=pkts.find(pkt=>pkt.type=="SS");
+                    
+                    // console.log(SS)
+                    if(SS.data.ACK==false)
+                    {
+                      this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                    }
+                    else
+                    {
+                      
+                      this.setState({
+                        modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                      
+                      setTimeout(()=>{//close after 1s
+                        this.setState({modalInfo:undefined})
+                      },1000);
+                    }
+                
+          
+                    console.log(pkts);
+                  },
+                  reject:(e)=>{
+      
+                    this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                    console.log(e);
+                  }
+                })
+
+                if(false)//the old way
+                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
                 { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
                 {
                   resolve:(pkts,action_ch)=>{
