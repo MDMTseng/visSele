@@ -2344,10 +2344,13 @@ class INSP_CanvasComponent extends EverCheckCanvasComponent_proto {
 
   }
 
-  EditDBInfoSync(edit_DB_info) {
-    this.edit_DB_info = edit_DB_info;
-    this.db_obj = edit_DB_info._obj;
-    this.rUtil.setEditor_db_obj(this.db_obj);
+  EditDBInfoSync(edit_DB_info,updateImgOnly=false) {
+    if(updateImgOnly==false)
+    {
+      this.edit_DB_info = edit_DB_info;
+      this.db_obj = edit_DB_info._obj;
+      this.rUtil.setEditor_db_obj(this.db_obj);
+    }
     this.SetImg(edit_DB_info.img);
     let mmpp = this.db_obj.cameraParam.mmpb2b / this.db_obj.cameraParam.ppb2b;
     this.rUtil.renderParam.mmpp = mmpp;

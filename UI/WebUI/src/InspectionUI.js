@@ -675,10 +675,12 @@ class CanvasComponent extends React.Component {
 
   updateCanvas(ec_state, props = this.props) {
     if (this.ec_canvas !== undefined) {
-      log.debug("updateCanvas>>", props.edit_info);
+      // log.debug("updateCanvas>>");
 
+      let cur__surpress_display=props._edit_info.reportStatisticState.__surpress_display;
+      if(cur__surpress_display!=true || this.pre_img!=props.img)
       {
-        this.ec_canvas.EditDBInfoSync(props.edit_info);
+        this.ec_canvas.EditDBInfoSync(props._edit_info);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         //this.ec_canvas.ctrlLogic();
@@ -686,6 +688,7 @@ class CanvasComponent extends React.Component {
         this.ec_canvas.doRotateView=this.props.renderObjAlignRotate;
         
       }
+      this.pre_img=props.img;
     }
   }
 
@@ -720,6 +723,9 @@ const mapStateToProps_CanvasComponent = (state) => {
   //log.info("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
+    img:state.UIData.edit_info.img,
+    _edit_info:state.UIData.edit_info,
+    //just to trigger update if changed
   }
 }
 
@@ -1395,7 +1401,7 @@ class APP_INSP_MODE extends React.Component {
       {
         RP.data.__surpress_display=true;
       }
-      
+      // console.log(IM!==undefined,RP!==undefined);
       // console.log(RP.data.__surpress_display);
       main_ch(pkts);
     }
