@@ -421,15 +421,20 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       } });
   }
 
+  let InspectionMonitor_URL_overvall=_mus.inspection_monitor_url;
   let InspectionMonitor_URL_w_info=_mus.inspection_monitor_url;
   if (isString(DefFileHash) && DefFileHash.length > 5) {
 
-    if(InspectionMonitor_URL_w_info.includes("?")==false)
+    if(InspectionMonitor_URL_overvall.includes("?")==false)
     {
-      InspectionMonitor_URL_w_info+="?"
+      InspectionMoniInspectionMonitor_URL_overvalltor_URL+="?"
     }
-    InspectionMonitor_URL_w_info+= "v=" + 0 + "&name=" + DefFileName + "&hash=" + DefFileHash;
+    InspectionMonitor_URL_overvall+="v=" + 0;
+
+
+    InspectionMonitor_URL_w_info= InspectionMonitor_URL_overvall + "&name=" + DefFileName + "&hash=" + DefFileHash;
     
+    InspectionMonitor_URL_overvall = encodeURI(InspectionMonitor_URL_overvall);
     InspectionMonitor_URL_w_info = encodeURI(InspectionMonitor_URL_w_info);
   }
   DefFileFolder = defModelPath.substr(0, defModelPath.lastIndexOf('/') + 1);
@@ -817,12 +822,14 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
             ></Button>
           <Popover 
             style={{"pointerEvents": "auto"}}
-            content={
-            
-            <QR_Canvas className="veleX" style={{height:"100%"}}
-                    onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_w_info} />} 
+            content={<>
+              <Button onClick={() => window.open(InspectionMonitor_URL_overvall)} >完整資料庫搜尋</Button>
+              <Button onClick={() => window.open(InspectionMonitor_URL_w_info)} >檢測資料搜尋</Button>
+              <QR_Canvas className="veleX" style={{height:"100%"}}
+                    onClick={() => window.open(InspectionMonitor_URL_w_info)} QR_Content={InspectionMonitor_URL_w_info} />
+            </>} 
             trigger={"hover"}>
-            <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={!isOK} icon={<QrcodeOutlined/> }/>
+            <Button type="text" className="antd-icon-sizing HW50" size="large" disabled={false} icon={<QrcodeOutlined/> }/>
           </Popover>
 
           
