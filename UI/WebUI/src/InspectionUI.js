@@ -675,10 +675,12 @@ class CanvasComponent extends React.Component {
 
   updateCanvas(ec_state, props = this.props) {
     if (this.ec_canvas !== undefined) {
-      log.debug("updateCanvas>>", props.edit_info);
+      // log.debug("updateCanvas>>");
 
+      let cur__surpress_display=props._edit_info.reportStatisticState.__surpress_display;
+      if(cur__surpress_display!=true || this.pre_img!=props.img)
       {
-        this.ec_canvas.EditDBInfoSync(props.edit_info);
+        this.ec_canvas.EditDBInfoSync(props._edit_info);
         this.ec_canvas.SetState(ec_state);
         this.ec_canvas.SetMeasureDisplayRank(props.measureDisplayRank);
         //this.ec_canvas.ctrlLogic();
@@ -686,6 +688,7 @@ class CanvasComponent extends React.Component {
         this.ec_canvas.doRotateView=this.props.renderObjAlignRotate;
         
       }
+      this.pre_img=props.img;
     }
   }
 
@@ -720,6 +723,9 @@ const mapStateToProps_CanvasComponent = (state) => {
   //log.info("mapStateToProps",JSON.stringify(state.UIData.c_state));
   return {
     c_state: state.UIData.c_state,
+    img:state.UIData.edit_info.img,
+    _edit_info:state.UIData.edit_info,
+    //just to trigger update if changed
   }
 }
 
@@ -1395,7 +1401,7 @@ class APP_INSP_MODE extends React.Component {
       {
         RP.data.__surpress_display=true;
       }
-      
+      // console.log(IM!==undefined,RP!==undefined);
       // console.log(RP.data.__surpress_display);
       main_ch(pkts);
     }
@@ -1694,6 +1700,47 @@ class APP_INSP_MODE extends React.Component {
               }
             })
         }} >NA</Button>
+
+
+
+        <Divider orientation="left" key="img_tran_focus">圖像檢視專注</Divider>
+        <Button key="oko"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:8,
+                NG_MAX_FPS:0.001,
+                NA_MAX_FPS:0.001,
+              }
+            })
+
+        }} >OK</Button>
+        <Button key="ngo"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:0.001,
+                NG_MAX_FPS:8,
+                NA_MAX_FPS:0.001,
+              }
+            })
+        }} >NG</Button>
+        <Button key="nao"
+          onClick={() => {
+
+            this.props.ACT_WS_SEND_CORE_BPG( "ST", 0,
+            { 
+              ImageTransferSetup:{
+                OK_MAX_FPS:0.001,
+                NG_MAX_FPS:0.001,
+                NA_MAX_FPS:8,
+              }
+            })
+        }} >NA</Button>
         {/* <br/>
         SAVE:
         <Button key="opt uInsp" icon={<SettingOutlined/>}
@@ -1883,6 +1930,43 @@ class APP_INSP_MODE extends React.Component {
                 let name = this.state.modalInfo.targetName;
                 let path_name = default_dst_Path+"/"+name;
                 
+                this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
+                { filename: path_name,
+                  report_extension:"xreps",
+                  img_extension:"png",
+                  make_dir:true, 
+                  type: "__LAST_DATA_VIEW_CACHE_INFO__" },undefined,
+                {
+                  resolve:(pkts,action_ch)=>{
+                    let SS=pkts.find(pkt=>pkt.type=="SS");
+                    
+                    // console.log(SS)
+                    if(SS.data.ACK==false)
+                    {
+                      this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                    }
+                    else
+                    {
+                      
+                      this.setState({
+                        modalInfo:{...this.state.modalInfo,confirmLoading:false,onOk:_=>_,onCancel:_=>_,okText:"存檔成功"}})
+                      
+                      setTimeout(()=>{//close after 1s
+                        this.setState({modalInfo:undefined})
+                      },1000);
+                    }
+                
+          
+                    console.log(pkts);
+                  },
+                  reject:(e)=>{
+      
+                    this.warnPopUp(`儲存報告  ${ path_name }   失敗`);
+                    console.log(e);
+                  }
+                })
+
+                if(false)//the old way
                 this.props.ACT_WS_SEND_CORE_BPG( "SV", 0,
                 { filename: path_name+".png",make_dir:true, type: "__LAST_DATA_VIEW_CACHE_IMG__" },undefined,
                 {
