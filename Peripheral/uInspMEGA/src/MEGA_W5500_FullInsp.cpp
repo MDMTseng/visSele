@@ -13,13 +13,14 @@
 #define DEBUG_
 #include "include/main.h"
 
-
+uint8_t FEEDER_PIN_status=0;
 uint32_t tar_pulseHZ_ = 0;//perRevPulseCount_HW / 4;
 uint32_t cur_pulseHZ_ = tar_pulseHZ_;
 
 uint32_t curRevCount = 0;
 
 uint32_t pulseHZ_step = 50;
+int32_t OK_LIMIT_CD = -1;//ignore
 
 uint8_t g_max_frame_rate = 50;
 
@@ -76,6 +77,19 @@ uint32_t state_pulseOffset[] =
     {0, 654, 657, 659, 660, 697, 750, 900, 910, 1073, 1083};
 
 
+void feederCtrlWithOKLimit()
+{
+  if(OK_LIMIT_CD!=0)
+  {// needs more OK
+    if(FEEDER_PIN_status==0)//kick feeder run
+      digitalWrite(FEEDER_PIN, FEEDER_PIN_status=1);
+  }
+  else
+  {// OK is full
+    if(FEEDER_PIN_status!=0)//stop feeder
+      digitalWrite(FEEDER_PIN, FEEDER_PIN_status=0);
+  }
+}
 
 void ERROR_LOG_PUSH(GEN_ERROR_CODE code)
 {
@@ -194,6 +208,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       if (i == 2)
       {//For INIT state "EXIT"(i==2) is the first and last action that would run
         blockNewDetectedObject=true;
+        digitalWrite(FEEDER_PIN, FEEDER_PIN_status=0);
       } //exit
       break;
     case SYS_STATE::WAIT_FOR_CLIENT_CONNECTION:
@@ -353,15 +368,24 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
     {
       static uint8_t loopDivCounter=0;// just to make the buzy loop not so buzy
        
-      if (i == 0)
+      if (i == 0)//enter
       {
         blockNewDetectedObject=false;
-      } //enter
+
+        // feederCtrlWithOKLimit();
+        if (tar_pulseHZ_ * 20 > perRevPulseCount_HW)//faster than 20s pre rev
+        {
+          feederCtrlWithOKLimit();
+        }
+        // 
+      } 
       else if (i == 1)
       {
         loopDivCounter++;
         if((loopDivCounter&(0xFF))==0)
         {
+          
+          feederCtrlWithOKLimit();
           uint32_t cur_pulse = get_Stepper_pulse_count();
           uint32_t pulse_diff = cur_pulse-g_latest_sense_pulse;
           uint32_t pulseSep=20*cur_pulseHZ_/subPulseSkipCount;//every 20sec
@@ -377,6 +401,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
       else
       {
         blockNewDetectedObject=true;
+        digitalWrite(FEEDER_PIN, FEEDER_PIN_status=0);
       } //exit
       break;
     }
@@ -585,7 +610,19 @@ int Run_ACTS(uint32_t cur_pulse)
 
                    // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
 
-                   digitalWrite(AIR_BLOW_OK_PIN, 1););
+                    if(OK_LIMIT_CD!=0)
+                    {
+                      digitalWrite(AIR_BLOW_OK_PIN, 1);
+                      inspResCount.OK++;
+                      if(OK_LIMIT_CD>0)
+                        OK_LIMIT_CD--;
+                    }
+                    else
+                    {
+                      inspResCount.NA++;
+                    }
+                  
+                   );
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL1L, cur_pulse,
 
@@ -597,7 +634,8 @@ int Run_ACTS(uint32_t cur_pulse)
 
                    // DEBUG_printf("SEL1 src:%p tp:%d info:%d\n",task->src,task->targetPulse,task->info);
 
-                   digitalWrite(AIR_BLOW_NG_PIN, 1););
+                    digitalWrite(AIR_BLOW_NG_PIN, 1);
+                    inspResCount.NG++;);
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL2L, cur_pulse,
 
@@ -619,12 +657,10 @@ int Run_ACTS(uint32_t cur_pulse)
         case insp_status_OK:
           ACT_PUSH_TASK(act_S.ACT_SEL1H, pli, state_pulseOffset[7], 1, );
           ACT_PUSH_TASK(act_S.ACT_SEL1L, pli, state_pulseOffset[8], 2, );
-          inspResCount.OK++;
           break;
         case insp_status_NG:
           ACT_PUSH_TASK(act_S.ACT_SEL2H, pli, state_pulseOffset[9], 1, );
           ACT_PUSH_TASK(act_S.ACT_SEL2L, pli, state_pulseOffset[10], 2, );
-          inspResCount.NG++;
           break;
         case insp_status_NA:
           // ACT_PUSH_TASK (act_S.ACT_SEL2H, pli, state_pulseOffset[9], 1,);
@@ -1294,6 +1330,9 @@ public:
         
         MessageL += sprintf((char *)send_rsp + MessageL, "\"latency\":%"PRIu16",",g_max_inspLatency);
         MessageL += sprintf((char *)send_rsp + MessageL, "\"sys_state\":%d,",sysinfo.state);
+        
+        if(OK_LIMIT_CD>=0)
+          MessageL += sprintf((char *)send_rsp + MessageL, "\"OK_LIMIT_CD\":%lu,", OK_LIMIT_CD);
 
         ret_status = 0;
       }
@@ -1411,6 +1450,23 @@ public:
         MessageL += AddResultCountToJson((char *)send_rsp + MessageL, send_rspL - MessageL, inspResCount);
         ret_status = 0;
       }
+      if (strcmp(typeStr, "set_OK_limit_cd") == 0)
+      {
+
+        char *bufPtr = extBuff;
+        int retL = findJsonScope((char *)recv_cmd, "\"value\":", extBuff, extBuffL);
+        if (retL > 0)
+        {
+          
+          // DEBUG_println(bufPtr);
+          int32_t limit;
+          sscanf(bufPtr, "%" SCNd32, &limit);
+          // DEBUG_printf("limit:%d\n",limit);
+          OK_LIMIT_CD=limit;
+          ret_status = 0;
+          
+        }
+      }
 
       else if (strcmp(typeStr, "error_clear") == 0)
       {
@@ -1472,12 +1528,19 @@ public:
       }
       else if (strcmp(typeStr, "MISC/BACK_LIGHT/ON") == 0)
       {
-
         digitalWrite(BACK_LIGHT_PIN, 1);
       }
       else if (strcmp(typeStr, "MISC/BACK_LIGHT/OFF") == 0)
       {
         digitalWrite(BACK_LIGHT_PIN, 0);
+      }
+      else if (strcmp(typeStr, "MISC/FEEDER/ON") == 0)
+      {
+        digitalWrite(FEEDER_PIN, FEEDER_PIN_status=1);
+      }
+      else if (strcmp(typeStr, "MISC/FEEDER/OFF") == 0)
+      {
+        digitalWrite(FEEDER_PIN, FEEDER_PIN_status=0);
       }
       else if (strcmp(typeStr, "MISC/CAM_TRIGGER") == 0)
       {
@@ -1546,14 +1609,7 @@ void loop()
 
 
     cur_pulseHZ_ = loop_Stepper(tar_pulseHZ_, pulseHZ_step);
-    if (cur_pulseHZ_ * 20 < perRevPulseCount_HW)
-    {
-      digitalWrite(FEEDER_PIN, LOW);
-    }
-    else
-    {
-      digitalWrite(FEEDER_PIN, HIGH);
-    }
+
     
     SYS_STATE_Transfer(cur_pulseHZ_ == tar_pulseHZ_?SYS_STATE_ACT::PULSE_STABLE:SYS_STATE_ACT::PULSE_UNSTABLE);
   }
@@ -1654,7 +1710,7 @@ void setup()
   pinMode(LED_PIN, OUTPUT);
   pinMode(FEEDER_PIN, OUTPUT);
 
-  digitalWrite(FEEDER_PIN, HIGH);
+  digitalWrite(FEEDER_PIN, FEEDER_PIN_status=0);//stop
   //  pinMode(FAKE_GATE_PIN, OUTPUT);
 
   showOff();

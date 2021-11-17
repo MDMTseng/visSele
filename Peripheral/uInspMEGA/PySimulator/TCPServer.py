@@ -8,6 +8,7 @@ import copy
 IP = "127.0.0.1"
 PORT = 1234
 
+OK_LIMIT_CD=10;
 # Create a socket
 # socket.AF_INET - address family, IPv4, some otehr possible are AF_INET6, AF_BLUETOOTH, AF_UNIX
 # socket.SOCK_STREAM - TCP, conection-based, socket.SOCK_DGRAM - UDP, connectionless, datagrams, socket.SOCK_RAW - raw IP packets
@@ -31,6 +32,7 @@ sockets_list = [server_socket]
 # List of connected clients - socket as a key, user header and name as data
 clients = {}
 
+FEEDER_PIN_status=0
 print(f'Listening for connections on {IP}:{PORT}...')
 
 # Handles message receiving
@@ -91,7 +93,23 @@ machState={
 }
 
 
+
+def feederCtrlWithOKNGLimit():
+  global OK_LIMIT_CD
+  global FEEDER_PIN_status
+  if(OK_LIMIT_CD!=0):
+    if(FEEDER_PIN_status==0):
+      FEEDER_PIN_status=1
+      print("Feeder ON")
+  else:
+    if(FEEDER_PIN_status==1):
+      FEEDER_PIN_status=0
+      print("Feeder OFF")
+
+
 def machUpdate_1s():
+  if(doInInsp==True):
+    feederCtrlWithOKNGLimit();
   None
   # machState["res_count"]["NG"]+=1
 
@@ -102,7 +120,7 @@ def machUpdate_100s():
   # machState["error_codes"].append(2)
   # machState["res_count"]["NA"]+=1
 
-
+feederCtrlWithOKNGLimit()
 schedule.every(1).seconds.do(machUpdate_1s)
 schedule.every(100).seconds.do(machUpdate_100s)
 
@@ -151,15 +169,15 @@ while True:
             
             # If False, client disconnected, cleanup
             if len(message) == 0:
-                # print('Closed connection from: {}'.format(clients[notified_socket]['data'].decode('utf-8')))
+              # print('Closed connection from: {}'.format(clients[notified_socket]['data'].decode('utf-8')))
 
-                # Remove from list for socket.socket()
-                sockets_list.remove(notified_socket)
+              # Remove from list for socket.socket()
+              sockets_list.remove(notified_socket)
 
-                # Remove from our list of users
-                del clients[notified_socket]
+              # Remove from our list of users
+              del clients[notified_socket]
 
-                continue
+              continue
             schedule.run_pending()
 
 
@@ -204,10 +222,25 @@ while True:
               if msg_type == "PING":
                 retMsg=copy.copy(machState)
                 retMsg["type"]="PONG"
+
+                if(OK_LIMIT_CD>=0):
+                  retMsg["OK_LIMIT_CD"]=OK_LIMIT_CD
+
+              if msg_type == "set_OK_limit_cd":
+                OK_LIMIT_CD=jmsg["value"]
+
+
               if msg_type == "inspRep":
                 _id=None
                 if jmsg["status"]==0:
-                  machState["res_count"]["OK"]+=1
+                  if(OK_LIMIT_CD!=0):
+                    machState["res_count"]["OK"]+=1
+                    if(OK_LIMIT_CD>0):
+                      OK_LIMIT_CD-=1
+                    if(OK_LIMIT_CD==0):
+                      print("OK_LIMIT_CD is HIT!!!!!!!!!!!!!!")
+                  else:
+                    machState["res_count"]["NA"]+=1
                 elif jmsg["status"]==-1:
                   machState["res_count"]["NG"]+=1
                 else:
