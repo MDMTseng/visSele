@@ -38,6 +38,8 @@ import Switch from 'antd/lib/switch';
 import Tag from 'antd/lib/tag';
 import Input from 'antd/lib/input';
 import InputNumber from 'antd/lib/input-number';
+
+import NumPad from 'react-numpad';
 import Select from 'antd/lib/select';
 import Button, { default as AntButton } from 'antd/lib/button';
 import Menu from 'antd/lib/menu';
@@ -47,6 +49,7 @@ import {
   DisconnectOutlined,
   FileOutlined,
   LinkOutlined,
+  ExclamationCircleOutlined,
   LineOutlined,
   TagsOutlined,
   CameraOutlined,
@@ -465,12 +468,161 @@ class OK_NG_BOX extends React.Component {
   }
 }
 
+
+
+function UInspMiscCtrlPopUp({force_popUp=false,allow_auto_popUp=true,onCancel=_=>_})
+{
+
+  const _s = useRef({});
+  let _this=_s.current;
+
+  
+  
+  const dispatch = useDispatch();
+  const uInsp_API_ID = useSelector(state => state.ConnInfo.uInsp_API_ID);
+  const uInsp_API_ID_CONN_INFO = useSelector(state => state.ConnInfo.uInsp_API_ID_CONN_INFO);
+  const API= (callback)=>dispatch(UIAct.EV_WS_GET_OBJ(uInsp_API_ID,callback));
+
+
+  const [limitCD, setLimitCD] = useState(20);
+
+  const [popUp, setPopUp] = useState(false);
+  const [btnDisable, setBtnDisable] = useState(false);
+
+  
+  let machineStatus = GetObjElement(uInsp_API_ID_CONN_INFO,["machineStatus"]);
+  let OK_LIMIT_CD = GetObjElement(uInsp_API_ID_CONN_INFO,["machineStatus","OK_LIMIT_CD"]);
+  useEffect(() => {
+    if(OK_LIMIT_CD==0)
+    {
+      setPopUp(true);
+    }
+    setBtnDisable(false);
+  }, [machineStatus]);
+
+
+  let uInspPopUp=null;
+  if(force_popUp==true || (allow_auto_popUp&&popUp) )
+  {
+    let bigInfo={
+      icon:<ExclamationCircleOutlined style={{color:"#F00"}}/>,
+      text:"UNDEFINED",
+    }
+    if(OK_LIMIT_CD===undefined)//no OK_LIMIT_CD feature activated
+    {
+      bigInfo={
+        icon:<ExclamationCircleOutlined style={{color:"#AAA"}}/>,
+        text:"Nothing...",
+      }
+    }
+    else if(OK_LIMIT_CD>0)
+    {
+      bigInfo={
+        icon:<ExclamationCircleOutlined style={{color:"#0F0"}}/>,
+        text:`倒數:${OK_LIMIT_CD}`,
+      }
+    }
+    else if(OK_LIMIT_CD==0)
+    {
+      bigInfo={
+        icon:<ExclamationCircleOutlined style={{color:"#F00"}}/>,
+        text:"請按再繼續!",
+      }
+    }
+
+    uInspPopUp=<Modal
+      title={"全檢設備"}
+      visible={true}
+      onOk={() => {}}
+      onCancel={() => {
+        onCancel();
+        setPopUp(false);
+        
+      }}
+      header={null}
+      footer={null}
+    >
+      {
+        <div className="antd-icon-sizing overlayCon" style={{height:"70px"}}>
+          {bigInfo.icon}
+          <div className="overlay veleXY" >
+            {bigInfo.text}
+          </div>
+        </div>
+      }
+      
+      設定目標數量:
+      <NumPad.Number onChange={(value)=>setLimitCD(parseInt(value))} value={limitCD} decimal={0} negative={false}>
+        <input value={limitCD}/>
+      </NumPad.Number>
+
+      
+      {"  "}
+
+      <Button key="opt uInsp"
+        loading={btnDisable}
+        onClick={() => {
+          setBtnDisable(true);
+          API((api)=>{
+            console.log(api);
+            api.send({type: "set_OK_limit_cd",value:limitCD},
+            (ret)=>{console.log(ret)},
+            (e)=>console.log(e));
+
+            api.triggerPing();
+          })
+      }} >{"  >>  "}</Button>
+      {"  "}
+      {OK_LIMIT_CD}
+
+      <br/>
+      <Button key="cancel target"
+        loading={btnDisable}
+        onClick={() => {
+          setBtnDisable(true);
+          API((api)=>{
+            console.log(api);
+            api.send({type: "set_OK_limit_cd",value:-1},
+            (ret)=>{console.log(ret)},
+            (e)=>console.log(e));
+            api.triggerPing();
+          })
+      }} >{"取消目標數量"}</Button>
+    </Modal>
+  }
+
+
+
+  // let uInspMachStatus = GetObjElement(this.props.uInsp_API_ID_CONN_INFO,["machineStatus"]);
+  // if(uInspMachStatus!==undefined)
+  // {
+  //   let over_OK_limit = uInspMachStatus.over_OK_limit;
+  //   if(over_OK_limit!==null && over_OK_limit>=0)
+  //   {
+      
+      
+  //   }
+  // }
+
+
+
+  // let uInspPopUp=<Modal {...modalInfo} visible={modalInfo!==undefined}>
+  //   {GetObjElement(modalInfo,"content")}
+  // </Modal>
+
+
+
+
+  return uInspPopUp;
+}
+
 class ObjInfoList extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
       collapsed: false,
       fullScreen: false,
+      uInspMISCCtrl_popUp:false,
     }
   }
 
@@ -574,6 +726,14 @@ class ObjInfoList extends React.Component {
           <Divider orientation="left" style={{ 'margin': '10px 2px 2px 2px',fontSize: "12px"}} >轉盤速度(pulse/s)</Divider>
           <UINSP_UI UI_Speed_Slider={true}/>
           
+          
+          <Button key="opt uInsp" icon={<SettingOutlined/>}
+            onClick={() => {
+              this.setState({
+                ...this.state,
+                uInspMISCCtrl_popUp: true,
+              })
+            }} ></Button>
         </div>
     </SubMenu>
 
@@ -594,6 +754,11 @@ class ObjInfoList extends React.Component {
 
         </Menu>
         {fullScreenMODAL}
+        <UInspMiscCtrlPopUp force_popUp={this.state.uInspMISCCtrl_popUp} 
+          onCancel={_=>this.setState({
+            ...this.state,
+            uInspMISCCtrl_popUp: false,
+          })}/>
       </>
     );
   }
@@ -2094,6 +2259,7 @@ class APP_INSP_MODE extends React.Component {
           shape_def={this.props.shape_list}
           key="ObjInfoList"
           uInsp_API_ID_CONN_INFO={this.props.uInsp_API_ID_CONN_INFO}
+          ACT_WS_GET_OBJ={this.props.ACT_WS_GET_OBJ}
           WSCMD_CB={(tl, prop, data, uintArr) => { this.props.ACT_WS_SEND_CORE_BPG( tl, prop, data, uintArr); }}
         />);
     }

@@ -1378,8 +1378,13 @@ class APPMasterX extends React.Component {
         this.PINGCount++;
         // console.log(this.CONN_ID);
 
-
-        this.sendPing((ret)=>{
+        this.triggerPing();
+        // this.machineSetupUpdate({pulse_hz:0});
+      }
+      triggerPing()
+      {
+        
+        this.send({type:"PING"},(ret)=>{
           // console.log(ret);
           delete ret["type"]
           delete ret["id"]
@@ -1445,11 +1450,6 @@ class APPMasterX extends React.Component {
           this.PINGCount=0;
         },errorInfo=>console.log(errorInfo));
 
-        // this.machineSetupUpdate({pulse_hz:0});
-      }
-      sendPing(resolve,reject)
-      {
-        return this.send({type:"PING"},resolve,reject);
       }
       send(data,resolve,reject)
       {
