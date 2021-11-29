@@ -17,6 +17,8 @@ include_directories (
   $ENV{MODULE_polyfit}/include 
   $ENV{MODULE_zlib}/src 
   $ENV{OpenCV_INCLUDE_DIRS}
+  $ENV{MODULE_shape_based_matching}/include
+  $ENV{MODULE_shape_based_matching}/MIPP
   )
   
 
