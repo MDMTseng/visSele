@@ -50,7 +50,7 @@ void BlockRun(runBlock &rb);
 RingBuf_Static <runBlock,100> blocks;
 
 
-sysState sysInfo={.acc=25};
+sysState sysInfo;
 
 char *int2bin(uint32_t a, int digits, char *buffer, int buf_size) {
     buffer += (buf_size - 1);
@@ -195,7 +195,7 @@ float accTo_DistanceNeeded(float Vc, float Vd, float ad, float *ret_Td=NULL)
   return D;
 }
 
-void VecTo(xVec VECTo)
+void VecTo(xVec VECTo,float speed=30)
 {
   runBlock rb={
     .from = sysInfo.lastTarLoc,
@@ -249,19 +249,11 @@ void VecTo(xVec VECTo)
 
 
     // rb.vcur=100;
-    sysInfo.T_next=200;
+    sysInfo.T_next=100000;
   }
   *blocks.getHead()=rb;
 
   blocks.pushHead();
-  // while(1)
-  // { 
-  //   BlockRun(rb);
-  //   if(rb.cur_step==rb.steps)
-  //   {
-  //     break;
-  //   }
-  // }
 
 }
 
@@ -333,9 +325,9 @@ void BlockRunStep(runBlock &rb)
   {
     float calcAcc=sysInfo.acc;
     rb.vcur-=sysInfo.acc*(sysInfo.T_next-T2)/1000000;
-    if(rb.vcur<rb.vto+0.01)
+    if(rb.vcur<rb.vto)
     {
-      rb.vcur=rb.vto+0.01;
+      rb.vcur=rb.vto;
     }
   }
   else if(rb.vcur<rb.vcen)
@@ -346,6 +338,10 @@ void BlockRunStep(runBlock &rb)
     {
       rb.vcur=Vc;
     }
+  }
+  if(rb.vcur<3)
+  {
+    rb.vcur=3;
   }
   // printf("=%03d==: ",rb.cur_step);
   int stepx=100*(rb.cur_step+1);//100x is for round
@@ -408,7 +404,7 @@ void first_thread_job()
 
 
       sysInfo.T_lapsed+=sysInfo.T_next;
-      // std::this_thread::sleep_for(std::chrono::microseconds(sysInfo.T_next));
+      std::this_thread::sleep_for(std::chrono::microseconds(sysInfo.T_next));
       
       BlockRunEffect(blk);
       if(blk.cur_step==blk.steps)
@@ -438,6 +434,7 @@ void first_thread_job()
 int main()
 {
   
+  sysInfo=(sysState){.acc=100};
   if(0)for(int i=0;i<100;i++)
   {
     // V1:0.000000, a1:3.000000, VT:100.099998, V2:0.000000, a2:-3.000000, D:20.000000
@@ -480,7 +477,7 @@ int main()
   thread first_thread(first_thread_job);
 
   VecTo((xVec){.vec={50,0,0}});
-  VecTo((xVec){.vec={100,-300,-50}});
+  VecTo((xVec){.vec={0,0,0}},100);
   VecTo((xVec){.vec={50,0,0}});
 
   first_thread.join();
