@@ -1087,10 +1087,10 @@ const MainUI=()=>{
         type:"GenMatchingConf",
         name:"GenMatchingConf"
       },
-      BlankConf:{
-        type:"BlankConf",
-        name:"BlankConf"
-      },
+      // BlankConf:{
+      //   type:"BlankConf",
+      //   name:"BlankConf"
+      // },
       BackLightCalib:{
         type:"BackLightCalib",
         name:DICT.mainui.MODE_SELECT_BACKLIGHT_CALIB,
