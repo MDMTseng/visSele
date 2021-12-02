@@ -106,6 +106,8 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
     this.reset();
     this.EmitEvent = (event) => { log.info(event); };
     this.tmp_canvas= document.createElement('canvas');
+    this.regionSelect=undefined;
+    
   }
 
 
@@ -120,7 +122,6 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
 
   reset()
   {
-    this.ERROR_LOCK = false;
     let mmpp=1;
     this.db_obj = {
       cameraParam:{
@@ -137,11 +138,66 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
     this.mouseStatus.x = pos.x;
     this.mouseStatus.y = pos.y;
     this.mouseStatus.status = 0;
-    this.camera.EndDrag();
 
-    this.debounce_zoom_emit();
+    if(this.regionSelect===undefined)
+    {
+      this.camera.EndDrag();
+  
+      this.debounce_zoom_emit();
+    }
+    else
+    {
+      // console.log(this.regionSelect);
+      {
+        let wMat = this.worldTransform();
+        //log.debug("this.camera.matrix::",wMat);
+        let worldTransform = new DOMMatrix().setMatrixValue(wMat);
+        let worldTransform_inv = worldTransform.invertSelf();
+        this.regionSelect.pt1= this.VecX2DMat(this.regionSelect.pcvst1, worldTransform_inv);
+        this.regionSelect.pt2= this.VecX2DMat(this.regionSelect.pcvst2, worldTransform_inv);
+
+
+      }
+
+
+
+      this.regionSelect.onSelect(this.regionSelect);
+      this.regionSelect=undefined;
+    }
     this.ctrlLogic();
     this.draw();
+  }
+
+
+  onmousemove(evt) {
+    let pos = this.getMousePos(this.canvas, evt);
+    this.mouseStatus.x = pos.x;
+    this.mouseStatus.y = pos.y;
+    let doDragging = true;
+
+    let doDraw=true;
+    if(this.regionSelect===undefined)
+    {
+      if (doDragging) {
+        if (this.mouseStatus.status == 1) {
+          
+          doDraw=true;
+          this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
+        }
+  
+      }
+    }
+    else
+    {
+      this.regionSelect.pcvst2={ x: this.mouseStatus.x, y: this.mouseStatus.y};
+    }
+
+
+    if(doDraw)
+    {
+      this.ctrlLogic();
+      this.draw();
+    }
   }
 
   scaleHeadToFitScreen()
@@ -162,12 +218,20 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
 
     
   }
-
+  UserRegionSelect(onSelect)
+  {
+    this.regionSelect={onSelect};
+  }
   onmousedown(evt) 
   {
 
     super.onmousedown(evt);
     // this.doDragging=false;
+    if(this.regionSelect!==undefined)
+    {
+      this.regionSelect.pcvst1=this.regionSelect.pcvst2=
+        { x: this.mouseStatus.x, y: this.mouseStatus.y};
+    }
 
   }
 
@@ -201,32 +265,13 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
   }
 
 
-
-  onmousemove(evt) {
-    let pos = this.getMousePos(this.canvas, evt);
-    this.mouseStatus.x = pos.x;
-    this.mouseStatus.y = pos.y;
-
-
-    let doDragging = false;
-
-    if(this.stopDragging==true)
-    {
-      doDragging=false;
-    }
-
-    if (doDragging) {
-      if (this.mouseStatus.status == 1) {
-        this.camera.StartDrag({ x: pos.x - this.mouseStatus.px, y: pos.y - this.mouseStatus.py });
-
-      }
-
-    }
-    this.ctrlLogic();
-    this.draw();
-  }
-
   draw() {
+
+    
+    if(this.IM===undefined || this.IM.scale === undefined)
+    {
+      return;
+    }
     // console.log(this.c_state);
     let unitConvert = {
       unit: "mm",//"μm",
@@ -241,21 +286,25 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
     ctx.setTransform(matrix.a, matrix.b, matrix.c,
       matrix.d, matrix.e, matrix.f);
 
-
+    ctx.setLineDash([]);
+    let scale = this.IM.scale;
+    let mmpp=1;
+    let mmpp_mult = scale * mmpp;
+    this.g={
+      ctx,
+      base_img:ctx2nd,
+      base_img_scale:scale,
+      mmpp_mult,
+      worldTransform:this.cur_worldTransform,
+      worldTransform_inv:this.cur_worldTransform_inv
+    }
 
     // console.log(this.IM,this.RP,this.UI_INFO);
 
 
-
-
-
-    if(this.IM!=undefined && this.IM.scale !== undefined)
     {
-      let scale = this.IM.scale;
-      ctx.imageSmoothingEnabled = scale!=1;
+      ctx.imageSmoothingEnabled = false;//scale!=1;
       ctx.webkitImageSmoothingEnabled = scale!=1;
-      let mmpp=1;
-      let mmpp_mult = scale * mmpp;
 
       //ctx.translate(-this.secCanvas.width*mmpp_mult/2,-this.secCanvas.height*mmpp_mult/2);//Move to the center of the secCanvas
       ctx.save();
@@ -265,6 +314,7 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
 
         ctx.scale(mmpp_mult, mmpp_mult);
         if (this.IM.offsetX !== undefined && this.IM.offsetY !== undefined) {
+          // ctx.translate((this.IM.offsetX-0.5*(scale)) / scale, (this.IM.offsetY-0.5*(scale)) / scale);
           ctx.translate((this.IM.offsetX-0.5*(scale)) / scale, (this.IM.offsetY-0.5*(scale)) / scale);
         }
         // ctx.translate(-1 * mmpp_mult, -1 * mmpp_mult);
@@ -280,8 +330,10 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
       ctx.restore();
     }
 
-
-
+    if(this.drawHook!==undefined)
+    {
+      this.drawHook(this.g,this);
+    }
 
 
 
@@ -296,8 +348,27 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
       downloadLink.click();
     });
   }
-  ctrlLogic() 
-  {
+  ctrlLogic() {
+
+    //let mmpp = this.rUtil.get_mmpp();
+    let wMat = this.worldTransform();
+    //log.debug("this.camera.matrix::",wMat);
+    let worldTransform = new DOMMatrix().setMatrixValue(wMat);
+    let worldTransform_inv = worldTransform.invertSelf();
+
+    this.cur_worldTransform=worldTransform;
+    this.cur_worldTransform_inv=worldTransform_inv;
+    //this.Mouse2SecCanvas = invMat;
+    let mPos = this.mouseStatus;
+    let mouseOnCanvas2 = this.VecX2DMat(mPos, worldTransform_inv);
+
+    let pmPos = { x: this.mouseStatus.px, y: this.mouseStatus.py };
+    let pmouseOnCanvas2 = this.VecX2DMat(pmPos, worldTransform_inv);
+
+    let ifOnMouseLeftClickEdge = (this.mouseStatus.status != this.mouseStatus.pstatus);
+
+    // this.EmitEvent(EV_UI_Canvas_Mouse_Location(mouseOnCanvas2));
+    // console.log(ifOnMouseLeftClickEdge,mouseOnCanvas2);
 
   }
 }
@@ -320,7 +391,6 @@ class CanvasComponent extends React.Component {
 
   componentDidMount() {
     this.ec_canvas = new CableWireDef_CanvasComponent(this.refs.canvas);
-    this.ec_canvas.EmitEvent =()=>{};
 
     if(this.props.onCanvasInit!==undefined)
       this.props.onCanvasInit(this);
@@ -383,8 +453,6 @@ class CanvasComponent extends React.Component {
 
 const CABLE_DEF_EXT="cabDef";
 
-const MatchingENG_Name="FM_Blank";
-
 
 
 function Blank_rdx({onExtraCtrlUpdate})
@@ -403,10 +471,10 @@ function Blank_rdx({onExtraCtrlUpdate})
 
   const [defPath,setDefPath]=useState("data/default."+CABLE_DEF_EXT);
 
-  const [ecCanvas,setECCanvas]=useState(undefined);
+  const [canComp,setCanComp]=useState(undefined);
 
   const [_defInfo_,set_defInfo_]=useState({
-    type:MatchingENG_Name,
+    type:"FM_GenMatching",
   });
 
   const [editRegionInfo,setEditRegionInfo]=useState(undefined);
@@ -417,10 +485,10 @@ function Blank_rdx({onExtraCtrlUpdate})
     setFileSavingContext(undefined);
     setFileBrowsingContext(undefined);
     set_defInfo_({
-      type:MatchingENG_Name,
+      type:"FM_GenMatching",
     });
-    if(ecCanvas!==undefined)
-      ecCanvas.reset();
+    if(canComp!==undefined)
+      canComp.reset();
   }
 
   function fetchParam()
@@ -486,7 +554,7 @@ function Blank_rdx({onExtraCtrlUpdate})
         IM.img = new ImageData(IM.image, IM.width);
         _this.IM=IM;
         
-        ecCanvas.update(_this.IM,_this.RP,{});
+        canComp.update(_this.IM,_this.RP,{});
       }
 
     }, reject:(pkts)=>{
@@ -507,9 +575,10 @@ function Blank_rdx({onExtraCtrlUpdate})
   },[])
 
   useEffect(() => {
-    if(ecCanvas===undefined)return;
+    if(canComp===undefined)return;
     
-    ecCanvas.EmitEvent=(event)=>{
+     
+    canComp.ec_canvas.EmitEvent=(event)=>{
   
       console.log(event);
       switch (event.type) {
@@ -525,26 +594,34 @@ function Blank_rdx({onExtraCtrlUpdate})
             setEditRegionInfo(event.data.region);
           }
           break;
+
+
+        case "onUserRegionSelect":
+          
+          console.log(event)
+          break;
+
+
       }
-    }
+    };
     
     TriggerNewResult();
 
 
-  }, [ecCanvas])
+  }, [canComp])
 
 
 
-  if(ecCanvas!==undefined)
+  if(canComp!==undefined)
   {
-    ecCanvas.draw();
+    canComp.draw();
   }
 
 
   // console.log(editRegionInfo);
   return <div className="overlayCon HXF">
     <CanvasComponent key="kk" addClass="height12" 
-    onCanvasInit={setECCanvas}/>
+    onCanvasInit={setCanComp}/>
     <div className="s overlay overlay scroll HXA WXA" style={{top:0,width:255,background:"#EEE"}}>
       <Button onClick={()=>{
         let i=0;
@@ -560,6 +637,58 @@ function Blank_rdx({onExtraCtrlUpdate})
           },ix*100);
         }
       }}>AAA</Button>
+
+      <Button onClick={()=>{
+        canComp.ec_canvas.drawHook=(g,canvas_obj)=>{
+          let ctx = g.ctx;
+
+          ctx.strokeStyle = 'red';
+          ctx.lineWidth = 5;
+          if(canvas_obj.regionSelect.pcvst1===undefined)
+          {
+            return;
+          }
+          let pt1 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+          let pt2 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+
+          // console.log(pt1,pt2x)
+          
+          let x,y,w,h;
+
+          x=pt1.x;
+          w=pt2.x-pt1.x;
+
+          y=pt1.y;
+          h=pt2.y-pt1.y;
+
+      
+          if(w<0){
+            x+=w;
+            w=-w;
+          }
+          
+          if(h<0){
+            y+=h;
+            h=-h;
+          }
+          ctx.beginPath();
+          let LineSize = canvas_obj.rUtil.getIndicationLineSize();
+          ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
+          ctx.strokeStyle = "rgba(151, 51, 51,30)";
+          ctx.lineWidth = LineSize*2;
+          ctx.rect(x, y, w, h);
+          ctx.stroke();
+          ctx.closePath();
+
+
+        }
+        canComp.ec_canvas.UserRegionSelect((evt)=>{
+          console.log(evt)
+          
+          canComp.ec_canvas.drawHook=undefined;
+        });
+        canComp.draw();
+      }}>BBB</Button>
     </div>
   </div>;
 }
