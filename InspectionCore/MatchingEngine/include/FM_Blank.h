@@ -8,7 +8,6 @@
 #include "FeatureManager.h"
 
 
-
 class FM_Blank:public FeatureManager {
 
   
@@ -30,12 +29,13 @@ public :
   cJSON * SetParam1(cJSON *json_str);
 
 
-  static const char* GetFeatureTypeName(){return "gen";};
+  static const char* GetFeatureTypeName(){return "FM_Blank";};
 protected:
   int parse_jobj() override;
   cJSON * root;
   int inspectionType;
   int inspectionStage=-1;
+  int thres;
 };
 
 

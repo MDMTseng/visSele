@@ -18,6 +18,10 @@ import APP_ANALYSIS_MODE_rdx from './AnalysisUI';
 import BackLightCalibUI_rdx from './BackLightCalibUI';
 import InstInspUI_rdx from './InstInspUI';
 import CABLE_WIRE_CONF_MODE_rdx from './CableWireConfUI';
+import GenMatching_rdx from './GenMatchingUI';
+import Blank_rdx from './BlankUI';
+
+
 import RepDisplayUI_rdx from './RepDisplayUI';
 import InputNumber from 'antd/lib/input-number';
 import { xstate_GetCurrentMainState, GetObjElement, Calibration_MMPP_offset ,LocalStorageTools,websocket_autoReconnect,websocket_reqTrack} from 'UTIL/MISC_Util';
@@ -1079,9 +1083,13 @@ const MainUI=()=>{
         type:"InstInsp",
         name:DICT.mainui.MODE_SELECT_PRECISION_VALIDATION
       },
-      CableWireConf:{
-        type:"CableWireConf",
-        name:"CableWireConf"
+      GenMatchingConf:{
+        type:"GenMatchingConf",
+        name:"GenMatchingConf"
+      },
+      BlankConf:{
+        type:"BlankConf",
+        name:"BlankConf"
       },
       BackLightCalib:{
         type:"BackLightCalib",
@@ -1198,11 +1206,6 @@ const MainUI=()=>{
             text:DICT.mainui.MODE_SELECT_DEFCONF,
             onClick:_=>EV_UI_Edit_Mode()
           },
-          // {
-          //   icon:<EditOutlined />,
-          //   text:"Cable_Wire_Conf",
-          //   onClick:_=>setUI_state(s_statesTable.CableWireConf)
-          // },,
           {
             icon:<HistoryOutlined />,
             text:DICT.mainui.RepDisplay,
@@ -1211,6 +1214,23 @@ const MainUI=()=>{
 
 
         ],
+      }
+
+      if(s_statesTable.GenMatchingConf!==undefined)
+      {
+        siderUI_info.menu.push({
+          icon:<EditOutlined />,
+          text:s_statesTable.GenMatchingConf.name,
+          onClick:_=>setUI_state(s_statesTable.GenMatchingConf)
+        });
+      }
+      if(s_statesTable.BlankConf!==undefined)
+      {
+        siderUI_info.menu.push({
+          icon:<EditOutlined />,
+          text:s_statesTable.GenMatchingConf.name,
+          onClick:_=>setUI_state(s_statesTable.BlankConf)
+        });
       }
 
       if(hideMachineSetting==false)
@@ -1257,8 +1277,8 @@ const MainUI=()=>{
     case  s_statesTable.Inspection:
       
       break;
-    case  s_statesTable.CableWireConf:
-      UI.push(<CABLE_WIRE_CONF_MODE_rdx
+    case  s_statesTable.GenMatchingConf:
+      UI.push(<GenMatching_rdx
       
         onExtraCtrlUpdate={extraCtrls=>{
           console.log(extraCtrls);
@@ -1324,11 +1344,73 @@ const MainUI=()=>{
         title:UI_state.name,
         
         menu:[
-          
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>
+            {
+              setUI_state(s_statesTable.RootSelect)
+              
+              ACT_WS_SEND_BPG("RC", 0, {
+                target: "camera_setting_refresh"
+              });
+            }
+            // subMenu:[]
+          },
           ...extraSideUI
         ],
       }
       break;
+    
+    case  s_statesTable.BlankConf:
+      UI.push(<Blank_rdx
+      
+        onExtraCtrlUpdate={extraCtrls=>{
+          console.log(extraCtrls);
+          let extraCtrlUI=[];
+          
+          if(extraCtrls.disableDefault!==true)
+          {
+            extraCtrlUI.push({
+              icon:<ArrowLeftOutlined />,
+              text:DICT._["<"],
+              onClick:_=>
+              {
+                setUI_state(s_statesTable.RootSelect)
+                
+              }
+            })
+          }
+
+          
+          setExtraSideUI(extraCtrlUI);
+        }}/>);
+
+      
+      siderUI_info={
+        title:UI_state.name,
+        
+        menu:[
+          {
+            icon:<ArrowLeftOutlined />,
+            text:DICT._["<"],
+            onClick:_=>
+            {
+              setUI_state(s_statesTable.RootSelect)
+              
+              ACT_WS_SEND_BPG("RC", 0, {
+                target: "camera_setting_refresh"
+              });
+            }
+            // subMenu:[]
+          },
+          ...extraSideUI
+        ],
+      }
+      break;
+  
+    
+    
     case  s_statesTable.BackLightCalib:
       UI.push(<BackLightCalibUI_rdx
         BPG_Channel={(...args) => ACT_WS_SEND_BPG(...args)}

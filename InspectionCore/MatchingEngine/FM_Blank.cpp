@@ -15,24 +15,8 @@
 
 // Mat bg = Mat(800, 800, CV_8UC3, {0, 0, 0});
 
-SBM_if sbmif;
-void LineState(acvImage *img,acv_XY pt1,acv_XY pt2,int steps,int ch,float statMoment[2]);
-/*
-  FeatureManager_platingCheck Section
-*/
+static SBM_if sbmif;
 
-uint8_t* pixFetching(acvImage *img,int x,int y,int shrink=0)
-{
-  if(x<shrink || y<shrink)return NULL;
-  if(x>=img->GetWidth()-shrink || y>=img->GetHeight()-shrink)return NULL;
-
-
-  return &(img->CVector[y][3*x]);
-}
-uint8_t* pixFetching(acvImage *img,acv_XY pt,int shrink=0)
-{
-  return pixFetching(img,round(pt.X),round(pt.Y),shrink);
-}
 FM_Blank::FM_Blank(const char *json_str): FeatureManager(json_str)
 {
 
@@ -99,36 +83,6 @@ int FM_Blank::reload(const char *json_str)
   return 0;
 }
 
-void RGBToHSV(acvImage &im)
-{
-    for(int i=0; i<im.GetHeight(); i++)
-    {
-        uint8_t *ImLine=im.CVector[i];
-        for(int j=0; j<im.GetWidth(); j++)
-        {
-            acvImage::HSVFromRGB(ImLine,ImLine);
-            ImLine+=3;
-        }
-    }
-}
-
-
-
-
-float Point3Angle(acv_XY p1,acv_XY pc,acv_XY p2)
-{
-  acv_XY v1={.X=p1.X-pc.X,.Y=p1.Y-pc.Y};
-  acv_XY v2={.X=pc.X-p2.X,.Y=pc.Y-p2.Y};
-  return acvVectorAngle(v1,v2);
-}
-
-
-static bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::ptInfo &b)
-{
-  return a.tmp < b.tmp;
-}
-
-
 #define SETSPARAM_NUMBER(json,structVarAssign,pName) {double *tmpN; if((tmpN=JFetch_NUMBER(json,pName))) structVarAssign*tmpN;}
 
 #define RETSPARAM_NUMBER(json,structVar,pName) {cJSON_AddNumberToObject(json, pName, structVar);}
@@ -143,7 +97,7 @@ static bool ptInfo_tmp_comp(const ContourFetch::ptInfo &a, const ContourFetch::p
 
 
 
-acv_XY readXY(cJSON *jsonParam)
+static acv_XY readXY(cJSON *jsonParam)
 {
   
   acv_XY xy={NAN,NAN};
@@ -161,7 +115,7 @@ acv_XY readXY(cJSON *jsonParam)
   return xy;
 }
 
-double JFetch_NUMBER_V(cJSON *json, char* path)
+static double JFetch_NUMBER_V(cJSON *json, char* path)
 {
   double* p_n=JFetch_NUMBER(json,path);
   if(p_n==NULL)return NAN;
@@ -318,6 +272,20 @@ cJSON * FM_Blank::SetParam(cJSON *jsonParam)
   // if((tmpN=JFetch_NUMBER(jsonParam,"HFrom")))
   //   HFrom=(int)*tmpN;
 
+  {
+    double *tmpN=JFetch_NUMBER(jsonParam,"thres");
+    if(tmpN!=NULL)
+    {
+      thres=(int)*tmpN;
+    }
+    else
+    {
+      thres=-1;
+    }
+  }
+
+
+
   SETSPARAM_INT_NUMBER(jsonParam,this->inspectionType,"inspectionType");
   switch(inspectionType)
   {
@@ -343,17 +311,11 @@ int FM_Blank::FeatureMatching(acvImage *img)
   report.data.cjson_report.cjson=jsonRep;
   // LOGI("GOGOGOGOGOGGO....inspectionStage:%d",inspectionStage);
 
-
-  switch(inspectionType)
+  if(thres>=0)
   {
-    case 0:
-    return FeatureMatching0(img);
-
-    case 1:
-    return FeatureMatching1(img);
-
-
+    acvThreshold(img,thres);
   }
+
   return -1;
 }
 
