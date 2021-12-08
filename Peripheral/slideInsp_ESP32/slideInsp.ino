@@ -2,9 +2,19 @@
 #include "main.hpp"
 
 // Potentiometer is connected to GPIO 34 (Analog ADC1_CH6)
-const int O_CameraPin = 26;
-const int O_BackLight = 27;
+const int O_CameraPin = 32;
+bool O_CameraPin_ON=true;
+const int O_BackLight = 33;
+bool O_BackLight_ON=true;
 const int O_LED_Status = 2;
+
+const int I_gate1Pin = 23;
+bool I_gate1Pin_ON=true;
+
+
+
+
+
 
 hw_timer_t *timer = NULL;
 #define S_ARR_LEN(arr) (sizeof(arr) / sizeof(arr[0]))
@@ -22,7 +32,6 @@ GLOB_FLAGS GLOB_F;
 class twoGateSense
 {
 public:
-  const int I_gate1Pin = 25;
   const int I_gate2Pin = 26;
   const bool senseFlip = false;
 
@@ -371,7 +380,6 @@ public:
 class oneGateSense
 {
 public:
-  const int I_gate1Pin = 17;
   const bool senseFlip = false;
 
   unsigned long skipPulseCount = 0;
@@ -540,7 +548,7 @@ public:
   }
 
   const int minWidth = 0;
-  const int maxWidth = 500;
+  const int maxWidth = 800;
 
   const int DEBOUNCE_L_THRES = 5; //the keep L length to stablize as L state, object inner connection
   const int DEBOUNCE_H_THRES = 1; //the keep H length to stablize as H state 
@@ -626,7 +634,6 @@ public:
 
       if (!new_Sense)
       { //a pulse is completed
-        // Serial.println("N pulse");
         ginfo->state = GateInfo::NEG_EDGE_NG;
         uint32_t diff = ginfo->end_pulse - ginfo->start_pulse;
         ginfo->mid_pulse = ginfo->end_pulse;//ginfo->start_pulse + (diff >> 1);
@@ -675,16 +682,25 @@ void setup()
   pinMode(O_CameraPin, OUTPUT);
   pinMode(O_LED_Status, OUTPUT);
   pinMode(O_BackLight, OUTPUT);
-
-  // digitalWrite(O_LED_Status, 1);
-  // digitalWrite(O_BackLight, 1);
-
-  // digitalWrite(O_CameraPin, 0);
-  // delay(10);
-  // digitalWrite(O_CameraPin, 1);
-
+  
+  pinMode(I_gate1Pin, INPUT_PULLUP);
   Serial.begin(921600);
 
+
+  while(0)
+  {
+      
+    delay(200);
+    digitalWrite(O_CameraPin, 0);
+    digitalWrite(O_BackLight, 0);
+    digitalWrite(O_LED_Status, 0);
+    
+    delay(200);
+    digitalWrite(O_CameraPin, 1);
+    digitalWrite(O_BackLight, 1);
+    digitalWrite(O_LED_Status, 1);
+    Serial.printf("OK_ g:%d\n",digitalRead(I_gate1Pin));
+  }
   // // setup_comm();
   timer = timerBegin(0, 80, true);
   timerAttachInterrupt(timer, &onTimer, true);
