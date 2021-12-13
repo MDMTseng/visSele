@@ -220,7 +220,7 @@ class CableWireDef_CanvasComponent extends EC_CANVAS_Ctrl.EverCheckCanvasCompone
   }
   UserRegionSelect(onSelect)
   {
-    this.regionSelect={onSelect};
+    this.regionSelect=onSelect!==undefined?{onSelect}:undefined;//able to cancel it
   }
   onmousedown(evt) 
   {
@@ -453,11 +453,34 @@ class CanvasComponent extends React.Component {
 
 const CABLE_DEF_EXT="cabDef";
 
+const configState={
+  normal:"normal",
+  rough_positioning:"rough_positioning",
+  template_matching:"template_matching",
+  fine_positioning:"fine_positioning",
+  test:"test"
+}
 
 
 function GenMatching_rdx({onExtraCtrlUpdate})
 {
   let _cur = useRef({
+    canvasRenderInfo:{
+      test:{
+        pt:{x:100,y:100},
+        draw:(info,g,canvas_obj)=>{
+
+          // let info = _this.canvasRenderInfo.test;
+          // let ctx = g.ctx;
+          // ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+          // let psize = 2*canvas_obj.rUtil.getPointSize();
+          // ctx.lineWidth = psize/3;
+          
+          // canvas_obj.rUtil.drawcross(ctx, info.pt,psize);
+
+        }
+      }
+    }
   });
   let _this=_cur.current;
 
@@ -472,12 +495,15 @@ function GenMatching_rdx({onExtraCtrlUpdate})
   const [defPath,setDefPath]=useState("data/default."+CABLE_DEF_EXT);
 
   const [canComp,setCanComp]=useState(undefined);
+  const [confState,setConfState]=useState(configState.normal);
 
   const [_defInfo_,set_defInfo_]=useState({
     type:"FM_GenMatching",
   });
 
   const [editRegionInfo,setEditRegionInfo]=useState(undefined);
+
+
 
 
   function Reset()
@@ -525,7 +551,7 @@ function GenMatching_rdx({onExtraCtrlUpdate})
       })
   }
 
-  function TriggerNewResult(doTakeNew,add_defInfo,cur_defInfo=_defInfo_)
+  function TriggerNewResult(doTakeNew,add_defInfo,cur_defInfo=_defInfo_,resolve=_=>_,reject=_=>_)
   {
 
     //let defInfo= {...cur_defInfo,...add_defccInfo};
@@ -553,13 +579,14 @@ function GenMatching_rdx({onExtraCtrlUpdate})
         
         IM.img = new ImageData(IM.image, IM.width);
         _this.IM=IM;
-        
+        resolve({RP,IM});
         canComp.update(_this.IM,_this.RP,{});
       }
 
-    }, reject:(pkts)=>{
-      log.info(pkts);
-    }});
+      }, reject:(pkts)=>{
+        log.info(pkts);
+        reject(pkts);
+      }});
 
 
     if(doTakeNew==true)
@@ -604,6 +631,14 @@ function GenMatching_rdx({onExtraCtrlUpdate})
 
       }
     };
+
+    canComp.ec_canvas.drawHook=(g,canvas_obj)=>{
+
+      Object.keys(_this.canvasRenderInfo).forEach(id=>{
+        let idInfo=_this.canvasRenderInfo[id];
+        idInfo.draw(idInfo,g,canvas_obj);
+      })
+    }
     
     TriggerNewResult();
 
@@ -617,78 +652,369 @@ function GenMatching_rdx({onExtraCtrlUpdate})
     canComp.draw();
   }
 
+  let launchRegionSelect=(onSelectComplete,drawRegionRect=true)=>
+  {
+    if(onSelectComplete===undefined)
+    {
+      canComp.ec_canvas.UserRegionSelect(undefined);
+      return;
+    }
+    if(drawRegionRect==true){
+      _this.canvasRenderInfo.drawRegionRect={draw:(info,g,canvas_obj)=>{
+        // console.log(">>");
+        let ctx = g.ctx;
 
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 5;
+        if(canvas_obj.regionSelect.pcvst1===undefined)
+        {
+          return;
+        }
+        let pt1 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
+        let pt2 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+
+        // console.log(pt1,pt2x)
+        
+        let x,y,w,h;
+
+        x=pt1.x;
+        w=pt2.x-pt1.x;
+
+        y=pt1.y;
+        h=pt2.y-pt1.y;
+
+    
+        if(w<0){
+          x+=w;
+          w=-w;
+        }
+        
+        if(h<0){
+          y+=h;
+          h=-h;
+        }
+        ctx.beginPath();
+        let LineSize = canvas_obj.rUtil.getIndicationLineSize();
+        ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
+        ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+        ctx.lineWidth = LineSize;
+        ctx.rect(x, y, w, h);
+        ctx.stroke();
+        ctx.closePath();
+
+        ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+        let psize = 2*canvas_obj.rUtil.getPointSize();
+        ctx.lineWidth = psize/3;
+        canvas_obj.rUtil.drawcross(ctx, {x:x+w/2,y:y+h/2},psize);
+
+      }}
+    }
+
+
+      
+    canComp.ec_canvas.UserRegionSelect((evt)=>{
+      // console.log(evt)
+      onSelectComplete(evt);
+      delete _this.canvasRenderInfo.drawRegionRect;
+      // canComp.ec_canvas.drawHook=undefined;
+    });
+
+
+
+    canComp.draw();
+
+  }
+  
+  let launchPointSelect=(onSelectComplete)=>
+  {
+    if(onSelectComplete===undefined)
+    {
+      canComp.ec_canvas.UserRegionSelect(undefined);
+      return;
+    }
+
+    {
+      _this.canvasRenderInfo.pointSelect={draw:(info,g,canvas_obj)=>{
+        let ctx = g.ctx;
+
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 5;
+        if(canvas_obj.regionSelect.pcvst2===undefined)
+        {
+          return;
+        }
+        let pt2 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
+
+        ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+
+        let psize = 2*canvas_obj.rUtil.getPointSize();
+        
+        ctx.lineWidth = psize/3;
+        canvas_obj.rUtil.drawcross(ctx, pt2,psize);
+      }}
+    }
+    canComp.ec_canvas.UserRegionSelect((evt)=>{
+      // console.log(evt)
+      onSelectComplete(evt);
+      delete _this.canvasRenderInfo.pointSelect;
+    });
+    canComp.draw();
+
+  }
+
+
+
+  let confUI=null;
+
+  switch(confState)
+  {
+    case configState.normal:
+      confUI=<>
+
+        <Button onClick={()=>{
+          setConfState(configState.rough_positioning);
+          
+          TriggerNewResult(false,{
+            insp_type:"NOP",
+          });
+        }}>Edit rough positioning</Button>
+
+
+        <Button onClick={()=>{
+          setConfState(configState.template_matching);
+          
+          TriggerNewResult(false,{
+            insp_type:"NOP",
+          });
+        }}>template_matching</Button>
+        <br/>
+
+      </>;
+    break;
+    case configState.test:
+      confUI=<>
+        <Button onClick={()=>{
+          setConfState(configState.normal);
+        }}>{"<"}</Button>
+
+        <Button onClick={()=>{
+          let i=0;
+          let sec1=10;
+          for(i=0;i<sec1;i++)
+          {
+            let ix=i;
+            setTimeout(()=>{
+              console.log(ix);
+              TriggerNewResult(false,{
+                insp_type:"image_binarization",
+                thres:ix*255/(sec1-1)
+              });
+            },ix*100);
+          }
+        }}>AAA</Button>
+
+        <Button onClick={()=>{
+          launchRegionSelect((evt)=>{
+          console.log(evt);
+          });
+        }}>BBB</Button>
+
+        
+        <Button onClick={()=>{
+          launchPointSelect((evt)=>{
+            console.log(evt);
+          });
+        }}>Point</Button>
+      </>;
+
+
+
+
+    break;
+    case configState.rough_positioning:
+      confUI=<>
+        <Button onClick={()=>{
+          setConfState(configState.normal);
+          delete _this.canvasRenderInfo.rough_positioning;
+        }}>{"<"}</Button>
+
+        <Button onClick={()=>{
+          launchRegionSelect((evt)=>{
+            console.log(evt);
+            
+            let x = evt.pt1.x;
+            let y = evt.pt1.y;
+
+            let w = evt.pt2.x-x;
+            let h = evt.pt2.y-y;
+            if(w<0)
+            {
+              x+=w;
+              w=-w;
+            }
+            if(h<0)
+            {
+              y+=h;
+              h=-h;
+            }
+
+
+            TriggerNewResult(false,{
+              insp_type:"extract_shape_features",
+              ROI:{x,y,w,h},
+              anchor:{x:x+w/2,y:y+h/2}
+            },_defInfo_,
+            (obj)=>{
+              console.log(obj);
+
+              let Template = obj.RP.data.TemplatePyramid[0];
+
+              set_defInfo_({..._defInfo_,template_pyramid:obj.RP.data.TemplatePyramid});
+              _this.canvasRenderInfo.rough_positioning={
+                Template,
+                draw:(info,g,canvas_obj)=>{
+                  let ctx = g.ctx;
+                  ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+                  let psize = 2*canvas_obj.rUtil.getPointSize();
+                  ctx.lineWidth = psize/3;
+                  Template.features.forEach((feature)=>{
+                    let x=Template.x+feature.x;
+                    let y=Template.y+feature.y;
+                    canvas_obj.rUtil.drawcross(ctx, {x,y},psize);
+                  })
+                }
+
+              }
+
+
+
+
+            },
+            ()=>{
+
+            });
+          });
+        }}>Select</Button>
+
+
+
+        
+        <Button onClick={()=>{
+          TriggerNewResult(false,{
+            insp_type:"shape_features_matching",
+          },_defInfo_,
+          (obj)=>{
+            console.log(obj);
+            let matchResults = obj.RP.data.matchResults;
+            
+            set_defInfo_({..._defInfo_,matchResults});
+            _this.canvasRenderInfo.rough_positioning={
+              matchResults,
+              draw:(info,g,canvas_obj)=>{
+                let ctx = g.ctx;
+                ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+                let psize = 2*canvas_obj.rUtil.getPointSize();
+                ctx.lineWidth = psize/3;
+
+                matchResults.forEach((ms)=>{
+                  canvas_obj.rUtil.drawcross(ctx, ms,psize);
+                  let lineLength=100;
+                  let offsetx=lineLength*Math.cos(ms.angle*3.14159/180);
+                  let offsety=lineLength*Math.sin(ms.angle*3.14159/180);
+                  ctx.beginPath();
+                  ctx.moveTo(ms.x, ms.y);
+                  ctx.lineTo(ms.x+offsetx, ms.y+offsety);
+                  ctx.stroke();
+                  
+                  ctx.font = '50px serif';
+                  ctx.fillText('s:'+ms.similarity.toFixed(2) +" cl:"+ms.class_id, ms.x, ms.y);
+                })
+              }
+
+            }
+
+
+
+
+
+          },
+          ()=>{
+
+          });
+        }}>match</Button>
+      </>;
+    break;
+
+    case configState.template_matching:
+      confUI=<>
+        <Button onClick={()=>{
+          setConfState(configState.normal);
+          delete _this.canvasRenderInfo.template_matching;
+        }}>{"<"}</Button>
+
+
+        <Button onClick={()=>{
+          TriggerNewResult(false,{
+            insp_type:"shape_features_matching",
+          },_defInfo_,
+          (obj)=>{
+            console.log(obj);
+            let matchResults = obj.RP.data.matchResults;
+            
+            set_defInfo_({..._defInfo_,matchResults});
+            _this.canvasRenderInfo.template_matching={
+              matchResults,
+              draw:(info,g,canvas_obj)=>{
+                let ctx = g.ctx;
+                ctx.strokeStyle = "rgba(179, 0, 0,0.5)";
+                let psize = 2*canvas_obj.rUtil.getPointSize();
+                ctx.lineWidth = psize/3;
+
+                matchResults.forEach((ms)=>{
+                  canvas_obj.rUtil.drawcross(ctx, ms,psize);
+                  let lineLength=100;
+                  let offsetx=lineLength*Math.cos(ms.angle*3.14159/180);
+                  let offsety=lineLength*Math.sin(ms.angle*3.14159/180);
+                  ctx.beginPath();
+                  ctx.moveTo(ms.x, ms.y);
+                  ctx.lineTo(ms.x+offsetx, ms.y+offsety);
+                  ctx.stroke();
+
+                  ctx.font = '50px serif';
+                  ctx.fillText('s:'+ms.similarity, 0, 0);
+                  
+                })
+              }
+
+            }
+
+
+
+
+
+          },
+          ()=>{
+
+          });
+        }}>match</Button>
+
+
+
+
+
+      </>;
+    break;
+  }
+
+
+
+  
   // console.log(editRegionInfo);
   return <div className="overlayCon HXF">
     <CanvasComponent key="kk" addClass="height12" 
     onCanvasInit={setCanComp}/>
     <div className="s overlay overlay scroll HXA WXA" style={{top:0,width:255,background:"#EEE"}}>
-      <Button onClick={()=>{
-        let i=0;
-        let sec1=10;
-        for(i=0;i<sec1;i++)
-        {
-          let ix=i;
-          setTimeout(()=>{
-            console.log(ix);
-            TriggerNewResult(false,{
-              thres:ix*255/(sec1-1)
-            });
-          },ix*100);
-        }
-      }}>AAA</Button>
-
-      <Button onClick={()=>{
-        canComp.ec_canvas.drawHook=(g,canvas_obj)=>{
-          let ctx = g.ctx;
-
-          ctx.strokeStyle = 'red';
-          ctx.lineWidth = 5;
-          if(canvas_obj.regionSelect.pcvst1===undefined)
-          {
-            return;
-          }
-          let pt1 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst1, g.worldTransform_inv);
-          let pt2 = canvas_obj.VecX2DMat(canvas_obj.regionSelect.pcvst2, g.worldTransform_inv);
-
-          // console.log(pt1,pt2x)
-          
-          let x,y,w,h;
-
-          x=pt1.x;
-          w=pt2.x-pt1.x;
-
-          y=pt1.y;
-          h=pt2.y-pt1.y;
-
-      
-          if(w<0){
-            x+=w;
-            w=-w;
-          }
-          
-          if(h<0){
-            y+=h;
-            h=-h;
-          }
-          ctx.beginPath();
-          let LineSize = canvas_obj.rUtil.getIndicationLineSize();
-          ctx.setLineDash([LineSize*10,LineSize*3,LineSize*3,LineSize*3]);
-          ctx.strokeStyle = "rgba(151, 51, 51,30)";
-          ctx.lineWidth = LineSize*2;
-          ctx.rect(x, y, w, h);
-          ctx.stroke();
-          ctx.closePath();
-
-
-        }
-        canComp.ec_canvas.UserRegionSelect((evt)=>{
-          console.log(evt)
-          
-          canComp.ec_canvas.drawHook=undefined;
-        });
-        canComp.draw();
-      }}>BBB</Button>
+      {confUI}
     </div>
   </div>;
 }

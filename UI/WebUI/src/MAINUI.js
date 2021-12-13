@@ -361,6 +361,8 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
       
       let down_samp_level=IMG_LOAD_DOWNSAMP_LEVEL*2;
       if(down_samp_level>3)down_samp_level=3;
+
+      console.log(">>>>>");
       ACT_WS_SEND_BPG( "LD", 0, 
       { deffile: defModelPath + '.' + DEF_EXTENSION, imgsrc: defModelPath ,down_samp_level},
       undefined,{ 
@@ -468,6 +470,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
         if (filePath === undefined) return;
         filePath = filePath.replace("." + DEF_EXTENSION, "").replaceAll("\\" , "/");
         setInfoPopUp(undefined);
+        console.log(">>>>>");
         ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
         down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },undefined,{
           resolve:(stacked_pkts,action_channal)=>{
@@ -696,6 +699,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
                   let filePath = file.path.replace("." + DEF_EXTENSION, "");
                   setInfoPopUp(undefined);
                   ACT_Def_Model_Path_Update(filePath);
+                  console.log(">>>>>");
                   ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath ,
                   down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL});
 
@@ -761,6 +765,7 @@ const InspectionDataPrepare = ({onPrepareOK}) => {
 
                 filePath = filePath.replace("." + DEF_EXTENSION, "");
                 setFileSelectorInfo(undefined);
+                console.log(">>>>>");
                 ACT_WS_SEND_BPG( "LD", 0, { deffile: filePath + '.' + DEF_EXTENSION, imgsrc: filePath,
                 down_samp_level:IMG_LOAD_DOWNSAMP_LEVEL },
                   undefined, { resolve:(pkts,action_channal)=>{
