@@ -1657,7 +1657,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
     }
     else if (checkTL("LD", dat))
     {
-      // LOGI("DataType_BPG:[%c%c] data:\n%s", dat->tl[0], dat->tl[1],(char *)dat->dat_raw);
+      LOGI("DataType_BPG:[%c%c] data:\n%s", dat->tl[0], dat->tl[1],(char *)dat->dat_raw);
       do
       {
 
@@ -1833,41 +1833,6 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
         bool isCalibNA = false;
         cJSON *img_property = JFetch_OBJECT(json, "img_property");
-        if (img_property)
-        {
-
-          char *calibInfo_type = JFetch_STRING(img_property, "calibInfo.type");
-
-          LOGI("calibInfo_type:%s", calibInfo_type);
-          if (strcmp(calibInfo_type, "NA") == 0)
-          {
-            isCalibNA = true;
-            select_bacpac = &neutral_bacpac;
-            neutral_bacpac.sampler->getCalibMap()->calibPpB = 1;
-            neutral_bacpac.sampler->getCalibMap()->calibmmpB = 1;
-          }
-          else if (strcmp(calibInfo_type, "neutral") == 0 || strcmp(calibInfo_type, "disable") == 0)
-          {
-
-            double *mmpp = JFetch_NUMBER(img_property, "calibInfo.mmpp"); //The mmpp has to be set
-            if (mmpp)
-            {
-              select_bacpac = &neutral_bacpac;
-              neutral_bacpac.sampler->getCalibMap()->calibPpB = 1;
-              neutral_bacpac.sampler->getCalibMap()->calibmmpB = (*mmpp);
-            }
-            else
-            {
-              select_bacpac = NULL;
-
-              break;
-            }
-          }
-          else if (true || strcmp(calibInfo_type, "default") == 0) //since it's default...
-          {
-            select_bacpac = &calib_bacpac;
-          }
-        }
 
         char *jsonStr = NULL;
         if (defInfo)
@@ -1918,6 +1883,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
           if (report != NULL)
           {
+            
             cJSON *jobj = matchingEng.FeatureReport2Json(report);
             AttachStaticInfo(jobj, this);
             char *jstr = cJSON_Print(jobj);
@@ -1948,7 +1914,7 @@ int m_BPG_Protocol_Interface::toUpperLayer(BPG_protocol_data bpgdat)
 
         if (img_property)
         {
-          double *pscale = JFetch_NUMBER(img_property, "scale");
+          double *pscale = JFetch_NUMBER(img_property, "down_samp_level");
           if (pscale)
           {
             int _scale = 2;
