@@ -349,6 +349,14 @@ cJSON* MatchingReport2JSON(const FeatureReport *report )
     return tmp_jobj;
     
   }
+  if(report->type == FeatureReport::custom)
+  {
+    cJSON* tmp_jobj=cJSON_Duplicate(report->data.custom_report.cjson,true);
+    if(tmp_jobj==NULL)
+      tmp_jobj=cJSON_CreateObject();
+    return tmp_jobj;
+    
+  }
   cJSON* report_jobj = cJSON_CreateObject();
   //for(int i=0;i<featureBundle.size();i++)
 

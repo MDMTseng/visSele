@@ -13,7 +13,7 @@
 class FM_GenMatching:public FeatureManager {
 
   
-  acvImage backGroundTemplate;
+  acvImage DefTemplate;
 
 public :
   FM_GenMatching(const char *json_str);
@@ -26,12 +26,13 @@ public :
 
   void ClearReport() override;
   cJSON * SetParam(cJSON *json_str) override;
-
-  cJSON * SetParam0(cJSON *json_str);
-  cJSON * SetParam1(cJSON *json_str);
-
-
+  int SetInspInfo(cJSON *jsonParam);
   static const char* GetFeatureTypeName(){return "FM_GenMatching";};
+  
+  struct region{
+    float x,y,w,h;
+    float rel_x,rel_y;
+  };
 protected:
   int parse_jobj() override;
 
@@ -46,6 +47,9 @@ protected:
 
   int ROI[4]={-1};
   float downScale=1;
+  std::vector<region> locatingBlocks;
+  std::vector<cv::Mat> locatingBlockImg;
+
 
 
   cv::Point2f temp_tp_anchorPt;
