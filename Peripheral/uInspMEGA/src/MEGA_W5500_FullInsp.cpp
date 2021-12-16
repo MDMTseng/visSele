@@ -1426,7 +1426,7 @@ public:
       {
         int ret_st = 0;
         MessageL += sprintf((char *)send_rsp + MessageL, "\"type\":\"get_setup_rsp\","
-                                                         "\"ver\":\"0.9.8.0\",");
+                                                         "\"ver\":\"0.9.8.1\",");
         MessageL += MachToJson(send_rsp + MessageL, send_rspL - MessageL, &ret_st);
         DEBUG_print("get_setup:");
         DEBUG_println(send_rsp);
