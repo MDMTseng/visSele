@@ -87,14 +87,14 @@ void insert_fake_pulse()
 
 
 const int  SINGLE_PULSE_DIST_um = (int)(240000/perRevPulseCount*2*3.141);
+const int  minWidth = 0;
+const int  maxWidth = 1+40000/SINGLE_PULSE_DIST_um;
+const int  DEBOUNCE_L_THRES = 1+2000/SINGLE_PULSE_DIST_um;//object inner connection
+const int  DEBOUNCE_H_THRES = 1;
+
 void task_gateSensing(uint8_t stage,uint8_t stageLen)
 {
   if(stage>=stageLen)return;
-  const int  minWidth = 2;
-  const int  maxWidth = 1+40000/SINGLE_PULSE_DIST_um;
-  
-  const int  DEBOUNCE_L_THRES = 1+3000/SINGLE_PULSE_DIST_um;//object inner connection
-  const int  DEBOUNCE_H_THRES = 1;
   //(perRevPulseCount/50)
   uint8_t new_Sense = digitalRead(GATE_PIN);
   if(_senseInv_)new_Sense=!new_Sense;
