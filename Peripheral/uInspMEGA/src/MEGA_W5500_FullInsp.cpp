@@ -393,6 +393,10 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
           if(pulse_diff>pulseSep)//give 4 rev time
           {//if too long there is no new object incoming, to maintain pulse-time in sync we need to add a phantom pulse to sample camera system time info
+            // if(inspResCount.NA!=0)
+            {
+              inspResCount.NA--;
+            }
             DEBUG_printf("FAKE pulse:%s\n",uint32_t_str(cur_pulse));
             task_newPulseEvent(cur_pulse, cur_pulse, cur_pulse, 10);
           }
@@ -725,10 +729,10 @@ int AddResultCountToJson(char *send_rsp, uint32_t send_rspL, struct InspResCount
   uint32_t MessageL = 0;
   MessageL += sprintf((char *)send_rsp + MessageL, "\"res_count\":{");
 
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"OK\":%lu,", inspResCount.OK);
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"NG\":%lu,", inspResCount.NG);
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"NA\":%lu,", inspResCount.NA);
-  MessageL += sprintf((char *)send_rsp + MessageL, "\"ERR\":%lu,", inspResCount.ERR);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"OK\":%lu,", inspResCount.OK>0?inspResCount.OK:0);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"NG\":%lu,", inspResCount.NG>0?inspResCount.NG:0);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"NA\":%lu,", inspResCount.NA>0?inspResCount.NA:0);
+  MessageL += sprintf((char *)send_rsp + MessageL, "\"ERR\":%lu,",inspResCount.ERR>0?inspResCount.ERR:0);
 
   MessageL--; //remove the last comma',';
   MessageL += sprintf((char *)send_rsp + MessageL, "},");
@@ -925,7 +929,7 @@ public:
   int convertStringToU64(const char *str, uint64_t *ret_val) // char * preferred
   {
     uint64_t val = 0;
-    for (int i = 0; str[i] != NULL; i++)
+    for (int i = 0; str[i] != '\0'; i++)
     {
       val *= 10;
       int dig = str[i] - '0';
@@ -1224,6 +1228,13 @@ public:
           if (diff < 5)
           { //Pulse sync error is in tolerable region
             // DEBUG_printf("ist:%d\n",insp_status);
+            
+            if(sysinfo.PTSyncInfo.state == PulseTimeSyncInfo_State::SETUP_Verify)
+            {
+              insp_status=insp_status_NA;
+              inspResCount.NA--;//just skip this NA count
+            }
+
             pipeTarget->insp_status = insp_status;//accept the status
 
             if (mode_info.mode == run_mode_info::TEST && 

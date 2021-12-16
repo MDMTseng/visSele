@@ -238,10 +238,10 @@ typedef struct run_mode_info
 
 typedef struct InspResCount
 {
-  uint64_t NA;
-  uint64_t OK;
-  uint64_t NG;
-  uint64_t ERR;
+  int64_t NA;
+  int64_t OK;
+  int64_t NG;
+  int64_t ERR;
 } InspResCount;
 
 
