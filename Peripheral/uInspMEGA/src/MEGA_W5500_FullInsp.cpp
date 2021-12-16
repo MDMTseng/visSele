@@ -33,7 +33,7 @@ uint16_t stageUpdated = 0;
 
 uint16_t g_max_inspLatency = 0;
 
-struct sharedInfo* p_sInfo= get_SharedInfo();
+static struct sharedInfo &sInfo= *get_SharedInfo();
 bool blockNewDetectedObject=false;
 
 GEN_ERROR_CODE errorBuf[20];
@@ -169,7 +169,8 @@ void RESET_ALL_PIPELINE_QUEUE()
   RBuf.clear();
   act_S.ACT_BACKLight1H.clear();
   act_S.ACT_BACKLight1L.clear();
-  act_S.ACT_CAM1.clear();
+  act_S.ACT_CAM1H.clear();
+  act_S.ACT_CAM1L.clear();
   act_S.ACT_SEL1H.clear();
   act_S.ACT_SEL1L.clear();
   act_S.ACT_SEL2H.clear();
@@ -501,7 +502,7 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
 
 
   if (act_S.ACT_BACKLight1H.size_left() >= 1 && act_S.ACT_BACKLight1L.size_left() >= 1 &&
-      act_S.ACT_CAM1.size_left() >= 2 && act_S.ACT_SWITCH.size_left() >= 1)
+      act_S.ACT_CAM1H.size_left() >= 1 && act_S.ACT_CAM1L.size_left() >= 1 && act_S.ACT_SWITCH.size_left() >= 1)
   {
     // DEBUG_printf(">>>>src:%p gate_pulse:%d ",pli,pli->gate_pulse);
     // DEBUG_printf("s:%d ",pli->s_pulse);
@@ -511,8 +512,8 @@ int ActRegister_pipeLineInfo(pipeLineInfo *pli)
     ACT_PUSH_TASK(act_S.ACT_BACKLight1H, pli, state_pulseOffset[1], 1, );
     ACT_PUSH_TASK(act_S.ACT_BACKLight1L, pli, state_pulseOffset[4], 2, );
 
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[2], 1, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[3], 2, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1H, pli, state_pulseOffset[2], 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1L, pli, state_pulseOffset[3], 2, );
 
     ACT_PUSH_TASK(act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2, );
 
@@ -549,10 +550,10 @@ int ActRegister_Pulse_Time_Sync(pipeLineInfo *pli)
 {
 
   if (act_S.ACT_BACKLight1H.size_left() >= 1 && act_S.ACT_BACKLight1L.size_left() >= 1 &&
-      act_S.ACT_CAM1.size_left() >= 2 && act_S.ACT_SWITCH.size_left() >= 1)
+      act_S.ACT_CAM1H.size_left() >= 1 && act_S.ACT_CAM1L.size_left() >= 1 && act_S.ACT_SWITCH.size_left() >= 1)
   {
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[2], 1, );
-    ACT_PUSH_TASK(act_S.ACT_CAM1, pli, state_pulseOffset[3], 2, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1H, pli, state_pulseOffset[2], 1, );
+    ACT_PUSH_TASK(act_S.ACT_CAM1L, pli, state_pulseOffset[3], 2, );
     ACT_PUSH_TASK(act_S.ACT_SWITCH, pli, state_pulseOffset[5], 2, );
     return 0;
     // pli->insp_status=insp_status_OK;
@@ -598,17 +599,15 @@ int Run_ACTS(uint32_t cur_pulse)
                    digitalWrite(BACK_LIGHT_PIN, 0););
 
   ACT_TRY_RUN_TASK(
-      acts->ACT_CAM1, cur_pulse,
+      acts->ACT_CAM1H, cur_pulse,
 
-      //
-      if (task->info == 1)
-      {
-        // DEBUG_println("C");
-        digitalWrite(CAMERA_PIN, 1);
-      } else if (task->info == 2)
-      {
-        digitalWrite(CAMERA_PIN, 0);
-      });
+      digitalWrite(CAMERA_PIN, 1);
+      );  
+  ACT_TRY_RUN_TASK(
+      acts->ACT_CAM1L, cur_pulse,
+
+      digitalWrite(CAMERA_PIN, 0);
+      );
 
   ACT_TRY_RUN_TASK(acts->ACT_SEL1H, cur_pulse,
 
@@ -1171,6 +1170,7 @@ public:
               }
               else
               {
+                inspResCount.NA++;
                 pipe->insp_status =insp_status_NA;//skip this one and try to find next match
               }
 
@@ -1742,11 +1742,11 @@ void setup()
 int EV_Axis0_Origin(uint32_t revCount)
 {
   curRevCount = revCount;
-  if ((revCount & 7) == 0)
-  {
-    DEBUG_print("REV:");
-    DEBUG_println(curRevCount);
-  }
+  // if ((revCount & 7) == 0)
+  // {
+  //   DEBUG_print("REV:");
+  //   DEBUG_println(curRevCount);
+  // }
 }
 
 
