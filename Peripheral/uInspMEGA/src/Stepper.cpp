@@ -11,7 +11,7 @@ bool* getSenseInvPtr()
   return &_senseInv_;
 }
 
-struct sharedInfo sInfo;
+static struct sharedInfo sInfo;
 struct sharedInfo* get_SharedInfo()
 {
   return &sInfo;

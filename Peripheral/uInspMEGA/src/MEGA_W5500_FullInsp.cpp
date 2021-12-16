@@ -457,7 +457,7 @@ void SYS_STATE_LIFECYCLE(SYS_STATE pre_sate, SYS_STATE new_state)
 
 int ActRegister_pipeLineInfo(pipeLineInfo *pli);
 
-
+int registerFAIL_COUNT=0;
 
 int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle_pulse, uint32_t pulse_width)
 {
@@ -492,6 +492,7 @@ int task_newPulseEvent(uint32_t start_pulse, uint32_t end_pulse, uint32_t middle
   head->insp_status = insp_status_UNSET;
   if (ActRegister_pipeLineInfo(head) != 0)
   { //register failed....
+    registerFAIL_COUNT++;
     return -2;
   }
   RBuf.pushHead();
@@ -940,7 +941,12 @@ public:
       *ret_val = val;
     return 0;
   }
-
+  int maxRSize=0;
+  int preRegFailCount=0;
+  int preSkippedPulse=0;
+  int RBufRecJump=0;
+  int pre_RBufRecJump=0;
+  
   virtual int Json_CMDExec(WebSocketProtocol *WProt, uint8_t *recv_cmd, int cmdL, sending_buffer *send_pack, int data_in_pack_maxL)
   {
     // DEBUG_printf(">>>s:%d\n",sysinfo.state);
@@ -949,6 +955,18 @@ public:
     {
       onPeerConnect(WProt);
     }
+
+
+    // int RSize=RBuf.size();
+    // if(maxRSize<RSize || preRegFailCount!=registerFAIL_COUNT || sInfo.skippedPulse!=preSkippedPulse || pre_RBufRecJump!=RBufRecJump)
+    // {
+    //   DEBUG_printf("RSize:%d  failReg:%d skippedPulse:%d RBufRecJump:%d\n",maxRSize,registerFAIL_COUNT,sInfo.skippedPulse,RBufRecJump);
+    //   if(maxRSize<RSize)
+    //     maxRSize=RBuf.size();
+    //   preRegFailCount=registerFAIL_COUNT;
+    //   preSkippedPulse=sInfo.skippedPulse;
+    //   pre_RBufRecJump=RBufRecJump;
+    // }
 
     char *send_rsp = send_pack->data;
     int send_rspL = data_in_pack_maxL;
@@ -1170,6 +1188,7 @@ public:
               }
               else
               {
+                RBufRecJump++;
                 inspResCount.NA++;
                 pipe->insp_status =insp_status_NA;//skip this one and try to find next match
               }
